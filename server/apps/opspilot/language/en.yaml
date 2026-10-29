@@ -262,17 +262,24 @@ tools:
       monitor_list_instance_metrics:
         description: List metrics already collected on an instance.
       monitor_query_metric_data:
-        description: Query time series for a selected metric.
+        description: Query time series for a selected metric. Times without a timezone use the current user's timezone. Z or ±HH:MM keeps that offset. Omit both to query the last hour.
       monitor_summarize_metric_trend:
         description: Estimate current value, daily change, and days to a threshold from recent history. Series that will not reach it are included.
       monitor_list_active_alerts:
         description: List active instance alerts from monitor policies (host detail alert tab; not alert-center tickets).
       monitor_query_alert_segments:
-        description: Query monitor-policy alert history segments in a time window.
+        description: Query monitor-policy alert history segments in a time window. Times without a timezone use the current user's timezone.
       monitor_get_host_resource_snapshot:
         description: Query host CPU/memory/disk avg and max snapshot.
       monitor_get_host_resource_top_by_time:
-        description: Rank all hosts by CPU/memory/disk usage within a time window (Top N).
+        description: Rank all hosts by CPU/memory/disk usage within a time window (Top N). Times without a timezone use the current user's timezone.
+  mlops:
+    name: MLOps
+    description: |
+      Call a bound MLOps time series forecast serving. The model queries monitor data or uses a pasted series, then asks the forecast service instead of extrapolating by itself.
+    tools:
+      mlops_predict_timeseries:
+        description: Forecast a bound serving over a future horizon. summary compares many series; trend returns points for one series.
   cmdb:
     name: CMDB
     description: |
@@ -339,9 +346,9 @@ tools:
       log_list_groups:
         description: List accessible log groups.
       log_search_structured:
-        description: Search logs by keyword. Pass start and end as RFC3339 with a timezone, for example 2026-10-21T15:03:09+08:00. Omit both to search the last 24 hours.
+        description: Search logs by keyword. Times without a timezone use the current user's timezone, for example 2026-10-22 14:28:00. Z or ±HH:MM keeps that offset. Omit both to search the last 24 hours.
       log_search_raw:
-        description: Search logs with native LogsQL. Pass start and end as RFC3339 with a timezone, for example 2026-10-21T15:03:09+08:00. Omit both to search the last 24 hours.
+        description: Search logs with native LogsQL. Times without a timezone use the current user's timezone, for example 2026-10-22 14:28:00. Z or ±HH:MM keeps that offset. Omit both to search the last 24 hours.
   ops_analysis_dashboard:
     name: Operations Analytics Dashboard
     description: |
@@ -1026,3 +1033,9 @@ skill_packages:
       Scenario skill package for deploying and managing Kubernetes workloads.
 
       Covers Deployments/StatefulSets, network policies, RBAC, Helm, troubleshooting, GitOps, service mesh, and multi-cluster operations.
+  ppt-master:
+    name: PPT Master
+    description: |
+      Scenario skill package for creating and revising editable presentations.
+
+      Produces native PPTX files and keeps the project available for later revisions in the same conversation.

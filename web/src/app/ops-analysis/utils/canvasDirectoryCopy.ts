@@ -21,10 +21,27 @@ export const shouldShowCanvasCopyAction = (item: {
   type: DirectoryType;
 }): boolean => isCanvasType(item.type);
 
+const BUILTIN_CANVAS_GROUP_EDIT_TYPES = new Set<DirectoryType>([
+  'dashboard',
+  'topology',
+  'architecture',
+  'screen',
+  'report',
+]);
+
 export const isBuiltinDirectory = (item?: {
   type?: DirectoryType;
   is_build_in?: boolean;
-}): boolean => item?.type === 'directory' && Boolean(item.is_build_in);
+} | null): boolean => item?.type === 'directory' && Boolean(item.is_build_in);
+
+/** 内置仪表盘 / 拓扑 / 架构 / 大屏 / 报表可改组织；网络拓扑与数据源不在此列。 */
+export const isBuiltinCanvasGroupEditable = (item?: {
+  type?: DirectoryType;
+  is_build_in?: boolean;
+} | null): boolean =>
+  Boolean(item?.is_build_in) &&
+  item?.type != null &&
+  BUILTIN_CANVAS_GROUP_EDIT_TYPES.has(item.type);
 
 export const getSidebarDirectoryMenuKeys = (item: {
   type: DirectoryType;
@@ -40,7 +57,7 @@ export const buildDirectoryEditPayload = (
   item: { type?: DirectoryType; is_build_in?: boolean },
   values: { name?: string; desc?: string; groups?: number[] },
 ): Record<string, unknown> => {
-  if (isBuiltinDirectory(item)) {
+  if (isBuiltinDirectory(item) || isBuiltinCanvasGroupEditable(item)) {
     return { groups: values.groups ?? [] };
   }
   return {
@@ -50,17 +67,36 @@ export const buildDirectoryEditPayload = (
   };
 };
 
-export const getSidebarCanvasMenuKeys = (item: {
-  type: DirectoryType;
-  is_build_in?: boolean;
-}): string[] => {
+export const getSidebarCanvasMenuKeys = (
+  item: {
+    type: DirectoryType;
+    is_build_in?: boolean;
+  },
+  options?: { canEditCatalogue?: boolean },
+): string[] => {
   if (!isCanvasType(item.type)) {
     return [];
+  }
+  if (item.is_build_in && isBuiltinCanvasGroupEditable(item)) {
+    const resourceKeys = ['copy', 'export'];
+    if (options?.canEditCatalogue) {
+      return ['editGroup', ...resourceKeys];
+    }
+    return resourceKeys;
   }
   if (item.is_build_in) {
     return ['copy', 'export', 'edit', 'delete'];
   }
-  return ['edit', 'delete', 'copy', 'export'];
+  return ['edit', 'delete', 'copy', 'export', 'importUpdate'];
+};
+
+/** 编辑已有画布时只保留目录链内的组织，不把当前组织补回去。 */
+export const retainAllowedGroupIds = (
+  selectedGroupIds: number[] | undefined,
+  allowedGroupIds: number[],
+): number[] => {
+  const allowed = new Set(allowedGroupIds);
+  return (selectedGroupIds || []).filter((groupId) => allowed.has(groupId));
 };
 
 export const buildCopyDirectoryTree = (

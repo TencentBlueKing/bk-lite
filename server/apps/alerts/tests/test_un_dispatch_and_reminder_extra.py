@@ -17,8 +17,8 @@ from apps.alerts.service.reminder_service import ReminderService as RS
 from apps.alerts.service.un_dispatch import UnDispatchService
 
 
-def _make_alert(alert_id="A1", level="0", status=AlertStatus.UNASSIGNED):
-    return Alert.objects.create(alert_id=alert_id, level=level, title="t", content="c", fingerprint="fp" + alert_id, status=status)
+def _make_alert(alert_id="A1", level="0", status=AlertStatus.UNASSIGNED, title="t"):
+    return Alert.objects.create(alert_id=alert_id, level=level, title=title, content="c", fingerprint="fp" + alert_id, status=status)
 
 
 def _make_assignment(name="分派", frequency=None):
@@ -61,9 +61,10 @@ def test_un_dispatch_full_param_format(monkeypatch):
     )
 
     class FakeFormat:
-        def __init__(self, username_list, alerts):
+        def __init__(self, username_list, alerts, build_in=True):
             self.username_list = username_list
             self.alerts = alerts
+            self.build_in = build_in
 
         def format_title(self):
             return "未分派告警"
@@ -104,8 +105,9 @@ def test_un_dispatch_fetches_alerts_from_db_when_none(monkeypatch):
     _make_alert(alert_id="UN1", status=AlertStatus.UNASSIGNED)
 
     class FakeFormat:
-        def __init__(self, username_list, alerts):
+        def __init__(self, username_list, alerts, build_in=True):
             self.alerts = alerts
+            self.build_in = build_in
 
         def format_title(self):
             return "T"
@@ -118,6 +120,79 @@ def test_un_dispatch_fetches_alerts_from_db_when_none(monkeypatch):
     result = UnDispatchService.notify_un_dispatched_alert_params_format(alerts=None)
     assert len(result) == 1
     assert result[0]["channel_id"] == 1
+
+
+@pytest.mark.django_db
+def test_un_dispatch_summary_includes_every_alert_title():
+    SystemSetting.objects.create(
+        key="no_dispatch_alert_notice",
+        value={
+            "notify_people": ["op1"],
+            "notify_channel": [{"id": 1, "channel_type": "email"}],
+        },
+    )
+    alerts = [
+        _make_alert(alert_id="SUM-A", title="missing-A"),
+        _make_alert(alert_id="SUM-B", title="missing-B"),
+    ]
+    result = UnDispatchService.notify_un_dispatched_alert_params_format(alerts=alerts)
+    assert len(result) == 1
+    assert "2条" in result[0]["title"]
+    assert "missing-A" in result[0]["content"]
+    assert "missing-B" in result[0]["content"]
+
+
+@pytest.mark.django_db
+def test_un_dispatch_summary_uses_total_and_caps_body_at_ten():
+    SystemSetting.objects.create(
+        key="no_dispatch_alert_notice",
+        value={
+            "notify_people": ["op1"],
+            "notify_channel": [{"id": 1, "channel_type": "email"}],
+        },
+    )
+    alerts = [_make_alert(alert_id=f"SUM-{index:02d}", title=f"missing-{index:02d}") for index in range(1, 12)]
+    result = UnDispatchService.notify_un_dispatched_alert_params_format(alerts=alerts)
+    assert len(result) == 1
+    content = result[0]["content"]
+    assert "11条" in result[0]["title"]
+    for index in range(1, 11):
+        assert f"missing-{index:02d}" in content
+    assert "missing-11" not in content
+    tenth_lines = [line for line in content.splitlines() if "missing-10" in line]
+    assert len(tenth_lines) == 1
+    assert "....." in tenth_lines[0]
+
+
+@pytest.mark.django_db
+def test_un_dispatch_email_and_nats_omits_nats():
+    SystemSetting.objects.create(
+        key="no_dispatch_alert_notice",
+        value={
+            "notify_people": ["op1"],
+            "notify_channel": [
+                {"id": 1, "channel_type": "email"},
+                {"id": 2, "channel_type": "nats"},
+            ],
+        },
+    )
+    result = UnDispatchService.notify_un_dispatched_alert_params_format(
+        alerts=[_make_alert(alert_id="NAT1", title="missing-nats")]
+    )
+    assert [item["channel_type"] for item in result] == ["email"]
+
+
+@pytest.mark.django_db
+def test_un_dispatch_empty_people_or_alerts_returns_empty():
+    SystemSetting.objects.create(
+        key="no_dispatch_alert_notice",
+        value={"notify_people": [], "notify_channel": [{"id": 1, "channel_type": "email"}]},
+    )
+    assert UnDispatchService.notify_un_dispatched_alert_params_format(alerts=[_make_alert(alert_id="EMPTY1")]) == []
+    setting = SystemSetting.objects.get(key="no_dispatch_alert_notice")
+    setting.value = {"notify_people": ["op1"], "notify_channel": [{"id": 1, "channel_type": "email"}]}
+    setting.save()
+    assert UnDispatchService.notify_un_dispatched_alert_params_format(alerts=[]) == []
 
 
 @pytest.mark.django_db

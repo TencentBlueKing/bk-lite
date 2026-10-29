@@ -18,7 +18,7 @@
 """
 
 import json
-from typing import Dict, List
+from typing import Dict, List, Union
 
 from apps.cmdb.constants.constants import DISPLAY_FIELD_CONFIG, INSTANCE, MODEL
 from apps.cmdb.display_field.constants import (
@@ -33,6 +33,24 @@ from apps.cmdb.display_field.constants import (
 )
 from apps.cmdb.graph.drivers.graph_client import GraphClient
 from apps.core.logger import cmdb_logger as logger
+
+
+class _DisplayFieldQueryError(Exception):
+    """实例查询失败。原始 traceback 只留在查询处的日志里。"""
+
+    def __init__(self, model_id: str):
+        self.model_id = model_id
+        super().__init__(model_id)
+
+
+class _DisplayFieldInstanceUpdateError(Exception):
+    """同一模型有实例写入失败。errors 只收一条摘要。"""
+
+    def __init__(self, inst_id, failure_count: int, instances_processed: int):
+        self.inst_id = inst_id
+        self.failure_count = failure_count
+        self.instances_processed = instances_processed
+        super().__init__(str(failure_count))
 
 
 class DisplayFieldInitializer:
@@ -102,6 +120,15 @@ class DisplayFieldInitializer:
 
                     logger.info(f"[DisplayFieldInitializer] 模型处理完成: {model_id}, " f"实例数: {instance_count}")
 
+                except _DisplayFieldQueryError:
+                    result["errors"].append(f"查询实例失败，model_id={model_id}")
+                    result["success"] = False
+                except _DisplayFieldInstanceUpdateError as exc:
+                    result["instances_processed"] += exc.instances_processed
+                    result["errors"].append(
+                        f"更新实例失败，model_id={model_id}，inst_id={exc.inst_id}，失败{exc.failure_count}次"
+                    )
+                    result["success"] = False
                 except Exception as e:
                     error_msg = f"处理模型 {model_id} 失败: {e}"
                     logger.error(f"[DisplayFieldInitializer] {error_msg}", exc_info=True)
@@ -347,10 +374,12 @@ class DisplayFieldInitializer:
                 f"[DisplayFieldInitializer] 查询模型 {model_id} 实例失败: {e}",
                 exc_info=True,
             )
-            return 0
+            raise _DisplayFieldQueryError(model_id) from None
 
         # 2. 批量处理实例
         processed_count = 0
+        failure_count = 0
+        first_failed_inst_id = None
 
         for instance in instances:
             try:
@@ -380,9 +409,19 @@ class DisplayFieldInitializer:
                     f"[DisplayFieldInitializer] 更新实例 {instance.get('inst_id')} 失败: {e}",
                     exc_info=True,
                 )
+                if failure_count == 0:
+                    first_failed_inst_id = instance.get("inst_id")
+                failure_count += 1
                 continue
 
         logger.info(f"[DisplayFieldInitializer] 模型 {model_id} 实例处理完成, " f"总数: {len(instances)}, 更新数: {processed_count}")
+
+        if failure_count:
+            raise _DisplayFieldInstanceUpdateError(
+                inst_id=first_failed_inst_id,
+                failure_count=failure_count,
+                instances_processed=processed_count,
+            )
 
         return processed_count
 
@@ -497,20 +536,35 @@ class DisplayFieldInitializer:
 
         return DISPLAY_VALUES_SEPARATOR.join(formatted_users)
 
-    def _convert_enum(self, model_id: str, attr_id: str, enum_id: str) -> str:
+    def _convert_enum(self, model_id: str, attr_id: str, enum_id: Union[str, List[str]]) -> str:
         """
         将枚举ID转换为枚举名称(从预加载的映射中查询)
 
         Args:
             model_id: 模型ID
             attr_id: 字段ID
-            enum_id: 枚举ID
+            enum_id: 枚举ID，或多选时的枚举ID列表
 
         Returns:
-            枚举名称
+            枚举名称；多选时按选项逐项查表后用分隔符拼接
         """
         if not enum_id:
             return ""
+
+        if isinstance(enum_id, list):
+            display_names = []
+            for option_id in enum_id:
+                if not option_id:
+                    continue
+                # 映射key格式与预加载一致: "model_id.attr_id.option_id"
+                map_key = f"{model_id}.{attr_id}.{option_id}"
+                enum_name = self._enum_map.get(map_key)
+                if enum_name:
+                    display_names.append(enum_name)
+                else:
+                    logger.debug(f"[DisplayFieldInitializer] 未找到枚举映射: {map_key}，使用原始值")
+                    display_names.append(str(option_id))
+            return DISPLAY_VALUES_SEPARATOR.join(display_names)
 
         # 构建映射key: "model_id.attr_id.enum_id"
         map_key = f"{model_id}.{attr_id}.{enum_id}"

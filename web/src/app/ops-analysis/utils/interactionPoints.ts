@@ -1,5 +1,6 @@
 import type { ValueConfig } from '@/app/ops-analysis/types/dashBoard';
 import { ChartDataTransformer } from '@/app/ops-analysis/utils/chartDataTransform';
+import { toLineBarFieldMapping } from '@/app/ops-analysis/utils/lineBarFieldMapping';
 import { extractComparableValue } from '@/app/ops-analysis/utils/compareQuery';
 import { getValueByPath } from '@/app/ops-analysis/utils/objectPath';
 import { extractMultiValueItems, validateMultiValueData } from '@/app/ops-analysis/utils/multiValueData';
@@ -41,10 +42,10 @@ const numericPoint = (
 };
 
 export const topNLinkPoints = (
-  items: Array<Pick<TopNItem, 'name' | 'source'>>,
+  items: Array<Pick<TopNItem, 'name' | 'source' | 'field'>>,
   valueField?: string,
 ): ChartLinkPoint[] => items.map((item) => {
-  const raw = item.source ? getValueByPath(item.source, valueField) : undefined;
+  const raw = item.source ? getValueByPath(item.source, item.field || valueField) : undefined;
   const fields = item.source ? chartLinkFields(item.source) : undefined;
   return numericPoint(raw, {
     seriesName: item.name,
@@ -67,9 +68,13 @@ export const buildInteractionPoints = (
     ValueConfig,
     | 'dimensionField'
     | 'valueField'
+    | 'valueFields'
+    | 'seriesField'
+    | 'pieScalarFields'
     | 'selectedFields'
     | 'topNLabelField'
     | 'topNValueField'
+    | 'topNScalarFields'
     | 'multiValueLabelField'
     | 'multiValueValueField'
     | 'cardList'
@@ -83,10 +88,10 @@ export const buildInteractionPoints = (
   > | null,
 ): ChartLinkPoint[] => {
   if (chartType === 'line' || chartType === 'bar') {
-    const chart = ChartDataTransformer.transformToLineBarData(rawData, {
-      dimensionField: config?.dimensionField,
-      valueField: config?.valueField,
-    });
+    const chart = ChartDataTransformer.transformToLineBarData(
+      rawData,
+      toLineBarFieldMapping(config),
+    );
     if (chart.series?.length) {
       return chart.series.flatMap((series) => series.points || []);
     }
@@ -97,6 +102,7 @@ export const buildInteractionPoints = (
     return ChartDataTransformer.transformToPieData(rawData, {
       dimensionField: config?.dimensionField,
       valueField: config?.valueField,
+      pieScalarFields: config?.pieScalarFields,
     }).flatMap((item) => (item.__link ? [item.__link] : []));
   }
 
@@ -133,7 +139,9 @@ export const buildInteractionPoints = (
 
   if (chartType === 'topN') {
     return topNLinkPoints(
-      buildTopNItems(rawData, config?.topNLabelField, config?.topNValueField),
+      buildTopNItems(rawData, config?.topNLabelField, config?.topNValueField, {
+        scalarFields: config?.topNScalarFields,
+      }),
       config?.topNValueField,
     );
   }

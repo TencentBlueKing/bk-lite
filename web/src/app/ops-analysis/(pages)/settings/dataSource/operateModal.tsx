@@ -45,6 +45,7 @@ import {
   createDefaultSchemaField,
   createDefaultTransformConfig,
   createPrometheusDefaultParams,
+  ELASTICSEARCH_DEFAULT_QUERY_BODY,
   getDatasourceSourceFlags,
   getPreviewFieldNames,
   normalizeFieldSchema,
@@ -53,6 +54,7 @@ import {
   PASSWORD_PLACEHOLDER,
   PROMETHEUS_DEFAULT_CHART_TYPES,
   SchemaField,
+  SOURCE_TYPE_ELASTICSEARCH,
   SOURCE_TYPE_EXCEL,
   SOURCE_TYPE_MYSQL,
   SOURCE_TYPE_NATS,
@@ -76,6 +78,7 @@ import { DatasourceBasicFields } from "./datasourceBasicFields";
 import { RestApiConnectFields } from "./restApiConnectFields";
 import { DatabaseConnectFields } from "./databaseConnectFields";
 import { PrometheusConnectFields } from "./prometheusConnectFields";
+import { ElasticsearchConnectFields } from "./elasticsearchConnectFields";
 import { ExcelConnectFields } from "./excelConnectFields";
 import { ExtractConnectionModal } from "./extractConnectionModal";
 
@@ -178,11 +181,13 @@ const OperateModal: React.FC<OperateModalProps> = ({
     { label: "REST API", value: SOURCE_TYPE_REST_API },
     { label: "Excel", value: SOURCE_TYPE_EXCEL },
     { label: t("dataSource.sourceTypes.prometheus"), value: SOURCE_TYPE_PROMETHEUS },
+    { label: t("dataSource.sourceTypes.elasticsearch"), value: SOURCE_TYPE_ELASTICSEARCH },
   ];
   const {
     isNatsSource,
     isRestApiSource,
     isPrometheusSource,
+    isElasticsearchSource,
     isDatabaseSource,
     isExcelSource,
     supportsTransform,
@@ -247,15 +252,31 @@ const OperateModal: React.FC<OperateModalProps> = ({
   }, [getDataConnectionList, sourceType, supportsSharedConnection]);
 
   const openExtractConnectionModal = React.useCallback(async () => {
+    const draftAuthType =
+      form.getFieldValue(["connection_config", "auth_type"]) || "none";
     const connectionFields = isRestApiSource
       ? [["connection_config", "url"]]
-      : [
-        ["connection_config", "host"],
-        ["connection_config", "port"],
-        ["connection_config", "database"],
-        ["connection_config", "username"],
-        ["connection_config", "password"],
-      ];
+      : isElasticsearchSource
+        ? [
+          ["connection_config", "url"],
+          ["connection_config", "index"],
+          ...(draftAuthType === "basic"
+            ? [
+              ["connection_config", "username"],
+              ["connection_config", "password"],
+            ]
+            : []),
+          ...(draftAuthType === "api_key"
+            ? [["connection_config", "api_key"]]
+            : []),
+        ]
+        : [
+          ["connection_config", "host"],
+          ["connection_config", "port"],
+          ["connection_config", "database"],
+          ["connection_config", "username"],
+          ["connection_config", "password"],
+        ];
 
     try {
       await form.validateFields(connectionFields);
@@ -271,7 +292,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
 
     extractForm.resetFields();
     setExtractModalOpen(true);
-  }, [extractForm, form, isRestApiSource, t]);
+  }, [extractForm, form, isElasticsearchSource, isRestApiSource, t]);
 
   const handleExtractToConnectionLibrary = React.useCallback(async () => {
     let meta: { name: string; description?: string };
@@ -297,10 +318,16 @@ const OperateModal: React.FC<OperateModalProps> = ({
         currentRow,
         values.source_type,
       );
+      const authType = values.connection_config?.auth_type || "none";
+      const passwordMasked =
+        values.connection_config?.password === PASSWORD_PLACEHOLDER;
+      const apiKeyMasked =
+        values.connection_config?.api_key === PASSWORD_PLACEHOLDER;
       if (
         createFromForm &&
-        (isDatabaseSource || isRestApiSource) &&
-        values.connection_config?.password === PASSWORD_PLACEHOLDER
+        (((isDatabaseSource || isRestApiSource) && passwordMasked) ||
+          (isElasticsearchSource && authType === "basic" && passwordMasked) ||
+          (isElasticsearchSource && authType === "api_key" && apiKeyMasked))
       ) {
         throw new Error(t("dataConnection.reenterPassword"));
       }
@@ -374,6 +401,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
     extractForm,
     form,
     isDatabaseSource,
+    isElasticsearchSource,
     isRestApiSource,
     onSuccess,
     reloadConnectionOptions,
@@ -471,6 +499,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
   }, [open, currentRow?.id]);
   const prometheusAuthType =
     Form.useWatch(["connection_config", "auth_type"], form) || "none";
+  const elasticsearchAuthType = prometheusAuthType;
   const prometheusQueryType =
     Form.useWatch(["query_config", "query_type"], form) || "range";
   const chartTypeOptions = getChartTypeList()
@@ -644,7 +673,8 @@ const OperateModal: React.FC<OperateModalProps> = ({
         connection_mode:
           sourceType === SOURCE_TYPE_MYSQL ||
           sourceType === SOURCE_TYPE_POSTGRESQL ||
-          sourceType === SOURCE_TYPE_REST_API
+          sourceType === SOURCE_TYPE_REST_API ||
+          sourceType === SOURCE_TYPE_ELASTICSEARCH
             ? "inline"
             : form.getFieldValue("connection_mode"),
       });
@@ -664,6 +694,18 @@ const OperateModal: React.FC<OperateModalProps> = ({
           },
         });
         setParams(createPrometheusDefaultParams(t));
+      } else if (sourceType === SOURCE_TYPE_ELASTICSEARCH) {
+        form.setFieldsValue({
+          chart_type: [TABLE_CHART_TYPE],
+          connection_config: {
+            auth_type: "none",
+            timeout_seconds: 30,
+          },
+          query_config: {
+            body: ELASTICSEARCH_DEFAULT_QUERY_BODY,
+          },
+        });
+        setParams([]);
       } else if (sourceType !== SOURCE_TYPE_NATS) {
         form.setFieldValue("chart_type", [TABLE_CHART_TYPE]);
         setParams([]);
@@ -710,6 +752,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
         sourceType,
         useSharedConnection,
         prometheusQueryType,
+        elasticsearchAuthType,
       });
       if (supportsTransform && transformEnabled) {
         previewFields.push(["transform_config", "script"]);
@@ -920,17 +963,18 @@ const OperateModal: React.FC<OperateModalProps> = ({
         previewData,
         t,
       });
+      const testBody = {
+        source_type: SOURCE_TYPE_PROMETHEUS,
+        connection: payload.connection,
+        connection_overrides: payload.connection_overrides,
+        connection_config: payload.connection_config,
+        groups: values.groups || [],
+      };
 
       if (currentRow) {
-        await testDataSourceConnection(currentRow.id, {
-          source_type: SOURCE_TYPE_PROMETHEUS,
-          connection_config: payload.connection_config,
-        });
+        await testDataSourceConnection(currentRow.id, testBody);
       } else {
-        await testDataSourceConnectionConfig({
-          source_type: SOURCE_TYPE_PROMETHEUS,
-          connection_config: payload.connection_config,
-        });
+        await testDataSourceConnectionConfig(testBody);
       }
       message.success(t("dataSource.testConnectionSuccess"));
     } catch (error: any) {
@@ -977,9 +1021,23 @@ const OperateModal: React.FC<OperateModalProps> = ({
       });
       setParams(createPrometheusDefaultParams(t));
     }
+    if (nextSourceType === SOURCE_TYPE_ELASTICSEARCH) {
+      form.setFieldsValue({
+        chart_type: [TABLE_CHART_TYPE],
+        connection_config: {
+          auth_type: "none",
+          timeout_seconds: 30,
+        },
+        query_config: {
+          body: ELASTICSEARCH_DEFAULT_QUERY_BODY,
+        },
+      });
+      setParams([]);
+    }
     if (
       nextSourceType !== SOURCE_TYPE_NATS &&
-      nextSourceType !== SOURCE_TYPE_PROMETHEUS
+      nextSourceType !== SOURCE_TYPE_PROMETHEUS &&
+      nextSourceType !== SOURCE_TYPE_ELASTICSEARCH
     ) {
       form.setFieldValue("chart_type", [TABLE_CHART_TYPE]);
       setParams([]);
@@ -1323,6 +1381,19 @@ const OperateModal: React.FC<OperateModalProps> = ({
             extractButton={extractToConnectionLibraryButton}
             onPasswordFocus={handlePasswordFocus}
             onPasswordBlur={handlePasswordBlur}
+          />
+        )}
+        {isElasticsearchSource && (
+          <ElasticsearchConnectFields
+            definitionReadOnly={definitionReadOnly}
+            useSharedConnection={useSharedConnection}
+            connectionList={connectionList}
+            authType={elasticsearchAuthType}
+            extractButton={extractToConnectionLibraryButton}
+            onPasswordFocus={handlePasswordFocus}
+            onPasswordBlur={handlePasswordBlur}
+            onSecretFocus={handleSecretFocus}
+            onSecretBlur={handleSecretBlur}
           />
         )}
         {isPrometheusSource && (

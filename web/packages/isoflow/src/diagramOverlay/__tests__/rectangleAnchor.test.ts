@@ -73,9 +73,10 @@ corners.forEach((tile) => {
 // RIGHT origin only shifts x, so the vertex keeps the corner tile's height.
 assert.equal(right.y, getTilePosition({ tile: { x: 2, y: 1 }, origin: 'CENTER' }).y);
 
-// The edge label lies inside the area, past the rounded corner, and clears the
-// border (the hover stroke is centred on the outline, so half of it is inside).
-assert.ok(RECTANGLE_EDGE_LABEL_OFFSET.along >= RECTANGLE_CORNER_RADIUS);
+// The edge label hugs the lower-right corner, inside the rounded corner, and
+// still clears the border (the hover stroke is centred on the outline).
+assert.ok(RECTANGLE_EDGE_LABEL_OFFSET.along > 0);
+assert.ok(RECTANGLE_EDGE_LABEL_OFFSET.along < RECTANGLE_CORNER_RADIUS);
 assert.ok(RECTANGLE_EDGE_LABEL_OFFSET.inset > RECTANGLE_STATUS_STROKE_HOVER_WIDTH / 2);
 
 // Long lower-right edges keep the full label; a one-tile edge shrinks it to fit

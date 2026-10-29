@@ -1,6 +1,7 @@
 import { validateRoom3DData } from '@/app/ops-analysis/components/widgets/room3D/room3DData';
 import { hasRenderableWidgetData } from '@/app/ops-analysis/renderContract';
 import { ChartDataTransformer } from '@/app/ops-analysis/utils/chartDataTransform';
+import { toLineBarFieldMapping } from '@/app/ops-analysis/utils/lineBarFieldMapping';
 import {
   extractComparableValue,
   toComparableNumber,
@@ -40,6 +41,9 @@ export const hasRenderableChartData = (
     selectedFields?: string[];
     dimensionField?: string;
     valueField?: string;
+    valueFields?: string[];
+    seriesField?: string;
+    pieScalarFields?: Array<{ field: string; label?: string }>;
     nodeGraphIdentityMode?: NodeGraphIdentityMode;
     nodeGraphSourceField?: string;
     nodeGraphTargetField?: string;
@@ -62,6 +66,7 @@ export const hasRenderableChartData = (
     return ChartDataTransformer.transformToPieData(data, {
       dimensionField: config?.dimensionField,
       valueField: config?.valueField,
+      pieScalarFields: config?.pieScalarFields,
     }).some(
       (item) => Number.isFinite(item.value) && item.value > 0,
     );
@@ -78,10 +83,10 @@ export const hasRenderableChartData = (
   }
   if (chartType === 'line' || chartType === 'bar') {
     return (
-      ChartDataTransformer.transformToLineBarData(data, {
-        dimensionField: config?.dimensionField,
-        valueField: config?.valueField,
-      }).categories.length > 0
+      ChartDataTransformer.transformToLineBarData(
+        data,
+        toLineBarFieldMapping(config),
+      ).categories.length > 0
     );
   }
   if (chartType === 'table' || chartType === 'eventTable') {

@@ -29,6 +29,8 @@ export interface SharedCanvasDto {
   status?: string;
   space_id?: number;
   group_tree?: Group[];
+  /** 分享链接配置身份的模块许可。缺省表示会话载荷不完整，不能回退到打开者的 get_client。 */
+  authorized_app_names?: string[] | null;
 }
 
 /** @deprecated Use SharedCanvasDto */

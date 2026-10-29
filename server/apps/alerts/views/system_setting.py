@@ -35,6 +35,10 @@ class SystemSettingModelViewSet(ModelViewSet):
         return super().list(request, *args, **kwargs)
 
     @HasPermission("global_config-View")
+    def retrieve(self, request, *args, **kwargs):
+        return super().retrieve(request, *args, **kwargs)
+
+    @HasPermission("global_config-View")
     @action(methods=["get"], detail=False, url_path="get_setting_key/(?P<setting_key>[^/.]+)")
     def get_setting_key(self, requests, setting_key):
         """
@@ -102,6 +106,10 @@ class SystemSettingModelViewSet(ModelViewSet):
 
         self.perform_update(serializer)
         return WebUtils.response_success(serializer.data)
+
+    @HasPermission("global_config-Edit")
+    def destroy(self, request, *args, **kwargs):
+        return super().destroy(request, *args, **kwargs)
 
     def update_no_dispatch_celery_task(self, new_data, old_data):
         """
@@ -247,7 +255,7 @@ class SystemSettingModelViewSet(ModelViewSet):
             )
 
         # 编排中心已启用的 NATS 入口与 OpsPilot 一样作为可选通知通道。
-        for ch in SystemMgmtUtils.search_workflow_orchestration_nats_channels(teams=team_ids):
+        for ch in SystemMgmtUtils.search_workflow_nats_channels(teams=team_ids):
             result.append(
                 {
                     "id": ch["id"],

@@ -93,8 +93,8 @@ describe('screen text title link', () => {
     const button = screen.getByRole('button', { name: '查看告警' });
     const label = container.querySelector('[data-screen-text-label]') as HTMLElement;
     const row = container.querySelector('[data-screen-text-link]') as HTMLElement;
-    expect(button.querySelector('.anticon-right')).toBeTruthy();
-    expect(button.querySelector('.anticon-link')).toBeNull();
+    expect(button.querySelector('.anticon-export')).toBeTruthy();
+    expect(button.querySelector('.anticon-share-alt')).toBeNull();
     expect(button.className).toContain('screen-widget-frame__title-link');
     expect(button.className).toContain('screen-text-item__title-link');
     expect(button.getAttribute('title')).toBeNull();
@@ -253,7 +253,8 @@ describe('screen text title link', () => {
       'utf8',
     );
     expect(source).toContain(`.screen-text-item__title-link {
-          width: 1em;
+          width: 0;
+          margin-left: -0.4em;
           height: 1em;
           flex-shrink: 0;
           font-size: 1em;
@@ -263,7 +264,8 @@ describe('screen text title link', () => {
           flex-shrink: 0;
           align-items: center;
           justify-content: center;
-          margin-left: auto;`);
+          margin-left: calc(-6px * var(--screen-widget-ui-scale));
+          width: 0;`);
     expect(source).toContain(`.screen-text-item__title-link:focus,
         .screen-text-item__title-link:focus-visible {
           outline: none;`);

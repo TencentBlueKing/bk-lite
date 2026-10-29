@@ -65,14 +65,18 @@ const renderWithIntl = (node: React.ReactNode) => render(
 );
 
 describe('InteractionTitleIcon', () => {
-  it('renders a right chevron and keeps the floating placement', () => {
+  it('renders an export icon and keeps the floating placement until hover', () => {
     renderWithIntl(
       <InteractionTitleIcon config={{ interaction: titleLink }} floating />,
     );
 
     const button = screen.getByRole('button', { name: '查看详情' });
-    expect(button.querySelector('.anticon-right')).toBeTruthy();
+    expect(button.querySelector('.anticon-export')).toBeTruthy();
     expect(button.querySelector('.anticon-link')).toBeNull();
+    expect(button.querySelector('.anticon-share-alt')).toBeNull();
+    expect(button.className).toContain('opacity-0');
+    expect(button.className).toContain('group-hover:opacity-100');
+    expect(button.className).toContain('group-focus-within:opacity-100');
     expect(button.className).toContain('text-(--color-text-3)');
     expect(button.className).toContain('absolute');
     expect(button.className).toContain('right-2');
@@ -150,8 +154,9 @@ describe('screen title link', () => {
     const title = screen.getByText('CPU 使用率');
     expect(button.className).toContain('screen-widget-frame__title-link');
     expect(button.className).not.toContain('text-(--color-text-2)');
-    expect(button.querySelector('.anticon-right')).toBeTruthy();
+    expect(button.querySelector('.anticon-export')).toBeTruthy();
     expect(button.querySelector('.anticon-link')).toBeNull();
+    expect(button.querySelector('.anticon-share-alt')).toBeNull();
     expect(button.getAttribute('data-export-hidden')).toBe('true');
     expect(button.parentElement?.className).toContain('screen-widget-frame__title-row');
     expect(button.parentElement?.lastElementChild).toBe(button);
@@ -214,8 +219,10 @@ describe('screen title link styles', () => {
           flex-shrink: 0;
           align-items: center;
           justify-content: center;
-          margin-left: auto;`);
-    expect(source).toContain(`.screen-widget-frame--editable .screen-widget-frame__header:has(.screen-widget-frame__title-link) {
+          margin-left: calc(-6px * var(--screen-widget-ui-scale));
+          width: 0;`);
+    expect(source).toContain(`.screen-widget-frame--editable:hover .screen-widget-frame__header:has(.screen-widget-frame__title-link),
+        .screen-widget-frame--editable:focus-within .screen-widget-frame__header:has(.screen-widget-frame__title-link) {
           padding-right: calc((var(--screen-widget-title-padding, 10px) + 8px) * var(--screen-widget-ui-scale));`);
     expect(source).toContain('font-size: calc(14px * var(--screen-widget-ui-scale));');
     expect(source).toContain(
@@ -224,6 +231,16 @@ describe('screen title link styles', () => {
     expect(source).not.toContain('screen-widget-frame__title-link--floating');
     expect(source).not.toContain('#02060c');
     expect(source).not.toContain('rgba(4, 12, 22');
+    expect(source).toContain('opacity: 0;\n          pointer-events: none;');
+    expect(source).toContain(`.screen-rnd-node:hover .screen-widget-frame__title-link,
+        .screen-rnd-node:focus-within .screen-widget-frame__title-link,
+        .screen-widget-frame:hover .screen-widget-frame__title-link,
+        .screen-widget-frame:focus-within .screen-widget-frame__title-link {
+          width: calc(14px * var(--screen-widget-ui-scale));
+          margin-left: auto;
+          overflow: visible;
+          opacity: 1;
+          pointer-events: auto;`);
     expect(source).toContain('drop-shadow(0 0 calc(6px * var(--screen-widget-ui-scale)) var(--screen-chrome-glow))');
     expect(source).toContain('text-overflow: ellipsis;');
     expect(source).not.toContain('screen-widget-frame__title-link-name');

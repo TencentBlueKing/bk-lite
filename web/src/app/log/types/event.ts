@@ -73,12 +73,22 @@ export interface StrategyFields {
   query?: string;
   alert_type?: string;
   enable?: boolean;
+  no_data?: {
+    enabled?: boolean;
+    level?: string;
+  };
+  trigger_count?: number;
   alert_condition?: {
     group_by?: string[];
     query?: string;
+    no_data?: {
+      enabled?: boolean;
+      level?: string;
+    };
     rule?: {
       mode: string;
       conditions: FilterItem[];
+      trigger_count?: number;
     };
   };
   show_fields?: string[];

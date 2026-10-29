@@ -6,7 +6,7 @@
 
 ## 边界
 
-开关 `enable_gm_transport` 打开后，已经走统一封装的 BK-Lite 浏览器业务 JSON，查询串和正文用 SM2、SM3、SM4 信封保护。统一封装是 `web/src/utils/request.ts` 的 axios，以及 `web/src/utils/gmTransport.ts` 的 `gmFetch`。
+开关 `enable_gm_transport` 打开后，已经走统一封装的 BK-Lite 浏览器业务 JSON，查询串和正文用 SM2、SM3、SM4 信封保护。统一封装是 `web/src/utils/request.ts` 的 axios，以及 `web/src/utils/gmTransport.ts` 的 `gmFetch`。算法、中间件、公钥接口和浏览器加密实现在企业包。社区没有企业包时不注册中间件和公钥接口，`gmFetch` 就是普通 `fetch`，安全页不出现开关，也不能把开关写成开启。库里已经是开启的值保持不动，没有中间件时请求仍是明文。
 
 中间件只处理带 `X-Gm-Transport: 1` 的 `/api/v1/` 请求：先解开请求，视图仍看到原来的方法、查询串和正文，再加密 JSON 响应。没有这个头的请求原样进入视图。开关打开也不拒绝明文。
 

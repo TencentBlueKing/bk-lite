@@ -1,5 +1,6 @@
 from django.db import transaction
-from django.db.models import Prefetch, Q
+from django.db.models import Max, Prefetch, Q
+from django.http import Http404
 from django.shortcuts import get_object_or_404
 from rest_framework import status
 from rest_framework.decorators import action
@@ -31,13 +32,24 @@ class ScanTaskViewSet(AuthViewSet):
     permission_key = "task"
 
     def get_queryset(self):
+        latest_ids = ScanExecution.objects.order_by().values("task_id").annotate(latest_id=Max("id")).values("latest_id")
         return ScanTask.objects.prefetch_related(
             Prefetch(
                 "executions",
-                queryset=ScanExecution.objects.order_by("-id"),
+                queryset=ScanExecution.objects.filter(id__in=latest_ids)
+                .only("id", "task", "status", "target_count", "received_count")
+                .order_by("-id"),
                 to_attr="prefetched_executions",
             )
         )
+
+    def get_object(self):
+        queryset = self.get_queryset_by_permission(self.request, self.filter_queryset(self.get_queryset()))
+        lookup_url_kwarg = self.lookup_url_kwarg or self.lookup_field
+        filter_kwargs = {self.lookup_field: self.kwargs[lookup_url_kwarg]}
+        obj = get_object_or_404(queryset, **filter_kwargs)
+        self.check_object_permissions(self.request, obj)
+        return obj
 
     def get_serializer_class(self):
         if self.action == "list":
@@ -73,7 +85,16 @@ class ScanTaskViewSet(AuthViewSet):
         return WebUtils.response_success()
 
     def _get_execution(self, eid):
-        return get_object_or_404(ScanExecution.objects.select_related("task"), pk=eid)
+        from apps.cmdb.services.scan_trigger_service import recover_due_scan_execution
+
+        execution = get_object_or_404(ScanExecution.objects.select_related("task"), pk=eid)
+        visible_tasks = self.get_queryset_by_permission(
+            self.request,
+            ScanTask.objects.filter(pk=execution.task_id),
+        )
+        if not visible_tasks.exists():
+            raise Http404
+        return recover_due_scan_execution(execution)
 
     @HasPermission("auto_collection-Execute")
     @action(methods=["post"], detail=True, url_path="exec")
@@ -113,6 +134,9 @@ class ScanTaskViewSet(AuthViewSet):
         page = paginator.paginate_queryset(queryset, request, view=self)
         if page is None:
             raise BaseAppException("命中清单必须分页")
+        from apps.cmdb.services.scan_hit_managed import annotate_scan_hits_managed
+
+        annotate_scan_hits_managed(page, execution)
         serializer = ScanHitSerializer(page, many=True, context={"request": request})
         return paginator.get_paginated_response(serializer.data)
 

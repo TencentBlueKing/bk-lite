@@ -10,6 +10,7 @@ import { SCENARIO_COLORS } from './changeRecordView';
 import type { ChangeRecordRelationInfo } from './changeRecordView';
 import type { ChangeRecord, ChangeRecordDiffRow } from './changeRecordTypes';
 import TableFieldDiffView from './TableFieldDiffView';
+import { localizedModelObject } from '@/app/cmdb/utils/changeRecordLabel';
 
 function snapshotInstName(data?: Record<string, unknown>): string {
   const value = data?.inst_name;
@@ -134,7 +135,7 @@ export function ChangeRecordDetail({
                   {t('Model.changeRecord.changeObject')}
                 </span>
                 <span className={styles.infoValue}>
-                  {record.model_object || showModelName(record.model_id)}
+                  {localizedModelObject(t, record.model_object) || showModelName(record.model_id)}
                   {instName ? ` / ${instName}` : ''}
                 </span>
                 <span className={styles.infoLabel}>

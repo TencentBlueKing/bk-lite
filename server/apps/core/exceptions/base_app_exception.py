@@ -8,18 +8,22 @@ class BaseAppException(Exception):
     STATUS_CODE = 500
     LOG_LEVEL = logging.ERROR
 
-    def __init__(self, message: Optional[str] = None, data: Any = None, *args):
+    def __init__(self, message: Optional[str] = None, data: Any = None, *args, log: bool = True):
         """
         初始化应用异常
 
         :param message: 错误消息，如果为None则使用类的默认MESSAGE
         :param data: 附加数据，可以是任意类型
         :param args: 传递给父类Exception的其他参数
+        :param log: 是否记录构造日志。默认开启；调用方显式传入 False 时跳过
         """
         self.message = message or self.MESSAGE
         super(BaseAppException, self).__init__(self.message, *args)
 
         self.data = data
+
+        if not log:
+            return
 
         # 仅记录异常发生的关键信息
         logger = logging.getLogger(self.__class__.__module__)

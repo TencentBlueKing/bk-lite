@@ -161,6 +161,11 @@
     "selected": "Selected",
     "items": "Items",
     "actions": "ACTIONS",
+    "description": "Description",
+    "variableName": "Variable",
+    "variable": "Variable",
+    "optionalVariables": "Optional variables",
+    "useVariable": "Use",
     "version": "Version",
     "noVersionLogs": "No version logs",
     "group": "Organization",
@@ -171,6 +176,19 @@
     "layoutClassicHint": "Switch apps from the grid; the top bar is the current app menu",
     "layoutAppTop": "Apps on top",
     "layoutAppTopHint": "Switch apps from the top bar; the current app menu is on the left",
+    "homepage": "Homepage",
+    "homepagePanelTitle": "Login homepage",
+    "homepageFollowGlobal": "Default homepage",
+    "homepageFollowGlobalHint": "Enter the default homepage set by the administrator after login",
+    "homepageFollowGlobalCurrent": " (current: {name})",
+    "homepagePinWorkbench": "Console",
+    "homepagePinWorkbenchHint": "Always enter the application console after login",
+    "homepageFollowGlobalSuccess": "Set as default homepage",
+    "homepagePinWorkbenchSuccess": "Set as console",
+    "homepageDashboardSettings": "Select dashboard as homepage",
+    "homepageDashboardSettingsHint": "Select my login homepage from operations analysis",
+    "homepagePersonalDashboardFallback": "Personal dashboard homepage is set",
+    "homepageCurrentHomepage": "Current homepage: {name}",
     "notFound": "We can't seem to find the page you're looking for.",
     "backToHome": "Back to Home",
     "noPermission": "You don't have permission to access this page",
@@ -212,6 +230,7 @@
     "copy": "Copy",
     "fullscreen": "Fullscreen",
     "exitFullscreen": "Exit Fullscreen",
+    "pressEscToExitFullscreen": "Press Esc to exit fullscreen",
     "reset": "Reset",
     "inputPassword": "Please input the password",
     "passwordWhitespaceTrimmed": "Leading or trailing whitespace was detected in the password and removed automatically",
@@ -504,7 +523,7 @@
     "apm": "APM",
     "rum": "RUM",
     "playground": "Playground",
-    "workflow-orchestration": "Workflow"
+    "workflow": "Workflow"
   },
   "app": {
     "ops-analysis": "Integrate operation and maintenance data, analyze potential risks and optimization space from multiple dimensions through dashboards and canvases, provide data support for decision-making, and help improve operation and maintenance quality and business continuity",
@@ -522,7 +541,7 @@
     "patch": "Centrally manage system patches with scanning, installation, and patch library maintenance to continuously reduce security risks.",
     "apm": "Application performance and tracing platform that provides service metrics, trace exploration, and alert policies to help quickly locate latency and errors and keep services stable",
     "rum": "Real-user monitoring for browsers, with sessions, performance, errors, and alerts to locate frontend problems.",
-    "workflow-orchestration": "Design visual workflows, automate execution, manage human approvals, and track cross-system operations in one place."
+    "workflow": "Design visual workflows, automate execution, manage human approvals, and track cross-system operations in one place."
   },
   "tag": {
     "user_management": "User Management",

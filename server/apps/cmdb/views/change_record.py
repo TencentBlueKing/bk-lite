@@ -8,7 +8,7 @@ from rest_framework import viewsets
 from rest_framework.decorators import action
 
 from apps.cmdb.filters.change_record import ChangeRecordFilter
-from apps.cmdb.language.service import SettingLanguage
+from apps.cmdb.language.service import SettingLanguage, model_object_display_name
 from apps.cmdb.models.change_record import OPERATE_TYPE_CHOICES, SCENARIO_CHOICES, ChangeRecord
 from apps.cmdb.serializers.change_record import ChangeRecordSerializer
 from apps.core.decorators.api_permission import HasPermission
@@ -95,7 +95,7 @@ class ChangeRecordViewSet(viewsets.ReadOnlyModelViewSet):
                     lan.get_val("ChangeRecordType", record.type) or type_map.get(record.type, record.type),
                     lan.get_val("ChangeRecordScenario", record.scenario) or scenario_map.get(record.scenario, record.scenario),
                     record.operator,
-                    record.model_object,
+                    model_object_display_name(record.model_object, request.user.locale),
                     record.message,
                     json.dumps(record.before_data, ensure_ascii=False) if record.before_data else "",
                     json.dumps(record.after_data, ensure_ascii=False) if record.after_data else "",

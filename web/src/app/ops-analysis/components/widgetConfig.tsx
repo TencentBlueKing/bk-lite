@@ -3,6 +3,7 @@
  * 图表类型表单在 widgetConfig/sections；回填/重置/预览签名在 widgetConfigFormState。
  */
 import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { useTranslation } from '@/utils/i18n';
 import useUnsavedConfirm from '@/hooks/useUnsavedConfirm';
 import { markFormPristine } from '@/utils/formPristine';
@@ -34,6 +35,7 @@ import {
 import { SingleValueSettingsSection } from '@/app/ops-analysis/components/singleValueSettingsSection';
 import { ParamInputConfigEditor } from '@/app/ops-analysis/components/paramInputConfigEditor';
 import { useDataSourceApi } from '@/app/ops-analysis/api/dataSource';
+import { buildLineBarValueFieldOptions } from '@/app/ops-analysis/utils/lineBarFieldMapping';
 import {
   getBindableFilterParams,
   buildDefaultFilterBindings,
@@ -63,6 +65,7 @@ import {
   ConfigSectionTitle,
   DataSectionTabIcon,
   InteractionSectionTabIcon,
+  StyleSectionTabIcon,
 } from './widgetConfig/configTitles';
 import { useTableConfig } from './widgetConfig/hooks/useTableConfig';
 import { TableSettingsSection } from './widgetConfig/sections/tableSettingsSection';
@@ -71,16 +74,19 @@ import { NodeGraphSettingsSection } from './widgetConfig/sections/nodeGraphSetti
 import { GaugeSettingsSection } from './widgetConfig/sections/gaugeSettingsSection';
 import { RadarSettingsSection } from './widgetConfig/sections/radarSettingsSection';
 import { CardListSettingsSection } from './widgetConfig/sections/cardListSettingsSection';
+import { SingleValueStyleSection } from './widgetConfig/sections/singleValueStyleSection';
 import { WidgetConfigBasicFields } from './widgetConfig/sections/widgetConfigBasicFields';
-import { WidgetDatasourceChartTypeFields } from './widgetConfig/sections/widgetDatasourceChartTypeFields';
+import { WidgetDatasourceChartTypeFields, WidgetQueryFields } from './widgetConfig/sections/widgetDatasourceChartTypeFields';
 import { NetworkStatusTopologyDataFields } from './widgetConfig/sections/networkStatusTopologyDataFields';
 import { resolveCardListSettingsRemountKey } from './widgetConfig/utils/cardListSettingsRemountKey';
+import { viewConfigReloadKey } from './widgetConfig/utils/viewConfigReloadKey';
 import {
   buildDisplayColumnsFromSchema,
   isDisplayableDefaultField,
 } from './widgetConfig/utils/columnProbing';
 import { buildRoleFieldOptions, dropRoleValueMissingFrom } from './widgetConfig/utils/chartFieldOptions';
 import { ChartRoleFieldsSection, buildChartRoleFields, chartRoleValuePaths } from './widgetConfig/sections/chartRoleFieldsSection';
+import { PieScalarFieldsSection } from './widgetConfig/sections/pieScalarFieldsSection';
 import {
   buildDisplayColumnFieldOptions,
   resolveDatasourceChartTypes,
@@ -143,19 +149,6 @@ const readWidgetId = (item: ViewConfigItem | null | undefined) => (
   item && 'i' in item ? String(item.i || '') : ''
 );
 
-const viewConfigReloadKey = (item: ViewConfigItem | null | undefined) => {
-  if (!item) return '';
-  const id = 'i' in item && item.i ? String(item.i) : 'id' in item && item.id ? String(item.id) : '';
-  const name = 'name' in item ? item.name ?? '' : '';
-  const valueConfig = item.valueConfig;
-  if (!valueConfig) {
-    return JSON.stringify({ id, name });
-  }
-  const { appearance, ...dataConfig } = valueConfig;
-  void appearance;
-  return JSON.stringify({ id, name, dataConfig });
-};
-
 interface ViewConfigPropsWithManager extends ViewConfigProps {
   dataSourceManager: ReturnType<typeof useDataSourceManager>;
   filterDefinitions?: UnifiedFilterDefinition[];
@@ -174,11 +167,14 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
   showChartThemeMode = false,
   surface = 'dashboard',
   filterTemplateTokens = true,
+  showSingleValueStyle = true,
   variant = 'drawer',
   configSection,
   onConfigSectionChange,
   screenFrame,
   onDirtyChange,
+  previewSingleStyle,
+  previewHost = null,
 }) => {
   const { t } = useTranslation();
   const canvasRawDataRegistry = useWidgetCsvExportRegistry();
@@ -186,7 +182,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
   const [form] = Form.useForm();
   const handleClose = () => guardClose(form.isFieldsTouched(), onClose);
   const [chartType, setChartType] = useState<string>('');
-  const [drawerSection, setDrawerSection] = useState<'data' | 'interaction'>('data');
+  const [drawerSection, setDrawerSection] = useState<'data' | 'interaction' | 'singleStyle'>('data');
   const activeSection = variant === 'panel' ? (configSection ?? 'data') : drawerSection;
   const [filterBindings, setFilterBindings] = useState<FilterBindings>({});
   const [dataSourceSelectorVisible, setDataSourceSelectorVisible] = useState(false);
@@ -208,6 +204,26 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
   const [suppliedPreviewRawData, setSuppliedPreviewRawData] = useState<unknown>(undefined);
   const [suppliedPreviewVersion, setSuppliedPreviewVersion] = useState(0);
   const [previewLoading, setPreviewLoading] = useState(false);
+  const clearPreviewState = () => {
+    setPreviewOpen(false);
+    setPreviewSnapshotConfig(null);
+    setPreviewSnapshotDataSource(undefined);
+    setPreviewSnapshotFilterDefinitions([]);
+    setPreviewSnapshotNamespaceId(undefined);
+    setPreviewDataFetchSignature(null);
+    setPreviewReloadVersion(0);
+    setPreviewRawData(null);
+    setSuppliedPreviewRawData(undefined);
+    setSuppliedPreviewVersion(0);
+    setPreviewLoading(false);
+  };
+  // 换选组件时收起预览。只看组件 id，同一组件改数据仍保持打开。检查器卸载时面板一并消失。
+  const activePreviewWidgetId = readWidgetId(widgetItem);
+  const [trackedPreviewWidgetId, setTrackedPreviewWidgetId] = useState(activePreviewWidgetId);
+  if (activePreviewWidgetId !== trackedPreviewWidgetId) {
+    setTrackedPreviewWidgetId(activePreviewWidgetId);
+    clearPreviewState();
+  }
   const [loadingRoleFields, setLoadingRoleFields] = useState(false);
   const { getSourceDataByApiId } = useDataSourceApi();
   const configRequestIdRef = useRef(0);
@@ -473,6 +489,10 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
     () => buildRoleFieldOptions(availableFields, previewRawData),
     [availableFields, previewRawData],
   );
+  const lineBarValueOptions = useMemo(
+    () => buildLineBarValueFieldOptions(availableFields, roleFieldOptions),
+    [availableFields, roleFieldOptions],
+  );
   const radarIndicators = Form.useWatch(['radar', 'indicators'], form);
   const chartRoleFields = useMemo(
     () => buildChartRoleFields(
@@ -526,6 +546,17 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
     const allowed = new Set(roleFieldOptions.map((option) => option.value));
     chartRoleValuePaths(chartType).forEach((path) => {
       const current = form.getFieldValue(path);
+      if (Array.isArray(current)) {
+        const next = current
+          .filter((item): item is string => typeof item === 'string' && allowed.has(item.trim()))
+          .map((item) => item.trim());
+        const changed = next.length !== current.length
+          || next.some((item, index) => item !== String(current[index] || '').trim());
+        if (changed) {
+          form.setFieldValue(path, next);
+        }
+        return;
+      }
       if (typeof current !== 'string') {
         return;
       }
@@ -731,6 +762,13 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
     }
     if (newChartType === 'nodeGraph' && !form.getFieldValue('nodeGraphIdentityMode')) {
       form.setFieldValue('nodeGraphIdentityMode', 'ip');
+    }
+    if (newChartType !== 'single' && activeSection === 'singleStyle') {
+      if (variant === 'panel') {
+        onConfigSectionChange?.('data');
+      } else {
+        setDrawerSection('data');
+      }
     }
     if (surface === 'screen') {
       form.setFieldValue(
@@ -961,7 +999,13 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
 
     // Nested cardList fields are registered individually; reset first so omitted
     // optional slots from the previous edit target cannot survive setFieldsValue merge.
-    form.resetFields(['cardList']);
+    form.resetFields([
+      'cardList',
+      'dimensionField',
+      'valueField',
+      'valueFields',
+      'seriesField',
+    ]);
     form.setFieldsValue(formValues);
     // setFieldsValue 在 rc-field-form 2.x 会标记 touched，初始化后清掉以免误报未保存
     markFormPristine(form);
@@ -977,14 +1021,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
     setDataSourceSelectorVisible(false);
     setEditingInputConfigParam(null);
     setWidgetParamOverrides([]);
-    setPreviewOpen(false);
-    setPreviewSnapshotConfig(null);
-    setPreviewSnapshotDataSource(undefined);
-    setPreviewSnapshotFilterDefinitions([]);
-    setPreviewSnapshotNamespaceId(undefined);
-    setPreviewDataFetchSignature(null);
-    setPreviewReloadVersion(0);
-    setPreviewLoading(false);
+    clearPreviewState();
     abandonInteractionSample('');
     networkTopologyConfig.resetInstanceOptions();
     tableConfig.resetTableConfig();
@@ -1205,6 +1242,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
       filterBindings,
       displayColumns: tableConfig.displayColumns,
       filterFields: tableConfig.filterFields,
+      includeSingleStyle: showSingleValueStyle,
     });
   }, [
     chartType,
@@ -1212,6 +1250,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
     form,
     hydrateWidgetFormValues,
     showChartThemeMode,
+    showSingleValueStyle,
     showTableFilterFields,
     singleValueConfig.selectedFields,
     singleValueConfig.thresholdColors,
@@ -1251,6 +1290,23 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
   const effectivePreviewConfig = hasDataFetchChanged
     ? previewSnapshotConfig
     : liveDraft || previewSnapshotConfig;
+  // 大屏编辑预览固定走仪表盘默认亮色，不跟 viewport 的 screen-dark / screen-light。
+  // 去掉 chartThemeMode 后，图表渲染与仪表盘预览同一条亮色路径，且不会写进保存。
+  const displayedPreviewConfig = useMemo(() => {
+    if (!effectivePreviewConfig || surface !== 'screen') {
+      return effectivePreviewConfig;
+    }
+    const { chartThemeMode: ignoredScreenTheme, ...previewConfig } = effectivePreviewConfig;
+    void ignoredScreenTheme;
+    return {
+      ...previewConfig,
+      ...(previewSingleStyle ? { singleStyle: previewSingleStyle } : {}),
+    };
+  }, [
+    effectivePreviewConfig,
+    previewSingleStyle,
+    surface,
+  ]);
   // 取数签名变了时，配置、数据源、筛选定义必须一起冻住。
   // 只冻 config 会让渲染器用旧参数打新数据源（或反过来），触发「未声明参数」。
   const previewRequestDataSource = hasDataFetchChanged
@@ -1316,6 +1372,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
         filterBindings,
         displayColumns: tableConfig.displayColumns,
         filterFields: tableConfig.filterFields,
+        includeSingleStyle: showSingleValueStyle,
       });
 
       if (submitResult.error) {
@@ -1347,6 +1404,10 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
         }
         if (submitResult.error === 'chartRoleFieldPairRequired') {
           message.error(t('dashboard.chartRoleFieldPairRequired'));
+          return;
+        }
+        if (submitResult.error === 'lineBarSeriesFieldConflict') {
+          message.error(t('dashboard.lineBarSeriesFieldConflict'));
           return;
         }
         if (submitResult.error === 'relatedTopologyModelIdRequired') {
@@ -1391,41 +1452,65 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
     }
   };
 
+  const previewToggleButton = (
+    <Button
+      data-testid="widget-config-preview-button"
+      icon={<EyeOutlined />}
+      onClick={() => {
+        if (previewOpen) {
+          setPreviewOpen(false);
+        } else {
+          handlePreview();
+        }
+      }}
+    >
+      {previewOpen
+        ? t('dashboard.configPreviewCollapse', '收起预览')
+        : t('common.preview', '预览')}
+    </Button>
+  );
+
+  const previewAside = previewOpen ? (
+    <aside
+      className={
+        variant === 'panel'
+          ? 'pointer-events-auto flex h-full min-h-0 w-[480px] max-w-full shrink-0 flex-col overflow-hidden border-l border-(--color-border-1) bg-(--color-bg) p-4'
+          : 'pointer-events-auto flex h-full min-h-0 w-[480px] max-w-full shrink-0 flex-col overflow-hidden border-r border-(--color-border-1) bg-(--color-fill-1)/20 p-4'
+      }
+      data-testid="widget-config-preview-aside"
+    >
+      <WidgetConfigPreview
+        widgetId={widgetPreviewId}
+        previewed
+        stale={previewStale}
+        config={displayedPreviewConfig}
+        dataSource={previewRequestDataSource}
+        unifiedFilterValues={unifiedFilterValues}
+        filterDefinitions={previewRequestFilterDefinitions}
+        builtinNamespaceId={previewRequestNamespaceId}
+        surface={surface}
+        reloadVersion={previewReloadVersion}
+        rawData={previewRawData}
+        suppliedRawData={suppliedPreviewRawData}
+        suppliedRawDataVersion={suppliedPreviewVersion}
+        loading={previewLoading}
+        sampleTicket={sampleReadRef.current}
+        onRawData={(data, ticket) => {
+          if (!acceptPreviewRawWrite(sampleReadRef.current, ticket)) return;
+          setPreviewRawData(data);
+          setPreviewLoading(false);
+        }}
+        liveName={watchedFormValues?.name}
+        liveDescription={watchedFormValues?.description}
+        onRefresh={handlePreview}
+      />
+    </aside>
+  ) : null;
+
   const configInner = (
     <>
       <div className="flex min-h-0 flex-1">
-        {previewOpen && variant !== 'panel' ? (
-          <aside
-            className="flex h-full min-h-0 w-[480px] shrink-0 flex-col overflow-hidden border-r border-(--color-border-1) bg-(--color-fill-1)/20 p-4"
-            data-testid="widget-config-preview-aside"
-          >
-            <WidgetConfigPreview
-              widgetId={widgetPreviewId}
-              previewed
-              stale={previewStale}
-              config={effectivePreviewConfig}
-              dataSource={previewRequestDataSource}
-              unifiedFilterValues={unifiedFilterValues}
-              filterDefinitions={previewRequestFilterDefinitions}
-              builtinNamespaceId={previewRequestNamespaceId}
-              surface={surface}
-              reloadVersion={previewReloadVersion}
-              rawData={previewRawData}
-              suppliedRawData={suppliedPreviewRawData}
-              suppliedRawDataVersion={suppliedPreviewVersion}
-              loading={previewLoading}
-              sampleTicket={sampleReadRef.current}
-              onRawData={(data, ticket) => {
-                if (!acceptPreviewRawWrite(sampleReadRef.current, ticket)) return;
-                setPreviewRawData(data);
-                setPreviewLoading(false);
-              }}
-              liveName={watchedFormValues?.name}
-              liveDescription={watchedFormValues?.description}
-              onRefresh={handlePreview}
-            />
-          </aside>
-        ) : null}
+        {variant === 'panel' ? null : previewAside}
         <div
           className={`h-full min-h-0 min-w-0 flex-1 overflow-y-auto bg-(--color-bg) ${
             variant === 'panel' ? 'px-3 py-3' : 'p-6'
@@ -1445,13 +1530,24 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
           isNetworkStatusTopology={isNetworkStatusTopology}
           surface={surface}
           filterTemplateTokens={filterTemplateTokens}
-        />
+        >
+          {!isSceneWidget && (
+            <WidgetDatasourceChartTypeFields
+              t={t}
+              selectedDataSource={selectedDataSource}
+              chartType={chartType}
+              chartTypes={getDataSourceChartTypes}
+              onChartTypeChange={handleChartTypeChange}
+              onOpenDataSourceSelector={() => setDataSourceSelectorVisible(true)}
+            />
+          )}
+        </WidgetConfigBasicFields>
 
         {variant === 'drawer' ? (
           <Tabs
             className="-mt-3 [&_.ant-tabs-content-holder]:hidden [&_.ant-tabs-nav]:mb-4 [&_.ant-tabs-nav::before]:border-(--color-border-1) [&_.ant-tabs-tab-btn]:text-sm [&_.ant-tabs-tab-active_.ant-tabs-tab-btn]:text-(--color-primary) [&_.ant-tabs-ink-bar]:h-0.5 [&_.ant-tabs-ink-bar]:bg-(--color-primary)"
             activeKey={activeSection}
-            onChange={(key) => setDrawerSection(key as 'data' | 'interaction')}
+            onChange={(key) => setDrawerSection(key as 'data' | 'interaction' | 'singleStyle')}
             items={[
               {
                 key: 'data',
@@ -1461,6 +1557,16 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
                   </ConfigSectionTabLabel>
                 ),
               },
+              ...(chartType === 'single' && showSingleValueStyle
+                ? [{
+                  key: 'singleStyle',
+                  label: (
+                    <ConfigSectionTabLabel icon={<StyleSectionTabIcon />}>
+                      {t('dashboard.singleStyleTab', '样式')}
+                    </ConfigSectionTabLabel>
+                  ),
+                }]
+                : []),
               {
                 key: 'interaction',
                 label: (
@@ -1534,7 +1640,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
             <Room3DRackTopFields />
           </section>
         ) : isSceneWidget ? null : (
-          <WidgetDatasourceChartTypeFields
+          <WidgetQueryFields
             t={t}
             selectedDataSource={selectedDataSource}
             effectiveDataSource={effectiveDataSource}
@@ -1543,11 +1649,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
             hasUnifiedFilterBindings={hasUnifiedFilterBindings}
             previewFilterDefinitions={previewFilterDefinitions}
             filterBindings={filterBindings}
-            chartType={chartType}
-            chartTypes={getDataSourceChartTypes}
             onFilterBindingsChange={setFilterBindings}
-            onChartTypeChange={handleChartTypeChange}
-            onOpenDataSourceSelector={() => setDataSourceSelectorVisible(true)}
             onEditInputConfig={handleEditInputConfig}
             onParamOptionsResolved={(param, options) =>
               reconcileParamWithOptions(param.name, options)
@@ -1632,6 +1734,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
                 onThresholdBlur={singleValueConfig.handleThresholdBlur}
                 onAddThreshold={singleValueConfig.addThreshold}
                 onRemoveThreshold={singleValueConfig.removeThreshold}
+                compareAvailable={singleValueConfig.compareAvailable}
               />
             )}
 
@@ -1652,14 +1755,26 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
                 t={t}
                 selectedDataSource={selectedDataSource}
                 options={roleFieldOptions}
+                valueOptions={lineBarValueOptions}
                 roles={chartRoleFields}
                 loadingFields={loadingRoleFields}
                 onRefreshFields={fetchRoleFields}
               />
             )}
 
+            {chartType === 'pie' && (
+              <PieScalarFieldsSection
+                t={t}
+                options={roleFieldOptions}
+                disabled={!selectedDataSource || loadingRoleFields}
+              />
+            )}
+
             {showValueFormat && (
-              <div className="space-y-4">
+              <section className="mb-6 space-y-4">
+                <ConfigSectionTitle>
+                  {t('dashboard.numericSettings')}
+                </ConfigSectionTitle>
                 <ValueFormatConfigSection t={t} />
                 {chartType === 'multiValue' && (
                   <>
@@ -1680,7 +1795,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
                     </Form.Item>
                   </>
                 )}
-              </div>
+              </section>
             )}
 
             {chartType === 'eventTimeline' && (
@@ -1731,9 +1846,15 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
                 onRefreshFields={fetchRoleFields}
               />
             )}
-          </WidgetDatasourceChartTypeFields>
+          </WidgetQueryFields>
         )}
         </div>
+
+        {chartType === 'single' && showSingleValueStyle ? (
+          <div className={activeSection === 'singleStyle' ? undefined : 'hidden'}>
+            <SingleValueStyleSection t={t} />
+          </div>
+        ) : null}
 
         <div className={activeSection === 'interaction' ? undefined : 'hidden'}>
           <InteractionLinkSection
@@ -1771,18 +1892,26 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
 
   if (variant === 'panel') {
     return (
-      <div
-        className="flex h-full min-h-0 flex-1 flex-col bg-(--color-bg)"
-        data-testid="widget-config-panel"
-      >
-        {configInner}
-        <div className="flex shrink-0 justify-end gap-2 border-t border-(--color-border-1) px-4 py-3">
-          <Button onClick={handleClose}>{t('common.cancel')}</Button>
-          <Button type="primary" onClick={handleConfirm}>
-            {t('common.confirm')}
-          </Button>
+      <>
+        {previewHost && previewAside
+          ? createPortal(previewAside, previewHost)
+          : null}
+        <div
+          className="flex h-full min-h-0 flex-1 flex-col bg-(--color-bg)"
+          data-testid="widget-config-panel"
+        >
+          {configInner}
+          <div className="flex shrink-0 items-center justify-between gap-2 border-t border-(--color-border-1) px-4 py-3">
+            <div>{previewToggleButton}</div>
+            <div className="flex items-center gap-2">
+              <Button onClick={handleClose}>{t('common.cancel')}</Button>
+              <Button type="primary" onClick={handleConfirm}>
+                {t('common.confirm')}
+              </Button>
+            </div>
+          </div>
         </div>
-      </div>
+      </>
     );
   }
 
@@ -1808,23 +1937,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
       }}
       footer={
         <div className="flex items-center justify-between">
-          <div>
-            <Button
-              data-testid="widget-config-preview-button"
-              icon={<EyeOutlined />}
-              onClick={() => {
-                if (previewOpen) {
-                  setPreviewOpen(false);
-                } else {
-                  handlePreview();
-                }
-              }}
-            >
-              {previewOpen
-                ? t('dashboard.configPreviewCollapse', '收起预览')
-                : t('common.preview', '预览')}
-            </Button>
-          </div>
+          <div>{previewToggleButton}</div>
           <div className="flex items-center gap-2">
             <Button onClick={handleClose}>
               {t('common.cancel')}

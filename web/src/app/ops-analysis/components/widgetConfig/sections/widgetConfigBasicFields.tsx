@@ -15,6 +15,7 @@ interface WidgetConfigBasicFieldsProps {
   isNetworkStatusTopology: boolean;
   surface?: OpsAnalysisWidgetSurface;
   filterTemplateTokens?: boolean;
+  children?: React.ReactNode;
 }
 
 export const WidgetConfigBasicFields: React.FC<WidgetConfigBasicFieldsProps> = ({
@@ -23,6 +24,7 @@ export const WidgetConfigBasicFields: React.FC<WidgetConfigBasicFieldsProps> = (
   isNetworkStatusTopology,
   surface,
   filterTemplateTokens = true,
+  children,
 }) => (
   <section>
     <ConfigSectionTitle>
@@ -58,6 +60,8 @@ export const WidgetConfigBasicFields: React.FC<WidgetConfigBasicFieldsProps> = (
         )}
       </Form.Item>
     )}
+
+    {children}
 
     {showChartThemeMode && !isNetworkStatusTopology && (
       <Form.Item

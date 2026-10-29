@@ -120,4 +120,12 @@ def wmi_results_to_prometheus(
         if key in system:
             _append_gauge(lines, f"system_{key}_gauge", base_labels, system.get(key), timestamp)
 
+    for service in results.get("service") or []:
+        service_labels = {
+            **base_labels,
+            "service": service.get("name"),
+            "service_scope": service.get("service_scope"),
+        }
+        _append_gauge(lines, "windows_service_state_gauge", service_labels, service.get("state"), timestamp)
+
     return "\n".join(lines) + ("\n" if lines else "")

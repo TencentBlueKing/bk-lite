@@ -82,6 +82,33 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
         permission_maps = {model_id: CmdbRulesFormatUtil.format_user_groups_permissions(request, model_id) for model_id in self.K8S_CHILD_MODELS}
         return instance, permission_maps, None
 
+    def _resolve_k8s_internal_id(self, inst_uuid, expected_model):
+        """把对外 UUIDv4 解析成图内部 _id。模型不符或查不到时沿用实例不存在。"""
+        try:
+            instance = InstanceManage.query_entity_by_uuid(inst_uuid)
+        except BaseAppException:
+            return None, WebUtils.response_error("实例不存在", status_code=status.HTTP_404_NOT_FOUND)
+        if not instance or instance.get("model_id") != expected_model:
+            return None, WebUtils.response_error("实例不存在", status_code=status.HTTP_404_NOT_FOUND)
+        try:
+            return int(instance["_id"]), None
+        except (KeyError, TypeError, ValueError):
+            return None, WebUtils.response_error("实例不存在", status_code=status.HTTP_404_NOT_FOUND)
+
+    def _resolve_optional_k8s_internal_id(self, inst_uuid, expected_model):
+        if inst_uuid in (None, ""):
+            return None, None
+        return self._resolve_k8s_internal_id(inst_uuid, expected_model)
+
+    def _resolve_k8s_internal_ids(self, inst_uuids, expected_model):
+        resolved = []
+        for inst_uuid in inst_uuids or []:
+            internal_id, error = self._resolve_k8s_internal_id(inst_uuid, expected_model)
+            if error:
+                return None, error
+            resolved.append(internal_id)
+        return resolved, None
+
     @staticmethod
     def _get_allowed_org_ids(request) -> list[int]:
         # 超级管理员：不按当前组织裁剪，通过 system_mgmt NATS 取该用户可分配的组织。
@@ -520,6 +547,12 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
             return WebUtils.response_error(
                 result,
                 error_message="监控实例已被其他配置项占用",
+                status_code=status.HTTP_409_CONFLICT,
+            )
+        if status_name == "stale":
+            return WebUtils.response_error(
+                result,
+                error_message="绑定已变化，未解除当前关联",
                 status_code=status.HTTP_409_CONFLICT,
             )
         if status_name == "skipped_model":
@@ -1163,7 +1196,10 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
             if not uploaded_file:
                 return JsonResponse({"data": [], "result": False, "message": "请上传Excel文件"})
 
-            import_result = InstanceManage().inst_import_support_edit(
+            importer = InstanceManage()
+            # 与 partial_update 相同：创建者且当前组织命中，或组织交集加 OPERATE。不给超级管理员另开短路。
+            importer.matched_instance_permission_check = lambda instance: self._can_operate_instance(request, instance)
+            import_result = importer.inst_import_support_edit(
                 model_id=model_id,
                 file_stream=uploaded_file.file,
                 operator=request.user.username,
@@ -1467,12 +1503,20 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
             return error
         serializer = K8sLayerQuerySerializer(data=request.query_params, context={"layer": layer})
         serializer.is_valid(raise_exception=True)
+        namespace_ids, error = self._resolve_k8s_internal_ids(
+            serializer.validated_data.get("namespace_ids"),
+            "k8s_namespace",
+        )
+        if error:
+            return error
         result = K8sResourceOverviewService.get_layer(
             cluster["_id"],
             layer,
+            page=serializer.validated_data["page"],
+            page_size=serializer.validated_data["page_size"],
+            namespace_ids=namespace_ids,
             permission_maps=permission_maps,
             user=request.user,
-            **serializer.validated_data,
         )
         return WebUtils.response_success(result)
 
@@ -1535,12 +1579,28 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
         kind_serializer.is_valid(raise_exception=True)
         serializer = K8sResourceListQuerySerializer(data=request.query_params)
         serializer.is_valid(raise_exception=True)
+        filters = serializer.validated_data
+        namespace_id, error = self._resolve_optional_k8s_internal_id(filters.get("namespace_id"), "k8s_namespace")
+        if error:
+            return error
+        workload_id, error = self._resolve_optional_k8s_internal_id(filters.get("workload_id"), "k8s_workload")
+        if error:
+            return error
+        node_id, error = self._resolve_optional_k8s_internal_id(filters.get("node_id"), "k8s_node")
+        if error:
+            return error
         result = K8sResourceOverviewService.list_resources(
             cluster["_id"],
             kind_serializer.validated_data["kind"],
+            page=filters["page"],
+            page_size=filters["page_size"],
+            search=filters.get("search") or "",
+            order=filters.get("order") or "name",
+            namespace_id=namespace_id,
+            workload_id=workload_id,
+            node_id=node_id,
             permission_maps=permission_maps,
             user=request.user,
-            **serializer.validated_data,
         )
         return WebUtils.response_success(result)
 
@@ -1697,6 +1757,19 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
         response["Content-Disposition"] = 'attachment; filename="application_topology_instances.xlsx"'
         return response
 
+    _IPAM_UNVIEWABLE_FIELDS = ("inst_uuid", "_id", "inst_name", "description", "mac", "ip_user", "_creator")
+
+    @staticmethod
+    def _redact_ipam_rows_without_view(ips):
+        """没有实例 View 的格子仍占位，但不带实例属性。"""
+        for ip in ips or []:
+            if not isinstance(ip, dict):
+                continue
+            if VIEW in (ip.get("permission") or []):
+                continue
+            for field in InstanceViewSet._IPAM_UNVIEWABLE_FIELDS:
+                ip.pop(field, None)
+
     @action(detail=False, methods=["get"], url_path=r"ipam_view/(?P<inst_uuid>.+?)")
     @HasPermission("asset_info-View")
     def ipam_view(self, request, inst_uuid: str):
@@ -1717,6 +1790,7 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
                 ip.setdefault("organization", [])
         permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(request=request, model_id="ip")
         self.add_instance_permission(data["ips"], permissions_map, request.user.username)
+        self._redact_ipam_rows_without_view(data.get("ips"))
         return WebUtils.response_success(data)
 
     @action(detail=False, methods=["post"], url_path="ipam_ip")

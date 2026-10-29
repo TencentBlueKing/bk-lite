@@ -8,6 +8,13 @@ class SystemMgmtUtils:
         return result["data"]
 
     @staticmethod
+    def get_users_by_usernames(usernames):
+        if not usernames:
+            return []
+        result = SystemMgmt().get_users_by_usernames(usernames)
+        return result["data"]
+
+    @staticmethod
     def search_channel_list(channel_type=""):
         """email、enterprise_wechat"""
         result = SystemMgmt().search_channel_list(channel_type)
@@ -20,9 +27,9 @@ class SystemMgmtUtils:
         return result["data"]
 
     @staticmethod
-    def search_workflow_orchestration_nats_channels(teams=None, workflow_id=None, include_children=False):
+    def search_workflow_nats_channels(teams=None, workflow_id=None, include_children=False):
         """查询已启用的编排中心托管 NATS 触发通道。"""
-        result = SystemMgmt().search_workflow_orchestration_nats_channels(
+        result = SystemMgmt().search_workflow_nats_channels(
             teams=teams,
             workflow_id=workflow_id,
             include_children=include_children,

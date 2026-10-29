@@ -221,6 +221,7 @@ const ReportWidgetCard: React.FC<ReportWidgetCardProps> = ({
                   onClick={exportCsv}
                 />
               )}
+              <InteractionTitleIcon config={section.valueConfig} />
               {menuItems.length > 0 && (
                 <div data-export-hidden="true">
                   <MoreActionsDropdown
@@ -231,7 +232,6 @@ const ReportWidgetCard: React.FC<ReportWidgetCardProps> = ({
                   />
                 </div>
               )}
-              <InteractionTitleIcon config={section.valueConfig} />
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto">
               <WidgetDataRenderer

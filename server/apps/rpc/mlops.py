@@ -13,3 +13,9 @@ class MLOps:
 
     def get_module_list(self, **kwargs):
         return self.client.run("get_mlops_module_list", **kwargs)
+
+    def predict_timeseries_serving(self, **kwargs):
+        timeout = kwargs.pop("_timeout", None)
+        if timeout is not None and not isinstance(self.client, AppClient):
+            kwargs["_timeout"] = timeout
+        return self.client.run("predict_timeseries_serving", **kwargs)

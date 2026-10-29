@@ -136,7 +136,7 @@ const StrategyOperation = () => {
     const value = t(key);
     return value === key ? fallback : value;
   };
-  const { post, put, isLoading } = useApiClient();
+  const { get, post, put, isLoading } = useApiClient();
   const {
     getMetricsGroup,
     getMonitorMetrics,
@@ -177,8 +177,11 @@ const StrategyOperation = () => {
   const detailId = searchParams.get('id');
   const detailName = searchParams.get('name') || '--';
   const templateKey = searchParams.get('template_key') || '';
+  const policyGroupId = searchParams.get('groupId') || '';
+  const ruleId = searchParams.get('ruleId') || '';
   const isCreateFlow = ['builtIn', 'add'].includes(type);
   const isEditTemplate = type === 'editTemplate';
+  const isGroupRule = type === 'groupRule';
   const { getGroupIds, ready: objectConfigReady } = useObjectConfigInfo(monitorName);
   const [pageLoading, setPageLoading] = useState<boolean>(false);
   const [confirmLoading, setConfirmLoading] = useState<boolean>(false);
@@ -1266,6 +1269,13 @@ const StrategyOperation = () => {
   };
 
   const getStragyDetail = async () => {
+    if (isGroupRule) {
+      const data = await get('/monitor/api/policy_group/rule_editor/', {
+        params: { group_id: policyGroupId, rule_id: ruleId },
+      });
+      setFormData(data);
+      return;
+    }
     const data = await getMonitorPolicy(detailId);
     setFormData(data);
   };
@@ -1568,6 +1578,10 @@ const StrategyOperation = () => {
   };
 
   const goBack = () => {
+    if (isGroupRule) {
+      router.push(`/monitor/event/policy-group?objId=${monitorObjId || ''}&groupId=${policyGroupId}&rules=1`);
+      return;
+    }
     const targetUrl = `/monitor/event/${
       type === 'builtIn' || isEditTemplate ? 'template' : 'strategy'
     }?objId=${monitorObjId}`;
@@ -1969,6 +1983,54 @@ const StrategyOperation = () => {
           ? 'common.successfullyAdded'
           : 'common.successfullyModified'
       );
+      if (isGroupRule) {
+        const editable = { ...(params as unknown as Record<string, unknown>) };
+        const alerts = Array.isArray(editable.enable_alerts) ? editable.enable_alerts : [];
+        editable.no_data = alerts.includes('no_data')
+          ? {
+            enabled: true,
+            period: editable.no_data_period,
+            recovery_period: editable.no_data_recovery_period,
+            level: editable.no_data_level,
+            alert_name: editable.no_data_alert_name,
+          }
+          : { enabled: false };
+        [
+          'source',
+          'organizations',
+          'schedule',
+          'no_data_period',
+          'no_data_recovery_period',
+          'no_data_level',
+          'no_data_alert_name',
+          'notice',
+          'notice_type',
+          'notice_type_ids',
+          'notice_users',
+          'handlers',
+          'enable',
+          'enable_alerts',
+          'id',
+          'rule_id',
+          'group_id',
+        ].forEach((key) => {
+          delete editable[key];
+        });
+        const result = await post('/monitor/api/policy_group/save_rule_editor/', {
+          group_id: Number(policyGroupId),
+          rule_id: Number(ruleId),
+          ...editable,
+        });
+        message.success(
+          result?.closes_alerts
+            ? '已修改当前规则，未恢复告警会结束'
+            : result?.closes_no_data
+              ? '已修改当前规则，未恢复的无数据告警会结束'
+              : '已修改当前规则，正在响的告警不结束'
+        );
+        goBack();
+        return;
+      }
       const url: string = ['builtIn', 'add'].includes(type)
         ? '/monitor/api/monitor_policy/'
         : `/monitor/api/monitor_policy/${detailId}/`;
@@ -2003,6 +2065,13 @@ const StrategyOperation = () => {
                 {detailName}
               </span>
             </span>
+          ) : isGroupRule ? (
+            <span>
+              修改规则 -{' '}
+              <span className="text-[var(--color-text-3)] text-[12px]">
+                {detailName}
+              </span>
+            </span>
           ) : ['builtIn', 'add'].includes(type) ? (
             t('monitor.events.createPolicy')
           ) : (
@@ -2032,6 +2101,7 @@ const StrategyOperation = () => {
                             onOpenInstModal={openInstModal}
                             onUnitChange={handleUnitChange}
                             isTrap={isTrap}
+                            groupLocked={isGroupRule}
                           />
                         </div>
                       ),
@@ -2150,13 +2220,23 @@ const StrategyOperation = () => {
                           recoveryThreshold={recoveryThreshold}
                           onRecoveryThresholdChange={setRecoveryThreshold}
                           isTrap={isTrap}
+                          noDataSplitHint={
+                            isGroupRule &&
+                            sanitizeGroupBy(
+                              metricRows[0]?.groupBy || groupBy
+                            ).some((item) => item !== 'instance_id')
+                          }
                         />
                       ),
                       status: 'process'
                     },
                     {
                       title: t('monitor.events.configureNotifications'),
-                      description: (
+                      description: isGroupRule ? (
+                        <div className="mb-6 text-xs leading-5 text-[var(--color-text-3)]">
+                          通知和处理人在策略组上设置，保存这条规则不会改它们。
+                        </div>
+                      ) : (
                         <NotificationForm
                           channelList={channelList}
                           userList={noticeUserList}
@@ -2226,6 +2306,16 @@ const StrategyOperation = () => {
                 onClick={() => void saveTemplate()}
               >
                 {t('monitor.events.saveTemplate', '保存模版')}
+              </Button>
+              <Button onClick={goBack}>{t('common.cancel')}</Button>
+            </>
+          ) : isGroupRule ? (
+            <>
+              <Button type="primary" loading={confirmLoading} onClick={createStrategy}>
+                {t('common.confirm')}
+              </Button>
+              <Button loading={dryRunLoading} onClick={runDryRun}>
+                {translateWithFallback('monitor.events.dryRun', '预检')}
               </Button>
               <Button onClick={goBack}>{t('common.cancel')}</Button>
             </>

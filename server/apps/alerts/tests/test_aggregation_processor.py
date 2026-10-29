@@ -4,6 +4,7 @@
 """
 
 import datetime
+import logging
 from types import SimpleNamespace
 
 import pytest
@@ -407,6 +408,109 @@ def test_process_aggregation_reports_alert_creation_failure(source, mocker):
 
     with pytest.raises(RuntimeError, match="聚合轮次部分失败"):
         AggregationProcessor().process_aggregation()
+
+    strategy.refresh_from_db()
+    assert strategy.last_execute_time is None
+
+
+def _alert_traceback_errors(records):
+    return [
+        record
+        for record in records
+        if record.name == "alert"
+        and record.levelno == logging.ERROR
+        and record.exc_info
+        and record.exc_info[2] is not None
+    ]
+
+
+@pytest.mark.django_db
+def test_query_failure_logs_one_traceback_on_strategy_boundary(source, mocker, caplog):
+    """一次 DuckDB 查询失败只在策略隔离边界保留一份 traceback。"""
+    from apps.alerts.constants.constants import LevelType
+    from apps.alerts.models.models import Level
+
+    for lid in (0, 1, 2):
+        Level.objects.create(
+            level_id=lid,
+            level_name=f"L{lid}",
+            level_display_name=f"等级{lid}",
+            level_type=LevelType.ALERT,
+        )
+
+    Event.objects.create(
+        source=source,
+        raw_data={},
+        title="CPU高",
+        level="1",
+        start_time=timezone.now(),
+        event_id="E-query-fails",
+        action=EventAction.CREATED,
+        service="svc-a",
+        resource_name="host1",
+        item="cpu",
+        external_id="ext-query-fails",
+    )
+    strategy = AlarmStrategy.objects.create(
+        name="查询失败降噪",
+        strategy_type="smart_denoise",
+        is_active=True,
+        team=[1],
+        dispatch_team=[1],
+        match_rules=[[{"key": "title", "operator": "eq", "value": "CPU高"}]],
+        params={"window_size": 60, "group_by": ["service"]},
+    )
+    mocker.patch(
+        "apps.alerts.aggregation.engine.connection.DuckDBConnection.execute_query",
+        side_effect=RuntimeError("aggregation-probe"),
+    )
+
+    mocker.patch(
+        "apps.alerts.aggregation.recovery.timeout_checker.TimeoutChecker.check_session_timeouts",
+        return_value=0,
+    )
+    from apps.alerts.tasks.tasks import event_aggregation_alert
+
+    with caplog.at_level(logging.ERROR, logger="alert"):
+        with pytest.raises(RuntimeError, match="聚合轮次部分失败"):
+            AggregationProcessor().process_aggregation()
+
+        strategy.refresh_from_db()
+        assert strategy.last_execute_time is None
+
+        traced = _alert_traceback_errors(caplog.records)
+        assert len(traced) == 1
+        owner = traced[0]
+        assert owner.msg == "[AlertAggregation] strategy_failed strategy_id=%s name=%s duration_ms=%s"
+        assert owner.args[0] == strategy.id
+        assert owner.args[1] == strategy.name
+        assert f"strategy_id={strategy.id}" in owner.getMessage()
+        exc_type, exc, tb = owner.exc_info
+        assert exc_type is RuntimeError
+        assert str(exc) == "aggregation-probe"
+        assert tb is exc.__traceback__
+
+        round_summaries = [
+            record for record in caplog.records if record.name == "alert" and "聚合处理失败" in record.getMessage()
+        ]
+        assert len(round_summaries) == 1
+        assert round_summaries[0].exc_info is None
+
+        recorded = len(caplog.records)
+        with pytest.raises(RuntimeError, match="聚合轮次部分失败"):
+            event_aggregation_alert()
+
+        added = list(caplog.records[recorded:])
+        added_traced = _alert_traceback_errors(added)
+        assert len(added_traced) == 1
+        assert added_traced[0].funcName != "event_aggregation_alert"
+        assert f"strategy_id={strategy.id}" in added_traced[0].getMessage()
+        task_summaries = [
+            record for record in added if record.name == "alert" and record.funcName == "event_aggregation_alert"
+        ]
+        assert len(task_summaries) == 1
+        assert task_summaries[0].exc_info is None
+        assert "告警聚合任务执行失败" in task_summaries[0].getMessage()
 
     strategy.refresh_from_db()
     assert strategy.last_execute_time is None

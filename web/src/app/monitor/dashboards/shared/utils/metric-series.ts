@@ -4,6 +4,22 @@ import { renderChart } from '@/app/monitor/utils/common';
 import { attachGapIntervals } from '@/app/monitor/utils/gapIntervals';
 import { BaseMetricConfig, MetricSeriesBase } from '../types';
 
+/** instant 结果只有 value，renderChart 认 values。表查询走 instant 时先补成 range 形。 */
+export const asRangeQueryResult = (result: unknown) => {
+  const payload = result as { data?: { result?: Array<{ values?: unknown; value?: unknown }> } } | null;
+  const series = payload?.data?.result;
+  if (!Array.isArray(series)) return result;
+  return {
+    ...(payload || {}),
+    data: {
+      ...payload?.data,
+      result: series.map((item) => (
+        item?.values ? item : (item?.value != null ? { ...item, values: [item.value] } : item)
+      ))
+    }
+  };
+};
+
 export const toMetricSeries = <T extends BaseMetricConfig>(
   metric: T,
   result: any,

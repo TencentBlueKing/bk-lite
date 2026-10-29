@@ -6,6 +6,8 @@ export interface MonitorStrategyDetailParams {
   monitorObjId: string | number;
   monitorName: string;
   templateKey?: string;
+  groupId?: string | number;
+  ruleId?: string | number;
 }
 
 export function buildMonitorStrategyDetailUrl(
@@ -25,6 +27,12 @@ export function buildMonitorStrategyDetailUrl(
   }
   if (params.templateKey) {
     searchParams.set('template_key', params.templateKey);
+  }
+  if (params.groupId !== undefined && params.groupId !== '') {
+    searchParams.set('groupId', String(params.groupId));
+  }
+  if (params.ruleId !== undefined && params.ruleId !== '') {
+    searchParams.set('ruleId', String(params.ruleId));
   }
   return `/monitor/event/strategy/detail?${searchParams.toString()}`;
 }

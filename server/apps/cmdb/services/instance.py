@@ -98,6 +98,17 @@ class InstanceBatchError(BaseAppException):
         super().__init__(message, data=data)
 
 
+class StaleMonitorBinding(Exception):
+    """锁内读到的 monitor_id 已不是解绑开始时的值，拒绝清空。"""
+
+
+def _normalized_monitor_id(value) -> str | None:
+    if value in (None, ""):
+        return None
+    text = str(value).strip()
+    return text or None
+
+
 def _normalize_batch_instance_ids(inst_ids: list) -> list[int]:
     normalized_ids = []
     seen_ids = set()
@@ -1195,6 +1206,7 @@ class InstanceManage(object):
             for_update=False,
         )
         prepared = []
+        subnet_batch_state = {} if model_id == "subnet" else None
         for index, item in enumerate(instances):
             try:
                 instance_info = prepare_new_instance_identity({**item, "model_id": model_id})
@@ -1208,7 +1220,7 @@ class InstanceManage(object):
                 if model_id == "subnet":
                     from apps.cmdb.services.ipam_subnet import validate_subnet_no_overlap
 
-                    validate_subnet_no_overlap(instance_info)
+                    validate_subnet_no_overlap(instance_info, batch_state=subnet_batch_state)
                 instance_info = get_instance_enterprise_extension().normalize_file_fields(
                     model_id,
                     instance_info,
@@ -1362,6 +1374,7 @@ class InstanceManage(object):
         record_change: bool = True,
         operation_id: str | None = None,
         schedule_post_actions: bool = True,
+        expected_monitor_id: str | None = None,
     ):
         """修改实例属性"""
         from apps.cmdb.services.module_ingest import strip_system_link_fields
@@ -1430,6 +1443,11 @@ class InstanceManage(object):
                 update_attr[COLLECT_SOURCES_ATTR] = stamped
                 check_attr_map.setdefault("editable", {})[COLLECT_SOURCES_ATTR] = COLLECT_SOURCES_ATTR
         with UniqueWriteLockService.hold(unique_lock_keys):
+            if expected_monitor_id is not None:
+                current_entity = InstanceManage.query_entity_by_id(inst_id)
+                current_monitor_id = _normalized_monitor_id(current_entity.get("monitor_id") if isinstance(current_entity, dict) else None)
+                if current_monitor_id != expected_monitor_id:
+                    raise StaleMonitorBinding()
             with GraphClient() as ag:
                 exist_items = InstanceManage._query_unique_rule_candidates(ag, inst_info["model_id"], validation_item, check_attr_map)
                 exist_items = [i for i in exist_items if i["_id"] != inst_id]
@@ -2520,15 +2538,21 @@ class InstanceManage(object):
         file_stream: bytes,
         operator: str,
         allowed_org_ids: list = None,
+        matched_instance_permission_check=None,
     ):
         """实例导入-支持编辑"""
         attrs = ModelManage.search_model_attr_v2(model_id)
         model_info = ModelManage.search_model_info(model_id)
 
+        permission_check = matched_instance_permission_check
+        if permission_check is None:
+            permission_check = getattr(self, "matched_instance_permission_check", None)
+
         _import = Import(model_id, attrs, [], operator)
         add_results, update_results, asso_result = _import.import_inst_list_support_edit(
             file_stream,
             allowed_org_ids=allowed_org_ids,
+            matched_instance_permission_check=permission_check,
         )
 
         add_changes = [

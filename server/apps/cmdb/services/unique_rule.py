@@ -717,6 +717,10 @@ def _raise_conflict_if_rules_invalid(model_id: str, operator: str, action: str, 
     raise BaseAppException(conflict.message)
 
 
+def _unique_rules_lock_key(model_id: str) -> str:
+    return f"cmdb:unique-rules:{model_id}"
+
+
 def _apply_unique_rule_mutation(
     model_id: str,
     operator: str,
@@ -725,20 +729,23 @@ def _apply_unique_rule_mutation(
     mutate,
     validate=None,
 ) -> list[dict[str, Any]]:
+    from apps.cmdb.services.unique_write_lock import UniqueWriteLockService
+
     logger.info("[UniqueRule] %s start model_id=%s operator=%s field_ids=%s", action, model_id, operator, field_ids)
-    ctx = build_unique_rule_context(model_id)
+    with UniqueWriteLockService.hold([_unique_rules_lock_key(model_id)]):
+        ctx = build_unique_rule_context(model_id)
 
-    if validate:
-        try:
-            validate(ctx)
-        except BaseAppException as err:
-            _log_invalid_unique_rule_payload(model_id, operator, field_ids, err.message)
-            raise
+        if validate:
+            try:
+                validate(ctx)
+            except BaseAppException as err:
+                _log_invalid_unique_rule_payload(model_id, operator, field_ids, err.message)
+                raise
 
-    next_rules = mutate(ctx)
-    _raise_conflict_if_rules_invalid(model_id, operator, action, next_rules)
-    _save_unique_rules(model_id, next_rules)
-    return list_unique_rules(model_id)
+        next_rules = mutate(ctx)
+        _raise_conflict_if_rules_invalid(model_id, operator, action, next_rules)
+        _save_unique_rules(model_id, next_rules)
+        return list_unique_rules(model_id)
 
 
 def create_unique_rule(model_id: str, payload: UniqueRulePayload, operator: str) -> list[dict[str, Any]]:

@@ -8,6 +8,7 @@ from apps.cmdb.models.collect_task_credential_hit import CollectTaskCredentialHi
 from apps.cmdb.models.scan_model import ScanExecution, ScanFamilyRun, ScanHit, ScanTask
 from apps.cmdb.services.collect_service import CollectModelService
 from apps.cmdb.services.scan_collect_generate import ScanCollectGenerateService, _normalize_credential_item
+from apps.cmdb.services.scan_collect_task import _build_update_payload, _collect_view, require_request, sync_scan_collect_task
 
 pytestmark = pytest.mark.django_db
 
@@ -275,6 +276,59 @@ def test_second_generate_appends_to_scan_created_task(mocker, authenticated_user
     assert push.call_count == 2
 
 
+def test_unmarked_same_prefix_hand_task_is_not_claimed(mocker, authenticated_user):
+    """名称以前缀开头、但没有来源标记的手建选择资产任务不能被扫描生成改写。"""
+    _patch_side_effects(mocker)
+    mocker.patch.object(CollectModelService, "push_butch_node_params")
+    mocker.patch.object(CollectModelService, "delete_butch_node_params")
+    task = _task()
+    hand_uuid = HOST_UUIDS["10.0.1.10"]
+    hand = CollectModels.objects.create(
+        name="scan-gen-network",
+        task_type="snmp",
+        driver_type="protocol",
+        model_id="network",
+        is_system=False,
+        cycle_value_type="cycle",
+        cycle_value="60",
+        input_method=CollectInputMethod.AUTO,
+        ip_range="",
+        instances=[{"inst_uuid": hand_uuid, "model_id": "switch"}],
+        credential=[
+            {
+                "credential_id": "hand-built-cred",
+                "version": "v2",
+                "community": "private",
+                "snmp_port": "161",
+            }
+        ],
+        params={"target_source": "asset"},
+        team=[1],
+    )
+    execution, hits = _execution_with_hits(task, ["10.0.1.12"])
+
+    result = ScanCollectGenerateService.generate(
+        execution,
+        [hits[0].id],
+        operator="alice",
+        request=_request(authenticated_user),
+    )
+
+    hand.refresh_from_db()
+    assert {item.get("inst_uuid") for item in (hand.instances or [])} == {hand_uuid}
+    hand_cred_ids = [item.get("credential_id") for item in (hand.decrypt_credentials or [])]
+    assert hand_cred_ids == ["hand-built-cred"]
+    assert "generated_from_scan_task_id" not in (hand.params or {})
+    assert result["created"] == 1
+    assert result["appended"] == 0
+    assert result["failed"] == 0
+    created = CollectModels.objects.exclude(pk=hand.id).get()
+    assert created.params.get("generated_from_scan_task_id") == task.id
+    assert {item.get("inst_uuid") for item in (created.instances or [])} == {HOST_UUIDS["10.0.1.12"]}
+    assert result["items"][0]["status"] == "created"
+    assert result["items"][0]["collect_task_id"] == created.id
+
+
 def test_existing_collect_instance_is_skipped(mocker):
     _patch_side_effects(mocker)
     task = _task()
@@ -295,6 +349,26 @@ def test_existing_collect_instance_is_skipped(mocker):
     assert result["skipped"] == 1
     assert result["items"][0]["reason"] == "already_on_collect"
     assert CollectModels.objects.filter(name__startswith="scan-gen").count() == 0
+
+
+def test_mysql_without_credential_is_skipped(mocker):
+    _patch_side_effects(mocker)
+    task = _task(families=["database"], credentials={"database": []})
+    execution, hits = _execution_with_hits(
+        task,
+        ["10.0.1.10"],
+        family="mysql",
+        protocol="mysql",
+        port=3306,
+        credential_id="",
+        cmdb_model_id="mysql",
+    )
+
+    result = ScanCollectGenerateService.generate(execution, [hits[0].id])
+
+    assert result["skipped"] == 1
+    assert result["items"][0]["reason"] == "no_credential"
+    assert CollectModels.objects.count() == 0
 
 
 def test_no_ci_hit_is_skipped(mocker):
@@ -759,3 +833,92 @@ def test_normalize_agent_credential_drops_ssh_fields():
         )
         == {}
     )
+
+
+def _instance(host):
+    return {"inst_uuid": HOST_UUIDS[host], "model_id": "switch"}
+
+
+def _snmp_credential(credential_id, community):
+    return {
+        "credential_id": credential_id,
+        "version": "v2",
+        "community": community,
+        "snmp_port": "161",
+    }
+
+
+def test_stale_scan_append_keeps_targets_and_credentials_written_under_lock(mocker, authenticated_user):
+    """调用者还拿着只含 A 的旧对象时，库里已写成 A+C，再追加 B 不能把 C 盖掉。"""
+    _patch_side_effects(mocker)
+    mocker.patch.object(CollectModelService, "push_butch_node_params")
+    mocker.patch.object(CollectModelService, "delete_butch_node_params")
+    task = _task()
+    execution, hits = _execution_with_hits(task, ["10.0.1.10"])
+    request = _request(authenticated_user)
+    ScanCollectGenerateService.generate(execution, [hits[0].id], operator="alice", request=request)
+
+    stale = CollectModels.objects.get()
+    current = CollectModels.objects.get(pk=stale.pk)
+    current.instances = [_instance("10.0.1.10"), _instance("10.0.1.11")]
+    current.credential = [
+        *list(current.decrypt_credentials),
+        _snmp_credential("cred-snmp-3", "other"),
+    ]
+    current.save(update_fields=["instances", "credential"])
+
+    sync_scan_collect_task(
+        stale,
+        scan_task=task,
+        instances=[_instance("10.0.1.12")],
+        credentials=[_snmp_credential("cred-snmp-2", "private")],
+        request=request,
+    )
+
+    collect = CollectModels.objects.get(pk=stale.pk)
+    assert {item.get("inst_uuid") for item in (collect.instances or [])} == {
+        HOST_UUIDS["10.0.1.10"],
+        HOST_UUIDS["10.0.1.12"],
+        HOST_UUIDS["10.0.1.11"],
+    }
+    assert {item.get("credential_id") for item in collect.decrypt_credentials} == {
+        "cred-snmp-1",
+        "cred-snmp-2",
+        "cred-snmp-3",
+    }
+
+
+def test_plain_update_replaces_submitted_instances(mocker, authenticated_user):
+    """不带追加标记的普通更新用提交的完整列表覆盖，不留数据库里多出来的目标。"""
+    _patch_side_effects(mocker)
+    mocker.patch.object(CollectModelService, "push_butch_node_params")
+    mocker.patch.object(CollectModelService, "delete_butch_node_params")
+    task = _task()
+    execution, hits = _execution_with_hits(task, ["10.0.1.10"])
+    request = _request(authenticated_user)
+    ScanCollectGenerateService.generate(execution, [hits[0].id], operator="alice", request=request)
+
+    stale = CollectModels.objects.get()
+    current = CollectModels.objects.get(pk=stale.pk)
+    current.instances = [_instance("10.0.1.10"), _instance("10.0.1.11")]
+    current.credential = [
+        *list(current.decrypt_credentials),
+        _snmp_credential("cred-snmp-3", "other"),
+    ]
+    current.save(update_fields=["instances", "credential"])
+
+    payload = _build_update_payload(
+        stale,
+        instances=[_instance("10.0.1.10"), _instance("10.0.1.12")],
+        credentials=list(stale.decrypt_credentials),
+    )
+    drf_request = require_request(request)
+    view = _collect_view(drf_request, action="update", pk=stale.pk)
+    CollectModelService.update(drf_request, view, payload=payload)
+
+    collect = CollectModels.objects.get(pk=stale.pk)
+    assert {item.get("inst_uuid") for item in (collect.instances or [])} == {
+        HOST_UUIDS["10.0.1.10"],
+        HOST_UUIDS["10.0.1.12"],
+    }
+    assert {item.get("credential_id") for item in collect.decrypt_credentials} == {"cred-snmp-1"}

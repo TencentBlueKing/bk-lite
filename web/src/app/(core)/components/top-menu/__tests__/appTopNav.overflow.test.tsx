@@ -13,12 +13,18 @@ vi.stubGlobal('ResizeObserver', ResizeObserverStub);
 vi.mock('@/utils/i18n', () => ({
   useTranslation: () => ({
     t: (key: string, fallback?: string) => {
-      if (key === 'apps.workflow-orchestration') {
+      if (key === 'apps.workflow') {
         return '编排中心';
       }
       return fallback || key;
     },
   }),
+}));
+
+let mockSearch = '';
+
+vi.mock('next/navigation', () => ({
+  useSearchParams: () => new URLSearchParams(mockSearch),
 }));
 
 vi.mock('@/components/icon', () => ({
@@ -66,6 +72,7 @@ const setStripOverflow = (
 };
 
 afterEach(() => {
+  mockSearch = '';
   cleanup();
 });
 
@@ -106,19 +113,19 @@ describe('AppTopNav overflow arrows', () => {
 });
 
 describe('AppTopNav builtin app labels', () => {
-  it('localizes workflow-orchestration even when display_name is English', () => {
+  it('localizes workflow even when display_name is English', () => {
     render(
       <AppTopNav
         apps={[
           {
-            name: 'workflow-orchestration',
+            name: 'workflow',
             display_name: 'Workflow',
-            url: '/workflow-orchestration',
+            url: '/workflow',
             icon: 'liuchengguanli1',
             is_build_in: true,
           },
         ] as ClientData[]}
-        pathname="/workflow-orchestration"
+        pathname="/workflow"
       />,
     );
 
@@ -170,5 +177,32 @@ describe('AppTopNav active app click', () => {
     expect(node.getAttribute('href')).toBe('/node-manager/cloudregion');
     expect(node.getAttribute('aria-current')).toBe('page');
     expect(fireEvent.click(node)).toBe(false);
+  });
+});
+
+describe('AppTopNav dashboard homepage console click', () => {
+  const consoleApps = [
+    { name: 'ops-console', display_name: '控制台', url: '/ops-console/home', icon: 'ops-console', is_build_in: true },
+    { name: 'ops-analysis', display_name: '运营分析', url: '/ops-analysis', icon: 'ops-analysis', is_build_in: true },
+    { name: 'cmdb', display_name: 'CMDB', url: '/cmdb', icon: 'cmdb', is_build_in: true },
+  ] as ClientData[];
+
+  it('highlights neither app on dashboard shell and lets 控制台 navigate to bare home', () => {
+    mockSearch = 'dashboard_id=105';
+    render(<AppTopNav apps={consoleApps} pathname="/ops-console/home" />);
+    const consoleLink = screen.getByRole('link', { name: '控制台' });
+    const analysisLink = screen.getByRole('link', { name: '运营分析' });
+    expect(consoleLink.getAttribute('href')).toBe('/ops-console/home');
+    expect(consoleLink.getAttribute('aria-current')).toBeNull();
+    expect(analysisLink.getAttribute('aria-current')).toBeNull();
+    expect(fireEvent.click(consoleLink)).toBe(true);
+  });
+
+  it('keeps 控制台 active and stays on bare home', () => {
+    mockSearch = '';
+    render(<AppTopNav apps={consoleApps} pathname="/ops-console/home" />);
+    const consoleLink = screen.getByRole('link', { name: '控制台' });
+    expect(consoleLink.getAttribute('aria-current')).toBe('page');
+    expect(fireEvent.click(consoleLink)).toBe(false);
   });
 });

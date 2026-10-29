@@ -3,16 +3,26 @@ from __future__ import annotations
 
 import asyncio
 from pathlib import Path
-from typing import Optional
+
+from asgiref.sync import sync_to_async
+from langchain_core.callbacks import adispatch_custom_event
 
 from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.metis.llm.chain.entity import ExtraConfig
+from apps.opspilot.services.ppt_master_runtime import (
+    begin_ppt_run,
+    discard_ppt_run,
+    is_ppt_master_package,
+    link_workspace,
+    packages_include_ppt_master,
+    publish_latest_export,
+)
 
 
 class SkillSandboxMixin:
     """Mixin for ToolsNodes; extracted without behavior change."""
 
-    def _build_skill_backend_and_sources(self, graph_request):
+    def _build_skill_backend_and_sources(self, graph_request, packages=None):
         """把启用的 SkillPackage 物化到「一次性沙箱目录」，返回 (backend, sources, sandbox_dir)。
 
         采用 deepagents 自带的 ``LocalShellBackend``：它既是 ``FilesystemBackend``
@@ -32,12 +42,14 @@ class SkillSandboxMixin:
         NATS worker / 容器沙箱实现,本函数调用方不变(materializer 接口
         向后兼容,通过 feature flag 切换 backend)。
         """
-        packages = self._resolve_skill_packages(graph_request)
+        if packages is None:
+            packages = self._resolve_skill_packages(graph_request)
         if not packages:
             return None, [], None
         backend = None
         sources = []
         sandbox_dir = None
+        ppt_workspace = None
         try:
             import os
             import tempfile
@@ -45,6 +57,7 @@ class SkillSandboxMixin:
             from deepagents.backends import LocalShellBackend
 
             from apps.opspilot.services.skill_executor import PathRewritingBackend
+            from apps.opspilot.services.skill_executor.utf8_local_shell import bind_utf8_execute
             from apps.opspilot.services.skill_package.materializer import materialize_skill_package, sanitize_skill_name
             from apps.opspilot.utils.skill_package_params import format_skillenv
 
@@ -78,6 +91,14 @@ class SkillSandboxMixin:
                 inherit_env=False,
                 env=self._sandbox_env(sandbox_dir),
             )
+            bind_utf8_execute(inner_backend)
+            if packages_include_ppt_master(packages):
+                ppt_workspace = begin_ppt_run(graph_request)
+                link_workspace(Path(sandbox_dir) / "ppt-workspace", ppt_workspace)
+
+            def _mark_ppt_exported() -> None:
+                setattr(graph_request, "_ppt_export_ready", True)
+
             backend = PathRewritingBackend(
                 inner=inner_backend,
                 sandbox_dir=sandbox_dir,
@@ -85,6 +106,8 @@ class SkillSandboxMixin:
                 on_skill_access=self._make_lazy_skill_deps_callback(packages),
                 params_by_package=params_by_dir,
                 secret_values=secret_values,
+                ppt_workspace=ppt_workspace,
+                on_ppt_exported=_mark_ppt_exported if ppt_workspace is not None else None,
             )
             # 不在建沙箱时预装依赖:寒暄/未用技能时不应 pip install。
             # 依赖在 read/execute 真正碰到 /skills/<name>/ 时按需安装。
@@ -121,7 +144,21 @@ class SkillSandboxMixin:
         except Exception as e:  # pragma: no cover - defensive
             logger.warning("技能 backend 构建失败，跳过 skills: %r", e)
             self._cleanup_sandbox(sandbox_dir)
+            if ppt_workspace is not None:
+                discard_ppt_run(graph_request)
             return None, [], None
+
+    @staticmethod
+    async def _publish_ppt_master_export(graph_request, prior_filenames, config=None) -> None:
+        # 登记附件会写数据库。ASGI 请求里直接调用会抛 SynchronousOnlyOperation，下载卡片就出不来。
+        await sync_to_async(publish_latest_export, thread_sensitive=True)(graph_request, prior_filenames)
+        event = getattr(graph_request, "_ppt_download_event", None)
+        if not isinstance(event, dict) or config is None:
+            return
+        try:
+            await adispatch_custom_event("report_file_download", event, config=config)
+        except Exception as exc:
+            logger.warning("ppt download event failed error_type=%s", type(exc).__name__)
 
     @classmethod
     def _make_lazy_skill_deps_callback(cls, packages: list):
@@ -198,7 +235,7 @@ class SkillSandboxMixin:
         from apps.opspilot.services.skill_package.materializer import sanitize_skill_name
 
         for pkg in packages:
-            if not isinstance(pkg, dict):
+            if not isinstance(pkg, dict) or is_ppt_master_package(pkg):
                 continue
             keys = {
                 sanitize_skill_name(pkg.get("package_id")),
@@ -214,7 +251,7 @@ class SkillSandboxMixin:
         # Layer 2: 扫描技能包根目录的标准依赖文件
         # requirements.txt(PEP 标准) / package.json(Node.js 标准)
         for pkg in packages:
-            if not isinstance(pkg, dict):
+            if not isinstance(pkg, dict) or is_ppt_master_package(pkg):
                 continue
             extracted_root = pkg.get("extracted_root")
             if not isinstance(extracted_root, Path):
@@ -247,7 +284,7 @@ class SkillSandboxMixin:
 
         # Layer 3: skill.yaml 显式声明的 runtime.python_packages(扩展字段,优先级最高)
         for pkg in packages:
-            if not isinstance(pkg, dict):
+            if not isinstance(pkg, dict) or is_ppt_master_package(pkg):
                 continue
             declared = pkg.get("required_python_packages") or []
             if declared:
@@ -419,6 +456,9 @@ class SkillSandboxMixin:
             "PATH": SkillSandboxMixin._discover_sandbox_path(),
             "LANG": os.environ.get("LANG", "C.UTF-8"),
             "LC_ALL": os.environ.get("LC_ALL", os.environ.get("LANG", "C.UTF-8")),
+            # 子进程 Python 默认也用 UTF-8。父进程读管道的解码在 utf8_local_shell。
+            "PYTHONIOENCODING": "utf-8",
+            "PYTHONUTF8": "1",
             "TMPDIR": sandbox_dir,  # 临时文件落在沙箱内,用完即弃
             "HOME": sandbox_dir,  # 用户配置也隔离(PATH 透传但 HOME 不透)
             # kubectl 默认读 ~/.kube/config,但 sandbox 把 HOME 隔离到 sandbox_dir,
@@ -459,7 +499,7 @@ class SkillSandboxMixin:
         return env
 
     @staticmethod
-    def _cleanup_sandbox(sandbox_dir: Optional[str]) -> None:
+    def _cleanup_sandbox(sandbox_dir: str | None) -> None:
         """删除一次性沙箱目录（用完即弃）；失败仅记录，不影响主流程。"""
         if not sandbox_dir:
             return

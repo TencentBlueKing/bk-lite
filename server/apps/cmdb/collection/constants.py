@@ -106,6 +106,15 @@ VMWARE_COLLECT_MAP = {
     "vmware_esxi_info_gauge": "vmware_esxi",
 }
 
+HYPERV_CLUSTER = ["hyperv_host_info_gauge", "hyperv_vm_info_gauge"]
+
+HYPERV_COLLECT_MAP = {
+    "hyperv_host_info_gauge": "hyperv_host",
+    "hyperv_vm_info_gauge": "hyperv_vm",
+    "hyperv_host_info": "hyperv_host",
+    "hyperv_vm_info": "hyperv_vm",
+}
+
 # "network_interfaces_info_gauge"
 NETWORK_COLLECT = [
     "network_system_info_gauge",

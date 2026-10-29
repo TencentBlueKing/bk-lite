@@ -234,12 +234,9 @@ def _first_instance_uuid(collect: CollectModels) -> str:
 
 
 def find_scan_generated_collect(scan_task, family_model_id: str, inst_uuid: str | None = None) -> CollectModels | None:
-    """只匹配本扫描生成的同族任务，避免改到手建采集。"""
+    """只匹配带本扫描来源标记的同族任务，避免按名称改到手建采集。"""
     qs = CollectModels.objects.filter(is_system=False, model_id=family_model_id)
     marked = list(qs.filter(params__contains={SCAN_SOURCE_PARAM: scan_task.id}))
-    if not marked:
-        name_prefix = f"{scan_task.name}-{family_model_id}"
-        marked = list(qs.filter(name__startswith=name_prefix))
     for collect in marked:
         if uses_single_endpoint(family_model_id) and inst_uuid:
             if _first_instance_uuid(collect) != str(inst_uuid):
@@ -353,8 +350,8 @@ def sync_scan_collect_task(
     params = collect.params if isinstance(collect.params, dict) else {}
     if collect.model_id == "host" or collect.model_id in SCAN_MIDDLEWARE_TYPES:
         params = {**params, **collect_params(scan_task, collect.model_id)}
-    merged_instances = merge_instance_payloads(collect.instances, instances)
-    merged_credentials = merge_credential_items(collect.model_id, collect.decrypt_credentials, credentials)
+    # 是否需要写入仍看调用者手里的快照。真正合并放到保存锁内重读之后，
+    # 避免先提交的追加被这份旧列表整表盖掉。
     existing_uuids = {str(item.get("inst_uuid") or "") for item in (collect.instances or []) if isinstance(item, dict)}
     incoming_uuids = {str(item.get("inst_uuid") or "") for item in (instances or []) if isinstance(item, dict)}
     existing_creds = {str(item.get("credential_id") or "") for item in (collect.decrypt_credentials or []) if isinstance(item, dict)}
@@ -368,10 +365,16 @@ def sync_scan_collect_task(
     request = require_request(request)
     payload = _build_update_payload(
         collect,
-        instances=merged_instances,
+        instances=list(instances or []),
         params=params,
-        credentials=merged_credentials,
+        credentials=list(credentials or []),
     )
     view = _collect_view(request, action="update", pk=collect.id)
-    collect_id = CollectModelService.update(request, view, payload=payload, credential_pool_max_size=None)
+    collect_id = CollectModelService.update(
+        request,
+        view,
+        payload=payload,
+        credential_pool_max_size=None,
+        scan_append=True,
+    )
     return CollectModels.objects.get(pk=collect_id)

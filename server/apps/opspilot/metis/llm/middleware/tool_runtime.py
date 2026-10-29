@@ -8,7 +8,7 @@ import re
 from collections.abc import Awaitable, Callable, Sequence
 from typing import Any, Literal
 
-from langchain.agents.middleware import AgentMiddleware, ModelRequest, ModelResponse
+from langchain.agents.middleware import AgentMiddleware, ModelRequest, ModelResponse, hook_config
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langchain_core.tools import BaseTool
 
@@ -19,11 +19,7 @@ from apps.opspilot.metis.llm.agent.tool_execution_planner import (
     _DEFAULT_PLANNED_TOOL_RESULT_CHARS,
     compact_planned_execution_messages,
 )
-from apps.opspilot.metis.llm.common.tool_failure import (
-    POLICY_RESULT_MARKER,
-    is_non_replanable_tool_failure,
-    is_tool_result_failure,
-)
+from apps.opspilot.metis.llm.common.tool_failure import POLICY_RESULT_MARKER, is_non_replanable_tool_failure, is_tool_result_failure
 
 # 兼容旧导入路径（实现见 planned_execution_limits）。
 from apps.opspilot.metis.llm.middleware.planned_execution_limits import (  # noqa: F401
@@ -88,46 +84,135 @@ def _canonical_tool_args(args: Any) -> str:
         return str(args)
 
 
-_OR_SEARCH_TOOLS = frozenset({"alerts_list_alerts", "log_search_structured"})
+_SERVICE_UNREACHABLE_RE = re.compile(
+    r"HTTPConnectionPool|Max retries exceeded|Failed to establish a new connection|"
+    r"NewConnectionError|WinError 10061|ConnectionRefusedError|"
+    r"Name or service not known|nodename nor servname|Temporary failure in name resolution|"
+    r"Connection aborted|RemoteDisconnected|ConnectTimeoutError|"
+    r"目标计算机积极拒绝|由于目标计算机积极拒绝",
+    re.I,
+)
+_EMPTY_LIST_KEYS = ("items", "results", "rows", "series", "list", "logs", "alerts", "instances", "result")
+# 指标目录按 keyword 筛空不是「没有数据」。可以换 keyword，由工具让用户选，而不是逐个试。
+_EMPTY_RETRY_WITH_DIFFERENT_ARGS = frozenset({"monitor_list_object_metrics"})
+_EMPTY_COUNT_KEYS = ("count", "total", "hits", "total_count", "hit_count")
 
 
-def _or_search_succeeded(content: str) -> bool:
-    """调用失败不是空结果，允许改正参数后再查。"""
-    text = str(content or "").strip()
-    if not text:
+def _series_matched_is_zero(value: dict) -> bool:
+    """Prometheus stats.seriesMatched 为 0。布尔值不算计数。"""
+    stats = value.get("stats")
+    if not isinstance(stats, dict) or "seriesMatched" not in stats:
         return False
+    matched = stats["seriesMatched"]
+    if isinstance(matched, bool):
+        return False
+    if matched == 0 or matched == "0":
+        return True
+    return isinstance(matched, str) and matched.isdigit() and int(matched) == 0
+
+
+def _has_nonempty_tracked_list(value: Any) -> bool:
+    """本层或嵌套 data 里，空列表键对应的列表是否有元素。"""
+    if isinstance(value, list):
+        return bool(value)
+    if not isinstance(value, dict):
+        return False
+    for key in _EMPTY_LIST_KEYS:
+        item = value.get(key)
+        if isinstance(item, list) and item:
+            return True
+    nested = value.get("data")
+    if nested is not value:
+        return _has_nonempty_tracked_list(nested)
+    return False
+
+
+def _explicit_empty(value: Any) -> bool:
+    """只认明确的空列表、0 计数，或 stats.seriesMatched=0。有 result 键但列表非空不算空。"""
+    if isinstance(value, list):
+        return len(value) == 0
+    if not isinstance(value, dict):
+        return False
+    nested = value.get("data")
+    if nested is not value and isinstance(nested, (list, dict)) and _explicit_empty(nested):
+        return True
+    saw = False
+    for key in _EMPTY_LIST_KEYS:
+        item = value.get(key)
+        if isinstance(item, list):
+            saw = True
+            if item:
+                return False
+    for key in _EMPTY_COUNT_KEYS:
+        raw = value.get(key)
+        if isinstance(raw, bool) or not isinstance(raw, (int, float)):
+            continue
+        saw = True
+        if raw > 0:
+            return False
+    if _series_matched_is_zero(value) and not _has_nonempty_tracked_list(value):
+        return True
+    return saw
+
+
+def _is_empty_success(content: str) -> bool:
     if is_tool_result_failure(content):
         return False
     try:
-        payload = json.loads(text)
+        payload = json.loads(str(content or ""))
     except json.JSONDecodeError:
-        return True
-    if isinstance(payload, dict) and (payload.get("success") is False or payload.get("result") is False):
         return False
-    return True
+    if not isinstance(payload, dict):
+        return False
+    if payload.get("success") is False or payload.get("result") is False or payload.get("error"):
+        return False
+    if "data" in payload:
+        return _explicit_empty(payload.get("data"))
+    return _explicit_empty(payload)
+
+
+def _is_service_unreachable(content: str) -> bool:
+    """下游服务连不上。成功结果里出现的 connection refused 字样不算。"""
+    if not is_tool_result_failure(content):
+        return False
+    return _SERVICE_UNREACHABLE_RE.search(str(content or "")) is not None
+
+
+def _retry_denial(name: str, call_id: str, content: str) -> ToolMessage:
+    return ToolMessage(content=content, tool_call_id=call_id, name=name, status="error")
 
 
 def repeated_or_search_denial(request: Any) -> ToolMessage | None:
-    """词表已经成功或检索过一次，换关键字再调同名工具不会得到新范围。"""
+    """全局重试：空结果和服务不可达不再调用；参数错误可以改正后再试。"""
     call = getattr(request, "tool_call", None) or {}
     name = str(call.get("name") or "")
-    if name not in _OR_SEARCH_TOOLS:
+    if not name:
         return None
+    call_id = str(call.get("id") or "")
+    saw_empty = False
     for message in _request_messages(request):
         if not isinstance(message, ToolMessage):
             continue
         if str(getattr(message, "name", "") or "") != name:
             continue
-        if str(getattr(message, "status", "") or "").lower() == "error":
-            continue
         content = str(getattr(message, "content", "") or "")
-        if POLICY_RESULT_MARKER in content or not _or_search_succeeded(content):
+        if POLICY_RESULT_MARKER in content:
             continue
-        return ToolMessage(
-            content=(f"{POLICY_RESULT_MARKER} 工具 {name} 已成功按用户原问的词表做过或检索。" "不要换关键字再搜。成功且结果为空才表示这些词都未命中；调用失败不是空结果。"),
-            tool_call_id=str(call.get("id") or ""),
-            name=name,
-            status="error",
+        if _is_service_unreachable(content):
+            return _retry_denial(
+                name,
+                call_id,
+                f"{POLICY_RESULT_MARKER} 工具 {name} 调用的服务不可达。不要改参数重试，把失败原因告诉用户。",
+            )
+        if _is_empty_success(content):
+            saw_empty = True
+    if saw_empty and name in _EMPTY_RETRY_WITH_DIFFERENT_ARGS:
+        return None
+    if saw_empty:
+        return _retry_denial(
+            name,
+            call_id,
+            f"{POLICY_RESULT_MARKER} 工具 {name} 已成功返回空结果。空结果表示没有命中，不是参数错误。" "不要改参数再调用，也不要告诉用户参数无效。直接说明没有命中。",
         )
     return None
 
@@ -181,12 +266,12 @@ def repeated_successful_tool_denial(request: Any) -> ToolMessage | None:
         if str(getattr(message, "status", "") or "").lower() == "error":
             continue
         content = str(getattr(message, "content", "") or "")
-        if POLICY_RESULT_MARKER in content:
+        if POLICY_RESULT_MARKER in content or is_tool_result_failure(content):
             continue
         previous = args_by_id.get(str(getattr(message, "tool_call_id", "") or ""))
         if previous == (name, args_key):
             return ToolMessage(
-                content=(f"{POLICY_RESULT_MARKER} 工具 {name} 已用相同参数成功执行过。" "不要再调用。直接根据已有结果回答并结束本步。"),
+                content=(f"{POLICY_RESULT_MARKER} 工具 {name} 已用相同参数成功执行过。" "这是重复调用拦截，不是参数错误，也不是空结果。不要再调用。直接根据已有结果回答并结束本步。"),
                 tool_call_id=str(call.get("id") or ""),
                 name=name,
                 status="error",
@@ -579,6 +664,29 @@ class ToolTimeoutMiddleware(AgentMiddleware):
             return await asyncio.wait_for(handler(request), timeout=self._timeout_seconds)
         except asyncio.TimeoutError:
             return self._timeout_message(request)
+
+
+class PptExportFinishMiddleware(AgentMiddleware):
+    """pptx 已经写出后不再发起下一轮模型调用，避免导出成功后停在等待。"""
+
+    def __init__(self, graph_request: Any) -> None:
+        super().__init__()
+        self._graph_request = graph_request
+
+    def _finish(self) -> dict[str, Any] | None:
+        if not getattr(self._graph_request, "_ppt_export_ready", False):
+            return None
+        return {"jump_to": "end", "messages": [AIMessage(content="PPT 已导出，可以下载。")]}
+
+    @hook_config(can_jump_to=["end"])
+    def before_model(self, state: Any, runtime: Any) -> dict[str, Any] | None:
+        del state, runtime
+        return self._finish()
+
+    @hook_config(can_jump_to=["end"])
+    async def abefore_model(self, state: Any, runtime: Any) -> dict[str, Any] | None:
+        del state, runtime
+        return self._finish()
 
 
 class ToolResultCompactionMiddleware(AgentMiddleware):

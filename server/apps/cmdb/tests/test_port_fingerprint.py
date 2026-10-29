@@ -7,7 +7,13 @@ from django.core.management import call_command
 from rest_framework.test import APIRequestFactory, force_authenticate
 
 from apps.cmdb.models.collect_model import PortFingerprint
-from apps.cmdb.services.port_fingerprint import ports_for_scan_type, scan_database_ports_by_type, sync_builtin_port_fingerprints
+from apps.cmdb.services.port_fingerprint import (
+    BUILTIN_PORT_FINGERPRINTS,
+    enabled_port_fingerprints,
+    ports_for_scan_type,
+    scan_database_ports_by_type,
+    sync_builtin_port_fingerprints,
+)
 from apps.cmdb.views.port_fingerprint import PortFingerprintViewSet
 
 pytestmark = pytest.mark.django_db
@@ -43,17 +49,21 @@ def _body(response):
     return json.loads(response.content)
 
 
-def test_sync_creates_three_builtin_database_ports():
+def test_sync_creates_builtin_host_discoverable_ports():
     result = sync_builtin_port_fingerprints()
-    assert result["created"] == 3
-    rows = list(PortFingerprint.objects.order_by("port").values_list("port", "target_type", "built_in"))
-    assert rows == [(1433, "mssql", True), (3306, "mysql", True), (5432, "postgresql", True)]
+    assert result["created"] == len(BUILTIN_PORT_FINGERPRINTS)
+    rows = set(PortFingerprint.objects.filter(built_in=True).values_list("port", "target_type"))
+    assert (3306, "mysql") in rows
+    assert (80, "nginx") in rows
+    assert (443, "nginx") in rows
+    assert (6379, "redis") in rows
+    assert ports_for_scan_type("nginx") == [80, 443]
 
 
 def test_sync_does_not_overwrite_user_row_on_same_port_type():
     PortFingerprint.objects.create(port=3306, target_type="mysql", protocol="tcp", built_in=False)
     result = sync_builtin_port_fingerprints()
-    assert result["created"] == 2
+    assert result["created"] == len(BUILTIN_PORT_FINGERPRINTS) - 1
     assert result["skipped_user"] == 1
     row = PortFingerprint.objects.get(port=3306, target_type="mysql")
     assert row.built_in is False
@@ -64,7 +74,7 @@ def test_same_port_can_have_middleware_and_database_types():
     PortFingerprint.objects.create(port=3306, target_type="redis", protocol="tcp", built_in=False)
     assert PortFingerprint.objects.filter(port=3306).count() == 2
     assert ports_for_scan_type("mysql") == [3306]
-    assert ports_for_scan_type("redis") == []
+    assert ports_for_scan_type("redis") == [3306, 6379]
 
 
 def test_ports_for_scan_type_includes_user_added_database_ports():
@@ -80,8 +90,8 @@ def test_ports_for_scan_type_includes_user_added_database_ports():
 def test_init_command_writes_builtins():
     output = StringIO()
     call_command("init_port_fingerprint", stdout=output, stderr=output)
-    assert PortFingerprint.objects.filter(built_in=True).count() == 3
-    assert "新增=3" in output.getvalue()
+    assert PortFingerprint.objects.filter(built_in=True).count() == len(BUILTIN_PORT_FINGERPRINTS)
+    assert f"新增={len(BUILTIN_PORT_FINGERPRINTS)}" in output.getvalue()
 
 
 def test_batch_init_calls_init_port_fingerprint():
@@ -117,9 +127,43 @@ def test_delete_builtin_rejected(superuser):
     assert PortFingerprint.objects.filter(pk=row.id).exists()
 
 
+def test_enabled_port_fingerprints_omits_disabled_rows():
+    sync_builtin_port_fingerprints()
+    PortFingerprint.objects.filter(port=80, target_type="nginx").update(enabled=False)
+    PortFingerprint.objects.create(port=8081, target_type="tomcat", protocol="tcp", built_in=False, enabled=False)
+    enabled = {(item["port"], item["target_type"]) for item in enabled_port_fingerprints()}
+    assert (80, "nginx") not in enabled
+    assert (8081, "tomcat") not in enabled
+    assert (443, "nginx") in enabled
+    assert (3306, "mysql") in enabled
+
+
+def test_partial_update_can_disable_builtin(superuser):
+    sync_builtin_port_fingerprints()
+    row = PortFingerprint.objects.get(port=3306, target_type="mysql")
+    request = _req("patch", superuser, data={"enabled": False})
+    response = PortFingerprintViewSet.as_view({"patch": "partial_update"})(request, pk=row.id)
+    assert response.status_code == 200
+    row.refresh_from_db()
+    assert row.enabled is False
+    assert row.built_in is True
+
+
 def test_delete_user_row_allowed(superuser):
     row = PortFingerprint.objects.create(port=3307, target_type="mysql", protocol="tcp", built_in=False)
     request = _req("delete", superuser)
     response = PortFingerprintViewSet.as_view({"delete": "destroy"})(request, pk=row.id)
     assert response.status_code in (200, 204)
     assert not PortFingerprint.objects.filter(pk=row.id).exists()
+
+
+def test_authenticated_user_cannot_put_fingerprint(authenticated_user):
+    assert authenticated_user.is_superuser is False
+    row = PortFingerprint.objects.create(port=4400, target_type="mysql", protocol="tcp", built_in=False)
+
+    request, pk = _req("put", authenticated_user, data={"port": 4401, "target_type": "mysql"}, pk=row.id)
+    response = PortFingerprintViewSet.as_view({"put": "update"})(request, pk=pk)
+    assert response.status_code == 405
+    row.refresh_from_db()
+    assert row.port == 4400
+    assert row.target_type == "mysql"

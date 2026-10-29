@@ -14,6 +14,7 @@ from apps.monitor.models import (
     MonitorAlert,
     MonitorInstance,
     MonitorInstanceOrganization,
+    MonitorPlugin,
     MonitorPolicy,
     PolicyGroup,
     PolicyGroupDefault,
@@ -23,7 +24,10 @@ from apps.monitor.models import (
     PolicyOrganization,
     PolicyTemplate,
 )
+from apps.monitor.services.policy import PolicyService
+from apps.monitor.tasks.utils.policy_methods import period_to_seconds, source_has_dispatch_targets
 from apps.monitor.tasks.utils.policy_multi import query_metric_items
+from apps.monitor.utils.dimension import normalize_instance_identity
 
 _POLICY_CLONE_FIELDS = (
     "alert_name",
@@ -62,9 +66,6 @@ _POLICY_CLONE_FIELDS = (
     "enable",
     "enable_alerts",
 )
-from apps.monitor.services.policy import PolicyService
-from apps.monitor.tasks.utils.policy_methods import period_to_seconds, source_has_dispatch_targets
-from apps.monitor.utils.dimension import normalize_instance_identity
 
 _SCHEDULE_LIMITS = {"min": 59, "hour": 23, "day": 1}
 _DURATION_TYPES = frozenset(_SCHEDULE_LIMITS)
@@ -80,6 +81,43 @@ _EMPTY_NO_DATA = {
 
 def _json_equal(left, right):
     return json.dumps(left, sort_keys=True, default=str) == json.dumps(right, sort_keys=True, default=str)
+
+
+def _editor_collect_type(rule, policy, value):
+    """表单提交的是插件 id。同一插件保持原来的采集类型，换插件才改。"""
+    text = "" if value is None else str(value).strip()
+    if not text or text == str(policy.collect_type or ""):
+        return policy.collect_type, None
+    if not text.isdigit() or text == str(rule.plugin_id):
+        return policy.collect_type if text == str(rule.plugin_id) else value, None
+    plugin = MonitorPlugin.objects.filter(pk=int(text), monitor_object=policy.monitor_object_id).first()
+    if plugin is None:
+        raise ValidationAppException("采集插件无效")
+    return plugin.collect_type or "", plugin
+
+
+def _editor_query_condition(policy, value):
+    """单指标回填会带上指标名。指标和筛选没变时保留原查询，避免被当成配方变更。"""
+    if not isinstance(value, dict) or str(value.get("type") or "") != "metric":
+        return value
+    current = policy.query_condition if isinstance(policy.query_condition, dict) else {}
+    same_metric = str(current.get("type") or "metric") == "metric" and str(current.get("metric_id") or "") == str(value.get("metric_id") or "")
+    if same_metric and _json_equal(current.get("filter") or [], value.get("filter") or []):
+        return current
+    return {key: item for key, item in value.items() if key != "metric_name"}
+
+
+def _keep_echoed_metric_unit(policy, payload):
+    """指标没变、计算单位也没变时，不把目录单位写回空的 metric_unit。"""
+    if "metric_unit" not in payload:
+        return
+    query = payload.get("query_condition", policy.query_condition)
+    if "query_condition" in payload and not _json_equal(query, policy.query_condition):
+        return
+    for field in ("calculation_unit", "threshold_unit"):
+        if field in payload and str(payload[field] or "") != str(getattr(policy, field) or ""):
+            return
+    payload["metric_unit"] = policy.metric_unit or ""
 
 
 def _validation_text(exc):
@@ -154,11 +192,7 @@ def group_detection_state(rules):
     carrier_ids = no_data_carrier_rule_ids(ordered)
     carriers = [rule for rule in ordered if rule.id in carrier_ids]
     carrier_docs = [_no_data_document(rule.policy) for rule in carriers]
-    non_carrier_has_no_data = any(
-        AlertConstants.NO_DATA in (rule.policy.enable_alerts or [])
-        for rule in ordered
-        if rule.id not in carrier_ids
-    )
+    non_carrier_has_no_data = any(AlertConstants.NO_DATA in (rule.policy.enable_alerts or []) for rule in ordered if rule.id not in carrier_ids)
     no_data_uniform = bool(carrier_docs) and all(_json_equal(item, carrier_docs[0]) for item in carrier_docs)
     if non_carrier_has_no_data:
         no_data_uniform = False
@@ -264,11 +298,86 @@ def _is_multi_policy(policy):
     return query.get("type") == "multi"
 
 
+def _mirror_multi_anchor(policy, query, update_fields):
+    """多条件保存时，策略行跟随第一条条件，与单策略保存一致。
+
+    返回这些字段相对当前策略行是否有变化。调用方据此结束尚未恢复的告警。
+    """
+    from apps.monitor.expression.errors import FormulaError
+    from apps.monitor.expression.validators import validate_multi_condition
+    from apps.monitor.serializers.monitor_policy import MonitorPolicySerializer
+
+    query = copy.deepcopy(query)
+    try:
+        validate_multi_condition(query)
+    except FormulaError as exc:
+        raise ValidationAppException(str(exc)) from exc
+    errors = {}
+    MonitorPolicySerializer()._validate_multi_condition_metrics(query, errors)
+    if errors:
+        raise ValidationAppException(str(errors.get("query_condition") or "多指标条件不合法"))
+    attrs = {}
+    MonitorPolicySerializer(instance=policy)._mirror_multi_anchor_fields(attrs, query)
+    changed = False
+    for key, value in attrs.items():
+        stored = copy.deepcopy(value) if isinstance(value, (dict, list)) else value
+        if not _json_equal(getattr(policy, key), stored):
+            changed = True
+        setattr(policy, key, stored)
+        update_fields.append(key)
+    return changed
+
+
 def _enable_alerts_with_no_data(enable_alerts, enabled):
     current = [item for item in (enable_alerts or []) if item != AlertConstants.NO_DATA]
     if enabled:
         current.append(AlertConstants.NO_DATA)
     return current
+
+
+def _assign_rule_editor_no_data(policy, prepared, update_fields):
+    """把这条规则自己的无数据写到策略上。没有 no_data 时保持原值。"""
+    was_no_data = AlertConstants.NO_DATA in (policy.enable_alerts or [])
+    if "no_data" not in prepared:
+        return was_no_data, was_no_data, False
+    validated_no_data = _validate_no_data(prepared.get("no_data"))
+    no_data_enabled = validated_no_data["enabled"]
+    policy.enable_alerts = _enable_alerts_with_no_data(policy.enable_alerts, no_data_enabled)
+    update_fields.append("enable_alerts")
+    if no_data_enabled:
+        policy.no_data_period = copy.deepcopy(validated_no_data["period"])
+        policy.no_data_level = validated_no_data["level"]
+        policy.no_data_alert_name = validated_no_data["alert_name"]
+        policy.no_data_recovery_period = copy.deepcopy(validated_no_data["recovery_period"])
+    elif was_no_data:
+        policy.no_data_period = {}
+        policy.no_data_level = ""
+        policy.no_data_alert_name = ""
+        policy.no_data_recovery_period = {}
+    if no_data_enabled or was_no_data:
+        update_fields.extend(["no_data_period", "no_data_level", "no_data_alert_name", "no_data_recovery_period"])
+    return no_data_enabled, was_no_data, was_no_data and not no_data_enabled
+
+
+def _sync_rule_editor_baselines(
+    policy, *, operator, closes_alerts, closes_no_data, no_data_enabled, was_no_data, old_query, old_group_by, old_source
+):
+    """关掉无数据时清基准；打开或指标范围变了才重建。只改窗口不重建。"""
+    from apps.monitor.services.policy_baseline import PolicyBaselineService
+
+    baseline_changed = (
+        not _json_equal(old_query, policy.query_condition)
+        or not _json_equal(old_group_by, policy.group_by)
+        or not _json_equal(old_source, policy.source)
+    )
+    if closes_no_data and not closes_alerts:
+        no_data_alerts = list(MonitorAlert.objects.filter(policy_id=policy.id, alert_type=AlertConstants.NO_DATA, status="new"))
+        PolicyGroupService._publish_closed_alerts(no_data_alerts, [policy], operator, "no_data_disabled")
+    if closes_no_data:
+        PolicyBaselineService(policy).clear()
+        return
+    if no_data_enabled and (not was_no_data or baseline_changed):
+        PolicyBaselineService(policy).refresh()
 
 
 class PolicyGroupService:
@@ -340,10 +449,29 @@ class PolicyGroupService:
             return membership
 
     @staticmethod
-    def sync_coverage(group):
-        member_ids = list(
-            group.memberships.filter(state=PolicyGroupMembership.STATE_MEMBER).values_list("monitor_instance_id", flat=True)
+    def member_group_names(instance_ids, organization):
+        """当前组织下，这些实例作为成员所在的策略组。未入组或不在本组织的不返回。"""
+        if not instance_ids:
+            return {}
+        allowed = set(
+            MonitorInstanceOrganization.objects.filter(
+                monitor_instance_id__in=list(instance_ids),
+                organization=organization,
+            ).values_list("monitor_instance_id", flat=True)
         )
+        if not allowed:
+            return {}
+        rows = PolicyGroupMembership.objects.filter(
+            state=PolicyGroupMembership.STATE_MEMBER,
+            monitor_instance_id__in=allowed,
+            policy_group__organization=organization,
+            policy_group__isnull=False,
+        ).select_related("policy_group")
+        return {row.monitor_instance_id: {"id": row.policy_group_id, "name": row.policy_group.name} for row in rows}
+
+    @staticmethod
+    def sync_coverage(group):
+        member_ids = list(group.memberships.filter(state=PolicyGroupMembership.STATE_MEMBER).values_list("monitor_instance_id", flat=True))
         for rule in group.rules.select_related("policy", "plugin"):
             previously_covered = bool((rule.policy.source or {}).get("values"))
             if member_ids:
@@ -423,7 +551,11 @@ class PolicyGroupService:
 
     @staticmethod
     def refresh_collect_coverage(instance, operator="system"):
-        membership = PolicyGroupMembership.objects.filter(monitor_instance=instance, state=PolicyGroupMembership.STATE_MEMBER).select_related("policy_group").first()
+        membership = (
+            PolicyGroupMembership.objects.filter(monitor_instance=instance, state=PolicyGroupMembership.STATE_MEMBER)
+            .select_related("policy_group")
+            .first()
+        )
         if membership is None or membership.policy_group_id is None:
             return membership
         group = membership.policy_group
@@ -474,11 +606,7 @@ class PolicyGroupService:
             return None
         try:
             with transaction.atomic():
-                pointer = (
-                    PolicyGroupDefault.objects.select_for_update()
-                    .filter(organization=organization, monitor_object=monitor_object)
-                    .first()
-                )
+                pointer = PolicyGroupDefault.objects.select_for_update().filter(organization=organization, monitor_object=monitor_object).first()
                 if pointer:
                     return pointer.policy_group
                 group = PolicyGroupService.create_from_templates(
@@ -537,7 +665,12 @@ class PolicyGroupService:
         state = membership.state
         if state == PolicyGroupMembership.STATE_MEMBER:
             group = membership.policy_group
-            return {"instance_id": instance_id, "outcome": "joined", "group_id": membership.policy_group_id, "group_name": group.name if group else ""}
+            return {
+                "instance_id": instance_id,
+                "outcome": "joined",
+                "group_id": membership.policy_group_id,
+                "group_name": group.name if group else "",
+            }
         if state == PolicyGroupMembership.STATE_DECLINED:
             return {"instance_id": instance_id, "outcome": "declined", "reason": "已关闭加入"}
         if state == PolicyGroupMembership.STATE_SKIPPED:
@@ -680,7 +813,9 @@ class PolicyGroupService:
     @staticmethod
     def legacy_policies(instance):
         found = []
-        policies = MonitorPolicy.objects.filter(monitor_object_id=instance.monitor_object_id, group_rule__isnull=True).only("id", "name", "enable", "source")
+        policies = MonitorPolicy.objects.filter(monitor_object_id=instance.monitor_object_id, group_rule__isnull=True).only(
+            "id", "name", "enable", "source"
+        )
         for policy in policies:
             values = (policy.source or {}).get("values") or []
             if PolicyGroupService.source_covers_instance(values, instance.id):
@@ -790,6 +925,133 @@ class PolicyGroupService:
             PolicyGroupService._publish_closed_alerts(alerts, [policy], operator, "policy_group_rule_changed")
         return rule
 
+    _RULE_EDITOR_FIELDS = (
+        "alert_name",
+        "collect_type",
+        "query_condition",
+        "period",
+        "group_algorithm",
+        "algorithm",
+        "group_by",
+        "threshold",
+        "trigger_count",
+        "recovery_condition",
+        "metric_unit",
+        "calculation_unit",
+        "threshold_unit",
+        "compare_mode",
+        "compare_value_kind",
+        "compare_offset_hours",
+        "compare_offset_days",
+        "compare_baseline_weeks",
+        "count_predicate",
+        "forecast_target",
+        "forecast_target_unit",
+        "forecast_lookback",
+        "recovery_threshold",
+    )
+    _RULE_EDITOR_CLOSE_FIELDS = tuple(field for field in _RULE_EDITOR_FIELDS if field != "alert_name")
+
+    @staticmethod
+    def apply_rule_editor(rule, payload, operator="system"):
+        """写入这条规则自己的名称、指标、告警条件和无数据。组织、实例范围、频率和通知保持原值。"""
+        if not isinstance(payload, dict):
+            raise ValidationAppException("规则内容无效")
+        with transaction.atomic():
+            locked = MonitorPolicy.objects.select_for_update().get(pk=rule.policy_id)
+            rule.policy = locked
+            policy = locked
+            closes_alerts = False
+            update_fields = ["updated_by", "updated_at"]
+            prepared = dict(payload)
+            old_query = copy.deepcopy(policy.query_condition)
+            old_group_by = copy.deepcopy(policy.group_by)
+            old_source = copy.deepcopy(policy.source)
+            plugin = None
+            if "collect_type" in prepared:
+                prepared["collect_type"], plugin = _editor_collect_type(rule, policy, prepared.get("collect_type"))
+            if isinstance(prepared.get("query_condition"), dict):
+                prepared["query_condition"] = _editor_query_condition(policy, prepared["query_condition"])
+            _keep_echoed_metric_unit(policy, prepared)
+            query = prepared.get("query_condition")
+            if not isinstance(query, dict):
+                query = policy.query_condition if isinstance(policy.query_condition, dict) else {}
+            for field in PolicyGroupService._RULE_EDITOR_FIELDS:
+                if field not in prepared:
+                    continue
+                if field == "recovery_threshold" and (query.get("type") == "multi" or _is_multi_policy(policy)):
+                    continue
+                value = prepared[field]
+                if field == "alert_name":
+                    value = _validate_alert_name(value)
+                elif field == "trigger_count":
+                    value = _validate_trigger_count(value)
+                elif field == "recovery_condition":
+                    value = _validate_recovery_condition(value)
+                elif field == "recovery_threshold":
+                    value = _validate_recovery_threshold(value) or {}
+                current = getattr(policy, field)
+                if field in PolicyGroupService._RULE_EDITOR_CLOSE_FIELDS and not _json_equal(current, value):
+                    closes_alerts = True
+                setattr(policy, field, copy.deepcopy(value) if isinstance(value, (dict, list)) else value)
+                update_fields.append(field)
+            prepared_query = prepared.get("query_condition")
+            if isinstance(prepared_query, dict) and prepared_query.get("type") == "multi":
+                if _mirror_multi_anchor(policy, prepared_query, update_fields):
+                    closes_alerts = True
+            rule_fields = []
+            if plugin is not None:
+                closes_alerts = True
+                rule.plugin = plugin
+                rule_fields.append("plugin")
+                previously_covered = bool((policy.source or {}).get("values"))
+                member_ids = list(
+                    rule.group.memberships.filter(state=PolicyGroupMembership.STATE_MEMBER).values_list("monitor_instance_id", flat=True)
+                )
+                if member_ids:
+                    covered = list(
+                        CollectConfig.objects.filter(monitor_instance_id__in=member_ids, monitor_plugin_id=plugin.id)
+                        .order_by("monitor_instance_id")
+                        .values_list("monitor_instance_id", flat=True)
+                        .distinct()
+                    )
+                else:
+                    covered = []
+                policy.source = {"type": "instance", "values": covered}
+                update_fields.append("source")
+                PolicyGroupService._apply_scan_dispatch(policy, previously_covered=previously_covered)
+            if "name" in prepared:
+                name = str(prepared.get("name") or "").strip()
+                if not name:
+                    raise ValidationAppException("请填写规则名称")
+                if len(name) > 100:
+                    raise ValidationAppException("规则名称过长")
+                rule.name = name
+                rule_fields.append("name")
+                policy.name = name
+                update_fields.append("name")
+            no_data_enabled, was_no_data, closes_no_data = _assign_rule_editor_no_data(policy, prepared, update_fields)
+            if rule_fields:
+                rule.updated_by = operator
+                rule.save(update_fields=[*dict.fromkeys(rule_fields), "updated_by", "updated_at"])
+            policy.updated_by = operator
+            policy.save(update_fields=list(dict.fromkeys(update_fields)))
+            if closes_alerts:
+                alerts = list(MonitorAlert.objects.filter(policy_id=policy.id, status="new"))
+                PolicyGroupService._publish_closed_alerts(alerts, [policy], operator, "policy_group_rule_changed")
+            _sync_rule_editor_baselines(
+                policy,
+                operator=operator,
+                closes_alerts=closes_alerts,
+                closes_no_data=closes_no_data,
+                no_data_enabled=no_data_enabled,
+                was_no_data=was_no_data,
+                old_query=old_query,
+                old_group_by=old_group_by,
+                old_source=old_source,
+            )
+            return {"closes_alerts": closes_alerts, "closes_no_data": closes_no_data and not closes_alerts}
+
     @staticmethod
     def update_detection(group, *, schedule=None, no_data=None, operator="system"):
         """把检测频率写到组内每条策略，把无数据告警写到每个插件的承载规则。"""
@@ -798,16 +1060,10 @@ class PolicyGroupService:
         validated_schedule = _validate_schedule(schedule) if schedule is not None else None
         validated_no_data = _validate_no_data(no_data) if no_data is not None else None
         with transaction.atomic():
-            rules = list(
-                PolicyGroupRule.objects.select_for_update()
-                .filter(group=group)
-                .order_by("id")
-            )
+            rules = list(PolicyGroupRule.objects.select_for_update().filter(group=group).order_by("id"))
             locked_policies = {
                 policy.id: policy
-                for policy in MonitorPolicy.objects.select_for_update().filter(
-                    id__in=[rule.policy_id for rule in rules]
-                ).order_by("id")
+                for policy in MonitorPolicy.objects.select_for_update().filter(id__in=[rule.policy_id for rule in rules]).order_by("id")
             }
             for rule in rules:
                 rule.policy = locked_policies[rule.policy_id]
@@ -853,24 +1109,18 @@ class PolicyGroupService:
                 policy.no_data_level = no_data["level"]
                 policy.no_data_alert_name = no_data["alert_name"]
                 policy.no_data_recovery_period = copy.deepcopy(no_data["recovery_period"])
-                update_fields.extend(
-                    ["no_data_period", "no_data_level", "no_data_alert_name", "no_data_recovery_period"]
-                )
+                update_fields.extend(["no_data_period", "no_data_level", "no_data_alert_name", "no_data_recovery_period"])
             elif rule.id in carrier_ids:
                 policy.no_data_period = {}
                 policy.no_data_level = ""
                 policy.no_data_alert_name = ""
                 policy.no_data_recovery_period = {}
-                update_fields.extend(
-                    ["no_data_period", "no_data_level", "no_data_alert_name", "no_data_recovery_period"]
-                )
+                update_fields.extend(["no_data_period", "no_data_level", "no_data_alert_name", "no_data_recovery_period"])
             policy.save(update_fields=update_fields)
             if should_enable and not was_enabled:
                 PolicyBaselineService(policy).refresh()
             elif was_enabled and not should_enable:
-                alerts = list(
-                    MonitorAlert.objects.filter(policy_id=policy.id, alert_type=AlertConstants.NO_DATA, status="new")
-                )
+                alerts = list(MonitorAlert.objects.filter(policy_id=policy.id, alert_type=AlertConstants.NO_DATA, status="new"))
                 PolicyGroupService._publish_closed_alerts(alerts, [policy], operator, "no_data_disabled")
                 PolicyBaselineService(policy).clear()
 
@@ -975,11 +1225,7 @@ class PolicyGroupService:
     @staticmethod
     def metric_ids_for_policy(policy):
         query = policy.query_condition if isinstance(policy.query_condition, dict) else {}
-        return [
-            item.get("metric_id")
-            for item in query_metric_items(query)
-            if isinstance(item, dict) and item.get("metric_id")
-        ]
+        return [item.get("metric_id") for item in query_metric_items(query) if isinstance(item, dict) and item.get("metric_id")]
 
     @staticmethod
     def metric_id_for_policy(policy):
@@ -1096,8 +1342,10 @@ class PolicyGroupService:
     @staticmethod
     def create_standalone(*, instance, template, operator="system", organization=None):
         recipe = PolicyService.recipe_fields_from_template(template)
-        organizations = [organization] if organization is not None else list(
-            MonitorInstanceOrganization.objects.filter(monitor_instance=instance).values_list("organization", flat=True)
+        organizations = (
+            [organization]
+            if organization is not None
+            else list(MonitorInstanceOrganization.objects.filter(monitor_instance=instance).values_list("organization", flat=True))
         )
         policy = MonitorPolicy.objects.create(
             monitor_object=instance.monitor_object,
@@ -1201,10 +1449,7 @@ class PolicyGroupService:
         if not alerts:
             return
         PolicyService._mark_new_alerts_closed(alerts, operator, reason)
-        from apps.monitor.services.alert_lifecycle_notify import (
-            NOTIFY_SCOPE_ALL_CONFIGURED,
-            AlertLifecycleNotifier,
-        )
+        from apps.monitor.services.alert_lifecycle_notify import NOTIFY_SCOPE_ALL_CONFIGURED, AlertLifecycleNotifier
 
         notifier = AlertLifecycleNotifier(policies_by_id={policy.id: policy for policy in policies if policy is not None})
         notifier.enqueue_alert_center_deliveries(alerts, "closed", operator=operator, reason=reason)

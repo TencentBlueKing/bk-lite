@@ -465,7 +465,7 @@ class FalkorDBClient:
             validation_errors = FieldValidator.validate_instance_data(properties, attrs)
             if validation_errors:
                 error_msg = "; ".join([f"{err['field_name']}: {err['error']}" for err in validation_errors])
-                raise BaseAppException(f"字段校验失败: {error_msg}")
+                raise BaseAppException(f"字段校验失败: {error_msg}", log=False)
 
         # 校验唯一属性
         self.check_unique_attr(properties, check_attr_map.get("is_only", {}), exist_items)
@@ -1116,7 +1116,7 @@ class FalkorDBClient:
             validation_errors = FieldValidator.validate_instance_data(properties, attrs)
             if validation_errors:
                 error_msg = "; ".join([f"{err['field_name']}: {err['error']}" for err in validation_errors])
-                raise BaseAppException(f"字段校验失败: {error_msg}")
+                raise BaseAppException(f"字段校验失败: {error_msg}", log=False)
 
         elif label == MODEL and "attrs" in properties:
             # 模型：确保字段定义包含必要的默认值
@@ -1199,7 +1199,7 @@ class FalkorDBClient:
                 validation_errors = FieldValidator.validate_instance_data(properties, attrs)
                 if validation_errors:
                     error_msg = "; ".join([f"{err['field_name']}: {err['error']}" for err in validation_errors])
-                    raise BaseAppException(f"字段校验失败: {error_msg}")
+                    raise BaseAppException(f"字段校验失败: {error_msg}", log=False)
 
             # 校验必填项
             self.check_required_attr(properties, check_attr_map.get("is_required", {}), is_update=True)

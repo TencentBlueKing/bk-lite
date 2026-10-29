@@ -47,14 +47,19 @@ def _wecom_binding_payload(instance):
     }
 
 
-def test_wecom_login_auth_binding_rejects_unmatched_user_action_create(wecom_instance):
+def test_wecom_login_auth_binding_accepts_unmatched_user_action_create(wecom_instance):
     serializer = LoginAuthBindingSerializer(data=_wecom_binding_payload(wecom_instance))
 
-    with pytest.raises(ValidationError) as excinfo:
-        serializer.is_valid(raise_exception=True)
+    assert serializer.is_valid(), serializer.errors
 
-    assert "unmatched_user_action" in excinfo.value.detail
-    assert "deny" in str(excinfo.value.detail["unmatched_user_action"]).lower()
+
+def test_wecom_login_auth_binding_accepts_create_with_empty_default_group(wecom_instance):
+    payload = _wecom_binding_payload(wecom_instance)
+    payload["default_group_name"] = ""
+
+    serializer = LoginAuthBindingSerializer(data=payload)
+
+    assert serializer.is_valid(), serializer.errors
 
 
 def test_wecom_login_auth_binding_accepts_unmatched_user_action_deny(wecom_instance):
@@ -91,7 +96,7 @@ def test_wecom_login_auth_binding_accepts_external_field_userid(wecom_instance):
     assert serializer.is_valid(), serializer.errors
 
 
-def test_wecom_login_auth_binding_update_from_create_to_deny_is_rejected(wecom_instance):
+def test_wecom_login_auth_binding_update_to_create_is_accepted(wecom_instance):
     binding = LoginAuthBinding.objects.create(
         name="Existing WeCom Binding",
         integration_instance=wecom_instance,
@@ -115,7 +120,4 @@ def test_wecom_login_auth_binding_update_from_create_to_deny_is_rejected(wecom_i
         partial=True,
     )
 
-    with pytest.raises(ValidationError) as excinfo:
-        serializer.is_valid(raise_exception=True)
-
-    assert "unmatched_user_action" in excinfo.value.detail
+    assert serializer.is_valid(), serializer.errors

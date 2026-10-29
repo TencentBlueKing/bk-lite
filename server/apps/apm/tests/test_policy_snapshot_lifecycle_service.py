@@ -8,15 +8,16 @@ from apps.apm.adapters import InMemoryNotificationDispatcher
 from apps.apm.models import (
     ApmAlert,
     ApmAlertMetricSnapshot,
+    ApmAlertOutbox,
     ApmEvent,
     ApmEventSnapshot,
     ApmPolicy,
+    ApmPolicyNotificationTarget,
     ApmPolicyTargetState,
     ApmService,
     ApmServiceOrganization,
 )
-from apps.apm.services import ApmEventSnapshotStore, DjangoApmPolicyService
-from apps.apm.services import metric_snapshots
+from apps.apm.services import ApmEventSnapshotStore, DjangoApmPolicyService, metric_snapshots
 from apps.apm.services.contracts import MetricDataState, PolicyQueryResult, ServiceRed, ServiceRedPoint
 from apps.apm.services.metric_snapshots import ApmAlertMetricSnapshotStore
 from apps.apm.tests.helpers import bind_policy_organizations
@@ -277,3 +278,69 @@ def test_alert_metric_snapshot_store_caps_oldest_entries(multilevel_policy, mock
     stored.refresh_from_db()
     assert len(stored.snapshots) == 8
     assert stored.snapshots[-1]["value"] == "0.12"
+
+
+class WindowMetricStore:
+    def __init__(self, current, baseline):
+        self.current = current
+        self.baseline = baseline
+        self.queries = []
+
+    def service_red(self, query):
+        self.queries.append(query)
+        if len(self.queries) % 2 == 1:
+            return self.current
+        return self.baseline
+
+
+def test_relative_event_and_snapshots_keep_current_baseline_and_compare_mode(multilevel_policy):
+    evaluated_at = timezone.now().replace(second=0, microsecond=0)
+    baseline_point = ServiceRedPoint(
+        timestamp=evaluated_at - timedelta(minutes=6),
+        request_rate=1,
+        error_rate=0.04,
+        p95_ms=10,
+        p99_ms=20,
+    )
+    multilevel_policy.compare_mode = ApmPolicy.CompareMode.PREVIOUS_WINDOW
+    multilevel_policy.compare_value_kind = ApmPolicy.CompareValueKind.PERCENT
+    multilevel_policy.min_request_count = 20
+    multilevel_policy.trigger_after = 1
+    multilevel_policy.thresholds = [{"severity": "error", "comparator": "gt", "value": "40"}]
+    multilevel_policy.save()
+    ApmPolicyNotificationTarget.objects.create(
+        policy=multilevel_policy,
+        channel_id=7,
+        channel_name="告警中心",
+        channel_type="nats",
+        delivery_mode="alert_event_copy",
+        recipient_mode="none",
+        recipients=[],
+    )
+    store = WindowMetricStore(
+        ServiceRed(20, 0.06, 100, 150, request_count=318),
+        ServiceRed(20, 0.04, 100, 150, timeseries=(baseline_point,), request_count=300),
+    )
+    DjangoApmPolicyService(store, InMemoryNotificationDispatcher()).evaluate(
+        multilevel_policy.id,
+        evaluated_at=evaluated_at,
+    )
+
+    alert = ApmAlert.objects.get()
+    point = alert.metric_snapshot.snapshots[-1]
+    assert alert.metric_snapshot.unit == "percent"
+    assert point["value"] == "50"
+    assert point["current_value"] == "0.06"
+    assert point["baseline_value"] == "0.04"
+    assert point["result_unit"] == "percent"
+    event = alert.events.get()
+    assert "当前 0.06，对照 0.04，变化 50" in event.description
+    snapshot = event.snapshot
+    assert snapshot.policy_snapshot["compare_mode"] == "previous_window"
+    assert snapshot.policy_snapshot["compare_value_kind"] == "percent"
+    assert snapshot.policy_snapshot["min_request_count"] == 20
+    assert snapshot.evaluation_snapshot["current_value"] == "0.06"
+    assert snapshot.evaluation_snapshot["baseline_value"] == "0.04"
+    assert snapshot.evaluation_snapshot["result_unit"] == "percent"
+    assert snapshot.pending_payload["baseline_series"] == [{"timestamp": baseline_point.timestamp.isoformat(), "value": 0.04}]
+    assert ApmAlertOutbox.objects.get().payload["labels"]["compare_mode"] == "previous_window"

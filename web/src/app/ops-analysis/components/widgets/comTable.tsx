@@ -484,7 +484,7 @@ const ComTable: React.FC<ComTableProps> = ({
 
   return (
     <div
-      className={`h-full flex flex-col ${usesScreenTheme ? styles.screenDarkRoot : ''}`}
+      className={`mt-2 h-full flex flex-col ${usesScreenTheme ? styles.screenDarkRoot : ''}`}
       style={screenTableStyle}
     >
       {renderFilters()}

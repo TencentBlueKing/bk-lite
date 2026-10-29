@@ -11,7 +11,7 @@ interface Props {
 
 export const Icons = ({ iconCategories, onClick, onMouseDown }: Props) => {
   return (
-    <Grid container spacing={1} sx={{ py: 2 }}>
+    <Grid container spacing={1} sx={{ pt: 0.5, pb: 2 }}>
       {iconCategories.map((cat) => {
         return (
           <Grid
@@ -19,7 +19,7 @@ export const Icons = ({ iconCategories, onClick, onMouseDown }: Props) => {
             key={`icon-collection-${cat.id ?? 'uncategorised'}`}
           >
             <IconCollection
-              {...cat}
+              icons={cat.icons}
               onClick={onClick}
               onMouseDown={onMouseDown}
             />

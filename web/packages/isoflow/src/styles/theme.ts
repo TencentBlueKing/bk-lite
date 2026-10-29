@@ -32,7 +32,7 @@ export const customVars: CustomThemeVars = {
     height: 40
   },
   customPalette: {
-    diagramBg: '#f6faff',
+    diagramBg: '#FFFFFF',
     defaultColor: '#a5b8f3'
   }
 };
@@ -123,10 +123,54 @@ export const themeConfig: ThemeOptions = {
     MuiTextField: {
       defaultProps: {
         variant: 'outlined'
+      }
+    },
+    MuiOutlinedInput: {
+      styleOverrides: {
+        root: {
+          borderRadius: 6,
+          backgroundColor: '#FFFFFF',
+          fontSize: 13,
+          '& .MuiOutlinedInput-input, &.MuiInputBase-sizeSmall .MuiOutlinedInput-input': {
+            padding: '6px 10px',
+            height: 20,
+            boxSizing: 'content-box'
+          },
+          '& .MuiOutlinedInput-notchedOutline': {
+            borderColor: '#DFE7F0'
+          },
+          '&:hover .MuiOutlinedInput-notchedOutline': {
+            borderColor: '#A8BCD5'
+          },
+          '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
+            borderColor: 'var(--color-primary)',
+            borderWidth: 1
+          }
+        },
+        input: {
+          padding: '6px 10px'
+        }
+      }
+    },
+    MuiSlider: {
+      defaultProps: {
+        valueLabelDisplay: 'auto',
+        valueLabelFormat: (value: number) =>
+          Number.isInteger(value) ? `${value}` : `${Math.round(value * 10) / 10}`
       },
       styleOverrides: {
         root: {
-          '.MuiInputBase-input': {}
+          color: 'var(--color-primary)',
+          height: 4,
+          padding: '10px 0'
+        },
+        thumb: {
+          width: 14,
+          height: 14
+        },
+        rail: {
+          color: 'var(--color-fill-2)',
+          opacity: 1
         }
       }
     }

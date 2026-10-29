@@ -75,10 +75,22 @@ vi.mock('@/app/ops-analysis/hooks/useSingleValueConfig', () => ({
   useSingleValueConfig: () => ({
     thresholdColors: [],
     setThresholdColors: vi.fn(),
-    selectedFields: [],
+    selectedFields: ['value'],
     setSelectedFields: vi.fn(),
     resetSingleValueConfig: vi.fn(),
+    singleValueTreeData: [],
+    loadingSingleValueData: false,
+    compareAvailable: false,
+    handleSingleValueFieldChange: vi.fn(),
+    handleThresholdChange: vi.fn(),
+    handleThresholdBlur: vi.fn(),
+    addThreshold: vi.fn(),
+    removeThreshold: vi.fn(),
   }),
+}));
+
+vi.mock('@/app/cmdb/(pages)/assetManage/management/list/selectIcon', () => ({
+  default: () => null,
 }));
 
 vi.mock('@/app/ops-analysis/components/widgetConfig/hooks/useTableConfig', () => ({
@@ -99,11 +111,23 @@ vi.mock('@/app/ops-analysis/components/widgetConfig/hooks/useTableConfig', () =>
 }));
 
 vi.mock('@/app/ops-analysis/components/widgetDataRenderer', () => ({
-  default: (props: { widgetId: string; runtimeActive?: boolean }) => (
+  default: (props: {
+    widgetId: string;
+    runtimeActive?: boolean;
+    config?: { chartThemeMode?: string; singleStyle?: unknown };
+    screenRenderContext?: unknown;
+    onTopologyLayoutChange?: unknown;
+  }) => (
     <div
       data-testid="mock-preview-renderer"
       data-widget-id={props.widgetId}
       data-runtime-active={String(props.runtimeActive)}
+      data-chart-theme={props.config?.chartThemeMode ?? ''}
+      data-single-style={
+        props.config?.singleStyle ? JSON.stringify(props.config.singleStyle) : ''
+      }
+      data-screen-context={props.screenRenderContext ? 'yes' : 'no'}
+      data-topology-change={props.onTopologyLayoutChange ? 'yes' : 'no'}
     />
   ),
 }));
@@ -130,6 +154,22 @@ const lineItem = (): LayoutItem => ({
     dataSource: 7,
     chartType: 'line',
     dataSourceParams: [],
+  },
+});
+
+const singleItem = (): LayoutItem => ({
+  i: 'single-1',
+  x: 0,
+  y: 0,
+  w: 4,
+  h: 3,
+  name: '在线数',
+  description: '',
+  valueConfig: {
+    dataSource: 7,
+    chartType: 'single',
+    dataSourceParams: [],
+    selectedFields: ['value'],
   },
 });
 
@@ -220,6 +260,7 @@ describe('ViewConfig preview drawer', () => {
       'true',
     );
     expect(previewButton.textContent).toBe('dashboard.configPreviewCollapse');
+    expect(document.querySelector('[data-screen-widget-theme]')).toBeNull();
 
     await user.click(previewButton);
     await waitFor(() => {
@@ -266,7 +307,7 @@ describe('ViewConfig preview drawer', () => {
 });
 
 describe('ViewConfig screen panel', () => {
-  it('embeds the form without a drawer or preview button', async () => {
+  it('embeds the form with a preview button and no drawer', async () => {
     render(
       <ViewConfig
         open
@@ -279,9 +320,271 @@ describe('ViewConfig screen panel', () => {
     );
 
     expect(await screen.findByTestId('widget-config-panel')).toBeTruthy();
-    expect(screen.queryByTestId('widget-config-preview-button')).toBeNull();
+    expect(screen.getByTestId('widget-config-preview-button')).toBeTruthy();
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(screen.getByText('common.confirm')).toBeTruthy();
+  });
+
+  it('opens a light dashboard preview into the external host', async () => {
+    const user = userEvent.setup();
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const ensureDataSource = vi.fn(async () => lineDataSource);
+    const manager = {
+      ...buildManager(lineDataSource),
+      ensureDataSource,
+    };
+    const singleStyle = { showIcon: true, align: 'center' as const };
+    const item = singleItem();
+    item.valueConfig = { ...item.valueConfig, chartThemeMode: 'screen-dark' };
+    const view = render(
+      <ViewConfig
+        open
+        variant="panel"
+        item={item}
+        onClose={() => undefined}
+        dataSourceManager={manager as never}
+        surface="screen"
+        showSingleValueStyle={false}
+        previewHost={host}
+        previewSingleStyle={singleStyle}
+      />,
+    );
+
+    const previewButton = await screen.findByTestId('widget-config-preview-button');
+    expect(host.querySelector('[data-testid="widget-config-preview-aside"]')).toBeNull();
+    expect(
+      screen.getByTestId('widget-config-panel').querySelector(
+        '[data-testid="widget-config-preview-aside"]',
+      ),
+    ).toBeNull();
+
+    await user.click(previewButton);
+
+    await waitFor(() => {
+      expect(host.querySelector('[data-testid="widget-config-preview-aside"]')).toBeTruthy();
+    });
+    expect(
+      screen.getByTestId('widget-config-panel').querySelector(
+        '[data-testid="widget-config-preview-aside"]',
+      ),
+    ).toBeNull();
+    const aside = host.querySelector('[data-testid="widget-config-preview-aside"]') as HTMLElement;
+    expect(document.querySelector('[data-screen-widget-theme]')).toBeNull();
+    expect(aside.style.background).toBe('');
+    expect(aside.className).toContain('bg-(--color-bg)');
+    expect(aside.className).toContain('border-(--color-border-1)');
+    const renderer = screen.getByTestId('mock-preview-renderer');
+    expect(renderer.getAttribute('data-chart-theme')).toBe('');
+    expect(renderer.getAttribute('data-single-style')).toBe(JSON.stringify(singleStyle));
+    expect(renderer.getAttribute('data-screen-context')).toBe('no');
+    expect(renderer.getAttribute('data-topology-change')).toBe('no');
+    expect(previewButton.textContent).toBe('dashboard.configPreviewCollapse');
+
+    view.rerender(
+      <ViewConfig
+        open
+        variant="panel"
+        item={item}
+        onClose={() => undefined}
+        dataSourceManager={manager as never}
+        surface="screen"
+        showSingleValueStyle={false}
+        previewHost={host}
+        previewSingleStyle={{ showIcon: true, align: 'right' }}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mock-preview-renderer').getAttribute('data-single-style')).toBe(
+        JSON.stringify({ showIcon: true, align: 'right' }),
+      );
+    });
+    expect(screen.getByTestId('mock-preview-renderer').getAttribute('data-chart-theme')).toBe('');
+    expect(document.querySelector('[data-screen-widget-theme]')).toBeNull();
+    expect(ensureDataSource).toHaveBeenCalledTimes(1);
+
+    await user.click(screen.getByTestId('widget-config-preview-button'));
+    await waitFor(() => {
+      expect(host.querySelector('[data-testid="widget-config-preview-aside"]')).toBeNull();
+    });
+    host.remove();
+  });
+
+  it('collapses the preview when the selected widget changes', async () => {
+    const user = userEvent.setup();
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const view = render(
+      <ViewConfig
+        open
+        variant="panel"
+        item={lineItem()}
+        onClose={() => undefined}
+        dataSourceManager={buildManager(lineDataSource) as never}
+        surface="screen"
+        previewHost={host}
+      />,
+    );
+
+    await user.click(await screen.findByTestId('widget-config-preview-button'));
+    await waitFor(() => {
+      expect(host.querySelector('[data-testid="widget-config-preview-aside"]')).toBeTruthy();
+    });
+
+    view.rerender(
+      <ViewConfig
+        open
+        variant="panel"
+        item={{ ...lineItem(), i: 'mem-1', name: '内存' }}
+        onClose={() => undefined}
+        dataSourceManager={buildManager(lineDataSource) as never}
+        surface="screen"
+        previewHost={host}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(host.querySelector('[data-testid="widget-config-preview-aside"]')).toBeNull();
+    });
+    expect(screen.getByTestId('widget-config-preview-button').textContent).toBe('common.preview');
+
+    view.unmount();
+    expect(host.querySelector('[data-testid="widget-config-preview-aside"]')).toBeNull();
+    host.remove();
+  });
+
+  it('collapses the preview when a pending widget switches chart type', async () => {
+    const user = userEvent.setup();
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const pendingLine = { ...lineItem(), i: 'pending:line:' };
+    const view = render(
+      <ViewConfig
+        open
+        variant="panel"
+        item={pendingLine}
+        onClose={() => undefined}
+        dataSourceManager={buildManager(lineDataSource) as never}
+        surface="screen"
+        previewHost={host}
+      />,
+    );
+
+    await user.click(await screen.findByTestId('widget-config-preview-button'));
+    await waitFor(() => {
+      expect(host.querySelector('[data-testid="widget-config-preview-aside"]')).toBeTruthy();
+    });
+
+    view.rerender(
+      <ViewConfig
+        open
+        variant="panel"
+        item={{ ...lineItem(), i: 'pending:pie:', name: '分布' }}
+        onClose={() => undefined}
+        dataSourceManager={buildManager(lineDataSource) as never}
+        surface="screen"
+        previewHost={host}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(host.querySelector('[data-testid="widget-config-preview-aside"]')).toBeNull();
+    });
+    expect(screen.getByTestId('widget-config-preview-button').textContent).toBe('common.preview');
+    host.remove();
+  });
+
+  it('keeps the preview open when the same widget data changes', async () => {
+    const user = userEvent.setup();
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const ensureDataSource = vi.fn(async () => lineDataSource);
+    const manager = {
+      ...buildManager(lineDataSource),
+      ensureDataSource,
+    };
+    const item = lineItem();
+    const view = render(
+      <ViewConfig
+        open
+        variant="panel"
+        item={item}
+        onClose={() => undefined}
+        dataSourceManager={manager as never}
+        surface="screen"
+        previewHost={host}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(ensureDataSource).toHaveBeenCalledTimes(1);
+    });
+    await user.click(await screen.findByTestId('widget-config-preview-button'));
+    await waitFor(() => {
+      expect(host.querySelector('[data-testid="widget-config-preview-aside"]')).toBeTruthy();
+    });
+
+    view.rerender(
+      <ViewConfig
+        open
+        variant="panel"
+        item={{
+          ...item,
+          valueConfig: {
+            ...item.valueConfig,
+            dataSource: 8,
+          },
+        }}
+        onClose={() => undefined}
+        dataSourceManager={manager as never}
+        surface="screen"
+        previewHost={host}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(ensureDataSource).toHaveBeenCalledTimes(2);
+    });
+    expect(host.querySelector('[data-testid="widget-config-preview-aside"]')).toBeTruthy();
+    expect(screen.getByTestId('widget-config-preview-button').textContent).toBe(
+      'dashboard.configPreviewCollapse',
+    );
+    host.remove();
+  });
+
+  it('does not write preview theme or single style into the saved config', async () => {
+    const user = userEvent.setup();
+    const onConfirm = vi.fn();
+    render(
+      <ViewConfig
+        open
+        variant="panel"
+        item={singleItem()}
+        onClose={() => undefined}
+        onConfirm={onConfirm}
+        dataSourceManager={buildManager(lineDataSource) as never}
+        surface="screen"
+        showSingleValueStyle={false}
+        previewSingleStyle={{ showIcon: true, align: 'center' }}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByDisplayValue('在线数')).toBeTruthy();
+    });
+    await user.click(screen.getByTestId('widget-config-preview-button'));
+    await user.click(screen.getByRole('button', { name: 'common.confirm' }));
+
+    await waitFor(() => {
+      expect(onConfirm).toHaveBeenCalledTimes(1);
+    });
+    const saved = onConfirm.mock.calls[0][0] as {
+      chartThemeMode?: string;
+      singleStyle?: unknown;
+    };
+    expect(saved.chartThemeMode).toBeUndefined();
+    expect(saved.singleStyle).toBeUndefined();
   });
 
   it('does not reload the data form when only widget appearance changes', async () => {
@@ -338,6 +641,71 @@ describe('ViewConfig screen panel', () => {
           valueConfig: {
             ...item.valueConfig,
             dataSource: 8,
+          },
+        }}
+        onClose={() => undefined}
+        dataSourceManager={manager as never}
+        surface="screen"
+      />,
+    );
+
+    await waitFor(() => {
+      expect(ensureDataSource).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  it('does not reload the data form when only single-value style changes', async () => {
+    const ensureDataSource = vi.fn(async () => lineDataSource);
+    const manager = {
+      ...buildManager(lineDataSource),
+      ensureDataSource,
+    };
+    const item = singleItem();
+    const view = render(
+      <ViewConfig
+        open
+        variant="panel"
+        item={item}
+        onClose={() => undefined}
+        dataSourceManager={manager as never}
+        surface="screen"
+      />,
+    );
+
+    await waitFor(() => {
+      expect(ensureDataSource).toHaveBeenCalledTimes(1);
+    });
+
+    view.rerender(
+      <ViewConfig
+        open
+        variant="panel"
+        item={{
+          ...item,
+          valueConfig: {
+            ...item.valueConfig,
+            singleStyle: { showIcon: true, align: 'center' },
+          },
+        }}
+        onClose={() => undefined}
+        dataSourceManager={manager as never}
+        surface="screen"
+      />,
+    );
+
+    await waitFor(() => {
+      expect(ensureDataSource).toHaveBeenCalledTimes(1);
+    });
+
+    view.rerender(
+      <ViewConfig
+        open
+        variant="panel"
+        item={{
+          ...item,
+          valueConfig: {
+            ...item.valueConfig,
+            descriptionField: 'note',
           },
         }}
         onClose={() => undefined}
@@ -425,5 +793,91 @@ describe('ViewConfig interaction validation', () => {
     });
     expect(errorSpy.mock.calls.map((call) => call[0])).not.toContain('common.saveFailed');
     errorSpy.mockRestore();
+  });
+});
+
+describe('ViewConfig single style tab', () => {
+  it('places style between data and interaction only for single widgets', async () => {
+    const user = userEvent.setup();
+    const view = render(
+      <ViewConfig
+        open
+        item={singleItem()}
+        onClose={() => undefined}
+        dataSourceManager={buildManager(lineDataSource) as never}
+      />,
+    );
+
+    const styleTab = await screen.findByRole('tab', { name: 'dashboard.singleStyleTab' });
+    const dataTab = screen.getByRole('tab', { name: 'dashboard.interactionDataTab' });
+    const interactionTab = screen.getByRole('tab', { name: 'dashboard.interactionTab' });
+    expect(dataTab.compareDocumentPosition(styleTab)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(styleTab.compareDocumentPosition(interactionTab)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+
+    await user.click(styleTab);
+    expect(styleTab.getAttribute('aria-selected')).toBe('true');
+    expect(screen.getByText('dashboard.singleStyleIcon')).toBeTruthy();
+    expect(screen.getByText('dashboard.singleStyleAlign')).toBeTruthy();
+    expect(screen.queryByText('dashboard.singleStylePreviewHint')).toBeNull();
+    expect(screen.queryByText('dashboard.singleStyleIconSource')).toBeNull();
+    expect(screen.getByText('topology.nodeConfig.valueMappings')).toBeTruthy();
+
+    await user.click(screen.getByRole('switch', { name: 'dashboard.singleStyleIcon' }));
+    expect(await screen.findByText('dashboard.singleStyleIconSource')).toBeTruthy();
+    expect(
+      screen.getByRole('radio', { name: 'dashboard.singleStyleIconBuiltin' }).closest('label')?.className,
+    ).toContain('ant-radio-button-wrapper-checked');
+    expect(screen.queryByTestId('single-style-file-input')).toBeNull();
+    await user.click(screen.getByRole('button', { name: 'dashboard.singleStyleAlignRight' }));
+    expect(screen.getByRole('button', { name: 'dashboard.singleStyleAlignRight' }).getAttribute('aria-pressed')).toBe('true');
+
+    view.rerender(
+      <ViewConfig
+        open
+        item={lineItem()}
+        onClose={() => undefined}
+        dataSourceManager={buildManager(lineDataSource) as never}
+      />,
+    );
+    await waitFor(() => {
+      expect(screen.queryByRole('tab', { name: 'dashboard.singleStyleTab' })).toBeNull();
+    });
+  });
+
+  it('hides the style tab when topology turns single value style off', async () => {
+    render(
+      <ViewConfig
+        open
+        showSingleValueStyle={false}
+        item={singleItem()}
+        onClose={() => undefined}
+        dataSourceManager={buildManager(lineDataSource) as never}
+      />,
+    );
+
+    expect(await screen.findByRole('tab', { name: 'dashboard.interactionDataTab' })).toBeTruthy();
+    expect(screen.getByRole('tab', { name: 'dashboard.interactionTab' })).toBeTruthy();
+    expect(screen.queryByRole('tab', { name: 'dashboard.singleStyleTab' })).toBeNull();
+    expect(screen.queryByText('dashboard.singleStyleIcon')).toBeNull();
+  });
+
+  it('keeps style controls out of the screen data panel', async () => {
+    render(
+      <ViewConfig
+        open
+        variant="panel"
+        configSection="data"
+        surface="screen"
+        showSingleValueStyle={false}
+        item={singleItem()}
+        onClose={() => undefined}
+        dataSourceManager={buildManager(lineDataSource) as never}
+      />,
+    );
+
+    expect(await screen.findByText('topology.nodeConfig.valueMappings')).toBeTruthy();
+    expect(screen.queryByText('dashboard.singleStyleIcon')).toBeNull();
+    expect(screen.queryByText('dashboard.singleStylePreviewHint')).toBeNull();
+    expect(screen.queryByRole('tab', { name: 'dashboard.singleStyleTab' })).toBeNull();
   });
 });

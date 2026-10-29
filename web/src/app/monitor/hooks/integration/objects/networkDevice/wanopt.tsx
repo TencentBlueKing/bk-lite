@@ -77,6 +77,7 @@ export const useWanoptConfig = () => {
       default: ['instance_id']
     },
     collectTypes: {
+      'Wanopt Cisco WAAS SNMP': 'snmp_cisco_waas',
       'Wanopt Exinda SNMP': 'snmp_exinda',
       'Wanopt Venturi SNMP': 'snmp_venturi',
       'Wanopt Riverbed SNMP': 'snmp_riverbed',

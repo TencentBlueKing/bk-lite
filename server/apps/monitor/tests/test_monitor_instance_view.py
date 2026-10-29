@@ -1241,6 +1241,7 @@ def test_lookup_monitor_instance_finds_tuple_pk_from_scalar_id(db, monkeypatch):
         "instance_id_keys": ["instance_id"],
         "cmdb_id": "",
         "node_id": "",
+        "operating_system": "",
     }
 
 

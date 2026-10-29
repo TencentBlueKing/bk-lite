@@ -104,7 +104,7 @@ SENSITIVE_FIELDS = frozenset({"password", "secret", "token"})
 
 # 连接器配置允许嵌套自定义 headers/body，敏感键不一定是固定字段名。
 # 与数据源 API 的脱敏口径保持一致，避免 Authorization、api_key 等配置随 YAML 导出。
-SENSITIVE_FIELD_KEYWORDS = ("password", "token", "secret", "authorization", "apikey")
+SENSITIVE_FIELD_KEYWORDS = ("password", "token", "secret", "authorization", "apikey", "api_key")
 
 
 def is_sensitive_field_name(field: object) -> bool:
@@ -153,6 +153,11 @@ class ImportExportErrorCode:
     IMPORT_DEPENDENCY_MISSING = "OA_IMPORT_DEPENDENCY_MISSING"
     IMPORT_SECRET_REQUIRED = "OA_IMPORT_SECRET_REQUIRED"
     IMPORT_PERMISSION_DENIED = "OA_IMPORT_PERMISSION_DENIED"
+    IMPORT_UPDATE_CANVAS_COUNT = "OA_IMPORT_UPDATE_CANVAS_COUNT"
+    IMPORT_UPDATE_TYPE_MISMATCH = "OA_IMPORT_UPDATE_TYPE_MISMATCH"
+    IMPORT_UPDATE_NAME_TAKEN = "OA_IMPORT_UPDATE_NAME_TAKEN"
+    IMPORT_UPDATE_BUILTIN = "OA_IMPORT_UPDATE_BUILTIN"
+    IMPORT_UPDATE_TARGET_MISSING = "OA_IMPORT_UPDATE_TARGET_MISSING"
 
 
 # 错误码对应的默认错误消息
@@ -169,6 +174,11 @@ ERROR_MESSAGES = {
     ImportExportErrorCode.IMPORT_DEPENDENCY_MISSING: "依赖对象缺失",
     ImportExportErrorCode.IMPORT_SECRET_REQUIRED: "新建对象缺少必填敏感字段",
     ImportExportErrorCode.IMPORT_PERMISSION_DENIED: "当前用户没有导入所需权限",
+    ImportExportErrorCode.IMPORT_UPDATE_CANVAS_COUNT: "导入更新要求当前类型画布恰好 1 个",
+    ImportExportErrorCode.IMPORT_UPDATE_TYPE_MISMATCH: "YAML 与当前画布类型不一致",
+    ImportExportErrorCode.IMPORT_UPDATE_NAME_TAKEN: "目标名称已被占用",
+    ImportExportErrorCode.IMPORT_UPDATE_BUILTIN: "内置画布不允许导入更新",
+    ImportExportErrorCode.IMPORT_UPDATE_TARGET_MISSING: "目标画布不存在",
 }
 
 

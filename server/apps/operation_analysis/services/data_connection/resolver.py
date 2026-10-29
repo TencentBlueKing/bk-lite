@@ -109,6 +109,22 @@ class ConnectionResolver:
                 resolved["database"] = overrides["database"]
             return resolved
 
+        if connection.connection_type == DataConnection.TYPE_ELASTICSEARCH:
+            resolved = {
+                "url": decrypted.get("url"),
+                "auth_type": decrypted.get("auth_type") or "none",
+                "username": decrypted.get("username"),
+                "password": decrypted.get("password"),
+                "api_key": decrypted.get("api_key"),
+                "ca_cert": decrypted.get("ca_cert") or "",
+                "timeout_seconds": decrypted.get("timeout_seconds") or 30,
+                "index": decrypted.get("index") or "",
+            }
+            override_index = overrides.get("index")
+            if override_index not in (None, ""):
+                resolved["index"] = override_index
+            return resolved
+
         if connection.connection_type == DataConnection.TYPE_REST_API:
             path = overrides.get("path")
             if path in (None, ""):

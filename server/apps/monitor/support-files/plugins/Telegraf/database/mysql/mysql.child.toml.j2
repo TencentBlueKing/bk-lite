@@ -17,6 +17,10 @@
     gather_table_schema = false
     gather_table_io_waits = {{ gather_table_io_waits | default(false, true) | lower }}
     gather_table_lock_waits = {{ gather_table_lock_waits | default(false, true) | lower }}
+    # 内置 digest 查询在 3309 上匹配 0 行：SCHEMA_NAME 为 NULL 时 NOT IN 为 unknown，
+    # 有 schema 的摘要又常超默认 86400 秒。开关打开时改由文末 inputs.sql 落点，这里固定关闭，避免双写。
+    gather_perf_events_statements = false
+    gather_event_waits = {{ gather_event_waits | default(false, true) | lower }}
 
     # 慢速 SQL 相关采集间隔
     interval_slow = "10s"
@@ -27,6 +31,7 @@
       "uptime",
       "threads_connected",
       "threads_running",
+      "threads_created",
       "threads_cached",
       "threads_idle",
       "threads_executing",
@@ -49,10 +54,20 @@
       "com_insert",
       "com_update",
       "com_delete",
+      "com_commit",
+      "com_rollback",
+      "select_scan",
+      "table_locks_waited",
 
       # InnoDB 性能
       "innodb_row_lock_time_avg",
       "innodb_row_lock_waits",
+      "innodb_deadlocks",
+      "innodb_log_waits",
+      "innodb_rows_read",
+      "innodb_rows_inserted",
+      "innodb_rows_updated",
+      "innodb_rows_deleted",
       "innodb_data_reads",
       "innodb_data_writes",
       "innodb_data_fsyncs",
@@ -95,9 +110,33 @@
       "super_read_only",
       "log_bin",
       "log_slave_updates",
+      # SHOW SLAVE STATUS（MySQL 5.7 / MariaDB）
       "slave_seconds_behind_master",
       "slave_slave_io_running",
+      "slave_slave_io_running_int",
       "slave_slave_sql_running",
+      "slave_slave_sql_running_int",
+      # SHOW REPLICA STATUS（MySQL 8+）：telegraf metric_version=2 落名为
+      # slave_<lowercase(column)>，与旧 slave_seconds_behind_master /
+      # slave_slave_io_running 对不上，不列入会被 fieldinclude 滤掉。
+      "slave_seconds_behind_source",
+      "slave_replica_io_running",
+      "slave_replica_io_running_int",
+      "slave_replica_sql_running",
+      "slave_replica_sql_running_int",
+      "slave_relay_log_pos",
+      "slave_relay_log_space",
+      "slave_read_master_log_pos",
+      "slave_exec_master_log_pos",
+      "slave_master_log_pos",
+      "slave_read_source_log_pos",
+      "slave_exec_source_log_pos",
+      "slave_last_errno",
+      "slave_last_io_errno",
+      "slave_last_sql_errno",
+      "slaves_connected",
+      "rpl_semi_sync_master_clients",
+      "rpl_semi_sync_master_status",
 
       # Binary Log（需 gather_binary_logs）
       "binary_files_count",
@@ -121,7 +160,25 @@
       "write_normal",
       "write_allow_write",
       "write_concurrent_insert",
-      "write_low_priority"
+      "write_low_priority",
+
+      # 语句摘要（需 gather_perf_events_statements，measurement=mysql_perf_schema）
+      "events_statements_total",
+      "events_statements_seconds_total",
+      "events_statements_errors_total",
+      "events_statements_warnings_total",
+      "events_statements_rows_affected_total",
+      "events_statements_rows_sent_total",
+      "events_statements_rows_examined_total",
+      "events_statements_tmp_tables_total",
+      "events_statements_tmp_disk_tables_total",
+      "events_statements_sort_merge_passes_total",
+      "events_statements_sort_rows_total",
+      "events_statements_no_index_used_total",
+
+      # 等待事件（需 gather_event_waits，measurement=mysql_perf_schema）
+      "events_waits_total",
+      "events_waits_seconds_total"
     ]
 
     [inputs.mysql.tags]
@@ -129,3 +186,108 @@
         instance_type = "{{ instance_type }}"
         collect_type = "database"
         config_type = "mysql"
+
+# SHOW SLAVE/REPLICA STATUS 的 IO/SQL 线程是 Yes/No 字符串；
+# VictoriaMetrics 只收数值。采集侧转成 _int，避免依赖 ingest 侧 enum。
+[[processors.enum]]
+    namepass = ["mysql"]
+    [processors.enum.tagpass]
+        instance_id = ["{{ instance_id }}"]
+
+    [[processors.enum.mapping]]
+        field = "slave_slave_io_running"
+        dest = "slave_slave_io_running_int"
+        default = 0
+        [processors.enum.mapping.value_mappings]
+            Yes = 1
+            No = 0
+            Connecting = 0
+            Preparing = 0
+
+    [[processors.enum.mapping]]
+        field = "slave_slave_sql_running"
+        dest = "slave_slave_sql_running_int"
+        default = 0
+        [processors.enum.mapping.value_mappings]
+            Yes = 1
+            No = 0
+            Preparing = 0
+
+    [[processors.enum.mapping]]
+        field = "slave_replica_io_running"
+        dest = "slave_replica_io_running_int"
+        default = 0
+        [processors.enum.mapping.value_mappings]
+            Yes = 1
+            No = 0
+            Connecting = 0
+            Preparing = 0
+
+    [[processors.enum.mapping]]
+        field = "slave_replica_sql_running"
+        dest = "slave_replica_sql_running_int"
+        default = 0
+        [processors.enum.mapping.value_mappings]
+            Yes = 1
+            No = 0
+            Preparing = 0
+
+{% set _statements_on = (gather_perf_events_statements | default(false, true) | lower) %}
+{% if _statements_on == 'true' or _statements_on == '1' %}
+# 语句摘要旁路。NULL schema 用 IS NULL 保留；时间窗 604800 秒（7 天），宽于插件默认 86400 秒。
+# DIGEST 仍用 IFNULL，避免空摘要把整批 Scan 打断。字段名、measurement、标签与专业盘一致。
+[[inputs.sql]]
+    driver = "mysql"
+    dsn = "{{ username }}:${PASSWORD__{{ config_id }}}@tcp({{ host }}:{{ port }})/?tls=false"
+    interval = "{{ interval }}s"
+    disconnected_servers_behavior = "ignore"
+    timeout = "10s"
+
+    [inputs.sql.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "database"
+        config_type = "mysql"
+
+    [[inputs.sql.query]]
+        measurement = "mysql_perf_schema"
+        tag_columns_include = ["schema", "digest", "digest_text"]
+        field_columns_exclude = ["schema", "digest", "digest_text"]
+        field_columns_float = [
+            "events_statements_total",
+            "events_statements_seconds_total",
+            "events_statements_errors_total",
+            "events_statements_warnings_total",
+            "events_statements_rows_affected_total",
+            "events_statements_rows_sent_total",
+            "events_statements_rows_examined_total",
+            "events_statements_tmp_tables_total",
+            "events_statements_tmp_disk_tables_total",
+            "events_statements_sort_merge_passes_total",
+            "events_statements_sort_rows_total",
+            "events_statements_no_index_used_total"
+        ]
+        query = """
+            SELECT
+                IFNULL(SCHEMA_NAME, 'NONE') AS `schema`,
+                IFNULL(DIGEST, 'none') AS digest,
+                IFNULL(NULLIF(LEFT(REPLACE(REPLACE(REPLACE(IFNULL(DIGEST_TEXT, ''), CHAR(10), ' '), CHAR(13), ' '), CHAR(9), ' '), 120), ''), 'none') AS digest_text,
+                CAST(COUNT_STAR AS DOUBLE) AS events_statements_total,
+                SUM_TIMER_WAIT / 1000000000000.0 AS events_statements_seconds_total,
+                CAST(SUM_ERRORS AS DOUBLE) AS events_statements_errors_total,
+                CAST(SUM_WARNINGS AS DOUBLE) AS events_statements_warnings_total,
+                CAST(SUM_ROWS_AFFECTED AS DOUBLE) AS events_statements_rows_affected_total,
+                CAST(SUM_ROWS_SENT AS DOUBLE) AS events_statements_rows_sent_total,
+                CAST(SUM_ROWS_EXAMINED AS DOUBLE) AS events_statements_rows_examined_total,
+                CAST(SUM_CREATED_TMP_TABLES AS DOUBLE) AS events_statements_tmp_tables_total,
+                CAST(SUM_CREATED_TMP_DISK_TABLES AS DOUBLE) AS events_statements_tmp_disk_tables_total,
+                CAST(SUM_SORT_MERGE_PASSES AS DOUBLE) AS events_statements_sort_merge_passes_total,
+                CAST(SUM_SORT_ROWS AS DOUBLE) AS events_statements_sort_rows_total,
+                CAST(SUM_NO_INDEX_USED AS DOUBLE) AS events_statements_no_index_used_total
+            FROM performance_schema.events_statements_summary_by_digest
+            WHERE (SCHEMA_NAME IS NULL OR SCHEMA_NAME NOT IN ('mysql', 'performance_schema', 'information_schema'))
+              AND (LAST_SEEN IS NULL OR LAST_SEEN > DATE_SUB(NOW(), INTERVAL 604800 SECOND))
+            ORDER BY SUM_TIMER_WAIT DESC
+            LIMIT 250
+        """
+{% endif %}

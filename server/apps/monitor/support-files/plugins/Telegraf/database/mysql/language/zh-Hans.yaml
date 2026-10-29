@@ -13,6 +13,9 @@ monitor_object_metric:
     mysql_threads_running:
       name: 活跃线程数
       desc: 当前正在执行的线程数；反映数据库并发处理能力
+    mysql_threads_created_rate:
+      name: 线程创建速率
+      desc: 新建连接线程的速率；升高通常表示连接复用不足
     mysql_threads_cached:
       name: 缓存线程数
       desc: 可复用的缓存线程数量；反映连接复用能力
@@ -112,12 +115,39 @@ monitor_object_metric:
     mysql_com_delete_rate:
       name: DELETE 删除速率
       desc: DELETE 操作数；激增时需检查数据清理合理性
+    mysql_com_commit_rate:
+      name: 事务提交速率
+      desc: 每秒提交的事务数
+    mysql_com_rollback_rate:
+      name: 事务回滚速率
+      desc: 每秒回滚的事务数
+    mysql_tps_rate:
+      name: TPS
+      desc: 每秒提交与回滚的事务数之和
     mysql_innodb_row_lock_time_avg:
       name: 平均行锁等待时间
       desc: 平均行锁等待时间；>50ms 表示锁竞争严重
     mysql_innodb_row_lock_waits_rate:
       name: InnoDB 行锁等待次数速率
       desc: InnoDB 引擎发生行锁等待的次数
+    mysql_innodb_rows_read_rate:
+      name: InnoDB 行读取速率
+      desc: 引擎每秒读取的行数
+    mysql_innodb_rows_inserted_rate:
+      name: InnoDB 行插入速率
+      desc: 引擎每秒插入的行数
+    mysql_innodb_rows_updated_rate:
+      name: InnoDB 行更新速率
+      desc: 引擎每秒更新的行数
+    mysql_innodb_rows_deleted_rate:
+      name: InnoDB 行删除速率
+      desc: 引擎每秒删除的行数
+    mysql_innodb_deadlocks_rate:
+      name: InnoDB 死锁速率
+      desc: InnoDB 发生死锁的速率
+    mysql_innodb_log_waits_rate:
+      name: InnoDB 日志等待速率
+      desc: 因 Redo 日志缓冲不足而等待的速率
     mysql_innodb_data_reads_rate:
       name: InnoDB 数据读速率
       desc: InnoDB 发起的物理读操作速率；反映存储读取压力
@@ -247,6 +277,39 @@ monitor_object_metric:
     mysql_table_lock_waits_seconds_rate:
       name: 表锁等待耗时速率
       desc: 实例汇总的 SQL 表锁等待耗时增长速率；需开启「表锁 Wait」
+    mysql_select_scan_rate:
+      name: 全表扫描速率
+      desc: 没有走索引、扫整张表的查询速率
+    mysql_table_locks_waited_rate:
+      name: 表锁等待速率
+      desc: 语句等到表锁才继续执行的次数速率
+    mysql_slave_relay_log_pos:
+      name: Relay 日志位置
+      desc: 从库中继日志当前位置；需开启复制状态采集
+    mysql_slave_relay_log_space:
+      name: Relay 日志空间
+      desc: 从库中继日志占用空间；需开启复制状态采集
+    mysql_replication_source_log_pos:
+      name: Binlog 位点
+      desc: 从库已执行或已读取的主库二进制日志位置；需开启复制状态采集
+    mysql_slave_last_errno:
+      name: 复制错误号
+      desc: 复制状态行上的错误号；0 表示当前没有复制错误
+    mysql_slave_last_io_errno:
+      name: 复制 IO 错误号
+      desc: 复制 IO 线程错误号；0 表示当前没有 IO 错误
+    mysql_slave_last_sql_errno:
+      name: 复制 SQL 错误号
+      desc: 复制 SQL 线程错误号；0 表示当前没有 SQL 错误
+    mysql_slaves_connected:
+      name: 已连从库数
+      desc: 当前连到这台主库的从库数量；实例没有该状态时不采集
+    mysql_rpl_semi_sync_master_clients:
+      name: 半同步从库数
+      desc: 半同步下连着的从库数量；未启用半同步时不采集
+    mysql_rpl_semi_sync_master_status:
+      name: 半同步状态
+      desc: 主库半同步是否开启；未启用半同步时不采集
 monitor_object_metric_group:
   Mysql:
     Base: 基础信息

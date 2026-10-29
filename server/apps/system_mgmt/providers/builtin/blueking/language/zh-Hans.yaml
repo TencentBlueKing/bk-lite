@@ -1,0 +1,68 @@
+name: 蓝鲸
+description: 蓝鲸接入，支持同一父域名下的登录认证和用户同步。
+all_departments: 全部
+
+templates:
+  base_connection:
+    title: 基础连接
+    groups:
+      credentials:
+        title: 应用凭证
+        fields:
+          bk_url:
+            label: 蓝鲸地址
+            help_text: 蓝鲸平台地址，需包含协议和主机名。
+          app_id:
+            label: 应用 ID
+          app_token:
+            label: 应用 Token
+            placeholder: 如无需变更可留空
+  login_auth_form:
+    title: 登录认证配置
+    groups:
+      mapping:
+        title: 字段映射
+        fields:
+          display_name:
+            label: 显示名称
+          icon:
+            label: 图标
+          description:
+            label: 描述
+          external_field:
+            label: 外部字段
+          platform_field:
+            label: 平台字段
+          unmatched_user_action:
+            label: 未匹配用户处理方式
+    external_fields:
+      username:
+        label: 用户名
+  user_sync_form:
+    title: 用户同步配置
+    groups:
+      pull:
+        title: 拉取配置
+        fields:
+          root_department_id:
+            label: 根部门 ID
+          include_child_departments:
+            label: 递归包含子部门
+            help_text: 默认递归同步根部门及全部子部门成员；关闭后只同步该部门直属成员。
+    external_fields:
+      username:
+        label: 用户名
+      display_name:
+        label: 显示名
+      email:
+        label: 邮箱
+      mobile:
+        label: 手机号
+      department_ids:
+        label: 部门 ID
+
+capabilities:
+  login_auth:
+    fields: {}
+  user_sync:
+    fields: {}

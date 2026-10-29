@@ -4,6 +4,7 @@ import { ModeActions, State } from 'src/types';
 import {
   findDrawnIconId,
   findRectangleBadgeId,
+  isPrimaryPointerEvent,
   regionIdForTextClick,
   resolveViewClick,
   viewHoverCursor
@@ -72,11 +73,12 @@ export const Pan: ModeActions = {
     setWindowCursor('default', element);
   },
   mousemove: (state, element) => {
-    const { uiState } = state;
+    const { uiState, panPressRef } = state;
 
     if (uiState.mode.type !== 'PAN') return;
 
-    if (uiState.mouse.mousedown !== null) {
+    // Pan only while a canvas-armed press is held; a right-button drag stays idle.
+    if (uiState.mouse.mousedown !== null && panPressRef.current) {
       const newScroll = produce(uiState.scroll, (draft) => {
         draft.position = uiState.mouse.delta?.screen
           ? CoordsUtils.add(draft.position, uiState.mouse.delta.screen)
@@ -94,6 +96,12 @@ export const Pan: ModeActions = {
 
     if (uiState.mode.type !== 'PAN') return;
 
+    // The right button never arms a click or a pan.
+    if (pointer.event.button === 2) {
+      panPressRef.current = null;
+      return;
+    }
+
     if (!isCanvasPointer(state)) {
       panPressRef.current = null;
       return;
@@ -101,7 +109,8 @@ export const Pan: ModeActions = {
 
     panPressRef.current = {
       x: pointer.mouse.position.screen.x,
-      y: pointer.mouse.position.screen.y
+      y: pointer.mouse.position.screen.y,
+      button: pointer.event.button ?? 0
     };
 
     if (!isRendererInteraction) return;
@@ -118,6 +127,7 @@ export const Pan: ModeActions = {
     if (uiState.mode.type !== 'PAN') return;
     if (!isViewClickMode(state)) return;
     if (!press || !isCanvasPointer(state)) return;
+    if (press.button !== 0 || !isPrimaryPointerEvent(pointer.event)) return;
 
     const dx = pointer.mouse.position.screen.x - press.x;
     const dy = pointer.mouse.position.screen.y - press.y;

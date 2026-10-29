@@ -64,6 +64,8 @@ def serialize_model_attr(attr):
 class CMDBOpenAPIService:
     def __init__(self, context):
         self.context = context
+        self._instance_permission_cache = {}
+        self._model_visibility_cache = {}
 
     def _model_permissions(self, model_id=""):
         permissions = self.context.permission_map(model_id, PERMISSION_MODEL)
@@ -125,11 +127,35 @@ class CMDBOpenAPIService:
         return ModelManage.model_association_search(model_id, business_only=True)
 
     def _instance_permission_map(self, model_id):
-        return self.context.permission_map(model_id, PERMISSION_INSTANCES)
+        if model_id not in self._instance_permission_cache:
+            self._instance_permission_cache[model_id] = self.context.permission_map(model_id, PERMISSION_INSTANCES)
+        return self._instance_permission_cache[model_id]
+
+    def _model_is_visible(self, model_id):
+        if model_id not in self._model_visibility_cache:
+            model = ModelManage.search_model_info(model_id)
+            self._model_visibility_cache[model_id] = BusinessModelVisibility.is_visible(model)
+        return self._model_visibility_cache[model_id]
+
+    def _loaded_instance_access_error(self, model_id, instance, operator):
+        if not self._model_is_visible(model_id):
+            return CMDBOpenAPIError("cmdb.instance.not_found", "实例不存在", 404)
+        if not instance or instance.get("model_id") != model_id or self.context.team_id not in _organization_ids(instance):
+            return CMDBOpenAPIError("cmdb.instance.not_found", "实例不存在", 404)
+        if instance.get("_creator") == self.context.user.username:
+            return None
+        if CmdbRulesFormatUtil.has_object_permission(
+            obj_type=PERMISSION_INSTANCES,
+            operator=operator,
+            model_id=model_id,
+            permission_instances_map=self._instance_permission_map(model_id),
+            instance=instance,
+        ):
+            return None
+        return CMDBOpenAPIError("cmdb.permission.denied", "权限不足", 403)
 
     def _get_instance(self, model_id, inst_uuid, operator):
-        model = ModelManage.search_model_info(model_id)
-        if not BusinessModelVisibility.is_visible(model):
+        if not self._model_is_visible(model_id):
             raise CMDBOpenAPIError("cmdb.instance.not_found", "实例不存在", 404)
         try:
             instance = InstanceManage.query_entity_by_uuid(inst_uuid)
@@ -138,17 +164,9 @@ class CMDBOpenAPIService:
             if "UUIDv4" in message or "inst_uuid 必须" in message:
                 raise CMDBOpenAPIError("cmdb.validation.failed", message, 400) from None
             raise CMDBOpenAPIError("cmdb.instance.not_found", "实例不存在", 404) from None
-        if not instance or instance.get("model_id") != model_id or self.context.team_id not in _organization_ids(instance):
-            raise CMDBOpenAPIError("cmdb.instance.not_found", "实例不存在", 404)
-        creator_allowed = instance.get("_creator") == self.context.user.username
-        if not creator_allowed and not CmdbRulesFormatUtil.has_object_permission(
-            obj_type=PERMISSION_INSTANCES,
-            operator=operator,
-            model_id=model_id,
-            permission_instances_map=self._instance_permission_map(model_id),
-            instance=instance,
-        ):
-            raise CMDBOpenAPIError("cmdb.permission.denied", "权限不足", 403)
+        error = self._loaded_instance_access_error(model_id, instance, operator)
+        if error is not None:
+            raise error
         return instance
 
     def list_instances(self, model_id, query):
@@ -229,9 +247,18 @@ class CMDBOpenAPIService:
             _as_uuid_str(inst_uuid),
             business_only=True,
         )
+        visible_groups = []
         for group in result:
-            group["inst_list"] = [serialize_instance(item) for item in group.get("inst_list", [])]
-        return result
+            inst_list = []
+            for item in group.get("inst_list", []):
+                if self._loaded_instance_access_error(item.get("model_id"), item, VIEW) is not None:
+                    continue
+                inst_list.append(serialize_instance(item))
+            if not inst_list:
+                continue
+            group["inst_list"] = inst_list
+            visible_groups.append(group)
+        return visible_groups
 
     def create_instance_association(self, model_id, inst_uuid, payload):
         self.context.require_feature("asset_info-Add Associate")
@@ -313,21 +340,43 @@ class CMDBOpenAPIService:
             _raise_open_api_batch_error(exc)
         return {"created": [serialize_instance(item) for item in created]}
 
+    def _ensure_batch_instances_operable(self, model_id, inst_uuids):
+        model = ModelManage.search_model_info(model_id)
+        if not BusinessModelVisibility.is_visible(model):
+            raise CMDBOpenAPIError(
+                "cmdb.instance.not_found",
+                "实例不存在",
+                404,
+                {"inst_uuid": inst_uuids[0]},
+            )
+        try:
+            instances = InstanceManage.query_entity_by_uuids(inst_uuids)
+        except BaseAppException as exc:
+            message = getattr(exc, "message", str(exc))
+            if "UUIDv4" in message or "inst_uuid 必须" in message:
+                raise CMDBOpenAPIError("cmdb.validation.failed", message, 400) from None
+            raise CMDBOpenAPIError("cmdb.instance.not_found", "实例不存在", 404) from None
+        found = {str(item.get("inst_uuid")): item for item in instances}
+        for inst_uuid in inst_uuids:
+            instance = found.get(inst_uuid)
+            if not instance or instance.get("model_id") != model_id or self.context.team_id not in _organization_ids(instance):
+                raise CMDBOpenAPIError("cmdb.instance.not_found", "实例不存在", 404, {"inst_uuid": inst_uuid})
+            creator_allowed = instance.get("_creator") == self.context.user.username
+            if not creator_allowed and not CmdbRulesFormatUtil.has_object_permission(
+                obj_type=PERMISSION_INSTANCES,
+                operator=OPERATE,
+                model_id=model_id,
+                permission_instances_map=self._instance_permission_map(model_id),
+                instance=instance,
+            ):
+                raise CMDBOpenAPIError("cmdb.permission.denied", "权限不足", 403, {"inst_uuid": inst_uuid})
+
     def batch_update_instances(self, model_id, payload):
         self.context.require_feature("asset_info-Edit")
         serializer = BatchUpdateSerializer(data=payload)
         serializer.is_valid(raise_exception=True)
         inst_uuids = list(dict.fromkeys(_as_uuid_str(value) for value in serializer.validated_data["inst_uuids"]))
-        for inst_uuid in inst_uuids:
-            try:
-                self._get_instance(model_id, inst_uuid, OPERATE)
-            except CMDBOpenAPIError as exc:
-                raise CMDBOpenAPIError(
-                    exc.code,
-                    exc.message,
-                    exc.status_code,
-                    {**exc.data, "inst_uuid": inst_uuid},
-                ) from exc
+        self._ensure_batch_instances_operable(model_id, inst_uuids)
 
         update_data = validate_instance_payload(
             serializer.validated_data["update_data"],
@@ -353,16 +402,7 @@ class CMDBOpenAPIService:
         serializer = BatchDeleteSerializer(data=payload)
         serializer.is_valid(raise_exception=True)
         inst_uuids = list(dict.fromkeys(_as_uuid_str(value) for value in serializer.validated_data["inst_uuids"]))
-        for inst_uuid in inst_uuids:
-            try:
-                self._get_instance(model_id, inst_uuid, OPERATE)
-            except CMDBOpenAPIError as exc:
-                raise CMDBOpenAPIError(
-                    exc.code,
-                    exc.message,
-                    exc.status_code,
-                    {**exc.data, "inst_uuid": inst_uuid},
-                ) from exc
+        self._ensure_batch_instances_operable(model_id, inst_uuids)
 
         try:
             InstanceManage.instance_batch_delete_by_uuids(

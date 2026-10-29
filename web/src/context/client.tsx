@@ -43,7 +43,7 @@ const APP_ORDER = [
   'ops-analysis',
   'mlops',
   'lab',
-  'workflow-orchestration',
+  'workflow',
 ];
 
 const sortClientData = (data: ClientData[]): ClientData[] => {
@@ -219,3 +219,6 @@ export const useClientData = () => {
   }
   return context;
 };
+
+/** 渲染身份等没有 ClientProvider 的树里返回 null，不抛错。 */
+export const useOptionalClientData = () => useContext(ClientDataContext);

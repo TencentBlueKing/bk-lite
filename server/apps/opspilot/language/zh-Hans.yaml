@@ -257,17 +257,24 @@ tools:
       monitor_list_instance_metrics:
         description: 列出某实例已采集的指标。
       monitor_query_metric_data:
-        description: 查询指定指标的时序数据。
+        description: 查询指定指标的时序数据。没写时区的时间按当前用户时区理解；写了 Z 或 ±HH:MM 则按该偏移。省略则查近 1 小时。
       monitor_summarize_metric_trend:
         description: 按最近的监控历史估算当前值、每天变化，以及还有几天会到阈值。没到阈值的也会列出。
       monitor_list_active_alerts:
         description: 查询监控策略产生的实例活跃告警（监控详情页告警列表，非告警中心工单）。
       monitor_query_alert_segments:
-        description: 按时间窗查询监控策略告警历史片段。
+        description: 按时间窗查询监控策略告警历史片段。没写时区的时间按当前用户时区理解。
       monitor_get_host_resource_snapshot:
         description: 查询主机 CPU/内存/磁盘均值与最高值快照。
       monitor_get_host_resource_top_by_time:
-        description: 按时间窗查询全量主机 CPU/内存/磁盘使用率排行（Top N）。
+        description: 按时间窗查询全量主机 CPU/内存/磁盘使用率排行（Top N）。没写时区的时间按当前用户时区理解。
+  mlops:
+    name: MLOps
+    description: |
+      调用已绑定的 MLOps 时序预测服务。模型先查监控或使用用户贴出的序列，再把序列交给预测服务，不自己心算外推。
+    tools:
+      mlops_predict_timeseries:
+        description: 按未来天数预测已绑定服务上的时序。summary 比较多条序列，trend 只看一条序列的走势。
   cmdb:
     name: CMDB
     description: |
@@ -334,9 +341,9 @@ tools:
       log_list_groups:
         description: 列出可访问的日志分组。
       log_search_structured:
-        description: 按关键词查询日志。时间用带时区的 RFC3339，例如 2026-10-21T15:03:09+08:00；不传则查近 24 小时。
+        description: 按关键词查询日志。没写时区的时间按当前用户时区理解，例如 2026-10-22 14:28:00；写了 Z 或 ±HH:MM 则按该偏移。不传则查近 24 小时。
       log_search_raw:
-        description: 使用原生 LogsQL 查询日志。时间用带时区的 RFC3339，例如 2026-10-21T15:03:09+08:00；不传则查近 24 小时。
+        description: 使用原生 LogsQL 查询日志。没写时区的时间按当前用户时区理解，例如 2026-10-22 14:28:00；写了 Z 或 ±HH:MM 则按该偏移。不传则查近 24 小时。
   ops_analysis_dashboard:
     name: 运营分析仪表盘
     description: |
@@ -1021,3 +1028,9 @@ skill_packages:
       面向 Kubernetes 工作负载部署与治理的场景技能包。
 
       覆盖 Deployment/StatefulSet、网络策略、RBAC、Helm、排障、GitOps、服务网格与多集群等配置与运维场景。
+  ppt-master:
+    name: PPT Master
+    description: |
+      用于生成和修改可编辑演示文稿的场景技能包。
+
+      按对话产出原生 PPTX，并在同一对话里继续确认方案或改稿。

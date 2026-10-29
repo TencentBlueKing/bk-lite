@@ -417,6 +417,7 @@ def test_builtin_alert_cmdb_datasource_contracts_are_complete():
             "processing_count",
             "auto_recovery_count",
             "auto_recovery_rate",
+            "severe_active_count",
         },
     }
     for rest_api, expected_fields in numeric_fields.items():
@@ -441,8 +442,14 @@ def test_builtin_alert_cmdb_datasource_contracts_are_complete():
     assert "partial_success_count" in {field["key"] for field in collect_stats["field_schema"]}
     change_trend = by_api["cmdb/get_change_trend"]
     assert {param["name"] for param in change_trend["params"]} == {"time", "model_id"}
-    for rest_api in ("alert/get_alert_trend_data", "alert/get_alert_level_trend", "cmdb/get_change_trend"):
+    for rest_api in ("alert/get_alert_trend_data", "alert/get_alert_open_close_trend", "alert/get_alert_level_trend", "cmdb/get_change_trend"):
         assert all(param.get("name") != "group_by" for param in by_api[rest_api]["params"])
+    assert {param["name"] for param in by_api["alert/get_alert_trend_data"]["params"]} == {"time", "organization"}
+    open_close = by_api["alert/get_alert_open_close_trend"]
+    assert open_close["key"] == "告警新增与关闭趋势::alert/get_alert_open_close_trend"
+    assert open_close["chart_type"] == ["line", "bar"]
+    assert {param["name"] for param in open_close["params"]} == {"time", "organization"}
+    assert all(param["name"] not in {"bucket", "series", "include_closed"} for param in open_close["params"])
     assert all(
         item.get("desc")
         for item in datasources
@@ -462,6 +469,7 @@ def test_builtin_alert_cmdb_datasource_contracts_are_complete():
         "alert/get_notification_statistics": "通知发送汇总",
         "alert/get_notification_channel_stats": "渠道通知成功率",
         "alert/get_alert_trend_data": "告警与关联事件趋势",
+        "alert/get_alert_open_close_trend": "告警新增与关闭趋势",
         "alert/get_alert_level_trend": "告警等级趋势",
         "cmdb/get_cmdb_statistics": "CMDB 覆盖概览",
         "get_model_inst_statistics": "CMDB 模型实例明细",
@@ -970,6 +978,15 @@ def test_init_builtin_canvases_creates_builtin_datasources_without_organization(
     builtin_sources = list(DataSourceAPIModel.objects.filter(is_build_in=True))
     assert builtin_sources
     assert all(source.groups == [] for source in builtin_sources)
+    assert set(DataSourceAPIModel.objects.filter(rest_api="get_alert_level_distribution").values_list("required_app", flat=True)) == {"alarm"}
+    assert set(DataSourceAPIModel.objects.filter(rest_api="get_active_alert_top").values_list("required_app", flat=True)) == {"alarm"}
+    assert set(
+        DataSourceAPIModel.objects.filter(rest_api="monitor/get_cmdb_relation_alert_aggregation").values_list(
+            "required_app",
+            flat=True,
+        )
+    ) == {"monitor"}
+    assert set(DataSourceAPIModel.objects.filter(rest_api="alert/get_alert_trend_data").values_list("required_app", flat=True)) == {"alarm"}
     directory = Directory.objects.get(build_in_key="__builtin__")
     assert directory.groups == [default.pk]
 

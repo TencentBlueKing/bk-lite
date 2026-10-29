@@ -54,6 +54,10 @@ beforeAll(() => {
   vi.stubGlobal('cancelAnimationFrame', () => undefined);
 });
 
+vi.mock('@/utils/i18n', () => ({
+  useTranslation: () => ({ t: (key: string) => key }),
+}));
+
 vi.mock('echarts-for-react', () => {
   const MockEcharts = React.forwardRef(
     (

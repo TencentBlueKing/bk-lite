@@ -102,6 +102,33 @@ def _add_second_target(task):
     return task
 
 
+_HOST_A = "123e4567-e89b-42d3-a456-426614174000"
+_HOST_B = "223e4567-e89b-42d3-a456-426614174000"
+
+
+def _fail_stage_content_for(monkeypatch, failing_text):
+    def stage_content(text):
+        if text == failing_text:
+            raise RuntimeError("stage content failed")
+        return "tmp/config-file/test.txt"
+
+    monkeypatch.setattr(ConfigFileContentLifecycle, "stage_content", staticmethod(stage_content))
+
+
+def _commit_peer_before_error_close(monkeypatch, before_close):
+    """在异常闭环读任务之前插入已提交的并发结果。"""
+    original = S._close_task_on_processing_error
+    entered = {"done": False}
+
+    def wrapped(cls, task, payload, error):
+        if not entered["done"]:
+            entered["done"] = True
+            before_close(task, payload, error)
+        return original(task=task, payload=payload, error=error)
+
+    monkeypatch.setattr(S, "_close_task_on_processing_error", classmethod(wrapped))
+
+
 def _version_fields(task=None, **kw):
     defaults = {
         "collect_task": task,
@@ -301,6 +328,180 @@ def test_multi_target_periodic_state_recovers_after_failed_target_succeeds():
     assert state["success_count"] == 2
     assert state["error_count"] == 0
     assert task.exec_status == CollectRunStatusType.SUCCESS
+
+
+@pytest.mark.django_db
+def test_processing_error_close_keeps_peer_committed_success(monkeypatch):
+    task = _add_second_target(_make_task())
+    _fail_stage_content_for(monkeypatch, "host-a-explode")
+
+    def before_close(task_obj, payload, error):
+        assert payload["instance_uuid"] == _HOST_A
+        peer = S.process_collect_result(
+            _payload(
+                task,
+                instance_uuid=_HOST_B,
+                version="1700000002000",
+                content_base64=base64.b64encode(b"host-b-ok").decode(),
+            )
+        )
+        assert peer["changed"] is True
+        assert peer["task_updated"] is True
+
+    _commit_peer_before_error_close(monkeypatch, before_close)
+
+    result = S.process_collect_result(
+        _payload(
+            task,
+            version="1700000001000",
+            content_base64=base64.b64encode(b"host-a-explode").decode(),
+        )
+    )
+
+    assert result["version_obj"] is None
+    assert result["task_updated"] is True
+    assert "stage content failed" in result["error"]
+    task.refresh_from_db()
+    state = task.collect_data["config_file"]
+    assert set(state["items"]) == {_HOST_A, _HOST_B}
+    assert state["items"][_HOST_A]["status"] == ConfigFileVersionStatus.ERROR
+    assert state["items"][_HOST_B]["status"] == ConfigFileVersionStatus.SUCCESS
+    assert state["items"][_HOST_B]["version"] == "1700000002000"
+    assert state["success_count"] == 1
+    assert state["error_count"] == 1
+    assert state["pending_count"] == 0
+    assert state["status"] == "error"
+    assert task.exec_status == CollectRunStatusType.ERROR
+    assert "等待回传" not in task.collect_digest["message"]
+    assert ConfigFileVersion.objects.filter(
+        collect_task=task,
+        instance_id=_HOST_B,
+        version="1700000002000",
+        status=ConfigFileVersionStatus.SUCCESS,
+    ).exists()
+
+
+@pytest.mark.django_db
+def test_processing_error_close_does_not_overwrite_newer_success(monkeypatch):
+    task = _make_task()
+    _fail_stage_content_for(monkeypatch, "old-attempt")
+
+    def before_close(task_obj, payload, error):
+        newer = S.process_collect_result(
+            _payload(
+                task,
+                version="1700000002000",
+                content_base64=base64.b64encode(b"newer-success").decode(),
+            )
+        )
+        assert newer["changed"] is True
+        assert newer["task_updated"] is True
+
+    _commit_peer_before_error_close(monkeypatch, before_close)
+
+    result = S.process_collect_result(
+        _payload(
+            task,
+            version="1700000001000",
+            content_base64=base64.b64encode(b"old-attempt").decode(),
+        )
+    )
+
+    assert result["task_updated"] is False
+    task.refresh_from_db()
+    item = task.collect_data["config_file"]["items"][_HOST_A]
+    assert item["status"] == ConfigFileVersionStatus.SUCCESS
+    assert item["version"] == "1700000002000"
+    assert task.exec_status == CollectRunStatusType.SUCCESS
+    assert ConfigFileVersion.objects.filter(
+        collect_task=task,
+        instance_id=_HOST_A,
+        version="1700000002000",
+        status=ConfigFileVersionStatus.SUCCESS,
+    ).exists()
+    assert not ConfigFileVersion.objects.filter(collect_task=task, version="1700000001000").exists()
+
+
+@pytest.mark.django_db
+def test_processing_error_close_skips_deleted_task(monkeypatch):
+    from django.db.models.query import QuerySet
+
+    task = _make_task()
+    task_id = task.id
+    summary_writes = []
+    original_update = QuerySet.update
+
+    def record_summary_update(self, **kwargs):
+        if "collect_data" in kwargs:
+            summary_writes.append(kwargs["collect_data"])
+        return original_update(self, **kwargs)
+
+    monkeypatch.setattr(QuerySet, "update", record_summary_update)
+    _fail_stage_content_for(monkeypatch, "gone-task")
+
+    def before_close(task_obj, payload, error):
+        CollectModels.objects.filter(id=task_obj.id).delete()
+
+    _commit_peer_before_error_close(monkeypatch, before_close)
+
+    result = S.process_collect_result(
+        _payload(
+            task,
+            version="1700000001000",
+            content_base64=base64.b64encode(b"gone-task").decode(),
+        )
+    )
+
+    assert result["task_updated"] is False
+    assert summary_writes == []
+    assert not CollectModels.objects.filter(id=task_id).exists()
+    assert not ConfigFileVersion.objects.filter(collect_task_id=task_id).exists()
+
+
+@pytest.mark.django_db
+def test_processing_error_close_does_not_write_when_target_removed(monkeypatch):
+    task = _add_second_target(_make_task())
+    _fail_stage_content_for(monkeypatch, "removed-target")
+    snapshot = {}
+
+    def before_close(task_obj, payload, error):
+        peer = S.process_collect_result(
+            _payload(
+                task,
+                instance_uuid=_HOST_B,
+                version="1700000002000",
+                content_base64=base64.b64encode(b"host-b-ok").decode(),
+            )
+        )
+        assert peer["task_updated"] is True
+        fresh = CollectModels.objects.get(id=task_obj.id)
+        fresh.instances = [item for item in fresh.instances if item.get("inst_uuid") != _HOST_A]
+        fresh.save(update_fields=["instances"])
+        fresh.refresh_from_db()
+        snapshot["collect_data"] = fresh.collect_data
+        snapshot["format_data"] = fresh.format_data
+        snapshot["collect_digest"] = fresh.collect_digest
+        snapshot["exec_status"] = fresh.exec_status
+
+    _commit_peer_before_error_close(monkeypatch, before_close)
+
+    result = S.process_collect_result(
+        _payload(
+            task,
+            version="1700000001000",
+            content_base64=base64.b64encode(b"removed-target").decode(),
+        )
+    )
+
+    assert result["task_updated"] is False
+    task.refresh_from_db()
+    assert task.collect_data == snapshot["collect_data"]
+    assert task.format_data == snapshot["format_data"]
+    assert task.collect_digest == snapshot["collect_digest"]
+    assert task.exec_status == snapshot["exec_status"]
+    items = task.collect_data["config_file"]["items"]
+    assert items[_HOST_B]["status"] == ConfigFileVersionStatus.SUCCESS
+    assert items.get(_HOST_A, {}).get("status") != ConfigFileVersionStatus.ERROR
 
 
 @pytest.mark.django_db

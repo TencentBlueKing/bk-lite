@@ -25,6 +25,8 @@ import {
   getFilterDefinitionId,
 } from '@/app/ops-analysis/utils/widgetDataTransform';
 import { readWidgetInteraction } from '@/app/ops-analysis/utils/interactionLink';
+import { normalizeLineBarFieldList } from '@/app/ops-analysis/utils/lineBarFieldMapping';
+import { readSingleValueStyle } from '@/app/ops-analysis/utils/singleValueStyle';
 import type { WidgetConfigFormValues } from './submitConfig';
 
 export const NETWORK_STATUS_TOPOLOGY = 'networkStatusTopology';
@@ -41,6 +43,7 @@ export const VALUE_FORMAT_CHART_TYPES = new Set([
   'pie',
   'multiValue',
   'nodeGraph',
+  'topN',
 ]);
 
 export interface SelectorLike {
@@ -185,8 +188,13 @@ function buildClearedChartDependentFormFields() {
     selectedFields: [] as string[],
     topNLabelField: undefined,
     topNValueField: undefined,
+    topNScalarFields: [] as Array<{ field?: string; label?: string }>,
+    barMode: undefined,
+    barMax: undefined,
     dimensionField: undefined,
     valueField: undefined,
+    valueFields: [] as string[],
+    seriesField: undefined,
     multiValueLabelField: undefined,
     multiValueValueField: undefined,
     nodeGraphIdentityMode: 'ip' as const,
@@ -343,12 +351,30 @@ export function applyOpenedValueConfigToFormValues(
   if (valueConfig?.topNValueField !== undefined) {
     formValues.topNValueField = valueConfig.topNValueField;
   }
+  formValues.topNScalarFields = valueConfig?.topNScalarFields?.length
+    ? valueConfig.topNScalarFields
+    : [];
+  formValues.barMode = valueConfig?.barMode === 'absolute' ? 'absolute' : undefined;
+  if (valueConfig?.barMax !== undefined) {
+    formValues.barMax = valueConfig.barMax;
+  }
   if (valueConfig?.dimensionField !== undefined) {
     formValues.dimensionField = valueConfig.dimensionField;
   }
   if (valueConfig?.valueField !== undefined) {
     formValues.valueField = valueConfig.valueField;
   }
+  const openedValueFields = normalizeLineBarFieldList(valueConfig?.valueFields);
+  // 旧配置只有 valueField。不要补成 valueFields，否则再保存会从宽松校验变成严格校验。
+  if (openedValueFields.length > 0) {
+    formValues.valueFields = openedValueFields;
+  } else if (!valueConfig?.valueField?.trim()) {
+    formValues.valueFields = [];
+  }
+  formValues.seriesField = valueConfig?.seriesField?.trim() || undefined;
+  formValues.pieScalarFields = valueConfig?.pieScalarFields?.length
+    ? valueConfig.pieScalarFields
+    : [];
   if (valueConfig?.multiValueLabelField !== undefined) {
     formValues.multiValueLabelField = valueConfig.multiValueLabelField;
   }
@@ -421,6 +447,16 @@ export function applyOpenedValueConfigToFormValues(
     });
   }
   formValues.compareMode = valueConfig?.compareMode || 'percent';
+  const singleStyle = readSingleValueStyle(valueConfig?.singleStyle);
+  formValues.singleStyle = {
+    showIcon: singleStyle.showIcon,
+    iconSource: singleStyle.iconSource,
+    iconKey: singleStyle.iconKey || undefined,
+    iconImage: singleStyle.iconImage || undefined,
+    iconPosition: singleStyle.iconPosition,
+    iconSize: singleStyle.iconSize,
+    align: singleStyle.align,
+  };
   return formValues;
 }
 

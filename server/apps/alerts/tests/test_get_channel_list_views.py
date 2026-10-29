@@ -77,7 +77,7 @@ def test_get_channel_list_merges_managed_workflow_channels_and_excludes_plain_na
         "apps.alerts.views.system_setting.SystemMgmtUtils.search_opspilot_nats_channels",
         return_value=opspilot,
     ), patch(
-        "apps.alerts.views.system_setting.SystemMgmtUtils.search_workflow_orchestration_nats_channels",
+        "apps.alerts.views.system_setting.SystemMgmtUtils.search_workflow_nats_channels",
         return_value=orchestration,
     ):
         response = SystemSettingModelViewSet.as_view({"get": "get_channel_list"})(request)

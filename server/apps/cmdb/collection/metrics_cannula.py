@@ -53,7 +53,11 @@ class MetricsCannula:
 
     def get_collection_metrics(self):
         """获取采集指标"""
-        new_metrics = self.collect_plugin(self.inst_name, self.inst_id, self.task_id, **self.plugin_kwargs)
+        # 任务对象已经在手时直接交给插件，格式化每条结果不必再查同一条任务。
+        plugin_kwargs = dict(self.plugin_kwargs)
+        if self.task is not None and "collect_inst" not in plugin_kwargs:
+            plugin_kwargs["collect_inst"] = self.task
+        new_metrics = self.collect_plugin(self.inst_name, self.inst_id, self.task_id, **plugin_kwargs)
         self.collect_plugin_instance = new_metrics
         result = new_metrics.run()
         self.collect_data = new_metrics.result

@@ -1,6 +1,8 @@
 package rumsessionprocessor
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -35,8 +37,31 @@ func TestAssignSucceedsOnMiniRedisWithoutAOF(t *testing.T) {
 
 func TestRedisURLAcceptsPasswordWithoutUsername(t *testing.T) {
 	cfg := defaultConfig()
-	cfg.RedisURL = "redis://:" + strings.Repeat("a", 32) + "@rum-redis:6379"
+	cfg.RedisURL = "redis://:" + strings.Repeat("a", 16) + "@rum-redis:6379"
 	require.NoError(t, cfg.Validate())
+
+	cfg.RedisURL = "redis://:" + strings.Repeat("a", 15) + "@rum-redis:6379"
+	require.ErrorContains(t, cfg.Validate(), "16-256")
+}
+
+func TestRedisPasswordFileAcceptsPlatformSecret(t *testing.T) {
+	secretPath := filepath.Join(t.TempDir(), "rum_sessionizer_redis_password")
+	secret := "platform+redis/secret=24"
+	require.Len(t, secret, 24)
+	require.NoError(t, os.WriteFile(secretPath, []byte(secret+"\n"), 0o600))
+
+	cfg := defaultConfig()
+	cfg.RedisURL = "redis://rum-redis:6379/1"
+	cfg.RedisPasswordFile = secretPath
+	store, err := newRedisSessionStore(cfg)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = store.shutdown(t.Context()) })
+
+	shortPath := filepath.Join(t.TempDir(), "short")
+	require.NoError(t, os.WriteFile(shortPath, []byte("too-short"), 0o600))
+	cfg.RedisPasswordFile = shortPath
+	_, err = newRedisSessionStore(cfg)
+	require.ErrorContains(t, err, "16-256")
 }
 
 func TestRedisACLUsernameMismatchIsRejectedWhenRequired(t *testing.T) {

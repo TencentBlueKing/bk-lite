@@ -2,10 +2,15 @@ import { useCallback } from 'react';
 import useApiClient from '@/utils/request';
 import { useTranslation } from '@/utils/i18n';
 import { useSharedDataSourceQuery } from '@/app/ops-analysis/context/shareDataSource';
+import type { ParamItem } from '@/app/ops-analysis/types/dataSource';
 import {
   parseSourceDataResponse,
   type SourceDataResult,
 } from '@/app/ops-analysis/utils/sourceDataResponse';
+import {
+  readDatasourceLookupList,
+  retainRequestedDatasources,
+} from '@/app/ops-analysis/utils/datasourceRecordId';
 import {
   normalizeDatasourceItemParams,
   normalizeDatasourceItemsParams,
@@ -71,9 +76,14 @@ export const useDataSourceApi = () => {
     }
     if (sharedAccess) {
       const response = await sharedAccess.getDataSourceDetails(normalizedIds);
-      const items = Array.isArray(response) ? response : [];
+      const items = readDatasourceLookupList(response) as Array<{
+        id?: unknown;
+        params?: ParamItem[] | null;
+        required_app?: string | null;
+        hasAuth?: boolean;
+      }>;
       return normalizeDatasourceItemsParams(
-        items.filter((item: { id: number }) => normalizedIds.includes(item.id)),
+        retainRequestedDatasources(items, normalizedIds),
       );
     }
 

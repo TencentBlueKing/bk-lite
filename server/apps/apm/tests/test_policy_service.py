@@ -1,4 +1,5 @@
 from datetime import timedelta
+from decimal import Decimal
 
 import pytest
 from django.utils import timezone
@@ -15,7 +16,7 @@ from apps.apm.models import (
     ApmServiceOrganization,
 )
 from apps.apm.services import DjangoApmPolicyService
-from apps.apm.services.contracts import MetricDataState, NotificationDeliveryResult, ServiceRed
+from apps.apm.services.contracts import MetricDataState, NotificationDeliveryResult, ServiceRed, ServiceRedPoint
 from apps.apm.tests.helpers import bind_policy_organizations
 
 pytestmark = pytest.mark.django_db
@@ -296,3 +297,267 @@ def test_targets_keep_legal_cartesian_product_and_cap_oversized_combinations(pol
 
     assert len(oversized) == 100
     assert oversized == [(endpoint, version) for endpoint in policy.endpoints for version in policy.versions][:100]
+
+
+class ScriptedMetricStore:
+    def __init__(self, reds):
+        self.reds = list(reds)
+        self.queries = []
+
+    def service_red(self, query):
+        self.queries.append(query)
+        if len(self.reds) == 1:
+            return self.reds[0]
+        return self.reds.pop(0)
+
+
+def _point(at, error_rate):
+    return ServiceRedPoint(timestamp=at, request_rate=1, error_rate=error_rate, p95_ms=10, p99_ms=20)
+
+
+def test_absolute_policy_queries_the_current_window_once_and_keeps_the_previous_result_shape(policy):
+    evaluated_at = timezone.now().replace(second=0, microsecond=0)
+    policy.metric_window = 5
+    policy.save()
+    store = ScriptedMetricStore([ServiceRed(20, 0.10, 100, 150, request_count=80)])
+    result = DjangoApmPolicyService(store, InMemoryNotificationDispatcher()).test_query(policy, evaluated_at=evaluated_at)
+
+    assert len(store.queries) == 1
+    assert store.queries[0].started_at == evaluated_at - timedelta(minutes=5)
+    assert store.queries[0].ended_at == evaluated_at
+    assert store.queries[0].include_breakdown is True
+    assert store.queries[0].include_endpoints is True
+    assert result.value == Decimal("0.1")
+    assert result.current_value == result.value
+    assert result.baseline_value is None
+    assert result.baseline_series == ()
+    assert result.breached is True
+    assert result.data_state == MetricDataState.AVAILABLE
+    assert result.series == ()
+    assert result.threshold == {"severity": "error", "comparator": "gt", "value": "0.050000"}
+    assert result.reason == ""
+
+
+def test_previous_window_percent_and_delta_use_two_equal_windows(policy):
+    evaluated_at = timezone.now().replace(second=0, microsecond=0)
+    policy.metric_window = 5
+    policy.compare_mode = ApmPolicy.CompareMode.PREVIOUS_WINDOW
+    policy.compare_value_kind = ApmPolicy.CompareValueKind.PERCENT
+    policy.thresholds = [{"severity": "error", "comparator": "gt", "value": "40"}]
+    policy.save()
+    baseline_point = _point(evaluated_at - timedelta(minutes=6), 0.04)
+    current = ServiceRed(20, 0.06, 100, 150, request_count=318)
+    baseline = ServiceRed(20, 0.04, 100, 150, timeseries=(baseline_point,), request_count=300)
+    store = ScriptedMetricStore([current, baseline])
+
+    result = DjangoApmPolicyService(store, InMemoryNotificationDispatcher()).test_query(policy, evaluated_at=evaluated_at)
+
+    assert store.queries[0].started_at == evaluated_at - timedelta(minutes=5)
+    assert store.queries[0].ended_at == evaluated_at
+    assert store.queries[1].started_at == evaluated_at - timedelta(minutes=10)
+    assert store.queries[1].ended_at == evaluated_at - timedelta(minutes=5)
+    assert store.queries[1].ended_at - store.queries[1].started_at == timedelta(minutes=5)
+    assert store.queries[1].include_breakdown is True
+    assert store.queries[1].include_endpoints is False
+    assert result.value == Decimal("50")
+    assert result.current_value == Decimal("0.06")
+    assert result.baseline_value == Decimal("0.04")
+    assert result.baseline_series == (baseline_point,)
+    assert result.breached is True
+    assert result.data_state == MetricDataState.AVAILABLE
+    assert result.result_unit == "percent"
+
+    policy.compare_value_kind = ApmPolicy.CompareValueKind.DELTA
+    policy.thresholds = [{"severity": "error", "comparator": "gt", "value": "0.01"}]
+    policy.save()
+    delta = DjangoApmPolicyService(
+        ScriptedMetricStore([current, baseline]),
+        InMemoryNotificationDispatcher(),
+    ).test_query(policy, evaluated_at=evaluated_at)
+    assert delta.value == Decimal("0.02")
+    assert delta.result_unit == "ratio"
+    assert delta.breached is True
+
+
+@pytest.mark.parametrize(
+    ("mode", "amount", "offset"),
+    [
+        (ApmPolicy.CompareMode.OFFSET_1H, None, timedelta(hours=1)),
+        (ApmPolicy.CompareMode.OFFSET_24H, None, timedelta(hours=24)),
+        (ApmPolicy.CompareMode.OFFSET_HOURS, 6, timedelta(hours=6)),
+        (ApmPolicy.CompareMode.OFFSET_DAYS, 2, timedelta(days=2)),
+    ],
+)
+def test_offset_windows_keep_the_metric_window_length(policy, mode, amount, offset):
+    evaluated_at = timezone.now().replace(second=0, microsecond=0)
+    policy.metric_window = 5
+    policy.compare_mode = mode
+    policy.compare_offset_amount = amount
+    policy.compare_value_kind = ApmPolicy.CompareValueKind.PERCENT
+    policy.thresholds = [{"severity": "error", "comparator": "gt", "value": "10"}]
+    policy.save()
+    store = ScriptedMetricStore(
+        [
+            ServiceRed(20, 0.06, 100, 150, request_count=100),
+            ServiceRed(20, 0.04, 100, 150, request_count=100),
+        ]
+    )
+    DjangoApmPolicyService(store, InMemoryNotificationDispatcher()).test_query(policy, evaluated_at=evaluated_at)
+
+    assert store.queries[1].started_at == evaluated_at - timedelta(minutes=5) - offset
+    assert store.queries[1].ended_at == evaluated_at - offset
+    assert store.queries[1].ended_at - store.queries[1].started_at == timedelta(minutes=5)
+    assert store.queries[1].include_endpoints is False
+
+
+def test_percent_baseline_zero_is_missing_and_delta_baseline_zero_still_compares(policy):
+    evaluated_at = timezone.now().replace(second=0, microsecond=0)
+    policy.compare_mode = ApmPolicy.CompareMode.PREVIOUS_WINDOW
+    policy.compare_value_kind = ApmPolicy.CompareValueKind.PERCENT
+    policy.thresholds = [{"severity": "error", "comparator": "gt", "value": "10"}]
+    policy.save()
+    current = ServiceRed(20, 0.05, 100, 150, request_count=40)
+    zero = ServiceRed(20, 0, 100, 150, request_count=40)
+    percent = DjangoApmPolicyService(
+        ScriptedMetricStore([current, zero]),
+        InMemoryNotificationDispatcher(),
+    ).test_query(policy, evaluated_at=evaluated_at)
+    assert percent.data_state == MetricDataState.MISSING_BASELINE
+    assert percent.reason == "baseline_zero"
+    assert percent.value is None
+    assert percent.breached is None
+
+    policy.compare_value_kind = ApmPolicy.CompareValueKind.DELTA
+    policy.thresholds = [{"severity": "error", "comparator": "gt", "value": "0.01"}]
+    policy.save()
+    delta = DjangoApmPolicyService(
+        ScriptedMetricStore([current, zero]),
+        InMemoryNotificationDispatcher(),
+    ).test_query(policy, evaluated_at=evaluated_at)
+    assert delta.data_state == MetricDataState.AVAILABLE
+    assert delta.value == Decimal("0.05")
+    assert delta.breached is True
+
+
+def test_request_count_below_minimum_is_insufficient_without_a_baseline_query(policy):
+    evaluated_at = timezone.now().replace(second=0, microsecond=0)
+    policy.compare_mode = ApmPolicy.CompareMode.PREVIOUS_WINDOW
+    policy.compare_value_kind = ApmPolicy.CompareValueKind.PERCENT
+    policy.min_request_count = 20
+    policy.thresholds = [{"severity": "error", "comparator": "gt", "value": "10"}]
+    policy.save()
+    store = ScriptedMetricStore([ServiceRed(20, 0.5, 100, 150, request_count=12)])
+
+    result = DjangoApmPolicyService(store, InMemoryNotificationDispatcher()).test_query(policy, evaluated_at=evaluated_at)
+
+    assert len(store.queries) == 1
+    assert result.data_state == MetricDataState.INSUFFICIENT_SAMPLES
+    assert result.value is None
+    assert result.current_value == Decimal("0.5")
+    assert result.request_count == 12
+    assert result.breached is None
+
+
+def test_request_count_gate_applies_to_absolute_threshold_too(policy):
+    evaluated_at = timezone.now().replace(second=0, microsecond=0)
+    policy.compare_mode = ApmPolicy.CompareMode.ABSOLUTE
+    policy.compare_value_kind = ""
+    policy.min_request_count = 20
+    policy.thresholds = [{"severity": "error", "comparator": "gt", "value": "0.1"}]
+    policy.save()
+    store = ScriptedMetricStore([ServiceRed(20, 0.5, 100, 150, request_count=12)])
+
+    result = DjangoApmPolicyService(store, InMemoryNotificationDispatcher()).test_query(policy, evaluated_at=evaluated_at)
+
+    assert len(store.queries) == 1
+    assert result.data_state == MetricDataState.INSUFFICIENT_SAMPLES
+    assert result.value is None
+    assert result.breached is None
+    assert result.current_value == Decimal("0.5")
+
+    policy.min_request_count = None
+    policy.save()
+    unlimited = DjangoApmPolicyService(
+        ScriptedMetricStore([ServiceRed(20, 0.5, 100, 150, request_count=12)]),
+        InMemoryNotificationDispatcher(),
+    ).test_query(policy, evaluated_at=evaluated_at)
+    assert unlimited.data_state == MetricDataState.AVAILABLE
+    assert unlimited.breached is True
+
+
+def test_missing_baseline_and_insufficient_samples_hold_state_and_advance_the_cursor(policy):
+    policy.trigger_after = 1
+    policy.recover_after = 1
+    policy.save()
+    store = ScriptedMetricStore([ServiceRed(20, 0.10, 100, 150, request_count=80)])
+    service = DjangoApmPolicyService(store, InMemoryNotificationDispatcher())
+    started_at = timezone.now().replace(second=0, microsecond=0)
+    service.evaluate(policy.id, evaluated_at=started_at)
+    state = ApmPolicyTargetState.objects.get(policy=policy)
+    state.consecutive_hits = 2
+    state.consecutive_recoveries = 1
+    state.consecutive_no_data = 4
+    state.save()
+    policy.compare_mode = ApmPolicy.CompareMode.PREVIOUS_WINDOW
+    policy.compare_value_kind = ApmPolicy.CompareValueKind.PERCENT
+    policy.thresholds = [{"severity": "error", "comparator": "gt", "value": "10"}]
+    policy.save()
+    store.reds = [
+        ServiceRed(20, 0.06, 100, 150, request_count=80),
+        ServiceRed(None, None, None, None),
+    ]
+    missing_at = started_at + timedelta(minutes=1)
+    service.evaluate(policy.id, evaluated_at=missing_at)
+
+    state.refresh_from_db()
+    alert = ApmAlert.objects.get()
+    assert state.consecutive_hits == 2
+    assert state.consecutive_recoveries == 1
+    assert state.consecutive_no_data == 4
+    assert state.status == ApmPolicyTargetState.Status.ACTIVE
+    assert state.active_alert_id
+    assert state.evaluation_cursor.endswith(missing_at.isoformat())
+    assert list(alert.events.values_list("action", flat=True)) == [ApmEvent.Action.TRIGGERED]
+    assert alert.status == ApmAlert.Status.ACTIVE
+    assert alert.metric_snapshot.snapshots[-1]["type"] == "info"
+    assert alert.metric_snapshot.snapshots[-1]["data_state"] == "missing_baseline"
+
+    policy.min_request_count = 20
+    policy.save()
+    store.reds = [ServiceRed(20, 0.5, 100, 150, request_count=12)]
+    short_at = started_at + timedelta(minutes=2)
+    service.evaluate(policy.id, evaluated_at=short_at)
+    state.refresh_from_db()
+    alert.refresh_from_db()
+    assert state.consecutive_hits == 2
+    assert state.consecutive_recoveries == 1
+    assert state.consecutive_no_data == 4
+    assert state.evaluation_cursor.endswith(short_at.isoformat())
+    assert alert.events.count() == 1
+    assert alert.status == ApmAlert.Status.ACTIVE
+    assert alert.metric_snapshot.snapshots[-1]["data_state"] == "insufficient_samples"
+
+
+def test_no_data_ignores_compare_mode_and_does_not_query_the_baseline(policy):
+    policy.trigger_after = 1
+    policy.recover_after = 1
+    policy.save()
+    store = ScriptedMetricStore([ServiceRed(20, 0.10, 100, 150, request_count=80)])
+    service = DjangoApmPolicyService(store, InMemoryNotificationDispatcher())
+    started_at = timezone.now().replace(second=0, microsecond=0)
+    service.evaluate(policy.id, evaluated_at=started_at)
+    policy.compare_mode = ApmPolicy.CompareMode.PREVIOUS_WINDOW
+    policy.compare_value_kind = ApmPolicy.CompareValueKind.PERCENT
+    policy.save()
+    store.reds = [ServiceRed(None, None, None, None)]
+    quiet_at = started_at + timedelta(minutes=1)
+    before = len(store.queries)
+    service.evaluate(policy.id, evaluated_at=quiet_at)
+
+    state = ApmPolicyTargetState.objects.get(policy=policy)
+    assert len(store.queries) - before == 1
+    assert state.consecutive_recoveries == 0
+    assert state.consecutive_no_data == 1
+    assert state.status == ApmPolicyTargetState.Status.ACTIVE
+    assert ApmAlert.objects.get().status == ApmAlert.Status.ACTIVE
+    assert list(ApmEvent.objects.values_list("action", flat=True)) == [ApmEvent.Action.TRIGGERED]

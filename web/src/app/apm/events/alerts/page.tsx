@@ -61,8 +61,17 @@ const SEVERITY_KEY: Record<ApmPolicySeverity, string> = {
 };
 const METRIC_KEY: Record<ApmAlert['metric_type'], string> = {
   error_rate: 'apm.common.errorRate',
+  error_count: 'apm.policies.metricErrorCount',
+  p50: 'apm.policies.metricP50',
+  p75: 'apm.policies.metricP75',
+  p90: 'apm.policies.metricP90',
   p95: 'apm.common.p95Latency',
   p99: 'apm.common.p99Latency',
+  latency_avg: 'apm.policies.metricLatencyAvg',
+  latency_max: 'apm.policies.metricLatencyMax',
+  slow_request_count: 'apm.policies.metricSlowCount',
+  slow_request_rate: 'apm.policies.metricSlowRate',
+  apdex: 'apm.policies.metricApdex',
   throughput: 'apm.common.throughput',
   no_traffic: 'apm.alerts.noTraffic',
 };

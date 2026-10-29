@@ -11,7 +11,9 @@ import {
   filterGroupTreeByAllowedIds,
   getSidebarCanvasMenuKeys,
   getSidebarDirectoryMenuKeys,
+  isBuiltinCanvasGroupEditable,
   isBuiltinDirectory,
+  retainAllowedGroupIds,
   shouldShowCanvasCopyAction,
 } from '../canvasDirectoryCopy';
 
@@ -85,6 +87,24 @@ describe('builtin directory visibility edit', () => {
         { name: '自定义目录', desc: '说明', groups: [1] },
       ),
     ).toEqual({ name: '自定义目录', desc: '说明', groups: [1] });
+    expect(
+      buildDirectoryEditPayload(
+        { type: 'dashboard', is_build_in: true },
+        { name: '内置盘', desc: '不可改', groups: [1] },
+      ),
+    ).toEqual({ groups: [1] });
+    expect(
+      buildDirectoryEditPayload(
+        { type: 'report', is_build_in: true },
+        { name: '内置报表', desc: '不可改', groups: undefined },
+      ),
+    ).toEqual({ groups: [] });
+    expect(
+      buildDirectoryEditPayload(
+        { type: 'networkTopology', is_build_in: true },
+        { name: '网络拓扑', desc: '说明', groups: [1] },
+      ),
+    ).toEqual({ name: '网络拓扑', desc: '说明', groups: [1] });
   });
 });
 
@@ -98,14 +118,47 @@ describe('canvas copy menu', () => {
       'delete',
       'copy',
       'export',
+      'importUpdate',
     ]);
     expect(getSidebarCanvasMenuKeys({ type: 'dashboard', is_build_in: true })).toEqual([
       'copy',
       'export',
-      'edit',
-      'delete',
     ]);
+    expect(
+      getSidebarCanvasMenuKeys(
+        { type: 'networkTopology', is_build_in: true },
+        { canEditCatalogue: true },
+      ),
+    ).toEqual(['copy', 'export', 'edit', 'delete']);
     expect(getSidebarCanvasMenuKeys({ type: 'directory' })).toEqual([]);
+  });
+
+  it('offers edit groups on the five builtin canvases only with catalogue edit permission', () => {
+    const builtinTypes = ['dashboard', 'topology', 'architecture', 'screen', 'report'] as const;
+    for (const type of builtinTypes) {
+      expect(isBuiltinCanvasGroupEditable({ type, is_build_in: true })).toBe(true);
+      expect(isBuiltinCanvasGroupEditable({ type, is_build_in: false })).toBe(false);
+      expect(getSidebarCanvasMenuKeys({ type, is_build_in: true })).toEqual([
+        'copy',
+        'export',
+      ]);
+      expect(
+        getSidebarCanvasMenuKeys({ type, is_build_in: true }, { canEditCatalogue: true }),
+      ).toEqual(['editGroup', 'copy', 'export']);
+    }
+    expect(isBuiltinCanvasGroupEditable({ type: 'networkTopology', is_build_in: true })).toBe(
+      false,
+    );
+    expect(isBuiltinCanvasGroupEditable({ type: 'directory', is_build_in: true })).toBe(false);
+  });
+
+  it('offers import update on every ordinary canvas and never on builtins', () => {
+    const canvasTypes = ['dashboard', 'topology', 'architecture', 'screen', 'report', 'networkTopology'] as const;
+    for (const type of canvasTypes) {
+      expect(getSidebarCanvasMenuKeys({ type })).toContain('importUpdate');
+      expect(getSidebarCanvasMenuKeys({ type, is_build_in: true })).not.toContain('importUpdate');
+    }
+    expect(getSidebarCanvasMenuKeys({ type: 'directory' })).not.toContain('importUpdate');
   });
 });
 
@@ -141,6 +194,49 @@ describe('directory chain groups', () => {
   it('intersects groups along the directory chain', () => {
     expect(collectDirectoryChainGroupIds(tree, 2)).toEqual([1, 2]);
     expect(collectDirectoryExpandKeys(tree, 2)).toEqual(['directory_1', 'directory_2']);
+  });
+
+  it('keeps only groups inside the ancestor intersection when editing a builtin canvas', () => {
+    const chain: DirItem[] = [
+      {
+        id: 'directory_10',
+        data_id: '10',
+        name: '祖先',
+        type: 'directory',
+        groups: [1, 2],
+        children: [
+          {
+            id: 'directory_11',
+            data_id: '11',
+            name: '父目录',
+            type: 'directory',
+            groups: [2, 9],
+            children: [
+              {
+                id: 'dashboard_12',
+                data_id: '12',
+                name: '内置盘',
+                type: 'dashboard',
+                is_build_in: true,
+                groups: [2, 9],
+              },
+            ],
+          },
+        ],
+      },
+    ];
+    const allowed = collectDirectoryChainGroupIds(chain, '11');
+    expect(allowed).toEqual([2]);
+    expect(retainAllowedGroupIds([2, 9], allowed)).toEqual([2]);
+    expect(
+      filterGroupTreeByAllowedIds(
+        [
+          { title: '允许', value: 2, key: 2 },
+          { title: '越界', value: 9, key: 9 },
+        ],
+        allowed,
+      ).map((node) => node.value),
+    ).toEqual([2]);
   });
 });
 

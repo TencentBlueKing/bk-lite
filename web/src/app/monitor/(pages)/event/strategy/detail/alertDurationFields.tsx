@@ -50,6 +50,7 @@ interface AlertDurationFieldsProps {
   onNoDataRecoveryChange: (value: number | null) => void;
   onNoDataAlertLevelChange: (val: string) => void;
   onNoDataAlertNameChange: (val: string) => void;
+  noDataSplitHint?: boolean;
 }
 
 const fieldLabel = (text: string) => (
@@ -119,6 +120,11 @@ const AlertDurationFields: React.FC<AlertDurationFieldsProps> = (props) => {
         <div className={`mt-[10px] ${STRATEGY_HINT_TEXT_CLASS}`}>
           {t('monitor.events.noDataAlertTip')}
         </div>
+        {props.noDataSplitHint ? (
+          <div className={`mt-[8px] ${STRATEGY_HINT_TEXT_CLASS}`}>
+            这是按磁盘、网卡等设备拆开的指标，一台主机中断会按设备各报一条。
+          </div>
+        ) : null}
         {isPodMonitorObject(props.monitorName) ? (
           <div className={`mt-[8px] ${STRATEGY_HINT_TEXT_CLASS}`}>
             {t('monitor.events.noDataPodTip')}

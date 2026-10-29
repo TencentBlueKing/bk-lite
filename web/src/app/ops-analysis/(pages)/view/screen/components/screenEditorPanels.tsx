@@ -37,6 +37,7 @@ import {
   UploadOutlined,
 } from '@ant-design/icons';
 import { FilterTokenInput } from '@/app/ops-analysis/components/filterTokenInput';
+import { ScreenSingleValueStyleSections } from '@/app/ops-analysis/components/widgetConfig/sections/singleValueStyleSection';
 import { useTranslation } from '@/utils/i18n';
 import { SCREEN_LAYER_DRAG_MIME } from '../utils/screenLayer';
 import type { ScreenGeometryField } from '../utils/screenEditHistory';
@@ -669,7 +670,7 @@ export const ScreenElementPalette: React.FC<ScreenElementPaletteProps> = ({
   return (
     <aside
       ref={rootRef}
-      className={`relative z-20 h-full shrink-0 transition-[width] duration-300 ${
+      className={`relative z-40 h-full shrink-0 transition-[width] duration-300 ${
         collapsed
           ? 'w-0 border-r-0'
           : 'w-[192px] border-r border-(--color-border-1) bg-(--color-bg-1)'
@@ -1685,6 +1686,21 @@ export const ScreenStyleInspector: React.FC<ScreenStyleInspectorProps> = ({
             </button>
           </div>
         </InspectorSection>
+
+        {item.chartType === 'single' ? (
+          <ScreenSingleValueStyleSections
+            key={item.id}
+            itemId={item.id}
+            t={t}
+            style={item.valueConfig?.singleStyle}
+            onStyleChange={(singleStyle) => {
+              const valueConfig = { ...(item.valueConfig || {}), chartType: item.chartType };
+              if (singleStyle) valueConfig.singleStyle = singleStyle;
+              else delete valueConfig.singleStyle;
+              onChange({ ...item, valueConfig });
+            }}
+          />
+        ) : null}
 
         {/* 紧凑尺寸与位置 */}
         <CompactGeometryGrid item={item} viewport={viewport} onChange={onChange} />

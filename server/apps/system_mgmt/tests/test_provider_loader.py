@@ -8,10 +8,7 @@ import pytest
 
 from apps.system_mgmt.apps import HandleConfig
 from apps.system_mgmt.providers import loader
-from apps.system_mgmt.providers.registry import (
-    capability_adapter_registry,
-    provider_registry,
-)
+from apps.system_mgmt.providers.registry import capability_adapter_registry, provider_registry
 from apps.system_mgmt.providers.schemas import ProviderManifest
 
 
@@ -39,7 +36,7 @@ def test_provider_registry_list_lazily_loads_builtin_providers(monkeypatch):
     _disable_enterprise_builtin_packs(monkeypatch)
     manifests = provider_registry.list()
 
-    assert {manifest.key for manifest in manifests} == {"ad", "feishu", "wechat", "wecom"}
+    assert {manifest.key for manifest in manifests} == {"ad", "blueking", "feishu", "wechat", "wecom"}
 
 
 def test_adapter_registry_get_lazily_loads_builtin_providers():
@@ -103,7 +100,7 @@ def test_provider_read_waits_for_force_reload(monkeypatch):
         reload_future.result(timeout=1)
         manifests = read_future.result(timeout=1)
 
-    assert {manifest.key for manifest in manifests} == {"ad", "feishu", "wechat", "wecom"}
+    assert {manifest.key for manifest in manifests} == {"ad", "blueking", "feishu", "wechat", "wecom"}
 
 
 def test_provider_loading_keeps_healthy_packs_when_one_pack_fails(monkeypatch):
@@ -199,6 +196,7 @@ def test_builtin_packs_all_have_required_adapter_modules():
 
     assert {module_path.rsplit(".", 1)[-1] for module_path, _ in packs} == {
         "ad",
+        "blueking",
         "feishu",
         "wechat",
         "wecom",
@@ -468,7 +466,7 @@ def test_manifest_without_pack_directory_keeps_absolute_import_path(monkeypatch)
 def test_builtin_manifests_keep_pack_relative_adapter_paths():
     loader.load_builtin_providers()
 
-    for key in ("ad", "feishu", "wechat", "wecom"):
+    for key in ("ad", "blueking", "feishu", "wechat", "wecom"):
         manifest = provider_registry.get(key)
         assert manifest.base_connection_adapter_path.startswith("adapters.")
         assert not manifest.base_connection_adapter_path.startswith("apps.")

@@ -106,6 +106,24 @@ class TestKeywordAlertDetection:
         events = scan.keyword_alert_detection()
         assert events[0]["value"] == 1
 
+    def test_keyword_snapshot_freezes_jump_query(self, mocker):
+        policy = _make_policy(alert_condition={"query": "error", "limit": 3})
+        scan = LogPolicyScan(policy, window_start=100, window_end=400)
+        mocker.patch.object(
+            scan.vlogs_api,
+            "query",
+            side_effect=[[{"_msg": "error A"}], [{"total_count": "2"}]],
+        )
+        _install_memory_json_storage(mocker)
+        events = scan.keyword_alert_detection()
+        persisted = scan.create_events(events)[0]
+        snapshot = AlertSnapshot.objects.get(alert=persisted.alert)
+        event_snapshot = next(item for item in snapshot.snapshots if item.get("event_id") == persisted.id)
+        assert events[0]["jump_query"]["query"] == "error"
+        assert events[0]["jump_query"]["window_start"] == 100
+        assert events[0]["jump_query"]["window_end"] == 400
+        assert event_snapshot["jump_query"] == events[0]["jump_query"]
+
     def test_grouped_detection(self, mocker):
         policy = _make_policy(alert_condition={"query": "error", "group_by": ["host"], "limit": 2})
         scan = LogPolicyScan(policy)
@@ -240,6 +258,154 @@ class TestAggregateAlertDetection:
         scan = LogPolicyScan(policy)
         mocker.patch.object(scan.vlogs_api, "query", return_value=[{"total_count": "3"}])
         assert scan.aggregate_alert_detection() == []
+
+    def test_aggregate_samples_capped_and_snapshot_has_jump_query(self, mocker):
+        policy = _make_policy(
+            alert_type="aggregate",
+            alert_name="聚合",
+            alert_condition={
+                "query": "level:error",
+                "group_by": ["service"],
+                "limit": 50,
+                "rule": {
+                    "mode": "and",
+                    "conditions": [{"func": "count", "field": "_msg", "op": ">", "value": 1}],
+                },
+            },
+        )
+        scan = LogPolicyScan(policy, window_start=100, window_end=400)
+        mocker.patch.object(
+            scan.vlogs_api,
+            "query",
+            side_effect=[
+                [{"service": "order", "count__msg": "12"}],
+                [{"_msg": f"line-{index}"} for index in range(12)],
+            ],
+        )
+        _install_memory_json_storage(mocker)
+        events = scan.aggregate_alert_detection()
+        samples = events[0]["raw_data"]["samples"]
+        assert len(samples) == 10
+        assert samples[0]["message"] == "line-0"
+        assert events[0]["jump_query"] == {
+            "query": 'level:error AND service:="order"',
+            "window_start": 100,
+            "window_end": 400,
+        }
+        persisted = scan.create_events(events)[0]
+        snapshot = AlertSnapshot.objects.get(alert=persisted.alert)
+        event_snapshot = next(item for item in snapshot.snapshots if item.get("event_id") == persisted.id)
+        assert event_snapshot["jump_query"] == events[0]["jump_query"]
+        assert len(event_snapshot["raw_data"]["samples"]) == 10
+
+    def test_aggregate_event_persists_condition_results(self, mocker):
+        policy = _make_policy(
+            alert_type="aggregate",
+            alert_name="条件",
+            alert_condition={
+                "query": "level:error",
+                "group_by": [],
+                "rule": {
+                    "mode": "and",
+                    "conditions": [{"func": "count", "field": "_msg", "op": ">", "value": 1}],
+                },
+            },
+        )
+        scan = LogPolicyScan(policy, window_start=100, window_end=400)
+        mocker.patch.object(scan.vlogs_api, "query", return_value=[{"count__msg": "9"}])
+        _install_memory_json_storage(mocker)
+        events = scan.aggregate_alert_detection()
+        matched = events[0]["raw_data"]["aggregate_result"]["conditions"][0]
+        assert matched["func"] == "count"
+        assert matched["matched"] is True
+        assert matched["current"] == 9
+        persisted = scan.create_events(events)[0]
+        raw = EventRawData.objects.get(event=persisted)
+        assert raw.data["aggregate_result"]["conditions"][0]["matched"] is True
+
+    def test_count_below_one_persists_normal_event_and_ignores_no_data(self, mocker):
+        policy = _make_policy(
+            alert_type="aggregate",
+            alert_level="warning",
+            alert_name="断流",
+            alert_condition={
+                "query": "*",
+                "group_by": [],
+                "no_data": {"enabled": True, "level": "error"},
+                "rule": {
+                    "mode": "and",
+                    "conditions": [{"func": "count", "field": "_msg", "op": "<", "value": 1}],
+                },
+            },
+        )
+        scan = LogPolicyScan(policy, window_start=100, window_end=400)
+
+        def fake_query(query, start, end, limit=10):
+            if "stats" in query:
+                return [{"count__msg": "0"}]
+            return []
+
+        mocker.patch.object(scan.vlogs_api, "query", side_effect=fake_query)
+        _install_memory_json_storage(mocker)
+        events = scan.aggregate_alert_detection()
+        assert len(events) == 1
+        persisted = scan.create_events(events)[0]
+        assert persisted.level == "warning"
+        assert persisted.value == 0
+        assert persisted.content == "断流"
+        assert not persisted.source_id.endswith(":no_data")
+        assert persisted.alert.source_id == persisted.source_id
+        raw = EventRawData.objects.get(event=persisted)
+        assert raw.data["aggregate_result"].get("no_data") is not True
+        assert raw.data["aggregate_result"]["count"] == 0
+
+    def test_no_data_switch_off_persists_nothing(self, mocker):
+        policy = _make_policy(
+            alert_type="aggregate",
+            alert_name="断流",
+            alert_condition={
+                "query": "*",
+                "group_by": [],
+                "no_data": {"enabled": False},
+                "rule": {
+                    "mode": "and",
+                    "conditions": [{"func": "count", "field": "_msg", "op": ">", "value": 1}],
+                },
+            },
+        )
+        scan = LogPolicyScan(policy, window_start=100, window_end=400)
+        starts = []
+
+        def fake_query(query, start, end, limit=10):
+            starts.append(start)
+            return []
+
+        mocker.patch.object(scan.vlogs_api, "query", side_effect=fake_query)
+        assert scan.aggregate_alert_detection() == []
+        assert starts == [100]
+        assert Alert.objects.filter(policy=policy).count() == 0
+
+
+def _install_memory_json_storage(mocker):
+    """覆盖 autouse 的空回读，让快照条目可以按写入内容断言。"""
+    object_store = {}
+    object_counter = count()
+
+    def configure(field, prefix):
+        def upload(instance, value):
+            path = f"{prefix}-{next(object_counter)}.json.gz"
+            object_store[path] = deepcopy(value)
+            return path
+
+        def load(path):
+            return deepcopy(object_store[path])
+
+        mocker.patch.object(field, "_upload_to_s3", side_effect=upload)
+        mocker.patch.object(field, "_load_from_s3", side_effect=load)
+        mocker.patch.object(field, "_minio_storage", mocker.MagicMock())
+
+    configure(EventRawData._meta.get_field("data"), "raw")
+    configure(AlertSnapshot._meta.get_field("snapshots"), "snapshot")
 
 
 class TestCreateEvents:
@@ -667,6 +833,49 @@ class TestCreateEvents:
         assert clue["period"] == {"type": "min", "value": 5}
         assert clue["window_end"] == int(scan_time.timestamp())
         assert event_snapshot["raw_data"] == [{"_msg": "error on web-1"}]
+        assert "jump_query" not in event_snapshot
+
+    def test_snapshot_lifts_jump_query_from_event(self, mocker):
+        scan_time = timezone.datetime(2026, 9, 15, 8, 0, tzinfo=timezone.utc)
+        policy = _make_policy(name="jump-snapshot", last_run_time=scan_time)
+        snapshot_field = AlertSnapshot._meta.get_field("snapshots")
+        raw_field = EventRawData._meta.get_field("data")
+        object_store = {}
+        object_counter = count()
+
+        def configure_memory_storage(field, prefix):
+            def upload(instance, value):
+                path = f"{prefix}-{next(object_counter)}.json.gz"
+                object_store[path] = deepcopy(value)
+                return path
+
+            def load(path):
+                return deepcopy(object_store[path])
+
+            mocker.patch.object(field, "_upload_to_s3", side_effect=upload)
+            mocker.patch.object(field, "_load_from_s3", side_effect=load)
+            mocker.patch.object(field, "_minio_storage", mocker.MagicMock())
+
+        configure_memory_storage(raw_field, "raw")
+        configure_memory_storage(snapshot_field, "snapshot")
+        jump_query = {"query": 'level:error AND service:="order"', "window_start": 100, "window_end": 400}
+        scan = LogPolicyScan(policy, scan_time=scan_time, window_start=100, window_end=400)
+        event_objs = scan.create_events(
+            [
+                {
+                    "source_id": f"policy_{policy.id}",
+                    "level": "warning",
+                    "content": "命中",
+                    "value": 5,
+                    "raw_data": [{"message": "order exploded"}],
+                    "jump_query": jump_query,
+                }
+            ]
+        )
+        snapshot = AlertSnapshot.objects.get(alert=event_objs[0].alert)
+        event_snapshot = next(item for item in snapshot.snapshots if item.get("event_id") == event_objs[0].id)
+        assert event_snapshot["jump_query"] == jump_query
+        assert event_snapshot["raw_data"] == [{"message": "order exploded"}]
 
     def test_new_alert_snapshots_policy_handlers(self):
         policy = _make_policy(handlers=[7, 8])

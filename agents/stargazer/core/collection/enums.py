@@ -14,6 +14,7 @@ class WorkloadClass(str, Enum):
     CONFIGURATION = "configuration"
     MONITORING = "monitoring"
     NETWORK_TOPOLOGY = "network_topology"
+    SCAN = "scan"
 
 
 class SubmissionStatus(str, Enum):

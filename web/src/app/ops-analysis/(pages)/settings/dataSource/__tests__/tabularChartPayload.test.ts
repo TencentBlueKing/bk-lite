@@ -60,8 +60,8 @@ describe('connector record arrays across supported charts', () => {
 
   it('maps arbitrary columns to ranking, multi-value and radar components', () => {
     const top = buildTopNItems(rows, 'resource_name', 'resource_count');
-    assert.deepEqual(top.map((item) => item.name), labels);
-    assert.deepEqual(top.map((item) => item.value), values);
+    assert.deepEqual(top.map((item) => item.name), ['MySQL', 'Redis', 'Oracle']);
+    assert.deepEqual(top.map((item) => item.value), [18, 6, 0]);
     const multi = validateMultiValueData(rows, 'invalid', { labelField: 'resource_name', valueField: 'resource_count' });
     assert.equal(multi.isValid, true);
     assert.deepEqual(multi.items, labels.map((label, index) => ({ label, value: String(values[index]) })));

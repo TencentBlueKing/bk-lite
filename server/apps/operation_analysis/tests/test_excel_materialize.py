@@ -1,5 +1,6 @@
 """Excel 双槽物化：行数探测、原子切换、失败保留、旧任务晚到。"""
 
+from datetime import timedelta
 from io import BytesIO
 from itertools import chain
 from types import SimpleNamespace
@@ -9,6 +10,7 @@ import openpyxl
 import pytest
 from django.core.files.storage import InMemoryStorage
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.utils import timezone, translation
 
 from apps.operation_analysis.models.datasource_models import DataSourceAPIModel
 from apps.operation_analysis.models.excel_materialization_models import ExcelMaterializationSlot
@@ -503,6 +505,55 @@ def test_sweep_abandons_slots_left_on_non_excel_datasource(django_capture_on_com
 
 
 @pytest.mark.django_db
+def test_sweep_skips_datasource_restored_to_excel_before_delete(django_capture_on_commit_callbacks, monkeypatch):
+    from apps.operation_analysis.services.excel_materialize import cleanup as cleanup_mod
+    from apps.operation_analysis.services.excel_materialize import sweep_abandoned_excel_materializations
+
+    ds = _excel_datasource()
+    slot = submit_excel_candidate(ds, uploaded_file=_uploaded([["a", 1]]), schedule=False)
+    storage = slot.source_file.storage
+    source_name = slot.source_file.name
+    DataSourceAPIModel.objects.filter(pk=ds.id).update(source_type=DataSourceAPIModel.SOURCE_TYPE_POSTGRESQL)
+    original_exclude = cleanup_mod.ExcelMaterializationSlot.objects.exclude
+
+    def exclude_then_restore(*args, **kwargs):
+        queryset = original_exclude(*args, **kwargs)
+
+        class _StaleIds:
+            def values_list(self, *args, **kwargs):
+                self.queryset = queryset.values_list(*args, **kwargs)
+                return self
+
+            def distinct(self):
+                self.queryset = self.queryset.distinct()
+                return self
+
+            def order_by(self, *args, **kwargs):
+                self.queryset = self.queryset.order_by(*args, **kwargs)
+                return self
+
+            def __getitem__(self, item):
+                ids = list(self.queryset[item])
+                DataSourceAPIModel.objects.filter(pk=ds.id).update(source_type=DataSourceAPIModel.SOURCE_TYPE_EXCEL)
+                return ids
+
+        return _StaleIds()
+
+    monkeypatch.setattr(cleanup_mod.ExcelMaterializationSlot.objects, "exclude", exclude_then_restore)
+
+    with django_capture_on_commit_callbacks(execute=True):
+        stats = sweep_abandoned_excel_materializations()
+
+    ds.refresh_from_db()
+    assert stats["cleaned"] == 0
+    assert stats["errors"] == 0
+    assert ds.source_type == DataSourceAPIModel.SOURCE_TYPE_EXCEL
+    assert ds.excel_candidate_slot_id == slot.id
+    assert ExcelMaterializationSlot.objects.filter(pk=slot.id).exists()
+    assert storage.exists(source_name) is True
+
+
+@pytest.mark.django_db
 def test_serializer_switch_from_excel_to_postgresql_abandons_slots(authenticated_user, django_capture_on_commit_callbacks):
     from rest_framework.test import APIRequestFactory, force_authenticate
 
@@ -552,3 +603,459 @@ def test_serializer_switch_from_excel_to_postgresql_abandons_slots(authenticated
     assert updated.excel_success_slot_id is None
     assert not ExcelMaterializationSlot.objects.filter(datasource_id=updated.id).exists()
     assert storage.exists(source_name) is False
+
+
+def _block_materialize_enqueue(monkeypatch) -> list:
+    """补扫测试不得连接真实队列。"""
+    calls = []
+
+    def _record(slot_id):
+        calls.append(int(slot_id))
+
+    monkeypatch.setattr(
+        "apps.operation_analysis.tasks.tasks.materialize_excel_candidate_task.delay",
+        _record,
+    )
+    return calls
+
+
+def _claim_processing_slot(monkeypatch, datasource):
+    """走认领比较更新后停在 processing，不吞掉 BaseException。"""
+    slot = submit_excel_candidate(
+        datasource,
+        uploaded_file=_uploaded([["b", 2]]),
+        schedule=False,
+    )
+
+    def _interrupted(*args, **kwargs):
+        raise KeyboardInterrupt()
+
+    monkeypatch.setattr(
+        "apps.operation_analysis.services.excel_materialize.materializer.read_excel_rows_for_materialize",
+        _interrupted,
+    )
+    with pytest.raises(KeyboardInterrupt):
+        ExcelMaterializer().materialize_candidate(slot.id)
+    slot.refresh_from_db()
+    return slot
+
+
+@pytest.mark.django_db
+def test_expired_processing_becomes_retryable_failure_and_keeps_previous_success(monkeypatch):
+    from apps.operation_analysis.services.excel_materialize import excel_can_retry
+    from apps.operation_analysis.services.user_messages import oa_message
+    from apps.operation_analysis.tasks.tasks import rescan_pending_excel_materializations_task
+
+    enqueued = _block_materialize_enqueue(monkeypatch)
+    ds = _excel_datasource()
+    first = submit_excel_candidate(ds, uploaded_file=_uploaded([["a", 1]]), schedule=False)
+    assert ExcelMaterializer().materialize_candidate(first.id)["ok"] is True
+    ds.refresh_from_db()
+    success_id = ds.excel_success_slot_id
+
+    slot = _claim_processing_slot(monkeypatch, ds)
+    assert slot.status == ExcelMaterializationSlot.STATUS_PROCESSING
+    assert slot.processing_started_at is not None
+    ExcelMaterializationSlot.objects.filter(pk=slot.id).update(
+        processing_started_at=timezone.now() - timedelta(seconds=120)
+    )
+
+    rescan_pending_excel_materializations_task(processing_deadline_seconds=60)
+
+    slot.refresh_from_db()
+    ds.refresh_from_db()
+    assert slot.status == ExcelMaterializationSlot.STATUS_FAILED
+    assert slot.role == ExcelMaterializationSlot.ROLE_CANDIDATE
+    assert slot.error_code == "excel_processing_expired"
+    assert slot.error_summary == "处理中断，请用已保存文件重新处理"
+    assert slot.id not in enqueued
+    assert ds.excel_success_slot_id == success_id
+    assert ds.excel_candidate_slot_id == slot.id
+    assert ExcelMaterializationSlot.objects.filter(pk=success_id).exists()
+    assert resolve_excel_runtime_status(ds) == "update_failed_using_previous"
+    assert excel_can_retry(ds) is True
+
+    with translation.override("en"):
+        assert (
+            oa_message(
+                "messages.excel_processing_expired",
+                "处理中断，请用已保存文件重新处理",
+            )
+            == "Processing was interrupted. Retry with the saved file."
+        )
+
+    stale = ExcelMaterializationSlot.objects.get(pk=slot.id)
+    stale.status = ExcelMaterializationSlot.STATUS_PROCESSING
+    stale.result_file.save("late.json.gz", SimpleUploadedFile("late.json.gz", b"late"), save=False)
+    ExcelMaterializer()._promote_success(
+        stale,
+        rows=[{"name": "late", "value": 9}],
+        fields=[{"key": "name", "title": "name", "value_type": "string"}],
+    )
+
+    stale.refresh_from_db()
+    ds.refresh_from_db()
+    assert stale.status == ExcelMaterializationSlot.STATUS_FAILED
+    assert stale.role == ExcelMaterializationSlot.ROLE_CANDIDATE
+    assert not stale.result_file
+    assert ds.excel_success_slot_id == success_id
+    assert ds.excel_candidate_slot_id == slot.id
+    assert ExcelMaterializationSlot.objects.filter(pk=success_id).exists()
+
+
+@pytest.mark.django_db
+def test_expired_processing_without_previous_success_is_failed(monkeypatch):
+    from apps.operation_analysis.services.excel_materialize import excel_can_retry
+    from apps.operation_analysis.tasks.tasks import rescan_pending_excel_materializations_task
+
+    _block_materialize_enqueue(monkeypatch)
+    ds = _excel_datasource()
+    slot = _claim_processing_slot(monkeypatch, ds)
+    ExcelMaterializationSlot.objects.filter(pk=slot.id).update(
+        processing_started_at=timezone.now() - timedelta(seconds=120)
+    )
+
+    rescan_pending_excel_materializations_task(processing_deadline_seconds=60)
+
+    slot.refresh_from_db()
+    ds.refresh_from_db()
+    assert slot.status == ExcelMaterializationSlot.STATUS_FAILED
+    assert slot.error_code == "excel_processing_expired"
+    assert ds.excel_success_slot_id is None
+    assert ds.excel_candidate_slot_id == slot.id
+    assert resolve_excel_runtime_status(ds) == "failed"
+    assert excel_can_retry(ds) is True
+
+
+@pytest.mark.django_db
+def test_processing_within_deadline_is_not_recycled_and_redelivery_stays_in_progress(monkeypatch):
+    from apps.operation_analysis.services.excel_materialize import excel_can_retry
+    from apps.operation_analysis.tasks.tasks import rescan_pending_excel_materializations_task
+
+    enqueued = _block_materialize_enqueue(monkeypatch)
+    ds = _excel_datasource()
+    first = submit_excel_candidate(ds, uploaded_file=_uploaded([["a", 1]]), schedule=False)
+    assert ExcelMaterializer().materialize_candidate(first.id)["ok"] is True
+    ds.refresh_from_db()
+    success_id = ds.excel_success_slot_id
+
+    slot = _claim_processing_slot(monkeypatch, ds)
+    ExcelMaterializationSlot.objects.filter(pk=slot.id).update(
+        processing_started_at=timezone.now() - timedelta(seconds=30)
+    )
+    parser = MagicMock()
+    monkeypatch.setattr(
+        "apps.operation_analysis.services.excel_materialize.materializer.read_excel_rows_for_materialize",
+        parser,
+    )
+
+    rescan_pending_excel_materializations_task(processing_deadline_seconds=60)
+    redelivery = ExcelMaterializer().materialize_candidate(slot.id)
+
+    slot.refresh_from_db()
+    ds.refresh_from_db()
+    assert redelivery["ok"] is False
+    assert redelivery["code"] == "slot_in_progress"
+    parser.assert_not_called()
+    assert slot.status == ExcelMaterializationSlot.STATUS_PROCESSING
+    assert slot.error_code == ""
+    assert slot.id not in enqueued
+    assert excel_can_retry(ds) is False
+    assert ds.excel_success_slot_id == success_id
+    assert ExcelMaterializationSlot.objects.filter(pk=success_id).exists()
+
+
+@pytest.mark.django_db
+def test_default_processing_deadline_keeps_claim_younger_than_900_seconds(monkeypatch):
+    from apps.operation_analysis.tasks.tasks import rescan_pending_excel_materializations_task
+
+    _block_materialize_enqueue(monkeypatch)
+    ds = _excel_datasource()
+    slot = _claim_processing_slot(monkeypatch, ds)
+    ExcelMaterializationSlot.objects.filter(pk=slot.id).update(
+        processing_started_at=timezone.now() - timedelta(seconds=120)
+    )
+
+    rescan_pending_excel_materializations_task()
+
+    slot.refresh_from_db()
+    assert slot.status == ExcelMaterializationSlot.STATUS_PROCESSING
+    assert slot.error_code == ""
+
+
+@pytest.mark.django_db
+def test_processing_deadline_below_60_seconds_uses_60_second_floor(monkeypatch):
+    from apps.operation_analysis.tasks.tasks import rescan_pending_excel_materializations_task
+
+    _block_materialize_enqueue(monkeypatch)
+    ds = _excel_datasource()
+    slot = _claim_processing_slot(monkeypatch, ds)
+    ExcelMaterializationSlot.objects.filter(pk=slot.id).update(
+        processing_started_at=timezone.now() - timedelta(seconds=30)
+    )
+
+    rescan_pending_excel_materializations_task(processing_deadline_seconds=1)
+
+    slot.refresh_from_db()
+    assert slot.status == ExcelMaterializationSlot.STATUS_PROCESSING
+    assert slot.error_code == ""
+
+
+@pytest.mark.django_db
+def test_blank_processing_started_at_is_stamped_without_failing(monkeypatch):
+    from apps.operation_analysis.services.excel_materialize import excel_can_retry
+    from apps.operation_analysis.tasks.tasks import rescan_pending_excel_materializations_task
+
+    enqueued = _block_materialize_enqueue(monkeypatch)
+    ds = _excel_datasource()
+    slot = submit_excel_candidate(ds, uploaded_file=_uploaded([["a", 1]]), schedule=False)
+    ExcelMaterializationSlot.objects.filter(pk=slot.id).update(
+        status=ExcelMaterializationSlot.STATUS_PROCESSING,
+        processing_started_at=None,
+        error_code="",
+        error_summary="",
+    )
+
+    rescan_pending_excel_materializations_task(processing_deadline_seconds=60)
+
+    slot.refresh_from_db()
+    ds.refresh_from_db()
+    assert slot.status == ExcelMaterializationSlot.STATUS_PROCESSING
+    assert slot.processing_started_at is not None
+    assert slot.error_code == ""
+    assert slot.id not in enqueued
+    assert excel_can_retry(ds) is False
+    assert resolve_excel_runtime_status(ds) == "processing"
+
+
+@pytest.mark.django_db
+def test_result_file_is_not_persisted_after_processing_expires(monkeypatch):
+    ds = _excel_datasource()
+    first = submit_excel_candidate(ds, uploaded_file=_uploaded([["a", 1]]), schedule=False)
+    assert ExcelMaterializer().materialize_candidate(first.id)["ok"] is True
+    ds.refresh_from_db()
+    success_id = ds.excel_success_slot_id
+    second = submit_excel_candidate(ds, uploaded_file=_uploaded([["b", 2]]), schedule=False)
+
+    def _expire_after_read(file_obj, sheet_name=None):
+        ExcelMaterializationSlot.objects.filter(pk=second.id).update(
+            status=ExcelMaterializationSlot.STATUS_FAILED,
+            error_code="excel_processing_expired",
+            error_summary="处理中断，请用已保存文件重新处理",
+        )
+        return [{"name": "b", "value": 2}]
+
+    monkeypatch.setattr(
+        "apps.operation_analysis.services.excel_materialize.materializer.read_excel_rows_for_materialize",
+        _expire_after_read,
+    )
+
+    result = ExcelMaterializer().materialize_candidate(second.id)
+
+    second.refresh_from_db()
+    ds.refresh_from_db()
+    assert result["ok"] is False
+    assert result["code"] == "slot_not_processing"
+    assert second.status == ExcelMaterializationSlot.STATUS_FAILED
+    assert second.role == ExcelMaterializationSlot.ROLE_CANDIDATE
+    assert not second.result_file
+    assert ds.excel_success_slot_id == success_id
+    assert ds.excel_candidate_slot_id == second.id
+    runtime = load_excel_runtime(ds, limit=10)
+    assert runtime["items"] == [{"name": "a", "value": 1}]
+
+
+@pytest.mark.django_db
+def test_saved_transform_enqueue_failure_stays_recoverable(monkeypatch, django_capture_on_commit_callbacks):
+    """转换配置已保存，但重算任务投递失败时必须留下可补扫的意图。"""
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    from apps.operation_analysis.services.excel_materialize import build_excel_materialization_payload
+    from apps.operation_analysis.services.excel_materialize.submit import (
+        schedule_resubmit_excel_from_saved_source,
+    )
+    from apps.operation_analysis.tasks.tasks import rescan_pending_excel_materializations_task
+
+    ds = _excel_datasource()
+    slot = submit_excel_candidate(ds, uploaded_file=_uploaded([["a", 1]]), schedule=False)
+    assert ExcelMaterializer().materialize_candidate(slot.id)["ok"] is True
+    ds.refresh_from_db()
+    ds.transform_config = {
+        "enabled": True,
+        "language": "python",
+        "script": "def transform(rows, params):\n    return rows[:1]\n",
+    }
+    ds.save(update_fields=["transform_config", "updated_at"])
+
+    class BoomTask:
+        @staticmethod
+        def delay(datasource_id):
+            raise OSError("broker down")
+
+    monkeypatch.setattr(
+        "apps.operation_analysis.tasks.tasks.resubmit_excel_from_saved_source_task",
+        BoomTask,
+    )
+    with django_capture_on_commit_callbacks(execute=True):
+        schedule_resubmit_excel_from_saved_source(ds.id)
+
+    ds.refresh_from_db()
+    runtime = load_excel_runtime(ds, limit=10)
+    assert runtime["items"] == [{"name": "a", "value": 1}]
+    payload = build_excel_materialization_payload(ds)
+
+    rescan_calls = []
+
+    class RecordingTask:
+        @staticmethod
+        def delay(datasource_id):
+            rescan_calls.append(datasource_id)
+
+    monkeypatch.setattr(
+        "apps.operation_analysis.tasks.tasks.resubmit_excel_from_saved_source_task",
+        RecordingTask,
+    )
+    DataSourceAPIModel.objects.filter(pk=ds.id).update(updated_at=timezone.now() - timedelta(seconds=120))
+    rescan_pending_excel_materializations_task(older_than_seconds=60)
+
+    warning_text = " ".join(runtime["warnings"])
+    problems = []
+    if resolve_excel_runtime_status(ds) != "processing":
+        problems.append(f"status={resolve_excel_runtime_status(ds)}")
+    if not runtime["warnings"] or ("正在更新" not in warning_text and "updating" not in warning_text.lower()):
+        problems.append(f"warnings={runtime['warnings']}")
+    if payload["can_retry"] is not True:
+        problems.append(f"can_retry={payload['can_retry']}")
+    if rescan_calls != [ds.id]:
+        problems.append(f"rescan_calls={rescan_calls}")
+    if getattr(ds, "excel_resubmit_pending", None) is not True:
+        problems.append(f"excel_resubmit_pending={getattr(ds, 'excel_resubmit_pending', None)}")
+    assert not problems, problems
+
+
+@pytest.mark.django_db
+def test_resubmit_task_clears_pending_flag_after_candidate(monkeypatch):
+    from apps.operation_analysis.tasks.tasks import resubmit_excel_from_saved_source_task
+
+    monkeypatch.setattr(
+        "apps.operation_analysis.tasks.tasks.materialize_excel_candidate_task.delay",
+        lambda slot_id: None,
+    )
+    ds = _excel_datasource()
+    slot = submit_excel_candidate(ds, uploaded_file=_uploaded([["a", 1]]), schedule=False)
+    assert ExcelMaterializer().materialize_candidate(slot.id)["ok"] is True
+    DataSourceAPIModel.objects.filter(pk=ds.id).update(excel_resubmit_pending=True)
+
+    result = resubmit_excel_from_saved_source_task(ds.id)
+
+    ds.refresh_from_db()
+    assert result["ok"] is True
+    assert ds.excel_resubmit_pending is False
+    assert ds.excel_candidate_slot_id is not None
+    runtime = load_excel_runtime(ds, limit=10)
+    assert runtime["items"] == [{"name": "a", "value": 1}]
+
+
+@pytest.mark.django_db
+def test_resubmit_task_clears_pending_flag_when_source_missing():
+    from apps.operation_analysis.tasks.tasks import resubmit_excel_from_saved_source_task
+
+    ds = _excel_datasource()
+    DataSourceAPIModel.objects.filter(pk=ds.id).update(excel_resubmit_pending=True)
+
+    result = resubmit_excel_from_saved_source_task(ds.id)
+
+    ds.refresh_from_db()
+    assert result["ok"] is False
+    assert result["code"] == "excel_resubmit_failed"
+    assert ds.excel_resubmit_pending is False
+
+
+@pytest.mark.django_db
+def test_resubmit_task_clears_pending_flag_when_source_type_leaves_excel():
+    from apps.operation_analysis.tasks.tasks import resubmit_excel_from_saved_source_task
+
+    ds = _excel_datasource()
+    DataSourceAPIModel.objects.filter(pk=ds.id).update(
+        excel_resubmit_pending=True,
+        source_type=DataSourceAPIModel.SOURCE_TYPE_POSTGRESQL,
+    )
+
+    result = resubmit_excel_from_saved_source_task(ds.id)
+
+    ds.refresh_from_db()
+    assert result == {"ok": False, "code": "not_excel", "datasource_id": ds.id}
+    assert ds.excel_resubmit_pending is False
+
+
+@pytest.mark.django_db
+def test_unchanged_transform_does_not_mark_resubmit_pending(
+    authenticated_user, monkeypatch, django_capture_on_commit_callbacks
+):
+    from rest_framework.test import APIRequestFactory, force_authenticate
+
+    from apps.operation_analysis.serializers.datasource_serializers import DataSourceAPIModelSerializer
+
+    ds = _excel_datasource(name="excel-unchanged-transform", transform_config={})
+    slot = submit_excel_candidate(ds, uploaded_file=_uploaded([["a", 1]]), schedule=False)
+    assert ExcelMaterializer().materialize_candidate(slot.id)["ok"] is True
+    ds.refresh_from_db()
+
+    calls = []
+
+    class RecordingTask:
+        @staticmethod
+        def delay(datasource_id):
+            calls.append(datasource_id)
+
+    monkeypatch.setattr(
+        "apps.operation_analysis.tasks.tasks.resubmit_excel_from_saved_source_task",
+        RecordingTask,
+    )
+
+    request = APIRequestFactory().put("/operation_analysis/api/data_source/1/", data={}, format="json")
+    request.COOKIES["current_team"] = "1"
+    request.COOKIES["include_children"] = "0"
+    request.user = authenticated_user
+    force_authenticate(request, user=authenticated_user)
+    payload = {
+        "name": ds.name,
+        "rest_api": "",
+        "source_type": "excel",
+        "desc": "只改描述",
+        "connection": None,
+        "connection_config": {},
+        "query_config": ds.query_config or {},
+        "transform_config": {},
+        "params": [],
+        "chart_type": ["table"],
+        "field_schema": [],
+        "groups": [1],
+        "namespaces": [],
+        "tag": [],
+    }
+    serializer = DataSourceAPIModelSerializer(ds, context={"request": request}, data=payload)
+    assert serializer.is_valid(), serializer.errors
+    with django_capture_on_commit_callbacks(execute=True):
+        serializer.save()
+
+    ds.refresh_from_db()
+    assert ds.excel_resubmit_pending is False
+    assert calls == []
+
+    payload["transform_config"] = {
+        "enabled": True,
+        "language": "python",
+        "script": "def transform(rows, params):\n    return rows\n",
+    }
+    changed = DataSourceAPIModelSerializer(ds, context={"request": request}, data=payload)
+    assert changed.is_valid(), changed.errors
+    with django_capture_on_commit_callbacks(execute=True):
+        changed.save()
+
+    ds.refresh_from_db()
+    assert ds.excel_resubmit_pending is True
+    assert calls == [ds.id]
+    assert resolve_excel_runtime_status(ds) == "processing"

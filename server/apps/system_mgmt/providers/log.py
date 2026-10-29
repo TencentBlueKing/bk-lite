@@ -4,6 +4,7 @@
 宿主（loader、runtime、view/serializer）继续直接用 system_mgmt_logger。
 """
 
+from apps.core.logger import safe_exception_info
 from apps.core.logger import system_mgmt_logger as logger
 
-__all__ = ["logger"]
+__all__ = ["logger", "safe_exception_info"]

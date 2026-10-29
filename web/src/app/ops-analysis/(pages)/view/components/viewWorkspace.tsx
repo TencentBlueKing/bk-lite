@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { Empty, Spin } from 'antd';
+import { AppstoreOutlined } from '@ant-design/icons';
 import type { DirItem } from '@/app/ops-analysis/types';
 import { resolveCanvasDescription } from '@/app/ops-analysis/utils/canvasDescription';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
@@ -19,6 +20,7 @@ interface ViewWorkspaceProps {
   headerVisible?: boolean;
   filterBarVisible?: boolean;
   flushContent?: boolean;
+  compactHeader?: boolean;
   children?: React.ReactNode;
 }
 
@@ -34,6 +36,7 @@ const ViewWorkspace: React.FC<ViewWorkspaceProps> = ({
   headerVisible = true,
   filterBarVisible = true,
   flushContent = false,
+  compactHeader = false,
   children,
 }) => {
   if (!selectedItem) {
@@ -42,19 +45,24 @@ const ViewWorkspace: React.FC<ViewWorkspaceProps> = ({
     );
   }
 
-  const resolvedDescription = resolveCanvasDescription(selectedItem.desc);
+  const resolvedDescription = compactHeader
+    ? ''
+    : resolveCanvasDescription(selectedItem.desc);
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-[var(--color-bg-2)]">
       <div
-        className={`mb-2 w-full shrink-0 items-center justify-between border-b border-[var(--color-border-2)] bg-[var(--color-bg-1)] px-4 py-2 ${headerVisible ? 'flex' : 'hidden'}`}
+        className={`w-full shrink-0 items-center justify-between border-b border-[var(--color-border-2)] bg-[var(--color-bg-1)] px-4 py-2 ${headerVisible ? 'flex' : 'hidden'}`}
       >
         <div className="mr-6 min-w-0 flex-1">
           <div className="flex min-w-0 items-center gap-2">
+            {compactHeader && (
+              <AppstoreOutlined className="shrink-0 text-base text-[var(--color-text-2)]" />
+            )}
             <h2 className="m-0 truncate text-base font-semibold leading-6 text-[var(--color-text-1)]">
               {selectedItem.name || titleFallback}
             </h2>
-            {selectedItem.is_build_in && (
+            {!compactHeader && selectedItem.is_build_in && (
               <SourceOriginBadge
                 kind="builtin"
                 mode="inline"
@@ -87,7 +95,7 @@ const ViewWorkspace: React.FC<ViewWorkspaceProps> = ({
         <div className="flex h-full min-h-0 flex-col overflow-hidden">
           {filterBar && (
             <div
-              className={`shrink-0 bg-[var(--color-bg-1)] px-2.5 pb-2 pt-1 ${filterBarVisible ? '' : 'hidden'}`}
+              className={`shrink-0 bg-[var(--color-bg-1)] px-2.5 pb-2 pt-3 ${filterBarVisible ? '' : 'hidden'}`}
             >
               {filterBar}
             </div>

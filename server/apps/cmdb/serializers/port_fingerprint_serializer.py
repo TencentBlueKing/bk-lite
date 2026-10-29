@@ -11,6 +11,7 @@ class PortFingerprintSerializer(UsernameSerializer):
         extra_kwargs = {
             "protocol": {"required": False},
             "built_in": {"read_only": True},
+            "enabled": {"required": False},
         }
 
     def validate_port(self, value):

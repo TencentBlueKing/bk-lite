@@ -10,13 +10,14 @@ class SystemMgmt(object):
         return_data = self.client.run("bk_lite_user_login", username=username, domain=domain)
         return return_data
 
-    def login_with_binding(self, binding_id, auth_code="", username="", password=""):
+    def login_with_binding(self, binding_id, auth_code="", username="", password="", bk_token=""):
         return self.client.run(
             "login_with_binding",
             binding_id=binding_id,
             auth_code=auth_code,
             username=username,
             password=password,
+            bk_token=bk_token,
         )
 
     def get_login_auth_bindings(self):
@@ -40,9 +41,9 @@ class SystemMgmt(object):
         """删除某个 bot 名下所有 OpsPilot 托管的 NATS 通道。"""
         return self.client.run("delete_opspilot_nats_channels", bot_id=bot_id)
 
-    def delete_workflow_orchestration_nats_channels(self, workflow_id):
+    def delete_workflow_nats_channels(self, workflow_id):
         """删除某个编排流程名下所有托管 NATS 通道。"""
-        return self.client.run("delete_workflow_orchestration_nats_channels", workflow_id=workflow_id)
+        return self.client.run("delete_workflow_nats_channels", workflow_id=workflow_id)
 
     def delete_rules(self, group_ids, instance_id, app, module, child_module=""):
         return self.client.run("delete_rules", group_ids, instance_id, app, module, child_module)
@@ -67,6 +68,10 @@ class SystemMgmt(object):
     def get_all_users(self):
         return_data = self.client.run("get_all_users")
         return return_data
+
+    def get_users_by_usernames(self, usernames):
+        """按用户名集合读取目录字段，不拉取全站用户。"""
+        return self.client.run("get_users_by_usernames", usernames=usernames)
 
     def get_authorized_groups_scoped(self, actor_context, include_children=False):
         return_data = self.client.run(
@@ -383,10 +388,10 @@ class SystemMgmt(object):
             include_children=include_children,
         )
 
-    def search_workflow_orchestration_nats_channels(self, teams=None, workflow_id=None, include_children=False, active_only=True):
+    def search_workflow_nats_channels(self, teams=None, workflow_id=None, include_children=False, active_only=True):
         """查询编排中心托管的 NATS 触发通道。"""
         return self.client.run(
-            "search_workflow_orchestration_nats_channels",
+            "search_workflow_nats_channels",
             teams=teams,
             workflow_id=workflow_id,
             include_children=include_children,
@@ -458,10 +463,10 @@ class SystemMgmt(object):
             timeout=timeout,
         )
 
-    def sync_workflow_orchestration_nats_channels(self, workflow_id, workflow_name, team, nodes, active, timeout=60):
+    def sync_workflow_nats_channels(self, workflow_id, workflow_name, team, nodes, active, timeout=60):
         """对账编排流程的托管 NATS 通道。"""
         return self.client.run(
-            "sync_workflow_orchestration_nats_channels",
+            "sync_workflow_nats_channels",
             workflow_id=workflow_id,
             workflow_name=workflow_name,
             team=team,

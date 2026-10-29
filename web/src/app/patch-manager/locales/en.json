@@ -747,6 +747,16 @@
       "noticeConfigurationIncomplete": "Complete the notification configuration first",
       "triggerTitle": "Assessment Triggers",
       "saveSettings": "Save Settings",
+      "enableOfflineCatalog": "Enable offline catalog",
+      "offlineCatalogHelp": "When enabled, Windows assessments use the uploaded offline catalog and do not contact Windows Update. When disabled, targets keep using their current online update service. Download the catalog from Microsoft: ",
+      "offlineCatalogDrop": "Click or drag a CAB file here",
+      "offlineCatalogFileType": "Upload a .cab file",
+      "offlineCatalogKept": "The saved catalog stays in place until you save a new file",
+      "uploadOfflineCatalog": "Upload Catalog",
+      "offlineCatalogRequired": "Upload an offline catalog first",
+      "offlineCatalogUploaded": "Offline catalog uploaded",
+      "offlineCatalogUpdatedTime": "Updated at {time}",
+      "offlineCatalogRemove": "Remove file",
       "scanSettings": "Scan Settings"
     }
   }

@@ -34,7 +34,14 @@ class ZabbixAdapter(AlertSourceAdapter, ABC):
                 normalized_event["external_id"] = str(problem_id)
 
             if not normalized_event.get("action"):
-                event_value = str(payload.get("EventValue") or normalized_event.get("event_value") or "").strip()
+                event_value = ""
+                for candidate in (payload.get("EventValue"), normalized_event.get("event_value")):
+                    if candidate is None:
+                        continue
+                    text = str(candidate).strip()
+                    if text:
+                        event_value = text
+                        break
                 normalized_event["action"] = "recovery" if event_value == "0" else "created"
             return [normalized_event]
 

@@ -303,3 +303,89 @@ def test_custom_script_sync_queries_the_vm_gauge_series(monkeypatch):
 def test_task_type_constant_is_custom_script():
     assert CollectPluginTypes.CUSTOM_SCRIPT == "custom_script"
     assert SimpleNamespace(task_type=CollectPluginTypes.CUSTOM_SCRIPT).task_type != "host"
+
+
+TASK_ID = 6613
+
+
+def _saved_passwords(*passwords):
+    return [{"username": f"user-{index}", "password": password, "port": 5986} for index, password in enumerate(passwords)]
+
+
+def _custom_script_node(monkeypatch, *, os_type, credentials):
+    plugin = SimpleNamespace(
+        id=7,
+        plugin_id="custom_host_scan",
+        os_type=os_type,
+        shell="powershell" if os_type == "windows" else "bash",
+        team=[1],
+    )
+    monkeypatch.setattr("apps.cmdb.node_configs.custom_script.load_plugin", lambda plugin_pk: plugin)
+    task = SimpleNamespace(
+        id=TASK_ID,
+        model_id="host",
+        driver_type="job",
+        task_type=CollectPluginTypes.CUSTOM_SCRIPT,
+        timeout=120,
+        access_point=[{"id": "node-1", "ip": "10.0.0.1"}],
+        params={"custom_plugin_pk": plugin.id, "os_type": os_type},
+        instances=[],
+        ip_range="",
+    )
+    return CustomScriptNodeParams(task, resolved_credentials=credentials)
+
+
+def _assert_indexed_password_envs(node, passwords):
+    env = node.env_config()
+    headers = node.custom_headers()
+    rendered = " ".join(headers.values())
+    for index, password in enumerate(passwords):
+        env_name = f"PASSWORD_password_cmdb_{TASK_ID}_{index}"
+        assert env[env_name] == password
+        assert headers[f"cmdbcredential_{index}_password"] == "${" + env_name + "}"
+        assert password not in rendered
+    assert f"PASSWORD_password_cmdb_{TASK_ID}" not in env
+
+
+def test_windows_two_saved_passwords_publish_indexed_env(monkeypatch):
+    passwords = ("saved-win-0", "saved-win-1")
+    node = _custom_script_node(monkeypatch, os_type="windows", credentials=_saved_passwords(*passwords))
+    _assert_indexed_password_envs(node, passwords)
+
+
+def test_windows_three_saved_passwords_publish_indexed_env(monkeypatch):
+    passwords = ("saved-win-0", "saved-win-1", "saved-win-2")
+    node = _custom_script_node(monkeypatch, os_type="windows", credentials=_saved_passwords(*passwords))
+    _assert_indexed_password_envs(node, passwords)
+
+
+def test_windows_single_password_keeps_unindexed_env_name(monkeypatch):
+    password = "saved-win-only"
+    node = _custom_script_node(monkeypatch, os_type="windows", credentials=_saved_passwords(password))
+    env = node.env_config()
+    headers = node.custom_headers()
+    env_name = f"PASSWORD_password_cmdb_{TASK_ID}"
+    assert env == {env_name: password}
+    assert headers["cmdbpassword"] == "${" + env_name + "}"
+    assert "cmdbcredential_0_password" not in headers
+    assert password not in " ".join(headers.values())
+
+
+@pytest.mark.parametrize(
+    ("passwords", "indexed"),
+    [
+        (("saved-linux-only",), False),
+        (("saved-linux-0", "saved-linux-1"), True),
+    ],
+)
+def test_linux_password_env_names_follow_parent(monkeypatch, passwords, indexed):
+    node = _custom_script_node(monkeypatch, os_type="linux", credentials=_saved_passwords(*passwords))
+    if indexed:
+        _assert_indexed_password_envs(node, passwords)
+        return
+    env = node.env_config()
+    headers = node.custom_headers()
+    env_name = f"PASSWORD_password_cmdb_{TASK_ID}"
+    assert env == {env_name: passwords[0]}
+    assert headers["cmdbpassword"] == "${" + env_name + "}"
+    assert passwords[0] not in " ".join(headers.values())

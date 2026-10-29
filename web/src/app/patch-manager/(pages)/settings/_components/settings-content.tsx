@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Tag, Button, Input, Select, Space, TimePicker, Alert, message, Form, Switch, Modal, InputNumber, Skeleton, Tooltip } from 'antd';
+import { Tag, Button, Input, Select, Space, TimePicker, Alert, message, Form, Switch, Modal, InputNumber, Skeleton, Tooltip, Upload } from 'antd';
 import PermissionWrapper from '@/components/permission';
 import PatchDeletePopconfirm from '@/app/patch-manager/components/delete-popconfirm';
 import Password from '@/components/password';
@@ -9,7 +9,7 @@ import SourceOriginBadge from '@/components/source-origin-badge';
 import NotificationRuleMatrix from '@/app/patch-manager/components/notification-rule-matrix';
 import type { Dayjs } from 'dayjs';
 import dayjs from 'dayjs';
-import { PlusOutlined, ClockCircleOutlined, LinkOutlined, EditOutlined, PlayCircleOutlined, CheckCircleOutlined } from '@ant-design/icons';
+import { PlusOutlined, ClockCircleOutlined, LinkOutlined, EditOutlined, PlayCircleOutlined, CheckCircleOutlined, InboxOutlined, PaperClipOutlined, DeleteOutlined } from '@ant-design/icons';
 import CustomTable from '@/components/custom-table';
 import type { ColumnsType } from 'antd/es/table';
 import SearchActionBar from '@/components/search-action-bar';
@@ -31,6 +31,8 @@ import {
   LINUX_ARCHITECTURE_OPTIONS,
   normalizeArchitecture,
 } from '@/app/patch-manager/constants/architecture';
+
+const OFFLINE_CATALOG_DOWNLOAD_URL = 'https://catalog.s.download.windowsupdate.com/microsoftupdate/v6/wsusscan/wsusscn2.cab';
 
 const SOURCE_TYPE_OPTIONS: { label: string; value: PatchSourceType }[] = [
   { label: 'WSUS', value: 'wsus' },
@@ -513,7 +515,13 @@ export function ScanSettings() {
   }>();
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const { convertToLocalizedTime } = useLocalizedTime();
   const [isEnabled, setIsEnabled] = useState(true);
+  const [offlineCatalogEnabled, setOfflineCatalogEnabled] = useState(false);
+  const [offlineCatalogFilename, setOfflineCatalogFilename] = useState('');
+  const [offlineCatalogUploadedAt, setOfflineCatalogUploadedAt] = useState<string | null>(null);
+  const [pendingCatalogFile, setPendingCatalogFile] = useState<File | null>(null);
+  const [hideStoredCatalog, setHideStoredCatalog] = useState(false);
   const [notificationEnabled, setNotificationEnabled] = useState(false);
   const [notificationRules, setNotificationRules] = useState<NoticeRuleDraft[]>([]);
   const [noticeChannels, setNoticeChannels] = useState<NoticeChannel[]>([]);
@@ -536,6 +544,11 @@ export function ScanSettings() {
         time: dayjs(data.time || '02:00', 'HH:mm'),
       });
       setIsEnabled(data.is_enabled !== false);
+      setOfflineCatalogEnabled(data.offline_catalog_enabled === true);
+      setOfflineCatalogFilename(data.offline_catalog_filename || '');
+      setOfflineCatalogUploadedAt(data.offline_catalog_uploaded_at || null);
+      setPendingCatalogFile(null);
+      setHideStoredCatalog(false);
       setNotificationEnabled(data.notification_enabled === true);
       setNotificationRules((data.notification_rules || []).map((rule, index) => ({
         key: `saved-notice-rule-${rule.channel_id}-${index}`,
@@ -565,7 +578,24 @@ export function ScanSettings() {
     loadSettings();
   }, [authLoading]);
 
+  const hasOfflineCatalog = Boolean(offlineCatalogUploadedAt);
+  const offlineCatalogMissing = offlineCatalogEnabled && !hasOfflineCatalog && !pendingCatalogFile;
+  const showStoredCatalog = hasOfflineCatalog && !hideStoredCatalog && !pendingCatalogFile;
+
+  const handleCatalogFile = (file?: File) => {
+    if (!file) return;
+    if (!file.name.toLowerCase().endsWith('.cab')) {
+      message.error(t('patchManager.settingsPage.offlineCatalogFileType'));
+      return;
+    }
+    setPendingCatalogFile(file);
+  };
+
   const handleSave = async () => {
+    if (offlineCatalogEnabled && !offlineCatalogUploadedAt && !pendingCatalogFile) {
+      message.error(t('patchManager.settingsPage.offlineCatalogRequired'));
+      return;
+    }
     let scheduleValues = scheduleForm.getFieldsValue();
     if (isEnabled) {
       try {
@@ -588,12 +618,18 @@ export function ScanSettings() {
         weekday: scheduleValues.weekday || 1,
         time: scheduleValues.time?.format('HH:mm') || '02:00',
         is_enabled: isEnabled,
+        offline_catalog_enabled: offlineCatalogEnabled,
         notification_enabled: notificationEnabled,
         notification_rules: notificationRules.map((rule) => ({
           channel_id: rule.channel_id!,
           receivers: rule.receivers,
         })),
-      });
+      }, pendingCatalogFile || undefined);
+      setOfflineCatalogEnabled(saved.offline_catalog_enabled === true);
+      setOfflineCatalogFilename(saved.offline_catalog_filename || '');
+      setOfflineCatalogUploadedAt(saved.offline_catalog_uploaded_at || null);
+      setPendingCatalogFile(null);
+      setHideStoredCatalog(false);
       setNotificationEnabled(saved.notification_enabled === true);
       setNotificationRules((saved.notification_rules || []).map((rule, index) => ({
         key: `saved-notice-rule-${rule.channel_id}-${index}`,
@@ -759,8 +795,109 @@ export function ScanSettings() {
           ))}
         </div>
 
+        <div className={styles.assessmentAutomationControl}>
+          <div className={styles.assessmentAutomationHeader}>
+            <span className={styles.assessmentAutomationTitle}>
+              {t('patchManager.settingsPage.enableOfflineCatalog')}
+            </span>
+            <Switch
+              checked={offlineCatalogEnabled}
+              aria-label={t('patchManager.settingsPage.enableOfflineCatalog')}
+              onChange={setOfflineCatalogEnabled}
+            />
+          </div>
+          <Alert
+            type="info"
+            showIcon
+            message={(
+              <>
+                {t('patchManager.settingsPage.offlineCatalogHelp')}
+                <a className="break-all text-[var(--color-primary)] underline" href={OFFLINE_CATALOG_DOWNLOAD_URL} target="_blank" rel="noreferrer">
+                  {OFFLINE_CATALOG_DOWNLOAD_URL}
+                </a>
+              </>
+            )}
+          />
+        </div>
+        {offlineCatalogEnabled && (
+          <div className={`${styles.assessmentAutomationPanel} mb-4`}>
+            {hasOfflineCatalog && !showStoredCatalog && (
+              <span className="mb-3 block text-[13px] text-[var(--color-text-2)]">
+                {t('patchManager.settingsPage.offlineCatalogKept')}
+              </span>
+            )}
+            {!hasOfflineCatalog && !pendingCatalogFile && (
+              <span className="mb-3 block text-[13px] text-[var(--color-text-2)]">
+                {t('patchManager.settingsPage.offlineCatalogRequired')}
+              </span>
+            )}
+            <PermissionWrapper requiredPermissions={['Edit']}>
+              {showStoredCatalog || pendingCatalogFile ? (
+                <Upload
+                  maxCount={1}
+                  disabled={saving}
+                  fileList={[{
+                    uid: pendingCatalogFile ? 'pending-offline-catalog' : 'stored-offline-catalog',
+                    name: pendingCatalogFile ? pendingCatalogFile.name : offlineCatalogFilename,
+                    status: 'done',
+                  }]}
+                  showUploadList={{ showPreviewIcon: false, showDownloadIcon: false, showRemoveIcon: true }}
+                  itemRender={(_origin, file, _fileList, actions) => (
+                    <div className="flex items-center gap-2">
+                      <PaperClipOutlined className="text-[var(--color-text-3)]" />
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-[13px] text-[var(--color-text-1)]">{file.name}</div>
+                        {file.uid === 'stored-offline-catalog' && offlineCatalogUploadedAt && (
+                          <div className="truncate text-xs text-[var(--color-text-3)]">
+                            {t('patchManager.settingsPage.offlineCatalogUpdatedTime', undefined, {
+                              time: convertToLocalizedTime(offlineCatalogUploadedAt),
+                            })}
+                          </div>
+                        )}
+                      </div>
+                      <Button
+                        type="text"
+                        size="small"
+                        aria-label={t('patchManager.settingsPage.offlineCatalogRemove')}
+                        icon={<DeleteOutlined />}
+                        disabled={saving}
+                        onClick={() => actions.remove()}
+                      />
+                    </div>
+                  )}
+                  beforeUpload={() => false}
+                  onRemove={() => {
+                    if (pendingCatalogFile) setPendingCatalogFile(null);
+                    else setHideStoredCatalog(true);
+                    return true;
+                  }}
+                />
+              ) : (
+                <Upload.Dragger
+                  maxCount={1}
+                  accept=".cab,application/vnd.ms-cab-compressed"
+                  disabled={saving}
+                  fileList={[]}
+                  showUploadList={false}
+                  beforeUpload={(file) => {
+                    handleCatalogFile(file);
+                    return false;
+                  }}
+                >
+                  <p className="ant-upload-drag-icon"><InboxOutlined /></p>
+                  <p className="ant-upload-text">{t('patchManager.settingsPage.offlineCatalogDrop')}</p>
+                </Upload.Dragger>
+              )}
+            </PermissionWrapper>
+          </div>
+        )}
+
         <div className="flex justify-end">
-          <PermissionWrapper requiredPermissions={['Edit']}><Button type="primary" loading={saving} onClick={handleSave}>{t('patchManager.settingsPage.saveSettings')}</Button></PermissionWrapper>
+          <PermissionWrapper requiredPermissions={['Edit']}>
+            <Button type="primary" loading={saving} disabled={offlineCatalogMissing} onClick={handleSave}>
+              {t('patchManager.settingsPage.saveSettings')}
+            </Button>
+          </PermissionWrapper>
         </div>
       </div>
     </Skeleton>

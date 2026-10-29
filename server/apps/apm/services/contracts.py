@@ -346,6 +346,9 @@ class ServiceMetricQuery:
     include_breakdown: bool = False
     endpoint: str = ""
     version: str = ""
+    include_endpoints: bool = True
+    slow_threshold_ms: int | None = None
+    apdex_threshold_ms: int | None = None
 
 
 @dataclass(frozen=True)
@@ -355,6 +358,16 @@ class ServiceRedPoint:
     error_rate: float | None
     p95_ms: float | None
     p99_ms: float | None
+    avg_ms: float | None = None
+    max_ms: float | None = None
+    p50_ms: float | None = None
+    p75_ms: float | None = None
+    p90_ms: float | None = None
+    slow_count: int | None = None
+    satisfied_count: int | None = None
+    tolerating_count: int | None = None
+    error_count: int | None = None
+    request_count: int | None = None
 
 
 @dataclass(frozen=True)
@@ -376,6 +389,14 @@ class ServiceRed:
     top_endpoints: tuple[ServiceEndpointRed, ...] = ()
     request_count: int | None = None
     error_count: int | None = None
+    avg_ms: float | None = None
+    max_ms: float | None = None
+    p50_ms: float | None = None
+    p75_ms: float | None = None
+    p90_ms: float | None = None
+    slow_count: int | None = None
+    satisfied_count: int | None = None
+    tolerating_count: int | None = None
 
 
 @dataclass(frozen=True)
@@ -499,6 +520,9 @@ class PublishResult:
 class MetricDataState(StrEnum):
     AVAILABLE = "available"
     NO_DATA = "no_data"
+    MISSING_BASELINE = "missing_baseline"
+    INSUFFICIENT_SAMPLES = "insufficient_samples"
+    HOLD = "hold"
 
 
 @dataclass(frozen=True)
@@ -509,6 +533,14 @@ class PolicyQueryResult:
     data_state: MetricDataState = MetricDataState.AVAILABLE
     series: tuple[ServiceRedPoint, ...] = ()
     threshold: Mapping[str, str] | None = None
+    current_value: Decimal | None = None
+    baseline_value: Decimal | None = None
+    baseline_series: tuple[ServiceRedPoint, ...] = ()
+    request_count: int | None = None
+    reason: str = ""
+    result_unit: str = ""
+    window_ended_at: datetime | None = None
+    baseline_days_used: int | None = None
 
 
 @dataclass(frozen=True)

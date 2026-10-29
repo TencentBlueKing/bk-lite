@@ -1,14 +1,15 @@
 # -- coding: utf-8 --
+from rest_framework.viewsets import ReadOnlyModelViewSet
+
 from apps.alerts.filters import OperatorLogModelFilter
 from apps.alerts.models.operator_log import OperatorLog
 from apps.alerts.serializers import OperatorLogModelSerializer
 from apps.alerts.utils.permission_scope import filter_operator_log_queryset_for_request
 from apps.core.decorators.api_permission import HasPermission
 from config.drf.pagination import CustomPageNumberPagination
-from config.drf.viewsets import ModelViewSet
 
 
-class SystemLogModelViewSet(ModelViewSet):
+class SystemLogModelViewSet(ReadOnlyModelViewSet):
     """
     系统日志视图集
     """

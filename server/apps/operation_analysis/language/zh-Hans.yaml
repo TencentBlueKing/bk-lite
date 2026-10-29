@@ -628,6 +628,55 @@ dashboards:
         description: 已启用渠道占已配置渠道的比例。普通通知渠道无独立启停开关，已配置即视为已启用；即时通讯渠道按 enabled 计。
         params:
           organization: 组织
+  "dashboard::运维总览_内置":
+    name: 运维总览
+    desc: 按所选组织查看资源、监控和告警的当前规模。主机性能和新增关闭趋势跟随所选时间。
+    filters:
+      organization:
+        name: 组织
+      time:
+        name: 时间范围
+    widgets:
+      group-kpi:
+        name: 总览
+      ops-kpi-resources:
+        name: 资源总数
+      ops-kpi-monitor:
+        name: 监控实例
+      ops-kpi-nodes:
+        name: 节点
+      ops-kpi-open-alerts:
+        name: 未关闭告警
+      ops-kpi-severe:
+        name: 严重告警
+      group-resource:
+        name: 资源概览
+      ops-resource-types:
+        name: 资源类型分布
+      ops-app-total:
+        name: 应用总数
+      ops-app-with-alert:
+        name: 存在关联告警
+      ops-app-without-alert:
+        name: 无关联告警
+      ops-app-top:
+        name: 应用告警 TOP5
+      group-monitor:
+        name: 监控中心
+      ops-monitor-ring:
+        name: 监控接入概况
+      ops-host-key-metrics:
+        name: 主机关键指标
+      ops-monitor-alerts:
+        name: 监控异常 TOP5
+      group-alert:
+        name: 告警中心
+      ops-alert-trend:
+        name: 近 7 日新增与关闭告警（$time$）
+      ops-alert-level:
+        name: 当前告警等级分布
+      ops-alert-top:
+        name: 待处理告警 TOP5
 screens:
   "screen::告警运营大屏_内置":
     name: 告警运营大屏
@@ -1112,7 +1161,7 @@ datasources:
       organization: 组织
   "告警快照统计::alert/get_alert_snapshot_statistics":
     name: 活跃告警状态快照
-    desc: 查询时刻的活跃告警状态，不受时间范围影响；含活动总数、未分派、待响应、处理中与自动恢复
+    desc: 查询时刻的活跃告警状态，不受时间范围影响；含活动总数、未分派、待响应、处理中、自动恢复与严重活跃数
     fields:
       active_count:
         title: 活跃告警数
@@ -1132,6 +1181,9 @@ datasources:
       auto_recovery_rate:
         title: 自动恢复状态告警占比
         description: 百分比值范围 0 到 100
+      severe_active_count:
+        title: 严重活跃告警数
+        description: 活跃告警中级别名称 Critical 对应 level_id 的数量，不按显示名匹配
     params:
       organization: 组织
   "按渠道通知成功率::alert/get_notification_channel_stats":

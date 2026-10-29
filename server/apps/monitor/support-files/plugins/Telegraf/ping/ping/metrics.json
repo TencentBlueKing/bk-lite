@@ -80,7 +80,7 @@
     {
       "metric_group": "Ping",
       "name": "ping_result_code",
-      "query": "ping_result_code{__$labels__}",
+      "query": "max(ping_result_code{__$labels__}) by (instance_id, agent_id)",
       "display_name": "Result Code",
       "data_type": "Enum",
       "unit": "[{\"name\":\"成功\",\"id\":0,\"color\":\"#1ac44a\"},{\"name\":\"错误\",\"id\":1,\"color\":\"#ff4d4f\"},{\"name\":\"无法解析\",\"id\":2,\"color\":\"#ff4d4f\"}]",

@@ -24,6 +24,7 @@ import type {
 import type { Application3DWallConfig } from '@/app/ops-analysis/utils/application3DWallConfig';
 import type { OpsAnalysisWidgetSurface } from '@/app/ops-analysis/utils/chartTypeSurface';
 import type { DateRangeValue } from './dateRange';
+import type { SingleValueStyleConfig } from '@/app/ops-analysis/utils/singleValueStyle';
 
 export type FilterType = 'selector' | 'fixed';
 
@@ -46,6 +47,13 @@ export interface TimeConfig {
 
 export interface OtherConfig {
   timeSelector?: TimeConfig;
+  /**
+   * 仪表盘横向格数。缺省或 12 表示按旧 12 列保存的 x/w；
+   * 当前运行时为 24，打开旧盘时换算一次后写入 24。
+   */
+  gridCols?: number;
+  /** 仪表盘行高（px）。缺省为旧版 60，当前为 30；换算后的布局保存时写入。 */
+  gridRowHeight?: number;
   [key: string]: unknown;
 }
 
@@ -131,8 +139,20 @@ export interface ValueConfig {
   descriptionField?: string;
   topNLabelField?: string;
   topNValueField?: string;
+  /** 从单个对象的多个数值字段拆成多行，并保持配置顺序。未配置时仍按数组排名。 */
+  topNScalarFields?: Array<{ field: string; label?: string }>;
+  /** 缺省 relative：条宽按当前列表最大值。absolute：按 barMax，没有则用 gaugeMax。 */
+  barMode?: 'relative' | 'absolute';
+  /** absolute 模式下的满分。条宽为 clamp(value, 0, barMax) / barMax。 */
+  barMax?: number;
   dimensionField?: string;
   valueField?: string;
+  /** 折线/柱状多选数值。有值时优先于 valueField；只选一个时与 valueField 同时写入。 */
+  valueFields?: string[];
+  /** 折线/柱状按该字段取值拆系列。与两个及以上数值字段不能同时使用。 */
+  seriesField?: string;
+  /** 从标量对象取两个及以上字段合成饼图；已有数组饼图不受影响。 */
+  pieScalarFields?: Array<{ field: string; label?: string }>;
   multiValueLabelField?: string;
   multiValueValueField?: string;
   nodeGraphIdentityMode?: 'ip' | 'service';
@@ -176,6 +196,8 @@ export interface ValueConfig {
   actions?: DashboardActionConfig[];
   interaction?: WidgetInteractionLink;
   appearance?: ScreenWidgetAppearance;
+  /** 单值样式。缺省字段保持旧外观，不需要迁移。 */
+  singleStyle?: SingleValueStyleConfig;
 }
 
 export type ScreenWidgetFrame = 'panel' | 'bare';
@@ -275,6 +297,8 @@ export interface ViewConfigProps {
   surface?: OpsAnalysisWidgetSurface;
   /** 拓扑不插入统一筛选变量，名称和描述保持普通输入框。 */
   filterTemplateTokens?: boolean;
+  /** 拓扑和大屏数据表单不提供单值样式。仪表盘抽屉默认开启。 */
+  showSingleValueStyle?: boolean;
   variant?: 'drawer' | 'panel';
   /** 大屏检查器切换数据/交互时复用同一份表单。 */
   configSection?: 'data' | 'interaction';
@@ -283,6 +307,13 @@ export interface ViewConfigProps {
   /** 大屏当前容器样式。样式页切换时单独传入，避免整表重开。 */
   screenFrame?: ScreenWidgetFrame;
   onDirtyChange?: (dirty: boolean) => void;
+  /**
+   * 样式页已经写在组件上的单值样式。只盖到预览配置。
+   * 数据表单 includeSingleStyle 仍为 false，提交不会带上它。
+   */
+  previewSingleStyle?: SingleValueStyleConfig;
+  /** 面板模式把预览传送到这个节点。抽屉模式忽略。 */
+  previewHost?: HTMLElement | null;
 }
 
 export interface ComponentSelectorConfigItem extends DatasourceItem {

@@ -138,6 +138,7 @@
 | 小时周期 | 按固定小时间隔执行评估 | 间隔至少一小时；只有已绑定基线的目标产生合规结果 | GA |
 | 每日周期 | 按每日指定时间执行评估 | 时间采用小时和分钟 | GA |
 | 每周周期 | 按周几和指定时间执行评估 | 周一至周日 | GA |
+| 离线目录 | 启用后所有 Windows 评估使用已上传目录 | 环境级开关；选文件随保存一次提交，失败不替换；无可用目录且没有待保存文件时不能保存；评估时缺失则失败且不回退在线搜索 | GA |
 
 > 证据来源：server/apps/patch_mgmt/models/scan_setting.py:9-46，server/apps/patch_mgmt/views/scan_setting.py:24-40，server/apps/patch_mgmt/serializers/scan_setting.py:59-89，server/apps/patch_mgmt/tasks.py:65-94　|　同步基线：d2769559　|　【已实现】
 

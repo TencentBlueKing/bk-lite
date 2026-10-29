@@ -197,6 +197,18 @@ def get_all_users():
     return {"result": True, "data": list(data)}
 
 
+def get_users_by_usernames(usernames=None):
+    """按用户名读取通知目录，只返回 id、username、display_name。
+
+    供告警进程内目录查询使用，不注册为新的远程 subject。空名单直接返回，不读用户表。
+    """
+    if not usernames:
+        return {"result": True, "data": []}
+    requested = list(dict.fromkeys(usernames))
+    rows = User.objects.filter(username__in=requested).values("id", "username", "display_name")
+    return {"result": True, "data": list(rows)}
+
+
 @nats_client.register
 def init_user_default_attributes(user_id, group_name, default_group_id):
     try:

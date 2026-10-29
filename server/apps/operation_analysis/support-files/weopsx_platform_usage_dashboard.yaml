@@ -16,22 +16,24 @@ dashboards:
   name: WeOpsX 平台使用
   desc: 按所选组织汇总 CMDB、监控、日志、告警、节点、作业和系统管理的当前规模与使用情况，包括数量、占比和排行。资源数量是当前库存，不随时间变化；部分比率和排行跟随所选时间。
   other:
+    gridCols: 24
     timeSelector:
       selectValue: 10080
+    gridRowHeight: 30
   view_sets:
-  - h: 4
-    w: 12
+  - h: 8
+    w: 24
     x: 0
     y: 0
     id: group-overview
     name: 平台总览
-    headerH: 1
+    headerH: 2
     itemType: group
     description: 各模块此刻库存
     subGridOpts:
       children:
-      - h: 3
-        w: 2
+      - h: 6
+        w: 4
         x: 0
         y: 0
         id: weopsx-kpi-cmdb-instances
@@ -60,9 +62,9 @@ dashboards:
               control: organization
             alias_name: 组织
             filterType: filter
-      - h: 3
-        w: 2
-        x: 2
+      - h: 6
+        w: 4
+        x: 4
         y: 0
         id: weopsx-kpi-monitor-instances
         name: 监控实例
@@ -90,9 +92,9 @@ dashboards:
               control: organization
             alias_name: 组织
             filterType: filter
-      - h: 3
-        w: 2
-        x: 4
+      - h: 6
+        w: 4
+        x: 8
         y: 0
         id: weopsx-kpi-monitor-metrics
         name: 监控指标
@@ -120,9 +122,9 @@ dashboards:
               control: organization
             alias_name: 组织
             filterType: filter
-      - h: 3
-        w: 2
-        x: 6
+      - h: 6
+        w: 4
+        x: 12
         y: 0
         id: weopsx-kpi-log-instances
         name: 日志采集实例
@@ -150,9 +152,9 @@ dashboards:
               control: organization
             alias_name: 组织
             filterType: filter
-      - h: 3
-        w: 2
-        x: 8
+      - h: 6
+        w: 4
+        x: 16
         y: 0
         id: weopsx-kpi-open-alerts
         name: 未关闭告警
@@ -180,9 +182,9 @@ dashboards:
               control: organization
             alias_name: 组织
             filterType: filter
-      - h: 3
-        w: 2
-        x: 10
+      - h: 6
+        w: 4
+        x: 20
         y: 0
         id: weopsx-kpi-nodes
         name: 节点
@@ -211,19 +213,19 @@ dashboards:
             alias_name: 组织
             filterType: filter
     sizeToContent: true
-  - h: 9
-    w: 12
+  - h: 18
+    w: 24
     x: 0
-    y: 4
+    y: 8
     id: group-cmdb
     name: CMDB
-    headerH: 1
+    headerH: 2
     itemType: group
     description: 分类/模型/实例规模、采集覆盖与分类排行
     subGridOpts:
       children:
-      - h: 3
-        w: 4
+      - h: 6
+        w: 8
         x: 0
         y: 0
         id: weopsx-cmdb-classifications
@@ -252,9 +254,9 @@ dashboards:
               control: organization
             alias_name: 组织
             filterType: filter
-      - h: 3
-        w: 4
-        x: 4
+      - h: 6
+        w: 8
+        x: 8
         y: 0
         id: weopsx-cmdb-models
         name: 模型数
@@ -282,9 +284,9 @@ dashboards:
               control: organization
             alias_name: 组织
             filterType: filter
-      - h: 3
-        w: 4
-        x: 8
+      - h: 6
+        w: 8
+        x: 16
         y: 0
         id: weopsx-cmdb-instances
         name: 实例数
@@ -312,10 +314,10 @@ dashboards:
               control: organization
             alias_name: 组织
             filterType: filter
-      - h: 5
-        w: 6
+      - h: 10
+        w: 12
         x: 0
-        y: 3
+        y: 6
         id: weopsx-cmdb-coverage
         name: 采集覆盖率
         itemType: widget
@@ -347,10 +349,10 @@ dashboards:
               control: organization
             alias_name: 组织
             filterType: filter
-      - h: 5
-        w: 6
-        x: 6
-        y: 3
+      - h: 10
+        w: 12
+        x: 12
+        y: 6
         id: weopsx-cmdb-class-top
         name: 分类实例 TOP
         itemType: widget
@@ -381,19 +383,19 @@ dashboards:
             alias_name: 排行维度
             filterType: params
     sizeToContent: true
-  - h: 9
-    w: 12
+  - h: 18
+    w: 24
     x: 0
-    y: 13
+    y: 26
     id: group-monitor
     name: 监控
-    headerH: 1
+    headerH: 2
     itemType: group
     description: 对象、实例、指标、策略库存，以及时间窗内实例告警排行
     subGridOpts:
       children:
-      - h: 3
-        w: 3
+      - h: 6
+        w: 6
         x: 0
         y: 0
         id: weopsx-mon-objects
@@ -422,9 +424,9 @@ dashboards:
               control: organization
             alias_name: 组织
             filterType: filter
-      - h: 3
-        w: 3
-        x: 3
+      - h: 6
+        w: 6
+        x: 6
         y: 0
         id: weopsx-mon-instances
         name: 监控实例
@@ -452,9 +454,9 @@ dashboards:
               control: organization
             alias_name: 组织
             filterType: filter
-      - h: 3
-        w: 3
-        x: 6
+      - h: 6
+        w: 6
+        x: 12
         y: 0
         id: weopsx-mon-metrics
         name: 指标定义
@@ -482,9 +484,9 @@ dashboards:
               control: organization
             alias_name: 组织
             filterType: filter
-      - h: 3
-        w: 3
-        x: 9
+      - h: 6
+        w: 6
+        x: 18
         y: 0
         id: weopsx-mon-policies
         name: 告警策略
@@ -512,10 +514,10 @@ dashboards:
               control: organization
             alias_name: 组织
             filterType: filter
-      - h: 5
-        w: 6
+      - h: 10
+        w: 12
         x: 0
-        y: 3
+        y: 6
         id: weopsx-mon-most-alerts
         name: 告警最多实例（$time$）
         itemType: widget
@@ -551,10 +553,10 @@ dashboards:
             value: 10
             alias_name: 返回条数
             filterType: params
-      - h: 5
-        w: 6
-        x: 6
-        y: 3
+      - h: 10
+        w: 12
+        x: 12
+        y: 6
         id: weopsx-mon-least-alerts
         name: 已配策略告警最少（$time$）
         itemType: widget
@@ -591,19 +593,19 @@ dashboards:
             alias_name: 返回条数
             filterType: params
     sizeToContent: true
-  - h: 9
-    w: 12
+  - h: 18
+    w: 24
     x: 0
-    y: 22
+    y: 44
     id: group-log
     name: 日志
-    headerH: 1
+    headerH: 2
     itemType: group
     description: 采集实例、提取规则、告警规则与绑定率，以及策略告警排行
     subGridOpts:
       children:
-      - h: 3
-        w: 4
+      - h: 6
+        w: 8
         x: 0
         y: 0
         id: weopsx-log-instances
@@ -632,9 +634,9 @@ dashboards:
               control: organization
             alias_name: 组织
             filterType: filter
-      - h: 3
-        w: 4
-        x: 4
+      - h: 6
+        w: 8
+        x: 8
         y: 0
         id: weopsx-log-extractors
         name: 提取规则
@@ -662,9 +664,9 @@ dashboards:
               control: organization
             alias_name: 组织
             filterType: filter
-      - h: 3
-        w: 4
-        x: 8
+      - h: 6
+        w: 8
+        x: 16
         y: 0
         id: weopsx-log-policies
         name: 告警规则
@@ -692,10 +694,10 @@ dashboards:
               control: organization
             alias_name: 组织
             filterType: filter
-      - h: 5
-        w: 6
+      - h: 10
+        w: 12
         x: 0
-        y: 3
+        y: 6
         id: weopsx-log-bound
         name: 已绑定资产占比
         itemType: widget
@@ -719,10 +721,10 @@ dashboards:
               control: organization
             alias_name: 组织
             filterType: filter
-      - h: 5
-        w: 6
-        x: 6
-        y: 3
+      - h: 10
+        w: 12
+        x: 12
+        y: 6
         id: weopsx-log-policy-top
         name: 告警规则 TOP（$time$）
         itemType: widget
@@ -754,19 +756,19 @@ dashboards:
             alias_name: 返回条数
             filterType: params
     sizeToContent: true
-  - h: 9
-    w: 12
+  - h: 18
+    w: 24
     x: 0
-    y: 31
+    y: 62
     id: group-alert
     name: 告警
-    headerH: 1
+    headerH: 2
     itemType: group
     description: 未关闭告警、接入源、闭环率与排行
     subGridOpts:
       children:
-      - h: 3
-        w: 6
+      - h: 6
+        w: 12
         x: 0
         y: 0
         id: weopsx-alert-active
@@ -795,9 +797,9 @@ dashboards:
               control: organization
             alias_name: 组织
             filterType: filter
-      - h: 3
-        w: 6
-        x: 6
+      - h: 6
+        w: 12
+        x: 12
         y: 0
         id: weopsx-alert-sources
         name: 接入源
@@ -825,10 +827,10 @@ dashboards:
               control: organization
             alias_name: 组织
             filterType: filter
-      - h: 5
-        w: 3
+      - h: 10
+        w: 6
         x: 0
-        y: 3
+        y: 6
         id: weopsx-alert-loop
         name: 闭环率（$time$）
         itemType: widget
@@ -866,10 +868,10 @@ dashboards:
               control: organization
             alias_name: 组织
             filterType: filter
-      - h: 5
-        w: 4
-        x: 3
-        y: 3
+      - h: 10
+        w: 8
+        x: 6
+        y: 6
         id: weopsx-alert-source-top
         name: 接入源事件 TOP（$time$）
         itemType: widget
@@ -900,10 +902,10 @@ dashboards:
             value: 10
             alias_name: 返回条数
             filterType: params
-      - h: 5
-        w: 5
-        x: 7
-        y: 3
+      - h: 10
+        w: 10
+        x: 14
+        y: 6
         id: weopsx-alert-rule-top
         name: 相关性命中 TOP（$time$）
         itemType: widget
@@ -935,19 +937,19 @@ dashboards:
             alias_name: 返回条数
             filterType: params
     sizeToContent: true
-  - h: 9
-    w: 12
+  - h: 18
+    w: 24
     x: 0
-    y: 40
+    y: 80
     id: group-node
     name: 节点
-    headerH: 1
+    headerH: 2
     itemType: group
     description: 节点、采集器、云区域与在线率
     subGridOpts:
       children:
-      - h: 3
-        w: 4
+      - h: 6
+        w: 8
         x: 0
         y: 0
         id: weopsx-node-total
@@ -976,9 +978,9 @@ dashboards:
               control: organization
             alias_name: 组织
             filterType: filter
-      - h: 3
-        w: 4
-        x: 4
+      - h: 6
+        w: 8
+        x: 8
         y: 0
         id: weopsx-node-collectors
         name: 采集器数
@@ -1006,9 +1008,9 @@ dashboards:
               control: organization
             alias_name: 组织
             filterType: filter
-      - h: 3
-        w: 4
-        x: 8
+      - h: 6
+        w: 8
+        x: 16
         y: 0
         id: weopsx-node-clouds
         name: 云区域数
@@ -1036,10 +1038,10 @@ dashboards:
               control: organization
             alias_name: 组织
             filterType: filter
-      - h: 5
-        w: 6
+      - h: 10
+        w: 12
         x: 0
-        y: 3
+        y: 6
         id: weopsx-node-online
         name: 在线占比
         itemType: widget
@@ -1063,10 +1065,10 @@ dashboards:
               control: organization
             alias_name: 组织
             filterType: filter
-      - h: 5
-        w: 6
-        x: 6
-        y: 3
+      - h: 10
+        w: 12
+        x: 12
+        y: 6
         id: weopsx-node-cloud-top
         name: 云区域节点 TOP
         itemType: widget
@@ -1092,19 +1094,19 @@ dashboards:
             alias_name: 返回条数
             filterType: params
     sizeToContent: true
-  - h: 5
-    w: 12
+  - h: 10
+    w: 24
     x: 0
-    y: 49
+    y: 98
     id: group-job
     name: 作业
-    headerH: 1
+    headerH: 2
     itemType: group
     description: 作业、模板库存与时间窗内执行成功率
     subGridOpts:
       children:
-      - h: 4
-        w: 4
+      - h: 8
+        w: 8
         x: 0
         y: 0
         id: weopsx-job-jobs
@@ -1138,9 +1140,9 @@ dashboards:
             value: 10080
             alias_name: 时间范围
             filterType: params
-      - h: 4
-        w: 4
-        x: 4
+      - h: 8
+        w: 8
+        x: 8
         y: 0
         id: weopsx-job-templates
         name: 模板数
@@ -1173,9 +1175,9 @@ dashboards:
             value: 10080
             alias_name: 时间范围
             filterType: params
-      - h: 4
-        w: 4
-        x: 8
+      - h: 8
+        w: 8
+        x: 16
         y: 0
         id: weopsx-job-success
         name: 执行成功率（$time$）
@@ -1215,19 +1217,19 @@ dashboards:
             alias_name: 时间范围
             filterType: filter
     sizeToContent: true
-  - h: 5
-    w: 12
+  - h: 10
+    w: 24
     x: 0
-    y: 54
+    y: 108
     id: group-system
     name: 系统管理
-    headerH: 1
+    headerH: 2
     itemType: group
     description: 组织、用户与通知渠道配置规模
     subGridOpts:
       children:
-      - h: 4
-        w: 3
+      - h: 8
+        w: 6
         x: 0
         y: 0
         id: weopsx-sys-orgs
@@ -1256,9 +1258,9 @@ dashboards:
               control: organization
             alias_name: 组织
             filterType: filter
-      - h: 4
-        w: 3
-        x: 3
+      - h: 8
+        w: 6
+        x: 6
         y: 0
         id: weopsx-sys-users
         name: 用户数
@@ -1286,9 +1288,9 @@ dashboards:
               control: organization
             alias_name: 组织
             filterType: filter
-      - h: 4
-        w: 3
-        x: 6
+      - h: 8
+        w: 6
+        x: 12
         y: 0
         id: weopsx-sys-channels
         name: 通知渠道
@@ -1316,9 +1318,9 @@ dashboards:
               control: organization
             alias_name: 组织
             filterType: filter
-      - h: 4
-        w: 3
-        x: 9
+      - h: 8
+        w: 6
+        x: 18
         y: 0
         id: weopsx-sys-enabled
         name: 渠道启用占比

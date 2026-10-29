@@ -14,7 +14,8 @@ import { useModelItem } from 'src/hooks/useModelItem';
 import { ALERT_BADGE_TONE, NODE_STATUS_COLOR } from 'src/diagramOverlay/colors';
 import { CORNER_BADGE_SX } from 'src/diagramOverlay/cornerBadge';
 import { useDiagramVisual } from 'src/diagramOverlay/context';
-import type { NodeStatusLevel } from 'src/types';
+import { visibleMetricLines } from 'src/diagramOverlay/metricCard';
+import type { NodeMetricLine, NodeStatusLevel } from 'src/types';
 import { useUiStateStore } from 'src/stores/uiStateStore';
 import { useLabels } from 'src/hooks/useLabels';
 import { ExpandableLabel } from 'src/components/Label/ExpandableLabel';
@@ -22,6 +23,8 @@ import { LabelConnector } from 'src/components/Label/Label';
 import { MarkdownEditor } from 'src/components/MarkdownEditor/MarkdownEditor';
 import { NodeStatusMark } from './NodeStatusMark';
 
+// Decorative air between the saved label height and the icon. Not stored.
+const LABEL_ICON_GAP = 12;
 const PLATE_DETAIL_MIN_ZOOM = 0.7;
 
 const PLATE_LABEL_TONE: Partial<
@@ -54,6 +57,62 @@ export const NodeLabelLayerContext = createContext<HTMLElement | null>(null);
 /** Icon under the pointer. Geometry hit, so the icon itself stays pointer-events none. */
 export const HoveredIconContext = createContext<string | null>(null);
 
+const MetricLines = ({ lines, pinned }: { lines: NodeMetricLine[]; pinned: boolean }) => (
+  <Box
+    data-testid="architecture-metric-card"
+    data-metric-pinned={pinned ? 'true' : 'false'}
+    sx={{
+      display: 'flex',
+      flexDirection: 'column',
+      gap: '1px',
+      minWidth: 0,
+      maxWidth: 220
+    }}
+  >
+    {lines.map((line, index) => (
+      <Box
+        key={`${line.name}-${index}`}
+        sx={{
+          display: 'flex',
+          alignItems: 'baseline',
+          justifyContent: 'space-between',
+          gap: '8px',
+          minWidth: 0
+        }}
+      >
+        <Box
+          component="span"
+          sx={{
+            minWidth: 0,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+            color: 'var(--color-text-3)',
+            fontSize: 11,
+            lineHeight: 1.45
+          }}
+        >
+          {line.name}
+        </Box>
+        <Box
+          component="span"
+          sx={{
+            flexShrink: 0,
+            color: 'var(--color-text-1)',
+            fontSize: 11,
+            fontWeight: 600,
+            lineHeight: 1.45,
+            fontVariantNumeric: 'tabular-nums',
+            whiteSpace: 'nowrap'
+          }}
+        >
+          {line.text}
+        </Box>
+      </Box>
+    ))}
+  </Box>
+);
+
 interface Props {
   node: ViewItem;
   order: number;
@@ -64,6 +123,8 @@ export const Node = ({ node, order }: Props) => {
   const visual = useDiagramVisual();
   const status = visual.nodeStatus?.[node.id];
   const zoom = useUiStateStore((state) => state.zoom);
+  const metricEntry = visual.nodeMetrics?.[node.id];
+  const metricSource = metricEntry?.lines ?? [];
   const [hovering, setHovering] = useState(false);
   const hoverTimer = useRef<number | null>(null);
   const setHovered = (next: boolean) => {
@@ -107,31 +168,28 @@ export const Node = ({ node, order }: Props) => {
   const subtitle = status?.plateSubtitle?.trim() || '';
   const showSubtitle = Boolean(subtitle) && zoom >= PLATE_DETAIL_MIN_ZOOM;
   const hoveredIconId = useContext(HoveredIconContext);
-  const revealed = viewing && (hovering || hoveredIconId === node.id);
+  const labelRaised = hovering || hoveredIconId === node.id;
+  const revealed = viewing && labelRaised;
+  const metricsPinned = metricEntry?.pinned !== false;
+  const showMetrics = visibleMetricLines({
+    editorMode: visual.editorMode,
+    zoom,
+    pinned: metricsPinned,
+    hovering: revealed,
+    lineCount: metricSource.length
+  });
+  const metricLines = showMetrics ? metricSource : [];
   const resourceName = status?.hoverName?.trim() || '';
   const modelName = status?.hoverModel?.trim() || '';
-  const modelLabel = status?.hoverModelLabel?.trim() || '';
-  const statusLabel = status?.hoverStatusLabel?.trim() || '';
   const unnamedReason =
     !resourceName &&
     (status?.level === 'forbidden' || status?.level === 'invalid')
       ? status?.hint?.trim() || ''
       : '';
-  // A host-supplied title replaces an empty icon name. A name the user typed stays put.
-  const showFullName = revealed && Boolean(plateTitle) && Boolean(resourceName) && resourceName !== title;
-  const resourceDetail = revealed && !plateTitle && resourceName && resourceName !== title
-    ? resourceName
-    : '';
-  const modelDetail = revealed && modelName && modelName !== title && modelName !== (showFullName ? resourceName : resourceDetail)
-    ? modelName
-    : '';
-  const quietLines = revealed
-    ? [showFullName ? '' : resourceDetail, !resourceName ? unnamedReason : ''].filter(Boolean)
-    : [];
-  const alertLine = revealed ? status?.hoverAlert?.trim() || '' : '';
-  const statusLine = alertLine || (revealed && status?.level === 'normal' ? status?.hint?.trim() || '' : '');
-  const displayTitle = showFullName ? resourceName : title;
-  const labelHeight = node.labelHeight ?? DEFAULT_LABEL_HEIGHT;
+  const quietReason = revealed && !resourceName ? unnamedReason : '';
+  // Model type rides the name line, one shade quieter: `redis-order-01 (Redis)`.
+  const modelSuffix = modelName && modelName !== title ? ` (${modelName})` : '';
+  const labelHeight = (node.labelHeight ?? DEFAULT_LABEL_HEIGHT) + LABEL_ICON_GAP;
   // View mode: the card and its corner badge open the icon on click.
   // order is -(x + y). Negating it keeps the front plate above the icon and any plate behind it.
   const plateHit = viewing
@@ -150,13 +208,13 @@ export const Node = ({ node, order }: Props) => {
   }, [modelItem.description]);
 
   const plate =
-    title || description || showSubtitle ? (
+    title || description || showSubtitle || inlineMark || healthyDot || cornerMark ? (
       <Box
         data-plate-subtitle={showSubtitle ? subtitle : ''}
-        data-plate-expanded={showFullName || quietLines.length > 0 || Boolean(modelDetail) || Boolean(statusLine) ? 'true' : 'false'}
+        data-plate-expanded={quietReason ? 'true' : 'false'}
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
-        sx={{ position: 'absolute', pointerEvents: 'auto', zIndex: revealed ? 2 : 0 }}
+        sx={{ position: 'absolute', pointerEvents: 'auto', zIndex: labelRaised ? 3 : 0 }}
         style={{ left: position.x, top: position.y }}
       >
         <Box
@@ -164,10 +222,12 @@ export const Node = ({ node, order }: Props) => {
           style={{ bottom: PROJECTED_TILE_SIZE.height / 2 }}
         >
           <ExpandableLabel
-            maxWidth={showFullName ? 280 : 250}
+            maxWidth={480}
             expandDirection="BOTTOM"
             labelHeight={labelHeight}
             hideConnector={Boolean(labelLayer)}
+            uncapped={metricLines.length > 0 || Boolean(quietReason)}
+            sx={{ py: '3px', px: '5px', borderRadius: '4px' }}
             cardProps={plateHit}
             cornerBadge={
               cornerMark && markTone ? (
@@ -185,40 +245,38 @@ export const Node = ({ node, order }: Props) => {
             }
           >
             <Stack spacing={0.25}>
-              {(displayTitle || inlineMark || healthyDot) && (
+              {(title || inlineMark || healthyDot) && (
                 <Box
                   sx={{
                     display: 'flex',
-                    alignItems: showFullName ? 'flex-start' : 'center',
+                    alignItems: 'center',
                     gap: '6px',
                     minWidth: 0
                   }}
                 >
-                  {displayTitle ? (
+                  {title ? (
                     <Typography
-                      fontWeight={600}
-                      sx={
-                        showFullName
-                          ? {
-                              minWidth: 0,
-                              maxWidth: 240,
-                              overflow: 'hidden',
-                              display: '-webkit-box',
-                              WebkitLineClamp: 2,
-                              WebkitBoxOrient: 'vertical',
-                              whiteSpace: 'normal',
-                              overflowWrap: 'anywhere',
-                              lineHeight: 1.35
-                            }
-                          : {
-                              minWidth: 0,
-                              overflow: 'hidden',
-                              textOverflow: 'ellipsis',
-                              whiteSpace: 'nowrap'
-                            }
-                      }
+                      sx={{
+                        minWidth: 0,
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                        fontSize: 12,
+                        fontWeight: 600,
+                        lineHeight: 1.2,
+                        color: 'var(--color-text-1)'
+                      }}
                     >
-                      {displayTitle}
+                      {title}
+                      {modelSuffix ? (
+                        <Box
+                          component="span"
+                          data-testid="architecture-model-suffix"
+                          sx={{ color: 'var(--color-text-3)', fontWeight: 400 }}
+                        >
+                          {modelSuffix}
+                        </Box>
+                      ) : null}
                     </Typography>
                   ) : null}
                   {healthyDot ? (
@@ -264,57 +322,39 @@ export const Node = ({ node, order }: Props) => {
                   ) : null}
                 </Box>
               )}
-              {quietLines.length > 0 || modelDetail || statusLine ? (
-                <>
-                  {quietLines.map((line) => (
-                    <Typography
-                      key={line}
-                      data-testid="architecture-resource-hover"
-                      sx={{ color: 'var(--color-text-3)', fontSize: 11, lineHeight: 1.35 }}
-                    >
-                      {line}
-                    </Typography>
-                  ))}
-                  {modelDetail ? (
-                    <Typography
-                      data-testid="architecture-resource-hover"
-                      sx={{ color: 'var(--color-text-3)', fontSize: 11, lineHeight: 1.35 }}
-                    >
-                      {modelLabel ? (
-                        <Box component="span" sx={{ color: 'var(--color-text-4)' }}>
-                          {modelLabel}
-                        </Box>
-                      ) : null}
-                      {modelDetail}
-                    </Typography>
-                  ) : null}
-                  {statusLine ? (
-                    <Typography
-                      data-testid="architecture-plate-status"
-                      sx={{ color: 'var(--color-text-3)', fontSize: 11, lineHeight: 1.35 }}
-                    >
-                      {statusLabel ? (
-                        <Box component="span" sx={{ color: 'var(--color-text-4)' }}>
-                          {statusLabel}
-                        </Box>
-                      ) : null}
-                      {statusLine}
-                    </Typography>
-                  ) : null}
-                </>
+              {/* Pinned (开关打开) metrics stay fixed under the name even on hover;
+                  only the unpinned hover reveal moves them below the divider. */}
+              {(!revealed || metricsPinned) && metricLines.length > 0 ? (
+                <MetricLines lines={metricLines} pinned={metricsPinned} />
+              ) : null}
+              {quietReason ? (
+                <Typography
+                  data-testid="architecture-resource-hover"
+                  sx={{ color: 'var(--color-text-3)', fontSize: 11, lineHeight: 1.35 }}
+                >
+                  {quietReason}
+                </Typography>
               ) : showSubtitle ? (
-                <Typography sx={{ color: '#6b7280', fontSize: 11, lineHeight: 1.3 }}>
+                <Typography sx={{ color: 'var(--color-text-3)', fontSize: 11, lineHeight: 1.3 }}>
                   {subtitle}
                 </Typography>
               ) : null}
-              {modelItem.description &&
-                modelItem.description !== MARKDOWN_EMPTY_VALUE && (
-                  <MarkdownEditor
-                    value={modelItem.description || ''}
-                    onChange={() => {}}
-                    readOnly
+              {revealed && !metricsPinned && metricLines.length > 0 ? (
+                <>
+                  <Box
+                    data-testid="architecture-metric-divider"
+                    sx={{ borderTop: '1px solid var(--color-border-1)', my: '2px' }}
                   />
-                )}
+                  <MetricLines lines={metricLines} pinned={false} />
+                </>
+              ) : null}
+              {description ? (
+                <MarkdownEditor
+                  value={description}
+                  onChange={() => {}}
+                  readOnly
+                />
+              ) : null}
             </Stack>
           </ExpandableLabel>
         </Box>

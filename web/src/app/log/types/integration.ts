@@ -68,9 +68,22 @@ export interface GroupRule {
   conditions?: FilterItem[];
 }
 
+export interface PolicyCompare {
+  kind?: string;
+  to?: string;
+  offset?: number;
+}
+
+export interface PolicyConditionParams {
+  quantile?: number;
+  filter?: string;
+}
+
 export interface FilterItem {
   func?: string | null;
   field: string | null;
   op: string | null;
   value: string;
+  compare?: PolicyCompare;
+  params?: PolicyConditionParams;
 }

@@ -79,6 +79,7 @@ Note: `MOID` in the tables below means Managed Object ID, the unique identifier 
 | cpu_cores     | Physical core count |
 | vcpus         | Thread count (logical CPU) |
 | esxi_version  | ESXi version |
+| boot_time     | Host boot time (ISO; changes only on reboot; uptime is not collected) |
 | vmware_ds     | Accessible datastore MOID list (comma-separated) |
 
 **VM (vmware_vm)**

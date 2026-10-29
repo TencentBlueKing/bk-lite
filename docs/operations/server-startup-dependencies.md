@@ -35,17 +35,19 @@
 6. `supervisord -n`
 7. Supervisor 才启动 Django API、默认 Celery Worker、独立 Dashboard Report
    Render Worker、Celery Beat、`nats_listener` 和 SNMP Bridge 等运行期进程。
-   若 `INSTALL_APPS` 为空（全装）或包含 `workflow_orchestration`，还会启动编排中心
+   若 `INSTALL_APPS` 为空（全装）或包含 `workflow`，还会启动编排中心
    的 Conductor Worker、触发调度器与产物清理调度器；它们只在运行期访问 Conductor，
    不进入 `batch_init`，也不创建编排专属 Celery 队列。未安装时启动脚本删除对应配置。
    若 `INSTALL_APPS` 为空（全装）或包含 `opspilot`，另有独立 OpsPilot Celery
    Worker 消费 `opspilot_channel` / `opspilot_wiki` / `opspilot_maintenance` / `opspilot_chat_parse`；
    未安装 opspilot 时 `startup.sh` 删除该 supervisor 配置，不拉起该进程。
    默认 Celery Worker 只听默认队列，不消费上述 OpsPilot 队列。
-   同一条件下还有企微智能机器人长连接进程 `run_wecom_aibot_long_connection`。
-   它只在 `supervisord` 拉起后运行，不进入 `batch_init`，也不等待企微握手成功。
-   连不上企微或暂时拿不到 Redis 选主锁时只重试，失败不阻断 API 与其它 Worker。
-   未安装 opspilot 时 `startup.sh` 一并删除 `opspilot_wecom_aibot_long_connection.conf`。
+   同一条件下还有企微智能机器人长连接进程 `run_wecom_aibot_long_connection`，
+   以及飞书长连接进程 `run_feishu_long_connection`。
+   它们只在 `supervisord` 拉起后运行，不进入 `batch_init`，也不等待握手成功。
+   连不上对端或暂时拿不到 Redis 选主锁时只重试，失败不阻断 API 与其它 Worker。
+   未安装 opspilot 时 `startup.sh` 一并删除 `opspilot_wecom_aibot_long_connection.conf`
+   和 `opspilot_feishu_long_connection.conf`。
 
 迁移失败时，启动脚本保留 `manage.py migrate` 的标准错误与退出码并停止容器，
 不会执行缓存表、静态资源、批量初始化或 Supervisor。运维应先按迁移原始错误修复

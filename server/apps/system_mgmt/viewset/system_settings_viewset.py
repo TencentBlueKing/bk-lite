@@ -8,7 +8,6 @@ from rest_framework.decorators import action
 from rest_framework.permissions import AllowAny
 
 from apps.core.decorators.api_permission import HasPermission
-from apps.core.services.gm_transport import SETTING_KEY, self_check_failure
 from apps.core.utils.loader import LanguageLoader
 from apps.system_mgmt.models import Channel, ChannelChoices, SystemSettings, User
 from apps.system_mgmt.serializers.system_settings_serializer import SystemSettingsSerializer
@@ -85,7 +84,7 @@ class SystemSettingsViewSet(viewsets.ModelViewSet):
     @HasPermission("security_settings-View")
     def get_sys_set(self, request):
         self._ensure_portal_settings()
-        SystemSettings.objects.get_or_create(key=SETTING_KEY, defaults={"value": "0"})
+        SystemSettings.objects.get_or_create(key="enable_gm_transport", defaults={"value": "0"})
         settings = dict(SystemSettings.objects.all().values_list("key", "value"))
         settings.pop("user_create_initial_password_enabled", None)
         password_hash = settings.pop(self.INITIAL_PASSWORD_HASH_KEY, "")
@@ -227,7 +226,13 @@ class SystemSettingsViewSet(viewsets.ModelViewSet):
 
         kwargs[self.INITIAL_PASSWORD_MODE_KEY] = current_mode
 
-        if str(kwargs.get(SETTING_KEY, "")) == "1" and str(current_settings.get(SETTING_KEY, "0")) != "1":
+        if str(kwargs.get("enable_gm_transport", "")) == "1" and str(current_settings.get("enable_gm_transport", "0")) != "1":
+            try:
+                from apps.core.enterprise.gm_transport import self_check_failure
+            except ImportError:
+                locale = resolve_system_mgmt_language(getattr(getattr(request, "user", None), "locale", None))
+                message = LanguageLoader(app="core", default_lang=locale).get("error.system_error") or "system_error"
+                return JsonResponse({"result": False, "message": message}, status=400)
             failure = self_check_failure()
             if failure:
                 locale = resolve_system_mgmt_language(getattr(getattr(request, "user", None), "locale", None))

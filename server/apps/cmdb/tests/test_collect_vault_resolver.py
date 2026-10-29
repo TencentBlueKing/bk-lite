@@ -136,9 +136,9 @@ def test_every_plugin_binding_matches_builtin_credential_directory(binding, obje
     assert actual_builtin_type_keys(binding, [row]) == [key], object_id
 
 
-def test_mapping_covers_all_116_authenticating_tree_entries():
-    assert sum(len(ids) for ids in COLLECT_VAULT_BINDINGS.values()) == 116
-    assert len({object_id for ids in COLLECT_VAULT_BINDINGS.values() for object_id in ids}) == 116
+def test_mapping_covers_all_118_authenticating_tree_entries():
+    assert sum(len(ids) for ids in COLLECT_VAULT_BINDINGS.values()) == 118
+    assert len({object_id for ids in COLLECT_VAULT_BINDINGS.values() for object_id in ids}) == 118
 
 
 @pytest.mark.parametrize(

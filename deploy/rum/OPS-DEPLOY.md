@@ -26,7 +26,7 @@
 | Dockerfile | `deploy/rum/collector/Dockerfile` |
 | 构建上下文 | `deploy/rum/collector` |
 | 默认 tag | `bklite/rum-collector:0.1.0-bklite.1` |
-| 构建参数 | `GO_IMAGE` 默认 `public.ecr.aws/docker/library/golang:1.26.8-alpine`；`GOPROXY` 默认 `https://goproxy.cn,direct` |
+| 构建参数 | `GO_IMAGE` 默认 `public.ecr.aws/docker/library/golang:1.26.10-alpine`；`GOPROXY` 默认 `https://goproxy.cn,direct` |
 | 镜像内容 | 三个二进制，以及 `/etc/bklite-rum/rum.gateway.yaml` |
 | 运行用户 | `65532:65532`。镜像没有 shell，不能自己改目录属主 |
 
@@ -43,7 +43,7 @@ docker build \
 
 | 服务 | 要求 |
 | --- | --- |
-| Redis | 用平台现有实例，不另起。投影、会话、回放索引各用一个库号，不要和 `REDIS_CACHE_URL` 用同一个库号。密码沿用这台 Redis 的现有密码 |
+| Redis | 用平台现有实例，不另起。投影、会话、回放索引各用一个库号，不要和 `REDIS_CACHE_URL` 用同一个库号。密码沿用这台 Redis 的现有密码，16 到 256 个字符。已有集群不必为启用 RUM 轮换 |
 | VictoriaLogs | `victoriametrics/victoria-logs:v1.38.0`，单独一台，不用日志产品那台。参数含 `-delete.enable`，监听 `:9428` |
 | VictoriaTraces | `victoriametrics/victoria-traces:v0.9.4`，单独一台，不用 APM 那台。参数含 `-delete.enable`，监听 `:10428` |
 | MinIO | 用平台现有实例，只新建桶 `rum-replay`。Gateway 的 access key 可写，Server 的 `MINIO_*` 可读 |
@@ -76,7 +76,7 @@ Controller 的 `-nats-url` 必须是 `tls://`，主机和端口与 `NATS_SERVERS
 | 新生成的 HMAC，至少 32 字节。Gateway 和 Controller 必须是同一把 | `rum_identity_hmac_current` |
 | 空文件。首发还没有上一版 HMAC，这个路径必须存在 | `rum_identity_hmac_previous` |
 | 第 3 节新建的 `rum_controller` 口令 | `rum_controller_nats_password` |
-| 平台 Redis 的现有密码。Gateway 要求这份内容为 16 到 256 个字符；更短时改这台 Redis 的密码，不另起实例 | `rum_admission_redis_password`、`rum_sessionizer_redis_password`、`rum_replay_exporter_redis_password`、`rum_controller_redis_password`、`rum_maintainer_redis_password`、`rum_replay_index_maintainer_redis_password` |
+| 平台 Redis 的现有密码。16 到 256 个字符，字符不限，可以含 `+`、`/`、`=`。已有集群沿用原密码；短于 16 时才改这台 Redis 的密码，不另起实例 | `rum_admission_redis_password`、`rum_sessionizer_redis_password`、`rum_replay_exporter_redis_password`、`rum_controller_redis_password`、`rum_maintainer_redis_password`、`rum_replay_index_maintainer_redis_password` |
 | 平台 MinIO 的现有 secret。access key 用平台现有的，不能是 `minioadmin`。Django 不用这些文件，它读已有的 `MINIO_SECRET_KEY` | `rum_gateway_minio_secret`、`rum_maintainer_minio_secret` |
 
 另外准备 Gateway 的队列目录 `/var/lib/core-rum`。这是持久卷，权限 `0700`，属主 `65532:65532`。VictoriaLogs 暂时不可用时，上报先堆在这里。

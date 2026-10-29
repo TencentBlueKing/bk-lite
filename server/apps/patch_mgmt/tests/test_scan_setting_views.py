@@ -1,6 +1,11 @@
 """补丁周期评估设置 API 的行为测试。"""
 
+import hashlib
+import json
+from unittest.mock import patch as mock_patch
+
 import pytest
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.utils import timezone
 from django_celery_beat.models import CrontabSchedule, PeriodicTask
 from rest_framework import status
@@ -546,3 +551,104 @@ def test_invalid_notification_rules_are_rejected_without_changing_scheduler(su_c
     assert response.status_code == status.HTTP_400_BAD_REQUEST
     assert "notification_rules" in response.data
     assert _scheduler_state() == before
+
+
+def _schedule_payload(**overrides):
+    payload = {
+        "frequency": "daily",
+        "hour_interval": 1,
+        "weekday": 1,
+        "time": "03:30",
+        "is_enabled": True,
+        "offline_catalog_enabled": False,
+    }
+    payload.update(overrides)
+    return payload
+
+
+@pytest.mark.django_db
+def test_offline_catalog_cannot_be_enabled_before_upload(su_client):
+    response = su_client.put(SCAN_SETTING_URL, _schedule_payload(offline_catalog_enabled=True), format="json")
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert "offline_catalog_enabled" in response.data
+    assert ScanSetting.get_singleton().offline_catalog_enabled is False
+
+
+@pytest.mark.django_db
+def test_offline_catalog_can_stay_disabled_without_a_file(su_client):
+    response = su_client.put(SCAN_SETTING_URL, _schedule_payload(), format="json")
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.data["offline_catalog_enabled"] is False
+
+
+def _save_catalog(client, content, name="wsusscn2.cab", **overrides):
+    upload = SimpleUploadedFile(name, content)
+    payload = json.dumps(_schedule_payload(**overrides))
+    with mock_patch("django_minio_backend.MinioBackend.save", return_value="offline-catalog/stored.cab"):
+        return client.put(SCAN_SETTING_URL, {"payload": payload, "file": upload}, format="multipart")
+
+
+@pytest.mark.django_db
+def test_catalog_is_replaced_only_when_save_succeeds(su_client):
+    first = b"MSCF" + b"first"
+    saved = _save_catalog(su_client, first, time="04:15")
+
+    assert saved.status_code == status.HTTP_200_OK
+    assert saved.data["offline_catalog_enabled"] is False
+    assert saved.data["offline_catalog_filename"] == "wsusscn2.cab"
+    assert saved.data["offline_catalog_size"] == len(first)
+    assert saved.data["time"] == "04:15"
+    setting = ScanSetting.get_singleton()
+    assert setting.offline_catalog_sha256 == hashlib.sha256(first).hexdigest()
+
+    kept = su_client.put(SCAN_SETTING_URL, _schedule_payload(offline_catalog_enabled=True, time="05:00"), format="json")
+
+    assert kept.status_code == status.HTTP_200_OK
+    assert kept.data["offline_catalog_enabled"] is True
+    assert kept.data["time"] == "05:00"
+    setting.refresh_from_db()
+    assert setting.offline_catalog_sha256 == hashlib.sha256(first).hexdigest()
+
+    second = b"MSCF" + b"second"
+    replaced = _save_catalog(su_client, second, offline_catalog_enabled=True, time="06:00")
+
+    assert replaced.status_code == status.HTTP_200_OK
+    assert replaced.data["time"] == "06:00"
+    setting.refresh_from_db()
+    assert setting.offline_catalog_sha256 == hashlib.sha256(second).hexdigest()
+    assert setting.offline_catalog_enabled is True
+
+    rejected = _save_catalog(su_client, b"MSCF" + b"third", offline_catalog_enabled=True, time="99:99")
+
+    assert rejected.status_code == status.HTTP_400_BAD_REQUEST
+    setting.refresh_from_db()
+    assert setting.offline_catalog_sha256 == hashlib.sha256(second).hexdigest()
+    assert setting.time == "06:00"
+    assert setting.offline_catalog_enabled is True
+
+
+@pytest.mark.django_db
+def test_non_cabinet_offline_catalog_does_not_change_settings(su_client):
+    saved = su_client.put(SCAN_SETTING_URL, _schedule_payload(time="03:30"), format="json")
+    assert saved.status_code == status.HTTP_200_OK
+
+    response = _save_catalog(su_client, b"not a catalog", name="notes.txt", offline_catalog_enabled=True, time="04:45")
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert "file" in response.data
+    setting = ScanSetting.get_singleton()
+    assert setting.offline_catalog_sha256 == ""
+    assert setting.time == "03:30"
+    assert setting.offline_catalog_enabled is False
+
+
+@pytest.mark.django_db
+def test_catalog_file_without_settings_payload_is_rejected(su_client):
+    upload = SimpleUploadedFile("wsusscn2.cab", b"MSCF" + b"offline-catalog")
+
+    response = su_client.put(SCAN_SETTING_URL, {"file": upload}, format="multipart")
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert ScanSetting.get_singleton().offline_catalog_sha256 == ""

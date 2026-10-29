@@ -1,5 +1,7 @@
 """问句词表：原词加固定同义词，不把两个概念粘成一个短语。"""
 
+import json
+
 from langchain_core.messages import ToolMessage
 
 from apps.opspilot.metis.llm.middleware.tool_runtime import repeated_or_search_denial, terminal_success_denial
@@ -141,7 +143,255 @@ def test_second_log_search_is_denied_after_success():
     )()
     denied = repeated_or_search_denial(request)
     assert denied is not None
-    assert "不要换关键字" in denied.content
+    assert "空结果" in denied.content
+    assert "不是参数错误" in denied.content
+
+
+def test_non_empty_success_can_query_again_with_different_args():
+    request = type(
+        "Req",
+        (),
+        {
+            "tool_call": {"id": "call-2", "name": "monitor_query_metric_data", "args": {"instance_ids": ["1_10.10.60.12"]}},
+            "messages": [
+                ToolMessage(
+                    content='{"success": true, "data": {"series": [{"instance_id": "1_10.10.60.11"}]}}',
+                    tool_call_id="call-1",
+                    name="monitor_query_metric_data",
+                ),
+            ],
+        },
+    )()
+    assert repeated_or_search_denial(request) is None
+
+
+def test_empty_result_blocks_any_tool_retry():
+    request = type(
+        "Req",
+        (),
+        {
+            "tool_call": {"id": "call-2", "name": "monitor_query_metric_data", "args": {"instance_ids": ["1_10.10.60.12"]}},
+            "messages": [
+                ToolMessage(
+                    content='{"success": true, "data": {"series": [], "count": 0}}',
+                    tool_call_id="call-1",
+                    name="monitor_query_metric_data",
+                ),
+            ],
+        },
+    )()
+    denied = repeated_or_search_denial(request)
+    assert denied is not None
+    assert "空结果" in denied.content
+    assert "不是参数错误" in denied.content
+
+
+def test_metric_catalog_keyword_miss_allows_a_different_keyword():
+    """目录没命中可以换 keyword。不要逐个试指标，由工具让用户选。"""
+    request = type(
+        "Req",
+        (),
+        {
+            "tool_call": {"id": "call-2", "name": "monitor_list_object_metrics", "args": {"keyword": "memory"}},
+            "messages": [
+                ToolMessage(
+                    content='{"success": true, "data": [], "message": "无名称/展示名包含「内存」的指标。"}',
+                    tool_call_id="call-1",
+                    name="monitor_list_object_metrics",
+                ),
+            ],
+        },
+    )()
+    assert repeated_or_search_denial(request) is None
+
+
+def test_monitor_query_metric_data_empty_matrix_blocks_retry_with_different_args():
+    """Prometheus 空矩阵经 wrap_success 后，改 instance_ids / 时间窗仍要拦住。"""
+    payload = {
+        "success": True,
+        "data": {
+            "status": "success",
+            "data": {"resultType": "matrix", "result": []},
+            "stats": {"seriesMatched": "0"},
+        },
+    }
+    request = type(
+        "Req",
+        (),
+        {
+            "tool_call": {
+                "id": "call-2",
+                "name": "monitor_query_metric_data",
+                "args": {"instance_ids": ["other-host"], "start": "2026-10-22 10:00:00", "end": "2026-10-22 11:00:00"},
+            },
+            "messages": [
+                ToolMessage(
+                    content=json.dumps(payload, ensure_ascii=False),
+                    tool_call_id="call-1",
+                    name="monitor_query_metric_data",
+                ),
+            ],
+        },
+    )()
+    denied = repeated_or_search_denial(request)
+    assert denied is not None
+    assert "空结果" in denied.content
+    assert "不是参数错误" in denied.content
+
+    result_only = {
+        "success": True,
+        "data": {"status": "success", "data": {"resultType": "matrix", "result": []}},
+    }
+    series_only = {
+        "success": True,
+        "data": {"status": "success", "stats": {"seriesMatched": "0"}},
+    }
+    for body in (result_only, series_only):
+        again = type(
+            "Req",
+            (),
+            {
+                "tool_call": {
+                    "id": "call-2",
+                    "name": "monitor_query_metric_data",
+                    "args": {"dimensions": {"mount": "/"}},
+                },
+                "messages": [
+                    ToolMessage(content=json.dumps(body), tool_call_id="call-1", name="monitor_query_metric_data"),
+                ],
+            },
+        )()
+        denied_again = repeated_or_search_denial(again)
+        assert denied_again is not None
+        assert "空结果" in denied_again.content
+        assert "不是参数错误" in denied_again.content
+
+
+def test_non_empty_matrix_result_does_not_block_another_query():
+    payload = {
+        "success": True,
+        "data": {
+            "status": "success",
+            "data": {"resultType": "matrix", "result": [{"metric": {"instance": "web-1"}, "values": [[1, "1"]]}]},
+            "stats": {"seriesMatched": "1"},
+        },
+    }
+    request = type(
+        "Req",
+        (),
+        {
+            "tool_call": {"id": "call-2", "name": "monitor_query_metric_data", "args": {"instance_ids": ["web-2"]}},
+            "messages": [
+                ToolMessage(
+                    content=json.dumps(payload),
+                    tool_call_id="call-1",
+                    name="monitor_query_metric_data",
+                ),
+            ],
+        },
+    )()
+    assert repeated_or_search_denial(request) is None
+
+    contradictory = {
+        "success": True,
+        "data": {
+            "status": "success",
+            "data": {"resultType": "matrix", "result": [{"metric": {"instance": "web-1"}, "values": [[1, "1"]]}]},
+            "stats": {"seriesMatched": "0"},
+        },
+    }
+    kept = type(
+        "Req",
+        (),
+        {
+            "tool_call": {"id": "call-2", "name": "monitor_query_metric_data", "args": {"instance_ids": ["web-2"]}},
+            "messages": [
+                ToolMessage(content=json.dumps(contradictory), tool_call_id="call-1", name="monitor_query_metric_data"),
+            ],
+        },
+    )()
+    assert repeated_or_search_denial(kept) is None
+
+
+def test_result_object_without_empty_list_is_not_an_empty_success():
+    request = type(
+        "Req",
+        (),
+        {
+            "tool_call": {"id": "call-2", "name": "monitor_query_metric_data", "args": {"metric": "cpu"}},
+            "messages": [
+                ToolMessage(
+                    content='{"success": true, "data": {"result": {"status": "ok"}}}',
+                    tool_call_id="call-1",
+                    name="monitor_query_metric_data",
+                ),
+            ],
+        },
+    )()
+    assert repeated_or_search_denial(request) is None
+
+
+def test_parameter_error_can_retry_any_tool():
+    request = type(
+        "Req",
+        (),
+        {
+            "tool_call": {"id": "call-2", "name": "monitor_summarize_metric_trend", "args": {"metric": "disk_used_percent"}},
+            "messages": [
+                ToolMessage(
+                    content='{"success": false, "error": "monitor_obj_id is required"}',
+                    tool_call_id="call-1",
+                    name="monitor_summarize_metric_trend",
+                ),
+            ],
+        },
+    )()
+    assert repeated_or_search_denial(request) is None
+
+
+def test_unreachable_service_blocks_retry_for_any_tool():
+    request = type(
+        "Req",
+        (),
+        {
+            "tool_call": {
+                "id": "call-2",
+                "name": "log_search_raw",
+                "args": {"start": "2026-10-21T15:03:18+08:00", "end": "2026-10-21T15:13:18+08:00"},
+            },
+            "messages": [
+                ToolMessage(
+                    content=(
+                        '{"success": false, "error": "HTTPConnectionPool(host=\'127.0.0.1\', port=9428): '
+                        'Max retries exceeded. WinError 10061 由于目标计算机积极拒绝，无法连接。"}'
+                    ),
+                    tool_call_id="call-1",
+                    name="log_search_raw",
+                ),
+            ],
+        },
+    )()
+    denied = repeated_or_search_denial(request)
+    assert denied is not None
+    assert "服务不可达" in denied.content
+
+
+def test_connection_refused_inside_successful_logs_is_not_a_service_failure():
+    request = type(
+        "Req",
+        (),
+        {
+            "tool_call": {"id": "call-2", "name": "log_search_structured", "args": {"keyword": "timeout"}},
+            "messages": [
+                ToolMessage(
+                    content='{"success": true, "data": [{"message": "upstream connection refused"}]}',
+                    tool_call_id="call-1",
+                    name="log_search_structured",
+                ),
+            ],
+        },
+    )()
+    assert repeated_or_search_denial(request) is None
 
 
 def test_terminal_hint_stops_another_call_even_when_args_change():

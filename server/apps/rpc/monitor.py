@@ -40,6 +40,13 @@ class Monitor(object):
         """
         return self.ingest_client.run("monitor_ingest_from_source", params=kwargs)
 
+    def instances_exist(self, **kwargs):
+        """按 cmdb_id / IP 批量判断监控实例是否已存在。
+
+        走 ingest_client。NATS 签名为 monitor_instances_exist(params)，须整包。
+        """
+        return self.ingest_client.run("monitor_instances_exist", params=kwargs)
+
     def list_cmdb_bind_candidates(self, **kwargs):
         """列出可手绑的监控实例（name/ip 检索）。
 
@@ -67,6 +74,31 @@ class Monitor(object):
         return self.ingest_client.run(
             "query_active_alert_summaries_by_monitor_ids",
             monitor_ids=monitor_ids,
+            **kwargs,
+        )
+
+    def query_instance_display_metrics(self, instance_ids=None, **kwargs):
+        """按监控实例回填展示指标当前值。处理函数在 nats.monitor。"""
+        return self.ingest_client.run(
+            "query_instance_display_metrics",
+            instance_ids=instance_ids,
+            **kwargs,
+        )
+
+    def lookup_monitor_instance(self, instance_id, **kwargs):
+        """按 instance_id 定位监控对象。处理函数在 nats.monitor。"""
+        return self.ingest_client.run(
+            "lookup_monitor_instance",
+            instance_id=instance_id,
+            **kwargs,
+        )
+
+    def get_monitor_effective_plugins(self, monitor_object_id, instance_id, **kwargs):
+        """查询实例生效插件。处理函数在 nats.monitor。"""
+        return self.ingest_client.run(
+            "get_monitor_effective_plugins",
+            monitor_object_id=monitor_object_id,
+            instance_id=instance_id,
             **kwargs,
         )
 

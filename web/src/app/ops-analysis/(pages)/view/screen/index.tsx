@@ -31,7 +31,11 @@ import { useOpsAnalysis } from "@/app/ops-analysis/context/common";
 import { useShareOrganizationSeed } from "@/app/ops-analysis/context/shareOrganization";
 import { useCanvasResources } from "@/app/ops-analysis/hooks/useCanvasResources";
 import { useDataSourceManager } from "@/app/ops-analysis/hooks/useDataSource";
-import { areScreenDataConfigPropsEqual } from "./utils/screenDataConfigProps";
+import {
+  areScreenDataConfigPropsEqual,
+  isScreenPreviewHostVisible,
+  screenPreviewHostClassName,
+} from "./utils/screenDataConfigProps";
 import { useOpsAnalysisQueryState } from "@/app/ops-analysis/hooks/useOpsAnalysisQueryState";
 import {
   collectScreenDataSourceIds,
@@ -44,6 +48,7 @@ import type {
   UnifiedFilterDefinition,
   WidgetConfig,
 } from "@/app/ops-analysis/types/dashBoard";
+import type { SingleValueStyleConfig } from "@/app/ops-analysis/utils/singleValueStyle";
 import type {
   ScreenDecorationPresetId,
   ScreenDecorationType,
@@ -56,6 +61,7 @@ import type {
   ScreenWidgetItem,
 } from "@/app/ops-analysis/types/screen";
 import {
+  AppViewFullscreenExit,
   useAppViewFullscreen,
 } from "@/app/ops-analysis/components/appFullscreen";
 import ViewWorkspace from "../components/viewWorkspace";
@@ -134,7 +140,7 @@ import {
 } from "./utils/viewport";
 import ViewConfig from "@/app/ops-analysis/components/widgetConfig";
 import ViewSelector from "@/app/ops-analysis/components/widgetSelector";
-import { omitForeignChartTypeFields } from "@/app/ops-analysis/components/widgetConfig/utils/submitConfig";
+import { mergeScreenWidgetValueConfig } from "@/app/ops-analysis/components/widgetConfig/utils/submitConfig";
 import { useCanvasDraft } from "@/app/ops-analysis/hooks/useCanvasDraft";
 import {
   restoreDraftRefreshInterval,
@@ -142,6 +148,8 @@ import {
   type CanvasDraftPayload,
 } from "@/app/ops-analysis/api/canvasDraft";
 import { bindCanvasDraftControls } from "@/app/ops-analysis/components/canvasDraftControls";
+import { screenWidgetDataKey } from "./utils/screenWidgetDataKey";
+import { isSameScreenDataTarget } from "./utils/screenSelection";
 import { isSceneWidgetType } from "@/app/ops-analysis/types/sceneWidgetCapability";
 
 export interface ScreenRef {
@@ -156,16 +164,6 @@ interface ScreenQuerySnapshot {
   appliedNamespaceId?: number;
 }
 
-const screenWidgetDataKey = (item: ScreenWidgetItem) => {
-  const { appearance: _appearance, ...dataConfig } = item.valueConfig ?? {};
-  return JSON.stringify({
-    id: item.id,
-    title: item.title,
-    chartType: item.chartType,
-    dataConfig,
-  });
-};
-
 const ScreenDataConfig = memo(
   function ScreenDataConfig({
     item,
@@ -176,6 +174,8 @@ const ScreenDataConfig = memo(
     configSection,
     onConfigSectionChange,
     screenFrame,
+    previewSingleStyle,
+    previewHost,
     onDirtyChange,
     onConfirm,
     onClose,
@@ -188,6 +188,8 @@ const ScreenDataConfig = memo(
     configSection?: "data" | "interaction";
     onConfigSectionChange?: (section: "data" | "interaction") => void;
     screenFrame?: "panel" | "bare";
+    previewSingleStyle?: SingleValueStyleConfig;
+    previewHost?: HTMLElement | null;
     onDirtyChange?: (dirty: boolean) => void;
     onConfirm?: (values: WidgetConfig) => void;
     onClose?: () => void;
@@ -199,10 +201,13 @@ const ScreenDataConfig = memo(
         configSection={configSection}
         onConfigSectionChange={onConfigSectionChange}
         screenFrame={screenFrame}
+        previewSingleStyle={previewSingleStyle}
+        previewHost={previewHost}
         item={item}
         dataSourceManager={dataSourceManager}
         showChartThemeMode={false}
         surface="screen"
+        showSingleValueStyle={false}
         builtinNamespaceId={builtinNamespaceId}
         filterDefinitions={filterDefinitions}
         unifiedFilterValues={unifiedFilterValues}
@@ -259,6 +264,10 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
   const [widgetSelectorOpen, setWidgetSelectorOpen] = useState(false);
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const [inspectorCollapsed, setInspectorCollapsed] = useState(false);
+  const [widgetPreviewHost, setWidgetPreviewHost] = useState<HTMLDivElement | null>(null);
+  const bindWidgetPreviewHost = useCallback((node: HTMLDivElement | null) => {
+    setWidgetPreviewHost(node);
+  }, []);
   const [itemMenu, setItemMenu] = useState<{
     itemId: string;
     x: number;
@@ -353,7 +362,9 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
     () =>
       pendingConfigItem
         ? {
-          i: "",
+          // 还没落到画布上，没有稳定 id。临时 i 跟着所选图表变，预览才会在切换类型时收起。
+          // 确定保存只提交表单 WidgetConfig；新组件 id 由 addConfiguredScreenWidget 里的 uuid 生成。
+          i: `pending:${pendingConfigItem.chartType}:${pendingConfigItem.sceneWidgetType ?? ""}`,
           x: 0,
           y: 0,
           w: pendingConfigItem.defaultWidth,
@@ -1050,6 +1061,11 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
 
   const handleSelectCanvasItem = useCallback(
     (itemId: string | null) => {
+      // 拖动、缩放或再次点中当前组件都会重发选中。这不是切换数据配置。
+      if (isSameScreenDataTarget(inspectorRef.current.selectedItemId, itemId)) {
+        setInspectorCollapsed(false);
+        return;
+      }
       runAfterDataGuard(() => {
         setInspectorCollapsed(false);
         setSelectedItemId(itemId);
@@ -1228,9 +1244,9 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
         ...currentConfigItem,
         chartType: nextChartType,
         title: values.name || currentConfigItem.title,
-        valueConfig: omitForeignChartTypeFields(
+        valueConfig: mergeScreenWidgetValueConfig(
+          currentConfigItem.valueConfig,
           {
-            ...currentConfigItem.valueConfig,
             ...values,
             interaction: values.interaction,
             actions: values.actions,
@@ -1368,6 +1384,22 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
     />
   ) : null;
   const dataConfigItem = pendingViewConfigItem || currentViewConfigItem;
+  const inspectorTabKeys: Array<"style" | "data" | "interaction"> = pendingConfigItem
+    ? ["data", "interaction"]
+    : ["style", "data", "interaction"];
+  const inspectorTabItems = inspectorTabKeys.map((key) => ({
+    key,
+    label: t(
+      key === "style"
+        ? "opsAnalysis.screen.styleTab"
+        : key === "data"
+          ? "opsAnalysis.screen.dataTab"
+          : "opsAnalysis.screen.interactionTab",
+    ),
+  }));
+  const activeInspectorTab = inspectorTabKeys.includes(inspectorTab)
+    ? inspectorTab
+    : (inspectorTabKeys[0] ?? "data");
   const interactionScreenFrame = pendingConfigItem
     ? getDefaultScreenWidgetAppearance(pendingConfigItem.chartType).frame
     : currentConfigItem
@@ -1384,9 +1416,15 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
       builtinNamespaceId={queryState.namespaceDraftId}
       filterDefinitions={queryState.definitions}
       unifiedFilterValues={queryState.filterValues}
-      configSection={inspectorTab === "interaction" ? "interaction" : "data"}
+      configSection={activeInspectorTab === "interaction" ? "interaction" : "data"}
       onConfigSectionChange={setInspectorTab}
       screenFrame={interactionScreenFrame}
+      previewSingleStyle={
+        pendingConfigItem
+          ? undefined
+          : currentConfigItem?.valueConfig?.singleStyle
+      }
+      previewHost={widgetPreviewHost}
       onDirtyChange={setDataFormDirty}
       onConfirm={
         pendingViewConfigItem
@@ -1414,6 +1452,7 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
             : "h-full min-h-0 w-full"
         }
       >
+        <AppViewFullscreenExit visible={isFullscreen} onExit={exitFullscreen} />
         <ViewWorkspace
           selectedItem={selectedScreen}
           loading={loading}
@@ -1514,7 +1553,16 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
                 onOpenItemMenu={openItemMenu}
                 onReorderItem={handleReorderItem}
               />
-              <div className="min-h-0 min-w-0 flex-1">{screenCanvas}</div>
+              <div className="relative min-h-0 min-w-0 flex-1">
+                {screenCanvas}
+                <div
+                  ref={bindWidgetPreviewHost}
+                  data-testid="screen-widget-preview-host"
+                  className={screenPreviewHostClassName(
+                    isScreenPreviewHostVisible(activeInspectorTab),
+                  )}
+                />
+              </div>
               <ScreenInspectorPane
                 label={t("opsAnalysis.screen.inspectorResize")}
                 collapsed={inspectorCollapsed}
@@ -1533,12 +1581,9 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
                   <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
                     <Tabs
                       className="shrink-0 [&_.ant-tabs-content-holder]:hidden [&_.ant-tabs-nav]:mb-0 [&_.ant-tabs-nav-wrap]:px-3"
-                      activeKey={inspectorTab === "interaction" ? "interaction" : "data"}
-                      onChange={(key) => setInspectorTab(key as "data" | "interaction")}
-                      items={[
-                        { key: "data", label: t("opsAnalysis.screen.dataTab") },
-                        { key: "interaction", label: t("opsAnalysis.screen.interactionTab") },
-                      ]}
+                      activeKey={activeInspectorTab}
+                      onChange={(key) => setInspectorTab(key as "style" | "data" | "interaction")}
+                      items={inspectorTabItems}
                     />
                     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
                       {dataConfigPanel}
@@ -1548,15 +1593,11 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
                   <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
                     <Tabs
                       className="shrink-0 [&_.ant-tabs-content-holder]:hidden [&_.ant-tabs-nav]:mb-0 [&_.ant-tabs-nav-wrap]:px-3"
-                      activeKey={inspectorTab}
+                      activeKey={activeInspectorTab}
                       onChange={(key) => setInspectorTab(key as "style" | "data" | "interaction")}
-                      items={[
-                        { key: "style", label: t("opsAnalysis.screen.styleTab") },
-                        { key: "data", label: t("opsAnalysis.screen.dataTab") },
-                        { key: "interaction", label: t("opsAnalysis.screen.interactionTab") },
-                      ]}
+                      items={inspectorTabItems}
                     />
-                    <div className={inspectorTab === "style" ? "flex min-h-0 flex-1 flex-col overflow-hidden" : "hidden"}>
+                    <div className={activeInspectorTab === "style" ? "flex min-h-0 flex-1 flex-col overflow-hidden" : "hidden"}>
                       {selectedItem ? (
                         <ScreenStyleInspector
                           item={selectedItem}
@@ -1566,7 +1607,7 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
                         />
                       ) : null}
                     </div>
-                    <div className={inspectorTab === "style" ? "hidden" : "flex min-h-0 flex-1 flex-col overflow-hidden"}>
+                    <div className={activeInspectorTab === "style" ? "hidden" : "flex min-h-0 flex-1 flex-col overflow-hidden"}>
                       {dataConfigPanel}
                     </div>
                   </div>

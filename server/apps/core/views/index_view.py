@@ -42,7 +42,12 @@ from apps.system_mgmt.models import User as SystemMgmtUser
 from apps.system_mgmt.models import UserLoginLog
 from apps.system_mgmt.models.login_module import LoginModule
 from apps.system_mgmt.models.system_settings import SystemSettings
-from apps.system_mgmt.services.login_auth_binding_service import build_login_auth_redirect, get_active_login_auth_bindings
+from apps.system_mgmt.services.login_auth_binding_service import (
+    build_login_auth_redirect,
+    get_active_login_auth_bindings,
+    get_ready_blueking_login_auth_binding,
+)
+from apps.system_mgmt.services.login_auth_binding_service import login_with_binding as execute_login_with_binding
 from apps.system_mgmt.utils.login_log_utils import log_user_login_from_request
 
 PORTAL_BRANDING_KEYS = ("portal_name", "portal_logo_url", "portal_favicon_url", "watermark_enabled", "watermark_text")
@@ -547,13 +552,25 @@ def get_wechat_settings(request):
 
 @api_exempt
 def get_bk_settings(request):
+    branding = _get_portal_branding_settings()
+    binding = get_ready_blueking_login_auth_binding()
+    if binding is None:
+        return JsonResponse({"result": True, "data": {"bk_login_open": False, **branding}})
+
     bk_token = request.COOKIES.get("bk_token", "")
-    client = SystemMgmt()
-    res = client.verify_bk_token(bk_token)
-    if isinstance(res, dict):
-        res.setdefault("data", {})
-        res["data"].update(_get_portal_branding_settings())
-    return JsonResponse(res)
+    if not bk_token:
+        return JsonResponse({"result": True, "data": {"bk_login_open": True, "user": {}, **branding}})
+
+    res = execute_login_with_binding(binding.id, bk_token=bk_token)
+    if not res.get("result"):
+        return JsonResponse({"result": True, "data": {"bk_login_open": True, "user": {}, **branding}})
+
+    user = res.get("data") or {}
+    response = JsonResponse({"result": True, "data": {"bk_login_open": True, "user": user, **branding}})
+    token = user.get("token")
+    if token:
+        _set_auth_cookie_on_response(response, token)
+    return response
 
 
 def reset_pwd(request):

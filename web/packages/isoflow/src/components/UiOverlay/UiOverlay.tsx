@@ -41,6 +41,13 @@ const EDITOR_MODE_MAPPING: EditorModeMapping = {
   [EditorModeEnum.NON_INTERACTIVE]: []
 };
 
+const CANVAS_INSET = 8;
+const TOOLBAR_INSET = 4;
+const MENU_BUTTON_SIZE = 40;
+const PANEL_TOP = CANVAS_INSET + MENU_BUTTON_SIZE + 8;
+const PANEL_WIDTH = 320;
+const ZOOM_BAR_HEIGHT = 32;
+
 const getEditorModeMapping = (editorMode: keyof typeof EditorModeEnum) => {
   const availableUiFeatures = EDITOR_MODE_MAPPING[editorMode];
 
@@ -105,16 +112,18 @@ export const UiOverlay = () => {
           <UiElement
             sx={{
               position: 'absolute',
-              width: '360px',
-              overflowY: 'scroll',
-              '&::-webkit-scrollbar': {
-                display: 'none'
-              }
+              width: PANEL_WIDTH,
+              display: 'flex',
+              flexDirection: 'column',
+              overflow: 'hidden'
             }}
             style={{
-              left: appPadding.x,
-              top: appPadding.y * 2 + spacing(2),
-              maxHeight: rendererSize.height - appPadding.y * 6
+              left: CANVAS_INSET,
+              top: PANEL_TOP,
+              maxHeight: Math.max(
+                rendererSize.height - PANEL_TOP - CANVAS_INSET - ZOOM_BAR_HEIGHT - 12,
+                160
+              )
             }}
           >
             <ItemControlsManager />
@@ -124,12 +133,12 @@ export const UiOverlay = () => {
         {availableTools.includes('TOOL_MENU') && (
           <Box
             sx={{
-              position: 'absolute',
-              transform: 'translateX(-100%)'
+              position: 'absolute'
             }}
             style={{
-              left: rendererSize.width - appPadding.x,
-              top: appPadding.y
+              left: rendererSize.width - TOOLBAR_INSET,
+              top: CANVAS_INSET,
+              transform: 'translateX(-100%)'
             }}
           >
             <ToolMenu />
@@ -139,12 +148,12 @@ export const UiOverlay = () => {
         {availableTools.includes('ZOOM_CONTROLS') && (
           <Box
             sx={{
-              position: 'absolute',
-              transformOrigin: 'bottom left'
+              position: 'absolute'
             }}
             style={{
-              top: rendererSize.height - appPadding.y * 2,
-              left: appPadding.x
+              left: CANVAS_INSET,
+              top: rendererSize.height - CANVAS_INSET,
+              transform: 'translateY(-100%)'
             }}
           >
             <ZoomControls />
@@ -157,8 +166,8 @@ export const UiOverlay = () => {
               position: 'absolute'
             }}
             style={{
-              top: appPadding.y,
-              left: appPadding.x
+              top: CANVAS_INSET,
+              left: CANVAS_INSET
             }}
           >
             <MainMenu />

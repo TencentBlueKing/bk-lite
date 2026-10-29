@@ -8,13 +8,16 @@ Web/平台同源可渲染相对 `/api/proxy/...`；企微/钉钉/飞书等需要
 
 from __future__ import annotations
 
+import base64
+import hashlib
 import re
 from dataclasses import dataclass
 from urllib.parse import parse_qs, unquote, urlparse
 
 from django.conf import settings
 
-from apps.core.logger import opspilot_logger as logger, safe_exception_info, safe_log_value
+from apps.core.logger import opspilot_logger as logger
+from apps.core.logger import safe_exception_info, safe_log_value
 from apps.core.utils.safe_requests import safe_get
 from apps.opspilot.services.wiki.parsed_media_service import build_media_proxy_url, open_media_bytes, verify_media_proxy_request
 
@@ -22,7 +25,11 @@ _MD_IMAGE_RE = re.compile(r"!\[([^\]]*)\]\(([^)]+)\)")
 _MAX_IM_IMAGES = 4
 _FETCH_TIMEOUT_SECONDS = 15
 _MAX_IM_IMAGE_BYTES = 2 * 1024 * 1024
+_MAX_WECOM_STREAM_IMAGE_BYTES = 10 * 1024 * 1024
+_MAX_WECOM_STREAM_IMAGES = 10
 _ALLOWED_IM_CONTENT_TYPES = frozenset({"image/jpeg", "image/png", "image/gif", "image/webp"})
+_WECOM_STREAM_IMAGE_TYPES = frozenset({"image/jpeg", "image/png"})
+_WECOM_UPLOAD_IMAGE_TYPES = frozenset({"image/jpeg", "image/png", "image/gif"})
 
 
 @dataclass(frozen=True)
@@ -251,6 +258,100 @@ def prepare_im_markdown(text: str) -> tuple[str, list[ImImage]]:
     return rewrite_markdown_images_for_im(text or ""), images
 
 
+def _wecom_stream_image_type(content: bytes, content_type: str) -> str | None:
+    """企微流式图片只收 JPG/PNG。外链写进 markdown 会被客户端拦截。"""
+    kind = (content_type or "").split(";", 1)[0].strip().lower()
+    if kind == "image/jpg":
+        kind = "image/jpeg"
+    if kind in _WECOM_STREAM_IMAGE_TYPES:
+        return kind
+    if content.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "image/png"
+    if content.startswith(b"\xff\xd8\xff"):
+        return "image/jpeg"
+    return None
+
+
+def wecom_stream_image_items(images: list[ImImage]) -> list[dict]:
+    """流式结束帧的 msg_item。md5 对原始字节计算，base64 不带 data: 前缀。"""
+    items = []
+    for image in images:
+        content = image.content or b""
+        if not content or len(content) > _MAX_WECOM_STREAM_IMAGE_BYTES:
+            continue
+        if _wecom_stream_image_type(content, image.content_type) is None:
+            continue
+        items.append(
+            {
+                "msgtype": "image",
+                "image": {
+                    "base64": base64.b64encode(content).decode("ascii"),
+                    "md5": hashlib.md5(content).hexdigest(),
+                },
+            }
+        )
+        if len(items) >= _MAX_WECOM_STREAM_IMAGES:
+            break
+    return items
+
+
+FEISHU_IMAGE_FAILED_TEXT = "图片发送失败，请稍后重试"
+
+
+def feishu_outbound(text: str) -> tuple[str, list[ImImage]]:
+    """飞书 text 不渲染 Markdown 图片。正文去掉外链，图片另发 image 消息。"""
+    markdown, images = prepare_im_markdown(text or "")
+    visible = strip_markdown_images(markdown)
+    had_image = bool(_MD_IMAGE_RE.search(text or "") or _MD_IMAGE_RE.search(markdown))
+    if not visible:
+        visible = "附图" if images or had_image else (markdown or "")
+    return visible, images
+
+
+def _wecom_upload_image_type(content: bytes, content_type: str) -> str | None:
+    """长连接图片素材支持 JPG/PNG/GIF。"""
+    kind = _wecom_stream_image_type(content, content_type)
+    if kind:
+        return kind
+    if content.startswith((b"GIF87a", b"GIF89a")):
+        return "image/gif"
+    kind = (content_type or "").split(";", 1)[0].strip().lower()
+    if kind in _WECOM_UPLOAD_IMAGE_TYPES:
+        return kind
+    return None
+
+
+def wecom_long_connection_outbound(text: str) -> tuple[str, list[tuple[str, bytes]]]:
+    """长连接正文去掉图片外链。图片用素材接口另发，流式帧不带 msg_item。"""
+    markdown, images = prepare_im_markdown(text or "")
+    visible = strip_markdown_images(markdown)
+    if not visible:
+        had_image = bool(_MD_IMAGE_RE.search(text or "") or _MD_IMAGE_RE.search(markdown))
+        visible = "附图" if images or had_image else (markdown or "")
+    files: list[tuple[str, bytes]] = []
+    extensions = {"image/jpeg": "jpg", "image/png": "png", "image/gif": "gif"}
+    for image in images:
+        content = image.content or b""
+        kind = _wecom_upload_image_type(content, image.content_type)
+        if kind is None or len(content) < 5 or len(content) > _MAX_WECOM_STREAM_IMAGE_BYTES:
+            continue
+        files.append((f"image-{len(files) + 1}.{extensions[kind]}", content))
+        if len(files) >= _MAX_WECOM_STREAM_IMAGES:
+            break
+    return visible, files
+
+
+def wecom_short_connection_outbound(text: str) -> tuple[str, list[dict]]:
+    """短连接正文去掉图片外链，图片改为流式 msg_item。历史仍保留原文。"""
+    markdown, images = prepare_im_markdown(text or "")
+    items = wecom_stream_image_items(images)
+    visible = strip_markdown_images(markdown)
+    if not visible:
+        had_image = bool(_MD_IMAGE_RE.search(text or "") or _MD_IMAGE_RE.search(markdown))
+        visible = "附图" if items or had_image else (markdown or "")
+    return visible, items
+
+
 def deliver_skill_channel_im_reply(
     *,
     channel_type: str,
@@ -263,8 +364,24 @@ def deliver_skill_channel_im_reply(
     """按渠道投递文本 + 附图。失败只记日志，不阻断主文本已发送路径由调用方决定。"""
 
     config = dict(config or {})
-    markdown, images = prepare_im_markdown(reply_text or "")
     channel_type = (channel_type or "").strip()
+
+    if channel_type == "feishu":
+        visible, feishu_images = feishu_outbound(reply_text or "")
+        if visible:
+            handler.send_text_reply(visible, sender_id, config)
+        image_send_failed = False
+        for image in feishu_images:
+            try:
+                handler.send_image_reply(image, sender_id, config)
+            except Exception:
+                image_send_failed = True
+                logger.exception("feishu image reply failed channel=%s", getattr(handler, "channel_id", None))
+        if image_send_failed:
+            handler.send_text_reply(FEISHU_IMAGE_FAILED_TEXT, sender_id, config)
+        return
+
+    markdown, images = prepare_im_markdown(reply_text or "")
 
     if channel_type == "dingtalk":
         target = webhook_url or config.get("webhook_url") or ""
@@ -272,26 +389,12 @@ def deliver_skill_channel_im_reply(
             handler.send_message(target, "markdown", {"title": "机器人回复", "text": markdown})
         return
 
-    if channel_type == "feishu":
-        text_body = strip_markdown_images(markdown) if images else markdown
-        if text_body:
-            handler.send_text_reply(text_body, sender_id, config)
-        image_send_failed = False
-        for image in images:
-            try:
-                handler.send_image_reply(image, sender_id, config)
-            except Exception:
-                image_send_failed = True
-                logger.exception("feishu image reply failed channel=%s", getattr(handler, "channel_id", None))
-        if image_send_failed and markdown:
-            handler.send_text_reply(markdown, sender_id, config)
-        return
-
     if channel_type in {"enterprise_wechat", "enterprise_wechat_aibot"}:
         text_body = strip_markdown_images(markdown) if images else markdown
-        # aibot 仅有 response_url markdown；保留绝对 URL 的 markdown 图语法作尽力展示。
+        # 短连接图片走流式 msg_item。这里只发文本，避免 markdown 外链被企微拦截。
         if channel_type == "enterprise_wechat_aibot":
-            handler.send_reply(markdown, sender_id, config)
+            visible, _items = wecom_short_connection_outbound(reply_text or "")
+            handler.send_reply(visible, sender_id, config)
             return
         if text_body:
             handler.send_reply(text_body, sender_id, config)

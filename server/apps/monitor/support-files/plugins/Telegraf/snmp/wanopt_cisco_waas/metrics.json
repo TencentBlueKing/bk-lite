@@ -1,0 +1,315 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_cisco_waas",
+  "plugin": "Wanopt Cisco WAAS SNMP",
+  "plugin_desc": "SNMP monitoring template for Cisco WAAS / WAVE WAN optimization appliances. It reports TFO load, optimized and pass-through connections, peers, DRE cache health, appliance alarms, CPU, memory, and interface traffic.",
+  "support_collect_detect": true,
+  "status_query": "any({instance_type='wanopt', collect_type='snmp_cisco_waas'}) by (instance_id)",
+  "name": "Wanopt",
+  "icon": "mm-wanopt_WAN优化",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='wanopt'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "snmp_uptime",
+    "device_cpu_usage",
+    "device_memory_usage",
+    "tfo_load_ok",
+    "tfo_active_opt_conn",
+    "active_peers",
+    "dre_cache_ok",
+    "alarm_critical",
+    "device_total_incoming_traffic",
+    "device_total_outgoing_traffic"
+  ],
+  "metrics": [
+    {
+      "metric_group": "Base",
+      "name": "snmp_uptime",
+      "query": "sum(snmp_uptime{instance_type='wanopt', collect_type='snmp_cisco_waas', __$labels__}/100) by (instance_id)",
+      "display_name": "System Uptime",
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Uptime of the Cisco WAAS / WAVE appliance since the last restart. Watching this value helps operators spot unexpected reboots and judge device stability."
+    },
+    {
+      "metric_group": "CPU",
+      "name": "device_cpu_usage",
+      "query": "device_cpu_usage{instance_type='wanopt', collect_type='snmp_cisco_waas', __$labels__}",
+      "display_name": "CPU Utilization",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "Processor index"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Five-minute CPU utilization of the Cisco WAAS / WAVE appliance as a 0-100 percentage. Sustained high usage can slow optimization and management response."
+    },
+    {
+      "metric_group": "CPU",
+      "name": "device_cpu_usage_1min",
+      "query": "device_cpu_usage_1min{instance_type='wanopt', collect_type='snmp_cisco_waas', __$labels__}",
+      "display_name": "CPU Utilization (1 min)",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "Processor index"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "One-minute CPU utilization of the Cisco WAAS / WAVE appliance as a 0-100 percentage. Use this when a shorter window than the five-minute average is needed."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "device_memory_used",
+      "query": "device_memory_used{instance_type='wanopt', collect_type='snmp_cisco_waas', __$labels__} * 1024",
+      "display_name": "Memory Used",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "Processor index"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Memory currently in use on the Cisco WAAS / WAVE appliance, reported in the Cisco kilobyte convention and shown in bytes."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "device_memory_free",
+      "query": "device_memory_free{instance_type='wanopt', collect_type='snmp_cisco_waas', __$labels__} * 1024",
+      "display_name": "Memory Free",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "Processor index"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Free memory on the Cisco WAAS / WAVE appliance, reported in the Cisco kilobyte convention and shown in bytes."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "device_memory_usage",
+      "query": "100 * device_memory_used{instance_type='wanopt', collect_type='snmp_cisco_waas', __$labels__} / (device_memory_used{instance_type='wanopt', collect_type='snmp_cisco_waas', __$labels__} + device_memory_free{instance_type='wanopt', collect_type='snmp_cisco_waas', __$labels__})",
+      "display_name": "Memory Utilization",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "Processor index"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Memory utilization of the Cisco WAAS / WAVE appliance as used divided by used plus free. Sustained high usage can degrade acceleration and cache handling."
+    },
+    {
+      "metric_group": "TFO",
+      "name": "tfo_load_ok",
+      "query": "snmp_tfo_load_ok{instance_type='wanopt', collect_type='snmp_cisco_waas', __$labels__}",
+      "display_name": "TFO Load Health",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"healthy\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"not-healthy\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Normalized TFO load health of the Cisco WAAS / WAVE appliance. Green maps to 1 (healthy); unknown, yellow, and red map to 2 (not healthy)."
+    },
+    {
+      "metric_group": "TFO",
+      "name": "tfo_load_status",
+      "query": "snmp_tfo_load_status{instance_type='wanopt', collect_type='snmp_cisco_waas', __$labels__}",
+      "display_name": "TFO Load Status",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"unknown\",\"id\":1,\"color\":\"#8c8c8c\"},{\"name\":\"green\",\"id\":2,\"color\":\"#1ac44a\"},{\"name\":\"yellow\",\"id\":3,\"color\":\"#faad14\"},{\"name\":\"red\",\"id\":4,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "TFO load state of the Cisco WAAS / WAVE appliance. Values are unknown (1), green (2), yellow (3), and red (4). Yellow or red means the optimizer is under pressure and new connections may be delayed or passed through."
+    },
+    {
+      "metric_group": "TFO",
+      "name": "tfo_active_opt_conn",
+      "query": "snmp_tfo_active_opt_conn{instance_type='wanopt', collect_type='snmp_cisco_waas', __$labels__}",
+      "display_name": "Active Optimized Connections",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Number of TCP connections currently being optimized by TFO on the Cisco WAAS / WAVE appliance. A drop to zero while traffic is expected usually means acceleration has stopped."
+    },
+    {
+      "metric_group": "TFO",
+      "name": "tfo_pending_conn",
+      "query": "snmp_tfo_pending_conn{instance_type='wanopt', collect_type='snmp_cisco_waas', __$labels__}",
+      "display_name": "Pending Connections",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Number of connections waiting for TFO optimization on the Cisco WAAS / WAVE appliance. A sustained rise often appears together with yellow or red TFO load."
+    },
+    {
+      "metric_group": "TFO",
+      "name": "tfo_active_pt_conn",
+      "query": "snmp_tfo_active_pt_conn{instance_type='wanopt', collect_type='snmp_cisco_waas', __$labels__}",
+      "display_name": "Active Pass-through Connections",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Number of connections currently passing through the Cisco WAAS / WAVE appliance without TFO optimization. A sudden jump can mean overload, policy bypass, or a peer problem."
+    },
+    {
+      "metric_group": "Peers",
+      "name": "active_peers",
+      "query": "snmp_active_peers{instance_type='wanopt', collect_type='snmp_cisco_waas', __$labels__}",
+      "display_name": "Active Peers",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Number of currently active WAN optimization peers on the Cisco WAAS / WAVE appliance. Zero while peers are expected means the far-end accelerator is down or unreachable."
+    },
+    {
+      "metric_group": "Peers",
+      "name": "max_active_peers",
+      "query": "snmp_max_active_peers{instance_type='wanopt', collect_type='snmp_cisco_waas', __$labels__}",
+      "display_name": "Max Active Peers",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Configured upper limit of concurrent active peers on the Cisco WAAS / WAVE appliance. Compare with the current active peer count to see remaining headroom."
+    },
+    {
+      "metric_group": "DRE",
+      "name": "dre_cache_ok",
+      "query": "snmp_dre_cache_ok{instance_type='wanopt', collect_type='snmp_cisco_waas', __$labels__}",
+      "display_name": "DRE Cache Health",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"healthy\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"not-healthy\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Normalized DRE cache health of the Cisco WAAS / WAVE appliance. Usable maps to 1 (healthy); not usable, initializing, temporarily failed, and failed map to 2 (not healthy)."
+    },
+    {
+      "metric_group": "DRE",
+      "name": "dre_cache_status",
+      "query": "snmp_dre_cache_status{instance_type='wanopt', collect_type='snmp_cisco_waas', __$labels__}",
+      "display_name": "DRE Cache Status",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"notUsable\",\"id\":1,\"color\":\"#ff4d4f\"},{\"name\":\"initializing\",\"id\":2,\"color\":\"#faad14\"},{\"name\":\"usable\",\"id\":3,\"color\":\"#1ac44a\"},{\"name\":\"tempFailed\",\"id\":4,\"color\":\"#faad14\"},{\"name\":\"failed\",\"id\":5,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "DRE cache state of the Cisco WAAS / WAVE appliance. Values are not usable (1), initializing (2), usable (3), temporarily failed (4), and failed (5). Anything other than usable means data reduction is impaired."
+    },
+    {
+      "metric_group": "DRE",
+      "name": "dre_cache_used_percent",
+      "query": "snmp_dre_cache_used_percent{instance_type='wanopt', collect_type='snmp_cisco_waas', __$labels__}",
+      "display_name": "DRE Cache Used",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Percentage of allocated DRE cache currently in use on the Cisco WAAS / WAVE appliance. High occupancy with a healthy cache is normal; occupancy stuck while the cache is not usable needs investigation."
+    },
+    {
+      "metric_group": "DRE",
+      "name": "dre_cache_total_mb",
+      "query": "snmp_dre_cache_total_mb{instance_type='wanopt', collect_type='snmp_cisco_waas', __$labels__}",
+      "display_name": "DRE Cache Capacity",
+      "data_type": "Number",
+      "unit": "none",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Total DRE cache capacity allocated on the Cisco WAAS / WAVE appliance, in megabytes."
+    },
+    {
+      "metric_group": "Alarms",
+      "name": "alarm_critical",
+      "query": "snmp_alarm_critical{instance_type='wanopt', collect_type='snmp_cisco_waas', __$labels__}",
+      "display_name": "Critical Alarms",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Number of critical alarms currently raised on the Cisco WAAS / WAVE appliance. Any non-zero value needs immediate attention."
+    },
+    {
+      "metric_group": "Alarms",
+      "name": "alarm_major",
+      "query": "snmp_alarm_major{instance_type='wanopt', collect_type='snmp_cisco_waas', __$labels__}",
+      "display_name": "Major Alarms",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Number of major alarms currently raised on the Cisco WAAS / WAVE appliance. A non-zero value should be investigated before it escalates."
+    },
+    {
+      "metric_group": "Alarms",
+      "name": "alarm_minor",
+      "query": "snmp_alarm_minor{instance_type='wanopt', collect_type='snmp_cisco_waas', __$labels__}",
+      "display_name": "Minor Alarms",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Number of minor alarms currently raised on the Cisco WAAS / WAVE appliance. Use this as an early warning alongside critical and major counts."
+    }
+  ]
+}

@@ -1,10 +1,11 @@
 import time
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any, Dict, Optional, Tuple
 
 from langchain_core.runnables import RunnableConfig
 
 from apps.opspilot.metis.llm.common.tool_failure import wrap_tool_error_payload
+from apps.opspilot.metis.llm.tools.user_clock import parse_user_wall_time
 from apps.opspilot.services.caller_identity import CALLER_IDENTITY_CONFIG_KEY
 from apps.rpc.monitor import MonitorOperationAnaRpc
 
@@ -95,14 +96,14 @@ def wrap_success(data: Any) -> Dict[str, Any]:
     return {"success": True, "data": data}
 
 
-def to_monitor_epoch_ms(value: Any) -> Any:
-    """Normalize LLM timestamps to the millisecond epoch the monitor RPC expects."""
+def to_monitor_epoch_ms(value: Any, tz_name: str | None = None) -> Any:
+    """把工具时间转成监控 RPC 用的毫秒时间戳。没写时区时按用户时区。"""
     if value in (None, ""):
         return value
     if isinstance(value, bool):
         raise ValueError("timestamp must not be a boolean")
     if isinstance(value, datetime):
-        dt = value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+        dt = value if value.tzinfo else parse_user_wall_time(value, tz_name)
         return int(dt.timestamp() * 1000)
     if isinstance(value, (int, float)):
         number = int(value)
@@ -113,17 +114,7 @@ def to_monitor_epoch_ms(value: Any) -> Any:
         if text.isdigit() or (text[0] in "+-" and text[1:].isdigit()):
             number = int(text)
         else:
-            iso = text.replace("Z", "+00:00")
-            try:
-                dt = datetime.fromisoformat(iso)
-            except ValueError:
-                try:
-                    dt = datetime.strptime(text, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
-                except ValueError as exc:
-                    raise ValueError("timestamp must be unix seconds, milliseconds, or ISO datetime") from exc
-            if dt.tzinfo is None:
-                dt = dt.replace(tzinfo=timezone.utc)
-            return int(dt.timestamp() * 1000)
+            return int(parse_user_wall_time(text, tz_name).timestamp() * 1000)
     else:
         raise ValueError("timestamp must be unix seconds, milliseconds, or ISO datetime")
     abs_number = abs(number)
@@ -139,13 +130,13 @@ def default_metric_window_ms() -> Tuple[int, int]:
     return end_ms - _DEFAULT_METRIC_LOOKBACK_MS, end_ms
 
 
-def resolve_metric_window(start: Any, end: Any) -> Tuple[int, int]:
+def resolve_metric_window(start: Any, end: Any, tz_name: str | None = None) -> Tuple[int, int]:
     has_start = start not in (None, "")
     has_end = end not in (None, "")
     if not has_start and not has_end:
         return default_metric_window_ms()
-    start_ms = to_monitor_epoch_ms(start) if has_start else None
-    end_ms = to_monitor_epoch_ms(end) if has_end else None
+    start_ms = to_monitor_epoch_ms(start, tz_name) if has_start else None
+    end_ms = to_monitor_epoch_ms(end, tz_name) if has_end else None
     if start_ms is None:
         return int(end_ms) - _DEFAULT_METRIC_LOOKBACK_MS, int(end_ms)
     if end_ms is None:

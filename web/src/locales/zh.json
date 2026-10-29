@@ -161,6 +161,11 @@
     "selected": "已选",
     "items": "项",
     "actions": "操作",
+    "description": "描述",
+    "variableName": "变量名",
+    "variable": "变量",
+    "optionalVariables": "可选变量",
+    "useVariable": "选用",
     "version": "版本",
     "noVersionLogs": "暂无版本日志",
     "group": "组织",
@@ -171,6 +176,19 @@
     "layoutClassicHint": "九宫格切应用，顶栏为当前应用菜单",
     "layoutAppTop": "应用顶栏",
     "layoutAppTopHint": "顶栏切应用，左侧为当前应用菜单",
+    "homepage": "首页",
+    "homepagePanelTitle": "登录首页",
+    "homepageFollowGlobal": "默认首页",
+    "homepageFollowGlobalHint": "登录后进入管理员设置的默认首页",
+    "homepageFollowGlobalCurrent": "（当前：{name}）",
+    "homepagePinWorkbench": "控制台",
+    "homepagePinWorkbenchHint": "登录后始终进入应用控制台",
+    "homepageFollowGlobalSuccess": "已设为默认首页",
+    "homepagePinWorkbenchSuccess": "已设为控制台",
+    "homepageDashboardSettings": "选择仪表盘作为首页",
+    "homepageDashboardSettingsHint": "从运营分析中选择我的登录首页",
+    "homepagePersonalDashboardFallback": "已设个人仪表盘首页",
+    "homepageCurrentHomepage": "当前首页：{name}",
     "notFound": "找不到您要查找的页面。",
     "backToHome": "返回首页",
     "noPermission": "您没有权限访问此页面",
@@ -212,6 +230,7 @@
     "copy": "复制",
     "fullscreen": "全屏",
     "exitFullscreen": "退出全屏",
+    "pressEscToExitFullscreen": "按 Esc 退出全屏",
     "reset": "重置",
     "inputPassword": "请输入密码",
     "passwordWhitespaceTrimmed": "检测到密码首尾包含空格，已自动移除",
@@ -499,7 +518,7 @@
     "apm": "APM",
     "rum": "RUM",
     "playground": "Playground",
-    "workflow-orchestration": "编排中心"
+    "workflow": "编排中心"
   },
   "app": {
     "ops-analysis": "整合运维数据，通过仪表盘、画布方式多维度分析挖掘潜在风险与优化空间，为决策提供数据支撑，助力提升运维质量与业务连续性。",
@@ -517,7 +536,7 @@
     "patch": "集中管理系统补丁，支持补丁扫描、安装与补丁库维护，帮助持续降低安全风险。",
     "apm": "用于观测应用请求性能与依赖调用的平台，提供服务指标、调用链探索和告警策略等功能，帮助快速定位延迟与错误，保障业务稳定",
     "rum": "用于观测浏览器真实用户体验的平台，提供会话、性能、错误和告警，帮助定位前端问题。",
-    "workflow-orchestration": "通过可视化流程设计、自动化执行、人工审批与运行追踪，统一编排跨系统运维任务。"
+    "workflow": "通过可视化流程设计、自动化执行、人工审批与运行追踪，统一编排跨系统运维任务。"
   },
   "tag": {
     "user_management": "用户管理",

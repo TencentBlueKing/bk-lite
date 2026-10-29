@@ -12,6 +12,7 @@ import ViewSelector from '@/app/ops-analysis/components/widgetSelector';
 import ViewConfig from '@/app/ops-analysis/components/widgetConfig';
 import { mergeSanitizedWidgetValueConfig, omitForeignChartTypeFields } from '@/app/ops-analysis/components/widgetConfig/utils/submitConfig';
 import DashboardCanvas from './components/dashboardCanvas';
+import ModuleLicenseCanvasEmpty from './components/moduleLicenseCanvasEmpty';
 import DashboardToolbar from './components/dashboardToolbar';
 import HomepageViewToolbar from '@/app/ops-analysis/components/homepageViewToolbar';
 import DashboardSubscriptionModal from '@/app/ops-analysis/components/dashboardSubscriptionModal';
@@ -24,6 +25,12 @@ import { WidgetCsvExportRegistryProvider } from '@/app/ops-analysis/context/widg
 import { filterTemplateAsyncDependencies } from '@/app/ops-analysis/utils/filterTemplate';
 import { useTranslation } from '@/utils/i18n';
 import { useOpsAnalysis } from '@/app/ops-analysis/context/common';
+import {
+  useDashboardModuleAccess,
+  useDashboardSelectedGroup,
+} from '@/app/ops-analysis/hooks/useDashboardModuleAccess';
+import { DashboardViewAuthProvider } from '@/app/ops-analysis/context/dashboardViewAuth';
+import { useDashboardViewAuthSnapshot } from '@/app/ops-analysis/hooks/useDashboardViewAuthSnapshot';
 import { useCanvasResources } from '@/app/ops-analysis/hooks/useCanvasResources';
 import { useCanvasShareAction } from '@/app/ops-analysis/hooks/useCanvasShareAction';
 import {
@@ -68,6 +75,15 @@ import 'react-resizable/css/styles.css';
 import { useSession } from 'next-auth/react';
 import { useDashboardLayoutSync } from './hooks/useDashboardLayoutSync';
 import {
+  DASHBOARD_GRID_COLS,
+  scaleDashboardGridSpan,
+} from '@/app/ops-analysis/utils/dashboardGridColumns';
+import {
+  migrateDashboardGridLayout,
+  scaleDashboardGridHeight,
+  withCurrentDashboardGrid,
+} from '@/app/ops-analysis/utils/dashboardGridRows';
+import {
   deserializeDashboardGridStackLayout,
   serializeDashboardGridStackLayout,
 } from '@/app/ops-analysis/utils/dashboardGridStack';
@@ -81,6 +97,12 @@ import {
   removeDashboardGroupHeader,
   sanitizeCollapsedGroups,
 } from '@/app/ops-analysis/utils/dashboardGroups';
+import {
+  isModuleLicenseCanvasEmpty,
+  selectDashboardViewRenderWidgetIds,
+  shouldHoldDashboardRenderSignal,
+} from '@/app/ops-analysis/utils/dashboardGroupViewVisibility';
+import { isCanvasDataSourceLookupDecided } from '@/app/ops-analysis/utils/widgetRequestVersion';
 import {
   buildDashboardRenderSignal,
   emitDashboardRenderSignal,
@@ -125,7 +147,6 @@ import {
   resolveCanvasOrganizationId,
 } from '@/app/ops-analysis/utils/unifiedFilterState';
 import { useShareOrganization } from '@/app/ops-analysis/context/shareOrganization';
-import { useUserInfoContext } from '@/context/userInfo';
 import { copyDashboardWidget } from '@/app/ops-analysis/utils/widgetCopy';
 import {
   migrateFilterBindings,
@@ -139,6 +160,10 @@ interface DashboardProps {
   shareSessionId?: string;
   getDashboardDetailOverride?: (id: string | number) => Promise<any>;
   renderMode?: boolean;
+  /** 订阅渲染身份的授权 App 名。renderMode 下替代 get_client。 */
+  renderAuthorizedAppNames?: readonly string[] | null;
+  /** 分享链接配置身份的授权 App 名。shareMode 下替代打开者的 get_client。 */
+  shareAuthorizedAppNames?: readonly string[] | null;
   renderFilterValues?: Record<string, FilterValue>;
   renderDataSourceIds?: number[];
   /** 登录首页：只读已保存内容，隐藏筛选条和编辑工具。 */
@@ -153,8 +178,11 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
   ({
     selectedDashboard,
     shareMode = false,
+    shareSessionId,
     getDashboardDetailOverride,
     renderMode = false,
+    renderAuthorizedAppNames = null,
+    shareAuthorizedAppNames = null,
     renderFilterValues,
     renderDataSourceIds,
     homepageMode = false,
@@ -169,7 +197,11 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
       [t],
     );
     const { data: session } = useSession();
-    const { selectedGroup } = useUserInfoContext();
+    const selectedGroup = useDashboardSelectedGroup(renderMode);
+    const { authorizedAppNames, appAccessReady } = useDashboardModuleAccess(
+      renderMode || shareMode,
+      shareMode ? shareAuthorizedAppNames : renderAuthorizedAppNames,
+    );
     const shareOrganization = useShareOrganization();
     const selectedOrganizationId = resolveCanvasOrganizationId({
       shareMode,
@@ -193,7 +225,12 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
       (dataSource?: string | number) => findDataSourceRef.current(dataSource),
       [dataSourceManager.dataSources],
     );
-    const { namespaceList, loadCanvasNamespaces } = useOpsAnalysis();
+    const {
+      namespaceList,
+      loadCanvasNamespaces,
+      canvasDataSourceLookupStatus,
+      resetCanvasDataSourceLookup,
+    } = useOpsAnalysis();
     const { syncCanvasResources } = useCanvasResources();
     const [isEditMode, setIsEditMode] = useState(false);
     const [addModalVisible, setAddModalVisible] = useState(false);
@@ -204,6 +241,17 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
     const [collapsedGroups, setCollapsedGroups] = useState<
       Record<string, true>
     >({});
+    const viewAuthSnapshot = useDashboardViewAuthSnapshot({
+      layout,
+      dataSources: dataSourceManager.dataSources,
+      dataSourcesReady: isCanvasDataSourceLookupDecided(canvasDataSourceLookupStatus),
+      isEditMode,
+      canvasDataId: selectedDashboard?.data_id,
+      shareSessionId,
+      authorizedAppNames,
+      appAccessReady,
+      enabled: true,
+    });
     const [groupNameModalVisible, setGroupNameModalVisible] = useState(false);
     const [groupNameDraft, setGroupNameDraft] = useState('');
     const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
@@ -332,7 +380,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
         desc: selectedDashboard?.desc || '',
         view_sets: serializeDashboardGridStackLayout(layout),
         filters: definitions,
-        other: otherConfig,
+        other: withCurrentDashboardGrid(otherConfig),
         refresh_interval: savedRefreshInterval,
       }),
       [
@@ -346,7 +394,11 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
     );
     const applyDashboardDraftPayload = useCallback(
       (payload: CanvasDraftPayload) => {
-        const nextLayout = deserializeDashboardGridStackLayout(payload.view_sets);
+        const migratedDraft = migrateDashboardGridLayout(
+          deserializeDashboardGridStackLayout(payload.view_sets),
+          (payload.other as OtherConfig) || {},
+        );
+        const nextLayout = migratedDraft.layout;
         const loadedDefinitions = labelStoredFilters(Array.isArray(
           payload.filters,
         )
@@ -360,7 +412,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
 
         restoreDraftRefreshInterval(payload, setSavedRefreshInterval);
         setLayout(nextLayout);
-        setOtherConfig((payload.other as OtherConfig) || {});
+        setOtherConfig(migratedDraft.other);
         setDefinitions(loadedDefinitions);
         setFilterValues(nextValues);
         applyQueryState(loadedDefinitions, nextValues, appliedNamespaceId);
@@ -445,11 +497,51 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
       titleLabelsSettledRef.current = !titleLabelsPending;
     }
 
+    const renderSignalWidgetIds = useMemo(() => {
+      if (!renderMode) {
+        return widgetLayoutItems.map((item) => item.i);
+      }
+      return selectDashboardViewRenderWidgetIds({
+        items: layout,
+        mode: isEditMode ? 'edit' : 'view',
+        resourcesReady: viewAuthSnapshot.resourcesReady,
+        frozen: viewAuthSnapshot.frozen,
+        dataSourceLookupStatus: canvasDataSourceLookupStatus,
+        isWidgetUnauthorized: viewAuthSnapshot.isWidgetUnauthorized,
+      });
+    }, [
+      canvasDataSourceLookupStatus,
+      isEditMode,
+      layout,
+      renderMode,
+      viewAuthSnapshot.frozen,
+      viewAuthSnapshot.isWidgetUnauthorized,
+      viewAuthSnapshot.resourcesReady,
+      widgetLayoutItems,
+    ]);
+
     const flushRenderSignal = useCallback(() => {
       if (!renderMode || emittedRenderSignalRef.current) return;
+      if (!viewAuthSnapshot.resourcesReady || !viewAuthSnapshot.frozen) return;
+      if (shouldHoldDashboardRenderSignal({
+        loading,
+        layoutReadyDashboardId: collapsedGroupsLayoutReadyId,
+        dashboardId: selectedDashboard?.data_id,
+      })) {
+        return;
+      }
+      const dashboardId = selectedDashboard?.data_id || 'unknown';
+      if (renderSignalWidgetIds.length === 0) {
+        void emitPreparedRenderSignal({
+          type: 'report-ready',
+          dashboardId: String(dashboardId),
+          widgets: [],
+        });
+        return;
+      }
       const signal = buildDashboardRenderSignal(
-        selectedDashboard?.data_id || 'unknown',
-        widgetLayoutItems.map((item) => item.i),
+        dashboardId,
+        renderSignalWidgetIds,
         renderResultsRef.current,
       );
       if (!signal) return;
@@ -458,12 +550,20 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
       }
       void emitPreparedRenderSignal(signal);
     }, [
+      collapsedGroupsLayoutReadyId,
       emitPreparedRenderSignal,
+      loading,
       renderMode,
+      renderSignalWidgetIds,
       selectedDashboard?.data_id,
       titleLabelsPending,
-      widgetLayoutItems,
+      viewAuthSnapshot.frozen,
+      viewAuthSnapshot.resourcesReady,
     ]);
+
+    useEffect(() => {
+      flushRenderSignal();
+    }, [flushRenderSignal]);
 
     const handleWidgetRenderStatus = useCallback(
       (result: DashboardWidgetRenderResult) => {
@@ -551,6 +651,9 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
     syncDashboardCanvasResourcesRef.current = syncDashboardCanvasResources;
     selectedDashboardRef.current = selectedDashboard;
     const dashboardId = selectedDashboard?.data_id;
+    // 订阅页每次 lookup 状态更新都会给出新的 filter_values 引用；按内容签名依赖，
+    // 避免 lookup 失败后反复 loading→error，把已决画布又打回整页 Spin。
+    const renderFilterValuesSignature = JSON.stringify(renderFilterValues ?? null);
 
     useEffect(() => {
       const requestId = dashboardLoadSeqRef.current + 1;
@@ -584,7 +687,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
           if (!isCurrentLoad()) {
             return;
           }
-          const nextLayout = deserializeDashboardGridStackLayout(
+          const preparedLayout = deserializeDashboardGridStackLayout(
             dashboardData.view_sets,
           ).map((item) => {
             if (!isDashboardWidgetItem(item) || !item.valueConfig) {
@@ -616,6 +719,11 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
               },
             };
           });
+          const migratedGrid = migrateDashboardGridLayout(
+            preparedLayout,
+            dashboardData.other || {},
+          );
+          const nextLayout = migratedGrid.layout;
           await syncDashboardCanvasResourcesRef.current(nextLayout);
           if (!isCurrentLoad()) {
             return;
@@ -631,7 +739,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
 
           setCollapsedGroupsLayoutReadyId(dashboard.data_id);
 
-          const savedOtherConfig = dashboardData.other || {};
+          const savedOtherConfig = migratedGrid.other;
           setOtherConfig(savedOtherConfig);
           setOriginalOtherConfig({ ...savedOtherConfig });
           setSavedRefreshInterval(
@@ -713,7 +821,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
       homepageMode,
       labelStoredFilters,
       renderMode,
-      renderFilterValues,
+      renderFilterValuesSignature,
     ]);
 
     useEffect(() => {
@@ -763,6 +871,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
 
     // 监听 selectedDashboard 的变化，重置状态
     useEffect(() => {
+      resetCanvasDataSourceLookup();
       collapsedGroupsHydratedKeyRef.current = null;
       skipCollapsedGroupsPersistRef.current = false;
       setCollapsedGroupsLayoutReadyId(null);
@@ -789,7 +898,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
       setUndoStack([]);
       setRedoStack([]);
       setPendingNewWidgetGroupId(null);
-    }, [selectedDashboard?.data_id]);
+    }, [resetCanvasDataSourceLookup, selectedDashboard?.data_id]);
 
     useEffect(() => {
       const selectedDashboardId = selectedDashboard?.data_id;
@@ -1020,7 +1129,10 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
         setLayout(syncedLayout);
         syncFilterStateAfterLayoutChange(mergedFilters, nextValues, nextValues);
         if (applied.otherConfig) {
-          setOtherConfig((current) => ({ ...current, ...applied.otherConfig }));
+          setOtherConfig((current) => withCurrentDashboardGrid({
+            ...current,
+            ...applied.otherConfig,
+          }));
         }
         if (applied.refreshInterval != null) {
           setSavedRefreshInterval(applied.refreshInterval);
@@ -1253,8 +1365,13 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
             descriptionField: config.descriptionField,
             topNLabelField: config.topNLabelField,
             topNValueField: config.topNValueField,
+            topNScalarFields: config.topNScalarFields,
+            barMode: config.barMode,
+            barMax: config.barMax,
             dimensionField: config.dimensionField,
             valueField: config.valueField,
+            valueFields: config.valueFields,
+            seriesField: config.seriesField,
             multiValueLabelField: config.multiValueLabelField,
             multiValueValueField: config.multiValueValueField,
             eventTimeline: config.eventTimeline,
@@ -1277,6 +1394,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
             gaugeShape: config.gaugeShape,
             cardList: config.cardList,
             compare: config.compare,
+            singleStyle: config.singleStyle,
             interaction: config.interaction,
             actions: config.actions,
           },
@@ -1349,7 +1467,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
           name: selectedDashboard.name,
           desc: selectedDashboard.desc || '',
           filters: definitions,
-          other: otherConfig,
+          other: withCurrentDashboardGrid(otherConfig),
           view_sets: serializeDashboardGridStackLayout(layout),
         };
         await saveDashboard(selectedDashboard.data_id, saveData);
@@ -1371,8 +1489,10 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
           applyQueryState(definitions, nextApplied.values, appliedNamespaceId);
           setFilterSearchVersion((prev) => prev + 1);
         }
+        const savedOtherConfig = saveData.other;
+        setOtherConfig(savedOtherConfig);
         setOriginalLayout([...layout]);
-        setOriginalOtherConfig({ ...otherConfig });
+        setOriginalOtherConfig({ ...savedOtherConfig });
         setOriginalDefinitions([...definitions]);
         setIsEditMode(false);
         setUndoStack([]);
@@ -1594,8 +1714,8 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
           itemType: 'group',
           x: 0,
           y: nextY,
-          w: 12,
-          h: 1,
+          w: DASHBOARD_GRID_COLS,
+          h: scaleDashboardGridHeight(1),
           name: nextName,
         };
 
@@ -1737,8 +1857,8 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
         i: '',
         x: 0,
         y: 0,
-        w: item.defaultWidth,
-        h: item.defaultHeight,
+        w: scaleDashboardGridSpan(item.defaultWidth),
+        h: scaleDashboardGridHeight(item.defaultHeight),
         name: item.name,
         description: item.desc,
         valueConfig: {
@@ -1782,8 +1902,13 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
                   descriptionField: values.descriptionField,
                   topNLabelField: values.topNLabelField,
                   topNValueField: values.topNValueField,
+                  topNScalarFields: values.topNScalarFields,
+                  barMode: values.barMode,
+                  barMax: values.barMax,
                   dimensionField: values.dimensionField,
                   valueField: values.valueField,
+                  valueFields: values.valueFields,
+                  seriesField: values.seriesField,
                   multiValueLabelField: values.multiValueLabelField,
                   multiValueValueField: values.multiValueValueField,
                   eventTimeline: values.eventTimeline,
@@ -1807,6 +1932,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
                   cardList: values.cardList,
                   compare: values.compare,
                   compareMode: values.compareMode,
+                  singleStyle: values.singleStyle,
                   interaction: values.interaction,
                   actions: values.actions,
                 },
@@ -2003,7 +2129,16 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
       />
     );
 
-    const dashboardFilterBar = !homepageMode && (definitions.length > 0 ||
+    const moduleLicenseCanvasEmpty = isModuleLicenseCanvasEmpty({
+      mode: isEditMode ? 'edit' : 'view',
+      resourcesReady: viewAuthSnapshot.resourcesReady,
+      frozen: viewAuthSnapshot.frozen,
+      dataSourceLookupStatus: canvasDataSourceLookupStatus,
+      items: layout,
+      isWidgetUnauthorized: viewAuthSnapshot.isWidgetUnauthorized,
+    });
+
+    const dashboardFilterBar = !moduleLicenseCanvasEmpty && !homepageMode && (definitions.length > 0 ||
       namespaceSelectorElement) && (
       <UnifiedFilterBar
         definitions={definitions}
@@ -2023,9 +2158,24 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
         }
         data-export-expand="true"
       >
+        {moduleLicenseCanvasEmpty ? (
+          <ModuleLicenseCanvasEmpty />
+        ) : (
+        <DashboardViewAuthProvider
+          value={{
+            frozen: viewAuthSnapshot.frozen,
+            scenePermissions: viewAuthSnapshot.scenePermissions,
+            isWidgetUnauthorized: viewAuthSnapshot.isWidgetUnauthorized,
+            isScenePermissionDenied: viewAuthSnapshot.isScenePermissionDenied,
+          }}
+        >
         <DashboardCanvas
           dashboardId={selectedDashboard?.data_id}
-          loading={loading}
+          // 冻结前不挂载画布，避免模块许可结论出来之前先打出取数 403。
+          loading={
+            loading
+            || (!isEditMode && (!viewAuthSnapshot.resourcesReady || !viewAuthSnapshot.frozen))
+          }
           isEditMode={isEditMode}
           isDarkTheme={isDarkTheme}
           key={selectedDashboard?.data_id ?? 'dashboard'}
@@ -2062,6 +2212,8 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
           scrollRootRef={canvasScrollRef}
           onWidgetRenderStatus={handleWidgetRenderStatus}
         />
+        </DashboardViewAuthProvider>
+        )}
       </div>
     );
 
@@ -2110,6 +2262,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
             emptyDescription={t('dashboard.selectDashboardFirst')}
             headerVisible={!isFullscreen}
             filterBarVisible
+            compactHeader={homepageMode}
             toolbar={dashboardToolbar}
             filterBar={dashboardFilterBar}
             contentRef={exportRef}

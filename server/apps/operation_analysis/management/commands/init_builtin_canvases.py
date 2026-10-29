@@ -4,7 +4,8 @@
 
 合并 source_api.json、support-files/builtin_canvases.yaml、
 support-files/flow_dashboard.yaml、
-support-files/weopsx_platform_usage_dashboard.yaml 与
+support-files/weopsx_platform_usage_dashboard.yaml、
+support-files/weopsx_ops_overview_dashboard.yaml 与
 support-files/zombie_host_report.yaml 中的内置定义，
 复用 ImportService 在一个事务中同步数据源和画布。
 
@@ -41,6 +42,10 @@ FLOW_DASHBOARD_YAML_PATH = os.path.join(
 WEOPSX_PLATFORM_USAGE_YAML_PATH = os.path.join(
     os.path.dirname(YAML_FILE_PATH),
     "weopsx_platform_usage_dashboard.yaml",
+)
+WEOPSX_OPS_OVERVIEW_YAML_PATH = os.path.join(
+    os.path.dirname(YAML_FILE_PATH),
+    "weopsx_ops_overview_dashboard.yaml",
 )
 ZOMBIE_HOST_REPORT_YAML_PATH = os.path.join(
     os.path.dirname(YAML_FILE_PATH),
@@ -235,6 +240,7 @@ def _get_builtin_canvas_file_paths():
         YAML_FILE_PATH,
         FLOW_DASHBOARD_YAML_PATH,
         WEOPSX_PLATFORM_USAGE_YAML_PATH,
+        WEOPSX_OPS_OVERVIEW_YAML_PATH,
         ZOMBIE_HOST_REPORT_YAML_PATH,
     ]
     seen = {os.path.abspath(path) for path in paths}
@@ -428,6 +434,7 @@ class Command(BaseCommand):
         from apps.operation_analysis.models.datasource_models import DataSourceAPIModel
         from apps.operation_analysis.models.models import Architecture, Dashboard, Report, Screen, Topology
         from apps.operation_analysis.schemas.import_export_schema import YAMLDocument
+        from apps.operation_analysis.services.datasource_required_app import resolve_or_seed_required_app
         from apps.operation_analysis.services.import_export.import_service import ImportService
 
         # 3. 解析 YAML 为 YAMLDocument
@@ -581,6 +588,11 @@ class Command(BaseCommand):
                         is_build_in=True,
                         build_in_key=item.key,
                         updated_by="system",
+                        required_app=resolve_or_seed_required_app(
+                            rest_api=item.rest_api,
+                            source_type=item.source_type,
+                            is_build_in=True,
+                        ),
                     )
                 _clear_default_only_builtin_datasource_groups(groups)
 

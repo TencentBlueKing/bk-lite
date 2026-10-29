@@ -86,6 +86,21 @@ export default function NetworkPane({
     { key: 'net_packets_recv_rate' as const, label: hostCategoryText(t, 'inboundPacketRate'), color: HOST_SERIES_COLOR.netIn },
     { key: 'net_packets_sent_rate' as const, label: hostCategoryText(t, 'outboundPacketRate'), color: HOST_SERIES_COLOR.netOut }
   ].filter((item) => (selected?.series[item.key] || []).length > 0);
+  const chartData = useMemo(() => {
+    const fromKeys = (keys: readonly string[]) => pointsToChartData(
+      keys
+        .filter((key) => (selected?.series[key] || []).length > 0)
+        .map((key) => ({ points: selected?.series[key] || [] }))
+    );
+    return {
+      throughput: fromKeys(['net_bytes_recv_rate', 'net_bytes_sent_rate']),
+      error: pointsToChartData([
+        ...(hasErr ? [{ points: selected?.series.err || [] }] : []),
+        ...(hasDrop ? [{ points: selected?.series.drop || [] }] : [])
+      ]),
+      packet: fromKeys(['net_packets_recv_rate', 'net_packets_sent_rate'])
+    };
+  }, [hasDrop, hasErr, selected]);
 
   return (
     <>
@@ -98,9 +113,7 @@ export default function NetworkPane({
           title={throughputTitle}
           loading={loading}
           unit="byteps"
-          data={pointsToChartData(throughputItems.map((item) => ({
-            points: selected?.series[item.key] || []
-          })))}
+          data={chartData.throughput}
           legends={(throughputItems.length ? throughputItems : [
             { key: 'net_bytes_recv_rate' as const, label: hostCategoryText(t, 'inboundPacketRate'), color: HOST_SERIES_COLOR.netIn },
             { key: 'net_bytes_sent_rate' as const, label: hostCategoryText(t, 'outboundPacketRate'), color: HOST_SERIES_COLOR.netOut }
@@ -114,7 +127,7 @@ export default function NetworkPane({
           title={name ? `错误 / 丢包 · ${name}` : '错误 / 丢包'}
           loading={loading}
           unit="cps"
-          data={pointsToChartData(errorSeries)}
+          data={chartData.error}
           legends={errorSeries.map((item) => ({
             label: item.label,
             color: item.color,
@@ -127,9 +140,7 @@ export default function NetworkPane({
             : hostCategoryText(t, 'packetRateInOut')}
           loading={loading}
           unit="cps"
-          data={pointsToChartData(packetItems.map((item) => ({
-            points: selected?.series[item.key] || []
-          })))}
+          data={chartData.packet}
           legends={packetItems.map((item) => ({
             label: item.label,
             color: item.color,

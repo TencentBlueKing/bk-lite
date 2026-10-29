@@ -11,18 +11,25 @@ export const Section = ({ children, sx, title }: Props) => {
   return (
     <Box
       sx={{
-        pt: 3,
-        px: 3,
+        boxSizing: 'border-box',
+        width: '100%',
+        minWidth: 0,
+        pt: 1.5,
+        px: 1.5,
         ...sx
       }}
     >
-      <Stack>
+      <Stack spacing={0.75} sx={{ width: '100%', minWidth: 0 }}>
         {title && (
           <Typography
-            variant="body2"
-            color="text.secondary"
-            textTransform="uppercase"
-            pb={1}
+            component="div"
+            sx={{
+              fontSize: 12,
+              lineHeight: 1.4,
+              fontWeight: 500,
+              color: 'var(--color-text-3)',
+              textTransform: 'none'
+            }}
           >
             {title}
           </Typography>

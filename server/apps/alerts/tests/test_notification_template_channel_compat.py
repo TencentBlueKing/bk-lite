@@ -7,8 +7,8 @@ def test_alert_notify_disables_receiver_suffix_for_custom_template(monkeypatch):
     from apps.alerts.common.notify.notify import Notify
 
     monkeypatch.setattr(
-        "apps.alerts.common.notify.notify.SystemMgmtUtils.get_user_all",
-        lambda: [{"id": 9, "username": "zhangsan", "email": "z@example.com"}],
+        "apps.alerts.common.notify.notify.SystemMgmtUtils.get_users_by_usernames",
+        lambda usernames: [{"id": 9, "username": "zhangsan", "email": "z@example.com"}],
     )
     send = Mock(return_value={"result": True})
     monkeypatch.setattr("apps.alerts.common.notify.notify.SystemMgmtUtils.send_msg_with_channel", send)

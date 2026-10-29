@@ -1,5 +1,6 @@
 # -- coding: utf-8 --
 from django.db import transaction
+from django.db.models import Prefetch
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.decorators import action
@@ -37,7 +38,10 @@ class IncidentUpdateViewSet(ModelViewSet):
     def get_queryset(self):
         incident_pk = self.kwargs.get("incident_pk")
         # 列表只返回顶层更新（非回复），回复通过 replies 嵌套返回
-        return IncidentUpdate.objects.filter(incident_id=incident_pk, parent__isnull=True).prefetch_related("replies")
+        replies = IncidentUpdate.objects.order_by("created_at")
+        return IncidentUpdate.objects.filter(incident_id=incident_pk, parent__isnull=True).prefetch_related(
+            Prefetch("replies", queryset=replies)
+        )
 
     def _build_author_user_map(self, updates):
         usernames = set()
@@ -65,6 +69,16 @@ class IncidentUpdateViewSet(ModelViewSet):
         author_user_map = self._build_author_user_map(queryset)
         serializer = self.get_serializer(queryset, many=True, context={**self.get_serializer_context(), "author_user_map": author_user_map})
         return WebUtils.response_success(serializer.data)
+
+    @HasPermission("Incidents-View")
+    def retrieve(self, request, *args, **kwargs):
+        incident = self._get_incident()
+        if not incident:
+            return WebUtils.response_error(error_message="事故不存在或无权限访问")
+
+        instance = self.get_object()
+        serializer = self.get_serializer(instance)
+        return Response(serializer.data)
 
     @HasPermission("Incidents-Edit")
     @transaction.atomic
@@ -103,6 +117,22 @@ class IncidentUpdateViewSet(ModelViewSet):
         )
 
         return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    @HasPermission("Incidents-Edit")
+    @transaction.atomic
+    def update(self, request, *args, **kwargs):
+        incident = self._get_incident()
+        if not incident:
+            return WebUtils.response_error(error_message="事故不存在或无权限访问")
+
+        instance = self.get_object()
+        if instance.author != request.user.username:
+            return Response({"detail": alerts_message(request, "error.incident_update_author_edit")}, status=status.HTTP_403_FORBIDDEN)
+
+        serializer = self.get_serializer(instance, data=request.data, partial=False)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
 
     @HasPermission("Incidents-Edit")
     @transaction.atomic

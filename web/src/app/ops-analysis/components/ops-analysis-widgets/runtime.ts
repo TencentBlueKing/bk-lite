@@ -7,6 +7,7 @@ import {
   ChartDataTransformer as SharedChartDataTransformer,
   type ChartFieldMapping,
 } from '@/app/ops-analysis/utils/chartDataTransform';
+import { hasExplicitLineBarMapping } from '@/app/ops-analysis/utils/lineBarFieldMapping';
 export interface ChartDataItem {
   name: string;
   value: number;
@@ -349,7 +350,7 @@ export class ChartDataTransformer {
     rawData: any,
     mapping?: ChartFieldMapping,
   ): LineBarChartData {
-    if (mapping?.dimensionField?.trim() || mapping?.valueField?.trim()) {
+    if (hasExplicitLineBarMapping(mapping)) {
       return SharedChartDataTransformer.transformToLineBarData(rawData, mapping);
     }
 
@@ -458,7 +459,14 @@ export class ChartDataTransformer {
     rawData: any,
     mapping?: ChartFieldMapping,
   ): PieChartData {
-    if (mapping?.dimensionField?.trim() || mapping?.valueField?.trim()) {
+    const scalarFieldCount = (mapping?.pieScalarFields || []).filter(
+      (item) => item?.field?.trim(),
+    ).length;
+    if (
+      mapping?.dimensionField?.trim()
+      || mapping?.valueField?.trim()
+      || scalarFieldCount >= 2
+    ) {
       return SharedChartDataTransformer.transformToPieData(rawData, mapping);
     }
 

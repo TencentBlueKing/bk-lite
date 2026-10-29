@@ -5,6 +5,7 @@ import cmdbMenu from '@/app/cmdb/constants/menu.json';
 
 const SOID_PATH = '/cmdb/assetManage/autoDiscovery/featureLibrary/soid';
 const PORT_PATH = '/cmdb/assetManage/autoDiscovery/featureLibrary/port';
+const PROCESS_PATH = '/cmdb/assetManage/autoDiscovery/featureLibrary/process';
 
 describe('hasRoutePermission', () => {
   it('does not treat feature-library soid as covering the port tab', () => {
@@ -28,15 +29,21 @@ describe('hasRoutePermission', () => {
 
 describe('cmdb feature library menu', () => {
   it.each(['zh', 'en'] as const)(
-    'registers the port fingerprint route as a hidden soid_library item (%s)',
+    'registers port and process fingerprint routes as hidden soid_library items (%s)',
     (locale) => {
       const autoDiscovery = cmdbMenu[locale]
         .find((item) => item.url === '/cmdb/assetManage')
         ?.children?.find((item) => item.url === '/cmdb/assetManage/autoDiscovery');
       const portItem = autoDiscovery?.children?.find((item) => item.url === PORT_PATH);
+      const processItem = autoDiscovery?.children?.find((item) => item.url === PROCESS_PATH);
 
       expect(portItem).toMatchObject({
         url: PORT_PATH,
+        name: 'soid_library',
+        isNotMenuItem: true,
+      });
+      expect(processItem).toMatchObject({
+        url: PROCESS_PATH,
         name: 'soid_library',
         isNotMenuItem: true,
       });

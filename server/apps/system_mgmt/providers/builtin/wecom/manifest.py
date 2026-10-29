@@ -1,6 +1,5 @@
 from apps.system_mgmt.providers.schemas import ProviderManifest
 
-
 PROVIDER_MANIFEST = ProviderManifest.model_validate(
     {
         "key": "wecom",
@@ -71,7 +70,7 @@ PROVIDER_MANIFEST = ProviderManifest.model_validate(
                                 "reset_capabilities": ["login_auth", "user_sync", "im_notification", "im_group"],
                             },
                         ],
-                    }
+                    },
                 ],
             }
         },
@@ -88,6 +87,12 @@ PROVIDER_MANIFEST = ProviderManifest.model_validate(
                             {"key": "description", "label": "Description", "field_type": "string", "required": False},
                             {"key": "external_field", "label": "External field", "field_type": "string", "required": True},
                             {"key": "platform_field", "label": "Platform field", "field_type": "select", "required": True},
+                            {
+                                "key": "unmatched_user_action",
+                                "label": "Unmatched user action",
+                                "field_type": "select",
+                                "required": True,
+                            },
                         ],
                     }
                 ],
@@ -115,7 +120,10 @@ PROVIDER_MANIFEST = ProviderManifest.model_validate(
                                 "field_type": "boolean",
                                 "required": False,
                                 "default": True,
-                                "help_text": "By default, sync members of the root department and all child departments. Turn this off to sync only direct members of that department.",
+                                "help_text": (
+                                    "By default, sync members of the root department and all child departments. "
+                                    "Turn this off to sync only direct members of that department."
+                                ),
                             },
                         ],
                     }

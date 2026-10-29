@@ -4,10 +4,18 @@ import pytest
 from rest_framework import status
 from rest_framework.test import APIRequestFactory, force_authenticate
 
+from apps.cmdb.serializers.k8s_resource_overview import (
+    K8sLayerQuerySerializer,
+    K8sResourceListQuerySerializer,
+)
 from apps.cmdb.views.instance import InstanceViewSet
 
 
 VIEWS = "apps.cmdb.views.instance"
+CLUSTER_UUID = "00000000-0000-4000-8000-000000000001"
+NAMESPACE_10 = "00000000-0000-4000-8000-000000000010"
+NAMESPACE_11 = "00000000-0000-4000-8000-000000000011"
+WORKLOAD_UUID = "00000000-0000-4000-8000-000000000020"
 
 
 @pytest.fixture
@@ -35,14 +43,24 @@ def body(response):
 
 @pytest.fixture(autouse=True)
 def instance_guards(monkeypatch):
-    monkeypatch.setattr(
-        f"{VIEWS}.InstanceManage.query_entity_by_id",
-        lambda inst_id: {"_id": int(inst_id), "model_id": "k8s_cluster", "inst_name": "prod"},
-    )
+    entities = {
+        CLUSTER_UUID: {
+            "_id": 1,
+            "model_id": "k8s_cluster",
+            "inst_name": "prod",
+            "inst_uuid": CLUSTER_UUID,
+        },
+    }
+
+    def query_by_uuid(inst_uuid):
+        return entities.get(str(inst_uuid), {})
+
+    monkeypatch.setattr(f"{VIEWS}.InstanceManage.query_entity_by_uuid", query_by_uuid)
     monkeypatch.setattr(
         f"{VIEWS}.InstanceViewSet.require_instance_permission",
         lambda self, req, instance, operator=None: None,
     )
+    return entities
 
 
 @pytest.mark.django_db
@@ -58,14 +76,18 @@ def test_overview_action_builds_permission_map_for_each_child_model(superuser, m
         lambda cluster_id, permission_maps=None, user=None: captured.update(permission_maps=permission_maps) or {"summary": {}},
     )
 
-    response = InstanceViewSet.as_view({"get": "k8s_resource_overview"})(request(superuser), cluster_id="1")
+    response = InstanceViewSet.as_view({"get": "k8s_resource_overview"})(
+        request(superuser), cluster_uuid=CLUSTER_UUID
+    )
 
     assert response.status_code == status.HTTP_200_OK
     assert set(captured["permission_maps"]) == {"k8s_namespace", "k8s_workload", "k8s_pod", "k8s_node"}
 
 
 @pytest.mark.django_db
-def test_layer_action_validates_limits_and_namespace_ids(superuser, monkeypatch):
+def test_layer_action_validates_limits_and_namespace_ids(superuser, monkeypatch, instance_guards):
+    instance_guards[NAMESPACE_10] = {"_id": 10, "model_id": "k8s_namespace", "inst_uuid": NAMESPACE_10}
+    instance_guards[NAMESPACE_11] = {"_id": 11, "model_id": "k8s_namespace", "inst_uuid": NAMESPACE_11}
     monkeypatch.setattr(
         f"{VIEWS}.CmdbRulesFormatUtil.format_user_groups_permissions",
         lambda request, model_id, permission_type=None: {},
@@ -76,8 +98,8 @@ def test_layer_action_validates_limits_and_namespace_ids(superuser, monkeypatch)
     )
 
     response = InstanceViewSet.as_view({"get": "k8s_resource_layer"})(
-        request(superuser, page="2", page_size="50", namespace_ids="10,11"),
-        cluster_id="1",
+        request(superuser, page="2", page_size="50", namespace_ids=f"{NAMESPACE_10},{NAMESPACE_11}"),
+        cluster_uuid=CLUSTER_UUID,
         layer="workload",
     )
 
@@ -92,14 +114,15 @@ def test_workload_pods_action_caps_page_size_at_fifty(superuser, monkeypatch):
         lambda request, model_id, permission_type=None: {},
     )
     response = InstanceViewSet.as_view({"get": "k8s_workload_pods"})(
-        request(superuser, page_size="51"), cluster_id="1", workload_id="20"
+        request(superuser, page_size="51"), cluster_uuid=CLUSTER_UUID, workload_uuid=WORKLOAD_UUID
     )
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST
 
 
 @pytest.mark.django_db
-def test_resource_list_action_passes_read_only_filters(superuser, monkeypatch):
+def test_resource_list_action_passes_read_only_filters(superuser, monkeypatch, instance_guards):
+    instance_guards[NAMESPACE_10] = {"_id": 10, "model_id": "k8s_namespace", "inst_uuid": NAMESPACE_10}
     captured = {}
     monkeypatch.setattr(
         f"{VIEWS}.CmdbRulesFormatUtil.format_user_groups_permissions",
@@ -111,8 +134,8 @@ def test_resource_list_action_passes_read_only_filters(superuser, monkeypatch):
     )
 
     response = InstanceViewSet.as_view({"get": "k8s_resource_list"})(
-        request(superuser, search="api", order="-name", namespace_id="10"),
-        cluster_id="1",
+        request(superuser, search="api", order="-name", namespace_id=NAMESPACE_10),
+        cluster_uuid=CLUSTER_UUID,
         kind="deployment",
     )
 
@@ -135,7 +158,7 @@ def test_unowned_pods_action_is_read_only_get(superuser, monkeypatch):
     )
 
     response = InstanceViewSet.as_view({"get": "k8s_unowned_pods"})(
-        request(superuser), cluster_id="1"
+        request(superuser), cluster_uuid=CLUSTER_UUID
     )
 
     assert response.status_code == status.HTTP_200_OK
@@ -144,11 +167,50 @@ def test_unowned_pods_action_is_read_only_get(superuser, monkeypatch):
 @pytest.mark.django_db
 def test_k8s_actions_reject_non_cluster_instance(superuser, monkeypatch):
     monkeypatch.setattr(
-        f"{VIEWS}.InstanceManage.query_entity_by_id",
-        lambda inst_id: {"_id": int(inst_id), "model_id": "host", "inst_name": "host-a"},
+        f"{VIEWS}.InstanceManage.query_entity_by_uuid",
+        lambda inst_uuid: {"_id": 1, "model_id": "host", "inst_name": "host-a", "inst_uuid": str(inst_uuid)},
     )
 
-    response = InstanceViewSet.as_view({"get": "k8s_resource_overview"})(request(superuser), cluster_id="1")
+    response = InstanceViewSet.as_view({"get": "k8s_resource_overview"})(
+        request(superuser), cluster_uuid=CLUSTER_UUID
+    )
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST
     assert "k8s_cluster" in str(body(response))
+
+
+@pytest.mark.django_db
+def test_layer_missing_namespace_uuid_reports_instance_missing(superuser, monkeypatch):
+    monkeypatch.setattr(
+        f"{VIEWS}.CmdbRulesFormatUtil.format_user_groups_permissions",
+        lambda request, model_id, permission_type=None: {},
+    )
+    monkeypatch.setattr(
+        f"{VIEWS}.K8sResourceOverviewService.get_layer",
+        lambda *args, **kwargs: pytest.fail("查不到的 Namespace 不得进入服务"),
+    )
+
+    response = InstanceViewSet.as_view({"get": "k8s_resource_layer"})(
+        request(superuser, page="1", page_size="50", namespace_ids="00000000-0000-4000-8000-000000000099"),
+        cluster_uuid=CLUSTER_UUID,
+        layer="workload",
+    )
+
+    assert response.status_code == status.HTTP_404_NOT_FOUND
+    assert "实例不存在" in str(body(response))
+
+
+@pytest.mark.django_db
+def test_k8s_filter_params_reject_numeric_ids():
+    layer = K8sLayerQuerySerializer(
+        data={"namespace_ids": "10,11", "page_size": "50"},
+        context={"layer": "workload"},
+    )
+    listing = K8sResourceListQuerySerializer(
+        data={"namespace_id": "10", "workload_id": "20", "node_id": "40"},
+    )
+
+    assert layer.is_valid() is False
+    assert listing.is_valid() is False
+    assert "整数" not in str(layer.errors)
+    assert "整数" not in str(listing.errors)

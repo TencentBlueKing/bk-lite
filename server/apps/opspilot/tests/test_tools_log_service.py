@@ -49,13 +49,18 @@ def test_log_search_structured_defaults_time_when_omitted():
     assert len(query_data["time_range"]) == 2
 
 
-def test_log_search_structured_rejects_time_without_timezone():
-    out = log_search_structured.invoke(
-        {"keyword": "日志", "start": "2026-10-21 14:53:09", "end": "2026-10-21 15:03:09"},
-        config=cfg(),
-    )
-    assert "RFC3339" in out["error"]
-    assert "2026-10-21T15:03:09+08:00" in out["error"]
+def test_log_search_structured_reads_naive_time_in_user_timezone():
+    with patch("apps.opspilot.metis.llm.tools.log.utils.LogOperationAnaRpc") as rpc_cls:
+        rpc_cls.return_value.search_structured.return_value = {"result": True, "data": []}
+        config = cfg()
+        config["configurable"]["user_timezone"] = "Asia/Shanghai"
+        out = log_search_structured.invoke(
+            {"keyword": "日志", "start": "2026-10-21 14:53:09", "end": "2026-10-21 15:03:09"},
+            config=config,
+        )
+    assert out["success"] is True
+    query_data = rpc_cls.return_value.search_structured.call_args.kwargs["query_data"]
+    assert query_data["time_range"] == ["2026-10-21T06:53:09.000Z", "2026-10-21T07:03:09.000Z"]
 
 
 def test_log_search_structured_requires_paired_time():
@@ -76,17 +81,22 @@ def test_log_search_structured_maps_to_rpc():
     assert query_data["time_range"][0].startswith("2026-09-11")
 
 
-def test_log_search_raw_rejects_time_without_timezone():
-    out = log_search_raw.invoke(
-        {
-            "query": 'host:"web-1"',
-            "start": "2026-10-21 14:53:09",
-            "end": "2026-10-21 15:03:09",
-        },
-        config=cfg(),
-    )
-    assert "RFC3339" in out["error"]
-    assert "2026-10-21T15:03:09+08:00" in out["error"]
+def test_log_search_raw_reads_naive_time_in_user_timezone():
+    with patch("apps.opspilot.metis.llm.tools.log.utils.LogOperationAnaRpc") as rpc_cls:
+        rpc_cls.return_value.search_structured.return_value = {"result": True, "data": []}
+        config = cfg()
+        config["configurable"]["user_timezone"] = "Asia/Shanghai"
+        out = log_search_raw.invoke(
+            {
+                "query": 'host:"web-1"',
+                "start": "2026-10-21 14:53:09",
+                "end": "2026-10-21 15:03:09",
+            },
+            config=config,
+        )
+    assert out["success"] is True
+    query_data = rpc_cls.return_value.search_structured.call_args.kwargs["query_data"]
+    assert query_data["time_range"] == ["2026-10-21T06:53:09.000Z", "2026-10-21T07:03:09.000Z"]
 
 
 def test_log_search_raw_requires_query():

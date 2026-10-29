@@ -54,6 +54,9 @@ monitor_object_metric:
     processes_running:
       name: Process Count
       desc: Total Windows process table size, not Linux run-queue size.
+    windows_service_state:
+      name: Windows Service State
+      desc: Windows service running state. Running is Up; stopped, pending, paused, or missing is Down.
     mem_total:
       name: Total Memory
       desc: Represents the total amount of physical memory available on the system, serving as a baseline
@@ -101,6 +104,7 @@ monitor_object_metric_group:
     Disk: Disk
     Process: Process
     Processes: Processes
+    Service: Service
     Memory: Memory
     Net: Net
     Network: Network

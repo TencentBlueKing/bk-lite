@@ -195,7 +195,7 @@ ttl_seconds = max(1, ceil((ts + 300000 - server_now_ms) / 1000))
 
 ## 后端中间件
 
-`apps.core.middlewares.gm_transport_middleware.GmTransportMiddleware`，挂在 `SecurityMiddleware` 之后、`SessionMiddleware` 之前，请求进来时还原、响应离开时加密。
+`apps.core.enterprise.gm_transport_middleware.GmTransportMiddleware`，企业包在运行目录时挂在 `SecurityMiddleware` 之后、`SessionMiddleware` 之前，请求进来时还原、响应离开时加密。没有企业包则不注册。
 
 - 路径不以 `/api/v1/` 开头、是公钥接口、或没有 `X-Gm-Transport: 1`：原样放行。
 - 有该头：先查体积，再按校验顺序验证。成功后写回查询串和正文，`CONTENT_LENGTH` 改为明文长度，`Content-Type` 改回 `cty`，删除 `X-Gm-Transport`；SM4 密钥留在请求对象上供响应加密，视图和日志读不到。
@@ -230,7 +230,7 @@ MAC 输入：`1`、`resp`、`{nonce}`、`{seq}`、`{status}`、`{cty}`、`{iv �
 
 ## 前端
 
-`web/src/utils/gmTransport.ts` 是前端唯一的加解密入口，必须接在两个出口上：`request.ts` 的 axios 请求与响应拦截器，以及登录等没有 token 时直接调用的 `fetch('/api/proxy/...')`。绕过它的调用会发出明文，中间件也会放行，所以实施时要清点并收拢。Next 代理只透传，不解密、不缓存正文，日志不记查询串和正文。
+`web/src/utils/gmTransport.ts` 是前端唯一的加解密入口，实现从企业包加载；没有企业包时这些调用保持明文。必须接在两个出口上：`request.ts` 的 axios 请求与响应拦截器，以及登录等没有 token 时直接调用的 `fetch('/api/proxy/...')`。绕过它的调用会发出明文，中间件也会放行，所以实施时要清点并收拢。Next 代理只透传，不解密、不缓存正文，日志不记查询串和正文。
 
 `enabled = "1"` 时，包装函数：取公钥和 `kid` → 生成 SM4 密钥、IV、nonce 和 `ts` → 把查询串移出 URL → 正文取原始字节（`FormData` 先序列化为 multipart）→ 设置 `X-Gm-Transport: 1` 与 `Content-Type: application/json`。收到带 `X-Gm-Transport: 1` 的响应时用本次密钥解开，流式响应按 `seq` 逐帧解密，读完丢弃密钥。不把密钥、nonce 或信封写入 `sessionStorage` / `localStorage`。
 

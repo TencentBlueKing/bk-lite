@@ -39,7 +39,7 @@ class K8sSetupViewSet(ViewSet):
         requested = extract_request_tolerations(request.data)
         if requested is not TOLERATIONS_UNSET:
             extra["tolerations"] = requested
-        data = K8sSetupService.generate_install_command(collector_cluster_id, cloud_region_id, **extra)
+        data = K8sSetupService.generate_install_command(collector_cluster_id, cloud_region_id, request=request, **extra)
         return WebUtils.response_success(data)
 
     @action(methods=["post"], detail=False, url_path="verify")

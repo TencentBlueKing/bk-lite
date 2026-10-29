@@ -47,8 +47,8 @@ import { useParamInputOptions } from "@/app/ops-analysis/hooks/useParamInputOpti
 import { fetchCompareData, validateGaugeData } from "@/app/ops-analysis/utils/compareQuery";
 import { useDataSourceApi, withRuntimeSourceDataErrorSuppression } from "@/app/ops-analysis/api/dataSource";
 import { ChartDataTransformer } from "@/app/ops-analysis/utils/chartDataTransform";
+import { toLineBarFieldMapping } from "@/app/ops-analysis/utils/lineBarFieldMapping";
 import { getRequestErrorMessage, classifyWidgetQueryError } from "@/app/ops-analysis/utils/requestError";
-import { buildTopNItems } from "@/app/ops-analysis/utils/topNData";
 import { buildWidgetRequestCacheKey } from "@/app/ops-analysis/utils/widgetRequestCache";
 import { useDashboardRuntimeScheduler } from "@/app/ops-analysis/context/dashboardRuntimeScheduler";
 import {
@@ -73,10 +73,12 @@ import {
   serializeTableQueryKey,
 } from "@/app/ops-analysis/utils/tablePagination";
 import { validateMultiValueData } from "@/app/ops-analysis/utils/multiValueData";
+import { validateTopNPayload } from "@/app/ops-analysis/utils/topNData";
 import { validateEventTimelinePayload } from "@/app/ops-analysis/utils/eventTimeline";
 import { validateCardListPayload } from "@/app/ops-analysis/utils/cardList";
 import { resolveRadarSeriesData } from "@/app/ops-analysis/utils/radarData";
 import { useOpsAnalysis } from "@/app/ops-analysis/context/common";
+import { useDashboardViewAuth } from "@/app/ops-analysis/context/dashboardViewAuth";
 import type { DashboardWidgetRenderResult } from "@/app/ops-analysis/renderContract";
 import {
   hasRenderableChartData,
@@ -89,19 +91,12 @@ const validateTopNData = (
   config?: ValueConfig,
   errorMessage?: string,
 ): { isValid: boolean; message?: string } => {
-  if (!data || (Array.isArray(data) && data.length === 0)) {
-    return { isValid: true };
-  }
-
-  if (!Array.isArray(data)) {
-    return { isValid: false, message: errorMessage || "dashboard.dataFormatMismatch" };
-  }
-
-  const hasNamedRows =
-    buildTopNItems(data, config?.topNLabelField, config?.topNValueField)
-      .length > 0;
-
-  return hasNamedRows
+  const valid = validateTopNPayload(data, {
+    labelField: config?.topNLabelField,
+    valueField: config?.topNValueField,
+    scalarFields: config?.topNScalarFields,
+  });
+  return valid
     ? { isValid: true }
     : { isValid: false, message: errorMessage || "dashboard.dataFormatMismatch" };
 };
@@ -259,6 +254,10 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     {},
   );
   const { canvasDataSourceLookupStatus, dataSources } = useOpsAnalysis();
+  const dashboardViewAuth = useDashboardViewAuth();
+  const scenePermissionDenied = Boolean(
+    dashboardViewAuth?.isScenePermissionDenied(widgetId),
+  );
   const runtimeScheduler = useDashboardRuntimeScheduler();
   const { getSourceDataByApiId } = useDataSourceApi();
   const optionConsumerSequenceRef = useRef(0);
@@ -724,13 +723,17 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
           return ChartDataTransformer.validatePieData(data, errorMessage, {
             dimensionField: config?.dimensionField,
             valueField: config?.valueField,
+            pieScalarFields: config?.pieScalarFields,
           });
         case "line":
         case "bar":
-          return ChartDataTransformer.validateLineBarData(data, errorMessage, {
-            dimensionField: config?.dimensionField,
-            valueField: config?.valueField,
-          });
+          return localizeStructureMessage(
+            ChartDataTransformer.validateLineBarData(
+              data,
+              errorMessage,
+              toLineBarFieldMapping(config, dataSource?.field_schema),
+            ),
+          );
         case "topN":
           return validateTopNData(data, config, errorMessage);
         case "gauge":
@@ -753,8 +756,31 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
           return { isValid: true };
       }
     },
-    [config, t],
+    [config, dataSource, t],
   );
+
+  // 字段映射不改变请求。已取到的 rawData 要按当前配置重校验，
+  // 否则预览改完分类/数值/系列后会停在上一次的「数据格式不匹配」。
+  useEffect(() => {
+    if (!requestEnabled || isSceneWidget) {
+      return;
+    }
+    if (rawData === null || rawData === undefined) {
+      return;
+    }
+    const next = validateChartData(rawData, chartType);
+    setDataValidation((previous) => {
+      if (
+        previous
+        && previous.isValid === next.isValid
+        && previous.message === next.message
+        && previous.errorCode === undefined
+      ) {
+        return previous;
+      }
+      return next;
+    });
+  }, [chartType, isSceneWidget, rawData, requestEnabled, validateChartData]);
 
   const fetchDataRef = useRef<
     (key: string, cause: CanvasRuntimeRefreshCause) => Promise<void>
@@ -1244,6 +1270,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
           runtimeActive={runtimeActive}
           runtimePriority={runtimePriority}
           surface={surface}
+          scenePermissionDenied={scenePermissionDenied}
           onRawData={(data) => {
             onRawData?.(data, sampleTicketRef.current);
           }}

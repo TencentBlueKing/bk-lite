@@ -20,6 +20,7 @@ from apps.cmdb.services.application_system import (
     query_association_edges,
 )
 from apps.cmdb.services.instance import InstanceManage
+from apps.cmdb.services.instance_identity import optional_inst_uuid
 from apps.core.exceptions.base_app_exception import ValidationAppException
 from apps.core.logger import cmdb_logger as logger, safe_log_value
 
@@ -585,10 +586,9 @@ def parse_import_row(row: dict[str, Any], *, expected_system_name: str) -> dict[
     }
 
 
-def match_host(identifier: str, hosts: Iterable[dict[str, Any]] | None) -> dict[str, Any]:
-    key = _nonempty_text(identifier)
-    if not key:
-        raise ValidationAppException("导入行缺少主机标识")
+def _index_hosts(
+    hosts: Iterable[dict[str, Any]] | None,
+) -> tuple[dict[str, dict[str, Any]], dict[str, list[dict[str, Any]]], dict[str, list[dict[str, Any]]]]:
     by_uuid: dict[str, dict[str, Any]] = {}
     by_name: dict[str, list[dict[str, Any]]] = {}
     by_ip: dict[str, list[dict[str, Any]]] = {}
@@ -600,6 +600,15 @@ def match_host(identifier: str, hosts: Iterable[dict[str, Any]] | None) -> dict[
             by_uuid[uuid] = host
             by_name.setdefault(_nonempty_text(host.get("inst_name")), []).append(host)
             by_ip.setdefault(_nonempty_text(host.get("ip_addr")), []).append(host)
+    return by_uuid, by_name, by_ip
+
+
+def _match_indexed_host(
+    key: str,
+    by_uuid: dict[str, dict[str, Any]],
+    by_name: dict[str, list[dict[str, Any]]],
+    by_ip: dict[str, list[dict[str, Any]]],
+) -> dict[str, Any]:
     if key in by_uuid:
         return by_uuid[key]
     name_hits = [item for item in by_name.get(key, []) if _nonempty_text(item.get("inst_uuid"))]
@@ -613,6 +622,14 @@ def match_host(identifier: str, hosts: Iterable[dict[str, Any]] | None) -> dict[
     if len(ip_hits) > 1:
         raise ValidationAppException("主机标识匹配不唯一")
     raise ValidationAppException("找不到对应的主机")
+
+
+def match_host(identifier: str, hosts: Iterable[dict[str, Any]] | None) -> dict[str, Any]:
+    key = _nonempty_text(identifier)
+    if not key:
+        raise ValidationAppException("导入行缺少主机标识")
+    by_uuid, by_name, by_ip = _index_hosts(hosts)
+    return _match_indexed_host(key, by_uuid, by_name, by_ip)
 
 
 def _app_key(application: str) -> str:
@@ -632,11 +649,12 @@ def plan_import_rows(
     created_keys: set[str] = set()
     assign: list[dict[str, str]] = []
     errors: list[dict[str, Any]] = []
+    by_uuid, by_name, by_ip = _index_hosts(hosts)
 
     for index, raw in enumerate(rows or [], start=1):
         try:
             parsed = parse_import_row(raw, expected_system_name=system_name)
-            host = match_host(parsed["host"], hosts)
+            host = _match_indexed_host(parsed["host"], by_uuid, by_name, by_ip)
             app_key = _app_key(parsed["application"])
             if app_key not in existing_apps and app_key not in created_keys:
                 create_nodes.append(
@@ -1339,7 +1357,8 @@ class ServiceTreeService:
         tree = cls.get_tree(system, is_visible=is_visible)
         edges = _load_tree_edges(_nonempty_text(system.get("inst_uuid")))
         hosts_by_app = _hosts_by_application(edges)
-        host_index = _index_nodes([host_uuid for hosts in hosts_by_app.values() for host_uuid in hosts])
+        host_uuids = [host_uuid for hosts in hosts_by_app.values() for host_uuid in hosts]
+        host_index = _index_nodes(_unique(host_uuids))
         rows: list[dict[str, str]] = []
         system_name = str(system.get("inst_name") or "")
 
@@ -1349,7 +1368,11 @@ class ServiceTreeService:
                 if not hosts:
                     return
                 for host_uuid in hosts:
-                    host = host_index.get(host_uuid) or {}
+                    host = host_index.get(host_uuid)
+                    if not host:
+                        continue
+                    if is_visible and not is_visible(host):
+                        continue
                     identifier = str(host.get("inst_name") or host.get("ip_addr") or host_uuid)
                     rows.append(
                         {
@@ -1420,6 +1443,22 @@ def _require_hosts(host_uuids: list[str]) -> list[dict[str, Any]]:
     return [found[uuid] for uuid in wanted]
 
 
+_HEX_DIGITS = frozenset("0123456789abcdefABCDEF")
+
+
+def _optional_import_host_uuid(identifier: str) -> str | None:
+    text = identifier.strip()
+    lowered = text.lower()
+    if lowered.startswith("urn:uuid:"):
+        text = text[9:]
+    elif lowered.startswith("uuid:"):
+        text = text[5:]
+    compact = text.strip().strip("{}").replace("-", "")
+    if len(compact) != 32 or any(character not in _HEX_DIGITS for character in compact):
+        return None
+    return optional_inst_uuid(identifier)
+
+
 def _lookup_hosts_for_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     identifiers = []
     for row in rows or []:
@@ -1430,9 +1469,14 @@ def _lookup_hosts_for_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
         identifiers.append(parsed["host"])
     if not identifiers:
         return []
+    uuid_identifiers = [normalized for identifier in identifiers if (normalized := _optional_import_host_uuid(identifier))]
     by_name = InstanceManage.search_inst_batch(HOST_MODEL, inst_names=identifiers) or {}
-    by_uuid = InstanceManage.search_inst_batch(HOST_MODEL, inst_uuids=identifiers) or {}
-    hosts = list({item["inst_uuid"]: item for item in list(by_name.values()) + list(by_uuid.values()) if item.get("inst_uuid")}.values())
+    by_uuid = InstanceManage.search_inst_batch(HOST_MODEL, inst_uuids=uuid_identifiers) or {}
+    hosts = {
+        item["inst_uuid"]: item
+        for item in list(by_name.values()) + list(by_uuid.values())
+        if item.get("inst_uuid")
+    }
     missing_ips = [value for value in identifiers if value not in by_name and value not in by_uuid]
     if missing_ips:
         with GraphClient() as graph:
@@ -1444,6 +1488,7 @@ def _lookup_hosts_for_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 ],
             )
         for item in extra or []:
-            if item.get("inst_uuid"):
-                hosts.append(item)
-    return hosts
+            inst_uuid = item.get("inst_uuid")
+            if inst_uuid:
+                hosts.setdefault(inst_uuid, item)
+    return list(hosts.values())
