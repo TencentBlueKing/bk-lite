@@ -2,7 +2,7 @@
 
 import { useMemo } from 'react';
 import type { ReactNode } from 'react';
-import { GrayTabEmptyState, ProDashLoading, ProInfoHint, ProSection, ThinTimeSeries, proChromeClass } from '../../host/layered/pro-chrome';
+import { GrayTabEmptyState, ProDashLoading, ProSection, ThinTimeSeries, proChromeClass } from '../../host/layered/pro-chrome';
 import chart from '../../host/layered/layered.module.scss';
 import { useDashboardText } from '../../../shared/utils/content-i18n';
 import { formatMetricValue } from '../../../shared/utils/format';
@@ -16,6 +16,7 @@ import {
   type ReplicationTabMode
 } from './architecture-state';
 import { redisCategoryText, type RedisCategoryCopyKey } from './redis-copy';
+import { RedisHint } from './redis-hint';
 import {
   redisDisplay,
   redisLatest,
@@ -72,18 +73,7 @@ function FeatureHead({
 }) {
   const tipLines = lines?.length ? lines : hint ? [hint] : [];
   const tip = tipLines.length ? (
-    <ProInfoHint
-      kind={kind || 'redis-arch'}
-      label={tipLines.join(' ')}
-      text={tipLines.length === 1 ? tipLines[0] : undefined}
-      content={tipLines.length > 1 ? (
-        <div className="max-w-[380px] text-[13px] font-normal leading-[1.55] text-[var(--color-text-2)]">
-          {tipLines.map((line) => (
-            <p key={line} className="m-0 [&+&]:mt-2">{line}</p>
-          ))}
-        </div>
-      ) : undefined}
-    />
+    <RedisHint kind={kind || 'redis-arch'} lines={tipLines} />
   ) : null;
   return (
     <div className={chart.chartHead}>
@@ -202,43 +192,6 @@ function backlogSharePoints(metricMap: RedisMetricMap): ChartData[] {
   return points;
 }
 
-function BacklogHint() {
-  const text = useRedisText();
-  const noSample = text('backlogMemoryNoZero');
-  const lines = [
-    text('backlogStateOpen'),
-    text('backlogStateClosed'),
-    text('backlogUnread'),
-    `${text('backlogUsed')}：${text('backlogUsedHint')}`,
-    `${text('backlogCapacity')}：${text('backlogSizeHint')}`,
-    `${text('backlogShare')}：${text('backlogShareHint')}`,
-    text('backlogMemoryLine'),
-    noSample,
-    text('backlogWritten'),
-    text('backlogLimitExplain'),
-    text('backlogPctExplain'),
-    text('backlogHint')
-  ];
-  return (
-    <ProInfoHint
-      kind="redis-backlog"
-      label={lines.join(' ')}
-      content={(
-        <div className="max-w-[380px] text-[13px] font-normal leading-[1.55] text-[var(--color-text-2)]">
-          {lines.map((line) => (
-            <p
-              key={line}
-              className={line === noSample ? 'm-0 whitespace-nowrap [&+&]:mt-2' : 'm-0 [&+&]:mt-2'}
-            >
-              {line}
-            </p>
-          ))}
-        </div>
-      )}
-    />
-  );
-}
-
 function BacklogShareChart({
   metricMap,
   pending
@@ -260,7 +213,12 @@ function BacklogShareChart({
         legends={[{ label: text('backlogShare'), color: REDIS_PALETTE.amber }]}
         loading={loading}
         emptyText={text('backlogUnread')}
-        hideFlatAxisLabels
+        hintNode={(
+          <RedisHint
+            kind="redis-backlog-share"
+            lines={[text('backlogPctExplain')]}
+          />
+        )}
       />
     </div>
   );
@@ -273,14 +231,25 @@ function BacklogTrends({
   metricMap: RedisMetricMap;
   pending: ReadonlySet<string>;
 }) {
+  const text = useRedisText();
   return (
     <div className="min-w-0" data-redis-backlog-layout="trend">
       <div className={backlogTrendRow}>
         <div className={trendCell} data-redis-backlog-card="used">
-          <RedisTrendChart spec={BACKLOG_USED} metricMap={metricMap} pending={pending} />
+          <RedisTrendChart
+            spec={BACKLOG_USED}
+            metricMap={metricMap}
+            pending={pending}
+            hint={<RedisHint kind="redis-backlog-used" lines={[text('backlogWritten')]} />}
+          />
         </div>
         <div className={trendCell} data-redis-backlog-card="size">
-          <RedisTrendChart spec={BACKLOG_SIZE} metricMap={metricMap} pending={pending} />
+          <RedisTrendChart
+            spec={BACKLOG_SIZE}
+            metricMap={metricMap}
+            pending={pending}
+            hint={<RedisHint kind="redis-backlog-size" lines={[text('backlogLimitExplain')]} />}
+          />
         </div>
         <BacklogShareChart metricMap={metricMap} pending={pending} />
       </div>
@@ -293,73 +262,11 @@ function countText(value: number) {
   return formatted.unit ? `${formatted.value}${formatted.unit}` : formatted.value;
 }
 
-function StatusHint({
-  kind,
-  lines,
-  segments,
-  locked
-}: {
-  kind: string;
-  lines?: readonly string[];
-  /** 带条目名的分段说明。开/关、积压口径各成一段，不再把定义挤在两行状态后面。 */
-  segments?: readonly { lead: string; body: string }[];
-  /** 必须整句落在一行里的说明。数字 0 不能单独换到下一行。 */
-  locked?: readonly string[];
-}) {
-  if (locked?.length && (segments?.length || lines?.length)) {
-    const label = [
-      ...(segments ?? []).map((item) => `${item.lead}：${item.body}`),
-      ...(lines ?? []),
-      ...locked
-    ].join(' ');
-    return (
-      <ProInfoHint
-        kind={kind}
-        label={label}
-        content={(
-          <div className="max-w-[380px] text-[13px] font-normal leading-[1.55] text-[var(--color-text-2)]">
-            {(segments ?? []).map((item) => (
-              <p key={item.lead} className="m-0 [&+&]:mt-2.5">
-                <strong className="text-[13px] font-semibold text-[var(--color-text-1)]">{item.lead}</strong>
-                ：{item.body}
-              </p>
-            ))}
-            {(lines ?? []).map((line) => (
-              <p key={line} className="m-0 [&+&]:mt-2.5">{line}</p>
-            ))}
-            {locked.map((line) => (
-              <p key={line} className="m-0 mt-2.5 whitespace-nowrap">{line}</p>
-            ))}
-          </div>
-        )}
-      />
-    );
-  }
-  if (segments?.length) {
-    return <ProInfoHint kind={kind} lines={segments} />;
-  }
-  const paragraphs = lines ?? [];
-  return (
-    <ProInfoHint
-      kind={kind}
-      label={paragraphs.join(' ')}
-      content={(
-        <div className="max-w-[380px] text-[13px] font-normal leading-[1.55] text-[var(--color-text-2)]">
-          {paragraphs.map((line) => (
-            <p key={line} className="m-0 [&+&]:mt-2.5">{line}</p>
-          ))}
-        </div>
-      )}
-    />
-  );
-}
-
 function StatusTile({
   feature,
   label,
   hintKind,
   lines,
-  segments,
   locked,
   value,
   tone,
@@ -372,7 +279,6 @@ function StatusTile({
   label: string;
   hintKind: string;
   lines?: readonly string[];
-  segments?: readonly { lead: string; body: string }[];
   locked?: readonly string[];
   value?: string;
   tone?: string;
@@ -395,7 +301,9 @@ function StatusTile({
         <>
           <div className={`${proChromeClass.kpiLabel} inline-flex max-w-full items-center gap-1 !overflow-visible`}>
             <span className="min-w-0 truncate">{label}</span>
-            <StatusHint kind={hintKind} lines={lines} segments={segments} locked={locked} />
+            {lines?.length || locked?.length ? (
+              <RedisHint kind={hintKind} lines={lines} locked={locked} />
+            ) : null}
           </div>
           {empty ? <QuietReading copy={empty} /> : (
             <div className={proChromeClass.kpiValue} style={tone ? { color: tone } : undefined}>
@@ -427,12 +335,12 @@ function ReplicaStatusRow({
   const memoryText = memory.value == null
     ? ''
     : (memory.unit ? `${memory.text}${memory.unit}` : memory.text);
-  const explain = [
+  const stateLines = [
     text('backlogStateOpen'),
-    text('backlogStateClosed'),
-    text('backlogMemoryLine')
+    text('backlogStateClosed')
   ];
-  const noSample = text('backlogMemoryNoZero');
+  const memoryLines = [text('backlogMemoryLine')];
+  const noSample = [text('backlogMemoryNoZero')];
   const lag = replicationOffsetLag(metricMap);
   const slavePoints = redisPoints(metricMap, 'redis_slave_repl_offset');
   const masterPoints = redisPoints(metricMap, 'redis_master_repl_offset');
@@ -479,8 +387,8 @@ function ReplicaStatusRow({
         feature="backlog"
         label={text('backlogState')}
         hintKind="redis-backlog-state"
-        lines={explain}
-        locked={[noSample]}
+        lines={stateLines}
+        locked={noSample}
         loading={stateLoading}
         value={enabled == null ? '--' : enabled ? text('backlogOn') : text('backlogOff')}
         tone={enabled ? 'var(--color-success)' : 'var(--color-text-3)'}
@@ -494,8 +402,8 @@ function ReplicaStatusRow({
         feature="backlog-memory"
         label={text('backlogMemory')}
         hintKind="redis-backlog-memory"
-        lines={explain}
-        locked={[noSample]}
+        lines={memoryLines}
+        locked={noSample}
         loading={memoryLoading}
         value={memoryText}
         empty={!memoryLoading && memory.value == null ? text('backlogMemoryEmpty') : undefined}
@@ -583,7 +491,7 @@ export function ReplicationPane({
         <ProSection title={text('sectionLinks')}>
           <LoadingCard title={text('cardConnectedSlaves')} feature="connected-slaves" />
         </ProSection>
-        <ProSection title={text('sectionBacklog')} hint={<BacklogHint />}>
+        <ProSection title={text('sectionBacklog')}>
           <LoadingCard title={text('backlogUsed')} feature="backlog-trends" />
         </ProSection>
         <ProSection title={text('sectionOffset')}>
@@ -602,7 +510,7 @@ export function ReplicationPane({
         <ConnectedSlavesCard metricMap={metricMap} pending={pending} />
       </ProSection>
       {showBacklog ? (
-        <ProSection title={text('sectionBacklog')} hint={<BacklogHint />}>
+        <ProSection title={text('sectionBacklog')}>
           <BacklogTrends metricMap={metricMap} pending={pending} />
         </ProSection>
       ) : null}
@@ -642,18 +550,27 @@ function ClusterConnectionsCard({
   const text = useRedisText();
   const latest = redisLatest(metricMap, 'redis_cluster_connections');
   const loading = latest == null && pending.has('redis_cluster_connections');
-  const hint = [
-    text('clusterConnectionsHint'),
-    text('clusterConnectionsPeer'),
-    text('clusterConnectionsEmptyHint')
-  ].join('\n');
   return (
     <div
       className="min-w-0"
       data-redis-feature="cluster-connections"
       data-redis-state={loading ? 'loading' : latest == null ? 'empty' : 'value'}
     >
-      <RedisTrendChart spec={CLUSTER_TREND} metricMap={metricMap} pending={pending} hint={hint} />
+      <RedisTrendChart
+        spec={CLUSTER_TREND}
+        metricMap={metricMap}
+        pending={pending}
+        hint={(
+          <RedisHint
+            kind="redis-cluster-connections"
+            lines={[
+              text('clusterConnectionsHint'),
+              text('clusterConnectionsPeer'),
+              text('clusterConnectionsEmptyHint')
+            ]}
+          />
+        )}
+      />
     </div>
   );
 }

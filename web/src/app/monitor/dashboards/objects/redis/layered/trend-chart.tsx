@@ -1,11 +1,13 @@
 'use client';
 
 import React, { useMemo } from 'react';
+import type { ReactNode } from 'react';
 import type { MetricUnit } from '../../../shared/types';
 import { useDashboardText } from '../../../shared/utils/content-i18n';
 import { ThinTimeSeries } from '../../host/layered/pro-chrome';
 import { useProTimeWindow } from '../../host/layered/pro-time-window';
 import { redisCategoryText, type RedisCategoryCopyKey } from './redis-copy';
+import { redisTextHint } from './redis-hint';
 import { redisChartPoints, redisInstantOps, redisLatest, redisProductText, type RedisMetricMap } from './series';
 
 export interface RedisTrendSeries {
@@ -36,8 +38,8 @@ export default function RedisTrendChart({
   spec: RedisTrendSpec;
   metricMap: RedisMetricMap;
   pending: ReadonlySet<string>;
-  /** 覆盖 spec.hintKey。空字符串不显示问号。 */
-  hint?: string;
+  /** 覆盖 spec.hintKey。空字符串不显示。传入节点时直接挂浅色分段说明。 */
+  hint?: ReactNode;
 }) {
   const { t } = useDashboardText();
   const text = (key: RedisCategoryCopyKey) => redisCategoryText(t, key);
@@ -67,16 +69,19 @@ export default function RedisTrendChart({
   const readingOf = (name: string) => (
     redisProductText(metricMap, name, spec.unit, unitLabel) ?? text('legendQuiet')
   );
+  const hintKind = `redis-chart-${spec.titleKey}`;
+  const hintNode = hint !== undefined
+    ? (typeof hint === 'string' ? redisTextHint(hintKind, hint) : hint)
+    : (spec.hintKey ? redisTextHint(hintKind, text(spec.hintKey)) : undefined);
 
   return (
     <ThinTimeSeries
       title={text(spec.titleKey)}
-      hint={hint ?? (spec.hintKey ? text(spec.hintKey) : undefined)}
+      hintNode={hintNode}
       subtitle={spec.subtitle}
       unit={spec.unit}
       loading={awaiting && plotted.length === 0}
       emptyText={text(spec.emptyKey ?? 'sampleEmpty')}
-      hideFlatAxisLabels={spec.series.length <= 1}
       keepLegend={multi}
       data={plotted}
       legends={spec.series.map((item) => ({

@@ -17,6 +17,7 @@ import type { MetricUnit } from '../../../shared/types';
 import { REDIS_PALETTE } from '../config';
 import hostLayered from '../../host/layered/layered.module.scss';
 import { redisCategoryText, type RedisCategoryCopyKey } from './redis-copy';
+import { RedisHint } from './redis-hint';
 import { redisChartPoints, redisLatest, type RedisMetricMap } from './series';
 
 export type RedisTopicTab = 'memory' | 'cache' | 'connThroughput';
@@ -110,10 +111,10 @@ export default function FocusPane({
     detail: text(step.detail)
   }));
   const fragGuide = [
-    text('fragIdeal'),
-    text('fragIdealLow'),
-    text('fragIdealMid'),
-    text('fragIdealHigh')
+    { lines: [text('fragIdeal')] },
+    { title: text('fragLow'), lines: [text('fragIdealLow')] },
+    { title: text('fragOk'), lines: [text('fragIdealMid')] },
+    { title: text('fragHigh'), lines: [text('fragIdealHigh')] }
   ];
 
   return (
@@ -151,17 +152,7 @@ export default function FocusPane({
                     label={text(card.labelKey)}
                     unit={unitLabel}
                     hint={isFrag ? (
-                      <ProInfoHint
-                        kind="redis-focus-frag"
-                        label={fragGuide.join(' ')}
-                        content={(
-                          <div className="max-w-[380px] text-[13px] font-normal leading-[1.55] text-[var(--color-text-2)]">
-                            {fragGuide.map((line) => (
-                              <p key={line} className="m-0 [&+&]:mt-2">{line}</p>
-                            ))}
-                          </div>
-                        )}
-                      />
+                      <RedisHint kind="redis-focus-frag" groups={fragGuide} />
                     ) : undefined}
                   />
                   {loading ? (

@@ -50,35 +50,12 @@
   }
 }
 
-// 环与右侧频率拉开，频率列不贴卡右缘。不改共享 ringCard 的两端对齐。
+// 只留穿透率环。单列居中，不给已删的频率列留空档。
 .ringCard.cacheHitRing {
-  grid-template-columns: 176px max-content;
-  justify-content: start;
-  justify-items: start;
-  gap: 40px;
-  width: 100%;
-  padding-inline-end: 16px;
-}
-
-.ringCard.cacheHitRing .metricList {
+  grid-template-columns: 176px;
+  justify-content: center;
+  justify-items: center;
+  gap: 0;
   width: auto;
-  max-width: max-content;
-}
-
-.ringCard.cacheHitRing .metricRow {
-  justify-content: flex-start;
-  gap: 10px;
-  width: max-content;
-}
-
-@media (max-width: 640px) {
-  .ringCard.cacheHitRing {
-    grid-template-columns: 1fr;
-    justify-items: center;
-  }
-
-  .ringCard.cacheHitRing .metricList,
-  .ringCard.cacheHitRing .metricRow {
-    width: auto;
-  }
+  padding-inline-end: 0;
 }

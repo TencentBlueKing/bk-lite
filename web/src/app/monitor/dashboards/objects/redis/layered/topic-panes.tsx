@@ -3,7 +3,6 @@
 import type { ReactNode } from 'react';
 import {
   ProDashLoading,
-  ProInfoHint,
   ProSection,
   ThinTimeSeries,
   proChromeClass
@@ -18,6 +17,7 @@ import { fragmentationBand, PRESSURE_COLOR, pressureTone, type PressureTone } fr
 import { REDIS_PALETTE } from '../config';
 import styles from '../index.module.scss';
 import { redisCategoryText, type RedisCategoryCopyKey } from './redis-copy';
+import { RedisHint } from './redis-hint';
 import {
   redisChartPoints,
   redisDisplay,
@@ -65,6 +65,7 @@ const clientsTrend: RedisTrendSpec = {
 
 const rejectedTrend: RedisTrendSpec = {
   titleKey: 'cardRejected',
+  hintKey: 'rejectedDefine',
   unit: 'cps',
   series: [
     { name: 'redis_rejected_connections_rate', labelKey: 'seriesRejected', color: REDIS_PALETTE.rose }
@@ -149,22 +150,6 @@ function FeatureHead({ title, hint, unit }: { title: string; hint?: ReactNode; u
   );
 }
 
-function HintCopy({ lines, kind }: { lines: readonly string[]; kind: string }) {
-  return (
-    <ProInfoHint
-      kind={kind}
-      label={lines.join(' ')}
-      content={(
-        <div className="max-w-[380px] text-[13px] font-normal leading-[1.55] text-[var(--color-text-2)]">
-          {lines.map((line) => (
-            <p key={line} className="m-0 [&+&]:mt-2">{line}</p>
-          ))}
-        </div>
-      )}
-    />
-  );
-}
-
 function Spark({
   metricMap,
   name,
@@ -201,7 +186,6 @@ function Spark({
       emptyText={text('sampleEmpty')}
       data={plotted}
       legends={[{ label, color }]}
-      hideFlatAxisLabels
     />
   );
 }
@@ -224,23 +208,22 @@ function Pane({ pane, children }: { pane: string; children: ReactNode }) {
   );
 }
 
-/** 五档色阶，档与档之间留缝，避免画成磁盘进度条。 */
-function PressureScale({ percent }: { percent: number }) {
-  const tone = pressureTone(percent);
-  const active = Math.min(4, Math.floor(percent >= 100 ? 4 : percent / 20));
+/** 容量压力底条。按已用占比填充，颜色跟当前档。没有占比时不画，避免用 0 假满。 */
+function CapacityMeter({ percent, tone }: { percent: number; tone: PressureTone }) {
+  const clamped = Math.min(100, Math.max(0, percent));
   return (
-    <div className="flex items-end gap-1.5" role="img" aria-label={tone}>
-      {Array.from({ length: 5 }, (_, index) => {
-        const on = index <= active;
-        const color = on ? TONE_COLOR[tone] : 'var(--color-fill-2)';
-        return (
-          <span
-            key={index}
-            className={`flex-1 rounded-sm ${index === active ? 'h-3' : 'h-2'}`}
-            style={{ background: color }}
-          />
-        );
-      })}
+    <div
+      className="h-1.5 w-full overflow-hidden rounded-full bg-[var(--color-fill-2)]"
+      role="meter"
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-valuenow={Number(clamped.toFixed(1))}
+      data-redis-capacity-meter={tone}
+    >
+      <span
+        className="block h-full rounded-full"
+        style={{ width: `${clamped}%`, background: TONE_COLOR[tone] }}
+      />
     </div>
   );
 }
@@ -370,17 +353,18 @@ function CapacityCard({
       <FeatureHead
         title={text('cardCapacity')}
         hint={(
-          <HintCopy
+          <RedisHint
             kind="redis-capacity"
-            lines={[
-              text('capacityPctUsed'),
-              text('capacityPctNotRemain'),
-              text('capacityTierOk'),
-              text('capacityTierTight'),
-              text('capacityTierFull'),
-              text('capacityTierUnset'),
-              text('memoryLimitUnsetTip'),
-              text('capacityHint')
+            groups={[
+              {
+                title: text('capacityRatioTitle'),
+                lines: [text('capacityPctUsed'), text('capacityPctNotRemain')]
+              },
+              { title: text('capacityBandTitle') },
+              { title: text('capacityOk'), lines: [text('capacityBandOk')] },
+              { title: text('capacityTight'), lines: [text('capacityBandTight')] },
+              { title: text('capacityFull'), lines: [text('capacityBandFull')] },
+              { title: text('capacityUnset'), lines: [text('capacityBandUnset')] }
             ]}
           />
         )}
@@ -410,7 +394,9 @@ function CapacityCard({
             {text('seriesUsed')} {reading(metricMap, 'redis_used_memory', 'bytes')}
             {` / ${text('seriesLimit')} ${reading(metricMap, 'redis_maxmemory', 'bytes')}`}
           </p>
-          {percent != null ? <PressureScale percent={percent} /> : null}
+          {percent != null && tone !== 'neutral' ? (
+            <CapacityMeter percent={percent} tone={tone} />
+          ) : null}
         </div>
       )}
     </section>
@@ -479,12 +465,12 @@ export function MemoryPane({
       }] : [])
     ]
   };
-  const memoryHint = [
+  const memoryLines = [
     text('memoryPressureUsed'),
     text('memoryPressureLimit'),
     text('memoryPressureOmit'),
     text('memoryPressureClose')
-  ].join('\n');
+  ];
   return (
     <Pane pane="memory">
       <ProSection title={text('sectionCapacity')}>
@@ -500,13 +486,13 @@ export function MemoryPane({
               color={fragColor}
               extra={<FragBands active={band} />}
               hint={(
-                <HintCopy
+                <RedisHint
                   kind="redis-frag"
-                  lines={[
-                    text('fragIdeal'),
-                    text('fragIdealLow'),
-                    text('fragIdealMid'),
-                    text('fragIdealHigh')
+                  groups={[
+                    { lines: [text('fragIdeal')] },
+                    { title: text('fragLow'), lines: [text('fragIdealLow')] },
+                    { title: text('fragOk'), lines: [text('fragIdealMid')] },
+                    { title: text('fragHigh'), lines: [text('fragIdealHigh')] }
                   ]}
                 />
               )}
@@ -519,7 +505,7 @@ export function MemoryPane({
               spec={memoryTrend}
               metricMap={metricMap}
               pending={pending}
-              hint={memoryHint}
+              hint={<RedisHint kind="redis-memory-pressure" lines={memoryLines} />}
             />
           </div>
         </div>
@@ -554,23 +540,20 @@ export function CachePane({
     : '';
   const penetrating = bothKnown && (misses.value ?? 0) > (hits.value ?? 0) && (misses.value ?? 0) > 0;
   const hitLow = hitRate != null && (hitRate < 90 || penetrating);
-  const rateLabel = (name: string) => (
-    redisProductText(metricMap, name, 'cps', text('rateUnit')) ?? text('legendQuiet')
-  );
   const centerCaption = (
     <span data-redis-center="penetration" className="inline-flex items-center gap-1">
       {text('penetration')}
-      <HintCopy
+      <RedisHint
         kind="redis-penetration"
-        lines={[text('penetrationFormula'), text('penetrationReach'), text('penetrationLook')]}
+        lines={[text('penetrationFormula')]}
       />
     </span>
   );
   return (
     <Pane pane="cache">
       <ProSection title={text('sectionCache')}>
-        <div className="grid min-w-0 grid-cols-1 items-stretch gap-3 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
-          <div className="flex h-full min-w-0 flex-col gap-3">
+        <div className="grid min-w-0 grid-cols-1 items-stretch gap-3 lg:grid-cols-[auto_minmax(0,1fr)]">
+          <div className="flex h-full min-w-0 flex-col gap-3 lg:w-max lg:max-w-full">
             {loading ? (
               <section className={`${styles.panel} h-full`} data-redis-feature="hit-ring">
                 <FeatureHead title={text('cardHitVsMiss')} />
@@ -582,13 +565,10 @@ export function CachePane({
                   className="h-full"
                   title={text('cardHitVsMiss')}
                   data={[
-                    { name: text('seriesHit'), value: Math.max(hits.value ?? 0, 0), color: REDIS_PALETTE.emerald, display: rateLabel('redis_keyspace_hits_rate') },
-                    { name: text('seriesMiss'), value: Math.max(misses.value ?? 0, 0), color: REDIS_PALETTE.rose, display: rateLabel('redis_keyspace_misses_rate') }
+                    { name: text('seriesHit'), value: Math.max(hits.value ?? 0, 0), color: REDIS_PALETTE.emerald },
+                    { name: text('seriesMiss'), value: Math.max(misses.value ?? 0, 0), color: REDIS_PALETTE.rose }
                   ]}
-                  infoRows={[
-                    { name: text('seriesHit'), color: REDIS_PALETTE.emerald, primary: rateLabel('redis_keyspace_hits_rate') },
-                    { name: text('seriesMiss'), color: REDIS_PALETTE.rose, primary: rateLabel('redis_keyspace_misses_rate') }
-                  ]}
+                  showInfo={false}
                   centerValue={centerValue}
                   centerCaption={centerCaption}
                   isEmpty={empty}
@@ -603,9 +583,9 @@ export function CachePane({
             <FeatureHead
               title={text('cardHitRate')}
               hint={(
-                <HintCopy
+                <RedisHint
                   kind="redis-hit-rate"
-                  lines={[text('hitRateHint'), text('hitRateSteady')]}
+                  lines={[text('hitRateHint')]}
                 />
               )}
             />
@@ -646,12 +626,6 @@ export function ConnThroughputPane({
   const blocked = redisLatest(metricMap, 'redis_blocked_clients');
   const blockedLoading = pending.has('redis_blocked_clients') && blocked == null;
   const warn = blocked != null && blocked > 0;
-  const rejectValue = redisLatest(metricMap, 'redis_rejected_connections_rate');
-  const rejectHint = rejectValue == null
-    ? undefined
-    : rejectValue > 0
-      ? text('rejectedHot')
-      : text('rejectedCalm');
   return (
     <Pane pane="conn-throughput">
       <ProSection title={text('sectionConnections')}>
@@ -667,12 +641,7 @@ export function ConnThroughputPane({
             <RedisTrendChart spec={clientsTrend} metricMap={metricMap} pending={pending} />
           </div>
           <div className="min-w-0 h-full" data-redis-feature="rejected">
-            <RedisTrendChart
-              spec={rejectedTrend}
-              metricMap={metricMap}
-              pending={pending}
-              hint={rejectHint}
-            />
+            <RedisTrendChart spec={rejectedTrend} metricMap={metricMap} pending={pending} />
           </div>
         </div>
       </ProSection>

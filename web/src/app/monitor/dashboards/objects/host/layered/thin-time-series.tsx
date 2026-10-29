@@ -45,6 +45,8 @@ interface ThinTimeSeriesProps {
   emptyText?: string;
   /** 标题旁的说明，悬停问号时展示。 */
   hint?: string;
+  /** 已做好的浅色分段说明。传入后不再套深色问号气泡。 */
+  hintNode?: React.ReactNode;
   /** 标题下的灰色副行。 */
   subtitle?: string;
   /** 标题右侧的附加操作，例如本机趋势磁盘图的「更多」。 */
@@ -107,6 +109,52 @@ const isFlatSeries = (data: ChartData[], key: string) => {
 
 const TICK_LADDER = [1, 2, 2.5, 5, 10];
 
+const RATE_UNITS = new Set<MetricUnit>([
+  'cps', 'pps', 'msps',
+  'byteps', 'kibyteps', 'mibyteps', 'gibyteps', 'tibyteps', 'pibyteps', 'Bps',
+  'bitps', 'kbitps', 'mbitps', 'gbitps', 'tbitps', 'pbitps'
+]);
+
+const INTEGER_COUNT_UNITS = new Set<MetricUnit>([
+  'counts', 'thousand', 'million', 'billion', 'trillion',
+  'quadrillion', 'quintillion', 'sextillion', 'septillion'
+]);
+
+const SCALE_FAMILIES: ReadonlyArray<{
+  units: readonly MetricUnit[];
+  labels: readonly string[];
+  base: number;
+}> = [
+  {
+    units: ['bytes', 'kibibytes', 'mebibytes', 'gibibytes', 'tebibytes', 'pebibytes'],
+    labels: ['Bytes', 'KiB', 'MiB', 'GiB', 'TiB', 'PiB'],
+    base: 1024
+  },
+  {
+    units: ['byteps', 'kibyteps', 'mibyteps', 'gibyteps', 'tibyteps', 'pibyteps'],
+    labels: ['Bytes/s', 'KiB/s', 'MiB/s', 'GiB/s', 'TiB/s', 'PiB/s'],
+    base: 1024
+  },
+  {
+    units: ['bits', 'kilobits', 'megabits', 'gigabits', 'terabits', 'petabits'],
+    labels: ['b', 'Kb', 'Mb', 'Gb', 'Tb', 'Pb'],
+    base: 1000
+  },
+  {
+    units: ['bitps', 'kbitps', 'mbitps', 'gbitps', 'tbitps', 'pbitps'],
+    labels: ['b/s', 'Kb/s', 'Mb/s', 'Gb/s', 'Tb/s', 'Pb/s'],
+    base: 1000
+  },
+  {
+    units: ['counts', 'thousand', 'million', 'billion', 'trillion', 'quadrillion', 'quintillion', 'sextillion', 'septillion'],
+    labels: ['', 'K', 'Mil', 'Bil', 'Tri', 'Quadr', 'Quint', 'Sext', 'Sept'],
+    base: 1000
+  }
+];
+
+/** 次/秒、字节/秒一类非负速率。百分比、计数、字节不走这条。 */
+export const isRateUnit = (unit: MetricUnit) => RATE_UNITS.has(unit);
+
 const tidyAxis = (value: number) => (
   Number.isFinite(value) ? Number(value.toPrecision(12)) : 0
 );
@@ -129,30 +177,46 @@ const bumpStep = (step: number) => {
   return tidyAxis(picked * base);
 };
 
-/** 最多 4 个刻度。数据离 0 远时不把基线拉回 0，避免把一小段起伏拉成一条贴底的线。 */
-const sparseAxisBounds = (values: number[]) => {
+export interface AxisBounds {
+  min: number;
+  max: number;
+  interval: number;
+}
+
+/**
+ * 最多 4 个刻度。数据离 0 远时不把基线拉回 0，避免把一小段起伏拉成一条贴底的线。
+ * 速率，以及样本本身都 ≥ 0 的序列，下限不再垫到负数。全 0 停在 0，不出现 -1。
+ */
+export const sparseAxisBounds = (values: number[], unit: MetricUnit = 'none'): AxisBounds | null => {
   if (!values.length) return null;
   let lo = Math.min(...values);
   let hi = Math.max(...values);
+  const floorZero = isRateUnit(unit) || values.every((value) => value >= 0);
   if (!(hi > lo)) {
     const pad = Math.abs(lo) > 0 ? Math.abs(lo) * 0.5 : 1;
     lo -= pad;
     hi += pad;
   }
+  if (floorZero) lo = Math.max(0, lo);
   const span = hi - lo;
   if (lo > 0 && lo < span * 0.25) lo = 0;
-  if (hi < 0 && Math.abs(hi) < span * 0.25) hi = 0;
-  let interval = niceStep(hi - lo, 4);
+  if (!floorZero && hi < 0 && Math.abs(hi) < span * 0.25) hi = 0;
+  const integerCount = INTEGER_COUNT_UNITS.has(unit) && values.every((value) => Number.isInteger(value));
+  let interval = niceStep(Math.max(hi - lo, Number.EPSILON), 4);
+  if (integerCount && interval < 1) interval = 1;
   let min = tidyAxis(Math.floor(lo / interval) * interval);
   let max = tidyAxis(Math.ceil(hi / interval) * interval);
+  if (floorZero && min < 0) min = 0;
   let guard = 0;
-  while (max > min && Math.round((max - min) / interval) + 1 > 4 && guard < 6) {
+  while (max > min && Math.round((max - min) / interval) + 1 > 4 && guard < 8) {
     interval = bumpStep(interval);
     min = tidyAxis(Math.floor(lo / interval) * interval);
     max = tidyAxis(Math.ceil(hi / interval) * interval);
+    if (floorZero && min < 0) min = 0;
     guard += 1;
   }
   if (!(max > min)) max = tidyAxis(min + interval);
+  if (floorZero && min < 0) min = 0;
   return { min, max, interval };
 };
 
@@ -165,14 +229,103 @@ const seriesAxisValues = (data: ChartData[], key: string) => {
   return values;
 };
 
-/** 轴上把 70.00/s 收成 70/s。tooltip 仍走完整格式。 */
-const compactTick = (value: number, unit: MetricUnit) => {
+const shortNumber = (value: number) => {
+  if (!Number.isFinite(value)) return '--';
+  const abs = Math.abs(value);
+  const digits = abs >= 100 || abs === 0 ? 0 : abs >= 10 ? 1 : 2;
+  return value.toFixed(digits).replace(/(\.\d*?)0+$/, '$1').replace(/\.$/, '');
+};
+
+const lockScale = (unit: MetricUnit, peak: number) => {
+  const normalized = unit === 'Bps' ? 'byteps' : unit;
+  const perSecond = normalized === 'cps' || normalized === 'pps';
+  const lookup = perSecond ? 'counts' : normalized;
+  const family = SCALE_FAMILIES.find((item) => (item.units as readonly string[]).includes(lookup));
+  if (!family) return null;
+  const start = family.units.indexOf(lookup as MetricUnit);
+  let index = Math.max(0, start);
+  let next = Math.abs(peak);
+  while (next >= family.base && index < family.labels.length - 1) {
+    next /= family.base;
+    index += 1;
+  }
+  return {
+    divisor: family.base ** (index - Math.max(0, start)),
+    suffix: `${family.labels[index]}${perSecond ? '/s' : ''}`
+  };
+};
+
+/** 轴上把 70.00/s 收成 70/s。tooltip 仍走完整格式。峰值锁定单位，避免一根轴混用 Bytes 和 MiB。 */
+export const formatAxisTick = (value: number, unit: MetricUnit, peak = Math.abs(value)) => {
+  const locked = lockScale(unit, peak);
+  if (locked) return `${shortNumber(value / locked.divisor)}${locked.suffix}`;
   const formatted = formatMetricValue(value, unit);
   const text = formatted.value
     .replace(/(\.\d*?[1-9])0+(?=\D|$)/g, '$1')
     .replace(/\.0+(?=\D|$)/g, '');
   return `${text}${formatted.unit || ''}`;
 };
+
+export const axisTickLabels = (bounds: AxisBounds, unit: MetricUnit) => {
+  const peak = Math.max(Math.abs(bounds.min), Math.abs(bounds.max));
+  const steps = Math.max(1, Math.round((bounds.max - bounds.min) / bounds.interval));
+  const labels: string[] = [];
+  for (let index = 0; index <= steps && index < 8; index += 1) {
+    labels.push(formatAxisTick(tidyAxis(bounds.min + bounds.interval * index), unit, peak));
+  }
+  return labels;
+};
+
+const labelsRepeat = (labels: readonly string[]) => (
+  labels.length > 1 && labels.slice(1).some((label, index) => label === labels[index])
+);
+
+/** 刻度文案能分辨的最小步长。小于它时，相邻刻度会格式化成同一个字。 */
+const tickQuantum = (peak: number, unit: MetricUnit) => {
+  if (unit === 'percent' || unit === 'percentunit') return 0.1;
+  const locked = lockScale(unit, peak);
+  if (!locked || !(locked.divisor > 0)) return 0;
+  const scaled = Math.abs(peak) / locked.divisor;
+  const digits = scaled >= 100 || scaled === 0 ? 0 : scaled >= 10 ? 1 : 2;
+  return (10 ** -digits) * locked.divisor;
+};
+
+const snapBounds = (
+  anchorLo: number,
+  anchorHi: number,
+  interval: number,
+  floorZero: boolean
+): AxisBounds => {
+  let min = tidyAxis(Math.floor(anchorLo / interval) * interval);
+  let max = tidyAxis(Math.ceil(anchorHi / interval) * interval);
+  if (floorZero && min < 0) min = 0;
+  if (!(max > min)) max = tidyAxis(min + interval);
+  return { min, max, interval };
+};
+
+/** 相邻刻度格式化成同一个字时，把步长加大，避免竖排叠成一串相同数字。 */
+export const readableAxisBounds = (values: number[], unit: MetricUnit = 'none'): AxisBounds | null => {
+  const bounds = sparseAxisBounds(values, unit);
+  if (!bounds) return null;
+  const floorZero = isRateUnit(unit) || values.every((value) => value >= 0);
+  const anchorLo = bounds.min;
+  const anchorHi = bounds.max;
+  let { min, max, interval } = bounds;
+  const quantum = tickQuantum(Math.max(Math.abs(anchorLo), Math.abs(anchorHi)), unit);
+  if (quantum > 0 && interval < quantum) {
+    interval = niceStep(quantum * 3, 4);
+    if (interval < quantum) interval = tidyAxis(quantum);
+    ({ min, max, interval } = snapBounds(anchorLo, anchorHi, interval, floorZero));
+  }
+  let guard = 0;
+  while (guard < 6 && labelsRepeat(axisTickLabels({ min, max, interval }, unit))) {
+    interval = bumpStep(interval);
+    ({ min, max, interval } = snapBounds(anchorLo, anchorHi, interval, floorZero));
+    guard += 1;
+  }
+  return { min, max, interval };
+};
+
 
 const formatTooltipReading = (raw: unknown, unit: MetricUnit) => {
   const value = typeof raw === 'number' ? raw : Number.NaN;
@@ -192,6 +345,7 @@ export default function ThinTimeSeries({
   readingTone,
   emptyText = '暂无数据',
   hint,
+  hintNode,
   subtitle,
   titleExtra,
   className,
@@ -285,24 +439,32 @@ export default function ThinTimeSeries({
       ? describeFocusAxis(unit, seriesSampleValues(plotted))
       : null;
     const flatAxis = hideFlatAxisLabels && keys.length === 1 && isFlatSeries(plotted, keys[0]);
+    const rateAxis = isRateUnit(unit);
+    const useSparse = !flatAxis && (!focusAxis || rateAxis);
+    const layoutOf = (samples: number[]) => (useSparse ? readableAxisBounds(samples, unit) : null);
     const labeledAxis = !flatAxis && !focusAxis;
-    const axisLabel = {
-      fontSize: 10,
-      margin: focusAxis?.labelMargin ?? 6,
-      hideOverlap: true,
-      formatter: (value: number) => {
-        if (focusAxis) return focusAxis.formatTick(Number(value));
-        return compactTick(Number(value), unit);
-      }
-    };
     const valueAxis = (samples: number[], color: string, showSplit: boolean) => {
-      const bounds = focusAxis ? null : sparseAxisBounds(samples);
+      const bounds = layoutOf(samples);
+      const peak = bounds ? Math.max(Math.abs(bounds.min), Math.abs(bounds.max)) : 0;
       return {
         type: 'value' as const,
         ...(bounds
           ? { min: bounds.min, max: bounds.max, interval: bounds.interval }
           : { splitNumber: 3 }),
-        axisLabel: { ...axisLabel, color, show: !flatAxis },
+        axisLabel: {
+          fontSize: 10,
+          margin: focusAxis?.labelMargin ?? 8,
+          hideOverlap: true,
+          showMinLabel: true,
+          showMaxLabel: true,
+          overflow: 'none' as const,
+          color,
+          show: !flatAxis,
+          formatter: (value: number) => {
+            if (focusAxis) return focusAxis.formatTick(Number(value));
+            return formatAxisTick(Number(value), unit, peak);
+          }
+        },
         axisTick: { show: false },
         axisLine: { show: false },
         splitLine: showSplit
@@ -436,7 +598,12 @@ export default function ThinTimeSeries({
               {title ? (
                 <div className={styles.chartTitleBlock}>
                   <div className={styles.chartTitle}>
-                    {hint ? (
+                    {hintNode ? (
+                      <span className="inline-flex items-center gap-1">
+                        {title}
+                        {hintNode}
+                      </span>
+                    ) : hint ? (
                       <span className="inline-flex items-center gap-1">
                         {title}
                         <Tooltip
