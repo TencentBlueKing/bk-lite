@@ -1113,7 +1113,7 @@
       "compareRow": "比较",
       "triggerRow": "触发",
       "conditionSection": "条件定义",
-      "levelSection": "告警条件",
+      "levelSection": "告警阈值",
       "conditionRole": "类型",
       "roleRegular": "常规",
       "roleGuard": "前置条件",

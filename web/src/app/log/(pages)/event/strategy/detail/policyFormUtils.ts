@@ -591,6 +591,7 @@ export const buildStrategyPayload = (
     schedule: normalizeTimingValue(values.schedule, options.unit),
     period: normalizeTimingValue(values.period, options.periodUnit)
   };
+  delete (params as StrategyFields & { level_table?: unknown }).level_table;
 
   if (params.notice_type_id) {
     params.notice_type =

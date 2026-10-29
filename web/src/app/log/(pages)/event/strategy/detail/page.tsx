@@ -371,12 +371,12 @@ const StrategyOperation = () => {
 
   const handleConditionsChange = (newConditions: FilterItem[]) => {
     setConditions(newConditions);
-    form.validateFields(['rule']);
+    form.validateFields(['rule', 'level_table']);
   };
 
   const handleTermChange = (val: string) => {
     setTerm(val);
-    form.validateFields(['rule']);
+    form.validateFields(['rule', 'level_table']);
   };
 
   const goBack = () => {

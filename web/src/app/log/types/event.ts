@@ -119,6 +119,7 @@ export interface ConditionFilterProps {
   term: string | null;
   onTermChange: (val: string) => void;
   onChange?: (data: FilterItem[]) => void;
+  section?: 'definition' | 'levels';
 }
 
 export interface FiltersConfig {

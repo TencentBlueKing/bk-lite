@@ -155,6 +155,9 @@ describe('关键字和聚合说明', () => {
 
     expect(screen.queryByText('log.event.alarmLevel')).toBeNull();
     expect(screen.getByText('log.event.aggregateQueryCriteriaTips')).toBeTruthy();
+    expect(screen.getByText('log.event.conditionSection')).toBeTruthy();
+    expect(screen.getByText('log.event.levelSection')).toBeTruthy();
+    expect(screen.queryByText('log.integration.rule')).toBeNull();
     expect(screen.getByText('log.event.triggerCountTip')).toBeTruthy();
     expect(screen.getByText('log.event.recoverAfter')).toBeTruthy();
     expect(screen.getByTestId('recover-after')).toBeTruthy();

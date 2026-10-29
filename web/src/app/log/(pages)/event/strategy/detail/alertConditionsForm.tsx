@@ -63,8 +63,7 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
   const schedule = Form.useWatch('schedule');
   const period = Form.useWatch('period');
 
-  // 验证条件函数
-  const validateConidtion = async () => {
+  const validateDefinition = async () => {
     if (!term || !conditions.length) {
       return Promise.reject(new Error(t('log.event.ruleValidate')));
     }
@@ -76,6 +75,13 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
     }
     if (hasGuardWithAny(conditions, term)) {
       return Promise.reject(new Error(t('log.event.guardWithOr')));
+    }
+    return Promise.resolve();
+  };
+
+  const validateThresholds = async () => {
+    if (!term || !conditions.length || hasIncompleteCondition(conditions)) {
+      return Promise.resolve();
     }
     if (hasNonNumericThreshold(conditions)) {
       return Promise.reject(new Error(t('log.event.thresholdNumberValidate')));
@@ -234,33 +240,52 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
         </Form.Item>
       )}
       {conditionVisibility.showRule && (
-        <Form.Item<StrategyFields>
-          required
-          label={<span className="w-[100px]">{t('log.integration.rule')}</span>}
-        >
-          <Form.Item
-            name="rule"
-            noStyle
-            // 条件存在父组件 state。这个触发名不会被调用，避免 onChange 把条件写进表单字段 rule。
-            // 组校验失败时只在「规则」下展示说明。空状态避免把错误边框铺到卡内每一个输入框。
-            trigger="onCollect"
-            validateStatus=""
-            rules={[
-              {
-                validator: validateConidtion,
-                required: true
-              }
-            ]}
+        <>
+          <Form.Item<StrategyFields>
+            required
+            label={<span className="w-[100px]">{t('log.event.conditionSection')}</span>}
           >
-            <ConditionSelector
-              fields={fieldList}
-              data={conditions}
-              term={term}
-              onTermChange={onTermChange}
-              onChange={onConditionsChange}
-            />
+            <Form.Item
+              name="rule"
+              noStyle
+              // 条件存在父组件 state。这个触发名不会被调用，避免 onChange 把条件写进表单字段。
+              // 组校验失败时只在这一行下展示说明。空状态避免把错误边框铺到卡内每一个输入框。
+              trigger="onCollect"
+              validateStatus=""
+              rules={[{ validator: validateDefinition, required: true }]}
+            >
+              <ConditionSelector
+                section="definition"
+                fields={fieldList}
+                data={conditions}
+                term={term}
+                onTermChange={onTermChange}
+                onChange={onConditionsChange}
+              />
+            </Form.Item>
           </Form.Item>
-        </Form.Item>
+          <Form.Item<StrategyFields>
+            required
+            label={<span className="w-[100px]">{t('log.event.levelSection')}</span>}
+          >
+            <Form.Item
+              name="level_table"
+              noStyle
+              trigger="onCollect"
+              validateStatus=""
+              rules={[{ validator: validateThresholds, required: true }]}
+            >
+              <ConditionSelector
+                section="levels"
+                fields={fieldList}
+                data={conditions}
+                term={term}
+                onTermChange={onTermChange}
+                onChange={onConditionsChange}
+              />
+            </Form.Item>
+          </Form.Item>
+        </>
       )}
       <Form.Item<StrategyFields>
         required

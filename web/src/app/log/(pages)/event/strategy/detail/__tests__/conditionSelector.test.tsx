@@ -45,9 +45,7 @@ describe('条件函数选择', () => {
 
     expect(screen.getAllByRole('combobox')).toHaveLength(5);
     expect(screen.queryByText('service')).toBeNull();
-    expect(screen.queryByRole('radio', { name: 'log.event.compareKindAbsolute' })).toBeNull();
-    expect(screen.queryByRole('radio', { name: 'log.event.compareKindDelta' })).toBeNull();
-    expect(screen.queryByRole('radio', { name: 'log.event.compareKindPercent' })).toBeNull();
+    expect(screen.queryByLabelText('log.event.compareKind')).toBeNull();
     expect(screen.getByText('log.event.countRateUnit')).toBeTruthy();
 
     fireEvent.change(screen.getAllByPlaceholderText('log.event.enterThreshold')[0], {
@@ -92,8 +90,8 @@ describe('条件函数选择', () => {
     );
 
     expect(
-      (screen.getByRole('radio', { name: 'log.event.compareKindPercent' }) as HTMLInputElement).checked
-    ).toBe(true);
+      screen.getByRole('combobox', { name: 'log.event.compareKind' }).closest('.ant-select')?.textContent
+    ).toContain('log.event.compareKindPercent');
     expect(screen.getByText('log.event.compareOffsetHours')).toBeTruthy();
     expect(screen.getByLabelText('log.event.compareOffsetCountHour')).toBeTruthy();
     expect(screen.getByText('%')).toBeTruthy();
@@ -134,8 +132,11 @@ describe('条件函数选择', () => {
       />
     );
 
-    expect(screen.getAllByRole('combobox')).toHaveLength(6);
+    expect(screen.getAllByRole('combobox')).toHaveLength(7);
     expect(screen.queryByLabelText('log.event.deleteCondition')).toBeNull();
+    const role = screen.getByText('log.event.conditionRole');
+    const stat = screen.getByText('log.event.statRow');
+    expect(role.compareDocumentPosition(stat) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it('选择占比后出现分子筛选、提示和百分号', () => {
@@ -263,7 +264,10 @@ describe('条件函数选择', () => {
       />
     );
 
-    fireEvent.click(screen.getByRole('radio', { name: 'log.event.compareKindDelta' }));
+    fireEvent.mouseDown(
+      screen.getByRole('combobox', { name: 'log.event.compareKind' }).closest('.ant-select')!.querySelector('.ant-select-selector')!
+    );
+    fireEvent.click(screen.getByText('log.event.compareKindDelta'));
     expect(onChange).toHaveBeenCalledWith([
       expect.objectContaining({
         op: null,
@@ -281,8 +285,11 @@ describe('条件函数选择', () => {
       />
     );
     fireEvent.mouseDown(screen.getAllByText('log.moreThan')[0].closest('.ant-select')!.querySelector('.ant-select-selector')!);
+    const operatorDropdown = [...document.querySelectorAll('.ant-select-dropdown')].find((node) =>
+      node.textContent?.includes('log.moreThan')
+    );
     expect(
-      [...document.querySelectorAll('.ant-select-item-option')].map((node) => node.textContent)
+      [...operatorDropdown!.querySelectorAll('.ant-select-item-option')].map((node) => node.textContent)
     ).toEqual([
       'log.moreThan',
       'log.moreThanOrEqual',
@@ -463,7 +470,7 @@ describe('条件函数选择', () => {
     );
 
     const secondCard = screen.getAllByLabelText('log.event.conditionIndex')[1].closest('div.rounded-md') as HTMLElement;
-    const roleSelect = secondCard.querySelectorAll('.ant-select')[2];
+    const roleSelect = secondCard.querySelector('[aria-label="log.event.conditionRole"]')?.closest('.ant-select') as HTMLElement;
     fireEvent.mouseDown(roleSelect.querySelector('.ant-select-selector')!);
     fireEvent.click(screen.getByText('log.event.roleGuard'));
     const next = onChange.mock.calls[0][0];

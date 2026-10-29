@@ -1,7 +1,5 @@
 'use client';
 
-import React, { useMemo } from 'react';
-import { Table } from 'antd';
 import { COMPARE_KIND_LIST, FUNCTION_LIST, LEVEL_MAP } from '@/app/log/constants';
 import { formatCompareTarget } from '@/app/log/utils/compareTarget';
 import {
@@ -154,6 +152,30 @@ export function aggregateNoDataMessage(aggregateResult: unknown, t: Translate): 
   return t('log.event.noDataWindowLine', undefined, { count: previousWindowCount(aggregateResult) });
 }
 
+const hasNumber = (value: number | null | undefined) =>
+  value !== null && value !== undefined && !Number.isNaN(Number(value));
+
+/** 绝对比较的当前值和算出值是同一个数，对照又是空的。只在变化量、变化率上把三列都写出来。 */
+function conditionMetrics(condition: AggregateHitCondition) {
+  const relative = Boolean(condition.compare?.kind && condition.compare.kind !== 'absolute');
+  const currentText = formatAggregateMetric(condition.current);
+  const valueText = formatAggregateMetric(condition.value);
+  return {
+    showCurrent: relative || (hasNumber(condition.current) && currentText !== valueText),
+    showBaseline: relative || hasNumber(condition.baseline),
+    currentText,
+    baselineText: formatAggregateMetric(condition.baseline),
+    valueText,
+  };
+}
+
+function conditionOutcome(condition: AggregateHitCondition, t: Translate) {
+  if (condition.role === 'guard') {
+    return condition.matched ? t('log.event.guardPassed') : t('log.event.guardMissed');
+  }
+  return condition.matched ? t('log.event.verdictWouldTrigger') : t('log.event.verdictNoTrigger');
+}
+
 export function AggregateConditionTable({
   conditions,
   t,
@@ -161,84 +183,68 @@ export function AggregateConditionTable({
   conditions: AggregateHitCondition[];
   t: Translate;
 }) {
-  const columns = useMemo(
-    () => [
-      {
-        title: t('log.event.conditionColumn'),
-        key: 'condition',
-        render: (_value: unknown, condition: AggregateHitCondition) => aggregateConditionText(condition, t),
-      },
-      {
-        title: t('log.event.currentValue'),
-        dataIndex: 'current',
-        key: 'current',
-        render: (value: number | null | undefined) => formatAggregateMetric(value),
-      },
-      {
-        title: t('log.event.baselineValue'),
-        dataIndex: 'baseline',
-        key: 'baseline',
-        render: (value: number | null | undefined) => formatAggregateMetric(value),
-      },
-      {
-        title: t('log.event.computedValue'),
-        dataIndex: 'value',
-        key: 'value',
-        render: (value: number | null | undefined) => formatAggregateMetric(value),
-      },
-      {
-        title: t('log.event.threshold'),
-        key: 'threshold',
-        render: (_value: unknown, condition: AggregateHitCondition) => {
-          const pieces = thresholdLadderPieces(condition);
-          if (!pieces) {
-            return `${condition.op || ''} ${condition.threshold ?? ''}`.trim();
-          }
-          return (
-            <span className="inline-flex flex-wrap gap-2">
-              {pieces.map((piece) => (
-                <span
-                  key={piece.level}
-                  className={piece.hit ? 'font-semibold' : undefined}
-                  style={piece.hit && LEVEL_MAP[piece.level] ? { color: LEVEL_MAP[piece.level] } : undefined}
-                >
-                  {`${piece.text}（${t(`log.event.${piece.level}`)}）`}
-                </span>
-              ))}
-            </span>
-          );
-        },
-      },
-      {
-        title: t('log.event.matched'),
-        dataIndex: 'matched',
-        key: 'matched',
-        render: (matched: boolean | undefined, condition: AggregateHitCondition) => {
-          if (condition.role === 'guard') {
-            return matched ? t('log.event.guardPassed') : t('log.event.guardMissed');
-          }
-          return matched ? t('log.event.verdictWouldTrigger') : t('log.event.verdictNoTrigger');
-        },
-      },
-      {
-        title: t('log.event.reason'),
-        dataIndex: 'reason',
-        key: 'reason',
-        render: (reason: string | undefined) => formatAggregateReason(reason, t),
-      },
-    ],
-    [t],
-  );
-
   return (
-    <Table
-      data-testid="aggregate-condition-table"
-      size="small"
-      pagination={false}
-      rowKey="key"
-      dataSource={conditions.map((condition, index) => ({ ...condition, key: String(index) }))}
-      columns={columns}
-    />
+    <div data-testid="aggregate-condition-table" className="flex flex-col">
+      {conditions.map((condition, index) => {
+        const metrics = conditionMetrics(condition);
+        const pieces = thresholdLadderPieces(condition);
+        const reason = condition.reason ? formatAggregateReason(condition.reason, t) : '';
+        const levelColor = condition.level ? LEVEL_MAP[condition.level] : '';
+        return (
+          <div
+            key={`${condition.func || 'condition'}-${index}`}
+            className="grid grid-cols-[minmax(7.5rem,1.15fr)_minmax(0,1.35fr)_minmax(0,1.7fr)_auto] items-baseline gap-x-4 border-b border-[var(--color-border-1)] py-2 text-[13px] last:border-b-0"
+          >
+            <div className="min-w-0 text-[var(--color-text-1)]">{aggregateConditionText(condition, t)}</div>
+            <div className="flex min-w-0 flex-wrap gap-x-3 gap-y-1 text-[var(--color-text-1)]">
+              {metrics.showCurrent ? (
+                <span className="inline-flex items-baseline gap-1">
+                  <span className="text-[var(--color-text-3)]">{t('log.event.currentValue')}</span>
+                  <span>{metrics.currentText}</span>
+                </span>
+              ) : null}
+              {metrics.showBaseline ? (
+                <span className="inline-flex items-baseline gap-1">
+                  <span className="text-[var(--color-text-3)]">{t('log.event.baselineValue')}</span>
+                  <span>{metrics.baselineText}</span>
+                </span>
+              ) : null}
+              <span className="inline-flex items-baseline gap-1">
+                <span className="text-[var(--color-text-3)]">{t('log.event.computedValue')}</span>
+                <span>{metrics.valueText}</span>
+              </span>
+            </div>
+            <div className="min-w-0">
+              {pieces ? (
+                <span className="inline-flex flex-wrap gap-x-3 gap-y-1">
+                  {pieces.map((piece) => (
+                    <span
+                      key={piece.level}
+                      className={piece.hit ? 'font-semibold' : 'text-[var(--color-text-2)]'}
+                      style={piece.hit && LEVEL_MAP[piece.level] ? { color: LEVEL_MAP[piece.level] } : undefined}
+                    >
+                      {`${piece.text}（${t(`log.event.${piece.level}`)}）`}
+                    </span>
+                  ))}
+                </span>
+              ) : (
+                <span className="text-[var(--color-text-2)]">
+                  {`${condition.op || ''} ${condition.threshold ?? ''}`.trim() || '—'}
+                </span>
+              )}
+            </div>
+            <div className="text-right">
+              <div style={condition.matched && levelColor ? { color: levelColor } : undefined}>
+                {conditionOutcome(condition, t)}
+              </div>
+              {reason && reason !== '—' ? (
+                <div className="mt-0.5 text-[12px] text-[var(--color-text-3)]">{reason}</div>
+              ) : null}
+            </div>
+          </div>
+        );
+      })}
+    </div>
   );
 }
 
