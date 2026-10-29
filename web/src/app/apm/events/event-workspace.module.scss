@@ -782,6 +782,43 @@
   font-size: 12px;
 }
 
+.metricEditorItem :global(.ant-form-item-row) {
+  align-items: flex-start;
+}
+
+.metricEditorItem :global(.ant-form-item-label) {
+  padding-top: 10px;
+}
+
+.metricEditor {
+  width: 100%;
+  max-width: 560px;
+}
+
+.conditionField {
+  width: 100%;
+  min-width: 0;
+  margin-bottom: 0;
+}
+
+.conditionField :global(.ant-form-item-label) {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+  flex: 0 0 0 !important;
+}
+
+.conditionField :global(.ant-form-item-control) {
+  flex: 1 1 auto;
+  max-width: 100%;
+}
+
 .editor :global(.ant-steps-item-description) {
   width: 100%;
   max-width: none !important;
@@ -916,9 +953,22 @@ $compact-field-width: 220px;
   padding: 0;
 }
 
-.variableCode {
-  color: var(--color-primary);
-  font-size: 12px;
+.variableTable :global(.ant-table) {
+  background: transparent;
+}
+
+.variableTable :global(.ant-table-thead > tr > th) {
+  background: var(--color-fill-1) !important;
+  font-weight: 500;
+}
+
+.variableTable :global(.ant-table-cell) {
+  padding: 10px 12px !important;
+}
+
+.variableTable :global(.ant-table-tbody > tr > td:last-child),
+.variableTable :global(.ant-table-thead > tr > th:last-child) {
+  white-space: nowrap;
 }
 
 .previewHeading {

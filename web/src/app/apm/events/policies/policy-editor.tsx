@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentProps } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { DeleteOutlined } from '@ant-design/icons';
+import { CloseOutlined, DeleteOutlined, PlusOutlined } from '@ant-design/icons';
 import {
   Button,
   Checkbox,
@@ -20,7 +20,6 @@ import {
   Table,
   Tag,
   Typography,
-  Collapse,
 } from 'antd';
 import dayjs from 'dayjs';
 import useApmApi from '@/app/apm/api';
@@ -180,6 +179,15 @@ function blankExtraCondition(ref: string): ExtraConditionEditor {
 
 function nextConditionRef(used: string[]) {
   return CONDITION_REFS.find((ref) => !used.includes(ref)) ?? 'b';
+}
+
+function blankGuard(ref: string): GuardEditor {
+  return {
+    ref,
+    metric_type: 'request_count',
+    comparator: 'gte',
+    value: 200,
+  };
 }
 
 function directoryErrorState(error: unknown): NotificationDirectoryState {
@@ -794,6 +802,369 @@ function buildMetricPreviewPayload(
   };
 }
 
+function ConditionRefBadge({ children }: { children: string }) {
+  return (
+    <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded border border-[var(--color-border-2)] font-mono text-sm font-semibold text-[var(--color-primary)]">
+      {children}
+    </span>
+  );
+}
+
+function AggregationSelect({
+  id,
+  value,
+  onChange,
+}: {
+  id?: string;
+  value?: ApmPolicyAggregation;
+  onChange?: (value: ApmPolicyAggregation) => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <Select
+      id={id}
+      showSearch
+      optionFilterProp="label"
+      value={value}
+      onChange={onChange}
+      filterOption={(input, option) => {
+        const query = input.trim().toLowerCase();
+        if (!query) return true;
+        const label = String(option?.label || '').toLowerCase();
+        const optionValue = String(option?.value || '').toLowerCase();
+        return label.includes(query) || optionValue.includes(query);
+      }}
+    >
+      {AGGREGATION_OPTIONS.map((item) => {
+        const name = t(item.i18nKey, item.fallback);
+        return (
+          <Select.Option
+            key={item.value}
+            value={item.value}
+            label={aggregationDisplayLabel(name, item.method)}
+          >
+            <span className="flex w-full min-w-0 items-center">
+              <span className="shrink-0 text-[var(--color-text-1)]">{name}</span>
+              <span className="text-[var(--color-text-3)]">（{item.method}）</span>
+            </span>
+          </Select.Option>
+        );
+      })}
+    </Select>
+  );
+}
+
+function ConditionRoleSelect({
+  letter,
+  value,
+  onChange,
+  disableRegular = false,
+  disableGuard = false,
+}: {
+  letter: string;
+  value: 'regular' | 'guard';
+  onChange?: (value: 'regular' | 'guard') => void;
+  disableRegular?: boolean;
+  disableGuard?: boolean;
+}) {
+  const { t } = useTranslation();
+  return (
+    <Select
+      id={`condition-role-${letter}`}
+      aria-label={t('apm.policies.conditionRole', '条件 {ref} 类型', { ref: letter })}
+      value={value}
+      onChange={onChange}
+      options={[
+        { value: 'regular', label: t('apm.policies.roleRegular', '常规'), disabled: disableRegular },
+        { value: 'guard', label: t('apm.policies.roleGuard', '前置条件'), disabled: disableGuard },
+      ]}
+    />
+  );
+}
+
+function ApmMetricConditionEditor({
+  id,
+  value,
+  onChange,
+  onMetricChange,
+  comparatorOptions,
+}: {
+  id?: string;
+  value?: ApmPolicyMetric;
+  onChange?: (value: ApmPolicyMetric) => void;
+  onMetricChange?: (value: ApmPolicyMetric) => void;
+  comparatorOptions: Array<{ value: ApmPolicyComparator; label: string }>;
+}) {
+  const { t } = useTranslation();
+  const form = Form.useFormInstance<PolicyEditorValues>();
+  const extraConditions = Form.useWatch('extra_conditions', form) ?? [];
+  const guardRows = Form.useWatch('guards', form) ?? [];
+  const listApi = useRef<{
+    addExtra: (value: ExtraConditionEditor) => void;
+    removeExtra: (index: number) => void;
+    addGuard: (value: GuardEditor) => void;
+    removeGuard: (index: number) => void;
+      }>({
+        addExtra: () => undefined,
+        removeExtra: () => undefined,
+        addGuard: () => undefined,
+        removeGuard: () => undefined,
+      });
+  const metric = value ?? 'error_rate';
+  const showAggregation = !COUNT_METRICS.includes(metric);
+  const showSlowThreshold = SLOW_METRICS.includes(metric);
+  const showApdexThreshold = metric === 'apdex';
+  const metricChoices = METRICS
+    .filter((item) => item.value !== 'no_traffic')
+    .map((item) => ({ value: item.value, label: t(item.i18nKey) }));
+  const compareOptions = [
+    { value: 'absolute', label: t('apm.policies.compareAbsolute', '绝对值') },
+    { value: 'previous_window', label: t('apm.policies.comparePreviousWindow', '上一等长窗') },
+    { value: 'offset_hours', label: t('apm.policies.compareOffsetHours', 'N 小时前') },
+    { value: 'baseline_days', label: t('apm.policies.compareBaselineDays', '历史同期') },
+  ];
+
+  return (
+    <div className={`${styles.metricEditor} rounded-md border border-[var(--color-border-2)] bg-[var(--color-bg-1)] shadow-sm`}>
+      <div className="flex min-h-11 items-center border-b border-[var(--color-border-2)] px-3">
+        <span className="text-sm font-medium text-[var(--color-text-1)]">
+          {t('apm.policies.metricEditor', '指标条件')}
+        </span>
+      </div>
+      <div className="flex flex-col gap-3 p-3">
+        <div className="flex flex-col gap-2 rounded-md border border-[var(--color-border-2)] p-2">
+          <div className="grid grid-cols-[2rem_minmax(0,1fr)_2rem] items-center gap-2">
+            <ConditionRefBadge>a</ConditionRefBadge>
+            <MetricTypeSelect
+              id={id}
+              value={value}
+              onChange={onChange}
+              onMetricChange={onMetricChange}
+            />
+            <span className="h-8 w-8" />
+          </div>
+          <div className="ml-10 grid grid-cols-[132px_minmax(0,1fr)_minmax(0,1fr)] items-center gap-2">
+            <ConditionRoleSelect letter="a" value="regular" disableGuard />
+            {showSlowThreshold ? (
+                <Form.Item
+                  name="slow_threshold_ms"
+                  label={t('apm.policies.slowThreshold', '慢阈值 (ms)')}
+                  rules={[{ required: true, message: t('apm.policies.slowThresholdRequired', '请填写慢阈值') }]}
+                  className={`${styles.conditionField} min-w-0`}
+                >
+                  <NumberWithUnit min={1} max={600000} unit="ms" aria-label={t('apm.policies.slowThreshold', '慢阈值 (ms)')} />
+                </Form.Item>
+            ) : null}
+              {showApdexThreshold ? (
+                <Form.Item
+                  name="apdex_threshold_ms"
+                  label={t('apm.policies.apdexThreshold', 'T (ms)')}
+                  rules={[{ required: true, message: t('apm.policies.apdexThresholdRequired', '请填写 T') }]}
+                  className={`${styles.conditionField} min-w-0`}
+                >
+                  <NumberWithUnit min={1} max={600000} unit="ms" aria-label={t('apm.policies.apdexThreshold', 'T (ms)')} />
+                </Form.Item>
+              ) : null}
+              {showAggregation ? (
+                <Form.Item
+                  name="aggregation"
+                  label={t('apm.policies.aggregation', '汇聚方法')}
+                  rules={[{ required: true, message: t('apm.policies.aggregationRequired', '请选择汇聚方法') }]}
+                  className={`${styles.conditionField} min-w-0`}
+                >
+                  <AggregationSelect />
+                </Form.Item>
+              ) : null}
+          </div>
+        </div>
+        <Form.List name="extra_conditions">
+          {(fields, { add, remove }) => {
+            listApi.current.addExtra = add;
+            listApi.current.removeExtra = remove;
+            return fields.map((field) => {
+              const extra = extraConditions[field.name];
+              const extraMetric = extra?.metric_type ?? 'throughput';
+              const ref = extra?.ref || CONDITION_REFS[field.name];
+              return (
+              <div
+                key={`regular-${field.key}`}
+                style={{ order: CONDITION_REFS.indexOf(ref as typeof CONDITION_REFS[number]) + 2 }}
+                className="flex flex-col gap-2 rounded-md border border-[var(--color-border-2)] p-2"
+              >
+                <Form.Item name={[field.name, 'ref']} hidden><Input /></Form.Item>
+                <div className="grid grid-cols-[2rem_minmax(0,1fr)_2rem] items-center gap-2">
+                  <ConditionRefBadge>{ref}</ConditionRefBadge>
+                  <Form.Item
+                    name={[field.name, 'metric_type']}
+                    label={t('apm.policies.conditionMetric', '条件 {ref} 指标', { ref })}
+                    className={`${styles.conditionField} min-w-0`}
+                  >
+                    <Select options={metricChoices} />
+                  </Form.Item>
+                  <Button
+                    aria-label={t('apm.policies.removeCondition', '移除')}
+                    className="h-8 w-8"
+                    icon={<CloseOutlined />}
+                    onClick={() => remove(field.name)}
+                  />
+                </div>
+                <div className="ml-10 grid grid-cols-[132px_minmax(0,1fr)_minmax(0,1fr)] items-center gap-2">
+                  <ConditionRoleSelect
+                    letter={ref}
+                    value="regular"
+                    disableGuard={guardRows.length >= 2}
+                    onChange={(next) => {
+                      if (next !== 'guard' || guardRows.length >= 2 || !extra) return;
+                      listApi.current.removeExtra(field.name);
+                      listApi.current.addGuard({
+                        ref: extra.ref,
+                        metric_type: extra.metric_type,
+                        comparator: 'gte',
+                        value: 200,
+                      });
+                    }}
+                  />
+                  {SLOW_METRICS.includes(extraMetric) ? (
+                    <Form.Item
+                      name={[field.name, 'slow_threshold_ms']}
+                      label={t('apm.policies.slowThreshold', '慢阈值 (ms)')}
+                      className={`${styles.conditionField} min-w-0`}
+                    >
+                      <NumberWithUnit min={1} max={600000} unit="ms" />
+                    </Form.Item>
+                  ) : null}
+                  {extraMetric === 'apdex' ? (
+                    <Form.Item
+                      name={[field.name, 'apdex_threshold_ms']}
+                      label={t('apm.policies.apdexThreshold', 'T (ms)')}
+                      className={`${styles.conditionField} min-w-0`}
+                    >
+                      <NumberWithUnit min={1} max={600000} unit="ms" />
+                    </Form.Item>
+                  ) : null}
+                  {!COUNT_METRICS.includes(extraMetric) ? (
+                    <Form.Item
+                      name={[field.name, 'aggregation']}
+                      label={t('apm.policies.conditionAggregation', '条件 {ref} 汇聚方法', { ref })}
+                      className={`${styles.conditionField} min-w-0`}
+                    >
+                      <AggregationSelect />
+                    </Form.Item>
+                  ) : null}
+                  <Form.Item
+                    name={[field.name, 'compare_mode']}
+                    label={t('apm.policies.conditionCompare', '条件 {ref} 比较基准', { ref })}
+                    className={`${styles.conditionField} min-w-0`}
+                  >
+                    <Select options={compareOptions} />
+                  </Form.Item>
+                  {MIN_REQUEST_METRICS.includes(extraMetric) ? (
+                    <Form.Item
+                      name={[field.name, 'min_request_count']}
+                      label={t('apm.policies.minRequestCount', '最低请求数')}
+                      className={`${styles.conditionField} min-w-0`}
+                    >
+                      <InputNumber<number> min={1} max={100000} />
+                    </Form.Item>
+                  ) : null}
+                </div>
+              </div>
+              );
+            });
+          }}
+        </Form.List>
+        <Form.List name="guards">
+          {(fields, { add, remove }) => {
+            listApi.current.addGuard = add;
+            listApi.current.removeGuard = remove;
+            return fields.map((field) => {
+              const guard = guardRows[field.name];
+              const ref = guard?.ref || CONDITION_REFS[field.name];
+              return (
+              <div
+                key={`guard-${field.key}`}
+                style={{ order: CONDITION_REFS.indexOf(ref as typeof CONDITION_REFS[number]) + 2 }}
+                className="flex flex-col gap-2 rounded-md border border-[var(--color-border-2)] p-2"
+              >
+                <Form.Item name={[field.name, 'ref']} hidden><Input /></Form.Item>
+                <div className="grid grid-cols-[2rem_minmax(0,1fr)_2rem] items-center gap-2">
+                  <ConditionRefBadge>{ref}</ConditionRefBadge>
+                  <Form.Item
+                    name={[field.name, 'metric_type']}
+                    label={t('apm.policies.conditionMetric', '条件 {ref} 指标', { ref })}
+                    className={`${styles.conditionField} min-w-0`}
+                  >
+                    <Select
+                      options={[
+                        ...metricChoices,
+                        { value: 'request_count', label: t('apm.policies.metricRequestCount', '请求数') },
+                      ]}
+                    />
+                  </Form.Item>
+                  <Button
+                    aria-label={t('apm.policies.removeCondition', '移除')}
+                    className="h-8 w-8"
+                    icon={<CloseOutlined />}
+                    onClick={() => remove(field.name)}
+                  />
+                </div>
+                <div className="ml-10 grid grid-cols-[132px_minmax(0,1fr)_minmax(0,1fr)] items-center gap-2">
+                  <ConditionRoleSelect
+                    letter={ref}
+                    value="guard"
+                    disableRegular={extraConditions.length >= 2}
+                    onChange={(next) => {
+                      if (next !== 'regular' || extraConditions.length >= 2 || !guard) return;
+                      const metric = guard.metric_type === 'request_count' ? 'throughput' : guard.metric_type;
+                      listApi.current.removeGuard(field.name);
+                      listApi.current.addExtra({ ...blankExtraCondition(guard.ref), metric_type: metric });
+                    }}
+                  />
+                  <Form.Item
+                    name={[field.name, 'comparator']}
+                    label={t('apm.policies.conditionComparator', '条件 {ref} 比较符', { ref })}
+                    className={`${styles.conditionField} min-w-0`}
+                  >
+                    <Select options={comparatorOptions} />
+                  </Form.Item>
+                  <Form.Item
+                    name={[field.name, 'value']}
+                    label={t('apm.policies.conditionGuardValue', '条件 {ref} 门槛', { ref })}
+                    className={`${styles.conditionField} min-w-0`}
+                  >
+                    <InputNumber<number> aria-label={t('apm.policies.conditionGuardValue', '条件 {ref} 门槛', { ref })} />
+                  </Form.Item>
+                </div>
+              </div>
+              );
+            });
+          }}
+        </Form.List>
+        <Button
+          type="dashed"
+          icon={<PlusOutlined aria-hidden />}
+          className="order-[100] w-fit"
+          disabled={extraConditions.length >= 2 && guardRows.length >= 2}
+          onClick={() => {
+            const used = [
+              ...extraConditions.map((item) => item?.ref),
+              ...guardRows.map((item) => item?.ref),
+            ].filter(Boolean);
+            const ref = nextConditionRef(used);
+            if (extraConditions.length < 2) {
+              listApi.current.addExtra(blankExtraCondition(ref));
+            } else if (guardRows.length < 2) {
+              listApi.current.addGuard(blankGuard(ref));
+            }
+          }}
+        >
+          {t('apm.policies.addCondition', '添加条件')}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
   const { t } = useTranslation();
   const router = useRouter();
@@ -1200,9 +1571,6 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
   const compareKind = resolvedCompareKind(metricType, compareMode, compareKindRaw);
   const showCompare = metricType !== 'no_traffic' && metricType !== 'slo_burn_rate';
   const showMinRequest = MIN_REQUEST_METRICS.includes(metricType);
-  const showAggregation = !COUNT_METRICS.includes(metricType) && metricType !== 'slo_burn_rate';
-  const showSlowThreshold = SLOW_METRICS.includes(metricType);
-  const showApdexThreshold = metricType === 'apdex';
   const ratioMetric = RATIO_METRICS.includes(metricType);
   const thresholdUnit = compareKind === 'sigma'
     ? 'σ'
@@ -1858,187 +2226,25 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
           ) : null}
           </>
           )}
-          <Form.Item name="metric_type" label={t('apm.policies.metric', '指标')} rules={[{ required: true, message: t('apm.policies.metricRequired', '请选择指标') }]}>
-            <MetricTypeSelect onMetricChange={applyMetric} />
-          </Form.Item>
-          {showSlowThreshold ? (
+          {metricType !== 'no_traffic' && metricType !== 'slo_burn_rate' ? (
             <Form.Item
-              name="slow_threshold_ms"
-              label={t('apm.policies.slowThreshold', '慢阈值 (ms)')}
-              rules={[{ required: true, message: t('apm.policies.slowThresholdRequired', '请填写慢阈值') }]}
+              name="metric_type"
+              label={t('apm.policies.metric', '指标')}
+              rules={[{ required: true, message: t('apm.policies.metricRequired', '请选择指标') }]}
+              className={styles.metricEditorItem}
             >
-              <NumberWithUnit min={1} max={600000} unit="ms" aria-label={t('apm.policies.slowThreshold', '慢阈值 (ms)')} />
+              <ApmMetricConditionEditor onMetricChange={applyMetric} comparatorOptions={comparatorOptions} />
             </Form.Item>
-          ) : null}
-          {showApdexThreshold ? (
-            <Form.Item
-              name="apdex_threshold_ms"
-              label={t('apm.policies.apdexThreshold', 'T (ms)')}
-              rules={[{ required: true, message: t('apm.policies.apdexThresholdRequired', '请填写 T') }]}
-            >
-              <NumberWithUnit min={1} max={600000} unit="ms" aria-label={t('apm.policies.apdexThreshold', 'T (ms)')} />
+          ) : (
+            <Form.Item name="metric_type" label={t('apm.policies.metric', '指标')} rules={[{ required: true, message: t('apm.policies.metricRequired', '请选择指标') }]}>
+              <MetricTypeSelect onMetricChange={applyMetric} />
             </Form.Item>
-          ) : null}
+          )}
           {metricType === 'slo_burn_rate' ? null : (
             <Form.Item name="metric_window" label={t('apm.policies.metricWindow', '汇聚周期')} rules={[{ required: true, message: t('apm.policies.metricWindowRequired', '请输入汇聚周期') }]}>
               <NumberWithUnit min={1} max={1440} unit={t('apm.policies.minutes', '分钟')} />
             </Form.Item>
           )}
-          {showAggregation ? (
-            <Form.Item name="aggregation" label={t('apm.policies.aggregation', '汇聚方法')} rules={[{ required: true, message: t('apm.policies.aggregationRequired', '请选择汇聚方法') }]}>
-              <Select
-                showSearch
-                optionFilterProp="label"
-                filterOption={(input, option) => {
-                  const query = input.trim().toLowerCase();
-                  if (!query) return true;
-                  const label = String(option?.label || '').toLowerCase();
-                  const value = String(option?.value || '').toLowerCase();
-                  return label.includes(query) || value.includes(query);
-                }}
-              >
-                {AGGREGATION_OPTIONS.map((item) => {
-                  const name = t(item.i18nKey, item.fallback);
-                  return (
-                    <Select.Option
-                      key={item.value}
-                      value={item.value}
-                      label={aggregationDisplayLabel(name, item.method)}
-                    >
-                      <span className="flex w-full min-w-0 items-center">
-                        <span className="shrink-0 text-[var(--color-text-1)]">{name}</span>
-                        <span className="text-[var(--color-text-3)]">（{item.method}）</span>
-                      </span>
-                    </Select.Option>
-                  );
-                })}
-              </Select>
-            </Form.Item>
-          ) : null}
-          {metricType !== 'no_traffic' && metricType !== 'slo_burn_rate' ? (
-            <Form.List name="extra_conditions">
-              {(fields, { add, remove }) => (
-                <div className="flex flex-col gap-3">
-                  {fields.map((field) => {
-                    const extra = extraConditions[field.name];
-                    const extraMetric = extra?.metric_type ?? 'throughput';
-                    return (
-                      <div key={field.key} className="rounded-md border border-[var(--color-border-2)] bg-[var(--color-bg-1)] p-3">
-                        <div className="mb-2 flex items-center justify-between">
-                          <span className="font-semibold text-[var(--color-text-1)]">
-                            {t('apm.policies.conditionCard', '条件 {ref}', { ref: extra?.ref || CONDITION_REFS[field.name] })}
-                          </span>
-                          <Button type="link" onClick={() => remove(field.name)}>
-                            {t('apm.policies.removeCondition', '移除')}
-                          </Button>
-                        </div>
-                        <Form.Item name={[field.name, 'ref']} hidden><Input /></Form.Item>
-                        <Form.Item name={[field.name, 'metric_type']} label={t('apm.policies.metric', '指标')}>
-                          <Select options={metricOptions.filter((item) => item.value !== 'no_traffic')} />
-                        </Form.Item>
-                        {SLOW_METRICS.includes(extraMetric) ? (
-                          <Form.Item name={[field.name, 'slow_threshold_ms']} label={t('apm.policies.slowThreshold', '慢阈值 (ms)')}>
-                            <NumberWithUnit min={1} max={600000} unit="ms" />
-                          </Form.Item>
-                        ) : null}
-                        {extraMetric === 'apdex' ? (
-                          <Form.Item name={[field.name, 'apdex_threshold_ms']} label={t('apm.policies.apdexThreshold', 'T (ms)')}>
-                            <NumberWithUnit min={1} max={600000} unit="ms" />
-                          </Form.Item>
-                        ) : null}
-                        {!COUNT_METRICS.includes(extraMetric) ? (
-                          <Form.Item name={[field.name, 'aggregation']} label={t('apm.policies.aggregation', '汇聚方法')}>
-                            <Select options={AGGREGATION_OPTIONS.map((item) => ({ value: item.value, label: t(item.i18nKey, item.fallback) }))} />
-                          </Form.Item>
-                        ) : null}
-                        <Form.Item name={[field.name, 'compare_mode']} label={t('apm.policies.compareBaseline', '比较基准')}>
-                          <Select
-                            options={[
-                              { value: 'absolute', label: t('apm.policies.compareAbsolute', '绝对值') },
-                              { value: 'previous_window', label: t('apm.policies.comparePreviousWindow', '上一等长窗') },
-                              { value: 'offset_hours', label: t('apm.policies.compareOffsetHours', 'N 小时前') },
-                              { value: 'baseline_days', label: t('apm.policies.compareBaselineDays', '历史同期') },
-                            ]}
-                          />
-                        </Form.Item>
-                        {MIN_REQUEST_METRICS.includes(extraMetric) ? (
-                          <Form.Item name={[field.name, 'min_request_count']} label={t('apm.policies.minRequestCount', '最低请求数')}>
-                            <InputNumber<number> min={1} max={100000} />
-                          </Form.Item>
-                        ) : null}
-                      </div>
-                    );
-                  })}
-                  <Button
-                    disabled={fields.length >= 2}
-                    onClick={() => {
-                      const used = [
-                        ...extraConditions.map((item) => item?.ref),
-                        ...guardRows.map((item) => item?.ref),
-                      ].filter(Boolean);
-                      add(blankExtraCondition(nextConditionRef(used)));
-                    }}
-                  >
-                    {t('apm.policies.addCondition', '添加条件')}
-                  </Button>
-                </div>
-              )}
-            </Form.List>
-          ) : null}
-          {metricType !== 'no_traffic' && metricType !== 'slo_burn_rate' ? (
-            <Collapse
-              ghost
-              items={[{
-                key: 'guards',
-                label: t('apm.policies.guards', '前置条件'),
-                children: (
-                  <Form.List name="guards">
-                    {(fields, { add, remove }) => (
-                      <div className="flex flex-col gap-3">
-                        {fields.map((field) => (
-                          <div key={field.key} className="flex flex-wrap items-end gap-2">
-                            <Form.Item name={[field.name, 'ref']} hidden><Input /></Form.Item>
-                            <Form.Item name={[field.name, 'metric_type']} label={t('apm.policies.metric', '指标')} className="mb-0 min-w-40">
-                              <Select
-                                options={[
-                                  ...metricOptions.filter((item) => item.value !== 'no_traffic'),
-                                  { value: 'request_count', label: t('apm.policies.metricRequestCount', '请求数') },
-                                ]}
-                              />
-                            </Form.Item>
-                            <Form.Item name={[field.name, 'comparator']} label={t('apm.policies.comparator', '比较符')} className="mb-0 w-24">
-                              <Select options={comparatorOptions} />
-                            </Form.Item>
-                            <Form.Item name={[field.name, 'value']} label={t('apm.policies.guardValue', '门槛')} className="mb-0 w-32">
-                              <InputNumber<number> aria-label={t('apm.policies.guardValue', '门槛')} />
-                            </Form.Item>
-                            <Button type="link" onClick={() => remove(field.name)}>{t('apm.policies.removeCondition', '移除')}</Button>
-                          </div>
-                        ))}
-                        <Button
-                          disabled={fields.length >= 2}
-                          onClick={() => {
-                            const used = [
-                              ...extraConditions.map((item) => item?.ref),
-                              ...guardRows.map((item) => item?.ref),
-                            ].filter(Boolean);
-                            add({
-                              ref: nextConditionRef(used),
-                              metric_type: 'request_count',
-                              comparator: 'gte',
-                              value: 200,
-                            });
-                          }}
-                        >
-                          {t('apm.policies.addGuard', '添加前置条件')}
-                        </Button>
-                      </div>
-                    )}
-                  </Form.List>
-                ),
-              }]}
-            />
-          ) : null}
           <Typography.Text type="secondary" className={styles.scopeHint}>
             {t('apm.policies.scopeHint', '环境已并入服务范围；版本固定为全部版本。')}
           </Typography.Text>
@@ -2484,25 +2690,37 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
               </div>
             </div>
             <aside className={styles.editorSide}>
-              <section className={styles.sideSection}>
-                <Typography.Title level={2}>{t('apm.policies.templateVariables', '模板变量')}</Typography.Title>
+              <section className="min-w-0 overflow-hidden rounded-md border border-[var(--color-border-2)] bg-[var(--color-bg-1)] p-4 shadow-md">
+                <div className="mb-3 text-sm font-medium text-[var(--color-text-1)]">
+                  {t('apm.policies.templateVariables', '模板变量')}
+                </div>
                 <Table
+                  className={styles.variableTable}
                   size="small"
                   pagination={false}
                   rowKey="name"
+                  tableLayout="fixed"
                   columns={[
                     {
                       title: t('apm.policies.variable', '变量'),
                       dataIndex: 'name',
-                      render: (value: string) => <code className={styles.variableCode}>{value}</code>,
+                      width: '44%',
+                      ellipsis: true,
+                      render: (value: string) => (
+                        <span className="font-mono text-xs text-[var(--color-primary)]" title={value}>{value}</span>
+                      ),
                     },
-                    { title: t('apm.policies.variableDescription', '说明'), dataIndex: 'source' },
+                    {
+                      title: t('apm.policies.variableDescription', '说明'),
+                      dataIndex: 'source',
+                      ellipsis: true,
+                    },
                     {
                       title: t('apm.common.operation', '操作'),
                       dataIndex: 'name',
                       width: 64,
                       render: (value: string) => (
-                        <Button type="link" size="small" aria-label={t('apm.policies.copyAria', '复制 {value}', { value })} onClick={() => void copyVariable(value)}>
+                        <Button type="link" size="small" className="px-0" aria-label={t('apm.policies.copyAria', '复制 {value}', { value })} onClick={() => void copyVariable(value)}>
                           {t('apm.policies.copy', '复制')}
                         </Button>
                       ),

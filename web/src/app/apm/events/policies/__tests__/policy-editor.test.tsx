@@ -738,7 +738,7 @@ describe('APM 四步策略编辑器', { timeout: 15000 }, () => {
     const user = userEvent.setup();
     renderWithApmIntl(<ApmPolicyEditor policyId="p1" />);
     await screen.findByRole('combobox', { name: '触发方式' });
-    expect(screen.getByText('前置条件')).not.toBeNull();
+    expect(screen.getByRole('combobox', { name: '条件 a 类型' })).not.toBeNull();
     expect(screen.queryByRole('button', { name: '添加前置条件' })).toBeNull();
 
     await user.click(screen.getByRole('combobox', { name: '触发方式' }));
@@ -877,15 +877,19 @@ describe('APM 四步策略编辑器', { timeout: 15000 }, () => {
     renderWithApmIntl(<ApmPolicyEditor policyId="p1" />);
     const addCondition = await screen.findByRole('button', { name: '添加条件' });
     await user.click(addCondition);
+    await user.click(screen.getByRole('combobox', { name: '条件 b 类型' }));
+    await user.click(await screen.findByText('前置条件', { selector: '.ant-select-item-option-content' }));
+    expect((screen.getByRole('spinbutton', { name: '条件 b 门槛' }) as HTMLInputElement).value).toBe('200');
+    await user.click(screen.getByRole('combobox', { name: '条件 b 类型' }));
+    await user.click(await screen.findByText('常规', { selector: '.ant-select-item-option-content' }));
+    expect(screen.getByLabelText('条件 b 汇聚方法')).not.toBeNull();
+
+    await user.click(addCondition);
+    expect(screen.getAllByRole('spinbutton', { name: '恢复阈值' })).toHaveLength(1);
+    await user.click(addCondition);
     await user.click(addCondition);
     expect((addCondition as HTMLButtonElement).disabled).toBe(true);
-    expect(screen.getAllByRole('spinbutton', { name: '恢复阈值' })).toHaveLength(1);
-
-    await user.click(screen.getByText('前置条件'));
-    const addGuard = await screen.findByRole('button', { name: '添加前置条件' });
-    await user.click(addGuard);
-    await user.click(addGuard);
-    expect((addGuard as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.queryByRole('button', { name: '添加前置条件' })).toBeNull();
 
     await user.type(screen.getByRole('spinbutton', { name: 'b警告阈值' }), '20');
     await user.click(screen.getByRole('button', { name: '保存策略' }));
