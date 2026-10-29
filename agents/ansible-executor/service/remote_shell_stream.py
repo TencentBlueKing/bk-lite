@@ -7,9 +7,11 @@ import contextlib
 import math
 import re
 import shlex
+import tempfile
 import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 from core.config import logger
@@ -26,9 +28,18 @@ from service.ansible_runner import (
     parse_ansible_output_per_host,
     run_command,
 )
+from service.linux_script_delivery import (
+    _COPY_FAILURE,
+    _DIRECTORY_FAILURE,
+    ScriptDeliveryError,
+    copy_script_to_hosts,
+    ensure_linux_script_bytes,
+    stage_local_script,
+)
 
 CommandRunner = Callable[..., Awaitable[tuple[int, str, dict[str, Any]]]]
 Sleep = Callable[[float], Awaitable[None]]
+ScriptTransfer = Callable[[str, str, list[dict[str, Any]], Path | None], None]
 
 _CHUNK_MARKER = "__BKLITE_STREAM_CHUNK__"
 _STATUS_MARKER = "__BKLITE_STREAM_STATUS__"
@@ -68,10 +79,9 @@ def _replace_adhoc_action(command: list[str], module: str, module_args: str) -> 
 
 
 def _build_remote_commands(
-    script_content: str,
     shell_executable: str,
     max_output_bytes: int,
-) -> tuple[str, str, str, str]:
+) -> tuple[str, str, str, str, str, str]:
     token = uuid.uuid4().hex
     remote_dir = f"/tmp/.bklite-stream-{token}"
     script_path = f"{remote_dir}/script"
@@ -83,7 +93,6 @@ def _build_remote_commands(
     fifo_path = f"{remote_dir}/output.fifo"
     overflow_path = f"{remote_dir}/overflow"
 
-    encoded_script = base64.b64encode(script_content.encode("utf-8")).decode("ascii")
     runner = "\n".join(
         [
             "#!/bin/sh",
@@ -108,12 +117,18 @@ def _build_remote_commands(
     encoded_runner = base64.b64encode(runner.encode("utf-8")).decode("ascii")
     detach_without_fork = "setsid /bin/sh " + shlex.quote(runner_path) + " </dev/null >/dev/null 2>&1 &"
 
-    start_command = "\n".join(
+    prepare_command = "\n".join(
         [
             "set -e",
             "umask 077",
             f"mkdir {shlex.quote(remote_dir)}",
-            f"printf %s {shlex.quote(encoded_script)} | base64 -d > {shlex.quote(script_path)}",
+        ]
+    )
+    # 用户脚本已由 SSH 文件通道放到 script_path。这里只写短启动器，不再内联脚本正文。
+    launch_command = "\n".join(
+        [
+            "set -e",
+            f"test -s {shlex.quote(script_path)}",
             f"printf %s {shlex.quote(encoded_runner)} | base64 -d > {shlex.quote(runner_path)}",
             f"chmod 700 {shlex.quote(script_path)} {shlex.quote(runner_path)}",
             "if command -v setsid >/dev/null 2>&1 && setsid -f true >/dev/null 2>&1; then "
@@ -169,7 +184,7 @@ def _build_remote_commands(
             f"rm -rf {shlex.quote(remote_dir)}",
         ]
     )
-    return start_command, poll_command, stop_command, remote_dir
+    return prepare_command, launch_command, poll_command, stop_command, remote_dir, script_path
 
 
 def _parse_poll_body(body: str) -> tuple[bytes, str]:
@@ -306,14 +321,19 @@ async def run_remote_shell_stream(
     stream_batch_size: int = DEFAULT_STREAM_BATCH_SIZE,
     stream_flush_timeout: float = DEFAULT_STREAM_FLUSH_TIMEOUT,
     stream_max_line_bytes: int = DEFAULT_STREAM_MAX_LINE_BYTES,
+    host_credentials: list[dict[str, Any]] | None = None,
+    workspace: Path | None = None,
+    script_transfer: ScriptTransfer | None = None,
 ) -> tuple[int, str, dict[str, Any]]:
     """后台执行 Linux 远端脚本，并通过短 Ansible 轮询实时发布新增日志行。"""
-    start_args, poll_args, stop_args, remote_dir = _build_remote_commands(
-        script_content,
+    hosts = [str(item.get("host") or "") for item in (host_credentials or []) if item.get("host")]
+    script_bytes = ensure_linux_script_bytes(script_content, hosts)
+    prepare_args, launch_args, poll_args, stop_args, remote_dir, script_path = _build_remote_commands(
         shell_executable,
         max_output_bytes,
     )
-    start_command = _replace_adhoc_action(base_command, "raw", start_args)
+    prepare_command = _replace_adhoc_action(base_command, "raw", prepare_args)
+    launch_command = _replace_adhoc_action(base_command, "raw", launch_args)
     poll_command = _replace_adhoc_action(base_command, "raw", poll_args)
     stop_command = _replace_adhoc_action(base_command, "raw", stop_args)
     deadline = asyncio.get_running_loop().time() + timeout
@@ -329,6 +349,8 @@ async def run_remote_shell_stream(
     stream_publisher.start()
     stream_meta: dict[str, Any] = {}
     states: dict[str, _HostState] = {}
+    local_script: Path | None = None
+    owned_directory: tempfile.TemporaryDirectory[str] | None = None
 
     async def publish_line(line: str) -> None:
         stream_publisher.offer(line)
@@ -347,8 +369,27 @@ async def run_remote_shell_stream(
             await publish_line(line)
 
     try:
+        if workspace is None:
+            owned_directory = tempfile.TemporaryDirectory(prefix="bklite-linux-script-")
+            script_directory = Path(owned_directory.name)
+        else:
+            script_directory = Path(workspace)
+        local_script = stage_local_script(script_directory, script_bytes)
+        prepare_timeout = max(1, math.ceil(deadline - asyncio.get_running_loop().time()))
+        prepare_code, prepare_output, _ = await command_runner(prepare_command, prepare_timeout)
+        prepare_results = parse_ansible_output_per_host(prepare_output)
+        if prepare_code != 0 or not prepare_results or any(item.get("status") != "success" for item in prepare_results):
+            raise ScriptDeliveryError(_DIRECTORY_FAILURE, hosts)
+        if host_credentials:
+            transfer = script_transfer or copy_script_to_hosts
+            try:
+                transfer(str(local_script), script_path, list(host_credentials), script_directory)
+            except ScriptDeliveryError:
+                raise
+            except Exception:
+                raise ScriptDeliveryError(_COPY_FAILURE, hosts) from None
         start_timeout = max(1, math.ceil(deadline - asyncio.get_running_loop().time()))
-        start_code, start_output, _ = await command_runner(start_command, start_timeout)
+        start_code, start_output, _ = await command_runner(launch_command, start_timeout)
         states = await _seed_host_states_from_start(
             parse_ansible_output_per_host(start_output),
             stream_max_line_bytes=stream_max_line_bytes,
@@ -410,6 +451,10 @@ async def run_remote_shell_stream(
             await command_runner(stop_command, min(timeout, 30))
         stream_meta = await stream_publisher.close(stream_flush_timeout)
         logger.info("remote stream workspace cleaned: %s", remote_dir)
+        if local_script is not None and workspace is not None:
+            local_script.unlink(missing_ok=True)
+        if owned_directory is not None:
+            owned_directory.cleanup()
 
     return _compose_stream_result(
         states,
