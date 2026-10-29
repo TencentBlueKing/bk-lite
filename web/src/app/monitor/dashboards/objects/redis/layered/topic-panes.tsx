@@ -650,8 +650,10 @@ export function ConnThroughputPane({
         </div>
       </ProSection>
       <ProSection title={text('sectionThroughput')}>
-        <div className={throughputGrid}>
-          <RedisTrendChart spec={opsTrend} metricMap={metricMap} pending={pending} />
+        <div className={throughputGrid} data-redis-trends="conn">
+          <div className="min-w-0 h-full" data-redis-trend="ops">
+            <RedisTrendChart spec={opsTrend} metricMap={metricMap} pending={pending} />
+          </div>
           <div className="min-w-0 h-full" data-redis-network="trend">
             <RedisTrendChart spec={netTrend} metricMap={metricMap} pending={pending} />
           </div>
@@ -669,8 +671,13 @@ export function CompactTrends({
   pending: ReadonlySet<string>;
 }) {
   return (
-    <div className={`${chart.processTrends} grid min-w-0 grid-cols-1`} data-redis-trends="overview">
-      <RedisTrendChart spec={commandTrend} metricMap={metricMap} pending={pending} />
+    <div className={throughputGrid} data-redis-trends="overview">
+      <div className="min-w-0 h-full" data-redis-trend="command">
+        <RedisTrendChart spec={commandTrend} metricMap={metricMap} pending={pending} />
+      </div>
+      <div className="min-w-0 h-full" data-redis-trend="network">
+        <RedisTrendChart spec={netTrend} metricMap={metricMap} pending={pending} />
+      </div>
     </div>
   );
 }
