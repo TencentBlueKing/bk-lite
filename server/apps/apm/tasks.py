@@ -77,11 +77,19 @@ def dispatch_apm_policy_evaluations():
     evaluated_at_value = timezone.now().replace(second=0, microsecond=0)
     evaluated_at = evaluated_at_value.isoformat()
     epoch_minute = int(evaluated_at_value.timestamp() // 60)
-    candidates = ApmPolicy.objects.filter(is_enabled=True).values_list("id", "evaluation_interval")
-    policy_ids = [policy_id for policy_id, interval in candidates if epoch_minute % max(interval, 1) == 0]
-    for policy_id in policy_ids:
-        evaluate_apm_policy.delay(str(policy_id), evaluated_at)
-    return {"dispatched": len(policy_ids), "evaluated_at": evaluated_at}
+    from apps.apm.services.policies import scope_services, service_visible_to_policy
+
+    candidates = ApmPolicy.objects.filter(is_enabled=True).select_related("service", "application").prefetch_related("organization_links")
+    dispatched = 0
+    for policy in candidates:
+        if epoch_minute % max(policy.evaluation_interval, 1) != 0:
+            continue
+        for service in scope_services(policy):
+            if not service_visible_to_policy(policy, service):
+                continue
+            evaluate_apm_policy.delay(str(policy.id), evaluated_at, str(service.id))
+            dispatched += 1
+    return {"dispatched": dispatched, "evaluated_at": evaluated_at}
 
 
 @shared_task(
@@ -91,10 +99,10 @@ def dispatch_apm_policy_evaluations():
     retry_jitter=True,
     retry_kwargs={"max_retries": 5},
 )
-def evaluate_apm_policy(policy_id: str, evaluated_at: str):
+def evaluate_apm_policy(policy_id: str, evaluated_at: str, service_id: str | None = None):
     service = DjangoApmPolicyService(VictoriaTracesTelemetryStore(), SystemMgmtNotificationDispatcher())
     try:
-        service.evaluate(policy_id, evaluated_at=datetime.fromisoformat(evaluated_at))
+        service.evaluate(policy_id, evaluated_at=datetime.fromisoformat(evaluated_at), service_id=service_id)
     except ApmPolicy.DoesNotExist:
         return {"policy_id": policy_id, "evaluated_at": evaluated_at, "skipped": "deleted"}
     except Exception:

@@ -4,6 +4,7 @@ from django.db import transaction
 
 from apps.apm.models import ApmAlert, ApmAlertMetricSnapshot, ApmEvent, ApmPolicy
 from apps.apm.services.contracts import MetricDataState, PolicyQueryResult
+from apps.apm.services.policy_conditions import condition_value_map
 
 MAX_ALERT_METRIC_SNAPSHOTS = 1440
 
@@ -18,6 +19,7 @@ def _metric_unit(metric_type: str) -> str:
     return {
         ApmPolicy.MetricType.THROUGHPUT: "req/s",
         ApmPolicy.MetricType.NO_TRAFFIC: "req/s",
+        ApmPolicy.MetricType.SLO_BURN_RATE: "x",
     }[metric_type]
 
 
@@ -48,7 +50,6 @@ class ApmAlertMetricSnapshotStore:
                 alert=alert,
                 defaults={
                     "unit": resolve_result_unit(policy),
-                    "aggregation": policy.aggregation,
                     "evaluation_interval": policy.evaluation_interval,
                     "metric_window": policy.metric_window,
                     "snapshots": [],
@@ -75,6 +76,17 @@ class ApmAlertMetricSnapshotStore:
                     "threshold": threshold,
                     "data_state": str(result.data_state),
                     "recovery_threshold": dict(policy.recovery_threshold or {}) or None,
+                    "condition_values": condition_value_map(result),
+                    "condition_details": [
+                        {
+                            "ref": row.get("ref"),
+                            "value": None if row.get("compared_value") is None else str(row.get("compared_value")),
+                            "threshold": row.get("threshold_value"),
+                            "matched_severity": row.get("matched_severity"),
+                        }
+                        for row in (result.condition_rows or ())
+                    ],
+                    **({} if getattr(result, "budget_remaining", None) is None else {"budget_remaining": str(result.budget_remaining)}),
                 }
             )
             if len(snapshot.snapshots) > MAX_ALERT_METRIC_SNAPSHOTS:
@@ -90,7 +102,6 @@ class ApmAlertMetricSnapshotStore:
             items = items[-MAX_ALERT_METRIC_SNAPSHOTS:]
         return {
             "unit": snapshot.unit,
-            "aggregation": snapshot.aggregation,
             "evaluation_interval": snapshot.evaluation_interval,
             "metric_window": snapshot.metric_window,
             "snapshots": items,

@@ -133,12 +133,24 @@ error:
   policy_aggregate_func_unsupported: Unsupported aggregation function
   policy_numeric_op_only: This function only supports numeric comparison
   policy_threshold_number: Threshold must be a number
+  policy_threshold_level_invalid: Threshold levels must be warning, error, or critical, unique, and at most 3
+  policy_threshold_required: At least one threshold is required
+  policy_threshold_order: Thresholds must be strictly ordered by level
+  policy_threshold_single: This operator or a non-numeric comparison allows only one threshold
+  policy_level_set_mismatch: When matching all conditions, this level is still incomplete
+  policy_role_invalid: Condition type must be regular or prerequisite
+  policy_guard_not_absolute: A prerequisite can only compare the current value
+  policy_guard_no_ladder: A prerequisite has a single threshold
+  policy_guard_with_or: Matching any condition cannot include a prerequisite. Remove it or switch back to matching all conditions
+  policy_regular_required: At least one regular condition is required
   policy_compare_invalid: Compare kind or baseline target is invalid
   policy_compare_func_unsupported: This function does not support that compare kind
   policy_quantile_invalid: Quantile must be 0.5, 0.9, 0.95, or 0.99
   policy_ratio_filter_invalid: Ratio filter is invalid
   policy_field_required: Aggregation field is required
   policy_trigger_count_range: Consecutive match count must be an integer from 1 to 5
+  policy_recover_after_range: Automatic recovery must be an integer from 1 to 10
+  policy_min_hits_range: Minimum hits must be an integer from 1 to 100000
   policy_group_by_invalid: Group-by fields are invalid
   policy_sample_limit_range: Sample size must be an integer from 1 to 10
   topn_unsupported: This field does not support TopN statistics

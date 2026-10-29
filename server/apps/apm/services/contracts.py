@@ -349,6 +349,24 @@ class ServiceMetricQuery:
     include_endpoints: bool = True
     slow_threshold_ms: int | None = None
     apdex_threshold_ms: int | None = None
+    instance_id: str = ""
+
+
+@dataclass(frozen=True)
+class DependencyMetricQuery:
+    """下游 Client Span 的 RED 查询。channel / system / statement 与 client rollup 分类一致。"""
+
+    service_namespace: str
+    service_name: str
+    environment: str
+    started_at: datetime
+    ended_at: datetime
+    channel: str
+    system: str
+    statement: str
+    slow_threshold_ms: int | None = None
+    apdex_threshold_ms: int | None = None
+    include_breakdown: bool = False
 
 
 @dataclass(frozen=True)
@@ -523,6 +541,7 @@ class MetricDataState(StrEnum):
     MISSING_BASELINE = "missing_baseline"
     INSUFFICIENT_SAMPLES = "insufficient_samples"
     HOLD = "hold"
+    MISSING_CONDITION_DATA = "missing_condition_data"
 
 
 @dataclass(frozen=True)
@@ -541,6 +560,10 @@ class PolicyQueryResult:
     result_unit: str = ""
     window_ended_at: datetime | None = None
     baseline_days_used: int | None = None
+    condition_rows: tuple[Mapping[str, object], ...] = ()
+    guard_rows: tuple[Mapping[str, object], ...] = ()
+    guard_blocked: bool = False
+    budget_remaining: Decimal | None = None
 
 
 @dataclass(frozen=True)

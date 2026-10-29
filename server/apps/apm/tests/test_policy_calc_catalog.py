@@ -39,7 +39,6 @@ def _payload(service, **updates):
         "metric_type": "p95",
         "evaluation_interval": 1,
         "metric_window": 5,
-        "aggregation": "avg",
         "thresholds": [{"severity": "error", "comparator": "gt", "value": "500"}],
         "trigger_after": 1,
         "recover_after": 3,
@@ -154,7 +153,7 @@ def test_metric_catalog_rejects_illegal_parameters(apm_api_client, updates, fiel
 @pytest.mark.parametrize(
     ("updates", "expected"),
     [
-        ({}, {"metric_type": "p95", "slow_threshold_ms": None, "apdex_threshold_ms": None, "aggregation": "avg"}),
+        ({}, {"metric_type": "p95", "slow_threshold_ms": None, "apdex_threshold_ms": None}),
         (
             {"metric_type": "p99", "min_request_count": 20, "thresholds": [{"severity": "error", "comparator": "gt", "value": "800"}]},
             {"metric_type": "p99", "min_request_count": 20, "slow_threshold_ms": None},
@@ -170,7 +169,6 @@ def test_metric_catalog_rejects_illegal_parameters(apm_api_client, updates, fiel
                 "metric_type": "slow_request_count",
                 "slow_threshold_ms": 1000,
                 "apdex_threshold_ms": None,
-                "aggregation": "avg",
                 "min_request_count": None,
             },
         ),
@@ -189,7 +187,7 @@ def test_metric_catalog_rejects_illegal_parameters(apm_api_client, updates, fiel
         ),
         (
             {"metric_type": "error_count", "aggregation": "max", "thresholds": [{"severity": "error", "comparator": "gte", "value": "100"}]},
-            {"metric_type": "error_count", "aggregation": "avg", "min_request_count": None},
+            {"metric_type": "error_count", "min_request_count": None},
         ),
         (
             {"metric_type": "latency_avg", "min_request_count": 20, "thresholds": [{"severity": "error", "comparator": "gt", "value": "300"}]},
@@ -205,6 +203,8 @@ def test_metric_catalog_accepts_legal_parameters_and_keeps_legacy_payload(apm_ap
     created = apm_api_client.post("/api/v1/apm/policies/", _payload(_service(), **updates), format="json")
 
     assert created.status_code == 201
+    assert "aggregation" not in created.data
+    assert "no_data_after" not in created.data
     for key, value in expected.items():
         assert created.data[key] == value
 
@@ -215,11 +215,11 @@ def test_latency_error_count_and_apdex_use_red_fields(policy_factory=None):
     point_high = ServiceRedPoint(timestamp=evaluated_at, request_rate=1, error_rate=0, p95_ms=10, p99_ms=20, p50_ms=300, avg_ms=120, max_ms=900)
     series = (point_low, point_high)
     cases = [
-        (ApmPolicy.MetricType.P50, ServiceRed(1, 0, 10, 20, timeseries=series, p50_ms=999), Decimal("200")),
+        (ApmPolicy.MetricType.P50, ServiceRed(1, 0, 10, 20, timeseries=series, p50_ms=999), Decimal("999")),
         (ApmPolicy.MetricType.P75, ServiceRed(1, 0, 10, 20, p75_ms=180), Decimal("180")),
         (ApmPolicy.MetricType.P90, ServiceRed(1, 0, 10, 20, p90_ms=240), Decimal("240")),
-        (ApmPolicy.MetricType.LATENCY_AVG, ServiceRed(1, 0, 10, 20, timeseries=series, avg_ms=999), Decimal("100")),
-        (ApmPolicy.MetricType.LATENCY_MAX, ServiceRed(1, 0, 10, 20, timeseries=series, max_ms=1), Decimal("650")),
+        (ApmPolicy.MetricType.LATENCY_AVG, ServiceRed(1, 0, 10, 20, timeseries=series, avg_ms=999), Decimal("999")),
+        (ApmPolicy.MetricType.LATENCY_MAX, ServiceRed(1, 0, 10, 20, timeseries=series, max_ms=1), Decimal("1")),
         (
             ApmPolicy.MetricType.ERROR_COUNT,
             ServiceRed(
@@ -240,7 +240,6 @@ def test_latency_error_count_and_apdex_use_red_fields(policy_factory=None):
     for metric, red, expected in cases:
         updates = {
             "metric_type": metric,
-            "aggregation": ApmPolicy.Aggregation.AVERAGE,
             "thresholds": [{"severity": "error", "comparator": "gt", "value": "0"}],
         }
         if metric == ApmPolicy.MetricType.APDEX:
@@ -333,6 +332,109 @@ def test_snapshot_and_dry_run_echo_slow_and_apdex_parameters():
     assert snapshot.policy_snapshot["apdex_threshold_ms"] == 500
     assert snapshot.policy_snapshot["metric_type"] == "apdex"
     assert ApmAlertOutbox.objects.get().payload["labels"]["metric_type"] == "apdex"
+
+
+def _noisy_points(evaluated_at, *, p95_ms):
+    return tuple(
+        ServiceRedPoint(
+            timestamp=evaluated_at,
+            request_rate=1,
+            error_rate=0 if index < 19 else 1,
+            p95_ms=p95_ms + 1000 + index,
+            p99_ms=p95_ms + 2000,
+            avg_ms=1,
+            request_count=3,
+            error_count=0 if index < 19 else 1,
+        )
+        for index in range(20)
+    )
+
+
+def test_non_count_metrics_use_the_whole_window_value():
+    evaluated_at = timezone.now().replace(second=0, microsecond=0)
+    whole_error_rate = Decimal("0.017241")
+    current = ServiceRed(
+        0.2,
+        float(whole_error_rate),
+        300,
+        800,
+        timeseries=_noisy_points(evaluated_at, p95_ms=300),
+        request_count=58,
+        error_count=1,
+        avg_ms=40,
+        max_ms=900,
+        p50_ms=20,
+        slow_count=2,
+        satisfied_count=50,
+        tolerating_count=6,
+    )
+    baseline = ServiceRed(
+        0.1,
+        0.01,
+        100,
+        200,
+        timeseries=_noisy_points(evaluated_at, p95_ms=100),
+        request_count=40,
+        error_count=1,
+        slow_count=1,
+        satisfied_count=30,
+        tolerating_count=4,
+    )
+    cases = [
+        (
+            ApmPolicy.MetricType.ERROR_RATE,
+            Decimal(str(current.error_rate)),
+            {"thresholds": [{"severity": "error", "comparator": "gt", "value": "0.01"}]},
+        ),
+        (ApmPolicy.MetricType.P95, Decimal("300"), {}),
+        (
+            ApmPolicy.MetricType.APDEX,
+            Decimal("0.913793"),
+            {"apdex_threshold_ms": 500, "thresholds": [{"severity": "error", "comparator": "lt", "value": "1"}]},
+        ),
+        (
+            ApmPolicy.MetricType.SLOW_REQUEST_RATE,
+            Decimal("0.034483"),
+            {"slow_threshold_ms": 1000, "thresholds": [{"severity": "error", "comparator": "gt", "value": "0"}]},
+        ),
+        (ApmPolicy.MetricType.THROUGHPUT, Decimal("0.2"), {"thresholds": [{"severity": "error", "comparator": "gt", "value": "0"}]}),
+    ]
+    for metric, expected, extra in cases:
+        policy = _policy(metric_type=metric, **extra)
+        result = DjangoApmPolicyService(_Store(current), InMemoryNotificationDispatcher()).test_query(policy, evaluated_at=evaluated_at)
+        assert result.current_value == expected
+        assert result.current_value != Decimal("0.05")
+
+    compared = _policy(
+        name="previous-window",
+        compare_mode=ApmPolicy.CompareMode.PREVIOUS_WINDOW,
+        compare_value_kind=ApmPolicy.CompareValueKind.DELTA,
+        thresholds=[{"severity": "error", "comparator": "gt", "value": "100"}],
+    )
+    paired = DjangoApmPolicyService(_PairStore(current, baseline), InMemoryNotificationDispatcher()).test_query(
+        compared,
+        evaluated_at=evaluated_at,
+    )
+    assert paired.current_value == Decimal("300")
+    assert paired.baseline_value == Decimal("100")
+    assert paired.value == Decimal("200")
+
+    offset = _policy(
+        name="offset-days",
+        compare_mode=ApmPolicy.CompareMode.OFFSET_DAYS,
+        compare_offset_amount=1,
+        compare_value_kind=ApmPolicy.CompareValueKind.DELTA,
+        thresholds=[{"severity": "error", "comparator": "gt", "value": "100"}],
+    )
+    offset_result = DjangoApmPolicyService(_PairStore(current, baseline), InMemoryNotificationDispatcher()).test_query(
+        offset,
+        evaluated_at=evaluated_at,
+    )
+    assert offset_result.current_value == Decimal("300")
+    assert offset_result.baseline_value == Decimal("100")
+    assert offset_result.value == Decimal("200")
+    assert offset_result.result_unit == "ms"
+    assert offset_result.breached is True
 
 
 class _PairStore:
