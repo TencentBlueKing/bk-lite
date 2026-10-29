@@ -11,9 +11,10 @@ import EventsRail, { type HostAlertRailEvent } from '../../host/layered/events-r
 import type { PreparedSummaryCard } from '../../common/simple-dashboard-core';
 import { useDashboardText } from '../../../shared/utils/content-i18n';
 import { redisCategoryText, type RedisCategoryCopyKey } from './redis-copy';
-import { redisHitRatePercent, redisMemoryLimitUnset, type RedisMetricMap } from './series';
+import { redisMemoryLimitUnset, redisShownHitPercent, type RedisMetricMap } from './series';
 import FocusPane, { type RedisTopicTab } from './focus-pane';
 import { CompactTrends } from './topic-panes';
+import { useProTimeWindow } from '../../host/layered/pro-time-window';
 
 interface OverviewPaneProps {
   summaryCards: PreparedSummaryCard[];
@@ -83,7 +84,11 @@ export default function OverviewPane({
 }: OverviewPaneProps) {
   const { t, dt } = useDashboardText();
   const text = (key: RedisCategoryCopyKey) => redisCategoryText(t, key);
+  const proTime = useProTimeWindow();
   const limitUnset = redisMemoryLimitUnset(metricMap);
+  const windowSettled = !pendingMetricNames.has('redis_keyspace_hits_rate')
+    && !pendingMetricNames.has('redis_keyspace_misses_rate');
+  const overviewHit = redisShownHitPercent(metricMap, proTime?.window ?? null, windowSettled).percent;
   const cards = useMemo<RedisKpiTile[]>(() => {
     const metricCards: RedisKpiTile[] = summaryCards.map((summary) => {
       const metric = summary.card.metric;
@@ -99,15 +104,23 @@ export default function OverviewPane({
         };
       }
       if (metric === 'redis_keyspace_hitrate') {
-        const pct = redisHitRatePercent(metricMap);
-        if (pct != null) {
+        if (overviewHit != null) {
           return {
             key: metric,
             label,
-            value: `${pct.toFixed(1)}%`,
+            value: `${overviewHit.toFixed(1)}%`,
             tone: summary.valueColor ?? summary.card.color
           };
         }
+        const known = OVERVIEW_EMPTY[metric];
+        return {
+          key: metric,
+          label,
+          value: text(known.value),
+          detail: text(known.detail),
+          prose: true,
+          empty: known.empty
+        };
       }
       const empty = summary.mainValue.value === '--';
       if (empty) {
@@ -145,7 +158,7 @@ export default function OverviewPane({
       expanded: alertsOpen
     });
     return metricCards;
-  }, [alertCount, alertsOpen, dt, limitUnset, metricMap, onOpenAlerts, summaryCards, t]);
+  }, [alertCount, alertsOpen, dt, limitUnset, metricMap, onOpenAlerts, overviewHit, summaryCards, t]);
 
   return (
     <div data-redis-pane="overview" className="contents">

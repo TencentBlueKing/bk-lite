@@ -74,6 +74,7 @@ export const REDIS_CATEGORY_COPY = {
   penetrationFormula: [textId('redisCategoryPenetrationFormula'), '穿透率：未命中 ÷（命中 + 未命中）× 100%。'],
   hitRateHint: [textId('redisCategoryHitRateHint'), '命中率：命中 ÷（命中 + 未命中）× 100%。'],
   hitRateSteady: [textId('redisCategoryHitRateSteady'), '分母是同一窗口里的命中次数加未命中次数。'],
+  hitRateFallback: [textId('redisCategoryHitRateFallback'), '当前窗口没有成对的命中与未命中采样时，才改用累计命中率。'],
   blockedHealthy: [textId('redisCategoryBlockedHealthy'), '没有客户端卡在阻塞命令上'],
   blockedWarn: [textId('redisCategoryBlockedWarn'), '有客户端卡在阻塞命令上'],
   blockedHint: [textId('redisCategoryBlockedHint'), '阻塞等待：正在等待阻塞类命令返回的客户端数。'],

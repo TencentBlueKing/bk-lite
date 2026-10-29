@@ -20,6 +20,7 @@ import { REDIS_DASHBOARD_CONFIG } from './config';
 import RedisArchitectureChip from './layered/architecture-chip';
 import RedisCategoryLayout from './layered/category-layout';
 import { REDIS_CATEGORY_METRIC_NAMES, REDIS_OVERVIEW_KPI_TITLES } from './layered/overview-metrics';
+import { classicRedisHitRateDisplay } from './layered/series';
 import styles from './index.module.scss';
 
 const SUMMARY_TITLES: string[] = [...REDIS_OVERVIEW_KPI_TITLES];
@@ -43,6 +44,12 @@ export default function RedisDashboardPage() {
   );
 
   const summaryCards = useFilteredSummaryCards(dashboard.summaryCards, SUMMARY_TITLES);
+  const classicSummaryCards = summaryCards.map((card) => {
+    if (card.card.metric !== 'redis_keyspace_hitrate') return card;
+    if (card.mainValue.value === '--' || card.mainValue.value === '') return card;
+    const displayed = classicRedisHitRateDisplay(card.trendData);
+    return displayed ? { ...card, mainValue: displayed } : card;
+  });
   const trendCharts = useFilteredChartPanels(dashboard.chartPanels, TREND_TITLES);
   const lifecycleCharts = useFilteredChartPanels(dashboard.chartPanels, LIFECYCLE_TITLES);
   const fragChart = useFilteredChartPanels(dashboard.chartPanels, ['内存碎片'])[0];
@@ -89,7 +96,7 @@ export default function RedisDashboardPage() {
       dashboardContent={
         <>
           <DashboardSectionLabel styles={styles}>健康概览</DashboardSectionLabel>
-          <KpiSection dashboard={dashboard} summaryCards={summaryCards} kpiCols={6} styles={styles} />
+          <KpiSection dashboard={dashboard} summaryCards={classicSummaryCards} kpiCols={6} styles={styles} />
 
           <DashboardSectionLabel styles={styles}>性能与缓存</DashboardSectionLabel>
           <TrendSection charts={trendCharts} onXRangeChange={dashboard.onXRangeChange} loading={dashboard.loading} styles={styles} />

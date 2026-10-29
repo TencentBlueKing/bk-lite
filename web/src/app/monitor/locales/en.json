@@ -4154,6 +4154,7 @@
         "redisCategoryPenetrationLook": "The denominator is hits plus misses in the same window.",
         "redisCategoryHitRateHint": "Hit rate: hits ÷ (hits + misses) × 100%.",
         "redisCategoryHitRateSteady": "The denominator is hits plus misses in the same window.",
+        "redisCategoryHitRateFallback": "The lifetime hit rate is used only when this window has no paired hit and miss samples.",
         "redisCategoryBlockedHealthy": "No client is stuck on a blocking command",
         "redisCategoryBlockedWarn": "Clients are stuck on a blocking command",
         "redisCategoryBlockedHint": "Blocked waiting: clients waiting for a blocking command to return.",

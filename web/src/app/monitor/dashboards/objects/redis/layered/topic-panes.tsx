@@ -1,6 +1,7 @@
 'use client';
 
 import type { ReactNode } from 'react';
+import type { ChartData } from '@/app/monitor/types';
 import {
   ProDashLoading,
   ProSection,
@@ -21,10 +22,10 @@ import { RedisHint } from './redis-hint';
 import {
   redisChartPoints,
   redisDisplay,
-  redisHitRatePercent,
   redisLatest,
   redisMemoryLimitUnset,
   redisProductText,
+  redisShownHitPercent,
   scaleHitRateChart,
   type RedisMetricMap
 } from './series';
@@ -163,7 +164,8 @@ function Spark({
   color,
   unit,
   keepSeriesWhenWindowEmpty = false,
-  fill = false
+  fill = false,
+  data
 }: {
   metricMap: RedisMetricMap;
   name: string;
@@ -173,16 +175,18 @@ function Spark({
   keepSeriesWhenWindowEmpty?: boolean;
   /** 折线吃满所在卡片剩余高度。重点关注 spark 不要开。 */
   fill?: boolean;
+  /** 已经换算好的点。传入后不再按指标名二次缩放。 */
+  data?: ChartData[];
 }) {
   const text = useRedisText();
   const proTime = useProTimeWindow();
-  const plottedRaw = redisChartPoints(
+  const plottedRaw = data ?? redisChartPoints(
     metricMap,
     [{ name, label }],
     proTime?.window ?? null,
     keepSeriesWhenWindowEmpty
   );
-  const plotted = name === 'redis_keyspace_hitrate' ? scaleHitRateChart(plottedRaw) : plottedRaw;
+  const plotted = data ? plottedRaw : (name === 'redis_keyspace_hitrate' ? scaleHitRateChart(plottedRaw) : plottedRaw);
   return (
     <ThinTimeSeries
       bare
@@ -552,26 +556,29 @@ export function CachePane({
   pending: ReadonlySet<string>;
 }) {
   const text = useRedisText();
+  const proTime = useProTimeWindow();
   const hits = redisDisplay(metricMap, 'redis_keyspace_hits_rate', 'cps');
   const misses = redisDisplay(metricMap, 'redis_keyspace_misses_rate', 'cps');
-  const hitRate = redisHitRatePercent(metricMap);
-  const loading = (pending.has('redis_keyspace_hits_rate') || pending.has('redis_keyspace_misses_rate'))
-    && hits.value == null && misses.value == null;
-  const bothKnown = hits.value != null && misses.value != null;
-  const total = Math.max(hits.value ?? 0, 0) + Math.max(misses.value ?? 0, 0);
-  const rateKnown = bothKnown && total > 0;
+  const windowSettled = !pending.has('redis_keyspace_hits_rate') && !pending.has('redis_keyspace_misses_rate');
+  const shown = redisShownHitPercent(metricMap, proTime?.window ?? null, windowSettled);
+  const keyspace = shown.keyspace;
+  const hitRate = shown.percent;
+  const usingFallback = shown.fallback;
+  const loading = !windowSettled && hitRate == null && !keyspace.bothKnown;
+  const bothKnown = keyspace.bothKnown;
+  const rateKnown = keyspace.penetrationPercent != null;
   const empty = !loading && !bothKnown;
   const centerValue = rateKnown
-    ? `${((Math.max(misses.value ?? 0, 0) / total) * 100).toFixed(1)}%`
+    ? `${keyspace.penetrationPercent?.toFixed(1)}%`
     : (bothKnown ? '--' : '');
-  const penetrating = bothKnown && (misses.value ?? 0) > (hits.value ?? 0) && (misses.value ?? 0) > 0;
+  const penetrating = bothKnown && keyspace.hitPercent != null && keyspace.hitPercent < 50;
   const hitLow = hitRate != null && (hitRate < 90 || penetrating);
   const centerCaption = (
     <span data-redis-center="penetration" data-redis-penetration={rateKnown ? 'value' : bothKnown ? 'zero' : 'quiet'} className="inline-flex items-center gap-1">
       {text('penetration')}
       <RedisHint
         kind="redis-penetration"
-        lines={[text('penetrationFormula')]}
+        lines={[text('penetrationFormula'), text('penetrationLook')]}
       />
     </span>
   );
@@ -611,16 +618,24 @@ export function CachePane({
               hint={(
                 <RedisHint
                   kind="redis-hit-rate"
-                  lines={[text('hitRateHint')]}
+                  lines={[
+                    text('hitRateHint'),
+                    text('hitRateSteady'),
+                    text('hitRateFallback')
+                  ]}
                 />
               )}
             />
-            {pending.has('redis_keyspace_hitrate') && hitRate == null ? (
+            {loading ? (
               <ProDashLoading />
             ) : hitRate == null ? (
               <EmptySample />
             ) : (
-              <div className="flex min-h-[168px] min-w-0 flex-1 flex-col" data-redis-spark="hit-rate">
+              <div
+                className="flex min-h-[168px] min-w-0 flex-1 flex-col"
+                data-redis-spark="hit-rate"
+                data-redis-hit-source={usingFallback ? 'lifetime' : 'window'}
+              >
                 <Spark
                   fill
                   metricMap={metricMap}
@@ -628,6 +643,13 @@ export function CachePane({
                   label={text('cardHitRate')}
                   color={hitLow ? REDIS_PALETTE.amber : REDIS_PALETTE.emerald}
                   unit="percent"
+                  data={usingFallback
+                    ? scaleHitRateChart(redisChartPoints(
+                      metricMap,
+                      [{ name: 'redis_keyspace_hitrate', label: text('cardHitRate') }],
+                      proTime?.window ?? null
+                    ))
+                    : keyspace.points}
                 />
               </div>
             )}

@@ -1,7 +1,7 @@
 import type { ChartData } from '@/app/monitor/types';
 import type { MetricUnit } from '../../../shared/types';
 import type { MetricSeries } from '../../common/simple-dashboard-core';
-import { mergeChartSeries } from '../../../shared/utils/chart-data';
+import { getLatestChartValue, mergeChartSeries } from '../../../shared/utils/chart-data';
 import { formatMetricValue } from '../../../shared/utils/format';
 import { clipChartDataToWindow, type ProChartWindow } from '../../../shared/utils/pro-chart-window';
 import { latestChartNumber } from '../../host/layered/readings';
@@ -75,16 +75,23 @@ export const redisLatest = (metricMap: RedisMetricMap, name: string) => (
 );
 
 const HIT_RATE_METRIC = 'redis_keyspace_hitrate';
+const HITS_RATE_METRIC = 'redis_keyspace_hits_rate';
+const MISSES_RATE_METRIC = 'redis_keyspace_misses_rate';
 
 /**
  * Telegraf 的 keyspace_hitrate 是 0–1 比例。展示和刻度都用百分数。
  * 已经大于 1.5 的读数视为百分数，不再乘。
+ * 专业盘主路径不用这条累计值，只在窗口命中/未命中不成对时兜底。
  */
+export const scaleRatioToPercent = (raw: number): number => {
+  const scaled = raw <= 1.5 ? raw * 100 : raw;
+  return Math.min(100, Math.max(0, scaled));
+};
+
 export const redisHitRatePercent = (metricMap: RedisMetricMap): number | null => {
   const raw = redisLatest(metricMap, HIT_RATE_METRIC);
   if (raw == null) return null;
-  const scaled = raw <= 1.5 ? raw * 100 : raw;
-  return Math.min(100, Math.max(0, scaled));
+  return scaleRatioToPercent(raw);
 };
 
 export const scaleHitRateChart = (data: ChartData[]): ChartData[] => data.map((point) => {
@@ -93,11 +100,118 @@ export const scaleHitRateChart = (data: ChartData[]): ChartData[] => data.map((p
     if (!/^value\d+$/.test(key)) return;
     const value = next[key];
     if (typeof value !== 'number' || !Number.isFinite(value)) return;
-    const scaled = value <= 1.5 ? value * 100 : value;
-    next[key] = Math.min(100, Math.max(0, scaled));
+    next[key] = scaleRatioToPercent(value);
   });
   return next;
 });
+
+const roundPercent = (value: number) => Math.round(value * 10) / 10;
+
+const ratioFromCounts = (hits: number, misses: number) => {
+  const hit = Math.max(hits, 0);
+  const miss = Math.max(misses, 0);
+  const total = hit + miss;
+  if (total <= 0) return null;
+  const hitPercent = roundPercent((hit / total) * 100);
+  const penetrationPercent = roundPercent(100 - hitPercent);
+  return { hitPercent, penetrationPercent };
+};
+
+export interface RedisWindowKeyspace {
+  /** 与穿透率同一对窗口命中/未命中。0/0 时为 null。 */
+  hitPercent: number | null;
+  penetrationPercent: number | null;
+  /** 命中频率和未命中频率都有最新点，含两边都是 0。 */
+  bothKnown: boolean;
+  /** 已经是 0–100 的命中率折线，右端与 hitPercent 对齐。 */
+  points: ChartData[];
+}
+
+/**
+ * 命中率和穿透率共用当前窗口的 hits/misses 速率。
+ * 展示值先四舍五入到 1 位，穿透率取 100 减命中率，两张卡相加是 100.0。
+ */
+export const redisWindowKeyspace = (
+  metricMap: RedisMetricMap,
+  chartWindow: ProChartWindow | null
+): RedisWindowKeyspace => {
+  const hitPoints = redisPoints(metricMap, HITS_RATE_METRIC);
+  const missPoints = redisPoints(metricMap, MISSES_RATE_METRIC);
+  const missAt = new Map<number, number>();
+  missPoints.forEach((point) => {
+    const time = Number(point.time);
+    if (typeof point.value1 !== 'number' || !Number.isFinite(time)) return;
+    missAt.set(time, point.value1);
+  });
+  const paired: ChartData[] = [];
+  hitPoints.forEach((point) => {
+    const time = Number(point.time);
+    const hits = point.value1;
+    const misses = missAt.get(time);
+    if (typeof hits !== 'number' || misses == null || !Number.isFinite(time)) return;
+    const ratio = ratioFromCounts(hits, misses);
+    if (!ratio) return;
+    paired.push({ time, value1: ratio.hitPercent });
+  });
+  const hitsLatest = redisLatest(metricMap, HITS_RATE_METRIC);
+  const missesLatest = redisLatest(metricMap, MISSES_RATE_METRIC);
+  const bothKnown = hitsLatest != null && missesLatest != null;
+  const latestRatio = bothKnown ? ratioFromCounts(hitsLatest, missesLatest) : null;
+  const points = clipChartDataToWindow(paired, chartWindow);
+  if (latestRatio) {
+    const last = points[points.length - 1];
+    const hitTime = Number(hitPoints[hitPoints.length - 1]?.time);
+    const missTime = Number(missPoints[missPoints.length - 1]?.time);
+    const time = Math.max(hitTime, missTime);
+    const inside = chartWindow == null
+      || (Number.isFinite(time) && time >= chartWindow.startSec && time <= chartWindow.endSec);
+    if (inside && Number.isFinite(time) && (!last || last.value1 !== latestRatio.hitPercent || Number(last.time) !== time)) {
+      const index = points.findIndex((point) => Number(point.time) === time);
+      const next = { time, value1: latestRatio.hitPercent };
+      if (index >= 0) points[index] = next;
+      else points.push(next);
+      points.sort((left, right) => Number(left.time) - Number(right.time));
+    }
+  }
+  if (!bothKnown || !latestRatio) {
+    return {
+      hitPercent: null,
+      penetrationPercent: null,
+      bothKnown,
+      points: bothKnown ? [] : points
+    };
+  }
+  return {
+    hitPercent: latestRatio.hitPercent,
+    penetrationPercent: latestRatio.penetrationPercent,
+    bothKnown: true,
+    points
+  };
+};
+
+/** 窗口有成对采样时用窗口命中率。0/0 保持空。窗口确实没有采样时才回落到累计命中率。 */
+export const redisShownHitPercent = (
+  metricMap: RedisMetricMap,
+  chartWindow: ProChartWindow | null,
+  windowSettled: boolean
+) => {
+  const keyspace = redisWindowKeyspace(metricMap, chartWindow);
+  if (keyspace.hitPercent != null || keyspace.bothKnown || !windowSettled) {
+    return { percent: keyspace.hitPercent, fallback: false, keyspace };
+  }
+  const percent = redisHitRatePercent(metricMap);
+  return { percent, fallback: percent != null, keyspace };
+};
+
+/** 传统盘 KPI 的原始序列仍是 0–1。主读数换成真实百分数，查询本身不动。 */
+export const classicRedisHitRateDisplay = (
+  trendData: ChartData[]
+): { value: string; unit: string } | null => {
+  if (!trendData.length) return null;
+  const raw = getLatestChartValue(trendData);
+  if (!Number.isFinite(raw)) return null;
+  return { value: scaleRatioToPercent(raw).toFixed(1), unit: '%' };
+};
 
 /** 各序列最新一点上的复制角色标签。没有标签时返回空。 */
 export const redisReplicationLabels = (
