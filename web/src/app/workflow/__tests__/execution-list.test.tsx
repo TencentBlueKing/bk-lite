@@ -249,6 +249,7 @@ describe('执行记录统一详情入口', () => {
     await screen.findByText('执行详情');
 
     expect(mocks.replace).not.toHaveBeenCalled();
+    expect(mocks.push).not.toHaveBeenCalled();
     expect(mocks.get.mock.calls.filter(([url]) => String(url).endsWith('/executions/execution-1/'))).toHaveLength(1);
     expect(mocks.get.mock.calls.filter(([url]) => String(url).endsWith('/executions/execution-1/nodes/'))).toHaveLength(1);
 
@@ -265,6 +266,36 @@ describe('执行记录统一详情入口', () => {
     expect(mocks.get.mock.calls.filter(([url]) => String(url).endsWith('/executions/execution-1/'))).toHaveLength(2);
     expect(mocks.get.mock.calls.filter(([url]) => String(url).endsWith('/executions/execution-1/nodes/'))).toHaveLength(2);
     expect(mocks.get.mock.calls.filter(([url]) => String(url).includes('/executions/?'))).toHaveLength(initialListRequests);
+  });
+
+  it('从带执行编号的地址关闭抽屉时替换当前历史，后退不会重新打开', async () => {
+    mocks.searchParams = 'scope=mine&node=approve_release&instance_id=approval-1';
+    const { container } = renderPage('execution-1', 'approve_release', 'approval-1');
+    expect(await screen.findByText('执行详情')).not.toBeNull();
+
+    const closeButton = container.ownerDocument.querySelector<HTMLButtonElement>('.ant-drawer-close');
+    expect(closeButton).not.toBeNull();
+    fireEvent.click(closeButton!);
+
+    await waitFor(() => expect(screen.queryByText('执行详情')).toBeNull());
+    expect(mocks.replace).toHaveBeenCalledWith('/workflow/executions?scope=mine');
+    expect(mocks.push).not.toHaveBeenCalled();
+  });
+
+  it('执行编号在同一页切换时只开关抽屉，不重新请求列表', async () => {
+    mocks.searchParams = 'scope=mine';
+    const result = renderPage();
+    await screen.findByRole('button', { name: '审批' });
+    const listRequests = () => mocks.get.mock.calls.filter(([url]) => String(url).includes('/executions/?')).length;
+    const initialListRequests = listRequests();
+
+    result.rerender(page('execution-1', 'approve_release', 'approval-1'));
+    expect(await screen.findByText('执行详情')).not.toBeNull();
+    expect(listRequests()).toBe(initialListRequests);
+
+    result.rerender(page());
+    await waitFor(() => expect(screen.queryByText('执行详情')).toBeNull());
+    expect(listRequests()).toBe(initialListRequests);
   });
 
   it('详情抽屉定位审批节点，并将终止和审批放在详情上下文', async () => {

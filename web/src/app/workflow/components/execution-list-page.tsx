@@ -199,6 +199,9 @@ export function ExecutionListPage({ initialExecutionId, initialNodeReference, in
   const listRequestKey = useMemo(() => JSON.stringify([pagination.current, pagination.pageSize, filters]), [filters, pagination.current, pagination.pageSize]);
   useAutoRequest(listRequestKey, loadExecutions);
   useEffect(() => {
+    setSelectedExecutionId(initialExecutionId);
+  }, [initialExecutionId]);
+  useEffect(() => {
     if (lastRouteMine.current === initialMine) return;
     lastRouteMine.current = initialMine;
     setSelectedExecutionId(undefined);
@@ -340,7 +343,7 @@ export function ExecutionListPage({ initialExecutionId, initialNodeReference, in
         open={Boolean(selectedExecutionId)}
         onClose={() => {
           setSelectedExecutionId(undefined);
-          if (initialExecutionId) router.push(`/workflow/executions${filterQuery(filters)}`);
+          if (initialExecutionId) router.replace(`/workflow/executions${filterQuery(filters)}`);
         }}
         onExecutionChanged={() => {
           void loadExecutions(true);
