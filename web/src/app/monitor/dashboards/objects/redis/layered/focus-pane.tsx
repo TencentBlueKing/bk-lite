@@ -73,9 +73,9 @@ function FocusStepFlow({ steps }: { steps: readonly { title: string; detail: str
         {steps.map((step, index) => (
           <React.Fragment key={step.title}>
             {index > 0 ? (
-              <span aria-hidden className="mx-1 text-[12px] leading-none text-[#d9d9d9]">→</span>
+              <span aria-hidden className="mx-1 text-[12px] leading-none text-[var(--color-text-4)]">→</span>
             ) : null}
-            <span className="inline-flex h-6 items-center rounded-[4px] border border-[#f0f0f0] bg-[#f5f5f5] px-2 text-[12px] leading-none text-[#595959]">
+            <span className="inline-flex h-6 items-center rounded-[4px] border border-[var(--color-border)] bg-[var(--color-fill-2)] px-2 text-[12px] leading-none text-[var(--color-text-2)]">
               {step.title}
             </span>
           </React.Fragment>
@@ -84,8 +84,8 @@ function FocusStepFlow({ steps }: { steps: readonly { title: string; detail: str
       <div className="flex flex-col gap-1">
         {steps.map((step) => (
           <p key={step.title} className="m-0 text-[12px] leading-[18px]">
-            <span className="font-semibold text-[#595959]">{step.title}</span>
-            <span className="text-[#8c8c8c]"> {step.detail}</span>
+            <span className="font-semibold text-[var(--color-text-1)]">{step.title}</span>
+            <span className="text-[var(--color-text-3)]"> {step.detail}</span>
           </p>
         ))}
       </div>

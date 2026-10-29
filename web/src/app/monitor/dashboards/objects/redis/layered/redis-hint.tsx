@@ -58,11 +58,13 @@ export function colonSegment(line: string): HintSegment | null {
 }
 
 /** 档名单独一行加粗，释义在下，常规字重。等号不出现在气泡里。 */
-function segmentNode(item: HintSegment) {
+function segmentNode(item: HintSegment, nowrap = false) {
   return (
     <>
       <strong className="block text-[13px] font-bold leading-[1.55] text-[var(--color-text-1)]">{item.lead}</strong>
-      <span className="mt-1 block font-normal">{item.body}</span>
+      <span className={['mt-1 block font-normal', nowrap ? 'whitespace-nowrap' : ''].filter(Boolean).join(' ')}>
+        {item.body}
+      </span>
     </>
   );
 }
@@ -74,7 +76,7 @@ interface HintRow {
 
 function lineRow(line: string, nowrap = false): HintRow {
   const split = colonSegment(line);
-  return { node: split ? segmentNode(split) : line, nowrap };
+  return { node: split ? segmentNode(split, nowrap) : line, nowrap };
 }
 
 function rowsOf(group: HintGroup): HintRow[] {

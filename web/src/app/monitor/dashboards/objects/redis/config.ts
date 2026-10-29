@@ -28,7 +28,6 @@ export const REDIS_DASHBOARD_CONFIG: SimpleDashboardConfig = {
   objectFallbackName: 'Redis',
   instanceType: 'redis',
   collectionStatusQuery: "count({instance_type='redis', collect_type='database', __$labels__}) by (instance_id)",
-  metaItems: ['Telegraf', 'database'],
   metrics: [
     {
       name: 'redis_uptime',

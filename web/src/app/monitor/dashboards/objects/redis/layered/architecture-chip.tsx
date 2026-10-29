@@ -61,13 +61,11 @@ export default function RedisArchitectureChip({ metricMap }: { metricMap: RedisM
     link,
     labeledRole: replicationRoleLabel(labels)
   });
-  const role = kind === 'cluster'
-    ? inferReplicationRole({ labels, slaves, link })
-    : null;
+  const role = inferReplicationRole({ labels, slaves, link });
   const label = redisCategoryText(t, COPY[kind]);
   const known = kind !== 'unknown';
   const chip = chipClass(known);
-  if (kind !== 'cluster' || role == null) {
+  if (role == null) {
     return (
       <span data-redis-arch={kind} className={chip}>
         {label}

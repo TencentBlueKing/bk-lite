@@ -390,7 +390,8 @@ function ReplicaStatusRow({
         lines={stateLines}
         locked={noSample}
         loading={stateLoading}
-        value={enabled == null ? '--' : enabled ? text('backlogOn') : text('backlogOff')}
+        value={enabled == null ? undefined : enabled ? text('backlogOn') : text('backlogOff')}
+        empty={!stateLoading && enabled == null ? text('legendQuiet') : undefined}
         tone={enabled ? 'var(--color-success)' : 'var(--color-text-3)'}
         dataAttrs={{
           'data-redis-backlog': enabled == null ? 'quiet' : enabled ? 'on' : 'off',

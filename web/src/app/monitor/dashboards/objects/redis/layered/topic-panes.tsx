@@ -533,15 +533,16 @@ export function CachePane({
   const loading = (pending.has('redis_keyspace_hits_rate') || pending.has('redis_keyspace_misses_rate'))
     && hits.value == null && misses.value == null;
   const bothKnown = hits.value != null && misses.value != null;
-  const empty = !loading && !bothKnown;
   const total = Math.max(hits.value ?? 0, 0) + Math.max(misses.value ?? 0, 0);
-  const centerValue = bothKnown
-    ? (total > 0 ? `${((Math.max(misses.value ?? 0, 0) / total) * 100).toFixed(1)}%` : '0.0%')
-    : '';
+  const rateKnown = bothKnown && total > 0;
+  const empty = !loading && !bothKnown;
+  const centerValue = rateKnown
+    ? `${((Math.max(misses.value ?? 0, 0) / total) * 100).toFixed(1)}%`
+    : (bothKnown ? '--' : '');
   const penetrating = bothKnown && (misses.value ?? 0) > (hits.value ?? 0) && (misses.value ?? 0) > 0;
   const hitLow = hitRate != null && (hitRate < 90 || penetrating);
   const centerCaption = (
-    <span data-redis-center="penetration" className="inline-flex items-center gap-1">
+    <span data-redis-center="penetration" data-redis-penetration={rateKnown ? 'value' : bothKnown ? 'zero' : 'quiet'} className="inline-flex items-center gap-1">
       {text('penetration')}
       <RedisHint
         kind="redis-penetration"
@@ -665,9 +666,8 @@ export function CompactTrends({
   pending: ReadonlySet<string>;
 }) {
   return (
-    <div className={`${chart.chartGrid2} ${chart.processTrends}`} data-redis-trends="overview">
+    <div className={`${chart.processTrends} grid min-w-0 grid-cols-1`} data-redis-trends="overview">
       <RedisTrendChart spec={commandTrend} metricMap={metricMap} pending={pending} />
-      <RedisTrendChart spec={hitTrend} metricMap={metricMap} pending={pending} />
     </div>
   );
 }
