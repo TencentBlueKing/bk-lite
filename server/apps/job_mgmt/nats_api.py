@@ -1,8 +1,12 @@
 """Job Management NATS API - 用于数据权限规则"""
 
+import hashlib
 import os
+from datetime import timedelta
 
+from django.db import IntegrityError
 from django.db.models import Q
+from django.utils import timezone
 
 import nats_client
 from apps.core.logger import job_logger as logger
@@ -247,6 +251,7 @@ def _run_script_execute(data: dict, *, trusted_actor=None):
     callback_type = data.get("callback_type", CallbackType.WEB)
     callback_url = data.get("callback_url")
     callback_subject = data.get("callback_subject")
+    async_ctx = data.get("async_callback_context") if isinstance(data.get("async_callback_context"), dict) else None
     actor = trusted_actor if isinstance(trusted_actor, dict) else {}
     actor_name = actor.get("user") or "api"
     actor_domain = actor.get("domain") or "domain.com"
@@ -264,10 +269,41 @@ def _run_script_execute(data: dict, *, trusted_actor=None):
     if not team:
         return {"result": False, "message": job_message(None, "error.team_required", "team is required")}
 
-    # 回调配置校验（web 通道 SSRF 校验、nats 通道 subject 必填）
-    cb_err = _validate_callback_config(callback_type, callback_url, callback_subject, "job_script_execute")
-    if cb_err:
-        return {"result": False, "message": cb_err}
+    async_fields = {}
+    if async_ctx:
+        callback_token = async_ctx.get("callback_token") or ""
+        callback_url = (async_ctx.get("callback_url") or "").strip()
+        if not callback_url or not callback_token:
+            return {"result": False, "message": "callback_context.callback_url and callback_token are required"}
+        cb_err = _validate_callback_config(CallbackType.WEB, callback_url, "", "job_script_execute_async")
+        if cb_err:
+            return {"result": False, "message": cb_err}
+        callback_key = hashlib.sha256(callback_token.encode("utf-8")).hexdigest()
+        existing = JobExecution.objects.filter(async_callback_key=callback_key).first()
+        if existing:
+            return {"result": True, "data": {"accepted": True, "execution_id": str(existing.id)}}
+        timeout_seconds = int(async_ctx.get("timeout") or 3600)
+        async_fields = {
+            "async_callback_context": {
+                "callback_url": callback_url,
+                "callback_token": callback_token,
+                "operator": async_ctx.get("operator") or "system",
+                "timeout": timeout_seconds,
+                "user": actor_name,
+                "domain": actor_domain,
+                "team_id": (team[0] if team else None),
+            },
+            "async_callback_deadline_at": timezone.now() + timedelta(seconds=timeout_seconds),
+            "async_callback_key": callback_key,
+        }
+        callback_url = ""
+        callback_subject = ""
+        callback_type = CallbackType.WEB
+    else:
+        # 回调配置校验（web 通道 SSRF 校验、nats 通道 subject 必填）
+        cb_err = _validate_callback_config(callback_type, callback_url, callback_subject, "job_script_execute")
+        if cb_err:
+            return {"result": False, "message": cb_err}
 
     # 高危命令检测
     check_result = DangerousChecker.check_command(script_content, team)
@@ -292,28 +328,37 @@ def _run_script_execute(data: dict, *, trusted_actor=None):
 
     # 创建执行记录
 
-    execution = JobExecution.objects.create(
-        name=name,
-        job_type=JobType.SCRIPT,
-        trigger_source=TriggerSource.API,
-        status=ExecutionStatus.PENDING,
-        script_type=script_type,
-        script_content=script_content,
-        params=params_str,
-        timeout=timeout,
-        total_count=len(target_list),
-        target_source=target_source,
-        target_list=target_list,
-        team=team,
-        callback_type=callback_type,
-        callback_url=callback_url,
-        callback_subject=callback_subject,
-        executor_user=actor_name,
-        created_by=actor_name[:32],
-        updated_by=actor_name[:32],
-        domain=actor_domain,
-        updated_by_domain=actor_domain,
-    )
+    create_kwargs = {
+        "name": name,
+        "job_type": JobType.SCRIPT,
+        "trigger_source": TriggerSource.API,
+        "status": ExecutionStatus.PENDING,
+        "script_type": script_type,
+        "script_content": script_content,
+        "params": params_str,
+        "timeout": timeout,
+        "total_count": len(target_list),
+        "target_source": target_source,
+        "target_list": target_list,
+        "team": team,
+        "callback_type": callback_type,
+        "callback_url": callback_url,
+        "callback_subject": callback_subject,
+        "executor_user": actor_name,
+        "created_by": actor_name[:32],
+        "updated_by": actor_name[:32],
+        "domain": actor_domain,
+        "updated_by_domain": actor_domain,
+        **async_fields,
+    }
+    try:
+        execution = JobExecution.objects.create(**create_kwargs)
+    except IntegrityError:
+        if async_fields.get("async_callback_key"):
+            execution = JobExecution.objects.filter(async_callback_key=async_fields["async_callback_key"]).first()
+            if execution:
+                return {"result": True, "data": {"accepted": True, "execution_id": str(execution.id)}}
+        raise
 
     # 触发异步执行（Celery Worker）
     if not dispatch_celery_task(execute_script_task, execution):
@@ -322,6 +367,8 @@ def _run_script_execute(data: dict, *, trusted_actor=None):
             "message": job_message(None, "error.scheduler_unavailable", "Task scheduling service is temporarily unavailable; try again later"),
         }
 
+    if async_fields:
+        return {"result": True, "data": {"accepted": True, "execution_id": str(execution.id)}}
     return {"result": True, "data": {"task_id": execution.id}}
 
 

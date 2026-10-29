@@ -233,6 +233,10 @@ def apply_remote_execution(execution: WorkflowExecution, remote: dict[str, Any])
             "updated_at",
         )
     )
+    if execution.status in TERMINAL_STATUSES:
+        from apps.workflow.services.completion_outbox import enqueue_async_callback_safely
+
+        enqueue_async_callback_safely(execution)
     if pending_notifications:
 
         def _notify() -> None:

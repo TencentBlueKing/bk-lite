@@ -20,6 +20,10 @@ def test_trigger_scheduler_once_runs_all_runtime_reconciliation_steps(mocker):
         "apps.workflow.management.commands.run_workflow_trigger_scheduler.sync_active_executions",
         return_value={"synchronized": 1, "failed": 0},
     )
+    callback = mocker.patch(
+        "apps.workflow.management.commands.run_workflow_trigger_scheduler.dispatch_pending_async_callbacks",
+        return_value={"reconciled": 1, "delivered": 1, "failed": 0},
+    )
     output = StringIO()
 
     call_command("run_workflow_trigger_scheduler", once=True, interval=1, stdout=output)
@@ -28,8 +32,10 @@ def test_trigger_scheduler_once_runs_all_runtime_reconciliation_steps(mocker):
     expire.assert_called_once_with()
     retry.assert_called_once_with()
     sync.assert_called_once_with()
+    callback.assert_called_once_with()
     assert "cron triggers: succeeded=1" in output.getvalue()
     assert "execution sync: synchronized=1" in output.getvalue()
+    assert "async callback: reconciled=1 delivered=1 failed=0" in output.getvalue()
 
 
 def test_artifact_cleanup_scheduler_once_honors_batch_size_and_reports_result(mocker):

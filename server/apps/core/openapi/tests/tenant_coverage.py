@@ -16,6 +16,16 @@ TENANT_ISOLATION_COVERAGE = {
     "workflow/webhook-test": [
         "apps.workflow.tests.test_trigger_entrypoints::test_webhook_test_session_captures_body_only_for_its_tenant",
     ],
+    "workflow/workflows": [
+        "apps.workflow.tests.test_openapi_workflow_execute::test_api_tenant_can_list_own_workflows",
+        "apps.workflow.tests.test_openapi_workflow_execute::test_api_tenant_cannot_list_other_org_workflows",
+        "apps.workflow.tests.test_openapi_workflow_execute::test_workflow_list_forged_team_is_rejected",
+    ],
+    "workflow/execute-async": [
+        "apps.workflow.tests.test_openapi_workflow_execute::test_api_tenant_can_execute_own_workflow_async",
+        "apps.workflow.tests.test_openapi_workflow_execute::test_api_tenant_cannot_execute_other_org_workflow",
+        "apps.workflow.tests.test_openapi_workflow_execute::test_workflow_execute_async_forged_team_is_rejected",
+    ],
     "patch-mgmt/module-data": [
         "apps.core.openapi.tests.test_gateway::test_tenant_can_read_own_org",
         "apps.core.openapi.tests.test_gateway::test_tenant_cannot_read_other_org",
@@ -114,10 +124,20 @@ TENANT_ISOLATION_COVERAGE = {
         "apps.job_mgmt.tests.test_open_file_distribute_views::test_target_list_v2_other_tenant_cannot_read_first_tenant_targets",
         "apps.job_mgmt.tests.test_open_file_distribute_views::test_target_list_v2_rejects_forged_team",
     ],
+    "job-mgmt/scripts": [
+        "apps.job_mgmt.tests.test_openapi_job_execute::test_api_tenant_can_list_own_scripts",
+        "apps.job_mgmt.tests.test_openapi_job_execute::test_api_tenant_cannot_list_other_org_scripts",
+        "apps.job_mgmt.tests.test_openapi_job_execute::test_script_list_forged_team_is_rejected",
+    ],
     "job-mgmt/script-execute": [
         "apps.job_mgmt.tests.test_openapi_job_execute::test_api_tenant_can_execute_script_on_own_target",
         "apps.job_mgmt.tests.test_openapi_job_execute::test_api_tenant_cannot_execute_script_on_other_tenant_target",
         "apps.job_mgmt.tests.test_openapi_job_execute::test_script_execute_forged_team_is_rejected",
+    ],
+    "job-mgmt/script-execute-async": [
+        "apps.job_mgmt.tests.test_openapi_job_execute::test_api_tenant_can_submit_async_script_on_own_target",
+        "apps.job_mgmt.tests.test_openapi_job_execute::test_api_tenant_cannot_submit_async_script_on_other_tenant_target",
+        "apps.job_mgmt.tests.test_openapi_job_execute::test_async_script_execute_forged_team_is_rejected",
     ],
     "job-mgmt/job-status": [
         "apps.job_mgmt.tests.test_openapi_job_execute::test_api_tenant_can_read_own_job_status",
