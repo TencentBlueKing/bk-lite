@@ -42,7 +42,7 @@
 | `governance` | 治理任务列表、详情、创建、取消、主机重试和风险项步骤日志 |
 | `risk` | 风险列表、详情、汇总、治理和重启 |
 | `dashboard` | 权限范围内的治理指标、合规分布、最近任务和高频风险 |
-| `scan_setting` | 全局周期评估设置 |
+| `scan_setting` | 全局周期评估设置和 Windows 离线目录 |
 
 > 证据来源：server/config/components/app.py:130-157，server/urls.py:16-24，server/apps/patch_mgmt/urls.py:16-42，server/apps/patch_mgmt/views/governance.py:110-200　|　同步基线：d2769559　|　【已实现】
 
@@ -56,9 +56,9 @@
 | 基线 | 保存固定补丁要求；一台主机同时最多绑定一个基线 |
 | 合规快照 | 按主机绑定与基线要求记录某次有效评估结果；要求状态为满足、缺失、未知或不适用 |
 | 治理任务 | 统一承载评估、安装、重启、验证，以及主机级阶段、日志、失败信息和执行栅栏令牌 |
-| 扫描设置 | 全局单例，保存小时、每日或每周的周期评估安排 |
+| 扫描设置 | 全局单例，保存小时、每日或每周的周期评估安排，以及是否启用已上传的 Windows 离线目录；新目录随这次保存一起写入，保存失败不替换已有目录 |
 
-基线当前只有生效中的固定清单，不提供历史版本快照。评估回写前会核对基线、要求和绑定签名，拒绝把已经失效的结果写回当前合规状态。Windows 替代关系由 WSUS 更新标识映射到补丁替代关系，评估时将替代 KB 作为可满足要求的候选。生产评估会把目录产品、Build 或架构对不上的要求写成不适用。带 `ndp481`、`ndp472`、`ndp48` 标记的手工包，如果和主机 .NET Framework Release 不一致，也写成不适用，并且先于 WUA 的缺失结果。WUA 没有列出、又不能用这两条解释的要求仍是未知。
+基线当前只有生效中的固定清单，不提供历史版本快照。评估回写前会核对基线、要求和绑定签名，拒绝把已经失效的结果写回当前合规状态。Windows 评估默认搜索目标机当前的在线更新服务；扫描设置启用离线目录后，评估改为在 SYSTEM 计划任务中注册已下发的 `Wsusscn2.cab` 再搜索。WinRM 管理员令牌不能注册这份目录。解析、合规和安装路径不变。Windows 替代关系由 WSUS 更新标识映射到补丁替代关系，评估时将替代 KB 作为可满足要求的候选。生产评估会把目录产品、Build 或架构对不上的要求写成不适用。带 `ndp481`、`ndp472`、`ndp48` 标记的手工包，如果和主机 .NET Framework Release 不一致，也写成不适用，并且先于 WUA 的缺失结果。WUA 没有列出、又不能用这两条解释的要求仍是未知。
 
 > 证据来源：server/apps/patch_mgmt/models/governance.py:121-140，server/apps/patch_mgmt/services/wsus_sync.py:343-365，server/apps/patch_mgmt/services/assess_parsers.py:240-250，server/apps/patch_mgmt/services/assess_parsers.py:288-317，server/apps/patch_mgmt/services/compliance_evaluator.py:142-198　|　同步基线：d2769559　|　【已实现/待确认】
 

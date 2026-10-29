@@ -110,6 +110,25 @@ def test_safe_extract_zip_allows_regular_files(tmp_path):
     assert (workspace / "nested" / "file.txt").read_text(encoding="utf-8") == "hello"
 
 
+def test_windows_file_distribution_creates_destination_directory():
+    content = ansible_runner._build_windows_file_distribution_playbook(
+        [{"name": "wsusscn2.cab", "local_path": "/tmp/wsusscn2.cab"}],
+        "C:/Windows/Temp/bk-lite-patches",
+        True,
+    )
+    tasks = ansible_runner.yaml.safe_load(content)[0]["tasks"]
+
+    assert tasks[0]["ansible.windows.win_file"] == {
+        "path": "C:/Windows/Temp/bk-lite-patches",
+        "state": "directory",
+    }
+    assert tasks[1]["ansible.windows.win_copy"]["dest"] == "C:/Windows/Temp/bk-lite-patches/wsusscn2.cab"
+
+
+def test_distributed_object_limit_accepts_windows_offline_catalog():
+    assert ansible_runner.PLAYBOOK_ARCHIVE_MAX_SIZE_BYTES >= 683_018_118
+
+
 def test_safe_extract_zip_rejects_too_many_members(tmp_path, monkeypatch):
     archive_path = tmp_path / "payload.zip"
     with zipfile.ZipFile(archive_path, "w") as archive:
