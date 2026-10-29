@@ -103,9 +103,13 @@ class FalkorDBConnectionPool:
                 logger.warning(f"关闭 FalkorDB 连接失败: {e}")
 
 
+_COLLECT_SOURCES_UNSET = object()
+
+
 class FalkorDBClient:
     # 参数化查询开关（可通过环境变量控制）
     ENABLE_PARAMETERIZATION = True
+    _SOURCES_UNSET = _COLLECT_SOURCES_UNSET
 
     def __init__(self):
         self._pool = FalkorDBConnectionPool()
@@ -1168,7 +1172,28 @@ class FalkorDBClient:
         nodes = self.batch_update_node_properties(label, entity_ids, properties)
         return {"data": self.entity_to_list(nodes), "success": True, "message": ""}
 
-    def batch_update_node_properties(self, label: str, node_ids: Union[int, List[int]], properties: dict):
+    def set_entity_properties_if_sources(self, label, entity_ids, properties, check_attr_map, exist_items, expected_sources, check=True, attrs=None):
+        """仅当 _collect_sources 仍是读取时的值才写入。不匹配时返回空列表。"""
+        properties = dict(properties)
+        properties.pop("_expected_collect_sources", None)
+        if check:
+            self.check_unique_attr(properties, check_attr_map.get("is_only", {}), exist_items, is_update=True)
+            self.check_unique_rules(
+                check_attr_map.get("validation_items") or [properties],
+                check_attr_map.get("unique_rules", []),
+                exist_items,
+                check_attr_map.get("attrs_by_id", {}),
+                exclude_instance_ids=set(entity_ids),
+            )
+            self.check_required_attr(properties, check_attr_map.get("is_required", {}), is_update=True)
+            properties = self.get_editable_attr(properties, check_attr_map.get("editable", {}))
+        properties = self._serialize_table_fields(label, properties, attrs)
+        nodes = self.batch_update_node_properties(label, entity_ids, properties, expected_collect_sources=expected_sources)
+        return self.entity_to_list(nodes)
+
+    def batch_update_node_properties(
+        self, label: str, node_ids: Union[int, List[int]], properties: dict, expected_collect_sources=_COLLECT_SOURCES_UNSET
+    ):
         """批量更新节点属性（参数化版本）"""
         validated_label = CQLValidator.validate_label(label) if label else ""
         validated_ids = CQLValidator.validate_ids(node_ids) if isinstance(node_ids, list) else [CQLValidator.validate_id(node_ids)]
@@ -1189,7 +1214,14 @@ class FalkorDBClient:
 
             label_str = f":{validated_label}" if validated_label else ""
             set_clause = ", ".join(set_parts)
-            query = f"MATCH (n{label_str}) WHERE ID(n) IN $ids SET {set_clause} RETURN n"
+            source_clause = ""
+            if expected_collect_sources is not _COLLECT_SOURCES_UNSET:
+                if expected_collect_sources in (None, ""):
+                    source_clause = " AND (n._collect_sources IS NULL OR n._collect_sources = '')"
+                else:
+                    source_clause = " AND n._collect_sources = $expected_collect_sources"
+                    params["expected_collect_sources"] = expected_collect_sources
+            query = f"MATCH (n{label_str}) WHERE ID(n) IN $ids{source_clause} SET {set_clause} RETURN n"
 
             nodes = self._execute_query(query, params=params)
         else:
@@ -1290,10 +1322,13 @@ class FalkorDBClient:
         validated_label = CQLValidator.validate_label(label)
         params = {"id": CQLValidator.validate_id(instance["_id"])}
         conditions = ["ID(n) = $id"]
-        for field in ("model_id", "inst_uuid", "collect_task", "collect_time"):
+        for field in ("model_id", "inst_uuid", "collect_task", "collect_time", "_collect_sources"):
             value = instance.get(field)
             if value is None:
-                conditions.append(f"n.{field} IS NULL")
+                if field == "_collect_sources":
+                    conditions.append("(n._collect_sources IS NULL OR n._collect_sources = '')")
+                else:
+                    conditions.append(f"n.{field} IS NULL")
             else:
                 conditions.append(f"n.{field} = ${field}")
                 params[field] = value

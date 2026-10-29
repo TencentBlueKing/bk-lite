@@ -48,8 +48,14 @@ async def _iter_export_file(stream):
 class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
     @staticmethod
     def _transport_instance(instance):
-        """对外响应剥离图内部字段。"""
-        return {key: value for key, value in dict(instance or {}).items() if key not in {"_id", "_labels"}}
+        """对外响应剥离图内部字段，人工锁定只暴露字段名。"""
+        from apps.cmdb.collection.field_reconcile import COLLECT_SOURCES_ATTR, manual_field_ids
+
+        data = {key: value for key, value in dict(instance or {}).items() if key not in {"_id", "_labels", COLLECT_SOURCES_ATTR}}
+        manual_fields = manual_field_ids(instance or {})
+        if manual_fields:
+            data["manual_fields"] = manual_fields
+        return data
 
     K8S_CHILD_MODELS = ("k8s_namespace", "k8s_workload", "k8s_pod", "k8s_node")
 
@@ -168,7 +174,7 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
 
             field = item.get("field")
             _type = item.get("type")
-            if not field or not _type:
+            if not field or not _type or field == "_collect_sources":
                 return
 
             if _type == "time":
@@ -787,6 +793,22 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
         except BaseAppException as e:
             return WebUtils.response_error(error_message=e.message, status_code=status.HTTP_403_FORBIDDEN)
         return WebUtils.response_success()
+
+    @HasPermission("asset_info-Edit")
+    @action(methods=["post"], detail=True, url_path="restore_collect")
+    def restore_collect(self, request, pk: str):
+        if str(pk).isdigit():
+            return WebUtils.response_error("请使用 inst_uuid 定位实例，不再支持数字 ID", status_code=status.HTTP_400_BAD_REQUEST)
+        instance = InstanceManage.query_entity_by_uuid(pk)
+        if not instance or not self._is_instance_model_visible(instance):
+            return WebUtils.response_error("实例不存在", status_code=status.HTTP_404_NOT_FOUND)
+        if not self.check_creator_and_organizations(request, instance):
+            organizations = self.organizations(request, instance)
+            if not organizations or not self.check_instance_permission(request, instance, operator=OPERATE):
+                return WebUtils.response_error("抱歉！您没有此实例的权限", status_code=status.HTTP_403_FORBIDDEN)
+        fields = request.data.get("fields") if isinstance(request.data, dict) else None
+        updated = InstanceManage.restore_auto_collect(instance["_id"], fields)
+        return WebUtils.response_success(self._transport_instance(updated))
 
     @HasPermission("asset_info-Edit")
     def partial_update(self, request, pk: str):

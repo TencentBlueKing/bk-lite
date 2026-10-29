@@ -1177,3 +1177,18 @@ def test_conditional_delete_guards_identity_owner_and_heartbeat(rows, deleted):
     for field in ("model_id", "inst_uuid", "collect_task", "collect_time"):
         assert f"n.{field} = ${field}" in c._graph.last_query
     assert "DETACH DELETE n RETURN deleted_id" in c._graph.last_query
+    assert "n._collect_sources IS NULL" in c._graph.last_query
+
+
+def test_conditional_set_matches_collect_sources():
+    c = _client(FakeResultSet([("node", "n")], []))
+    c.set_entity_properties_if_sources(
+        "instance",
+        [7],
+        {"port": "3306", "_collect_sources": "{}"},
+        {"editable": {"port": "端口", "_collect_sources": "来源"}, "is_only": {}, "is_required": {}},
+        [],
+        expected_sources='{"fields":{}}',
+    )
+    assert "n._collect_sources = $expected_collect_sources" in c._graph.last_query
+    assert c._graph.last_params["expected_collect_sources"] == '{"fields":{}}'

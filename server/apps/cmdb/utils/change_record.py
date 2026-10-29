@@ -108,6 +108,10 @@ def create_change_record(
 
             attribute_snapshot = load_attribute_snapshot(model_id, attr_ids)
     resolved_uuid = _resolve_inst_uuid(inst_uuid, before_data, after_data)
+    from apps.cmdb.collection.field_reconcile import hide_collect_sources
+
+    before_data = hide_collect_sources(before_data)
+    after_data = hide_collect_sources(after_data)
     change_data = {"operator": operator, "scenario": scenario, "inst_uuid": resolved_uuid}
     if before_data:
         change_data["before_data"] = before_data
@@ -153,6 +157,12 @@ def batch_create_change_record(label, _type, change_records, operator="", scenar
     normalized_records = []
     for change_record in change_records:
         record = dict(change_record)
+        from apps.cmdb.collection.field_reconcile import hide_collect_sources
+
+        if record.get("before_data"):
+            record["before_data"] = hide_collect_sources(record["before_data"])
+        if record.get("after_data"):
+            record["after_data"] = hide_collect_sources(record["after_data"])
         record.setdefault(
             "inst_uuid",
             _resolve_inst_uuid(

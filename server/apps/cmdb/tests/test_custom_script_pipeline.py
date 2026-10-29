@@ -239,6 +239,58 @@ def test_custom_script_host_record_inherits_access_point_cloud(monkeypatch):
     assert collector.result["host"] == [{"inst_name": "demo-host-v2", "ip_addr": "10.10.41.149", "cloud": 1}]
 
 
+def test_network_custom_script_writes_device_models_not_network(monkeypatch):
+    task = SimpleNamespace(id=14, params={}, model_id="network", instances=[])
+
+    def boom(model_id):
+        raise AssertionError(model_id)
+
+    monkeypatch.setattr(CustomScriptCollectionPlugin, "_plugin", lambda self: SimpleNamespace(plugin_id="custom_network"))
+    monkeypatch.setattr("apps.cmdb.collection.plugins.community.custom_script.generic.ModelManage.search_model_attr", boom)
+    monkeypatch.setattr(
+        "apps.cmdb.collection.plugins.community.custom_script.generic._existing_device_models",
+        lambda names: {"10.10.69.1-firewall": "firewall"} if "10.10.69.1-firewall" in names else {},
+    )
+    collector = CustomScriptCollectionPlugin("task", 14, 14, collect_inst=task)
+    now = int(time.time())
+    collector.format_data(
+        {
+            "result": [
+                {
+                    "metric": {
+                        "__name__": "custom_network_info_gauge",
+                        "inst_name": "10.10.69.247-switch",
+                        "model_id": "switch",
+                        "sys_desc": "custom",
+                        "sysdescr": "raw",
+                    },
+                    "value": [now, "1"],
+                },
+                {
+                    "metric": {"__name__": "custom_network_info_gauge", "inst_name": "r1", "device_type": "router", "soid": "1.2.3"},
+                    "value": [now, "1"],
+                },
+                {
+                    "metric": {"__name__": "custom_network_info_gauge", "inst_name": "10.10.69.1-firewall", "sys_desc": "fw"},
+                    "value": [now, "1"],
+                },
+                {
+                    "metric": {"__name__": "custom_network_info_gauge", "inst_name": "unknown", "brand": "H3C"},
+                    "value": [now, "1"],
+                },
+            ]
+        }
+    )
+    collector.format_metrics()
+    assert "network" not in collector.result
+    assert collector.result["switch"] == [
+        {"inst_name": "10.10.69.247-switch", "sys_desc": "custom"},
+        {"inst_name": "unknown", "brand": "H3C"},
+    ]
+    assert collector.result["router"] == [{"inst_name": "r1", "soid": "1.2.3"}]
+    assert collector.result["firewall"] == [{"inst_name": "10.10.69.1-firewall", "sys_desc": "fw"}]
+
+
 def test_custom_script_sync_queries_the_vm_gauge_series(monkeypatch):
     plugin = SimpleNamespace(plugin_id="custom_host_linux_scan")
     task = SimpleNamespace(id=29, params={"custom_plugin_pk": 7}, model_id="host", instances=[])

@@ -1404,6 +1404,13 @@ class InstanceManage(object):
         validation_item = {**inst_info, **update_attr}
         check_attr_map["validation_items"] = [validation_item]
         unique_lock_keys = UniqueWriteLockService.build_lock_keys(inst_info["model_id"], validation_item, check_attr_map)
+        if not skip_permission_check:
+            from apps.cmdb.collection.field_reconcile import COLLECT_SOURCES_ATTR, stamp_manual_sources
+
+            stamped = stamp_manual_sources(inst_info, update_attr)
+            if stamped is not None:
+                update_attr[COLLECT_SOURCES_ATTR] = stamped
+                check_attr_map.setdefault("editable", {})[COLLECT_SOURCES_ATTR] = COLLECT_SOURCES_ATTR
         with UniqueWriteLockService.hold(unique_lock_keys):
             with GraphClient() as ag:
                 exist_items = InstanceManage._query_unique_rule_candidates(ag, inst_info["model_id"], validation_item, check_attr_map)
@@ -1554,6 +1561,15 @@ class InstanceManage(object):
                 exist_items,
                 attrs=attrs,
             )
+            from apps.cmdb.collection.field_reconcile import COLLECT_SOURCES_ATTR, stamp_manual_sources
+
+            source_rows = []
+            for instance in inst_list:
+                stamped = stamp_manual_sources(instance, update_attr)
+                if stamped is not None:
+                    source_rows.append({"id": instance["_id"], "value": stamped})
+            if source_rows and hasattr(ag, "batch_update_node_property_values"):
+                ag.batch_update_node_property_values(INSTANCE, COLLECT_SOURCES_ATTR, source_rows)
 
         result_ids = {int(item["_id"]) for item in result if item.get("_id") is not None}
         missing_result_ids = [inst_id for inst_id in inst_ids if inst_id not in result_ids]
@@ -1594,6 +1610,29 @@ class InstanceManage(object):
         schedule_instance_auto_relation_reconcile([item["_id"] for item in result])
 
         return result
+
+    @staticmethod
+    def restore_auto_collect(inst_id: int, fields=None):
+        """清除人工来源。下一轮采集按字段顺序写入。"""
+        from apps.cmdb.collection.field_reconcile import COLLECT_SOURCES_ATTR, clear_manual_fields
+
+        inst_info = InstanceManage.query_entity_by_id(inst_id)
+        if not inst_info:
+            raise BaseAppException("实例不存在！")
+        sources = clear_manual_fields(inst_info, fields)
+        attrs = ModelManage.search_model_attr(inst_info["model_id"])
+        check_attr_map = InstanceManage._build_unique_rule_check_attr_map(inst_info["model_id"], attrs, for_update=True)
+        check_attr_map.setdefault("editable", {})[COLLECT_SOURCES_ATTR] = COLLECT_SOURCES_ATTR
+        with GraphClient() as ag:
+            result = ag.set_entity_properties(
+                INSTANCE,
+                [inst_id],
+                {COLLECT_SOURCES_ATTR: sources},
+                check_attr_map,
+                [],
+                attrs=attrs,
+            )
+        return result[0]
 
     @staticmethod
     def instance_batch_delete(user_groups: list, roles: list, inst_ids: list, operator: str):

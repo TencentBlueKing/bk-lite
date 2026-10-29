@@ -625,6 +625,12 @@ def sync_collect_task(  # noqa: C901
             "association_error": len([i for i in format_data.get("association", []) if i.get("_status") != "success"]),
             "all": format_data.get("all", 0),  # 总数是发现的正常数据总数，例如：扫描了10个ip，其中6个是真的ip，4个ip不存在，总数为6
         }
+        reconcile_stats = format_data.get("reconcile_stats") or {}
+        if reconcile_stats:
+            collect_digest["reconcile_skipped_fields"] = reconcile_stats.get("skipped_fields", 0)
+            collect_digest["reconcile_org_conflicts"] = reconcile_stats.get("org_conflicts", 0)
+            collect_digest["reconcile_outside_conflicts"] = reconcile_stats.get("outside_owner_conflicts", 0)
+            collect_digest["reconcile_concurrent_abandons"] = reconcile_stats.get("concurrent_abandons", 0)
         pc_summary = _apply_pc_digest(collect_digest, format_data)
         raw_data = format_data.get("__raw_data__", [])
         collect_digest.update(node_mgmt_raw_summary)
