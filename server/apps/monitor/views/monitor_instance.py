@@ -23,6 +23,7 @@ from apps.monitor.services.module_push import MonitorToCmdbPushService, build_mo
 from apps.monitor.services.monitor_instance import InstanceSearch
 from apps.monitor.services.monitor_instance_removal import MonitorInstanceRemovalService
 from apps.monitor.services.monitor_object import MonitorObjectService
+from apps.monitor.services.monitor_plugin_unbind import MonitorPluginUnbindService
 from apps.monitor.services.node_mgmt import InstanceConfigService
 from apps.monitor.services.user_query_slots import with_user_query_slot
 from apps.monitor.utils.dimension import normalize_instance_identity, parse_instance_id
@@ -612,6 +613,35 @@ class MonitorInstanceViewSet(viewsets.ViewSet):
         )
 
         return WebUtils.response_success()
+
+    @action(methods=["post"], detail=False, url_path="unbind_monitor_plugin")
+    def unbind_monitor_plugin(self, request):
+        """解绑实例上的一个已配置采集模板，保留实例及其余模板。"""
+        instance_id = request.data.get("instance_id")
+        monitor_plugin_id = request.data.get("monitor_plugin_id")
+        if instance_id in (None, ""):
+            raise BaseAppException("instance_id 不能为空")
+        if monitor_plugin_id in (None, ""):
+            raise BaseAppException("monitor_plugin_id 不能为空")
+
+        actor_context = _build_actor_context(request)
+        normalized_ids = _ensure_operate_instances(request, [instance_id], actor_context)
+        if not normalized_ids:
+            raise BaseAppException("instance_id 不能为空")
+        result = MonitorPluginUnbindService.unbind(
+            normalized_ids[0],
+            monitor_plugin_id,
+            operator=actor_context.get("username") or getattr(request.user, "username", "system"),
+        )
+        return WebUtils.response_success(
+            {
+                "instance_id": result.instance_id,
+                "monitor_plugin_id": result.monitor_plugin_id,
+                "deleted_config_ids": list(result.deleted_config_ids),
+                "trimmed_policy_ids": list(result.trimmed_policy_ids),
+                "closed_alert_count": result.closed_alert_count,
+            }
+        )
 
     @action(methods=["post"], detail=False, url_path="update_monitor_instance")
     def update_monitor_instance(self, request):

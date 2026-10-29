@@ -268,10 +268,12 @@ export interface ShowModalParams {
   objName: string;
   plugins?: PluginItem[];
   showTemplateList?: boolean;
+  allowUnbind?: boolean;
 }
 
 export interface TemplateDrawerRef {
   showModal: (params: ShowModalParams) => void;
+  syncPlugins: (instanceId: number | string, plugins: PluginItem[]) => void;
 }
 
 export interface K8sCommandData {

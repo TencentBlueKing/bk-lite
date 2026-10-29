@@ -29,6 +29,7 @@ import {
   TemplateDrawerRef,
 } from '@/app/monitor/types/integration';
 import {
+  canUnbindCollectTemplate,
   getPluginConfigContentState,
   getPluginConfigFetchDecision,
   isPluginConfigurable,
@@ -36,8 +37,20 @@ import {
 } from './templateConfigDrawerLogic';
 import { comparePackVersions } from '@/app/monitor/utils/collectNeedUpdate';
 
-const TemplateConfigDrawer = forwardRef<TemplateDrawerRef, ModalSuccess>(
-  ({ onSuccess }, ref) => {
+type TemplateConfigDrawerProps = ModalSuccess & {
+  onRequestUnbind?: (payload: {
+    instanceId: number | string;
+    instanceName: string;
+    plugin: PluginItem;
+    plugins: PluginItem[];
+  }) => void;
+};
+
+const TemplateConfigDrawer = forwardRef<
+  TemplateDrawerRef,
+  TemplateConfigDrawerProps
+>(
+  ({ onSuccess, onRequestUnbind }, ref) => {
     const { t } = useTranslation();
     const { convertToLocalizedTime } = useLocalizedTime();
     const { getInstanceChildConfig } = useIntegrationApi();
@@ -54,6 +67,7 @@ const TemplateConfigDrawer = forwardRef<TemplateDrawerRef, ModalSuccess>(
     const [showTemplateList, setShowTemplateList] = useState<boolean>(true);
     const [instanceId, setInstanceId] = useState<number | string>('');
     const [objId, setObjId] = useState<React.Key>('');
+    const [allowUnbind, setAllowUnbind] = useState<boolean>(false);
 
     const getPackVersionText = (plugin?: PluginItem | null) => {
       const applied = String(plugin?.applied_pack_version || '').trim();
@@ -120,12 +134,14 @@ const TemplateConfigDrawer = forwardRef<TemplateDrawerRef, ModalSuccess>(
         objName,
         plugins: externalPlugins,
         showTemplateList: shouldShowList = true,
+        allowUnbind: canUnbind = false,
       }: ShowModalParams) => {
         setVisible(true);
         setInstanceName(instanceName);
         setInstanceId(instanceId);
         setObjName(objName || '');
         setShowTemplateList(shouldShowList);
+        setAllowUnbind(canUnbind);
         setPlugins(externalPlugins || []);
         setObjId(monitorObjId || '');
         let selectedTemp: any;
@@ -178,6 +194,27 @@ const TemplateConfigDrawer = forwardRef<TemplateDrawerRef, ModalSuccess>(
           });
         }
       },
+      syncPlugins: (targetInstanceId, nextPlugins) => {
+        if (String(targetInstanceId) !== String(instanceId)) return;
+        const next = nextPlugins || [];
+        const stillSelected =
+          selectedPlugin &&
+          next.some((item) => isSameTemplatePlugin(selectedPlugin, item));
+        setPlugins(next);
+        const nextSelected = stillSelected
+          ? next.find((item) => isSameTemplatePlugin(selectedPlugin, item)) ||
+            null
+          : next[0] || null;
+        setSelectedPlugin(nextSelected);
+        if (nextSelected && isPluginConfigurable(nextSelected)) {
+          void fetchConfigList({
+            plugin: nextSelected,
+            instanceId: targetInstanceId,
+          });
+        } else {
+          setConfigList([]);
+        }
+      },
     }));
 
     const handleCancel = () => {
@@ -190,6 +227,21 @@ const TemplateConfigDrawer = forwardRef<TemplateDrawerRef, ModalSuccess>(
       setObjId('');
       setObjName('');
       setShowTemplateList(true);
+      setAllowUnbind(false);
+    };
+
+    const requestUnbind = (
+      event: React.MouseEvent,
+      plugin: PluginItem
+    ) => {
+      event.stopPropagation();
+      if (!allowUnbind || !canUnbindCollectTemplate(plugin, plugins)) return;
+      onRequestUnbind?.({
+        instanceId,
+        instanceName,
+        plugin,
+        plugins,
+      });
     };
 
     const handlePluginClick = async (plugin: PluginItem) => {
@@ -429,6 +481,20 @@ const TemplateConfigDrawer = forwardRef<TemplateDrawerRef, ModalSuccess>(
                                     </Tag>
                                   </div>
                                 </div>
+                                {allowUnbind &&
+                                canUnbindCollectTemplate(plugin, plugins) ? (
+                                  <Button
+                                    type="link"
+                                    size="small"
+                                    danger
+                                    className="h-auto px-1 text-xs"
+                                    onClick={(event) =>
+                                      requestUnbind(event, plugin)
+                                    }
+                                  >
+                                    {t('monitor.integrations.unbindTemplate')}
+                                  </Button>
+                                  ) : null}
                                 <RightOutlined className="text-xs" />
                               </div>
                             );
@@ -469,6 +535,21 @@ const TemplateConfigDrawer = forwardRef<TemplateDrawerRef, ModalSuccess>(
                         : t('monitor.integrations.autoAccess')}
                     </Tag>
                     <Tag>{getPackVersionText(selectedPlugin)}</Tag>
+                    {!showLeftPanel &&
+                    allowUnbind &&
+                    canUnbindCollectTemplate(selectedPlugin, plugins) ? (
+                      <Button
+                        type="link"
+                        size="small"
+                        danger
+                        className="h-auto px-0 text-xs"
+                        onClick={(event) =>
+                          requestUnbind(event, selectedPlugin)
+                        }
+                      >
+                        {t('monitor.integrations.unbindTemplate')}
+                      </Button>
+                      ) : null}
                     {selectedPlugin.need_update ? (
                       <Tag color="warning">
                         {(() => {
