@@ -355,6 +355,24 @@ describe('buildDataFetchSignature', () => {
       }),
     );
   });
+
+  it('keeps the same signature when only line or bar field mapping changes', () => {
+    const base = {
+      chartType: 'line' as const,
+      dataSource: 9,
+      dataSourceParams: [],
+    };
+    assert.equal(
+      buildDataFetchSignature(base),
+      buildDataFetchSignature({
+        ...base,
+        dimensionField: 'time',
+        valueField: 'cpu',
+        valueFields: ['cpu', 'memory'],
+        seriesField: 'metric',
+      }),
+    );
+  });
 });
 
 describe('mergeNetworkStatusTopologyDraft', () => {

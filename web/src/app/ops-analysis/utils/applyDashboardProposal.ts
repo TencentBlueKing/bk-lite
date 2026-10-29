@@ -147,6 +147,8 @@ export const widgetContractDigest = (config: ValueConfig | undefined): string =>
   topNValueField: config?.topNValueField || '',
   dimensionField: config?.dimensionField || '',
   valueField: config?.valueField || '',
+  valueFields: config?.valueFields || [],
+  seriesField: config?.seriesField || '',
   multiValueLabelField: config?.multiValueLabelField || '',
   multiValueValueField: config?.multiValueValueField || '',
   nodeGraphIdentityMode: config?.nodeGraphIdentityMode || '',
