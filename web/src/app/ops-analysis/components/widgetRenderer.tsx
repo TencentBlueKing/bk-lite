@@ -39,6 +39,7 @@ interface WidgetRendererProps {
   onRawData?: (data: unknown) => void;
   unifiedFilterValues?: Record<string, FilterValue>;
   filterDefinitions?: UnifiedFilterDefinition[];
+  scenePermissionDenied?: boolean;
 }
 
 const WidgetRenderer: React.FC<WidgetRendererProps> = ({
@@ -66,6 +67,7 @@ const WidgetRenderer: React.FC<WidgetRendererProps> = ({
   onRawData,
   unifiedFilterValues,
   filterDefinitions,
+  scenePermissionDenied,
 }) => {
   const Component = getWidgetComponent(chartType, surface);
   if (!Component) {
@@ -96,6 +98,7 @@ const WidgetRenderer: React.FC<WidgetRendererProps> = ({
       {...(chartType === 'room3D' || chartType === 'applicationTopology'
         ? { unifiedFilterValues, filterDefinitions }
         : {})}
+      {...(scenePermissionDenied ? { scenePermissionDenied } : {})}
       {...(supportsComponentSwitch(chartType) ? { componentSwitchControl, errorMessage } : {})}
     />
   );

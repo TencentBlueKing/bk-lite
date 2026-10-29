@@ -1,3 +1,4 @@
+import { Utils } from 'gridstack';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import {
@@ -5,6 +6,7 @@ import {
   prepareDashboardPrintLayout,
   prepareReportPrintLayout,
   prepareScreenPrintLayout,
+  restoreGridStackMeasurableMinHeight,
 } from '@/app/ops-analysis/utils/prepareDashboardPrintLayout';
 
 describe('prepareDashboardPrintLayout', () => {
@@ -54,6 +56,22 @@ describe('prepareDashboardPrintLayout', () => {
     const grid = document.querySelector<HTMLElement>('.grid-stack');
     expect(grid?.style.overflow).toBe('visible');
     expect(grid?.style.height).toBe('auto');
+    // GridStack.init → _updateContainerHeight → parseHeight(minHeight)。
+    // fit-content 会抛 Invalid height val，订阅 PDF 在 init 处中断。
+    expect(grid?.style.minHeight).toBe('auto');
+    expect(() => Utils.parseHeight(grid?.style.minHeight ?? '')).not.toThrow();
+    expect(root?.style.minHeight).toBe('fit-content');
+
+    const measuredGrid = document.createElement('div');
+    measuredGrid.className = 'grid-stack';
+    Object.defineProperty(measuredGrid, 'offsetHeight', { value: 960 });
+    root?.appendChild(measuredGrid);
+    await prepareDashboardPrintLayout(root);
+    expect(measuredGrid.style.minHeight).toBe('960px');
+    expect(Utils.parseHeight(measuredGrid.style.minHeight)).toEqual({
+      h: 960,
+      unit: 'px',
+    });
 
     const hidden = document.querySelector<HTMLElement>(
       '[data-export-hidden="true"]',
@@ -65,6 +83,23 @@ describe('prepareDashboardPrintLayout', () => {
     expect(main?.style.height).toBe('auto');
 
     window.removeEventListener(DASHBOARD_PREPARE_PRINT_EVENT, onPrepare);
+  });
+
+  it('turns an existing fit-content min-height into a value GridStack can parse', () => {
+    document.body.innerHTML = '<div class="grid-stack" style="min-height: fit-content;"></div>';
+    const grid = document.querySelector<HTMLElement>('.grid-stack');
+    expect(grid).toBeTruthy();
+    expect(() => Utils.parseHeight(grid!.style.minHeight)).toThrow(
+      /Invalid height val = fit-content/,
+    );
+
+    restoreGridStackMeasurableMinHeight(grid!);
+
+    expect(grid!.style.minHeight).toBe('auto');
+    expect(Utils.parseHeight(window.getComputedStyle(grid!).minHeight)).toEqual({
+      h: 0,
+      unit: 'px',
+    });
   });
 
   it('keeps report-ready ordering: prepare-print happens before caller emits ready', async () => {
