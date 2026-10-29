@@ -33,7 +33,8 @@ error:
   error_rate_delta_range: Delta thresholds for error rate, slow request rate, and Apdex must be between -1 and 1.
   compare_absolute_kind: Current-value comparison cannot also select a delta or percent change.
   compare_previous_kind: The previous equal window must use either a delta or a percent change.
-  compare_offset_percent_only: A same-window comparison only allows a percent change.
+  compare_offset_kind: An N-hours-ago or N-days-ago same window only allows a delta or a percent change.
+  window_shorter_than_interval: The aggregation window cannot be shorter than the evaluation interval, or data between two evaluations is never checked.
   compare_offset_amount_required: Enter how many hours or days ago to compare.
   compare_offset_amount_range: Hours must be from 1 to 840, and days must be from 1 to 35.
   compare_offset_amount_unused: Only a same-window comparison can set hours or days.

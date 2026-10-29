@@ -577,7 +577,6 @@ export type ApmCompareMode = 'absolute' | 'previous_window' | 'offset_hours' | '
 export type ApmCompareValueKind = 'delta' | 'percent' | 'sigma';
 export type ApmPolicyComparator = 'gt' | 'gte' | 'lt' | 'lte';
 export type ApmPolicySeverity = 'critical' | 'error' | 'warning';
-export type ApmPolicyAggregation = 'avg' | 'max' | 'min' | 'last';
 export type ApmPolicyVersionMode = 'all' | 'specific' | 'grouped';
 export type ApmNotificationDeliveryMode = 'message' | 'alert_event_copy';
 export type ApmNotificationRecipientMode = 'none' | 'system_user' | 'free_text';
@@ -595,7 +594,6 @@ export interface ApmPolicyRegularCondition {
   ref: string;
   role: 'regular';
   metric_type: ApmPolicyMetric;
-  aggregation: ApmPolicyAggregation;
   compare_mode?: ApmCompareMode;
   compare_offset_amount?: number | null;
   compare_value_kind?: ApmCompareValueKind | '';
@@ -637,7 +635,6 @@ export interface ApmPolicyInput {
   metric_type: ApmPolicyMetric;
   evaluation_interval: number;
   metric_window: number;
-  aggregation: ApmPolicyAggregation;
   compare_mode?: ApmCompareMode;
   compare_offset_amount?: number | null;
   compare_value_kind?: ApmCompareValueKind | '';
@@ -649,9 +646,6 @@ export interface ApmPolicyInput {
   trigger_window?: number | null;
   recovery_threshold?: { comparator: ApmPolicyComparator; value: number | string } | Record<string, never>;
   recover_after: number;
-  no_data_after?: number | null;
-  no_data_severity?: ApmPolicySeverity | '';
-  no_data_alert_name?: string;
   notification_targets: ApmPolicyNotificationTarget[];
   handlers?: Array<string | number>;
   is_enabled?: boolean;
@@ -877,7 +871,6 @@ export interface ApmAlertMetricSnapshotItem {
 
 export interface ApmAlertMetricSnapshot {
   unit: string;
-  aggregation: ApmPolicyAggregation;
   evaluation_interval: number;
   metric_window: number;
   snapshots: ApmAlertMetricSnapshotItem[];

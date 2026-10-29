@@ -50,7 +50,6 @@ class ApmAlertMetricSnapshotStore:
                 alert=alert,
                 defaults={
                     "unit": resolve_result_unit(policy),
-                    "aggregation": policy.aggregation,
                     "evaluation_interval": policy.evaluation_interval,
                     "metric_window": policy.metric_window,
                     "snapshots": [],
@@ -103,7 +102,6 @@ class ApmAlertMetricSnapshotStore:
             items = items[-MAX_ALERT_METRIC_SNAPSHOTS:]
         return {
             "unit": snapshot.unit,
-            "aggregation": snapshot.aggregation,
             "evaluation_interval": snapshot.evaluation_interval,
             "metric_window": snapshot.metric_window,
             "snapshots": items,

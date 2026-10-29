@@ -20,13 +20,9 @@ const input = {
   metric_type: 'error_rate' as const,
   evaluation_interval: 1,
   metric_window: 5,
-  aggregation: 'avg' as const,
   thresholds: [{ severity: 'warning' as const, comparator: 'gt' as const, value: '0.05' }],
   trigger_after: 3,
   recover_after: 3,
-  no_data_after: null,
-  no_data_severity: '' as const,
-  no_data_alert_name: '',
   notification_targets: [],
 };
 const policy = {
@@ -138,7 +134,8 @@ describe('APM 四步策略编辑器', { timeout: 15000 }, () => {
     expect(screen.getByText('${endpoint}')).not.toBeNull();
     expect(screen.queryByLabelText('环境（必选）')).toBeNull();
     expect(screen.getByLabelText('端点')).not.toBeNull();
-    expect(screen.getByLabelText('汇聚方法').closest('.ant-select')?.textContent).toContain('平均（AVG_OVER_TIME）');
+    expect(screen.queryByLabelText('汇聚方法')).toBeNull();
+    expect(screen.getByText('每 1 分钟评估一次最近 5 分钟的数据')).not.toBeNull();
     expect(screen.queryByLabelText('版本维度')).toBeNull();
     expect(screen.getAllByLabelText('告警名称')).toHaveLength(1);
     expect(screen.queryByText(/LogSQL|MonitorObject|采集插件/)).toBeNull();
@@ -153,16 +150,21 @@ describe('APM 四步策略编辑器', { timeout: 15000 }, () => {
     ).toBeTruthy();
   });
 
-  it('启用无数据告警后展示无数据告警名称', async () => {
-    api.getPolicy.mockResolvedValue({
-      ...policy,
-      no_data_after: 5,
-      no_data_severity: 'warning',
-      no_data_alert_name: '${service} 无数据告警',
-    });
+  it('汇聚周期短于检测频率时提示，SLO 燃烧率不校验窗口', async () => {
+    const user = userEvent.setup();
     renderWithApmIntl(<ApmPolicyEditor policyId="p1" />);
+    const interval = await screen.findByLabelText('检测频率') as HTMLInputElement;
+    await user.clear(interval);
+    await user.type(interval, '10');
+    const metricWindow = screen.getByLabelText('汇聚周期') as HTMLInputElement;
+    await user.clear(metricWindow);
+    await user.type(metricWindow, '5');
+    expect(await screen.findByText('汇聚周期不能短于检测频率，否则两次评估之间的数据不会被检查')).not.toBeNull();
 
-    expect(await screen.findAllByLabelText('告警名称')).toHaveLength(2);
+    await user.click(screen.getByLabelText('指标'));
+    await user.click(await screen.findByRole('option', { name: 'SLO 燃烧率' }));
+    expect(screen.queryByLabelText('汇聚周期')).toBeNull();
+    expect(screen.queryByText('每 1 分钟评估一次最近 5 分钟的数据')).toBeNull();
   });
 
   it('新策略按渠道能力逐个添加通知目标，并能远程搜索首批目录之外的系统用户', async () => {
@@ -571,17 +573,18 @@ describe('APM 四步策略编辑器', { timeout: 15000 }, () => {
     );
   });
 
-  it('同窗固定变化率并隐藏单选，无流量不提交比较字段', async () => {
+  it('同窗默认可选变化率，改选变化量后保存，无流量不提交比较字段', async () => {
     const user = userEvent.setup();
     renderWithApmIntl(<ApmPolicyEditor policyId="p1" />);
     await user.click(await screen.findByLabelText('比较基准'));
     await user.click(await screen.findByText('同窗'));
-    expect(screen.queryByRole('radio', { name: '变化量 Δ' })).toBeNull();
-    expect(screen.queryByRole('radio', { name: '变化率 %' })).toBeNull();
+    expect((screen.getByRole('radio', { name: '变化率 %' }) as HTMLInputElement).checked).toBe(true);
+    expect(screen.getByRole('radio', { name: '变化量 Δ' })).not.toBeNull();
     const hours = screen.getByLabelText('小时数') as HTMLInputElement;
     expect(hours.value).toBe('1');
     await user.clear(hours);
     await user.type(hours, '6');
+    await user.click(screen.getByRole('radio', { name: '变化量 Δ' }));
     await user.click(screen.getByRole('button', { name: '保存策略' }));
     await waitFor(() =>
       expect(api.updatePolicy).toHaveBeenCalledWith(
@@ -589,7 +592,7 @@ describe('APM 四步策略编辑器', { timeout: 15000 }, () => {
         expect.objectContaining({
           compare_mode: 'offset_hours',
           compare_offset_amount: 6,
-          compare_value_kind: 'percent',
+          compare_value_kind: 'delta',
         }),
       ),
     );
@@ -698,7 +701,7 @@ describe('APM 四步策略编辑器', { timeout: 15000 }, () => {
     expect(api.dryRunPolicy).toHaveBeenCalledWith(expect.objectContaining({ policy_id: 'p1' }));
   });
 
-  it('分组指标下拉出现慢阈值和 Apdex T，计数类隐藏汇聚方法', async () => {
+  it('分组指标下拉出现慢阈值和 Apdex T，计数类不显示汇聚方法', async () => {
     const user = userEvent.setup();
     renderWithApmIntl(<ApmPolicyEditor policyId="p1" />);
     await user.click(await screen.findByLabelText('指标'));
@@ -717,11 +720,11 @@ describe('APM 四步策略编辑器', { timeout: 15000 }, () => {
         expect.objectContaining({
           metric_type: 'slow_request_count',
           slow_threshold_ms: 1000,
-          aggregation: 'avg',
         }),
       ),
     );
     const slowPayload = api.updatePolicy.mock.calls.at(-1)?.[1];
+    expect(slowPayload).not.toHaveProperty('aggregation');
     expect(slowPayload.apdex_threshold_ms).toBeNull();
     expect(slowPayload.min_request_count).toBeNull();
 
@@ -884,7 +887,8 @@ describe('APM 四步策略编辑器', { timeout: 15000 }, () => {
     expect(screen.getAllByRole('combobox', { name: /警告比较符$/ })).toHaveLength(1);
     await user.click(screen.getByRole('combobox', { name: '条件 b 类型' }));
     await user.click(await screen.findByText('常规', { selector: '.ant-select-item-option-content' }));
-    expect(screen.getByLabelText('条件 b 汇聚方法')).not.toBeNull();
+    expect(screen.queryByLabelText('条件 b 汇聚方法')).toBeNull();
+    expect(screen.getByLabelText('条件 b 比较基准')).not.toBeNull();
 
     await user.click(addCondition);
     expect(screen.getAllByRole('spinbutton', { name: '恢复阈值' })).toHaveLength(1);
@@ -912,7 +916,7 @@ describe('APM 四步策略编辑器', { timeout: 15000 }, () => {
     renderWithApmIntl(<ApmPolicyEditor policyId="p1" />);
     await user.click(await screen.findByRole('button', { name: '添加条件' }));
     expect(screen.queryByLabelText('条件 b 小时数')).toBeNull();
-    expect(screen.getByLabelText('条件 b 汇聚方法').closest('.ant-select')?.textContent).toContain('平均（AVG_OVER_TIME）');
+    expect(screen.queryByLabelText('条件 b 汇聚方法')).toBeNull();
 
     await user.click(screen.getByLabelText('条件 b 比较基准'));
     await user.click(await screen.findByText('相对上一等长窗'));

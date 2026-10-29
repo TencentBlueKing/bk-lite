@@ -202,7 +202,6 @@ def test_burn_rate_rules_reject_scope_conditions_and_bad_windows(apm_api_client)
                         "ref": "a",
                         "role": "regular",
                         "metric_type": "error_rate",
-                        "aggregation": "avg",
                         "thresholds": [{"severity": "warning", "comparator": "gt", "value": "0.05"}],
                     }
                 ]
@@ -229,7 +228,7 @@ def test_burn_rate_rules_reject_scope_conditions_and_bad_windows(apm_api_client)
 
     created = apm_api_client.post(
         "/api/v1/apm/policies/",
-        _payload(other, name="快燃", environment="staging", **base),
+        _payload(other, name="快燃", environment="staging", evaluation_interval=10, metric_window=1, **base),
         format="json",
     )
     assert created.status_code == 201, created.data

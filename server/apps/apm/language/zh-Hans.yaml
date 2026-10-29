@@ -33,7 +33,8 @@ error:
   error_rate_delta_range: 错误率、慢请求占比和 Apdex 的变化量必须在 -1 到 1 之间。
   compare_absolute_kind: 当前值比较不能再选择变化量或变化率。
   compare_previous_kind: 相对上一等长窗必须选择变化量或变化率。
-  compare_offset_percent_only: 同窗比较只允许变化率。
+  compare_offset_kind: N 小时前 / N 天前同窗只能选变化量或变化率。
+  window_shorter_than_interval: 汇聚周期不能短于检测频率，否则两次评估之间的数据不会被检查。
   compare_offset_amount_required: 请填写对照的小时数或天数。
   compare_offset_amount_range: 对照小时数须在 1 到 840 之间，天数须在 1 到 35 之间。
   compare_offset_amount_unused: 只有同窗比较可以填写小时数或天数。

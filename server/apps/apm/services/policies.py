@@ -257,17 +257,6 @@ class DjangoApmPolicyService:
         if result.threshold:
             return dict(result.threshold)
         if result.data_state == MetricDataState.NO_DATA:
-            if (
-                state.status == ApmPolicyTargetState.Status.NORMAL
-                and policy.no_data_after
-                and policy.no_data_severity
-                and state.consecutive_no_data + 1 >= policy.no_data_after
-            ):
-                return {
-                    "severity": policy.no_data_severity,
-                    "comparator": "no_data",
-                    "value": "",
-                }
             return None
         if state.status != ApmPolicyTargetState.Status.ACTIVE or not state.current_severity:
             return None
@@ -300,23 +289,6 @@ class DjangoApmPolicyService:
             ApmPolicy.MetricType.NO_TRAFFIC: point.request_rate,
         }[metric]
         return Decimal(str(value)) if value is not None else None
-
-    @classmethod
-    def _aggregate(cls, policy: ApmPolicy, red, metric: str | None = None) -> Decimal | None:
-        metric = metric or policy.metric_type
-        if metric in ApmPolicy.COUNT_METRIC_TYPES:
-            return cls._raw_value(policy, red, metric)
-        values = [cls._series_value(policy, point, metric) for point in red.timeseries]
-        values = [value for value in values if value is not None]
-        if not values:
-            return cls._raw_value(policy, red, metric)
-        if policy.aggregation == ApmPolicy.Aggregation.MAXIMUM:
-            return max(values)
-        if policy.aggregation == ApmPolicy.Aggregation.MINIMUM:
-            return min(values)
-        if policy.aggregation == ApmPolicy.Aggregation.LAST:
-            return values[-1]
-        return sum(values, Decimal(0)) / Decimal(len(values))
 
     @staticmethod
     def _version_values(policy: ApmPolicy, service) -> list[str]:
@@ -563,7 +535,7 @@ class DjangoApmPolicyService:
             service=target_service,
             dependency=dependency,
         )
-        current_value = self._aggregate(policy, current)
+        current_value = self._raw_value(policy, current)
         if current_value is None:
             return self._query_result(
                 policy,
@@ -631,7 +603,7 @@ class DjangoApmPolicyService:
             service=target_service,
             dependency=dependency,
         )
-        baseline_value = self._aggregate(policy, baseline)
+        baseline_value = self._raw_value(policy, baseline)
         if baseline_value is None or self._below_min_samples(policy, baseline):
             return self._query_result(
                 policy,
@@ -726,7 +698,7 @@ class DjangoApmPolicyService:
         for red in reds:
             if not self._baseline_day_usable(policy, red):
                 continue
-            value = self._aggregate(policy, red)
+            value = self._raw_value(policy, red)
             if value is None:
                 continue
             usable.append(value)
@@ -1413,7 +1385,7 @@ class DjangoApmPolicyService:
         current = series.get(end)
         if current is None:
             return None
-        current_value = self._aggregate(policy, current)
+        current_value = self._raw_value(policy, current)
         if current_value is None:
             return None
         mode = policy.compare_mode or ApmPolicy.CompareMode.ABSOLUTE
@@ -1427,7 +1399,7 @@ class DjangoApmPolicyService:
                 red = series.get(end - timedelta(days=day))
                 if red is None or not self._baseline_day_usable(policy, red):
                     continue
-                value = self._aggregate(policy, red)
+                value = self._raw_value(policy, red)
                 if value is not None:
                     usable.append(value)
             if kind == ApmPolicy.CompareValueKind.SIGMA and len(usable) < 3:
@@ -1447,7 +1419,7 @@ class DjangoApmPolicyService:
         baseline = series.get(baseline_end)
         if baseline is None:
             return None
-        baseline_value = self._aggregate(policy, baseline)
+        baseline_value = self._raw_value(policy, baseline)
         if baseline_value is None:
             return None
         if kind == ApmPolicy.CompareValueKind.PERCENT and baseline_value == 0:
@@ -1820,14 +1792,6 @@ class DjangoApmPolicyService:
             state.consecutive_hits = 0
             state.consecutive_recoveries = 0
             state.consecutive_no_data += 1
-            if (
-                state.status == ApmPolicyTargetState.Status.NORMAL
-                and policy.no_data_after
-                and policy.no_data_severity
-                and state.consecutive_no_data >= policy.no_data_after
-            ):
-                threshold = {"severity": policy.no_data_severity, "comparator": "no_data", "value": ""}
-                return self._open_alert(policy, state, result, evaluated_at, threshold)
             return None
 
         state.consecutive_no_data = 0

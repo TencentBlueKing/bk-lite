@@ -532,7 +532,6 @@ class ApmPolicySerializer(serializers.ModelSerializer):
             "metric_type",
             "evaluation_interval",
             "metric_window",
-            "aggregation",
             "compare_mode",
             "compare_offset_amount",
             "compare_value_kind",
@@ -546,9 +545,6 @@ class ApmPolicySerializer(serializers.ModelSerializer):
             "trigger_window",
             "recovery_threshold",
             "recover_after",
-            "no_data_after",
-            "no_data_severity",
-            "no_data_alert_name",
             "notification_targets",
             "handlers",
             "is_enabled",
@@ -564,10 +560,13 @@ class ApmPolicySerializer(serializers.ModelSerializer):
             "metric_window": {"min_value": 1, "max_value": 1440},
             "trigger_after": {"min_value": 1, "max_value": 60},
             "recover_after": {"min_value": 1, "max_value": 60},
-            "no_data_after": {"min_value": 1, "max_value": 60, "allow_null": True},
         }
 
+    _IGNORED_INPUT_KEYS = frozenset({"aggregation", "no_data_after", "no_data_severity", "no_data_alert_name"})
+
     def to_internal_value(self, data):
+        if isinstance(data, dict):
+            data = {key: value for key, value in data.items() if key not in self._IGNORED_INPUT_KEYS}
         unknown_fields = sorted(set(data) - set(self.fields))
         if unknown_fields:
             raise serializers.ValidationError({field: serializer_text(self, "error.policy_field_unsupported") for field in unknown_fields})
@@ -595,7 +594,6 @@ class ApmPolicySerializer(serializers.ModelSerializer):
             "ref",
             "role",
             "metric_type",
-            "aggregation",
             "compare_mode",
             "compare_offset_amount",
             "compare_value_kind",
@@ -609,9 +607,15 @@ class ApmPolicySerializer(serializers.ModelSerializer):
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
-        if not data.get("conditions"):
-            data["conditions"] = [anchor_from_policy(instance)]
+        conditions = data.get("conditions") or [anchor_from_policy(instance)]
+        data["conditions"] = [self._without_aggregation(item) for item in conditions]
         return data
+
+    @staticmethod
+    def _without_aggregation(item):
+        if not isinstance(item, dict) or "aggregation" not in item:
+            return item
+        return {key: value for key, value in item.items() if key != "aggregation"}
 
     def _condition_error(self, key):
         raise serializers.ValidationError({"conditions": serializer_text(self, key)})
@@ -680,6 +684,7 @@ class ApmPolicySerializer(serializers.ModelSerializer):
         }
 
     def _normalize_regular(self, item, metric_window):
+        item = self._without_aggregation(item)
         if set(item) - self._REGULAR_KEYS:
             self._condition_error("error.conditions_shape")
         metric_type = str(item.get("metric_type") or "")
@@ -687,11 +692,6 @@ class ApmPolicySerializer(serializers.ModelSerializer):
             self._condition_error("error.burn_plain")
         if metric_type not in {choice for choice, _label in ApmPolicy.MetricType.choices}:
             self._condition_error("error.conditions_shape")
-        aggregation = str(item.get("aggregation") or ApmPolicy.Aggregation.AVERAGE)
-        if aggregation not in {choice for choice, _label in ApmPolicy.Aggregation.choices}:
-            self._condition_error("error.conditions_shape")
-        if metric_type in ApmPolicy.COUNT_METRIC_TYPES:
-            aggregation = ApmPolicy.Aggregation.AVERAGE
         compare_mode = str(item.get("compare_mode") or ApmPolicy.CompareMode.ABSOLUTE)
         if compare_mode not in {choice for choice, _label in ApmPolicy.CompareMode.choices}:
             self._condition_error("error.conditions_shape")
@@ -725,7 +725,6 @@ class ApmPolicySerializer(serializers.ModelSerializer):
             "ref": self._clean_ref(item),
             "role": "regular",
             "metric_type": metric_type,
-            "aggregation": aggregation,
             "compare_mode": compare_mode,
             "compare_offset_amount": compare_offset_amount,
             "compare_value_kind": compare_value_kind or "",
@@ -736,15 +735,8 @@ class ApmPolicySerializer(serializers.ModelSerializer):
         }
 
     def _validated_anchor_fields(self, attrs, metric_type, compare_mode, compare_value_kind, min_request_count):
-        if "aggregation" in attrs:
-            aggregation = attrs["aggregation"]
-        elif self.instance is not None:
-            aggregation = self.instance.aggregation
-        else:
-            aggregation = ApmPolicy.Aggregation.AVERAGE
         return {
             "metric_type": metric_type,
-            "aggregation": aggregation,
             "compare_mode": compare_mode or ApmPolicy.CompareMode.ABSOLUTE,
             "compare_offset_amount": attrs.get("compare_offset_amount"),
             "compare_value_kind": compare_value_kind or "",
@@ -808,8 +800,9 @@ class ApmPolicySerializer(serializers.ModelSerializer):
         )
         attrs["slow_threshold_ms"] = slow_threshold_ms
         attrs["apdex_threshold_ms"] = apdex_threshold_ms
-        if metric_type in ApmPolicy.COUNT_METRIC_TYPES:
-            attrs["aggregation"] = ApmPolicy.Aggregation.AVERAGE
+        evaluation_interval = self._stored_or_incoming(attrs, "evaluation_interval", 1)
+        if metric_type != ApmPolicy.MetricType.SLO_BURN_RATE and int(metric_window) < int(evaluation_interval):
+            raise serializers.ValidationError({"metric_window": serializer_text(self, "error.window_shorter_than_interval")})
         self._validate_compare(
             metric_type,
             compare_mode,
@@ -851,17 +844,6 @@ class ApmPolicySerializer(serializers.ModelSerializer):
             combination_count = max(1, len(attrs["endpoints"])) * len(attrs["versions"])
             if combination_count > MAX_POLICY_TARGETS:
                 raise serializers.ValidationError({"endpoints": serializer_text(self, "error.policy_target_limit", count=MAX_POLICY_TARGETS)})
-
-        no_data_after = attrs.get("no_data_after", getattr(self.instance, "no_data_after", None))
-        no_data_severity = attrs.get("no_data_severity", getattr(self.instance, "no_data_severity", ""))
-        if bool(no_data_after) != bool(no_data_severity):
-            field = "no_data_severity" if no_data_after else "no_data_after"
-            raise serializers.ValidationError({field: serializer_text(self, "error.no_data_pair")})
-        no_data_alert_name = attrs.get(
-            "no_data_alert_name",
-            getattr(self.instance, "no_data_alert_name", ""),
-        )
-        attrs["no_data_alert_name"] = str(no_data_alert_name).strip()
 
         self._validate_judgment(
             attrs,
@@ -1160,8 +1142,8 @@ class ApmPolicySerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({"compare_value_kind": serializer_text(self, "error.compare_previous_kind")})
         if compare_mode == ApmPolicy.CompareMode.BASELINE_DAYS and kind not in {"delta", "percent", "sigma"}:
             raise serializers.ValidationError({"compare_value_kind": serializer_text(self, "error.compare_baseline_days_kind")})
-        if compare_mode in offset_modes and kind != "percent":
-            raise serializers.ValidationError({"compare_value_kind": serializer_text(self, "error.compare_offset_percent_only")})
+        if compare_mode in offset_modes and kind not in {"delta", "percent"}:
+            raise serializers.ValidationError({"compare_value_kind": serializer_text(self, "error.compare_offset_kind")})
         self._validate_offset_amount(compare_mode, metric_window, compare_offset_amount)
         if metric_type == ApmPolicy.MetricType.NO_TRAFFIC and compare_mode != ApmPolicy.CompareMode.ABSOLUTE:
             raise serializers.ValidationError({"compare_mode": serializer_text(self, "error.compare_no_traffic_absolute")})

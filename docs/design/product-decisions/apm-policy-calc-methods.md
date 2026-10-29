@@ -1,7 +1,7 @@
 # APM 策略计算方式产品决策记忆
 
-- 最近更新：2026-10-28
-- 当前规格：`specs/changes/apm-policy-conditions-and-scope/spec.md`（第三批，implemented）；第二批 `specs/changes/apm-alert-calc-catalog/spec.md`（implemented，提交 `aa7b2d9aea` / `af3db59cd1` / `a54e7d70e3`）；第一批 `specs/changes/apm-alert-calc-enrichment/spec.md`（implemented）
+- 最近更新：2026-10-29
+- 当前规格：`specs/changes/apm-policy-scenario-fit/spec.md`（第四批，implemented，2026-10-29）；第三批 `specs/changes/apm-policy-conditions-and-scope/spec.md`（implemented）；第二批 `specs/changes/apm-alert-calc-catalog/spec.md`（implemented，提交 `aa7b2d9aea` / `af3db59cd1` / `a54e7d70e3`）；第一批 `specs/changes/apm-alert-calc-enrichment/spec.md`（implemented）
 - 长期契约：`specs/capabilities/apm-alerting.md`
 
 ## 产品定位
@@ -26,6 +26,11 @@ SkyWalking Alarm、阿里云 ARMS、蓝鲸监控）只做能力覆盖与术语�
   - 下游依赖作为目标类型，不按端点或实例拆。
   - SLO 燃烧率：一条策略一组长短窗，快燃 / 慢燃用预设各建一条。
   - `baseline_days` 且 N ≥ 3 时可选 σ；试算可回放最近 24h，只读。
+- 第四批（implemented，2026-10-29，场景回归）：
+  - 去掉「汇聚方法」。非计数指标的评估值就是整窗 RED 统计值，不对子桶做 avg / max / min / last 二次汇聚。
+  - 去掉策略级「无数据告警」开关，无流量用 `no_traffic` 指标表达。
+  - `offset_hours / offset_days` 对照窗与 `previous_window` 一样允许 Δ 和 %。
+  - `metric_window ≥ evaluation_interval`，否则拒绝保存；`slo_burn_rate` 不受约束。
 
 ## 已确认设计决策
 
@@ -40,10 +45,15 @@ SkyWalking Alarm、阿里云 ARMS、蓝鲸监控）只做能力覆盖与术语�
   （SkyWalking / ARMS / 蓝鲸）。这是第二批唯一改变存量行为的决策（告警晚 D 秒，换相对计算不系统性放大下跌）。
 - 慢阈值与 Apdex T 放策略级，不放服务级。原因：没有服务级配置实体；同一服务不同接口需要不同阈值。
 - 用户词汇沿用「当前值 / 相对上一等长窗 / 同窗 / 变化量 / 变化率 / 恢复阈值」，不出现「环比 / 同比 / 昨天」。
+- 2026-10-29：评估值取整窗 RED 统计值，策略没有汇聚方法。原因：p95 / 错误率 / Apdex 不可加，15 秒子桶在低流量服务上全是噪声；
+  适配器本来就算好了整窗值。竞品（Datadog / New Relic / Elastic / SkyWalking / ARMS）都是「评估窗内一个数比阈值」。`timeseries` 只画趋势图。
+- 2026-10-29：没有策略级无数据开关。原因：APM 的无数据就是窗内 span 为 0，与 `no_traffic` 同源；一个场景只留 APM 原生词「无流量」。
+- 2026-10-29：吞吐单位维持 `req/s`，不随 SkyWalking / ARMS 改 cpm。已有快照与告警中心副本按 `req/s` 记录，改单位的收益不抵迁移成本。
 
 ## 明确后置
 
-无。机器学习异常检测、时序预测、查询语言框、任意满足、复合策略、静默期、通知间隔、维护窗、策略级评估延迟和服务级统一慢阈值仍不做，不记成待排期项。
+机器学习异常检测、时序预测、查询语言框、任意满足、复合策略、静默期、通知间隔、维护窗、策略级评估延迟和服务级统一慢阈值仍不做，不记成待排期项。
+触发条件按时长表达（「持续 N 分钟」）：第四批只补「窗口 ≥ 频率」校验与提示文案，表达方式后续再看。
 
 ## 仍待确认
 
@@ -57,8 +67,12 @@ SkyWalking Alarm、阿里云 ARMS、蓝鲸监控）只做能力覆盖与术语�
   形态分别收敛为「N 天前同窗」「近 N 天同窗均值」「恢复阈值」「0～2 条绝对值前置条件」。
 - 2026-10-28 撤回「0～2 条绝对值前置条件」。产品认为它和监控多指标条件同类，这批没必要单独做，后续再考虑。
 - 2026-10-28 第三批把上述撤回改回：前置条件作为多条件里的绝对门槛落地，并补上作用范围、下游依赖、SLO 燃烧率、σ 和 24h 回放。多服务用轻量 scope，不引入监控策略组。
+- 2026-10-29 替代「计数类指标不套汇聚方式、其余指标套 avg / max / min / last」：全部指标整窗取值，`aggregation` 列删除。
+- 2026-10-29 替代「N 小时 / N 天前同窗只给 %」：放开 Δ。
+- 2026-10-29 替代监控同款「无数据告警」开关：删除三列，由 `no_traffic` 指标承担。
 
 ## 决策来源
 
 2026-10-27 CTeam 需求 p398_716 两轮分析：第一轮落地相对计算、最低请求数、试算；第二轮产品复核要求按客户场景对照竞品尽量补齐，
 授权按推荐方案执行，五项待确认事项（评估延迟默认值、前置条件不满足语义、阈值归属层级、SLO 燃烧率、下游依赖）按规格自审结论拍板。
+2026-10-29 产品复核「APM / 日志策略是否照搬监控」：确认汇聚方法口径错误为阻断项，无数据开关与吞吐单位两项待确认按推荐方案拍板。

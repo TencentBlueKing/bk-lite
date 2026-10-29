@@ -44,7 +44,6 @@ import type {
   ApmNotificationChannel,
   ApmNotificationRecipient,
   ApmPolicy,
-  ApmPolicyAggregation,
   ApmPolicyComparator,
   ApmPolicyCondition,
   ApmPolicyGuardCondition,
@@ -72,7 +71,6 @@ interface ThresholdEditorRow {
 interface ExtraConditionEditor {
   ref: string;
   metric_type: ApmPolicyMetric;
-  aggregation: ApmPolicyAggregation;
   compare_mode: ApmCompareMode;
   compare_offset_amount: number | null;
   compare_value_kind: ApmCompareValueKind | '';
@@ -95,7 +93,6 @@ interface PolicyEditorValues extends Omit<
 > {
   service_scope: string;
   organizations: number[];
-  no_data_alert_name: string;
   handlers: Array<string | number>;
   thresholds: ThresholdEditorRow[];
   recovery_comparator: ApmPolicyComparator;
@@ -131,7 +128,6 @@ const DEFAULT_VALUES: PolicyEditorValues = {
   metric_type: 'error_rate',
   evaluation_interval: 1,
   metric_window: 5,
-  aggregation: 'avg',
   compare_mode: 'absolute',
   compare_offset_amount: null,
   compare_value_kind: '',
@@ -146,9 +142,6 @@ const DEFAULT_VALUES: PolicyEditorValues = {
   recovery_comparator: 'lt',
   recovery_value: null,
   recover_after: 3,
-  no_data_after: null,
-  no_data_severity: '',
-  no_data_alert_name: '${service} ${metric}',
   handlers: [],
   notification_targets: [],
   extra_conditions: [],
@@ -168,7 +161,6 @@ function blankExtraCondition(ref: string): ExtraConditionEditor {
   return {
     ref,
     metric_type: 'throughput',
-    aggregation: 'avg',
     compare_mode: 'absolute',
     compare_offset_amount: null,
     compare_value_kind: '',
@@ -326,23 +318,6 @@ function decodeServiceScope(scope: string) {
 const LATENCY_METRICS: ApmPolicyMetric[] = ['p50', 'p75', 'p90', 'p95', 'p99', 'latency_avg', 'latency_max'];
 const RATIO_METRICS: ApmPolicyMetric[] = ['error_rate', 'slow_request_rate', 'apdex'];
 const COUNT_METRICS: ApmPolicyMetric[] = ['error_count', 'slow_request_count'];
-
-const AGGREGATION_OPTIONS: Array<{
-  value: ApmPolicyAggregation;
-  method: string;
-  i18nKey: string;
-  fallback: string;
-}> = [
-  { value: 'avg', method: 'AVG_OVER_TIME', i18nKey: 'apm.policies.aggregationAvg', fallback: '平均' },
-  { value: 'last', method: 'LAST_OVER_TIME', i18nKey: 'apm.policies.aggregationLast', fallback: '末值' },
-  { value: 'max', method: 'MAX_OVER_TIME', i18nKey: 'apm.policies.aggregationMax', fallback: '最大' },
-  { value: 'min', method: 'MIN_OVER_TIME', i18nKey: 'apm.policies.aggregationMin', fallback: '最小' },
-];
-
-function aggregationDisplayLabel(name: string, method: string) {
-  if (!method || name.trim().toUpperCase() === method) return name;
-  return `${name}（${method}）`;
-}
 const SLOW_METRICS: ApmPolicyMetric[] = ['slow_request_count', 'slow_request_rate'];
 const MIN_REQUEST_METRICS: ApmPolicyMetric[] = ['error_rate', 'slow_request_rate', 'apdex', ...LATENCY_METRICS];
 
@@ -415,6 +390,9 @@ function resolvedCompareKind(
     return 'delta';
   }
   if (mode === 'previous_window') return kind === 'percent' ? 'percent' : 'delta';
+  if (mode === 'offset_hours' || mode === 'offset_days' || mode === 'offset_1h' || mode === 'offset_24h') {
+    return kind === 'delta' ? 'delta' : 'percent';
+  }
   return 'percent';
 }
 
@@ -497,7 +475,10 @@ function applyListedCompareMode(
     }
     return;
   }
-  form.setFieldValue(kindPath, 'percent');
+  const listedKind = form.getFieldValue(kindPath);
+  if (!isOffsetCompare(previous) || (listedKind !== 'delta' && listedKind !== 'percent')) {
+    form.setFieldValue(kindPath, 'percent');
+  }
   const amount = Number(form.getFieldValue(amountPath));
   if (previous === 'baseline_days' || !Number.isInteger(amount) || amount < 1) {
     form.setFieldValue(amountPath, 1);
@@ -693,7 +674,6 @@ function splitStoredConditions(policy: ApmPolicy): Pick<PolicyEditorValues, 'ext
     extra_conditions: regulars.slice(1).map((item) => ({
       ref: item.ref,
       metric_type: item.metric_type,
-      aggregation: item.aggregation,
       ...editorCompareState(item),
       compare_value_kind: item.compare_value_kind ?? '',
       min_request_count: item.min_request_count ?? null,
@@ -715,7 +695,6 @@ function splitStoredConditions(policy: ApmPolicy): Pick<PolicyEditorValues, 'ext
 function regularConditionPayload(
   ref: string,
   metric: ApmPolicyMetric,
-  aggregation: ApmPolicyAggregation,
   compareMode: ApmCompareMode,
   compareOffset: number | null,
   compareKindInput: ApmCompareValueKind | '',
@@ -730,7 +709,6 @@ function regularConditionPayload(
     ref,
     role: 'regular',
     metric_type: metric,
-    aggregation: COUNT_METRICS.includes(metric) ? 'avg' : aggregation,
     compare_mode: compareMode,
     compare_offset_amount: offset ? compareOffset : null,
     compare_value_kind: kind,
@@ -748,7 +726,6 @@ function buildConditions(values: PolicyEditorValues): ApmPolicyCondition[] | und
   const anchor = regularConditionPayload(
     'a',
     values.metric_type,
-    values.aggregation,
     values.compare_mode || 'absolute',
     values.compare_offset_amount,
     values.compare_value_kind,
@@ -762,7 +739,6 @@ function buildConditions(values: PolicyEditorValues): ApmPolicyCondition[] | und
     ...extras.map((item) => regularConditionPayload(
       item.ref,
       item.metric_type,
-      item.aggregation,
       item.compare_mode,
       item.compare_offset_amount,
       item.compare_value_kind,
@@ -783,7 +759,7 @@ function buildConditions(values: PolicyEditorValues): ApmPolicyCondition[] | und
   ];
 }
 
-function toEditorValues(policy: ApmPolicy, defaultNoDataAlertName: string): PolicyEditorValues {
+function toEditorValues(policy: ApmPolicy): PolicyEditorValues {
   const thresholds = new Map(policy.thresholds.map((item) => [item.severity, item]));
   const commonComparator = policy.thresholds[0]?.comparator ?? 'gt';
   return {
@@ -794,7 +770,6 @@ function toEditorValues(policy: ApmPolicy, defaultNoDataAlertName: string): Poli
     metric_type: policy.metric_type,
     evaluation_interval: policy.evaluation_interval,
     metric_window: policy.metric_window,
-    aggregation: policy.aggregation,
     ...editorCompareState(policy),
     compare_value_kind: policy.compare_value_kind ?? '',
     min_request_count: policy.min_request_count ?? null,
@@ -822,9 +797,6 @@ function toEditorValues(policy: ApmPolicy, defaultNoDataAlertName: string): Poli
       )
       : null,
     recover_after: policy.recover_after,
-    no_data_after: policy.no_data_after,
-    no_data_severity: policy.no_data_severity,
-    no_data_alert_name: policy.no_data_alert_name || defaultNoDataAlertName,
     endpoints: policy.endpoints,
     scope_mode: policy.scope_mode || 'service',
     service_ids: policy.service_ids || [],
@@ -860,7 +832,6 @@ function buildMetricPreviewPayload(
     || !scope.environment
     || !values.metric_type
     || !values.metric_window
-    || !values.aggregation
     || !thresholds.length
   ) return null;
   const originalScope = loadedPolicy
@@ -879,16 +850,12 @@ function buildMetricPreviewPayload(
     metric_type: values.metric_type,
     evaluation_interval: values.evaluation_interval || 1,
     metric_window: values.metric_window,
-    aggregation: COUNT_METRICS.includes(values.metric_type) ? 'avg' : values.aggregation,
     ...comparePayloadFields(values),
     ...metricParamFields(values),
     ...judgmentFields(values),
     thresholds,
     trigger_after: values.trigger_after || 1,
     recover_after: values.recover_after || 1,
-    no_data_after: null,
-    no_data_severity: '',
-    no_data_alert_name: '',
     notification_targets: [],
     ...scopePayload(values),
     ...(values.metric_type === 'slo_burn_rate'
@@ -965,52 +932,6 @@ function ConditionRefBadge({ children }: { children: string }) {
   );
 }
 
-function AggregationSelect({
-  id,
-  value,
-  onChange,
-}: {
-  id?: string;
-  value?: ApmPolicyAggregation;
-  onChange?: (value: ApmPolicyAggregation) => void;
-}) {
-  const { t } = useTranslation();
-  return (
-    <Select
-      id={id}
-      className="w-full min-w-0"
-      showSearch
-      optionFilterProp="label"
-      optionLabelProp="label"
-      value={value}
-      onChange={onChange}
-      filterOption={(input, option) => {
-        const query = input.trim().toLowerCase();
-        if (!query) return true;
-        const label = String(option?.label || '').toLowerCase();
-        const optionValue = String(option?.value || '').toLowerCase();
-        return label.includes(query) || optionValue.includes(query);
-      }}
-    >
-      {AGGREGATION_OPTIONS.map((item) => {
-        const name = t(item.i18nKey, item.fallback);
-        return (
-          <Select.Option
-            key={item.value}
-            value={item.value}
-            label={aggregationDisplayLabel(name, item.method)}
-          >
-            <span className="flex w-full min-w-0 items-center">
-              <span className="shrink-0 text-[var(--color-text-1)]">{name}</span>
-              <span className="text-[var(--color-text-3)]">（{item.method}）</span>
-            </span>
-          </Select.Option>
-        );
-      })}
-    </Select>
-  );
-}
-
 function ConditionRoleSelect({
   letter,
   value,
@@ -1062,7 +983,7 @@ function ExtraCompareFields({
   const offset = isOffsetCompare(mode);
   const offsetDays = mode === 'offset_days';
   const baseline = mode === 'baseline_days';
-  const showKind = mode === 'previous_window' || baseline;
+  const showKind = mode === 'previous_window' || baseline || offset;
   const amountLabel = baseline || offsetDays
     ? t('apm.policies.conditionOffsetDays', '条件 {ref} 天数', { ref: letter })
     : t('apm.policies.conditionOffsetHours', '条件 {ref} 小时数', { ref: letter });
@@ -1186,14 +1107,12 @@ function ApmMetricConditionEditor({
         removeGuard: () => undefined,
       });
   const metric = value ?? 'error_rate';
-  const showAggregation = !COUNT_METRICS.includes(metric);
   const showSlowThreshold = SLOW_METRICS.includes(metric);
   const showApdexThreshold = metric === 'apdex';
   const metricChoices = METRICS
     .filter((item) => item.value !== 'no_traffic')
     .map((item) => ({ value: item.value, label: t(item.i18nKey) }));
   const typeLabel = t('apm.policies.conditionType', '类型');
-  const aggregationLabel = t('apm.policies.aggregation', '汇聚方法');
   const slowLabel = t('apm.policies.slowThreshold', '慢阈值 (ms)');
   const apdexLabel = t('apm.policies.apdexThreshold', 'T (ms)');
   const minRequestLabel = t('apm.policies.minRequestCount', '最低请求数');
@@ -1220,18 +1139,6 @@ function ApmMetricConditionEditor({
           <ConditionRow label={typeLabel}>
             <ConditionRoleSelect letter="a" value="regular" disableGuard />
           </ConditionRow>
-          {showAggregation ? (
-            <ConditionRow label={aggregationLabel}>
-              <Form.Item
-                name="aggregation"
-                label={aggregationLabel}
-                rules={[{ required: true, message: t('apm.policies.aggregationRequired', '请选择汇聚方法') }]}
-                className={`${styles.conditionField} min-w-0`}
-              >
-                <AggregationSelect />
-              </Form.Item>
-            </ConditionRow>
-          ) : null}
           {showSlowThreshold ? (
             <ConditionRow label={slowLabel}>
               <Form.Item
@@ -1302,17 +1209,6 @@ function ApmMetricConditionEditor({
                     }}
                   />
                 </ConditionRow>
-                {!COUNT_METRICS.includes(extraMetric) ? (
-                  <ConditionRow label={aggregationLabel}>
-                    <Form.Item
-                      name={[field.name, 'aggregation']}
-                      label={t('apm.policies.conditionAggregation', '条件 {ref} 汇聚方法', { ref })}
-                      className={`${styles.conditionField} min-w-0`}
-                    >
-                      <AggregationSelect />
-                    </Form.Item>
-                  </ConditionRow>
-                ) : null}
                 {SLOW_METRICS.includes(extraMetric) ? (
                   <ConditionRow label={slowLabel}>
                     <Form.Item
@@ -1434,8 +1330,6 @@ function ApmMetricConditionEditor({
 export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
   const { t } = useTranslation();
   const router = useRouter();
-  const defaultNoDataAlertName = `${'${service}'} ${'${metric}'} ${t('apm.policies.noDataAlertSuffix', '无数据告警')}`;
-  const defaultNoDataAlertNameRef = useRef(defaultNoDataAlertName);
   const severityOptions = useMemo(
     () => SEVERITIES.map((item) => ({ ...item, label: t(item.i18nKey) })),
     [t],
@@ -1477,7 +1371,6 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
   const minRequestCount = Form.useWatch('min_request_count', form);
   const evaluationInterval = Form.useWatch('evaluation_interval', form);
   const metricWindow = Form.useWatch('metric_window', form);
-  const aggregation = Form.useWatch('aggregation', form);
   const sloId = Form.useWatch('slo', form);
   const burnLongWindow = Form.useWatch('burn_long_window_minutes', form);
   const burnShortWindow = Form.useWatch('burn_short_window_minutes', form);
@@ -1519,7 +1412,6 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
   const [loadedPolicy, setLoadedPolicy] = useState<ApmPolicy | null>(null);
   const [preview, setPreview] = useState<ApmPolicyQueryResult | null>(null);
   const [triggerMode, setTriggerMode] = useState<'consecutive' | 'window'>('consecutive');
-  const [noDataOpen, setNoDataOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -1601,8 +1493,8 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
     // rc-field-form 的 errors 和 warnings 初始指向同一个空数组。字段第一次
     // onChange 会把这份 meta 存进缓存，下一次 setFieldValue 再深比较时就会
     // 报 “There may be circular references”，开发态遮罩会挡住整页。
-    // 字段挂载后立刻用两份独立空数组写入缓存。触发周期和无数据是后挂上的，
-    // 所以切换模式或开关后也要再写一次。
+    // 字段挂载后立刻用两份独立空数组写入缓存。触发周期是后挂上的，
+    // 所以切换模式后也要再写一次。
     ([
       'compare_mode',
       'compare_value_kind',
@@ -1611,11 +1503,8 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
       'thresholds',
       'apdex_threshold_ms',
       'trigger_window',
-      'no_data_severity',
-      'no_data_after',
-      'no_data_alert_name',
     ] as const).forEach((name) => form.setFieldValue(name, form.getFieldValue(name)));
-  }, [compareMode, form, loading, noDataOpen, triggerMode]);
+  }, [compareMode, form, loading, triggerMode]);
 
   useEffect(() => {
     if (isLoading) return;
@@ -1628,11 +1517,8 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
         setServices(serviceItems);
         setLoadedPolicy(policy);
         setNoticeEnabled(Boolean(policy?.notification_targets.length));
-        form.setFieldsValue(policy
-          ? toEditorValues(policy, defaultNoDataAlertNameRef.current)
-          : { ...DEFAULT_VALUES, no_data_alert_name: defaultNoDataAlertNameRef.current });
+        form.setFieldsValue(policy ? toEditorValues(policy) : DEFAULT_VALUES);
         setTriggerMode(policy?.trigger_window ? 'window' : 'consecutive');
-        setNoDataOpen(Boolean(policy?.no_data_severity));
       })
       .finally(() => setLoading(false));
     void loadNotificationDirectories();
@@ -1937,7 +1823,6 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
     metricType,
     evaluationInterval,
     metricWindow,
-    aggregation,
     compareMode,
     compareOffsetAmount,
     compareKind,
@@ -2004,16 +1889,12 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
       metric_type: values.metric_type,
       evaluation_interval: values.evaluation_interval,
       metric_window: values.metric_window,
-      aggregation: COUNT_METRICS.includes(values.metric_type) ? 'avg' : values.aggregation,
       ...comparePayloadFields(values),
       ...metricParamFields(values),
       ...judgmentFields(values),
       thresholds,
       trigger_after: values.trigger_after,
       recover_after: values.recover_after,
-      no_data_after: values.no_data_after,
-      no_data_severity: values.no_data_severity,
-      no_data_alert_name: values.no_data_severity ? values.no_data_alert_name : '',
       handlers: values.handlers || [],
       notification_targets: noticeEnabled
         ? values.notification_targets.map((target) => ({
@@ -2201,7 +2082,10 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
       }
       return;
     }
-    form.setFieldValue('compare_value_kind', 'percent');
+    const offsetKind = form.getFieldValue('compare_value_kind');
+    if (!isOffsetCompare(previous) || (offsetKind !== 'delta' && offsetKind !== 'percent')) {
+      form.setFieldValue('compare_value_kind', 'percent');
+    }
     const amount = Number(form.getFieldValue('compare_offset_amount'));
     if (previous === 'baseline_days' || !Number.isInteger(amount) || amount < 1) {
       form.setFieldValue('compare_offset_amount', 1);
@@ -2518,7 +2402,25 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
             </Form.Item>
           )}
           {metricType === 'slo_burn_rate' ? null : (
-            <Form.Item name="metric_window" label={t('apm.policies.metricWindow', '汇聚周期')} rules={[{ required: true, message: t('apm.policies.metricWindowRequired', '请输入汇聚周期') }]}>
+            <Form.Item
+              name="metric_window"
+              label={t('apm.policies.metricWindow', '汇聚周期')}
+              dependencies={['evaluation_interval']}
+              rules={[
+                { required: true, message: t('apm.policies.metricWindowRequired', '请输入汇聚周期') },
+                {
+                  validator: async (_, value) => {
+                    const interval = Number(form.getFieldValue('evaluation_interval')) || 1;
+                    if (value != null && Number(value) < interval) {
+                      throw new Error(t(
+                        'apm.policies.windowShorterThanInterval',
+                        '汇聚周期不能短于检测频率，否则两次评估之间的数据不会被检查',
+                      ));
+                    }
+                  },
+                },
+              ]}
+            >
               <NumberWithUnit min={1} max={1440} unit={t('apm.policies.minutes', '分钟')} />
             </Form.Item>
           )}
@@ -2599,7 +2501,7 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
                   <InputNumber<number> min={2} max={7} precision={0} />
                 </Form.Item>
               ) : null}
-              {compareMode === 'previous_window' || compareMode === 'baseline_days' ? (
+              {compareMode === 'previous_window' || compareMode === 'baseline_days' || offsetSelected ? (
                 <Form.Item name="compare_value_kind" label={t('apm.policies.compareValueKind', '比较方式')}>
                   <Radio.Group
                     options={[
@@ -2772,6 +2674,14 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
               />
             </Form.Item>
           </Form.Item>
+          {metricType !== 'slo_burn_rate' ? (
+            <p className="mt-1 text-xs leading-5 text-[var(--color-text-3)]">
+              {t('apm.policies.evaluationHint', '每 {interval} 分钟评估一次最近 {window} 分钟的数据', {
+                interval: evaluationInterval || 1,
+                window: metricWindow || 5,
+              })}
+            </p>
+          ) : null}
           {showCompare ? (
             <Form.Item label={t('apm.policies.triggerModeAria', '触发方式')}>
               <div className={styles.conditionControls}>
@@ -2842,80 +2752,6 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
                 <span className={styles.numberUnit}>{thresholdUnit}</span>
               </Space.Compact>
             </Form.Item>
-          ) : null}
-          <Form.Item label={t('apm.policies.noDataAlert', '无数据告警')}>
-            <Switch
-              checked={noDataOpen}
-              aria-label={t('apm.policies.noDataAlert', '无数据告警')}
-              onChange={(checked) => {
-                setNoDataOpen(checked);
-                if (!checked) {
-                  form.setFieldValue('no_data_severity', '');
-                  form.setFieldValue('no_data_after', null);
-                  return;
-                }
-                if (!form.getFieldValue('no_data_severity')) {
-                  form.setFieldValue('no_data_severity', 'warning');
-                }
-                if (!form.getFieldValue('no_data_after')) {
-                  form.setFieldValue('no_data_after', 5);
-                }
-                if (!form.getFieldValue('no_data_alert_name')) {
-                  form.setFieldValue('no_data_alert_name', defaultNoDataAlertName);
-                }
-              }}
-            />
-            <div className="mt-[10px] text-xs leading-5 text-[var(--color-text-3)]">
-              {t('apm.policies.noDataAlertTip', '连续若干个周期没有数据时触发无数据告警。')}
-            </div>
-          </Form.Item>
-          {noDataOpen ? (
-            <>
-              <Form.Item
-                name="no_data_alert_name"
-                label={t('apm.policies.noDataNameLabel', '告警名称')}
-                className={styles.noDataAlertName}
-                extra={t('apm.policies.noDataAlertNameHint', '告警名称模板，变量可从右侧变量表复制')}
-                rules={[{ required: true, message: t('apm.policies.noDataAlertNameRequired', '请输入无数据告警名称') }]}
-              >
-                <Input maxLength={512} placeholder={defaultNoDataAlertName} />
-              </Form.Item>
-              <Form.Item
-                name="no_data_after"
-                label={t('apm.policies.noDataWindow', '持续周期')}
-                rules={[{
-                  validator: async (_, value) => {
-                    if (value) return;
-                    throw new Error(t('apm.policies.noDataCountRequired', '请填写无数据持续次数'));
-                  },
-                }]}
-              >
-                <AffixedNumber
-                  className={styles.conditionNumber}
-                  min={1}
-                  max={60}
-                  precision={0}
-                  after={t('apm.policies.periodUnit', '个周期')}
-                  aria-label={t('apm.policies.noDataCountAria', '无数据持续次数')}
-                />
-              </Form.Item>
-              <Form.Item
-                name="no_data_severity"
-                label={t('apm.policies.noDataLevel', '级别')}
-                rules={[{
-                  validator: async (_, value) => {
-                    if (value) return;
-                    throw new Error(t('apm.policies.noDataSeverityRequired', '请选择无数据告警级别'));
-                  },
-                }]}
-              >
-                <Select
-                  className={styles.conditionMode}
-                  aria-label={t('apm.policies.noDataSeverityAria', '无数据告警级别')}
-                  options={severityOptions.map((item) => ({ value: item.value, label: item.label }))}
-                />
-              </Form.Item>
-            </>
           ) : null}
         </div>
       ),

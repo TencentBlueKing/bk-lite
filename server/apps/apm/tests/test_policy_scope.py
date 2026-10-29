@@ -66,7 +66,6 @@ def _payload(service, **updates):
         "metric_type": "error_rate",
         "evaluation_interval": 1,
         "metric_window": 5,
-        "aggregation": "avg",
         "thresholds": [{"severity": "warning", "comparator": "gt", "value": "0.05"}],
         "trigger_after": 1,
         "recover_after": 2,

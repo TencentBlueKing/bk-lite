@@ -344,12 +344,6 @@ class ApmPolicy(AuditedModel):
         ERROR = "error", "错误"
         WARNING = "warning", "警告"
 
-    class Aggregation(models.TextChoices):
-        AVERAGE = "avg", "平均值"
-        MAXIMUM = "max", "最大值"
-        MINIMUM = "min", "最小值"
-        LAST = "last", "最新值"
-
     class CompareMode(models.TextChoices):
         ABSOLUTE = "absolute", "当前值"
         PREVIOUS_WINDOW = "previous_window", "相对上一等长窗"
@@ -423,7 +417,6 @@ class ApmPolicy(AuditedModel):
     metric_type = models.CharField(max_length=32, choices=MetricType.choices)
     evaluation_interval = models.PositiveIntegerField(default=1)
     metric_window = models.PositiveIntegerField(default=5)
-    aggregation = models.CharField(max_length=16, choices=Aggregation.choices, default=Aggregation.AVERAGE)
     compare_mode = models.CharField(max_length=32, choices=CompareMode.choices, default=CompareMode.ABSOLUTE)
     compare_offset_amount = models.PositiveIntegerField(null=True, blank=True)
     compare_value_kind = models.CharField(max_length=16, blank=True, default="")
@@ -436,9 +429,6 @@ class ApmPolicy(AuditedModel):
     trigger_window = models.PositiveIntegerField(null=True, blank=True)
     recovery_threshold = models.JSONField(default=dict, blank=True)
     recover_after = models.PositiveIntegerField(default=3)
-    no_data_after = models.PositiveIntegerField(null=True, blank=True)
-    no_data_severity = models.CharField(max_length=16, choices=Severity.choices, blank=True, default="")
-    no_data_alert_name = models.CharField(max_length=512, blank=True, default="")
     handlers = models.JSONField(default=list)
     is_enabled = models.BooleanField(default=True, db_index=True)
 
@@ -630,7 +620,6 @@ class ApmAlertMetricSnapshot(AuditedModel):
         related_name="metric_snapshot",
     )
     unit = models.CharField(max_length=32, blank=True, default="")
-    aggregation = models.CharField(max_length=16, choices=ApmPolicy.Aggregation.choices)
     evaluation_interval = models.PositiveIntegerField()
     metric_window = models.PositiveIntegerField()
     snapshots = models.JSONField(default=list, verbose_name="快照数据集合")

@@ -13,7 +13,6 @@ from apps.core.logger import apm_logger as logger
 REQUEST_COUNT_METRIC = "request_count"
 MIRROR_FIELDS = (
     "metric_type",
-    "aggregation",
     "compare_mode",
     "compare_offset_amount",
     "compare_value_kind",
@@ -35,7 +34,6 @@ def anchor_from_policy(policy) -> dict:
         "ref": "a",
         "role": "regular",
         "metric_type": policy.metric_type,
-        "aggregation": policy.aggregation,
         "compare_mode": policy.compare_mode or ApmPolicy.CompareMode.ABSOLUTE,
         "compare_offset_amount": policy.compare_offset_amount,
         "compare_value_kind": policy.compare_value_kind or "",
@@ -217,7 +215,6 @@ def _guard_metric(guard: dict) -> dict:
     return {
         "role": "regular",
         "metric_type": guard["metric_type"],
-        "aggregation": ApmPolicy.Aggregation.AVERAGE,
         "compare_mode": ApmPolicy.CompareMode.ABSOLUTE,
         "compare_offset_amount": None,
         "compare_value_kind": "",
@@ -259,7 +256,7 @@ def _guard_value(
     except Exception as exc:
         log_condition_failure(policy, exc)
         raise TelemetryStoreUnavailable("conditions") from None
-    return service._aggregate(view, red)
+    return service._raw_value(view, red)
 
 
 def evaluate_policy_conditions(service, policy, *, evaluated_at, endpoint, version, instance_id="", target_service=None, dependency=None):

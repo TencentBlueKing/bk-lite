@@ -21,6 +21,7 @@ from apps.apm.models import (
 )
 from apps.apm.services import DjangoApmPolicyService
 from apps.apm.services.contracts import ServiceRed
+from apps.apm.services.policy_conditions import anchor_from_policy, uses_legacy_evaluation
 from apps.apm.tests.helpers import bind_policy_organizations
 
 backfill_conditions = importlib.import_module("apps.apm.migrations.0027_apmpolicy_conditions").backfill_conditions
@@ -54,7 +55,6 @@ def _payload(service, **updates):
         "metric_type": "p95",
         "evaluation_interval": 1,
         "metric_window": 5,
-        "aggregation": "avg",
         "thresholds": [{"severity": "warning", "comparator": "gt", "value": "100"}],
         "trigger_after": 1,
         "recover_after": 3,
@@ -97,7 +97,6 @@ def _regular(ref, metric, comparator, value, **updates):
         "ref": ref,
         "role": "regular",
         "metric_type": metric,
-        "aggregation": "avg",
         "compare_mode": "absolute",
         "compare_offset_amount": None,
         "compare_value_kind": "",
@@ -138,6 +137,16 @@ def _run(policy, store, rounds=1):
     return service
 
 
+def test_residual_aggregation_on_a_stored_condition_stays_on_the_legacy_path():
+    policy = _policy(name="residual-aggregation")
+    stored = anchor_from_policy(policy)
+    stored["aggregation"] = "max"
+    policy.conditions = [stored]
+    policy.save(update_fields=["conditions"])
+
+    assert uses_legacy_evaluation(policy)
+
+
 def test_legacy_payload_synthesizes_one_condition_and_keeps_mirror_columns(apm_api_client):
     service = _service("legacy-mirror")
     legacy = apm_api_client.post("/api/v1/apm/policies/", _payload(service, name="旧策略"), format="json")
@@ -155,7 +164,6 @@ def test_legacy_payload_synthesizes_one_condition_and_keeps_mirror_columns(apm_a
     assert explicit.status_code == 201
     mirror_fields = (
         "metric_type",
-        "aggregation",
         "compare_mode",
         "compare_offset_amount",
         "compare_value_kind",
@@ -164,6 +172,8 @@ def test_legacy_payload_synthesizes_one_condition_and_keeps_mirror_columns(apm_a
         "apdex_threshold_ms",
         "thresholds",
     )
+    assert "aggregation" not in legacy.data["conditions"][0]
+    assert "aggregation" not in explicit.data["conditions"][0]
     assert len(legacy.data["conditions"]) == 1
     assert legacy.data["conditions"][0]["role"] == "regular"
     assert legacy.data["conditions"][0]["ref"] == "a"
