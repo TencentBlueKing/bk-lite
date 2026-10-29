@@ -1,9 +1,18 @@
 """全局扫描设置模型"""
 
+import uuid
+
 from django.db import models
+from django_minio_backend import MinioBackend
 
 from apps.core.models.maintainer_info import MaintainerInfo
 from apps.core.models.time_info import TimeInfo
+from apps.patch_mgmt.models.patch import PATCH_PACKAGE_BUCKET
+
+
+def offline_catalog_upload_path(_instance, _filename: str) -> str:
+    """离线目录整份替换，对象键不可猜测。"""
+    return f"offline-catalog/{uuid.uuid4().hex}.cab"
 
 
 class ScanSetting(TimeInfo, MaintainerInfo):
@@ -39,6 +48,18 @@ class ScanSetting(TimeInfo, MaintainerInfo):
     is_enabled = models.BooleanField(default=True, verbose_name="是否启用")
     notification_enabled = models.BooleanField(default=False, verbose_name="是否启用周期评估通知")
     notification_rules = models.JSONField(default=list, verbose_name="周期评估通知规则")
+    offline_catalog_enabled = models.BooleanField(default=False, verbose_name="是否启用离线目录")
+    offline_catalog_file = models.FileField(
+        storage=MinioBackend(bucket_name=PATCH_PACKAGE_BUCKET),
+        upload_to=offline_catalog_upload_path,
+        blank=True,
+        null=True,
+        verbose_name="离线目录文件",
+    )
+    offline_catalog_filename = models.CharField(max_length=255, blank=True, default="", verbose_name="离线目录文件名")
+    offline_catalog_sha256 = models.CharField(max_length=64, blank=True, default="", verbose_name="离线目录 SHA256")
+    offline_catalog_size = models.BigIntegerField(default=0, verbose_name="离线目录大小")
+    offline_catalog_uploaded_at = models.DateTimeField(null=True, blank=True, verbose_name="离线目录上传时间")
 
     class Meta:
         db_table = "patch_scan_setting"
