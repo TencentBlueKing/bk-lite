@@ -92,6 +92,16 @@ export const createUserTableColumns = ({
       },
     },
     {
+      title: t('system.user.form.employmentStatus'),
+      dataIndex: 'employment_status',
+      width: 100,
+      render: (value?: string) => {
+        if (value === 'employed') return t('system.user.form.employmentEmployed');
+        if (value === 'resigned') return t('system.user.form.employmentResigned');
+        return t('system.user.form.employmentUnspecified');
+      },
+    },
+    {
       title: t('system.user.table.email'),
       dataIndex: 'email',
       width: 185,

@@ -17,6 +17,7 @@ from apps.system_mgmt.models import Group, User, UserSyncRun, UserSyncRunStatusC
 from apps.system_mgmt.providers import RuntimeApplicationService
 from apps.system_mgmt.services.capability_contract_service import get_integration_capability_availability
 from apps.system_mgmt.services.group_archive_service import GroupArchiveService
+from apps.system_mgmt.services.user_profile import apply_mapped_profile, extract_mapped_profile, profile_create_kwargs, write_mapped_custom_fields
 
 DEFAULT_FIELD_MAPPING = {
     "username": "user_id",
@@ -83,11 +84,7 @@ def _release_stale_user_sync_runs(source: UserSyncSource) -> int:
         select_for_update_kwargs = {}
         if _supports_user_sync_skip_locked():
             select_for_update_kwargs["skip_locked"] = True
-        locked_source = (
-            UserSyncSource.objects.select_for_update(**select_for_update_kwargs)
-            .filter(pk=source.pk)
-            .first()
-        )
+        locked_source = UserSyncSource.objects.select_for_update(**select_for_update_kwargs).filter(pk=source.pk).first()
         # 活跃落库阶段持有 source 行锁。支持 SKIP LOCKED 的数据库立即跳过，
         # 其余数据库等待阶段提交后再用最新 heartbeat 判断，均不会误回收。
         if locked_source is None:
@@ -298,6 +295,7 @@ def _write_phase_progress(
     counters 写入到 phase_progress[phase]["counters"](per-phase 归属),
     不写到 payload.counters 顶层(避免对账/同步字段在不同阶段展示串台)。
     """
+
     def mutate(next_payload: dict) -> None:
         phase_progress = dict(next_payload.get("phase_progress") or {})
         phase_entry = {"current": current, "total": total, "status": status}
@@ -309,6 +307,7 @@ def _write_phase_progress(
             phase_entry["skip_reason"] = skip_reason
         phase_progress[phase] = phase_entry
         next_payload["phase_progress"] = phase_progress
+
     _mutate_run_payload(run_id, mutate)
 
 
@@ -344,6 +343,7 @@ def _write_phase_error(
         if error_params:
             phase_error["error_params"] = error_params
         next_payload["phase_error"] = phase_error
+
     _mutate_run_payload(run_id, mutate)
 
 
@@ -428,9 +428,7 @@ def get_user_sync_root_scope_value(source, default=None):
         except ValueError:
             adapter_cls = None
     if adapter_cls is not None:
-        return adapter_cls.resolve_root_scope_value(
-            business_config, field=root_scope_field, default=default
-        )
+        return adapter_cls.resolve_root_scope_value(business_config, field=root_scope_field, default=default)
 
     if root_scope_field in business_config:
         return business_config.get(root_scope_field, default)
@@ -475,9 +473,7 @@ def execute_user_sync(source_id: int, trigger_mode: str = UserSyncTriggerModeCho
     try:
         with transaction.atomic():
             locked_source = _lock_user_sync_source(source_id)
-            if UserSyncRun.objects.filter(
-                source=locked_source, status=UserSyncRunStatusChoices.RUNNING
-            ).exists():
+            if UserSyncRun.objects.filter(source=locked_source, status=UserSyncRunStatusChoices.RUNNING).exists():
                 return {"result": False, "message": "User sync is already running"}
             run = UserSyncRun.objects.create(
                 source=locked_source,
@@ -570,11 +566,7 @@ def execute_user_sync(source_id: int, trigger_mode: str = UserSyncTriggerModeCho
     # 终态保存
     payload_overrides = _build_run_payload(result, input_summary, sync_summary, current_run=run)
     if sync_summary["conflict_usernames"]:
-        final_status = (
-            UserSyncRunStatusChoices.FAILED
-            if sync_summary["synced_user_count"] == 0
-            else UserSyncRunStatusChoices.PARTIAL
-        )
+        final_status = UserSyncRunStatusChoices.FAILED if sync_summary["synced_user_count"] == 0 else UserSyncRunStatusChoices.PARTIAL
     else:
         final_status = UserSyncRunStatusChoices.SUCCESS
     try:
@@ -670,10 +662,7 @@ def preview_user_sync(source: UserSyncSource) -> dict:
     user_count = len(result.payload.get("user_list") or [])
     provider_metadata = {k: v for k, v in result.payload.items() if k not in ("group_list", "user_list")}
 
-    logger.info(
-        f"User sync preview completed: estimated {user_count} users, {group_count} groups "
-        f"for source '{getattr(source, 'name', '')}'"
-    )
+    logger.info(f"User sync preview completed: estimated {user_count} users, {group_count} groups " f"for source '{getattr(source, 'name', '')}'")
     return {
         "result": True,
         "message": f"Preview: estimated {user_count} users, {group_count} groups",
@@ -686,10 +675,14 @@ def preview_user_sync(source: UserSyncSource) -> dict:
 
 
 def get_user_sync_available_instances():
-    return UserSyncSource._meta.get_field("integration_instance").remote_field.model.objects.filter(
-        enabled=True,
-        status="ready",
-    ).order_by("name", "id")
+    return (
+        UserSyncSource._meta.get_field("integration_instance")
+        .remote_field.model.objects.filter(
+            enabled=True,
+            status="ready",
+        )
+        .order_by("name", "id")
+    )
 
 
 def _extract_input_summary(provider_payload: dict | None):
@@ -735,7 +728,7 @@ def _build_run_payload(
     return payload
 
 
-def _apply_user_sync_payload(source: UserSyncSource, payload: dict, current_run: "UserSyncRun | None" = None):
+def _apply_user_sync_payload(source: UserSyncSource, payload: dict, current_run: "UserSyncRun | None" = None):  # noqa: C901
     """三段式应用同步载荷:同步组织 → 按 batch 同步用户 → 全量对账。
 
     每段独立小事务,事务 commit 后通过 _write_phase_progress 写进度,确保其他
@@ -751,9 +744,7 @@ def _apply_user_sync_payload(source: UserSyncSource, payload: dict, current_run:
         raise ValueError("User sync root scope is required")
 
     has_run = current_run is not None
-    password_init_mode_snapshot = (
-        (current_run.payload or {}).get("password_init_mode") if has_run else None
-    )
+    password_init_mode_snapshot = (current_run.payload or {}).get("password_init_mode") if has_run else None
 
     def _record_progress(phase, current, total, status, counters=None):
         """写入阶段进度;仅在 current_run 存在时执行。"""
@@ -786,9 +777,7 @@ def _apply_user_sync_payload(source: UserSyncSource, payload: dict, current_run:
                 _lock_user_sync_source(source.id)
                 _touch_running_user_sync_run(current_run.id)
             root_group = _get_or_create_root_group(source)
-            group_id_mapping, active_group_ids = _sync_groups(
-                source, group_list, root_group, root_scope_value, group_counters
-            )
+            group_id_mapping, active_group_ids = _sync_groups(source, group_list, root_group, root_scope_value, group_counters)
             if has_run:
                 _touch_running_user_sync_run(current_run.id)
     except Exception as error:
@@ -798,13 +787,13 @@ def _apply_user_sync_payload(source: UserSyncSource, payload: dict, current_run:
     # 写 sync_groups 进度(扣 root)。抬头 total 含跳过无效,与分项加总对账
     synced_groups = max(len(group_id_mapping) - 1, 0)
     skipped_groups = group_counters["skipped_invalid_groups"]
-    group_counters["unchanged_groups"] = max(
-        synced_groups - group_counters["created_groups"] - group_counters["updated_groups"], 0
-    )
+    group_counters["unchanged_groups"] = max(synced_groups - group_counters["created_groups"] - group_counters["updated_groups"], 0)
     group_total = synced_groups + skipped_groups
     _record_progress(
         PHASE_SYNC_GROUPS,
-        current=group_total, total=group_total, status="finish",
+        current=group_total,
+        total=group_total,
+        status="finish",
         counters=group_counters,
     )
 
@@ -825,7 +814,10 @@ def _apply_user_sync_payload(source: UserSyncSource, payload: dict, current_run:
     if total == 0:
         # 空成员目录也必须有可解释的完成状态
         _record_progress(
-            PHASE_SYNC_USERS, current=0, total=0, status="finish",
+            PHASE_SYNC_USERS,
+            current=0,
+            total=0,
+            status="finish",
             counters=dict(sync_counters),
         )
     else:
@@ -850,10 +842,7 @@ def _apply_user_sync_payload(source: UserSyncSource, payload: dict, current_run:
                     if has_run:
                         _touch_running_user_sync_run(current_run.id)
             except Exception as error:
-                logger.exception(
-                    f"User sync batch failed: source={source.name}, "
-                    f"batch_start={batch_start}, error={error!r}"
-                )
+                logger.exception(f"User sync batch failed: source={source.name}, " f"batch_start={batch_start}, error={error!r}")
                 _record_error(PHASE_SYNC_USERS, current=batch_start, total=total, error=error)
                 raise
 
@@ -874,7 +863,7 @@ def _apply_user_sync_payload(source: UserSyncSource, payload: dict, current_run:
                 counters=dict(sync_counters),
             )
 
-    # 阶段 C: 全量对账 (单事务) - 依据完整同步名单删除 stale 用户和组织
+    # 阶段 C: 全量对账 (单事务) - 消失用户删除，stale 组织归档
     try:
         with transaction.atomic():
             if has_run:
@@ -894,7 +883,10 @@ def _apply_user_sync_payload(source: UserSyncSource, payload: dict, current_run:
         raise
     # 对账阶段专属 counters,只含本阶段关心的字段
     _record_progress(
-        PHASE_RECONCILE, current=1, total=1, status="finish",
+        PHASE_RECONCILE,
+        current=1,
+        total=1,
+        status="finish",
         counters={
             "deleted_users": reconcile_result["deleted_user_count"],
             "deleted_group_count": reconcile_result["deleted_group_count"],
@@ -928,10 +920,7 @@ def _apply_user_sync_payload(source: UserSyncSource, payload: dict, current_run:
     synced_group_count = max(len(active_group_ids) - 1, 0)
     if all_conflict_usernames:
         if not all_synced_usernames:
-            summary = (
-                f"User sync failed: all {len(all_conflict_usernames)} users conflicted, "
-                f"{synced_group_count} groups"
-            )
+            summary = f"User sync failed: all {len(all_conflict_usernames)} users conflicted, " f"{synced_group_count} groups"
         else:
             summary = (
                 f"User sync partially completed: {len(all_synced_usernames)} users, "
@@ -949,7 +938,7 @@ def _apply_user_sync_payload(source: UserSyncSource, payload: dict, current_run:
     }
 
 
-def _process_user_batch(
+def _process_user_batch(  # noqa: C901
     *,
     source: UserSyncSource,
     batch: list[dict],
@@ -960,14 +949,12 @@ def _process_user_batch(
 ) -> dict:
     """处理单批用户:标准化、新建/更新、密码初始化(写入 locked_run.payload)。
 
-    不执行 stale 用户禁用 - 那是全量对账阶段的工作。
+    不执行 stale 用户删除 - 那是全量对账阶段的工作。
     返回 {synced_usernames, new_users, updated_users, unchanged_users,
     skipped_invalid_users, conflict_usernames}。
     """
     field_mapping = {**DEFAULT_FIELD_MAPPING, **(source.field_mapping or {})}
-    normalized_users = _normalize_user_batch(
-        batch, field_mapping, group_id_mapping, root_group_id, root_department_id
-    )
+    normalized_users = _normalize_user_batch(batch, field_mapping, group_id_mapping, root_group_id, root_department_id)
     # normalize 只会因缺 username 丢弃条目;显式计数,避免数据质量问题不可见
     skipped_invalid_users = len(batch) - len(normalized_users)
 
@@ -979,10 +966,7 @@ def _process_user_batch(
 
     # 第一遍:创建新用户 + 校验既有用户归属
     existing_user_map = {
-        user.username: user
-        for user in User.objects.select_related("sync_source").filter(
-            username__in=usernames, domain=legacy_domain
-        )
+        user.username: user for user in User.objects.select_related("sync_source").filter(username__in=usernames, domain=legacy_domain)
     }
     new_users = []
     conflict_usernames = []
@@ -991,6 +975,7 @@ def _process_user_batch(
         user = existing_user_map.get(item["username"])
         if user is None:
             try:
+                profile_attrs = profile_create_kwargs(item["profile"], item["username"], legacy_domain)
                 new_user = User.objects.create(
                     user_id=str(uuid.uuid4()),
                     username=item["username"],
@@ -999,10 +984,12 @@ def _process_user_batch(
                     phone=item["phone"],
                     password=make_password(""),
                     domain=legacy_domain,
-                    disabled=False,
+                    disabled=profile_attrs.pop("disabled", False),
                     group_list=item["group_list"],
                     sync_source=source,
+                    **profile_attrs,
                 )
+                write_mapped_custom_fields(new_user, item["profile"]["custom_fields"])
                 new_users.append(new_user)
             except IntegrityError:
                 # race condition:同名 user 在本轮 sync 中被另一 source 创建
@@ -1020,32 +1007,24 @@ def _process_user_batch(
 
         for new_user in new_users:
             try:
-                init_result = init_password_for_user(
-                    new_user, password_init_mode, password_init_cfg, locked_run
-                )
+                init_result = init_password_for_user(new_user, password_init_mode, password_init_cfg, locked_run)
                 if init_result.get("status") != "ok":
                     new_user.password = PASSWORD_INIT_SENTINEL_MARK
                     new_user.temporary_pwd = False
                     new_user.save(update_fields=["password", "temporary_pwd"])
-                    logger.warning(
-                        f"init_password_for_user 被拒绝 username={new_user.username}: "
-                        f"{init_result.get('reason')}"
-                    )
+                    logger.warning(f"init_password_for_user 被拒绝 username={new_user.username}: " f"{init_result.get('reason')}")
             except Exception as init_error:
                 new_user.password = PASSWORD_INIT_SENTINEL_MARK
                 new_user.temporary_pwd = False
                 new_user.save(update_fields=["password", "temporary_pwd"])
-                logger.warning(
-                    f"init_password_for_user 失败 username={new_user.username}: {init_error!r}"
-                )
+                logger.warning(f"init_password_for_user 失败 username={new_user.username}: {init_error!r}")
 
     # 第二遍:更新已有用户
-    synced_users = User.objects.select_related("sync_source").filter(
-        username__in=usernames, domain=legacy_domain
-    )
+    synced_users = User.objects.select_related("sync_source").filter(username__in=usernames, domain=legacy_domain)
     synced_user_map = {user.username: user for user in synced_users}
     synced_usernames: list[str] = []
     update_users = []
+    custom_only_updates = 0
 
     for item in normalized_users:
         user = synced_user_map.get(item["username"])
@@ -1071,36 +1050,50 @@ def _process_user_batch(
             if getattr(user, field) != incoming:
                 setattr(user, field, incoming)
                 changed = True
-        if user.disabled:
-            user.disabled = False
+        if apply_mapped_profile(user, item["profile"]):
             changed = True
         if user.sync_source_id != source.id:
             user.sync_source = source
             changed = True
+        custom_changed = write_mapped_custom_fields(user, item["profile"]["custom_fields"])
         if changed:
             update_users.append(user)
+        elif custom_changed:
+            custom_only_updates += 1
 
     if update_users:
         User.objects.bulk_update(
             update_users,
-            ["display_name", "email", "phone", "group_list", "disabled", "sync_source"],
+            [
+                "display_name",
+                "email",
+                "phone",
+                "group_list",
+                "disabled",
+                "sync_source",
+                "job_title",
+                "job_level",
+                "employee_no",
+                "employment_status",
+                "account_expires_at",
+                "manager",
+            ],
             batch_size=100,
         )
 
     # 权限缓存清理(只针对本批涉及的 username)
     affected_usernames = {u.username for u in new_users + update_users}
     if affected_usernames:
-        clear_users_permission_cache(
-            [{"username": username, "domain": legacy_domain} for username in affected_usernames]
-        )
+        clear_users_permission_cache([{"username": username, "domain": legacy_domain} for username in affected_usernames])
 
     # 同步成功但既非新建也非更新的用户 = 无变化(核验过、无需改动)
-    unchanged_users = max(len(synced_usernames) - len(new_users) - len(update_users), 0)
+    updated_users = len(update_users) + custom_only_updates
+    unchanged_users = max(len(synced_usernames) - len(new_users) - updated_users, 0)
 
     return {
         "synced_usernames": synced_usernames,
         "new_users": len(new_users),
-        "updated_users": len(update_users),
+        "updated_users": updated_users,
         "unchanged_users": unchanged_users,
         "skipped_invalid_users": skipped_invalid_users,
         "conflict_usernames": sorted(set(conflict_usernames)),
@@ -1117,19 +1110,11 @@ def _normalize_user_batch(
     """把 provider 原始 user_list 标准化为本地字段。"""
     normalized = []
     for raw_user in user_list:
-        username = str(
-            _mapped_value(raw_user, field_mapping, "username")
-            or raw_user.get("user_id")
-            or raw_user.get("open_id")
-            or ""
-        ).strip()
+        username = str(_mapped_value(raw_user, field_mapping, "username") or raw_user.get("user_id") or raw_user.get("open_id") or "").strip()
         if not username:
             continue
         username = _truncate_to_field(User, "username", username)
-        departments = [
-            str(item)
-            for item in (raw_user.get("department_ids") or raw_user.get("departments") or [])
-        ]
+        departments = [str(item) for item in (raw_user.get("department_ids") or raw_user.get("departments") or [])]
         local_group_ids = []
         for department_id in departments:
             local_group_id = group_id_mapping.get(department_id)
@@ -1143,18 +1128,22 @@ def _normalize_user_batch(
             {
                 "username": username,
                 "display_name": _truncate_to_field(
-                    User, "display_name",
+                    User,
+                    "display_name",
                     str(_mapped_value(raw_user, field_mapping, "display_name") or username),
                 ),
                 "email": _truncate_to_field(
-                    User, "email",
+                    User,
+                    "email",
                     str(_mapped_value(raw_user, field_mapping, "email") or "").strip(),
                 ),
                 "phone": _truncate_to_field(
-                    User, "phone",
+                    User,
+                    "phone",
                     str(_mapped_value(raw_user, field_mapping, "phone") or "").strip(),
                 ),
                 "group_list": sorted(set(local_group_ids)),
+                "profile": extract_mapped_profile(raw_user, field_mapping),
             }
         )
     return normalized
@@ -1167,9 +1156,9 @@ def _reconcile_synced_directory(
     active_group_ids: list[int],
     root_group_id: int,
 ) -> dict:
-    """全量对账:依据完整同步名单删除 stale 用户，并将 stale 组织归档。
+    """全量对账:依据完整同步名单删除消失的用户，并将 stale 组织归档。
 
-    只在所有用户 batch 成功后调用,避免单批失败时错误删除其他批次的用户。
+    只在所有用户 batch 成功后调用。消失用户删除，不改成离职。
     返回 {deleted_user_count, deleted_group_count}；deleted_group_count 表示归档数。
     归档保留用户 group_list，不再清除对 stale 组织的引用。
     锁顺序：UserSyncSource → Group → User。
@@ -1198,29 +1187,20 @@ def _reconcile_synced_directory(
                 if descendant_id != root_group_id and descendant_id not in active_id_set:
                     to_archive.add(descendant_id)
 
-        stale_users = User.objects.filter(
-            sync_source=source, domain=legacy_domain
-        ).exclude(username__in=synced_usernames)
+        stale_users = User.objects.filter(sync_source=source, domain=legacy_domain).exclude(username__in=synced_usernames)
         stale_user_ids = list(stale_users.values_list("id", flat=True))
 
         overlapping_users = []
         if to_archive or stale_user_ids:
-            _locked_by_id, overlapping_users = GroupArchiveService.lock_groups_and_overlapping_users(
-                to_archive, extra_user_ids=set(stale_user_ids)
-            )
+            _locked_by_id, overlapping_users = GroupArchiveService.lock_groups_and_overlapping_users(to_archive, extra_user_ids=set(stale_user_ids))
 
         if to_archive:
             archived_ids = GroupArchiveService.archive_group_ids_keeping_membership(list(to_archive))
             deleted_group_count = len(archived_ids)
-            affected_cache_users.extend(
-                {"id": user.id, "username": user.username, "domain": user.domain}
-                for user in overlapping_users
-            )
+            affected_cache_users.extend({"id": user.id, "username": user.username, "domain": user.domain} for user in overlapping_users)
 
         if stale_user_ids:
-            stale_usernames = list(
-                User.objects.filter(id__in=stale_user_ids).values("id", "username", "domain")
-            )
+            stale_usernames = list(User.objects.filter(id__in=stale_user_ids).values("id", "username", "domain"))
             User.objects.filter(id__in=stale_user_ids).delete()
             deleted_user_count = len(stale_usernames)
             seen = {(row["username"], row["domain"]) for row in affected_cache_users}
@@ -1250,16 +1230,10 @@ def _get_or_create_root_group(source: UserSyncSource):
         raise ValueError("User sync root scope is required")
     scoped_external_id = _scoped_external_id(source.id, root_scope_value)
 
-    existing = (
-        Group.objects.filter(sync_source=source, external_id=scoped_external_id, parent_id=0)
-        .order_by("id")
-        .first()
-    )
+    existing = Group.objects.filter(sync_source=source, external_id=scoped_external_id, parent_id=0).order_by("id").first()
     if existing is None:
         # 同 source 已有根（历史 external_id / 范围变更）：复用并回写 scoped id，禁止另建假根
-        existing = (
-            Group.objects.filter(sync_source=source, parent_id=0).order_by("id").first()
-        )
+        existing = Group.objects.filter(sync_source=source, parent_id=0).order_by("id").first()
 
     if existing is not None:
         update_fields = []
@@ -1292,7 +1266,7 @@ def _get_or_create_root_group(source: UserSyncSource):
     )
 
 
-def _sync_groups(
+def _sync_groups(  # noqa: C901
     source: UserSyncSource,
     group_list: list[dict],
     root_group: Group,
@@ -1399,10 +1373,7 @@ def _sync_groups(
 def _ensure_user_sync_source_match(user: User, source: UserSyncSource, username: str):
     owner_source = None
     if user.sync_source_id is None:
-        raise ValueError(
-            f"User '{username}' already exists as an unmanaged platform user "
-            f"and cannot be claimed by '{source.name}'"
-        )
+        raise ValueError(f"User '{username}' already exists as an unmanaged platform user " f"and cannot be claimed by '{source.name}'")
     if user.sync_source_id != source.id:
         owner_source = user.sync_source
     elif user.group_list:
@@ -1422,10 +1393,7 @@ def _ensure_user_sync_source_match(user: User, source: UserSyncSource, username:
         owner_name = owner_source[0] or f"source-{owner_source[1]}"
     else:
         owner_name = getattr(owner_source, "name", f"source-{owner_source.id}")
-    raise ValueError(
-        f"User '{username}' already belongs to user sync source '{owner_name}' "
-        f"and cannot be synced by '{source.name}'"
-    )
+    raise ValueError(f"User '{username}' already belongs to user sync source '{owner_name}' " f"and cannot be synced by '{source.name}'")
 
 
 def _mapped_value(raw_user: dict, field_mapping: dict, logical_key: str):
@@ -1455,11 +1423,7 @@ def _scoped_external_id(source_id: int, external_id: str):
 
 
 def _get_user_sync_root_group(source: UserSyncSource):
-    return (
-        Group.objects.filter(parent_id=0, sync_source=source)
-        .order_by("id")
-        .first()
-    )
+    return Group.objects.filter(parent_id=0, sync_source=source).order_by("id").first()
 
 
 def _collect_group_subtree_ids(root_group_id: int):
@@ -1477,9 +1441,7 @@ def delete_user_sync_source(source: UserSyncSource):
         if locked_source is None:
             return {"result": False, "message": "User sync source not found"}
 
-        if UserSyncRun.objects.filter(
-            source=locked_source, status=UserSyncRunStatusChoices.RUNNING
-        ).exists():
+        if UserSyncRun.objects.filter(source=locked_source, status=UserSyncRunStatusChoices.RUNNING).exists():
             return {"result": False, "message": "User sync is already running"}
 
         task_name = locked_source.periodic_task_name()
@@ -1488,19 +1450,12 @@ def delete_user_sync_source(source: UserSyncSource):
         root_group = _get_user_sync_root_group(locked_source)
         subtree_ids = _collect_group_subtree_ids(root_group.id) if root_group else set()
 
-        users_to_delete = set(
-            User.objects.filter(sync_source=locked_source).values_list("id", flat=True)
-        )
+        users_to_delete = set(User.objects.filter(sync_source=locked_source).values_list("id", flat=True))
         overlapping_users = []
         if subtree_ids or users_to_delete:
-            _locked_by_id, overlapping_users = GroupArchiveService.lock_groups_and_overlapping_users(
-                subtree_ids, extra_user_ids=users_to_delete
-            )
+            _locked_by_id, overlapping_users = GroupArchiveService.lock_groups_and_overlapping_users(subtree_ids, extra_user_ids=users_to_delete)
 
-        cache_users = [
-            {"id": user.id, "username": user.username, "domain": user.domain}
-            for user in overlapping_users
-        ]
+        cache_users = [{"id": user.id, "username": user.username, "domain": user.domain} for user in overlapping_users]
         seen = {(row["username"], row["domain"]) for row in cache_users}
         if users_to_delete:
             for row in User.objects.filter(id__in=users_to_delete).values("id", "username", "domain"):
@@ -1537,19 +1492,12 @@ def delete_user_sync_source(source: UserSyncSource):
 
 def detect_root_group_name_conflicts():
     duplicate_names = (
-        UserSyncSource.objects.exclude(root_group_name="")
-        .values("root_group_name")
-        .annotate(source_count=Count("id"))
-        .filter(source_count__gt=1)
+        UserSyncSource.objects.exclude(root_group_name="").values("root_group_name").annotate(source_count=Count("id")).filter(source_count__gt=1)
     )
     conflicts = {}
     for item in duplicate_names:
         root_group_name = item["root_group_name"]
-        conflicts[root_group_name] = list(
-            UserSyncSource.objects.filter(root_group_name=root_group_name)
-            .order_by("id")
-            .values_list("id", flat=True)
-        )
+        conflicts[root_group_name] = list(UserSyncSource.objects.filter(root_group_name=root_group_name).order_by("id").values_list("id", flat=True))
     return conflicts
 
 

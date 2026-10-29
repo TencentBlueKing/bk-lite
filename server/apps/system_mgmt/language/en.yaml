@@ -72,6 +72,24 @@ error:
   password_invalid_characters: Password contains invalid characters. Only printable ASCII characters are allowed.
   initial_password_generation_failed: Unable to generate an initial password that meets the password policy
   invalid_phone: Invalid phone number format
+  invalid_employment_status: Invalid employment status
+  invalid_account_expiry: Invalid account expiry
+  manager_not_found: Manager was not found
+  manager_cycle: A manager cannot be the user or form a cycle
+  invalid_custom_fields: Invalid custom fields
+  unknown_custom_field: Custom field was not found
+  invalid_custom_field_value: Custom field value could not be read
+  custom_field_disabled: Disabled fields cannot be edited
+  invalid_profile: Invalid user profile
+  invalid_field_key: Field key is invalid or collides with a standard profile field
+  invalid_field_type: Invalid field type
+  field_name_required: Field name is required
+  field_key_exists: Field key already exists
+  field_key_immutable: Field key cannot be changed
+  field_type_locked: Field type cannot change while values or sync mappings exist
+  field_still_mapped: Remove the sync mapping before disabling this field
+  field_cannot_be_deleted: Fields with values or sync mappings cannot be deleted
+  field_not_found: User field was not found
   email_required: Email cannot be empty
   initial_password_not_configured: Local user initial password is not configured
   initial_password_email_channel_unavailable: Initial password email channel does not exist or is unavailable

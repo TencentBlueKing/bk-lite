@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useRef, useCallback, useMemo, useState } from 'react';
-import { Input, Button, Form, Dropdown, Menu } from 'antd';
+import { Input, Button, Form, Dropdown, Menu, Select } from 'antd';
 import { useSecurityApi } from '@/app/system-manager/api/security';
 import TopSection from '@/components/top-section';
 import UserModal, { ModalRef } from './userModal';
@@ -86,6 +86,8 @@ const User: React.FC = () => {
     currentPage,
     pageSize,
     searchValue,
+    employmentStatus,
+    setEmploymentStatus,
     selectedRowKeys,
     fetchUsers,
     handleUserSearch,
@@ -239,6 +241,18 @@ const User: React.FC = () => {
               }}
               actions={(
                 <>
+                  <Select
+                    className="w-[140px]"
+                    value={employmentStatus || undefined}
+                    allowClear
+                    placeholder={t('system.user.form.employmentStatus')}
+                    onChange={(value) => setEmploymentStatus(value || '')}
+                    options={[
+                      { value: 'unspecified', label: t('system.user.form.employmentUnspecified') },
+                      { value: 'employed', label: t('system.user.form.employmentEmployed') },
+                      { value: 'resigned', label: t('system.user.form.employmentResigned') },
+                    ]}
+                  />
                   <PermissionWrapper requiredPermissions={['Add User']}>
                     <Button icon={<UploadOutlined />} onClick={() => userImportModalRef.current?.showModal()}>
                       {t('common.import')}

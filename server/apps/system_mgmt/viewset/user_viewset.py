@@ -26,6 +26,13 @@ from apps.core.utils.permission_cache import clear_user_permission_cache, clear_
 from apps.rpc.cmdb import CMDB
 from apps.system_mgmt.models import Channel, ChannelChoices, Group, Role, SystemSettings, User, UserRule
 from apps.system_mgmt.serializers.user_serializer import UserSerializer
+from apps.system_mgmt.services.user_profile import (
+    ProfileInputError,
+    custom_field_details,
+    form_custom_values,
+    form_profile_fields,
+    save_custom_values,
+)
 from apps.system_mgmt.utils.group_filter_mixin import (
     filter_queryset_by_group_ids,
     get_unauthorized_group_ids,
@@ -42,6 +49,23 @@ from apps.system_mgmt.utils.viewset_utils import ViewSetUtils
 
 class InitialPasswordDeliveryError(Exception):
     """初始密码邮件未投递，创建事务必须回滚。"""
+
+
+_PROFILE_ERROR_KEYS = {
+    "invalid employment status": "error.invalid_employment_status",
+    "invalid account expiry": "error.invalid_account_expiry",
+    "manager not found": "error.manager_not_found",
+    "manager cycle": "error.manager_cycle",
+    "invalid custom fields": "error.invalid_custom_fields",
+    "unknown custom field": "error.unknown_custom_field",
+    "invalid custom field value": "error.invalid_custom_field_value",
+    "custom field disabled": "error.custom_field_disabled",
+}
+
+
+def _profile_error_response(loader, error):
+    key = _PROFILE_ERROR_KEYS.get(error.message, "error.invalid_profile")
+    return JsonResponse({"result": False, "message": loader.get(key, error.message)}, status=400)
 
 
 def _generate_random_initial_password(locale="zh-Hans"):
@@ -286,6 +310,9 @@ class UserViewSet(ViewSetUtils):
 
         # 过滤用户数据
         queryset = User.objects.filter(Q(username__icontains=search) | Q(display_name__icontains=search) | Q(email__icontains=search))
+        employment_status = request.GET.get("employment_status", "")
+        if employment_status:
+            queryset = queryset.filter(employment_status=employment_status)
 
         # 如果筛选超级用户，则过滤包含超管角色的用户
         if is_superuser:
@@ -317,7 +344,9 @@ class UserViewSet(ViewSetUtils):
         for i in roles:
             role_map[i["id"]] = f"{i['app']}@@{i['name']}"
 
-        otp_user_ids = set(User.objects.filter(id__in=[item["id"] for item in data], otp_secret__isnull=False).exclude(otp_secret="").values_list("id", flat=True))
+        otp_user_ids = set(
+            User.objects.filter(id__in=[item["id"] for item in data], otp_secret__isnull=False).exclude(otp_secret="").values_list("id", flat=True)
+        )
         for user_data in data:
             user_data["has_otp"] = user_data["id"] in otp_user_ids
             user_data["roles"] = [role_map.get(role_id, "") for role_id in user_data.get("role_list", [])]
@@ -347,7 +376,7 @@ class UserViewSet(ViewSetUtils):
     @HasPermission("user_group-View")
     def get_user_detail(self, request):
         pk = request.data.get("user_id")
-        user = User.objects.get(id=pk)
+        user = User.objects.select_related("manager").get(id=pk)
 
         # 校验当前用户是否有权限访问目标用户
         is_valid, error_response = self._validate_target_user_permission(request, user)
@@ -383,6 +412,8 @@ class UserViewSet(ViewSetUtils):
                     group_role_id_set.add(role.id)
             group_role_ids = list(group_role_id_set)
         data["group_role_ids"] = group_role_ids
+        data["manager_username"] = user.manager.username if user.manager_id else ""
+        data["custom_fields"] = custom_field_details(user)
 
         data = self._mask_user_payload(data, request)
 
@@ -395,7 +426,7 @@ class UserViewSet(ViewSetUtils):
 
     @action(detail=False, methods=["POST"])
     @HasPermission("user_group-Add User")
-    def create_user(self, request):
+    def create_user(self, request):  # noqa: C901
         kwargs = request.data
         rules = kwargs.pop("rules", [])
 
@@ -484,6 +515,13 @@ class UserViewSet(ViewSetUtils):
             except ValueError:
                 return JsonResponse({"result": False, "message": loader.get("error.initial_password_decrypt_failed")}, status=400)
 
+        profile_user = User(username=kwargs["username"], domain="domain.com")
+        try:
+            profile_fields = form_profile_fields(kwargs, profile_user)
+            custom_writes = form_custom_values(profile_user, kwargs.get("custom_fields") or {}) if "custom_fields" in kwargs else {}
+        except ProfileInputError as error:
+            return _profile_error_response(loader, error)
+
         try:
             with transaction.atomic():
                 user = User.objects.create(
@@ -499,7 +537,9 @@ class UserViewSet(ViewSetUtils):
                     role_list=roles,
                     temporary_pwd=temporary_pwd,
                     password=initial_password_value,
+                    **profile_fields,
                 )
+                save_custom_values(user, custom_writes)
                 if rules:
                     add_rule = [UserRule(username=kwargs["username"], group_rule_id=i) for i in rules]
                     UserRule.objects.bulk_create(add_rule, batch_size=100)
@@ -509,9 +549,7 @@ class UserViewSet(ViewSetUtils):
 
                     email_result = send_local_user_initial_password_email(user, email_password, str(email_channel.id))
                     if not email_result.get("result"):
-                        raise InitialPasswordDeliveryError(
-                            email_result.get("message") or loader.get("error.initial_password_email_delivery_failed")
-                        )
+                        raise InitialPasswordDeliveryError(email_result.get("message") or loader.get("error.initial_password_email_delivery_failed"))
 
                 # 记录操作日志
                 log_operation(request, "create", "system-manager", f"新增用户: {kwargs['username']} ({kwargs['lastName']})")
@@ -549,9 +587,11 @@ class UserViewSet(ViewSetUtils):
                 status=400,
             )
 
-        settings = dict(SystemSettings.objects.filter(
-            key__in=["user_create_initial_password_enabled", "user_create_initial_password_hash"]
-        ).values_list("key", "value"))
+        settings = dict(
+            SystemSettings.objects.filter(key__in=["user_create_initial_password_enabled", "user_create_initial_password_hash"]).values_list(
+                "key", "value"
+            )
+        )
         initial_password_enabled = settings.get("user_create_initial_password_enabled") == "1"
         initial_password_hash = settings.get("user_create_initial_password_hash", "")
         if initial_password_enabled and not initial_password_hash:
@@ -584,12 +624,17 @@ class UserViewSet(ViewSetUtils):
             try:
                 with transaction.atomic():
                     User.objects.create(
-                        user_id=str(uuid.uuid4()), username=username,
-                        display_name=str(row["lastName"]).strip(), email=str(row["email"]).strip(),
-                        phone=str(row.get("phone", "")).strip() or None, disabled=False,
+                        user_id=str(uuid.uuid4()),
+                        username=username,
+                        display_name=str(row["lastName"]).strip(),
+                        email=str(row["email"]).strip(),
+                        phone=str(row.get("phone", "")).strip() or None,
+                        disabled=False,
                         locale=str(row.get("locale", "")).strip() or "zh-Hans",
                         timezone=str(row.get("timezone", "")).strip() or "Asia/Shanghai",
-                        group_list=groups, role_list=[], temporary_pwd=initial_password_enabled,
+                        group_list=groups,
+                        role_list=[],
+                        temporary_pwd=initial_password_enabled,
                         password=initial_password_hash if initial_password_enabled else make_password(None),
                     )
                 successful_usernames.add(username)
@@ -604,9 +649,12 @@ class UserViewSet(ViewSetUtils):
             "failures": failures,
         }
         log_operation(
-            request, "create", "system-manager",
+            request,
+            "create",
+            "system-manager",
             f"导入用户：组织“{group.name}”，文件“{file_name}”，共 {len(rows)} 条，成功 {len(successful_usernames)} 条，失败 {len(failures)} 条",
-            target_type="organization", target_id=group.id,
+            target_type="organization",
+            target_id=group.id,
             detail={"scenario": "user_xlsx_import", "organization_name": group.name, "file_name": file_name, **result},
         )
         return JsonResponse({"result": True, "data": result})
@@ -793,9 +841,7 @@ class UserViewSet(ViewSetUtils):
 
         is_synced_user = target_user.sync_source_id is not None
         submitted_groups = target_user.group_list if is_synced_user else params.get("groups", [])
-        groups_to_validate = (
-            _filter_active_group_ids(submitted_groups) if is_synced_user else submitted_groups
-        )
+        groups_to_validate = _filter_active_group_ids(submitted_groups) if is_synced_user else submitted_groups
         group_validation_error = _validate_selected_groups(groups_to_validate, loader)
         if group_validation_error:
             return JsonResponse({"result": False, "message": group_validation_error})
@@ -823,6 +869,11 @@ class UserViewSet(ViewSetUtils):
         should_validate_phone = (not is_synced_user) or ("phone" in params)
         if should_validate_phone and not self._is_valid_phone(params.get("phone")):
             return JsonResponse({"result": False, "message": loader.get("error.invalid_phone")}, status=400)
+        try:
+            profile_fields = form_profile_fields(params, target_user)
+            custom_writes = form_custom_values(target_user, params.get("custom_fields") or {}) if "custom_fields" in params else {}
+        except ProfileInputError as error:
+            return _profile_error_response(loader, error)
         if is_superuser:
             params["roles"] = [admin_role_id]
         else:
@@ -857,8 +908,10 @@ class UserViewSet(ViewSetUtils):
                 update_fields["email"] = params["email"]
             if "phone" in params:
                 update_fields["phone"] = params["phone"]
+            update_fields.update(profile_fields)
 
             User.objects.filter(id=pk).update(**update_fields)
+            save_custom_values(target_user, custom_writes)
             # 清除用户菜单缓存（缓存键格式为 menus-user:{user_id}）
             cache.delete(f"menus-user:{pk}")
 

@@ -1,11 +1,12 @@
 'use client';
 
-import React, { forwardRef, useImperativeHandle, useMemo } from 'react';
-import { Input, Button, Form, Spin, Select, Radio, Alert, Space } from 'antd';
+import React, { forwardRef, useEffect, useImperativeHandle, useMemo, useState } from 'react';
+import { Input, Button, Form, Spin, Select, Radio, Alert, Space, DatePicker } from 'antd';
 import { EditOutlined, CheckOutlined, CloseOutlined } from '@ant-design/icons';
 import OperateModal from '@/components/operate-modal';
 import type { DataNode as TreeDataNode } from 'antd/lib/tree';
 import { useTranslation } from '@/utils/i18n';
+import useApiClient from '@/utils/request';
 import { ZONEINFO_OPTIONS, LOCALE_OPTIONS } from '@/app/system-manager/constants/userDropdowns';
 import RoleTransfer from '@/app/system-manager/components/user/roleTransfer';
 import { useUserModalData } from '@/app/system-manager/hooks/useUserModalData';
@@ -17,6 +18,14 @@ import {
 import type { TreeSelectNode } from '@/app/system-manager/utils/userFormUtils';
 
 const EMPTY_GROUP_IDS: React.Key[] = [];
+
+interface CustomFieldDefinition {
+  key: string;
+  name: string;
+  field_type: 'text' | 'number' | 'date';
+  description?: string;
+  is_enabled: boolean;
+}
 
 interface ModalProps {
   onSuccess: () => void;
@@ -36,6 +45,8 @@ export interface ModalRef {
 
 const UserModal = forwardRef<ModalRef, ModalProps>(({ onSuccess, treeData }, ref) => {
   const { t } = useTranslation();
+  const { get } = useApiClient();
+  const [customFields, setCustomFields] = useState<CustomFieldDefinition[]>([]);
 
   const {
     formRef,
@@ -62,6 +73,21 @@ const UserModal = forwardRef<ModalRef, ModalProps>(({ onSuccess, treeData }, ref
     handleChangeRule,
     sensitiveBehavior,
   } = useUserModalData();
+
+  useEffect(() => {
+    if (!visible) return;
+    let cancelled = false;
+    get('/system_mgmt/user_field/search/')
+      .then((rows: CustomFieldDefinition[]) => {
+        if (!cancelled) setCustomFields(Array.isArray(rows) ? rows : []);
+      })
+      .catch(() => {
+        if (!cancelled) setCustomFields([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [get, visible]);
 
   const filteredTreeData = useMemo(
     () => (treeData ? transformTreeDataForSelect(treeData) : []),
@@ -198,6 +224,39 @@ const UserModal = forwardRef<ModalRef, ModalProps>(({ onSuccess, treeData }, ref
           >
             <Input placeholder={`${t('common.inputMsg')}${t('system.user.form.lastName')}`} disabled={type === 'edit' && isSyncedUser} />
           </Form.Item>
+          <Form.Item name="manager_username" label={t('system.user.form.manager')}>
+            <Input placeholder={t('system.user.form.managerPlaceholder')} />
+          </Form.Item>
+          <Form.Item name="employment_status" label={t('system.user.form.employmentStatus')} initialValue="unspecified">
+            <Select
+              options={[
+                { value: 'unspecified', label: t('system.user.form.employmentUnspecified') },
+                { value: 'employed', label: t('system.user.form.employmentEmployed') },
+                { value: 'resigned', label: t('system.user.form.employmentResigned') },
+              ]}
+            />
+          </Form.Item>
+          <Form.Item name="job_title" label={t('system.user.form.jobTitle')}>
+            <Input />
+          </Form.Item>
+          <Form.Item name="job_level" label={t('system.user.form.jobLevel')}>
+            <Input />
+          </Form.Item>
+          <Form.Item name="employee_no" label={t('system.user.form.employeeNo')}>
+            <Input />
+          </Form.Item>
+          <Form.Item name="account_expires_at" label={t('system.user.form.accountExpiresAt')} extra={t('system.user.form.accountPermanent')}>
+            <DatePicker showTime className="w-full" />
+          </Form.Item>
+          {customFields.map((field) => (
+            <Form.Item key={field.key} name={['custom_fields', field.key]} label={field.name} extra={field.description}>
+              {field.field_type === 'date' ? (
+                <DatePicker className="w-full" disabled={!field.is_enabled} />
+              ) : (
+                <Input disabled={!field.is_enabled} />
+              )}
+            </Form.Item>
+          ))}
           <Form.Item
             name="zoneinfo"
             label={t('system.user.form.zoneinfo')}

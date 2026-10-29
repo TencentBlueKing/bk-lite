@@ -26,8 +26,8 @@ def _create_system_token(**kwargs):
         scope=kwargs.get("scope", {"mode": "all"}),
         enabled=kwargs.get("enabled", True),
         expires_at=kwargs.get("expires_at"),
-        created_by="admin",
-        created_by_domain="domain.com",
+        created_by=kwargs.get("created_by", "admin"),
+        created_by_domain=kwargs.get("created_by_domain", "domain.com"),
     )
     return plaintext
 
@@ -141,6 +141,32 @@ def test_acting_user_disabled_401(client):
     assert "acting user not found or disabled" in resp.json()["message"]
 
 
+def test_acting_user_expired_401(client):
+    token = _create_system_token()
+    user = _create_acting_user(4)
+    SystemUser.objects.filter(username=user.username, domain=user.domain).update(account_expires_at=timezone.now() - timedelta(minutes=1))
+    resp = client.get(ME_URL, **_acting(token, user, 4))
+    assert resp.status_code == 401
+    assert "acting user not found or disabled" in resp.json()["message"]
+
+
+def test_expired_or_disabled_creator_does_not_block_system_token(client):
+    SystemUser.objects.create(
+        username="expired-creator",
+        domain="domain.com",
+        display_name="expired-creator",
+        email="expired-creator@example.com",
+        password="x",
+        disabled=True,
+        account_expires_at=timezone.now() - timedelta(minutes=1),
+    )
+    token = _create_system_token(created_by="expired-creator")
+    user = _create_acting_user(4, username="acting-still-valid")
+    resp = client.get(ME_URL, **_acting(token, user, 4))
+    assert resp.status_code == 200
+    assert resp.json()["data"]["user"] == "acting-still-valid"
+
+
 def test_acting_team_not_direct_group_403(client):
     token = _create_system_token()
     user = _create_acting_user(4)
@@ -176,7 +202,7 @@ def test_valid_system_token_uses_acting_subject(client):
 
 def test_acting_user_without_domain_defaults_to_domain_com(client):
     token = _create_system_token(system_id="itsm")
-    user = _create_acting_user(4, username="zhangsan")
+    _create_acting_user(4, username="zhangsan")
     resp = client.get(
         ME_URL,
         **bearer(token),
