@@ -1,6 +1,7 @@
 import hashlib
 from datetime import timedelta
 
+from django.db import IntegrityError
 from django.db.models import Q
 from django.utils import timezone
 
@@ -233,6 +234,13 @@ def openapi_workflow_execute_async(workflow_id, callback_context, inputs=None, *
         )
     except ExecutionStartUnknown as error:
         execution = error.execution
+    except IntegrityError:
+        existing = WorkflowExecution.objects.filter(async_callback_key=callback_key).first()
+        if existing is None:
+            raise
+        if authorized_team_id not in (existing.team or []):
+            return {"result": False, "message": render_known_message(None, "流程不存在或不属于调用方组织")}
+        return {"accepted": True, "execution_id": str(existing.id)}
     except (DefinitionValidationError, ValueError) as error:
         return {"result": False, "message": render_workflow_error(None, error)}
     except ConductorUnavailable as error:

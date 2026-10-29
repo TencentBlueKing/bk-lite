@@ -133,6 +133,21 @@ def _team_owned_queryset(model, authorized_team_ids):
     return queryset.filter(build_json_membership_query(queryset, "team", list(authorized_team_ids)))
 
 
+def _async_callback_replay(callback_key, team):
+    """按 callback_token 幂等回放；跨组织命中同一 key 时不得泄露 execution_id。"""
+    if not callback_key:
+        return None
+    existing = JobExecution.objects.filter(async_callback_key=callback_key).first()
+    if existing is None:
+        return None
+    if not is_team_authorized(existing.team, normalize_team(team)):
+        return {
+            "result": False,
+            "message": job_message(None, "error.task_not_found", "Task does not exist"),
+        }
+    return {"result": True, "data": {"accepted": True, "execution_id": str(existing.id)}}
+
+
 def _paginate_queryset(queryset, page, page_size):
     total = queryset.count()
     start = (page - 1) * page_size
@@ -279,9 +294,9 @@ def _run_script_execute(data: dict, *, trusted_actor=None):
         if cb_err:
             return {"result": False, "message": cb_err}
         callback_key = hashlib.sha256(callback_token.encode("utf-8")).hexdigest()
-        existing = JobExecution.objects.filter(async_callback_key=callback_key).first()
-        if existing:
-            return {"result": True, "data": {"accepted": True, "execution_id": str(existing.id)}}
+        replay = _async_callback_replay(callback_key, team)
+        if replay is not None:
+            return replay
         timeout_seconds = int(async_ctx.get("timeout") or 3600)
         async_fields = {
             "async_callback_context": {
@@ -354,10 +369,9 @@ def _run_script_execute(data: dict, *, trusted_actor=None):
     try:
         execution = JobExecution.objects.create(**create_kwargs)
     except IntegrityError:
-        if async_fields.get("async_callback_key"):
-            execution = JobExecution.objects.filter(async_callback_key=async_fields["async_callback_key"]).first()
-            if execution:
-                return {"result": True, "data": {"accepted": True, "execution_id": str(execution.id)}}
+        replay = _async_callback_replay(async_fields.get("async_callback_key"), team)
+        if replay is not None:
+            return replay
         raise
 
     # 触发异步执行（Celery Worker）
