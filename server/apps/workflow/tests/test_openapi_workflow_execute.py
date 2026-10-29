@@ -104,6 +104,36 @@ def test_api_tenant_can_execute_own_workflow_async(teams):
     assert start.call_args.kwargs["async_callback_key"]
 
 
+def test_api_tenant_cannot_replay_other_org_callback_token(teams):
+    own_team, other_team = teams
+    own, foreign = _create_workflows(own_team.id, other_team.id)
+    stolen_key = "deadbeef" * 8
+    WorkflowExecution.objects.create(
+        workflow=foreign,
+        workflow_version=1,
+        team=[other_team.id],
+        async_callback_key=stolen_key,
+        started_by="bob",
+        domain="b.test.com",
+        definition_snapshot={"tasks": []},
+        input={},
+    )
+    with patch("apps.workflow.openapi_api.SSRFValidator.validate_callback"), patch(
+        "apps.workflow.permissions.get_permission_rules",
+        return_value={"team": [own_team.id], "instance": []},
+    ), patch("apps.workflow.openapi_api.hashlib.sha256") as sha256, patch("apps.workflow.openapi_api.start_execution") as start:
+        sha256.return_value.hexdigest.return_value = stolen_key
+        result = openapi_workflow_execute_async(
+            str(own.id),
+            _callback_context(),
+            team=[own_team.id],
+            user_info={"user": "alice", "domain": "a.test.com"},
+        )
+
+    assert result == {"result": False, "message": "流程不存在或不属于调用方组织"}
+    start.assert_not_called()
+
+
 def test_api_tenant_cannot_execute_other_org_workflow(teams):
     own_team, other_team = teams
     _own, foreign = _create_workflows(own_team.id, other_team.id)
