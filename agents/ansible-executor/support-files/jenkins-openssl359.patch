@@ -1,0 +1,24 @@
+--- a/fusion-collectors.command
++++ b/fusion-collectors.command
+@@ -91,7 +91,5 @@
+ # ===========================================================================
+ build_ansible_executor() {
+-    echo "==> Building Ansible executor..."
+-    local dst="$DIST/linux"
+-    /root/.local/bin/uv run --python /usr/local/python3.12/bin/python3.12 --with pyinstaller==6.16.0 pyinstaller --noconfirm --distpath "$dst" ansible-executor.spec
++    DIST="$DIST" bash support-files/jenkins-build-release.sh
+ }
+ 
+
+--- a/WeOpsx.script
++++ b/WeOpsx.script
+@@ -268,8 +268,5 @@
+                             # ===========================================================
+                             build_ansible_executor() {
+-                                echo "==> Building Ansible executor..."
+-                                local dst="$DIST/linux"
+-                                /root/.local/bin/uv run --python /usr/local/python3.12-openssl3/bin/python3.12 \\
+-                                    --with pyinstaller==6.16.0 pyinstaller --noconfirm --distpath "$dst" ansible-executor.spec
++                                DIST="$DIST" bash support-files/jenkins-build-release.sh
+                             }
+ 
