@@ -1295,11 +1295,6 @@ function ApmMetricConditionEditor({
                         />
                       </ConditionRow>
                     ) : null}
-                    {showChrome && isAnchor ? (
-                      <span className="text-xs leading-5 text-[var(--color-text-3)]">
-                        {t('apm.policies.anchorUsesRecovery', '恢复阈值和详情图用这条')}
-                      </span>
-                    ) : null}
                     {(metric === 'slow_request_count' || metric === 'slow_request_rate') ? (
                       <ConditionRow label={slowLabel}>
                         <Form.Item
@@ -1826,6 +1821,9 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
       anchor: isAnchor,
     }];
   });
+  const thresholdGridColumns = `64px repeat(${thresholdColumns.length}, minmax(180px, 1fr))`;
+  // 级别名 64px，每列至少 180px，列间距 12px。不够一列时仍撑满控件宽，多出来的列在表内横滚。
+  const thresholdTrackMin = 64 + thresholdColumns.length * (180 + 12);
   const ladderComparator = (watchedThresholds || []).find((row) => row?.comparator)?.comparator || 'gt';
   const recoveryOptions: { value: ApmPolicyComparator; label: string }[] = ladderComparator === 'lt' || ladderComparator === 'lte'
     ? [{ value: 'gt', label: '>' }, { value: 'gte', label: '≥' }]
@@ -2450,9 +2448,6 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
               <MetricTypeSelect onMetricChange={applyMetric} />
             </Form.Item>
           )}
-          <Typography.Text type="secondary" className={styles.scopeHint}>
-            {t('apm.policies.scopeHint', '环境已并入服务范围；版本固定为全部版本。')}
-          </Typography.Text>
         </div>
       ),
     },
@@ -2487,10 +2482,11 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
           ) : null}
           <Form.Item label={t('apm.policies.alertThreshold', '告警阈值')}>
             {/* 和监控的多条件阈值表同一套：行是级别、列是条件，单条件也走这张表。 */}
-            <div className="w-full overflow-x-auto rounded-md border border-[var(--color-border-2)] bg-[var(--color-bg-1)] p-4 shadow-md">
+            <div className={`${styles.thresholdTable} rounded-md border border-[var(--color-border-2)] bg-[var(--color-bg-1)] p-4 shadow-md`}>
+              <div style={{ minWidth: `max(100%, ${thresholdTrackMin}px)` }}>
                 <div
                   className="grid items-center gap-x-3 pb-2"
-                  style={{ gridTemplateColumns: `64px repeat(${thresholdColumns.length}, minmax(180px, 1fr))` }}
+                  style={{ gridTemplateColumns: thresholdGridColumns }}
                 >
                   <span />
                   {thresholdColumns.map((column) => (
@@ -2509,7 +2505,7 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
                   <div
                     key={row.value}
                     className="grid items-center gap-x-3 border-t border-[var(--color-border-1)] py-2"
-                    style={{ gridTemplateColumns: `64px repeat(${thresholdColumns.length}, minmax(180px, 1fr))` }}
+                    style={{ gridTemplateColumns: thresholdGridColumns }}
                   >
                     <span className="inline-flex items-center gap-2 text-sm text-[var(--color-text-1)]">
                       <span
@@ -2547,6 +2543,7 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
                   </div>
                 ))}
               </div>
+            </div>
           </Form.Item>
           <Form.Item name="evaluation_interval" label={t('apm.policies.evaluationInterval', '检测频率')} rules={[{ required: true, message: t('apm.policies.evaluationIntervalRequired', '请输入检测频率') }]}>
             <NumberWithUnit min={1} max={60} unit={t('apm.policies.minutes', '分钟')} />

@@ -746,6 +746,12 @@
   max-width: 560px;
 }
 
+.thresholdTable {
+  width: 100%;
+  max-width: 560px;
+  overflow-x: auto;
+}
+
 .numberWithUnit :global(.ant-input-number) {
   flex: 1;
   min-width: 0;

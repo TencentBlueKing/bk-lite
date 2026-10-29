@@ -942,10 +942,8 @@ describe('APM 四步策略编辑器', { timeout: 15000 }, () => {
     const user = userEvent.setup();
     renderWithApmIntl(<ApmPolicyEditor policyId="p1" />);
     await user.click(await screen.findByRole('button', { name: '添加条件' }));
-    expect(screen.getByText('恢复阈值和详情图用这条')).not.toBeNull();
     await user.click(screen.getByRole('combobox', { name: '条件 a 类型' }));
     await user.click(await screen.findByText('前置条件', { selector: '.ant-select-item-option-content' }));
-    expect(screen.getByText('恢复阈值和详情图用这条')).not.toBeNull();
     await user.type(screen.getByRole('spinbutton', { name: '警告阈值' }), '8');
     await user.type(screen.getByRole('spinbutton', { name: '条件 a 门槛' }), '50');
     await user.click(screen.getByRole('button', { name: '保存策略' }));
