@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Tabs } from 'antd';
 import useMonitorApi from '@/app/monitor/api';
 import type { TimeValuesProps } from '@/app/monitor/types';
@@ -14,7 +14,7 @@ import { useDashboardText } from '../../../shared/utils/content-i18n';
 import layered from '../../host/layered/layered.module.scss';
 import OverviewPane from './overview-pane';
 import type { RedisTopicTab } from './focus-pane';
-import { CachePane, ClientsPane, MemoryPane, ThroughputPane } from './topic-panes';
+import { CachePane, ConnThroughputPane, MemoryPane } from './topic-panes';
 import { ClusterPane, ReplicationPane } from './architecture-panes';
 import { clusterTabVisible, nextClusterSeen, replicationTabMode } from './architecture-state';
 import { REDIS_REPLICATION_METRIC_NAMES } from './overview-metrics';
@@ -27,8 +27,7 @@ const TABS: ReadonlyArray<{ key: RedisContentTab; copy: RedisCategoryCopyKey }> 
   { key: 'overview', copy: 'tabOverview' },
   { key: 'memory', copy: 'tabMemory' },
   { key: 'cache', copy: 'tabPerformance' },
-  { key: 'clients', copy: 'tabClients' },
-  { key: 'throughput', copy: 'tabThroughput' },
+  { key: 'connThroughput', copy: 'tabConnThroughput' },
   { key: 'replication', copy: 'tabReplication' },
   { key: 'cluster', copy: 'tabCluster' }
 ];
@@ -108,6 +107,11 @@ export default function RedisCategoryLayout({
     inflight: clusterInflight,
     seen: clusterSeenRef.current
   });
+  const openAlerts = useCallback(() => {
+    setFocusAlertId('');
+    setAlertDrawerOpen(true);
+    setAlertRefreshKey((key) => key + 1);
+  }, []);
   const visibleTabs = TABS.filter((item) => item.key !== 'cluster' || showCluster);
   const activeTab = visibleTabs.some((item) => item.key === tab) ? tab : 'overview';
 
@@ -200,8 +204,11 @@ export default function RedisCategoryLayout({
               loading={kpiLoading}
               metricMap={metricMap}
               pendingMetricNames={pendingMetricNames}
+              alertCount={alertCount}
+              alertsOpen={alertDrawerOpen}
               alertEvents={alertEvents}
               eventsLoading={eventsPhase === 'loading'}
+              onOpenAlerts={openAlerts}
               onFocusAlert={(alertId) => {
                 setFocusAlertId(alertId);
                 setAlertDrawerOpen(true);
@@ -216,11 +223,8 @@ export default function RedisCategoryLayout({
           {activeTab === 'cache' ? (
             <CachePane metricMap={metricMap} pending={pendingMetricNames} />
           ) : null}
-          {activeTab === 'clients' ? (
-            <ClientsPane metricMap={metricMap} pending={pendingMetricNames} />
-          ) : null}
-          {activeTab === 'throughput' ? (
-            <ThroughputPane metricMap={metricMap} pending={pendingMetricNames} />
+          {activeTab === 'connThroughput' ? (
+            <ConnThroughputPane metricMap={metricMap} pending={pendingMetricNames} />
           ) : null}
           {activeTab === 'replication' ? (
             <ReplicationPane

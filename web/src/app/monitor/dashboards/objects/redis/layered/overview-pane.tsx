@@ -20,8 +20,11 @@ interface OverviewPaneProps {
   loading: boolean;
   metricMap: RedisMetricMap;
   pendingMetricNames: ReadonlySet<string>;
+  alertCount: number | null;
+  alertsOpen: boolean;
   alertEvents: HostAlertRailEvent[];
   eventsLoading: boolean;
+  onOpenAlerts: () => void;
   onFocusAlert: (alertId: string) => void;
   onOpen: (tab: RedisTopicTab) => void;
 }
@@ -30,7 +33,7 @@ const headline = (main: PreparedSummaryCard['mainValue']) => (
   main.unit ? `${main.value}${main.unit}` : main.value
 );
 
-/** 概览五卡的空态。瞬时命令速率不在这排，那句「窗口内暂无采样」不能套到这里。 */
+/** 概览五张指标卡的空态。告警卡走数字壳，不进这张表。瞬时命令速率不在这排，那句「窗口内暂无采样」不能套到这里。 */
 const OVERVIEW_EMPTY: Record<string, { empty: string; value: RedisCategoryCopyKey; detail: RedisCategoryCopyKey }> = {
   redis_uptime: { empty: 'uptime', value: 'uptimeEmpty', detail: 'uptimeEmptyTip' },
   redis_memory_utilization: { empty: 'memory-usage', value: 'memoryUsageEmpty', detail: 'memoryUsageEmptyTip' },
@@ -39,22 +42,50 @@ const OVERVIEW_EMPTY: Record<string, { empty: string; value: RedisCategoryCopyKe
   redis_clients: { empty: 'clients', value: 'clientsEmpty', detail: 'clientsEmptyTip' }
 };
 
-/** 概览主序：五 KPI、事件、重点关注 2×2、紧凑趋势。诊断 Tab 不再复制这排 KPI。 */
+const OVERVIEW_LOADING_KEYS = [
+  'redis_uptime',
+  'redis_memory_utilization',
+  'redis_keyspace_hitrate',
+  'redis_evicted_keys_rate',
+  'redis_clients',
+  'alerts'
+] as const;
+
+const OVERVIEW_LOADING_TILES: RedisKpiTile[] = OVERVIEW_LOADING_KEYS.map((key) => ({
+  key,
+  label: '',
+  value: ''
+}));
+
+const alertKpiTone = (count: number | null) => {
+  if (count == null || !Number.isFinite(count)) return undefined;
+  return count > 0 ? 'var(--color-fail)' : 'var(--color-success)';
+};
+
+const alertKpiValue = (count: number | null) => {
+  if (count == null || !Number.isFinite(count)) return '--';
+  return String(Math.max(0, Math.round(count)));
+};
+
+/** 概览主序：六 KPI、事件、重点关注 2×2、紧凑趋势。诊断 Tab 不再复制这排 KPI。 */
 export default function OverviewPane({
   summaryCards,
   loading,
   metricMap,
   pendingMetricNames,
+  alertCount,
+  alertsOpen,
   alertEvents,
   eventsLoading,
+  onOpenAlerts,
   onFocusAlert,
   onOpen
 }: OverviewPaneProps) {
   const { t, dt } = useDashboardText();
   const text = (key: RedisCategoryCopyKey) => redisCategoryText(t, key);
   const limitUnset = redisMemoryLimitUnset(metricMap);
-  const cards = useMemo<RedisKpiTile[]>(() => (
-    summaryCards.map((summary) => {
+  const cards = useMemo<RedisKpiTile[]>(() => {
+    const metricCards: RedisKpiTile[] = summaryCards.map((summary) => {
       const metric = summary.card.metric;
       const label = dt(summary.card.title);
       if (limitUnset && metric === 'redis_memory_utilization') {
@@ -93,13 +124,26 @@ export default function OverviewPane({
         tone: summary.valueColor ?? summary.card.color,
         subtitle: restart
       };
-    })
-  ), [dt, limitUnset, summaryCards, t]);
+    });
+    metricCards.push({
+      key: 'alerts',
+      label: text('kpiAlerts'),
+      value: alertKpiValue(alertCount),
+      tone: alertKpiTone(alertCount),
+      onActivate: onOpenAlerts,
+      expanded: alertsOpen
+    });
+    return metricCards;
+  }, [alertCount, alertsOpen, dt, limitUnset, onOpenAlerts, summaryCards, t]);
 
   return (
     <div data-redis-pane="overview" className="contents">
       <ProSection title={text('healthOverview')}>
-        <RedisKpiTileRow items={cards} loading={loading} columns={5} />
+        <RedisKpiTileRow
+          items={loading ? OVERVIEW_LOADING_TILES : cards}
+          loading={loading}
+          columns={6}
+        />
       </ProSection>
       <ProSection
         title={text('events')}

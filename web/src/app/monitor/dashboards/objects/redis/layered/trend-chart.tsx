@@ -12,11 +12,15 @@ export interface RedisTrendSeries {
   name: string;
   labelKey: RedisCategoryCopyKey;
   color: string;
+  /** 上限一类参考线。缺省实线。 */
+  dashed?: boolean;
 }
 
 export interface RedisTrendSpec {
   titleKey: RedisCategoryCopyKey;
   hintKey?: RedisCategoryCopyKey;
+  /** 没有采点时的空态。缺省用通用「窗口内暂无采样」。 */
+  emptyKey?: RedisCategoryCopyKey;
   unit: MetricUnit;
   series: readonly RedisTrendSeries[];
   /** 覆盖副标题，例如未配置内存上限。 */
@@ -58,7 +62,6 @@ export default function RedisTrendChart({
     : spec.unit === 'counts'
       ? text('countUnit')
       : undefined;
-  // 配置了多条、但过滤后只剩一条（例如只剩主偏移）也不挂当前值。
   const liveCount = spec.series.filter((item) => redisLatest(metricMap, item.name) != null).length;
   const multi = liveCount > 1;
   const readingOf = (name: string) => (
@@ -72,12 +75,14 @@ export default function RedisTrendChart({
       subtitle={spec.subtitle}
       unit={spec.unit}
       loading={awaiting && plotted.length === 0}
-      emptyText={text('sampleEmpty')}
+      emptyText={text(spec.emptyKey ?? 'sampleEmpty')}
+      hideFlatAxisLabels={spec.series.length <= 1}
       keepLegend={multi}
       data={plotted}
       legends={spec.series.map((item) => ({
         label: text(item.labelKey),
         color: item.color,
+        dashed: item.dashed,
         reading: multi ? readingOf(item.name) : undefined
       }))}
     />

@@ -71,6 +71,11 @@ interface ThinTimeSeriesProps {
   /** 本图达档。不传或 none 时不打点、不加框。 */
   alertLevel?: TabAlertLevel;
   onRetry?: () => void;
+  /**
+   * 单序列且窗口内只有一个数值时，不画左侧 Y 轴数字。
+   * 刻度线还在。数值有起伏时仍显示刻度。
+   */
+  hideFlatAxisLabels?: boolean;
 }
 
 const areaKeys = (data: ChartData[]) => {
@@ -81,6 +86,92 @@ const areaKeys = (data: ChartData[]) => {
     });
   });
   return Array.from(keys).sort();
+};
+
+const isFlatSeries = (data: ChartData[], key: string) => {
+  let seen: number | null = null;
+  let count = 0;
+  data.forEach((point) => {
+    const value = point[key];
+    if (typeof value !== 'number' || !Number.isFinite(value)) return;
+    count += 1;
+    if (seen == null) {
+      seen = value;
+      return;
+    }
+    const scale = Math.max(Math.abs(seen), Math.abs(value), 1);
+    if (Math.abs(value - seen) > scale * 1e-6) seen = Number.NaN;
+  });
+  return count > 0 && seen != null && Number.isFinite(seen);
+};
+
+const TICK_LADDER = [1, 2, 2.5, 5, 10];
+
+const tidyAxis = (value: number) => (
+  Number.isFinite(value) ? Number(value.toPrecision(12)) : 0
+);
+
+const niceStep = (span: number, maxTicks: number) => {
+  const rough = span / Math.max(maxTicks - 1, 1);
+  if (!(rough > 0)) return 1;
+  const exp = Math.floor(Math.log10(rough));
+  const base = 10 ** exp;
+  const fraction = rough / base;
+  const picked = TICK_LADDER.find((step) => step + 1e-9 >= fraction) ?? 10;
+  return tidyAxis(picked * base);
+};
+
+const bumpStep = (step: number) => {
+  const exp = Math.floor(Math.log10(step));
+  const base = 10 ** exp;
+  const fraction = step / base;
+  const picked = TICK_LADDER.find((item) => item > fraction + 1e-6) ?? 10;
+  return tidyAxis(picked * base);
+};
+
+/** 最多 4 个刻度。数据离 0 远时不把基线拉回 0，避免把一小段起伏拉成一条贴底的线。 */
+const sparseAxisBounds = (values: number[]) => {
+  if (!values.length) return null;
+  let lo = Math.min(...values);
+  let hi = Math.max(...values);
+  if (!(hi > lo)) {
+    const pad = Math.abs(lo) > 0 ? Math.abs(lo) * 0.5 : 1;
+    lo -= pad;
+    hi += pad;
+  }
+  const span = hi - lo;
+  if (lo > 0 && lo < span * 0.25) lo = 0;
+  if (hi < 0 && Math.abs(hi) < span * 0.25) hi = 0;
+  let interval = niceStep(hi - lo, 4);
+  let min = tidyAxis(Math.floor(lo / interval) * interval);
+  let max = tidyAxis(Math.ceil(hi / interval) * interval);
+  let guard = 0;
+  while (max > min && Math.round((max - min) / interval) + 1 > 4 && guard < 6) {
+    interval = bumpStep(interval);
+    min = tidyAxis(Math.floor(lo / interval) * interval);
+    max = tidyAxis(Math.ceil(hi / interval) * interval);
+    guard += 1;
+  }
+  if (!(max > min)) max = tidyAxis(min + interval);
+  return { min, max, interval };
+};
+
+const seriesAxisValues = (data: ChartData[], key: string) => {
+  const values: number[] = [];
+  data.forEach((point) => {
+    const value = point[key];
+    if (typeof value === 'number' && Number.isFinite(value)) values.push(value);
+  });
+  return values;
+};
+
+/** 轴上把 70.00/s 收成 70/s。tooltip 仍走完整格式。 */
+const compactTick = (value: number, unit: MetricUnit) => {
+  const formatted = formatMetricValue(value, unit);
+  const text = formatted.value
+    .replace(/(\.\d*?[1-9])0+(?=\D|$)/g, '$1')
+    .replace(/\.0+(?=\D|$)/g, '');
+  return `${text}${formatted.unit || ''}`;
 };
 
 const formatTooltipReading = (raw: unknown, unit: MetricUnit) => {
@@ -109,7 +200,8 @@ export default function ThinTimeSeries({
   independentAxes = false,
   keepLegend = false,
   alertLevel,
-  onRetry
+  onRetry,
+  hideFlatAxisLabels = false
 }: ThinTimeSeriesProps) {
   const proTime = useProTimeWindow();
   const chartWindow = proTime?.window ?? null;
@@ -192,14 +284,31 @@ export default function ThinTimeSeries({
     const focusAxis = numericAxis
       ? describeFocusAxis(unit, seriesSampleValues(plotted))
       : null;
+    const flatAxis = hideFlatAxisLabels && keys.length === 1 && isFlatSeries(plotted, keys[0]);
+    const labeledAxis = !flatAxis && !focusAxis;
     const axisLabel = {
       fontSize: 10,
-      margin: focusAxis?.labelMargin ?? 8,
+      margin: focusAxis?.labelMargin ?? 6,
+      hideOverlap: true,
       formatter: (value: number) => {
         if (focusAxis) return focusAxis.formatTick(Number(value));
-        const formatted = formatMetricValue(value, unit);
-        return `${formatted.value}${formatted.unit || ''}`;
+        return compactTick(Number(value), unit);
       }
+    };
+    const valueAxis = (samples: number[], color: string, showSplit: boolean) => {
+      const bounds = focusAxis ? null : sparseAxisBounds(samples);
+      return {
+        type: 'value' as const,
+        ...(bounds
+          ? { min: bounds.min, max: bounds.max, interval: bounds.interval }
+          : { splitNumber: 3 }),
+        axisLabel: { ...axisLabel, color, show: !flatAxis },
+        axisTick: { show: false },
+        axisLine: { show: false },
+        splitLine: showSplit
+          ? { lineStyle: { color: axisColor, width: 1 } }
+          : { show: false }
+      };
     };
     return {
       animation: false,
@@ -207,10 +316,10 @@ export default function ThinTimeSeries({
       color: seriesColors,
       grid: {
         top: 8,
-        right: splitAxes ? 48 : 10,
-        bottom: 28,
-        left: focusAxis ? focusAxis.left : 44,
-        containLabel: false
+        right: labeledAxis ? 8 : (splitAxes ? 48 : 10),
+        bottom: labeledAxis ? 4 : 28,
+        left: flatAxis ? 8 : (focusAxis ? focusAxis.left : 4),
+        containLabel: labeledAxis
       },
       xAxis: {
         type: 'value' as const,
@@ -222,31 +331,32 @@ export default function ThinTimeSeries({
           color: mutedColor,
           fontSize: 10,
           hideOverlap: true,
+          showMinLabel: true,
+          showMaxLabel: true,
           margin: 6,
-          formatter: (value: number) => formatAxisTime(Number(value))
+          formatter: (value: number) => {
+            const stamp = Number(value);
+            const text = formatAxisTime(stamp);
+            if (!text || !Number.isFinite(maxTime)) return text;
+            // 窗口末端强制画出的刻度，和前一格落在同一分钟时会叠成两个 15:45。
+            if (text === formatAxisTime(maxTime) && Math.abs(stamp - maxTime) > 1) return '';
+            return text;
+          }
         },
         axisTick: { show: true, length: 3, lineStyle: { color: axisColor } },
         axisLine: { lineStyle: { color: axisColor } },
         splitLine: { show: false }
       },
       yAxis: splitAxes
-        ? keys.map((_, index) => ({
-          type: 'value' as const,
-          position: index === 0 ? 'left' as const : 'right' as const,
-          axisLabel: { ...axisLabel, color: seriesColors[index] || mutedColor },
-          axisTick: { show: false },
-          axisLine: { show: false },
-          splitLine: index === 0
-            ? { lineStyle: { color: axisColor, width: 1 } }
-            : { show: false }
+        ? keys.map((key, index) => ({
+          ...valueAxis(seriesAxisValues(plotted, key), seriesColors[index] || mutedColor, index === 0),
+          position: index === 0 ? 'left' as const : 'right' as const
         }))
-        : {
-          type: 'value' as const,
-          axisLabel: { ...axisLabel, color: mutedColor },
-          axisTick: { show: false },
-          axisLine: { show: false },
-          splitLine: { lineStyle: { color: axisColor, width: 1 } }
-        },
+        : valueAxis(
+          keys.flatMap((key) => seriesAxisValues(plotted, key)),
+          mutedColor,
+          true
+        ),
       tooltip: {
         show: true,
         trigger: 'axis' as const,
@@ -310,7 +420,7 @@ export default function ThinTimeSeries({
         };
       })
     };
-  }, [axisColor, chartWindow, keepLegend, keys, legendKey, mutedColor, numericAxis, panelColor, plotted, seriesColors, splitAxes, suspend, textColor, unit]);
+  }, [axisColor, chartWindow, hideFlatAxisLabels, keepLegend, keys, legendKey, mutedColor, numericAxis, panelColor, plotted, seriesColors, splitAxes, suspend, textColor, unit]);
   const { containerRef } = useECharts(option);
   const drawnSeriesCount = keys.filter((key) => plotted.some((point) => {
     const value = point[key];

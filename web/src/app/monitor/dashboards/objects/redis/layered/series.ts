@@ -75,6 +75,30 @@ export const redisLatest = (metricMap: RedisMetricMap, name: string) => (
 );
 
 /**
+ * 同一时刻的主偏移减去副本偏移。
+ * 没有成对采样时返回 null。调用方写空态，不要把缺副本写成 0。
+ */
+export const replicationOffsetLag = (metricMap: RedisMetricMap): number | null => {
+  const masterAt = new Map<number, number>();
+  redisPoints(metricMap, 'redis_master_repl_offset').forEach((point) => {
+    const time = Number(point.time);
+    const value = point.value1;
+    if (typeof value !== 'number' || !Number.isFinite(time)) return;
+    masterAt.set(time, value);
+  });
+  let lag: number | null = null;
+  redisPoints(metricMap, 'redis_slave_repl_offset').forEach((point) => {
+    const time = Number(point.time);
+    const slave = point.value1;
+    if (typeof slave !== 'number' || !Number.isFinite(time)) return;
+    const master = masterAt.get(time);
+    if (master == null) return;
+    lag = master - slave;
+  });
+  return lag;
+};
+
+/**
  * 折线先按专业盘窗口裁。瞬时命令速率若窗口裁完但序列里仍有点（时间单位或步长对不齐），
  * 仍把这些点画出来，避免接口有点、卡片空白。
  */

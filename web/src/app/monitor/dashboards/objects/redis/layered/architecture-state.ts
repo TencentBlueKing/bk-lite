@@ -112,29 +112,49 @@ export const inferReplicationRole = ({
 export type ArchitectureKind = 'cluster' | 'replica' | 'standalone' | 'unknown';
 
 /**
- * 架构芯片。Cluster 优先；有副本连接、主从链接或角色标签则为哨兵/副本。
- * 只有集群明确关闭、副本数为 0、且没有主从链接时才判单机。其余保持待识别，避免把加载中写成单机。
+ * 架构芯片。Cluster 优先。
+ * 哨兵/副本只看副本连接或主从链接采样。单机 INFO 的 replication_role=master 不是拓扑。
+ * cluster_enabled=0、副本数为 0、且没有主从链接时判单机。其余保持待识别，避免把加载中写成单机。
  */
 export const inferArchitectureKind = ({
   clusterEnabled,
   slaves,
-  link,
-  labeledRole
+  link
 }: {
   clusterEnabled: number | null | undefined;
   slaves: number | null | undefined;
   link: number | null | undefined;
+  /** 保留给调用方。单机也会带 master 标签，不参与这里的拓扑判断。 */
   labeledRole: 'master' | 'slave' | null;
 }): ArchitectureKind => {
   if (clusterEnabledOn(clusterEnabled)) return 'cluster';
   const slaveCount = finite(slaves);
   const linkValue = finite(link);
-  const hasReplica = (slaveCount ?? 0) > 0 || linkValue != null || labeledRole != null;
+  const hasReplica = (slaveCount ?? 0) > 0 || linkValue != null;
   if (hasReplica) return 'replica';
-  if (finite(clusterEnabled) === 0 && slaveCount === 0 && linkValue == null && labeledRole == null) {
+  if (finite(clusterEnabled) === 0 && slaveCount === 0 && linkValue == null) {
     return 'standalone';
   }
   return 'unknown';
+};
+
+/**
+ * 容量压力档。80 起偏紧，95 起顶满。
+ * 内存容量卡与复制积压条共用，避免两套阈值。
+ */
+export type PressureTone = 'ok' | 'near' | 'full';
+
+export const pressureTone = (percent: number): PressureTone => {
+  if (percent >= 95) return 'full';
+  if (percent >= 80) return 'near';
+  return 'ok';
+};
+
+/** 与容量卡同一组语义色：成功绿 / 警告橙 / 失败红。 */
+export const PRESSURE_COLOR: Record<PressureTone, string> = {
+  ok: 'var(--color-success)',
+  near: 'var(--color-warning)',
+  full: 'var(--color-fail)'
 };
 
 /** 碎片率档位。1.0 与 1.5 含在正常档，4.75 落偏高。 */

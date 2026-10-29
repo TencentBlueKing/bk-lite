@@ -19,7 +19,7 @@ import hostLayered from '../../host/layered/layered.module.scss';
 import { redisCategoryText, type RedisCategoryCopyKey } from './redis-copy';
 import { redisChartPoints, redisLatest, type RedisMetricMap } from './series';
 
-export type RedisTopicTab = 'memory' | 'cache' | 'clients' | 'throughput';
+export type RedisTopicTab = 'memory' | 'cache' | 'connThroughput';
 
 interface FocusCardSpec {
   metric: string;
@@ -54,7 +54,7 @@ const FOCUS_CARDS: readonly FocusCardSpec[] = [
     unit: 'counts',
     color: REDIS_PALETTE.orange,
     ctaKey: 'viewClients',
-    tab: 'clients'
+    tab: 'connThroughput'
   }
 ];
 
@@ -109,6 +109,12 @@ export default function FocusPane({
     title: text(step.title),
     detail: text(step.detail)
   }));
+  const fragGuide = [
+    text('fragIdeal'),
+    text('fragIdealLow'),
+    text('fragIdealMid'),
+    text('fragIdealHigh')
+  ];
 
   return (
     <div data-redis-pane="focus" className="min-w-0">
@@ -145,7 +151,17 @@ export default function FocusPane({
                     label={text(card.labelKey)}
                     unit={unitLabel}
                     hint={isFrag ? (
-                      <ProInfoHint kind="redis-focus-frag" text={text('fragIdeal')} />
+                      <ProInfoHint
+                        kind="redis-focus-frag"
+                        label={fragGuide.join(' ')}
+                        content={(
+                          <div className="max-w-[380px] text-[13px] font-normal leading-[1.55] text-[var(--color-text-2)]">
+                            {fragGuide.map((line) => (
+                              <p key={line} className="m-0 [&+&]:mt-2">{line}</p>
+                            ))}
+                          </div>
+                        )}
+                      />
                     ) : undefined}
                   />
                   {loading ? (

@@ -14,7 +14,7 @@ import { useProTimeWindow } from '../../host/layered/pro-time-window';
 import { RingChartPanel } from '../../../shared/widgets';
 import { useDashboardText } from '../../../shared/utils/content-i18n';
 import type { MetricUnit } from '../../../shared/types';
-import { fragmentationBand } from './architecture-state';
+import { fragmentationBand, PRESSURE_COLOR, pressureTone, type PressureTone } from './architecture-state';
 import { REDIS_PALETTE } from '../config';
 import styles from '../index.module.scss';
 import { redisCategoryText, type RedisCategoryCopyKey } from './redis-copy';
@@ -98,6 +98,10 @@ const netTrend: RedisTrendSpec = {
   ]
 };
 
+/** 连接三卡与吞吐两卡跟主机图格同宽。阻塞不再单独占满一行。 */
+const connectionGrid = `${chart.chartGrid3} items-stretch [&>*]:min-w-0 [&>*]:h-full [&_section]:h-full`;
+const throughputGrid = `${chart.chartGrid2} items-stretch [&>*]:min-w-0 [&>*]:h-full [&_section]:h-full`;
+
 /**
  * 环图壳仍写 panelTitle 槽。CSS Module 导出不是可枚举普通对象，展开会丢掉
  * panel / ring 类，所以只按键改挂 chartTitle，其余壳层原样走。
@@ -111,16 +115,11 @@ const ringStyles = new Proxy(styles, {
 });
 
 const featureGrid = 'grid min-w-0 grid-cols-1 items-stretch gap-3 lg:grid-cols-2';
-const hintClass = 'm-0 text-[12px] leading-5 text-[var(--color-text-3)]';
 
 const TONE_COLOR = {
-  ok: 'var(--color-success)',
-  near: 'var(--color-warning)',
-  full: 'var(--color-fail)',
+  ...PRESSURE_COLOR,
   neutral: 'var(--color-text-3)'
 } as const;
-
-type PressureTone = 'ok' | 'near' | 'full';
 
 function useRedisText() {
   const { t } = useDashboardText();
@@ -202,6 +201,7 @@ function Spark({
       emptyText={text('sampleEmpty')}
       data={plotted}
       legends={[{ label, color }]}
+      hideFlatAxisLabels
     />
   );
 }
@@ -222,12 +222,6 @@ function Pane({ pane, children }: { pane: string; children: ReactNode }) {
       {children}
     </div>
   );
-}
-
-function pressureTone(percent: number): PressureTone {
-  if (percent >= 95) return 'full';
-  if (percent >= 80) return 'near';
-  return 'ok';
 }
 
 /** 五档色阶，档与档之间留缝，避免画成磁盘进度条。 */
@@ -257,7 +251,6 @@ function BigNumber({
   unit,
   unitLabel,
   color,
-  reading,
   extra,
   emphasis = 'normal',
   feature,
@@ -273,7 +266,6 @@ function BigNumber({
   unit: MetricUnit;
   unitLabel?: string;
   color: string;
-  reading?: string;
   extra?: ReactNode;
   emphasis?: 'hero' | 'normal';
   feature: string;
@@ -302,12 +294,7 @@ function BigNumber({
       {shown.value == null ? (
         <EmptySample hint={emptyHint} />
       ) : (
-        <>
-          <div className={valueClass} style={{ color: valueColor }}>{headline}</div>
-          {reading ? (
-            <p className="m-0 text-[13px] font-medium leading-5" style={{ color: valueColor }}>{reading}</p>
-          ) : null}
-        </>
+        <div className={valueClass} style={{ color: valueColor }}>{headline}</div>
       )}
       {extra}
     </div>
@@ -367,9 +354,11 @@ function CapacityCard({
   const state = unset ? 'unset' : percent == null ? 'quiet' : tone === 'ok' ? 'ok' : 'tight';
   const stateLabel = state === 'unset'
     ? text('capacityUnset')
-    : state === 'tight'
-      ? text('capacityTight')
-      : text('capacityOk');
+    : tone === 'full'
+      ? text('capacityFull')
+      : tone === 'near'
+        ? text('capacityTight')
+        : text('capacityOk');
   const stateColor = state === 'tight' ? TONE_COLOR[tone === 'neutral' ? 'near' : tone] : state === 'ok' ? TONE_COLOR.ok : TONE_COLOR.neutral;
   return (
     <section
@@ -384,11 +373,14 @@ function CapacityCard({
           <HintCopy
             kind="redis-capacity"
             lines={[
-              text('capacityBandOk'),
-              text('capacityBandTight'),
-              text('capacityBandUnset'),
               text('capacityPctUsed'),
-              text('capacityPctNotRemain')
+              text('capacityPctNotRemain'),
+              text('capacityTierOk'),
+              text('capacityTierTight'),
+              text('capacityTierFull'),
+              text('capacityTierUnset'),
+              text('memoryLimitUnsetTip'),
+              text('capacityHint')
             ]}
           />
         )}
@@ -403,14 +395,15 @@ function CapacityCard({
             {used.value == null ? text('sampleEmpty') : reading(metricMap, 'redis_used_memory', 'bytes')}
           </div>
           <div className="text-[15px] font-semibold leading-6 text-[var(--color-text-1)]">{text('memoryLimitUnset')}</div>
-          <p className="m-0 text-[12px] leading-5 text-[var(--color-text-2)]">{text('memoryLimitUnsetTip')}</p>
         </div>
       ) : (
         <div className="flex flex-col gap-3">
-          <div className="flex items-baseline gap-2">
+          <div className="flex flex-wrap items-baseline gap-x-1.5">
             <span className="text-[14px] font-semibold" style={{ color: stateColor }}>{stateLabel}</span>
             {percent != null ? (
-              <span className="tabular-nums text-[13px] text-[var(--color-text-2)]">{`${percent.toFixed(1)}%`}</span>
+              <span className="tabular-nums text-[13px] text-[var(--color-text-2)]">
+                {`· ${text('capacityUsedOf')} ${percent.toFixed(1)}%`}
+              </span>
             ) : null}
           </div>
           <p className="m-0 text-[13px] tabular-nums text-[var(--color-text-1)]">
@@ -418,7 +411,6 @@ function CapacityCard({
             {` / ${text('seriesLimit')} ${reading(metricMap, 'redis_maxmemory', 'bytes')}`}
           </p>
           {percent != null ? <PressureScale percent={percent} /> : null}
-          <p className={hintClass}>{text('capacityHint')}</p>
         </div>
       )}
     </section>
@@ -427,7 +419,7 @@ function CapacityCard({
 
 function FragBands({ active }: { active: 'low' | 'ok' | 'high' | null }) {
   const text = useRedisText();
-  // 展示区间与 fragmentationBand 一致：< 1 偏低，1–1.5 常见，> 1.5 偏高。阈值不在这里改。
+  // 展示区间与 fragmentationBand 一致：< 1 偏低，1–1.5 适中，> 1.5 偏高。阈值不在这里改。
   const items = [
     { key: 'low' as const, label: text('fragLow'), range: '< 1.0', color: TONE_COLOR.near },
     { key: 'ok' as const, label: text('fragOk'), range: '1.0 – 1.5', color: TONE_COLOR.ok },
@@ -456,12 +448,6 @@ function FragBands({ active }: { active: 'low' | 'ok' | 'high' | null }) {
   );
 }
 
-const FRAG_READING = {
-  low: 'fragReadLow',
-  ok: 'fragReadOk',
-  high: 'fragReadHigh'
-} as const satisfies Record<'low' | 'ok' | 'high', RedisCategoryCopyKey>;
-
 export function MemoryPane({
   metricMap,
   pending
@@ -479,24 +465,63 @@ export function MemoryPane({
       : band === 'low'
         ? TONE_COLOR.near
         : TONE_COLOR.ok;
+  const limitOn = (redisLatest(metricMap, 'redis_maxmemory') ?? 0) > 0;
+  const memoryTrend: RedisTrendSpec = {
+    titleKey: 'chartMemory',
+    unit: 'bytes',
+    series: [
+      { name: 'redis_used_memory', labelKey: 'seriesUsed', color: REDIS_PALETTE.blue },
+      ...(limitOn ? [{
+        name: 'redis_maxmemory',
+        labelKey: 'seriesLimit' as const,
+        color: REDIS_PALETTE.neutral,
+        dashed: true
+      }] : [])
+    ]
+  };
+  const memoryHint = [
+    text('memoryPressureUsed'),
+    text('memoryPressureLimit'),
+    text('memoryPressureOmit'),
+    text('memoryPressureClose')
+  ].join('\n');
   return (
     <Pane pane="memory">
       <ProSection title={text('sectionCapacity')}>
-        <div className={featureGrid}>
-          <CapacityCard metricMap={metricMap} pending={pending} />
-          <BigNumber
-            feature="frag"
-            title={text('focusFrag')}
-            metric="redis_mem_fragmentation_ratio"
-            unit="none"
-            unitLabel={text('fragTimes')}
-            color={fragColor}
-            reading={band ? text(FRAG_READING[band]) : undefined}
-            extra={<FragBands active={band} />}
-            hint={<HintCopy kind="redis-frag" lines={[text('fragIdeal')]} />}
-            metricMap={metricMap}
-            pending={pending}
-          />
+        <div className="flex min-w-0 flex-col gap-3">
+          <div className={featureGrid}>
+            <CapacityCard metricMap={metricMap} pending={pending} />
+            <BigNumber
+              feature="frag"
+              title={text('focusFrag')}
+              metric="redis_mem_fragmentation_ratio"
+              unit="none"
+              unitLabel={text('fragTimes')}
+              color={fragColor}
+              extra={<FragBands active={band} />}
+              hint={(
+                <HintCopy
+                  kind="redis-frag"
+                  lines={[
+                    text('fragIdeal'),
+                    text('fragIdealLow'),
+                    text('fragIdealMid'),
+                    text('fragIdealHigh')
+                  ]}
+                />
+              )}
+              metricMap={metricMap}
+              pending={pending}
+            />
+          </div>
+          <div data-redis-feature="memory-pressure" data-redis-limit={limitOn ? 'on' : 'off'}>
+            <RedisTrendChart
+              spec={memoryTrend}
+              metricMap={metricMap}
+              pending={pending}
+              hint={memoryHint}
+            />
+          </div>
         </div>
       </ProSection>
       <ProSection title={text('sectionLifecycle')}>
@@ -610,7 +635,7 @@ export function CachePane({
   );
 }
 
-export function ClientsPane({
+export function ConnThroughputPane({
   metricMap,
   pending
 }: {
@@ -628,22 +653,20 @@ export function ClientsPane({
       ? text('rejectedHot')
       : text('rejectedCalm');
   return (
-    <Pane pane="clients">
-      <ProSection title={text('sectionBlocked')}>
-        <div
-          data-redis-feature="blocked"
-          data-redis-blocked={blockedLoading ? 'loading' : blocked == null ? 'quiet' : warn ? 'warn' : 'healthy'}
-          data-redis-spark="blocked"
-        >
-          <RedisTrendChart spec={blockedTrend} metricMap={metricMap} pending={pending} />
-        </div>
-      </ProSection>
+    <Pane pane="conn-throughput">
       <ProSection title={text('sectionConnections')}>
-        <div className={featureGrid}>
-          <div data-redis-feature="clients">
+        <div className={connectionGrid}>
+          <div
+            className="min-w-0 h-full"
+            data-redis-feature="blocked"
+            data-redis-blocked={blockedLoading ? 'loading' : blocked == null ? 'quiet' : warn ? 'warn' : 'healthy'}
+          >
+            <RedisTrendChart spec={blockedTrend} metricMap={metricMap} pending={pending} />
+          </div>
+          <div className="min-w-0 h-full" data-redis-feature="clients">
             <RedisTrendChart spec={clientsTrend} metricMap={metricMap} pending={pending} />
           </div>
-          <div data-redis-feature="rejected">
+          <div className="min-w-0 h-full" data-redis-feature="rejected">
             <RedisTrendChart
               spec={rejectedTrend}
               metricMap={metricMap}
@@ -653,24 +676,10 @@ export function ClientsPane({
           </div>
         </div>
       </ProSection>
-    </Pane>
-  );
-}
-
-export function ThroughputPane({
-  metricMap,
-  pending
-}: {
-  metricMap: RedisMetricMap;
-  pending: ReadonlySet<string>;
-}) {
-  const text = useRedisText();
-  return (
-    <Pane pane="throughput">
-      <ProSection title={text('sectionTrends')}>
-        <div className={featureGrid}>
+      <ProSection title={text('sectionThroughput')}>
+        <div className={throughputGrid}>
           <RedisTrendChart spec={opsTrend} metricMap={metricMap} pending={pending} />
-          <div data-redis-network="trend">
+          <div className="min-w-0 h-full" data-redis-network="trend">
             <RedisTrendChart spec={netTrend} metricMap={metricMap} pending={pending} />
           </div>
         </div>
@@ -687,7 +696,7 @@ export function CompactTrends({
   pending: ReadonlySet<string>;
 }) {
   return (
-    <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+    <div className={`${chart.chartGrid2} ${chart.processTrends}`} data-redis-trends="overview">
       <RedisTrendChart spec={commandTrend} metricMap={metricMap} pending={pending} />
       <RedisTrendChart spec={hitTrend} metricMap={metricMap} pending={pending} />
     </div>
