@@ -120,6 +120,8 @@ const ringStyles = new Proxy(styles, {
 });
 
 const featureGrid = 'grid min-w-0 grid-cols-1 items-stretch gap-3 lg:grid-cols-2';
+/** 穿透环约 1/4，命中率折线吃剩余 3/4。窄屏跟主机图格一样在 1100 以下叠成一列。 */
+const cacheRowGrid = 'grid min-w-0 grid-cols-1 items-stretch gap-3 min-[1100px]:grid-cols-[minmax(0,1fr)_minmax(0,3fr)] [&>*]:min-w-0 [&>*]:h-full [&_section]:h-full';
 
 const TONE_COLOR = {
   ...PRESSURE_COLOR,
@@ -457,26 +459,6 @@ export function MemoryPane({
       : band === 'low'
         ? TONE_COLOR.near
         : TONE_COLOR.ok;
-  const limitOn = (redisLatest(metricMap, 'redis_maxmemory') ?? 0) > 0;
-  const memoryTrend: RedisTrendSpec = {
-    titleKey: 'chartMemory',
-    unit: 'bytes',
-    series: [
-      { name: 'redis_used_memory', labelKey: 'seriesUsed', color: REDIS_PALETTE.blue },
-      ...(limitOn ? [{
-        name: 'redis_maxmemory',
-        labelKey: 'seriesLimit' as const,
-        color: REDIS_PALETTE.neutral,
-        dashed: true
-      }] : [])
-    ]
-  };
-  const memoryLines = [
-    text('memoryPressureUsed'),
-    text('memoryPressureLimit'),
-    text('memoryPressureOmit'),
-    text('memoryPressureClose')
-  ];
   return (
     <Pane pane="memory">
       <ProSection title={text('sectionCapacity')}>
@@ -506,6 +488,40 @@ export function MemoryPane({
           />
         </div>
       </ProSection>
+    </Pane>
+  );
+}
+
+export function MemoryCacheTrendPane({
+  metricMap,
+  pending
+}: {
+  metricMap: RedisMetricMap;
+  pending: ReadonlySet<string>;
+}) {
+  const text = useRedisText();
+  const limitOn = (redisLatest(metricMap, 'redis_maxmemory') ?? 0) > 0;
+  const memoryTrend: RedisTrendSpec = {
+    titleKey: 'chartMemory',
+    unit: 'bytes',
+    series: [
+      { name: 'redis_used_memory', labelKey: 'seriesUsed', color: REDIS_PALETTE.blue },
+      ...(limitOn ? [{
+        name: 'redis_maxmemory',
+        labelKey: 'seriesLimit' as const,
+        color: REDIS_PALETTE.neutral,
+        dashed: true
+      }] : [])
+    ]
+  };
+  const memoryLines = [
+    text('memoryPressureUsed'),
+    text('memoryPressureLimit'),
+    text('memoryPressureOmit'),
+    text('memoryPressureClose')
+  ];
+  return (
+    <Pane pane="memory-cache-trends">
       <ProSection title={text('sectionTrends')}>
         <div className={connectionGrid} data-redis-trends="memory-cache">
           <div className="min-w-0 h-full" data-redis-feature="memory-pressure" data-redis-limit={limitOn ? 'on' : 'off'}>
@@ -562,7 +578,7 @@ export function CachePane({
   return (
     <Pane pane="cache">
       <ProSection title={text('sectionCache')}>
-        <div className={throughputGrid}>
+        <div className={cacheRowGrid} data-redis-cache-row="quarter">
           <div className="min-w-0 h-full">
             {loading ? (
               <section className={`${styles.panel} h-full w-full`} data-redis-feature="hit-ring">

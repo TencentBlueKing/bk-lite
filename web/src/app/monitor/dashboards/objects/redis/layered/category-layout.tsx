@@ -14,7 +14,7 @@ import { useDashboardText } from '../../../shared/utils/content-i18n';
 import layered from '../../host/layered/layered.module.scss';
 import OverviewPane from './overview-pane';
 import type { RedisTopicTab } from './focus-pane';
-import { CachePane, ConnThroughputPane, MemoryPane } from './topic-panes';
+import { CachePane, ConnThroughputPane, MemoryCacheTrendPane, MemoryPane } from './topic-panes';
 import { ClusterPane, ReplicationPane } from './architecture-panes';
 import { replicationTabMode } from './architecture-state';
 import { redisArchitectureView } from './architecture-view';
@@ -213,8 +213,9 @@ export default function RedisCategoryLayout({
           ) : null}
           {activeTab === 'memoryCache' ? (
             <div data-redis-pane="memory-cache" className="contents">
-              <CachePane metricMap={metricMap} pending={pendingMetricNames} />
               <MemoryPane metricMap={metricMap} pending={pendingMetricNames} />
+              <CachePane metricMap={metricMap} pending={pendingMetricNames} />
+              <MemoryCacheTrendPane metricMap={metricMap} pending={pendingMetricNames} />
             </div>
           ) : null}
           {activeTab === 'connThroughput' ? (
