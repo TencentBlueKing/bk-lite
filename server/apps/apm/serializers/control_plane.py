@@ -603,7 +603,17 @@ class ApmPolicySerializer(serializers.ModelSerializer):
             "thresholds",
         }
     )
-    _GUARD_KEYS = frozenset({"ref", "role", "metric_type", "comparator", "value"})
+    _GUARD_KEYS = frozenset(
+        {
+            "ref",
+            "role",
+            "metric_type",
+            "comparator",
+            "value",
+            "slow_threshold_ms",
+            "apdex_threshold_ms",
+        }
+    )
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
@@ -625,6 +635,7 @@ class ApmPolicySerializer(serializers.ModelSerializer):
             self._condition_error("error.conditions_shape")
         regulars = []
         guards = []
+        ordered = []
         refs = []
         for item in raw:
             if not isinstance(item, dict):
@@ -640,6 +651,7 @@ class ApmPolicySerializer(serializers.ModelSerializer):
                 regulars.append(normalized)
             else:
                 self._condition_error("error.conditions_shape")
+            ordered.append(normalized)
             refs.append(normalized["ref"])
         if not 1 <= len(regulars) <= 3:
             self._condition_error("error.conditions_count")
@@ -653,7 +665,7 @@ class ApmPolicySerializer(serializers.ModelSerializer):
         no_traffic = [item for item in regulars if item["metric_type"] == ApmPolicy.MetricType.NO_TRAFFIC]
         if no_traffic and (len(regulars) != 1 or guards or no_traffic[0]["compare_mode"] != ApmPolicy.CompareMode.ABSOLUTE):
             self._condition_error("error.conditions_no_traffic")
-        return regulars + guards
+        return ordered
 
     def _clean_ref(self, item):
         ref = str(item.get("ref") or "")
@@ -675,12 +687,19 @@ class ApmPolicySerializer(serializers.ModelSerializer):
         if comparator not in {choice for choice, _label in ApmPolicy.Comparator.choices}:
             self._condition_error("error.conditions_shape")
         value = self._finite_decimal(item.get("value"), "conditions", "error.threshold_finite")
+        slow_threshold_ms, apdex_threshold_ms = self._validate_metric_params(
+            metric_type,
+            item.get("slow_threshold_ms"),
+            item.get("apdex_threshold_ms"),
+        )
         return {
             "ref": self._clean_ref(item),
             "role": "guard",
             "metric_type": metric_type,
             "comparator": comparator,
             "value": self._decimal_payload(value),
+            "slow_threshold_ms": slow_threshold_ms,
+            "apdex_threshold_ms": apdex_threshold_ms,
         }
 
     def _normalize_regular(self, item, metric_window):

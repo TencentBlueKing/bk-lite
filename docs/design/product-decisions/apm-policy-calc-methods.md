@@ -1,7 +1,7 @@
 # APM 策略计算方式产品决策记忆
 
 - 最近更新：2026-10-29
-- 当前规格：`specs/changes/apm-policy-scenario-fit/spec.md`（第四批，implemented，2026-10-29）；第三批 `specs/changes/apm-policy-conditions-and-scope/spec.md`（implemented）；第二批 `specs/changes/apm-alert-calc-catalog/spec.md`（implemented，提交 `aa7b2d9aea` / `af3db59cd1` / `a54e7d70e3`）；第一批 `specs/changes/apm-alert-calc-enrichment/spec.md`（implemented）
+- 当前规格：`specs/changes/apm-policy-condition-flow/spec.md`（第五批，implemented，2026-10-29）；第四批 `specs/changes/apm-policy-scenario-fit/spec.md`（implemented，2026-10-29）；第三批 `specs/changes/apm-policy-conditions-and-scope/spec.md`（implemented）；第二批 `specs/changes/apm-alert-calc-catalog/spec.md`（implemented，提交 `aa7b2d9aea` / `af3db59cd1` / `a54e7d70e3`）；第一批 `specs/changes/apm-alert-calc-enrichment/spec.md`（implemented）
 - 长期契约：`specs/capabilities/apm-alerting.md`
 
 ## 产品定位
@@ -31,6 +31,10 @@ SkyWalking Alarm、阿里云 ARMS、蓝鲸监控）只做能力覆盖与术语�
   - 去掉策略级「无数据告警」开关，无流量用 `no_traffic` 指标表达。
   - `offset_hours / offset_days` 对照窗与 `previous_window` 一样允许 Δ 和 %。
   - `metric_window ≥ evaluation_interval`，否则拒绝保存；`slo_burn_rate` 不受约束。
+- 第五批（implemented，2026-10-29，条件表单）：
+  - 一条条件时，卡上写完指标、比较基准和最低请求数，不显示字母和类型。级别、检测频率、汇聚周期和触发放在一起。
+  - 一个「添加条件」，默认常规。第二条起每张卡有类型「常规 / 前置条件」。改成前置后，比较基准和级别消失，门槛写在卡上。
+  - 第一条可以是前置，只要另有常规条件。锚点仍是第一条常规条件。保存顺序与编辑器一致。
 
 ## 已确认设计决策
 
@@ -44,11 +48,12 @@ SkyWalking Alarm、阿里云 ARMS、蓝鲸监控）只做能力覆盖与术语�
 - 评估延迟做全局环境变量而不是策略级。原因：延迟是采集链路属性；竞品要么显式默认 2 分钟（New Relic），要么靠分钟桶天然晚 1～2 分钟
   （SkyWalking / ARMS / 蓝鲸）。这是第二批唯一改变存量行为的决策（告警晚 D 秒，换相对计算不系统性放大下跌）。
 - 慢阈值与 Apdex T 放策略级，不放服务级。原因：没有服务级配置实体；同一服务不同接口需要不同阈值。
-- 用户词汇沿用「当前值 / 相对上一等长窗 / 同窗 / 变化量 / 变化率 / 恢复阈值」，不出现「环比 / 同比 / 昨天」。
+- 用户词汇沿用「当前值 / 相对上一等长窗 / N 小时前同窗 / N 天前同窗 / 近 N 天同窗均值 / 变化量 / 变化率 / 恢复阈值」，不出现「环比 / 同比 / 昨天」。
 - 2026-10-29：评估值取整窗 RED 统计值，策略没有汇聚方法。原因：p95 / 错误率 / Apdex 不可加，15 秒子桶在低流量服务上全是噪声；
   适配器本来就算好了整窗值。竞品（Datadog / New Relic / Elastic / SkyWalking / ARMS）都是「评估窗内一个数比阈值」。`timeseries` 只画趋势图。
 - 2026-10-29：没有策略级无数据开关。原因：APM 的无数据就是窗内 span 为 0，与 `no_traffic` 同源；一个场景只留 APM 原生词「无流量」。
 - 2026-10-29：吞吐单位维持 `req/s`，不随 SkyWalking / ARMS 改 cpm。已有快照与告警中心副本按 `req/s` 记录，改单位的收益不抵迁移成本。
+- 2026-10-29：条件表单跟监控的添加方式，不跟它的字段布局。一个「添加条件」，类型在卡上；比较基准写在常规条件卡上，因为 APM 每条常规条件可以有自己的比较基准，监控多指标则锁死当前值。前置条件排在上面时不挪走，锚点是第一条常规条件。原因：一条条件要能顺着读完，同时三域的「添加条件」保持同一个动作。
 
 ## 明确后置
 
@@ -70,9 +75,11 @@ SkyWalking Alarm、阿里云 ARMS、蓝鲸监控）只做能力覆盖与术语�
 - 2026-10-29 替代「计数类指标不套汇聚方式、其余指标套 avg / max / min / last」：全部指标整窗取值，`aggregation` 列删除。
 - 2026-10-29 替代「N 小时 / N 天前同窗只给 %」：放开 Δ。
 - 2026-10-29 替代监控同款「无数据告警」开关：删除三列，由 `no_traffic` 指标承担。
+- 2026-10-29 撤回同日的「两个添加按钮，一个加常规条件、一个加前置条件」：改成一个「添加条件」，类型写在卡上。
 
 ## 决策来源
 
 2026-10-27 CTeam 需求 p398_716 两轮分析：第一轮落地相对计算、最低请求数、试算；第二轮产品复核要求按客户场景对照竞品尽量补齐，
 授权按推荐方案执行，五项待确认事项（评估延迟默认值、前置条件不满足语义、阈值归属层级、SLO 燃烧率、下游依赖）按规格自审结论拍板。
 2026-10-29 产品复核「APM / 日志策略是否照搬监控」：确认汇聚方法口径错误为阻断项，无数据开关与吞吐单位两项待确认按推荐方案拍板。
+2026-10-29 条件表单按方案 A 定稿：一句写完、一个添加按钮、类型在卡上、第一条可以是前置、顺序原样保存。

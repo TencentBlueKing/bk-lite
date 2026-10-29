@@ -68,9 +68,10 @@ interface ThresholdEditorRow {
   value: number | null;
 }
 
-interface ExtraConditionEditor {
+interface ConditionCardEditor {
   ref: string;
-  metric_type: ApmPolicyMetric;
+  role: 'regular' | 'guard';
+  metric_type: ApmPolicyMetric | 'request_count';
   compare_mode: ApmCompareMode;
   compare_offset_amount: number | null;
   compare_value_kind: ApmCompareValueKind | '';
@@ -78,11 +79,6 @@ interface ExtraConditionEditor {
   slow_threshold_ms: number | null;
   apdex_threshold_ms: number | null;
   thresholds: ThresholdEditorRow[];
-}
-
-interface GuardEditor {
-  ref: string;
-  metric_type: ApmPolicyMetric | 'request_count';
   comparator: ApmPolicyComparator;
   value: number | null;
 }
@@ -97,8 +93,7 @@ interface PolicyEditorValues extends Omit<
   thresholds: ThresholdEditorRow[];
   recovery_comparator: ApmPolicyComparator;
   recovery_value: number | null;
-  extra_conditions: ExtraConditionEditor[];
-  guards: GuardEditor[];
+  cards: ConditionCardEditor[];
   scope_environment?: string;
   dependency_keys?: string[];
   slo?: string | null;
@@ -144,23 +139,40 @@ const DEFAULT_VALUES: PolicyEditorValues = {
   recover_after: 3,
   handlers: [],
   notification_targets: [],
-  extra_conditions: [],
-  guards: [],
+  cards: [{
+    ref: 'a',
+    role: 'regular',
+    metric_type: 'error_rate',
+    compare_mode: 'absolute',
+    compare_offset_amount: null,
+    compare_value_kind: '',
+    min_request_count: 20,
+    slow_threshold_ms: null,
+    apdex_threshold_ms: null,
+    thresholds: SEVERITIES.map(({ value }) => ({
+      severity: value,
+      comparator: 'gt' as const,
+      value: value === 'warning' ? 5 : null,
+    })),
+    comparator: 'gte',
+    value: null,
+  }],
   slo: null,
   burn_long_window_minutes: null,
   burn_short_window_minutes: null,
 };
 
-const CONDITION_REFS = ['b', 'c', 'd', 'e'] as const;
+const CONDITION_REFS = ['a', 'b', 'c', 'd', 'e'] as const;
 
 function blankThresholdRows(comparator: ApmPolicyComparator = 'gt'): ThresholdEditorRow[] {
   return SEVERITIES.map(({ value }) => ({ severity: value, comparator, value: null }));
 }
 
-function blankExtraCondition(ref: string): ExtraConditionEditor {
+function blankCard(ref: string, role: 'regular' | 'guard' = 'regular'): ConditionCardEditor {
   return {
     ref,
-    metric_type: 'throughput',
+    role,
+    metric_type: role === 'guard' ? 'request_count' : 'throughput',
     compare_mode: 'absolute',
     compare_offset_amount: null,
     compare_value_kind: '',
@@ -168,20 +180,13 @@ function blankExtraCondition(ref: string): ExtraConditionEditor {
     slow_threshold_ms: null,
     apdex_threshold_ms: null,
     thresholds: blankThresholdRows(),
+    comparator: 'gte',
+    value: null,
   };
 }
 
 function nextConditionRef(used: string[]) {
-  return CONDITION_REFS.find((ref) => !used.includes(ref)) ?? 'b';
-}
-
-function blankGuard(ref: string): GuardEditor {
-  return {
-    ref,
-    metric_type: 'request_count',
-    comparator: 'gte',
-    value: 200,
-  };
+  return CONDITION_REFS.find((ref) => !used.includes(ref)) ?? 'e';
 }
 
 function directoryErrorState(error: unknown): NotificationDirectoryState {
@@ -345,6 +350,7 @@ function thresholdUnitFor(
 
 interface ThresholdColumn {
   ref: string;
+  showRef: boolean;
   label: string;
   unit: string;
   namePath: (severityIndex: number, key: 'comparator' | 'value') => Array<string | number>;
@@ -445,15 +451,15 @@ function compareOffsetError(
   return null;
 }
 
-// 附加条件的字段路径是动态的 ['extra_conditions', i, key]，这里按无类型表单实例操作。
+// 条件卡的字段路径是动态的 ['cards', i, key]，这里按无类型表单实例操作。
 function applyListedCompareMode(
   form: FormInstance,
-  index: number,
+  base: Array<string | number>,
   mode: ApmCompareMode,
   previous?: ApmCompareMode,
 ) {
-  const amountPath = ['extra_conditions', index, 'compare_offset_amount'];
-  const kindPath = ['extra_conditions', index, 'compare_value_kind'];
+  const amountPath = [...base, 'compare_offset_amount'];
+  const kindPath = [...base, 'compare_value_kind'];
   if (mode === 'absolute') {
     form.setFieldValue(kindPath, '');
     form.setFieldValue(amountPath, null);
@@ -600,13 +606,13 @@ function CompareBaselineSelect({
   onModeChange?: (value: ApmCompareMode, previous?: ApmCompareMode) => void;
 }) {
   const { t } = useTranslation();
-  const family: ApmCompareMode = value === 'offset_hours' || value === 'offset_days' || value === 'offset_1h' || value === 'offset_24h'
+  const selected: ApmCompareMode = value === 'offset_1h' || value === 'offset_24h'
     ? 'offset_hours'
     : (value || 'absolute');
   return (
     <Select
       id={id}
-      value={family}
+      value={selected}
       onChange={(next: ApmCompareMode) => {
         const previous = value;
         onChange?.(next);
@@ -615,7 +621,8 @@ function CompareBaselineSelect({
       options={[
         { value: 'absolute', label: t('apm.policies.compareModeAbsolute', '当前值') },
         { value: 'previous_window', label: t('apm.policies.compareModePreviousWindow', '相对上一等长窗') },
-        { value: 'offset_hours', label: t('apm.policies.compareModeOffset', '同窗') },
+        { value: 'offset_hours', label: t('apm.policies.compareModeOffsetHoursWindow', 'N 小时前同窗') },
+        { value: 'offset_days', label: t('apm.policies.compareModeOffsetDaysWindow', 'N 天前同窗') },
         { value: 'baseline_days', label: t('apm.policies.compareModeBaselineDays', '近 N 天同窗均值') },
       ]}
     />
@@ -665,30 +672,79 @@ function editorRowsFromThresholds(
   });
 }
 
-function splitStoredConditions(policy: ApmPolicy): Pick<PolicyEditorValues, 'extra_conditions' | 'guards'> {
+function guardValueScales(metric: ApmPolicyMetric | 'request_count') {
+  return metric === 'error_rate' || metric === 'slow_request_rate' || metric === 'apdex';
+}
+
+function cardFromRegular(item: ApmPolicyRegularCondition): ConditionCardEditor {
+  return {
+    ref: item.ref,
+    role: 'regular',
+    metric_type: item.metric_type,
+    ...editorCompareState(item),
+    compare_value_kind: item.compare_value_kind ?? '',
+    min_request_count: item.min_request_count ?? null,
+    slow_threshold_ms: item.slow_threshold_ms ?? null,
+    apdex_threshold_ms: item.apdex_threshold_ms ?? null,
+    thresholds: editorRowsFromThresholds(item.metric_type, item.compare_mode, item.compare_value_kind, item.thresholds),
+    comparator: 'gte',
+    value: null,
+  };
+}
+
+function cardFromGuard(item: ApmPolicyGuardCondition): ConditionCardEditor {
+  return {
+    ref: item.ref,
+    role: 'guard',
+    metric_type: item.metric_type,
+    compare_mode: 'absolute',
+    compare_offset_amount: null,
+    compare_value_kind: '',
+    min_request_count: null,
+    slow_threshold_ms: item.slow_threshold_ms ?? null,
+    apdex_threshold_ms: item.apdex_threshold_ms ?? null,
+    thresholds: blankThresholdRows(),
+    comparator: item.comparator,
+    value: guardValueScales(item.metric_type) ? Number(item.value) * 100 : Number(item.value),
+  };
+}
+
+function cardsFromPolicy(policy: ApmPolicy): ConditionCardEditor[] {
   const stored = policy.conditions || [];
   const regulars = stored.filter((item): item is ApmPolicyRegularCondition => item.role === 'regular');
   const guards = stored.filter((item): item is ApmPolicyGuardCondition => item.role === 'guard');
-  if (regulars.length <= 1 && guards.length === 0) return { extra_conditions: [], guards: [] };
+  if (regulars.length <= 1 && guards.length === 0) {
+    const only = regulars[0];
+    if (only) return [cardFromRegular(only)];
+    return [cardFromRegular({
+      ref: 'a',
+      role: 'regular',
+      metric_type: policy.metric_type,
+      compare_mode: policy.compare_mode,
+      compare_offset_amount: policy.compare_offset_amount,
+      compare_value_kind: policy.compare_value_kind,
+      min_request_count: policy.min_request_count,
+      slow_threshold_ms: policy.slow_threshold_ms,
+      apdex_threshold_ms: policy.apdex_threshold_ms,
+      thresholds: policy.thresholds,
+    })];
+  }
+  return stored.map((item) => (item.role === 'guard' ? cardFromGuard(item) : cardFromRegular(item)));
+}
+
+function projectAnchor(values: PolicyEditorValues): PolicyEditorValues {
+  const anchor = (values.cards || []).find((card) => card?.role === 'regular');
+  if (!anchor || anchor.metric_type === 'request_count') return values;
   return {
-    extra_conditions: regulars.slice(1).map((item) => ({
-      ref: item.ref,
-      metric_type: item.metric_type,
-      ...editorCompareState(item),
-      compare_value_kind: item.compare_value_kind ?? '',
-      min_request_count: item.min_request_count ?? null,
-      slow_threshold_ms: item.slow_threshold_ms ?? null,
-      apdex_threshold_ms: item.apdex_threshold_ms ?? null,
-      thresholds: editorRowsFromThresholds(item.metric_type, item.compare_mode, item.compare_value_kind, item.thresholds),
-    })),
-    guards: guards.map((item) => ({
-      ref: item.ref,
-      metric_type: item.metric_type,
-      comparator: item.comparator,
-      value: item.metric_type === 'error_rate' || item.metric_type === 'slow_request_rate' || item.metric_type === 'apdex'
-        ? Number(item.value) * 100
-        : Number(item.value),
-    })),
+    ...values,
+    metric_type: anchor.metric_type,
+    compare_mode: anchor.compare_mode,
+    compare_offset_amount: anchor.compare_offset_amount,
+    compare_value_kind: anchor.compare_value_kind,
+    min_request_count: anchor.min_request_count,
+    slow_threshold_ms: anchor.slow_threshold_ms,
+    apdex_threshold_ms: anchor.apdex_threshold_ms,
+    thresholds: anchor.thresholds?.length ? anchor.thresholds : values.thresholds,
   };
 }
 
@@ -720,43 +776,39 @@ function regularConditionPayload(
 }
 
 function buildConditions(values: PolicyEditorValues): ApmPolicyCondition[] | undefined {
-  const extras = values.extra_conditions || [];
-  const guards = (values.guards || []).filter((item) => item.value !== null && item.value !== undefined);
-  if (values.metric_type === 'no_traffic' || (!extras.length && !guards.length)) return undefined;
-  const anchor = regularConditionPayload(
-    'a',
-    values.metric_type,
-    values.compare_mode || 'absolute',
-    values.compare_offset_amount,
-    values.compare_value_kind,
-    values.min_request_count,
-    values.slow_threshold_ms ?? null,
-    values.apdex_threshold_ms ?? null,
-    values.thresholds,
-  );
-  return [
-    anchor,
-    ...extras.map((item) => regularConditionPayload(
-      item.ref,
-      item.metric_type,
-      item.compare_mode,
-      item.compare_offset_amount,
-      item.compare_value_kind,
-      item.min_request_count,
-      item.slow_threshold_ms,
-      item.apdex_threshold_ms,
-      item.thresholds,
-    )),
-    ...guards.map((item): ApmPolicyGuardCondition => ({
-      ref: item.ref,
-      role: 'guard',
-      metric_type: item.metric_type,
-      comparator: item.comparator,
-      value: item.metric_type === 'error_rate' || item.metric_type === 'slow_request_rate' || item.metric_type === 'apdex'
-        ? Number(item.value) / 100
-        : Number(item.value),
-    })),
-  ];
+  const cards = values.cards || [];
+  const regulars = cards.filter((card) => card?.role === 'regular');
+  const guards = cards.filter((card) => card?.role === 'guard');
+  if (values.metric_type === 'no_traffic' || values.metric_type === 'slo_burn_rate') return undefined;
+  if (regulars.length <= 1 && guards.length === 0) return undefined;
+  return cards.map((card) => {
+    if (card.role === 'guard') {
+      const metric = card.metric_type;
+      return {
+        ref: card.ref,
+        role: 'guard' as const,
+        metric_type: metric,
+        comparator: card.comparator || 'gte',
+        value: guardValueScales(metric) ? Number(card.value) / 100 : Number(card.value),
+        slow_threshold_ms: metric === 'slow_request_count' || metric === 'slow_request_rate'
+          ? card.slow_threshold_ms ?? null
+          : null,
+        apdex_threshold_ms: metric === 'apdex' ? card.apdex_threshold_ms ?? 500 : null,
+      };
+    }
+    const metric = card.metric_type === 'request_count' ? 'throughput' : card.metric_type;
+    return regularConditionPayload(
+      card.ref,
+      metric,
+      card.compare_mode,
+      card.compare_offset_amount,
+      card.compare_value_kind,
+      card.min_request_count,
+      card.slow_threshold_ms,
+      card.apdex_threshold_ms,
+      card.thresholds,
+    );
+  });
 }
 
 function toEditorValues(policy: ApmPolicy): PolicyEditorValues {
@@ -814,7 +866,7 @@ function toEditorValues(policy: ApmPolicy): PolicyEditorValues {
       channel_id: target.channel_id,
       recipients: target.recipient_mode === 'none' ? [] : [...target.recipients],
     })),
-    ...splitStoredConditions(policy),
+    cards: cardsFromPolicy(policy),
   };
 }
 
@@ -823,6 +875,7 @@ function buildMetricPreviewPayload(
   loadedPolicy: ApmPolicy | null,
   previewName: string,
 ): ApmPolicyInput | null {
+  values = projectAnchor(values);
   const scope = decodeServiceScope(values.service_scope ?? '');
   const compareKind = resolvedCompareKind(values.metric_type, values.compare_mode, values.compare_value_kind);
   const thresholds = normalizeThresholds(values.metric_type, compareKind, values.thresholds);
@@ -872,26 +925,27 @@ function buildMetricPreviewPayload(
 // 左右边缘和首行的指标下拉对齐，参考监控多指标条件卡。
 function ConditionCard({
   letter,
+  showLetter = false,
   metric,
   onRemove,
-  order,
   children,
 }: {
   letter: string;
+  showLetter?: boolean;
   metric: ReactNode;
   onRemove?: () => void;
-  order?: number;
   children: ReactNode;
 }) {
   return (
     <div
-      style={order === undefined ? undefined : { order }}
-      className="grid grid-cols-[2rem_minmax(0,1fr)_2rem] items-center gap-2 rounded-md border border-[var(--color-border-2)] p-2"
+      className={showLetter
+        ? 'grid grid-cols-[2rem_minmax(0,1fr)_2rem] items-center gap-2 rounded-md border border-[var(--color-border-2)] p-2'
+        : 'grid grid-cols-[minmax(0,1fr)_2rem] items-center gap-2 rounded-md border border-[var(--color-border-2)] p-2'}
     >
-      <ConditionRefBadge>{letter}</ConditionRefBadge>
+      {showLetter ? <ConditionRefBadge>{letter}</ConditionRefBadge> : null}
       <div className="min-w-0">{metric}</div>
       {onRemove ? <ConditionRemoveButton onClick={onRemove} /> : <span className="h-8 w-8" />}
-      <div className="col-start-2 flex min-w-0 flex-col gap-2">{children}</div>
+      <div className={`${showLetter ? 'col-start-2' : 'col-start-1'} flex min-w-0 flex-col gap-2`}>{children}</div>
     </div>
   );
 }
@@ -965,28 +1019,46 @@ function ExtraCompareFields({
   fieldName,
   letter,
   mode,
+  showChrome,
 }: {
   fieldName: number;
   letter: string;
   mode: ApmCompareMode;
+  showChrome: boolean;
 }) {
   const { t } = useTranslation();
   const form: FormInstance = Form.useFormInstance();
+  const amount = Form.useWatch(['cards', fieldName, 'compare_offset_amount'], form);
+  const base = ['cards', fieldName];
   useLayoutEffect(() => {
-    // 和锚点比较字段一样：挂载后把 errors / warnings 拆成两份，避免后续
-    // setFieldValue 碰到 rc-field-form 的循环引用告警。
+    // 挂载后把 errors / warnings 拆成两份，避免后续 setFieldValue 碰到循环引用告警。
     ['compare_mode', 'compare_offset_amount', 'compare_value_kind'].forEach((key) => {
-      const path = ['extra_conditions', fieldName, key];
+      const path = ['cards', fieldName, key];
       form.setFieldValue(path, form.getFieldValue(path));
     });
   }, [fieldName, form, mode]);
-  const offset = isOffsetCompare(mode);
+  useLayoutEffect(() => {
+    if (mode !== 'baseline_days' || Number(amount) >= 3) return;
+    if (form.getFieldValue(['cards', fieldName, 'compare_value_kind']) !== 'sigma') return;
+    form.setFieldValue(['cards', fieldName, 'compare_value_kind'], 'percent');
+  }, [amount, fieldName, form, mode]);
+  const offsetHours = mode === 'offset_hours' || mode === 'offset_1h' || mode === 'offset_24h';
   const offsetDays = mode === 'offset_days';
   const baseline = mode === 'baseline_days';
-  const showKind = mode === 'previous_window' || baseline || offset;
+  const showKind = mode === 'previous_window' || baseline || offsetHours || offsetDays;
+  const showSigma = baseline && Number(amount) >= 3;
+  const named = (plain: string, keyed: string) => (showChrome
+    ? t(keyed, plain, { ref: letter })
+    : plain);
   const amountLabel = baseline || offsetDays
-    ? t('apm.policies.conditionOffsetDays', '条件 {ref} 天数', { ref: letter })
-    : t('apm.policies.conditionOffsetHours', '条件 {ref} 小时数', { ref: letter });
+    ? named(
+      t('apm.policies.compareOffsetCountDay', '天数'),
+      'apm.policies.conditionOffsetDays',
+    )
+    : named(
+      t('apm.policies.compareOffsetCountHour', '小时数'),
+      'apm.policies.conditionOffsetHours',
+    );
   const amountUnit = baseline || offsetDays
     ? t('apm.policies.dayUnit', '天')
     : t('apm.policies.hourUnit', '小时');
@@ -999,47 +1071,30 @@ function ExtraCompareFields({
     );
     if (issue) throw new Error(issue);
   };
-
-  const amountRowLabel = baseline || offsetDays
-    ? t('apm.policies.compareOffsetCountDay', '天数')
-    : t('apm.policies.compareOffsetCountHour', '小时数');
   const amountHint = baseline
     ? t('apm.policies.baselineDaysHint', '和过去这些天里、同一时段的平均值比较。')
     : t('apm.policies.compareOffsetHint', '和这段时间之前、同样长度的窗口比较。');
+  const compareLabel = showChrome
+    ? t('apm.policies.conditionCompare', '条件 {ref} 比较基准', { ref: letter })
+    : t('apm.policies.compareBaseline', '比较基准');
 
   return (
     <>
       <ConditionRow label={t('apm.policies.compareBaseline', '比较基准')}>
         <Form.Item
           name={[fieldName, 'compare_mode']}
-          label={t('apm.policies.conditionCompare', '条件 {ref} 比较基准', { ref: letter })}
+          label={compareLabel}
           className={`${styles.conditionField} min-w-0`}
         >
           <CompareBaselineSelect
-            onModeChange={(next, previous) => applyListedCompareMode(form, fieldName, next, previous)}
+            onModeChange={(next, previous) => applyListedCompareMode(form, base, next, previous)}
           />
         </Form.Item>
       </ConditionRow>
-      {offset ? (
-        <ConditionRow label={t('apm.policies.compareOffsetMethod', '对照方式')}>
-          <Select
-            className="w-full min-w-0"
-            aria-label={t('apm.policies.conditionOffsetMethod', '条件 {ref} 对照方式', { ref: letter })}
-            value={offsetDays ? 'offset_days' : 'offset_hours'}
-            onChange={(next: ApmCompareMode) => {
-              const previous = form.getFieldValue(['extra_conditions', fieldName, 'compare_mode']) as ApmCompareMode;
-              form.setFieldValue(['extra_conditions', fieldName, 'compare_mode'], next);
-              applyListedCompareMode(form, fieldName, next, previous);
-            }}
-            options={[
-              { value: 'offset_hours', label: t('apm.policies.compareOffsetHours', 'N 小时前') },
-              { value: 'offset_days', label: t('apm.policies.compareOffsetDays', 'N 天前') },
-            ]}
-          />
-        </ConditionRow>
-      ) : null}
-      {offset || baseline ? (
-        <ConditionRow label={amountRowLabel} hint={amountHint}>
+      {offsetHours || offsetDays || baseline ? (
+        <ConditionRow label={baseline || offsetDays
+          ? t('apm.policies.compareOffsetCountDay', '天数')
+          : t('apm.policies.compareOffsetCountHour', '小时数')} hint={amountHint}>
           <Form.Item
             name={[fieldName, 'compare_offset_amount']}
             label={amountLabel}
@@ -1060,7 +1115,9 @@ function ExtraCompareFields({
         <ConditionRow label={t('apm.policies.compareValueKind', '比较方式')}>
           <Form.Item
             name={[fieldName, 'compare_value_kind']}
-            label={t('apm.policies.conditionCompareKind', '条件 {ref} 比较方式', { ref: letter })}
+            label={showChrome
+              ? t('apm.policies.conditionCompareKind', '条件 {ref} 比较方式', { ref: letter })
+              : t('apm.policies.compareValueKind', '比较方式')}
             className={`${styles.conditionField} min-w-0`}
           >
             <Radio.Group
@@ -1068,7 +1125,7 @@ function ExtraCompareFields({
               options={[
                 { value: 'delta', label: t('apm.policies.compareKindDelta', '变化量 Δ') },
                 { value: 'percent', label: t('apm.policies.compareKindPercent', '变化率 %') },
-                ...(baseline
+                ...(showSigma
                   ? [{ value: 'sigma' as const, label: t('apm.policies.compareKindSigma', '标准差 σ') }]
                   : []),
               ]}
@@ -1080,42 +1137,95 @@ function ExtraCompareFields({
   );
 }
 
-function ApmMetricConditionEditor({
-  id,
+function CardMetricSelect({
   value,
   onChange,
-  onMetricChange,
+  onPicked,
+  options,
+  ...rest
 }: {
   id?: string;
-  value?: ApmPolicyMetric;
-  onChange?: (value: ApmPolicyMetric) => void;
-  onMetricChange?: (value: ApmPolicyMetric) => void;
+  value?: string;
+  onChange?: (value: string) => void;
+  onPicked?: (value: ApmPolicyMetric | 'request_count') => void;
+  options: Array<{ value: string; label: string }>;
+} & Omit<ComponentProps<typeof Select>, 'options' | 'onChange' | 'value'>) {
+  return (
+    <Select
+      {...rest}
+      value={value}
+      options={options}
+      onChange={(next: ApmPolicyMetric | 'request_count') => {
+        onChange?.(next);
+        onPicked?.(next);
+      }}
+    />
+  );
+}
+
+function ApmMetricConditionEditor({
+  onMetricChange,
+}: {
+  onMetricChange?: (value: ApmPolicyMetric, cardIndex: number) => void;
 }) {
   const { t } = useTranslation();
   const form = Form.useFormInstance<PolicyEditorValues>();
-  const extraConditions = Form.useWatch('extra_conditions', { form, preserve: true }) ?? [];
-  const guardRows = Form.useWatch('guards', { form, preserve: true }) ?? [];
-  const listApi = useRef<{
-    addExtra: (value: ExtraConditionEditor) => void;
-    removeExtra: (index: number) => void;
-    addGuard: (value: GuardEditor) => void;
-    removeGuard: (index: number) => void;
-      }>({
-        addExtra: () => undefined,
-        removeExtra: () => undefined,
-        addGuard: () => undefined,
-        removeGuard: () => undefined,
-      });
-  const metric = value ?? 'error_rate';
-  const showSlowThreshold = SLOW_METRICS.includes(metric);
-  const showApdexThreshold = metric === 'apdex';
-  const metricChoices = METRICS
-    .filter((item) => item.value !== 'no_traffic')
+  const cards = (Form.useWatch('cards', { form, preserve: true }) ?? []) as ConditionCardEditor[];
+  const showChrome = cards.length > 1;
+  const regularCount = cards.filter((card) => card?.role === 'regular').length;
+  const guardCount = cards.length - regularCount;
+  const anchorIndex = cards.findIndex((card) => card?.role === 'regular');
+  const regularChoices = METRICS
+    .filter((item) => item.value !== 'no_traffic' && item.value !== 'slo_burn_rate')
     .map((item) => ({ value: item.value, label: t(item.i18nKey) }));
+  const guardChoices = [
+    ...regularChoices,
+    { value: 'request_count', label: t('apm.policies.metricRequestCount', '请求数') },
+  ];
   const typeLabel = t('apm.policies.conditionType', '类型');
   const slowLabel = t('apm.policies.slowThreshold', '慢阈值 (ms)');
   const apdexLabel = t('apm.policies.apdexThreshold', 'T (ms)');
   const minRequestLabel = t('apm.policies.minRequestCount', '最低请求数');
+  const guardComparators = [
+    { value: 'gt' as const, label: '>' },
+    { value: 'gte' as const, label: '≥' },
+    { value: 'lt' as const, label: '<' },
+    { value: 'lte' as const, label: '≤' },
+  ];
+
+  const applyRole = (index: number, next: 'regular' | 'guard') => {
+    const current = (form.getFieldValue('cards') || []) as ConditionCardEditor[];
+    const card = current[index];
+    if (!card || card.role === next) return;
+    const regulars = current.filter((item) => item?.role === 'regular').length;
+    if (next === 'guard') {
+      if (regulars <= 1) return;
+      form.setFieldValue(['cards', index], {
+        ...card,
+        role: 'guard',
+        compare_mode: 'absolute',
+        compare_offset_amount: null,
+        compare_value_kind: '',
+        min_request_count: null,
+        thresholds: blankThresholdRows(),
+        comparator: 'gte',
+        value: null,
+      });
+      return;
+    }
+    if (regulars >= 3) return;
+    const metric = card.metric_type === 'request_count' ? 'throughput' : card.metric_type;
+    form.setFieldValue(['cards', index], {
+      ...card,
+      role: 'regular',
+      metric_type: metric,
+      compare_mode: 'absolute',
+      compare_offset_amount: null,
+      compare_value_kind: '',
+      thresholds: blankThresholdRows(metric === 'apdex' ? 'lt' : 'gt'),
+      value: null,
+    });
+  };
 
   return (
     <div className={`${styles.metricEditor} rounded-md border border-[var(--color-border-2)] bg-[var(--color-bg-1)] shadow-sm`}>
@@ -1125,203 +1235,165 @@ function ApmMetricConditionEditor({
         </span>
       </div>
       <div className="flex flex-col gap-3 p-3">
-        <ConditionCard
-          letter="a"
-          metric={(
-            <MetricTypeSelect
-              id={id}
-              value={value}
-              onChange={onChange}
-              onMetricChange={onMetricChange}
-            />
+        <Form.List name="cards">
+          {(fields, { add, remove }) => (
+            <>
+              {fields.map((field) => {
+                const card = cards[field.name];
+                const ref = card?.ref || CONDITION_REFS[field.name] || 'a';
+                const metric = card?.metric_type ?? 'error_rate';
+                const role = card?.role ?? 'regular';
+                const isAnchor = field.name === anchorIndex;
+                const isGuard = role === 'guard';
+                const canRemove = cards.length > 1 && !(role === 'regular' && regularCount <= 1);
+                const metricLabel = showChrome
+                  ? t('apm.policies.conditionMetric', '条件 {ref} 指标', { ref })
+                  : t('apm.policies.metric', '指标');
+                const slowAccessible = showChrome
+                  ? t('apm.policies.conditionSlowThreshold', '条件 {ref} 慢阈值', { ref })
+                  : slowLabel;
+                const minRequestAccessible = showChrome
+                  ? t('apm.policies.conditionMinRequest', '条件 {ref} 最低请求数', { ref })
+                  : minRequestLabel;
+                return (
+                  <ConditionCard
+                    key={field.key}
+                    letter={ref}
+                    showLetter={showChrome}
+                    onRemove={canRemove ? () => remove(field.name) : undefined}
+                    metric={(
+                      <>
+                        <Form.Item name={[field.name, 'ref']} hidden><Input /></Form.Item>
+                        <Form.Item name={[field.name, 'role']} hidden><Input /></Form.Item>
+                        <Form.Item
+                          name={[field.name, 'metric_type']}
+                          label={metricLabel}
+                          className={`${styles.conditionField} min-w-0`}
+                        >
+                          {isAnchor && !isGuard ? (
+                            <MetricTypeSelect onMetricChange={(next) => onMetricChange?.(next, field.name)} />
+                          ) : (
+                            <CardMetricSelect
+                              options={isGuard ? guardChoices : regularChoices}
+                              onPicked={(next) => {
+                                if (next !== 'request_count') onMetricChange?.(next, field.name);
+                              }}
+                            />
+                          )}
+                        </Form.Item>
+                      </>
+                    )}
+                  >
+                    {showChrome ? (
+                      <ConditionRow label={typeLabel}>
+                        <ConditionRoleSelect
+                          letter={ref}
+                          value={role}
+                          disableGuard={role === 'regular' && regularCount <= 1}
+                          disableRegular={role === 'guard' && regularCount >= 3}
+                          onChange={(next) => applyRole(field.name, next)}
+                        />
+                      </ConditionRow>
+                    ) : null}
+                    {showChrome && isAnchor ? (
+                      <span className="text-xs leading-5 text-[var(--color-text-3)]">
+                        {t('apm.policies.anchorUsesRecovery', '恢复阈值和详情图用这条')}
+                      </span>
+                    ) : null}
+                    {(metric === 'slow_request_count' || metric === 'slow_request_rate') ? (
+                      <ConditionRow label={slowLabel}>
+                        <Form.Item
+                          name={[field.name, 'slow_threshold_ms']}
+                          label={slowAccessible}
+                          rules={[{ required: true, message: t('apm.policies.slowThresholdRequired', '请填写慢阈值') }]}
+                          className={`${styles.conditionField} min-w-0`}
+                        >
+                          <NumberWithUnit min={1} max={600000} unit="ms" aria-label={slowAccessible} />
+                        </Form.Item>
+                      </ConditionRow>
+                    ) : null}
+                    {metric === 'apdex' ? (
+                      <ConditionRow label={apdexLabel}>
+                        <Form.Item
+                          name={[field.name, 'apdex_threshold_ms']}
+                          label={apdexLabel}
+                          rules={[{ required: true, message: t('apm.policies.apdexThresholdRequired', '请填写 T') }]}
+                          className={`${styles.conditionField} min-w-0`}
+                        >
+                          <NumberWithUnit min={1} max={600000} unit="ms" aria-label={apdexLabel} />
+                        </Form.Item>
+                      </ConditionRow>
+                    ) : null}
+                    {isGuard ? (
+                      <ConditionRow label={t('apm.policies.guardValue', '门槛')}>
+                        <div className="grid grid-cols-[72px_minmax(0,1fr)] items-center gap-1.5">
+                          <Form.Item name={[field.name, 'comparator']} className={`${styles.conditionField} min-w-0`}>
+                            <Select
+                              aria-label={t('apm.policies.conditionComparator', '条件 {ref} 比较符', { ref })}
+                              options={guardComparators}
+                            />
+                          </Form.Item>
+                          <Form.Item
+                            name={[field.name, 'value']}
+                            label={t('apm.policies.conditionGuardValue', '条件 {ref} 门槛', { ref })}
+                            rules={[{ required: true, message: t('apm.policies.guardValueRequired', '请填写门槛') }]}
+                            className={`${styles.conditionField} min-w-0`}
+                          >
+                            <InputNumber<number>
+                              className="!w-full"
+                              controls={false}
+                              aria-label={t('apm.policies.conditionGuardValue', '条件 {ref} 门槛', { ref })}
+                            />
+                          </Form.Item>
+                        </div>
+                      </ConditionRow>
+                    ) : (
+                      <>
+                        <ExtraCompareFields
+                          fieldName={field.name}
+                          letter={ref}
+                          mode={card?.compare_mode ?? 'absolute'}
+                          showChrome={showChrome}
+                        />
+                        {MIN_REQUEST_METRICS.includes(metric as ApmPolicyMetric) ? (
+                          <ConditionRow label={minRequestLabel}>
+                            <Form.Item
+                              name={[field.name, 'min_request_count']}
+                              label={minRequestAccessible}
+                              className={`${styles.conditionField} min-w-0`}
+                            >
+                              <InputNumber<number>
+                                className="!w-full"
+                                min={1}
+                                max={100000}
+                                placeholder={t('apm.policies.minRequestUnlimited', '不限')}
+                                aria-label={minRequestAccessible}
+                              />
+                            </Form.Item>
+                          </ConditionRow>
+                        ) : null}
+                      </>
+                    )}
+                  </ConditionCard>
+                );
+              })}
+              <Button
+                type="dashed"
+                icon={<PlusOutlined aria-hidden />}
+                className="w-fit"
+                disabled={regularCount >= 3 && guardCount >= 2}
+                onClick={() => {
+                  const used = cards.map((item) => item?.ref).filter(Boolean);
+                  const ref = nextConditionRef(used);
+                  const role = regularCount >= 3 && guardCount < 2 ? 'guard' : 'regular';
+                  add(blankCard(ref, role));
+                }}
+              >
+                {t('apm.policies.addCondition', '添加条件')}
+              </Button>
+            </>
           )}
-        >
-          <ConditionRow label={typeLabel}>
-            <ConditionRoleSelect letter="a" value="regular" disableGuard />
-          </ConditionRow>
-          {showSlowThreshold ? (
-            <ConditionRow label={slowLabel}>
-              <Form.Item
-                name="slow_threshold_ms"
-                label={slowLabel}
-                rules={[{ required: true, message: t('apm.policies.slowThresholdRequired', '请填写慢阈值') }]}
-                className={`${styles.conditionField} min-w-0`}
-              >
-                <NumberWithUnit min={1} max={600000} unit="ms" aria-label={slowLabel} />
-              </Form.Item>
-            </ConditionRow>
-          ) : null}
-          {showApdexThreshold ? (
-            <ConditionRow label={apdexLabel}>
-              <Form.Item
-                name="apdex_threshold_ms"
-                label={apdexLabel}
-                rules={[{ required: true, message: t('apm.policies.apdexThresholdRequired', '请填写 T') }]}
-                className={`${styles.conditionField} min-w-0`}
-              >
-                <NumberWithUnit min={1} max={600000} unit="ms" aria-label={apdexLabel} />
-              </Form.Item>
-            </ConditionRow>
-          ) : null}
-        </ConditionCard>
-        <Form.List name="extra_conditions">
-          {(fields, { add, remove }) => {
-            listApi.current.addExtra = add;
-            listApi.current.removeExtra = remove;
-            return fields.map((field) => {
-              const extra = extraConditions[field.name];
-              const extraMetric = extra?.metric_type ?? 'throughput';
-              const ref = extra?.ref || CONDITION_REFS[field.name];
-              const extraCompareMode = extra?.compare_mode ?? 'absolute';
-              return (
-              <ConditionCard
-                key={`regular-${field.key}`}
-                letter={ref}
-                order={CONDITION_REFS.indexOf(ref as typeof CONDITION_REFS[number]) + 2}
-                onRemove={() => remove(field.name)}
-                metric={(
-                  <>
-                    <Form.Item name={[field.name, 'ref']} hidden><Input /></Form.Item>
-                    <Form.Item
-                      name={[field.name, 'metric_type']}
-                      label={t('apm.policies.conditionMetric', '条件 {ref} 指标', { ref })}
-                      className={`${styles.conditionField} min-w-0`}
-                    >
-                      <Select options={metricChoices} />
-                    </Form.Item>
-                  </>
-                )}
-              >
-                <ConditionRow label={typeLabel}>
-                  <ConditionRoleSelect
-                    letter={ref}
-                    value="regular"
-                    disableGuard={guardRows.length >= 2}
-                    onChange={(next) => {
-                      if (next !== 'guard' || guardRows.length >= 2 || !extra) return;
-                      listApi.current.removeExtra(field.name);
-                      listApi.current.addGuard({
-                        ref: extra.ref,
-                        metric_type: extra.metric_type,
-                        comparator: 'gte',
-                        value: 200,
-                      });
-                    }}
-                  />
-                </ConditionRow>
-                {SLOW_METRICS.includes(extraMetric) ? (
-                  <ConditionRow label={slowLabel}>
-                    <Form.Item
-                      name={[field.name, 'slow_threshold_ms']}
-                      label={slowLabel}
-                      className={`${styles.conditionField} min-w-0`}
-                    >
-                      <NumberWithUnit min={1} max={600000} unit="ms" />
-                    </Form.Item>
-                  </ConditionRow>
-                ) : null}
-                {extraMetric === 'apdex' ? (
-                  <ConditionRow label={apdexLabel}>
-                    <Form.Item
-                      name={[field.name, 'apdex_threshold_ms']}
-                      label={apdexLabel}
-                      className={`${styles.conditionField} min-w-0`}
-                    >
-                      <NumberWithUnit min={1} max={600000} unit="ms" />
-                    </Form.Item>
-                  </ConditionRow>
-                ) : null}
-                <ExtraCompareFields fieldName={field.name} letter={ref} mode={extraCompareMode} />
-                {MIN_REQUEST_METRICS.includes(extraMetric) ? (
-                  <ConditionRow label={minRequestLabel}>
-                    <Form.Item
-                      name={[field.name, 'min_request_count']}
-                      label={minRequestLabel}
-                      className={`${styles.conditionField} min-w-0`}
-                    >
-                      <InputNumber<number>
-                        className="!w-full"
-                        min={1}
-                        max={100000}
-                        placeholder={t('apm.policies.minRequestUnlimited', '不限')}
-                      />
-                    </Form.Item>
-                  </ConditionRow>
-                ) : null}
-              </ConditionCard>
-              );
-            });
-          }}
         </Form.List>
-        <Form.List name="guards">
-          {(fields, { add, remove }) => {
-            listApi.current.addGuard = add;
-            listApi.current.removeGuard = remove;
-            return fields.map((field) => {
-              const guard = guardRows[field.name];
-              const ref = guard?.ref || CONDITION_REFS[field.name];
-              return (
-              <ConditionCard
-                key={`guard-${field.key}`}
-                letter={ref}
-                order={CONDITION_REFS.indexOf(ref as typeof CONDITION_REFS[number]) + 2}
-                onRemove={() => remove(field.name)}
-                metric={(
-                  <>
-                    <Form.Item name={[field.name, 'ref']} hidden><Input /></Form.Item>
-                    <Form.Item
-                      name={[field.name, 'metric_type']}
-                      label={t('apm.policies.conditionMetric', '条件 {ref} 指标', { ref })}
-                      className={`${styles.conditionField} min-w-0`}
-                    >
-                      <Select
-                        options={[
-                          ...metricChoices,
-                          { value: 'request_count', label: t('apm.policies.metricRequestCount', '请求数') },
-                        ]}
-                      />
-                    </Form.Item>
-                  </>
-                )}
-              >
-                <ConditionRow label={typeLabel}>
-                  <ConditionRoleSelect
-                    letter={ref}
-                    value="guard"
-                    disableRegular={extraConditions.length >= 2}
-                    onChange={(next) => {
-                      if (next !== 'regular' || extraConditions.length >= 2 || !guard) return;
-                      const metric = guard.metric_type === 'request_count' ? 'throughput' : guard.metric_type;
-                      listApi.current.removeGuard(field.name);
-                      listApi.current.addExtra({ ...blankExtraCondition(guard.ref), metric_type: metric });
-                    }}
-                  />
-                </ConditionRow>
-              </ConditionCard>
-              );
-            });
-          }}
-        </Form.List>
-        <Button
-          type="dashed"
-          icon={<PlusOutlined aria-hidden />}
-          className="order-[100] w-fit"
-          disabled={extraConditions.length >= 2 && guardRows.length >= 2}
-          onClick={() => {
-            const used = [
-              ...extraConditions.map((item) => item?.ref),
-              ...guardRows.map((item) => item?.ref),
-            ].filter(Boolean);
-            const ref = nextConditionRef(used);
-            if (extraConditions.length < 2) {
-              listApi.current.addExtra(blankExtraCondition(ref));
-            } else if (guardRows.length < 2) {
-              listApi.current.addGuard(blankGuard(ref));
-            }
-          }}
-        >
-          {t('apm.policies.addCondition', '添加条件')}
-        </Button>
       </div>
     </div>
   );
@@ -1364,11 +1436,20 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
   const endpointMode = Form.useWatch('endpoint_mode', form) || 'selected';
   const instanceMode = Form.useWatch('instance_mode', form) || 'all';
   const targetKind = Form.useWatch('target_kind', form) || 'entry';
-  const metricType = Form.useWatch('metric_type', form) ?? 'error_rate';
-  const compareMode = Form.useWatch('compare_mode', form) ?? 'absolute';
-  const compareOffsetAmount = Form.useWatch('compare_offset_amount', form);
-  const compareKindRaw = Form.useWatch('compare_value_kind', form) ?? '';
-  const minRequestCount = Form.useWatch('min_request_count', form);
+  const storedMetricType = Form.useWatch('metric_type', form) ?? 'error_rate';
+  const storedCompareMode = Form.useWatch('compare_mode', form) ?? 'absolute';
+  const storedCompareOffset = Form.useWatch('compare_offset_amount', form);
+  const storedCompareKind = Form.useWatch('compare_value_kind', form) ?? '';
+  const storedMinRequest = Form.useWatch('min_request_count', form);
+  const cards = (Form.useWatch('cards', { form, preserve: true }) ?? []) as ConditionCardEditor[];
+  const anchorCard = cards.find((card) => card?.role === 'regular');
+  const metricType = (anchorCard && anchorCard.metric_type !== 'request_count'
+    ? anchorCard.metric_type
+    : storedMetricType) as ApmPolicyMetric;
+  const compareMode = anchorCard?.compare_mode ?? storedCompareMode;
+  const compareOffsetAmount = anchorCard?.compare_offset_amount ?? storedCompareOffset;
+  const compareKindRaw = anchorCard?.compare_value_kind ?? storedCompareKind;
+  const minRequestCount = anchorCard?.min_request_count ?? storedMinRequest;
   const evaluationInterval = Form.useWatch('evaluation_interval', form);
   const metricWindow = Form.useWatch('metric_window', form);
   const sloId = Form.useWatch('slo', form);
@@ -1376,14 +1457,8 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
   const burnShortWindow = Form.useWatch('burn_short_window_minutes', form);
   // preserve: 直接读 store，而不是按已注册字段拼装；否则条件卡在 remove 后、
   // 旧字段卸载前触发的通知会留下一个空洞项，阈值行多出一列空白控件。
-  const extraConditions = Form.useWatch('extra_conditions', { form, preserve: true }) ?? [];
-  const guardRows = Form.useWatch('guards', { form, preserve: true }) ?? [];
   const templateRows = useMemo(() => {
-    const refs = [
-      ...(extraConditions.length || guardRows.length ? ['a'] : []),
-      ...extraConditions.map((item) => item?.ref).filter(Boolean),
-      ...guardRows.map((item) => item?.ref).filter(Boolean),
-    ];
+    const refs = cards.length > 1 ? cards.map((item) => item?.ref).filter(Boolean) : [];
     return [
       ...templateVariables,
       ...refs.map((ref) => ({
@@ -1391,8 +1466,9 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
         source: t('apm.policies.variableConditionValue', '条件 {ref} 的当前值', { ref }),
       })),
     ];
-  }, [extraConditions, guardRows, t, templateVariables]);
-  const watchedThresholds = Form.useWatch('thresholds', form);
+  }, [cards, t, templateVariables]);
+  const storedThresholds = Form.useWatch('thresholds', form);
+  const watchedThresholds = anchorCard?.thresholds ?? storedThresholds;
   const triggerWindow = Form.useWatch('trigger_window', form);
   const selectedEndpoints = Form.useWatch('endpoints', form);
   const notificationTargets = Form.useWatch('notification_targets', form) ?? [];
@@ -1724,7 +1800,6 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
   const selectedScope = decodeServiceScope(serviceScope ?? '');
   const compareKind = resolvedCompareKind(metricType, compareMode, compareKindRaw);
   const showCompare = metricType !== 'no_traffic' && metricType !== 'slo_burn_rate';
-  const showMinRequest = MIN_REQUEST_METRICS.includes(metricType);
   const ratioMetric = RATIO_METRICS.includes(metricType);
   const thresholdUnit = thresholdUnitFor(metricType, compareKind, t);
   const thresholdBounds: { min?: number; max?: number } = compareKind === 'sigma'
@@ -1735,28 +1810,22 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
         ? { min: 0, max: 100 }
         : { min: 0 };
   // 多条件时阈值按「级别 × 条件」排成表格；每列记录自己的单位和字段路径。
-  const thresholdColumns: ThresholdColumn[] = [
-    {
-      ref: 'a',
-      label: metricOptions.find((item) => item.value === metricType)?.label ?? metricType,
-      unit: thresholdUnit,
-      namePath: (index, key) => ['thresholds', index, key],
-      bounds: thresholdBounds,
-      anchor: true,
-    },
-    ...extraConditions.map((extra, extraIndex): ThresholdColumn => {
-      const metric = extra?.metric_type ?? 'error_rate';
-      const kind = resolvedCompareKind(metric, extra?.compare_mode, extra?.compare_value_kind);
-      return {
-        ref: extra?.ref ?? CONDITION_REFS[extraIndex + 1],
-        label: metricOptions.find((item) => item.value === metric)?.label ?? metric,
-        unit: thresholdUnitFor(metric, kind, t),
-        namePath: (index, key) => ['extra_conditions', extraIndex, 'thresholds', index, key],
-        bounds: {},
-        anchor: false,
-      };
-    }),
-  ];
+  const showConditionLetters = cards.length > 1;
+  const thresholdColumns: ThresholdColumn[] = cards.flatMap((card, cardIndex): ThresholdColumn[] => {
+    if (!card || card.role !== 'regular' || card.metric_type === 'request_count') return [];
+    const metric = card.metric_type;
+    const isAnchor = cardIndex === cards.findIndex((item) => item?.role === 'regular');
+    const kind = resolvedCompareKind(metric, card.compare_mode, card.compare_value_kind);
+    return [{
+      ref: card.ref,
+      showRef: showConditionLetters,
+      label: metricOptions.find((item) => item.value === metric)?.label ?? metric,
+      unit: isAnchor ? thresholdUnit : thresholdUnitFor(metric, kind, t),
+      namePath: (index, key) => ['cards', cardIndex, 'thresholds', index, key],
+      bounds: isAnchor ? thresholdBounds : {},
+      anchor: isAnchor,
+    }];
+  });
   const ladderComparator = (watchedThresholds || []).find((row) => row?.comparator)?.comparator || 'gt';
   const recoveryOptions: { value: ApmPolicyComparator; label: string }[] = ladderComparator === 'lt' || ladderComparator === 'lte'
     ? [{ value: 'gt', label: '>' }, { value: 'gte', label: '≥' }]
@@ -1834,6 +1903,7 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
   });
 
   const buildPayload = (values: PolicyEditorValues): ApmPolicyInput | null => {
+    values = projectAnchor(values);
     const scopeMode = values.scope_mode || 'service';
     const decoded = decodeServiceScope(values.service_scope || '');
     const applicationMatch = applications.find((item) => item.id === values.application);
@@ -1848,7 +1918,11 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
     const thresholds = normalizeThresholds(values.metric_type, compareKind, values.thresholds);
     if (!thresholds.length) {
       const error = t('apm.policies.thresholdRequiredOne', '至少启用一个告警级别');
-      form.setFields([{ name: ['thresholds', 2, 'value'], errors: [error] }]);
+      const anchorIndex = (values.cards || []).findIndex((card) => card?.role === 'regular');
+      form.setFields([{
+        name: anchorIndex >= 0 ? ['cards', anchorIndex, 'thresholds', 2, 'value'] : ['thresholds', 2, 'value'],
+        errors: [error],
+      }]);
       message.error(error);
       return null;
     }
@@ -2014,85 +2088,65 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
 
   const applyBurnPreset = (kind: 'fast' | 'slow') => {
     const fast = kind === 'fast';
+    const rows = SEVERITIES.map(({ value }) => ({
+      severity: value,
+      comparator: 'gte' as const,
+      value: fast ? (value === 'critical' ? 14.4 : null) : (value === 'warning' ? 6 : null),
+    }));
     form.setFieldValue('burn_long_window_minutes', fast ? 60 : 360);
     form.setFieldValue('burn_short_window_minutes', fast ? 5 : 30);
     form.setFieldValue('compare_mode', 'absolute');
     form.setFieldValue('compare_value_kind', '');
     form.setFieldValue('recovery_value', null);
-    form.setFieldValue('thresholds', SEVERITIES.map(({ value }) => ({
-      severity: value,
-      comparator: 'gte' as const,
-      value: fast ? (value === 'critical' ? 14.4 : null) : (value === 'warning' ? 6 : null),
-    })));
+    form.setFieldValue('thresholds', rows);
+    form.setFieldValue(['cards', 0, 'thresholds'], rows);
+    form.setFieldValue(['cards', 0, 'compare_mode'], 'absolute');
+    form.setFieldValue(['cards', 0, 'compare_value_kind'], '');
   };
 
-  const applyMetric = (metric: ApmPolicyMetric) => {
-    if (metric === 'slo_burn_rate') {
+  const applyMetric = (metric: ApmPolicyMetric, cardIndex = 0) => {
+    form.setFieldValue('metric_type', metric);
+    if (metric === 'slo_burn_rate' || metric === 'no_traffic') {
+      const current = ((form.getFieldValue('cards') || []) as ConditionCardEditor[])[cardIndex] || blankCard('a');
+      form.setFieldValue('cards', [{
+        ...blankCard(current.ref || 'a', 'regular'),
+        metric_type: metric,
+        thresholds: current.thresholds?.length ? current.thresholds : blankThresholdRows(),
+      }]);
       form.setFieldValue('compare_mode', 'absolute');
       form.setFieldValue('compare_value_kind', '');
-      form.setFieldValue('recovery_value', null);
-      form.setFieldValue('extra_conditions', []);
-      form.setFieldValue('guards', []);
-      form.setFieldValue('scope_mode', 'service');
-      form.setFieldValue('endpoint_mode', 'service');
-      form.setFieldValue('instance_mode', 'all');
-      form.setFieldValue('target_kind', 'entry');
-      if (form.getFieldValue('burn_long_window_minutes') == null) {
-        applyBurnPreset('fast');
+      if (metric === 'slo_burn_rate') {
+        form.setFieldValue('recovery_value', null);
+        form.setFieldValue('scope_mode', 'service');
+        form.setFieldValue('endpoint_mode', 'service');
+        form.setFieldValue('instance_mode', 'all');
+        form.setFieldValue('target_kind', 'entry');
+        if (form.getFieldValue('burn_long_window_minutes') == null) {
+          applyBurnPreset('fast');
+        }
       }
+      return;
     }
-    if (metric === 'no_traffic') {
-      form.setFieldValue('extra_conditions', []);
-      form.setFieldValue('guards', []);
-    }
-    if (metric === 'apdex' && form.getFieldValue('apdex_threshold_ms') == null) {
+    const store = form as FormInstance;
+    if (metric === 'apdex' && store.getFieldValue(['cards', cardIndex, 'apdex_threshold_ms']) == null) {
+      store.setFieldValue(['cards', cardIndex, 'apdex_threshold_ms'], 500);
       form.setFieldValue('apdex_threshold_ms', 500);
     }
     if (metric === 'apdex') {
-      const rows = (form.getFieldValue('thresholds') || []) as ThresholdEditorRow[];
-      form.setFieldValue('thresholds', rows.map((row) => (
-        row.comparator === 'gt' || row.comparator === 'gte' ? { ...row, comparator: 'lt' } : row
+      const rows = (store.getFieldValue(['cards', cardIndex, 'thresholds']) || []) as ThresholdEditorRow[];
+      store.setFieldValue(['cards', cardIndex, 'thresholds'], rows.map((row) => (
+        row.comparator === 'gt' || row.comparator === 'gte' ? { ...row, comparator: 'lt' as const } : row
       )));
-      const recovery = form.getFieldValue('recovery_comparator') as ApmPolicyComparator | undefined;
-      if (recovery === 'lt' || recovery === 'lte') {
-        form.setFieldValue('recovery_comparator', recovery === 'lte' ? 'gte' : 'gt');
+      const currentCards = (form.getFieldValue('cards') || []) as ConditionCardEditor[];
+      const anchorIndex = currentCards.findIndex((card) => card?.role === 'regular');
+      if (anchorIndex === cardIndex) {
+        const recovery = form.getFieldValue('recovery_comparator') as ApmPolicyComparator | undefined;
+        if (recovery === 'lt' || recovery === 'lte') {
+          form.setFieldValue('recovery_comparator', recovery === 'lte' ? 'gte' : 'gt');
+        }
       }
     }
   };
-
-  const applyCompareMode = (mode: ApmCompareMode, previous?: ApmCompareMode) => {
-    if (mode === 'absolute') {
-      form.setFieldValue('compare_value_kind', '');
-      form.setFieldValue('compare_offset_amount', null);
-      return;
-    }
-    if (mode === 'previous_window') {
-      form.setFieldValue('compare_offset_amount', null);
-      const kind = form.getFieldValue('compare_value_kind');
-      if (kind !== 'delta' && kind !== 'percent') form.setFieldValue('compare_value_kind', 'delta');
-      return;
-    }
-    if (mode === 'baseline_days') {
-      const kind = form.getFieldValue('compare_value_kind');
-      if (kind !== 'delta' && kind !== 'percent' && kind !== 'sigma') form.setFieldValue('compare_value_kind', 'percent');
-      const amount = Number(form.getFieldValue('compare_offset_amount'));
-      const fromHours = previous === 'offset_hours' || previous === 'offset_1h' || previous === 'offset_24h';
-      if (fromHours || !Number.isInteger(amount) || amount < 2 || amount > 7) {
-        form.setFieldValue('compare_offset_amount', 7);
-      }
-      return;
-    }
-    const offsetKind = form.getFieldValue('compare_value_kind');
-    if (!isOffsetCompare(previous) || (offsetKind !== 'delta' && offsetKind !== 'percent')) {
-      form.setFieldValue('compare_value_kind', 'percent');
-    }
-    const amount = Number(form.getFieldValue('compare_offset_amount'));
-    if (previous === 'baseline_days' || !Number.isInteger(amount) || amount < 1) {
-      form.setFieldValue('compare_offset_amount', 1);
-    }
-  };
-
-  const offsetSelected = compareMode === 'offset_hours' || compareMode === 'offset_days' || compareMode === 'offset_1h' || compareMode === 'offset_24h';
 
   const runDryRun = async () => {
     const values = form.getFieldsValue(true);
@@ -2135,8 +2189,13 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
   };
 
   const syncComparator = (comparator: ApmPolicyComparator) => {
-    const rows = form.getFieldValue('thresholds') ?? [];
-    form.setFieldValue('thresholds', rows.map((row) => ({ ...row, comparator })));
+    const current = (form.getFieldValue('cards') || []) as ConditionCardEditor[];
+    const index = current.findIndex((card) => card?.role === 'regular');
+    const rows = (index >= 0 ? form.getFieldValue(['cards', index, 'thresholds']) : form.getFieldValue('thresholds')) ?? [];
+    if (index >= 0) {
+      form.setFieldValue(['cards', index, 'thresholds'], rows.map((row: ThresholdEditorRow) => ({ ...row, comparator })));
+    }
+    form.setFieldValue('thresholds', rows.map((row: ThresholdEditorRow) => ({ ...row, comparator })));
     const recovery = form.getFieldValue('recovery_comparator');
     const higher = comparator === 'gt' || comparator === 'gte';
     const recoveryHigher = recovery === 'gt' || recovery === 'gte';
@@ -2175,9 +2234,6 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
               maxLength={512}
               placeholder={`${'${service}'} ${t('apm.common.errorRate', '错误率')} > ${'${threshold}'}`}
             />
-          </Form.Item>
-          <Form.Item name="evaluation_interval" label={t('apm.policies.evaluationInterval', '检测频率')} rules={[{ required: true, message: t('apm.policies.evaluationIntervalRequired', '请输入检测频率') }]}>
-            <NumberWithUnit min={1} max={60} unit={t('apm.policies.minutes', '分钟')} />
           </Form.Item>
         </div>
       ),
@@ -2388,40 +2444,10 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
           </>
           )}
           {metricType !== 'no_traffic' && metricType !== 'slo_burn_rate' ? (
-            <Form.Item
-              name="metric_type"
-              label={t('apm.policies.metric', '指标')}
-              rules={[{ required: true, message: t('apm.policies.metricRequired', '请选择指标') }]}
-              className={styles.metricEditorItem}
-            >
-              <ApmMetricConditionEditor onMetricChange={applyMetric} />
-            </Form.Item>
+            <ApmMetricConditionEditor onMetricChange={applyMetric} />
           ) : (
             <Form.Item name="metric_type" label={t('apm.policies.metric', '指标')} rules={[{ required: true, message: t('apm.policies.metricRequired', '请选择指标') }]}>
               <MetricTypeSelect onMetricChange={applyMetric} />
-            </Form.Item>
-          )}
-          {metricType === 'slo_burn_rate' ? null : (
-            <Form.Item
-              name="metric_window"
-              label={t('apm.policies.metricWindow', '汇聚周期')}
-              dependencies={['evaluation_interval']}
-              rules={[
-                { required: true, message: t('apm.policies.metricWindowRequired', '请输入汇聚周期') },
-                {
-                  validator: async (_, value) => {
-                    const interval = Number(form.getFieldValue('evaluation_interval')) || 1;
-                    if (value != null && Number(value) < interval) {
-                      throw new Error(t(
-                        'apm.policies.windowShorterThanInterval',
-                        '汇聚周期不能短于检测频率，否则两次评估之间的数据不会被检查',
-                      ));
-                    }
-                  },
-                },
-              ]}
-            >
-              <NumberWithUnit min={1} max={1440} unit={t('apm.policies.minutes', '分钟')} />
             </Form.Item>
           )}
           <Typography.Text type="secondary" className={styles.scopeHint}>
@@ -2435,87 +2461,6 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
       status: 'process' as const,
       description: (
         <div className={styles.stepContent}>
-          {showCompare ? (
-            <>
-              <Form.Item name="compare_mode" label={t('apm.policies.compareBaseline', '比较基准')}>
-                <CompareBaselineSelect onModeChange={applyCompareMode} />
-              </Form.Item>
-              {offsetSelected ? (
-                <>
-                  <Form.Item label={t('apm.policies.compareOffsetMethod', '对照方式')}>
-                    <Select
-                      aria-label={t('apm.policies.compareOffsetMethod', '对照方式')}
-                      value={compareMode === 'offset_days' ? 'offset_days' : 'offset_hours'}
-                      onChange={(mode: ApmCompareMode) => {
-                        const previous = form.getFieldValue('compare_mode') as ApmCompareMode;
-                        form.setFieldValue('compare_mode', mode);
-                        applyCompareMode(mode, previous);
-                      }}
-                      options={[
-                        { value: 'offset_hours', label: t('apm.policies.compareOffsetHours', 'N 小时前') },
-                        { value: 'offset_days', label: t('apm.policies.compareOffsetDays', 'N 天前') },
-                      ]}
-                    />
-                  </Form.Item>
-                  <Form.Item
-                    className={styles.offsetAmount}
-                    name="compare_offset_amount"
-                    label={t(
-                      compareMode === 'offset_days' ? 'apm.policies.compareOffsetCountDay' : 'apm.policies.compareOffsetCountHour',
-                      compareMode === 'offset_days' ? '天数' : '小时数',
-                    )}
-                    extra={t('apm.policies.compareOffsetHint', '和这段时间之前、同样长度的窗口比较。')}
-                    rules={[{
-                      validator: async (_, value) => {
-                        const issue = compareOffsetError(
-                          compareMode,
-                          value,
-                          Number(form.getFieldValue('metric_window')) || 1,
-                          t,
-                        );
-                        if (issue) throw new Error(issue);
-                      },
-                    }]}
-                  >
-                    <InputNumber<number>
-                      min={1}
-                      max={compareMode === 'offset_days' ? MAX_COMPARE_OFFSET_DAYS : MAX_COMPARE_OFFSET_HOURS}
-                      precision={0}
-                    />
-                  </Form.Item>
-                </>
-              ) : null}
-              {compareMode === 'baseline_days' ? (
-                <Form.Item
-                  className={styles.offsetAmount}
-                  name="compare_offset_amount"
-                  label={t('apm.policies.compareOffsetCountDay', '天数')}
-                  extra={t('apm.policies.baselineDaysHint', '和过去这些天里、同一时段的平均值比较。')}
-                  rules={[{
-                    validator: async (_, value) => {
-                      const issue = compareOffsetError('baseline_days', value, 1, t);
-                      if (issue) throw new Error(issue);
-                    },
-                  }]}
-                >
-                  <InputNumber<number> min={2} max={7} precision={0} />
-                </Form.Item>
-              ) : null}
-              {compareMode === 'previous_window' || compareMode === 'baseline_days' || offsetSelected ? (
-                <Form.Item name="compare_value_kind" label={t('apm.policies.compareValueKind', '比较方式')}>
-                  <Radio.Group
-                    options={[
-                      { value: 'delta', label: t('apm.policies.compareKindDelta', '变化量 Δ') },
-                      { value: 'percent', label: t('apm.policies.compareKindPercent', '变化率 %') },
-                      ...(compareMode === 'baseline_days'
-                        ? [{ value: 'sigma' as const, label: t('apm.policies.compareKindSigma', '标准差 σ') }]
-                        : []),
-                    ]}
-                  />
-                </Form.Item>
-              ) : null}
-            </>
-          ) : null}
           {metricType === 'slo_burn_rate' ? (
             <>
               <Form.Item label={t('apm.policies.burnPreset', '燃烧率预设')}>
@@ -2550,9 +2495,11 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
                   <span />
                   {thresholdColumns.map((column) => (
                     <div key={column.ref} className="flex min-w-0 items-center gap-1.5" title={`${column.label} · ${column.unit}`}>
-                      <span className="inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded border border-[var(--color-border-2)] px-1 font-mono text-xs font-semibold text-[var(--color-primary)]">
-                        {column.ref}
-                      </span>
+                      {column.showRef ? (
+                        <span className="inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded border border-[var(--color-border-2)] px-1 font-mono text-xs font-semibold text-[var(--color-primary)]">
+                          {column.ref}
+                        </span>
+                      ) : null}
                       <span className="truncate text-xs text-[var(--color-text-2)]">{column.label}</span>
                       <span className="shrink-0 text-xs text-[var(--color-text-3)]">{column.unit}</span>
                     </div>
@@ -2599,67 +2546,41 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
                     ))}
                   </div>
                 ))}
-                {guardRows.length > 0 ? (
-                  // 前置条件不占级别列，和监控一样单独列在表下方，比较符和门槛只在这里填。
-                  <div className="mt-3 border-t border-[var(--color-border-2)] pt-3">
-                    <div className="mb-2 text-xs leading-5 text-[var(--color-text-3)]">
-                      {t('apm.policies.guards', '前置条件')}
-                    </div>
-                    <div className="flex flex-col gap-2">
-                      {guardRows.map((guard, guardIndex) => {
-                        const metric = guard?.metric_type ?? 'throughput';
-                        const ref = guard?.ref ?? CONDITION_REFS[guardIndex];
-                        const unit = thresholdUnitFor(metric, '', t);
-                        const label = metric === 'request_count'
-                          ? t('apm.policies.metricRequestCount', '请求数')
-                          : metricOptions.find((item) => item.value === metric)?.label ?? metric;
-                        return (
-                          <div key={ref || guardIndex} className="flex items-center gap-3">
-                            <div className="flex w-[140px] shrink-0 items-center gap-1.5" title={`${label} · ${unit}`}>
-                              <span className="inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded border border-[var(--color-border-2)] px-1 font-mono text-xs font-semibold text-[var(--color-primary)]">
-                                {ref}
-                              </span>
-                              <span className="truncate text-xs text-[var(--color-text-2)]">{label}</span>
-                            </div>
-                            <div className="grid w-[240px] shrink-0 grid-cols-[72px_minmax(0,1fr)_auto] items-center gap-1.5">
-                              <Form.Item name={['guards', guardIndex, 'comparator']} noStyle>
-                                <Select
-                                  className="w-full"
-                                  aria-label={t('apm.policies.conditionComparator', '条件 {ref} 比较符', { ref })}
-                                  options={comparatorOptions}
-                                />
-                              </Form.Item>
-                              <Form.Item name={['guards', guardIndex, 'value']} noStyle>
-                                <InputNumber<number>
-                                  className="w-full"
-                                  controls={false}
-                                  aria-label={t('apm.policies.conditionGuardValue', '条件 {ref} 门槛', { ref })}
-                                />
-                              </Form.Item>
-                              <span className="max-w-16 truncate text-xs text-[var(--color-text-3)]" title={unit}>{unit}</span>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ) : null}
               </div>
           </Form.Item>
-          {showMinRequest ? (
+          <Form.Item name="evaluation_interval" label={t('apm.policies.evaluationInterval', '检测频率')} rules={[{ required: true, message: t('apm.policies.evaluationIntervalRequired', '请输入检测频率') }]}>
+            <NumberWithUnit min={1} max={60} unit={t('apm.policies.minutes', '分钟')} />
+          </Form.Item>
+          {metricType === 'slo_burn_rate' ? null : (
             <Form.Item
-              className={styles.minRequestCount}
-              name="min_request_count"
-              label={t('apm.policies.minRequestCount', '最低请求数')}
-              tooltip={t('apm.policies.minRequestCountTooltip', '本窗请求数低于该值时不评，试算记为样本不足')}
+              name="metric_window"
+              label={t('apm.policies.metricWindow', '汇聚周期')}
+              dependencies={['evaluation_interval']}
+              rules={[
+                { required: true, message: t('apm.policies.metricWindowRequired', '请输入汇聚周期') },
+                {
+                  validator: async (_, value) => {
+                    const interval = Number(form.getFieldValue('evaluation_interval')) || 1;
+                    if (value != null && Number(value) < interval) {
+                      throw new Error(t(
+                        'apm.policies.windowShorterThanInterval',
+                        '汇聚周期不能短于检测频率，否则两次评估之间的数据不会被检查',
+                      ));
+                    }
+                  },
+                },
+              ]}
             >
-              <InputNumber<number>
-                min={1}
-                max={100000}
-                placeholder={t('apm.policies.minRequestUnlimited', '不限')}
-                aria-label={t('apm.policies.minRequestCount', '最低请求数')}
-              />
+              <NumberWithUnit min={1} max={1440} unit={t('apm.policies.minutes', '分钟')} />
             </Form.Item>
+          )}
+          {metricType !== 'slo_burn_rate' ? (
+            <p className={`${styles.scopeHint} text-xs leading-5 text-[var(--color-text-3)]`}>
+              {t('apm.policies.evaluationHint', '每 {interval} 分钟评估一次最近 {window} 分钟的数据', {
+                interval: evaluationInterval || 1,
+                window: metricWindow || 5,
+              })}
+            </p>
           ) : null}
           <Form.Item label={t('apm.policies.triggerCondition', '触发条件')} required>
             <Form.Item name="trigger_after" noStyle rules={[{ required: true }]}>
@@ -2674,14 +2595,6 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
               />
             </Form.Item>
           </Form.Item>
-          {metricType !== 'slo_burn_rate' ? (
-            <p className="mt-1 text-xs leading-5 text-[var(--color-text-3)]">
-              {t('apm.policies.evaluationHint', '每 {interval} 分钟评估一次最近 {window} 分钟的数据', {
-                interval: evaluationInterval || 1,
-                window: metricWindow || 5,
-              })}
-            </p>
-          ) : null}
           {showCompare ? (
             <Form.Item label={t('apm.policies.triggerModeAria', '触发方式')}>
               <div className={styles.conditionControls}>
@@ -2805,7 +2718,7 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
         layout="horizontal"
         labelCol={{ flex: '152px' }}
         wrapperCol={{ flex: '1 1 0' }}
-        onFinish={(values) => void submit(values)}
+        onFinish={() => void submit(form.getFieldsValue(true) as PolicyEditorValues)}
       >
         <div className={styles.editor}>
           <div className="mb-3">

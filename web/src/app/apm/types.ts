@@ -609,6 +609,8 @@ export interface ApmPolicyGuardCondition {
   metric_type: ApmPolicyMetric | 'request_count';
   comparator: ApmPolicyComparator;
   value: number | string;
+  slow_threshold_ms?: number | null;
+  apdex_threshold_ms?: number | null;
 }
 
 export type ApmPolicyCondition = ApmPolicyRegularCondition | ApmPolicyGuardCondition;

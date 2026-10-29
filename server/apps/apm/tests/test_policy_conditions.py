@@ -290,6 +290,64 @@ def test_condition_rules_reject_each_forbidden_combination(apm_api_client, updat
     assert message_field in response.data
 
 
+def test_guard_before_regular_keeps_editor_order_and_mirrors_the_regular(apm_api_client):
+    response = apm_api_client.post(
+        "/api/v1/apm/policies/",
+        _payload(
+            _service("guard-first"),
+            metric_type="p95",
+            thresholds=[{"severity": "warning", "comparator": "gt", "value": "1"}],
+            conditions=[
+                {"ref": "a", "role": "guard", "metric_type": "request_count", "comparator": "gte", "value": "200"},
+                _regular("b", "error_rate", "gt", "0.05"),
+            ],
+        ),
+        format="json",
+    )
+
+    assert response.status_code == 201
+    stored = ApmPolicy.objects.get(id=response.data["id"])
+    assert [item["ref"] for item in stored.conditions] == ["a", "b"]
+    assert stored.conditions[0]["role"] == "guard"
+    assert stored.metric_type == "error_rate"
+    assert stored.thresholds[0]["value"] == "0.05"
+    assert response.data["conditions"][0]["role"] == "guard"
+
+
+def test_guard_slow_threshold_is_queried_for_that_condition():
+    policy = _policy(
+        name="guard-slow",
+        metric_type="p95",
+        slow_threshold_ms=None,
+        thresholds=[{"severity": "warning", "comparator": "gt", "value": "100"}],
+        conditions=[
+            _regular("a", "p95", "gt", "100"),
+            {
+                "ref": "b",
+                "role": "guard",
+                "metric_type": "slow_request_rate",
+                "comparator": "gte",
+                "value": "0.2",
+                "slow_threshold_ms": 800,
+            },
+        ],
+    )
+
+    class _RecordingStore:
+        def __init__(self):
+            self.queries = []
+
+        def service_red(self, query):
+            self.queries.append(query)
+            return _red()
+
+    store = _RecordingStore()
+    DjangoApmPolicyService(store, InMemoryNotificationDispatcher()).dry_run(policy, evaluated_at=timezone.now())
+
+    assert 800 in {query.slow_threshold_ms for query in store.queries}
+    assert any(query.slow_threshold_ms in (None, 0) for query in store.queries)
+
+
 def test_two_conditions_and_one_guard_are_accepted(apm_api_client):
     response = apm_api_client.post(
         "/api/v1/apm/policies/",

@@ -791,8 +791,10 @@
 }
 
 .metricEditor {
-  width: 100%;
+  /* 条件卡不在 Form.Item 里，自己补上和 labelCol 相同的 152px，才能和上面的范围字段左对齐。 */
+  width: calc(100% - 152px);
   max-width: 560px;
+  margin-left: 152px;
 }
 
 .metricEditor :global(.ant-select),
@@ -1037,6 +1039,11 @@ $compact-field-width: 220px;
   }
 
   .scopeHint {
+    margin-left: 0;
+  }
+
+  .metricEditor {
+    width: 100%;
     margin-left: 0;
   }
 }

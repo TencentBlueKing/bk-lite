@@ -219,8 +219,8 @@ def _guard_metric(guard: dict) -> dict:
         "compare_offset_amount": None,
         "compare_value_kind": "",
         "min_request_count": None,
-        "slow_threshold_ms": None,
-        "apdex_threshold_ms": None,
+        "slow_threshold_ms": guard.get("slow_threshold_ms"),
+        "apdex_threshold_ms": guard.get("apdex_threshold_ms"),
         "thresholds": [],
     }
 

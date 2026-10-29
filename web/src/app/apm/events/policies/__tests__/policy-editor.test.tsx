@@ -577,7 +577,7 @@ describe('APM 四步策略编辑器', { timeout: 15000 }, () => {
     const user = userEvent.setup();
     renderWithApmIntl(<ApmPolicyEditor policyId="p1" />);
     await user.click(await screen.findByLabelText('比较基准'));
-    await user.click(await screen.findByText('同窗'));
+    await user.click(await screen.findByText('N 小时前同窗'));
     expect((screen.getByRole('radio', { name: '变化率 %' }) as HTMLInputElement).checked).toBe(true);
     expect(screen.getByRole('radio', { name: '变化量 Δ' })).not.toBeNull();
     const hours = screen.getByLabelText('小时数') as HTMLInputElement;
@@ -741,8 +741,17 @@ describe('APM 四步策略编辑器', { timeout: 15000 }, () => {
     const user = userEvent.setup();
     renderWithApmIntl(<ApmPolicyEditor policyId="p1" />);
     await screen.findByRole('combobox', { name: '触发方式' });
-    expect(screen.getByRole('combobox', { name: '条件 a 类型' })).not.toBeNull();
+    expect(screen.queryByRole('combobox', { name: '条件 a 类型' })).toBeNull();
     expect(screen.queryByRole('button', { name: '添加前置条件' })).toBeNull();
+    const conditionHeading = screen.getByText('告警条件');
+    expect(
+      conditionHeading.compareDocumentPosition(screen.getByLabelText('检测频率'))
+      & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      conditionHeading.compareDocumentPosition(screen.getByLabelText('汇聚周期'))
+      & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
 
     await user.click(screen.getByRole('combobox', { name: '触发方式' }));
     await user.click(await screen.findByText('在最近 N 个周期内'));
@@ -842,7 +851,7 @@ describe('APM 四步策略编辑器', { timeout: 15000 }, () => {
     expect((screen.getByLabelText('天数') as HTMLInputElement).value).toBe('7');
 
     await user.click(screen.getByLabelText('比较基准'));
-    await user.click(await screen.findByText('同窗'));
+    await user.click(await screen.findByText('N 小时前同窗'));
     const hours = screen.getByLabelText('小时数') as HTMLInputElement;
     expect(hours.value).toBe('1');
     await user.clear(hours);
@@ -852,10 +861,13 @@ describe('APM 四步策略编辑器', { timeout: 15000 }, () => {
     expect((screen.getByLabelText('天数') as HTMLInputElement).value).toBe('7');
 
     await user.click(screen.getByLabelText('比较基准'));
-    await user.click(await screen.findByText('同窗'));
-    await user.click(screen.getByRole('combobox', { name: '对照方式' }));
-    await user.click(await screen.findByText('N 天前'));
+    await user.click(await screen.findByText('N 小时前同窗'));
+    await user.clear(screen.getByLabelText('小时数'));
+    await user.type(screen.getByLabelText('小时数'), '6');
+    await user.click(screen.getByLabelText('比较基准'));
+    await user.click(await screen.findByText('N 天前同窗'));
     const offsetDays = screen.getByLabelText('天数') as HTMLInputElement;
+    expect(offsetDays.value).toBe('6');
     await user.clear(offsetDays);
     await user.type(offsetDays, '3');
     await user.click(screen.getByLabelText('比较基准'));
@@ -882,7 +894,7 @@ describe('APM 四步策略编辑器', { timeout: 15000 }, () => {
     await user.click(addCondition);
     await user.click(screen.getByRole('combobox', { name: '条件 b 类型' }));
     await user.click(await screen.findByText('前置条件', { selector: '.ant-select-item-option-content' }));
-    expect((screen.getByRole('spinbutton', { name: '条件 b 门槛' }) as HTMLInputElement).value).toBe('200');
+    expect((screen.getByRole('spinbutton', { name: '条件 b 门槛' }) as HTMLInputElement).value).toBe('');
     // 转成前置条件后阈值行只剩锚点一列，不能留下 b 的空洞列。
     expect(screen.getAllByRole('combobox', { name: /警告比较符$/ })).toHaveLength(1);
     await user.click(screen.getByRole('combobox', { name: '条件 b 类型' }));
@@ -898,6 +910,8 @@ describe('APM 四步策略编辑器', { timeout: 15000 }, () => {
     expect(screen.queryByRole('button', { name: '添加前置条件' })).toBeNull();
 
     await user.type(screen.getByRole('spinbutton', { name: 'b警告阈值' }), '20');
+    await user.type(screen.getByRole('spinbutton', { name: '条件 d 门槛' }), '10');
+    await user.type(screen.getByRole('spinbutton', { name: '条件 e 门槛' }), '11');
     await user.click(screen.getByRole('button', { name: '保存策略' }));
     await waitFor(() => expect(api.updatePolicy).toHaveBeenCalled());
     const payload = api.updatePolicy.mock.calls.at(-1)?.[1];
@@ -909,6 +923,44 @@ describe('APM 四步策略编辑器', { timeout: 15000 }, () => {
     expect(regulars[1].thresholds).toEqual([expect.objectContaining({ severity: 'warning', value: 20 })]);
     expect(payload.conditions.every((item: object) => !('recovery_threshold' in item))).toBe(true);
     expect(payload.recovery_threshold).toEqual({});
+  });
+
+  it('只剩一条常规条件时不能改成前置', async () => {
+    const user = userEvent.setup();
+    renderWithApmIntl(<ApmPolicyEditor policyId="p1" />);
+    await user.click(await screen.findByRole('button', { name: '添加条件' }));
+    await user.click(screen.getByRole('combobox', { name: '条件 b 类型' }));
+    await user.click(await screen.findByText('前置条件', { selector: '.ant-select-item-option-content' }));
+    await user.click(screen.getByRole('combobox', { name: '条件 a 类型' }));
+    const guardOptions = await screen.findAllByText('前置条件', { selector: '.ant-select-item-option-content' });
+    expect(guardOptions.some((node) => (
+      node.closest('.ant-select-item-option')?.className.includes('ant-select-item-option-disabled')
+    ))).toBe(true);
+  });
+
+  it('第一张卡改成前置后仍留在前面，镜像列取后面的常规条件', async () => {
+    const user = userEvent.setup();
+    renderWithApmIntl(<ApmPolicyEditor policyId="p1" />);
+    await user.click(await screen.findByRole('button', { name: '添加条件' }));
+    expect(screen.getByText('恢复阈值和详情图用这条')).not.toBeNull();
+    await user.click(screen.getByRole('combobox', { name: '条件 a 类型' }));
+    await user.click(await screen.findByText('前置条件', { selector: '.ant-select-item-option-content' }));
+    expect(screen.getByText('恢复阈值和详情图用这条')).not.toBeNull();
+    await user.type(screen.getByRole('spinbutton', { name: '警告阈值' }), '8');
+    await user.type(screen.getByRole('spinbutton', { name: '条件 a 门槛' }), '50');
+    await user.click(screen.getByRole('button', { name: '保存策略' }));
+    await waitFor(() => expect(api.updatePolicy).toHaveBeenCalled());
+    const payload = api.updatePolicy.mock.calls.at(-1)?.[1];
+    expect(payload.conditions.map((item: { ref: string; role: string }) => `${item.ref}:${item.role}`)).toEqual([
+      'a:guard',
+      'b:regular',
+    ]);
+    expect(payload.metric_type).toBe('throughput');
+    expect(payload.conditions[0]).toEqual(expect.objectContaining({
+      comparator: 'gte',
+      value: 0.5,
+    }));
+    expect(payload.conditions[1].metric_type).toBe('throughput');
   });
 
   it('附加条件选同窗后出现对照数量，保存写入比较基准', async () => {
@@ -924,13 +976,13 @@ describe('APM 四步策略编辑器', { timeout: 15000 }, () => {
     expect(screen.queryByLabelText('条件 b 小时数')).toBeNull();
 
     await user.click(screen.getByLabelText('条件 b 比较基准'));
-    await user.click(await screen.findByText('同窗'));
+    await user.click(await screen.findByText('N 小时前同窗'));
     const hours = screen.getByLabelText('条件 b 小时数') as HTMLInputElement;
     expect(hours.value).toBe('1');
     await user.clear(hours);
     await user.type(hours, '6');
-    await user.click(screen.getByRole('combobox', { name: '条件 b 对照方式' }));
-    await user.click(await screen.findByText('N 天前'));
+    await user.click(screen.getByLabelText('条件 b 比较基准'));
+    await user.click(await screen.findByText('N 天前同窗'));
     expect((screen.getByLabelText('条件 b 天数') as HTMLInputElement).value).toBe('6');
 
     await user.click(screen.getByRole('button', { name: '保存策略' }));
