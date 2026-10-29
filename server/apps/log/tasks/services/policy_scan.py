@@ -34,9 +34,13 @@ from apps.log.services.log_event_contract import to_logical_event
 from apps.log.services.policy_condition import (
     baseline_key,
     collect_stats_expressions,
+    combine_levels,
     compare_targets,
     condition_alias,
+    condition_thresholds,
     custom_offset_seconds,
+    highest_hit_level,
+    level_rank,
     normalize_condition,
     parse_metric,
     stats_alias,
@@ -510,7 +514,7 @@ class LogPolicyScan:
                 group_by=group_by,
                 baselines=self.baselines,
             )
-            triggered = self._check_rule_conditions(aggregate_data, rule)
+            triggered, _row_level = self._check_rule_conditions(aggregate_data, rule)
             reason = ""
             if not triggered:
                 reason = self._first_condition_reason(aggregate_data)
@@ -622,7 +626,7 @@ class LogPolicyScan:
                 jump_query = self._build_jump_query_from_expanded(expanded_query, group_values, start_timestamp, end_timestamp)
                 event = {
                     "source_id": identity.source_id,
-                    "level": self.policy.alert_level,
+                    "level": aggregate_data.get("level") or self.policy.alert_level,
                     "content": rendered_alert_name,
                     "value": aggregate_data.get("count", 0),
                     "jump_query": jump_query,
@@ -999,10 +1003,33 @@ class LogPolicyScan:
         else:
             value = current
         op = raw.get("op")
-        threshold = raw.get("value")
-        matched = False
-        if value is not None and op and threshold is not None:
-            matched = bool(self._compare_values(value, op, threshold))
+        explicit_thresholds = isinstance(raw.get("thresholds"), list)
+        default_level = getattr(self.policy, "alert_level", None)
+        steps = condition_thresholds(raw, default_level)
+        if explicit_thresholds:
+            hit_level = None
+            tier_flags = []
+            if value is not None and op:
+                hit_level = highest_hit_level(value, op, steps, self._compare_values)
+                for step in steps:
+                    step_value = step.get("value")
+                    tier_flags.append(bool(step_value is not None and self._compare_values(value, op, step_value)))
+            else:
+                tier_flags = [False for _ in steps]
+            matched = hit_level is not None
+            if hit_level:
+                threshold = next((step.get("value") for step in steps if step.get("level") == hit_level), raw.get("value"))
+            else:
+                usable = [step for step in steps if step.get("level") in AlertConstants.LEVEL_RANK]
+                lightest = min(usable, key=lambda step: AlertConstants.LEVEL_RANK[step["level"]]) if usable else None
+                threshold = lightest.get("value") if lightest else raw.get("value")
+        else:
+            threshold = raw.get("value")
+            matched = False
+            if value is not None and op and threshold is not None:
+                matched = bool(self._compare_values(value, op, threshold))
+            hit_level = default_level if matched else None
+            tier_flags = []
         resolved = {
             "func": func,
             "field": field,
@@ -1012,8 +1039,13 @@ class LogPolicyScan:
             "op": op,
             "threshold": threshold,
             "matched": matched,
+            "level": hit_level,
             "reason": reason or "",
         }
+        if explicit_thresholds:
+            resolved["thresholds"] = [
+                {"level": step.get("level"), "value": step.get("value"), "matched": flag} for step, flag in zip(steps, tier_flags)
+            ]
         if kind != "absolute":
             resolved["baseline"] = baseline_number
         if params:
@@ -1161,9 +1193,11 @@ class LogPolicyScan:
             for key, value in baseline_values.items():
                 context[f"baseline_{key}"] = self._format_template_value(value)
             for key, value in aggregate_data.items():
-                if key in ("conditions", "baseline"):
+                if key in ("conditions", "baseline", "level"):
                     continue
                 context[key] = self._format_template_value(value)
+            if self._uses_threshold_ladder(aggregate_data) and aggregate_data.get("level"):
+                context["level"] = aggregate_data["level"]
 
         try:
 
@@ -1189,19 +1223,34 @@ class LogPolicyScan:
             return f"{value:.2f}"
         return value
 
+    @staticmethod
+    def _uses_threshold_ladder(aggregate_data):
+        if not isinstance(aggregate_data, dict):
+            return False
+        for item in aggregate_data.get("conditions") or []:
+            if isinstance(item, dict) and isinstance(item.get("thresholds"), list) and item.get("thresholds"):
+                return True
+        return False
+
     def _check_rule_conditions(self, aggregate_data, rule):
-        """按 conditions[i].matched 组合。没有解析结果时沿用第一批的键比较。"""
+        """按 conditions[i].matched 组合，并写出本行合成级别。没有解析结果时沿用第一批的键比较。"""
         conditions = rule.get("conditions", []) if isinstance(rule, dict) else []
         mode = rule.get("mode", "and") if isinstance(rule, dict) else "and"
         if not conditions:
-            return False
+            return False, None
         resolved = aggregate_data.get("conditions") if isinstance(aggregate_data, dict) else None
         if isinstance(resolved, list) and resolved:
-            return self._combine_resolved_conditions(resolved, mode)
-        return self._check_rule_conditions_legacy(aggregate_data, rule, mode)
+            triggered, level = self._combine_resolved_conditions(resolved, mode)
+        else:
+            triggered = self._check_rule_conditions_legacy(aggregate_data, rule, mode)
+            level = getattr(self.policy, "alert_level", None) if triggered else None
+        if isinstance(aggregate_data, dict):
+            aggregate_data["level"] = level
+        return triggered, level
 
     def _combine_resolved_conditions(self, resolved, mode):
         results = []
+        hit_levels = []
         for item in resolved:
             if not isinstance(item, dict):
                 continue
@@ -1216,7 +1265,13 @@ class LogPolicyScan:
                     reason,
                 )
             results.append(matched)
-        return self._combine_condition_results(results, mode)
+            if matched:
+                hit_levels.append(item.get("level") or getattr(self.policy, "alert_level", None))
+        triggered = self._combine_condition_results(results, mode)
+        if not triggered:
+            return False, None
+        level = combine_levels(hit_levels, mode) or getattr(self.policy, "alert_level", None)
+        return True, level
 
     def _check_rule_conditions_legacy(self, aggregate_data, rule, mode):
         condition_results = []
@@ -1441,21 +1496,22 @@ class LogPolicyScan:
                     if existing_event.event_time and self.scan_time and existing_event.event_time > self.scan_time:
                         continue
                     alert_obj = existing_event.alert
-                    level_changed = existing_event.level != event["level"]
-                    if level_changed:
+                    incoming_level = event["level"]
+                    alert_obj._window_level = incoming_level
+                    if level_rank(incoming_level) > level_rank(alert_obj.level):
                         alert_obj.notice = False
+                        alert_obj.level = incoming_level
                         existing_event.notified = False
                         existing_event.notice_result = []
                         existing_event.notice_retry_count = 0
                     alert_obj.value = event.get("value", alert_obj.value)
                     alert_obj.content = event["content"]
-                    alert_obj.level = event["level"]
                     alert_obj.end_event_time = self.scan_time
                     alerts_to_update.append(alert_obj)
 
                     existing_event.event_time = self.scan_time
                     existing_event.value = event.get("value")
-                    existing_event.level = event["level"]
+                    existing_event.level = incoming_level
                     existing_event.content = event["content"]
                     events_to_update.append(existing_event)
                     existing_event_objs.append(existing_event)
@@ -1478,13 +1534,14 @@ class LogPolicyScan:
                         break
 
                 if alert_obj is not None:
-                    # 存在活跃告警，准备更新
-                    if alert_obj.level != event["level"]:
-                        # 级别变化属于显著变化，重置已通知标记以重新通知
+                    # 存在活跃告警。级别只升不降：降级不重置通知。
+                    incoming_level = event["level"]
+                    alert_obj._window_level = incoming_level
+                    if level_rank(incoming_level) > level_rank(alert_obj.level):
                         alert_obj.notice = False
+                        alert_obj.level = incoming_level
                     alert_obj.value = event.get("value", alert_obj.value)
                     alert_obj.content = event["content"]
-                    alert_obj.level = event["level"]
                     alert_obj.end_event_time = self.scan_time
                     alerts_to_update.append(alert_obj)
                 else:
@@ -1569,13 +1626,16 @@ class LogPolicyScan:
                             stale_alert_ids.add(current_event.alert_id)
                             continue
 
-                        if current_event.level != desired_event.level:
+                        incoming_level = desired_event.level
+                        locked_alert = locked_alerts.get(current_event.alert_id)
+                        base_level = locked_alert.level if locked_alert is not None else None
+                        if level_rank(incoming_level) > level_rank(base_level):
                             current_event.notified = False
                             current_event.notice_result = []
                             current_event.notice_retry_count = 0
                         current_event.event_time = desired_event.event_time
                         current_event.value = desired_event.value
-                        current_event.level = desired_event.level
+                        current_event.level = incoming_level
                         current_event.content = desired_event.content
                         refreshed_events.append(current_event)
                         refreshed_existing_event_objs.append(current_event)
@@ -1588,11 +1648,12 @@ class LogPolicyScan:
                         current_alert = locked_alerts[desired_alert.id]
                         if current_alert.id in stale_alert_ids:
                             continue
-                        if current_alert.level != desired_alert.level:
+                        incoming_level = getattr(desired_alert, "_window_level", desired_alert.level)
+                        if level_rank(incoming_level) > level_rank(current_alert.level):
                             current_alert.notice = False
+                            current_alert.level = incoming_level
                         current_alert.value = desired_alert.value
                         current_alert.content = desired_alert.content
-                        current_alert.level = desired_alert.level
                         current_alert.end_event_time = desired_alert.end_event_time
                         refreshed_alerts[current_alert.id] = current_alert
                     alerts_to_update = list(refreshed_alerts.values())

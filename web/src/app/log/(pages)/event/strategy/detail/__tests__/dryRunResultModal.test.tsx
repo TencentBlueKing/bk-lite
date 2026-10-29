@@ -70,8 +70,28 @@ describe('试算结果弹窗', () => {
     expect(screen.getByText('0.60')).toBeTruthy();
     const trigger = screen.getByTestId('dry-run-verdict-would-trigger');
     expect(trigger.getAttribute('style') || '').toContain('--color-fail');
+    expect(trigger.textContent).not.toContain('log.event.critical');
     expect(screen.getAllByText('log.event.verdictMissingBaseline').length).toBeGreaterThan(0);
     expect(screen.getByText('order exploded')).toBeTruthy();
+  });
+
+  it('命中行带级别时判定标签使用该级别颜色', () => {
+    renderModal({
+      alert_type: 'aggregate',
+      baseline_status: 'not_required',
+      items: [
+        {
+          group: { service: 'pay' },
+          count: 300,
+          verdict: 'would_trigger',
+          level: 'critical',
+        },
+      ],
+    });
+
+    const trigger = screen.getByTestId('dry-run-verdict-would-trigger');
+    expect(trigger.getAttribute('style') || '').toContain('244, 59, 44');
+    expect(trigger.textContent).toContain('log.event.critical');
   });
 
   it('没有分组行时显示本窗无匹配日志', () => {

@@ -1086,6 +1086,8 @@
       "seeMore": "See More",
       "conditionValidate": "Functions, fields, conditions, or thresholds cannot be empty",
       "thresholdNumberValidate": "This comparison only accepts a numeric threshold",
+      "thresholdOrderValidate": "Thresholds must be strictly ordered by level",
+      "levelSetMismatch": "When matching all conditions, every condition must enable the same levels",
       "funcCount": "Count",
       "funcSum": "Sum",
       "funcMax": "Max",

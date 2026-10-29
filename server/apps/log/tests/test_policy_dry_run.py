@@ -669,3 +669,22 @@ def test_dry_run_no_data_ignores_trigger_count(authenticated_user, mocker):
     items = _body(response)["data"]["items"]
     assert all(item["verdict"] != "would_trigger_no_data" for item in items)
     assert all(item.get("no_data") is not True for item in items)
+
+
+def test_aggregate_dry_run_item_includes_level():
+    from apps.log.services.policy_dry_run import LogPolicyDryRunService
+
+    item = LogPolicyDryRunService._aggregate_item(
+        {
+            "triggered": True,
+            "group_values": {"service": "order"},
+            "aggregate_data": {
+                "count": 60,
+                "level": "error",
+                "conditions": [{"func": "count", "level": "error", "matched": True}],
+            },
+        }
+    )
+    assert item["level"] == "error"
+    assert item["verdict"] == "would_trigger"
+    assert item["conditions"][0]["level"] == "error"

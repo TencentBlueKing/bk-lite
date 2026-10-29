@@ -1,7 +1,7 @@
 # 日志策略计算方式产品决策记忆
 
-- 最近更新：2026-10-28
-- 当前规格：`specs/changes/log-policy-calc-catalog/spec.md`（第二批，implemented，2026-10-27）；第一批 `specs/changes/log-policy-calc-methods/spec.md`（implemented）
+- 最近更新：2026-10-29
+- 当前规格：`specs/changes/log-policy-level-ladder/spec.md`（implemented，2026-10-29）；计算方式第二批 `specs/changes/log-policy-calc-catalog/spec.md`（implemented，2026-10-27）；第一批 `specs/changes/log-policy-calc-methods/spec.md`（implemented）
 
 ## 产品定位
 
@@ -16,6 +16,19 @@
   - 规则级连续满足次数 `trigger_count` 1..5，无状态重查前 N−1 窗。
   - 策略级无数据告警已于 2026-10-28 撤回。断流用未分组 `count < 1`。
   - 试算、通知命中行、告警名称模板、详情页随契约扩展为逐条件展示。
+- 阈值阶梯（已落地，2026-10-29）：同一个聚合数挂 warning / error / critical 三档阈值，一个分组只开一条告警并取最高档。关键字策略仍是单级别。
+
+## 阈值阶梯
+
+规格：`specs/changes/log-policy-level-ladder/spec.md`。
+
+- 条件内 `thresholds: [{level, value}]`，1～3 档，运算符共用。级别只有 warning、error、critical。`value` 镜像最轻一档，供旧读法使用。
+- 比较运算符 `>` `>=` `<` `<=` 才允许多档，并且必须按级别严格单调。`=` `!=` `in` `nin` 以及非数值比较只允许一档。
+- `and` 时各条件启用的级别集合必须一致；`or` 不限制。聚合策略的 `alert_level` 由已启用档的最高级别推导，页底级别单选不再出现。关键字仍由用户选级别。
+- 活动告警级别只升不降：本窗命中档高于当前告警级别时，覆盖告警级别并重置通知；降级保持告警级别、不重置通知。`Event.level` 始终写本窗真实命中档。
+- 没有 `thresholds` 的旧条件，保存、扫描、通知、试算仍按策略 `alert_level` 单档处理。
+
+明确不做：自动恢复、关键字多档、按级别路由通知、每一档单独的运算符、info 档。
 
 ## 已确认设计决策
 

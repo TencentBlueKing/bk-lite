@@ -41,6 +41,8 @@ const keys = [
   'log.event.keywordTriggerCountTip',
   'log.event.aggregateQueryCriteriaTips',
   'log.event.thresholdNumberValidate',
+  'log.event.thresholdOrderValidate',
+  'log.event.levelSetMismatch',
   'log.event.backfillGapWarning',
   'log.event.streak',
   'log.event.reasonWindowFailed',

@@ -5,7 +5,7 @@ from rest_framework import serializers
 from apps.log.constants.alert_policy import AlertConstants
 from apps.log.models.policy import Alert, Event, EventRawData, Policy
 from apps.log.services.access_scope import LogAccessScopeService
-from apps.log.services.policy_condition import canonical_quantile, normalize_condition
+from apps.log.services.policy_condition import canonical_quantile, highest_enabled_level, normalize_condition
 from apps.log.utils.locale_text import serializer_text
 from apps.log.utils.log_group import LogGroupQueryBuilder
 from apps.log.utils.policy_config import validate_timing_config
@@ -165,7 +165,8 @@ class PolicySerializer(serializers.ModelSerializer):
         normalized_conditions = []
         for condition in conditions:
             self._validate_aggregate_condition(condition)
-            normalized_conditions.append(normalize_condition(condition))
+            normalized_conditions.append(self._store_aggregate_condition(condition))
+        self._validate_and_level_sets(rule, normalized_conditions)
         stored = dict(value)
         stored_rule = dict(rule)
         stored_rule["conditions"] = normalized_conditions
@@ -216,11 +217,115 @@ class PolicySerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(serializer_text(self, "error.policy_quantile_invalid"))
         if func == "ratio":
             self._validate_ratio_filter(condition.get("params"))
+        if "thresholds" in condition:
+            self._validate_threshold_ladder(condition, func, kind)
+            return
         if func in _ALWAYS_NUMERIC_FUNCS or kind != "absolute":
             if condition.get("op") not in _NUMERIC_COMPARE_OPS:
                 raise serializers.ValidationError(serializer_text(self, "error.policy_numeric_op_only"))
             if not _is_finite_number(condition.get("value")):
                 raise serializers.ValidationError(serializer_text(self, "error.policy_threshold_number"))
+
+    def _validate_threshold_ladder(self, condition, func, kind):
+        raw = condition.get("thresholds")
+        if not isinstance(raw, list) or not raw:
+            raise serializers.ValidationError(serializer_text(self, "error.policy_threshold_required"))
+        if len(raw) > 3:
+            raise serializers.ValidationError(serializer_text(self, "error.policy_threshold_level_invalid"))
+        seen = set()
+        steps = []
+        for item in raw:
+            if not isinstance(item, dict):
+                raise serializers.ValidationError(serializer_text(self, "error.policy_threshold_level_invalid"))
+            level = item.get("level")
+            if level not in AlertConstants.POLICY_LEVELS or level in seen:
+                raise serializers.ValidationError(serializer_text(self, "error.policy_threshold_level_invalid"))
+            seen.add(level)
+            steps.append(item)
+        op = condition.get("op")
+        numeric_required = func in _ALWAYS_NUMERIC_FUNCS or kind != "absolute" or op in AlertConstants.LADDER_OPS
+        if numeric_required and op not in _NUMERIC_COMPARE_OPS:
+            raise serializers.ValidationError(serializer_text(self, "error.policy_numeric_op_only"))
+        if op not in AlertConstants.LADDER_OPS and len(steps) > 1:
+            raise serializers.ValidationError(serializer_text(self, "error.policy_threshold_single"))
+        if not numeric_required:
+            return
+        for item in steps:
+            if not _is_finite_number(item.get("value")):
+                raise serializers.ValidationError(serializer_text(self, "error.policy_threshold_number"))
+        if op in AlertConstants.LADDER_OPS and len(steps) > 1:
+            self._validate_threshold_order(op, steps)
+
+    def _validate_threshold_order(self, op, steps):
+        ordered = sorted(steps, key=lambda item: AlertConstants.LEVEL_RANK[item["level"]])
+        numbers = [float(str(item["value"]).strip()) for item in ordered]
+        if op in (">", ">="):
+            ordered_ok = all(numbers[index] < numbers[index + 1] for index in range(len(numbers) - 1))
+        else:
+            ordered_ok = all(numbers[index] > numbers[index + 1] for index in range(len(numbers) - 1))
+        if not ordered_ok:
+            raise serializers.ValidationError(serializer_text(self, "error.policy_threshold_order"))
+
+    def _store_aggregate_condition(self, condition):
+        normalized = normalize_condition(condition)
+        raw = condition.get("thresholds")
+        if not isinstance(raw, list):
+            return normalized
+        steps = []
+        for item in raw:
+            if isinstance(item, dict):
+                steps.append({"level": item.get("level"), "value": item.get("value")})
+        steps.sort(key=lambda step: AlertConstants.LEVEL_RANK.get(step["level"], 0))
+        normalized["thresholds"] = steps
+        if steps:
+            lightest = min(steps, key=lambda step: AlertConstants.LEVEL_RANK.get(step["level"], 99))
+            normalized["value"] = lightest["value"]
+        return normalized
+
+    def _submitted_alert_level(self):
+        initial_data = getattr(self, "initial_data", None)
+        if isinstance(initial_data, dict) and initial_data.get("alert_level"):
+            return initial_data.get("alert_level")
+        if self.instance is not None:
+            return getattr(self.instance, "alert_level", None)
+        return None
+
+    def _enabled_level_set(self, condition):
+        raw = condition.get("thresholds") if isinstance(condition, dict) else None
+        if isinstance(raw, list) and raw:
+            return frozenset(item.get("level") for item in raw if isinstance(item, dict) and item.get("level"))
+        fallback = self._submitted_alert_level()
+        if fallback:
+            return frozenset({fallback})
+        return frozenset()
+
+    def _validate_and_level_sets(self, rule, conditions):
+        mode = rule.get("mode") if isinstance(rule, dict) else None
+        if mode is None:
+            mode = "and"
+        if mode != "and":
+            return
+        level_sets = [self._enabled_level_set(condition) for condition in conditions]
+        if len(set(level_sets)) > 1:
+            raise serializers.ValidationError(serializer_text(self, "error.policy_level_set_mismatch"))
+
+    def _derive_aggregate_alert_level(self, attrs):
+        alert_type = attrs.get("alert_type") or self._current_alert_type()
+        if alert_type != AlertConstants.TYPE_AGGREGATE:
+            return
+        if "alert_condition" not in attrs and "alert_level" not in attrs:
+            return
+        condition = attrs.get("alert_condition")
+        if not isinstance(condition, dict) and self.instance is not None:
+            condition = getattr(self.instance, "alert_condition", None)
+        rule = condition.get("rule") if isinstance(condition, dict) else None
+        conditions = rule.get("conditions") if isinstance(rule, dict) else None
+        fallback = attrs.get("alert_level")
+        if not fallback and self.instance is not None:
+            fallback = getattr(self.instance, "alert_level", None)
+        derived = highest_enabled_level(conditions if isinstance(conditions, list) else [], fallback)
+        if derived:
+            attrs["alert_level"] = derived
 
     def _validate_ratio_filter(self, params):
         if not isinstance(params, dict):
@@ -241,6 +346,7 @@ class PolicySerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         attrs = super().validate(attrs)
+        self._derive_aggregate_alert_level(attrs)
         handlers_provided = "handlers" in attrs
         organizations_provided = "policy_organizations" in self.context
         if not handlers_provided and not organizations_provided:

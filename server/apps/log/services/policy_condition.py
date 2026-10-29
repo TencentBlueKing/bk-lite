@@ -45,6 +45,87 @@ def normalize_condition(condition):
     return normalized
 
 
+def level_rank(level):
+    """未知级别与空值记 0，低于 warning。不读策略对象。"""
+    if level in (None, ""):
+        return 0
+    return AlertConstants.LEVEL_RANK.get(str(level).strip().lower(), 0)
+
+
+def condition_thresholds(condition, default_level):
+    """显式 thresholds 原样留下合法档；没有该字段时合成一档，级别由调用方传入。"""
+    if not isinstance(condition, dict):
+        return []
+    raw = condition.get("thresholds")
+    if isinstance(raw, list):
+        steps = []
+        for item in raw:
+            if not isinstance(item, dict):
+                continue
+            level = item.get("level")
+            if level not in AlertConstants.LEVEL_RANK:
+                continue
+            steps.append({"level": level, "value": item.get("value")})
+        return steps
+    return [{"level": default_level, "value": condition.get("value")}]
+
+
+def highest_hit_level(value, op, thresholds, compare):
+    """同一个数按同一运算符逐档比较，命中档取最高。未命中返回 None。"""
+    if value is None or not op or compare is None:
+        return None
+    best = None
+    best_rank = 0
+    for step in thresholds or []:
+        if not isinstance(step, dict):
+            continue
+        level = step.get("level")
+        rank = AlertConstants.LEVEL_RANK.get(level, 0)
+        if rank <= 0 or step.get("value") is None:
+            continue
+        if not compare(value, op, step.get("value")):
+            continue
+        if best is None or rank > best_rank:
+            best = level
+            best_rank = rank
+    return best
+
+
+def combine_levels(levels, mode):
+    """and 取最轻，or 取最高。空或未知模式返回 None。"""
+    usable = [level for level in levels or [] if level in AlertConstants.LEVEL_RANK]
+    if not usable or mode not in ("and", "or"):
+        return None
+    pick = min if mode == "and" else max
+    return pick(usable, key=lambda level: AlertConstants.LEVEL_RANK[level])
+
+
+def highest_enabled_level(conditions, fallback=None):
+    """条件里启用的最高档。没有阶梯时回落到 fallback（须是三档之一）。"""
+    best = None
+    best_rank = 0
+    saw = False
+    for condition in conditions or []:
+        if not isinstance(condition, dict):
+            continue
+        raw = condition.get("thresholds")
+        if isinstance(raw, list) and raw:
+            levels = [item.get("level") for item in raw if isinstance(item, dict)]
+        elif fallback in AlertConstants.LEVEL_RANK:
+            levels = [fallback]
+        else:
+            continue
+        for level in levels:
+            rank = AlertConstants.LEVEL_RANK.get(level, 0)
+            if rank > best_rank:
+                best = level
+                best_rank = rank
+                saw = True
+    if saw:
+        return best
+    return fallback if fallback in AlertConstants.LEVEL_RANK else None
+
+
 def condition_alias(condition, index=0):
     """aggregate_result 键。quantile 带分位，ratio 用条件序号，字段中的点换成下划线。"""
     normalized = normalize_condition(condition)

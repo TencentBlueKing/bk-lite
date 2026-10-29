@@ -16,7 +16,15 @@ import {
 } from '@/app/log/constants';
 import { useConditionList } from '@/app/log/hooks/event';
 import { compareOffsetLimit, presentCompare } from '@/app/log/utils/compareTarget';
-import { isNumericCompare } from './policyFormUtils';
+import {
+  conditionWithLadderSlots,
+  conditionWithSingleThreshold,
+  displayedThresholdSlots,
+  isNumericCompare,
+  LADDER_OPS,
+  POLICY_LEVELS,
+  thresholdsForOperator,
+} from './policyFormUtils';
 
 const { Option } = Select;
 
@@ -44,13 +52,20 @@ const ConditionSelector: React.FC<ConditionFilterProps> = ({
       ? `${functionName(item)}（${functionMethod(item)}）`
       : functionName(item);
 
+  const levelLabel = (level: string) => t(`log.event.${level}`);
+
   const handleConditionChange = (extra: {
     val: string;
     index: number;
     field: 'op' | 'field' | 'func';
   }) => {
+    const previous = data[extra.index];
     const newData = cloneDeep(data);
-    newData[extra.index][extra.field] = extra.val;
+    if (extra.field === 'op') {
+      newData[extra.index] = thresholdsForOperator(previous, extra.val);
+    } else {
+      newData[extra.index][extra.field] = extra.val;
+    }
     if (extra.field === 'func') {
       const option = FUNCTION_LIST.find((item) => item.value === extra.val);
       if (option && !option.needsField) {
@@ -70,6 +85,7 @@ const ConditionSelector: React.FC<ConditionFilterProps> = ({
       const nextKind = presentCompare(newData[extra.index].compare).kind || 'absolute';
       if (isNumericCompare(extra.val, nextKind) && MEMBERSHIP_OPS.has(String(newData[extra.index].op))) {
         newData[extra.index].op = null;
+        delete newData[extra.index].thresholds;
       }
     }
     onChange?.(newData);
@@ -88,6 +104,7 @@ const ConditionSelector: React.FC<ConditionFilterProps> = ({
     }
     if (isNumericCompare(newData[index].func, kind) && MEMBERSHIP_OPS.has(String(newData[index].op))) {
       newData[index].op = null;
+      delete newData[index].thresholds;
     }
     onChange?.(newData);
   };
@@ -153,6 +170,31 @@ const ConditionSelector: React.FC<ConditionFilterProps> = ({
     onChange?.(newData);
   };
 
+  const handleLadderValueChange = (level: string, val: number | string | null, index: number) => {
+    const slots = displayedThresholdSlots(data[index]);
+    slots[level] = val == null || val === '' ? '' : String(val);
+    const newData = [...data];
+    newData[index] = conditionWithLadderSlots(data[index], slots);
+    onChange?.(newData);
+  };
+
+  const handleSingleThresholdValue = (value: string, index: number) => {
+    const level = data[index].thresholds?.[0]?.level || 'warning';
+    const newData = [...data];
+    newData[index] = conditionWithSingleThreshold(data[index], level, value);
+    onChange?.(newData);
+  };
+
+  const handleSingleThresholdLevel = (level: string, index: number) => {
+    const current = data[index];
+    const value = Array.isArray(current.thresholds)
+      ? String(current.thresholds[0]?.value ?? '')
+      : String(current.value ?? '');
+    const newData = [...data];
+    newData[index] = conditionWithSingleThreshold(current, level, value);
+    onChange?.(newData);
+  };
+
   const handleAddCondition = () => {
     const newData = [...data, { field: null, op: null, value: '' }];
     onChange?.(newData);
@@ -208,6 +250,19 @@ const ConditionSelector: React.FC<ConditionFilterProps> = ({
               operatorOptions.push(currentOp);
             }
           }
+          if (
+            (conditionItem.op === '>=' || conditionItem.op === '<=')
+            && !operatorOptions.some((item) => String(item.id) === String(conditionItem.op))
+          ) {
+            operatorOptions.push({ id: conditionItem.op, name: conditionItem.op });
+          }
+          const ladder = conditionItem.op != null && LADDER_OPS.has(String(conditionItem.op));
+          const singleTier = conditionItem.op != null && !ladder;
+          const slots = displayedThresholdSlots(conditionItem);
+          const singleLevel = conditionItem.thresholds?.[0]?.level || 'warning';
+          const singleText = Array.isArray(conditionItem.thresholds)
+            ? String(conditionItem.thresholds[0]?.value ?? '')
+            : conditionItem.value;
           const thresholdAddon = !showUnitSuffix
             ? undefined
             : conditionItem.func === 'count_rate'
@@ -387,7 +442,60 @@ const ConditionSelector: React.FC<ConditionFilterProps> = ({
                         })
                       }
                     />
-                    {numericCompare ? (
+                    {ladder ? (
+                      <div className="flex min-w-0 flex-1 flex-wrap gap-2">
+                      {POLICY_LEVELS.map((level) => (
+                        <InputNumber
+                          key={level}
+                          style={{ width: 168 }}
+                          placeholder={t('log.event.enterThreshold')}
+                          aria-label={levelLabel(level)}
+                          addonBefore={levelLabel(level)}
+                          addonAfter={level === 'critical' ? thresholdAddon : undefined}
+                          value={
+                            slots[level] !== '' && Number.isFinite(Number(slots[level]))
+                              ? Number(slots[level])
+                              : null
+                          }
+                          onChange={(val) => handleLadderValueChange(level, val, index)}
+                        />
+                      ))}
+                      </div>
+                    ) : singleTier ? (
+                      <>
+                        {numericCompare ? (
+                          <InputNumber
+                            style={{ width: 140 }}
+                            placeholder={t('log.event.enterThreshold')}
+                            addonAfter={thresholdAddon}
+                            value={
+                              singleText !== '' && Number.isFinite(Number(singleText))
+                                ? Number(singleText)
+                                : null
+                            }
+                            onChange={(val) => handleSingleThresholdValue(String(val ?? ''), index)}
+                          />
+                        ) : (
+                          <Input
+                            style={{ width: 140 }}
+                            placeholder={t('log.event.enterThreshold')}
+                            value={singleText}
+                            onChange={(event) => handleSingleThresholdValue(event.target.value, index)}
+                            {...(thresholdAddon ? { addonAfter: thresholdAddon } : {})}
+                          />
+                        )}
+                        <Select
+                          style={{ width: 96 }}
+                          aria-label={t('log.event.alarmLevel')}
+                          value={singleLevel}
+                          options={POLICY_LEVELS.map((level) => ({
+                            value: level,
+                            label: levelLabel(level),
+                          }))}
+                          onChange={(val) => handleSingleThresholdLevel(val, index)}
+                        />
+                      </>
+                    ) : numericCompare ? (
                       <InputNumber
                         style={{ width: 140 }}
                         placeholder={t('log.event.enterThreshold')}

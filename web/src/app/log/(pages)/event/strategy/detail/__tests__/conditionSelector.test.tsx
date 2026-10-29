@@ -50,7 +50,7 @@ describe('条件函数选择', () => {
     expect(screen.queryByRole('radio', { name: 'log.event.compareKindPercent' })).toBeNull();
     expect(screen.getByText('log.event.countRateUnit')).toBeTruthy();
 
-    fireEvent.change(screen.getByPlaceholderText('log.event.enterThreshold'), {
+    fireEvent.change(screen.getAllByPlaceholderText('log.event.enterThreshold')[0], {
       target: { value: '0.5' },
     });
     expect(onChange).toHaveBeenCalledWith([
@@ -319,9 +319,9 @@ describe('条件函数选择', () => {
       />
     );
 
-    expect(screen.getByRole('spinbutton')).toBeTruthy();
+    expect(screen.getAllByRole('spinbutton')).toHaveLength(3);
     expect(screen.getByText('%')).toBeTruthy();
-    fireEvent.change(screen.getByPlaceholderText('log.event.enterThreshold'), {
+    fireEvent.change(screen.getAllByPlaceholderText('log.event.enterThreshold')[0], {
       target: { value: '-30' },
     });
     expect(onChange).toHaveBeenCalledWith([
@@ -342,6 +342,7 @@ describe('条件函数选择', () => {
 
     expect(screen.getByRole('textbox')).toBe(screen.getByPlaceholderText('log.event.enterThreshold'));
     expect(screen.queryByRole('spinbutton')).toBeNull();
+    expect(screen.queryByLabelText('log.event.alarmLevel')).toBeNull();
 
     fireEvent.mouseDown(
       screen.getByText('log.event.selectCriteria').closest('.ant-select')!.querySelector('.ant-select-selector')!
@@ -368,5 +369,62 @@ describe('条件函数选择', () => {
     expect(
       [...document.querySelectorAll('.ant-select-item-option')].map((node) => node.textContent)
     ).toContain('log.include');
+  });
+
+  it('大于运算符并列三档阈值，留空的档不写入', () => {
+    const onChange = vi.fn();
+    render(
+      <ConditionFilter
+        data={[{ func: 'count', field: '_msg', op: '>', value: '12' }]}
+        fields={['_msg']}
+        term="or"
+        onTermChange={vi.fn()}
+        onChange={onChange}
+      />
+    );
+
+    expect(screen.getAllByPlaceholderText('log.event.enterThreshold')).toHaveLength(3);
+    expect(screen.getByText('log.event.warning')).toBeTruthy();
+    expect(screen.getByText('log.event.error')).toBeTruthy();
+    expect(screen.getByText('log.event.critical')).toBeTruthy();
+    fireEvent.change(screen.getAllByPlaceholderText('log.event.enterThreshold')[1], {
+      target: { value: '60' },
+    });
+    expect(onChange).toHaveBeenCalledWith([
+      expect.objectContaining({
+        value: '12',
+        thresholds: [
+          { level: 'warning', value: '12' },
+          { level: 'error', value: '60' },
+        ],
+      }),
+    ]);
+  });
+
+  it('等于退化为一个阈值和级别选择', () => {
+    const onChange = vi.fn();
+    render(
+      <ConditionFilter
+        data={[{ func: 'count', field: 'level', op: '=', value: 'error' }]}
+        fields={['level']}
+        term="or"
+        onTermChange={vi.fn()}
+        onChange={onChange}
+      />
+    );
+
+    expect(screen.getAllByPlaceholderText('log.event.enterThreshold')).toHaveLength(1);
+    expect(screen.getByRole('textbox')).toBeTruthy();
+    expect(screen.queryByRole('spinbutton')).toBeNull();
+    expect(screen.getByRole('combobox', { name: 'log.event.alarmLevel' })).toBeTruthy();
+    fireEvent.change(screen.getByPlaceholderText('log.event.enterThreshold'), {
+      target: { value: 'warn' },
+    });
+    expect(onChange).toHaveBeenCalledWith([
+      expect.objectContaining({
+        value: 'warn',
+        thresholds: [{ level: 'warning', value: 'warn' }],
+      }),
+    ]);
   });
 });

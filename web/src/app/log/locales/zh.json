@@ -1086,6 +1086,8 @@
       "seeMore": "查看详情",
       "conditionValidate": "函数、字段、条件或阈值不能为空",
       "thresholdNumberValidate": "该比较只支持数值阈值",
+      "thresholdOrderValidate": "多档阈值必须按级别严格单调",
+      "levelSetMismatch": "全部满足时，各条件启用的级别必须一致",
       "funcCount": "计数",
       "funcSum": "求和",
       "funcMax": "最大值",

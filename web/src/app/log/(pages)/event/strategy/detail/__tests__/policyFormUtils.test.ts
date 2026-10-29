@@ -6,7 +6,9 @@ import {
   getDefaultShowFields,
   hasBackfillGap,
   hasIncompleteCondition,
+  hasMismatchedLevelSets,
   hasNonNumericThreshold,
+  hasThresholdOrderError,
   isNumericCompare,
   normalizeCondition,
   readPolicyTriggerCount,
@@ -265,5 +267,115 @@ describe('聚合条件函数', () => {
 
   it('展示字段把 timestamp 和 message 固定在前面', () => {
     expect(getDefaultShowFields(['level', 'message'])).toEqual(['timestamp', 'message', 'level']);
+  });
+
+  it('传入策略级别时把旧单阈值收成一档，不传则保持原样', () => {
+    expect(
+      normalizeCondition({ func: 'count', field: '_msg', op: '>', value: '10' }, 'error')
+    ).toEqual({
+      func: 'count',
+      field: '_msg',
+      op: '>',
+      value: '10',
+      compare: { kind: 'absolute' },
+      params: {},
+      thresholds: [{ level: 'error', value: '10' }],
+    });
+    expect(
+      normalizeCondition({ func: 'count', field: '_msg', op: '>', value: '10' })
+    ).toEqual({
+      func: 'count',
+      field: '_msg',
+      op: '>',
+      value: '10',
+      compare: { kind: 'absolute' },
+      params: {},
+    });
+  });
+
+  it('阶梯按级别单调，and 的级别集合必须一致', () => {
+    const descending = {
+      func: 'count',
+      field: '_msg',
+      op: '>',
+      value: '50',
+      thresholds: [
+        { level: 'warning', value: '50' },
+        { level: 'error', value: '10' },
+      ],
+    };
+    expect(hasThresholdOrderError([descending])).toBe(true);
+    expect(hasThresholdOrderError([{
+      ...descending,
+      op: '<',
+      thresholds: [
+        { level: 'warning', value: '50' },
+        { level: 'error', value: '10' },
+      ],
+    }])).toBe(false);
+    const warningOnly = {
+      func: 'count',
+      field: '_msg',
+      op: '>',
+      value: '10',
+      thresholds: [{ level: 'warning', value: '10' }],
+    };
+    const withCritical = {
+      func: 'count',
+      field: 'service',
+      op: '>',
+      value: '10',
+      thresholds: [
+        { level: 'warning', value: '10' },
+        { level: 'critical', value: '30' },
+      ],
+    };
+    expect(hasMismatchedLevelSets([warningOnly, withCritical], 'and')).toBe(true);
+    expect(hasMismatchedLevelSets([warningOnly, withCritical], 'or')).toBe(false);
+    expect(hasNonNumericThreshold([{ func: 'count', field: '_msg', op: '>', value: 'abc' }])).toBe(false);
+  });
+
+  it('保存时按最轻档镜像 value，并推导最高启用级别', () => {
+    const payload = buildStrategyPayload(
+      {
+        alert_type: 'aggregate',
+        alert_level: 'warning',
+        query: 'level:error',
+        schedule: 5,
+        period: 5,
+      } as StrategyFields,
+      {
+        unit: 'min',
+        periodUnit: 'min',
+        channelList: [],
+        conditions: [
+          {
+            func: 'count',
+            field: '_msg',
+            op: '>',
+            value: '10',
+            thresholds: [
+              { level: 'critical', value: '200' },
+              { level: 'warning', value: '10' },
+            ],
+          },
+        ],
+        term: 'or',
+        isEdit: false,
+      }
+    );
+    expect(payload.alert_level).toBe('critical');
+    expect(payload.alert_condition?.rule?.conditions).toEqual([
+      {
+        func: 'count',
+        field: '_msg',
+        op: '>',
+        value: '10',
+        thresholds: [
+          { level: 'warning', value: '10' },
+          { level: 'critical', value: '200' },
+        ],
+      },
+    ]);
   });
 });

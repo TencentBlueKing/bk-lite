@@ -133,6 +133,11 @@ error:
   policy_aggregate_func_unsupported: Unsupported aggregation function
   policy_numeric_op_only: This function only supports numeric comparison
   policy_threshold_number: Threshold must be a number
+  policy_threshold_level_invalid: Threshold levels must be warning, error, or critical, unique, and at most 3
+  policy_threshold_required: At least one threshold is required
+  policy_threshold_order: Thresholds must be strictly ordered by level
+  policy_threshold_single: This operator or a non-numeric comparison allows only one threshold
+  policy_level_set_mismatch: When matching all conditions, every condition must enable the same levels
   policy_compare_invalid: Compare kind or baseline target is invalid
   policy_compare_func_unsupported: This function does not support that compare kind
   policy_quantile_invalid: Quantile must be 0.5, 0.9, 0.95, or 0.99

@@ -96,3 +96,52 @@ def test_no_data_notice_second_line_omits_samples_and_keeps_links():
     context = notice_context(event, policy, base_url="https://example.test")
     assert context["aggregate_result"] == raw["aggregate_result"]
     assert context["aggregate_result"]["no_data"] is True
+
+
+def test_ladder_notice_names_the_hit_level():
+    raw = {
+        "aggregate_result": {
+            "count": 300,
+            "level": "critical",
+            "conditions": [
+                {
+                    "func": "count",
+                    "field": "_msg",
+                    "current": 300,
+                    "value": 300,
+                    "op": ">",
+                    "threshold": "200",
+                    "level": "critical",
+                    "matched": True,
+                    "thresholds": [
+                        {"level": "warning", "value": "10", "matched": True},
+                        {"level": "error", "value": "50", "matched": True},
+                        {"level": "critical", "value": "200", "matched": True},
+                    ],
+                    "compare": {"kind": "absolute"},
+                }
+            ],
+        },
+        "samples": [],
+        "jump_query": {"query": "level:error", "window_start": 1700000000, "window_end": 1700000300},
+    }
+    event = SimpleNamespace(
+        id=None,
+        alert_id=None,
+        event_time="2026-10-29T03:00:00Z",
+        content="错误超过 200",
+        raw_data=raw,
+    )
+    policy = SimpleNamespace(name="阶梯策略", log_groups=["g1"])
+    title, content = format_aggregate_notice(
+        event,
+        policy,
+        raw,
+        raw["jump_query"],
+        base_url="https://example.test",
+    )
+    assert title == "【日志告警通知】"
+    lines = content.splitlines()
+    content_index = lines.index("告警内容：错误超过 200")
+    assert lines[content_index + 1] == "级别：严重"
+    assert "计数：300 > 200（严重）" in content

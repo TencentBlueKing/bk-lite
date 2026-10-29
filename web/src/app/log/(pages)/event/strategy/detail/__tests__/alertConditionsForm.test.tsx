@@ -141,7 +141,7 @@ describe('连续满足次数', () => {
     const onValuesChange = vi.fn();
     render(<Harness onValuesChange={onValuesChange} />);
 
-    fireEvent.change(screen.getByPlaceholderText('log.event.enterThreshold'), {
+    fireEvent.change(screen.getAllByPlaceholderText('log.event.enterThreshold')[0], {
       target: { value: '9' },
     });
 
@@ -153,6 +153,7 @@ describe('关键字和聚合说明', () => {
   it('聚合查询说明和连续次数说明用聚合口径', () => {
     render(<Harness policyType="aggregate" />);
 
+    expect(screen.queryByText('log.event.alarmLevel')).toBeNull();
     expect(screen.getByText('log.event.aggregateQueryCriteriaTips')).toBeTruthy();
     expect(screen.getByText('log.event.triggerCountTip')).toBeTruthy();
     expect(screen.queryByText('log.event.queryCriteriaTips')).toBeNull();
@@ -162,6 +163,7 @@ describe('关键字和聚合说明', () => {
   it('关键字查询说明和连续次数说明用关键字口径，不渲染规则区', () => {
     render(<Harness policyType="keyword" />);
 
+    expect(screen.getByText('log.event.alarmLevel')).toBeTruthy();
     expect(screen.getByText('log.event.queryCriteriaTips')).toBeTruthy();
     expect(screen.getByText('log.event.keywordTriggerCountTip')).toBeTruthy();
     expect(screen.queryByText('log.event.aggregateQueryCriteriaTips')).toBeNull();
@@ -280,6 +282,100 @@ describe('展示字段和检测周期', () => {
       errorFields: expect.arrayContaining([
         expect.objectContaining({
           errors: expect.arrayContaining(['log.event.thresholdNumberValidate']),
+        }),
+      ]),
+    });
+  });
+
+  it('大于的降序阶梯和 and 级别集合不一致都会被规则拦住', async () => {
+    const formRef = { current: null as FormInstance | null };
+    const { unmount } = render(
+      <Harness
+        formRef={formRef}
+        term="and"
+        conditions={[
+          {
+            func: 'count',
+            field: '_msg',
+            op: '>',
+            value: '50',
+            thresholds: [
+              { level: 'warning', value: '50' },
+              { level: 'error', value: '10' },
+            ],
+          },
+        ]}
+        initialValues={{
+          log_groups: [1],
+          query: 'error',
+          show_fields: ['timestamp', 'message'],
+          schedule: 5,
+          period: 5,
+        }}
+      />
+    );
+    let orderError: unknown;
+    await act(async () => {
+      try {
+        await formRef.current?.validateFields();
+      } catch (error) {
+        orderError = error;
+      }
+    });
+    expect(orderError).toMatchObject({
+      errorFields: expect.arrayContaining([
+        expect.objectContaining({
+          errors: expect.arrayContaining(['log.event.thresholdOrderValidate']),
+        }),
+      ]),
+    });
+    unmount();
+
+    const mismatchRef = { current: null as FormInstance | null };
+    render(
+      <Harness
+        formRef={mismatchRef}
+        term="and"
+        conditions={[
+          {
+            func: 'count',
+            field: '_msg',
+            op: '>',
+            value: '10',
+            thresholds: [{ level: 'warning', value: '10' }],
+          },
+          {
+            func: 'count',
+            field: 'service',
+            op: '>',
+            value: '10',
+            thresholds: [
+              { level: 'warning', value: '10' },
+              { level: 'critical', value: '30' },
+            ],
+          },
+        ]}
+        initialValues={{
+          log_groups: [1],
+          query: 'error',
+          show_fields: ['timestamp', 'message'],
+          schedule: 5,
+          period: 5,
+        }}
+      />
+    );
+    let mismatch: unknown;
+    await act(async () => {
+      try {
+        await mismatchRef.current?.validateFields();
+      } catch (error) {
+        mismatch = error;
+      }
+    });
+    expect(mismatch).toMatchObject({
+      errorFields: expect.arrayContaining([
+        expect.objectContaining({
+          errors: expect.arrayContaining(['log.event.levelSetMismatch']),
         }),
       ]),
     });

@@ -14,7 +14,9 @@ import {
   getDefaultShowFields,
   hasBackfillGap,
   hasIncompleteCondition,
+  hasMismatchedLevelSets,
   hasNonNumericThreshold,
+  hasThresholdOrderError,
 } from './policyFormUtils';
 import LogQueryInput from '@/app/log/components/log-query-input';
 
@@ -69,6 +71,12 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
     }
     if (hasNonNumericThreshold(conditions)) {
       return Promise.reject(new Error(t('log.event.thresholdNumberValidate')));
+    }
+    if (hasThresholdOrderError(conditions)) {
+      return Promise.reject(new Error(t('log.event.thresholdOrderValidate')));
+    }
+    if (hasMismatchedLevelSets(conditions, term)) {
+      return Promise.reject(new Error(t('log.event.levelSetMismatch')));
     }
     return Promise.resolve();
   };
@@ -345,24 +353,26 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
           </div>
         ) : null}
       </Form.Item>
-      <Form.Item<StrategyFields>
-        name="alert_level"
-        label={<span className="w-[100px]">{t('log.event.alarmLevel')}</span>}
-        rules={[
-          {
-            required: true,
-            message: t('common.required')
-          }
-        ]}
-      >
-        <Radio.Group>
-          {LEVEL_LIST.map((item) => (
-            <Radio key={item.value} value={item.value}>
-              {item.label}
-            </Radio>
-          ))}
-        </Radio.Group>
-      </Form.Item>
+      {lockedPolicyType === 'aggregate' ? null : (
+        <Form.Item<StrategyFields>
+          name="alert_level"
+          label={<span className="w-[100px]">{t('log.event.alarmLevel')}</span>}
+          rules={[
+            {
+              required: true,
+              message: t('common.required')
+            }
+          ]}
+        >
+          <Radio.Group>
+            {LEVEL_LIST.map((item) => (
+              <Radio key={item.value} value={item.value}>
+                {item.label}
+              </Radio>
+            ))}
+          </Radio.Group>
+        </Form.Item>
+      )}
     </>
   );
 };

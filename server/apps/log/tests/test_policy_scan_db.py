@@ -948,6 +948,91 @@ class TestCreateEvents:
         # 没有创建新告警
         assert Alert.objects.filter(policy=policy).count() == 1
 
+    def test_active_alert_level_only_rises_across_windows(self):
+        policy = _make_policy()
+        source_id = f"policy_{policy.id}"
+        base = timezone.datetime(2026, 10, 29, tzinfo=timezone.utc)
+
+        def hit(minute, level, value, cursor):
+            scan = LogPolicyScan(
+                policy,
+                scan_time=base + timezone.timedelta(minutes=minute),
+                cursor_time=cursor,
+            )
+            event = scan.create_events(
+                [
+                    {
+                        "source_id": source_id,
+                        "level": level,
+                        "content": level,
+                        "value": value,
+                        "raw_data": [],
+                    }
+                ]
+            )[0]
+            event.refresh_from_db()
+            event.alert.refresh_from_db()
+            return event
+
+        first = hit(0, "warning", 12, base - timezone.timedelta(minutes=5))
+        assert first.level == "warning"
+        assert first.alert.level == "warning"
+        Alert.objects.filter(id=first.alert_id).update(notice=True)
+
+        second = hit(5, "error", 60, base)
+        assert second.id != first.id
+        assert second.level == "error"
+        assert second.alert_id == first.alert_id
+        assert second.alert.level == "error"
+        assert second.alert.notice is False
+        Alert.objects.filter(id=second.alert_id).update(notice=True)
+
+        third = hit(10, "critical", 300, base + timezone.timedelta(minutes=5))
+        assert third.level == "critical"
+        assert third.alert.level == "critical"
+        assert third.alert.notice is False
+        Alert.objects.filter(id=third.alert_id).update(notice=True)
+
+        fourth = hit(15, "error", 60, base + timezone.timedelta(minutes=10))
+        assert fourth.level == "error"
+        assert fourth.alert.level == "critical"
+        assert fourth.alert.notice is True
+        assert fourth.alert.value == 60
+        assert fourth.alert.content == "error"
+        assert Alert.objects.filter(policy=policy).count() == 1
+        assert Event.objects.filter(policy=policy).count() == 4
+
+    def test_same_execution_downgrade_keeps_alert_level_and_notice(self):
+        scan_time = timezone.datetime(2026, 10, 29, tzinfo=timezone.utc)
+        policy = _make_policy(notice=True, notice_users=["u1"])
+        source_id = f"policy_{policy.id}"
+        first_scan = LogPolicyScan(policy, scan_time=scan_time, execution_key="same-window")
+        first_event = first_scan.create_events([{"source_id": source_id, "level": "critical", "content": "高", "value": 300, "raw_data": []}])[0]
+        Event.objects.filter(id=first_event.id).update(
+            notified=True,
+            notice_result=[{"result": True}],
+            notice_retry_count=1,
+        )
+        Alert.objects.filter(id=first_event.alert_id).update(notice=True)
+
+        retry_scan = LogPolicyScan(
+            policy,
+            scan_time=scan_time + timezone.timedelta(minutes=1),
+            execution_key="same-window",
+        )
+        retry_event = retry_scan.create_events([{"source_id": source_id, "level": "warning", "content": "回落", "value": 12, "raw_data": []}])[0]
+        retry_event.refresh_from_db()
+        retry_event.alert.refresh_from_db()
+        assert retry_event.id == first_event.id
+        assert retry_event.level == "warning"
+        assert retry_event.notified is True
+        assert retry_event.notice_result == [{"result": True}]
+        assert retry_event.notice_retry_count == 1
+        assert retry_event.content == "回落"
+        assert retry_event.alert.level == "critical"
+        assert retry_event.alert.notice is True
+        assert retry_event.alert.value == 12
+
     def test_same_execution_level_change_resets_event_notification(self, mocker):
         scan_time = timezone.datetime(2026, 7, 24, tzinfo=timezone.utc)
         policy = _make_policy(notice=True, notice_users=["u1"])

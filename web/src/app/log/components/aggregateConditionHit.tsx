@@ -2,7 +2,7 @@
 
 import React, { useMemo } from 'react';
 import { Table } from 'antd';
-import { COMPARE_KIND_LIST, FUNCTION_LIST } from '@/app/log/constants';
+import { COMPARE_KIND_LIST, FUNCTION_LIST, LEVEL_MAP } from '@/app/log/constants';
 import { formatCompareTarget } from '@/app/log/utils/compareTarget';
 import {
   AggregateResultCondition,
@@ -34,6 +34,17 @@ export const formatAggregateMetric = (value: number | null | undefined) => {
     return value.toFixed(2);
   }
   return String(value);
+};
+
+export const thresholdLadderPieces = (condition: AggregateHitCondition) => {
+  if (!condition.thresholds?.length) {
+    return null;
+  }
+  return condition.thresholds.map((step) => ({
+    level: step.level,
+    text: `${condition.op || ''} ${step.value ?? ''}`.trim(),
+    hit: Boolean(step.matched),
+  }));
 };
 
 export const formatAggregateReason = (reason: string | undefined, t: Translate) => {
@@ -177,8 +188,25 @@ export function AggregateConditionTable({
       {
         title: t('log.event.threshold'),
         key: 'threshold',
-        render: (_value: unknown, condition: AggregateHitCondition) =>
-          `${condition.op || ''} ${condition.threshold ?? ''}`.trim(),
+        render: (_value: unknown, condition: AggregateHitCondition) => {
+          const pieces = thresholdLadderPieces(condition);
+          if (!pieces) {
+            return `${condition.op || ''} ${condition.threshold ?? ''}`.trim();
+          }
+          return (
+            <span className="inline-flex flex-wrap gap-2">
+              {pieces.map((piece) => (
+                <span
+                  key={piece.level}
+                  className={piece.hit ? 'font-semibold' : undefined}
+                  style={piece.hit && LEVEL_MAP[piece.level] ? { color: LEVEL_MAP[piece.level] } : undefined}
+                >
+                  {`${piece.text}（${t(`log.event.${piece.level}`)}）`}
+                </span>
+              ))}
+            </span>
+          );
+        },
       },
       {
         title: t('log.event.matched'),

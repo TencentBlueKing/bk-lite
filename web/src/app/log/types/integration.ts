@@ -79,6 +79,11 @@ export interface PolicyConditionParams {
   filter?: string;
 }
 
+export interface PolicyThreshold {
+  level: string;
+  value: string;
+}
+
 export interface FilterItem {
   func?: string | null;
   field: string | null;
@@ -86,4 +91,5 @@ export interface FilterItem {
   value: string;
   compare?: PolicyCompare;
   params?: PolicyConditionParams;
+  thresholds?: PolicyThreshold[];
 }

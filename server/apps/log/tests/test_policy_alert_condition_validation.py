@@ -198,3 +198,154 @@ def test_count_uniq_and_percent_payload_is_accepted():
     ]
     serializer = _serializer(condition)
     assert serializer.is_valid(), serializer.errors
+
+
+def _with_thresholds(condition, thresholds, op=">", index=0):
+    stored = dict(condition)
+    stored["rule"] = dict(condition["rule"])
+    conditions = [dict(item) for item in condition["rule"]["conditions"]]
+    conditions[index] = {**conditions[index], "op": op, "thresholds": thresholds}
+    stored["rule"]["conditions"] = conditions
+    return stored
+
+
+def test_ladder_stores_sorted_thresholds_and_mirrors_lightest_value():
+    condition = _with_thresholds(
+        _condition("count", value="999"),
+        [
+            {"level": "critical", "value": "200"},
+            {"level": "warning", "value": "10"},
+            {"level": "error", "value": "50"},
+        ],
+    )
+    serializer = PolicySerializer(
+        data={"alert_type": "aggregate", "alert_level": "warning", "alert_condition": condition},
+        partial=True,
+    )
+    assert serializer.is_valid(), serializer.errors
+    stored = serializer.validated_data["alert_condition"]["rule"]["conditions"][0]
+    assert stored["thresholds"] == [
+        {"level": "warning", "value": "10"},
+        {"level": "error", "value": "50"},
+        {"level": "critical", "value": "200"},
+    ]
+    assert stored["value"] == "10"
+    assert serializer.validated_data["alert_level"] == "critical"
+
+
+def test_legacy_condition_save_does_not_invent_thresholds():
+    serializer = _serializer(_condition("count", op=">", value="5"))
+    assert serializer.is_valid(), serializer.errors
+    stored = serializer.validated_data["alert_condition"]["rule"]["conditions"][0]
+    assert "thresholds" not in stored
+    assert stored["value"] == "5"
+    assert "alert_level" not in serializer.validated_data
+
+
+def test_descending_greater_than_ladder_is_rejected():
+    condition = _with_thresholds(
+        _condition("count"),
+        [
+            {"level": "warning", "value": "200"},
+            {"level": "error", "value": "50"},
+        ],
+    )
+    serializer = _serializer(condition)
+    assert not serializer.is_valid()
+    assert "严格单调" in str(serializer.errors)
+
+
+def test_less_than_ladder_must_descend():
+    accepted = _with_thresholds(
+        _condition("count"),
+        [
+            {"level": "warning", "value": "200"},
+            {"level": "critical", "value": "10"},
+        ],
+        op="<",
+    )
+    serializer = _serializer(accepted)
+    assert serializer.is_valid(), serializer.errors
+    rejected = _with_thresholds(
+        _condition("count"),
+        [
+            {"level": "warning", "value": "10"},
+            {"level": "error", "value": "50"},
+        ],
+        op="<",
+    )
+    assert not _serializer(rejected).is_valid()
+
+
+def test_equality_allows_one_non_numeric_rung_only():
+    one = _with_thresholds(
+        _condition("count", op="in", value="error", field="level"),
+        [{"level": "warning", "value": "error"}],
+        op="in",
+    )
+    serializer = _serializer(one)
+    assert serializer.is_valid(), serializer.errors
+    stored = serializer.validated_data["alert_condition"]["rule"]["conditions"][0]
+    assert stored["value"] == "error"
+    assert stored["op"] == "in"
+    two = _with_thresholds(
+        _condition("count", op="=", value="1"),
+        [
+            {"level": "warning", "value": "1"},
+            {"level": "error", "value": "2"},
+        ],
+        op="=",
+    )
+    rejected = _serializer(two)
+    assert not rejected.is_valid()
+    assert "一档" in str(rejected.errors)
+
+
+def test_and_level_sets_must_match_and_or_may_differ():
+    shared = _condition("count")
+    shared["rule"]["conditions"] = [
+        {
+            "func": "count",
+            "field": "_msg",
+            "op": ">",
+            "value": "10",
+            "thresholds": [
+                {"level": "warning", "value": "10"},
+                {"level": "error", "value": "50"},
+            ],
+        },
+        {
+            "func": "sum",
+            "field": "bytes",
+            "op": ">",
+            "value": "1",
+            "thresholds": [{"level": "warning", "value": "1"}],
+        },
+    ]
+    shared["rule"]["mode"] = "and"
+    rejected = _serializer(shared)
+    assert not rejected.is_valid()
+    assert "级别必须一致" in str(rejected.errors)
+
+    shared["rule"]["mode"] = "or"
+    accepted = PolicySerializer(
+        data={"alert_type": "aggregate", "alert_level": "warning", "alert_condition": shared},
+        partial=True,
+    )
+    assert accepted.is_valid(), accepted.errors
+    assert accepted.validated_data["alert_level"] == "error"
+
+
+def test_unknown_or_duplicate_level_is_rejected():
+    unknown = _with_thresholds(_condition("count"), [{"level": "info", "value": "1"}])
+    assert not _serializer(unknown).is_valid()
+    duplicate = _with_thresholds(
+        _condition("count"),
+        [
+            {"level": "warning", "value": "1"},
+            {"level": "warning", "value": "2"},
+        ],
+    )
+    assert not _serializer(duplicate).is_valid()
+    empty = _with_thresholds(_condition("count"), [])
+    assert not _serializer(empty).is_valid()

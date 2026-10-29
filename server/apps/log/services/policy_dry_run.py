@@ -205,6 +205,7 @@ class LogPolicyDryRunService:
                 "count_rate": aggregate_data.get("count_rate"),
                 "count_delta": aggregate_data.get("count_delta"),
                 "conditions": list(aggregate_data.get("conditions") or []),
+                "level": aggregate_data.get("level"),
                 "no_data": False,
                 "verdict": verdict,
                 "reason": row.get("reason") or "",

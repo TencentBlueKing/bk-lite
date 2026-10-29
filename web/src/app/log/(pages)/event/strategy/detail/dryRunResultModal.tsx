@@ -8,6 +8,7 @@ import {
   formatAggregateReason,
 } from '@/app/log/components/aggregateConditionHit';
 import { parseRawLogData } from '@/app/log/components/public/alertRawLogEvidence';
+import { LEVEL_MAP } from '@/app/log/constants';
 import { formatCompareTarget } from '@/app/log/utils/compareTarget';
 
 export interface LogDryRunCondition {
@@ -21,6 +22,8 @@ export interface LogDryRunCondition {
   matched?: boolean;
   reason?: string;
   compare?: { kind?: string; to?: string };
+  level?: string | null;
+  thresholds?: Array<{ level: string; value: string | number; matched?: boolean }>;
 }
 
 export interface LogDryRunItem {
@@ -34,6 +37,7 @@ export interface LogDryRunItem {
   reason?: string;
   no_data?: boolean;
   streak?: number | null;
+  level?: string | null;
 }
 
 export interface LogDryRunWindow {
@@ -103,15 +107,29 @@ const formatRate = (value: number | null | undefined) => {
   return Number(value).toFixed(2);
 };
 
-const VerdictTag = ({ verdict, t }: { verdict?: string; t: (key: string) => string }) => {
+const VerdictTag = ({
+  verdict,
+  level,
+  t,
+}: {
+  verdict?: string;
+  level?: string | null;
+  t: (key: string) => string;
+}) => {
   const label = t(VERDICT_LABEL[verdict || ''] || verdict || '—');
   if (verdict === 'would_trigger') {
+    const levelColor = level ? LEVEL_MAP[level] : '';
+    const text = level ? `${label} ${t(`log.event.${level}`)}` : label;
     return (
       <Tag
         data-testid="dry-run-verdict-would-trigger"
-        style={{ color: 'var(--color-fail)', borderColor: 'var(--color-fail)' }}
+        style={
+          levelColor
+            ? { color: levelColor, borderColor: levelColor }
+            : { color: 'var(--color-fail)', borderColor: 'var(--color-fail)' }
+        }
       >
-        {label}
+        {text}
       </Tag>
     );
   }
@@ -172,7 +190,7 @@ const DryRunResultModal: React.FC<DryRunResultModalProps> = ({ open, data, onClo
       key: 'verdict',
       render: (verdict: string, record: LogDryRunItem) => (
         <span className="inline-flex flex-wrap items-center gap-1">
-          <VerdictTag verdict={verdict} t={t} />
+          <VerdictTag verdict={verdict} level={record.level} t={t} />
           {record.reason === 'window_failed' ? <span>{formatAggregateReason(record.reason, t)}</span> : null}
         </span>
       ),

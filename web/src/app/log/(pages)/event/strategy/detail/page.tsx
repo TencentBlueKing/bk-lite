@@ -336,7 +336,7 @@ const StrategyOperation = () => {
     };
     if (alert_type === 'aggregate') {
       setTerm(alert_condition.rule?.mode || '');
-      setConditions((alert_condition.rule?.conditions || []).map((item) => normalizeCondition(item)));
+      setConditions((alert_condition.rule?.conditions || []).map((item) => normalizeCondition(item, data.alert_level)));
     } else {
       setConditions([{ op: null, field: null, value: '', func: null }]);
     }

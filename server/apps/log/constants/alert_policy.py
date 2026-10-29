@@ -41,6 +41,10 @@ class AlertConstants:
     LEVEL_WARNING = "warning"
     LEVEL_ERROR = "error"
     LEVEL_CRITICAL = "critical"
+    # 聚合阈值阶梯只开放这三档。info 不进阶梯。
+    POLICY_LEVELS = ("warning", "error", "critical")
+    LEVEL_RANK = {"warning": 1, "error": 2, "critical": 3}
+    LADDER_OPS = frozenset({">", ">=", "<", "<="})
 
     # 聚合条件函数。count_delta 仍被接受，读写两侧归一为 count + delta + previous_window。
     AGGREGATE_FUNCS = frozenset(

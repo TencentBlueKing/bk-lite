@@ -12,22 +12,106 @@ export const conditionRequiresField = (func?: string | null) => {
   return option ? option.needsField : true;
 };
 
-/** 读入旧策略时，count_delta 显示为计数 + 变化量 + 上一窗。 */
-export const normalizeCondition = (condition: FilterItem): FilterItem => {
-  if (condition.func === 'count_delta') {
-    return {
+export const POLICY_LEVELS = ['warning', 'error', 'critical'] as const;
+export const LEVEL_RANK: Record<string, number> = { warning: 1, error: 2, critical: 3 };
+export const LADDER_OPS = new Set(['>', '>=', '<', '<=']);
+
+const isPolicyLevel = (level?: string | null) => !!level && level in LEVEL_RANK;
+
+/** 读入旧策略时，count_delta 显示为计数 + 变化量 + 上一窗。传入策略级别时，把旧的单阈值收成一档。 */
+export const normalizeCondition = (condition: FilterItem, alertLevel?: string): FilterItem => {
+  const next: FilterItem = condition.func === 'count_delta'
+    ? {
       ...condition,
       func: 'count',
       field: '_msg',
       compare: { kind: 'delta', to: 'previous_window' },
       params: condition.params || {},
+    }
+    : {
+      ...condition,
+      compare: presentCompare(condition.compare),
+      params: condition.params || {},
     };
+  if (!isPolicyLevel(alertLevel) || Array.isArray(condition.thresholds)) {
+    return next;
   }
   return {
-    ...condition,
-    compare: presentCompare(condition.compare),
-    params: condition.params || {},
+    ...next,
+    thresholds: [{ level: alertLevel as string, value: String(condition.value ?? '') }],
   };
+};
+
+/** 阶梯三档的当前文本。没有 thresholds 时，旧 value 落在警告档，仅用于展示。 */
+export const displayedThresholdSlots = (condition: FilterItem): Record<string, string> => {
+  const slots: Record<string, string> = { warning: '', error: '', critical: '' };
+  if (Array.isArray(condition.thresholds)) {
+    condition.thresholds.forEach((step) => {
+      if (step?.level && step.level in slots) {
+        slots[step.level] = step.value == null ? '' : String(step.value);
+      }
+    });
+    return slots;
+  }
+  if (condition.value != null && String(condition.value) !== '') {
+    slots.warning = String(condition.value);
+  }
+  return slots;
+};
+
+export const conditionWithLadderSlots = (
+  condition: FilterItem,
+  slots: Record<string, string>
+): FilterItem => {
+  const thresholds = POLICY_LEVELS
+    .filter((level) => slots[level] != null && String(slots[level]) !== '')
+    .map((level) => ({ level, value: String(slots[level]) }));
+  return {
+    ...condition,
+    thresholds,
+    value: thresholds[0] ? thresholds[0].value : '',
+  };
+};
+
+export const conditionWithSingleThreshold = (
+  condition: FilterItem,
+  level: string,
+  value: string
+): FilterItem => ({
+  ...condition,
+  value,
+  thresholds: [{ level: isPolicyLevel(level) ? level : 'warning', value }],
+});
+
+/** 切换运算符时收束阈值：阶梯之间保留各档，进出单档时收成一档。 */
+export const thresholdsForOperator = (previous: FilterItem, op: string): FilterItem => {
+  const next: FilterItem = { ...previous, op };
+  if (LADDER_OPS.has(op)) {
+    if (!previous.op || LADDER_OPS.has(String(previous.op))) {
+      return next;
+    }
+    const current = previous.thresholds?.[0];
+    const level = current && isPolicyLevel(current.level) ? current.level : 'warning';
+    const value = current?.value ?? previous.value ?? '';
+    if (String(value) === '') {
+      return { ...next, thresholds: [], value: '' };
+    }
+    return { ...next, thresholds: [{ level, value: String(value) }], value: String(value) };
+  }
+  let level = 'warning';
+  let value = previous.value ?? '';
+  if (Array.isArray(previous.thresholds) && previous.thresholds.length) {
+    const filled = previous.thresholds.filter((step) => String(step.value ?? '') !== '');
+    const ordered = [...(filled.length ? filled : previous.thresholds)].sort(
+      (left, right) => (LEVEL_RANK[left.level] || 9) - (LEVEL_RANK[right.level] || 9)
+    );
+    const chosen = ordered[0];
+    if (chosen) {
+      level = isPolicyLevel(chosen.level) ? chosen.level : 'warning';
+      value = String(chosen.value ?? '');
+    }
+  }
+  return conditionWithSingleThreshold(next, level, String(value));
 };
 
 /** 读入策略时回填连续满足次数。缺省 1。 */
@@ -41,10 +125,19 @@ export const readPolicyTriggerCount = (
   return raw;
 };
 
-/** 变化量 / 变化率要对照，分位要分位，占比要分子筛选。 */
+const filledThresholds = (item: FilterItem) =>
+  (item.thresholds || []).filter(
+    (step) => isPolicyLevel(step.level) && String(step.value ?? '').trim() !== ''
+  );
+
+/** 变化量 / 变化率要对照，分位要分位，占比要分子筛选。有阶梯时至少一档有值。 */
 export const hasIncompleteCondition = (conditions: FilterItem[]) =>
   conditions.some((item) => {
-    if (!item.func || !item.op || item.value == null || String(item.value) === '') {
+    const ladder = Array.isArray(item.thresholds);
+    const hasValue = ladder
+      ? filledThresholds(item).length > 0
+      : item.value != null && String(item.value) !== '';
+    if (!item.func || !item.op || !hasValue) {
       return true;
     }
     if (conditionRequiresField(item.func) && !item.field) {
@@ -71,8 +164,91 @@ export const isNumericCompare = (func?: string | null, kind?: string | null) =>
 export const hasNonNumericThreshold = (conditions: FilterItem[]) =>
   conditions.some((item) => {
     const kind = presentCompare(item.compare).kind || 'absolute';
+    const numericRequired = isNumericCompare(item.func, kind) || LADDER_OPS.has(String(item.op));
+    if (Array.isArray(item.thresholds)) {
+      if (!numericRequired) {
+        return false;
+      }
+      return item.thresholds.some(
+        (step) => String(step.value ?? '').trim() !== '' && !Number.isFinite(Number(step.value))
+      );
+    }
     return isNumericCompare(item.func, kind) && !Number.isFinite(Number(item.value));
   });
+
+const orderedThresholdNumbers = (item: FilterItem) =>
+  filledThresholds(item)
+    .slice()
+    .sort((left, right) => LEVEL_RANK[left.level] - LEVEL_RANK[right.level])
+    .map((step) => Number(step.value));
+
+/** 多档时 >/>= 必须随级别升高，</<= 必须随级别降低。 */
+export const hasThresholdOrderError = (conditions: FilterItem[]) =>
+  conditions.some((item) => {
+    if (!item.op || !LADDER_OPS.has(item.op) || !Array.isArray(item.thresholds)) {
+      return false;
+    }
+    const numbers = orderedThresholdNumbers(item);
+    if (numbers.length < 2 || numbers.some((value) => !Number.isFinite(value))) {
+      return false;
+    }
+    const rising = item.op === '>' || item.op === '>=';
+    return numbers.some((value, index) => {
+      if (index === 0) {
+        return false;
+      }
+      return rising ? !(numbers[index - 1] < value) : !(numbers[index - 1] > value);
+    });
+  });
+
+/** and 模式下各条件已启用的级别集合必须相同；or 不限制。没有 thresholds 的旧条件不参与。 */
+export const hasMismatchedLevelSets = (conditions: FilterItem[], mode?: string | null) => {
+  if (mode && mode !== 'and') {
+    return false;
+  }
+  const sets = conditions
+    .filter((item) => Array.isArray(item.thresholds))
+    .map((item) =>
+      filledThresholds(item)
+        .map((step) => step.level)
+        .sort((left, right) => LEVEL_RANK[left] - LEVEL_RANK[right])
+        .join(',')
+    );
+  if (sets.length < 2) {
+    return false;
+  }
+  return new Set(sets).size > 1;
+};
+
+const storedConditions = (conditions: FilterItem[]) =>
+  conditions.map((condition) => {
+    if (!Array.isArray(condition.thresholds)) {
+      return condition;
+    }
+    const steps = filledThresholds(condition)
+      .map((step) => ({ level: step.level, value: String(step.value) }))
+      .sort((left, right) => LEVEL_RANK[left.level] - LEVEL_RANK[right.level]);
+    return {
+      ...condition,
+      thresholds: steps,
+      value: steps[0] ? steps[0].value : condition.value,
+    };
+  });
+
+const highestEnabledLevel = (conditions: FilterItem[]) => {
+  let best = 0;
+  let level = '';
+  conditions.forEach((condition) => {
+    filledThresholds(condition).forEach((step) => {
+      const rank = LEVEL_RANK[step.level] || 0;
+      if (rank > best) {
+        best = rank;
+        level = step.level;
+      }
+    });
+  });
+  return level;
+};
 
 export type LogPolicyType = 'keyword' | 'aggregate';
 
@@ -364,6 +540,7 @@ export const buildStrategyPayload = (
   }
 
   const groupBy = Array.isArray(values.group_by) ? values.group_by : [];
+  const conditions = storedConditions(options.conditions);
   params.alert_condition = {
     query: values.query || '',
     group_by: groupBy
@@ -372,8 +549,12 @@ export const buildStrategyPayload = (
   if (params.alert_type === 'aggregate') {
     params.alert_condition.rule = {
       mode: options.term || 'and',
-      conditions: options.conditions
+      conditions
     };
+    const derived = highestEnabledLevel(conditions);
+    if (derived) {
+      params.alert_level = derived;
+    }
   }
   if (typeof values.trigger_count === 'number') {
     const rule = params.alert_condition.rule;

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   aggregateConditionText,
+  thresholdLadderPieces,
   aggregateDetailRows,
   aggregateNoDataMessage,
   formatAggregateMetric,
@@ -54,6 +55,25 @@ describe('聚合命中区', () => {
     ]);
     expect(aggregateDetailRows({ samples: [], query_result: { count__msg: 1 } })).toEqual([{ count__msg: 1 }]);
     expect(aggregateDetailRows({ no_data: true })).toEqual([]);
+  });
+
+  it('阶梯阈值标出每一档是否命中，旧条件没有阶梯', () => {
+    expect(thresholdLadderPieces({ op: '>', threshold: 1 })).toBeNull();
+    expect(
+      thresholdLadderPieces({
+        op: '>',
+        threshold: 50,
+        thresholds: [
+          { level: 'warning', value: 10, matched: true },
+          { level: 'error', value: 50, matched: true },
+          { level: 'critical', value: 200, matched: false },
+        ],
+      }),
+    ).toEqual([
+      { level: 'warning', text: '> 10', hit: true },
+      { level: 'error', text: '> 50', hit: true },
+      { level: 'critical', text: '> 200', hit: false },
+    ]);
   });
 
   it('无数据文案带上一窗条数', () => {

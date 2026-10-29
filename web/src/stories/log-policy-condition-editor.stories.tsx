@@ -116,3 +116,35 @@ export const NarrowContainer: Story = {
 export const SingleWithoutDelete: Story = {
   render: () => <EditorDemo className="w-[820px]" initialData={freshCondition()} />,
 };
+
+/** 大于运算符下警告、错误、严重三档并排。 */
+export const ThresholdLadder: Story = {
+  render: () => (
+    <EditorDemo
+      className="w-[820px]"
+      initialData={[
+        {
+          func: 'count',
+          field: '_msg',
+          op: '>',
+          value: '10',
+          thresholds: [
+            { level: 'warning', value: '10' },
+            { level: 'error', value: '50' },
+            { level: 'critical', value: '200' },
+          ],
+        },
+      ]}
+    />
+  ),
+};
+
+/** 等于退化为一个阈值和级别选择。 */
+export const DegradedEquality: Story = {
+  render: () => (
+    <EditorDemo
+      className="w-[820px]"
+      initialData={[{ func: 'count', field: 'level', op: '=', value: 'error' }]}
+    />
+  ),
+};

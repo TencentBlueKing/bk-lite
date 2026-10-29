@@ -62,6 +62,8 @@ _TARGET_LABELS = {
     "offset_24h": "24 小时前",
     "offset_7d": "7 天前",
 }
+_LEVEL_LABELS = {"warning": "警告", "error": "错误", "critical": "严重"}
+_LEVEL_ORDER = {"warning": 1, "error": 2, "critical": 3}
 
 
 def _target_label(compare):
@@ -125,6 +127,9 @@ def format_condition_line(condition):
     else:
         body = _format_countish(headline)
     text = f"{label}：{body}"
+    clause = _threshold_clause(condition)
+    if clause:
+        text = f"{text} {clause}"
     compare = condition.get("compare") if isinstance(condition.get("compare"), dict) else {}
     kind = compare.get("kind") or "absolute"
     if kind in ("delta", "percent") and condition.get("baseline") is not None and condition.get("value") is not None:
@@ -137,6 +142,49 @@ def format_condition_line(condition):
     if func == "ratio" and condition.get("hit") is not None and condition.get("total") is not None:
         text += f"（{condition['hit']} / {condition['total']}）"
     return text
+
+
+def _threshold_clause(condition):
+    """阶梯条件的阈值文本。旧条件没有 thresholds，正文保持原样。"""
+    steps = condition.get("thresholds")
+    if not isinstance(steps, list) or not steps:
+        return ""
+    op = condition.get("op") or ""
+    level = condition.get("level")
+    threshold = condition.get("threshold")
+    if not level:
+        usable = [step for step in steps if isinstance(step, dict) and step.get("level") in _LEVEL_ORDER]
+        if not usable:
+            return ""
+        lightest = min(usable, key=lambda step: _LEVEL_ORDER[step["level"]])
+        level = lightest.get("level")
+        threshold = lightest.get("value")
+    label = _LEVEL_LABELS.get(level)
+    if not op or threshold is None or not label:
+        return ""
+    return f"{op} {_format_threshold_text(threshold)}（{label}）"
+
+
+def _format_threshold_text(value):
+    if isinstance(value, bool) or value is None:
+        return ""
+    if isinstance(value, float) and value.is_integer():
+        return str(int(value))
+    return str(value)
+
+
+def _ladder_level_line(aggregate_result):
+    if not isinstance(aggregate_result, dict):
+        return ""
+    conditions = aggregate_result.get("conditions")
+    if not isinstance(conditions, list):
+        return ""
+    if not any(isinstance(item, dict) and item.get("thresholds") for item in conditions):
+        return ""
+    label = _LEVEL_LABELS.get(aggregate_result.get("level"))
+    if not label:
+        return ""
+    return f"级别：{label}"
 
 
 def _condition_label(condition):
@@ -244,9 +292,12 @@ def format_aggregate_notice(event_obj, policy, raw_data, jump_query, *, base_url
     lines.extend(
         [
             f"告警内容：{event_obj.content}",
-            f"策略名称：{policy.name}",
         ]
     )
+    level_line = _ladder_level_line(aggregate_result)
+    if level_line:
+        lines.append(level_line)
+    lines.append(f"策略名称：{policy.name}")
     if not no_data:
         hit_line = format_hit_line(aggregate_result)
         if hit_line:
