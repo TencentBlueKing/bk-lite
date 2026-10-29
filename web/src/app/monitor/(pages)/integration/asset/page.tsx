@@ -410,6 +410,11 @@ const Asset = () => {
                       <PluginTooltipTrigger
                         ariaLabel={`${plugin.display_name || '--'}，${statusText}`}
                         color={statusInfo.color}
+                        closable={
+                          canUnbind &&
+                          canUnbindCollectTemplate(plugin, plugins)
+                        }
+                        onClose={() => confirmUnbindTemplate(record, plugin)}
                         onActivate={() =>
                           openTemplateDrawer(record, {
                             selectedConfigId: isAuto ? plugin.name : undefined,
@@ -420,21 +425,6 @@ const Asset = () => {
                       >
                         {plugin.display_name || '--'}
                       </PluginTooltipTrigger>
-                      {canUnbind &&
-                        canUnbindCollectTemplate(plugin, plugins) ? (
-                        <Button
-                          type="link"
-                          size="small"
-                          danger
-                          className="h-auto px-0 text-xs leading-none"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            confirmUnbindTemplate(record, plugin);
-                          }}
-                        >
-                          {t('monitor.integrations.unbindTemplate')}
-                        </Button>
-                        ) : null}
                       {plugin.need_update ? (
                         <Tooltip title={needUpdateHint}>
                           <StatusToneBadge

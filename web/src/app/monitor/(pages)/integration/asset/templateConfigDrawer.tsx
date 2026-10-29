@@ -481,20 +481,6 @@ const TemplateConfigDrawer = forwardRef<
                                     </Tag>
                                   </div>
                                 </div>
-                                {allowUnbind &&
-                                canUnbindCollectTemplate(plugin, plugins) ? (
-                                  <Button
-                                    type="link"
-                                    size="small"
-                                    danger
-                                    className="h-auto px-1 text-xs"
-                                    onClick={(event) =>
-                                      requestUnbind(event, plugin)
-                                    }
-                                  >
-                                    {t('monitor.integrations.unbindTemplate')}
-                                  </Button>
-                                  ) : null}
                                 <RightOutlined className="text-xs" />
                               </div>
                             );
@@ -535,14 +521,12 @@ const TemplateConfigDrawer = forwardRef<
                         : t('monitor.integrations.autoAccess')}
                     </Tag>
                     <Tag>{getPackVersionText(selectedPlugin)}</Tag>
-                    {!showLeftPanel &&
-                    allowUnbind &&
+                    {allowUnbind &&
                     canUnbindCollectTemplate(selectedPlugin, plugins) ? (
                       <Button
                         type="link"
-                        size="small"
                         danger
-                        className="h-auto px-0 text-xs"
+                        size="small"
                         onClick={(event) =>
                           requestUnbind(event, selectedPlugin)
                         }
