@@ -287,10 +287,19 @@ export interface TargetBinding {
   host_field?: string;
   ip?: string;
 }
+export interface ItsmBinding {
+  name: string;
+  from: 'field' | 'const';
+  value: unknown;
+}
 export interface ActionConfig {
+  connection?: string;
+  workflow_key?: string;
+  form_bindings?: ItsmBinding[];
+  close_alert_on_ticket_closed?: boolean;
   script_id?: number;
-  target_binding: TargetBinding;
-  param_bindings: Array<{ name: string; from: 'field' | 'const'; value: string; allow_adjust?: boolean }>;
+  target_binding?: TargetBinding;
+  param_bindings?: Array<{ name: string; from: 'field' | 'const'; value: string; allow_adjust?: boolean }>;
   timeout?: number;
 }
 export interface ActionRuleListItem {
@@ -301,7 +310,7 @@ export interface ActionRuleListItem {
   team: number[];
   trigger_events: string[];
   match_rules: Array<Array<{ key: string; operator: string; value: string | number | (string | number)[] }>>;
-  action_type: 'job' | 'itsm' | 'webhook';
+  action_type: 'job' | 'itsm';
   action_config: ActionConfig;
   updated_at: string;
 }
@@ -312,7 +321,7 @@ export interface ActionExecutionItem {
   alert_title: string | null;
   trigger_event: string;
   trigger_type: 'auto' | 'manual';
-  status: 'pending' | 'running' | 'success' | 'failed' | 'skipped' | 'config_error';
+  status: 'pending' | 'running' | 'success' | 'failed' | 'skipped' | 'config_error' | 'unknown';
   job_task_id: number | null;
   job_detail_url: string | null;
   result: Record<string, any>;

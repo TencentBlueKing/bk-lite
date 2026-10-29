@@ -2,6 +2,7 @@ import json
 import uuid
 from typing import Any, Dict, List, Optional
 
+from django.db import transaction
 from django.utils import timezone
 
 from apps.alerts.aggregation.batching import AGGREGATION_BATCH_SIZE
@@ -295,6 +296,7 @@ class AlertBuilder:
         return alert
 
     @staticmethod
+    @transaction.atomic
     def _create_new_alert(
         result: Dict[str, Any],
         strategy: AlarmStrategy,
@@ -362,6 +364,10 @@ class AlertBuilder:
         alert.aggregation_linked_new_events = added
 
         remember_snapshot(alert)
+
+        from apps.alerts.itsm.service import enqueue_creation
+
+        enqueue_creation(alert)
 
         from django.db import transaction
 

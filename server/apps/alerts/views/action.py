@@ -18,6 +18,8 @@ from apps.alerts.action.exceptions import ConfigError
 from apps.alerts.action.handlers.registry import get_handler
 from apps.alerts.action.overrides import validate_manual_param_overrides
 from apps.alerts.constants.constants import AlertStatus, LogAction, LogTargetType
+from apps.alerts.itsm.config import ItsmError
+from apps.alerts.itsm.service import retry_creation
 from apps.alerts.models.action import ActionExecution, ActionRule
 from apps.alerts.models.models import Alert
 from apps.alerts.serializers.action import ActionExecutionSerializer, ActionRuleSerializer
@@ -29,6 +31,7 @@ from apps.alerts.utils.permission_scope import (
     get_authorized_group_ids,
     get_current_team_from_request,
 )
+from apps.alerts.views.itsm import ItsmExecutionMixin, ItsmRuleMixin, error_response
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.logger import alert_logger as logger
 from apps.job_mgmt.utils.callback_signer import verify_callback_signature
@@ -105,7 +108,7 @@ class ActionCallbackView(APIView):
         return Response({"result": True})
 
 
-class ActionRuleViewSet(ModelViewSet):
+class ActionRuleViewSet(ItsmRuleMixin, ModelViewSet):
     """告警处理动作规则 CRUD 视图集。"""
 
     queryset = ActionRule.objects.all().order_by("-id")
@@ -187,7 +190,7 @@ class ActionRuleViewSet(ModelViewSet):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
-class ActionExecutionViewSet(viewsets.ReadOnlyModelViewSet):
+class ActionExecutionViewSet(ItsmExecutionMixin, viewsets.ReadOnlyModelViewSet):
     """告警执行记录只读视图集，支持手动触发。"""
 
     queryset = ActionExecution.objects.all().order_by("-created_at")
@@ -241,6 +244,16 @@ class ActionExecutionViewSet(viewsets.ReadOnlyModelViewSet):
 
         if not rule.is_active:
             return Response({"detail": alerts_message(request, "error.alert_or_rule_inaccessible")}, status=status.HTTP_400_BAD_REQUEST)
+
+        if rule.action_type == "itsm":
+            try:
+                execution, created = retry_creation(alert.pk, rule.pk, request.user.username, client_key, authorized_group_ids)
+            except ItsmError as exc:
+                return error_response(exc)
+            return Response(
+                {"execution_id": execution.pk, "status": execution.status, "deduplicated": not created},
+                status=202 if created else 200,
+            )
 
         if alert.status not in AlertStatus.ACTIVATE_STATUS:
             return Response({"detail": alerts_message(request, "error.alert_closed_no_action")}, status=status.HTTP_400_BAD_REQUEST)
