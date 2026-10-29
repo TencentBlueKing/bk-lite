@@ -4089,6 +4089,7 @@
         "redisCategoryTabFocus": "Key signals",
         "redisCategoryTabPerformance": "Cache",
         "redisCategoryTabMemory": "Memory",
+        "redisCategoryTabMemoryCache": "Memory and cache",
         "redisCategoryTabConnThroughput": "Connections & throughput",
         "redisCategoryTabReplication": "Replication · Sentinel",
         "redisCategoryTabCluster": "Cluster",

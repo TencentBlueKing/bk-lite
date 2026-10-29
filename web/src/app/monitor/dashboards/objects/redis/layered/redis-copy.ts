@@ -9,6 +9,7 @@ export const REDIS_CATEGORY_COPY = {
   tabFocus: [textId('redisCategoryTabFocus'), '重点关注'],
   tabPerformance: [textId('redisCategoryTabPerformance'), '缓存'],
   tabMemory: [textId('redisCategoryTabMemory'), '内存'],
+  tabMemoryCache: [textId('redisCategoryTabMemoryCache'), '内存与缓存'],
   tabConnThroughput: [textId('redisCategoryTabConnThroughput'), '连接与吞吐'],
   tabReplication: [textId('redisCategoryTabReplication'), '复制 · 哨兵'],
   tabCluster: [textId('redisCategoryTabCluster'), '集群'],

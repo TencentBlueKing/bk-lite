@@ -4089,6 +4089,7 @@
         "redisCategoryTabFocus": "重点关注",
         "redisCategoryTabPerformance": "缓存",
         "redisCategoryTabMemory": "内存",
+        "redisCategoryTabMemoryCache": "内存与缓存",
         "redisCategoryTabConnThroughput": "连接与吞吐",
         "redisCategoryTabReplication": "复制 · 哨兵",
         "redisCategoryTabCluster": "集群",

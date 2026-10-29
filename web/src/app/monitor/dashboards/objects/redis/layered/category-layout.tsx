@@ -22,16 +22,20 @@ import { REDIS_REPLICATION_METRIC_NAMES } from './overview-metrics';
 import { redisCategoryText, type RedisCategoryCopyKey } from './redis-copy';
 import { redisLatest, type RedisMetricMap } from './series';
 
-type RedisContentTab = 'overview' | RedisTopicTab | 'replication' | 'cluster';
+type RedisContentTab = 'overview' | 'memoryCache' | 'connThroughput' | 'replication' | 'cluster';
 
 const TABS: ReadonlyArray<{ key: RedisContentTab; copy: RedisCategoryCopyKey }> = [
   { key: 'overview', copy: 'tabOverview' },
-  { key: 'memory', copy: 'tabMemory' },
-  { key: 'cache', copy: 'tabPerformance' },
+  { key: 'memoryCache', copy: 'tabMemoryCache' },
   { key: 'connThroughput', copy: 'tabConnThroughput' },
   { key: 'replication', copy: 'tabReplication' },
   { key: 'cluster', copy: 'tabCluster' }
 ];
+
+/** 重点关注仍写内存/缓存两个跳转，都落到合并后的同一个 Tab。 */
+const topicTab = (next: RedisTopicTab): RedisContentTab => (
+  next === 'memory' || next === 'cache' ? 'memoryCache' : next
+);
 
 interface RedisCategoryLayoutProps {
   instanceId: React.Key;
@@ -204,14 +208,14 @@ export default function RedisCategoryLayout({
                 setAlertDrawerOpen(true);
                 setAlertRefreshKey((key) => key + 1);
               }}
-              onOpen={setTab}
+              onOpen={(next) => setTab(topicTab(next))}
             />
           ) : null}
-          {activeTab === 'memory' ? (
-            <MemoryPane metricMap={metricMap} pending={pendingMetricNames} />
-          ) : null}
-          {activeTab === 'cache' ? (
-            <CachePane metricMap={metricMap} pending={pendingMetricNames} />
+          {activeTab === 'memoryCache' ? (
+            <div data-redis-pane="memory-cache" className="contents">
+              <MemoryPane metricMap={metricMap} pending={pendingMetricNames} />
+              <CachePane metricMap={metricMap} pending={pendingMetricNames} />
+            </div>
           ) : null}
           {activeTab === 'connThroughput' ? (
             <ConnThroughputPane metricMap={metricMap} pending={pendingMetricNames} />
