@@ -213,8 +213,8 @@ export default function RedisCategoryLayout({
           ) : null}
           {activeTab === 'memoryCache' ? (
             <div data-redis-pane="memory-cache" className="contents">
-              <MemoryPane metricMap={metricMap} pending={pendingMetricNames} />
               <CachePane metricMap={metricMap} pending={pendingMetricNames} />
+              <MemoryPane metricMap={metricMap} pending={pendingMetricNames} />
             </div>
           ) : null}
           {activeTab === 'connThroughput' ? (

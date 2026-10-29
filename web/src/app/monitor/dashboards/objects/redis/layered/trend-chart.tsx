@@ -80,6 +80,9 @@ export default function RedisTrendChart({
       hintNode={hintNode}
       subtitle={spec.subtitle}
       unit={spec.unit}
+      valueBounds={spec.unit === 'percent' || spec.unit === 'percentunit'
+        ? { min: 0, max: 100 }
+        : undefined}
       loading={awaiting && plotted.length === 0}
       emptyText={text(spec.emptyKey ?? 'sampleEmpty')}
       keepLegend={multi}

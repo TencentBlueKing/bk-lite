@@ -50,12 +50,14 @@
   }
 }
 
-// 只留穿透率环。单列居中，不给已删的频率列留空档。
+// 只留穿透率环。卡面铺满半列并与命中率折线等高，环本身仍居中，不给频率列留空档。
 .ringCard.cacheHitRing {
   grid-template-columns: 176px;
   justify-content: center;
   justify-items: center;
+  align-content: center;
   gap: 0;
-  width: auto;
+  width: 100%;
+  height: 100%;
   padding-inline-end: 0;
 }

@@ -59,6 +59,11 @@ interface ThinTimeSeriesProps {
    * 实例趋势不要开。
    */
   numericAxis?: boolean;
+  /**
+   * 钉死数值轴，不让图表库按数据 nice 扩轴。
+   * 百分比图传 0–100，避免 94 被抬到 120。
+   */
+  valueBounds?: { min: number; max: number };
   /** 每条序列一根 Y 轴。进程 CPU 可超过 100%，与内存共轴时会把内存压扁。 */
   independentAxes?: boolean;
   /**
@@ -154,6 +159,14 @@ const SCALE_FAMILIES: ReadonlyArray<{
 
 /** 次/秒、字节/秒一类非负速率。百分比、计数、字节不走这条。 */
 export const isRateUnit = (unit: MetricUnit) => RATE_UNITS.has(unit);
+
+/** 百分比轴只留 0、中点、100。步长取整段一半，上限不会被 nice 抬过 max。 */
+export const fixedPercentAxis = (min = 0, max = 100) => ({
+  min,
+  max,
+  interval: (max - min) / 2,
+  scale: false as const
+});
 
 const tidyAxis = (value: number) => (
   Number.isFinite(value) ? Number(value.toPrecision(12)) : 0
@@ -351,6 +364,7 @@ export default function ThinTimeSeries({
   className,
   bare = false,
   numericAxis = false,
+  valueBounds,
   independentAxes = false,
   keepLegend = false,
   alertLevel,
@@ -443,14 +457,19 @@ export default function ThinTimeSeries({
     const useSparse = !flatAxis && (!focusAxis || rateAxis);
     const layoutOf = (samples: number[]) => (useSparse ? readableAxisBounds(samples, unit) : null);
     const labeledAxis = !flatAxis && !focusAxis;
+    const lockedAxis = valueBounds ? fixedPercentAxis(valueBounds.min, valueBounds.max) : null;
     const valueAxis = (samples: number[], color: string, showSplit: boolean) => {
-      const bounds = layoutOf(samples);
-      const peak = bounds ? Math.max(Math.abs(bounds.min), Math.abs(bounds.max)) : 0;
+      const bounds = lockedAxis ? null : layoutOf(samples);
+      const axisMin = lockedAxis?.min ?? bounds?.min ?? 0;
+      const axisMax = lockedAxis?.max ?? bounds?.max ?? 0;
+      const peak = Math.max(Math.abs(axisMin), Math.abs(axisMax));
       return {
         type: 'value' as const,
-        ...(bounds
-          ? { min: bounds.min, max: bounds.max, interval: bounds.interval }
-          : { splitNumber: 3 }),
+        ...(lockedAxis
+          ? lockedAxis
+          : bounds
+            ? { min: bounds.min, max: bounds.max, interval: bounds.interval }
+            : { splitNumber: 3 }),
         axisLabel: {
           fontSize: 10,
           margin: focusAxis?.labelMargin ?? 8,
@@ -582,7 +601,7 @@ export default function ThinTimeSeries({
         };
       })
     };
-  }, [axisColor, chartWindow, hideFlatAxisLabels, keepLegend, keys, legendKey, mutedColor, numericAxis, panelColor, plotted, seriesColors, splitAxes, suspend, textColor, unit]);
+  }, [axisColor, chartWindow, hideFlatAxisLabels, keepLegend, keys, legendKey, mutedColor, numericAxis, panelColor, plotted, seriesColors, splitAxes, suspend, textColor, unit, valueBounds?.min, valueBounds?.max]);
   const { containerRef } = useECharts(option);
   const drawnSeriesCount = keys.filter((key) => plotted.some((point) => {
     const value = point[key];

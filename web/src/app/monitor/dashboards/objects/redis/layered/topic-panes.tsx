@@ -104,6 +104,8 @@ const netTrend: RedisTrendSpec = {
 /** 连接三卡与吞吐两卡跟主机图格同宽。阻塞不再单独占满一行。 */
 const connectionGrid = `${chart.chartGrid3} items-stretch [&>*]:min-w-0 [&>*]:h-full [&_section]:h-full`;
 const throughputGrid = `${chart.chartGrid2} items-stretch [&>*]:min-w-0 [&>*]:h-full [&_section]:h-full`;
+/** 百分比折线钉 0–100，图表库不能再把 94 抬成 120。 */
+const PERCENT_VALUE_BOUNDS = { min: 0, max: 100 };
 
 /**
  * 环图壳仍写 panelTitle 槽。CSS Module 导出不是可枚举普通对象，展开会丢掉
@@ -183,6 +185,7 @@ function Spark({
     <ThinTimeSeries
       bare
       numericAxis
+      valueBounds={unit === 'percent' || unit === 'percentunit' ? PERCENT_VALUE_BOUNDS : undefined}
       className={[proChromeClass.focusChart, fill ? chart.focusChartFill : ''].filter(Boolean).join(' ')}
       title=""
       unit={unit}
@@ -477,33 +480,35 @@ export function MemoryPane({
   return (
     <Pane pane="memory">
       <ProSection title={text('sectionCapacity')}>
-        <div className="flex min-w-0 flex-col gap-3">
-          <div className={featureGrid}>
-            <CapacityCard metricMap={metricMap} pending={pending} />
-            <BigNumber
-              feature="frag"
-              title={text('focusFrag')}
-              metric="redis_mem_fragmentation_ratio"
-              unit="none"
-              unitLabel={text('fragTimes')}
-              color={fragColor}
-              extra={<FragBands active={band} />}
-              hint={(
-                <RedisHint
-                  kind="redis-frag"
-                  groups={[
-                    { lines: [text('fragIdeal')] },
-                    { title: text('fragLow'), lines: [text('fragIdealLow')] },
-                    { title: text('fragOk'), lines: [text('fragIdealMid')] },
-                    { title: text('fragHigh'), lines: [text('fragIdealHigh')] }
-                  ]}
-                />
-              )}
-              metricMap={metricMap}
-              pending={pending}
-            />
-          </div>
-          <div data-redis-feature="memory-pressure" data-redis-limit={limitOn ? 'on' : 'off'}>
+        <div className={featureGrid}>
+          <CapacityCard metricMap={metricMap} pending={pending} />
+          <BigNumber
+            feature="frag"
+            title={text('focusFrag')}
+            metric="redis_mem_fragmentation_ratio"
+            unit="none"
+            unitLabel={text('fragTimes')}
+            color={fragColor}
+            extra={<FragBands active={band} />}
+            hint={(
+              <RedisHint
+                kind="redis-frag"
+                groups={[
+                  { lines: [text('fragIdeal')] },
+                  { title: text('fragLow'), lines: [text('fragIdealLow')] },
+                  { title: text('fragOk'), lines: [text('fragIdealMid')] },
+                  { title: text('fragHigh'), lines: [text('fragIdealHigh')] }
+                ]}
+              />
+            )}
+            metricMap={metricMap}
+            pending={pending}
+          />
+        </div>
+      </ProSection>
+      <ProSection title={text('sectionTrends')}>
+        <div className={connectionGrid} data-redis-trends="memory-cache">
+          <div className="min-w-0 h-full" data-redis-feature="memory-pressure" data-redis-limit={limitOn ? 'on' : 'off'}>
             <RedisTrendChart
               spec={memoryTrend}
               metricMap={metricMap}
@@ -511,11 +516,12 @@ export function MemoryPane({
               hint={<RedisHint kind="redis-memory-pressure" lines={memoryLines} />}
             />
           </div>
-        </div>
-      </ProSection>
-      <ProSection title={text('sectionLifecycle')}>
-        <div data-redis-feature="lifecycle">
-          <RedisTrendChart spec={lifecycleTrend} metricMap={metricMap} pending={pending} />
+          <div className="min-w-0 h-full" data-redis-feature="lifecycle">
+            <RedisTrendChart spec={lifecycleTrend} metricMap={metricMap} pending={pending} />
+          </div>
+          <div className="min-w-0 h-full" data-redis-trend="hit">
+            <RedisTrendChart spec={hitTrend} metricMap={metricMap} pending={pending} />
+          </div>
         </div>
       </ProSection>
     </Pane>
@@ -556,17 +562,17 @@ export function CachePane({
   return (
     <Pane pane="cache">
       <ProSection title={text('sectionCache')}>
-        <div className="grid min-w-0 grid-cols-1 items-stretch gap-3 lg:grid-cols-[auto_minmax(0,1fr)]">
-          <div className="flex h-full min-w-0 flex-col gap-3 lg:w-max lg:max-w-full">
+        <div className={throughputGrid}>
+          <div className="min-w-0 h-full">
             {loading ? (
-              <section className={`${styles.panel} h-full`} data-redis-feature="hit-ring">
+              <section className={`${styles.panel} h-full w-full`} data-redis-feature="hit-ring">
                 <FeatureHead title={text('penetration')} />
                 <ProDashLoading />
               </section>
             ) : (
-              <div data-redis-feature="hit-ring" className="min-w-0">
+              <div data-redis-feature="hit-ring" className="h-full min-w-0">
                 <RingChartPanel
-                  className="h-full"
+                  className="h-full w-full"
                   title={text('penetration')}
                   data={[
                     { name: text('seriesHit'), value: Math.max(hits.value ?? 0, 0), color: REDIS_PALETTE.emerald },
@@ -583,7 +589,7 @@ export function CachePane({
               </div>
             )}
           </div>
-          <section className={`${styles.panel} h-full`} data-redis-feature="hit-rate">
+          <section className={`${styles.panel} h-full min-w-0`} data-redis-feature="hit-rate">
             <FeatureHead
               title={text('cardHitRate')}
               hint={(
@@ -611,9 +617,6 @@ export function CachePane({
             )}
           </section>
         </div>
-      </ProSection>
-      <ProSection title={text('sectionTrends')}>
-        <RedisTrendChart spec={hitTrend} metricMap={metricMap} pending={pending} />
       </ProSection>
     </Pane>
   );

@@ -93,7 +93,8 @@ export const scaleHitRateChart = (data: ChartData[]): ChartData[] => data.map((p
     if (!/^value\d+$/.test(key)) return;
     const value = next[key];
     if (typeof value !== 'number' || !Number.isFinite(value)) return;
-    next[key] = value <= 1.5 ? value * 100 : value;
+    const scaled = value <= 1.5 ? value * 100 : value;
+    next[key] = Math.min(100, Math.max(0, scaled));
   });
   return next;
 });
