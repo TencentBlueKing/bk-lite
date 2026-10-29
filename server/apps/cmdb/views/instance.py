@@ -309,16 +309,29 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
 
         case_sensitive = request.data.get("case_sensitive", True)
         permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(request, model_id)
-        instance_list, count = InstanceManage.instance_list(
-            model_id=model_id,
-            params=query_list,
-            page=page,
-            page_size=page_size,
-            order=request.data.get("order", ""),
-            permission_map=permissions_map,
-            creator=request.user.username,
-            case_sensitive=case_sensitive,
-        )
+        advanced_filter = request.data.get("advanced_filter") or None
+        try:
+            instance_list, count = InstanceManage.instance_list(
+                model_id=model_id,
+                params=query_list,
+                page=page,
+                page_size=page_size,
+                order=request.data.get("order", ""),
+                permission_map=permissions_map,
+                creator=request.user.username,
+                case_sensitive=case_sensitive,
+                advanced_filter=advanced_filter,
+                permission_lookup=lambda mid: CmdbRulesFormatUtil.format_user_groups_permissions(request, mid),
+            )
+        except Exception as exc:
+            from apps.cmdb.graph.advanced_filter import AdvancedFilterError, AdvancedFilterTimeout
+
+            if isinstance(exc, AdvancedFilterTimeout):
+                return WebUtils.response_error(str(exc), status_code=status.HTTP_400_BAD_REQUEST)
+            if isinstance(exc, AdvancedFilterError):
+                message = str(exc) if exc.index is None else f"第{exc.index}个条件：{exc}"
+                return WebUtils.response_error(message, status_code=status.HTTP_400_BAD_REQUEST)
+            raise
         self.add_instance_permission(
             instances=instance_list,
             permission_instances_map=permissions_map,
@@ -1196,15 +1209,26 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
         export_ids = [item["_id"] for item in selected_instances]
 
         permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(request, model_id)
-        stream = InstanceManage.inst_export(
-            model_id=model_id,
-            ids=export_ids,
-            permissions_map=permissions_map,
-            attr_list=attr_list,
-            association_list=association_list,
-            creator=request.user.username,
-            file_backed=True,
-        )
+        try:
+            stream = InstanceManage.inst_export(
+                model_id=model_id,
+                ids=export_ids,
+                permissions_map=permissions_map,
+                attr_list=attr_list,
+                association_list=association_list,
+                extra_query=request.data.get("query_list") or [],
+                advanced_filter=request.data.get("advanced_filter") or None,
+                permission_lookup=lambda mid: CmdbRulesFormatUtil.format_user_groups_permissions(request, mid),
+                creator=request.user.username,
+                file_backed=True,
+            )
+        except Exception as exc:
+            from apps.cmdb.graph.advanced_filter import AdvancedFilterError, AdvancedFilterTimeout
+
+            if isinstance(exc, (AdvancedFilterError, AdvancedFilterTimeout)):
+                message = str(exc) if not isinstance(exc, AdvancedFilterError) or exc.index is None else f"第{exc.index}个条件：{exc}"
+                return WebUtils.response_error(message, status_code=status.HTTP_400_BAD_REQUEST)
+            raise
         response = FileResponse(stream, content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
         response["Content-Disposition"] = f"attachment;filename={f'{model_id}_export.xlsx'}"
         if isinstance(getattr(request, "_request", request), ASGIRequest):

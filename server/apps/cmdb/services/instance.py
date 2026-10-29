@@ -1012,6 +1012,8 @@ class InstanceManage(object):
         permission_map: dict,
         creator: str = None,
         case_sensitive: bool = True,
+        advanced_filter: dict = None,
+        permission_lookup=None,
     ):
         """实例列表"""
 
@@ -1024,6 +1026,22 @@ class InstanceManage(object):
         if order and order.startswith("-"):
             order = order[1:]
             order_type = "DESC"
+
+        if advanced_filter:
+            from apps.cmdb.services.advanced_instance_query import run_advanced_instance_query
+
+            return run_advanced_instance_query(
+                model_id=model_id,
+                params=params,
+                advanced_filter=advanced_filter,
+                permission_map=permission_map,
+                creator=creator,
+                permission_lookup=permission_lookup,
+                page=_page,
+                order=order,
+                order_type=order_type,
+                case_sensitive=case_sensitive,
+            )
 
         with GraphClient() as ag:
             query = dict(
@@ -2649,6 +2667,9 @@ class InstanceManage(object):
         creator: str = "",
         attr_list: list = [],
         association_list: list = [],
+        extra_query: list = None,
+        advanced_filter: dict = None,
+        permission_lookup=None,
         *,
         file_backed: bool = False,
         row_limit=None,
@@ -2663,12 +2684,13 @@ class InstanceManage(object):
         format_permission_dict = InstanceManage._build_format_permission_dict(permissions_map, creator)
         metadata_finished = perf_counter()
         if ids:
+            advanced_filter = None
             query_list = [
                 {"field": "id", "type": "id[]", "value": ids},
                 {"field": "model_id", "type": "str=", "value": model_id},
             ]
         else:
-            query_list = [{"field": "model_id", "type": "str=", "value": model_id}]
+            query_list = [{"field": "model_id", "type": "str=", "value": model_id}, *(extra_query or [])]
 
         association = [item for item in association if item["model_asst_id"] in association_list]
         model_name_map = {item[f"{side}_model_id"]: item[f"{side}_model_name"] for item in association for side in ("src", "dst")}
@@ -2694,16 +2716,33 @@ class InstanceManage(object):
                 params = list(query_list)
                 if cursor is not None:
                     params.append({"field": "inst_uuid", "type": "str>", "value": cursor})
-                with GraphClient() as ag:
-                    batch, _ = ag.query_entity(
-                        label=INSTANCE,
+                if advanced_filter:
+                    from apps.cmdb.services.advanced_instance_query import run_advanced_instance_query
+
+                    batch, _ = run_advanced_instance_query(
+                        model_id=model_id,
                         params=params,
-                        format_permission_dict=format_permission_dict,
+                        advanced_filter=advanced_filter,
+                        permission_map=permissions_map,
+                        creator=creator,
+                        permission_lookup=permission_lookup,
                         page={"skip": 0, "limit": EXPORT_BATCH_SIZE},
                         order="inst_uuid",
-                        include_count=False,
+                        order_type="ASC",
                         fields=fields,
+                        include_count=False,
                     )
+                else:
+                    with GraphClient() as ag:
+                        batch, _ = ag.query_entity(
+                            label=INSTANCE,
+                            params=params,
+                            format_permission_dict=format_permission_dict,
+                            page={"skip": 0, "limit": EXPORT_BATCH_SIZE},
+                            order="inst_uuid",
+                            include_count=False,
+                            fields=fields,
+                        )
                 instance_seconds += perf_counter() - query_started
                 if not batch:
                     break

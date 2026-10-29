@@ -21,7 +21,14 @@ from apps.cmdb.constants.field_constraints import (
 )
 from apps.cmdb.display_field import ExcludeFieldsCache
 from apps.cmdb.graph.falkordb_format import FormatDBResult
-from apps.cmdb.graph.format_type import FORMAT_TYPE, FORMAT_TYPE_PARAMS, ParameterCollector, attr_values_equal, coerce_cloud_id_properties
+from apps.cmdb.graph.format_type import (
+    FORMAT_TYPE,
+    FORMAT_TYPE_PARAMS,
+    ParameterCollector,
+    apply_node_alias,
+    attr_values_equal,
+    coerce_cloud_id_properties,
+)
 from apps.cmdb.graph.validators import CQLValidator
 from apps.cmdb.services.instance_identity import (
     EDGE_DST_UUID_FIELD,
@@ -663,6 +670,7 @@ class FalkorDBClient:
         param_type: str = "AND",
         param_collector: ParameterCollector = None,
         case_sensitive: bool = True,
+        alias: str = "n",
     ):
         """
         查询参数格式化（参数化版本）
@@ -708,6 +716,7 @@ class FalkorDBClient:
 
         params_str = f" {param_type} ".join(params_conditions)
         final_str = f"({params_str})" if params_str else ""
+        final_str = apply_node_alias(final_str, alias)
 
         return final_str, collector.get_params() if self.ENABLE_PARAMETERIZATION else {}
 
@@ -852,6 +861,40 @@ class FalkorDBClient:
             sql_str += f" SKIP {page['skip']} LIMIT {page['limit']}"
 
         objs = self._execute_query(sql_str, params=query_params if self.ENABLE_PARAMETERIZATION else None)
+        if fields is not None:
+            return [coerce_cloud_id_properties(row) for row in FormatDBResult(objs).to_list_of_lists()], count
+        return self.entity_to_list(objs), count
+
+    def query_compiled_entities(
+        self,
+        match,
+        params,
+        page=None,
+        order=None,
+        order_type="ASC",
+        fields=None,
+        include_count=True,
+    ):
+        from apps.cmdb.graph.advanced_filter import ADVANCED_FILTER_TIMEOUT_MS, AdvancedFilterTimeout, data_and_count_statements
+        from apps.cmdb.graph.export_query import entity_projection
+
+        validated_order = CQLValidator.validate_field(order) if order else None
+        validated_order_type = CQLValidator.validate_order_type(order_type)
+        projection = "n" if fields is None else entity_projection(fields)
+        data_sql, count_sql = data_and_count_statements(match, projection, validated_order, validated_order_type, page)
+        try:
+            count = None
+            if page and include_count:
+                counted = self._execute_query(count_sql, params=params, timeout=ADVANCED_FILTER_TIMEOUT_MS)
+                rows = FormatDBResult(counted).to_list_of_lists()
+                count = rows[0] if rows else 0
+            objs = self._execute_query(data_sql, params=params, timeout=ADVANCED_FILTER_TIMEOUT_MS)
+        except AdvancedFilterTimeout:
+            raise
+        except Exception as exc:
+            if "timeout" in str(exc).lower():
+                raise AdvancedFilterTimeout("关联筛选查询超时，请缩小条件范围") from exc
+            raise
         if fields is not None:
             return [coerce_cloud_id_properties(row) for row in FormatDBResult(objs).to_list_of_lists()], count
         return self.entity_to_list(objs), count

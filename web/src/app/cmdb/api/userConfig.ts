@@ -72,10 +72,16 @@ export interface SavedFilterCondition {
   end?: string;
 }
 
+export interface AdvancedFilterValue {
+  logic: 'AND' | 'OR';
+  conditions: Array<SavedFilterCondition & { path: string[] }>;
+}
+
 export interface SavedFilterItem {
   id: string;
   name: string;
   filters: SavedFilterCondition[];
+  advanced_filter?: AdvancedFilterValue | null;
 }
 
 export interface SavedFiltersConfigValue {

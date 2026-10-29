@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { SavedFilterItem } from '@/app/cmdb/api/userConfig';
+import type { AdvancedFilterValue, SavedFilterItem } from '@/app/cmdb/api/userConfig';
 
 export interface FilterItem {
   field: string;
@@ -30,6 +30,7 @@ interface CollectTaskOption {
 
 interface AssetDataStore {
   query_list: FilterItem[];
+  advanced_filter: AdvancedFilterValue | null;
   searchAttr: string;
   case_sensitive: boolean;
   cloud_list: { proxy_id: string; proxy_name: string }[];
@@ -55,11 +56,13 @@ interface AssetDataStore {
   updateUserConfig: (key: string, value: unknown) => void;
   getSavedFilters: (modelId: string) => SavedFilterItem[];
   applySavedFilter: (filter: SavedFilter) => FilterItem[];
+  setAdvancedFilter: (filter: AdvancedFilterValue | null) => void;
   setNeedRefresh: (value: boolean) => void;
 }
 
 const useAssetDataStore = create<AssetDataStore>((set, get) => ({
   query_list: [],
+  advanced_filter: null,
   searchAttr: "inst_name",
   case_sensitive: false,
   cloud_list: [],
@@ -130,8 +133,15 @@ const useAssetDataStore = create<AssetDataStore>((set, get) => ({
   },
 
   applySavedFilter: (filter: SavedFilter) => {
-    set({ query_list: filter.filters as FilterItem[] });
+    set({
+      query_list: filter.filters as FilterItem[],
+      advanced_filter: filter.advanced_filter ?? null,
+    });
     return filter.filters as FilterItem[];
+  },
+
+  setAdvancedFilter: (filter: AdvancedFilterValue | null) => {
+    set({ advanced_filter: filter });
   },
 
   setNeedRefresh: (value: boolean) => {
