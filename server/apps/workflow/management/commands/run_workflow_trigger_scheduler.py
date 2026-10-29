@@ -2,6 +2,7 @@ import time
 
 from django.core.management.base import BaseCommand
 
+from apps.workflow.services.completion_outbox import dispatch_pending_async_callbacks
 from apps.workflow.services.executions import sync_active_executions
 from apps.workflow.services.interactions import expire_due_interactions, retry_pending_interaction_deliveries
 from apps.workflow.services.triggers import run_due_cron_triggers
@@ -21,6 +22,7 @@ class Command(BaseCommand):
             timeout_summary = expire_due_interactions()
             delivery_summary = retry_pending_interaction_deliveries()
             sync_summary = sync_active_executions()
+            callback_summary = dispatch_pending_async_callbacks()
             if any(summary.values()):
                 self.stdout.write(f"cron triggers: succeeded={summary['succeeded']} skipped={summary['skipped']} failed={summary['failed']}")
             if any(timeout_summary.values()):
@@ -29,6 +31,13 @@ class Command(BaseCommand):
                 self.stdout.write(f"interaction delivery: delivered={delivery_summary['delivered']} failed={delivery_summary['failed']}")
             if any(sync_summary.values()):
                 self.stdout.write(f"execution sync: synchronized={sync_summary['synchronized']} failed={sync_summary['failed']}")
+            if any(callback_summary.values()):
+                self.stdout.write(
+                    "async callback: "
+                    f"reconciled={callback_summary['reconciled']} "
+                    f"delivered={callback_summary['delivered']} "
+                    f"failed={callback_summary['failed']}"
+                )
             if options["once"]:
                 return
             time.sleep(interval)

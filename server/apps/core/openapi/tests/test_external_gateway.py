@@ -36,9 +36,7 @@ def external_env(monkeypatch):
 
 @pytest.fixture
 def registered_itsm(external_env, monkeypatch):
-    monkeypatch.setattr(
-        "apps.core.openapi.renderer.fetch_entries", lambda: {"itsm": dict(SAMPLE_ENTRY)}
-    )
+    monkeypatch.setattr("apps.core.openapi.renderer.fetch_entries", lambda: {"itsm": dict(SAMPLE_ENTRY)})
     renderer.refresh_snapshot()
 
 
@@ -62,12 +60,7 @@ def test_provider_returns_native_traefik_config(client, registered_itsm):
     assert resp.status_code == 200
     config = resp.json()
     assert "openapi-v1-itsm" in config["http"]["routers"]
-    assert (
-        config["http"]["middlewares"]["openapi-itsm-inject"]["headers"][
-            "customRequestHeaders"
-        ]["X-BK-Gateway-Auth"]
-        == "s3cret"
-    )
+    assert config["http"]["middlewares"]["openapi-itsm-inject"]["headers"]["customRequestHeaders"]["X-BK-Gateway-Auth"] == "s3cret"
 
 
 def test_provider_falls_back_to_snapshot_when_kv_down(client, registered_itsm, monkeypatch):
@@ -104,9 +97,7 @@ def test_forward_auth_missing_forwarded_uri_404(client, registered_itsm):
     assert resp.status_code == 404
 
 
-def test_forward_auth_empty_required_roles_allows_any_authenticated(
-    client, registered_itsm
-):
+def test_forward_auth_empty_required_roles_allows_any_authenticated(client, registered_itsm):
     """required_roles: [] 语义冻结：放行任意已认证身份。"""
     _, token = create_api_tenant(9)
     resp = client.get(
@@ -119,13 +110,9 @@ def test_forward_auth_empty_required_roles_allows_any_authenticated(
     assert resp["X-BK-User"].endswith("@domain.com")
 
 
-def test_forward_auth_required_roles_rejects_without_role(
-    client, external_env, monkeypatch
-):
+def test_forward_auth_required_roles_rejects_without_role(client, external_env, monkeypatch):
     entry = dict(SAMPLE_ENTRY, required_roles=["itsm--operator"])
-    monkeypatch.setattr(
-        "apps.core.openapi.renderer.fetch_entries", lambda: {"itsm": entry}
-    )
+    monkeypatch.setattr("apps.core.openapi.renderer.fetch_entries", lambda: {"itsm": entry})
     renderer.refresh_snapshot()
 
     _, token = create_api_tenant(9)
@@ -140,11 +127,7 @@ def test_forward_auth_required_roles_rejects_without_role(
 
 def test_forward_auth_system_token_rejected_before_roles(client, registered_itsm):
     """系统 Token 在 required_roles 评估前拒绝；空角色列表对 api_token 仍放行。"""
-    from apps.core.openapi.tests.test_system_token_auth import (
-        _acting,
-        _create_acting_user,
-        _create_system_token,
-    )
+    from apps.core.openapi.tests.test_system_token_auth import _acting, _create_acting_user, _create_system_token
 
     token = _create_system_token()
     user = _create_acting_user(9)
@@ -171,9 +154,7 @@ def test_forward_auth_on_behalf_of_echoed_for_api_token(client, registered_itsm)
 
 
 def _set_personal_scope(user, team_id, scope):
-    UserAPISecret.objects.filter(
-        username=user.username, domain=user.domain, team=team_id
-    ).update(scope=scope)
+    UserAPISecret.objects.filter(username=user.username, domain=user.domain, team=team_id).update(scope=scope)
 
 
 def test_forward_auth_personal_allowlist_blocks_unlisted_service(client, registered_itsm):
@@ -210,6 +191,42 @@ def test_forward_auth_personal_allowlist_allows_listed_service(client, registere
 
 
 # ---------- _me 合并外部 service ----------
+
+
+def test_forward_auth_callback_secret_allows_callback_path(client, external_env, monkeypatch):
+    entry = dict(
+        SAMPLE_ENTRY,
+        paths=["/openapi/v1/action_components/callback/"],
+        callback_paths=["/openapi/v1/action_components/callback/"],
+    )
+    monkeypatch.setenv("OPENAPI_CALLBACK_SECRET", "cb-secret")
+    monkeypatch.setattr("apps.core.openapi.renderer.fetch_entries", lambda: {"itsm": entry})
+    renderer.refresh_snapshot()
+
+    resp = client.get(
+        AUTH_URL,
+        HTTP_X_FORWARDED_URI="/openapi/v1/itsm/openapi/v1/action_components/callback/",
+        HTTP_X_BKLITE_CALLBACK_AUTH="cb-secret",
+        HTTP_X_BKLITE_ACTING_USER="admin@domain.com",
+        HTTP_X_BKLITE_ACTING_TEAM="1",
+    )
+    assert resp.status_code == 200, resp.json()
+    assert resp["X-BK-User"] == "admin@domain.com"
+    assert resp["X-BK-Team"] == "1"
+
+
+def test_forward_auth_callback_secret_rejects_non_callback_path(client, external_env, monkeypatch):
+    entry = dict(SAMPLE_ENTRY, callback_paths=["/openapi/v1/action_components/callback/"])
+    monkeypatch.setenv("OPENAPI_CALLBACK_SECRET", "cb-secret")
+    monkeypatch.setattr("apps.core.openapi.renderer.fetch_entries", lambda: {"itsm": entry})
+    renderer.refresh_snapshot()
+
+    resp = client.get(
+        AUTH_URL,
+        HTTP_X_FORWARDED_URI="/openapi/v1/itsm/tickets/create",
+        HTTP_X_BKLITE_CALLBACK_AUTH="cb-secret",
+    )
+    assert resp.status_code == 401
 
 
 def test_me_includes_external_services(client, registered_itsm):

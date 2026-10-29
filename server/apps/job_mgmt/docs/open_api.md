@@ -11,9 +11,11 @@
 | 查询目标列表 v2 | OpenAPI `POST /openapi/v1/job-mgmt/targets-v2` | Authorization Bearer | 同步，有上界键集分页 |
 | 作业列表 | NATS `bklite.job_list` | 无 | 同步，返回脚本库与 Playbook 及参数定义 |
 | 作业列表 | REST `GET /api/v1/job_mgmt/api/open/job_list` | Api-Authorization | 同步，执行前获取作业背景信息 |
+| 脚本库列表（推荐） | OpenAPI `POST /openapi/v1/job-mgmt/scripts` | Authorization Bearer | 同步，分页返回当前组织脚本库（不含内容） |
 | 脚本执行 | NATS `bklite.job_script_execute` | 无 | 异步，返回 task_id |
 | 脚本执行 | REST `POST /api/v1/job_mgmt/api/open/script_execute` | Api-Authorization | 异步，返回 task_id |
-| 脚本执行（推荐） | OpenAPI `POST /openapi/v1/job-mgmt/script-execute` | Authorization Bearer | 异步，团队由 Secret 绑定 |
+| 脚本执行（推荐） | OpenAPI `POST /openapi/v1/job-mgmt/script-execute` | Authorization Bearer | 异步，团队由 Secret 绑定；可传 `script_id` |
+| 脚本执行（异步回调） | OpenAPI `POST /openapi/v1/job-mgmt/script-execute-async` | Authorization Bearer | 异步提交，完成后经网关回调；可传 `script_id` |
 | 批量查询状态 | REST `POST /api/v1/job_mgmt/api/open/job_status` | Api-Authorization | 同步，按 task_ids 查询状态 |
 | 批量查询状态（推荐） | OpenAPI `POST /openapi/v1/job-mgmt/job-status` | Authorization Bearer | 同步，跨组织按不存在返回 |
 | 查询作业详情 | REST `GET /api/v1/job_mgmt/api/open/job_detail/{task_id}` | Api-Authorization | 同步，返回执行详情与状态 |
@@ -133,11 +135,63 @@ Query：
 }
 ```
 
+### 脚本库列表（OpenAPI，供 ITSM 等第三方下拉）
+
+**OpenAPI**: `POST /openapi/v1/job-mgmt/scripts`
+
+返回当前授权组织的脚本库作业（不含脚本内容）。`id` 为字符串，执行时作为 `script_id` 回传。组织口径：API 令牌绑定组织精确匹配，不级联子组织。
+
+Request:
+
+```json
+{
+  "name": "",
+  "page": 1,
+  "page_size": 20
+}
+```
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| name | string | 否 | 按名称模糊搜索 |
+| page | int | 否 | 页码，默认 1 |
+| page_size | int | 否 | 每页数量，默认 20，最大 100（越限钳制） |
+
+成功 `data`：
+
+```json
+{
+  "count": 3,
+  "items": [
+    {
+      "id": "1",
+      "name": "打印测试",
+      "description": "ITSM 联调：打印固定文本",
+      "script_type": "shell",
+      "timeout": 60,
+      "is_built_in": false
+    }
+  ]
+}
+```
+
+ITSM 动作选项路径：网关成功响应是 `{result, data}` 信封，下拉 `output_template.arr` 必须为 `data.items`，`key=id`，`name=name`。
+
 ### 脚本执行
 
 **REST**: `POST /api/v1/job_mgmt/api/open/script_execute`
 
 请求字段见下方 NATS `job_script_execute`。成功返回 `{"task_id": 123}`。
+
+**OpenAPI**: `POST /openapi/v1/job-mgmt/script-execute`  
+**OpenAPI 异步回调**: `POST /openapi/v1/job-mgmt/script-execute-async`
+
+两种互斥入口：
+
+- 内联：`name` + `script_type` + `script_content`
+- 脚本库：`script_id`（服务端按授权组织解析内容；调用方传入的脚本正文不生效）
+
+异步回调接口额外需要网关注入的 `callback_context`；ITSM `BKLITE_GATEWAY` 在 `is_callback=true` 时自动填充。成功首次受理返回 `{"accepted": true, "execution_id": "<task_id>"}`。
 
 ### 批量查询作业状态
 
