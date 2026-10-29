@@ -2,7 +2,7 @@
 
 import { useMemo } from 'react';
 import type { ReactNode } from 'react';
-import { GrayTabEmptyState, ProDashLoading, ProSection } from '../../host/layered/pro-chrome';
+import { GrayTabEmptyState, ProDashLoading, ProInfoHint, ProSection } from '../../host/layered/pro-chrome';
 import chart from '../../host/layered/layered.module.scss';
 import { useDashboardText } from '../../../shared/utils/content-i18n';
 import type { MetricUnit } from '../../../shared/types';
@@ -21,9 +21,8 @@ import { redisCategoryText, type RedisCategoryCopyKey } from './redis-copy';
 import { redisDisplay, redisLatest, type RedisMetricMap } from './series';
 import RedisTrendChart, { type RedisTrendSpec } from './trend-chart';
 
-const featureGrid = 'grid min-w-0 grid-cols-1 items-stretch gap-3 lg:grid-cols-2';
-const hintClass = 'm-0 text-[12px] leading-5 text-[var(--color-text-3)]';
-const heroValueClass = 'flex items-baseline gap-2 text-[32px] font-bold leading-none tracking-tight tabular-nums sm:text-[40px]';
+/** 顶卡按内容收宽，不把两张 KPI 拉成各占半行的空盒。 */
+const compactRow = styles.compactCards;
 
 const BACKLOG_NAMES = [
   'redis_repl_backlog_active',
@@ -42,15 +41,55 @@ function useRedisText() {
   return (key: RedisCategoryCopyKey) => redisCategoryText(t, key);
 }
 
-function FeatureHead({ title }: { title: string }) {
+function FeatureHead({
+  title,
+  hint,
+  lines,
+  kind
+}: {
+  title: string;
+  hint?: string;
+  lines?: readonly string[];
+  kind?: string;
+}) {
+  const tipLines = lines?.length ? lines : hint ? [hint] : [];
+  const tip = tipLines.length ? (
+    <ProInfoHint
+      kind={kind || 'redis-arch'}
+      label={tipLines.join(' ')}
+      text={tipLines.length === 1 ? tipLines[0] : undefined}
+      content={tipLines.length > 1 ? (
+        <div className="max-w-[380px] text-[13px] font-normal leading-[1.55] text-[var(--color-text-2)]">
+          {tipLines.map((line) => (
+            <p key={line} className="m-0 [&+&]:mt-2">{line}</p>
+          ))}
+        </div>
+      ) : undefined}
+    />
+  ) : null;
   return (
     <div className={chart.chartHead}>
       <div className={chart.chartTitleGroup}>
         <div className={chart.chartTitleBlock}>
-          <div className={chart.chartTitle}>{title}</div>
+          <div className={chart.chartTitle}>
+            {tip ? (
+              <span className="inline-flex items-center gap-1">
+                {title}
+                {tip}
+              </span>
+            ) : title}
+          </div>
         </div>
       </div>
     </div>
+  );
+}
+
+function QuietReading({ copy }: { copy: string }) {
+  return (
+    <p className="m-0 text-[13px] font-medium leading-5 text-[var(--color-text-2)]" data-redis-empty="reading">
+      {copy}
+    </p>
   );
 }
 
@@ -64,6 +103,7 @@ function Pane({ pane, children }: { pane: string; children: ReactNode }) {
 
 function formatReading(metricMap: RedisMetricMap, name: string, unit: MetricUnit) {
   const shown = redisDisplay(metricMap, name, unit);
+  if (shown.value == null) return null;
   return shown.unit ? `${shown.text} ${shown.unit}` : shown.text;
 }
 
@@ -91,30 +131,35 @@ function LoadingCard({ title, feature }: { title: string; feature: string }) {
   );
 }
 
-const ROLE_COPY: Record<RoleReading, { value: RedisCategoryCopyKey; hint: RedisCategoryCopyKey }> = {
-  primary: { value: 'rolePrimary', hint: 'rolePrimaryHint' },
-  replica: { value: 'roleReplica', hint: 'roleReplicaHint' },
-  'lean-primary': { value: 'roleLeanPrimary', hint: 'roleLeanPrimaryHint' },
-  'lean-replica': { value: 'roleLeanReplica', hint: 'roleLeanReplicaHint' },
-  mixed: { value: 'roleMixed', hint: 'roleMixedHint' }
+const ROLE_VALUE: Record<RoleReading, RedisCategoryCopyKey> = {
+  primary: 'rolePrimary',
+  replica: 'roleReplica',
+  'lean-primary': 'roleLeanPrimary',
+  'lean-replica': 'roleLeanReplica',
+  mixed: 'roleMixed'
 };
 
 function RoleCard({ role }: { role: RoleReading }) {
   const text = useRedisText();
   const labeled = role === 'primary' || role === 'replica';
-  const copy = ROLE_COPY[role];
-  const value = text(copy.value);
-  const hint = text(copy.hint);
   return (
     <section className={`${styles.panel} h-full`} data-redis-feature="role" data-redis-role={role}>
-      <FeatureHead title={text('cardRole')} />
-      <div className="flex flex-col gap-2">
-        <div
-          className={`text-[20px] font-semibold leading-none ${labeled ? '!text-[var(--color-text-1)]' : '!text-[var(--color-text-2)]'}`}
-        >
-          {value}
-        </div>
-        <p className={hintClass}>{hint}</p>
+      <FeatureHead
+        title={text('cardRole')}
+        lines={[
+          text('roleLinePrimary'),
+          text('roleLineReplica'),
+          text('roleLineLeanPrimary'),
+          text('roleLineLeanReplica'),
+          text('roleLineMixed'),
+          text('roleLineSentinel')
+        ]}
+        kind="redis-role"
+      />
+      <div
+        className={`text-[20px] font-semibold leading-7 ${labeled ? '!text-[var(--color-text-1)]' : '!text-[var(--color-text-2)]'}`}
+      >
+        {text(ROLE_VALUE[role])}
       </div>
     </section>
   );
@@ -136,16 +181,13 @@ function ConnectedSlavesCard({
       data-redis-feature="connected-slaves"
       data-redis-emphasis="hero"
     >
-      <FeatureHead title={text('cardConnectedSlaves')} />
-      {loading ? <ProDashLoading /> : (
-        <div className="flex flex-col gap-2">
-          <div
-            className={`${heroValueClass} ${shown.value == null ? '!text-[var(--color-text-3)]' : '!text-[var(--color-text-1)]'}`}
-          >
-            {shown.text}
-            {shown.unit ? <span className={styles.statUnit}>{shown.unit}</span> : null}
-          </div>
-          <p className={hintClass}>{text('connectedSlavesHint')}</p>
+      <FeatureHead title={text('cardConnectedSlaves')} hint={text('connectedSlavesHint')} kind="redis-slaves" />
+      {loading ? <ProDashLoading /> : shown.value == null ? (
+        <QuietReading copy={text('slavesEmpty')} />
+      ) : (
+        <div className={`${styles.statValue} !text-[var(--color-text-1)]`}>
+          {shown.text}
+          {shown.unit ? <span className={styles.statUnit}>{shown.unit}</span> : null}
         </div>
       )}
     </section>
@@ -163,12 +205,10 @@ function LinkStatusCard({
   const value = redisLatest(metricMap, 'redis_master_link_status');
   const tone = linkTone(value);
   const loading = pending.has('redis_master_link_status') && value == null;
-  const label = tone === 'up' ? text('linkHealthy') : tone === 'down' ? text('linkDown') : '--';
+  const label = tone === 'up' ? text('linkHealthy') : text('linkDown');
   const valueClass = tone === 'up'
     ? '!text-[var(--color-success)]'
-    : tone === 'down'
-      ? '!text-[var(--color-fail)]'
-      : '!text-[var(--color-text-3)]';
+    : '!text-[var(--color-fail)]';
   const bands = [
     {
       key: 'up' as const,
@@ -187,8 +227,13 @@ function LinkStatusCard({
       data-redis-feature="link-status"
       data-redis-link={tone}
     >
-      <FeatureHead title={text('cardLinkStatus')} />
-      {loading ? <ProDashLoading /> : (
+      <FeatureHead title={text('cardLinkStatus')} hint={text('linkHint')} kind="redis-link" />
+      {loading ? <ProDashLoading /> : tone === 'quiet' ? (
+        <div className="flex flex-col gap-1" data-redis-link-scale="hidden">
+          <div className="text-[15px] font-semibold leading-6 text-[var(--color-text-1)]">{text('linkEmpty')}</div>
+          <p className="m-0 text-[12px] leading-5 text-[var(--color-text-2)]">{text('linkEmptyTip')}</p>
+        </div>
+      ) : (
         <div className="flex flex-col gap-3">
           <div className={`${styles.statValue} ${valueClass}`}>{label}</div>
           <div className="flex gap-1.5" data-redis-link-scale={tone}>
@@ -204,7 +249,6 @@ function LinkStatusCard({
               );
             })}
           </div>
-          <p className={hintClass}>{text('linkHint')}</p>
         </div>
       )}
     </section>
@@ -225,67 +269,58 @@ function BacklogCard({
     redisLatest(metricMap, 'redis_repl_backlog_histlen'),
     redisLatest(metricMap, 'redis_repl_backlog_size')
   );
-  const memory = redisLatest(metricMap, 'redis_mem_replication_backlog');
   const loading = BACKLOG_NAMES.every((name) => pending.has(name) || redisLatest(metricMap, name) == null)
     && BACKLOG_NAMES.some((name) => pending.has(name));
-  const stateLabel = enabled == null ? '--' : enabled ? text('backlogOn') : text('backlogOff');
+  const stateLabel = enabled ? text('backlogOn') : text('backlogOff');
   const stateClass = enabled ? 'text-[var(--color-success)]' : 'text-[var(--color-text-3)]';
+  const usedText = formatReading(metricMap, 'redis_repl_backlog_histlen', 'bytes');
+  const sizeText = formatReading(metricMap, 'redis_repl_backlog_size', 'bytes');
+  const barFill = fill != null && enabled !== false ? fill : null;
+  const ratio = usedText != null && sizeText != null
+    ? `${usedText} / ${sizeText}${barFill != null ? ` · ${barFill.toFixed(1)}%` : ''}`
+    : null;
   return (
     <section className={`${styles.panel} h-full`} data-redis-feature="backlog" data-redis-backlog={enabled == null ? 'quiet' : enabled ? 'on' : 'off'}>
-      <FeatureHead title={text('cardBacklog')} />
+      <FeatureHead
+        title={text('cardBacklog')}
+        lines={[
+          text('backlogWritten'),
+          text('backlogLimitExplain'),
+          text('backlogPctExplain'),
+          text('backlogHint')
+        ]}
+        kind="redis-backlog"
+      />
       {loading ? <ProDashLoading /> : (
-        <div className="flex flex-col gap-3">
-          <div className="flex items-baseline justify-between gap-3">
-            <span className="text-[12px] text-[var(--color-text-3)]">{text('backlogState')}</span>
-            <span className={`text-[14px] font-semibold ${stateClass}`}>{stateLabel}</span>
-          </div>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <div>
-              <div className="text-[12px] text-[var(--color-text-3)]">{text('backlogUsed')}</div>
-              <div className={styles.statValue}>{formatReading(metricMap, 'redis_repl_backlog_histlen', 'bytes')}</div>
-            </div>
-            <div>
-              <div className="text-[12px] text-[var(--color-text-3)]">{text('backlogCapacity')}</div>
-              <div className={styles.statValue}>{formatReading(metricMap, 'redis_repl_backlog_size', 'bytes')}</div>
-            </div>
-          </div>
-          {fill != null ? (
-            <div className="h-2 overflow-hidden rounded-sm bg-[var(--color-fill-2)]" data-redis-backlog-fill={fill.toFixed(1)}>
+        <div className="flex flex-col gap-2">
+          <p className="m-0 text-[13px] leading-5 text-[var(--color-text-1)]">
+            <span className="text-[var(--color-text-3)]">{text('backlogState')}</span>
+            {' '}
+            {enabled == null ? text('backlogUnread') : (
+              <span className={`font-semibold ${stateClass}`}>{stateLabel}</span>
+            )}
+          </p>
+          {ratio != null ? (
+            <p className="m-0 text-[15px] font-semibold leading-6 tabular-nums text-[var(--color-text-1)]" data-redis-backlog-ratio={ratio}>
+              {ratio}
+            </p>
+          ) : enabled != null ? (
+            <QuietReading copy={text('backlogUnread')} />
+          ) : null}
+          {barFill != null ? (
+            <div
+              className="h-2 overflow-hidden rounded-sm bg-[var(--color-fill-2)]"
+              data-redis-backlog-fill={barFill.toFixed(1)}
+            >
               <div
-                className={`h-full rounded-sm ${enabled === false ? 'bg-[var(--color-text-4)]' : 'bg-[var(--color-text-2)]'}`}
-                style={{ width: `${fill}%` }}
+                className="h-full rounded-sm bg-[var(--color-text-2)]"
+                style={{ width: `${barFill}%` }}
               />
             </div>
           ) : null}
-          {memory != null ? (
-            <p className="m-0 text-[13px] tabular-nums text-[var(--color-text-1)]">
-              {text('backlogMemory')}
-              {' '}
-              {formatReading(metricMap, 'redis_mem_replication_backlog', 'bytes')}
-            </p>
-          ) : null}
-          <p className={hintClass}>{text('backlogHint')}</p>
         </div>
       )}
     </section>
-  );
-}
-
-function OffsetReadings({ metricMap }: { metricMap: RedisMetricMap }) {
-  const text = useRedisText();
-  const cells = [
-    { feature: 'master-offset', label: text('cardMasterOffset'), name: 'redis_master_repl_offset' },
-    { feature: 'slave-offset', label: text('cardSlaveOffset'), name: 'redis_slave_repl_offset' }
-  ];
-  return (
-    <div className={featureGrid}>
-      {cells.map((cell) => (
-        <section key={cell.name} className={`${styles.panel} h-full`} data-redis-feature={cell.feature}>
-          <FeatureHead title={cell.label} />
-          <div className={styles.statValue}>{formatReading(metricMap, cell.name, 'counts')}</div>
-        </section>
-      ))}
-    </div>
   );
 }
 
@@ -336,7 +371,7 @@ export function ReplicationPane({
     return (
       <Pane pane="replication">
         <ProSection title={text('sectionLinks')}>
-          <div className={featureGrid}>
+          <div className={compactRow}>
             <LoadingCard title={text('cardConnectedSlaves')} feature="connected-slaves" />
             <LoadingCard title={text('cardLinkStatus')} feature="link-status" />
           </div>
@@ -354,12 +389,10 @@ export function ReplicationPane({
   return (
     <Pane pane="replication">
       <ProSection title={text('sectionLinks')}>
-        <div className="flex min-w-0 flex-col gap-3">
+        <div className={compactRow}>
           {role ? <RoleCard role={role} /> : null}
-          <div className={featureGrid}>
-            <ConnectedSlavesCard metricMap={metricMap} pending={pending} />
-            <LinkStatusCard metricMap={metricMap} pending={pending} />
-          </div>
+          <ConnectedSlavesCard metricMap={metricMap} pending={pending} />
+          <LinkStatusCard metricMap={metricMap} pending={pending} />
         </div>
       </ProSection>
       {showBacklog ? (
@@ -370,10 +403,7 @@ export function ReplicationPane({
       {offsetSeries.length || offsetPending ? (
         <ProSection title={text('sectionOffset')}>
           {offsetSeries.length ? (
-            <div className="flex min-w-0 flex-col gap-3">
-              <OffsetReadings metricMap={metricMap} />
-              <RedisTrendChart spec={offsetTrend} metricMap={metricMap} pending={pending} />
-            </div>
+            <RedisTrendChart spec={offsetTrend} metricMap={metricMap} pending={pending} />
           ) : (
             <LoadingCard title={text('chartOffset')} feature="offset" />
           )}
@@ -392,15 +422,10 @@ function ClusterModeCard({ phase }: { phase: 'on' | 'off' | 'loading' }) {
       data-redis-cluster={phase}
       data-redis-emphasis="hero"
     >
-      <FeatureHead title={text('cardClusterMode')} />
+      <FeatureHead title={text('cardClusterMode')} hint={text('clusterModeHint')} kind="redis-cluster-mode" />
       {phase === 'loading' ? <ProDashLoading /> : (
-        <div className="flex flex-col gap-2">
-          <div
-            className={`${heroValueClass} ${phase === 'on' ? 'text-[var(--color-success)]' : 'text-[var(--color-text-3)]'}`}
-          >
-            {phase === 'on' ? text('clusterOn') : text('clusterOff')}
-          </div>
-          <p className={hintClass}>{text('clusterModeHint')}</p>
+        <div className={`${styles.statValue} ${phase === 'on' ? '!text-[var(--color-success)]' : '!text-[var(--color-text-3)]'}`}>
+          {phase === 'on' ? text('clusterOn') : text('clusterOff')}
         </div>
       )}
     </section>
@@ -419,16 +444,13 @@ function ClusterConnectionsCard({
   const loading = pending.has('redis_cluster_connections') && shown.value == null;
   return (
     <section className={`${styles.panel} h-full`} data-redis-feature="cluster-connections">
-      <FeatureHead title={text('cardClusterConnections')} />
-      {loading ? <ProDashLoading /> : (
-        <div className="flex flex-col gap-2">
-          <div
-            className={`${styles.statValue} ${shown.value == null ? '!text-[var(--color-text-3)]' : '!text-[var(--color-text-1)]'}`}
-          >
-            {shown.text}
-            {shown.unit ? <span className={styles.statUnit}>{shown.unit}</span> : null}
-          </div>
-          <p className={hintClass}>{text('clusterConnectionsHint')}</p>
+      <FeatureHead title={text('cardClusterConnections')} hint={text('clusterConnectionsHint')} kind="redis-cluster-connections" />
+      {loading ? <ProDashLoading /> : shown.value == null ? (
+        <QuietReading copy={text('clusterConnectionsEmpty')} />
+      ) : (
+        <div className={`${styles.statValue} !text-[var(--color-text-1)]`}>
+          {shown.text}
+          {shown.unit ? <span className={styles.statUnit}>{shown.unit}</span> : null}
         </div>
       )}
     </section>
@@ -452,7 +474,7 @@ export function ClusterPane({
   return (
     <Pane pane="cluster">
       <ProSection title={text('sectionCluster')}>
-        <div className={featureGrid}>
+        <div className={compactRow}>
           <ClusterModeCard phase={phase} />
           <ClusterConnectionsCard metricMap={metricMap} pending={pending} />
         </div>

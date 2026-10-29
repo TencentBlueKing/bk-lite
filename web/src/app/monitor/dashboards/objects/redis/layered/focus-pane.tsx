@@ -1,7 +1,6 @@
 'use client';
 
 import React from 'react';
-import { clipChartDataToWindow } from '../../../shared/utils/pro-chart-window';
 import { useDashboardText } from '../../../shared/utils/content-i18n';
 import {
   ProDashLoading,
@@ -16,8 +15,9 @@ import { describeFocusAxis, formatFocusHeadline, seriesSampleValues } from '../.
 import { useProTimeWindow } from '../../host/layered/pro-time-window';
 import type { MetricUnit } from '../../../shared/types';
 import { REDIS_PALETTE } from '../config';
+import hostLayered from '../../host/layered/layered.module.scss';
 import { redisCategoryText, type RedisCategoryCopyKey } from './redis-copy';
-import { redisLatest, redisMerged, type RedisMetricMap } from './series';
+import { redisChartPoints, redisLatest, type RedisMetricMap } from './series';
 
 export type RedisTopicTab = 'memory' | 'cache' | 'clients' | 'throughput';
 
@@ -55,14 +55,6 @@ const FOCUS_CARDS: readonly FocusCardSpec[] = [
     color: REDIS_PALETTE.orange,
     ctaKey: 'viewClients',
     tab: 'clients'
-  },
-  {
-    metric: 'redis_instantaneous_ops_per_sec',
-    labelKey: 'focusOps',
-    unit: 'cps',
-    color: REDIS_PALETTE.blue,
-    ctaKey: 'viewThroughput',
-    tab: 'throughput'
   }
 ];
 
@@ -130,23 +122,46 @@ export default function FocusPane({
           />
         )}
       >
-        <div className={proChromeClass.shortcutGrid}>
+        <div className={`${proChromeClass.shortcutGrid} ${hostLayered.shortcutGrid3}`}>
           {FOCUS_CARDS.map((card) => {
-            const plotted = clipChartDataToWindow(
-              redisMerged(metricMap, [{ name: card.metric, label: text(card.labelKey) }]),
+            const isFrag = card.metric === 'redis_mem_fragmentation_ratio';
+            const plotted = redisChartPoints(
+              metricMap,
+              [{ name: card.metric, label: text(card.labelKey) }],
               window
             );
             const axis = describeFocusAxis(card.unit, seriesSampleValues(plotted));
-            const loading = pending.has(card.metric) && plotted.length === 0;
+            const latest = redisLatest(metricMap, card.metric);
+            const loading = pending.has(card.metric) && plotted.length === 0 && latest == null;
+            const unitLabel = isFrag ? text('fragTimes') : axis.unitLabel;
             return (
               <ProFocusCard key={card.metric}>
-                <div className={proChromeClass.shortcutCopy} data-redis-focus={card.metric}>
-                  <FocusShortcutTitle label={text(card.labelKey)} unit={axis.unitLabel} />
+                <div
+                  className={proChromeClass.shortcutCopy}
+                  data-redis-focus={card.metric}
+                  data-redis-state={loading ? 'loading' : latest == null ? 'empty' : 'value'}
+                >
+                  <FocusShortcutTitle
+                    label={text(card.labelKey)}
+                    unit={unitLabel}
+                    hint={isFrag ? (
+                      <ProInfoHint kind="redis-focus-frag" text={text('fragIdeal')} />
+                    ) : undefined}
+                  />
                   {loading ? (
                     <ProDashLoading size="small" />
+                  ) : latest == null ? (
+                    <div className="flex flex-col gap-1" data-redis-empty="reading">
+                      <div className="text-[14px] font-semibold leading-5 text-[var(--color-text-1)]">
+                        {text('readingEmpty')}
+                      </div>
+                      <p className="m-0 text-[12px] leading-5 text-[var(--color-text-2)]">
+                        {text('readingEmptyTip')}
+                      </p>
+                    </div>
                   ) : (
                     <div className={proChromeClass.shortcutValue} style={{ color: card.color }}>
-                      {formatFocusHeadline(axis, redisLatest(metricMap, card.metric))}
+                      {isFrag ? latest.toFixed(2) : formatFocusHeadline(axis, latest)}
                     </div>
                   )}
                   <button type="button" className={proChromeClass.jumpBtn} onClick={() => onOpen(card.tab)}>

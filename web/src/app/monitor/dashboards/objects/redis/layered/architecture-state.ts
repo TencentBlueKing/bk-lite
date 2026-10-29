@@ -109,6 +109,43 @@ export const inferReplicationRole = ({
   return null;
 };
 
+export type ArchitectureKind = 'cluster' | 'replica' | 'standalone' | 'unknown';
+
+/**
+ * 架构芯片。Cluster 优先；有副本连接、主从链接或角色标签则为哨兵/副本。
+ * 只有集群明确关闭、副本数为 0、且没有主从链接时才判单机。其余保持待识别，避免把加载中写成单机。
+ */
+export const inferArchitectureKind = ({
+  clusterEnabled,
+  slaves,
+  link,
+  labeledRole
+}: {
+  clusterEnabled: number | null | undefined;
+  slaves: number | null | undefined;
+  link: number | null | undefined;
+  labeledRole: 'master' | 'slave' | null;
+}): ArchitectureKind => {
+  if (clusterEnabledOn(clusterEnabled)) return 'cluster';
+  const slaveCount = finite(slaves);
+  const linkValue = finite(link);
+  const hasReplica = (slaveCount ?? 0) > 0 || linkValue != null || labeledRole != null;
+  if (hasReplica) return 'replica';
+  if (finite(clusterEnabled) === 0 && slaveCount === 0 && linkValue == null && labeledRole == null) {
+    return 'standalone';
+  }
+  return 'unknown';
+};
+
+/** 碎片率档位。1.0 与 1.5 含在正常档，4.75 落偏高。 */
+export const fragmentationBand = (value: number | null | undefined): 'low' | 'ok' | 'high' | null => {
+  const reading = finite(value);
+  if (reading == null) return null;
+  if (reading < 1) return 'low';
+  if (reading > 1.5) return 'high';
+  return 'ok';
+};
+
 export const replicationTabMode = ({
   hasPoint,
   pending,

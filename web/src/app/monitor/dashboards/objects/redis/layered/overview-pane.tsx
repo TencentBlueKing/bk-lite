@@ -3,11 +3,10 @@
 import React, { useMemo } from 'react';
 import {
   EVENT_RAIL_HINT_LINES,
-  KpiTileRow,
   ProInfoHint,
-  ProSection,
-  type KpiTileModel
+  ProSection
 } from '../../host/layered/pro-chrome';
+import { RedisKpiTileRow, type RedisKpiTile } from './redis-kpi-row';
 import EventsRail, { type HostAlertRailEvent } from '../../host/layered/events-rail';
 import type { PreparedSummaryCard } from '../../common/simple-dashboard-core';
 import { useDashboardText } from '../../../shared/utils/content-i18n';
@@ -31,6 +30,15 @@ const headline = (main: PreparedSummaryCard['mainValue']) => (
   main.unit ? `${main.value}${main.unit}` : main.value
 );
 
+/** 概览五卡的空态。瞬时命令速率不在这排，那句「窗口内暂无采样」不能套到这里。 */
+const OVERVIEW_EMPTY: Record<string, { empty: string; value: RedisCategoryCopyKey; detail: RedisCategoryCopyKey }> = {
+  redis_uptime: { empty: 'uptime', value: 'uptimeEmpty', detail: 'uptimeEmptyTip' },
+  redis_memory_utilization: { empty: 'memory-usage', value: 'memoryUsageEmpty', detail: 'memoryUsageEmptyTip' },
+  redis_keyspace_hitrate: { empty: 'hit-rate', value: 'hitRateEmpty', detail: 'hitRateEmptyTip' },
+  redis_evicted_keys_rate: { empty: 'eviction', value: 'evictionEmpty', detail: 'evictionEmptyTip' },
+  redis_clients: { empty: 'clients', value: 'clientsEmpty', detail: 'clientsEmptyTip' }
+};
+
 /** 概览主序：五 KPI、事件、重点关注 2×2、紧凑趋势。诊断 Tab 不再复制这排 KPI。 */
 export default function OverviewPane({
   summaryCards,
@@ -45,20 +53,45 @@ export default function OverviewPane({
   const { t, dt } = useDashboardText();
   const text = (key: RedisCategoryCopyKey) => redisCategoryText(t, key);
   const limitUnset = redisMemoryLimitUnset(metricMap);
-  const cards = useMemo<KpiTileModel[]>(() => (
+  const cards = useMemo<RedisKpiTile[]>(() => (
     summaryCards.map((summary) => {
-      const unsetUtilization = limitUnset && summary.card.metric === 'redis_memory_utilization';
-      const empty = unsetUtilization || summary.mainValue.value === '--';
+      const metric = summary.card.metric;
+      const label = dt(summary.card.title);
+      if (limitUnset && metric === 'redis_memory_utilization') {
+        return {
+          key: metric,
+          label,
+          value: text('memoryLimitUnset'),
+          detail: text('memoryLimitUnsetTip'),
+          prose: true,
+          empty: 'memory-limit'
+        };
+      }
+      const empty = summary.mainValue.value === '--';
+      if (empty) {
+        const known = OVERVIEW_EMPTY[metric] ?? {
+          empty: 'reading',
+          value: 'readingEmpty' as const,
+          detail: 'readingEmptyTip' as const
+        };
+        return {
+          key: metric,
+          label,
+          value: text(known.value),
+          detail: text(known.detail),
+          prose: true,
+          empty: known.empty
+        };
+      }
+      const restart = summary.card.isUptimeCard && summary.uptimeState?.tone === 'warning'
+        ? dt(summary.uptimeState.label)
+        : undefined;
       return {
-        key: summary.card.metric,
-        label: dt(summary.card.title),
-        value: unsetUtilization ? '--' : headline(summary.mainValue),
-        tone: empty ? undefined : (summary.valueColor ?? summary.card.color),
-        subtitle: unsetUtilization
-          ? text('memoryLimitUnset')
-          : summary.card.isUptimeCard && summary.uptimeState
-            ? dt(summary.uptimeState.label)
-            : undefined
+        key: metric,
+        label,
+        value: headline(summary.mainValue),
+        tone: summary.valueColor ?? summary.card.color,
+        subtitle: restart
       };
     })
   ), [dt, limitUnset, summaryCards, t]);
@@ -66,7 +99,7 @@ export default function OverviewPane({
   return (
     <div data-redis-pane="overview" className="contents">
       <ProSection title={text('healthOverview')}>
-        <KpiTileRow items={cards} loading={loading} columns={5} />
+        <RedisKpiTileRow items={cards} loading={loading} columns={5} />
       </ProSection>
       <ProSection
         title={text('events')}

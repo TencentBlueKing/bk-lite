@@ -588,6 +588,17 @@ button.kpiCard {
   min-width: 0;
 }
 
+/* 单卡折线吃满卡身。只在显式挂上时盖过上面的 120px，不改重点关注 spark。 */
+.focusChartFill {
+  min-height: 168px;
+}
+
+.focusChartFill .chartBody {
+  flex: 1 1 auto;
+  height: auto;
+  min-height: 168px;
+}
+
 /*
  * .panel 后写的 column，以及顶栏「次子节点 flex:0」全局规则，都会盖过单类名。
  * 这里把同一条壳再写高一层，主机和 MySQL 重点关注都走这条。

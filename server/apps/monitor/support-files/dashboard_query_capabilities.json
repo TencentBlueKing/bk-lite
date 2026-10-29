@@ -242,6 +242,13 @@
       "template": "rate(sqlserver_waitstats_signal_wait_time_ms_rate{__$labels__}[__$window__])"
     },
     {
+      "id": "dashboard:v1:07527e4f",
+      "object_names": [
+        "Redis"
+      ],
+      "template": "last_over_time(redis_instantaneous_ops_per_sec{__$labels__}[5m])"
+    },
+    {
       "id": "dashboard:v1:077cf7a3",
       "object_names": [
         "Ping"
@@ -4627,13 +4634,6 @@
         "Redis"
       ],
       "template": "rate(redis_total_commands_processed{__$labels__}[__$window__])"
-    },
-    {
-      "id": "dashboard:v1:a3005363",
-      "object_names": [
-        "Redis"
-      ],
-      "template": "redis_instantaneous_ops_per_sec{__$labels__}"
     },
     {
       "id": "dashboard:v1:a3bbb1fe",

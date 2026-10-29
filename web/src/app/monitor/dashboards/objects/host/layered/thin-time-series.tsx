@@ -329,7 +329,12 @@ export default function ThinTimeSeries({
                     {hint ? (
                       <span className="inline-flex items-center gap-1">
                         {title}
-                        <Tooltip title={hint} styles={{ body: { maxWidth: 360 } }}>
+                        <Tooltip
+                          title={hint.includes('\n') ? (
+                            <div className="max-w-[360px] whitespace-pre-line text-[13px] font-normal leading-[1.55]">{hint}</div>
+                          ) : hint}
+                          styles={{ body: { maxWidth: 360 } }}
+                        >
                           <QuestionCircleOutlined
                             className="cursor-help text-[12px] text-[var(--color-text-3)] hover:text-[var(--color-primary)]"
                             aria-label={hint}

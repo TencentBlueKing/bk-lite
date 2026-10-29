@@ -54,7 +54,7 @@ export interface RingChartPanelProps {
   guide?: GuideItem[];
   data: RingChartDataItem[];
   centerValue: string;
-  centerCaption: string;
+  centerCaption: React.ReactNode;
   infoRows?: RingChartInfoRow[];
   innerRadius?: number;
   outerRadius?: number;
@@ -155,7 +155,13 @@ export const RingChartPanel = ({
               />
               <div className={`${styles.ringCenter} ${styles.ringCenterOverlay}`}>
                 <div className={styles.ringValue}>{centerValue}</div>
-                <div className={styles.ringCaption}>{dt(centerCaption)}</div>
+                <div className={styles.ringCaption}>
+                  {typeof centerCaption === 'string' ? dt(centerCaption) : (
+                    <span className="pointer-events-auto inline-flex max-w-full items-center justify-center gap-1">
+                      {centerCaption}
+                    </span>
+                  )}
+                </div>
               </div>
               {chartExtra}
             </div>

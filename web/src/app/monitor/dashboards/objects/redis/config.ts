@@ -88,10 +88,10 @@ export const REDIS_DASHBOARD_CONFIG: SimpleDashboardConfig = {
     },
     {
       name: 'redis_instantaneous_ops_per_sec',
-      display_name: '实时操作频率',
+      display_name: '瞬时命令速率',
       description: 'Redis 当前每秒处理的命令数，反映瞬时负载。查询使用采集侧已有指标名，不是 rate 派生。',
       unit: 'cps',
-      query: 'redis_instantaneous_ops_per_sec{__$labels__}',
+      query: 'last_over_time(redis_instantaneous_ops_per_sec{__$labels__}[5m])',
       color: REDIS_PALETTE.blue
     },
     {
@@ -273,7 +273,7 @@ export const REDIS_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       color: REDIS_PALETTE.amber,
       icon: 'memory',
       compare: true,
-      guide: [{ label: '内存使用率', detail: '已用内存占配置上限的比例,接近 100% 时可能触发键驱逐。未配置 maxmemory 时无数据。' }],
+      guide: [{ label: '内存使用率', detail: '已用内存占配置上限的比例,接近 100% 时可能触发键驱逐。未配置内存上限时无数据。' }],
       footer: [
         { label: '已用内存', metric: 'redis_used_memory', unit: 'bytes' }
       ]
@@ -315,7 +315,7 @@ export const REDIS_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       metric: 'redis_used_memory',
       guide: [
         { label: '已用内存', detail: 'Redis 实例当前占用内存。' },
-        { label: '内存上限', detail: '配置的最大可用内存(maxmemory),虚线表示;未配置时无此线。' }
+        { label: '内存上限', detail: '配置的内存上限,虚线表示;未配置时无此线。' }
       ],
       series: [
         { metric: 'redis_used_memory', label: '已用内存', color: REDIS_PALETTE.blue, unit: 'bytes' },

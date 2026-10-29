@@ -35,3 +35,50 @@
     }
   }
 }
+
+// 复制 / 集群顶卡均分整行，不把半屏留空。
+.compactCards {
+  display: grid;
+  grid-template-columns: 1fr;
+  align-items: stretch;
+  gap: 12px;
+}
+
+@media (min-width: 640px) {
+  .compactCards {
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  }
+}
+
+// 环与右侧频率拉开，频率列不贴卡右缘。不改共享 ringCard 的两端对齐。
+.ringCard.cacheHitRing {
+  grid-template-columns: 176px max-content;
+  justify-content: start;
+  justify-items: start;
+  gap: 40px;
+  width: 100%;
+  padding-inline-end: 16px;
+}
+
+.ringCard.cacheHitRing .metricList {
+  width: auto;
+  max-width: max-content;
+}
+
+.ringCard.cacheHitRing .metricRow {
+  justify-content: flex-start;
+  gap: 10px;
+  width: max-content;
+}
+
+@media (max-width: 640px) {
+  .ringCard.cacheHitRing {
+    grid-template-columns: 1fr;
+    justify-items: center;
+  }
+
+  .ringCard.cacheHitRing .metricList,
+  .ringCard.cacheHitRing .metricRow {
+    width: auto;
+  }
+}

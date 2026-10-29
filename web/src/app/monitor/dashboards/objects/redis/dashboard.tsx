@@ -17,6 +17,7 @@ import {
   type ObjectDashboardMode
 } from '../../shared/utils/pro-dashboard';
 import { REDIS_DASHBOARD_CONFIG } from './config';
+import RedisArchitectureChip from './layered/architecture-chip';
 import RedisCategoryLayout from './layered/category-layout';
 import { REDIS_CATEGORY_METRIC_NAMES, REDIS_OVERVIEW_KPI_TITLES } from './layered/overview-metrics';
 import styles from './index.module.scss';
@@ -59,6 +60,7 @@ export default function RedisDashboardPage() {
       styles={styles}
       preserveLayouts
       unifiedChrome
+      identityExtra={<RedisArchitectureChip metricMap={dashboard.metricSeries} />}
       viewSwitcher={{
         mode: layout,
         onChange: onLayoutChange,

@@ -1,19 +1,29 @@
 'use client';
 
 import type { ReactNode } from 'react';
-import { Progress } from 'antd';
-import { ProDashLoading, ProSection } from '../../host/layered/pro-chrome';
+import {
+  ProDashLoading,
+  ProInfoHint,
+  ProSection,
+  ThinTimeSeries,
+  proChromeClass
+} from '../../host/layered/pro-chrome';
 import chart from '../../host/layered/layered.module.scss';
+import { formatFocusUnitText } from '../../host/layered/focus-axis';
+import { useProTimeWindow } from '../../host/layered/pro-time-window';
 import { RingChartPanel } from '../../../shared/widgets';
 import { useDashboardText } from '../../../shared/utils/content-i18n';
 import type { MetricUnit } from '../../../shared/types';
+import { fragmentationBand } from './architecture-state';
 import { REDIS_PALETTE } from '../config';
 import styles from '../index.module.scss';
 import { redisCategoryText, type RedisCategoryCopyKey } from './redis-copy';
 import {
+  redisChartPoints,
   redisDisplay,
   redisLatest,
   redisMemoryLimitUnset,
+  redisProductText,
   type RedisMetricMap
 } from './series';
 import RedisTrendChart, { type RedisTrendSpec } from './trend-chart';
@@ -44,11 +54,29 @@ const lifecycleTrend: RedisTrendSpec = {
   ]
 };
 
-const rejectTrend: RedisTrendSpec = {
-  titleKey: 'chartRejected',
+const clientsTrend: RedisTrendSpec = {
+  titleKey: 'seriesClients',
+  hintKey: 'clientsReading',
+  unit: 'counts',
+  series: [
+    { name: 'redis_clients', labelKey: 'seriesClients', color: REDIS_PALETTE.blue }
+  ]
+};
+
+const rejectedTrend: RedisTrendSpec = {
+  titleKey: 'cardRejected',
   unit: 'cps',
   series: [
     { name: 'redis_rejected_connections_rate', labelKey: 'seriesRejected', color: REDIS_PALETTE.rose }
+  ]
+};
+
+const blockedTrend: RedisTrendSpec = {
+  titleKey: 'cardBlocked',
+  hintKey: 'blockedHint',
+  unit: 'counts',
+  series: [
+    { name: 'redis_blocked_clients', labelKey: 'seriesBlocked', color: REDIS_PALETTE.orange }
   ]
 };
 
@@ -58,6 +86,15 @@ const opsTrend: RedisTrendSpec = {
   series: [
     { name: 'redis_instantaneous_ops_per_sec', labelKey: 'seriesOps', color: REDIS_PALETTE.blue },
     { name: 'redis_total_commands_processed_rate', labelKey: 'seriesCommands', color: REDIS_PALETTE.cyan }
+  ]
+};
+
+const netTrend: RedisTrendSpec = {
+  titleKey: 'chartNetTrend',
+  unit: 'byteps',
+  series: [
+    { name: 'redis_total_net_input_bytes_rate', labelKey: 'seriesNetIn', color: REDIS_PALETTE.blue },
+    { name: 'redis_total_net_output_bytes_rate', labelKey: 'seriesNetOut', color: REDIS_PALETTE.emerald }
   ]
 };
 
@@ -75,7 +112,6 @@ const ringStyles = new Proxy(styles, {
 
 const featureGrid = 'grid min-w-0 grid-cols-1 items-stretch gap-3 lg:grid-cols-2';
 const hintClass = 'm-0 text-[12px] leading-5 text-[var(--color-text-3)]';
-const quietClass = 'm-0 text-[13px] text-[var(--color-text-3)]';
 
 const TONE_COLOR = {
   ok: 'var(--color-success)',
@@ -91,15 +127,91 @@ function useRedisText() {
   return (key: RedisCategoryCopyKey) => redisCategoryText(t, key);
 }
 
-/** 与 ThinTimeSeries 卡头同构：chartHead + chartTitle（13px/600）。加载和空态也留着。 */
-function FeatureHead({ title }: { title: string }) {
+/** 与 ThinTimeSeries 卡头同构：chartHead + chartTitle（13px/600）。说明挂在问号上。 */
+function FeatureHead({ title, hint, unit }: { title: string; hint?: ReactNode; unit?: string }) {
+  const unitText = formatFocusUnitText(unit);
+  const marked = Boolean(hint || unitText);
   return (
     <div className={chart.chartHead}>
       <div className={chart.chartTitleGroup}>
         <div className={chart.chartTitleBlock}>
-          <div className={chart.chartTitle}>{title}</div>
+          <div className={chart.chartTitle}>
+            {marked ? (
+              <span className="inline-flex items-center gap-1">
+                {title}
+                {hint}
+                {unitText ? <span className={chart.shortcutAxisUnit}>{unitText}</span> : null}
+              </span>
+            ) : title}
+          </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+function HintCopy({ lines, kind }: { lines: readonly string[]; kind: string }) {
+  return (
+    <ProInfoHint
+      kind={kind}
+      label={lines.join(' ')}
+      content={(
+        <div className="max-w-[380px] text-[13px] font-normal leading-[1.55] text-[var(--color-text-2)]">
+          {lines.map((line) => (
+            <p key={line} className="m-0 [&+&]:mt-2">{line}</p>
+          ))}
+        </div>
+      )}
+    />
+  );
+}
+
+function Spark({
+  metricMap,
+  name,
+  label,
+  color,
+  unit,
+  keepSeriesWhenWindowEmpty = false,
+  fill = false
+}: {
+  metricMap: RedisMetricMap;
+  name: string;
+  label: string;
+  color: string;
+  unit: MetricUnit;
+  keepSeriesWhenWindowEmpty?: boolean;
+  /** 折线吃满所在卡片剩余高度。重点关注 spark 不要开。 */
+  fill?: boolean;
+}) {
+  const text = useRedisText();
+  const proTime = useProTimeWindow();
+  const plotted = redisChartPoints(
+    metricMap,
+    [{ name, label }],
+    proTime?.window ?? null,
+    keepSeriesWhenWindowEmpty
+  );
+  return (
+    <ThinTimeSeries
+      bare
+      numericAxis
+      className={[proChromeClass.focusChart, fill ? chart.focusChartFill : ''].filter(Boolean).join(' ')}
+      title=""
+      unit={unit}
+      emptyText={text('sampleEmpty')}
+      data={plotted}
+      legends={[{ label, color }]}
+    />
+  );
+}
+
+function EmptySample({ hint }: { hint?: string }) {
+  const text = useRedisText();
+  return (
+    <div className="flex flex-col gap-1" data-redis-empty="sample">
+      <div className="text-[15px] font-semibold leading-6 text-[var(--color-text-1)]">{text('sampleEmpty')}</div>
+      {hint ? <p className="m-0 text-[12px] leading-5 text-[var(--color-text-2)]">{hint}</p> : null}
     </div>
   );
 }
@@ -143,100 +255,93 @@ function BigNumber({
   title,
   metric,
   unit,
+  unitLabel,
   color,
-  footer,
+  reading,
   extra,
   emphasis = 'normal',
   feature,
   metricMap,
-  pending
+  pending,
+  hint,
+  emptyHint,
+  spark,
+  keepSeriesWhenWindowEmpty
 }: {
   title: string;
   metric: string;
   unit: MetricUnit;
+  unitLabel?: string;
   color: string;
-  footer?: string;
+  reading?: string;
   extra?: ReactNode;
-  emphasis?: 'hero' | 'normal' | 'compact';
+  emphasis?: 'hero' | 'normal';
   feature: string;
   metricMap: RedisMetricMap;
   pending: ReadonlySet<string>;
+  hint?: ReactNode;
+  emptyHint?: string;
+  spark?: boolean;
+  keepSeriesWhenWindowEmpty?: boolean;
 }) {
   const shown = redisDisplay(metricMap, metric, unit);
   const loading = pending.has(metric) && shown.value == null;
   const valueColor = shown.value == null ? 'var(--color-text-3)' : color;
+  const headline = shown.value == null
+    ? ''
+    : unit === 'none'
+      ? shown.value.toFixed(2)
+      : redisProductText(metricMap, metric, unit, unitLabel) ?? '';
   const valueClass = emphasis === 'hero'
     ? 'flex items-baseline gap-2 text-[32px] font-bold leading-none tracking-tight tabular-nums sm:text-[40px]'
-    : emphasis === 'compact'
-      ? 'flex items-baseline gap-1 text-[20px] font-semibold leading-none tabular-nums'
-      : styles.statValue;
+    : styles.statValue;
+  const body = loading ? (
+    <ProDashLoading />
+  ) : (
+    <div className="flex flex-col gap-2">
+      {shown.value == null ? (
+        <EmptySample hint={emptyHint} />
+      ) : (
+        <>
+          <div className={valueClass} style={{ color: valueColor }}>{headline}</div>
+          {reading ? (
+            <p className="m-0 text-[13px] font-medium leading-5" style={{ color: valueColor }}>{reading}</p>
+          ) : null}
+        </>
+      )}
+      {extra}
+    </div>
+  );
   return (
     <section
       className={`${styles.panel} h-full${emphasis === 'hero' ? ' !border-l-4 !border-l-[var(--color-primary)]' : ''}`}
       data-redis-feature={feature}
       data-redis-emphasis={emphasis}
+      data-redis-state={loading ? 'loading' : shown.value == null ? 'empty' : 'value'}
     >
-      <FeatureHead title={title} />
-      {loading ? (
-        <ProDashLoading />
-      ) : (
-        <div className="flex flex-col gap-2">
-          <div className={valueClass} style={{ color: valueColor }}>
-            {shown.text}
-            {shown.unit ? <span className={styles.statUnit}>{shown.unit}</span> : null}
+      <FeatureHead title={title} hint={hint} unit={unit === 'none' ? unitLabel : undefined} />
+      {spark ? (
+        <div className="flex items-stretch gap-3">
+          <div className="flex min-w-0 flex-1 flex-col justify-center">{body}</div>
+          <div className="min-w-0 flex-1" data-redis-spark={feature}>
+            <Spark
+              metricMap={metricMap}
+              name={metric}
+              label={title}
+              color={color}
+              unit={unit}
+              keepSeriesWhenWindowEmpty={keepSeriesWhenWindowEmpty}
+            />
           </div>
-          {extra}
-          {footer ? <p className={hintClass}>{footer}</p> : null}
         </div>
-      )}
-    </section>
-  );
-}
-
-function PairBars({
-  title,
-  quiet,
-  loading,
-  quietText,
-  rows
-}: {
-  title: string;
-  quiet: boolean;
-  loading: boolean;
-  quietText: string;
-  rows: ReadonlyArray<{ label: string; display: string; percent: number; color: string }>;
-}) {
-  return (
-    <section className={`${styles.panel} h-full`} data-redis-feature="net">
-      <FeatureHead title={title} />
-      {loading ? (
-        <ProDashLoading />
-      ) : quiet ? (
-        <p className={quietClass}>{quietText}</p>
-      ) : (
-        <div className="flex flex-col gap-3">
-          {rows.map((row) => (
-            <div key={row.label}>
-              <div className="mb-1 flex justify-between gap-3 text-[12px]">
-                <span className="text-[var(--color-text-1)]">{row.label}</span>
-                <span className="tabular-nums text-[var(--color-text-3)]">{row.display}</span>
-              </div>
-              <Progress
-                percent={row.percent}
-                showInfo={false}
-                strokeColor={row.color}
-                trailColor="var(--color-fill-2)"
-              />
-            </div>
-          ))}
-        </div>
-      )}
+      ) : body}
     </section>
   );
 }
 
 function reading(metricMap: RedisMetricMap, name: string, unit: MetricUnit) {
   const shown = redisDisplay(metricMap, name, unit);
+  if (shown.value == null) return '';
   return shown.unit ? `${shown.text}${shown.unit}` : shown.text;
 }
 
@@ -273,14 +378,36 @@ function CapacityCard({
       data-redis-capacity={waiting ? 'loading' : state}
       data-redis-pressure={percent == null ? undefined : pressureTone(percent)}
     >
-      <FeatureHead title={text('cardCapacity')} />
+      <FeatureHead
+        title={text('cardCapacity')}
+        hint={(
+          <HintCopy
+            kind="redis-capacity"
+            lines={[
+              text('capacityBandOk'),
+              text('capacityBandTight'),
+              text('capacityBandUnset'),
+              text('capacityPctUsed'),
+              text('capacityPctNotRemain')
+            ]}
+          />
+        )}
+      />
       {waiting ? (
         <ProDashLoading />
       ) : state === 'quiet' ? (
-        <p className={quietClass}>{text('chartQuiet')}</p>
+        <EmptySample />
+      ) : state === 'unset' ? (
+        <div className="flex flex-col gap-3" data-redis-bar="hidden">
+          <div className="text-[28px] font-bold leading-none tabular-nums text-[var(--color-text-1)]">
+            {used.value == null ? text('sampleEmpty') : reading(metricMap, 'redis_used_memory', 'bytes')}
+          </div>
+          <div className="text-[15px] font-semibold leading-6 text-[var(--color-text-1)]">{text('memoryLimitUnset')}</div>
+          <p className="m-0 text-[12px] leading-5 text-[var(--color-text-2)]">{text('memoryLimitUnsetTip')}</p>
+        </div>
       ) : (
         <div className="flex flex-col gap-3">
-          <div className="flex items-baseline justify-between gap-3">
+          <div className="flex items-baseline gap-2">
             <span className="text-[14px] font-semibold" style={{ color: stateColor }}>{stateLabel}</span>
             {percent != null ? (
               <span className="tabular-nums text-[13px] text-[var(--color-text-2)]">{`${percent.toFixed(1)}%`}</span>
@@ -288,17 +415,9 @@ function CapacityCard({
           </div>
           <p className="m-0 text-[13px] tabular-nums text-[var(--color-text-1)]">
             {text('seriesUsed')} {reading(metricMap, 'redis_used_memory', 'bytes')}
-            {state === 'unset' ? null : ` / ${text('seriesLimit')} ${reading(metricMap, 'redis_maxmemory', 'bytes')}`}
+            {` / ${text('seriesLimit')} ${reading(metricMap, 'redis_maxmemory', 'bytes')}`}
           </p>
-          {percent != null ? (
-            <PressureScale percent={percent} />
-          ) : (
-            <div className="flex gap-1.5" aria-hidden>
-              {Array.from({ length: 5 }, (_, index) => (
-                <span key={index} className="h-2 flex-1 rounded-sm bg-[var(--color-fill-2)]" />
-              ))}
-            </div>
-          )}
+          {percent != null ? <PressureScale percent={percent} /> : null}
           <p className={hintClass}>{text('capacityHint')}</p>
         </div>
       )}
@@ -308,10 +427,11 @@ function CapacityCard({
 
 function FragBands({ active }: { active: 'low' | 'ok' | 'high' | null }) {
   const text = useRedisText();
+  // 展示区间与 fragmentationBand 一致：< 1 偏低，1–1.5 常见，> 1.5 偏高。阈值不在这里改。
   const items = [
-    { key: 'low' as const, label: text('fragLow'), color: TONE_COLOR.near },
-    { key: 'ok' as const, label: text('fragOk'), color: TONE_COLOR.ok },
-    { key: 'high' as const, label: text('fragHigh'), color: TONE_COLOR.full }
+    { key: 'low' as const, label: text('fragLow'), range: '< 1.0', color: TONE_COLOR.near },
+    { key: 'ok' as const, label: text('fragOk'), range: '1.0 – 1.5', color: TONE_COLOR.ok },
+    { key: 'high' as const, label: text('fragHigh'), range: '> 1.5', color: TONE_COLOR.full }
   ];
   return (
     <div className="flex gap-1.5" data-redis-frag={active ?? 'quiet'}>
@@ -320,14 +440,15 @@ function FragBands({ active }: { active: 'low' | 'ok' | 'high' | null }) {
         return (
           <span
             key={item.key}
-            className="inline-flex h-6 flex-1 items-center justify-center rounded-md text-[12px]"
+            className="inline-flex min-h-6 flex-1 flex-col items-center justify-center gap-0.5 rounded-md px-1 py-1 text-center leading-4"
             style={{
               color: on ? item.color : 'var(--color-text-3)',
               background: on ? `color-mix(in srgb, ${item.color} 14%, var(--color-bg))` : 'var(--color-fill-2)',
               fontWeight: on ? 600 : 400
             }}
           >
-            {item.label}
+            <span className="text-[12px]">{item.label}</span>
+            <span className="text-[11px] tabular-nums">{item.range}</span>
           </span>
         );
       })}
@@ -335,55 +456,11 @@ function FragBands({ active }: { active: 'low' | 'ok' | 'high' | null }) {
   );
 }
 
-function fragBand(value: number | null): 'low' | 'ok' | 'high' | null {
-  if (value == null) return null;
-  if (value < 1) return 'low';
-  if (value > 1.5) return 'high';
-  return 'ok';
-}
-
-function LifecycleCard({
-  metricMap,
-  pending
-}: {
-  metricMap: RedisMetricMap;
-  pending: ReadonlySet<string>;
-}) {
-  const text = useRedisText();
-  const expired = redisDisplay(metricMap, 'redis_expired_keys_rate', 'cps');
-  const evicted = redisDisplay(metricMap, 'redis_evicted_keys_rate', 'cps');
-  const loading = (pending.has('redis_expired_keys_rate') || pending.has('redis_evicted_keys_rate'))
-    && expired.value == null
-    && evicted.value == null;
-  const evictedColor = evicted.value != null && evicted.value > 0 ? TONE_COLOR.full : 'var(--color-text-1)';
-  const cells = [
-    { label: text('seriesExpired'), shown: expired, color: 'var(--color-text-1)' },
-    { label: text('seriesEvicted'), shown: evicted, color: evictedColor }
-  ];
-  return (
-    <section className={`${styles.panel} h-full`} data-redis-feature="lifecycle">
-      <FeatureHead title={text('cardLifecycle')} />
-      {loading ? (
-        <ProDashLoading />
-      ) : (
-        <div className="flex flex-col gap-3">
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            {cells.map((cell) => (
-              <div key={cell.label} className="min-w-0">
-                <div className="text-[12px] text-[var(--color-text-3)]">{cell.label}</div>
-                <div className={styles.statValue} style={{ color: cell.shown.value == null ? 'var(--color-text-3)' : cell.color }}>
-                  {cell.shown.text}
-                  {cell.shown.unit ? <span className={styles.statUnit}>{cell.shown.unit}</span> : null}
-                </div>
-              </div>
-            ))}
-          </div>
-          <p className={hintClass}>{text('lifecycleHint')}</p>
-        </div>
-      )}
-    </section>
-  );
-}
+const FRAG_READING = {
+  low: 'fragReadLow',
+  ok: 'fragReadOk',
+  high: 'fragReadHigh'
+} as const satisfies Record<'low' | 'ok' | 'high', RedisCategoryCopyKey>;
 
 export function MemoryPane({
   metricMap,
@@ -394,7 +471,7 @@ export function MemoryPane({
 }) {
   const text = useRedisText();
   const frag = redisLatest(metricMap, 'redis_mem_fragmentation_ratio');
-  const band = fragBand(frag);
+  const band = fragmentationBand(frag);
   const fragColor = band == null
     ? 'var(--color-text-3)'
     : band === 'high'
@@ -412,41 +489,22 @@ export function MemoryPane({
             title={text('focusFrag')}
             metric="redis_mem_fragmentation_ratio"
             unit="none"
+            unitLabel={text('fragTimes')}
             color={fragColor}
-            footer={text('fragHint')}
+            reading={band ? text(FRAG_READING[band]) : undefined}
             extra={<FragBands active={band} />}
+            hint={<HintCopy kind="redis-frag" lines={[text('fragIdeal')]} />}
             metricMap={metricMap}
             pending={pending}
           />
         </div>
       </ProSection>
       <ProSection title={text('sectionLifecycle')}>
-        <div className="flex min-w-0 flex-col gap-3">
-          <LifecycleCard metricMap={metricMap} pending={pending} />
+        <div data-redis-feature="lifecycle">
           <RedisTrendChart spec={lifecycleTrend} metricMap={metricMap} pending={pending} />
         </div>
       </ProSection>
     </Pane>
-  );
-}
-
-function PenetrationCallout({ warn }: { warn: boolean }) {
-  const text = useRedisText();
-  const accent = warn ? TONE_COLOR.near : 'var(--color-primary)';
-  return (
-    <p
-      className="m-0 rounded-lg px-3 py-2 text-[13px] leading-5 text-[var(--color-text-2)]"
-      data-redis-feature="penetration"
-      data-redis-penetration={warn ? 'warn' : 'calm'}
-      style={{
-        background: `color-mix(in srgb, ${accent} 10%, var(--color-bg))`,
-        border: `1px solid color-mix(in srgb, ${accent} 32%, var(--color-border))`
-      }}
-    >
-      <span className="font-semibold text-[var(--color-text-1)]">{text('penetration')}</span>
-      {' '}
-      {text('penetrationHint')}
-    </p>
   );
 }
 
@@ -460,23 +518,34 @@ export function CachePane({
   const text = useRedisText();
   const hits = redisDisplay(metricMap, 'redis_keyspace_hits_rate', 'cps');
   const misses = redisDisplay(metricMap, 'redis_keyspace_misses_rate', 'cps');
+  const hitRate = redisLatest(metricMap, 'redis_keyspace_hitrate');
   const loading = (pending.has('redis_keyspace_hits_rate') || pending.has('redis_keyspace_misses_rate'))
     && hits.value == null && misses.value == null;
-  const empty = !loading && hits.value == null && misses.value == null;
+  const bothKnown = hits.value != null && misses.value != null;
+  const empty = !loading && !bothKnown;
   const total = Math.max(hits.value ?? 0, 0) + Math.max(misses.value ?? 0, 0);
-  const known = hits.value != null || misses.value != null;
-  const centerValue = !known
-    ? '--'
-    : total > 0
-      ? `${((Math.max(misses.value ?? 0, 0) / total) * 100).toFixed(1)}%`
-      : '0.0%';
-  const penetrating = misses.value != null && hits.value != null && misses.value > hits.value && misses.value > 0;
-  const rateText = (shown: { text: string; unit: string }) => (shown.unit ? `${shown.text}${shown.unit}` : shown.text);
+  const centerValue = bothKnown
+    ? (total > 0 ? `${((Math.max(misses.value ?? 0, 0) / total) * 100).toFixed(1)}%` : '0.0%')
+    : '';
+  const penetrating = bothKnown && (misses.value ?? 0) > (hits.value ?? 0) && (misses.value ?? 0) > 0;
+  const hitLow = hitRate != null && (hitRate < 90 || penetrating);
+  const rateLabel = (name: string) => (
+    redisProductText(metricMap, name, 'cps', text('rateUnit')) ?? text('legendQuiet')
+  );
+  const centerCaption = (
+    <span data-redis-center="penetration" className="inline-flex items-center gap-1">
+      {text('penetration')}
+      <HintCopy
+        kind="redis-penetration"
+        lines={[text('penetrationFormula'), text('penetrationReach'), text('penetrationLook')]}
+      />
+    </span>
+  );
   return (
     <Pane pane="cache">
       <ProSection title={text('sectionCache')}>
-        <div className="grid min-w-0 grid-cols-1 items-stretch gap-3 lg:grid-cols-[minmax(0,1.35fr)_minmax(240px,0.8fr)]">
-          <div className="flex min-w-0 flex-col gap-3">
+        <div className="grid min-w-0 grid-cols-1 items-stretch gap-3 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
+          <div className="flex h-full min-w-0 flex-col gap-3">
             {loading ? (
               <section className={`${styles.panel} h-full`} data-redis-feature="hit-ring">
                 <FeatureHead title={text('cardHitVsMiss')} />
@@ -488,33 +557,50 @@ export function CachePane({
                   className="h-full"
                   title={text('cardHitVsMiss')}
                   data={[
-                    { name: text('seriesHit'), value: Math.max(hits.value ?? 0, 0), color: REDIS_PALETTE.emerald, display: hits.text },
-                    { name: text('seriesMiss'), value: Math.max(misses.value ?? 0, 0), color: REDIS_PALETTE.rose, display: misses.text }
+                    { name: text('seriesHit'), value: Math.max(hits.value ?? 0, 0), color: REDIS_PALETTE.emerald, display: rateLabel('redis_keyspace_hits_rate') },
+                    { name: text('seriesMiss'), value: Math.max(misses.value ?? 0, 0), color: REDIS_PALETTE.rose, display: rateLabel('redis_keyspace_misses_rate') }
                   ]}
                   infoRows={[
-                    { name: text('seriesHit'), color: REDIS_PALETTE.emerald, primary: rateText(hits) },
-                    { name: text('seriesMiss'), color: REDIS_PALETTE.rose, primary: rateText(misses) }
+                    { name: text('seriesHit'), color: REDIS_PALETTE.emerald, primary: rateLabel('redis_keyspace_hits_rate') },
+                    { name: text('seriesMiss'), color: REDIS_PALETTE.rose, primary: rateLabel('redis_keyspace_misses_rate') }
                   ]}
                   centerValue={centerValue}
-                  centerCaption={text('penetration')}
+                  centerCaption={centerCaption}
                   isEmpty={empty}
-                  emptyDescription={text('chartQuiet')}
+                  emptyDescription={text('cacheRingEmpty')}
+                  ringCardClassName={styles.cacheHitRing}
                   styles={ringStyles}
                 />
               </div>
             )}
-            <PenetrationCallout warn={penetrating} />
           </div>
-          <BigNumber
-            feature="hit-rate"
-            title={text('cardHitRate')}
-            metric="redis_keyspace_hitrate"
-            unit="percent"
-            color={TONE_COLOR.ok}
-            footer={text('hitRateHint')}
-            metricMap={metricMap}
-            pending={pending}
-          />
+          <section className={`${styles.panel} h-full`} data-redis-feature="hit-rate">
+            <FeatureHead
+              title={text('cardHitRate')}
+              hint={(
+                <HintCopy
+                  kind="redis-hit-rate"
+                  lines={[text('hitRateHint'), text('hitRateSteady')]}
+                />
+              )}
+            />
+            {pending.has('redis_keyspace_hitrate') && hitRate == null ? (
+              <ProDashLoading />
+            ) : hitRate == null ? (
+              <EmptySample />
+            ) : (
+              <div className="flex min-h-[168px] min-w-0 flex-1 flex-col" data-redis-spark="hit-rate">
+                <Spark
+                  fill
+                  metricMap={metricMap}
+                  name="redis_keyspace_hitrate"
+                  label={text('cardHitRate')}
+                  color={hitLow ? REDIS_PALETTE.amber : REDIS_PALETTE.emerald}
+                  unit="percent"
+                />
+              </div>
+            )}
+          </section>
         </div>
       </ProSection>
       <ProSection title={text('sectionTrends')}>
@@ -532,67 +618,39 @@ export function ClientsPane({
   pending: ReadonlySet<string>;
 }) {
   const text = useRedisText();
-  const blocked = redisDisplay(metricMap, 'redis_blocked_clients', 'counts');
-  const loading = pending.has('redis_blocked_clients') && blocked.value == null;
-  const warn = blocked.value != null && blocked.value > 0;
-  const accent = blocked.value == null ? TONE_COLOR.neutral : warn ? TONE_COLOR.full : TONE_COLOR.ok;
+  const blocked = redisLatest(metricMap, 'redis_blocked_clients');
+  const blockedLoading = pending.has('redis_blocked_clients') && blocked == null;
+  const warn = blocked != null && blocked > 0;
   const rejectValue = redisLatest(metricMap, 'redis_rejected_connections_rate');
+  const rejectHint = rejectValue == null
+    ? undefined
+    : rejectValue > 0
+      ? text('rejectedHot')
+      : text('rejectedCalm');
   return (
     <Pane pane="clients">
       <ProSection title={text('sectionBlocked')}>
-        <section
-          className={`${styles.panel} h-full`}
+        <div
           data-redis-feature="blocked"
-          data-redis-blocked={loading ? 'loading' : blocked.value == null ? 'quiet' : warn ? 'warn' : 'healthy'}
-          style={blocked.value == null ? undefined : {
-            background: `color-mix(in srgb, ${accent} 8%, var(--color-bg))`,
-            borderColor: `color-mix(in srgb, ${accent} 42%, var(--color-border))`
-          }}
+          data-redis-blocked={blockedLoading ? 'loading' : blocked == null ? 'quiet' : warn ? 'warn' : 'healthy'}
+          data-redis-spark="blocked"
         >
-          <FeatureHead title={text('cardBlocked')} />
-          {loading ? (
-            <ProDashLoading />
-          ) : blocked.value == null ? (
-            <p className={quietClass}>{text('chartQuiet')}</p>
-          ) : (
-            <div className="flex flex-col gap-2">
-              <div className="flex items-baseline gap-2 text-[32px] font-bold leading-none tabular-nums" style={{ color: accent }}>
-                {blocked.text}
-                {blocked.unit ? <span className={styles.statUnit}>{blocked.unit}</span> : null}
-              </div>
-              <p className="m-0 text-[14px] font-semibold text-[var(--color-text-1)]">
-                {warn ? text('blockedWarn') : text('blockedHealthy')}
-              </p>
-              <p className={hintClass}>{text('blockedHint')}</p>
-            </div>
-          )}
-        </section>
+          <RedisTrendChart spec={blockedTrend} metricMap={metricMap} pending={pending} />
+        </div>
       </ProSection>
       <ProSection title={text('sectionConnections')}>
-        <div className="flex min-w-0 flex-col gap-3">
-          <div className={featureGrid}>
-            <BigNumber
-              feature="clients"
-              emphasis="compact"
-              title={text('seriesClients')}
-              metric="redis_clients"
-              unit="counts"
-              color="var(--color-text-1)"
+        <div className={featureGrid}>
+          <div data-redis-feature="clients">
+            <RedisTrendChart spec={clientsTrend} metricMap={metricMap} pending={pending} />
+          </div>
+          <div data-redis-feature="rejected">
+            <RedisTrendChart
+              spec={rejectedTrend}
               metricMap={metricMap}
               pending={pending}
-            />
-            <BigNumber
-              feature="rejected"
-              emphasis="compact"
-              title={text('cardRejected')}
-              metric="redis_rejected_connections_rate"
-              unit="cps"
-              color={rejectValue != null && rejectValue > 0 ? TONE_COLOR.full : 'var(--color-text-1)'}
-              metricMap={metricMap}
-              pending={pending}
+              hint={rejectHint}
             />
           </div>
-          <RedisTrendChart spec={rejectTrend} metricMap={metricMap} pending={pending} />
         </div>
       </ProSection>
     </Pane>
@@ -607,62 +665,15 @@ export function ThroughputPane({
   pending: ReadonlySet<string>;
 }) {
   const text = useRedisText();
-  const inbound = redisLatest(metricMap, 'redis_total_net_input_bytes_rate');
-  const outbound = redisLatest(metricMap, 'redis_total_net_output_bytes_rate');
-  const loading = pending.has('redis_total_net_input_bytes_rate') && inbound == null && outbound == null;
-  const max = Math.max(inbound ?? 0, outbound ?? 0);
-  const share = (value: number | null) => (max > 0 && value != null ? (value / max) * 100 : 0);
   return (
     <Pane pane="throughput">
-      <ProSection title={text('sectionOps')}>
-        <div className="grid min-w-0 grid-cols-1 items-stretch gap-3 lg:grid-cols-[minmax(0,1.7fr)_minmax(220px,0.75fr)]">
-          <BigNumber
-            feature="ops"
-            emphasis="hero"
-            title={text('focusOps')}
-            metric="redis_instantaneous_ops_per_sec"
-            unit="cps"
-            color="var(--color-text-1)"
-            footer={text('opsHint')}
-            metricMap={metricMap}
-            pending={pending}
-          />
-          <BigNumber
-            feature="command-rate"
-            title={text('seriesCommands')}
-            metric="redis_total_commands_processed_rate"
-            unit="cps"
-            color="var(--color-text-1)"
-            footer={text('commandHint')}
-            metricMap={metricMap}
-            pending={pending}
-          />
-        </div>
-      </ProSection>
       <ProSection title={text('sectionTrends')}>
-        <RedisTrendChart spec={opsTrend} metricMap={metricMap} pending={pending} />
-      </ProSection>
-      <ProSection title={text('sectionNetwork')}>
-        <PairBars
-          title={text('cardNetCompare')}
-          quiet={!loading && inbound == null && outbound == null}
-          loading={loading}
-          quietText={text('chartQuiet')}
-          rows={[
-            {
-              label: text('seriesNetIn'),
-              display: reading(metricMap, 'redis_total_net_input_bytes_rate', 'byteps'),
-              percent: share(inbound),
-              color: REDIS_PALETTE.blue
-            },
-            {
-              label: text('seriesNetOut'),
-              display: reading(metricMap, 'redis_total_net_output_bytes_rate', 'byteps'),
-              percent: share(outbound),
-              color: REDIS_PALETTE.emerald
-            }
-          ]}
-        />
+        <div className={featureGrid}>
+          <RedisTrendChart spec={opsTrend} metricMap={metricMap} pending={pending} />
+          <div data-redis-network="trend">
+            <RedisTrendChart spec={netTrend} metricMap={metricMap} pending={pending} />
+          </div>
+        </div>
       </ProSection>
     </Pane>
   );
