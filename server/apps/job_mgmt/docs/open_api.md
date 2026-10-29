@@ -193,12 +193,12 @@ ITSM 动作选项路径：网关成功响应是 `{result, data}` 信封，下拉
 
 异步回调接口额外需要网关注入的 `callback_context`；ITSM `BKLITE_GATEWAY` 在 `is_callback=true` 时自动填充。成功首次受理返回 `{"accepted": true, "execution_id": "<task_id>"}`。
 
-回调是系统间私有 HTTP POST，经统一网关回 ITSM。Docker Compose 未配环境变量时的缺省值：
+回调是系统间私有 HTTP POST，经统一网关回 ITSM。网关对外部服务条目里的 `callback_paths` 放行，不查 API Key，也不另配共享密钥。Docker Compose 未配环境变量时的缺省值：
 
 - `OPENAPI_PUBLIC_ORIGIN`：`DEFAULT_ZONE_VAR_NODE_SERVER_URL` 的 origin（`https://<HOST_IP>`）
 - `OPENAPI_CALLBACK_INTERNAL_BASE`：`https://traefik`（Traefik 只开 websecure；`TRAEFIK_WEB_PORT` 非 443 时带端口）
 
-K8s 再显式设这两个变量即可。
+HTTPS 默认校验证书。Compose 打到内部 Traefik 自签证书时自动跳过校验；需要 CA 或强制开关时再设 `OPENAPI_CALLBACK_SSL_VERIFY`。K8s 再显式设回写变量即可。
 
 ### 批量查询作业状态
 

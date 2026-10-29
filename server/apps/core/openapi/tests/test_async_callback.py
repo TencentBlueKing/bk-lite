@@ -1,6 +1,6 @@
 """网关回调 URL 缺省值与 Compose / K8s 回写。"""
 
-from apps.core.openapi.async_callback import rewrite_gateway_callback_url
+from apps.core.openapi.async_callback import callback_tls_verify, rewrite_gateway_callback_url
 
 CALLBACK = "https://10.11.10.182/openapi/v1/itsm/openapi/v1/action_components/callback/"
 
@@ -14,6 +14,7 @@ def _clear_callback_env(monkeypatch):
         "TRAEFIK_WEB_PORT",
         "KUBERNETES_SERVICE_HOST",
         "HOST_IP",
+        "OPENAPI_CALLBACK_SSL_VERIFY",
     ):
         monkeypatch.delenv(key, raising=False)
 
@@ -75,3 +76,33 @@ def test_unrelated_callback_host_is_unchanged(monkeypatch):
 
     url = "https://example.com/openapi/v1/itsm/cb"
     assert rewrite_gateway_callback_url(url) == url
+
+
+def test_compose_traefik_skips_tls_verify(monkeypatch):
+    _clear_callback_env(monkeypatch)
+
+    assert callback_tls_verify("https://traefik/openapi/v1/itsm/cb") is False
+    assert callback_tls_verify("https://compose-traefik-1/openapi/v1/itsm/cb") is False
+
+
+def test_public_https_verifies_tls(monkeypatch):
+    _clear_callback_env(monkeypatch)
+
+    assert callback_tls_verify("https://10.11.10.182/openapi/v1/itsm/cb") is True
+
+
+def test_k8s_verifies_tls_even_for_traefik_hostname(monkeypatch):
+    _clear_callback_env(monkeypatch)
+    monkeypatch.setenv("KUBERNETES_SERVICE_HOST", "10.96.0.1")
+
+    assert callback_tls_verify("https://traefik/openapi/v1/itsm/cb") is True
+
+
+def test_callback_ssl_verify_env_overrides(monkeypatch):
+    _clear_callback_env(monkeypatch)
+    monkeypatch.setenv("OPENAPI_CALLBACK_SSL_VERIFY", "/etc/ssl/traefik-ca.pem")
+
+    assert callback_tls_verify("https://traefik/x") == "/etc/ssl/traefik-ca.pem"
+
+    monkeypatch.setenv("OPENAPI_CALLBACK_SSL_VERIFY", "false")
+    assert callback_tls_verify("https://10.11.10.182/x") is False
