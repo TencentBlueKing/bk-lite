@@ -795,10 +795,21 @@
   max-width: 560px;
 }
 
+.metricEditor :global(.ant-select),
+.metricEditor :global(.ant-input-number) {
+  width: 100%;
+  max-width: none;
+}
+
+.metricEditor .numberWithUnit {
+  max-width: none;
+}
+
 .conditionField {
   width: 100%;
   min-width: 0;
-  margin-bottom: 0;
+  /* 外层 Form 的 .ant-form-item 规则会把 margin-bottom 设为 18px，导致条件卡内行距忽大忽小。 */
+  margin-bottom: 0 !important;
 }
 
 .conditionField :global(.ant-form-item-label) {
@@ -875,20 +886,6 @@ $compact-field-width: 220px;
   flex: 1 1 auto;
   width: auto;
   min-width: 64px;
-  max-width: none;
-}
-
-.thresholdComparator:global(.ant-select) {
-  flex: 0 0 100px;
-  width: 100px;
-  max-width: 100px;
-  margin-right: 10px;
-}
-
-.thresholdValue {
-  flex: 1 1 auto;
-  width: auto;
-  min-width: 0;
   max-width: none;
 }
 

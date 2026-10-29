@@ -131,7 +131,7 @@ describe('APM 四步策略编辑器', { timeout: 15000 }, () => {
     expect(screen.getByText('告警条件')).not.toBeNull();
     expect(screen.getByText('通知配置')).not.toBeNull();
     expect(screen.getByText('告警阈值')).not.toBeNull();
-    expect(screen.getAllByText('当结果是')).toHaveLength(3);
+    expect(screen.queryByText('当结果是')).toBeNull();
     expect(screen.getByLabelText('严重阈值')).not.toBeNull();
     expect(screen.getByLabelText('错误阈值')).not.toBeNull();
     expect(screen.getByLabelText('警告阈值')).not.toBeNull();
@@ -880,6 +880,8 @@ describe('APM 四步策略编辑器', { timeout: 15000 }, () => {
     await user.click(screen.getByRole('combobox', { name: '条件 b 类型' }));
     await user.click(await screen.findByText('前置条件', { selector: '.ant-select-item-option-content' }));
     expect((screen.getByRole('spinbutton', { name: '条件 b 门槛' }) as HTMLInputElement).value).toBe('200');
+    // 转成前置条件后阈值行只剩锚点一列，不能留下 b 的空洞列。
+    expect(screen.getAllByRole('combobox', { name: /警告比较符$/ })).toHaveLength(1);
     await user.click(screen.getByRole('combobox', { name: '条件 b 类型' }));
     await user.click(await screen.findByText('常规', { selector: '.ant-select-item-option-content' }));
     expect(screen.getByLabelText('条件 b 汇聚方法')).not.toBeNull();
@@ -903,6 +905,37 @@ describe('APM 四步策略编辑器', { timeout: 15000 }, () => {
     expect(regulars[1].thresholds).toEqual([expect.objectContaining({ severity: 'warning', value: 20 })]);
     expect(payload.conditions.every((item: object) => !('recovery_threshold' in item))).toBe(true);
     expect(payload.recovery_threshold).toEqual({});
+  });
+
+  it('附加条件选同窗后出现对照数量，保存写入比较基准', async () => {
+    const user = userEvent.setup();
+    renderWithApmIntl(<ApmPolicyEditor policyId="p1" />);
+    await user.click(await screen.findByRole('button', { name: '添加条件' }));
+    expect(screen.queryByLabelText('条件 b 小时数')).toBeNull();
+    expect(screen.getByLabelText('条件 b 汇聚方法').closest('.ant-select')?.textContent).toContain('平均（AVG_OVER_TIME）');
+
+    await user.click(screen.getByLabelText('条件 b 比较基准'));
+    await user.click(await screen.findByText('相对上一等长窗'));
+    expect(screen.getByRole('radio', { name: '变化量 Δ' })).not.toBeNull();
+    expect(screen.queryByLabelText('条件 b 小时数')).toBeNull();
+
+    await user.click(screen.getByLabelText('条件 b 比较基准'));
+    await user.click(await screen.findByText('同窗'));
+    const hours = screen.getByLabelText('条件 b 小时数') as HTMLInputElement;
+    expect(hours.value).toBe('1');
+    await user.clear(hours);
+    await user.type(hours, '6');
+    await user.click(screen.getByRole('combobox', { name: '条件 b 对照方式' }));
+    await user.click(await screen.findByText('N 天前'));
+    expect((screen.getByLabelText('条件 b 天数') as HTMLInputElement).value).toBe('6');
+
+    await user.click(screen.getByRole('button', { name: '保存策略' }));
+    await waitFor(() => expect(api.updatePolicy).toHaveBeenCalled());
+    const payload = api.updatePolicy.mock.calls.at(-1)?.[1];
+    const extra = payload.conditions.find((item: { ref: string }) => item.ref === 'b');
+    expect(extra.compare_mode).toBe('offset_days');
+    expect(extra.compare_offset_amount).toBe(6);
+    expect(extra.compare_value_kind).toBe('percent');
   });
 
   it('全部端点隐藏手选框，按实例提示一台一条告警，存量保存不带范围字段', async () => {
