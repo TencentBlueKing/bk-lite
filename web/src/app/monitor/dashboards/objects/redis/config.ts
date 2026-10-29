@@ -1,7 +1,7 @@
 import type { SimpleDashboardConfig } from '../common/simple-dashboard-core';
 
 /** Redis 监控高对比鲜活科技色板 */
-const REDIS_PALETTE = {
+export const REDIS_PALETTE = {
   emerald: '#10B981',   // 缓存命中率、键命中频率、网络出流量
   blue: '#2563EB',      // 内存使用量、网络入流量、客户端连接数
   indigo: '#6366F1',    // 运行时长、键过期频率
@@ -87,6 +87,14 @@ export const REDIS_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       color: REDIS_PALETTE.cyan
     },
     {
+      name: 'redis_instantaneous_ops_per_sec',
+      display_name: '实时操作频率',
+      description: 'Redis 当前每秒处理的命令数，反映瞬时负载。查询使用采集侧已有指标名，不是 rate 派生。',
+      unit: 'cps',
+      query: 'redis_instantaneous_ops_per_sec{__$labels__}',
+      color: REDIS_PALETTE.blue
+    },
+    {
       name: 'redis_keyspace_hits_rate',
       display_name: '键命中频率',
       description: '键空间成功命中的频率，反映缓存命中效率。',
@@ -165,6 +173,86 @@ export const REDIS_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       unit: 'cps',
       query: 'rate(redis_rejected_connections{__$labels__}[__$window__])',
       color: REDIS_PALETTE.rose
+    },
+    {
+      name: 'redis_connected_slaves',
+      display_name: '副本连接数',
+      description: '当前连接到本实例的副本数量，用于观察主从拓扑是否完整。',
+      unit: 'counts',
+      query: 'redis_connected_slaves{__$labels__}',
+      color: REDIS_PALETTE.emerald
+    },
+    {
+      name: 'redis_master_link_status',
+      display_name: '主从链接状态',
+      description: '副本与主节点之间的链接是否健康。1 为健康，0 为断链。',
+      unit: 'none',
+      query: 'redis_master_link_status{__$labels__}',
+      color: REDIS_PALETTE.rose
+    },
+    {
+      name: 'redis_repl_backlog_active',
+      display_name: '复制积压启用',
+      description: '复制积压是否已启用，便于副本在短暂离线后继续追赶。',
+      unit: 'none',
+      query: 'redis_repl_backlog_active{__$labels__}',
+      color: REDIS_PALETTE.indigo
+    },
+    {
+      name: 'redis_repl_backlog_size',
+      display_name: '复制积压大小',
+      description: '复制积压的容量。过小可能导致离线副本无法增量追赶。',
+      unit: 'bytes',
+      query: 'redis_repl_backlog_size{__$labels__}',
+      color: REDIS_PALETTE.neutral
+    },
+    {
+      name: 'redis_repl_backlog_histlen',
+      display_name: '复制积压已用长度',
+      description: '复制积压中当前已占用的数据长度。',
+      unit: 'bytes',
+      query: 'redis_repl_backlog_histlen{__$labels__}',
+      color: REDIS_PALETTE.blue
+    },
+    {
+      name: 'redis_master_repl_offset',
+      display_name: '主复制偏移',
+      description: '主节点当前复制进度，用于对照副本追赶情况。',
+      unit: 'counts',
+      query: 'redis_master_repl_offset{__$labels__}',
+      color: REDIS_PALETTE.cyan
+    },
+    {
+      name: 'redis_slave_repl_offset',
+      display_name: '副本复制偏移',
+      description: '副本当前已追赶的复制进度。',
+      unit: 'counts',
+      query: 'redis_slave_repl_offset{__$labels__}',
+      color: REDIS_PALETTE.emerald
+    },
+    {
+      name: 'redis_mem_replication_backlog',
+      display_name: '积压内存',
+      description: '复制积压占用的内存。',
+      unit: 'bytes',
+      query: 'redis_mem_replication_backlog{__$labels__}',
+      color: REDIS_PALETTE.amber
+    },
+    {
+      name: 'redis_cluster_enabled',
+      display_name: '集群模式',
+      description: '实例是否以集群形态运行。1 为已开启。',
+      unit: 'none',
+      query: 'redis_cluster_enabled{__$labels__}',
+      color: REDIS_PALETTE.indigo
+    },
+    {
+      name: 'redis_cluster_connections',
+      display_name: '集群连接数',
+      description: '集群节点之间的连接数量。',
+      unit: 'counts',
+      query: 'redis_cluster_connections{__$labels__}',
+      color: REDIS_PALETTE.blue
     }
   ],
   summaryCards: [
