@@ -1415,7 +1415,8 @@ export function useSimpleDashboardData(
   const dedupedConfigMetaItems = (config.metaItems || []).filter(
     (item) => normalizeMetaKey(item) !== objectMetaKey
   );
-  const objectMetaItems = [objectDisplayText, ...metaMetricChips, ...dedupedConfigMetaItems, '时区: Asia/Shanghai'];
+  const objectMetaItems = [objectDisplayText, ...metaMetricChips, ...dedupedConfigMetaItems, '时区: Asia/Shanghai']
+    .filter((item) => config.routeKey !== 'redis' || !/telegraf|database|datasource/i.test(item));
 
   const onTimeChange = (val: number[], originValue: number | null) => setTimeValues({ timeRange: val, originValue });
   const onXRangeChange = (arr: [Dayjs, Dayjs]) => {
