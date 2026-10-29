@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 from typing import Any
+from urllib.parse import urlencode
 
 from django.db import connection, transaction
 from django.db.models import Q
@@ -67,6 +68,17 @@ def task_projection(task: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _approval_target_url(execution: WorkflowExecution, interaction: WorkflowInteraction) -> str:
+    query = urlencode(
+        (
+            ("scope", "mine"),
+            ("node", interaction.task_reference),
+            ("instance_id", str(interaction.id)),
+        )
+    )
+    return f"/workflow/executions/{execution.id}?{query}"
+
+
 def _notify_pending_approvals(execution: WorkflowExecution, interactions: list[WorkflowInteraction]) -> None:
     for interaction in interactions:
         try:
@@ -74,7 +86,7 @@ def _notify_pending_approvals(execution: WorkflowExecution, interactions: list[W
                 app_module="workflow",
                 content=f"待审批：{execution.workflow.name} · {interaction.title}",
                 recipient_usernames=interaction.candidate_users,
-                target_url="/workflow/executions?scope=mine",
+                target_url=_approval_target_url(execution, interaction),
                 source="workflow_approval",
                 event_key=f"workflow_approval:{interaction.id}",
             )
