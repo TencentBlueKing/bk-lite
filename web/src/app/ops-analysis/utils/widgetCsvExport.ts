@@ -2,6 +2,10 @@ import type { DatasourceItem, ResponseFieldDefinition } from '@/app/ops-analysis
 import type { TableColumnConfigItem, ValueConfig } from '@/app/ops-analysis/types/dashBoard';
 import { ChartDataTransformer } from '@/app/ops-analysis/utils/chartDataTransform';
 import {
+  hasExplicitLineBarMapping,
+  toLineBarFieldMapping,
+} from '@/app/ops-analysis/utils/lineBarFieldMapping';
+import {
   formatVisibleChartValue,
   getLineBarYAxisName,
   hasValueFormatConfigured,
@@ -159,8 +163,7 @@ const formatChartCell = (value: unknown, config?: ValueConfig): string => {
 
 const collectRawDimensionValues = (rawData: unknown, config?: ValueConfig): unknown[] => {
   const dimensionField = config?.dimensionField?.trim() || '';
-  const valueField = config?.valueField?.trim() || '';
-  if (dimensionField || valueField) {
+  if (hasExplicitLineBarMapping(config)) {
     return unwrapTopNData(rawData).map((row) => {
       if (!row || typeof row !== 'object' || Array.isArray(row)) return undefined;
       return (row as Record<string, unknown>)[dimensionField];
@@ -216,10 +219,10 @@ export const buildLineBarCsvTable = (
   labels: WidgetCsvLabels,
   schema?: ResponseFieldDefinition[],
 ): CsvTable => {
-  const chart = ChartDataTransformer.transformToLineBarData(rawData, {
-    dimensionField: config?.dimensionField,
-    valueField: config?.valueField,
-  });
+  const chart = ChartDataTransformer.transformToLineBarData(
+    rawData,
+    toLineBarFieldMapping(config, schema),
+  );
   const dimensionLabel = lineDimensionHeader(rawData, config, labels, schema);
   if (chart.series?.length) {
     return {

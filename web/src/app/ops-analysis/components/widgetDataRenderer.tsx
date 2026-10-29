@@ -47,6 +47,7 @@ import { useParamInputOptions } from "@/app/ops-analysis/hooks/useParamInputOpti
 import { fetchCompareData, validateGaugeData } from "@/app/ops-analysis/utils/compareQuery";
 import { useDataSourceApi, withRuntimeSourceDataErrorSuppression } from "@/app/ops-analysis/api/dataSource";
 import { ChartDataTransformer } from "@/app/ops-analysis/utils/chartDataTransform";
+import { toLineBarFieldMapping } from "@/app/ops-analysis/utils/lineBarFieldMapping";
 import { getRequestErrorMessage, classifyWidgetQueryError } from "@/app/ops-analysis/utils/requestError";
 import { buildWidgetRequestCacheKey } from "@/app/ops-analysis/utils/widgetRequestCache";
 import { useDashboardRuntimeScheduler } from "@/app/ops-analysis/context/dashboardRuntimeScheduler";
@@ -721,10 +722,13 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
           });
         case "line":
         case "bar":
-          return ChartDataTransformer.validateLineBarData(data, errorMessage, {
-            dimensionField: config?.dimensionField,
-            valueField: config?.valueField,
-          });
+          return localizeStructureMessage(
+            ChartDataTransformer.validateLineBarData(
+              data,
+              errorMessage,
+              toLineBarFieldMapping(config, dataSource?.field_schema),
+            ),
+          );
         case "topN":
           return validateTopNData(data, config, errorMessage);
         case "gauge":
@@ -747,8 +751,31 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
           return { isValid: true };
       }
     },
-    [config, t],
+    [config, dataSource, t],
   );
+
+  // 字段映射不改变请求。已取到的 rawData 要按当前配置重校验，
+  // 否则预览改完分类/数值/系列后会停在上一次的「数据格式不匹配」。
+  useEffect(() => {
+    if (!requestEnabled || isSceneWidget) {
+      return;
+    }
+    if (rawData === null || rawData === undefined) {
+      return;
+    }
+    const next = validateChartData(rawData, chartType);
+    setDataValidation((previous) => {
+      if (
+        previous
+        && previous.isValid === next.isValid
+        && previous.message === next.message
+        && previous.errorCode === undefined
+      ) {
+        return previous;
+      }
+      return next;
+    });
+  }, [chartType, isSceneWidget, rawData, requestEnabled, validateChartData]);
 
   const fetchDataRef = useRef<
     (key: string, cause: CanvasRuntimeRefreshCause) => Promise<void>
