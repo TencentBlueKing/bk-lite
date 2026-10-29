@@ -195,41 +195,21 @@ def test_failed_snapshot_never_deletes_existing_edges(graph, monkeypatch):
     assert graph.edges == previous
 
 
-def test_large_dispatch_serial_batches_and_one_final_incoming_sync(monkeypatch):
-    callbacks, dispatched = [], []
-    monkeypatch.setattr(mod.transaction, "on_commit", callbacks.append)
-    monkeypatch.setattr("celery.canvas._chain.apply_async", lambda self, **kwargs: dispatched.append(self))
+@pytest.mark.django_db
+def test_large_schedule_records_every_instance_once():
+    from apps.cmdb.models.auto_relation_pending import AutoRelationPending
+
     mod.schedule_instance_auto_relation_reconcile(list(range(1, 10002)))
-    assert not dispatched
-    callbacks[0]()
-    tasks = list(dispatched[0].tasks)
-    assert len(tasks) == 22
-    assert [i for task in tasks[:-1] for i in task.args[0]] == list(range(1, 10002))
-    assert all(len(task.args[0]) <= 500 and task.immutable and task.kwargs == {"schedule_incoming": False} for task in tasks[:-1])
-    assert tasks[-1].task == mod.INCOMING_FULL_SYNC_TASK
-    assert tasks[-1].immutable
+    assert AutoRelationPending.objects.filter(instance_id__isnull=False).count() == 10001
 
 
-def test_batch_chain_execution_emits_incoming_once_after_all_batches(graph, monkeypatch):
-    from celery import Celery
+@pytest.mark.django_db
+def test_schedule_records_instances_without_building_edges(graph):
+    from apps.cmdb.models.auto_relation_pending import AutoRelationPending
 
-    from apps.cmdb.tasks.celery_tasks import reconcile_instances_auto_association_task, sync_incoming_auto_association_task
-
-    app = Celery("auto-relation-regression", set_as_current=False)
-    app.conf.update(task_always_eager=True, task_eager_propagates=True)
-    # 用真实 Celery chain 执行任务体，仅替换消息传输边界。
-    app.task(name=mod.INSTANCE_BATCH_RECONCILE_TASK)(reconcile_instances_auto_association_task.run)
-    app.task(name=mod.INCOMING_FULL_SYNC_TASK)(sync_incoming_auto_association_task.run)
-    monkeypatch.setattr(mod, "current_app", app)
-    monkeypatch.setattr(mod, "AUTO_RELATION_BATCH_SIZE", 1)
-    monkeypatch.setattr(mod.transaction, "on_commit", lambda callback: callback())
-    associations = [association("r1"), dict(association("incoming"), src_model_id="elsewhere", dst_model_id="source")]
-    monkeypatch.setattr(mod, "model_association_search", lambda model: associations)
-    scheduled = []
-    monkeypatch.setattr(mod, "schedule_rule_auto_relation_full_sync", lambda ids: scheduled.append((list(ids), len(graph.edges))))
     mod.schedule_instance_auto_relation_reconcile([1, 2])
-    assert scheduled == [(["incoming"], 2)]
-    assert len(graph.edges) == 2
+    assert graph.edges == []
+    assert list(AutoRelationPending.objects.order_by("instance_id").values_list("instance_id", flat=True)) == [1, 2]
 
 
 def test_full_sync_uuid_idempotency(graph, monkeypatch):
