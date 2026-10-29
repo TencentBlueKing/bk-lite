@@ -25,6 +25,7 @@ from service.ansible_runner import (
 )
 from service.callback_delivery_service import CallbackDeliveryMixin
 from service.failure_summary import build_task_failure_summary, log_ansible_task_failed
+from service.linux_script_delivery import ScriptDeliveryError
 from service.nats_topology_service import NATSTopologyMixin
 from service.remote_shell_stream import run_remote_shell_stream
 from service.task_store import TERMINAL_TASK_STATUSES, TaskStore, _sanitize_callback_for_storage, _sanitize_payload_for_storage
@@ -274,6 +275,8 @@ class AnsibleNATSService(NATSTopologyMixin, CallbackDeliveryMixin):
                         script_content=request.module_args,
                         shell_executable=str((request.extra_vars or {}).get("ansible_shell_executable") or "/bin/sh"),
                         timeout=request.execute_timeout,
+                        host_credentials=list(request.host_credentials or []),
+                        workspace=workspace,
                         **stream_kwargs,
                     )
                 elif not windows_file_execution:
@@ -286,6 +289,9 @@ class AnsibleNATSService(NATSTopologyMixin, CallbackDeliveryMixin):
                 winrm_preflight_cmd = build_playbook_winrm_preflight_command(prepared_request)
                 _, _, _ = await run_command(winrm_preflight_cmd, request.execute_timeout)
                 code, output, output_meta = await run_command(cmd, request.execute_timeout, **stream_kwargs)
+        except ScriptDeliveryError as err:
+            error = str(err)
+            output = err.host_output
         except Exception as err:
             error = str(err)
         finally:
