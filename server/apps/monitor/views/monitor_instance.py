@@ -616,7 +616,7 @@ class MonitorInstanceViewSet(viewsets.ViewSet):
 
     @action(methods=["post"], detail=False, url_path="unbind_monitor_plugin")
     def unbind_monitor_plugin(self, request):
-        """解绑实例上的一个已配置采集模板，保留实例及其余模板。"""
+        """删除实例上的一个已配置采集模板，保留实例及其余模板。"""
         instance_id = request.data.get("instance_id")
         monitor_plugin_id = request.data.get("monitor_plugin_id")
         if instance_id in (None, ""):

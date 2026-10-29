@@ -48,7 +48,7 @@ class MonitorPluginUnbindService:
                 stage["name"],
                 type(exc).__name__,
             )
-            raise BaseAppException("解绑采集模板失败，请稍后重试", log=False) from exc
+            raise BaseAppException("删除采集模板失败，请稍后重试", log=False) from exc
 
         logger.info(
             "event=monitor_plugin_unbound instance_id=%s monitor_plugin_id=%s deleted_config_count=%s trimmed_policy_count=%s closed_alert_count=%s",

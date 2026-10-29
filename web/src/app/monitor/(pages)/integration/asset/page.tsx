@@ -978,7 +978,7 @@ const Asset = () => {
         name: templateName
       }),
       centered: true,
-      okText: t('common.confirm'),
+      okText: t('common.delete'),
       cancelText: t('common.cancel'),
       okButtonProps: { danger: true },
       onOk: async () => {

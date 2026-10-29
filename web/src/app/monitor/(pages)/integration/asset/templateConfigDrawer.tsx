@@ -373,18 +373,38 @@ const TemplateConfigDrawer = forwardRef<
           key: 'action',
           dataIndex: 'action',
           fixed: 'right' as const,
-          width: 60,
-          render: (_: any, record: ConfigItem) => (
-            <>
-              <Button
-                type="link"
-                disabled={!record.config_ids?.length}
-                onClick={() => openConfigModal(record)}
-              >
-                {t('common.edit')}
-              </Button>
-            </>
-          ),
+          width: 140,
+          render: (_: any, record: ConfigItem) => {
+            const canDelete =
+              Boolean(selectedPlugin) &&
+              allowUnbind &&
+              canUnbindCollectTemplate(selectedPlugin, plugins);
+            return (
+              <span className="inline-flex items-center gap-1 whitespace-nowrap">
+                <Button
+                  type="link"
+                  className="h-auto px-0"
+                  disabled={!record.config_ids?.length}
+                  onClick={() => openConfigModal(record)}
+                >
+                  {t('common.edit')}
+                </Button>
+                <span className="text-[var(--color-text-3)]">|</span>
+                <Button
+                  type="link"
+                  danger
+                  className="h-auto px-0"
+                  disabled={!canDelete}
+                  onClick={(event) => {
+                    if (!selectedPlugin) return;
+                    requestUnbind(event, selectedPlugin);
+                  }}
+                >
+                  {t('monitor.integrations.unbindTemplate')}
+                </Button>
+              </span>
+            );
+          },
         },
       ];
     };
@@ -521,19 +541,6 @@ const TemplateConfigDrawer = forwardRef<
                         : t('monitor.integrations.autoAccess')}
                     </Tag>
                     <Tag>{getPackVersionText(selectedPlugin)}</Tag>
-                    {allowUnbind &&
-                    canUnbindCollectTemplate(selectedPlugin, plugins) ? (
-                      <Button
-                        type="link"
-                        danger
-                        size="small"
-                        onClick={(event) =>
-                          requestUnbind(event, selectedPlugin)
-                        }
-                      >
-                        {t('monitor.integrations.unbindTemplate')}
-                      </Button>
-                      ) : null}
                     {selectedPlugin.need_update ? (
                       <Tag color="warning">
                         {(() => {
