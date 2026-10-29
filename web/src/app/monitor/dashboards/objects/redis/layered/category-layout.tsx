@@ -16,7 +16,8 @@ import OverviewPane from './overview-pane';
 import type { RedisTopicTab } from './focus-pane';
 import { CachePane, ConnThroughputPane, MemoryPane } from './topic-panes';
 import { ClusterPane, ReplicationPane } from './architecture-panes';
-import { clusterTabVisible, nextClusterSeen, replicationTabMode } from './architecture-state';
+import { replicationTabMode } from './architecture-state';
+import { redisArchitectureView } from './architecture-view';
 import { REDIS_REPLICATION_METRIC_NAMES } from './overview-metrics';
 import { redisCategoryText, type RedisCategoryCopyKey } from './redis-copy';
 import { redisLatest, type RedisMetricMap } from './series';
@@ -90,23 +91,12 @@ export default function RedisCategoryLayout({
     pending: REDIS_REPLICATION_METRIC_NAMES.some((name) => pendingMetricNames.has(name)),
     booting
   });
-  const clusterSeenRef = useRef(false);
-  const clusterInstanceRef = useRef(instanceKey);
-  const clusterEnabledValue = redisLatest(metricMap, 'redis_cluster_enabled');
-  const clusterInflight = booting || pendingMetricNames.has('redis_cluster_enabled');
-  const clusterInstanceChanged = clusterInstanceRef.current !== instanceKey;
-  clusterInstanceRef.current = instanceKey;
-  clusterSeenRef.current = nextClusterSeen({
-    enabled: clusterEnabledValue,
-    inflight: clusterInflight,
-    seen: clusterSeenRef.current,
-    instanceChanged: clusterInstanceChanged
-  });
-  const showCluster = clusterTabVisible({
-    enabled: clusterEnabledValue,
-    inflight: clusterInflight,
-    seen: clusterSeenRef.current
-  });
+  const showCluster = redisArchitectureView({
+    instanceKey,
+    metricMap,
+    pending: pendingMetricNames,
+    booting
+  }).kind === 'cluster';
   const openAlerts = useCallback(() => {
     setFocusAlertId('');
     setAlertDrawerOpen(true);

@@ -11,7 +11,7 @@ import EventsRail, { type HostAlertRailEvent } from '../../host/layered/events-r
 import type { PreparedSummaryCard } from '../../common/simple-dashboard-core';
 import { useDashboardText } from '../../../shared/utils/content-i18n';
 import { redisCategoryText, type RedisCategoryCopyKey } from './redis-copy';
-import { redisMemoryLimitUnset, type RedisMetricMap } from './series';
+import { redisHitRatePercent, redisMemoryLimitUnset, type RedisMetricMap } from './series';
 import FocusPane, { type RedisTopicTab } from './focus-pane';
 import { CompactTrends } from './topic-panes';
 
@@ -98,6 +98,17 @@ export default function OverviewPane({
           empty: 'memory-limit'
         };
       }
+      if (metric === 'redis_keyspace_hitrate') {
+        const pct = redisHitRatePercent(metricMap);
+        if (pct != null) {
+          return {
+            key: metric,
+            label,
+            value: `${pct.toFixed(1)}%`,
+            tone: summary.valueColor ?? summary.card.color
+          };
+        }
+      }
       const empty = summary.mainValue.value === '--';
       if (empty) {
         const known = OVERVIEW_EMPTY[metric] ?? {
@@ -134,7 +145,7 @@ export default function OverviewPane({
       expanded: alertsOpen
     });
     return metricCards;
-  }, [alertCount, alertsOpen, dt, limitUnset, onOpenAlerts, summaryCards, t]);
+  }, [alertCount, alertsOpen, dt, limitUnset, metricMap, onOpenAlerts, summaryCards, t]);
 
   return (
     <div data-redis-pane="overview" className="contents">

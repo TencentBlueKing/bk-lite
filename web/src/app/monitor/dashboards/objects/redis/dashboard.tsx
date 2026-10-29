@@ -60,7 +60,14 @@ export default function RedisDashboardPage() {
       styles={styles}
       preserveLayouts
       unifiedChrome
-      identityExtra={<RedisArchitectureChip metricMap={dashboard.metricSeries} />}
+      identityExtra={(
+        <RedisArchitectureChip
+          metricMap={dashboard.metricSeries}
+          instanceKey={String(dashboard.instanceId || '')}
+          pendingMetricNames={dashboard.pendingMetricNames}
+          booting={dashboard.loading && dashboard.pendingMetricNames.size === 0}
+        />
+      )}
       viewSwitcher={{
         mode: layout,
         onChange: onLayoutChange,

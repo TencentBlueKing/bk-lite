@@ -74,6 +74,50 @@ export const redisLatest = (metricMap: RedisMetricMap, name: string) => (
   latestChartNumber(redisPoints(metricMap, name))
 );
 
+const HIT_RATE_METRIC = 'redis_keyspace_hitrate';
+
+/**
+ * Telegraf 的 keyspace_hitrate 是 0–1 比例。展示和刻度都用百分数。
+ * 已经大于 1.5 的读数视为百分数，不再乘。
+ */
+export const redisHitRatePercent = (metricMap: RedisMetricMap): number | null => {
+  const raw = redisLatest(metricMap, HIT_RATE_METRIC);
+  if (raw == null) return null;
+  const scaled = raw <= 1.5 ? raw * 100 : raw;
+  return Math.min(100, Math.max(0, scaled));
+};
+
+export const scaleHitRateChart = (data: ChartData[]): ChartData[] => data.map((point) => {
+  const next: ChartData = { ...point };
+  Object.keys(next).forEach((key) => {
+    if (!/^value\d+$/.test(key)) return;
+    const value = next[key];
+    if (typeof value !== 'number' || !Number.isFinite(value)) return;
+    next[key] = value <= 1.5 ? value * 100 : value;
+  });
+  return next;
+});
+
+/** 各序列最新一点上的复制角色标签。没有标签时返回空。 */
+export const redisReplicationLabels = (
+  metricMap: RedisMetricMap
+): Array<Record<string, string> | undefined> => {
+  const labels: Array<Record<string, string> | undefined> = [];
+  Object.values(metricMap).forEach((series) => {
+    if (!series || series.loadState !== 'success') return;
+    const points = series.viewData || [];
+    for (let index = points.length - 1; index >= 0; index -= 1) {
+      const metrics = points[index]?.seriesMetrics;
+      if (!metrics) continue;
+      const found = Object.values(metrics).filter((item) => item?.replication_role);
+      if (!found.length) continue;
+      labels.push(...found);
+      break;
+    }
+  });
+  return labels;
+};
+
 /**
  * 同一时刻的主偏移减去副本偏移。
  * 没有成对采样时返回 null。调用方写空态，不要把缺副本写成 0。

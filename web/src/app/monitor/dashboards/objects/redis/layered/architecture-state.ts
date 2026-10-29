@@ -113,29 +113,87 @@ export type ArchitectureKind = 'cluster' | 'replica' | 'standalone' | 'unknown';
 
 /**
  * 架构芯片。Cluster 优先。
- * 哨兵/副本只看副本连接或主从链接采样。单机 INFO 的 replication_role=master 不是拓扑。
- * cluster_enabled=0、副本数为 0、且没有主从链接时判单机。其余保持待识别，避免把加载中写成单机。
+ * 哨兵/副本只看副本连接、主从链接或副本标签。单机 INFO 的 replication_role=master 不是拓扑。
+ * cluster_enabled=0、没有副本信号时判单机。其余保持未知，调用方不把未知写成「架构待识别」。
  */
 export const inferArchitectureKind = ({
   clusterEnabled,
   slaves,
-  link
+  link,
+  labeledRole
 }: {
   clusterEnabled: number | null | undefined;
   slaves: number | null | undefined;
   link: number | null | undefined;
-  /** 保留给调用方。单机也会带 master 标签，不参与这里的拓扑判断。 */
   labeledRole: 'master' | 'slave' | null;
 }): ArchitectureKind => {
   if (clusterEnabledOn(clusterEnabled)) return 'cluster';
   const slaveCount = finite(slaves);
   const linkValue = finite(link);
-  const hasReplica = (slaveCount ?? 0) > 0 || linkValue != null;
+  const hasReplica = (slaveCount ?? 0) > 0 || linkValue != null || labeledRole === 'slave';
   if (hasReplica) return 'replica';
-  if (finite(clusterEnabled) === 0 && slaveCount === 0 && linkValue == null) {
+  if (finite(clusterEnabled) === 0 && (slaveCount ?? 0) === 0 && linkValue == null) {
     return 'standalone';
   }
   return 'unknown';
+};
+
+export interface ArchitectureSignals {
+  clusterEnabled: number | null | undefined;
+  slaves: number | null | undefined;
+  link: number | null | undefined;
+  labeledRole: 'master' | 'slave' | null;
+  clusterInflight: boolean;
+  slavesInflight: boolean;
+  linkInflight: boolean;
+}
+
+const stickyClusterByInstance = new Map<string, boolean>();
+
+/**
+ * 顶栏和「集群」Tab 共用。
+ * 集群开关还在飞时，不把已有副本连接写成哨兵。
+ * 本实例见过 cluster_enabled=1 后，采样空窗继续保持集群，直到明确读到 0。
+ */
+export const displayedArchitecture = (
+  instanceKey: string,
+  input: ArchitectureSignals
+): ArchitectureKind => {
+  const remembered = stickyClusterByInstance.get(instanceKey) === true;
+  const clusterValue = finite(input.clusterEnabled);
+  const slaveCount = finite(input.slaves);
+  const linkValue = finite(input.link);
+  let kind: ArchitectureKind;
+  if (clusterEnabledOn(input.clusterEnabled)) {
+    kind = 'cluster';
+  } else if (input.clusterInflight && clusterValue == null) {
+    kind = remembered ? 'cluster' : 'unknown';
+  } else {
+    const hasReplica = (slaveCount ?? 0) > 0 || linkValue != null || input.labeledRole === 'slave';
+    if (hasReplica) {
+      kind = 'replica';
+    } else {
+      const slavesQuiet = slaveCount === 0 || (slaveCount == null && !input.slavesInflight);
+      const linkQuiet = linkValue == null && !input.linkInflight;
+      const clusterOff = clusterValue === 0 || (clusterValue == null && !input.clusterInflight);
+      kind = clusterOff && slavesQuiet && linkQuiet ? 'standalone' : 'unknown';
+    }
+  }
+  if (kind === 'unknown' && remembered && clusterValue !== 0) kind = 'cluster';
+  if (clusterValue === 0) stickyClusterByInstance.set(instanceKey, false);
+  else if (kind === 'cluster') stickyClusterByInstance.set(instanceKey, true);
+  return kind;
+};
+
+/** 顶栏角色只写主节点 / 副本。更像主、更像副本收成这两档。 */
+export const headerRoleReading = (
+  role: RoleReading | null,
+  kind: ArchitectureKind
+): RoleReading | null => {
+  if (kind === 'unknown') return null;
+  if (role === 'replica' || role === 'lean-replica') return 'replica';
+  if (role === 'mixed') return 'mixed';
+  return 'primary';
 };
 
 /**

@@ -1,83 +1,58 @@
 'use client';
 
 import { useDashboardText } from '../../../shared/utils/content-i18n';
-import {
-  inferArchitectureKind,
-  inferReplicationRole,
-  replicationRoleLabel,
-  type ArchitectureKind,
-  type RoleReading
-} from './architecture-state';
+import { redisArchitectureView } from './architecture-view';
+import type { ArchitectureKind, RoleReading } from './architecture-state';
 import { redisCategoryText, type RedisCategoryCopyKey } from './redis-copy';
-import { redisLatest, type RedisMetricMap } from './series';
+import type { RedisMetricMap } from './series';
 
-const COPY: Record<ArchitectureKind, RedisCategoryCopyKey> = {
+const COPY: Record<Exclude<ArchitectureKind, 'unknown'>, RedisCategoryCopyKey> = {
   cluster: 'archCluster',
   replica: 'archReplica',
-  standalone: 'archStandalone',
-  unknown: 'archUnknown'
+  standalone: 'archStandalone'
 };
 
 const ROLE_COPY: Record<RoleReading, RedisCategoryCopyKey> = {
   primary: 'rolePrimary',
   replica: 'roleReplica',
-  'lean-primary': 'roleLeanPrimary',
-  'lean-replica': 'roleLeanReplica',
+  'lean-primary': 'rolePrimary',
+  'lean-replica': 'roleReplica',
   mixed: 'roleMixed'
 };
 
-const chipClass = (known: boolean) => (
-  known
-    ? 'inline-flex h-5 shrink-0 items-center rounded-full border border-[color-mix(in_srgb,var(--color-primary)_32%,var(--color-border))] bg-[color-mix(in_srgb,var(--color-primary)_10%,var(--color-bg))] px-2 text-[12px] font-medium leading-none text-[var(--color-text-1)]'
-    : 'inline-flex h-5 shrink-0 items-center rounded-full border border-[var(--color-border)] bg-[var(--color-fill-2)] px-2 text-[12px] font-medium leading-none text-[var(--color-text-3)]'
+const chipClass = (
+  'inline-flex h-5 shrink-0 items-center rounded-full border border-[color-mix(in_srgb,var(--color-primary)_32%,var(--color-border))] bg-[color-mix(in_srgb,var(--color-primary)_10%,var(--color-bg))] px-2 text-[12px] font-medium leading-none text-[var(--color-text-1)]'
 );
 
-function roleLabels(metricMap: RedisMetricMap) {
-  const labels: Array<Record<string, string> | undefined> = [];
-  Object.values(metricMap).forEach((series) => {
-    if (!series || series.loadState !== 'success') return;
-    const points = series.viewData || [];
-    for (let index = points.length - 1; index >= 0; index -= 1) {
-      const metrics = points[index]?.seriesMetrics;
-      if (!metrics) continue;
-      const found = Object.values(metrics).filter((item) => item?.replication_role);
-      if (!found.length) continue;
-      labels.push(...found);
-      break;
-    }
-  });
-  return labels;
-}
-
-/** 实例名旁的架构芯片。推不出来时也保留「架构待识别」，不留空白。 */
-export default function RedisArchitectureChip({ metricMap }: { metricMap: RedisMetricMap }) {
+/** 实例名旁的架构芯片。集群开关未落地前不写「架构待识别」，也不抢先写成哨兵。 */
+export default function RedisArchitectureChip({
+  metricMap,
+  instanceKey,
+  pendingMetricNames,
+  booting
+}: {
+  metricMap: RedisMetricMap;
+  instanceKey: string;
+  pendingMetricNames: ReadonlySet<string>;
+  booting: boolean;
+}) {
   const { t } = useDashboardText();
-  const labels = roleLabels(metricMap);
-  const slaves = redisLatest(metricMap, 'redis_connected_slaves');
-  const link = redisLatest(metricMap, 'redis_master_link_status');
-  const kind = inferArchitectureKind({
-    clusterEnabled: redisLatest(metricMap, 'redis_cluster_enabled'),
-    slaves,
-    link,
-    labeledRole: replicationRoleLabel(labels)
+  const view = redisArchitectureView({
+    instanceKey,
+    metricMap,
+    pending: pendingMetricNames,
+    booting
   });
-  const role = inferReplicationRole({ labels, slaves, link });
-  const label = redisCategoryText(t, COPY[kind]);
-  const known = kind !== 'unknown';
-  const chip = chipClass(known);
-  if (role == null) {
-    return (
-      <span data-redis-arch={kind} className={chip}>
-        {label}
-      </span>
-    );
-  }
+  if (view.kind === 'unknown') return null;
+  const label = redisCategoryText(t, COPY[view.kind]);
   return (
-    <span className="inline-flex h-5 max-w-full items-center gap-1" data-redis-arch={kind}>
-      <span className={chip}>{label}</span>
-      <span className={chip} data-redis-arch-role={role}>
-        {redisCategoryText(t, ROLE_COPY[role])}
-      </span>
+    <span className="inline-flex h-5 max-w-full items-center gap-1" data-redis-arch={view.kind}>
+      <span className={chipClass}>{label}</span>
+      {view.role ? (
+        <span className={chipClass} data-redis-arch-role={view.role}>
+          {redisCategoryText(t, ROLE_COPY[view.role])}
+        </span>
+      ) : null}
     </span>
   );
 }

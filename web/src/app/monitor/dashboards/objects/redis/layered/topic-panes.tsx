@@ -21,9 +21,11 @@ import { RedisHint } from './redis-hint';
 import {
   redisChartPoints,
   redisDisplay,
+  redisHitRatePercent,
   redisLatest,
   redisMemoryLimitUnset,
   redisProductText,
+  scaleHitRateChart,
   type RedisMetricMap
 } from './series';
 import RedisTrendChart, { type RedisTrendSpec } from './trend-chart';
@@ -170,12 +172,13 @@ function Spark({
 }) {
   const text = useRedisText();
   const proTime = useProTimeWindow();
-  const plotted = redisChartPoints(
+  const plottedRaw = redisChartPoints(
     metricMap,
     [{ name, label }],
     proTime?.window ?? null,
     keepSeriesWhenWindowEmpty
   );
+  const plotted = name === 'redis_keyspace_hitrate' ? scaleHitRateChart(plottedRaw) : plottedRaw;
   return (
     <ThinTimeSeries
       bare
@@ -529,7 +532,7 @@ export function CachePane({
   const text = useRedisText();
   const hits = redisDisplay(metricMap, 'redis_keyspace_hits_rate', 'cps');
   const misses = redisDisplay(metricMap, 'redis_keyspace_misses_rate', 'cps');
-  const hitRate = redisLatest(metricMap, 'redis_keyspace_hitrate');
+  const hitRate = redisHitRatePercent(metricMap);
   const loading = (pending.has('redis_keyspace_hits_rate') || pending.has('redis_keyspace_misses_rate'))
     && hits.value == null && misses.value == null;
   const bothKnown = hits.value != null && misses.value != null;
@@ -557,14 +560,14 @@ export function CachePane({
           <div className="flex h-full min-w-0 flex-col gap-3 lg:w-max lg:max-w-full">
             {loading ? (
               <section className={`${styles.panel} h-full`} data-redis-feature="hit-ring">
-                <FeatureHead title={text('cardHitVsMiss')} />
+                <FeatureHead title={text('penetration')} />
                 <ProDashLoading />
               </section>
             ) : (
               <div data-redis-feature="hit-ring" className="min-w-0">
                 <RingChartPanel
                   className="h-full"
-                  title={text('cardHitVsMiss')}
+                  title={text('penetration')}
                   data={[
                     { name: text('seriesHit'), value: Math.max(hits.value ?? 0, 0), color: REDIS_PALETTE.emerald },
                     { name: text('seriesMiss'), value: Math.max(misses.value ?? 0, 0), color: REDIS_PALETTE.rose }
