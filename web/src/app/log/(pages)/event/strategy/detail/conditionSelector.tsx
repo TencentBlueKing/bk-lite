@@ -18,7 +18,6 @@ import { useConditionList } from '@/app/log/hooks/event';
 import { compareOffsetLimit, presentCompare } from '@/app/log/utils/compareTarget';
 import {
   conditionWithLadderSlots,
-  conditionWithSingleThreshold,
   displayedThresholdSlots,
   isNumericCompare,
   LADDER_OPS,
@@ -178,20 +177,14 @@ const ConditionSelector: React.FC<ConditionFilterProps> = ({
     onChange?.(newData);
   };
 
-  const handleSingleThresholdValue = (value: string, index: number) => {
-    const level = data[index].thresholds?.[0]?.level || 'warning';
+  // 等于、不等于没有单调阶梯，级别由填进哪一档决定，不能再给整条条件另选一个级别。
+  const handleExclusiveSlotChange = (level: string, val: number | string | null, index: number) => {
+    const slots: Record<string, string> = { warning: '', error: '', critical: '' };
+    if (val != null && val !== '') {
+      slots[level] = String(val);
+    }
     const newData = [...data];
-    newData[index] = conditionWithSingleThreshold(data[index], level, value);
-    onChange?.(newData);
-  };
-
-  const handleSingleThresholdLevel = (level: string, index: number) => {
-    const current = data[index];
-    const value = Array.isArray(current.thresholds)
-      ? String(current.thresholds[0]?.value ?? '')
-      : String(current.value ?? '');
-    const newData = [...data];
-    newData[index] = conditionWithSingleThreshold(current, level, value);
+    newData[index] = conditionWithLadderSlots(data[index], slots);
     onChange?.(newData);
   };
 
@@ -257,12 +250,8 @@ const ConditionSelector: React.FC<ConditionFilterProps> = ({
             operatorOptions.push({ id: conditionItem.op, name: conditionItem.op });
           }
           const ladder = conditionItem.op != null && LADDER_OPS.has(String(conditionItem.op));
-          const singleTier = conditionItem.op != null && !ladder;
+          const levelSlots = conditionItem.op != null;
           const slots = displayedThresholdSlots(conditionItem);
-          const singleLevel = conditionItem.thresholds?.[0]?.level || 'warning';
-          const singleText = Array.isArray(conditionItem.thresholds)
-            ? String(conditionItem.thresholds[0]?.value ?? '')
-            : conditionItem.value;
           const thresholdAddon = !showUnitSuffix
             ? undefined
             : conditionItem.func === 'count_rate'
@@ -442,59 +431,43 @@ const ConditionSelector: React.FC<ConditionFilterProps> = ({
                         })
                       }
                     />
-                    {ladder ? (
+                    {levelSlots ? (
                       <div className="flex min-w-0 flex-1 flex-wrap gap-2">
-                      {POLICY_LEVELS.map((level) => (
-                        <InputNumber
-                          key={level}
-                          style={{ width: 168 }}
-                          placeholder={t('log.event.enterThreshold')}
-                          aria-label={levelLabel(level)}
-                          addonBefore={levelLabel(level)}
-                          addonAfter={level === 'critical' ? thresholdAddon : undefined}
-                          value={
-                            slots[level] !== '' && Number.isFinite(Number(slots[level]))
-                              ? Number(slots[level])
-                              : null
-                          }
-                          onChange={(val) => handleLadderValueChange(level, val, index)}
-                        />
-                      ))}
-                      </div>
-                    ) : singleTier ? (
-                      <>
-                        {numericCompare ? (
+                      {POLICY_LEVELS.map((level) => {
+                        const writeSlot = (val: number | string | null) => (
+                          ladder
+                            ? handleLadderValueChange(level, val, index)
+                            : handleExclusiveSlotChange(level, val, index)
+                        );
+                        return numericCompare || ladder ? (
                           <InputNumber
-                            style={{ width: 140 }}
+                            key={level}
+                            style={{ width: 168 }}
                             placeholder={t('log.event.enterThreshold')}
-                            addonAfter={thresholdAddon}
+                            aria-label={levelLabel(level)}
+                            addonBefore={levelLabel(level)}
+                            addonAfter={level === 'critical' ? thresholdAddon : undefined}
                             value={
-                              singleText !== '' && Number.isFinite(Number(singleText))
-                                ? Number(singleText)
+                              slots[level] !== '' && Number.isFinite(Number(slots[level]))
+                                ? Number(slots[level])
                                 : null
                             }
-                            onChange={(val) => handleSingleThresholdValue(String(val ?? ''), index)}
+                            onChange={writeSlot}
                           />
                         ) : (
                           <Input
-                            style={{ width: 140 }}
+                            key={level}
+                            style={{ width: 168 }}
                             placeholder={t('log.event.enterThreshold')}
-                            value={singleText}
-                            onChange={(event) => handleSingleThresholdValue(event.target.value, index)}
-                            {...(thresholdAddon ? { addonAfter: thresholdAddon } : {})}
+                            aria-label={levelLabel(level)}
+                            addonBefore={levelLabel(level)}
+                            value={slots[level]}
+                            onChange={(event) => writeSlot(event.target.value)}
+                            {...(level === 'critical' && thresholdAddon ? { addonAfter: thresholdAddon } : {})}
                           />
-                        )}
-                        <Select
-                          style={{ width: 96 }}
-                          aria-label={t('log.event.alarmLevel')}
-                          value={singleLevel}
-                          options={POLICY_LEVELS.map((level) => ({
-                            value: level,
-                            label: levelLabel(level),
-                          }))}
-                          onChange={(val) => handleSingleThresholdLevel(val, index)}
-                        />
-                      </>
+                        );
+                      })}
+                      </div>
                     ) : numericCompare ? (
                       <InputNumber
                         style={{ width: 140 }}

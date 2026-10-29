@@ -401,7 +401,7 @@ describe('条件函数选择', () => {
     ]);
   });
 
-  it('等于退化为一个阈值和级别选择', () => {
+  it('等于的级别挂在阈值上，填写一档会清掉其他档', () => {
     const onChange = vi.fn();
     render(
       <ConditionFilter
@@ -413,17 +413,16 @@ describe('条件函数选择', () => {
       />
     );
 
-    expect(screen.getAllByPlaceholderText('log.event.enterThreshold')).toHaveLength(1);
-    expect(screen.getByRole('textbox')).toBeTruthy();
-    expect(screen.queryByRole('spinbutton')).toBeNull();
-    expect(screen.getByRole('combobox', { name: 'log.event.alarmLevel' })).toBeTruthy();
-    fireEvent.change(screen.getByPlaceholderText('log.event.enterThreshold'), {
-      target: { value: 'warn' },
-    });
+    const thresholds = screen.getAllByPlaceholderText('log.event.enterThreshold');
+    expect(thresholds).toHaveLength(3);
+    expect(screen.queryByRole('combobox', { name: 'log.event.alarmLevel' })).toBeNull();
+    expect(screen.getByText('log.event.warning')).toBeTruthy();
+    expect(screen.getByText('log.event.critical')).toBeTruthy();
+    fireEvent.change(thresholds[2], { target: { value: 'fatal' } });
     expect(onChange).toHaveBeenCalledWith([
       expect.objectContaining({
-        value: 'warn',
-        thresholds: [{ level: 'warning', value: 'warn' }],
+        value: 'fatal',
+        thresholds: [{ level: 'critical', value: 'fatal' }],
       }),
     ]);
   });

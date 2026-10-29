@@ -139,7 +139,7 @@ export const ThresholdLadder: Story = {
   ),
 };
 
-/** 等于退化为一个阈值和级别选择。 */
+/** 等于也按警告、错误、严重三档填写，只保留有值的那一档。 */
 export const DegradedEquality: Story = {
   render: () => (
     <EditorDemo
