@@ -1379,6 +1379,7 @@
         "executeTime": "Run time",
         "instanceName": "Instance name",
         "manageIp": "Management IP",
+        "hostOsType": "Operating system",
         "networkDevice": {
             "firewall": "Firewall",
             "loadbalance": "Load balancer",

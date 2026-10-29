@@ -11,6 +11,22 @@ import ScriptCodeEditor, { ShellSwitch } from './scriptCodeEditor';
 const OUTPUT_HINT = `脚本向 stdout 输出 JSON 数组，每条记录必须有 inst_name，字段名与模型属性一致。
 示例：[{"inst_name":"192.168.1.10-demo","ip_addr":"192.168.1.10","port":"8080"}]`;
 
+const SCRIPT_FILE_TYPES: Record<string, { accept: string; label: string }> = {
+  bash: { accept: '.sh,.bash', label: '.sh、.bash' },
+  sh: { accept: '.sh', label: '.sh' },
+  powershell: { accept: '.ps1', label: '.ps1' },
+  bat: { accept: '.bat,.cmd', label: '.bat、.cmd' },
+};
+
+function scriptFileType(shell: string) {
+  return SCRIPT_FILE_TYPES[shell] || SCRIPT_FILE_TYPES.bash;
+}
+
+function scriptFileMatches(name: string, shell: string) {
+  const extension = name.includes('.') ? name.slice(name.lastIndexOf('.')).toLowerCase() : '';
+  return scriptFileType(shell).accept.split(',').includes(extension);
+}
+
 interface PluginRow {
   id: number;
   name: string;
@@ -65,6 +81,16 @@ export default function PluginManager({ lockedModelId = '' }: { lockedModelId?: 
   const [form] = Form.useForm();
   const osType = Form.useWatch('os_type', form) || 'linux';
   const shell = Form.useWatch('shell', form) || 'bash';
+  const fileType = scriptFileType(shell);
+
+  const applyShell = (next: string) => {
+    form.setFieldValue('shell', next);
+    if (uploadedName && !scriptFileMatches(uploadedName, next)) {
+      form.setFieldValue('content', '');
+      setUploadedName('');
+      message.warning(`已清除已选文件，当前只接受 ${scriptFileType(next).label}`);
+    }
+  };
 
   const load = async () => {
     setLoading(true);
@@ -120,7 +146,7 @@ export default function PluginManager({ lockedModelId = '' }: { lockedModelId?: 
   const save = async () => {
     const values = await form.validateFields();
     if (!editing && !values.content) {
-      message.error('请上传脚本文件');
+      message.error(`请上传 ${scriptFileType(values.shell).label} 脚本文件`);
       return;
     }
     const teamId = Number(Cookies.get('current_team'));
@@ -227,7 +253,7 @@ export default function PluginManager({ lockedModelId = '' }: { lockedModelId?: 
               disabled={Boolean(editing)}
               options={[{ value: 'linux', label: 'Linux' }, { value: 'windows', label: 'Windows' }]}
               onChange={(value: 'linux' | 'windows') => {
-                form.setFieldValue('shell', value === 'windows' ? 'powershell' : 'bash');
+                applyShell(value === 'windows' ? 'powershell' : 'bash');
               }}
             />
           </Form.Item>
@@ -235,23 +261,27 @@ export default function PluginManager({ lockedModelId = '' }: { lockedModelId?: 
             <Input />
           </Form.Item>
           <div className="mb-2">
-            <ShellSwitch osType={osType} value={shell} onChange={(next) => form.setFieldValue('shell', next)} />
+            <ShellSwitch osType={osType} value={shell} onChange={applyShell} />
           </div>
           {editing ? (
             <Form.Item name="content" label="脚本" rules={[{ required: true, message: '请填写或上传脚本' }]} extra={OUTPUT_HINT}>
               <ScriptCodeEditor shell={shell} />
             </Form.Item>
           ) : (
-            <Form.Item label="脚本" required extra={uploadedName ? `已选择 ${uploadedName}，确认保存后生效` : '新建只能上传脚本文件'}>
-              <Form.Item name="content" noStyle rules={[{ required: true, message: '请上传脚本文件' }]}>
+            <Form.Item label="脚本" required extra={uploadedName ? `已选择 ${uploadedName}，确认保存后生效` : `新建只能上传 ${fileType.label} 脚本文件`}>
+              <Form.Item name="content" noStyle rules={[{ required: true, message: `请上传 ${fileType.label} 脚本文件` }]}>
                 <Input type="hidden" />
               </Form.Item>
             </Form.Item>
           )}
           <Upload
-            accept=".sh,.ps1,.bash,.bat,.cmd,.txt"
+            accept={fileType.accept}
             showUploadList={false}
             beforeUpload={(file) => {
+              if (!scriptFileMatches(file.name, shell)) {
+                message.error(`请上传 ${fileType.label} 脚本文件`);
+                return Upload.LIST_IGNORE;
+              }
               file.text().then((text) => {
                 form.setFieldValue('content', text);
                 setUploadedName(file.name);
@@ -261,6 +291,7 @@ export default function PluginManager({ lockedModelId = '' }: { lockedModelId?: 
           >
             <Button>{editing ? '上传并覆盖脚本' : '上传脚本'}</Button>
           </Upload>
+          <div className="mb-4 mt-1 text-xs text-[var(--color-text-3)]">{`当前脚本类型：${shell}（${fileType.label}）`}</div>
           <Form.Item name="desc" label="描述"><Input /></Form.Item>
         </Form>
       </Modal>

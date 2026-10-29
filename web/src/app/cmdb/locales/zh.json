@@ -1080,6 +1080,7 @@
         "executeNow": "立即执行",
         "instanceName": "实例名",
         "manageIp": "管理IP",
+        "hostOsType": "操作系统",
         "objectType": "对象类型",
         "selectedAssetCount": "已选 {count} 项",
         "selectDeviceModels": "设备模型",
