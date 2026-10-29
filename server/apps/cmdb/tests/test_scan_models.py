@@ -18,6 +18,7 @@ from apps.cmdb.models.scan_model import (
     scan_encrypt_model_id,
     scan_task_type_for_model,
 )
+from apps.cmdb.serializers.scan_serializer import ScanHitSerializer
 
 pytestmark = pytest.mark.django_db
 
@@ -90,6 +91,13 @@ def test_scan_execution_and_hit_can_be_created():
     assert execution.target_count == 0
     assert family_run.received_count == 0
     assert hit.inst_uuid == ""
+    assert hit.confidence == ScanHit.CONFIDENCE_LOW
+    assert hit.evidence == []
+    serialized = ScanHitSerializer(hit).data
+    assert serialized["confidence"] == ScanHit.CONFIDENCE_LOW
+    assert serialized["evidence"] == []
+    assert serialized["cmdb_managed"] is False
+    assert serialized["monitor_managed"] is False
 
 
 def test_middleware_family_normalizes_and_maps_job_plugin():
@@ -98,6 +106,10 @@ def test_middleware_family_normalizes_and_maps_job_plugin():
     assert scan_encrypt_model_id("middleware") == "host"
     assert scan_driver_type_for_model("nginx") == CollectDriverTypes.JOB
     assert scan_task_type_for_model("nginx") == CollectPluginTypes.MIDDLEWARE
+    assert scan_driver_type_for_model("apache") == CollectDriverTypes.JOB
+    assert scan_task_type_for_model("apache") == CollectPluginTypes.MIDDLEWARE
+    assert scan_task_type_for_model("redis") == CollectPluginTypes.DB
+    assert scan_task_type_for_model("oracle") == CollectPluginTypes.PROTOCOL
     assert is_agent_credential({}) is True
     assert is_agent_credential({"credential_id": SCAN_AGENT_CREDENTIAL_ID}) is True
     assert is_agent_credential({"username": "root", "password": "x"}) is False

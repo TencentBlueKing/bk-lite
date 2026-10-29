@@ -178,6 +178,31 @@ def test_write_ci_rejects_running_execution():
         ScanWriteCiService.write(execution, [hit.id])
 
 
+def test_write_low_confidence_mysql_without_credential(mocker):
+    execution, hit = _execution(
+        family="mysql",
+        protocol="mysql",
+        port=3306,
+        credential_id="",
+        soid="",
+        snapshot={"ip_addr": "10.0.1.10", "port": 3306},
+        cmdb_model_id="mysql",
+    )
+    hit.confidence = ScanHit.CONFIDENCE_LOW
+    hit.save(update_fields=["confidence"])
+    captured = _capture_cannula(mocker)
+
+    result = ScanWriteCiService.write(execution, [hit.id])
+
+    assert result["written"] == 1
+    hit.refresh_from_db()
+    assert hit.inst_uuid == "uuid-10.0.1.10"
+    assert hit.cmdb_model_id == "mysql"
+    row = captured["default_metrics"]["mysql"][0]
+    assert row["inst_name"] == "10.0.1.10-mysql-3306"
+    assert row["port"] == 3306
+
+
 def test_write_postgresql_from_snapshot(mocker):
     execution, hit = _execution(
         family="postgresql",
@@ -307,6 +332,47 @@ def test_write_ci_skips_middleware_host_attach_when_host_missing(mocker):
     hit.refresh_from_db()
     assert hit.attached_inst_uuid == ""
     create_asso.assert_not_called()
+
+
+def test_write_maps_extra_fingerprint_database_and_middleware(mocker):
+    execution, redis_hit = _execution(
+        family="redis",
+        protocol="redis",
+        port=6379,
+        credential_id="",
+        soid="",
+        snapshot={"ip_addr": "10.0.1.10", "port": 6379},
+        cmdb_model_id="redis",
+    )
+    apache_run = ScanFamilyRun.objects.create(
+        execution=execution,
+        model_id="apache",
+        driver_type="job",
+        admit_status=ScanFamilyRun.ADMIT_ACCEPTED,
+    )
+    apache_hit = ScanHit.objects.create(
+        execution=execution,
+        family_run=apache_run,
+        protocol="apache",
+        host="10.0.1.10",
+        port=80,
+        credential_id="",
+        status=ScanHit.STATUS_SUCCESS,
+        snapshot={"ip_addr": "10.0.1.10", "port": 80},
+        cmdb_model_id="apache",
+    )
+    captured = _capture_cannula(mocker)
+    mocker.patch("apps.cmdb.services.scan_write_ci_service._lookup_host_by_ip", return_value=None)
+
+    redis_result = ScanWriteCiService.write(execution, [redis_hit.id])
+    assert redis_result["written"] == 1
+    assert captured["default_metrics"]["redis"][0]["inst_name"] == "10.0.1.10-redis-6379"
+
+    apache_result = ScanWriteCiService.write(execution, [apache_hit.id])
+    assert apache_result["written"] == 1
+    apache_row = captured["default_metrics"]["apache"][0]
+    assert apache_row["inst_name"] == "10.0.1.10-apache-80"
+    assert apache_row["assos"][0]["model_asst_id"] == "apache_run_host"
 
 
 def test_write_ci_skips_middleware_host_attach_when_graph_lookup_fails(mocker):

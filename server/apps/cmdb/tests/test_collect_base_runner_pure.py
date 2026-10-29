@@ -9,11 +9,14 @@
 
 不触 DB：通过 task= 注入 fake task，绕过 CollectModels.objects.get。
 """
+import time
 from types import SimpleNamespace
 
 import pydantic.root_model  # noqa: F401
 
 from apps.cmdb.collection.collect_tasks.base import BaseCollect
+from apps.cmdb.collection.metrics_cannula import MetricsCannula
+from apps.cmdb.collection.plugins.community.db.mongodb import MongoDBCollectionPlugin
 from apps.cmdb.constants.constants import DataCleanupStrategy
 
 
@@ -213,6 +216,7 @@ def test_run_drives_metrics_cannula(monkeypatch):
         def __init__(self, **kw):
             self.kwargs = kw
             self.collect_data = {"raw": 1}
+            self.collect_plugin_instance = None
 
         def collect_controller(self):
             return {
@@ -254,6 +258,7 @@ def test_run_merges_custom_task_format_data(monkeypatch):
                     "all": 1,
                 }
             }
+            self.collect_plugin_instance = None
 
         def collect_controller(self):
             return {"__raw_data__": [], "all": 0, "ip": {"add": {"success": []}}}
@@ -354,3 +359,86 @@ def test_format_assos_result_flattens_status():
     out = BaseCollect.format_assos_result({"success": [{"x": 1}], "failed": [{"y": 2}]})
     statuses = sorted(i["_status"] for i in out)
     assert statuses == ["failed", "success"]
+
+
+# --------------------------------------------------------------------------
+# MetricsCannula 已持有任务时，格式化数据库结果不再逐条回查
+# --------------------------------------------------------------------------
+def _mongodb_rows(count):
+    collected_at = int(time.time())
+    rows = []
+    for index in range(count):
+        rows.append(
+            {
+                "metric": {
+                    "__name__": "mongodb_info_gauge",
+                    "ip_addr": f"10.1.2.{index + 1}",
+                    "port": 27017 + index,
+                    "version": "7.0.14",
+                },
+                "value": [collected_at, "1"],
+            }
+        )
+    return rows
+
+
+def _format_mongodb_rows(monkeypatch, count, *, task, plugin_kwargs=None):
+    calls = {"count": 0}
+
+    def _get(*_args, **kwargs):
+        calls["count"] += 1
+        return SimpleNamespace(id=kwargs.get("id"), model_id="mongodb")
+
+    monkeypatch.setattr("apps.cmdb.collection.collect_plugin.base.CollectModels.objects.get", _get)
+    monkeypatch.setattr(MongoDBCollectionPlugin, "query_data", lambda self: {"result": _mongodb_rows(count)})
+    cannula = MetricsCannula(
+        inst_id=None,
+        organization=[1],
+        inst_name="mongodb-task",
+        task_id=6627,
+        collect_plugin=MongoDBCollectionPlugin,
+        plugin_kwargs=plugin_kwargs,
+        task=task,
+    )
+    return cannula.collection_metrics["mongodb"], calls["count"], cannula
+
+
+def _assert_mongodb_rows(formatted, count):
+    assert len(formatted) == count
+    for index, row in enumerate(formatted):
+        ip_addr = f"10.1.2.{index + 1}"
+        port = 27017 + index
+        assert row["inst_name"] == f"{ip_addr}-mongodb-{port}"
+        assert row["version"] == "7.0.14"
+
+
+def test_missing_task_still_loads_collect_model_while_formatting(monkeypatch):
+    formatted, gets, _cannula = _format_mongodb_rows(monkeypatch, 10, task=None)
+    _assert_mongodb_rows(formatted, 10)
+    assert gets > 0
+
+
+def test_explicit_collect_inst_is_not_replaced_by_held_task(monkeypatch):
+    explicit = SimpleNamespace(id=99, model_id="mongodb")
+    task = SimpleNamespace(id=6627, model_id="mysql")
+    plugin_kwargs = {"collect_inst": explicit}
+    formatted, gets, cannula = _format_mongodb_rows(
+        monkeypatch,
+        10,
+        task=task,
+        plugin_kwargs=plugin_kwargs,
+    )
+    assert cannula.collect_plugin_instance.get_collect_inst() is explicit
+    _assert_mongodb_rows(formatted, 10)
+    assert gets == 0
+    assert plugin_kwargs["collect_inst"] is explicit
+
+
+def test_held_task_formats_mongodb_rows_without_reloading_task(monkeypatch):
+    task = SimpleNamespace(id=6627, model_id="mongodb")
+    observed = {}
+    for count in (10, 100):
+        formatted, gets, _cannula = _format_mongodb_rows(monkeypatch, count, task=task)
+        _assert_mongodb_rows(formatted, count)
+        observed[count] = gets
+    assert observed == {10: 0, 100: 0}

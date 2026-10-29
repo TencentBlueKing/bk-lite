@@ -6,7 +6,8 @@ import {
   randomColorForLegend,
   resolveOpsChartThemeName,
 } from '@/app/ops-analysis/components/ops-analysis-widgets/runtime';
-import type { ValueConfig } from '@/app/ops-analysis/components/ops-analysis-widgets';
+import type { DatasourceItem, ValueConfig } from '@/app/ops-analysis/components/ops-analysis-widgets';
+import { toLineBarFieldMapping } from '@/app/ops-analysis/utils/lineBarFieldMapping';
 import ChartLegend from '@/components/chart-legend';
 import ChartWithSidebarLegend from '@/components/chart-with-sidebar-legend';
 import {
@@ -34,6 +35,7 @@ export interface OpsAnalysisLineProps {
   loading?: boolean;
   onReady?: (ready: boolean) => void;
   config?: ValueConfig;
+  dataSource?: DatasourceItem;
 }
 
 const LINE_SMOOTHNESS = 0.36;
@@ -94,6 +96,7 @@ const OpsAnalysisLine: React.FC<OpsAnalysisLineProps> = ({
   loading = false,
   onReady,
   config,
+  dataSource,
 }) => {
   const { t } = useTranslation();
   const chartRef = useRef<any>(null);
@@ -114,10 +117,10 @@ const OpsAnalysisLine: React.FC<OpsAnalysisLineProps> = ({
     setLegendSelected(selected);
   }, []);
 
-  const chartData = ChartDataTransformer.transformToLineBarData(rawData, {
-    dimensionField: config?.dimensionField,
-    valueField: config?.valueField,
-  });
+  const chartData = ChartDataTransformer.transformToLineBarData(
+    rawData,
+    toLineBarFieldMapping(config, dataSource?.field_schema),
+  );
   const isDataReady = chartData.categories.length > 0;
 
   useEffect(() => {
@@ -523,7 +526,7 @@ const OpsAnalysisLine: React.FC<OpsAnalysisLineProps> = ({
       surfaceProps={{
         loading,
         hasData: !!(isDataReady && chartData && chartData.categories.length > 0),
-        containerClassName: 'flex h-full min-h-0 w-full',
+        containerClassName: 'mt-2 flex h-full min-h-0 w-full',
         loadingClassName: 'flex h-full w-full items-center justify-center',
         emptyClassName: 'flex h-full w-full items-center justify-center',
       }}

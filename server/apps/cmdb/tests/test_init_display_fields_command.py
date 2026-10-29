@@ -7,7 +7,20 @@ from django.core.management import call_command
 pytestmark = pytest.mark.django_db
 
 
-def test_init_display_fields_dry_run_success(monkeypatch, capsys):
+def test_init_display_fields_dry_run_does_not_write(monkeypatch, capsys):
+    initializer_cls = MagicMock()
+    monkeypatch.setattr(
+        "apps.cmdb.management.commands.init_display_fields.DisplayFieldInitializer",
+        initializer_cls,
+    )
+    call_command("init_display_fields", dry_run=True)
+    out = capsys.readouterr().out
+    assert "不会实际修改数据" in out
+    assert "初始化完成" not in out
+    initializer_cls.assert_not_called()
+
+
+def test_init_display_fields_success(monkeypatch, capsys):
     init = MagicMock()
     init.initialize_all.return_value = {
         "success": True,
@@ -19,9 +32,8 @@ def test_init_display_fields_dry_run_success(monkeypatch, capsys):
         "apps.cmdb.management.commands.init_display_fields.DisplayFieldInitializer",
         lambda: init,
     )
-    call_command("init_display_fields", dry_run=True)
+    call_command("init_display_fields")
     out = capsys.readouterr().out
-    assert "试运行" in out
     assert "初始化完成" in out
     assert "模型数: 2" in out
     init.initialize_all.assert_called_once()

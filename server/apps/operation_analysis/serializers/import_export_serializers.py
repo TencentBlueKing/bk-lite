@@ -32,6 +32,17 @@ class ExportRequestSerializer(serializers.Serializer):
         return attrs
 
 
+class ImportUpdateRequestSerializer(serializers.Serializer):
+    """按 URL 上的目标画布覆盖定义，不接收目录冲突决策。"""
+
+    yaml_content = serializers.CharField(help_text="YAML文件内容")
+
+    def validate_yaml_content(self, value):
+        if not value or not value.strip():
+            raise serializers.ValidationError(oa_message("messages.yaml_empty", "YAML内容不能为空"))
+        return value
+
+
 class ImportPrecheckRequestSerializer(serializers.Serializer):
     yaml_content = serializers.CharField(
         help_text="YAML文件内容",

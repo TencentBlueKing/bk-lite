@@ -223,8 +223,39 @@ def test_delete_group_migrates_attrs(patch_model_rich, fake_graph, monkeypatch):
 @pytest.mark.django_db
 def test_delete_group_last_one_forbidden(patch_model_rich):
     g = FieldGroup.objects.create(model_id="host", group_name="网络", order=1, created_by="admin")
-    with pytest.raises(BaseAppException):
+    with pytest.raises(BaseAppException, match="至少保留一个分组，无法删除"):
         FieldGroupService.delete_group(g)
+
+
+@pytest.mark.django_db
+def test_delete_first_group_migrates_attrs_to_remaining_group(patch_model_rich, fake_graph, monkeypatch):
+    monkeypatch.setattr(
+        "apps.cmdb.display_field.ExcludeFieldsCache.invalidate_model_attrs",
+        lambda model_id: None,
+    )
+    fg = fake_graph(MODULE)
+    net = FieldGroup.objects.create(
+        model_id="host", group_name="网络", order=1, created_by="admin", attr_orders=["ip"]
+    )
+    FieldGroup.objects.create(
+        model_id="host", group_name="硬件", order=2, created_by="admin", attr_orders=["cpu"]
+    )
+
+    result = FieldGroupService.delete_group(net)
+
+    assert result["success"] is True
+    writes = [call for call in fg.calls if call[0] == "set_entity_properties"]
+    assert writes
+    written = json.loads(writes[-1][1][2]["attrs"])
+    by_id = {item["attr_id"]: item["attr_group"] for item in written}
+    assert by_id["ip"] == "硬件"
+    assert by_id["cpu"] == "硬件"
+    assert not FieldGroup.objects.filter(model_id="host", group_name="网络").exists()
+    hardware = FieldGroup.objects.get(model_id="host", group_name="硬件")
+    assert hardware.attr_orders == ["cpu", "ip"]
+
+    with pytest.raises(BaseAppException, match="至少保留一个分组，无法删除"):
+        FieldGroupService.delete_group(hardware)
 
 
 @pytest.mark.django_db

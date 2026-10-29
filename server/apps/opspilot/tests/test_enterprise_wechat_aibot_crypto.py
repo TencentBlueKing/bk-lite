@@ -66,6 +66,25 @@ def test_verify_url_decrypts_echostr():
     assert result == '{"ok":true}'
 
 
+def test_encrypt_reply_roundtrip():
+    token = "token"
+    timestamp = "1"
+    nonce = "nonce"
+    crypto = EnterpriseWechatAibotCrypto(token=token, encoding_aes_key=_encoding_aes_key())
+    payload = {"msgtype": "stream", "stream": {"id": "s1", "finish": False, "content": "正在处理"}}
+
+    packed = crypto.encrypt_reply(payload, timestamp=timestamp, nonce=nonce)
+    result = crypto.decrypt_callback(
+        packed["msgsignature"],
+        packed["timestamp"],
+        packed["nonce"],
+        json.dumps({"encrypt": packed["encrypt"]}).encode("utf-8"),
+    )
+
+    assert result == payload
+    assert packed["encrypt"] not in json.dumps(payload)
+
+
 def test_decrypt_callback_returns_message_dict():
     token = "token"
     timestamp = "1"

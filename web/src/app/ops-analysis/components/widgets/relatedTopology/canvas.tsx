@@ -14,12 +14,14 @@ interface RelatedTopologyCanvasProps {
   config?: ValueConfig;
   surface?: OpsAnalysisWidgetSurface;
   onReady?: (ready?: boolean) => void;
+  scenePermissionDenied?: boolean;
 }
 
 const RelatedTopologyCanvas = ({
   config,
   surface = 'dashboard',
   onReady,
+  scenePermissionDenied = false,
 }: RelatedTopologyCanvasProps) => {
   const { t } = useTranslation();
   const instUuid = config?.relatedTopology?.instUuid?.trim() || '';
@@ -32,6 +34,19 @@ const RelatedTopologyCanvas = ({
 
   if (!allowed) {
     return null;
+  }
+
+  if (scenePermissionDenied) {
+    return (
+      <div
+        className="flex h-full min-h-[280px] items-center justify-center text-sm text-[var(--color-text-3)]"
+        style={relatedTopologyCanvasStyle(
+          isScreenChartThemeMode(config?.chartThemeMode),
+        )}
+      >
+        {t('common.noAuth')}
+      </div>
+    );
   }
 
   if (!instUuid) {

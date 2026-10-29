@@ -165,54 +165,55 @@ def _validate_single_node(
     metrics = raw_node.get("metrics") or []
     if not isinstance(metrics, list):
         errors.append(oa_message("messages.nt_node_metrics_array", "节点 {node_id} 的 metrics 必须是数组", node_id=node_id))
-    for m_index, metric in enumerate(metrics):
-        if not isinstance(metric, dict):
-            errors.append(oa_message("messages.nt_node_metric_object", "节点 {node_id} 指标 #{m_index} 必须是对象", node_id=node_id, m_index=m_index))
-            continue
-        if not metric.get("metric_field"):
-            errors.append(oa_message("messages.nt_node_metric_field", "节点 {node_id} 指标 #{m_index} 缺少 metric_field", node_id=node_id, m_index=m_index))
-        if not metric.get("result_table_id"):
-            errors.append(
-                oa_message("messages.nt_node_metric_table", "节点 {node_id} 指标 #{m_index} 缺少 result_table_id", node_id=node_id, m_index=m_index)
-            )
-        thresholds = metric.get("thresholds") or []
-        if not isinstance(thresholds, list):
-            errors.append(
-                oa_message("messages.nt_node_thresholds_array", "节点 {node_id} 指标 #{m_index} 的 thresholds 必须是数组", node_id=node_id, m_index=m_index)
-            )
-            continue
-        for t_index, threshold in enumerate(thresholds):
-            if not isinstance(threshold, dict):
+    else:
+        for m_index, metric in enumerate(metrics):
+            if not isinstance(metric, dict):
+                errors.append(oa_message("messages.nt_node_metric_object", "节点 {node_id} 指标 #{m_index} 必须是对象", node_id=node_id, m_index=m_index))
+                continue
+            if not metric.get("metric_field"):
+                errors.append(oa_message("messages.nt_node_metric_field", "节点 {node_id} 指标 #{m_index} 缺少 metric_field", node_id=node_id, m_index=m_index))
+            if not metric.get("result_table_id"):
                 errors.append(
-                    oa_message(
-                        "messages.nt_threshold_object",
-                        "节点 {node_id} 指标 #{m_index} 阈值 #{t_index} 必须是对象",
-                        node_id=node_id,
-                        m_index=m_index,
-                        t_index=t_index,
-                    )
+                    oa_message("messages.nt_node_metric_table", "节点 {node_id} 指标 #{m_index} 缺少 result_table_id", node_id=node_id, m_index=m_index)
+                )
+            thresholds = metric.get("thresholds") or []
+            if not isinstance(thresholds, list):
+                errors.append(
+                    oa_message("messages.nt_node_thresholds_array", "节点 {node_id} 指标 #{m_index} 的 thresholds 必须是数组", node_id=node_id, m_index=m_index)
                 )
                 continue
-            if "value" not in threshold:
-                errors.append(
-                    oa_message(
-                        "messages.nt_threshold_value",
-                        "节点 {node_id} 指标 #{m_index} 阈值 #{t_index} 缺少 value",
-                        node_id=node_id,
-                        m_index=m_index,
-                        t_index=t_index,
+            for t_index, threshold in enumerate(thresholds):
+                if not isinstance(threshold, dict):
+                    errors.append(
+                        oa_message(
+                            "messages.nt_threshold_object",
+                            "节点 {node_id} 指标 #{m_index} 阈值 #{t_index} 必须是对象",
+                            node_id=node_id,
+                            m_index=m_index,
+                            t_index=t_index,
+                        )
                     )
-                )
-            if not threshold.get("color"):
-                errors.append(
-                    oa_message(
-                        "messages.nt_threshold_color",
-                        "节点 {node_id} 指标 #{m_index} 阈值 #{t_index} 缺少 color",
-                        node_id=node_id,
-                        m_index=m_index,
-                        t_index=t_index,
+                    continue
+                if "value" not in threshold:
+                    errors.append(
+                        oa_message(
+                            "messages.nt_threshold_value",
+                            "节点 {node_id} 指标 #{m_index} 阈值 #{t_index} 缺少 value",
+                            node_id=node_id,
+                            m_index=m_index,
+                            t_index=t_index,
+                        )
                     )
-                )
+                if not threshold.get("color"):
+                    errors.append(
+                        oa_message(
+                            "messages.nt_threshold_color",
+                            "节点 {node_id} 指标 #{m_index} 阈值 #{t_index} 缺少 color",
+                            node_id=node_id,
+                            m_index=m_index,
+                            t_index=t_index,
+                        )
+                    )
     return raw_node, errors
 
 

@@ -434,6 +434,7 @@ class Command(BaseCommand):
         from apps.operation_analysis.models.datasource_models import DataSourceAPIModel
         from apps.operation_analysis.models.models import Architecture, Dashboard, Report, Screen, Topology
         from apps.operation_analysis.schemas.import_export_schema import YAMLDocument
+        from apps.operation_analysis.services.datasource_required_app import resolve_or_seed_required_app
         from apps.operation_analysis.services.import_export.import_service import ImportService
 
         # 3. 解析 YAML 为 YAMLDocument
@@ -587,6 +588,11 @@ class Command(BaseCommand):
                         is_build_in=True,
                         build_in_key=item.key,
                         updated_by="system",
+                        required_app=resolve_or_seed_required_app(
+                            rest_api=item.rest_api,
+                            source_type=item.source_type,
+                            is_build_in=True,
+                        ),
                     )
                 _clear_default_only_builtin_datasource_groups(groups)
 

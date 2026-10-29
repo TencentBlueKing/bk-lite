@@ -20,7 +20,7 @@ export interface InteractiveWorkflowNodeData extends WorkflowCanvasNodeData {
 type WorkflowNode = Node<InteractiveWorkflowNodeData, 'workflowCanvas'>;
 
 function NodeIcon({ data }: { data: InteractiveWorkflowNodeData }) {
-  if (data.kind === 'trigger') return <AtomIcon nodeType="TRIGGER" className="text-5xl" />;
+  if (data.kind === 'trigger') return <AtomIcon nodeType="TRIGGER" triggerType={data.triggerType} className="text-5xl" />;
   if (data.kind === 'return') return <AtomIcon nodeType="RETURN" className="text-5xl" />;
   if (data.kind === 'control') {
     if (data.taskType === 'HUMAN') return <AtomIcon nodeType="CONTROL" controlKind="approval" className="text-5xl" />;

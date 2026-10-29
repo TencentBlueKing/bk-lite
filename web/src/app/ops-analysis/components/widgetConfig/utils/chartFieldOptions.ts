@@ -19,7 +19,7 @@ const formatFieldOptionLabel = (key: string, title?: string) => {
   return `${normalizedKey} (${normalizedTitle})`;
 };
 
-const collectSampleRows = (sample: unknown): unknown[] => {
+export const collectSampleRows = (sample: unknown): unknown[] => {
   if (Array.isArray(sample)) {
     return sample;
   }

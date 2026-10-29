@@ -65,3 +65,39 @@ def test_directory_partial_update_persists_valid_reparenting(api_client, authent
     assert response.status_code == status.HTTP_200_OK
     child.refresh_from_db()
     assert child.parent_id == second_root.id
+
+
+@override_settings(ROOT_URLCONF=__name__, MIDDLEWARE=())
+def test_directory_partial_update_rejects_reparent_that_makes_descendant_exceed_three_levels(api_client, authenticated_user):
+    _make_superuser(authenticated_user)
+    directory_a = Directory.objects.create(name="目录A", groups=[1], created_by="testuser")
+    directory_b = Directory.objects.create(name="目录B", groups=[1], parent=directory_a, created_by="testuser")
+    directory_c = Directory.objects.create(name="目录C", groups=[1], parent=directory_b, created_by="testuser")
+    directory_x = Directory.objects.create(name="目录X", groups=[1], created_by="testuser")
+
+    response = api_client.patch(f"/api/directory/{directory_a.id}/", {"parent": directory_x.id}, format="json")
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert "Directory hierarchy cannot exceed 3 levels" in json.dumps(response.json(), ensure_ascii=False)
+    directory_a.refresh_from_db()
+    directory_b.refresh_from_db()
+    directory_c.refresh_from_db()
+    assert directory_a.parent_id is None
+    assert directory_b.parent_id == directory_a.id
+    assert directory_c.parent_id == directory_b.id
+
+
+@override_settings(ROOT_URLCONF=__name__, MIDDLEWARE=())
+def test_directory_partial_update_allows_two_level_subtree_reparent(api_client, authenticated_user):
+    _make_superuser(authenticated_user)
+    directory_a = Directory.objects.create(name="两级根", groups=[1], created_by="testuser")
+    directory_b = Directory.objects.create(name="两级子", groups=[1], parent=directory_a, created_by="testuser")
+    directory_x = Directory.objects.create(name="两级新根", groups=[1], created_by="testuser")
+
+    response = api_client.patch(f"/api/directory/{directory_a.id}/", {"parent": directory_x.id}, format="json")
+
+    assert response.status_code == status.HTTP_200_OK
+    directory_a.refresh_from_db()
+    directory_b.refresh_from_db()
+    assert directory_a.parent_id == directory_x.id
+    assert directory_b.parent_id == directory_a.id

@@ -25,6 +25,7 @@ class K8sOpenAPIViewSet(OpenAPIViewSet):
             secret=token_data["secret"],
             cluster_name=token_data["cluster_name"],
             push_source_id=token_data["push_source_id"],
+            insecure_skip_verify=token_data.get("insecure_skip_verify", False),
         )
         response = HttpResponse(yaml_content, content_type="text/yaml; charset=utf-8")
         response["X-Token-Remaining-Usage"] = str(token_data.get("remaining_usage", 0))

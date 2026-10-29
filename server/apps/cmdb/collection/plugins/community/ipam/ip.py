@@ -39,7 +39,11 @@ class IPAMDiscoveryCollectionPlugin(AutoRegisterCollectionPluginMixin, CollectBa
         rows = []
         for metrics in self.collection_metrics_dict.values():
             rows.extend(metrics)
-        summary = ipam_discovery.apply_ip_discovery_vm_rows(self.get_collect_inst(), rows)
+        summary = ipam_discovery.apply_ip_discovery_vm_rows(
+            self.get_collect_inst(),
+            rows,
+            snapshot_complete=self.snapshot_complete,
+        )
         self.result[self.model_id] = []
         self.result[self.TASK_FORMAT_DATA_KEY] = summary.get("format_data", {})
 

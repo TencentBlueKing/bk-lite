@@ -276,6 +276,59 @@ def test_second_generate_appends_to_scan_created_task(mocker, authenticated_user
     assert push.call_count == 2
 
 
+def test_unmarked_same_prefix_hand_task_is_not_claimed(mocker, authenticated_user):
+    """名称以前缀开头、但没有来源标记的手建选择资产任务不能被扫描生成改写。"""
+    _patch_side_effects(mocker)
+    mocker.patch.object(CollectModelService, "push_butch_node_params")
+    mocker.patch.object(CollectModelService, "delete_butch_node_params")
+    task = _task()
+    hand_uuid = HOST_UUIDS["10.0.1.10"]
+    hand = CollectModels.objects.create(
+        name="scan-gen-network",
+        task_type="snmp",
+        driver_type="protocol",
+        model_id="network",
+        is_system=False,
+        cycle_value_type="cycle",
+        cycle_value="60",
+        input_method=CollectInputMethod.AUTO,
+        ip_range="",
+        instances=[{"inst_uuid": hand_uuid, "model_id": "switch"}],
+        credential=[
+            {
+                "credential_id": "hand-built-cred",
+                "version": "v2",
+                "community": "private",
+                "snmp_port": "161",
+            }
+        ],
+        params={"target_source": "asset"},
+        team=[1],
+    )
+    execution, hits = _execution_with_hits(task, ["10.0.1.12"])
+
+    result = ScanCollectGenerateService.generate(
+        execution,
+        [hits[0].id],
+        operator="alice",
+        request=_request(authenticated_user),
+    )
+
+    hand.refresh_from_db()
+    assert {item.get("inst_uuid") for item in (hand.instances or [])} == {hand_uuid}
+    hand_cred_ids = [item.get("credential_id") for item in (hand.decrypt_credentials or [])]
+    assert hand_cred_ids == ["hand-built-cred"]
+    assert "generated_from_scan_task_id" not in (hand.params or {})
+    assert result["created"] == 1
+    assert result["appended"] == 0
+    assert result["failed"] == 0
+    created = CollectModels.objects.exclude(pk=hand.id).get()
+    assert created.params.get("generated_from_scan_task_id") == task.id
+    assert {item.get("inst_uuid") for item in (created.instances or [])} == {HOST_UUIDS["10.0.1.12"]}
+    assert result["items"][0]["status"] == "created"
+    assert result["items"][0]["collect_task_id"] == created.id
+
+
 def test_existing_collect_instance_is_skipped(mocker):
     _patch_side_effects(mocker)
     task = _task()
@@ -296,6 +349,26 @@ def test_existing_collect_instance_is_skipped(mocker):
     assert result["skipped"] == 1
     assert result["items"][0]["reason"] == "already_on_collect"
     assert CollectModels.objects.filter(name__startswith="scan-gen").count() == 0
+
+
+def test_mysql_without_credential_is_skipped(mocker):
+    _patch_side_effects(mocker)
+    task = _task(families=["database"], credentials={"database": []})
+    execution, hits = _execution_with_hits(
+        task,
+        ["10.0.1.10"],
+        family="mysql",
+        protocol="mysql",
+        port=3306,
+        credential_id="",
+        cmdb_model_id="mysql",
+    )
+
+    result = ScanCollectGenerateService.generate(execution, [hits[0].id])
+
+    assert result["skipped"] == 1
+    assert result["items"][0]["reason"] == "no_credential"
+    assert CollectModels.objects.count() == 0
 
 
 def test_no_ci_hit_is_skipped(mocker):

@@ -978,6 +978,15 @@ def test_init_builtin_canvases_creates_builtin_datasources_without_organization(
     builtin_sources = list(DataSourceAPIModel.objects.filter(is_build_in=True))
     assert builtin_sources
     assert all(source.groups == [] for source in builtin_sources)
+    assert set(DataSourceAPIModel.objects.filter(rest_api="get_alert_level_distribution").values_list("required_app", flat=True)) == {"alarm"}
+    assert set(DataSourceAPIModel.objects.filter(rest_api="get_active_alert_top").values_list("required_app", flat=True)) == {"alarm"}
+    assert set(
+        DataSourceAPIModel.objects.filter(rest_api="monitor/get_cmdb_relation_alert_aggregation").values_list(
+            "required_app",
+            flat=True,
+        )
+    ) == {"monitor"}
+    assert set(DataSourceAPIModel.objects.filter(rest_api="alert/get_alert_trend_data").values_list("required_app", flat=True)) == {"alarm"}
     directory = Directory.objects.get(build_in_key="__builtin__")
     assert directory.groups == [default.pk]
 

@@ -123,31 +123,52 @@ def _overlap_offsets(previous: int, new_tail: int, old_tail: int, common: int) -
 def _large_phase_residues(pairs, phase_period: int, preferred: int | None) -> list[int]:
     """超长相位的候选：重叠窗口及其外缘、各公约数弧中点、叠合空弧中点和首选偏移。
 
-    各公约数上的点按该公约数平移到整个 phase_period。公约数 1 的间距是常数，不展开。
+    从 previous % common 起步、每次加 common、直到 phase_period 的步数不超过 256 时，
+    仍把该公约数平移到整个相位。超过 256 步就不再做这两段全相位平移，只保留模 common
+    的重叠窗口和占位弧中点，并投影到已完整铺开的副本、这些副本的弧中点和首选偏移。
+    没有锚点时用 0。公约数 1 的间距是常数，不展开。
     不同公约数的占位还要在相位圆周上取相邻空弧的中点；只取各自圆周的中点会漏掉
     夹在两条公约数之间的最大空隙。
     平移结果是评分循环的 residue，不是最终分钟偏移。评分循环再换回
     offset = (seed + (residue - seed) % phase_period) % cycle；
     phase_period 等于周期时 residue 就是 offset。小于周期时同样先取 residue。
     """
+    spread_budget = 256
     residues = set()
     occupied: dict[int, set[int]] = {}
     local_points: dict[int, set[int]] = {}
     replicas: set[int] = set()
+    over_budget: set[int] = set()
+
+    def within_budget(positions: set[int]) -> set[int]:
+        if len(positions) <= spread_budget:
+            return positions
+        return set(sorted(positions)[:spread_budget])
+
+    for (common, _repeats, previous, _new_tail, _old_tail, _constant), _count in pairs.items():
+        if common <= 1:
+            continue
+        start = previous % common
+        if start < phase_period and (phase_period - 1 - start) // common + 1 > spread_budget:
+            over_budget.add(common)
     for (common, _repeats, previous, new_tail, old_tail, _constant), _count in pairs.items():
         occupied.setdefault(common, set()).add(previous % common)
         local_points.setdefault(common, set()).update(
             _overlap_offsets(previous, new_tail, old_tail, common)
         )
-        if common <= 1:
+        if common <= 1 or common in over_budget:
             continue
         position = previous % common
         while position < phase_period:
             replicas.add(position)
             position += common
     for common, positions in occupied.items():
-        local_points.setdefault(common, set()).update(_circular_midpoints(positions, common))
+        local_points.setdefault(common, set()).update(
+            _circular_midpoints(within_budget(positions), common)
+        )
     for common, points in local_points.items():
+        if common in over_budget:
+            continue
         for point in points:
             if common <= 1:
                 residues.add(point % phase_period)
@@ -156,9 +177,25 @@ def _large_phase_residues(pairs, phase_period: int, preferred: int | None) -> li
             while position < phase_period:
                 residues.add(position)
                 position += common
-    residues.update(_circular_midpoints(replicas, phase_period))
+    replica_midpoints = _circular_midpoints(within_budget(replicas), phase_period)
+    residues.update(replica_midpoints)
     if preferred is not None:
         residues.add(preferred % phase_period)
+    if over_budget:
+        anchors = set(replicas)
+        anchors.update(replica_midpoints)
+        if preferred is not None:
+            anchors.add(preferred % phase_period)
+        if not anchors:
+            anchors.add(0)
+        for common in over_budget:
+            for point in local_points.get(common, ()):
+                residue = point % common
+                residues.add(residue % phase_period)
+                for anchor in tuple(anchors):
+                    base = anchor - (anchor - residue) % common
+                    residues.add(base % phase_period)
+                    residues.add((base + common) % phase_period)
     if not residues:
         residues.add(0)
     return [residue for residue in residues if 0 <= residue < phase_period]
