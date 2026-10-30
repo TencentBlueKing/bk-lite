@@ -81,6 +81,10 @@ def test_task_cannot_join_a_second_reconcile_or_an_unsupported_type(visible):
     vc2 = _task("vc2", CollectPluginTypes.CUSTOM_SCRIPT, "vmware_vc")
     with pytest.raises(ValidationAppException):
         create_reconcile(_Request(), name="vc", model_id="vmware_vc", task_ids=[vc.id, vc2.id])
+    docker = _task("docker", CollectPluginTypes.MIDDLEWARE, "docker")
+    docker2 = _task("docker2", CollectPluginTypes.MIDDLEWARE, "docker")
+    with pytest.raises(ValidationAppException, match="容器"):
+        create_reconcile(_Request(), name="docker", model_id="docker", task_ids=[docker.id, docker2.id])
 
 
 def test_switch_snmp_task_uses_the_same_device_model_fields():
