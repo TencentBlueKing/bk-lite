@@ -11,7 +11,7 @@ from django.core.management import call_command
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
-from apps.core.logger import logger
+from apps.core.logger import logger, safe_exception_info
 from apps.core.utils.loader import preload_language_cache
 
 _ADMIN_PASSWORD_FILE_MAX_CHARS = 4096
@@ -189,7 +189,8 @@ class Command(BaseCommand):
         call_command("init_process_fingerprint")
         call_command("update_collect_task_data")
         call_command("init_field_groups")
-        call_command("init_display_fields")
+        call_command("init_display_fields", models_only=True)
+        self._schedule_display_field_backfill()
         call_command("cmdb_migrate_scalar_to_list")
         call_command("migrate_field_constraints")
         call_command("reconcile_node_mgmt_sync")
@@ -207,6 +208,40 @@ class Command(BaseCommand):
         except Exception as exc:
             logger.warning("注册 CMDB UUID 运行期清洗失败（不阻断启动）: %s", exc)
             self.stdout.write(self.style.WARNING(f"CMDB UUID 运行期清洗注册跳过: {exc}"))
+
+    def _schedule_display_field_backfill(self) -> None:
+        """实例 _display 回填是可重建派生数据，启动期只入队，不扫描实例。"""
+        try:
+            from django.core.cache import cache
+
+            from apps.cmdb.tasks.display_field_backfill import (
+                DISPLAY_BACKFILL_COMPLETED_KEY,
+                DISPLAY_BACKFILL_CURSOR_KEY,
+                backfill_cmdb_display_fields,
+                ensure_display_field_backfill_periodic_task,
+            )
+
+            ensure_display_field_backfill_periodic_task()
+            cache.delete(DISPLAY_BACKFILL_COMPLETED_KEY)
+            cache.delete(DISPLAY_BACKFILL_CURSOR_KEY)
+            try:
+                backfill_cmdb_display_fields.delay(force=True)
+            except Exception as exc:
+                logger.warning(
+                    "event=display_backfill_enqueue_failed failed_stage=enqueue error_type=%s",
+                    type(exc).__name__,
+                    exc_info=safe_exception_info(exc),
+                )
+                self.stdout.write(self.style.WARNING(f"CMDB 显示字段回填投递跳过（{type(exc).__name__}），周期任务会重试"))
+            else:
+                self.stdout.write("已注册 CMDB 显示字段回填任务（异步收敛，不阻断启动）")
+        except Exception as exc:
+            logger.warning(
+                "event=display_backfill_register_failed failed_stage=register error_type=%s",
+                type(exc).__name__,
+                exc_info=safe_exception_info(exc),
+            )
+            self.stdout.write(self.style.WARNING(f"CMDB 显示字段回填注册跳过: {type(exc).__name__}"))
 
     def _init_console_mgmt(self):
         """控制台管理资源初始化"""

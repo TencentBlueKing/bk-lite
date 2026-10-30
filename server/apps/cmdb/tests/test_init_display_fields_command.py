@@ -39,6 +39,22 @@ def test_init_display_fields_success(monkeypatch, capsys):
     init.initialize_all.assert_called_once()
 
 
+def test_init_display_fields_models_only_skips_instances(monkeypatch):
+    init = MagicMock()
+    init.initialize_all.return_value = {
+        "success": True,
+        "models_processed": 1,
+        "instances_processed": 0,
+        "errors": [],
+    }
+    monkeypatch.setattr(
+        "apps.cmdb.management.commands.init_display_fields.DisplayFieldInitializer",
+        lambda: init,
+    )
+    call_command("init_display_fields", models_only=True)
+    init.initialize_all.assert_called_once_with(instances=False)
+
+
 def test_init_display_fields_prints_errors(monkeypatch, capsys):
     init = MagicMock()
     init.initialize_all.return_value = {
