@@ -249,6 +249,30 @@ def test_create_sends_selected_options_and_accepts_option_names(connection, monk
     }
 
 
+def test_create_leaves_unmatched_or_mixed_option_values_untouched(connection, monkeypatch):
+    monkeypatch.setenv("TEST_ITSM_TOKEN", "secret")
+    created = response({"result": True, "code": "20000", "data": {"id": "t-1"}})
+    fields = {"ticket__title": "CPU 告警", "device": "不存在", "tags": ["a", 1]}
+    with patch("requests.Session.request", side_effect=[response(workflow_body(SELECT_LAYOUT)), created]) as http:
+        ItsmClient(connection).create("wf-1", fields)
+    payload = http.call_args.kwargs["json"]
+    assert payload["form_data"] == fields
+    assert payload["options"] == {}
+
+
+def test_create_still_submits_when_form_layout_cannot_be_parsed(connection, monkeypatch):
+    monkeypatch.setenv("TEST_ITSM_TOKEN", "secret")
+    created = response({"result": True, "code": "20000", "data": {"id": "t-1"}})
+    fields = {"ticket__title": "CPU 告警", "device": "台式机"}
+    with (
+        patch("apps.alerts.itsm.client._apply_selected_options", side_effect=RecursionError),
+        patch("requests.Session.request", side_effect=[response(workflow_body(SELECT_LAYOUT)), created]) as http,
+    ):
+        assert ItsmClient(connection).create("wf-1", fields) == "t-1"
+    assert http.call_args.kwargs["json"]["form_data"] == fields
+    assert http.call_args.kwargs["json"]["options"] == {}
+
+
 def test_create_still_submits_when_form_layout_unavailable(connection, monkeypatch):
     monkeypatch.setenv("TEST_ITSM_TOKEN", "secret")
     created = response({"result": True, "code": "20000", "data": {"id": "t-1"}})

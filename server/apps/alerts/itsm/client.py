@@ -92,10 +92,12 @@ def _apply_selected_options(layout, fields):
             continue
         choices = [item for item in choices if isinstance(item, dict) and isinstance(item.get("key"), str)]
         by_key = {item["key"]: item for item in choices}
-        by_name = {str(item.get("name")): item for item in choices}
+        by_name = {str(item["name"]): item for item in choices if item.get("name") is not None}
         values = fields[key] if isinstance(fields[key], list) else [fields[key]]
-        chosen = [by_key.get(value) or by_name.get(value) for value in values if isinstance(value, str) and value]
-        if not chosen or None in chosen:
+        if not values or not all(isinstance(value, str) and value for value in values):
+            continue
+        chosen = [by_key.get(value) or by_name.get(value) for value in values]
+        if None in chosen:
             continue
         options[key] = [{"key": item["key"], "name": str(item.get("name") or item["key"]), "parent": None} for item in chosen]
         keys = [item["key"] for item in chosen]
@@ -104,6 +106,8 @@ def _apply_selected_options(layout, fields):
 
 
 class ItsmClient:
+    supports_comment = False
+
     def __init__(self, connection, *, allow_disabled=False, token=None):
         self.connection = connection
         self.allow_disabled = allow_disabled
@@ -204,11 +208,12 @@ class ItsmClient:
 
     def create(self, workflow_key, fields):
         validate_response_contract(self.connection)
-        fields = dict(fields)
+        prepared = dict(fields)
         try:
-            options = _apply_selected_options(self._form_layout(workflow_key), fields)
-        except ItsmError:
-            # 读不到表单只影响选项校验，交给 ITSM 明确拒绝；不能因此放弃这次建单。
+            options = _apply_selected_options(self._form_layout(workflow_key), prepared)
+            fields = prepared
+        except Exception:
+            # 读不到或解析不了表单只影响选项校验，交给 ITSM 明确拒绝；不能因此放弃这次建单。
             options = {}
         data = self._request(
             "POST",
