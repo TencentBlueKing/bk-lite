@@ -50,6 +50,7 @@ const SearchFilter: React.FC<SearchFilterProps> = ({
   modelId = '',
   displayFieldKeys,
   allowShrink = false,
+  beforeExactSearch,
   onSearch,
   onChange,
   onFilterChange,
@@ -533,6 +534,9 @@ const SearchFilter: React.FC<SearchFilterProps> = ({
           onClick={handleSearchClick}
           className="ml-0 mr-2 shrink-0 rounded-l-none!"
         ></Button>
+        {beforeExactSearch ? (
+          <span className="mr-2 shrink-0">{beforeExactSearch}</span>
+        ) : null}
         {showExactSearch && searchAttr !== 'tag' && (
           <span className="shrink-0">
             <Checkbox onChange={onExactSearchChange}>

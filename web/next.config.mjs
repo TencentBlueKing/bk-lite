@@ -37,7 +37,7 @@ const nextConfig = withBundleAnalyzer({
   enabled: process.env.ANALYZE === 'true',
 })({
   reactStrictMode: true,
-  allowedDevOrigins: ['bklite.weops.com'],
+  allowedDevOrigins: ['bklite.weops.com', '127.0.0.1', 'localhost'],
   env: {
     ENTERPRISE_WEB_ROOT: enterpriseWebRoot,
   },

@@ -75,6 +75,32 @@ it('从主机发现时跨页保留选择，翻页查询仍限定 host、任务�
   expect(ref.current?.selectedData).toEqual([]);
 });
 
+it('选择主机可按实例名、管理 IP 和操作系统过滤', async () => {
+  renderForm();
+  fireEvent.click(screen.getByLabelText('Collection.chooseHost'));
+  const select = screen.getByRole('button', { name: 'common.select' });
+  await waitFor(() => expect((select as HTMLButtonElement).disabled).toBe(false));
+  fireEvent.click(select);
+  const dialog = await screen.findByRole('dialog');
+  expect(within(dialog).getAllByText('Collection.hostOsType').length).toBeGreaterThan(1);
+  fireEvent.change(within(dialog).getByPlaceholderText('Collection.instanceName'), { target: { value: 'win-app' } });
+  fireEvent.change(within(dialog).getByPlaceholderText('Collection.manageIp'), { target: { value: '10.1.8' } });
+  fireEvent.mouseDown(within(dialog).getByRole('combobox'));
+  fireEvent.click(await screen.findByText('Windows'));
+  await waitFor(() => expect(api.searchInstances).toHaveBeenLastCalledWith(expect.objectContaining({
+    model_id: 'host',
+    page: 1,
+    case_sensitive: false,
+    query_list: [
+      { field: 'cloud', type: 'int=', value: 2 },
+      { field: 'organization', type: 'list[]', value: [1] },
+      { field: 'inst_name', type: 'str*', value: 'win-app' },
+      { field: 'ip_addr', type: 'str*', value: '10.1.8' },
+      { field: 'os_type', type: 'list_any[]', value: ['2'] },
+    ],
+  })));
+});
+
 it('目录未开放主机发现时保留原选择方式', async () => {
   renderForm(false);
   expect(screen.queryByLabelText('Collection.chooseHost')).toBeNull();

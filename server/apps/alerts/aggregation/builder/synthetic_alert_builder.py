@@ -4,8 +4,8 @@ from typing import Any, Dict, Optional
 
 from django.db import transaction
 
-from apps.alerts.constants import AlertStatus, AlarmStrategyType
 from apps.alerts.aggregation.builder.alert_builder import AlertBuilder
+from apps.alerts.constants import AlarmStrategyType, AlertStatus
 from apps.alerts.models import Alert
 from apps.alerts.models.alert_operator import AlarmStrategy
 from apps.alerts.utils.util import str_to_md5
@@ -49,10 +49,7 @@ class SyntheticAlertBuilder:
     def create_alert(strategy: AlarmStrategy, params: Dict[str, Any], now) -> Alert:
         fingerprint = SyntheticAlertBuilder.build_fingerprint(strategy.id)
         with transaction.atomic():
-            from apps.alerts.service.active_fingerprint import (
-                bind_active_fingerprint,
-                claim_active_fingerprint,
-            )
+            from apps.alerts.service.active_fingerprint import bind_active_fingerprint, claim_active_fingerprint
 
             lease, active_alert = claim_active_fingerprint(fingerprint)
             if active_alert:
@@ -81,4 +78,7 @@ class SyntheticAlertBuilder:
                 team=AlertBuilder._get_safe_strategy_team(strategy),
             )
             bind_active_fingerprint(lease, alert)
+            from apps.alerts.itsm.service import enqueue_creation
+
+            enqueue_creation(alert)
             return alert

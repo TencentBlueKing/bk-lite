@@ -1,5 +1,5 @@
 # -- coding: utf-8 --
-from django.db import connection
+from django.db import connection, transaction
 from django.db.models import Count
 from django.http import Http404
 from rest_framework.decorators import action
@@ -159,8 +159,15 @@ class AlertModelViewSet(AuthViewSet):
         return super().retrieve(request, *args, **kwargs)
 
     @HasPermission("Alarms-Edit")
+    @transaction.atomic
     def create(self, request, *args, **kwargs):
         return super().create(request, *args, **kwargs)
+
+    def perform_create(self, serializer):
+        super().perform_create(serializer)
+        from apps.alerts.itsm.service import enqueue_creation
+
+        enqueue_creation(serializer.instance)
 
     @HasPermission("Alarms-Edit")
     def update(self, request, *args, **kwargs):

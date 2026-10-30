@@ -177,19 +177,36 @@ class TransferExecution:
                             ).encode()
                         )
 
-            with InstanceManage.inst_export(
-                task.model_id,
-                ids,
-                context.permission_map,
-                creator=context.actor.username,
-                attr_list=params["attr_list"],
-                association_list=params.get("association_list", []),
-                file_backed=True,
-                row_limit=100000,
-                progress=progress,
-                inspect_batch=inspect_batch,
-                byte_limit=files.MAX_BYTES,
-            ) as stream:
+            def permission_lookup(model_id):
+                if model_id == task.model_id:
+                    return context.permission_map
+                return TransferAuthorization.resolve(task.owner, task.team_id, task.include_children, model_id, "export").permission_map
+
+            try:
+                export_stream = InstanceManage.inst_export(
+                    task.model_id,
+                    ids,
+                    context.permission_map,
+                    creator=context.actor.username,
+                    attr_list=params["attr_list"],
+                    association_list=params.get("association_list", []),
+                    extra_query=[] if ids else params.get("query_list") or [],
+                    advanced_filter=None if ids else params.get("advanced_filter") or None,
+                    permission_lookup=permission_lookup,
+                    file_backed=True,
+                    row_limit=100000,
+                    progress=progress,
+                    inspect_batch=inspect_batch,
+                    byte_limit=files.MAX_BYTES,
+                )
+            except Exception as exc:
+                from apps.cmdb.graph.advanced_filter import AdvancedFilterError, AdvancedFilterTimeout
+
+                if isinstance(exc, (AdvancedFilterError, AdvancedFilterTimeout)):
+                    message = str(exc) if not isinstance(exc, AdvancedFilterError) or exc.index is None else f"第{exc.index}个条件：{exc}"
+                    raise TransferError("invalid_filter", message, 400) from exc
+                raise
+            with export_stream as stream:
                 TransferService.progress(task.pk, token, "uploading_result", exported, exported)
                 output = files.put(f"{prefix}/export.xlsx", stream)
             manifest.seek(0)
