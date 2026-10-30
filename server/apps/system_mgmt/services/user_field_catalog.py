@@ -80,6 +80,12 @@ def disable_definition(definition):
     return definition
 
 
+def enable_definition(definition):
+    definition.is_enabled = True
+    definition.save(update_fields=["is_enabled", "updated_at"])
+    return definition
+
+
 def delete_definition(definition):
     if UserFieldValue.objects.filter(field=definition).exists() or field_mapping_targets(definition.key):
         raise UserFieldError("field cannot be deleted")

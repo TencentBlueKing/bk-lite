@@ -171,7 +171,7 @@
       },
       "fields": {
         "title": "User Fields",
-        "content": "Custom fields shared by the whole directory. The key cannot change after it is saved. A field with values or a sync mapping cannot change type or be deleted. Unmap it before disabling.",
+        "content": "Custom fields shared by the whole directory. The key cannot change after it is saved. A field with values or a sync mapping cannot change type or be deleted. Unmap it before disabling. A disabled field can be enabled again; existing values stay.",
         "key": "Key",
         "type": "Type",
         "description": "Description",
@@ -179,6 +179,8 @@
         "disabled": "Disabled",
         "disable": "Disable",
         "disableConfirm": "After disabling, the field can no longer be filled or written by sync. Existing values stay. Disable this field?",
+        "enable": "Enable",
+        "enableConfirm": "After enabling, the field can be filled again and selected as a sync mapping target. Existing values stay. Enable this field?",
         "deleteConfirm": "Delete this field?",
         "typeText": "Text",
         "typeNumber": "Number",

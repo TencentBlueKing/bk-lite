@@ -153,6 +153,58 @@ def test_disabled_field_is_not_written_by_user_save_and_stays_readable():
     assert rows[0]["is_enabled"] is False
 
 
+def test_enable_field_keeps_the_definition_and_allows_writing_again():
+    definition = UserFieldDefinition.objects.create(name="工牌", key="badge_no", field_type="text", description="说明", is_enabled=False)
+    group = Group.objects.create(name="enable-users")
+    Role.objects.get_or_create(name="admin", app="")
+    user = User.objects.create(
+        username="enable-user",
+        display_name="启用用户",
+        email="enable-user@example.com",
+        password="x",
+        domain="domain.com",
+        group_list=[group.id],
+        locale="zh-Hans",
+        timezone="Asia/Shanghai",
+    )
+    UserFieldValue.objects.create(user=user, field=definition, value="A1")
+
+    enabled = _field("enable_field", {"id": definition.id})
+    assert _body(enabled)["result"] is True
+    assert _body(enabled)["data"]["is_enabled"] is True
+    definition.refresh_from_db()
+    assert definition.is_enabled is True
+    assert definition.key == "badge_no"
+    assert definition.field_type == "text"
+    assert definition.name == "工牌"
+    assert UserFieldValue.objects.get(user=user, field=definition).value == "A1"
+
+    actor = _actor()
+    actor.group_list = [{"id": group.id}]
+    request = factory.post(
+        "/x/",
+        data={
+            "user_id": user.id,
+            "username": user.username,
+            "lastName": "启用用户",
+            "email": user.email,
+            "locale": "zh-Hans",
+            "timezone": "Asia/Shanghai",
+            "groups": [group.id],
+            "roles": [],
+            "custom_fields": {"badge_no": "B2"},
+        },
+        format="json",
+    )
+    force_authenticate(request, user=actor)
+    response = UserViewSet.as_view({"post": "update_user"})(request)
+    assert _body(response)["result"] is True
+    assert UserFieldValue.objects.get(user=user, field=definition).value == "B2"
+
+    listed = _body(_field("search", data={"enabled_only": "1"}, method="get"))
+    assert "badge_no" in {row["key"] for row in listed["data"]}
+
+
 def test_field_search_filters_enabled_rows_and_caps_the_list():
     from apps.system_mgmt.viewset.user_field_viewset import USER_FIELD_LIST_LIMIT
 

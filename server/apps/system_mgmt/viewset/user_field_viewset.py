@@ -9,6 +9,7 @@ from apps.system_mgmt.services.user_field_catalog import (
     create_definition,
     delete_definition,
     disable_definition,
+    enable_definition,
     serialize_definition,
     update_definition,
 )
@@ -96,6 +97,16 @@ class UserFieldViewSet(ViewSetUtils):
         except UserFieldError as error:
             return _error(request, error)
         log_operation(request, "update", "system-manager", f"停用用户字段: {definition.name} ({definition.key})")
+        return JsonResponse({"result": True, "data": serialize_definition(definition)})
+
+    @action(detail=False, methods=["POST"])
+    @HasPermission("user_fields-Edit")
+    def enable_field(self, request):
+        definition = UserFieldDefinition.objects.filter(id=request.data.get("id")).first()
+        if definition is None:
+            return JsonResponse({"result": False, "message": _loader(request).get("error.field_not_found", "field not found")}, status=404)
+        definition = enable_definition(definition)
+        log_operation(request, "update", "system-manager", f"启用用户字段: {definition.name} ({definition.key})")
         return JsonResponse({"result": True, "data": serialize_definition(definition)})
 
     @action(detail=False, methods=["POST"])

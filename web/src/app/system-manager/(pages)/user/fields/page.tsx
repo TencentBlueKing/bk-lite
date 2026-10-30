@@ -112,6 +112,16 @@ const UserFieldsPage: React.FC = () => {
     }
   };
 
+  const handleEnable = async (record: UserFieldRow) => {
+    try {
+      await post('/system_mgmt/user_field/enable_field/', { id: record.id });
+      message.success(t('common.updateSuccess'));
+      await load();
+    } catch {
+      // 请求层已经提示后端返回的原因。
+    }
+  };
+
   const handleDelete = async (record: UserFieldRow) => {
     try {
       await post('/system_mgmt/user_field/delete_field/', { id: record.id });
@@ -167,7 +177,20 @@ const UserFieldsPage: React.FC = () => {
                 </Button>
               </Popconfirm>
             </PermissionWrapper>
-          ) : null}
+          ) : (
+            <PermissionWrapper requiredPermissions={['Edit']}>
+              <Popconfirm
+                title={t('system.user.fields.enableConfirm')}
+                onConfirm={() => handleEnable(record)}
+                okText={t('common.confirm')}
+                cancelText={t('common.cancel')}
+              >
+                <Button type="link" size="small">
+                  {t('system.user.fields.enable')}
+                </Button>
+              </Popconfirm>
+            </PermissionWrapper>
+          )}
           <PermissionWrapper requiredPermissions={['Delete']}>
             <Popconfirm
               title={t('system.user.fields.deleteConfirm')}
