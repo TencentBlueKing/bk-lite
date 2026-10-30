@@ -70,12 +70,18 @@ uv run python main.py --config ./config.yml
 
 已内置 PyInstaller 打包支持，并且执行 ansible ad-hoc / playbook 时不再依赖外部 `ansible`、`ansible-playbook` 可执行文件，而是通过当前程序自身的内部 helper 子进程调用 `ansible-core`。
 
+发行构建目前仅支持 Linux amd64，目标 GLIBC 基线为 2.28。构建前需准备 Python 3.12.15（其 `ssl` 实际使用 OpenSSL 3.5.9）、uv、C 编译器、make、Perl、Rust/Cargo 和 readelf。完整工具链要求及离线源码用法见 [发行构建说明](RELEASE.md)。
+
+以下路径是占位示例，请替换为构建机上的实际路径；`WORK_DIR` 必须尚不存在且位于源码目录外，默认输出 `dist/ansible-executor` 也必须尚不存在。
+
 ```bash
 cd agents/ansible-executor
-make package
+make package \
+  RELEASE_PYTHON=/path/to/python3.12 \
+  WORK_DIR=/path/to/new-build-directory
 ```
 
-产物目录：
+默认产物目录（可通过 `DIST_DIR` 指定其他输出根目录）：
 
 ```bash
 dist/ansible-executor/

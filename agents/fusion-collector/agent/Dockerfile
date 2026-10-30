@@ -56,6 +56,8 @@ ADD ./linux/exporters /opt/release/linux/exporters
 ADD ./linux/prestage /opt/release/linux/prestage
 # ansible executor
 ADD ./linux/ansible-executor/ ./bin/
+# Fail the image build if an old or partially copied runtime enters the context.
+RUN ./bin/ansible-executor --verify-release
 # Suporvisor
 ADD ./service.conf /etc/supervisor/conf.d/service.conf
 
