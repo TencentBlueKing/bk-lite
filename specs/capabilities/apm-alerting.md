@@ -6,8 +6,13 @@ APM 独立拥有策略、Alert 生命周期、Event、告警指标快照、事�
 
 ## 长期契约
 
-- 策略只表达 APM Service、Endpoint、必选环境和受控版本维度，指标类型是 `error_rate / error_count / p50 / p75 / p90 / p95 / p99 / latency_avg / latency_max / slow_request_count / slow_request_rate / apdex / throughput / no_traffic`；禁止任意表达式、MonitorObject、采集插件、LogSQL 和日志组。
-- 比较基准是 `absolute / previous_window / offset_hours / offset_days / baseline_days`（旧值 `offset_1h / offset_24h` 仍可读）。`baseline_days` 的 N 为 2..7，对照是近 N 天同窗的算术均值；可用天数不足 `⌈N/2⌉` 记 `missing_baseline`（reason `baseline_days_insufficient`）。相对计算用等长 RED 窗，不用 MetricsQL。`percent` 在对照值为 0 或对照窗样本不足时记 `missing_baseline` 并保持活动告警；错误率、慢请求占比、Apdex 和时延族可设最低请求数，不足记 `insufficient_samples`，同样保持态。试算是只读内部端点，不写告警、事件、快照或目标状态。
+- 策略指标类型是 `error_rate / error_count / p50 / p75 / p90 / p95 / p99 / latency_avg / latency_max / slow_request_count / slow_request_rate / apdex / throughput / no_traffic / slo_burn_rate`；禁止任意表达式、MonitorObject、采集插件、LogSQL 和日志组。`request_count` 只作前置门槛，不进常规条件指标。非计数指标的评估值是整窗 RED 统计值，策略没有汇聚方法；`timeseries` 只用于趋势图和试算预览。没有策略级无数据开关，没有流量时用 `no_traffic`。除 `slo_burn_rate` 外，`metric_window` 不得短于 `evaluation_interval`。
+- 一条策略最多 3 条常规条件，必须全部满足；级别合成取最轻的一档。前置条件最多 2 条，只做绝对门槛，不满足时走恢复。非锚点缺数据保持活动告警且连续计数不变。策略内不同对照窗不超过 2 个。条件按编辑器顺序保存。锚点是第一条常规条件，可以不是字母 a。一条条件且没有前置条件时可以不提交条件列表，沿用镜像列。慢请求或 Apdex 的前置条件自带慢阈值或 T，取值用这条上的数；请求数前置条件仍读锚点同一次评估窗的请求数。
+- 作用范围是单服务、2..20 个服务或一个应用。端点模式是服务整体、手选或全部端点；全部端点每轮从 `service_endpoints` 展开，消失端点连续 `recover_after` 轮后结束告警并删状态。实例维度是不拆或按实例。每个服务的目标上限 100。单服务策略不按组织交集跳过；多服务和应用范围里，与策略组织不相交的服务本轮跳过，试算记 `service_not_visible`。
+- 目标类型可以是入口或下游依赖。依赖不按端点或实例拆，指标不含 Apdex 和无流量；空列表每轮按调用量展开，上限 40。
+- `slo_burn_rate` 绑定一个 SLO 和一组长短窗。燃烧率是 `(1 − 合规率) / (1 − 目标)`，两窗都越过阈值才命中，级别取较轻的一档。长窗无样本记 `no_data`，短窗无样本记 `insufficient_samples`。删除 SLO 时停用引用它的策略并结束活动告警。
+- 比较基准是 `absolute / previous_window / offset_hours / offset_days / baseline_days`（旧值 `offset_1h / offset_24h` 仍可读）。`previous_window / offset_hours / offset_days` 允许变化量 Δ 与变化率 %。`baseline_days` 的 N 为 2..7，对照是近 N 天同窗的算术均值；可用天数不足 `⌈N/2⌉` 记 `missing_baseline`（reason `baseline_days_insufficient`）。`compare_value_kind=sigma` 只对 `baseline_days` 且 N ≥ 3 开放，比较值是 `(当前 − 均值) / 样本标准差`，阈值 k 为 0.5..5，可用天数不足 3 同样记 `missing_baseline`。相对计算用等长 RED 窗，不用 MetricsQL。`percent` 在对照值为 0 或对照窗样本不足时记 `missing_baseline` 并保持活动告警；错误率、慢请求占比、Apdex 和时延族可设最低请求数，不足记 `insufficient_samples`，同样保持态。试算是只读内部端点，不写告警、事件、快照或目标状态。`replay_hours` 只允许 0 或 24；为 24 时每个目标追加按汇聚周期分桶的只读回放，返回窗口数、命中数和命中时刻，不读前轮状态，也不写任何记录。
+- 基线按天查询失败并回退到逐日查询时，该轮评估的目标上限从 100 收到 20。
 - 策略创建必填所属组织，列表 / 详情按策略组织 fail-closed；存量策略从当时服务组织回填，之后改服务组织不改写策略组织。
 - Alert / Event 的 `organizations` 在首次生成时从当时策略组织快照，之后不随服务或策略组织变更改写。已有告警组织不变。
 - Alert 状态统一为 `active / recovered / closed`；Event 动作统一为 `triggered / escalated / claimed / assigned / reassigned / recovered / closed`。Alert 聚合完整生命周期，Event 只记录不可变状态变化。
@@ -24,7 +29,7 @@ APM 独立拥有策略、Alert 生命周期、Event、告警指标快照、事�
 
 ## 事实入口
 
-- 变更设计：`specs/changes/apm-policy-alert-snapshot/spec.md`
+- 变更设计：`specs/changes/apm-policy-condition-flow/spec.md`（implemented）；`specs/changes/apm-policy-scenario-fit/spec.md`（implemented）；`specs/changes/apm-policy-conditions-and-scope/spec.md`（implemented）；先前 `specs/changes/apm-policy-alert-snapshot/spec.md`
 - 相对计算与试算：`specs/changes/apm-alert-calc-enrichment/spec.md`
 - 事件原始证据存储：`docs/adr/0009-apm-event-snapshots-split-semantic-index-and-series-payload.md`
 - 生产实现：`server/apps/apm/services/{policies,alerts,metric_snapshots,snapshots}.py`

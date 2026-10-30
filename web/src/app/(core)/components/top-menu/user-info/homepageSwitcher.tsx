@@ -13,6 +13,7 @@ import { useClientData } from '@/context/client';
 import { useTranslation } from '@/utils/i18n';
 import useApiClient from '@/utils/request';
 import { message } from 'antd';
+import { buildOpsAnalysisViewHref } from '@/app/ops-analysis/utils/viewHref';
 import {
   OPS_ANALYSIS_APP,
   OPS_ANALYSIS_VIEW_PATH,
@@ -21,6 +22,7 @@ import {
   homepageParentRightLabel,
   homepageRadioChecked,
   menuGrantsOpsAnalysisView,
+  settingsDashboardId,
   personalDashboardCaption,
   type HomepagePersonalMode,
   type MenuPermissionNode,
@@ -176,10 +178,20 @@ export const useHomepageMenu = (_groupId?: string) => {
   );
 
   const openDashboardSettings = useCallback(() => {
-    router.push(OPS_ANALYSIS_VIEW_PATH);
-  }, [router]);
+    const dashboardId = settingsDashboardId(state, pathname, searchParams);
+    router.push(
+      dashboardId
+        ? buildOpsAnalysisViewHref('dashboard', `dashboard_${dashboardId}`)
+        : OPS_ANALYSIS_VIEW_PATH,
+    );
+  }, [pathname, router, searchParams, state]);
 
   const personalMode = state?.personal_mode ?? null;
+  const showSettingsLink = canShowDashboardSettingsLink({
+    clientLoading,
+    hasModule,
+    viewAllowed,
+  });
 
   return {
     personalMode,
@@ -191,11 +203,7 @@ export const useHomepageMenu = (_groupId?: string) => {
       personalNameResolved,
       t('common.homepagePersonalDashboardFallback'),
     ),
-    showSettingsLink: canShowDashboardSettingsLink({
-      clientLoading,
-      hasModule,
-      viewAllowed,
-    }),
+    showSettingsLink,
     applying: applying || preferenceLoading,
     reloadState,
     followGlobal,

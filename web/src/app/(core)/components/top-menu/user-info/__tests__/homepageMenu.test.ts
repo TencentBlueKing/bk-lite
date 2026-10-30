@@ -12,6 +12,7 @@ import {
   hrefAfterFollowGlobal,
   hrefAfterPinWorkbench,
   menuGrantsOpsAnalysisView,
+  settingsDashboardId,
   personalDashboardCaption,
 } from '../homepageMenu';
 
@@ -131,6 +132,28 @@ describe('homepage menu rules', () => {
     expect(switcherSource).toContain("message.success(");
     expect(switcherSource).toContain("t('common.homepageFollowGlobalSuccess')");
     expect(switcherSource).toContain("t('common.homepagePinWorkbenchSuccess')");
+  });
+
+  it('opens the dashboard on screen, otherwise the saved homepage dashboard', () => {
+    const saved = {
+      personal_mode: 'dashboard' as const,
+      personal_dashboard_id: 3,
+      global_mode: 'dashboard' as const,
+      global_dashboard_id: 9,
+    };
+    expect(settingsDashboardId(saved, '/ops-analysis/view', '')).toBe(3);
+    expect(settingsDashboardId(saved, '/ops-console/home', 'dashboard_id=105')).toBe(105);
+    expect(settingsDashboardId(
+      { ...saved, personal_mode: 'follow', personal_dashboard_id: null },
+      '/cmdb',
+      '',
+    )).toBe(9);
+    expect(settingsDashboardId(
+      { ...saved, personal_mode: 'workbench', personal_dashboard_id: null },
+      '/ops-console/home',
+      '',
+    )).toBeNull();
+    expect(settingsDashboardId(null, '/ops-console/home', 'dashboard_id=0')).toBeNull();
   });
 
   it('hides dashboard settings until module access and view permission are both known', () => {

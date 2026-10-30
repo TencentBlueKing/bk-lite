@@ -1,8 +1,9 @@
 from django.db import models
+
+from apps.core.fields import S3JSONField
 from apps.core.models.maintainer_info import MaintainerInfo
 from apps.core.models.time_info import TimeInfo
 from apps.log.models import CollectType
-from apps.core.fields import S3JSONField
 
 
 class Policy(TimeInfo, MaintainerInfo):
@@ -77,6 +78,7 @@ class Alert(TimeInfo):
     end_event_time = models.DateTimeField(blank=True, null=True, verbose_name="结束事件时间")
     operator = models.CharField(blank=True, null=True, max_length=50, verbose_name="告警处理人")
     handlers = models.JSONField(default=list, verbose_name="处理人")
+    # 聚合策略复用为连续不满足窗数。verbose_name 保持原值，避免无意义的 AlterField 迁移。
     info_event_count = models.IntegerField(default=0, verbose_name="正常事件计数")
     notice = models.BooleanField(default=False, verbose_name="是否已通知")
     organizations = models.JSONField(default=list, verbose_name="告警生成时所属组织")
@@ -96,6 +98,7 @@ class Event(TimeInfo):
         ASSIGNED = "assigned", "分派"
         REASSIGNED = "reassigned", "转派"
         CLOSED = "closed", "人工关闭"
+        RECOVERED = "recovered", "自动恢复"
 
     id = models.CharField(primary_key=True, max_length=50, verbose_name="事件ID")
     policy = models.ForeignKey(Policy, on_delete=models.SET_NULL, null=True, blank=True, verbose_name="关联策略")

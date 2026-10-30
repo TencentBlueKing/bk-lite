@@ -67,6 +67,7 @@ const METRIC_KEY: Record<ApmPolicyMetric, string> = {
   apdex: 'apm.policies.metricApdex',
   throughput: 'apm.common.throughput',
   no_traffic: 'apm.alerts.noTraffic',
+  slo_burn_rate: 'apm.policies.metricSloBurnRate',
 };
 const RATIO_METRICS: ApmPolicyMetric[] = ['error_rate', 'slow_request_rate', 'apdex'];
 const LATENCY_METRICS: ApmPolicyMetric[] = ['p50', 'p75', 'p90', 'p95', 'p99', 'latency_avg', 'latency_max'];
@@ -85,6 +86,7 @@ const METRIC_UNIT_KEY: Record<ApmPolicyMetric, string | null> = {
   apdex: 'apm.common.percentUnit',
   throughput: 'apm.common.requestsPerSecondUnit',
   no_traffic: null,
+  slo_burn_rate: null,
 };
 const COMPARATOR_SYMBOL: Record<ApmPolicyComparator, string> = {
   gt: '>',
@@ -140,6 +142,7 @@ function formatChartAxisValue(metric: ApmPolicyMetric, value: number, t: Transla
   if (metric === 'throughput') {
     return formatRequestRate(value, false, t);
   }
+  if (metric === 'slo_burn_rate') return `${value}×`;
   return String(value);
 }
 
@@ -160,6 +163,7 @@ interface SnapshotChartRow {
   event: number | null;
   current: number | null;
   baseline: number | null;
+  budget: number | null;
 }
 
 function snapshotUsesPercentAxis(snapshot: ApmAlertMetricSnapshot | null) {
@@ -213,6 +217,9 @@ function buildAlertSnapshotChartRows(
       baseline: percentAxis && item
         ? toChartMetricNumber(alert.metric_type, item.baseline_value, alert.metric_type === 'error_rate' ? 'ratio' : undefined)
         : null,
+      budget: item?.budget_remaining == null || item.budget_remaining === ''
+        ? null
+        : Number(item.budget_remaining),
     };
   });
 }
@@ -251,6 +258,7 @@ const METRIC_TAG_CLASS: Record<ApmPolicyMetric, string> = {
   apdex: styles.alertDetailMetricTagThroughput,
   throughput: styles.alertDetailMetricTagThroughput,
   no_traffic: styles.alertDetailMetricTagIdle,
+  slo_burn_rate: styles.alertDetailMetricTagThroughput,
 };
 
 function AlertStateTag({ status }: { status: ApmAlert['status'] }) {
@@ -498,6 +506,19 @@ export default function AlertDetailDrawer({
     [alert, metricSnapshot],
   );
   const percentAxis = snapshotUsesPercentAxis(metricSnapshot);
+  const conditionRows = useMemo(() => {
+    const latest = [...(metricSnapshot?.snapshots ?? [])].reverse().find((item) =>
+      (item.condition_details?.length ?? 0) > 1 || Object.keys(item.condition_values || {}).length > 1,
+    );
+    if (!latest) return [];
+    if ((latest.condition_details?.length ?? 0) > 1) return latest.condition_details ?? [];
+    return Object.entries(latest.condition_values || {}).map(([ref, value]) => ({
+      ref,
+      value,
+      threshold: null,
+      matched_severity: null,
+    }));
+  }, [metricSnapshot]);
   const eventStreamRows = useMemo(() => {
     if (!alert) return [];
     const windowStart = dayjs(alert.started_at).valueOf();
@@ -758,6 +779,7 @@ export default function AlertDetailDrawer({
                   ) : metricSnapshotError ? (
                     <CatalogState kind={metricSnapshotError} onRetry={() => onRetrySnapshot(alert)} />
                   ) : metricSnapshotRows.length ? (
+                    <>
                     <div
                       className={styles.alertDetailChart}
                       role="img"
@@ -768,12 +790,17 @@ export default function AlertDetailDrawer({
                         xDataKey="timestamp"
                         getXLabel={(item) => snapshotElapsedLabel(item.elapsedMinutes, t('apm.alerts.trigger', '触发'), t)}
                         xAxisBoundaryGap={false}
-                        yAxes={percentAxis
+                        yAxes={alert.metric_type === 'slo_burn_rate'
                           ? [
-                            { formatter: (value) => formatPercentage(value, Math.abs(value) >= 10 ? 1 : 2) },
                             { formatter: (value) => formatChartAxisValue(alert.metric_type, value, t) },
+                            { formatter: (value) => formatPercentage(value, 1) },
                           ]
-                          : [{ formatter: (value) => formatChartAxisValue(alert.metric_type, value, t) }]}
+                          : percentAxis
+                            ? [
+                              { formatter: (value) => formatPercentage(value, Math.abs(value) >= 10 ? 1 : 2) },
+                              { formatter: (value) => formatChartAxisValue(alert.metric_type, value, t) },
+                            ]
+                            : [{ formatter: (value) => formatChartAxisValue(alert.metric_type, value, t) }]}
                         series={[
                           {
                             name: t('apm.alerts.evaluationValue', '评估值'),
@@ -794,6 +821,16 @@ export default function AlertDetailDrawer({
                             lineType: 'dashed',
                             lineWidth: 1.5,
                           },
+                          ...(alert.metric_type === 'slo_burn_rate'
+                            ? [{
+                              name: t('apm.alerts.budgetRemaining', '剩余预算'),
+                              type: 'line' as const,
+                              dataKey: 'budget',
+                              color: OBSERVABILITY_SERIES_COLORS[2],
+                              yAxisIndex: 1,
+                              lineWidth: 1.5,
+                            }]
+                            : []),
                           ...(metricSnapshotRows.some((row) => row.recovery != null)
                             ? [{
                               name: t('apm.alerts.recoveryLine', '恢复阈值'),
@@ -846,6 +883,19 @@ export default function AlertDetailDrawer({
                         ]}
                       />
                     </div>
+                    {conditionRows.length > 1 ? (
+                      <div className="mt-3">
+                        <Typography.Text strong>{t('apm.alerts.conditions', '条件')}</Typography.Text>
+                        <Descriptions size="small" column={1} className="mt-2">
+                          {conditionRows.map((row) => (
+                            <Descriptions.Item key={row.ref} label={row.ref}>
+                              {`${t('apm.alerts.currentValue', '当前值')} ${row.value ?? '—'} · ${t('apm.alerts.thresholdAtTime', '当时阈值')} ${row.threshold ?? '—'} · ${row.matched_severity ? t('apm.alerts.matched', '命中') : t('apm.alerts.notMatched', '未命中')}`}
+                            </Descriptions.Item>
+                          ))}
+                        </Descriptions>
+                      </div>
+                    ) : null}
+                    </>
                   ) : (
                     <CatalogState kind="empty" description={t('apm.alerts.noMetricSnapshot', '暂无告警指标快照')} />
                   )}

@@ -74,6 +74,7 @@ const METRIC_KEY: Record<ApmAlert['metric_type'], string> = {
   apdex: 'apm.policies.metricApdex',
   throughput: 'apm.common.throughput',
   no_traffic: 'apm.alerts.noTraffic',
+  slo_burn_rate: 'apm.policies.metricSloBurnRate',
 };
 
 function resolveTimeParams(view: AlertView, historyTimeRange: [number, number] | null) {
@@ -422,6 +423,16 @@ export default function ApmAlertsPage() {
       render: (_, item) => (
         <div className={styles.alertServiceCell}>
           <span className={styles.alertServiceName} title={item.service_name}>{item.service_name}</span>
+          {item.instance_id ? (
+            <Typography.Text type="secondary" className={styles.alertServiceScope} title={item.instance_id}>
+              {item.instance_id}
+            </Typography.Text>
+          ) : null}
+          {item.dependency ? (
+            <Typography.Text type="secondary" className={styles.alertServiceScope} title={item.dependency}>
+              {item.dependency}
+            </Typography.Text>
+          ) : null}
           <Typography.Text type="secondary" className={styles.alertServiceScope} title={item.endpoint || t('apm.alerts.allEndpoints', '全部端点')}>
             {item.endpoint || t('apm.alerts.allEndpoints', '全部端点')}
           </Typography.Text>

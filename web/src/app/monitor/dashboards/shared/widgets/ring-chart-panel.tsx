@@ -54,8 +54,10 @@ export interface RingChartPanelProps {
   guide?: GuideItem[];
   data: RingChartDataItem[];
   centerValue: string;
-  centerCaption: string;
+  centerCaption: React.ReactNode;
   infoRows?: RingChartInfoRow[];
+  /** 不画环右侧说明列。缺省仍显示。 */
+  showInfo?: boolean;
   innerRadius?: number;
   outerRadius?: number;
   chartExtra?: React.ReactNode;
@@ -75,6 +77,7 @@ export const RingChartPanel = ({
   centerValue,
   centerCaption,
   infoRows,
+  showInfo = true,
   innerRadius = 52,
   outerRadius = 72,
   chartExtra,
@@ -87,7 +90,7 @@ export const RingChartPanel = ({
 }: RingChartPanelProps) => {
   const { t, dt } = useDashboardText();
   const localizedTitle = typeof title === 'string' ? tDashboardText(t, title) : title;
-  const total = data.reduce((sum, item) => sum + item.value, 0);
+  const total = showInfo ? data.reduce((sum, item) => sum + item.value, 0) : 0;
 
   const option = useMemo(() => {
     const chartData = data.filter((item) => item.value > 0);
@@ -155,33 +158,41 @@ export const RingChartPanel = ({
               />
               <div className={`${styles.ringCenter} ${styles.ringCenterOverlay}`}>
                 <div className={styles.ringValue}>{centerValue}</div>
-                <div className={styles.ringCaption}>{dt(centerCaption)}</div>
+                <div className={styles.ringCaption}>
+                  {typeof centerCaption === 'string' ? dt(centerCaption) : (
+                    <span className="pointer-events-auto inline-flex max-w-full items-center justify-center gap-1">
+                      {centerCaption}
+                    </span>
+                  )}
+                </div>
               </div>
               {chartExtra}
             </div>
-            <div className={styles.ringInfoPanel}>
-              <div className={styles.metricList}>
-                {(infoRows || data.map((item) => ({
-                  name: item.name,
-                  color: item.color,
-                  primary: `${total > 0 ? ((item.value / total) * 100).toFixed(1) : '0.0'}%`,
-                  secondary: `(${item.display || (Number.isInteger(item.value) || item.value >= 100 ? item.value.toFixed(0) : item.value.toFixed(1))})`
-                }))).map((item) => (
-                  <div className={`${styles.metricRow} ${styles.metricRowPercentOnly}`} key={item.name}>
-                    <span className={styles.metricKey}>
-                      <span className={styles.metricLabelGroup}>
-                        <span className={styles.metricDot} style={{ background: item.color }} />
-                        <span className={styles.metricName}>{dt(item.name)}</span>
+            {showInfo ? (
+              <div className={styles.ringInfoPanel}>
+                <div className={styles.metricList}>
+                  {(infoRows || data.map((item) => ({
+                    name: item.name,
+                    color: item.color,
+                    primary: `${total > 0 ? ((item.value / total) * 100).toFixed(1) : '0.0'}%`,
+                    secondary: `(${item.display || (Number.isInteger(item.value) || item.value >= 100 ? item.value.toFixed(0) : item.value.toFixed(1))})`
+                  }))).map((item) => (
+                    <div className={`${styles.metricRow} ${styles.metricRowPercentOnly}`} key={item.name}>
+                      <span className={styles.metricKey}>
+                        <span className={styles.metricLabelGroup}>
+                          <span className={styles.metricDot} style={{ background: item.color }} />
+                          <span className={styles.metricName}>{dt(item.name)}</span>
+                        </span>
                       </span>
-                    </span>
-                    <span className={styles.metricValueGroup}>
-                      <span className={styles.metricPercent}>{item.primary}</span>
-                      {item.secondary ? <span className={styles.metricCount}>{item.secondary}</span> : null}
-                    </span>
-                  </div>
-                ))}
+                      <span className={styles.metricValueGroup}>
+                        <span className={styles.metricPercent}>{item.primary}</span>
+                        {item.secondary ? <span className={styles.metricCount}>{item.secondary}</span> : null}
+                      </span>
+                    </div>
+                  ))}
+                </div>
               </div>
-            </div>
+            ) : null}
           </>
         )}
       </div>

@@ -122,12 +122,24 @@ error:
   policy_aggregate_func_unsupported: 不支持的聚合函数
   policy_numeric_op_only: 该函数只支持数值比较
   policy_threshold_number: 阈值必须是数字
+  policy_threshold_level_invalid: 阈值级别必须是警告、错误或严重，且不能重复、不能超过 3 档
+  policy_threshold_required: 至少填写一档阈值
+  policy_threshold_order: 多档阈值必须按级别严格单调
+  policy_threshold_single: 该运算符或非数值比较只允许一档阈值
+  policy_level_set_mismatch: 全部满足时，这一档还没填完
+  policy_role_invalid: 条件类型只能是常规或前置条件
+  policy_guard_not_absolute: 前置条件只能比当前值
+  policy_guard_no_ladder: 前置条件只有一个门槛
+  policy_guard_with_or: 任意满足不能带前置条件，请先去掉前置或改回全部满足
+  policy_regular_required: 至少要有一条常规条件
   policy_compare_invalid: 比较方式或对照无效
   policy_compare_func_unsupported: 该函数不支持这种比较方式
   policy_quantile_invalid: 分位数必须是 0.5、0.9、0.95 或 0.99
   policy_ratio_filter_invalid: 占比筛选无效
   policy_field_required: 聚合字段不能为空
   policy_trigger_count_range: 连续满足次数须在 1 到 5 之间
+  policy_recover_after_range: 自动恢复周期须在 1 到 10 之间
+  policy_min_hits_range: 命中条数须在 1 到 100000 之间
   policy_group_by_invalid: 分组字段格式错误
   policy_sample_limit_range: 样本条数须在 1 到 10 之间
   topn_unsupported: 该字段不支持 TopN 统计

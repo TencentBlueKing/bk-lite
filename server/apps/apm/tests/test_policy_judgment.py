@@ -39,7 +39,6 @@ def _payload(service, **updates):
         "metric_type": "p95",
         "evaluation_interval": 1,
         "metric_window": 5,
-        "aggregation": "avg",
         "thresholds": [{"severity": "error", "comparator": "gt", "value": "100"}],
         "trigger_after": 2,
         "recover_after": 2,

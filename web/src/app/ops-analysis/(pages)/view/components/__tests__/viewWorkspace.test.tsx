@@ -30,8 +30,8 @@ const item = {
 };
 
 describe('ViewWorkspace compactHeader', () => {
-  it('hides description and builtin badge in compact mode', () => {
-    render(
+  it('drops the dashboard title row and any homepage toolbar', () => {
+    const { container } = render(
       <ViewWorkspace
         selectedItem={item}
         titleFallback="仪表盘"
@@ -43,23 +43,30 @@ describe('ViewWorkspace compactHeader', () => {
       </ViewWorkspace>
     );
 
-    expect(screen.getByText('运维总览')).toBeTruthy();
-    expect(screen.getByText('在运营分析中打开')).toBeTruthy();
+    expect(screen.queryByRole('heading', { name: '运维总览' })).toBeNull();
+    expect(screen.queryByText('运维总览')).toBeNull();
+    expect(screen.queryByText('仪表盘')).toBeNull();
+    expect(screen.queryByText('在运营分析中打开')).toBeNull();
+    expect(container.querySelector('.border-b')).toBeNull();
     expect(screen.queryByText('这是一段描述')).toBeNull();
     expect(screen.queryByText('内置')).toBeNull();
+    expect(screen.getByText('canvas')).toBeTruthy();
   });
 
-  it('keeps description and badge in the default header', () => {
+  it('keeps title, description and badge in the default header', () => {
     render(
       <ViewWorkspace
         selectedItem={item}
         titleFallback="仪表盘"
         emptyDescription="空"
+        toolbar={<a href="/ops">在运营分析中打开</a>}
       >
         <div>canvas</div>
       </ViewWorkspace>
     );
 
+    expect(screen.getByRole('heading', { name: '运维总览' })).toBeTruthy();
+    expect(screen.getByRole('link', { name: '在运营分析中打开' })).toBeTruthy();
     expect(screen.getByText('这是一段描述')).toBeTruthy();
     expect(screen.getByText('内置')).toBeTruthy();
   });

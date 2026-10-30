@@ -1,6 +1,7 @@
 import django_filters
 from django.db.models import Q
-from apps.log.models.policy import Policy, Alert, Event, EventRawData
+
+from apps.log.models.policy import Alert, Event, EventRawData, Policy
 
 
 class PolicyFilter(django_filters.FilterSet):
@@ -36,15 +37,11 @@ class PolicyFilter(django_filters.FilterSet):
 
 class AlertFilter(django_filters.FilterSet):
     policy = django_filters.NumberFilter(field_name="policy__id")
-    policy_name = django_filters.CharFilter(
-        field_name="policy__name", lookup_expr="icontains"
-    )
-    collect_type = django_filters.NumberFilter(
-        field_name="collect_type__id", required=False
-    )
+    policy_name = django_filters.CharFilter(field_name="policy__name", lookup_expr="icontains")
+    collect_type = django_filters.NumberFilter(field_name="collect_type__id", required=False)
     level = django_filters.CharFilter(lookup_expr="exact")
     levels = django_filters.CharFilter(method="filter_levels")  # 支持多选级别
-    status = django_filters.CharFilter(lookup_expr="exact")
+    status = django_filters.CharFilter(method="filter_status")
     source_id = django_filters.CharFilter(lookup_expr="icontains")
     content = django_filters.CharFilter(lookup_expr="icontains")  # 支持内容搜索
     start_event_time = django_filters.DateTimeFromToRangeFilter()
@@ -67,6 +64,14 @@ class AlertFilter(django_filters.FilterSet):
             "created_at",
         ]
 
+    def filter_status(self, queryset, name, value):
+        if not value:
+            return queryset
+        status_list = [item.strip() for item in str(value).split(",") if item.strip()]
+        if not status_list:
+            return queryset
+        return queryset.filter(status__in=status_list)
+
     def filter_levels(self, queryset, name, value):
         """
         支持告警级别多选过滤
@@ -84,9 +89,7 @@ class AlertFilter(django_filters.FilterSet):
 class EventFilter(django_filters.FilterSet):
     policy = django_filters.NumberFilter(field_name="policy__id")
     alert = django_filters.CharFilter(field_name="alert__id")
-    alert_id = django_filters.CharFilter(
-        field_name="alert__id"
-    )  # 添加 alert_id 作为别名，使接口更清晰
+    alert_id = django_filters.CharFilter(field_name="alert__id")  # 添加 alert_id 作为别名，使接口更清晰
     source_id = django_filters.CharFilter(lookup_expr="icontains")
     level = django_filters.CharFilter(lookup_expr="exact")
     event_time = django_filters.DateTimeFromToRangeFilter()

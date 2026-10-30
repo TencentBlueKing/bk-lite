@@ -17,6 +17,7 @@ from django.utils import timezone
 from nats.js.errors import NotFoundError, ObjectNotFoundError
 
 from apps.core.logger import job_logger as logger
+from apps.core.openapi.async_callback import deliver_gateway_callback as _deliver_async_callback
 from apps.core.utils.safe_requests import safe_post
 from apps.core.utils.ssrf_validator import SSRFValidator
 from apps.job_mgmt.config import CALLBACK_CANCEL_RECONCILE_GRACE_SECONDS
@@ -101,6 +102,46 @@ def _build_terminal_intents(execution) -> list[tuple[str, str, dict]]:
         payload["url"] = execution.callback_url
         intents.append((JobCompletionOutbox.Kind.WEB_CALLBACK, delivery_id, payload))
 
+    async_ctx = execution.async_callback_context if isinstance(execution.async_callback_context, dict) else None
+    if async_ctx and async_ctx.get("callback_url") and async_ctx.get("callback_token"):
+        callback_key = execution.async_callback_key or hashlib.sha256(str(async_ctx["callback_token"]).encode("utf-8")).hexdigest()
+        delivery_id = f"job:{execution.id}:async:{callback_key}"
+        result = execution.status in (ExecutionStatus.SUCCESS,)
+        finished_at = execution.finished_at.isoformat() if execution.finished_at else None
+        intents.append(
+            (
+                JobCompletionOutbox.Kind.ASYNC_CALLBACK,
+                delivery_id,
+                {
+                    "execution_id": execution.id,
+                    "callback_key": callback_key,
+                    "url": async_ctx["callback_url"],
+                    "deadline_at": execution.async_callback_deadline_at.isoformat() if execution.async_callback_deadline_at else None,
+                    "identity": {
+                        "user": async_ctx.get("user") or execution.executor_user,
+                        "domain": async_ctx.get("domain") or execution.domain,
+                        "team_id": async_ctx.get("team_id"),
+                    },
+                    "request_body": {
+                        "callback_token": async_ctx["callback_token"],
+                        "operator": async_ctx.get("operator") or "system",
+                        "output_data": {
+                            "result": result,
+                            "data": {
+                                "execution_id": str(execution.id),
+                                "status": execution.status,
+                                "total_count": execution.total_count,
+                                "success_count": execution.success_count,
+                                "failed_count": execution.failed_count,
+                                "finished_at": finished_at,
+                            },
+                        },
+                    },
+                    "delivery_id": delivery_id,
+                },
+            )
+        )
+
     if CallbackType.use_nats(callback_type) and execution.callback_subject:
         delivery_id = _stable_key(execution.id, execution.status, JobCompletionOutbox.Kind.NATS_CALLBACK)
         callback_payload = build_callback_payload(execution)
@@ -128,8 +169,7 @@ def reserve_playbook_cleanup(execution, file_key: str) -> JobCompletionOutbox:
             "execution_id": execution.id,
             "kind": JobCompletionOutbox.Kind.PLAYBOOK_CLEANUP,
             "payload": {"file_key": file_key, "delivery_id": delivery_id},
-            "next_retry_at": timezone.now()
-            + timedelta(seconds=timeout_seconds + CALLBACK_CANCEL_RECONCILE_GRACE_SECONDS),
+            "next_retry_at": timezone.now() + timedelta(seconds=timeout_seconds + CALLBACK_CANCEL_RECONCILE_GRACE_SECONDS),
         },
     )
     return record
@@ -163,9 +203,14 @@ def enqueue_terminal_effects(
         records.append(record)
         if created and schedule_now:
             schedule_ids.append(record.pk)
-        elif (refresh_undelivered or kind == JobCompletionOutbox.Kind.PLAYBOOK_CLEANUP) and record.status in (
-            JobCompletionOutbox.Status.PENDING,
-            JobCompletionOutbox.Status.FAILED,
+        elif (
+            (refresh_undelivered or kind == JobCompletionOutbox.Kind.PLAYBOOK_CLEANUP)
+            and record.status
+            in (
+                JobCompletionOutbox.Status.PENDING,
+                JobCompletionOutbox.Status.FAILED,
+            )
+            and not (kind == JobCompletionOutbox.Kind.ASYNC_CALLBACK and record.attempts > 0)
         ):
             record.payload = payload
             record.status = JobCompletionOutbox.Status.PENDING
@@ -204,9 +249,7 @@ def lock_reconcilable_terminal_effects(execution_id: int) -> bool:
     if not transaction.get_connection().in_atomic_block:
         raise RuntimeError("终态纠正检查必须在数据库事务内执行")
     records = list(
-        JobCompletionOutbox.objects.select_for_update()
-        .filter(execution_id=execution_id)
-        .exclude(kind=JobCompletionOutbox.Kind.PLAYBOOK_CLEANUP)
+        JobCompletionOutbox.objects.select_for_update().filter(execution_id=execution_id).exclude(kind=JobCompletionOutbox.Kind.PLAYBOOK_CLEANUP)
     )
     return all(record.status == JobCompletionOutbox.Status.PENDING and record.attempts == 0 for record in records)
 
@@ -230,8 +273,36 @@ def _claim_delivery(record_id: int):
         # claim 读到刷新后的载荷，claim 先提交则回调不再改写数据库。
         JobExecution.objects.select_for_update().filter(pk=execution_id).only("pk").first()
         record = JobCompletionOutbox.objects.select_for_update().filter(pk=record_id).first()
-        if not record or record.status == JobCompletionOutbox.Status.DELIVERED:
+        if not record or record.status in (JobCompletionOutbox.Status.DELIVERED, JobCompletionOutbox.Status.STOPPED):
             return None
+        if record.kind == JobCompletionOutbox.Kind.ASYNC_CALLBACK:
+            deadline = (record.payload or {}).get("deadline_at")
+            if deadline:
+                try:
+                    from django.utils.dateparse import parse_datetime
+
+                    deadline_at = parse_datetime(deadline)
+                    if timezone.is_naive(deadline_at):
+                        deadline_at = timezone.make_aware(deadline_at, timezone.utc)
+                    if deadline_at and deadline_at <= timezone.now():
+                        record.status = JobCompletionOutbox.Status.STOPPED
+                        record.next_retry_at = None
+                        record.lease_token = None
+                        record.lease_expires_at = None
+                        record.last_error = "DEADLINE_EXCEEDED"
+                        record.save(
+                            update_fields=[
+                                "status",
+                                "next_retry_at",
+                                "lease_token",
+                                "lease_expires_at",
+                                "last_error",
+                                "updated_at",
+                            ]
+                        )
+                        return None
+                except Exception:
+                    pass
         now = timezone.now()
         if (
             record.status in (JobCompletionOutbox.Status.PENDING, JobCompletionOutbox.Status.FAILED)
@@ -306,6 +377,9 @@ def _deliver_payload(kind: str, payload: dict) -> None:
     if kind == JobCompletionOutbox.Kind.NATS_CALLBACK:
         publish_job_result_to_subject(payload["subject"], payload["callback_payload"])
         return
+    if kind == JobCompletionOutbox.Kind.ASYNC_CALLBACK:
+        _deliver_async_callback(payload)
+        return
     raise ValueError(f"不支持的作业完成 outbox 类型: {kind}")
 
 
@@ -314,12 +388,19 @@ def _mark_delivery_failed(record_id: int, lease_token, exc: Exception) -> None:
         record = JobCompletionOutbox.objects.select_for_update().filter(pk=record_id, lease_token=lease_token).first()
         if not record:
             return
+        reason = str(exc)
         exhausted = record.attempts >= record.max_attempts
-        record.status = JobCompletionOutbox.Status.FAILED if exhausted else JobCompletionOutbox.Status.PENDING
-        delay_seconds = min(3600, 15 * (2 ** min(record.attempts, 8)))
-        if exhausted:
-            delay_seconds = OUTBOX_FAILED_COOLDOWN_SECONDS
-        record.next_retry_at = timezone.now() + timedelta(seconds=delay_seconds)
+        stop = record.kind == JobCompletionOutbox.Kind.ASYNC_CALLBACK and (exhausted or reason.startswith("CALLBACK_REJECTED"))
+        if stop:
+            record.status = JobCompletionOutbox.Status.STOPPED
+            delay_seconds = 0
+            record.next_retry_at = None
+        else:
+            record.status = JobCompletionOutbox.Status.FAILED if exhausted else JobCompletionOutbox.Status.PENDING
+            delay_seconds = min(3600, 15 * (2 ** min(record.attempts, 8)))
+            if exhausted:
+                delay_seconds = OUTBOX_FAILED_COOLDOWN_SECONDS
+            record.next_retry_at = timezone.now() + timedelta(seconds=delay_seconds)
         record.lease_token = None
         record.lease_expires_at = None
         record.last_error = str(sanitize_sensitive_data(str(exc)))[:2000]
@@ -361,6 +442,9 @@ def deliver_outbox_record(record_id: int) -> bool:
         _deliver_payload(kind, payload)
     except Exception as exc:
         _mark_delivery_failed(record_id, lease_token, exc)
+        if kind == JobCompletionOutbox.Kind.ASYNC_CALLBACK:
+            logger.exception("async callback delivery failed; job terminal status is unchanged: outbox_id=%s", record_id)
+            return False
         raise
     return _mark_delivery_succeeded(record_id, lease_token)
 
