@@ -12,6 +12,6 @@ ARG RUNTIME_USER
 USER root
 # 防止旧 API JAR 与修复后的 API 同时进入 classpath；其他 Elasticsearch 库不变。
 RUN rm /usr/share/elasticsearch/lib/log4j-api-2.17.1.jar
-COPY --from=patched --chmod=0644 /work/patched/elasticsearch-log4j-7.17.21.jar /usr/share/elasticsearch/lib/elasticsearch-log4j-7.17.21.jar
-COPY --from=patched --chmod=0644 /work/patched/log4j-api-2.25.5.jar /usr/share/elasticsearch/lib/log4j-api-2.25.5.jar
+COPY --from=patched /work/patched/elasticsearch-log4j-7.17.21.jar /usr/share/elasticsearch/lib/elasticsearch-log4j-7.17.21.jar
+COPY --from=patched /work/patched/log4j-api-2.25.5.jar /usr/share/elasticsearch/lib/log4j-api-2.25.5.jar
 USER ${RUNTIME_USER}

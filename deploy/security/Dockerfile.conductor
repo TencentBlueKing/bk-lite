@@ -8,4 +8,4 @@ COPY --from=upstream /app/libs/conductor-server.jar /work/source.jar
 RUN python patch_log4j.py conductor --artifacts /work/artifacts --source /work/source.jar --output /work/patched.jar
 
 FROM ${BASE_IMAGE}
-COPY --from=patched --chmod=0644 /work/patched.jar /app/libs/conductor-server.jar
+COPY --from=patched /work/patched.jar /app/libs/conductor-server.jar
