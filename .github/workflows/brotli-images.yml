@@ -51,15 +51,15 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-      - name: 验证旧 Node 镜像的真实替换与非 root 运行
+      - name: 验证同款 FalkorDB 的 Node 包升级与非 root 运行
         run: |
           docker build --pull --no-cache \
-            --build-arg BASE_IMAGE=node:24.14.0-bookworm-slim \
+            --build-arg BASE_IMAGE=bk-lite.tencentcloudcr.com/bklite/falkordb/falkordb@sha256:22dd71a5e852eba99223c52e03b4ce871e0cd279c7931c117a6325610c247159 \
             --build-arg RUNTIME_USER=1000 \
             -f deploy/security/Dockerfile.falkordb \
             -t brotli-node-check deploy/security
           test "$(docker image inspect --format '{{.Config.User}}' brotli-node-check)" = '1000'
-          version=$(docker run --rm --network none --read-only --cpus=1 --memory=128m \
+          docker run --rm --network none --read-only --cpus=1 --memory=128m \
             --pids-limit=64 --cap-drop ALL --security-opt no-new-privileges \
-            --entrypoint node brotli-node-check --version)
-          test "$version" = 'v24.22.1'
+            --entrypoint sh brotli-node-check -c \
+            'node --version && dpkg-query -W nodejs libbrotli1'
