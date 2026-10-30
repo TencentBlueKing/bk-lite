@@ -198,6 +198,35 @@ def _owned_row(name, *, enabled=True, disabled_by_reconcile=False, human_descrip
 
 
 class TestEarlyReturns:
+    def test_programmatic_registry_inspection_does_not_sync(self, mocker):
+        from apps.core.celery_runtime import inspect_registry, skip_periodic_sync
+
+        fake_sys = mocker.MagicMock()
+        fake_sys.modules = {}
+        fake_sys.argv = ["manage.py", "shell"]
+        mocker.patch.object(celery_mod, "sys", fake_sys)
+        import django_celery_beat.models as models
+
+        update = mocker.patch.object(models.PeriodicTask.objects, "update_or_create")
+        app = mocker.Mock()
+        app.loader.import_default_modules.side_effect = lambda: celery_mod.setup_periodic_tasks(sender=None)
+        app.tasks = {"example": object()}
+        assert set(inspect_registry(app)) == {"example"}
+        assert not skip_periodic_sync.get()
+        update.assert_not_called()
+
+    @pytest.mark.parametrize("command", ["celery_runtime_report", "celery_routes", "celery_prefork_check"])
+    def test_runtime_commands_do_not_sync_schedules(self, mocker, command):
+        fake_sys = mocker.MagicMock()
+        fake_sys.modules = {}
+        fake_sys.argv = ["manage.py", command]
+        mocker.patch.object(celery_mod, "sys", fake_sys)
+        import django_celery_beat.models as models
+
+        update = mocker.patch.object(models.PeriodicTask.objects, "update_or_create")
+        celery_mod.setup_periodic_tasks(sender=None)
+        update.assert_not_called()
+
     def test_pytest_env_returns_without_orm(self, mocker):
         cron, interval, periodic = _run(mocker, {"t": {}}, in_pytest=True)
         periodic.objects.update_or_create.assert_not_called()

@@ -1,8 +1,9 @@
-from celery.schedules import crontab
-from dotenv import load_dotenv
-from split_settings.tools import include, optional
+from celery.schedules import crontab  # noqa: F401 - 供 split-settings 共享配置命名空间使用
+from split_settings.tools import include, optional  # noqa: F401 - 保留共享配置命名空间
 
-load_dotenv()
+from apps.core.celery_runtime.environment import load_runtime_environment
+
+load_runtime_environment()
 
 include(
     "components/base.py",

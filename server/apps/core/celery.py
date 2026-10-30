@@ -11,12 +11,15 @@ from celery.schedules import crontab
 from django.db import transaction
 
 from apps.core.logger import celery_logger as logger
+from apps.core.celery_runtime import skip_periodic_sync
+from apps.core.celery_runtime.observation import install_observer
 
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "settings")
 
 app = Celery("bklite")
 app.config_from_object("django.conf:settings", namespace="CELERY")
 app.autodiscover_tasks()
+runtime_observer = install_observer()
 
 MANAGED_TASK_DESCRIPTION_PREFIX = "[bklite:celery-beat-config:v1:"
 RECONCILE_DISABLED_MARKER = "[bklite:celery-beat-config:v1:disabled-by-reconcile]"
@@ -393,7 +396,7 @@ def setup_periodic_tasks(sender, **kwargs):
     """将 CELERY_BEAT_SCHEDULE 同步到 django_celery_beat 数据库表"""
     from django.conf import settings
 
-    if "pytest" in sys.modules:
+    if "pytest" in sys.modules or skip_periodic_sync.get():
         return
 
     if not getattr(settings, "IS_USE_CELERY", False):

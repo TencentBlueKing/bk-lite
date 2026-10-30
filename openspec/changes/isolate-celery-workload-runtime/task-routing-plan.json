@@ -1,0 +1,842 @@
+{
+  "status": "design_candidate_not_runtime_configuration",
+  "baseline": "dd39ab8c23dcbf29b0548e2a9347bb24c9880fe3",
+  "scope": "本地静态定义候选路由；不激活任务、不证明线上覆盖；实施前须核对真实注册、生产者和显式路由。",
+  "counts": {
+    "notification": 9,
+    "critical": 8,
+    "background": 62,
+    "state": 9
+  },
+  "tasks": [
+    {
+      "task_name": "apps.alerts.tasks.action_tasks.process_alert_actions",
+      "queue": "notification",
+      "source": "server/apps/alerts/tasks/action_tasks.py:11",
+      "purpose": "匹配动作规则并RPC触发作业",
+      "trigger_evidence_status": "有生产触发证据",
+      "inventory_class": "I",
+      "activation_change": false
+    },
+    {
+      "task_name": "apps.alerts.tasks.tasks.event_aggregation_alert",
+      "queue": "critical",
+      "source": "server/apps/alerts/tasks/tasks.py:33",
+      "purpose": "聚合事件、检查会话超时",
+      "trigger_evidence_status": "有生产触发证据",
+      "inventory_class": "C",
+      "activation_change": false
+    },
+    {
+      "task_name": "apps.alerts.tasks.tasks.beat_close_alert",
+      "queue": "critical",
+      "source": "server/apps/alerts/tasks/tasks.py:70",
+      "purpose": "自动关闭兜底",
+      "trigger_evidence_status": "有生产触发证据",
+      "inventory_class": "C",
+      "activation_change": false
+    },
+    {
+      "task_name": "apps.alerts.tasks.tasks.check_and_send_reminders",
+      "queue": "critical",
+      "source": "server/apps/alerts/tasks/tasks.py:92",
+      "purpose": "查询到期提醒并投递通知",
+      "trigger_evidence_status": "有生产触发证据",
+      "inventory_class": "C",
+      "activation_change": false
+    },
+    {
+      "task_name": "apps.alerts.tasks.tasks.cleanup_reminder_tasks",
+      "queue": "background",
+      "source": "server/apps/alerts/tasks/tasks.py:113",
+      "purpose": "清理提醒和升级记录",
+      "trigger_evidence_status": "有生产触发证据",
+      "inventory_class": "B",
+      "activation_change": false
+    },
+    {
+      "task_name": "apps.alerts.tasks.tasks.check_and_send_escalations",
+      "queue": "critical",
+      "source": "server/apps/alerts/tasks/tasks.py:132",
+      "purpose": "查询活跃升级并推进层级",
+      "trigger_evidence_status": "有生产触发证据",
+      "inventory_class": "C",
+      "activation_change": false
+    },
+    {
+      "task_name": "apps.alerts.tasks.tasks.async_auto_assignment_for_alerts",
+      "queue": "critical",
+      "source": "server/apps/alerts/tasks/tasks.py:150",
+      "purpose": "告警自动分派，大列表拆片再投递",
+      "trigger_evidence_status": "有生产触发证据",
+      "inventory_class": "C",
+      "activation_change": false
+    },
+    {
+      "task_name": "apps.alerts.tasks.tasks.build_instant_alerts",
+      "queue": "critical",
+      "source": "server/apps/alerts/tasks/tasks.py:220",
+      "purpose": "批量构建即时告警并投递分派",
+      "trigger_evidence_status": "有生产触发证据",
+      "inventory_class": "C",
+      "activation_change": false
+    },
+    {
+      "task_name": "apps.alerts.tasks.tasks.sync_notify",
+      "queue": "notification",
+      "source": "server/apps/alerts/tasks/tasks.py:255",
+      "purpose": "遍历渠道参数执行通知并记结果",
+      "trigger_evidence_status": "有生产触发证据",
+      "inventory_class": "I",
+      "activation_change": false
+    },
+    {
+      "task_name": "apps.alerts.tasks.tasks.sync_shield",
+      "queue": "background",
+      "source": "server/apps/alerts/tasks/tasks.py:305",
+      "purpose": "批量事件屏蔽校验",
+      "trigger_evidence_status": "待核实/无实际工作",
+      "inventory_class": "U",
+      "activation_change": false
+    },
+    {
+      "task_name": "apps.alerts.tasks.tasks.sync_no_dispatch_alert_notice_task",
+      "queue": "notification",
+      "source": "server/apps/alerts/tasks/tasks.py:322",
+      "purpose": "查询未分派告警并同步通知",
+      "trigger_evidence_status": "动态周期任务名不一致",
+      "inventory_class": "I",
+      "activation_change": false
+    },
+    {
+      "task_name": "apps.cmdb.tasks.celery_tasks.sync_collect_task",
+      "queue": "background",
+      "source": "server/apps/cmdb/tasks/celery_tasks.py:38",
+      "purpose": "采集、写实例和关联、保存结果",
+      "trigger_evidence_status": "有生产触发证据",
+      "inventory_class": "B",
+      "activation_change": false
+    },
+    {
+      "task_name": "apps.cmdb.tasks.celery_tasks.sync_periodic_update_task_status",
+      "queue": "state",
+      "source": "server/apps/cmdb/tasks/celery_tasks.py:195",
+      "purpose": "批量收敛长期RUNNING采集状态",
+      "trigger_evidence_status": "有生产触发证据",
+      "inventory_class": "C",
+      "activation_change": false
+    },
+    {
+      "task_name": "apps.cmdb.tasks.celery_tasks.sync_collect_credential_results_task",
+      "queue": "background",
+      "source": "server/apps/cmdb/tasks/celery_tasks.py:225",
+      "purpose": "旧凭据拉取入口，仅记录跳过",
+      "trigger_evidence_status": "待核实/无实际工作",
+      "inventory_class": "U",
+      "activation_change": false
+    },
+    {
+      "task_name": "apps.cmdb.tasks.celery_tasks.sync_cmdb_display_fields_task",
+      "queue": "background",
+      "source": "server/apps/cmdb/tasks/celery_tasks.py:235",
+      "purpose": "用户/组织变更后更新实例显示字段",
+      "trigger_evidence_status": "有生产触发证据",
+      "inventory_class": "B",
+      "activation_change": false
+    },
+    {
+      "task_name": "apps.cmdb.tasks.celery_tasks.execute_collect_tool_debug_task",
+      "queue": "background",
+      "source": "server/apps/cmdb/tasks/celery_tasks.py:280",
+      "purpose": "执行采集工具调试并缓存结果",
+      "trigger_evidence_status": "有生产触发证据",
+      "inventory_class": "B",
+      "activation_change": false
+    },
+    {
+      "task_name": "apps.cmdb.tasks.celery_tasks.sync_public_enum_library_snapshots_task",
+      "queue": "background",
+      "source": "server/apps/cmdb/tasks/celery_tasks.py:298",
+      "purpose": "公共枚举库快照同步",
+      "trigger_evidence_status": "有生产触发证据",
+      "inventory_class": "B",
+      "activation_change": false
+    },
+    {
+      "task_name": "apps.cmdb.tasks.celery_tasks.check_subscription_rules",
+      "queue": "background",
+      "source": "server/apps/cmdb/tasks/celery_tasks.py:306",
+      "purpose": "遍历订阅规则检测并投递事件组",
+      "trigger_evidence_status": "有生产触发证据",
+      "inventory_class": "B",
+      "activation_change": false
+    },
+    {
+      "task_name": "apps.cmdb.tasks.celery_tasks.send_subscription_notifications",
+      "queue": "notification",
+      "source": "server/apps/cmdb/tasks/celery_tasks.py:311",
+      "purpose": "批量订阅通知及渠道RPC",
+      "trigger_evidence_status": "有生产触发证据",
+      "inventory_class": "I",
+      "activation_change": false
+    },
+    {
+      "task_name": "apps.cmdb.tasks.celery_tasks.daily_data_cleanup_task",
+      "queue": "background",
+      "source": "server/apps/cmdb/tasks/celery_tasks.py:318",
+      "purpose": "过期CMDB数据清理",
+      "trigger_evidence_status": "有生产触发证据",
+      "inventory_class": "B",
+      "activation_change": false
+    },
+    {
+      "task_name": "apps.cmdb.tasks.celery_tasks.reconcile_instance_auto_association_task",
+      "queue": "background",
+      "source": "server/apps/cmdb/tasks/celery_tasks.py:326",
+      "purpose": "单实例关联收敛，可再投递规则全量",
+      "trigger_evidence_status": "有生产触发证据",
+      "inventory_class": "B",
+      "activation_change": false
+    },
+    {
+      "task_name": "apps.cmdb.tasks.celery_tasks.full_sync_auto_association_rule_task",
+      "queue": "background",
+      "source": "server/apps/cmdb/tasks/celery_tasks.py:334",
+      "purpose": "全量读取源目标并关联匹配写图",
+      "trigger_evidence_status": "有生产触发证据",
+      "inventory_class": "B",
+      "activation_change": false
+    },
+    {
+      "task_name": "apps.cmdb.tasks.celery_tasks.sync_node_mgmt_hosts",
+      "queue": "background",
+      "source": "server/apps/cmdb/tasks/celery_tasks.py:342",
+      "purpose": "节点主机与CMDB同步",
+      "trigger_evidence_status": "有生产触发证据",
+      "inventory_class": "B",
+      "activation_change": false
+    },
+    {
+      "task_name": "apps.cmdb.tasks.celery_tasks.collect_node_mgmt_hosts",
+      "queue": "background",
+      "source": "server/apps/cmdb/tasks/celery_tasks.py:354",
+      "purpose": "节点主机采集编排",
+      "trigger_evidence_status": "有生产触发证据",
+      "inventory_class": "B",
+      "activation_change": false
+    },
+    {
+      "task_name": "apps.cmdb.tasks.celery_tasks.reconcile_ipam_task",
+      "queue": "background",
+      "source": "server/apps/cmdb/tasks/celery_tasks.py:365",
+      "purpose": "IPAM与CMDB全量对账",
+      "trigger_evidence_status": "有生产触发证据",
+      "inventory_class": "B",
+      "activation_change": false
+    },
+    {
+      "task_name": "apps.core.tasks.auditlog_flush_task.clear_audit_logs",
+      "queue": "background",
+      "source": "server/apps/core/tasks/auditlog_flush_task.py:9",
+      "purpose": "调用管理命令清理30天前审计",
+      "trigger_evidence_status": "待核实/无实际工作",
+      "inventory_class": "U",
+      "activation_change": false
+    },
+    {
+      "task_name": "apps.job_mgmt.tasks.execute_script_task",
+      "queue": "background",
+      "source": "server/apps/job_mgmt/tasks.py:23",
+      "purpose": "远端多目标脚本执行，任务内线程池",
+      "trigger_evidence_status": "有生产触发证据",
+      "inventory_class": "B",
+      "activation_change": false
+    },
+    {
+      "task_name": "apps.job_mgmt.tasks.distribute_files_task",
+      "queue": "background",
+      "source": "server/apps/job_mgmt/tasks.py:28",
+      "purpose": "多目标文件分发，任务内线程池",
+      "trigger_evidence_status": "有生产触发证据",
+      "inventory_class": "B",
+      "activation_change": false
+    },
+    {
+      "task_name": "apps.job_mgmt.tasks.execute_playbook_task",
+      "queue": "background",
+      "source": "server/apps/job_mgmt/tasks.py:33",
+      "purpose": "执行自动化剧本并等待结果",
+      "trigger_evidence_status": "有生产触发证据",
+      "inventory_class": "B",
+      "activation_change": false
+    },
+    {
+      "task_name": "apps.job_mgmt.tasks.finalize_cancelling_execution",
+      "queue": "state",
+      "source": "server/apps/job_mgmt/tasks.py:39",
+      "purpose": "取消超时终态收敛及回调投递",
+      "trigger_evidence_status": "有生产触发证据",
+      "inventory_class": "C",
+      "activation_change": false
+    },
+    {
+      "task_name": "apps.job_mgmt.tasks.execute_scheduled_task",
+      "queue": "state",
+      "source": "server/apps/job_mgmt/tasks.py:82",
+      "purpose": "检查并发策略、建执行记录、投递作业",
+      "trigger_evidence_status": "有生产触发证据",
+      "inventory_class": "C",
+      "activation_change": false
+    },
+    {
+      "task_name": "apps.job_mgmt.tasks.cleanup_expired_distribution_files_task",
+      "queue": "background",
+      "source": "server/apps/job_mgmt/tasks.py:206",
+      "purpose": "删除过期对象存储文件及记录",
+      "trigger_evidence_status": "有生产触发证据",
+      "inventory_class": "B",
+      "activation_change": false
+    },
+    {
+      "task_name": "apps.job_mgmt.tasks.do_callback_task",
+      "queue": "notification",
+      "source": "server/apps/job_mgmt/tasks.py:267",
+      "purpose": "发送作业HTTP回调，失败退避重试",
+      "trigger_evidence_status": "有生产触发证据",
+      "inventory_class": "I",
+      "activation_change": false
+    },
+    {
+      "task_name": "apps.job_mgmt.tasks.do_nats_callback_task",
+      "queue": "notification",
+      "source": "server/apps/job_mgmt/tasks.py:314",
+      "purpose": "发布作业结果到NATS",
+      "trigger_evidence_status": "有生产触发证据",
+      "inventory_class": "I",
+      "activation_change": false
+    },
+    {
+      "task_name": "apps.log.tasks.policy.scan_log_policy_task",
+      "queue": "critical",
+      "source": "server/apps/log/tasks/policy.py:15",
+      "purpose": "日志检测，内部最多串行补10窗口并通知",
+      "trigger_evidence_status": "有生产触发证据",
+      "inventory_class": "C",
+      "activation_change": false
+    },
+    {
+      "task_name": "apps.log.tasks.policy.compensate_log_notice_task",
+      "queue": "notification",
+      "source": "server/apps/log/tasks/policy.py:106",
+      "purpose": "有批量边界的失败通知补偿",
+      "trigger_evidence_status": "有生产触发证据",
+      "inventory_class": "I",
+      "activation_change": false
+    },
+    {
+      "task_name": "apps.mlops.tasks.anomaly_detection.publish_dataset_release_async",
+      "queue": "background",
+      "source": "server/apps/mlops/tasks/anomaly_detection.py:97",
+      "purpose": "异常检测数据集发布、打包上传（非训练）",
+      "trigger_evidence_status": "有生产触发证据",
+      "inventory_class": "B",
+      "activation_change": false
+    },
+    {
+      "task_name": "apps.mlops.tasks.classification.publish_dataset_release_async",
+      "queue": "background",
+      "source": "server/apps/mlops/tasks/classification.py:67",
+      "purpose": "分类数据集发布、打包上传（非训练）",
+      "trigger_evidence_status": "有生产触发证据",
+      "inventory_class": "B",
+      "activation_change": false
+    },
+    {
+      "task_name": "apps.mlops.tasks.image_classification.publish_dataset_release_async",
+      "queue": "background",
+      "source": "server/apps/mlops/tasks/image_classification.py:27",
+      "purpose": "图片分类数据集发布、打包上传（非训练）",
+      "trigger_evidence_status": "有生产触发证据",
+      "inventory_class": "B",
+      "activation_change": false
+    },
+    {
+      "task_name": "apps.mlops.tasks.log_clustering.publish_dataset_release_async",
+      "queue": "background",
+      "source": "server/apps/mlops/tasks/log_clustering.py:71",
+      "purpose": "日志聚类数据集发布、打包上传（非训练）",
+      "trigger_evidence_status": "有生产触发证据",
+      "inventory_class": "B",
+      "activation_change": false
+    },
+    {
+      "task_name": "apps.mlops.tasks.object_detection.publish_dataset_release_async",
+      "queue": "background",
+      "source": "server/apps/mlops/tasks/object_detection.py:190",
+      "purpose": "目标检测数据集发布、打包上传（非训练）",
+      "trigger_evidence_status": "有生产触发证据",
+      "inventory_class": "B",
+      "activation_change": false
+    },
+    {
+      "task_name": "apps.mlops.tasks.poll_train_job_status.poll_train_job_status",
+      "queue": "background",
+      "source": "server/apps/mlops/tasks/poll_train_job_status.py:23",
+      "purpose": "查MLflow状态并30秒retry；非模型训练",
+      "trigger_evidence_status": "有生产触发证据",
+      "inventory_class": "I",
+      "activation_change": false
+    },
+    {
+      "task_name": "apps.mlops.tasks.timeseries.publish_dataset_release_async",
+      "queue": "background",
+      "source": "server/apps/mlops/tasks/timeseries.py:71",
+      "purpose": "时序数据集发布、打包上传（非训练）",
+      "trigger_evidence_status": "有生产触发证据",
+      "inventory_class": "B",
+      "activation_change": false
+    },
+    {
+      "task_name": "apps.monitor.tasks.collect_detect.run_collect_detect_task",
+      "queue": "background",
+      "source": "server/apps/monitor/tasks/collect_detect.py:7",
+      "purpose": "远端Telegraf一次性预检，默认60秒上限600秒",
+      "trigger_evidence_status": "有生产触发证据",
+      "inventory_class": "B",
+      "activation_change": false
+    },
+    {
+      "task_name": "apps.monitor.tasks.grouping_rule.sync_instance_and_group",
+      "queue": "background",
+      "source": "server/apps/monitor/tasks/grouping_rule.py:9",
+      "purpose": "同步监控实例、执行分组规则",
+      "trigger_evidence_status": "有生产触发证据",
+      "inventory_class": "B",
+      "activation_change": false
+    },
+    {
+      "task_name": "apps.monitor.tasks.monitor_policy.scan_policy_task",
+      "queue": "critical",
+      "source": "server/apps/monitor/tasks/monitor_policy.py:24",
+      "purpose": "指标检测，内部最多串行补30窗口并通知",
+      "trigger_evidence_status": "有生产触发证据",
+      "inventory_class": "C",
+      "activation_change": false
+    },
+    {
+      "task_name": "apps.monitor.tasks.monitor_policy.retry_alert_center_lifecycle_notify_task",
+      "queue": "notification",
+      "source": "server/apps/monitor/tasks/monitor_policy.py:100",
+      "purpose": "最多200条终态告警补偿推送",
+      "trigger_evidence_status": "有生产触发证据",
+      "inventory_class": "I",
+      "activation_change": false
+    },
+    {
+      "task_name": "apps.node_mgmt.tasks.action_task.converge_collector_action_task_for_node",
+      "queue": "state",
+      "source": "server/apps/node_mgmt/tasks/action_task.py:159",
+      "purpose": "根据节点状态收敛采集器操作",
+      "trigger_evidence_status": "有生产触发证据",
+      "inventory_class": "C",
+      "activation_change": false
+    },
+    {
+      "task_name": "apps.node_mgmt.tasks.action_task.timeout_collector_action_task",
+      "queue": "state",
+      "source": "server/apps/node_mgmt/tasks/action_task.py:223",
+      "purpose": "采集器操作超时状态兜底",
+      "trigger_evidence_status": "有生产触发证据",
+      "inventory_class": "C",
+      "activation_change": false
+    },
+    {
+      "task_name": "apps.node_mgmt.tasks.cloudregion.check_all_region_services",
+      "queue": "background",
+      "source": "server/apps/node_mgmt/tasks/cloudregion.py:9",
+      "purpose": "遍历云区域同步健康检查",
+      "trigger_evidence_status": "有生产触发证据",
+      "inventory_class": "B",
+      "activation_change": false
+    },
+    {
+      "task_name": "apps.node_mgmt.tasks.installer.install_controller",
+      "queue": "state",
+      "source": "server/apps/node_mgmt/tasks/installer.py:684",
+      "purpose": "安装主任务编排，按任务最多3节点bootstrap",
+      "trigger_evidence_status": "有生产触发证据",
+      "inventory_class": "C",
+      "activation_change": false
+    },
+    {
+      "task_name": "apps.node_mgmt.tasks.installer.install_controller_for_node",
+      "queue": "background",
+      "source": "server/apps/node_mgmt/tasks/installer.py:700",
+      "purpose": "单节点远端安装和结果接收",
+      "trigger_evidence_status": "有生产触发证据",
+      "inventory_class": "B",
+      "activation_change": false
+    },
+    {
+      "task_name": "apps.node_mgmt.tasks.installer.converge_controller_install_connectivity_for_node",
+      "queue": "state",
+      "source": "server/apps/node_mgmt/tasks/installer.py:733",
+      "purpose": "Sidecar连通回调推进状态及后续节点",
+      "trigger_evidence_status": "有生产触发证据",
+      "inventory_class": "C",
+      "activation_change": false
+    },
+    {
+      "task_name": "apps.node_mgmt.tasks.installer.timeout_controller_install_task",
+      "queue": "state",
+      "source": "server/apps/node_mgmt/tasks/installer.py:777",
+      "purpose": "安装连通超时兜底并推进剩余节点",
+      "trigger_evidence_status": "有生产触发证据",
+      "inventory_class": "C",
+      "activation_change": false
+    },
+    {
+      "task_name": "apps.node_mgmt.tasks.installer.retry_controller",
+      "queue": "state",
+      "source": "server/apps/node_mgmt/tasks/installer.py:830",
+      "purpose": "刷新失败节点凭据/状态并重投",
+      "trigger_evidence_status": "有生产触发证据",
+      "inventory_class": "C",
+      "activation_change": false
+    },
+    {
+      "task_name": "apps.node_mgmt.tasks.installer.uninstall_controller",
+      "queue": "background",
+      "source": "server/apps/node_mgmt/tasks/installer.py:892",
+      "purpose": "逐节点执行远端卸载并删除节点记录",
+      "trigger_evidence_status": "有生产触发证据",
+      "inventory_class": "B",
+      "activation_change": false
+    },
+    {
+      "task_name": "apps.node_mgmt.tasks.installer.install_collector",
+      "queue": "background",
+      "source": "server/apps/node_mgmt/tasks/installer.py:1000",
+      "purpose": "采集器配置/安装下发",
+      "trigger_evidence_status": "有生产触发证据",
+      "inventory_class": "B",
+      "activation_change": false
+    },
+    {
+      "task_name": "apps.node_mgmt.tasks.installer.uninstall_collector",
+      "queue": "background",
+      "source": "server/apps/node_mgmt/tasks/installer.py:1159",
+      "purpose": "pass空壳",
+      "trigger_evidence_status": "待核实/无实际工作",
+      "inventory_class": "U",
+      "activation_change": false
+    },
+    {
+      "task_name": "apps.node_mgmt.tasks.sidecar_config.sync_node_properties_to_sidecar",
+      "queue": "background",
+      "source": "server/apps/node_mgmt/tasks/sidecar_config.py:9",
+      "purpose": "远程更新sidecar.yaml属性",
+      "trigger_evidence_status": "有生产触发证据",
+      "inventory_class": "B",
+      "activation_change": false
+    },
+    {
+      "task_name": "apps.node_mgmt.tasks.version_discovery.discover_node_versions",
+      "queue": "background",
+      "source": "server/apps/node_mgmt/tasks/version_discovery.py:18",
+      "purpose": "遍历节点查询远端版本，单次RPC10秒",
+      "trigger_evidence_status": "有生产触发证据",
+      "inventory_class": "B",
+      "activation_change": false
+    },
+    {
+      "task_name": "apps.opspilot.tasks.general_embed",
+      "queue": "background",
+      "source": "server/apps/opspilot/tasks.py:251",
+      "purpose": "文档批量向量化和索引",
+      "trigger_evidence_status": "有生产触发证据",
+      "inventory_class": "B",
+      "activation_change": false
+    },
+    {
+      "task_name": "apps.opspilot.tasks.retrain_all",
+      "queue": "background",
+      "source": "server/apps/opspilot/tasks.py:259",
+      "purpose": "整个知识库重新向量化",
+      "trigger_evidence_status": "有生产触发证据",
+      "inventory_class": "B",
+      "activation_change": false
+    },
+    {
+      "task_name": "apps.opspilot.tasks.invoke_document_to_es",
+      "queue": "background",
+      "source": "server/apps/opspilot/tasks.py:338",
+      "purpose": "单文档删除旧索引并重建",
+      "trigger_evidence_status": "有生产触发证据",
+      "inventory_class": "B",
+      "activation_change": false
+    },
+    {
+      "task_name": "apps.opspilot.tasks.sync_web_page_knowledge",
+      "queue": "background",
+      "source": "server/apps/opspilot/tasks.py:515",
+      "purpose": "下载网页、更新文档并嵌入",
+      "trigger_evidence_status": "有生产触发证据",
+      "inventory_class": "B",
+      "activation_change": false
+    },
+    {
+      "task_name": "apps.opspilot.tasks.create_qa_pairs",
+      "queue": "background",
+      "source": "server/apps/opspilot/tasks.py:583",
+      "purpose": "批量文档生成问答",
+      "trigger_evidence_status": "有生产触发证据",
+      "inventory_class": "B",
+      "activation_change": false
+    },
+    {
+      "task_name": "apps.opspilot.tasks.generate_answer",
+      "queue": "background",
+      "source": "server/apps/opspilot/tasks.py:666",
+      "purpose": "已有问答生成/更新答案",
+      "trigger_evidence_status": "有生产触发证据",
+      "inventory_class": "B",
+      "activation_change": false
+    },
+    {
+      "task_name": "apps.opspilot.tasks.rebuild_graph_community_by_instance",
+      "queue": "background",
+      "source": "server/apps/opspilot/tasks.py:692",
+      "purpose": "重建知识图谱社区",
+      "trigger_evidence_status": "有生产触发证据",
+      "inventory_class": "B",
+      "activation_change": false
+    },
+    {
+      "task_name": "apps.opspilot.tasks.create_graph",
+      "queue": "background",
+      "source": "server/apps/opspilot/tasks.py:711",
+      "purpose": "创建知识图谱",
+      "trigger_evidence_status": "有生产触发证据",
+      "inventory_class": "B",
+      "activation_change": false
+    },
+    {
+      "task_name": "apps.opspilot.tasks.update_graph",
+      "queue": "background",
+      "source": "server/apps/opspilot/tasks.py:732",
+      "purpose": "增量更新知识图谱",
+      "trigger_evidence_status": "有生产触发证据",
+      "inventory_class": "B",
+      "activation_change": false
+    },
+    {
+      "task_name": "apps.opspilot.tasks.create_qa_pairs_by_json",
+      "queue": "background",
+      "source": "server/apps/opspilot/tasks.py:753",
+      "purpose": "JSON批量问答写入与嵌入",
+      "trigger_evidence_status": "有生产触发证据",
+      "inventory_class": "B",
+      "activation_change": false
+    },
+    {
+      "task_name": "apps.opspilot.tasks.create_qa_pairs_by_custom",
+      "queue": "background",
+      "source": "server/apps/opspilot/tasks.py:975",
+      "purpose": "自定义问答批量写入与嵌入",
+      "trigger_evidence_status": "有生产触发证据",
+      "inventory_class": "B",
+      "activation_change": false
+    },
+    {
+      "task_name": "apps.opspilot.tasks.create_qa_pairs_by_chunk",
+      "queue": "background",
+      "source": "server/apps/opspilot/tasks.py:1006",
+      "purpose": "分块内容通过LLM生成问答",
+      "trigger_evidence_status": "有生产触发证据",
+      "inventory_class": "B",
+      "activation_change": false
+    },
+    {
+      "task_name": "apps.opspilot.tasks.chat_flow_celery_task",
+      "queue": "background",
+      "source": "server/apps/opspilot/tasks.py:1078",
+      "purpose": "执行周期ChatFlow，可能有LLM和工具链",
+      "trigger_evidence_status": "有生产触发证据",
+      "inventory_class": "B",
+      "activation_change": false
+    },
+    {
+      "task_name": "apps.opspilot.tasks.chat_flow_test_execute_task",
+      "queue": "background",
+      "source": "server/apps/opspilot/tasks.py:1108",
+      "purpose": "配置页工作流测试，完整执行引擎",
+      "trigger_evidence_status": "有生产触发证据",
+      "inventory_class": "A",
+      "activation_change": false
+    },
+    {
+      "task_name": "apps.opspilot.tasks.update_graph_task",
+      "queue": "background",
+      "source": "server/apps/opspilot/tasks.py:1133",
+      "purpose": "更新图谱进度",
+      "trigger_evidence_status": "仅找到直接调用",
+      "inventory_class": "B",
+      "activation_change": false
+    },
+    {
+      "task_name": "apps.opspilot.tasks.process_wechat_message",
+      "queue": "background",
+      "source": "server/apps/opspilot/tasks.py:1238",
+      "purpose": "企微消息执行ChatFlow并回复",
+      "trigger_evidence_status": "有生产触发证据",
+      "inventory_class": "A",
+      "activation_change": false
+    },
+    {
+      "task_name": "apps.opspilot.tasks.process_enterprise_wechat_aibot_message",
+      "queue": "background",
+      "source": "server/apps/opspilot/tasks.py:1259",
+      "purpose": "企微智能机器人执行ChatFlow后投递回复",
+      "trigger_evidence_status": "有生产触发证据",
+      "inventory_class": "A",
+      "activation_change": false
+    },
+    {
+      "task_name": "apps.opspilot.tasks.process_enterprise_wechat_aibot_reply",
+      "queue": "notification",
+      "source": "server/apps/opspilot/tasks.py:1290",
+      "purpose": "发送已生成文本并标记完成",
+      "trigger_evidence_status": "有生产触发证据",
+      "inventory_class": "I",
+      "activation_change": false
+    },
+    {
+      "task_name": "apps.opspilot.tasks.process_dingtalk_message",
+      "queue": "background",
+      "source": "server/apps/opspilot/tasks.py:1304",
+      "purpose": "钉钉消息执行ChatFlow及回复",
+      "trigger_evidence_status": "有生产触发证据",
+      "inventory_class": "A",
+      "activation_change": false
+    },
+    {
+      "task_name": "apps.opspilot.tasks.process_wechat_official_message",
+      "queue": "background",
+      "source": "server/apps/opspilot/tasks.py:1357",
+      "purpose": "公众号消息执行ChatFlow及回复",
+      "trigger_evidence_status": "有生产触发证据",
+      "inventory_class": "A",
+      "activation_change": false
+    },
+    {
+      "task_name": "apps.opspilot.tasks.process_memory_write_cache",
+      "queue": "background",
+      "source": "server/apps/opspilot/tasks.py:1378",
+      "purpose": "写记忆缓存，达阈值同步调用LLM整理写入",
+      "trigger_evidence_status": "有生产触发证据",
+      "inventory_class": "B",
+      "activation_change": false
+    },
+    {
+      "task_name": "apps.opspilot.tasks.flush_memory_write_cache_for_node",
+      "queue": "background",
+      "source": "server/apps/opspilot/tasks.py:1464",
+      "purpose": "遍历节点目标并同步刷新记忆",
+      "trigger_evidence_status": "有生产触发证据",
+      "inventory_class": "B",
+      "activation_change": false
+    },
+    {
+      "task_name": "apps.opspilot.tasks.flush_all_pending_memory_write_cache",
+      "queue": "background",
+      "source": "server/apps/opspilot/tasks.py:1497",
+      "purpose": "遍历全量待刷新分组并同步刷新",
+      "trigger_evidence_status": "有生产触发证据",
+      "inventory_class": "B",
+      "activation_change": false
+    },
+    {
+      "task_name": "apps.opspilot.tasks.process_memory_write",
+      "queue": "background",
+      "source": "server/apps/opspilot/tasks.py:1857",
+      "purpose": "LLM处理记忆后写存储",
+      "trigger_evidence_status": "有生产触发证据",
+      "inventory_class": "B",
+      "activation_change": false
+    },
+    {
+      "task_name": "apps.opspilot.tasks.cleanup_expired_workflow_attachments_task",
+      "queue": "background",
+      "source": "server/apps/opspilot/tasks.py:1881",
+      "purpose": "清理超过3天的工作流附件",
+      "trigger_evidence_status": "有生产触发证据",
+      "inventory_class": "B",
+      "activation_change": false
+    },
+    {
+      "task_name": "apps.system_mgmt.tasks.write_error_log_async",
+      "queue": "background",
+      "source": "server/apps/system_mgmt/tasks.py:15",
+      "purpose": "异常日志入库，失败重试",
+      "trigger_evidence_status": "有生产触发证据",
+      "inventory_class": "I",
+      "activation_change": false
+    },
+    {
+      "task_name": "apps.system_mgmt.tasks.sync_user_and_group_by_login_module",
+      "queue": "background",
+      "source": "server/apps/system_mgmt/tasks.py:43",
+      "purpose": "RPC拉取用户/组并全量同步",
+      "trigger_evidence_status": "有生产触发证据",
+      "inventory_class": "B",
+      "activation_change": false
+    },
+    {
+      "task_name": "apps.system_mgmt.tasks.check_password_expiry_and_notify",
+      "queue": "background",
+      "source": "server/apps/system_mgmt/tasks.py:252",
+      "purpose": "遍历用户逐个发密码到期邮件",
+      "trigger_evidence_status": "有生产触发证据",
+      "inventory_class": "B",
+      "activation_change": false
+    }
+  ],
+  "production_only_pending": [
+    {
+      "task_name": "apps.cmdb.tasks.transfer.maintain_transfers",
+      "queue": null,
+      "reason": "截图存在、本地缺少同名定义；核对线上实现后分类，不根据名称推测。"
+    },
+    {
+      "task_name": "apps.alerts.tasks.tasks.deliver_alert_outbox",
+      "queue": null,
+      "reason": "截图存在、本地缺少同名定义；核对线上实现后分类，不根据名称推测。"
+    },
+    {
+      "task_name": "apps.cmdb.tasks.transfer.execute_transfer",
+      "queue": null,
+      "reason": "截图存在、本地缺少同名定义；核对线上实现后分类，不根据名称推测。"
+    },
+    {
+      "task_name": "apps.cmdb.tasks.celery_tasks.reconcile_instances_auto_association_task",
+      "queue": null,
+      "reason": "截图存在、本地缺少同名定义；核对线上实现后分类，不根据名称推测。"
+    },
+    {
+      "task_name": "apps.cmdb.tasks.node_mgmt_sync.recover_node_mgmt_sync",
+      "queue": null,
+      "reason": "截图存在、本地缺少同名定义；核对线上实现后分类，不根据名称推测。"
+    },
+    {
+      "task_name": "apps.node_mgmt.tasks.collector_default_backfill.backfill_collector_default_configs",
+      "queue": null,
+      "reason": "截图存在、本地缺少同名定义；核对线上实现后分类，不根据名称推测。"
+    },
+    {
+      "task_name": "apps.cmdb.tasks.uuid_migration.migrate_cmdb_instance_uuid_runtime",
+      "queue": null,
+      "reason": "截图存在、本地缺少同名定义；核对线上实现后分类，不根据名称推测。"
+    }
+  ]
+}

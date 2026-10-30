@@ -3,6 +3,7 @@ import logging
 import os
 
 from config.components.locale import TIME_ZONE
+from apps.core.celery_runtime.routing import declared_queues, route_task
 
 logger = logging.getLogger("celery_config")
 
@@ -42,7 +43,10 @@ if IS_USE_CELERY:
     )
     CELERY_ENABLE_UTC = True
     CELERY_WORKER_POOL = "prefork"
-    CELERY_WORKER_CONCURRENCY = int(os.getenv("CELERY_CONCURRENCY", "2"))
+    CELERY_TASK_QUEUES = declared_queues()
+    CELERY_TASK_ROUTES = (route_task,)
+    CELERY_TASK_DEFAULT_QUEUE = "celery"
+    CELERY_WORKER_PREFETCH_MULTIPLIER = 1
     # worker_max_tasks_per_child / worker_max_memory_per_child 只对 prefork 生效。
     # 旧名 CELERY_MAX_TASKS_PER_CHILD 不会映射到 Celery 配置，threads 下也无效。
     CELERY_WORKER_MAX_TASKS_PER_CHILD = int(os.getenv("CELERY_MAX_TASKS_PER_CHILD", "200"))
