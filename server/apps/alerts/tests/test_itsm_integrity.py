@@ -32,11 +32,19 @@ def test_transaction_rollback_keeps_no_orphan_creation_intent(setup_itsm):
 
 @pytest.mark.django_db
 def test_no_match_is_final_even_when_a_rule_is_added_later(setup_itsm):
-    record = enqueue_creation(alert())
-    evaluate_creation(record.pk)
+    assert enqueue_creation(alert()) is None
     rule()
-    evaluate_creation(record.pk)
+    assert not AlertOutbox.objects.exists()
     assert not AlertItsmTicket.objects.exists()
+
+
+@pytest.mark.django_db
+def test_alert_not_matching_any_rule_never_enters_creation(setup_itsm):
+    rule(match_rules=[[{"key": "resource_name", "operator": "contains", "value": "db"}]])
+    rule(team=[999])
+    assert enqueue_creation(alert(resource_name="web-01")) is None
+    assert not AlertOutbox.objects.exists()
+    assert enqueue_creation(alert(resource_name="db-01")) is not None
 
 
 @pytest.mark.django_db
@@ -219,6 +227,7 @@ def test_synthetic_alert_persists_creation_snapshot(setup_itsm):
     from apps.alerts.models.alert_operator import AlarmStrategy
 
     strategy = AlarmStrategy.objects.create(name="heartbeat", dispatch_team=[1])
+    rule()
     created = SyntheticAlertBuilder.create_alert(strategy, {"alert_template": {"title": "heartbeat missing"}}, timezone.now())
     record = AlertOutbox.objects.get(kind="itsm_evaluate")
     assert record.payload["alert_pk"] == created.pk
@@ -349,9 +358,7 @@ def test_oversized_input_without_eligible_rule_does_not_report_itsm_failure(setu
     a = alert()
     a.content = "x" * 70000
     a.save()
-    record = enqueue_creation(a)
-    evaluate_creation(record.pk)
-    record.refresh_from_db()
-    assert record.payload["evaluated"] is True
+    assert enqueue_creation(a) is None
+    assert not AlertOutbox.objects.exists()
     assert not ActionExecution.objects.filter(alert=a).exists()
     assert not AlertOutbox.objects.filter(kind="itsm_failure").exists()

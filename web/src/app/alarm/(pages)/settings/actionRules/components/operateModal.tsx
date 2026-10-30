@@ -69,8 +69,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
   const [itsmConnections, setItsmConnections] = useState<{ value: string; label: string }[]>([]);
   useEffect(() => {
     if (!open || !isItsm) return;
-    const events = (form.getFieldValue('trigger_events') || []) as string[];
-    form.setFieldsValue({ auto_execute: true, trigger_events: events.includes('created') ? events : ['created', ...events] });
+    form.setFieldsValue({ auto_execute: true, trigger_events: ['created'] });
     get<{ value: string; label: string }[]>('/alerts/api/action_rule/itsm_connections/')
       .then(connections => {
         setItsmConnections(connections);
@@ -271,9 +270,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
         team: (values.team as number[]) || [],
         is_active: values.is_active as boolean,
         auto_execute: isItsm || values.auto_execute !== false,
-        trigger_events: isItsm
-          ? Array.from(new Set(['created', ...((values.trigger_events as string[]) || [])]))
-          : (values.trigger_events as string[]) || [],
+        trigger_events: isItsm ? ['created'] : (values.trigger_events as string[]) || [],
         match_rules: (values.match_rules as ActionRuleListItem['match_rules']) || [],
         action_type: (values.action_type as ActionRuleListItem['action_type']) || 'job',
         action_config: actionConfig,
@@ -386,10 +383,10 @@ const OperateModal: React.FC<OperateModalProps> = ({
           rules={[{ required: true, message: t('common.selectTip') }]}
         >
           <Checkbox.Group
-            options={ACTION_TRIGGER_EVENTS.map(({ value, labelKey }) => ({
+            options={ACTION_TRIGGER_EVENTS.filter(({ value }) => !isItsm || value === 'created').map(({ value, labelKey }) => ({
               value,
               label: t(labelKey),
-              disabled: isItsm && value === 'created',
+              disabled: isItsm,
             }))}
           />
         </Form.Item>
