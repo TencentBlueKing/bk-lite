@@ -373,15 +373,30 @@ const TemplateConfigDrawer = forwardRef<
           key: 'action',
           dataIndex: 'action',
           fixed: 'right' as const,
-          width: 60,
+          width: 120,
           render: (_: any, record: ConfigItem) => (
-            <Button
-              type="link"
-              disabled={!record.config_ids?.length}
-              onClick={() => openConfigModal(record)}
-            >
-              {t('common.edit')}
-            </Button>
+            <div className="inline-flex items-center gap-1">
+              <Button
+                type="link"
+                disabled={!record.config_ids?.length}
+                onClick={() => openConfigModal(record)}
+              >
+                {t('common.edit')}
+              </Button>
+              {allowUnbind &&
+              selectedPlugin &&
+              canUnbindCollectTemplate(selectedPlugin, plugins) ? (
+                <Button
+                  type="link"
+                  danger
+                  onClick={(event) =>
+                    requestUnbind(event, selectedPlugin)
+                  }
+                >
+                  {t('monitor.integrations.unbindTemplate')}
+                </Button>
+                ) : null}
+            </div>
           ),
         },
       ];
@@ -496,69 +511,54 @@ const TemplateConfigDrawer = forwardRef<
               {selectedPlugin && (
                 <div className="space-y-4">
                   {/* 标题和标签 */}
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="flex min-w-0 items-center gap-2 flex-wrap">
-                      <span className="text-sm text-[var(--color-text-2)]">
-                        {selectedPlugin.collector
-                          ? `${selectedPlugin.name || '--'}（${
-                            selectedPlugin.collector
-                          }）`
-                          : selectedPlugin.name || '--'}
-                      </span>
-                      <Tag
-                        color="blue"
-                        icon={
-                          isManualAccess(selectedPlugin) ? (
-                            <ToolOutlined />
-                          ) : (
-                            <ApiOutlined />
-                          )
-                        }
-                      >
-                        {isManualAccess(selectedPlugin)
-                          ? t('monitor.integrations.manualAccess')
-                          : t('monitor.integrations.autoAccess')}
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-sm text-[var(--color-text-2)]">
+                      {selectedPlugin.collector
+                        ? `${selectedPlugin.name || '--'}（${
+                          selectedPlugin.collector
+                        }）`
+                        : selectedPlugin.name || '--'}
+                    </span>
+                    <Tag
+                      color="blue"
+                      icon={
+                        isManualAccess(selectedPlugin) ? (
+                          <ToolOutlined />
+                        ) : (
+                          <ApiOutlined />
+                        )
+                      }
+                    >
+                      {isManualAccess(selectedPlugin)
+                        ? t('monitor.integrations.manualAccess')
+                        : t('monitor.integrations.autoAccess')}
+                    </Tag>
+                    <Tag>{getPackVersionText(selectedPlugin)}</Tag>
+                    {selectedPlugin.need_update ? (
+                      <Tag color="warning">
+                        {(() => {
+                          const version = getLatestPackVersionText(selectedPlugin);
+                          const direction = comparePackVersions(
+                            getPackVersionText(selectedPlugin) ===
+                              t('monitor.integrations.unknownAppliedPack')
+                              ? ''
+                              : getPackVersionText(selectedPlugin),
+                            String(
+                              selectedPlugin.latest_pack_version ||
+                                selectedPlugin.pack_version ||
+                                ''
+                            ).trim()
+                          );
+                          const key =
+                            direction === 'downgrade'
+                              ? 'monitor.integrations.needUpdateToVersionDowngrade'
+                              : direction === 'align'
+                                ? 'monitor.integrations.needUpdateToVersionAlign'
+                                : 'monitor.integrations.needUpdateToVersion';
+                          return t(key, '', { version });
+                        })()}
                       </Tag>
-                      <Tag>{getPackVersionText(selectedPlugin)}</Tag>
-                      {selectedPlugin.need_update ? (
-                        <Tag color="warning">
-                          {(() => {
-                            const version = getLatestPackVersionText(selectedPlugin);
-                            const direction = comparePackVersions(
-                              getPackVersionText(selectedPlugin) ===
-                                t('monitor.integrations.unknownAppliedPack')
-                                ? ''
-                                : getPackVersionText(selectedPlugin),
-                              String(
-                                selectedPlugin.latest_pack_version ||
-                                  selectedPlugin.pack_version ||
-                                  ''
-                              ).trim()
-                            );
-                            const key =
-                              direction === 'downgrade'
-                                ? 'monitor.integrations.needUpdateToVersionDowngrade'
-                                : direction === 'align'
-                                  ? 'monitor.integrations.needUpdateToVersionAlign'
-                                  : 'monitor.integrations.needUpdateToVersion';
-                            return t(key, '', { version });
-                          })()}
-                        </Tag>
-                      ) : null}
-                    </div>
-                    {allowUnbind &&
-                    canUnbindCollectTemplate(selectedPlugin, plugins) ? (
-                      <Button
-                        danger
-                        size="small"
-                        className="shrink-0 inline-flex items-center justify-center"
-                        onClick={(event) =>
-                          requestUnbind(event, selectedPlugin)
-                        }
-                      >
-                        {t('monitor.integrations.unbindTemplate')}
-                      </Button>
-                      ) : null}
+                    ) : null}
                   </div>
 
                   {/* 上报状态 */}
