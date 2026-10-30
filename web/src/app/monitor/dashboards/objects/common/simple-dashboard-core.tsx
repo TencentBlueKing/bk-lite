@@ -514,7 +514,9 @@ export function useSimpleDashboardData(
             instanceIdValues: resolveDashboardInstanceIdValues(item),
             searchTokens: buildInstanceSearchTokens(item, label),
             interval: Number(item.interval) || undefined,
-            operatingSystem: String(item.operating_system || '').trim().toLowerCase() || undefined
+            operatingSystem: String(item.operating_system || '').trim().toLowerCase() || undefined,
+            nodeId: String(item.node_id || '').trim(),
+            ip: String(item.ip || '').trim()
           });
         });
         setInstanceOptions(Array.from(uniqueOptions.values()));
@@ -596,11 +598,13 @@ export function useSimpleDashboardData(
         instanceIdValues: idValues.length ? idValues : resolveDashboardInstanceIdValues({ instance_id: selectedValue }),
         searchTokens: [normalizedInstanceName],
         interval: currentInstanceOption?.interval,
-        operatingSystem: currentInstanceOption?.operatingSystem
+        operatingSystem: currentInstanceOption?.operatingSystem,
+        nodeId: currentInstanceOption?.nodeId,
+        ip: currentInstanceOption?.ip
       });
     }
     return options;
-  }, [activeCluster, currentInstanceOption?.interval, currentInstanceOption?.operatingSystem, hasReadableInstanceName, idValues, instanceId, instanceOptions, normalizedInstanceName]);
+  }, [activeCluster, currentInstanceOption?.interval, currentInstanceOption?.ip, currentInstanceOption?.nodeId, currentInstanceOption?.operatingSystem, hasReadableInstanceName, idValues, instanceId, instanceOptions, normalizedInstanceName]);
   const instanceSelectValue = currentInstanceOption?.value || (hasReadableInstanceName && instanceId ? String(instanceId) : undefined);
   const currentInstanceInterval = currentInstanceOption?.interval;
   const currentOperatingSystem = currentInstanceOption?.operatingSystem;
@@ -1496,6 +1500,8 @@ export function useSimpleDashboardData(
     onInstanceChange,
     onClusterFilterChange,
     routeKey: config.routeKey,
+    linkedNodeId: currentInstanceOption?.nodeId || '',
+    linkedIp: currentInstanceOption?.ip || '',
     metricSeries: metricMap,
     pendingMetricNames,
     refetchMetricNames

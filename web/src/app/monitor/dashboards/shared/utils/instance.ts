@@ -117,6 +117,10 @@ export interface DashboardInstanceOption {
   searchTokens?: string[];
   interval?: number;
   operatingSystem?: string;
+  /** 实例所在节点。专业盘用来关联所属主机。 */
+  nodeId?: string;
+  /** 实例 IP。节点对不上时用它关联所属主机。 */
+  ip?: string;
 }
 
 export const buildClusterFilterOptions = (
