@@ -2,12 +2,17 @@
 
 import React, { useMemo } from 'react';
 import WidgetWrapper from '@/app/ops-analysis/components/widgetDataRenderer';
-import type { FilterValue, UnifiedFilterDefinition } from '@/app/ops-analysis/types/dashBoard';
+import type {
+  FilterValue,
+  ScreenLayoutMode,
+  UnifiedFilterDefinition,
+} from '@/app/ops-analysis/types/dashBoard';
 import type { OpsChartThemeMode } from '@/app/ops-analysis/utils/chartTheme';
 import type { DatasourceItem } from '@/app/ops-analysis/types/dataSource';
 import type { ScreenWidgetItem } from '@/app/ops-analysis/types/screen';
 import type { DashboardWidgetRenderResult } from '@/app/ops-analysis/renderContract';
 import type { CanvasRuntimeRefreshCause } from '@/app/ops-analysis/utils/canvasRefreshTimer';
+import { presentScreenRenderContext } from '../utils/metrics';
 import { buildScreenWidgetConfig } from '../utils/widgetConfig';
 import ScreenWidgetFrame from './screenWidgetFrame';
 import { WidgetViewportProvider } from '@/app/ops-analysis/components/widget-viewport';
@@ -25,6 +30,7 @@ interface ScreenWidgetRendererProps {
   scaleY: number;
   screenDensity: number;
   screenUiScale: number;
+  layoutMode?: ScreenLayoutMode;
   chartThemeMode: OpsChartThemeMode;
   filterDefinitions?: UnifiedFilterDefinition[];
   unifiedFilterValues?: Record<string, FilterValue>;
@@ -55,6 +61,7 @@ const ScreenWidgetRenderer: React.FC<ScreenWidgetRendererProps> = ({
   scaleY,
   screenDensity,
   screenUiScale,
+  layoutMode = 'designTransform',
   chartThemeMode,
   filterDefinitions,
   unifiedFilterValues,
@@ -70,30 +77,29 @@ const ScreenWidgetRenderer: React.FC<ScreenWidgetRendererProps> = ({
     () => buildScreenWidgetConfig(item, chartThemeMode),
     [chartThemeMode, item],
   );
-  const screenRenderContext = useMemo(
-    () => ({
-      enabled: true,
+  const presented = useMemo(
+    () => presentScreenRenderContext({
+      layoutMode,
       fitScale,
       scaleX,
       scaleY,
       screenDensity,
-      screenUiScale,
-      widgetDensity: screenDensity,
-      widgetUiScale: screenUiScale,
+      transformUiScale: screenUiScale,
     }),
-    [fitScale, scaleX, scaleY, screenDensity, screenUiScale],
+    [fitScale, layoutMode, scaleX, scaleY, screenDensity, screenUiScale],
   );
+  const screenRenderContext = presented.context;
   const dataSource = dataSourceResolver(widgetConfig.dataSource);
 
   return (
     <InteractionMenuScaleProvider context={screenRenderContext}>
-      <WidgetViewportProvider scale={fitScale}>
+      <WidgetViewportProvider scale={presented.widgetViewportScale}>
         <ScreenWidgetFrame
           item={item}
           selected={selected}
           editMode={editMode}
           screenDensity={screenDensity}
-          screenUiScale={screenUiScale}
+          screenUiScale={screenRenderContext.screenUiScale}
         >
           <WidgetWrapper
             dashboardId={screenId}

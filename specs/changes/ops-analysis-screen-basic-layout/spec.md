@@ -74,11 +74,11 @@ Completion evidence:
 type ScreenFitAdapter = 'fill' | 'fitWidth' | 'fitHeight';
 ```
 
-- `fill`：全屏铺满。宽、高分别缩放到窗口，一定铺满，图形可以变形。
+- `fill`：全屏铺满。完整显示并贴满窗口，水平/垂直间距按窗口宽高分别拉开。全屏和分享的呈现改为视口像素布局（见 `specs/changes/ops-analysis-screen-fit-fill-layout-recalc/spec.md`），DOM 文字不再被整层非等比 `transform` 拉扁。编辑、非全屏查看和 PDF 仍不走这条路径。
 - `fitWidth`：按宽度等比。高度超出则纵向滚动，高度不足则留边。
 - `fitHeight`：按高度等比。宽度超出则横向滚动，宽度不足则留边。
 
-查看页、编辑画布和 PDF / 订阅渲染仍按设计尺寸等比留边（内部 `contain`，不写入 `viewport`）。放大和分享使用上面三种，并且不再居中留一圈空白。适配字段随 `viewport` 持久化，并进入 YAML。画布的 CSS 变换使用 `scaleX` / `scaleY`；组件内部仍读单一 `fitScale`（取两边的较小值）做密度补偿。
+查看页、编辑画布和 PDF / 订阅渲染仍按设计尺寸等比留边（内部 `contain`，不写入 `viewport`）。放大和分享使用上面三种，并且不再居中留一圈空白。适配字段随 `viewport` 持久化，并进入 YAML。`fitWidth` / `fitHeight` 以及编辑、查看、PDF 的画布仍用等比 `scale`。全屏和分享的 `fill` 不再用非等比 `scale(scaleX, scaleY)` 拉伸整层，改为把组件几何映射到视口像素，字号按 `min(scaleX, scaleY)` 画成正常 CSS 字号。
 
 ### 画布背景与主题
 

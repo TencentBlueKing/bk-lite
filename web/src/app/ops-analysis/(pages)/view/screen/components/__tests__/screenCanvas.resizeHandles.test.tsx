@@ -51,6 +51,7 @@ vi.mock('../screenChromeRenderer', () => ({
 
 vi.mock('../screenChromeSkins', () => ({
   ScreenChromeSkinStyles: () => null,
+  ChromeFontDensityProvider: ({ children }: { children: React.ReactNode }) => children,
 }));
 
 beforeAll(() => {

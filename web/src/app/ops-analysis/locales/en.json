@@ -678,7 +678,7 @@
       "fitFill": "Fill",
       "fitWidth": "By width",
       "fitHeight": "By height",
-      "fitAdapterHint": "Applies only to enlarge and share. Fill stretches to the window edges. By width matches the width and scrolls vertically; by height matches the height and scrolls horizontally. View and edit always show the full design.",
+      "fitAdapterHint": "Applies only to fullscreen and share. Fill: show the full design edge-to-edge; layout scales X/Y independently to the window while text uses a uniform size and keeps its shape. Fit width pins width (scroll vertically); fit height pins height (scroll horizontally). View and edit always show the full design size.",
       "background": "Background",
       "fontSize": "Size",
       "fontWeight": "Weight",
