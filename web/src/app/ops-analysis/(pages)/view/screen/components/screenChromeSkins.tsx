@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useLayoutEffect, useRef, useState } from 'react';
+import React, { useContext, useLayoutEffect, useRef, useState } from 'react';
+import { scalePresentedFontPx } from '../utils/metrics';
 import { useFilterTemplateText } from '@/app/ops-analysis/context/filterTemplate';
 import type {
   ScreenDecorationItem,
@@ -74,7 +75,10 @@ const screenChromeTextColor = (color?: ScreenTextStyleConfig['color']) => {
   return TEXT_COLOR_VAR.canvas;
 };
 
-/** 全屏铺满时抵消横竖不同的拉伸，字只保留较小的那个倍数。 */
+/**
+ * 只在仍使用非等比 transform 的画布上抵消拉伸。
+ * 视口像素布局不加 --stretched，这段反拉不会生效，也不要靠它纠字号。
+ */
 export const screenUniformTextProps = (
   style?: ScreenTextStyleConfig,
   fallback?: Partial<ScreenTextStyleConfig>,
@@ -84,11 +88,62 @@ export const screenUniformTextProps = (
   'data-align': style?.align ?? fallback?.align ?? 'left',
 });
 
+export interface ScreenChromePresentation {
+  /** 字号。视口像素用 fitScale；设计画布为 1，交给外层 transform。 */
+  fontDensity: number;
+  /** 描边。视口像素用 fitScale；设计画布为 1，交给外层 transform。 */
+  borderDensity: number;
+  /** 已映射 client 尺寸除回设计尺寸。设计画布为 1。 */
+  geometryScaleX: number;
+  geometryScaleY: number;
+}
+
+const DEFAULT_CHROME_PRESENTATION: ScreenChromePresentation = {
+  fontDensity: 1,
+  borderDensity: 1,
+  geometryScaleX: 1,
+  geometryScaleY: 1,
+};
+
+const ChromeFontDensityContext = React.createContext(DEFAULT_CHROME_PRESENTATION);
+
+/** 视口像素同时传入字号密度和几何倍数；设计画布保持 1。 */
+export const ChromeFontDensityProvider: React.FC<{
+  density?: number;
+  borderDensity?: number;
+  geometryScaleX?: number;
+  geometryScaleY?: number;
+  children: React.ReactNode;
+}> = ({
+  density = 1,
+  borderDensity = 1,
+  geometryScaleX = 1,
+  geometryScaleY = 1,
+  children,
+}) => (
+  <ChromeFontDensityContext.Provider
+    value={{
+      fontDensity: density,
+      borderDensity,
+      geometryScaleX,
+      geometryScaleY,
+    }}
+  >
+    {children}
+  </ChromeFontDensityContext.Provider>
+);
+
+export const useScreenChromePresentation = () => useContext(ChromeFontDensityContext);
+
 export const screenChromeTextStyle = (
   style?: ScreenTextStyleConfig,
   fallback?: Partial<ScreenTextStyleConfig>,
+  density = 1,
 ): React.CSSProperties => ({
-  fontSize: style?.fontSize ?? fallback?.fontSize ?? 20,
+  fontSize: scalePresentedFontPx(
+    style?.fontSize ?? fallback?.fontSize ?? 20,
+    density,
+  ),
   fontWeight: style?.fontWeight ?? fallback?.fontWeight ?? 600,
   color: screenChromeTextColor(style?.color ?? fallback?.color),
   textAlign: style?.align ?? fallback?.align ?? 'left',
@@ -96,6 +151,11 @@ export const screenChromeTextStyle = (
   whiteSpace: 'pre-wrap',
   wordBreak: 'break-word',
 });
+
+export const useScaledScreenChromeTextStyle = (
+  style?: ScreenTextStyleConfig,
+  fallback?: Partial<ScreenTextStyleConfig>,
+) => screenChromeTextStyle(style, fallback, useScreenChromePresentation().fontDensity);
 
 const VisionImg: React.FC<{
   src: ImageAsset;
@@ -134,7 +194,13 @@ const HeroTitle: React.FC<{
   item: ScreenTitleFrameItem;
   src: ImageAsset;
   fontSize: number;
-}> = ({ item, src, fontSize }) => (
+}> = ({ item, src, fontSize }) => {
+  const textStyle = useScaledScreenChromeTextStyle(item.textStyle, {
+    fontSize,
+    fontWeight: 700,
+    align: 'center',
+  });
+  return (
   <div className="relative h-full w-full overflow-hidden">
     <VisionImg
       src={src}
@@ -148,19 +214,21 @@ const HeroTitle: React.FC<{
           { align: 'center' },
           'max-w-[78%] truncate',
         )}
-        style={screenChromeTextStyle(item.textStyle, {
-          fontSize,
-          fontWeight: 700,
-          align: 'center',
-        })}
+        style={textStyle}
       >
         {item.content || ''}
       </span>
     </div>
   </div>
-);
+  );
+};
 
-const SectionTitle4: React.FC<{ item: ScreenTitleFrameItem }> = ({ item }) => (
+const SectionTitle4: React.FC<{ item: ScreenTitleFrameItem }> = ({ item }) => {
+  const textStyle = useScaledScreenChromeTextStyle(item.textStyle, {
+    fontSize: 18,
+    fontWeight: 700,
+  });
+  return (
   <div className="relative flex h-full min-h-[20px] w-full overflow-hidden">
     <VisionImg src={smallTitle4Left} punchBlack className="h-full w-[34px] shrink-0" />
     <div className="relative flex min-w-0 flex-1 items-center justify-between">
@@ -182,7 +250,7 @@ const SectionTitle4: React.FC<{ item: ScreenTitleFrameItem }> = ({ item }) => (
           undefined,
           'relative z-1 min-w-0 flex-1 truncate whitespace-nowrap px-3',
         )}
-        style={screenChromeTextStyle(item.textStyle, { fontSize: 18, fontWeight: 700 })}
+        style={textStyle}
       >
         {item.content || ''}
       </span>
@@ -195,9 +263,16 @@ const SectionTitle4: React.FC<{ item: ScreenTitleFrameItem }> = ({ item }) => (
       style={{ animation: 'screen-chrome-title4-scan 2.5s linear infinite' }}
     />
   </div>
-);
+  );
+};
 
-const SectionTitle8: React.FC<{ item: ScreenTitleFrameItem }> = ({ item }) => (
+const SectionTitle8: React.FC<{ item: ScreenTitleFrameItem }> = ({ item }) => {
+  const textStyle = useScaledScreenChromeTextStyle(item.textStyle, {
+    fontSize: 16,
+    fontWeight: 700,
+    align: 'center',
+  });
+  return (
   <div className="relative h-full min-h-[20px] w-full overflow-hidden">
     <div
       className="absolute inset-0 z-0"
@@ -220,20 +295,23 @@ const SectionTitle8: React.FC<{ item: ScreenTitleFrameItem }> = ({ item }) => (
           { align: 'center' },
           'min-w-0 flex-1 truncate px-2 text-center',
         )}
-        style={screenChromeTextStyle(item.textStyle, {
-          fontSize: 16,
-          fontWeight: 700,
-          align: 'center',
-        })}
+        style={textStyle}
       >
         {item.content || ''}
       </span>
       <span className="h-0.5 w-2 shrink-0 bg-(--screen-chrome-accent)" />
     </div>
   </div>
-);
+  );
+};
 
-const SectionTitle5: React.FC<{ item: ScreenTitleFrameItem }> = ({ item }) => (
+const SectionTitle5: React.FC<{ item: ScreenTitleFrameItem }> = ({ item }) => {
+  const textStyle = useScaledScreenChromeTextStyle(item.textStyle, {
+    fontSize: 16,
+    fontWeight: 700,
+    align: 'center',
+  });
+  return (
   <div className="relative h-full min-h-[20px] w-full overflow-hidden">
     <VisionImg
       src={smallTitle5Light}
@@ -248,20 +326,22 @@ const SectionTitle5: React.FC<{ item: ScreenTitleFrameItem }> = ({ item }) => (
           { align: 'center' },
           'min-w-0 flex-1 truncate px-2 text-center',
         )}
-        style={screenChromeTextStyle(item.textStyle, {
-          fontSize: 16,
-          fontWeight: 700,
-          align: 'center',
-        })}
+        style={textStyle}
       >
         {item.content || ''}
       </span>
       <span className="h-1.5 w-1.5 shrink-0 bg-(--screen-chrome-accent)" />
     </div>
   </div>
-);
+  );
+};
 
-const SectionTitle6: React.FC<{ item: ScreenTitleFrameItem }> = ({ item }) => (
+const SectionTitle6: React.FC<{ item: ScreenTitleFrameItem }> = ({ item }) => {
+  const textStyle = useScaledScreenChromeTextStyle(item.textStyle, {
+    fontSize: 16,
+    fontWeight: 700,
+  });
+  return (
   <div className="relative flex h-full min-h-[20px] w-full overflow-hidden">
     <VisionImg
       src={smallTitle6Left}
@@ -293,12 +373,13 @@ const SectionTitle6: React.FC<{ item: ScreenTitleFrameItem }> = ({ item }) => (
         undefined,
         'absolute inset-y-0 left-0 z-2 flex w-[58%] items-center truncate pl-3',
       )}
-      style={screenChromeTextStyle(item.textStyle, { fontSize: 16, fontWeight: 700 })}
+      style={textStyle}
     >
       {item.content || ''}
     </span>
   </div>
-);
+  );
+};
 
 export const TitleFrameSkin: React.FC<{
   item: Pick<ScreenTitleFrameItem, 'preset' | 'content' | 'textStyle'>;
@@ -328,6 +409,63 @@ const visionBorder21Width = (width: number, height: number) => {
 
 type BorderImageMode = 'fixed-83' | 'fixed-25' | 'fluid' | 'tech' | 'fill';
 
+const positiveScale = (value: number) =>
+  Number.isFinite(value) && value > 0 ? value : 1;
+
+export type VisionBorderSliceMode = Exclude<BorderImageMode, 'fill'>;
+
+/**
+ * 档位按设计尺寸选。视口像素的 client 已经乘过 sx/sy，先除回去，
+ * 再把设计厚度乘 fitScale。slice 仍是素材像素，不跟厚度再乘一次。
+ */
+export const resolveVisionBorderFrame = (
+  mode: VisionBorderSliceMode,
+  clientWidth: number,
+  clientHeight: number,
+  geometryScaleX = 1,
+  geometryScaleY = 1,
+  borderDensity = 1,
+) => {
+  const width = clientWidth / positiveScale(geometryScaleX);
+  const height = clientHeight / positiveScale(geometryScaleY);
+  const density = positiveScale(borderDensity);
+  const fluidTB = height > 200 ? 100 : Math.max(8, height / 2);
+  const fluidLR = width > 300 ? 150 : Math.max(8, width / 2);
+  const fixedScale = Math.min(1, width / 742, height / 381);
+  const sliceTB =
+    mode === 'tech'
+      ? Math.min(fluidTB, Math.max(8, height * 0.28))
+      : mode === 'fluid'
+        ? fluidTB
+        : mode === 'fixed-25'
+          ? Math.max(8, Math.round(100 * fixedScale))
+          : 83;
+  const sliceLR =
+    mode === 'tech'
+      ? Math.min(fluidLR, Math.max(8, width * 0.28))
+      : mode === 'fluid'
+        ? fluidLR
+        : mode === 'fixed-25'
+          ? Math.max(8, Math.round(95 * fixedScale))
+          : 83;
+  const steppedBorder = Math.min(
+    visionBorder21Width(width, height),
+    Math.max(8, Math.floor(Math.min(width, height) * 0.18)),
+  );
+  const designTB = mode === 'fixed-83' ? steppedBorder : sliceTB;
+  const designLR = mode === 'fixed-83' ? designTB : sliceLR;
+  const paint = (value: number) =>
+    density === 1 ? value : Math.max(1, Math.round(value * density));
+  return {
+    sliceTB,
+    sliceLR,
+    borderWidth:
+      mode === 'fixed-83'
+        ? `${paint(designTB)}px`
+        : `${paint(designTB)}px ${paint(designLR)}px`,
+  };
+};
+
 const PANEL_FRAME_SKIN: Record<
   ScreenPanelFramePresetId,
   { src: ImageAsset; mode: BorderImageMode }
@@ -345,9 +483,10 @@ const PANEL_FRAME_SKIN: Record<
 
 const VisionBorderImage: React.FC<{
   src: ImageAsset;
-  mode: Exclude<BorderImageMode, 'fill'>;
+  mode: VisionBorderSliceMode;
 }> = ({ src, mode }) => {
   const ref = useRef<HTMLDivElement>(null);
+  const presentation = useScreenChromePresentation();
   const [box, setBox] = useState({ width: 320, height: 180 });
 
   useLayoutEffect(() => {
@@ -362,29 +501,15 @@ const VisionBorderImage: React.FC<{
     return () => observer?.disconnect();
   }, []);
 
-  const fluidTB = box.height > 200 ? 100 : Math.max(8, box.height / 2);
-  const fluidLR = box.width > 300 ? 150 : Math.max(8, box.width / 2);
-  const fixedScale = Math.min(1, box.width / 742, box.height / 381);
-  const sliceTB =
-    mode === 'tech'
-      ? Math.min(fluidTB, Math.max(8, box.height * 0.28))
-      : mode === 'fluid'
-        ? fluidTB
-        : mode === 'fixed-25'
-          ? Math.max(8, Math.round(100 * fixedScale))
-          : 83;
-  const sliceLR =
-    mode === 'tech'
-      ? Math.min(fluidLR, Math.max(8, box.width * 0.28))
-      : mode === 'fluid'
-        ? fluidLR
-        : mode === 'fixed-25'
-          ? Math.max(8, Math.round(95 * fixedScale))
-          : 83;
-  const borderWidth =
-    mode === 'fixed-83'
-      ? `${Math.min(visionBorder21Width(box.width, box.height), Math.max(8, Math.floor(Math.min(box.width, box.height) * 0.18)))}px`
-      : `${sliceTB}px ${sliceLR}px`;
+  const frame = resolveVisionBorderFrame(
+    mode,
+    box.width,
+    box.height,
+    presentation.geometryScaleX,
+    presentation.geometryScaleY,
+    presentation.borderDensity,
+  );
+  const { sliceTB, sliceLR, borderWidth } = frame;
 
   return (
     <div ref={ref} className="h-full w-full">

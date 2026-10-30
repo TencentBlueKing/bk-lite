@@ -67,9 +67,17 @@ export const resolveScreenShapeStyle = (
   };
 };
 
+const scaleShapeLength = (value: number, geometryScale: number) => {
+  if (geometryScale === 1) return value;
+  const scale = Number.isFinite(geometryScale) && geometryScale > 0 ? geometryScale : 1;
+  return Math.max(0, Math.round(value * scale));
+};
+
+/** geometryScale 为 1 时描边保持设计像素，外层 transform 负责放大。视口像素传入 fitScale。 */
 export const screenShapeCss = (
   shape: ScreenShapeKind,
   style?: Partial<ScreenShapeStyle> | null,
+  geometryScale = 1,
 ): CSSProperties => {
   const resolved = resolveScreenShapeStyle(style);
   const gradientDirection = resolved.gradientDirection === 'horizontal' ? 'right' : 'top';
@@ -78,6 +86,11 @@ export const screenShapeCss = (
     : resolved.gradient
       ? `linear-gradient(to ${gradientDirection}, ${resolved.gradientStart} 1%, ${resolved.gradientEnd} 100%)`
       : resolved.backgroundColor;
+  const borderWidth = resolved.hideBorder
+    ? 0
+    : scaleShapeLength(resolved.borderWidth, geometryScale);
+  const shadow = scaleShapeLength(resolved.shadow, geometryScale);
+  const radius = scaleShapeLength(ROUNDED_RECT_RADIUS, geometryScale);
 
   return {
     width: '100%',
@@ -86,12 +99,12 @@ export const screenShapeCss = (
     background,
     borderStyle: resolved.hideBorder ? 'none' : 'solid',
     borderColor: resolved.hideBorder ? 'transparent' : resolved.borderColor,
-    borderWidth: resolved.hideBorder ? 0 : resolved.borderWidth,
+    borderWidth,
     boxShadow:
-      resolved.shadow > 0
-        ? `0 0 ${resolved.shadow}px 0 rgba(255, 255, 255, 0.55)`
+      shadow > 0
+        ? `0 0 ${shadow}px 0 rgba(255, 255, 255, 0.55)`
         : 'none',
     borderRadius:
-      shape === 'circle' ? '50%' : shape === 'roundedRect' ? ROUNDED_RECT_RADIUS : 0,
+      shape === 'circle' ? '50%' : shape === 'roundedRect' ? radius : 0,
   };
 };

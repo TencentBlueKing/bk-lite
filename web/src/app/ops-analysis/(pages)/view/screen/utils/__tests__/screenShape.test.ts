@@ -17,6 +17,13 @@ describe('screen shape', () => {
     expect(screenShapeCss('rect', { shadow: 12 }).boxShadow).toBe(
       '0 0 12px 0 rgba(255, 255, 255, 0.55)',
     );
+    expect(screenShapeCss('rect', { borderWidth: 4 }).borderWidth).toBe(4);
+    expect(screenShapeCss('rect', { borderWidth: 4 }, 0.5).borderWidth).toBe(2);
+    expect(screenShapeCss('rect', { shadow: 10 }, 0.5).boxShadow).toBe(
+      '0 0 5px 0 rgba(255, 255, 255, 0.55)',
+    );
+    expect(screenShapeCss('roundedRect', undefined, 0.5).borderRadius).toBe(15);
+    expect(screenShapeCss('circle', undefined, 0.5).borderRadius).toBe('50%');
     expect(
       screenShapeCss('rect', {
         gradient: true,

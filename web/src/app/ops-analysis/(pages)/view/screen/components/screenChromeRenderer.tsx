@@ -26,8 +26,9 @@ import { screenShapeCss } from '../utils/screenShape';
 import {
   DecorationSkin,
   TitleFrameSkin,
-  screenChromeTextStyle,
   screenUniformTextProps,
+  useScaledScreenChromeTextStyle,
+  useScreenChromePresentation,
 } from './screenChromeSkins';
 
 const ClockSkin: React.FC<{
@@ -42,7 +43,7 @@ const ClockSkin: React.FC<{
   }, []);
 
   const parts = getScreenClockDisplayParts(now, format);
-  const style = screenChromeTextStyle(textStyle, {
+  const style = useScaledScreenChromeTextStyle(textStyle, {
     fontSize: 20,
     fontWeight: 600,
     color: 'canvas',
@@ -75,6 +76,7 @@ const ClockSkin: React.FC<{
 
 const ScreenTextBody: React.FC<{ item: ScreenTextItem }> = ({ item }) => {
   const textContent = useFilterTemplateText(item.content);
+  const textStyle = useScaledScreenChromeTextStyle(item.textStyle);
   const surface = useInteractionSurface();
   const titleConfig = item.interaction?.kind === 'title'
     ? { interaction: item.interaction }
@@ -91,7 +93,7 @@ const ScreenTextBody: React.FC<{ item: ScreenTextItem }> = ({ item }) => {
           undefined,
           'h-full w-full px-1 py-1',
         )}
-        style={screenChromeTextStyle(item.textStyle)}
+        style={textStyle}
       >
         {textContent}
       </div>
@@ -109,7 +111,7 @@ const ScreenTextBody: React.FC<{ item: ScreenTextItem }> = ({ item }) => {
       )}
       data-screen-text-link=""
       style={{
-        ...screenChromeTextStyle(item.textStyle),
+        ...textStyle,
         gap: '0.4em',
       }}
     >
@@ -138,6 +140,7 @@ interface ScreenChromeRendererProps {
 const ScreenChromeRenderer: React.FC<ScreenChromeRendererProps> = ({
   item,
 }) => {
+  const { borderDensity } = useScreenChromePresentation();
   let body: React.ReactNode = null;
   if (isScreenTextItem(item)) {
     body = <ScreenTextBody item={item} />;
@@ -148,7 +151,7 @@ const ScreenChromeRenderer: React.FC<ScreenChromeRendererProps> = ({
   } else if (isScreenDecorationItem(item)) {
     body = <DecorationSkin item={item} />;
   } else if (isScreenShapeItem(item)) {
-    body = <div style={screenShapeCss(item.shape, item.shapeStyle)} />;
+    body = <div style={screenShapeCss(item.shape, item.shapeStyle, borderDensity)} />;
   }
 
   return <div className="relative h-full w-full">{body}</div>;
