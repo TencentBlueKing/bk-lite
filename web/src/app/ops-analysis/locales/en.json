@@ -2039,7 +2039,6 @@
     "clearPersonal": "Unset personal homepage",
     "setGlobal": "Set as default homepage",
     "restoreGlobal": "Unset default homepage",
-    "openInAnalysis": "Open in Operations Analysis",
     "setPersonalSuccess": "Set as personal homepage",
     "clearPersonalSuccess": "Set as default homepage",
     "setGlobalSuccess": "Set as default homepage",
