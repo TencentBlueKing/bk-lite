@@ -115,3 +115,13 @@ class Room3DLayoutRequestSerializer(_Application3DStrictSerializer):
 
     def validate_server_room_id(self, value):
         return str(value)
+
+
+class DashboardScenePermissionCheckItemSerializer(serializers.Serializer):
+    widget_id = serializers.CharField(allow_blank=False, max_length=128)
+    scene_type = serializers.ChoiceField(choices=["relatedTopology", "applicationTopology"])
+    inst_uuid = serializers.CharField(required=False, allow_blank=True, max_length=64)
+
+
+class DashboardScenePermissionBatchSerializer(_Application3DStrictSerializer):
+    checks = DashboardScenePermissionCheckItemSerializer(many=True, max_length=64)

@@ -5,6 +5,12 @@ import {
   chartLinkTime,
   type ChartLinkPoint,
 } from '@/app/ops-analysis/utils/interactionLink';
+import {
+  hasExplicitLineBarMapping,
+  lineBarValueFieldsParse,
+  planLineBarMapping,
+  seriesLabelForField,
+} from '@/app/ops-analysis/utils/lineBarFieldMapping';
 import { coerceTopNNumericValue, unwrapTopNData } from '@/app/ops-analysis/utils/topNData';
 
 export interface ChartDataItem {
@@ -34,6 +40,12 @@ export interface PieScalarField {
 export interface ChartFieldMapping {
   dimensionField?: string;
   valueField?: string;
+  /** 多选数值。有值时优先于 valueField。 */
+  valueFields?: string[];
+  /** 按取值拆系列。与两个及以上数值字段不能同时使用。 */
+  seriesField?: string;
+  /** 仅转换时使用，不入库。数值字段 key → 图例名。 */
+  fieldLabels?: Record<string, string>;
   pieScalarFields?: PieScalarField[];
 }
 
@@ -306,7 +318,7 @@ export class ChartDataTransformer {
     rawData: any,
     mapping?: ChartFieldMapping,
   ): LineBarChartData {
-    if (hasExplicitFieldMapping(mapping)) {
+    if (hasExplicitLineBarMapping(mapping)) {
       return this.transformMappedLineBar(rawData, mapping);
     }
 
@@ -427,13 +439,11 @@ export class ChartDataTransformer {
     return { categories: [], values: [] };
   }
 
-  private static transformMappedLineBar(
-    rawData: unknown,
-    mapping?: ChartFieldMapping,
+  private static transformMappedSingleSeries(
+    rows: Array<Record<string, unknown>>,
+    dimensionField: string,
+    valueField: string,
   ): LineBarChartData {
-    const rows = unwrapTopNData(rawData).filter(isPlainRecord);
-    const dimensionField = mapping?.dimensionField?.trim() || '';
-    const valueField = mapping?.valueField?.trim() || '';
     const dimensionValues = rows.map((row) => row[dimensionField]);
     const shouldFormatAsTime = this.shouldFormatAsTimeDimension(dimensionValues);
 
@@ -451,6 +461,162 @@ export class ChartDataTransformer {
         row,
       })),
     };
+  }
+
+  /**
+   * 格子身份用原始分类值。轴文案可以丢掉年份和秒，不能因此把不同时间收成同一个点。
+   */
+  private static rawCategoryKey(value: unknown): string {
+    if (value === null) return 'null';
+    if (value === undefined) return 'undefined';
+    const kind = typeof value;
+    if (kind === 'string' || kind === 'number' || kind === 'boolean' || kind === 'bigint') {
+      return `${kind}:${String(value)}`;
+    }
+    try {
+      return `json:${JSON.stringify(value)}`;
+    } catch {
+      return `str:${String(value)}`;
+    }
+  }
+
+  /**
+   * 宽表 / 长表把行收成 (分类, 系列) 格子。
+   * 同一原始分类和系列命中多行时留空，不覆盖也不求和。
+   * seriesOrder 有值时按配置顺序出系列；否则按数据中第一次出现的顺序。
+   */
+  private static transformMappedPivotedSeries(
+    rows: Array<Record<string, unknown>>,
+    dimensionField: string,
+    readContributions: (row: Record<string, unknown>) => Array<{
+      id: string;
+      name: string;
+      raw: unknown;
+    }>,
+    seriesOrder: Array<{ id: string; name: string }> | null,
+  ): LineBarChartData {
+    const shouldFormatAsTime = this.shouldFormatAsTimeDimension(
+      rows.map((row) => row[dimensionField]),
+    );
+    const categorySlots: Array<{ key: string; label: string; raw: unknown }> = [];
+    const seenCategories = new Set<string>();
+    const slots = seriesOrder ? seriesOrder.map((slot) => ({ ...slot })) : [];
+    const slotSeen = new Set(slots.map((slot) => slot.id));
+    const hits = new Map<string, Map<string, {
+      count: number;
+      numeric: number | null;
+      raw: unknown;
+      row: Record<string, unknown>;
+    }>>();
+
+    rows.forEach((row) => {
+      const rawDimension = row[dimensionField];
+      const categoryKey = this.rawCategoryKey(rawDimension);
+      if (!seenCategories.has(categoryKey)) {
+        seenCategories.add(categoryKey);
+        categorySlots.push({
+          key: categoryKey,
+          label: this.formatDimensionValue(rawDimension, shouldFormatAsTime),
+          raw: rawDimension,
+        });
+      }
+      readContributions(row).forEach((item) => {
+        if (!slotSeen.has(item.id)) {
+          slotSeen.add(item.id);
+          slots.push({ id: item.id, name: item.name });
+        }
+        const bySeries = hits.get(categoryKey) ?? new Map();
+        hits.set(categoryKey, bySeries);
+        const existing = bySeries.get(item.id);
+        if (!existing) {
+          bySeries.set(item.id, {
+            count: 1,
+            numeric: coerceTopNNumericValue(item.raw),
+            raw: item.raw,
+            row,
+          });
+          return;
+        }
+        existing.count += 1;
+      });
+    });
+
+    return {
+      categories: categorySlots.map((category) => category.label),
+      series: slots.map((slot) => ({
+        name: slot.name,
+        data: categorySlots.map((category) => {
+          const hit = hits.get(category.key)?.get(slot.id);
+          if (!hit || hit.count !== 1) {
+            return null;
+          }
+          return hit.numeric;
+        }),
+        points: categorySlots.map((category) => {
+          const hit = hits.get(category.key)?.get(slot.id);
+          if (!hit || hit.count !== 1) {
+            return this.linkPoint({
+              seriesName: slot.name,
+              dimension: category.raw,
+              dimensionKey: dimensionField || undefined,
+              isTime: shouldFormatAsTime,
+              numeric: null,
+            });
+          }
+          return this.linkPoint({
+            seriesName: slot.name,
+            dimension: category.raw,
+            dimensionKey: dimensionField || undefined,
+            isTime: shouldFormatAsTime,
+            numeric: hit.numeric,
+            raw: hit.raw,
+            row: hit.row,
+          });
+        }),
+      })),
+    };
+  }
+
+  private static transformMappedLineBar(
+    rawData: unknown,
+    mapping?: ChartFieldMapping,
+  ): LineBarChartData {
+    const plan = planLineBarMapping(mapping);
+    if (plan.kind === 'none' || plan.kind === 'conflict' || plan.kind === 'incomplete') {
+      return { categories: [], values: [] };
+    }
+
+    const rows = unwrapTopNData(rawData).filter(isPlainRecord);
+    if (plan.kind === 'legacy' || plan.kind === 'single') {
+      return this.transformMappedSingleSeries(rows, plan.dimensionField, plan.valueField);
+    }
+
+    if (plan.kind === 'wide') {
+      const slots = plan.valueFields.map((field) => ({
+        id: field,
+        name: seriesLabelForField(field, mapping?.fieldLabels),
+      }));
+      return this.transformMappedPivotedSeries(
+        rows,
+        plan.dimensionField,
+        (row) => slots.map((slot) => ({
+          id: slot.id,
+          name: slot.name,
+          raw: row[slot.id],
+        })),
+        slots,
+      );
+    }
+
+    return this.transformMappedPivotedSeries(
+      rows,
+      plan.dimensionField,
+      (row) => {
+        const name = this.formatCategoryValue(row[plan.seriesField]);
+        return [{ id: name, name, raw: row[plan.valueField] }];
+      },
+      null,
+    );
   }
 
   private static transformMappedPie(
@@ -599,11 +765,25 @@ export class ChartDataTransformer {
     try {
       const transformedData = this.transformToLineBarData(rawData, mapping);
 
+      const plan = planLineBarMapping(mapping);
+      if (plan.kind === 'conflict') {
+        return { isValid: false, message: 'dashboard.lineBarSeriesFieldConflict' };
+      }
+
       if (!transformedData.categories || transformedData.categories.length === 0) {
         return { isValid: false, message: errorMessage || 'dashboard.dataFormatMismatch' };
       }
 
-      if (hasExplicitFieldMapping(mapping)) {
+      if (plan.kind === 'legacy') {
+        return { isValid: true };
+      }
+
+      if (plan.kind === 'single' || plan.kind === 'wide' || plan.kind === 'long') {
+        const fields = plan.kind === 'wide' ? plan.valueFields : [plan.valueField];
+        const rows = unwrapTopNData(rawData).filter(isPlainRecord);
+        if (!lineBarValueFieldsParse(rows, fields)) {
+          return { isValid: false, message: 'dashboard.lineBarValueFieldNotNumeric' };
+        }
         return { isValid: true };
       }
 

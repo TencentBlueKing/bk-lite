@@ -196,14 +196,14 @@ class TestBuildQueryWithLogGroups:
         query_mock = mocker.patch.object(
             scan.vlogs_api,
             "query",
-            side_effect=[[{"_msg": "error A"}], [{"total_count": "1"}]],
+            side_effect=[[{"total_count": "1"}], [{"_msg": "error A"}]],
         )
 
         events = scan.keyword_alert_detection()
 
         assert events
-        assert query_mock.call_args_list[0].kwargs["query"] == '_msg:"error"'
-        assert query_mock.call_args_list[1].kwargs["query"] == '_msg:"error" | stats count() as total_count'
+        assert query_mock.call_args_list[0].kwargs["query"] == '_msg:"error" | stats count() as total_count'
+        assert query_mock.call_args_list[1].kwargs["query"] == '_msg:"error"'
         assert events[0]["raw_data"] == [{"message": "error A"}]
         assert events[0]["jump_query"]["query"] == '_msg:"error"'
         assert events[0]["jump_query"]["window_start"] < events[0]["jump_query"]["window_end"]
@@ -321,7 +321,7 @@ class TestRenderAlertName:
 
 class TestCheckRuleConditions:
     def test_no_conditions_false(self):
-        assert _scan()._check_rule_conditions({}, {"conditions": []}) is False
+        assert _scan()._check_rule_conditions({}, {"conditions": []})[0] is False
 
     def test_and_mode_all_true(self):
         rule = {
@@ -330,7 +330,7 @@ class TestCheckRuleConditions:
                 {"func": "count", "field": "_msg", "op": ">", "value": 5},
             ],
         }
-        assert _scan()._check_rule_conditions({"count": 10}, rule) is True
+        assert _scan()._check_rule_conditions({"count": 10}, rule)[0] is True
 
     def test_and_mode_one_false(self):
         rule = {
@@ -339,7 +339,7 @@ class TestCheckRuleConditions:
                 {"func": "count", "field": "_msg", "op": ">", "value": 50},
             ],
         }
-        assert _scan()._check_rule_conditions({"count": 10}, rule) is False
+        assert _scan()._check_rule_conditions({"count": 10}, rule)[0] is False
 
     def test_or_mode(self):
         rule = {
@@ -349,11 +349,11 @@ class TestCheckRuleConditions:
                 {"func": "sum", "field": "b", "op": ">", "value": 1},
             ],
         }
-        assert _scan()._check_rule_conditions({"count": 1, "sum_b": 5}, rule) is True
+        assert _scan()._check_rule_conditions({"count": 1, "sum_b": 5}, rule)[0] is True
 
     def test_incomplete_condition_skipped_results_empty_false(self):
         rule = {"mode": "and", "conditions": [{"func": "count", "field": "_msg"}]}
-        assert _scan()._check_rule_conditions({"count": 1}, rule) is False
+        assert _scan()._check_rule_conditions({"count": 1}, rule)[0] is False
 
     def test_unsupported_mode_false(self):
         rule = {
@@ -362,7 +362,7 @@ class TestCheckRuleConditions:
                 {"func": "count", "field": "_msg", "op": ">", "value": 0},
             ],
         }
-        assert _scan()._check_rule_conditions({"count": 10}, rule) is False
+        assert _scan()._check_rule_conditions({"count": 10}, rule)[0] is False
 
 
 class TestCompareValues:
@@ -424,7 +424,7 @@ class TestDerivedAggregateMath:
         assert data["previous_count"] == 50
         assert data["count_delta"] == 130
         assert data["window_seconds"] == 300
-        assert _scan()._check_rule_conditions(data, rule) is True
+        assert _scan()._check_rule_conditions(data, rule)[0] is True
 
     def test_missing_previous_group_counts_as_zero(self):
         rule = self._rule({"func": "count_delta", "field": "_msg", "op": ">", "value": "50"})
@@ -437,7 +437,7 @@ class TestDerivedAggregateMath:
         )
         assert data["previous_count"] == 0
         assert data["count_delta"] == 100
-        assert _scan()._check_rule_conditions(data, rule) is True
+        assert _scan()._check_rule_conditions(data, rule)[0] is True
 
     def test_unavailable_previous_window_blocks_delta_but_or_can_still_trigger(self):
         scan = _scan()
@@ -455,7 +455,7 @@ class TestDerivedAggregateMath:
         )
         assert blocked["count_delta"] is None
         assert blocked["previous_count"] is None
-        assert scan._check_rule_conditions(blocked, rate_and_delta) is False
+        assert scan._check_rule_conditions(blocked, rate_and_delta)[0] is False
 
         either = self._rule(
             {"func": "count_delta", "field": "_msg", "op": ">", "value": "50"},
@@ -469,7 +469,7 @@ class TestDerivedAggregateMath:
             previous_counts=None,
             group_by=[],
         )
-        assert scan._check_rule_conditions(opened, either) is True
+        assert scan._check_rule_conditions(opened, either)[0] is True
 
     def test_negative_delta_threshold_triggers_drop(self):
         rule = self._rule({"func": "count_delta", "field": "_msg", "op": "<", "value": "-100"})
@@ -481,7 +481,7 @@ class TestDerivedAggregateMath:
             group_by=[],
         )
         assert data["count_delta"] == -190
-        assert _scan()._check_rule_conditions(data, rule) is True
+        assert _scan()._check_rule_conditions(data, rule)[0] is True
 
     def test_previous_window_failure_returns_none_without_query_text(self):
         sentinel = "SENTINEL_QUERY_BODY_level:error_do_not_log"
@@ -713,7 +713,7 @@ class TestConditionBaseline:
         assert percent["value"] == pytest.approx(50.0)
         assert percent["matched"] is True
         assert order["conditions"][1]["matched"] is True
-        assert scan._check_rule_conditions(order, rule) is True
+        assert scan._check_rule_conditions(order, rule)[0] is True
 
         cart = scan._extract_aggregate_data(
             {"service": "cart", "count__msg": 15},
@@ -725,7 +725,7 @@ class TestConditionBaseline:
         assert cart["conditions"][0]["value"] is None
         assert cart["conditions"][0]["reason"] == "baseline_zero"
         assert cart["conditions"][0]["matched"] is False
-        assert scan._check_rule_conditions(cart, rule) is False
+        assert scan._check_rule_conditions(cart, rule)[0] is False
 
         either = self._rule(
             {
@@ -745,7 +745,7 @@ class TestConditionBaseline:
             group_by=["service"],
             baselines=baselines,
         )
-        assert scan._check_rule_conditions(opened, either) is True
+        assert scan._check_rule_conditions(opened, either)[0] is True
 
     def test_delta_and_missing_group_distinguish_zero_from_none(self):
         scan = _scan()
@@ -1364,23 +1364,231 @@ class TestTriggerCount:
 
         baseline_starts, baseline_events = run(None)
         once_starts, once_events = run(1)
-        assert baseline_starts == once_starts
+        assert baseline_starts == once_starts == [1000, 1000]
         assert len(baseline_events) == len(once_events) == 1
         triple_starts, triple_events = run(3)
-        assert triple_starts == [700, 700, 400, 400, 1000, 1000]
+        assert triple_starts == [1000, 1000]
         assert len(triple_events) == 1
         assert triple_events[0]["value"] == 4
-        _starts, missed = run(3, miss_previous=True)
-        assert missed == []
+        missed_starts, missed = run(3, miss_previous=True)
+        assert missed_starts == [1000, 1000]
+        assert len(missed) == 1
         records, handler, logger, previous_level = _capture_warnings()
         try:
-            _starts, failed = run(3, fail_previous=True)
+            failed_starts, failed = run(3, fail_previous=True)
         finally:
             logger.removeHandler(handler)
             logger.setLevel(previous_level)
-        assert failed == []
+        assert failed_starts == [1000, 1000]
+        assert len(failed) == 1
         template = "event=log_policy_streak_failed policy_id=%s failed_stage=%s window_index=%s error_type=%s"
         matched = [record for record in records if record.msg == template]
-        assert len(matched) == 1
-        assert matched[0].args == (11, "streak", 1, "RuntimeError")
-        assert "SENTINEL_KEYWORD_STREAK_QUERY" not in matched[0].getMessage()
+        assert matched == []
+
+    def test_keyword_min_hits_uses_match_count(self, mocker):
+        def detect(total, min_hits=3):
+            policy = _policy(
+                id=21,
+                alert_type="keyword",
+                alert_condition={"query": "error", "rule": {"min_hits": min_hits, "trigger_count": 5}},
+            )
+            scan = LogPolicyScan(policy, window_start=1000, window_end=1300)
+
+            def fake_query(query, start, end, limit=10):
+                if "stats" in query:
+                    return [{"total_count": str(total)}]
+                return [{"_msg": "a"}, {"_msg": "b"}]
+
+            mocker.patch.object(scan.vlogs_api, "query", side_effect=fake_query)
+            return scan.keyword_alert_detection()
+
+        assert detect(2) == []
+        events = detect(3)
+        assert len(events) == 1
+        assert events[0]["value"] == 3
+
+    def test_avg_event_value_is_the_computed_average(self, mocker):
+        policy = _policy(
+            id=22,
+            alert_type="aggregate",
+            alert_name="耗时",
+            alert_condition={
+                "query": "*",
+                "group_by": [],
+                "rule": {
+                    "mode": "and",
+                    "conditions": [{"func": "avg", "field": "duration", "op": ">", "value": "500"}],
+                },
+            },
+        )
+        scan = LogPolicyScan(policy, window_start=1000, window_end=1600)
+        mocker.patch.object(scan.vlogs_api, "query", return_value=[{"avg_duration": "800.5"}])
+        mocker.patch.object(scan, "_fetch_aggregate_samples", return_value={})
+        events = scan.aggregate_alert_detection()
+        assert len(events) == 1
+        assert events[0]["value"] == pytest.approx(800.5)
+
+
+class TestThresholdLadder:
+    def _ladder(self, op=">", field="_msg", func="count"):
+        return {
+            "func": func,
+            "field": field,
+            "op": op,
+            "value": "10",
+            "thresholds": [
+                {"level": "warning", "value": "10"},
+                {"level": "error", "value": "50"},
+                {"level": "critical", "value": "200"},
+            ],
+        }
+
+    def test_same_count_picks_the_highest_rung(self):
+        scan = _scan(alert_type="aggregate", alert_level="warning", alert_name="${level}")
+        rule = {"mode": "or", "conditions": [self._ladder()]}
+        expected = {12: "warning", 60: "error", 300: "critical"}
+        for count, level in expected.items():
+            data = scan._extract_aggregate_data({"count__msg": str(count)}, rule)
+            triggered, row_level = scan._check_rule_conditions(data, rule)
+            assert triggered is True
+            assert row_level == level
+            assert data["level"] == level
+            assert data["conditions"][0]["level"] == level
+            assert data["conditions"][0]["matched"] is True
+            hit = next(step for step in data["conditions"][0]["thresholds"] if step["level"] == level)
+            assert hit["matched"] is True
+            assert data["conditions"][0]["threshold"] == hit["value"]
+        below = scan._extract_aggregate_data({"count__msg": "9"}, rule)
+        triggered, row_level = scan._check_rule_conditions(below, rule)
+        assert triggered is False
+        assert row_level is None
+        assert below["conditions"][0]["level"] is None
+        assert below["conditions"][0]["threshold"] == "10"
+        assert below["conditions"][0]["thresholds"][0]["matched"] is False
+        critical = scan._extract_aggregate_data({"count__msg": "300"}, rule)
+        scan._check_rule_conditions(critical, rule)
+        assert scan._render_alert_name(aggregate_data=critical) == "critical"
+
+    def test_and_takes_lightest_and_or_takes_highest(self):
+        scan = _scan(alert_type="aggregate", alert_level="warning")
+        count_rule = self._ladder()
+        summed = {
+            "func": "sum",
+            "field": "bytes",
+            "op": ">",
+            "value": "1",
+            "thresholds": [
+                {"level": "warning", "value": "1"},
+                {"level": "critical", "value": "100"},
+            ],
+        }
+        both = {"mode": "and", "conditions": [count_rule, summed]}
+        either = {"mode": "or", "conditions": [count_rule, summed]}
+        row = {"count__msg": "12", "sum_bytes": "150"}
+        and_data = scan._extract_aggregate_data(row, both)
+        and_triggered, and_level = scan._check_rule_conditions(and_data, both)
+        assert and_triggered is True
+        assert and_level == "warning"
+        or_data = scan._extract_aggregate_data(row, either)
+        or_triggered, or_level = scan._check_rule_conditions(or_data, either)
+        assert or_triggered is True
+        assert or_level == "critical"
+        missed = scan._extract_aggregate_data({"count__msg": "1", "sum_bytes": "150"}, both)
+        missed_triggered, missed_level = scan._check_rule_conditions(missed, both)
+        assert missed_triggered is False
+        assert missed_level is None
+
+    def test_less_than_ladder_uses_descending_thresholds(self):
+        scan = _scan(alert_type="aggregate", alert_level="warning")
+        rule = {
+            "mode": "and",
+            "conditions": [
+                {
+                    "func": "count",
+                    "field": "_msg",
+                    "op": "<",
+                    "value": "200",
+                    "thresholds": [
+                        {"level": "warning", "value": "200"},
+                        {"level": "error", "value": "50"},
+                        {"level": "critical", "value": "10"},
+                    ],
+                }
+            ],
+        }
+        data = scan._extract_aggregate_data({"count__msg": "12"}, rule)
+        triggered, level = scan._check_rule_conditions(data, rule)
+        assert triggered is True
+        assert level == "error"
+        critical = scan._extract_aggregate_data({"count__msg": "5"}, rule)
+        assert scan._check_rule_conditions(critical, rule)[1] == "critical"
+
+    def test_legacy_condition_keeps_policy_level(self):
+        scan = _scan(alert_type="aggregate", alert_level="error", alert_name="${level}")
+        rule = {"mode": "and", "conditions": [{"func": "count", "field": "_msg", "op": ">", "value": "5"}]}
+        data = scan._extract_aggregate_data({"count__msg": "12"}, rule)
+        triggered, level = scan._check_rule_conditions(data, rule)
+        assert triggered is True
+        assert level == "error"
+        assert data["conditions"][0]["matched"] is True
+        assert data["conditions"][0]["threshold"] == "5"
+        assert "thresholds" not in data["conditions"][0]
+        assert scan._render_alert_name({"level": "host-a"}, ["level"], aggregate_data=data) == "host-a"
+
+    def test_level_rank_rises_only(self):
+        from apps.log.services.policy_condition import level_rank
+
+        assert level_rank("error") > level_rank("warning")
+        assert level_rank("critical") > level_rank("error")
+        assert level_rank("warning") > level_rank("info")
+        assert not level_rank("warning") > level_rank("critical")
+        assert not level_rank("error") > level_rank("error")
+
+    def test_guard_does_not_set_the_level_and_blocks_when_missed(self):
+        scan = _scan(alert_type="aggregate", alert_level="critical")
+        rule = {
+            "mode": "and",
+            "conditions": [
+                self._ladder(),
+                {"role": "guard", "func": "count_uniq", "field": "user", "op": ">=", "value": "20"},
+            ],
+        }
+        passed = scan._extract_aggregate_data({"count__msg": "60", "count_uniq_user": "25"}, rule)
+        triggered, level = scan._check_rule_conditions(passed, rule)
+        assert triggered is True
+        assert level == "error"
+        assert passed["conditions"][1]["role"] == "guard"
+        assert passed["conditions"][1]["matched"] is True
+        assert passed["conditions"][1]["level"] is None
+        assert "thresholds" not in passed["conditions"][1]
+        assert scan._first_regular_value(passed) == 60
+
+        missed = scan._extract_aggregate_data({"count__msg": "60", "count_uniq_user": "3"}, rule)
+        assert scan._check_rule_conditions(missed, rule) == (False, None)
+
+    def test_or_ignores_a_guard_and_takes_the_higher_level(self):
+        scan = _scan(alert_type="aggregate", alert_level="warning")
+        rule = {
+            "mode": "or",
+            "conditions": [
+                {"role": "guard", "func": "count_uniq", "field": "user", "op": ">=", "value": "20"},
+                self._ladder(),
+            ],
+        }
+        data = scan._extract_aggregate_data({"count__msg": "12", "count_uniq_user": "1"}, rule)
+        triggered, level = scan._check_rule_conditions(data, rule)
+        assert triggered is True
+        assert level == "warning"
+        assert scan._first_regular_value(data) == 12
+
+    def test_unparsed_first_regular_falls_back_to_count(self):
+        scan = _scan(alert_type="aggregate", alert_level="warning")
+        data = {
+            "count": 7,
+            "conditions": [
+                {"role": "guard", "value": 3},
+                {"role": "regular", "value": "n/a"},
+                {"role": "regular", "value": 12},
+            ],
+        }
+        assert scan._first_regular_value(data) == 7

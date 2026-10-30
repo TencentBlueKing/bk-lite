@@ -13,6 +13,7 @@ from apps.cmdb.tasks.celery_tasks import (  # noqa: F401
     execute_first_collection_run,
     finalize_scan_execution,
     full_sync_auto_association_rule_task,
+    reconcile_auto_relation_pending_task,
     recover_change_record_mirror_outbox_task,
     recover_due_scan_executions,
     recover_first_collection_runs,
@@ -25,5 +26,6 @@ from apps.cmdb.tasks.celery_tasks import (  # noqa: F401
     trigger_first_collection,
     trigger_scan_execution,
 )
+from apps.cmdb.tasks.display_field_backfill import backfill_cmdb_display_fields, ensure_display_field_backfill_periodic_task  # noqa: F401
 from apps.cmdb.tasks.transfer import cleanup_transfers, execute_transfer, maintain_transfers  # noqa: F401
 from apps.cmdb.tasks.uuid_migration import ensure_uuid_migration_periodic_task, migrate_cmdb_instance_uuid_runtime  # noqa: F401

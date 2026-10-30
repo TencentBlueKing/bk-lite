@@ -10,6 +10,7 @@ from apps.job_mgmt.config import EXECUTION_MAX_WORKERS
 from apps.job_mgmt.constants import CredentialSource, ExecutionStatus, ExecutorDriver, OSType, ScriptType, SSHCredentialType, TargetSource
 from apps.job_mgmt.models import JobExecution, Target
 from apps.job_mgmt.services.callback_service import send_callback
+from apps.job_mgmt.services.completion_outbox_service import enqueue_terminal_effects
 from apps.job_mgmt.services.execution_stream_service import build_stream_topic
 from apps.job_mgmt.services.script_normalize import normalize_script_line_endings
 from apps.job_mgmt.services.shell_utils import ANSIBLE_SHELL_EXECUTABLES, build_heredoc_command, parse_shebang
@@ -18,6 +19,25 @@ from apps.rpc.ansible import AnsibleExecutor
 from apps.rpc.node_mgmt import NodeMgmt
 from apps.rpc.sensitive import sanitize_sensitive_data
 from config.components.nats import NATS_NAMESPACE
+
+
+def _enqueue_async_callback_safely(execution) -> None:
+    """终态已落库后再写回调意图；写入失败用 savepoint 隔离，不得回滚作业结束。"""
+    if not getattr(execution, "async_callback_context", None):
+        return
+    try:
+        with transaction.atomic():
+            enqueue_terminal_effects(execution)
+    except Exception:
+        logger.exception("async callback outbox enqueue failed; execution remains terminal: execution_id=%s", execution.id)
+
+
+def _dispatch_original_callback_safely(execution) -> None:
+    """原 web/nats 回调派发失败不得影响作业终态。"""
+    try:
+        send_callback(execution)
+    except Exception:
+        logger.exception("job callback dispatch failed; execution remains terminal: execution_id=%s", execution.id)
 
 
 class ExecutionTaskBaseService(object):
@@ -126,6 +146,8 @@ class ExecutionTaskBaseService(object):
                 locked.converge_deadline_at = None
                 update_fields.append("converge_deadline_at")
             locked.save(update_fields=update_fields)
+            if status in ExecutionStatus.TERMINAL_STATES:
+                _enqueue_async_callback_safely(locked)
 
         execution.status = locked.status
         execution.started_at = locked.started_at
@@ -195,6 +217,7 @@ class ExecutionTaskBaseService(object):
                     "updated_at",
                 ]
             )
+            _enqueue_async_callback_safely(locked)
 
         execution.status = locked.status
         execution.converge_deadline_at = None
@@ -213,7 +236,7 @@ class ExecutionTaskBaseService(object):
         else:
             logger.info("[%s] 任务完成: execution_id=%s, status=%s", task_name, execution.id, execution.status)
 
-        send_callback(execution)
+        _dispatch_original_callback_safely(execution)
 
     @staticmethod
     def _should_use_ansible(target_source: str, target_list: list) -> bool:

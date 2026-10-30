@@ -5,6 +5,7 @@ import {
   normalizeScreenViewSets,
   resolveScreenDisplayAdapter,
   scaleScreenItemsToViewport,
+  shouldUseViewportPixelLayout,
   updateScreenViewport,
 } from '../viewport';
 import type { ScreenItem } from '@/app/ops-analysis/types/screen';
@@ -242,6 +243,39 @@ describe('resolveScreenDisplayAdapter', () => {
         forceContain: true,
       }),
     ).toBe('contain');
+  });
+});
+
+describe('shouldUseViewportPixelLayout', () => {
+  it('recalculates only fullscreen or share fill, never edit, view, PDF, or fit axes', () => {
+    expect(shouldUseViewportPixelLayout({
+      adapter: 'fill',
+      fullscreen: true,
+    })).toBe(true);
+    expect(shouldUseViewportPixelLayout({
+      adapter: 'fill',
+      shareMode: true,
+    })).toBe(true);
+    expect(shouldUseViewportPixelLayout({
+      adapter: 'fill',
+      editMode: true,
+    })).toBe(false);
+    expect(shouldUseViewportPixelLayout({
+      adapter: 'fill',
+    })).toBe(false);
+    expect(shouldUseViewportPixelLayout({
+      adapter: 'fill',
+      fullscreen: true,
+      forceContain: true,
+    })).toBe(false);
+    expect(shouldUseViewportPixelLayout({
+      adapter: 'fitWidth',
+      fullscreen: true,
+    })).toBe(false);
+    expect(shouldUseViewportPixelLayout({
+      adapter: 'fitHeight',
+      shareMode: true,
+    })).toBe(false);
   });
 });
 

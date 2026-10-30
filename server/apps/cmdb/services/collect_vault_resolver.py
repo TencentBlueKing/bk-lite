@@ -99,13 +99,19 @@ def resolve_task_credential_pool(instance, *, resolver=None):
         if not isinstance(response, dict) or not response.get("result"):
             raise BaseAppException("已有凭据无法使用，请检查权限或停用状态！")
         payload = response.get("data") or {}
-        # 旧 JOB 任务曾绑定用户名密码类型。仅兼容该认证契约，tree 新选择仍只返回 SSH。
+        # 未写入 vault_type_key 的旧 JOB 任务曾绑定用户名密码类型，仍按该认证契约下发。
+        # 新建和重新保存会写入类型；SSH 采集对象不再把 SQL 凭据当作主机登录。
         auth_binding = binding
         model_id = getattr(instance, "model_id", None)
         if model_id == "network_config_file" and payload.get("type") == "platform_api":
             auth_binding = "network/platform_api"
             allowed_keys = actual_builtin_type_keys(auth_binding)
-        elif binding.endswith("/ssh") and model_id not in {"pc", "network_config_file"} and payload.get("type") == "sql":
+        elif (
+            binding.endswith("/ssh")
+            and model_id not in {"pc", "network_config_file"}
+            and payload.get("type") == "sql"
+            and not item.get("vault_type_key")
+        ):
             auth_binding = binding.rsplit("/", 1)[0] + "/sql"
             allowed_keys = actual_builtin_type_keys(auth_binding)
         if not allowed_keys:

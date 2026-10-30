@@ -44,6 +44,7 @@ const FilterBar: React.FC<FilterBarProps> = ({
 }) => {
   const { t } = useTranslation();
   const queryList = useAssetDataStore((state) => state.query_list);
+  const advancedFilter = useAssetDataStore((state) => state.advanced_filter);
   const remove = useAssetDataStore((state) => state.remove);
   const clear = useAssetDataStore((state) => state.clear);
   const update = useAssetDataStore((state) => state.update);
@@ -347,7 +348,7 @@ const FilterBar: React.FC<FilterBarProps> = ({
   };
 
   const handleOpenSaveModal = () => {
-    if (queryList.length === 0) {
+    if (queryList.length === 0 && !advancedFilter?.conditions?.length) {
       message.warning(t('FilterBar.noFiltersToSave'));
       return;
     }
@@ -368,6 +369,7 @@ const FilterBar: React.FC<FilterBarProps> = ({
         id: `${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
         name: saveFilterName.trim(),
         filters: queryList,
+        advanced_filter: advancedFilter,
       };
       const updatedFilters = [...currentFilters, newItem];
       const updatedAllFilters: SavedFiltersConfigValue = { ...allSavedFilters, [modelId]: updatedFilters };

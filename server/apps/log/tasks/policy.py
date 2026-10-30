@@ -120,10 +120,7 @@ def scan_log_policy_task(policy_id):
             for index in range(backfill_count):
                 cursor_time = policy_obj.last_run_time
                 scan_time = cursor_time + timedelta(seconds=period_seconds)
-                logger.info(
-                    f"开始执行日志策略 [{policy_id}] 的第 {index + 1}/{backfill_count} 次补偿扫描，"
-                    f"扫描时间点: {scan_time}"
-                )
+                logger.info(f"开始执行日志策略 [{policy_id}] 的第 {index + 1}/{backfill_count} 次补偿扫描，" f"扫描时间点: {scan_time}")
                 _run_policy_window(
                     policy_obj,
                     cursor_time=cursor_time,
@@ -200,7 +197,7 @@ def compensate_log_notice_task():
 
     pending_closed = list(
         Alert.objects.filter(
-            status=AlertConstants.STATUS_CLOSED,
+            status__in=[AlertConstants.STATUS_CLOSED, AlertConstants.STATUS_RECOVERED],
             notice=False,
             end_event_time__gte=window_start,
             end_event_time__lte=settle_before,
@@ -253,12 +250,15 @@ def compensate_log_notice_task():
         if not notifier.is_alert_center_channel():
             continue
 
-        success, _ = notifier.notify_closed(alert, max_attempts=1)
+        if alert.status == AlertConstants.STATUS_RECOVERED:
+            success, _ = notifier.notify_recovered(alert, max_attempts=1)
+        else:
+            success, _ = notifier.notify_closed(alert, max_attempts=1)
         if success:
-            # 关闭时间参与条件更新，避免迟到回执写入新的生命周期状态。
+            # 结束时间参与条件更新，避免迟到回执写入新的生命周期状态。
             closed_success_count += Alert.objects.filter(
                 id=alert.id,
-                status=AlertConstants.STATUS_CLOSED,
+                status=alert.status,
                 end_event_time=alert.end_event_time,
                 notice=False,
             ).update(notice=True)

@@ -865,6 +865,17 @@ const TaskDetail: React.FC<TaskDetailProps> = ({ task, modelId }) => {
           <StatisticCard key={index} {...card} />
         ))}
       </div>
+      {(task.message as any)?.reconcile_skipped_fields !== undefined ? (
+        <div className="mb-4 text-sm text-[var(--color-text-2)]">
+          {t('Collection.reconcileSkipped')} {(task.message as any).reconcile_skipped_fields}
+          {' · '}
+          {t('Collection.reconcileOrgConflict')} {(task.message as any).reconcile_org_conflicts || 0}
+          {' · '}
+          {t('Collection.reconcileOutsideConflict')} {(task.message as any).reconcile_outside_conflicts || 0}
+          {' · '}
+          {t('Collection.reconcileConcurrent')} {(task.message as any).reconcile_concurrent_abandons || 0}
+        </div>
+      ) : null}
 
       {task.params?.target_source === 'host' && (
         <Collapse

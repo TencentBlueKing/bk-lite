@@ -38,6 +38,17 @@ const keys = [
   'log.event.ratioFilterTip',
   'log.event.triggerCount',
   'log.event.triggerCountTip',
+  'log.event.minHits',
+  'log.event.minHitsTip',
+  'log.event.recoverAfter',
+  'log.event.recoverAfterTip',
+  'log.moreThanOrEqual',
+  'log.lessThanOrEqual',
+  'log.event.aggregateQueryCriteriaTips',
+  'log.event.thresholdNumberValidate',
+  'log.event.thresholdOrderValidate',
+  'log.event.levelSetMismatch',
+  'log.event.backfillGapWarning',
   'log.event.streak',
   'log.event.reasonWindowFailed',
   'log.event.noDataWindowLine',
@@ -90,6 +101,32 @@ const keys = [
   'log.event.truncatedHint',
   'log.event.dryRunGroup',
   'log.event.dryRunVerdict',
+  'log.event.matchPrefix',
+  'log.event.matchSuffix',
+  'log.event.termAny',
+  'log.event.termAll',
+  'log.event.statRow',
+  'log.event.fieldRow',
+  'log.event.compareRow',
+  'log.event.triggerRow',
+  'log.event.conditionSection',
+  'log.event.levelSection',
+  'log.event.conditionRole',
+  'log.event.roleRegular',
+  'log.event.roleGuard',
+  'log.event.guardThreshold',
+  'log.event.guardHint',
+  'log.event.levelTableAndHint',
+  'log.event.levelTableOrHint',
+  'log.event.regularRequired',
+  'log.event.guardWithOr',
+  'log.event.guardPassed',
+  'log.event.guardMissed',
+  'log.event.whenResult',
+  'log.event.ratioNumerator',
+  'log.event.addCondition',
+  'log.event.deleteCondition',
+  'log.event.conditionIndex',
 ];
 
 describe('日志策略计算方式文案', () => {
@@ -99,6 +136,8 @@ describe('日志策略计算方式文案', () => {
       expect(enMessages[key], key).toBeTruthy();
       expect(zhMessages[key]).not.toBe(enMessages[key]);
     }
+    expect(zhMessages['log.event.compareKindAbsolute']).toBe('当前值');
+    expect(enMessages['log.event.compareKindAbsolute']).toBe('Current value');
     expect(zhMessages['log.event.funcCount']).toBe('计数');
     expect(zhMessages['log.event.funcCountRate']).toBe('速率');
     expect(zhMessages['log.event.funcCountDelta']).toBe('变化量');
@@ -106,7 +145,13 @@ describe('日志策略计算方式文案', () => {
     expect(enMessages['log.event.funcCountDelta']).toBe('Change');
     expect(zhMessages['log.event.dryRun']).toBe('试算');
     expect(zhMessages['log.event.openInSearch']).toBe('在检索中打开');
-    expect(zhMessages['log.event.triggerCountTip']).toBe('连续 N 个检测窗都满足才告警');
+    expect(zhMessages['log.event.triggerCountTip']).toBe(
+      '最近 N 个相邻周期（按周期长度向前平移）都满足才告警'
+    );
+    expect(zhMessages['log.event.setFrequency']).toBe('多久扫描一次日志');
+    expect(zhMessages['log.event.setPeriod']).toBe('每次统计最近多长时间的日志');
+    expect(zhMessages['log.event.minHitsTip']).toBe('本窗命中达到该条数才告警');
+    expect(enMessages['log.event.keywordTriggerCountTip']).toBeUndefined();
     expect(zhMessages['log.event.noDataWindowLine']).toBe('本窗无日志，上一窗 {count} 条');
   });
 });

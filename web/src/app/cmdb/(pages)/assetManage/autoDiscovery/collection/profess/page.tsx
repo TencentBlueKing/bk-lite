@@ -24,8 +24,10 @@ import PluginCatalogView from './components/pluginCatalogView';
 import TaskDetail from './components/taskDetail';
 import NodeMgmtSyncDetail from './components/nodeMgmtSyncDetail';
 import CollectionStats from './components/collectionStats';
+import ReconcileDrawer from './components/reconcileDrawer';
 import {
   findPluginCategory,
+  reconcilePluginGroups,
   resolveCollectPlugin,
 } from './pluginCatalog';
 import {
@@ -131,6 +133,7 @@ const ProfessionalCollection: React.FC = () => {
   const [categoryList, setCategoryList] = useState<TreeNode[]>([]);
   const [detailVisible, setDetailVisible] = useState(false);
   const [nodeMgmtSyncVisible, setNodeMgmtSyncVisible] = useState(false);
+  const [reconcileVisible, setReconcileVisible] = useState(false);
   const [currentTask, setCurrentTask] = useState<CollectTask | null>(null);
   const [selectedPluginId, setSelectedPluginId] = useState<string>('');
   const [taskScope, setTaskScope] = useState<CollectionTaskScope>('catalog');
@@ -1279,6 +1282,11 @@ const ProfessionalCollection: React.FC = () => {
                 {t('Collection.nodeMgmtSync.entry')}
               </Button>
               {taskScope === 'plugin' ? (
+                <Button onClick={() => setReconcileVisible(true)}>
+                  {t('Collection.reconcileOpen')}
+                </Button>
+              ) : null}
+              {taskScope === 'plugin' ? (
                 <PermissionWrapper requiredPermissions={['Add']}>
                   <Button type="primary" onClick={handleCreate}>
                     {t('Collection.addTaskTitle')}
@@ -1492,6 +1500,13 @@ const ProfessionalCollection: React.FC = () => {
       >
         <NodeMgmtSyncDetail open={nodeMgmtSyncVisible} />
       </Drawer>
+      <ReconcileDrawer
+        open={reconcileVisible}
+        modelId={currentPlugin?.model_id || selectedPluginId}
+        modelName={currentPlugin?.name || ''}
+        groups={reconcilePluginGroups(categoryList)}
+        onClose={() => setReconcileVisible(false)}
+      />
 
       <Drawer
         title={t('Collection.taskDetail.title')}

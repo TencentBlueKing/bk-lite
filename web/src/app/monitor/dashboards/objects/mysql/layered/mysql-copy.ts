@@ -29,7 +29,7 @@ export const MYSQL_CATEGORY_COPY = {
   writable: [textId('mysqlCategoryWritable'), '写入源'],
   readOnly: [textId('mysqlCategoryReadOnly'), '只读'],
   host: [textId('mysqlCategoryHost'), '所属主机'],
-  hostUnlinked: [textId('mysqlCategoryHostUnlinked'), '未关联主机'],
+  hostUnlinked: [textId('mysqlCategoryHostUnlinked'), '无所属主机'],
   viewHost: [textId('mysqlCategoryViewHost'), '查看'],
   cpu: [textId('mysqlCategoryCpu'), 'CPU'],
   memory: [textId('mysqlCategoryMemory'), '内存'],

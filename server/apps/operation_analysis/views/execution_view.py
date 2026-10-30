@@ -111,11 +111,17 @@ class DashboardReportExecutionViewSet(
         ) as exc:
             raise ValidationError({"snapshot": oa_message("messages.render_snapshot_incomplete", "Execution 渲染快照不完整")}) from exc
 
+        from apps.operation_analysis.services.render_authorized_apps import resolve_execution_authorized_app_names
+
         return Response(
             {
                 "execution_id": execution.id,
                 "input_snapshot": (DashboardReportExecutionSnapshotSerializer(input_snapshot).data),
                 "render_snapshot": (DashboardReportRenderSnapshotSerializer(render_snapshot).data),
+                "authorized_app_names": resolve_execution_authorized_app_names(
+                    username=execution.creator,
+                    domain=execution.creator_domain,
+                ),
             }
         )
 

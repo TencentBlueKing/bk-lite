@@ -264,10 +264,40 @@ const normalizePhysicalServerProtocol = (value?: string | null) => {
   return protocol === 'redfish' ? 'redfish' : 'ipmi';
 };
 
+const RECONCILE_TASK_TYPES = new Set([
+  'host',
+  'db',
+  'middleware',
+  'protocol',
+  'snmp',
+  'other',
+  'custom_script',
+]);
+
+/** 容器分组（K8s、Docker）不参与数据调和。 */
+const RECONCILE_EXCLUDED_GROUP_IDS = new Set(['all', 'k8s']);
+
 export const collectPlugins = (categories: TreeNode[]) =>
   categories
     .filter((category) => category.id !== 'all')
     .flatMap((category) => category.tabItems || []);
+
+export const reconcilePluginGroups = (categories: TreeNode[]) =>
+  categories
+    .filter((category) => !RECONCILE_EXCLUDED_GROUP_IDS.has(category.id))
+    .map((category) => ({
+      id: category.id,
+      name: category.name,
+      plugins: (category.tabItems || []).filter(
+        (plugin) =>
+          RECONCILE_TASK_TYPES.has(plugin.task_type || '') &&
+          !(
+            plugin.task_type === 'custom_script' &&
+            (plugin.model_id === 'vmware_vc' || plugin.id === 'vmware_vc')
+          ),
+      ),
+    }))
+    .filter((group) => group.plugins.length > 0);
 
 export const findPluginCategory = (categories: TreeNode[], pluginId: string) =>
   categories.find(
@@ -321,6 +351,9 @@ export const getTaskStatusStats = (
   tab: Pick<TreeNode, 'id' | 'model_id' | 'type' | 'task_type' | 'custom_plugin_pk'>,
 ) => {
   const specificStats = statusMap[getTaskStatusKey(tab)];
+  if (tab.task_type === 'custom_script') {
+    return specificStats;
+  }
   if (
     specificStats ||
     tab.id === 'physcial_server_ipmi' ||
@@ -335,11 +368,13 @@ export const countPluginTasks = (
   stats?: (Partial<TaskStatusStats> & { partial_success?: number }) | null,
 ) => {
   if (!stats) return 0;
+  if (typeof stats.total === 'number') return stats.total;
   return (
     (stats.running || 0) +
     (stats.success || 0) +
     (stats.failed || 0) +
-    (stats.partial_success || 0)
+    (stats.partial_success || 0) +
+    (stats.not_start || 0)
   );
 };
 

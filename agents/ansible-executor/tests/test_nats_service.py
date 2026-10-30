@@ -4,6 +4,7 @@ import json
 import pytest
 from core.config import ServiceConfig
 from service.failure_summary import ANSIBLE_TASK_FAILED_LOG_TEMPLATE, sanitize_failure_text
+from service.linux_script_delivery import ScriptDeliveryError
 from service.nats_service import AnsibleNATSService, QueuedTask
 
 
@@ -1121,10 +1122,11 @@ async def test_run_task_uses_remote_shell_stream_for_job_script(tmp_path, monkey
             "module": module,
             "module_args": "echo first; sleep 20; echo second",
             "extra_vars": {"ansible_shell_executable": "/bin/bash"},
+            "host_credentials": [{"host": "10.1.1.8", "user": "root"}],
         },
     )()
     monkeypatch.setattr("service.nats_service.to_adhoc_request", lambda payload: request)
-    monkeypatch.setattr("service.nats_service.prepare_adhoc_execution", lambda prepared: (["ansible", "all"], None))
+    monkeypatch.setattr("service.nats_service.prepare_adhoc_execution", lambda prepared: (["ansible", "all"], tmp_path))
     monkeypatch.setattr("service.nats_service.cleanup_workspace", lambda workspace: None)
 
     async def fake_remote_stream(command, **kwargs):
@@ -1166,9 +1168,59 @@ async def test_run_task_uses_remote_shell_stream_for_job_script(tmp_path, monkey
     assert result["success"] is True
     assert captured["script_content"] == request.module_args
     assert captured["shell_executable"] == "/bin/bash"
+    assert captured["host_credentials"] == [{"host": "10.1.1.8", "user": "root"}]
+    assert captured["workspace"] == tmp_path
     assert captured["stream_log_topic"] == "job.stream.23.ansible"
     assert captured["execution_id"] == "23"
     assert callable(captured["stream_publish"])
+
+
+@pytest.mark.asyncio
+async def test_run_task_surfaces_linux_script_delivery_error_as_host_result(tmp_path, monkeypatch):
+    service = _make_service(tmp_path)
+    service.nc = RecordingNATSClient()
+    request = type(
+        "R",
+        (),
+        {
+            "execute_timeout": 90,
+            "stream_remote_output": True,
+            "module": "raw",
+            "module_args": "echo hello",
+            "extra_vars": {},
+            "host_credentials": [{"host": "10.1.1.8"}],
+        },
+    )()
+    monkeypatch.setattr("service.nats_service.to_adhoc_request", lambda payload: request)
+    monkeypatch.setattr("service.nats_service.prepare_adhoc_execution", lambda prepared: (["ansible", "all"], tmp_path))
+    monkeypatch.setattr("service.nats_service.cleanup_workspace", lambda workspace: None)
+
+    async def fail_delivery(*_args, **_kwargs):
+        raise ScriptDeliveryError("Linux script exceeds 512 KiB limit: 600000 bytes", ["10.1.1.8"])
+
+    monkeypatch.setattr("service.nats_service.run_remote_shell_stream", fail_delivery)
+    monkeypatch.setattr(service.task_store, "update_execution_result", lambda *a, **k: True)
+    monkeypatch.setattr(service.task_store, "update_callback_status", lambda *a, **k: True)
+
+    task = QueuedTask(
+        task_id="task-script-limit",
+        task_type="adhoc",
+        payload={
+            "task_id": "task-script-limit",
+            "stream_log_topic": "job.stream.24.ansible",
+            "execution_id": "24",
+        },
+        callback=None,
+        instance_id="default",
+    )
+
+    result = await service._run_task(task, "owner-a")
+
+    assert result["success"] is False
+    assert result["result"][0]["host"] == "10.1.1.8"
+    assert result["result"][0]["status"] == "failed"
+    assert "512 KiB" in result["result"][0]["error_message"]
+    assert "回调结果格式非法" not in str(result)
 
 
 @pytest.mark.asyncio

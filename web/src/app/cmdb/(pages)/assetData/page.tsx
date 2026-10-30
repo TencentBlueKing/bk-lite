@@ -75,6 +75,7 @@ import {
 import { ExportModalRef } from '@/app/cmdb/types/assetData';
 import SearchFilter from './list/searchFilter';
 import FilterBar from './list/filterBar';
+import AdvancedFilterDrawer, { AdvancedFilterChips } from './list/advancedFilterDrawer';
 import ImportInst from './list/importInst';
 import FieldModal from './list/fieldModal';
 import SelectInstance from './detail/relationships/selectInstance';
@@ -328,8 +329,10 @@ const AssetDataContent = () => {
   );
   // 窄屏时把「数据订阅」收进更多。导入导出记录始终在更多里，新建和导出保持可见。
   const [secondaryActionsCollapsed, setSecondaryActionsCollapsed] = useState(false);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
   const [quickCreateToken, setQuickCreateToken] = useState(0);
   const searchAttr = useAssetDataStore((state) => state.searchAttr);
+  const storeAdvancedFilter = useAssetDataStore((state) => state.advanced_filter);
   const urlQueryInitialized = useRef(false);
   const initialDataLoaded = useRef(false);
   const treeWrapperRef = useRef<HTMLDivElement | null>(null);
@@ -358,8 +361,8 @@ const AssetDataContent = () => {
       const shell = rowEl.firstElementChild as HTMLElement | null;
       const rowWidth = (shell ?? rowEl).clientWidth;
       const inputWidth = isMultiIpSearchAttr(searchAttr) ? 360 : 200;
-      // 组织选择 200、属性下拉 120、搜索按钮 32、精确匹配约 108、刷新 32，间距 8。
-      const preferredFilterWidth = 200 + 120 + inputWidth + 32 + 108 + 32 + 8 * 4;
+      // 刷新 32、组织 200、高级筛选约 88、属性下拉 120、搜索按钮 32、精确匹配约 108，间距 8。
+      const preferredFilterWidth = 32 + 200 + 88 + 120 + inputWidth + 32 + 108 + 8 * 6;
       const fullActionsWidth = sizerEl.getBoundingClientRect().width;
       const recoveryBuffer = 30;
       const shouldCollapse = preferredFilterWidth + fullActionsWidth > rowWidth + recoveryBuffer;
@@ -444,6 +447,8 @@ const AssetDataContent = () => {
       selectedKeys,
       exportType,
       tableData,
+      queryList: exportType === 'all' ? useAssetDataStore.getState().query_list : undefined,
+      advancedFilter: exportType === 'all' ? useAssetDataStore.getState().advanced_filter : undefined,
     } as any);
   };
 
@@ -550,7 +555,7 @@ const AssetDataContent = () => {
       setSelectedTreeKeys([modelId]);
       fetchData();
     }
-  }, [pagination?.current, pagination?.pageSize, queryList, organization]);
+  }, [pagination?.current, pagination?.pageSize, queryList, organization, storeAdvancedFilter]);
 
   useEffect(() => {
     const validClassificationIds = modelGroup.map((item) => item.classification_id);
@@ -601,6 +606,11 @@ const AssetDataContent = () => {
       setPagination(prev => ({ ...prev, total: data.count }));
     } catch (error) {
       if ((error as { name?: string })?.name === 'CanceledError') return;
+      if (useAssetDataStore.getState().advanced_filter) {
+        const failed = error as { message?: string; response?: { data?: { message?: string } } };
+        message.error(failed.response?.data?.message || failed.message || t('AdvancedFilter.queryFailed'));
+        setAdvancedOpen(true);
+      }
     } finally {
       setTableLoading(false);
     }
@@ -670,6 +680,7 @@ const AssetDataContent = () => {
       finalQueryList = orgCondition;
     }
 
+    const advancedFilter = useAssetDataStore.getState().advanced_filter;
     return {
       query_list: finalQueryList,
       page: overridePage ?? pagination.current,
@@ -678,6 +689,7 @@ const AssetDataContent = () => {
       model_id: modelId,
       role: '',
       case_sensitive: caseSensitive,
+      ...(advancedFilter ? { advanced_filter: advancedFilter } : {}),
     };
   };
 
@@ -923,6 +935,10 @@ const AssetDataContent = () => {
   }, [storeQueryList]);
 
   useEffect(() => {
+    setPagination((prev) => resetListPaginationToFirstPage(prev));
+  }, [storeAdvancedFilter]);
+
+  useEffect(() => {
     if (!urlQueryInitialized.current || !modelId) return;
 
     const params = new URLSearchParams(searchParams.toString());
@@ -1099,6 +1115,7 @@ const AssetDataContent = () => {
 
   const onSelectUnified = (selectedKeys: React.Key[]) => {
     useAssetDataStore.getState().clear();
+    useAssetDataStore.getState().setAdvancedFilter(null);
     useAssetDataStore.setState((state) => ({ ...state, searchAttr: '' }));
     urlQueryInitialized.current = true;
 
@@ -1432,6 +1449,12 @@ const AssetDataContent = () => {
               trailing={(
                 <>
                   <div ref={leftActionsRef} className="flex min-w-0 shrink items-center gap-2">
+                    <span className="shrink-0">
+                      <RefreshIconButton
+                        loading={loading}
+                        onClick={() => fetchData()}
+                      />
+                    </span>
                     <GroupTreeSelector
                       style={{
                         width: '200px',
@@ -1444,6 +1467,15 @@ const AssetDataContent = () => {
                         selectedGroup?.id ? Number(selectedGroup.id) : undefined
                       }
                     />
+                    {modelId === 'ip' && (
+                      <Tag
+                        color={isConflictFilterActive ? 'error' : 'default'}
+                        style={{ cursor: 'pointer', userSelect: 'none' }}
+                        onClick={handleConflictFilterToggle}
+                      >
+                        {t('IPAM.conflictFilter')}
+                      </Tag>
+                    )}
                     <SearchFilter
                       key={modelId}
                       allowShrink
@@ -1462,32 +1494,12 @@ const AssetDataContent = () => {
                       onSearch={handleSearch}
                       onChange={handleFilterBarChange}
                       onFilterChange={handleFilterBarChange}
+                      beforeExactSearch={(
+                        <Button className="shrink-0" onClick={() => setAdvancedOpen(true)}>
+                          {t('AdvancedFilter.title')}
+                        </Button>
+                      )}
                     />
-                    {modelId === 'ip' && (
-                      <Tag
-                        color={isConflictFilterActive ? 'error' : 'default'}
-                        style={{ cursor: 'pointer', userSelect: 'none' }}
-                        onClick={handleConflictFilterToggle}
-                      >
-                        {t('IPAM.conflictFilter')}
-                      </Tag>
-                    )}
-                    <span className="shrink-0">
-                      <RefreshIconButton
-                        loading={loading}
-                        onClick={() => fetchData()}
-                      />
-                    </span>
-                  </div>
-                  <div className="shrink-0">
-                    <Dropdown menu={{ items: exportItems }} placement="bottom">
-                      <Button>
-                        <Space>
-                          {t('export')}
-                          <DownOutlined />
-                        </Space>
-                      </Button>
-                    </Dropdown>
                   </div>
                   <Dropdown
                     menu={{ items: moreItems }}
@@ -1500,6 +1512,16 @@ const AssetDataContent = () => {
                       </Space>
                     </Button>
                   </Dropdown>
+                  <div className="shrink-0">
+                    <Dropdown menu={{ items: exportItems }} placement="bottom">
+                      <Button>
+                        <Space>
+                          {t('export')}
+                          <DownOutlined />
+                        </Space>
+                      </Button>
+                    </Dropdown>
+                  </div>
                   {secondaryActionsCollapsed ? null : (
                     <Button
                       className="shrink-0"
@@ -1527,9 +1549,9 @@ const AssetDataContent = () => {
           </div>
           <div ref={actionSizerRef} className={assetDataStyle.actionSizer}>
             <Space>
-              <Button type="primary">
+              <Button>
                 <Space>
-                  {t('common.new')}
+                  {t('more')}
                   <DownOutlined aria-hidden="true" />
                 </Space>
               </Button>
@@ -1539,9 +1561,9 @@ const AssetDataContent = () => {
                   <DownOutlined aria-hidden="true" />
                 </Space>
               </Button>
-              <Button>
+              <Button type="primary">
                 <Space>
-                  {t('more')}
+                  {t('common.new')}
                   <DownOutlined aria-hidden="true" />
                 </Space>
               </Button>
@@ -1552,6 +1574,14 @@ const AssetDataContent = () => {
           </div>
 
           <div className="w-full">
+            <AdvancedFilterChips
+              modelId={modelId}
+              filter={storeAdvancedFilter}
+              attrList={propertyList}
+              assoTypes={assoTypes}
+              models={originModels}
+              onChange={(filter) => useAssetDataStore.getState().setAdvancedFilter(filter)}
+            />
             <FilterBar
               attrList={[...propertyList, instanceUuidFilterAttr(t('Model.instanceUuid'))]}
               userList={userList}
@@ -1609,6 +1639,20 @@ const AssetDataContent = () => {
             models={originModels}
             assoTypes={assoTypes}
             needFetchAssoInstIds
+          />
+          <AdvancedFilterDrawer
+            open={advancedOpen}
+            modelId={modelId}
+            applied={storeAdvancedFilter}
+            attrList={propertyList}
+            userList={userList}
+            assoTypes={assoTypes}
+            models={originModels}
+            onClose={() => setAdvancedOpen(false)}
+            onApply={(filter) => {
+              useAssetDataStore.getState().setAdvancedFilter(filter);
+              setAdvancedOpen(false);
+            }}
           />
           <ExportModal
             ref={exportRef}

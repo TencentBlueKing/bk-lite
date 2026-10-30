@@ -93,7 +93,6 @@ const snapshot = {
 };
 const metricSnapshot = {
   unit: 'ratio',
-  aggregation: 'avg' as const,
   evaluation_interval: 1,
   metric_window: 5,
   snapshots: [

@@ -92,7 +92,7 @@ describe('告警详情命中区', () => {
     );
 
     expect(screen.getByTestId('aggregate-condition-table')).toBeTruthy();
-    expect(screen.getByText('count')).toBeTruthy();
+    expect(screen.getByText('log.event.funcCount')).toBeTruthy();
     expect(screen.getByText('180')).toBeTruthy();
     expect(screen.getByText('120')).toBeTruthy();
     expect(screen.getByText('50')).toBeTruthy();

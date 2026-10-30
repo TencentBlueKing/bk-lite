@@ -147,6 +147,10 @@ export interface ValueConfig {
   barMax?: number;
   dimensionField?: string;
   valueField?: string;
+  /** 折线/柱状多选数值。有值时优先于 valueField；只选一个时与 valueField 同时写入。 */
+  valueFields?: string[];
+  /** 折线/柱状按该字段取值拆系列。与两个及以上数值字段不能同时使用。 */
+  seriesField?: string;
   /** 从标量对象取两个及以上字段合成饼图；已有数组饼图不受影响。 */
   pieScalarFields?: Array<{ field: string; label?: string }>;
   multiValueLabelField?: string;
@@ -198,6 +202,9 @@ export interface ValueConfig {
 
 export type ScreenWidgetFrame = 'panel' | 'bare';
 
+/** 设计画布外层 transform，或全屏/分享铺满后的视口像素。缺省是设计画布。 */
+export type ScreenLayoutMode = 'designTransform' | 'viewportPixels';
+
 export interface ScreenWidgetAppearance {
   frame?: ScreenWidgetFrame;
 }
@@ -205,13 +212,22 @@ export interface ScreenWidgetAppearance {
 export interface ScreenRenderContext {
   enabled: boolean;
   fitScale: number;
-  /** 大屏画布相对设计尺寸的横向、纵向拉伸。铺满适配时两者可以不同。 */
+  /**
+   * 大屏相对设计尺寸的横向、纵向比例。铺满时两者可以不同。
+   * designTransform 下它们是外层 CSS scale；viewportPixels 下几何已经乘过这两轴，
+   * 这里只保留比例，不再表示外层 transform。
+   */
   scaleX?: number;
   scaleY?: number;
   screenDensity: number;
   screenUiScale: number;
   widgetDensity: number;
   widgetUiScale: number;
+  /**
+   * fill 视口像素布局：几何已是屏幕 px，补偿按「无外层 transform」计算。
+   * 缺省视为 designTransform。
+   */
+  layoutMode?: ScreenLayoutMode;
 }
 
 /** 旧操作列参数映射。只在读取时转成 interaction，配置界面不再编辑。 */

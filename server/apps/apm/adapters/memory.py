@@ -264,8 +264,26 @@ class InMemoryMetricStore:
         self._slo_measurements = [(key, item) for key, item in self._slo_measurements if key != query]
         self._slo_measurements.append((query, value))
 
+    def service_endpoints(self, query: ServiceMetricQuery, limit: int = 100) -> tuple:
+        return ()
+
+    def dependency_red(self, query) -> ServiceRed:
+        return ServiceRed(None, None, None, None)
+
+    def client_db_rollups(self, namespace: str, service_name: str, environment: str, started_at, ended_at) -> list:
+        return []
+
     def service_red(self, query: ServiceMetricQuery) -> ServiceRed:
         return next(value for key, value in self._service_metrics if key == query)
+
+    def service_red_by_window(self, query: ServiceMetricQuery, window_minutes: int) -> tuple:
+        return ()
+
+    def dependency_red_by_window(self, query, window_minutes: int) -> tuple:
+        return ()
+
+    def slo_compliance_by_window(self, query: SloMetricQuery, window_minutes: int) -> tuple:
+        return ()
 
     def service_red_by_day(self, query: ServiceMetricQuery, windows: Sequence[tuple[datetime, datetime]]) -> tuple[ServiceRed, ...]:
         return tuple(

@@ -1,8 +1,6 @@
 import type { ChartData } from '@/app/monitor/types';
 import { formatMetricValue } from '../../../shared/utils/format';
-import { normalizeDashboardKey } from '../../../shared/utils';
 import { getLatestChartValue } from '../../../shared/utils/chart-data';
-import { encodeInstanceIdValuesParam } from '../../../shared/utils/instance';
 import { HOST_SERIES_COLOR, HOST_THRESHOLD_COLOR } from '../../host/config';
 import type { TabAlertLevel } from '../../host/layered/tab-level';
 import type { MetricSeries } from '../types';
@@ -894,69 +892,6 @@ export const buildMysqlFocusCards = (
   ].map((card) => (
     card.value === EMPTY_VALUE ? { ...card, subtitle: text('notCollected') } : card
   ));
-};
-
-export interface MysqlHostCandidate {
-  instanceId: string;
-  name: string;
-  nodeId: string;
-  ip: string;
-  instanceIdValues: string[];
-  instanceIdKeys: string[];
-  monitorObjectId: string;
-}
-
-export interface MysqlInstanceLink {
-  nodeId: string;
-  ip: string;
-}
-
-const readableHostName = (name: string) => {
-  const text = name.trim();
-  return text && text !== '--' ? text : '';
-};
-
-/**
- * 只在节点或 IP 唯一命中时关联主机。对不上就不造主机名。
- */
-export const matchMysqlHost = (
-  instance: MysqlInstanceLink,
-  hosts: readonly MysqlHostCandidate[]
-): MysqlHostCandidate | null => {
-  const named = hosts.filter((host) => readableHostName(host.name));
-  const nodeId = instance.nodeId.trim();
-  if (nodeId) {
-    const byNode = named.filter((host) => host.nodeId === nodeId);
-    if (byNode.length === 1) return byNode[0];
-  }
-  const ip = instance.ip.trim();
-  if (ip) {
-    const byIp = named.filter((host) => host.ip === ip);
-    if (byIp.length === 1) return byIp[0];
-  }
-  return null;
-};
-
-const HOST_OBJECT_KEYS = ['host', 'os', '主机'];
-
-export const isHostMonitorObject = (item: { name?: string; display_name?: string }) => {
-  const name = normalizeDashboardKey(item.name);
-  const displayName = normalizeDashboardKey(item.display_name);
-  return HOST_OBJECT_KEYS.includes(name) || HOST_OBJECT_KEYS.includes(displayName);
-};
-
-export const buildHostDashboardHref = (host: MysqlHostCandidate | null) => {
-  if (!host) return '/monitor/view/dashboard/host';
-  const params = new URLSearchParams({
-    monitorObjId: host.monitorObjectId,
-    name: 'Host',
-    monitorObjDisplayName: '主机',
-    instance_id: host.instanceId,
-    instance_name: host.name,
-    instance_id_values: encodeInstanceIdValuesParam(host.instanceIdValues),
-    instance_id_keys: host.instanceIdKeys.join(',') || 'instance_id'
-  });
-  return `/monitor/view/dashboard/host?${params.toString()}`;
 };
 
 const seriesPresent = (metric: MetricSeries | undefined) => (

@@ -48,8 +48,14 @@ async def _iter_export_file(stream):
 class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
     @staticmethod
     def _transport_instance(instance):
-        """对外响应剥离图内部字段。"""
-        return {key: value for key, value in dict(instance or {}).items() if key not in {"_id", "_labels"}}
+        """对外响应剥离图内部字段，人工锁定只暴露字段名。"""
+        from apps.cmdb.collection.field_reconcile import COLLECT_SOURCES_ATTR, manual_field_ids
+
+        data = {key: value for key, value in dict(instance or {}).items() if key not in {"_id", "_labels", COLLECT_SOURCES_ATTR}}
+        manual_fields = manual_field_ids(instance or {})
+        if manual_fields:
+            data["manual_fields"] = manual_fields
+        return data
 
     K8S_CHILD_MODELS = ("k8s_namespace", "k8s_workload", "k8s_pod", "k8s_node")
 
@@ -195,7 +201,7 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
 
             field = item.get("field")
             _type = item.get("type")
-            if not field or not _type:
+            if not field or not _type or field == "_collect_sources":
                 return
 
             if _type == "time":
@@ -330,16 +336,29 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
 
         case_sensitive = request.data.get("case_sensitive", True)
         permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(request, model_id)
-        instance_list, count = InstanceManage.instance_list(
-            model_id=model_id,
-            params=query_list,
-            page=page,
-            page_size=page_size,
-            order=request.data.get("order", ""),
-            permission_map=permissions_map,
-            creator=request.user.username,
-            case_sensitive=case_sensitive,
-        )
+        advanced_filter = request.data.get("advanced_filter") or None
+        try:
+            instance_list, count = InstanceManage.instance_list(
+                model_id=model_id,
+                params=query_list,
+                page=page,
+                page_size=page_size,
+                order=request.data.get("order", ""),
+                permission_map=permissions_map,
+                creator=request.user.username,
+                case_sensitive=case_sensitive,
+                advanced_filter=advanced_filter,
+                permission_lookup=lambda mid: CmdbRulesFormatUtil.format_user_groups_permissions(request, mid),
+            )
+        except Exception as exc:
+            from apps.cmdb.graph.advanced_filter import AdvancedFilterError, AdvancedFilterTimeout
+
+            if isinstance(exc, AdvancedFilterTimeout):
+                return WebUtils.response_error(str(exc), status_code=status.HTTP_400_BAD_REQUEST)
+            if isinstance(exc, AdvancedFilterError):
+                message = str(exc) if exc.index is None else f"第{exc.index}个条件：{exc}"
+                return WebUtils.response_error(message, status_code=status.HTTP_400_BAD_REQUEST)
+            raise
         self.add_instance_permission(
             instances=instance_list,
             permission_instances_map=permissions_map,
@@ -822,6 +841,22 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
         return WebUtils.response_success()
 
     @HasPermission("asset_info-Edit")
+    @action(methods=["post"], detail=True, url_path="restore_collect")
+    def restore_collect(self, request, pk: str):
+        if str(pk).isdigit():
+            return WebUtils.response_error("请使用 inst_uuid 定位实例，不再支持数字 ID", status_code=status.HTTP_400_BAD_REQUEST)
+        instance = InstanceManage.query_entity_by_uuid(pk)
+        if not instance or not self._is_instance_model_visible(instance):
+            return WebUtils.response_error("实例不存在", status_code=status.HTTP_404_NOT_FOUND)
+        if not self.check_creator_and_organizations(request, instance):
+            organizations = self.organizations(request, instance)
+            if not organizations or not self.check_instance_permission(request, instance, operator=OPERATE):
+                return WebUtils.response_error("抱歉！您没有此实例的权限", status_code=status.HTTP_403_FORBIDDEN)
+        fields = request.data.get("fields") if isinstance(request.data, dict) else None
+        updated = InstanceManage.restore_auto_collect(instance["_id"], fields)
+        return WebUtils.response_success(self._transport_instance(updated))
+
+    @HasPermission("asset_info-Edit")
     def partial_update(self, request, pk: str):
         import uuid
 
@@ -1210,15 +1245,26 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
         export_ids = [item["_id"] for item in selected_instances]
 
         permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(request, model_id)
-        stream = InstanceManage.inst_export(
-            model_id=model_id,
-            ids=export_ids,
-            permissions_map=permissions_map,
-            attr_list=attr_list,
-            association_list=association_list,
-            creator=request.user.username,
-            file_backed=True,
-        )
+        try:
+            stream = InstanceManage.inst_export(
+                model_id=model_id,
+                ids=export_ids,
+                permissions_map=permissions_map,
+                attr_list=attr_list,
+                association_list=association_list,
+                extra_query=request.data.get("query_list") or [],
+                advanced_filter=request.data.get("advanced_filter") or None,
+                permission_lookup=lambda mid: CmdbRulesFormatUtil.format_user_groups_permissions(request, mid),
+                creator=request.user.username,
+                file_backed=True,
+            )
+        except Exception as exc:
+            from apps.cmdb.graph.advanced_filter import AdvancedFilterError, AdvancedFilterTimeout
+
+            if isinstance(exc, (AdvancedFilterError, AdvancedFilterTimeout)):
+                message = str(exc) if not isinstance(exc, AdvancedFilterError) or exc.index is None else f"第{exc.index}个条件：{exc}"
+                return WebUtils.response_error(message, status_code=status.HTTP_400_BAD_REQUEST)
+            raise
         response = FileResponse(stream, content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
         response["Content-Disposition"] = f"attachment;filename={f'{model_id}_export.xlsx'}"
         if isinstance(getattr(request, "_request", request), ASGIRequest):

@@ -5,6 +5,10 @@
 from celery.schedules import crontab
 
 CELERY_BEAT_SCHEDULE = {
+    "scan_itsm_tickets": {
+        "task": "apps.alerts.tasks.itsm_tasks.scan_itsm_tickets",
+        "schedule": crontab(minute="*"),
+    },
     "event_aggregation_alert": {
         "task": "apps.alerts.tasks.tasks.event_aggregation_alert",
         "schedule": crontab(minute="*"),

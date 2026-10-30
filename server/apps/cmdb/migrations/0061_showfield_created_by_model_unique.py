@@ -85,9 +85,7 @@ def _load_show_fields(value):
 
 def restore_duplicate_show_fields(apps, schema_editor):
     show_field = apps.get_model("cmdb", "ShowField")
-    backed_up_rows = list(
-        _backup_model().objects.using(_using(schema_editor)).order_by("original_id")
-    )
+    backed_up_rows = list(_backup_model().objects.using(_using(schema_editor)).order_by("original_id"))
     for row in backed_up_rows:
         show_field.objects.using(_using(schema_editor)).create(
             id=row.original_id,

@@ -35,6 +35,7 @@ import {
 import { SingleValueSettingsSection } from '@/app/ops-analysis/components/singleValueSettingsSection';
 import { ParamInputConfigEditor } from '@/app/ops-analysis/components/paramInputConfigEditor';
 import { useDataSourceApi } from '@/app/ops-analysis/api/dataSource';
+import { buildLineBarValueFieldOptions } from '@/app/ops-analysis/utils/lineBarFieldMapping';
 import {
   getBindableFilterParams,
   buildDefaultFilterBindings,
@@ -488,6 +489,10 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
     () => buildRoleFieldOptions(availableFields, previewRawData),
     [availableFields, previewRawData],
   );
+  const lineBarValueOptions = useMemo(
+    () => buildLineBarValueFieldOptions(availableFields, roleFieldOptions),
+    [availableFields, roleFieldOptions],
+  );
   const radarIndicators = Form.useWatch(['radar', 'indicators'], form);
   const chartRoleFields = useMemo(
     () => buildChartRoleFields(
@@ -541,6 +546,17 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
     const allowed = new Set(roleFieldOptions.map((option) => option.value));
     chartRoleValuePaths(chartType).forEach((path) => {
       const current = form.getFieldValue(path);
+      if (Array.isArray(current)) {
+        const next = current
+          .filter((item): item is string => typeof item === 'string' && allowed.has(item.trim()))
+          .map((item) => item.trim());
+        const changed = next.length !== current.length
+          || next.some((item, index) => item !== String(current[index] || '').trim());
+        if (changed) {
+          form.setFieldValue(path, next);
+        }
+        return;
+      }
       if (typeof current !== 'string') {
         return;
       }
@@ -983,7 +999,13 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
 
     // Nested cardList fields are registered individually; reset first so omitted
     // optional slots from the previous edit target cannot survive setFieldsValue merge.
-    form.resetFields(['cardList']);
+    form.resetFields([
+      'cardList',
+      'dimensionField',
+      'valueField',
+      'valueFields',
+      'seriesField',
+    ]);
     form.setFieldsValue(formValues);
     // setFieldsValue 在 rc-field-form 2.x 会标记 touched，初始化后清掉以免误报未保存
     markFormPristine(form);
@@ -1384,6 +1406,10 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
           message.error(t('dashboard.chartRoleFieldPairRequired'));
           return;
         }
+        if (submitResult.error === 'lineBarSeriesFieldConflict') {
+          message.error(t('dashboard.lineBarSeriesFieldConflict'));
+          return;
+        }
         if (submitResult.error === 'relatedTopologyModelIdRequired') {
           message.error(t('dashboard.relatedTopologyModelIdRequired'));
           return;
@@ -1729,6 +1755,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
                 t={t}
                 selectedDataSource={selectedDataSource}
                 options={roleFieldOptions}
+                valueOptions={lineBarValueOptions}
                 roles={chartRoleFields}
                 loadingFields={loadingRoleFields}
                 onRefreshFields={fetchRoleFields}

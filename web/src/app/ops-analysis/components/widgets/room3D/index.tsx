@@ -15,6 +15,7 @@ import { useShareMode } from "@/app/ops-analysis/context/shareMode";
 import InteractionDataMenu from "@/app/ops-analysis/components/interactionDataMenu";
 import { InteractionMenuScaleProvider } from "@/app/ops-analysis/context/interactionMenuScale";
 import { resolvePortaledMenuScale } from "@/app/ops-analysis/utils/interactionMenuScale";
+import { resolveRoom3DReadableScale } from "./readableScale";
 import { useWidgetDataLink } from "@/app/ops-analysis/components/interactionTitleIcon";
 import {
   sceneLinkPoint,
@@ -188,23 +189,10 @@ const Room3D: React.FC<Room3DProps> = ({
   const [sceneRenderVersion, setSceneRenderVersion] = useState(0);
 
   const isCompact = (screenRenderContext?.widgetDensity || 0) > 0.5;
-  const readableOverlayScale = useMemo(() => {
-    if (!screenRenderContext?.enabled) {
-      return 1;
-    }
-
-    const fitScale =
-      Number.isFinite(screenRenderContext.fitScale) &&
-      screenRenderContext.fitScale > 0
-        ? screenRenderContext.fitScale
-        : 1;
-    const uiScale =
-      screenRenderContext.widgetUiScale ||
-      screenRenderContext.screenUiScale ||
-      1;
-
-    return Math.max(uiScale, 1 / fitScale, 1);
-  }, [screenRenderContext]);
+  const readableOverlayScale = useMemo(
+    () => resolveRoom3DReadableScale(screenRenderContext),
+    [screenRenderContext],
+  );
   // 悬停卡在画布 transform 里。菜单在 body 上，倍数要乘回画布倍数，屏幕字号才一致。
   const linkMenuScale = useMemo(
     () => resolvePortaledMenuScale(readableOverlayScale, screenRenderContext),

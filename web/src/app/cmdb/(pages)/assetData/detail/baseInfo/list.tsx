@@ -69,7 +69,7 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
   const { flatGroups } = useUserInfoContext();
   const { clientData, loading: clientLoading } = useClientData();
 
-  const { updateInstance, getInstanceProxys, pushToMonitor, unbindMonitor } = useInstanceApi();
+  const { updateInstance, getInstanceProxys, pushToMonitor, unbindMonitor, restoreCollect } = useInstanceApi();
 
   const searchParams = useSearchParams();
   const modelId: string =
@@ -274,6 +274,21 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0 flex-1">
               {item.attr_name}
+              {Array.isArray(instDetail.manual_fields) && instDetail.manual_fields.includes(item.attr_id) ? (
+                <Button
+                  type="link"
+                  size="small"
+                  className="!h-auto !p-0 ml-1 text-xs"
+                  onClick={async (event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    await restoreCollect(instUuid, [item.attr_id]);
+                    onsuccessEdit?.();
+                  }}
+                >
+                  {t('Collection.reconcileManual')} · {t('Collection.reconcileRestore')}
+                </Button>
+              ) : null}
               {item.is_required ? (
                 <span className={informationList.required}></span>
               ) : null}
