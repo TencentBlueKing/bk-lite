@@ -3,6 +3,8 @@ from apps.cmdb.collection.constants import NETWORK_COLLECT
 from apps.cmdb.collection.plugins.base import AutoRegisterCollectionPluginMixin, bind_collection_mapping
 from apps.cmdb.constants.constants import CollectPluginTypes
 
+NETWORK_DEVICE_MODELS = frozenset({"switch", "router", "firewall", "loadbalance"})
+
 NETWORK_DEVICE_MAPPING = {
     "inst_name": CollectNetworkMetrics.set_inst_name,
     "ip_addr": "ip_addr",

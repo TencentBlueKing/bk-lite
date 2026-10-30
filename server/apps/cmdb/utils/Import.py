@@ -466,8 +466,10 @@ class Import:
                 value = cell.value
 
             # 0、0.0 和 False 是有效值。只省略空单元格、空白文本、文本 None 和空容器。
-            if value is None or (isinstance(value, str) and value.strip() in {"", "None"}) or (
-                isinstance(value, (list, dict, tuple)) and len(value) == 0
+            if (
+                value is None
+                or (isinstance(value, str) and value.strip() in {"", "None"})
+                or (isinstance(value, (list, dict, tuple)) and len(value) == 0)
             ):
                 continue
 
@@ -659,14 +661,26 @@ class Import:
         return result
 
     def inst_list_update(self, inst_list):
-        """实例列表更新"""
+        """实例列表更新。值变化的字段记为人工来源，新增行不标记。"""
+        from apps.cmdb.collection.field_reconcile import COLLECT_SOURCES_ATTR, stamp_manual_sources
+
         processed_inst_list = self._prepare_instances_for_save(inst_list)
+        existing = {item.get("inst_name"): item for item in self.exist_items or [] if item.get("inst_name")}
+        for row in processed_inst_list:
+            old = existing.get(row.get("inst_name"))
+            if not old:
+                continue
+            stamped = stamp_manual_sources(old, row)
+            if stamped is not None:
+                row[COLLECT_SOURCES_ATTR] = stamped
+        check_attr_map = self.get_check_attr_map()
+        check_attr_map.setdefault("editable", {})[COLLECT_SOURCES_ATTR] = COLLECT_SOURCES_ATTR
 
         with GraphClient() as ag:
             add_results, update_results = ag.batch_save_entity(
                 INSTANCE,
                 processed_inst_list,
-                self.get_check_attr_map(),
+                check_attr_map,
                 self.exist_items,
                 self.operator,
                 self.attrs,

@@ -221,6 +221,10 @@ def _bulk_build_instant_alerts(hits: List[InstantHit]) -> List[str]:
                     created_alert_ids.append(alert.alert_id)
                 if m2m_rows:
                     Alert.events.through.objects.bulk_create(m2m_rows, ignore_conflicts=True)
+                from apps.alerts.itsm.service import enqueue_creation
+
+                for alert in created:
+                    enqueue_creation(alert)
         except Exception:
             logger.exception(
                 "instant bulk_build failed: strategy_id=%s event_count=%s",

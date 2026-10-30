@@ -727,6 +727,8 @@ export interface DashboardShellProps {
   preserveLayouts?: boolean;
   /** 可选品牌标签（如 'Cisco'）：共享对象仪表盘按实例品牌在头部高亮显示，便于辨认当前盘属于哪个品牌。 */
   brandLabel?: string;
+  /** 实例名右侧的小徽章，例如 Redis 架构芯片。 */
+  identityExtra?: React.ReactNode;
   styles: DashboardStyles;
 }
 
@@ -743,6 +745,7 @@ export const DashboardShell = ({
   preserveLayouts = false,
   unifiedChrome = true,
   brandLabel,
+  identityExtra,
   styles
 }: DashboardShellProps) => {
   const { dt } = useDashboardText();
@@ -843,6 +846,7 @@ export const DashboardShell = ({
         onFrequenceChange: dashboard.setFrequence,
         onRefresh: dashboard.onRefresh
       }}
+      identityExtra={identityExtra}
       styles={styles}
     />
   );

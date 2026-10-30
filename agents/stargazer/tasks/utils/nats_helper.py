@@ -21,6 +21,7 @@ from contextvars import ContextVar
 from typing import Any, Dict, Iterable, Iterator
 
 from core.collection.contracts import StructuredMetricsPayload
+from core.collection.host_proc_influx import host_proc_line
 from core.infra.control_transport import get_control_transport
 from core.infra.nats_utils import NatsLinesPublishError, nats_publish_lines
 from core.logger import safe_exception_info, safe_log_value
@@ -730,17 +731,19 @@ def _iter_structured_metrics_to_influx(payload: StructuredMetricsPayload, params
             _check_encode_cancelled()
             if not isinstance(item, dict):
                 continue
-            point = Point(f"{model_id}_info")
-            labels = {
-                str(key): str(value).replace("\r", " ").replace("\n", " ").strip()
-                for key, value in item.items()
-                if value is not None and value != "" and not isinstance(value, (list, dict))
-            }
+            labels = {str(key): value for key, value in item.items() if value is not None and value != "" and not isinstance(value, (list, dict))}
             labels["model_id"] = str(model_id)
             labels.update(common_tags)
+            if str(model_id) == "host_proc_usage":
+                proc_line = host_proc_line(labels, timestamp_ns)
+                if proc_line:
+                    yield proc_line
+                continue
+            point = Point(f"{model_id}_info")
             for key, value in labels.items():
-                if value:
-                    point.tag(key, value)
+                text = str(value).replace("\r", " ").replace("\n", " ").strip()
+                if text:
+                    point.tag(key, text)
             point.field("gauge", 1)
             point.time(timestamp_ns, WritePrecision.NS)
             yield point.to_line_protocol()
@@ -880,6 +883,13 @@ def _prometheus_line_to_influx(
     for tag_key, tag_value in common_tags.items():
         if tag_value:
             all_tags[tag_key] = tag_value
+    if metric_name == "host_proc_usage_info":
+        # 坏进程行只丢这一条，不能把同批 host_info 一起打掉。
+        try:
+            timestamp_ns = _influx_timestamp_ns(timestamp_str)
+        except ValueError:
+            return None
+        return host_proc_line(all_tags, timestamp_ns)
     for tag_key, tag_value in all_tags.items():
         point.tag(tag_key, tag_value)
 
@@ -894,21 +904,25 @@ def _prometheus_line_to_influx(
 
     if timestamp_str:
         try:
-            ts = int(timestamp_str)
-            if len(timestamp_str) == 13:
-                ts_ns = ts * 1000000
-            elif len(timestamp_str) == 10:
-                ts_ns = ts * 1000000000
-            elif len(timestamp_str) == 19:
-                ts_ns = ts
-            elif ts > 9999999999999:
-                ts_ns = int(str(ts)[:19].ljust(19, "0"))
-            else:
-                ts_ns = ts * 1000000
-            point.time(ts_ns, WritePrecision.NS)
+            point.time(_influx_timestamp_ns(timestamp_str), WritePrecision.NS)
         except ValueError as error:
             raise MetricFormatError("metric timestamp must be an integer") from error
     return point.to_line_protocol()
+
+
+def _influx_timestamp_ns(timestamp_str: str) -> int | None:
+    if not timestamp_str:
+        return None
+    ts = int(timestamp_str)
+    if len(timestamp_str) == 13:
+        return ts * 1000000
+    if len(timestamp_str) == 10:
+        return ts * 1000000000
+    if len(timestamp_str) == 19:
+        return ts
+    if ts > 9999999999999:
+        return int(str(ts)[:19].ljust(19, "0"))
+    return ts * 1000000
 
 
 def _parse_prometheus_labels(label_str: str) -> Dict[str, str]:

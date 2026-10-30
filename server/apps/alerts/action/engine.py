@@ -15,7 +15,7 @@ class ActionEngine:
         """同步评估并分派（在 Celery 任务内调用）。"""
         payload = build_rule_payload(alert, include_source_names=False)
         alert_teams = set(alert.team or [])
-        rules = ActionRule.objects.filter(is_active=True, scope="alert")
+        rules = ActionRule.objects.filter(is_active=True, scope="alert").exclude(action_type="itsm")
         for rule in rules:
             if event_name not in (rule.trigger_events or []):
                 continue

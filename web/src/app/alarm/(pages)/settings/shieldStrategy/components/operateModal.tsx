@@ -9,6 +9,10 @@ import EffectiveTime, {
 } from '@/app/alarm/(pages)/settings/components/effectiveTime';
 import { useTranslation } from '@/utils/i18n';
 import { useSettingApi } from '@/app/alarm/api/settings';
+import { useCommon } from '@/app/alarm/context/common';
+import { STATUS_TEXT } from '@/app/alarm/constants/colors';
+import { shieldRuntimeColor, shieldRuntimeLabelKey } from '@/app/alarm/utils/shieldDisplay';
+import { formatUserDisplayName, UserDisplayItem } from '@/utils/userDisplay';
 import { Form, Input, Radio, Button, Drawer, message } from 'antd';
 
 interface OperateModalProps {
@@ -25,6 +29,7 @@ const OperateModalPage: React.FC<OperateModalProps> = ({
   onSuccess,
 }) => {
   const { t } = useTranslation();
+  const { userList } = useCommon();
   const { createShield, updateShield } = useSettingApi();
   const [form] = Form.useForm();
   const [submitLoading, setSubmitLoading] = useState(false);
@@ -54,6 +59,7 @@ const OperateModalPage: React.FC<OperateModalProps> = ({
   }, [open, currentRow, form]);
 
   const ruleType = Form.useWatch('match_type', form);
+  const runtimeLabelKey = shieldRuntimeLabelKey(currentRow?.runtime_status);
 
   const onFinish = async (values: any) => {
     setSubmitLoading(true);
@@ -115,6 +121,26 @@ const OperateModalPage: React.FC<OperateModalProps> = ({
         layout="vertical"
         onFinish={onFinish}
       >
+        {currentRow ? (
+          <div className="mb-6 grid grid-cols-2 gap-4">
+            <div>
+              <div className="mb-1 text-[var(--color-text-3)]">{t('settings.shieldDisplay.creator')}</div>
+              <div>{formatUserDisplayName(currentRow.created_by, userList as UserDisplayItem[])}</div>
+            </div>
+            <div>
+              <div className="mb-1 text-[var(--color-text-3)]">{t('settings.shieldDisplay.enableStatus')}</div>
+              <div style={{ color: currentRow.is_active ? STATUS_TEXT.ACTIVE_GREEN : STATUS_TEXT.INACTIVE_RED }}>
+                {currentRow.is_active ? t('settings.shieldDisplay.enabled') : t('settings.shieldDisplay.disabled')}
+              </div>
+            </div>
+            <div>
+              <div className="mb-1 text-[var(--color-text-3)]">{t('settings.shieldDisplay.runtimeStatus')}</div>
+              <div style={{ color: shieldRuntimeColor(currentRow.runtime_status) }}>
+                {runtimeLabelKey ? t(runtimeLabelKey) : '--'}
+              </div>
+            </div>
+          </div>
+        ) : null}
         <Form.Item
           name="name"
           label={t('settings.assignName')}

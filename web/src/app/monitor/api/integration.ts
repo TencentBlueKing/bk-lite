@@ -240,6 +240,15 @@ const useIntegrationApi = () => {
           data
         );
       },
+      unbindMonitorPlugin: async (data: {
+        instance_id: React.Key;
+        monitor_plugin_id: React.Key;
+      }) => {
+        return await post(
+          `/monitor/api/monitor_instance/unbind_monitor_plugin/`,
+          data
+        );
+      },
       deleteMonitorMetrics: async (id: string | number) => {
         return await del(`/monitor/api/metrics/${id}/`);
       },

@@ -33,12 +33,16 @@ error:
   error_rate_delta_range: 错误率、慢请求占比和 Apdex 的变化量必须在 -1 到 1 之间。
   compare_absolute_kind: 当前值比较不能再选择变化量或变化率。
   compare_previous_kind: 相对上一等长窗必须选择变化量或变化率。
-  compare_offset_percent_only: 同窗比较只允许变化率。
+  compare_offset_kind: N 小时前 / N 天前同窗只能选变化量或变化率。
+  window_shorter_than_interval: 汇聚周期不能短于检测频率，否则两次评估之间的数据不会被检查。
   compare_offset_amount_required: 请填写对照的小时数或天数。
   compare_offset_amount_range: 对照小时数须在 1 到 840 之间，天数须在 1 到 35 之间。
   compare_offset_amount_unused: 只有同窗比较可以填写小时数或天数。
   compare_baseline_days_range: 近 N 天同窗均值的天数须在 2 到 7 之间。
-  compare_baseline_days_kind: 近 N 天同窗均值必须选择变化量或变化率。
+  compare_baseline_days_kind: 近 N 天同窗均值必须选择变化量、变化率或标准差倍数。
+  sigma_baseline: 标准差倍数只适用于近 N 天同窗均值，且天数至少为 3。
+  sigma_k: 标准差倍数的阈值 k 须在 0.5 到 5 之间。
+  replay_hours: 回放只支持 0 或 24 小时。
   compare_offset_shorter_than_window: 对照长度不能短于汇聚周期。
   compare_no_traffic_absolute: 无流量只允许和当前值比较。
   compare_min_request_metric: 最低请求数只适用于错误率、慢请求占比、Apdex 和时延。
@@ -54,6 +58,25 @@ error:
   recovery_direction: 恢复阈值的比较方向必须与触发线相反。
   recovery_value: 恢复阈值必须是有限数字。
   no_traffic_plain: 无流量不能带触发周期或恢复阈值。
+  conditions_shape: 条件格式不正确。
+  conditions_count: 常规条件须为 1 到 3 条。
+  conditions_guard_count: 前置条件最多 2 条。
+  conditions_ref_duplicate: 条件标识不能重复。
+  conditions_guard_shape: 前置条件不能带级别、比较基准或无流量。
+  conditions_windows: 一条策略最多两个不同的对照窗。
+  conditions_no_traffic: 无流量只能单独作为当前值条件。
+  conditions_recovery_anchor: 恢复阈值只能作用于第一条条件。
+  scope_service_ids: 多服务范围需要 2 到 20 个已存在的服务。
+  scope_application_required: 按应用范围必须选择应用。
+  scope_application_empty: 该应用下没有可监控的服务。
+  dependency_scope: 下游依赖不能再按端点或实例拆开。
+  dependency_metric: Apdex 和无流量不适用于下游依赖。
+  dependency_item: 每条依赖都要有通道、系统和语句。
+  burn_plain: SLO 燃烧率只按这条 SLO 计算，不能再叠加范围、依赖、多条件、比较基准或恢复阈值。
+  burn_slo: 请选择一条 SLO。
+  burn_window: 长窗为 60 到 1440 分钟，短窗为 5 分钟到长窗的一半。
+  burn_comparator: SLO 燃烧率只允许大于或大于等于。
+  burn_metric: 只有 SLO 燃烧率策略可以填写 SLO 和燃烧窗口。
   threshold_comparator: 多级阈值必须使用相同比较符。
   threshold_monotonic: 多级阈值必须按严重、错误、警告保持单调。
   deployment_window_limit: 部署事件查询时间窗不能超过 90 天

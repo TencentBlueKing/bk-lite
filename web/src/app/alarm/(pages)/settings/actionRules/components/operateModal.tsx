@@ -22,6 +22,8 @@ import {
 import { useTranslation } from '@/utils/i18n';
 import { useSettingApi } from '@/app/alarm/api/settings';
 import MatchRule from './matchRule';
+import ItsmFields from './itsmFields';
+import useApiClient from '@/utils/request';
 import GroupTreeSelect from '@/components/group-tree-select';
 import FieldBindingTable, { ScriptParam } from './fieldBindingTable';
 import { ActionConfig, ActionRuleListItem } from '@/app/alarm/types/settings';
@@ -62,6 +64,19 @@ const OperateModal: React.FC<OperateModalProps> = ({
   } = useSettingApi();
 
   const [form] = Form.useForm();
+  const isItsm = Form.useWatch('action_type', form) === 'itsm';
+  const { get } = useApiClient();
+  const [itsmConnections, setItsmConnections] = useState<{ value: string; label: string }[]>([]);
+  useEffect(() => {
+    if (!open || !isItsm) return;
+    const events = (form.getFieldValue('trigger_events') || []) as string[];
+    form.setFieldsValue({ auto_execute: true, trigger_events: events.includes('created') ? events : ['created', ...events] });
+    get<{ value: string; label: string }[]>('/alerts/api/action_rule/itsm_connections/')
+      .then(connections => {
+        setItsmConnections(connections);
+        if (connections.length === 1 && !form.getFieldValue('connection')) form.setFieldValue('connection', connections[0].value);
+      }).catch(() => setItsmConnections([]));
+  }, [open, isItsm, get, form]);
   const [submitLoading, setSubmitLoading] = useState(false);
   const [scriptOptions, setScriptOptions] = useState<
     { value: number; label: string }[]
@@ -135,6 +150,10 @@ const OperateModal: React.FC<OperateModalProps> = ({
             ? currentRow.match_rules
             : DEFAULT_MATCH_RULES,
         action_type: currentRow.action_type || 'job',
+        connection: config.connection,
+        workflow_key: config.workflow_key,
+        form_bindings: config.form_bindings || [{ name: 'ticket__title', from: 'field', value: 'title' }],
+        close_alert_on_ticket_closed: config.close_alert_on_ticket_closed || false,
         script_id: config.script_id,
         host_mode: config.target_binding?.mode || 'from_alert',
         host_field: config.target_binding?.host_field || 'ip_addr',
@@ -156,6 +175,8 @@ const OperateModal: React.FC<OperateModalProps> = ({
         is_active: true,
         auto_execute: true,
         action_type: 'job',
+        form_bindings: [{ name: 'ticket__title', from: 'field', value: 'title' }],
+        close_alert_on_ticket_closed: false,
         host_mode: 'from_alert',
         host_field: 'ip_addr',
         host_ip: '',
@@ -209,7 +230,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
       const scriptId = values.script_id as number | undefined;
       const hostMode = ((values.host_mode as string) || 'from_alert') as 'from_alert' | 'fixed';
       const paramBindings = (values.param_bindings as ActionConfig['param_bindings']) || [];
-      if (fieldBindingsIncomplete(paramBindings)) {
+      if (!isItsm && fieldBindingsIncomplete(paramBindings)) {
         message.error(t('common.inputTip'));
         return;
       }
@@ -225,7 +246,12 @@ const OperateModal: React.FC<OperateModalProps> = ({
         targetBinding.host_field = (values.host_field as string) || 'ip_addr';
       }
 
-      const actionConfig: ActionConfig = {
+      const actionConfig: ActionConfig = isItsm ? {
+        connection: values.connection as string,
+        workflow_key: values.workflow_key as string,
+        form_bindings: values.form_bindings as ActionConfig['form_bindings'],
+        close_alert_on_ticket_closed: false,
+      } : {
         script_id: scriptId,
         target_binding: targetBinding,
         param_bindings: paramBindings.map((b) =>
@@ -244,8 +270,10 @@ const OperateModal: React.FC<OperateModalProps> = ({
         name: values.name as string,
         team: (values.team as number[]) || [],
         is_active: values.is_active as boolean,
-        auto_execute: values.auto_execute !== false,
-        trigger_events: (values.trigger_events as string[]) || [],
+        auto_execute: isItsm || values.auto_execute !== false,
+        trigger_events: isItsm
+          ? Array.from(new Set(['created', ...((values.trigger_events as string[]) || [])]))
+          : (values.trigger_events as string[]) || [],
         match_rules: (values.match_rules as ActionRuleListItem['match_rules']) || [],
         action_type: (values.action_type as ActionRuleListItem['action_type']) || 'job',
         action_config: actionConfig,
@@ -347,7 +375,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
           extra={t('settings.actionAutoExecuteTip')}
           valuePropName="checked"
         >
-          <Switch />
+          <Switch disabled={isItsm} />
         </Form.Item>
 
         {/* ② 触发时机 */}
@@ -361,6 +389,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
             options={ACTION_TRIGGER_EVENTS.map(({ value, labelKey }) => ({
               value,
               label: t(labelKey),
+              disabled: isItsm && value === 'created',
             }))}
           />
         </Form.Item>
@@ -409,6 +438,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
           />
         </Form.Item>
 
+        {isItsm ? <ItsmFields connections={itsmConnections} /> : <>
         <Form.Item
           name="host_mode"
           label={t('settings.actionTargetHostMode')}
@@ -496,6 +526,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
             </Form.Item>
           </>
         )}
+        </>}
       </Form>
     </Drawer>
   );

@@ -107,38 +107,25 @@ def test_migration_dedupes_show_field_and_reverse_restores_backup():
         assert low.pk < high.pk
 
         with pytest.raises(MultipleObjectsReturned):
-            InstanceManage.create_or_update(
-                {"show_fields": ["later"], "model_id": "host", "created_by": "alice"}
-            )
+            InstanceManage.create_or_update({"show_fields": ["later"], "model_id": "host", "created_by": "alice"})
 
         executor = MigrationExecutor(connection)
         executor.migrate(NEW_TARGET)
         migrated = executor.loader.project_state(NEW_TARGET).apps.get_model("cmdb", "ShowField")
 
-        assert list(migrated.objects.filter(created_by="alice", model_id="host").values_list("id", "show_fields")) == [
-            (newer.pk, ["fresh"])
-        ]
-        assert list(migrated.objects.filter(created_by="bob", model_id="host").values_list("id", "show_fields")) == [
-            (high.pk, ["high"])
-        ]
+        assert list(migrated.objects.filter(created_by="alice", model_id="host").values_list("id", "show_fields")) == [(newer.pk, ["fresh"])]
+        assert list(migrated.objects.filter(created_by="bob", model_id="host").values_list("id", "show_fields")) == [(high.pk, ["high"])]
         assert migrated.objects.get(pk=solo.pk).show_fields == ["solo"]
         assert _constraint_columns(migrated._meta.db_table) == ["created_by", "model_id"]
         assert sorted(_backup_rows()) == sorted(
-            [
-                (row.pk, row.created_by, row.model_id, row.show_fields, row.created_at, row.updated_at)
-                for row in removed
-            ]
+            (row.pk, row.created_by, row.model_id, row.show_fields, row.created_at, row.updated_at) for row in removed
         )
 
-        saved = InstanceManage.create_or_update(
-            {"show_fields": ["saved"], "model_id": "host", "created_by": "alice"}
-        )
+        saved = InstanceManage.create_or_update({"show_fields": ["saved"], "model_id": "host", "created_by": "alice"})
         assert saved["show_fields"] == ["saved"]
         assert migrated.objects.filter(created_by="alice", model_id="host").count() == 1
         with pytest.raises(BaseAppException, match="展示字段不能为空！"):
-            InstanceManage.create_or_update(
-                {"show_fields": [], "model_id": "host", "created_by": "alice"}
-            )
+            InstanceManage.create_or_update({"show_fields": [], "model_id": "host", "created_by": "alice"})
 
         executor = MigrationExecutor(connection)
         executor.migrate(OLD_TARGET)
@@ -161,9 +148,7 @@ def test_migration_dedupes_show_field_and_reverse_restores_backup():
         assert restored.objects.filter(pk=newer.pk).exists()
         assert restored.objects.filter(pk=high.pk).exists()
         with pytest.raises(MultipleObjectsReturned):
-            InstanceManage.create_or_update(
-                {"show_fields": ["again"], "model_id": "host", "created_by": "bob"}
-            )
+            InstanceManage.create_or_update({"show_fields": ["again"], "model_id": "host", "created_by": "bob"})
     finally:
         MigrationExecutor(connection).migrate(latest)
         _clear_backup_table()
@@ -183,9 +168,7 @@ def test_concurrent_first_save_keeps_one_submitted_row():
     def worker(show_fields):
         close_old_connections()
         try:
-            InstanceManage.create_or_update(
-                {"show_fields": show_fields, "model_id": "host", "created_by": "race-user"}
-            )
+            InstanceManage.create_or_update({"show_fields": show_fields, "model_id": "host", "created_by": "race-user"})
         except Exception as exc:
             errors.append(exc)
         finally:
@@ -210,9 +193,7 @@ def test_concurrent_first_save_keeps_one_submitted_row():
     assert len(rows) == 1
     assert rows[0].show_fields in (["left"], ["right"])
 
-    again = InstanceManage.create_or_update(
-        {"show_fields": ["after"], "model_id": "host", "created_by": "race-user"}
-    )
+    again = InstanceManage.create_or_update({"show_fields": ["after"], "model_id": "host", "created_by": "race-user"})
     assert again["show_fields"] == ["after"]
     assert ShowField.objects.filter(created_by="race-user", model_id="host").count() == 1
     assert InstanceManage.get_info("host", "race-user") == {"model_id": "host", "show_fields": ["after"]}
@@ -220,26 +201,16 @@ def test_concurrent_first_save_keeps_one_submitted_row():
 
 @pytest.mark.django_db
 def test_sequential_save_and_empty_list_stay_unchanged():
-    created = InstanceManage.create_or_update(
-        {"show_fields": ["inst_name"], "model_id": "host", "created_by": "seq-user"}
-    )
-    updated = InstanceManage.create_or_update(
-        {"show_fields": ["ip"], "model_id": "host", "created_by": "seq-user"}
-    )
+    created = InstanceManage.create_or_update({"show_fields": ["inst_name"], "model_id": "host", "created_by": "seq-user"})
+    updated = InstanceManage.create_or_update({"show_fields": ["ip"], "model_id": "host", "created_by": "seq-user"})
     assert created["model_id"] == "host"
     assert updated["show_fields"] == ["ip"]
-    assert list(
-        ShowField.objects.filter(created_by="seq-user", model_id="host").values_list("show_fields", flat=True)
-    ) == [["ip"]]
+    assert list(ShowField.objects.filter(created_by="seq-user", model_id="host").values_list("show_fields", flat=True)) == [["ip"]]
     assert InstanceManage.get_info("host", "seq-user") == {"model_id": "host", "show_fields": ["ip"]}
 
-    InstanceManage.create_or_update(
-        {"show_fields": ["name"], "model_id": "net", "created_by": "seq-user"}
-    )
+    InstanceManage.create_or_update({"show_fields": ["name"], "model_id": "net", "created_by": "seq-user"})
     assert ShowField.objects.filter(created_by="seq-user").count() == 2
 
     with pytest.raises(BaseAppException, match="展示字段不能为空！"):
-        InstanceManage.create_or_update(
-            {"show_fields": [], "model_id": "host", "created_by": "seq-user"}
-        )
+        InstanceManage.create_or_update({"show_fields": [], "model_id": "host", "created_by": "seq-user"})
     assert ShowField.objects.get(created_by="seq-user", model_id="host").show_fields == ["ip"]

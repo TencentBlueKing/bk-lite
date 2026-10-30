@@ -8,7 +8,7 @@ from neo4j.graph import Path
 
 from apps.cmdb.constants.constants import INSTANCE, ModelConstraintKey
 from apps.cmdb.display_field import ExcludeFieldsCache
-from apps.cmdb.graph.format_type import FORMAT_TYPE_PARAMS, ParameterCollector, attr_values_equal, coerce_cloud_id_properties
+from apps.cmdb.graph.format_type import FORMAT_TYPE_PARAMS, ParameterCollector, apply_node_alias, attr_values_equal, coerce_cloud_id_properties
 from apps.cmdb.graph.validators import CQLValidator
 from apps.cmdb.services.unique_rule import raise_unique_rule_conflict_if_needed
 from apps.core.exceptions.base_app_exception import BaseAppException
@@ -309,6 +309,7 @@ class Neo4jClient:
         param_type: str = "AND",
         collector: ParameterCollector = None,
         param_collector: ParameterCollector = None,
+        alias: str = "n",
     ):
         """
         参数化查询格式化（使用 FORMAT_TYPE_PARAMS 消除 Cypher 注入风险）。
@@ -335,7 +336,7 @@ class Neo4jClient:
             parts.append(method(param, collector))
 
         params_str = f"({sep.join(parts)})" if parts else ""
-        return params_str, collector.get_params()
+        return apply_node_alias(params_str, alias), collector.get_params()
 
     def format_final_params(self, search_params: list, search_param_type: str = "AND", permission_params=""):
         """组合用户查询条件与权限条件，返回 (combined_str, query_params) 元组。"""
@@ -437,6 +438,36 @@ class Neo4jClient:
             sql_str += f" SKIP {page['skip']} LIMIT {page['limit']}"
 
         objs = self.session.run(sql_str, **query_params)
+        if fields is not None:
+            return [coerce_cloud_id_properties(dict(record[0])) for record in objs], count
+        return self.entity_to_list(objs), count
+
+    def query_compiled_entities(
+        self,
+        match,
+        params,
+        page=None,
+        order=None,
+        order_type="ASC",
+        fields=None,
+        include_count=True,
+    ):
+        from apps.cmdb.graph.advanced_filter import ADVANCED_FILTER_TIMEOUT_SECONDS, AdvancedFilterTimeout, data_and_count_statements
+        from apps.cmdb.graph.export_query import entity_projection
+
+        validated_order = CQLValidator.validate_field(order) if order else None
+        validated_order_type = CQLValidator.validate_order_type(order_type)
+        projection = "n" if fields is None else entity_projection(fields)
+        data_sql, count_sql = data_and_count_statements(match, projection, validated_order, validated_order_type, page)
+        try:
+            count = None
+            if page and include_count:
+                count = self.session.run(count_sql, params or {}, timeout=ADVANCED_FILTER_TIMEOUT_SECONDS).single()["count"]
+            objs = self.session.run(data_sql, params or {}, timeout=ADVANCED_FILTER_TIMEOUT_SECONDS)
+        except Exception as exc:
+            if "timeout" in str(exc).lower():
+                raise AdvancedFilterTimeout("关联筛选查询超时，请缩小条件范围") from exc
+            raise
         if fields is not None:
             return [coerce_cloud_id_properties(dict(record[0])) for record in objs], count
         return self.entity_to_list(objs), count

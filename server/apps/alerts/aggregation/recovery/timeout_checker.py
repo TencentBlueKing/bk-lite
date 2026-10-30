@@ -52,8 +52,14 @@ class TimeoutChecker:
         保持 Alert 处于活跃状态（不自动关闭）
         """
         with transaction.atomic():
+            alert = Alert.objects.select_for_update().get(pk=alert.pk)
+            if alert.session_status != SessionStatus.OBSERVING or alert.status not in AlertStatus.ACTIVATE_STATUS:
+                return
             alert.session_status = SessionStatus.CONFIRMED
             alert.save(update_fields=["session_status", "updated_at"])
+            from apps.alerts.itsm.service import enqueue_creation
+
+            enqueue_creation(alert)
             TimeoutChecker._trigger_auto_assignment(alert)
 
         logger.info(
@@ -117,8 +123,14 @@ class TimeoutChecker:
         with transaction.atomic():
             for batch in iter_queryset_in_pk_batches(observing_alerts, batch_size=200):
                 for alert in batch:
+                    alert = Alert.objects.select_for_update().get(pk=alert.pk)
+                    if alert.session_status != SessionStatus.OBSERVING or alert.status not in AlertStatus.ACTIVATE_STATUS:
+                        continue
                     alert.session_status = SessionStatus.CONFIRMED
                     alert.save(update_fields=["session_status", "updated_at"])
+                    from apps.alerts.itsm.service import enqueue_creation
+
+                    enqueue_creation(alert)
                     confirmed_count += 1
                     confirmed_alert_ids.append(alert.alert_id)
 

@@ -1,3 +1,4 @@
+import re
 from datetime import timedelta
 from decimal import Decimal, InvalidOperation
 
@@ -7,6 +8,7 @@ from rest_framework import serializers
 from apps.apm.models import ApmApplication, ApmDeploymentEvent, ApmPolicy, ApmPolicyTargetState, ApmService, ApmServiceInstance, ApmSlo
 from apps.apm.services.identity import normalize_identity
 from apps.apm.services.policies import MAX_POLICY_TARGETS
+from apps.apm.services.policy_conditions import MIRROR_FIELDS, REQUEST_COUNT_METRIC, anchor_from_policy, compare_window_key
 from apps.apm.services.query import MAX_METRIC_WINDOW
 from apps.apm.services.status import catalog_status
 from apps.apm.utils.locale_text import serializer_text
@@ -456,6 +458,16 @@ class PolicyOrganizationsField(serializers.ListField):
 
 class ApmPolicySerializer(serializers.ModelSerializer):
     service_id = serializers.UUIDField(required=False)
+    scope_mode = serializers.ChoiceField(choices=ApmPolicy.ScopeMode.choices, required=False)
+    service_ids = serializers.ListField(child=serializers.UUIDField(), required=False, allow_empty=True, max_length=20)
+    application = serializers.PrimaryKeyRelatedField(queryset=ApmApplication.objects.all(), required=False, allow_null=True)
+    endpoint_mode = serializers.ChoiceField(choices=ApmPolicy.EndpointMode.choices, required=False)
+    instance_mode = serializers.ChoiceField(choices=ApmPolicy.InstanceMode.choices, required=False)
+    target_kind = serializers.ChoiceField(choices=ApmPolicy.TargetKind.choices, required=False)
+    dependencies = serializers.ListField(child=serializers.DictField(), required=False, allow_empty=True, max_length=20)
+    slo = serializers.PrimaryKeyRelatedField(queryset=ApmSlo.objects.all(), required=False, allow_null=True)
+    burn_long_window_minutes = serializers.IntegerField(required=False, allow_null=True, min_value=60, max_value=1440)
+    burn_short_window_minutes = serializers.IntegerField(required=False, allow_null=True, min_value=5, max_value=720)
     service_namespace = serializers.CharField(source="service.namespace", read_only=True)
     service_name = serializers.CharField(source="service.name", read_only=True)
     organizations = PolicyOrganizationsField(
@@ -468,15 +480,17 @@ class ApmPolicySerializer(serializers.ModelSerializer):
     compare_mode = serializers.ChoiceField(choices=ApmPolicy.CompareMode.choices, required=False)
     compare_offset_amount = serializers.IntegerField(min_value=1, required=False, allow_null=True)
     compare_value_kind = serializers.ChoiceField(
-        choices=(("delta", "delta"), ("percent", "percent")),
+        choices=(("delta", "delta"), ("percent", "percent"), ("sigma", "sigma")),
         required=False,
         allow_blank=True,
     )
+    replay_hours = serializers.IntegerField(required=False, allow_null=True, write_only=True)
     min_request_count = serializers.IntegerField(min_value=1, max_value=100000, required=False, allow_null=True)
     slow_threshold_ms = serializers.IntegerField(required=False, allow_null=True)
     apdex_threshold_ms = serializers.IntegerField(required=False, allow_null=True)
     trigger_window = serializers.IntegerField(required=False, allow_null=True, min_value=1, max_value=20)
     recovery_threshold = serializers.JSONField(required=False, allow_null=True)
+    conditions = serializers.JSONField(required=False)
     endpoints = serializers.ListField(
         child=serializers.CharField(max_length=512, allow_blank=False),
         required=False,
@@ -497,6 +511,16 @@ class ApmPolicySerializer(serializers.ModelSerializer):
             "id",
             "name",
             "service_id",
+            "scope_mode",
+            "service_ids",
+            "application",
+            "endpoint_mode",
+            "instance_mode",
+            "target_kind",
+            "dependencies",
+            "slo",
+            "burn_long_window_minutes",
+            "burn_short_window_minutes",
             "service_namespace",
             "service_name",
             "organizations",
@@ -508,21 +532,19 @@ class ApmPolicySerializer(serializers.ModelSerializer):
             "metric_type",
             "evaluation_interval",
             "metric_window",
-            "aggregation",
             "compare_mode",
             "compare_offset_amount",
             "compare_value_kind",
+            "replay_hours",
             "min_request_count",
             "slow_threshold_ms",
             "apdex_threshold_ms",
             "thresholds",
+            "conditions",
             "trigger_after",
             "trigger_window",
             "recovery_threshold",
             "recover_after",
-            "no_data_after",
-            "no_data_severity",
-            "no_data_alert_name",
             "notification_targets",
             "handlers",
             "is_enabled",
@@ -538,10 +560,13 @@ class ApmPolicySerializer(serializers.ModelSerializer):
             "metric_window": {"min_value": 1, "max_value": 1440},
             "trigger_after": {"min_value": 1, "max_value": 60},
             "recover_after": {"min_value": 1, "max_value": 60},
-            "no_data_after": {"min_value": 1, "max_value": 60, "allow_null": True},
         }
 
+    _IGNORED_INPUT_KEYS = frozenset({"aggregation", "no_data_after", "no_data_severity", "no_data_alert_name"})
+
     def to_internal_value(self, data):
+        if isinstance(data, dict):
+            data = {key: value for key, value in data.items() if key not in self._IGNORED_INPUT_KEYS}
         unknown_fields = sorted(set(data) - set(self.fields))
         if unknown_fields:
             raise serializers.ValidationError({field: serializer_text(self, "error.policy_field_unsupported") for field in unknown_fields})
@@ -563,13 +588,221 @@ class ApmPolicySerializer(serializers.ModelSerializer):
     def validate_organizations(self, value):
         return sorted(set(value))
 
+    _CONDITION_REF = re.compile(r"^[A-Za-z][A-Za-z0-9_]{0,15}$")
+    _REGULAR_KEYS = frozenset(
+        {
+            "ref",
+            "role",
+            "metric_type",
+            "compare_mode",
+            "compare_offset_amount",
+            "compare_value_kind",
+            "min_request_count",
+            "slow_threshold_ms",
+            "apdex_threshold_ms",
+            "thresholds",
+        }
+    )
+    _GUARD_KEYS = frozenset(
+        {
+            "ref",
+            "role",
+            "metric_type",
+            "comparator",
+            "value",
+            "slow_threshold_ms",
+            "apdex_threshold_ms",
+        }
+    )
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        conditions = data.get("conditions") or [anchor_from_policy(instance)]
+        data["conditions"] = [self._without_aggregation(item) for item in conditions]
+        return data
+
+    @staticmethod
+    def _without_aggregation(item):
+        if not isinstance(item, dict) or "aggregation" not in item:
+            return item
+        return {key: value for key, value in item.items() if key != "aggregation"}
+
+    def _condition_error(self, key):
+        raise serializers.ValidationError({"conditions": serializer_text(self, key)})
+
+    def _validate_condition_list(self, raw, metric_window):
+        if not isinstance(raw, list):
+            self._condition_error("error.conditions_shape")
+        regulars = []
+        guards = []
+        ordered = []
+        refs = []
+        for item in raw:
+            if not isinstance(item, dict):
+                self._condition_error("error.conditions_shape")
+            if "recovery_threshold" in item:
+                self._condition_error("error.conditions_recovery_anchor")
+            role = item.get("role")
+            if role == "guard":
+                normalized = self._normalize_guard(item)
+                guards.append(normalized)
+            elif role == "regular":
+                normalized = self._normalize_regular(item, metric_window)
+                regulars.append(normalized)
+            else:
+                self._condition_error("error.conditions_shape")
+            ordered.append(normalized)
+            refs.append(normalized["ref"])
+        if not 1 <= len(regulars) <= 3:
+            self._condition_error("error.conditions_count")
+        if len(guards) > 2:
+            self._condition_error("error.conditions_guard_count")
+        if len(refs) != len(set(refs)):
+            self._condition_error("error.conditions_ref_duplicate")
+        windows = {key for key in (compare_window_key(item) for item in regulars) if key is not None}
+        if len(windows) > 2:
+            self._condition_error("error.conditions_windows")
+        no_traffic = [item for item in regulars if item["metric_type"] == ApmPolicy.MetricType.NO_TRAFFIC]
+        if no_traffic and (len(regulars) != 1 or guards or no_traffic[0]["compare_mode"] != ApmPolicy.CompareMode.ABSOLUTE):
+            self._condition_error("error.conditions_no_traffic")
+        return ordered
+
+    def _clean_ref(self, item):
+        ref = str(item.get("ref") or "")
+        if not self._CONDITION_REF.match(ref):
+            self._condition_error("error.conditions_shape")
+        return ref
+
+    def _normalize_guard(self, item):
+        unknown = set(item) - self._GUARD_KEYS
+        if unknown or item.get("metric_type") == ApmPolicy.MetricType.NO_TRAFFIC:
+            self._condition_error("error.conditions_guard_shape")
+        metric_type = str(item.get("metric_type") or "")
+        allowed = {choice for choice, _label in ApmPolicy.MetricType.choices} | {REQUEST_COUNT_METRIC}
+        if metric_type == ApmPolicy.MetricType.SLO_BURN_RATE:
+            self._condition_error("error.burn_plain")
+        if metric_type not in allowed:
+            self._condition_error("error.conditions_shape")
+        comparator = str(item.get("comparator") or "")
+        if comparator not in {choice for choice, _label in ApmPolicy.Comparator.choices}:
+            self._condition_error("error.conditions_shape")
+        value = self._finite_decimal(item.get("value"), "conditions", "error.threshold_finite")
+        slow_threshold_ms, apdex_threshold_ms = self._validate_metric_params(
+            metric_type,
+            item.get("slow_threshold_ms"),
+            item.get("apdex_threshold_ms"),
+        )
+        return {
+            "ref": self._clean_ref(item),
+            "role": "guard",
+            "metric_type": metric_type,
+            "comparator": comparator,
+            "value": self._decimal_payload(value),
+            "slow_threshold_ms": slow_threshold_ms,
+            "apdex_threshold_ms": apdex_threshold_ms,
+        }
+
+    def _normalize_regular(self, item, metric_window):
+        item = self._without_aggregation(item)
+        if set(item) - self._REGULAR_KEYS:
+            self._condition_error("error.conditions_shape")
+        metric_type = str(item.get("metric_type") or "")
+        if metric_type == ApmPolicy.MetricType.SLO_BURN_RATE:
+            self._condition_error("error.burn_plain")
+        if metric_type not in {choice for choice, _label in ApmPolicy.MetricType.choices}:
+            self._condition_error("error.conditions_shape")
+        compare_mode = str(item.get("compare_mode") or ApmPolicy.CompareMode.ABSOLUTE)
+        if compare_mode not in {choice for choice, _label in ApmPolicy.CompareMode.choices}:
+            self._condition_error("error.conditions_shape")
+        compare_value_kind = item.get("compare_value_kind") or ""
+        compare_offset_amount = item.get("compare_offset_amount")
+        min_request_count = item.get("min_request_count")
+        slow_threshold_ms, apdex_threshold_ms = self._validate_metric_params(
+            metric_type,
+            item.get("slow_threshold_ms"),
+            item.get("apdex_threshold_ms"),
+        )
+        self._validate_compare(
+            metric_type,
+            compare_mode,
+            compare_value_kind,
+            min_request_count,
+            metric_window,
+            compare_offset_amount,
+        )
+        if compare_mode not in {
+            ApmPolicy.CompareMode.OFFSET_HOURS,
+            ApmPolicy.CompareMode.OFFSET_DAYS,
+            ApmPolicy.CompareMode.BASELINE_DAYS,
+        }:
+            compare_offset_amount = None
+        thresholds = item.get("thresholds")
+        if not isinstance(thresholds, list) or not thresholds:
+            self._condition_error("error.conditions_shape")
+        normalized = self._validate_thresholds(thresholds, metric_type, compare_mode, compare_value_kind)
+        return {
+            "ref": self._clean_ref(item),
+            "role": "regular",
+            "metric_type": metric_type,
+            "compare_mode": compare_mode,
+            "compare_offset_amount": compare_offset_amount,
+            "compare_value_kind": compare_value_kind or "",
+            "min_request_count": min_request_count,
+            "slow_threshold_ms": slow_threshold_ms,
+            "apdex_threshold_ms": apdex_threshold_ms,
+            "thresholds": normalized,
+        }
+
+    def _validated_anchor_fields(self, attrs, metric_type, compare_mode, compare_value_kind, min_request_count):
+        return {
+            "metric_type": metric_type,
+            "compare_mode": compare_mode or ApmPolicy.CompareMode.ABSOLUTE,
+            "compare_offset_amount": attrs.get("compare_offset_amount"),
+            "compare_value_kind": compare_value_kind or "",
+            "min_request_count": min_request_count,
+            "slow_threshold_ms": attrs.get("slow_threshold_ms"),
+            "apdex_threshold_ms": attrs.get("apdex_threshold_ms"),
+            "thresholds": list(attrs.get("thresholds") or []),
+        }
+
     def validate(self, attrs):
-        if self.instance is None and "service_id" not in attrs:
+        replay_hours = attrs.pop("replay_hours", 0) or 0
+        if replay_hours not in (0, 24):
+            raise serializers.ValidationError({"replay_hours": serializer_text(self, "error.replay_hours")})
+        initial = self.initial_data if isinstance(getattr(self, "initial_data", None), dict) else {}
+        metric_type = attrs.get("metric_type", getattr(self.instance, "metric_type", None))
+        burn = metric_type == ApmPolicy.MetricType.SLO_BURN_RATE
+        if burn:
+            self._reject_burn_conflicts(attrs, initial)
+            attrs["compare_mode"] = ApmPolicy.CompareMode.ABSOLUTE
+            attrs["compare_value_kind"] = ""
+            attrs["compare_offset_amount"] = None
+            attrs["min_request_count"] = None
+            attrs["recovery_threshold"] = {}
+        elif attrs.get("slo") is not None or attrs.get("burn_long_window_minutes") or attrs.get("burn_short_window_minutes"):
+            raise serializers.ValidationError({"metric_type": serializer_text(self, "error.burn_metric")})
+        elif "metric_type" in attrs:
+            attrs["slo"] = None
+            attrs["burn_long_window_minutes"] = None
+            attrs["burn_short_window_minutes"] = None
+        scope_mode = attrs.get(
+            "scope_mode",
+            getattr(self.instance, "scope_mode", ApmPolicy.ScopeMode.SERVICE) or ApmPolicy.ScopeMode.SERVICE,
+        )
+        if self.instance is None and "service_id" not in attrs and scope_mode == ApmPolicy.ScopeMode.SERVICE and not burn:
             raise serializers.ValidationError({"service_id": serializer_text(self, "error.field_required")})
         environment = attrs.get("environment", getattr(self.instance, "environment", ""))
-        if not str(environment).strip():
+        if str(environment).strip():
+            attrs["environment"] = str(environment).strip()
+        elif not burn:
             raise serializers.ValidationError({"environment": serializer_text(self, "error.environment_required")})
-        attrs["environment"] = str(environment).strip()
+        self._conditions_supplied = "conditions" in initial
+        if self._conditions_supplied:
+            metric_window = self._stored_or_incoming(attrs, "metric_window", 5)
+            self._pending_conditions = self._validate_condition_list(attrs.get("conditions"), metric_window)
+            anchor = next(item for item in self._pending_conditions if item["role"] == "regular")
+            for field in MIRROR_FIELDS:
+                attrs[field] = anchor[field]
 
         metric_type = attrs.get("metric_type", getattr(self.instance, "metric_type", None))
         compare_mode = self._stored_or_incoming(attrs, "compare_mode", ApmPolicy.CompareMode.ABSOLUTE)
@@ -586,8 +819,9 @@ class ApmPolicySerializer(serializers.ModelSerializer):
         )
         attrs["slow_threshold_ms"] = slow_threshold_ms
         attrs["apdex_threshold_ms"] = apdex_threshold_ms
-        if metric_type in ApmPolicy.COUNT_METRIC_TYPES:
-            attrs["aggregation"] = ApmPolicy.Aggregation.AVERAGE
+        evaluation_interval = self._stored_or_incoming(attrs, "evaluation_interval", 1)
+        if metric_type != ApmPolicy.MetricType.SLO_BURN_RATE and int(metric_window) < int(evaluation_interval):
+            raise serializers.ValidationError({"metric_window": serializer_text(self, "error.window_shorter_than_interval")})
         self._validate_compare(
             metric_type,
             compare_mode,
@@ -616,6 +850,8 @@ class ApmPolicySerializer(serializers.ModelSerializer):
 
         endpoints = attrs.get("endpoints", list(getattr(self.instance, "endpoints", []) or []))
         attrs["endpoints"] = list(dict.fromkeys(item.strip() for item in endpoints))
+        self._apply_scope(attrs, initial)
+        self._apply_target(attrs, initial)
         versions = attrs.get("versions", list(getattr(self.instance, "versions", []) or []))
         attrs["versions"] = list(dict.fromkeys(item.strip() for item in versions))
         version_mode = attrs.get("version_mode", getattr(self.instance, "version_mode", ApmPolicy.VersionMode.ALL))
@@ -627,17 +863,6 @@ class ApmPolicySerializer(serializers.ModelSerializer):
             combination_count = max(1, len(attrs["endpoints"])) * len(attrs["versions"])
             if combination_count > MAX_POLICY_TARGETS:
                 raise serializers.ValidationError({"endpoints": serializer_text(self, "error.policy_target_limit", count=MAX_POLICY_TARGETS)})
-
-        no_data_after = attrs.get("no_data_after", getattr(self.instance, "no_data_after", None))
-        no_data_severity = attrs.get("no_data_severity", getattr(self.instance, "no_data_severity", ""))
-        if bool(no_data_after) != bool(no_data_severity):
-            field = "no_data_severity" if no_data_after else "no_data_after"
-            raise serializers.ValidationError({field: serializer_text(self, "error.no_data_pair")})
-        no_data_alert_name = attrs.get(
-            "no_data_alert_name",
-            getattr(self.instance, "no_data_alert_name", ""),
-        )
-        attrs["no_data_alert_name"] = str(no_data_alert_name).strip()
 
         self._validate_judgment(
             attrs,
@@ -653,7 +878,182 @@ class ApmPolicySerializer(serializers.ModelSerializer):
             if len(channel_ids) != len(set(channel_ids)):
                 raise serializers.ValidationError({"notification_targets": serializer_text(self, "error.channel_duplicate")})
         self._validate_policy_handlers(attrs)
+        if burn:
+            self._lock_burn_identity(attrs)
+            metric_type = attrs["metric_type"]
+            compare_mode = attrs["compare_mode"]
+            compare_value_kind = attrs["compare_value_kind"]
+            min_request_count = attrs["min_request_count"]
+        anchor_fields = self._validated_anchor_fields(attrs, metric_type, compare_mode, compare_value_kind, min_request_count)
+        if getattr(self, "_conditions_supplied", False):
+            synced = []
+            replaced = False
+            for item in self._pending_conditions:
+                if item["role"] == "regular" and not replaced:
+                    updated = dict(item)
+                    updated.update(anchor_fields)
+                    synced.append(updated)
+                    replaced = True
+                else:
+                    synced.append(item)
+            attrs["conditions"] = synced
+        elif self.instance is None or any(field in initial for field in MIRROR_FIELDS):
+            attrs["conditions"] = [{"ref": "a", "role": "regular", **anchor_fields}]
         return attrs
+
+    def _reject_burn_conflicts(self, attrs, initial):
+        message = serializer_text(self, "error.burn_plain")
+        if "conditions" in initial:
+            raise serializers.ValidationError({"conditions": message})
+        if attrs.get("scope_mode") not in (None, ApmPolicy.ScopeMode.SERVICE):
+            raise serializers.ValidationError({"scope_mode": message})
+        if attrs.get("service_ids"):
+            raise serializers.ValidationError({"service_ids": message})
+        if attrs.get("application"):
+            raise serializers.ValidationError({"application": message})
+        if attrs.get("endpoint_mode") not in (None, ApmPolicy.EndpointMode.SERVICE):
+            raise serializers.ValidationError({"endpoint_mode": message})
+        if attrs.get("instance_mode") not in (None, ApmPolicy.InstanceMode.ALL):
+            raise serializers.ValidationError({"instance_mode": message})
+        if attrs.get("target_kind") not in (None, ApmPolicy.TargetKind.ENTRY):
+            raise serializers.ValidationError({"target_kind": message})
+        if attrs.get("dependencies"):
+            raise serializers.ValidationError({"dependencies": message})
+        if attrs.get("compare_mode") not in (None, ApmPolicy.CompareMode.ABSOLUTE):
+            raise serializers.ValidationError({"compare_mode": message})
+        if attrs.get("min_request_count") is not None:
+            raise serializers.ValidationError({"min_request_count": message})
+        if attrs.get("recovery_threshold"):
+            raise serializers.ValidationError({"recovery_threshold": message})
+
+    def _lock_burn_identity(self, attrs):
+        slo = attrs.get("slo", getattr(self.instance, "slo", None))
+        if slo is None:
+            raise serializers.ValidationError({"slo": serializer_text(self, "error.burn_slo")})
+        long = attrs.get("burn_long_window_minutes", getattr(self.instance, "burn_long_window_minutes", None))
+        if long is None:
+            raise serializers.ValidationError({"burn_long_window_minutes": serializer_text(self, "error.burn_window")})
+        long = int(long)
+        if "burn_short_window_minutes" in attrs and attrs.get("burn_short_window_minutes") is not None:
+            short = int(attrs["burn_short_window_minutes"])
+        elif "burn_short_window_minutes" not in attrs and getattr(self.instance, "burn_short_window_minutes", None):
+            short = int(self.instance.burn_short_window_minutes)
+        else:
+            short = long // 12
+        if short < 5 or short * 2 > long:
+            raise serializers.ValidationError({"burn_short_window_minutes": serializer_text(self, "error.burn_window")})
+        attrs["slo"] = slo
+        attrs["metric_type"] = ApmPolicy.MetricType.SLO_BURN_RATE
+        attrs["burn_long_window_minutes"] = long
+        attrs["burn_short_window_minutes"] = short
+        attrs["service_id"] = slo.service_id
+        attrs["environment"] = slo.environment
+        attrs["endpoints"] = []
+        attrs["endpoint_mode"] = ApmPolicy.EndpointMode.SERVICE
+        attrs["instance_mode"] = ApmPolicy.InstanceMode.ALL
+        attrs["scope_mode"] = ApmPolicy.ScopeMode.SERVICE
+        attrs["service_ids"] = []
+        attrs["application"] = None
+        attrs["target_kind"] = ApmPolicy.TargetKind.ENTRY
+        attrs["dependencies"] = []
+        attrs["compare_mode"] = ApmPolicy.CompareMode.ABSOLUTE
+        attrs["compare_value_kind"] = ""
+        attrs["compare_offset_amount"] = None
+        attrs["min_request_count"] = None
+        attrs["recovery_threshold"] = {}
+
+    def _apply_scope(self, attrs, initial):
+        scope_mode = attrs.get(
+            "scope_mode",
+            getattr(self.instance, "scope_mode", ApmPolicy.ScopeMode.SERVICE) or ApmPolicy.ScopeMode.SERVICE,
+        )
+        if scope_mode == ApmPolicy.ScopeMode.SERVICES:
+            raw_ids = attrs.get("service_ids", list(getattr(self.instance, "service_ids", None) or []))
+            ordered = []
+            for item in raw_ids:
+                text = str(item)
+                if text not in ordered:
+                    ordered.append(text)
+            if not 2 <= len(ordered) <= 20:
+                raise serializers.ValidationError({"service_ids": serializer_text(self, "error.scope_service_ids")})
+            found = {str(item.id): item for item in ApmService.objects.filter(id__in=ordered)}
+            if len(found) != len(ordered):
+                raise serializers.ValidationError({"service_ids": serializer_text(self, "error.scope_service_ids")})
+            attrs["scope_mode"] = scope_mode
+            attrs["service_ids"] = ordered
+            attrs["service_id"] = found[ordered[0]].id
+            attrs["application"] = None
+        elif scope_mode == ApmPolicy.ScopeMode.APPLICATION:
+            application = attrs.get("application", getattr(self.instance, "application", None))
+            if application is None:
+                raise serializers.ValidationError({"application": serializer_text(self, "error.scope_application_required")})
+            first = (
+                ApmService.objects.filter(application=application, archived_at__isnull=True)
+                .order_by("normalized_namespace", "normalized_name", "id")
+                .first()
+            )
+            if first is None:
+                raise serializers.ValidationError({"application": serializer_text(self, "error.scope_application_empty")})
+            attrs["scope_mode"] = scope_mode
+            attrs["application"] = application
+            attrs["service_ids"] = []
+            attrs["service_id"] = first.id
+        else:
+            attrs["scope_mode"] = ApmPolicy.ScopeMode.SERVICE
+            attrs["service_ids"] = []
+            attrs["application"] = None
+
+        if "endpoint_mode" in initial:
+            endpoint_mode = attrs.get("endpoint_mode") or ApmPolicy.EndpointMode.SERVICE
+        elif attrs.get("endpoints"):
+            endpoint_mode = ApmPolicy.EndpointMode.SELECTED
+        else:
+            endpoint_mode = getattr(self.instance, "endpoint_mode", None) or ApmPolicy.EndpointMode.SERVICE
+            if endpoint_mode == ApmPolicy.EndpointMode.SELECTED and not attrs.get("endpoints"):
+                endpoint_mode = ApmPolicy.EndpointMode.SERVICE
+        if endpoint_mode in {ApmPolicy.EndpointMode.SERVICE, ApmPolicy.EndpointMode.ALL}:
+            attrs["endpoints"] = []
+        attrs["endpoint_mode"] = endpoint_mode
+        attrs["instance_mode"] = attrs.get(
+            "instance_mode",
+            getattr(self.instance, "instance_mode", None) or ApmPolicy.InstanceMode.ALL,
+        )
+
+    def _apply_target(self, attrs, initial):
+        if "target_kind" in initial:
+            target_kind = attrs.get("target_kind") or ApmPolicy.TargetKind.ENTRY
+        else:
+            target_kind = getattr(self.instance, "target_kind", None) or ApmPolicy.TargetKind.ENTRY
+        attrs["target_kind"] = target_kind
+        if target_kind != ApmPolicy.TargetKind.DEPENDENCY:
+            attrs["dependencies"] = []
+            return
+        if attrs.get("endpoint_mode") != ApmPolicy.EndpointMode.SERVICE or attrs.get("instance_mode") == ApmPolicy.InstanceMode.GROUPED:
+            raise serializers.ValidationError({"target_kind": serializer_text(self, "error.dependency_scope")})
+        metrics = [attrs.get("metric_type", getattr(self.instance, "metric_type", None))]
+        for condition in list(attrs.get("conditions") or getattr(self.instance, "conditions", None) or []):
+            if isinstance(condition, dict):
+                metrics.append(condition.get("metric_type"))
+        blocked = {ApmPolicy.MetricType.APDEX, ApmPolicy.MetricType.NO_TRAFFIC}
+        if any(item in blocked for item in metrics):
+            raise serializers.ValidationError({"target_kind": serializer_text(self, "error.dependency_metric")})
+        raw = attrs.get("dependencies")
+        if raw is None:
+            raw = list(getattr(self.instance, "dependencies", None) or [])
+        normalized = []
+        for item in raw:
+            if not isinstance(item, dict):
+                raise serializers.ValidationError({"dependencies": serializer_text(self, "error.dependency_item")})
+            channel = str(item.get("channel") or "").strip()
+            system = str(item.get("system") or "").strip()
+            statement = str(item.get("statement") or "").strip()
+            if channel not in {"database", "outbound", "http"} or not system or not statement:
+                raise serializers.ValidationError({"dependencies": serializer_text(self, "error.dependency_item")})
+            normalized.append({"channel": channel, "system": system, "statement": statement})
+        attrs["dependencies"] = normalized
+        attrs["endpoints"] = []
+        attrs["endpoint_mode"] = ApmPolicy.EndpointMode.SERVICE
+        attrs["instance_mode"] = ApmPolicy.InstanceMode.ALL
 
     def _policy_organization_ids(self, attrs):
         if "organizations" in attrs:
@@ -745,6 +1145,10 @@ class ApmPolicySerializer(serializers.ModelSerializer):
         compare_offset_amount,
     ):
         kind = compare_value_kind or ""
+        if kind == ApmPolicy.CompareValueKind.SIGMA and (
+            compare_mode != ApmPolicy.CompareMode.BASELINE_DAYS or not isinstance(compare_offset_amount, int) or compare_offset_amount < 3
+        ):
+            raise serializers.ValidationError({"compare_value_kind": serializer_text(self, "error.sigma_baseline")})
         offset_modes = {
             ApmPolicy.CompareMode.OFFSET_1H,
             ApmPolicy.CompareMode.OFFSET_24H,
@@ -755,10 +1159,10 @@ class ApmPolicySerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({"compare_value_kind": serializer_text(self, "error.compare_absolute_kind")})
         if compare_mode == ApmPolicy.CompareMode.PREVIOUS_WINDOW and kind not in {"delta", "percent"}:
             raise serializers.ValidationError({"compare_value_kind": serializer_text(self, "error.compare_previous_kind")})
-        if compare_mode == ApmPolicy.CompareMode.BASELINE_DAYS and kind not in {"delta", "percent"}:
+        if compare_mode == ApmPolicy.CompareMode.BASELINE_DAYS and kind not in {"delta", "percent", "sigma"}:
             raise serializers.ValidationError({"compare_value_kind": serializer_text(self, "error.compare_baseline_days_kind")})
-        if compare_mode in offset_modes and kind != "percent":
-            raise serializers.ValidationError({"compare_value_kind": serializer_text(self, "error.compare_offset_percent_only")})
+        if compare_mode in offset_modes and kind not in {"delta", "percent"}:
+            raise serializers.ValidationError({"compare_value_kind": serializer_text(self, "error.compare_offset_kind")})
         self._validate_offset_amount(compare_mode, metric_window, compare_offset_amount)
         if metric_type == ApmPolicy.MetricType.NO_TRAFFIC and compare_mode != ApmPolicy.CompareMode.ABSOLUTE:
             raise serializers.ValidationError({"compare_mode": serializer_text(self, "error.compare_no_traffic_absolute")})
@@ -847,19 +1251,26 @@ class ApmPolicySerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError({"thresholds": serializer_text(self, "error.threshold_finite")}) from None
             if not value.is_finite():
                 raise serializers.ValidationError({"thresholds": serializer_text(self, "error.threshold_finite")})
+            kind = compare_value_kind or ""
             if metric_type in ApmPolicy.RATIO_METRIC_TYPES:
-                kind = compare_value_kind or ""
                 if compare_mode == ApmPolicy.CompareMode.ABSOLUTE or kind == "":
                     if not 0 <= value <= 1:
                         raise serializers.ValidationError({"thresholds": serializer_text(self, "error.error_rate_range")})
                 elif kind == ApmPolicy.CompareValueKind.DELTA and not -1 <= value <= 1:
                     raise serializers.ValidationError({"thresholds": serializer_text(self, "error.error_rate_delta_range")})
+            if kind == ApmPolicy.CompareValueKind.SIGMA and not Decimal("0.5") <= value <= Decimal(5):
+                raise serializers.ValidationError({"thresholds": serializer_text(self, "error.sigma_k")})
             if (
                 metric_type == ApmPolicy.MetricType.APDEX
                 and compare_mode == ApmPolicy.CompareMode.ABSOLUTE
                 and comparator in {ApmPolicy.Comparator.GREATER_THAN, ApmPolicy.Comparator.GREATER_THAN_OR_EQUAL}
             ):
                 raise serializers.ValidationError({"thresholds": serializer_text(self, "error.apdex_comparator")})
+            if metric_type == ApmPolicy.MetricType.SLO_BURN_RATE and comparator in {
+                ApmPolicy.Comparator.LESS_THAN,
+                ApmPolicy.Comparator.LESS_THAN_OR_EQUAL,
+            }:
+                raise serializers.ValidationError({"thresholds": serializer_text(self, "error.burn_comparator")})
             normalized.append({"severity": severity, "comparator": comparator, "value": str(value)})
         if len(comparators) != 1:
             raise serializers.ValidationError({"thresholds": serializer_text(self, "error.threshold_comparator")})

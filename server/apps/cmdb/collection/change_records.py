@@ -4,7 +4,7 @@ from apps.cmdb.constants.constants import INSTANCE, OPERATOR_INSTANCE
 from apps.cmdb.models.change_record import COLLECT_AUTOMATION_CHANGE, CREATE_INST, DELETE_INST, UPDATE_INST
 from apps.cmdb.utils.change_record import batch_create_change_record
 
-SYSTEM_COLLECT_FIELDS = {"_id", "model_id", "collect_time", "collect_task", "auto_collect"}
+SYSTEM_COLLECT_FIELDS = {"_id", "model_id", "collect_time", "collect_task", "auto_collect", "_collect_sources", "manual_fields"}
 
 
 def write_collect_instance_change_records(management, result: dict):
@@ -78,6 +78,8 @@ def _build_update_records(management, success_items: list[dict]) -> list[dict]:
     old_instances = {item.get("_id"): item for item in getattr(management, "old_data", []) or [] if item.get("_id") is not None}
     records = []
     for item in success_items:
+        if item.get("suppress_change_record"):
+            continue
         instance = _success_instance(item)
         if not instance:
             continue

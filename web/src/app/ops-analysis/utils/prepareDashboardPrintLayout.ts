@@ -127,7 +127,9 @@ async function preparePrintLayoutExpand(
   const expandElements = Array.from(
     root.querySelectorAll<HTMLElement>('[data-export-expand="true"]'),
   );
-  expandElements.forEach((element) => applyExpandStyles(element));
+  expandElements.forEach((element) => {
+    applyExpandStyles(element);
+  });
 
   const hiddenElements = Array.from(
     root.querySelectorAll<HTMLElement>('[data-export-hidden="true"]'),
