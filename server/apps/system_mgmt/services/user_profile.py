@@ -359,9 +359,9 @@ def custom_field_details(user):
 
 
 def field_mapping_targets(key):
-    matched = []
-    for source in UserSyncSource.objects.all().only("id", "field_mapping"):
+    """返回第一个把该字段映射到非空外部名的同步源。调用方只判断有没有映射。"""
+    for source in UserSyncSource.objects.filter(field_mapping__has_key=key).order_by("id").only("id", "field_mapping").iterator(chunk_size=1):
         mapping = source.field_mapping or {}
         if str(mapping.get(key) or "").strip():
-            matched.append(source.id)
-    return matched
+            return [source.id]
+    return []

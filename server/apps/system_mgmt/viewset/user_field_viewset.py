@@ -38,13 +38,17 @@ def _error(request, error):
     return JsonResponse({"result": False, "message": loader.get(key, error.message)}, status=400)
 
 
+USER_FIELD_LIST_LIMIT = 200
+
+
 class UserFieldViewSet(ViewSetUtils):
     @action(detail=False, methods=["GET"])
     @HasPermission("user_fields-View")
     def search(self, request):
-        rows = [serialize_definition(item) for item in UserFieldDefinition.objects.all()]
+        queryset = UserFieldDefinition.objects.order_by("id")
         if request.GET.get("enabled_only") == "1":
-            rows = [row for row in rows if row["is_enabled"]]
+            queryset = queryset.filter(is_enabled=True)
+        rows = [serialize_definition(item) for item in queryset[:USER_FIELD_LIST_LIMIT]]
         return JsonResponse({"result": True, "data": rows})
 
     @action(detail=False, methods=["POST"])

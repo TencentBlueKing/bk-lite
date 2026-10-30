@@ -104,6 +104,19 @@ describe('UserDetailDrawer', () => {
     ],
   };
 
+  it('shows a layout skeleton while the detail request is pending', () => {
+    mockGetUserDetail.mockReturnValue(new Promise(() => undefined));
+    render(
+      <UserDetailDrawer
+        open={true}
+        userId="1"
+        onClose={vi.fn()}
+      />
+    );
+    expect(document.querySelector('[aria-busy="true"]')).not.toBeNull();
+    expect(screen.queryByText('Daniel Wu')).toBeNull();
+  });
+
   it('renders user details matching card sections and allows toggling mask and group collapse', async () => {
     mockGetUserDetail.mockResolvedValue(mockPayload);
 
@@ -131,15 +144,18 @@ describe('UserDetailDrawer', () => {
     const eyeButtons = buttons.filter((btn) => btn.querySelector('.anticon-eye'));
     expect(eyeButtons.length).toBeGreaterThanOrEqual(1);
 
+    expect(eyeButtons[0].getAttribute('aria-label')).toBe('system.user.detail.showSecret');
     fireEvent.click(eyeButtons[0]);
     expect(screen.queryByText('daniel@example.com')).not.toBeNull();
 
     // 第一个组织默认展开，显示其数据权限
-    expect(screen.queryByText('Default')).not.toBeNull();
+    const groupButton = screen.getByRole('button', { name: /Default/ });
+    expect(groupButton.getAttribute('aria-expanded')).toBe('true');
     expect(screen.queryByText('主机资源查看范围')).not.toBeNull();
 
     // 点击第一个组织头部进行收起
-    fireEvent.click(screen.getByText('Default'));
+    fireEvent.click(groupButton);
+    expect(groupButton.getAttribute('aria-expanded')).toBe('false');
     expect(screen.queryByText('主机资源查看范围')).toBeNull();
 
     // 角色信息展示，组织继承标出具体组织

@@ -31,9 +31,9 @@ def _field(action, data=None, method="post"):
     return UserFieldViewSet.as_view({method: action})(request)
 
 
-def _source_mapping(mapping):
+def _source_mapping(mapping, name="field-map-source"):
     instance = IntegrationInstance.objects.create(
-        name="field-map",
+        name=name,
         provider_key="feishu",
         enabled=True,
         status="ready",
@@ -41,7 +41,7 @@ def _source_mapping(mapping):
         config={},
     )
     return UserSyncSource.objects.create(
-        name="field-map-source",
+        name=name,
         integration_instance=instance,
         enabled=True,
         root_group_name="Field Map Root",
@@ -151,3 +151,34 @@ def test_disabled_field_is_not_written_by_user_save_and_stays_readable():
     assert rows[0]["key"] == "badge_no"
     assert rows[0]["value"] == "A1"
     assert rows[0]["is_enabled"] is False
+
+
+def test_field_search_filters_enabled_rows_and_caps_the_list():
+    from apps.system_mgmt.viewset.user_field_viewset import USER_FIELD_LIST_LIMIT
+
+    UserFieldDefinition.objects.bulk_create(
+        [
+            UserFieldDefinition(name="停用", key="field_off", field_type="text", is_enabled=False),
+            *[
+                UserFieldDefinition(name=f"字段{index}", key=f"field_{index}", field_type="text", is_enabled=True)
+                for index in range(USER_FIELD_LIST_LIMIT + 1)
+            ],
+        ]
+    )
+    listed = _body(_field("search", method="get"))
+    assert listed["result"] is True
+    assert len(listed["data"]) == USER_FIELD_LIST_LIMIT
+
+    enabled = _body(_field("search", data={"enabled_only": "1"}, method="get"))
+    assert len(enabled["data"]) == USER_FIELD_LIST_LIMIT
+    assert all(row["is_enabled"] for row in enabled["data"])
+    assert "field_off" not in {row["key"] for row in enabled["data"]}
+
+
+def test_field_mapping_targets_stops_at_the_first_nonempty_source():
+    from apps.system_mgmt.services.user_profile import field_mapping_targets
+
+    _source_mapping({"badge_no": "  "}, name="blank-map")
+    first = _source_mapping({"badge_no": "badge"}, name="first-map")
+    _source_mapping({"badge_no": "other"}, name="later-map")
+    assert field_mapping_targets("badge_no") == [first.id]
