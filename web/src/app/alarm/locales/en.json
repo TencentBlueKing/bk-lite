@@ -1179,7 +1179,7 @@
     "test": "Test connection",
     "name": "Integration name",
     "url": "ITSM gateway API URL",
-    "urlHint": "Enter the full ITSM OpenAPI base URL. Internal targets must meet the system network allowlist policy.",
+    "urlHint": "Enter the native ITSM OpenAPI root via the gateway, e.g. https://<host>/openapi/v1/itsm/openapi/v1. Internal targets must meet the system network allowlist.",
     "authentication": "Authentication",
     "tokenSaved": "Bearer Token (configured)",
     "tokenMissing": "Token not configured",

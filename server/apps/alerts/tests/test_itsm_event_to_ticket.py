@@ -26,7 +26,7 @@ TICKET_NUMBER = "SN9001001"
 def contract_connection(monkeypatch):
     monkeypatch.setenv("TEST_ITSM_TOKEN", "SENSITIVE-SENTINEL")
     return {
-        "url": "https://itsm.example/openapi/v1/itsm/bklite_expand/api/v2",
+        "url": "https://itsm.example/openapi/v1/itsm/openapi/v1",
         "token_env": "TEST_ITSM_TOKEN",
         "instance_id": "test-itsm",
         "teams": [1],
@@ -41,24 +41,22 @@ def _deliver_itsm(record_id):
 
 
 def _remote(method, url, **kwargs):
-    if url.endswith("/ticket_create/"):
+    if url.rstrip("/").endswith("/ticket/create"):
         body = kwargs.get("json") or {}
         assert body["is_submit"] is True
         assert body["form_data"]["ticket__title"] == "完整性验证事件"
         return response({"code": "20000", "data": {"id": TICKET_ID}})
-    if "/ticket_detail/" in url:
+    if "/ticket/detail/" in url:
         return response(
             {
                 "code": "20000",
                 "data": {
-                    "ticket": {
-                        "id": TICKET_ID,
-                        "sn": TICKET_NUMBER,
-                        "title": "完整性验证事件",
-                        "status": "running",
-                        "status_display": "处理中",
-                        "end_at": None,
-                    }
+                    "id": TICKET_ID,
+                    "sn": TICKET_NUMBER,
+                    "title": "完整性验证事件",
+                    "status": "running",
+                    "status_display": "处理中",
+                    "end_at": None,
                 },
             }
         )

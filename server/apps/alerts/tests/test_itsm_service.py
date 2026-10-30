@@ -62,7 +62,7 @@ def test_first_matching_rule_and_creation_snapshot_survive_dispatch(setup_itsm):
     assert link.rule_id == first.pk
     assert ActionExecution.objects.filter(alert=a).count() == 1
     with patch(
-        "requests.Session.request", return_value=response({"result": True, "code": "20000", "data": {"ticket": {"id": "102026090716182700005102"}}})
+        "requests.Session.request", return_value=response({"result": True, "code": "20000", "data": {"id": "102026090716182700005102"}})
     ) as http:
         execute_creation(link.current_execution_id)
         execute_creation(link.current_execution_id)

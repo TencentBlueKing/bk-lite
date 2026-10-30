@@ -65,7 +65,7 @@ def test_interleaved_delivery_and_manual_retry_do_not_resend(setup_itsm):
         execute_creation(link.current_execution_id)
         current, created = retry_creation(a.pk, r.pk, "alice", "other-key", [1])
         assert not created and current.pk == link.current_execution_id
-        return response({"result": True, "code": "20000", "data": {"ticket": {"id": "123"}}})
+        return response({"result": True, "code": "20000", "data": {"id": "123"}})
 
     with patch("requests.Session.request", side_effect=remote) as http:
         execute_creation(link.current_execution_id)
@@ -81,7 +81,7 @@ def test_late_create_response_cannot_overwrite_unknown_decision(setup_itsm):
     def remote(*args, **kwargs):
         ActionExecution.objects.filter(pk=link.current_execution_id).update(updated_at=timezone.now() - timedelta(minutes=10))
         execute_creation(link.current_execution_id)
-        return response({"result": True, "code": "20000", "data": {"ticket": {"id": "123"}}})
+        return response({"result": True, "code": "20000", "data": {"id": "123"}})
 
     with patch("requests.Session.request", side_effect=remote):
         execute_creation(link.current_execution_id)
@@ -98,7 +98,7 @@ def test_outbox_restores_committed_pending_execution(setup_itsm):
     deliver_outbox_record(record.pk)
     link = AlertItsmTicket.objects.get(alert=a)
     pending = AlertOutbox.objects.get(kind="itsm_create")
-    with patch("requests.Session.request", return_value=response({"result": True, "code": "20000", "data": {"ticket": {"id": "123"}}})) as http:
+    with patch("requests.Session.request", return_value=response({"result": True, "code": "20000", "data": {"id": "123"}})) as http:
         deliver_outbox_record(pending.pk)
         deliver_outbox_record(pending.pk)
         assert http.call_count == 1
@@ -147,9 +147,7 @@ def test_reconcile_only_unknown_and_remote_ticket_unique(setup_itsm):
             reconcile(a2.pk, second.current_execution_id, "123", "checked", True, "alice", [1])
     second.refresh_from_db()
     assert second.ticket_id is None and second.current_execution.status == "unknown"
-    with patch(
-        "requests.Session.request", return_value=response({"result": True, "code": "20000", "data": {"ticket": {"id": "456", "status": "running"}}})
-    ):
+    with patch("requests.Session.request", return_value=response({"result": True, "code": "20000", "data": {"id": "456", "status": "running"}})):
         preview = reconcile(a2.pk, second.current_execution_id, "456", "", False, "alice", [1])
         assert preview["preview"]["ticket_id"] == "456"
         reconcile(a2.pk, second.current_execution_id, "456", "ITSM confirmed source alert", True, "alice", [1])
