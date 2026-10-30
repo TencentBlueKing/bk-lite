@@ -24,11 +24,16 @@ from apps.node_mgmt.models.cloud_region import CloudRegion
 from apps.node_mgmt.models.installer import ControllerTaskNode
 from apps.node_mgmt.models.sidecar import Collector, CollectorConfiguration, Node, NodeCollectorConfiguration, NodeOrganization
 from apps.node_mgmt.services.cloudregion import RegionService
+from apps.node_mgmt.services.converge_slot import action_slot_key, claim_converge_slot, install_slot_key, new_claim_token, release_converge_slot
 from apps.node_mgmt.services.node_host_metadata import NodeHostMetadataRenderContext
 from apps.node_mgmt.services.node_identity import assert_cloud_ip_available, nodes_for_cloud_ip
 from apps.node_mgmt.services.sidecar_cache import build_configuration_etag_cache_key, invalidate_node_configuration_etags
 from apps.node_mgmt.tasks.action_task import converge_collector_action_task_for_node
-from apps.node_mgmt.tasks.installer import _matches_install_connectivity_target, converge_controller_install_connectivity_for_node
+from apps.node_mgmt.tasks.installer import (
+    _install_task_node_needs_heartbeat_converge,
+    _matches_install_connectivity_target,
+    converge_controller_install_connectivity_for_node,
+)
 from apps.node_mgmt.utils.architecture import normalize_cpu_architecture
 from apps.node_mgmt.utils.crypto_helper import EncryptedJsonResponse
 from apps.node_mgmt.utils.sidecar import format_tags_dynamic
@@ -254,6 +259,18 @@ class Sidecar:
         return True
 
     @staticmethod
+    def _enqueue_converge_once(slot_key: str, task, node_id: str) -> None:
+        # 队列里的任务执行时读的是库里的最新状态，同一节点再投一条没有新信息。
+        token = new_claim_token()
+        if not claim_converge_slot(slot_key, token):
+            return
+        try:
+            task.delay(node_id, token)
+        except Exception:
+            release_converge_slot(slot_key, token)
+            raise
+
+    @staticmethod
     def trigger_converge_tasks_if_needed(
         node_id: str,
         node_ip: str,
@@ -275,16 +292,17 @@ class Sidecar:
         target_filter = Q(**{f"result__{InstallerConstants.INSTALL_NODE_ID_KEY}": node_id})
         if node_ip:
             target_filter |= Q(ip=node_ip)
-        install_running_exists = any(
-            _matches_install_connectivity_target(task_node, node_id, node_ip)
+        install_needs_converge = any(
+            _install_task_node_needs_heartbeat_converge(task_node)
             for task_node in ControllerTaskNode.objects.filter(
                 target_filter,
                 status="running",
                 task__type="install",
             )
+            if _matches_install_connectivity_target(task_node, node_id, node_ip)
         )
 
-        if not action_running_exists and not install_running_exists:
+        if not action_running_exists and not install_needs_converge:
             return
 
         if action_running_exists:
@@ -294,12 +312,20 @@ class Sidecar:
             last_signature = cache.get(signature_cache_key)
             if signature != last_signature or Sidecar._is_debounce_elapsed(debounce_cache_key):
                 cache.set(signature_cache_key, signature, timeout=3600)
-                converge_collector_action_task_for_node.delay(node_id)
+                Sidecar._enqueue_converge_once(
+                    action_slot_key(node_id),
+                    converge_collector_action_task_for_node,
+                    node_id,
+                )
 
-        if install_running_exists:
+        if install_needs_converge:
             debounce_cache_key = f"node_converge_install_debounce_{node_id}"
             if Sidecar._is_debounce_elapsed(debounce_cache_key):
-                converge_controller_install_connectivity_for_node.delay(node_id)
+                Sidecar._enqueue_converge_once(
+                    install_slot_key(node_id),
+                    converge_controller_install_connectivity_for_node,
+                    node_id,
+                )
 
     @staticmethod
     def sync_groups(node_id: str, expected_groups: list):
