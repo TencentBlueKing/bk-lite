@@ -97,6 +97,8 @@ export interface DatasourceItem {
   tag?: number[];
   groups?: number[];
   hasAuth?: boolean;
+  /** 模块许可名，与 hasAppAccess / get_client 的 app 名对齐；空则不按模块隐藏 */
+  required_app?: string | null;
   field_schema?: ResponseFieldDefinition[];
   is_build_in?: boolean;
 }

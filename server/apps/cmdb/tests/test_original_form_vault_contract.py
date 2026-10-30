@@ -192,7 +192,8 @@ def test_job_vault_actual_builtin_validation_and_saved_type_lock(type_key, store
     def resolve(*_):
         return {"result": True, "data": {"type": type_key, "fields": fields}}
 
-    if stored_type and stored_type != type_key:
+    # 显式保存的 sql 类型不再当作 SSH 登录；未记录类型的旧任务仍兼容用户名密码凭据。
+    if stored_type == "sql" or (stored_type and stored_type != type_key):
         with pytest.raises(BaseAppException, match="类型与采集对象不匹配"):
             resolve_task_credential_pool(task, resolver=resolve)
     else:

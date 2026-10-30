@@ -147,6 +147,10 @@ export interface ValueConfig {
   barMax?: number;
   dimensionField?: string;
   valueField?: string;
+  /** 折线/柱状多选数值。有值时优先于 valueField；只选一个时与 valueField 同时写入。 */
+  valueFields?: string[];
+  /** 折线/柱状按该字段取值拆系列。与两个及以上数值字段不能同时使用。 */
+  seriesField?: string;
   /** 从标量对象取两个及以上字段合成饼图；已有数组饼图不受影响。 */
   pieScalarFields?: Array<{ field: string; label?: string }>;
   multiValueLabelField?: string;

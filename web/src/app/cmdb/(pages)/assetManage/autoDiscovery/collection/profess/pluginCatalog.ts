@@ -321,6 +321,9 @@ export const getTaskStatusStats = (
   tab: Pick<TreeNode, 'id' | 'model_id' | 'type' | 'task_type' | 'custom_plugin_pk'>,
 ) => {
   const specificStats = statusMap[getTaskStatusKey(tab)];
+  if (tab.task_type === 'custom_script') {
+    return specificStats;
+  }
   if (
     specificStats ||
     tab.id === 'physcial_server_ipmi' ||
@@ -335,11 +338,13 @@ export const countPluginTasks = (
   stats?: (Partial<TaskStatusStats> & { partial_success?: number }) | null,
 ) => {
   if (!stats) return 0;
+  if (typeof stats.total === 'number') return stats.total;
   return (
     (stats.running || 0) +
     (stats.success || 0) +
     (stats.failed || 0) +
-    (stats.partial_success || 0)
+    (stats.partial_success || 0) +
+    (stats.not_start || 0)
   );
 };
 

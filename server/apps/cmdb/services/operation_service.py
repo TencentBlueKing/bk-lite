@@ -267,9 +267,9 @@ class OperationService:
             )
             return
         if event.event_type == "auto_relation":
-            from apps.cmdb.tasks.celery_tasks import reconcile_instance_auto_association_task
+            from apps.cmdb.services.auto_relation_reconcile import schedule_instance_auto_relation_reconcile
 
-            reconcile_instance_auto_association_task.delay(result["_id"])
+            schedule_instance_auto_relation_reconcile([result["_id"]])
             return
         raise ValueError(f"未知 CMDB operation outbox 事件: {event.event_type}")
 

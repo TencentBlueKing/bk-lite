@@ -1,0 +1,65 @@
+name: Brotli 镜像补丁门禁
+
+on:
+  pull_request:
+    paths:
+      - 'deploy/security/**'
+      - 'server/support-files/release/Dockerfile*'
+      - 'agents/stargazer/support-files/docker/Dockerfile'
+      - 'agents/webhookd/Dockerfile'
+      - 'agents/fusion-collector/**/Dockerfile'
+      - '.github/workflows/brotli-images.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: 验证版本回补与构建失败行为
+        run: python3 -m unittest discover -s deploy/security/tests -v
+
+  package-layer:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        base: ['debian:bookworm-slim', 'debian:trixie-slim', 'ubuntu:24.04']
+    steps:
+      - uses: actions/checkout@v4
+      - name: 真实构建系统补丁层（不发布镜像）
+        env:
+          BASE_IMAGE: ${{ matrix.base }}
+        run: |
+          docker build --pull --no-cache \
+            --build-arg BASE_IMAGE="$BASE_IMAGE" \
+            --build-arg RUNTIME_USER=0 \
+            -f deploy/security/Dockerfile.system \
+            -t brotli-package-check deploy/security
+          docker run --rm --network none --read-only --cpus=1 --memory=128m \
+            --pids-limit=64 --cap-drop ALL --security-opt no-new-privileges \
+            --entrypoint dpkg-query brotli-package-check \
+            -W -f='${Package} ${Version}\n' libbrotli1
+
+  node-overlay:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: 验证旧 Node 镜像的真实替换与非 root 运行
+        run: |
+          docker build --pull --no-cache \
+            --build-arg BASE_IMAGE=node:24.14.0-bookworm-slim \
+            --build-arg RUNTIME_USER=1000 \
+            -f deploy/security/Dockerfile.falkordb \
+            -t brotli-node-check deploy/security
+          test "$(docker image inspect --format '{{.Config.User}}' brotli-node-check)" = '1000'
+          version=$(docker run --rm --network none --read-only --cpus=1 --memory=128m \
+            --pids-limit=64 --cap-drop ALL --security-opt no-new-privileges \
+            --entrypoint node brotli-node-check --version)
+          test "$version" = 'v24.22.1'

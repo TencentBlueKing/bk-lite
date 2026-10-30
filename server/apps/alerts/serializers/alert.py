@@ -47,6 +47,10 @@ class AlertSourceNamesListSerializer(serializers.ListSerializer):
     def to_representation(self, data):
         instances = list(data.all() if hasattr(data, "all") else data)
         self.child.source_names_map = source_names_by_alert([obj.pk for obj in instances], instances[0]._state.db or "default") if instances else {}
+        from apps.alerts.models.itsm import AlertItsmTicket
+
+        linked = AlertItsmTicket.objects.filter(alert_id__in=[obj.pk for obj in instances]).exclude(ticket_id="").exclude(ticket_id__isnull=True)
+        self.child.itsm_linked_ids = set(linked.values_list("alert_id", flat=True))
         return super().to_representation(instances)
 
 
@@ -74,6 +78,7 @@ class AlertModelSerializer(AuthSerializer):
     notify_total = serializers.SerializerMethodField()
     notify_records = serializers.SerializerMethodField()
     log_alert_id = serializers.SerializerMethodField()
+    has_itsm_ticket = serializers.SerializerMethodField()
 
     def __init__(self, instance=None, data=empty, **kwargs):
         super().__init__(instance=instance, data=data, **kwargs)
@@ -105,6 +110,14 @@ class AlertModelSerializer(AuthSerializer):
             # "operator": {"write_only": True},
             "labels": {"write_only": True},
         }
+
+    def get_has_itsm_ticket(self, obj):
+        linked = getattr(self, "itsm_linked_ids", None)
+        if linked is not None:
+            return obj.pk in linked
+        from apps.alerts.models.itsm import AlertItsmTicket
+
+        return AlertItsmTicket.objects.filter(alert_id=obj.pk).exclude(ticket_id="").exclude(ticket_id__isnull=True).exists()
 
     def get_source_names(self, obj):
         names = getattr(self, "source_names_map", None)

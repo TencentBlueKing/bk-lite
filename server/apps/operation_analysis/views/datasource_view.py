@@ -1208,8 +1208,38 @@ class DataSourceAPIModelViewSet(AuthViewSet):
     def retrieve(self, request, *args, **kwargs):
         return super(DataSourceAPIModelViewSet, self).retrieve(request, *args, **kwargs)
 
+    def _list_canvas_referenced_datasources(self, request, raw_ids):
+        from apps.operation_analysis.services.canvas_datasource_lookup import (
+            build_canvas_datasource_payloads,
+            normalize_canvas_datasource_ids,
+        )
+
+        ordered_ids = normalize_canvas_datasource_ids(raw_ids)
+        if not ordered_ids:
+            return Response([])
+
+        current_team = self._parse_current_team_cookie(request)
+        instances = list(self.queryset.filter(id__in=ordered_ids))
+        serializer_class = self.get_serializer_class()
+
+        def serialize_allowed(instance):
+            return serializer_class(instance, context={"request": request}).data
+
+        payloads = build_canvas_datasource_payloads(
+            ordered_ids=ordered_ids,
+            instances=instances,
+            current_team=current_team,
+            serialize_allowed=serialize_allowed,
+        )
+        return Response(payloads)
+
     @HasPermission("data_source-View")
     def list(self, request, *args, **kwargs):
+        ids = [item.strip() for item in (request.query_params.get("ids") or "").split(",") if item.strip()]
+        mode = (request.query_params.get("mode") or "").strip().lower()
+        if ids and mode == "detail":
+            return self._list_canvas_referenced_datasources(request, ids)
+
         queryset = self.filter_queryset(self.get_queryset())
         current_team, include_children, org_field, query = self.filter_by_group(queryset, request, request.user)
         query = expand_datasource_org_query(
@@ -1217,7 +1247,6 @@ class DataSourceAPIModelViewSet(AuthViewSet):
             include_all_builtins=bool(getattr(request.user, "is_superuser", False)),
         )
         queryset = queryset.filter(query).order_by(self.ORDERING_FIELD)
-        ids = [item.strip() for item in (request.query_params.get("ids") or "").split(",") if item.strip()]
         if ids:
             queryset = queryset.filter(id__in=ids)
         return self._list(queryset)

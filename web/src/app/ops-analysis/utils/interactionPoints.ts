@@ -1,5 +1,6 @@
 import type { ValueConfig } from '@/app/ops-analysis/types/dashBoard';
 import { ChartDataTransformer } from '@/app/ops-analysis/utils/chartDataTransform';
+import { toLineBarFieldMapping } from '@/app/ops-analysis/utils/lineBarFieldMapping';
 import { extractComparableValue } from '@/app/ops-analysis/utils/compareQuery';
 import { getValueByPath } from '@/app/ops-analysis/utils/objectPath';
 import { extractMultiValueItems, validateMultiValueData } from '@/app/ops-analysis/utils/multiValueData';
@@ -67,6 +68,8 @@ export const buildInteractionPoints = (
     ValueConfig,
     | 'dimensionField'
     | 'valueField'
+    | 'valueFields'
+    | 'seriesField'
     | 'pieScalarFields'
     | 'selectedFields'
     | 'topNLabelField'
@@ -85,10 +88,10 @@ export const buildInteractionPoints = (
   > | null,
 ): ChartLinkPoint[] => {
   if (chartType === 'line' || chartType === 'bar') {
-    const chart = ChartDataTransformer.transformToLineBarData(rawData, {
-      dimensionField: config?.dimensionField,
-      valueField: config?.valueField,
-    });
+    const chart = ChartDataTransformer.transformToLineBarData(
+      rawData,
+      toLineBarFieldMapping(config),
+    );
     if (chart.series?.length) {
       return chart.series.flatMap((series) => series.points || []);
     }

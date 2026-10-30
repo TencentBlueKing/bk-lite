@@ -161,6 +161,45 @@ describe('DashboardCanvas copy menu', () => {
     expect(screen.queryByRole('menuitem', { name: /common.copy/ })).toBeNull();
   });
 
+  it('mounts the grid after the loading gate lifts without a layout change', async () => {
+    const scrollRootRef = createRef<HTMLDivElement | null>();
+    scrollRootRef.current = document.createElement('div');
+    const props = {
+      loading: true,
+      isEditMode: false,
+      isDarkTheme: false,
+      dashboardId: 1,
+      layout: [dataWidget],
+      collapsedGroups: {},
+      chartTheme: { panelBg: '#fff', panelBorderColor: '#eee' },
+      filterSearchVersion: 0,
+      namespaceSearchVersion: 0,
+      dashboardReloadVersion: 0,
+      widgetReloadVersions: {},
+      dataSourceResolver: () => undefined,
+      appliedFilterValues: {},
+      appliedFilterDefinitions: [],
+      appliedNamespaceId: undefined,
+      onLayoutChange: vi.fn(),
+      onOpenAddModal: vi.fn(),
+      onToggleCollapsedGroup: vi.fn(),
+      onRenameGroup: vi.fn(),
+      onRemoveGroup: vi.fn(),
+      onDeleteEntireGroup: vi.fn(),
+      onEditWidget: vi.fn(),
+      onCopyWidget: vi.fn(),
+      onDeleteWidget: vi.fn(),
+      renderMode: false,
+      scrollRootRef,
+    };
+    const { rerender } = render(<DashboardCanvas {...props} />);
+    expect(screen.queryByText('CPU')).toBeNull();
+
+    rerender(<DashboardCanvas {...props} loading={false} />);
+
+    expect(await screen.findByText('CPU')).toBeTruthy();
+  });
+
   it('omits 复制 in view mode', async () => {
     renderCanvas([dataWidget], { isEditMode: false });
     await waitFor(() => {

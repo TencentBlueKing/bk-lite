@@ -87,6 +87,12 @@ beforeEach(() => {
       content: 'sre 转派给 alice'
     },
     {
+      id: 'recovered-1',
+      action: 'recovered',
+      event_time: '2026-01-01 12:08:00',
+      content: '连续不满足后自动恢复'
+    },
+    {
       id: 'closed-1',
       action: 'closed',
       event_time: '2026-01-01 12:10:00',
@@ -103,8 +109,18 @@ beforeEach(() => {
   vi.stubGlobal(
     'ResizeObserver',
     class {
-      observe() {}
+      private callback: (entries: Array<{ contentRect: { height: number } }>) => void;
+
+      constructor(callback: (entries: Array<{ contentRect: { height: number } }>) => void) {
+        this.callback = callback;
+      }
+
+      observe() {
+        this.callback([{ contentRect: { height: 800 } }]);
+      }
+
       unobserve() {}
+
       disconnect() {}
     }
   );
@@ -148,6 +164,7 @@ describe('日志告警详情事件序列', () => {
       expect(screen.getByText('分派')).toBeTruthy();
       expect(screen.getByText('转派')).toBeTruthy();
       expect(screen.getByText('关闭')).toBeTruthy();
+      expect(screen.getByText('自动恢复')).toBeTruthy();
       expect(screen.getByText('error keyword')).toBeTruthy();
       expect(screen.getByTestId('event-heat-map').textContent).toBe('hit-1');
       expect(screen.getAllByRole('button', { name: '详情' })).toHaveLength(1);

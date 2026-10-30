@@ -24,6 +24,8 @@ interface PluginTooltipTriggerProps {
   onActivate: () => void;
   title: React.ReactNode;
   children: React.ReactNode;
+  closable?: boolean;
+  onClose?: (event: React.MouseEvent<HTMLElement>) => void;
 }
 
 export const formatCollectorNodes = (
@@ -81,12 +83,20 @@ export const PluginTooltipTrigger = ({
   color,
   onActivate,
   title,
-  children
+  children,
+  closable = false,
+  onClose
 }: PluginTooltipTriggerProps) => {
   const handleKeyDown = (event: React.KeyboardEvent<HTMLElement>) => {
     if (event.key !== 'Enter' && event.key !== ' ') return;
     event.preventDefault();
     onActivate();
+  };
+
+  const handleClose = (event: React.MouseEvent<HTMLElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    onClose?.(event);
   };
 
   return (
@@ -101,6 +111,8 @@ export const PluginTooltipTrigger = ({
         aria-label={ariaLabel}
         color={color}
         className="cursor-pointer"
+        closable={closable}
+        onClose={closable ? handleClose : undefined}
         onClick={onActivate}
         onKeyDown={handleKeyDown}
       >

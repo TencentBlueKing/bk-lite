@@ -6,7 +6,8 @@ import {
   randomColorForLegend,
   resolveOpsChartThemeName,
 } from '@/app/ops-analysis/components/ops-analysis-widgets/runtime';
-import type { ValueConfig } from '@/app/ops-analysis/components/ops-analysis-widgets';
+import type { DatasourceItem, ValueConfig } from '@/app/ops-analysis/components/ops-analysis-widgets';
+import { toLineBarFieldMapping } from '@/app/ops-analysis/utils/lineBarFieldMapping';
 import ChartLegend from '@/components/chart-legend';
 import ChartWithSidebarLegend from '@/components/chart-with-sidebar-legend';
 import {
@@ -26,6 +27,7 @@ export interface OpsAnalysisBarProps {
   loading?: boolean;
   onReady?: (ready: boolean) => void;
   config?: ValueConfig;
+  dataSource?: DatasourceItem;
 }
 
 const OpsAnalysisBar: React.FC<OpsAnalysisBarProps> = ({
@@ -33,6 +35,7 @@ const OpsAnalysisBar: React.FC<OpsAnalysisBarProps> = ({
   loading = false,
   onReady,
   config,
+  dataSource,
 }) => {
   const { t } = useTranslation();
   const chartRef = useRef<any>(null);
@@ -47,10 +50,10 @@ const OpsAnalysisBar: React.FC<OpsAnalysisBarProps> = ({
     setLegendSelected(selected);
   }, []);
 
-  const chartData = ChartDataTransformer.transformToLineBarData(rawData, {
-    dimensionField: config?.dimensionField,
-    valueField: config?.valueField,
-  });
+  const chartData = ChartDataTransformer.transformToLineBarData(
+    rawData,
+    toLineBarFieldMapping(config, dataSource?.field_schema),
+  );
   const isDataReady = chartData.categories.length > 0;
 
   useEffect(() => {

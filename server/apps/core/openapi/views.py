@@ -175,13 +175,7 @@ def _uri_matches_callback_paths(forwarded_uri: str, service: str, callback_paths
 
 
 def _try_callback_auth(request, matched, entry):
-    """平台 worker 回调：校验 X-Bklite-Callback-Auth，且路径必须在 callback_paths。"""
-    expected = os.getenv("OPENAPI_CALLBACK_SECRET") or ""
-    presented = request.META.get("HTTP_X_BKLITE_CALLBACK_AUTH", "")
-    if not expected or not presented:
-        return None, False
-    if not hmac.compare_digest(presented, expected):
-        return None, False
+    """平台 worker 回调：路径命中 callback_paths 即放行，不查 API Key、不另要共享密钥。"""
     if not matched or entry is None:
         return None, False
     if not _uri_matches_callback_paths(request.META.get("HTTP_X_FORWARDED_URI", ""), matched.group("service"), entry.get("callback_paths")):

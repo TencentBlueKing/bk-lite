@@ -7,6 +7,37 @@ from apps.cmdb.models.custom_collect_plugin import CustomCollectPlugin
 from apps.cmdb.services.host_sync_identity import parse_cloud_id
 from apps.cmdb.services.model import ModelManage
 
+
+def _device_model(row):
+    for key in ("model_id", "device_type"):
+        value = str(row.get(key) or "").strip()
+        if value:
+            return value
+    return ""
+
+
+def _existing_device_models(inst_names):
+    """按实例名找到已经存在的交换机、路由器、防火墙或负载均衡。"""
+    names = [name for name in dict.fromkeys(inst_names) if name]
+    if not names:
+        return {}
+    from apps.cmdb.collection.plugins.community.network.plugins import NETWORK_DEVICE_MODELS
+    from apps.cmdb.graph.drivers.graph_client import GraphClient
+
+    with GraphClient() as graph:
+        rows = graph.query_entity_by_inst_names(names) or []
+    found = {}
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        name = row.get("inst_name")
+        model_id = row.get("model_id")
+        if name in found or model_id not in NETWORK_DEVICE_MODELS:
+            continue
+        found[name] = model_id
+    return found
+
+
 _SYSTEM_LABELS = {
     "__name__",
     "instance_id",
@@ -63,22 +94,50 @@ class CustomScriptCollectionPlugin(AutoRegisterCollectionPluginMixin, CollectBas
 
     def format_metrics(self):
         task = self.get_collect_inst()
+        if getattr(task, "model_id", None) == "network":
+            self._format_network_metrics()
+            return
         attrs = {attr.get("attr_id"): attr for attr in ModelManage.search_model_attr(task.model_id) or [] if attr.get("attr_id")}
         records = []
         for rows in self.collection_metrics_dict.values():
             for row in rows:
-                inst_name = str(row.get("inst_name") or "").strip()
-                if not inst_name:
-                    self._dropped_records += 1
+                record = self._model_record(row, attrs)
+                if record is None:
                     continue
-                record = {"inst_name": inst_name}
-                for key, raw in row.items():
-                    if key in _SYSTEM_LABELS or key not in attrs:
-                        continue
-                    record[key] = self._convert(attrs[key], raw)
                 self._fill_host_cloud(task, attrs, record)
                 records.append(record)
         self.result[task.model_id] = records
+
+    def _format_network_metrics(self):
+        from apps.cmdb.collection.plugins.community.network.plugins import NETWORK_DEVICE_MAPPING, NETWORK_DEVICE_MODELS
+
+        fields = [field for field in NETWORK_DEVICE_MAPPING if field not in {"inst_name", "model_id"}]
+        attrs = {field: {"attr_id": field, "attr_type": "str"} for field in fields}
+        pending = []
+        for rows in self.collection_metrics_dict.values():
+            for row in rows:
+                record = self._model_record(row, attrs)
+                if record is not None:
+                    pending.append((row, record))
+        unresolved = [record["inst_name"] for row, record in pending if _device_model(row) not in NETWORK_DEVICE_MODELS]
+        existing = _existing_device_models(unresolved)
+        for row, record in pending:
+            model_id = _device_model(row)
+            if model_id not in NETWORK_DEVICE_MODELS:
+                model_id = existing.get(record["inst_name"], "switch")
+            self.result.setdefault(model_id, []).append(record)
+
+    def _model_record(self, row, attrs):
+        inst_name = str(row.get("inst_name") or "").strip()
+        if not inst_name:
+            self._dropped_records += 1
+            return None
+        record = {"inst_name": inst_name}
+        for key, raw in row.items():
+            if key in _SYSTEM_LABELS or key not in attrs:
+                continue
+            record[key] = self._convert(attrs[key], raw)
+        return record
 
     @staticmethod
     def _fill_host_cloud(task, attrs, record):

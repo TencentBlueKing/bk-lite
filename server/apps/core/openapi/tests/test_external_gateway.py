@@ -193,20 +193,18 @@ def test_forward_auth_personal_allowlist_allows_listed_service(client, registere
 # ---------- _me 合并外部 service ----------
 
 
-def test_forward_auth_callback_secret_allows_callback_path(client, external_env, monkeypatch):
+def test_forward_auth_callback_path_skips_api_key(client, external_env, monkeypatch):
     entry = dict(
         SAMPLE_ENTRY,
         paths=["/openapi/v1/action_components/callback/"],
         callback_paths=["/openapi/v1/action_components/callback/"],
     )
-    monkeypatch.setenv("OPENAPI_CALLBACK_SECRET", "cb-secret")
     monkeypatch.setattr("apps.core.openapi.renderer.fetch_entries", lambda: {"itsm": entry})
     renderer.refresh_snapshot()
 
     resp = client.get(
         AUTH_URL,
         HTTP_X_FORWARDED_URI="/openapi/v1/itsm/openapi/v1/action_components/callback/",
-        HTTP_X_BKLITE_CALLBACK_AUTH="cb-secret",
         HTTP_X_BKLITE_ACTING_USER="admin@domain.com",
         HTTP_X_BKLITE_ACTING_TEAM="1",
     )
@@ -215,16 +213,26 @@ def test_forward_auth_callback_secret_allows_callback_path(client, external_env,
     assert resp["X-BK-Team"] == "1"
 
 
-def test_forward_auth_callback_secret_rejects_non_callback_path(client, external_env, monkeypatch):
+def test_forward_auth_callback_path_rejects_non_callback_path(client, external_env, monkeypatch):
     entry = dict(SAMPLE_ENTRY, callback_paths=["/openapi/v1/action_components/callback/"])
-    monkeypatch.setenv("OPENAPI_CALLBACK_SECRET", "cb-secret")
     monkeypatch.setattr("apps.core.openapi.renderer.fetch_entries", lambda: {"itsm": entry})
     renderer.refresh_snapshot()
 
     resp = client.get(
         AUTH_URL,
         HTTP_X_FORWARDED_URI="/openapi/v1/itsm/tickets/create",
-        HTTP_X_BKLITE_CALLBACK_AUTH="cb-secret",
+    )
+    assert resp.status_code == 401
+
+
+def test_forward_auth_empty_callback_paths_still_requires_api_key(client, external_env, monkeypatch):
+    entry = dict(SAMPLE_ENTRY, paths=["/openapi/v1/action_components/callback/"])
+    monkeypatch.setattr("apps.core.openapi.renderer.fetch_entries", lambda: {"itsm": entry})
+    renderer.refresh_snapshot()
+
+    resp = client.get(
+        AUTH_URL,
+        HTTP_X_FORWARDED_URI="/openapi/v1/itsm/openapi/v1/action_components/callback/",
     )
     assert resp.status_code == 401
 

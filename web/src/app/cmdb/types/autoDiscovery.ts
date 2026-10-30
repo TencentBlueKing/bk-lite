@@ -175,6 +175,9 @@ export interface TaskStatusStats {
   success: number;
   failed: number;
   running: number;
+  partial_success?: number;
+  not_start?: number;
+  total?: number;
 }
 
 export type TaskStatusMap = Record<string, TaskStatusStats>;

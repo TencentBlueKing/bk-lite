@@ -35,6 +35,31 @@ def _schedule_delivery(record_id: int) -> None:
 def _deliver_payload(kind: str, payload: dict, *, delivery_claim=None) -> None:
     if outbox_handlers.deliver(kind, payload, delivery_claim=delivery_claim):
         return
+    if kind == "itsm_evaluate":
+        from apps.alerts.itsm.service import evaluate_creation
+
+        evaluate_creation(delivery_claim["record_id"])
+        return
+    if kind == "itsm_create":
+        from apps.alerts.itsm.service import execute_creation
+
+        execute_creation(payload["execution_id"])
+        return
+    if kind == "itsm_sync":
+        from apps.alerts.itsm.sync import sync_ticket
+
+        sync_ticket(payload["link_id"])
+        return
+    if kind == "itsm_comment":
+        from apps.alerts.itsm.comments import deliver_comment
+
+        deliver_comment(payload["link_id"], payload["event_name"])
+        return
+    if kind == "itsm_failure":
+        from apps.alerts.itsm.notification import notify_failure
+
+        notify_failure(payload["execution_id"], fault_key=payload.get("fault_key"))
+        return
     if kind == "action":
         from apps.alerts.tasks.action_tasks import process_alert_actions
 

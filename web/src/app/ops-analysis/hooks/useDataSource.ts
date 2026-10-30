@@ -3,6 +3,7 @@ import dayjs from 'dayjs';
 import { useOpsAnalysis } from '@/app/ops-analysis/context/common';
 import { useDataSourceApi } from '@/app/ops-analysis/api/dataSource';
 import { DatasourceItem, ParamItem } from '@/app/ops-analysis/types/dataSource';
+import { normalizeDatasourceRecordId } from '@/app/ops-analysis/utils/datasourceRecordId';
 import {
   type DataSourceFormParams as FormParams,
   getDataSourceFormParamInitialValue,
@@ -24,8 +25,11 @@ export const useDataSourceManager = () => {
     dataSourceId?: string | number
   ): DatasourceItem | undefined => {
     if (dataSourceId) {
-      const id = typeof dataSourceId === 'string' ? parseInt(dataSourceId, 10) : dataSourceId;
-      return dataSources.find((ds) => ds.id === id);
+      const id = normalizeDatasourceRecordId(dataSourceId);
+      if (id === undefined) {
+        return undefined;
+      }
+      return dataSources.find((ds) => normalizeDatasourceRecordId(ds.id) === id);
     }
     return undefined;
   };

@@ -40,4 +40,4 @@
 
 流程进入终态后写入独立 outbox 再 HTTP 回调。回调失败只更新 outbox，不回写编排执行状态。含运行时主机目标字段的流程暂不支持该入口。
 
-回调 URL 回写缺省值与作业平台相同：Docker Compose 走 `https://traefik`。见作业平台 `docs/open_api.md`。
+回调 URL 回写缺省值与作业平台相同：Docker Compose 走 `https://traefik`。网关按外部服务 `callback_paths` 放行，不另配 Callback Secret。见作业平台 `docs/open_api.md`。

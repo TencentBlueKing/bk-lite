@@ -18,6 +18,7 @@ import { channelOptionValue } from '@/app/alarm/utils/channelIdentity';
 import NoDispatchConfigCard from './components/noDispatchConfigCard';
 import LevelManagementPanel from './components/levelManagementPanel';
 import LevelFormModal from './components/levelFormModal';
+import ItsmIntegrationCard from './components/itsmIntegrationCard';
 
 export default function UnallocatedNotificationConfig() {
   const { t } = useTranslation();
@@ -308,6 +309,8 @@ export default function UnallocatedNotificationConfig() {
               onCancelEdit={cancelEdit}
               onConfirmEdit={confirmEdit}
             />
+
+            <ItsmIntegrationCard users={assigneeOptions} channels={channelList.filter(channel => channel.channel_type !== "im_notification").map(channel => ({ label: channel.name, value: channel.id }))} />
 
             <LevelManagementPanel
               levelMeta={levelMeta}

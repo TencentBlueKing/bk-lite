@@ -1,5 +1,17 @@
 FROM ghcr.io/tencentblueking/bk-lite/server-base:latest
 
+# CVE-2026-111497：更新系统解码库；软件源未提供补丁时禁止生成发行镜像。
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends libbrotli1 && \
+    . /etc/os-release && \
+    case "$ID:$VERSION_ID" in \
+      debian:12) minimum='1.0.9-2+deb12u1' ;; \
+      debian:13) minimum='1.1.0-2+deb13u1' ;; \
+      *) echo "未验证的 Brotli 发行版：$ID:$VERSION_ID" >&2; exit 1 ;; \
+    esac && \
+    dpkg --compare-versions "$(dpkg-query -W -f='${Version}' libbrotli1)" ge "$minimum" && \
+    rm -rf /var/lib/apt/lists/*
+
 ARG NEXUS_PYTHON_REPOSITY
 
 WORKDIR /apps

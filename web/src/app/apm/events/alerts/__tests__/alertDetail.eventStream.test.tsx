@@ -131,7 +131,6 @@ describe('APM 告警详情事件列表', { timeout: 15000 }, () => {
   it('事件流展示认领、分派与转派，不把它们画进指标快照图', async () => {
     const metricSnapshot = {
       unit: 'ratio',
-      aggregation: 'avg' as const,
       evaluation_interval: 1,
       metric_window: 5,
       snapshots: [
@@ -168,6 +167,7 @@ describe('APM 告警详情事件列表', { timeout: 15000 }, () => {
     );
 
     expect(screen.getByTestId('metric-chart')).toBeTruthy();
+    expect(screen.queryByText('条件')).toBeNull();
     await userEvent.click(screen.getByRole('tab', { name: '事件' }));
     expect(await screen.findByText('认领')).toBeTruthy();
     expect(screen.getByText('分派')).toBeTruthy();
@@ -184,7 +184,6 @@ describe('APM 告警详情事件列表', { timeout: 15000 }, () => {
         alert={alert}
         metricSnapshot={{
           unit: 'ratio',
-          aggregation: 'avg',
           evaluation_interval: 1,
           metric_window: 5,
           snapshots: [],
@@ -222,7 +221,6 @@ describe('APM 告警详情事件列表', { timeout: 15000 }, () => {
         alert={alert}
         metricSnapshot={{
           unit: 'ratio',
-          aggregation: 'avg',
           evaluation_interval: 1,
           metric_window: 5,
           snapshots: [],
@@ -329,7 +327,6 @@ const deliveryItem: ApmNotificationDelivery = {
 };
 const listMetricSnapshot = {
   unit: 'ratio',
-  aggregation: 'avg' as const,
   evaluation_interval: 1,
   metric_window: 5,
   snapshots: [

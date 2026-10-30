@@ -21,12 +21,9 @@ const policy = {
   metric_type: 'p95' as const,
   evaluation_interval: 1,
   metric_window: 5,
-  aggregation: 'max' as const,
   thresholds: [{ severity: 'warning' as const, comparator: 'gt' as const, value: '500' }],
   trigger_after: 3,
   recover_after: 3,
-  no_data_after: null,
-  no_data_severity: '' as const,
   notification_targets: [],
   is_enabled: true,
   state: {

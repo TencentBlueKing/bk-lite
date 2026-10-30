@@ -95,6 +95,29 @@ def rewrite_gateway_callback_url(url: str) -> str:
     return internal.rstrip("/") + path
 
 
+def callback_tls_verify(url: str):
+    """传给 requests 的 verify。默认校验证书；Compose Traefik 自签回环除外。
+
+    OPENAPI_CALLBACK_SSL_VERIFY：
+      - 未配置：仅 Compose 内部 traefik 主机关闭校验，其余 True
+      - true/1/yes → True
+      - false/0/no → False
+      - 其它非空 → 视为 CA 文件/目录路径
+    """
+    raw = (os.getenv("OPENAPI_CALLBACK_SSL_VERIFY") or "").strip()
+    if raw:
+        lowered = raw.lower()
+        if lowered in ("true", "1", "yes"):
+            return True
+        if lowered in ("false", "0", "no"):
+            return False
+        return raw
+    host = urlparse(url).hostname or ""
+    if not _running_in_kubernetes() and _looks_like_compose_traefik(host):
+        return False
+    return True
+
+
 def callback_result_data(parsed) -> dict:
     """ITSM CustomRenderer 会包一层 data；部分网关/中间件可能再包一层。"""
     data = parsed if isinstance(parsed, dict) else {}
@@ -115,9 +138,6 @@ def deliver_gateway_callback(payload: dict) -> None:
     body = payload.get("request_body") or {}
     identity = payload.get("identity") or {}
     headers = {"Content-Type": "application/json"}
-    secret = os.getenv("OPENAPI_CALLBACK_SECRET") or ""
-    if secret:
-        headers["X-Bklite-Callback-Auth"] = secret
     user = identity.get("user") or ""
     domain = identity.get("domain") or ""
     if user and domain:
@@ -128,8 +148,14 @@ def deliver_gateway_callback(payload: dict) -> None:
         headers["X-Bklite-Acting-Team"] = str(identity["team_id"])
     SSRFValidator.validate_callback(url)
     # 网关内部回环走 Docker / 集群 DNS（含 172.16/12），不能用 safe_post 的严格 SSRF。
-    # Compose Traefik 使用自签证书，verify=False 与采集器访问 websecure 的口径一致。
-    response = requests.post(url, json=body, headers=headers, allow_redirects=False, timeout=30, verify=False)
+    response = requests.post(
+        url,
+        json=body,
+        headers=headers,
+        allow_redirects=False,
+        timeout=30,
+        verify=callback_tls_verify(url),
+    )
     if not 200 <= response.status_code < 300:
         if response.status_code in (401, 403, 404):
             raise RuntimeError(f"CALLBACK_REJECTED status_code={response.status_code}")

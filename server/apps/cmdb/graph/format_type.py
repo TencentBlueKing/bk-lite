@@ -1,4 +1,18 @@
 import os
+import re
+
+_NODE_ALIAS = re.compile(r"\bn\b")
+
+
+def apply_node_alias(expression: str, alias: str = "n") -> str:
+    """把条件里的节点别名 n 换成调用方指定的别名。默认 n 时原样返回。"""
+    if not expression or alias == "n":
+        return expression
+    if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", alias):
+        from apps.core.exceptions.base_app_exception import BaseAppException
+
+        raise BaseAppException("无效的查询别名")
+    return _NODE_ALIAS.sub(alias, expression)
 
 
 def format_bool(param):
@@ -112,6 +126,31 @@ def format_str_like(param):
     field = param["field"]
     value = param["value"]
     return f"n.{field} contains '{value}'"
+
+
+def format_str_not_like(param):
+    field = param["field"]
+    value = param["value"]
+    return f"NOT (n.{field} contains '{value}')"
+
+
+def format_time_before(param):
+    field = param["field"]
+    return f"n.{field} < '{param['value']}'"
+
+
+def format_time_after(param):
+    field = param["field"]
+    return f"n.{field} > '{param['value']}'"
+
+
+def format_empty(param):
+    field = param["field"]
+    return f"(n.{field} IS NULL OR n.{field} = '' OR n.{field} = [])"
+
+
+def format_not_empty(param):
+    return f"NOT {format_empty(param)}"
 
 
 def format_str_in(param):
@@ -247,6 +286,11 @@ FORMAT_TYPE = {
     "str<>": format_str_neq,
     "str>": format_str_gt,
     "str*": format_str_like,  # 修改为使用contains
+    "str!*": format_str_not_like,
+    "time<": format_time_before,
+    "time>": format_time_after,
+    "empty": format_empty,
+    "not_empty": format_not_empty,
     "str[]": format_str_in,
     "user[]": format_user_in,
     "int=": format_int_eq,
@@ -340,6 +384,37 @@ def format_str_neq_params(param, collector):
     value = param["value"]
     param_name = collector.add_param(value, prefix="str")
     return f"n.{field} <> {param_name}"
+
+
+def format_str_not_like_params(param, collector):
+    return f"NOT ({format_str_like_params(param, collector)})"
+
+
+def format_time_before_params(param, collector):
+    from apps.cmdb.graph.validators import CQLValidator
+
+    field = CQLValidator.validate_field(param["field"])
+    param_name = collector.add_param(param["value"], prefix="time")
+    return f"n.{field} < {param_name}"
+
+
+def format_time_after_params(param, collector):
+    from apps.cmdb.graph.validators import CQLValidator
+
+    field = CQLValidator.validate_field(param["field"])
+    param_name = collector.add_param(param["value"], prefix="time")
+    return f"n.{field} > {param_name}"
+
+
+def format_empty_params(param, _collector):
+    from apps.cmdb.graph.validators import CQLValidator
+
+    field = CQLValidator.validate_field(param["field"])
+    return f"(n.{field} IS NULL OR n.{field} = '' OR n.{field} = [])"
+
+
+def format_not_empty_params(param, collector):
+    return f"NOT {format_empty_params(param, collector)}"
 
 
 def format_str_like_params(param, collector):
@@ -520,6 +595,11 @@ FORMAT_TYPE_PARAMS = {
     "str<>": format_str_neq_params,
     "str>": format_str_gt_params,
     "str*": format_str_like_params,
+    "str!*": format_str_not_like_params,
+    "time<": format_time_before_params,
+    "time>": format_time_after_params,
+    "empty": format_empty_params,
+    "not_empty": format_not_empty_params,
     "str[]": format_str_in_params,
     "user[]": format_user_in_params,
     "int=": format_int_eq_params,

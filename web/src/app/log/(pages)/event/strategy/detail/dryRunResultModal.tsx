@@ -4,10 +4,14 @@ import React, { useMemo } from 'react';
 import { Modal, Table, Tag } from 'antd';
 import dayjs from 'dayjs';
 import {
-  AggregateConditionTable,
+  AggregateHitCondition,
+  aggregateConditionText,
+  formatAggregateMetric,
   formatAggregateReason,
+  thresholdLadderPieces,
 } from '@/app/log/components/aggregateConditionHit';
 import { parseRawLogData } from '@/app/log/components/public/alertRawLogEvidence';
+import { LEVEL_MAP } from '@/app/log/constants';
 import { formatCompareTarget } from '@/app/log/utils/compareTarget';
 
 export interface LogDryRunCondition {
@@ -21,6 +25,9 @@ export interface LogDryRunCondition {
   matched?: boolean;
   reason?: string;
   compare?: { kind?: string; to?: string };
+  level?: string | null;
+  role?: string;
+  thresholds?: Array<{ level: string; value: string | number; matched?: boolean }>;
 }
 
 export interface LogDryRunItem {
@@ -34,6 +41,7 @@ export interface LogDryRunItem {
   reason?: string;
   no_data?: boolean;
   streak?: number | null;
+  level?: string | null;
 }
 
 export interface LogDryRunWindow {
@@ -103,15 +111,29 @@ const formatRate = (value: number | null | undefined) => {
   return Number(value).toFixed(2);
 };
 
-const VerdictTag = ({ verdict, t }: { verdict?: string; t: (key: string) => string }) => {
+const VerdictTag = ({
+  verdict,
+  level,
+  t,
+}: {
+  verdict?: string;
+  level?: string | null;
+  t: (key: string) => string;
+}) => {
   const label = t(VERDICT_LABEL[verdict || ''] || verdict || '—');
   if (verdict === 'would_trigger') {
+    const levelColor = level ? LEVEL_MAP[level] : '';
+    const text = level ? `${label} ${t(`log.event.${level}`)}` : label;
     return (
       <Tag
         data-testid="dry-run-verdict-would-trigger"
-        style={{ color: 'var(--color-fail)', borderColor: 'var(--color-fail)' }}
+        style={
+          levelColor
+            ? { color: levelColor, borderColor: levelColor }
+            : { color: 'var(--color-fail)', borderColor: 'var(--color-fail)' }
+        }
       >
-        {label}
+        {text}
       </Tag>
     );
   }
@@ -120,6 +142,168 @@ const VerdictTag = ({ verdict, t }: { verdict?: string; t: (key: string) => stri
   }
   return <Tag>{label}</Tag>;
 };
+
+const asHitCondition = (condition: LogDryRunCondition): AggregateHitCondition => condition;
+
+/** 绝对比较只留算出的那个数。变化量、变化率才把当前值和对照值写出来。 */
+function conditionFigure(condition: LogDryRunCondition, t: (key: string) => string) {
+  const relative = Boolean(condition.compare?.kind && condition.compare.kind !== 'absolute');
+  const valueText = formatAggregateMetric(condition.value);
+  if (!relative && condition.baseline == null) {
+    return <span>{valueText}</span>;
+  }
+  const currentText = formatAggregateMetric(condition.current);
+  const baselineText = formatAggregateMetric(condition.baseline);
+  return (
+    <span className="inline-flex flex-wrap gap-x-3 gap-y-1">
+      {relative || currentText !== valueText ? (
+        <span className="inline-flex items-baseline gap-1">
+          <span className="text-[var(--color-text-3)]">{t('log.event.currentValue')}</span>
+          <span>{currentText}</span>
+        </span>
+      ) : null}
+      {relative || condition.baseline != null ? (
+        <span className="inline-flex items-baseline gap-1">
+          <span className="text-[var(--color-text-3)]">{t('log.event.baselineValue')}</span>
+          <span>{baselineText}</span>
+        </span>
+      ) : null}
+      <span className="inline-flex items-baseline gap-1">
+        <span className="text-[var(--color-text-3)]">{t('log.event.computedValue')}</span>
+        <span>{valueText}</span>
+      </span>
+    </span>
+  );
+}
+
+function conditionMark(condition: LogDryRunCondition, t: (key: string) => string) {
+  if (condition.role === 'guard') {
+    return condition.matched ? t('log.event.guardPassed') : t('log.event.guardMissed');
+  }
+  if (condition.matched && condition.level) {
+    return t(`log.event.${condition.level}`);
+  }
+  return '';
+}
+
+function DryRunChecks({
+  conditions,
+  t,
+}: {
+  conditions: LogDryRunCondition[];
+  t: (key: string) => string;
+}) {
+  return (
+    <div className="flex flex-col">
+      {conditions.map((condition, index) => {
+        const hit = asHitCondition(condition);
+        const pieces = thresholdLadderPieces(hit);
+        const reason = condition.reason ? formatAggregateReason(condition.reason, t) : '';
+        const mark = conditionMark(condition, t);
+        const levelColor = condition.matched && condition.level ? LEVEL_MAP[condition.level] : '';
+        return (
+          <div
+            key={`${condition.func || 'condition'}-${index}`}
+            className="flex items-baseline gap-x-6 border-t border-[var(--color-border-1)] py-2.5 text-[13px]"
+          >
+            <div className="w-36 shrink-0 text-[var(--color-text-1)]">{aggregateConditionText(hit, t)}</div>
+            <div className="w-12 shrink-0 tabular-nums text-[var(--color-text-1)]">{conditionFigure(condition, t)}</div>
+            <div className="min-w-0">
+              {pieces ? (
+                <span className="inline-flex flex-wrap gap-x-3 gap-y-1">
+                  {pieces.map((piece) => (
+                    <span
+                      key={piece.level}
+                      className={piece.hit ? 'font-semibold' : 'text-[var(--color-text-2)]'}
+                      style={piece.hit && LEVEL_MAP[piece.level] ? { color: LEVEL_MAP[piece.level] } : undefined}
+                    >
+                      {`${piece.text}（${t(`log.event.${piece.level}`)}）`}
+                    </span>
+                  ))}
+                </span>
+              ) : (
+                <span className="text-[var(--color-text-2)]">
+                  {`${condition.op || ''} ${condition.threshold ?? ''}`.trim() || '—'}
+                </span>
+              )}
+              {reason && reason !== '—' ? (
+                <div className="mt-0.5 text-[12px] text-[var(--color-text-3)]">{reason}</div>
+              ) : null}
+            </div>
+            {mark ? (
+              <div className="shrink-0" style={levelColor ? { color: levelColor } : undefined}>
+                {mark}
+              </div>
+            ) : null}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/** 一条分组就是一条告警实例。没有分组时也是这一块，名字用「全部」。 */
+function DryRunInstance({
+  item,
+  keyword,
+  t,
+}: {
+  item: LogDryRunItem;
+  keyword: boolean;
+  t: (key: string) => string;
+}) {
+  const conditions = keyword ? [] : item.conditions || [];
+  return (
+    <section className="border-b border-[var(--color-border-1)] py-3 last:border-b-0">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <span className="min-w-0 break-all text-[13px] font-medium text-[var(--color-text-1)]">
+          {formatGroup(item.group, t('common.all'))}
+        </span>
+        <span className="inline-flex flex-wrap items-baseline gap-x-3 text-[13px] text-[var(--color-text-2)]">
+          {item.no_data || item.verdict === 'would_trigger_no_data' ? (
+            <span>{t('log.event.currentWindowEmpty')}</span>
+          ) : (
+            <span className="inline-flex items-baseline gap-1">
+              <span>{t('log.event.currentCount')}</span>
+              <span>{formatCount(item.count)}</span>
+            </span>
+          )}
+          {typeof item.streak === 'number' ? (
+            <span className="inline-flex items-baseline gap-1">
+              <span>{t('log.event.streak')}</span>
+              <span>{formatCount(item.streak)}</span>
+            </span>
+          ) : null}
+          {item.previous_count != null ? (
+            <span className="inline-flex items-baseline gap-1">
+              <span>{t('log.event.previousCount')}</span>
+              <span>{formatCount(item.previous_count)}</span>
+            </span>
+          ) : null}
+          {item.count_rate != null ? (
+            <span className="inline-flex items-baseline gap-1">
+              <span>{t('log.event.countRate')}</span>
+              <span>{formatRate(item.count_rate)}</span>
+            </span>
+          ) : null}
+          {item.count_delta != null ? (
+            <span className="inline-flex items-baseline gap-1">
+              <span>{t('log.event.countDelta')}</span>
+              <span>{formatCount(item.count_delta)}</span>
+            </span>
+          ) : null}
+        </span>
+        <span className="ml-auto inline-flex items-center gap-2">
+          {item.reason === 'window_failed' ? (
+            <span className="text-[13px] text-[var(--color-text-2)]">{formatAggregateReason(item.reason, t)}</span>
+          ) : null}
+          <VerdictTag verdict={item.verdict} level={item.level} t={t} />
+        </span>
+      </div>
+      {conditions.length > 0 ? <DryRunChecks conditions={conditions} t={t} /> : null}
+    </section>
+  );
+}
 
 const DryRunResultModal: React.FC<DryRunResultModalProps> = ({ open, data, onClose, t }) => {
   const items = data?.items || [];
@@ -138,75 +322,6 @@ const DryRunResultModal: React.FC<DryRunResultModalProps> = ({ open, data, onClo
     return counts;
   }, [items]);
 
-  const tableItems = useMemo(
-    () => items.map((item, index) => ({ ...item, rowKey: String(index) })),
-    [items],
-  );
-  const showStreak = items.some((item) => typeof item.streak === 'number');
-
-  const columns = useMemo(() => {
-    const groupColumn = {
-      title: t('log.event.dryRunGroup'),
-      dataIndex: 'group',
-      key: 'group',
-      render: (group: Record<string, string> | undefined) => formatGroup(group, t('common.all')),
-    };
-    const countColumn = {
-      title: t('log.event.currentCount'),
-      dataIndex: 'count',
-      key: 'count',
-      render: (value: number | null | undefined, record: LogDryRunItem) =>
-        record.no_data || record.verdict === 'would_trigger_no_data'
-          ? t('log.event.currentWindowEmpty')
-          : formatCount(value),
-    };
-    const streakColumn = {
-      title: t('log.event.streak'),
-      dataIndex: 'streak',
-      key: 'streak',
-      render: (value: number | null | undefined) => formatCount(value),
-    };
-    const verdictColumn = {
-      title: t('log.event.dryRunVerdict'),
-      dataIndex: 'verdict',
-      key: 'verdict',
-      render: (verdict: string, record: LogDryRunItem) => (
-        <span className="inline-flex flex-wrap items-center gap-1">
-          <VerdictTag verdict={verdict} t={t} />
-          {record.reason === 'window_failed' ? <span>{formatAggregateReason(record.reason, t)}</span> : null}
-        </span>
-      ),
-    };
-    const leading = showStreak
-      ? [groupColumn, countColumn, streakColumn]
-      : [groupColumn, countColumn];
-    if (keyword) {
-      return [...leading, verdictColumn];
-    }
-    return [
-      ...leading,
-      {
-        title: t('log.event.previousCount'),
-        dataIndex: 'previous_count',
-        key: 'previous_count',
-        render: (value: number | null | undefined) => formatCount(value),
-      },
-      {
-        title: t('log.event.countRate'),
-        dataIndex: 'count_rate',
-        key: 'count_rate',
-        render: (value: number | null | undefined) => formatRate(value),
-      },
-      {
-        title: t('log.event.countDelta'),
-        dataIndex: 'count_delta',
-        key: 'count_delta',
-        render: (value: number | null | undefined) => formatCount(value),
-      },
-      verdictColumn,
-    ];
-  }, [keyword, showStreak, t]);
-
   const sample = useMemo(() => parseRawLogData(data?.sample_preview || []), [data?.sample_preview]);
 
   return (
@@ -217,6 +332,7 @@ const DryRunResultModal: React.FC<DryRunResultModalProps> = ({ open, data, onClo
       footer={null}
       width={960}
       destroyOnHidden
+      styles={{ body: { maxHeight: '70vh', overflowY: 'auto' } }}
     >
       <div className="mb-3 flex flex-wrap gap-4 text-[13px] text-[var(--color-text-2)]">
         <span>
@@ -241,7 +357,7 @@ const DryRunResultModal: React.FC<DryRunResultModalProps> = ({ open, data, onClo
           </span>
         ))}
       </div>
-      {items.length > 0 ? (
+      {items.length > 1 ? (
         <div className="mb-3 flex flex-wrap gap-2">
           {Object.entries(verdictCounts).map(([verdict, count]) => (
             <span
@@ -252,26 +368,19 @@ const DryRunResultModal: React.FC<DryRunResultModalProps> = ({ open, data, onClo
             </span>
           ))}
         </div>
-      ) : (
+      ) : null}
+      {items.length === 0 ? (
         <div className="mb-3 text-[13px] text-[var(--color-text-3)]">{t('log.event.dryRunNoMatch')}</div>
-      )}
+      ) : null}
       {data?.truncated ? (
         <div className="mb-3 text-[13px] text-[var(--color-warning)]">{t('log.event.truncatedHint')}</div>
       ) : null}
       {items.length > 0 ? (
-        <Table
-          size="small"
-          pagination={false}
-          rowKey="rowKey"
-          dataSource={tableItems}
-          columns={columns}
-          expandable={{
-            rowExpandable: (record) => Array.isArray(record.conditions) && record.conditions.length > 0,
-            expandedRowRender: (record) => (
-              <AggregateConditionTable conditions={record.conditions || []} t={t} />
-            ),
-          }}
-        />
+        <div>
+          {items.map((item, index) => (
+            <DryRunInstance key={index} item={item} keyword={keyword} t={t} />
+          ))}
+        </div>
       ) : null}
       {sample.isTabular && sample.rows.length > 0 ? (
         <Table

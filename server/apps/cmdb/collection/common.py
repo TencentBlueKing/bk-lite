@@ -39,7 +39,10 @@ class Management:
         reconcile_task_assets=False,
         expire_days=0,
         collection_targets=(),
+        reconcile=None,
     ):
+        self.reconcile = reconcile
+        self.reconcile_stats = {"skipped_fields": 0, "org_conflicts": 0, "outside_owner_conflicts": 0, "concurrent_abandons": 0}
         self.organization = organization
         self.collect_time = collect_time
         self.collect_plugin = collect_plugin
@@ -76,6 +79,11 @@ class Management:
             from apps.cmdb.services.vmware_collection_scope import VmwareCollectionScope
 
             check_attr_map["editable"][VmwareCollectionScope.SOURCE_FIELD] = "vCenter 采集来源"
+        if self.reconcile:
+            from apps.cmdb.collection.field_reconcile import COLLECT_SOURCES_ATTR
+
+            for field in ("collect_task", "organization", "collect_time", "auto_collect", COLLECT_SOURCES_ATTR):
+                check_attr_map["editable"].setdefault(field, field)
 
         return check_attr_map
 
@@ -114,6 +122,8 @@ class Management:
         return False
 
     def contrast(self, old_map, new_map):
+        if self.reconcile:
+            return self._contrast_reconcile(old_map, new_map)
         add_list, update_list, heartbeat_list, delete_list = [], [], [], []
         for key, info in new_map.items():
             info["model_id"] = self.model_id
@@ -139,6 +149,92 @@ class Management:
                 ):
                     delete_list.append(info)
 
+        return add_list, update_list, heartbeat_list, delete_list
+
+    def _contrast_reconcile(self, old_map, new_map):
+        from apps.cmdb.collection.field_reconcile import (
+            COLLECT_SOURCES_ATTR,
+            ORG_CONFLICT,
+            OUTSIDE_CONFLICT,
+            other_member_still_sees,
+            plan_collected_instance,
+            plan_create,
+        )
+
+        add_list, update_list, heartbeat_list, delete_list = [], [], [], []
+        ctx = self.reconcile
+        for key, info in new_map.items():
+            info = dict(info)
+            info["model_id"] = self.model_id
+            info["_task_organizations"] = self.organization
+            if key not in old_map:
+                created = plan_create(info, self.task_id, self.collect_time)
+                info[COLLECT_SOURCES_ATTR] = created["sources_json"]
+                info.pop("_task_organizations", None)
+                add_list.append(info)
+                continue
+            old = old_map[key]
+            plan = plan_collected_instance(
+                old=old,
+                incoming=info,
+                task_id=self.task_id,
+                member_order=ctx["member_order"],
+                field_orders=ctx.get("field_orders") or {},
+                now=self.collect_time,
+                stale_days=ctx.get("stale_days", 7),
+            )
+            self.reconcile_stats["skipped_fields"] += plan.get("skipped_fields") or 0
+            if plan.get("conflict") == OUTSIDE_CONFLICT:
+                self.reconcile_stats["outside_owner_conflicts"] += 1
+                self.reconcile_stats.setdefault("conflicts", []).append(
+                    {"instance_info": {"model_id": self.model_id, "inst_name": old.get("inst_name")}, "error": OUTSIDE_CONFLICT}
+                )
+                continue
+            if plan.get("conflict") == ORG_CONFLICT:
+                self.reconcile_stats["org_conflicts"] += 1
+                self.reconcile_stats.setdefault("conflicts", []).append(
+                    {"instance_info": {"model_id": self.model_id, "inst_name": old.get("inst_name")}, "error": ORG_CONFLICT}
+                )
+                continue
+            payload = {
+                "_id": old["_id"],
+                "inst_name": old.get("inst_name"),
+                "model_id": self.model_id,
+                "collect_task": plan["collect_task"],
+                "collect_time": self.collect_time if plan["refresh_collect_time"] else old.get("collect_time"),
+                "organization": old.get("organization", self.organization),
+                "auto_collect": True,
+                COLLECT_SOURCES_ATTR: plan["sources_json"],
+                "_expected_collect_sources": old.get(COLLECT_SOURCES_ATTR),
+                "suppress_change_record": plan["suppress_change_record"],
+            }
+            if old.get("inst_uuid"):
+                payload["inst_uuid"] = old["inst_uuid"]
+            payload.update(plan["properties"])
+            payload["_incoming"] = {key: value for key, value in info.items() if key not in {"_task_organizations"} and not str(key).startswith("_")}
+            if plan["properties"]:
+                update_list.append(payload)
+            else:
+                heartbeat_list.append(payload)
+
+        if snapshot_allows_cleanup(self.collect_plugin, self.model_id):
+            for key, info in old_map.items():
+                if key in new_map or str(info.get("collect_task")) != str(self.task_id):
+                    continue
+                if is_collection_target(info, self.collection_targets):
+                    continue
+                if not cleanup_due(self.data_cleanup_strategy, info.get("collect_time"), self.collect_time, self.expire_days):
+                    continue
+                if other_member_still_sees(
+                    info.get("collect_task"),
+                    info.get(COLLECT_SOURCES_ATTR),
+                    ctx["member_order"],
+                    self.collect_time,
+                    ctx.get("stale_days", 7),
+                ):
+                    continue
+                info["model_id"] = self.model_id
+                delete_list.append(info)
         return add_list, update_list, heartbeat_list, delete_list
 
     def _query_existing_unique_candidates(self, ag, inst_list):
@@ -227,20 +323,31 @@ class Management:
             for instance_info in inst_list:
                 instance_info = self.coerce_collected_tag(instance_info)
                 try:
-                    instance_info.update(
-                        model_id=self.model_id,
-                        organization=self.existing_organizations.get(instance_info["_id"], self.organization),
-                        collect_task=self.task_id,
-                        auto_collect=True,
-                        collect_time=self.collect_time,
-                    )
+                    if self.reconcile:
+                        instance_info.update(
+                            model_id=self.model_id,
+                            organization=self.existing_organizations.get(instance_info["_id"], instance_info.get("organization", self.organization)),
+                            auto_collect=True,
+                        )
+                    else:
+                        instance_info.update(
+                            model_id=self.model_id,
+                            organization=self.existing_organizations.get(instance_info["_id"], self.organization),
+                            collect_task=self.task_id,
+                            auto_collect=True,
+                            collect_time=self.collect_time,
+                        )
                     assos = instance_info.pop("assos", [])
                     exist_items = [i for i in exist_items if i["_id"] != instance_info["_id"]]
-                    entity = ag.set_entity_properties(INSTANCE, [instance_info["_id"]], instance_info, self.check_attr_map, exist_items)
+                    suppress = bool(instance_info.get("suppress_change_record"))
+                    entity = self._set_collected_properties(ag, instance_info, exist_items)
+                    if not entity:
+                        self.reconcile_stats["concurrent_abandons"] += 1
+                        continue
                     # 更新关联
                     assos_result = self.setting_assos(dict(model_id=self.model_id, _id=entity[0]["_id"], inst_name=entity[0]["inst_name"]), assos)
                     exist_items.append(entity[0])
-                    result["success"].append(dict(inst_info=entity[0], assos_result=assos_result))
+                    result["success"].append(dict(inst_info=entity[0], assos_result=assos_result, suppress_change_record=suppress))
                 except Exception as e:
                     result["failed"].append({"instance_info": instance_info, "error": getattr(e, "message", e)})
 
@@ -249,36 +356,89 @@ class Management:
         schedule_instance_auto_relation_reconcile([item["inst_info"]["_id"] for item in result["success"]])
         return result
 
+    def _set_collected_properties(self, ag, instance_info, exist_items):
+        from apps.cmdb.collection.field_reconcile import COLLECT_SOURCES_ATTR, plan_collected_instance
+
+        incoming = instance_info.pop("_incoming", None)
+        expected = instance_info.pop("_expected_collect_sources", None)
+        instance_info.pop("suppress_change_record", None)
+        conditional = self.reconcile and hasattr(ag, "set_entity_properties_if_sources")
+
+        def write(payload, expected_sources):
+            if conditional:
+                return ag.set_entity_properties_if_sources(
+                    INSTANCE,
+                    [payload["_id"]],
+                    payload,
+                    self.check_attr_map,
+                    exist_items,
+                    expected_sources,
+                )
+            return ag.set_entity_properties(INSTANCE, [payload["_id"]], payload, self.check_attr_map, exist_items)
+
+        entity = write(instance_info, expected)
+        if entity or not conditional or incoming is None:
+            return entity
+        fresh_rows, _count = ag.query_entity(INSTANCE, [{"field": "_id", "type": "int=", "value": instance_info["_id"]}])
+        fresh = fresh_rows[0] if fresh_rows else None
+        if not fresh:
+            return None
+        plan = plan_collected_instance(
+            old=fresh,
+            incoming=incoming,
+            task_id=self.task_id,
+            member_order=self.reconcile["member_order"],
+            field_orders=self.reconcile.get("field_orders") or {},
+            now=self.collect_time,
+            stale_days=self.reconcile.get("stale_days", 7),
+        )
+        if plan.get("conflict"):
+            return None
+        retried = {
+            "_id": fresh["_id"],
+            "inst_name": fresh.get("inst_name"),
+            "model_id": self.model_id,
+            "collect_task": plan["collect_task"],
+            "collect_time": self.collect_time if plan["refresh_collect_time"] else fresh.get("collect_time"),
+            "organization": fresh.get("organization", self.organization),
+            "auto_collect": True,
+            COLLECT_SOURCES_ATTR: plan["sources_json"],
+        }
+        retried.update(plan["properties"])
+        return write(retried, fresh.get(COLLECT_SOURCES_ATTR))
+
     def refresh_heartbeat(self, inst_list):
         """仅刷新采集运行元数据，不触发关联、审计或自动关联。"""
         result = {"success": [], "failed": []}
         if not inst_list:
             return result
 
-        heartbeat_infos = [
-            {
+        heartbeat_infos = []
+        for instance_info in inst_list:
+            payload = {
                 "_id": instance_info["_id"],
                 "model_id": self.model_id,
                 "organization": self.existing_organizations.get(instance_info["_id"], self.organization),
-                "collect_task": self.task_id,
+                "collect_task": instance_info.get("collect_task", self.task_id) if self.reconcile else self.task_id,
                 "auto_collect": True,
-                "collect_time": self.collect_time,
+                "collect_time": instance_info.get("collect_time", self.collect_time) if self.reconcile else self.collect_time,
             }
-            for instance_info in inst_list
-        ]
+            if self.reconcile and "_collect_sources" in instance_info:
+                payload["_collect_sources"] = instance_info["_collect_sources"]
+                payload["_expected_collect_sources"] = instance_info.get("_expected_collect_sources")
+                payload["suppress_change_record"] = instance_info.get("suppress_change_record", False)
+            heartbeat_infos.append(payload)
         with GraphClient() as ag:
             exist_items = self._query_existing_unique_candidates(ag, heartbeat_infos)
             for heartbeat_info in heartbeat_infos:
                 try:
                     current_items = [item for item in exist_items if item["_id"] != heartbeat_info["_id"]]
-                    entity = ag.set_entity_properties(
-                        INSTANCE,
-                        [heartbeat_info["_id"]],
-                        heartbeat_info,
-                        self.check_attr_map,
-                        current_items,
-                    )
-                    result["success"].append({"inst_info": entity[0], "assos_result": {}, "heartbeat": True})
+                    suppress = bool(heartbeat_info.get("suppress_change_record"))
+                    entity = self._set_collected_properties(ag, heartbeat_info, current_items)
+                    if not entity:
+                        self.reconcile_stats["concurrent_abandons"] += 1
+                        continue
+                    result["success"].append({"inst_info": entity[0], "assos_result": {}, "heartbeat": True, "suppress_change_record": suppress})
                 except Exception as e:
                     result["failed"].append(
                         {
@@ -413,7 +573,7 @@ class Management:
         update_result["failed"].extend(heartbeat_result["failed"])
         result = dict(add={"success": [], "failed": []}, update=update_result, delete={"success": [], "failed": []})
         self._after_instances_applied(result)
-        return result
+        return self._attach_reconcile_stats(result)
 
     def controller(self):
         add_result = self.add_inst(self.add_list)
@@ -426,6 +586,15 @@ class Management:
             delete_result = self.delete_inst(self.delete_list)
         result = dict(add=add_result, update=update_result, delete=delete_result)
         self._after_instances_applied(result)
+        return self._attach_reconcile_stats(result)
+
+    def _attach_reconcile_stats(self, result):
+        if not self.reconcile:
+            return result
+        conflicts = self.reconcile_stats.get("conflicts") or []
+        if conflicts:
+            result["update"]["failed"].extend(conflicts)
+        result["reconcile_stats"] = {key: value for key, value in self.reconcile_stats.items() if key != "conflicts"}
         return result
 
     def _after_instances_applied(self, result):

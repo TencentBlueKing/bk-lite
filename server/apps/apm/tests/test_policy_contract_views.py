@@ -50,7 +50,6 @@ def _payload(service):
         "metric_type": "error_rate",
         "evaluation_interval": 1,
         "metric_window": 5,
-        "aggregation": "max",
         "thresholds": [
             {"severity": "critical", "comparator": "gt", "value": "0.20"},
             {"severity": "error", "comparator": "gt", "value": "0.10"},
@@ -58,8 +57,6 @@ def _payload(service):
         ],
         "trigger_after": 2,
         "recover_after": 3,
-        "no_data_after": 5,
-        "no_data_severity": "error",
         "notification_targets": [],
     }
 
@@ -87,7 +84,7 @@ def test_policy_contract_accepts_apm_dimensions_and_never_exposes_arbitrary_quer
     [
         ({"environment": ""}, "environment"),
         ({"version_mode": "specific", "versions": []}, "versions"),
-        ({"no_data_after": 5, "no_data_severity": ""}, "no_data_severity"),
+        ({"evaluation_interval": 10, "metric_window": 5}, "metric_window"),
         (
             {
                 "thresholds": [
@@ -175,11 +172,11 @@ def _compare_payload(service, **updates):
     [
         ({"compare_mode": "absolute", "compare_value_kind": "percent"}, "compare_value_kind"),
         (
-            {"compare_mode": "offset_1h", "compare_value_kind": "delta", "thresholds": [{"severity": "error", "comparator": "gt", "value": "10"}]},
+            {"compare_mode": "offset_1h", "compare_value_kind": "", "thresholds": [{"severity": "error", "comparator": "gt", "value": "10"}]},
             "compare_value_kind",
         ),
         (
-            {"compare_mode": "offset_24h", "compare_value_kind": "delta", "thresholds": [{"severity": "error", "comparator": "gt", "value": "10"}]},
+            {"compare_mode": "offset_24h", "compare_value_kind": "sigma", "thresholds": [{"severity": "error", "comparator": "gt", "value": "10"}]},
             "compare_value_kind",
         ),
         ({"compare_mode": "previous_window", "compare_value_kind": ""}, "compare_value_kind"),
@@ -220,7 +217,7 @@ def _compare_payload(service, **updates):
             {
                 "compare_mode": "offset_hours",
                 "compare_offset_amount": 1,
-                "compare_value_kind": "delta",
+                "compare_value_kind": "sigma",
                 "thresholds": [{"severity": "error", "comparator": "gt", "value": "10"}],
             },
             "compare_value_kind",
@@ -273,7 +270,9 @@ def test_policy_compare_rules_reject_illegal_combinations(apm_api_client, update
             "thresholds": [{"severity": "error", "comparator": "gt", "value": "50"}],
         },
         {"compare_mode": "offset_1h", "compare_value_kind": "percent", "thresholds": [{"severity": "error", "comparator": "gt", "value": "50"}]},
+        {"compare_mode": "offset_1h", "compare_value_kind": "delta", "thresholds": [{"severity": "error", "comparator": "gt", "value": "0.1"}]},
         {"compare_mode": "offset_24h", "compare_value_kind": "percent", "thresholds": [{"severity": "error", "comparator": "gt", "value": "50"}]},
+        {"compare_mode": "offset_24h", "compare_value_kind": "delta", "thresholds": [{"severity": "error", "comparator": "gt", "value": "0.1"}]},
         {
             "compare_mode": "offset_hours",
             "compare_offset_amount": 6,
@@ -285,6 +284,18 @@ def test_policy_compare_rules_reject_illegal_combinations(apm_api_client, update
             "compare_offset_amount": 2,
             "compare_value_kind": "percent",
             "thresholds": [{"severity": "error", "comparator": "gt", "value": "50"}],
+        },
+        {
+            "compare_mode": "offset_days",
+            "compare_offset_amount": 1,
+            "compare_value_kind": "delta",
+            "thresholds": [{"severity": "error", "comparator": "gt", "value": "0.2"}],
+        },
+        {
+            "compare_mode": "offset_hours",
+            "compare_offset_amount": 2,
+            "compare_value_kind": "delta",
+            "thresholds": [{"severity": "error", "comparator": "gt", "value": "0.1"}],
         },
         {
             "metric_type": "no_traffic",
