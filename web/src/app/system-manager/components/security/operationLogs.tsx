@@ -2,7 +2,10 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { Input, Select, Button, message, Drawer, Descriptions } from 'antd';
+import { DownloadOutlined } from '@ant-design/icons';
 import ReactDiffViewer from 'react-diff-viewer-continued';
+import dayjs from 'dayjs';
+import type { TableRowSelection } from 'antd/es/table/interface';
 import { useTranslation } from '@/utils/i18n';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import { useClientData } from '@/context/client';
@@ -36,6 +39,8 @@ const OperationLogs: React.FC = () => {
   const { clientData } = useClientData();
   const timeSelectorRef = useRef<any>(null);
   const [loading, setLoading] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
   const [dataSource, setDataSource] = useState<OperationLog[]>([]);
   const [pagination, setPagination] = useState({
     current: 1,
@@ -51,7 +56,7 @@ const OperationLogs: React.FC = () => {
   const [detailVisible, setDetailVisible] = useState(false);
   const [detailRecord, setDetailRecord] = useState<OperationLog | null>(null);
 
-  const { getOperationLogs } = useSecurityApi();
+  const { getOperationLogs, exportOperationLogs } = useSecurityApi();
 
   const fetchOperationLogs = async (page = 1, pageSize = pagination.pageSize) => {
     setLoading(true);
@@ -99,6 +104,41 @@ const OperationLogs: React.FC = () => {
 
   const handleTimeChange = (range: number[]) => {
     setTimeRange(range);
+  };
+
+  const buildExportFilters = () => {
+    const params = buildOperationLogParams(filters, timeRange, pagination.current, pagination.pageSize);
+    delete params.page;
+    delete params.page_size;
+    return params;
+  };
+
+  const handleExport = async () => {
+    try {
+      setExporting(true);
+      const payload =
+        selectedRowKeys.length > 0
+          ? { selected_ids: selectedRowKeys }
+          : buildExportFilters();
+      const blob = await exportOperationLogs(payload);
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `operation_logs_${dayjs().format('YYYYMMDD_HHmmss')}.xlsx`;
+      link.click();
+      window.URL.revokeObjectURL(url);
+      message.success(t('common.exportSuccess'));
+    } catch (error) {
+      console.error('Export failed:', error);
+      message.error(t('system.security.exportFailed'));
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const rowSelection: TableRowSelection<OperationLog> = {
+    selectedRowKeys,
+    onChange: (keys: React.Key[]) => setSelectedRowKeys(keys),
   };
 
   const handleOpenDetail = (record: OperationLog) => {
@@ -216,6 +256,9 @@ const OperationLogs: React.FC = () => {
             {t('common.search')}
           </Button>
           <Button onClick={handleReset}>{t('common.reset')}</Button>
+          <Button icon={<DownloadOutlined />} loading={exporting} onClick={handleExport}>
+            {t('common.export')}
+          </Button>
         </div>
       </div>
 
@@ -226,6 +269,7 @@ const OperationLogs: React.FC = () => {
           dataSource={dataSource}
           loading={loading}
           rowKey="id"
+          rowSelection={rowSelection}
           pagination={{
             current: pagination.current,
             pageSize: pagination.pageSize,
