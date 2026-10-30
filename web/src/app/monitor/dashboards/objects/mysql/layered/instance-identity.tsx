@@ -1,8 +1,9 @@
 'use client';
 
 import React from 'react';
-import Link from 'next/link';
-import { MYSQL_VERSION_UNKNOWN, type MysqlHostCandidate, type MysqlProHeader } from './ia';
+import { MYSQL_VERSION_UNKNOWN, type MysqlProHeader } from './ia';
+import type { LinkedHostCandidate } from '../../../shared/linked-host';
+import { LinkedHostSegment } from '../../../shared/widgets/linked-host-segment';
 import { mysqlCategoryText } from './mysql-copy';
 import { useDashboardText } from '../../../shared/utils/content-i18n';
 import pro from './pro.module.scss';
@@ -39,7 +40,7 @@ export function MysqlInstanceBadges({
 }: {
   header: MysqlProHeader | null;
   pending: boolean;
-  host: MysqlHostCandidate | null;
+  host: LinkedHostCandidate | null;
   hostHref: string;
   hostPending: boolean;
 }) {
@@ -94,29 +95,14 @@ export function MysqlInstanceBadges({
     }
   }
   if (!pending) {
-    if (hostPending) {
-      parts.push(
-        <span
-          key="host-pending"
-          className={`${pro.identitySkeleton} ${pro.identitySkeletonHost} animate-neutral-pulse`}
-        />
-      );
-    } else if (host) {
-      parts.push(
-        <span key="host" className={pro.hostSegment} data-mysql-identity-host="linked">
-          <span className={pro.hostLabel}>{mysqlCategoryText(t, 'host')}</span>
-          <Link className={pro.hostLink} href={hostHref} title={host.name}>
-            {host.name}
-          </Link>
-        </span>
-      );
-    } else {
-      parts.push(
-        <span key="host" className={pro.hostUnlinked} data-mysql-identity-host="unlinked">
-          {mysqlCategoryText(t, 'hostUnlinked')}
-        </span>
-      );
-    }
+    parts.push(
+      <LinkedHostSegment
+        key="host"
+        host={host}
+        href={hostHref}
+        pending={hostPending}
+      />
+    );
   }
 
   return (
