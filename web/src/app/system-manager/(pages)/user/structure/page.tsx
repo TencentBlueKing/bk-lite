@@ -9,6 +9,7 @@ import UserImportModal, { UserImportModalRef } from './userImportModal';
 import PasswordModal, { PasswordModalRef } from '@/app/system-manager/components/user/passwordModal';
 import GroupEditModal, { GroupModalRef } from '@/app/system-manager/components/group/GroupEditModal';
 import ArchivedGroupDrawer from '@/app/system-manager/components/group/ArchivedGroupDrawer';
+import UserDetailDrawer from '@/app/system-manager/components/user/UserDetailDrawer';
 import { useTranslation } from '@/utils/i18n';
 import { useClientData } from '@/context/client';
 import { useUserInfoContext } from '@/context/userInfo';
@@ -46,6 +47,7 @@ const User: React.FC = () => {
   const passwordModalRef = useRef<PasswordModalRef>(null);
   const groupEditModalRef = useRef<GroupModalRef>(null);
   const [archivedDrawerOpen, setArchivedDrawerOpen] = useState(false);
+  const [detailUserId, setDetailUserId] = useState<string>();
   const [otpEnabled, setOtpEnabled] = useState(false);
   const { getSystemSettings } = useSecurityApi();
   React.useEffect(() => {
@@ -132,6 +134,9 @@ const User: React.FC = () => {
     t,
     appIconMap,
     convertToLocalizedTime,
+    onOpenDetail: (userId: React.Key) => {
+      setDetailUserId(normalizeUserId(userId));
+    },
     onEditUser: (userId: React.Key) => {
       userModalRef.current?.showModal({ type: 'edit', userId: normalizeUserId(userId) });
     },
@@ -357,6 +362,12 @@ const User: React.FC = () => {
         open={archivedDrawerOpen}
         onClose={() => setArchivedDrawerOpen(false)}
         onChanged={handleArchivedChanged}
+      />
+
+      <UserDetailDrawer
+        open={Boolean(detailUserId)}
+        userId={detailUserId}
+        onClose={() => setDetailUserId(undefined)}
       />
 
       <OperateModal

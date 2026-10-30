@@ -12,6 +12,7 @@ import { canDirectlyDeleteUser } from '@/app/system-manager/utils/userDeleteGuar
 interface TableColumnsProps {
   t: (key: string) => string;
   appIconMap: Map<string, string>;
+  onOpenDetail: (userId: Key) => void;
   onEditUser: (userId: Key) => void;
   onOpenPasswordModal: (userId: Key) => void;
   onDeleteUser: (userId: Key) => void;
@@ -23,6 +24,7 @@ interface TableColumnsProps {
 export const createUserTableColumns = ({
   t,
   appIconMap,
+  onOpenDetail,
   onEditUser,
   onOpenPasswordModal,
   onDeleteUser,
@@ -36,7 +38,7 @@ export const createUserTableColumns = ({
       dataIndex: 'username',
       width: 230,
       fixed: 'left',
-      render: (text: string) => {
+      render: (text: string, record: UserDataType) => {
         const color = getRandomColor();
         return (
           <div className="flex h-[17px] min-w-0 items-center">
@@ -46,7 +48,17 @@ export const createUserTableColumns = ({
             >
               {text?.substring(0, 1)}
             </span>
-            <EllipsisWithTooltip text={text} className="min-w-0 truncate" />
+            <div
+              className="min-w-0 cursor-pointer truncate text-[var(--color-primary)]"
+              role="button"
+              tabIndex={0}
+              onClick={() => onOpenDetail(record.key)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') onOpenDetail(record.key);
+              }}
+            >
+              <EllipsisWithTooltip text={text} className="min-w-0 truncate" />
+            </div>
           </div>
         );
       },
@@ -223,12 +235,15 @@ export const createUserTableColumns = ({
     {
       title: t('common.actions'),
       dataIndex: 'key',
-      width: 280,
+      width: 320,
       fixed: 'right',
       render: (key: Key, record: UserDataType) => {
         const { status } = record;
         return (
           <>
+            <Button type="link" className="mr-[8px] p-0" onClick={() => onOpenDetail(key)}>
+              {t('common.detail')}
+            </Button>
             <PermissionWrapper requiredPermissions={['Edit User']}>
               <Button type="link" className="mr-[8px] p-0" onClick={() => onEditUser(key)}>
                 {t('common.edit')}

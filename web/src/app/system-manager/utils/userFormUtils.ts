@@ -216,7 +216,8 @@ export function buildUserPayload(
   groupRules: GroupRules,
   isSuperuser: boolean
 ): UserFormPayload {
-  const { zoneinfo, account_expires_at, custom_fields, ...restData } = formData;
+  const { zoneinfo, account_expires_at, custom_fields, manager_username, ...restData } = formData;
+  const managerName = typeof manager_username === 'string' ? manager_username.trim() : '';
   const normalizedCustomFields = custom_fields && typeof custom_fields === 'object'
     ? Object.fromEntries(
       Object.entries(custom_fields as Record<string, unknown>).map(([key, value]) => [
@@ -234,6 +235,7 @@ export function buildUserPayload(
       ...restData,
       roles: [],
       timezone: zoneinfo as string,
+      manager_username: managerName,
       is_superuser: true,
       account_expires_at: expiry,
       ...(normalizedCustomFields ? { custom_fields: normalizedCustomFields } : {}),
@@ -250,6 +252,7 @@ export function buildUserPayload(
     roles: personalRoleIds,
     rules,
     timezone: zoneinfo as string,
+    manager_username: managerName,
     is_superuser: false,
     account_expires_at: expiry,
     ...(normalizedCustomFields ? { custom_fields: normalizedCustomFields } : {}),

@@ -19,12 +19,13 @@ except (ImportError, ModuleNotFoundError):
     apply_sensitive_info_mask = None
     apply_sensitive_info_mask_to_list = None
 
+from apps.base.models import UserAPISecret
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.logger import system_mgmt_logger as logger
 from apps.core.utils.loader import LanguageLoader
 from apps.core.utils.permission_cache import clear_user_permission_cache, clear_users_permission_cache
 from apps.rpc.cmdb import CMDB
-from apps.system_mgmt.models import Channel, ChannelChoices, Group, Role, SystemSettings, User, UserRule
+from apps.system_mgmt.models import Channel, ChannelChoices, Group, GroupDataRule, Role, SystemSettings, User, UserRule
 from apps.system_mgmt.serializers.user_serializer import UserSerializer
 from apps.system_mgmt.services.user_profile import (
     ProfileInputError,
@@ -43,7 +44,7 @@ from apps.system_mgmt.utils.group_utils import GroupUtils
 from apps.system_mgmt.utils.operation_log_utils import log_operation
 from apps.system_mgmt.utils.password_validator import PasswordValidator
 from apps.system_mgmt.utils.password_vault import decrypt_from_vault
-from apps.system_mgmt.utils.user_status import is_user_locked
+from apps.system_mgmt.utils.user_status import get_password_expiry_info, is_user_locked
 from apps.system_mgmt.utils.viewset_utils import ViewSetUtils
 
 
@@ -132,6 +133,93 @@ def _validate_selected_groups(groups, loader):
 def _get_synced_group_ids(groups):
     group_ids, _ = _normalize_group_ids(groups)
     return set(Group.objects.filter(id__in=group_ids, sync_source__isnull=False).values_list("id", flat=True))
+
+
+def _ancestor_names(group, groups_by_id):
+    names = []
+    seen = set()
+    current = group
+    while current is not None and current.id not in seen:
+        seen.add(current.id)
+        names.append(current.name)
+        parent_id = current.parent_id
+        current = groups_by_id.get(parent_id) if parent_id else None
+    names.reverse()
+    return " / ".join(names)
+
+
+def _user_group_rows(user):
+    """详情里的所属组织：活动组织、路径、类型，以及该组织上配置的数据权限。"""
+    if not user.group_list:
+        return [], []
+
+    groups = list(GroupUtils.active_queryset(id__in=user.group_list).prefetch_related("roles"))
+    groups_by_id = {group.id: group for group in groups}
+    pending = {group.parent_id for group in groups if group.parent_id and group.parent_id not in groups_by_id}
+    while pending:
+        parents = list(Group.objects.filter(id__in=pending))
+        pending = set()
+        for parent in parents:
+            groups_by_id[parent.id] = parent
+            if parent.parent_id and parent.parent_id not in groups_by_id:
+                pending.add(parent.parent_id)
+
+    rule_ids_by_group = {}
+    for rule in UserRule.objects.filter(username=user.username).select_related("group_rule"):
+        group_rule = rule.group_rule
+        rule_ids_by_group.setdefault(group_rule.group_id, {}).setdefault(group_rule.app, []).append(group_rule.id)
+
+    data_rules_by_group = {}
+    for group_rule in GroupDataRule.objects.filter(group_id__in=[group.id for group in groups]).order_by("id"):
+        data_rules_by_group.setdefault(group_rule.group_id, []).append({"id": group_rule.id, "name": group_rule.name, "app": group_rule.app})
+
+    rows = []
+    for group in groups:
+        rows.append(
+            {
+                "id": group.id,
+                "name": group.name,
+                "is_virtual": group.is_virtual,
+                "sync_source": group.sync_source_id,
+                "path": _ancestor_names(group, groups_by_id),
+                "rules": rule_ids_by_group.get(group.id, {}),
+                "data_rules": data_rules_by_group.get(group.id, []),
+            }
+        )
+    return rows, groups
+
+
+def _effective_roles(user, groups):
+    """同一角色只出现一次，来源保留直接授予和组织继承。"""
+    roles = {}
+    for role in Role.objects.filter(id__in=user.role_list or []):
+        roles[role.id] = {
+            "id": role.id,
+            "name": role.name,
+            "app": role.app or "",
+            "sources": [{"kind": "direct"}],
+        }
+    for group in groups:
+        for role in group.roles.all():
+            entry = roles.setdefault(
+                role.id,
+                {"id": role.id, "name": role.name, "app": role.app or "", "sources": []},
+            )
+            entry["sources"].append({"kind": "group", "group_id": group.id, "group_name": group.name})
+    return list(roles.values())
+
+
+def _enabled_api_token_count(user):
+    """仍可使用的个人 API 令牌：未设置过期时间，或过期时间还在未来。"""
+    now = timezone.now()
+    return (
+        UserAPISecret.objects.filter(
+            username=user.username,
+            domain=user.domain or "domain.com",
+        )
+        .filter(Q(expires_at__isnull=True) | Q(expires_at__gt=now))
+        .count()
+    )
 
 
 def _validate_local_user_group_changes(groups, existing_groups=None, loader=None):
@@ -376,7 +464,7 @@ class UserViewSet(ViewSetUtils):
     @HasPermission("user_group-View")
     def get_user_detail(self, request):
         pk = request.data.get("user_id")
-        user = User.objects.select_related("manager").get(id=pk)
+        user = User.objects.select_related("manager", "sync_source").get(id=pk)
 
         # 校验当前用户是否有权限访问目标用户
         is_valid, error_response = self._validate_target_user_permission(request, user)
@@ -387,32 +475,19 @@ class UserViewSet(ViewSetUtils):
         serializer = UserSerializer(user)
         data = serializer.data
 
-        # 添加角色详情
+        # 编辑表单仍使用 role_id。详情按应用汇总走 effective_roles，避免 values 别名和 app 字段冲突。
         roles = Role.objects.filter(id__in=user.role_list).values(role_id=F("id"), role_name=F("name"), display_name=F("name"))
         data["roles"] = list(roles)
 
-        # 添加用户组详情及规则
-        groups = list(GroupUtils.active_queryset(id__in=user.group_list).values("id", "name"))
-        group_rule_map = {}
-        rules = UserRule.objects.filter(username=user.username).values("group_rule__group_id", "group_rule_id", "group_rule__app")
-        for rule in rules:
-            group_id = rule["group_rule__group_id"]
-            app = rule["group_rule__app"]
-            group_rule_map.setdefault(group_id, {}).setdefault(app, []).append(rule["group_rule_id"])
-        for i in groups:
-            i["rules"] = group_rule_map.get(i["id"], {})
-        data["groups"] = groups
-
-        group_role_ids = []
-        if user.group_list:
-            user_groups = GroupUtils.active_queryset(id__in=user.group_list).prefetch_related("roles")
-            group_role_id_set = set()
-            for g in user_groups:
-                for role in g.roles.all():
-                    group_role_id_set.add(role.id)
-            group_role_ids = list(group_role_id_set)
-        data["group_role_ids"] = group_role_ids
+        group_rows, groups = _user_group_rows(user)
+        data["groups"] = group_rows
+        data["group_role_ids"] = sorted({role.id for group in groups for role in group.roles.all()})
+        data["effective_roles"] = _effective_roles(user, groups)
         data["manager_username"] = user.manager.username if user.manager_id else ""
+        data["manager_display_name"] = user.manager.display_name if user.manager_id else ""
+        data["sync_source_name"] = user.sync_source.name if user.sync_source_id else ""
+        data["password_days_until_expire"] = get_password_expiry_info(user)["days_until_expire"]
+        data["api_token_count"] = _enabled_api_token_count(user)
         data["custom_fields"] = custom_field_details(user)
 
         data = self._mask_user_payload(data, request)

@@ -47,6 +47,8 @@ const UserModal = forwardRef<ModalRef, ModalProps>(({ onSuccess, treeData }, ref
   const { t } = useTranslation();
   const { get } = useApiClient();
   const [customFields, setCustomFields] = useState<CustomFieldDefinition[]>([]);
+  const [managerUsers, setManagerUsers] = useState<Array<{ id: string | number; username: string; display_name?: string }>>([]);
+  const [managerLoading, setManagerLoading] = useState(false);
 
   const {
     formRef,
@@ -64,6 +66,7 @@ const UserModal = forwardRef<ModalRef, ModalProps>(({ onSuccess, treeData }, ref
     organizationRoleSourceMap,
     isSuperuser,
     isSyncedUser,
+    currentUserId,
     showModal,
     handleCancel,
     handleConfirm,
@@ -83,6 +86,17 @@ const UserModal = forwardRef<ModalRef, ModalProps>(({ onSuccess, treeData }, ref
       })
       .catch(() => {
         if (!cancelled) setCustomFields([]);
+      });
+    setManagerLoading(true);
+    get('/system_mgmt/user/user_id_all/')
+      .then((rows: Array<{ id: string | number; username: string; display_name?: string }>) => {
+        if (!cancelled) setManagerUsers(Array.isArray(rows) ? rows : []);
+      })
+      .catch(() => {
+        if (!cancelled) setManagerUsers([]);
+      })
+      .finally(() => {
+        if (!cancelled) setManagerLoading(false);
       });
     return () => {
       cancelled = true;
@@ -224,8 +238,24 @@ const UserModal = forwardRef<ModalRef, ModalProps>(({ onSuccess, treeData }, ref
           >
             <Input placeholder={`${t('common.inputMsg')}${t('system.user.form.lastName')}`} disabled={type === 'edit' && isSyncedUser} />
           </Form.Item>
-          <Form.Item name="manager_username" label={t('system.user.form.manager')}>
-            <Input placeholder={t('system.user.form.managerPlaceholder')} />
+          <Form.Item
+            name="manager_username"
+            label={t('system.user.form.manager')}
+            getValueProps={(value) => ({ value: value || undefined })}
+          >
+            <Select
+              allowClear
+              showSearch
+              optionFilterProp="label"
+              loading={managerLoading}
+              placeholder={t('system.user.form.managerPlaceholder')}
+              options={managerUsers
+                .filter((user) => type !== 'edit' || String(user.id) !== String(currentUserId))
+                .map((user) => ({
+                  value: user.username,
+                  label: `${user.display_name || user.username} (${user.username})`,
+                }))}
+            />
           </Form.Item>
           <Form.Item name="employment_status" label={t('system.user.form.employmentStatus')} initialValue="unspecified">
             <Select
