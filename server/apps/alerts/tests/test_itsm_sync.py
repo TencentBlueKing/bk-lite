@@ -26,14 +26,12 @@ def closed_response():
         {
             "code": "20000",
             "data": {
-                "ticket": {
-                    "id": "123",
-                    "status": "finished",
-                    "status_display": "已完成",
-                    "title": "CPU",
-                    "sn": "DE123",
-                    "end_at": "2026-10-27T10:00:00+08:00",
-                }
+                "id": "123",
+                "status": "finished",
+                "status_display": "已完成",
+                "title": "CPU",
+                "sn": "DE123",
+                "end_at": "2026-10-27T10:00:00+08:00",
             },
         }
     )

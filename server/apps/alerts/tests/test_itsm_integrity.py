@@ -14,7 +14,7 @@ from apps.alerts.models.action import ActionExecution
 from apps.alerts.models.itsm import AlertItsmTicket
 from apps.alerts.models.outbox import AlertOutbox
 from apps.alerts.service.outbox import deliver_outbox_record
-from apps.alerts.tests.test_itsm_client import response
+from apps.alerts.tests.test_itsm_client import create_calls, response, workflow_body
 from apps.alerts.tests.test_itsm_service import alert, configure_itsm, itsm_connection, prepare, rule  # noqa: F401
 from apps.alerts.tests.test_itsm_sync import closed_response, linked
 
@@ -32,11 +32,19 @@ def test_transaction_rollback_keeps_no_orphan_creation_intent(setup_itsm):
 
 @pytest.mark.django_db
 def test_no_match_is_final_even_when_a_rule_is_added_later(setup_itsm):
-    record = enqueue_creation(alert())
-    evaluate_creation(record.pk)
+    assert enqueue_creation(alert()) is None
     rule()
-    evaluate_creation(record.pk)
+    assert not AlertOutbox.objects.exists()
     assert not AlertItsmTicket.objects.exists()
+
+
+@pytest.mark.django_db
+def test_alert_not_matching_any_rule_never_enters_creation(setup_itsm):
+    rule(match_rules=[[{"key": "resource_name", "operator": "contains", "value": "db"}]])
+    rule(team=[999])
+    assert enqueue_creation(alert(resource_name="web-01")) is None
+    assert not AlertOutbox.objects.exists()
+    assert enqueue_creation(alert(resource_name="db-01")) is not None
 
 
 @pytest.mark.django_db
@@ -62,14 +70,16 @@ def test_interleaved_delivery_and_manual_retry_do_not_resend(setup_itsm):
     link = prepare(a)
 
     def remote(*args, **kwargs):
+        if args[0] == "GET":
+            return response(workflow_body([]))
         execute_creation(link.current_execution_id)
         current, created = retry_creation(a.pk, r.pk, "alice", "other-key", [1])
         assert not created and current.pk == link.current_execution_id
-        return response({"result": True, "code": "20000", "data": {"ticket": {"id": "123"}}})
+        return response({"result": True, "code": "20000", "data": {"id": "123"}})
 
     with patch("requests.Session.request", side_effect=remote) as http:
         execute_creation(link.current_execution_id)
-        assert http.call_count == 1
+        assert len(create_calls(http)) == 1
     assert ActionExecution.objects.filter(alert=a).count() == 1
 
 
@@ -81,7 +91,7 @@ def test_late_create_response_cannot_overwrite_unknown_decision(setup_itsm):
     def remote(*args, **kwargs):
         ActionExecution.objects.filter(pk=link.current_execution_id).update(updated_at=timezone.now() - timedelta(minutes=10))
         execute_creation(link.current_execution_id)
-        return response({"result": True, "code": "20000", "data": {"ticket": {"id": "123"}}})
+        return response({"result": True, "code": "20000", "data": {"id": "123"}})
 
     with patch("requests.Session.request", side_effect=remote):
         execute_creation(link.current_execution_id)
@@ -98,10 +108,10 @@ def test_outbox_restores_committed_pending_execution(setup_itsm):
     deliver_outbox_record(record.pk)
     link = AlertItsmTicket.objects.get(alert=a)
     pending = AlertOutbox.objects.get(kind="itsm_create")
-    with patch("requests.Session.request", return_value=response({"result": True, "code": "20000", "data": {"ticket": {"id": "123"}}})) as http:
+    with patch("requests.Session.request", return_value=response({"result": True, "code": "20000", "data": {"id": "123"}})) as http:
         deliver_outbox_record(pending.pk)
         deliver_outbox_record(pending.pk)
-        assert http.call_count == 1
+        assert len(create_calls(http)) == 1
     link.refresh_from_db()
     assert link.ticket_id == "123"
 
@@ -147,9 +157,7 @@ def test_reconcile_only_unknown_and_remote_ticket_unique(setup_itsm):
             reconcile(a2.pk, second.current_execution_id, "123", "checked", True, "alice", [1])
     second.refresh_from_db()
     assert second.ticket_id is None and second.current_execution.status == "unknown"
-    with patch(
-        "requests.Session.request", return_value=response({"result": True, "code": "20000", "data": {"ticket": {"id": "456", "status": "running"}}})
-    ):
+    with patch("requests.Session.request", return_value=response({"result": True, "code": "20000", "data": {"id": "456", "status": "running"}})):
         preview = reconcile(a2.pk, second.current_execution_id, "456", "", False, "alice", [1])
         assert preview["preview"]["ticket_id"] == "456"
         reconcile(a2.pk, second.current_execution_id, "456", "ITSM confirmed source alert", True, "alice", [1])
@@ -219,6 +227,7 @@ def test_synthetic_alert_persists_creation_snapshot(setup_itsm):
     from apps.alerts.models.alert_operator import AlarmStrategy
 
     strategy = AlarmStrategy.objects.create(name="heartbeat", dispatch_team=[1])
+    rule()
     created = SyntheticAlertBuilder.create_alert(strategy, {"alert_template": {"title": "heartbeat missing"}}, timezone.now())
     record = AlertOutbox.objects.get(kind="itsm_evaluate")
     assert record.payload["alert_pk"] == created.pk
@@ -349,9 +358,7 @@ def test_oversized_input_without_eligible_rule_does_not_report_itsm_failure(setu
     a = alert()
     a.content = "x" * 70000
     a.save()
-    record = enqueue_creation(a)
-    evaluate_creation(record.pk)
-    record.refresh_from_db()
-    assert record.payload["evaluated"] is True
+    assert enqueue_creation(a) is None
+    assert not AlertOutbox.objects.exists()
     assert not ActionExecution.objects.filter(alert=a).exists()
     assert not AlertOutbox.objects.filter(kind="itsm_failure").exists()
