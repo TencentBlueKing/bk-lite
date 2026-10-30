@@ -16,7 +16,8 @@ COMMENT_TEXT = {
 
 
 def enqueue_comment(alert, event_name, *, retry_key=""):
-    if event_name not in COMMENT_TEXT:
+    # 原生 ITSM OpenAPI 没有留言接口；入队只会给每个生命周期事件记一条无法重发成功的失败。
+    if not ItsmClient.supports_comment or event_name not in COMMENT_TEXT:
         return None
     link = AlertItsmTicket.objects.select_related("rule").filter(alert=alert).exclude(ticket_id="").exclude(ticket_id__isnull=True).first()
     if not link or not link.rule or not link.rule.is_active or event_name not in (link.rule.trigger_events or []):

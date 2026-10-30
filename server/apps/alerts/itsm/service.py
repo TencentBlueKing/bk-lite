@@ -18,6 +18,7 @@ from apps.alerts.models.outbox import AlertOutbox
 from apps.alerts.service.outbox import enqueue_outbox
 from apps.alerts.utils.operator_log import record_operator_log_deferred_mirror as record_operator_log
 from apps.alerts.utils.rule_catalog import rules_are_valid
+from apps.core.logger import alert_logger as logger
 
 LEASE = timedelta(minutes=5)
 
@@ -29,9 +30,17 @@ def enqueue_creation(alert):
         snapshot, error = capture_snapshot(alert), ""
     except ItsmError as exc:
         snapshot, error = {}, str(exc)
-    record, _ = enqueue_outbox(
-        "itsm_evaluate", {"alert_pk": alert.pk, "team": alert.team, "snapshot": snapshot, "snapshot_error": error}, f"itsm-evaluate:{alert.pk}"
-    )
+    try:
+        # 调用方在告警创建事务里（即时策略是整批）；保存点隔离入队失败，转工单出错不能拖垮告警创建。
+        with transaction.atomic():
+            record, _ = enqueue_outbox(
+                "itsm_evaluate",
+                {"alert_pk": alert.pk, "team": alert.team, "snapshot": snapshot, "snapshot_error": error},
+                f"itsm-evaluate:{alert.pk}",
+            )
+    except Exception:
+        logger.exception("ITSM 建单评估入队失败，告警照常创建: alert_pk=%s", alert.pk)
+        return None
     return record
 
 

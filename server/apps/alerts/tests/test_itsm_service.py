@@ -3,6 +3,7 @@ from datetime import timedelta
 from unittest.mock import patch
 
 import pytest
+from django.db import transaction
 from django.utils import timezone
 
 from apps.alerts.itsm.service import enqueue_creation, evaluate_creation, execute_creation, retry_creation
@@ -114,3 +115,31 @@ def test_observing_session_does_not_consume_creation_intent(setup_itsm):
     a.session_status = "confirmed"
     a.save()
     assert enqueue_creation(a) is not None
+
+
+@pytest.mark.django_db
+def test_enqueue_failure_does_not_break_alert_creation_transaction(setup_itsm):
+    rule()
+
+    def broken_enqueue(*args, **kwargs):
+        Alert.objects.create(pk=first.pk, alert_id=first.alert_id, title="dup", content="", level="1", team=[1])
+
+    with transaction.atomic():
+        first = alert()
+        with patch("apps.alerts.itsm.service.enqueue_outbox", side_effect=broken_enqueue):
+            assert enqueue_creation(first) is None
+        second = alert()
+    assert set(Alert.objects.values_list("pk", flat=True)) == {first.pk, second.pk}
+    assert not AlertOutbox.objects.exists()
+
+
+@pytest.mark.django_db
+def test_lifecycle_comment_is_not_queued_without_native_comment_api(setup_itsm):
+    from apps.alerts.itsm.comments import enqueue_comment
+    from apps.alerts.tests.test_itsm_sync import linked
+
+    a, r, _ = linked()
+    r.trigger_events = ["created", "closed"]
+    r.save()
+    assert enqueue_comment(a, "closed") is None
+    assert not AlertOutbox.objects.filter(kind="itsm_comment").exists()
