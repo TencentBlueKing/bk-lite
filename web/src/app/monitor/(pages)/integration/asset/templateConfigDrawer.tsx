@@ -549,7 +549,6 @@ const TemplateConfigDrawer = forwardRef<
                     {allowUnbind &&
                     canUnbindCollectTemplate(selectedPlugin, plugins) ? (
                       <Button
-                        type="primary"
                         danger
                         className="shrink-0 inline-flex items-center justify-center"
                         onClick={(event) =>
