@@ -60,8 +60,10 @@ docker build --pull --no-cache --platform linux/amd64 \
 
 FalkorDB 检测到的 Node.js 24.14.0 不会因更新 libbrotli 而自动修复。对 Debian 12
 派生镜像使用同样命令，但将 Dockerfile 改为 `deploy/security/Dockerfile.falkordb`。
-它从官方 Node.js 24.22.1 Bookworm 镜像复制同架构可执行文件，替换原 Node 的真实路径，
-校验 `node --version`，同时更新系统 Brotli。其他发行版拒绝构建。
+它通过原镜像已有的 NodeSource 24.x 软件源升级 `nodejs` 包，同时更新系统 Brotli，
+校验 Node 稳定版不低于 24.22.1，且实际运行版本必须与 dpkg 包清单一致。
+不再仅复制可执行文件，以免运行版本已更新、漏扫清单仍保留旧包。
+其他发行版或没有已安装 `nodejs` 包的镜像拒绝构建。
 这只是候选构建入口，发布前必须验证 FalkorDB 数据读写及附带 Node 应用。
 
 ## 验证与发布
@@ -69,7 +71,7 @@ FalkorDB 检测到的 Node.js 24.14.0 不会因更新 libbrotli 而自动修复�
 1. 运行 `python3 -m unittest discover -s deploy/security/tests -v`。
    Linux 使用真实 dpkg 比较旧包、二进制重建包和安全回补包；macOS 会跳过这两项。
    其余测试执行 Dockerfile 的实际 RUN 层，验证更新失败、补丁不足、未知发行版会阻止构建，
-   并在临时目录验证 Node 符号链接目标替换，不操作系统包或业务服务。
+   并验证 Node 包版本、实际运行版本必须一致，不操作系统包或业务服务。
 2. 构建时使用 `--pull --no-cache`。安全更新层需能从对应软件源取得补丁，
    企业覆盖的最终 Dockerfile 也必须接入同样的更新与版本检查。
 3. 独立候选容器使用 `--network none --read-only --cap-drop ALL --security-opt no-new-privileges`
