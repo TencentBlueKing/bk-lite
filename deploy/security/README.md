@@ -1,6 +1,54 @@
-# CVE-2026-111497：Brotli 镜像修复与验收
+# 发行镜像安全补丁与验收
 
-## 修改范围
+## 海外漏扫报告：OpenSSL、Log4j 与系统 Python 工具
+
+Fusion 执行器 OpenSSL 1.1.1k 的发行重建由社区 PR #6862 处理（固定 OpenSSL 3.5.9，
+并通过 `--verify-release` 校验最终冻结程序）。企业覆盖 Dockerfile 也必须运行该校验；
+仅更新宿主机 OpenSSL 或 Fusion 的 Ubuntu 系统包不能替换 `_internal` 中的库。
+
+报告中的 Conductor 3.32.1 携带 Log4j 2.25.4，Elasticsearch 7.17.21 携带 2.17.1。
+使用 `Dockerfile.conductor` / `Dockerfile.elasticsearch` 构建独立补丁镜像；不跨产品主版本升级。
+Log4j API、Core 和 Conductor 中检测到的适配模块统一更新到 2.25.5，
+制品从 Maven Central 官方路径获取，并核对入库的 SHA256 及 JAR 内 Maven 坐标。
+Elasticsearch 的定制 Core 继续删除 `JndiLookup.class`，不恢复原有已移除的危险类。
+Conductor 同步更新 classpath/layers 索引，保留 Spring Boot 的嵌套 JAR 存储格式；
+拒绝未核对的依赖版本、未知模块、重复模块或带真实外层签名的 JAR。
+
+```sh
+# 先记录当前上游镜像摘要；以下变量由发布人员填写。
+BASE_IMAGE='当前产品镜像@sha256:实际摘要'
+CANDIDATE_IMAGE='独立候选镜像:本次安全修复标签'
+PRODUCT='conductor' # 或 elasticsearch；ES 入口仅适用于已核对的 7.17.21 布局
+docker pull "$BASE_IMAGE"
+RUNTIME_USER=$(docker image inspect --format '{{.Config.User}}' "$BASE_IMAGE")
+docker build --pull --no-cache --platform linux/amd64 \
+  --build-arg BASE_IMAGE="$BASE_IMAGE" --build-arg RUNTIME_USER="${RUNTIME_USER:-0}" \
+  -f "deploy/security/Dockerfile.$PRODUCT" -t "$CANDIDATE_IMAGE" deploy/security
+```
+
+`Dockerfile.system` 还会检查 Ubuntu 24.04 中已经安装的 `python3-pip`、`python3-pip-whl`、
+`python-wheel-common`、`python3-wheel`、`python3-wheel-whl`，只升级已安装的包：
+
+| 包族 | 最低发行版补丁版本 |
+|---|---|
+| pip / pip-whl | `24.0+dfsg-1ubuntu1.3+esm1` |
+| wheel / wheel-whl / wheel-common | `0.42.0-2ubuntu0.1~esm1` |
+
+如果构建软件源未提供 USN-8344-1 / USN-8221-1 的修复，门禁失败。
+需要时通过构建环境配置 Ubuntu Pro ESM；禁止将订阅凭据写入 Dockerfile、镜像层或仓库。
+此入口仅修复派生镜像；报告若命中宿主机的 dpkg 包，仍需在宿主机维护流程中安装同样的发行版补丁。
+用 `pip install -U pip` 替换 Python 环境不能证明上述 dpkg 系统包已更新。
+
+发布前需验证 Conductor 的元数据写入、工作流执行与读取，以及 Elasticsearch 索引写入、检索和重启恢复。
+报告中的 containerd 历史快照和 `/var/tmp/itsm-es-log4j-backup-*` 必须按运行引用单独核对，
+不能把备份路径或未使用镜像层直接当成运行服务，也不能直接删除 snapshot 目录。
+这些构建入口不自动修改 Jenkins、第三方部署模板或存量运行容器。
+
+依据：[Apache Log4j](https://logging.apache.org/security.html)、
+[pip USN-8344-1](https://ubuntu.com/security/notices/USN-8344-1)、
+[wheel USN-8221-1](https://ubuntu.com/security/notices/USN-8221-1)。
+
+## Brotli 修改范围（CVE-2026-111497）
 
 本次修改在构建期更新系统 `libbrotli1`，并使用发行版完整包版本校验补丁。
 软件源无法提供安全版本、包更新失败或发行版不在已验证范围时，构建失败；
