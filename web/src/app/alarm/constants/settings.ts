@@ -117,10 +117,10 @@ export const ACTION_TRIGGER_EVENTS = [
 ];
 export const ACTION_TYPES = [
   { value: 'job', labelKey: 'settings.actionTypeJob', disabled: false },
-  { value: 'itsm', labelKey: 'settings.actionTypeItsm', disabled: true },
-  { value: 'webhook', labelKey: 'settings.actionTypeWebhook', disabled: true },
+  { value: 'itsm', labelKey: 'settings.actionTypeItsm', disabled: false },
 ];
 export const ACTION_EXEC_STATUS: Record<string, { textKey: string; color: string }> = {
+  unknown: { textKey: 'settings.actionExecUnknown', color: 'warning' },
   pending: { textKey: 'settings.actionExecPending', color: 'default' },
   running: { textKey: 'settings.actionExecRunning', color: 'processing' },
   success: { textKey: 'settings.actionExecSuccess', color: 'success' },

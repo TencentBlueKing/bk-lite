@@ -3,6 +3,7 @@ import type { TreeNode } from '@/app/cmdb/types/autoDiscovery';
 import {
   countPluginTasks,
   filterCatalogCategories,
+  getTaskStatusStats,
   resolveCollectPlugin,
 } from '../pluginCatalog';
 
@@ -137,6 +138,27 @@ describe('plugin catalog', () => {
         partial_success: 4,
       }),
     ).toBe(10);
+    expect(countPluginTasks({ total: 1, not_start: 1, success: 0, failed: 0, running: 0 })).toBe(1);
     expect(countPluginTasks(null)).toBe(0);
+  });
+
+  it('自定义插件只看自己的任务数，不借用同模型内置插件的统计', () => {
+    const plugin = {
+      id: 'custom_win_host',
+      model_id: 'host',
+      type: 'job',
+      task_type: 'custom_script',
+      custom_plugin_pk: 7,
+    };
+    expect(
+      getTaskStatusStats(
+        {
+          'host__job': { success: 4, failed: 0, running: 0 },
+          custom_script__7: { success: 0, failed: 0, running: 0, not_start: 1, total: 1 },
+        },
+        plugin,
+      )?.total,
+    ).toBe(1);
+    expect(getTaskStatusStats({ 'host__job': { success: 4, failed: 0, running: 0 } }, plugin)).toBeUndefined();
   });
 });

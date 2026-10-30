@@ -12,7 +12,14 @@ from django.db import transaction
 from django.utils.timezone import now
 
 from apps.cmdb.collection.round_sync import uses_vm_reconciliation
-from apps.cmdb.constants.constants import INSTANCE, OPERATOR_COLLECT_TASK, CollectPluginTypes, CollectRunStatusType, DataCleanupStrategy
+from apps.cmdb.constants.constants import (
+    INSTANCE,
+    OPERATOR_COLLECT_TASK,
+    CollectDriverTypes,
+    CollectPluginTypes,
+    CollectRunStatusType,
+    DataCleanupStrategy,
+)
 from apps.cmdb.graph.drivers.graph_client import GraphClient
 from apps.cmdb.models import CREATE_INST, DELETE_INST, EXECUTE, UPDATE_INST
 from apps.cmdb.models.change_record import COLLECT_AUTOMATION_CHANGE
@@ -155,6 +162,10 @@ class CollectModelService(object):
             if key == "ip_range" and "ip_range" in data:
                 # 扫描生成路径会显式传空串以清掉旧 IP 段；falsy 判断会把这次更新吞掉。
                 params[key] = data.get(key) or ""
+                continue
+            if key == "credential" and key in data and data.get(key) in (None, [], ()):
+                # Job 任务可以显式清空凭据；空列表必须保留，不能被 falsy 判断吞掉。
+                params[key] = []
                 continue
             if data.get(key):
                 params[key] = data[key]
@@ -352,6 +363,9 @@ class CollectModelService(object):
             data["credential"] = []
             return
         task_type = getattr(instance, "task_type", "")
+        if getattr(instance, "driver_type", "") == CollectDriverTypes.JOB and "credential" in data and not credential:
+            data["credential"] = []
+            return
         if not credential and not instance.is_k8s and task_type != CollectPluginTypes.IP:
             raise BaseAppException("采集凭据不能为空！")
         old_credential = instance.decrypt_credentials

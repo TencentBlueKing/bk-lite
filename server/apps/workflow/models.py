@@ -171,10 +171,61 @@ class WorkflowExecution(TimeInfo):
         blank=True,
         related_name="reruns",
     )
+    async_callback_context = models.JSONField(null=True, blank=True, default=None, verbose_name="通用异步回调上下文")
+    async_callback_deadline_at = models.DateTimeField(null=True, blank=True, verbose_name="异步回调截止时间")
+    async_callback_key = models.CharField(
+        max_length=64,
+        unique=True,
+        null=True,
+        blank=True,
+        verbose_name="异步回调令牌摘要",
+    )
 
     class Meta:
         db_table = "workflow_execution"
         ordering = ("-created_at",)
+
+
+class WorkflowCompletionOutbox(TimeInfo):
+    """编排执行终态后的异步回调投递记录；HTTP 失败不得回写执行状态。"""
+
+    class Kind(models.TextChoices):
+        ASYNC_CALLBACK = "async_callback", "通用异步回调"
+
+    class Status(models.TextChoices):
+        PENDING = "pending", "待投递"
+        DELIVERING = "delivering", "投递中"
+        DELIVERED = "delivered", "已投递"
+        FAILED = "failed", "投递失败"
+        STOPPED = "stopped", "停止投递"
+
+    execution_id = models.UUIDField(db_index=True, verbose_name="编排执行 ID")
+    kind = models.CharField(max_length=32, choices=Kind.choices, db_index=True, verbose_name="副作用类型")
+    payload = models.JSONField(default=dict, verbose_name="不可变投递载荷")
+    idempotency_key = models.CharField(max_length=255, unique=True, verbose_name="幂等键")
+    status = models.CharField(
+        max_length=16,
+        choices=Status.choices,
+        default=Status.PENDING,
+        db_index=True,
+        verbose_name="投递状态",
+    )
+    attempts = models.PositiveIntegerField(default=0, verbose_name="尝试次数")
+    max_attempts = models.PositiveIntegerField(default=12, verbose_name="单周期最大尝试次数")
+    next_retry_at = models.DateTimeField(null=True, blank=True, db_index=True, verbose_name="下次重试时间")
+    lease_token = models.UUIDField(null=True, blank=True, default=None, verbose_name="投递租约令牌")
+    lease_expires_at = models.DateTimeField(null=True, blank=True, db_index=True, verbose_name="投递租约到期时间")
+    delivered_at = models.DateTimeField(null=True, blank=True, verbose_name="投递完成时间")
+    last_error = models.TextField(blank=True, default="", verbose_name="最近错误")
+
+    class Meta:
+        db_table = "workflow_completion_outbox"
+        verbose_name = "编排完成投递"
+        verbose_name_plural = "编排完成投递"
+        indexes = [
+            models.Index(fields=["status", "next_retry_at"], name="wf_outbox_retry_idx"),
+            models.Index(fields=["status", "lease_expires_at"], name="wf_outbox_lease_idx"),
+        ]
 
 
 class TriggerInvocation(TimeInfo):

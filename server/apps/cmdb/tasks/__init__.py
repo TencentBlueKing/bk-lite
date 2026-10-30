@@ -13,6 +13,7 @@ from apps.cmdb.tasks.celery_tasks import (  # noqa: F401
     execute_first_collection_run,
     finalize_scan_execution,
     full_sync_auto_association_rule_task,
+    reconcile_auto_relation_pending_task,
     recover_change_record_mirror_outbox_task,
     recover_due_scan_executions,
     recover_first_collection_runs,

@@ -26,6 +26,31 @@ it('submits current-page UUIDs and fields, then reports acceptance rather than d
   expect(exportFile.mock.calls[0][1]).toMatch(/^[0-9a-f-]{36}$/);
 });
 
+it('includes the current search and advanced filter only when exporting all rows', async () => {
+  exportFile.mockClear();
+  exportFile.mockResolvedValue({ task_id: 'all', status: 'queued', type: 'export' });
+  const ref = createRef<ExportModalRef>();
+  const advanced = { logic: 'AND' as const, conditions: [{ path: ['mysql_run_host'], field: 'os_type', type: 'str=', value: 'Linux' }] };
+  const queryList = [{ field: 'version', type: 'str*', value: '8.0' }];
+  render(<ExportModal ref={ref} models={[]} userList={[]} assoTypes={[]} canSubmit onSubmitted={vi.fn()} />);
+  await act(async () => {
+    ref.current?.showModal({ title: '导出', modelId: 'mysql', selectedKeys: [], exportType: 'all',
+      columns: [{ key: 'inst_name', title: '实例名', dataIndex: 'inst_name' }], queryList, advancedFilter: advanced });
+  });
+  fireEvent.click(screen.getByText('Transfer.submitExport'));
+  await waitFor(() => expect(exportFile).toHaveBeenCalled());
+  expect(exportFile.mock.calls[0][0]).toMatchObject({ scope: 'all', query_list: queryList, advanced_filter: advanced });
+
+  exportFile.mockClear();
+  await act(async () => {
+    ref.current?.showModal({ title: '导出', modelId: 'mysql', selectedKeys: ['picked'], exportType: 'selected',
+      columns: [{ key: 'inst_name', title: '实例名', dataIndex: 'inst_name' }], queryList, advancedFilter: advanced });
+  });
+  fireEvent.click(screen.getByText('Transfer.submitExport'));
+  await waitFor(() => expect(exportFile).toHaveBeenCalled());
+  expect(exportFile.mock.calls[0][0]).toEqual({ model_id: 'mysql', scope: 'selected', inst_uuids: ['picked'], attr_list: ['inst_name'], association_list: [] });
+});
+
 it('opens task records immediately while export acceptance is still pending', async () => {
   let accept!: (value: { task_id: string; status: string; type: string }) => void;
   exportFile.mockImplementation(() => new Promise(resolve => { accept = resolve; }));

@@ -233,6 +233,27 @@ def test_base_node_params_forwards_ip_precheck_and_executor_node_ip():
     assert "cmdbexecute_timeout" not in headers
 
 
+def test_job_node_params_use_access_point_cloud_region_for_every_target_source():
+    from apps.cmdb.node_configs.ssh.host import HostNodeParams
+
+    instance = SimpleNamespace(
+        id=102,
+        model_id="host",
+        driver_type="job",
+        decrypt_credentials=[],
+        params={"ip_precheck": True},
+        timeout=60,
+        access_point=[{"id": "proxy-1", "ip": "172.18.0.30", "cloud_region": 1}],
+        instances=[{"ip_addr": "10.10.41.98"}],
+        ip_range="",
+    )
+
+    headers = HostNodeParams(instance).custom_headers()
+
+    assert headers["cmdbcloud_region_id"] == "1"
+    assert headers["cmdbexecutor_node_ip"] == "172.18.0.30"
+
+
 def test_base_node_params_push_params_renders_template_with_default_filter():
     from apps.cmdb.node_configs.ssh.host import HostNodeParams
 

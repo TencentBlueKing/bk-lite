@@ -5,6 +5,7 @@
 
 # 导入所有任务，使 Celery autodiscover_tasks() 能够发现它们
 from apps.alerts.tasks import action_tasks  # noqa
+from apps.alerts.tasks import itsm_tasks  # noqa: F401
 from apps.alerts.tasks.tasks import (  # noqa: F401
     async_auto_assignment_for_alerts,
     beat_close_alert,

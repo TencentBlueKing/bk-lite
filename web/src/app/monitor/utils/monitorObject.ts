@@ -613,9 +613,9 @@ const attachDerivativeSidebarChildren = <T extends SidebarTreeNode>(
     const roots = Object.values(groups);
     const parentNode = parent
       ? findSidebarNode(
-          roots,
-          (node) => String(node.key) === String(parent.id)
-        ) || findSidebarNode(roots, (node) => node.label === parent.name)
+        roots,
+        (node) => String(node.key) === String(parent.id)
+      ) || findSidebarNode(roots, (node) => node.label === parent.name)
       : undefined;
     if (!parentNode) {
       ensureGroup(item).children.push(toNode(item));
