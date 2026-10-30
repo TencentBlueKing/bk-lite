@@ -18,6 +18,7 @@ from apps.node_mgmt.constants.controller import ControllerConstants
 from apps.node_mgmt.constants.installer import InstallerConstants
 from apps.node_mgmt.constants.node import NodeConstants
 from apps.node_mgmt.models import CollectorTask, ControllerTask, ControllerTaskNode, Node, NodeCollectorInstallStatus, PackageVersion
+from apps.node_mgmt.services.converge_slot import install_slot_key, release_converge_slot
 from apps.node_mgmt.services.installer import InstallerService
 from apps.node_mgmt.services.package import PackageService
 from apps.node_mgmt.services.windows_remote_bootstrap import WindowsBootstrapTarget, WindowsRemoteBootstrapService
@@ -262,6 +263,31 @@ def _matches_install_connectivity_target(task_node, node_id: str, node_ip: str |
     if install_node_id:
         return install_node_id == node_id
     return bool(node_ip) and task_node.ip == node_ip
+
+
+def _install_task_node_needs_heartbeat_converge(task_node) -> bool:
+    """心跳只在这次调用真的能推进安装记录时入队。
+
+    引导阶段记下连通之后，任务仍是 running，但再投队列只会重写同一个时间戳。
+    阶段切到连通等待时，安装流程会同步收敛一次。
+    """
+    phase = _get_execution_phase(task_node)
+    if phase == InstallerConstants.EXECUTION_PHASE_BOOTSTRAP_RUNNING:
+        if task_node.connectivity_observed_at is not None:
+            return False
+        result = task_node.result or {}
+        return result.get(InstallerConstants.CONNECTIVITY_OBSERVED_KEY) is not True
+
+    if phase != InstallerConstants.EXECUTION_PHASE_CONNECTIVITY_WAITING:
+        return False
+
+    steps = (task_node.result or {}).get("steps") or []
+    if not isinstance(steps, list) or not steps:
+        return False
+    last_step = steps[-1]
+    if not isinstance(last_step, dict):
+        return False
+    return last_step.get("action") == "connectivity_check" and last_step.get("status") == "running"
 
 
 def _add_step(node_obj, action, status, message, timestamp=None, details=None):
@@ -519,9 +545,7 @@ def _installed_controller_node_ids(task_obj, task_nodes) -> list[str]:
             ips.append(task_node.ip)
     resolved = set(explicit_ids)
     if ips:
-        resolved.update(
-            Node.objects.filter(cloud_region_id=task_obj.cloud_region_id, ip__in=ips).values_list("id", flat=True)
-        )
+        resolved.update(Node.objects.filter(cloud_region_id=task_obj.cloud_region_id, ip__in=ips).values_list("id", flat=True))
     return sorted(resolved)
 
 
@@ -1095,8 +1119,7 @@ def install_controller_for_node(task_node_id, attempt):
         _dispatch_or_finalize_controller_task(task_node.task_id)
 
 
-@shared_task
-def converge_controller_install_connectivity_for_node(node_id):
+def _converge_controller_install_connectivity_for_node(node_id):
     """根据 sidecar 回调收敛控制器安装任务连通状态"""
     node = Node.objects.filter(id=node_id).first()
     if not node:
@@ -1167,6 +1190,15 @@ def converge_controller_install_connectivity_for_node(node_id):
 
     for task_id in affected_task_ids:
         _dispatch_or_finalize_controller_task(task_id)
+
+
+@shared_task
+def converge_controller_install_connectivity_for_node(node_id, claim_token=None):
+    """根据 sidecar 回调收敛控制器安装任务连通状态。"""
+    try:
+        _converge_controller_install_connectivity_for_node(node_id)
+    finally:
+        release_converge_slot(install_slot_key(node_id), claim_token)
 
 
 @shared_task

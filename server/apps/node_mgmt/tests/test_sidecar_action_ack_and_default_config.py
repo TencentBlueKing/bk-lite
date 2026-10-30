@@ -78,7 +78,9 @@ def test_trigger_converge_schedules_action_on_signature_change():
             node.ip,
             {"collectors": [{"collector_id": collector.id, "status": "ok"}]},
         )
-    conv.delay.assert_called_once_with(node.id)
+    conv.delay.assert_called_once()
+    assert conv.delay.call_args.args[0] == node.id
+    assert conv.delay.call_args.args[1]
 
 
 def test_trigger_converge_skip_action_does_not_schedule_running_action():
@@ -284,10 +286,10 @@ def _heartbeat_request(node, collectors_status):
     )
 
 
-def _eager_converge_delay(node_id):
+def _eager_converge_delay(node_id, claim_token=None):
     from apps.node_mgmt.tasks.action_task import converge_collector_action_task_for_node
 
-    converge_collector_action_task_for_node(node_id)
+    converge_collector_action_task_for_node(node_id, claim_token)
 
 
 def test_restart_ack_heartbeat_does_not_close_task_with_pre_action_failed_status():
