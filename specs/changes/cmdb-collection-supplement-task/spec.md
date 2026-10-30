@@ -35,6 +35,7 @@ Status: implemented — 后端判断、配置、落库和页面入口已接上�
 | 否 | `config_file` | 配置文件版本 | — |
 
 - 是否支持按 `task_type` 判定。`cloud`、`vm`、`k8s`、`ip`、`config_file` 不支持，在服务端集中定义，插件不声明。
+- 容器分组不进入数据调和。`docker` 的任务类型虽是 `middleware`，与 K8s 一样不能加入。
 - `custom_script` 全部支持。例外：目标模型为 `vmware_vc` 时进入 `collect_vmware`，不经过通用链路，不能加入数据调和。
 - 没加入生效调和的任务保持现有行为：不读写 `_collect_sources`，采到其他任务的实例仍然判冲突。
 - 所有者是不支持的任务类型，或不在同一条生效调和里：判冲突，不写字段，不改归属。
