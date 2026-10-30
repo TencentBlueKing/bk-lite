@@ -1179,7 +1179,7 @@
     "test": "测试连接",
     "name": "集成名称",
     "url": "ITSM 网关 API 地址",
-    "urlHint": "填写 ITSM OpenAPI 的完整 API 根地址。内网目标需符合系统网络白名单。",
+    "urlHint": "填写网关原生 ITSM OpenAPI 根地址，例如 https://<平台>/openapi/v1/itsm/openapi/v1。内网目标需符合系统网络白名单。",
     "authentication": "认证方式",
     "tokenSaved": "Bearer Token（已配置）",
     "tokenMissing": "未配置令牌",

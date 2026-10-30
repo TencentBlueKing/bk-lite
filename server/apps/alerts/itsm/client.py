@@ -8,6 +8,7 @@ from urllib.parse import quote
 import requests
 
 from apps.alerts.itsm.config import ItsmError, validate_response_contract
+from apps.alerts.itsm.gateway_loopback import callback_tls_verify, rewrite_gateway_callback_url
 from apps.alerts.itsm.transport import deadline_adapter
 from apps.core.utils.ssrf_validator import SSRFError, SSRFValidator
 
@@ -74,9 +75,15 @@ class ItsmClient:
         try:
             # requests 默认不重试；禁用环境代理和重定向，凭据只发往部署指定的网关。
             url = self.connection["url"].rstrip("/") + "/" + path
+            rewritten = rewrite_gateway_callback_url(url)
+            loopback = rewritten != url
+            url = rewritten
             guard_target = self._token is not None or bool(self.connection.get("credential_id"))
             if guard_target:
-                SSRFValidator.validate(url)
+                if loopback:
+                    SSRFValidator.validate_callback(url)
+                else:
+                    SSRFValidator.validate(url)
             with ExitStack() as stack:
                 session = stack.enter_context(requests.Session())
                 verify = self.connection.get("ca_bundle") or True
@@ -85,8 +92,10 @@ class ItsmClient:
                     certificate.write(self.connection["ca_pem"])
                     certificate.flush()
                     verify = certificate.name
+                elif loopback:
+                    verify = callback_tls_verify(url)
                 session.trust_env = False
-                session.mount("https://", deadline_adapter(started + 30, guard_url=url if guard_target else None))
+                session.mount("https://", deadline_adapter(started + 30, guard_url=None if loopback else (url if guard_target else None)))
                 response = session.request(
                     method,
                     url,
@@ -147,7 +156,7 @@ class ItsmClient:
         validate_response_contract(self.connection)
         data = self._request(
             "POST",
-            "ticket_create/",
+            "ticket/create/",
             {"workflow_key": workflow_key, "is_submit": True, "form_data": fields},
         )
         ticket_id = _path(data, self.connection["create_id_path"])
@@ -157,7 +166,7 @@ class ItsmClient:
 
     def detail(self, ticket_id):
         validate_response_contract(self.connection)
-        data = self._request("GET", "ticket_detail/" + quote(str(ticket_id), safe="") + "/")
+        data = self._request("GET", "ticket/detail/?id=" + quote(str(ticket_id), safe=""))
         fields = self.connection["detail_fields"]
         actual_id = _path(data, fields["id"])
         if str(actual_id) != str(ticket_id):
@@ -175,10 +184,10 @@ class ItsmClient:
         }
 
     def comment(self, ticket_id, content):
-        self._request("POST", "ticket_comment/", {"ticket": str(ticket_id), "content": content})
+        raise ItsmError("ITSM 原生 OpenAPI 暂不支持工单留言", "failed")
 
     def services(self):
-        data = self._request("GET", "service_catalog/")
+        data = self._request("GET", "service_catalog/service_list/")
         results = data.get("results") if isinstance(data, dict) else None
         if not isinstance(results, list):
             raise ItsmError("ITSM 响应格式异常", "failed")
@@ -186,16 +195,19 @@ class ItsmClient:
         for item in results:
             if not isinstance(item, dict) or item.get("enabled") is False:
                 continue
-            workflow_key = item.get("workflow_key")
+            workflow_key = item.get("workflow_id") or item.get("workflow_key")
             if not isinstance(workflow_key, str) or not workflow_key.strip() or len(workflow_key) > 200:
                 continue
-            label = item.get("display") or item.get("service_name") or workflow_key
+            label = item.get("workflow_display") or item.get("name") or item.get("display") or item.get("service_name")
+            label = label or workflow_key
             found.append({"workflow_key": workflow_key.strip(), "label": str(label)[:200]})
         return found
 
     def form_fields(self, workflow_key):
-        data = self._request("GET", "ticket_form/?workflow_key=" + quote(str(workflow_key), safe=""))
-        return _layout_fields(_path(data, "canvas_data.form_data.layout"))
+        data = self._request("GET", "workflows/?workflow_keys=" + quote(str(workflow_key), safe=""))
+        items = data.get("items") if isinstance(data, dict) else None
+        canvas = items[0].get("form_canvas_data") if isinstance(items, list) and items and isinstance(items[0], dict) else {}
+        return _layout_fields(_path(canvas if isinstance(canvas, dict) else {}, "form_data.layout"))
 
     def test_connection(self):
-        self._request("GET", "ticket_list/?page=1&page_size=1")
+        self._request("GET", "ticket/list/?page=1&page_size=1")
