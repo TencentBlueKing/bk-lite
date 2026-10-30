@@ -336,8 +336,29 @@ describe('useHomepageMenu', () => {
     expect(mocks.replace).not.toHaveBeenCalled();
   });
 
-  it('opens the operations analysis directory from the settings link', async () => {
+  it('opens the current homepage dashboard from the settings link', async () => {
     resetMocks();
+    render(<Harness />);
+    fireEvent.click(await screen.findByTestId('homepage-dashboard-settings'));
+    expect(mocks.push).toHaveBeenCalledWith('/ops-analysis/view?type=dashboard&id=dashboard_3');
+  });
+
+  it('opens the dashboard shown on the homepage embed', async () => {
+    resetMocks();
+    mocks.pathname = '/ops-console/home';
+    mocks.search = 'dashboard_id=105';
+    render(<Harness />);
+    fireEvent.click(await screen.findByTestId('homepage-dashboard-settings'));
+    expect(mocks.push).toHaveBeenCalledWith('/ops-analysis/view?type=dashboard&id=dashboard_105');
+  });
+
+  it('opens the operations analysis directory when no homepage dashboard is set', async () => {
+    resetMocks();
+    mocks.preferenceState = {
+      ...workbenchState,
+      global_mode: 'workbench',
+      global_dashboard_id: null,
+    };
     render(<Harness />);
     fireEvent.click(await screen.findByTestId('homepage-dashboard-settings'));
     expect(mocks.push).toHaveBeenCalledWith('/ops-analysis/view');
