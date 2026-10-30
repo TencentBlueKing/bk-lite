@@ -5,7 +5,6 @@ from apps.system_mgmt.models import Role, User
 from apps.system_mgmt.utils.group_utils import GroupUtils
 from apps.system_mgmt.utils.user_status import get_password_validity_days, get_user_derived_status
 
-
 USER_PUBLIC_FIELDS = [
     "id",
     "user_id",
@@ -14,6 +13,12 @@ USER_PUBLIC_FIELDS = [
     "email",
     "phone",
     "disabled",
+    "manager",
+    "employment_status",
+    "job_title",
+    "job_level",
+    "employee_no",
+    "account_expires_at",
     "locale",
     "timezone",
     "group_list",

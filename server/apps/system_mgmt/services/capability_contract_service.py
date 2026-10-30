@@ -1,7 +1,18 @@
 from apps.system_mgmt.models import IntegrationInstanceStatusChoices
 
-
-USER_SYNC_PLATFORM_FIELDS = {"username", "display_name", "email", "phone"}
+USER_SYNC_PLATFORM_FIELDS = {
+    "username",
+    "display_name",
+    "email",
+    "phone",
+    "manager",
+    "employment_status",
+    "job_title",
+    "job_level",
+    "employee_no",
+    "account_expires_at",
+    "disabled",
+}
 SCHEDULE_SYNC_TIME_ERROR = "Schedule sync_time must be HH:mm"
 USER_SYNC_SCHEDULE_TIME_ERROR = "Schedule time must be HH:mm"
 USER_SYNC_SCHEDULE_MODE_ERROR = "Schedule mode is invalid"
@@ -76,8 +87,6 @@ def validate_user_sync_schedule_config(schedule_config, *, field: str):
         raise CapabilityContractError(field, "Schedule interval_hours must be one of 1,2,3,4,6,8,12")
 
 
-
-
 class CapabilityContractError(ValueError):
     def __init__(self, field: str, message: str):
         super().__init__(message)
@@ -101,30 +110,22 @@ def validate_integration_capability_state(manifest, capability_status=None, capa
         else:
             invalid_status_keys = set(capability_status.keys()) - allowed_capabilities
             valid_status_values = {choice.value for choice in IntegrationInstanceStatusChoices}
-            invalid_status_values = {
-                key: value for key, value in capability_status.items() if value not in valid_status_values
-            }
+            invalid_status_values = {key: value for key, value in capability_status.items() if value not in valid_status_values}
             if invalid_status_keys:
                 errors["capability_status"] = f"Invalid capability keys: {', '.join(sorted(invalid_status_keys))}"
             elif invalid_status_values:
-                errors["capability_status"] = (
-                    f"Invalid capability status values: {', '.join(sorted(invalid_status_values.keys()))}"
-                )
+                errors["capability_status"] = f"Invalid capability status values: {', '.join(sorted(invalid_status_values.keys()))}"
 
     if capability_enabled is not None:
         if not isinstance(capability_enabled, dict):
             errors["capability_enabled"] = "Capability enabled must be an object"
         else:
             invalid_enabled_keys = set(capability_enabled.keys()) - allowed_capabilities
-            invalid_enabled_values = {
-                key: value for key, value in capability_enabled.items() if not isinstance(value, bool)
-            }
+            invalid_enabled_values = {key: value for key, value in capability_enabled.items() if not isinstance(value, bool)}
             if invalid_enabled_keys:
                 errors["capability_enabled"] = f"Invalid capability keys: {', '.join(sorted(invalid_enabled_keys))}"
             elif invalid_enabled_values:
-                errors["capability_enabled"] = (
-                    f"Capability enabled values must be booleans: {', '.join(sorted(invalid_enabled_values.keys()))}"
-                )
+                errors["capability_enabled"] = f"Capability enabled values must be booleans: {', '.join(sorted(invalid_enabled_values.keys()))}"
 
     return errors
 
@@ -134,7 +135,7 @@ def validate_user_sync_contract(manifest, business_config=None, field_mapping=No
     _validate_object("field_mapping", field_mapping, required=False)
     validate_user_sync_schedule_config(schedule_config, field="schedule_config")
 
-    template_key = (manifest.get_capability("user_sync").business_template if manifest.get_capability("user_sync") else "")
+    template_key = manifest.get_capability("user_sync").business_template if manifest.get_capability("user_sync") else ""
     template = manifest.business_templates.get(template_key) if template_key else None
 
     if business_config is not None and template is not None:
@@ -151,20 +152,20 @@ def validate_user_sync_contract(manifest, business_config=None, field_mapping=No
 
     invalid_platform_fields = set(field_mapping.keys()) - USER_SYNC_PLATFORM_FIELDS
     if invalid_platform_fields:
+        from apps.system_mgmt.models.user_field import UserFieldDefinition
+
+        enabled_custom_keys = set(UserFieldDefinition.objects.filter(key__in=invalid_platform_fields, is_enabled=True).values_list("key", flat=True))
+        invalid_platform_fields -= enabled_custom_keys
+    if invalid_platform_fields:
         raise CapabilityContractError(
             "field_mapping",
             f"Unsupported user_sync platform fields: {', '.join(sorted(invalid_platform_fields))}",
         )
 
 
-
 def validate_im_notification_contract(manifest, external_match_field: str, external_receive_field: str, schedule_config=None):
     validate_schedule_config(schedule_config, field="schedule_config")
-    template_key = (
-        manifest.get_capability("im_notification").business_template
-        if manifest.get_capability("im_notification")
-        else ""
-    )
+    template_key = manifest.get_capability("im_notification").business_template if manifest.get_capability("im_notification") else ""
     template = manifest.business_templates.get(template_key) if template_key else None
     if template is None:
         raise CapabilityContractError("integration_instance", "Integration instance im_notification template is missing")

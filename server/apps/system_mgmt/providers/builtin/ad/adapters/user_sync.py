@@ -1,25 +1,27 @@
 from ldap3.core.exceptions import LDAPBindError
 
-from apps.system_mgmt.providers.common.ldap import LDAPSearchError
-
-from apps.system_mgmt.providers.log import logger
 from apps.system_mgmt.providers.base import BaseUserSyncAdapter
+from apps.system_mgmt.providers.common.ldap import LDAPSearchError
+from apps.system_mgmt.providers.log import logger
 from apps.system_mgmt.providers.runtime import CapabilityExecutionResult
+
+from ..pull_dns import AD_LEGACY_ROOT_DN_FIELD, AD_ROOT_DNS_FIELD, is_ad_multi_pull, normalize_ad_pull_dns, resolve_ad_local_root_scope_id
 from . import client
-from ..pull_dns import (
-    AD_LEGACY_ROOT_DN_FIELD,
-    AD_ROOT_DNS_FIELD,
-    is_ad_multi_pull,
-    normalize_ad_pull_dns,
-    resolve_ad_local_root_scope_id,
+
+SYNC_USER_ATTRIBUTES = (
+    "title",
+    "employeeID",
+    "employeeNumber",
+    "manager",
+    "userAccountControl",
 )
 
 
 def _get_sync_user_attributes(source) -> list[str]:
-    """仅查询当前同步源映射字段及构建组织关系必需的 DN。"""
+    """查询映射字段、任职属性和构建组织关系必需的 DN。"""
     field_mapping = getattr(source, "field_mapping", None) or {}
     mapped_attributes = [str(attribute).strip() for attribute in field_mapping.values() if str(attribute or "").strip()]
-    return list(dict.fromkeys([*mapped_attributes, "distinguishedName"]))
+    return list(dict.fromkeys([*mapped_attributes, *SYNC_USER_ATTRIBUTES, "distinguishedName"]))
 
 
 class ADUserSyncAdapter(BaseUserSyncAdapter):
@@ -215,7 +217,7 @@ class ADUserSyncAdapter(BaseUserSyncAdapter):
 
     @staticmethod
     def _normalize_sync_user(user_entry: dict) -> dict:
-        return {
+        normalized = {
             "sAMAccountName": client.get_ldap_scalar(user_entry.get("sAMAccountName")),
             "userPrincipalName": client.get_ldap_scalar(user_entry.get("userPrincipalName")),
             "displayName": client.get_ldap_scalar(user_entry.get("displayName")) or client.get_ldap_scalar(user_entry.get("sAMAccountName")),
@@ -223,8 +225,22 @@ class ADUserSyncAdapter(BaseUserSyncAdapter):
             "telephoneNumber": client.get_ldap_scalar(user_entry.get("telephoneNumber")),
             "mobile": client.get_ldap_scalar(user_entry.get("mobile")),
             "mobilePhone": client.get_ldap_scalar(user_entry.get("mobilePhone")),
+            "title": client.get_ldap_scalar(user_entry.get("title")),
+            "employeeID": client.get_ldap_scalar(user_entry.get("employeeID")),
+            "employeeNumber": client.get_ldap_scalar(user_entry.get("employeeNumber")),
+            "manager": client.get_ldap_scalar(user_entry.get("manager")),
+            "userAccountControl": client.get_ldap_scalar(user_entry.get("userAccountControl")),
             "distinguishedName": client.get_ldap_scalar(user_entry.get("distinguishedName")),
         }
+        for key, raw in user_entry.items():
+            if key in normalized or isinstance(raw, (bytes, dict)):
+                continue
+            if isinstance(raw, (list, tuple)) and raw and isinstance(raw[0], (bytes, dict)):
+                continue
+            text = client.get_ldap_scalar(raw)
+            if text:
+                normalized[key] = text
+        return normalized
 
     @classmethod
     def _match_pull_dn(cls, entry_dn: str, pull_dns: list[str]) -> str | None:

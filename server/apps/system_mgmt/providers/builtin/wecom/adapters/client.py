@@ -227,6 +227,66 @@ def _request_get(url, config, token, params=None, *, return_response=False):
     return (data, response) if return_response else data
 
 
+def _first_text(value):
+    if isinstance(value, list):
+        for item in value:
+            text = str(item or "").strip()
+            if text:
+                return text
+        return ""
+    return str(value or "").strip()
+
+
+_WECOM_RESERVED_USER_KEYS = frozenset(
+    {
+        "userid",
+        "name",
+        "email",
+        "mobile",
+        "position",
+        "direct_leader",
+        "status",
+        "department_ids",
+    }
+)
+
+
+def _wecom_profile(user):
+    status = user.get("status")
+    return {
+        "position": str(user.get("position") or ""),
+        "direct_leader": _first_text(user.get("direct_leader")),
+        "status": "" if status is None else str(status),
+    }
+
+
+def _wecom_custom_fields(user):
+    """成员扩展属性。官方 user/get：type 0 取 text.value，type 1 取 web.title，没有标题再取 web.url。"""
+    extattr = user.get("extattr") if isinstance(user.get("extattr"), dict) else {}
+    attrs = extattr.get("attrs")
+    if not isinstance(attrs, list):
+        return {}
+    fields = {}
+    for attr in attrs:
+        if not isinstance(attr, dict):
+            continue
+        name = str(attr.get("name") or "").strip()
+        if not name or name in _WECOM_RESERVED_USER_KEYS or name in fields:
+            continue
+        attr_type = attr.get("type")
+        if attr_type in (0, "0"):
+            text_value = attr.get("text") if isinstance(attr.get("text"), dict) else {}
+            text = str(text_value.get("value") or "").strip()
+        elif attr_type in (1, "1"):
+            web = attr.get("web") if isinstance(attr.get("web"), dict) else {}
+            text = str(web.get("title") or web.get("url") or "").strip()
+        else:
+            continue
+        if text:
+            fields[name] = text
+    return fields
+
+
 def _normalize_users(users):
     normalized = {}
     for user in users:
@@ -240,9 +300,14 @@ def _normalize_users(users):
                 "name": user.get("name", ""),
                 "email": user.get("email", ""),
                 "mobile": user.get("mobile", ""),
+                **_wecom_profile(user),
+                **_wecom_custom_fields(user),
                 "department_ids": [],
             },
         )
+        for key, value in {**_wecom_profile(user), **_wecom_custom_fields(user)}.items():
+            if value and not item.get(key):
+                item[key] = value
         item["department_ids"] = sorted({*item["department_ids"], *(str(value) for value in user.get("department") or [])})
     return list(normalized.values())
 

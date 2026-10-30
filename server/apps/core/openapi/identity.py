@@ -77,7 +77,7 @@ def authenticate_request(request) -> CallerIdentity:
     header = request.META.get("HTTP_AUTHORIZATION", "")
     if not header.startswith("Bearer "):
         raise AuthenticationFailed("missing bearer credential")
-    token = header[len("Bearer "):].strip()
+    token = header[len("Bearer ") :].strip()
     if not token:
         raise AuthenticationFailed("missing bearer credential")
 
@@ -137,10 +137,7 @@ def _authenticate_jwt(token: str) -> CallerIdentity:
         raise AuthenticationFailed(message or "invalid token")
 
     ctx = result.get("data") or {}
-    permission = {
-        app: set(items or [])
-        for app, items in (ctx.get("permission") or {}).items()
-    }
+    permission = {app: set(items or []) for app, items in (ctx.get("permission") or {}).items()}
     raw_groups = [g for g in (ctx.get("group_list") or []) if isinstance(g, dict)]
     return CallerIdentity(
         user=ctx.get("username", ""),
@@ -173,6 +170,7 @@ def _authenticate_system_token(request, token: str) -> CallerIdentity:
     from apps.core.backends import APISecretAuthBackend, _normalize_group_ids
     from apps.system_mgmt.models import SystemAPIToken
     from apps.system_mgmt.models import User as SystemUser
+    from apps.system_mgmt.services.user_access import is_account_expired
 
     if not SYSTEM_TOKEN_RE.fullmatch(token):
         raise AuthenticationFailed("invalid system token")
@@ -201,7 +199,7 @@ def _authenticate_system_token(request, token: str) -> CallerIdentity:
         raise AuthenticationFailed("acting user not found or disabled", identity=audit)
 
     sys_user = SystemUser.objects.filter(username=username, domain=domain, disabled=False).first()
-    if sys_user is None:
+    if sys_user is None or is_account_expired(sys_user):
         raise AuthenticationFailed("acting user not found or disabled", identity=audit)
 
     audit.user = user.username

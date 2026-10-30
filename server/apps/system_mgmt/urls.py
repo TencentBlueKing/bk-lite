@@ -19,6 +19,7 @@ from apps.system_mgmt.viewset import (
     RoleViewSet,
     SystemAPITokenViewSet,
     SystemSettingsViewSet,
+    UserFieldViewSet,
     UserLoginLogViewSet,
     UserSyncSourceViewSet,
     UserViewSet,
@@ -33,6 +34,7 @@ router.register(r"im_notification_channel", IMNotificationChannelViewSet)
 router.register(r"login_auth_binding", LoginAuthBindingViewSet)
 router.register(r"credential_type", CredentialTypeViewSet)
 router.register(r"credential", CredentialViewSet)
+router.register(r"user_field", UserFieldViewSet, basename="user_field")
 router.register(r"user_sync_source", UserSyncSourceViewSet)
 router.register(r"channel", ChannelViewSet)
 router.register(r"group_data_rule", GroupDataRuleViewSet)

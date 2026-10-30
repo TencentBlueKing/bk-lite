@@ -1,5 +1,7 @@
 # flake8: noqa
+from apps.system_mgmt.services.user_access import is_account_expired, is_user_access_disabled
 from apps.system_mgmt.utils.otp_settings import parse_otp_recommended_apps, parse_otp_whitelist_ids
+
 from .common import *  # noqa: F401,F403
 from .common import _build_jwt_payload, _get_pwd_policy_settings, _verify_token
 
@@ -165,8 +167,10 @@ def get_user_login_token(user, username, skip_token_for_otp=False):
     Returns:
         Dict with login result and data
     """
-    if user.disabled:
+    if is_user_access_disabled(user):
         return {"result": False, "message": "User is disabled"}
+    if is_account_expired(user):
+        return {"result": False, "message": "Account has expired"}
 
     # Check if OTP is enabled globally and whether this user is whitelisted.
     enable_otp_setting = SystemSettings.objects.filter(key="enable_otp").first()

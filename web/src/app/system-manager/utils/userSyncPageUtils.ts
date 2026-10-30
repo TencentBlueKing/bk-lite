@@ -28,7 +28,31 @@ export interface RecordRow extends UserSyncRun {
   source_name: string;
 }
 
-export const FIXED_PLATFORM_FIELD_ORDER = ['username', 'display_name', 'email', 'phone'] as const;
+export const ALWAYS_SHOWN_PLATFORM_FIELDS = [
+  'username',
+  'display_name',
+  'email',
+  'phone',
+] as const;
+
+export const OPTIONAL_PLATFORM_FIELDS = [
+  'manager',
+  'employment_status',
+  'job_title',
+  'job_level',
+  'employee_no',
+] as const;
+
+const MAPPED_ONLY_PLATFORM_FIELDS = [
+  'account_expires_at',
+  'disabled',
+] as const;
+
+export const FIXED_PLATFORM_FIELD_ORDER = [
+  ...ALWAYS_SHOWN_PLATFORM_FIELDS,
+  ...OPTIONAL_PLATFORM_FIELDS,
+  ...MAPPED_ONLY_PLATFORM_FIELDS,
+] as const;
 
 export const PLATFORM_FIELD_META: Record<(typeof FIXED_PLATFORM_FIELD_ORDER)[number], { labelKey: string; descKey: string }> = {
   username: {
@@ -47,14 +71,60 @@ export const PLATFORM_FIELD_META: Record<(typeof FIXED_PLATFORM_FIELD_ORDER)[num
     labelKey: 'system.user.userSyncPage.platformField.phone',
     descKey: 'system.user.userSyncPage.platformField.phoneDesc',
   },
+  manager: {
+    labelKey: 'system.user.userSyncPage.platformField.manager',
+    descKey: 'system.user.userSyncPage.platformField.managerDesc',
+  },
+  employment_status: {
+    labelKey: 'system.user.userSyncPage.platformField.employmentStatus',
+    descKey: 'system.user.userSyncPage.platformField.employmentStatusDesc',
+  },
+  job_title: {
+    labelKey: 'system.user.userSyncPage.platformField.jobTitle',
+    descKey: 'system.user.userSyncPage.platformField.jobTitleDesc',
+  },
+  job_level: {
+    labelKey: 'system.user.userSyncPage.platformField.jobLevel',
+    descKey: 'system.user.userSyncPage.platformField.jobLevelDesc',
+  },
+  employee_no: {
+    labelKey: 'system.user.userSyncPage.platformField.employeeNo',
+    descKey: 'system.user.userSyncPage.platformField.employeeNoDesc',
+  },
+  account_expires_at: {
+    labelKey: 'system.user.userSyncPage.platformField.accountExpiresAt',
+    descKey: 'system.user.userSyncPage.platformField.accountExpiresAtDesc',
+  },
+  disabled: {
+    labelKey: 'system.user.userSyncPage.platformField.disabled',
+    descKey: 'system.user.userSyncPage.platformField.disabledDesc',
+  },
 };
 
 export function toMappingRows(fieldMapping: Record<string, unknown> | undefined): MappingRow[] {
   const mapping = fieldMapping || {};
-  return FIXED_PLATFORM_FIELD_ORDER.map((key) => ({
-    platformField: key,
-    externalField: String(mapping[key] || ''),
-  }));
+  const known = new Set<string>(FIXED_PLATFORM_FIELD_ORDER);
+  const optional = OPTIONAL_PLATFORM_FIELDS.filter((key) => String(mapping[key] || '').trim());
+  const mappedOnly = MAPPED_ONLY_PLATFORM_FIELDS.filter((key) => String(mapping[key] || '').trim());
+  const extras = Object.keys(mapping).filter((key) => !known.has(key) && String(mapping[key] || '').trim());
+  return [
+    ...ALWAYS_SHOWN_PLATFORM_FIELDS.map((key) => ({
+      platformField: key,
+      externalField: String(mapping[key] || ''),
+    })),
+    ...optional.map((key) => ({
+      platformField: key,
+      externalField: String(mapping[key] || ''),
+    })),
+    ...mappedOnly.map((key) => ({
+      platformField: key,
+      externalField: String(mapping[key] || ''),
+    })),
+    ...extras.map((key) => ({
+      platformField: key,
+      externalField: String(mapping[key] || ''),
+    })),
+  ];
 }
 
 export function toFieldMappingPayload(rows: MappingRow[]): Record<string, string> {

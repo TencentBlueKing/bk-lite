@@ -128,7 +128,16 @@ PROVIDER_MANIFEST = ProviderManifest.model_validate(
                         ],
                     }
                 ],
-                "available_external_fields": ["userid", "name", "email", "mobile", "department_ids"],
+                "available_external_fields": [
+                    "userid",
+                    "name",
+                    "email",
+                    "mobile",
+                    "department_ids",
+                    "position",
+                    "direct_leader",
+                    "status",
+                ],
             },
             "im_notification_form": {
                 "title": "IM notification",

@@ -1,6 +1,7 @@
 import React from 'react';
 import { Tag } from 'antd';
 import type { DataNode as TreeDataNode } from 'antd/lib/tree';
+import dayjs from 'dayjs';
 
 interface UserGroupTreeDataNode extends TreeDataNode {
   isVirtual?: boolean;
@@ -48,6 +49,13 @@ export interface UserDetailResponse {
   locale?: string;
   is_superuser?: boolean;
   sync_source?: number | null;
+  manager_username?: string;
+  employment_status?: string;
+  job_title?: string;
+  job_level?: string;
+  employee_no?: string;
+  account_expires_at?: string | null;
+  custom_fields?: Array<{ key: string; field_type: string; value?: string }>;
   groups?: Array<{ id: React.Key; rules?: { [key: string]: number } }>;
   roles?: Array<{ role_id: number }>;
 }
@@ -183,6 +191,18 @@ export function buildFormValuesFromUserDetail(
     roles: allRoles,
     groups: groupIds,
     is_superuser: userDetail.is_superuser || false,
+    manager_username: userDetail.manager_username || '',
+    employment_status: userDetail.employment_status || 'unspecified',
+    job_title: userDetail.job_title || '',
+    job_level: userDetail.job_level || '',
+    employee_no: userDetail.employee_no || '',
+    account_expires_at: userDetail.account_expires_at ? dayjs(userDetail.account_expires_at) : null,
+    custom_fields: Object.fromEntries(
+      (userDetail.custom_fields || []).map((item) => [
+        item.key,
+        item.field_type === 'date' && item.value ? dayjs(item.value) : (item.value || ''),
+      ]),
+    ),
   };
 }
 
@@ -196,14 +216,29 @@ export function buildUserPayload(
   groupRules: GroupRules,
   isSuperuser: boolean
 ): UserFormPayload {
-  const { zoneinfo, ...restData } = formData;
+  const { zoneinfo, account_expires_at, custom_fields, manager_username, ...restData } = formData;
+  const managerName = typeof manager_username === 'string' ? manager_username.trim() : '';
+  const normalizedCustomFields = custom_fields && typeof custom_fields === 'object'
+    ? Object.fromEntries(
+      Object.entries(custom_fields as Record<string, unknown>).map(([key, value]) => [
+        key,
+        dayjs.isDayjs(value) ? value.format('YYYY-MM-DD') : value,
+      ]),
+    )
+    : undefined;
+  const expiry = dayjs.isDayjs(account_expires_at)
+    ? account_expires_at.toISOString()
+    : (account_expires_at ?? null);
 
   if (isSuperuser) {
     return {
       ...restData,
       roles: [],
       timezone: zoneinfo as string,
+      manager_username: managerName,
       is_superuser: true,
+      account_expires_at: expiry,
+      ...(normalizedCustomFields ? { custom_fields: normalizedCustomFields } : {}),
     } as UserFormPayload;
   }
 
@@ -217,7 +252,10 @@ export function buildUserPayload(
     roles: personalRoleIds,
     rules,
     timezone: zoneinfo as string,
+    manager_username: managerName,
     is_superuser: false,
+    account_expires_at: expiry,
+    ...(normalizedCustomFields ? { custom_fields: normalizedCustomFields } : {}),
   } as UserFormPayload;
 }
 
