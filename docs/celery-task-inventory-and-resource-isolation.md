@@ -1,5 +1,7 @@
 # Celery 全量任务清单与低内存资源隔离建议
 
+> 历史调研归档：本文针对旧 `dd39ab8c23`，不代表最新上游部署。当前182项任务、原生prefork和既有专用消费者见[最新清单](celery-current-task-inventory.md)，实施以[当前设计](../openspec/changes/isolate-celery-workload-runtime/design.md)为准。
+
 > 当前实施设计以 [统一弹性架构计划](../openspec/changes/isolate-celery-workload-runtime/design.md) 与 [实施任务](../openspec/changes/isolate-celery-workload-runtime/tasks.md) 为准：四类独立执行池、可配置 MIN/MAX、所有 MAX 的总预算约束，仅改运行架构。本文保留前期调查与方案比较；其中旧拓扑、固定并发和业务优化建议不构成本次实施要求。
 
 - 分析日期：2026-10-30；基线提交见配套 JSON。

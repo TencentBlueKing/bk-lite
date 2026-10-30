@@ -54,27 +54,18 @@ def test_django_component_wires_routes_and_does_not_activate_child_recycling(mon
     app.config_from_object(component, namespace="CELERY")
     name = "apps.monitor.tasks.monitor_policy.scan_policy_task"
     assert app.amqp.router.route({}, name)["queue"].name == "critical"
-    assert app.conf.worker_max_tasks_per_child is None
+    assert app.conf.worker_max_tasks_per_child == 200
+    assert app.conf.worker_max_memory_per_child == 512000
+    assert app.conf.worker_pool == "prefork"
     assert app.conf.worker_prefetch_multiplier == 1
     app.close()
 
 
 def test_static_manifest_covers_local_decorated_tasks_without_importing_them():
-    import ast
-    from pathlib import Path
+    from apps.core.tests.celery_task_inventory import collect_tasks
 
-    apps = Path(__file__).resolve().parents[2]
-    definitions = set()
-    for source in apps.rglob("*.py"):
-        if "tests" in source.parts or "migrations" in source.parts:
-            continue
-        tree = ast.parse(source.read_text())
-        for node in ast.walk(tree):
-            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                continue
-            for decorator in node.decorator_list:
-                target = decorator.func if isinstance(decorator, ast.Call) else decorator
-                if (isinstance(target, ast.Name) and target.id == "shared_task") or (isinstance(target, ast.Attribute) and target.attr == "task"):
-                    module = ".".join(source.relative_to(apps.parent).with_suffix("").parts)
-                    definitions.add(f"{module}.{node.name}")
-    assert definitions == set(TASK_ROUTES), "新增任务需审核资源分类，不允许悄悄落入后台"
+    definitions = collect_tasks()
+    assert set(definitions) == set(TASK_ROUTES), "新增/删除任务需审核准确注册名称与资源分类"
+    for name, item in definitions.items():
+        if item["declared_queue"]:
+            assert TASK_ROUTES[name] == item["declared_queue"]

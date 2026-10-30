@@ -3,12 +3,12 @@
 from time import monotonic
 
 from kombu import Exchange, Queue
-from loguru import logger
 
-from apps.core.celery_runtime.config import POOL_IMPLEMENTATION
+from apps.core.celery_runtime.config import DEDICATED_QUEUES, POOL_IMPLEMENTATION
 from apps.core.celery_runtime.manifest import TASK_ROUTES
+from apps.core.logger import celery_logger as logger
 
-QUEUE_NAMES = ("critical", "notification", "state", "background", "celery")
+QUEUE_NAMES = ("critical", "notification", "state", "background", "celery", *(q for queues in DEDICATED_QUEUES.values() for q in queues))
 _last_warning = float("-inf")
 
 

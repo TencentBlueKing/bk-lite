@@ -2,8 +2,8 @@ import importlib
 import logging
 import os
 
-from config.components.locale import TIME_ZONE
 from apps.core.celery_runtime.routing import declared_queues, route_task
+from config.components.locale import TIME_ZONE
 
 logger = logging.getLogger("celery_config")
 

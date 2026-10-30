@@ -12,7 +12,7 @@
 - **THEN** 消息进入 celery 并由后台池消费，同时记录未映射诊断，不丢弃消息
 
 ### Requirement: 统一独立执行池
-系统 SHALL 使用一套四 worker 拓扑，分别消费 critical、notification、state、background+celery，每个 worker 使用 prefork 和独立节点名，显式声明队列。每池 SHALL 通过 MIN/MAX 配置保底与峰值执行子进程数，不按机器内存提供不同部署档位。部署 SHALL 保持唯一 Beat。
+系统 SHALL 对原默认工作负载使用一套四 worker 拓扑，分别消费 critical、notification、state、background+celery，每个 worker 使用 prefork 和独立节点名，显式声明队列；上游既有 OpsPilot、报表渲染和补丁维护专用消费者 SHALL 保留，不合并到四池。每池 SHALL 通过 MIN/MAX 配置保底与峰值执行子进程数，不按机器内存提供不同部署档位。部署 SHALL 保持唯一 Beat。
 
 #### Scenario: 状态池和后台池饱和
 - **WHEN** state 和 background 执行槽位被测试任务占满，告警池有可用槽位
@@ -44,16 +44,16 @@
 - **WHEN** 旧 CELERY_CONCURRENCY 仍影响新运行配置
 - **THEN** 启动前报出迁移错误，不把旧值复制成每个 worker 的并发
 
-### Requirement: 执行池切换兼容性
-prefork 切换 SHALL 验证客户端连接、模型库、进程内状态、任务内部线程和有效超时/回收配置。公共层 SHALL 不因切池隐式新增任务强杀、频繁回收或改变 ACK/retry。预取初始乘数 SHALL 为 1 且禁止无限值 0，验收 SHALL 覆盖其与 MAX、ACK、ETA 的联动，不解释为全部驻留消息的硬上限。
+### Requirement: 保留上游执行策略
+系统 SHALL 保留最新上游 prefork 的有效任务软/硬超时、子进程按任务数/内存回收、ACK 和重试行为，不引入忽略这些配置的兼容层。四池预取乘数 SHALL 为1，禁止无限值0；它不代表ETA及全部驻留消息的硬上限。
 
-#### Scenario: 旧配置在 prefork 下可能改变行为
-- **WHEN** 发现此前 threads 不支持的超时或子进程回收配置
-- **THEN** 发布前检查其有效值并保持既有业务契约，未经评审不启用新强杀策略或机械转换每 5 个任务回收配置
+#### Scenario: 任务达到声明超时
+- **WHEN** 任务达到上游声明的软/硬超时
+- **THEN** 原生prefork按既有契约处理，不因队列隔离取消超时
 
-#### Scenario: 任务依赖不兼容 fork
-- **WHEN** 兼容性验证发现只有修改任务业务实现才能保留正确行为
-- **THEN** 阻止相关运行配置上线并记录业务协作项，不在架构改造中隐式修改业务函数
+#### Scenario: 子进程达到回收阈值
+- **WHEN** 子进程完成任务且达到已配置任务数或RSS回收阈值
+- **THEN** 原生prefork回收并补充子进程，后续任务继续执行
 
 ### Requirement: 有效路由覆盖检查
 发布检查 SHALL 核对线上注册任务、实际生产者、启用的数据库周期任务及显式 queue/exchange/routing_key 覆盖。检查 SHALL 报告未注册任务、未分类任务和偏离目标的最终目的地。需调整数据库路由时 SHALL 仅使用 ORM 更新已审查的路由字段，并提供 dry-run、快照和恢复能力。

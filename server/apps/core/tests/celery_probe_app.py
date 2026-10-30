@@ -19,6 +19,7 @@ if sys.platform == "darwin":
     billiard.set_start_method("fork", force=True)
 app = Celery("runtime_probe", broker=broker, backend=broker)
 configure_routes(app)
+app.conf.worker_max_tasks_per_child = 2
 observer = install_observer()
 
 NAMES = {
@@ -54,3 +55,8 @@ def retry_probe(self):
 def limited_probe(self):
     time.sleep(3)
     return {"declared": [self.time_limit, self.soft_time_limit], "message_limits": self.request.timelimit}
+
+
+@app.task(name="runtime_probe.hard_limited", shared=False, time_limit=1)
+def hard_limited_probe():
+    time.sleep(5)

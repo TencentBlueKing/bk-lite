@@ -10,9 +10,9 @@ from celery import Celery
 from celery.schedules import crontab
 from django.db import transaction
 
-from apps.core.logger import celery_logger as logger
 from apps.core.celery_runtime import skip_periodic_sync
 from apps.core.celery_runtime.observation import install_observer
+from apps.core.logger import celery_logger as logger
 
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "settings")
 
@@ -67,8 +67,7 @@ def _description_without_machine_markers(description):
     return "\n".join(
         line
         for line in description.split("\n")
-        if not line.startswith(MANAGED_TASK_DESCRIPTION_PREFIX)
-        and line not in {RECONCILE_DISABLED_MARKER, LEGACY_IMPORTED_MARKER}
+        if not line.startswith(MANAGED_TASK_DESCRIPTION_PREFIX) and line not in {RECONCILE_DISABLED_MARKER, LEGACY_IMPORTED_MARKER}
     )
 
 
@@ -99,9 +98,7 @@ def _set_reconcile_provenance(task, *, disabled):
 
 def _refresh_managed_identity(task):
     description_lines = [
-        line
-        for line in task.description.split("\n")
-        if line == RECONCILE_DISABLED_MARKER or not line.startswith(MANAGED_TASK_DESCRIPTION_PREFIX)
+        line for line in task.description.split("\n") if line == RECONCILE_DISABLED_MARKER or not line.startswith(MANAGED_TASK_DESCRIPTION_PREFIX)
     ]
     task.description = "\n".join([_managed_task_marker(task), *description_lines])
 
@@ -176,14 +173,11 @@ def _prepare_legacy_managed_tasks(periodic_task_model, current_names, reconcile_
         return (), False
     if not names:
         return (), True
-    candidates, already_owned, missing, collisions, drifted = _legacy_import_candidates(
-        periodic_task_model, names, current_names
-    )
+    candidates, already_owned, missing, collisions, drifted = _legacy_import_candidates(periodic_task_model, names, current_names)
     if reconcile_mode != RECONCILE_MODE_ENFORCE:
         logger.warning(
             "Celery Beat 历史基线预检: candidates=%s already_owned=%s",
-            ", ".join(f"{task.name}@{_managed_task_marker(task)[len(MANAGED_TASK_DESCRIPTION_PREFIX):-1]}" for task in candidates)
-            or "-",
+            ", ".join(f"{task.name}@{_managed_task_marker(task)[len(MANAGED_TASK_DESCRIPTION_PREFIX):-1]}" for task in candidates) or "-",
             ", ".join(already_owned) or "-",
         )
         return tuple(name for name, _ in names), True
@@ -397,6 +391,9 @@ def setup_periodic_tasks(sender, **kwargs):
     from django.conf import settings
 
     if "pytest" in sys.modules or skip_periodic_sync.get():
+        return
+
+    if len(sys.argv) > 1 and sys.argv[1] in {"celery_runtime_report", "celery_routes"}:
         return
 
     if not getattr(settings, "IS_USE_CELERY", False):

@@ -2,17 +2,12 @@
 
 import argparse
 import os
-import subprocess
 import sys
 import tempfile
 from pathlib import Path
 
 from apps.core.celery_runtime.config import POOL_QUEUES, RuntimeConfig
 from apps.core.celery_runtime.environment import load_runtime_environment
-
-
-def check_prefork():
-    subprocess.run([sys.executable, "manage.py", "celery_prefork_check"], check=True)
 
 
 def write_supervisor(path, content):
@@ -42,7 +37,6 @@ def main():
             write_supervisor(args.supervisor, config.supervisor_config())
         elif args.worker:
             command = config.worker_args(args.worker)
-            check_prefork()
             os.environ["AUTOSCALE_KEEPALIVE"] = str(config.keepalive)
             os.execv(sys.executable, [sys.executable, "-m", "celery", *command])
         else:

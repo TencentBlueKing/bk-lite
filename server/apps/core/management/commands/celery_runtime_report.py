@@ -9,15 +9,8 @@ from django.core.management.base import BaseCommand, CommandError
 from django_celery_beat.models import PeriodicTask
 
 from apps.core.celery_runtime import inspect_registry
-from apps.core.celery_runtime.config import POOL_IMPLEMENTATION, POOL_QUEUES, RuntimeConfig
-from apps.core.celery_runtime.diagnostics import (
-    inactive_limit_declarations,
-    memory_report,
-    periodic_report,
-    prefork_issues,
-    ready_report,
-    worker_report,
-)
+from apps.core.celery_runtime.config import DEDICATED_QUEUES, POOL_IMPLEMENTATION, POOL_QUEUES, RuntimeConfig
+from apps.core.celery_runtime.diagnostics import memory_report, periodic_report, ready_report, worker_report
 from apps.core.celery_runtime.manifest import TASK_ROUTES
 
 
@@ -50,9 +43,6 @@ class Command(BaseCommand):
             errors.append("存在未分类的已注册任务")
         if any(row["issues"] for row in periodic):
             errors.append("周期任务存在注册/路由冲突")
-        limits = prefork_issues(current_app)
-        if limits:
-            errors.append("执行池缺少 threads 行为兼容层")
         report = {
             "versions": {"celery": celery.__version__, "kombu": kombu.__version__},
             "install_apps": os.getenv("INSTALL_APPS", ""),
@@ -61,10 +51,13 @@ class Command(BaseCommand):
             "registered": sorted(registered),
             "unmapped": unmapped,
             "periodic": periodic,
-            "prefork_semantics_review": limits,
-            "inactive_limit_declarations": inactive_limit_declarations(current_app),
+            "execution_policy": {
+                "pool": current_app.conf.worker_pool,
+                "max_tasks_per_child": current_app.conf.worker_max_tasks_per_child,
+                "max_memory_per_child": current_app.conf.worker_max_memory_per_child,
+            },
             "limitations": [
-                "任务声明保留；兼容池保持 threads 行为，不启用执行池超时/按任务数或内存回收",
+                "保留上游 prefork 的任务超时和子进程回收策略",
                 "本报告不证明生产容量或任务 fork 兼容性",
                 "最老等待年龄、时延分位数及速率需关联生命周期日志；未采集时未知",
             ],
@@ -73,21 +66,36 @@ class Command(BaseCommand):
             workers = worker_report(current_app.control.inspect(timeout=options["timeout"]))
             report["runtime"] = workers
             report["broker"] = ready_report(current_app)
-            expected = config.replicas if config and config.pools else 0
-            if workers["unavailable"] or any(count != expected for count in workers["queue_consumers"].values()):
+            expected_queues = {queue: 0 for queue in workers["queue_consumers"]}
+            configured = {}
+            if config:
+                for pool in (*config.pools, *config.dedicated):
+                    queues = (POOL_QUEUES | DEDICATED_QUEUES)[pool.name]
+                    configured[pool.name] = (pool, queues, pool in config.dedicated)
+                    for queue in queues:
+                        expected_queues[queue] = config.replicas
+            if workers["unavailable"] or workers["queue_consumers"] != expected_queues:
                 errors.append("worker 回复缺失或消费者数量不符合部署声明")
             for node, worker in workers["workers"].items():
-                expected_pool = next((pool for pool in config.pools if node.startswith(pool.name + "@")), None) if config else None
-                if expected_pool is None or worker["capacity"]["max"] != expected_pool.maximum or worker["capacity"]["min"] != expected_pool.minimum:
-                    errors.append("worker 身份或实际伸缩范围不符合配置")
-                elif set(worker["queues"]) != set(POOL_QUEUES[expected_pool.name]):
+                expected = configured.get(node.split("@", 1)[0])
+                if expected is None:
+                    errors.append("worker 身份不符合配置")
+                    continue
+                pool, queues, dedicated = expected
+                capacity_matches = (
+                    worker.get("fixed_capacity") == pool.maximum
+                    if dedicated
+                    else worker["capacity"]["max"] == pool.maximum and worker["capacity"]["min"] == pool.minimum
+                )
+                if not capacity_matches:
+                    errors.append("worker 实际并发不符合配置")
+                if set(worker["queues"]) != set(queues):
                     errors.append("worker 消费队列越过了执行池边界")
-                elif worker.get("pool_implementation") != POOL_IMPLEMENTATION:
-                    errors.append("worker 未使用受控执行池，可能隐式启用超时行为")
-                else:
-                    required = {name for name in registered if TASK_ROUTES.get(name, "celery") in POOL_QUEUES[expected_pool.name]}
-                    if worker["registered"] is None or required - set(worker["registered"]):
-                        errors.append("worker 注册集缺少该池目标任务，不能切换生产者路由")
+                if worker.get("pool_implementation") != POOL_IMPLEMENTATION:
+                    errors.append("worker 未使用上游 prefork 执行池")
+                required = {name for name in registered if TASK_ROUTES.get(name, "celery") in queues}
+                if worker["registered"] is None or required - set(worker["registered"]):
+                    errors.append("worker 注册集缺少该池目标任务，不能切换生产者路由")
         report["errors"] = errors
         self.stdout.write(json.dumps(report, ensure_ascii=False, indent=2))
         if options["strict"] and errors:

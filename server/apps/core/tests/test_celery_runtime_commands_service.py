@@ -6,7 +6,6 @@ import os
 import subprocess
 import sys
 from pathlib import Path
-from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
@@ -17,7 +16,7 @@ from django.core.management.base import CommandError
 from apps.core.celery_runtime import launcher
 from apps.core.celery_runtime.config import POOL_IMPLEMENTATION
 from apps.core.celery_runtime.routing import configure_routes
-from apps.core.management.commands import celery_prefork_check, celery_routes, celery_runtime_report
+from apps.core.management.commands import celery_routes, celery_runtime_report
 from apps.core.tests.test_celery_runtime_pure import runtime_env
 
 
@@ -37,7 +36,7 @@ def test_launcher_atomically_generates_configuration_and_checks(monkeypatch, tmp
     assert list(tmp_path.iterdir()) == [target]
     monkeypatch.setattr("sys.argv", ["launcher", "--check"])
     launcher.main()
-    assert "最大并发=7" in capsys.readouterr().out
+    assert "最大并发=12" in capsys.readouterr().out
 
 
 def test_launcher_rejects_bad_config_without_replacing_file(monkeypatch, tmp_path):
@@ -53,7 +52,7 @@ def test_launcher_rejects_bad_config_without_replacing_file(monkeypatch, tmp_pat
 
 def test_launcher_reads_dotenv_like_django_without_overriding_exported_values(tmp_path):
     root = Path(__file__).resolve().parents[3]
-    values = runtime_env(CELERY_CRITICAL_MAX="3", CELERY_TOTAL_CONCURRENCY_LIMIT="8")
+    values = runtime_env(CELERY_CRITICAL_MAX="3", CELERY_TOTAL_CONCURRENCY_LIMIT="13")
     (tmp_path / ".env").write_text("\n".join(f"{key}={value}" for key, value in values.items()))
     env = {key: value for key, value in os.environ.items() if not key.startswith(("CELERY_", "ENABLE_CELERY", "AUTOSCALE_"))}
     env.update(PYTHONPATH=str(root), CELERY_CRITICAL_MAX="2")
@@ -62,31 +61,17 @@ def test_launcher_reads_dotenv_like_django_without_overriding_exported_values(tm
     )
     assert result.returncode == 0
     assert "执行池数=4" in result.stdout
-    assert "最大并发=7" in result.stdout
+    assert "最大并发=12" in result.stdout
 
 
-def test_worker_launcher_preflights_before_exec(monkeypatch):
+def test_worker_launcher_executes_configured_pool(monkeypatch):
     configure_env(monkeypatch)
     monkeypatch.setattr("sys.argv", ["launcher", "--worker", "critical"])
-    preflight = Mock()
     execute = Mock()
-    monkeypatch.setattr(launcher, "check_prefork", preflight)
     monkeypatch.setattr(launcher.os, "execv", execute)
     launcher.main()
-    preflight.assert_called_once()
     assert "--autoscale=2,1" in execute.call_args.args[1]
-
-
-def test_prefork_command_blocks_wrong_pool_and_handles_disabled(settings, monkeypatch):
-    settings.IS_USE_CELERY = False
-    app = SimpleNamespace(loader=Mock(), tasks={}, conf=SimpleNamespace(worker_pool=POOL_IMPLEMENTATION))
-    monkeypatch.setattr(celery_prefork_check, "current_app", app)
-    call_command(celery_prefork_check.Command(), stdout=io.StringIO())
-    app.loader.import_default_modules.assert_not_called()
-    settings.IS_USE_CELERY = True
-    monkeypatch.setattr(celery_prefork_check, "prefork_issues", lambda _: [{"setting": "worker_pool", "required": POOL_IMPLEMENTATION}])
-    with pytest.raises(CommandError):
-        call_command(celery_prefork_check.Command(), stdout=io.StringIO())
+    assert "--pool=prefork" in execute.call_args.args[1]
 
 
 @pytest.mark.django_db
@@ -99,7 +84,7 @@ def test_readonly_report_has_effective_routes_and_strict_failure(monkeypatch):
     output = io.StringIO()
     call_command(celery_runtime_report.Command(), stdout=output)
     report = json.loads(output.getvalue())
-    assert report["config"]["total_limit"] == 7
+    assert report["config"]["total_limit"] == 12
     assert "broker_url" not in report
     monkeypatch.setattr(celery_runtime_report, "worker_report", lambda _: {"workers": {}, "queue_consumers": {}, "unavailable": ["stats"]})
     with pytest.raises(CommandError, match="未通过"):
@@ -144,3 +129,34 @@ def test_route_command_preserves_safe_error_output(monkeypatch):
     output = io.StringIO()
     call_command(celery_routes.Command(), restore="snapshot.json", stdout=output)
     assert json.loads(output.getvalue())["applied"] is False
+
+
+@pytest.mark.django_db
+def test_strict_report_accepts_and_validates_existing_dedicated_capacity(monkeypatch):
+    from apps.core.celery_runtime.config import DEDICATED_QUEUES, POOL_QUEUES, RuntimeConfig
+    from apps.core.celery_runtime.routing import QUEUE_NAMES
+
+    configure_env(monkeypatch)
+    app = Celery("complete_report", broker="memory://", set_as_current=False, fixups=[])
+    configure_routes(app)
+    monkeypatch.setattr(app.loader, "import_default_modules", lambda: None)
+    monkeypatch.setattr(celery_runtime_report, "current_app", app)
+    config = RuntimeConfig.from_env()
+    registered = [name for name in app.tasks if not name.startswith("celery.")]
+    workers = {}
+    for pool in (*config.pools, *config.dedicated):
+        workers[pool.name + "@test"] = {
+            "queues": list((POOL_QUEUES | DEDICATED_QUEUES)[pool.name]),
+            "capacity": {"min": pool.minimum, "max": pool.maximum},
+            "fixed_capacity": pool.maximum,
+            "pool_implementation": POOL_IMPLEMENTATION,
+            "registered": registered,
+        }
+    monkeypatch.setattr(
+        celery_runtime_report, "worker_report", lambda _: {"workers": workers, "queue_consumers": dict.fromkeys(QUEUE_NAMES, 1), "unavailable": []}
+    )
+    call_command(celery_runtime_report.Command(), workers=True, strict=True, stdout=io.StringIO())
+    workers["opspilot@test"]["fixed_capacity"] = 20
+    with pytest.raises(CommandError, match="未通过"):
+        call_command(celery_runtime_report.Command(), workers=True, strict=True, stdout=io.StringIO())
+    app.close()

@@ -71,7 +71,7 @@ def cluster(tmp_path_factory):
         eventually(ready)
         env = dict(os.environ)
         env.pop("DJANGO_SETTINGS_MODULE", None)
-        env.update(CELERY_TEST_BROKER=broker, AUTOSCALE_KEEPALIVE="2", ENABLE_CELERY="true", CELERY_TOTAL_CONCURRENCY_LIMIT="7")
+        env.update(CELERY_TEST_BROKER=broker, AUTOSCALE_KEEPALIVE="2", ENABLE_CELERY="true", CELERY_TOTAL_CONCURRENCY_LIMIT="12")
         env.pop("CELERY_CONCURRENCY", None)
         for pool in NAMES:
             env[f"CELERY_{pool.upper()}_MIN"] = "1"
@@ -168,11 +168,21 @@ def test_eta_retry_and_legacy_queue_have_consumers(cluster):
     assert retried.get(timeout=10)["retries"] == 1
 
 
-def test_thread_effective_timeout_behavior_survives_pool_migration(cluster):
+def test_upstream_soft_time_limits_remain_effective(cluster):
+    from billiard.exceptions import SoftTimeLimitExceeded
+
     app, _, _ = cluster
-    declared = app.send_task("runtime_probe.limited")
-    explicit = app.send_task("runtime_probe.limited", time_limit=1, soft_time_limit=0.5)
-    assert declared.get(timeout=15)["declared"] == [2, 1]
-    result = explicit.get(timeout=15)
-    assert result["declared"] == [2, 1]
-    assert result["message_limits"] == [1, 0.5]
+    for options in ({}, {"time_limit": 1, "soft_time_limit": 0.5}):
+        result = app.send_task("runtime_probe.limited", **options)
+        with pytest.raises(SoftTimeLimitExceeded):
+            result.get(timeout=15)
+
+
+def test_upstream_hard_timeout_and_child_recycling_survive_isolation(cluster):
+    from billiard.exceptions import TimeLimitExceeded
+
+    app, _, _ = cluster
+    with pytest.raises(TimeLimitExceeded):
+        app.send_task("runtime_probe.hard_limited").get(timeout=15)
+    pids = [app.send_task(NAMES["background"]).get(timeout=15)["pid"] for _ in range(3)]
+    assert len(set(pids)) >= 2

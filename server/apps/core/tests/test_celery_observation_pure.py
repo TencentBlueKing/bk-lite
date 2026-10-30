@@ -47,3 +47,29 @@ def test_observation_failure_does_not_escape_into_task_execution():
     observer.flush()
     observer.started(task=SimpleNamespace())
     observer.finished(task=SimpleNamespace(), state="FAILURE")
+
+
+def test_runtime_log_uses_lazy_template_without_payload(caplog):
+    import logging
+
+    from apps.core.celery_runtime.observation import emit_log
+
+    with caplog.at_level(logging.INFO, logger="celery"):
+        emit_log({"event": "counts_delta", "count": 2})
+    record = caplog.records[-1]
+    assert record.msg == "celery_runtime %s"
+    assert record.args == {"event": "counts_delta", "count": 2}
+    assert "counts_delta" in record.getMessage()
+
+
+def test_lifecycle_logs_never_include_payload_sentinel(caplog):
+    import logging
+
+    sentinel = "private-payload-sentinel-9182"
+    observer = Observer()
+    with caplog.at_level(logging.INFO, logger="celery"):
+        observer.published(sender=sentinel, headers={}, body={"password": sentinel})
+        observer.flush()
+    assert caplog.records
+    assert sentinel not in caplog.text
+    assert all(sentinel not in str(record.args) for record in caplog.records)

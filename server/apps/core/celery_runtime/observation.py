@@ -9,10 +9,10 @@ from random import random
 from time import monotonic, time
 
 from celery import signals
-from loguru import logger
 
 from apps.core.celery_runtime.manifest import TASK_ROUTES
 from apps.core.celery_runtime.routing import QUEUE_NAMES
+from apps.core.logger import celery_logger as logger
 
 BUCKETS = (0.05, 0.1, 0.5, 1, 5, 15, 60, float("inf"))
 
@@ -45,7 +45,7 @@ def guarded(method):
 
 
 def emit_log(event):
-    logger.bind(celery_runtime=event).info("celery_runtime {}", event)
+    logger.info("celery_runtime %s", event)
 
 
 class Observer:

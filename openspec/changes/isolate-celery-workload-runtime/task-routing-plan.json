@@ -1,842 +1,1461 @@
 {
-  "status": "design_candidate_not_runtime_configuration",
-  "baseline": "dd39ab8c23dcbf29b0548e2a9347bb24c9880fe3",
-  "scope": "本地静态定义候选路由；不激活任务、不证明线上覆盖；实施前须核对真实注册、生产者和显式路由。",
-  "counts": {
-    "notification": 9,
-    "critical": 8,
-    "background": 62,
-    "state": 9
-  },
-  "tasks": [
-    {
-      "task_name": "apps.alerts.tasks.action_tasks.process_alert_actions",
-      "queue": "notification",
-      "source": "server/apps/alerts/tasks/action_tasks.py:11",
-      "purpose": "匹配动作规则并RPC触发作业",
-      "trigger_evidence_status": "有生产触发证据",
-      "inventory_class": "I",
-      "activation_change": false
+  "baseline": "7fc417be88",
+  "tasks": {
+    "apps.patch_mgmt.tasks.check_patch_source_connectivity": {
+      "source": "server/apps/patch_mgmt/tasks.py",
+      "line": 30,
+      "declared_queue": null,
+      "summary": "补丁源连通性探测 Celery 入口。",
+      "queue": "background",
+      "classification": "导入导出、采集、批处理或低时效维护，隔离长任务"
     },
-    {
-      "task_name": "apps.alerts.tasks.tasks.event_aggregation_alert",
+    "apps.patch_mgmt.tasks.run_periodic_compliance_scan": {
+      "source": "server/apps/patch_mgmt/tasks.py",
+      "line": 92,
+      "declared_queue": null,
+      "summary": "周期性合规评估入口。",
+      "queue": "background",
+      "classification": "导入导出、采集、批处理或低时效维护，隔离长任务"
+    },
+    "apps.patch_mgmt.tasks.send_assessment_notification_delivery": {
+      "source": "server/apps/patch_mgmt/tasks.py",
+      "line": 163,
+      "declared_queue": null,
+      "summary": "投递一条周期评估通知；通过栅栏令牌防止并发结果覆盖。",
+      "queue": "notification",
+      "classification": "通知或 outbox 交付，外部 I/O 可能慢"
+    },
+    "apps.patch_mgmt.tasks.reconcile_assessment_notification_deliveries": {
+      "source": "server/apps/patch_mgmt/tasks.py",
+      "line": 304,
+      "declared_queue": "patch_maintenance",
+      "summary": "运行期补偿终态任务的缺失意图、到期重试和过期投递租约。",
+      "queue": "patch_maintenance",
+      "classification": "既有显式专用队列，保留原消费边界"
+    },
+    "apps.patch_mgmt.tasks.execute_governance_task": {
+      "source": "server/apps/patch_mgmt/tasks.py",
+      "line": 367,
+      "declared_queue": null,
+      "summary": "启动治理父任务，并将每台主机拆成独立 Celery 子任务。",
+      "queue": "background",
+      "classification": "导入导出、采集、批处理或低时效维护，隔离长任务"
+    },
+    "apps.patch_mgmt.tasks.execute_governance_host": {
+      "source": "server/apps/patch_mgmt/tasks.py",
+      "line": 480,
+      "declared_queue": null,
+      "summary": "执行治理任务中的一台主机；不自动重试有副作用的操作。",
+      "queue": "background",
+      "classification": "导入导出、采集、批处理或低时效维护，隔离长任务"
+    },
+    "apps.patch_mgmt.tasks.reconcile_governance_host": {
+      "source": "server/apps/patch_mgmt/tasks.py",
+      "line": 565,
+      "declared_queue": null,
+      "summary": "对安装或重启超时的单台主机执行只读结果核验。",
+      "queue": "state",
+      "classification": "状态收敛/补偿，可能集中高频触发"
+    },
+    "apps.patch_mgmt.tasks.watch_governance_timeouts": {
+      "source": "server/apps/patch_mgmt/tasks.py",
+      "line": 573,
+      "declared_queue": "patch_maintenance",
+      "summary": "周期收口调度/阶段超时；安装和重启只进入结果确认，不直接判失败。",
+      "queue": "patch_maintenance",
+      "classification": "既有显式专用队列，保留原消费边界"
+    },
+    "apps.patch_mgmt.tasks.ingest_patch_source": {
+      "source": "server/apps/patch_mgmt/tasks.py",
+      "line": 706,
+      "declared_queue": null,
+      "summary": "补丁源「同步入库」异步入口（当前用于 WSUS 元数据入库）。",
+      "queue": "background",
+      "classification": "导入导出、采集、批处理或低时效维护，隔离长任务"
+    },
+    "apps.patch_mgmt.tasks.probe_target_connectivity": {
+      "source": "server/apps/patch_mgmt/tasks.py",
+      "line": 758,
+      "declared_queue": null,
+      "summary": "沿补丁真实执行链路异步探测目标，结果写回 connectivity_status。",
+      "queue": "background",
+      "classification": "导入导出、采集、批处理或低时效维护，隔离长任务"
+    },
+    "apps.patch_mgmt.tasks.verify_pending_reboot_hosts": {
+      "source": "server/apps/patch_mgmt/tasks.py",
+      "line": 832,
+      "declared_queue": null,
+      "summary": "扫描 pending_reboot 状态的 reboot 任务主机，探测连通性后自动创建验证任务。",
+      "queue": "background",
+      "classification": "导入导出、采集、批处理或低时效维护，隔离长任务"
+    },
+    "apps.system_mgmt.tasks.write_error_log_async": {
+      "source": "server/apps/system_mgmt/tasks.py",
+      "line": 22,
+      "declared_queue": null,
+      "summary": "异步写入错误日志到数据库",
+      "queue": "background",
+      "classification": "导入导出、采集、批处理或低时效维护，隔离长任务"
+    },
+    "apps.system_mgmt.tasks.sync_user_and_group_by_login_module": {
+      "source": "server/apps/system_mgmt/tasks.py",
+      "line": 50,
+      "declared_queue": null,
+      "summary": "执行遗留 LoginModule 的 bk_lite 用户/组织同步。",
+      "queue": "background",
+      "classification": "导入导出、采集、批处理或低时效维护，隔离长任务"
+    },
+    "apps.system_mgmt.tasks.check_password_expiry_and_notify": {
+      "source": "server/apps/system_mgmt/tasks.py",
+      "line": 279,
+      "declared_queue": null,
+      "summary": "定时检查密码即将过期的用户，通过邮件通道发送提醒。",
+      "queue": "background",
+      "classification": "导入导出、采集、批处理或低时效维护，隔离长任务"
+    },
+    "apps.system_mgmt.tasks.execute_user_sync_source": {
+      "source": "server/apps/system_mgmt/tasks.py",
+      "line": 343,
+      "declared_queue": null,
+      "summary": "",
+      "queue": "background",
+      "classification": "导入导出、采集、批处理或低时效维护，隔离长任务"
+    },
+    "apps.system_mgmt.tasks.schedule_im_notification_sync": {
+      "source": "server/apps/system_mgmt/tasks.py",
+      "line": 350,
+      "declared_queue": null,
+      "summary": "",
+      "queue": "background",
+      "classification": "导入导出、采集、批处理或低时效维护，隔离长任务"
+    },
+    "apps.system_mgmt.tasks.execute_im_notification_sync_run_task": {
+      "source": "server/apps/system_mgmt/tasks.py",
+      "line": 364,
+      "declared_queue": null,
+      "summary": "",
+      "queue": "background",
+      "classification": "导入导出、采集、批处理或低时效维护，隔离长任务"
+    },
+    "apps.system_mgmt.tasks.send_initial_password_email": {
+      "source": "server/apps/system_mgmt/tasks.py",
+      "line": 382,
+      "declared_queue": null,
+      "summary": "Celery worker 端:",
+      "queue": "notification",
+      "classification": "通知或 outbox 交付，外部 I/O 可能慢"
+    },
+    "apps.system_mgmt.tasks.send_initial_password_email_batch": {
+      "source": "server/apps/system_mgmt/tasks.py",
+      "line": 441,
+      "declared_queue": null,
+      "summary": "领取一批待投递用户，在单条 SMTP 会话中发送个性化初始密码邮件。",
+      "queue": "notification",
+      "classification": "通知或 outbox 交付，外部 I/O 可能慢"
+    },
+    "apps.system_mgmt.tasks.recover_stuck_initial_password_email_batches": {
+      "source": "server/apps/system_mgmt/tasks.py",
+      "line": 495,
+      "declared_queue": null,
+      "summary": "Beat 兜底回收 Worker 中断时遗留的邮件投递租约。",
+      "queue": "notification",
+      "classification": "通知或 outbox 交付，外部 I/O 可能慢"
+    },
+    "apps.apm.tasks.reconcile_telemetry_catalog": {
+      "source": "server/apps/apm/tasks.py",
+      "line": 31,
+      "declared_queue": null,
+      "summary": "运行期对账入口；外部存储失败只触发有界任务重试，不参与 Server 启动。",
+      "queue": "background",
+      "classification": "导入导出、采集、批处理或低时效维护，隔离长任务"
+    },
+    "apps.apm.tasks.probe_apm_runtime_dependencies": {
+      "source": "server/apps/apm/tasks.py",
+      "line": 60,
+      "declared_queue": null,
+      "summary": "运行期有界探测；不可用只进入健康状态，不触发启动或任务无限重试。",
+      "queue": "background",
+      "classification": "导入导出、采集、批处理或低时效维护，隔离长任务"
+    },
+    "apps.apm.tasks.dispatch_apm_policy_evaluations": {
+      "source": "server/apps/apm/tasks.py",
+      "line": 74,
+      "declared_queue": null,
+      "summary": "仅分发启用策略；每条策略独立有界重试，互不阻塞。",
       "queue": "critical",
-      "source": "server/apps/alerts/tasks/tasks.py:33",
-      "purpose": "聚合事件、检查会话超时",
-      "trigger_evidence_status": "有生产触发证据",
-      "inventory_class": "C",
-      "activation_change": false
+      "classification": "检测/告警生命周期，优先保证执行槽"
     },
-    {
-      "task_name": "apps.alerts.tasks.tasks.beat_close_alert",
+    "apps.apm.tasks.evaluate_apm_policy": {
+      "source": "server/apps/apm/tasks.py",
+      "line": 102,
+      "declared_queue": null,
+      "summary": "",
       "queue": "critical",
-      "source": "server/apps/alerts/tasks/tasks.py:70",
-      "purpose": "自动关闭兜底",
-      "trigger_evidence_status": "有生产触发证据",
-      "inventory_class": "C",
-      "activation_change": false
+      "classification": "检测/告警生命周期，优先保证执行槽"
     },
-    {
-      "task_name": "apps.alerts.tasks.tasks.check_and_send_reminders",
+    "apps.apm.tasks.deliver_apm_alert_outbox": {
+      "source": "server/apps/apm/tasks.py",
+      "line": 124,
+      "declared_queue": null,
+      "summary": "",
+      "queue": "notification",
+      "classification": "通知或 outbox 交付，外部 I/O 可能慢"
+    },
+    "apps.apm.tasks.persist_apm_event_snapshot_payloads": {
+      "source": "server/apps/apm/tasks.py",
+      "line": 154,
+      "declared_queue": null,
+      "summary": "",
+      "queue": "background",
+      "classification": "导入导出、采集、批处理或低时效维护，隔离长任务"
+    },
+    "apps.apm.tasks.expire_apm_event_snapshot_payloads": {
+      "source": "server/apps/apm/tasks.py",
+      "line": 179,
+      "declared_queue": null,
+      "summary": "",
+      "queue": "background",
+      "classification": "导入导出、采集、批处理或低时效维护，隔离长任务"
+    },
+    "apps.rum.tasks.dispatch_rum_policy_evaluations": {
+      "source": "server/apps/rum/tasks.py",
+      "line": 38,
+      "declared_queue": null,
+      "summary": "每分钟把启用策略拆成独立任务，一条慢查询不会挡住其它策略。",
       "queue": "critical",
-      "source": "server/apps/alerts/tasks/tasks.py:92",
-      "purpose": "查询到期提醒并投递通知",
-      "trigger_evidence_status": "有生产触发证据",
-      "inventory_class": "C",
-      "activation_change": false
+      "classification": "检测/告警生命周期，优先保证执行槽"
     },
-    {
-      "task_name": "apps.alerts.tasks.tasks.cleanup_reminder_tasks",
-      "queue": "background",
-      "source": "server/apps/alerts/tasks/tasks.py:113",
-      "purpose": "清理提醒和升级记录",
-      "trigger_evidence_status": "有生产触发证据",
-      "inventory_class": "B",
-      "activation_change": false
-    },
-    {
-      "task_name": "apps.alerts.tasks.tasks.check_and_send_escalations",
+    "apps.rum.tasks.evaluate_rum_alert_policy": {
+      "source": "server/apps/rum/tasks.py",
+      "line": 61,
+      "declared_queue": null,
+      "summary": "",
       "queue": "critical",
-      "source": "server/apps/alerts/tasks/tasks.py:132",
-      "purpose": "查询活跃升级并推进层级",
-      "trigger_evidence_status": "有生产触发证据",
-      "inventory_class": "C",
-      "activation_change": false
+      "classification": "检测/告警生命周期，优先保证执行槽"
     },
-    {
-      "task_name": "apps.alerts.tasks.tasks.async_auto_assignment_for_alerts",
+    "apps.rum.tasks.deliver_rum_alert_outbox": {
+      "source": "server/apps/rum/tasks.py",
+      "line": 73,
+      "declared_queue": null,
+      "summary": "",
+      "queue": "notification",
+      "classification": "通知或 outbox 交付，外部 I/O 可能慢"
+    },
+    "apps.rum.tasks.publish_pending_rum_outbox": {
+      "source": "server/apps/rum/tasks.py",
+      "line": 84,
+      "declared_queue": null,
+      "summary": "Republish pending projection rows in creation order.",
+      "queue": "notification",
+      "classification": "通知或 outbox 交付，外部 I/O 可能慢"
+    },
+    "apps.rum.tasks.reconcile_rum_projection": {
+      "source": "server/apps/rum/tasks.py",
+      "line": 114,
+      "declared_queue": null,
+      "summary": "Ask the controller to drop unknown apps and repair revisions that differ.",
+      "queue": "background",
+      "classification": "导入导出、采集、批处理或低时效维护，隔离长任务"
+    },
+    "apps.job_mgmt.tasks.execute_script_task": {
+      "source": "server/apps/job_mgmt/tasks.py",
+      "line": 41,
+      "declared_queue": null,
+      "summary": "",
+      "queue": "background",
+      "classification": "导入导出、采集、批处理或低时效维护，隔离长任务"
+    },
+    "apps.job_mgmt.tasks.distribute_files_task": {
+      "source": "server/apps/job_mgmt/tasks.py",
+      "line": 46,
+      "declared_queue": null,
+      "summary": "",
+      "queue": "background",
+      "classification": "导入导出、采集、批处理或低时效维护，隔离长任务"
+    },
+    "apps.job_mgmt.tasks.execute_playbook_task": {
+      "source": "server/apps/job_mgmt/tasks.py",
+      "line": 51,
+      "declared_queue": null,
+      "summary": "",
+      "queue": "background",
+      "classification": "导入导出、采集、批处理或低时效维护，隔离长任务"
+    },
+    "apps.job_mgmt.tasks.finalize_cancelling_execution": {
+      "source": "server/apps/job_mgmt/tasks.py",
+      "line": 57,
+      "declared_queue": null,
+      "summary": "兜底收敛：CANCELLING 滞留超时后强制收敛为 CANCELLED 终态。",
+      "queue": "state",
+      "classification": "状态收敛/补偿，可能集中高频触发"
+    },
+    "apps.job_mgmt.tasks.deliver_job_completion_outbox": {
+      "source": "server/apps/job_mgmt/tasks.py",
+      "line": 116,
+      "declared_queue": null,
+      "summary": "投递一条作业完成副作用；失败状态及退避时间由数据库 outbox 记录。",
+      "queue": "notification",
+      "classification": "通知或 outbox 交付，外部 I/O 可能慢"
+    },
+    "apps.job_mgmt.tasks.dispatch_pending_job_completion_outbox": {
+      "source": "server/apps/job_mgmt/tasks.py",
+      "line": 124,
+      "declared_queue": null,
+      "summary": "重扫待投递副作用，并补偿取消与普通执行的超时收敛。",
+      "queue": "notification",
+      "classification": "通知或 outbox 交付，外部 I/O 可能慢"
+    },
+    "apps.job_mgmt.tasks.execute_scheduled_task": {
+      "source": "server/apps/job_mgmt/tasks.py",
+      "line": 179,
+      "declared_queue": null,
+      "summary": "",
+      "queue": "state",
+      "classification": "状态收敛/补偿，可能集中高频触发"
+    },
+    "apps.job_mgmt.tasks.cleanup_expired_distribution_files_task": {
+      "source": "server/apps/job_mgmt/tasks.py",
+      "line": 339,
+      "declared_queue": null,
+      "summary": "",
+      "queue": "background",
+      "classification": "导入导出、采集、批处理或低时效维护，隔离长任务"
+    },
+    "apps.job_mgmt.tasks.do_callback_task": {
+      "source": "server/apps/job_mgmt/tasks.py",
+      "line": 450,
+      "declared_queue": null,
+      "summary": "执行回调 POST 请求（Celery 持久化任务）。",
+      "queue": "notification",
+      "classification": "通知或 outbox 交付，外部 I/O 可能慢"
+    },
+    "apps.job_mgmt.tasks.do_nats_callback_task": {
+      "source": "server/apps/job_mgmt/tasks.py",
+      "line": 497,
+      "declared_queue": null,
+      "summary": "旧的非终态 nats 回调通道：用 request/reply 把作业结果投递到指定主题。",
+      "queue": "notification",
+      "classification": "通知或 outbox 交付，外部 I/O 可能慢"
+    },
+    "apps.module_link.tasks.recycle_expired_cmdb_monitor_tasks": {
+      "source": "server/apps/module_link/tasks.py",
+      "line": 12,
+      "declared_queue": null,
+      "summary": "",
+      "queue": "background",
+      "classification": "导入导出、采集、批处理或低时效维护，隔离长任务"
+    },
+    "apps.cmdb.tasks.display_field_backfill.backfill_cmdb_display_fields": {
+      "source": "server/apps/cmdb/tasks/display_field_backfill.py",
+      "line": 83,
+      "declared_queue": null,
+      "summary": "分页回填实例 _display。与组织/用户同步共用写锁，避免两路同时改同一字段。",
+      "queue": "background",
+      "classification": "导入导出、采集、批处理或低时效维护，隔离长任务"
+    },
+    "apps.cmdb.tasks.node_mgmt_sync.recover_node_mgmt_sync": {
+      "source": "server/apps/cmdb/tasks/node_mgmt_sync.py",
+      "line": 69,
+      "declared_queue": null,
+      "summary": "回收陈旧运行并收敛状态，不直接发起同步或采集。",
+      "queue": "state",
+      "classification": "状态收敛/补偿，可能集中高频触发"
+    },
+    "apps.cmdb.tasks.node_mgmt_sync.watch_node_mgmt_sync_recovery": {
+      "source": "server/apps/cmdb/tasks/node_mgmt_sync.py",
+      "line": 107,
+      "declared_queue": null,
+      "summary": "由独立静态调度修复恢复任务记录的缺失和漂移。",
+      "queue": "state",
+      "classification": "状态收敛/补偿，可能集中高频触发"
+    },
+    "apps.cmdb.tasks.transfer.execute_transfer": {
+      "source": "server/apps/cmdb/tasks/transfer.py",
+      "line": 24,
+      "declared_queue": null,
+      "summary": "",
+      "queue": "background",
+      "classification": "导入导出、采集、批处理或低时效维护，隔离长任务"
+    },
+    "apps.cmdb.tasks.transfer.maintain_transfers": {
+      "source": "server/apps/cmdb/tasks/transfer.py",
+      "line": 29,
+      "declared_queue": null,
+      "summary": "",
+      "queue": "state",
+      "classification": "状态收敛/补偿，可能集中高频触发"
+    },
+    "apps.cmdb.tasks.transfer.cleanup_transfers": {
+      "source": "server/apps/cmdb/tasks/transfer.py",
+      "line": 34,
+      "declared_queue": null,
+      "summary": "",
+      "queue": "background",
+      "classification": "导入导出、采集、批处理或低时效维护，隔离长任务"
+    },
+    "apps.cmdb.tasks.uuid_migration.migrate_cmdb_instance_uuid_runtime": {
+      "source": "server/apps/cmdb/tasks/uuid_migration.py",
+      "line": 72,
+      "declared_queue": null,
+      "summary": "幂等执行 CMDB/OA UUID 清洗；多 Worker 互斥；异常不打挂 Worker。",
+      "queue": "background",
+      "classification": "导入导出、采集、批处理或低时效维护，隔离长任务"
+    },
+    "apps.cmdb.tasks.celery_tasks.execute_first_collection_run": {
+      "source": "server/apps/cmdb/tasks/celery_tasks.py",
+      "line": 448,
+      "declared_queue": null,
+      "summary": "",
+      "queue": "background",
+      "classification": "导入导出、采集、批处理或低时效维护，隔离长任务"
+    },
+    "apps.cmdb.tasks.celery_tasks.trigger_first_collection": {
+      "source": "server/apps/cmdb/tasks/celery_tasks.py",
+      "line": 458,
+      "declared_queue": null,
+      "summary": "滚动升级兼容：安全消费旧三参数消息，不再走 Server 直连 Stargazer。",
+      "queue": "background",
+      "classification": "导入导出、采集、批处理或低时效维护，隔离长任务"
+    },
+    "apps.cmdb.tasks.celery_tasks.recover_first_collection_runs": {
+      "source": "server/apps/cmdb/tasks/celery_tasks.py",
+      "line": 469,
+      "declared_queue": null,
+      "summary": "",
+      "queue": "state",
+      "classification": "状态收敛/补偿，可能集中高频触发"
+    },
+    "apps.cmdb.tasks.celery_tasks.sync_collect_task": {
+      "source": "server/apps/cmdb/tasks/celery_tasks.py",
+      "line": 476,
+      "declared_queue": null,
+      "summary": "同步采集任务",
+      "queue": "background",
+      "classification": "导入导出、采集、批处理或低时效维护，隔离长任务"
+    },
+    "apps.cmdb.tasks.celery_tasks.sync_collect_tasks_gate": {
+      "source": "server/apps/cmdb/tasks/celery_tasks.py",
+      "line": 835,
+      "declared_queue": null,
+      "summary": "全局 5 分钟守门：仅在出现新完整轮次时触发对账。",
+      "queue": "background",
+      "classification": "导入导出、采集、批处理或低时效维护，隔离长任务"
+    },
+    "apps.cmdb.tasks.celery_tasks.sync_periodic_update_task_status": {
+      "source": "server/apps/cmdb/tasks/celery_tasks.py",
+      "line": 1086,
+      "declared_queue": null,
+      "summary": "按每次 execution 的 deadline 收敛超时状态。",
+      "queue": "state",
+      "classification": "状态收敛/补偿，可能集中高频触发"
+    },
+    "apps.cmdb.tasks.celery_tasks.sync_cmdb_display_fields_task": {
+      "source": "server/apps/cmdb/tasks/celery_tasks.py",
+      "line": 1111,
+      "declared_queue": null,
+      "summary": "同步 CMDB 实例的 _display 字段（Celery 任务）",
+      "queue": "background",
+      "classification": "导入导出、采集、批处理或低时效维护，隔离长任务"
+    },
+    "apps.cmdb.tasks.celery_tasks.execute_collect_tool_debug_task": {
+      "source": "server/apps/cmdb/tasks/celery_tasks.py",
+      "line": 1192,
+      "declared_queue": null,
+      "summary": "",
+      "queue": "background",
+      "classification": "导入导出、采集、批处理或低时效维护，隔离长任务"
+    },
+    "apps.cmdb.tasks.celery_tasks.sync_public_enum_library_snapshots_task": {
+      "source": "server/apps/cmdb/tasks/celery_tasks.py",
+      "line": 1215,
+      "declared_queue": null,
+      "summary": "",
+      "queue": "background",
+      "classification": "导入导出、采集、批处理或低时效维护，隔离长任务"
+    },
+    "apps.cmdb.tasks.celery_tasks.check_subscription_rules": {
+      "source": "server/apps/cmdb/tasks/celery_tasks.py",
+      "line": 1255,
+      "declared_queue": null,
+      "summary": "",
+      "queue": "background",
+      "classification": "导入导出、采集、批处理或低时效维护，隔离长任务"
+    },
+    "apps.cmdb.tasks.celery_tasks.send_subscription_notifications": {
+      "source": "server/apps/cmdb/tasks/celery_tasks.py",
+      "line": 1260,
+      "declared_queue": null,
+      "summary": "",
+      "queue": "notification",
+      "classification": "通知或 outbox 交付，外部 I/O 可能慢"
+    },
+    "apps.cmdb.tasks.celery_tasks.daily_data_cleanup_task": {
+      "source": "server/apps/cmdb/tasks/celery_tasks.py",
+      "line": 1267,
+      "declared_queue": null,
+      "summary": "",
+      "queue": "background",
+      "classification": "导入导出、采集、批处理或低时效维护，隔离长任务"
+    },
+    "apps.cmdb.tasks.celery_tasks.reconcile_auto_relation_pending_task": {
+      "source": "server/apps/cmdb/tasks/celery_tasks.py",
+      "line": 1282,
+      "declared_queue": null,
+      "summary": "",
+      "queue": "background",
+      "classification": "导入导出、采集、批处理或低时效维护，隔离长任务"
+    },
+    "apps.cmdb.tasks.celery_tasks.reconcile_instance_auto_association_task": {
+      "source": "server/apps/cmdb/tasks/celery_tasks.py",
+      "line": 1289,
+      "declared_queue": null,
+      "summary": "旧队列消息只登记实例，由图重算留给周期任务。",
+      "queue": "background",
+      "classification": "导入导出、采集、批处理或低时效维护，隔离长任务"
+    },
+    "apps.cmdb.tasks.celery_tasks.reconcile_instances_auto_association_task": {
+      "source": "server/apps/cmdb/tasks/celery_tasks.py",
+      "line": 1298,
+      "declared_queue": null,
+      "summary": "旧批量消息只登记实例。入向规则由周期任务在同一轮里全量同步。",
+      "queue": "background",
+      "classification": "导入导出、采集、批处理或低时效维护，隔离长任务"
+    },
+    "apps.cmdb.tasks.celery_tasks.sync_incoming_auto_association_task": {
+      "source": "server/apps/cmdb/tasks/celery_tasks.py",
+      "line": 1307,
+      "declared_queue": null,
+      "summary": "旧入向消息只登记实例，周期任务再按模型找出规则。",
+      "queue": "background",
+      "classification": "导入导出、采集、批处理或低时效维护，隔离长任务"
+    },
+    "apps.cmdb.tasks.celery_tasks.full_sync_auto_association_rule_task": {
+      "source": "server/apps/cmdb/tasks/celery_tasks.py",
+      "line": 1316,
+      "declared_queue": null,
+      "summary": "旧规则全量消息只登记规则。",
+      "queue": "background",
+      "classification": "导入导出、采集、批处理或低时效维护，隔离长任务"
+    },
+    "apps.cmdb.tasks.celery_tasks.sync_node_mgmt_hosts": {
+      "source": "server/apps/cmdb/tasks/celery_tasks.py",
+      "line": 1325,
+      "declared_queue": null,
+      "summary": "",
+      "queue": "background",
+      "classification": "导入导出、采集、批处理或低时效维护，隔离长任务"
+    },
+    "apps.cmdb.tasks.celery_tasks.collect_node_mgmt_hosts": {
+      "source": "server/apps/cmdb/tasks/celery_tasks.py",
+      "line": 1340,
+      "declared_queue": null,
+      "summary": "",
+      "queue": "background",
+      "classification": "导入导出、采集、批处理或低时效维护，隔离长任务"
+    },
+    "apps.cmdb.tasks.celery_tasks.reconcile_ipam_task": {
+      "source": "server/apps/cmdb/tasks/celery_tasks.py",
+      "line": 1354,
+      "declared_queue": null,
+      "summary": "创建或恢复一个 IPAM 周期对账作业。",
+      "queue": "background",
+      "classification": "导入导出、采集、批处理或低时效维护，隔离长任务"
+    },
+    "apps.cmdb.tasks.celery_tasks.execute_ipam_reconcile_task": {
+      "source": "server/apps/cmdb/tasks/celery_tasks.py",
+      "line": 1363,
+      "declared_queue": null,
+      "summary": "",
+      "queue": "background",
+      "classification": "导入导出、采集、批处理或低时效维护，隔离长任务"
+    },
+    "apps.cmdb.tasks.celery_tasks.reconcile_config_file_content_task": {
+      "source": "server/apps/cmdb/tasks/celery_tasks.py",
+      "line": 1373,
+      "declared_queue": null,
+      "summary": "",
+      "queue": "background",
+      "classification": "导入导出、采集、批处理或低时效维护，隔离长任务"
+    },
+    "apps.cmdb.tasks.celery_tasks.cleanup_config_file_orphan_temp_task": {
+      "source": "server/apps/cmdb/tasks/celery_tasks.py",
+      "line": 1382,
+      "declared_queue": null,
+      "summary": "",
+      "queue": "background",
+      "classification": "导入导出、采集、批处理或低时效维护，隔离长任务"
+    },
+    "apps.cmdb.tasks.celery_tasks.reconcile_cmdb_operations_task": {
+      "source": "server/apps/cmdb/tasks/celery_tasks.py",
+      "line": 1392,
+      "declared_queue": null,
+      "summary": "",
+      "queue": "background",
+      "classification": "导入导出、采集、批处理或低时效维护，隔离长任务"
+    },
+    "apps.cmdb.tasks.celery_tasks.consume_cmdb_operation_outbox": {
+      "source": "server/apps/cmdb/tasks/celery_tasks.py",
+      "line": 1404,
+      "declared_queue": null,
+      "summary": "",
+      "queue": "background",
+      "classification": "导入导出、采集、批处理或低时效维护，隔离长任务"
+    },
+    "apps.cmdb.tasks.celery_tasks.consume_change_record_mirror_outbox": {
+      "source": "server/apps/cmdb/tasks/celery_tasks.py",
+      "line": 1411,
+      "declared_queue": null,
+      "summary": "",
+      "queue": "background",
+      "classification": "导入导出、采集、批处理或低时效维护，隔离长任务"
+    },
+    "apps.cmdb.tasks.celery_tasks.recover_change_record_mirror_outbox_task": {
+      "source": "server/apps/cmdb/tasks/celery_tasks.py",
+      "line": 1418,
+      "declared_queue": null,
+      "summary": "",
+      "queue": "state",
+      "classification": "状态收敛/补偿，可能集中高频触发"
+    },
+    "apps.cmdb.tasks.celery_tasks.trigger_scan_execution": {
+      "source": "server/apps/cmdb/tasks/celery_tasks.py",
+      "line": 1427,
+      "declared_queue": null,
+      "summary": "",
+      "queue": "background",
+      "classification": "导入导出、采集、批处理或低时效维护，隔离长任务"
+    },
+    "apps.cmdb.tasks.celery_tasks.finalize_scan_execution": {
+      "source": "server/apps/cmdb/tasks/celery_tasks.py",
+      "line": 1434,
+      "declared_queue": null,
+      "summary": "",
+      "queue": "state",
+      "classification": "状态收敛/补偿，可能集中高频触发"
+    },
+    "apps.cmdb.tasks.celery_tasks.recover_due_scan_executions": {
+      "source": "server/apps/cmdb/tasks/celery_tasks.py",
+      "line": 1441,
+      "declared_queue": null,
+      "summary": "",
+      "queue": "state",
+      "classification": "状态收敛/补偿，可能集中高频触发"
+    },
+    "apps.cmdb.tasks.celery_tasks.enrich_scan_middleware_snapshots": {
+      "source": "server/apps/cmdb/tasks/celery_tasks.py",
+      "line": 1448,
+      "declared_queue": null,
+      "summary": "",
+      "queue": "background",
+      "classification": "导入导出、采集、批处理或低时效维护，隔离长任务"
+    },
+    "apps.opspilot.tasks.process_memory_write_cache": {
+      "source": "server/apps/opspilot/tasks/memory.py",
+      "line": 288,
+      "declared_queue": "opspilot_maintenance",
+      "summary": "",
+      "queue": "opspilot_maintenance",
+      "classification": "既有显式专用队列，保留原消费边界"
+    },
+    "apps.opspilot.tasks.flush_memory_write_cache_for_node": {
+      "source": "server/apps/opspilot/tasks/memory.py",
+      "line": 377,
+      "declared_queue": "opspilot_maintenance",
+      "summary": "",
+      "queue": "opspilot_maintenance",
+      "classification": "既有显式专用队列，保留原消费边界"
+    },
+    "apps.opspilot.tasks.flush_all_pending_memory_write_cache": {
+      "source": "server/apps/opspilot/tasks/memory.py",
+      "line": 410,
+      "declared_queue": "opspilot_maintenance",
+      "summary": "",
+      "queue": "opspilot_maintenance",
+      "classification": "既有显式专用队列，保留原消费边界"
+    },
+    "apps.opspilot.tasks.process_memory_write": {
+      "source": "server/apps/opspilot/tasks/memory.py",
+      "line": 937,
+      "declared_queue": "opspilot_maintenance",
+      "summary": "",
+      "queue": "opspilot_maintenance",
+      "classification": "既有显式专用队列，保留原消费边界"
+    },
+    "apps.opspilot.tasks.cleanup_expired_workflow_attachments_task": {
+      "source": "server/apps/opspilot/tasks/memory.py",
+      "line": 963,
+      "declared_queue": "opspilot_maintenance",
+      "summary": "",
+      "queue": "opspilot_maintenance",
+      "classification": "既有显式专用队列，保留原消费边界"
+    },
+    "apps.opspilot.tasks.write_skill_conversation_memory": {
+      "source": "server/apps/opspilot/tasks/memory.py",
+      "line": 1050,
+      "declared_queue": "opspilot_maintenance",
+      "summary": "",
+      "queue": "opspilot_maintenance",
+      "classification": "既有显式专用队列，保留原消费边界"
+    },
+    "apps.opspilot.tasks.flush_idle_skill_conversation_memory": {
+      "source": "server/apps/opspilot/tasks/memory.py",
+      "line": 1089,
+      "declared_queue": "opspilot_maintenance",
+      "summary": "",
+      "queue": "opspilot_maintenance",
+      "classification": "既有显式专用队列，保留原消费边界"
+    },
+    "apps.opspilot.tasks.process_wechat_message": {
+      "source": "server/apps/opspilot/tasks/channel.py",
+      "line": 8,
+      "declared_queue": "opspilot_channel",
+      "summary": "处理企业微信消息的 Celery 任务",
+      "queue": "opspilot_channel",
+      "classification": "既有显式专用队列，保留原消费边界"
+    },
+    "apps.opspilot.tasks.process_enterprise_wechat_aibot_message": {
+      "source": "server/apps/opspilot/tasks/channel.py",
+      "line": 31,
+      "declared_queue": "opspilot_channel",
+      "summary": "处理企微智能机器人短连接消息的 Celery 任务。",
+      "queue": "opspilot_channel",
+      "classification": "既有显式专用队列，保留原消费边界"
+    },
+    "apps.opspilot.tasks.process_enterprise_wechat_aibot_reply": {
+      "source": "server/apps/opspilot/tasks/channel.py",
+      "line": 64,
+      "declared_queue": "opspilot_channel",
+      "summary": "异步发送企微智能机器人回复，发送成功后再标记消息完成。",
+      "queue": "opspilot_channel",
+      "classification": "既有显式专用队列，保留原消费边界"
+    },
+    "apps.opspilot.tasks.process_dingtalk_message": {
+      "source": "server/apps/opspilot/tasks/channel.py",
+      "line": 78,
+      "declared_queue": "opspilot_channel",
+      "summary": "处理钉钉消息的 Celery 任务",
+      "queue": "opspilot_channel",
+      "classification": "既有显式专用队列，保留原消费边界"
+    },
+    "apps.opspilot.tasks.process_wechat_official_message": {
+      "source": "server/apps/opspilot/tasks/channel.py",
+      "line": 131,
+      "declared_queue": "opspilot_channel",
+      "summary": "处理微信公众号消息的 Celery 任务",
+      "queue": "opspilot_channel",
+      "classification": "既有显式专用队列，保留原消费边界"
+    },
+    "apps.opspilot.tasks.process_skill_channel_im_message": {
+      "source": "server/apps/opspilot/tasks/channel.py",
+      "line": 152,
+      "declared_queue": "opspilot_channel",
+      "summary": "智能体 IM 渠道异步处理占位（历史兼容）。四类 IM 已走专用任务。",
+      "queue": "opspilot_channel",
+      "classification": "既有显式专用队列，保留原消费边界"
+    },
+    "apps.opspilot.tasks.process_skill_channel_aibot_message": {
+      "source": "server/apps/opspilot/tasks/channel.py",
+      "line": 173,
+      "declared_queue": "opspilot_channel",
+      "summary": "智能体企微 aibot：异步单 Agent 执行后投递回覆任务。",
+      "queue": "opspilot_channel",
+      "classification": "既有显式专用队列，保留原消费边界"
+    },
+    "apps.opspilot.tasks.process_skill_channel_aibot_reply": {
+      "source": "server/apps/opspilot/tasks/channel.py",
+      "line": 253,
+      "declared_queue": "opspilot_channel",
+      "summary": "异步发送智能体企微 aibot 回覆，成功后再标记 completed。",
+      "queue": "opspilot_channel",
+      "classification": "既有显式专用队列，保留原消费边界"
+    },
+    "apps.opspilot.tasks.process_skill_channel_wechat_message": {
+      "source": "server/apps/opspilot/tasks/channel.py",
+      "line": 279,
+      "declared_queue": "opspilot_channel",
+      "summary": "智能体企微应用：异步单 Agent 执行并 API 回覆。",
+      "queue": "opspilot_channel",
+      "classification": "既有显式专用队列，保留原消费边界"
+    },
+    "apps.opspilot.tasks.process_skill_channel_wechat_official_message": {
+      "source": "server/apps/opspilot/tasks/channel.py",
+      "line": 337,
+      "declared_queue": "opspilot_channel",
+      "summary": "智能体微信公众号：异步单 Agent 执行并客服消息回覆。",
+      "queue": "opspilot_channel",
+      "classification": "既有显式专用队列，保留原消费边界"
+    },
+    "apps.opspilot.tasks.process_skill_channel_dingtalk_message": {
+      "source": "server/apps/opspilot/tasks/channel.py",
+      "line": 391,
+      "declared_queue": "opspilot_channel",
+      "summary": "智能体钉钉 HTTP：异步单 Agent 执行并 webhook markdown 回覆。",
+      "queue": "opspilot_channel",
+      "classification": "既有显式专用队列，保留原消费边界"
+    },
+    "apps.opspilot.tasks.process_skill_channel_feishu_message": {
+      "source": "server/apps/opspilot/tasks/channel.py",
+      "line": 446,
+      "declared_queue": "opspilot_channel",
+      "summary": "智能体飞书：异步单 Agent 执行，并用消息 ID 回复。",
+      "queue": "opspilot_channel",
+      "classification": "既有显式专用队列，保留原消费边界"
+    },
+    "apps.opspilot.tasks.chat_flow_celery_task": {
+      "source": "server/apps/opspilot/tasks/chatflow.py",
+      "line": 10,
+      "declared_queue": null,
+      "summary": "ChatFlow周期性任务",
+      "queue": "background",
+      "classification": "导入导出、采集、批处理或低时效维护，隔离长任务"
+    },
+    "apps.opspilot.tasks.chat_flow_test_execute_task": {
+      "source": "server/apps/opspilot/tasks/chatflow.py",
+      "line": 41,
+      "declared_queue": null,
+      "summary": "ChatFlow测试异步任务",
+      "queue": "background",
+      "classification": "导入导出、采集、批处理或低时效维护，隔离长任务"
+    },
+    "apps.opspilot.tasks.parse_chat_attachment": {
+      "source": "server/apps/opspilot/tasks/chat_attachment.py",
+      "line": 14,
+      "declared_queue": "opspilot_chat_parse",
+      "summary": "",
+      "queue": "opspilot_chat_parse",
+      "classification": "既有显式专用队列，保留原消费边界"
+    },
+    "apps.opspilot.tasks.cleanup_chat_attachments_task": {
+      "source": "server/apps/opspilot/tasks/chat_attachment.py",
+      "line": 22,
+      "declared_queue": "opspilot_maintenance",
+      "summary": "",
+      "queue": "opspilot_maintenance",
+      "classification": "既有显式专用队列，保留原消费边界"
+    },
+    "apps.opspilot.tasks.wiki_ingest_material_task": {
+      "source": "server/apps/opspilot/tasks/wiki.py",
+      "line": 213,
+      "declared_queue": "opspilot_wiki",
+      "summary": "资料解析(异步):抽取文本 + 生成 AI 摘要。文件/网页解析较重(loader/OCR/LLM),不阻塞前台请求。",
+      "queue": "opspilot_wiki",
+      "classification": "既有显式专用队列，保留原消费边界"
+    },
+    "apps.opspilot.tasks.wiki_build_material_task": {
+      "source": "server/apps/opspilot/tasks/wiki.py",
+      "line": 315,
+      "declared_queue": "opspilot_wiki",
+      "summary": "统一执行资料解析与 generation 构建，并持久化阶段性失败 key。",
+      "queue": "opspilot_wiki",
+      "classification": "既有显式专用队列，保留原消费边界"
+    },
+    "apps.opspilot.tasks.wiki_propose_update_task": {
+      "source": "server/apps/opspilot/tasks/wiki.py",
+      "line": 579,
+      "declared_queue": "opspilot_wiki",
+      "summary": "使用固定治理快照执行资料更新。",
+      "queue": "opspilot_wiki",
+      "classification": "既有显式专用队列，保留原消费边界"
+    },
+    "apps.opspilot.tasks.wiki_rebuild_kb_task": {
+      "source": "server/apps/opspilot/tasks/wiki.py",
+      "line": 625,
+      "declared_queue": "opspilot_wiki",
+      "summary": "Schema 变更全量重建；generation truth 状态只允许固定身份实现。",
+      "queue": "opspilot_wiki",
+      "classification": "既有显式专用队列，保留原消费边界"
+    },
+    "apps.opspilot.tasks.wiki_process_kb_material_builds_task": {
+      "source": "server/apps/opspilot/tasks/wiki.py",
+      "line": 734,
+      "declared_queue": "opspilot_wiki",
+      "summary": "按知识库串行消费资料构建队列。",
+      "queue": "opspilot_wiki",
+      "classification": "既有显式专用队列，保留原消费边界"
+    },
+    "apps.opspilot.tasks.wiki_batch_ingest_materials_task": {
+      "source": "server/apps/opspilot/tasks/wiki.py",
+      "line": 747,
+      "declared_queue": "opspilot_wiki",
+      "summary": "批量资料解析(异步):逐条摄取,汇总成功/失败统计。供 batch_create 端点或定时调度调用。",
+      "queue": "opspilot_wiki",
+      "classification": "既有显式专用队列，保留原消费边界"
+    },
+    "apps.opspilot.tasks.wiki_retry_markdown_import_task": {
+      "source": "server/apps/opspilot/tasks/wiki.py",
+      "line": 780,
+      "declared_queue": "opspilot_wiki",
+      "summary": "Retry a Markdown import through the generation-aware preflight contract.",
+      "queue": "opspilot_wiki",
+      "classification": "既有显式专用队列，保留原消费边界"
+    },
+    "apps.opspilot.tasks.wiki_execute_markdown_import_task": {
+      "source": "server/apps/opspilot/tasks/wiki.py",
+      "line": 876,
+      "declared_queue": "opspilot_wiki",
+      "summary": "Run Markdown/OKF import off the HTTP request. Archive bytes live in object storage, not the broker.",
+      "queue": "opspilot_wiki",
+      "classification": "既有显式专用队列，保留原消费边界"
+    },
+    "apps.opspilot.tasks.wiki_enrich_markdown_import_search_task": {
+      "source": "server/apps/opspilot/tasks/wiki.py",
+      "line": 1053,
+      "declared_queue": "opspilot_wiki",
+      "summary": "Colloquial aliases and embeddings after imported pages are already visible.",
+      "queue": "opspilot_wiki",
+      "classification": "既有显式专用队列，保留原消费边界"
+    },
+    "apps.opspilot.tasks.wiki_refresh_web_materials_task": {
+      "source": "server/apps/opspilot/tasks/wiki.py",
+      "line": 1066,
+      "declared_queue": "opspilot_maintenance",
+      "summary": "网页资料定时刷新:按各站点自己的同步策略(Material.sync_policy)重新抓取并摄取,内容变化触发安全更新。",
+      "queue": "opspilot_maintenance",
+      "classification": "既有显式专用队列，保留原消费边界"
+    },
+    "apps.log.tasks.policy.scan_log_policy_task": {
+      "source": "server/apps/log/tasks/policy.py",
+      "line": 57,
+      "declared_queue": null,
+      "summary": "扫描日志策略",
       "queue": "critical",
-      "source": "server/apps/alerts/tasks/tasks.py:150",
-      "purpose": "告警自动分派，大列表拆片再投递",
-      "trigger_evidence_status": "有生产触发证据",
-      "inventory_class": "C",
-      "activation_change": false
+      "classification": "检测/告警生命周期，优先保证执行槽"
     },
-    {
-      "task_name": "apps.alerts.tasks.tasks.build_instant_alerts",
+    "apps.log.tasks.policy.compensate_log_notice_task": {
+      "source": "server/apps/log/tasks/policy.py",
+      "line": 161,
+      "declared_queue": null,
+      "summary": "日志告警生命周期通知补偿。",
+      "queue": "notification",
+      "classification": "通知或 outbox 交付，外部 I/O 可能慢"
+    },
+    "apps.log.tasks.extractor.publish_system_vector_config": {
+      "source": "server/apps/log/tasks/extractor.py",
+      "line": 13,
+      "declared_queue": null,
+      "summary": "",
+      "queue": "background",
+      "classification": "导入导出、采集、批处理或低时效维护，隔离长任务"
+    },
+    "apps.alerts.tasks.tasks.deliver_alert_outbox": {
+      "source": "server/apps/alerts/tasks/tasks.py",
+      "line": 35,
+      "declared_queue": null,
+      "summary": "",
+      "queue": "notification",
+      "classification": "通知或 outbox 交付，外部 I/O 可能慢"
+    },
+    "apps.alerts.tasks.tasks.deliver_alert_notification_channel": {
+      "source": "server/apps/alerts/tasks/tasks.py",
+      "line": 42,
+      "declared_queue": null,
+      "summary": "",
+      "queue": "notification",
+      "classification": "通知或 outbox 交付，外部 I/O 可能慢"
+    },
+    "apps.alerts.tasks.tasks.dispatch_pending_alert_notification_deliveries": {
+      "source": "server/apps/alerts/tasks/tasks.py",
+      "line": 49,
+      "declared_queue": null,
+      "summary": "",
+      "queue": "notification",
+      "classification": "通知或 outbox 交付，外部 I/O 可能慢"
+    },
+    "apps.alerts.tasks.tasks.dispatch_pending_alert_outbox": {
+      "source": "server/apps/alerts/tasks/tasks.py",
+      "line": 75,
+      "declared_queue": null,
+      "summary": "",
+      "queue": "notification",
+      "classification": "通知或 outbox 交付，外部 I/O 可能慢"
+    },
+    "apps.alerts.tasks.tasks.event_aggregation_alert": {
+      "source": "server/apps/alerts/tasks/tasks.py",
+      "line": 106,
+      "declared_queue": null,
+      "summary": "执行告警聚合任务（周期性调度）。",
       "queue": "critical",
-      "source": "server/apps/alerts/tasks/tasks.py:220",
-      "purpose": "批量构建即时告警并投递分派",
-      "trigger_evidence_status": "有生产触发证据",
-      "inventory_class": "C",
-      "activation_change": false
+      "classification": "检测/告警生命周期，优先保证执行槽"
     },
-    {
-      "task_name": "apps.alerts.tasks.tasks.sync_notify",
-      "queue": "notification",
-      "source": "server/apps/alerts/tasks/tasks.py:255",
-      "purpose": "遍历渠道参数执行通知并记结果",
-      "trigger_evidence_status": "有生产触发证据",
-      "inventory_class": "I",
-      "activation_change": false
-    },
-    {
-      "task_name": "apps.alerts.tasks.tasks.sync_shield",
-      "queue": "background",
-      "source": "server/apps/alerts/tasks/tasks.py:305",
-      "purpose": "批量事件屏蔽校验",
-      "trigger_evidence_status": "待核实/无实际工作",
-      "inventory_class": "U",
-      "activation_change": false
-    },
-    {
-      "task_name": "apps.alerts.tasks.tasks.sync_no_dispatch_alert_notice_task",
-      "queue": "notification",
-      "source": "server/apps/alerts/tasks/tasks.py:322",
-      "purpose": "查询未分派告警并同步通知",
-      "trigger_evidence_status": "动态周期任务名不一致",
-      "inventory_class": "I",
-      "activation_change": false
-    },
-    {
-      "task_name": "apps.cmdb.tasks.celery_tasks.sync_collect_task",
-      "queue": "background",
-      "source": "server/apps/cmdb/tasks/celery_tasks.py:38",
-      "purpose": "采集、写实例和关联、保存结果",
-      "trigger_evidence_status": "有生产触发证据",
-      "inventory_class": "B",
-      "activation_change": false
-    },
-    {
-      "task_name": "apps.cmdb.tasks.celery_tasks.sync_periodic_update_task_status",
-      "queue": "state",
-      "source": "server/apps/cmdb/tasks/celery_tasks.py:195",
-      "purpose": "批量收敛长期RUNNING采集状态",
-      "trigger_evidence_status": "有生产触发证据",
-      "inventory_class": "C",
-      "activation_change": false
-    },
-    {
-      "task_name": "apps.cmdb.tasks.celery_tasks.sync_collect_credential_results_task",
-      "queue": "background",
-      "source": "server/apps/cmdb/tasks/celery_tasks.py:225",
-      "purpose": "旧凭据拉取入口，仅记录跳过",
-      "trigger_evidence_status": "待核实/无实际工作",
-      "inventory_class": "U",
-      "activation_change": false
-    },
-    {
-      "task_name": "apps.cmdb.tasks.celery_tasks.sync_cmdb_display_fields_task",
-      "queue": "background",
-      "source": "server/apps/cmdb/tasks/celery_tasks.py:235",
-      "purpose": "用户/组织变更后更新实例显示字段",
-      "trigger_evidence_status": "有生产触发证据",
-      "inventory_class": "B",
-      "activation_change": false
-    },
-    {
-      "task_name": "apps.cmdb.tasks.celery_tasks.execute_collect_tool_debug_task",
-      "queue": "background",
-      "source": "server/apps/cmdb/tasks/celery_tasks.py:280",
-      "purpose": "执行采集工具调试并缓存结果",
-      "trigger_evidence_status": "有生产触发证据",
-      "inventory_class": "B",
-      "activation_change": false
-    },
-    {
-      "task_name": "apps.cmdb.tasks.celery_tasks.sync_public_enum_library_snapshots_task",
-      "queue": "background",
-      "source": "server/apps/cmdb/tasks/celery_tasks.py:298",
-      "purpose": "公共枚举库快照同步",
-      "trigger_evidence_status": "有生产触发证据",
-      "inventory_class": "B",
-      "activation_change": false
-    },
-    {
-      "task_name": "apps.cmdb.tasks.celery_tasks.check_subscription_rules",
-      "queue": "background",
-      "source": "server/apps/cmdb/tasks/celery_tasks.py:306",
-      "purpose": "遍历订阅规则检测并投递事件组",
-      "trigger_evidence_status": "有生产触发证据",
-      "inventory_class": "B",
-      "activation_change": false
-    },
-    {
-      "task_name": "apps.cmdb.tasks.celery_tasks.send_subscription_notifications",
-      "queue": "notification",
-      "source": "server/apps/cmdb/tasks/celery_tasks.py:311",
-      "purpose": "批量订阅通知及渠道RPC",
-      "trigger_evidence_status": "有生产触发证据",
-      "inventory_class": "I",
-      "activation_change": false
-    },
-    {
-      "task_name": "apps.cmdb.tasks.celery_tasks.daily_data_cleanup_task",
-      "queue": "background",
-      "source": "server/apps/cmdb/tasks/celery_tasks.py:318",
-      "purpose": "过期CMDB数据清理",
-      "trigger_evidence_status": "有生产触发证据",
-      "inventory_class": "B",
-      "activation_change": false
-    },
-    {
-      "task_name": "apps.cmdb.tasks.celery_tasks.reconcile_instance_auto_association_task",
-      "queue": "background",
-      "source": "server/apps/cmdb/tasks/celery_tasks.py:326",
-      "purpose": "单实例关联收敛，可再投递规则全量",
-      "trigger_evidence_status": "有生产触发证据",
-      "inventory_class": "B",
-      "activation_change": false
-    },
-    {
-      "task_name": "apps.cmdb.tasks.celery_tasks.full_sync_auto_association_rule_task",
-      "queue": "background",
-      "source": "server/apps/cmdb/tasks/celery_tasks.py:334",
-      "purpose": "全量读取源目标并关联匹配写图",
-      "trigger_evidence_status": "有生产触发证据",
-      "inventory_class": "B",
-      "activation_change": false
-    },
-    {
-      "task_name": "apps.cmdb.tasks.celery_tasks.sync_node_mgmt_hosts",
-      "queue": "background",
-      "source": "server/apps/cmdb/tasks/celery_tasks.py:342",
-      "purpose": "节点主机与CMDB同步",
-      "trigger_evidence_status": "有生产触发证据",
-      "inventory_class": "B",
-      "activation_change": false
-    },
-    {
-      "task_name": "apps.cmdb.tasks.celery_tasks.collect_node_mgmt_hosts",
-      "queue": "background",
-      "source": "server/apps/cmdb/tasks/celery_tasks.py:354",
-      "purpose": "节点主机采集编排",
-      "trigger_evidence_status": "有生产触发证据",
-      "inventory_class": "B",
-      "activation_change": false
-    },
-    {
-      "task_name": "apps.cmdb.tasks.celery_tasks.reconcile_ipam_task",
-      "queue": "background",
-      "source": "server/apps/cmdb/tasks/celery_tasks.py:365",
-      "purpose": "IPAM与CMDB全量对账",
-      "trigger_evidence_status": "有生产触发证据",
-      "inventory_class": "B",
-      "activation_change": false
-    },
-    {
-      "task_name": "apps.core.tasks.auditlog_flush_task.clear_audit_logs",
-      "queue": "background",
-      "source": "server/apps/core/tasks/auditlog_flush_task.py:9",
-      "purpose": "调用管理命令清理30天前审计",
-      "trigger_evidence_status": "待核实/无实际工作",
-      "inventory_class": "U",
-      "activation_change": false
-    },
-    {
-      "task_name": "apps.job_mgmt.tasks.execute_script_task",
-      "queue": "background",
-      "source": "server/apps/job_mgmt/tasks.py:23",
-      "purpose": "远端多目标脚本执行，任务内线程池",
-      "trigger_evidence_status": "有生产触发证据",
-      "inventory_class": "B",
-      "activation_change": false
-    },
-    {
-      "task_name": "apps.job_mgmt.tasks.distribute_files_task",
-      "queue": "background",
-      "source": "server/apps/job_mgmt/tasks.py:28",
-      "purpose": "多目标文件分发，任务内线程池",
-      "trigger_evidence_status": "有生产触发证据",
-      "inventory_class": "B",
-      "activation_change": false
-    },
-    {
-      "task_name": "apps.job_mgmt.tasks.execute_playbook_task",
-      "queue": "background",
-      "source": "server/apps/job_mgmt/tasks.py:33",
-      "purpose": "执行自动化剧本并等待结果",
-      "trigger_evidence_status": "有生产触发证据",
-      "inventory_class": "B",
-      "activation_change": false
-    },
-    {
-      "task_name": "apps.job_mgmt.tasks.finalize_cancelling_execution",
-      "queue": "state",
-      "source": "server/apps/job_mgmt/tasks.py:39",
-      "purpose": "取消超时终态收敛及回调投递",
-      "trigger_evidence_status": "有生产触发证据",
-      "inventory_class": "C",
-      "activation_change": false
-    },
-    {
-      "task_name": "apps.job_mgmt.tasks.execute_scheduled_task",
-      "queue": "state",
-      "source": "server/apps/job_mgmt/tasks.py:82",
-      "purpose": "检查并发策略、建执行记录、投递作业",
-      "trigger_evidence_status": "有生产触发证据",
-      "inventory_class": "C",
-      "activation_change": false
-    },
-    {
-      "task_name": "apps.job_mgmt.tasks.cleanup_expired_distribution_files_task",
-      "queue": "background",
-      "source": "server/apps/job_mgmt/tasks.py:206",
-      "purpose": "删除过期对象存储文件及记录",
-      "trigger_evidence_status": "有生产触发证据",
-      "inventory_class": "B",
-      "activation_change": false
-    },
-    {
-      "task_name": "apps.job_mgmt.tasks.do_callback_task",
-      "queue": "notification",
-      "source": "server/apps/job_mgmt/tasks.py:267",
-      "purpose": "发送作业HTTP回调，失败退避重试",
-      "trigger_evidence_status": "有生产触发证据",
-      "inventory_class": "I",
-      "activation_change": false
-    },
-    {
-      "task_name": "apps.job_mgmt.tasks.do_nats_callback_task",
-      "queue": "notification",
-      "source": "server/apps/job_mgmt/tasks.py:314",
-      "purpose": "发布作业结果到NATS",
-      "trigger_evidence_status": "有生产触发证据",
-      "inventory_class": "I",
-      "activation_change": false
-    },
-    {
-      "task_name": "apps.log.tasks.policy.scan_log_policy_task",
+    "apps.alerts.tasks.tasks.beat_close_alert": {
+      "source": "server/apps/alerts/tasks/tasks.py",
+      "line": 156,
+      "declared_queue": null,
+      "summary": "告警关闭兜底机制",
       "queue": "critical",
-      "source": "server/apps/log/tasks/policy.py:15",
-      "purpose": "日志检测，内部最多串行补10窗口并通知",
-      "trigger_evidence_status": "有生产触发证据",
-      "inventory_class": "C",
-      "activation_change": false
+      "classification": "检测/告警生命周期，优先保证执行槽"
     },
-    {
-      "task_name": "apps.log.tasks.policy.compensate_log_notice_task",
-      "queue": "notification",
-      "source": "server/apps/log/tasks/policy.py:106",
-      "purpose": "有批量边界的失败通知补偿",
-      "trigger_evidence_status": "有生产触发证据",
-      "inventory_class": "I",
-      "activation_change": false
-    },
-    {
-      "task_name": "apps.mlops.tasks.anomaly_detection.publish_dataset_release_async",
-      "queue": "background",
-      "source": "server/apps/mlops/tasks/anomaly_detection.py:97",
-      "purpose": "异常检测数据集发布、打包上传（非训练）",
-      "trigger_evidence_status": "有生产触发证据",
-      "inventory_class": "B",
-      "activation_change": false
-    },
-    {
-      "task_name": "apps.mlops.tasks.classification.publish_dataset_release_async",
-      "queue": "background",
-      "source": "server/apps/mlops/tasks/classification.py:67",
-      "purpose": "分类数据集发布、打包上传（非训练）",
-      "trigger_evidence_status": "有生产触发证据",
-      "inventory_class": "B",
-      "activation_change": false
-    },
-    {
-      "task_name": "apps.mlops.tasks.image_classification.publish_dataset_release_async",
-      "queue": "background",
-      "source": "server/apps/mlops/tasks/image_classification.py:27",
-      "purpose": "图片分类数据集发布、打包上传（非训练）",
-      "trigger_evidence_status": "有生产触发证据",
-      "inventory_class": "B",
-      "activation_change": false
-    },
-    {
-      "task_name": "apps.mlops.tasks.log_clustering.publish_dataset_release_async",
-      "queue": "background",
-      "source": "server/apps/mlops/tasks/log_clustering.py:71",
-      "purpose": "日志聚类数据集发布、打包上传（非训练）",
-      "trigger_evidence_status": "有生产触发证据",
-      "inventory_class": "B",
-      "activation_change": false
-    },
-    {
-      "task_name": "apps.mlops.tasks.object_detection.publish_dataset_release_async",
-      "queue": "background",
-      "source": "server/apps/mlops/tasks/object_detection.py:190",
-      "purpose": "目标检测数据集发布、打包上传（非训练）",
-      "trigger_evidence_status": "有生产触发证据",
-      "inventory_class": "B",
-      "activation_change": false
-    },
-    {
-      "task_name": "apps.mlops.tasks.poll_train_job_status.poll_train_job_status",
-      "queue": "background",
-      "source": "server/apps/mlops/tasks/poll_train_job_status.py:23",
-      "purpose": "查MLflow状态并30秒retry；非模型训练",
-      "trigger_evidence_status": "有生产触发证据",
-      "inventory_class": "I",
-      "activation_change": false
-    },
-    {
-      "task_name": "apps.mlops.tasks.timeseries.publish_dataset_release_async",
-      "queue": "background",
-      "source": "server/apps/mlops/tasks/timeseries.py:71",
-      "purpose": "时序数据集发布、打包上传（非训练）",
-      "trigger_evidence_status": "有生产触发证据",
-      "inventory_class": "B",
-      "activation_change": false
-    },
-    {
-      "task_name": "apps.monitor.tasks.collect_detect.run_collect_detect_task",
-      "queue": "background",
-      "source": "server/apps/monitor/tasks/collect_detect.py:7",
-      "purpose": "远端Telegraf一次性预检，默认60秒上限600秒",
-      "trigger_evidence_status": "有生产触发证据",
-      "inventory_class": "B",
-      "activation_change": false
-    },
-    {
-      "task_name": "apps.monitor.tasks.grouping_rule.sync_instance_and_group",
-      "queue": "background",
-      "source": "server/apps/monitor/tasks/grouping_rule.py:9",
-      "purpose": "同步监控实例、执行分组规则",
-      "trigger_evidence_status": "有生产触发证据",
-      "inventory_class": "B",
-      "activation_change": false
-    },
-    {
-      "task_name": "apps.monitor.tasks.monitor_policy.scan_policy_task",
+    "apps.alerts.tasks.tasks.check_and_send_reminders": {
+      "source": "server/apps/alerts/tasks/tasks.py",
+      "line": 178,
+      "declared_queue": null,
+      "summary": "统一的提醒检查任务 - 每分钟执行一次轮询",
       "queue": "critical",
-      "source": "server/apps/monitor/tasks/monitor_policy.py:24",
-      "purpose": "指标检测，内部最多串行补30窗口并通知",
-      "trigger_evidence_status": "有生产触发证据",
-      "inventory_class": "C",
-      "activation_change": false
+      "classification": "检测/告警生命周期，优先保证执行槽"
     },
-    {
-      "task_name": "apps.monitor.tasks.monitor_policy.retry_alert_center_lifecycle_notify_task",
+    "apps.alerts.tasks.tasks.cleanup_reminder_tasks": {
+      "source": "server/apps/alerts/tasks/tasks.py",
+      "line": 200,
+      "declared_queue": null,
+      "summary": "清理过期的提醒任务记录",
+      "queue": "background",
+      "classification": "导入导出、采集、批处理或低时效维护，隔离长任务"
+    },
+    "apps.alerts.tasks.tasks.check_and_send_escalations": {
+      "source": "server/apps/alerts/tasks/tasks.py",
+      "line": 220,
+      "declared_queue": null,
+      "summary": "统一的升级检查任务 - 每分钟执行一次轮询",
+      "queue": "critical",
+      "classification": "检测/告警生命周期，优先保证执行槽"
+    },
+    "apps.alerts.tasks.tasks.async_auto_assignment_for_alerts": {
+      "source": "server/apps/alerts/tasks/tasks.py",
+      "line": 239,
+      "declared_queue": null,
+      "summary": "异步执行告警自动分配",
+      "queue": "critical",
+      "classification": "检测/告警生命周期，优先保证执行槽"
+    },
+    "apps.alerts.tasks.tasks.beat_retry_unassigned_assignment": {
+      "source": "server/apps/alerts/tasks/tasks.py",
+      "line": 313,
+      "declared_queue": null,
+      "summary": "兜底:扫描仍为 UNASSIGNED 的告警,重新入 auto_assignment outbox。",
+      "queue": "state",
+      "classification": "状态收敛/补偿，可能集中高频触发"
+    },
+    "apps.alerts.tasks.tasks.build_instant_alerts": {
+      "source": "server/apps/alerts/tasks/tasks.py",
+      "line": 391,
+      "declared_queue": null,
+      "summary": "即时告警异步兜底任务。",
+      "queue": "critical",
+      "classification": "检测/告警生命周期，优先保证执行槽"
+    },
+    "apps.alerts.tasks.tasks.sync_notify": {
+      "source": "server/apps/alerts/tasks/tasks.py",
+      "line": 422,
+      "declared_queue": null,
+      "summary": "同步通知方法",
       "queue": "notification",
-      "source": "server/apps/monitor/tasks/monitor_policy.py:100",
-      "purpose": "最多200条终态告警补偿推送",
-      "trigger_evidence_status": "有生产触发证据",
-      "inventory_class": "I",
-      "activation_change": false
+      "classification": "通知或 outbox 交付，外部 I/O 可能慢"
     },
-    {
-      "task_name": "apps.node_mgmt.tasks.action_task.converge_collector_action_task_for_node",
-      "queue": "state",
-      "source": "server/apps/node_mgmt/tasks/action_task.py:159",
-      "purpose": "根据节点状态收敛采集器操作",
-      "trigger_evidence_status": "有生产触发证据",
-      "inventory_class": "C",
-      "activation_change": false
-    },
-    {
-      "task_name": "apps.node_mgmt.tasks.action_task.timeout_collector_action_task",
-      "queue": "state",
-      "source": "server/apps/node_mgmt/tasks/action_task.py:223",
-      "purpose": "采集器操作超时状态兜底",
-      "trigger_evidence_status": "有生产触发证据",
-      "inventory_class": "C",
-      "activation_change": false
-    },
-    {
-      "task_name": "apps.node_mgmt.tasks.cloudregion.check_all_region_services",
+    "apps.alerts.tasks.tasks.sync_shield": {
+      "source": "server/apps/alerts/tasks/tasks.py",
+      "line": 486,
+      "declared_queue": null,
+      "summary": "异步屏蔽事件",
       "queue": "background",
-      "source": "server/apps/node_mgmt/tasks/cloudregion.py:9",
-      "purpose": "遍历云区域同步健康检查",
-      "trigger_evidence_status": "有生产触发证据",
-      "inventory_class": "B",
-      "activation_change": false
+      "classification": "导入导出、采集、批处理或低时效维护，隔离长任务"
     },
-    {
-      "task_name": "apps.node_mgmt.tasks.installer.install_controller",
-      "queue": "state",
-      "source": "server/apps/node_mgmt/tasks/installer.py:684",
-      "purpose": "安装主任务编排，按任务最多3节点bootstrap",
-      "trigger_evidence_status": "有生产触发证据",
-      "inventory_class": "C",
-      "activation_change": false
-    },
-    {
-      "task_name": "apps.node_mgmt.tasks.installer.install_controller_for_node",
-      "queue": "background",
-      "source": "server/apps/node_mgmt/tasks/installer.py:700",
-      "purpose": "单节点远端安装和结果接收",
-      "trigger_evidence_status": "有生产触发证据",
-      "inventory_class": "B",
-      "activation_change": false
-    },
-    {
-      "task_name": "apps.node_mgmt.tasks.installer.converge_controller_install_connectivity_for_node",
-      "queue": "state",
-      "source": "server/apps/node_mgmt/tasks/installer.py:733",
-      "purpose": "Sidecar连通回调推进状态及后续节点",
-      "trigger_evidence_status": "有生产触发证据",
-      "inventory_class": "C",
-      "activation_change": false
-    },
-    {
-      "task_name": "apps.node_mgmt.tasks.installer.timeout_controller_install_task",
-      "queue": "state",
-      "source": "server/apps/node_mgmt/tasks/installer.py:777",
-      "purpose": "安装连通超时兜底并推进剩余节点",
-      "trigger_evidence_status": "有生产触发证据",
-      "inventory_class": "C",
-      "activation_change": false
-    },
-    {
-      "task_name": "apps.node_mgmt.tasks.installer.retry_controller",
-      "queue": "state",
-      "source": "server/apps/node_mgmt/tasks/installer.py:830",
-      "purpose": "刷新失败节点凭据/状态并重投",
-      "trigger_evidence_status": "有生产触发证据",
-      "inventory_class": "C",
-      "activation_change": false
-    },
-    {
-      "task_name": "apps.node_mgmt.tasks.installer.uninstall_controller",
-      "queue": "background",
-      "source": "server/apps/node_mgmt/tasks/installer.py:892",
-      "purpose": "逐节点执行远端卸载并删除节点记录",
-      "trigger_evidence_status": "有生产触发证据",
-      "inventory_class": "B",
-      "activation_change": false
-    },
-    {
-      "task_name": "apps.node_mgmt.tasks.installer.install_collector",
-      "queue": "background",
-      "source": "server/apps/node_mgmt/tasks/installer.py:1000",
-      "purpose": "采集器配置/安装下发",
-      "trigger_evidence_status": "有生产触发证据",
-      "inventory_class": "B",
-      "activation_change": false
-    },
-    {
-      "task_name": "apps.node_mgmt.tasks.installer.uninstall_collector",
-      "queue": "background",
-      "source": "server/apps/node_mgmt/tasks/installer.py:1159",
-      "purpose": "pass空壳",
-      "trigger_evidence_status": "待核实/无实际工作",
-      "inventory_class": "U",
-      "activation_change": false
-    },
-    {
-      "task_name": "apps.node_mgmt.tasks.sidecar_config.sync_node_properties_to_sidecar",
-      "queue": "background",
-      "source": "server/apps/node_mgmt/tasks/sidecar_config.py:9",
-      "purpose": "远程更新sidecar.yaml属性",
-      "trigger_evidence_status": "有生产触发证据",
-      "inventory_class": "B",
-      "activation_change": false
-    },
-    {
-      "task_name": "apps.node_mgmt.tasks.version_discovery.discover_node_versions",
-      "queue": "background",
-      "source": "server/apps/node_mgmt/tasks/version_discovery.py:18",
-      "purpose": "遍历节点查询远端版本，单次RPC10秒",
-      "trigger_evidence_status": "有生产触发证据",
-      "inventory_class": "B",
-      "activation_change": false
-    },
-    {
-      "task_name": "apps.opspilot.tasks.general_embed",
-      "queue": "background",
-      "source": "server/apps/opspilot/tasks.py:251",
-      "purpose": "文档批量向量化和索引",
-      "trigger_evidence_status": "有生产触发证据",
-      "inventory_class": "B",
-      "activation_change": false
-    },
-    {
-      "task_name": "apps.opspilot.tasks.retrain_all",
-      "queue": "background",
-      "source": "server/apps/opspilot/tasks.py:259",
-      "purpose": "整个知识库重新向量化",
-      "trigger_evidence_status": "有生产触发证据",
-      "inventory_class": "B",
-      "activation_change": false
-    },
-    {
-      "task_name": "apps.opspilot.tasks.invoke_document_to_es",
-      "queue": "background",
-      "source": "server/apps/opspilot/tasks.py:338",
-      "purpose": "单文档删除旧索引并重建",
-      "trigger_evidence_status": "有生产触发证据",
-      "inventory_class": "B",
-      "activation_change": false
-    },
-    {
-      "task_name": "apps.opspilot.tasks.sync_web_page_knowledge",
-      "queue": "background",
-      "source": "server/apps/opspilot/tasks.py:515",
-      "purpose": "下载网页、更新文档并嵌入",
-      "trigger_evidence_status": "有生产触发证据",
-      "inventory_class": "B",
-      "activation_change": false
-    },
-    {
-      "task_name": "apps.opspilot.tasks.create_qa_pairs",
-      "queue": "background",
-      "source": "server/apps/opspilot/tasks.py:583",
-      "purpose": "批量文档生成问答",
-      "trigger_evidence_status": "有生产触发证据",
-      "inventory_class": "B",
-      "activation_change": false
-    },
-    {
-      "task_name": "apps.opspilot.tasks.generate_answer",
-      "queue": "background",
-      "source": "server/apps/opspilot/tasks.py:666",
-      "purpose": "已有问答生成/更新答案",
-      "trigger_evidence_status": "有生产触发证据",
-      "inventory_class": "B",
-      "activation_change": false
-    },
-    {
-      "task_name": "apps.opspilot.tasks.rebuild_graph_community_by_instance",
-      "queue": "background",
-      "source": "server/apps/opspilot/tasks.py:692",
-      "purpose": "重建知识图谱社区",
-      "trigger_evidence_status": "有生产触发证据",
-      "inventory_class": "B",
-      "activation_change": false
-    },
-    {
-      "task_name": "apps.opspilot.tasks.create_graph",
-      "queue": "background",
-      "source": "server/apps/opspilot/tasks.py:711",
-      "purpose": "创建知识图谱",
-      "trigger_evidence_status": "有生产触发证据",
-      "inventory_class": "B",
-      "activation_change": false
-    },
-    {
-      "task_name": "apps.opspilot.tasks.update_graph",
-      "queue": "background",
-      "source": "server/apps/opspilot/tasks.py:732",
-      "purpose": "增量更新知识图谱",
-      "trigger_evidence_status": "有生产触发证据",
-      "inventory_class": "B",
-      "activation_change": false
-    },
-    {
-      "task_name": "apps.opspilot.tasks.create_qa_pairs_by_json",
-      "queue": "background",
-      "source": "server/apps/opspilot/tasks.py:753",
-      "purpose": "JSON批量问答写入与嵌入",
-      "trigger_evidence_status": "有生产触发证据",
-      "inventory_class": "B",
-      "activation_change": false
-    },
-    {
-      "task_name": "apps.opspilot.tasks.create_qa_pairs_by_custom",
-      "queue": "background",
-      "source": "server/apps/opspilot/tasks.py:975",
-      "purpose": "自定义问答批量写入与嵌入",
-      "trigger_evidence_status": "有生产触发证据",
-      "inventory_class": "B",
-      "activation_change": false
-    },
-    {
-      "task_name": "apps.opspilot.tasks.create_qa_pairs_by_chunk",
-      "queue": "background",
-      "source": "server/apps/opspilot/tasks.py:1006",
-      "purpose": "分块内容通过LLM生成问答",
-      "trigger_evidence_status": "有生产触发证据",
-      "inventory_class": "B",
-      "activation_change": false
-    },
-    {
-      "task_name": "apps.opspilot.tasks.chat_flow_celery_task",
-      "queue": "background",
-      "source": "server/apps/opspilot/tasks.py:1078",
-      "purpose": "执行周期ChatFlow，可能有LLM和工具链",
-      "trigger_evidence_status": "有生产触发证据",
-      "inventory_class": "B",
-      "activation_change": false
-    },
-    {
-      "task_name": "apps.opspilot.tasks.chat_flow_test_execute_task",
-      "queue": "background",
-      "source": "server/apps/opspilot/tasks.py:1108",
-      "purpose": "配置页工作流测试，完整执行引擎",
-      "trigger_evidence_status": "有生产触发证据",
-      "inventory_class": "A",
-      "activation_change": false
-    },
-    {
-      "task_name": "apps.opspilot.tasks.update_graph_task",
-      "queue": "background",
-      "source": "server/apps/opspilot/tasks.py:1133",
-      "purpose": "更新图谱进度",
-      "trigger_evidence_status": "仅找到直接调用",
-      "inventory_class": "B",
-      "activation_change": false
-    },
-    {
-      "task_name": "apps.opspilot.tasks.process_wechat_message",
-      "queue": "background",
-      "source": "server/apps/opspilot/tasks.py:1238",
-      "purpose": "企微消息执行ChatFlow并回复",
-      "trigger_evidence_status": "有生产触发证据",
-      "inventory_class": "A",
-      "activation_change": false
-    },
-    {
-      "task_name": "apps.opspilot.tasks.process_enterprise_wechat_aibot_message",
-      "queue": "background",
-      "source": "server/apps/opspilot/tasks.py:1259",
-      "purpose": "企微智能机器人执行ChatFlow后投递回复",
-      "trigger_evidence_status": "有生产触发证据",
-      "inventory_class": "A",
-      "activation_change": false
-    },
-    {
-      "task_name": "apps.opspilot.tasks.process_enterprise_wechat_aibot_reply",
+    "apps.alerts.tasks.tasks.sync_no_dispatch_alert_notice_task": {
+      "source": "server/apps/alerts/tasks/tasks.py",
+      "line": 503,
+      "declared_queue": null,
+      "summary": "周期任务，检查那些未能自动分派的告警，进行系统配置的通知",
       "queue": "notification",
-      "source": "server/apps/opspilot/tasks.py:1290",
-      "purpose": "发送已生成文本并标记完成",
-      "trigger_evidence_status": "有生产触发证据",
-      "inventory_class": "I",
-      "activation_change": false
+      "classification": "通知或 outbox 交付，外部 I/O 可能慢"
     },
-    {
-      "task_name": "apps.opspilot.tasks.process_dingtalk_message",
-      "queue": "background",
-      "source": "server/apps/opspilot/tasks.py:1304",
-      "purpose": "钉钉消息执行ChatFlow及回复",
-      "trigger_evidence_status": "有生产触发证据",
-      "inventory_class": "A",
-      "activation_change": false
+    "apps.alerts.tasks.action_tasks.process_alert_actions": {
+      "source": "server/apps/alerts/tasks/action_tasks.py",
+      "line": 10,
+      "declared_queue": null,
+      "summary": "异步评估并分派告警动作规则。",
+      "queue": "notification",
+      "classification": "通知或 outbox 交付，外部 I/O 可能慢"
     },
-    {
-      "task_name": "apps.opspilot.tasks.process_wechat_official_message",
+    "apps.alerts.tasks.itsm_tasks.scan_itsm_tickets": {
+      "source": "server/apps/alerts/tasks/itsm_tasks.py",
+      "line": 11,
+      "declared_queue": null,
+      "summary": "",
       "queue": "background",
-      "source": "server/apps/opspilot/tasks.py:1357",
-      "purpose": "公众号消息执行ChatFlow及回复",
-      "trigger_evidence_status": "有生产触发证据",
-      "inventory_class": "A",
-      "activation_change": false
+      "classification": "导入导出、采集、批处理或低时效维护，隔离长任务"
     },
-    {
-      "task_name": "apps.opspilot.tasks.process_memory_write_cache",
-      "queue": "background",
-      "source": "server/apps/opspilot/tasks.py:1378",
-      "purpose": "写记忆缓存，达阈值同步调用LLM整理写入",
-      "trigger_evidence_status": "有生产触发证据",
-      "inventory_class": "B",
-      "activation_change": false
+    "operation_analysis.render_dashboard_report": {
+      "source": "server/apps/operation_analysis/tasks/tasks.py",
+      "line": 32,
+      "declared_queue": "dashboard_report_render",
+      "summary": "",
+      "queue": "dashboard_report_render",
+      "classification": "既有显式专用队列，保留原消费边界"
     },
-    {
-      "task_name": "apps.opspilot.tasks.flush_memory_write_cache_for_node",
-      "queue": "background",
-      "source": "server/apps/opspilot/tasks.py:1464",
-      "purpose": "遍历节点目标并同步刷新记忆",
-      "trigger_evidence_status": "有生产触发证据",
-      "inventory_class": "B",
-      "activation_change": false
+    "operation_analysis.scan_due_dashboard_report_subscriptions": {
+      "source": "server/apps/operation_analysis/tasks/tasks.py",
+      "line": 56,
+      "declared_queue": null,
+      "summary": "扫描到期订阅并创建 scheduled Execution；不执行 Render/Delivery。",
+      "queue": "state",
+      "classification": "状态收敛/补偿，可能集中高频触发"
     },
-    {
-      "task_name": "apps.opspilot.tasks.flush_all_pending_memory_write_cache",
-      "queue": "background",
-      "source": "server/apps/opspilot/tasks.py:1497",
-      "purpose": "遍历全量待刷新分组并同步刷新",
-      "trigger_evidence_status": "有生产触发证据",
-      "inventory_class": "B",
-      "activation_change": false
+    "operation_analysis.converge_timed_out_dashboard_report_executions": {
+      "source": "server/apps/operation_analysis/tasks/tasks.py",
+      "line": 72,
+      "declared_queue": null,
+      "summary": "收敛超时/orphan running Execution；不重 claim、不重发。",
+      "queue": "state",
+      "classification": "状态收敛/补偿，可能集中高频触发"
     },
-    {
-      "task_name": "apps.opspilot.tasks.process_memory_write",
+    "operation_analysis.cleanup_expired_dashboard_report_pdf_artifacts": {
+      "source": "server/apps/operation_analysis/tasks/tasks.py",
+      "line": 88,
+      "declared_queue": null,
+      "summary": "清理已过期且所属 Execution 已终态的 PDF artifact（A7）。",
       "queue": "background",
-      "source": "server/apps/opspilot/tasks.py:1857",
-      "purpose": "LLM处理记忆后写存储",
-      "trigger_evidence_status": "有生产触发证据",
-      "inventory_class": "B",
-      "activation_change": false
+      "classification": "导入导出、采集、批处理或低时效维护，隔离长任务"
     },
-    {
-      "task_name": "apps.opspilot.tasks.cleanup_expired_workflow_attachments_task",
+    "operation_analysis.cleanup_expired_dashboard_report_executions": {
+      "source": "server/apps/operation_analysis/tasks/tasks.py",
+      "line": 103,
+      "declared_queue": null,
+      "summary": "分批清理超过保留期的终态 Execution 及级联 Snapshot（A8）。",
       "queue": "background",
-      "source": "server/apps/opspilot/tasks.py:1881",
-      "purpose": "清理超过3天的工作流附件",
-      "trigger_evidence_status": "有生产触发证据",
-      "inventory_class": "B",
-      "activation_change": false
+      "classification": "导入导出、采集、批处理或低时效维护，隔离长任务"
     },
-    {
-      "task_name": "apps.system_mgmt.tasks.write_error_log_async",
+    "operation_analysis.materialize_excel_candidate": {
+      "source": "server/apps/operation_analysis/tasks/tasks.py",
+      "line": 118,
+      "declared_queue": null,
+      "summary": "异步物化 Excel 候选槽；失败保留旧成功结果，旧任务晚到不覆盖新候选。",
       "queue": "background",
-      "source": "server/apps/system_mgmt/tasks.py:15",
-      "purpose": "异常日志入库，失败重试",
-      "trigger_evidence_status": "有生产触发证据",
-      "inventory_class": "I",
-      "activation_change": false
+      "classification": "导入导出、采集、批处理或低时效维护，隔离长任务"
     },
-    {
-      "task_name": "apps.system_mgmt.tasks.sync_user_and_group_by_login_module",
+    "operation_analysis.resubmit_excel_from_saved_source": {
+      "source": "server/apps/operation_analysis/tasks/tasks.py",
+      "line": 129,
+      "declared_queue": null,
+      "summary": "在 Worker 内从已保存原文件复制候选并投递物化，避免 API 请求线程读 MinIO。",
       "queue": "background",
-      "source": "server/apps/system_mgmt/tasks.py:43",
-      "purpose": "RPC拉取用户/组并全量同步",
-      "trigger_evidence_status": "有生产触发证据",
-      "inventory_class": "B",
-      "activation_change": false
+      "classification": "导入导出、采集、批处理或低时效维护，隔离长任务"
     },
-    {
-      "task_name": "apps.system_mgmt.tasks.check_password_expiry_and_notify",
+    "operation_analysis.rescan_pending_excel_materializations": {
+      "source": "server/apps/operation_analysis/tasks/tasks.py",
+      "line": 220,
+      "declared_queue": null,
+      "summary": "补投长时间停留在 PENDING 的候选，并把超时的 processing 收敛为可重试失败。",
       "queue": "background",
-      "source": "server/apps/system_mgmt/tasks.py:252",
-      "purpose": "遍历用户逐个发密码到期邮件",
-      "trigger_evidence_status": "有生产触发证据",
-      "inventory_class": "B",
-      "activation_change": false
+      "classification": "导入导出、采集、批处理或低时效维护，隔离长任务"
+    },
+    "apps.mlops.tasks.image_classification.publish_dataset_release_async": {
+      "source": "server/apps/mlops/tasks/image_classification.py",
+      "line": 41,
+      "declared_queue": null,
+      "summary": "异步发布图片分类数据集版本",
+      "queue": "background",
+      "classification": "导入导出、采集、批处理或低时效维护，隔离长任务"
+    },
+    "apps.mlops.tasks.poll_train_job_status.poll_train_job_status": {
+      "source": "server/apps/mlops/tasks/poll_train_job_status.py",
+      "line": 23,
+      "declared_queue": null,
+      "summary": "轮询 MLflow 训练运行状态",
+      "queue": "background",
+      "classification": "导入导出、采集、批处理或低时效维护，隔离长任务"
+    },
+    "apps.mlops.tasks.classification.publish_dataset_release_async": {
+      "source": "server/apps/mlops/tasks/classification.py",
+      "line": 68,
+      "declared_queue": null,
+      "summary": "异步发布数据集版本",
+      "queue": "background",
+      "classification": "导入导出、采集、批处理或低时效维护，隔离长任务"
+    },
+    "apps.mlops.tasks.log_clustering.publish_dataset_release_async": {
+      "source": "server/apps/mlops/tasks/log_clustering.py",
+      "line": 72,
+      "declared_queue": null,
+      "summary": "异步发布日志聚类数据集版本",
+      "queue": "background",
+      "classification": "导入导出、采集、批处理或低时效维护，隔离长任务"
+    },
+    "apps.mlops.tasks.file_cleanup.cleanup_train_data_file": {
+      "source": "server/apps/mlops/tasks/file_cleanup.py",
+      "line": 16,
+      "declared_queue": null,
+      "summary": "Retry an idempotent old-file cleanup after a transient storage failure.",
+      "queue": "background",
+      "classification": "导入导出、采集、批处理或低时效维护，隔离长任务"
+    },
+    "apps.mlops.tasks.external_resource_cleanup.cleanup_external_resource": {
+      "source": "server/apps/mlops/tasks/external_resource_cleanup.py",
+      "line": 21,
+      "declared_queue": null,
+      "summary": "",
+      "queue": "background",
+      "classification": "导入导出、采集、批处理或低时效维护，隔离长任务"
+    },
+    "apps.mlops.tasks.external_resource_cleanup.dispatch_pending_external_resource_cleanup": {
+      "source": "server/apps/mlops/tasks/external_resource_cleanup.py",
+      "line": 88,
+      "declared_queue": null,
+      "summary": "",
+      "queue": "background",
+      "classification": "导入导出、采集、批处理或低时效维护，隔离长任务"
+    },
+    "apps.mlops.tasks.anomaly_detection.publish_dataset_release_async": {
+      "source": "server/apps/mlops/tasks/anomaly_detection.py",
+      "line": 96,
+      "declared_queue": null,
+      "summary": "异步发布异常检测数据集版本",
+      "queue": "background",
+      "classification": "导入导出、采集、批处理或低时效维护，隔离长任务"
+    },
+    "apps.mlops.tasks.runtime_cleanup.cleanup_orphan_timeseries_runtime": {
+      "source": "server/apps/mlops/tasks/runtime_cleanup.py",
+      "line": 20,
+      "declared_queue": null,
+      "summary": "持续退避重试持久意图，直到 orphan 不存在或 ID 已被业务记录接管。",
+      "queue": "background",
+      "classification": "导入导出、采集、批处理或低时效维护，隔离长任务"
+    },
+    "apps.mlops.tasks.runtime_cleanup.bootstrap_timeseries_runtime_cleanup": {
+      "source": "server/apps/mlops/tasks/runtime_cleanup.py",
+      "line": 43,
+      "declared_queue": null,
+      "summary": "数据库恢复后重建未能持久化的 intent，并进入同一清理闭环。",
+      "queue": "background",
+      "classification": "导入导出、采集、批处理或低时效维护，隔离长任务"
+    },
+    "apps.mlops.tasks.runtime_cleanup.dispatch_pending_timeseries_runtime_cleanup": {
+      "source": "server/apps/mlops/tasks/runtime_cleanup.py",
+      "line": 70,
+      "declared_queue": null,
+      "summary": "周期补投持久意图，覆盖首次发布失败和消息丢失。",
+      "queue": "background",
+      "classification": "导入导出、采集、批处理或低时效维护，隔离长任务"
+    },
+    "apps.mlops.tasks.object_detection.publish_dataset_release_async": {
+      "source": "server/apps/mlops/tasks/object_detection.py",
+      "line": 195,
+      "declared_queue": null,
+      "summary": "异步发布目标检测数据集版本（YOLO 格式）",
+      "queue": "background",
+      "classification": "导入导出、采集、批处理或低时效维护，隔离长任务"
+    },
+    "apps.mlops.tasks.timeseries.publish_dataset_release_async": {
+      "source": "server/apps/mlops/tasks/timeseries.py",
+      "line": 72,
+      "declared_queue": null,
+      "summary": "异步发布数据集版本",
+      "queue": "background",
+      "classification": "导入导出、采集、批处理或低时效维护，隔离长任务"
+    },
+    "apps.core.tasks.auditlog_flush_task.clear_audit_logs": {
+      "source": "server/apps/core/tasks/auditlog_flush_task.py",
+      "line": 9,
+      "declared_queue": null,
+      "summary": "定期清理AuditLog",
+      "queue": "background",
+      "classification": "导入导出、采集、批处理或低时效维护，隔离长任务"
+    },
+    "apps.node_mgmt.tasks.collector_auto_restart.restart_failed_collectors": {
+      "source": "server/apps/node_mgmt/tasks/collector_auto_restart.py",
+      "line": 170,
+      "declared_queue": null,
+      "summary": "扫描在线节点上失败的托管采集器，按 collector_id 批量下发 restart。",
+      "queue": "background",
+      "classification": "导入导出、采集、批处理或低时效维护，隔离长任务"
+    },
+    "apps.node_mgmt.tasks.sidecar_config.sync_node_properties_to_sidecar": {
+      "source": "server/apps/node_mgmt/tasks/sidecar_config.py",
+      "line": 8,
+      "declared_queue": null,
+      "summary": "异步同步节点属性到远程 sidecar.yml 配置文件",
+      "queue": "background",
+      "classification": "导入导出、采集、批处理或低时效维护，隔离长任务"
+    },
+    "apps.node_mgmt.tasks.sidecar_config.sync_nodes_organizations_to_sidecar": {
+      "source": "server/apps/node_mgmt/tasks/sidecar_config.py",
+      "line": 35,
+      "declared_queue": null,
+      "summary": "按顺序同步批量修改后的节点组织，避免一次批量操作产生无界并发。",
+      "queue": "background",
+      "classification": "导入导出、采集、批处理或低时效维护，隔离长任务"
+    },
+    "apps.node_mgmt.tasks.action_task.converge_collector_action_task_for_node": {
+      "source": "server/apps/node_mgmt/tasks/action_task.py",
+      "line": 271,
+      "declared_queue": null,
+      "summary": "",
+      "queue": "state",
+      "classification": "状态收敛/补偿，可能集中高频触发"
+    },
+    "apps.node_mgmt.tasks.action_task.timeout_collector_action_task": {
+      "source": "server/apps/node_mgmt/tasks/action_task.py",
+      "line": 279,
+      "declared_queue": null,
+      "summary": "",
+      "queue": "state",
+      "classification": "状态收敛/补偿，可能集中高频触发"
+    },
+    "apps.node_mgmt.tasks.installer.install_controller": {
+      "source": "server/apps/node_mgmt/tasks/installer.py",
+      "line": 1053,
+      "declared_queue": null,
+      "summary": "安装控制器",
+      "queue": "state",
+      "classification": "状态收敛/补偿，可能集中高频触发"
+    },
+    "apps.node_mgmt.tasks.installer.install_controller_for_node": {
+      "source": "server/apps/node_mgmt/tasks/installer.py",
+      "line": 1069,
+      "declared_queue": null,
+      "summary": "",
+      "queue": "background",
+      "classification": "导入导出、采集、批处理或低时效维护，隔离长任务"
+    },
+    "apps.node_mgmt.tasks.installer.converge_controller_install_connectivity_for_node": {
+      "source": "server/apps/node_mgmt/tasks/installer.py",
+      "line": 1196,
+      "declared_queue": null,
+      "summary": "根据 sidecar 回调收敛控制器安装任务连通状态。",
+      "queue": "state",
+      "classification": "状态收敛/补偿，可能集中高频触发"
+    },
+    "apps.node_mgmt.tasks.installer.timeout_controller_install_task": {
+      "source": "server/apps/node_mgmt/tasks/installer.py",
+      "line": 1205,
+      "declared_queue": null,
+      "summary": "控制器安装任务连通检测超时兜底",
+      "queue": "state",
+      "classification": "状态收敛/补偿，可能集中高频触发"
+    },
+    "apps.node_mgmt.tasks.installer.retry_controller": {
+      "source": "server/apps/node_mgmt/tasks/installer.py",
+      "line": 1285,
+      "declared_queue": null,
+      "summary": "重试控制器安装任务中的特定节点",
+      "queue": "state",
+      "classification": "状态收敛/补偿，可能集中高频触发"
+    },
+    "apps.node_mgmt.tasks.installer.uninstall_controller": {
+      "source": "server/apps/node_mgmt/tasks/installer.py",
+      "line": 1404,
+      "declared_queue": null,
+      "summary": "卸载控制器",
+      "queue": "background",
+      "classification": "导入导出、采集、批处理或低时效维护，隔离长任务"
+    },
+    "apps.node_mgmt.tasks.installer.install_collector": {
+      "source": "server/apps/node_mgmt/tasks/installer.py",
+      "line": 1533,
+      "declared_queue": null,
+      "summary": "安装采集器",
+      "queue": "background",
+      "classification": "导入导出、采集、批处理或低时效维护，隔离长任务"
+    },
+    "apps.node_mgmt.tasks.installer.uninstall_collector": {
+      "source": "server/apps/node_mgmt/tasks/installer.py",
+      "line": 1715,
+      "declared_queue": null,
+      "summary": "卸载采集器",
+      "queue": "background",
+      "classification": "导入导出、采集、批处理或低时效维护，隔离长任务"
+    },
+    "apps.node_mgmt.tasks.collector_default_backfill.backfill_collector_default_configs": {
+      "source": "server/apps/node_mgmt/tasks/collector_default_backfill.py",
+      "line": 190,
+      "declared_queue": null,
+      "summary": "领取一条待补齐记录并处理有限数量的节点。没有待处理记录时直接返回。",
+      "queue": "background",
+      "classification": "导入导出、采集、批处理或低时效维护，隔离长任务"
+    },
+    "apps.node_mgmt.tasks.version_discovery.discover_node_versions": {
+      "source": "server/apps/node_mgmt/tasks/version_discovery.py",
+      "line": 18,
+      "declared_queue": null,
+      "summary": "定时任务：发现节点的控制器版本信息。",
+      "queue": "background",
+      "classification": "导入导出、采集、批处理或低时效维护，隔离长任务"
+    },
+    "apps.node_mgmt.tasks.cloudregion.check_all_region_services": {
+      "source": "server/apps/node_mgmt/tasks/cloudregion.py",
+      "line": 9,
+      "declared_queue": null,
+      "summary": "遍历所有云区域服务记录 -> 执行对应的健康检查 -> 批量更新状态",
+      "queue": "background",
+      "classification": "导入导出、采集、批处理或低时效维护，隔离长任务"
+    },
+    "apps.monitor.tasks.collect_detect.run_collect_detect_task": {
+      "source": "server/apps/monitor/tasks/collect_detect.py",
+      "line": 7,
+      "declared_queue": null,
+      "summary": "",
+      "queue": "background",
+      "classification": "导入导出、采集、批处理或低时效维护，隔离长任务"
+    },
+    "apps.monitor.tasks.collect_detect.purge_collect_detect_terminal_tasks": {
+      "source": "server/apps/monitor/tasks/collect_detect.py",
+      "line": 12,
+      "declared_queue": null,
+      "summary": "",
+      "queue": "background",
+      "classification": "导入导出、采集、批处理或低时效维护，隔离长任务"
+    },
+    "apps.monitor.tasks.vault_credential.refresh_vault_credential_refs": {
+      "source": "server/apps/monitor/tasks/vault_credential.py",
+      "line": 7,
+      "declared_queue": null,
+      "summary": "",
+      "queue": "background",
+      "classification": "导入导出、采集、批处理或低时效维护，隔离长任务"
+    },
+    "apps.monitor.tasks.vault_credential.reconcile_vault_credentials_task": {
+      "source": "server/apps/monitor/tasks/vault_credential.py",
+      "line": 12,
+      "declared_queue": null,
+      "summary": "",
+      "queue": "background",
+      "classification": "导入导出、采集、批处理或低时效维护，隔离长任务"
+    },
+    "apps.monitor.tasks.grouping_rule.sync_instance_and_group": {
+      "source": "server/apps/monitor/tasks/grouping_rule.py",
+      "line": 9,
+      "declared_queue": null,
+      "summary": "同步监控实例和分组规则",
+      "queue": "background",
+      "classification": "导入导出、采集、批处理或低时效维护，隔离长任务"
+    },
+    "apps.monitor.tasks.grouping_rule.discover_child_instances": {
+      "source": "server/apps/monitor/tasks/grouping_rule.py",
+      "line": 22,
+      "declared_queue": null,
+      "summary": "按父实例收窄的子对象发现，不改全量 10 分钟对账。",
+      "queue": "background",
+      "classification": "导入导出、采集、批处理或低时效维护，隔离长任务"
+    },
+    "apps.monitor.tasks.monitor_policy.scan_policy_task": {
+      "source": "server/apps/monitor/tasks/monitor_policy.py",
+      "line": 30,
+      "declared_queue": null,
+      "summary": "扫描监控策略",
+      "queue": "critical",
+      "classification": "检测/告警生命周期，优先保证执行槽"
+    },
+    "apps.monitor.tasks.monitor_policy.retry_alert_center_lifecycle_notify_task": {
+      "source": "server/apps/monitor/tasks/monitor_policy.py",
+      "line": 142,
+      "declared_queue": null,
+      "summary": "补偿任务：重试推送到告警中心失败的告警通知（每5分钟执行，每次最多处理200条）",
+      "queue": "notification",
+      "classification": "通知或 outbox 交付，外部 I/O 可能慢"
+    },
+    "apps.monitor.tasks.monitor_policy.deliver_alert_center_lifecycle_delivery": {
+      "source": "server/apps/monitor/tasks/monitor_policy.py",
+      "line": 242,
+      "declared_queue": null,
+      "summary": "",
+      "queue": "notification",
+      "classification": "通知或 outbox 交付，外部 I/O 可能慢"
+    },
+    "apps.monitor.tasks.snmp_ifmib_reconcile.reconcile_snmp_interface_filters": {
+      "source": "server/apps/monitor/tasks/snmp_ifmib_reconcile.py",
+      "line": 15,
+      "declared_queue": null,
+      "summary": "运行期幂等补偿存量 IF-MIB 子配置；失败不参与 Server 启动。",
+      "queue": "background",
+      "classification": "导入导出、采集、批处理或低时效维护，隔离长任务"
     }
-  ],
-  "production_only_pending": [
-    {
-      "task_name": "apps.cmdb.tasks.transfer.maintain_transfers",
-      "queue": null,
-      "reason": "截图存在、本地缺少同名定义；核对线上实现后分类，不根据名称推测。"
-    },
-    {
-      "task_name": "apps.alerts.tasks.tasks.deliver_alert_outbox",
-      "queue": null,
-      "reason": "截图存在、本地缺少同名定义；核对线上实现后分类，不根据名称推测。"
-    },
-    {
-      "task_name": "apps.cmdb.tasks.transfer.execute_transfer",
-      "queue": null,
-      "reason": "截图存在、本地缺少同名定义；核对线上实现后分类，不根据名称推测。"
-    },
-    {
-      "task_name": "apps.cmdb.tasks.celery_tasks.reconcile_instances_auto_association_task",
-      "queue": null,
-      "reason": "截图存在、本地缺少同名定义；核对线上实现后分类，不根据名称推测。"
-    },
-    {
-      "task_name": "apps.cmdb.tasks.node_mgmt_sync.recover_node_mgmt_sync",
-      "queue": null,
-      "reason": "截图存在、本地缺少同名定义；核对线上实现后分类，不根据名称推测。"
-    },
-    {
-      "task_name": "apps.node_mgmt.tasks.collector_default_backfill.backfill_collector_default_configs",
-      "queue": null,
-      "reason": "截图存在、本地缺少同名定义；核对线上实现后分类，不根据名称推测。"
-    },
-    {
-      "task_name": "apps.cmdb.tasks.uuid_migration.migrate_cmdb_instance_uuid_runtime",
-      "queue": null,
-      "reason": "截图存在、本地缺少同名定义；核对线上实现后分类，不根据名称推测。"
-    }
-  ]
+  }
 }

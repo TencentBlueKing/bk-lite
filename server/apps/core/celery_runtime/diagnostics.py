@@ -2,27 +2,8 @@
 
 from pathlib import Path
 
-from apps.core.celery_runtime.config import POOL_IMPLEMENTATION
 from apps.core.celery_runtime.manifest import TASK_ROUTES
 from apps.core.celery_runtime.routing import QUEUE_NAMES
-
-
-def prefork_issues(app):
-    if app.conf.worker_pool != POOL_IMPLEMENTATION:
-        return [{"setting": "worker_pool", "required": POOL_IMPLEMENTATION}]
-    return []
-
-
-def inactive_limit_declarations(app):
-    issues = []
-    for name, task in sorted(app.tasks.items()):
-        if task.time_limit or task.soft_time_limit:
-            issues.append({"task": name, "time_limit": task.time_limit, "soft_time_limit": task.soft_time_limit})
-    for key in ("task_time_limit", "task_soft_time_limit", "worker_max_tasks_per_child", "worker_max_memory_per_child"):
-        value = getattr(app.conf, key, None)
-        if value:
-            issues.append({"setting": key, "value": value})
-    return issues
 
 
 def periodic_report(app, rows, registered):
@@ -79,6 +60,7 @@ def worker_report(inspector):
             "child_processes": len(stats.get("pool", {}).get("processes", [])) if "pool" in stats else None,
             "maxrss_platform_units": stats.get("rusage", {}).get("maxrss"),
             "pool_implementation": stats.get("pool", {}).get("implementation"),
+            "fixed_capacity": stats.get("pool", {}).get("max-concurrency"),
         }
     return {"workers": workers, "queue_consumers": consumers, "unavailable": unavailable}
 

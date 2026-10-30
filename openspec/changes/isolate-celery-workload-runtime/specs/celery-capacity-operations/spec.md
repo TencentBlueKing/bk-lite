@@ -52,3 +52,10 @@
 #### Scenario: 分类队列仍有存量时回滚
 - **WHEN** critical、notification、state 或 background 仍有消息
 - **THEN** 保留对应消费者直到排空，或使用经过验证可消费全部队列的回退 worker，不留下无人消费的消息
+
+### Requirement: 既有专用消费者纳入预算
+系统 SHALL 保留上游OpsPilot、报表渲染、补丁维护队列及其消费者，并将其实际配置并发纳入全部副本总预算。
+
+#### Scenario: 四池未超限但专用消费者使总额超限
+- **WHEN** 四池MAX加既有专用消费者并发的副本总和超过总上限
+- **THEN** 本地配置校验失败，不能只用四池之和宣称满足资源预算

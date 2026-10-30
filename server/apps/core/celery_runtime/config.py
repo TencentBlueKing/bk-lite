@@ -3,7 +3,12 @@
 import os
 from dataclasses import dataclass
 
-POOL_IMPLEMENTATION = "apps.core.celery_runtime.pool:ThreadCompatiblePreforkPool"
+POOL_IMPLEMENTATION = "celery.concurrency.prefork:TaskPool"
+DEDICATED_QUEUES = {
+    "dashboard-report-render": ("dashboard_report_render",),
+    "patch-maintenance": ("patch_maintenance",),
+    "opspilot": ("opspilot_channel", "opspilot_wiki", "opspilot_maintenance", "opspilot_chat_parse"),
+}
 POOL_QUEUES = {
     "critical": ("critical",),
     "notification": ("notification",),
@@ -33,6 +38,7 @@ class RuntimeConfig:
     replicas: int = 1
     keepalive: int = 60
     run_beat: bool = True
+    dedicated: tuple[PoolConfig, ...] = ()
 
     @classmethod
     def from_env(cls, env=None):
@@ -55,12 +61,19 @@ class RuntimeConfig:
         beat = env.get("CELERY_RUN_BEAT", "true" if replicas == 1 else "").lower()
         if beat not in ("true", "false"):
             raise ValueError("多副本部署必须用 CELERY_RUN_BEAT 显式指定唯一 Beat 所属实例")
+        render_capacity = positive_integer(env, "DASHBOARD_REPORT_RENDER_CONCURRENCY", "2")
+        dedicated = [PoolConfig("dashboard-report-render", render_capacity, render_capacity), PoolConfig("patch-maintenance", 1, 1)]
+        installed = {item.strip() for item in env.get("INSTALL_APPS", "").split(",") if item.strip()}
+        if not installed or "opspilot" in installed:
+            opspilot_capacity = positive_integer(env, "OPSPILOT_CELERY_CONCURRENCY", "2")
+            dedicated.append(PoolConfig("opspilot", opspilot_capacity, opspilot_capacity))
         config = cls(
             tuple(pools),
             positive_integer(env, "CELERY_TOTAL_CONCURRENCY_LIMIT"),
             replicas,
             positive_integer(env, "AUTOSCALE_KEEPALIVE", "60"),
             beat == "true",
+            tuple(dedicated),
         )
         if config.maximum_concurrency > config.total_limit:
             raise ValueError("所有副本的 MAX 总和超过 CELERY_TOTAL_CONCURRENCY_LIMIT")
@@ -68,7 +81,7 @@ class RuntimeConfig:
 
     @property
     def maximum_concurrency(self):
-        return sum(pool.maximum for pool in self.pools) * self.replicas
+        return sum(pool.maximum for pool in (*self.pools, *self.dedicated)) * self.replicas
 
     def worker_args(self, name):
         pool = next((pool for pool in self.pools if pool.name == name), None)
@@ -79,6 +92,7 @@ class RuntimeConfig:
             "apps.core.celery",
             "worker",
             "--loglevel=info",
+            "--pool=prefork",
             f"--autoscale={pool.maximum},{pool.minimum}",
             "-Q",
             ",".join(POOL_QUEUES[name]),

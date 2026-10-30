@@ -1,5 +1,7 @@
 # CMDB 与监控中心异步任务相互阻塞分析报告
 
+> 历史调研归档：本文针对旧 `dd39ab8c23`，不代表最新上游部署。当前182项任务、原生prefork和既有专用消费者见[最新清单](celery-current-task-inventory.md)，实施以[当前设计](../openspec/changes/isolate-celery-workload-runtime/design.md)为准。
+
 > 当前实施设计以 [统一弹性架构计划](../openspec/changes/isolate-celery-workload-runtime/design.md) 与 [实施任务](../openspec/changes/isolate-celery-workload-runtime/tasks.md) 为准：四类独立执行池、可配置 MIN/MAX、所有 MAX 的总预算约束，仅改运行架构。本文保留前期调查与方案比较；其中旧拓扑、固定并发和业务优化建议不构成本次实施要求。
 
 > 历史方案说明：针对整机 16–32GB 曾在[全量任务与资源隔离报告](celery-task-inventory-and-resource-isolation.md)比较三个固定线程池方案；后续已按用户确认改为四池统一弹性配置。实际实施与内存预算以上述 OpenSpec 设计为准。

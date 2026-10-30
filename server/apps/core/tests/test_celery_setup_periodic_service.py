@@ -215,7 +215,7 @@ class TestEarlyReturns:
         assert not skip_periodic_sync.get()
         update.assert_not_called()
 
-    @pytest.mark.parametrize("command", ["celery_runtime_report", "celery_routes", "celery_prefork_check"])
+    @pytest.mark.parametrize("command", ["celery_runtime_report", "celery_routes"])
     def test_runtime_commands_do_not_sync_schedules(self, mocker, command):
         fake_sys = mocker.MagicMock()
         fake_sys.modules = {}

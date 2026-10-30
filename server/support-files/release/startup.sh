@@ -1,8 +1,3 @@
-# 纯本地容量配置校验；避免错误配置启动无界消费者，不访问外部服务。
-SUPERVISOR_CONF_DIR=${SUPERVISOR_CONF_DIR:-/etc/supervisor/conf.d}
-python3 -m apps.core.celery_runtime.launcher --supervisor "$SUPERVISOR_CONF_DIR/celery.conf" || exit 1
-rm -f "$SUPERVISOR_CONF_DIR/beat.conf"
-
 if python3 manage.py migrate; then
     :
 else
@@ -68,6 +63,12 @@ export CELERY_MAX_MEMORY_PER_CHILD=${CELERY_MAX_MEMORY_PER_CHILD:-512000}
 export DASHBOARD_REPORT_RENDER_CONCURRENCY=${DASHBOARD_REPORT_RENDER_CONCURRENCY:-2}
 export OPSPILOT_CELERY_CONCURRENCY=${OPSPILOT_CELERY_CONCURRENCY:-2}
 export NATS_NUMPROCS=${NATS_NUMPROCS:-4}
+
+# 校验时使用与专用消费者相同的已导出配置，避免 .env 与 shell 默认值造成预算偏差。
+export INSTALL_APPS
+# 纯本地容量配置校验；避免错误配置启动无界消费者，不访问外部服务。
+python3 -m apps.core.celery_runtime.launcher --supervisor "$SUPERVISOR_CONF_DIR/celery.conf" || exit 1
+rm -f "$SUPERVISOR_CONF_DIR/beat.conf"
 
 echo "进程配置:"
 echo "  APP_WORKERS=$APP_WORKERS"

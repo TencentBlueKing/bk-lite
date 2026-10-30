@@ -10,7 +10,7 @@ pytestmark = pytest.mark.unit
 
 
 def runtime_env(**overrides):
-    env = {"ENABLE_CELERY": "true", "CELERY_TOTAL_CONCURRENCY_LIMIT": "7"}
+    env = {"ENABLE_CELERY": "true", "CELERY_TOTAL_CONCURRENCY_LIMIT": "12"}
     for pool, maximum in (("CRITICAL", 2), ("NOTIFICATION", 2), ("STATE", 2), ("BACKGROUND", 1)):
         env[f"CELERY_{pool}_MIN"] = "1"
         env[f"CELERY_{pool}_MAX"] = str(maximum)
@@ -23,7 +23,7 @@ def test_four_consumers_have_independent_bounded_capacity():
     assert [c[c.index("-Q") + 1] for c in commands] == ["critical", "notification", "state", "background,celery"]
     assert all("--autoscale=2,1" in c for c in commands[:3])
     assert "--autoscale=1,1" in commands[3]
-    assert config.maximum_concurrency == 7
+    assert config.maximum_concurrency == 12
 
 
 @pytest.mark.parametrize(
@@ -46,14 +46,14 @@ def test_invalid_or_over_budget_configuration_fails_before_start(overrides):
 
 
 def test_budget_counts_all_replicas_at_maximum():
-    config = RuntimeConfig.from_env(runtime_env(CELERY_WORKER_REPLICAS="2", CELERY_TOTAL_CONCURRENCY_LIMIT="14", CELERY_RUN_BEAT="false"))
-    assert config.maximum_concurrency == 14
+    config = RuntimeConfig.from_env(runtime_env(CELERY_WORKER_REPLICAS="2", CELERY_TOTAL_CONCURRENCY_LIMIT="24", CELERY_RUN_BEAT="false"))
+    assert config.maximum_concurrency == 24
     assert "[program:beat]" not in config.supervisor_config()
 
 
 def test_multiple_replicas_require_explicit_beat_owner():
     with pytest.raises(ValueError, match="CELERY_RUN_BEAT"):
-        RuntimeConfig.from_env(runtime_env(CELERY_WORKER_REPLICAS="2", CELERY_TOTAL_CONCURRENCY_LIMIT="14"))
+        RuntimeConfig.from_env(runtime_env(CELERY_WORKER_REPLICAS="2", CELERY_TOTAL_CONCURRENCY_LIMIT="24"))
 
 
 def test_missing_budget_is_not_inferred_from_cpu_count():
@@ -91,3 +91,11 @@ def test_supervisor_has_only_four_workers_and_one_beat():
 def test_unknown_pool_is_rejected():
     with pytest.raises(ValueError):
         RuntimeConfig.from_env(runtime_env()).worker_args("typo")
+
+
+def test_existing_specialized_workers_count_towards_total_budget():
+    env = runtime_env(INSTALL_APPS="", CELERY_TOTAL_CONCURRENCY_LIMIT="11")
+    with pytest.raises(ValueError, match="预算|总和"):
+        RuntimeConfig.from_env(env)
+    config = RuntimeConfig.from_env(env | {"CELERY_TOTAL_CONCURRENCY_LIMIT": "12"})
+    assert config.maximum_concurrency == 12
