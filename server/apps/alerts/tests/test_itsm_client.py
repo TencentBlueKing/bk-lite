@@ -38,13 +38,34 @@ def response(body, status=200):
     return result
 
 
+def workflow_body(layout):
+    return {"result": True, "code": "20000", "data": {"items": [{"form_canvas_data": {"form_data": {"layout": layout}}}]}}
+
+
+def create_calls(http):
+    """建单前会只读拉取表单；是否重复建单只看 POST。"""
+    return [call for call in http.call_args_list if call.args[0] == "POST"]
+
+
+SELECT_LAYOUT = [
+    {"type": "text", "key": "ticket__title", "title": {"value": "标题"}},
+    {
+        "type": "select",
+        "key": "device",
+        "title": {"value": "设备类型"},
+        "optionList": [{"key": "XUANXIANG1", "name": "笔记本"}, {"key": "XUANXIANG2", "name": "台式机"}],
+    },
+    {"type": "checkbox", "key": "tags", "optionList": [{"key": "a", "name": "甲"}, {"key": "b", "name": "乙"}]},
+]
+
+
 def test_create_preserves_long_id_and_does_not_retry(connection, monkeypatch):
     monkeypatch.setenv("TEST_ITSM_TOKEN", "SENSITIVE-SENTINEL")
     with patch(
         "requests.Session.request", return_value=response({"result": True, "code": "20000", "data": {"id": 102026090716182700005102}})
     ) as http:
         assert ItsmClient(connection).create("workflow", {"ticket__title": "CPU 告警"}) == "102026090716182700005102"
-        assert http.call_count == 1
+        assert [call.args[0] for call in http.call_args_list] == ["GET", "POST"]
         assert http.call_args.args[1] == NATIVE_ROOT + "/ticket/create/"
         assert http.call_args.kwargs["json"]["is_submit"] is True
         assert http.call_args.kwargs["allow_redirects"] is False
@@ -181,7 +202,7 @@ def test_connection_failure_has_actionable_safe_reason(connection, monkeypatch, 
     assert expected in str(error.value)
     assert "SENSITIVE-SENTINEL" not in str(error.value)
     assert error.value.outcome == outcome
-    http.assert_called_once()
+    assert len(create_calls(http)) == (1 if operation == "create" else 0)
 
 
 @pytest.mark.parametrize("status,expected", [(401, "认证失败"), (403, "权限不足"), (404, "接口不存在"), (302, "重定向"), (503, "服务异常")])
@@ -210,7 +231,31 @@ def test_non_json_success_response_does_not_leak_or_allow_blind_retry(connection
     assert "JSON" in str(error.value)
     assert "SENSITIVE-SENTINEL" not in str(error.value)
     assert error.value.outcome == outcome
-    http.assert_called_once()
+    assert http.call_args.args[0] == ("POST" if operation == "create" else "GET")
+    assert http.call_count == (2 if operation == "create" else 1)
+
+
+def test_create_sends_selected_options_and_accepts_option_names(connection, monkeypatch):
+    monkeypatch.setenv("TEST_ITSM_TOKEN", "secret")
+    created = response({"result": True, "code": "20000", "data": {"id": "t-1"}})
+    with patch("requests.Session.request", side_effect=[response(workflow_body(SELECT_LAYOUT)), created]) as http:
+        ItsmClient(connection).create("wf-1", {"ticket__title": "CPU 告警", "device": "台式机", "tags": ["a", "乙"]})
+    assert http.call_args_list[0].args[1] == NATIVE_ROOT + "/workflows/?workflow_keys=wf-1"
+    payload = http.call_args.kwargs["json"]
+    assert payload["form_data"] == {"ticket__title": "CPU 告警", "device": "XUANXIANG2", "tags": ["a", "b"]}
+    assert payload["options"] == {
+        "device": [{"key": "XUANXIANG2", "name": "台式机", "parent": None}],
+        "tags": [{"key": "a", "name": "甲", "parent": None}, {"key": "b", "name": "乙", "parent": None}],
+    }
+
+
+def test_create_still_submits_when_form_layout_unavailable(connection, monkeypatch):
+    monkeypatch.setenv("TEST_ITSM_TOKEN", "secret")
+    created = response({"result": True, "code": "20000", "data": {"id": "t-1"}})
+    with patch("requests.Session.request", side_effect=[response({}, 503), created]) as http:
+        assert ItsmClient(connection).create("wf-1", {"ticket__title": "CPU 告警", "device": "XUANXIANG2"}) == "t-1"
+    assert http.call_args.kwargs["json"]["options"] == {}
+    assert http.call_args.kwargs["json"]["form_data"]["device"] == "XUANXIANG2"
 
 
 def test_form_fields_read_layout_from_workflow_version(connection, monkeypatch):
@@ -224,8 +269,30 @@ def test_form_fields_read_layout_from_workflow_version(connection, monkeypatch):
                     "form_canvas_data": {
                         "form_data": {
                             "layout": [
-                                {"type": "row", "children": [{"type": "input", "key": "ticket__title", "name": "标题"}]},
-                                {"type": "textarea", "key": "content", "label": "描述"},
+                                {
+                                    "type": "row",
+                                    "children": [
+                                        {
+                                            "type": "input",
+                                            "key": "ticket__title",
+                                            "name": "标题",
+                                            "verification": {"required": {"value": True}},
+                                        }
+                                    ],
+                                },
+                                {
+                                    "type": "textarea",
+                                    "key": "content",
+                                    "label": "描述",
+                                    "verification": {"required": {"value": True, "enabled": False}},
+                                },
+                                {"type": "richText", "key": "reason", "title": {"value": "申请理由", "isHide": False}},
+                                {
+                                    "type": "select",
+                                    "key": "urgency",
+                                    "title": {"value": "紧急度"},
+                                    "optionList": [{"key": "p1", "name": "高"}, {"name": "无 key"}, {"key": "p2"}],
+                                },
                             ]
                         }
                     },
@@ -237,8 +304,16 @@ def test_form_fields_read_layout_from_workflow_version(connection, monkeypatch):
         fields = ItsmClient(connection).form_fields("wf-1")
     assert http.call_args.args[1] == NATIVE_ROOT + "/workflows/?workflow_keys=wf-1"
     assert fields == [
-        {"key": "ticket__title", "name": "标题", "type": "input"},
-        {"key": "content", "name": "描述", "type": "textarea"},
+        {"key": "ticket__title", "name": "标题", "type": "input", "required": True, "options": []},
+        {"key": "content", "name": "描述", "type": "textarea", "required": False, "options": []},
+        {"key": "reason", "name": "申请理由", "type": "richText", "required": False, "options": []},
+        {
+            "key": "urgency",
+            "name": "紧急度",
+            "type": "select",
+            "required": False,
+            "options": [{"key": "p1", "name": "高"}, {"key": "p2", "name": "p2"}],
+        },
     ]
 
 

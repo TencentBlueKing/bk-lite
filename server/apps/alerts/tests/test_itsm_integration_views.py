@@ -2,7 +2,7 @@ from unittest.mock import patch
 
 import pytest
 
-from apps.alerts.tests.test_itsm_client import response
+from apps.alerts.tests.test_itsm_client import create_calls, response, workflow_body
 from apps.alerts.tests.test_itsm_views import configured_api_client, superuser_client  # noqa: F401
 
 BASE = "/api/v1/alerts/api/itsm_integration/"
@@ -255,6 +255,8 @@ def test_db_config_drives_creation_and_target_cannot_change_while_sending(itsm_a
     link = prepare(a)
 
     def remote(*args, **kwargs):
+        if args[0] == "GET":
+            return response(workflow_body([]))
         changed = payload()
         changed["url"] = "https://changed.example/api"
         changed["token"] = "REPLACEMENT-TOKEN"
@@ -267,7 +269,7 @@ def test_db_config_drives_creation_and_target_cannot_change_while_sending(itsm_a
     ) as http:
         execute_creation(link.current_execution_id)
         execute_creation(link.current_execution_id)
-        assert http.call_count == 1
+        assert len(create_calls(http)) == 1
     link.refresh_from_db()
     assert link.ticket_id == "actual-123"
 
