@@ -1,8 +1,8 @@
 import time
 from concurrent.futures import ThreadPoolExecutor
 
-from apps.system_mgmt.providers.log import logger
 from apps.system_mgmt.providers.base import BaseUserSyncAdapter
+from apps.system_mgmt.providers.log import logger
 from apps.system_mgmt.providers.runtime import CapabilityExecutionResult
 
 from .client import (
@@ -13,14 +13,92 @@ from .client import (
     FEISHU_DEPARTMENT_CHILDREN_MAX_WORKERS,
     FEISHU_DEPARTMENTS_BATCH_URL,
     FEISHU_USERS_BY_DEPARTMENT_URL,
+    _feishu_get_paginated,
     _fetch_company_root_children,
     _fetch_department_children,
-    _feishu_get_paginated,
     _fetch_tenant_access_token,
     _get_config_value,
     _get_feishu_department_identifier,
     _request_tenant_access_token,
 )
+
+FEISHU_SYNC_USER_FIELDS = "department_ids,user_id,open_id,name,email,mobile," "job_title,employee_no,job_level_id,leader_user_id,status,custom_attrs"
+_FEISHU_RESERVED_USER_KEYS = frozenset(
+    {
+        "user_id",
+        "open_id",
+        "name",
+        "email",
+        "mobile",
+        "job_title",
+        "employee_no",
+        "job_level_id",
+        "leader_user_id",
+        "is_resigned",
+        "is_frozen",
+        "department_ids",
+    }
+)
+
+
+def _feishu_flag(value):
+    if value is True:
+        return "true"
+    if value is False:
+        return "false"
+    return ""
+
+
+def _feishu_profile(item):
+    status = item.get("status") if isinstance(item.get("status"), dict) else {}
+    return {
+        "job_title": str(item.get("job_title") or ""),
+        "employee_no": str(item.get("employee_no") or ""),
+        "job_level_id": str(item.get("job_level_id") or ""),
+        "leader_user_id": str(item.get("leader_user_id") or ""),
+        "is_resigned": _feishu_flag(status.get("is_resigned")),
+        "is_frozen": _feishu_flag(status.get("is_frozen")),
+    }
+
+
+def _feishu_custom_attr_text(attr):
+    value = attr.get("value") if isinstance(attr.get("value"), dict) else {}
+    generic_user = value.get("generic_user") if isinstance(value.get("generic_user"), dict) else {}
+    for candidate in (value.get("text"), value.get("option_value"), value.get("url"), generic_user.get("id")):
+        text = str(candidate or "").strip()
+        if text:
+            return text
+    return ""
+
+
+def _feishu_custom_fields(item):
+    attrs = item.get("custom_attrs")
+    if not isinstance(attrs, list):
+        return {}
+    fields = {}
+    for attr in attrs:
+        if not isinstance(attr, dict):
+            continue
+        attr_id = str(attr.get("id") or "").strip()
+        if not attr_id or attr_id in _FEISHU_RESERVED_USER_KEYS or attr_id in fields:
+            continue
+        text = _feishu_custom_attr_text(attr)
+        if text:
+            fields[attr_id] = text
+    return fields
+
+
+def _feishu_user_record(item):
+    return {
+        "user_id": item.get("user_id", ""),
+        "open_id": item.get("open_id", ""),
+        "name": item.get("name", ""),
+        "email": item.get("email", ""),
+        "mobile": item.get("mobile", ""),
+        **_feishu_profile(item),
+        **_feishu_custom_fields(item),
+        "department_ids": [str(value) for value in item.get("department_ids") or []],
+    }
 
 
 class FeishuUserSyncAdapter(BaseUserSyncAdapter):
@@ -38,7 +116,7 @@ class FeishuUserSyncAdapter(BaseUserSyncAdapter):
         return _request_tenant_access_token(config, capability_key)
 
     @classmethod
-    def list_departments(cls, config: dict, provider_key: str, capability_key: str, **kwargs):
+    def list_departments(cls, config: dict, provider_key: str, capability_key: str, **kwargs):  # noqa: C901
         operation_started_at = time.perf_counter()
         source = kwargs.get("source")
         business_config = kwargs.get("business_config") or {}
@@ -124,7 +202,7 @@ class FeishuUserSyncAdapter(BaseUserSyncAdapter):
                     _get_config_value(config, "user_sync_departments_batch_url", FEISHU_DEPARTMENTS_BATCH_URL),
                     tenant_access_token,
                     params={
-                        "department_ids": scope_root_ids[start:start + 50],
+                        "department_ids": scope_root_ids[start : start + 50],
                         **({"department_id_type": department_id_type} if department_id_type else {}),
                     },
                     config=config,
@@ -139,16 +217,12 @@ class FeishuUserSyncAdapter(BaseUserSyncAdapter):
             children_params = {**department_params, "fetch_child": "true"}
 
             def fetch_children(scope_root_id: str):
-                child_payload, child_error = _fetch_department_children(
-                    config, tenant_access_token, scope_root_id, children_params
-                )
+                child_payload, child_error = _fetch_department_children(config, tenant_access_token, scope_root_id, children_params)
                 return scope_root_id, child_payload, child_error
 
             children_started_at = time.perf_counter()
             if scope_root_ids:
-                with ThreadPoolExecutor(
-                    max_workers=min(FEISHU_DEPARTMENT_CHILDREN_MAX_WORKERS, len(scope_root_ids))
-                ) as executor:
+                with ThreadPoolExecutor(max_workers=min(FEISHU_DEPARTMENT_CHILDREN_MAX_WORKERS, len(scope_root_ids))) as executor:
                     child_requests = [executor.submit(fetch_children, scope_root_id) for scope_root_id in scope_root_ids]
                     for child_request in child_requests:
                         _scope_root_id, child_payload, error = child_request.result()
@@ -202,17 +276,17 @@ class FeishuUserSyncAdapter(BaseUserSyncAdapter):
             }
 
         total_duration_ms = round((time.perf_counter() - operation_started_at) * 1000)
-        server_timing = ", ".join([
-            f"feishu-token;dur={token_duration_ms}",
-            f"feishu-company-root;dur={company_root_duration_ms}",
-            f"feishu-scopes;dur={scopes_duration_ms}",
-            f"feishu-root-details;dur={root_details_duration_ms}",
-            f"feishu-children;dur={children_duration_ms}",
-            f"feishu-total;dur={total_duration_ms}",
-        ])
-        logger.debug(
-            f"Feishu department options timing: roots={len(scope_root_ids)}, {server_timing}"
+        server_timing = ", ".join(
+            [
+                f"feishu-token;dur={token_duration_ms}",
+                f"feishu-company-root;dur={company_root_duration_ms}",
+                f"feishu-scopes;dur={scopes_duration_ms}",
+                f"feishu-root-details;dur={root_details_duration_ms}",
+                f"feishu-children;dur={children_duration_ms}",
+                f"feishu-total;dur={total_duration_ms}",
+            ]
         )
+        logger.debug(f"Feishu department options timing: roots={len(scope_root_ids)}, {server_timing}")
         return CapabilityExecutionResult.success_result(
             "Feishu department options loaded",
             payload={
@@ -249,9 +323,7 @@ class FeishuUserSyncAdapter(BaseUserSyncAdapter):
         if department_id_type:
             dept_params["department_id_type"] = department_id_type
 
-        department_payload, error = _fetch_department_children(
-            config, tenant_access_token, root_department_id, dept_params
-        )
+        department_payload, error = _fetch_department_children(config, tenant_access_token, root_department_id, dept_params)
         if error:
             return error
 
@@ -279,7 +351,7 @@ class FeishuUserSyncAdapter(BaseUserSyncAdapter):
                 "department_id": department_id,
                 "fetch_child": "true",
                 "page_size": 50,
-                "fields": "department_ids,user_id,open_id,name,email,mobile",
+                "fields": FEISHU_SYNC_USER_FIELDS,
             }
             if user_id_type:
                 user_params["user_id_type"] = user_id_type
@@ -303,28 +375,17 @@ class FeishuUserSyncAdapter(BaseUserSyncAdapter):
                 user_identity = str(user_identity)
                 existing_user = users_by_identity.get(user_identity)
                 if existing_user is None:
-                    users_by_identity[user_identity] = dict(item)
+                    users_by_identity[user_identity] = _feishu_user_record(item)
                     continue
 
                 existing_department_ids = existing_user.get("department_ids") or []
                 merged_department_ids = dict.fromkeys([*existing_department_ids, *(item.get("department_ids") or [])])
-                existing_user["department_ids"] = list(merged_department_ids)
+                existing_user["department_ids"] = [str(value) for value in merged_department_ids]
+                for key, value in {**_feishu_profile(item), **_feishu_custom_fields(item)}.items():
+                    if value and not existing_user.get(key):
+                        existing_user[key] = value
 
-        user_list = []
-        for item in users_by_identity.values():
-            user_id = item.get("user_id") or item.get("open_id")
-            if not user_id:
-                continue
-            user_list.append(
-                {
-                    "user_id": item.get("user_id", ""),
-                    "open_id": item.get("open_id", ""),
-                    "name": item.get("name", ""),
-                    "email": item.get("email", ""),
-                    "mobile": item.get("mobile", ""),
-                    "department_ids": [str(value) for value in item.get("department_ids") or []],
-                }
-            )
+        user_list = [item for item in users_by_identity.values() if item.get("user_id") or item.get("open_id")]
 
         return CapabilityExecutionResult.success_result(
             f"Feishu user sync payload fetched for source '{getattr(source, 'name', '')}'",
