@@ -496,7 +496,7 @@ const TemplateConfigDrawer = forwardRef<
               {selectedPlugin && (
                 <div className="space-y-4">
                   {/* 标题和标签 */}
-                  <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-center justify-between gap-3">
                     <div className="flex min-w-0 items-center gap-2 flex-wrap">
                       <span className="text-sm text-[var(--color-text-2)]">
                         {selectedPlugin.collector
@@ -551,7 +551,7 @@ const TemplateConfigDrawer = forwardRef<
                       <Button
                         type="primary"
                         danger
-                        className="shrink-0"
+                        className="shrink-0 inline-flex items-center justify-center"
                         onClick={(event) =>
                           requestUnbind(event, selectedPlugin)
                         }
