@@ -10,7 +10,7 @@ from apps.alerts.models.action import ActionExecution, ActionRule
 from apps.alerts.models.itsm import AlertItsmTicket
 from apps.alerts.models.models import Alert
 from apps.alerts.models.outbox import AlertOutbox
-from apps.alerts.tests.test_itsm_client import itsm_connection, response  # noqa: F401
+from apps.alerts.tests.test_itsm_client import create_calls, itsm_connection, response  # noqa: F401
 
 
 @pytest.fixture(name="setup_itsm")
@@ -66,7 +66,7 @@ def test_first_matching_rule_and_creation_snapshot_survive_dispatch(setup_itsm):
     ) as http:
         execute_creation(link.current_execution_id)
         execute_creation(link.current_execution_id)
-        assert http.call_count == 1
+        assert len(create_calls(http)) == 1
     link.refresh_from_db()
     a.refresh_from_db()
     assert link.ticket_id == "102026090716182700005102"

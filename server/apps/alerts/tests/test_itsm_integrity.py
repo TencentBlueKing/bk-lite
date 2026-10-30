@@ -14,7 +14,7 @@ from apps.alerts.models.action import ActionExecution
 from apps.alerts.models.itsm import AlertItsmTicket
 from apps.alerts.models.outbox import AlertOutbox
 from apps.alerts.service.outbox import deliver_outbox_record
-from apps.alerts.tests.test_itsm_client import response
+from apps.alerts.tests.test_itsm_client import create_calls, response, workflow_body
 from apps.alerts.tests.test_itsm_service import alert, configure_itsm, itsm_connection, prepare, rule  # noqa: F401
 from apps.alerts.tests.test_itsm_sync import closed_response, linked
 
@@ -62,6 +62,8 @@ def test_interleaved_delivery_and_manual_retry_do_not_resend(setup_itsm):
     link = prepare(a)
 
     def remote(*args, **kwargs):
+        if args[0] == "GET":
+            return response(workflow_body([]))
         execute_creation(link.current_execution_id)
         current, created = retry_creation(a.pk, r.pk, "alice", "other-key", [1])
         assert not created and current.pk == link.current_execution_id
@@ -69,7 +71,7 @@ def test_interleaved_delivery_and_manual_retry_do_not_resend(setup_itsm):
 
     with patch("requests.Session.request", side_effect=remote) as http:
         execute_creation(link.current_execution_id)
-        assert http.call_count == 1
+        assert len(create_calls(http)) == 1
     assert ActionExecution.objects.filter(alert=a).count() == 1
 
 
@@ -101,7 +103,7 @@ def test_outbox_restores_committed_pending_execution(setup_itsm):
     with patch("requests.Session.request", return_value=response({"result": True, "code": "20000", "data": {"id": "123"}})) as http:
         deliver_outbox_record(pending.pk)
         deliver_outbox_record(pending.pk)
-        assert http.call_count == 1
+        assert len(create_calls(http)) == 1
     link.refresh_from_db()
     assert link.ticket_id == "123"
 
