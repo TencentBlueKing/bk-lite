@@ -1,4 +1,10 @@
-FROM python:3.12 AS community
+FROM python:3.12-trixie AS community
+
+# CVE-2026-111497：更新系统解码库；软件源未提供补丁时禁止生成发行镜像。
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends libbrotli1 && \
+    dpkg --compare-versions "$(dpkg-query -W -f='${Version}' libbrotli1)" ge '1.1.0-2+deb13u1' && \
+    rm -rf /var/lib/apt/lists/*
 
 ARG NEXUS_PYTHON_REPOSITY
 

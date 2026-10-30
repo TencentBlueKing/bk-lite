@@ -1,5 +1,11 @@
 FROM ubuntu:24.04
 
+# CVE-2026-111497：更新系统解码库；软件源未提供补丁时禁止生成发行镜像。
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends libbrotli1 && \
+    dpkg --compare-versions "$(dpkg-query -W -f='${Version}' libbrotli1)" ge '1.1.0-2ubuntu0.1' && \
+    rm -rf /var/lib/apt/lists/*
+
 ENV SERVER_URL ""
 ENV SERVER_API_TOKEN ""
 ENV SIDECAR_ZONE "default"
