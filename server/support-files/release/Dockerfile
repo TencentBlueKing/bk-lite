@@ -18,7 +18,6 @@ WORKDIR /apps
 
 ADD ./support-files/release/supervisor/app.conf  /etc/supervisor/conf.d/app.conf
 ADD ./support-files/release/supervisor/nats.conf  /etc/supervisor/conf.d/nats.conf
-ADD ./support-files/release/supervisor/beat.conf  /etc/supervisor/conf.d/beat.conf
 ADD ./support-files/release/supervisor/celery.conf  /etc/supervisor/conf.d/celery.conf
 ADD ./support-files/release/supervisor/patch_maintenance.conf  /etc/supervisor/conf.d/patch_maintenance.conf
 ADD ./support-files/release/supervisor/dashboard_report_render_worker.conf  /etc/supervisor/conf.d/dashboard_report_render_worker.conf

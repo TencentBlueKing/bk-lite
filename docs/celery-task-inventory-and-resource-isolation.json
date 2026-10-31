@@ -1,0 +1,2803 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-30",
+  "baseline": "dd39ab8c23dcbf29b0548e2a9347bb24c9880fe3",
+  "scope": "仓库自定义Celery装饰任务定义，不等于线上注册/活跃任务；风险为静态判断",
+  "counts": {
+    "I": 11,
+    "C": 17,
+    "B": 51,
+    "U": 4,
+    "A": 5
+  },
+  "tasks": [
+    {
+      "path": "server/apps/alerts/tasks/action_tasks.py",
+      "line": 11,
+      "name": "process_alert_actions",
+      "decorators": [
+        "shared_task"
+      ],
+      "module": "alerts",
+      "task_name": "apps.alerts.tasks.action_tasks.process_alert_actions",
+      "purpose": "匹配动作规则并RPC触发作业",
+      "trigger": "告警生命周期事件",
+      "realtime": "高",
+      "duration_risk": "中",
+      "concurrency_risk": "高",
+      "memory_risk": "中",
+      "execution_class": "I",
+      "default_pool": "I",
+      "status": "有生产触发证据",
+      "references": [
+        {
+          "path": "server/apps/alerts/action/engine.py",
+          "line": 34,
+          "text": "process_alert_actions.delay(alert_id, event_name)"
+        }
+      ]
+    },
+    {
+      "path": "server/apps/alerts/tasks/tasks.py",
+      "line": 33,
+      "name": "event_aggregation_alert",
+      "decorators": [
+        "shared_task"
+      ],
+      "module": "alerts",
+      "task_name": "apps.alerts.tasks.tasks.event_aggregation_alert",
+      "purpose": "聚合事件、检查会话超时",
+      "trigger": "静态：每分钟",
+      "realtime": "高",
+      "duration_risk": "高",
+      "concurrency_risk": "中",
+      "memory_risk": "高",
+      "execution_class": "C",
+      "default_pool": "C",
+      "status": "有生产触发证据",
+      "references": [
+        {
+          "path": "server/apps/alerts/config.py",
+          "line": 8,
+          "text": "\"event_aggregation_alert\": {"
+        },
+        {
+          "path": "server/apps/alerts/config.py",
+          "line": 9,
+          "text": "\"task\": \"apps.alerts.tasks.tasks.event_aggregation_alert\","
+        }
+      ]
+    },
+    {
+      "path": "server/apps/alerts/tasks/tasks.py",
+      "line": 70,
+      "name": "beat_close_alert",
+      "decorators": [
+        "shared_task"
+      ],
+      "module": "alerts",
+      "task_name": "apps.alerts.tasks.tasks.beat_close_alert",
+      "purpose": "自动关闭兜底",
+      "trigger": "静态：每5分钟",
+      "realtime": "高",
+      "duration_risk": "中",
+      "concurrency_risk": "中",
+      "memory_risk": "中",
+      "execution_class": "C",
+      "default_pool": "C",
+      "status": "有生产触发证据",
+      "references": [
+        {
+          "path": "server/apps/alerts/config.py",
+          "line": 12,
+          "text": "\"beat_close_alert\": {"
+        },
+        {
+          "path": "server/apps/alerts/config.py",
+          "line": 13,
+          "text": "\"task\": \"apps.alerts.tasks.tasks.beat_close_alert\","
+        }
+      ]
+    },
+    {
+      "path": "server/apps/alerts/tasks/tasks.py",
+      "line": 92,
+      "name": "check_and_send_reminders",
+      "decorators": [
+        "shared_task"
+      ],
+      "module": "alerts",
+      "task_name": "apps.alerts.tasks.tasks.check_and_send_reminders",
+      "purpose": "查询到期提醒并投递通知",
+      "trigger": "静态：每分钟",
+      "realtime": "高",
+      "duration_risk": "高",
+      "concurrency_risk": "高",
+      "memory_risk": "中",
+      "execution_class": "C",
+      "default_pool": "C",
+      "status": "有生产触发证据",
+      "references": [
+        {
+          "path": "server/apps/alerts/config.py",
+          "line": 16,
+          "text": "\"check_and_send_reminders\": {"
+        },
+        {
+          "path": "server/apps/alerts/config.py",
+          "line": 17,
+          "text": "\"task\": \"apps.alerts.tasks.tasks.check_and_send_reminders\","
+        }
+      ]
+    },
+    {
+      "path": "server/apps/alerts/tasks/tasks.py",
+      "line": 113,
+      "name": "cleanup_reminder_tasks",
+      "decorators": [
+        "shared_task"
+      ],
+      "module": "alerts",
+      "task_name": "apps.alerts.tasks.tasks.cleanup_reminder_tasks",
+      "purpose": "清理提醒和升级记录",
+      "trigger": "静态：每小时",
+      "realtime": "低",
+      "duration_risk": "中",
+      "concurrency_risk": "低",
+      "memory_risk": "中",
+      "execution_class": "B",
+      "default_pool": "B",
+      "status": "有生产触发证据",
+      "references": [
+        {
+          "path": "server/apps/alerts/config.py",
+          "line": 20,
+          "text": "\"cleanup_reminder_tasks\": {"
+        },
+        {
+          "path": "server/apps/alerts/config.py",
+          "line": 21,
+          "text": "\"task\": \"apps.alerts.tasks.tasks.cleanup_reminder_tasks\","
+        }
+      ]
+    },
+    {
+      "path": "server/apps/alerts/tasks/tasks.py",
+      "line": 132,
+      "name": "check_and_send_escalations",
+      "decorators": [
+        "shared_task"
+      ],
+      "module": "alerts",
+      "task_name": "apps.alerts.tasks.tasks.check_and_send_escalations",
+      "purpose": "查询活跃升级并推进层级",
+      "trigger": "静态：每分钟",
+      "realtime": "高",
+      "duration_risk": "高",
+      "concurrency_risk": "高",
+      "memory_risk": "中",
+      "execution_class": "C",
+      "default_pool": "C",
+      "status": "有生产触发证据",
+      "references": [
+        {
+          "path": "server/apps/alerts/config.py",
+          "line": 24,
+          "text": "\"check_and_send_escalations\": {"
+        },
+        {
+          "path": "server/apps/alerts/config.py",
+          "line": 25,
+          "text": "\"task\": \"apps.alerts.tasks.tasks.check_and_send_escalations\","
+        }
+      ]
+    },
+    {
+      "path": "server/apps/alerts/tasks/tasks.py",
+      "line": 150,
+      "name": "async_auto_assignment_for_alerts",
+      "decorators": [
+        "shared_task"
+      ],
+      "module": "alerts",
+      "task_name": "apps.alerts.tasks.tasks.async_auto_assignment_for_alerts",
+      "purpose": "告警自动分派，大列表拆片再投递",
+      "trigger": "聚合/即时告警/超时恢复",
+      "realtime": "高",
+      "duration_risk": "高",
+      "concurrency_risk": "高",
+      "memory_risk": "中",
+      "execution_class": "C",
+      "default_pool": "C",
+      "status": "有生产触发证据",
+      "references": [
+        {
+          "path": "server/apps/alerts/aggregation/recovery/timeout_checker.py",
+          "line": 65,
+          "text": "async_auto_assignment_for_alerts.delay([alert.alert_id])"
+        },
+        {
+          "path": "server/apps/alerts/aggregation/recovery/timeout_checker.py",
+          "line": 90,
+          "text": "async_auto_assignment_for_alerts.delay(unique_alert_ids)"
+        },
+        {
+          "path": "server/apps/alerts/aggregation/processor/instant_dispatcher.py",
+          "line": 252,
+          "text": "async_auto_assignment_for_alerts.name,"
+        },
+        {
+          "path": "server/apps/alerts/aggregation/processor/aggregation_processor.py",
+          "line": 690,
+          "text": "current_app.send_task(async_auto_assignment_for_alerts.name, args=[alert_ids])"
+        }
+      ]
+    },
+    {
+      "path": "server/apps/alerts/tasks/tasks.py",
+      "line": 220,
+      "name": "build_instant_alerts",
+      "decorators": [
+        "shared_task(autoretry_for=(Exception,), retry_backoff=True, retry_kwargs={'max_retries': 3})"
+      ],
+      "module": "alerts",
+      "task_name": "apps.alerts.tasks.tasks.build_instant_alerts",
+      "purpose": "批量构建即时告警并投递分派",
+      "trigger": "即时命中超过阈值",
+      "realtime": "高",
+      "duration_risk": "高",
+      "concurrency_risk": "高",
+      "memory_risk": "高",
+      "execution_class": "C",
+      "default_pool": "C",
+      "status": "有生产触发证据",
+      "references": [
+        {
+          "path": "server/apps/alerts/aggregation/processor/instant_dispatcher.py",
+          "line": 10,
+          "text": "``build_instant_alerts`` 任务，以应对单次调用塞入大批事件的边界场景。"
+        },
+        {
+          "path": "server/apps/alerts/aggregation/processor/instant_dispatcher.py",
+          "line": 316,
+          "text": "current_app.send_task(build_instant_alerts.name, args=[payload])"
+        }
+      ]
+    },
+    {
+      "path": "server/apps/alerts/tasks/tasks.py",
+      "line": 255,
+      "name": "sync_notify",
+      "decorators": [
+        "shared_task"
+      ],
+      "module": "alerts",
+      "task_name": "apps.alerts.tasks.tasks.sync_notify",
+      "purpose": "遍历渠道参数执行通知并记结果",
+      "trigger": "分派/提醒/通知出口；也被直接调用",
+      "realtime": "高",
+      "duration_risk": "高",
+      "concurrency_risk": "高",
+      "memory_risk": "中",
+      "execution_class": "I",
+      "default_pool": "I",
+      "status": "有生产触发证据",
+      "references": [
+        {
+          "path": "server/apps/alerts/common/assignment.py",
+          "line": 442,
+          "text": "sync_notify.delay(params)"
+        },
+        {
+          "path": "server/apps/alerts/service/reminder_service.py",
+          "line": 438,
+          "text": "sync_notify.delay(channel_params)"
+        },
+        {
+          "path": "server/apps/alerts/service/alter_operator.py",
+          "line": 586,
+          "text": "格式化通知数据。走统一通知出口,返回 sync_notify 期望的 list[dict];"
+        },
+        {
+          "path": "server/apps/alerts/common/notify/dispatcher.py",
+          "line": 5,
+          "text": "1. build_channel_params：把 (接收人, 渠道列表, 告警) 构建为 sync_notify 期望的 list[dict]，一渠道一条；"
+        },
+        {
+          "path": "server/apps/alerts/common/notify/dispatcher.py",
+          "line": 28,
+          "text": "\"\"\"构建 sync_notify 入参(list[dict])。username_list 或 channels 为空 → 返回 []。"
+        },
+        {
+          "path": "server/apps/alerts/common/notify/dispatcher.py",
+          "line": 105,
+          "text": "logger.info(\"[AlertNotify] enqueue_notifications: 投递 sync_notify, 参数数=%s, 渠道=%s\", len(params), summary)"
+        },
+        {
+          "path": "server/apps/alerts/common/notify/dispatcher.py",
+          "line": 106,
+          "text": "sync_notify.delay(params)"
+        }
+      ]
+    },
+    {
+      "path": "server/apps/alerts/tasks/tasks.py",
+      "line": 305,
+      "name": "sync_shield",
+      "decorators": [
+        "shared_task"
+      ],
+      "module": "alerts",
+      "task_name": "apps.alerts.tasks.tasks.sync_shield",
+      "purpose": "批量事件屏蔽校验",
+      "trigger": "未发现生产调用",
+      "realtime": "高",
+      "duration_risk": "中",
+      "concurrency_risk": "高",
+      "memory_risk": "中",
+      "execution_class": "U",
+      "default_pool": "U",
+      "status": "待核实/无实际工作",
+      "references": []
+    },
+    {
+      "path": "server/apps/alerts/tasks/tasks.py",
+      "line": 322,
+      "name": "sync_no_dispatch_alert_notice_task",
+      "decorators": [
+        "shared_task"
+      ],
+      "module": "alerts",
+      "task_name": "apps.alerts.tasks.tasks.sync_no_dispatch_alert_notice_task",
+      "purpose": "查询未分派告警并同步通知",
+      "trigger": "动态：系统设置；任务名不一致",
+      "realtime": "高",
+      "duration_risk": "高",
+      "concurrency_risk": "中",
+      "memory_risk": "中",
+      "execution_class": "I",
+      "default_pool": "I",
+      "status": "动态周期任务名不一致",
+      "references": [
+        {
+          "path": "server/apps/alerts/views/system_setting.py",
+          "line": 112,
+          "text": "task = \"apps.alerts.tasks.sync_no_dispatch_alert_notice_task\""
+        }
+      ]
+    },
+    {
+      "path": "server/apps/cmdb/tasks/celery_tasks.py",
+      "line": 38,
+      "name": "sync_collect_task",
+      "decorators": [
+        "shared_task"
+      ],
+      "module": "cmdb",
+      "task_name": "apps.cmdb.tasks.celery_tasks.sync_collect_task",
+      "purpose": "采集、写实例和关联、保存结果",
+      "trigger": "动态采集周期/手工/补跑；亦可直调",
+      "realtime": "中",
+      "duration_risk": "高",
+      "concurrency_risk": "高",
+      "memory_risk": "高",
+      "execution_class": "B",
+      "default_pool": "B",
+      "status": "有生产触发证据",
+      "references": [
+        {
+          "path": "server/apps/cmdb/services/collect_dispatch_service.py",
+          "line": 65,
+          "text": "\"\"\"执行多凭据派发并返回兼容 sync_collect_task 的输出。\"\"\""
+        },
+        {
+          "path": "server/apps/cmdb/services/collect_dispatch_service.py",
+          "line": 170,
+          "text": "\"\"\"合并最终成功结果，保持 sync_collect_task 的消费口径。\"\"\""
+        },
+        {
+          "path": "server/apps/cmdb/services/collect_service.py",
+          "line": 31,
+          "text": "TASK = \"apps.cmdb.tasks.celery_tasks.sync_collect_task\""
+        },
+        {
+          "path": "server/apps/cmdb/services/collect_service.py",
+          "line": 32,
+          "text": "NAME = \"sync_collect_task\""
+        },
+        {
+          "path": "server/apps/cmdb/services/collect_service.py",
+          "line": 625,
+          "text": "sync_collect_task.delay(instance.id)"
+        },
+        {
+          "path": "server/apps/cmdb/services/collect_service.py",
+          "line": 627,
+          "text": "sync_collect_task(instance.id)"
+        }
+      ]
+    },
+    {
+      "path": "server/apps/cmdb/tasks/celery_tasks.py",
+      "line": 195,
+      "name": "sync_periodic_update_task_status",
+      "decorators": [
+        "shared_task"
+      ],
+      "module": "cmdb",
+      "task_name": "apps.cmdb.tasks.celery_tasks.sync_periodic_update_task_status",
+      "purpose": "批量收敛长期RUNNING采集状态",
+      "trigger": "静态：每5分钟",
+      "realtime": "高",
+      "duration_risk": "低",
+      "concurrency_risk": "低",
+      "memory_risk": "低",
+      "execution_class": "C",
+      "default_pool": "C",
+      "status": "有生产触发证据",
+      "references": [
+        {
+          "path": "server/apps/cmdb/config.py",
+          "line": 8,
+          "text": "\"sync_periodic_update_task_status\": {"
+        },
+        {
+          "path": "server/apps/cmdb/config.py",
+          "line": 9,
+          "text": "\"task\": \"apps.cmdb.tasks.celery_tasks.sync_periodic_update_task_status\","
+        }
+      ]
+    },
+    {
+      "path": "server/apps/cmdb/tasks/celery_tasks.py",
+      "line": 225,
+      "name": "sync_collect_credential_results_task",
+      "decorators": [
+        "shared_task"
+      ],
+      "module": "cmdb",
+      "task_name": "apps.cmdb.tasks.celery_tasks.sync_collect_credential_results_task",
+      "purpose": "旧凭据拉取入口，仅记录跳过",
+      "trigger": "未发现生产调用；已改NATS推送",
+      "realtime": "低",
+      "duration_risk": "低",
+      "concurrency_risk": "低",
+      "memory_risk": "低",
+      "execution_class": "U",
+      "default_pool": "U",
+      "status": "待核实/无实际工作",
+      "references": []
+    },
+    {
+      "path": "server/apps/cmdb/tasks/celery_tasks.py",
+      "line": 235,
+      "name": "sync_cmdb_display_fields_task",
+      "decorators": [
+        "shared_task"
+      ],
+      "module": "cmdb",
+      "task_name": "apps.cmdb.tasks.celery_tasks.sync_cmdb_display_fields_task",
+      "purpose": "用户/组织变更后更新实例显示字段",
+      "trigger": "系统管理变更触发",
+      "realtime": "低",
+      "duration_risk": "高",
+      "concurrency_risk": "中",
+      "memory_risk": "高",
+      "execution_class": "B",
+      "default_pool": "B",
+      "status": "有生产触发证据",
+      "references": [
+        {
+          "path": "server/apps/cmdb/display_field/sync.py",
+          "line": 327,
+          "text": "task = sync_cmdb_display_fields_task.delay(data)"
+        }
+      ]
+    },
+    {
+      "path": "server/apps/cmdb/tasks/celery_tasks.py",
+      "line": 280,
+      "name": "execute_collect_tool_debug_task",
+      "decorators": [
+        "shared_task"
+      ],
+      "module": "cmdb",
+      "task_name": "apps.cmdb.tasks.celery_tasks.execute_collect_tool_debug_task",
+      "purpose": "执行采集工具调试并缓存结果",
+      "trigger": "用户调试API",
+      "realtime": "高",
+      "duration_risk": "高",
+      "concurrency_risk": "中",
+      "memory_risk": "中",
+      "execution_class": "B",
+      "default_pool": "B",
+      "status": "有生产触发证据",
+      "references": [
+        {
+          "path": "server/apps/cmdb/services/collect_tool_service.py",
+          "line": 302,
+          "text": "execute_collect_tool_debug_task.delay(debug_id, payload, service_name, timeout)"
+        }
+      ]
+    },
+    {
+      "path": "server/apps/cmdb/tasks/celery_tasks.py",
+      "line": 298,
+      "name": "sync_public_enum_library_snapshots_task",
+      "decorators": [
+        "shared_task"
+      ],
+      "module": "cmdb",
+      "task_name": "apps.cmdb.tasks.celery_tasks.sync_public_enum_library_snapshots_task",
+      "purpose": "公共枚举库快照同步",
+      "trigger": "枚举库变更/同步服务",
+      "realtime": "中",
+      "duration_risk": "高",
+      "concurrency_risk": "中",
+      "memory_risk": "中",
+      "execution_class": "B",
+      "default_pool": "B",
+      "status": "有生产触发证据",
+      "references": [
+        {
+          "path": "server/apps/cmdb/services/public_enum_library.py",
+          "line": 194,
+          "text": "task = sync_public_enum_library_snapshots_task.delay(library_id, trigger, operator)"
+        }
+      ]
+    },
+    {
+      "path": "server/apps/cmdb/tasks/celery_tasks.py",
+      "line": 306,
+      "name": "check_subscription_rules",
+      "decorators": [
+        "shared_task"
+      ],
+      "module": "cmdb",
+      "task_name": "apps.cmdb.tasks.celery_tasks.check_subscription_rules",
+      "purpose": "遍历订阅规则检测并投递事件组",
+      "trigger": "静态：每5分钟",
+      "realtime": "中",
+      "duration_risk": "高",
+      "concurrency_risk": "中",
+      "memory_risk": "高",
+      "execution_class": "B",
+      "default_pool": "B",
+      "status": "有生产触发证据",
+      "references": [
+        {
+          "path": "server/apps/cmdb/config.py",
+          "line": 12,
+          "text": "\"check_subscription_rules\": {"
+        },
+        {
+          "path": "server/apps/cmdb/config.py",
+          "line": 13,
+          "text": "\"task\": \"apps.cmdb.tasks.celery_tasks.check_subscription_rules\","
+        }
+      ]
+    },
+    {
+      "path": "server/apps/cmdb/tasks/celery_tasks.py",
+      "line": 311,
+      "name": "send_subscription_notifications",
+      "decorators": [
+        "shared_task"
+      ],
+      "module": "cmdb",
+      "task_name": "apps.cmdb.tasks.celery_tasks.send_subscription_notifications",
+      "purpose": "批量订阅通知及渠道RPC",
+      "trigger": "规则检测/事件触发send_task",
+      "realtime": "高",
+      "duration_risk": "高",
+      "concurrency_risk": "高",
+      "memory_risk": "高",
+      "execution_class": "I",
+      "default_pool": "I",
+      "status": "有生产触发证据",
+      "references": [
+        {
+          "path": "server/apps/cmdb/services/subscription_task.py",
+          "line": 44,
+          "text": "SEND_TASK_NAME = \"apps.cmdb.tasks.celery_tasks.send_subscription_notifications\""
+        }
+      ]
+    },
+    {
+      "path": "server/apps/cmdb/tasks/celery_tasks.py",
+      "line": 318,
+      "name": "daily_data_cleanup_task",
+      "decorators": [
+        "shared_task"
+      ],
+      "module": "cmdb",
+      "task_name": "apps.cmdb.tasks.celery_tasks.daily_data_cleanup_task",
+      "purpose": "过期CMDB数据清理",
+      "trigger": "静态：每日02:00",
+      "realtime": "低",
+      "duration_risk": "高",
+      "concurrency_risk": "低",
+      "memory_risk": "中",
+      "execution_class": "B",
+      "default_pool": "B",
+      "status": "有生产触发证据",
+      "references": [
+        {
+          "path": "server/apps/cmdb/config.py",
+          "line": 17,
+          "text": "\"task\": \"apps.cmdb.tasks.celery_tasks.daily_data_cleanup_task\","
+        }
+      ]
+    },
+    {
+      "path": "server/apps/cmdb/tasks/celery_tasks.py",
+      "line": 326,
+      "name": "reconcile_instance_auto_association_task",
+      "decorators": [
+        "shared_task"
+      ],
+      "module": "cmdb",
+      "task_name": "apps.cmdb.tasks.celery_tasks.reconcile_instance_auto_association_task",
+      "purpose": "单实例关联收敛，可再投递规则全量",
+      "trigger": "逐实例创建/更新/导入/采集",
+      "realtime": "中",
+      "duration_risk": "高",
+      "concurrency_risk": "高",
+      "memory_risk": "高",
+      "execution_class": "B",
+      "default_pool": "B",
+      "status": "有生产触发证据",
+      "references": [
+        {
+          "path": "server/apps/cmdb/services/auto_relation_reconcile.py",
+          "line": 22,
+          "text": "INSTANCE_RECONCILE_TASK = \"apps.cmdb.tasks.celery_tasks.reconcile_instance_auto_association_task\""
+        },
+        {
+          "path": "server/apps/cmdb/services/auto_relation_reconcile.py",
+          "line": 46,
+          "text": "reconcile_instance_auto_association_task(instance_id)"
+        }
+      ]
+    },
+    {
+      "path": "server/apps/cmdb/tasks/celery_tasks.py",
+      "line": 334,
+      "name": "full_sync_auto_association_rule_task",
+      "decorators": [
+        "shared_task"
+      ],
+      "module": "cmdb",
+      "task_name": "apps.cmdb.tasks.celery_tasks.full_sync_auto_association_rule_task",
+      "purpose": "全量读取源目标并关联匹配写图",
+      "trigger": "规则变更/目标侧实例变更",
+      "realtime": "中",
+      "duration_risk": "高",
+      "concurrency_risk": "高",
+      "memory_risk": "高",
+      "execution_class": "B",
+      "default_pool": "B",
+      "status": "有生产触发证据",
+      "references": [
+        {
+          "path": "server/apps/cmdb/services/auto_relation_reconcile.py",
+          "line": 23,
+          "text": "RULE_FULL_SYNC_TASK = \"apps.cmdb.tasks.celery_tasks.full_sync_auto_association_rule_task\""
+        },
+        {
+          "path": "server/apps/cmdb/services/auto_relation_reconcile.py",
+          "line": 71,
+          "text": "full_sync_auto_association_rule_task(model_asst_id)"
+        }
+      ]
+    },
+    {
+      "path": "server/apps/cmdb/tasks/celery_tasks.py",
+      "line": 342,
+      "name": "sync_node_mgmt_hosts",
+      "decorators": [
+        "shared_task"
+      ],
+      "module": "cmdb",
+      "task_name": "apps.cmdb.tasks.celery_tasks.sync_node_mgmt_hosts",
+      "purpose": "节点主机与CMDB同步",
+      "trigger": "动态：节点同步配置",
+      "realtime": "中",
+      "duration_risk": "高",
+      "concurrency_risk": "中",
+      "memory_risk": "高",
+      "execution_class": "B",
+      "default_pool": "B",
+      "status": "有生产触发证据",
+      "references": [
+        {
+          "path": "server/apps/cmdb/services/node_mgmt_sync_service.py",
+          "line": 24,
+          "text": "SYNC_TASK = \"apps.cmdb.tasks.celery_tasks.sync_node_mgmt_hosts\""
+        }
+      ]
+    },
+    {
+      "path": "server/apps/cmdb/tasks/celery_tasks.py",
+      "line": 354,
+      "name": "collect_node_mgmt_hosts",
+      "decorators": [
+        "shared_task"
+      ],
+      "module": "cmdb",
+      "task_name": "apps.cmdb.tasks.celery_tasks.collect_node_mgmt_hosts",
+      "purpose": "节点主机采集编排",
+      "trigger": "动态：节点同步配置",
+      "realtime": "中",
+      "duration_risk": "高",
+      "concurrency_risk": "高",
+      "memory_risk": "高",
+      "execution_class": "B",
+      "default_pool": "B",
+      "status": "有生产触发证据",
+      "references": [
+        {
+          "path": "server/apps/cmdb/services/node_mgmt_sync_service.py",
+          "line": 25,
+          "text": "COLLECT_TASK = \"apps.cmdb.tasks.celery_tasks.collect_node_mgmt_hosts\""
+        }
+      ]
+    },
+    {
+      "path": "server/apps/cmdb/tasks/celery_tasks.py",
+      "line": 365,
+      "name": "reconcile_ipam_task",
+      "decorators": [
+        "shared_task"
+      ],
+      "module": "cmdb",
+      "task_name": "apps.cmdb.tasks.celery_tasks.reconcile_ipam_task",
+      "purpose": "IPAM与CMDB全量对账",
+      "trigger": "静态：每小时整点",
+      "realtime": "低",
+      "duration_risk": "高",
+      "concurrency_risk": "低",
+      "memory_risk": "高",
+      "execution_class": "B",
+      "default_pool": "B",
+      "status": "有生产触发证据",
+      "references": [
+        {
+          "path": "server/apps/cmdb/config.py",
+          "line": 20,
+          "text": "\"reconcile_ipam_task\": {"
+        },
+        {
+          "path": "server/apps/cmdb/config.py",
+          "line": 21,
+          "text": "\"task\": \"apps.cmdb.tasks.celery_tasks.reconcile_ipam_task\","
+        }
+      ]
+    },
+    {
+      "path": "server/apps/core/tasks/auditlog_flush_task.py",
+      "line": 9,
+      "name": "clear_audit_logs",
+      "decorators": [
+        "shared_task"
+      ],
+      "module": "core",
+      "task_name": "apps.core.tasks.auditlog_flush_task.clear_audit_logs",
+      "purpose": "调用管理命令清理30天前审计",
+      "trigger": "未发现生产导入/调用/周期",
+      "realtime": "低",
+      "duration_risk": "中",
+      "concurrency_risk": "低",
+      "memory_risk": "低",
+      "execution_class": "U",
+      "default_pool": "U",
+      "status": "待核实/无实际工作",
+      "references": []
+    },
+    {
+      "path": "server/apps/job_mgmt/tasks.py",
+      "line": 23,
+      "name": "execute_script_task",
+      "decorators": [
+        "shared_task(max_retries=0)"
+      ],
+      "module": "job_mgmt",
+      "task_name": "apps.job_mgmt.tasks.execute_script_task",
+      "purpose": "远端多目标脚本执行，任务内线程池",
+      "trigger": "用户/NATS/定时作业",
+      "realtime": "高",
+      "duration_risk": "高",
+      "concurrency_risk": "高",
+      "memory_risk": "高",
+      "execution_class": "B",
+      "default_pool": "B",
+      "status": "有生产触发证据",
+      "references": [
+        {
+          "path": "server/apps/job_mgmt/nats_api.py",
+          "line": 457,
+          "text": "result = execute_script_task.delay(execution.id)"
+        },
+        {
+          "path": "server/apps/job_mgmt/views/scheduled_task.py",
+          "line": 184,
+          "text": "JobType.SCRIPT: execute_script_task,"
+        },
+        {
+          "path": "server/apps/job_mgmt/services/execution_service.py",
+          "line": 147,
+          "text": "JobType.SCRIPT: execute_script_task,"
+        },
+        {
+          "path": "server/apps/job_mgmt/services/script_execution_runner.py",
+          "line": 26,
+          "text": "super().__init__(execution_id, \"execute_script_task\")"
+        }
+      ]
+    },
+    {
+      "path": "server/apps/job_mgmt/tasks.py",
+      "line": 28,
+      "name": "distribute_files_task",
+      "decorators": [
+        "shared_task(max_retries=0)"
+      ],
+      "module": "job_mgmt",
+      "task_name": "apps.job_mgmt.tasks.distribute_files_task",
+      "purpose": "多目标文件分发，任务内线程池",
+      "trigger": "用户/NATS/定时作业",
+      "realtime": "中",
+      "duration_risk": "高",
+      "concurrency_risk": "高",
+      "memory_risk": "高",
+      "execution_class": "B",
+      "default_pool": "B",
+      "status": "有生产触发证据",
+      "references": [
+        {
+          "path": "server/apps/job_mgmt/nats_api.py",
+          "line": 555,
+          "text": "result = distribute_files_task.delay(execution.id)"
+        },
+        {
+          "path": "server/apps/job_mgmt/views/scheduled_task.py",
+          "line": 185,
+          "text": "JobType.FILE_DISTRIBUTION: distribute_files_task,"
+        },
+        {
+          "path": "server/apps/job_mgmt/services/execution_service.py",
+          "line": 149,
+          "text": "JobType.FILE_DISTRIBUTION: distribute_files_task,"
+        },
+        {
+          "path": "server/apps/job_mgmt/services/file_distribution_runner.py",
+          "line": 23,
+          "text": "super().__init__(execution_id, \"distribute_files_task\")"
+        }
+      ]
+    },
+    {
+      "path": "server/apps/job_mgmt/tasks.py",
+      "line": 33,
+      "name": "execute_playbook_task",
+      "decorators": [
+        "shared_task(max_retries=0)"
+      ],
+      "module": "job_mgmt",
+      "task_name": "apps.job_mgmt.tasks.execute_playbook_task",
+      "purpose": "执行自动化剧本并等待结果",
+      "trigger": "用户/定时作业",
+      "realtime": "中",
+      "duration_risk": "高",
+      "concurrency_risk": "高",
+      "memory_risk": "高",
+      "execution_class": "B",
+      "default_pool": "B",
+      "status": "有生产触发证据",
+      "references": [
+        {
+          "path": "server/apps/job_mgmt/views/scheduled_task.py",
+          "line": 186,
+          "text": "JobType.PLAYBOOK: execute_playbook_task,"
+        },
+        {
+          "path": "server/apps/job_mgmt/services/playbook_execution.py",
+          "line": 20,
+          "text": "super().__init__(execution_id, \"execute_playbook_task\")"
+        },
+        {
+          "path": "server/apps/job_mgmt/services/execution_service.py",
+          "line": 148,
+          "text": "JobType.PLAYBOOK: execute_playbook_task,"
+        }
+      ]
+    },
+    {
+      "path": "server/apps/job_mgmt/tasks.py",
+      "line": 39,
+      "name": "finalize_cancelling_execution",
+      "decorators": [
+        "shared_task(max_retries=0)"
+      ],
+      "module": "job_mgmt",
+      "task_name": "apps.job_mgmt.tasks.finalize_cancelling_execution",
+      "purpose": "取消超时终态收敛及回调投递",
+      "trigger": "取消API/NATS，countdown",
+      "realtime": "高",
+      "duration_risk": "中",
+      "concurrency_risk": "中",
+      "memory_risk": "中",
+      "execution_class": "C",
+      "default_pool": "C",
+      "status": "有生产触发证据",
+      "references": [
+        {
+          "path": "server/apps/job_mgmt/nats_api.py",
+          "line": 707,
+          "text": "finalize_cancelling_execution.apply_async("
+        },
+        {
+          "path": "server/apps/job_mgmt/views/execution.py",
+          "line": 272,
+          "text": "finalize_cancelling_execution.apply_async(args=[execution.id], countdown=execution.timeout + CANCEL_CONVERGE_BUFFER_SECONDS)"
+        }
+      ]
+    },
+    {
+      "path": "server/apps/job_mgmt/tasks.py",
+      "line": 82,
+      "name": "execute_scheduled_task",
+      "decorators": [
+        "shared_task(max_retries=0)"
+      ],
+      "module": "job_mgmt",
+      "task_name": "apps.job_mgmt.tasks.execute_scheduled_task",
+      "purpose": "检查并发策略、建执行记录、投递作业",
+      "trigger": "动态定时作业；queue策略30秒补投",
+      "realtime": "高",
+      "duration_risk": "中",
+      "concurrency_risk": "高",
+      "memory_risk": "中",
+      "execution_class": "C",
+      "default_pool": "C",
+      "status": "有生产触发证据",
+      "references": [
+        {
+          "path": "server/apps/job_mgmt/services/scheduled_task_service.py",
+          "line": 16,
+          "text": "TASK_PATH = \"apps.job_mgmt.tasks.execute_scheduled_task\""
+        }
+      ]
+    },
+    {
+      "path": "server/apps/job_mgmt/tasks.py",
+      "line": 206,
+      "name": "cleanup_expired_distribution_files_task",
+      "decorators": [
+        "shared_task(max_retries=0)"
+      ],
+      "module": "job_mgmt",
+      "task_name": "apps.job_mgmt.tasks.cleanup_expired_distribution_files_task",
+      "purpose": "删除过期对象存储文件及记录",
+      "trigger": "静态：每日00:00",
+      "realtime": "低",
+      "duration_risk": "高",
+      "concurrency_risk": "低",
+      "memory_risk": "中",
+      "execution_class": "B",
+      "default_pool": "B",
+      "status": "有生产触发证据",
+      "references": [
+        {
+          "path": "server/apps/job_mgmt/config.py",
+          "line": 29,
+          "text": "\"task\": \"apps.job_mgmt.tasks.cleanup_expired_distribution_files_task\","
+        }
+      ]
+    },
+    {
+      "path": "server/apps/job_mgmt/tasks.py",
+      "line": 267,
+      "name": "do_callback_task",
+      "decorators": [
+        "shared_task(bind=True, max_retries=5, default_retry_delay=5, autoretry_for=(Exception,), retry_backoff=True, retry_backoff_max=120, retry_jitter=True)"
+      ],
+      "module": "job_mgmt",
+      "task_name": "apps.job_mgmt.tasks.do_callback_task",
+      "purpose": "发送作业HTTP回调，失败退避重试",
+      "trigger": "作业终态send_task",
+      "realtime": "高",
+      "duration_risk": "中",
+      "concurrency_risk": "高",
+      "memory_risk": "中",
+      "execution_class": "I",
+      "default_pool": "I",
+      "status": "有生产触发证据",
+      "references": [
+        {
+          "path": "server/apps/job_mgmt/services/callback_service.py",
+          "line": 72,
+          "text": "current_app.send_task(\"apps.job_mgmt.tasks.do_callback_task\", args=[callback_url, payload, execution.id])"
+        }
+      ]
+    },
+    {
+      "path": "server/apps/job_mgmt/tasks.py",
+      "line": 314,
+      "name": "do_nats_callback_task",
+      "decorators": [
+        "shared_task(max_retries=0)"
+      ],
+      "module": "job_mgmt",
+      "task_name": "apps.job_mgmt.tasks.do_nats_callback_task",
+      "purpose": "发布作业结果到NATS",
+      "trigger": "作业终态send_task",
+      "realtime": "高",
+      "duration_risk": "中",
+      "concurrency_risk": "高",
+      "memory_risk": "中",
+      "execution_class": "I",
+      "default_pool": "I",
+      "status": "有生产触发证据",
+      "references": [
+        {
+          "path": "server/apps/job_mgmt/services/callback_service.py",
+          "line": 84,
+          "text": "current_app.send_task(\"apps.job_mgmt.tasks.do_nats_callback_task\", args=[subject, payload, execution.id])"
+        }
+      ]
+    },
+    {
+      "path": "server/apps/log/tasks/policy.py",
+      "line": 15,
+      "name": "scan_log_policy_task",
+      "decorators": [
+        "shared_task(base=Singleton, raise_on_duplicate=False)"
+      ],
+      "module": "log",
+      "task_name": "apps.log.tasks.policy.scan_log_policy_task",
+      "purpose": "日志检测，内部最多串行补10窗口并通知",
+      "trigger": "动态：每策略周期",
+      "realtime": "高",
+      "duration_risk": "高",
+      "concurrency_risk": "高",
+      "memory_risk": "高",
+      "execution_class": "C",
+      "default_pool": "C",
+      "status": "有生产触发证据",
+      "references": [
+        {
+          "path": "server/apps/log/views/policy.py",
+          "line": 493,
+          "text": "task=\"apps.log.tasks.policy.scan_log_policy_task\","
+        }
+      ]
+    },
+    {
+      "path": "server/apps/log/tasks/policy.py",
+      "line": 106,
+      "name": "compensate_log_notice_task",
+      "decorators": [
+        "shared_task(base=Singleton, raise_on_duplicate=False)"
+      ],
+      "module": "log",
+      "task_name": "apps.log.tasks.policy.compensate_log_notice_task",
+      "purpose": "有批量边界的失败通知补偿",
+      "trigger": "静态：每5分钟",
+      "realtime": "高",
+      "duration_risk": "高",
+      "concurrency_risk": "中",
+      "memory_risk": "中",
+      "execution_class": "I",
+      "default_pool": "I",
+      "status": "有生产触发证据",
+      "references": [
+        {
+          "path": "server/apps/log/config.py",
+          "line": 6,
+          "text": "\"task\": \"apps.log.tasks.policy.compensate_log_notice_task\","
+        }
+      ]
+    },
+    {
+      "path": "server/apps/mlops/tasks/anomaly_detection.py",
+      "line": 97,
+      "name": "publish_dataset_release_async",
+      "decorators": [
+        "shared_task(soft_time_limit=3600, time_limit=3660, acks_late=True, reject_on_worker_lost=True)"
+      ],
+      "module": "mlops",
+      "task_name": "apps.mlops.tasks.anomaly_detection.publish_dataset_release_async",
+      "purpose": "异常检测数据集发布、打包上传（非训练）",
+      "trigger": "发布序列化器/API",
+      "realtime": "低",
+      "duration_risk": "高",
+      "concurrency_risk": "中",
+      "memory_risk": "中",
+      "execution_class": "B",
+      "default_pool": "B",
+      "status": "有生产触发证据",
+      "references": [
+        {
+          "path": "server/apps/mlops/serializers/image_classification.py",
+          "line": 180,
+          "text": "publish_dataset_release_async,"
+        },
+        {
+          "path": "server/apps/mlops/serializers/image_classification.py",
+          "line": 184,
+          "text": "publish_dataset_release_async.delay(release.id, train_file_id, val_file_id, test_file_id)"
+        },
+        {
+          "path": "server/apps/mlops/serializers/classification.py",
+          "line": 305,
+          "text": "result = publish_dataset_release_async.delay(release.id, train_file_id, val_file_id, test_file_id)"
+        },
+        {
+          "path": "server/apps/mlops/serializers/log_clustering.py",
+          "line": 215,
+          "text": "publish_dataset_release_async.delay(release.id, train_file_id, val_file_id, test_file_id)"
+        },
+        {
+          "path": "server/apps/mlops/serializers/anomaly_detection.py",
+          "line": 254,
+          "text": "publish_dataset_release_async.delay(release.id, train_file_id, val_file_id, test_file_id)"
+        },
+        {
+          "path": "server/apps/mlops/serializers/object_detection.py",
+          "line": 290,
+          "text": "publish_dataset_release_async.delay(release.id, train_file_id, val_file_id, test_file_id)"
+        },
+        {
+          "path": "server/apps/mlops/serializers/timeseries_predict.py",
+          "line": 317,
+          "text": "publish_dataset_release_async.delay(release.id, train_file_id, val_file_id, test_file_id)"
+        }
+      ]
+    },
+    {
+      "path": "server/apps/mlops/tasks/classification.py",
+      "line": 67,
+      "name": "publish_dataset_release_async",
+      "decorators": [
+        "shared_task(soft_time_limit=3600, time_limit=3660, acks_late=True, reject_on_worker_lost=True)"
+      ],
+      "module": "mlops",
+      "task_name": "apps.mlops.tasks.classification.publish_dataset_release_async",
+      "purpose": "分类数据集发布、打包上传（非训练）",
+      "trigger": "发布序列化器/API",
+      "realtime": "低",
+      "duration_risk": "高",
+      "concurrency_risk": "中",
+      "memory_risk": "中",
+      "execution_class": "B",
+      "default_pool": "B",
+      "status": "有生产触发证据",
+      "references": [
+        {
+          "path": "server/apps/mlops/serializers/image_classification.py",
+          "line": 180,
+          "text": "publish_dataset_release_async,"
+        },
+        {
+          "path": "server/apps/mlops/serializers/image_classification.py",
+          "line": 184,
+          "text": "publish_dataset_release_async.delay(release.id, train_file_id, val_file_id, test_file_id)"
+        },
+        {
+          "path": "server/apps/mlops/serializers/classification.py",
+          "line": 305,
+          "text": "result = publish_dataset_release_async.delay(release.id, train_file_id, val_file_id, test_file_id)"
+        },
+        {
+          "path": "server/apps/mlops/serializers/log_clustering.py",
+          "line": 215,
+          "text": "publish_dataset_release_async.delay(release.id, train_file_id, val_file_id, test_file_id)"
+        },
+        {
+          "path": "server/apps/mlops/serializers/anomaly_detection.py",
+          "line": 254,
+          "text": "publish_dataset_release_async.delay(release.id, train_file_id, val_file_id, test_file_id)"
+        },
+        {
+          "path": "server/apps/mlops/serializers/object_detection.py",
+          "line": 290,
+          "text": "publish_dataset_release_async.delay(release.id, train_file_id, val_file_id, test_file_id)"
+        },
+        {
+          "path": "server/apps/mlops/serializers/timeseries_predict.py",
+          "line": 317,
+          "text": "publish_dataset_release_async.delay(release.id, train_file_id, val_file_id, test_file_id)"
+        }
+      ]
+    },
+    {
+      "path": "server/apps/mlops/tasks/image_classification.py",
+      "line": 27,
+      "name": "publish_dataset_release_async",
+      "decorators": [
+        "shared_task(soft_time_limit=7200, time_limit=7260, acks_late=True, reject_on_worker_lost=True)"
+      ],
+      "module": "mlops",
+      "task_name": "apps.mlops.tasks.image_classification.publish_dataset_release_async",
+      "purpose": "图片分类数据集发布、打包上传（非训练）",
+      "trigger": "发布序列化器/API",
+      "realtime": "低",
+      "duration_risk": "高",
+      "concurrency_risk": "中",
+      "memory_risk": "高",
+      "execution_class": "B",
+      "default_pool": "B",
+      "status": "有生产触发证据",
+      "references": [
+        {
+          "path": "server/apps/mlops/serializers/image_classification.py",
+          "line": 180,
+          "text": "publish_dataset_release_async,"
+        },
+        {
+          "path": "server/apps/mlops/serializers/image_classification.py",
+          "line": 184,
+          "text": "publish_dataset_release_async.delay(release.id, train_file_id, val_file_id, test_file_id)"
+        },
+        {
+          "path": "server/apps/mlops/serializers/classification.py",
+          "line": 305,
+          "text": "result = publish_dataset_release_async.delay(release.id, train_file_id, val_file_id, test_file_id)"
+        },
+        {
+          "path": "server/apps/mlops/serializers/log_clustering.py",
+          "line": 215,
+          "text": "publish_dataset_release_async.delay(release.id, train_file_id, val_file_id, test_file_id)"
+        },
+        {
+          "path": "server/apps/mlops/serializers/anomaly_detection.py",
+          "line": 254,
+          "text": "publish_dataset_release_async.delay(release.id, train_file_id, val_file_id, test_file_id)"
+        },
+        {
+          "path": "server/apps/mlops/serializers/object_detection.py",
+          "line": 290,
+          "text": "publish_dataset_release_async.delay(release.id, train_file_id, val_file_id, test_file_id)"
+        },
+        {
+          "path": "server/apps/mlops/serializers/timeseries_predict.py",
+          "line": 317,
+          "text": "publish_dataset_release_async.delay(release.id, train_file_id, val_file_id, test_file_id)"
+        }
+      ]
+    },
+    {
+      "path": "server/apps/mlops/tasks/log_clustering.py",
+      "line": 71,
+      "name": "publish_dataset_release_async",
+      "decorators": [
+        "shared_task(soft_time_limit=3600, time_limit=3660, acks_late=True, reject_on_worker_lost=True)"
+      ],
+      "module": "mlops",
+      "task_name": "apps.mlops.tasks.log_clustering.publish_dataset_release_async",
+      "purpose": "日志聚类数据集发布、打包上传（非训练）",
+      "trigger": "发布序列化器/API",
+      "realtime": "低",
+      "duration_risk": "高",
+      "concurrency_risk": "中",
+      "memory_risk": "中",
+      "execution_class": "B",
+      "default_pool": "B",
+      "status": "有生产触发证据",
+      "references": [
+        {
+          "path": "server/apps/mlops/serializers/image_classification.py",
+          "line": 180,
+          "text": "publish_dataset_release_async,"
+        },
+        {
+          "path": "server/apps/mlops/serializers/image_classification.py",
+          "line": 184,
+          "text": "publish_dataset_release_async.delay(release.id, train_file_id, val_file_id, test_file_id)"
+        },
+        {
+          "path": "server/apps/mlops/serializers/classification.py",
+          "line": 305,
+          "text": "result = publish_dataset_release_async.delay(release.id, train_file_id, val_file_id, test_file_id)"
+        },
+        {
+          "path": "server/apps/mlops/serializers/log_clustering.py",
+          "line": 215,
+          "text": "publish_dataset_release_async.delay(release.id, train_file_id, val_file_id, test_file_id)"
+        },
+        {
+          "path": "server/apps/mlops/serializers/anomaly_detection.py",
+          "line": 254,
+          "text": "publish_dataset_release_async.delay(release.id, train_file_id, val_file_id, test_file_id)"
+        },
+        {
+          "path": "server/apps/mlops/serializers/object_detection.py",
+          "line": 290,
+          "text": "publish_dataset_release_async.delay(release.id, train_file_id, val_file_id, test_file_id)"
+        },
+        {
+          "path": "server/apps/mlops/serializers/timeseries_predict.py",
+          "line": 317,
+          "text": "publish_dataset_release_async.delay(release.id, train_file_id, val_file_id, test_file_id)"
+        }
+      ]
+    },
+    {
+      "path": "server/apps/mlops/tasks/object_detection.py",
+      "line": 190,
+      "name": "publish_dataset_release_async",
+      "decorators": [
+        "shared_task(soft_time_limit=7200, time_limit=7260, acks_late=True, reject_on_worker_lost=True)"
+      ],
+      "module": "mlops",
+      "task_name": "apps.mlops.tasks.object_detection.publish_dataset_release_async",
+      "purpose": "目标检测数据集发布、打包上传（非训练）",
+      "trigger": "发布序列化器/API",
+      "realtime": "低",
+      "duration_risk": "高",
+      "concurrency_risk": "中",
+      "memory_risk": "高",
+      "execution_class": "B",
+      "default_pool": "B",
+      "status": "有生产触发证据",
+      "references": [
+        {
+          "path": "server/apps/mlops/serializers/image_classification.py",
+          "line": 180,
+          "text": "publish_dataset_release_async,"
+        },
+        {
+          "path": "server/apps/mlops/serializers/image_classification.py",
+          "line": 184,
+          "text": "publish_dataset_release_async.delay(release.id, train_file_id, val_file_id, test_file_id)"
+        },
+        {
+          "path": "server/apps/mlops/serializers/classification.py",
+          "line": 305,
+          "text": "result = publish_dataset_release_async.delay(release.id, train_file_id, val_file_id, test_file_id)"
+        },
+        {
+          "path": "server/apps/mlops/serializers/log_clustering.py",
+          "line": 215,
+          "text": "publish_dataset_release_async.delay(release.id, train_file_id, val_file_id, test_file_id)"
+        },
+        {
+          "path": "server/apps/mlops/serializers/anomaly_detection.py",
+          "line": 254,
+          "text": "publish_dataset_release_async.delay(release.id, train_file_id, val_file_id, test_file_id)"
+        },
+        {
+          "path": "server/apps/mlops/serializers/object_detection.py",
+          "line": 290,
+          "text": "publish_dataset_release_async.delay(release.id, train_file_id, val_file_id, test_file_id)"
+        },
+        {
+          "path": "server/apps/mlops/serializers/timeseries_predict.py",
+          "line": 317,
+          "text": "publish_dataset_release_async.delay(release.id, train_file_id, val_file_id, test_file_id)"
+        }
+      ]
+    },
+    {
+      "path": "server/apps/mlops/tasks/poll_train_job_status.py",
+      "line": 23,
+      "name": "poll_train_job_status",
+      "decorators": [
+        "shared_task(bind=True, max_retries=360, default_retry_delay=30, soft_time_limit=60, time_limit=90, acks_late=True, reject_on_worker_lost=True)"
+      ],
+      "module": "mlops",
+      "task_name": "apps.mlops.tasks.poll_train_job_status.poll_train_job_status",
+      "purpose": "查MLflow状态并30秒retry；非模型训练",
+      "trigger": "训练启动后投递、最多360次重试",
+      "realtime": "中",
+      "duration_risk": "中",
+      "concurrency_risk": "高",
+      "memory_risk": "中",
+      "execution_class": "I",
+      "default_pool": "I",
+      "status": "有生产触发证据",
+      "references": [
+        {
+          "path": "server/apps/mlops/views/image_classification.py",
+          "line": 417,
+          "text": "poll_train_job_status.delay(train_job.id, self.MLFLOW_PREFIX, expected_run_count)"
+        },
+        {
+          "path": "server/apps/mlops/views/classification.py",
+          "line": 873,
+          "text": "poll_train_job_status.delay(train_job.id, self.MLFLOW_PREFIX, expected_run_count)"
+        },
+        {
+          "path": "server/apps/mlops/views/log_clustering.py",
+          "line": 194,
+          "text": "poll_train_job_status.delay(train_job.id, self.MLFLOW_PREFIX, expected_run_count)"
+        },
+        {
+          "path": "server/apps/mlops/views/anomaly_detection.py",
+          "line": 177,
+          "text": "poll_train_job_status.delay(train_job.id, self.MLFLOW_PREFIX, expected_run_count)"
+        },
+        {
+          "path": "server/apps/mlops/views/object_detection.py",
+          "line": 397,
+          "text": "poll_train_job_status.delay(train_job.id, self.MLFLOW_PREFIX, expected_run_count)"
+        },
+        {
+          "path": "server/apps/mlops/views/timeseries_predict.py",
+          "line": 194,
+          "text": "poll_train_job_status.delay(train_job.id, self.MLFLOW_PREFIX, expected_run_count)"
+        }
+      ]
+    },
+    {
+      "path": "server/apps/mlops/tasks/timeseries.py",
+      "line": 71,
+      "name": "publish_dataset_release_async",
+      "decorators": [
+        "shared_task(soft_time_limit=3600, time_limit=3660, acks_late=True, reject_on_worker_lost=True)"
+      ],
+      "module": "mlops",
+      "task_name": "apps.mlops.tasks.timeseries.publish_dataset_release_async",
+      "purpose": "时序数据集发布、打包上传（非训练）",
+      "trigger": "发布序列化器/API",
+      "realtime": "低",
+      "duration_risk": "高",
+      "concurrency_risk": "中",
+      "memory_risk": "中",
+      "execution_class": "B",
+      "default_pool": "B",
+      "status": "有生产触发证据",
+      "references": [
+        {
+          "path": "server/apps/mlops/serializers/image_classification.py",
+          "line": 180,
+          "text": "publish_dataset_release_async,"
+        },
+        {
+          "path": "server/apps/mlops/serializers/image_classification.py",
+          "line": 184,
+          "text": "publish_dataset_release_async.delay(release.id, train_file_id, val_file_id, test_file_id)"
+        },
+        {
+          "path": "server/apps/mlops/serializers/classification.py",
+          "line": 305,
+          "text": "result = publish_dataset_release_async.delay(release.id, train_file_id, val_file_id, test_file_id)"
+        },
+        {
+          "path": "server/apps/mlops/serializers/log_clustering.py",
+          "line": 215,
+          "text": "publish_dataset_release_async.delay(release.id, train_file_id, val_file_id, test_file_id)"
+        },
+        {
+          "path": "server/apps/mlops/serializers/anomaly_detection.py",
+          "line": 254,
+          "text": "publish_dataset_release_async.delay(release.id, train_file_id, val_file_id, test_file_id)"
+        },
+        {
+          "path": "server/apps/mlops/serializers/object_detection.py",
+          "line": 290,
+          "text": "publish_dataset_release_async.delay(release.id, train_file_id, val_file_id, test_file_id)"
+        },
+        {
+          "path": "server/apps/mlops/serializers/timeseries_predict.py",
+          "line": 317,
+          "text": "publish_dataset_release_async.delay(release.id, train_file_id, val_file_id, test_file_id)"
+        }
+      ]
+    },
+    {
+      "path": "server/apps/monitor/tasks/collect_detect.py",
+      "line": 7,
+      "name": "run_collect_detect_task",
+      "decorators": [
+        "shared_task"
+      ],
+      "module": "monitor",
+      "task_name": "apps.monitor.tasks.collect_detect.run_collect_detect_task",
+      "purpose": "远端Telegraf一次性预检，默认60秒上限600秒",
+      "trigger": "用户采集检测API",
+      "realtime": "高",
+      "duration_risk": "高",
+      "concurrency_risk": "中",
+      "memory_risk": "中",
+      "execution_class": "B",
+      "default_pool": "B",
+      "status": "有生产触发证据",
+      "references": [
+        {
+          "path": "server/apps/monitor/services/collect_detect.py",
+          "line": 68,
+          "text": "run_collect_detect_task.delay(task.id, runtime_payload)"
+        }
+      ]
+    },
+    {
+      "path": "server/apps/monitor/tasks/grouping_rule.py",
+      "line": 9,
+      "name": "sync_instance_and_group",
+      "decorators": [
+        "shared_task"
+      ],
+      "module": "monitor",
+      "task_name": "apps.monitor.tasks.grouping_rule.sync_instance_and_group",
+      "purpose": "同步监控实例、执行分组规则",
+      "trigger": "静态每10分钟/对象变更；命令直调",
+      "realtime": "中",
+      "duration_risk": "高",
+      "concurrency_risk": "中",
+      "memory_risk": "高",
+      "execution_class": "B",
+      "default_pool": "B",
+      "status": "有生产触发证据",
+      "references": [
+        {
+          "path": "server/apps/monitor/config.py",
+          "line": 8,
+          "text": "'sync_instance_and_group': {"
+        },
+        {
+          "path": "server/apps/monitor/config.py",
+          "line": 9,
+          "text": "'task': 'apps.monitor.tasks.grouping_rule.sync_instance_and_group',"
+        },
+        {
+          "path": "server/apps/monitor/services/monitor_object.py",
+          "line": 493,
+          "text": "sync_instance_and_group.delay()"
+        },
+        {
+          "path": "server/apps/monitor/management/commands/autodiscover.py",
+          "line": 10,
+          "text": "sync_instance_and_group()"
+        }
+      ]
+    },
+    {
+      "path": "server/apps/monitor/tasks/monitor_policy.py",
+      "line": 24,
+      "name": "scan_policy_task",
+      "decorators": [
+        "shared_task(base=Singleton, raise_on_duplicate=False)"
+      ],
+      "module": "monitor",
+      "task_name": "apps.monitor.tasks.monitor_policy.scan_policy_task",
+      "purpose": "指标检测，内部最多串行补30窗口并通知",
+      "trigger": "动态：每策略周期",
+      "realtime": "高",
+      "duration_risk": "高",
+      "concurrency_risk": "高",
+      "memory_risk": "高",
+      "execution_class": "C",
+      "default_pool": "C",
+      "status": "有生产触发证据",
+      "references": [
+        {
+          "path": "server/apps/monitor/views/monitor_policy.py",
+          "line": 395,
+          "text": "task=\"apps.monitor.tasks.monitor_policy.scan_policy_task\","
+        }
+      ]
+    },
+    {
+      "path": "server/apps/monitor/tasks/monitor_policy.py",
+      "line": 100,
+      "name": "retry_alert_center_lifecycle_notify_task",
+      "decorators": [
+        "shared_task(base=Singleton, raise_on_duplicate=False)"
+      ],
+      "module": "monitor",
+      "task_name": "apps.monitor.tasks.monitor_policy.retry_alert_center_lifecycle_notify_task",
+      "purpose": "最多200条终态告警补偿推送",
+      "trigger": "静态：每5分钟",
+      "realtime": "高",
+      "duration_risk": "高",
+      "concurrency_risk": "中",
+      "memory_risk": "中",
+      "execution_class": "I",
+      "default_pool": "I",
+      "status": "有生产触发证据",
+      "references": [
+        {
+          "path": "server/apps/monitor/config.py",
+          "line": 13,
+          "text": "'task': 'apps.monitor.tasks.monitor_policy.retry_alert_center_lifecycle_notify_task',"
+        }
+      ]
+    },
+    {
+      "path": "server/apps/node_mgmt/tasks/action_task.py",
+      "line": 159,
+      "name": "converge_collector_action_task_for_node",
+      "decorators": [
+        "shared_task"
+      ],
+      "module": "node_mgmt",
+      "task_name": "apps.node_mgmt.tasks.action_task.converge_collector_action_task_for_node",
+      "purpose": "根据节点状态收敛采集器操作",
+      "trigger": "Sidecar上报/配置服务/修复命令",
+      "realtime": "高",
+      "duration_risk": "中",
+      "concurrency_risk": "高",
+      "memory_risk": "中",
+      "execution_class": "C",
+      "default_pool": "C",
+      "status": "有生产触发证据",
+      "references": [
+        {
+          "path": "server/apps/node_mgmt/services/sidecar.py",
+          "line": 236,
+          "text": "converge_collector_action_task_for_node.delay(node_id)"
+        },
+        {
+          "path": "server/apps/node_mgmt/management/commands/repair_node_config.py",
+          "line": 54,
+          "text": "converge_collector_action_task_for_node.delay(node.id)"
+        },
+        {
+          "path": "server/apps/monitor/services/flow_env_config.py",
+          "line": 108,
+          "text": "converge_collector_action_task_for_node.delay(node.id)"
+        }
+      ]
+    },
+    {
+      "path": "server/apps/node_mgmt/tasks/action_task.py",
+      "line": 223,
+      "name": "timeout_collector_action_task",
+      "decorators": [
+        "shared_task"
+      ],
+      "module": "node_mgmt",
+      "task_name": "apps.node_mgmt.tasks.action_task.timeout_collector_action_task",
+      "purpose": "采集器操作超时状态兜底",
+      "trigger": "操作服务countdown",
+      "realtime": "高",
+      "duration_risk": "中",
+      "concurrency_risk": "中",
+      "memory_risk": "中",
+      "execution_class": "C",
+      "default_pool": "C",
+      "status": "有生产触发证据",
+      "references": [
+        {
+          "path": "server/apps/node_mgmt/services/node.py",
+          "line": 18,
+          "text": "timeout_collector_action_task,"
+        },
+        {
+          "path": "server/apps/node_mgmt/services/node.py",
+          "line": 286,
+          "text": "timeout_collector_action_task.apply_async("
+        }
+      ]
+    },
+    {
+      "path": "server/apps/node_mgmt/tasks/cloudregion.py",
+      "line": 9,
+      "name": "check_all_region_services",
+      "decorators": [
+        "shared_task"
+      ],
+      "module": "node_mgmt",
+      "task_name": "apps.node_mgmt.tasks.cloudregion.check_all_region_services",
+      "purpose": "遍历云区域同步健康检查",
+      "trigger": "静态：每15分钟",
+      "realtime": "中",
+      "duration_risk": "高",
+      "concurrency_risk": "低",
+      "memory_risk": "中",
+      "execution_class": "B",
+      "default_pool": "B",
+      "status": "有生产触发证据",
+      "references": [
+        {
+          "path": "server/apps/node_mgmt/config.py",
+          "line": 6,
+          "text": "'check_all_region_services': {"
+        },
+        {
+          "path": "server/apps/node_mgmt/config.py",
+          "line": 7,
+          "text": "'task': 'apps.node_mgmt.tasks.cloudregion.check_all_region_services',"
+        }
+      ]
+    },
+    {
+      "path": "server/apps/node_mgmt/tasks/installer.py",
+      "line": 684,
+      "name": "install_controller",
+      "decorators": [
+        "shared_task"
+      ],
+      "module": "node_mgmt",
+      "task_name": "apps.node_mgmt.tasks.installer.install_controller",
+      "purpose": "安装主任务编排，按任务最多3节点bootstrap",
+      "trigger": "安装API",
+      "realtime": "高",
+      "duration_risk": "中",
+      "concurrency_risk": "中",
+      "memory_risk": "中",
+      "execution_class": "C",
+      "default_pool": "C",
+      "status": "有生产触发证据",
+      "references": [
+        {
+          "path": "server/apps/node_mgmt/views/installer.py",
+          "line": 18,
+          "text": "install_controller,"
+        },
+        {
+          "path": "server/apps/node_mgmt/views/installer.py",
+          "line": 41,
+          "text": "task_id = InstallerService.install_controller("
+        },
+        {
+          "path": "server/apps/node_mgmt/views/installer.py",
+          "line": 48,
+          "text": "install_controller.delay(task_id)"
+        }
+      ]
+    },
+    {
+      "path": "server/apps/node_mgmt/tasks/installer.py",
+      "line": 700,
+      "name": "install_controller_for_node",
+      "decorators": [
+        "shared_task"
+      ],
+      "module": "node_mgmt",
+      "task_name": "apps.node_mgmt.tasks.installer.install_controller_for_node",
+      "purpose": "单节点远端安装和结果接收",
+      "trigger": "安装编排逐节点投递",
+      "realtime": "高",
+      "duration_risk": "高",
+      "concurrency_risk": "高",
+      "memory_risk": "中",
+      "execution_class": "B",
+      "default_pool": "B",
+      "status": "有生产触发证据",
+      "references": []
+    },
+    {
+      "path": "server/apps/node_mgmt/tasks/installer.py",
+      "line": 733,
+      "name": "converge_controller_install_connectivity_for_node",
+      "decorators": [
+        "shared_task"
+      ],
+      "module": "node_mgmt",
+      "task_name": "apps.node_mgmt.tasks.installer.converge_controller_install_connectivity_for_node",
+      "purpose": "Sidecar连通回调推进状态及后续节点",
+      "trigger": "Sidecar上报",
+      "realtime": "高",
+      "duration_risk": "中",
+      "concurrency_risk": "高",
+      "memory_risk": "中",
+      "execution_class": "C",
+      "default_pool": "C",
+      "status": "有生产触发证据",
+      "references": [
+        {
+          "path": "server/apps/node_mgmt/services/sidecar.py",
+          "line": 241,
+          "text": "converge_controller_install_connectivity_for_node.delay(node_id)"
+        }
+      ]
+    },
+    {
+      "path": "server/apps/node_mgmt/tasks/installer.py",
+      "line": 777,
+      "name": "timeout_controller_install_task",
+      "decorators": [
+        "shared_task"
+      ],
+      "module": "node_mgmt",
+      "task_name": "apps.node_mgmt.tasks.installer.timeout_controller_install_task",
+      "purpose": "安装连通超时兜底并推进剩余节点",
+      "trigger": "安装/重试API的countdown",
+      "realtime": "高",
+      "duration_risk": "中",
+      "concurrency_risk": "中",
+      "memory_risk": "中",
+      "execution_class": "C",
+      "default_pool": "C",
+      "status": "有生产触发证据",
+      "references": [
+        {
+          "path": "server/apps/node_mgmt/views/installer.py",
+          "line": 22,
+          "text": "timeout_controller_install_task,"
+        },
+        {
+          "path": "server/apps/node_mgmt/views/installer.py",
+          "line": 49,
+          "text": "timeout_controller_install_task.apply_async("
+        }
+      ]
+    },
+    {
+      "path": "server/apps/node_mgmt/tasks/installer.py",
+      "line": 830,
+      "name": "retry_controller",
+      "decorators": [
+        "shared_task"
+      ],
+      "module": "node_mgmt",
+      "task_name": "apps.node_mgmt.tasks.installer.retry_controller",
+      "purpose": "刷新失败节点凭据/状态并重投",
+      "trigger": "用户重试API",
+      "realtime": "高",
+      "duration_risk": "中",
+      "concurrency_risk": "中",
+      "memory_risk": "中",
+      "execution_class": "C",
+      "default_pool": "C",
+      "status": "有生产触发证据",
+      "references": [
+        {
+          "path": "server/apps/node_mgmt/views/installer.py",
+          "line": 21,
+          "text": "retry_controller,"
+        },
+        {
+          "path": "server/apps/node_mgmt/views/installer.py",
+          "line": 74,
+          "text": "retry_controller.delay("
+        }
+      ]
+    },
+    {
+      "path": "server/apps/node_mgmt/tasks/installer.py",
+      "line": 892,
+      "name": "uninstall_controller",
+      "decorators": [
+        "shared_task"
+      ],
+      "module": "node_mgmt",
+      "task_name": "apps.node_mgmt.tasks.installer.uninstall_controller",
+      "purpose": "逐节点执行远端卸载并删除节点记录",
+      "trigger": "用户卸载API",
+      "realtime": "中",
+      "duration_risk": "高",
+      "concurrency_risk": "中",
+      "memory_risk": "中",
+      "execution_class": "B",
+      "default_pool": "B",
+      "status": "有生产触发证据",
+      "references": [
+        {
+          "path": "server/apps/node_mgmt/views/installer.py",
+          "line": 20,
+          "text": "uninstall_controller,"
+        },
+        {
+          "path": "server/apps/node_mgmt/views/installer.py",
+          "line": 63,
+          "text": "task_id = InstallerService.uninstall_controller("
+        },
+        {
+          "path": "server/apps/node_mgmt/views/installer.py",
+          "line": 68,
+          "text": "uninstall_controller.delay(task_id)"
+        }
+      ]
+    },
+    {
+      "path": "server/apps/node_mgmt/tasks/installer.py",
+      "line": 1000,
+      "name": "install_collector",
+      "decorators": [
+        "shared_task"
+      ],
+      "module": "node_mgmt",
+      "task_name": "apps.node_mgmt.tasks.installer.install_collector",
+      "purpose": "采集器配置/安装下发",
+      "trigger": "用户安装API",
+      "realtime": "高",
+      "duration_risk": "高",
+      "concurrency_risk": "高",
+      "memory_risk": "中",
+      "execution_class": "B",
+      "default_pool": "B",
+      "status": "有生产触发证据",
+      "references": [
+        {
+          "path": "server/apps/node_mgmt/nats/node.py",
+          "line": 696,
+          "text": "task_id = InstallerService.install_collector(data[\"collector_package\"], data[\"nodes\"])"
+        },
+        {
+          "path": "server/apps/node_mgmt/views/installer.py",
+          "line": 19,
+          "text": "install_collector,"
+        },
+        {
+          "path": "server/apps/node_mgmt/views/installer.py",
+          "line": 141,
+          "text": "task_id = InstallerService.install_collector(request.data[\"collector_package\"], request.data[\"nodes\"])"
+        },
+        {
+          "path": "server/apps/node_mgmt/views/installer.py",
+          "line": 142,
+          "text": "install_collector.delay(task_id)"
+        }
+      ]
+    },
+    {
+      "path": "server/apps/node_mgmt/tasks/installer.py",
+      "line": 1159,
+      "name": "uninstall_collector",
+      "decorators": [
+        "shared_task"
+      ],
+      "module": "node_mgmt",
+      "task_name": "apps.node_mgmt.tasks.installer.uninstall_collector",
+      "purpose": "pass空壳",
+      "trigger": "未发现生产调用",
+      "realtime": "低",
+      "duration_risk": "低",
+      "concurrency_risk": "低",
+      "memory_risk": "低",
+      "execution_class": "U",
+      "default_pool": "U",
+      "status": "待核实/无实际工作",
+      "references": []
+    },
+    {
+      "path": "server/apps/node_mgmt/tasks/sidecar_config.py",
+      "line": 9,
+      "name": "sync_node_properties_to_sidecar",
+      "decorators": [
+        "shared_task"
+      ],
+      "module": "node_mgmt",
+      "task_name": "apps.node_mgmt.tasks.sidecar_config.sync_node_properties_to_sidecar",
+      "purpose": "远程更新sidecar.yaml属性",
+      "trigger": "用户修改节点",
+      "realtime": "中",
+      "duration_risk": "高",
+      "concurrency_risk": "高",
+      "memory_risk": "中",
+      "execution_class": "B",
+      "default_pool": "B",
+      "status": "有生产触发证据",
+      "references": [
+        {
+          "path": "server/apps/node_mgmt/views/node.py",
+          "line": 322,
+          "text": "sync_node_properties_to_sidecar.delay(node_id=node.id, name=name, organizations=organizations)"
+        }
+      ]
+    },
+    {
+      "path": "server/apps/node_mgmt/tasks/version_discovery.py",
+      "line": 18,
+      "name": "discover_node_versions",
+      "decorators": [
+        "shared_task"
+      ],
+      "module": "node_mgmt",
+      "task_name": "apps.node_mgmt.tasks.version_discovery.discover_node_versions",
+      "purpose": "遍历节点查询远端版本，单次RPC10秒",
+      "trigger": "静态每30分钟/安装完成",
+      "realtime": "低",
+      "duration_risk": "高",
+      "concurrency_risk": "中",
+      "memory_risk": "中",
+      "execution_class": "B",
+      "default_pool": "B",
+      "status": "有生产触发证据",
+      "references": [
+        {
+          "path": "server/apps/node_mgmt/config.py",
+          "line": 10,
+          "text": "'discover_node_versions': {"
+        },
+        {
+          "path": "server/apps/node_mgmt/config.py",
+          "line": 11,
+          "text": "'task': 'apps.node_mgmt.tasks.version_discovery.discover_node_versions',"
+        }
+      ]
+    },
+    {
+      "path": "server/apps/opspilot/tasks.py",
+      "line": 251,
+      "name": "general_embed",
+      "decorators": [
+        "shared_task"
+      ],
+      "module": "opspilot",
+      "task_name": "apps.opspilot.tasks.general_embed",
+      "purpose": "文档批量向量化和索引",
+      "trigger": "文档上传/批量重新处理",
+      "realtime": "低",
+      "duration_risk": "高",
+      "concurrency_risk": "高",
+      "memory_risk": "高",
+      "execution_class": "B",
+      "default_pool": "B",
+      "status": "有生产触发证据",
+      "references": [
+        {
+          "path": "server/apps/opspilot/viewsets/knowledge_document_view.py",
+          "line": 116,
+          "text": "general_embed.delay(scoped_ids, request.user.username, request.user.domain, delete_qa_pairs)"
+        },
+        {
+          "path": "server/apps/opspilot/viewsets/knowledge_document_view.py",
+          "line": 468,
+          "text": "general_embed.delay(knowledge_document_list, request.user.username, request.user.domain)"
+        }
+      ]
+    },
+    {
+      "path": "server/apps/opspilot/tasks.py",
+      "line": 259,
+      "name": "retrain_all",
+      "decorators": [
+        "shared_task"
+      ],
+      "module": "opspilot",
+      "task_name": "apps.opspilot.tasks.retrain_all",
+      "purpose": "整个知识库重新向量化",
+      "trigger": "用户知识库重建",
+      "realtime": "低",
+      "duration_risk": "高",
+      "concurrency_risk": "中",
+      "memory_risk": "高",
+      "execution_class": "B",
+      "default_pool": "B",
+      "status": "有生产触发证据",
+      "references": [
+        {
+          "path": "server/apps/opspilot/viewsets/knowledge_base_view.py",
+          "line": 87,
+          "text": "retrain_all.delay(instance.id, request.user.username, request.user.domain, delete_qa_pairs)"
+        }
+      ]
+    },
+    {
+      "path": "server/apps/opspilot/tasks.py",
+      "line": 338,
+      "name": "invoke_document_to_es",
+      "decorators": [
+        "shared_task"
+      ],
+      "module": "opspilot",
+      "task_name": "apps.opspilot.tasks.invoke_document_to_es",
+      "purpose": "单文档删除旧索引并重建",
+      "trigger": "历史消息导入异步；批量嵌入中直调",
+      "realtime": "中",
+      "duration_risk": "高",
+      "concurrency_risk": "高",
+      "memory_risk": "高",
+      "execution_class": "B",
+      "default_pool": "B",
+      "status": "有生产触发证据",
+      "references": [
+        {
+          "path": "server/apps/opspilot/viewsets/history_view.py",
+          "line": 226,
+          "text": "invoke_document_to_es.delay(new_doc.id)"
+        }
+      ]
+    },
+    {
+      "path": "server/apps/opspilot/tasks.py",
+      "line": 515,
+      "name": "sync_web_page_knowledge",
+      "decorators": [
+        "shared_task"
+      ],
+      "module": "opspilot",
+      "task_name": "apps.opspilot.tasks.sync_web_page_knowledge",
+      "purpose": "下载网页、更新文档并嵌入",
+      "trigger": "动态：网页知识模型配置",
+      "realtime": "低",
+      "duration_risk": "高",
+      "concurrency_risk": "中",
+      "memory_risk": "高",
+      "execution_class": "B",
+      "default_pool": "B",
+      "status": "有生产触发证据",
+      "references": [
+        {
+          "path": "server/apps/opspilot/models/knowledge_mgmt.py",
+          "line": 169,
+          "text": "task_path = \"apps.opspilot.tasks.sync_web_page_knowledge\""
+        }
+      ]
+    },
+    {
+      "path": "server/apps/opspilot/tasks.py",
+      "line": 583,
+      "name": "create_qa_pairs",
+      "decorators": [
+        "shared_task"
+      ],
+      "module": "opspilot",
+      "task_name": "apps.opspilot.tasks.create_qa_pairs",
+      "purpose": "批量文档生成问答",
+      "trigger": "问答API/序列化器",
+      "realtime": "中",
+      "duration_risk": "高",
+      "concurrency_risk": "高",
+      "memory_risk": "高",
+      "execution_class": "B",
+      "default_pool": "B",
+      "status": "有生产触发证据",
+      "references": [
+        {
+          "path": "server/apps/opspilot/viewsets/qa_pairs_view.py",
+          "line": 36,
+          "text": "\"\"\"禁用内置 create 接口 - 使用 create_qa_pairs/create_qa_pairs_by_custom/create_qa_pairs_by_chunk 等 action\"\"\""
+        },
+        {
+          "path": "server/apps/opspilot/viewsets/qa_pairs_view.py",
+          "line": 250,
+          "text": "create_qa_pairs.delay([instance.id for instance in add_list], params.get(\"only_question\", False))"
+        },
+        {
+          "path": "server/apps/opspilot/serializers/qa_pairs_serializers.py",
+          "line": 37,
+          "text": "create_qa_pairs.delay([instance.id], only_question, True)"
+        }
+      ]
+    },
+    {
+      "path": "server/apps/opspilot/tasks.py",
+      "line": 666,
+      "name": "generate_answer",
+      "decorators": [
+        "shared_task"
+      ],
+      "module": "opspilot",
+      "task_name": "apps.opspilot.tasks.generate_answer",
+      "purpose": "已有问答生成/更新答案",
+      "trigger": "用户问答API",
+      "realtime": "中",
+      "duration_risk": "高",
+      "concurrency_risk": "中",
+      "memory_risk": "中",
+      "execution_class": "B",
+      "default_pool": "B",
+      "status": "有生产触发证据",
+      "references": [
+        {
+          "path": "server/apps/opspilot/viewsets/qa_pairs_view.py",
+          "line": 144,
+          "text": "answer_res = client.generate_answer(answer_kwargs)"
+        },
+        {
+          "path": "server/apps/opspilot/viewsets/qa_pairs_view.py",
+          "line": 215,
+          "text": "res = ChunkHelper.generate_answer(kwargs)"
+        },
+        {
+          "path": "server/apps/opspilot/viewsets/qa_pairs_view.py",
+          "line": 278,
+          "text": "generate_answer.delay(qa_paris_id)"
+        },
+        {
+          "path": "server/apps/opspilot/utils/chunk_helper.py",
+          "line": 362,
+          "text": "result = QAGeneration.generate_answer(request)"
+        },
+        {
+          "path": "server/apps/opspilot/utils/chunk_helper.py",
+          "line": 389,
+          "text": "res = cls.generate_answer(dict(answer_kwargs, **{\"context\": chunk[\"content\"], \"content\": u[\"question\"]}))"
+        },
+        {
+          "path": "server/apps/opspilot/utils/chunk_helper.py",
+          "line": 419,
+          "text": "res = cls.generate_answer(dict(kwargs, **{\"context\": i[\"content\"], \"content\": i[\"question\"]}))"
+        }
+      ]
+    },
+    {
+      "path": "server/apps/opspilot/tasks.py",
+      "line": 692,
+      "name": "rebuild_graph_community_by_instance",
+      "decorators": [
+        "shared_task"
+      ],
+      "module": "opspilot",
+      "task_name": "apps.opspilot.tasks.rebuild_graph_community_by_instance",
+      "purpose": "重建知识图谱社区",
+      "trigger": "用户图谱API",
+      "realtime": "低",
+      "duration_risk": "高",
+      "concurrency_risk": "中",
+      "memory_risk": "高",
+      "execution_class": "B",
+      "default_pool": "B",
+      "status": "有生产触发证据",
+      "references": [
+        {
+          "path": "server/apps/opspilot/viewsets/knowledge_graph_view.py",
+          "line": 155,
+          "text": "rebuild_graph_community_by_instance.delay(graph_obj.id)"
+        }
+      ]
+    },
+    {
+      "path": "server/apps/opspilot/tasks.py",
+      "line": 711,
+      "name": "create_graph",
+      "decorators": [
+        "shared_task"
+      ],
+      "module": "opspilot",
+      "task_name": "apps.opspilot.tasks.create_graph",
+      "purpose": "创建知识图谱",
+      "trigger": "图谱序列化器",
+      "realtime": "低",
+      "duration_risk": "高",
+      "concurrency_risk": "中",
+      "memory_risk": "高",
+      "execution_class": "B",
+      "default_pool": "B",
+      "status": "有生产触发证据",
+      "references": [
+        {
+          "path": "server/apps/opspilot/utils/graph_utils.py",
+          "line": 88,
+          "text": "return cls.create_graph(graph_obj, add_doc_list)"
+        },
+        {
+          "path": "server/apps/opspilot/serializers/knowledge_graph_serializers.py",
+          "line": 46,
+          "text": "create_graph.delay(instance.id)"
+        }
+      ]
+    },
+    {
+      "path": "server/apps/opspilot/tasks.py",
+      "line": 732,
+      "name": "update_graph",
+      "decorators": [
+        "shared_task"
+      ],
+      "module": "opspilot",
+      "task_name": "apps.opspilot.tasks.update_graph",
+      "purpose": "增量更新知识图谱",
+      "trigger": "图谱序列化器",
+      "realtime": "低",
+      "duration_risk": "高",
+      "concurrency_risk": "中",
+      "memory_risk": "高",
+      "execution_class": "B",
+      "default_pool": "B",
+      "status": "有生产触发证据",
+      "references": [
+        {
+          "path": "server/apps/opspilot/serializers/knowledge_graph_serializers.py",
+          "line": 58,
+          "text": "update_graph.delay(instance.id, old_doc_list)"
+        }
+      ]
+    },
+    {
+      "path": "server/apps/opspilot/tasks.py",
+      "line": 753,
+      "name": "create_qa_pairs_by_json",
+      "decorators": [
+        "shared_task"
+      ],
+      "module": "opspilot",
+      "task_name": "apps.opspilot.tasks.create_qa_pairs_by_json",
+      "purpose": "JSON批量问答写入与嵌入",
+      "trigger": "用户导入API",
+      "realtime": "中",
+      "duration_risk": "高",
+      "concurrency_risk": "中",
+      "memory_risk": "高",
+      "execution_class": "B",
+      "default_pool": "B",
+      "status": "有生产触发证据",
+      "references": [
+        {
+          "path": "server/apps/opspilot/viewsets/qa_pairs_view.py",
+          "line": 297,
+          "text": "create_qa_pairs_by_json.delay("
+        }
+      ]
+    },
+    {
+      "path": "server/apps/opspilot/tasks.py",
+      "line": 975,
+      "name": "create_qa_pairs_by_custom",
+      "decorators": [
+        "shared_task"
+      ],
+      "module": "opspilot",
+      "task_name": "apps.opspilot.tasks.create_qa_pairs_by_custom",
+      "purpose": "自定义问答批量写入与嵌入",
+      "trigger": "用户问答API",
+      "realtime": "中",
+      "duration_risk": "高",
+      "concurrency_risk": "中",
+      "memory_risk": "高",
+      "execution_class": "B",
+      "default_pool": "B",
+      "status": "有生产触发证据",
+      "references": [
+        {
+          "path": "server/apps/opspilot/viewsets/qa_pairs_view.py",
+          "line": 36,
+          "text": "\"\"\"禁用内置 create 接口 - 使用 create_qa_pairs/create_qa_pairs_by_custom/create_qa_pairs_by_chunk 等 action\"\"\""
+        },
+        {
+          "path": "server/apps/opspilot/viewsets/qa_pairs_view.py",
+          "line": 468,
+          "text": "create_qa_pairs_by_custom.delay(qa_pairs.id, params[\"qa_pairs\"])"
+        }
+      ]
+    },
+    {
+      "path": "server/apps/opspilot/tasks.py",
+      "line": 1006,
+      "name": "create_qa_pairs_by_chunk",
+      "decorators": [
+        "shared_task"
+      ],
+      "module": "opspilot",
+      "task_name": "apps.opspilot.tasks.create_qa_pairs_by_chunk",
+      "purpose": "分块内容通过LLM生成问答",
+      "trigger": "用户问答API",
+      "realtime": "中",
+      "duration_risk": "高",
+      "concurrency_risk": "高",
+      "memory_risk": "高",
+      "execution_class": "B",
+      "default_pool": "B",
+      "status": "有生产触发证据",
+      "references": [
+        {
+          "path": "server/apps/opspilot/viewsets/qa_pairs_view.py",
+          "line": 36,
+          "text": "\"\"\"禁用内置 create 接口 - 使用 create_qa_pairs/create_qa_pairs_by_custom/create_qa_pairs_by_chunk 等 action\"\"\""
+        },
+        {
+          "path": "server/apps/opspilot/viewsets/qa_pairs_view.py",
+          "line": 505,
+          "text": "create_qa_pairs_by_chunk.delay(qa_pairs.id, kwargs)"
+        }
+      ]
+    },
+    {
+      "path": "server/apps/opspilot/tasks.py",
+      "line": 1078,
+      "name": "chat_flow_celery_task",
+      "decorators": [
+        "shared_task"
+      ],
+      "module": "opspilot",
+      "task_name": "apps.opspilot.tasks.chat_flow_celery_task",
+      "purpose": "执行周期ChatFlow，可能有LLM和工具链",
+      "trigger": "动态：工作流周期节点",
+      "realtime": "中",
+      "duration_risk": "高",
+      "concurrency_risk": "高",
+      "memory_risk": "高",
+      "execution_class": "B",
+      "default_pool": "B",
+      "status": "有生产触发证据",
+      "references": [
+        {
+          "path": "server/apps/opspilot/utils/celery_task_utils.py",
+          "line": 199,
+          "text": "task=\"apps.opspilot.tasks.chat_flow_celery_task\","
+        }
+      ]
+    },
+    {
+      "path": "server/apps/opspilot/tasks.py",
+      "line": 1108,
+      "name": "chat_flow_test_execute_task",
+      "decorators": [
+        "shared_task"
+      ],
+      "module": "opspilot",
+      "task_name": "apps.opspilot.tasks.chat_flow_test_execute_task",
+      "purpose": "配置页工作流测试，完整执行引擎",
+      "trigger": "用户测试API",
+      "realtime": "高",
+      "duration_risk": "高",
+      "concurrency_risk": "高",
+      "memory_risk": "高",
+      "execution_class": "A",
+      "default_pool": "B",
+      "status": "有生产触发证据",
+      "references": [
+        {
+          "path": "server/apps/opspilot/views.py",
+          "line": 755,
+          "text": "async_task = chat_flow_test_execute_task.delay(bot_chat_flow.id, node_id, input_data, node_type, execution_id)"
+        }
+      ]
+    },
+    {
+      "path": "server/apps/opspilot/tasks.py",
+      "line": 1133,
+      "name": "update_graph_task",
+      "decorators": [
+        "shared_task"
+      ],
+      "module": "opspilot",
+      "task_name": "apps.opspilot.tasks.update_graph_task",
+      "purpose": "更新图谱进度",
+      "trigger": "GraphUtils直接调用；未见异步投递",
+      "realtime": "中",
+      "duration_risk": "低",
+      "concurrency_risk": "中",
+      "memory_risk": "低",
+      "execution_class": "B",
+      "default_pool": "B",
+      "status": "仅找到直接调用",
+      "references": [
+        {
+          "path": "server/apps/opspilot/utils/graph_utils.py",
+          "line": 95,
+          "text": "update_graph_task(current_count, all_count, task_id)"
+        }
+      ]
+    },
+    {
+      "path": "server/apps/opspilot/tasks.py",
+      "line": 1238,
+      "name": "process_wechat_message",
+      "decorators": [
+        "shared_task(bind=True, max_retries=3, default_retry_delay=60)"
+      ],
+      "module": "opspilot",
+      "task_name": "apps.opspilot.tasks.process_wechat_message",
+      "purpose": "企微消息执行ChatFlow并回复",
+      "trigger": "渠道回调",
+      "realtime": "高",
+      "duration_risk": "高",
+      "concurrency_risk": "高",
+      "memory_risk": "高",
+      "execution_class": "A",
+      "default_pool": "B",
+      "status": "有生产触发证据",
+      "references": [
+        {
+          "path": "server/apps/opspilot/utils/wechat_chat_flow_utils.py",
+          "line": 184,
+          "text": "process_wechat_message.delay("
+        }
+      ]
+    },
+    {
+      "path": "server/apps/opspilot/tasks.py",
+      "line": 1259,
+      "name": "process_enterprise_wechat_aibot_message",
+      "decorators": [
+        "shared_task(bind=True, max_retries=3, default_retry_delay=60)"
+      ],
+      "module": "opspilot",
+      "task_name": "apps.opspilot.tasks.process_enterprise_wechat_aibot_message",
+      "purpose": "企微智能机器人执行ChatFlow后投递回复",
+      "trigger": "渠道回调",
+      "realtime": "高",
+      "duration_risk": "高",
+      "concurrency_risk": "高",
+      "memory_risk": "高",
+      "execution_class": "A",
+      "default_pool": "B",
+      "status": "有生产触发证据",
+      "references": [
+        {
+          "path": "server/apps/opspilot/utils/enterprise_wechat_aibot_chat_flow_utils.py",
+          "line": 154,
+          "text": "process_enterprise_wechat_aibot_message.delay("
+        }
+      ]
+    },
+    {
+      "path": "server/apps/opspilot/tasks.py",
+      "line": 1290,
+      "name": "process_enterprise_wechat_aibot_reply",
+      "decorators": [
+        "shared_task(bind=True, max_retries=3, default_retry_delay=60)"
+      ],
+      "module": "opspilot",
+      "task_name": "apps.opspilot.tasks.process_enterprise_wechat_aibot_reply",
+      "purpose": "发送已生成文本并标记完成",
+      "trigger": "消息任务/渠道快速回复",
+      "realtime": "高",
+      "duration_risk": "中",
+      "concurrency_risk": "高",
+      "memory_risk": "中",
+      "execution_class": "I",
+      "default_pool": "I",
+      "status": "有生产触发证据",
+      "references": [
+        {
+          "path": "server/apps/opspilot/utils/enterprise_wechat_aibot_chat_flow_utils.py",
+          "line": 141,
+          "text": "process_enterprise_wechat_aibot_reply.delay("
+        }
+      ]
+    },
+    {
+      "path": "server/apps/opspilot/tasks.py",
+      "line": 1304,
+      "name": "process_dingtalk_message",
+      "decorators": [
+        "shared_task(bind=True, max_retries=3, default_retry_delay=60)"
+      ],
+      "module": "opspilot",
+      "task_name": "apps.opspilot.tasks.process_dingtalk_message",
+      "purpose": "钉钉消息执行ChatFlow及回复",
+      "trigger": "渠道回调",
+      "realtime": "高",
+      "duration_risk": "高",
+      "concurrency_risk": "高",
+      "memory_risk": "高",
+      "execution_class": "A",
+      "default_pool": "B",
+      "status": "有生产触发证据",
+      "references": [
+        {
+          "path": "server/apps/opspilot/services/dingtalk_chat_flow_utils.py",
+          "line": 325,
+          "text": "process_dingtalk_message.delay("
+        }
+      ]
+    },
+    {
+      "path": "server/apps/opspilot/tasks.py",
+      "line": 1357,
+      "name": "process_wechat_official_message",
+      "decorators": [
+        "shared_task(bind=True, max_retries=3, default_retry_delay=60)"
+      ],
+      "module": "opspilot",
+      "task_name": "apps.opspilot.tasks.process_wechat_official_message",
+      "purpose": "公众号消息执行ChatFlow及回复",
+      "trigger": "渠道回调",
+      "realtime": "高",
+      "duration_risk": "高",
+      "concurrency_risk": "高",
+      "memory_risk": "高",
+      "execution_class": "A",
+      "default_pool": "B",
+      "status": "有生产触发证据",
+      "references": [
+        {
+          "path": "server/apps/opspilot/services/wechat_official_chat_flow_utils.py",
+          "line": 244,
+          "text": "process_wechat_official_message.delay("
+        }
+      ]
+    },
+    {
+      "path": "server/apps/opspilot/tasks.py",
+      "line": 1378,
+      "name": "process_memory_write_cache",
+      "decorators": [
+        "shared_task"
+      ],
+      "module": "opspilot",
+      "task_name": "apps.opspilot.tasks.process_memory_write_cache",
+      "purpose": "写记忆缓存，达阈值同步调用LLM整理写入",
+      "trigger": "工作流记忆节点",
+      "realtime": "中",
+      "duration_risk": "高",
+      "concurrency_risk": "高",
+      "memory_risk": "高",
+      "execution_class": "B",
+      "default_pool": "B",
+      "status": "有生产触发证据",
+      "references": [
+        {
+          "path": "server/apps/opspilot/memory/engines/local_engine.py",
+          "line": 127,
+          "text": "process_memory_write_cache.delay("
+        }
+      ]
+    },
+    {
+      "path": "server/apps/opspilot/tasks.py",
+      "line": 1464,
+      "name": "flush_memory_write_cache_for_node",
+      "decorators": [
+        "shared_task"
+      ],
+      "module": "opspilot",
+      "task_name": "apps.opspilot.tasks.flush_memory_write_cache_for_node",
+      "purpose": "遍历节点目标并同步刷新记忆",
+      "trigger": "Bot更新异步/全局刷新中直调",
+      "realtime": "低",
+      "duration_risk": "高",
+      "concurrency_risk": "中",
+      "memory_risk": "高",
+      "execution_class": "B",
+      "default_pool": "B",
+      "status": "有生产触发证据",
+      "references": [
+        {
+          "path": "server/apps/opspilot/viewsets/bot_view.py",
+          "line": 38,
+          "text": "flush_memory_write_cache_for_node.delay("
+        }
+      ]
+    },
+    {
+      "path": "server/apps/opspilot/tasks.py",
+      "line": 1497,
+      "name": "flush_all_pending_memory_write_cache",
+      "decorators": [
+        "shared_task"
+      ],
+      "module": "opspilot",
+      "task_name": "apps.opspilot.tasks.flush_all_pending_memory_write_cache",
+      "purpose": "遍历全量待刷新分组并同步刷新",
+      "trigger": "静态：每日00:00",
+      "realtime": "低",
+      "duration_risk": "高",
+      "concurrency_risk": "低",
+      "memory_risk": "高",
+      "execution_class": "B",
+      "default_pool": "B",
+      "status": "有生产触发证据",
+      "references": [
+        {
+          "path": "server/apps/opspilot/config.py",
+          "line": 37,
+          "text": "\"task\": \"apps.opspilot.tasks.flush_all_pending_memory_write_cache\","
+        }
+      ]
+    },
+    {
+      "path": "server/apps/opspilot/tasks.py",
+      "line": 1857,
+      "name": "process_memory_write",
+      "decorators": [
+        "shared_task"
+      ],
+      "module": "opspilot",
+      "task_name": "apps.opspilot.tasks.process_memory_write",
+      "purpose": "LLM处理记忆后写存储",
+      "trigger": "工作流异步/缓存缺少标识时直调",
+      "realtime": "中",
+      "duration_risk": "高",
+      "concurrency_risk": "高",
+      "memory_risk": "高",
+      "execution_class": "B",
+      "default_pool": "B",
+      "status": "有生产触发证据",
+      "references": [
+        {
+          "path": "server/apps/opspilot/memory/engines/local_engine.py",
+          "line": 140,
+          "text": "process_memory_write.delay("
+        }
+      ]
+    },
+    {
+      "path": "server/apps/opspilot/tasks.py",
+      "line": 1881,
+      "name": "cleanup_expired_workflow_attachments_task",
+      "decorators": [
+        "shared_task"
+      ],
+      "module": "opspilot",
+      "task_name": "apps.opspilot.tasks.cleanup_expired_workflow_attachments_task",
+      "purpose": "清理超过3天的工作流附件",
+      "trigger": "静态：每日03:00",
+      "realtime": "低",
+      "duration_risk": "高",
+      "concurrency_risk": "低",
+      "memory_risk": "中",
+      "execution_class": "B",
+      "default_pool": "B",
+      "status": "有生产触发证据",
+      "references": [
+        {
+          "path": "server/apps/opspilot/config.py",
+          "line": 33,
+          "text": "\"task\": \"apps.opspilot.tasks.cleanup_expired_workflow_attachments_task\","
+        }
+      ]
+    },
+    {
+      "path": "server/apps/system_mgmt/tasks.py",
+      "line": 15,
+      "name": "write_error_log_async",
+      "decorators": [
+        "shared_task(bind=True, max_retries=3, default_retry_delay=60)"
+      ],
+      "module": "system_mgmt",
+      "task_name": "apps.system_mgmt.tasks.write_error_log_async",
+      "purpose": "异常日志入库，失败重试",
+      "trigger": "HTTP错误日志中间件",
+      "realtime": "中",
+      "duration_risk": "低",
+      "concurrency_risk": "高",
+      "memory_risk": "中",
+      "execution_class": "I",
+      "default_pool": "I",
+      "status": "有生产触发证据",
+      "references": [
+        {
+          "path": "server/apps/system_mgmt/middleware/error_log_middleware.py",
+          "line": 86,
+          "text": "write_error_log_async.delay("
+        }
+      ]
+    },
+    {
+      "path": "server/apps/system_mgmt/tasks.py",
+      "line": 43,
+      "name": "sync_user_and_group_by_login_module",
+      "decorators": [
+        "shared_task"
+      ],
+      "module": "system_mgmt",
+      "task_name": "apps.system_mgmt.tasks.sync_user_and_group_by_login_module",
+      "purpose": "RPC拉取用户/组并全量同步",
+      "trigger": "登录模块配置/手动/动态周期",
+      "realtime": "中",
+      "duration_risk": "高",
+      "concurrency_risk": "中",
+      "memory_risk": "高",
+      "execution_class": "B",
+      "default_pool": "B",
+      "status": "有生产触发证据",
+      "references": [
+        {
+          "path": "server/apps/system_mgmt/viewset/login_module_viewset.py",
+          "line": 124,
+          "text": "sync_user_and_group_by_login_module.delay(obj.id)"
+        },
+        {
+          "path": "server/apps/system_mgmt/models/login_module.py",
+          "line": 36,
+          "text": "task_path = \"apps.system_mgmt.tasks.sync_user_and_group_by_login_module\""
+        },
+        {
+          "path": "server/apps/system_mgmt/serializers/login_module_serializer.py",
+          "line": 42,
+          "text": "sync_user_and_group_by_login_module.delay(instance.id)"
+        }
+      ]
+    },
+    {
+      "path": "server/apps/system_mgmt/tasks.py",
+      "line": 252,
+      "name": "check_password_expiry_and_notify",
+      "decorators": [
+        "shared_task"
+      ],
+      "module": "system_mgmt",
+      "task_name": "apps.system_mgmt.tasks.check_password_expiry_and_notify",
+      "purpose": "遍历用户逐个发密码到期邮件",
+      "trigger": "静态：每日00:00",
+      "realtime": "低",
+      "duration_risk": "高",
+      "concurrency_risk": "低",
+      "memory_risk": "中",
+      "execution_class": "B",
+      "default_pool": "B",
+      "status": "有生产触发证据",
+      "references": [
+        {
+          "path": "server/apps/system_mgmt/config.py",
+          "line": 4,
+          "text": "\"check_password_expiry_and_notify\": {"
+        },
+        {
+          "path": "server/apps/system_mgmt/config.py",
+          "line": 5,
+          "text": "\"task\": \"apps.system_mgmt.tasks.check_password_expiry_and_notify\","
+        }
+      ]
+    }
+  ]
+}

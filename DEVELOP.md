@@ -18,7 +18,7 @@ make test-unit        # 仅 unit marker
 make test-bdd         # 仅 bdd marker
 make test-fast        # 跳过 slow
 make test-app         # 指定 app 测试
-make celery           # Celery worker
+make celery POOL=critical  # 默认工作负载四池之一；另启 notification/state/background
 make celery-beat      # Beat 调度
 make start-nats       # NATS 监听
 make shell            # IPython shell_plus
@@ -28,13 +28,13 @@ make collect-static   # 收集静态文件
 make init-buckets     # 初始化 MinIO bucket
 ```
 
-CMDB 异步导入导出直接使用现有 `make celery` Worker 的默认队列，另由
+CMDB 异步导入导出使用 `make celery POOL=background` 的 background 队列，另由
 `make celery-beat` 驱动每分钟补发和每日清理；不需要单独的 CMDB Worker。
 API、Worker 和 Beat 必须使用相同的数据库、Broker 和对象存储环境配置。
 修改任务代码后重启现有 Worker；修改 Beat 配置后也重启 Beat。
 
 持续排队时可运行 `uv run celery -A apps.core.celery inspect active_queues --timeout=3`，
-确认在线 Worker 消费默认队列（默认名为 `celery`）；再检查 `inspect registered` 中是否包含
+确认 background Worker 同时消费 background 和历史 celery 队列；再检查 `inspect registered` 中是否包含
 `apps.cmdb.tasks.transfer.execute_transfer`。旧版本投递到 `cmdb_transfer` 的未超时排队记录，
 由每分钟维护补发到默认队列，复用原任务 ID，无需重新提交。不要清空 Broker 队列。
 若消费和任务注册正常，再检查全局执行占用（最多 2 个）和同模型导入互斥。每人允许
@@ -221,3 +221,7 @@ Celery Beat 静态任务对账使用 `CELERY_BEAT_SCHEDULE_RECONCILE_MODE`，代
 11. CMDB 推监控「成功但无实例 / ignored」→ 若 `.env` 的 `NATS_SERVERS` 指向远端共享集群，本地 `nats_listener` 与远端消费者抢同一 queue，请求常被远端旧代码接走并 `ignored`。本地 monorepo 开发在 `.env` 设 `IS_LOCAL_RPC=1`（模块间走本进程 `AppClient`），改完后重启 `make dev`（环境变量不随 `--reload` 热更新）。
 
 > 质量门禁与代码红线见 [工程质量规格](specs/capabilities/engineering-quality.md)；回滚与韧性见 [平台可靠性规格](specs/capabilities/platform-reliability.md)。
+
+### Celery 工作负载隔离
+
+默认任务按 critical、notification、state、background 四池独立运行，各池显式设置 MIN/MAX；保留 OpsPilot、报表渲染和补丁维护专用消费者及上游 prefork 超时/回收行为。必须移除旧 CELERY_CONCURRENCY，将四池MAX和既有专用并发（含所有副本/升级重叠）计入 CELERY_TOTAL_CONCURRENCY_LIMIT。配置、只读巡检与回滚见[运行手册](docs/celery-runtime-runbook.md)，当前准确任务名见[182项清单](docs/celery-current-task-inventory.md)。
