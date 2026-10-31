@@ -373,4 +373,7 @@ class QCloudCollectionPlugin(AutoRegisterCollectionPluginMixin, QCloudCollectMet
 
     @property
     def model_field_mapping(self):
-        return {model_id: bind_collection_mapping(self, mapping) for model_id, mapping in self.field_mappings.items()}
+        return {
+            model_id: bind_collection_mapping(self, mapping)
+            for model_id, mapping in self.field_mappings.items()
+        }

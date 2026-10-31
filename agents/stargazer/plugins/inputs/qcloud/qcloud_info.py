@@ -130,13 +130,12 @@ def _join_named(items, key):
     return ",".join(values)
 
 
-def _warn_qcloud_skip(action, region, error, cluster_id=""):
+def _warn_qcloud_skip(failed_stage, region, error, cluster_id=""):
     logger.warning(
-        "event=qcloud_collect_skipped action=%s region=%s cluster_id=%s failed_stage=%s error_type=%s",
-        action,
+        "event=qcloud_collect_skipped failed_stage=%s region=%s cluster_id=%s error_type=%s",
+        failed_stage,
         region,
         cluster_id,
-        action,
         type(error).__name__,
     )
 
@@ -192,6 +191,7 @@ class TencentCloudManager:
         # 从host参数读取endpoint，如: cvm.private-cloud.example.com
         self.custom_endpoint = params.get("host")
         self.collection_task_id = params.get("collection_task_id")
+        self._tke_clusters_by_region = {}
         self.region_id = str(params.get("region_id") or "").strip()
 
     def _call_cmq_with_retry(self, region: str, action: str, params: Dict | None = None) -> Dict:
@@ -638,11 +638,17 @@ class TencentCloudManager:
                 )
         return result
 
+    def _list_tke_clusters(self, region) -> List[Dict]:
+        """同一轮采集里集群和节点共用 DescribeClusters 结果；失败不缓存。"""
+        if region not in self._tke_clusters_by_region:
+            self._tke_clusters_by_region[region] = list(self._iter_paged_resources(region, "tke", "DescribeClusters", "Clusters"))
+        return self._tke_clusters_by_region[region]
+
     def get_qcloud_tke_cluster(self) -> List[Dict]:
         """TKE 集群。DescribeClusters → ClusterId。"""
         result = []
         for region in self.available_region_list:
-            for instance in self._iter_paged_resources(region, "tke", "DescribeClusters", "Clusters"):
+            for instance in self._list_tke_clusters(region):
                 network = _as_dict(instance.get("ClusterNetworkSettings"))
                 result.append(
                     {
@@ -706,7 +712,7 @@ class TencentCloudManager:
         instance_failures = 0
         for region in regions:
             try:
-                clusters = list(self._iter_paged_resources(region, "tke", "DescribeClusters", "Clusters"))
+                clusters = self._list_tke_clusters(region)
             except Exception as err:
                 _warn_qcloud_skip("DescribeClusters", region, err)
                 continue

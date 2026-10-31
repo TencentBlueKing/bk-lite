@@ -275,13 +275,54 @@ def test_qcloud_tke_node_lists_clusters_then_instances_and_skips_one_failure():
     assert result[1]["tag"] == ""
     assert len(records) == 1
     record = records[0]
-    assert record.msg == "event=qcloud_collect_skipped action=%s region=%s cluster_id=%s failed_stage=%s error_type=%s"
-    assert record.args == ("DescribeClusterInstances", "ap-guangzhou", "cls-bad", "DescribeClusterInstances", "RuntimeError")
+    assert record.msg == "event=qcloud_collect_skipped failed_stage=%s region=%s cluster_id=%s error_type=%s"
+    assert record.args == ("DescribeClusterInstances", "ap-guangzhou", "cls-bad", "RuntimeError")
     assert record.exc_info is None
     rendered = record.getMessage()
     assert "cls-bad" in rendered
     assert sentinel not in rendered
     assert sentinel not in str(record.args)
+
+
+def test_qcloud_tke_cluster_and_node_share_one_describe_clusters_call():
+    calls = []
+
+    def handler(region, action, params):
+        calls.append(action)
+        if action == "DescribeClusters":
+            return {"Response": {"Clusters": [{"ClusterId": "cls-1", "ClusterName": "c1"}]}}
+        return {"Response": {"InstanceSet": [{"InstanceId": "ins-1", "LanIP": "10.0.0.1"}]}}
+
+    manager = _manager_with_client(handler, ["ap-guangzhou"])
+    clusters = manager.get_qcloud_tke_cluster()
+    nodes = manager.get_qcloud_tke_node()
+
+    assert [item["resource_id"] for item in clusters] == ["cls-1"]
+    assert [item["cluster_id"] for item in nodes] == ["cls-1"]
+    assert calls == ["DescribeClusters", "DescribeClusterInstances"]
+
+
+def test_qcloud_tke_node_retries_describe_clusters_after_cluster_listing_failed():
+    attempts = []
+
+    def handler(region, action, params):
+        if action == "DescribeClusters":
+            attempts.append(action)
+            if len(attempts) == 1:
+                raise RuntimeError("temporary")
+            return {"Response": {"Clusters": [{"ClusterId": "cls-1"}]}}
+        return {"Response": {"InstanceSet": [{"InstanceId": "ins-1"}]}}
+
+    manager = _manager_with_client(handler, ["ap-guangzhou"])
+    try:
+        manager.get_qcloud_tke_cluster()
+    except RuntimeError:
+        pass
+    else:
+        raise AssertionError("expected cluster listing failure")
+
+    assert [item["resource_id"] for item in manager.get_qcloud_tke_node()] == ["ins-1"]
+    assert len(attempts) == 2
 
 
 def test_qcloud_tke_node_empty_clusters_is_empty_success():
