@@ -265,6 +265,7 @@ class Command(BaseCommand):
         call_command("init_alert_levels")
         call_command("init_system_settings")
         call_command("init_alert_rules")
+        call_command("init_itsm_integration")
         call_command("backfill_alert_dimensions")
         call_command("backfill_event_default_team")
 
