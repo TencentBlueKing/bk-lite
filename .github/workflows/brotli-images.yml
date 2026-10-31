@@ -63,3 +63,32 @@ jobs:
             --pids-limit=64 --cap-drop ALL --security-opt no-new-privileges \
             --entrypoint sh brotli-node-check -c \
             'node --version && dpkg-query -W nodejs libbrotli1'
+
+  log4j-images:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - product: conductor
+            base: bk-lite.tencentcloudcr.com/bklite/conductoross/conductor@sha256:60496edc8e53a9cc19128b82f56b4c0bee7c67c586719c5992cde5c085750648
+          - product: elasticsearch
+            base: docker.elastic.co/elasticsearch/elasticsearch:7.17.21
+    steps:
+      - uses: actions/checkout@v4
+      - name: 从真实产品镜像构建 Log4j 补丁（不发布）
+        env:
+          PRODUCT: ${{ matrix.product }}
+          BASE_IMAGE: ${{ matrix.base }}
+        run: |
+          docker pull "$BASE_IMAGE"
+          user=$(docker image inspect --format '{{.Config.User}}' "$BASE_IMAGE")
+          docker build --pull --no-cache \
+            --build-arg BASE_IMAGE="$BASE_IMAGE" \
+            --build-arg RUNTIME_USER="${user:-0}" \
+            -f "deploy/security/Dockerfile.$PRODUCT" \
+            -t "security-log4j-$PRODUCT" deploy/security
+          test "$(docker image inspect --format '{{.Config.User}}' "security-log4j-$PRODUCT")" = "$user"
+          test "$(docker image inspect --format '{{json .Config.Entrypoint}} {{json .Config.Cmd}}' "$BASE_IMAGE")" = \
+               "$(docker image inspect --format '{{json .Config.Entrypoint}} {{json .Config.Cmd}}' "security-log4j-$PRODUCT")"
