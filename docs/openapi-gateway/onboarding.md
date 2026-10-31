@@ -352,7 +352,7 @@ def gateway_identity_middleware(request):
 > 错误响应都能 `json.loads` 出 `code`——先判状态码，JSON 解析失败按状态码兜底处理。
 > 另外**上游自身返回的 5xx 会原样透传**，与网关产生的 502 无法从状态码区分，需结合响应体判断。
 
-**`GET /openapi/v1/_me` 响应结构**（对外冻结，仅新增字段）：
+**`GET /openapi/v1/_me?include_anchor_scopes=true` 响应结构**（对外冻结，仅新增字段；唯一例外是 `anchor_scopes` 改为按需返回）：
 
 ```json
 {
@@ -372,7 +372,7 @@ def gateway_identity_middleware(request):
 }
 ```
 
-- `groups`：直属组织；`anchor_scopes`：以各直属组织为锚点时级联可见的组织集合（锚点式接口用）；
+- `groups`：直属组织；`anchor_scopes`：以各直属组织为锚点时级联可见的组织集合（锚点式接口用）。**默认不返回该字段**，需带查询参数 `?include_anchor_scopes=true`（或 `1`）才计算——组织量大且直属组织多（如超管 JWT）时开销显著，仅登录识别、身份校验的调用方不要带；
 - `services` 中的 **external 条目来自 server 各 worker 进程内的快照**，刚注册后可能缺失或在多次请求间不稳定；**不要用它判断某外部服务是否可用**，以实际调用为准。
 
 ### 5.1 凭据安全须知（务必转达客户安全评审）

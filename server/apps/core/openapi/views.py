@@ -148,7 +148,8 @@ def me_view(request):
     try:
         identity, response = _try_authenticate(request)
         if response is None:
-            response = ok(_build_me_payload(identity))
+            include_anchor_scopes = request.GET.get("include_anchor_scopes", "").lower() in ("1", "true")
+            response = ok(_build_me_payload(identity, include_anchor_scopes=include_anchor_scopes))
         return response
     finally:
         _audit(request, identity, response, started_at)
@@ -296,15 +297,8 @@ def forward_auth_view(request):
         )
 
 
-def _build_me_payload(identity):
-    from apps.system_mgmt.models import Group
+def _build_anchor_scopes(identity):
     from apps.system_mgmt.utils.group_utils import GroupUtils
-
-    if identity.groups is not None:
-        groups = identity.groups
-    else:
-        name_map = dict(Group.objects.filter(id__in=identity.team_ids).values_list("id", "name"))
-        groups = [{"id": team_id, "name": name_map.get(team_id, "")} for team_id in identity.team_ids]
 
     anchor_scopes = []
     for team_id in identity.team_ids:
@@ -323,20 +317,33 @@ def _build_me_payload(identity):
             logger.exception("anchor scope resolution failed for group %s", team_id)
             cascaded = [team_id]
         anchor_scopes.append({"anchor": team_id, "cascaded_group_ids": cascaded})
+    return anchor_scopes
 
+
+def _build_me_payload(identity, include_anchor_scopes=False):
     from apps.core.openapi.renderer import get_external_services
+    from apps.system_mgmt.models import Group
+
+    if identity.groups is not None:
+        groups = identity.groups
+    else:
+        name_map = dict(Group.objects.filter(id__in=identity.team_ids).values_list("id", "name"))
+        groups = [{"id": team_id, "name": name_map.get(team_id, "")} for team_id in identity.team_ids]
 
     services = [{"name": name, "kind": "internal"} for name in default_registry.services()] + [
         {"name": name, "kind": "external"} for name in get_external_services()
     ]
 
-    return {
+    payload = {
         "user": identity.user,
         "domain": identity.domain,
         "credential_type": identity.credential_type,
         "groups": groups,
-        "anchor_scopes": anchor_scopes,
         "roles": identity.roles,
         "services": services,
         "caller_system": identity.caller_system,
     }
+    # 超管 JWT 的 team_ids 为全部组织，逐个展开子树代价随组织数平方增长，故仅按需计算
+    if include_anchor_scopes:
+        payload["anchor_scopes"] = _build_anchor_scopes(identity)
+    return payload
