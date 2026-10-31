@@ -271,6 +271,7 @@ def test_qcloud_tke_node_lists_clusters_then_instances_and_skips_one_failure():
     assert result[0]["resource_name"] == "10.0.0.8"
     assert result[1]["resource_name"] == "ins-1"
     assert result[1]["cluster_id"] == "cls-ok"
+    assert result[1]["cluster_name"] == "ok"
     assert result[1]["ip_addr"] == "10.0.0.9"
     assert result[1]["tag"] == ""
     assert len(records) == 1

@@ -677,7 +677,7 @@ class TencentCloudManager:
                 )
         return result
 
-    def _collect_tke_cluster_nodes(self, region, cluster_id) -> List[Dict]:
+    def _collect_tke_cluster_nodes(self, region, cluster_id, cluster_name="") -> List[Dict]:
         nodes = []
         for instance in self._iter_paged_resources(
             region,
@@ -693,6 +693,7 @@ class TencentCloudManager:
                     "resource_id": resource_id,
                     "region": region,
                     "cluster_id": cluster_id,
+                    "cluster_name": cluster_name,
                     "ip_addr": instance.get("LanIP"),
                     "instance_role": instance.get("InstanceRole"),
                     "status": instance.get("InstanceState"),
@@ -718,12 +719,13 @@ class TencentCloudManager:
                 continue
             listed_ok = True
             for cluster in clusters:
-                cluster_id = str(_as_dict(cluster).get("ClusterId") or "").strip()
+                cluster = _as_dict(cluster)
+                cluster_id = str(cluster.get("ClusterId") or "").strip()
                 if not cluster_id:
                     continue
                 clusters_seen += 1
                 try:
-                    result.extend(self._collect_tke_cluster_nodes(region, cluster_id))
+                    result.extend(self._collect_tke_cluster_nodes(region, cluster_id, cluster.get("ClusterName") or ""))
                 except Exception as err:
                     instance_failures += 1
                     _warn_qcloud_skip("DescribeClusterInstances", region, err, cluster_id)

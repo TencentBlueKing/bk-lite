@@ -48,6 +48,14 @@ class QCloudCollectMetrics(CollectBase):
         inst_name = f"{data['resource_name']}_{data['resource_id']}"
         return inst_name
 
+    @staticmethod
+    def set_tke_node_inst_name(data, *args, **kwargs):
+        """节点接口没有节点名，用所属集群名区分；旧 Stargazer 不带集群名时沿用通用规则。"""
+        cluster_name = str(data.get("cluster_name") or "").strip()
+        if not cluster_name:
+            return QCloudCollectMetrics.set_instance_inst_name(data)
+        return f"{cluster_name}_{data['resource_id']}"
+
     def set_asso_instances(self, data, *args, **kwargs):
         model_id = kwargs["model_id"]
         return [self._belong_account(model_id)]

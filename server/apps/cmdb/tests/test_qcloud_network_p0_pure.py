@@ -81,7 +81,7 @@ def test_peer_edges_hit_and_miss_without_fabricating():
             ),
         ],
         "qcloud_tke_node_info_gauge": [
-            _row(resource_name="ins-1", resource_id="ins-1", region="ap-guangzhou", cluster_id="cls-1"),
+            _row(resource_name="ins-1", resource_id="ins-1", region="ap-guangzhou", cluster_id="cls-1", cluster_name="tke-a"),
             _row(resource_name="ins-miss", resource_id="ins-miss", region="ap-guangzhou", cluster_id="cls-missing"),
         ],
         "qcloud_eip_info_gauge": [
@@ -110,7 +110,8 @@ def test_peer_edges_hit_and_miss_without_fabricating():
     ]
 
     hit_node, miss_node = runner.result["qcloud_tke_node"]
-    assert hit_node["inst_name"] == "ins-1_ins-1"
+    assert hit_node["inst_name"] == "tke-a_ins-1"
+    assert miss_node["inst_name"] == "ins-miss_ins-miss"
     assert hit_node["assos"] == [
         {"model_id": "qcloud", "inst_name": "腾讯云生产", "asst_id": "belong", "model_asst_id": "qcloud_tke_node_belong_qcloud"},
         {

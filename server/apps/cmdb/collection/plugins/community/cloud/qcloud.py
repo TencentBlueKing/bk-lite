@@ -153,7 +153,7 @@ class QCloudCollectionPlugin(AutoRegisterCollectionPluginMixin, QCloudCollectMet
             "tag": "tag",
         },
         "qcloud_tke_node": {
-            "inst_name": QCloudCollectMetrics.set_instance_inst_name,
+            "inst_name": QCloudCollectMetrics.set_tke_node_inst_name,
             "assos": QCloudCollectMetrics.set_asso_tke_node,
             "resource_name": "resource_name",
             "resource_id": "resource_id",
