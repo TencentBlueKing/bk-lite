@@ -51,7 +51,12 @@ from apps.cmdb.services.instance_identity import (
 )
 from apps.cmdb.services.model import ModelManage
 from apps.cmdb.services.unique_rule import build_unique_rule_context, collect_instance_unique_conflicts
-from apps.cmdb.utils.change_record import batch_create_change_record, create_change_record, create_change_record_by_asso
+from apps.cmdb.utils.change_record import (
+    batch_create_change_record,
+    create_change_record,
+    create_change_record_by_asso,
+    format_instance_audit_message,
+)
 from apps.cmdb.utils.export import Export
 from apps.cmdb.utils.Import import Import
 from apps.cmdb.utils.permission_util import CmdbRulesFormatUtil
@@ -1077,6 +1082,7 @@ class InstanceManage(object):
         record_change: bool = True,
         operation_id: str | None = None,
         schedule_post_actions: bool = True,
+        audit_source: str = "",
     ):
         """创建实例"""
         instance_info = apply_model_cloud_id(model_id, dict(instance_info))
@@ -1127,7 +1133,12 @@ class InstanceManage(object):
                 after_data=result,
                 operator=operator,
                 model_object=OPERATOR_INSTANCE,
-                message=f"创建模型实例. 模型:{result['model_id']} 实例:{result.get('inst_name') or result.get('ip_addr', '')}",
+                message=format_instance_audit_message(
+                    "创建模型实例",
+                    result["model_id"],
+                    result.get("inst_name") or result.get("ip_addr", ""),
+                    source=audit_source,
+                ),
                 scenario=scenario,
             )
 
@@ -1197,6 +1208,8 @@ class InstanceManage(object):
         instances: list,
         operator: str,
         allowed_org_ids: list | None = None,
+        *,
+        audit_source: str = "",
     ):
         """批量创建实例，任一图写失败时回滚本批已创建节点。"""
         attrs = ModelManage.search_model_attr(model_id)
@@ -1330,7 +1343,12 @@ class InstanceManage(object):
                 "model_id": model_id,
                 "after_data": item,
                 "model_object": OPERATOR_INSTANCE,
-                "message": (f"创建模型实例. 模型:{model_id} " f"实例:{item.get('inst_name') or item.get('ip_addr', '')}"),
+                "message": format_instance_audit_message(
+                    "创建模型实例",
+                    model_id,
+                    item.get("inst_name") or item.get("ip_addr", ""),
+                    source=audit_source,
+                ),
             }
             for item in created
         ]
@@ -1375,6 +1393,7 @@ class InstanceManage(object):
         operation_id: str | None = None,
         schedule_post_actions: bool = True,
         expected_monitor_id: str | None = None,
+        audit_source: str = "",
     ):
         """修改实例属性"""
         from apps.cmdb.services.module_ingest import strip_system_link_fields
@@ -1475,7 +1494,12 @@ class InstanceManage(object):
                     after_data=result[0],
                     operator=operator,
                     model_object=OPERATOR_INSTANCE,
-                    message=f"修改模型实例属性. 模型:{model_info['model_name']} 实例:{result[0]['inst_name']}",
+                    message=format_instance_audit_message(
+                        "修改模型实例属性",
+                        model_info["model_name"],
+                        result[0]["inst_name"],
+                        source=audit_source,
+                    ),
                     scenario=scenario,
                 )
 
@@ -1518,6 +1542,8 @@ class InstanceManage(object):
         update_attr: dict,
         operator: str,
         allowed_org_ids: list | None = None,
+        *,
+        audit_source: str = "",
     ):
         """批量修改实例属性"""
         from apps.cmdb.services.module_ingest import strip_system_link_fields
@@ -1637,7 +1663,12 @@ class InstanceManage(object):
                 before_data=i,
                 after_data=after_dict.get(i["_id"]),
                 model_object=OPERATOR_INSTANCE,
-                message=f"修改模型实例属性. 模型:{model_info['model_name']} 实例:{i.get('inst_name') or i.get('ip_addr', '')}",
+                message=format_instance_audit_message(
+                    "修改模型实例属性",
+                    model_info["model_name"],
+                    i.get("inst_name") or i.get("ip_addr", ""),
+                    source=audit_source,
+                ),
             )
             for i in inst_list
         ]
@@ -1671,7 +1702,7 @@ class InstanceManage(object):
         return result[0]
 
     @staticmethod
-    def instance_batch_delete(user_groups: list, roles: list, inst_ids: list, operator: str):
+    def instance_batch_delete(user_groups: list, roles: list, inst_ids: list, operator: str, *, audit_source: str = ""):
         """批量删除实例"""
         inst_ids = _normalize_batch_instance_ids(inst_ids)
         inst_list = _require_complete_batch_instances(
@@ -1697,7 +1728,12 @@ class InstanceManage(object):
                 model_id=i["model_id"],
                 before_data=i,
                 model_object=OPERATOR_INSTANCE,
-                message=f"删除模型实例. 模型:{model_info['model_name']} 实例:{i.get('inst_name') or i.get('ip_addr', '')}",
+                message=format_instance_audit_message(
+                    "删除模型实例",
+                    model_info["model_name"],
+                    i.get("inst_name") or i.get("ip_addr", ""),
+                    source=audit_source,
+                ),
             )
             for i in inst_list
         ]
@@ -1736,6 +1772,8 @@ class InstanceManage(object):
         update_attr: dict,
         operator: str,
         allowed_org_ids: list | None = None,
+        *,
+        audit_source: str = "",
     ):
         inst_uuids = _normalize_batch_instance_uuids(inst_uuids)
         instances = _require_complete_batch_instances_by_uuid(
@@ -1750,6 +1788,7 @@ class InstanceManage(object):
                 update_attr,
                 operator,
                 allowed_org_ids,
+                audit_source=audit_source,
             )
         except InstanceBatchError as exc:
             uuid_by_id = {item["_id"]: item.get("inst_uuid") for item in instances}
@@ -1767,6 +1806,8 @@ class InstanceManage(object):
         roles: list,
         inst_uuids: list[str],
         operator: str,
+        *,
+        audit_source: str = "",
     ):
         inst_uuids = _normalize_batch_instance_uuids(inst_uuids)
         instances = _require_complete_batch_instances_by_uuid(
@@ -1779,6 +1820,7 @@ class InstanceManage(object):
                 roles,
                 [item["_id"] for item in instances],
                 operator,
+                audit_source=audit_source,
             )
         except InstanceBatchError as exc:
             uuid_by_id = {item["_id"]: item.get("inst_uuid") for item in instances}

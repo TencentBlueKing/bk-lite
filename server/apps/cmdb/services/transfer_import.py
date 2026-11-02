@@ -243,7 +243,7 @@ class TransferImport:
         if before:
             data = {key: value for key, value in data.items() if check["editable"].get(key) or key == "organization"}
         action = "update" if before else "create"
-        event_context = {"attribute_snapshot": load_attribute_snapshot(task.model_id, data.keys())}
+        event_context = {"attribute_snapshot": load_attribute_snapshot(task.model_id, data.keys()), "audit_source": "导入"}
         if before:
             event_context["before_data"] = before
         operation = OperationService.start(

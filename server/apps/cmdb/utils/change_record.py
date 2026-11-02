@@ -28,6 +28,13 @@ _TYPE_ACTION_MAP = {
 }
 
 
+def format_instance_audit_message(action: str, model: str, inst_name: str, *, source: str = "") -> str:
+    """实例变更概述。有来源时插在动作和模型之间，没有来源时保持原句。"""
+    source_text = str(source or "").strip()
+    source_part = f"来源:{source_text} " if source_text else ""
+    return f"{action}. {source_part}模型:{model} 实例:{inst_name}"
+
+
 def _resolve_inst_uuid(inst_uuid=None, before_data=None, after_data=None):
     return inst_uuid or (after_data or {}).get("inst_uuid") or (before_data or {}).get("inst_uuid") or None
 

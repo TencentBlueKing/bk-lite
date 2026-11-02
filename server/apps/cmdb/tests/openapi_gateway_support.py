@@ -166,7 +166,7 @@ def start_cmdb_gateway_catalog(tenants):  # noqa: C901
                     return dict(row)
         return {}
 
-    def fake_instance_create(model_id, data, operator, allowed_org_ids=None):
+    def fake_instance_create(model_id, data, operator, allowed_org_ids=None, **_extra):
         created = {
             "inst_uuid": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
             "model_id": model_id,
@@ -184,7 +184,7 @@ def start_cmdb_gateway_catalog(tenants):  # noqa: C901
         )
         return created
 
-    def fake_instance_update(user_groups, roles, inst_uuid, data, operator, allowed_org_ids=None):
+    def fake_instance_update(user_groups, roles, inst_uuid, data, operator, allowed_org_ids=None, **_extra):
         del user_groups, roles
         key = str(inst_uuid)
         calls.update.append(
@@ -202,14 +202,14 @@ def start_cmdb_gateway_catalog(tenants):  # noqa: C901
                     return dict(row)
         return {}
 
-    def fake_batch_delete(user_groups, roles, inst_uuids, operator):
+    def fake_batch_delete(user_groups, roles, inst_uuids, operator, **_extra):
         del user_groups, roles, operator
         keys = [str(item) for item in inst_uuids]
         calls.delete.append(keys)
         for team_id, rows in list(store.items()):
             store[team_id] = [row for row in rows if row["inst_uuid"] not in keys]
 
-    def fake_batch_create(model_id, items, operator, allowed_org_ids=None):
+    def fake_batch_create(model_id, items, operator, allowed_org_ids=None, **_extra):
         created = []
         for index, item in enumerate(items):
             created.append(
@@ -231,7 +231,7 @@ def start_cmdb_gateway_catalog(tenants):  # noqa: C901
         )
         return created
 
-    def fake_batch_update(user_groups, roles, inst_uuids, update_data, operator, allowed_org_ids=None):
+    def fake_batch_update(user_groups, roles, inst_uuids, update_data, operator, allowed_org_ids=None, **_extra):
         del user_groups, roles
         keys = [str(item) for item in inst_uuids]
         calls.batch_update.append(

@@ -395,7 +395,8 @@ class PCSnapshotReconciler:
                 "before_data": entity,
                 "model_object": OPERATOR_INSTANCE,
                 "message": (
-                    f"自动采集删除实例. 模型:{entity.get('model_id', 'pc_software')} " f"实例:{entity.get('inst_name')} 任务:{self.task.id} 快照:{snapshot_id}"
+                    f"自动采集删除实例. 任务:{getattr(self.task, 'name', '') or self.task.id} "
+                    f"模型:{entity.get('model_id', 'pc_software')} 实例:{entity.get('inst_name')} 快照:{snapshot_id}"
                 ),
             }
             for entity in deleted_entities
