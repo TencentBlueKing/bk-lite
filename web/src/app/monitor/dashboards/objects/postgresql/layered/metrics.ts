@@ -1,0 +1,25 @@
+/** 专业盘要拉的指标。名字都在 config.ts，查询沿用目录里的派生式。 */
+export const POSTGRES_CATEGORY_METRIC_NAMES = [
+  'postgresql_numbackends',
+  'postgresql_xact_commit_rate',
+  'postgresql_xact_rollback_rate',
+  'postgresql_cache_hit_ratio',
+  'postgresql_deadlocks_rate',
+  'postgresql_blks_hit_rate',
+  'postgresql_blks_read_rate',
+  'postgresql_blk_write_time',
+  'postgresql_temp_files_rate',
+  'postgresql_temp_bytes_rate',
+  'postgresql_checkpoints_req_rate',
+  'postgresql_checkpoints_timed_rate',
+  'postgresql_tup_inserted_rate',
+  'postgresql_tup_updated_rate',
+  'postgresql_tup_deleted_rate',
+  'postgresql_tup_returned_rate',
+  'postgresql_tup_fetched_rate',
+  'postgresql_buffers_checkpoint_rate',
+  'postgresql_buffers_backend_rate',
+  'postgresql_maxwritten_clean_rate',
+  'postgresql_buffers_alloc_rate',
+  'postgresql_conflicts_rate'
+] as const;

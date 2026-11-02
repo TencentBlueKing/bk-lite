@@ -13,6 +13,8 @@ export interface KpiCardModel {
   label: string;
   /** 窄卡保留短标题时，悬浮展示完整名称。 */
   hint?: string;
+  /** 标题旁的浅色说明。告警卡已有口径说明时不再叠加。 */
+  info?: React.ReactNode;
   value: string;
   tone?: string;
   subtitle?: string;
@@ -30,12 +32,13 @@ const KpiLabel = ({ item }: { item: KpiCardModel }) => {
   const scopeHint = alertKpiHintLines(item.key);
   if (!scopeHint) {
     return (
-      <div className={styles.kpiLabel}>
+      <div className={item.info ? `${styles.kpiLabel} inline-flex max-w-full items-center gap-1 !overflow-visible` : styles.kpiLabel}>
         {item.hint ? (
           <Tooltip title={item.hint}>
-            <span>{item.label}</span>
+            <span className="min-w-0 truncate">{item.label}</span>
           </Tooltip>
-        ) : item.label}
+        ) : <span className={item.info ? 'min-w-0 truncate' : undefined}>{item.label}</span>}
+        {item.info}
       </div>
     );
   }

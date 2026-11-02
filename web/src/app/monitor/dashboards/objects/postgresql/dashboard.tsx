@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import useViewApi from '@/app/monitor/api/view';
 import { useSimpleDashboardData } from '../common/simple-dashboard-core';
 import {
@@ -16,10 +16,23 @@ import {
 import { HorizontalBarPanel, TitleWithGuide } from '../../shared/widgets';
 import type { BarItem } from '../../shared/widgets';
 import { buildSearchParams, runWithConcurrency } from '../../shared/utils';
+import {
+  dashboardModeOptions,
+  resolveObjectDashboardMode,
+  writeObjectDashboardMode,
+  type ObjectDashboardMode
+} from '../../shared/utils/pro-dashboard';
 import { POSTGRESQL_DASHBOARD_CONFIG } from './config';
 import { PG_TOP_DB_QUERIES } from './queries';
 import { topDbBars } from './parse';
+import PostgresCategoryLayout from './layered/category-layout';
+import { PostgresIdentityPills } from './layered/identity';
+import { POSTGRES_CATEGORY_METRIC_NAMES } from './layered/metrics';
 import styles from './index.module.scss';
+
+const isPostgresDashboardMode = (mode: string): mode is ObjectDashboardMode => (
+  mode === 'dashboard' || mode === 'metrics' || mode === 'category'
+);
 
 const SUMMARY_TITLES = ['活跃连接数', '事务提交速率', '缓存命中率'];
 const PRIMARY_CHART_TITLES = ['事务提交与回滚', '缓存与磁盘读', '检查点趋势'];
@@ -28,9 +41,16 @@ const BAR_TITLES = ['异常事件热点', '缓冲区写入来源'];
 const TOP_DB_CONCURRENCY = 3;
 
 export default function PostgresqlDashboardPage() {
-  const dashboard = useSimpleDashboardData(POSTGRESQL_DASHBOARD_CONFIG);
-  const { getInstanceQuery } = useViewApi();
+  const router = useRouter();
   const searchParams = useSearchParams();
+  const layout = resolveObjectDashboardMode('postgres', new URLSearchParams(searchParams.toString()));
+  const dashboard = useSimpleDashboardData(
+    POSTGRESQL_DASHBOARD_CONFIG,
+    layout === 'category'
+      ? { metricNames: POSTGRES_CATEGORY_METRIC_NAMES, reuseLoadedSeries: true }
+      : undefined
+  );
+  const { getInstanceQuery } = useViewApi();
   const instanceIdKeys = useMemo(
     () => (searchParams.get('instance_id_keys') || 'instance_id').split(',').filter(Boolean),
     [searchParams]
@@ -49,7 +69,7 @@ export default function PostgresqlDashboardPage() {
   const timeKey = JSON.stringify(timeValues);
 
   useEffect(() => {
-    if (!isDashboardMode || !idValues.length) {
+    if (layout !== 'dashboard' || !isDashboardMode || !idValues.length) {
       setTopDb({});
       return;
     }
@@ -72,12 +92,38 @@ export default function PostgresqlDashboardPage() {
       active = false;
     };
     // loadTick 随核心盘每次加载(含自动刷新)递增,使 TopN 与核心盘同步刷新。
-  }, [currentInstanceInterval, idValuesKey, timeKey, isDashboardMode, instanceIdKeys, getInstanceQuery, loadTick]);
+  }, [currentInstanceInterval, idValuesKey, timeKey, isDashboardMode, instanceIdKeys, getInstanceQuery, layout, loadTick]);
+
+  const onLayoutChange = (mode: string) => {
+    if (!isPostgresDashboardMode(mode) || mode === layout) return;
+    const params = writeObjectDashboardMode(new URLSearchParams(searchParams.toString()), mode);
+    router.replace(`?${params.toString()}`, { scroll: false });
+  };
 
   return (
     <DashboardShell
       dashboard={dashboard}
       styles={styles}
+      preserveLayouts
+      unifiedChrome
+      identityExtra={layout === 'category' ? <PostgresIdentityPills /> : undefined}
+      viewSwitcher={{
+        mode: layout,
+        onChange: onLayoutChange,
+        control: 'pill',
+        options: dashboardModeOptions('postgres')
+      }}
+      categoryContent={(
+        <PostgresCategoryLayout
+          instanceId={dashboard.instanceId}
+          monitorObjectId={dashboard.monitorObjectId}
+          timeValues={dashboard.timeValues}
+          queryTimeRange={dashboard.queryTimeRange}
+          loading={dashboard.loading}
+          pendingMetricNames={dashboard.pendingMetricNames}
+          metricMap={dashboard.metricSeries}
+        />
+      )}
       dashboardContent={
         <>
           <DashboardSectionLabel styles={styles}>健康概览</DashboardSectionLabel>

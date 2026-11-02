@@ -32,6 +32,11 @@ export interface ThinLegend {
   readingTone?: string;
   /** 参考线：虚线、略细，不盖过主序列。 */
   dashed?: boolean;
+  /**
+   * 双轴卡上这条线自己的单位。缺省跟整张图的 unit。
+   * 只在 independentAxes 时分别格式化左右轴和 tooltip。
+   */
+  unit?: MetricUnit;
 }
 
 interface ThinTimeSeriesProps {
@@ -383,7 +388,7 @@ export default function ThinTimeSeries({
   const mutedColor = theme['--color-text-3'];
   const textColor = theme['--color-text-1'];
   const panelColor = theme['--color-bg'];
-  const legendKey = legends.map((item) => `${item.label}\0${item.title || ''}\0${item.color}\0${item.reading || ''}\0${item.dashed ? '1' : '0'}`).join('\n');
+  const legendKey = legends.map((item) => `${item.label}\0${item.title || ''}\0${item.color}\0${item.reading || ''}\0${item.dashed ? '1' : '0'}\0${item.unit || ''}`).join('\n');
   const legendBoxRef = useRef<HTMLDivElement>(null);
   const legendWidthRef = useRef(0);
   const [legendCompact, setLegendCompact] = useState(false);
@@ -455,11 +460,16 @@ export default function ThinTimeSeries({
     const flatAxis = hideFlatAxisLabels && keys.length === 1 && isFlatSeries(plotted, keys[0]);
     const rateAxis = isRateUnit(unit);
     const useSparse = !flatAxis && (!focusAxis || rateAxis);
-    const layoutOf = (samples: number[]) => (useSparse ? readableAxisBounds(samples, unit) : null);
+    const layoutOf = (samples: number[], axisUnit: MetricUnit) => (
+      useSparse ? readableAxisBounds(samples, axisUnit) : null
+    );
     const labeledAxis = !flatAxis && !focusAxis;
     const lockedAxis = valueBounds ? fixedPercentAxis(valueBounds.min, valueBounds.max) : null;
-    const valueAxis = (samples: number[], color: string, showSplit: boolean) => {
-      const bounds = lockedAxis ? null : layoutOf(samples);
+    const unitAt = (index: number): MetricUnit => (
+      splitAxes ? (legends[index]?.unit || unit) : unit
+    );
+    const valueAxis = (samples: number[], color: string, showSplit: boolean, axisUnit: MetricUnit) => {
+      const bounds = lockedAxis ? null : layoutOf(samples, axisUnit);
       const axisMin = lockedAxis?.min ?? bounds?.min ?? 0;
       const axisMax = lockedAxis?.max ?? bounds?.max ?? 0;
       const peak = Math.max(Math.abs(axisMin), Math.abs(axisMax));
@@ -481,7 +491,7 @@ export default function ThinTimeSeries({
           show: !flatAxis,
           formatter: (value: number) => {
             if (focusAxis) return focusAxis.formatTick(Number(value));
-            return formatAxisTick(Number(value), unit, peak);
+            return formatAxisTick(Number(value), axisUnit, peak);
           }
         },
         axisTick: { show: false },
@@ -530,13 +540,14 @@ export default function ThinTimeSeries({
       },
       yAxis: splitAxes
         ? keys.map((key, index) => ({
-          ...valueAxis(seriesAxisValues(plotted, key), seriesColors[index] || mutedColor, index === 0),
+          ...valueAxis(seriesAxisValues(plotted, key), seriesColors[index] || mutedColor, index === 0, unitAt(index)),
           position: index === 0 ? 'left' as const : 'right' as const
         }))
         : valueAxis(
           keys.flatMap((key) => seriesAxisValues(plotted, key)),
           mutedColor,
-          true
+          true,
+          unit
         ),
       tooltip: {
         show: true,
@@ -572,7 +583,8 @@ export default function ThinTimeSeries({
               const raw = Array.isArray(item.value) ? item.value[1] : item.value;
               const name = item.seriesName || '';
               const color = seriesMarkerColor(legends, name, item.seriesIndex, item.color);
-              return `<div style="display:flex;align-items:center;justify-content:space-between;gap:16px"><span style="display:flex;align-items:center;gap:6px"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${color}"></span><span>${name}</span></span><span style="font-variant-numeric:tabular-nums;font-weight:600;color:${color}">${formatTooltipReading(raw, unit)}</span></div>`;
+              const seriesUnit = typeof item.seriesIndex === 'number' ? unitAt(item.seriesIndex) : unit;
+              return `<div style="display:flex;align-items:center;justify-content:space-between;gap:16px"><span style="display:flex;align-items:center;gap:6px"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${color}"></span><span>${name}</span></span><span style="font-variant-numeric:tabular-nums;font-weight:600;color:${color}">${formatTooltipReading(raw, seriesUnit)}</span></div>`;
             })
             .join('');
           return `<div style="min-width:160px"><div style="margin-bottom:6px;color:var(--color-text-3)">${time}</div>${rows}</div>`;

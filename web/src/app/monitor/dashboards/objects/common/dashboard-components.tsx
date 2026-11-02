@@ -56,7 +56,7 @@ import {
 } from './simple-dashboard-core';
 import { ChartData } from '@/app/monitor/types';
 import { useDashboardText } from '../../shared/utils/content-i18n';
-import { hasProDashboard } from '../../shared/utils/pro-dashboard';
+import { allowCategoryChromeMeta, hasProDashboard } from '../../shared/utils/pro-dashboard';
 
 // ─── Icon helper ─────────────────────────────────────────────────────────────
 
@@ -832,9 +832,15 @@ export const DashboardShell = ({
             <span key="brand" className={styles.instanceMetaInline}>{dt(brandLabel)}</span>
           ]
           : []),
-        ...dashboard.objectMetaItems.map((item, index) => (
-          <span key={index} className={styles.instanceMetaInline}>{typeof item === 'string' ? dt(item) : item}</span>
-        )),
+        ...dashboard.objectMetaItems
+          .filter((item) => (
+            activeMode !== 'category'
+            || typeof item !== 'string'
+            || allowCategoryChromeMeta(dashboard.routeKey, item)
+          ))
+          .map((item, index) => (
+            <span key={index} className={styles.instanceMetaInline}>{typeof item === 'string' ? dt(item) : item}</span>
+          )),
         ...(showLinkedHost
           ? [
             <LinkedHostSegment

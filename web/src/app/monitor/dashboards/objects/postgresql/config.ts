@@ -1,7 +1,7 @@
 import type { SimpleDashboardConfig } from '../common/simple-dashboard-core';
 
 /** PostgreSQL 监控高对比鲜活科技色板 */
-const PG_PALETTE = {
+export const PG_PALETTE = {
   emerald: '#10B981',   // 事务提交速率、缓存命中率
   blue: '#2563EB',      // 活跃连接数、查询返回行、检查点写入
   cyan: '#06B6D4',      // 查询提取行、缓冲区分配
@@ -185,6 +185,14 @@ export const POSTGRESQL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       description: '后台清理进程写出页的速率。',
       unit: 'cps',
       query: 'sum without (db) (rate(postgresql_maxwritten_clean{__$labels__}[__$window__]))',
+      color: PG_PALETTE.indigo
+    },
+    {
+      name: 'postgresql_blk_write_time',
+      display_name: '块写入耗时',
+      description: '块写入累计耗时的变化速率。',
+      unit: 'msps',
+      query: 'sum without (db) (rate(postgresql_blk_write_time{__$labels__}[__$window__]))',
       color: PG_PALETTE.indigo
     }
   ],
