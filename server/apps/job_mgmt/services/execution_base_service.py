@@ -301,6 +301,16 @@ class ExecutionTaskBaseService(object):
     def _contains_windows_manual_target(cls, target_list: list) -> bool:
         return any(target.os_type == OSType.WINDOWS for target in cls._get_manual_targets(target_list))
 
+    @staticmethod
+    def _partition_targets_by_os(targets: list) -> tuple[list, list]:
+        linux_targets = [target for target in targets if target.os_type != OSType.WINDOWS]
+        windows_targets = [target for target in targets if target.os_type == OSType.WINDOWS]
+        return linux_targets, windows_targets
+
+    @staticmethod
+    def _resolve_script_interpreter(script_content: str, script_type: str) -> str:
+        return parse_shebang(script_content) or ScriptType.SHELL_MAPPING.get(script_type, "bash")
+
     @classmethod
     def _execute_script_via_ansible(cls, execution: JobExecution, target_list: list, script_content: str, script_type: str) -> None:
         """
@@ -343,6 +353,7 @@ class ExecutionTaskBaseService(object):
 
         cloud_region_id = list(region_targets.keys())[0]
         region_target_list = region_targets[cloud_region_id]
+        linux_targets, windows_targets = cls._partition_targets_by_os(region_target_list)
 
         # 获取 Ansible 执行节点
         try:
@@ -350,15 +361,54 @@ class ExecutionTaskBaseService(object):
         except ValueError as e:
             raise ValueError(f"获取 Ansible 节点失败: {e}")
 
-        # 构建凭据
-        host_credentials = cls._build_host_credentials(region_target_list)
-
         # 构建回调配置
         from apps.job_mgmt.services.ansible_callback_service import build_ansible_callback_config
 
         callback_config = build_ansible_callback_config(execution, f"{NATS_NAMESPACE}.ansible_task_callback")
+        shell_interpreter = cls._resolve_script_interpreter(script_content, script_type)
+        executor = AnsibleExecutor(ansible_node_id)
+        stream_log_topic = build_stream_topic(execution.id, "ansible")
+        common_kwargs = {
+            "callback": callback_config,
+            "task_id": str(execution.id),
+            "timeout": execution.timeout,
+            "stream_log_topic": stream_log_topic,
+            "execution_id": str(execution.id),
+        }
 
-        # 根据脚本类型选择模块
+        # 同一份 Python：Linux + Windows 混选时一次临时 playbook，按系统分支执行
+        if script_type == ScriptType.PYTHON and linux_targets and windows_targets:
+            host_credentials = cls._build_host_credentials(region_target_list)
+            result = executor.adhoc(
+                host_credentials=host_credentials,
+                module="bklite_mixed_python",
+                module_args=script_content,
+                extra_vars={"bklite_python_interpreter": shell_interpreter},
+                stream_remote_output=True,
+                stream_remote_type=ScriptType.PYTHON,
+                **common_kwargs,
+            )
+            logger.info(f"[{task_name}] Ansible 混选 Python 任务已提交: execution_id={execution.id}, result={sanitize_sensitive_data(result)}")
+            return
+
+        # 纯 Windows Python：走与 Bat/PowerShell 相同的文件执行路径
+        if script_type == ScriptType.PYTHON and windows_targets and not linux_targets:
+            host_credentials = cls._build_host_credentials(windows_targets)
+            result = executor.adhoc(
+                host_credentials=host_credentials,
+                module="win_shell",
+                module_args=script_content,
+                extra_vars={"bklite_python_interpreter": shell_interpreter},
+                stream_remote_output=True,
+                stream_remote_type=ScriptType.PYTHON,
+                **common_kwargs,
+            )
+            logger.info(f"[{task_name}] Ansible Windows Python 任务已提交: execution_id={execution.id}, result={sanitize_sensitive_data(result)}")
+            return
+
+        host_credentials = cls._build_host_credentials(region_target_list)
+
+        # 根据脚本类型选择模块（纯 Linux Python / Shell 走 raw；Bat/PowerShell 走 win_shell）
         shell_mapping = {
             ScriptType.SHELL: "raw",
             ScriptType.PYTHON: "raw",
@@ -366,8 +416,6 @@ class ExecutionTaskBaseService(object):
             ScriptType.BAT: "win_shell",
         }
         module = shell_mapping.get(script_type, "raw")
-
-        shell_interpreter = parse_shebang(script_content) or ScriptType.SHELL_MAPPING.get(script_type, "bash")
         module_args = script_content
 
         # Linux raw 模块：sh/bash 由流式执行器选择解释器，其他解释器走 heredoc 包装
@@ -379,20 +427,14 @@ class ExecutionTaskBaseService(object):
                 command_interpreter = f"{shell_interpreter} -u" if script_type == ScriptType.PYTHON else shell_interpreter
                 module_args = build_heredoc_command(command_interpreter, script_content)
 
-        # 调用 Ansible Executor
-        executor = AnsibleExecutor(ansible_node_id)
         result = executor.adhoc(
             host_credentials=host_credentials,
             module=module,
             module_args=module_args,
-            callback=callback_config,
-            task_id=str(execution.id),
-            timeout=execution.timeout,
             extra_vars=extra_vars if extra_vars else None,
-            stream_log_topic=build_stream_topic(execution.id, "ansible"),
-            execution_id=str(execution.id),
             stream_remote_output=module in {"raw", "win_shell"},
             stream_remote_type=script_type if module == "win_shell" else None,
+            **common_kwargs,
         )
 
         logger.info(f"[{task_name}] Ansible 任务已提交: execution_id={execution.id}, result={sanitize_sensitive_data(result)}")
