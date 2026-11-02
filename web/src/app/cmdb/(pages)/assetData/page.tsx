@@ -446,6 +446,7 @@ const AssetDataContent = () => {
       ),
       selectedKeys,
       exportType,
+      total: exportType === 'all' && typeof pagination.total === 'number' ? pagination.total : undefined,
       tableData,
       queryList: exportType === 'all' ? useAssetDataStore.getState().query_list : undefined,
       advancedFilter: exportType === 'all' ? useAssetDataStore.getState().advanced_filter : undefined,
@@ -729,6 +730,8 @@ const AssetDataContent = () => {
 
   const rowSelection = {
     selectedRowKeys,
+    // 列表是服务端分页，当前页数据源里没有上一页的行。保留已选 key，翻页后再勾选才会累加。
+    preserveSelectedRowKeys: true,
     onChange: onSelectChange,
   };
 

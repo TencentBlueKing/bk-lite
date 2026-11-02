@@ -40,6 +40,7 @@ class Management:
         expire_days=0,
         collection_targets=(),
         reconcile=None,
+        task_name="",
     ):
         self.reconcile = reconcile
         self.reconcile_stats = {"skipped_fields": 0, "org_conflicts": 0, "outside_owner_conflicts": 0, "concurrent_abandons": 0}
@@ -57,6 +58,7 @@ class Management:
         self.unique_keys = unique_keys
         self.check_attr_map = self.get_check_attr_map()
         self.task_id = task_id
+        self.task_name = str(task_name or "").strip()
         self.data_cleanup_strategy = data_cleanup_strategy or DataCleanupStrategy.NO_CLEANUP
         self.old_map, self.new_map = self.format_data()
         self.add_list, self.update_list, self.heartbeat_list, self.delete_list = self.contrast(self.old_map, self.new_map)

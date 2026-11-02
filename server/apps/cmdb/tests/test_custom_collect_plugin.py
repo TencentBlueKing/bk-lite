@@ -10,7 +10,7 @@ from apps.cmdb.models.change_record import ChangeRecord
 from apps.cmdb.models.collect_model import CollectModels
 from apps.cmdb.models.custom_collect_plugin import CustomCollectPlugin
 from apps.cmdb.serializers.custom_collect_plugin import CustomCollectPluginSerializer
-from apps.cmdb.services.custom_collect_plugin import ensure_deletable, ensure_model_deletable, reference_count, validate_plugin_payload
+from apps.cmdb.services.custom_collect_plugin import _is_k8s_model, ensure_deletable, ensure_model_deletable, reference_count, validate_plugin_payload
 from apps.cmdb.views.custom_collect_plugin import CustomCollectPluginViewSet
 from apps.core.exceptions.base_app_exception import BaseAppException
 
@@ -55,6 +55,39 @@ def test_plugin_id_collision_hides_owner():
     CustomCollectPlugin.objects.create(**validate_plugin_payload(_payload()))
     with pytest.raises(BaseAppException, match="标识已被占用"):
         validate_plugin_payload(_payload(name="另一份", team=[2]))
+
+
+@pytest.mark.parametrize("model_id", ["docker", "host", "aws_eks", "qcloud_tke_cluster"])
+def test_models_outside_k8s_classification_stay_eligible(model_id):
+    assert _is_k8s_model(model_id) is False
+
+
+@pytest.mark.parametrize("model_id", ["k8s_cluster", "k8s_namespace", "k8s_workload", "k8s_node", "k8s_pod"])
+def test_k8s_models_cannot_be_a_new_custom_plugin_target(model_id):
+    with pytest.raises(BaseAppException, match="K8S"):
+        validate_plugin_payload(_payload(model_id=model_id, plugin_id="custom_k8s_scan"))
+
+
+def test_existing_k8s_cluster_plugin_can_keep_its_model():
+    plugin = SimpleNamespace(
+        id=1,
+        plugin_id="custom_host_scan",
+        model_id="host",
+        os_type="linux",
+        shell="bash",
+        content=SCRIPT,
+        version=1,
+        name="自定义主机",
+        desc="",
+        team=[1],
+    )
+    with pytest.raises(BaseAppException, match="K8S"):
+        validate_plugin_payload(_payload(model_id="k8s_pod"), instance=plugin)
+
+    plugin.model_id = "k8s_namespace"
+    updated = validate_plugin_payload(_payload(model_id="k8s_namespace", content=SCRIPT + "\n"), instance=plugin)
+    assert updated["model_id"] == "k8s_namespace"
+    assert updated["version"] == 2
 
 
 def test_shell_must_match_os_and_script_has_size_limit():

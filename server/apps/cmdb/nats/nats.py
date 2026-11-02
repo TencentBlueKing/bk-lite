@@ -794,6 +794,7 @@ def update_instance(params):
         operator=params.get("operator", ""),
         allowed_org_ids=allowed_org_ids,
         skip_permission_check=False,
+        audit_source="接口调用",
     )
     return _serialize_instance_for_transport(result)
 
@@ -829,6 +830,7 @@ def create_instance(params):
             instance_info=instance_info,
             operator=params.get("operator", ""),
             allowed_org_ids=allowed_org_ids,
+            audit_source="接口调用",
         )
     )
 
@@ -880,6 +882,7 @@ def delete_instance(params):
         roles=[],
         inst_uuids=inst_uuids,
         operator=params.get("operator", ""),
+        audit_source="接口调用",
     )
     return {"result": True, "deleted": inst_uuids}
 
@@ -3308,6 +3311,7 @@ def batch_update_instances(params):
         update_attr,
         params.get("operator", ""),
         allowed_org_ids=allowed_org_ids,
+        audit_source="接口调用",
     )
     return {"result": True, "updated": inst_uuids}
 

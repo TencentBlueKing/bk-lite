@@ -127,6 +127,8 @@ export interface ExportModalConfig {
   columns: ColumnItem[];
   selectedKeys: string[];
   exportType: 'selected' | 'currentPage' | 'all';
+  /** 导出全部时的列表总数；已选择和当前页用 selectedKeys / tableData 计数。 */
+  total?: number;
   tableData?: any[];
   queryList?: any[];
   advancedFilter?: { logic: 'AND' | 'OR'; conditions: any[] } | null;

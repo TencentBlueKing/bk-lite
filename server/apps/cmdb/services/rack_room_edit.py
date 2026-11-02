@@ -317,6 +317,7 @@ def _execute_room_action(
             rack_unplace_attrs(),
             operator,
             allowed_org_ids=allowed_org_ids,
+            audit_source="机柜",
         )
         return {"action": ACTION_UNPLACE, "instance": updated}
 
@@ -334,7 +335,7 @@ def _execute_room_action(
         payload.pop("row", None)
         payload.pop("col", None)
         payload.update(attrs)
-        created = InstanceManage.instance_create("rack", payload, operator, allowed_org_ids=allowed_org_ids)
+        created = InstanceManage.instance_create("rack", payload, operator, allowed_org_ids=allowed_org_ids, audit_source="机柜")
         _ensure_association(room, created, ROOM_RACK_ASST_ID, operator)
         return {"action": ACTION_PLACE_CREATE, "instance": created}
 
@@ -353,6 +354,7 @@ def _execute_room_action(
         attrs,
         operator,
         allowed_org_ids=allowed_org_ids,
+        audit_source="机柜",
     )
     _ensure_association(room, updated, ROOM_RACK_ASST_ID, operator)
     return {"action": ACTION_PLACE_EXISTING, "instance": updated}
@@ -435,6 +437,7 @@ def _execute_rack_action_locked(
             device_unplace_attrs(),
             operator,
             allowed_org_ids=allowed_org_ids,
+            audit_source="机柜",
         )
         return {"action": ACTION_UNPLACE, "instance": updated}
 
@@ -459,7 +462,7 @@ def _execute_rack_action_locked(
             raise RackRoomEditError("该模型不能放置到机柜 U 位")
         payload = dict(instance_info or {})
         payload.update(attrs)
-        created = InstanceManage.instance_create(target_model, payload, operator, allowed_org_ids=allowed_org_ids)
+        created = InstanceManage.instance_create(target_model, payload, operator, allowed_org_ids=allowed_org_ids, audit_source="机柜")
         _ensure_association(rack, created, RACK_DEVICE_ASST_ID, operator)
         return {"action": ACTION_PLACE_CREATE, "instance": created}
 
@@ -480,6 +483,7 @@ def _execute_rack_action_locked(
         attrs,
         operator,
         allowed_org_ids=allowed_org_ids,
+        audit_source="机柜",
     )
     _ensure_association(rack, updated, RACK_DEVICE_ASST_ID, operator)
     return {"action": ACTION_PLACE_EXISTING, "instance": updated}

@@ -204,6 +204,7 @@ class MetricsCannula:
                     expire_days=getattr(self.task, "expire_days", 0) or 0,
                     collection_targets=getattr(self.task, "instances", None) or (),
                     reconcile=self._reconcile_for(model_id),
+                    task_name=str(getattr(self.task, "name", "") or ""),
                 )
                 if conflicts:
                     management.delete_list = []

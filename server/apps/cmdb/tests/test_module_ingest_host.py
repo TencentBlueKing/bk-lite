@@ -456,6 +456,7 @@ def test_ingest_host_upserts_by_node_id(mocker):
     assert result["id"] == INST_UUID
     assert result["updated"] is True
     update.assert_called_once()
+    assert update.call_args.kwargs["audit_source"] == "节点接入"
 
 
 def test_ingest_host_claims_existing_by_ip_cloud(mocker):
@@ -478,6 +479,7 @@ def test_ingest_host_claims_existing_by_ip_cloud(mocker):
     assert result["id"] == INST_UUID
     assert result["claimed"] is True
     claim.assert_called_once()
+    assert claim.call_args.kwargs["audit_source"] == "节点接入"
 
 
 def test_ingest_claim_conflicts_when_existing_has_different_node_id(mocker):
@@ -581,6 +583,39 @@ def test_ingest_host_creates_when_no_match(mocker):
     assert result["id"] == INST_UUID
     assert result["created"] is True
     create.assert_called_once()
+    assert create.call_args.kwargs["audit_source"] == "节点接入"
+
+
+def test_ingest_host_from_monitor_uses_monitor_source(mocker):
+    mocker.patch(
+        "apps.cmdb.services.module_ingest.ensure_model_node_id_attr",
+        return_value=True,
+    )
+    mocker.patch(
+        "apps.cmdb.services.module_ingest.ensure_model_monitor_id_attr",
+        return_value=True,
+    )
+    mocker.patch.object(
+        CmdbModuleIngestService,
+        "_find_by_node_id",
+        return_value={"_id": 10, "node_id": "n1", "ip_addr": "1.1.1.1", "cloud": 1},
+    )
+    update = mocker.patch.object(
+        CmdbModuleIngestService,
+        "_update_instance",
+        return_value={"_id": 10, "inst_uuid": INST_UUID, "node_id": "n1"},
+    )
+    result = CmdbModuleIngestService.ingest(
+        _ingest_params(
+            node_id="n1",
+            ip="1.1.1.1",
+            source_module="monitor",
+            link_ids={"node_id": "n1", "monitor_id": "m1"},
+            raw={"ip": "1.1.1.1", "cloud_region_id": 1, "organization_ids": [1], "name": "h1"},
+        )
+    )
+    assert result["updated"] is True
+    assert update.call_args.kwargs["audit_source"] == "监控接入"
 
 
 def test_ingest_host_unique_conflict_claims_existing(mocker):

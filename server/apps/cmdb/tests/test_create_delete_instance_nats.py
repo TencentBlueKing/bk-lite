@@ -29,6 +29,7 @@ def test_create_instance_returns_uuid_without_graph_id(mock_im):
         instance_info={"ip": "1.2.3.4"},
         operator="admin",
         allowed_org_ids=[3],
+        audit_source="接口调用",
     )
 
 
@@ -115,7 +116,13 @@ def test_delete_instance_by_uuids(mock_im):
         }
     )
     assert result == {"result": True, "deleted": [UUID_1, UUID_2]}
-    mock_im.instance_batch_delete_by_uuids.assert_called_once_with(user_groups=[{"id": 3}], roles=[], inst_uuids=[UUID_1, UUID_2], operator="admin")
+    mock_im.instance_batch_delete_by_uuids.assert_called_once_with(
+        user_groups=[{"id": 3}],
+        roles=[],
+        inst_uuids=[UUID_1, UUID_2],
+        operator="admin",
+        audit_source="接口调用",
+    )
 
 
 @patch("apps.cmdb.nats.nats.InstanceManage")
