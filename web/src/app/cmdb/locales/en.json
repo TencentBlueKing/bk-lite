@@ -489,6 +489,7 @@
         "confirmAndAssociate": "Confirm & Associate",
         "searchHistory": "Search History",
         "selectAttributes": "Select Attributes",
+        "exportAssetCount": "Selected assets: ",
         "selectAssociations": "Select Associations",
         "noAssociations": "No associations available",
         "atLeastOneAttribute": "Please select at least one attribute",

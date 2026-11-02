@@ -360,6 +360,7 @@
         "confirmAndAssociate": "确认并关联",
         "searchHistory": "搜索历史",
         "selectAttributes": "选择属性",
+        "exportAssetCount": "选择资产数量：",
         "selectAssociations": "选择关联关系",
         "noAssociations": "暂无关联关系",
         "atLeastOneAttribute": "请至少选择一个属性",
