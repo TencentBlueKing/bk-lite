@@ -1110,6 +1110,7 @@
                 "objectType": "对象类型",
                 "instanceName": "实例名",
                 "pid": "PID",
+                "reportedAt": "上报时间",
                 "status": "录入状态",
                 "errorReason": "失败原因"
             }

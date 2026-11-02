@@ -1110,6 +1110,7 @@
                 "objectType": "Object Type",
                 "instanceName": "Instance Name",
                 "pid": "PID",
+                "reportedAt": "Reported Time",
                 "status": "Write Status",
                 "errorReason": "Failure Reason"
             }
