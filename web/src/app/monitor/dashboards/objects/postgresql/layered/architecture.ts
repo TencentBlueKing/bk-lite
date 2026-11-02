@@ -1,63 +1,61 @@
-export type PostgresFormLabel = '单机' | '主从';
+export type PostgresFormLabel = '集群' | '主从' | '单机';
 export type PostgresRoleLabel = '主库' | '备库';
 
-export interface PostgresIdentityReading {
-  inRecovery: number | null;
-  streamingReplicas: number | null;
-  replicationSlots: number | null;
-}
+const PLACEHOLDERS = new Set(['', '--', '-']);
 
-export interface PostgresIdentityView {
-  form: PostgresFormLabel | null;
-  role: PostgresRoleLabel | null;
-}
-
-const finite = (value: number | null | undefined): number | null => (
-  value == null || !Number.isFinite(value) ? null : value
+const hasAsciiToken = (text: string, token: string) => (
+  new RegExp(`(?:^|[^a-z0-9])${token}(?:[^a-z0-9]|$)`, 'i').test(text)
 );
 
-const near = (value: number, target: number) => Math.abs(value - target) < 1e-6;
+/** 展示名和标识拼在一起。占位符「--」不当成名字。 */
+export const postgresIdentityText = (
+  ...parts: Array<string | number | null | undefined>
+) => parts
+  .map((part) => String(part ?? '').trim())
+  .filter((part) => !PLACEHOLDERS.has(part))
+  .join(' ');
 
-/** 角色只认恢复状态：0 为主库（含单机），1 为备库。其它读数不猜。 */
-export const postgresRoleLabel = (value: number | null | undefined): PostgresRoleLabel | null => {
-  const reading = finite(value);
-  if (reading == null) return null;
-  if (near(reading, 0)) return '主库';
-  if (near(reading, 1)) return '备库';
+/**
+ * 只从对象名/标识取形态。cluster / ha → 集群；
+ * replica、primary-standby、主从 → 主从；standalone / single → 单机。
+ * 短词按边界匹配，避免 shanghai 被看成 ha。
+ */
+export const postgresFormFromName = (text: string): PostgresFormLabel | null => {
+  if (hasAsciiToken(text, 'cluster') || hasAsciiToken(text, 'ha')) return '集群';
+  const lower = text.toLowerCase();
+  if (
+    lower.includes('primary-standby')
+    || text.includes('主从')
+    || hasAsciiToken(text, 'replica')
+  ) {
+    return '主从';
+  }
+  if (hasAsciiToken(text, 'standalone') || hasAsciiToken(text, 'single')) return '单机';
   return null;
 };
 
-const positiveCount = (value: number | null | undefined) => {
-  const reading = finite(value);
-  return reading != null && reading > 0;
-};
-
-const zeroCount = (value: number | null | undefined) => {
-  const reading = finite(value);
-  return reading != null && near(reading, 0);
-};
-
 /**
- * 顶栏形态与角色分开挂。
- * 备库、当前有流复制连接，或有复制槽 → 主从。
- * 主库且连接数、槽个数都采到 0 → 单机。
- * 主库但复制个数还没采到时不写成单机，避免把主从主库误标。
- * 没有集群采点，不写「集群」。判不出的那一枚不渲染。
+ * 名含 cluster/ha 时形态保持集群，角色另算。
+ * 否则有 recovery 序列就是主从，盖过单机名字。
+ * 查询未回时不把「单机」或空名提前定死。
  */
-export const postgresIdentityView = (
-  reading: PostgresIdentityReading
-): PostgresIdentityView => {
-  const role = postgresRoleLabel(reading.inRecovery);
-  const hasReplica = positiveCount(reading.streamingReplicas) || positiveCount(reading.replicationSlots);
-  let form: PostgresFormLabel | null = null;
-  if (role === '备库' || hasReplica) {
-    form = '主从';
-  } else if (
-    role === '主库'
-    && zeroCount(reading.streamingReplicas)
-    && zeroCount(reading.replicationSlots)
-  ) {
-    form = '单机';
-  }
-  return { form, role };
+export const visiblePostgresForm = (
+  nameForm: PostgresFormLabel | null,
+  recoveryPresent: boolean,
+  pending: boolean
+): PostgresFormLabel | null => {
+  if (nameForm === '集群' || nameForm === '主从') return nameForm;
+  if (pending) return null;
+  if (recoveryPresent) return '主从';
+  return nameForm;
+};
+
+/** 0 主库（含单机写库），1 备库。其它读数或没有采点不挂角色。 */
+export const postgresRoleLabel = (
+  value: number | null | undefined
+): PostgresRoleLabel | null => {
+  if (value == null || !Number.isFinite(value)) return null;
+  if (Math.abs(value) < 1e-6) return '主库';
+  if (Math.abs(value - 1) < 1e-6) return '备库';
+  return null;
 };
