@@ -14,7 +14,6 @@ import { mergeSanitizedWidgetValueConfig, omitForeignChartTypeFields } from '@/a
 import DashboardCanvas from './components/dashboardCanvas';
 import ModuleLicenseCanvasEmpty from './components/moduleLicenseCanvasEmpty';
 import DashboardToolbar from './components/dashboardToolbar';
-import HomepageViewToolbar from '@/app/ops-analysis/components/homepageViewToolbar';
 import DashboardSubscriptionModal from '@/app/ops-analysis/components/dashboardSubscriptionModal';
 import ViewWorkspace from '../components/viewWorkspace';
 import { Modal, message, Select } from 'antd';
@@ -66,6 +65,7 @@ import {
   getOpsChartTheme,
   resolveOpsChartThemeName,
 } from '@/app/ops-analysis/utils/chartTheme';
+import { resolveDashboardChrome } from '@/app/ops-analysis/utils/homepageDashboardSurface';
 import { exportDashboardToPdf } from '@/app/ops-analysis/utils/exportPdf';
 import {
   AppViewFullscreenExit,
@@ -2092,9 +2092,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
       void openShare(selectedDashboard?.data_id);
     };
 
-    const dashboardToolbar = renderMode ? null : homepageMode ? (
-      <HomepageViewToolbar dashboardId={selectedDashboard?.data_id} />
-    ) : (
+    const dashboardToolbar = renderMode || homepageMode ? null : (
       <DashboardToolbar
         selectedDashboard={selectedDashboard}
         chartTheme={chartTheme}
@@ -2193,6 +2191,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
           appliedNamespaceId={appliedNamespaceId}
           selectedDashboardLocked={selectedDashboard?.is_build_in}
           csvExportHidden={homepageMode}
+          homepageSurface={homepageMode && !isDarkTheme}
           shareMode={shareMode}
           isFullscreen={isFullscreen}
           onOpenAddModal={openAddModal}
@@ -2242,7 +2241,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
         }`}
         data-dashboard-edit-mode={isEditMode && !shareMode ? 'true' : 'false'}
         style={{
-          backgroundColor: isDarkTheme ? 'var(--color-bg-2)' : '#f7f8fa',
+          backgroundColor: resolveDashboardChrome(homepageMode && !isDarkTheme, isDarkTheme).canvasBackground,
           zIndex: isFullscreen ? 1100 : undefined,
         }}
       >
@@ -2263,11 +2262,16 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
             headerVisible={!isFullscreen}
             filterBarVisible
             compactHeader={homepageMode}
+            shellClassName={homepageMode && !isDarkTheme ? 'bg-transparent' : undefined}
             toolbar={dashboardToolbar}
             filterBar={dashboardFilterBar}
             contentRef={exportRef}
             contentClassName={
-              isDarkTheme ? 'bg-[var(--color-bg-2)]' : 'bg-[#f7f8fa]'
+              homepageMode && !isDarkTheme
+                ? 'bg-transparent'
+                : isDarkTheme
+                  ? 'bg-[var(--color-bg-2)]'
+                  : 'bg-[#f7f8fa]'
             }
           >
             {dashboardCanvas}

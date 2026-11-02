@@ -95,6 +95,10 @@
       "@/app/workflow/(enterprise)/*": [
         "./src/app/workflow/(enterprise)/*",
         "./src/lib/enterpriseStub.ts"
+      ],
+      "@/app/rum/(enterprise)/*": [
+        "./src/app/rum/(enterprise)/*",
+        "./src/lib/enterpriseStub.ts"
       ]
     }
   },

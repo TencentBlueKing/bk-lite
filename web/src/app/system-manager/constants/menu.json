@@ -13,6 +13,12 @@
           "url": "/system-manager/user/structure"
         },
         {
+          "title": "用户字段",
+          "icon": "shezhi",
+          "name": "user_fields",
+          "url": "/system-manager/user/fields"
+        },
+        {
           "title": "登录认证",
           "icon": "renzhengyuanguanli",
           "name": "login_auth",
@@ -164,6 +170,12 @@
           "icon": "yonghu1",
           "name": "user_group",
           "url": "/system-manager/user/structure"
+        },
+        {
+          "title": "User Fields",
+          "icon": "shezhi",
+          "name": "user_fields",
+          "url": "/system-manager/user/fields"
         },
         {
           "title": "Login Auth",

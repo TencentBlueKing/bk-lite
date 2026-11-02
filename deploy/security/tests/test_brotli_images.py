@@ -1,4 +1,4 @@
-"""验证实际发行层的补丁基线、失败传播及 Node 原路径替换。"""
+"""验证实际发行层的补丁基线、失败传播及 Node 包清单一致性。"""
 
 import os
 from pathlib import Path
@@ -39,11 +39,17 @@ def fixture_command(directory, command, body):
     executable.chmod(0o755)
 
 
-def run_layer(path, distribution, release, installed, *, comparison=0, apt_status=0, real_dpkg=False):
+def run_layer(path, distribution, release, installed, *, comparison=0, apt_status=0, real_dpkg=False,
+              node_package="24.22.1-1nodesource1", node_runtime="v24.22.1", node_status="ii "):
     with tempfile.TemporaryDirectory() as tmp:
         directory = Path(tmp)
         fixture_command(directory, "apt-get", 'exit "$APT_STATUS"')
-        fixture_command(directory, "dpkg-query", 'printf "%s" "$INSTALLED"')
+        fixture_command(directory, "dpkg-query", '''case "$*" in
+            *Status-Abbrev*) printf "%s" "$NODE_STATUS" ;;
+            *nodejs*) printf "%s" "$NODE_PACKAGE" ;;
+            *) printf "%s" "$INSTALLED" ;;
+        esac''')
+        fixture_command(directory, "node", 'printf "%s\\n" "$NODE_RUNTIME"')
         comparator = 'exec "$REAL_DPKG" "$@"' if real_dpkg else 'exit "$COMPARISON_STATUS"'
         fixture_command(directory, "dpkg", comparator)
         fixture_command(directory, "rm", 'touch "$CLEANUP_MARKER"')
@@ -61,6 +67,9 @@ def run_layer(path, distribution, release, installed, *, comparison=0, apt_statu
                 "CLEANUP_MARKER": str(marker),
                 "INSTALLED": installed,
                 "REAL_DPKG": shutil.which("dpkg") or "",
+                "NODE_PACKAGE": node_package,
+                "NODE_RUNTIME": node_runtime,
+                "NODE_STATUS": node_status,
             },
             capture_output=True, text=True, timeout=10,
         )
@@ -68,6 +77,26 @@ def run_layer(path, distribution, release, installed, *, comparison=0, apt_statu
 
 
 class BrotliImageTests(unittest.TestCase):
+    @unittest.skipUnless(shutil.which("dpkg"), "真实 Node 包版本比较需在 Linux/dpkg 环境运行")
+    def test_node_package_inventory_and_runtime_must_agree(self):
+        cases = (
+            ("24.14.0-1nodesource1", "v24.22.1", "ii ", 1),
+            ("24.22.1-1nodesource1", "v24.14.0", "ii ", 1),
+            ("24.22.2-1nodesource1", "v24.22.1", "ii ", 1),
+            ("24.22.1-1nodesource1", "v24.22.1", "ii ", 0),
+            ("24.22.2-1nodesource1", "v24.22.2", "ii ", 0),
+            ("25.0.0-1nodesource1", "v25.0.0", "ii ", 1),
+            ("24.22.1-1nodesource1", "v24.22.1", "un ", 1),
+        )
+        for package, runtime, status, expected in cases:
+            with self.subTest(package=package, runtime=runtime, status=status):
+                result, cleaned = run_layer(
+                    "deploy/security/Dockerfile.falkordb", "debian", "12", "1.0.9-2+deb12u1",
+                    real_dpkg=True, node_package=package, node_runtime=runtime, node_status=status,
+                )
+                self.assertEqual(result.returncode, expected, result.stderr)
+                self.assertEqual(cleaned, expected == 0)
+
     def test_all_images_upgrade_and_check_before_cleanup(self):
         for path, (_, _, minimum, _) in PROFILES.items():
             with self.subTest(image=path):
@@ -132,29 +161,10 @@ class BrotliImageTests(unittest.TestCase):
                 self.assertTrue(text.strip().endswith("USER ${RUNTIME_USER}"))
                 self.assertNotRegex(text, r"(?m)^(ENTRYPOINT|CMD) ")
 
-    def test_node_overlay_replaces_symlink_target_without_changing_startup_command(self):
-        path = "deploy/security/Dockerfile.falkordb"
-        text = (ROOT / path).read_text()
-        self.assertIn("node:24.22.1-bookworm-slim", text)
-        layer = next(line for line in layers(path) if "install -m 0755" in line)
-        for distribution, expected in (("debian", 0), ("ubuntu", 1)):
-            with self.subTest(distribution=distribution), tempfile.TemporaryDirectory() as tmp:
-                directory = Path(tmp)
-                fixture_command(directory, "node-original", "echo v24.14.0")
-                (directory / "node").symlink_to(directory / "node-original")
-                fixture_command(directory, "patched-node", "echo v24.22.1")
-                command = layer.replace(
-                    ". /etc/os-release", f"{{ ID={distribution}; VERSION_ID=12; }}"
-                ).replace("/tmp/brotli-patched-node", str(directory / "patched-node"))
-                result = subprocess.run(
-                    ["sh", "-c", command],
-                    env={**os.environ, "PATH": str(directory) + os.pathsep + os.environ["PATH"]},
-                    capture_output=True, text=True, timeout=10,
-                )
-                self.assertEqual(result.returncode, expected, result.stderr)
-                self.assertTrue((directory / "node").is_symlink())
-                version = subprocess.check_output([str(directory / "node")], text=True).strip()
-                self.assertEqual(version, "v24.22.1" if expected == 0 else "v24.14.0")
+    def test_node_overlay_updates_the_managed_package(self):
+        text = (ROOT / "deploy/security/Dockerfile.falkordb").read_text()
+        self.assertRegex(security_layer("deploy/security/Dockerfile.falkordb"), r"apt-get install[^&]*\bnodejs\b")
+        self.assertNotIn("COPY --from=", text)
 
 
 if __name__ == "__main__":

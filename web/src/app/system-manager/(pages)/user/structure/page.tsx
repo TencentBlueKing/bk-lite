@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useRef, useCallback, useMemo, useState } from 'react';
-import { Input, Button, Form, Dropdown, Menu } from 'antd';
+import { Input, Button, Form, Dropdown, Menu, Select } from 'antd';
 import { useSecurityApi } from '@/app/system-manager/api/security';
 import TopSection from '@/components/top-section';
 import UserModal, { ModalRef } from './userModal';
@@ -9,6 +9,7 @@ import UserImportModal, { UserImportModalRef } from './userImportModal';
 import PasswordModal, { PasswordModalRef } from '@/app/system-manager/components/user/passwordModal';
 import GroupEditModal, { GroupModalRef } from '@/app/system-manager/components/group/GroupEditModal';
 import ArchivedGroupDrawer from '@/app/system-manager/components/group/ArchivedGroupDrawer';
+import UserDetailDrawer from '@/app/system-manager/components/user/UserDetailDrawer';
 import { useTranslation } from '@/utils/i18n';
 import { useClientData } from '@/context/client';
 import { useUserInfoContext } from '@/context/userInfo';
@@ -46,6 +47,7 @@ const User: React.FC = () => {
   const passwordModalRef = useRef<PasswordModalRef>(null);
   const groupEditModalRef = useRef<GroupModalRef>(null);
   const [archivedDrawerOpen, setArchivedDrawerOpen] = useState(false);
+  const [detailUserId, setDetailUserId] = useState<string>();
   const [otpEnabled, setOtpEnabled] = useState(false);
   const { getSystemSettings } = useSecurityApi();
   React.useEffect(() => {
@@ -86,6 +88,8 @@ const User: React.FC = () => {
     currentPage,
     pageSize,
     searchValue,
+    employmentStatus,
+    setEmploymentStatus,
     selectedRowKeys,
     fetchUsers,
     handleUserSearch,
@@ -130,6 +134,9 @@ const User: React.FC = () => {
     t,
     appIconMap,
     convertToLocalizedTime,
+    onOpenDetail: (userId: React.Key) => {
+      setDetailUserId(normalizeUserId(userId));
+    },
     onEditUser: (userId: React.Key) => {
       userModalRef.current?.showModal({ type: 'edit', userId: normalizeUserId(userId) });
     },
@@ -239,6 +246,18 @@ const User: React.FC = () => {
               }}
               actions={(
                 <>
+                  <Select
+                    className="w-[140px]"
+                    value={employmentStatus || undefined}
+                    allowClear
+                    placeholder={t('system.user.form.employmentStatus')}
+                    onChange={(value) => setEmploymentStatus(value || '')}
+                    options={[
+                      { value: 'unspecified', label: t('system.user.form.employmentUnspecified') },
+                      { value: 'employed', label: t('system.user.form.employmentEmployed') },
+                      { value: 'resigned', label: t('system.user.form.employmentResigned') },
+                    ]}
+                  />
                   <PermissionWrapper requiredPermissions={['Add User']}>
                     <Button icon={<UploadOutlined />} onClick={() => userImportModalRef.current?.showModal()}>
                       {t('common.import')}
@@ -343,6 +362,12 @@ const User: React.FC = () => {
         open={archivedDrawerOpen}
         onClose={() => setArchivedDrawerOpen(false)}
         onChanged={handleArchivedChanged}
+      />
+
+      <UserDetailDrawer
+        open={Boolean(detailUserId)}
+        userId={detailUserId}
+        onClose={() => setDetailUserId(undefined)}
       />
 
       <OperateModal

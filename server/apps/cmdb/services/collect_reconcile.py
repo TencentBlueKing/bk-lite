@@ -19,6 +19,7 @@ SUPPORTED_TASK_TYPES = {
     CollectPluginTypes.CUSTOM_SCRIPT,
 }
 VMWARE_VC_MODEL = "vmware_vc"
+CONTAINER_MODELS = {"docker"}
 EXCLUDED_COLLECT_FIELDS = {"inst_name", "model_id", "assos", "organization", "collect_task", "collect_time", "auto_collect"}
 
 
@@ -136,6 +137,8 @@ def _ensure_joinable(task, model_id):
         raise ValidationAppException("采集任务的模型与数据调和不一致")
     if task.task_type not in SUPPORTED_TASK_TYPES:
         raise ValidationAppException("该采集类型不能加入数据调和")
+    if task.model_id in CONTAINER_MODELS:
+        raise ValidationAppException("容器采集不能加入数据调和")
     if task.task_type == CollectPluginTypes.CUSTOM_SCRIPT and task.model_id == VMWARE_VC_MODEL:
         raise ValidationAppException("vmware_vc 自定义脚本不能加入数据调和")
 
@@ -392,6 +395,7 @@ def _summary(request, reconcile, visible_ids, include_fields=False):
 
 def candidate_tasks(request, model_id):
     queryset = _visible_tasks(request).filter(model_id=model_id, task_type__in=SUPPORTED_TASK_TYPES)
+    queryset = queryset.exclude(model_id__in=CONTAINER_MODELS)
     if model_id == VMWARE_VC_MODEL:
         queryset = queryset.exclude(task_type=CollectPluginTypes.CUSTOM_SCRIPT)
     tasks = [

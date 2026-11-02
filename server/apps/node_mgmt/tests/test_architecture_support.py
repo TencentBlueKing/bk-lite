@@ -3763,8 +3763,7 @@ def test_package_version_upload_skips_existing_latest_without_traceback(monkeypa
     assert record.args == ("collector", "linux", NodeConstants.X86_64_ARCH, "Nats-Executor", "latest")
     formatted = record.getMessage()
     assert formatted == (
-        "包版本已存在，跳过上传 package_type=collector os=linux "
-        f"cpu_architecture={NodeConstants.X86_64_ARCH} object=Nats-Executor version=latest"
+        "包版本已存在，跳过上传 package_type=collector os=linux " f"cpu_architecture={NodeConstants.X86_64_ARCH} object=Nats-Executor version=latest"
     )
     assert "nats-executor-payload-sentinel" not in formatted
 
@@ -4894,9 +4893,7 @@ def test_nats_ensure_parent_configs_retries_non_native_bulk_conflicts():
     with patch("apps.node_mgmt.nats.node.connection", SimpleNamespace(features=SimpleNamespace(supports_ignore_conflicts=False))):
         with patch.object(CollectorConfiguration.objects, "bulk_create", side_effect=flaky_config_bulk_create):
             with patch.object(NodeCollectorConfiguration.objects, "bulk_create", side_effect=flaky_association_bulk_create):
-                NatsService()._ensure_parent_configs_for_child_configs(
-                    [{"node_id": node.id, "collector_name": "Telegraf"} for node in nodes]
-                )
+                NatsService()._ensure_parent_configs_for_child_configs([{"node_id": node.id, "collector_name": "Telegraf"} for node in nodes])
 
     assert len(config_attempts) == 2
     assert len(association_attempts) == 2
@@ -5412,7 +5409,7 @@ def test_trigger_converge_tasks_if_needed_schedules_legacy_install_task_without_
     monkeypatch.setattr(Sidecar, "_is_debounce_elapsed", lambda *_args, **_kwargs: True)
     monkeypatch.setattr(
         "apps.node_mgmt.services.sidecar.converge_controller_install_connectivity_for_node.delay",
-        lambda node_id: called.append(node_id),
+        lambda node_id, claim_token=None: called.append(node_id),
     )
 
     Sidecar.trigger_converge_tasks_if_needed("legacy-install-node", "10.0.0.77", {})
@@ -5457,7 +5454,7 @@ def test_trigger_converge_matches_generated_node_id_when_reported_ip_differs(mon
     monkeypatch.setattr(Sidecar, "_is_debounce_elapsed", lambda *_args, **_kwargs: True)
     monkeypatch.setattr(
         "apps.node_mgmt.services.sidecar.converge_controller_install_connectivity_for_node.delay",
-        lambda node_id: called.append(node_id),
+        lambda node_id, claim_token=None: called.append(node_id),
     )
 
     Sidecar.trigger_converge_tasks_if_needed("generated-windows-node", "169.254.1.5", {})

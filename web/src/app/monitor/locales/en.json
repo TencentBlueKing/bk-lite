@@ -4074,7 +4074,7 @@
         "mysqlCategoryWritable": "Writable",
         "mysqlCategoryReadOnly": "Read-only",
         "mysqlCategoryHost": "Host",
-        "mysqlCategoryHostUnlinked": "No linked host",
+        "mysqlCategoryHostUnlinked": "No host",
         "mysqlCategoryViewHost": "View",
         "mysqlCategoryCpu": "CPU",
         "mysqlCategoryMemory": "Memory",

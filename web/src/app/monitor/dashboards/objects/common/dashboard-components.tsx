@@ -37,6 +37,8 @@ import {
   TrendChartPanel
 } from '../../shared/widgets';
 import { DashboardProtocolBarSlot } from '../../shared/widgets/dashboard-protocol-bar-slot';
+import { LinkedHostSegment } from '../../shared/widgets/linked-host-segment';
+import { useLinkedHost } from '../../shared/use-linked-host';
 import { GuideItem } from '../../shared/types';
 import { FLOW_VIEW_SWITCH_ROUTE_KEYS, resolvePreferredCollectTypeFromRoute } from '../../shared/utils/flow-view-navigation';
 import { isFlowSupportedObjectName } from '../flow-common/constants';
@@ -753,6 +755,13 @@ export const DashboardShell = ({
   const professionalCapable = hasProDashboard(dashboard.routeKey) && Boolean(categoryContent);
   const requestedMode = viewSwitcher?.mode ?? dashboard.displayMode;
   const activeMode = !professionalCapable && requestedMode === 'category' ? 'dashboard' : requestedMode;
+  // 专业盘顶栏复用所属主机槽。主机盘自己就是主机，不再链出去。
+  const showLinkedHost = activeMode === 'category' && dashboard.routeKey !== 'host';
+  const linkedHost = useLinkedHost(
+    dashboard.linkedNodeId,
+    dashboard.linkedIp,
+    showLinkedHost && !dashboard.instanceLoading
+  );
   const showsDashboardChrome = viewSwitcher ? activeMode !== 'metrics' : dashboard.isDashboardMode;
   const [visitedModes, setVisitedModes] = useState<string[]>(() => [activeMode]);
   useEffect(() => {
@@ -825,7 +834,17 @@ export const DashboardShell = ({
           : []),
         ...dashboard.objectMetaItems.map((item, index) => (
           <span key={index} className={styles.instanceMetaInline}>{typeof item === 'string' ? dt(item) : item}</span>
-        ))
+        )),
+        ...(showLinkedHost
+          ? [
+            <LinkedHostSegment
+              key="linked-host"
+              host={linkedHost.host}
+              href={linkedHost.href}
+              pending={dashboard.instanceLoading || linkedHost.pending}
+            />
+          ]
+          : [])
       ]}
       icon={<DatabaseOutlined />}
       selectorValue={dashboard.instanceSelectValue}

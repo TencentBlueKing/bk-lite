@@ -9,7 +9,6 @@ from apps.system_mgmt.providers.builtin.ad.adapters.login_auth import ADLoginAut
 from apps.system_mgmt.providers.builtin.ad.adapters.user_sync import ADUserSyncAdapter
 from apps.system_mgmt.providers.common.ldap import LDAPSearchError, build_connection_config, resolve_ldap_server_target
 
-
 pytestmark = pytest.mark.unit
 
 
@@ -38,16 +37,12 @@ def test_normalize_business_config_canonicalizes_root_dns_and_drops_legacy_field
 
 
 def test_resolve_root_scope_value_single_dn_vs_multi_dn():
-    single = ADUserSyncAdapter.resolve_root_scope_value(
-        {"root_dns": ["OU=PAAS,DC=corp,DC=com"]}, field="root_dns"
-    )
+    single = ADUserSyncAdapter.resolve_root_scope_value({"root_dns": ["OU=PAAS,DC=corp,DC=com"]}, field="root_dns")
     multi = ADUserSyncAdapter.resolve_root_scope_value(
         {"root_dns": ["OU=BizA,DC=corp,DC=com", "OU=BizC,DC=corp,DC=com"]},
         field="root_dns",
     )
-    legacy = ADUserSyncAdapter.resolve_root_scope_value(
-        {"root_dn": "OU=PAAS,DC=corp,DC=com"}, field="root_dns"
-    )
+    legacy = ADUserSyncAdapter.resolve_root_scope_value({"root_dn": "OU=PAAS,DC=corp,DC=com"}, field="root_dns")
     assert single == "OU=PAAS,DC=corp,DC=com"
     assert multi == "__local_root__"
     assert legacy == "OU=PAAS,DC=corp,DC=com"
@@ -199,9 +194,7 @@ def test_ad_login_auth_invalid_credentials_are_treated_as_auth_failure_without_e
 @patch("apps.system_mgmt.providers.builtin.ad.adapters.login_auth.logger")
 @patch("apps.system_mgmt.providers.builtin.ad.adapters.client.search_single_user")
 def test_ad_authenticate_logs_unexpected_failure_without_raw_exception(mock_search_single_user, mock_logger):
-    mock_search_single_user.side_effect = RuntimeError(
-        "ldap://private.example?bind_password=private-secret"
-    )
+    mock_search_single_user.side_effect = RuntimeError("ldap://private.example?bind_password=private-secret")
 
     result = ADLoginAuthAdapter.authenticate(
         config=_base_config(),
@@ -220,9 +213,7 @@ def test_ad_authenticate_logs_unexpected_failure_without_raw_exception(mock_sear
 @patch("apps.system_mgmt.providers.builtin.ad.adapters.user_sync.logger")
 @patch("apps.system_mgmt.providers.builtin.ad.adapters.client.search_entries")
 def test_ad_user_sync_logs_failure_without_raw_exception(mock_search_entries, mock_logger):
-    mock_search_entries.side_effect = RuntimeError(
-        "ldap://private.example?bind_password=private-secret"
-    )
+    mock_search_entries.side_effect = RuntimeError("ldap://private.example?bind_password=private-secret")
     source = SimpleNamespace(business_config={"root_dn": "DC=corp,DC=example,DC=com"})
 
     result = ADUserSyncAdapter.sync_users(
@@ -566,6 +557,7 @@ def test_ad_user_sync_bind_failure_uses_connection_mapping(mock_search_entries):
     assert result.errors[0].code == "provider.auth_failed"
     assert result.errors[0].external_code == "49"
 
+
 @patch("apps.system_mgmt.providers.builtin.ad.adapters.client.probe_root_dse")
 def test_ad_connection_tests_use_root_dse_probe(mock_probe_root_dse):
     login_result = ADLoginAuthAdapter.test_connection(
@@ -587,9 +579,7 @@ def test_ad_connection_tests_use_root_dse_probe(mock_probe_root_dse):
 @patch("apps.system_mgmt.providers.builtin.ad.adapters.user_sync.logger")
 @patch("apps.system_mgmt.providers.builtin.ad.adapters.login_auth.logger")
 @patch("apps.system_mgmt.providers.builtin.ad.adapters.client.probe_root_dse")
-def test_ad_connection_test_returns_failure_without_adapter_error_log(
-    mock_probe_root_dse, mock_login_logger, mock_sync_logger
-):
+def test_ad_connection_test_returns_failure_without_adapter_error_log(mock_probe_root_dse, mock_login_logger, mock_sync_logger):
     mock_probe_root_dse.side_effect = RuntimeError("connection refused")
 
     login_result = ADLoginAuthAdapter.test_connection(
@@ -679,11 +669,11 @@ def test_resolve_ldap_server_target_keeps_backward_compatible_url_parsing():
 @pytest.mark.parametrize(
     "config",
     [
-        {},                                       # 完全缺省
-        {"base_dn": ""},                          # 空字符串
-        {"base_dn": None},                        # None
-        {"base_dn": "   "},                       # 仅空白
-        {"connection_url": "x"},                  # 缺 base_dn 但有其它字段
+        {},  # 完全缺省
+        {"base_dn": ""},  # 空字符串
+        {"base_dn": None},  # None
+        {"base_dn": "   "},  # 仅空白
+        {"connection_url": "x"},  # 缺 base_dn 但有其它字段
     ],
 )
 def test_build_connection_config_raises_when_base_dn_missing(config):
@@ -715,7 +705,7 @@ def test_ad_authenticate_returns_invalid_config_when_base_dn_missing():
     """base_dn 缺失时 authenticate 不应返回迷惑的 'AD user not found'，
     而应明确返回 provider.invalid_config + 含 base_dn 的消息。"""
     result = ADLoginAuthAdapter.authenticate(
-        config={},   # 完全没填 base_dn
+        config={},  # 完全没填 base_dn
         provider_key="ad",
         capability_key="login_auth",
         username="alice",
@@ -734,7 +724,7 @@ def test_ad_authenticate_returns_invalid_config_when_base_dn_missing():
 
 
 @patch("apps.system_mgmt.providers.builtin.ad.adapters.client.search_entries")
-def test_ad_user_sync_requests_only_mapped_external_fields(mock_search_entries):
+def test_ad_user_sync_requests_mapped_and_profile_attributes(mock_search_entries):
     """用户同步不请求未被当前源映射的可选 LDAP 字段。"""
     mock_search_entries.side_effect = [
         [
@@ -783,4 +773,31 @@ def test_ad_user_sync_requests_only_mapped_external_fields(mock_search_entries):
     assert users_by_name["bob"]["telephoneNumber"] == "13800000002"
     # 仅请求配置映射字段和构建组织关系所需的 distinguishedName。
     attributes_arg = mock_search_entries.call_args_list[0].args[3]
-    assert attributes_arg == ["sAMAccountName", "displayName", "mail", "telephoneNumber", "distinguishedName"]
+    assert attributes_arg == [
+        "sAMAccountName",
+        "displayName",
+        "mail",
+        "telephoneNumber",
+        "title",
+        "employeeID",
+        "employeeNumber",
+        "manager",
+        "userAccountControl",
+        "distinguishedName",
+    ]
+
+
+def test_ad_normalize_keeps_unlisted_ldap_attribute_as_text():
+    normalized = ADUserSyncAdapter._normalize_sync_user(
+        {
+            "sAMAccountName": "alice",
+            "displayName": "Alice",
+            "extensionAttribute1": "广州",
+            "objectGUID": b"\x01\x02",
+            "memberOf": [{"dn": "CN=Group"}],
+        }
+    )
+    assert normalized["extensionAttribute1"] == "广州"
+    assert normalized["displayName"] == "Alice"
+    assert "objectGUID" not in normalized
+    assert "memberOf" not in normalized

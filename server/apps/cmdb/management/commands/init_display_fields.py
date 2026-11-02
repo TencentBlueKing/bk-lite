@@ -17,86 +17,81 @@
 """
 
 from django.core.management.base import BaseCommand
+
 from apps.cmdb.display_field import DisplayFieldInitializer
 from apps.core.logger import cmdb_logger as logger
 
 
 class Command(BaseCommand):
-    help = '初始化所有模型和实例的 _display 字段（用于全文检索）'
-    
+    help = "初始化所有模型和实例的 _display 字段（用于全文检索）"
+
     def add_arguments(self, parser):
         """添加命令行参数"""
+        parser.add_argument("--dry-run", action="store_true", help="试运行模式，不实际修改数据（仅输出日志）")
         parser.add_argument(
-            '--dry-run',
-            action='store_true',
-            help='试运行模式，不实际修改数据（仅输出日志）'
+            "--models-only",
+            action="store_true",
+            help="只补模型上的 _display 字段定义，不扫描实例",
         )
-    
+
     def handle(self, *args, **options):
         """执行命令"""
-        dry_run = options.get('dry_run', False)
-        
+        dry_run = options.get("dry_run", False)
+        models_only = options.get("models_only", False)
+
         if dry_run:
-            self.stdout.write(
-                self.style.WARNING('【试运行模式】不会实际修改数据')
-            )
+            self.stdout.write(self.style.WARNING("【试运行模式】不会实际修改数据"))
             logger.warning("[InitDisplayFields] 试运行模式，已跳过写入")
             return
 
-        self.stdout.write(
-            self.style.SUCCESS('开始初始化 _display 字段...')
-        )
-        
+        self.stdout.write(self.style.SUCCESS("开始初始化 _display 字段..."))
+
         try:
             # 执行初始化
             initializer = DisplayFieldInitializer()
-            result = initializer.initialize_all()
-            
+            result = initializer.initialize_all(instances=not models_only)
+
             # 输出结果
-            if result['success']:
+            if result["success"]:
                 self.stdout.write(
                     self.style.SUCCESS(
-                        f"\n{'='*60}\n"
+                        f"\n{'=' * 60}\n"
                         f"✅ 初始化完成！\n"
-                        f"{'='*60}\n"
+                        f"{'=' * 60}\n"
                         f"  模型数: {result['models_processed']}\n"
                         f"  实例数: {result['instances_processed']}\n"
                         f"  错误数: {len(result['errors'])}\n"
-                        f"{'='*60}"
+                        f"{'=' * 60}"
                     )
                 )
             else:
                 self.stdout.write(
                     self.style.ERROR(
-                        f"\n{'='*60}\n"
+                        f"\n{'=' * 60}\n"
                         f"❌ 初始化失败！\n"
-                        f"{'='*60}\n"
+                        f"{'=' * 60}\n"
                         f"  模型数: {result['models_processed']}\n"
                         f"  实例数: {result['instances_processed']}\n"
                         f"  错误数: {len(result['errors'])}\n"
-                        f"{'='*60}"
+                        f"{'=' * 60}"
                     )
                 )
-                
+
                 # 输出错误详情
-                if result['errors']:
-                    self.stdout.write(self.style.ERROR('\n错误详情:'))
-                    for error in result['errors']:
+                if result["errors"]:
+                    self.stdout.write(self.style.ERROR("\n错误详情:"))
+                    for error in result["errors"]:
                         self.stdout.write(self.style.ERROR(f"  - {error}"))
-            
+
             # 输出提示
-            self.stdout.write('\n')
-            self.stdout.write('详细日志请查看日志文件')
-            
+            self.stdout.write("\n")
+            self.stdout.write("详细日志请查看日志文件")
+
         except KeyboardInterrupt:
-            self.stdout.write(
-                self.style.WARNING('\n\n操作已取消')
-            )
+            self.stdout.write(self.style.WARNING("\n\n操作已取消"))
             logger.warning("[InitDisplayFields] 用户取消操作")
-            
+
         except Exception as e:
-            self.stdout.write(
-                self.style.ERROR(f'\n\n执行失败: {e}')
-            )
+            self.stdout.write(self.style.ERROR(f"\n\n执行失败: {e}"))
             logger.error(f"[InitDisplayFields] 执行异常: {e}", exc_info=True)
             raise

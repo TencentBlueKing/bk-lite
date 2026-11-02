@@ -11,6 +11,7 @@ import {
 import { useTranslation } from "@/utils/i18n";
 import type {
   FilterValue,
+  ScreenLayoutMode,
   UnifiedFilterDefinition,
 } from "@/app/ops-analysis/types/dashBoard";
 import type { DatasourceItem } from "@/app/ops-analysis/types/dataSource";
@@ -29,7 +30,12 @@ import {
   getScreenResizeEnablement,
   screenGeometryFromResize,
 } from "../utils/screenResizeHandles";
-import { calculateScreenVisualMetrics } from "../utils/metrics";
+import {
+  calculateScreenVisualMetrics,
+  mapDesignBoxToViewportPixels,
+  resolveChromeFontDensity,
+  resolvePresentedUiScale,
+} from "../utils/metrics";
 import { resolveScreenCanvasBackgroundStyle } from "../utils/screenBackground";
 import {
   collectScreenFilterTemplateTexts,
@@ -40,9 +46,15 @@ import {
   type ScreenChromeDragPayload,
 } from "../utils/screenItems";
 import { getScreenTheme } from "../utils/screenTheme";
-import { resolveScreenDisplayAdapter } from "../utils/viewport";
+import {
+  resolveScreenDisplayAdapter,
+  shouldUseViewportPixelLayout,
+} from "../utils/viewport";
 import ScreenChromeRenderer from "./screenChromeRenderer";
-import { ScreenChromeSkinStyles } from "./screenChromeSkins";
+import {
+  ChromeFontDensityProvider,
+  ScreenChromeSkinStyles,
+} from "./screenChromeSkins";
 import ScreenWidgetRenderer from "./screenWidgetRenderer";
 
 const RndComponent = Rnd as unknown as React.ComponentType<any>;
@@ -472,6 +484,7 @@ interface ScreenCanvasNodeProps {
   fitScale: number;
   screenDensity: number;
   screenUiScale: number;
+  layoutMode: ScreenLayoutMode;
   chartThemeMode: OpsChartThemeMode;
   refreshVersion: number;
   refreshCause?: CanvasRuntimeRefreshCause;
@@ -503,6 +516,7 @@ const ScreenCanvasNode = React.memo(function ScreenCanvasNode({
   fitScale,
   screenDensity,
   screenUiScale,
+  layoutMode,
   chartThemeMode,
   refreshVersion,
   refreshCause,
@@ -523,6 +537,14 @@ const ScreenCanvasNode = React.memo(function ScreenCanvasNode({
   layoutEditable,
 }: ScreenCanvasNodeProps) {
   const isWidget = isScreenWidgetItem(item);
+  const viewportPixels = layoutMode === "viewportPixels";
+  const displayItem = useMemo(() => {
+    if (!viewportPixels) return item;
+    const box = mapDesignBoxToViewportPixels(item, scale, scaleY);
+    return { ...item, x: box.x, y: box.y, w: box.w, h: box.h };
+  }, [item, scale, scaleY, viewportPixels]);
+  const rndScale = viewportPixels ? 1 : scale;
+  const rndScaleY = viewportPixels ? 1 : scaleY;
   const content = isWidget ? (
     <ScreenWidgetRenderer
       item={item}
@@ -536,6 +558,7 @@ const ScreenCanvasNode = React.memo(function ScreenCanvasNode({
       scaleY={scaleY}
       screenDensity={screenDensity}
       screenUiScale={screenUiScale}
+      layoutMode={layoutMode}
       dataSourceResolver={dataSourceResolver}
       chartThemeMode={chartThemeMode}
       filterDefinitions={filterDefinitions}
@@ -559,11 +582,11 @@ const ScreenCanvasNode = React.memo(function ScreenCanvasNode({
 
   return (
     <ScreenRndItem
-      item={item}
+      item={displayItem}
       editable={editable}
       selected={editable && selected}
-      scale={scale}
-      scaleY={scaleY}
+      scale={rndScale}
+      scaleY={rndScaleY}
       minWidth={
         isScreenWidgetItem(item) ? (item.chartType === 'single' ? 72 : 160) : 24
       }
@@ -680,6 +703,25 @@ const ScreenCanvas: React.FC<ScreenCanvasProps> = ({
   ]);
 
   const scale = screenMetrics.scaleX;
+  const viewportPixelLayout = shouldUseViewportPixelLayout({
+    adapter: viewSets.viewport.adapter,
+    fullscreen,
+    shareMode,
+    forceContain,
+  });
+  const layoutMode: ScreenLayoutMode = viewportPixelLayout
+    ? "viewportPixels"
+    : "designTransform";
+  const presentedUiScale = resolvePresentedUiScale(
+    layoutMode,
+    screenMetrics.screenDensity,
+    screenMetrics.screenUiScale,
+  );
+  const chromeFontDensity = resolveChromeFontDensity(
+    layoutMode,
+    screenMetrics.fitScale,
+  );
+  const chromeBorderDensity = viewportPixelLayout ? screenMetrics.fitScale : 1;
   const resolveDataSource = dataSourceResolver ?? unresolvedDataSource;
   const filterTemplateTexts = useMemo(
     () => collectScreenFilterTemplateTexts(viewSets.items),
@@ -746,10 +788,17 @@ const ScreenCanvas: React.FC<ScreenCanvasProps> = ({
           height: screenMetrics.renderedHeight,
         }}
       >
+        <ChromeFontDensityProvider
+          density={chromeFontDensity}
+          borderDensity={chromeBorderDensity}
+          geometryScaleX={viewportPixelLayout ? screenMetrics.scaleX : 1}
+          geometryScaleY={viewportPixelLayout ? screenMetrics.scaleY : 1}
+        >
         <div
           className={`screen-tech-canvas relative overflow-hidden ${
             editMode && !fullscreen ? "screen-tech-canvas--editing" : ""
           } ${
+            !viewportPixelLayout &&
             Math.abs(screenMetrics.scaleX - screenMetrics.scaleY) > 0.001
               ? "screen-tech-canvas--stretched"
               : ""
@@ -780,15 +829,17 @@ const ScreenCanvas: React.FC<ScreenCanvasProps> = ({
             });
           }}
           style={{
-            width,
-            height,
-            transform: `scale(${screenMetrics.scaleX}, ${screenMetrics.scaleY})`,
+            width: viewportPixelLayout ? screenMetrics.renderedWidth : width,
+            height: viewportPixelLayout ? screenMetrics.renderedHeight : height,
+            transform: viewportPixelLayout
+              ? "none"
+              : `scale(${screenMetrics.scaleX}, ${screenMetrics.scaleY})`,
             ...canvasBackground,
             "--screen-fit-scale": screenMetrics.fitScale,
             "--screen-scale-x": screenMetrics.scaleX,
             "--screen-scale-y": screenMetrics.scaleY,
             "--screen-density": screenMetrics.screenDensity,
-            "--screen-ui-scale": screenMetrics.screenUiScale,
+            "--screen-ui-scale": presentedUiScale,
           } as React.CSSProperties}
         >
           {editMode && !fullscreen && (
@@ -815,6 +866,7 @@ const ScreenCanvas: React.FC<ScreenCanvasProps> = ({
                 fitScale={screenMetrics.fitScale}
                 screenDensity={screenMetrics.screenDensity}
                 screenUiScale={screenMetrics.screenUiScale}
+                layoutMode={layoutMode}
                 chartThemeMode={screenTheme.chartThemeMode}
                 refreshVersion={refreshVersion ?? 0}
                 refreshCause={refreshCause}
@@ -837,6 +889,7 @@ const ScreenCanvas: React.FC<ScreenCanvasProps> = ({
             ))
           )}
         </div>
+        </ChromeFontDensityProvider>
       </div>
       <ScreenChromeSkinStyles />
       <style>{`

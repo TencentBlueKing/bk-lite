@@ -27,6 +27,7 @@ import CollectionStats from './components/collectionStats';
 import ReconcileDrawer from './components/reconcileDrawer';
 import {
   findPluginCategory,
+  reconcilePluginGroups,
   resolveCollectPlugin,
 } from './pluginCatalog';
 import {
@@ -1503,14 +1504,7 @@ const ProfessionalCollection: React.FC = () => {
         open={reconcileVisible}
         modelId={currentPlugin?.model_id || selectedPluginId}
         modelName={currentPlugin?.name || ''}
-        groups={categoryList.filter((node) => node.id !== 'all').map((node) => ({
-          id: node.id,
-          name: node.name,
-          plugins: (node.tabItems || []).filter((plugin) => (
-            ['host', 'db', 'middleware', 'protocol', 'snmp', 'other', 'custom_script'].includes(plugin.task_type || '')
-            && !(plugin.task_type === 'custom_script' && (plugin.model_id === 'vmware_vc' || plugin.id === 'vmware_vc'))
-          )),
-        })).filter((group) => group.plugins.length > 0)}
+        groups={reconcilePluginGroups(categoryList)}
         onClose={() => setReconcileVisible(false)}
       />
 

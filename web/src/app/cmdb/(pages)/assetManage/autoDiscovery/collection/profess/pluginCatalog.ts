@@ -264,10 +264,40 @@ const normalizePhysicalServerProtocol = (value?: string | null) => {
   return protocol === 'redfish' ? 'redfish' : 'ipmi';
 };
 
+const RECONCILE_TASK_TYPES = new Set([
+  'host',
+  'db',
+  'middleware',
+  'protocol',
+  'snmp',
+  'other',
+  'custom_script',
+]);
+
+/** 容器分组（K8s、Docker）不参与数据调和。 */
+const RECONCILE_EXCLUDED_GROUP_IDS = new Set(['all', 'k8s']);
+
 export const collectPlugins = (categories: TreeNode[]) =>
   categories
     .filter((category) => category.id !== 'all')
     .flatMap((category) => category.tabItems || []);
+
+export const reconcilePluginGroups = (categories: TreeNode[]) =>
+  categories
+    .filter((category) => !RECONCILE_EXCLUDED_GROUP_IDS.has(category.id))
+    .map((category) => ({
+      id: category.id,
+      name: category.name,
+      plugins: (category.tabItems || []).filter(
+        (plugin) =>
+          RECONCILE_TASK_TYPES.has(plugin.task_type || '') &&
+          !(
+            plugin.task_type === 'custom_script' &&
+            (plugin.model_id === 'vmware_vc' || plugin.id === 'vmware_vc')
+          ),
+      ),
+    }))
+    .filter((group) => group.plugins.length > 0);
 
 export const findPluginCategory = (categories: TreeNode[], pluginId: string) =>
   categories.find(

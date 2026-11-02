@@ -4074,7 +4074,7 @@
         "mysqlCategoryWritable": "写入源",
         "mysqlCategoryReadOnly": "只读",
         "mysqlCategoryHost": "所属主机",
-        "mysqlCategoryHostUnlinked": "未关联主机",
+        "mysqlCategoryHostUnlinked": "无所属主机",
         "mysqlCategoryViewHost": "查看",
         "mysqlCategoryCpu": "CPU",
         "mysqlCategoryMemory": "内存",
