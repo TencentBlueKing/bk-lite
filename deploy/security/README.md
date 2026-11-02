@@ -1,6 +1,54 @@
-# CVE-2026-111497：Brotli 镜像修复与验收
+# 发行镜像安全补丁与验收
 
-## 修改范围
+## 海外漏扫报告：OpenSSL、Log4j 与系统 Python 工具
+
+Fusion 执行器 OpenSSL 1.1.1k 的发行重建由社区 PR #6862 处理（固定 OpenSSL 3.5.9，
+并通过 `--verify-release` 校验最终冻结程序）。最终发行 Dockerfile 也必须运行该校验；
+仅更新宿主机 OpenSSL 或 Fusion 的 Ubuntu 系统包不能替换 `_internal` 中的库。
+
+报告中的 Conductor 3.32.1 携带 Log4j 2.25.4，Elasticsearch 7.17.21 携带 2.17.1。
+使用 `Dockerfile.conductor` / `Dockerfile.elasticsearch` 构建独立补丁镜像；不跨产品主版本升级。
+Log4j API、Core 和 Conductor 中检测到的适配模块统一更新到 2.25.5，
+制品从 Maven Central 官方路径获取，并核对入库的 SHA256 及 JAR 内 Maven 坐标。
+Elasticsearch 的定制 Core 继续删除 `JndiLookup.class`，不恢复原有已移除的危险类。
+Conductor 同步更新 classpath/layers 索引，保留 Spring Boot 的嵌套 JAR 存储格式；
+拒绝未核对的依赖版本、未知模块、重复模块或带真实外层签名的 JAR。
+
+```sh
+# 先记录当前上游镜像摘要；以下变量由发布人员填写。
+BASE_IMAGE='当前产品镜像@sha256:实际摘要'
+CANDIDATE_IMAGE='独立候选镜像:本次安全修复标签'
+PRODUCT='conductor' # 或 elasticsearch；ES 入口仅适用于已核对的 7.17.21 布局
+docker pull "$BASE_IMAGE"
+RUNTIME_USER=$(docker image inspect --format '{{.Config.User}}' "$BASE_IMAGE")
+docker build --pull --no-cache --platform linux/amd64 \
+  --build-arg BASE_IMAGE="$BASE_IMAGE" --build-arg RUNTIME_USER="${RUNTIME_USER:-0}" \
+  -f "deploy/security/Dockerfile.$PRODUCT" -t "$CANDIDATE_IMAGE" deploy/security
+```
+
+`Dockerfile.system` 还会检查 Ubuntu 24.04 中已经安装的 `python3-pip`、`python3-pip-whl`、
+`python-wheel-common`、`python3-wheel`、`python3-wheel-whl`，只升级已安装的包：
+
+| 包族 | 最低发行版补丁版本 |
+|---|---|
+| pip / pip-whl | `24.0+dfsg-1ubuntu1.3+esm1` |
+| wheel / wheel-whl / wheel-common | `0.42.0-2ubuntu0.1~esm1` |
+
+如果构建软件源未提供 USN-8344-1 / USN-8221-1 的修复，门禁失败。
+需要时通过构建环境配置 Ubuntu Pro ESM；禁止将订阅凭据写入 Dockerfile、镜像层或仓库。
+此入口仅修复派生镜像；报告若命中宿主机的 dpkg 包，仍需在宿主机维护流程中安装同样的发行版补丁。
+用 `pip install -U pip` 替换 Python 环境不能证明上述 dpkg 系统包已更新。
+
+发布前需验证 Conductor 的元数据写入、工作流执行与读取，以及 Elasticsearch 索引写入、检索和重启恢复。
+报告中的 containerd 历史快照和 `/var/tmp/itsm-es-log4j-backup-*` 必须按运行引用单独核对，
+不能把备份路径或未使用镜像层直接当成运行服务，也不能直接删除 snapshot 目录。
+这些构建入口不自动修改 Jenkins、第三方部署模板或存量运行容器。
+
+依据：[Apache Log4j](https://logging.apache.org/security.html)、
+[pip USN-8344-1](https://ubuntu.com/security/notices/USN-8344-1)、
+[wheel USN-8221-1](https://ubuntu.com/security/notices/USN-8221-1)。
+
+## Brotli 修改范围（CVE-2026-111497）
 
 本次修改在构建期更新系统 `libbrotli1`，并使用发行版完整包版本校验补丁。
 软件源无法提供安全版本、包更新失败或发行版不在已验证范围时，构建失败；
@@ -60,8 +108,8 @@ docker build --pull --no-cache --platform linux/amd64 \
 
 FalkorDB 检测到的 Node.js 24.14.0 不会因更新 libbrotli 而自动修复。对 Debian 12
 派生镜像使用同样命令，但将 Dockerfile 改为 `deploy/security/Dockerfile.falkordb`。
-它通过原镜像已有的 NodeSource 24.x 软件源升级 `nodejs` 包，同时更新系统 Brotli，
-校验 Node 稳定版不低于 24.22.1，且实际运行版本必须与 dpkg 包清单一致。
+它通过原镜像已有的 NodeSource 22.x / 24.x 软件源升级 `nodejs` 包，同时更新系统 Brotli，
+分别校验 Node 稳定版不低于 22.23.4 / 24.22.1，且实际运行版本必须与 dpkg 包清单一致。
 不再仅复制可执行文件，以免运行版本已更新、漏扫清单仍保留旧包。
 其他发行版或没有已安装 `nodejs` 包的镜像拒绝构建。
 这只是候选构建入口，发布前必须验证 FalkorDB 数据读写及附带 Node 应用。
@@ -73,7 +121,7 @@ FalkorDB 检测到的 Node.js 24.14.0 不会因更新 libbrotli 而自动修复�
    其余测试执行 Dockerfile 的实际 RUN 层，验证更新失败、补丁不足、未知发行版会阻止构建，
    并验证 Node 包版本、实际运行版本必须一致，不操作系统包或业务服务。
 2. 构建时使用 `--pull --no-cache`。安全更新层需能从对应软件源取得补丁，
-   企业覆盖的最终 Dockerfile 也必须接入同样的更新与版本检查。
+   最终发行 Dockerfile 也必须接入同样的更新与版本检查。
 3. 独立候选容器使用 `--network none --read-only --cap-drop ALL --security-opt no-new-privileges`
    和 CPU、内存、进程数限制；分别核对系统包、Node 和 curl 的链接库。
    不运行漏洞利用输入，不以“curl 不存在”推断无 Brotli。
@@ -86,3 +134,67 @@ FalkorDB 检测到的 Node.js 24.14.0 不会因更新 libbrotli 而自动修复�
 宿主机与容器的软件包独立维护。Debian 12 宿主机的更新应作为独立运维变更，
 先模拟更新、检查依赖和可用补丁，再在维护窗口更新 `libbrotli1`。
 本 PR 不执行宿主机更新、服务重启、镜像推送或部署，也不代表存量环境已经完成修复。
+
+## Jenkins 与部署补充（待 review 后接入）
+
+`jenkins-brotli.groovy` 是阶段片段：放在应用镜像构建之后、发布之前。
+不替换现有流水线，不调用 Jenkins API，也不触发远程部署。按当前工作目录调整
+`deploy/security` 前缀；凭据沿用 Jenkins 的 registry credential binding，禁止写入脚本。
+候选标签必须为本次发布独有（例如提交 SHA + BUILD_NUMBER），禁止复用 latest。
+
+- 生产、开发 FalkorDB 分别设置 `FALKORDB_BASE_IMAGE`、`DEV_FALKORDB_BASE_IMAGE`
+  （实际环境镜像摘要），及两个不同的 `*_CANDIDATE_IMAGE`。脚本分别构建、保留
+  USER/ENTRYPOINT/CMD 并检查版本。Debian 12 的 NodeSource 22/24 分支分别升级至
+  22.23.4 / 24.22.1 或更高同主版本；缺少软件源、未知系统或跨主版本均失败。
+- `LICENSE_IMAGE` 必须由授权服务仓库重建并提供安全镜像摘要。这个门禁检查 Node
+  22/24 安全版本，不会把当前 22.23.3 自动变成安全版；未取得镜像时不能宣布全部覆盖。
+- `FUSION_IMAGE` 为重新构建的最终发行镜像，检查系统 libbrotli。OpenSSL
+  仍须由 #6862 的执行器发行验证保证，本 Brotli 门禁不代替 OpenSSL 检查。
+- Web、Server、Stargazer 沿用原构建阶段，部署清单同时锁定它们的实际修复镜像。
+  推送在全部候选门禁通过后接入原凭据流程；推送后读取对应仓库 RepoDigest，禁止
+  仅凭本地 image ID 或可变标签填写下方清单。
+
+### 按 Compose 项目生成部署覆盖文件
+
+主平台、授权服务、开发环境若属于不同 Compose 项目，分别建立清单、生成覆盖文件
+并独立验收。服务名取实际 `docker compose config --services` 输出，不能使用容器名。
+例如主平台 `release.json`（将下列占位值替换为真实完整摘要）：
+
+```json
+{"services": {
+  "web": {"image": "registry/web@sha256:真实64位摘要", "profile": "node"},
+  "server": {"image": "registry/server@sha256:真实64位摘要", "profile": "system"},
+  "stargazer": {"image": "registry/stargazer@sha256:真实64位摘要", "profile": "system"},
+  "falkordb": {"image": "registry/falkordb@sha256:真实64位摘要", "profile": "node-system"}
+}}
+```
+
+授权服务清单包含其实际服务名，使用 `node` profile；开发环境 FalkorDB 使用
+`node-system` profile。Fusion 若是独立采集器交付，单独交付安全镜像，不能假设
+主平台 Compose 更新会替换已下发的采集器。清单须人工核对所有受影响服务；工具
+仅检查清单中的条目，不做跨项目资产发现。
+
+构建节点/部署节点预先拉取各摘要镜像，运行以下操作；工具不负责推送、拉取或更新容器：
+
+```sh
+# 每次使用新目录；已存在的覆盖文件拒绝覆盖。候选检查不执行应用启动入口。
+python3 deploy/security/brotli_release.py prepare \
+  --manifest release.json --output compose.security.json
+# 与现有部署保持相同 -p、-f 顺序、env-file、profile 和工作目录；下列为单基础文件示例。
+# 人工 review 覆盖文件，确认维护窗口和备份后，才在部署节点执行：
+docker compose -p compose -f docker-compose.yaml -f compose.security.json \
+  up -d --no-build --pull never web server stargazer falkordb
+# 验证所有副本的实际 image ID、运行状态和版本，不以镜像标签代替容器核验。
+python3 deploy/security/brotli_release.py verify --manifest release.json --project compose \
+  -f docker-compose.yaml -f compose.security.json
+```
+
+`bootstrap.sh` 可能重新生成配置或执行另一条 compose 命令；必须在其最终 `up` 调用
+加入同一覆盖文件，或在 bootstrap 完成后执行上述受控替换。不能只构建/推送镜像
+便宣称环境已修复。开发、授权项目必须分别执行，采集器走其实际更新链路。
+`verify` 支持重复的 `--env-file`、`--profile` 参数，按原部署参数传入。
+版本门禁之后仍需完成平台登录、授权校验、FalkorDB 读写及采集任务冒烟。
+
+回滚前保存上一版各项目的镜像摘要清单和数据备份；保留原卷、不执行 `down -v`、
+不删 containerd snapshot。失败时以同样 compose 文件顺序换回上一版镜像覆盖文件
+并重建受影响服务，再验收业务；回退旧镜像意味着漏洞重新存在，须记录并重新修复。

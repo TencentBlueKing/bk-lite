@@ -138,9 +138,12 @@ def test_crlf_preserved_for_ansible_bat_path():
     ],
 )
 def test_ansible_remote_stream_flag_matches_platform(script_type, script_content, expected):
+    from apps.job_mgmt.constants import OSType
+
     execution = MagicMock(id=99, timeout=60)
     target_list = [{"target_id": 5, "name": "h1", "ip": "1.1.1.1"}]
     fake_target = MagicMock(cloud_region_id=1)
+    fake_target.os_type = OSType.LINUX if script_type == ScriptType.PYTHON else OSType.WINDOWS
     fake_exec = MagicMock()
 
     with patch.object(ExecutionTaskBaseService, "_load_manual_targets_for_execution", return_value=[fake_target]), patch.object(
@@ -157,6 +160,51 @@ def test_ansible_remote_stream_flag_matches_platform(script_type, script_content
         assert fake_exec.adhoc.call_args.kwargs["stream_remote_type"] is None
     else:
         assert fake_exec.adhoc.call_args.kwargs["stream_remote_type"] == ScriptType.POWERSHELL
+
+
+def test_ansible_windows_python_uses_file_execution_path():
+    from apps.job_mgmt.constants import OSType
+
+    execution = MagicMock(id=99, timeout=60)
+    target_list = [{"target_id": 5, "name": "win", "ip": "10.10.90.120"}]
+    fake_target = MagicMock(cloud_region_id=1, os_type=OSType.WINDOWS)
+    fake_exec = MagicMock()
+
+    with patch.object(ExecutionTaskBaseService, "_load_manual_targets_for_execution", return_value=[fake_target]), patch.object(
+        ExecutionTaskBaseService, "_get_ansible_node", return_value="node-1"
+    ), patch.object(ExecutionTaskBaseService, "_build_host_credentials", return_value=[{"host": "10.10.90.120"}]), patch(
+        "apps.job_mgmt.services.execution_base_service.AnsibleExecutor", return_value=fake_exec
+    ):
+        ExecutionTaskBaseService._execute_script_via_ansible(execution, target_list, "#!/usr/bin/env python3\nprint('hi')\n", ScriptType.PYTHON)
+
+    kwargs = fake_exec.adhoc.call_args.kwargs
+    assert kwargs["module"] == "win_shell"
+    assert kwargs["module_args"].startswith("#!/usr/bin/env python3")
+    assert kwargs["stream_remote_type"] == ScriptType.PYTHON
+    assert kwargs["extra_vars"]["bklite_python_interpreter"] == "python3"
+
+
+def test_ansible_mixed_python_uses_temporary_playbook_module():
+    from apps.job_mgmt.constants import OSType
+
+    execution = MagicMock(id=99, timeout=60)
+    target_list = [{"target_id": 5}, {"target_id": 6}]
+    linux = MagicMock(cloud_region_id=1, os_type=OSType.LINUX)
+    windows = MagicMock(cloud_region_id=1, os_type=OSType.WINDOWS)
+    fake_exec = MagicMock()
+
+    with patch.object(ExecutionTaskBaseService, "_load_manual_targets_for_execution", return_value=[linux, windows]), patch.object(
+        ExecutionTaskBaseService, "_get_ansible_node", return_value="node-1"
+    ), patch.object(ExecutionTaskBaseService, "_build_host_credentials", return_value=[{"host": "a"}, {"host": "b"}]), patch(
+        "apps.job_mgmt.services.execution_base_service.AnsibleExecutor", return_value=fake_exec
+    ):
+        ExecutionTaskBaseService._execute_script_via_ansible(execution, target_list, "print('mixed')\n", ScriptType.PYTHON)
+
+    kwargs = fake_exec.adhoc.call_args.kwargs
+    assert kwargs["module"] == "bklite_mixed_python"
+    assert kwargs["module_args"] == "print('mixed')\n"
+    assert kwargs["stream_remote_type"] == ScriptType.PYTHON
+    assert kwargs["extra_vars"]["bklite_python_interpreter"] == "python"
 
 
 def test_normalize_script_line_endings_bare_cr_and_idempotent():

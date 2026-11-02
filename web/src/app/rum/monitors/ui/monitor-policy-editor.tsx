@@ -166,7 +166,7 @@ export default function MonitorPolicyEditor({ monitorId }: { monitorId?: string 
 
   useEffect(() => {
     if (!ready) return;
-    void listApplications()
+    void listApplications(true)
       .then((items) => {
         const names = items.map((item) => item.application).filter(Boolean);
         setApps(names);

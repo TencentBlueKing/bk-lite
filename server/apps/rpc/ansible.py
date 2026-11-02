@@ -77,7 +77,8 @@ class AnsibleExecutor(object):
         :param task_id: 任务 ID（可选，不传自动生成）
         :param timeout: 执行超时时间（秒）
         :param stream_remote_output: 脚本是否通过远端日志轮询提供真实增量输出
-        :param stream_remote_type: Windows 流式脚本类型，可选 bat/powershell
+        :param stream_remote_type: Windows 文件执行脚本类型，可选 bat/powershell/python；
+            混选 Linux+Windows 的 Python 使用 module=bklite_mixed_python 且同样传 python
         :return: 任务受理结果（accepted + task_id）
 
         多目标机器凭据不一致示例（推荐：inventory_content 按 host 传）：

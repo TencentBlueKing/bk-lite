@@ -500,8 +500,11 @@ export function useRumQueries() {
     return withDegradation(data || ({} as RumHealth));
   }, [api]);
 
-  const listApplications = useCallback(async () => {
-    const data = await api.get<RumApplicationView[]>('/applications/');
+  const listApplications = useCallback(async (brief = false) => {
+    const data = await api.get<RumApplicationView[]>(
+      '/applications/',
+      brief ? { params: { brief: '1' } } : undefined,
+    );
     return (Array.isArray(data) ? data : []).map(normalizeApplication);
   }, [api]);
 

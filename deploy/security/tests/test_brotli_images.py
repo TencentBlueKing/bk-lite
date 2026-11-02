@@ -85,6 +85,9 @@ class BrotliImageTests(unittest.TestCase):
             ("24.22.2-1nodesource1", "v24.22.1", "ii ", 1),
             ("24.22.1-1nodesource1", "v24.22.1", "ii ", 0),
             ("24.22.2-1nodesource1", "v24.22.2", "ii ", 0),
+            ("22.23.4-1nodesource1", "v22.23.4", "ii ", 0),
+            ("22.23.3-1nodesource1", "v22.23.3", "ii ", 1),
+            ("22.18.0-1nodesource1", "v22.18.0", "ii ", 1),
             ("25.0.0-1nodesource1", "v25.0.0", "ii ", 1),
             ("24.22.1-1nodesource1", "v24.22.1", "un ", 1),
         )

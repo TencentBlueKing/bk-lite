@@ -20,6 +20,9 @@ class ReplayIndex(Protocol):
     def has_ready(self, application: str, session_id: str) -> bool:
         ...
 
+    def ready_sessions(self, pairs: list[tuple[str, str]]) -> set[tuple[str, str]]:
+        ...
+
     def replay_manifest(self, tenant_id: str, application: str, session_id: str) -> dict:
         ...
 
@@ -30,6 +33,10 @@ class UnavailableReplayIndex:
 
     def has_ready(self, application: str, session_id: str) -> bool:
         return False
+
+    def ready_sessions(self, pairs: list[tuple[str, str]]) -> set[tuple[str, str]]:
+        del pairs
+        return set()
 
     def replay_manifest(self, tenant_id: str, application: str, session_id: str) -> dict:
         return {"state": "unavailable", "retentionDays": 0, "recordings": []}
@@ -78,6 +85,9 @@ class MemoryReplayIndex:
 
     def has_ready(self, application: str, session_id: str) -> bool:
         return (application, session_id) in self._ready
+
+    def ready_sessions(self, pairs: list[tuple[str, str]]) -> set[tuple[str, str]]:
+        return {(application, session_id) for application, session_id in pairs if (application, session_id) in self._ready}
 
     def replay_manifest(self, tenant_id: str, application: str, session_id: str) -> dict:
         return json.loads(
