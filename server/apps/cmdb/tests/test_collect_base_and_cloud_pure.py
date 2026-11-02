@@ -627,3 +627,31 @@ def test_qcloud_format_metrics_skips_incomplete_identity(monkeypatch):
     }
     r.format_metrics()
     assert r.result["qcloud_cvm"] == []
+
+
+def test_qcloud_cvm_metric_tag_label_becomes_list_and_blank_does_not_clear(monkeypatch):
+    from apps.cmdb.collection.common import Management
+    from apps.cmdb.collection.plugins.base import bind_collection_mapping
+    from apps.cmdb.collection.plugins.community.cloud.qcloud import QCloudCollectionPlugin
+
+    r = _qcloud(monkeypatch, model_id="qcloud_cvm")
+    mapping = {model_id: bind_collection_mapping(r, fields) for model_id, fields in QCloudCollectionPlugin.field_mappings.items()}
+    monkeypatch.setattr(type(r), "model_field_mapping", property(lambda self: mapping))
+    r.collection_metrics_dict = {
+        "qcloud_cvm_info_gauge": [
+            {
+                "resource_name": "cvm-a",
+                "resource_id": "ins-1",
+                "tag": '["owner:acme,inc","env:prod"]',
+                "vcpus": "2",
+                "memory_mb": "2048",
+            },
+            {"resource_name": "cvm-b", "resource_id": "ins-2", "vcpus": "1", "memory_mb": "1024"},
+        ]
+    }
+    r.format_metrics()
+    rows = {row["resource_id"]: row for row in r.result["qcloud_cvm"]}
+    assert Management.coerce_collected_tag(rows["ins-1"])["tag"] == ["owner:acme,inc", "env:prod"]
+    assert "tag" not in Management.coerce_collected_tag(rows["ins-2"])
+    for model_id in ("qcloud_cvm", "qcloud_mysql", "qcloud_redis", "qcloud_rocketmq", "qcloud_bucket", "qcloud_domain"):
+        assert QCloudCollectionPlugin.field_mappings[model_id]["tag"] == "tag"

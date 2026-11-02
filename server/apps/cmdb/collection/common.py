@@ -8,7 +8,9 @@ from apps.cmdb.constants.field_constraints import TAG_ATTR_ID
 from apps.cmdb.graph.drivers.graph_client import GraphClient
 from apps.cmdb.services.instance_identity import prepare_new_instance_identity
 from apps.cmdb.services.model import ModelManage
+from apps.cmdb.validators.field_validator import parse_collected_tag_wire, sanitize_collected_tag_values
 from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.core.logger import cmdb_logger as logger
 
 load_dotenv()
 
@@ -91,14 +93,36 @@ class Management:
 
     @staticmethod
     def coerce_collected_tag(instance_info: dict) -> dict:
-        """采集写入的 tag 必须是列表。空串/字符串会让图查询 Type mismatch。"""
+        """采集 tag 落成 list[str]。空串视为载荷里没有 Tags，不覆盖已有标签。"""
         if not isinstance(instance_info, dict) or TAG_ATTR_ID not in instance_info:
             return instance_info
         value = instance_info[TAG_ATTR_ID]
-        if isinstance(value, list):
-            return instance_info
+        if value is None or value == "":
+            cleaned = dict(instance_info)
+            cleaned.pop(TAG_ATTR_ID, None)
+            return cleaned
+        resource_id = instance_info.get("resource_id") or ""
+        if not isinstance(value, (str, list)):
+            logger.warning(
+                "event=collect_tag_skipped resource_id=%s failed_stage=%s error_type=%s",
+                resource_id,
+                "coerce_collected_tag",
+                type(value).__name__,
+            )
+            cleaned = dict(instance_info)
+            cleaned.pop(TAG_ATTR_ID, None)
+            return cleaned
+        raw_values = parse_collected_tag_wire(value)
+        legal, skipped, truncated = sanitize_collected_tag_values(raw_values)
+        if skipped or truncated:
+            logger.warning(
+                "event=collect_tag_normalized resource_id=%s skipped=%s truncated=%s",
+                resource_id,
+                skipped,
+                truncated,
+            )
         cleaned = dict(instance_info)
-        cleaned[TAG_ATTR_ID] = []
+        cleaned[TAG_ATTR_ID] = legal
         return cleaned
 
     def format_data(self):
@@ -599,7 +623,25 @@ class Management:
         result["reconcile_stats"] = {key: value for key, value in self.reconcile_stats.items() if key != "conflicts"}
         return result
 
+    def _persist_collected_tag_options(self, result):
+        records = []
+        for operator in ("add", "update"):
+            for item in result.get(operator, {}).get("success", []):
+                info = item.get("inst_info") if isinstance(item, dict) else None
+                if not isinstance(info, dict):
+                    continue
+                tags = info.get(TAG_ATTR_ID)
+                if isinstance(tags, list) and tags:
+                    records.append({TAG_ATTR_ID: list(tags)})
+        if not records:
+            return
+        from apps.cmdb.services.instance import persist_free_tag_options_for_instances
+
+        attrs = ModelManage.search_model_attr(self.model_id)
+        persist_free_tag_options_for_instances(records, attrs, self.model_id)
+
     def _after_instances_applied(self, result):
+        self._persist_collected_tag_options(result)
         # 心跳更新已落图，但不属于业务变更。
         business_result = {
             operator: {status: [item for item in items if not item.get("heartbeat")] for status, items in result.get(operator, {}).items()}
