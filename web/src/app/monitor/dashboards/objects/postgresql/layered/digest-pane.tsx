@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { Input } from 'antd';
+import { Input, Select } from 'antd';
 import { mergeChartSeries } from '../../../shared/utils/chart-data';
 import type { EntityTableRow } from '../../host/entity-series';
 import LayeredEntityTable, { type LayeredColumn } from '../../host/layered/entity-table';
@@ -10,9 +10,12 @@ import { GrayTabEmptyState, ProDashLoading, ProSection, ThinTimeSeries, proChrom
 import host from '../../host/layered/layered.module.scss';
 import { HOST_SERIES_COLOR } from '../../host/config';
 import {
+  ALL_STATEMENT_DATABASES,
   formatAverageLatency,
   formatCount,
   formatTimeShare,
+  statementDatabaseOptions,
+  statementMatchesDatabase,
   type PostgresStatementRow,
   type PostgresWaitRow
 } from './digest';
@@ -148,22 +151,31 @@ export function StatementPane({
   onOpenCollection?: () => void;
 }) {
   const [queryText, setQueryText] = useState('');
+  const [database, setDatabase] = useState(ALL_STATEMENT_DATABASES);
   const [sort, setSort] = useState<ColumnSort>({ key: 'timeShare', order: 'descend' });
   const query = queryText.trim().toLowerCase();
+  const databaseOptions = useMemo(() => statementDatabaseOptions(rows), [rows]);
   const ordered = useMemo(
     () => sortRows(
-      rows.filter((row) => !query || `${row.sql} ${row.datname}`.toLowerCase().includes(query)),
+      rows.filter((row) => (
+        statementMatchesDatabase(row.datname, database)
+        && (!query || `${row.sql} ${row.datname}`.toLowerCase().includes(query))
+      )),
       sort,
       statementValue
     ),
-    [query, rows, sort]
+    [database, query, rows, sort]
   );
-  const selected = ordered.find((row) => row.id === selectedId) || ordered[0] || rows[0];
+  const selected = ordered.find((row) => row.id === selectedId) || ordered[0];
   useEffect(() => {
     if (!ordered.length) return;
     if (selectedId && ordered.some((row) => row.id === selectedId)) return;
     onSelect(ordered[0].id);
   }, [onSelect, ordered, selectedId]);
+  useEffect(() => {
+    if (databaseOptions.some((option) => option.value === database)) return;
+    setDatabase(ALL_STATEMENT_DATABASES);
+  }, [database, databaseOptions]);
   if (!rows.length) {
     return (
       <TabFill
@@ -258,7 +270,7 @@ export function StatementPane({
           points={selected?.trend}
           legendLabel="选中语句"
           color={HOST_SERIES_COLOR.memUsed}
-          emptyText="数据不足"
+          emptyText={ordered.length ? '数据不足' : '无匹配项'}
         />
       </ProSection>
       <ProSection title="Top SQL 列表">
@@ -284,6 +296,18 @@ export function StatementPane({
                 onSearch={setQueryText}
                 className="w-60 max-w-full"
               />
+              <span className="inline-flex items-center gap-1 text-[12px] text-[var(--color-text-2)]">
+                <span>数据库</span>
+                <Select
+                  size="small"
+                  aria-label="数据库"
+                  value={database}
+                  options={databaseOptions}
+                  onChange={setDatabase}
+                  popupMatchSelectWidth={false}
+                  className="w-40"
+                />
+              </span>
               <div className="ml-auto">
                 <TableCsvExportButton
                   host={instanceName.trim() || 'postgres'}

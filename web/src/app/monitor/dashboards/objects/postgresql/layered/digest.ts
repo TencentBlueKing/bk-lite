@@ -14,6 +14,37 @@ export interface PostgresStatementRow {
   trend: Array<{ time: number; value: number }>;
 }
 
+/** 库筛「全部」。不能用空串，避免和空库名抢 Select 的值。 */
+export const ALL_STATEMENT_DATABASES = '\u0001';
+/** 结果里 datname 为空或「--」时归成一项，不造库名。 */
+export const BLANK_STATEMENT_DATABASE = '\u0000';
+
+export const statementDatabaseKey = (datname: string) => {
+  const name = datname.trim();
+  if (!name || name === '--') return BLANK_STATEMENT_DATABASE;
+  return name;
+};
+
+export const statementDatabaseOptions = (rows: readonly { datname: string }[]) => {
+  const names = new Set<string>();
+  let blank = false;
+  rows.forEach((row) => {
+    const key = statementDatabaseKey(row.datname);
+    if (key === BLANK_STATEMENT_DATABASE) blank = true;
+    else names.add(key);
+  });
+  const sorted = [...names].sort((left, right) => left.localeCompare(right, 'zh'));
+  return [
+    { value: ALL_STATEMENT_DATABASES, label: '全部' },
+    ...sorted.map((name) => ({ value: name, label: name })),
+    ...(blank ? [{ value: BLANK_STATEMENT_DATABASE, label: '（空）' }] : [])
+  ];
+};
+
+export const statementMatchesDatabase = (datname: string, selected: string) => (
+  selected === ALL_STATEMENT_DATABASES || statementDatabaseKey(datname) === selected
+);
+
 export interface PostgresWaitRow {
   id: string;
   name: string;
