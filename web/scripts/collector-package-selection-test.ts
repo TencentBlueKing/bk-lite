@@ -100,14 +100,16 @@ assert.deepEqual(
 assert.equal(selection.defaultPackageId, 11);
 assert.deepEqual(
   selection.options.map((option) => option.label),
-  [
-    '1.30.0 (linux / x86_64)',
-    '1.28.0 (linux / x86_64)',
-    '1.10.0 (linux / x86_64)'
-  ]
+  ['1.30.0', '1.28.0', '1.10.0'],
+  'version dropdown labels show only the version'
 );
 assert.equal(
-  new Set(selection.options.map((option) => option.label.split(' ')[0])).size,
+  selection.options.some((option) => /linux|windows|x86_64|arm64/i.test(option.label)),
+  false,
+  'version labels must not append os or architecture'
+);
+assert.equal(
+  new Set(selection.options.map((option) => option.label)).size,
   selection.options.length,
   'version labels stay unique after dropping other architectures'
 );

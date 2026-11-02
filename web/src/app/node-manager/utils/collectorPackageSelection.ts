@@ -170,14 +170,10 @@ export const selectCollectorPackageVersions = (
     unique.push(pkg);
   });
 
-  const options: CollectorPackageVersionOption[] = unique.map((pkg) => {
-    const version = String(pkg.version ?? '');
-    const identity = packageIdentity(pkg);
-    return {
-      value: pkg.id as string | number,
-      label: `${version} (${identity.os} / ${identity.cpuArchitecture})`
-    };
-  });
+  const options: CollectorPackageVersionOption[] = unique.map((pkg) => ({
+    value: pkg.id as string | number,
+    label: String(pkg.version ?? '')
+  }));
 
   return {
     packages: unique,
