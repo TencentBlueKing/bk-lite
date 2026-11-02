@@ -156,9 +156,7 @@ def patch_targets():
 
 def test_tenant_can_read_own_org(client, patch_targets):
     _, token = create_api_tenant(1)
-    resp = client.get(
-        PATCH_URL, {"module": "patch_target", "group_id": 1}, **bearer(token)
-    )
+    resp = client.get(PATCH_URL, {"module": "patch_target", "group_id": 1}, **bearer(token))
     assert resp.status_code == 200
     data = resp.json()["data"]
     assert data["count"] == 1
@@ -171,9 +169,7 @@ def test_tenant_cannot_read_other_org(client, patch_targets):
     越权按冻结清单映射为 403 TEAM_OUT_OF_SCOPE，不与普通业务拒绝(400)混淆。
     """
     _, token = create_api_tenant(2)
-    resp = client.get(
-        PATCH_URL, {"module": "patch_target", "group_id": 1}, **bearer(token)
-    )
+    resp = client.get(PATCH_URL, {"module": "patch_target", "group_id": 1}, **bearer(token))
     assert resp.status_code == 403
     body = resp.json()
     assert body["result"] is False
@@ -187,9 +183,7 @@ def test_non_scope_business_error_stays_400(client, patch_targets):
     original = endpoint.func
     try:
         endpoint.func = lambda **kw: {"result": False, "message": "参数组合不支持"}
-        resp = client.get(
-            PATCH_URL, {"module": "patch_target", "group_id": 1}, **bearer(token)
-        )
+        resp = client.get(PATCH_URL, {"module": "patch_target", "group_id": 1}, **bearer(token))
     finally:
         endpoint.func = original
     assert resp.status_code == 400
@@ -298,17 +292,38 @@ def test_me_api_token(client):
     assert data["credential_type"] == "api_token"
     assert [g["id"] for g in data["groups"]] == [3]
     assert set(data["groups"][0]) == {"id", "name"}
-    assert data["anchor_scopes"][0]["anchor"] == 3
-    assert 3 in data["anchor_scopes"][0]["cascaded_group_ids"]
-    # anchor_scopes 必须与实际授权同源：不得包含用户无权限的组织（超报）。
-    # 该用户仅授权组织 3 且 3 无子组织，故级联集合恰为 {3}
-    assert data["anchor_scopes"][0]["cascaded_group_ids"] == [3]
+    assert "anchor_scopes" not in data
     service_names = {s["name"] for s in data["services"]}
     assert {"patch-mgmt", "cmdb"} <= service_names
     assert all(s["kind"] == "internal" for s in data["services"])
     assert data.get("caller_system") in (None, "")
     assert "token_id" not in data
     assert "token_name" not in data
+
+
+@pytest.mark.parametrize("flag", ["0", "false", ""])
+def test_me_skips_anchor_scopes_unless_requested(client, flag):
+    from unittest import mock
+
+    _, token = create_api_tenant(3)
+    with mock.patch("apps.system_mgmt.utils.group_utils.GroupUtils.get_user_authorized_child_groups") as expand:
+        resp = client.get(ME_URL, {"include_anchor_scopes": flag}, **bearer(token))
+    assert resp.status_code == 200
+    assert "anchor_scopes" not in resp.json()["data"]
+    expand.assert_not_called()
+
+
+@pytest.mark.parametrize("flag", ["1", "true", "True"])
+def test_me_anchor_scopes_on_request(client, flag):
+    _, token = create_api_tenant(3)
+    resp = client.get(ME_URL, {"include_anchor_scopes": flag}, **bearer(token))
+    assert resp.status_code == 200
+    data = resp.json()["data"]
+    assert data["anchor_scopes"][0]["anchor"] == 3
+    assert 3 in data["anchor_scopes"][0]["cascaded_group_ids"]
+    # anchor_scopes 必须与实际授权同源：不得包含用户无权限的组织（超报）。
+    # 该用户仅授权组织 3 且 3 无子组织，故级联集合恰为 {3}
+    assert data["anchor_scopes"][0]["cascaded_group_ids"] == [3]
 
 
 def test_jwt_access_log_has_no_token_identity(client, caplog, jwt_env):

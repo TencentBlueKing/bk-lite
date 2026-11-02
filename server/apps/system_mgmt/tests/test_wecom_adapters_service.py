@@ -49,12 +49,42 @@ def test_user_sync_returns_normalized_departments_and_users():
     side_effects = [
         response({"errcode": 0, "access_token": "token"}),
         response({"errcode": 0, "department": [{"id": 1, "parentid": 0, "name": "Root"}]}),
-        response({"errcode": 0, "userlist": [{"userid": "alice", "name": "Alice", "department": [1]}]}),
+        response(
+            {
+                "errcode": 0,
+                "userlist": [
+                    {
+                        "userid": "alice",
+                        "name": "Alice",
+                        "department": [1],
+                        "position": "工程师",
+                        "direct_leader": ["leader-1"],
+                        "status": 1,
+                        "extattr": {
+                            "attrs": [
+                                {"type": 0, "name": "办公地点", "text": {"value": "广州"}},
+                                {"type": 1, "name": "主页", "web": {"url": "https://example.com", "title": "主页"}},
+                                {"type": 0, "name": "name", "text": {"value": "不应覆盖姓名"}},
+                                {"type": 0, "name": "空文本", "text": {"value": "  "}},
+                            ]
+                        },
+                    }
+                ],
+            }
+        ),
     ]
     with patch("apps.system_mgmt.providers.builtin.wecom.adapters.client.requests.get", side_effect=side_effects):
         result = WeComUserSyncAdapter.sync_users(CONFIG, "wecom", "user_sync", source=source)
     assert result.success is True
     assert result.payload["user_list"][0]["userid"] == "alice"
+    assert result.payload["user_list"][0]["position"] == "工程师"
+    assert result.payload["user_list"][0]["direct_leader"] == "leader-1"
+    assert result.payload["user_list"][0]["status"] == "1"
+    assert result.payload["user_list"][0]["办公地点"] == "广州"
+    assert result.payload["user_list"][0]["主页"] == "主页"
+    assert result.payload["user_list"][0]["name"] == "Alice"
+    assert "空文本" not in result.payload["user_list"][0]
+    assert "extattr" not in result.payload["user_list"][0]
 
 
 def test_user_sync_deduplicates_users_and_keeps_all_departments():
@@ -64,22 +94,32 @@ def test_user_sync_deduplicates_users_and_keeps_all_departments():
     responses = [
         response({"errcode": 0, "access_token": "token"}),
         response({"errcode": 0, "department": [{"id": 1, "parentid": 0, "name": "Root"}]}),
-        response({"errcode": 0, "userlist": [
-            {"userid": "alice", "name": "Alice", "department": [1]},
-            {"userid": "alice", "name": "Alice", "department": [2]},
-        ]}),
+        response(
+            {
+                "errcode": 0,
+                "userlist": [
+                    {"userid": "alice", "name": "Alice", "department": [1]},
+                    {"userid": "alice", "name": "Alice", "department": [2]},
+                ],
+            }
+        ),
     ]
     with patch("apps.system_mgmt.providers.builtin.wecom.adapters.client.requests.get", side_effect=responses):
         result = WeComUserSyncAdapter.sync_users(CONFIG, "wecom", "user_sync", source=source)
 
     assert result.success is True
-    expected = [{
-        "userid": "alice",
-        "name": "Alice",
-        "email": "",
-        "mobile": "",
-        "department_ids": ["1", "2"],
-    }]
+    expected = [
+        {
+            "userid": "alice",
+            "name": "Alice",
+            "email": "",
+            "mobile": "",
+            "position": "",
+            "direct_leader": "",
+            "status": "",
+            "department_ids": ["1", "2"],
+        }
+    ]
     assert result.payload["user_list"] == expected
 
 
@@ -87,11 +127,14 @@ def test_user_sync_passes_saved_real_department_id_unchanged():
     source = MagicMock()
     source.business_config = {"root_department_id": "42"}
     source.name = "wecom"
-    with patch("apps.system_mgmt.providers.builtin.wecom.adapters.client.requests.get", side_effect=[
-        response({"errcode": 0, "access_token": "token"}),
-        response({"errcode": 0, "department": []}),
-        response({"errcode": 0, "userlist": []}),
-    ]) as get:
+    with patch(
+        "apps.system_mgmt.providers.builtin.wecom.adapters.client.requests.get",
+        side_effect=[
+            response({"errcode": 0, "access_token": "token"}),
+            response({"errcode": 0, "department": []}),
+            response({"errcode": 0, "userlist": []}),
+        ],
+    ) as get:
         result = WeComUserSyncAdapter.sync_users(CONFIG, "wecom", "user_sync", source=source)
 
     assert result.success is True
@@ -117,13 +160,21 @@ def test_user_sync_rejects_virtual_or_enterprise_root_department_id_before_reque
 
 
 def test_list_departments_returns_real_department_forest_without_virtual_root():
-    with patch("apps.system_mgmt.providers.builtin.wecom.adapters.client.requests.get", side_effect=[
-        response({"errcode": 0, "access_token": "token"}),
-        response({"errcode": 0, "department": [
-            {"id": 1, "parentid": 0, "name": "Root"},
-            {"id": 2, "parentid": 1, "name": "Child"},
-        ]}),
-    ]):
+    with patch(
+        "apps.system_mgmt.providers.builtin.wecom.adapters.client.requests.get",
+        side_effect=[
+            response({"errcode": 0, "access_token": "token"}),
+            response(
+                {
+                    "errcode": 0,
+                    "department": [
+                        {"id": 1, "parentid": 0, "name": "Root"},
+                        {"id": 2, "parentid": 1, "name": "Child"},
+                    ],
+                }
+            ),
+        ],
+    ):
         result = WeComUserSyncAdapter.list_departments(
             CONFIG,
             "wecom",
@@ -139,10 +190,13 @@ def test_list_departments_returns_real_department_forest_without_virtual_root():
 
 
 def test_list_departments_does_not_calculate_current_selection_state():
-    with patch("apps.system_mgmt.providers.builtin.wecom.adapters.client.requests.get", side_effect=[
-        response({"errcode": 0, "access_token": "token"}),
-        response({"errcode": 0, "department": [{"id": 1, "parentid": 0, "name": "Root"}]}),
-    ]):
+    with patch(
+        "apps.system_mgmt.providers.builtin.wecom.adapters.client.requests.get",
+        side_effect=[
+            response({"errcode": 0, "access_token": "token"}),
+            response({"errcode": 0, "department": [{"id": 1, "parentid": 0, "name": "Root"}]}),
+        ],
+    ):
         result = WeComUserSyncAdapter.list_departments(
             CONFIG,
             "wecom",
@@ -225,12 +279,15 @@ def test_user_sync_collects_all_pages_of_members_via_cursor():
 
 
 def test_im_notification_collects_all_pages_of_users_via_cursor():
-    with patch("apps.system_mgmt.providers.builtin.wecom.adapters.client.requests.get", side_effect=[
-        response({"errcode": 0, "access_token": "token"}),
-        response({"errcode": 0, "department": [{"id": 1, "parentid": 0, "name": "Root"}]}),
-        response({"errcode": 0, "userlist": [{"userid": "alice"}], "next_cursor": "next"}),
-        response({"errcode": 0, "userlist": [{"userid": "bob"}], "next_cursor": ""}),
-    ]):
+    with patch(
+        "apps.system_mgmt.providers.builtin.wecom.adapters.client.requests.get",
+        side_effect=[
+            response({"errcode": 0, "access_token": "token"}),
+            response({"errcode": 0, "department": [{"id": 1, "parentid": 0, "name": "Root"}]}),
+            response({"errcode": 0, "userlist": [{"userid": "alice"}], "next_cursor": "next"}),
+            response({"errcode": 0, "userlist": [{"userid": "bob"}], "next_cursor": ""}),
+        ],
+    ):
         result = WeComIMNotificationAdapter.list_external_users(CONFIG, "wecom", "im_notification")
 
     assert result.success is True
@@ -238,33 +295,40 @@ def test_im_notification_collects_all_pages_of_users_via_cursor():
 
 
 def test_im_notification_fetches_each_visible_department_forest_root():
-    with patch("apps.system_mgmt.providers.builtin.wecom.adapters.client.requests.get", side_effect=[
-        response({"errcode": 0, "access_token": "token"}),
-        response({"errcode": 0, "department": [
-            {"id": 2, "parentid": 1, "name": "研发"},
-            {"id": 3, "parentid": 1, "name": "财务"},
-        ]}),
-        response({"errcode": 0, "userlist": [{"userid": "dev"}]}),
-        response({"errcode": 0, "userlist": [{"userid": "fin"}]}),
-    ]) as get:
+    with patch(
+        "apps.system_mgmt.providers.builtin.wecom.adapters.client.requests.get",
+        side_effect=[
+            response({"errcode": 0, "access_token": "token"}),
+            response(
+                {
+                    "errcode": 0,
+                    "department": [
+                        {"id": 2, "parentid": 1, "name": "研发"},
+                        {"id": 3, "parentid": 1, "name": "财务"},
+                    ],
+                }
+            ),
+            response({"errcode": 0, "userlist": [{"userid": "dev"}]}),
+            response({"errcode": 0, "userlist": [{"userid": "fin"}]}),
+        ],
+    ) as get:
         result = WeComIMNotificationAdapter.list_external_users(CONFIG, "wecom", "im_notification")
 
     assert result.success is True
     assert sorted(user["userid"] for user in result.payload["external_users"]) == ["dev", "fin"]
-    user_params = [
-        call.kwargs["params"]
-        for call in get.call_args_list
-        if str(call.args[0]).endswith("/cgi-bin/user/list")
-    ]
+    user_params = [call.kwargs["params"] for call in get.call_args_list if str(call.args[0]).endswith("/cgi-bin/user/list")]
     assert [params["department_id"] for params in user_params] == ["2", "3"]
     assert all(params["fetch_child"] == 1 for params in user_params)
 
 
 def test_im_notification_empty_department_list_means_no_visible_departments():
-    with patch("apps.system_mgmt.providers.builtin.wecom.adapters.client.requests.get", side_effect=[
-        response({"errcode": 0, "access_token": "token"}),
-        response({"errcode": 0, "department": []}),
-    ]) as get:
+    with patch(
+        "apps.system_mgmt.providers.builtin.wecom.adapters.client.requests.get",
+        side_effect=[
+            response({"errcode": 0, "access_token": "token"}),
+            response({"errcode": 0, "department": []}),
+        ],
+    ) as get:
         result = WeComIMNotificationAdapter.list_external_users(CONFIG, "wecom", "im_notification")
 
     assert result.success is True
@@ -276,11 +340,14 @@ def test_user_sync_default_fetch_child_is_one():
     source = MagicMock()
     source.business_config = {"root_department_id": "1"}
     source.name = "wecom"
-    with patch("apps.system_mgmt.providers.builtin.wecom.adapters.client.requests.get", side_effect=[
-        response({"errcode": 0, "access_token": "token"}),
-        response({"errcode": 0, "department": [{"id": 1, "parentid": 0, "name": "Root"}]}),
-        response({"errcode": 0, "userlist": []}),
-    ]) as get:
+    with patch(
+        "apps.system_mgmt.providers.builtin.wecom.adapters.client.requests.get",
+        side_effect=[
+            response({"errcode": 0, "access_token": "token"}),
+            response({"errcode": 0, "department": [{"id": 1, "parentid": 0, "name": "Root"}]}),
+            response({"errcode": 0, "userlist": []}),
+        ],
+    ) as get:
         WeComUserSyncAdapter.sync_users(CONFIG, "wecom", "user_sync", source=source)
     assert get.call_args_list[2].kwargs["params"]["fetch_child"] == 1
 
@@ -289,11 +356,14 @@ def test_user_sync_respects_include_child_departments_false():
     source = MagicMock()
     source.business_config = {"root_department_id": "1", "include_child_departments": False}
     source.name = "wecom"
-    with patch("apps.system_mgmt.providers.builtin.wecom.adapters.client.requests.get", side_effect=[
-        response({"errcode": 0, "access_token": "token"}),
-        response({"errcode": 0, "department": [{"id": 1, "parentid": 0, "name": "Root"}]}),
-        response({"errcode": 0, "userlist": []}),
-    ]) as get:
+    with patch(
+        "apps.system_mgmt.providers.builtin.wecom.adapters.client.requests.get",
+        side_effect=[
+            response({"errcode": 0, "access_token": "token"}),
+            response({"errcode": 0, "department": [{"id": 1, "parentid": 0, "name": "Root"}]}),
+            response({"errcode": 0, "userlist": []}),
+        ],
+    ) as get:
         WeComUserSyncAdapter.sync_users(CONFIG, "wecom", "user_sync", source=source)
     assert get.call_args_list[2].kwargs["params"]["fetch_child"] == 0
 
@@ -302,14 +372,22 @@ def test_user_sync_drops_child_departments_when_recursion_disabled():
     source = MagicMock()
     source.business_config = {"root_department_id": "1", "include_child_departments": False}
     source.name = "wecom"
-    with patch("apps.system_mgmt.providers.builtin.wecom.adapters.client.requests.get", side_effect=[
-        response({"errcode": 0, "access_token": "token"}),
-        response({"errcode": 0, "department": [
-            {"id": 1, "parentid": 0, "name": "Root"},
-            {"id": 2, "parentid": 1, "name": "Child"},
-        ]}),
-        response({"errcode": 0, "userlist": []}),
-    ]):
+    with patch(
+        "apps.system_mgmt.providers.builtin.wecom.adapters.client.requests.get",
+        side_effect=[
+            response({"errcode": 0, "access_token": "token"}),
+            response(
+                {
+                    "errcode": 0,
+                    "department": [
+                        {"id": 1, "parentid": 0, "name": "Root"},
+                        {"id": 2, "parentid": 1, "name": "Child"},
+                    ],
+                }
+            ),
+            response({"errcode": 0, "userlist": []}),
+        ],
+    ):
         result = WeComUserSyncAdapter.sync_users(CONFIG, "wecom", "user_sync", source=source)
 
     assert result.success is True
@@ -320,14 +398,22 @@ def test_user_sync_keeps_child_departments_when_recursion_enabled():
     source = MagicMock()
     source.business_config = {"root_department_id": "1", "include_child_departments": True}
     source.name = "wecom"
-    with patch("apps.system_mgmt.providers.builtin.wecom.adapters.client.requests.get", side_effect=[
-        response({"errcode": 0, "access_token": "token"}),
-        response({"errcode": 0, "department": [
-            {"id": 1, "parentid": 0, "name": "Root"},
-            {"id": 2, "parentid": 1, "name": "Child"},
-        ]}),
-        response({"errcode": 0, "userlist": []}),
-    ]):
+    with patch(
+        "apps.system_mgmt.providers.builtin.wecom.adapters.client.requests.get",
+        side_effect=[
+            response({"errcode": 0, "access_token": "token"}),
+            response(
+                {
+                    "errcode": 0,
+                    "department": [
+                        {"id": 1, "parentid": 0, "name": "Root"},
+                        {"id": 2, "parentid": 1, "name": "Child"},
+                    ],
+                }
+            ),
+            response({"errcode": 0, "userlist": []}),
+        ],
+    ):
         result = WeComUserSyncAdapter.sync_users(CONFIG, "wecom", "user_sync", source=source)
 
     assert result.success is True
@@ -356,13 +442,16 @@ def test_user_sync_caps_pagination_when_next_cursor_repeats():
 
 
 def test_im_notification_caps_pagination_when_next_cursor_repeats():
-    with patch("apps.system_mgmt.providers.builtin.wecom.adapters.client.requests.get", side_effect=[
-        response({"errcode": 0, "access_token": "token"}),
-        response({"errcode": 0, "department": [{"id": 1, "parentid": 0, "name": "Root"}]}),
-        response({"errcode": 0, "userlist": [{"userid": "alice"}], "next_cursor": "loop"}),
-        response({"errcode": 0, "userlist": [{"userid": "alice"}], "next_cursor": "loop"}),
-        response({"errcode": 0, "userlist": [{"userid": "alice"}], "next_cursor": "loop"}),
-    ]) as get:
+    with patch(
+        "apps.system_mgmt.providers.builtin.wecom.adapters.client.requests.get",
+        side_effect=[
+            response({"errcode": 0, "access_token": "token"}),
+            response({"errcode": 0, "department": [{"id": 1, "parentid": 0, "name": "Root"}]}),
+            response({"errcode": 0, "userlist": [{"userid": "alice"}], "next_cursor": "loop"}),
+            response({"errcode": 0, "userlist": [{"userid": "alice"}], "next_cursor": "loop"}),
+            response({"errcode": 0, "userlist": [{"userid": "alice"}], "next_cursor": "loop"}),
+        ],
+    ) as get:
         result = WeComIMNotificationAdapter.list_external_users(CONFIG, "wecom", "im_notification")
 
     assert result.success is False
@@ -378,10 +467,13 @@ def test_user_sync_handles_non_object_json_response():
     array_response.status_code = 200
     array_response.json.return_value = ["not", "a", "dict"]
 
-    with patch("apps.system_mgmt.providers.builtin.wecom.adapters.client.requests.get", side_effect=[
-        response({"errcode": 0, "access_token": "token"}),
-        array_response,
-    ]):
+    with patch(
+        "apps.system_mgmt.providers.builtin.wecom.adapters.client.requests.get",
+        side_effect=[
+            response({"errcode": 0, "access_token": "token"}),
+            array_response,
+        ],
+    ):
         result = WeComUserSyncAdapter.sync_users(CONFIG, "wecom", "user_sync", source=source)
 
     assert result.success is False
@@ -420,14 +512,15 @@ def test_im_notification_users_endpoint_override_is_honored():
         "im_notification_users_url": "https://internal.example/cgi-bin/user/list",
         "im_notification_send_message_url": "https://internal.example/cgi-bin/message/send",
     }
-    with patch("apps.system_mgmt.providers.builtin.wecom.adapters.client.requests.get", side_effect=[
-        response({"errcode": 0, "access_token": "token"}),
-        response({"errcode": 0, "department": [{"id": 1, "parentid": 0, "name": "Root"}]}),
-        response({"errcode": 0, "userlist": [{"userid": "alice"}]}),
-    ]) as get:
-        result = WeComIMNotificationAdapter.list_external_users(
-            config, "wecom", "im_notification"
-        )
+    with patch(
+        "apps.system_mgmt.providers.builtin.wecom.adapters.client.requests.get",
+        side_effect=[
+            response({"errcode": 0, "access_token": "token"}),
+            response({"errcode": 0, "department": [{"id": 1, "parentid": 0, "name": "Root"}]}),
+            response({"errcode": 0, "userlist": [{"userid": "alice"}]}),
+        ],
+    ) as get:
+        result = WeComIMNotificationAdapter.list_external_users(config, "wecom", "im_notification")
 
     assert result.success is True
     called_urls = [call.args[0] for call in get.call_args_list]
@@ -632,10 +725,7 @@ def test_user_sync_does_not_concatenate_base_url_with_path():
     assert department_call.args[0] == "https://dept.internal.example/v1/list"
     assert user_call.args[0] == "https://users.internal.example/v1/list"
     # 私有化端点不应再使用官方 cgi-bin 路径拼接。
-    business_urls = [
-        call for call in get.call_args_list
-        if "dept.internal" in call.args[0] or "users.internal" in call.args[0]
-    ]
+    business_urls = [call for call in get.call_args_list if "dept.internal" in call.args[0] or "users.internal" in call.args[0]]
     for call in business_urls:
         assert "/cgi-bin/" not in call.args[0], call.args[0]
 
@@ -690,9 +780,7 @@ def test_im_notification_falls_back_to_official_urls_when_addresses_missing():
         "apps.system_mgmt.providers.builtin.wecom.adapters.client.requests.post",
         return_value=post_response,
     ) as post:
-        list_result = WeComIMNotificationAdapter.list_external_users(
-            config, "wecom", "im_notification"
-        )
+        list_result = WeComIMNotificationAdapter.list_external_users(config, "wecom", "im_notification")
         send_result = WeComIMNotificationAdapter.send_message(
             config,
             "wecom",
@@ -710,6 +798,4 @@ def test_im_notification_falls_back_to_official_urls_when_addresses_missing():
         "https://qyapi.weixin.qq.com/cgi-bin/user/list",
         "https://qyapi.weixin.qq.com/cgi-bin/gettoken",
     ]
-    assert [call.args[0] for call in post.call_args_list] == [
-        "https://qyapi.weixin.qq.com/cgi-bin/message/send"
-    ]
+    assert [call.args[0] for call in post.call_args_list] == ["https://qyapi.weixin.qq.com/cgi-bin/message/send"]

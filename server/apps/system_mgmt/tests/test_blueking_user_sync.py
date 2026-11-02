@@ -32,6 +32,8 @@ USERS = [
         "display_name": "Bob",
         "email": "bob@example.com",
         "telephone": "13800000002",
+        "leader": [{"username": "alice"}],
+        "extras": {"work_address": "广州", "rank": 3, "tags": [1, 2], "username": "不应覆盖"},
         "departments": [{"id": 4}, {"id": 3}],
     },
     {
@@ -150,11 +152,17 @@ def test_sync_users_paginates_departments_and_users_for_bk_all():
     assert bob["display_name"] == "Bob"
     assert bob["email"] == "bob@example.com"
     assert bob["mobile"] == "13800000002"
+    assert bob["leader"] == "alice"
+    assert bob["work_address"] == "广州"
+    assert bob["rank"] == "3"
+    assert "tags" not in bob
+    assert bob["username"] == "bob"
     assert set(bob["department_ids"]) == {"4", "3"}
     urls = [call.args[0] for call in get.call_args_list]
     assert urls[:2] == ["https://bk.example.com/api/c/compapi/v2/usermanage/list_departments/"] * 2
     assert urls[2:] == ["https://bk.example.com/api/c/compapi/v2/usermanage/list_users/"] * 2
     user_params = [call.kwargs["params"] for call in get.call_args_list[2:]]
+    assert all("extras" in params["fields"] for params in user_params)
     assert all(params["page_size"] == PAGE_SIZE for params in user_params)
     assert all(params["bk_username"] == "admin" for params in user_params)
     assert all("bk_token" not in params for params in user_params)

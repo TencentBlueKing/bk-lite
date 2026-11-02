@@ -2,7 +2,7 @@ from unittest.mock import patch
 
 import pytest
 
-from apps.alerts.tests.test_itsm_client import response
+from apps.alerts.tests.test_itsm_client import create_calls, response, workflow_body
 from apps.alerts.tests.test_itsm_views import configured_api_client, superuser_client  # noqa: F401
 
 BASE = "/api/v1/alerts/api/itsm_integration/"
@@ -24,7 +24,7 @@ def verified_test_contract(monkeypatch):
 def payload():
     return {
         "name": "开发 ITSM",
-        "url": "https://itsm.example/openapi/v1/itsm/bklite_expand/api/v2",
+        "url": "https://itsm.example/openapi/v1/itsm/openapi/v1",
         "token": "SENSITIVE-TEST-TOKEN",
         "enabled": True,
         "failure_notification": {"usernames": [], "channel_ids": []},
@@ -53,7 +53,7 @@ def test_saved_configuration_is_private_and_used_for_authentication(itsm_api_cli
         result = itsm_api_client.post(BASE + "test_connection/", {}, format="json")
         assert result.status_code == 200
         assert http.call_args.args[0] == "GET"
-        assert "ticket_list/" in http.call_args.args[1]
+        assert "ticket/list/" in http.call_args.args[1]
         assert http.call_args.kwargs["headers"]["Authorization"] == "Bearer SENSITIVE-TEST-TOKEN"
     update = payload()
     update["token"] = ""
@@ -219,7 +219,7 @@ def test_new_target_never_receives_old_token_and_existing_tickets_keep_target(it
 
 
 @pytest.mark.django_db
-@pytest.mark.parametrize("suffix", ["api/v2/", "old/../api/v2", "%61pi/v2"])
+@pytest.mark.parametrize("suffix", ["v1", "v1/"])
 def test_same_target_across_teams_has_one_ticket_namespace(itsm_api_client, suffix):
     from django.db import IntegrityError, transaction
 
@@ -229,7 +229,7 @@ def test_same_target_across_teams_has_one_ticket_namespace(itsm_api_client, suff
     save_tested(itsm_api_client, payload())
     itsm_api_client.cookies["current_team"] = "2"
     same = payload()
-    same["url"] = "https://ITSM.EXAMPLE:443/openapi/v1/itsm/bklite_expand/" + suffix
+    same["url"] = "https://ITSM.EXAMPLE:443/openapi/v1/itsm/openapi/" + suffix
     same["token"] = "DIFFERENT-ACCOUNT"
     assert save_tested(itsm_api_client, same).status_code == 200
     first, second = list(AlertItsmIntegration.objects.order_by("team_id"))
@@ -255,19 +255,21 @@ def test_db_config_drives_creation_and_target_cannot_change_while_sending(itsm_a
     link = prepare(a)
 
     def remote(*args, **kwargs):
+        if args[0] == "GET":
+            return response(workflow_body([]))
         changed = payload()
         changed["url"] = "https://changed.example/api"
         changed["token"] = "REPLACEMENT-TOKEN"
         assert itsm_api_client.put(BASE + "configure/", changed, format="json").status_code == 400
         assert kwargs["headers"]["Authorization"] == "Bearer SENSITIVE-TEST-TOKEN"
-        return response({"result": True, "code": "20000", "data": {"ticket": {"id": "actual-123"}}})
+        return response({"result": True, "code": "20000", "data": {"id": "actual-123"}})
 
     with patch("socket.getaddrinfo", return_value=[(2, 1, 6, "", ("93.184.216.34", 443))]), patch(
         "requests.Session.request", side_effect=remote
     ) as http:
         execute_creation(link.current_execution_id)
         execute_creation(link.current_execution_id)
-        assert http.call_count == 1
+        assert len(create_calls(http)) == 1
     link.refresh_from_db()
     assert link.ticket_id == "actual-123"
 
@@ -371,8 +373,8 @@ def test_service_catalog_is_exposed_as_ticket_options(itsm_api_client):
         "code": "20000",
         "data": {
             "results": [
-                {"display": "终端服务 / 个人电脑或外设申请与更换", "workflow_key": "20261008185800000809", "enabled": True},
-                {"display": "停用服务", "workflow_key": "disabled", "enabled": False},
+                {"name": "终端服务 / 个人电脑或外设申请与更换", "workflow_id": "20261008185800000809", "enabled": True},
+                {"name": "停用服务", "workflow_id": "disabled", "enabled": False},
             ]
         },
     }
@@ -382,5 +384,5 @@ def test_service_catalog_is_exposed_as_ticket_options(itsm_api_client):
         result = itsm_api_client.get(BASE + "services/")
     assert result.status_code == 200
     assert result.json()["data"] == [{"value": "20261008185800000809", "label": "终端服务 / 个人电脑或外设申请与更换"}]
-    assert http.call_args.args[1].endswith("/service_catalog/")
+    assert http.call_args.args[1].endswith("/service_catalog/service_list/")
     assert "SENSITIVE-TEST-TOKEN" not in str(result.data)

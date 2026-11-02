@@ -5,6 +5,7 @@ import {
   INTERACTION_MENU_FONT_PX,
   INTERACTION_MENU_SCALE_MAX,
   INTERACTION_MENU_SCALE_MIN,
+  resolveCanvasContentScale,
   resolveInteractionMenuScale,
   resolvePortaledMenuScale,
 } from '@/app/ops-analysis/utils/interactionMenuScale';
@@ -82,6 +83,21 @@ describe('interaction menu scale', () => {
       scaleY: 1,
       widgetUiScale: 1,
     }))).toBe(1.25);
+  });
+
+  it('treats viewport pixel layout as an untransformed canvas', () => {
+    const pixels = screen({
+      layoutMode: 'viewportPixels',
+      fitScale: 1.2,
+      scaleX: 1.2,
+      scaleY: 1400 / 1080,
+      widgetUiScale: 1.2,
+      screenUiScale: 1.2,
+    });
+
+    expect(resolveCanvasContentScale(pixels)).toBe(1);
+    expect(resolveInteractionMenuScale(pixels)).toBe(1.2);
+    expect(resolvePortaledMenuScale(1.2, pixels)).toBe(1.2);
   });
 
   it('matches a room3D card by multiplying its in-canvas scale by the canvas scale', () => {

@@ -3,6 +3,7 @@
 # @Time：2025/6/16 15:14
 # @Author：bennie
 import asyncio
+import json
 import time
 from functools import cached_property
 from typing import Dict, List
@@ -59,6 +60,86 @@ def _join_values(values):
     return ",".join(str(item) for item in (values or []) if item)
 
 
+def _bool_text(value):
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if value in (None, ""):
+        return ""
+    return str(value)
+
+
+def _as_int(value):
+    if value in (None, ""):
+        return 0
+    return int(value)
+
+
+def _network_type(instance):
+    prop = instance.get("Property")
+    if isinstance(prop, str):
+        text = prop.strip()
+        if not text:
+            return ""
+        try:
+            prop = json.loads(text)
+        except json.JSONDecodeError:
+            return ""
+    if isinstance(prop, dict):
+        return prop.get("NetworkType") or ""
+    return ""
+
+
+def _tag_pairs(tags):
+    pairs = []
+    if isinstance(tags, dict):
+        tags = [tags]
+    if not isinstance(tags, list):
+        return pairs
+    for item in tags:
+        if not isinstance(item, dict):
+            continue
+        nested = item.get("Tags")
+        if isinstance(nested, list):
+            pairs.extend(_tag_pairs(nested))
+            continue
+        if "Key" in item:
+            key = item.get("Key")
+            value = item.get("Value")
+        elif "TagKey" in item:
+            key = item.get("TagKey")
+            value = item.get("TagValue")
+        else:
+            continue
+        if key in (None, ""):
+            continue
+        pairs.append(f"{key}:{'' if value is None else value}")
+    return pairs
+
+
+def _serialize_qcloud_tags(tags):
+    """把 TagSet / TagSpecification 收成 key:value 串，空标签留空。"""
+    return ",".join(_tag_pairs(tags))
+
+
+def _join_named(items, key):
+    values = []
+    for item in items or []:
+        value = item.get(key) if isinstance(item, dict) else item
+        if value not in (None, ""):
+            values.append(str(value))
+    return ",".join(values)
+
+
+def _warn_qcloud_skip(failed_stage, region, error, cluster_id=""):
+    logger.warning(
+        "event=qcloud_collect_skipped failed_stage=%s region=%s cluster_id=%s error_type=%s",
+        failed_stage,
+        region,
+        cluster_id,
+        type(error).__name__,
+    )
+
+
 class TencentClientProxy(object):
     """
     腾讯云客户端代理类（非网络代理）
@@ -110,6 +191,7 @@ class TencentCloudManager:
         # 从host参数读取endpoint，如: cvm.private-cloud.example.com
         self.custom_endpoint = params.get("host")
         self.collection_task_id = params.get("collection_task_id")
+        self._tke_clusters_by_region = {}
         self.region_id = str(params.get("region_id") or "").strip()
 
     def _call_cmq_with_retry(self, region: str, action: str, params: Dict | None = None) -> Dict:
@@ -556,6 +638,194 @@ class TencentCloudManager:
                 )
         return result
 
+    def _list_tke_clusters(self, region) -> List[Dict]:
+        """同一轮采集里集群和节点共用 DescribeClusters 结果；失败不缓存。"""
+        if region not in self._tke_clusters_by_region:
+            self._tke_clusters_by_region[region] = list(self._iter_paged_resources(region, "tke", "DescribeClusters", "Clusters"))
+        return self._tke_clusters_by_region[region]
+
+    def get_qcloud_tke_cluster(self) -> List[Dict]:
+        """TKE 集群。DescribeClusters → ClusterId。"""
+        result = []
+        for region in self.available_region_list:
+            for instance in self._list_tke_clusters(region):
+                network = _as_dict(instance.get("ClusterNetworkSettings"))
+                result.append(
+                    {
+                        "resource_name": instance.get("ClusterName"),
+                        "resource_id": instance.get("ClusterId"),
+                        "region": region,
+                        "status": instance.get("ClusterStatus"),
+                        "cluster_type": instance.get("ClusterType"),
+                        "version": instance.get("ClusterVersion"),
+                        "vpc": network.get("VpcId"),
+                        "cluster_cidr": network.get("ClusterCIDR"),
+                        "service_cidr": network.get("ServiceCIDR"),
+                        "network_type": _network_type(instance),
+                        "node_num": _as_int(instance.get("ClusterNodeNum")),
+                        "master_node_num": _as_int(instance.get("ClusterMaterNodeNum")),
+                        "runtime": instance.get("ContainerRuntime"),
+                        "runtime_version": instance.get("RuntimeVersion"),
+                        "os_name": instance.get("ClusterOs"),
+                        "project_id": instance.get("ProjectId"),
+                        "cluster_level": instance.get("ClusterLevel"),
+                        "ha": _bool_text(instance.get("IsHighAvailability")),
+                        "create_time": instance.get("CreatedTime"),
+                        "deletion_protection": _bool_text(instance.get("DeletionProtection")),
+                        "tag": _serialize_qcloud_tags(instance.get("TagSpecification")),
+                    }
+                )
+        return result
+
+    def _collect_tke_cluster_nodes(self, region, cluster_id, cluster_name="") -> List[Dict]:
+        nodes = []
+        for instance in self._iter_paged_resources(
+            region,
+            "tke",
+            "DescribeClusterInstances",
+            "InstanceSet",
+            extra_params={"ClusterId": cluster_id},
+        ):
+            resource_id = instance.get("InstanceId") or ""
+            nodes.append(
+                {
+                    "resource_name": resource_id or instance.get("LanIP") or "",
+                    "resource_id": resource_id,
+                    "region": region,
+                    "cluster_id": cluster_id,
+                    "cluster_name": cluster_name,
+                    "ip_addr": instance.get("LanIP"),
+                    "instance_role": instance.get("InstanceRole"),
+                    "status": instance.get("InstanceState"),
+                    "node_pool_id": instance.get("NodePoolId") or "",
+                    "create_time": instance.get("CreatedTime"),
+                    "tag": "",
+                }
+            )
+        return nodes
+
+    def get_qcloud_tke_node(self) -> List[Dict]:
+        """先列集群，再按 ClusterId 拉节点。单个集群失败只跳过该集群。"""
+        result = []
+        regions = list(self.available_region_list)
+        listed_ok = not regions
+        clusters_seen = 0
+        instance_failures = 0
+        for region in regions:
+            try:
+                clusters = self._list_tke_clusters(region)
+            except Exception as err:
+                _warn_qcloud_skip("DescribeClusters", region, err)
+                continue
+            listed_ok = True
+            for cluster in clusters:
+                cluster = _as_dict(cluster)
+                cluster_id = str(cluster.get("ClusterId") or "").strip()
+                if not cluster_id:
+                    continue
+                clusters_seen += 1
+                try:
+                    result.extend(self._collect_tke_cluster_nodes(region, cluster_id, cluster.get("ClusterName") or ""))
+                except Exception as err:
+                    instance_failures += 1
+                    _warn_qcloud_skip("DescribeClusterInstances", region, err, cluster_id)
+        if regions and not listed_ok:
+            raise RuntimeError("qcloud tke node collection failed for all regions")
+        if clusters_seen and instance_failures == clusters_seen and not result:
+            raise RuntimeError("qcloud tke node collection failed for all clusters")
+        return result
+
+    def get_qcloud_vpn_gateway(self) -> List[Dict]:
+        result = []
+        for region in self.available_region_list:
+            for instance in self._iter_paged_resources(region, "vpc", "DescribeVpnGateways", "VpnGatewaySet"):
+                result.append(
+                    {
+                        "resource_name": instance.get("VpnGatewayName"),
+                        "resource_id": instance.get("VpnGatewayId"),
+                        "region": region,
+                        "zone": instance.get("Zone"),
+                        "vpc": instance.get("VpcId"),
+                        "status": instance.get("State"),
+                        "type": instance.get("Type"),
+                        "ip_addr": instance.get("PublicIpAddress"),
+                        "bandwidth_mbps": _as_int(instance.get("InternetMaxBandwidthOut")),
+                        "charge_type": instance.get("InstanceChargeType"),
+                        "create_time": instance.get("CreatedTime"),
+                        "expired_time": instance.get("ExpiredTime"),
+                        "renew_flag": instance.get("RenewFlag"),
+                        "version": instance.get("Version"),
+                        "max_connection": _as_int(instance.get("MaxConnection")),
+                        "tag": _serialize_qcloud_tags(instance.get("TagSet")),
+                    }
+                )
+        return result
+
+    def get_qcloud_customer_gateway(self) -> List[Dict]:
+        result = []
+        for region in self.available_region_list:
+            for instance in self._iter_paged_resources(region, "vpc", "DescribeCustomerGateways", "CustomerGatewaySet"):
+                result.append(
+                    {
+                        "resource_name": instance.get("CustomerGatewayName"),
+                        "resource_id": instance.get("CustomerGatewayId"),
+                        "region": region,
+                        "ip_addr": instance.get("IpAddress"),
+                        "create_time": instance.get("CreatedTime"),
+                        "tag": _serialize_qcloud_tags(instance.get("TagSet")),
+                    }
+                )
+        return result
+
+    def get_qcloud_vpn_connection(self) -> List[Dict]:
+        result = []
+        for region in self.available_region_list:
+            for instance in self._iter_paged_resources(region, "vpc", "DescribeVpnConnections", "VpnConnectionSet"):
+                result.append(
+                    {
+                        "resource_name": instance.get("VpnConnectionName"),
+                        "resource_id": instance.get("VpnConnectionId"),
+                        "region": region,
+                        "vpc": instance.get("VpcId"),
+                        "vpn_gateway_id": instance.get("VpnGatewayId"),
+                        "customer_gateway_id": instance.get("CustomerGatewayId"),
+                        "status": instance.get("State"),
+                        "net_status": instance.get("NetStatus"),
+                        "vpn_proto": instance.get("VpnProto"),
+                        "route_type": instance.get("RouteType"),
+                        "create_time": instance.get("CreatedTime"),
+                        "tag": _serialize_qcloud_tags(instance.get("TagSet")),
+                    }
+                )
+        return result
+
+    def get_qcloud_nat_gateway(self) -> List[Dict]:
+        result = []
+        for region in self.available_region_list:
+            for instance in self._iter_paged_resources(region, "vpc", "DescribeNatGateways", "NatGatewaySet"):
+                addresses = instance.get("PublicIpAddressSet") or []
+                result.append(
+                    {
+                        "resource_name": instance.get("NatGatewayName"),
+                        "resource_id": instance.get("NatGatewayId"),
+                        "region": region,
+                        "zone": instance.get("Zone"),
+                        "vpc": instance.get("VpcId"),
+                        "subnet": instance.get("SubnetId"),
+                        "status": instance.get("State"),
+                        "network_state": instance.get("NetworkState"),
+                        "bandwidth_mbps": _as_int(instance.get("InternetMaxBandwidthOut")),
+                        "max_concurrent": _as_int(instance.get("MaxConcurrentConnection")),
+                        "eip_ids": _join_named(addresses, "AddressId"),
+                        "eip_addrs": _join_named(addresses, "PublicIpAddress"),
+                        "product_version": instance.get("NatProductVersion"),
+                        "restrict_state": instance.get("RestrictState"),
+                        "create_time": instance.get("CreatedTime"),
+                        "tag": _serialize_qcloud_tags(instance.get("TagSet")),
+                    }
+                )
+        return result
+
     def get_qcloud_bucket(self):
         """资源名、资源ID、地域"""
         result = []
@@ -627,6 +897,12 @@ class TencentCloudManager:
             (self.get_qcloud_cmq_topic, "qcloud_cmq_topic"),
             (self.get_qcloud_clb, "qcloud_clb"),
             (self.get_qcloud_eip, "qcloud_eip"),
+            (self.get_qcloud_tke_cluster, "qcloud_tke_cluster"),
+            (self.get_qcloud_tke_node, "qcloud_tke_node"),
+            (self.get_qcloud_vpn_gateway, "qcloud_vpn_gateway"),
+            (self.get_qcloud_customer_gateway, "qcloud_customer_gateway"),
+            (self.get_qcloud_vpn_connection, "qcloud_vpn_connection"),
+            (self.get_qcloud_nat_gateway, "qcloud_nat_gateway"),
             (self.get_qcloud_bucket, "qcloud_bucket"),
             (self.get_qcloud_filesystem, "qcloud_filesystem"),
             (self.get_qcloud_domain, "qcloud_domain"),

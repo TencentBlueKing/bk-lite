@@ -6,7 +6,7 @@ import pytest
 from rest_framework.exceptions import PermissionDenied
 
 from apps.core.exceptions.base_app_exception import BaseAppException
-from apps.system_mgmt.models import Channel, ChannelChoices, Group, Role, User
+from apps.system_mgmt.models import Channel, ChannelChoices, Group, GroupDataRule, Role, User, UserRule
 from apps.system_mgmt.nats.auth import build_user_authorization_context
 from apps.system_mgmt.nats.channels import search_channel_list, search_opspilot_nats_channels
 from apps.system_mgmt.nats.common import _collect_ancestor_group_ids, get_user_all_roles
@@ -59,9 +59,7 @@ def test_assignable_groups_excludes_archived(active_and_archived, as_superuser):
     group_list = [] if as_superuser else [groups["active"].id, groups["archived"].id]
     _make_user(f"assign-{'su' if as_superuser else 'n'}", group_list=group_list, role_ids=role_ids)
 
-    result = get_assignable_groups(
-        {"username": f"assign-{'su' if as_superuser else 'n'}", "domain": "domain.com"}
-    )
+    result = get_assignable_groups({"username": f"assign-{'su' if as_superuser else 'n'}", "domain": "domain.com"})
 
     assert result["result"] is True
     assert groups["active"].id in result["data"]
@@ -121,9 +119,7 @@ def test_current_team_rejects_archived_or_missing(active_and_archived, monkeypat
 
 def test_group_utils_descendants_exclude_archived_by_default(active_and_archived):
     groups = active_and_archived
-    orphan_archived = Group.objects.create(
-        name="proj-orphan-arch", parent_id=groups["active"].id, is_delete=True
-    )
+    orphan_archived = Group.objects.create(name="proj-orphan-arch", parent_id=groups["active"].id, is_delete=True)
     result = set(GroupUtils.get_group_with_descendants(groups["active"].id))
     assert result == {groups["active"].id, groups["active_child"].id}
     assert orphan_archived.id not in result
@@ -324,6 +320,70 @@ def test_get_user_detail_omits_archived_groups():
     assert response.status_code == 200
     assert data["result"] is True
     assert {item["id"] for item in data["data"]["groups"]} == {active.id}
+
+
+def test_get_user_detail_shows_existing_profile_orgs_and_roles():
+    import json
+
+    from rest_framework.test import APIClient
+
+    from apps.base.models import User as BaseUser
+
+    parent = Group.objects.create(name="Corp", parent_id=0)
+    child = Group.objects.create(name="Dev", parent_id=parent.id, is_virtual=False)
+    direct = Role.objects.create(name="normal", app="monitor")
+    inherited = Role.objects.create(name="viewer", app="cmdb")
+    child.roles.add(inherited)
+    child.roles.add(direct)
+    rule = GroupDataRule.objects.create(name="主机资源查看范围", group_id=child.id, group_name=child.name, app="cmdb", rules={})
+    org_rule = GroupDataRule.objects.create(name="游客数据权限", group_id=child.id, group_name=child.name, app="cmdb", rules={})
+    target = _make_user("detail-profile", group_list=[child.id], role_ids=[direct.id])
+    target.display_name = "daniel"
+    target.job_title = "运维工程师"
+    target.employment_status = "employed"
+    target.save(update_fields=["display_name", "job_title", "employment_status"])
+    UserRule.objects.create(username=target.username, group_rule=rule)
+    admin = BaseUser.objects.create_user(username="detail-profile-admin", password="pw", domain="domain.com", locale="en")
+    admin.is_superuser = True
+    admin.save()
+    client = APIClient()
+    client.force_authenticate(user=admin)
+    response = client.post("/api/v1/system_mgmt/user/get_user_detail/", {"user_id": target.id}, format="json")
+    data = response.json() if hasattr(response, "json") else json.loads(response.content.decode())
+    payload = data["data"]
+    assert payload["display_name"] == "daniel"
+    assert payload["job_title"] == "运维工程师"
+    assert payload["employment_status"] == "employed"
+    assert payload["sync_source_name"] == ""
+    group = payload["groups"][0]
+    assert group["path"] == "Corp / Dev"
+    assert group["is_virtual"] is False
+    assert group["data_rules"] == [
+        {"id": rule.id, "name": "主机资源查看范围", "app": "cmdb"},
+        {"id": org_rule.id, "name": "游客数据权限", "app": "cmdb"},
+    ]
+    assert group["rules"]["cmdb"] == [rule.id]
+    matched = next(item for item in payload["effective_roles"] if item["id"] == direct.id)
+    assert {source["kind"] for source in matched["sources"]} == {"direct", "group"}
+    inherited_row = next(item for item in payload["effective_roles"] if item["id"] == inherited.id)
+    assert inherited_row["sources"] == [{"kind": "group", "group_id": child.id, "group_name": "Dev"}]
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    from apps.base.models import UserAPISecret
+
+    UserAPISecret.objects.create(username=target.username, domain=target.domain, api_secret="live", name="live")
+    UserAPISecret.objects.create(
+        username=target.username,
+        domain=target.domain,
+        api_secret="expired",
+        name="expired",
+        expires_at=timezone.now() - timedelta(minutes=1),
+    )
+    again = client.post("/api/v1/system_mgmt/user/get_user_detail/", {"user_id": target.id}, format="json")
+    again_data = again.json() if hasattr(again, "json") else json.loads(again.content.decode())
+    assert again_data["data"]["api_token_count"] == 1
 
 
 def _channel_tree_for_include_children(prefix):

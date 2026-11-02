@@ -17,7 +17,12 @@ from apps.system_mgmt.utils.i18n import system_mgmt_message
         ("error.im_group_provider_unsupported", {}, "当前 IM 平台不支持群协作", "This IM platform does not support group collaboration"),
         ("error.im_group_instance_not_ready", {}, "IM 群协作集成实例尚未就绪", "IM collaboration integration instance is not ready"),
         ("error.im_group_capability_not_ready", {}, "IM 群协作能力尚未就绪", "IM collaboration capability is not ready"),
-        ("error.builtin_entry_immutable", {"label": "10.0.0.0/8"}, "内置条目不可修改或删除: 10.0.0.0/8", "Built-in entries cannot be modified or deleted: 10.0.0.0/8"),
+        (
+            "error.builtin_entry_immutable",
+            {"label": "10.0.0.0/8"},
+            "内置条目不可修改或删除: 10.0.0.0/8",
+            "Built-in entries cannot be modified or deleted: 10.0.0.0/8",
+        ),
         (
             "error.forbidden_network_supernet",
             {},
@@ -62,6 +67,12 @@ from apps.system_mgmt.utils.i18n import system_mgmt_message
             "SECRET_KEY is not configured; cannot encrypt or decrypt the vault",
         ),
         ("channel.opspilot_nats_trigger_description", {}, "OpsPilot 工作流自动创建的 NATS 触发通道", "NATS trigger channel created by an OpsPilot workflow"),
+        (
+            "export.too_many_rows",
+            {"limit": 10000, "count": 10001},
+            "导出行数超过上限 10000（当前 10001 行）。请缩小筛选条件，或使用 selected_ids 导出已选记录。",
+            "Export exceeds the limit of 10000 rows (current count is 10001). Narrow the filters, or export the selected rows with selected_ids.",
+        ),
         ("export.login_log_sheet", {}, "用户登录日志", "User login logs"),
         ("export.operation_log_filename", {}, "用户操作日志", "user_operation_logs"),
     ],
@@ -78,10 +89,6 @@ def test_opspilot_channel_description_stays_language_neutral_until_read():
     from apps.system_mgmt.utils.i18n import OPSPILOT_NATS_DESCRIPTION_MARKER, localized_channel_description
 
     assert OPSPILOT_NATS_DESCRIPTION_MARKER == "opspilot_nats_trigger"
-    assert localized_channel_description(OPSPILOT_NATS_DESCRIPTION_MARKER, "en") == (
-        "NATS trigger channel created by an OpsPilot workflow"
-    )
-    assert localized_channel_description("OpsPilot 工作流自动创建的 NATS 触发通道", "zh-Hans") == (
-        "OpsPilot 工作流自动创建的 NATS 触发通道"
-    )
+    assert localized_channel_description(OPSPILOT_NATS_DESCRIPTION_MARKER, "en") == ("NATS trigger channel created by an OpsPilot workflow")
+    assert localized_channel_description("OpsPilot 工作流自动创建的 NATS 触发通道", "zh-Hans") == ("OpsPilot 工作流自动创建的 NATS 触发通道")
     assert localized_channel_description("manual description", "en") == "manual description"

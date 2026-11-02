@@ -12,6 +12,7 @@ import { canDirectlyDeleteUser } from '@/app/system-manager/utils/userDeleteGuar
 interface TableColumnsProps {
   t: (key: string) => string;
   appIconMap: Map<string, string>;
+  onOpenDetail: (userId: Key) => void;
   onEditUser: (userId: Key) => void;
   onOpenPasswordModal: (userId: Key) => void;
   onDeleteUser: (userId: Key) => void;
@@ -23,6 +24,7 @@ interface TableColumnsProps {
 export const createUserTableColumns = ({
   t,
   appIconMap,
+  onOpenDetail,
   onEditUser,
   onOpenPasswordModal,
   onDeleteUser,
@@ -36,7 +38,7 @@ export const createUserTableColumns = ({
       dataIndex: 'username',
       width: 230,
       fixed: 'left',
-      render: (text: string) => {
+      render: (text: string, record: UserDataType) => {
         const color = getRandomColor();
         return (
           <div className="flex h-[17px] min-w-0 items-center">
@@ -46,7 +48,17 @@ export const createUserTableColumns = ({
             >
               {text?.substring(0, 1)}
             </span>
-            <EllipsisWithTooltip text={text} className="min-w-0 truncate" />
+            <div
+              className="min-w-0 cursor-pointer truncate text-[var(--color-primary)]"
+              role="button"
+              tabIndex={0}
+              onClick={() => onOpenDetail(record.key)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') onOpenDetail(record.key);
+              }}
+            >
+              <EllipsisWithTooltip text={text} className="min-w-0 truncate" />
+            </div>
           </div>
         );
       },
@@ -89,6 +101,16 @@ export const createUserTableColumns = ({
             <span className="text-[13px] leading-none" style={{ color: 'var(--color-text-2)' }}>{text}</span>
           </div>
         );
+      },
+    },
+    {
+      title: t('system.user.form.employmentStatus'),
+      dataIndex: 'employment_status',
+      width: 100,
+      render: (value?: string) => {
+        if (value === 'employed') return t('system.user.form.employmentEmployed');
+        if (value === 'resigned') return t('system.user.form.employmentResigned');
+        return t('system.user.form.employmentUnspecified');
       },
     },
     {
@@ -213,19 +235,22 @@ export const createUserTableColumns = ({
     {
       title: t('common.actions'),
       dataIndex: 'key',
-      width: 280,
+      width: 320,
       fixed: 'right',
       render: (key: Key, record: UserDataType) => {
         const { status } = record;
         return (
-          <>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button type="link" className="p-0" onClick={() => onOpenDetail(key)}>
+              {t('common.detail')}
+            </Button>
             <PermissionWrapper requiredPermissions={['Edit User']}>
-              <Button type="link" className="mr-[8px] p-0" onClick={() => onEditUser(key)}>
+              <Button type="link" className="p-0" onClick={() => onEditUser(key)}>
                 {t('common.edit')}
               </Button>
             </PermissionWrapper>
             <PermissionWrapper requiredPermissions={['Edit User']}>
-              <Button type="link" className="mr-[8px] p-0" onClick={() => onOpenPasswordModal(key)}>
+              <Button type="link" className="p-0" onClick={() => onOpenPasswordModal(key)}>
                 {t('system.common.password')}
               </Button>
             </PermissionWrapper>
@@ -237,7 +262,7 @@ export const createUserTableColumns = ({
                   cancelText={t('common.cancel')}
                   onConfirm={() => onChangeUserStatus(key, 'unlock')}
                 >
-                  <Button type="link" className="mr-[8px] p-0">{t('system.user.status.unlock') || 'Unlock'}</Button>
+                  <Button type="link" className="p-0">{t('system.user.status.unlock') || 'Unlock'}</Button>
                 </Popconfirm>
               </PermissionWrapper>
             )}
@@ -249,7 +274,7 @@ export const createUserTableColumns = ({
                   cancelText={t('common.cancel')}
                   onConfirm={() => onChangeUserStatus(key, 'enable')}
                 >
-                  <Button type="link" className="mr-[8px] p-0">{t('common.enable') || 'Enable'}</Button>
+                  <Button type="link" className="p-0">{t('common.enable') || 'Enable'}</Button>
                 </Popconfirm>
               </PermissionWrapper>
             ) : (
@@ -260,14 +285,14 @@ export const createUserTableColumns = ({
                   cancelText={t('common.cancel')}
                   onConfirm={() => onChangeUserStatus(key, 'disable')}
                 >
-                  <Button type="link" className="mr-[8px] p-0">{t('common.disable') || 'Disable'}</Button>
+                  <Button type="link" className="p-0">{t('common.disable') || 'Disable'}</Button>
                 </Popconfirm>
               </PermissionWrapper>
             )}
             {otpEnabled && record.has_otp && (
               <PermissionWrapper requiredPermissions={['Edit User']}>
                 <Popconfirm title={t('system.user.status.unbindOtpConfirm')} okText={t('common.confirm')} cancelText={t('common.cancel')} onConfirm={() => onChangeUserStatus(key, 'unbind_otp')}>
-                  <Button type="link" className="mr-[8px] p-0">{t('system.user.status.unbindOtp')}</Button>
+                  <Button type="link" className="p-0">{t('system.user.status.unbindOtp')}</Button>
                 </Popconfirm>
               </PermissionWrapper>
             )}
@@ -284,7 +309,7 @@ export const createUserTableColumns = ({
                 </Button>
               </Popconfirm>
             </PermissionWrapper>
-          </>
+          </div>
         );
       },
     },

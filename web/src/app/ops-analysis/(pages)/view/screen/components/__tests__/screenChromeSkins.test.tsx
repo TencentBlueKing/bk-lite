@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   DecorationSkin,
   TitleFrameSkin,
+  resolveVisionBorderFrame,
   titleFrameThumbSrc,
 } from '../screenChromeSkins';
 
@@ -78,5 +79,19 @@ describe('screen chrome skins', () => {
     expect(right?.className).toContain('origin-top');
     expect(right?.className).not.toContain('origin-top-right');
     expect(right?.className).not.toContain('object-right-top');
+  });
+
+  it('picks the vision border tier from the design box, then multiplies by fitScale', () => {
+    const enlarged = resolveVisionBorderFrame('fixed-83', 1000, 800, 2, 2, 2);
+    expect(enlarged.sliceTB).toBe(83);
+    expect(enlarged.borderWidth).toBe('86px');
+
+    const designCanvas = resolveVisionBorderFrame('fixed-83', 500, 400, 1, 1, 1);
+    expect(designCanvas.borderWidth).toBe('43px');
+
+    const shrunk = resolveVisionBorderFrame('fluid', 200, 125, 0.5, 0.5, 0.5);
+    expect(shrunk.sliceTB).toBe(100);
+    expect(shrunk.sliceLR).toBe(150);
+    expect(shrunk.borderWidth).toBe('50px 75px');
   });
 });

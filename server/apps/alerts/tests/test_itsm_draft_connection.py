@@ -19,7 +19,7 @@ def test_unsaved_form_is_tested_without_persisting_credentials(itsm_api_client):
     ) as http:
         result = itsm_api_client.post(BASE + "test_connection/", draft(), format="json")
     assert result.status_code == 200
-    assert http.call_args.args == ("GET", "https://itsm.example/api/ticket_list/?page=1&page_size=1")
+    assert http.call_args.args == ("GET", "https://itsm.example/api/ticket/list/?page=1&page_size=1")
     assert http.call_args.kwargs["headers"]["Authorization"] == "Bearer DRAFT-SENTINEL"
     assert http.call_args.kwargs["verify"] is True
     assert "DRAFT-SENTINEL" not in str(result.data)

@@ -18,20 +18,48 @@ from apps.alerts.models.outbox import AlertOutbox
 from apps.alerts.service.outbox import enqueue_outbox
 from apps.alerts.utils.operator_log import record_operator_log_deferred_mirror as record_operator_log
 from apps.alerts.utils.rule_catalog import rules_are_valid
+from apps.core.logger import alert_logger as logger
 
 LEASE = timedelta(minutes=5)
+
+
+def _candidate_rules(alert):
+    rules = ActionRule.objects.filter(is_active=True, auto_execute=True, action_type="itsm", scope="alert").only(
+        "team", "trigger_events", "match_rules"
+    )
+    return [rule for rule in rules if "created" in (rule.trigger_events or []) and _teams(alert.team, rule.team)]
+
+
+def _may_create(rules, snapshot, error):
+    if error:
+        # 输入超限要由评估记 config_error 并通知，不能在这里静默丢掉。
+        return True
+    return any(rules_are_valid(rule.match_rules, "action") and event_matches(snapshot, rule.match_rules) for rule in rules)
 
 
 def enqueue_creation(alert):
     if alert.session_status == "observing":
         return None
     try:
-        snapshot, error = capture_snapshot(alert), ""
-    except ItsmError as exc:
-        snapshot, error = {}, str(exc)
-    record, _ = enqueue_outbox(
-        "itsm_evaluate", {"alert_pk": alert.pk, "team": alert.team, "snapshot": snapshot, "snapshot_error": error}, f"itsm-evaluate:{alert.pk}"
-    )
+        # 调用方在告警创建事务里（即时策略是整批）；保存点隔离入队失败，转工单出错不能拖垮告警创建。
+        with transaction.atomic():
+            rules = _candidate_rules(alert)
+            if not rules:
+                return None
+            try:
+                snapshot, error = capture_snapshot(alert), ""
+            except ItsmError as exc:
+                snapshot, error = {}, str(exc)
+            if not _may_create(rules, snapshot, error):
+                return None
+            record, _ = enqueue_outbox(
+                "itsm_evaluate",
+                {"alert_pk": alert.pk, "team": alert.team, "snapshot": snapshot, "snapshot_error": error},
+                f"itsm-evaluate:{alert.pk}",
+            )
+    except Exception:
+        logger.exception("ITSM 建单评估入队失败，告警照常创建: alert_pk=%s", alert.pk)
+        return None
     return record
 
 

@@ -1,32 +1,26 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { message, Select, Space, Button, Tag, Input, Checkbox, Progress } from 'antd';
+import { message, Select, Space, Button, Tag, Input } from 'antd';
 import { SearchOutlined, DownloadOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import CustomTable from '@/components/custom-table';
 import TimeSelector from '@/components/time-selector';
 import { useSecurityApi } from '@/app/system-manager/api/security';
-import OperateModal from '@/components/operate-modal';
 import type { ColumnsType } from 'antd/es/table';
 import type { TableRowSelection } from 'antd/es/table/interface';
 import dayjs from 'dayjs';
-import ExcelJS from 'exceljs';
 
 const UserLoginLogs: React.FC = () => {
   const { t } = useTranslation();
   const { convertToLocalizedTime } = useLocalizedTime();
-  const { getUserLoginLogs } = useSecurityApi();
+  const { getUserLoginLogs, exportUserLoginLogs } = useSecurityApi();
   const timeSelectorRef = useRef<any>(null);
   const [loading, setLoading] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [logs, setLogs] = useState<any[]>([]);
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
-  const [selectedRows, setSelectedRows] = useState<any[]>([]);
-  const [exportModalVisible, setExportModalVisible] = useState(false);
-  const [exportFormats, setExportFormats] = useState<string[]>(['excel']);
-  const [exporting, setExporting] = useState(false);
-  const [exportProgress, setExportProgress] = useState(0);
   const [pagination, setPagination] = useState({
     current: 1,
     pageSize: 10,
@@ -47,27 +41,32 @@ const UserLoginLogs: React.FC = () => {
     fetchLogs();
   }, []);
 
+  const buildLoginFilters = () => {
+    const params: Record<string, string> = {};
+    if (filters.status) {
+      params.status = filters.status;
+    }
+    if (filters.username) {
+      params.username = filters.username;
+    }
+    if (filters.source_ip) {
+      params.source_ip = filters.source_ip;
+    }
+    if (timeRange && timeRange.length === 2) {
+      params.login_time_start = dayjs(timeRange[0]).format('YYYY-MM-DD HH:mm:ss');
+      params.login_time_end = dayjs(timeRange[1]).format('YYYY-MM-DD HH:mm:ss');
+    }
+    return params;
+  };
+
   const fetchLogs = async (page = 1, pageSize = 10) => {
     try {
       setLoading(true);
-      const params: any = {
+      const params: Record<string, string | number> = {
         page,
-        page_size: pageSize
+        page_size: pageSize,
+        ...buildLoginFilters(),
       };
-
-      if (filters.status) {
-        params.status = filters.status;
-      }
-      if (filters.username) {
-        params.username__icontains = filters.username;
-      }
-      if (filters.source_ip) {
-        params.source_ip__icontains = filters.source_ip;
-      }
-      if (timeRange && timeRange.length === 2) {
-        params.login_time_start = dayjs(timeRange[0]).format('YYYY-MM-DD HH:mm:ss');
-        params.login_time_end = dayjs(timeRange[1]).format('YYYY-MM-DD HH:mm:ss');
-      }
 
       const response = await getUserLoginLogs(params);
       setLogs(response.items || []);
@@ -109,108 +108,32 @@ const UserLoginLogs: React.FC = () => {
 
   const rowSelection: TableRowSelection<any> = {
     selectedRowKeys,
-    onChange: (keys: React.Key[], rows: any[]) => {
+    onChange: (keys: React.Key[]) => {
       setSelectedRowKeys(keys);
-      setSelectedRows(rows);
     }
   };
 
-  const handleExport = () => {
-    if (selectedRowKeys.length === 0) {
-      message.warning(t('system.security.pleaseSelectRows'));
-      return;
-    }
-    setExportModalVisible(true);
-  };
-
-  const handleExportConfirm = async () => {
-    if (exportFormats.length === 0) {
-      message.warning(t('system.security.selectFormat'));
-      return;
-    }
-
-    setExporting(true);
-    setExportProgress(0);
-
+  const handleExport = async () => {
     try {
-      const exportData = selectedRows.map((row) => ({
-        [t('system.user.table.username')]: row.username,
-        [t('system.security.loginTime')]: convertToLocalizedTime(row.login_time),
-        [t('system.security.loginLocation')]: row.location,
-        [t('system.security.operatingSystem')]: row.os_info,
-        [t('system.security.browser')]: row.browser_info,
-        [t('system.security.loginHost')]: row.source_ip,
-        [t('system.security.loginStatus')]: row.status_display
-      }));
-
-      setExportProgress(30);
-
-      if (exportFormats.includes('excel')) {
-        const workbook = new ExcelJS.Workbook();
-        const worksheet = workbook.addWorksheet(t('system.security.exportSheetName'));
-        const headers = Object.keys(exportData[0]);
-        worksheet.addRow(headers);
-        worksheet.getRow(1).font = { bold: true };
-        worksheet.getRow(1).fill = {
-          type: 'pattern',
-          pattern: 'solid',
-          fgColor: { argb: 'FFE0E0E0' },
-        };
-        exportData.forEach((row) => {
-          const values = headers.map((header) => row[header] || '');
-          worksheet.addRow(values);
-        });
-        headers.forEach((header, index) => {
-          worksheet.getColumn(index + 1).width = 20;
-        });
-        setExportProgress(60);
-        const buffer = await workbook.xlsx.writeBuffer();
-        const blob = new Blob([buffer], {
-          type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        });
-        const link = document.createElement('a');
-        link.href = URL.createObjectURL(blob);
-        link.download = `login_logs_${dayjs().format('YYYYMMDD_HHmmss')}.xlsx`;
-        link.click();
-        URL.revokeObjectURL(link.href);
-      }
-
-      setExportProgress(80);
-
-      if (exportFormats.includes('csv')) {
-        const headers = Object.keys(exportData[0]);
-        const csvContent = [
-          headers.join(','),
-          ...exportData.map((row) =>
-            headers.map((header) => `"${row[header] || ''}"`).join(',')
-          )
-        ].join('\n');
-
-        const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
-        const link = document.createElement('a');
-        link.href = URL.createObjectURL(blob);
-        link.download = `login_logs_${dayjs().format('YYYYMMDD_HHmmss')}.csv`;
-        link.click();
-        URL.revokeObjectURL(link.href);
-      }
-
-      setExportProgress(100);
+      setExporting(true);
+      const payload =
+        selectedRowKeys.length > 0
+          ? { selected_ids: selectedRowKeys }
+          : buildLoginFilters();
+      const blob = await exportUserLoginLogs(payload);
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `login_logs_${dayjs().format('YYYYMMDD_HHmmss')}.xlsx`;
+      link.click();
+      window.URL.revokeObjectURL(url);
       message.success(t('common.exportSuccess'));
-      setExportModalVisible(false);
     } catch (error) {
       console.error('Export failed:', error);
       message.error(t('system.security.exportFailed'));
     } finally {
-      setTimeout(() => {
-        setExporting(false);
-        setExportProgress(0);
-      }, 500);
+      setExporting(false);
     }
-  };
-
-  const handleExportCancel = () => {
-    setExportModalVisible(false);
-    setExportFormats(['excel']);
   };
 
 
@@ -306,12 +229,8 @@ const UserLoginLogs: React.FC = () => {
             <Button onClick={handleReset}>
               {t('common.reset')}
             </Button>
-            <Button
-              type="primary"
-              icon={<DownloadOutlined />}
-              onClick={handleExport}
-              disabled={selectedRowKeys.length === 0}
-            >
+            <Button icon={<DownloadOutlined />} loading={exporting} onClick={handleExport}>
+              {t('common.export')}
             </Button>
           </Space>
       </div>
@@ -336,37 +255,6 @@ const UserLoginLogs: React.FC = () => {
         />
       </div>
 
-      <OperateModal
-        title={t('system.security.exportTitle')}
-        open={exportModalVisible}
-        onOk={handleExportConfirm}
-        onCancel={handleExportCancel}
-        okText={t('common.export')}
-        cancelText={t('common.cancel')}
-        confirmLoading={exporting}
-      >
-        <Space direction="vertical" className="w-full" size="middle">
-          <div>
-            <div className="mb-2">{t('system.security.selectFormat')}:</div>
-            <Checkbox.Group
-              value={exportFormats}
-              onChange={(values) => setExportFormats(values as string[])}
-            >
-              <Space direction="vertical">
-                <Checkbox value="excel">{t('system.security.exportExcel')}</Checkbox>
-                <Checkbox value="csv">{t('system.security.exportCsv')}</Checkbox>
-              </Space>
-            </Checkbox.Group>
-          </div>
-        </Space>
-      </OperateModal>
-
-      {exporting && (
-        <div className="fixed bottom-5 left-5 w-[300px] p-4 bg-[var(--color-bg)] border border-[var(--color-border)] rounded-lg shadow-md z-[1000]">
-          <div className="mb-2 text-xs">{t('system.security.exporting')}</div>
-          <Progress percent={exportProgress} status="active" />
-        </div>
-      )}
     </div>
   );
 };

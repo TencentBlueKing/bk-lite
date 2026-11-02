@@ -19,6 +19,7 @@ interface UserDataType {
   group_role_list?: string[];
   groups: Array<any>;
   last_login?: string;
+  employment_status?: string;
   status?: UserStatus;
   sync_source?: number | null;
   has_otp?: boolean;

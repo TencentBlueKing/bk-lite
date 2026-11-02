@@ -18,6 +18,7 @@ from apps.core.utils.permission_cache import API_TOKEN_PERMISSION_CACHE_PREFIX, 
 from apps.rpc.system_mgmt import SystemMgmt
 from apps.system_mgmt.models import Menu, Role
 from apps.system_mgmt.models import User as SystemUser
+from apps.system_mgmt.services.user_access import is_account_expired
 from apps.system_mgmt.utils.group_utils import GroupUtils
 
 # 常量定义
@@ -104,6 +105,16 @@ class APISecretAuthBackend(ModelBackend):
                     user_secret.username,
                     user_secret.domain,
                 )
+                return None
+            system_user = (
+                SystemUser.objects.filter(
+                    username=user_secret.username,
+                    domain=user_secret.domain,
+                )
+                .only("account_expires_at")
+                .first()
+            )
+            if system_user is not None and is_account_expired(system_user):
                 return None
             user.group_list = []
             user._api_secret_team_scope = True

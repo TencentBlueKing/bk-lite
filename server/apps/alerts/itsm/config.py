@@ -7,17 +7,17 @@ from django.conf import settings
 MAX_INPUT_BYTES = 65536
 MAX_BINDINGS = 64
 
-# 2026-10-26 bklite_expand 0.0.2。创建响应的 data 是工单对象；详情在 data.ticket。
+# 原生 ITSM OpenAPI（网关 /openapi/v1/itsm/openapi/v1）。CustomRenderer 把工单对象放在 data 根上。
 # end_at 有值只表示工单已结束，用于展示「工单已关闭」，不关闭告警。
 BKLITE_RESPONSE_CONTRACT = {
     "create_id_path": "id",
     "detail_fields": {
-        "id": "ticket.id",
-        "status": "ticket.status",
-        "title": "ticket.title",
-        "number": "ticket.sn",
-        "end_at": "ticket.end_at",
-        "label": "ticket.status_display",
+        "id": "id",
+        "status": "status",
+        "title": "title",
+        "number": "sn",
+        "end_at": "end_at",
+        "label": "status_display",
     },
 }
 
