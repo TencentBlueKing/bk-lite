@@ -29,6 +29,48 @@ from apps.opspilot.services.skill_channel_feishu_long_connection import FeishuDe
 
 _LOOP_READY = threading.Lock()
 _LOOP: asyncio.AbstractEventLoop | None = None
+_CONNECT_TIMEOUT_SECONDS = 30
+_CLOSE_TIMEOUT_SECONDS = 5
+
+
+class _ManagedLarkClient(lark.ws.Client):
+    """保留官方协议实现，为每个应用补上后台任务所有权。"""
+
+    def __init__(self, *args, **kwargs):
+        self._owned_tasks: set[asyncio.Task] = set()
+        self._closing = False
+        super().__init__(*args, **kwargs)
+
+    async def _run_owned(self, operation):
+        if self._closing:
+            return
+        task = asyncio.current_task()
+        self._owned_tasks.add(task)
+        try:
+            return await operation()
+        finally:
+            self._owned_tasks.discard(task)
+
+    async def _receive_message_loop(self):
+        return await self._run_owned(super()._receive_message_loop)
+
+    async def _ping_loop(self):
+        return await self._run_owned(super()._ping_loop)
+
+    async def _handle_message(self, message):
+        return await self._run_owned(lambda: super(_ManagedLarkClient, self)._handle_message(message))
+
+    async def aclose(self):
+        self._closing = True
+        self._auto_reconnect = False
+        tasks = {task for task in self._owned_tasks | {self._cache._cron} if not task.done()}
+        for task in tasks:
+            task.cancel()
+        try:
+            if tasks:
+                await asyncio.wait_for(asyncio.gather(*tasks, return_exceptions=True), _CLOSE_TIMEOUT_SECONDS)
+        finally:
+            await self._disconnect()
 
 
 def inbound_from_event(event: P2ImMessageReceiveV1) -> FeishuInbound | None:
@@ -91,11 +133,15 @@ def _ensure_loop() -> asyncio.AbstractEventLoop:
         return loop
 
 
-def _boot(client: lark.ws.Client) -> None:
-    try:
-        loop = _ensure_loop()
+def _boot(app_id: str, app_secret: str, handler) -> _ManagedLarkClient:
+    loop = _ensure_loop()
+    client = None
 
-        async def start() -> None:
+    async def start():
+        nonlocal client
+        # SDK 的缓存定时任务也必须创建在这个循环，才能一起取消并等待。
+        client = _ManagedLarkClient(app_id, app_secret, event_handler=handler, log_level=lark.LogLevel.WARNING, domain=lark.FEISHU_DOMAIN)
+        try:
             try:
                 await client._connect()
             except Exception:
@@ -105,20 +151,43 @@ def _boot(client: lark.ws.Client) -> None:
                 else:
                     raise
             loop.create_task(client._ping_loop())
+            return client
+        except BaseException:
+            try:
+                await client.aclose()
+            except BaseException as cleanup_exc:
+                logger.warning("event=feishu_long_connection_sdk_cleanup_failed failed_stage=connect error_type=%s", type(cleanup_exc).__name__)
+            raise
 
-        asyncio.run_coroutine_threadsafe(start(), loop).result(timeout=30)
+    async def abort():
+        # 超时与成功返回可能竞争；即使 future 已完成、无法取消，也回收已创建的 client。
+        if client is not None:
+            await client.aclose()
+
+    future = asyncio.run_coroutine_threadsafe(start(), loop)
+    try:
+        return future.result(timeout=_CONNECT_TIMEOUT_SECONDS)
     except Exception as exc:
+        future.cancel()
+        cleanup = asyncio.run_coroutine_threadsafe(abort(), loop)
+        try:
+            cleanup.result(timeout=_CLOSE_TIMEOUT_SECONDS + 1)
+        except Exception as cleanup_exc:
+            cleanup.cancel()
+            logger.warning("event=feishu_long_connection_sdk_cleanup_failed failed_stage=connect error_type=%s", type(cleanup_exc).__name__)
         logger.warning("event=feishu_long_connection_sdk_connect_failed failed_stage=connect error_type=%s", type(exc).__name__)
         raise
 
 
-def _shutdown(client: lark.ws.Client) -> None:
+def _shutdown(client: _ManagedLarkClient) -> None:
     loop = _LOOP
     if loop is None:
         return
+    future = asyncio.run_coroutine_threadsafe(client.aclose(), loop)
     try:
-        asyncio.run_coroutine_threadsafe(client._disconnect(), loop).result(timeout=5)
+        future.result(timeout=_CLOSE_TIMEOUT_SECONDS + 1)
     except Exception as exc:
+        future.cancel()
         logger.warning("event=feishu_long_connection_sdk_disconnect_failed failed_stage=disconnect error_type=%s", type(exc).__name__)
 
 
@@ -128,16 +197,9 @@ class LarkFeishuTransport:
     def __init__(self, app_id: str, app_secret: str):
         self._events: queue.Queue[FeishuInbound] = queue.Queue()
         handler = lark.EventDispatcherHandler.builder("", "").register_p2_im_message_receive_v1(self._on_message).build()
-        self._ws = lark.ws.Client(
-            app_id,
-            app_secret,
-            event_handler=handler,
-            log_level=lark.LogLevel.WARNING,
-            domain=lark.FEISHU_DOMAIN,
-        )
         self._api = lark.Client.builder().app_id(app_id).app_secret(app_secret).domain(lark.FEISHU_DOMAIN).build()
         self._bot_open_id = ""
-        _boot(self._ws)
+        self._ws = _boot(app_id, app_secret, handler)
 
     def poll(self, timeout: float) -> FeishuInbound | None:
         try:
