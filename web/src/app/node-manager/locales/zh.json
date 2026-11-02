@@ -65,6 +65,8 @@
         "installationMethod": "安装方式",
         "cpuArchitecture": "CPU架构",
         "collectorOperationUnknownArchitecture": "所选节点缺少 CPU 架构，请等待节点上报或先补齐节点架构后再操作组件。",
+        "collectorOperationMixedOperatingSystem": "所选节点的操作系统不一致，请只选择同一操作系统的节点后再安装或更新组件。",
+        "collectorOperationMixedCpuArchitecture": "所选节点的 CPU 架构不一致，请只选择同一架构的节点后再安装或更新组件。",
         "noControllerVersionTitle": "没有匹配的控制器版本",
         "noControllerVersionDesc": "当前所选操作系统（{os}）和 CPU 架构（{architecture}）暂无可用控制器安装包，请先上传匹配的安装包。",
         "viewGuide": "查看指引",

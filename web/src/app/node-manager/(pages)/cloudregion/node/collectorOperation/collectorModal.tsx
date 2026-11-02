@@ -6,7 +6,16 @@ import React, {
   useImperativeHandle,
   useMemo
 } from 'react';
-import { Form, Select, message, Button, Popconfirm, Radio, Tag } from 'antd';
+import {
+  Form,
+  Select,
+  message,
+  Button,
+  Popconfirm,
+  Radio,
+  Tag,
+  Alert
+} from 'antd';
 import OperateModal from '@/components/operate-modal';
 import type { FormInstance } from 'antd';
 import { useTranslation } from '@/utils/i18n';
@@ -17,6 +26,13 @@ import useCloudId from '@/app/node-manager/hooks/useCloudRegionId';
 import { COLLECTOR_LABEL } from '@/app/node-manager/constants/collector';
 import { useCommon } from '@/app/node-manager/context/common';
 import { buildCollectorOperationListParams } from '@/app/node-manager/utils/nodeOperation';
+import {
+  asCollectorPackageList,
+  buildCollectorPackageListParams,
+  describeCollectorInstallTarget,
+  selectCollectorPackageVersions,
+  type CollectorPackageVersionOption
+} from '@/app/node-manager/utils/collectorPackageSelection';
 import {
   EXECUTOR_TYPE_TAG,
   asCollectorCatalogList,
@@ -81,13 +97,36 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
     const [configListLoading, setConfigListLoading] = useState<boolean>(false);
     const [confirmLoading, setConfirmLoading] = useState<boolean>(false);
     const [collector, setCollector] = useState<string | null>(null);
-    const [system, setSystem] = useState<string>('');
-    const [cpuArchitecture, setCpuArchitecture] = useState<string>('');
     const [options, setOptions] = useState<CollectorOperationSelectGroup[]>([]);
+    const [packageVersionOptions, setPackageVersionOptions] = useState<
+      CollectorPackageVersionOption[]
+    >([]);
+    const [installTargetError, setInstallTargetError] = useState('');
+    const installTargetRef = useRef({
+      os: '',
+      cpuArchitecture: '',
+      operationType: 'installCollector'
+    });
     const [typeOptions, setTypeOptions] = useState<any[]>([]);
     const [selectedType, setSelectedType] = useState<string>('');
     const [updateHints, setUpdateHints] = useState<CollectorUpdateHint[]>([]);
     const [selectedNodes, setSelectedNodes] = useState<TableDataItem[]>([]);
+
+    const installTargetErrorMessage = (reason: string) => {
+      if (reason === 'mixed_operating_system') {
+        return t(
+          'node-manager.cloudregion.node.collectorOperationMixedOperatingSystem'
+        );
+      }
+      if (reason === 'mixed_cpu_architecture') {
+        return t(
+          'node-manager.cloudregion.node.collectorOperationMixedCpuArchitecture'
+        );
+      }
+      return t(
+        'node-manager.cloudregion.node.collectorOperationUnknownArchitecture'
+      );
+    };
 
     useImperativeHandle(ref, () => ({
       showModal: ({
@@ -99,27 +138,39 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
         focusCollectorNames,
         selectedNodes: nextNodes
       }) => {
+        const nodes = (nextNodes as TableDataItem[]) || [];
         const hints =
           nextHints ||
-          listCollectorUpdateHints(
-            (nextNodes as TableDataItem[]) || [],
-            focusCollectorNames || []
-          );
+          listCollectorUpdateHints(nodes, focusCollectorNames || []);
+        const target = describeCollectorInstallTarget(nodes, {
+          os: selectedsystem,
+          cpuArchitecture: selectedArchitecture
+        });
+        const os = target.ok ? target.os : '';
+        const arch = target.ok ? target.cpuArchitecture : '';
+        installTargetRef.current = {
+          os,
+          cpuArchitecture: arch,
+          operationType: type
+        };
         setCollectorVisible(true);
         setType(type);
-        setSystem(selectedsystem as string);
-        const arch = (selectedArchitecture as string) || '';
-        setCpuArchitecture(arch);
-        setNodeIds(ids || []);
-        setSelectedNodes((nextNodes as TableDataItem[]) || []);
-        setUpdateHints(hints);
-        initTypeOptions(
-          selectedsystem || '',
-          arch,
-          type,
-          hints,
-          (nextNodes as TableDataItem[]) || []
+        setInstallTargetError(
+          target.ok ? '' : installTargetErrorMessage(target.reason)
         );
+        setNodeIds(ids || []);
+        setSelectedNodes(nodes);
+        setUpdateHints(hints);
+        setPackageList([]);
+        setPackageVersionOptions([]);
+        if (target.ok) {
+          initTypeOptions(os, arch, type, hints, nodes);
+        } else {
+          setSelectedType('');
+          setTypeOptions([]);
+          setOptions([]);
+          setCollectorlist([]);
+        }
         type === 'startCollectorr' && getConfigData(); //先不调这个接口，因为配置文件已隐藏
       }
     }));
@@ -134,15 +185,6 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
           .flatMap((group) => group.options)
           .find((option) => String(option.value) === String(collector || '')),
       [collector, options]
-    );
-
-    const packageVersionOptions = useMemo(
-      () =>
-        packageList.map((item) => ({
-          value: item.id,
-          label: String(item.version || '')
-        })),
-      [packageList]
     );
 
     const initTypeOptions = (
@@ -195,13 +237,16 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
       nodes?: TableDataItem[]
     ) => {
       setCollectorLoading(true);
+      const activeTarget = installTargetRef.current;
       const currentType = typeTag || selectedType;
-      const currentArch = arch !== undefined ? arch : cpuArchitecture;
+      const currentArch =
+        arch !== undefined ? arch : activeTarget.cpuArchitecture;
+      const operatingSystem = selectedsystem || activeTarget.os;
       const currentHints = hints || updateHints;
       const currentNodes = nodes || selectedNodes;
       try {
         const params = buildCollectorOperationListParams({
-          operatingSystem: selectedsystem,
+          operatingSystem,
           cpuArchitecture: currentArch,
           typeTag: currentType
         });
@@ -211,7 +256,7 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
           currentType === EXECUTOR_TYPE_TAG
             ? filterCollectorsForOperationType(catalog, currentType)
             : catalog;
-        const currentOperation = operationType || type;
+        const currentOperation = operationType || activeTarget.operationType;
         const nextHints = mergeCatalogCollectorUpdateHints(
           currentHints,
           visibleCollectors,
@@ -256,7 +301,12 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
             });
             void handleCollectorChange(
               String(nextCollector),
-              visibleCollectors
+              visibleCollectors,
+              {
+                os: operatingSystem,
+                cpuArchitecture: currentArch,
+                operationType: currentOperation
+              }
             );
           }
         }
@@ -281,11 +331,17 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
       setVersionLoading(false);
       setCollectorLoading(false);
       setCollector(null);
-      setCpuArchitecture('');
       setSelectedType('');
       setTypeOptions([]);
       setOptions([]);
       setCollectorlist([]);
+      setPackageVersionOptions([]);
+      setInstallTargetError('');
+      installTargetRef.current = {
+        os: '',
+        cpuArchitecture: '',
+        operationType: 'installCollector'
+      };
       setUpdateHints([]);
       setSelectedNodes([]);
       collectorFormRef.current?.resetFields();
@@ -415,11 +471,18 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
 
     const handleCollectorChange = async (
       option: string,
-      collectors: TableDataItem[] = collectorlist
+      collectors: TableDataItem[] = collectorlist,
+      target?: {
+        os: string;
+        cpuArchitecture: string;
+        operationType: string;
+      }
     ) => {
       const id = option;
+      const activeTarget = target || installTargetRef.current;
       setCollector(id);
       setPackageList([]);
+      setPackageVersionOptions([]);
       collectorFormRef.current?.setFieldsValue({
         version: null,
         configuration: null
@@ -427,25 +490,25 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
       const object = collectors.find(
         (item: TableDataItem) => item.id === id
       )?.name;
-      if (type === 'installCollector' && id) {
+      const packageParams = buildCollectorPackageListParams({
+        objectName: object,
+        os: activeTarget.os,
+        cpuArchitecture: activeTarget.cpuArchitecture
+      });
+      if (activeTarget.operationType === 'installCollector' && id && packageParams) {
         try {
           setVersionLoading(true);
-          const data = await getPackageList({
-            object,
-            os: system,
-            cpu_architecture: cpuArchitecture
-          });
-          const sorted = [...(data || [])].sort((a, b) =>
-            String(b.version || '').localeCompare(
-              String(a.version || ''),
-              undefined,
-              { numeric: true }
-            )
+          const data = await getPackageList(packageParams);
+          const selection = selectCollectorPackageVersions(
+            asCollectorPackageList(data),
+            packageParams.os,
+            packageParams.cpu_architecture
           );
-          setPackageList(sorted);
-          if (sorted.length) {
+          setPackageList(selection.packages as TableDataItem[]);
+          setPackageVersionOptions(selection.options);
+          if (selection.defaultPackageId !== undefined) {
             collectorFormRef.current?.setFieldsValue({
-              version: sorted[0].id
+              version: selection.defaultPackageId
             });
           }
         } finally {
@@ -466,7 +529,15 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
         version: null,
         configuration: null
       });
-      getCollectors(system, value, undefined, type, updateHints, selectedNodes);
+      const target = installTargetRef.current;
+      getCollectors(
+        target.os,
+        value,
+        target.cpuArchitecture,
+        target.operationType,
+        updateHints,
+        selectedNodes
+      );
     };
 
     return (
@@ -496,6 +567,7 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
               <Button
                 type="primary"
                 loading={confirmLoading}
+                disabled={!!installTargetError}
                 onClick={handleConfirm}
               >
                 {t('common.confirm')}
@@ -504,6 +576,9 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
           </>
         }
       >
+        {installTargetError ? (
+          <Alert showIcon type="error" message={installTargetError} />
+        ) : (
         <Form
           ref={collectorFormRef}
           layout="vertical"
@@ -616,6 +691,7 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
             </Form.Item>
           )}
         </Form>
+        )}
       </OperateModal>
     );
   }
