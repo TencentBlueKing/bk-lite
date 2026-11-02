@@ -1,4 +1,9 @@
 import type { SimpleDashboardConfig } from '../common/simple-dashboard-core';
+import {
+  POSTGRES_RECOVERY_QUERY,
+  POSTGRES_REPLICATION_SLOTS_QUERY,
+  POSTGRES_STREAMING_REPLICAS_QUERY
+} from './queries';
 
 /** PostgreSQL 监控高对比鲜活科技色板 */
 export const PG_PALETTE = {
@@ -194,6 +199,30 @@ export const POSTGRESQL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       unit: 'msps',
       query: 'sum without (db) (rate(postgresql_blk_write_time{__$labels__}[__$window__]))',
       color: PG_PALETTE.indigo
+    },
+    {
+      name: 'postgresql_recovery_in_recovery',
+      display_name: '是否处于恢复',
+      description: '0 表示正在接受写入，1 表示备库仍在回放。没有采样时看不出角色。',
+      unit: 'none',
+      query: POSTGRES_RECOVERY_QUERY,
+      color: PG_PALETTE.indigo
+    },
+    {
+      name: 'postgresql_replication_streaming_replicas',
+      display_name: '流复制连接数',
+      description: '当前连着本实例做流复制的对端个数。0 是采到的个数，不是缺失，也不表示延迟。',
+      unit: 'counts',
+      query: POSTGRES_STREAMING_REPLICAS_QUERY,
+      color: PG_PALETTE.blue
+    },
+    {
+      name: 'postgresql_replication_replication_slots',
+      display_name: '复制槽个数',
+      description: '本实例上的复制槽个数，包含暂时没连上的槽。0 是采到的个数，不表示槽积压。',
+      unit: 'counts',
+      query: POSTGRES_REPLICATION_SLOTS_QUERY,
+      color: PG_PALETTE.cyan
     }
   ],
   summaryCards: [

@@ -21,5 +21,8 @@ export const POSTGRES_CATEGORY_METRIC_NAMES = [
   'postgresql_buffers_backend_rate',
   'postgresql_maxwritten_clean_rate',
   'postgresql_buffers_alloc_rate',
-  'postgresql_conflicts_rate'
+  'postgresql_conflicts_rate',
+  'postgresql_recovery_in_recovery',
+  'postgresql_replication_streaming_replicas',
+  'postgresql_replication_replication_slots'
 ] as const;

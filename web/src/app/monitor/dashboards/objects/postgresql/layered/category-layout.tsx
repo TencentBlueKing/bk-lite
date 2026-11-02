@@ -11,7 +11,6 @@ import HostAlertDrawer from '../../host/layered/host-alert-drawer';
 import { hostAlertRailEvents, type HostAlertRailEvent } from '../../host/layered/events-rail';
 import { overviewHostAlertParams } from '../../host/layered/host-alert-list';
 import useViewApi from '@/app/monitor/api/view';
-import { GrayTabEmptyState } from '../../host/layered/pro-chrome';
 import { asRangeQueryResult, buildSearchParams, toMetricSeries } from '../../../shared/utils';
 import host from '../../host/layered/layered.module.scss';
 import { POSTGRES_DIGEST_METRICS } from '../queries';
@@ -19,6 +18,12 @@ import type { PostgresMetricMap } from './series';
 import OverviewPane from './overview-pane';
 import PerformancePane from './performance-pane';
 import { StatementPane, WaitPane } from './digest-pane';
+import ReplicationPane from './replication-pane';
+import {
+  postgresReplicationDimmed,
+  postgresReplicationTabMode,
+  readPostgresReplication
+} from './replication';
 import {
   postgresCollectionConfigPath,
   readPostgresDigestLoad,
@@ -38,11 +43,6 @@ const TABS: ReadonlyArray<{ key: PostgresTab; label: string }> = [
   { key: 'waits', label: '等待' },
   { key: 'replication', label: '复制' }
 ];
-
-const REPLICATION_EMPTY = {
-  title: '流复制与复制槽采集未就绪',
-  hint: '就绪后可查看复制延迟与槽积压；本盘暂不展示估算值'
-};
 
 const isTab = (value: string | null): value is PostgresTab => (
   TABS.some((tab) => tab.key === value)
@@ -255,6 +255,12 @@ export default function PostgresCategoryLayout({
 
   const statementsDimmed = digestStatus === 'ready' && statementsLoad === 'not_collected';
   const waitsDimmed = digestStatus === 'ready' && waitsLoad === 'not_collected';
+  const replicationBooting = loading && pendingMetricNames.size === 0;
+  const replication = useMemo(
+    () => readPostgresReplication(metricMap, pendingMetricNames, replicationBooting),
+    [metricMap, pendingMetricNames, replicationBooting]
+  );
+  const replicationDimmed = postgresReplicationDimmed(replication.load);
 
   return (
     <ProTimeWindowProvider
@@ -275,13 +281,15 @@ export default function PostgresCategoryLayout({
                 ? statementsDimmed
                 : item.key === 'waits'
                   ? waitsDimmed
-                  : item.key === 'replication';
+                  : item.key === 'replication'
+                    ? replicationDimmed
+                    : false;
               const mode = item.key === 'statements'
                 ? (statementsLoad === 'query_failed' ? 'failed' : statementsLoad === 'collected' ? 'ready' : 'empty')
                 : item.key === 'waits'
                   ? (waitsLoad === 'query_failed' ? 'failed' : waitsLoad === 'collected' ? 'ready' : 'empty')
                   : item.key === 'replication'
-                    ? 'empty'
+                    ? postgresReplicationTabMode(replication.load)
                     : 'ready';
               return {
                 key: item.key,
@@ -345,8 +353,13 @@ export default function PostgresCategoryLayout({
             </div>
           ) : null}
           {tab === 'replication' ? (
-            <div data-postgres-empty="replication">
-              <GrayTabEmptyState title={REPLICATION_EMPTY.title} hint={REPLICATION_EMPTY.hint} />
+            <div data-postgres-empty={replicationDimmed ? 'replication' : undefined}>
+              <ReplicationPane
+                metricMap={metricMap}
+                pendingMetricNames={pendingMetricNames}
+                booting={replicationBooting}
+                onOpenCollection={openCollectionConfig}
+              />
             </div>
           ) : null}
         </div>
