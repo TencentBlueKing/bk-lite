@@ -2543,19 +2543,21 @@ def get_classification_model_instance_counts(
     **kwargs,
 ):
     """按模型分类返回当前用户可见且实例数大于零的模型统计。"""
+    # 与 get_room_list 一致：data 是行列表。
+    # 裸 {"items": ...} 没有 result，datasource_view._normalize_downstream_result 会判非标准。
     classification_id = str(classification_id or "").strip()
     if not classification_id:
-        return {"items": []}
+        return {"result": True, "data": [], "message": ""}
 
     language = _resolve_nats_cmdb_language(user_info)
     visible_classification_ids = {item.get("classification_id") for item in ClassificationManage.search_model_classification(language=language)}
     if classification_id not in visible_classification_ids:
-        return {"items": []}
+        return {"result": True, "data": [], "message": ""}
 
     model_permissions = _build_nats_model_permission_map(user_info)
     instance_permissions = _build_nats_permission_map(user_info)
     if model_permissions is None or instance_permissions is None:
-        return {"items": []}
+        return {"result": True, "data": [], "message": ""}
 
     models = ModelManage.search_model(
         language=language,
@@ -2572,45 +2574,49 @@ def get_classification_model_instance_counts(
     ]
     items = [item for item in items if item["value"] > 0]
     items.sort(key=lambda item: (-item["value"], item["label"]))
-    return {"items": items}
+    return {"result": True, "data": items, "message": ""}
 
 
 @nats_client.register
 def get_region_options(user_info=None, **kwargs):
     """Return region tag candidates visible to the current user."""
+    # 与 get_room_list 一致：data 是行列表。
+    # 裸 {"items": ...} 没有 result，datasource_view._normalize_downstream_result 会判非标准。
     language = _resolve_nats_cmdb_language(user_info)
     model_permissions = _build_nats_model_permission_map(user_info)
     if model_permissions is None:
-        return {"items": []}
+        return {"result": True, "data": [], "message": ""}
     models = ModelManage.search_model(language=language, permissions_map=model_permissions)
     classifications = ClassificationManage.search_model_classification(language=language)
     visible_ids = {item.get("classification_id") for item in classifications if item.get("classification_id")}
-    return {"items": extract_region_options(models, visible_ids)}
+    return {"result": True, "data": extract_region_options(models, visible_ids), "message": ""}
 
 
 @nats_client.register
 def get_region_resource_overview(region=None, user_info=None, **kwargs):
     """Return classification instance totals for one region value."""
+    # 与 get_room_list 一致：data 是行列表。
+    # 裸 {"items": ...} 没有 result，datasource_view._normalize_downstream_result 会判非标准。
     region = str(region or "").strip()
     if not region:
-        return {"items": []}
+        return {"result": True, "data": [], "message": ""}
     language = _resolve_nats_cmdb_language(user_info)
     model_permissions = _build_nats_model_permission_map(user_info)
     instance_permissions = _build_nats_permission_map(user_info)
     if model_permissions is None or instance_permissions is None:
-        return {"items": []}
+        return {"result": True, "data": [], "message": ""}
     models = ModelManage.search_model(language=language, permissions_map=model_permissions)
     classifications = ClassificationManage.search_model_classification(language=language)
     visible_ids = {item.get("classification_id") for item in classifications if item.get("classification_id")}
     allowed_regions = extract_region_options(models, visible_ids)
     if region not in {item["value"] for item in allowed_regions}:
-        return {"items": []}
+        return {"result": True, "data": [], "message": ""}
     counts = InstanceManage.group_inst_count(
         group_by_attr="model_id",
         permissions_map=instance_permissions,
         params=[{"field": "tag", "type": "list[]", "value": [f"region:{region}"]}],
     )
-    return {"items": build_region_resource_items(models, classifications, counts)}
+    return {"result": True, "data": build_region_resource_items(models, classifications, counts), "message": ""}
 
 
 @nats_client.register
