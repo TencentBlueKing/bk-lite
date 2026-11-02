@@ -65,6 +65,8 @@
         "installationMethod": "Installation Method",
         "cpuArchitecture": "CPU Architecture",
         "collectorOperationUnknownArchitecture": "The selected node has no CPU architecture. Please wait for node reporting or backfill the architecture before operating components.",
+        "collectorOperationMixedOperatingSystem": "The selected nodes use different operating systems. Select nodes with the same operating system before installing or updating components.",
+        "collectorOperationMixedCpuArchitecture": "The selected nodes use different CPU architectures. Select nodes with the same architecture before installing or updating components.",
         "noControllerVersionTitle": "No matching controller version",
         "noControllerVersionDesc": "No controller package is available for the selected operating system ({os}) and CPU architecture ({architecture}). Upload a matching package first.",
         "viewGuide": "View guidance",

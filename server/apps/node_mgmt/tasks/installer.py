@@ -1563,17 +1563,19 @@ def _install_collector_inner(task_obj):
     task_obj.status = "running"
     task_obj.save()
 
-    collector_install_dir = CollectorConstants.DOWNLOAD_DIR.get(package_obj.os)
-
     for node_obj in nodes:
         overall_status = "success"
-        resolved_package = (
-            PackageService.resolve_package_by_architecture(
-                task_obj.package_version_id,
+        try:
+            resolved_package = InstallerService.match_collector_package(
+                package_obj,
+                node_obj.node.operating_system,
                 getattr(node_obj.node, "cpu_architecture", ""),
             )
-            or package_obj
-        )
+        except BaseAppException as exc:
+            _save_node_result(node_obj, "error", exc.message)
+            continue
+
+        collector_install_dir = CollectorConstants.DOWNLOAD_DIR.get(resolved_package.os)
         file_key = PackageService.resolve_existing_file_path(resolved_package)
 
         try:
