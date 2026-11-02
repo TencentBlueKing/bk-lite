@@ -194,15 +194,15 @@
       "type": "switch",
       "required": false,
       "default_value": false,
-      "description": "供「Top SQL」页查看。未开启则该页无数据；开启后若目标库未安装 pg_stat_statements，或监控账号不能读取它，采集会失败或持续为空。",
-      "guide_short": "默认关闭。请打开「Top SQL 采集」后，实例详情「Top SQL」才有语句耗时、执行次数和返回行。未开开关时该页无数据；开了但目标库未安装 pg_stat_statements，或监控账号没有读取权限时，采集会失败或持续为空。连接数、事务等常规指标不受影响。",
-      "guide_short_en": "Off by default. Turn on Top SQL Collection for the Top SQL tab to show statement time, execution count, and rows returned. With the switch off, that tab has no data. If it is on but pg_stat_statements is not installed, or the monitoring account cannot read it, collection fails or stays empty. Connections, transactions, and other routine metrics are unaffected.",
+      "description": "开启后供「Top SQL」页查看。",
+      "guide_short": "默认关闭。打开后，「Top SQL」页才有语句耗时、执行次数和返回行。目标库须已安装 pg_stat_statements，且监控账号可读取；否则采集失败或持续为空。连接数、事务等常规指标不受影响。",
+      "guide_short_en": "Off by default. When on, the Top SQL tab shows statement time, calls, and rows returned. The target database must have pg_stat_statements installed and the monitoring account must be able to read it; otherwise collection fails or stays empty. Connections and transactions are unaffected.",
       "widget_props": {},
       "transform_on_edit": {
         "origin_path": "child.content.config.gather_pg_stat_statements"
       },
       "label_en": "Top SQL Collection",
-      "description_en": "For the Top SQL tab. With Top SQL Collection off, that tab has no data. If it is on but pg_stat_statements is not installed or the account cannot read it, collection fails or stays empty."
+      "description_en": "Powers the Top SQL tab when enabled."
     },
     {
       "name": "gather_pg_wait_events",
@@ -211,15 +211,15 @@
       "type": "switch",
       "required": false,
       "default_value": false,
-      "description": "供「等待」页查看。未开启则该页无数据；开启后展示当前正在等待的会话，不是累计等待时长。",
-      "guide_short": "默认关闭。请打开「等待事件采集」后，实例详情「等待」才有当前等待会话。未开开关时该页无数据；开启后若采集当时没有会话处于等待，该页也会是空的。与「Top SQL 采集」相互独立，不需要额外扩展。",
-      "guide_short_en": "Off by default. Turn on Wait Event Collection for the Waits tab to show sessions currently waiting. With the switch off, that tab has no data. If it is on but no session is waiting at collection time, the tab stays empty. This is separate from Top SQL Collection and does not need an extra extension.",
+      "description": "开启后供「等待」页查看。",
+      "guide_short": "默认关闭。打开后采样当前正在等待的会话（快照，非累计等待时长）。采集当时无等待会话时页为空。与「Top SQL 采集」相互独立，无需额外扩展。",
+      "guide_short_en": "Off by default. When on, samples sessions currently waiting (a snapshot, not cumulative wait time). Empty if no session is waiting at collection time. Separate from Top SQL Collection; no extra extension.",
       "widget_props": {},
       "transform_on_edit": {
         "origin_path": "child.content.config.gather_pg_wait_events"
       },
       "label_en": "Wait Event Collection",
-      "description_en": "For the Waits tab. With Wait Event Collection off, that tab has no data. When on, it shows sessions currently waiting. Separate from Top SQL Collection."
+      "description_en": "Powers the Waits tab when enabled."
     }
   ],
   "advanced_panel": {
