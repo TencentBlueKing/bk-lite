@@ -155,9 +155,11 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
         };
         setCollectorVisible(true);
         setType(type);
-        setInstallTargetError(
-          target.ok ? '' : installTargetErrorMessage(target.reason)
-        );
+        if (target.ok === false) {
+          setInstallTargetError(installTargetErrorMessage(target.reason));
+        } else {
+          setInstallTargetError('');
+        }
         setNodeIds(ids || []);
         setSelectedNodes(nodes);
         setUpdateHints(hints);
