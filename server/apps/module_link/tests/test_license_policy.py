@@ -78,6 +78,30 @@ def test_urls_empty_when_cmdb_not_installed(monkeypatch):
     assert build_urlpatterns() == []
 
 
+def test_urls_empty_when_only_cmdb_installed(monkeypatch):
+    from apps.module_link.urls import build_urlpatterns
+
+    monkeypatch.setattr("django.apps.apps.is_installed", lambda name: name == "apps.cmdb")
+    assert build_urlpatterns() == []
+
+
+def test_urls_empty_when_only_monitor_installed(monkeypatch):
+    from apps.module_link.urls import build_urlpatterns
+
+    monkeypatch.setattr("django.apps.apps.is_installed", lambda name: name == "apps.monitor")
+    assert build_urlpatterns() == []
+
+
+def test_urls_registered_when_cmdb_and_monitor_installed():
+    from django.apps import apps
+
+    from apps.module_link.urls import build_urlpatterns
+
+    assert apps.is_installed("apps.cmdb")
+    assert apps.is_installed("apps.monitor")
+    assert build_urlpatterns()
+
+
 def test_apply_exempt_skips_when_license_app_not_installed(monkeypatch):
     monkeypatch.setattr("django.apps.apps.is_installed", lambda name: False)
 
