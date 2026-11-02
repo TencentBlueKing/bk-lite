@@ -276,6 +276,54 @@ def test_host_run_still_uses_its_own_formatter():
 
 def test_task_format_payload_is_not_reconciled_as_instances(monkeypatch):
     seen = []
+    deleted = []
+
+    class _Graph:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def query_entity(self, _label, params):
+            if any(item.get("field") == "collect_task" for item in params):
+                return [{"_id": 1, "model_id": "pc", "inst_name": "WIN-EXISTING", "collect_task": 7}], 1
+            return [], 0
+
+    class _Management:
+        def __init__(self, _organization, _inst_name, model_id, old_data, new_data, *_args, **_kwargs):
+            seen.append(model_id)
+            if model_id == "pc" and old_data and not new_data:
+                deleted.extend(old_data)
+
+        def controller(self):
+            return {
+                "add": {"success": [], "failed": []},
+                "update": {"success": [], "failed": []},
+                "delete": {"success": [], "failed": []},
+            }
+
+    monkeypatch.setattr("apps.cmdb.collection.metrics_cannula.GraphClient", lambda *_a, **_k: _Graph())
+    monkeypatch.setattr("apps.cmdb.collection.metrics_cannula.Management", _Management)
+    cannula = MetricsCannula(
+        inst_id="cmdb_7",
+        organization=[1],
+        inst_name="pc-task",
+        task_id=7,
+        collect_plugin=SimpleNamespace(TASK_FORMAT_DATA_KEY="__task_format_data__"),
+        default_metrics={
+            "__task_format_data__": [{"inst_name": "WIN-NEW"}],
+        },
+        reconcile_task_assets=True,
+        task=SimpleNamespace(model_id="pc", expire_days=0, instances=[]),
+    )
+    cannula._collect_models()
+    assert seen == []
+    assert deleted == []
+
+
+def test_task_format_payload_outside_pc_keeps_original_behavior(monkeypatch):
+    seen = []
 
     class _Graph:
         def __enter__(self):
@@ -303,16 +351,17 @@ def test_task_format_payload_is_not_reconciled_as_instances(monkeypatch):
     cannula = MetricsCannula(
         inst_id="cmdb_7",
         organization=[1],
-        inst_name="pc-task",
+        inst_name="host-task",
         task_id=7,
-        collect_plugin=object,
-        default_metrics={
-            "host": [{"inst_name": "host-a"}],
-            "__task_format_data__": {"pc_summary": {"pc_total": 1}, "add": []},
-        },
+        collect_plugin=SimpleNamespace(TASK_FORMAT_DATA_KEY="__task_format_data__"),
+        default_metrics={"__task_format_data__": [{"inst_name": "host-a"}]},
+        reconcile_task_assets=True,
+        task=SimpleNamespace(model_id="host", expire_days=0, instances=[]),
     )
-    cannula._collect_models()
-    assert seen == ["host"]
+    cannula._reconcile_for = lambda _model_id: None
+    result = cannula._collect_models()
+    assert seen == ["__task_format_data__"]
+    assert result["all"] == 1
 
 
 def test_collect_base_init_backfills_inst_name_from_list_instances(monkeypatch):
