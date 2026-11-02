@@ -117,6 +117,9 @@ def _claim_execution(
     launch_token_hash: str | None = None,
     target_snapshot: dict[str, Any] | None = None,
     entry_input_schema: dict[str, Any] | None = None,
+    async_callback_context: dict[str, Any] | None = None,
+    async_callback_deadline_at=None,
+    async_callback_key: str | None = None,
 ) -> tuple[WorkflowExecution, WorkflowVersion, bool, dict[str, Any]]:
     workflow = Workflow.all_objects.select_for_update().get(pk=workflow.pk)
     if workflow.deleted_at is not None:
@@ -147,6 +150,10 @@ def _claim_execution(
         "trigger_id": trigger_id,
         "parent_execution": parent_execution,
     }
+    if async_callback_context:
+        defaults["async_callback_context"] = async_callback_context
+        defaults["async_callback_deadline_at"] = async_callback_deadline_at
+        defaults["async_callback_key"] = async_callback_key
     if launch_token_hash:
         execution, created = WorkflowExecution.objects.get_or_create(
             launch_token_hash=launch_token_hash,
@@ -174,6 +181,9 @@ def start_execution(
     launch_token_hash: str | None = None,
     target_snapshot: dict[str, Any] | None = None,
     entry_input_schema: dict[str, Any] | None = None,
+    async_callback_context: dict[str, Any] | None = None,
+    async_callback_deadline_at=None,
+    async_callback_key: str | None = None,
 ) -> WorkflowExecution:
     execution, version, created, sealed_inputs = _claim_execution(
         workflow,
@@ -188,6 +198,9 @@ def start_execution(
         launch_token_hash=launch_token_hash,
         target_snapshot=target_snapshot,
         entry_input_schema=entry_input_schema,
+        async_callback_context=async_callback_context,
+        async_callback_deadline_at=async_callback_deadline_at,
+        async_callback_key=async_callback_key,
     )
     conductor = client or ConductorClient()
     if not created and not _needs_engine_start(execution):

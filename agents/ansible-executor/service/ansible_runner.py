@@ -29,7 +29,8 @@ DEFAULT_STREAM_BATCH_SIZE = 16
 DEFAULT_STREAM_FLUSH_TIMEOUT = 1.0
 DEFAULT_STREAM_MAX_LINE_BYTES = 16 * 1024
 STREAM_LINE_CHUNK_MARKER = "...[实时日志超长行分段]"
-PLAYBOOK_ARCHIVE_MAX_SIZE_BYTES = 20 * 1024 * 1024
+# 下发到目标机的对象，和补丁包上限一致。20MB 会挡住离线目录和大型手工包。
+PLAYBOOK_ARCHIVE_MAX_SIZE_BYTES = 4096 * 1024 * 1024
 PLAYBOOK_ARCHIVE_MAX_MEMBERS = 2000
 PLAYBOOK_ARCHIVE_MAX_MEMBER_SIZE_BYTES = 5 * 1024 * 1024
 PLAYBOOK_ARCHIVE_MAX_EXPANDED_SIZE_BYTES = 50 * 1024 * 1024
@@ -390,7 +391,15 @@ def _join_windows_target_path(target_path: str, file_name: str) -> str:
 
 def _build_windows_file_distribution_playbook(downloaded_files: list[dict[str, Any]], target_path: str, overwrite: bool) -> str:
     normalized_target_path = _normalize_windows_target_path(target_path)
-    tasks = []
+    tasks = [
+        {
+            "name": "Ensure Windows distribution directory exists",
+            "ansible.windows.win_file": {
+                "path": normalized_target_path,
+                "state": "directory",
+            },
+        }
+    ]
     for file_item in downloaded_files:
         file_name = str(file_item.get("name", "")).strip()
         local_path = str(file_item.get("local_path", "")).strip()

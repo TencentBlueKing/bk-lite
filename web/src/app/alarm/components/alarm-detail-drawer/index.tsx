@@ -1,5 +1,7 @@
 'use client';
 
+import ItsmTicket from '@/app/alarm/components/itsm-ticket';
+
 import React, {
   forwardRef,
   useEffect,
@@ -521,6 +523,7 @@ const AlarmDetailDrawer = forwardRef<
             <div className="min-h-0 flex-1 overflow-auto">
               <div className="flex flex-col gap-4">
                 <AlarmBaseInfo detail={formData} />
+                {formData.alert_id && <ItsmTicket alertId={String(formData.alert_id)} alertStatus={formData.status} readonly={readonly} />}
                 {renderRelatedAlerts?.(formData, { onRefresh: handleAction })}
               </div>
             </div>

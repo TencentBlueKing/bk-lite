@@ -73,6 +73,7 @@ class SystemSettingsViewSet(viewsets.ModelViewSet):
             **self.INITIAL_PASSWORD_DEFAULTS,
             "otp_recommended_apps": DEFAULT_OTP_RECOMMENDED_APPS,
             "otp_whitelist": default_otp_whitelist_value(),
+            "cmdb_collect_source_stale_days": "7",
         }
         existing_keys = set(SystemSettings.objects.filter(key__in=default_settings.keys()).values_list("key", flat=True))
         missing_settings = [SystemSettings(key=key, value=value) for key, value in default_settings.items() if key not in existing_keys]

@@ -18,6 +18,7 @@
 """
 
 import json
+from collections import defaultdict
 from typing import Dict, List, Union
 
 from apps.cmdb.constants.constants import DISPLAY_FIELD_CONFIG, INSTANCE, MODEL
@@ -32,7 +33,9 @@ from apps.cmdb.display_field.constants import (
     USER_DISPLAY_FORMAT,
 )
 from apps.cmdb.graph.drivers.graph_client import GraphClient
+from apps.cmdb.graph.validators import MAX_BATCH_UPDATE_PROPERTY_VALUES
 from apps.core.logger import cmdb_logger as logger
+from apps.core.logger import safe_exception_info
 
 
 class _DisplayFieldQueryError(Exception):
@@ -64,13 +67,23 @@ class DisplayFieldInitializer:
     - DISPLAY_SUFFIX: 冗余字段后缀 '_display' (从 constants 导入)
     """
 
+    INSTANCE_PAGE_SIZE = 500
+    _INSTANCE_DISPLAY_TYPES = frozenset(
+        {
+            FIELD_TYPE_ORGANIZATION,
+            FIELD_TYPE_USER,
+            FIELD_TYPE_ENUM,
+            FIELD_TYPE_TAG,
+        }
+    )
+
     def __init__(self):
         """初始化映射缓存"""
         self._org_map: Dict[int, str] = {}  # {org_id: org_name}
         self._user_map: Dict[int, Dict[str, str]] = {}  # {user_id: {'username': 'admin', 'display_name': '管理员'}}
         self._enum_map: Dict[str, str] = {}  # {"model_id.attr_id.enum_id": enum_name}
 
-    def initialize_all(self) -> dict:
+    def initialize_all(self, *, instances: bool = True) -> dict:
         """
         初始化所有模型和实例的 _display 字段
 
@@ -112,8 +125,8 @@ class DisplayFieldInitializer:
                     # 3.1 为模型添加 _display 字段定义
                     attrs = self._add_display_fields_to_model(model)
 
-                    # 3.2 为实例添加 _display 字段值
-                    instance_count = self._add_display_fields_to_instances(model_id, attrs)
+                    # 3.2 为实例添加 _display 字段值。启动期只补模型定义，实例回填走运行期任务。
+                    instance_count = self._add_display_fields_to_instances(model_id, attrs) if instances else 0
 
                     result["models_processed"] += 1
                     result["instances_processed"] += instance_count
@@ -125,9 +138,7 @@ class DisplayFieldInitializer:
                     result["success"] = False
                 except _DisplayFieldInstanceUpdateError as exc:
                     result["instances_processed"] += exc.instances_processed
-                    result["errors"].append(
-                        f"更新实例失败，model_id={model_id}，inst_id={exc.inst_id}，失败{exc.failure_count}次"
-                    )
+                    result["errors"].append(f"更新实例失败，model_id={model_id}，inst_id={exc.inst_id}，失败{exc.failure_count}次")
                     result["success"] = False
                 except Exception as e:
                     error_msg = f"处理模型 {model_id} 失败: {e}"
@@ -338,92 +349,241 @@ class DisplayFieldInitializer:
 
         return attrs
 
+    def backfill_bounded(self, *, max_instances: int, cursor: dict | None) -> dict:
+        """按模型分页回填，单次最多扫描 max_instances 个实例节点。
+
+        已有且相同的 _display 不写。查询失败停在当前游标，交给下一次运行重试。
+        """
+        models = self._get_all_models()
+        self._preload_mappings(models)
+        prepared = []
+        for model in models:
+            model_id = model.get("model_id")
+            attrs = self._parse_model_attrs(model)
+            if model_id and self._has_instance_display_fields(attrs):
+                prepared.append((model_id, attrs))
+
+        start_index = 0
+        last_id = None
+        if cursor and cursor.get("model_id"):
+            model_ids = [item[0] for item in prepared]
+            if cursor["model_id"] in model_ids:
+                start_index = model_ids.index(cursor["model_id"])
+                last_id = cursor.get("last_id")
+
+        seen = 0
+        updated = 0
+        errors = []
+
+        def _progress(done: bool, query_failed: bool, next_cursor):
+            return {
+                "done": done,
+                "query_failed": query_failed,
+                "next_cursor": next_cursor,
+                "instances_seen": seen,
+                "instances_updated": updated,
+                "errors": errors,
+            }
+
+        with GraphClient() as ag:
+            for index in range(start_index, len(prepared)):
+                model_id, attrs = prepared[index]
+                page_after = last_id if index == start_index else None
+                while seen < max_instances:
+                    try:
+                        instances = self._query_instance_page(ag, model_id, page_after)
+                    except Exception as exc:
+                        self._log_query_failure(model_id, exc)
+                        errors.append(f"查询实例失败，model_id={model_id}")
+                        return _progress(False, True, {"model_id": model_id, "last_id": page_after})
+                    if not instances:
+                        break
+                    page_updated, failure_count, first_inst_id, first_exc = self._apply_instance_page(ag, model_id, attrs, instances)
+                    updated += page_updated
+                    if failure_count:
+                        self._log_write_failure(model_id, first_exc, failure_count)
+                        errors.append(f"更新实例失败，model_id={model_id}，inst_id={first_inst_id}，失败{failure_count}次")
+                    seen += len(instances)
+                    next_id = instances[-1].get("_id")
+                    if page_after is not None and next_id == page_after:
+                        errors.append(f"查询实例失败，model_id={model_id}")
+                        return _progress(False, True, {"model_id": model_id, "last_id": page_after})
+                    page_after = next_id
+                    model_finished = len(instances) < self.INSTANCE_PAGE_SIZE
+                    if seen >= max_instances:
+                        if model_finished:
+                            if index + 1 >= len(prepared):
+                                return _progress(True, False, None)
+                            next_model_id = prepared[index + 1][0]
+                            return _progress(False, False, {"model_id": next_model_id, "last_id": None})
+                        return _progress(False, False, {"model_id": model_id, "last_id": page_after})
+                    if model_finished:
+                        break
+        return _progress(True, False, None)
+
     def _add_display_fields_to_instances(self, model_id: str, attrs: List[dict]) -> int:
-        """
-        为模型的所有实例添加 _display 字段值
+        """分页回填一个模型的实例。值未变化的实例不写图。"""
+        if not self._has_instance_display_fields(attrs):
+            return 0
 
-        工作流程：
-        1. 查询模型的所有实例
-        2. 为每个实例生成 _display 字段值
-        3. 批量更新实例
-
-        Args:
-            model_id: 模型ID
-            attrs: 模型字段定义列表
-
-        Returns:
-            处理的实例数量
-        """
-
-        # 1. 查询所有实例
-        try:
-            with GraphClient() as ag:
-                instances, _ = ag.query_entity(
-                    label=INSTANCE,
-                    params=[{"field": "model_id", "type": "str=", "value": model_id}],
-                )
-
-            if not instances:
-                logger.debug(f"[DisplayFieldInitializer] 模型 {model_id} 没有实例")
-                return 0
-
-            logger.info(f"[DisplayFieldInitializer] 模型 {model_id} 查询到 {len(instances)} 个实例")
-
-        except Exception as e:
-            logger.error(
-                f"[DisplayFieldInitializer] 查询模型 {model_id} 实例失败: {e}",
-                exc_info=True,
-            )
-            raise _DisplayFieldQueryError(model_id) from None
-
-        # 2. 批量处理实例
         processed_count = 0
         failure_count = 0
         first_failed_inst_id = None
+        first_exc = None
+        last_id = None
+        scanned = 0
 
-        for instance in instances:
-            try:
-                # 生成 _display 字段
-                display_fields = self._build_display_fields_for_instance(instance, attrs, model_id)
+        with GraphClient() as ag:
+            while True:
+                try:
+                    instances = self._query_instance_page(ag, model_id, last_id)
+                except Exception as exc:
+                    self._log_query_failure(model_id, exc)
+                    raise _DisplayFieldQueryError(model_id) from None
 
-                # 如果没有需要更新的字段，跳过
-                if not display_fields:
-                    continue
+                if not instances:
+                    break
 
-                instance.update(display_fields)
-
-                # 更新实例
-                inst_id = instance.get("inst_id")
-                instance_internal_id = instance.get("_id")
-
-                with GraphClient() as ag:
-                    new_instance = ag.set_entity_properties(INSTANCE, [instance_internal_id], instance, {}, [], False)
-                    logger.debug("修改后实例数据: {}".format(new_instance))
-
-                processed_count += 1
-
-                logger.debug(f"[DisplayFieldInitializer] 实例 {inst_id} 更新完成, " f"字段: {list(display_fields.keys())}")
-
-            except Exception as e:
-                logger.error(
-                    f"[DisplayFieldInitializer] 更新实例 {instance.get('inst_id')} 失败: {e}",
-                    exc_info=True,
-                )
-                if failure_count == 0:
-                    first_failed_inst_id = instance.get("inst_id")
-                failure_count += 1
-                continue
-
-        logger.info(f"[DisplayFieldInitializer] 模型 {model_id} 实例处理完成, " f"总数: {len(instances)}, 更新数: {processed_count}")
+                page_updated, page_failures, page_inst_id, page_exc = self._apply_instance_page(ag, model_id, attrs, instances)
+                processed_count += page_updated
+                if page_failures:
+                    failure_count += page_failures
+                    if first_failed_inst_id is None:
+                        first_failed_inst_id = page_inst_id
+                        first_exc = page_exc
+                scanned += len(instances)
+                next_id = instances[-1].get("_id")
+                if last_id is not None and next_id == last_id:
+                    self._log_query_failure(model_id, RuntimeError("cursor_not_advanced"))
+                    raise _DisplayFieldQueryError(model_id) from None
+                last_id = next_id
+                if len(instances) < self.INSTANCE_PAGE_SIZE:
+                    break
 
         if failure_count:
+            self._log_write_failure(model_id, first_exc or RuntimeError("write_failed"), failure_count)
             raise _DisplayFieldInstanceUpdateError(
                 inst_id=first_failed_inst_id,
                 failure_count=failure_count,
                 instances_processed=processed_count,
             )
 
+        logger.info(
+            "[DisplayFieldInitializer] event=display_backfill_model_finished model_id=%s scanned=%s updated=%s",
+            model_id,
+            scanned,
+            processed_count,
+        )
         return processed_count
+
+    @classmethod
+    def _has_instance_display_fields(cls, attrs: List[dict]) -> bool:
+        return any(attr.get("attr_type") in cls._INSTANCE_DISPLAY_TYPES for attr in attrs)
+
+    @staticmethod
+    def _parse_model_attrs(model: dict) -> List[dict]:
+        try:
+            from apps.cmdb.services.model import ModelManage
+
+            return ModelManage.parse_attrs(model.get("attrs", "[]"))
+        except Exception as exc:
+            logger.warning(
+                "[DisplayFieldInitializer] event=display_backfill_attrs_skipped model_id=%s error_type=%s",
+                model.get("model_id"),
+                type(exc).__name__,
+            )
+            return []
+
+    def _query_instance_page(self, ag, model_id: str, last_id):
+        params = [{"field": "model_id", "type": "str=", "value": model_id}]
+        if last_id is not None:
+            params.append({"field": "id", "type": "id>", "value": last_id})
+        instances, _ = ag.query_entity(
+            label=INSTANCE,
+            params=params,
+            page={"skip": 0, "limit": self.INSTANCE_PAGE_SIZE},
+            include_count=False,
+        )
+        return instances or []
+
+    def _apply_instance_page(self, ag, model_id: str, attrs: List[dict], instances: List[dict]):
+        grouped = defaultdict(list)
+        expected = {}
+        inst_ids = {}
+        failure_count = 0
+        first_inst_id = None
+        first_exc = None
+
+        for instance in instances:
+            display_fields = self._build_display_fields_for_instance(instance, attrs, model_id)
+            changed = {field: value for field, value in display_fields.items() if instance.get(field) != value}
+            if not changed:
+                continue
+            internal_id = instance.get("_id")
+            inst_id = instance.get("inst_id")
+            if internal_id is None:
+                failure_count += 1
+                if first_inst_id is None:
+                    first_inst_id = inst_id
+                    first_exc = RuntimeError("missing_internal_id")
+                continue
+            expected[internal_id] = len(changed)
+            inst_ids[internal_id] = inst_id
+            for field, value in changed.items():
+                grouped[field].append({"id": internal_id, "value": value})
+
+        written = defaultdict(int)
+        failed_ids = set()
+
+        def _mark_failed(internal_id, exc):
+            nonlocal failure_count, first_inst_id, first_exc
+            if internal_id in failed_ids:
+                return
+            failed_ids.add(internal_id)
+            failure_count += 1
+            if first_inst_id is None:
+                first_inst_id = inst_ids.get(internal_id)
+                first_exc = exc
+
+        for field, rows in grouped.items():
+            for offset in range(0, len(rows), MAX_BATCH_UPDATE_PROPERTY_VALUES):
+                chunk = rows[offset : offset + MAX_BATCH_UPDATE_PROPERTY_VALUES]
+                payload = [{"id": row["id"], "value": row["value"]} for row in chunk]
+                try:
+                    ag.batch_update_node_property_values(INSTANCE, field, payload)
+                except Exception:
+                    for row in chunk:
+                        try:
+                            ag.batch_update_node_property_values(INSTANCE, field, [{"id": row["id"], "value": row["value"]}])
+                        except Exception as row_exc:
+                            _mark_failed(row["id"], row_exc)
+                        else:
+                            written[row["id"]] += 1
+                else:
+                    for row in chunk:
+                        written[row["id"]] += 1
+
+        updated = sum(1 for internal_id, count in expected.items() if written[internal_id] == count and internal_id not in failed_ids)
+        return updated, failure_count, first_inst_id, first_exc
+
+    @staticmethod
+    def _log_query_failure(model_id: str, exc: Exception) -> None:
+        logger.error(
+            "[DisplayFieldInitializer] event=display_backfill_query_failed model_id=%s failed_stage=query_instance error_type=%s",
+            model_id,
+            type(exc).__name__,
+            exc_info=safe_exception_info(exc),
+        )
+
+    @staticmethod
+    def _log_write_failure(model_id: str, exc: Exception, failure_count: int) -> None:
+        logger.error(
+            "[DisplayFieldInitializer] event=display_backfill_write_failed model_id=%s failed_stage=write_instance error_type=%s failure_count=%s",
+            model_id,
+            type(exc).__name__,
+            failure_count,
+            exc_info=safe_exception_info(exc),
+        )
 
     def _build_display_fields_for_instance(self, instance: dict, attrs: List[dict], model_id: str) -> Dict[str, str]:
         """

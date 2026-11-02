@@ -92,9 +92,7 @@ def test_reconcile_deletes_stale_users_instead_of_disabling_them():
     class StaleUsers:
         def __init__(self):
             self.deleted = False
-            self.user = SimpleNamespace(
-                id=99, username="missing-user", disabled=False, group_list=[1], save=lambda **kwargs: None
-            )
+            self.user = SimpleNamespace(id=99, username="missing-user", disabled=False, group_list=[1], save=lambda **kwargs: None)
 
         def __iter__(self):
             return iter([self.user])
@@ -144,7 +142,9 @@ def test_reconcile_deletes_stale_users_instead_of_disabling_them():
         "apps.system_mgmt.services.user_sync_service.Group.objects.filter", return_value=EmptyGroups()
     ), patch("apps.system_mgmt.services.user_sync_service.clear_users_permission_cache"), patch(
         "apps.system_mgmt.services.user_sync_service._supports_user_sync_row_locks", return_value=False
-    ), patch("apps.system_mgmt.services.user_sync_service.transaction.atomic") as atomic:
+    ), patch(
+        "apps.system_mgmt.services.user_sync_service.transaction.atomic"
+    ) as atomic:
         atomic.return_value.__enter__.return_value = None
         atomic.return_value.__exit__.return_value = False
         result = user_sync_service_module._reconcile_synced_directory(
@@ -1593,7 +1593,7 @@ def test_execute_user_sync_does_not_claim_existing_unmanaged_platform_user(ready
 
 
 @pytest.mark.django_db
-def test_reappearing_disabled_user_is_reenabled(ready_integration_instance):
+def test_reappearing_user_keeps_local_disable_without_disabled_mapping(ready_integration_instance):
     source = UserSyncSource.objects.create(
         name="source-a",
         integration_instance=ready_integration_instance,
@@ -1643,7 +1643,7 @@ def test_reappearing_disabled_user_is_reenabled(ready_integration_instance):
 
     assert result["result"] is True
     user.refresh_from_db()
-    assert user.disabled is False
+    assert user.disabled is True
 
 
 @pytest.mark.django_db

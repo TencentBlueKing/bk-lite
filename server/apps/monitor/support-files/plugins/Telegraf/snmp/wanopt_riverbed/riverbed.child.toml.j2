@@ -70,7 +70,58 @@
     [[inputs.snmp.field]]
         oid = "1.3.6.1.4.1.17163.1.1.2.7.0"
         name = "device_health_state"
-# ---- 无私有内存 Gauge，不发明 Mem OID。不采集 bandwidth/datastore/peer 表。----
+    # ---- 连接计数：connectionCounts 标量，顶层 field GET 必须带实例 .0 ----
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.17163.1.1.5.2.1.0"
+        name = "optimized_connections"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.17163.1.1.5.2.2.0"
+        name = "passthrough_connections"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.17163.1.1.5.2.3.0"
+        name = "half_opened_connections"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.17163.1.1.5.2.4.0"
+        name = "half_closed_connections"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.17163.1.1.5.2.5.0"
+        name = "established_connections"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.17163.1.1.5.2.6.0"
+        name = "active_connections"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.17163.1.1.5.2.7.0"
+        name = "total_connections"
+    # ---- 连接上限：shMaxConnections，标量必须带 .0 ----
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.17163.1.1.2.13.1.0"
+        name = "max_connections"
+    # ---- 优化服务状态：optServiceStatus INTEGER。none(0)/unmanaged(1)/running(2)/sentCom1(3)/sentTerm1(4)/sentTerm2(5)/sentTerm3(6)/pending(7)/stopped(8) ----
+    # processors.enum 派生 opt_service_ok：仅 running(2)→1，其余→2。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.17163.1.1.2.8.0"
+        name = "opt_service_status"
+    # ---- 对端表 peerTable：表列禁止 .0。hostname/address 直接作 tag；version/model 先作 field 再提升为 tag。 ----
+    [[inputs.snmp.table]]
+        name = "steelhead_peer"
+        inherit_tags = ["source"]
+        index_as_tag = true
+        oid = "1.3.6.1.4.1.17163.1.1.2.6.1"
+        [[inputs.snmp.table.field]]
+            oid = "1.3.6.1.4.1.17163.1.1.2.6.1.1.2"
+            name = "peer_hostname"
+            is_tag = true
+        [[inputs.snmp.table.field]]
+            oid = "1.3.6.1.4.1.17163.1.1.2.6.1.1.3"
+            name = "peer_version"
+        [[inputs.snmp.table.field]]
+            oid = "1.3.6.1.4.1.17163.1.1.2.6.1.1.4"
+            name = "peer_address"
+            is_tag = true
+        [[inputs.snmp.table.field]]
+            oid = "1.3.6.1.4.1.17163.1.1.2.6.1.1.5"
+            name = "peer_model"
+# ---- 无私有内存 Gauge，不发明 Mem OID。不采集 bandwidth/datastore。接口仍只走 IF-MIB。----
 [[processors.enum]]
     [processors.enum.tagpass]
         brand = ["riverbed"]
@@ -83,3 +134,35 @@
             "30000" = 2
             "31000" = 2
             "50000" = 2
+    [[processors.enum.mapping]]
+        field = "opt_service_status"
+        dest = "opt_service_ok"
+        default = 2
+        [processors.enum.mapping.value_mappings]
+            "2" = 1
+            "0" = 2
+            "1" = 2
+            "3" = 2
+            "4" = 2
+            "5" = 2
+            "6" = 2
+            "7" = 2
+            "8" = 2
+# 对端行只有字符串列。提升 version/model 为 tag，并写入 present=1，否则序列在数值存储中会被丢掉，行数也无法计数。
+[[processors.starlark]]
+    namepass = ["steelhead_peer"]
+    source = '''
+def apply(metric):
+    version = metric.fields.get("peer_version")
+    if version != None:
+        metric.tags["peer_version"] = str(version)
+        metric.fields.pop("peer_version")
+    model = metric.fields.get("peer_model")
+    if model != None:
+        metric.tags["peer_model"] = str(model)
+        metric.fields.pop("peer_model")
+    metric.fields["present"] = 1
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["riverbed"]

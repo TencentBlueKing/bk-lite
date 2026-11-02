@@ -8,15 +8,17 @@ from rest_framework.test import APIClient
 
 from apps.base.models import User, UserAPISecret
 from apps.job_mgmt.constants import ExecutionStatus, JobType
-from apps.job_mgmt.models import JobExecution, Target
+from apps.job_mgmt.models import JobExecution, Script, Target
 from apps.system_mgmt.models import Group
 from apps.system_mgmt.models import User as SystemUser
 
 pytestmark = [pytest.mark.integration, pytest.mark.django_db]
 
 EXECUTE_URL = "/openapi/v1/job-mgmt/script-execute"
+ASYNC_EXECUTE_URL = "/openapi/v1/job-mgmt/script-execute-async"
 STATUS_URL = "/openapi/v1/job-mgmt/job-status"
 DETAIL_URL = "/openapi/v1/job-mgmt/job-detail"
+SCRIPTS_URL = "/openapi/v1/job-mgmt/scripts"
 
 
 @pytest.fixture
@@ -261,3 +263,184 @@ def test_job_detail_forged_team_is_rejected(tenant):
 
     assert response.status_code == 400
     assert response.json()["code"] == "SCHEMA_INVALID"
+
+
+def _async_body(tenant, **overrides):
+    payload = _execute_body(tenant)
+    payload["callback_context"] = {
+        "callback_url": "https://example.com/openapi/v1/itsm/openapi/v1/action_components/callback/",
+        "callback_token": "tok-async-1",
+        "operator": "system",
+        "timeout": 3600,
+    }
+    payload.update(overrides)
+    return payload
+
+
+def test_api_tenant_can_submit_async_script_on_own_target(tenant):
+    with patch("apps.job_mgmt.nats_api.DangerousChecker.check_command") as mock_check, patch(
+        "apps.job_mgmt.nats_api.execute_script_task.delay"
+    ) as mock_delay:
+        mock_check.return_value = MagicMock(can_execute=True, forbidden=[])
+        mock_delay.return_value.id = "celery-async-1"
+        response = APIClient().post(ASYNC_EXECUTE_URL, _async_body(tenant), format="json", **_auth(tenant))
+
+    assert response.status_code == 200, response.json()
+    data = response.json()["data"]
+    assert data["accepted"] is True
+    execution = JobExecution.objects.get(id=int(data["execution_id"]))
+    assert execution.team == [tenant.team.id]
+    assert execution.async_callback_context["callback_token"] == "tok-async-1"
+    assert execution.callback_url in ("", None)
+    mock_delay.assert_called_once()
+
+
+def test_api_tenant_cannot_submit_async_script_on_other_tenant_target(tenant):
+    with patch("apps.job_mgmt.nats_api.execute_script_task.delay") as mock_delay:
+        response = APIClient().post(
+            ASYNC_EXECUTE_URL,
+            _async_body(
+                tenant,
+                target_list=[{"target_id": tenant.other_target.id, "name": tenant.other_target.name, "ip": tenant.other_target.ip}],
+            ),
+            format="json",
+            **_auth(tenant),
+        )
+
+    assert response.status_code == 403
+    assert response.json()["code"] == "TEAM_OUT_OF_SCOPE"
+    assert not JobExecution.objects.filter(async_callback_key__isnull=False).exists()
+    mock_delay.assert_not_called()
+
+
+def test_async_script_execute_forged_team_is_rejected(tenant):
+    with patch("apps.job_mgmt.nats_api.execute_script_task.delay") as mock_delay:
+        response = APIClient().post(
+            ASYNC_EXECUTE_URL,
+            _async_body(tenant, team=[tenant.other_team.id]),
+            format="json",
+            **_auth(tenant),
+        )
+
+    assert response.status_code == 400
+    assert response.json()["code"] == "SCHEMA_INVALID"
+    mock_delay.assert_not_called()
+
+
+def _create_scripts(tenant):
+    own = Script.objects.create(
+        name="打印测试",
+        description="ITSM 联调",
+        content="echo itsm-job-ok",
+        script_type="shell",
+        timeout=60,
+        team=[tenant.team.id],
+    )
+    Script.objects.create(
+        name="foreign-hidden",
+        content="echo secret",
+        script_type="shell",
+        timeout=60,
+        team=[tenant.other_team.id],
+    )
+    return own
+
+
+def test_api_tenant_can_list_own_scripts(tenant):
+    own = _create_scripts(tenant)
+    response = APIClient().post(SCRIPTS_URL, {"page": 1, "page_size": 20}, format="json", **_auth(tenant))
+
+    assert response.status_code == 200, response.json()
+    data = response.json()["data"]
+    names = [item["name"] for item in data["items"]]
+    ids = [item["id"] for item in data["items"]]
+    assert data["count"] == 1
+    assert names == ["打印测试"]
+    assert ids == [str(own.id)]
+    assert "content" not in data["items"][0]
+    assert "script_content" not in data["items"][0]
+
+
+def test_api_tenant_cannot_list_other_org_scripts(tenant):
+    _create_scripts(tenant)
+    response = APIClient().post(SCRIPTS_URL, {"page": 1, "page_size": 20}, format="json", **_other_auth(tenant))
+
+    assert response.status_code == 200, response.json()
+    data = response.json()["data"]
+    names = [item["name"] for item in data["items"]]
+    assert data["count"] == 1
+    assert names == ["foreign-hidden"]
+    assert "打印测试" not in names
+
+
+def test_script_list_forged_team_is_rejected(tenant):
+    response = APIClient().post(
+        SCRIPTS_URL,
+        {"page": 1, "page_size": 20, "team": [tenant.other_team.id]},
+        format="json",
+        **_auth(tenant),
+    )
+
+    assert response.status_code == 400
+    assert response.json()["code"] == "SCHEMA_INVALID"
+
+
+def test_api_tenant_can_execute_library_script_on_own_target(tenant):
+    own = _create_scripts(tenant)
+    body = {
+        "script_id": own.id,
+        "target_source": "manual",
+        "target_list": [{"target_id": tenant.target.id, "name": tenant.target.name, "ip": tenant.target.ip}],
+    }
+    with patch("apps.job_mgmt.nats_api.DangerousChecker.check_command") as mock_check, patch(
+        "apps.job_mgmt.nats_api.execute_script_task.delay"
+    ) as mock_delay:
+        mock_check.return_value = MagicMock(can_execute=True, forbidden=[])
+        mock_delay.return_value.id = "celery-lib-1"
+        response = APIClient().post(EXECUTE_URL, body, format="json", **_auth(tenant))
+
+    assert response.status_code == 200, response.json()
+    execution = JobExecution.objects.get(id=response.json()["data"]["task_id"])
+    assert execution.script_content == "echo itsm-job-ok"
+    assert execution.name == "打印测试"
+    assert execution.script_type == "shell"
+    mock_delay.assert_called_once()
+
+
+def test_api_tenant_cannot_execute_other_org_library_script(tenant):
+    own = _create_scripts(tenant)
+    foreign = Script.objects.get(name="foreign-hidden")
+    body = {
+        "script_id": foreign.id,
+        "target_source": "manual",
+        "target_list": [{"target_id": tenant.target.id, "name": tenant.target.name, "ip": tenant.target.ip}],
+    }
+    with patch("apps.job_mgmt.nats_api.execute_script_task.delay") as mock_delay:
+        response = APIClient().post(EXECUTE_URL, body, format="json", **_auth(tenant))
+
+    assert response.status_code == 400
+    assert response.json()["code"] == "BUSINESS_REJECTED"
+    assert "Script not found" in response.json()["message"]
+    assert not JobExecution.objects.filter(name="foreign-hidden").exists()
+    mock_delay.assert_not_called()
+    assert own.id != foreign.id
+
+
+def test_api_tenant_can_submit_async_library_script(tenant):
+    own = _create_scripts(tenant)
+    body = _async_body(tenant, script_id=own.id)
+    body.pop("name", None)
+    body.pop("script_type", None)
+    body.pop("script_content", None)
+    with patch("apps.job_mgmt.nats_api.DangerousChecker.check_command") as mock_check, patch(
+        "apps.job_mgmt.nats_api.execute_script_task.delay"
+    ) as mock_delay:
+        mock_check.return_value = MagicMock(can_execute=True, forbidden=[])
+        mock_delay.return_value.id = "celery-lib-async-1"
+        response = APIClient().post(ASYNC_EXECUTE_URL, body, format="json", **_auth(tenant))
+
+    assert response.status_code == 200, response.json()
+    execution = JobExecution.objects.get(id=int(response.json()["data"]["execution_id"]))
+    assert execution.script_content == "echo itsm-job-ok"
+    assert execution.name == "打印测试"
+    mock_delay.assert_called_once()

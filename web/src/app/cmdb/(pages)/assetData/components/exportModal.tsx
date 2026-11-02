@@ -18,6 +18,7 @@ import {
   ExportModalRef,
 } from '@/app/cmdb/types/assetData';
 import { useTransferApi } from '@/app/cmdb/api/transfer';
+import { exportFilterPayload } from '../list/advancedFilter';
 
 const ExportModal = forwardRef<ExportModalRef, ExportModalProps>(
   ({ assoTypes, onSubmitStart, onSubmitted, canSubmit }, ref) => {
@@ -36,6 +37,8 @@ const ExportModal = forwardRef<ExportModalRef, ExportModalProps>(
       'selected' | 'currentPage' | 'all'
     >('all');
     const [tableData, setTableData] = useState<any[]>([]);
+    const [queryList, setQueryList] = useState<any[]>([]);
+    const [advancedFilter, setAdvancedFilter] = useState<ExportModalConfig['advancedFilter']>(null);
 
     const [availableColumns, setAvailableColumns] = useState<ColumnItem[]>([]);
     const [selectedAttrs, setSelectedAttrs] = useState<string[]>([]);
@@ -53,6 +56,8 @@ const ExportModal = forwardRef<ExportModalRef, ExportModalProps>(
         setSelectedKeys(config.selectedKeys);
         setExportType(config.exportType);
         setTableData(config.tableData || []);
+        setQueryList(config.queryList || []);
+        setAdvancedFilter(config.advancedFilter || null);
 
         const filteredColumns = config.columns.filter(
           (col) => col.key !== 'action'
@@ -201,6 +206,7 @@ const ExportModal = forwardRef<ExportModalRef, ExportModalProps>(
           inst_uuids: instUuids,
           attr_list: orderedAttrs,
           association_list: selectedRelations,
+          ...exportFilterPayload(exportType, queryList, advancedFilter),
         };
 
         const content = JSON.stringify(exportData);

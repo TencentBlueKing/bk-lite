@@ -20,6 +20,11 @@ interface WidgetInitialDataWaitOptions {
 
 export type DataSourceLookupStatus = 'idle' | 'loading' | 'success' | 'error';
 
+/** lookup 成功或失败都算资源已决，只有 idle/loading 还要继续等。 */
+export const isCanvasDataSourceLookupDecided = (
+  lookupStatus: DataSourceLookupStatus,
+): boolean => lookupStatus === 'success' || lookupStatus === 'error';
+
 type WidgetDataSourceState =
   | 'ready'
   | 'loading'

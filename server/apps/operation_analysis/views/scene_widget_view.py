@@ -11,11 +11,13 @@ from apps.operation_analysis.serializers.scene_widget_serializers import (
     Application3DMetricRequestSerializer,
     Application3DWallRequestSerializer,
     ApplicationTopologyRequestSerializer,
+    DashboardScenePermissionBatchSerializer,
     NetworkStatusTopologyRequestSerializer,
     RelatedTopologyRequestSerializer,
     Room3DLayoutRequestSerializer,
     Room3DRoomsRequestSerializer,
 )
+from apps.operation_analysis.services.dashboard_scene_permission import batch_check_dashboard_scene_permissions
 from apps.operation_analysis.services.application3d import Application3DQueryService
 from apps.operation_analysis.services.application3d.errors import Application3DError
 from apps.operation_analysis.services.application_topology import ApplicationTopologyError, ApplicationTopologyService
@@ -118,6 +120,13 @@ class SceneWidgetViewSet(ViewSet):
             )
         except Application3DError as exc:
             return self.application3d_error_response(exc)
+
+    @action(detail=False, methods=["post"], url_path="dashboard_scene_permissions")
+    def dashboard_scene_permissions(self, request):
+        serializer = DashboardScenePermissionBatchSerializer(data=request.data or {})
+        serializer.is_valid(raise_exception=True)
+        results = batch_check_dashboard_scene_permissions(request, serializer.validated_data["checks"])
+        return Response({"results": results})
 
     @action(detail=False, methods=["post"], url_path="related_topology")
     def related_topology(self, request):

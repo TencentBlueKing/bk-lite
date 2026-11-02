@@ -26,6 +26,7 @@ interface ApplicationTopologyCanvasProps {
   unifiedFilterValues?: Record<string, FilterValue>;
   filterDefinitions?: UnifiedFilterDefinition[];
   screenRenderContext?: ScreenRenderContext;
+  scenePermissionDenied?: boolean;
 }
 
 const ApplicationTopologyCanvas = ({
@@ -35,6 +36,7 @@ const ApplicationTopologyCanvas = ({
   unifiedFilterValues,
   filterDefinitions,
   screenRenderContext,
+  scenePermissionDenied = false,
 }: ApplicationTopologyCanvasProps) => {
   const { t } = useTranslation();
   const instUuid = resolveApplicationTopologyCanvasSelection({
@@ -57,6 +59,17 @@ const ApplicationTopologyCanvas = ({
 
   if (!allowed) {
     return null;
+  }
+
+  if (scenePermissionDenied) {
+    return (
+      <div
+        className="flex h-full min-h-[280px] items-center justify-center text-sm text-[var(--color-text-3)]"
+        style={applicationTopologySurfaceStyle(usesScreenTheme)}
+      >
+        {t('common.noAuth')}
+      </div>
+    );
   }
 
   if (!instUuid) {

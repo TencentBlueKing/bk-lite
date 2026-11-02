@@ -62,3 +62,6 @@ __all__ = [
     "NotificationTemplateContent",
     "NotificationTemplateReference",
 ]
+
+from .itsm import AlertItsmIntegration  # noqa: F401
+from .itsm import AlertItsmTicket  # noqa: F401

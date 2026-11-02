@@ -183,6 +183,31 @@ def test_build_closed_event_uses_stable_close_time_and_operator(alert_center_cha
     assert payload["labels"]["operator"] == "admin"
 
 
+def test_recovered_event_matches_closed_contract(alert_center_channel, mocker):
+    policy = _make_policy(alert_center_channel, alert_type="aggregate")
+    alert, _event = _make_alert_event(policy)
+    recovered_at = datetime(2026, 10, 29, 3, 4, 5, tzinfo=timezone.utc)
+    alert.status = "recovered"
+    alert.end_event_time = recovered_at
+    alert.operator = ""
+    alert.save(update_fields=["status", "end_event_time", "operator"])
+    send = mocker.patch(
+        "apps.log.services.alert_lifecycle_notify.SystemMgmtUtils.send_msg_with_channel",
+        return_value={"result": True},
+    )
+
+    notifier = LogAlertLifecycleNotifier(policy)
+    payload = notifier.build_recovered_event(alert)
+    closed = notifier.build_closed_event(alert)
+    assert set(payload) == set(closed)
+    assert payload["action"] == "recovered"
+    assert payload["value"] is None
+    assert payload["labels"]["operator"] == ""
+    success, _result = notifier.notify_recovered(alert, max_attempts=1)
+    assert success is True
+    assert send.call_args.args[2]["events"][0]["action"] == "recovered"
+
+
 @pytest.mark.parametrize(
     ("level", "expected"),
     [

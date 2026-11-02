@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_riverbed",
   "plugin": "Wanopt Riverbed SNMP",
-  "plugin_desc": "SNMP monitoring template for Riverbed SteelHead WAN optimization device. It reports uptime, CPU utilization, temperature, and interface traffic (enterprise PEN 17163).",
+  "plugin_desc": "SNMP monitoring template for Riverbed SteelHead WAN optimization device. It reports uptime, CPU utilization, temperature, and interface traffic (enterprise PEN 17163). It also reports optimized, passthrough, half-opened, half-closed, established, active and total connections, the connection limit, optimization service status, and optimization peers.",
   "support_collect_detect": true,
   "status_query": "any({instance_type='wanopt', collect_type='snmp_riverbed'}) by (instance_id)",
   "name": "Wanopt",
@@ -19,7 +19,10 @@
     "device_temperature_celsius",
     "device_health_state",
     "device_total_incoming_traffic",
-    "device_total_outgoing_traffic"
+    "device_total_outgoing_traffic",
+    "optimized_connections",
+    "opt_service_ok",
+    "steelhead_peer_count"
   ],
   "metrics": [
     {
@@ -112,6 +115,183 @@
         "instance_id"
       ],
       "description": "This metric indicates the uptime of the device since the last restart. By monitoring the uptime, network administrators can understand the stability and reliability of the device and identify potential reboot or failure issues."
+    },
+    {
+      "metric_group": "Connections",
+      "name": "optimized_connections",
+      "query": "snmp_optimized_connections{instance_type='wanopt', collect_type='snmp_riverbed', __$labels__}",
+      "display_name": "Optimized Connections",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Current number of optimized connections on the Riverbed SteelHead (STEELHEAD-MIB optimizedConnections). Zero while traffic should be accelerated means optimization has stopped or all sessions fell back to passthrough."
+    },
+    {
+      "metric_group": "Connections",
+      "name": "passthrough_connections",
+      "query": "snmp_passthrough_connections{instance_type='wanopt', collect_type='snmp_riverbed', __$labels__}",
+      "display_name": "Passthrough Connections",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Current number of passthrough connections on the Riverbed SteelHead (STEELHEAD-MIB passthroughConnections). A sudden jump can mean the optimization service stopped or sessions were forced through unoptimized."
+    },
+    {
+      "metric_group": "Connections",
+      "name": "half_opened_connections",
+      "query": "snmp_half_opened_connections{instance_type='wanopt', collect_type='snmp_riverbed', __$labels__}",
+      "display_name": "Half-Opened Connections",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Current number of half-opened optimized connections on the Riverbed SteelHead (STEELHEAD-MIB halfOpenedConnections). A count that stays above zero means session setup is stuck."
+    },
+    {
+      "metric_group": "Connections",
+      "name": "half_closed_connections",
+      "query": "snmp_half_closed_connections{instance_type='wanopt', collect_type='snmp_riverbed', __$labels__}",
+      "display_name": "Half-Closed Connections",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Current number of half-closed optimized connections on the Riverbed SteelHead (STEELHEAD-MIB halfClosedConnections). A sustained rise can mean peers are not finishing connection teardown."
+    },
+    {
+      "metric_group": "Connections",
+      "name": "established_connections",
+      "query": "snmp_established_connections{instance_type='wanopt', collect_type='snmp_riverbed', __$labels__}",
+      "display_name": "Established Connections",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Current number of established optimized connections on the Riverbed SteelHead (STEELHEAD-MIB establishedConnections)."
+    },
+    {
+      "metric_group": "Connections",
+      "name": "active_connections",
+      "query": "snmp_active_connections{instance_type='wanopt', collect_type='snmp_riverbed', __$labels__}",
+      "display_name": "Active Connections",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Current number of active optimized connections on the Riverbed SteelHead (STEELHEAD-MIB activeConnections)."
+    },
+    {
+      "metric_group": "Connections",
+      "name": "total_connections",
+      "query": "snmp_total_connections{instance_type='wanopt', collect_type='snmp_riverbed', __$labels__}",
+      "display_name": "Total Connections",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Total number of connections on the Riverbed SteelHead (STEELHEAD-MIB totalConnections), covering optimized and passthrough sessions."
+    },
+    {
+      "metric_group": "Connections",
+      "name": "max_connections",
+      "query": "snmp_max_connections{instance_type='wanopt', collect_type='snmp_riverbed', __$labels__}",
+      "display_name": "Max Connections",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Maximum number of connections this Riverbed SteelHead appliance can carry (STEELHEAD-MIB shMaxConnections). Compare with total and optimized connections to see remaining headroom."
+    },
+    {
+      "metric_group": "Service",
+      "name": "opt_service_ok",
+      "query": "snmp_opt_service_ok{instance_type='wanopt', collect_type='snmp_riverbed', __$labels__}",
+      "display_name": "Optimization Service",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"running\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"not-running\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Optimization service health derived from STEELHEAD-MIB optServiceStatus. 1 means running. 2 means any other state, including none, unmanaged, pending, stopping, and stopped."
+    },
+    {
+      "metric_group": "Service",
+      "name": "opt_service_status",
+      "query": "snmp_opt_service_status{instance_type='wanopt', collect_type='snmp_riverbed', __$labels__}",
+      "display_name": "Optimization Service Status",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"none\",\"id\":0,\"color\":\"#8c8c8c\"},{\"name\":\"unmanaged\",\"id\":1,\"color\":\"#8c8c8c\"},{\"name\":\"running\",\"id\":2,\"color\":\"#1ac44a\"},{\"name\":\"sentCom1\",\"id\":3,\"color\":\"#1677ff\"},{\"name\":\"sentTerm1\",\"id\":4,\"color\":\"#faad14\"},{\"name\":\"sentTerm2\",\"id\":5,\"color\":\"#faad14\"},{\"name\":\"sentTerm3\",\"id\":6,\"color\":\"#faad14\"},{\"name\":\"pending\",\"id\":7,\"color\":\"#faad14\"},{\"name\":\"stopped\",\"id\":8,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Raw optimization service status on the Riverbed SteelHead (STEELHEAD-MIB optServiceStatus): none=0, unmanaged=1, running=2, sentCom1=3, sentTerm1=4, sentTerm2=5, sentTerm3=6, pending=7, stopped=8."
+    },
+    {
+      "metric_group": "Peers",
+      "name": "steelhead_peer",
+      "query": "steelhead_peer_present{instance_type='wanopt', collect_type='snmp_riverbed', __$labels__}",
+      "display_name": "Optimization Peer",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {
+          "name": "peer_hostname",
+          "description": "Peer hostname"
+        },
+        {
+          "name": "peer_address",
+          "description": "Peer address"
+        },
+        {
+          "name": "peer_version",
+          "description": "Peer software version"
+        },
+        {
+          "name": "peer_model",
+          "description": "Peer model"
+        },
+        {
+          "name": "index",
+          "description": "Peer table index"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "One series per Riverbed SteelHead optimization peer (STEELHEAD-MIB peerTable). The value is 1 when the peer row is present. Hostname, address, software version, and model are tags. A drop from one or more rows to none means every peer disappeared."
+    },
+    {
+      "metric_group": "Peers",
+      "name": "steelhead_peer_count",
+      "query": "count(steelhead_peer_present{instance_type='wanopt', collect_type='snmp_riverbed', __$labels__}) by (instance_id) or sum(snmp_uptime{instance_type='wanopt', collect_type='snmp_riverbed', __$labels__}) by (instance_id) * 0",
+      "display_name": "Optimization Peer Count",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Number of Riverbed SteelHead optimization peer rows. When the peer table is empty the count falls back to 0 as long as the device is still reporting uptime, so a drop from one or more peers to none stays visible."
     }
   ]
 }

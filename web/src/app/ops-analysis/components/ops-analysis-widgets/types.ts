@@ -209,6 +209,8 @@ export interface ValueConfig {
   barMax?: number;
   dimensionField?: string;
   valueField?: string;
+  valueFields?: string[];
+  seriesField?: string;
   pieScalarFields?: Array<{ field: string; label?: string }>;
   multiValueLabelField?: string;
   multiValueValueField?: string;

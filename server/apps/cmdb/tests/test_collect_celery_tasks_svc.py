@@ -6,7 +6,7 @@
   - 凭据运行状态不再通过 Celery 投影到 CMDB
   - sync_cmdb_display_fields_task：成功/异常返回
   - execute_collect_tool_debug_task：成功/异常落库
-  - reconcile / full_sync 任务委派服务层
+  - reconcile / full_sync 旧任务只登记待重算行
   - sync_node_mgmt_hosts / collect_node_mgmt_hosts / daily_data_cleanup_task 委派
   - sync_collect_task 的「未发现有效数据 → ERROR」与异常分支
 
@@ -518,20 +518,20 @@ def test_execute_collect_tool_debug_task_failure_saves_error(monkeypatch, caplog
 # --------------------------------------------------------------------------
 # reconcile / full_sync delegation
 # --------------------------------------------------------------------------
-def test_reconcile_instance_task_delegates(monkeypatch):
-    monkeypatch.setattr(
-        "apps.cmdb.services.auto_relation_reconcile.AutoRelationRuleReconcileService.reconcile_for_instance",
-        classmethod(lambda cls, iid: {"instance_id": iid, "ok": True}),
-    )
-    assert ct.reconcile_instance_auto_association_task(9) == {"instance_id": 9, "ok": True}
+@pytest.mark.django_db
+def test_reconcile_instance_task_records_pending_row():
+    from apps.cmdb.models.auto_relation_pending import AutoRelationPending
+
+    assert ct.reconcile_instance_auto_association_task(9) == {"recorded": True, "instance_id": 9}
+    assert list(AutoRelationPending.objects.values_list("instance_id", flat=True)) == [9]
 
 
-def test_full_sync_rule_task_delegates(monkeypatch):
-    monkeypatch.setattr(
-        "apps.cmdb.services.auto_relation_reconcile.AutoRelationRuleReconcileService.full_sync_rule",
-        classmethod(lambda cls, mid: {"model_asst_id": mid, "ok": True}),
-    )
-    assert ct.full_sync_auto_association_rule_task("m1") == {"model_asst_id": "m1", "ok": True}
+@pytest.mark.django_db
+def test_full_sync_rule_task_records_pending_row():
+    from apps.cmdb.models.auto_relation_pending import AutoRelationPending
+
+    assert ct.full_sync_auto_association_rule_task("m1") == {"recorded": True, "model_asst_id": "m1"}
+    assert list(AutoRelationPending.objects.values_list("model_asst_id", flat=True)) == ["m1"]
 
 
 # --------------------------------------------------------------------------

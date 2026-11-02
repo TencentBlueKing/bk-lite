@@ -242,6 +242,13 @@
       "template": "rate(sqlserver_waitstats_signal_wait_time_ms_rate{__$labels__}[__$window__])"
     },
     {
+      "id": "dashboard:v1:07527e4f",
+      "object_names": [
+        "Redis"
+      ],
+      "template": "last_over_time(redis_instantaneous_ops_per_sec{__$labels__}[5m])"
+    },
+    {
       "id": "dashboard:v1:077cf7a3",
       "object_names": [
         "Ping"
@@ -534,6 +541,13 @@
         "MSSQL"
       ],
       "template": "sum by (instance_id) (sqlserver_volume_space_available_space_bytes{__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:11f535f8",
+      "object_names": [
+        "Redis"
+      ],
+      "template": "redis_master_repl_offset{__$labels__}"
     },
     {
       "id": "dashboard:v1:124d5e0e",
@@ -1955,6 +1969,13 @@
       "template": "rate(mysql_innodb_buffer_pool_reads{__$labels__}[__$window__])"
     },
     {
+      "id": "dashboard:v1:41e00a8e",
+      "object_names": [
+        "Redis"
+      ],
+      "template": "redis_repl_backlog_active{__$labels__}"
+    },
+    {
       "id": "dashboard:v1:41e262e2",
       "object_names": [
         "Loadbalance",
@@ -2330,6 +2351,13 @@
         "MSSQL"
       ],
       "template": "rate(sqlserver_requests_wait_time_ms{__$labels__}[__$window__])"
+    },
+    {
+      "id": "dashboard:v1:4df93ce2",
+      "object_names": [
+        "Redis"
+      ],
+      "template": "redis_mem_replication_backlog{__$labels__}"
     },
     {
       "id": "dashboard:v1:4e8928b2",
@@ -3146,6 +3174,13 @@
       "template": "count({instance_type='redis', collect_type='database', __$labels__}) by (instance_id)"
     },
     {
+      "id": "dashboard:v1:6cf23547",
+      "object_names": [
+        "Redis"
+      ],
+      "template": "redis_repl_backlog_histlen{__$labels__}"
+    },
+    {
       "id": "dashboard:v1:6cfc04c8",
       "object_names": [
         "Switch"
@@ -3957,6 +3992,13 @@
       "template": "sum by (instance_id) (rate(oracledb_activity_execute_count_gauge{__$labels__}[__$window__]))"
     },
     {
+      "id": "dashboard:v1:8b5907bd",
+      "object_names": [
+        "Redis"
+      ],
+      "template": "redis_slave_repl_offset{__$labels__}"
+    },
+    {
       "id": "dashboard:v1:8b870a9a",
       "object_names": [
         "Mysql"
@@ -4181,6 +4223,13 @@
       "template": "apache_ReqPerSec{__$labels__}"
     },
     {
+      "id": "dashboard:v1:94d3febf",
+      "object_names": [
+        "Redis"
+      ],
+      "template": "redis_repl_backlog_size{__$labels__}"
+    },
+    {
       "id": "dashboard:v1:95163e11",
       "object_names": [
         "Tomcat"
@@ -4298,6 +4347,13 @@
         "Etcd"
       ],
       "template": "max by (instance_id) (etcd_server_is_leader_gauge{__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:99187266",
+      "object_names": [
+        "Redis"
+      ],
+      "template": "redis_master_link_status{__$labels__}"
     },
     {
       "id": "dashboard:v1:9921c6cc",
@@ -4578,6 +4634,13 @@
         "Redis"
       ],
       "template": "rate(redis_total_commands_processed{__$labels__}[__$window__])"
+    },
+    {
+      "id": "dashboard:v1:a3bbb1fe",
+      "object_names": [
+        "Redis"
+      ],
+      "template": "redis_cluster_enabled{__$labels__}"
     },
     {
       "id": "dashboard:v1:a3e5982c",
@@ -5495,6 +5558,13 @@
         "VLLM"
       ],
       "template": "histogram_quantile(0.95, sum by (instance_id, le) (label_replace(rate({__name__=~\"vllm:e2e_request_latency_seconds_[0-9.]+\", __$labels__}[5m]) keep_metric_names, \"le\", \"$1\", \"__name__\", \"vllm:e2e_request_latency_seconds_(.+)\") or label_replace(rate({__name__=\"vllm:e2e_request_latency_seconds_+Inf\", __$labels__}[5m]) keep_metric_names, \"le\", \"+Inf\", \"__name__\", \".*\")))"
+    },
+    {
+      "id": "dashboard:v1:c73b107c",
+      "object_names": [
+        "Redis"
+      ],
+      "template": "redis_connected_slaves{__$labels__}"
     },
     {
       "id": "dashboard:v1:c7796ccc",
@@ -6595,6 +6665,13 @@
         "Apache"
       ],
       "template": "rate(apache_scboard_open{__$labels__}[__$window__])"
+    },
+    {
+      "id": "dashboard:v1:f1ea16fe",
+      "object_names": [
+        "Redis"
+      ],
+      "template": "redis_cluster_connections{__$labels__}"
     },
     {
       "id": "dashboard:v1:f209b046",

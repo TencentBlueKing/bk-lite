@@ -86,6 +86,26 @@ class TestAPISecretAuthBackend:
         system_user.save(update_fields=["disabled"])
         assert APISecretAuthBackend().authenticate(api_token="inactive-secret") is not None
 
+    def test_token_for_expired_account_is_rejected(self):
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        BaseUser.objects.create(username="expired-api-user", domain="domain.com")
+        SysUser.objects.create(
+            username="expired-api-user",
+            domain="domain.com",
+            email="expired-api@example.com",
+            account_expires_at=timezone.now() - timedelta(minutes=1),
+        )
+        UserAPISecret.objects.create(
+            username="expired-api-user",
+            domain="domain.com",
+            api_secret="expired-secret",
+            team=1,
+        )
+        assert APISecretAuthBackend().authenticate(api_token="expired-secret") is None
+
     def test_valid_token_populates_permissions(self):
         BaseUser.objects.create(username="apiuser", domain="domain.com")
         UserAPISecret.objects.create(username="apiuser", domain="domain.com", api_secret="sec123", team=5)

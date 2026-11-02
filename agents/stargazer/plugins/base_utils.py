@@ -7,6 +7,7 @@ import ipaddress
 import time
 
 import pytz
+from core.collection.host_proc_influx import cleaned_host_proc_labels
 
 
 def convert_to_prometheus_format(data):
@@ -39,6 +40,10 @@ def convert_to_prometheus_format(data):
     # 遍历每个模型，例如：vmware_vc、vmware_ds、vmware_vm、vmware_esxi
     for model_id, items in data.items():
         for item in items:
+            if model_id == "host_proc_usage":
+                item = cleaned_host_proc_labels(item)
+                if item is None:
+                    continue
             # 构造标签字典：过滤掉列表和字典类型，并且值不为None
             labels = {k: escape_value(v) for k, v in item.items() if v is not None and v != "" and not isinstance(v, (list, dict))}
             labels["model_id"] = model_id

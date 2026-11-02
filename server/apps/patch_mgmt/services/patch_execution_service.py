@@ -57,6 +57,12 @@ from apps.patch_mgmt.services.disk_budget import (
     windows_free_space_command,
 )
 from apps.patch_mgmt.services.linux_platform import linux_host_facts_command, parse_linux_host_facts, validate_linux_host_facts
+from apps.patch_mgmt.services.offline_catalog import (
+    OFFLINE_CATALOG_SERVICE_NAME,
+    WINDOWS_OFFLINE_CATALOG_NAME,
+    OfflineCatalogError,
+    offline_catalog_is_available,
+)
 from apps.patch_mgmt.services.target_execution_route import TargetTransport, resolve_target_execution_route
 from apps.patch_mgmt.services.target_node_context import is_container_target
 from apps.patch_mgmt.services.windows_dotnet import parse_windows_dotnet_release, windows_dotnet_decision, windows_dotnet_release_command
@@ -68,6 +74,7 @@ from config.components.nats import NATS_NAMESPACE
 
 DEFAULT_TIMEOUT = 3600
 WINDOWS_PATCH_STAGE_DIR = "C:/Windows/Temp/bk-lite-patches"
+WINDOWS_OFFLINE_CATALOG_PATH = f"{WINDOWS_PATCH_STAGE_DIR}/{WINDOWS_OFFLINE_CATALOG_NAME}"
 ANSIBLE_TASK_POLL_INTERVAL_SECONDS = 1
 ANSIBLE_TASK_QUERY_TIMEOUT_SECONDS = 30
 ANSIBLE_ADHOC_MAX_TIMEOUT_SECONDS = 3600
@@ -282,30 +289,53 @@ def _windows_host_credentials(target: PatchTarget) -> list[dict[str, Any]]:
     ]
 
 
-def _short_lived_package_url(detail) -> str:
-    storage = detail.package_file.storage
+def _short_lived_file_url(file_field) -> str:
+    storage = file_field.storage
     client = storage.client if storage.same_endpoints else storage.client_external
     return client.presigned_get_object(
         bucket_name=storage.bucket,
-        object_name=detail.package_file.name,
+        object_name=file_field.name,
         expires=timedelta(minutes=10),
     )
 
 
+def _short_lived_package_url(detail) -> str:
+    return _short_lived_file_url(detail.package_file)
+
+
 def _stage_windows_package(target: PatchTarget, detail, *, timeout: int) -> str:
     """把私有桶中的手工补丁安全分发到目标机，返回目标机临时路径。"""
-    from apps.patch_mgmt.models.patch import PATCH_PACKAGE_BUCKET
-
     filename = re.sub(r"[^A-Za-z0-9._-]", "_", detail.package_original_name or "")
     if not filename:
         filename = f"{detail.kb_number}{detail.package_extension}"
-    staged_path = f"{WINDOWS_PATCH_STAGE_DIR}/{detail.patch_id}-{filename}"
+    return _stage_windows_file(
+        target,
+        file_field=detail.package_file,
+        staged_filename=f"{detail.patch_id}-{filename}",
+        relay_key_prefix=f"patch-packages/{detail.patch_id}",
+        timeout=timeout,
+    )
+
+
+def _stage_windows_file(
+    target: PatchTarget,
+    *,
+    file_field,
+    staged_filename: str,
+    relay_key_prefix: str,
+    timeout: int,
+) -> str:
+    """把对象存储中的文件分发到 Windows 目标机的补丁暂存目录。"""
+    from apps.patch_mgmt.models.patch import PATCH_PACKAGE_BUCKET
+
+    staged_filename = re.sub(r"[^A-Za-z0-9._-]", "_", staged_filename) or "package.bin"
+    staged_path = f"{WINDOWS_PATCH_STAGE_DIR}/{staged_filename}"
 
     if target.source_type == PatchTargetSource.NODE_MGMT and target.node_id:
         result = Executor(target.node_id).download_to_local(
             bucket_name=PATCH_PACKAGE_BUCKET,
-            file_key=detail.package_file.name,
-            file_name=f"{detail.patch_id}-{filename}",
+            file_key=file_field.name,
+            file_name=staged_filename,
             target_path=WINDOWS_PATCH_STAGE_DIR,
             timeout=timeout,
             overwrite=True,
@@ -318,7 +348,7 @@ def _stage_windows_package(target: PatchTarget, detail, *, timeout: int) -> str:
     if mode == "direct_winrm":
         if not settings.DEBUG:
             raise RuntimeError("direct_winrm 仅允许在 DEBUG=True 的本地环境使用")
-        url = _short_lived_package_url(detail).replace("'", "''")
+        url = _short_lived_file_url(file_field).replace("'", "''")
         command = (
             f"$dir='{WINDOWS_PATCH_STAGE_DIR}';$path='{staged_path}';"
             "New-Item -ItemType Directory -Path $dir -Force | Out-Null;"
@@ -340,17 +370,17 @@ def _stage_windows_package(target: PatchTarget, detail, *, timeout: int) -> str:
     # 补丁包长期保存在 MinIO，而 Ansible Executor 的文件分发协议只读取
     # NATS JetStream Object Store。使用任务级唯一 key 做有界中转，并在
     # Executor 已下载完成后立即清理，避免把 MinIO key 误当成 NATS key。
-    nats_file_key = f"patch-packages/{detail.patch_id}/{task_id}/{filename}"
+    nats_file_key = f"{relay_key_prefix}/{task_id}/{staged_filename}"
     relay_attempted = False
     try:
         relay_attempted = True
         try:
-            async_to_sync(upload_file_to_s3)(detail.package_file, nats_file_key)
+            async_to_sync(upload_file_to_s3)(file_field, nats_file_key)
         finally:
-            detail.package_file.close()
+            file_field.close()
         accepted = executor.playbook(
             host_credentials=_windows_host_credentials(target),
-            files=[{"file_key": nats_file_key, "name": f"{detail.patch_id}-{filename}"}],
+            files=[{"file_key": nats_file_key, "name": staged_filename}],
             file_distribution={
                 "bucket_name": NATS_NAMESPACE,
                 "target_path": WINDOWS_PATCH_STAGE_DIR,
@@ -663,8 +693,86 @@ def _install_commands(
     return []
 
 
-def _windows_assess_command() -> str:
+def _windows_wua_searcher_setup(offline_cab_path: str | None = None, catalog_sha256: str = "") -> str:
+    """在线搜索用目标机当前更新服务；离线搜索只注册并使用已下发的目录。"""
+    if not offline_cab_path:
+        return "$s=New-Object -ComObject Microsoft.Update.Session;" "$sr=$s.CreateUpdateSearcher();"
+    cab = offline_cab_path.replace("/", "\\").replace("'", "''")
+    digest = catalog_sha256.lower()
+    service_name = OFFLINE_CATALOG_SERVICE_NAME.replace("'", "''")
     return (
+        "$s=New-Object -ComObject Microsoft.Update.Session;"
+        "$sm=New-Object -ComObject Microsoft.Update.ServiceManager;"
+        f"$cab='{cab}';"
+        f"$expected='{digest}';"
+        f"$serviceName='{service_name}';"
+        "$svc=$null;"
+        "foreach($item in @($sm.Services)){if($item.Name -eq $serviceName){$svc=$item;break}};"
+        '$marker="$cab.sha256";'
+        "$current='';"
+        "if(Test-Path -LiteralPath $marker){$current=(Get-Content -LiteralPath $marker -Raw).Trim().ToLower()};"
+        "$reuse=($null -ne $svc -and $current -eq $expected);"
+        "if(-not $reuse -and $null -ne $svc){$sm.RemoveService($svc.ServiceID)|Out-Null;$svc=$null};"
+        "if($null -eq $svc){"
+        "$svc=$sm.AddScanPackageService($serviceName,$cab,1);"
+        "Set-Content -LiteralPath $marker -Value $expected -Encoding ascii -Force"
+        "};"
+        "$sr=$s.CreateUpdateSearcher();"
+        "$sr.ServerSelection=3;"
+        "$sr.ServiceID=$svc.ServiceID;"
+    )
+
+
+def _windows_system_powershell(script_body: str, *, wait_seconds: int, task_prefix: str) -> str:
+    """在 SYSTEM 计划任务中运行脚本。WinRM 管理员令牌不能注册离线扫描目录。"""
+    if "'@" in script_body:
+        raise RuntimeError("Windows 脚本不能包含 here-string 结束符")
+    job_id = uuid.uuid4().hex[:12]
+    script_path = f"C:\\Windows\\Temp\\{task_prefix}_{job_id}.ps1"
+    result_path = f"C:\\Windows\\Temp\\{task_prefix}_{job_id}.txt"
+    task_name = f"{task_prefix}_{job_id}"
+    quoted_result = result_path.replace("'", "''")
+    script = (
+        "$ErrorActionPreference='Stop';"
+        "try{"
+        "$result=&{"
+        f"{script_body}"
+        "};"
+        f"$result | Set-Content -LiteralPath '{quoted_result}' -Encoding UTF8"
+        "}catch{"
+        f"$_.Exception.Message | Set-Content -LiteralPath '{quoted_result}' -Encoding UTF8"
+        "}"
+    )
+    return (
+        "$ProgressPreference='SilentlyContinue';"
+        f"$sp='{script_path}';"
+        f"$rp='{result_path}';"
+        f"$tn='{task_name}';"
+        "if(Test-Path -LiteralPath $rp){Remove-Item -LiteralPath $rp -Force};"
+        f"@'\n{script}\n'@ | Out-File -LiteralPath $sp -Encoding utf8 -Force;"
+        "$action=New-ScheduledTaskAction -Execute 'powershell.exe' "
+        "-Argument ('-NoProfile -ExecutionPolicy Bypass -File \"{0}\"' -f $sp);"
+        "$trigger=New-ScheduledTaskTrigger -Once -At (Get-Date).AddHours(1);"
+        "$principal=New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest;"
+        "Register-ScheduledTask -TaskName $tn -Action $action -Trigger $trigger -Principal $principal -Force | Out-Null;"
+        "Start-ScheduledTask -TaskName $tn;"
+        f"$deadline=(Get-Date).AddSeconds({int(wait_seconds)});"
+        "while(-not (Test-Path -LiteralPath $rp) -and (Get-Date) -lt $deadline){Start-Sleep -Seconds 2};"
+        "Unregister-ScheduledTask -TaskName $tn -Confirm:$false -ErrorAction SilentlyContinue;"
+        "if(-not (Test-Path -LiteralPath $rp)){"
+        "Write-Output '离线目录扫描未完成';"
+        "Remove-Item -LiteralPath $sp -Force -ErrorAction SilentlyContinue;"
+        "exit 1"
+        "};"
+        "$text=Get-Content -LiteralPath $rp -Raw;"
+        "Remove-Item -LiteralPath $sp,$rp -Force -ErrorAction SilentlyContinue;"
+        "Write-Output $text;"
+        "if($text -notmatch '===WUA==='){exit 1}"
+    )
+
+
+def _windows_assess_command(offline_cab_path: str | None = None, catalog_sha256: str = "") -> str:
+    body = (
         '$ProgressPreference="SilentlyContinue";'
         "$os=Get-CimInstance Win32_OperatingSystem;"
         '$caption=([string]$os.Caption).Replace("|"," ");'
@@ -673,8 +781,7 @@ def _windows_assess_command() -> str:
         "$rel=(Get-ItemProperty -Path 'HKLM:\\SOFTWARE\\Microsoft\\NET Framework Setup\\NDP\\v4\\Full' "
         "-Name Release -ErrorAction SilentlyContinue).Release;"
         "if($null -eq $rel){'BKPATCH_DOTNET|'}else{'BKPATCH_DOTNET|{0}' -f [int64]$rel};"
-        "$s=New-Object -ComObject Microsoft.Update.Session;"
-        "$sr=$s.CreateUpdateSearcher();"
+        f"{_windows_wua_searcher_setup(offline_cab_path, catalog_sha256)}"
         '$r=$sr.Search("IsInstalled=0");'
         '"===WUA===";'
         "foreach($u in $r.Updates){"
@@ -692,6 +799,9 @@ def _windows_assess_command() -> str:
         '"===HOTFIX===";'
         "Get-HotFix | ForEach-Object { $_.HotFixID }"
     )
+    if not offline_cab_path:
+        return body
+    return _windows_system_powershell(body, wait_seconds=1700, task_prefix="BKLiteOfflineScan")
 
 
 def _linux_assess_package_commands(requirements: list | None = None) -> list[str]:
@@ -768,15 +878,53 @@ def _build_linux_assess_command(package_commands: list[str]) -> str:
     return f"{host_facts}; {'; '.join(package_commands)}"
 
 
-def _assess_command(os_type: str, requirements: list | None = None) -> str:
+def _assess_command(os_type: str, requirements: list | None = None, offline_catalog: tuple[str, str] | None = None) -> str:
     if os_type == OSType.WINDOWS:
+        if offline_catalog:
+            return _windows_assess_command(offline_catalog[0], offline_catalog[1])
         return _windows_assess_command()
     return _build_linux_assess_command(_linux_assess_package_commands(requirements))
 
 
-def _assess_commands(os_type: str, requirements: list | None = None) -> list[str]:
+def _remote_file_sha256(target: PatchTarget, path: str, *, timeout: int) -> str:
+    command = (
+        "$ProgressPreference='SilentlyContinue';"
+        f"$p='{path}';"
+        "if(Test-Path -LiteralPath $p){(Get-FileHash -Algorithm SHA256 -LiteralPath $p).Hash.ToLower()}else{'missing'}"
+    )
+    result = _execute_command(target, command, timeout=min(timeout, 600), execution_id=f"offline-catalog-hash:{target.id}")
+    if not _is_success(result):
+        raise RuntimeError(f"离线目录校验失败: {_result_reason(result)}")
+    lines = [line.strip().lower() for line in str(result.get("stdout") or "").splitlines() if line.strip()]
+    return lines[-1] if lines else "missing"
+
+
+def _windows_offline_catalog_for_assessment(target: PatchTarget, timeout: int) -> tuple[str, str] | None:
+    """开关关闭时返回 None。开启但没有目录时失败，不回退到在线搜索。"""
+    from apps.patch_mgmt.models import ScanSetting
+
+    setting = ScanSetting.get_singleton()
+    if not setting.offline_catalog_enabled:
+        return None
+    if not offline_catalog_is_available(setting):
+        raise OfflineCatalogError("缺少离线目录")
+    remote_sha = _remote_file_sha256(target, WINDOWS_OFFLINE_CATALOG_PATH, timeout=timeout)
+    if remote_sha != setting.offline_catalog_sha256.lower():
+        _stage_windows_file(
+            target,
+            file_field=setting.offline_catalog_file,
+            staged_filename=WINDOWS_OFFLINE_CATALOG_NAME,
+            relay_key_prefix=f"offline-catalog/{setting.pk}",
+            timeout=timeout,
+        )
+    return WINDOWS_OFFLINE_CATALOG_PATH, setting.offline_catalog_sha256.lower()
+
+
+def _assess_commands(os_type: str, requirements: list | None = None, offline_catalog: tuple[str, str] | None = None) -> list[str]:
     """生成有字节上限的评估命令，避免 shell -c 参数超过操作系统限制。"""
     if os_type == OSType.WINDOWS:
+        if offline_catalog:
+            return [_windows_assess_command(offline_catalog[0], offline_catalog[1])]
         return [_windows_assess_command()]
 
     package_commands = _linux_assess_package_commands(requirements)
@@ -1260,7 +1408,8 @@ def _execute_assessment_commands(
 ) -> dict[str, Any]:
     """分批执行评估命令；任一批失败即停止，全部成功后合并输出。"""
     try:
-        commands = _assess_commands(target.os_type, requirements)
+        offline_catalog = _windows_offline_catalog_for_assessment(target, timeout) if target.os_type == OSType.WINDOWS else None
+        commands = _assess_commands(target.os_type, requirements, offline_catalog)
     except Exception as exc:  # noqa: BLE001
         if host is not None:
             _append_host_log(
@@ -2480,12 +2629,14 @@ def _execute_assess(target: PatchTarget, host: GovernanceTaskHost, execution_id:
     except Exception as exc:  # noqa: BLE001
         if isinstance(exc, SoftTimeLimitExceeded):
             raise
-        logger.exception("任务 %s 目标 %s 评估执行异常", host.task_id, target.id)
+        if not isinstance(exc, OfflineCatalogError):
+            logger.exception("任务 %s 目标 %s 评估执行异常", host.task_id, target.id)
+        reason = exc.message if isinstance(exc, OfflineCatalogError) else f"执行器调用异常: {exc}"
         written = _record_host_result(
             host,
             stage="failed",
             stage_color="error",
-            reason=f"执行器调用异常: {exc}",
+            reason=reason,
             failed_stage="assess",
             can_retry=True,
         )

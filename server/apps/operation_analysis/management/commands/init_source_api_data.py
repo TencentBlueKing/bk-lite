@@ -9,6 +9,7 @@ from apps.core.logger import operation_analysis_logger as logger
 from apps.operation_analysis.common.builtin_datasource_identity import find_claimable_datasource
 from apps.operation_analysis.common.load_json_data import load_support_json
 from apps.operation_analysis.models.datasource_models import DataSourceAPIModel, DataSourceTag, NameSpace
+from apps.operation_analysis.services.datasource_required_app import resolve_or_seed_required_app
 
 RETIRED_BUILTIN_DATASOURCES = (
     {
@@ -98,9 +99,15 @@ class Command(BaseCommand):
                 tags = api_data.pop("tag", [])
                 # 显式 key 优先，避免改展示名时拖动稳定身份。
                 stable_key = api_data.pop("key", None) or f"{api_data['name']}::{api_data['rest_api']}"
+                required_app = resolve_or_seed_required_app(
+                    rest_api=api_data["rest_api"],
+                    source_type=api_data.get("source_type") or DataSourceAPIModel.SOURCE_TYPE_NATS,
+                    is_build_in=True,
+                )
 
                 # 准备创建数据(排除多对多字段)
                 defaults = {k: v for k, v in api_data.items() if k not in ["name", "rest_api"]}
+                defaults["required_app"] = required_app
                 defaults["created_by"] = "system"
                 defaults["updated_by"] = "system"
                 defaults["groups"] = []
@@ -144,6 +151,7 @@ class Command(BaseCommand):
                     obj.updated_by = "system"
                     obj.is_build_in = True
                     obj.build_in_key = stable_key
+                    obj.required_app = required_app
                     obj.save()
 
                     # 更新标签关联
@@ -153,6 +161,9 @@ class Command(BaseCommand):
                     updated_count += 1
                     logger.info("[SourceApiInit] 更新数据源：%s", api_data["name"])
                 else:
+                    if obj.required_app != required_app:
+                        obj.required_app = required_app
+                        obj.save(update_fields=["required_app", "updated_at"])
                     logger.info("[SourceApiInit] 跳过已存在的数据源：%s", api_data["name"])
 
             success_msg = f"源API数据初始化完成 - 创建: {created_count}, 更新: {updated_count}"

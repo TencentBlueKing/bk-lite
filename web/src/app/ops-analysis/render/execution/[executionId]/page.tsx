@@ -55,8 +55,10 @@ export default function DashboardExecutionRenderPage() {
 
   const resourceType = renderInput.render_snapshot.resource_type || 'dashboard';
 
+  const executionTeamId = renderInput.input_snapshot.execution_team_id;
+
   return (
-    <DashboardRenderOpsAnalysisProvider>
+    <DashboardRenderOpsAnalysisProvider selectedGroupId={executionTeamId}>
       {resourceType === 'screen' ? (
         <ScreenExecutionRenderPageContent
           executionId={executionId}

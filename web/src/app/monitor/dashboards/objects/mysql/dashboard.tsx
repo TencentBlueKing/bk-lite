@@ -52,7 +52,7 @@ import {
 } from '../../shared/utils/pro-dashboard';
 import MysqlProLayout from './layered/mysql-pro-layout';
 import { MysqlInstanceBadges } from './layered/instance-identity';
-import { useMysqlLinkedHost } from './layered/use-linked-host';
+import { useLinkedHost } from '../../shared/use-linked-host';
 import { MYSQL_PERF_AUX_METRICS, MYSQL_REPLICATION_EXTRA_METRICS, readMysqlHeaderIdentity, readMysqlProHeader } from './layered/ia';
 import {
   MYSQL_FOCUS_METRICS,
@@ -649,7 +649,7 @@ export default function MysqlDashboardPage() {
   const proPending = instanceSwitching ? MYSQL_CATEGORY_PENDING_ALL : pendingMetricNames;
   const mysqlIdentity = readMysqlHeaderIdentity(metricMap, resolvedInstanceName);
   const proMode = displayMode === 'category';
-  const linkedHost = useMysqlLinkedHost(
+  const linkedHost = useLinkedHost(
     currentInstanceOption?.nodeId || '',
     currentInstanceOption?.ip || '',
     proMode && !instanceLoading

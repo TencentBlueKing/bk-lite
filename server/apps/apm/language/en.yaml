@@ -33,12 +33,16 @@ error:
   error_rate_delta_range: Delta thresholds for error rate, slow request rate, and Apdex must be between -1 and 1.
   compare_absolute_kind: Current-value comparison cannot also select a delta or percent change.
   compare_previous_kind: The previous equal window must use either a delta or a percent change.
-  compare_offset_percent_only: A same-window comparison only allows a percent change.
+  compare_offset_kind: An N-hours-ago or N-days-ago same window only allows a delta or a percent change.
+  window_shorter_than_interval: The aggregation window cannot be shorter than the evaluation interval, or data between two evaluations is never checked.
   compare_offset_amount_required: Enter how many hours or days ago to compare.
   compare_offset_amount_range: Hours must be from 1 to 840, and days must be from 1 to 35.
   compare_offset_amount_unused: Only a same-window comparison can set hours or days.
   compare_baseline_days_range: The same-window mean over recent days must use 2 to 7 days.
-  compare_baseline_days_kind: The same-window mean over recent days must use either a delta or a percent change.
+  compare_baseline_days_kind: The same-window mean over recent days must use a delta, a percent change, or a standard-deviation multiple.
+  sigma_baseline: Standard-deviation multiples apply only to the same-window mean over at least 3 recent days.
+  sigma_k: The standard-deviation threshold k must be between 0.5 and 5.
+  replay_hours: Replay supports only 0 or 24 hours.
   compare_offset_shorter_than_window: The offset must be at least as long as the aggregation window.
   compare_no_traffic_absolute: No-traffic policies can only compare the current value.
   compare_min_request_metric: Minimum request count applies only to error rate, slow request rate, Apdex, and latency.
@@ -54,6 +58,25 @@ error:
   recovery_direction: The recovery threshold must point the opposite way from the trigger line.
   recovery_value: The recovery threshold must be a finite number.
   no_traffic_plain: No-traffic policies cannot set a trigger window or a recovery threshold.
+  conditions_shape: The condition format is invalid.
+  conditions_count: A policy needs 1 to 3 regular conditions.
+  conditions_guard_count: A policy allows at most 2 guard conditions.
+  conditions_ref_duplicate: Condition refs must be unique.
+  conditions_guard_shape: A guard condition cannot set a level, a comparison baseline, or no-traffic.
+  conditions_windows: A policy allows at most two different comparison windows.
+  conditions_no_traffic: No-traffic can only stand alone as a current-value condition.
+  conditions_recovery_anchor: The recovery threshold applies only to the first condition.
+  scope_service_ids: A multi-service scope needs 2 to 20 existing services.
+  scope_application_required: An application scope requires an application.
+  scope_application_empty: The application has no services to monitor.
+  dependency_scope: Downstream targets cannot be split by endpoint or instance.
+  dependency_metric: Apdex and no-traffic do not apply to downstream dependencies.
+  dependency_item: Each dependency needs a channel, system, and statement.
+  burn_plain: An SLO burn-rate policy follows that SLO only and cannot add scope, dependencies, extra conditions, a comparison baseline, or a recovery threshold.
+  burn_slo: Choose an SLO.
+  burn_window: The long window is 60 to 1440 minutes, and the short window is 5 minutes up to half of the long window.
+  burn_comparator: SLO burn rate only allows greater-than or greater-than-or-equal.
+  burn_metric: Only an SLO burn-rate policy can set an SLO and burn windows.
   threshold_comparator: Multi-level thresholds must use the same comparator.
   threshold_monotonic: Multi-level thresholds must stay monotonic across critical, error, and warning.
   deployment_window_limit: Deployment event query window cannot exceed 90 days

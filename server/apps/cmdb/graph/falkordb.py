@@ -21,7 +21,14 @@ from apps.cmdb.constants.field_constraints import (
 )
 from apps.cmdb.display_field import ExcludeFieldsCache
 from apps.cmdb.graph.falkordb_format import FormatDBResult
-from apps.cmdb.graph.format_type import FORMAT_TYPE, FORMAT_TYPE_PARAMS, ParameterCollector, attr_values_equal, coerce_cloud_id_properties
+from apps.cmdb.graph.format_type import (
+    FORMAT_TYPE,
+    FORMAT_TYPE_PARAMS,
+    ParameterCollector,
+    apply_node_alias,
+    attr_values_equal,
+    coerce_cloud_id_properties,
+)
 from apps.cmdb.graph.validators import CQLValidator
 from apps.cmdb.services.instance_identity import (
     EDGE_DST_UUID_FIELD,
@@ -103,9 +110,13 @@ class FalkorDBConnectionPool:
                 logger.warning(f"关闭 FalkorDB 连接失败: {e}")
 
 
+_COLLECT_SOURCES_UNSET = object()
+
+
 class FalkorDBClient:
     # 参数化查询开关（可通过环境变量控制）
     ENABLE_PARAMETERIZATION = True
+    _SOURCES_UNSET = _COLLECT_SOURCES_UNSET
 
     def __init__(self):
         self._pool = FalkorDBConnectionPool()
@@ -659,6 +670,7 @@ class FalkorDBClient:
         param_type: str = "AND",
         param_collector: ParameterCollector = None,
         case_sensitive: bool = True,
+        alias: str = "n",
     ):
         """
         查询参数格式化（参数化版本）
@@ -704,6 +716,7 @@ class FalkorDBClient:
 
         params_str = f" {param_type} ".join(params_conditions)
         final_str = f"({params_str})" if params_str else ""
+        final_str = apply_node_alias(final_str, alias)
 
         return final_str, collector.get_params() if self.ENABLE_PARAMETERIZATION else {}
 
@@ -848,6 +861,40 @@ class FalkorDBClient:
             sql_str += f" SKIP {page['skip']} LIMIT {page['limit']}"
 
         objs = self._execute_query(sql_str, params=query_params if self.ENABLE_PARAMETERIZATION else None)
+        if fields is not None:
+            return [coerce_cloud_id_properties(row) for row in FormatDBResult(objs).to_list_of_lists()], count
+        return self.entity_to_list(objs), count
+
+    def query_compiled_entities(
+        self,
+        match,
+        params,
+        page=None,
+        order=None,
+        order_type="ASC",
+        fields=None,
+        include_count=True,
+    ):
+        from apps.cmdb.graph.advanced_filter import ADVANCED_FILTER_TIMEOUT_MS, AdvancedFilterTimeout, data_and_count_statements
+        from apps.cmdb.graph.export_query import entity_projection
+
+        validated_order = CQLValidator.validate_field(order) if order else None
+        validated_order_type = CQLValidator.validate_order_type(order_type)
+        projection = "n" if fields is None else entity_projection(fields)
+        data_sql, count_sql = data_and_count_statements(match, projection, validated_order, validated_order_type, page)
+        try:
+            count = None
+            if page and include_count:
+                counted = self._execute_query(count_sql, params=params, timeout=ADVANCED_FILTER_TIMEOUT_MS)
+                rows = FormatDBResult(counted).to_list_of_lists()
+                count = rows[0] if rows else 0
+            objs = self._execute_query(data_sql, params=params, timeout=ADVANCED_FILTER_TIMEOUT_MS)
+        except AdvancedFilterTimeout:
+            raise
+        except Exception as exc:
+            if "timeout" in str(exc).lower():
+                raise AdvancedFilterTimeout("关联筛选查询超时，请缩小条件范围") from exc
+            raise
         if fields is not None:
             return [coerce_cloud_id_properties(row) for row in FormatDBResult(objs).to_list_of_lists()], count
         return self.entity_to_list(objs), count
@@ -1168,7 +1215,28 @@ class FalkorDBClient:
         nodes = self.batch_update_node_properties(label, entity_ids, properties)
         return {"data": self.entity_to_list(nodes), "success": True, "message": ""}
 
-    def batch_update_node_properties(self, label: str, node_ids: Union[int, List[int]], properties: dict):
+    def set_entity_properties_if_sources(self, label, entity_ids, properties, check_attr_map, exist_items, expected_sources, check=True, attrs=None):
+        """仅当 _collect_sources 仍是读取时的值才写入。不匹配时返回空列表。"""
+        properties = dict(properties)
+        properties.pop("_expected_collect_sources", None)
+        if check:
+            self.check_unique_attr(properties, check_attr_map.get("is_only", {}), exist_items, is_update=True)
+            self.check_unique_rules(
+                check_attr_map.get("validation_items") or [properties],
+                check_attr_map.get("unique_rules", []),
+                exist_items,
+                check_attr_map.get("attrs_by_id", {}),
+                exclude_instance_ids=set(entity_ids),
+            )
+            self.check_required_attr(properties, check_attr_map.get("is_required", {}), is_update=True)
+            properties = self.get_editable_attr(properties, check_attr_map.get("editable", {}))
+        properties = self._serialize_table_fields(label, properties, attrs)
+        nodes = self.batch_update_node_properties(label, entity_ids, properties, expected_collect_sources=expected_sources)
+        return self.entity_to_list(nodes)
+
+    def batch_update_node_properties(
+        self, label: str, node_ids: Union[int, List[int]], properties: dict, expected_collect_sources=_COLLECT_SOURCES_UNSET
+    ):
         """批量更新节点属性（参数化版本）"""
         validated_label = CQLValidator.validate_label(label) if label else ""
         validated_ids = CQLValidator.validate_ids(node_ids) if isinstance(node_ids, list) else [CQLValidator.validate_id(node_ids)]
@@ -1189,7 +1257,14 @@ class FalkorDBClient:
 
             label_str = f":{validated_label}" if validated_label else ""
             set_clause = ", ".join(set_parts)
-            query = f"MATCH (n{label_str}) WHERE ID(n) IN $ids SET {set_clause} RETURN n"
+            source_clause = ""
+            if expected_collect_sources is not _COLLECT_SOURCES_UNSET:
+                if expected_collect_sources in (None, ""):
+                    source_clause = " AND (n._collect_sources IS NULL OR n._collect_sources = '')"
+                else:
+                    source_clause = " AND n._collect_sources = $expected_collect_sources"
+                    params["expected_collect_sources"] = expected_collect_sources
+            query = f"MATCH (n{label_str}) WHERE ID(n) IN $ids{source_clause} SET {set_clause} RETURN n"
 
             nodes = self._execute_query(query, params=params)
         else:
@@ -1290,10 +1365,13 @@ class FalkorDBClient:
         validated_label = CQLValidator.validate_label(label)
         params = {"id": CQLValidator.validate_id(instance["_id"])}
         conditions = ["ID(n) = $id"]
-        for field in ("model_id", "inst_uuid", "collect_task", "collect_time"):
+        for field in ("model_id", "inst_uuid", "collect_task", "collect_time", "_collect_sources"):
             value = instance.get(field)
             if value is None:
-                conditions.append(f"n.{field} IS NULL")
+                if field == "_collect_sources":
+                    conditions.append("(n._collect_sources IS NULL OR n._collect_sources = '')")
+                else:
+                    conditions.append(f"n.{field} IS NULL")
             else:
                 conditions.append(f"n.{field} = ${field}")
                 params[field] = value

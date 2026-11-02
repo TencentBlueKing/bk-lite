@@ -115,6 +115,8 @@ interface UseUserTableResult {
   currentPage: number;
   pageSize: number;
   searchValue: string;
+  employmentStatus: string;
+  setEmploymentStatus: (value: string) => void;
   selectedRowKeys: React.Key[];
   fetchUsers: (params?: any) => Promise<void>;
   handleUserSearch: (value: string) => void;
@@ -136,6 +138,8 @@ export function useUserTable(
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [pageSize, setPageSize] = useState<number>(10);
   const [searchValue, setSearchValue] = useState<string>('');
+  const [employmentStatus, setEmploymentStatus] = useState<string>('');
+  const employmentStatusRef = useRef('');
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
 
   const { getUsersList, deleteUser, changeUserStatus } = useUserApi();
@@ -163,6 +167,7 @@ export function useUserTable(
     try {
       const res = await getUsersList({
         group_id: params.group_id !== undefined ? params.group_id : selectedTreeKeys[0],
+        employment_status: params.employment_status !== undefined ? params.employment_status : employmentStatusRef.current,
         ...params,
       });
       const data = res.users.map((item: UserDataType) => ({
@@ -176,6 +181,7 @@ export function useUserTable(
         roles: item.roles || [],
         last_login: item.last_login,
         status: item.status,
+        employment_status: item.employment_status,
         sync_source: item.sync_source ?? null,
         has_otp: item.has_otp === true,
       }));
@@ -267,8 +273,13 @@ export function useUserTable(
   ]);
 
   useEffect(() => {
-    fetchUsers({ search: searchValue, page: currentPage, page_size: pageSize });
-  }, [currentPage, pageSize, searchValue]);
+    fetchUsers({
+      search: searchValue,
+      page: currentPage,
+      page_size: pageSize,
+      employment_status: employmentStatus,
+    });
+  }, [currentPage, pageSize, searchValue, employmentStatus]);
 
   return {
     tableData,
@@ -277,6 +288,12 @@ export function useUserTable(
     currentPage,
     pageSize,
     searchValue,
+    employmentStatus,
+    setEmploymentStatus: (value: string) => {
+      employmentStatusRef.current = value;
+      setEmploymentStatus(value);
+      setCurrentPage(1);
+    },
     selectedRowKeys,
     fetchUsers,
     handleUserSearch,

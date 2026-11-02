@@ -8,7 +8,7 @@ import {
 } from '@/app/ops-analysis/context/common';
 
 const getDataSourceDetails = vi.fn().mockResolvedValue({
-  items: [{ id: 17, name: 'scoped-source', groups: [999] }],
+  items: [{ id: 17, hasAuth: false }],
 });
 
 vi.mock('@/app/ops-analysis/api/dataSource', () => ({
@@ -44,7 +44,7 @@ const Probe = ({ onDataSources }: { onDataSources: (value: unknown) => void }) =
 };
 
 describe('DashboardRenderOpsAnalysisProvider', () => {
-  it('uses backend-scoped authorization without ordinary user context', async () => {
+  it('preserves backend hasAuth without ordinary user context', async () => {
     const onDataSources = vi.fn();
 
     render(
@@ -55,7 +55,7 @@ describe('DashboardRenderOpsAnalysisProvider', () => {
 
     await waitFor(() => {
       expect(onDataSources).toHaveBeenCalledWith([
-        expect.objectContaining({ id: 17, hasAuth: true }),
+        expect.objectContaining({ id: 17, hasAuth: false }),
       ]);
     });
   });

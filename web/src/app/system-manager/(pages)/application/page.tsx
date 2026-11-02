@@ -43,7 +43,7 @@ const ApplicationPage = () => {
         description={t('system.application.pageDesc')}
         items={dataList}
         loading={loading || refreshing}
-        getSearchText={applicationListSearchText}
+        getSearchText={(item) => applicationListSearchText(item)}
         actions={addButton}
         getItemKey={(item) => item.id}
         renderCard={(item) => {

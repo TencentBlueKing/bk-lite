@@ -189,7 +189,7 @@ def test_single_hit_creates_one_alert(source, instant_strategy):
         InstantAlertDispatcher.dispatch([[evt]])
     from apps.alerts.models import AlertOutbox
 
-    assert set(AlertOutbox.objects.values_list("kind", flat=True)) == {"auto_assignment", "action"}
+    assert set(AlertOutbox.objects.values_list("kind", flat=True)) == {"auto_assignment", "action", "itsm_evaluate"}
     alerts = Alert.objects.all()
     assert alerts.count() == 1
     alert = alerts.first()

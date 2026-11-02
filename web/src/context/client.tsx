@@ -219,3 +219,6 @@ export const useClientData = () => {
   }
   return context;
 };
+
+/** 渲染身份等没有 ClientProvider 的树里返回 null，不抛错。 */
+export const useOptionalClientData = () => useContext(ClientDataContext);

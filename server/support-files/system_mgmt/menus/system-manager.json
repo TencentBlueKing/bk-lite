@@ -28,6 +28,16 @@
           ]
         },
         {
+          "id": "user_fields",
+          "name": "User Fields",
+          "operation": [
+            "View",
+            "Add",
+            "Edit",
+            "Delete"
+          ]
+        },
+        {
           "id": "login_auth",
           "name": "Login Auth",
           "operation": [
@@ -247,6 +257,10 @@
         "user_group-Edit Group",
         "user_group-Delete Group",
         "user_group-Delete User",
+        "user_fields-View",
+        "user_fields-Add",
+        "user_fields-Edit",
+        "user_fields-Delete",
         "login_auth-View",
         "login_auth-Add",
         "login_auth-Edit",

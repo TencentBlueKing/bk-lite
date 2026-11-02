@@ -10,6 +10,7 @@ from uuid import uuid4
 
 from celery import shared_task
 from celery.exceptions import SoftTimeLimitExceeded
+from celery_singleton import Singleton
 from django.db.models import Q
 from django.utils.dateparse import parse_datetime
 from django.utils.timezone import is_aware, now
@@ -624,6 +625,12 @@ def sync_collect_task(  # noqa: C901
             "association_error": len([i for i in format_data.get("association", []) if i.get("_status") != "success"]),
             "all": format_data.get("all", 0),  # 总数是发现的正常数据总数，例如：扫描了10个ip，其中6个是真的ip，4个ip不存在，总数为6
         }
+        reconcile_stats = format_data.get("reconcile_stats") or {}
+        if reconcile_stats:
+            collect_digest["reconcile_skipped_fields"] = reconcile_stats.get("skipped_fields", 0)
+            collect_digest["reconcile_org_conflicts"] = reconcile_stats.get("org_conflicts", 0)
+            collect_digest["reconcile_outside_conflicts"] = reconcile_stats.get("outside_owner_conflicts", 0)
+            collect_digest["reconcile_concurrent_abandons"] = reconcile_stats.get("concurrent_abandons", 0)
         pc_summary = _apply_pc_digest(collect_digest, format_data)
         raw_data = format_data.get("__raw_data__", [])
         collect_digest.update(node_mgmt_raw_summary)
@@ -1264,42 +1271,54 @@ def daily_data_cleanup_task() -> dict:
     return DataCleanupService.run_daily_cleanup()
 
 
+class _AutoRelationPendingSingleton(Singleton):
+    """周期排空待重算名单。锁有过期时间，避免任务卡在队列里时后续调度被永久丢掉。"""
+
+    lock_expiry = 30 * 60
+    raise_on_duplicate = False
+
+
+@shared_task(base=_AutoRelationPendingSingleton)
+def reconcile_auto_relation_pending_task() -> dict:
+    from apps.cmdb.services.auto_relation_reconcile import drain_auto_relation_pending
+
+    return drain_auto_relation_pending()
+
+
 @shared_task
 def reconcile_instance_auto_association_task(instance_id: int) -> dict:
-    from apps.cmdb.services.auto_relation_reconcile import AutoRelationRuleReconcileService
+    """旧队列消息只登记实例，由图重算留给周期任务。"""
+    from apps.cmdb.services.auto_relation_reconcile import schedule_instance_auto_relation_reconcile
 
-    logger.info("[AutoRelationRule] start instance reconcile, instance_id=%s", instance_id)
-    return AutoRelationRuleReconcileService.reconcile_for_instance(instance_id)
+    schedule_instance_auto_relation_reconcile([instance_id])
+    return {"recorded": True, "instance_id": instance_id}
 
 
 @shared_task
 def reconcile_instances_auto_association_task(instance_ids: list[int], schedule_incoming: bool = True) -> dict:
-    """批量重算实例关联，并在服务层合并重复的目标侧规则。"""
-    from apps.cmdb.services.auto_relation_reconcile import AutoRelationRuleReconcileService
+    """旧批量消息只登记实例。入向规则由周期任务在同一轮里全量同步。"""
+    from apps.cmdb.services.auto_relation_reconcile import schedule_instance_auto_relation_reconcile
 
-    logger.info(
-        "[AutoRelationRule] start batch instance reconcile, count=%s",
-        len(instance_ids or []),
-    )
-    if schedule_incoming:
-        return AutoRelationRuleReconcileService.reconcile_for_instances(instance_ids)
-    return AutoRelationRuleReconcileService.reconcile_for_instances(instance_ids, schedule_incoming=False)
+    schedule_instance_auto_relation_reconcile(instance_ids)
+    return {"recorded": True, "count": len(instance_ids or [])}
 
 
 @shared_task
 def sync_incoming_auto_association_task(instance_ids: list[int]) -> dict:
-    """串行批次结束后统一派发入向规则同步。"""
-    from apps.cmdb.services.auto_relation_reconcile import AutoRelationRuleReconcileService
+    """旧入向消息只登记实例，周期任务再按模型找出规则。"""
+    from apps.cmdb.services.auto_relation_reconcile import schedule_instance_auto_relation_reconcile
 
-    return AutoRelationRuleReconcileService.sync_incoming_for_instances(instance_ids)
+    schedule_instance_auto_relation_reconcile(instance_ids)
+    return {"recorded": True, "count": len(instance_ids or [])}
 
 
 @shared_task
 def full_sync_auto_association_rule_task(model_asst_id: str) -> dict:
-    from apps.cmdb.services.auto_relation_reconcile import AutoRelationRuleReconcileService
+    """旧规则全量消息只登记规则。"""
+    from apps.cmdb.services.auto_relation_reconcile import schedule_rule_auto_relation_full_sync
 
-    logger.info("[AutoRelationRule] start rule full sync, model_asst_id=%s", model_asst_id)
-    return AutoRelationRuleReconcileService.full_sync_rule(model_asst_id)
+    schedule_rule_auto_relation_full_sync([model_asst_id])
+    return {"recorded": True, "model_asst_id": model_asst_id}
 
 
 @shared_task

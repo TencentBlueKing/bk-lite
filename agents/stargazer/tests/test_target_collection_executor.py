@@ -257,7 +257,7 @@ class FirstTargetBrokenPreflight:
 
 
 @pytest.mark.asyncio
-async def test_job_node_info_loads_after_preflight_before_probe_and_collect_service():
+async def test_online_nats_executor_skips_preflight_and_collects_locally():
     order = []
 
     class OrderedPreflight:
@@ -270,7 +270,7 @@ async def test_job_node_info_loads_after_preflight_before_probe_and_collect_serv
 
     async def load(ips, **_context):
         order.append("node_info")
-        return [{"id": "node-1", "ip": ips[0], "operating_system": "linux"}]
+        return [{"id": "node-1", "ip": ips[0], "operating_system": "linux", "nats_executor_online": True}]
 
     class Service:
         def __init__(self, params):
@@ -316,19 +316,19 @@ async def test_job_node_info_loads_after_preflight_before_probe_and_collect_serv
 
     assert summary.collection_succeeded == 1
     assert order == [
-        "preflight",
         "node_info",
         "service",
         "probe",
         "service",
         "collect",
     ]
+    assert "preflight" not in order
 
 
 @pytest.mark.asyncio
-async def test_all_preflight_failures_do_not_start_job_node_info_lookup():
+async def test_unreachable_job_targets_still_classify_nodes_before_preflight():
     async def unexpected_load(*_args, **_kwargs):
-        raise AssertionError("node info lookup must wait for an eligible target")
+        return []
 
     request = CollectionRequest(
         task_id="job-no-eligible-target",

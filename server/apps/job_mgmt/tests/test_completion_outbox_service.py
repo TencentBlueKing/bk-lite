@@ -11,6 +11,7 @@ from django.db.migrations.loader import MigrationLoader
 from django.utils import timezone
 from nats.js.errors import ObjectNotFoundError
 
+from apps.core.openapi.async_callback import callback_result_data as _callback_result_data
 from apps.job_mgmt.constants import CallbackType, ExecutionStatus, JobType, TargetSource
 from apps.job_mgmt.models import JobCompletionOutbox, JobExecution, Playbook
 from apps.job_mgmt.services.completion_outbox_service import (
@@ -23,6 +24,28 @@ from apps.job_mgmt.services.completion_outbox_service import (
 )
 
 pytestmark = pytest.mark.integration
+
+
+def test_callback_result_data_unwraps_itsm_renderer_layers():
+    wrapped = {
+        "result": True,
+        "code": "20000",
+        "message": "success",
+        "data": {"success": True, "ticket_schedule": False, "error": ""},
+    }
+    assert _callback_result_data(wrapped)["success"] is True
+
+    nested = {
+        "result": True,
+        "data": {
+            "result": True,
+            "code": "20000",
+            "data": {"success": False, "ticket_schedule": True, "error": ""},
+        },
+    }
+    data = _callback_result_data(nested)
+    assert data["ticket_schedule"] is True
+    assert data["success"] is False
 
 
 def _terminal_execution(callback_type=CallbackType.BOTH):
@@ -360,9 +383,7 @@ def test_playbook_without_exact_key_never_scans_shared_object_store():
     execution.callback_url = None
     execution.playbook_temp_file_key = None
     execution.playbook = None
-    execution.save(
-        update_fields=["job_type", "callback_url", "playbook_temp_file_key", "playbook", "updated_at"]
-    )
+    execution.save(update_fields=["job_type", "callback_url", "playbook_temp_file_key", "playbook", "updated_at"])
     with transaction.atomic():
         enqueue_terminal_effects(execution)
     cleanup = JobCompletionOutbox.objects.filter(
@@ -370,3 +391,37 @@ def test_playbook_without_exact_key_never_scans_shared_object_store():
         kind=JobCompletionOutbox.Kind.PLAYBOOK_CLEANUP,
     )
     assert not cleanup.exists()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_async_callback_http_failure_does_not_change_execution_status():
+    execution = _terminal_execution(callback_type=CallbackType.WEB)
+    execution.callback_url = ""
+    execution.async_callback_context = {
+        "callback_url": "https://example.com/openapi/v1/callback/",
+        "callback_token": "tok-iso-1",
+        "operator": "system",
+        "user": "alice",
+        "domain": "example.com",
+        "team_id": 1,
+    }
+    execution.async_callback_key = "iso-key-1"
+    execution.save(update_fields=["callback_url", "async_callback_context", "async_callback_key", "updated_at"])
+
+    with patch("apps.job_mgmt.services.completion_outbox_service._schedule_deliveries"):
+        with transaction.atomic():
+            enqueue_terminal_effects(execution)
+    record = JobCompletionOutbox.objects.get(kind=JobCompletionOutbox.Kind.ASYNC_CALLBACK, execution_id=execution.id)
+
+    failed = MagicMock(status_code=500, json=MagicMock(return_value={"result": False}))
+    with patch("apps.core.openapi.async_callback.SSRFValidator.validate_callback"), patch(
+        "apps.core.openapi.async_callback.requests.post",
+        return_value=failed,
+    ):
+        assert deliver_outbox_record(record.pk) is False
+
+    execution.refresh_from_db()
+    record.refresh_from_db()
+    assert execution.status == ExecutionStatus.SUCCESS
+    assert record.status in (JobCompletionOutbox.Status.PENDING, JobCompletionOutbox.Status.FAILED, JobCompletionOutbox.Status.STOPPED)
+    assert record.status != JobCompletionOutbox.Status.DELIVERED

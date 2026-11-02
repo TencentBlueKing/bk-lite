@@ -35,3 +35,29 @@
     }
   }
 }
+
+// 复制 / 集群顶卡均分整行，不把半屏留空。
+.compactCards {
+  display: grid;
+  grid-template-columns: 1fr;
+  align-items: stretch;
+  gap: 12px;
+}
+
+@media (min-width: 640px) {
+  .compactCards {
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  }
+}
+
+// 只留穿透率环。卡面铺满半列并与命中率折线等高，环本身仍居中，不给频率列留空档。
+.ringCard.cacheHitRing {
+  grid-template-columns: 176px;
+  justify-content: center;
+  justify-items: center;
+  align-content: center;
+  gap: 0;
+  width: 100%;
+  height: 100%;
+  padding-inline-end: 0;
+}

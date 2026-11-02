@@ -177,9 +177,7 @@ def test_policy_save_rejects_handlers_outside_policy_organizations(apm_api_clien
     assert org_change.status_code == 400
     assert "handlers" in org_change.data
     assert ApmPolicy.objects.get().handlers == [inside.id]
-    assert list(
-        ApmPolicy.objects.get().organization_links.values_list("organization", flat=True)
-    ) == [10]
+    assert list(ApmPolicy.objects.get().organization_links.values_list("organization", flat=True)) == [10]
 
 
 def test_policy_list_and_detail_are_scoped_by_policy_organizations(apm_api_client):
@@ -374,10 +372,11 @@ def test_error_rate_threshold_is_bounded(apm_api_client):
     assert "thresholds" in response.data
 
 
-def test_policy_persists_no_data_alert_name(apm_api_client):
+def test_policy_ignores_removed_aggregation_and_no_data_fields(apm_api_client):
     payload = _payload(_service(10))
     payload.update(
         {
+            "aggregation": "max",
             "no_data_after": 5,
             "no_data_severity": "warning",
             "no_data_alert_name": "${service} ${metric} 无数据告警",
@@ -387,8 +386,13 @@ def test_policy_persists_no_data_alert_name(apm_api_client):
     response = apm_api_client.post("/api/v1/apm/policies/", payload, format="json")
 
     assert response.status_code == 201
-    assert response.data["no_data_alert_name"] == "${service} ${metric} 无数据告警"
-    assert ApmPolicy.objects.get(id=response.data["id"]).no_data_alert_name == "${service} ${metric} 无数据告警"
+    assert "aggregation" not in response.data
+    assert "no_data_after" not in response.data
+    assert "no_data_severity" not in response.data
+    assert "no_data_alert_name" not in response.data
+    policy = ApmPolicy.objects.get(id=response.data["id"])
+    assert policy.metric_type == "error_rate"
+    assert "aggregation" not in policy.conditions[0]
 
 
 def test_policy_rejects_removed_legacy_notification_fields(apm_api_client):

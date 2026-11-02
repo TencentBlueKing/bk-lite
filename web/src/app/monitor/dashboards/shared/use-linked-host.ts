@@ -5,25 +5,25 @@ import useMonitorApi from '@/app/monitor/api';
 import {
   fetchDashboardInstancePages,
   resolveDashboardInstanceIdValues
-} from '../../../shared/utils';
-import { buildInstanceDisplayName } from '../../../shared/utils/instance';
+} from './utils';
+import { buildInstanceDisplayName } from './utils/instance';
 import {
   buildHostDashboardHref,
-  isHostMonitorObject,
-  matchMysqlHost,
-  type MysqlHostCandidate
-} from './ia';
+  isDashboardHostObject,
+  matchLinkedHost,
+  type LinkedHostCandidate
+} from './linked-host';
 
 interface LinkedHostSnapshot {
   key: string;
-  host: MysqlHostCandidate | null;
+  host: LinkedHostCandidate | null;
   phase: 'loading' | 'ready';
 }
 
 /**
  * 按节点或 IP 关联所属主机。切实例时先丢掉上一台，避免顶栏残留旧主机名。
  */
-export function useMysqlLinkedHost(nodeId: string, ip: string, enabled: boolean) {
+export function useLinkedHost(nodeId: string, ip: string, enabled: boolean) {
   const { getMonitorObject, getInstanceList } = useMonitorApi();
   const trimmedNodeId = nodeId.trim();
   const trimmedIp = ip.trim();
@@ -58,7 +58,7 @@ export function useMysqlLinkedHost(nodeId: string, ip: string, enabled: boolean)
           setSnapshot({ key, host: null, phase: 'ready' });
           return;
         }
-        const hostObject = objects.find((item: { name?: string; display_name?: string }) => isHostMonitorObject(item));
+        const hostObject = objects.find((item: { name?: string; display_name?: string }) => isDashboardHostObject(item));
         if (!hostObject?.id) {
           setSnapshot({ key, host: null, phase: 'ready' });
           return;
@@ -68,7 +68,7 @@ export function useMysqlLinkedHost(nodeId: string, ip: string, enabled: boolean)
         const keys = Array.isArray(hostObject.instance_id_keys) && hostObject.instance_id_keys.length
           ? hostObject.instance_id_keys.map((keyName: unknown) => String(keyName))
           : ['instance_id'];
-        const hosts: MysqlHostCandidate[] = (pages.results || []).map((item) => {
+        const hosts: LinkedHostCandidate[] = (pages.results || []).map((item) => {
           const row = item as {
             instance_id?: unknown;
             node_id?: unknown;
@@ -87,7 +87,7 @@ export function useMysqlLinkedHost(nodeId: string, ip: string, enabled: boolean)
         }).filter((candidate) => candidate.instanceId);
         setSnapshot({
           key,
-          host: matchMysqlHost({ nodeId: trimmedNodeId, ip: trimmedIp }, hosts),
+          host: matchLinkedHost({ nodeId: trimmedNodeId, ip: trimmedIp }, hosts),
           phase: 'ready'
         });
       } catch {

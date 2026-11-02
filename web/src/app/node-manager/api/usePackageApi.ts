@@ -23,6 +23,7 @@ const usePackageApi = () => {
     object?: string;
     os?: string;
     cpu_architecture?: string;
+    type?: string;
     page?: number;
     page_size?: number;
   }) => {

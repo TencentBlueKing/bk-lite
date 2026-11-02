@@ -541,11 +541,7 @@ class AlertOperator(object):
             previous_status = alert.status
 
             # 更新告警状态
-            alert.status = AlertStatus.CLOSED
-            alert.operate = AlertOperate.CLOSE
-            alert.updated_at = timezone.now()
-            Alert.stamp_closed_at(alert, alert.updated_at)
-            alert.save()
+            _set_alert_closed(alert)
 
             from apps.alerts.action.engine import ActionEngine
 
@@ -737,3 +733,36 @@ class AlertOperator(object):
         :param log_data: 日志数据字典
         """
         record_operator_log(**log_data)
+
+
+def _set_alert_closed(alert):
+    """共享关闭状态语义；权限校验由人工入口或锁内后台入口负责。"""
+    alert.status = AlertStatus.CLOSED
+    alert.operate = AlertOperate.CLOSE
+    alert.updated_at = timezone.now()
+    Alert.stamp_closed_at(alert, alert.updated_at)
+    alert.save()
+
+
+def close_alert_from_itsm(alert, link_id):
+    """仅供已验证关联与规则权限的后台同步调用，必须持有 Alert 行锁。"""
+    if alert.status not in AlertStatus.ACTIVATE_STATUS:
+        return False
+    from apps.alerts.action.engine import ActionEngine
+    from apps.alerts.service.escalation_service import EscalationService
+    from apps.alerts.service.reminder_service import ReminderService
+    from apps.alerts.utils.operator_log import record_operator_log_deferred_mirror as record_operator_log
+
+    _set_alert_closed(alert)
+    ReminderService.stop_reminder_task(alert)
+    EscalationService.stop_escalation_task(alert)
+    record_operator_log(
+        action=LogAction.MODIFY,
+        target_type=LogTargetType.ALERT,
+        operator="system",
+        operator_object="ITSM 工单关闭回写",
+        target_id=alert.alert_id,
+        overview=f"ITSM 工单关闭后关闭告警，关联记录 {link_id}",
+    )
+    ActionEngine.dispatch_async(alert.alert_id, "closed")
+    return True

@@ -8,9 +8,7 @@ from apps.system_mgmt.providers.builtin.feishu.adapters.user_sync import FeishuU
 
 
 def test_normalize_business_config_drops_deprecated_fetch_child():
-    normalized = FeishuUserSyncAdapter.normalize_business_config(
-        {"root_department_id": "0", "fetch_child": False}
-    )
+    normalized = FeishuUserSyncAdapter.normalize_business_config({"root_department_id": "0", "fetch_child": False})
     assert normalized == {"root_department_id": "0"}
 
 
@@ -116,11 +114,14 @@ def test_list_departments_builds_visible_forest_from_paginated_scopes():
             )
         if url.endswith("/departments/batch"):
             return _FeishuResponse(
-                data={"items": [
-                    {"department_id": "dept-a", "name": "研发部", "parent_department_id": "hidden-parent"},
-                    {"department_id": "dept-a1", "name": "后端组", "parent_department_id": "dept-a"},
-                    {"department_id": "dept-b", "name": "财务部", "parent_department_id": "0"},
-                ], "has_more": False},
+                data={
+                    "items": [
+                        {"department_id": "dept-a", "name": "研发部", "parent_department_id": "hidden-parent"},
+                        {"department_id": "dept-a1", "name": "后端组", "parent_department_id": "dept-a"},
+                        {"department_id": "dept-b", "name": "财务部", "parent_department_id": "0"},
+                    ],
+                    "has_more": False,
+                },
                 request_id="batch-details",
             )
         if url.endswith("/departments/dept-a/children"):
@@ -148,25 +149,23 @@ def test_list_departments_builds_visible_forest_from_paginated_scopes():
 
     assert result.success is True
     assert result.payload["items"] == [
-            {
-                "id": "dept-a",
-                "name": "研发部",
-                "parent_id": None,
-                "children": [
-                    {
-                        "id": "dept-a1",
-                        "name": "后端组",
-                        "parent_id": "dept-a",
-                        "children": [
-                            {"id": "dept-a2", "name": "平台组", "parent_id": "dept-a1", "children": [], "selectable": True}
-                        ],
-                        "selectable": True,
-                    }
-                ],
-                "selectable": True,
-            },
-            {"id": "dept-b", "name": "财务部", "parent_id": None, "children": [], "selectable": True},
-        ]
+        {
+            "id": "dept-a",
+            "name": "研发部",
+            "parent_id": None,
+            "children": [
+                {
+                    "id": "dept-a1",
+                    "name": "后端组",
+                    "parent_id": "dept-a",
+                    "children": [{"id": "dept-a2", "name": "平台组", "parent_id": "dept-a1", "children": [], "selectable": True}],
+                    "selectable": True,
+                }
+            ],
+            "selectable": True,
+        },
+        {"id": "dept-b", "name": "财务部", "parent_id": None, "children": [], "selectable": True},
+    ]
     assert result.payload["external_request_id"] == "children-last"
     assert result.payload["server_timing"].startswith("feishu-token;dur=")
     assert "feishu-company-root;dur=" in result.payload["server_timing"]
@@ -176,11 +175,7 @@ def test_list_departments_builds_visible_forest_from_paginated_scopes():
     assert all(params["department_id_type"] == "department_id" for params in requested_params)
     batch_request = next(params for url, params in zip(requested_urls, requested_params) if url.endswith("/departments/batch"))
     assert batch_request["department_ids"] == ["dept-a", "dept-a1", "dept-b"]
-    children_requests = [
-        (url, params)
-        for url, params in zip(requested_urls, requested_params)
-        if url.endswith("/children")
-    ]
+    children_requests = [(url, params) for url, params in zip(requested_urls, requested_params) if url.endswith("/children")]
     assert [url.rsplit("/", 2)[-2] for url, _params in children_requests] == ["0", "dept-a", "dept-a1", "dept-b"]
     assert all(params["fetch_child"] == "true" for _url, params in children_requests)
 
@@ -241,9 +236,7 @@ def test_list_departments_fetches_authorized_root_children_concurrently():
         if url.endswith("/departments/0/children"):
             return _FeishuDeniedResponse()
         if url.endswith("/scopes"):
-            return _FeishuResponse(
-                data={"department_ids": ["dept-a", "dept-b", "dept-c"], "has_more": False}
-            )
+            return _FeishuResponse(data={"department_ids": ["dept-a", "dept-b", "dept-c"], "has_more": False})
         if url.endswith("/departments/batch"):
             return _FeishuResponse(
                 data={
@@ -329,9 +322,7 @@ def test_list_departments_breaks_parent_cycles_without_losing_nodes():
             "id": "cycle-a",
             "name": "循环甲",
             "parent_id": None,
-            "children": [
-                {"id": "cycle-b", "name": "循环乙", "parent_id": "cycle-a", "children": [], "selectable": True}
-            ],
+            "children": [{"id": "cycle-b", "name": "循环乙", "parent_id": "cycle-a", "children": [], "selectable": True}],
             "selectable": True,
         },
     ]
@@ -402,9 +393,7 @@ def test_sync_users_includes_company_root_direct_members():
     def get_contact_data(url, **kwargs):
         requested.append({"url": url, "params": dict(kwargs.get("params") or {})})
         if url.endswith("/departments/0/children"):
-            return _FeishuResponse(
-                [{"department_id": "dept-a", "parent_department_id": "0", "name": "研发部"}]
-            )
+            return _FeishuResponse([{"department_id": "dept-a", "parent_department_id": "0", "name": "研发部"}])
         department_id = kwargs["params"]["department_id"]
         users = {
             "0": [{"user_id": "root-user", "name": "根组织用户", "department_ids": ["0"]}],
@@ -473,9 +462,7 @@ def test_sync_users_deduplicates_users_returned_by_multiple_departments():
 
     def get_contact_data(url, **kwargs):
         if "/departments/root/children" in url:
-            return _FeishuResponse(
-                [{"department_id": "child", "parent_department_id": "root", "name": "子组织"}]
-            )
+            return _FeishuResponse([{"department_id": "child", "parent_department_id": "root", "name": "子组织"}])
 
         department_id = kwargs["params"]["department_id"]
         return _FeishuResponse(
@@ -483,6 +470,10 @@ def test_sync_users_deduplicates_users_returned_by_multiple_departments():
                 {
                     "user_id": "shared-user",
                     "name": "跨组织用户",
+                    "job_title": "工程师",
+                    "employee_no": "E100",
+                    "leader_user_id": "boss",
+                    "status": {"is_resigned": False, "is_frozen": True},
                     "department_ids": [department_id],
                 }
             ]
@@ -502,6 +493,55 @@ def test_sync_users_deduplicates_users_returned_by_multiple_departments():
             "name": "跨组织用户",
             "email": "",
             "mobile": "",
+            "job_title": "工程师",
+            "employee_no": "E100",
+            "job_level_id": "",
+            "leader_user_id": "boss",
+            "is_resigned": "false",
+            "is_frozen": "true",
             "department_ids": ["root", "child"],
         }
     ]
+
+
+def test_sync_users_flattens_custom_attr_text_by_field_id():
+    source = SimpleNamespace(name="飞书测试", business_config={"root_department_id": "root"})
+    requested_fields = []
+
+    def get_contact_data(url, **kwargs):
+        if "/departments/root/children" in url:
+            return _FeishuResponse([])
+        requested_fields.append(kwargs["params"]["fields"])
+        return _FeishuResponse(
+            [
+                {
+                    "user_id": "user-1",
+                    "name": "赵",
+                    "custom_attrs": [
+                        {
+                            "type": "TEXT",
+                            "id": "C-7702331506546773011",
+                            "value": {"text": "深圳"},
+                        },
+                        {"type": "TEXT", "id": "C-empty", "value": {"text": "  "}},
+                        {"type": "TEXT", "id": "name", "value": {"text": "不应覆盖姓名"}},
+                    ],
+                    "department_ids": ["root"],
+                }
+            ]
+        )
+
+    with patch(
+        "apps.system_mgmt.providers.builtin.feishu.adapters.user_sync._fetch_tenant_access_token",
+        return_value=("tenant-token", None),
+    ), patch("apps.system_mgmt.providers.builtin.feishu.adapters.client.requests.get", side_effect=get_contact_data):
+        result = FeishuUserSyncAdapter.sync_users({}, "feishu", "user_sync", source=source)
+
+    assert result.success is True
+    assert requested_fields
+    assert all("custom_attrs" in fields for fields in requested_fields)
+    user = result.payload["user_list"][0]
+    assert user["name"] == "赵"
+    assert user["C-7702331506546773011"] == "深圳"
+    assert "C-empty" not in user
+    assert "custom_attrs" not in user

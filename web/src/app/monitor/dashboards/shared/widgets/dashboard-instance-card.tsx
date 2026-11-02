@@ -72,11 +72,14 @@ export function DashboardInstanceCard({
           {icon}
         </div>
         <div className={styles.instanceInfo}>
-          <EllipsisWithTooltip
-            className={styles.instanceName}
-            text={instanceName}
-            tooltip={instanceName}
-          />
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <EllipsisWithTooltip
+              className={`${styles.instanceName} min-w-0`}
+              text={instanceName}
+              tooltip={instanceName}
+            />
+            {identityExtra}
+          </div>
           {metaItems.length > 0 ? (
             <div className={[styles.meta, styles.instanceMetaLine].filter(Boolean).join(' ')}>
               {metaItems.map((item, index) => (
@@ -90,7 +93,6 @@ export function DashboardInstanceCard({
             </div>
           ) : null}
         </div>
-        {identityExtra}
       </div>
       <div className={styles.instanceActions}>
         {clusterOptions && clusterOptions.length > 0 && onClusterChange ? (

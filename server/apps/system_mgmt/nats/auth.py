@@ -1,6 +1,8 @@
 # flake8: noqa
 from django.db import InterfaceError, OperationalError
 
+from apps.system_mgmt.services.user_access import is_account_expired, is_user_access_disabled
+
 from .common import *  # noqa: F401,F403
 from .common import _collect_ancestor_group_ids, _verify_token
 
@@ -13,32 +15,18 @@ def build_user_authorization_context(user):
     is_superuser = "admin" in role_names or "system-manager--admin" in role_names
 
     if is_superuser:
-        queryset = list(
-            GroupUtils.active_queryset().prefetch_related("roles").order_by("id")
-        )
+        queryset = list(GroupUtils.active_queryset().prefetch_related("roles").order_by("id"))
         groups = [{"id": group.id, "name": group.name, "parent_id": group.parent_id} for group in queryset]
     else:
         visible_ids = _collect_ancestor_group_ids(user.group_list)
-        queryset = list(
-            GroupUtils.active_queryset(id__in=visible_ids)
-            .prefetch_related("roles")
-            .order_by("id")
-        )
+        queryset = list(GroupUtils.active_queryset(id__in=visible_ids).prefetch_related("roles").order_by("id"))
         direct_group_ids = set(user.group_list)
-        groups = [
-            {"id": group.id, "name": group.name, "parent_id": group.parent_id}
-            for group in queryset
-            if group.id in direct_group_ids
-        ]
+        groups = [{"id": group.id, "name": group.name, "parent_id": group.parent_id} for group in queryset if group.id in direct_group_ids]
 
     group_tree = GroupUtils.build_group_tree(queryset, is_superuser, [group["id"] for group in groups])
     permissions = {}
     if not is_superuser:
-        menu_ids = {
-            menu_id
-            for menu_list in role_list.values_list("menu_list", flat=True)
-            for menu_id in menu_list
-        }
+        menu_ids = {menu_id for menu_list in role_list.values_list("menu_list", flat=True) for menu_id in menu_list}
         for app, name in Menu.objects.filter(id__in=menu_ids).values_list("app", "name"):
             permissions.setdefault(app, []).append(name)
 
@@ -128,6 +116,10 @@ def verify_token(token):
             }
         if (user.username, user.domain) != (identity["username"], identity["domain"]):
             continue
+        if is_user_access_disabled(user):
+            return {"result": False, "message": "User is disabled"}
+        if is_account_expired(user):
+            return {"result": False, "message": "Account has expired"}
         cached = get_cached_token_info(
             user.username,
             user.domain,

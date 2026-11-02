@@ -26,10 +26,12 @@ from apps.patch_mgmt.models import (
     Patch,
     PatchBaseline,
     PatchTarget,
+    ScanSetting,
     WindowsPatchDetail,
 )
 from apps.patch_mgmt.services import patch_execution_service as pes
 from apps.patch_mgmt.services import target_execution_route as ter
+from apps.patch_mgmt.services.offline_catalog import OfflineCatalogError
 from config.components.nats import NATS_NAMESPACE
 
 AMPLE_WINDOWS_DISK = "BKPATCH_DISK|WINDOWS|999999999999"
@@ -370,6 +372,24 @@ def test_windows_assess_command_collects_offered_and_installed_wua_updates():
     assert "===HOTFIX===" in command
     assert "BKPATCH_DOTNET|" in command
     assert "NDP\\v4\\Full" in command
+    assert "AddScanPackageService" not in command
+    assert "ServerSelection" not in command
+
+
+def test_windows_offline_catalog_search_uses_uploaded_scan_package():
+    command = pes._assess_command(
+        OSType.WINDOWS,
+        offline_catalog=("C:/Windows/Temp/bk-lite-patches/wsusscn2.cab", "ab" * 32),
+    )
+
+    assert "AddScanPackageService" in command
+    assert "$sr.ServerSelection=3" in command
+    assert "BK-Lite Offline Catalog" in command
+    assert "Register-ScheduledTask" in command
+    assert "SYSTEM" in command
+    assert "AddSeconds(1700)" in command
+    assert '$sr.Search("IsInstalled=0")' in command
+    assert '$sr.Search("IsInstalled=1")' in command
 
 
 @pytest.mark.django_db
@@ -2508,3 +2528,53 @@ def test_windows_manual_package_is_not_staged_when_dotnet_does_not_match(monkeyp
     assert "533320" in host.reason
     assert "4.8.1" in host.reason
     assert host.can_retry is True
+
+
+@pytest.mark.django_db
+def test_enabled_offline_catalog_without_file_fails_before_any_search(monkeypatch):
+    setting = ScanSetting.get_singleton()
+    setting.offline_catalog_enabled = True
+    setting.save(update_fields=["offline_catalog_enabled"])
+    cloud_region = CloudRegion.objects.create(name="region-win-offline-missing")
+    target = _make_manual_windows_target(cloud_region)
+    task = _make_task(GovernanceTaskType.ASSESS, [target.id])
+    host = GovernanceTaskHost.objects.create(
+        task=task,
+        target_id=target.id,
+        target_name=target.name,
+        target_ip=target.ip,
+        stage="waiting",
+    )
+    searched = []
+    monkeypatch.setattr(pes, "_execute_command", lambda *_args, **_kwargs: searched.append(True))
+    monkeypatch.setattr(pes, "_update_binding_after_assess", lambda *_args, **_kwargs: None)
+
+    with pytest.raises(OfflineCatalogError, match="缺少离线目录"):
+        pes._windows_offline_catalog_for_assessment(target, timeout=30)
+    pes._execute_assess(target, host, execution_id="offline-missing", timeout=30)
+
+    host.refresh_from_db()
+    assert searched == []
+    assert host.stage == "failed"
+    assert host.reason == "缺少离线目录"
+    assert host.failed_stage == "assess"
+
+
+@pytest.mark.django_db
+def test_matching_offline_catalog_is_not_staged_again(monkeypatch):
+    setting = ScanSetting.get_singleton()
+    setting.offline_catalog_enabled = True
+    setting.offline_catalog_file = "offline-catalog/current.cab"
+    setting.offline_catalog_sha256 = "ab" * 32
+    setting.save(update_fields=["offline_catalog_enabled", "offline_catalog_file", "offline_catalog_sha256"])
+    cloud_region = CloudRegion.objects.create(name="region-win-offline-ready")
+    target = _make_manual_windows_target(cloud_region)
+    staged = []
+    monkeypatch.setattr(pes, "_remote_file_sha256", lambda *_args, **_kwargs: "ab" * 32)
+    monkeypatch.setattr(pes, "_stage_windows_file", lambda *_args, **_kwargs: staged.append(True))
+
+    path, digest = pes._windows_offline_catalog_for_assessment(target, timeout=30)
+
+    assert path == pes.WINDOWS_OFFLINE_CATALOG_PATH
+    assert digest == "ab" * 32
+    assert staged == []

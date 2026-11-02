@@ -131,9 +131,7 @@ export const useSecurityApi = () => {
   async function getUserLoginLogs(params?: {
     status?: 'success' | 'failed';
     username?: string;
-    username__icontains?: string;
     source_ip?: string;
-    source_ip__icontains?: string;
     domain?: string;
     login_time_start?: string;
     login_time_end?: string;
@@ -141,6 +139,12 @@ export const useSecurityApi = () => {
     page_size?: number;
   }): Promise<any> {
     return await get('/system_mgmt/user_login_log/', { params });
+  }
+
+  async function exportUserLoginLogs(data?: Record<string, unknown>): Promise<Blob> {
+    return await post('/system_mgmt/user_login_log/export_excel/', data, {
+      responseType: 'blob',
+    });
   }
 
   /**
@@ -158,6 +162,12 @@ export const useSecurityApi = () => {
     page_size?: number;
   }): Promise<any> {
     return await get('/system_mgmt/operation_log/', { params });
+  }
+
+  async function exportOperationLogs(data?: Record<string, unknown>): Promise<Blob> {
+    return await post('/system_mgmt/operation_log/export_excel/', data, {
+      responseType: 'blob',
+    });
   }
 
   /**
@@ -196,7 +206,9 @@ export const useSecurityApi = () => {
     syncAuthSource,
     deleteAuthSource,
     getUserLoginLogs,
+    exportUserLoginLogs,
     getOperationLogs,
+    exportOperationLogs,
     getErrorLogs,
     getOpenApiCallLogs,
     exportOpenApiCallLogs,

@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import {
   AttrFieldType,
   ModelItem,
@@ -99,6 +100,8 @@ export interface SearchFilterProps {
   displayFieldKeys?: string[];
   /** 列表工具条空间不够时，多 IP 输入框可以收缩，避免整行换行。 */
   allowShrink?: boolean;
+  /** 插在搜索按钮和「精确匹配」之间。 */
+  beforeExactSearch?: ReactNode;
   onSearch: (condition: FilterItem | null, value: any) => void;
   onChange?: (filters: FilterItem[]) => void;
   onFilterChange?: (filters: FilterItem[]) => void;
@@ -125,6 +128,8 @@ export interface ExportModalConfig {
   selectedKeys: string[];
   exportType: 'selected' | 'currentPage' | 'all';
   tableData?: any[];
+  queryList?: any[];
+  advancedFilter?: { logic: 'AND' | 'OR'; conditions: any[] } | null;
 }
 
 export interface ExportModalRef {

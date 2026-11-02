@@ -149,6 +149,17 @@ startup.sh
 增加重试、延长超时或捕获异常都不会消除这条循环依赖。正确处理方式是把对账
 操作移到运行期，或由启动期仅记录待处理状态，再由运行期任务幂等接管。
 
+## CMDB 显示字段回填（运行期收敛，非启动硬依赖）
+
+实例 `_display` 是由 organization、user、enum、tag 原值算出的派生字段。新建和修改实例时，保存逻辑已经写入这份文本。存量回填只补历史实例，失败不影响实例读写。
+
+- 启动期：`batch_init` 只执行 `init_display_fields --models-only`，给模型补 `_display` 字段定义。
+- 启动期入队：`ensure_display_field_backfill_periodic_task()` 并 `backfill_cmdb_display_fields.delay(force=True)`。Broker 不可达只记告警，不让 `startup.sh` 退出。
+- 运行期：Worker 按页扫描。计算值和已有 `_display` 相同则不写；有差异时按字段批量写入。单次任务有实例数上限，未扫完则 1 秒后继续。查询失败停在游标上，由 `*/5` 周期任务重试。
+- 手动补偿：`python manage.py init_display_fields` 仍可在运行期扫完全部实例，同样跳过未变化的值。
+
+禁止把实例全量重写放回 `batch_init`。端口要等 `batch_init` 结束才开，实例扫描留在启动期会把健康检查挡在监听之前。
+
 ## CMDB 实例 UUID 清洗（运行期收敛，非启动硬依赖）
 
 CMDB 实例 UUID 结构迁移为 Django `0045_instance_uuid_transition`（仅 schema）。

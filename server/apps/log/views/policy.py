@@ -8,7 +8,6 @@ from rest_framework import viewsets
 from rest_framework.decorators import action
 
 from apps.core.exceptions.base_app_exception import BaseAppException
-from apps.core.logger import log_logger as logger
 from apps.core.utils.current_team_scope import _normalize_organization_ids, validate_assignable_organizations
 from apps.core.utils.permission_utils import (
     check_instance_permission,
@@ -36,7 +35,7 @@ from apps.log.services.alert_handlers import (
     reassign_alert,
     record_closed_events,
 )
-from apps.log.services.alert_lifecycle_notify import LogAlertLifecycleNotifier
+from apps.log.services.alert_lifecycle_notify import LogAlertLifecycleNotifier, deliver_log_alert_lifecycle
 from apps.log.services.policy_dry_run import LogPolicyDryRunService, is_dry_run_response
 from config.drf.pagination import CustomPageNumberPagination
 
@@ -646,27 +645,7 @@ class AlertViewSet(viewsets.ModelViewSet):
 
     @staticmethod
     def _deliver_closed_event(alert_id, closed_at):
-        try:
-            alert = Alert.objects.select_related("policy", "collect_type").prefetch_related("policy__policyorganization_set").get(id=alert_id)
-            notifier = LogAlertLifecycleNotifier(alert.policy)
-            if not alert.policy.notice or not notifier.is_alert_center_channel():
-                return
-
-            success, _ = notifier.notify_closed(alert)
-            if success:
-                # 仅确认同一次关闭，避免迟到回执写入已变化的告警。
-                Alert.objects.filter(
-                    id=alert_id,
-                    status=AlertConstants.STATUS_CLOSED,
-                    end_event_time=closed_at,
-                    notice=False,
-                ).update(notice=True)
-        except Exception:
-            logger.error(
-                "日志告警关闭事件推送异常 alert=%s",
-                alert_id,
-                exc_info=True,
-            )
+        deliver_log_alert_lifecycle(alert_id, closed_at, AlertConstants.STATUS_CLOSED)
 
     def _close_alert(self, request, alert):
         auth_error = self._authorize_alert_operate(request, alert)
@@ -917,8 +896,9 @@ class AlertViewSet(viewsets.ModelViewSet):
         status = request.query_params.get("status", AlertConstants.STATUS_NEW)
         step_minutes = _to_positive_int(request.query_params.get("step"), 60, min_val=1, max_val=1440)
 
-        # 按状态过滤
-        queryset = queryset.filter(status=status)
+        # 按状态过滤。逗号分隔多值，单值行为不变。
+        status_values = [item.strip() for item in str(status).split(",") if item.strip()]
+        queryset = queryset.filter(status__in=status_values or [AlertConstants.STATUS_NEW])
 
         # 默认时间窗口：最近7天（仅非活跃态）。
         # 活跃告警（status=new）与列表一致，不过滤时间，避免「列表有数据、分布图暂无数据」。
