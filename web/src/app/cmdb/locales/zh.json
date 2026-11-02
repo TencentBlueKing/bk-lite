@@ -1569,6 +1569,7 @@
             "pluginIdPlaceholder": "host_scan",
             "targetModel": "目标模型",
             "targetModelRequired": "请选择目标模型",
+            "targetModelExcluded": "K8S 下的模型不能作为自定义插件的目标模型",
             "targetModelPlaceholder": "选择已有模型",
             "operatingSystem": "操作系统",
             "script": "脚本",

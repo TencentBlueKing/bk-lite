@@ -1567,6 +1567,7 @@
             "pluginIdPlaceholder": "host_scan",
             "targetModel": "Target model",
             "targetModelRequired": "Select a target model",
+            "targetModelExcluded": "Models under K8S cannot be the target model of a custom plugin",
             "targetModelPlaceholder": "Select an existing model",
             "operatingSystem": "Operating system",
             "script": "Script",
