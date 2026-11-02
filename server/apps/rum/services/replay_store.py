@@ -86,6 +86,57 @@ class RedisReplayIndex:
         rows = self._rows(application, session_id)
         return any((row.get("Status") or "") == READY for row in rows)
 
+    def ready_sessions(self, pairs: list[tuple[str, str]]) -> set[tuple[str, str]]:
+        wanted = [(app.strip(), sid.strip()) for app, sid in pairs if (app or "").strip() and (sid or "").strip()]
+        if not wanted:
+            return set()
+        try:
+            pipe = self._client.pipeline(transaction=False)
+        except Exception as exc:  # noqa: BLE001 — older clients fall back to one lookup each
+            logger.warning(
+                "rum replay index pipeline unavailable failed_stage=ready_sessions error_type=%s sessions=%s",
+                type(exc).__name__,
+                len(wanted),
+            )
+            return {(app, sid) for app, sid in wanted if self.has_ready(app, sid)}
+        for app, sid in wanted:
+            pipe.smembers(session_set_key(app, sid))
+        try:
+            member_sets = pipe.execute()
+        except Exception as exc:  # noqa: BLE001 — index read must not fail the sessions page
+            logger.warning(
+                "rum replay index batch failed failed_stage=ready_sessions error_type=%s sessions=%s",
+                type(exc).__name__,
+                len(wanted),
+            )
+            return set()
+        flat: list[str] = []
+        spans: list[tuple[int, int]] = []
+        for members in member_sets or []:
+            keys = [str(key) for key in (members or []) if key]
+            spans.append((len(flat), len(flat) + len(keys)))
+            flat.extend(keys)
+        if not flat:
+            return set()
+        try:
+            raws = self._client.mget(flat)
+        except Exception as exc:  # noqa: BLE001 — same boundary as a single mget
+            logger.warning(
+                "rum replay index mget failed failed_stage=ready_sessions error_type=%s sessions=%s",
+                type(exc).__name__,
+                len(wanted),
+            )
+            return set()
+        ready: set[tuple[str, str]] = set()
+        values = list(raws or [])
+        for (app, sid), (begin, end) in zip(wanted, spans):
+            for raw in values[begin:end]:
+                row = _decode_index_row(raw)
+                if row is not None and (row.get("Status") or "") == READY:
+                    ready.add((app, sid))
+                    break
+        return ready
+
     def replay_manifest(self, tenant_id: str, application: str, session_id: str) -> dict:
         del tenant_id  # tenant is enforced at admission write-time; index rows are app-scoped.
         rows = self._rows(application, session_id)
@@ -153,12 +204,19 @@ class RedisReplayIndex:
             return []
         rows: list[dict] = []
         for raw in values or []:
-            if not raw:
-                continue
-            try:
-                row = json.loads(raw)
-            except (TypeError, ValueError, json.JSONDecodeError):
-                continue
-            if isinstance(row, dict):
+            row = _decode_index_row(raw)
+            if row is not None:
                 rows.append(row)
         return rows
+
+
+def _decode_index_row(raw) -> dict | None:
+    if not raw:
+        return None
+    try:
+        row = json.loads(raw)
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return None
+    if isinstance(row, dict):
+        return row
+    return None

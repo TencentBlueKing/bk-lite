@@ -12,12 +12,15 @@ from apps.rum.services.evaluator import AlertEvaluator
 from apps.rum.services.logsql_stats import (
     ERROR_SORTS,
     SESSION_SORTS,
+    catalog_health_query,
+    catalog_spark_query,
     error_detail_query,
     error_list_query,
     journey_stats_query,
     map_error_issue,
     map_session_row,
     map_session_summary,
+    overview_device_query,
     release_first_issue_query,
     sample_text,
     session_page_query,
@@ -182,12 +185,7 @@ def test_replay_scan_chunks_and_stops_at_cap_without_total():
         def list_sessions(self, tenant_id, opts):
             self.calls.append((opts["offset"], opts["limit"], opts["orderBy"]))
             offset = opts["offset"]
-            return {
-                "sessions": [
-                    {"application": "checkout", "sessionId": f"s{offset + i}", "errorCount": 0}
-                    for i in range(opts["limit"])
-                ]
-            }
+            return {"sessions": [{"application": "checkout", "sessionId": f"s{offset + i}", "errorCount": 0} for i in range(opts["limit"])]}
 
     analytics = ChunkAnalytics()
     replay = MemoryReplayIndex()
@@ -401,6 +399,9 @@ def test_stats_queries_use_v138_functions():
         journey_stats_query("core", "storefront", "abc"),
         view_stats_query("core", opts),
         release_first_issue_query("core", opts),
+        catalog_health_query("core", ["storefront"]),
+        catalog_spark_query("core", ["storefront"], timedelta(hours=1)),
+        overview_device_query("core", "storefront"),
     ]
     for query in queries:
         assert "any(" not in query
