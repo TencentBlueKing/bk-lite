@@ -108,8 +108,8 @@ docker build --pull --no-cache --platform linux/amd64 \
 
 FalkorDB 检测到的 Node.js 24.14.0 不会因更新 libbrotli 而自动修复。对 Debian 12
 派生镜像使用同样命令，但将 Dockerfile 改为 `deploy/security/Dockerfile.falkordb`。
-它通过原镜像已有的 NodeSource 24.x 软件源升级 `nodejs` 包，同时更新系统 Brotli，
-校验 Node 稳定版不低于 24.22.1，且实际运行版本必须与 dpkg 包清单一致。
+它通过原镜像已有的 NodeSource 22.x / 24.x 软件源升级 `nodejs` 包，同时更新系统 Brotli，
+分别校验 Node 稳定版不低于 22.23.4 / 24.22.1，且实际运行版本必须与 dpkg 包清单一致。
 不再仅复制可执行文件，以免运行版本已更新、漏扫清单仍保留旧包。
 其他发行版或没有已安装 `nodejs` 包的镜像拒绝构建。
 这只是候选构建入口，发布前必须验证 FalkorDB 数据读写及附带 Node 应用。
@@ -134,3 +134,67 @@ FalkorDB 检测到的 Node.js 24.14.0 不会因更新 libbrotli 而自动修复�
 宿主机与容器的软件包独立维护。Debian 12 宿主机的更新应作为独立运维变更，
 先模拟更新、检查依赖和可用补丁，再在维护窗口更新 `libbrotli1`。
 本 PR 不执行宿主机更新、服务重启、镜像推送或部署，也不代表存量环境已经完成修复。
+
+## WeOpsx Jenkins 与部署补充（待 review 后接入）
+
+`jenkins-brotli.groovy` 是阶段片段：放在现有企业覆盖与应用构建之后、发布之前。
+不替换现有流水线，不调用 Jenkins API，也不触发远程部署。按当前工作目录调整
+`deploy/security` 前缀；凭据沿用 Jenkins 的 registry credential binding，禁止写入脚本。
+候选标签必须为本次发布独有（例如提交 SHA + BUILD_NUMBER），禁止复用 latest。
+
+- 生产、开发 FalkorDB 分别设置 `FALKORDB_BASE_IMAGE`、`DEV_FALKORDB_BASE_IMAGE`
+  （实际环境镜像摘要），及两个不同的 `*_CANDIDATE_IMAGE`。脚本分别构建、保留
+  USER/ENTRYPOINT/CMD 并检查版本。Debian 12 的 NodeSource 22/24 分支分别升级至
+  22.23.4 / 24.22.1 或更高同主版本；缺少软件源、未知系统或跨主版本均失败。
+- `LICENSE_IMAGE` 必须由授权服务仓库重建并提供安全镜像摘要。这个门禁检查 Node
+  22/24 安全版本，不会把当前 22.23.3 自动变成安全版；未取得镜像时不能宣布全部覆盖。
+- `FUSION_IMAGE` 为企业代码覆盖之后的新构建产物，检查系统 libbrotli。OpenSSL
+  仍须由 #6862 + 企业 #254 的执行器发行验证保证，本 Brotli 门禁不代替 OpenSSL 检查。
+- Web、Server、Stargazer 沿用原构建阶段，部署清单同时锁定它们的实际修复镜像。
+  推送在全部候选门禁通过后接入原凭据流程；推送后读取对应仓库 RepoDigest，禁止
+  仅凭本地 image ID 或可变标签填写下方清单。
+
+### 按 Compose 项目生成部署覆盖文件
+
+主平台、授权服务、开发环境若属于不同 Compose 项目，分别建立清单、生成覆盖文件
+并独立验收。服务名取实际 `docker compose config --services` 输出，不能使用容器名。
+例如主平台 `release.json`（将下列占位值替换为真实完整摘要）：
+
+```json
+{"services": {
+  "web": {"image": "registry/web@sha256:真实64位摘要", "profile": "node"},
+  "server": {"image": "registry/server@sha256:真实64位摘要", "profile": "system"},
+  "stargazer": {"image": "registry/stargazer@sha256:真实64位摘要", "profile": "system"},
+  "falkordb": {"image": "registry/falkordb@sha256:真实64位摘要", "profile": "node-system"}
+}}
+```
+
+授权服务清单包含其实际服务名，使用 `node` profile；开发环境 FalkorDB 使用
+`node-system` profile。Fusion 若是独立采集器交付，单独交付安全镜像，不能假设
+主平台 Compose 更新会替换已下发的采集器。清单须人工核对所有受影响服务；工具
+仅检查清单中的条目，不做跨项目资产发现。
+
+构建节点/部署节点预先拉取各摘要镜像，运行以下操作；工具不负责推送、拉取或更新容器：
+
+```sh
+# 每次使用新目录；已存在的覆盖文件拒绝覆盖。候选检查不执行应用启动入口。
+python3 deploy/security/brotli_release.py prepare \
+  --manifest release.json --output compose.security.json
+# 与现有部署保持相同 -p、-f 顺序、env-file、profile 和工作目录；下列为单基础文件示例。
+# 人工 review 覆盖文件，确认维护窗口和备份后，才在部署节点执行：
+docker compose -p compose -f docker-compose.yaml -f compose.security.json \
+  up -d --no-build --pull never web server stargazer falkordb
+# 验证所有副本的实际 image ID、运行状态和版本，不以镜像标签代替容器核验。
+python3 deploy/security/brotli_release.py verify --manifest release.json --project compose \
+  -f docker-compose.yaml -f compose.security.json
+```
+
+`bootstrap.sh` 可能重新生成配置或执行另一条 compose 命令；必须在其最终 `up` 调用
+加入同一覆盖文件，或在 bootstrap 完成后执行上述受控替换。不能只构建/推送镜像
+便宣称环境已修复。开发、授权项目必须分别执行，采集器走其实际更新链路。
+`verify` 支持重复的 `--env-file`、`--profile` 参数，按原部署参数传入。
+版本门禁之后仍需完成平台登录、授权校验、FalkorDB 读写及采集任务冒烟。
+
+回滚前保存上一版各项目的镜像摘要清单和数据备份；保留原卷、不执行 `down -v`、
+不删 containerd snapshot。失败时以同样 compose 文件顺序换回上一版镜像覆盖文件
+并重建受影响服务，再验收业务；回退旧镜像意味着漏洞重新存在，须记录并重新修复。
