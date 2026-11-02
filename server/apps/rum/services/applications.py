@@ -74,16 +74,28 @@ class ApplicationsService:
         self.analytics = analytics if analytics is not None else get_analytics()
 
     def _load_registry(self, actor: str) -> list[dict]:
-        return self.list_applications(actor)
+        # Catalog only needs the registry. Timestamps stay on the full list.
+        return self.list_application_names(actor)
+
+    def list_application_names(self, actor: str) -> list[dict]:
+        del actor
+        from apps.rum.models import RumApplication
+
+        return [{"application": app.name, "enabled": bool(app.enabled)} for app in RumApplication.objects.all().order_by("-created_at", "name")]
 
     def list_applications(self, actor: str) -> list[dict]:
+        del actor
         from apps.rum.models import RumApplication
 
         unavailable = not self.control.available()
-        return [
-            strip_browser_keys(self._view(app.name, include_keys=False, control_down=unavailable))
-            for app in RumApplication.objects.all().order_by("-created_at", "name")
-        ]
+        rows = []
+        for app in RumApplication.objects.all().order_by("-created_at", "name"):
+            view = strip_browser_keys(self._view(app.name, include_keys=False, control_down=unavailable))
+            # One refused GET means the controller is down for this request.
+            if view.get("controlUnavailable"):
+                unavailable = True
+            rows.append(view)
+        return rows
 
     def get_application(self, actor: str, name: str) -> dict:
         if not valid_application(name):
@@ -200,13 +212,9 @@ class ApplicationsService:
             app.revision = int(app.revision or 0) + 1
             app.save()
             RumApplicationOrigin.objects.filter(application=name).delete()
-            RumApplicationOrigin.objects.bulk_create(
-                [RumApplicationOrigin(application=name, origin=origin) for origin in origins]
-            )
+            RumApplicationOrigin.objects.bulk_create([RumApplicationOrigin(application=name, origin=origin) for origin in origins])
             digests = list(
-                RumApplicationKey.objects.filter(application=name, status="active")
-                .order_by("created_at")
-                .values_list("key_digest", flat=True)
+                RumApplicationKey.objects.filter(application=name, status="active").order_by("created_at").values_list("key_digest", flat=True)
             )
             payload = {
                 "application": name,
@@ -237,9 +245,7 @@ class ApplicationsService:
         from apps.rum.models import RumApplication, RumApplicationKey, RumApplicationOrigin
 
         app = RumApplication.objects.get(name=name)
-        origins = list(
-            RumApplicationOrigin.objects.filter(application=name).order_by("origin").values_list("origin", flat=True)
-        )
+        origins = list(RumApplicationOrigin.objects.filter(application=name).order_by("origin").values_list("origin", flat=True))
         key_rows = list(RumApplicationKey.objects.filter(application=name, status="active").order_by("created_at"))
         plain: list[str] = []
         if include_keys:

@@ -39,7 +39,7 @@ export default function FunnelFormDrawer({
       setApplication('');
     }
     setError('');
-    void listApplications()
+    void listApplications(true)
       .then((items) => setApps(items.map((item) => item.application).filter(Boolean)))
       .catch(() => setApps([]));
   }, [open, initial, listApplications]);
