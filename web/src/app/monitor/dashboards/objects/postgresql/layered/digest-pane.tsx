@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { Input, Select } from 'antd';
+import { Input } from 'antd';
 import { mergeChartSeries } from '../../../shared/utils/chart-data';
 import type { EntityTableRow } from '../../host/entity-series';
 import LayeredEntityTable, { type LayeredColumn } from '../../host/layered/entity-table';
@@ -10,12 +10,11 @@ import { GrayTabEmptyState, ProDashLoading, ProSection, ThinTimeSeries, proChrom
 import host from '../../host/layered/layered.module.scss';
 import { HOST_SERIES_COLOR } from '../../host/config';
 import {
-  ALL_STATEMENT_DATABASES,
   formatAverageLatency,
   formatCount,
   formatTimeShare,
-  statementDatabaseOptions,
-  statementMatchesDatabase,
+  statementDatabaseFilters,
+  statementMatchesDatabases,
   type PostgresStatementRow,
   type PostgresWaitRow
 } from './digest';
@@ -151,20 +150,20 @@ export function StatementPane({
   onOpenCollection?: () => void;
 }) {
   const [queryText, setQueryText] = useState('');
-  const [database, setDatabase] = useState(ALL_STATEMENT_DATABASES);
+  const [databases, setDatabases] = useState<string[]>([]);
   const [sort, setSort] = useState<ColumnSort>({ key: 'timeShare', order: 'descend' });
   const query = queryText.trim().toLowerCase();
-  const databaseOptions = useMemo(() => statementDatabaseOptions(rows), [rows]);
+  const databaseFilters = useMemo(() => statementDatabaseFilters(rows), [rows]);
   const ordered = useMemo(
     () => sortRows(
       rows.filter((row) => (
-        statementMatchesDatabase(row.datname, database)
+        statementMatchesDatabases(row.datname, databases)
         && (!query || `${row.sql} ${row.datname}`.toLowerCase().includes(query))
       )),
       sort,
       statementValue
     ),
-    [database, query, rows, sort]
+    [databases, query, rows, sort]
   );
   const selected = ordered.find((row) => row.id === selectedId) || ordered[0];
   useEffect(() => {
@@ -173,9 +172,13 @@ export function StatementPane({
     onSelect(ordered[0].id);
   }, [onSelect, ordered, selectedId]);
   useEffect(() => {
-    if (databaseOptions.some((option) => option.value === database)) return;
-    setDatabase(ALL_STATEMENT_DATABASES);
-  }, [database, databaseOptions]);
+    setDatabases((current) => {
+      if (!current.length) return current;
+      const allowed = new Set(databaseFilters.map((item) => item.value));
+      const next = current.filter((name) => allowed.has(name));
+      return next.length === current.length ? current : next;
+    });
+  }, [databaseFilters]);
   if (!rows.length) {
     return (
       <TabFill
@@ -204,7 +207,10 @@ export function StatementPane({
       render: (entity) => entity.labels.datname || '--',
       csvValue: (entity) => entity.labels.datname || '--',
       sorter: (left, right) => (left.labels.datname || '').localeCompare(right.labels.datname || ''),
-      sortOrder: sort?.key === 'datname' ? sort.order : null
+      sortOrder: sort?.key === 'datname' ? sort.order : null,
+      filters: databaseFilters,
+      filterMultiple: true,
+      filteredValue: databases.length ? databases : null
     },
     {
       key: 'timeShare',
@@ -281,7 +287,11 @@ export function StatementPane({
           scrollY={false}
           selectedKey={selected?.id || ''}
           onSelect={onSelect}
-          onChange={(_pagination, _filters, sorter) => setSort(readSort(sorter))}
+          onChange={(_pagination, filters, sorter) => {
+            setSort(readSort(sorter));
+            const picked = filters?.datname;
+            setDatabases(Array.isArray(picked) ? picked.map(String) : []);
+          }}
           emptyText="无匹配项"
           toolbar={(
             <div className="flex w-full min-w-0 flex-wrap items-center gap-2">
@@ -296,18 +306,6 @@ export function StatementPane({
                 onSearch={setQueryText}
                 className="w-60 max-w-full"
               />
-              <span className="inline-flex items-center gap-1 text-[12px] text-[var(--color-text-2)]">
-                <span>数据库</span>
-                <Select
-                  size="small"
-                  aria-label="数据库"
-                  value={database}
-                  options={databaseOptions}
-                  onChange={setDatabase}
-                  popupMatchSelectWidth={false}
-                  className="w-40"
-                />
-              </span>
               <div className="ml-auto">
                 <TableCsvExportButton
                   host={instanceName.trim() || 'postgres'}
