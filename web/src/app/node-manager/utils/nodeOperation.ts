@@ -67,6 +67,20 @@ const normalizeText = (value: unknown) => {
   return typeof value === 'string' ? value.trim() : '';
 };
 
+const CPU_ARCHITECTURE_ALIASES: Record<string, string> = {
+  x86_64: 'x86_64',
+  amd64: 'x86_64',
+  arm64: 'arm64',
+  aarch64: 'arm64'
+};
+
+export const normalizeCollectorCpuArchitecture = (value: unknown) => {
+  const normalized = String(value ?? '')
+    .trim()
+    .toLowerCase();
+  return CPU_ARCHITECTURE_ALIASES[normalized] || '';
+};
+
 export const getCollectorOperationSelection = (
   selectedNodes: TableDataItem[]
 ): CollectorOperationSelection => {
@@ -78,7 +92,7 @@ export const getCollectorOperationSelection = (
     normalizeText(node.operating_system)
   );
   const cpuArchitectures = selectedNodes.map((node) =>
-    normalizeText(node.cpu_architecture)
+    normalizeCollectorCpuArchitecture(node.cpu_architecture)
   );
   const uniqueOS = [...new Set(operatingSystems)];
   const uniqueArchitectures = [...new Set(cpuArchitectures)];

@@ -224,14 +224,10 @@ const Node = () => {
       selectedRowKeys,
       selectedNodeMap
     );
-    const operatingSystems = selectedNodes.map((node) => node.operating_system);
-    const architectures = selectedNodes.map(
-      (node) => node.cpu_architecture || ''
-    );
-    const uniqueOS = [...new Set(operatingSystems)];
-    const uniqueArchitectures = [...new Set(architectures)];
-    // 采集器：检查操作系统和 CPU 架构是否一致
-    return uniqueOS.length !== 1 || uniqueArchitectures.length !== 1;
+    const selection = getCollectorOperationSelection(selectedNodes);
+    if (!selection.disabled) return false;
+    // 缺少架构时仍允许点击，由菜单提示原因；系统或架构不一致则禁用入口
+    return selection.reason !== 'unknown_architecture';
   }, [selectedRowKeys, selectedNodeMap]);
 
   const enableOperateController = useMemo(() => {
@@ -308,7 +304,19 @@ const Node = () => {
     const selection = getCollectorOperationSelection(selectedNodes);
 
     if (selection.disabled === true) {
-      if (selection.reason === 'unknown_architecture') {
+      if (selection.reason === 'mixed_operating_system') {
+        message.error(
+          t(
+            'node-manager.cloudregion.node.collectorOperationMixedOperatingSystem'
+          )
+        );
+      } else if (selection.reason === 'mixed_cpu_architecture') {
+        message.error(
+          t(
+            'node-manager.cloudregion.node.collectorOperationMixedCpuArchitecture'
+          )
+        );
+      } else if (selection.reason === 'unknown_architecture') {
         message.error(
           t(
             'node-manager.cloudregion.node.collectorOperationUnknownArchitecture',

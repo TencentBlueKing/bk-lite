@@ -1,12 +1,10 @@
 import type { TableDataItem } from '../types';
-import { getCollectorOperationSelection } from './nodeOperation';
+import {
+  getCollectorOperationSelection,
+  normalizeCollectorCpuArchitecture
+} from './nodeOperation';
 
-const CPU_ARCHITECTURE_ALIASES: Record<string, string> = {
-  x86_64: 'x86_64',
-  amd64: 'x86_64',
-  arm64: 'arm64',
-  aarch64: 'arm64'
-};
+export { normalizeCollectorCpuArchitecture };
 
 export interface CollectorPackageRecord {
   id?: string | number;
@@ -36,13 +34,6 @@ export type CollectorInstallTarget =
         | 'unknown_architecture'
         | 'missing_target';
     };
-
-export const normalizeCollectorCpuArchitecture = (value: unknown) => {
-  const normalized = String(value ?? '')
-    .trim()
-    .toLowerCase();
-  return CPU_ARCHITECTURE_ALIASES[normalized] || '';
-};
 
 const normalizeOperatingSystem = (value: unknown) =>
   String(value ?? '')
