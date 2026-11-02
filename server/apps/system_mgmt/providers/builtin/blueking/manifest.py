@@ -101,7 +101,14 @@ PROVIDER_MANIFEST = ProviderManifest.model_validate(
                         ],
                     }
                 ],
-                "available_external_fields": ["username", "display_name", "email", "mobile", "department_ids"],
+                "available_external_fields": [
+                    "username",
+                    "display_name",
+                    "email",
+                    "mobile",
+                    "department_ids",
+                    "leader",
+                ],
             },
         },
         "capabilities": [

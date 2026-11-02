@@ -1023,6 +1023,8 @@ class InstanceManage(object):
         permission_map: dict,
         creator: str = None,
         case_sensitive: bool = True,
+        advanced_filter: dict = None,
+        permission_lookup=None,
     ):
         """实例列表"""
 
@@ -1035,6 +1037,22 @@ class InstanceManage(object):
         if order and order.startswith("-"):
             order = order[1:]
             order_type = "DESC"
+
+        if advanced_filter:
+            from apps.cmdb.services.advanced_instance_query import run_advanced_instance_query
+
+            return run_advanced_instance_query(
+                model_id=model_id,
+                params=params,
+                advanced_filter=advanced_filter,
+                permission_map=permission_map,
+                creator=creator,
+                permission_lookup=permission_lookup,
+                page=_page,
+                order=order,
+                order_type=order_type,
+                case_sensitive=case_sensitive,
+            )
 
         with GraphClient() as ag:
             query = dict(
@@ -1417,12 +1435,17 @@ class InstanceManage(object):
         validation_item = {**inst_info, **update_attr}
         check_attr_map["validation_items"] = [validation_item]
         unique_lock_keys = UniqueWriteLockService.build_lock_keys(inst_info["model_id"], validation_item, check_attr_map)
+        if not skip_permission_check:
+            from apps.cmdb.collection.field_reconcile import COLLECT_SOURCES_ATTR, stamp_manual_sources
+
+            stamped = stamp_manual_sources(inst_info, update_attr)
+            if stamped is not None:
+                update_attr[COLLECT_SOURCES_ATTR] = stamped
+                check_attr_map.setdefault("editable", {})[COLLECT_SOURCES_ATTR] = COLLECT_SOURCES_ATTR
         with UniqueWriteLockService.hold(unique_lock_keys):
             if expected_monitor_id is not None:
                 current_entity = InstanceManage.query_entity_by_id(inst_id)
-                current_monitor_id = _normalized_monitor_id(
-                    current_entity.get("monitor_id") if isinstance(current_entity, dict) else None
-                )
+                current_monitor_id = _normalized_monitor_id(current_entity.get("monitor_id") if isinstance(current_entity, dict) else None)
                 if current_monitor_id != expected_monitor_id:
                     raise StaleMonitorBinding()
             with GraphClient() as ag:
@@ -1574,6 +1597,15 @@ class InstanceManage(object):
                 exist_items,
                 attrs=attrs,
             )
+            from apps.cmdb.collection.field_reconcile import COLLECT_SOURCES_ATTR, stamp_manual_sources
+
+            source_rows = []
+            for instance in inst_list:
+                stamped = stamp_manual_sources(instance, update_attr)
+                if stamped is not None:
+                    source_rows.append({"id": instance["_id"], "value": stamped})
+            if source_rows and hasattr(ag, "batch_update_node_property_values"):
+                ag.batch_update_node_property_values(INSTANCE, COLLECT_SOURCES_ATTR, source_rows)
 
         result_ids = {int(item["_id"]) for item in result if item.get("_id") is not None}
         missing_result_ids = [inst_id for inst_id in inst_ids if inst_id not in result_ids]
@@ -1614,6 +1646,29 @@ class InstanceManage(object):
         schedule_instance_auto_relation_reconcile([item["_id"] for item in result])
 
         return result
+
+    @staticmethod
+    def restore_auto_collect(inst_id: int, fields=None):
+        """清除人工来源。下一轮采集按字段顺序写入。"""
+        from apps.cmdb.collection.field_reconcile import COLLECT_SOURCES_ATTR, clear_manual_fields
+
+        inst_info = InstanceManage.query_entity_by_id(inst_id)
+        if not inst_info:
+            raise BaseAppException("实例不存在！")
+        sources = clear_manual_fields(inst_info, fields)
+        attrs = ModelManage.search_model_attr(inst_info["model_id"])
+        check_attr_map = InstanceManage._build_unique_rule_check_attr_map(inst_info["model_id"], attrs, for_update=True)
+        check_attr_map.setdefault("editable", {})[COLLECT_SOURCES_ATTR] = COLLECT_SOURCES_ATTR
+        with GraphClient() as ag:
+            result = ag.set_entity_properties(
+                INSTANCE,
+                [inst_id],
+                {COLLECT_SOURCES_ATTR: sources},
+                check_attr_map,
+                [],
+                attrs=attrs,
+            )
+        return result[0]
 
     @staticmethod
     def instance_batch_delete(user_groups: list, roles: list, inst_ids: list, operator: str):
@@ -2636,6 +2691,9 @@ class InstanceManage(object):
         creator: str = "",
         attr_list: list = [],
         association_list: list = [],
+        extra_query: list = None,
+        advanced_filter: dict = None,
+        permission_lookup=None,
         *,
         file_backed: bool = False,
         row_limit=None,
@@ -2650,12 +2708,13 @@ class InstanceManage(object):
         format_permission_dict = InstanceManage._build_format_permission_dict(permissions_map, creator)
         metadata_finished = perf_counter()
         if ids:
+            advanced_filter = None
             query_list = [
                 {"field": "id", "type": "id[]", "value": ids},
                 {"field": "model_id", "type": "str=", "value": model_id},
             ]
         else:
-            query_list = [{"field": "model_id", "type": "str=", "value": model_id}]
+            query_list = [{"field": "model_id", "type": "str=", "value": model_id}, *(extra_query or [])]
 
         association = [item for item in association if item["model_asst_id"] in association_list]
         model_name_map = {item[f"{side}_model_id"]: item[f"{side}_model_name"] for item in association for side in ("src", "dst")}
@@ -2681,16 +2740,33 @@ class InstanceManage(object):
                 params = list(query_list)
                 if cursor is not None:
                     params.append({"field": "inst_uuid", "type": "str>", "value": cursor})
-                with GraphClient() as ag:
-                    batch, _ = ag.query_entity(
-                        label=INSTANCE,
+                if advanced_filter:
+                    from apps.cmdb.services.advanced_instance_query import run_advanced_instance_query
+
+                    batch, _ = run_advanced_instance_query(
+                        model_id=model_id,
                         params=params,
-                        format_permission_dict=format_permission_dict,
+                        advanced_filter=advanced_filter,
+                        permission_map=permissions_map,
+                        creator=creator,
+                        permission_lookup=permission_lookup,
                         page={"skip": 0, "limit": EXPORT_BATCH_SIZE},
                         order="inst_uuid",
-                        include_count=False,
+                        order_type="ASC",
                         fields=fields,
+                        include_count=False,
                     )
+                else:
+                    with GraphClient() as ag:
+                        batch, _ = ag.query_entity(
+                            label=INSTANCE,
+                            params=params,
+                            format_permission_dict=format_permission_dict,
+                            page={"skip": 0, "limit": EXPORT_BATCH_SIZE},
+                            order="inst_uuid",
+                            include_count=False,
+                            fields=fields,
+                        )
                 instance_seconds += perf_counter() - query_started
                 if not batch:
                     break

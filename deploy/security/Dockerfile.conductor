@@ -1,0 +1,11 @@
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE} AS upstream
+FROM python:3.12-slim-bookworm AS patched
+WORKDIR /work
+COPY patch_log4j.py log4j-artifacts.json ./
+RUN python patch_log4j.py fetch --artifacts /work/artifacts
+COPY --from=upstream /app/libs/conductor-server.jar /work/source.jar
+RUN python patch_log4j.py conductor --artifacts /work/artifacts --source /work/source.jar --output /work/patched.jar
+
+FROM ${BASE_IMAGE}
+COPY --from=patched /work/patched.jar /app/libs/conductor-server.jar

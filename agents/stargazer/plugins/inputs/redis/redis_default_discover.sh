@@ -332,7 +332,7 @@ emit_instance() {
   local_ip="$1" port="$2" mode="$3" role="$4" version="$5" install_path="$6" max_conn="$7" max_mem="$8" cluster_uuid="$9" slaves_json="${10}" master_json="${11}"
   inst_name="${local_ip}-redis-${port}"
   printf '{"inst_name":"%s","bk_obj_id":"redis","ip_addr":"%s","port":"%s","version":"%s","install_path":"%s","max_conn":"%s","max_mem":"%s","database_role":"%s","topo_mode":"%s","cluster_uuid":"%s","slaves":%s,"master":%s}\n' \
-    "$(json_esc "$inst_name")" "$(json_esc "$local_ip")" "$port" "$(json_esc "$version")" "" \
+    "$(json_esc "$inst_name")" "$(json_esc "$local_ip")" "$port" "$(json_esc "$version")" "$(json_esc "$install_path")" \
     "$(json_esc "$max_conn")" "$(json_esc "$max_mem")" "$(json_esc "$role")" "$(json_esc "$mode")" "$(json_esc "$cluster_uuid")" \
     "$slaves_json" "$master_json"
 }
@@ -341,7 +341,7 @@ emit_partial_instance() {
   local_ip="$1" port="$2" version="${3:-}" install_path="${4:-}"
   inst_name="${local_ip}-redis-${port}"
   printf '{"inst_name":"%s","bk_obj_id":"redis","ip_addr":"%s","port":"%s","version":"%s","install_path":"%s","max_conn":"","max_mem":"","database_role":"","topo_mode":"","cluster_uuid":"","slaves":[],"master":{}}\n' \
-    "$(json_esc "$inst_name")" "$(json_esc "$local_ip")" "$port" "$(json_esc "$version")" ""
+    "$(json_esc "$inst_name")" "$(json_esc "$local_ip")" "$port" "$(json_esc "$version")" "$(json_esc "$install_path")"
 }
 
 main() {

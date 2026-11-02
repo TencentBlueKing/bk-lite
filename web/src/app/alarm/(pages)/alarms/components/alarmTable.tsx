@@ -153,8 +153,11 @@ const AlarmTable: React.FC<AlarmTableProps> = ({
       key: 'status',
       width: 100,
       onCell: (record) => getAlarmDetailTriggerCellProps(record, 'status', onOpenDetail),
-      render: (_: any, { status }: AlarmTableDataItem) => (
-        <span>{STATE_MAP[status as keyof typeof STATE_MAP] || '--'}</span>
+      render: (_: any, record: AlarmTableDataItem) => (
+        <span className="inline-flex items-center gap-1">
+          <span>{STATE_MAP[record.status as keyof typeof STATE_MAP] || '--'}</span>
+          {record.has_itsm_ticket ? <span className="rounded bg-[var(--color-fill-1)] px-1 text-xs text-[var(--color-primary)]">{t('itsm.linked')}</span> : null}
+        </span>
       ),
     },
     {

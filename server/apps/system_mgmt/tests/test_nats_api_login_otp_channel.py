@@ -67,6 +67,54 @@ def test_login_rejects_disabled_user(monkeypatch):
     assert result == {"result": False, "message": "User is disabled"}
 
 
+def test_login_allows_resigned_user(monkeypatch):
+    monkeypatch.setenv("SECRET_KEY", "test-secret")
+    monkeypatch.setenv("JWT_ALGORITHM", "HS256")
+    _user(username="resigned-user", employment_status="resigned", password_last_modified=timezone.now())
+    monkeypatch.setattr(
+        nats_api,
+        "_get_pwd_policy_settings",
+        lambda: {
+            "pwd_set_validity_period": 0,
+            "pwd_set_expiry_reminder_days": 7,
+            "pwd_set_max_retry_count": 5,
+            "pwd_set_lock_duration": 60,
+        },
+    )
+    result = nats_api.login("resigned-user", "secret-pass")
+    assert result["result"] is True
+
+
+def test_login_rejects_expired_account(monkeypatch):
+    monkeypatch.setenv("SECRET_KEY", "test-secret")
+    _user(username="expired-account", account_expires_at=timezone.now() - timedelta(minutes=1))
+    result = nats_api.login("expired-account", "secret-pass")
+    assert result == {"result": False, "message": "Account has expired"}
+
+
+def test_verify_token_rejects_account_that_expires_after_login(monkeypatch):
+    monkeypatch.setenv("SECRET_KEY", "test-secret")
+    monkeypatch.setenv("JWT_ALGORITHM", "HS256")
+    user = _user(username="later-expired", password_last_modified=timezone.now())
+    monkeypatch.setattr(
+        nats_api,
+        "_get_pwd_policy_settings",
+        lambda: {
+            "pwd_set_validity_period": 0,
+            "pwd_set_expiry_reminder_days": 7,
+            "pwd_set_max_retry_count": 5,
+            "pwd_set_lock_duration": 60,
+        },
+    )
+    login_result = nats_api.login("later-expired", "secret-pass")
+    assert login_result["result"] is True
+    user.account_expires_at = timezone.now() - timedelta(minutes=1)
+    user.save(update_fields=["account_expires_at"])
+    verified = nats_api.verify_token(login_result["data"]["token"])
+    assert verified["result"] is False
+    assert verified["message"] == "Account has expired"
+
+
 def test_login_expired_password_blocks_non_admin(monkeypatch):
     _user(username="expired-user", password_last_modified=timezone.now() - timedelta(days=400))
     monkeypatch.setattr(

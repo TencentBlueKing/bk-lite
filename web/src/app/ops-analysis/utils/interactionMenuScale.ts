@@ -17,7 +17,13 @@ const sameScale = (left: number, right: number) => Math.abs(left - right) <= 0.0
 
 type MenuScaleInput = Pick<
   ScreenRenderContext,
-  'enabled' | 'fitScale' | 'scaleX' | 'scaleY' | 'widgetUiScale' | 'screenUiScale'
+  | 'enabled'
+  | 'fitScale'
+  | 'scaleX'
+  | 'scaleY'
+  | 'widgetUiScale'
+  | 'screenUiScale'
+  | 'layoutMode'
 >;
 
 /**
@@ -38,6 +44,8 @@ export const clampInteractionMenuScale = (raw: number): number => {
  * 这一轴就是 CSS transform 的倍数。全屏把两轴拉开时菜单不能跟着拉变形，改用 fitScale。
  */
 export const resolveCanvasContentScale = (context: MenuScaleInput): number => {
+  // 几何已经是屏幕像素，外层没有 transform，不能再乘 fitScale。
+  if (context.layoutMode === 'viewportPixels') return NEUTRAL_SCALE;
   const scaleX = positive(context.scaleX);
   const scaleY = positive(context.scaleY);
   const uniformAxis = scaleX != null && scaleY != null && sameScale(scaleX, scaleY)

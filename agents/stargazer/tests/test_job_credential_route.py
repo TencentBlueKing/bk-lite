@@ -3,6 +3,60 @@ import pytest
 from plugins.script_executor import SSHPlugin
 
 
+@pytest.mark.asyncio
+async def test_local_executor_timeout_falls_back_to_ssh_when_credential_exists(monkeypatch):
+    calls = []
+
+    async def request(subject, payload=None, timeout=10.0):
+        calls.append(subject)
+        if subject.startswith("local.execute."):
+            raise TimeoutError("nats executor unavailable")
+        return {"success": True, "result": "{}"}
+
+    monkeypatch.setattr("plugins.script_executor.nats_request", request)
+    plugin = SSHPlugin(
+        {
+            "node_id": "access-point",
+            "host": "192.0.2.20",
+            "script_content": "echo ok",
+            "username": "root",
+            "password": "secret",
+            "model_id": "host",
+            "node_info": {"id": "node-20", "operating_system": "linux"},
+        }
+    )
+
+    result = await plugin.list_all_resources()
+
+    assert result["success"] is True
+    assert calls == ["local.execute.node-20", "ssh.execute.access-point"]
+
+
+@pytest.mark.asyncio
+async def test_local_executor_timeout_without_credential_does_not_call_ssh(monkeypatch):
+    calls = []
+
+    async def request(subject, payload=None, timeout=10.0):
+        calls.append(subject)
+        raise TimeoutError("nats executor unavailable")
+
+    monkeypatch.setattr("plugins.script_executor.nats_request", request)
+    plugin = SSHPlugin(
+        {
+            "node_id": "access-point",
+            "host": "192.0.2.20",
+            "script_content": "echo ok",
+            "model_id": "host",
+            "node_info": {"id": "node-20", "operating_system": "linux"},
+        }
+    )
+
+    result = await plugin.list_all_resources()
+
+    assert result["success"] is False
+    assert calls == ["local.execute.node-20"]
+
+
 @pytest.mark.parametrize("username,password", [(None, None), ("", ""), ("test-user", "test-password")])
 @pytest.mark.parametrize("node_info", [{}, {"id": "test-agent"}])
 def test_job_credentials_do_not_decide_agent_route(username, password, node_info):

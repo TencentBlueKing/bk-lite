@@ -20,13 +20,27 @@ vi.mock('react-rnd', () => ({
   Rnd: ({
     children,
     style,
+    default: defaults,
+    size,
+    scale,
     ...rest
   }: {
     children: React.ReactNode;
     style?: React.CSSProperties;
+    default?: { x: number; y: number; width: number; height: number };
+    size?: { width: number; height: number };
+    scale?: number;
     'data-screen-item-id'?: string;
   }) => (
-    <div data-screen-item-id={rest['data-screen-item-id']} style={style}>
+    <div
+      data-screen-item-id={rest['data-screen-item-id']}
+      data-x={defaults?.x}
+      data-y={defaults?.y}
+      data-w={size?.width ?? defaults?.width}
+      data-h={size?.height ?? defaults?.height}
+      data-rnd-scale={scale}
+      style={style}
+    >
       {children}
     </div>
   ),
@@ -45,6 +59,7 @@ vi.mock('../screenChromeRenderer', () => ({
 
 vi.mock('../screenChromeSkins', () => ({
   ScreenChromeSkinStyles: () => null,
+  ChromeFontDensityProvider: ({ children }: { children: React.ReactNode }) => children,
 }));
 
 beforeAll(() => {
@@ -220,5 +235,140 @@ describe('ScreenCanvas outside click', () => {
     const fullscreen = renderCanvas({ fullscreen: true });
     fireEvent.click(fullscreen.workbench);
     expect(fullscreen.onDismissInspector).not.toHaveBeenCalled();
+  });
+});
+
+describe('ScreenCanvas fill viewport pixels', () => {
+  const mockWorkbenchSize = (width: number, height: number) =>
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+      const box = this.classList?.contains('screen-canvas-workbench')
+        ? { width, height }
+        : { width: 0, height: 0 };
+      return {
+        x: 0,
+        y: 0,
+        top: 0,
+        left: 0,
+        right: box.width,
+        bottom: box.height,
+        width: box.width,
+        height: box.height,
+        toJSON() {
+          return {};
+        },
+      } as DOMRect;
+    });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  const renderSized = (
+    props: Partial<React.ComponentProps<typeof ScreenCanvas>> = {},
+    size = { width: 1920, height: 1200 },
+  ) => {
+    mockWorkbenchSize(size.width, size.height);
+    const base = buildDefaultScreenViewSets();
+    const widget = {
+      ...createScreenWidgetItem('single', []),
+      x: 10,
+      y: 10,
+      w: 30,
+      h: 20,
+    };
+    const onMoveItem = vi.fn();
+    const view = render(
+      <ScreenCanvas
+        viewSets={{
+          ...base,
+          items: [widget],
+          viewport: { ...base.viewport, adapter: 'fill' },
+        }}
+        onMoveItem={onMoveItem}
+        {...props}
+      />,
+    );
+    const canvas = view.container.querySelector('.screen-tech-canvas') as HTMLElement;
+    const node = view.container.querySelector(
+      `[data-screen-item-id="${widget.id}"]`,
+    ) as HTMLElement;
+    return { view, canvas, node, widget, onMoveItem };
+  };
+
+  it.each([
+    ['fullscreen', { fullscreen: true }],
+    ['fullscreen from edit', { fullscreen: true, editMode: true }],
+    ['share', { shareMode: true }],
+  ] as const)('lays %s fill out in viewport pixels without a scale transform', (_label, props) => {
+    const { canvas, node, widget, onMoveItem } = renderSized(props);
+
+    expect(canvas.style.transform).toBe('none');
+    expect(canvas.style.width).toBe('1920px');
+    expect(canvas.style.height).toBe('1200px');
+    expect(canvas.className).not.toContain('screen-tech-canvas--stretched');
+    expect(node.dataset.x).toBe('10');
+    expect(node.dataset.y).toBe('11');
+    expect(node.dataset.w).toBe('30');
+    expect(node.dataset.h).toBe('22');
+    expect(node.dataset.rndScale).toBe('1');
+    expect(widget).toMatchObject({ x: 10, y: 10, w: 30, h: 20 });
+    expect(onMoveItem).not.toHaveBeenCalled();
+  });
+
+  it('keeps edit, plain view, and forced contain on the design transform', () => {
+    const edit = renderSized({ editMode: true });
+    expect(edit.canvas.style.transform.startsWith('scale(')).toBe(true);
+    expect(edit.canvas.style.width).toBe('1920px');
+    expect(edit.node.dataset.x).toBe('10');
+    expect(edit.node.dataset.y).toBe('10');
+    expect(edit.node.dataset.h).toBe('20');
+
+    const view = renderSized({});
+    expect(view.canvas.style.transform.startsWith('scale(')).toBe(true);
+    expect(view.node.dataset.y).toBe('10');
+
+    const pdf = renderSized({ fullscreen: true, forceContain: true });
+    expect(pdf.canvas.style.transform.startsWith('scale(')).toBe(true);
+    expect(pdf.canvas.style.width).toBe('1920px');
+    expect(pdf.canvas.style.height).toBe('1080px');
+    expect(pdf.node.dataset.y).toBe('10');
+    expect(pdf.node.dataset.h).toBe('20');
+  });
+
+  it.each([
+    ['fitWidth', 'fitWidth', { width: 2560, height: 1080 }],
+    ['fitHeight', 'fitHeight', { width: 1920, height: 1400 }],
+  ] as const)('keeps fullscreen %s on the uniform transform', (_label, adapter, size) => {
+    const base = buildDefaultScreenViewSets();
+    mockWorkbenchSize(size.width, size.height);
+    const widget = {
+      ...createScreenWidgetItem('single', []),
+      x: 10,
+      y: 10,
+      w: 30,
+      h: 20,
+    };
+    const view = render(
+      <ScreenCanvas
+        fullscreen
+        viewSets={{
+          ...base,
+          items: [widget],
+          viewport: { ...base.viewport, adapter },
+        }}
+      />,
+    );
+    const canvas = view.container.querySelector('.screen-tech-canvas') as HTMLElement;
+    const node = view.container.querySelector(
+      `[data-screen-item-id="${widget.id}"]`,
+    ) as HTMLElement;
+
+    expect(canvas.style.transform.startsWith('scale(')).toBe(true);
+    expect(canvas.style.width).toBe('1920px');
+    expect(canvas.style.height).toBe('1080px');
+    expect(node.dataset.x).toBe('10');
+    expect(node.dataset.y).toBe('10');
+    expect(node.dataset.h).toBe('20');
+    expect(node.dataset.rndScale).not.toBe('1');
   });
 });

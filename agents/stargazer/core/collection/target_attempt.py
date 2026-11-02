@@ -41,6 +41,7 @@ class TargetAttemptRunner:
         metrics: CollectionMetrics,
     ) -> None:
         self._preflight = preflight
+        self._plugin = plugin
         self._credential_policy = credential_policy
         self._plan = plan
         self._metrics = metrics
@@ -79,7 +80,14 @@ class TargetAttemptRunner:
         target_started_at: float,
         plugin_exception_log_budget: PluginExceptionLogBudget | None,
     ) -> TargetCollectionResult:
-        preflight = await self._run_preflight(request, target)
+        local_node = await self._job_local_node(request, target)
+        if local_node:
+            preflight = PreflightResult(
+                status=PreflightStatus.REACHABLE,
+                detail="same-region nats executor; ip precheck skipped",
+            )
+        else:
+            preflight = await self._run_preflight(request, target)
         if preflight.status == PreflightStatus.UNREACHABLE:
             self._metrics.increment("target_unreachable_total")
             error_code = preflight.error_code or "target_unreachable"
@@ -101,7 +109,9 @@ class TargetAttemptRunner:
                 failed_stage=FailureStage.CREDENTIAL,
             )
         if not credentials:
-            return await self._no_credential_result(request, target)
+            if not local_node:
+                return await self._no_credential_result(request, target)
+            credentials = ({},)
 
         context_params = dict(request.params)
         context_params["_log_plugin_call_chain"] = True
@@ -124,6 +134,14 @@ class TargetAttemptRunner:
             context,
             target_started_at=target_started_at,
         )
+
+    async def _job_local_node(self, request: CollectionRequest, target: str):
+        if str(request.params.get("executor_type") or "").lower() != "job":
+            return None
+        resolver = getattr(self._plugin, "job_local_node", None)
+        if not callable(resolver):
+            return None
+        return await resolver(target)
 
     async def _load_eligible_credentials(self, request: CollectionRequest, target: str):
         try:

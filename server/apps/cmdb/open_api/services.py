@@ -51,7 +51,7 @@ def serialize_instance(instance):
         "_created_at": "created_at",
         "_updated_at": "updated_at",
     }
-    hidden = {"_id", "_labels", "permission"}
+    hidden = {"_id", "_labels", "permission", "_collect_sources"}
     return {aliases.get(key, key): value for key, value in instance.items() if key not in hidden}
 
 

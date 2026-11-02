@@ -82,9 +82,7 @@ class MonitorInstanceRemovalService:
                         "cmdb_id": str(inst.cmdb_id or "").strip() or None,
                         "monitor_object_name": getattr(inst.monitor_object, "name", None),
                         "organization_ids": list(
-                            MonitorInstanceOrganization.objects.filter(
-                                monitor_instance=inst
-                            ).values_list("organization", flat=True)
+                            MonitorInstanceOrganization.objects.filter(monitor_instance=inst).values_list("organization", flat=True)
                         ),
                     }
                     for inst in instances
@@ -106,23 +104,12 @@ class MonitorInstanceRemovalService:
                     if base_config_ids:
                         node_mgmt.delete_configs(base_config_ids)
 
-                closed_alert_count, closed_at = cls._close_active_alerts(
+                closed_alert_count = cls.close_alerts_for_instances(
                     removed_ids,
                     operator=operator,
                     reason=reason,
                 )
-                if closed_alert_count:
-                    transaction.on_commit(
-                        lambda ids=removed_ids, end_time=closed_at: cls._notify_closed_alerts(
-                            ids,
-                            closed_at=end_time,
-                            operator=operator,
-                            reason=reason,
-                        )
-                    )
-                PolicyInstanceBaseline.objects.filter(
-                    monitor_instance_id__in=removed_ids
-                ).delete()
+                PolicyInstanceBaseline.objects.filter(monitor_instance_id__in=removed_ids).delete()
                 cleanup_result = cleanup_policy_sources(removed_ids)
                 MonitorObjectOrganizationRule.objects.filter(monitor_instance_id__in=removed_ids).delete()
 
@@ -168,29 +155,63 @@ class MonitorInstanceRemovalService:
             raise BaseAppException("删除监控实例失败，请稍后重试") from exc
 
     @classmethod
+    def close_alerts_for_instances(
+        cls,
+        instance_ids,
+        *,
+        operator: str,
+        reason: str,
+        policy_ids: Iterable[int] | None = None,
+    ) -> int:
+        """关闭指定实例的活动告警。policy_ids 为 None 时关闭该实例全部活动告警。"""
+        scoped_policy_ids = None if policy_ids is None else tuple(policy_ids)
+        closed_count, closed_at = cls._close_active_alerts(
+            instance_ids,
+            operator=operator,
+            reason=reason,
+            policy_ids=scoped_policy_ids,
+        )
+        if closed_count and closed_at is not None:
+            transaction.on_commit(
+                lambda ids=tuple(
+                    instance_ids
+                ), end_time=closed_at, scoped_ids=scoped_policy_ids, notify_operator=operator, notify_reason=reason: cls._notify_closed_alerts(
+                    ids,
+                    closed_at=end_time,
+                    operator=notify_operator,
+                    reason=notify_reason,
+                    policy_ids=scoped_ids,
+                )
+            )
+        return closed_count
+
+    @classmethod
     def _close_active_alerts(
         cls,
         instance_ids,
         *,
         operator: str,
         reason: str,
+        policy_ids: Iterable[int] | None = None,
     ) -> tuple[int, datetime | None]:
         if not instance_ids:
+            return 0, None
+        scoped_policy_ids = None if policy_ids is None else tuple(policy_ids)
+        if scoped_policy_ids is not None and not scoped_policy_ids:
             return 0, None
 
         closed_count = 0
         last_id = 0
         closed_at = timezone.now()
         while True:
-            alerts = list(
-                MonitorAlert.objects.select_for_update()
-                .filter(
-                    monitor_instance_id__in=instance_ids,
-                    status="new",
-                    id__gt=last_id,
-                )
-                .order_by("id")[: cls.ALERT_BATCH_SIZE]
-            )
+            alert_filter = {
+                "monitor_instance_id__in": instance_ids,
+                "status": "new",
+                "id__gt": last_id,
+            }
+            if scoped_policy_ids is not None:
+                alert_filter["policy_id__in"] = scoped_policy_ids
+            alerts = list(MonitorAlert.objects.select_for_update().filter(**alert_filter).order_by("id")[: cls.ALERT_BATCH_SIZE])
             if not alerts:
                 break
 
@@ -242,18 +263,28 @@ class MonitorInstanceRemovalService:
         return closed_count, closed_at
 
     @classmethod
-    def _notify_closed_alerts(cls, instance_ids, *, closed_at, operator: str, reason: str) -> None:
+    def _notify_closed_alerts(
+        cls,
+        instance_ids,
+        *,
+        closed_at,
+        operator: str,
+        reason: str,
+        policy_ids: Iterable[int] | None = None,
+    ) -> None:
         try:
             last_id = 0
+            scoped_policy_ids = None if policy_ids is None else tuple(policy_ids)
             while True:
-                alerts = list(
-                    MonitorAlert.objects.filter(
-                        monitor_instance_id__in=instance_ids,
-                        status="closed",
-                        end_event_time=closed_at,
-                        id__gt=last_id,
-                    ).order_by("id")[: cls.ALERT_BATCH_SIZE]
-                )
+                alert_filter = {
+                    "monitor_instance_id__in": instance_ids,
+                    "status": "closed",
+                    "end_event_time": closed_at,
+                    "id__gt": last_id,
+                }
+                if scoped_policy_ids is not None:
+                    alert_filter["policy_id__in"] = scoped_policy_ids
+                alerts = list(MonitorAlert.objects.filter(**alert_filter).order_by("id")[: cls.ALERT_BATCH_SIZE])
                 if not alerts:
                     break
 
@@ -269,11 +300,13 @@ class MonitorInstanceRemovalService:
                         reason=reason,
                     )
                 last_id = alerts[-1].id
-        except Exception:
+        except Exception as exc:
             logger.exception(
-                "实例移除后的告警关闭通知失败，等待告警中心补偿: instance_count=%s, reason=%s",
-                len(instance_ids),
+                "event=monitor_alert_close_notify_failed instance_count=%s reason=%s failed_stage=%s error_type=%s",
+                len(tuple(instance_ids)),
                 reason,
+                "notify_closed_alerts",
+                type(exc).__name__,
             )
 
     @staticmethod

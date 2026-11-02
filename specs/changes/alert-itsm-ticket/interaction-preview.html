@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>告警中心</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: light-dark(#f3f5f8, #10151c);
+      --surface: light-dark(#fff, #18202b);
+      --line: light-dark(#e3e8ef, #2c3948);
+      --text: light-dark(#1c2430, #e7edf5);
+      --muted: light-dark(#5c6b7c, #a9b7c8);
+      --primary: light-dark(#1677ff, #3c89e8);
+      --soft: light-dark(#e8f1ff, #1d3350);
+      --warn-bg: light-dark(#fff7e6, #3a2e16);
+      --warn: light-dark(#ad6800, #ffc069);
+      --err-bg: light-dark(#fff2f0, #3a201c);
+      --err: light-dark(#cf1322, #ff7875);
+      --ok-bg: light-dark(#f6ffed, #1d3320);
+      --ok: light-dark(#389e0d, #95de64);
+    }
+    * { box-sizing: border-box; }
+    [hidden] { display: none !important; }
+    body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.5 ui-sans-serif, system-ui, sans-serif; }
+    button, input, select, textarea { font: inherit; color: inherit; }
+    button { cursor: pointer; }
+    button:disabled { cursor: not-allowed; opacity: .45; }
+    button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px solid var(--primary); outline-offset: 1px; }
+    .top { height: 52px; display: flex; align-items: center; gap: 16px; padding: 0 20px; background: var(--surface); border-bottom: 1px solid var(--line); }
+    .top nav { display: flex; gap: 4px; }
+    .btn, .top nav button { border: 1px solid var(--line); background: var(--surface); border-radius: 6px; padding: 6px 12px; }
+    .btn.primary, .top nav button[aria-selected="true"] { background: var(--primary); color: #fff; border-color: transparent; }
+    .btn.text { border: 0; background: transparent; color: var(--err); }
+    .main { padding: 16px 20px 48px; max-width: 1080px; }
+    .bar { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 12px; }
+    h1, h2 { margin: 0; font-weight: 500; }
+    h1 { font-size: 16px; }
+    h2 { font-size: 14px; }
+    .hint, .muted { color: var(--muted); }
+    .hint { margin: 0 0 12px; }
+    table { width: 100%; border-collapse: collapse; background: var(--surface); border: 1px solid var(--line); }
+    th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+    th { color: var(--muted); font-weight: 500; }
+    tr.clickable { cursor: pointer; }
+    tr.clickable:hover { background: var(--soft); }
+    .panel { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; }
+    .panel head, .panel-h { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 10px 16px; background: light-dark(#f7f9fb, #121922); border-bottom: 1px solid var(--line); }
+    .panel-b { padding: 16px; }
+    .tag { display: inline-block; padding: 1px 8px; border-radius: 4px; background: var(--soft); color: var(--primary); font-size: 12px; }
+    .tag.plain { background: var(--bg); color: var(--text); border: 1px solid var(--line); }
+    .banner { margin-bottom: 12px; padding: 10px 12px; border-radius: 6px; }
+    .banner.info { background: var(--soft); }
+    .banner.warn { background: var(--warn-bg); color: var(--warn); }
+    .banner.err { background: var(--err-bg); color: var(--err); }
+    .banner.ok { background: var(--ok-bg); color: var(--ok); }
+    label.field { display: block; margin-bottom: 14px; }
+    label.field > span, .field-label { display: block; margin-bottom: 4px; }
+    input[type="text"], select, textarea { width: 100%; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); }
+    textarea { min-height: 72px; resize: vertical; }
+    .checks { display: flex; flex-wrap: wrap; gap: 12px 16px; }
+    .checks label { display: flex; gap: 6px; align-items: center; }
+    .rowline { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
+    .rowline input, .rowline select { width: auto; flex: 1; }
+    .drawer-mask { position: fixed; inset: 0; background: light-dark(rgb(0 0 0 / .35), rgb(0 0 0 / .55)); display: flex; justify-content: flex-end; }
+    .drawer { width: min(560px, 100%); height: 100%; background: var(--surface); display: flex; flex-direction: column; box-shadow: none; }
+    .drawer header, .modal header { display: flex; justify-content: space-between; align-items: center; padding: 14px 16px; border-bottom: 1px solid var(--line); }
+    .drawer .body, .modal .body { padding: 16px; overflow: auto; flex: 1; }
+    .drawer footer, .modal footer { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--line); }
+    .modal-mask { position: fixed; inset: 0; background: light-dark(rgb(0 0 0 / .35), rgb(0 0 0 / .55)); display: flex; align-items: center; justify-content: center; padding: 16px; }
+    .modal { width: min(440px, 100%); background: var(--surface); border-radius: 8px; border: 1px solid var(--line); }
+    .kv { display: grid; grid-template-columns: 88px minmax(0, 1fr); gap: 8px 12px; margin: 12px 0; }
+    .kv dt { color: var(--muted); }
+    .kv dd { margin: 0; }
+    .back { margin-bottom: 12px; }
+    .toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: var(--text); color: var(--bg); padding: 8px 14px; border-radius: 6px; }
+  </style>
+</head>
+<body>
+  <header class="top">
+    <strong>告警中心</strong>
+    <nav>
+      <button type="button" data-screen="config" aria-selected="false">全局配置</button>
+      <button type="button" data-screen="rules" aria-selected="true">告警处理</button>
+      <button type="button" data-screen="alerts" aria-selected="false">告警</button>
+    </nav>
+  </header>
+  <main class="main" id="app"></main>
+  <div id="layer"></div>
+  <div id="toast" class="toast" hidden></div>
+  <script>
+    const screens = document.querySelectorAll('.top nav button');
+    const app = document.getElementById('app');
+    const layer = document.getElementById('layer');
+    let screen = 'rules';
+    let detailId = null;
+    let toastTimer = 0;
+
+    const integration = { name: 'ITSM', url: 'https://10.11.10.182/openapi/v1/itsm/bklite_expand/api/v2', enabled: true };
+
+    const rules = [
+      { id: 1, name: '主机告警转工单', active: true, events: ['created', 'assigned', 'resolved', 'closed'], workflow: '20261012164700000901', bindings: [{ name: 'ticket__title', from: 'field', value: 'title', locked: true }] }
+    ];
+
+    const eventMeta = [
+      { key: 'created', label: '创建', locked: true },
+      { key: 'assigned', label: '分派' },
+      { key: 'acknowledged', label: '认领' },
+      { key: 'resolved', label: '恢复' },
+      { key: 'closed', label: '关闭' }
+    ];
+
+    const alerts = [
+      { id: 'A-1001', title: '主机 CPU 持续高于阈值', status: '未分派', statusKey: 'unassigned', itsm: null },
+      { id: 'A-1002', title: '磁盘使用率超过 90%', status: '待响应', statusKey: 'pending', itsm: { phase: 'creating', rule: '主机告警转工单', workflow: '20261012164700000901' } },
+      { id: 'A-1003', title: '内存使用率超过 95%', status: '处理中', statusKey: 'processing', itsm: { phase: 'failed', rule: '主机告警转工单', workflow: '20261012164700000901', message: 'ITSM 拒绝请求：流程不存在' } },
+      { id: 'A-1004', title: '网络丢包超过阈值', status: '待响应', statusKey: 'pending', itsm: { phase: 'unknown', rule: '主机告警转工单', workflow: '20261012164700000901', message: '建单请求超时，工单是否已创建需核查' } },
+      { id: 'A-1005', title: '端口探测失败', status: '处理中', statusKey: 'processing', itsm: { phase: 'linked', rule: '主机告警转工单', ticketId: '102026102620100900000901', number: '', title: '端口探测失败', statusLabel: '', ended: false, syncError: '' } },
+      { id: 'A-1006', title: '数据库连接数过高', status: '处理中', statusKey: 'processing', itsm: { phase: 'linked', rule: '主机告警转工单', ticketId: '102026102620100900000902', number: 'DE2026102600000007', title: '数据库连接数过高', statusLabel: '处理中', ended: false, syncError: '', commentError: '' } },
+      { id: 'A-1007', title: '主机失联', status: '处理中', statusKey: 'processing', itsm: { phase: 'linked', rule: '主机告警转工单', ticketId: '102026102620100900000903', number: 'DE2026102600000012', title: '主机失联', statusLabel: '处理中', ended: true, syncError: '' } },
+      { id: 'A-1008', title: '证书即将到期', status: '已关闭', statusKey: 'closed', itsm: { phase: 'linked', rule: '主机告警转工单', ticketId: '102026102620100900000904', number: 'DE2026102600000018', title: '证书即将到期', statusLabel: '处理中', ended: false, syncError: '', commentError: '关闭留言发送失败，可重发' } }
+    ];
+
+    function toast(text) {
+      const el = document.getElementById('toast');
+      el.textContent = text;
+      el.hidden = false;
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => { el.hidden = true; }, 2200);
+    }
+
+    function show(name) {
+      screen = name;
+      detailId = null;
+      screens.forEach((button) => button.setAttribute('aria-selected', button.dataset.screen === name ? 'true' : 'false'));
+      render();
+    }
+
+    function ticketTag(alert) {
+      return alert.itsm && alert.itsm.phase === 'linked' && alert.itsm.ticketId ? '<span class="tag">已关联工单</span>' : '';
+    }
+
+    function statusText(itsm) {
+      if (!itsm) return '';
+      if (itsm.phase === 'creating') return '建单中';
+      if (itsm.phase === 'failed') return '建单失败';
+      if (itsm.phase === 'unknown') return '结果待确认';
+      if (!itsm.number && !itsm.ended) return '等待同步';
+      if (itsm.ended) return '工单已关闭';
+      return itsm.statusLabel || '处理中';
+    }
+
+    function render() {
+      layer.innerHTML = '';
+      if (screen === 'config') renderConfig();
+      else if (screen === 'rules') renderRules();
+      else if (detailId) renderDetail();
+      else renderAlerts();
+    }
+
+    function renderConfig() {
+      app.innerHTML = `
+        <div class="bar"><h1>全局配置</h1></div>
+        <p class="hint">当前团队的 ITSM 地址和令牌。连接已经测试通过。</p>
+        <section class="panel">
+          <div class="panel-h"><h2>ITSM 集成</h2><span class="tag">已启用</span></div>
+          <div class="panel-b">
+            <dl class="kv">
+              <dt>名称</dt><dd>${integration.name}</dd>
+              <dt>地址</dt><dd>${integration.url}</dd>
+              <dt>令牌</dt><dd>已配置</dd>
+              <dt>连接测试</dt><dd>连接和认证成功。未创建工单。</dd>
+            </dl>
+            <p class="muted">处理规则只填写流程和工单内容。这里不配置工单链接，也不配置工单结束后关闭告警。</p>
+          </div>
+        </section>`;
+    }
+
+    function renderRules() {
+      app.innerHTML = `
+        <div class="bar"><h1>告警处理</h1><button class="btn primary" id="new-rule" type="button">新建</button></div>
+        <table>
+          <thead><tr><th>名称</th><th>动作</th><th>触发事件</th><th>状态</th></tr></thead>
+          <tbody>
+            ${rules.map((rule) => `<tr>
+              <td>${rule.name}</td><td>ITSM</td>
+              <td>${rule.events.map((key) => eventMeta.find((item) => item.key === key).label).join('、')}</td>
+              <td>${rule.active ? '启用' : '停用'}</td>
+            </tr>`).join('')}
+          </tbody>
+        </table>`;
+      document.getElementById('new-rule').onclick = () => openRule();
+    }
+
+    function openRule() {
+      const draft = {
+        name: '',
+        events: ['created'],
+        workflow: '',
+        fieldsLoaded: false,
+        loadError: '',
+        bindings: [{ name: 'ticket__title', from: 'field', value: 'title', locked: true }],
+        error: ''
+      };
+      const discovered = [
+        { name: 'ticket__title', label: '标题', type: 'text', required: true },
+        { name: 'multiUser_RTtGv7xY', label: '处理人1', type: 'multiUser', required: false },
+        { name: 'multiUser_GVK8FyPV', label: '处理人2', type: 'multiUser', required: false }
+      ];
+      const draw = () => {
+        layer.innerHTML = `
+          <div class="drawer-mask" id="mask">
+            <form class="drawer" id="rule-form">
+              <header><h2>新建处理规则</h2><button class="btn" type="button" id="close-drawer">关闭</button></header>
+              <div class="body">
+                ${draft.error ? `<div class="banner err">${draft.error}</div>` : ''}
+                <label class="field"><span>规则名称</span><input name="name" type="text" value="${draft.name}" maxlength="100"></label>
+                <div class="field"><span class="field-label">动作类型</span><select disabled><option>ITSM</option></select></div>
+                <div class="field">
+                  <span class="field-label">触发事件</span>
+                  <div class="checks">
+                    ${eventMeta.map((item) => `<label><input type="checkbox" name="event" value="${item.key}" ${draft.events.includes(item.key) ? 'checked' : ''} ${item.locked ? 'disabled' : ''}>${item.label}</label>`).join('')}
+                  </div>
+                  <p class="hint">创建必选。勾选分派、认领、恢复、关闭后，只给已经建好的工单追加备注，不改变工单流程。</p>
+                </div>
+                <label class="field"><span>匹配条件</span><input type="text" value="级别 = 严重" disabled></label>
+                <div class="field">
+                  <span class="field-label">流程标识</span>
+                  <div class="rowline">
+                    <input id="workflow" type="text" value="${draft.workflow}" maxlength="200" placeholder="已发布流程标识">
+                    <button class="btn" type="button" id="load-fields">读取字段</button>
+                  </div>
+                  ${draft.loadError ? `<div class="banner err">${draft.loadError}</div>` : ''}
+                </div>
+                <div class="field">
+                  <span class="field-label">建单字段</span>
+                  ${draft.bindings.map((binding, index) => `
+                    <div class="rowline">
+                      <input type="text" value="${binding.name}" ${binding.locked || draft.fieldsLoaded ? 'readonly' : ''} aria-label="字段 Key" data-name="${index}">
+                      <select data-from="${index}"><option value="field" ${binding.from === 'field' ? 'selected' : ''}>告警字段</option><option value="const" ${binding.from === 'const' ? 'selected' : ''}>常量</option></select>
+                      <input type="text" value="${binding.value}" aria-label="字段来源" data-value="${index}">
+                      ${binding.locked ? '' : `<button class="btn text" type="button" data-remove="${index}">删除</button>`}
+                    </div>`).join('')}
+                  ${draft.fieldsLoaded ? '<p class="hint">字段 Key 来自该流程当前已发布表单。标题必填。</p>' : '<p class="hint">默认把告警标题写入 ticket__title。读取字段后可按流程补其它项。</p>'}
+                </div>
+              </div>
+              <footer><button class="btn" type="button" id="cancel-rule">取消</button><button class="btn primary" type="submit">保存</button></footer>
+            </form>
+          </div>`;
+        const close = () => { layer.innerHTML = ''; };
+        document.getElementById('close-drawer').onclick = close;
+        document.getElementById('cancel-rule').onclick = close;
+        document.getElementById('mask').onclick = (event) => { if (event.target.id === 'mask') close(); };
+        document.getElementById('workflow').oninput = (event) => { draft.workflow = event.target.value; draft.fieldsLoaded = false; };
+        document.getElementById('load-fields').onclick = () => {
+          draft.workflow = document.getElementById('workflow').value.trim();
+          draft.name = document.querySelector('[name=name]').value;
+          draft.events = [...document.querySelectorAll('[name=event]:checked')].map((item) => item.value);
+          if (!draft.workflow) { draft.loadError = '请先填写流程标识'; draw(); return; }
+          draft.loadError = '';
+          draft.fieldsLoaded = true;
+          draft.bindings = discovered.map((field) => field.name === 'ticket__title'
+            ? { name: field.name, from: 'field', value: 'title', locked: true }
+            : { name: field.name, from: 'const', value: '', locked: false });
+          toast('已读取 3 个建单字段');
+          draw();
+        };
+        layer.querySelectorAll('[data-remove]').forEach((button) => {
+          button.onclick = () => { draft.bindings.splice(Number(button.dataset.remove), 1); draw(); };
+        });
+        document.getElementById('rule-form').onsubmit = (event) => {
+          event.preventDefault();
+          const name = document.querySelector('[name=name]').value.trim();
+          const workflow = document.getElementById('workflow').value.trim();
+          const events = [...document.querySelectorAll('[name=event]:checked')].map((item) => item.value);
+          layer.querySelectorAll('[data-name]').forEach((input) => { draft.bindings[input.dataset.name].name = input.value.trim(); });
+          layer.querySelectorAll('[data-from]').forEach((input) => { draft.bindings[input.dataset.from].from = input.value; });
+          layer.querySelectorAll('[data-value]').forEach((input) => { draft.bindings[input.dataset.value].value = input.value.trim(); });
+          if (!name || !workflow || !events.includes('created') || !draft.bindings.some((item) => item.name === 'ticket__title' && item.value)) {
+            draft.error = '请填写规则名称、流程标识，并保留创建事件和标题字段。';
+            draft.name = name; draft.workflow = workflow; draft.events = events;
+            draw();
+            return;
+          }
+          rules.unshift({ id: Date.now(), name, active: true, events, workflow, bindings: draft.bindings });
+          close();
+          toast('规则已保存');
+          render();
+        };
+      };
+      draw();
+    }
+
+    function renderAlerts() {
+      app.innerHTML = `
+        <div class="bar"><h1>告警</h1></div>
+        <p class="hint">状态列保持告警自己的状态。只有已经保存工单 ID 的告警显示「已关联工单」。</p>
+        <table>
+          <thead><tr><th>告警</th><th>标题</th><th>状态</th><th></th></tr></thead>
+          <tbody>
+            ${alerts.map((alert) => `<tr class="clickable" data-id="${alert.id}">
+              <td>${alert.id}</td><td>${alert.title}</td><td>${alert.status}</td><td>${ticketTag(alert)}</td>
+            </tr>`).join('')}
+          </tbody>
+        </table>`;
+      app.querySelectorAll('[data-id]').forEach((row) => { row.onclick = () => { detailId = row.dataset.id; render(); }; });
+    }
+
+    function renderDetail() {
+      const alert = alerts.find((item) => item.id === detailId);
+      const itsm = alert.itsm;
+      const actions = [];
+      let body = '<p>未关联工单</p>';
+      if (itsm && itsm.phase === 'creating') {
+        body = `<span class="tag plain">建单中</span><dl class="kv"><dt>规则</dt><dd>${itsm.rule}</dd></dl>`;
+      } else if (itsm && itsm.phase === 'failed') {
+        body = `<span class="tag plain">建单失败</span><dl class="kv"><dt>规则</dt><dd>${itsm.rule}</dd></dl><div class="banner err">${itsm.message}</div>`;
+        actions.push('<button class="btn" type="button" id="retry">补建</button>');
+      } else if (itsm && itsm.phase === 'unknown') {
+        body = `<span class="tag plain">结果待确认</span><dl class="kv"><dt>规则</dt><dd>${itsm.rule}</dd></dl><div class="banner warn">${itsm.message}</div>`;
+        actions.push('<button class="btn" type="button" id="reconcile">核查</button>');
+      } else if (itsm && itsm.phase === 'linked') {
+        const label = itsm.ended ? '工单已关闭' : (itsm.number ? itsm.statusLabel : '等待同步');
+        body = `
+          <span class="tag">${label}</span>
+          <dl class="kv">
+            <dt>规则</dt><dd>${itsm.rule}</dd>
+            <dt>工单 ID</dt><dd>${itsm.ticketId}</dd>
+            <dt>单号</dt><dd>${itsm.number || '—'}</dd>
+            <dt>标题</dt><dd>${itsm.title || '—'}</dd>
+            <dt>最近同步</dt><dd>${itsm.number || itsm.ended ? '刚刚' : '—'}</dd>
+          </dl>
+          ${itsm.syncError ? `<div class="banner warn">${itsm.syncError}</div>` : ''}
+          ${itsm.commentError ? `<div class="banner err">${itsm.commentError}</div>` : ''}`;
+        if (itsm.commentError) actions.push('<button class="btn" type="button" id="recomment">重发留言</button>');
+      }
+      app.innerHTML = `
+        <button class="btn back" type="button" id="back">返回告警列表</button>
+        <div class="bar"><h1>${alert.title}</h1></div>
+        <p class="hint">告警状态：${alert.status}。工单状态不改变这一列。</p>
+        <section class="panel">
+          <div class="panel-h"><h2>ITSM 工单</h2><button class="btn" type="button" id="refresh">刷新</button></div>
+          <div class="panel-b">${body}<div class="actions" style="display:flex;gap:8px;margin-top:12px">${actions.join('')}</div></div>
+        </section>`;
+      document.getElementById('back').onclick = () => { detailId = null; render(); };
+      document.getElementById('refresh').onclick = () => {
+        if (itsm && itsm.phase === 'creating') {
+          itsm.phase = 'linked';
+          itsm.ticketId = '102026102709180000000' + String(alert.id).slice(-2);
+          itsm.number = 'DE20261027000000' + String(alert.id).slice(-2);
+          itsm.title = alert.title;
+          itsm.statusLabel = '处理中';
+          itsm.ended = false;
+          toast('已同步到正式单号');
+        } else toast('已刷新');
+        render();
+      };
+      const retry = document.getElementById('retry');
+      if (retry) retry.onclick = () => openRetry(alert);
+      const reconcile = document.getElementById('reconcile');
+      if (reconcile) reconcile.onclick = () => openReconcile(alert);
+      const recomment = document.getElementById('recomment');
+      if (recomment) recomment.onclick = () => { itsm.commentError = ''; toast('留言已受理'); render(); };
+    }
+
+    function openRetry(alert) {
+      layer.innerHTML = `
+        <div class="modal-mask" id="mask">
+          <form class="modal" id="retry-form">
+            <header><h2>补建</h2></header>
+            <div class="body">
+              <p>使用规则「${alert.itsm.rule}」的当前流程补建：${alert.itsm.workflow}</p>
+              <p class="hint">确认后只表示已受理，不在这里等待 ITSM。</p>
+            </div>
+            <footer><button class="btn" type="button" id="cancel">取消</button><button class="btn primary" type="submit">确认</button></footer>
+          </form>
+        </div>`;
+      const close = () => { layer.innerHTML = ''; };
+      document.getElementById('cancel').onclick = close;
+      document.getElementById('mask').onclick = (event) => { if (event.target.id === 'mask') close(); };
+      document.getElementById('retry-form').onsubmit = (event) => {
+        event.preventDefault();
+        alert.itsm = { phase: 'creating', rule: alert.itsm.rule, workflow: alert.itsm.workflow };
+        close();
+        toast('补建已受理');
+        render();
+      };
+    }
+
+    function openReconcile(alert) {
+      const state = { preview: null, id: '', evidence: '' };
+      const draw = () => {
+        layer.innerHTML = `
+          <div class="modal-mask" id="mask">
+            <form class="modal" id="check-form">
+              <header><h2>核查</h2></header>
+              <div class="body">
+                <div class="banner info">结果待确认时不能直接再建一张。先按工单 ID 查到工单，再说明它属于这条告警。</div>
+                <label class="field"><span>工单 ID</span><input id="ticket-id" type="text" value="${state.id}" maxlength="128"></label>
+                ${state.preview ? `<dl class="kv"><dt>标题</dt><dd>${state.preview.title}</dd><dt>单号</dt><dd>${state.preview.number}</dd><dt>状态</dt><dd>${state.preview.status}</dd></dl>
+                  <label class="field"><span>核查说明</span><textarea id="evidence">${state.evidence}</textarea></label>` : ''}
+              </div>
+              <footer><button class="btn" type="button" id="cancel">取消</button><button class="btn primary" type="submit">${state.preview ? '确认' : '查询'}</button></footer>
+            </form>
+          </div>`;
+        document.getElementById('cancel').onclick = () => { layer.innerHTML = ''; };
+        document.getElementById('mask').onclick = (event) => { if (event.target.id === 'mask') layer.innerHTML = ''; };
+        document.getElementById('check-form').onsubmit = (event) => {
+          event.preventDefault();
+          state.id = document.getElementById('ticket-id').value.trim();
+          if (!state.preview) {
+            if (!state.id) return;
+            state.preview = { title: alert.title, number: 'DE2026102700000099', status: '处理中' };
+            draw();
+            return;
+          }
+          state.evidence = document.getElementById('evidence').value.trim();
+          if (!state.evidence) return;
+          alert.itsm = { phase: 'linked', rule: alert.itsm.rule, ticketId: state.id, number: state.preview.number, title: state.preview.title, statusLabel: '处理中', ended: false, syncError: '' };
+          layer.innerHTML = '';
+          toast('已关联到这条告警');
+          render();
+        };
+      };
+      draw();
+    }
+
+    screens.forEach((button) => { button.onclick = () => show(button.dataset.screen); });
+    render();
+  </script>
+</body>
+</html>

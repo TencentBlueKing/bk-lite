@@ -1,5 +1,5 @@
 ### Overview
-This plugin collects the asset inventory under a Tencent Cloud account via Tencent Cloud Open API (SDK), including CVM, CDB (MySQL), COS, Redis, MongoDB, Pulsar, RocketMQ, CLB, EIP, CFS, domains, and other resource types. After unified formatting, it syncs them to CMDB. Collection is read-only and agentless: the "access point" you select calls Tencent Cloud APIs outbound.
+This plugin collects the asset inventory under a Tencent Cloud account via Tencent Cloud Open API (SDK), including CVM, CDB (MySQL), COS, Redis, MongoDB, Pulsar, RocketMQ, CLB, EIP, TKE clusters and nodes, VPN gateways, customer gateways, VPN connections, NAT gateways, CFS, domains, and other resource types. After unified formatting, it syncs them to CMDB. Collection is read-only and agentless: the "access point" you select calls Tencent Cloud APIs outbound.
 
 ### Entry Point and Execution Location
 In the CMDB Web UI:
@@ -54,9 +54,19 @@ Each resource type is associated to `qcloud` via a `belong` relationship. Core f
 | CMQ Topic | qcloud_cmq_topic | resource_name, resource_id, region, status, etc. |
 | Load balancer CLB | qcloud_clb | resource_name, resource_id, region, status, spec (CPU/memory/storage, depending on resource type), etc. |
 | EIP | qcloud_eip | resource_name, resource_id, region, status, ip_addr, etc. |
+| TKE cluster | qcloud_tke_cluster | resource_name, resource_id, region, status, version, vpc, cluster_cidr, node_num, etc. |
+| TKE node | qcloud_tke_node | resource_name, resource_id, region, cluster_id, ip_addr, instance_role, status, etc. |
+| VPN gateway | qcloud_vpn_gateway | resource_name, resource_id, region, zone, vpc, status, ip_addr, bandwidth_mbps, etc. |
+| Customer gateway | qcloud_customer_gateway | resource_name, resource_id, region, ip_addr, create_time, etc. |
+| VPN connection | qcloud_vpn_connection | resource_name, resource_id, region, vpc, vpn_gateway_id, customer_gateway_id, status, vpn_proto, etc. |
+| NAT gateway | qcloud_nat_gateway | resource_name, resource_id, region, zone, vpc, subnet, status, eip_ids, eip_addrs, etc. |
 | COS bucket | qcloud_bucket | resource_name, resource_id, region, etc. |
 | File system CFS | qcloud_filesystem | resource_name, resource_id, region, zone, status, spec (CPU/memory/storage, depending on resource type), etc. |
 | Domain | qcloud_domain | resource_name, resource_id, status, expiration time, etc. |
 
 **Relationships**
 - All of the above resources belong to the corresponding Tencent Cloud account instance via `belong qcloud`.
+- `qcloud_tke_node` belongs to `qcloud_tke_cluster` (`cluster_id` = ClusterId) and connects to `qcloud_cvm` (node InstanceId = CVM `resource_id`). No edge is created when the peer is missing in this round.
+- `qcloud_vpn_connection` connects to `qcloud_vpn_gateway` (VpnGatewayId) and `qcloud_customer_gateway` (CustomerGatewayId). No edge is created on a miss.
+- `qcloud_nat_gateway` connects to `qcloud_eip` (AddressId = EIP `resource_id`). One NAT may have multiple edges. Unmatched AddressIds are skipped.
+- VPN connections never collect or store `PreShareKey`.

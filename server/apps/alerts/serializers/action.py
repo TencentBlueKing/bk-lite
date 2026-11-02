@@ -8,6 +8,27 @@ from apps.alerts.utils.rule_catalog import validate_rules_for_serializer
 
 
 class ActionRuleSerializer(serializers.ModelSerializer):
+    def validate(self, attrs):
+        def field(name, default=None):
+            return attrs.get(name, getattr(self.instance, name, default))
+
+        if field("action_type", "job") == "itsm":
+            if self.instance and attrs.get("is_active") is False and set(attrs) == {"is_active"}:
+                return attrs
+            from apps.alerts.itsm.config import ItsmError, validate_config
+
+            events = field("trigger_events", [])
+            allowed = {"created", "assigned", "acknowledged", "resolved", "closed"}
+            if field("scope", "alert") != "alert" or not isinstance(events, list) or "created" not in events or set(events) - allowed:
+                raise serializers.ValidationError("ITSM 规则必须包含创建，其余只可选分派、认领、恢复、关闭")
+            if field("auto_execute", True) is not True:
+                raise serializers.ValidationError("ITSM 规则必须开启自动执行，手动入口仅用于失败补建")
+            try:
+                validate_config(field("action_config", {}), field("team", []))
+            except ItsmError as exc:
+                raise serializers.ValidationError(str(exc)) from exc
+        return attrs
+
     def validate_match_rules(self, value):
         return validate_rules_for_serializer(value, "action")
 
@@ -25,6 +46,9 @@ class ActionRuleSerializer(serializers.ModelSerializer):
     def validate_action_config(self, value):
         if not isinstance(value, dict):
             raise serializers.ValidationError(serializer_message(self, "error.action_config_must_be_object"))
+        action_type = self.initial_data.get("action_type", getattr(self.instance, "action_type", "job"))
+        if action_type == "itsm":
+            return value
         bindings = value.get("param_bindings") or []
         if not isinstance(bindings, list):
             raise serializers.ValidationError(serializer_message(self, "error.param_bindings_must_be_list"))
@@ -52,7 +76,24 @@ class ActionRuleSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = ActionRule
-        fields = "__all__"
+        fields = [
+            "id",
+            "created_at",
+            "updated_at",
+            "created_by",
+            "updated_by",
+            "domain",
+            "updated_by_domain",
+            "name",
+            "is_active",
+            "auto_execute",
+            "team",
+            "match_rules",
+            "trigger_events",
+            "scope",
+            "action_type",
+            "action_config",
+        ]
 
 
 class ActionExecutionSerializer(serializers.ModelSerializer):
@@ -61,4 +102,21 @@ class ActionExecutionSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = ActionExecution
-        fields = "__all__"
+        fields = [
+            "id",
+            "created_at",
+            "updated_at",
+            "rule",
+            "rule_name",
+            "alert",
+            "alert_title",
+            "trigger_event",
+            "trigger_type",
+            "idempotency_key",
+            "status",
+            "action_type",
+            "job_task_id",
+            "job_detail_url",
+            "result",
+            "operator",
+        ]

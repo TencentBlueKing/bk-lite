@@ -27,6 +27,7 @@ const enterpriseMenus = JSON.parse(
 
 const STABLE_USER_NAMES = [
   'user_group',
+  'user_fields',
   'login_auth',
   'user_sync',
   'security_settings',
@@ -43,6 +44,7 @@ const STABLE_SETTING_NAMES = [
 
 const STABLE_USER_URLS = [
   '/system-manager/user/structure',
+  '/system-manager/user/fields',
   '/system-manager/user/login-auth',
   '/system-manager/user/user-sync',
   '/system-manager/user/security-settings',
@@ -86,6 +88,7 @@ describe('系统管理菜单文案与二级顺序', () => {
 
     expect(userMenu?.children?.map((item) => item.title)).toEqual([
       '组织架构',
+      '用户字段',
       '登录认证',
       '用户同步',
       '安全策略',
