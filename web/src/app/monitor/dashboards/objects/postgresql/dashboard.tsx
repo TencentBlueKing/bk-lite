@@ -124,6 +124,8 @@ export default function PostgresqlDashboardPage() {
         control: 'pill',
         options: dashboardModeOptions('postgres')
       }}
+      pageClassName={layout === 'category' ? styles.proPage : undefined}
+      shellClassName={layout === 'category' ? styles.proShell : undefined}
       categoryContent={(
         <PostgresCategoryLayout
           instanceId={dashboard.instanceId}

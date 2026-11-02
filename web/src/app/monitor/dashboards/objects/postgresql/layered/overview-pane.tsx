@@ -118,6 +118,16 @@ const FOCUS_SPECS = [
   }
 ] as const;
 
+/** 死锁速率：0 用中性色，大于 0 才用告警色。 */
+export const postgresDeadlockTone = (latest: number | null, alertColor: string) => (
+  latest != null && latest > 0 ? alertColor : undefined
+);
+
+/** 窗口全是 0（或没有非 0 采样）时弱化焦点大数，折线仍保留。 */
+export const postgresFocusQuiet = (latest: number | null, samples: readonly number[]) => (
+  latest === 0 && samples.every((value) => value === 0)
+);
+
 const HEALTH_PENDING = [
   'postgresql_numbackends',
   'postgresql_xact_commit_rate',
@@ -151,11 +161,14 @@ export default function OverviewPane({
       };
     }
     const latest = postgresLatest(metricMap, item.metric);
+    const tone = item.key === 'deadlock'
+      ? postgresDeadlockTone(latest, item.color)
+      : (latest == null ? undefined : item.color);
     return {
       key: item.key,
       label: item.label,
       value: latest == null ? EMPTY : joinMetric(latest, item.unit),
-      tone: latest == null ? undefined : item.color,
+      tone,
       info
     };
   }), [hit.percent, metricMap]);
@@ -180,18 +193,26 @@ export default function OverviewPane({
           {FOCUS_SPECS.map((card) => {
             const plotted = postgresMerged(metricMap, [{ name: card.metric, label: card.label }]);
             const latest = postgresLatest(metricMap, card.metric);
+            const samples = seriesSampleValues(plotted);
+            const quiet = postgresFocusQuiet(latest, samples);
             const loading = pendingMetricNames.has(card.metric) && plotted.length === 0 && latest == null;
-            const axis = describeFocusAxis('cps', seriesSampleValues(plotted));
+            const axis = describeFocusAxis('cps', samples);
             return (
               <ProFocusCard key={card.key}>
-                <div className={proChromeClass.shortcutCopy} data-postgres-focus={card.key}>
+                <div className={proChromeClass.shortcutCopy} data-postgres-focus={card.key} data-postgres-focus-weight={quiet ? 'quiet' : 'normal'}>
                   <FocusShortcutTitle
                     label={card.label}
                     unit={axis.unitLabel}
                     hint={<PostgresHint kind={`pg-focus-${card.key}`} title={card.label} body={card.body} />}
                   />
                   {loading ? <ProDashLoading size="small" /> : (
-                    <div className={proChromeClass.shortcutValue} style={latest == null ? undefined : { color: card.color }}>
+                    <div
+                      className={proChromeClass.shortcutValue}
+                      style={latest == null ? undefined : {
+                        color: card.color,
+                        ...(quiet ? { fontSize: 15, fontWeight: 500 } : {})
+                      }}
+                    >
                       {latest == null ? EMPTY : formatFocusHeadline(axis, latest)}
                     </div>
                   )}

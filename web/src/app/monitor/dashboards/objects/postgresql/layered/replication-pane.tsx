@@ -21,6 +21,8 @@ const EMPTY = {
   action: '查看采集配置'
 };
 
+const LAG_ABSENT = '本环境未采复制延迟/积压，不展示趋势。';
+
 const NOTE_COPY: Record<Exclude<PostgresReplicationNote, 'none'>, { title: string; hint: string }> = {
   unconfigured: {
     title: '当前未配置复制',
@@ -147,8 +149,12 @@ export default function ReplicationPane({
   ];
 
   return (
-    <div data-postgres-replication-state={model.load === 'loading' ? 'loading' : 'ready'}>
-      <ProSection title="状态">
+    <div
+      className="w-full shrink-0"
+      data-postgres-replication-state={model.load === 'loading' ? 'loading' : 'ready'}
+      data-postgres-replication-trends="none"
+    >
+      <ProSection title="状态" className="!gap-2">
         <div
           className={proChromeClass.kpiGrid}
           style={{ gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' }}
@@ -176,6 +182,12 @@ export default function ReplicationPane({
             <div className="mt-1 text-[12px] leading-[1.5] text-[var(--color-text-3)]">{note.hint}</div>
           </div>
         ) : null}
+        <p
+          className="m-0 text-[12px] leading-5 text-[var(--color-text-3)]"
+          data-postgres-replication-lag-note=""
+        >
+          {LAG_ABSENT}
+        </p>
       </ProSection>
     </div>
   );

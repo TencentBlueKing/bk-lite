@@ -174,7 +174,9 @@ describe('postgres replication pane', () => {
     expect(screen.queryByText('复制状态未采集')).toBeNull();
     expect(screen.queryByText('当前未配置复制')).toBeNull();
     expect(screen.queryByText('主库 · 暂无下游')).toBeNull();
-    expect(screen.queryByText(/复制延迟|槽积压/)).toBeNull();
+    expect(screen.getByText('本环境未采复制延迟/积压，不展示趋势。')).toBeTruthy();
+    expect(document.querySelector('[data-postgres-replication-trends="none"]')).toBeTruthy();
+    expect(document.querySelector('canvas')).toBeNull();
   });
 
   it('renders sampled zeros with the no-downstream note', () => {
@@ -193,6 +195,9 @@ describe('postgres replication pane', () => {
     expect(card('streaming')?.textContent).toContain('0');
     expect(card('slots')?.textContent).toContain('0');
     expect(screen.getByText('主库 · 暂无下游')).toBeTruthy();
+    expect(screen.getByText('本环境未采复制延迟/积压，不展示趋势。')).toBeTruthy();
+    expect(document.querySelector('[data-postgres-replication-trends="none"]')).toBeTruthy();
+    expect(document.querySelector('canvas')).toBeNull();
     expect(screen.queryByText('复制状态未采集')).toBeNull();
   });
 
@@ -209,6 +214,7 @@ describe('postgres replication pane', () => {
     expect(screen.getByText('本窗口未见复制/恢复相关采点；确认采集任务在跑且至少一个周期已上报。')).toBeTruthy();
     expect(screen.queryByText('去开启复制')).toBeNull();
     expect(document.querySelector('[data-postgres-replication-card]')).toBeNull();
+    expect(screen.queryByText('本环境未采复制延迟/积压，不展示趋势。')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: '查看采集配置' }));
     expect(onOpenCollection).toHaveBeenCalledOnce();
   });

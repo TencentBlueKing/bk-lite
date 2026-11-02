@@ -24,6 +24,8 @@ export interface LayeredColumn {
   /** 多行内容列关掉省略，避免 nowrap 把竖排路径挤成一行。 */
   ellipsis?: boolean;
   width?: number | string;
+  /** 列最小宽。表格变窄时改横向滚动，不把千分位裁成省略号。 */
+  minWidth?: number;
   align?: 'left' | 'right' | 'center';
   fixed?: 'left' | 'right';
   render?: (row: EntityTableRow, index: number) => React.ReactNode;
@@ -110,6 +112,7 @@ export default function LayeredEntityTable({
     title: column.title,
     key: column.key,
     width: column.width,
+    minWidth: column.minWidth,
     align: column.align,
     fixed: column.fixed,
     ellipsis: column.ellipsis !== false,

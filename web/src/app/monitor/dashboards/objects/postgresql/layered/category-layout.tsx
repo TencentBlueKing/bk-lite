@@ -13,6 +13,7 @@ import { overviewHostAlertParams } from '../../host/layered/host-alert-list';
 import useViewApi from '@/app/monitor/api/view';
 import { asRangeQueryResult, buildSearchParams, toMetricSeries } from '../../../shared/utils';
 import host from '../../host/layered/layered.module.scss';
+import pageStyles from '../index.module.scss';
 import { POSTGRES_DIGEST_METRICS } from '../queries';
 import type { PostgresMetricMap } from './series';
 import OverviewPane from './overview-pane';
@@ -268,7 +269,7 @@ export default function PostgresCategoryLayout({
       queryTimeRange={queryTimeRange}
       suspend={loading && pendingMetricNames.size === 0}
     >
-      <div className={host.root} data-postgres-pro="category">
+      <div className={`${host.root} ${pageStyles.fitContent}`} data-postgres-pro="category">
         <div className={host.tabBand}>
           <Tabs
             className={host.partitionTabs}
@@ -353,7 +354,7 @@ export default function PostgresCategoryLayout({
             </div>
           ) : null}
           {tab === 'replication' ? (
-            <div data-postgres-empty={replicationDimmed ? 'replication' : undefined}>
+            <div className="w-full shrink-0" data-postgres-empty={replicationDimmed ? 'replication' : undefined}>
               <ReplicationPane
                 metricMap={metricMap}
                 pendingMetricNames={pendingMetricNames}

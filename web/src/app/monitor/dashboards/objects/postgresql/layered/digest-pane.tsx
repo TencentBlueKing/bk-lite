@@ -225,7 +225,10 @@ export function StatementPane({
       key: 'calls',
       title: '执行次数',
       align: 'right',
-      render: (entity) => entity.labels.calls || '--',
+      width: 132,
+      minWidth: 132,
+      ellipsis: false,
+      render: (entity) => <span className="whitespace-nowrap tabular-nums">{entity.labels.calls || '--'}</span>,
       csvValue: (entity) => entity.labels.calls || '--',
       sorter: (left, right) => compareNumber(left.values.calls, right.values.calls),
       sortOrder: sort?.key === 'calls' ? sort.order : null

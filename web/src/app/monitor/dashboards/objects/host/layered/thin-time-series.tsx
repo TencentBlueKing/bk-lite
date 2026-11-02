@@ -202,22 +202,29 @@ export interface AxisBounds {
 }
 
 /**
- * 最多 4 个刻度。数据离 0 远时不把基线拉回 0，避免把一小段起伏拉成一条贴底的线。
- * 速率，以及样本本身都 ≥ 0 的序列，下限不再垫到负数。全 0 停在 0，不出现 -1。
+ * 最多 4 个刻度。速率（/s、cps、msps、byteps 等）下限钉在 0。
+ * 非速率序列在数据离 0 较远时保持原基线，不把一小段起伏拉成贴底线。
+ * 样本都 ≥ 0 时下限不再垫到负数。全 0 停在 0，不出现 -1。
  */
 export const sparseAxisBounds = (values: number[], unit: MetricUnit = 'none'): AxisBounds | null => {
   if (!values.length) return null;
   let lo = Math.min(...values);
   let hi = Math.max(...values);
-  const floorZero = isRateUnit(unit) || values.every((value) => value >= 0);
+  const rate = isRateUnit(unit);
+  const floorZero = rate || values.every((value) => value >= 0);
   if (!(hi > lo)) {
     const pad = Math.abs(lo) > 0 ? Math.abs(lo) * 0.5 : 1;
     lo -= pad;
     hi += pad;
   }
-  if (floorZero) lo = Math.max(0, lo);
+  if (rate) {
+    lo = 0;
+    if (!(hi > lo)) hi = 1;
+  } else if (floorZero) {
+    lo = Math.max(0, lo);
+  }
   const span = hi - lo;
-  if (lo > 0 && lo < span * 0.25) lo = 0;
+  if (!rate && lo > 0 && lo < span * 0.25) lo = 0;
   if (!floorZero && hi < 0 && Math.abs(hi) < span * 0.25) hi = 0;
   const integerCount = INTEGER_COUNT_UNITS.has(unit) && values.every((value) => Number.isInteger(value));
   let interval = niceStep(Math.max(hi - lo, Number.EPSILON), 4);

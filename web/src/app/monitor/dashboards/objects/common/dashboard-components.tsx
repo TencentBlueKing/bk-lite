@@ -731,6 +731,10 @@ export interface DashboardShellProps {
   brandLabel?: string;
   /** 实例名右侧的小徽章，例如 Redis 架构芯片。 */
   identityExtra?: React.ReactNode;
+  /** 叠在共享 .page 上。专业盘用来取消 min-height:100%，短 Tab 不再撑满一屏灰底。 */
+  pageClassName?: string;
+  /** 叠在共享 .shell 上。 */
+  shellClassName?: string;
   styles: DashboardStyles;
 }
 
@@ -748,6 +752,8 @@ export const DashboardShell = ({
   unifiedChrome = true,
   brandLabel,
   identityExtra,
+  pageClassName,
+  shellClassName,
   styles
 }: DashboardShellProps) => {
   const { dt } = useDashboardText();
@@ -885,8 +891,8 @@ export const DashboardShell = ({
   );
 
   return (
-  <div className={styles.page}>
-    <div className={styles.shell} data-view-mode={activeMode}>
+  <div className={[styles.page, pageClassName].filter(Boolean).join(' ')}>
+    <div className={[styles.shell, shellClassName].filter(Boolean).join(' ')} data-view-mode={activeMode}>
       {unifiedChrome ? (
         <>
           <div className={styles.unifiedShell} data-dashboard-shell="unified">
