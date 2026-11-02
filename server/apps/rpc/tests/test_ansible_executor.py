@@ -100,6 +100,16 @@ def test_adhoc_可选字段仅在传入时加入(ex):
     assert rd["stream_remote_type"] == "powershell"
     assert rd["execute_timeout"] == 120
 
+    ex.adhoc(
+        inventory="localhost,",
+        module="win_shell",
+        module_args="print(1)",
+        stream_remote_output=True,
+        stream_remote_type="python",
+    )
+    python_rd = ex.adhoc_client.calls[-1][0][1]
+    assert python_rd["stream_remote_type"] == "python"
+
 
 # --------------------------- playbook ---------------------------
 

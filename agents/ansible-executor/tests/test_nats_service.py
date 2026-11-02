@@ -1224,7 +1224,7 @@ async def test_run_task_surfaces_linux_script_delivery_error_as_host_result(tmp_
 
 
 @pytest.mark.asyncio
-async def test_run_task_uses_file_playbook_for_windows_job_script(tmp_path, monkeypatch):
+async def test_run_task_uses_winrm_file_stream_for_windows_job_script(tmp_path, monkeypatch):
     service = _make_service(tmp_path)
     service.nc = RecordingNATSClient()
     captured = {}
@@ -1239,13 +1239,11 @@ async def test_run_task_uses_file_playbook_for_windows_job_script(tmp_path, monk
             "module": "win_shell",
             "module_args": "Write-Output first; Start-Sleep 5; Write-Output second",
             "host_credentials": [{"host": "10.10.90.120"}],
+            "extra_vars": {},
+            "task_id": "task-windows-stream",
         },
     )()
     monkeypatch.setattr("service.nats_service.to_adhoc_request", lambda payload: request)
-    monkeypatch.setattr(
-        "service.nats_service.prepare_windows_script_execution",
-        lambda prepared: (["ansible-playbook", "windows-script.yml"], tmp_path / "windows-script"),
-    )
 
     def fail_prepare_adhoc(*args, **kwargs):
         raise AssertionError("Windows job script must not be placed in ansible adhoc arguments")
@@ -1253,13 +1251,12 @@ async def test_run_task_uses_file_playbook_for_windows_job_script(tmp_path, monk
     monkeypatch.setattr("service.nats_service.prepare_adhoc_execution", fail_prepare_adhoc)
     monkeypatch.setattr("service.nats_service.cleanup_workspace", lambda workspace: None)
 
-    async def fake_run_command(command, timeout, **kwargs):
-        captured["command"] = command
-        captured["timeout"] = timeout
+    async def fake_winrm_stream(host_credentials, **kwargs):
+        captured["host_credentials"] = host_credentials
         captured.update(kwargs)
         return (
             0,
-            "host | CHANGED | rc=0 >>\nfirst\nsecond",
+            "10.10.90.120 | CHANGED | rc=0 >>\nfirst\nsecond",
             {
                 "truncated": False,
                 "output_bytes_total": 13,
@@ -1268,7 +1265,7 @@ async def test_run_task_uses_file_playbook_for_windows_job_script(tmp_path, monk
             },
         )
 
-    monkeypatch.setattr("service.nats_service.run_command", fake_run_command)
+    monkeypatch.setattr("service.nats_service.run_winrm_stream", fake_winrm_stream)
     monkeypatch.setattr(service.task_store, "update_execution_result", lambda *a, **k: True)
     monkeypatch.setattr(service.task_store, "update_callback_status", lambda *a, **k: True)
 
@@ -1287,10 +1284,12 @@ async def test_run_task_uses_file_playbook_for_windows_job_script(tmp_path, monk
     result = await service._run_task(task, "owner-a")
 
     assert result["success"] is True
-    assert captured["command"] == ["ansible-playbook", "windows-script.yml"]
+    assert captured["host_credentials"] == [{"host": "10.10.90.120"}]
+    assert captured["script_type"] == "powershell"
     assert captured["timeout"] == 90
     assert captured["stream_log_topic"] == "job.stream.31.ansible"
     assert captured["execution_id"] == "31"
+    assert "Write-Output first" in captured["script_content"]
 
 
 @pytest.mark.asyncio
