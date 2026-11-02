@@ -89,6 +89,8 @@ jobs:
             --build-arg RUNTIME_USER="${user:-0}" \
             -f "deploy/security/Dockerfile.$PRODUCT" \
             -t "security-log4j-$PRODUCT" deploy/security
-          test "$(docker image inspect --format '{{.Config.User}}' "security-log4j-$PRODUCT")" = "$user"
+          actual_user=$(docker image inspect --format '{{.Config.User}}' "security-log4j-$PRODUCT")
+          # Docker 的空 USER 与显式 0 均为默认 root；非 root 用户仍须完全一致。
+          test "${actual_user:-0}" = "${user:-0}"
           test "$(docker image inspect --format '{{json .Config.Entrypoint}} {{json .Config.Cmd}}' "$BASE_IMAGE")" = \
                "$(docker image inspect --format '{{json .Config.Entrypoint}} {{json .Config.Cmd}}' "security-log4j-$PRODUCT")"
