@@ -362,6 +362,91 @@
       ],
       "description": "Rate of database sessions terminated by fatal errors such as administrator commands, idle-session timeout, or deadlock resolution (pg_stat_database.sessions_killed), expressed as sessions per second. A rising rate signals connection instability.",
       "query": "rate(postgresql_sessions_killed{__$labels__}[5m])"
+    },
+    {
+      "metric_group": "Statement",
+      "name": "postgresql_statement_time",
+      "display_name": "Statement Time",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [
+        {"name": "datname", "description": "数据库名"},
+        {"name": "queryid", "description": "语句标识"},
+        {"name": "query_text", "description": "语句文本"}
+      ],
+      "description": "Cumulative time for one statement, in seconds. A point means the statement was collected. Turn on Top SQL Collection. The target database must have pg_stat_statements installed.",
+      "query": "topk(20, max by (instance_id, datname, queryid, query_text) (postgresql_statement_total_time_seconds{__$labels__}))"
+    },
+    {
+      "metric_group": "Statement",
+      "name": "postgresql_statement_calls",
+      "display_name": "Statement Executions",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {"name": "datname", "description": "数据库名"},
+        {"name": "queryid", "description": "语句标识"},
+        {"name": "query_text", "description": "语句文本"}
+      ],
+      "description": "Cumulative executions for one statement. Shown together with the statements that have the most cumulative time. Turn on Top SQL Collection.",
+      "query": "max by (instance_id, datname, queryid, query_text) (postgresql_statement_calls_total{__$labels__}) and on (instance_id, datname, queryid) topk(20, max by (instance_id, datname, queryid) (postgresql_statement_total_time_seconds{__$labels__}))"
+    },
+    {
+      "metric_group": "Statement",
+      "name": "postgresql_statement_rows",
+      "display_name": "Statement Rows Returned",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {"name": "datname", "description": "数据库名"},
+        {"name": "queryid", "description": "语句标识"},
+        {"name": "query_text", "description": "语句文本"}
+      ],
+      "description": "Cumulative rows returned by one statement. Shown together with the statements that have the most cumulative time. Turn on Top SQL Collection.",
+      "query": "max by (instance_id, datname, queryid, query_text) (postgresql_statement_rows_total{__$labels__}) and on (instance_id, datname, queryid) topk(20, max by (instance_id, datname, queryid) (postgresql_statement_total_time_seconds{__$labels__}))"
+    },
+    {
+      "metric_group": "Statement",
+      "name": "postgresql_statement_time_rate",
+      "display_name": "Statement Time Rate",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [
+        {"name": "datname", "description": "数据库名"},
+        {"name": "queryid", "description": "语句标识"},
+        {"name": "query_text", "description": "语句文本"}
+      ],
+      "description": "Time consumed per second by one statement, for the trend within the current window. Turn on Top SQL Collection.",
+      "query": "sum by (instance_id, datname, queryid, query_text) (rate(postgresql_statement_total_time_seconds{__$labels__}[5m])) and on (instance_id, datname, queryid) topk(20, max by (instance_id, datname, queryid) (postgresql_statement_total_time_seconds{__$labels__}))"
+    },
+    {
+      "metric_group": "WaitEvent",
+      "name": "postgresql_wait_sessions",
+      "display_name": "Waiting Sessions",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {"name": "wait_event_type", "description": "等待类型"},
+        {"name": "wait_event", "description": "等待事件"}
+      ],
+      "description": "Sessions currently in this wait. This is a sample of current sessions, not cumulative wait time. Turn on Wait Event Collection. An empty result means no session was waiting at collection time.",
+      "query": "sum by (instance_id, wait_event_type, wait_event) (postgresql_wait_sessions{__$labels__})"
+    },
+    {
+      "metric_group": "Recovery",
+      "name": "postgresql_recovery_in_recovery",
+      "display_name": "In Recovery",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "description": "Whether the instance is in recovery. 0 means it accepts writes (primary, including a standalone). 1 means a standby still replaying. No value means the role is unknown.",
+      "query": "max by (instance_id) (postgresql_recovery_in_recovery{__$labels__})"
     }
   ]
 }

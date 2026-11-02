@@ -106,6 +106,8 @@ _MONITOR_TEMPLATE_ALLOWED_VARIABLES = {
     "gather_global_variables",
     "gather_innodb_metrics",
     "gather_perf_events_statements",
+    "gather_pg_stat_statements",
+    "gather_pg_wait_events",
     "gather_process_list",
     "gather_replica_status",
     "gather_slave_status",

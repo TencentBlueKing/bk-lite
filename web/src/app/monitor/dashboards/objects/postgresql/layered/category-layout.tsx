@@ -10,35 +10,38 @@ import { selectProChartWindow } from '../../../shared/utils/pro-chart-window';
 import HostAlertDrawer from '../../host/layered/host-alert-drawer';
 import { hostAlertRailEvents, type HostAlertRailEvent } from '../../host/layered/events-rail';
 import { overviewHostAlertParams } from '../../host/layered/host-alert-list';
+import useViewApi from '@/app/monitor/api/view';
 import { GrayTabEmptyState } from '../../host/layered/pro-chrome';
+import { asRangeQueryResult, buildSearchParams, toMetricSeries } from '../../../shared/utils';
 import host from '../../host/layered/layered.module.scss';
+import { POSTGRES_DIGEST_METRICS } from '../queries';
 import type { PostgresMetricMap } from './series';
 import OverviewPane from './overview-pane';
 import PerformancePane from './performance-pane';
+import { StatementPane, WaitPane } from './digest-pane';
+import {
+  postgresCollectionConfigPath,
+  readPostgresDigestLoad,
+  readPostgresStatementRows,
+  readPostgresWaitRows,
+  type PostgresDigestLoad,
+  type PostgresStatementRow,
+  type PostgresWaitRow
+} from './digest';
 
 type PostgresTab = 'overview' | 'performance' | 'statements' | 'waits' | 'replication';
 
-const TABS: ReadonlyArray<{ key: PostgresTab; label: string; gray?: boolean }> = [
+const TABS: ReadonlyArray<{ key: PostgresTab; label: string }> = [
   { key: 'overview', label: '概览' },
   { key: 'performance', label: '性能' },
-  { key: 'statements', label: 'Top SQL', gray: true },
-  { key: 'waits', label: '等待', gray: true },
-  { key: 'replication', label: '复制', gray: true }
+  { key: 'statements', label: 'Top SQL' },
+  { key: 'waits', label: '等待' },
+  { key: 'replication', label: '复制' }
 ];
 
-const EMPTY_COPY: Record<'statements' | 'waits' | 'replication', { title: string; hint: string }> = {
-  statements: {
-    title: '当前实例未开启语句采集',
-    hint: '开启 pg_stat_statements 类采集后，可在此查看 Top SQL；详见采集配置'
-  },
-  waits: {
-    title: '当前实例未开启等待事件采集',
-    hint: '开启后可在此查看等待事件并下钻；详见采集配置'
-  },
-  replication: {
-    title: '流复制与复制槽采集未就绪',
-    hint: '就绪后可查看复制延迟与槽积压；本盘暂不展示估算值'
-  }
+const REPLICATION_EMPTY = {
+  title: '流复制与复制槽采集未就绪',
+  hint: '就绪后可查看复制延迟与槽积压；本盘暂不展示估算值'
 };
 
 const isTab = (value: string | null): value is PostgresTab => (
@@ -48,25 +51,47 @@ const isTab = (value: string | null): value is PostgresTab => (
 interface PostgresCategoryLayoutProps {
   instanceId: React.Key;
   monitorObjectId: React.Key;
+  instanceName: string;
+  idValues: string[];
+  instanceIdKeys: string[];
   timeValues: TimeValuesProps;
   queryTimeRange: { startMs: number; endMs: number } | null;
   loading: boolean;
   pendingMetricNames: ReadonlySet<string>;
   metricMap: PostgresMetricMap;
+  reloadKey?: number;
+  minStepSeconds?: number;
 }
+
+const tabBadgeClass = (
+  'ml-1 inline-flex h-[18px] items-center rounded-full border border-[var(--color-border)] bg-[var(--color-bg)] px-1.5 text-[12px] font-normal leading-[18px] text-[var(--color-text-3)]'
+);
 
 export default function PostgresCategoryLayout({
   instanceId,
   monitorObjectId,
+  instanceName,
+  idValues,
+  instanceIdKeys,
   timeValues,
   queryTimeRange,
   loading,
   pendingMetricNames,
-  metricMap
+  metricMap,
+  reloadKey = 0,
+  minStepSeconds
 }: PostgresCategoryLayoutProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { getMonitorAlert } = useMonitorApi();
+  const { getInstanceQuery, getInstanceInstantQuery } = useViewApi();
+  const [statements, setStatements] = useState<PostgresStatementRow[]>([]);
+  const [waits, setWaits] = useState<PostgresWaitRow[]>([]);
+  const [digestStatus, setDigestStatus] = useState<'loading' | 'ready'>('loading');
+  const [statementsLoad, setStatementsLoad] = useState<PostgresDigestLoad>('not_collected');
+  const [waitsLoad, setWaitsLoad] = useState<PostgresDigestLoad>('not_collected');
+  const [statementId, setStatementId] = useState('');
+  const [waitId, setWaitId] = useState('');
   const requested = searchParams.get('postgresTab');
   const tabFromUrl: PostgresTab = isTab(requested) ? requested : 'overview';
   const [tab, setTab] = useState<PostgresTab>(tabFromUrl);
@@ -139,9 +164,97 @@ export default function PostgresCategoryLayout({
     };
   }, [chartWindowKey, getMonitorAlert, instanceKey, tab]);
 
-  const empty = tab === 'statements' || tab === 'waits' || tab === 'replication'
-    ? EMPTY_COPY[tab]
-    : null;
+  const digestIdentity = `${idValues.join('\u0001')}::${instanceIdKeys.join('\u0001')}`;
+  useEffect(() => {
+    const [valueKey, keyKey = ''] = digestIdentity.split('::');
+    const values = valueKey ? valueKey.split('\u0001') : [];
+    const keys = keyKey ? keyKey.split('\u0001') : [];
+    if (!monitorObjectId || !instanceId || !values.length) {
+      setStatements([]);
+      setWaits([]);
+      setStatementsLoad('not_collected');
+      setWaitsLoad('not_collected');
+      setDigestStatus('ready');
+      return undefined;
+    }
+    let active = true;
+    setStatements([]);
+    setWaits([]);
+    setStatementsLoad('not_collected');
+    setWaitsLoad('not_collected');
+    setDigestStatus('loading');
+    const context = { monitorObjectId: String(monitorObjectId), instanceId: String(instanceId) };
+    const loadOne = (metric: (typeof POSTGRES_DIGEST_METRICS)[number]) => {
+      const params = buildSearchParams(
+        metric.query,
+        metric.unit,
+        values,
+        keys,
+        timeValues,
+        undefined,
+        false,
+        minStepSeconds,
+        context
+      );
+      const rangeQuery = Boolean(metric.range) || metric.query.includes('__$window__');
+      const run = rangeQuery ? getInstanceQuery(params) : getInstanceInstantQuery(params);
+      return run.then((result) => toMetricSeries(
+        metric,
+        rangeQuery ? result : asRangeQueryResult(result),
+        instanceId,
+        instanceName,
+        values,
+        keys
+      )).catch(() => ({ ...metric, viewData: [], loadState: 'error' as const }));
+    };
+    Promise.all(POSTGRES_DIGEST_METRICS.map((metric) => loadOne(metric))).then((series) => {
+      if (!active) return;
+      const byName = Object.fromEntries(series.map((item) => [item.name, item]));
+      const statementRows = readPostgresStatementRows(
+        byName.postgresql_statement_time,
+        byName.postgresql_statement_calls,
+        byName.postgresql_statement_rows,
+        byName.postgresql_statement_time_rate
+      );
+      const waitRows = readPostgresWaitRows(byName.postgresql_wait_sessions);
+      setStatements(statementRows);
+      setWaits(waitRows);
+      setStatementsLoad(readPostgresDigestLoad(statementRows.length, [
+        byName.postgresql_statement_time,
+        byName.postgresql_statement_calls,
+        byName.postgresql_statement_rows
+      ]));
+      setWaitsLoad(readPostgresDigestLoad(waitRows.length, [byName.postgresql_wait_sessions]));
+      setDigestStatus('ready');
+    });
+    return () => {
+      active = false;
+    };
+  }, [
+    digestIdentity,
+    getInstanceInstantQuery,
+    getInstanceQuery,
+    instanceId,
+    instanceName,
+    minStepSeconds,
+    monitorObjectId,
+    reloadKey,
+    timeValues
+  ]);
+
+  const openCollectionConfig = () => {
+    const objectId = typeof monitorObjectId === 'string' || typeof monitorObjectId === 'number'
+      ? monitorObjectId
+      : null;
+    router.push(postgresCollectionConfigPath({
+      monitorObjectId: objectId,
+      instanceId: String(instanceId || ''),
+      instanceName
+    }));
+  };
+
+  const statementsDimmed = digestStatus === 'ready' && statementsLoad === 'not_collected';
+  const waitsDimmed = digestStatus === 'ready' && waitsLoad === 'not_collected';
 
   return (
     <ProTimeWindowProvider
@@ -157,18 +270,33 @@ export default function PostgresCategoryLayout({
             onChange={(key) => {
               if (isTab(key)) selectTab(key);
             }}
-            items={TABS.map((item) => ({
-              key: item.key,
-              label: (
-                <span
-                  className={`${host.tabLabel}${item.gray ? ' !text-[var(--color-text-4)]' : ''}`}
-                  data-postgres-tab={item.key}
-                  data-postgres-tab-mode={item.gray ? 'empty' : 'ready'}
-                >
-                  {item.label}
-                </span>
-              )
-            }))}
+            items={TABS.map((item) => {
+              const dimmed = item.key === 'statements'
+                ? statementsDimmed
+                : item.key === 'waits'
+                  ? waitsDimmed
+                  : item.key === 'replication';
+              const mode = item.key === 'statements'
+                ? (statementsLoad === 'query_failed' ? 'failed' : statementsLoad === 'collected' ? 'ready' : 'empty')
+                : item.key === 'waits'
+                  ? (waitsLoad === 'query_failed' ? 'failed' : waitsLoad === 'collected' ? 'ready' : 'empty')
+                  : item.key === 'replication'
+                    ? 'empty'
+                    : 'ready';
+              return {
+                key: item.key,
+                label: (
+                  <span
+                    className={`${host.tabLabel}${dimmed ? ' !text-[var(--color-text-4)] [.ant-tabs-tab-active_&]:!text-[var(--color-text-1)]' : ''}`}
+                    data-postgres-tab={item.key}
+                    data-postgres-tab-mode={mode}
+                  >
+                    {item.label}
+                    {dimmed ? <span className={tabBadgeClass}>未采集</span> : null}
+                  </span>
+                )
+              };
+            })}
           />
         </div>
         <div className={host.main}>
@@ -190,9 +318,35 @@ export default function PostgresCategoryLayout({
           {tab === 'performance' ? (
             <PerformancePane metricMap={metricMap} pendingMetricNames={pendingMetricNames} />
           ) : null}
-          {empty ? (
-            <div data-postgres-empty={tab}>
-              <GrayTabEmptyState title={empty.title} hint={empty.hint} />
+          {tab === 'statements' ? (
+            <div data-postgres-empty={statementsLoad === 'collected' ? undefined : 'statements'}>
+              <StatementPane
+                rows={statements}
+                selectedId={statementId}
+                onSelect={setStatementId}
+                loading={digestStatus === 'loading'}
+                queryFailed={statementsLoad === 'query_failed'}
+                instanceName={instanceName}
+                onOpenCollection={openCollectionConfig}
+              />
+            </div>
+          ) : null}
+          {tab === 'waits' ? (
+            <div data-postgres-empty={waitsLoad === 'collected' ? undefined : 'waits'}>
+              <WaitPane
+                rows={waits}
+                selectedId={waitId}
+                onSelect={setWaitId}
+                loading={digestStatus === 'loading'}
+                queryFailed={waitsLoad === 'query_failed'}
+                instanceName={instanceName}
+                onOpenCollection={openCollectionConfig}
+              />
+            </div>
+          ) : null}
+          {tab === 'replication' ? (
+            <div data-postgres-empty="replication">
+              <GrayTabEmptyState title={REPLICATION_EMPTY.title} hint={REPLICATION_EMPTY.hint} />
             </div>
           ) : null}
         </div>

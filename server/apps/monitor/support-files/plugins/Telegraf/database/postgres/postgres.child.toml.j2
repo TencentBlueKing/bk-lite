@@ -8,3 +8,76 @@
         instance_type = "{{ instance_type }}"
         collect_type = "database"
         config_type = "postgres"
+
+# 恢复状态始终采集，供专业盘顶栏区分主库与备库。语句与等待仅在对应开关打开时追加查询。
+# 基础 inputs.postgresql 保持不变。语句查询失败不会撤掉恢复状态和等待查询。
+[[inputs.postgresql_extensible]]
+    startup_error_behavior = "retry"
+    address = "postgres://{{ username | urlencode }}:${PASSWORD__{{ config_id }}}@{{ host }}:{{ port }}/{{ dbname | default('postgres') | urlencode }}?sslmode={{ sslmode | default('disable') }}&statement_timeout=10000"
+    prepared_statements = true
+    interval = "{{ interval }}s"
+    [inputs.postgresql_extensible.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "database"
+        config_type = "postgres"
+
+    [[inputs.postgresql_extensible.query]]
+        measurement = "postgresql_recovery"
+        min_version = 1000
+        withdbname = false
+        tagvalue = ""
+        sqlquery = """SELECT CASE WHEN pg_is_in_recovery() THEN 1::double precision ELSE 0::double precision END AS in_recovery"""
+
+{% set _statements_on = (gather_pg_stat_statements | default(false, true) | lower) %}
+{% if _statements_on == 'true' or _statements_on == '1' %}
+    [[inputs.postgresql_extensible.query]]
+        measurement = "postgresql_statement"
+        min_version = 1000
+        withdbname = false
+        tagvalue = "datname,queryid,query_text"
+        sqlquery = """
+            SELECT
+                d.datname::text AS datname,
+                s.queryid::text AS queryid,
+                COALESCE(NULLIF(LEFT(regexp_replace(s.query, '[[:space:]]+', ' ', 'g'), 120), ''), 'none') AS query_text,
+                s.calls::double precision AS calls_total,
+                (
+                    COALESCE(
+                        NULLIF(to_jsonb(s)->>'total_exec_time', '')::double precision,
+                        NULLIF(to_jsonb(s)->>'total_time', '')::double precision,
+                        0
+                    ) / 1000.0
+                ) AS total_time_seconds,
+                s.rows::double precision AS rows_total
+            FROM pg_stat_statements s
+            JOIN pg_database d ON d.oid = s.dbid
+            WHERE s.queryid IS NOT NULL
+              AND d.datname NOT IN ('template0', 'template1')
+            ORDER BY COALESCE(
+                NULLIF(to_jsonb(s)->>'total_exec_time', '')::double precision,
+                NULLIF(to_jsonb(s)->>'total_time', '')::double precision,
+                0
+            ) DESC
+            LIMIT 100
+        """
+{% endif %}
+{% set _waits_on = (gather_pg_wait_events | default(false, true) | lower) %}
+{% if _waits_on == 'true' or _waits_on == '1' %}
+    [[inputs.postgresql_extensible.query]]
+        measurement = "postgresql_wait"
+        min_version = 1000
+        withdbname = false
+        tagvalue = "datname,wait_event_type,wait_event"
+        sqlquery = """
+            SELECT
+                COALESCE(datname, 'none')::text AS datname,
+                COALESCE(wait_event_type, 'Activity')::text AS wait_event_type,
+                wait_event::text AS wait_event,
+                COUNT(*)::double precision AS sessions
+            FROM pg_stat_activity
+            WHERE wait_event IS NOT NULL
+              AND pid <> pg_backend_pid()
+            GROUP BY 1, 2, 3
+        """
+{% endif %}

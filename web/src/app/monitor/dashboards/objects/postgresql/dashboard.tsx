@@ -106,7 +106,18 @@ export default function PostgresqlDashboardPage() {
       styles={styles}
       preserveLayouts
       unifiedChrome
-      identityExtra={layout === 'category' ? <PostgresIdentityPills /> : undefined}
+      identityExtra={layout === 'category' ? (
+        <PostgresIdentityPills
+          instanceId={dashboard.instanceId}
+          monitorObjectId={dashboard.monitorObjectId}
+          instanceName={dashboard.resolvedInstanceName}
+          idValues={dashboard.idValues}
+          instanceIdKeys={instanceIdKeys}
+          timeValues={dashboard.timeValues}
+          minStepSeconds={dashboard.currentInstanceInterval}
+          reloadKey={dashboard.loadTick}
+        />
+      ) : undefined}
       viewSwitcher={{
         mode: layout,
         onChange: onLayoutChange,
@@ -117,11 +128,16 @@ export default function PostgresqlDashboardPage() {
         <PostgresCategoryLayout
           instanceId={dashboard.instanceId}
           monitorObjectId={dashboard.monitorObjectId}
+          instanceName={dashboard.resolvedInstanceName}
+          idValues={dashboard.idValues}
+          instanceIdKeys={instanceIdKeys}
           timeValues={dashboard.timeValues}
           queryTimeRange={dashboard.queryTimeRange}
           loading={dashboard.loading}
           pendingMetricNames={dashboard.pendingMetricNames}
           metricMap={dashboard.metricSeries}
+          reloadKey={dashboard.loadTick}
+          minStepSeconds={dashboard.currentInstanceInterval}
         />
       )}
       dashboardContent={
