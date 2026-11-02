@@ -1,0 +1,26 @@
+{
+  "version": "2.25.5",
+  "artifacts": {
+    "log4j-api": {
+      "sha256": "64777f73ea0b3104c04eb82befbdccc30a425a19e83ad06cb2f93aa303511863"
+    },
+    "log4j-core": {
+      "sha256": "050c4f85deb48b055e9c041ac39043fbb79ce477841a11a1eb2969c86c6a0072"
+    },
+    "log4j-slf4j-impl": {
+      "sha256": "3d25b926bc6025c47ec010459749c12aa66b9d5537ba1922d67d89a098a66607"
+    },
+    "log4j-slf4j2-impl": {
+      "sha256": "8cab16dd6fc4c8f14c1c473022cb217512f2bbb2d59a70f8ec90a268d64d8831"
+    },
+    "log4j-jul": {
+      "sha256": "23c0b34c3c31811bea7716a33137d1e9e8e228f9f8c240b69f30cdca9afe9a7a"
+    },
+    "log4j-web": {
+      "sha256": "9cf04225fab77a5d433dcad2ee62b8341cc0546d0e6941515bb9f8d5a199377c"
+    },
+    "log4j-1.2-api": {
+      "sha256": "4dd812dc5a6343f542a9e0046b1ec78ecf10bdd5a8c15745101cdd8b9aa24974"
+    }
+  }
+}
