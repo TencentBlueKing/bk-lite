@@ -53,7 +53,9 @@ import EditNode from './editNode';
 import BatchEditOrganizations from './batchEditOrganizations';
 import { useCommon } from '@/app/node-manager/context/common';
 import {
+  collectorOperationBlockedMessageKey,
   getCollectorOperationSelection,
+  isCollectorOperationMenuDisabled,
   isControllerOperationDisabled
 } from '@/app/node-manager/utils/nodeOperation';
 import {
@@ -224,10 +226,9 @@ const Node = () => {
       selectedRowKeys,
       selectedNodeMap
     );
-    const selection = getCollectorOperationSelection(selectedNodes);
-    if (!selection.disabled) return false;
-    // 缺少架构时仍允许点击，由菜单提示原因；系统或架构不一致则禁用入口
-    return selection.reason !== 'unknown_architecture';
+    return isCollectorOperationMenuDisabled(
+      getCollectorOperationSelection(selectedNodes)
+    );
   }, [selectedRowKeys, selectedNodeMap]);
 
   const enableOperateController = useMemo(() => {
@@ -304,24 +305,15 @@ const Node = () => {
     const selection = getCollectorOperationSelection(selectedNodes);
 
     if (selection.disabled === true) {
-      if (selection.reason === 'mixed_operating_system') {
+      const messageKey = collectorOperationBlockedMessageKey(selection);
+      if (messageKey) {
         message.error(
-          t(
-            'node-manager.cloudregion.node.collectorOperationMixedOperatingSystem'
-          )
-        );
-      } else if (selection.reason === 'mixed_cpu_architecture') {
-        message.error(
-          t(
-            'node-manager.cloudregion.node.collectorOperationMixedCpuArchitecture'
-          )
-        );
-      } else if (selection.reason === 'unknown_architecture') {
-        message.error(
-          t(
-            'node-manager.cloudregion.node.collectorOperationUnknownArchitecture',
-            'The selected node has no CPU architecture. Please wait for node reporting or backfill the architecture before operating components.'
-          )
+          selection.reason === 'unknown_architecture'
+            ? t(
+                messageKey,
+                'The selected node has no CPU architecture. Please wait for node reporting or backfill the architecture before operating components.'
+              )
+            : t(messageKey)
         );
       }
       return;

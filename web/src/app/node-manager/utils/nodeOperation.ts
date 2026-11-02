@@ -114,6 +114,37 @@ export const getCollectorOperationSelection = (
   };
 };
 
+const CLICKABLE_COLLECTOR_BLOCK_REASONS = new Set<
+  Extract<CollectorOperationSelection, { disabled: true }>['reason']
+>([
+  'unknown_architecture',
+  'mixed_operating_system',
+  'mixed_cpu_architecture'
+]);
+
+export const isCollectorOperationMenuDisabled = (
+  selection: CollectorOperationSelection
+) => {
+  if (!selection.disabled) return false;
+  return !CLICKABLE_COLLECTOR_BLOCK_REASONS.has(selection.reason);
+};
+
+const COLLECTOR_OPERATION_BLOCKED_MESSAGE_KEYS = {
+  mixed_operating_system:
+    'node-manager.cloudregion.node.collectorOperationMixedOperatingSystem',
+  mixed_cpu_architecture:
+    'node-manager.cloudregion.node.collectorOperationMixedCpuArchitecture',
+  unknown_architecture:
+    'node-manager.cloudregion.node.collectorOperationUnknownArchitecture'
+} as const;
+
+export const collectorOperationBlockedMessageKey = (
+  selection: CollectorOperationSelection
+) => {
+  if (!selection.disabled || selection.reason === 'no_selection') return '';
+  return COLLECTOR_OPERATION_BLOCKED_MESSAGE_KEYS[selection.reason];
+};
+
 export const buildCollectorOperationListParams = ({
   operatingSystem,
   cpuArchitecture,
