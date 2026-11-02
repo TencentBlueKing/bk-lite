@@ -35,16 +35,16 @@ export const postgresFormFromName = (text: string): PostgresFormLabel | null => 
 };
 
 /**
- * 名含 cluster/ha 时形态保持集群，角色另算。
- * 否则有 recovery 序列就是主从，盖过单机名字。
- * 查询未回时不把「单机」或空名提前定死。
+ * 名字已经给出集群、主从或单机时，形态钉住，角色另算。
+ * 没有这些名字时，采到 recovery 才是主从。
+ * 查询未回时不把空名提前定成主从。
  */
 export const visiblePostgresForm = (
   nameForm: PostgresFormLabel | null,
   recoveryPresent: boolean,
   pending: boolean
 ): PostgresFormLabel | null => {
-  if (nameForm === '集群' || nameForm === '主从') return nameForm;
+  if (nameForm === '集群' || nameForm === '主从' || nameForm === '单机') return nameForm;
   if (pending) return null;
   if (recoveryPresent) return '主从';
   return nameForm;
