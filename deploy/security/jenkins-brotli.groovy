@@ -1,4 +1,4 @@
-// 插入现有 WeOpsx stages：企业代码覆盖、应用镜像构建之后，发布部署之前。
+// 插入现有流水线 stages：应用镜像构建之后，发布部署之前。
 // 这是 review 用的阶段片段，不是对线上 Jenkins 的自动修改。
 stage('构建并验收 Brotli 修复镜像') {
     options { timeout(time: 30, unit: 'MINUTES') }
@@ -11,7 +11,7 @@ stage('构建并验收 Brotli 修复镜像') {
             : "${FALKORDB_CANDIDATE_IMAGE:?本次构建唯一标签}"
             : "${DEV_FALKORDB_CANDIDATE_IMAGE:?本次构建唯一标签}"
             : "${LICENSE_IMAGE:?授权服务已升级的镜像摘要}"
-            : "${FUSION_IMAGE:?企业覆盖后重新构建的 Fusion 镜像}"
+            : "${FUSION_IMAGE:?重新构建的 Fusion 最终发行镜像}"
             test "$FALKORDB_CANDIDATE_IMAGE" != "$DEV_FALKORDB_CANDIDATE_IMAGE"
             BASE_IMAGE="$FALKORDB_BASE_IMAGE" CANDIDATE_IMAGE="$FALKORDB_CANDIDATE_IMAGE" \
                 sh deploy/security/build_falkordb.sh

@@ -3,7 +3,7 @@
 ## 海外漏扫报告：OpenSSL、Log4j 与系统 Python 工具
 
 Fusion 执行器 OpenSSL 1.1.1k 的发行重建由社区 PR #6862 处理（固定 OpenSSL 3.5.9，
-并通过 `--verify-release` 校验最终冻结程序）。企业覆盖 Dockerfile 也必须运行该校验；
+并通过 `--verify-release` 校验最终冻结程序）。最终发行 Dockerfile 也必须运行该校验；
 仅更新宿主机 OpenSSL 或 Fusion 的 Ubuntu 系统包不能替换 `_internal` 中的库。
 
 报告中的 Conductor 3.32.1 携带 Log4j 2.25.4，Elasticsearch 7.17.21 携带 2.17.1。
@@ -121,7 +121,7 @@ FalkorDB 检测到的 Node.js 24.14.0 不会因更新 libbrotli 而自动修复�
    其余测试执行 Dockerfile 的实际 RUN 层，验证更新失败、补丁不足、未知发行版会阻止构建，
    并验证 Node 包版本、实际运行版本必须一致，不操作系统包或业务服务。
 2. 构建时使用 `--pull --no-cache`。安全更新层需能从对应软件源取得补丁，
-   企业覆盖的最终 Dockerfile 也必须接入同样的更新与版本检查。
+   最终发行 Dockerfile 也必须接入同样的更新与版本检查。
 3. 独立候选容器使用 `--network none --read-only --cap-drop ALL --security-opt no-new-privileges`
    和 CPU、内存、进程数限制；分别核对系统包、Node 和 curl 的链接库。
    不运行漏洞利用输入，不以“curl 不存在”推断无 Brotli。
@@ -135,9 +135,9 @@ FalkorDB 检测到的 Node.js 24.14.0 不会因更新 libbrotli 而自动修复�
 先模拟更新、检查依赖和可用补丁，再在维护窗口更新 `libbrotli1`。
 本 PR 不执行宿主机更新、服务重启、镜像推送或部署，也不代表存量环境已经完成修复。
 
-## WeOpsx Jenkins 与部署补充（待 review 后接入）
+## Jenkins 与部署补充（待 review 后接入）
 
-`jenkins-brotli.groovy` 是阶段片段：放在现有企业覆盖与应用构建之后、发布之前。
+`jenkins-brotli.groovy` 是阶段片段：放在应用镜像构建之后、发布之前。
 不替换现有流水线，不调用 Jenkins API，也不触发远程部署。按当前工作目录调整
 `deploy/security` 前缀；凭据沿用 Jenkins 的 registry credential binding，禁止写入脚本。
 候选标签必须为本次发布独有（例如提交 SHA + BUILD_NUMBER），禁止复用 latest。
@@ -148,8 +148,8 @@ FalkorDB 检测到的 Node.js 24.14.0 不会因更新 libbrotli 而自动修复�
   22.23.4 / 24.22.1 或更高同主版本；缺少软件源、未知系统或跨主版本均失败。
 - `LICENSE_IMAGE` 必须由授权服务仓库重建并提供安全镜像摘要。这个门禁检查 Node
   22/24 安全版本，不会把当前 22.23.3 自动变成安全版；未取得镜像时不能宣布全部覆盖。
-- `FUSION_IMAGE` 为企业代码覆盖之后的新构建产物，检查系统 libbrotli。OpenSSL
-  仍须由 #6862 + 企业 #254 的执行器发行验证保证，本 Brotli 门禁不代替 OpenSSL 检查。
+- `FUSION_IMAGE` 为重新构建的最终发行镜像，检查系统 libbrotli。OpenSSL
+  仍须由 #6862 的执行器发行验证保证，本 Brotli 门禁不代替 OpenSSL 检查。
 - Web、Server、Stargazer 沿用原构建阶段，部署清单同时锁定它们的实际修复镜像。
   推送在全部候选门禁通过后接入原凭据流程；推送后读取对应仓库 RepoDigest，禁止
   仅凭本地 image ID 或可变标签填写下方清单。
