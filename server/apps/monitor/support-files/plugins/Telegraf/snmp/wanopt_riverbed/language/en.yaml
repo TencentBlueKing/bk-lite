@@ -1,6 +1,6 @@
 Wanopt Riverbed SNMP:
   name: Riverbed SteelHead (Telegraf)
-  desc: "SNMP monitoring template for Riverbed SteelHead WAN optimization device. It reports uptime, CPU utilization, temperature, and interface traffic (enterprise PEN 17163)."
+  desc: "SNMP monitoring template for Riverbed SteelHead WAN optimization device. It reports uptime, CPU utilization, temperature, and interface traffic (enterprise PEN 17163). It also reports optimized, passthrough, half-opened, half-closed, established, active and total connections, the connection limit, optimization service status, and optimization peers."
 monitor_object:
   Wanopt: WAN Optimization
 monitor_object_type:
@@ -45,9 +45,75 @@ monitor_object_metric:
         admissionControl=31000 and critical=50000 are normalized to 1=healthy
         and 2=not-healthy. A value greater than 1 indicates degraded,
         admission-control or critical health.
+    optimized_connections:
+      name: Optimized Connections
+      desc: Current number of optimized connections on the Riverbed SteelHead
+        (STEELHEAD-MIB optimizedConnections). Zero while traffic should be
+        accelerated means optimization has stopped or all sessions fell back
+        to passthrough.
+    passthrough_connections:
+      name: Passthrough Connections
+      desc: Current number of passthrough connections on the Riverbed SteelHead
+        (STEELHEAD-MIB passthroughConnections). A sudden jump can mean the
+        optimization service stopped or sessions were forced through
+        unoptimized.
+    half_opened_connections:
+      name: Half-Opened Connections
+      desc: Current number of half-opened optimized connections on the Riverbed
+        SteelHead (STEELHEAD-MIB halfOpenedConnections). A count that stays
+        above zero means session setup is stuck.
+    half_closed_connections:
+      name: Half-Closed Connections
+      desc: Current number of half-closed optimized connections on the Riverbed
+        SteelHead (STEELHEAD-MIB halfClosedConnections). A sustained rise can
+        mean peers are not finishing connection teardown.
+    established_connections:
+      name: Established Connections
+      desc: Current number of established optimized connections on the Riverbed
+        SteelHead (STEELHEAD-MIB establishedConnections).
+    active_connections:
+      name: Active Connections
+      desc: Current number of active optimized connections on the Riverbed
+        SteelHead (STEELHEAD-MIB activeConnections).
+    total_connections:
+      name: Total Connections
+      desc: Total number of connections on the Riverbed SteelHead
+        (STEELHEAD-MIB totalConnections), covering optimized and passthrough
+        sessions.
+    max_connections:
+      name: Max Connections
+      desc: Maximum number of connections this Riverbed SteelHead appliance can
+        carry (STEELHEAD-MIB shMaxConnections). Compare with total and
+        optimized connections to see remaining headroom.
+    opt_service_ok:
+      name: Optimization Service
+      desc: Optimization service health derived from STEELHEAD-MIB
+        optServiceStatus. 1 means running. 2 means any other state, including
+        none, unmanaged, pending, stopping, and stopped.
+    opt_service_status:
+      name: Optimization Service Status
+      desc: Raw optimization service status on the Riverbed SteelHead
+        (STEELHEAD-MIB optServiceStatus). none=0, unmanaged=1, running=2,
+        sentCom1=3, sentTerm1=4, sentTerm2=5, sentTerm3=6, pending=7,
+        stopped=8.
+    steelhead_peer:
+      name: Optimization Peer
+      desc: One series per Riverbed SteelHead optimization peer (STEELHEAD-MIB
+        peerTable). The value is 1 when the peer row is present. Hostname,
+        address, software version, and model are tags. A drop from one or more
+        rows to none means every peer disappeared.
+    steelhead_peer_count:
+      name: Optimization Peer Count
+      desc: Number of Riverbed SteelHead optimization peer rows. When the peer
+        table is empty the count falls back to 0 as long as the device is
+        still reporting uptime, so a drop from one or more peers to none stays
+        visible.
 monitor_object_metric_group:
   Wanopt:
     CPU: CPU
     Temperature: Temperature
     Hardware Status: Hardware Status
     Base: Base
+    Connections: Connections
+    Service: Optimization Service
+    Peers: Peers
