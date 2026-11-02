@@ -447,6 +447,28 @@
       "dimensions": [],
       "description": "Whether the instance is in recovery. 0 means it accepts writes (primary, including a standalone). 1 means a standby still replaying. No value means the role is unknown.",
       "query": "max by (instance_id) (postgresql_recovery_in_recovery{__$labels__})"
+    },
+    {
+      "metric_group": "Topology",
+      "name": "postgresql_replication_streaming_replicas",
+      "display_name": "Streaming Replicas",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "description": "Connected streaming replication peers right now. Above zero means a primary with replicas. Zero is a real sample, not a missing point. This is not replication lag.",
+      "query": "max by (instance_id) (postgresql_replication_streaming_replicas{__$labels__})"
+    },
+    {
+      "metric_group": "Topology",
+      "name": "postgresql_replication_replication_slots",
+      "display_name": "Replication Slots",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "description": "Replication slots on this instance, including slots whose peer is not connected. Above zero means replication topology. Zero is a real sample. This is not slot lag.",
+      "query": "max by (instance_id) (postgresql_replication_replication_slots{__$labels__})"
     }
   ]
 }

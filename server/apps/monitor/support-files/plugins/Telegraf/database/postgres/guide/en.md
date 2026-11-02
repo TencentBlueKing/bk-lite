@@ -8,7 +8,7 @@ This capability uses Telegraf `inputs.postgresql` to connect to a specified Post
 - Prepare an account that can log in to the configured database and read `pg_stat_database` and `pg_stat_bgwriter`. On PostgreSQL 10 and later, grant `pg_read_all_stats`. The same grant can also read current session waits.
 - Top SQL Collection is off by default. Before turning it on, have the DBA run `CREATE EXTENSION IF NOT EXISTS pg_stat_statements` in the database named on the page (and include it in `shared_preload_libraries`). The monitoring account must be able to read that view.
 - Wait Event Collection is off by default. When on, it samples sessions currently waiting. It is not cumulative wait time.
-- Recovery state is collected with the basic connection. Not in recovery means the instance accepts writes, including a standalone. In recovery means a standby. This template does not collect replication lag or replication slots.
+- Recovery state, the streaming-replica count, and the replication-slot count are collected with the basic connection. A standby, or a count above zero, labels the header as primary-standby. Not in recovery with both counts at zero labels it standalone. Without those readings the form chip stays hidden, and not-in-recovery alone is not labeled standalone. This template does not collect replication lag.
 - The target `pg_hba.conf` allows this account to connect from the collector node.
 - The page supports SSL modes `disable`, `prefer`, and `require`. Certificate paths are not supported; `verify-ca` and `verify-full` are unavailable in this template.
 - The template always ignores `template0` and `template1`.
@@ -66,6 +66,8 @@ After saving and waiting for one interval, confirm that these metrics are querya
 - `postgresql_deadlocks_rate`
 - `postgresql_cache_hit_ratio`
 - `postgresql_recovery_in_recovery` (`0` accepts writes, `1` is a standby)
+- `postgresql_replication_streaming_replicas` (connected streaming replicas)
+- `postgresql_replication_replication_slots` (replication slots)
 
 After turning on Top SQL Collection and waiting one interval, `postgresql_statement_total_time_seconds` can also be confirmed. After turning on Wait Event Collection, `postgresql_wait_sessions` can be confirmed when a session is waiting.
 

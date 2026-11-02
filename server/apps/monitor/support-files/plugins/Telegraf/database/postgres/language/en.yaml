@@ -114,6 +114,16 @@ monitor_object_metric:
       desc: Whether the instance is in recovery. 0 means it accepts writes, including
         a standalone primary. 1 means a standby still replaying. No reading means
         the role is unknown.
+    postgresql_replication_streaming_replicas:
+      name: Streaming Replicas
+      desc: Connected streaming replication peers right now. Above zero means a
+        primary has replicas. Zero is a collected count, not a missing point.
+        This is not replication lag.
+    postgresql_replication_replication_slots:
+      name: Replication Slots
+      desc: Replication slots on this instance, including slots whose peer is not
+        connected. Above zero means replication topology exists. Zero is a
+        collected count. This is not slot lag.
 monitor_object_metric_group:
   Postgres:
     Connection: Connection
@@ -128,3 +138,4 @@ monitor_object_metric_group:
     Statement: Statements
     WaitEvent: Wait Events
     Recovery: Recovery
+    Topology: Topology

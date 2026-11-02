@@ -72,6 +72,12 @@ export interface PostgresDigestMetric extends BaseMetricConfig {
 /** 恢复状态。0 为接受写入（含单机），1 为备库。不是采集开关。 */
 export const POSTGRES_RECOVERY_QUERY = 'max by (instance_id) (postgresql_recovery_in_recovery{__$labels__})';
 
+/** 当前连着的流复制对端个数。0 是采点，不是缺失。 */
+export const POSTGRES_STREAMING_REPLICAS_QUERY = 'max by (instance_id) (postgresql_replication_streaming_replicas{__$labels__})';
+
+/** 复制槽个数，含暂时没连上的槽。0 是采点，不是缺失。 */
+export const POSTGRES_REPLICATION_SLOTS_QUERY = 'max by (instance_id) (postgresql_replication_replication_slots{__$labels__})';
+
 /** 专业盘语句/等待查询。传统盘不加载这组指标。 */
 export const POSTGRES_DIGEST_METRICS: PostgresDigestMetric[] = [
   {
