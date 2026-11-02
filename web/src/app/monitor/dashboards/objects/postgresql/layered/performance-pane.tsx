@@ -45,7 +45,7 @@ const ZONES: ReadonlyArray<{
         key: 'cache-hit',
         title: '缓存命中率',
         cacheHit: true,
-        body: '共享缓冲命中占比，按命中块 /（命中块 + 读盘块）×100% 计算。轴 0–100；分母为 0 时显示 —。',
+        body: '共享缓冲区命中占总读取的比例。偏低说明热点数据未驻留内存、读盘偏多。\n命中 ÷（命中 + 未命中）× 100%\n分母为 0 时显示 —，不用 0% 顶替。',
         series: [{
           name: 'postgresql_cache_hit_ratio',
           label: '缓存命中率',

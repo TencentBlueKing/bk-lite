@@ -67,7 +67,7 @@ const KPI_SPECS = [
     metric: 'postgresql_cache_hit_ratio',
     unit: 'percent' as const,
     color: PG_PALETTE.emerald,
-    body: '共享缓冲命中占比。展示为百分数；目录公式已含 ×100，勿再 ×100。分母为 0 时显示 —，禁假 0%。'
+    body: '共享缓冲区命中占总读取的比例。偏低说明热点数据未驻留内存、读盘偏多。\n命中 ÷（命中 + 未命中）× 100%\n分母为 0 时显示 —，不用 0% 顶替。'
   },
   {
     key: 'deadlock',
