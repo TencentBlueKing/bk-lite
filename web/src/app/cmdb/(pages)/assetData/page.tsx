@@ -106,6 +106,7 @@ import {
   scrollElementIntoContainer,
   shouldFinishFirstVisitTreeScroll,
 } from './treeSelectedNodeScroll';
+import { resolveDefaultAssetSelection } from './defaultAssetSelection';
 
 const { confirm } = Modal;
 
@@ -628,20 +629,31 @@ const AssetDataContent = () => {
       ]);
 
       const groups = buildModelGroups(groupData, modelListFromContext);
-      const defaultGroupId = assetClassificationId || groupData[0].classification_id;
-      const filteredModels = modelListFromContext
-        .filter((item: ModelItem) => item.classification_id === defaultGroupId)
-        .map((item: ModelItem) => ({ key: item.model_id, label: item.model_name, icn: item.icn }));
-      const defaultModelId = assetModelId || filteredModels[0].key;
+      const selection = resolveDefaultAssetSelection(groups, assetClassificationId, assetModelId);
 
       setModelInstCount(instCount);
-      setGroupId(defaultGroupId);
       setModelGroup(groups);
       setOriginModels(modelListFromContext);
       setAssoTypes(assoType);
+
+      if (!selection) {
+        setGroupId('');
+        setModelList([]);
+        setModelId('');
+        setSelectedTreeKeys([]);
+        setLoading(false);
+        return;
+      }
+
+      const filteredModels = selection.models.map((item: ModelItem) => ({
+        key: item.model_id,
+        label: item.model_name,
+        icn: item.icn,
+      }));
+      setGroupId(selection.groupId);
       setModelList(filteredModels);
-      setModelId(defaultModelId);
-      setSelectedTreeKeys([defaultModelId]);
+      setModelId(selection.modelId);
+      setSelectedTreeKeys([selection.modelId]);
 
       const initialQueryList = parseUrlQueryList(urlQueryList);
       if (initialQueryList) {
@@ -649,8 +661,8 @@ const AssetDataContent = () => {
       }
       urlQueryInitialized.current = true;
 
-      getInitData(defaultModelId, initialQueryList);
-      updateUrl(defaultModelId, defaultGroupId, urlQueryList);
+      getInitData(selection.modelId, initialQueryList);
+      updateUrl(selection.modelId, selection.groupId, urlQueryList);
     } catch {
       setLoadError(true);
       setLoading(false);
