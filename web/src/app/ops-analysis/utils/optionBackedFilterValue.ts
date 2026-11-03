@@ -36,7 +36,7 @@ export const retainFilterValueInOptions = (
   return value ?? null;
 };
 
-const valuesEqual = (
+export const areFilterValuesEqual = (
   left: FilterValue | null | undefined,
   right: FilterValue | null | undefined,
 ): boolean => {
@@ -62,8 +62,25 @@ export const reconcileOptionBackedFilterValue = (
     ? (definition.defaultValue ?? null)
     : current;
   const retained = retainFilterValueInOptions(source, options);
-  if (valuesEqual(retained, current ?? null)) return undefined;
+  if (areFilterValuesEqual(retained, current ?? null)) return undefined;
   return retained;
+};
+
+/**
+ * 打开报表时保留传入的动态选项值。
+ * 选项列表回来后由筛选栏把校正写入已应用初值，这里不再先清空。
+ */
+export const retainOpeningFilterValues = (
+  definitions: UnifiedFilterDefinition[],
+  values: Record<string, FilterValue>,
+): Record<string, FilterValue> => {
+  const next = { ...values };
+  definitions.forEach((definition) => {
+    if (!isDynamicOptionFilter(definition)) return;
+    if (!Object.prototype.hasOwnProperty.call(values, definition.id)) return;
+    next[definition.id] = values[definition.id];
+  });
+  return next;
 };
 
 /** 打开画布时先不套用动态选项默认值，等当前用户的选项列表回来再校正。 */

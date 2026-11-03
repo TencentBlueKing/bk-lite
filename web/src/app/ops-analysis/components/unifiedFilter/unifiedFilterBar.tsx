@@ -22,9 +22,17 @@ import type {
 } from '@/app/ops-analysis/types/dashBoard';
 import type { InputControlConfig, InputOption } from '@/app/ops-analysis/types/dataSource';
 import {
+  areFilterValuesEqual,
   isDynamicOptionFilter,
   reconcileOptionBackedFilterValue,
 } from '@/app/ops-analysis/utils/optionBackedFilterValue';
+import {
+  dynamicQueryParamsOf,
+  readOptionsQueryUpstream,
+  resolveOptionsQueryParams,
+  stableStringify,
+  valueOfFoundOptionsQueryUpstream,
+} from '@/app/ops-analysis/utils/optionsQueryParamRefs';
 import { ROOM_FILTER_PASSTHROUGH } from '@/app/ops-analysis/utils/room3DScreenFilter';
 import { resolveBuiltinCanvasFilterAppliedValue } from '@/app/ops-analysis/utils/applicationTopologyCanvasFilter';
 import type { DateRangeValue } from '@/app/ops-analysis/types/dateRange';
@@ -47,6 +55,8 @@ interface UnifiedFilterBarProps {
   onChange?: (values: Record<string, FilterValue>) => void;
   onSearch?: (values: Record<string, FilterValue>) => void;
   onReset?: (values: Record<string, FilterValue>) => void;
+  /** 选项第一次回来时把校正写入已应用初值，不触发搜索。 */
+  onApplyInitial?: (values: Record<string, FilterValue>) => void;
   prefixContent?: React.ReactNode;
   containerClassName?: string;
   appearance?: 'default' | 'embedded';
@@ -66,12 +76,19 @@ const toNumberFilterValue = (value: number | string | null): FilterValue => {
   return Number.isFinite(numeric) ? numeric : null;
 };
 
+/** 机房自动搜索回写后，已提交字段都在，多出来的键（例如补上的组织）也算同一次回声。 */
+const coversPublishedValues = (
+  published: Record<string, FilterValue>,
+  incoming: Record<string, FilterValue>,
+) => Object.keys(published).every((key) => areFilterValuesEqual(published[key], incoming[key]));
+
 const UnifiedFilterBar: React.FC<UnifiedFilterBarProps> = ({
   definitions,
   values,
   onChange,
   onSearch,
   onReset,
+  onApplyInitial,
   prefixContent,
   containerClassName,
   appearance = 'default',
@@ -91,9 +108,20 @@ const UnifiedFilterBar: React.FC<UnifiedFilterBarProps> = ({
     useState<Record<string, FilterValue>>(values);
   const localValuesRef = useRef(localValues);
   const definitionsRef = useRef(definitions);
+  const valuesRef = useRef(values);
+  const onApplyInitialRef = useRef(onApplyInitial);
+  const onSearchRef = useRef(onSearch);
+  const onChangeRef = useRef(onChange);
+  const roomPublishEchoRef = useRef<Record<string, FilterValue> | null>(null);
   const optionsByFilterRef = useRef<Map<string, InputOption[]>>(new Map());
+  const initialReconciledRef = useRef(new Set<string>());
+  const initialAppliedRef = useRef<Record<string, FilterValue> | null>(null);
   localValuesRef.current = localValues;
   definitionsRef.current = definitions;
+  valuesRef.current = values;
+  onApplyInitialRef.current = onApplyInitial;
+  onSearchRef.current = onSearch;
+  onChangeRef.current = onChange;
   const organizationTreeData = useMemo(
     () => (shareMode
       ? convertGroupTreeToTreeSelectData(shareOrganization?.groupTree ?? [])
@@ -108,8 +136,32 @@ const UnifiedFilterBar: React.FC<UnifiedFilterBarProps> = ({
     .filter(isDynamicOptionFilter)
     .map((definition) => definition.id)
     .join('\0');
+  const enabledIdsKey = enabledDefinitions.map((definition) => definition.id).join('\0');
+  const enabledIdsKeyRef = useRef(enabledIdsKey);
+  if (enabledIdsKeyRef.current !== enabledIdsKey) {
+    enabledIdsKeyRef.current = enabledIdsKey;
+    initialReconciledRef.current = new Set();
+    initialAppliedRef.current = null;
+  }
 
   useEffect(() => {
+    const published = roomPublishEchoRef.current;
+    if (published && coversPublishedValues(published, values)) {
+      roomPublishEchoRef.current = null;
+      setLocalValues((prev) => {
+        let changed = false;
+        const next = { ...prev };
+        Object.entries(values).forEach(([key, value]) => {
+          if (Object.prototype.hasOwnProperty.call(published, key)) return;
+          if (areFilterValuesEqual(next[key], value)) return;
+          next[key] = value;
+          changed = true;
+        });
+        return changed ? next : prev;
+      });
+      return;
+    }
+    roomPublishEchoRef.current = null;
     setLocalValues(values);
   }, [values]);
 
@@ -169,6 +221,11 @@ const UnifiedFilterBar: React.FC<UnifiedFilterBarProps> = ({
     (onSearch || onChange)?.(next);
   };
 
+  const writeDraftValues = (next: Record<string, FilterValue>) => {
+    localValuesRef.current = next;
+    setLocalValues(next);
+  };
+
   const handleSearch = () => {
     publishValues(localValuesRef.current);
   };
@@ -179,11 +236,38 @@ const UnifiedFilterBar: React.FC<UnifiedFilterBarProps> = ({
     if (!definition) return;
     const current = localValuesRef.current[filterId];
     const roomValue = resolveBuiltinCanvasFilterAppliedValue(definition, current, options);
-    const nextValue = roomValue !== ROOM_FILTER_PASSTHROUGH
-      ? roomValue
-      : reconcileOptionBackedFilterValue(definition, current, options);
+    if (roomValue !== ROOM_FILTER_PASSTHROUGH) {
+      if (roomValue === undefined) return;
+      writeDraftValues({
+        ...localValuesRef.current,
+        [filterId]: roomValue,
+      });
+      const committed = {
+        ...valuesRef.current,
+        [filterId]: roomValue,
+      };
+      if (areFilterValuesEqual(valuesRef.current[filterId], roomValue)) return;
+      const notify = onSearchRef.current || onChangeRef.current;
+      if (!notify) return;
+      roomPublishEchoRef.current = committed;
+      notify(committed);
+      return;
+    }
+    const nextValue = reconcileOptionBackedFilterValue(definition, current, options);
+    const firstResolve = !initialReconciledRef.current.has(filterId);
+    if (firstResolve) initialReconciledRef.current.add(filterId);
     if (nextValue === undefined) return;
-    publishValues({
+    if (firstResolve) {
+      const base = { ...(initialAppliedRef.current ?? valuesRef.current) };
+      if (!areFilterValuesEqual(base[filterId], nextValue)) {
+        base[filterId] = nextValue;
+        initialAppliedRef.current = base;
+        onApplyInitialRef.current?.(base);
+      } else {
+        initialAppliedRef.current = base;
+      }
+    }
+    writeDraftValues({
       ...localValuesRef.current,
       [filterId]: nextValue,
     });
@@ -311,6 +395,23 @@ const UnifiedFilterBar: React.FC<UnifiedFilterBarProps> = ({
 
         const inputConfig = getFilterInputConfig(definition);
         const isMultiple = isMultipleSelectInputConfig(inputConfig);
+        const queryResolution = resolveOptionsQueryParams(
+          dynamicQueryParamsOf(inputConfig),
+          (ref) => {
+            const upstream = readOptionsQueryUpstream(
+              ref,
+              enabledDefinitions,
+              (id) => localValues[id],
+            );
+            if (upstream.found === false) return undefined;
+            return valueOfFoundOptionsQueryUpstream(upstream);
+          },
+        );
+        const optionsQuerySignature = stableStringify({
+          blocked: queryResolution.blocked,
+          blockReason: queryResolution.blockReason ?? null,
+          params: queryResolution.params,
+        });
 
         const fallbackInput = (
           <Input
@@ -335,6 +436,10 @@ const UnifiedFilterBar: React.FC<UnifiedFilterBarProps> = ({
             inputConfig={inputConfig}
             fallback={fallbackInput}
             value={controlValue}
+            resolvedQueryParams={queryResolution.params}
+            optionsBlocked={queryResolution.blocked}
+            optionsBlockReason={queryResolution.blockReason}
+            optionsQuerySignature={optionsQuerySignature}
             optionsNotifyKey={
               isDynamicOptionFilter(definition)
                 ? String(labelSnapshot.revisions[definition.id] ?? 0)

@@ -184,8 +184,13 @@ const normalizeFilterRoomId = (value: unknown): string => {
   return value.trim();
 };
 
-/** 非机房筛选项交给通用校正，不在这里选第一项。 */
+/** 非内置 3D 机房筛交给通用校正，不在这里选第一项。 */
 export const ROOM_FILTER_PASSTHROUGH = Symbol('room-filter-passthrough');
+
+/** 只有内置 id 才走「选第一项并搜索」。同名拆行的摘要 id 不算。 */
+export const isBuiltinRoom3DFilter = (
+  definition: Pick<UnifiedFilterDefinition, 'id'>,
+): boolean => definition.id === ROOM3D_FILTER_ID;
 
 const roomOptionValues = (options: Array<Pick<InputOption, 'value'>>) =>
   options
@@ -202,9 +207,7 @@ export const resolveRoomFilterAppliedValue = (
   current: FilterValue | null | undefined,
   options: Array<Pick<InputOption, 'value'>>,
 ): FilterValue | undefined | typeof ROOM_FILTER_PASSTHROUGH => {
-  const isRoomFilter = definition.id === ROOM3D_FILTER_ID
-    || (definition.key === ROOM3D_FILTER_KEY && definition.type === 'string');
-  if (!isRoomFilter || definition.enabled === false) {
+  if (!isBuiltinRoom3DFilter(definition) || definition.enabled === false) {
     return ROOM_FILTER_PASSTHROUGH;
   }
   const defaultId = normalizeFilterRoomId(definition.defaultValue);

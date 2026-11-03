@@ -20,6 +20,8 @@ import {
   getDefaultScreenWidgetAppearance,
   resolveScreenWidgetAppearance,
 } from '@/app/ops-analysis/(pages)/view/screen/utils/layoutUtils';
+import { normalizeInputConfig } from '@/app/ops-analysis/utils/paramInputConfigUtils';
+import { matchFilterDefinitionForParam } from '@/app/ops-analysis/utils/scanUnifiedFilterParams';
 import {
   getBindableFilterParams,
   getFilterDefinitionId,
@@ -140,18 +142,24 @@ export const computePreviewDefinitions = (
   );
   const bindableParams = getBindableFilterParams(dataSource?.params);
   bindableParams.forEach((param, index) => {
-    const id = getFilterDefinitionId(param.name, param.type);
-    if (!existingMap.has(id)) {
-      existingMap.set(id, {
-        id,
-        key: param.name,
-        name: param.alias_name || param.name,
-        type: param.type,
-        defaultValue: (param.value as FilterValue) ?? null,
-        order: existingDefinitions.length + index,
-        enabled: true,
-      });
+    if (matchFilterDefinitionForParam(existingDefinitions, param)) return;
+    if (existingDefinitions.some((definition) =>
+      definition.key === param.name && definition.type === param.type)) {
+      return;
     }
+    const id = getFilterDefinitionId(param.name, param.type);
+    if (existingMap.has(id)) return;
+    const inputConfig = normalizeInputConfig(param);
+    existingMap.set(id, {
+      id,
+      key: param.name,
+      name: param.alias_name || param.name,
+      type: param.type,
+      defaultValue: (param.value as FilterValue) ?? null,
+      order: existingDefinitions.length + index,
+      enabled: true,
+      ...(inputConfig ? { inputConfig } : {}),
+    });
   });
   return Array.from(existingMap.values());
 };

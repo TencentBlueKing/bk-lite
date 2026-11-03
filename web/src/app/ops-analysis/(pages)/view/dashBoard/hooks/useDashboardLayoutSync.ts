@@ -12,10 +12,13 @@ import type { DatasourceItem } from '@/app/ops-analysis/types/dataSource';
 import type { DateRangeValue } from '@/app/ops-analysis/types/dateRange';
 import { validateDateRangeValue } from '@/app/ops-analysis/utils/dateRange';
 import {
+  bindDiscoveredQueryRefs,
   buildDefaultFilterBindings,
   discoverFollowedFilterParams,
   preserveUnfollowedFilterBindings,
 } from '@/app/ops-analysis/utils/widgetDataTransform';
+import { rewriteParamQueryRefs } from '@/app/ops-analysis/utils/optionsQueryParamRefs';
+import { findReusableFilterDefinition } from '@/app/ops-analysis/utils/scanUnifiedFilterParams';
 import {
   buildRelativeTimeRangeFilterValue,
 } from '@/app/ops-analysis/utils/filterValue';
@@ -79,16 +82,20 @@ export const buildFiltersFromDashboardLayout = ({
       const dataSource = dataSources.find(
         (source) => source.id === normalizedId,
       );
+      const resolvedSourceId = typeof normalizedId === 'number' && Number.isFinite(normalizedId)
+        ? normalizedId
+        : undefined;
       return {
         params: resolveWidgetBindableParams(item.valueConfig, dataSource),
         filterBindings: item.valueConfig?.filterBindings,
+        sourceLabel: dataSource?.name || dataSource?.rest_api,
+        dataSourceId: resolvedSourceId,
+        catalogParams: dataSource?.params,
       };
     }),
+    previousDefinitions,
   );
 
-  const existingDefinitions = new Map(
-    previousDefinitions.map((definition) => [definition.id, definition]),
-  );
   const maxExistingOrder = previousDefinitions.reduce(
     (maxOrder, definition) => Math.max(maxOrder, definition.order ?? -1),
     -1,
@@ -97,12 +104,13 @@ export const buildFiltersFromDashboardLayout = ({
 
   const rebuiltDefinitions = Array.from(discoveredParams.entries()).map(
     ([id, param]) => {
-      const existing =
-        existingDefinitions.get(id) ||
-        previousDefinitions.find(
-          (definition) =>
-            definition.key === param.name && definition.type === param.type,
-        );
+      const existing = findReusableFilterDefinition(previousDefinitions, {
+        id,
+        key: param.name,
+        type: param.type,
+        inputConfig: param.inputConfig,
+        inputMode: param.inputMode,
+      });
 
       let defaultValue: FilterValue = null;
       if (existing?.defaultValue !== undefined) {
@@ -125,26 +133,29 @@ export const buildFiltersFromDashboardLayout = ({
       return {
         id,
         key: param.name,
-        name: existing?.name || param.alias_name || param.name,
+        name: existing?.name || param.suggestedName || param.alias_name || param.name,
         type: param.type,
         defaultValue,
         order: existing?.order ?? nextOrder++,
         enabled: existing?.enabled ?? true,
         inputMode: existing?.inputMode,
         options: existing?.options,
-        inputConfig: existing ? existing.inputConfig : param.inputConfig,
+        inputConfig: existing?.inputConfig ?? param.inputConfig,
       };
     },
   );
 
-  return ensureApplicationTopologyCanvasFilter(
-    rebuiltDefinitions.sort((a, b) => {
-      const orderDiff = (a.order ?? 0) - (b.order ?? 0);
-      if (orderDiff !== 0) return orderDiff;
-      return a.id.localeCompare(b.id);
-    }),
-    layout as Parameters<typeof ensureApplicationTopologyCanvasFilter>[1],
-    previousDefinitions,
+  return bindDiscoveredQueryRefs(
+    ensureApplicationTopologyCanvasFilter(
+      rebuiltDefinitions.sort((a, b) => {
+        const orderDiff = (a.order ?? 0) - (b.order ?? 0);
+        if (orderDiff !== 0) return orderDiff;
+        return a.id.localeCompare(b.id);
+      }),
+      layout as Parameters<typeof ensureApplicationTopologyCanvasFilter>[1],
+      previousDefinitions,
+    ),
+    discoveredParams,
   );
 };
 
@@ -162,6 +173,11 @@ export const syncDashboardLayoutFilterBindings = (
       return item;
     }
 
+    const rewrittenParams = rewriteParamQueryRefs(
+      item.valueConfig?.dataSourceParams,
+      allowedIds,
+    );
+    const paramsChanged = rewrittenParams !== item.valueConfig?.dataSourceParams;
     const existingBindings = item.valueConfig?.filterBindings;
     const dataSourceId = item.valueConfig?.dataSource;
     const normalizedId =
@@ -188,13 +204,17 @@ export const syncDashboardLayoutFilterBindings = (
         currentParams,
         undefined,
       );
-      if (JSON.stringify(existingBindings ?? undefined) === JSON.stringify(preserved)) {
+      if (
+        !paramsChanged
+        && JSON.stringify(existingBindings ?? undefined) === JSON.stringify(preserved)
+      ) {
         return item;
       }
       return {
         ...item,
         valueConfig: {
           ...item.valueConfig,
+          ...(paramsChanged ? { dataSourceParams: rewrittenParams } : {}),
           filterBindings: preserved,
         },
       };
@@ -225,7 +245,10 @@ export const syncDashboardLayoutFilterBindings = (
         : undefined,
     );
 
-    if (JSON.stringify(existingBindings ?? undefined) === JSON.stringify(newBindings)) {
+    if (
+      !paramsChanged
+      && JSON.stringify(existingBindings ?? undefined) === JSON.stringify(newBindings)
+    ) {
       return item;
     }
 
@@ -233,6 +256,7 @@ export const syncDashboardLayoutFilterBindings = (
       ...item,
       valueConfig: {
         ...item.valueConfig,
+        ...(paramsChanged ? { dataSourceParams: rewrittenParams } : {}),
         filterBindings: newBindings,
       },
     };
