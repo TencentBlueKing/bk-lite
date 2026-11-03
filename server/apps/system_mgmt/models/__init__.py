@@ -10,6 +10,7 @@ from .login_auth_binding import *  # noqa
 from .login_module import *  # noqa
 from .menu import *  # noqa
 from .network_white_list import NetworkWhiteList  # noqa
+from .notification_tag import NotificationTag  # noqa
 from .openapi_call_log import OpenAPICallLog  # noqa
 from .operation_log import *  # noqa
 from .provider_pack import UploadedProviderPack  # noqa

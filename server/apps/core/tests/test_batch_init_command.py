@@ -15,6 +15,7 @@ import pytest
 from django.core.management.base import CommandError
 
 import apps.core.management.commands.batch_init as bi
+from apps.core.logger import SafeLogException
 
 pytestmark = pytest.mark.unit
 _verify_critical_schema = bi.Command._verify_critical_schema
@@ -238,6 +239,51 @@ class TestHandleDispatch:
 
 
 class TestErrorHandlingPolicy:
+    def test_notification_tag_init_failure_warns_and_does_not_block_startup(self, monkeypatch, caplog):
+        import logging
+
+        calls = []
+        secret = "Managed-Secret-1!"
+        raised = {}
+
+        def fake_call_command(name, *args, **kwargs):
+            calls.append(name)
+            if name == "init_notification_tags":
+                error = RuntimeError(f"tag seed failed {secret}")
+                raised["error"] = error
+                raise error
+
+        monkeypatch.setattr(bi, "call_command", fake_call_command)
+        monkeypatch.setattr(
+            bi,
+            "preload_language_cache",
+            lambda *args, **kwargs: {"loaded": [], "skipped": [], "failed": []},
+        )
+        monkeypatch.setattr(bi.Command, "_init_cmdb", lambda self: calls.append("cmdb"))
+        caplog.set_level(logging.WARNING, logger="app")
+        cmd = _make_command()
+
+        cmd.handle(apps="system_mgmt,cmdb", continue_on_error=False)
+
+        assert calls[-2:] == ["init_notification_tags", "cmdb"]
+        assert not any(message.startswith("ERR:初始化 system_mgmt") for message in cmd.stdout.messages)
+        assert any("WARN:通知渠道标签初始化跳过（RuntimeError），可运行 init_notification_tags 重试" in message for message in cmd.stdout.messages)
+        assert all(secret not in message for message in cmd.stdout.messages)
+        records = [record for record in caplog.records if record.name == "app" and getattr(record, "exc_info", None)]
+        assert len(records) == 1
+        record = records[0]
+        assert record.msg == "event=notification_tag_init_failed failed_stage=init_notification_tags error_type=%s"
+        assert record.args == ("RuntimeError",)
+        assert record.exc_info[0] is SafeLogException
+        assert record.exc_info[2] is raised["error"].__traceback__
+        rendered = record.getMessage()
+        formatted = logging.Formatter().format(record)
+        assert rendered == "event=notification_tag_init_failed failed_stage=init_notification_tags error_type=RuntimeError"
+        assert formatted.count("Traceback (most recent call last)") == 1
+        assert secret not in rendered
+        assert secret not in formatted
+        assert secret not in caplog.text
+
     def test_patch_source_init_failure_warns_and_does_not_block_startup(self, monkeypatch):
         calls = []
 

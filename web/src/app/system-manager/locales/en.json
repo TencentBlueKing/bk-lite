@@ -1244,12 +1244,15 @@
         "subjectKeyPattern": "Use letters, numbers, hyphens (-), and underscores (_) only",
         "subjectKeyPlaceholder": "For example, customer-alerts-prod",
         "natsModeRequestReply": "Send to an internal service",
-        "natsModeEventPublish": "Publish to external subscribers"
+        "natsModeEventPublish": "Publish to external subscribers",
+        "tag": "Tags",
+        "tagFormatError": "A tag key and value cannot contain a colon, space, line break, or comma, and each must be 64 characters or fewer"
       },
       "table": {
         "description": "DESCRIPTION",
         "name": "NAME",
-        "type": "TYPE"
+        "type": "TYPE",
+        "tag": "TAGS"
       },
       "emailDesc": "The email channel supports sending email notifications via SMTP service.",
       "template": {
