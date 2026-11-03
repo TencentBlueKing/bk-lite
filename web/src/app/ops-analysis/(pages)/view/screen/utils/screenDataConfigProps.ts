@@ -8,6 +8,7 @@ export interface ScreenDataConfigCompareProps {
   builtinNamespaceId?: unknown;
   configSection?: unknown;
   onConfigSectionChange?: unknown;
+  onSectionErrorsChange?: unknown;
   screenFrame?: unknown;
   previewSingleStyle?: unknown;
   previewHost?: unknown;
@@ -31,6 +32,7 @@ export const areScreenDataConfigPropsEqual = (
   prev.builtinNamespaceId === next.builtinNamespaceId &&
   prev.configSection === next.configSection &&
   prev.onConfigSectionChange === next.onConfigSectionChange &&
+  prev.onSectionErrorsChange === next.onSectionErrorsChange &&
   prev.screenFrame === next.screenFrame &&
   prev.previewSingleStyle === next.previewSingleStyle &&
   prev.previewHost === next.previewHost &&
