@@ -22,10 +22,19 @@ describe('reconcileComponentParamValue multiple', () => {
     expect(reconcileComponentParamValue(['2', '9'], OPTIONS)).toEqual(['2']);
   });
 
-  test('标量仍按组件切换同源规则回落到首项', () => {
+  test('标量失效时清空，不自动选中第一项', () => {
     expect(reconcileComponentParamValue('2', OPTIONS)).toBe('2');
-    expect(reconcileComponentParamValue('missing', OPTIONS)).toBe('1');
-    expect(reconcileComponentSwitchValue('missing', OPTIONS)).toBe('1');
+    expect(reconcileComponentParamValue('missing', OPTIONS)).toBeNull();
+    expect(reconcileComponentSwitchValue('missing', OPTIONS)).toBeNull();
+    expect(reconcileComponentSwitchValue('1', [])).toBeNull();
+  });
+
+  test('选项还没回来时保留现值，已经是空列表时清空失效值', () => {
+    expect(reconcileComponentParamValue('saved', undefined)).toBe('saved');
+    expect(reconcileComponentParamValue(['saved'], undefined)).toEqual(['saved']);
+    expect(reconcileComponentParamValue('saved', [])).toBeNull();
+    expect(reconcileComponentParamValue(['saved', 'kept'], [])).toEqual([]);
+    expect(reconcileComponentParamValue(null, [])).toBeNull();
   });
 
   test('确认提交链路：多选查询参数经选项对齐后请求仍为完整数组', () => {

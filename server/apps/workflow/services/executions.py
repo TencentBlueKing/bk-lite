@@ -24,6 +24,20 @@ TERMINAL_STATUSES = {
 
 _FENCED_LOCAL_STATUSES = TERMINAL_STATUSES | {WorkflowExecution.Status.TERMINATING}
 
+# Local control facts that remote engine output must not erase.
+_CONTROL_OUTPUT_KEYS = frozenset({"termination_job_cancels"})
+
+
+def _merge_execution_output(execution: WorkflowExecution, remote_output: Any) -> dict[str, Any]:
+    """Remote business output wins for ordinary keys; local control keys are preserved."""
+
+    merged = dict(remote_output) if isinstance(remote_output, dict) else {}
+    local_output = execution.output if isinstance(execution.output, dict) else {}
+    for key in _CONTROL_OUTPUT_KEYS:
+        if key in local_output:
+            merged[key] = local_output[key]
+    return merged
+
 
 def _epoch_ms_datetime(value: Any) -> datetime | None:
     if not isinstance(value, (int, float)) or isinstance(value, bool) or value <= 0:
@@ -194,7 +208,7 @@ def apply_remote_execution(execution: WorkflowExecution, remote: dict[str, Any])
 
     if allow_status_overwrite and remote_status in valid_statuses:
         execution.status = remote_status
-    execution.output = remote.get("output", {}) or {}
+    execution.output = _merge_execution_output(execution, remote.get("output", {}) or {})
     remote_tasks = [task for task in remote.get("tasks", []) if isinstance(task, dict)]
     execution.tasks = [task_projection(task) for task in remote_tasks]
     waiting_for_human, pending_notifications = _sync_interactions(execution, remote_tasks)
@@ -233,6 +247,19 @@ def apply_remote_execution(execution: WorkflowExecution, remote: dict[str, Any])
             "updated_at",
         )
     )
+    if execution.status in {
+        WorkflowExecution.Status.TERMINATING,
+        WorkflowExecution.Status.TERMINATED,
+    }:
+        from apps.workflow.services.execution_job_cancellation import refresh_termination_job_cancels
+
+        prior_cancels = (execution.output or {}).get("termination_job_cancels")
+        cancels = refresh_termination_job_cancels(execution)
+        if cancels or isinstance(prior_cancels, list):
+            output = dict(execution.output or {})
+            output["termination_job_cancels"] = cancels
+            execution.output = output
+            execution.save(update_fields=("output", "updated_at"))
     if execution.status in TERMINAL_STATUSES:
         from apps.workflow.services.completion_outbox import enqueue_async_callback_safely
 
@@ -261,13 +288,19 @@ def sync_active_executions(*, client: ConductorClient | None = None, limit: int 
         WorkflowExecution.Status.UNKNOWN,
     }
     budget = max(1, min(int(limit), 100))
-    unknown_ids = list(
-        WorkflowExecution.objects.filter(status=WorkflowExecution.Status.UNKNOWN)
+    # Split budget so long-lived unattached QUEUED/UNKNOWN cannot starve normal / terminating sync.
+    unattached_budget = max(1, budget // 2)
+    other_budget = max(1, budget - unattached_budget)
+    now = timezone.now()
+    unattached_ids = list(
+        WorkflowExecution.objects.filter(
+            status__in=(WorkflowExecution.Status.UNKNOWN, WorkflowExecution.Status.QUEUED),
+        )
         .filter(Q(conductor_workflow_id__isnull=True) | Q(conductor_workflow_id=""))
-        .order_by("updated_at", "id")
-        .values_list("id", flat=True)[:budget]
+        .filter(Q(reconcile_next_at__isnull=True) | Q(reconcile_next_at__lte=now))
+        .order_by("reconcile_attempts", "updated_at", "id")
+        .values_list("id", flat=True)[:unattached_budget]
     )
-    remaining = max(0, budget - len(unknown_ids))
     execution_ids = list(
         WorkflowExecution.objects.filter(
             status__in=active_statuses,
@@ -275,10 +308,10 @@ def sync_active_executions(*, client: ConductorClient | None = None, limit: int 
         )
         .exclude(conductor_workflow_id="")
         .order_by("updated_at", "id")
-        .values_list("id", flat=True)[:remaining]
+        .values_list("id", flat=True)[:other_budget]
     )
     summary = {"synchronized": 0, "failed": 0, "reconciled": 0}
-    for execution_id in unknown_ids:
+    for execution_id in unattached_ids:
         try:
             execution = WorkflowExecution.objects.get(pk=execution_id)
             before = execution.conductor_workflow_id

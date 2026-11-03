@@ -11,11 +11,15 @@ import {
   Button,
   Select,
   Tag,
+  message,
 } from 'antd';
 import {
   HolderOutlined,
 } from '@ant-design/icons';
-import { ParamInputConfigEditor } from '@/app/ops-analysis/components/paramInputConfigEditor';
+import {
+  ParamInputConfigEditor,
+  describeQueryIssue,
+} from '@/app/ops-analysis/components/paramInputConfigEditor';
 import { ParamInputControl } from '@/app/ops-analysis/components/paramInputControl';
 import GroupTreeSelect from '@/components/group-tree-select';
 import { normalizeInputConfig, isOrganizationControl, toSingleOrganizationValue } from '@/app/ops-analysis/utils/paramInputConfigUtils';
@@ -23,7 +27,6 @@ import { retainFilterValueInOptions } from '@/app/ops-analysis/utils/optionBacke
 import {
   coerceValueForMultiple,
   isMultipleSelectInputConfig,
-  migrateParamItemsFromStringList,
 } from '@/app/ops-analysis/utils/stringParamMultipleMigrate';
 import dayjs from 'dayjs';
 import TimeSelector from '@/components/time-selector';
@@ -64,12 +67,16 @@ import type { DateRangeValue } from '@/app/ops-analysis/types/dateRange';
 import type {
   DatasourceItem,
   InputControlConfig,
-  ParamItem,
 } from '@/app/ops-analysis/types/dataSource';
 import {
-  isBindableDataSourceParamType,
-  type BindableDataSourceParamType,
-} from '@/app/ops-analysis/utils/dataSourceParamContract';
+  collectUnifiedFilterQueryIssues,
+  dynamicQueryParamsOf,
+} from '@/app/ops-analysis/utils/optionsQueryParamRefs';
+import { optionsSourceSummary } from '@/app/ops-analysis/utils/optionsSourceIdentity';
+import {
+  findReusableFilterDefinition,
+  scanDataSourceFilterParams,
+} from '@/app/ops-analysis/utils/scanUnifiedFilterParams';
 import {
   includeRoom3DCanvasFilter,
   layoutDeclaresRoom3D,
@@ -90,15 +97,6 @@ interface UnifiedFilterConfigModalProps {
 
 interface SortableRowProps extends React.HTMLAttributes<HTMLTableRowElement> {
   'data-row-key': string;
-}
-
-interface ScannedParam {
-  key: string;
-  type: BindableDataSourceParamType;
-  componentCount: number;
-  sampleAlias: string;
-  sampleDefaultValue: FilterValue;
-  sampleInputConfig?: InputControlConfig;
 }
 
 const PARAM_TYPE_LABEL_KEYS = new Set([
@@ -176,51 +174,6 @@ const toNumberFilterValue = (value: number | string | null): FilterValue => {
   return Number.isFinite(numeric) ? numeric : null;
 };
 
-const scanFilterParams = (
-  layoutItems: LayoutItem[],
-  dataSources: DatasourceItem[],
-): ScannedParam[] => {
-  const paramMap = new Map<string, ScannedParam>();
-
-  const usedDataSourceIds = new Set<number>();
-  layoutItems.forEach((item) => {
-    const dsId = item.valueConfig?.dataSource;
-    if (dsId) {
-      usedDataSourceIds.add(typeof dsId === 'string' ? parseInt(dsId, 10) : dsId);
-    }
-  });
-
-  dataSources.forEach((ds) => {
-    if (!usedDataSourceIds.has(ds.id)) return;
-
-    const params = migrateParamItemsFromStringList(
-      Array.isArray(ds.params) ? ds.params : [],
-    ).params;
-    params.forEach((param: ParamItem) => {
-      if (param.filterType !== 'filter') return;
-      if (!isBindableDataSourceParamType(param.type)) return;
-
-      const compositeKey = `${param.name}__${param.type}`;
-      const existing = paramMap.get(compositeKey);
-
-      if (existing) {
-        existing.componentCount += 1;
-      } else {
-        paramMap.set(compositeKey, {
-          key: param.name,
-          type: param.type,
-          componentCount: 1,
-          sampleAlias: param.alias_name || param.name,
-          sampleDefaultValue: (param.value as FilterValue) ?? null,
-          sampleInputConfig: normalizeInputConfig(param),
-        });
-      }
-    });
-  });
-
-  return Array.from(paramMap.values());
-};
-
 const UnifiedFilterConfigModal: React.FC<UnifiedFilterConfigModalProps> = ({
   open,
   onCancel,
@@ -245,8 +198,8 @@ const UnifiedFilterConfigModal: React.FC<UnifiedFilterConfigModalProps> = ({
   );
 
   const scannedParams = useMemo(
-    () => scanFilterParams(layoutItems, dataSources),
-    [layoutItems, dataSources],
+    () => scanDataSourceFilterParams(layoutItems, dataSources, initialDefinitions),
+    [initialDefinitions, layoutItems, dataSources],
   );
 
   const getFilterInputConfig = (
@@ -297,22 +250,14 @@ const UnifiedFilterConfigModal: React.FC<UnifiedFilterConfigModalProps> = ({
     if (hasInitializedRef.current) return;
     hasInitializedRef.current = true;
 
-    const existingMap = new Map(
-      initialDefinitions.map((d) => [`${d.key}__${d.type}`, d]),
-    );
-
     const merged = scannedParams.map((param, index) => {
-      const compositeKey = `${param.key}__${param.type}`;
-      const existing = existingMap.get(compositeKey);
-
-      if (existing) {
-        return existing;
-      }
+      const existing = findReusableFilterDefinition(initialDefinitions, param);
+      if (existing) return existing;
 
       return {
-        id: compositeKey,
+        id: param.id,
         key: param.key,
-        name: param.sampleAlias,
+        name: param.suggestedName,
         type: param.type,
         defaultValue: param.sampleDefaultValue,
         order: initialDefinitions.length + index,
@@ -376,6 +321,25 @@ const UnifiedFilterConfigModal: React.FC<UnifiedFilterConfigModalProps> = ({
 
   const handleConfirm = () => {
     if (hasInvalidDateRangeDefinitions(definitions)) return;
+    const queryIssues = collectUnifiedFilterQueryIssues(definitions);
+    if (queryIssues.length > 0) {
+      const labels = new Map<string, string>();
+      const namesByKey = new Map<string, Set<string>>();
+      definitions.forEach((item) => {
+        const name = item.name?.trim();
+        if (!name) return;
+        labels.set(item.id, name);
+        if (!item.key) return;
+        const names = namesByKey.get(item.key) ?? new Set<string>();
+        names.add(name);
+        namesByKey.set(item.key, names);
+      });
+      namesByKey.forEach((names, key) => {
+        if (names.size === 1) labels.set(key, [...names][0]);
+      });
+      message.error(queryIssues.map((issue) => describeQueryIssue(t, issue, labels)).join('；'));
+      return;
+    }
     onConfirm(definitions.map(sanitizeUnifiedFilterDefinition));
     onCancel();
   };
@@ -817,6 +781,28 @@ const UnifiedFilterConfigModal: React.FC<UnifiedFilterConfigModalProps> = ({
         key={editingFilterId ?? 'closed'}
         open={inputConfigModalOpen}
         value={getEditingFilterInputConfig()}
+        editingParamName={definitions.find((item) => item.id === editingFilterId)?.key}
+        editingNodeId={editingFilterId ?? undefined}
+        optionsQueryContext={{
+          scope: 'globalFilter',
+          self: {
+            id: editingFilterId ?? undefined,
+            key: definitions.find((item) => item.id === editingFilterId)?.key || '',
+            label: definitions.find((item) => item.id === editingFilterId)?.name,
+          },
+          globalFilters: definitions
+            .filter((item) => item.id !== editingFilterId)
+            .map((item) => ({
+              id: item.id,
+              key: item.key,
+              label: item.name,
+              type: item.type,
+              enabled: item.enabled,
+              sourceHint: optionsSourceSummary(item.inputConfig),
+              queryParams: dynamicQueryParamsOf(item.inputConfig),
+              inputConfig: item.inputConfig,
+            })),
+        }}
         onConfirm={handleInputConfigConfirm}
         onCancel={() => {
           setInputConfigModalOpen(false);

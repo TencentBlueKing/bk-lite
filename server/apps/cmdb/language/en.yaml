@@ -144,6 +144,12 @@ MODEL:
   qcloud_cmq_topic: Tencent Cloud CMQ Theme
   qcloud_domain: Tencent Cloud Domain
   qcloud_eip: Tencent Cloud Public Network IP
+  qcloud_tke_cluster: Tencent Cloud TKE Cluster
+  qcloud_tke_node: Tencent Cloud TKE Node
+  qcloud_vpn_gateway: Tencent Cloud VPN Gateway
+  qcloud_customer_gateway: Tencent Cloud Customer Gateway
+  qcloud_vpn_connection: Tencent Cloud VPN Connection
+  qcloud_nat_gateway: Tencent Cloud NAT Gateway
   qcloud_filesystem: Tencent Cloud File System
   qcloud_mongodb: Tencent Cloud MongoDB
   qcloud_mysql: Tencent Cloud MySQL
@@ -1875,6 +1881,123 @@ ATTR:
     charge_type: Charge Type
     create_time: Create Time
     expired_time: Expiry time
+    auto_collect: Auto Collect
+    collect_time: Last Updated Time
+    collect_task: Collect Task
+  qcloud_tke_cluster:
+    inst_name: Name
+    organization: Organization
+    resource_name: Resource Name
+    resource_id: Resource ID
+    region: Region
+    status: Status
+    cluster_type: Cluster Type
+    version: Cluster Version
+    vpc: VPC
+    cluster_cidr: Cluster CIDR
+    service_cidr: Service CIDR
+    network_type: Network Type
+    node_num: Node Count
+    master_node_num: Master Node Count
+    runtime: Container Runtime
+    runtime_version: Runtime Version
+    os_name: Cluster OS
+    project_id: Project ID
+    cluster_level: Cluster Level
+    ha: High Availability
+    create_time: Create Time
+    deletion_protection: Deletion Protection
+    tag: Tag
+    auto_collect: Auto Collect
+    collect_time: Last Updated Time
+    collect_task: Collect Task
+  qcloud_tke_node:
+    inst_name: Name
+    organization: Organization
+    resource_name: Resource Name
+    resource_id: Resource ID
+    region: Region
+    cluster_id: Cluster ID
+    ip_addr: Private IP
+    instance_role: Node Role
+    status: Status
+    node_pool_id: Node Pool ID
+    create_time: Create Time
+    tag: Tag
+    auto_collect: Auto Collect
+    collect_time: Last Updated Time
+    collect_task: Collect Task
+  qcloud_vpn_gateway:
+    inst_name: Name
+    organization: Organization
+    resource_name: Resource Name
+    resource_id: Resource ID
+    region: Region
+    zone: Zone
+    vpc: VPC
+    status: Status
+    type: Gateway Type
+    ip_addr: Public IP
+    bandwidth_mbps: Bandwidth Limit (Mbps)
+    charge_type: Charge Type
+    create_time: Create Time
+    expired_time: Expiry Time
+    renew_flag: Renew Flag
+    version: Protocol Version
+    max_connection: Max Connections
+    tag: Tag
+    auto_collect: Auto Collect
+    collect_time: Last Updated Time
+    collect_task: Collect Task
+  qcloud_customer_gateway:
+    inst_name: Name
+    organization: Organization
+    resource_name: Resource Name
+    resource_id: Resource ID
+    region: Region
+    ip_addr: Public IP
+    create_time: Create Time
+    tag: Tag
+    auto_collect: Auto Collect
+    collect_time: Last Updated Time
+    collect_task: Collect Task
+  qcloud_vpn_connection:
+    inst_name: Name
+    organization: Organization
+    resource_name: Resource Name
+    resource_id: Resource ID
+    region: Region
+    vpc: VPC
+    vpn_gateway_id: VPN Gateway ID
+    customer_gateway_id: Customer Gateway ID
+    status: Status
+    net_status: Network Status
+    vpn_proto: VPN Protocol
+    route_type: Route Type
+    create_time: Create Time
+    tag: Tag
+    auto_collect: Auto Collect
+    collect_time: Last Updated Time
+    collect_task: Collect Task
+  qcloud_nat_gateway:
+    inst_name: Name
+    organization: Organization
+    resource_name: Resource Name
+    resource_id: Resource ID
+    region: Region
+    zone: Zone
+    vpc: VPC
+    subnet: Subnet
+    status: Status
+    network_state: Network State
+    bandwidth_mbps: Bandwidth Limit (Mbps)
+    max_concurrent: Max Concurrent Connections
+    eip_ids: Bound EIP IDs
+    eip_addrs: Bound Public IPs
+    product_version: Product Version
+    restrict_state: Restrict State
+    create_time: Create Time
+    tag: Tag
     auto_collect: Auto Collect
     collect_time: Last Updated Time
     collect_task: Collect Task

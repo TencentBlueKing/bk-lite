@@ -8,6 +8,7 @@ from urllib.parse import quote
 import requests
 
 from apps.alerts.itsm.config import ItsmError, validate_response_contract
+from apps.alerts.itsm.gateway_loopback import callback_tls_verify, rewrite_gateway_callback_url
 from apps.alerts.itsm.transport import deadline_adapter
 from apps.core.utils.ssrf_validator import SSRFError, SSRFValidator
 
@@ -28,8 +29,8 @@ def _path(data, path):
 _LAYOUT_SKIP = {"row", "group", "tab", "tab-panel"}
 
 
-def _layout_fields(layout):
-    found = []
+def _layout_nodes(layout):
+    """按表单布局顺序产出带 key 的字段节点，跳过行/分组等容器。"""
 
     def walk(nodes):
         if isinstance(nodes, dict):
@@ -39,20 +40,74 @@ def _layout_fields(layout):
         for node in nodes:
             if not isinstance(node, dict):
                 continue
-            kind = str(node.get("type") or "")
-            if kind in _LAYOUT_SKIP:
-                walk(node.get("children") or node.get("list") or [])
-                continue
             key = node.get("key")
-            if isinstance(key, str) and key:
-                found.append({"key": key, "name": str(node.get("name") or node.get("label") or key)[:128], "type": kind[:64]})
-            walk(node.get("children") or node.get("list") or [])
+            if str(node.get("type") or "") not in _LAYOUT_SKIP and isinstance(key, str) and key:
+                yield node
+            yield from walk(node.get("children") or node.get("list") or [])
 
-    walk(layout or [])
-    return found
+    yield from walk(layout or [])
+
+
+def _node_label(node):
+    title = node.get("title")
+    title = title.get("value") if isinstance(title, dict) else title
+    return str(node.get("name") or node.get("label") or title or node["key"])[:128]
+
+
+def _node_required(node):
+    rule = _path(node, "verification.required")
+    return isinstance(rule, dict) and rule.get("value") is True and rule.get("enabled") is not False
+
+
+def _node_options(node):
+    choices = node.get("optionList")
+    if not isinstance(choices, list):
+        return []
+    return [
+        {"key": item["key"], "name": str(item.get("name") or item["key"])[:128]}
+        for item in choices
+        if isinstance(item, dict) and isinstance(item.get("key"), str) and item["key"]
+    ]
+
+
+def _layout_fields(layout):
+    return [
+        {
+            "key": node["key"],
+            "name": _node_label(node),
+            "type": str(node.get("type") or "")[:64],
+            "required": _node_required(node),
+            "options": _node_options(node),
+        }
+        for node in _layout_nodes(layout)
+    ]
+
+
+def _apply_selected_options(layout, fields):
+    """ITSM 按调用方提交的 options 校验选项值；常量允许填选项名，这里统一换成选项 key。"""
+    options = {}
+    for node in _layout_nodes(layout):
+        key, choices = node["key"], node.get("optionList")
+        if key not in fields or not isinstance(choices, list):
+            continue
+        choices = [item for item in choices if isinstance(item, dict) and isinstance(item.get("key"), str)]
+        by_key = {item["key"]: item for item in choices}
+        by_name = {str(item["name"]): item for item in choices if item.get("name") is not None}
+        values = fields[key] if isinstance(fields[key], list) else [fields[key]]
+        if not values or not all(isinstance(value, str) and value for value in values):
+            continue
+        chosen = [by_key.get(value) or by_name.get(value) for value in values]
+        if None in chosen:
+            continue
+        options[key] = [{"key": item["key"], "name": str(item.get("name") or item["key"]), "parent": None} for item in chosen]
+        keys = [item["key"] for item in chosen]
+        fields[key] = keys if isinstance(fields[key], list) else keys[0]
+    return options
 
 
 class ItsmClient:
+    supports_comment = False
+
     def __init__(self, connection, *, allow_disabled=False, token=None):
         self.connection = connection
         self.allow_disabled = allow_disabled
@@ -74,9 +129,15 @@ class ItsmClient:
         try:
             # requests 默认不重试；禁用环境代理和重定向，凭据只发往部署指定的网关。
             url = self.connection["url"].rstrip("/") + "/" + path
+            rewritten = rewrite_gateway_callback_url(url)
+            loopback = rewritten != url
+            url = rewritten
             guard_target = self._token is not None or bool(self.connection.get("credential_id"))
             if guard_target:
-                SSRFValidator.validate(url)
+                if loopback:
+                    SSRFValidator.validate_callback(url)
+                else:
+                    SSRFValidator.validate(url)
             with ExitStack() as stack:
                 session = stack.enter_context(requests.Session())
                 verify = self.connection.get("ca_bundle") or True
@@ -85,8 +146,10 @@ class ItsmClient:
                     certificate.write(self.connection["ca_pem"])
                     certificate.flush()
                     verify = certificate.name
+                elif loopback:
+                    verify = callback_tls_verify(url)
                 session.trust_env = False
-                session.mount("https://", deadline_adapter(started + 30, guard_url=url if guard_target else None))
+                session.mount("https://", deadline_adapter(started + 30, guard_url=None if loopback else (url if guard_target else None)))
                 response = session.request(
                     method,
                     url,
@@ -145,10 +208,17 @@ class ItsmClient:
 
     def create(self, workflow_key, fields):
         validate_response_contract(self.connection)
+        prepared = dict(fields)
+        try:
+            options = _apply_selected_options(self._form_layout(workflow_key), prepared)
+            fields = prepared
+        except Exception:
+            # 读不到或解析不了表单只影响选项校验，交给 ITSM 明确拒绝；不能因此放弃这次建单。
+            options = {}
         data = self._request(
             "POST",
-            "ticket_create/",
-            {"workflow_key": workflow_key, "is_submit": True, "form_data": fields},
+            "ticket/create/",
+            {"workflow_key": workflow_key, "is_submit": True, "form_data": fields, "options": options},
         )
         ticket_id = _path(data, self.connection["create_id_path"])
         if isinstance(ticket_id, bool) or not isinstance(ticket_id, (str, int)) or not str(ticket_id) or len(str(ticket_id)) > 128:
@@ -157,7 +227,7 @@ class ItsmClient:
 
     def detail(self, ticket_id):
         validate_response_contract(self.connection)
-        data = self._request("GET", "ticket_detail/" + quote(str(ticket_id), safe="") + "/")
+        data = self._request("GET", "ticket/detail/?id=" + quote(str(ticket_id), safe=""))
         fields = self.connection["detail_fields"]
         actual_id = _path(data, fields["id"])
         if str(actual_id) != str(ticket_id):
@@ -175,10 +245,10 @@ class ItsmClient:
         }
 
     def comment(self, ticket_id, content):
-        self._request("POST", "ticket_comment/", {"ticket": str(ticket_id), "content": content})
+        raise ItsmError("ITSM 原生 OpenAPI 暂不支持工单留言", "failed")
 
     def services(self):
-        data = self._request("GET", "service_catalog/")
+        data = self._request("GET", "service_catalog/service_list/")
         results = data.get("results") if isinstance(data, dict) else None
         if not isinstance(results, list):
             raise ItsmError("ITSM 响应格式异常", "failed")
@@ -186,16 +256,22 @@ class ItsmClient:
         for item in results:
             if not isinstance(item, dict) or item.get("enabled") is False:
                 continue
-            workflow_key = item.get("workflow_key")
+            workflow_key = item.get("workflow_id") or item.get("workflow_key")
             if not isinstance(workflow_key, str) or not workflow_key.strip() or len(workflow_key) > 200:
                 continue
-            label = item.get("display") or item.get("service_name") or workflow_key
+            label = item.get("workflow_display") or item.get("name") or item.get("display") or item.get("service_name")
+            label = label or workflow_key
             found.append({"workflow_key": workflow_key.strip(), "label": str(label)[:200]})
         return found
 
+    def _form_layout(self, workflow_key):
+        data = self._request("GET", "workflows/?workflow_keys=" + quote(str(workflow_key), safe=""))
+        items = data.get("items") if isinstance(data, dict) else None
+        canvas = items[0].get("form_canvas_data") if isinstance(items, list) and items and isinstance(items[0], dict) else {}
+        return _path(canvas if isinstance(canvas, dict) else {}, "form_data.layout")
+
     def form_fields(self, workflow_key):
-        data = self._request("GET", "ticket_form/?workflow_key=" + quote(str(workflow_key), safe=""))
-        return _layout_fields(_path(data, "canvas_data.form_data.layout"))
+        return _layout_fields(self._form_layout(workflow_key))
 
     def test_connection(self):
-        self._request("GET", "ticket_list/?page=1&page_size=1")
+        self._request("GET", "ticket/list/?page=1&page_size=1")

@@ -3384,6 +3384,90 @@ def test_package_list_treats_legacy_empty_arch_controller_as_x86_64():
 
 
 @pytest.mark.django_db
+def test_package_list_collector_query_without_os_or_arch_returns_nothing():
+    PackageVersion.objects.create(
+        type="collector",
+        os=NodeConstants.LINUX_OS,
+        cpu_architecture=NodeConstants.X86_64_ARCH,
+        object="Telegraf",
+        version="1.28.0",
+        name="telegraf",
+        created_by="tester",
+        updated_by="tester",
+    )
+    PackageVersion.objects.create(
+        type="collector",
+        os=NodeConstants.WINDOWS_OS,
+        cpu_architecture=NodeConstants.X86_64_ARCH,
+        object="Telegraf",
+        version="1.28.0",
+        name="telegraf.exe",
+        created_by="tester",
+        updated_by="tester",
+    )
+
+    empty_target = PackageVersionFilter(
+        data={"object": "Telegraf", "os": "", "cpu_architecture": ""},
+        queryset=PackageVersion.objects.all(),
+    ).qs
+    missing_arch = PackageVersionFilter(
+        data={"type": "collector", "object": "Telegraf", "os": NodeConstants.LINUX_OS},
+        queryset=PackageVersion.objects.all(),
+    ).qs
+    inventory = PackageVersionFilter(data={}, queryset=PackageVersion.objects.all()).qs
+
+    assert list(empty_target) == []
+    assert list(missing_arch) == []
+    assert inventory.count() == 2
+
+
+@pytest.mark.django_db
+def test_package_list_collector_query_keeps_only_matching_os_and_arch():
+    linux_x86 = PackageVersion.objects.create(
+        type="collector",
+        os=NodeConstants.LINUX_OS,
+        cpu_architecture=NodeConstants.X86_64_ARCH,
+        object="Telegraf",
+        version="1.28.0",
+        name="telegraf",
+        created_by="tester",
+        updated_by="tester",
+    )
+    PackageVersion.objects.create(
+        type="collector",
+        os=NodeConstants.LINUX_OS,
+        cpu_architecture=NodeConstants.ARM64_ARCH,
+        object="Telegraf",
+        version="1.28.0",
+        name="telegraf-arm",
+        created_by="tester",
+        updated_by="tester",
+    )
+    PackageVersion.objects.create(
+        type="collector",
+        os=NodeConstants.WINDOWS_OS,
+        cpu_architecture=NodeConstants.X86_64_ARCH,
+        object="Telegraf",
+        version="1.28.0",
+        name="telegraf.exe",
+        created_by="tester",
+        updated_by="tester",
+    )
+
+    filtered = PackageVersionFilter(
+        data={
+            "type": "collector",
+            "object": "Telegraf",
+            "os": NodeConstants.LINUX_OS,
+            "cpu_architecture": "amd64",
+        },
+        queryset=PackageVersion.objects.all(),
+    ).qs
+
+    assert list(filtered.values_list("id", flat=True)) == [linux_x86.id]
+
+
+@pytest.mark.django_db
 def test_package_version_serializer_exposes_normalized_cpu_architecture():
     package = PackageVersion.objects.create(
         type="controller",

@@ -186,6 +186,7 @@ def execute_manual_ip_action(
             },
             operator,
             allowed_org_ids=allowed_org_ids,
+            audit_source="IP地址",
         )
         try:
             _require_subnet_ip_association(subnet_id, created["_id"])
@@ -193,7 +194,7 @@ def execute_manual_ip_action(
             inst_uuid = created.get("inst_uuid")
             if inst_uuid:
                 try:
-                    InstanceManage.instance_batch_delete_by_uuids(user_groups, roles, [inst_uuid], operator)
+                    InstanceManage.instance_batch_delete_by_uuids(user_groups, roles, [inst_uuid], operator, audit_source="IP地址")
                 except Exception:
                     logger.exception(
                         "[IPAM] 手工登记关联失败后回滚 IP 失败 subnet_id=%s ip_id=%s",
@@ -217,6 +218,7 @@ def execute_manual_ip_action(
             },
             operator,
             allowed_org_ids=allowed_org_ids,
+            audit_source="IP地址",
         )
         _require_subnet_ip_association(subnet_id, existing["_id"])
         return {"action": ACTION_UPDATE, "ip": updated}
@@ -227,7 +229,7 @@ def execute_manual_ip_action(
         inst_uuid = existing.get("inst_uuid")
         if not inst_uuid:
             raise IpamEditError("IP 实例缺少 inst_uuid，无法解除")
-        InstanceManage.instance_batch_delete_by_uuids(user_groups, roles, [inst_uuid], operator)
+        InstanceManage.instance_batch_delete_by_uuids(user_groups, roles, [inst_uuid], operator, audit_source="IP地址")
         _safe_writeback(subnet_id)
         return {"action": ACTION_DELETE, "ip": None}
 

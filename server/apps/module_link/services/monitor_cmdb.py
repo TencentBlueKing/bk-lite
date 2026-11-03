@@ -500,6 +500,7 @@ def _create_ci(item: MonitorCmdbTaskItem, actor_scope: dict[str, Any]) -> tuple[
             operator=operator,
             allowed_org_ids=allowed_org_ids,
             schedule_post_actions=False,
+            audit_source="监控接入",
         )
     except Exception as exc:
         logger.error(

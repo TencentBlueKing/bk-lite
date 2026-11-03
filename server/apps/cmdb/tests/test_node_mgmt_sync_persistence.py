@@ -72,6 +72,7 @@ def test_existing_host_diff_calls_instance_update(mocker, existing_host, desired
         skip_permission_check=True,
         operation_id=str(GENERATION),
         schedule_post_actions=False,
+        audit_source="节点同步",
     )
     assert result["update"] == 1
     assert result["update_success"] == 1
@@ -189,6 +190,7 @@ def test_new_host_success_is_counted_and_uses_generation(mocker, desired_host):
         allowed_org_ids=[2],
         operation_id=str(GENERATION),
         schedule_post_actions=False,
+        audit_source="节点同步",
     )
     assert result["add"] == 1
     assert result["add_success"] == 1

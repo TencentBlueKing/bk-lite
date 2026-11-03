@@ -353,6 +353,7 @@ class CmdbToMonitorPushService:
                 operator=operator or "",
                 allowed_org_ids=list(allowed_org_ids or []),
                 skip_permission_check=True,
+                audit_source="节点接入",
             )
             if isinstance(updated, dict):
                 merged = dict(result)
@@ -398,6 +399,7 @@ class CmdbToMonitorPushService:
                 operator=operator or "",
                 allowed_org_ids=list(allowed_org_ids or []),
                 skip_permission_check=True,
+                audit_source="监控接入",
             )
             if isinstance(updated, dict):
                 merged = dict(result)

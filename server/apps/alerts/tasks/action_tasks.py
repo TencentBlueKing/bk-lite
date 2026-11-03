@@ -20,7 +20,11 @@ def process_alert_actions(alert_id: str, event_name: str):
         ActionEngine().evaluate(alert, event_name)
         from apps.alerts.itsm.comments import enqueue_comment
 
-        enqueue_comment(alert, event_name)
+        try:
+            # 动作已分派；这里抛错会让整个任务重试，把上面的动作再执行一遍。
+            enqueue_comment(alert, event_name)
+        except Exception:
+            logger.exception("[ITSM] 留言入队失败，不影响告警动作 alert=%s event=%s", alert_id, event_name)
     except Exception:
         logger.exception("[ActionEngine] 处理动作失败 alert=%s event=%s", alert_id, event_name)
         raise

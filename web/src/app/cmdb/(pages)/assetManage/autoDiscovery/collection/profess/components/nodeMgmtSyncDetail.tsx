@@ -6,6 +6,7 @@ import CustomTable from '@/components/custom-table';
 import CompactEmptyState from '@/components/compact-empty-state';
 import SearchActionBar from '@/components/search-action-bar';
 import { useNodeMgmtSyncApi } from '@/app/cmdb/api';
+import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import { useTranslation } from '@/utils/i18n';
 import type {
   CollectTaskMessage,
@@ -46,6 +47,7 @@ const EMPTY_TASK_DATA: TaskData = { data: [], count: 0 };
 
 const NodeMgmtSyncDetail: React.FC<NodeMgmtSyncDetailProps> = ({ open }) => {
   const { t } = useTranslation();
+  const { convertToLocalizedTime } = useLocalizedTime();
   const api = useNodeMgmtSyncApi();
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -317,6 +319,13 @@ const NodeMgmtSyncDetail: React.FC<NodeMgmtSyncDetailProps> = ({ open }) => {
           render: (_: string, record: NodeMgmtSyncItem) => record.ip_addr || record.ip || '--',
         },
         {
+          title: t('Collection.nodeMgmtSync.table.reportedAt'),
+          dataIndex: '__time__',
+          key: '__time__',
+          width: 188,
+          render: (value: string) => (value ? convertToLocalizedTime(value) : '--'),
+        },
+        {
           title: t('Collection.nodeMgmtSync.table.status'),
           dataIndex: '_status',
           render: (value: string) => value || '--',
@@ -356,7 +365,7 @@ const NodeMgmtSyncDetail: React.FC<NodeMgmtSyncDetailProps> = ({ open }) => {
         render: (value: string) => value || '--',
       },
     ];
-  }, [activeTab, t]);
+  }, [activeTab, convertToLocalizedTime, t]);
 
   const tabItems = useMemo(() => {
     const tabs = [

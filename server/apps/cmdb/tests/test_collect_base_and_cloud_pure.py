@@ -276,6 +276,54 @@ def test_host_run_still_uses_its_own_formatter():
 
 def test_task_format_payload_is_not_reconciled_as_instances(monkeypatch):
     seen = []
+    deleted = []
+
+    class _Graph:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def query_entity(self, _label, params):
+            if any(item.get("field") == "collect_task" for item in params):
+                return [{"_id": 1, "model_id": "pc", "inst_name": "WIN-EXISTING", "collect_task": 7}], 1
+            return [], 0
+
+    class _Management:
+        def __init__(self, _organization, _inst_name, model_id, old_data, new_data, *_args, **_kwargs):
+            seen.append(model_id)
+            if model_id == "pc" and old_data and not new_data:
+                deleted.extend(old_data)
+
+        def controller(self):
+            return {
+                "add": {"success": [], "failed": []},
+                "update": {"success": [], "failed": []},
+                "delete": {"success": [], "failed": []},
+            }
+
+    monkeypatch.setattr("apps.cmdb.collection.metrics_cannula.GraphClient", lambda *_a, **_k: _Graph())
+    monkeypatch.setattr("apps.cmdb.collection.metrics_cannula.Management", _Management)
+    cannula = MetricsCannula(
+        inst_id="cmdb_7",
+        organization=[1],
+        inst_name="pc-task",
+        task_id=7,
+        collect_plugin=SimpleNamespace(TASK_FORMAT_DATA_KEY="__task_format_data__"),
+        default_metrics={
+            "__task_format_data__": [{"inst_name": "WIN-NEW"}],
+        },
+        reconcile_task_assets=True,
+        task=SimpleNamespace(model_id="pc", expire_days=0, instances=[]),
+    )
+    cannula._collect_models()
+    assert seen == []
+    assert deleted == []
+
+
+def test_task_format_payload_outside_pc_keeps_original_behavior(monkeypatch):
+    seen = []
 
     class _Graph:
         def __enter__(self):
@@ -303,16 +351,17 @@ def test_task_format_payload_is_not_reconciled_as_instances(monkeypatch):
     cannula = MetricsCannula(
         inst_id="cmdb_7",
         organization=[1],
-        inst_name="pc-task",
+        inst_name="host-task",
         task_id=7,
-        collect_plugin=object,
-        default_metrics={
-            "host": [{"inst_name": "host-a"}],
-            "__task_format_data__": {"pc_summary": {"pc_total": 1}, "add": []},
-        },
+        collect_plugin=SimpleNamespace(TASK_FORMAT_DATA_KEY="__task_format_data__"),
+        default_metrics={"__task_format_data__": [{"inst_name": "host-a"}]},
+        reconcile_task_assets=True,
+        task=SimpleNamespace(model_id="host", expire_days=0, instances=[]),
     )
-    cannula._collect_models()
-    assert seen == ["host"]
+    cannula._reconcile_for = lambda _model_id: None
+    result = cannula._collect_models()
+    assert seen == ["__task_format_data__"]
+    assert result["all"] == 1
 
 
 def test_collect_base_init_backfills_inst_name_from_list_instances(monkeypatch):
@@ -578,3 +627,31 @@ def test_qcloud_format_metrics_skips_incomplete_identity(monkeypatch):
     }
     r.format_metrics()
     assert r.result["qcloud_cvm"] == []
+
+
+def test_qcloud_cvm_metric_tag_label_becomes_list_and_blank_does_not_clear(monkeypatch):
+    from apps.cmdb.collection.common import Management
+    from apps.cmdb.collection.plugins.base import bind_collection_mapping
+    from apps.cmdb.collection.plugins.community.cloud.qcloud import QCloudCollectionPlugin
+
+    r = _qcloud(monkeypatch, model_id="qcloud_cvm")
+    mapping = {model_id: bind_collection_mapping(r, fields) for model_id, fields in QCloudCollectionPlugin.field_mappings.items()}
+    monkeypatch.setattr(type(r), "model_field_mapping", property(lambda self: mapping))
+    r.collection_metrics_dict = {
+        "qcloud_cvm_info_gauge": [
+            {
+                "resource_name": "cvm-a",
+                "resource_id": "ins-1",
+                "tag": '["owner:acme,inc","env:prod"]',
+                "vcpus": "2",
+                "memory_mb": "2048",
+            },
+            {"resource_name": "cvm-b", "resource_id": "ins-2", "vcpus": "1", "memory_mb": "1024"},
+        ]
+    }
+    r.format_metrics()
+    rows = {row["resource_id"]: row for row in r.result["qcloud_cvm"]}
+    assert Management.coerce_collected_tag(rows["ins-1"])["tag"] == ["owner:acme,inc", "env:prod"]
+    assert "tag" not in Management.coerce_collected_tag(rows["ins-2"])
+    for model_id in ("qcloud_cvm", "qcloud_mysql", "qcloud_redis", "qcloud_rocketmq", "qcloud_bucket", "qcloud_domain"):
+        assert QCloudCollectionPlugin.field_mappings[model_id]["tag"] == "tag"

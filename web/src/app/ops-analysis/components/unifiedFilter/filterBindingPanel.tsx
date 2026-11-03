@@ -13,6 +13,7 @@ import {
   getFilterDefinitionId,
   getBindableFilterParams,
 } from '@/app/ops-analysis/utils/widgetDataTransform';
+import { matchFilterDefinitionForParam } from '@/app/ops-analysis/utils/scanUnifiedFilterParams';
 
 interface FilterBindingPanelProps {
   definitions: UnifiedFilterDefinition[];
@@ -41,10 +42,8 @@ const FilterBindingPanel: React.FC<FilterBindingPanelProps> = ({
     const filterParams = getBindableFilterParams(dataSourceParams);
 
     return filterParams.map((param) => {
-      const filterId = getFilterDefinitionId(param.name, param.type);
-      const matchedDefinition = definitions.find(
-        (d) => d.key === param.name && d.type === param.type,
-      );
+      const matchedDefinition = matchFilterDefinitionForParam(definitions, param);
+      const filterId = matchedDefinition?.id || getFilterDefinitionId(param.name, param.type);
       const canBind = matchedDefinition?.enabled === true;
 
       return {
