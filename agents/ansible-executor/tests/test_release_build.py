@@ -7,7 +7,7 @@ from unittest.mock import patch
 import pytest
 
 import build_release as builder
-from release_policy import sha256
+from build_release import sha256
 
 
 def fixture(tmp_path):
@@ -122,3 +122,13 @@ def test_subprocess_is_bounded_and_failure_propagates(tmp_path):
     assert caught.value is error
     assert execute.call_args.kwargs["timeout"] == 1800
     assert execute.call_args.kwargs["check"] is True
+
+
+def test_ntlm_and_rc4_compatibility():
+    # OpenSSL 升级后，WinRM 使用的 NTLM/RC4 必须仍可工作。
+    from spnego._ntlm_raw.crypto import ntowfv1, ntowfv2, rc4k
+
+    nt_hash = ntowfv1("Password")
+    assert nt_hash.hex() == "a4f49c406510bdcab6824ee7c30fd852"
+    assert ntowfv2("User", nt_hash, "Domain").hex() == "0c868a403bfd7a93a3001ef22ef02e3f"
+    assert rc4k(bytes([1, 2, 3, 4, 5]), bytes(16)).hex() == "b2396305f03dc027ccc3524a0a1118a8"

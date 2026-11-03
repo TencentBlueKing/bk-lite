@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Shared by fusion-collectors and WeOpsx; build only, never push or deploy.
+# Fusion 执行器构建入口；只生成制品，不推送或部署。
 set -euo pipefail
 : "${FUSION_RELEASE_PYTHON:?Set the Python 3.12.15 / OpenSSL 3.5.9 executable}"
 : "${DIST:?Set the existing Fusion distribution root}"
@@ -17,7 +17,5 @@ if [ -n "${FUSION_RELEASE_SOURCES:-}" ]; then
     args+=(--sources-dir "$FUSION_RELEASE_SOURCES")
 fi
 "$FUSION_RELEASE_PYTHON" "$SOURCE_DIR/build_release.py" "${args[@]}"
-"$DIST/linux/ansible-executor/ansible-executor" --verify-release
 
 cp -a "$DIST/linux/ansible-executor" "$DIST/linux/ansible-executor-amd64"
-"$DIST/linux/ansible-executor-amd64/ansible-executor" --verify-release

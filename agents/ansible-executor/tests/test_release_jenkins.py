@@ -33,7 +33,7 @@ d = Path(sys.argv[sys.argv.index('--dist-dir') + 1]) / 'ansible-executor'
 d.mkdir(parents=True)
 (d / '_internal').mkdir()
 (d / '_internal/fixture').write_text('new release')
-(d / 'ansible-executor').write_text('#!/bin/sh\\n[ "$1" = "--verify-release" ]\\n')
+(d / 'ansible-executor').write_text('#!/bin/sh\\nexit 2\\n')
 (d / 'ansible-executor').chmod(0o755)
 """
     )

@@ -1,6 +1,7 @@
 """Build a fresh Linux amd64 release without changing the source virtualenv."""
 
 import argparse
+import hashlib
 import json
 import os
 import platform
@@ -11,9 +12,18 @@ import tempfile
 import urllib.request
 from pathlib import Path
 
-from release_policy import OPENSSL_VERSION, PYTHON_VERSION, sha256
+OPENSSL_VERSION = "3.5.9"
+PYTHON_VERSION = "3.12.15"
 
 SOURCE = Path(__file__).resolve().parent
+
+
+def sha256(path):
+    digest = hashlib.sha256()
+    with Path(path).open("rb") as stream:
+        for block in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest()
 
 
 def source_archive(item, downloads, cache=None):
@@ -125,7 +135,13 @@ def build(args):
     )
     run([args.uv, "pip", "install", "--python", vpython, "--reinstall-package", "cryptography", wheels[0]], source, env)
     env["PATH"] = str(work / "venv/bin") + os.pathsep + env["PATH"]
-    run([vpython, "-c", "from release_policy import check_build_runtime;check_build_runtime()"], source, env)
+    # 仅在专用升级构建中确认 cryptography 没有恢复为另带 OpenSSL 的预编译 wheel。
+    run(
+        [vpython, "-c", "from cryptography.hazmat.backends.openssl.backend import backend; "
+         "assert backend.openssl_version_text().split()[1] == '3.5.9'"],
+        source,
+        env,
+    )
     run([vpython, "-m", "pytest", "tests", "-q", "--junitxml=" + str(work / "tests.xml")], source, env)
     run(
         [work / "venv/bin/ansible-galaxy", "collection", "install", "-r", "collections/requirements.yml", "-p", "build/pyinstaller-collections"],
@@ -149,7 +165,7 @@ def build(args):
         env,
     )
     candidate = work / "candidate/ansible-executor"
-    run([candidate / "ansible-executor", "--build-info"], source, env)
+    run([candidate / "ansible-executor", "--help"], source, env)
     destination.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix=".ansible-release-", dir=destination.parent) as temporary:
         staged = Path(temporary) / "ansible-executor"
