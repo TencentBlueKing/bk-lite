@@ -20,6 +20,8 @@ const SESSION_EXPIRY_IGNORED_REQUEST_PATHS = [
   '/api/proxy/core/api/start_login_auth/',
   '/api/proxy/core/api/reset_pwd/',
   '/api/proxy/core/api/verify_otp_code/',
+  // 过期弹窗里的两阶段登录。verify_otp_code 只用于已登录后的绑定。
+  '/api/proxy/core/api/verify_otp_login/',
   // 分享 prepare 故意无 Bearer；401 不应当成会话过期
   '/api/proxy/operation_analysis/api/dashboard_share/prepare/',
 ];

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import time
 
 import pytest
 
@@ -120,6 +121,28 @@ def test_stuck_connection_is_replaced_on_the_same_request(monkeypatch):
     assert revision == 7
     assert data == {"ok": True}
     assert connects["n"] == 2
+
+
+def test_authorization_violation_fails_once_without_reconnect(monkeypatch):
+    from nats.errors import Error
+
+    connects = {"n": 0}
+
+    async def connect(url, **kwargs):
+        connects["n"] += 1
+        assert kwargs["allow_reconnect"] is False
+        assert kwargs["max_reconnect_attempts"] == 0
+        raise Error("nats: 'Authorization Violation'")
+
+    monkeypatch.setattr("nats.connect", connect)
+    client = NatsControlClient("tls://127.0.0.1:4422", timeout_seconds=5, user="rum_ctl", password="secret")
+    started = time.monotonic()
+    with pytest.raises(ControlError) as excinfo:
+        client.request("rum.v1.control.application.get", "tester", {"application": "checkout"})
+    elapsed = time.monotonic() - started
+    assert excinfo.value.code == "unavailable"
+    assert connects["n"] == 1
+    assert elapsed < 1
 
 
 def test_controller_error_envelope_is_surfaced(monkeypatch):

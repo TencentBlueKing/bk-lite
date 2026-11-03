@@ -247,7 +247,7 @@ class OperationService:
         if event.event_type == "change_record":
             from apps.cmdb.constants.constants import INSTANCE, OPERATOR_INSTANCE
             from apps.cmdb.models.change_record import CREATE_INST, ORDINARY_ATTRIBUTE_CHANGE, UPDATE_INST
-            from apps.cmdb.utils.change_record import create_change_record
+            from apps.cmdb.utils.change_record import create_change_record, format_instance_audit_message
 
             is_create = operation.action == "instance.create"
             scenario = event.payload.get("scenario") or ORDINARY_ATTRIBUTE_CHANGE
@@ -260,7 +260,12 @@ class OperationService:
                 after_data=result,
                 operator=operation.operator,
                 model_object=OPERATOR_INSTANCE,
-                message=f"{'创建' if is_create else '修改'}模型实例. 模型:{result['model_id']} 实例:{result.get('inst_name', '')}",
+                message=format_instance_audit_message(
+                    "创建模型实例" if is_create else "修改模型实例",
+                    result["model_id"],
+                    result.get("inst_name") or result.get("ip_addr", ""),
+                    source=event.payload.get("audit_source") or "",
+                ),
                 scenario=scenario,
                 attribute_snapshot=event.payload.get("attribute_snapshot"),
                 operation_event_id=event.event_id,

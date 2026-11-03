@@ -119,7 +119,7 @@ def test_execute_place_create_rack_writes_location_and_association(monkeypatch):
 
     class InstanceManage:
         @staticmethod
-        def instance_create(model_id, payload, operator, allowed_org_ids=None):
+        def instance_create(model_id, payload, operator, allowed_org_ids=None, **_extra):
             captured["payload"] = payload
             captured["model_id"] = model_id
             return created
@@ -207,7 +207,7 @@ def test_execute_unplace_rack_clears_location_keeps_instance(monkeypatch):
             captured["delete"] = kwargs
 
         @staticmethod
-        def instance_update(user_groups, roles, inst_id, update_attr, operator, allowed_org_ids=None):
+        def instance_update(user_groups, roles, inst_id, update_attr, operator, allowed_org_ids=None, **_extra):
             captured["update"] = update_attr
             return {**existing, **update_attr}
 
@@ -256,7 +256,7 @@ def test_execute_unplace_device_clears_start_keeps_u_size(monkeypatch):
             captured["delete"] = kwargs
 
         @staticmethod
-        def instance_update(user_groups, roles, inst_id, update_attr, operator, allowed_org_ids=None):
+        def instance_update(user_groups, roles, inst_id, update_attr, operator, allowed_org_ids=None, **_extra):
             captured["update"] = update_attr
             return {**existing, **update_attr}
 
@@ -467,7 +467,7 @@ def _place_existing(monkeypatch, state: _RackLockDouble, *, existing, u_start, u
             return {}
 
         @staticmethod
-        def instance_update(user_groups, roles, inst_id, update_attr, operator, allowed_org_ids=None):
+        def instance_update(user_groups, roles, inst_id, update_attr, operator, allowed_org_ids=None, **_extra):
             captured["update"] = update_attr
             captured["locked_update"] = state.holds(rack_uuid)
             return {**existing, **update_attr}

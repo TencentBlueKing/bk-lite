@@ -28,22 +28,22 @@
           ]
         },
         {
-          "id": "user_fields",
-          "name": "User Fields",
-          "operation": [
-            "View",
-            "Add",
-            "Edit",
-            "Delete"
-          ]
-        },
-        {
           "id": "login_auth",
           "name": "Login Auth",
           "operation": [
             "View",
             "Edit",
             "Add",
+            "Delete"
+          ]
+        },
+        {
+          "id": "user_fields",
+          "name": "User Fields",
+          "operation": [
+            "View",
+            "Add",
+            "Edit",
             "Delete"
           ]
         },

@@ -730,6 +730,7 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
                 request_payload=instance_info,
                 event_context={
                     "attribute_snapshot": load_attribute_snapshot(model_id, instance_info.keys()),
+                    "audit_source": "手动",
                 },
             )
             inst = OperationService.execute_graph(
@@ -782,6 +783,7 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
             request.user.roles,
             [pk],
             request.user.username,
+            audit_source="手动",
         )
         return WebUtils.response_success()
 
@@ -835,6 +837,7 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
                 request.user.roles,
                 inst_uuids,
                 request.user.username,
+                audit_source="手动",
             )
         except BaseAppException as e:
             return WebUtils.response_error(error_message=e.message, status_code=status.HTTP_403_FORBIDDEN)
@@ -909,6 +912,7 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
                     "before_data": instance,
                     "scenario": scenario,
                     "attribute_snapshot": load_attribute_snapshot(instance["model_id"], update_attr.keys()),
+                    "audit_source": "手动",
                 },
             )
             inst = OperationService.execute_graph(
@@ -990,6 +994,7 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
                 request.data["update_data"],
                 request.user.username,
                 allowed_org_ids=allowed_org_ids,
+                audit_source="手动",
             )
         except BaseAppException as e:
             return WebUtils.response_error(error_message=e.message, status_code=status.HTTP_403_FORBIDDEN)

@@ -86,7 +86,7 @@ export default function RumMonitorsPage() {
   useRumAuthedEffect(
     authReady,
     (isCancelled) => {
-      void listApplications()
+      void listApplications(true)
         .then((list) => {
           if (!isCancelled()) setApps(list.map((a) => a.application).filter(Boolean));
         })

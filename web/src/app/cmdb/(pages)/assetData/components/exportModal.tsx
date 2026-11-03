@@ -39,6 +39,7 @@ const ExportModal = forwardRef<ExportModalRef, ExportModalProps>(
     const [tableData, setTableData] = useState<any[]>([]);
     const [queryList, setQueryList] = useState<any[]>([]);
     const [advancedFilter, setAdvancedFilter] = useState<ExportModalConfig['advancedFilter']>(null);
+    const [total, setTotal] = useState<number | undefined>(undefined);
 
     const [availableColumns, setAvailableColumns] = useState<ColumnItem[]>([]);
     const [selectedAttrs, setSelectedAttrs] = useState<string[]>([]);
@@ -58,6 +59,7 @@ const ExportModal = forwardRef<ExportModalRef, ExportModalProps>(
         setTableData(config.tableData || []);
         setQueryList(config.queryList || []);
         setAdvancedFilter(config.advancedFilter || null);
+        setTotal(typeof config.total === 'number' ? config.total : undefined);
 
         const filteredColumns = config.columns.filter(
           (col) => col.key !== 'action'
@@ -240,6 +242,10 @@ const ExportModal = forwardRef<ExportModalRef, ExportModalProps>(
       selectedRelations.length > 0 &&
       selectedRelations.length < relationList.length;
     const isRelationCheckAll = selectedRelations.length === relationList.length;
+    const assetCount = exportType === 'currentPage' ? tableData.length : selectedKeys.length;
+    const assetCountText = exportType === 'all'
+      ? (typeof total === 'number' ? `${t('all')}（${total}）` : t('all'))
+      : String(assetCount);
 
     return (
       <OperateModal
@@ -266,6 +272,10 @@ const ExportModal = forwardRef<ExportModalRef, ExportModalProps>(
           <div
             style={{ maxHeight: '500px', overflowY: 'auto', padding: '8px' }}
           >
+            <div className="mb-4 rounded-lg border border-[var(--color-border)] bg-[var(--color-fill-1)] px-4 py-3 text-sm text-[var(--color-text-2)]">
+              <span>{t('Model.exportAssetCount')}</span>
+              <span className="font-medium text-[var(--color-text-1)]">{assetCountText}</span>
+            </div>
             <div className="mb-6">
               <div className="flex items-center justify-between mb-4">
                 <div className="text-sm font-medium text-[var(--color-text-2)]">

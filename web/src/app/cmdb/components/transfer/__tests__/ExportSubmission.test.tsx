@@ -90,3 +90,43 @@ it('restores export settings after a failed submission and reuses the request ke
   await waitFor(() => expect(onSubmitted).toHaveBeenCalledTimes(1));
   expect(exportFile.mock.calls[1]).toEqual(exportFile.mock.calls[0]);
 });
+
+it('shows all or the concrete selected asset count', async () => {
+  const ref = createRef<ExportModalRef>();
+  render(<ExportModal ref={ref} models={[]} userList={[]} assoTypes={[]} canSubmit onSubmitted={vi.fn()} />);
+  const columns = [{ key: 'inst_name', title: '实例名', dataIndex: 'inst_name' }];
+  await act(async () => {
+    ref.current?.showModal({
+      title: '导出',
+      modelId: 'host',
+      selectedKeys: Array.from({ length: 11 }, (_, index) => `host-${index}`),
+      exportType: 'selected',
+      columns,
+    });
+  });
+  expect(screen.getByText('Model.exportAssetCount').nextElementSibling?.textContent).toBe('11');
+
+  await act(async () => {
+    ref.current?.showModal({
+      title: '导出',
+      modelId: 'host',
+      selectedKeys: [],
+      exportType: 'all',
+      total: 128,
+      columns,
+    });
+  });
+  expect(screen.getByText('Model.exportAssetCount').nextElementSibling?.textContent).toBe('all（128）');
+
+  await act(async () => {
+    ref.current?.showModal({
+      title: '导出',
+      modelId: 'host',
+      selectedKeys: ['page-only'],
+      exportType: 'currentPage',
+      columns,
+      tableData: [{ inst_uuid: 'page-a' }, { inst_uuid: 'page-b' }],
+    });
+  });
+  expect(screen.getByText('Model.exportAssetCount').nextElementSibling?.textContent).toBe('2');
+});

@@ -31,6 +31,10 @@ class FakeRedis:
     def mget(self, keys):
         return [self.kv.get(k) for k in keys]
 
+    def pipeline(self, transaction=True):
+        del transaction
+        return _FakePipeline(self)
+
     def seed_ready(self, *, application: str, session_key: str, faro_session_id: str, recording_id: str = "rec-1"):
         object_key = f"v1/{application}/{session_key}/{recording_id}/0.json.gz"
         slot = f"ops:rum:v2:replay:idx:{application}:{session_key}:{recording_id}:0"
@@ -56,6 +60,19 @@ class FakeRedis:
         self.kv[slot] = json.dumps(row)
         self.sets.setdefault(f"ops:rum:v2:replay:sess:{application}:{session_key}", set()).add(slot)
         return object_key, row
+
+
+class _FakePipeline:
+    def __init__(self, redis: FakeRedis):
+        self._redis = redis
+        self._keys: list[str] = []
+
+    def smembers(self, key: str):
+        self._keys.append(key)
+        return self
+
+    def execute(self):
+        return [self._redis.smembers(key) for key in self._keys]
 
 
 class FakeObjectStore:
@@ -103,6 +120,27 @@ def test_has_ready_and_manifest_from_redis_session_key():
     assert seg["objectKey"] == object_key
     assert seg["hasFullSnapshot"] is True
     assert index.segment_blob(object_key) == b"\x1f\x8bgz"
+
+
+def test_ready_sessions_uses_one_pipeline():
+    from apps.rum.services.replay_store import RedisReplayIndex
+
+    redis = FakeRedis()
+    session_key = "d334781a5de70001265c68b0f5e7b082"
+    redis.seed_ready(application="local-demo", session_key=session_key, faro_session_id="faro-sess-1")
+    pipelines = {"n": 0}
+    original = redis.pipeline
+
+    def pipeline(*args, **kwargs):
+        pipelines["n"] += 1
+        return original(*args, **kwargs)
+
+    redis.pipeline = pipeline
+    index = RedisReplayIndex(redis, object_store=FakeObjectStore())
+    ready = index.ready_sessions([("local-demo", session_key), ("local-demo", "missing")])
+    assert pipelines["n"] == 1
+    assert ready == {("local-demo", session_key)}
+    assert index.has_ready("local-demo", session_key) is True
 
 
 def test_manifest_not_recorded_when_session_missing():

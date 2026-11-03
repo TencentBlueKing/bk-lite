@@ -1659,6 +1659,7 @@ class NodeMgmtSyncService:
                         allowed_org_ids=persistence_payload.get("organization", []),
                         operation_id=operation_id,
                         schedule_post_actions=False,
+                        audit_source="节点同步",
                     )
                     if run is not None:
                         cls.heartbeat_run(run)
@@ -1725,6 +1726,7 @@ class NodeMgmtSyncService:
                     allowed_org_ids=None,
                     skip_permission_check=True,
                     operation_id=operation_id,
+                    audit_source="节点同步",
                     schedule_post_actions=False,
                 )
                 if run is not None:
