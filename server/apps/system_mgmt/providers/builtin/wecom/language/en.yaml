@@ -77,6 +77,8 @@ capabilities:
     fields:
       login_auth_authorize_url:
         label: QR authorization URL
+      login_auth_oauth_authorize_url:
+        label: Web authorization URL
       login_auth_user_info_url:
         label: User identity URL
   user_sync:

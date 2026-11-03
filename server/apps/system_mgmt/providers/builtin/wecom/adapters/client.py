@@ -8,6 +8,7 @@ from apps.system_mgmt.providers.runtime import CapabilityExecutionResult
 
 WECOM_DEFAULT_ACCESS_TOKEN_URL = "https://qyapi.weixin.qq.com/cgi-bin/gettoken"
 WECOM_DEFAULT_LOGIN_AUTH_AUTHORIZE_URL = "https://open.work.weixin.qq.com/wwopen/sso/qrConnect"
+WECOM_DEFAULT_LOGIN_AUTH_OAUTH_AUTHORIZE_URL = "https://open.weixin.qq.com/connect/oauth2/authorize"
 WECOM_DEFAULT_LOGIN_AUTH_USER_INFO_URL = "https://qyapi.weixin.qq.com/cgi-bin/auth/getuserinfo"
 WECOM_DEFAULT_LOGIN_AUTH_USER_GET_URL = "https://qyapi.weixin.qq.com/cgi-bin/user/get"
 WECOM_DEFAULT_USER_SYNC_DEPARTMENTS_URL = "https://qyapi.weixin.qq.com/cgi-bin/department/list"

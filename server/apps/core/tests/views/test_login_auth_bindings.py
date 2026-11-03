@@ -604,6 +604,58 @@ class TestLoginAuthBindingViews:
         assert response.status_code == 400
         assert json.loads(response.content)["message"] == "result_path must be an in-site relative path"
 
+    @pytest.mark.parametrize("login_channel", ["jsapi", "QR", "snsapi_base", 1, {"channel": "oauth"}])
+    def test_start_login_auth_rejects_unknown_login_channel(self, login_channel):
+        from apps.core.views.index_view import start_login_auth
+
+        request = RequestFactory().post(
+            "/api/v1/core/api/start_login_auth/",
+            data=json.dumps({"binding_id": 5, "callback_url": "/", "login_channel": login_channel}),
+            content_type="application/json",
+        )
+        response = start_login_auth(request)
+
+        assert response.status_code == 400
+        assert json.loads(response.content)["message"] == "login_channel is invalid"
+
+    @patch("apps.core.views.index_view.build_login_auth_redirect")
+    @patch("apps.core.views.index_view.create_auth_request")
+    @patch("apps.core.views.index_view._get_login_auth_binding_by_id")
+    def test_start_login_auth_forwards_oauth_channel_without_changing_the_default(
+        self,
+        mock_get_binding,
+        mock_create_auth_request,
+        mock_build_redirect,
+    ):
+        from apps.core.views.index_view import start_login_auth
+
+        binding = MagicMock()
+        binding.id = 5
+        binding.integration_instance.provider_key = "wecom"
+        mock_get_binding.return_value = binding
+        mock_create_auth_request.return_value = {
+            "auth_request_id": "auth-1",
+            "poll_token": "poll-1",
+            "expires_at": "2026-06-12T10:00:00+00:00",
+        }
+        mock_build_redirect.return_value = MagicMock(
+            success=True,
+            payload={"authorize_url": "https://open.weixin.qq.com/connect/oauth2/authorize"},
+            summary="",
+            to_dict=MagicMock(return_value={}),
+        )
+
+        request = RequestFactory().post(
+            "/api/v1/core/api/start_login_auth/",
+            data=json.dumps({"binding_id": 5, "callback_url": "/mobile/h5/", "login_channel": " oauth "}),
+            content_type="application/json",
+        )
+        response = start_login_auth(request)
+
+        assert response.status_code == 200
+        assert mock_build_redirect.call_args.kwargs["login_channel"] == "oauth"
+        assert mock_create_auth_request.call_args.kwargs["callback_url"] == "/mobile/h5/"
+
     @patch("apps.core.views.index_view.validate_poll_token")
     @patch("apps.core.views.index_view.get_auth_request")
     def test_login_auth_status_requires_matching_poll_token(self, mock_get_auth_request, mock_validate_poll_token):

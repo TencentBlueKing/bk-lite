@@ -982,6 +982,22 @@ def get_login_auth_bindings(request):
     return response
 
 
+_LOGIN_CHANNELS = frozenset({"qr", "oauth"})
+
+
+def _parse_login_channel(value):
+    if value in (None, ""):
+        return ""
+    if not isinstance(value, str):
+        return None
+    channel = value.strip()
+    if not channel:
+        return ""
+    if channel not in _LOGIN_CHANNELS:
+        return None
+    return channel
+
+
 def _is_login_auth_bindings_rate_limited(request) -> bool:
     client_ip = request.META.get("HTTP_X_FORWARDED_FOR", "").split(",", 1)[0].strip()
     if not client_ip:
@@ -1009,8 +1025,11 @@ def start_login_auth(request):
         redirect_origin = (data.get("redirect_origin") or "").strip() or None
         legacy_external_callback_url = (data.get("legacy_external_callback_url") or "").strip() or None
         legacy_third_login_code = (data.get("legacy_third_login_code") or "").strip() or None
+        login_channel = _parse_login_channel(data.get("login_channel", ""))
         binding_id = data.get("binding_id")
 
+        if login_channel is None:
+            return JsonResponse({"result": False, "message": "login_channel is invalid"}, status=400)
         if not _is_safe_relative_callback_url(callback_url):
             return JsonResponse({"result": False, "message": "callback_url must be an in-site relative path"}, status=400)
         if result_path and not _is_safe_relative_callback_url(result_path):
@@ -1047,11 +1066,13 @@ def start_login_auth(request):
             binding_id=binding.id,
             callback_url=callback_url,
         )
-        redirect_result = build_login_auth_redirect(
-            binding,
-            redirect_uri=get_login_auth_callback_uri(request=request, redirect_origin=redirect_origin),
-            state=state,
-        )
+        redirect_kwargs = {
+            "redirect_uri": get_login_auth_callback_uri(request=request, redirect_origin=redirect_origin),
+            "state": state,
+        }
+        if login_channel:
+            redirect_kwargs["login_channel"] = login_channel
+        redirect_result = build_login_auth_redirect(binding, **redirect_kwargs)
         redirect_payload = getattr(redirect_result, "payload", {}) or {}
         redirect_dict = redirect_result.to_dict() if hasattr(redirect_result, "to_dict") else {}
         login_url = (

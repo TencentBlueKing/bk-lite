@@ -102,7 +102,11 @@ def test_wecom_base_connection_fields_reset_affected_capabilities():
 
 def test_wecom_capability_fields_reset_only_their_capability():
     for capability_key, expected_fields in {
-        "login_auth": ["login_auth_authorize_url", "login_auth_user_info_url"],
+        "login_auth": [
+            "login_auth_authorize_url",
+            "login_auth_oauth_authorize_url",
+            "login_auth_user_info_url",
+        ],
         "user_sync": ["user_sync_departments_url", "user_sync_users_url"],
         "im_notification": ["im_notification_users_url", "im_notification_send_message_url"],
     }.items():
@@ -129,6 +133,7 @@ def test_wecom_connection_templates_prefill_official_endpoints():
     expected_defaults = {
         ("base_connection", "access_token_url"): "https://qyapi.weixin.qq.com/cgi-bin/gettoken",
         ("login_auth", "login_auth_authorize_url"): "https://open.work.weixin.qq.com/wwopen/sso/qrConnect",
+        ("login_auth", "login_auth_oauth_authorize_url"): "https://open.weixin.qq.com/connect/oauth2/authorize",
         ("login_auth", "login_auth_user_info_url"): "https://qyapi.weixin.qq.com/cgi-bin/auth/getuserinfo",
         ("user_sync", "user_sync_departments_url"): "https://qyapi.weixin.qq.com/cgi-bin/department/list",
         ("user_sync", "user_sync_users_url"): "https://qyapi.weixin.qq.com/cgi-bin/user/list",

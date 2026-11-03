@@ -82,7 +82,7 @@ def get_ready_blueking_login_auth_binding():
     return None
 
 
-def build_login_auth_redirect(binding: LoginAuthBinding, redirect_uri: str, state: str = ""):
+def build_login_auth_redirect(binding: LoginAuthBinding, redirect_uri: str, state: str = "", login_channel: str = ""):
     runtime_service = RuntimeApplicationService()
     instance = binding.integration_instance
     if not get_integration_capability_availability(instance, "login_auth")["available"]:
@@ -90,14 +90,19 @@ def build_login_auth_redirect(binding: LoginAuthBinding, redirect_uri: str, stat
             "Login auth binding is not ready",
             code="integration.capability_unavailable",
         )
+    execute_kwargs = {
+        "binding": binding,
+        "redirect_uri": redirect_uri,
+        "state": state,
+    }
+    if login_channel:
+        execute_kwargs["login_channel"] = login_channel
     result = runtime_service.execute(
         provider_key=instance.provider_key,
         capability_key="login_auth",
         operation="build_login_url",
         config=instance.get_runtime_config(),
-        binding=binding,
-        redirect_uri=redirect_uri,
-        state=state,
+        **execute_kwargs,
     )
     return result
 
