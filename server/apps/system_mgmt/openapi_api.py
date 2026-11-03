@@ -7,7 +7,7 @@ from django.db.models import Q
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.openapi.decorators import openapi_expose
 from apps.core.utils.current_team_scope import _normalize_organization_ids
-from apps.system_mgmt.models import Group, Role
+from apps.system_mgmt.models import Group, IMNotificationChannel, Role
 from apps.system_mgmt.models import User as SystemUser
 from apps.system_mgmt.models.channel import Channel, ChannelChoices
 from apps.system_mgmt.nats.channels import _channel_has_organization, _notification_channel_capabilities, dispatch_notification
@@ -19,6 +19,8 @@ from apps.system_mgmt.openapi_serializers import (
     SystemMgmtNotificationSendSerializer,
     SystemMgmtUsersQuerySerializer,
 )
+from apps.system_mgmt.services.capability_contract_service import get_integration_capability_availability
+from apps.system_mgmt.services.im_notification_service import send_im_notification_to_users
 from apps.system_mgmt.utils.group_utils import GroupUtils
 
 _ORG_SCOPE = (
@@ -46,9 +48,9 @@ _EXTERNAL_NOTIFICATION_CHANNEL_TYPES = frozenset(
     }
 )
 _CHANNEL_CATALOG_SUMMARY = (
-    "分页查询当前组织可外部投递的通知渠道。每条渠道的 send_parameters 说明投递接口要传的字段，"
+    "分页查询当前组织的全部通知渠道。每条渠道的 send_parameters 说明投递接口要传的字段，"
     "渠道类型不同，标题是否生效、接收人怎么填会不一样。渠道实例以本接口实时返回为准，"
-    "新增或停用渠道不新增、不删除网关路径。不返回连接配置。NATS 等内部通道不在此目录。" + _ORG_SCOPE
+    "新增或停用渠道不新增、不删除网关路径。不返回连接配置。availability 标明可用状态，内部通道不支持外部投递。" + _ORG_SCOPE
 )
 _TITLE_PARAMETER_DESCRIPTION = {
     ChannelChoices.EMAIL: "邮件主题。可以留空。",
@@ -379,16 +381,36 @@ def _notification_send_parameters(channel):
 
 def _openapi_notification_channel(channel):
     item = _notification_channel_capabilities(channel)
+    if channel.channel_type not in _EXTERNAL_NOTIFICATION_CHANNEL_TYPES:
+        item["availability"] = "unsupported"
     item["send_parameters"] = _notification_send_parameters(channel)
     return item
 
 
-def _external_notification_channels(query_ids):
-    return [
-        channel
-        for channel in Channel.objects.order_by("id")
-        if channel.channel_type in _EXTERNAL_NOTIFICATION_CHANNEL_TYPES and _channel_has_organization(channel, query_ids)
-    ]
+def _openapi_im_notification_channel(channel):
+    availability = "available"
+    if not channel.enabled:
+        availability = "disabled"
+    elif not get_integration_capability_availability(channel.integration_instance, "im_notification")["available"]:
+        availability = "unavailable"
+    elif channel.status != "ready":
+        availability = channel.status
+    return {
+        "id": channel.id,
+        "name": channel.name,
+        "channel_type": IMNotificationChannel.CHANNEL_TYPE,
+        "description": channel.description,
+        "delivery_mode": "message",
+        "recipient_mode": "system_user",
+        "availability": availability,
+        "send_parameters": [
+            _send_parameter("channel_id", "integer", True, f"固定填写 {channel.id}，对应渠道「{channel.name}」。"),
+            _send_parameter("channel_type", "string", True, "固定填写 im_notification，区分 IM 应用通知与普通渠道。"),
+            _send_parameter("title", "string", False, "通知标题，最长 512 个字符。"),
+            _send_parameter("content", "string", True, "通知正文，不能为空。最长 20000 个字符。"),
+            _send_parameter("receivers", "string[]", True, _RECEIVER_PARAMETER_DESCRIPTION["system_user"]),
+        ],
+    }
 
 
 def _user_in_groups(user, query_ids):
@@ -445,7 +467,14 @@ def openapi_list_notification_channels(
         return error
     if not query_ids:
         return _paginate([], page, page_size)
-    serialized = [_openapi_notification_channel(channel) for channel in _external_notification_channels(query_ids)]
+    serialized = [
+        _openapi_notification_channel(channel) for channel in Channel.objects.order_by("id") if _channel_has_organization(channel, query_ids)
+    ]
+    serialized.extend(
+        _openapi_im_notification_channel(channel)
+        for channel in IMNotificationChannel.objects.select_related("integration_instance").order_by("id")
+        if _channel_has_organization(channel, query_ids)
+    )
     return _paginate(serialized, page, page_size)
 
 
@@ -466,6 +495,7 @@ def openapi_send_notification(
     title="",
     group_id=None,
     include_children=False,
+    channel_type="",
     *,
     team=None,
     user_info=None,
@@ -478,38 +508,43 @@ def openapi_send_notification(
     )
     if error is not None:
         return error
-    channel = Channel.objects.filter(id=channel_id).first()
+    is_im = channel_type == IMNotificationChannel.CHANNEL_TYPE
+    channel_model = IMNotificationChannel if is_im else Channel
+    channel = channel_model.objects.filter(id=channel_id).first()
     if channel is None or not query_ids:
         return _soft_error(_CHANNEL_NOT_FOUND_MESSAGE)
     in_scope = _channel_has_organization(channel, query_ids)
-    if channel.channel_type not in _EXTERNAL_NOTIFICATION_CHANNEL_TYPES:
+    resolved_type = IMNotificationChannel.CHANNEL_TYPE if is_im else channel.channel_type
+    if not is_im and (resolved_type not in _EXTERNAL_NOTIFICATION_CHANNEL_TYPES or (channel_type and channel_type != resolved_type)):
         if not in_scope:
             return _soft_error(_TEAM_OUT_OF_SCOPE_MESSAGE)
         return _soft_error(_CHANNEL_UNSUPPORTED_MESSAGE)
     if not in_scope:
         return _soft_error(_TEAM_OUT_OF_SCOPE_MESSAGE)
-    capability = _notification_channel_capabilities(channel)
-    if capability["recipient_mode"] == "system_user":
+    if is_im or _notification_channel_capabilities(channel)["recipient_mode"] == "system_user":
         recipient_error = _system_user_recipients_in_scope(receivers, query_ids)
         if recipient_error is not None:
             return recipient_error
-    result = dispatch_notification(
-        delivery_key=uuid.uuid4().hex,
-        channel_id=channel.id,
-        organization_ids=query_ids,
-        recipients=list(receivers),
-        title=title or "",
-        body=content,
-        event_payload={},
-        producer="itsm",
-    )
-    if not isinstance(result, dict) or result.get("result") is not True or result.get("code") != "delivered":
+    if is_im:
+        result = send_im_notification_to_users(channel.id, [int(receiver) for receiver in receivers], title or "", content)
+    else:
+        result = dispatch_notification(
+            delivery_key=uuid.uuid4().hex,
+            channel_id=channel.id,
+            organization_ids=query_ids,
+            recipients=list(receivers),
+            title=title or "",
+            body=content,
+            event_payload={},
+            producer="itsm",
+        )
+    if not isinstance(result, dict) or result.get("result") is not True or (not is_im and result.get("code") != "delivered"):
         message = _DELIVERY_FAILED_MESSAGE
         if isinstance(result, dict) and result.get("message"):
             message = str(result["message"])
         return _soft_error(message)
     return {
         "channel_id": channel.id,
-        "channel_type": channel.channel_type,
+        "channel_type": resolved_type,
         "delivery_code": "delivered",
     }

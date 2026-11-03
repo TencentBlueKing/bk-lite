@@ -9,7 +9,7 @@ from jsonschema import Draft7Validator
 from rest_framework.test import APIClient
 
 from apps.core.openapi.testing import acting_headers, create_system_tenant
-from apps.system_mgmt.models import Group, Menu, Role
+from apps.system_mgmt.models import Group, IMNotificationChannel, IMNotificationUserMapping, IntegrationInstance, Menu, Role
 from apps.system_mgmt.models import User as SystemUser
 from apps.system_mgmt.models.channel import Channel, ChannelChoices
 
@@ -141,14 +141,15 @@ def _capture_send(monkeypatch):
     return calls
 
 
-def test_system_tenant_lists_own_external_channels_only(tenants, local_docs_catalog):
+def test_system_tenant_lists_all_own_channels(tenants, local_docs_catalog):
     response = APIClient().get(LIST_URL, **_acting(tenants.a))
 
     assert response.status_code == 200, response.json()
     body = response.json()
     Draft7Validator(_endpoint(_acting(tenants.a), "GET")["response_schema"]).validate(body)
     items = body["data"]["results"]
-    assert [item["id"] for item in items] == [tenants.a.email.id, tenants.a.webhook.id]
+    assert [item["id"] for item in items] == [tenants.a.email.id, tenants.a.webhook.id, tenants.a.nats.id]
+    assert items[2]["availability"] == "unsupported"
     assert items[0]["channel_type"] == "email"
     assert items[0]["recipient_mode"] == "system_user"
     assert items[1]["channel_type"] == "custom_webhook"
@@ -231,7 +232,7 @@ def test_system_tenant_sends_through_own_channel(tenants, monkeypatch, local_doc
     assert len(calls) == 1
     assert calls[0][0][0] == tenants.a.email.id
     request_schema = _endpoint(_acting(tenants.a), "POST")["request_schema"]["properties"]
-    assert set(request_schema) == {"channel_id", "title", "content", "receivers", "group_id", "include_children"}
+    assert set(request_schema) == {"channel_id", "channel_type", "title", "content", "receivers", "group_id", "include_children"}
 
 
 def test_send_other_org_channel_is_forbidden(tenants, monkeypatch):
@@ -333,3 +334,165 @@ def test_unknown_send_field_is_rejected(tenants):
 
     assert response.status_code == 400
     assert response.json()["code"] == "SCHEMA_INVALID"
+
+
+@pytest.fixture
+def im_channels(tenants):
+    channels = []
+    for tenant in (tenants.a, tenants.b):
+        instance = IntegrationInstance.objects.create(
+            name=f"im-{tenant.team.id}",
+            provider_key="feishu",
+            enabled=True,
+            status="ready",
+            capability_status={"im_notification": "ready"},
+            config={"app_id": "cli_test", "app_secret": _SECRET},
+            team=[tenant.team.id],
+        )
+        # 同号主键分别属于旧渠道和 IM 渠道，发送必须以类型定位。
+        channel = IMNotificationChannel.objects.create(
+            id=tenant.email.id,
+            name=f"IM-{tenant.team.id}",
+            integration_instance=instance,
+            team=[tenant.team.id],
+            status="ready",
+        )
+        IMNotificationUserMapping.objects.create(
+            channel=channel,
+            user=tenant.system_user,
+            external_identity_key="user_id",
+            external_identity_value=f"feishu-{tenant.team.id}",
+            external_receive_key="user_id",
+            external_snapshot={"user_id": f"feishu-{tenant.team.id}"},
+        )
+        channels.append(channel)
+    return channels
+
+
+def test_directory_includes_im_channels_without_hiding_sync_or_disabled_status(tenants, im_channels, local_docs_catalog):
+    channel = im_channels[0]
+    channel.enabled = False
+    channel.status = "pending_sync"
+    channel.save()
+    response = APIClient().get(LIST_URL, **_acting(tenants.a))
+    assert response.status_code == 200, response.json()
+    body = response.json()
+    Draft7Validator(_endpoint(_acting(tenants.a), "GET")["response_schema"]).validate(body)
+    items = body["data"]["results"]
+    im_items = [item for item in items if item["channel_type"] == "im_notification"]
+    assert len(im_items) == 1
+    assert im_items[0]["id"] == channel.id
+    assert im_items[0]["recipient_mode"] == "system_user"
+    assert im_items[0]["availability"] == "disabled"
+    parameters = {item["name"]: item for item in im_items[0]["send_parameters"]}
+    assert parameters["channel_type"]["required"] is True
+    assert "im_notification" in parameters["channel_type"]["description"]
+    assert _SECRET not in json.dumps(body)
+
+
+@pytest.mark.parametrize("state", ["ready", "pending_sync", "needs_resync"])
+def test_im_sync_status_is_reported_in_directory(tenants, im_channels, state):
+    channel = im_channels[0]
+    channel.status = state
+    channel.save()
+    response = APIClient().get(LIST_URL, **_acting(tenants.a))
+    item = next(item for item in response.json()["data"]["results"] if item["channel_type"] == "im_notification")
+    assert item["availability"] == ("available" if state == "ready" else state)
+
+
+@pytest.mark.parametrize("channel_type", ChannelChoices.values)
+def test_directory_has_no_channel_type_filter(tenants, channel_type):
+    channel = _channel(name=f"type-{channel_type}", channel_type=channel_type, team_id=tenants.a.team.id)
+    response = APIClient().get(LIST_URL, **_acting(tenants.a))
+    assert any(item["id"] == channel.id for item in response.json()["data"]["results"])
+
+
+def test_pagination_covers_both_channel_tables(tenants, im_channels):
+    items = []
+    for page in (1, 2):
+        response = APIClient().get(LIST_URL, {"page": page, "page_size": 2}, **_acting(tenants.a))
+        assert response.json()["data"]["count"] == 4
+        items.extend(response.json()["data"]["results"])
+    assert len({(item["channel_type"], item["id"]) for item in items}) == 4
+    assert items[-1]["channel_type"] == "im_notification"
+
+
+def test_unavailable_im_instance_is_listed(tenants, im_channels):
+    instance = im_channels[0].integration_instance
+    instance.enabled = False
+    instance.save()
+    response = APIClient().get(LIST_URL, **_acting(tenants.a))
+    item = next(item for item in response.json()["data"]["results"] if item["channel_type"] == "im_notification")
+    assert item["availability"] == "unavailable"
+
+
+def test_send_im_channel_uses_existing_mapping_and_runtime(tenants, im_channels, monkeypatch, local_docs_catalog):
+    from apps.system_mgmt.providers.runtime import CapabilityExecutionResult
+
+    calls = []
+
+    def execute(self, **kwargs):
+        calls.append(kwargs)
+        return CapabilityExecutionResult.success_result("sent")
+
+    monkeypatch.setattr("apps.system_mgmt.services.im_notification_service.RuntimeApplicationService.execute", execute)
+    legacy_calls = _capture_send(monkeypatch)
+    response = APIClient().post(
+        SEND_URL,
+        {
+            "channel_id": im_channels[0].id,
+            "channel_type": "im_notification",
+            "title": "工单提醒",
+            "content": "请处理",
+            "receivers": [str(tenants.a.system_user.id)],
+        },
+        format="json",
+        **_acting(tenants.a),
+    )
+    assert response.status_code == 200, response.json()
+    Draft7Validator(_endpoint(_acting(tenants.a), "POST")["response_schema"]).validate(response.json())
+    assert response.json()["data"]["channel_type"] == "im_notification"
+    assert legacy_calls == []
+    assert len(calls) == 1
+    assert calls[0]["receive_ids"] == [f"feishu-{tenants.a.team.id}"]
+    assert calls[0]["content"] == "请处理"
+
+
+@pytest.mark.parametrize("case", ["other_channel", "other_recipient", "disabled", "pending_sync", "missing", "instance_disabled", "no_mapping"])
+def test_im_send_rejects_out_of_scope_or_unavailable_channel(tenants, im_channels, monkeypatch, case):
+    calls = []
+    monkeypatch.setattr("apps.system_mgmt.services.im_notification_service.RuntimeApplicationService.execute", lambda *a, **k: calls.append(k))
+    channel = im_channels[0]
+    recipient = tenants.a.system_user.id
+    channel_id = channel.id
+    if case == "other_channel":
+        channel_id = im_channels[1].id
+    elif case == "other_recipient":
+        recipient = tenants.b.system_user.id
+    elif case == "disabled":
+        channel.enabled = False
+        channel.save()
+    elif case == "pending_sync":
+        channel.status = "pending_sync"
+        channel.save()
+    elif case == "instance_disabled":
+        channel.integration_instance.enabled = False
+        channel.integration_instance.save()
+    elif case == "no_mapping":
+        channel.user_mappings.all().delete()
+    else:
+        channel_id = 999999
+    response = APIClient().post(
+        SEND_URL,
+        {
+            "channel_id": channel_id,
+            "channel_type": "im_notification",
+            "content": "请处理",
+            "receivers": [str(recipient)],
+        },
+        format="json",
+        **_acting(tenants.a),
+    )
+    assert response.status_code == (403 if case == "other_channel" else 400), response.json()
+    assert response.json()["result"] is False
+    assert calls == []
