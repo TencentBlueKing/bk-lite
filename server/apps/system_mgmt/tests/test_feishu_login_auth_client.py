@@ -1,3 +1,4 @@
+import logging
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -10,6 +11,28 @@ CONFIG = {
     "app_id": "cli_public",
     "app_secret": "secret-sentinel",
 }
+JSAPI_REQUEST_FAILED = "Feishu JSAPI login request failed: endpoint=%s, error_type=%s"
+DESCRIBE_FAILED = "event=login_auth_client_login_describe_failed provider_key=%s error_type=%s"
+_LOG_FORMATTER = logging.Formatter("%(levelname)s %(name)s %(message)s")
+
+
+def _rendered_logs(caplog):
+    return "\n".join(_LOG_FORMATTER.format(record) for record in caplog.records)
+
+
+def _assert_rendered_log(caplog, *, level, template, args, message, forbidden):
+    matches = [record for record in caplog.records if record.msg == template]
+    assert len(matches) == 1
+    record = matches[0]
+    assert record.levelno == level
+    assert record.args == args
+    assert record.getMessage() == message
+    assert record.exc_info in (None, (None, None, None))
+    formatted = _LOG_FORMATTER.format(record)
+    blob = "\n".join([record.getMessage(), formatted, caplog.text, _rendered_logs(caplog)])
+    for secret in forbidden:
+        assert secret not in blob
+    return record
 
 
 def _json_response(payload, status_code=200):
@@ -72,11 +95,11 @@ def test_oauth_code_still_uses_tenant_access_token_exchange():
     assert result.payload["external_user"]["user_id"] == "u1"
 
 
-def test_request_access_code_uses_oauth_v3_without_tenant_token():
+def test_request_access_code_uses_oauth_v3_without_tenant_token(caplog):
     token_response = _json_response({"code": 0, "access_token": "user-token"})
     user_response = _json_response({"code": 0, "data": {"user_id": "u2", "open_id": "o2"}})
 
-    with patch(
+    with caplog.at_level(logging.DEBUG, logger="system-manager"), patch(
         "apps.system_mgmt.providers.builtin.feishu.adapters.login_auth._fetch_tenant_access_token",
     ) as tenant, patch(
         "apps.system_mgmt.providers.builtin.feishu.adapters.login_auth.requests.post",
@@ -84,9 +107,7 @@ def test_request_access_code_uses_oauth_v3_without_tenant_token():
     ) as post, patch(
         "apps.system_mgmt.providers.builtin.feishu.adapters.login_auth.requests.get",
         return_value=user_response,
-    ) as get, patch(
-        "apps.system_mgmt.providers.builtin.feishu.adapters.login_auth.logger",
-    ) as logger:
+    ) as get:
         result = FeishuLoginAuthAdapter.authenticate(
             config=CONFIG,
             provider_key="feishu",
@@ -104,10 +125,10 @@ def test_request_access_code_uses_oauth_v3_without_tenant_token():
     assert "redirect_uri" not in post.call_args.kwargs["json"]
     assert get.call_args.kwargs["headers"]["Authorization"] == "Bearer user-token"
     assert result.payload["external_user"]["open_id"] == "o2"
-    logger.debug.assert_not_called()
-    logger.info.assert_not_called()
-    assert "secret-sentinel" not in str(logger.mock_calls)
-    assert "jsapi-code" not in str(logger.mock_calls)
+    rendered = _rendered_logs(caplog)
+    assert rendered == ""
+    assert "secret-sentinel" not in caplog.text
+    assert "jsapi-code" not in caplog.text
 
 
 def test_legacy_request_auth_code_keeps_tenant_exchange():
@@ -137,13 +158,11 @@ def test_legacy_request_auth_code_keeps_tenant_exchange():
     assert result.payload["external_user"]["user_id"] == "u3"
 
 
-def test_request_access_failure_logs_endpoint_without_secret():
-    with patch(
+def test_request_access_failure_logs_endpoint_without_secret(caplog):
+    with caplog.at_level(logging.DEBUG, logger="system-manager"), patch(
         "apps.system_mgmt.providers.builtin.feishu.adapters.login_auth.requests.post",
         side_effect=requests.ConnectionError("secret-sentinel"),
-    ), patch(
-        "apps.system_mgmt.providers.builtin.feishu.adapters.login_auth.logger",
-    ) as logger:
+    ):
         result = FeishuLoginAuthAdapter.authenticate(
             config=CONFIG,
             provider_key="feishu",
@@ -153,50 +172,56 @@ def test_request_access_failure_logs_endpoint_without_secret():
         )
 
     assert result.success is False
-    logger.debug.assert_called_once_with(
-        "Feishu JSAPI login request failed: endpoint=%s, error_type=%s",
-        "https://accounts.feishu.cn",
-        "ConnectionError",
+    assert result.errors[0].code == "provider.request_failed"
+    _assert_rendered_log(
+        caplog,
+        level=logging.DEBUG,
+        template=JSAPI_REQUEST_FAILED,
+        args=("https://accounts.feishu.cn", "ConnectionError"),
+        message="Feishu JSAPI login request failed: endpoint=https://accounts.feishu.cn, error_type=ConnectionError",
+        forbidden=("secret-sentinel", "jsapi-code"),
     )
-    assert "secret-sentinel" not in str(logger.debug.call_args)
-    assert "jsapi-code" not in str(logger.debug.call_args)
 
 
-def test_describe_public_client_login_ignores_unregistered_provider_without_warning():
+def test_describe_public_client_login_ignores_unregistered_provider_without_warning(caplog):
     from apps.system_mgmt.services.login_auth_binding_service import describe_public_client_login
 
     instance = MagicMock()
     instance.provider_key = "bk_lite_builtin"
     instance.get_runtime_config.return_value = {"secret-sentinel": "secret-sentinel"}
 
-    with patch(
+    with caplog.at_level(logging.DEBUG, logger="system-manager"), patch(
         "apps.system_mgmt.services.login_auth_binding_service.RuntimeApplicationService.execute",
         side_effect=ValueError("provider missing"),
-    ), patch("apps.system_mgmt.services.login_auth_binding_service.logger") as logger:
+    ):
         public = describe_public_client_login(instance)
 
     assert public == {"evidence_modes": []}
-    logger.warning.assert_not_called()
-    assert "secret-sentinel" not in str(logger.mock_calls)
+    rendered = _rendered_logs(caplog)
+    assert DESCRIBE_FAILED not in rendered
+    assert "secret-sentinel" not in rendered
+    assert "secret-sentinel" not in caplog.text
 
 
-def test_describe_public_client_login_logs_failure_without_secret():
+def test_describe_public_client_login_logs_failure_without_secret(caplog):
     from apps.system_mgmt.services.login_auth_binding_service import describe_public_client_login
 
     instance = MagicMock()
     instance.provider_key = "feishu"
     instance.get_runtime_config.side_effect = RuntimeError("secret-sentinel")
 
-    with patch("apps.system_mgmt.services.login_auth_binding_service.logger") as logger:
+    with caplog.at_level(logging.DEBUG, logger="system-manager"):
         public = describe_public_client_login(instance)
 
     assert public == {"evidence_modes": []}
-    logger.warning.assert_called_once_with(
-        "event=login_auth_client_login_describe_failed provider_key=%s error_type=%s",
-        "feishu",
-        "RuntimeError",
+    _assert_rendered_log(
+        caplog,
+        level=logging.WARNING,
+        template=DESCRIBE_FAILED,
+        args=("feishu", "RuntimeError"),
+        message="event=login_auth_client_login_describe_failed provider_key=feishu error_type=RuntimeError",
+        forbidden=("secret-sentinel",),
     )
-    assert "secret-sentinel" not in str(logger.warning.call_args)
 
 
 @pytest.mark.django_db
