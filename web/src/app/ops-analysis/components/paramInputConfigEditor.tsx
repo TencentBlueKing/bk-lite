@@ -43,6 +43,8 @@ import {
   extractDataSourceItems,
   resolveDynamicSourceId,
 } from '@/app/ops-analysis/utils/paramInputConfigUtils';
+import { useDebouncedOptionsQueryValues } from '@/app/ops-analysis/hooks/useDebouncedOptionsQueryValues';
+import { isOptionsQueryTextEmpty } from '@/app/ops-analysis/utils/optionsQueryTextDebounce';
 import {
   isOptionsQueryParamRef,
   normalizeOptionsQueryParamValue,
@@ -50,6 +52,7 @@ import {
   hasOptionsQueryRef,
   isRejectedQueryParams,
   normalizeQueryParamsForStorage,
+  stableStringify,
 } from '@/app/ops-analysis/utils/optionsQueryParamRefs';
 import {
   formatOptionsQueryCandidateLabel,
@@ -586,6 +589,34 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
       });
   }, [getSourceDataByApiId, t]);
 
+  const literalDraft = useMemo(() => {
+    const values: Record<string, unknown> = {};
+    queryParamRows.forEach((row) => {
+      if (row.mode !== 'literal') return;
+      const payload = rowLiteralPayload(row);
+      values[row.uid] = payload == null || payload === '' ? '' : payload;
+    });
+    return values;
+  }, [queryParamRows]);
+  const literalKeys = useMemo(
+    () => queryParamRows.filter((row) => row.mode === 'literal').map((row) => row.uid),
+    [queryParamRows],
+  );
+  // 输入框仍绑 queryParamRows。自动预览只看防抖后的固定值。
+  const debouncedLiterals = useDebouncedOptionsQueryValues(literalDraft, literalKeys);
+  const debouncedLiteralKey = stableStringify(debouncedLiterals);
+  const previewStructureKey = queryParamRows
+    .map((row) => `${row.uid}\0${row.name}\0${row.mode}`)
+    .join('\n');
+  const queryParamRowsRef = useRef(queryParamRows);
+  const debouncedLiteralsRef = useRef(debouncedLiterals);
+  const previousLiteralsRef = useRef<Record<string, unknown>>({});
+  const fetchDynamicPreviewRef = useRef(fetchDynamicPreview);
+  const lastAutoPreviewKeyRef = useRef('');
+  queryParamRowsRef.current = queryParamRows;
+  debouncedLiteralsRef.current = debouncedLiterals;
+  fetchDynamicPreviewRef.current = fetchDynamicPreview;
+
   useEffect(() => {
     if (!open || !isOptionsControl || sourceType !== 'dynamic' || !dynamicSourceId) {
       return;
@@ -593,34 +624,56 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
     if (!selectedDataSource || selectedDataSource.id !== dynamicSourceId) return;
     const hasDeclaredParams = Array.isArray(selectedDataSource.params)
       && selectedDataSource.params.some((param) => Boolean(param.name));
-    
+
     if (!hasDeclaredParams) {
-      void fetchDynamicPreview(dynamicSourceId);
+      const undeclaredKey = `undeclared:${dynamicSourceId}`;
+      if (lastAutoPreviewKeyRef.current === undeclaredKey) return;
+      lastAutoPreviewKeyRef.current = undeclaredKey;
+      void fetchDynamicPreviewRef.current(dynamicSourceId);
       return;
     }
 
-    if (queryParamRows.length === 0) return;
+    const rows = queryParamRowsRef.current;
+    const literals = debouncedLiteralsRef.current;
+    const previous = previousLiteralsRef.current;
+    const cleared = Object.keys(previous).some((uid) => (
+      !isOptionsQueryTextEmpty(previous[uid]) && isOptionsQueryTextEmpty(literals[uid])
+    ));
+    previousLiteralsRef.current = literals;
 
-    const allLiteral = queryParamRows.every((row) => row.mode === 'literal');
-    const allFilledLiterals = queryParamRows.every((row) => {
-      if (row.mode !== 'literal') return false;
-      const literal = rowLiteralPayload(row);
-      return literal !== undefined && literal !== null && literal !== '';
+    if (rows.length === 0 || rows.some((row) => row.mode !== 'literal')) return;
+
+    const params: Record<string, unknown> = {};
+    const ready = rows.every((row) => {
+      const name = row.name.trim();
+      if (!name) return false;
+      const literal = literals[row.uid];
+      if (isOptionsQueryTextEmpty(literal)) return false;
+      params[name] = literal;
+      return true;
     });
-
-    if (allLiteral && allFilledLiterals) {
-      const params: Record<string, unknown> = {};
-      queryParamRows.forEach((row) => {
-        const name = row.name.trim();
-        if (!name) return;
-        const literal = rowLiteralPayload(row);
-        if (literal !== undefined && literal !== null && literal !== '') {
-          params[name] = literal;
-        }
-      });
-      void fetchDynamicPreview(dynamicSourceId, params);
+    if (!ready) {
+      lastAutoPreviewKeyRef.current = '';
+      // 用户清空固定值时立刻丢掉在途预览；声明参数补进来的空行不算清空。
+      if (cleared) {
+        previewRequestIdRef.current += 1;
+        setDynamicPreviewLoading(false);
+      }
+      return;
     }
-  }, [dynamicSourceId, fetchDynamicPreview, isOptionsControl, open, queryParamRows, selectedDataSource, sourceType]);
+    const previewKey = `${dynamicSourceId}:${stableStringify(params)}`;
+    if (lastAutoPreviewKeyRef.current === previewKey) return;
+    lastAutoPreviewKeyRef.current = previewKey;
+    void fetchDynamicPreviewRef.current(dynamicSourceId, params);
+  }, [
+    debouncedLiteralKey,
+    dynamicSourceId,
+    isOptionsControl,
+    open,
+    previewStructureKey,
+    selectedDataSource,
+    sourceType,
+  ]);
 
   const handleStaticChange = (
     uid: string,

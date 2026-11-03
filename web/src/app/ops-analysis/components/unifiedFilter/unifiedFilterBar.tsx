@@ -26,6 +26,7 @@ import {
   isDynamicOptionFilter,
   reconcileOptionBackedFilterValue,
 } from '@/app/ops-analysis/utils/optionBackedFilterValue';
+import { useDebouncedOptionsQueryValues } from '@/app/ops-analysis/hooks/useDebouncedOptionsQueryValues';
 import {
   dynamicQueryParamsOf,
   readOptionsQueryUpstream,
@@ -33,6 +34,7 @@ import {
   stableStringify,
   valueOfFoundOptionsQueryUpstream,
 } from '@/app/ops-analysis/utils/optionsQueryParamRefs';
+import { isFreeTextOptionsFilter } from '@/app/ops-analysis/utils/optionsQueryTextDebounce';
 import { ROOM_FILTER_PASSTHROUGH } from '@/app/ops-analysis/utils/room3DScreenFilter';
 import { resolveBuiltinCanvasFilterAppliedValue } from '@/app/ops-analysis/utils/applicationTopologyCanvasFilter';
 import type { DateRangeValue } from '@/app/ops-analysis/types/dateRange';
@@ -132,6 +134,14 @@ const UnifiedFilterBar: React.FC<UnifiedFilterBarProps> = ({
   const enabledDefinitions = definitions
     .filter((d) => d.enabled)
     .sort((a, b) => a.order - b.order);
+  const optionsQueryTextIds = enabledDefinitions
+    .filter(isFreeTextOptionsFilter)
+    .map((definition) => definition.id);
+  // 输入框继续显示 localValues。下游选项查询只读防抖后的文本/数字。
+  const optionsQueryValues = useDebouncedOptionsQueryValues(
+    localValues,
+    optionsQueryTextIds,
+  );
   const coveredFilterKey = enabledDefinitions
     .filter(isDynamicOptionFilter)
     .map((definition) => definition.id)
@@ -401,7 +411,7 @@ const UnifiedFilterBar: React.FC<UnifiedFilterBarProps> = ({
             const upstream = readOptionsQueryUpstream(
               ref,
               enabledDefinitions,
-              (id) => localValues[id],
+              (id) => optionsQueryValues[id],
             );
             if (upstream.found === false) return undefined;
             return valueOfFoundOptionsQueryUpstream(upstream);

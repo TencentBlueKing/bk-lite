@@ -1,5 +1,5 @@
 import React from 'react';
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { message } from 'antd';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -18,9 +18,8 @@ vi.mock('@/app/ops-analysis/api/dataSource', () => ({
   }),
 }));
 
-vi.mock('@/utils/i18n', () => ({
-  useTranslation: () => ({
-    t: (key: string, _fallback?: string, values?: Record<string, string>) => {
+vi.mock('@/utils/i18n', () => {
+  const t = (key: string, _fallback?: string, values?: Record<string, string>) => {
       const text: Record<string, string> = {
         'paramInput.title': '参数输入配置',
         'paramInput.dynamic.source': '数据源',
@@ -56,9 +55,11 @@ vi.mock('@/utils/i18n', () => ({
         'dashboard.componentSwitchDisabledByQueryRef': '查询入参含有引用时不能开启组件内切换',
       };
       return (text[key] || key).replace(/\{(\w+)\}/g, (_, name) => values?.[name] ?? '');
-    },
-  }),
-}));
+  };
+  return {
+    useTranslation: () => ({ t }),
+  };
+});
 
 beforeAll(() => {
   Object.defineProperty(window, 'matchMedia', {
@@ -887,5 +888,87 @@ describe('param input query params', () => {
     const dialog = await screen.findByRole('dialog');
     await waitFor(() => expect(within(dialog).findByDisplayValue('7')).resolves.not.toBeNull());
     expect(getSourceDataByApiId).not.toHaveBeenCalled();
+  });
+
+  it('debounces fixed-value preview keystrokes and stops when a value is cleared', async () => {
+    const filledSource = {
+      id: 21,
+      name: '已填来源',
+      params: [
+        { name: 'room_id', type: 'string', alias_name: '机房', value: 'room-1' },
+        { name: 'zone_id', type: 'number', alias_name: '区域', value: 3 },
+      ],
+      field_schema: [
+        { key: 'id', title: '编号', value_type: 'string' },
+        { key: 'name', title: '名称', value_type: 'string' },
+      ],
+    };
+    const pending: Array<(value: unknown) => void> = [];
+    getDataSourceList.mockResolvedValue([filledSource]);
+    getSourceDataByApiId.mockImplementation(() => new Promise((resolve) => {
+      pending.push(resolve);
+    }));
+    render(
+      <ParamInputConfigEditor
+        open
+        onCancel={vi.fn()}
+        onConfirm={vi.fn()}
+        value={{
+          control: 'select',
+          optionsSource: {
+            type: 'dynamic',
+            sourceId: 21,
+            valueField: 'id',
+            labelField: 'name',
+            queryParams: {
+              room_id: 'room-1',
+              zone_id: 3,
+            },
+          },
+        }}
+      />,
+    );
+
+    const dialog = await screen.findByRole('dialog');
+    expect(await within(dialog).findByDisplayValue('room-1')).not.toBeNull();
+    await waitFor(() => expect(getSourceDataByApiId).toHaveBeenCalledTimes(1));
+    expect(getSourceDataByApiId).toHaveBeenCalledWith(21, {
+      room_id: 'room-1',
+      zone_id: 3,
+    });
+    pending[0]?.({ data: [{ id: 1, name: 'kept' }] });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    const room = within(dialog).getByDisplayValue('room-1');
+    fireEvent.change(room, { target: { value: 'room-12' } });
+    fireEvent.change(room, { target: { value: 'room-123' } });
+    expect(within(dialog).getByDisplayValue('room-123')).not.toBeNull();
+    expect(getSourceDataByApiId).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    });
+    expect(getSourceDataByApiId).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(getSourceDataByApiId).toHaveBeenCalledTimes(2));
+    expect(getSourceDataByApiId).toHaveBeenLastCalledWith(21, {
+      room_id: 'room-123',
+      zone_id: 3,
+    });
+
+    fireEvent.change(within(dialog).getByDisplayValue('room-123'), { target: { value: '' } });
+    expect(within(dialog).getAllByRole('textbox').some((input) => (
+      (input as HTMLInputElement).value === ''
+    ))).toBe(true);
+    pending[pending.length - 1]?.({ data: [{ secret_col: 'nope' }] });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(within(dialog).queryByRole('columnheader', { name: 'secret_col' })).toBeNull();
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 350));
+    });
+    expect(getSourceDataByApiId).toHaveBeenCalledTimes(2);
   });
 });
