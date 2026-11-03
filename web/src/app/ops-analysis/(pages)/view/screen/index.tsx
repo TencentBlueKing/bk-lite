@@ -1380,6 +1380,7 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
       onReset={(values) => {
         queryState.applyQuery(values, queryState.namespaceDraftId);
       }}
+      onApplyInitial={queryState.setAppliedFilterValues}
       prefixContent={namespaceSelectorElement}
     />
   ) : null;

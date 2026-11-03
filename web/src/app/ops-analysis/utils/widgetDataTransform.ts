@@ -26,6 +26,17 @@ import {
   isOrganizationControl,
   ORGANIZATION_PARAM_RUNTIME_KEY,
 } from '@/app/ops-analysis/utils/paramInputConfigUtils';
+import {
+  rewriteBareQueryRefsToDefinitionIds,
+  rewriteDefinitionQueryRefs,
+} from '@/app/ops-analysis/utils/optionsQueryParamRefs';
+import {
+  assignFilterDefinitionIds,
+  filterMergeKey,
+  groupFilterParams,
+  matchFilterDefinitionForParam,
+  type FilterParamScanInput,
+} from '@/app/ops-analysis/utils/scanUnifiedFilterParams';
 
 export type BindableParamType = BindableDataSourceParamType;
 export type UnifiedFilterInputMode = 'input' | 'select' | 'radio' | 'organization';
@@ -168,37 +179,142 @@ export const widgetFollowsCanvasFilter = (
   filterId: string,
 ): boolean => filterBindings?.[filterId] !== false;
 
+export type DiscoveredFilterParam = ParamItem & {
+  type: BindableParamType;
+  suggestedName?: string;
+  sourceHint?: string;
+  dataSourceIds?: number[];
+};
+
+const sourceParamKey = (dataSourceId: number, name: string, type: string) =>
+  `${dataSourceId}::${name}::${type}`;
+
 /**
  * 筛选项芯片只在仍有组件跟随时出现。
- * 先收集参数，再丢掉所有相关组件都显式关闭的项，避免 YAML 缺省绑定被当成未跟随。
+ * 同画布同名同类型并成一行。同一数据源仍用目录 params 锁定身份，避免快照漂移变成先到的那份配置。
+ * 已有定义的 inputConfig 在分配 id 时优先于这次扫描。
  */
 export const discoverFollowedFilterParams = (
   widgets: Array<{
     params?: ParamItem[];
     filterBindings?: FilterBindings | null;
+    sourceLabel?: string;
+    dataSourceId?: number;
+    catalogParams?: ParamItem[];
   }>,
-): Map<string, ParamItem & { type: BindableParamType }> => {
-  const discovered = new Map<string, ParamItem & { type: BindableParamType }>();
-  const followed = new Set<string>();
-
+  previousDefinitions: Array<Pick<
+    UnifiedFilterDefinition,
+    'id' | 'key' | 'type' | 'inputConfig' | 'inputMode'
+  >> = [],
+): Map<string, DiscoveredFilterParam> => {
+  const canonical = new Map<string, ParamItem['inputConfig']>();
+  const catalogLocked = new Set<string>();
   widgets.forEach((widget) => {
+    if (widget.dataSourceId == null || !Number.isFinite(widget.dataSourceId)) return;
+    const catalog = getBindableFilterParams(widget.catalogParams);
     getBindableFilterParams(widget.params).forEach((param) => {
-      const id = getFilterDefinitionId(param.name, param.type);
-      if (!discovered.has(id)) {
-        discovered.set(id, param);
+      const key = sourceParamKey(widget.dataSourceId as number, param.name, param.type);
+      const fromCatalog = catalog.find((item) => item.name === param.name && item.type === param.type);
+      if (widget.catalogParams && fromCatalog) {
+        canonical.set(key, fromCatalog.inputConfig);
+        catalogLocked.add(key);
+        return;
       }
-      if (widgetFollowsCanvasFilter(widget.filterBindings, id)) {
-        followed.add(id);
+      if (!catalogLocked.has(key) && !canonical.has(key)) {
+        canonical.set(key, param.inputConfig);
       }
     });
   });
 
-  Array.from(discovered.keys()).forEach((id) => {
-    if (!followed.has(id)) {
-      discovered.delete(id);
+  const occurrences: Array<{
+    param: ParamItem & { type: BindableParamType };
+    identityConfig?: ParamItem['inputConfig'];
+    filterBindings?: FilterBindings | null;
+    sourceLabel?: string;
+    dataSourceId?: number;
+  }> = [];
+  widgets.forEach((widget) => {
+    const hasSource = widget.dataSourceId != null && Number.isFinite(widget.dataSourceId);
+    getBindableFilterParams(widget.params).forEach((param) => {
+      const key = hasSource
+        ? sourceParamKey(widget.dataSourceId as number, param.name, param.type)
+        : undefined;
+      occurrences.push({
+        param,
+        identityConfig: key && canonical.has(key) ? canonical.get(key) : param.inputConfig,
+        filterBindings: widget.filterBindings,
+        sourceLabel: widget.sourceLabel,
+        dataSourceId: hasSource ? widget.dataSourceId : undefined,
+      });
+    });
+  });
+  const sourcesByMergeKey = new Map<string, number[]>();
+  const inputs: FilterParamScanInput[] = occurrences.map((item) => {
+    const mergeKey = filterMergeKey({
+      name: item.param.name,
+      type: item.param.type,
+      inputConfig: item.identityConfig,
+      inputMode: item.param.inputMode,
+    });
+    if (item.dataSourceId != null) {
+      const list = sourcesByMergeKey.get(mergeKey) ?? [];
+      if (!list.includes(item.dataSourceId)) list.push(item.dataSourceId);
+      sourcesByMergeKey.set(mergeKey, list);
     }
+    return {
+      name: item.param.name,
+      type: item.param.type,
+      alias: item.param.alias_name || item.param.name,
+      defaultValue: (item.param.value as FilterValue) ?? null,
+      inputConfig: item.identityConfig,
+      inputMode: item.param.inputMode,
+      dataSourceLabel: item.sourceLabel,
+    };
+  });
+  const assigned = assignFilterDefinitionIds(groupFilterParams(inputs), previousDefinitions);
+  const followed = new Set<string>();
+  const mergeKeyOf = (item: (typeof occurrences)[number]) => filterMergeKey({
+    name: item.param.name,
+    type: item.param.type,
+    inputConfig: item.identityConfig,
+    inputMode: item.param.inputMode,
+  });
+  occurrences.forEach((item) => {
+    const target = assigned.find((candidate) => candidate.mergeKey === mergeKeyOf(item));
+    if (!target) return;
+    if (widgetFollowsCanvasFilter(item.filterBindings, target.id)) followed.add(target.id);
+  });
+
+  const discovered = new Map<string, DiscoveredFilterParam>();
+  assigned.forEach((group) => {
+    if (!followed.has(group.id)) return;
+    const sample = occurrences.find((item) => mergeKeyOf(item) === group.mergeKey)?.param;
+    if (!sample) return;
+    discovered.set(group.id, {
+      ...sample,
+      inputConfig: group.sampleInputConfig,
+      suggestedName: group.suggestedName,
+      sourceHint: group.sourceHint,
+      dataSourceIds: sourcesByMergeKey.get(group.mergeKey),
+    });
   });
   return discovered;
+};
+
+/** 布局同步产出的筛定义：摘要 id 先收成 name__type，再把能唯一对应的裸名写成 definition.id。 */
+export const bindDiscoveredQueryRefs = <T extends UnifiedFilterDefinition>(
+  definitions: T[],
+  discovered: Map<string, { dataSourceIds?: number[] }>,
+): T[] => {
+  const origins = new Map<string, number[]>();
+  discovered.forEach((param, id) => {
+    if (param.dataSourceIds?.length) origins.set(id, param.dataSourceIds);
+  });
+  const liveIds = new Set(definitions.map((definition) => definition.id));
+  return rewriteBareQueryRefsToDefinitionIds(
+    rewriteDefinitionQueryRefs(definitions, liveIds),
+    origins,
+  );
 };
 
 /**
@@ -214,14 +330,14 @@ export const preserveUnfollowedFilterBindings = (
   const migratedExisting = existingBindings
     ? migrateFilterBindings(existingBindings)
     : undefined;
-  const bindableIds = new Set(
-    getBindableFilterParams(params).map((param) =>
-      getFilterDefinitionId(param.name, param.type),
-    ),
+  const prefixes = getBindableFilterParams(params).map((param) =>
+    `${param.name}__${param.type}`,
   );
   const preserved: FilterBindings = { ...(nextBindings || {}) };
   Object.entries(migratedExisting || {}).forEach(([filterId, enabled]) => {
-    if (enabled === false && bindableIds.has(filterId) && !(filterId in preserved)) {
+    const matchesParam = prefixes.some((prefix) =>
+      filterId === prefix || filterId.startsWith(`${prefix}__`));
+    if (enabled === false && matchesParam && !(filterId in preserved)) {
       preserved[filterId] = false;
     }
   });
@@ -242,9 +358,8 @@ export const buildDefaultFilterBindings = (
   }
 
   const autoBindings = definitions.reduce<FilterBindings>((acc, definition) => {
-    const matched = bindableParams.some(
-      (param) => param.name === definition.key && param.type === definition.type,
-    );
+    const matched = bindableParams.some((param) =>
+      matchFilterDefinitionForParam(definitions, param)?.id === definition.id);
     if (matched) {
       acc[definition.id] = true;
     }
@@ -701,8 +816,7 @@ export const processDataSourceParams = ({
   // - value: 统一筛选的当前值
   // - definition: 匹配到的筛选项（用于 multiple 形状）
   const getUnifiedFilterValue = (
-    paramName: string,
-    paramType: string,
+    param: ParamItem,
   ): {
     hasBinding: boolean;
     bindingDisabled: boolean;
@@ -713,39 +827,36 @@ export const processDataSourceParams = ({
       return { hasBinding: false, bindingDisabled: false, value: undefined };
     }
 
-    // 查找绑定到该参数的统一筛选
-    for (const [filterId, isEnabled] of Object.entries(filterBindings)) {
+    const candidates = Object.entries(filterBindings).flatMap(([filterId, isEnabled]) => {
       const def = definitionsMap.get(filterId);
-      // 严格匹配 key 和 type
-      if (def && def.key === paramName && def.type === paramType) {
-        // 组件配置的 filterBindings 开关关闭：不传该参数
-        if (!isEnabled) {
-          return {
-            hasBinding: true,
-            bindingDisabled: true,
-            value: undefined,
-            definition: def,
-          };
-        }
-        // 头部筛选配置的 enabled 开关关闭：不传该参数
-        if (!def.enabled) {
-          return {
-            hasBinding: true,
-            bindingDisabled: true,
-            value: undefined,
-            definition: def,
-          };
-        }
-        const value = unifiedFilterValues[filterId];
-        return {
-          hasBinding: true,
-          bindingDisabled: false,
-          value,
-          definition: def,
-        };
-      }
+      if (!def || def.key !== param.name || def.type !== param.type) return [];
+      return [{ filterId, isEnabled, def }];
+    });
+    if (!candidates.length) {
+      return { hasBinding: false, bindingDisabled: false, value: undefined };
     }
-    return { hasBinding: false, bindingDisabled: false, value: undefined };
+    const preferred = matchFilterDefinitionForParam(
+      candidates.map((item) => item.def),
+      param,
+    );
+    const chosen = candidates.find((item) => item.def.id === preferred?.id);
+    if (!chosen) {
+      return { hasBinding: false, bindingDisabled: false, value: undefined };
+    }
+    if (!chosen.isEnabled || !chosen.def.enabled) {
+      return {
+        hasBinding: true,
+        bindingDisabled: true,
+        value: undefined,
+        definition: chosen.def,
+      };
+    }
+    return {
+      hasBinding: true,
+      bindingDisabled: false,
+      value: unifiedFilterValues[chosen.filterId],
+      definition: chosen.def,
+    };
   };
 
   const resolveConsumerMultiple = (
@@ -828,7 +939,7 @@ export const processDataSourceParams = ({
           bindingDisabled,
           value: unifiedValue,
           definition,
-        } = getUnifiedFilterValue(name, type);
+        } = getUnifiedFilterValue(param);
 
         noteOrganizationParam(
           name,

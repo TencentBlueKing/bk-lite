@@ -4,6 +4,7 @@ import {
   deferDynamicOptionFilterValues,
   reconcileOptionBackedFilterValue,
   retainFilterValueInOptions,
+  retainOpeningFilterValues,
 } from '@/app/ops-analysis/utils/optionBackedFilterValue';
 import { syncFilterValuesWithDefinitions } from '@/app/ops-analysis/utils/unifiedFilterState';
 
@@ -57,5 +58,8 @@ describe('跨组织导入的动态选项默认值', () => {
     expect(
       deferDynamicOptionFilterValues([definition], { instance_ids__string: ['host-a'] }),
     ).toEqual({ instance_ids__string: null });
+    expect(
+      retainOpeningFilterValues([definition], { instance_ids__string: ['host-a'] }),
+    ).toEqual({ instance_ids__string: ['host-a'] });
   });
 });

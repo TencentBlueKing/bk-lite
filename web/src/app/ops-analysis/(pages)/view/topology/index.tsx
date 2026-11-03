@@ -613,6 +613,7 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
           onChange={setFilterValues}
           onSearch={handleFilterSearch}
           onReset={handleFilterSearch}
+          onApplyInitial={setAppliedFilterValues}
           prefixContent={namespaceSelectorElement}
           popupZIndex={isFullscreen ? 1200 : undefined}
         />

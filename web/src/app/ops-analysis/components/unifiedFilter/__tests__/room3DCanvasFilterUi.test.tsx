@@ -170,6 +170,58 @@ describe('room3D canvas filter UI', () => {
     expect(onSearch.mock.calls.some((call) => call[0]?.[ROOM3D_FILTER_ID] === ROOM_B)).toBe(false);
   });
 
+  it('auto-searches only the builtin room and keeps other drafts', async () => {
+    let resolveRooms: (value: unknown) => void = () => undefined;
+    getSourceDataByApiId.mockReturnValue(new Promise((resolve) => {
+      resolveRooms = resolve;
+    }));
+    const user = userEvent.setup();
+    const onSearch = vi.fn();
+    const site: UnifiedFilterDefinition = {
+      id: 'site_id__string',
+      key: 'site_id',
+      name: '站点',
+      type: 'string',
+      defaultValue: null,
+      order: 1,
+      enabled: true,
+      inputConfig: { control: 'input' },
+    };
+    const { rerender } = render(
+      <UnifiedFilterBar
+        definitions={[roomFilter(), site]}
+        values={{ [site.id]: 'applied-site' }}
+        onSearch={onSearch}
+      />,
+    );
+
+    const input = await screen.findByRole('textbox');
+    await user.clear(input);
+    await user.type(input, 'draft-site');
+    resolveRooms({
+      data: {
+        items: [{ inst_uuid: ROOM_B, inst_name: '二号机房', _id: 2 }],
+      },
+      warnings: [],
+    });
+    await waitFor(() => {
+      expect(onSearch).toHaveBeenCalled();
+    });
+    const payload = onSearch.mock.calls.at(-1)?.[0];
+    expect(payload).toEqual({
+      [site.id]: 'applied-site',
+      [ROOM3D_FILTER_ID]: ROOM_B,
+    });
+    rerender(
+      <UnifiedFilterBar
+        definitions={[roomFilter(), site]}
+        values={payload}
+        onSearch={onSearch}
+      />,
+    );
+    expect(screen.getByDisplayValue('draft-site')).not.toBeNull();
+  });
+
   it('shows the room filter in the global filter modal when the canvas has room3D', async () => {
     const user = userEvent.setup();
     const onConfirm = vi.fn();

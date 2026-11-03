@@ -36,7 +36,7 @@ import {
   updateReportSection,
 } from '@/app/ops-analysis/utils/reportBuilder';
 import { copyReportSection } from '@/app/ops-analysis/utils/widgetCopy';
-import { deferDynamicOptionFilterValues } from '@/app/ops-analysis/utils/optionBackedFilterValue';
+import { retainOpeningFilterValues } from '@/app/ops-analysis/utils/optionBackedFilterValue';
 import {
   buildFilterConfigConfirmSnapshot,
   buildResetFilterValues,
@@ -252,7 +252,7 @@ const Report = forwardRef<ReportRef, ReportProps>(({
       setSavedRefreshInterval(normalizeCanvasRefreshInterval(detail.refresh_interval));
       const restoredValues = renderMode
         ? syncFilterValuesWithDefinitions(normalized.filters, renderFilterValues ?? {})
-        : deferDynamicOptionFilterValues(
+        : retainOpeningFilterValues(
           normalized.filters,
           fillMissingOrganizationFilterValues(
             normalized.filters,
@@ -711,6 +711,7 @@ const Report = forwardRef<ReportRef, ReportProps>(({
       values={filterValues}
       onSearch={handleFilterSearch}
       onReset={handleFilterSearch}
+      onApplyInitial={setAppliedFilterValues}
       popupZIndex={isFullscreen ? 1200 : undefined}
     />
   ) : null;

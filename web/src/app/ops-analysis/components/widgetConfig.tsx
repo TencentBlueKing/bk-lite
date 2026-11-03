@@ -42,6 +42,9 @@ import {
   processDataSourceParams,
 } from '@/app/ops-analysis/utils/widgetDataTransform';
 import { getDateRangeTimezone } from '@/app/ops-analysis/utils/dateRange';
+import { dynamicQueryParamsOf } from '@/app/ops-analysis/utils/optionsQueryParamRefs';
+import type { OptionsQueryEditorContext } from '@/app/ops-analysis/utils/optionsQueryCandidates';
+import { optionsSourceSummary } from '@/app/ops-analysis/utils/optionsSourceIdentity';
 import {
   clearComponentParamSwitch,
   findComponentSwitchParams,
@@ -148,6 +151,42 @@ const isInteractionFieldError = (error: unknown) => {
 const readWidgetId = (item: ViewConfigItem | null | undefined) => (
   item && 'i' in item ? String(item.i || '') : ''
 );
+
+const optionQueryEditorContext = (
+  params: ParamItem[],
+  filters: UnifiedFilterDefinition[],
+  editingName?: string,
+) => {
+  const editingParam = params.find((param) => param.name === editingName);
+  const context: OptionsQueryEditorContext = {
+    scope: 'component',
+    self: {
+      key: editingName || '',
+      label: editingParam?.alias_name?.trim() || undefined,
+    },
+    componentParams: params.filter((param) => param.name).map((param) => ({
+      name: param.name,
+      label: param.alias_name || param.name,
+      type: param.type,
+      filterType: param.filterType,
+      value: param.value,
+      inputConfig: param.inputConfig,
+      inputMode: param.inputMode,
+      queryParams: dynamicQueryParamsOf(param.inputConfig),
+    })),
+    globalFilters: filters.filter((definition) => Boolean(definition.key)).map((definition) => ({
+      id: definition.id,
+      key: definition.key,
+      label: definition.name,
+      type: definition.type,
+      enabled: definition.enabled,
+      sourceHint: optionsSourceSummary(definition.inputConfig),
+      queryParams: dynamicQueryParamsOf(definition.inputConfig),
+      inputConfig: definition.inputConfig,
+    })),
+  };
+  return { optionsQueryContext: context };
+};
 
 interface ViewConfigPropsWithManager extends ViewConfigProps {
   dataSourceManager: ReturnType<typeof useDataSourceManager>;
@@ -1035,7 +1074,6 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
 
   const reconcileParamWithOptions = useCallback(
     (paramName: string, options: InputOption[]) => {
-      if (options.length === 0) return;
       resolvedParamOptionsRef.current.set(paramName, options);
       const currentParams = form.getFieldValue('params') || {};
       const nextValue = reconcileComponentParamValue(currentParams[paramName], options);
@@ -1176,7 +1214,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
         const reconciledFormParams = { ...formParams };
         effectiveDataSource.params.forEach((param) => {
           const optionsForParam = resolvedParamOptionsRef.current.get(param.name);
-          if (!optionsForParam?.length) return;
+          if (optionsForParam == null) return;
           reconciledFormParams[param.name] = reconcileComponentParamValue(
             reconciledFormParams[param.name],
             optionsForParam,
@@ -1649,6 +1687,8 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
             hasUnifiedFilterBindings={hasUnifiedFilterBindings}
             previewFilterDefinitions={previewFilterDefinitions}
             filterBindings={filterBindings}
+            globalFilters={filterDefinitions}
+            globalFilterValues={unifiedFilterValues}
             onFilterBindingsChange={setFilterBindings}
             onEditInputConfig={handleEditInputConfig}
             onParamOptionsResolved={(param, options) =>
@@ -1886,6 +1926,11 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
         componentSwitchEnabled={supportsComponentSwitch(chartType)}
         componentSwitchOwner={componentSwitchOwner}
         editingParamName={editingInputConfigParam?.name}
+        {...optionQueryEditorContext(
+          effectiveDataSource?.params ?? [],
+          filterDefinitions,
+          editingInputConfigParam?.name,
+        )}
       />
     </>
   );

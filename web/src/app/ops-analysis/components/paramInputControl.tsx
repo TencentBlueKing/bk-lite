@@ -12,6 +12,7 @@ import { normalizeParamInputChangeValue } from '@/app/ops-analysis/components/no
 import ParamInputTableSelect from '@/app/ops-analysis/components/paramInputTableSelect';
 import { toSingleOrganizationValue } from '@/app/ops-analysis/utils/paramInputConfigUtils';
 import GroupTreeSelect from '@/components/group-tree-select';
+import { useTranslation } from '@/utils/i18n';
 
 interface ParamInputControlProps {
   inputConfig?: InputControlConfig;
@@ -25,6 +26,10 @@ interface ParamInputControlProps {
   onOptionsResolved?: (options: InputOption[]) => void;
   onOptionsFailed?: () => void;
   optionsNotifyKey?: string;
+  resolvedQueryParams?: Record<string, unknown>;
+  optionsBlocked?: boolean;
+  optionsBlockReason?: 'empty' | 'invalid';
+  optionsQuerySignature?: string;
 }
 
 export const ParamInputControl: React.FC<ParamInputControlProps> = ({
@@ -39,9 +44,17 @@ export const ParamInputControl: React.FC<ParamInputControlProps> = ({
   onOptionsResolved,
   onOptionsFailed,
   optionsNotifyKey = '',
+  resolvedQueryParams,
+  optionsBlocked = false,
+  optionsBlockReason,
+  optionsQuerySignature = '',
 }) => {
+  const { t } = useTranslation();
   const state = useParamInputOptions(inputConfig, undefined, {
     reloadKey: optionsNotifyKey,
+    resolvedQueryParams,
+    optionsBlocked,
+    optionsBlockReason,
   });
   const onOptionsResolvedRef = useRef(onOptionsResolved);
   const onOptionsFailedRef = useRef(onOptionsFailed);
@@ -85,8 +98,16 @@ export const ParamInputControl: React.FC<ParamInputControlProps> = ({
         [],
         onOptionsResolvedRef.current,
       );
+      return;
     }
-  }, [inputConfig, optionsNotifyKey, state]);
+    if (state.status === 'blocked') {
+      notifierRef.current.notify(
+        `blocked:${optionsQuerySignature}`,
+        [],
+        onOptionsResolvedRef.current,
+      );
+    }
+  }, [inputConfig, optionsNotifyKey, optionsQuerySignature, state]);
 
   if (!inputConfig || inputConfig.control === 'input') return <>{renderFallback()}</>;
 
@@ -109,6 +130,19 @@ export const ParamInputControl: React.FC<ParamInputControlProps> = ({
   }
 
   if (state.status === 'loading') return <Spin size="small" />;
+
+  if (state.status === 'blocked') {
+    return (
+      <Select
+        disabled
+        value={undefined}
+        placeholder={optionsBlockReason === 'invalid'
+          ? t('paramInput.dynamic.invalidUpstream')
+          : t('paramInput.dynamic.upstreamRequired')}
+        style={{ width: '100%', ...style }}
+      />
+    );
+  }
 
   const options = state.status === 'success' ? state.options : [];
 

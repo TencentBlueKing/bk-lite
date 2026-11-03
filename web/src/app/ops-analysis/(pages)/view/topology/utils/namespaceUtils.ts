@@ -4,8 +4,10 @@ import type { DateRangeValue } from '@/app/ops-analysis/types/dateRange';
 import type { LayoutItem, UnifiedFilterDefinition, FilterValue } from '@/app/ops-analysis/types/dashBoard';
 import type { ViewConfigFormValues } from '@/app/ops-analysis/types/topology';
 import {
+  bindDiscoveredQueryRefs,
   discoverFollowedFilterParams,
 } from '@/app/ops-analysis/utils/widgetDataTransform';
+import { findReusableFilterDefinition } from '@/app/ops-analysis/utils/scanUnifiedFilterParams';
 import { validateDateRangeValue } from '@/app/ops-analysis/utils/dateRange';
 import {
   buildRelativeTimeRangeFilterValue,
@@ -133,25 +135,29 @@ export const buildFiltersFromNodes = (
       const params = nodeData?.valueConfig?.dataSourceParams?.length
         ? nodeData.valueConfig.dataSourceParams
         : dataSource?.params;
+      const resolvedSourceId = typeof normalizedId === 'number' && Number.isFinite(normalizedId)
+        ? normalizedId
+        : undefined;
 
       return [{
         params,
         filterBindings: nodeData?.valueConfig?.filterBindings,
+        sourceLabel: dataSource?.name || dataSource?.rest_api,
+        dataSourceId: resolvedSourceId,
+        catalogParams: dataSource?.params,
       }];
     }),
+    previousDefinitions,
   );
 
-  const existingDefinitions = new Map(
-    previousDefinitions.map((definition) => [definition.id, definition]),
-  );
-
-  return Array.from(discoveredParams.entries()).map(([id, param], index) => {
-    const existing =
-      existingDefinitions.get(id) ||
-      previousDefinitions.find(
-        (definition) =>
-          definition.key === param.name && definition.type === param.type,
-      );
+  return bindDiscoveredQueryRefs(Array.from(discoveredParams.entries()).map(([id, param], index) => {
+    const existing = findReusableFilterDefinition(previousDefinitions, {
+      id,
+      key: param.name,
+      type: param.type,
+      inputConfig: param.inputConfig,
+      inputMode: param.inputMode,
+    });
 
     let defaultValue: FilterValue = null;
     if (existing?.defaultValue !== undefined) {
@@ -174,15 +180,16 @@ export const buildFiltersFromNodes = (
     return {
       id,
       key: param.name,
-      name: existing?.name || param.alias_name || param.name,
+      name: existing?.name || param.suggestedName || param.alias_name || param.name,
       type: param.type,
       defaultValue,
       order: existing?.order ?? index,
       enabled: existing?.enabled ?? true,
       inputMode: existing?.inputMode,
       options: existing?.options,
+      inputConfig: existing?.inputConfig ?? param.inputConfig,
     };
-  });
+  }), discoveredParams);
 };
 
 const VALUE_FORMAT_CHART_TYPES = new Set([

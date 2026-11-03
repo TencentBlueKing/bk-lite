@@ -69,15 +69,6 @@ interface SortableRowProps extends React.HTMLAttributes<HTMLTableRowElement> {
   'data-row-key': string;
 }
 
-interface ScannedParam {
-  key: string;
-  type: 'string' | 'timeRange';
-  componentCount: number;
-  sampleAlias: string;
-  sampleDefaultValue: FilterValue;
-  sampleInputConfig?: UnifiedFilterDefinition['inputConfig'];
-}
-
 const SortableRow: React.FC<SortableRowProps> = (props) => {
   const {
     attributes,
@@ -161,7 +152,7 @@ const UnifiedFilterConfigModal: React.FC<UnifiedFilterConfigModalProps> = ({
   );
 
   const scannedParams = useMemo(
-    () => scanUnifiedFilterParams(layoutItems, dataSources) as ScannedParam[],
+    () => scanUnifiedFilterParams(layoutItems, dataSources),
     [layoutItems, dataSources],
   );
 
@@ -174,27 +165,22 @@ const UnifiedFilterConfigModal: React.FC<UnifiedFilterConfigModalProps> = ({
     if (hasInitializedRef.current) return;
     hasInitializedRef.current = true;
 
-    const existingMap = new Map(
-      initialDefinitions.map((d) => [`${d.key}__${d.type}`, d]),
-    );
-
     const merged = scannedParams.map((param, index) => {
-      const compositeKey = `${param.key}__${param.type}`;
-      const existing = existingMap.get(compositeKey);
+      const existing = initialDefinitions.find((definition) => definition.id === param.id);
 
       if (existing) {
         return existing;
       }
 
       return {
-        id: compositeKey,
+        id: param.id,
         key: param.key,
-        name: param.sampleAlias,
-        type: param.type,
-        defaultValue: param.sampleDefaultValue,
+        name: param.suggestedName || param.sampleAlias,
+        type: (param.type === 'timeRange' ? 'timeRange' : 'string') as UnifiedFilterDefinition['type'],
+        defaultValue: param.sampleDefaultValue as UnifiedFilterDefinition['defaultValue'],
         order: initialDefinitions.length + index,
         enabled: true,
-        inputConfig: param.sampleInputConfig,
+        inputConfig: param.sampleInputConfig as UnifiedFilterDefinition['inputConfig'],
         inputMode:
           param.sampleInputConfig?.control === 'organization'
             ? undefined
