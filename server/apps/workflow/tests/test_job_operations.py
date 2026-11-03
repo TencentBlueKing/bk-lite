@@ -10,13 +10,18 @@ class FakeExecutor:
     def __init__(self, details):
         self.details = details
         self.submissions = []
+        self._wait_results = dict(details) if isinstance(details, dict) else {}
 
     def submit(self, **kwargs):
         task_id = len(self.submissions) + 1
         self.submissions.append(kwargs)
+        if not isinstance(self.details, dict):
+            self._wait_results[task_id] = self.details[task_id - 1]
         return task_id
 
     def wait(self, task_id, **kwargs):
+        if task_id in self._wait_results:
+            return self._wait_results[task_id]
         return self.details[task_id - 1]
 
 
@@ -393,3 +398,91 @@ def test_execute_custom_script_checkpoints_job_ids_after_submit():
     assert len(runner.submissions) == 1
     assert checkpoints == [[1]]
     assert output["job_task_ids"] == [1]
+    assert output["job_submit_ledger"] == {"manual": 1}
+
+
+def test_execute_custom_script_resumes_partial_ledger_without_resubmitting_done_groups():
+    runner = FakeExecutor(
+        {
+            101: {"execution_results": [{"target_key": "5", "status": "success", "stdout": "ok"}]},
+            1: {"execution_results": [{"target_key": "n1", "status": "success", "stdout": "ok"}]},
+        }
+    )
+    checkpoints = []
+
+    output = execute_custom_script(
+        {
+            "targets": [
+                {
+                    "id": "manual:5",
+                    "source": "job_mgmt",
+                    "source_id": "5",
+                    "name": "host-a",
+                    "ip": "10.0.0.5",
+                    "operating_system": "linux",
+                },
+                {
+                    "id": "node:n1",
+                    "source": "node_mgmt",
+                    "source_id": "n1",
+                    "name": "host-b",
+                    "ip": "10.0.0.6",
+                    "operating_system": "linux",
+                },
+            ],
+            "script_type": "shell",
+            "script_content": "echo ok",
+            "team": 7,
+            "actor": {"username": "operator", "domain": "example.com"},
+            "__job_submit_ledger": {"manual": 101},
+            "__job_submit_checkpoint": checkpoints.append,
+            "__bklite_context": {"execution_id": "exec-1"},
+            "__atom_execution_id": 9,
+        },
+        executor=runner,
+    )
+
+    assert len(runner.submissions) == 1
+    assert runner.submissions[0]["target_source"] == "node_mgmt"
+    assert runner.submissions[0]["idempotency_key"] == "workflow:exec-1:atom:9:group:node_mgmt"
+    assert output["job_submit_ledger"]["manual"] == 101
+    assert "node_mgmt" in output["job_submit_ledger"]
+    assert checkpoints
+
+
+@pytest.mark.django_db
+def test_execute_custom_script_blocks_submit_when_execution_terminated():
+    from apps.workflow.models import Workflow, WorkflowExecution
+
+    workflow = Workflow.objects.create(name="已终止禁提交", team=[7], definition={})
+    execution = WorkflowExecution.objects.create(
+        workflow=workflow,
+        workflow_version=1,
+        team=[7],
+        status=WorkflowExecution.Status.TERMINATED,
+    )
+    runner = FakeExecutor([])
+
+    with pytest.raises(ValueError, match="执行已终止"):
+        execute_custom_script(
+            {
+                "targets": [
+                    {
+                        "id": "manual:5",
+                        "source": "job_mgmt",
+                        "source_id": "5",
+                        "name": "host",
+                        "ip": "10.0.0.5",
+                        "operating_system": "linux",
+                    }
+                ],
+                "script_type": "shell",
+                "script_content": "echo ok",
+                "team": 7,
+                "actor": {"username": "operator", "domain": "example.com"},
+                "__bklite_context": {"execution_id": str(execution.id)},
+            },
+            executor=runner,
+        )
+
+    assert runner.submissions == []

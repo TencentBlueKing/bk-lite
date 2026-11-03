@@ -89,6 +89,26 @@ def test_node_debug_validates_only_the_trigger_inputs_used_by_this_test():
 
 
 @pytest.mark.django_db
+def test_retrieve_returns_local_execution_when_conductor_rejects_missing_remote(operator, mocker):
+    from apps.workflow.services.conductor import ConductorRejected
+
+    execution = _execution(status=WorkflowExecution.Status.TERMINATING)
+    conductor = mocker.patch("apps.workflow.views.ConductorClient").return_value
+    conductor.get_execution.side_effect = ConductorRejected("Conductor 明确拒绝了请求")
+    retrieve = WorkflowExecutionViewSet.as_view({"get": "retrieve"})
+    nodes = WorkflowExecutionViewSet.as_view({"get": "nodes"})
+
+    detail = retrieve(_request("get", f"/executions/{execution.id}/", operator), pk=execution.id)
+    summary = nodes(_request("get", f"/executions/{execution.id}/nodes/", operator), pk=execution.id)
+
+    assert detail.status_code == 200
+    assert detail.data["id"] == str(execution.id)
+    assert detail.data["status"] == WorkflowExecution.Status.TERMINATING
+    assert summary.status_code == 200
+    conductor.get_execution.assert_called()
+
+
+@pytest.mark.django_db
 def test_operator_can_terminate_and_rerun_the_same_frozen_version(operator, mocker):
     execution = _execution()
     conductor = mocker.patch("apps.workflow.views.ConductorClient").return_value

@@ -144,20 +144,85 @@ def test_get_check_attr_map_excludes_system_link_ids(monkeypatch):
 # --------------------------------------------------------------------------
 # format_data / contrast
 # --------------------------------------------------------------------------
-def test_coerce_collected_tag_turns_string_into_empty_list():
+def test_coerce_collected_tag_parses_csv_and_list_without_clearing_blank():
     assert Management.coerce_collected_tag({"inst_name": "a"}) == {"inst_name": "a"}
     assert Management.coerce_collected_tag({"tag": ["test:aaa"]})["tag"] == ["test:aaa"]
-    assert Management.coerce_collected_tag({"tag": ""})["tag"] == []
-    assert Management.coerce_collected_tag({"tag": "env:prod"})["tag"] == []
+    assert "tag" not in Management.coerce_collected_tag({"tag": ""})
+    assert Management.coerce_collected_tag({"tag": "env:prod,team:net"})["tag"] == ["env:prod", "team:net"]
+    assert Management.coerce_collected_tag({"tag": '["owner:acme,inc","env:prod"]'})["tag"] == ["owner:acme,inc", "env:prod"]
 
 
-def test_contrast_rewrites_string_tag_as_list_update(monkeypatch):
+def test_coerce_collected_tag_skips_illegal_and_truncates_without_leaking_values(caplog):
+    import logging
+
+    sentinel = "TAG-SECRET-DO-NOT-LOG"
+    caplog.set_level(logging.WARNING, logger="cmdb")
+    mixed = Management.coerce_collected_tag(
+        {
+            "resource_id": "ins-9",
+            "tag": ["env:prod", f"owner:{sentinel} leaked", "bad", "team:net"],
+        }
+    )
+    overflow = [f"k{i}:v{i}" for i in range(21)]
+    truncated = Management.coerce_collected_tag({"resource_id": "ins-10", "tag": overflow})
+    weird = Management.coerce_collected_tag({"resource_id": "ins-11", "tag": 123})
+
+    assert mixed["tag"] == ["env:prod", "team:net"]
+    assert truncated["tag"] == overflow[:20]
+    assert "tag" not in weird
+    normalized = [
+        record
+        for record in caplog.records
+        if record.name == "cmdb" and record.msg == "event=collect_tag_normalized resource_id=%s skipped=%s truncated=%s"
+    ]
+    assert [(record.args[0], record.args[1], record.args[2]) for record in normalized] == [("ins-9", 2, 0), ("ins-10", 0, 1)]
+    skipped = [record for record in caplog.records if record.msg == "event=collect_tag_skipped resource_id=%s failed_stage=%s error_type=%s"]
+    assert skipped[-1].args == ("ins-11", "coerce_collected_tag", "int")
+    rendered = "\n".join(record.getMessage() for record in caplog.records)
+    assert sentinel not in rendered
+    assert sentinel not in str([record.args for record in caplog.records])
+
+
+def test_controller_persists_free_tag_options_only_when_tags_are_written(monkeypatch):
     fake = FakeGraph()
-    old = [{"inst_name": "a", "tag": "", "_id": 1}]
-    new = [{"inst_name": "a", "tag": ""}]
+    attrs = [{"attr_id": "tag", "attr_name": "标签", "attr_type": "tag", "editable": True, "option": {"mode": "free", "options": []}}]
+    calls = []
+    monkeypatch.setattr(
+        "apps.cmdb.services.model.ModelManage.merge_tag_options_from_values",
+        lambda model_id, values: calls.append((model_id, list(values))),
+    )
+    created = _mgmt(monkeypatch, fake, [], [{"inst_name": "a", "tag": "env:prod,team:net"}], attrs=attrs)
+    created.controller()
+    assert calls == [("host", ["env:prod", "team:net"])]
+
+    calls.clear()
+    kept = _mgmt(
+        monkeypatch,
+        fake,
+        [{"inst_name": "b", "tag": ["env:keep"], "_id": 2}],
+        [{"inst_name": "b", "tag": ""}],
+        attrs=attrs,
+    )
+    kept.controller()
+    assert calls == []
+
+
+def test_contrast_replaces_present_tags_and_keeps_them_when_payload_has_no_tags(monkeypatch):
+    fake = FakeGraph()
+    old = [{"inst_name": "a", "tag": ["env:old"], "_id": 1}]
+    new = [{"inst_name": "a", "tag": "env:prod,team:net"}]
     m = _mgmt(monkeypatch, fake, old, new)
-    assert m.update_list[0]["tag"] == []
+    assert m.update_list[0]["tag"] == ["env:prod", "team:net"]
     assert m.update_list[0]["_id"] == 1
+
+    kept = _mgmt(
+        monkeypatch,
+        fake,
+        [{"inst_name": "b", "tag": ["env:keep"], "_id": 2}],
+        [{"inst_name": "b", "tag": ""}],
+    )
+    assert kept.update_list == []
+    assert "tag" not in kept.heartbeat_list[0]
 
 
 def test_contrast_classifies_add_and_update(monkeypatch):

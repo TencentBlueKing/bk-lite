@@ -396,6 +396,13 @@ export interface ExecutionNodeDetail {
   technical: Record<string, unknown>;
 }
 
+/** 终止时关联作业取消结果（来自 output.termination_job_cancels）。 */
+export interface TerminationJobCancelItem {
+  task_id: number;
+  ok: boolean;
+  error_type?: string;
+}
+
 export interface ExecutionRecord {
   id: string;
   workflow: number;

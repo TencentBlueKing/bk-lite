@@ -130,6 +130,16 @@ def test_winrm_python_execute_uses_windows_interpreter_and_temp_py():
     assert ".bklite-stream-deadbeef.py" in joined
 
 
+def test_winrm_powershell_utf8_lives_in_uploaded_script():
+    prepared = prepare_script_bytes("Write-Output '距上次补丁天数'", "powershell").decode("utf-8-sig")
+    assert "Encoding]::UTF8" in prepared
+    assert "$OutputEncoding" in prepared
+    assert prepared.index("$OutputEncoding") < prepared.index("距上次补丁天数")
+    command, arguments = build_execute_command("abc123", "powershell")
+    assert command == "cmd.exe"
+    assert "-File" in " ".join(arguments)
+
+
 def test_prepare_script_bytes_rejects_more_than_512_kib():
     with pytest.raises(ValueError, match=r"Windows script exceeds 512 KiB limit"):
         prepare_script_bytes("x" * (512 * 1024 + 1), "python")
