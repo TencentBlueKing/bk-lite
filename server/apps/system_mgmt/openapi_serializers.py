@@ -56,6 +56,7 @@ class SystemMgmtNotificationSendSerializer(OpenAPIRequestSerializer):
     """向目录中的渠道投递一条消息。不接受附件，不暴露渠道配置。"""
 
     channel_id = serializers.IntegerField(min_value=1)
+    channel_type = serializers.CharField(max_length=30)
     title = serializers.CharField(required=False, allow_blank=True, default="", max_length=512)
     content = serializers.CharField(max_length=20000)
     receivers = serializers.ListField(
