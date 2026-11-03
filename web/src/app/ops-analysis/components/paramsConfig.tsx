@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { useDebouncedOptionsQueryValues } from '@/app/ops-analysis/hooks/useDebouncedOptionsQueryValues';
+import { isFreeTextOptionsParam } from '@/app/ops-analysis/utils/optionsQueryTextDebounce';
 import TimeSelector from '@/components/time-selector';
 import { Form, Input, Select, DatePicker, InputNumber, Button, Tooltip } from 'antd';
 import type { FormInstance } from 'antd';
@@ -194,6 +196,12 @@ const DataSourceParamsConfig: React.FC<DataSourceParamsConfigProps> = ({
     () => (Array.isArray(selectedDataSource?.params) ? selectedDataSource.params : []),
     [selectedDataSource?.params],
   );
+  const typedParamNames = useMemo(
+    () => sourceParams.filter(isFreeTextOptionsParam).map((param) => param.name),
+    [sourceParams],
+  );
+  // 表单控件仍读 form 的即时值。选项查询只吃防抖后的文本/数字。
+  const optionsQueryFormParams = useDebouncedOptionsQueryValues(formParams ?? {}, typedParamNames);
   const configParams = sourceParams.filter(
     (param: ParamItem) => includeFilterTypes.includes(param.filterType || 'fixed'),
   );
@@ -282,7 +290,7 @@ const DataSourceParamsConfig: React.FC<DataSourceParamsConfigProps> = ({
     const optionsQuery = resolveParamOptionsQuery({
       inputConfig,
       enabled: resolveOptionsQuery,
-      formParams,
+      formParams: optionsQueryFormParams,
       sourceParams,
       globalFilters,
       filterBindings,

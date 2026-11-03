@@ -1,5 +1,5 @@
 import React from 'react';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { Form } from 'antd';
 
@@ -296,5 +296,206 @@ describe('DataSourceParamsConfig options query', () => {
       expect(params.zone_id).toBeNull();
     });
     expect(getSourceDataByApiId).not.toHaveBeenCalled();
+  });
+
+  it('debounces a multiline upstream and blocks as soon as it is cleared', async () => {
+    vi.useFakeTimers();
+    getSourceDataByApiId.mockResolvedValue({
+      data: [{ id: 'rack-1', name: '机柜1' }],
+      warnings: [],
+    });
+    const source = {
+      id: 11,
+      name: 'racks',
+      params: [
+        {
+          name: 'query',
+          alias_name: '查询',
+          type: 'string',
+          filterType: 'params',
+          value: null,
+        },
+        {
+          name: 'rack_id',
+          alias_name: '机柜',
+          type: 'string',
+          filterType: 'params',
+          value: null,
+          inputConfig: {
+            control: 'select',
+            optionsSource: {
+              type: 'dynamic',
+              sourceId: 15,
+              valueField: 'id',
+              labelField: 'name',
+              queryParams: { keyword: { ref: 'query' } },
+            },
+          },
+        },
+      ],
+    } as DatasourceItem;
+
+    try {
+      render(
+        <QueryForm
+          source={source}
+          initialParams={{ query: '', rack_id: null }}
+          globalFilters={[]}
+        />,
+      );
+      expect(screen.getByText('请先选择上游')).not.toBeNull();
+      const query = screen.getByRole('textbox');
+      fireEvent.change(query, { target: { value: '机' } });
+      fireEvent.change(query, { target: { value: '机柜' } });
+      expect(query).toHaveProperty('value', '机柜');
+      expect(getSourceDataByApiId).not.toHaveBeenCalled();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(299);
+      });
+      expect(getSourceDataByApiId).not.toHaveBeenCalled();
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1);
+      });
+      expect(getSourceDataByApiId).toHaveBeenCalledTimes(1);
+      expect(getSourceDataByApiId).toHaveBeenCalledWith(15, { keyword: '机柜' }, undefined);
+
+      fireEvent.change(query, { target: { value: '机柜2' } });
+      fireEvent.change(query, { target: { value: '' } });
+      expect(query).toHaveProperty('value', '');
+      expect(screen.getByText('请先选择上游')).not.toBeNull();
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(300);
+      });
+      expect(getSourceDataByApiId).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('debounces a number upstream one trailing request', async () => {
+    vi.useFakeTimers();
+    getSourceDataByApiId.mockResolvedValue({
+      data: [{ id: 'rack-1', name: '机柜1' }],
+      warnings: [],
+    });
+    const source = {
+      id: 12,
+      name: 'by-limit',
+      params: [
+        {
+          name: 'limit',
+          alias_name: '数量',
+          type: 'number',
+          filterType: 'params',
+          value: null,
+        },
+        {
+          name: 'rack_id',
+          alias_name: '机柜',
+          type: 'string',
+          filterType: 'params',
+          value: null,
+          inputConfig: {
+            control: 'select',
+            optionsSource: {
+              type: 'dynamic',
+              sourceId: 16,
+              valueField: 'id',
+              labelField: 'name',
+              queryParams: { limit: { ref: 'limit' } },
+            },
+          },
+        },
+      ],
+    } as DatasourceItem;
+
+    try {
+      render(
+        <QueryForm
+          source={source}
+          initialParams={{ limit: null, rack_id: null }}
+          globalFilters={[]}
+        />,
+      );
+      const limit = screen.getByRole('spinbutton');
+      fireEvent.change(limit, { target: { value: '4' } });
+      fireEvent.change(limit, { target: { value: '12' } });
+      expect(getSourceDataByApiId).not.toHaveBeenCalled();
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(300);
+      });
+      expect(getSourceDataByApiId).toHaveBeenCalledTimes(1);
+      expect(getSourceDataByApiId).toHaveBeenCalledWith(16, { limit: 12 }, undefined);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('reloads immediately when an upstream radio is selected', async () => {
+    vi.useFakeTimers();
+    getSourceDataByApiId.mockResolvedValue({
+      data: [{ id: 'rack-1', name: '机柜1' }],
+      warnings: [],
+    });
+    const source = {
+      id: 13,
+      name: 'by-area',
+      params: [
+        {
+          name: 'area_id',
+          alias_name: '分区',
+          type: 'string',
+          filterType: 'params',
+          value: null,
+          inputConfig: {
+            control: 'radio',
+            optionsSource: {
+              type: 'static',
+              staticItems: [
+                { label: '一区', value: 'a1' },
+                { label: '二区', value: 'a2' },
+              ],
+            },
+          },
+        },
+        {
+          name: 'rack_id',
+          alias_name: '机柜',
+          type: 'string',
+          filterType: 'params',
+          value: null,
+          inputConfig: {
+            control: 'select',
+            optionsSource: {
+              type: 'dynamic',
+              sourceId: 17,
+              valueField: 'id',
+              labelField: 'name',
+              queryParams: { area_id: { ref: 'area_id' } },
+            },
+          },
+        },
+      ],
+    } as DatasourceItem;
+
+    try {
+      render(
+        <QueryForm
+          source={source}
+          initialParams={{ area_id: null, rack_id: null }}
+          globalFilters={[]}
+        />,
+      );
+      expect(getSourceDataByApiId).not.toHaveBeenCalled();
+      fireEvent.click(screen.getByRole('radio', { name: '二区' }));
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(getSourceDataByApiId).toHaveBeenCalledTimes(1);
+      expect(getSourceDataByApiId).toHaveBeenCalledWith(17, { area_id: 'a2' }, undefined);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
