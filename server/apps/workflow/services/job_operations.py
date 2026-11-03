@@ -229,9 +229,18 @@ def _execution_params(raw: Any) -> list[dict[str, str]]:
     return [{"value": item} for item in text.split()] if text else []
 
 
-def _checkpoint_job_submissions(inputs: dict[str, Any], submissions: list[tuple[int, list[dict[str, Any]]]]) -> None:
+def _job_idempotency_key(inputs: dict[str, Any], target_source: str) -> str | None:
+    context = inputs.get("__bklite_context") if isinstance(inputs.get("__bklite_context"), dict) else {}
+    execution_id = context.get("execution_id") or inputs.get("__execution_id") or ""
+    atom_execution_id = inputs.get("__atom_execution_id")
+    if execution_id in (None, "") or atom_execution_id in (None, ""):
+        return None
+    return f"workflow:{execution_id}:atom:{atom_execution_id}:group:{target_source}"[:255]
+
+
+def _checkpoint_job_submissions(inputs: dict[str, Any], ledger: dict[str, int]) -> None:
     checkpoint: Callable[[list[int]], None] | None = inputs.get("__job_submit_checkpoint")
-    task_ids = [task_id for task_id, _targets in submissions]
+    task_ids = list(ledger.values())
     if callable(checkpoint):
         checkpoint(task_ids)
         return
@@ -242,9 +251,33 @@ def _checkpoint_job_submissions(inputs: dict[str, Any], submissions: list[tuple[
 
     AtomExecution.objects.filter(pk=atom_execution_id).update(
         job_task_id=task_ids[0] if task_ids else None,
-        output={"job_task_ids": task_ids, "submit_checkpoint": True},
+        output={"job_task_ids": task_ids, "job_submit_ledger": ledger, "submit_checkpoint": True},
         updated_at=timezone.now(),
     )
+
+
+def _assert_execution_allows_job_submit(inputs: dict[str, Any]) -> None:
+    context = inputs.get("__bklite_context")
+    execution_id = None
+    if isinstance(context, dict):
+        execution_id = context.get("execution_id")
+    if execution_id in (None, ""):
+        execution_id = inputs.get("__execution_id")
+    if execution_id in (None, ""):
+        return
+    from django.core.exceptions import ValidationError
+
+    from apps.workflow.models import WorkflowExecution
+
+    try:
+        status = WorkflowExecution.objects.filter(pk=execution_id).values_list("status", flat=True).first()
+    except (ValidationError, ValueError, TypeError):
+        return
+    if status in {
+        WorkflowExecution.Status.TERMINATING,
+        WorkflowExecution.Status.TERMINATED,
+    }:
+        raise ValueError("执行已终止，禁止提交新作业")
 
 
 def execute_custom_script(inputs: dict[str, Any], *, executor=None) -> dict[str, Any]:
@@ -257,33 +290,51 @@ def execute_custom_script(inputs: dict[str, Any], *, executor=None) -> dict[str,
     script_content = str(inputs.get("script_content") or "")
     if not script_content.strip() or len(script_content) > 100000:
         raise ValueError("作业脚本不能为空")
+    _assert_execution_allows_job_submit(inputs)
     groups = _target_groups(targets)
     params = _execution_params(inputs.get("execution_params"))
     team = team_id(inputs.get("team"))
     actor = actor_snapshot(inputs)
     timeout = int(inputs.get("timeout_seconds") or 600)
     runner = executor or JobPlatformExecutor()
+    prior_ledger = inputs.get("__job_submit_ledger")
+    ledger: dict[str, int] = {}
+    if isinstance(prior_ledger, dict):
+        for source, task_id in prior_ledger.items():
+            try:
+                ledger[str(source)] = int(task_id)
+            except (TypeError, ValueError):
+                continue
     prior_ids = inputs.get("__job_task_ids")
+    # Legacy full-list checkpoint: only reuse when every group has a paired id.
+    if not ledger and isinstance(prior_ids, list) and prior_ids and len(prior_ids) == len(groups):
+        for task_id, source in zip(prior_ids, groups.keys(), strict=True):
+            ledger[str(source)] = int(task_id)
+
+    context = inputs.get("__bklite_context") if isinstance(inputs.get("__bklite_context"), dict) else {}
+    workflow_execution_id = context.get("execution_id") or inputs.get("__execution_id")
+    workflow_execution_id = str(workflow_execution_id) if workflow_execution_id not in (None, "") else None
     submissions: list[tuple[int, list[dict[str, Any]]]] = []
-    if isinstance(prior_ids, list) and prior_ids and len(prior_ids) == len(groups):
-        # Resume wait for durable submissions instead of blind resubmit after lease reclaim.
-        for task_id, (_source, source_targets) in zip(prior_ids, groups.items(), strict=True):
-            submissions.append((int(task_id), source_targets))
-    else:
-        for source, source_targets in groups.items():
-            task_id = runner.submit(
-                name="编排中心-脚本执行",
-                nodes=source_targets,
-                team=team,
-                target_source=source,
-                script_type=script_type,
-                script_content=script_content,
-                timeout=timeout,
-                actor=actor,
-                params=params,
-            )
-            submissions.append((task_id, source_targets))
-            _checkpoint_job_submissions(inputs, submissions)
+    for source, source_targets in groups.items():
+        if source in ledger:
+            submissions.append((ledger[source], source_targets))
+            continue
+        task_id = runner.submit(
+            name="编排中心-脚本执行",
+            nodes=source_targets,
+            team=team,
+            target_source=source,
+            script_type=script_type,
+            script_content=script_content,
+            timeout=timeout,
+            actor=actor,
+            params=params,
+            idempotency_key=_job_idempotency_key(inputs, source),
+            workflow_execution_id=workflow_execution_id,
+        )
+        ledger[source] = int(task_id)
+        submissions.append((int(task_id), source_targets))
+        _checkpoint_job_submissions(inputs, ledger)
 
     results: list[dict[str, Any]] = []
     for task_id, source_targets in submissions:
@@ -295,4 +346,5 @@ def execute_custom_script(inputs: dict[str, Any], *, executor=None) -> dict[str,
         "data": results,
         "summary": {"total": len(results), "succeeded": succeeded, "failed": failed},
         "job_task_ids": [task_id for task_id, _targets in submissions],
+        "job_submit_ledger": ledger,
     }

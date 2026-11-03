@@ -73,3 +73,78 @@ def cancel_linked_job_tasks(
         failed,
     )
     return results
+
+
+def merge_termination_cancel_results(
+    prior: list[dict[str, Any]] | None,
+    fresh: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Merge cancel attempts by task_id; successful cancel wins over prior failure."""
+
+    merged: dict[int, dict[str, Any]] = {}
+    for item in prior or []:
+        if not isinstance(item, dict):
+            continue
+        try:
+            task_id = int(item.get("task_id"))
+        except (TypeError, ValueError):
+            continue
+        merged[task_id] = item
+    for item in fresh:
+        if not isinstance(item, dict):
+            continue
+        try:
+            task_id = int(item.get("task_id"))
+        except (TypeError, ValueError):
+            continue
+        previous = merged.get(task_id)
+        if previous and previous.get("ok") is True and item.get("ok") is not True:
+            continue
+        merged[task_id] = item
+    return [merged[key] for key in sorted(merged)]
+
+
+def refresh_termination_job_cancels(
+    execution: WorkflowExecution,
+    *,
+    actor: dict[str, Any] | None = None,
+    executor: JobPlatformExecutor | None = None,
+) -> list[dict[str, Any]]:
+    """Re-cancel linked jobs after terminate; keep prior ledger and cover late-registered ids."""
+
+    if execution.status not in {
+        WorkflowExecution.Status.TERMINATING,
+        WorkflowExecution.Status.TERMINATED,
+    }:
+        prior = (execution.output or {}).get("termination_job_cancels")
+        return prior if isinstance(prior, list) else []
+
+    resolved_actor = actor or {
+        "username": execution.started_by or "system",
+        "domain": execution.domain or "domain.com",
+    }
+    prior = (execution.output or {}).get("termination_job_cancels")
+    prior_list = prior if isinstance(prior, list) else []
+    ok_ids = {
+        int(item["task_id"]) for item in prior_list if isinstance(item, dict) and item.get("ok") is True and item.get("task_id") not in (None, "")
+    }
+    pending_ids = [task_id for task_id in collect_linked_job_task_ids(execution) if task_id not in ok_ids]
+    if not pending_ids:
+        return merge_termination_cancel_results(prior_list, [])
+
+    runner = executor or JobPlatformExecutor()
+    teams = [int(team) for team in (execution.team or [])]
+    fresh: list[dict[str, Any]] = []
+    for task_id in pending_ids:
+        try:
+            payload = runner.cancel(task_id, authorized_team_ids=teams, actor=resolved_actor)
+            fresh.append({"task_id": task_id, "ok": True, **payload})
+        except JobPlatformError as error:
+            fresh.append({"task_id": task_id, "ok": False, "error_type": type(error).__name__})
+            logger.warning(
+                "workflow terminate job cancel retry failed: execution_id=%s job_task_id=%s error_type=%s",
+                execution.id,
+                task_id,
+                type(error).__name__,
+            )
+    return merge_termination_cancel_results(prior_list, fresh)

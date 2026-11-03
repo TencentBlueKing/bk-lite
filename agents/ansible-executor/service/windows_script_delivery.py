@@ -23,6 +23,10 @@ _COPY_FAILURE = "failed to copy Windows script to the target via WinRM put_file"
 _TEMP_FAILURE = "failed to resolve Windows TEMP directory"
 _PUT_CHUNK_BYTES = 250_000
 _SUPPORTED_TRANSPORTS = {"auto", "basic", "certificate", "ntlm", "kerberos", "credssp", "plaintext", "ssl"}
+# Force UTF-8 console output before user script so WinRM streaming does not turn
+# Chinese into ASCII '?' under the OEM code page. Kept in the uploaded .ps1 so the
+# original short -File execute path stays unchanged.
+_POWERSHELL_UTF8_PREAMBLE = "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; " "$OutputEncoding = [Console]::OutputEncoding\r\n"
 
 ConnectionOpener = Callable[[dict[str, Any]], Any]
 
@@ -36,7 +40,10 @@ def remote_script_leaf(token: str, script_type: str) -> str:
 def prepare_windows_script_bytes(script_content: str, script_type: str) -> bytes:
     if script_type not in _SCRIPT_SUFFIX:
         raise ValueError(f"unsupported Windows script type: {script_type}")
-    raw = str(script_content or "").encode("utf-8")
+    body = str(script_content or "")
+    if script_type == "powershell":
+        body = _POWERSHELL_UTF8_PREAMBLE + body
+    raw = body.encode("utf-8")
     if len(raw) > WINDOWS_SCRIPT_MAX_BYTES:
         raise ValueError(f"Windows script exceeds 512 KiB limit: {len(raw)} bytes")
     if script_type == "powershell":
