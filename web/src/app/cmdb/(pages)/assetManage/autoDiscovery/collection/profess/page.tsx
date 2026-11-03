@@ -5,6 +5,7 @@ import dayjs from 'dayjs';
 import styles from './index.module.scss';
 import K8sTask from './components/k8s/k8sGuidedTask';
 import VMTask from './components/vmTask';
+import HypervTask from './components/hypervTask';
 import WinSphereTask from './components/winsphereTask';
 import SNMPTask from './components/snmpTask';
 import SQLTask from './components/sqlTask';
@@ -685,6 +686,10 @@ const ProfessionalCollection: React.FC = () => {
 
     if (formPlugin.model_id === 'ssl_cer') {
       return <SslCerTask {...taskProps} />;
+    }
+
+    if (formPlugin.model_id === 'hyperv_host') {
+      return <HypervTask {...taskProps} />;
     }
 
     const taskTypeKey = formPlugin.task_type || formPlugin.type || formCategory.id;
