@@ -254,6 +254,34 @@ const seriesAxisValues = (data: ChartData[], key: string) => {
   return values;
 };
 
+/**
+ * 整段贴在数值轴下限。速率轴把全 0 钉在 0，1.6px 描边和轴线重合，图区像没画。
+ * 略高于下限的平线已经落在轴内，不抬。
+ */
+export const seriesSitsOnAxisFloor = (
+  samples: readonly number[],
+  axisMin: number,
+  axisMax: number
+) => {
+  if (!samples.length || !(axisMax > axisMin)) return false;
+  let lo = samples[0];
+  let hi = samples[0];
+  for (let index = 1; index < samples.length; index += 1) {
+    const value = samples[index];
+    if (value < lo) lo = value;
+    if (value > hi) hi = value;
+  }
+  const slop = Math.max((axisMax - axisMin) * 0.004, 1e-9);
+  return hi <= axisMin + slop && lo >= axisMin - slop;
+};
+
+/** 多条都贴底时错开几像素，颜色还能分开。采样值不动。 */
+const FLOOR_LINE_LIFTS = [-8, -5, -2] as const;
+
+const floorLineLift = (index: number) => (
+  FLOOR_LINE_LIFTS[Math.min(index, FLOOR_LINE_LIFTS.length - 1)]
+);
+
 const shortNumber = (value: number) => {
   if (!Number.isFinite(value)) return '--';
   const abs = Math.abs(value);
@@ -475,6 +503,15 @@ export default function ThinTimeSeries({
     const unitAt = (index: number): MetricUnit => (
       splitAxes ? (legends[index]?.unit || unit) : unit
     );
+    const extentOf = (samples: number[], axisUnit: MetricUnit) => {
+      if (lockedAxis) return { min: lockedAxis.min, max: lockedAxis.max };
+      const bounds = layoutOf(samples, axisUnit);
+      if (!bounds) return null;
+      return { min: bounds.min, max: bounds.max };
+    };
+    const sharedExtent = splitAxes
+      ? null
+      : extentOf(keys.flatMap((key) => seriesAxisValues(plotted, key)), unit);
     const valueAxis = (samples: number[], color: string, showSplit: boolean, axisUnit: MetricUnit) => {
       const bounds = lockedAxis ? null : layoutOf(samples, axisUnit);
       const axisMin = lockedAxis?.min ?? bounds?.min ?? 0;
@@ -599,24 +636,43 @@ export default function ThinTimeSeries({
       },
       series: keys.map((key, index) => {
         const color = seriesColors[index];
+        const dashed = Boolean(legends[index]?.dashed);
+        const samples = seriesAxisValues(plotted, key);
+        const extent = splitAxes ? extentOf(samples, unitAt(index)) : sharedExtent;
+        // 贴底描边改成轴线色，彩色影子抬进图区。数值仍是采样本身，不造非零点。
+        const onFloor = Boolean(
+          axisColor
+          && extent
+          && seriesSitsOnAxisFloor(samples, extent.min, extent.max)
+        );
         return {
           type: 'line' as const,
           name: legends[index]?.title || legends[index]?.label || key,
           ...(splitAxes ? { yAxisIndex: index } : {}),
           showSymbol: false,
           symbol: 'none' as const,
-          smooth: 0.15,
+          smooth: onFloor ? 0 : 0.15,
           connectNulls: true,
+          ...(onFloor ? { clip: false as const, z: 8 } : {}),
           itemStyle: { color },
           data: plotted.map((point) => {
             const value = point[key];
             return [point.time, typeof value === 'number' ? value : null];
           }),
-          lineStyle: {
-            width: legends[index]?.dashed ? 1.2 : 1.6,
-            color,
-            type: legends[index]?.dashed ? 'dashed' as const : 'solid' as const
-          }
+          lineStyle: onFloor
+            ? {
+              width: dashed ? 1.2 : 2,
+              color: axisColor,
+              type: dashed ? 'dashed' as const : 'solid' as const,
+              shadowColor: color,
+              shadowBlur: 0,
+              shadowOffsetY: floorLineLift(index)
+            }
+            : {
+              width: dashed ? 1.2 : 1.6,
+              color,
+              type: dashed ? 'dashed' as const : 'solid' as const
+            }
         };
       })
     };
