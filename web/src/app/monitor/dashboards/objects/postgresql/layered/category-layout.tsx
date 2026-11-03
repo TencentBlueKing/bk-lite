@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Tabs } from 'antd';
 import { useRouter, useSearchParams } from 'next/navigation';
 import useMonitorApi from '@/app/monitor/api';
@@ -9,7 +9,7 @@ import { ProTimeWindowProvider } from '../../host/layered/pro-time-window';
 import { selectProChartWindow } from '../../../shared/utils/pro-chart-window';
 import HostAlertDrawer from '../../host/layered/host-alert-drawer';
 import { hostAlertRailEvents, type HostAlertRailEvent } from '../../host/layered/events-rail';
-import { overviewHostAlertParams } from '../../host/layered/host-alert-list';
+import { overviewHostAlertParams, readAlertCount } from '../../host/layered/host-alert-list';
 import useViewApi from '@/app/monitor/api/view';
 import { asRangeQueryResult, buildSearchParams, toMetricSeries } from '../../../shared/utils';
 import host from '../../host/layered/layered.module.scss';
@@ -96,13 +96,26 @@ export default function PostgresCategoryLayout({
   const requested = searchParams.get('postgresTab');
   const tabFromUrl: PostgresTab = isTab(requested) ? requested : 'overview';
   const [tab, setTab] = useState<PostgresTab>(tabFromUrl);
+  const [alertCount, setAlertCount] = useState<number | null>(null);
   const [alertEvents, setAlertEvents] = useState<HostAlertRailEvent[]>([]);
   const [eventsPhase, setEventsPhase] = useState<'loading' | 'ready'>('loading');
   const eventsScopeRef = useRef<string | null>(null);
   const [alertDrawerOpen, setAlertDrawerOpen] = useState(false);
+  const alertDrawerOpenRef = useRef(false);
+  alertDrawerOpenRef.current = alertDrawerOpen;
   const [alertRefreshKey, setAlertRefreshKey] = useState(0);
   const [focusAlertId, setFocusAlertId] = useState('');
   const instanceKey = String(instanceId || '');
+  const [seenInstance, setSeenInstance] = useState(instanceKey);
+  if (instanceKey !== seenInstance) {
+    setSeenInstance(instanceKey);
+    setAlertCount(null);
+  }
+  const openAlerts = useCallback(() => {
+    setFocusAlertId('');
+    setAlertDrawerOpen(true);
+    setAlertRefreshKey((key) => key + 1);
+  }, []);
   const chartWindow = useMemo(
     () => selectProChartWindow(timeValues, queryTimeRange),
     [queryTimeRange, timeValues]
@@ -144,6 +157,7 @@ export default function PostgresCategoryLayout({
   useEffect(() => {
     if (tab !== 'overview') return undefined;
     if (!instanceKey) {
+      setAlertCount(null);
       setAlertEvents([]);
       setEventsPhase('ready');
       return undefined;
@@ -154,11 +168,13 @@ export default function PostgresCategoryLayout({
         if (!active) return;
         setAlertEvents(hostAlertRailEvents(data?.results));
         setEventsPhase('ready');
+        if (!alertDrawerOpenRef.current) setAlertCount(readAlertCount(data, 0));
       })
       .catch(() => {
         if (!active) return;
         setAlertEvents([]);
         setEventsPhase('ready');
+        if (!alertDrawerOpenRef.current) setAlertCount(null);
       });
     return () => {
       active = false;
@@ -314,8 +330,11 @@ export default function PostgresCategoryLayout({
               metricMap={metricMap}
               pendingMetricNames={pendingMetricNames}
               booting={loading && pendingMetricNames.size === 0}
+              alertCount={alertCount}
+              alertsOpen={alertDrawerOpen}
               alertEvents={alertEvents}
               eventsLoading={eventsPhase === 'loading'}
+              onOpenAlerts={openAlerts}
               onOpenFocus={(anchor) => selectTab('performance', anchor)}
               onFocusAlert={(alertId) => {
                 setFocusAlertId(alertId);
@@ -371,7 +390,7 @@ export default function PostgresCategoryLayout({
           monitorObjectId={monitorObjectId}
           focusAlertId={focusAlertId}
           onClose={() => setAlertDrawerOpen(false)}
-          onCount={() => undefined}
+          onCount={setAlertCount}
           title="告警"
           footerHint="这里只列出当前实例尚未恢复的告警。"
           emptyCopy="当前无活跃告警"

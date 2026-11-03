@@ -38,8 +38,11 @@ interface OverviewPaneProps {
   metricMap: PostgresMetricMap;
   pendingMetricNames: ReadonlySet<string>;
   booting: boolean;
+  alertCount: number | null;
+  alertsOpen: boolean;
   alertEvents: HostAlertRailEvent[];
   eventsLoading: boolean;
+  onOpenAlerts: () => void;
   onOpenFocus: (anchor: string) => void;
   onFocusAlert: (alertId: string) => void;
 }
@@ -123,6 +126,21 @@ export const postgresDeadlockTone = (latest: number | null, alertColor: string) 
   latest != null && latest > 0 ? alertColor : undefined
 );
 
+const ALERT_KPI_KEY = 'alerts';
+const ALERT_KPI_LABEL = '告警数量';
+
+/** 活跃告警数。0 仍显示 0；未知或失败用 --，不拿空串把卡藏掉。 */
+export const postgresAlertKpiValue = (count: number | null) => {
+  if (count == null || !Number.isFinite(count)) return '--';
+  return String(Math.max(0, Math.round(count)));
+};
+
+/** 0 成功色，大于 0 失败色。还没有数时不涂色。 */
+export const postgresAlertKpiTone = (count: number | null) => {
+  if (count == null || !Number.isFinite(count)) return undefined;
+  return count > 0 ? 'var(--color-fail)' : 'var(--color-success)';
+};
+
 /** 窗口全是 0（或没有非 0 采样）时弱化焦点大数，折线仍保留。 */
 export const postgresFocusQuiet = (latest: number | null, samples: readonly number[]) => (
   latest === 0 && samples.every((value) => value === 0)
@@ -141,45 +159,64 @@ export default function OverviewPane({
   metricMap,
   pendingMetricNames,
   booting,
+  alertCount,
+  alertsOpen,
   alertEvents,
   eventsLoading,
+  onOpenAlerts,
   onOpenFocus,
   onFocusAlert
 }: OverviewPaneProps) {
   const hit = cacheHitReading(metricMap);
   const healthLoading = booting || HEALTH_PENDING.some((name) => pendingMetricNames.has(name));
-  const cards = useMemo<KpiTileModel[]>(() => KPI_SPECS.map((item) => {
-    const info = <PostgresHint kind={`pg-kpi-${item.key}`} title={item.label} body={item.body} />;
-    if (item.key === 'cache') {
-      const value = hit.percent == null ? EMPTY : formatCacheHitPercent(hit.percent);
+  const cards = useMemo<KpiTileModel[]>(() => {
+    const metricCards: KpiTileModel[] = KPI_SPECS.map((item) => {
+      const info = <PostgresHint kind={`pg-kpi-${item.key}`} title={item.label} body={item.body} />;
+      if (item.key === 'cache') {
+        const value = hit.percent == null ? EMPTY : formatCacheHitPercent(hit.percent);
+        return {
+          key: item.key,
+          label: item.label,
+          value,
+          tone: hit.percent == null ? undefined : item.color,
+          info
+        };
+      }
+      const latest = postgresLatest(metricMap, item.metric);
+      const tone = item.key === 'deadlock'
+        ? postgresDeadlockTone(latest, item.color)
+        : (latest == null ? undefined : item.color);
       return {
         key: item.key,
         label: item.label,
-        value,
-        tone: hit.percent == null ? undefined : item.color,
+        value: latest == null ? EMPTY : joinMetric(latest, item.unit),
+        tone,
         info
       };
-    }
-    const latest = postgresLatest(metricMap, item.metric);
-    const tone = item.key === 'deadlock'
-      ? postgresDeadlockTone(latest, item.color)
-      : (latest == null ? undefined : item.color);
-    return {
-      key: item.key,
-      label: item.label,
-      value: latest == null ? EMPTY : joinMetric(latest, item.unit),
-      tone,
-      info
-    };
-  }), [hit.percent, metricMap]);
+    });
+    metricCards.push({
+      key: ALERT_KPI_KEY,
+      label: ALERT_KPI_LABEL,
+      value: postgresAlertKpiValue(alertCount),
+      tone: postgresAlertKpiTone(alertCount),
+      onActivate: onOpenAlerts,
+      expanded: alertsOpen
+    });
+    return metricCards;
+  }, [alertCount, alertsOpen, hit.percent, metricMap, onOpenAlerts]);
+
+  const loadingTiles: KpiTileModel[] = [
+    ...KPI_SPECS.map((item) => ({ key: item.key, label: item.label, value: '' })),
+    { key: ALERT_KPI_KEY, label: ALERT_KPI_LABEL, value: '' }
+  ];
 
   return (
     <div data-postgres-pane="overview" className="contents">
       <ProSection title="健康概览">
         <KpiTileRow
-          items={healthLoading ? KPI_SPECS.map((item) => ({ key: item.key, label: item.label, value: '' })) : cards}
+          items={healthLoading ? loadingTiles : cards}
           loading={healthLoading}
-          columns={4}
+          columns={5}
         />
       </ProSection>
       <ProSection
