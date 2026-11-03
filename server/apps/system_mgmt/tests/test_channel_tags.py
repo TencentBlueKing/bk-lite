@@ -2,7 +2,7 @@ import pytest
 from django.core.management import call_command
 from rest_framework.test import APIRequestFactory, force_authenticate
 
-from apps.system_mgmt.models import ChannelChoices
+from apps.system_mgmt.models import ChannelChoices, NotificationTag
 from apps.system_mgmt.viewset.channel_viewset import ChannelViewSet
 
 pytestmark = pytest.mark.django_db
@@ -133,10 +133,38 @@ def test_tag_catalog_is_global_and_survives_channel_delete(authenticated_user):
     force_authenticate(catalog_request, user=user)
     catalog = ChannelViewSet.as_view({"get": "tag_catalog"})(catalog_request)
     assert catalog.status_code == 200
-    assert {"key": "system", "value": "itsm"} in catalog.data
-    assert {"key": "用途", "value": "测试环境"} in catalog.data
+    assert {"key": "system", "value": "itsm"} in catalog.data["results"]
+    assert {"key": "用途", "value": "测试环境"} in catalog.data["results"]
 
     user.permission = {"system-manager": {"channel_list-Add"}}
+    NotificationTag.objects.filter(key="用途", value="ITSM").delete()
     reused = _create(user, ["用途:测试环境", "用途:ITSM"])
     assert reused.status_code == 201
-    assert reused.data["tag"] == ["用途:ITSM", "用途:测试环境"]
+    assert reused.data["tag"] == ["用途:测试环境", "用途:ITSM"]
+
+
+def test_tag_catalog_pages_and_rejects_unbounded_size(authenticated_user):
+    user = _grant(authenticated_user, "channel_list-View")
+    NotificationTag.objects.create(key="pagekey", value="one")
+    NotificationTag.objects.create(key="pagekey", value="two")
+
+    def fetch(**params):
+        request = APIRequestFactory().get("/system_mgmt/channel/tag_catalog/", params)
+        force_authenticate(request, user=user)
+        return ChannelViewSet.as_view({"get": "tag_catalog"})(request)
+
+    first = fetch(page=1, page_size=1)
+    assert first.status_code == 200
+    assert first.data["page_size"] == 1
+    assert len(first.data["results"]) == 1
+    last = fetch(page=first.data["count"], page_size=1)
+    assert last.data["results"] == [{"key": "pagekey", "value": "two"}]
+    previous = fetch(page=first.data["count"] - 1, page_size=1)
+    assert previous.data["results"] == [{"key": "pagekey", "value": "one"}]
+
+    clamped = fetch(page_size=501)
+    assert clamped.status_code == 200
+    assert clamped.data["page_size"] == 500
+
+    rejected = fetch(page_size=-1)
+    assert rejected.status_code == 400

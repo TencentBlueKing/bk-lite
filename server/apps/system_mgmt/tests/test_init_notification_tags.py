@@ -18,3 +18,15 @@ def test_init_notification_tags_inserts_catalog_rows_and_rerun_keeps_them():
     assert rows[0].domain == "domain.com"
     assert Channel.objects.filter(tags__in=rows).count() == 0
     assert IMNotificationChannel.objects.filter(tags__in=rows).count() == 0
+
+
+def test_init_notification_tags_keeps_an_existing_row():
+    NotificationTag.objects.filter(key="system", value="itsm").delete()
+    kept = NotificationTag.objects.create(key="system", value="itsm", created_by="kept-operator", domain="kept.example")
+
+    call_command("init_notification_tags")
+
+    kept.refresh_from_db()
+    assert NotificationTag.objects.filter(key="system", value="itsm").count() == 1
+    assert kept.created_by == "kept-operator"
+    assert kept.domain == "kept.example"

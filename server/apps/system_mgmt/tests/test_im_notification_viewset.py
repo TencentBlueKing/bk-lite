@@ -500,8 +500,8 @@ def test_im_channel_saves_tags_from_the_shared_catalog(api_client, authenticated
 
     catalog = api_client.get("/api/v1/system_mgmt/channel/tag_catalog/")
     assert catalog.status_code == 200
-    assert {"key": "system", "value": "itsm"} in catalog.data
-    assert {"key": "用途", "value": "测试环境"} in catalog.data
+    assert {"key": "system", "value": "itsm"} in catalog.data["results"]
+    assert {"key": "用途", "value": "测试环境"} in catalog.data["results"]
 
     updated = api_client.put(
         f"/api/v1/system_mgmt/im_notification_channel/{created.data['id']}/",

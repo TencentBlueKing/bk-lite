@@ -15,6 +15,9 @@ from apps.system_mgmt.utils.channel_utils import send_by_custom_webhook, send_by
 from apps.system_mgmt.utils.network_whitelist_error import NETWORK_WHITELIST_REQUIRED, build_network_whitelist_error_payload
 from apps.system_mgmt.utils.operation_log_utils import log_operation
 
+_TAG_CATALOG_PAGE_SIZE_DEFAULT = 200
+_TAG_CATALOG_PAGE_SIZE_MAX = 500
+
 
 class ChannelFilter(FilterSet):
     name = filters.CharFilter(field_name="name", lookup_expr="icontains")
@@ -152,11 +155,37 @@ class ChannelViewSet(viewsets.ModelViewSet, GenericViewSetFun):
             query |= Q(team__contains=group_id)
         return queryset.filter(query)
 
+    def _tag_catalog_page(self, request):
+        loader = self._get_loader(request)
+        message = loader.get("error.invalid_page", "page and page_size must be positive integers")
+        try:
+            page = int(request.GET.get("page", 1))
+            raw_page_size = request.GET.get("page_size", _TAG_CATALOG_PAGE_SIZE_DEFAULT)
+            page_size = int(raw_page_size)
+        except (TypeError, ValueError):
+            return None, None, JsonResponse({"result": False, "message": message}, status=400)
+        if page < 1 or page_size < 1:
+            return None, None, JsonResponse({"result": False, "message": message}, status=400)
+        return page, min(page_size, _TAG_CATALOG_PAGE_SIZE_MAX), None
+
     @action(methods=["GET"], detail=False, url_path="tag_catalog")
     @HasPermission("channel_list-View")
     def tag_catalog(self, request):
-        tags = NotificationTag.objects.order_by("id")
-        return Response([{"key": tag.key, "value": tag.value} for tag in tags])
+        page, page_size, error = self._tag_catalog_page(request)
+        if error is not None:
+            return error
+        queryset = NotificationTag.objects.order_by("id")
+        count = queryset.count()
+        start = (page - 1) * page_size
+        tags = queryset[start : start + page_size]
+        return Response(
+            {
+                "count": count,
+                "page": page,
+                "page_size": page_size,
+                "results": [{"key": tag.key, "value": tag.value} for tag in tags],
+            }
+        )
 
     @HasPermission("channel_list-View")
     def list(self, request, *args, **kwargs):

@@ -190,6 +190,26 @@ def test_system_tenant_lists_own_external_channels_only(tenants, local_docs_cata
     assert "实时返回" in catalog["summary"]
 
 
+def test_list_page_is_limited_in_the_database(tenants):
+    from django.db import connection
+    from django.test.utils import CaptureQueriesContext
+
+    with CaptureQueriesContext(connection) as captured:
+        listed = APIClient().get(LIST_URL, {"page": 1, "page_size": 1}, **_acting(tenants.a))
+    assert listed.status_code == 200, listed.json()
+    body = listed.json()["data"]
+    assert body["count"] >= 2
+    assert body["page_size"] == 1
+    assert len(body["results"]) == 1
+    assert any("LIMIT" in query["sql"].upper() for query in captured.captured_queries)
+
+    second = APIClient().get(LIST_URL, {"page": 2, "page_size": 1}, **_acting(tenants.a))
+    assert second.status_code == 200
+    assert second.json()["data"]["results"][0]["id"] != body["results"][0]["id"] or (
+        second.json()["data"]["results"][0]["channel_type"] != body["results"][0]["channel_type"]
+    )
+
+
 def test_list_returns_selected_tags_and_filters_by_any_match(tenants):
     from apps.system_mgmt.models import NotificationTag
 

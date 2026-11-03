@@ -2,7 +2,7 @@
 
 import uuid
 
-from django.db.models import Q
+from django.db.models import CharField, F, Q, Value
 
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.openapi.decorators import openapi_expose
@@ -263,11 +263,15 @@ def _users_in_groups_query(group_ids):
 def _paginate(items, page, page_size):
     count = len(items)
     start = (page - 1) * page_size
+    return _page_window(items[start : start + page_size], page, page_size, count)
+
+
+def _page_window(results, page, page_size, count):
     return {
         "count": count,
         "page": page,
         "page_size": page_size,
-        "results": items[start : start + page_size],
+        "results": results,
     }
 
 
@@ -495,21 +499,65 @@ def _channels_matching_tags(queryset, tag_pairs):
     return queryset.filter(matched).distinct()
 
 
-def _catalog_channel_type(channel):
-    if isinstance(channel, IMNotificationChannel):
-        return IMNotificationChannel.CHANNEL_TYPE
-    return channel.channel_type
+def _team_overlap_q(organization_ids):
+    query = Q()
+    for raw in organization_ids or []:
+        try:
+            group_id = int(raw)
+        except (TypeError, ValueError):
+            continue
+        text = str(group_id)
+        query |= Q(team__contains=group_id) | Q(team__contains=[group_id]) | Q(team__contains=text) | Q(team__contains=[text])
+    return query
 
 
-def _external_notification_channels(query_ids, tag_pairs=None):
-    channels = Channel.objects.filter(channel_type__in=_EXTERNAL_NOTIFICATION_CHANNEL_TYPES).prefetch_related("tags").order_by("id")
-    im_channels = IMNotificationChannel.objects.select_related("integration_instance").prefetch_related("tags").order_by("id")
-    scoped = [
-        channel
-        for channel in list(_channels_matching_tags(channels, tag_pairs)) + list(_channels_matching_tags(im_channels, tag_pairs))
-        if _channel_has_organization(channel, query_ids)
-    ]
-    return sorted(scoped, key=lambda channel: (channel.id, _catalog_channel_type(channel)))
+def _catalog_keys(queryset, catalog_type):
+    if catalog_type is None:
+        labeled = queryset.annotate(catalog_type=F("channel_type"))
+    else:
+        labeled = queryset.annotate(catalog_type=Value(catalog_type, output_field=CharField(max_length=30)))
+    return labeled.order_by().values("id", "catalog_type").distinct()
+
+
+def _channels_for_catalog_keys(keys):
+    channel_ids = [row["id"] for row in keys if row["catalog_type"] != IMNotificationChannel.CHANNEL_TYPE]
+    im_ids = [row["id"] for row in keys if row["catalog_type"] == IMNotificationChannel.CHANNEL_TYPE]
+    channels = {item.id: item for item in Channel.objects.filter(id__in=channel_ids).prefetch_related("tags")}
+    im_channels = {
+        item.id: item for item in IMNotificationChannel.objects.filter(id__in=im_ids).select_related("integration_instance").prefetch_related("tags")
+    }
+    loaded = []
+    for row in keys:
+        if row["catalog_type"] == IMNotificationChannel.CHANNEL_TYPE:
+            item = im_channels.get(row["id"])
+        else:
+            item = channels.get(row["id"])
+        if item is not None:
+            loaded.append(item)
+    return loaded
+
+
+def _notification_channel_page(query_ids, tag_pairs, page, page_size):
+    team_q = _team_overlap_q(query_ids)
+    if not team_q:
+        return _page_window([], page, page_size, 0)
+    channels = _catalog_keys(
+        _channels_matching_tags(
+            Channel.objects.filter(channel_type__in=_EXTERNAL_NOTIFICATION_CHANNEL_TYPES),
+            tag_pairs,
+        ).filter(team_q),
+        None,
+    )
+    im_channels = _catalog_keys(
+        _channels_matching_tags(IMNotificationChannel.objects.all(), tag_pairs).filter(team_q),
+        IMNotificationChannel.CHANNEL_TYPE,
+    )
+    merged = channels.union(im_channels).order_by("id", "catalog_type")
+    count = merged.count()
+    start = (page - 1) * page_size
+    keys = list(merged[start : start + page_size])
+    results = [_openapi_notification_channel(channel) for channel in _channels_for_catalog_keys(keys)]
+    return _page_window(results, page, page_size, count)
 
 
 def _user_in_groups(user, query_ids):
@@ -566,9 +614,8 @@ def openapi_list_notification_channels(
     if error is not None:
         return error
     if not query_ids:
-        return _paginate([], page, page_size)
-    serialized = [_openapi_notification_channel(channel) for channel in _external_notification_channels(query_ids, tag)]
-    return _paginate(serialized, page, page_size)
+        return _page_window([], page, page_size, 0)
+    return _notification_channel_page(query_ids, tag, page, page_size)
 
 
 @openapi_expose(
