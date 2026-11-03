@@ -2,8 +2,8 @@
 
 ## 海外漏扫报告：OpenSSL、Log4j 与系统 Python 工具
 
-Fusion 执行器 OpenSSL 1.1.1k 的发行重建由社区 PR #6862 处理（固定 OpenSSL 3.5.9，
-并通过 `--verify-release` 校验最终冻结程序）。最终发行 Dockerfile 也必须运行该校验；
+Fusion 执行器 OpenSSL 1.1.1k 的升级构建由 PR #6862 提供（固定 OpenSSL 3.5.9），
+需要重新构建并分发完整执行器制品。镜像构建不再调用额外的执行器校验参数；
 仅更新宿主机 OpenSSL 或 Fusion 的 Ubuntu 系统包不能替换 `_internal` 中的库。
 
 报告中的 Conductor 3.32.1 携带 Log4j 2.25.4，Elasticsearch 7.17.21 携带 2.17.1。
@@ -149,7 +149,7 @@ FalkorDB 检测到的 Node.js 24.14.0 不会因更新 libbrotli 而自动修复�
 - `LICENSE_IMAGE` 必须由授权服务仓库重建并提供安全镜像摘要。这个门禁检查 Node
   22/24 安全版本，不会把当前 22.23.3 自动变成安全版；未取得镜像时不能宣布全部覆盖。
 - `FUSION_IMAGE` 为重新构建的最终发行镜像，检查系统 libbrotli。OpenSSL
-  仍须由 #6862 的执行器发行验证保证，本 Brotli 门禁不代替 OpenSSL 检查。
+  升级仍需通过 #6862 的专用构建入口重新生成执行器，本 Brotli 门禁不代替 OpenSSL 修复。
 - Web、Server、Stargazer 沿用原构建阶段，部署清单同时锁定它们的实际修复镜像。
   推送在全部候选门禁通过后接入原凭据流程；推送后读取对应仓库 RepoDigest，禁止
   仅凭本地 image ID 或可变标签填写下方清单。
