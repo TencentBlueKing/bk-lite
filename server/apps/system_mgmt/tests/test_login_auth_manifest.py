@@ -22,6 +22,13 @@ def test_feishu_login_auth_manifest_declares_recommended_external_field():
     assert template.default_external_match_field == "user_id"
 
 
+def test_feishu_login_auth_manifest_declares_jsapi_token_url():
+    capability = FEISHU_PROVIDER_MANIFEST.get_capability("login_auth")
+    defaults = {field.key: field.default for field in capability.connection_template}
+
+    assert defaults["login_auth_jsapi_token_url"] == "https://accounts.feishu.cn/oauth/v3/token"
+
+
 def test_feishu_user_sync_manifest_declares_scopes_and_department_batch_endpoints():
     capability = FEISHU_PROVIDER_MANIFEST.get_capability("user_sync")
     defaults = {field.key: field.default for field in capability.connection_template}

@@ -102,7 +102,16 @@ def build_login_auth_redirect(binding: LoginAuthBinding, redirect_uri: str, stat
     return result
 
 
-def login_with_binding(binding_id: int, auth_code: str = "", *, username: str = "", password: str = "", bk_token: str = ""):
+def login_with_binding(
+    binding_id: int,
+    auth_code: str = "",
+    *,
+    username: str = "",
+    password: str = "",
+    bk_token: str = "",
+    evidence_mode: str = "",
+    jsapi_code_type: str = "",
+):
     from apps.system_mgmt.nats.login import get_user_login_token
 
     binding = LoginAuthBinding.objects.select_related("integration_instance").filter(id=binding_id, enabled=True).first()
@@ -131,6 +140,8 @@ def login_with_binding(binding_id: int, auth_code: str = "", *, username: str = 
         username=username,
         password=password,
         bk_token=bk_token,
+        evidence_mode=evidence_mode,
+        jsapi_code_type=jsapi_code_type,
     )
     if not result.success:
         # 外部 API 失败（AD/Feishu/WeChat 拒绝或网络错误），记 ERROR 触发运维告警。
@@ -278,6 +289,40 @@ def _resolve_platform_user(binding: LoginAuthBinding, external_user: dict):
     return user
 
 
+_PUBLIC_EVIDENCE_MODES = ("oauth", "jsapi")
+
+
+def describe_public_client_login(instance) -> dict:
+    runtime_service = RuntimeApplicationService()
+    try:
+        result = runtime_service.execute(
+            provider_key=instance.provider_key,
+            capability_key="login_auth",
+            operation="describe_client_login",
+            config=instance.get_runtime_config(),
+        )
+    except ValueError:
+        return {"evidence_modes": []}
+    except Exception as error:
+        logger.warning(
+            "event=login_auth_client_login_describe_failed provider_key=%s error_type=%s",
+            getattr(instance, "provider_key", ""),
+            type(error).__name__,
+        )
+        return {"evidence_modes": []}
+    if not getattr(result, "success", False):
+        return {"evidence_modes": []}
+
+    payload = result.payload or {}
+    modes = [mode for mode in payload.get("evidence_modes") or [] if mode in _PUBLIC_EVIDENCE_MODES]
+    public = {"evidence_modes": modes}
+    jsapi = payload.get("jsapi") if isinstance(payload.get("jsapi"), dict) else {}
+    app_id = str(jsapi.get("app_id") or "").strip()
+    if "jsapi" in modes and app_id:
+        public["jsapi"] = {"app_id": app_id}
+    return public
+
+
 def serialize_public_login_auth_binding(binding: LoginAuthBinding):
     instance = binding.integration_instance
     return {
@@ -289,6 +334,7 @@ def serialize_public_login_auth_binding(binding: LoginAuthBinding):
         "provider_key": instance.provider_key,
         "integration_instance_id": instance.id,
         "integration_instance_name": instance.name,
+        "client_login": describe_public_client_login(instance),
     }
 
 

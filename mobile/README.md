@@ -43,6 +43,16 @@ pnpm build:h5
 
 H5 固定部署在 `/mobile/h5`，使用同源 `/api/proxy` 和 `/api/auth`，不需要配置 API 地址或 basePath。
 
+### 飞书登录
+
+Mobile 复用系统管理里已经启用的飞书登录认证，不单独建一套应用或用户。
+
+- 工作台免登：飞书客户端打开移动端主页，页面调用 JSAPI `requestAccess` 取 code，再走现有 `login_auth` 换票。客户端低于 6.9 时回退 `requestAuthCode`。
+- 登录页：非飞书环境，或免登失败时，使用同一条登录认证的 OAuth 跳转。回调地址与 PC 相同：`{域名}/api/v1/core/api/login_auth/callback/`。
+- 飞书开放平台需配置：重定向 URL（上面的回调）、H5 可信域名、移动端主页 `{域名}/mobile/h5/`。
+- Server 出网需能访问 `open.feishu.cn` 与 `accounts.feishu.cn`。
+- 企微、钉钉尚未接入。免登壳按厂商注册 `getAuthCode`，目前只有飞书实现。
+
 ### Tauri 前端产物
 
 ```bash

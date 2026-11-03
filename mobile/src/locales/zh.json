@@ -347,7 +347,16 @@
         "backToLogin": "返回登录",
         "systemError": "系统错误",
         "serviceUnavailable": "登录服务暂时不可用，请稍后重试",
-        "logoutIncomplete": "本地已退出，但服务端会话可能未完全注销"
+        "logoutIncomplete": "本地已退出，但服务端会话可能未完全注销",
+        "or": "或",
+        "thirdParty": "第三方",
+        "externalSignIn": "使用{name}登录",
+        "externalUnavailable": "暂时无法发起{name}登录",
+        "externalReturning": "正在完成登录",
+        "silentFailed": "{name}免登未完成，请使用账号登录",
+        "sessionFailed": "{name}登录未完成，请使用账号密码",
+        "oauthFailed": "{name}登录未完成，请重试或使用账号密码",
+        "oauthCancelled": "已取消{name}登录"
     },
     "zoneinfo": {
       "PacificHonolulu": "太平洋/檀香山 (UTC-10)",

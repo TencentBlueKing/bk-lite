@@ -16,6 +16,21 @@ import {
   ExclamationTriangleOutline
 } from 'antd-mobile-icons';
 import { withBasePath } from '@/utils/basePath';
+import { ExternalLoginButtons } from '@/auth/im-login/external-login-buttons';
+import { consumeLoginNotice } from '@/auth/im-login/notices';
+import type { LoginNotice } from '@/auth/im-login/types';
+
+const LOGIN_NOTICE_KEYS: Record<LoginNotice['reason'], string> = {
+  jsapi_failed: 'login.silentFailed',
+  exchange_failed: 'login.silentFailed',
+  session_failed: 'login.sessionFailed',
+  oauth_failed: 'login.oauthFailed',
+  oauth_cancelled: 'login.oauthCancelled',
+};
+
+function noticeMessageKey(notice: LoginNotice) {
+  return LOGIN_NOTICE_KEYS[notice.reason] || 'login.oauthFailed';
+}
 
 export default function LoginPage() {
   const { t } = useTranslation();
@@ -32,6 +47,14 @@ export default function LoginPage() {
   const retryTimerRef = React.useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
+    const notice = consumeLoginNotice(window.sessionStorage);
+    if (notice) {
+      const name = notice.name || t('login.thirdParty');
+      Toast.show({
+        content: t(noticeMessageKey(notice), undefined, { name }),
+        icon: 'fail',
+      });
+    }
     fetchDomainList();
 
     return () => {
@@ -306,6 +329,7 @@ export default function LoginPage() {
               >
                 {isLoading ? t('login.signingIn') : t('login.signIn')}
               </Button>
+              <ExternalLoginButtons disabled={isLoading || isInitializing} />
             </form>
           )}
 

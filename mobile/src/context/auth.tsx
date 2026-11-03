@@ -39,6 +39,8 @@ import {
   logoutH5Session,
   restoreH5Session,
 } from '@/auth/h5Auth';
+import { runBrowserSilentLogin } from '@/auth/im-login/browser';
+import { writeLoginNotice } from '@/auth/im-login/notices';
 import { clearCurrentTeamCookie, getCurrentTeamCookie, getIncludeChildrenCookie, setCurrentTeamCookie, setIncludeChildrenCookie, syncCurrentTeamCookie } from '@/utils/teamCookie';
 import { clearCachedAccountOverview } from '@/utils/accountOverviewCache';
 import {
@@ -134,7 +136,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const { setLocale } = useLocale();
   const { t } = useTranslation();
 
-  const publicPaths = ['/login', '/register', '/forgot-password'];
+  const publicPaths = ['/login', '/register', '/forgot-password', '/auth/external'];
   const isPublicPath = Boolean(pathname && publicPaths.includes(pathname));
 
   const resetLocalState = useCallback(async () => {
@@ -244,6 +246,32 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => setUnauthorizedHandler(null);
   }, [handleUnauthorized]);
 
+  const trySilentImLogin = useCallback(async () => {
+    if (isTauriApp() || typeof window === 'undefined') return false;
+    if (window.location.pathname.includes('/auth/external')) return false;
+    try {
+      const outcome = await runBrowserSilentLogin({
+        signIn: (provider, options) => signIn(provider, options),
+        getSession,
+        signOut: (options) => signOut(options),
+      });
+      if (outcome.status === 'success') {
+        await establishAuthenticatedState(outcome.token, null, false);
+        return true;
+      }
+      if (outcome.status === 'degraded') {
+        writeLoginNotice(window.sessionStorage, outcome.notice);
+      }
+    } catch (error) {
+      if (error instanceof RejectedSessionError || error instanceof UnauthorizedRequestError) {
+        throw error;
+      }
+      console.error('Silent IM login failed:', error);
+      writeLoginNotice(window.sessionStorage, { reason: 'jsapi_failed', name: '' });
+    }
+    return false;
+  }, [establishAuthenticatedState]);
+
   useEffect(() => {
     let active = true;
 
@@ -273,6 +301,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           clearSession: clearH5Session,
         });
         if (!sessionToken) {
+          const signedIn = await trySilentImLogin();
+          if (signedIn) return;
           clearCurrentTeamCookie();
           return;
         }
@@ -298,7 +328,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => {
       active = false;
     };
-  }, [clearH5Session, clearRejectedSession, establishAuthenticatedState, initializationAttempt, resetLocalState]);
+  }, [clearH5Session, clearRejectedSession, establishAuthenticatedState, initializationAttempt, resetLocalState, trySilentImLogin]);
 
   useEffect(() => {
     if (isInitializing || initializationError) return;

@@ -21,6 +21,7 @@ from apps.core.services.legacy_third_login_service import (
 )
 from apps.core.services.login_auth_request_service import (
     AUTH_REQUEST_TTL,
+    LOGIN_AUTH_RESULT_PATH,
     build_auth_request_state,
     create_auth_request,
     create_browser_binding_token,
@@ -147,11 +148,19 @@ def _is_safe_legacy_external_callback_url(callback_url: str) -> bool:
     return is_safe_legacy_external_callback_url(callback_url)
 
 
+def _login_auth_result_path(auth_request) -> str:
+    candidate = str((auth_request or {}).get("result_path") or "")
+    if candidate and _is_safe_relative_callback_url(candidate):
+        return candidate
+    return LOGIN_AUTH_RESULT_PATH
+
+
 def _build_login_auth_result_redirect(
     request,
     status_key: str,
     message: str,
     redirect_origin: str | None = None,
+    result_path: str | None = None,
 ):
     """生成 OAuth callback 完成后的前端结果页重定向。
 
@@ -168,7 +177,8 @@ def _build_login_auth_result_redirect(
             "message": message,
         }
     )
-    path = f"/auth/signin/login-auth-result?{query_string}"
+    path_name = result_path if result_path and _is_safe_relative_callback_url(result_path) else LOGIN_AUTH_RESULT_PATH
+    path = f"{path_name}?{query_string}"
     if redirect_origin:
         return HttpResponseRedirect(f"{redirect_origin.rstrip('/')}{path}")
     return HttpResponseRedirect(path)
@@ -319,8 +329,23 @@ def login(request):
         c_url = data.get("redirect_url", "").strip()  # 获取回调URL
 
         if login_auth_binding_id:
+            evidence_mode = str(data.get("evidence_mode") or "").strip()
+            jsapi_code_type = str(data.get("jsapi_code_type") or "").strip()
+            if evidence_mode not in ("", "oauth", "jsapi") or jsapi_code_type not in ("", "request_access", "request_auth_code"):
+                return JsonResponse({"result": False, "message": "Invalid login evidence"})
             client = SystemMgmt()
-            res = client.login_with_binding(login_auth_binding_id, auth_code, username=username, password=password)
+            login_kwargs = {}
+            if evidence_mode:
+                login_kwargs["evidence_mode"] = evidence_mode
+            if jsapi_code_type:
+                login_kwargs["jsapi_code_type"] = jsapi_code_type
+            res = client.login_with_binding(
+                login_auth_binding_id,
+                auth_code,
+                username=username,
+                password=password,
+                **login_kwargs,
+            )
             log_username = res.get("data", {}).get("username") or username or "unknown"
             if not res.get("result"):
                 logger.warning(f"Binding login failed for binding: {login_auth_binding_id}")
@@ -980,6 +1005,7 @@ def start_login_auth(request):
     try:
         data = _parse_request_data(request)
         callback_url = (data.get("callback_url") or "/").strip() or "/"
+        result_path = (data.get("result_path") or "").strip()
         redirect_origin = (data.get("redirect_origin") or "").strip() or None
         legacy_external_callback_url = (data.get("legacy_external_callback_url") or "").strip() or None
         legacy_third_login_code = (data.get("legacy_third_login_code") or "").strip() or None
@@ -987,6 +1013,8 @@ def start_login_auth(request):
 
         if not _is_safe_relative_callback_url(callback_url):
             return JsonResponse({"result": False, "message": "callback_url must be an in-site relative path"}, status=400)
+        if result_path and not _is_safe_relative_callback_url(result_path):
+            return JsonResponse({"result": False, "message": "result_path must be an in-site relative path"}, status=400)
         if legacy_external_callback_url and not legacy_third_login_code:
             return JsonResponse({"result": False, "message": "legacy_external_callback_url requires third_login_code"}, status=400)
         if legacy_external_callback_url and not _is_safe_legacy_external_callback_url(legacy_external_callback_url):
@@ -1012,6 +1040,7 @@ def start_login_auth(request):
             legacy_external_callback_url=legacy_external_callback_url,
             legacy_third_login_code=legacy_third_login_code,
             browser_binding_token=browser_binding_token,
+            result_path=result_path or LOGIN_AUTH_RESULT_PATH,
         )
         state = build_auth_request_state(
             auth_request_id=auth_request["auth_request_id"],
@@ -1124,6 +1153,7 @@ def login_auth_callback(request):
     # 集中读一次(后续 6 处 status 分支共用);state 解析失败/auth_request 缺失分支
     # 走相对路径,这里 redirect_origin 自然为 None
     redirect_origin = (auth_request or {}).get("redirect_origin") or None
+    result_path = _login_auth_result_path(auth_request)
 
     if not validate_browser_binding(
         auth_request,
@@ -1134,6 +1164,7 @@ def login_auth_callback(request):
             "failed",
             "认证请求与发起浏览器不匹配，请返回原页面重新发起认证。",
             redirect_origin=redirect_origin,
+            result_path=result_path,
         )
 
     current_status = auth_request.get("status", "pending")
@@ -1149,16 +1180,29 @@ def login_auth_callback(request):
             current_status,
             terminal_messages.get(current_status, "认证状态已完成，可返回原页面查看结果。"),
             redirect_origin=redirect_origin,
+            result_path=result_path,
         )
 
     if provider_error:
         message = error_description or provider_error
         update_auth_request_status(auth_request_id, status="cancelled", error_message=message)
-        return _build_login_auth_result_redirect(request, "cancelled", "认证已取消，可返回原页面重试。", redirect_origin=redirect_origin)
+        return _build_login_auth_result_redirect(
+            request,
+            "cancelled",
+            "认证已取消，可返回原页面重试。",
+            redirect_origin=redirect_origin,
+            result_path=result_path,
+        )
 
     if not code:
         update_auth_request_status(auth_request_id, status="failed", error_message="Missing provider code")
-        return _build_login_auth_result_redirect(request, "failed", "认证失败，请返回原页面重试。", redirect_origin=redirect_origin)
+        return _build_login_auth_result_redirect(
+            request,
+            "failed",
+            "认证失败，请返回原页面重试。",
+            redirect_origin=redirect_origin,
+            result_path=result_path,
+        )
 
     try:
         client = SystemMgmt()
@@ -1166,12 +1210,24 @@ def login_auth_callback(request):
     except Exception as e:
         logger.error(f"Login auth callback error: {e}")
         update_auth_request_status(auth_request_id, status="failed", error_message=str(e))
-        return _build_login_auth_result_redirect(request, "failed", "认证失败，请返回原页面重试。", redirect_origin=redirect_origin)
+        return _build_login_auth_result_redirect(
+            request,
+            "failed",
+            "认证失败，请返回原页面重试。",
+            redirect_origin=redirect_origin,
+            result_path=result_path,
+        )
 
     if not result.get("result"):
         error_message = result.get("message", "Login auth callback failed")
         update_auth_request_status(auth_request_id, status="failed", error_message=error_message)
-        return _build_login_auth_result_redirect(request, "failed", "认证失败，请返回原页面重试。", redirect_origin=redirect_origin)
+        return _build_login_auth_result_redirect(
+            request,
+            "failed",
+            "认证失败，请返回原页面重试。",
+            redirect_origin=redirect_origin,
+            result_path=result_path,
+        )
 
     login_result = result.get("data", {}) or {}
     login_result.setdefault("redirect_url", state_payload["callback_url"])
@@ -1198,7 +1254,13 @@ def login_auth_callback(request):
         login_result=login_result,
     )
 
-    response = _build_login_auth_result_redirect(request, "success", "认证已完成，可返回原页面继续。", redirect_origin=redirect_origin)
+    response = _build_login_auth_result_redirect(
+        request,
+        "success",
+        "认证已完成，可返回原页面继续。",
+        redirect_origin=redirect_origin,
+        result_path=result_path,
+    )
     if login_result.get("token"):
         _set_auth_cookie_on_response(response, login_result["token"])
     return response

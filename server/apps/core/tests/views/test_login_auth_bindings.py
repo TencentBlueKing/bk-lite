@@ -117,6 +117,45 @@ class TestLoginAuthBindingViews:
         assert response.cookies["bklite_token"].value == "binding-token"
 
     @patch("apps.core.views.index_view.SystemMgmt")
+    def test_login_with_binding_forwards_jsapi_evidence(self, mock_system_mgmt):
+        from apps.core.views.index_view import login
+
+        mock_system_mgmt.return_value.login_with_binding.return_value = {
+            "result": True,
+            "data": {"username": "feishu-user", "token": "binding-token"},
+        }
+        request = self._make_post_request(
+            {
+                "binding_id": 5,
+                "auth_code": "jsapi-code",
+                "evidence_mode": "jsapi",
+                "jsapi_code_type": "request_access",
+            }
+        )
+        response = login(request)
+
+        assert response.status_code == 200
+        mock_system_mgmt.return_value.login_with_binding.assert_called_once_with(
+            5,
+            "jsapi-code",
+            username="",
+            password="",
+            evidence_mode="jsapi",
+            jsapi_code_type="request_access",
+        )
+        assert "jsapi-code" not in response.content.decode()
+
+    @patch("apps.core.views.index_view.SystemMgmt")
+    def test_login_with_binding_rejects_unknown_evidence_mode(self, mock_system_mgmt):
+        from apps.core.views.index_view import login
+
+        request = self._make_post_request({"binding_id": 5, "auth_code": "jsapi-code", "evidence_mode": "qr"})
+        response = login(request)
+
+        assert json.loads(response.content)["result"] is False
+        mock_system_mgmt.return_value.login_with_binding.assert_not_called()
+
+    @patch("apps.core.views.index_view.SystemMgmt")
     def test_login_without_binding_keeps_legacy_password_flow(self, mock_system_mgmt):
         from apps.core.views.index_view import login
 
@@ -385,9 +424,7 @@ class TestLoginAuthBindingViews:
         assert response.status_code == 200
         # validate_redirect_origin 只校验 URL 格式,跨域不再拦截,
         # 因此 redirect_origin 原样入 cache 并用于构造 redirect_uri。
-        assert mock_build_redirect.call_args.kwargs["redirect_uri"] == (
-            "https://evil.example/api/v1/core/api/login_auth/callback/"
-        )
+        assert mock_build_redirect.call_args.kwargs["redirect_uri"] == ("https://evil.example/api/v1/core/api/login_auth/callback/")
         assert mock_create_auth_request.call_args.kwargs["redirect_origin"] == "https://evil.example"
 
     @patch.dict(os.environ, {}, clear=False)
@@ -436,9 +473,7 @@ class TestLoginAuthBindingViews:
         response = start_login_auth(request)
 
         assert response.status_code == 200
-        assert mock_build_redirect.call_args.kwargs["redirect_uri"] == (
-            "https://other.example/api/v1/core/api/login_auth/callback/"
-        )
+        assert mock_build_redirect.call_args.kwargs["redirect_uri"] == ("https://other.example/api/v1/core/api/login_auth/callback/")
 
     @patch.dict(os.environ, {}, clear=False)
     def test_get_login_auth_callback_uri_falls_back_to_request_origin_when_env_missing(self):
@@ -513,6 +548,62 @@ class TestLoginAuthBindingViews:
         assert data["result"] is True
         assert data["data"]["login_url"] == "https://example.com/feishu"
 
+    @patch("apps.core.views.index_view.build_login_auth_redirect")
+    @patch("apps.core.views.index_view.create_auth_request")
+    @patch("apps.core.views.index_view._get_login_auth_binding_by_id")
+    def test_start_login_auth_stores_in_site_result_path(
+        self,
+        mock_get_binding,
+        mock_create_auth_request,
+        mock_build_redirect,
+    ):
+        from apps.core.views.index_view import start_login_auth
+
+        binding = MagicMock()
+        binding.id = 5
+        binding.integration_instance.provider_key = "feishu"
+        mock_get_binding.return_value = binding
+        mock_create_auth_request.return_value = {
+            "auth_request_id": "auth-1",
+            "poll_token": "poll-1",
+            "expires_at": "2026-06-12T10:00:00+00:00",
+        }
+        mock_build_redirect.return_value = MagicMock(
+            success=True,
+            payload={"authorize_url": "https://example.com/feishu"},
+            summary="",
+            to_dict=MagicMock(return_value={}),
+        )
+
+        request = RequestFactory().post(
+            "/api/v1/core/api/start_login_auth/",
+            data=json.dumps(
+                {
+                    "binding_id": 5,
+                    "callback_url": "/mobile/h5/",
+                    "result_path": "/mobile/h5/auth/external",
+                }
+            ),
+            content_type="application/json",
+        )
+        response = start_login_auth(request)
+
+        assert response.status_code == 200
+        assert mock_create_auth_request.call_args.kwargs["result_path"] == "/mobile/h5/auth/external"
+
+    def test_start_login_auth_rejects_external_result_path(self):
+        from apps.core.views.index_view import start_login_auth
+
+        request = RequestFactory().post(
+            "/api/v1/core/api/start_login_auth/",
+            data=json.dumps({"binding_id": 5, "callback_url": "/", "result_path": "https://attacker.example/phish"}),
+            content_type="application/json",
+        )
+        response = start_login_auth(request)
+
+        assert response.status_code == 400
+        assert json.loads(response.content)["message"] == "result_path must be an in-site relative path"
+
     @patch("apps.core.views.index_view.validate_poll_token")
     @patch("apps.core.views.index_view.get_auth_request")
     def test_login_auth_status_requires_matching_poll_token(self, mock_get_auth_request, mock_validate_poll_token):
@@ -537,9 +628,7 @@ class TestLoginAuthBindingViews:
         mock_get_auth_request.return_value = auth_request
         api_client.cookies["bklite_login_auth_browser_auth-1"] = other_browser_token
 
-        response = api_client.get(
-            f"/api/v1/core/api/login_auth_requests/auth-1/status?poll_token={auth_request['poll_token']}"
-        )
+        response = api_client.get(f"/api/v1/core/api/login_auth_requests/auth-1/status?poll_token={auth_request['poll_token']}")
         data = response.json()
 
         assert response.status_code == 403
@@ -553,9 +642,7 @@ class TestLoginAuthBindingViews:
         )
         mock_get_auth_request.return_value = auth_request
 
-        response = api_client.get(
-            f"/api/v1/core/api/login_auth_requests/auth-1/status?poll_token={auth_request['poll_token']}"
-        )
+        response = api_client.get(f"/api/v1/core/api/login_auth_requests/auth-1/status?poll_token={auth_request['poll_token']}")
         data = response.json()
 
         assert response.status_code == 403
@@ -570,9 +657,7 @@ class TestLoginAuthBindingViews:
         mock_get_auth_request.return_value = auth_request
         api_client.cookies["bklite_login_auth_browser_auth-1"] = origin_browser_token
 
-        response = api_client.get(
-            f"/api/v1/core/api/login_auth_requests/auth-1/status?poll_token={auth_request['poll_token']}"
-        )
+        response = api_client.get(f"/api/v1/core/api/login_auth_requests/auth-1/status?poll_token={auth_request['poll_token']}")
         data = response.json()
 
         assert response.status_code == 200
@@ -641,6 +726,41 @@ class TestLoginAuthBindingViews:
         )
         self._assert_callback_redirect(response, "success", "认证已完成，可返回原页面继续。")
         assert response.cookies["bklite_token"].value == "binding-token"
+
+    @patch("apps.core.views.index_view.get_auth_request")
+    @patch("apps.core.views.index_view.parse_auth_request_state")
+    @patch("apps.core.views.index_view.SystemMgmt")
+    @patch("apps.core.views.index_view.update_auth_request_status")
+    def test_login_auth_callback_redirects_to_stored_result_path(
+        self,
+        mock_update_status,
+        mock_system_mgmt,
+        mock_parse_state,
+        mock_get_auth_request,
+    ):
+        from apps.core.views.index_view import login_auth_callback
+
+        mock_parse_state.return_value = {
+            "auth_request_id": "auth-1",
+            "binding_id": 5,
+            "callback_url": "/mobile/h5/",
+        }
+        auth_request, origin_browser_token, _other_browser_token = self._make_bound_auth_request()
+        auth_request["result_path"] = "/mobile/h5/auth/external"
+        mock_get_auth_request.return_value = auth_request
+        mock_system_mgmt.return_value.login_with_binding.return_value = {
+            "result": True,
+            "data": {"id": 9, "username": "feishu-user", "token": "binding-token"},
+        }
+
+        request = RequestFactory().get("/api/v1/core/api/login_auth/callback/?state=signed&code=auth-code")
+        request.COOKIES["bklite_login_auth_browser_auth-1"] = origin_browser_token
+        response = login_auth_callback(request)
+
+        parsed = urlparse(response["Location"])
+        assert parsed.path == "/mobile/h5/auth/external"
+        assert parse_qs(parsed.query)["status"] == ["success"]
+        mock_update_status.assert_called_once()
 
     @patch("apps.core.views.index_view.get_auth_request")
     @patch("apps.core.views.index_view.parse_auth_request_state")
@@ -777,9 +897,7 @@ class TestLoginAuthBindingViews:
         }
         mock_get_auth_request.return_value = {"auth_request_id": "auth-1", "status": "pending"}
 
-        request = RequestFactory().get(
-            "/api/v1/core/api/login_auth/callback/?state=signed&error=access_denied&error_description=user_cancelled"
-        )
+        request = RequestFactory().get("/api/v1/core/api/login_auth/callback/?state=signed&error=access_denied&error_description=user_cancelled")
         response = login_auth_callback(request)
 
         mock_update_status.assert_called_once_with("auth-1", status="cancelled", error_message="user_cancelled")
@@ -1111,10 +1229,13 @@ class TestLoginAuthRequestService:
         request.META["HTTP_HOST"] = "internal.example.test"
         request.META["HTTP_ORIGIN"] = "https://other.example"
 
-        assert service.get_login_auth_callback_uri(
-            request=request,
-            redirect_origin="https://other.example",
-        ) == "https://other.example/api/v1/core/api/login_auth/callback/"
+        assert (
+            service.get_login_auth_callback_uri(
+                request=request,
+                redirect_origin="https://other.example",
+            )
+            == "https://other.example/api/v1/core/api/login_auth/callback/"
+        )
 
     def test_get_login_auth_callback_uri_returns_empty_when_request_and_origin_missing(self):
         service = _load_login_auth_request_service()

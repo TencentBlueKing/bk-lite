@@ -347,7 +347,16 @@
         "backToLogin": "Back to Login",
         "systemError": "System error",
         "serviceUnavailable": "The sign-in service is temporarily unavailable. Try again later.",
-        "logoutIncomplete": "You signed out locally, but the server session may still be active"
+        "logoutIncomplete": "You signed out locally, but the server session may still be active",
+        "or": "or",
+        "thirdParty": "SSO",
+        "externalSignIn": "Sign in with {name}",
+        "externalUnavailable": "Unable to start {name} sign-in",
+        "externalReturning": "Completing sign-in",
+        "silentFailed": "{name} sign-in did not finish. Use your account instead.",
+        "sessionFailed": "{name} sign-in did not finish. Use your account password.",
+        "oauthFailed": "{name} sign-in did not finish. Retry or use your account password.",
+        "oauthCancelled": "{name} sign-in was cancelled"
     },
     "zoneinfo": {
       "PacificHonolulu": "Pacific/Honolulu (UTC-10)",

@@ -50,6 +50,10 @@ const devRewrites = !isProduction ? {
         destination: `${devProxyTarget}/api/v1/:path*/`,
       },
       {
+        source: '/api/v1/core/api/login_auth/callback/',
+        destination: `${devProxyTarget}/api/v1/core/api/login_auth/callback/`,
+      },
+      {
         source: '/api/auth/:path*',
         destination: `${devAuthProxyTarget}/api/auth/:path*`,
       },
