@@ -129,6 +129,80 @@ def test_pc_run_writes_gauge_rows_when_round_metadata_is_missing(monkeypatch):
     assert result["__task_format_data__"]["delete"] == []
 
 
+def test_complete_windows_round_keeps_the_pc_it_just_wrote(monkeypatch):
+    """插件先写入 PC，再把模型结果交给通用对账。完整快照不能把刚写入的那台删掉。"""
+    from apps.cmdb.constants.constants import DataCleanupStrategy
+    from apps.cmdb.tests.test_pc_reconcile_service import InMemoryGraph
+    from apps.cmdb_enterprise.collect.pc import PCCollectionPlugin
+
+    graph = InMemoryGraph()
+    monkeypatch.setattr("apps.cmdb.services.pc_discovery.GraphClient", lambda *a, **k: graph)
+    monkeypatch.setattr("apps.cmdb.collection.common.GraphClient", lambda *a, **k: graph)
+    monkeypatch.setattr("apps.cmdb.collection.metrics_cannula.GraphClient", lambda *a, **k: graph)
+    monkeypatch.setattr("apps.cmdb.services.model.ModelManage.search_model_attr", lambda model_id: [])
+    monkeypatch.setattr("apps.cmdb.collection.common.write_collect_instance_change_records", lambda *a, **k: None)
+    monkeypatch.setattr("apps.cmdb.services.collect_reconcile.load_write_context", lambda task_id: None)
+    monkeypatch.setattr(
+        "apps.cmdb.services.auto_relation_reconcile.schedule_incoming_rule_full_sync_by_model_ids",
+        lambda *a, **k: None,
+    )
+    inst_name = "WIN-E52E0142-F9D8-AF4E-9017-7E8B53CDEE40"
+    task = SimpleNamespace(
+        id=7,
+        team=[1],
+        model_id="pc",
+        name="pc-windows",
+        data_cleanup_strategy=DataCleanupStrategy.IMMEDIATELY,
+        expire_days=0,
+        instances=[],
+    )
+
+    class _Reader:
+        def __init__(self, _task):
+            pass
+
+        def get_many(self, _lookups, *, model_id):
+            return {}
+
+    def _query_data(self):
+        return {
+            "result": [
+                {
+                    "metric": {
+                        "__name__": "pc_info",
+                        "bk_obj_id": "pc",
+                        "inst_name": inst_name,
+                        "os_type": "windows",
+                        "host_name": "OMCEXCHANGE02",
+                        "ip_addr": "10.11.27.31",
+                        "collect_status": "success",
+                    },
+                    "value": [1753200000, "1"],
+                }
+            ]
+        }
+
+    monkeypatch.setattr(PCCollectionPlugin, "query_data", _query_data)
+    monkeypatch.setattr(PCCollectionPlugin, "round_metadata_reader_factory", _Reader)
+    cannula = MetricsCannula(
+        None,
+        [1],
+        None,
+        7,
+        PCCollectionPlugin,
+        filter_collect_task=False,
+        data_cleanup_strategy=DataCleanupStrategy.IMMEDIATELY,
+        plugin_kwargs={"collect_inst": task, "snapshot_complete": True},
+        reconcile_task_assets=True,
+        task=task,
+    )
+    result = cannula.collect_controller()
+
+    assert inst_name in graph.store
+    deleted = [item.get("inst_name") for item in result.get("pc", {}).get("delete", {}).get("success", [])]
+    assert deleted == []
+
+
 def test_failed_gauge_row_is_not_written(monkeypatch):
     from apps.cmdb.services.pc_discovery import publish_pc_collected_metrics
     from apps.cmdb.tests.test_pc_reconcile_service import InMemoryGraph
