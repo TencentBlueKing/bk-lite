@@ -22,6 +22,18 @@ def U(value: int) -> str:
     return f"123e4567-e89b-42d3-a456-{value:012d}"
 
 
+def _consume_change_record(idempotency_key: str):
+    """消费页面写操作留下的 change_record outbox，返回已落库的操作日志。"""
+    from apps.cmdb.models.change_record import ChangeRecord
+    from apps.cmdb.models.operation import CmdbOperation, CmdbOperationOutbox
+    from apps.cmdb.services.operation_service import OperationService
+
+    operation = CmdbOperation.objects.get(idempotency_key=idempotency_key)
+    event = CmdbOperationOutbox.objects.get(operation=operation, event_type="change_record")
+    assert OperationService.consume_outbox(event.event_id, owner_token="audit-check") is True
+    return ChangeRecord.objects.get(operation_event_id=event.event_id)
+
+
 @pytest.fixture
 def superuser(authenticated_user):
     u = authenticated_user
@@ -343,6 +355,12 @@ def test_create_ok(superuser, monkeypatch):
     assert calls[0]["record_change"] is False
     assert calls[0]["schedule_post_actions"] is False
     assert calls[0]["operation_id"]
+    record = _consume_change_record("create-host-1")
+    assert record.message == "创建模型实例. 来源:手动 模型:host 实例:h"
+    assert record.operator == superuser.username
+    assert record.model_object == "资产实例"
+    assert record.type == "create_entity"
+    assert record.scenario == "ordinary_attribute_change"
 
 
 @pytest.mark.django_db
@@ -384,10 +402,16 @@ def test_destroy_ok(superuser, monkeypatch):
         f"{VIEWS}.InstanceManage.query_entity_by_uuid",
         lambda pk: {"_id": 5, "model_id": "host", "inst_name": "h", "organization": [1]},
     )
-    monkeypatch.setattr(f"{VIEWS}.InstanceManage.instance_batch_delete_by_uuids", lambda *a, **k: None)
+    seen = {}
+
+    def _delete(*args, **kwargs):
+        seen["kwargs"] = kwargs
+
+    monkeypatch.setattr(f"{VIEWS}.InstanceManage.instance_batch_delete_by_uuids", _delete)
     request = _req("delete", superuser)
     response = _call({"delete": "destroy"}, request, pk=U(5))
     assert response.status_code == status.HTTP_200_OK
+    assert seen["kwargs"]["audit_source"] == "手动"
 
 
 # --------------------------------------------------------------------------
@@ -409,10 +433,16 @@ def test_batch_delete_ok(superuser, monkeypatch):
         f"{VIEWS}.InstanceManage.query_entity_by_uuids",
         lambda data: [{"_id": 1, "inst_uuid": U(1), "model_id": "host", "inst_name": "h", "organization": [1]}],
     )
-    monkeypatch.setattr(f"{VIEWS}.InstanceManage.instance_batch_delete_by_uuids", lambda *a, **k: None)
+    seen = {}
+
+    def _delete(*args, **kwargs):
+        seen["kwargs"] = kwargs
+
+    monkeypatch.setattr(f"{VIEWS}.InstanceManage.instance_batch_delete_by_uuids", _delete)
     request = _req("post", superuser, data={"inst_uuids": [U(1)]})
     response = _call({"post": "instance_batch_delete"}, request)
     assert response.status_code == status.HTTP_200_OK
+    assert seen["kwargs"]["audit_source"] == "手动"
 
 
 # --------------------------------------------------------------------------
@@ -448,6 +478,12 @@ def test_partial_update_ok(superuser, monkeypatch):
     assert calls[0]["record_change"] is False
     assert calls[0]["schedule_post_actions"] is False
     assert calls[0]["operation_id"]
+    record = _consume_change_record("update-host-5")
+    assert record.message == "修改模型实例. 来源:手动 模型:host 实例:h2"
+    assert record.operator == superuser.username
+    assert record.model_object == "资产实例"
+    assert record.type == "update_entity"
+    assert record.scenario == "ordinary_attribute_change"
 
 
 @pytest.mark.django_db
@@ -543,10 +579,16 @@ def test_batch_update_ok(superuser, monkeypatch):
         f"{VIEWS}.InstanceManage.query_entity_by_uuids",
         lambda ids: [{"_id": 1, "inst_uuid": U(1), "model_id": "host", "inst_name": "h", "organization": [1]}],
     )
-    monkeypatch.setattr(f"{VIEWS}.InstanceManage.batch_instance_update_by_uuids", lambda *a, **k: None)
+    seen = {}
+
+    def _update(*args, **kwargs):
+        seen["kwargs"] = kwargs
+
+    monkeypatch.setattr(f"{VIEWS}.InstanceManage.batch_instance_update_by_uuids", _update)
     request = _req("post", superuser, data={"inst_uuids": [U(1)], "update_data": {"a": 1}})
     response = _call({"post": "instance_batch_update"}, request)
     assert response.status_code == status.HTTP_200_OK
+    assert seen["kwargs"]["audit_source"] == "手动"
 
 
 # --------------------------------------------------------------------------

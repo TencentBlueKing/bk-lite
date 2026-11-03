@@ -1,7 +1,7 @@
 import pytest
 
 from apps.cmdb.models.collect_task_credential_hit import CollectTaskCredentialHit
-from apps.cmdb.models.scan_model import ScanExecution, ScanFamilyRun, ScanHit, ScanTask
+from apps.cmdb.models.scan_model import ScanExecution, ScanFamilyRun, ScanFamilyRunProgress, ScanHit, ScanTask
 from apps.cmdb.nats.nats import receive_scan_credential_result
 
 pytestmark = pytest.mark.django_db
@@ -54,7 +54,7 @@ def test_scan_success_writes_hit_not_collect_credential_hit(mocker):
     assert hit.port == 3306
     family_run.refresh_from_db()
     assert family_run.received_count == 1
-    assert family_run.progress_hosts == ["10.0.1.20"]
+    assert list(ScanFamilyRunProgress.objects.filter(family_run=family_run).values_list("host", flat=True)) == ["10.0.1.20"]
     delay.assert_called_once_with(family_run.execution_id, "token-nats")
 
 
@@ -72,7 +72,7 @@ def test_scan_unreachable_counts_progress_without_hit():
     assert ScanHit.objects.count() == 0
     family_run.refresh_from_db()
     assert family_run.received_count == 1
-    assert family_run.progress_hosts == ["10.0.1.30"]
+    assert list(ScanFamilyRunProgress.objects.filter(family_run=family_run).values_list("host", flat=True)) == ["10.0.1.30"]
     family_run.execution.refresh_from_db()
     assert family_run.execution.received_count == 1
 
@@ -103,7 +103,7 @@ def test_scan_failed_counts_progress_success_lists_once():
     assert ScanHit.objects.get().credential_id == "cred-2"
     assert ScanHit.objects.get().status == ScanHit.STATUS_SUCCESS
     assert family_run.received_count == 1
-    assert family_run.progress_hosts == ["10.0.1.20"]
+    assert list(ScanFamilyRunProgress.objects.filter(family_run=family_run).values_list("host", flat=True)) == ["10.0.1.20"]
 
 
 def test_scan_credentials_exhausted_without_credential_id_counts_progress(mocker):
@@ -127,7 +127,7 @@ def test_scan_credentials_exhausted_without_credential_id_counts_progress(mocker
     assert ScanHit.objects.count() == 0
     family_run.refresh_from_db()
     assert family_run.received_count == 1
-    assert family_run.progress_hosts == ["10.0.1.40"]
+    assert list(ScanFamilyRunProgress.objects.filter(family_run=family_run).values_list("host", flat=True)) == ["10.0.1.40"]
     delay.assert_called_once_with(family_run.execution_id, "token-nats")
 
 
@@ -161,6 +161,248 @@ def test_db_auth_failed_upserts_one_placeholder_without_credential():
     assert hits[0].status == ScanHit.STATUS_FAILED
     assert hits[0].port == 3306
     assert hits[0].error_code == "unauthorized"
+
+
+def test_port_stage_success_without_credential_writes_low_confidence_hit():
+    family_run = _scan_family_run(target_count=4)
+    execution = family_run.execution
+    response = receive_scan_credential_result(
+        data={
+            "collect_task_id": execution.id,
+            "stage": "port",
+            "status": "success",
+            "host": "10.0.1.60",
+            "port": 3306,
+            "target_type": "mysql",
+        }
+    )
+
+    assert response["result"] is True
+    assert response["listed"] is True
+    hit = ScanHit.objects.get()
+    assert hit.execution_id == execution.id
+    assert hit.family_run.model_id == "mysql"
+    assert hit.family_run.batch_index == 0
+    assert hit.host == "10.0.1.60"
+    assert hit.port == 3306
+    assert hit.credential_id == ""
+    assert hit.cmdb_model_id == "mysql"
+    assert hit.status == ScanHit.STATUS_SUCCESS
+    assert hit.confidence == ScanHit.CONFIDENCE_LOW
+    assert "port" in hit.evidence
+
+
+def test_process_stage_upgrades_same_hit_without_new_row():
+    family_run = _scan_family_run(target_count=4)
+    execution = family_run.execution
+    receive_scan_credential_result(
+        data={
+            "collect_task_id": execution.id,
+            "stage": "port",
+            "status": "success",
+            "host": "10.0.1.60",
+            "port": 3306,
+            "target_type": "mysql",
+        }
+    )
+    response = receive_scan_credential_result(
+        data={
+            "collect_task_id": execution.id,
+            "stage": "process",
+            "status": "success",
+            "host": "10.0.1.60",
+            "port": 3306,
+            "target_type": "mysql",
+        }
+    )
+
+    assert response["listed"] is True
+    hits = list(ScanHit.objects.filter(execution=execution))
+    assert len(hits) == 1
+    hit = hits[0]
+    assert hit.credential_id == ""
+    assert hit.confidence == ScanHit.CONFIDENCE_MEDIUM
+    assert "port" in hit.evidence
+    assert "process" in hit.evidence
+    assert hit.port == 3306
+
+
+def test_process_stage_without_listen_port_does_not_invent_fingerprint_port():
+    family_run = _scan_family_run(target_count=4)
+    execution = family_run.execution
+    receive_scan_credential_result(
+        data={
+            "collect_task_id": execution.id,
+            "stage": "port",
+            "status": "success",
+            "host": "10.0.1.60",
+            "port": 80,
+            "target_type": "nginx",
+        }
+    )
+    response = receive_scan_credential_result(
+        data={
+            "collect_task_id": execution.id,
+            "stage": "process",
+            "status": "success",
+            "host": "10.0.1.60",
+            "port": 0,
+            "target_type": "mysql",
+        }
+    )
+
+    assert response["listed"] is True
+    mysql_hits = list(ScanHit.objects.filter(execution=execution, cmdb_model_id="mysql"))
+    assert len(mysql_hits) == 1
+    assert mysql_hits[0].port == 0
+    assert mysql_hits[0].confidence == ScanHit.CONFIDENCE_MEDIUM
+    assert ScanHit.objects.filter(execution=execution, cmdb_model_id="mysql", port=3306).count() == 0
+
+
+def test_process_stage_empty_port_upgrades_existing_same_host_model_row():
+    family_run = _scan_family_run(target_count=4)
+    execution = family_run.execution
+    receive_scan_credential_result(
+        data={
+            "collect_task_id": execution.id,
+            "stage": "port",
+            "status": "success",
+            "host": "10.0.1.60",
+            "port": 3306,
+            "target_type": "mysql",
+        }
+    )
+    response = receive_scan_credential_result(
+        data={
+            "collect_task_id": execution.id,
+            "stage": "process",
+            "status": "success",
+            "host": "10.0.1.60",
+            "port": 0,
+            "target_type": "mysql",
+        }
+    )
+
+    assert response["listed"] is True
+    hits = list(ScanHit.objects.filter(execution=execution, cmdb_model_id="mysql"))
+    assert len(hits) == 1
+    assert hits[0].port == 3306
+    assert hits[0].confidence == ScanHit.CONFIDENCE_MEDIUM
+    assert "process" in hits[0].evidence
+
+
+def test_collect_stage_failed_does_not_delete_discovery_hit():
+    family_run = _scan_family_run(target_count=4)
+    execution = family_run.execution
+    receive_scan_credential_result(
+        data={
+            "collect_task_id": execution.id,
+            "stage": "port",
+            "status": "success",
+            "host": "10.0.1.60",
+            "port": 3306,
+            "target_type": "mysql",
+        }
+    )
+    response = receive_scan_credential_result(
+        data={
+            "collect_task_id": execution.id,
+            "stage": "collect",
+            "status": "failed",
+            "host": "10.0.1.60",
+            "port": 3306,
+            "target_type": "mysql",
+            "error_code": "auth_failed",
+        }
+    )
+
+    assert response["result"] is True
+    hit = ScanHit.objects.get()
+    assert hit.status == ScanHit.STATUS_SUCCESS
+    assert hit.confidence == ScanHit.CONFIDENCE_LOW
+    assert "port" in hit.evidence
+    assert hit.credential_id == ""
+
+
+def test_collect_stage_success_upgrades_same_hit_and_records_credential():
+    family_run = _scan_family_run(target_count=4)
+    execution = family_run.execution
+    receive_scan_credential_result(
+        data={
+            "collect_task_id": execution.id,
+            "stage": "port",
+            "status": "success",
+            "host": "10.0.1.60",
+            "port": 3306,
+            "target_type": "mysql",
+        }
+    )
+    response = receive_scan_credential_result(
+        data={
+            "collect_task_id": execution.id,
+            "stage": "collect",
+            "status": "success",
+            "host": "10.0.1.60",
+            "port": 3306,
+            "target_type": "mysql",
+            "credential_id": "cred-db",
+            "snapshot": {"host": "10.0.1.60", "port": 3306, "version": "8.0"},
+        }
+    )
+
+    assert response["listed"] is True
+    hits = list(ScanHit.objects.filter(execution=execution))
+    assert len(hits) == 1
+    hit = hits[0]
+    assert hit.credential_id == "cred-db"
+    assert hit.confidence == ScanHit.CONFIDENCE_HIGH
+    assert "collect" in hit.evidence
+    assert hit.snapshot.get("version") == "8.0"
+
+
+def test_scan_done_event_marks_schedule_and_kicks_finalize(mocker):
+    family_run = _scan_family_run(target_count=3, model_id="host")
+    execution = family_run.execution
+    execution.schedule = {"scan_admitted": True, "scan_done": False}
+    execution.save(update_fields=["schedule"])
+    delay = mocker.patch("apps.cmdb.tasks.celery_tasks.finalize_scan_execution.delay")
+
+    response = receive_scan_credential_result(
+        data={
+            "collect_task_id": execution.id,
+            "stage": "done",
+            "status": "success",
+        }
+    )
+
+    assert response["result"] is True
+    assert response["listed"] is False
+    assert ScanHit.objects.count() == 0
+    execution.refresh_from_db()
+    assert execution.schedule["scan_done"] is True
+    assert execution.received_count == 0
+    delay.assert_called_once_with(execution.id, "token-nats")
+
+
+def test_scan_done_event_does_not_complete_when_protocol_pending(mocker):
+    family_run = _scan_family_run(target_count=3, model_id="network")
+    execution = family_run.execution
+    execution.schedule = {"scan_admitted": True}
+    execution.save(update_fields=["schedule"])
+    delay = mocker.patch("apps.cmdb.tasks.celery_tasks.finalize_scan_execution.delay")
+
+    response = receive_scan_credential_result(
+        data={
+            "collect_task_id": execution.id,
+            "stage": "done",
+            "status": "success",
+        }
+    )
+
+    assert response["result"] is True
+    execution.refresh_from_db()
+    assert execution.schedule["scan_done"] is True
+    delay.assert_not_called()
 
 
 def test_db_plain_failed_without_auth_code_is_not_listed():

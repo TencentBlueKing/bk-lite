@@ -54,3 +54,9 @@ def apm_user_without_permissions():
     )
     user.permission = {"apm": set()}
     return user
+
+
+@pytest.fixture(autouse=True)
+def pin_apm_policy_evaluation_delay(monkeypatch):
+    """存量窗口回归固定 D=0。要测默认 60s 或其它延迟时，在用例里改这个环境变量。"""
+    monkeypatch.setenv("APM_POLICY_EVALUATION_DELAY", "0")

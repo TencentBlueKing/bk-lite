@@ -69,17 +69,20 @@ def test_serialize_alert_hides_db_id_and_events():
         enrichment={"e": 1},
         event_count_annotated=3,
         id=99,
+        owners=[],
     )
     listed = serialize_alert(alert, detail=False)
     assert listed["alert_id"] == "ALERT-1"
     assert listed["event_count"] == 3
     assert listed["closed_at"] is None
+    assert listed["owners"] == []
     assert "id" not in listed
     assert "events" not in listed
     assert "labels" not in listed
     detailed = serialize_alert(alert, detail=True)
     assert detailed["labels"] == {"k": "v"}
     assert detailed["enrichment"] == {"e": 1}
+    assert detailed["owners"] == []
 
 
 def test_serialize_event_exposes_source_name():

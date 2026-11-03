@@ -56,6 +56,15 @@ function executionsByWorkflowHref(workflowName: string) {
   return `/workflow/executions?${new URLSearchParams({ query }).toString()}`;
 }
 
+function approvalHref(approval: WorkflowDashboardApproval) {
+  const params = new URLSearchParams({
+    scope: 'mine',
+    node: approval.task_reference,
+    instance_id: approval.id,
+  });
+  return `/workflow/executions/${approval.execution}?${params.toString()}`;
+}
+
 function ApprovalItem({ approval }: { approval: WorkflowDashboardApproval }) {
   const router = useRouter();
   const { t } = useTranslation();
@@ -74,7 +83,7 @@ function ApprovalItem({ approval }: { approval: WorkflowDashboardApproval }) {
           size="small"
           className="shrink-0 px-0"
           aria-label={t('workflowOrchestration.dashboard.review', '查看并处理')}
-          onClick={() => router.push(MY_APPROVALS_HREF)}
+          onClick={() => router.push(approvalHref(approval))}
         >
           {t('workflowOrchestration.dashboard.review', '查看并处理')}
         </Button></WorkflowPermission>

@@ -179,6 +179,7 @@ class DataSourceAPIModel(MaintainerInfo, TimeInfo, Groups):
         verbose_name="Excel 当前候选槽位",
     )
     excel_materialization_generation = models.PositiveIntegerField(default=0, verbose_name="Excel 物化代数")
+    excel_resubmit_pending = models.BooleanField(default=False, verbose_name="Excel 重算待投递")
     # [内部预留] 当前无产品功能依赖，仅用于历史兼容透传（导入导出/内置数据导入）；前端不暴露、运行时不校验
     is_active = models.BooleanField(default=True, verbose_name="是否启用")
     params = JSONField(help_text="API请求参数", verbose_name="请求参数", blank=True, null=True)
@@ -188,6 +189,8 @@ class DataSourceAPIModel(MaintainerInfo, TimeInfo, Groups):
     field_schema = JSONField(default=list, blank=True, help_text="接口返回字段定义（数据源级配置，表格默认列可使用）")
     is_build_in = models.BooleanField(default=False, db_index=True, verbose_name="是否内置")
     build_in_key = models.CharField(max_length=512, null=True, blank=True, unique=True, verbose_name="内置配置稳定键")
+    # 与前端 hasAppAccess / get_client 的 app 名对齐。仅内置种子写入；空表示不按模块许可隐藏。
+    required_app = models.CharField(max_length=64, null=True, blank=True, verbose_name="模块许可")
 
     class Meta:
         db_table = "operation_analysis_data_source_api"

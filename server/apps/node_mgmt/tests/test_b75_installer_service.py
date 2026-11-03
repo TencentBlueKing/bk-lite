@@ -320,21 +320,127 @@ def test_controller_task_creation_rolls_back_parent_when_node_insert_fails(opera
 # --------------------------------------------------------------------------- #
 # install_collector / install_collector_nodes
 # --------------------------------------------------------------------------- #
-@pytest.mark.django_db
-def test_install_collector_creates_task_and_nodes():
-    region = CloudRegion.objects.create(name="cr-install-col")
-    node = Node.objects.create(
-        id="n-col",
-        name="n",
-        ip="10.0.0.3",
-        operating_system="linux",
+def _collector_package(os_name, architecture, version="1.28.0", name="telegraf"):
+    return PackageVersion.objects.create(
+        type="collector",
+        os=os_name,
+        cpu_architecture=architecture,
+        object="Telegraf",
+        version=version,
+        name=name,
+    )
+
+
+def _collector_node(region, node_id, os_name, architecture, ip):
+    return Node.objects.create(
+        id=node_id,
+        name=node_id,
+        ip=ip,
+        operating_system=os_name,
+        cpu_architecture=architecture,
         collector_configuration_directory="/etc",
         cloud_region=region,
     )
-    task_id = InstallerService.install_collector(7, [node.id])
+
+
+@pytest.mark.django_db
+def test_install_collector_creates_task_and_nodes():
+    region = CloudRegion.objects.create(name="cr-install-col")
+    node = _collector_node(region, "n-col", "linux", "x86_64", "10.0.0.3")
+    package = _collector_package("linux", "x86_64")
+    task_id = InstallerService.install_collector(package.id, [node.id])
     task = CollectorTask.objects.get(id=task_id)
     assert task.type == "install"
+    assert task.package_version_id == package.id
     assert CollectorTaskNode.objects.filter(task=task, node_id=node.id).exists()
+
+
+@pytest.mark.django_db
+def test_install_collector_rejects_windows_package_for_linux_node():
+    region = CloudRegion.objects.create(name="cr-install-mismatch")
+    node = _collector_node(region, "n-linux", "linux", "x86_64", "10.90.0.3")
+    windows_package = _collector_package("windows", "x86_64", name="telegraf.exe")
+    _collector_package("linux", "x86_64", name="telegraf")
+
+    with pytest.raises(BaseAppException, match="operating system mismatch"):
+        InstallerService.install_collector(windows_package.id, [node.id])
+
+    assert CollectorTask.objects.exists() is False
+
+
+@pytest.mark.django_db
+def test_install_collector_rejects_arch_mismatch_without_same_version_package():
+    region = CloudRegion.objects.create(name="cr-install-arch")
+    node = _collector_node(region, "n-arm", "linux", "arm64", "10.0.0.8")
+    package = _collector_package("linux", "x86_64", name="telegraf-x86")
+
+    with pytest.raises(BaseAppException, match="No collector package found"):
+        InstallerService.install_collector(package.id, [node.id])
+
+    assert CollectorTask.objects.exists() is False
+
+
+@pytest.mark.django_db
+def test_install_collector_resolves_same_version_to_node_architecture():
+    region = CloudRegion.objects.create(name="cr-install-resolve")
+    node = _collector_node(region, "n-x86", "linux", "amd64", "10.0.0.9")
+    arm_package = _collector_package("linux", "arm64", name="telegraf-arm")
+    x86_package = _collector_package("linux", "x86_64", name="telegraf-x86")
+
+    task_id = InstallerService.install_collector(arm_package.id, [node.id])
+
+    assert CollectorTask.objects.get(id=task_id).package_version_id == x86_package.id
+
+
+@pytest.mark.django_db
+def test_install_collector_rejects_node_without_architecture():
+    region = CloudRegion.objects.create(name="cr-install-no-arch")
+    node = _collector_node(region, "n-no-arch", "linux", "", "10.0.0.12")
+    package = _collector_package("linux", "x86_64")
+
+    with pytest.raises(BaseAppException, match="Missing or unsupported CPU architecture"):
+        InstallerService.install_collector(package.id, [node.id])
+
+    assert CollectorTask.objects.exists() is False
+
+
+@pytest.mark.django_db
+def test_install_collector_rejects_mixed_node_targets():
+    region = CloudRegion.objects.create(name="cr-install-mixed")
+    linux_node = _collector_node(region, "n-linux-mix", "linux", "x86_64", "10.0.0.10")
+    windows_node = _collector_node(region, "n-windows-mix", "windows", "x86_64", "10.0.0.11")
+    package = _collector_package("linux", "x86_64")
+
+    with pytest.raises(BaseAppException, match="same operating system"):
+        InstallerService.install_collector(package.id, [linux_node.id, windows_node.id])
+
+    assert CollectorTask.objects.exists() is False
+
+
+@pytest.mark.django_db
+def test_install_collector_task_does_not_download_mismatched_package(monkeypatch):
+    from apps.node_mgmt.tasks.installer import _install_collector_inner
+
+    region = CloudRegion.objects.create(name="cr-install-task")
+    node = _collector_node(region, "n-task", "linux", "x86_64", "10.90.0.3")
+    windows_package = _collector_package("windows", "x86_64", name="telegraf.exe")
+    task = CollectorTask.objects.create(type="install", status="waiting", package_version_id=windows_package.id)
+    CollectorTaskNode.objects.create(task=task, node=node, status="waiting")
+
+    def fail_if_called(*_args, **_kwargs):
+        raise AssertionError("mismatched package must not be downloaded")
+
+    monkeypatch.setattr("apps.node_mgmt.tasks.installer.download_to_local", fail_if_called)
+    monkeypatch.setattr(
+        "apps.node_mgmt.tasks.installer.PackageService.resolve_existing_file_path",
+        fail_if_called,
+    )
+
+    _install_collector_inner(task)
+
+    task_node = CollectorTaskNode.objects.get(task=task, node=node)
+    assert task_node.status == "error"
+    assert "operating system mismatch" in task_node.result["final_message"]
 
 
 @pytest.mark.django_db

@@ -18,6 +18,8 @@ export interface DirItem {
 export interface SidebarProps {
   onSelect?: (type: DirectoryType, itemInfo?: DirItem) => void;
   onDataUpdate?: (updatedItem: DirItem) => void;
+  onCanvasContentReplaced?: (item: DirItem) => void;
+  beforeImportUpdate?: (item: DirItem) => boolean | Promise<boolean>;
 }
 
 export interface SidebarRef {

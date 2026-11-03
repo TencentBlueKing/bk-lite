@@ -8,7 +8,7 @@ import re
 from collections.abc import Awaitable, Callable, Sequence
 from typing import Any, Literal
 
-from langchain.agents.middleware import AgentMiddleware, ModelRequest, ModelResponse
+from langchain.agents.middleware import AgentMiddleware, ModelRequest, ModelResponse, hook_config
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langchain_core.tools import BaseTool
 
@@ -664,6 +664,29 @@ class ToolTimeoutMiddleware(AgentMiddleware):
             return await asyncio.wait_for(handler(request), timeout=self._timeout_seconds)
         except asyncio.TimeoutError:
             return self._timeout_message(request)
+
+
+class PptExportFinishMiddleware(AgentMiddleware):
+    """pptx 已经写出后不再发起下一轮模型调用，避免导出成功后停在等待。"""
+
+    def __init__(self, graph_request: Any) -> None:
+        super().__init__()
+        self._graph_request = graph_request
+
+    def _finish(self) -> dict[str, Any] | None:
+        if not getattr(self._graph_request, "_ppt_export_ready", False):
+            return None
+        return {"jump_to": "end", "messages": [AIMessage(content="PPT 已导出，可以下载。")]}
+
+    @hook_config(can_jump_to=["end"])
+    def before_model(self, state: Any, runtime: Any) -> dict[str, Any] | None:
+        del state, runtime
+        return self._finish()
+
+    @hook_config(can_jump_to=["end"])
+    async def abefore_model(self, state: Any, runtime: Any) -> dict[str, Any] | None:
+        del state, runtime
+        return self._finish()
 
 
 class ToolResultCompactionMiddleware(AgentMiddleware):

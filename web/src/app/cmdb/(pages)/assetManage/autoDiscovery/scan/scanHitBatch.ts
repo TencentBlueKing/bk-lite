@@ -33,12 +33,13 @@ export const summarizeScanBatchResult = (t: Translate, kind: ScanBatchKind, resu
     }
     return toastOf('success', t('Scan.generateCollectDone', undefined, { count: created }));
   }
-  const pushed = result?.pushed ?? 0;
+  const items = Array.isArray(result?.items) ? result.items : [];
+  const linked = items.filter((item) => item.status === 'linked').length;
+  const pushed = result?.pushed ?? linked;
   const failed = result?.failed ?? 0;
   const skipped = result?.skipped ?? 0;
-  const items = Array.isArray(result?.items) ? result.items : [];
   const reasons = items
-    .filter((item) => item.status !== 'pushed' && item.reason)
+    .filter((item) => item.status !== 'pushed' && item.status !== 'linked' && item.reason)
     .slice(0, 3)
     .map((item) => `${item.host || '-'}: ${item.reason}`)
     .join('；');

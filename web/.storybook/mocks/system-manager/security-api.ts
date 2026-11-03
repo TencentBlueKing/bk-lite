@@ -114,10 +114,14 @@ export const useSecurityApi = () => {
     items: loginLogs,
   });
 
+  const exportUserLoginLogs = async () => new Blob();
+
   const getOperationLogs = async () => ({
     count: operationLogs.length,
     items: operationLogs,
   });
+
+  const exportOperationLogs = async () => new Blob();
 
   const getErrorLogs = async () => ({
     count: errorLogs.length,
@@ -140,7 +144,9 @@ export const useSecurityApi = () => {
     syncAuthSource,
     deleteAuthSource,
     getUserLoginLogs,
+    exportUserLoginLogs,
     getOperationLogs,
+    exportOperationLogs,
     getErrorLogs,
     getOpenApiCallLogs,
     exportOpenApiCallLogs,

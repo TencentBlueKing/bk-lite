@@ -78,3 +78,38 @@ it('shows the error report in a table from the button left of download', async (
   expect(screen.getByText('F 运维人员')).toBeTruthy();
   expect(refresh).not.toHaveBeenCalled();
 });
+
+it('pages the error report and changes the page size', async () => {
+  const workbook = new ExcelJS.Workbook();
+  const sheet = workbook.addWorksheet('errors');
+  sheet.addRow(['Excel 行号', '失败原因']);
+  for (let index = 1; index <= 60; index += 1) {
+    sheet.addRow([index, `失败原因-${index}`]);
+  }
+  download.mockResolvedValue(new Blob([await workbook.xlsx.writeBuffer()]));
+  const task: TransferTask = {
+    task_id: 'paged-errors', type: 'import', model_id: 'host', model_name: '主机', team_id: 1, filename: 'host.xlsx',
+    status: 'partial_success', phase: 'finished', processed_rows: 60, total_rows: 60,
+    summary: { failed_rows: 60 }, message: '', available_actions: ['download_errors'],
+    created_at: '2026-09-28T00:00:00Z', finished_at: '2026-09-28T00:01:00Z', expires_at: '2026-10-05T00:00:00Z',
+  };
+  render(<TransferDrawer open onClose={() => undefined} tasks={[task]} error="" loading={false} onRefresh={async () => undefined} />);
+  fireEvent.click(screen.getByText('Transfer.view_errors'));
+  expect(await screen.findByText('失败原因-1')).toBeTruthy();
+  expect(screen.queryByText('失败原因-11')).toBeNull();
+
+  fireEvent.click(document.querySelector('.ant-pagination-next')!);
+  expect(screen.queryByText('失败原因-1')).toBeNull();
+  expect(screen.getByText('失败原因-11')).toBeTruthy();
+  expect(screen.queryByText('失败原因-21')).toBeNull();
+
+  const sizeSelector = document.querySelector('.ant-pagination-options .ant-select-selector');
+  expect(sizeSelector).toBeTruthy();
+  fireEvent.mouseDown(sizeSelector!);
+  fireEvent.click(await screen.findByText('20 / page', { selector: '.ant-select-item-option-content' }));
+  expect(document.querySelector('.ant-pagination-options .ant-select-selection-item')?.textContent).toBe('20 / page');
+  expect(screen.getByText('失败原因-21')).toBeTruthy();
+  expect(screen.getByText('失败原因-40')).toBeTruthy();
+  expect(screen.queryByText('失败原因-20')).toBeNull();
+  expect(screen.queryByText('失败原因-41')).toBeNull();
+});

@@ -3,6 +3,8 @@ import type { TreeNode } from '@/app/cmdb/types/autoDiscovery';
 import {
   countPluginTasks,
   filterCatalogCategories,
+  getTaskStatusStats,
+  reconcilePluginGroups,
   resolveCollectPlugin,
 } from '../pluginCatalog';
 
@@ -137,6 +139,58 @@ describe('plugin catalog', () => {
         partial_success: 4,
       }),
     ).toBe(10);
+    expect(countPluginTasks({ total: 1, not_start: 1, success: 0, failed: 0, running: 0 })).toBe(1);
     expect(countPluginTasks(null)).toBe(0);
+  });
+
+  it('数据调和分组不含容器，Docker 虽是中间件也不进入', () => {
+    const groups = reconcilePluginGroups([
+      {
+        id: 'k8s',
+        key: 'k8s',
+        name: '容器',
+        tabItems: [
+          { id: 'k8s_cluster', key: 'k8s_cluster', name: 'K8S', model_id: 'k8s_cluster', task_type: 'k8s' },
+          { id: 'docker', key: 'docker', name: 'Docker', model_id: 'docker', task_type: 'middleware' },
+        ],
+      },
+      {
+        id: 'databases',
+        key: 'databases',
+        name: '数据库',
+        tabItems: [
+          { id: 'mysql', key: 'mysql', name: 'MySQL', model_id: 'mysql', task_type: 'protocol' },
+        ],
+      },
+      {
+        id: 'vmware',
+        key: 'vmware',
+        name: '虚拟化',
+        tabItems: [
+          { id: 'vmware_vc', key: 'vmware_vc', name: 'vCenter', model_id: 'vmware_vc', task_type: 'vm' },
+        ],
+      },
+    ]);
+    expect(groups.map((group) => group.name)).toEqual(['数据库']);
+  });
+
+  it('自定义插件只看自己的任务数，不借用同模型内置插件的统计', () => {
+    const plugin = {
+      id: 'custom_win_host',
+      model_id: 'host',
+      type: 'job',
+      task_type: 'custom_script',
+      custom_plugin_pk: 7,
+    };
+    expect(
+      getTaskStatusStats(
+        {
+          'host__job': { success: 4, failed: 0, running: 0 },
+          custom_script__7: { success: 0, failed: 0, running: 0, not_start: 1, total: 1 },
+        },
+        plugin,
+      )?.total,
+    ).toBe(1);
+    expect(getTaskStatusStats({ 'host__job': { success: 4, failed: 0, running: 0 } }, plugin)).toBeUndefined();
   });
 });

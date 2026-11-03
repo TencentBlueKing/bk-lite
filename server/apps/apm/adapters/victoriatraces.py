@@ -28,6 +28,7 @@ from apps.apm.adapters.span_aliases import (
     client_db_statement,
 )
 from apps.apm.services.contracts import (
+    DependencyMetricQuery,
     DeploymentReleaseQuery,
     InferredDeploymentRelease,
     InstanceActivity,
@@ -96,7 +97,60 @@ SAMPLE_SLICE_DAY = timedelta(days=1)
 SAMPLE_TRACE_ID_PROBE_SPANS = 5000
 RED_EXACT_DEDUP_WINDOW = timedelta(days=1)
 MAX_RED_POINTS = 120
+
+
+def _duration_threshold_ns(milliseconds: int | None) -> int | None:
+    if milliseconds is None or milliseconds <= 0:
+        return None
+    return int(milliseconds) * 1_000_000
+
+
+def _red_final_stats(query: ServiceMetricQuery) -> str:
+    """一条 stats 并列全部 RED 函数。慢阈值 / Apdex T 为空时不生成对应 count() if。"""
+    parts = [
+        "count() as requests",
+        'count() if (status_code:="2") as errors',
+        "avg(duration) as avg_duration",
+        "max(duration) as max_duration",
+        "quantile(0.5, duration) as p50",
+        "quantile(0.75, duration) as p75",
+        "quantile(0.9, duration) as p90",
+        "quantile(0.95, duration) as p95",
+        "quantile(0.99, duration) as p99",
+    ]
+    slow_ns = _duration_threshold_ns(query.slow_threshold_ms)
+    if slow_ns is not None:
+        parts.append(f"count() if (duration:>{slow_ns}) as slow")
+    apdex_ns = _duration_threshold_ns(query.apdex_threshold_ms)
+    if apdex_ns is not None:
+        parts.append(f"count() if (duration:<={apdex_ns}) as satisfied")
+        parts.append(f"count() if (duration:<={apdex_ns * 4}) as within_4t")
+    return "stats " + ", ".join(parts)
+
+
+def _logsql_time(value: datetime) -> str:
+    return value.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _utc_day(value: datetime) -> str:
+    return value.astimezone(UTC).strftime("%Y-%m-%dT00:00:00Z")
+
+
+def _parse_bucket_time(value: str) -> datetime | None:
+    try:
+        return datetime.strptime(value, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC)
+    except ValueError:
+        return None
+
+
+def _count_field(values: dict[str, float], key: str) -> int | None:
+    if key not in values:
+        return None
+    return int(values[key])
+
+
 MAX_TOP_ENDPOINTS = 10
+MAX_SERVICE_ENDPOINTS = 100
 MAX_CLIENT_ROLLUPS = 40
 MAX_ENDPOINT_NAME_LENGTH = 256
 _RAW_SPAN_PARSE_LIMIT = 1001
@@ -778,6 +832,7 @@ class VictoriaTracesTelemetryStore:
             query.environment,
             endpoint=query.endpoint,
             version=query.version,
+            instance_id=query.instance_id or "",
         )
         entry_filters = self._entry_span_filters(
             query.service_namespace,
@@ -785,10 +840,9 @@ class VictoriaTracesTelemetryStore:
             query.environment,
             endpoint=query.endpoint,
             version=query.version,
+            instance_id=query.instance_id or "",
         )
-        final_stats = (
-            'stats count() as requests, count() if (status_code:="2") as errors, ' "quantile(0.95, duration) as p95, quantile(0.99, duration) as p99"
-        )
+        final_stats = _red_final_stats(query)
         aggregate_base = self._bounded_spans(deduped) if exact_dedup else entry_filters
         aggregate = f"{aggregate_base} | {final_stats}"
         values = self._ungrouped_values(self._stats(aggregate, query.started_at, query.ended_at))
@@ -805,19 +859,17 @@ class VictoriaTracesTelemetryStore:
             range_aggregate = f"{deduped if exact_dedup else entry_filters} | {final_stats}"
             ranged = self._range_values(self._stats_range(range_aggregate, query.started_at, query.ended_at, step=step))
             timeseries = tuple(
-                ServiceRedPoint(
-                    timestamp=datetime.fromtimestamp(timestamp, tz=UTC),
-                    request_rate=count / step,
-                    error_rate=ranged.get("errors", {}).get(timestamp, 0.0) / count if count > 0 else None,
-                    p95_ms=self._nanoseconds_to_ms(ranged.get("p95", {}).get(timestamp)) if count > 0 else None,
-                    p99_ms=self._nanoseconds_to_ms(ranged.get("p99", {}).get(timestamp)) if count > 0 else None,
-                )
+                self._red_point(timestamp=timestamp, count=count, step=step, ranged=ranged)
                 for timestamp, count in list(ranged.get("requests", {}).items())[-MAX_RED_POINTS:]
             )
-            endpoints = self._endpoint_red(
-                self._endpoint_stats_rows(query, exact_dedup=exact_dedup, entry_filters=entry_filters),
-                window_seconds,
-            )
+            if query.include_endpoints:
+                endpoints = self._endpoint_red(
+                    self._endpoint_stats_rows(query, exact_dedup=exact_dedup, entry_filters=entry_filters),
+                    window_seconds,
+                )
+        satisfied_count = _count_field(values, "satisfied")
+        within_4t = _count_field(values, "within_4t")
+        tolerating_count = None if satisfied_count is None or within_4t is None else max(0, within_4t - satisfied_count)
         return ServiceRed(
             request_rate=requests_count / window_seconds,
             error_rate=errors_count / requests_count,
@@ -827,7 +879,196 @@ class VictoriaTracesTelemetryStore:
             top_endpoints=endpoints,
             request_count=int(requests_count),
             error_count=int(errors_count),
+            avg_ms=self._nanoseconds_to_ms(values.get("avg_duration")),
+            max_ms=self._nanoseconds_to_ms(values.get("max_duration")),
+            p50_ms=self._nanoseconds_to_ms(values.get("p50")),
+            p75_ms=self._nanoseconds_to_ms(values.get("p75")),
+            p90_ms=self._nanoseconds_to_ms(values.get("p90")),
+            slow_count=_count_field(values, "slow"),
+            satisfied_count=satisfied_count,
+            tolerating_count=tolerating_count,
         )
+
+    def service_red_by_day(self, query: ServiceMetricQuery, windows: Sequence[tuple[datetime, datetime]]) -> tuple[ServiceRed, ...]:
+        """一条半开多段 `_time` 查询，按 UTC 日桶回填到每个同窗。去重路径要留下 `_time`，否则多天会并成一桶。"""
+        if not windows:
+            return ()
+        total = sum((ended_at - started_at for started_at, ended_at in windows), timedelta(0))
+        exact_dedup = total <= RED_EXACT_DEDUP_WINDOW
+        entry = self._entry_span_filters(
+            query.service_namespace,
+            query.service_name,
+            query.environment,
+            endpoint=query.endpoint,
+            version=query.version,
+            instance_id=query.instance_id or "",
+        )
+        spans = " or ".join(f"_time:[{_logsql_time(started_at)}, {_logsql_time(ended_at)})" for started_at, ended_at in windows)
+        scoped = f"({spans}) {entry}"
+        final_stats = _red_final_stats(query).removeprefix("stats ")
+        if exact_dedup:
+            deduped = f"{scoped} | stats by (trace_id, span_id) max(duration) as duration, max(status_code) as status_code, min(_time) as _time"
+            aggregate = f"{self._bounded_spans(deduped)} | stats by (_time:1d) {final_stats}"
+        else:
+            aggregate = f"{scoped} | stats by (_time:1d) {final_stats}"
+        started_at = min(item[0] for item in windows)
+        ended_at = max(item[1] for item in windows)
+        grouped = self._values_by_day(self._stats(aggregate, started_at, ended_at))
+        reds = []
+        for window_start, window_end in windows:
+            values = grouped.get(_utc_day(window_start), {})
+            window_seconds = max(int((window_end - window_start).total_seconds()), 1)
+            reds.append(self._red_from_values(values, window_seconds))
+        return tuple(reds)
+
+    def service_red_by_window(self, query: ServiceMetricQuery, window_minutes: int) -> tuple[tuple[datetime, ServiceRed], ...]:
+        """一条 `stats by (_time:W)` 拿回放窗。桶结束时间是桶起点加 W。"""
+        minutes = max(int(window_minutes), 1)
+        span = query.ended_at - query.started_at
+        exact_dedup = span <= RED_EXACT_DEDUP_WINDOW
+        entry = self._entry_span_filters(
+            query.service_namespace,
+            query.service_name,
+            query.environment,
+            endpoint=query.endpoint,
+            version=query.version,
+            instance_id=query.instance_id or "",
+        )
+        scoped = f"(_time:[{_logsql_time(query.started_at)}, {_logsql_time(query.ended_at)})) {entry}"
+        final_stats = _red_final_stats(query).removeprefix("stats ")
+        if exact_dedup:
+            deduped = f"{scoped} | stats by (trace_id, span_id) max(duration) as duration, max(status_code) as status_code, min(_time) as _time"
+            aggregate = f"{self._bounded_spans(deduped)} | stats by (_time:{minutes}m) {final_stats}"
+        else:
+            aggregate = f"{scoped} | stats by (_time:{minutes}m) {final_stats}"
+        grouped = self._values_by_day(self._stats(aggregate, query.started_at, query.ended_at))
+        return self._reds_by_bucket(grouped, minutes)
+
+    def service_endpoints(self, query: ServiceMetricQuery, limit: int = MAX_SERVICE_ENDPOINTS) -> tuple[ServiceEndpointRed, ...]:
+        """当前窗入口 Span 按端点计数，上限 100，按请求数降序。不复用 top_endpoints 的 10 条上限。"""
+        window_seconds = _validate_window(query.started_at, query.ended_at)
+        bounded = max(1, min(int(limit), MAX_SERVICE_ENDPOINTS))
+        entry_filters = self._entry_span_filters(
+            query.service_namespace,
+            query.service_name,
+            query.environment,
+            instance_id=query.instance_id or "",
+        )
+        endpoint_query = f"{entry_filters} | stats by (name) count() as requests | sort by (requests) desc | limit {bounded}"
+        rows = self._stats(endpoint_query, query.started_at, query.ended_at)
+        remapped: list[dict[str, Any]] = []
+        for row in rows:
+            metric = row.get("metric")
+            if not isinstance(metric, dict):
+                continue
+            remapped.append(
+                {
+                    **row,
+                    "metric": {
+                        **metric,
+                        "endpoint": metric.get("name", ""),
+                        "__name__": metric.get("__name__") or "requests",
+                    },
+                }
+            )
+        return self._endpoint_red(remapped, window_seconds)[:bounded]
+
+    def dependency_red(self, query: DependencyMetricQuery) -> ServiceRed:
+        """Client Span RED。过滤 kind=3，stats 函数集与入口 service_red 一致。"""
+        window_seconds = _validate_window(query.started_at, query.ended_at)
+        exact_dedup = query.ended_at - query.started_at <= RED_EXACT_DEDUP_WINDOW
+        filters = self._dependency_span_filters(query)
+        deduped = f"{filters} | stats by (trace_id, span_id) max(duration) as duration, max(status_code) as status_code"
+        final_stats = _red_final_stats(query)
+        aggregate_base = self._bounded_spans(deduped) if exact_dedup else filters
+        values = self._ungrouped_values(self._stats(f"{aggregate_base} | {final_stats}", query.started_at, query.ended_at))
+        requests_count = values.get("requests")
+        if requests_count is None or requests_count <= 0:
+            return ServiceRed(None, None, None, None)
+        if exact_dedup:
+            self._reject_truncated_unique_spans(deduped, requests_count, query.started_at, query.ended_at)
+        errors_count = values.get("errors", 0.0) or 0.0
+        timeseries: tuple[ServiceRedPoint, ...] = ()
+        if query.include_breakdown:
+            step = max(15, math.ceil(window_seconds / (MAX_RED_POINTS - 1)))
+            ranged = self._range_values(
+                self._stats_range(f"{deduped if exact_dedup else filters} | {final_stats}", query.started_at, query.ended_at, step=step)
+            )
+            timeseries = tuple(
+                self._red_point(timestamp=timestamp, count=count, step=step, ranged=ranged)
+                for timestamp, count in list(ranged.get("requests", {}).items())[-MAX_RED_POINTS:]
+            )
+        satisfied_count = _count_field(values, "satisfied")
+        within_4t = _count_field(values, "within_4t")
+        tolerating_count = None if satisfied_count is None or within_4t is None else max(0, within_4t - satisfied_count)
+        return ServiceRed(
+            request_rate=requests_count / window_seconds,
+            error_rate=errors_count / requests_count,
+            p95_ms=self._nanoseconds_to_ms(values.get("p95")),
+            p99_ms=self._nanoseconds_to_ms(values.get("p99")),
+            timeseries=timeseries,
+            request_count=int(requests_count),
+            error_count=int(errors_count),
+            avg_ms=self._nanoseconds_to_ms(values.get("avg_duration")),
+            max_ms=self._nanoseconds_to_ms(values.get("max_duration")),
+            p50_ms=self._nanoseconds_to_ms(values.get("p50")),
+            p75_ms=self._nanoseconds_to_ms(values.get("p75")),
+            p90_ms=self._nanoseconds_to_ms(values.get("p90")),
+            slow_count=_count_field(values, "slow"),
+            satisfied_count=satisfied_count,
+            tolerating_count=tolerating_count,
+        )
+
+    def dependency_red_by_day(self, query: DependencyMetricQuery, windows: Sequence[tuple[datetime, datetime]]) -> tuple[ServiceRed, ...]:
+        if not windows:
+            return ()
+        total = sum((ended_at - started_at for started_at, ended_at in windows), timedelta(0))
+        exact_dedup = total <= RED_EXACT_DEDUP_WINDOW
+        filters = self._dependency_span_filters(query)
+        spans = " or ".join(f"_time:[{_logsql_time(started_at)}, {_logsql_time(ended_at)})" for started_at, ended_at in windows)
+        scoped = f"({spans}) {filters}"
+        final_stats = _red_final_stats(query).removeprefix("stats ")
+        if exact_dedup:
+            deduped = f"{scoped} | stats by (trace_id, span_id) max(duration) as duration, max(status_code) as status_code, min(_time) as _time"
+            aggregate = f"{self._bounded_spans(deduped)} | stats by (_time:1d) {final_stats}"
+        else:
+            aggregate = f"{scoped} | stats by (_time:1d) {final_stats}"
+        started_at = min(item[0] for item in windows)
+        ended_at = max(item[1] for item in windows)
+        grouped = self._values_by_day(self._stats(aggregate, started_at, ended_at))
+        reds = []
+        for window_start, window_end in windows:
+            values = grouped.get(_utc_day(window_start), {})
+            window_seconds = max(int((window_end - window_start).total_seconds()), 1)
+            reds.append(self._red_from_values(values, window_seconds))
+        return tuple(reds)
+
+    def dependency_red_by_window(self, query: DependencyMetricQuery, window_minutes: int) -> tuple[tuple[datetime, ServiceRed], ...]:
+        minutes = max(int(window_minutes), 1)
+        filters = self._dependency_span_filters(query)
+        scoped = f"(_time:[{_logsql_time(query.started_at)}, {_logsql_time(query.ended_at)})) {filters}"
+        final_stats = _red_final_stats(query).removeprefix("stats ")
+        aggregate = f"{scoped} | stats by (_time:{minutes}m) {final_stats}"
+        grouped = self._values_by_day(self._stats(aggregate, query.started_at, query.ended_at))
+        return self._reds_by_bucket(grouped, minutes)
+
+    def _dependency_span_filters(self, query: DependencyMetricQuery) -> str:
+        filters = [
+            "*",
+            f"{_NAMESPACE_FIELD}:={_logsql_string(query.service_namespace)}",
+            f"{_SERVICE_FIELD}:={_logsql_string(query.service_name)}",
+            f"{_ENVIRONMENT_FIELD}:={_logsql_string(query.environment)}",
+            'kind:="3"',
+        ]
+        system = _logsql_string(query.system)
+        statement = _logsql_string(query.statement)
+        if query.channel == "http":
+            filters.append(f"({_HTTP_METHOD_FIELD}:* OR {_HTTP_REQUEST_METHOD_FIELD}:*)")
+            filters.append(f"(name:={statement} OR {_HTTP_ROUTE_FIELD}:* OR {_PEER_SERVICE_FIELD}:={system})")
+        else:
+            filters.append(f"({_DB_SYSTEM_NAME_FIELD}:={system} OR {_DB_SYSTEM_FIELD}:={system})")
+            filters.append(f"({_DB_STATEMENT_FIELD}:={statement} OR {_DB_QUERY_TEXT_FIELD}:={statement} OR name:={statement})")
+        return " ".join(filters)
 
     def service_error_breakdown(self, query: ServiceErrorBreakdownQuery) -> ServiceErrorBreakdown:
         if not 1 <= query.sample_limit <= 50:
@@ -1057,9 +1298,7 @@ class VictoriaTracesTelemetryStore:
         exact_dedup: bool,
         entry_filters: str,
     ) -> list[dict[str, Any]]:
-        final_stats = (
-            'count() as requests, count() if (status_code:="2") as errors, ' "quantile(0.95, duration) as p95, quantile(0.99, duration) as p99"
-        )
+        final_stats = _red_final_stats(query).removeprefix("stats ")
         if exact_dedup:
             endpoint_deduped = self._deduped_entry_query(
                 query.service_namespace,
@@ -1124,6 +1363,37 @@ class VictoriaTracesTelemetryStore:
             total_rate=total / window_seconds,
             data_state=MetricDataState.AVAILABLE,
         )
+
+    def slo_compliance_by_window(self, query: SloMetricQuery, window_minutes: int) -> tuple[tuple[datetime, float, float], ...]:
+        """按短窗分桶返回 (桶结束, total, good)，供燃烧率回放在内存里平移长短窗。"""
+        minutes = max(int(window_minutes), 1)
+        deduped = self._deduped_entry_query(
+            query.service_namespace,
+            query.service_name,
+            query.environment,
+            endpoint=query.endpoint,
+        )
+        if query.sli_type == "availability":
+            final = 'count() as total, count() if (status_code:="2") as bad'
+            good_metric = None
+        else:
+            if query.latency_threshold_ms is None or query.latency_threshold_ms <= 0:
+                raise ValueError("时延 SLO 必须提供正数阈值")
+            threshold_ns = query.latency_threshold_ms * 1_000_000
+            final = f"count() as total, count() if (duration:<={threshold_ns}) as good"
+            good_metric = "good"
+        aggregate = f"{self._bounded_spans(deduped)} | stats by (_time:{minutes}m) {final}"
+        grouped = self._values_by_day(self._stats(aggregate, query.started_at, query.ended_at))
+        points = []
+        for key, values in grouped.items():
+            started = _parse_bucket_time(key)
+            if started is None:
+                continue
+            total = values.get("total") or 0.0
+            good = values.get(good_metric, 0.0) if good_metric else max(0.0, total - values.get("bad", 0.0))
+            points.append((started + timedelta(minutes=minutes), float(total), float(good)))
+        points.sort(key=lambda item: item[0])
+        return tuple(points)
 
     def instance_activity(self, query: InstanceActivityQuery) -> list[InstanceActivity]:
         _validate_window(query.started_at, query.ended_at)
@@ -1488,6 +1758,7 @@ class VictoriaTracesTelemetryStore:
         *,
         endpoint: str = "",
         version: str = "",
+        instance_id: str = "",
     ) -> str:
         filters = [
             "*",
@@ -1500,6 +1771,8 @@ class VictoriaTracesTelemetryStore:
             filters.append(f"name:={_logsql_string(endpoint)}")
         if version:
             filters.append(f"{_VERSION_FIELD}:={_logsql_string(version)}")
+        if instance_id:
+            filters.append(f"{_INSTANCE_FIELD}:={_logsql_string(instance_id)}")
         return " ".join(filters)
 
     def _deduped_entry_query(
@@ -1510,12 +1783,20 @@ class VictoriaTracesTelemetryStore:
         *,
         endpoint: str = "",
         version: str = "",
+        instance_id: str = "",
         keep_name: bool = False,
     ) -> str:
         fields = "max(duration) as duration, max(status_code) as status_code"
         if keep_name:
             fields += ", max(name) as endpoint"
-        base = self._entry_span_filters(namespace, service_name, environment, endpoint=endpoint, version=version)
+        base = self._entry_span_filters(
+            namespace,
+            service_name,
+            environment,
+            endpoint=endpoint,
+            version=version,
+            instance_id=instance_id,
+        )
         return f"{base} | stats by (trace_id, span_id) {fields}"
 
     @staticmethod
@@ -1598,6 +1879,57 @@ class VictoriaTracesTelemetryStore:
         return rows
 
     @staticmethod
+    def _values_by_day(result: list[dict[str, Any]]) -> dict[str, dict[str, float]]:
+        grouped: dict[str, dict[str, float]] = {}
+        for series in result:
+            metric = series.get("metric", {})
+            raw_value = series.get("value", [])
+            if not isinstance(metric, dict) or not isinstance(raw_value, list) or len(raw_value) != 2:
+                continue
+            day = str(metric.get("_time", ""))
+            name = str(metric.get("__name__", ""))
+            parsed = _number(raw_value[1])
+            if day and name and parsed is not None:
+                grouped.setdefault(day, {})[name] = parsed
+        return grouped
+
+    def _reds_by_bucket(self, grouped: dict[str, dict[str, float]], minutes: int) -> tuple[tuple[datetime, ServiceRed], ...]:
+        window_seconds = minutes * 60
+        points = []
+        for key, values in grouped.items():
+            started = _parse_bucket_time(key)
+            if started is None:
+                continue
+            points.append((started + timedelta(minutes=minutes), self._red_from_values(values, window_seconds)))
+        points.sort(key=lambda item: item[0])
+        return tuple(points)
+
+    def _red_from_values(self, values: dict[str, float], window_seconds: int) -> ServiceRed:
+        requests_count = values.get("requests")
+        if requests_count is None or requests_count <= 0:
+            return ServiceRed(None, None, None, None)
+        errors_count = values.get("errors", 0.0) or 0.0
+        satisfied_count = _count_field(values, "satisfied")
+        within_4t = _count_field(values, "within_4t")
+        tolerating_count = None if satisfied_count is None or within_4t is None else max(0, within_4t - satisfied_count)
+        return ServiceRed(
+            request_rate=requests_count / window_seconds,
+            error_rate=errors_count / requests_count,
+            p95_ms=self._nanoseconds_to_ms(values.get("p95")),
+            p99_ms=self._nanoseconds_to_ms(values.get("p99")),
+            request_count=int(requests_count),
+            error_count=int(errors_count),
+            avg_ms=self._nanoseconds_to_ms(values.get("avg_duration")),
+            max_ms=self._nanoseconds_to_ms(values.get("max_duration")),
+            p50_ms=self._nanoseconds_to_ms(values.get("p50")),
+            p75_ms=self._nanoseconds_to_ms(values.get("p75")),
+            p90_ms=self._nanoseconds_to_ms(values.get("p90")),
+            slow_count=_count_field(values, "slow"),
+            satisfied_count=satisfied_count,
+            tolerating_count=tolerating_count,
+        )
+
+    @staticmethod
     def _ungrouped_values(result: list[dict[str, Any]]) -> dict[str, float]:
         values: dict[str, float] = {}
         for series in result:
@@ -1665,6 +1997,38 @@ class VictoriaTracesTelemetryStore:
     @staticmethod
     def _nanoseconds_to_ms(value: float | None) -> float | None:
         return value / 1_000_000 if value is not None else None
+
+    def _red_point(self, *, timestamp: float, count: float, step: int, ranged: dict[str, dict[float, float]]) -> ServiceRedPoint:
+        def bucket(name: str) -> float | None:
+            return ranged.get(name, {}).get(timestamp)
+
+        def milliseconds(name: str) -> float | None:
+            return self._nanoseconds_to_ms(bucket(name)) if count > 0 else None
+
+        errors = bucket("errors") or 0.0
+        slow = bucket("slow") if count > 0 else None
+        satisfied = bucket("satisfied") if count > 0 else None
+        within_4t = bucket("within_4t") if count > 0 else None
+        satisfied_count = int(satisfied) if satisfied is not None else None
+        within_count = int(within_4t) if within_4t is not None else None
+        tolerating = None if satisfied_count is None or within_count is None else max(0, within_count - satisfied_count)
+        return ServiceRedPoint(
+            timestamp=datetime.fromtimestamp(timestamp, tz=UTC),
+            request_rate=count / step,
+            error_rate=errors / count if count > 0 else None,
+            p95_ms=milliseconds("p95"),
+            p99_ms=milliseconds("p99"),
+            avg_ms=milliseconds("avg_duration"),
+            max_ms=milliseconds("max_duration"),
+            p50_ms=milliseconds("p50"),
+            p75_ms=milliseconds("p75"),
+            p90_ms=milliseconds("p90"),
+            slow_count=int(slow) if slow is not None else None,
+            satisfied_count=satisfied_count,
+            tolerating_count=tolerating,
+            error_count=int(errors) if count > 0 else 0,
+            request_count=int(count),
+        )
 
     def _request_json(
         self,

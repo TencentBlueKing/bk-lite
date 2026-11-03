@@ -81,6 +81,7 @@ class AlertReminderTask(models.Model):
     # 提醒状态
     is_active = models.BooleanField(default=True, help_text="是否激活")
     reminder_count = models.IntegerField(default=0, help_text="已提醒次数")
+    generation = models.PositiveIntegerField(default=0, help_text="提醒计数归零后的代数，0 沿用旧幂等键")
 
     # 当前配置（冗余存储，避免策略变更影响）
     current_frequency_minutes = models.IntegerField(help_text="当前提醒频率(分钟)")
@@ -115,6 +116,7 @@ class AlertEscalationTask(models.Model):
     mode = models.CharField(max_length=16, help_text="升级模式 append/replace")
     layers = JSONField(default=list, help_text="升级链层级快照")
     current_layer_index = models.IntegerField(default=0, help_text="当前层级索引")
+    cycle = models.PositiveIntegerField(default=0, help_text="升级周期；新建为 0，改派重置时加 1")
     layer_started_at = models.DateTimeField(help_text="本层开始时间")
     next_escalation_at = models.DateTimeField(
         null=True,

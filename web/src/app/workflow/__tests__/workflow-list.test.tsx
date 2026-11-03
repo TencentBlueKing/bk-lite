@@ -152,8 +152,12 @@ describe('流程列表', () => {
 
     expect(screen.queryByRole('button', { name: workflow.name })).toBeNull();
     expect(screen.getByRole('button', { name: /新建/ }).closest('[class*="gap-2"]')).not.toBeNull();
-    expect(screen.getByRole('button', { name: /导出/ })).not.toBeNull();
-    expect(screen.getByRole('button', { name: /导入/ })).not.toBeNull();
+    expect(within(screen.getByTestId('workflow-table-panel')).getAllByRole('button').map((button) => button.getAttribute('aria-label') || button.textContent || '').filter((label) => /导出|导入|刷新|新建/.test(label))).toEqual([
+      expect.stringMatching(/导出/),
+      expect.stringMatching(/导入/),
+      expect.stringMatching(/新建/),
+      expect.stringMatching(/刷新/),
+    ]);
     expect(screen.queryByRole('button', { name: '执行记录' })).toBeNull();
     const editButton = screen.getByRole('button', { name: /编辑/ });
     expect(editButton).not.toBeNull();

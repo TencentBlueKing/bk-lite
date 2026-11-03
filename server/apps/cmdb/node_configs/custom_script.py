@@ -45,5 +45,11 @@ class CustomScriptNodeParams(SSHNodeParamsMixin, BaseNodeParams):
         if self._plugin and self._plugin.os_type == OS_WINDOWS:
             if not self.credential:
                 return {}
+            if self.has_multiple_credentials:
+                return {
+                    self._password_env_name(index): credential.get("password", "")
+                    for index, credential in enumerate(self.credential_pool or [])
+                    if isinstance(credential, dict)
+                }
             return {self._password_env_name(): self.credential.get("password", "")}
         return super().env_config(*args, **kwargs)

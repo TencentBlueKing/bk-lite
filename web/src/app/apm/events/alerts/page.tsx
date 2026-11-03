@@ -61,10 +61,20 @@ const SEVERITY_KEY: Record<ApmPolicySeverity, string> = {
 };
 const METRIC_KEY: Record<ApmAlert['metric_type'], string> = {
   error_rate: 'apm.common.errorRate',
+  error_count: 'apm.policies.metricErrorCount',
+  p50: 'apm.policies.metricP50',
+  p75: 'apm.policies.metricP75',
+  p90: 'apm.policies.metricP90',
   p95: 'apm.common.p95Latency',
   p99: 'apm.common.p99Latency',
+  latency_avg: 'apm.policies.metricLatencyAvg',
+  latency_max: 'apm.policies.metricLatencyMax',
+  slow_request_count: 'apm.policies.metricSlowCount',
+  slow_request_rate: 'apm.policies.metricSlowRate',
+  apdex: 'apm.policies.metricApdex',
   throughput: 'apm.common.throughput',
   no_traffic: 'apm.alerts.noTraffic',
+  slo_burn_rate: 'apm.policies.metricSloBurnRate',
 };
 
 function resolveTimeParams(view: AlertView, historyTimeRange: [number, number] | null) {
@@ -413,6 +423,16 @@ export default function ApmAlertsPage() {
       render: (_, item) => (
         <div className={styles.alertServiceCell}>
           <span className={styles.alertServiceName} title={item.service_name}>{item.service_name}</span>
+          {item.instance_id ? (
+            <Typography.Text type="secondary" className={styles.alertServiceScope} title={item.instance_id}>
+              {item.instance_id}
+            </Typography.Text>
+          ) : null}
+          {item.dependency ? (
+            <Typography.Text type="secondary" className={styles.alertServiceScope} title={item.dependency}>
+              {item.dependency}
+            </Typography.Text>
+          ) : null}
           <Typography.Text type="secondary" className={styles.alertServiceScope} title={item.endpoint || t('apm.alerts.allEndpoints', '全部端点')}>
             {item.endpoint || t('apm.alerts.allEndpoints', '全部端点')}
           </Typography.Text>

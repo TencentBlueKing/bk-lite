@@ -16,6 +16,7 @@ class PortFingerprintViewSet(ModelViewSet):
     ordering = ["port", "target_type"]
     filterset_class = PortFingerprintFilter
     pagination_class = CustomPageNumberPagination
+    http_method_names = ["get", "post", "patch", "delete", "head", "options"]
 
     @HasPermission("soid_library-View")
     def list(self, request, *args, **kwargs):
@@ -24,6 +25,15 @@ class PortFingerprintViewSet(ModelViewSet):
     @HasPermission("soid_library-View")
     def retrieve(self, request, *args, **kwargs):
         return super().retrieve(request, *args, **kwargs)
+
+    @HasPermission("soid_library-Add")
+    def partial_update(self, request, *args, **kwargs):
+        instance = self.get_object()
+        if instance.built_in:
+            allowed = set(request.data.keys()) - {"enabled"}
+            if allowed:
+                return WebUtils.response_error(error_message="内置端口指纹只能停用或启用", status_code=status.HTTP_400_BAD_REQUEST)
+        return super().partial_update(request, *args, **kwargs)
 
     @HasPermission("soid_library-Add")
     def create(self, request, *args, **kwargs):

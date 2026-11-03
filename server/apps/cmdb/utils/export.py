@@ -1,4 +1,5 @@
 import json
+import re
 from io import BytesIO
 
 import openpyxl
@@ -16,6 +17,32 @@ def serialize_tag_values_for_export(values: list[str]) -> str:
     if not values:
         return ""
     return ",".join([str(value).strip() for value in values if str(value).strip()])
+
+
+_INVALID_SHEET_TITLE_CHARS = re.compile(r"[\\*?:/\[\]]")
+_MAX_SHEET_TITLE_LENGTH = 31
+
+
+def _enum_helper_sheet_title(display_name, used_titles) -> str:
+    """为枚举辅助表分配合法、唯一且不超过 31 个字符的标题。
+
+    字段展示名可以包含斜杠等 Excel 工作表不允许的字符，不能直接作为标题。
+    """
+    cleaned = _INVALID_SHEET_TITLE_CHARS.sub("_", str(display_name or "")).strip().strip("'")
+    if not cleaned:
+        cleaned = "enum"
+    used = {str(title).casefold() for title in used_titles}
+    base = cleaned[:_MAX_SHEET_TITLE_LENGTH]
+    if base.casefold() not in used:
+        return base
+
+    number = 2
+    while True:
+        suffix = f"_{number}"
+        candidate = f"{base[: _MAX_SHEET_TITLE_LENGTH - len(suffix)]}{suffix}"
+        if candidate.casefold() not in used:
+            return candidate
+        number += 1
 
 
 class Export:
@@ -147,15 +174,17 @@ class Export:
         """设置枚举值, 通过sheet数据, 单选"""
         value_list = [i["name"] for i in option]
 
-        # 将枚举数据放入sheet页
-        filed_sheet = workbook.create_sheet(title=filed_name)
+        # 辅助表标题独立于展示名，避免斜杠等字符或超长名称让模板和导出失败。
+        sheet_title = _enum_helper_sheet_title(filed_name, workbook.sheetnames)
+        filed_sheet = workbook.create_sheet(title=sheet_title)
         for value in value_list:
             filed_sheet.append([value])
 
-        # 创建 DataValidation 对象
+        # 创建 DataValidation 对象；公式必须引用实际生成的工作表名。
         col = get_column_letter(index)
         last_row = max(1, len(value_list))
-        dv = DataValidation(type="list", formula1=f"='{filed_sheet.title}'!$A$1:$A{last_row}")
+        quoted_title = filed_sheet.title.replace("'", "''")
+        dv = DataValidation(type="list", formula1=f"='{quoted_title}'!$A$1:$A{last_row}")
         dv.sqref = f"{col}4:{col}999"
 
         return dv

@@ -15,6 +15,7 @@ from rest_framework.test import APIClient, APIRequestFactory, force_authenticate
 
 from apps.alerts.models.alert_source import AlertSource
 from apps.alerts.models.models import Event, Level
+from apps.alerts.service.k8s_install import K8sInstallService
 from apps.alerts.views.alert_source import AlertSourceModelViewSet
 
 
@@ -793,6 +794,65 @@ def test_k8s_install_command(permission_user):
     assert payload["data"]["token"]
 
 
+def _k8s_token_yaml(token):
+    rendered = APIClient().post(
+        "/api/v1/alerts/open_api/k8s/render/",
+        {"token": token},
+        format="json",
+    )
+    assert rendered.status_code == status.HTTP_200_OK
+    assert rendered["X-Token-Remaining-Usage"] == "4"
+    return rendered.content.decode("utf-8")
+
+
+@pytest.mark.django_db
+def test_k8s_install_token_render_keeps_insecure_skip_verify(permission_user, settings):
+    """安装命令写入的 insecure_skip_verify 必须进入 token 渲染；false 和旧载荷保持校验。"""
+    settings.K8S_INSTALL_TOKEN_DB_ENABLED = True
+    _make_source(
+        "k8s",
+        source_type="webhook",
+        config={"url": "/recv"},
+        team_secrets={"1": "team-sec-1"},
+    )
+    permission_user.permission = {"alarm": {"Integration-Detail"}}
+
+    def render_from_install(insecure_skip_verify):
+        request = _request(
+            "post",
+            "/alert_source/k8s_install_command/",
+            permission_user,
+            data={
+                "server_url": "https://host:8000",
+                "cluster_name": "prod",
+                "team_id": 1,
+                "insecure_skip_verify": insecure_skip_verify,
+            },
+        )
+        response = AlertSourceModelViewSet.as_view({"post": "k8s_install_command"})(request)
+        payload = _render(response)
+        assert response.status_code == status.HTTP_200_OK
+        return _k8s_token_yaml(payload["data"]["token"])
+
+    yaml_on = render_from_install(True)
+    assert "          tls:\n            insecureSkipVerify: true" in yaml_on
+
+    yaml_off = render_from_install(False)
+    assert "insecureSkipVerify" not in yaml_off
+
+    legacy_token = K8sInstallService.generate_install_token(
+        {
+            "server_url": "https://host:8000",
+            "cluster_name": "prod",
+            "push_source_id": "k8s",
+            "source_id": "k8s",
+            "receiver_url": "https://host:8000/recv",
+            "secret": "team-sec-1",
+        }
+    )
+    assert "insecureSkipVerify" not in _k8s_token_yaml(legacy_token)
+
+
 @pytest.mark.django_db
 def test_k8s_install_command_requires_team_id(permission_user):
     _make_source(
@@ -880,7 +940,15 @@ def test_daily_event_stats_user_timezone_day_boundary(superuser):
     src = _make_source("s-tz")
     # UTC 7-24 16:30 = Asia/Shanghai 7-25 00:30（用户时区的"今天"）
     utc_dt = dj_timezone.datetime(2026, 7, 24, 16, 30, 0, tzinfo=dj_timezone.utc)
-    event = Event.objects.create(source=src, raw_data={}, title="t", level="0", start_time=utc_dt, event_id="E-tz")
+    event = Event.objects.create(
+        source=src,
+        raw_data={},
+        title="t",
+        level="0",
+        start_time=utc_dt,
+        event_id="E-tz",
+        team=[1],
+    )
     Event.objects.filter(pk=event.pk).update(received_at=utc_dt)
 
     shanghai = zoneinfo.ZoneInfo("Asia/Shanghai")
@@ -890,6 +958,7 @@ def test_daily_event_stats_user_timezone_day_boundary(superuser):
         fake_now_utc = dj_timezone.datetime(2026, 7, 24, 16, 35, 0, tzinfo=dj_timezone.utc)
         with patch("apps.alerts.views.alert_source.timezone.now", return_value=fake_now_utc):
             request = _request("get", "/alert_source/daily_event_stats/", superuser)
+            request.COOKIES["current_team"] = "1"
             response = AlertSourceModelViewSet.as_view({"get": "daily_event_stats"})(request)
             payload = _render(response)
     finally:
@@ -898,3 +967,117 @@ def test_daily_event_stats_user_timezone_day_boundary(superuser):
     assert response.status_code == status.HTTP_200_OK
     # 按用户时区日界，UTC 7-24 16:30 属于 Asia/Shanghai 7-25（今日），today_count >= 1
     assert payload["data"]["today_count"] >= 1, f"按用户时区日界，事件应计入今日，实际 today_count={payload['data']['today_count']}"
+    assert payload["data"]["yesterday_count"] == 0
+
+
+def _scoped_event(source, event_id, team, received_at):
+    event = Event.objects.create(
+        source=source,
+        raw_data={},
+        title=event_id,
+        level="0",
+        start_time=received_at,
+        event_id=event_id,
+        team=team,
+    )
+    Event.objects.filter(pk=event.pk).update(received_at=received_at)
+    return event
+
+
+def _daily_stats(user, current_team=None, include_children=None):
+    request = _request("get", "/alert_source/daily_event_stats/", user)
+    if current_team is not None:
+        request.COOKIES["current_team"] = str(current_team)
+    if include_children is not None:
+        request.COOKIES["include_children"] = include_children
+    response = AlertSourceModelViewSet.as_view({"get": "daily_event_stats"})(request)
+    return response, _render(response)
+
+
+@pytest.mark.django_db
+def test_daily_event_stats_counts_only_current_organization(permission_user):
+    """组织 A 的今日/昨日计数不包含组织 B，再增加一条 B 事件也不改变 A 的计数。"""
+    permission_user.permission = {"alarm": {"Integration-View"}}
+    source = _make_source("s-scope")
+    now = timezone.localtime(timezone.now())
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    today_at = today_start if now - today_start < timedelta(minutes=1) else now - timedelta(minutes=1)
+    yesterday_at = today_start - timedelta(hours=1)
+    _scoped_event(source, "E-a-today", [1], today_at)
+    _scoped_event(source, "E-a-yesterday", [1], yesterday_at)
+    _scoped_event(source, "E-b-today", [2], today_at)
+    _scoped_event(source, "E-b-yesterday", [2], yesterday_at)
+
+    response, payload = _daily_stats(permission_user, current_team=1)
+
+    assert response.status_code == status.HTTP_200_OK
+    assert payload["data"] == {"today_count": 1, "yesterday_count": 1}
+
+    _scoped_event(source, "E-b-today-extra", [2], today_at)
+    response, payload = _daily_stats(permission_user, current_team=1)
+
+    assert response.status_code == status.HTTP_200_OK
+    assert payload["data"] == {"today_count": 1, "yesterday_count": 1}
+
+
+@pytest.mark.django_db
+def test_daily_event_stats_without_current_team_is_zero(permission_user):
+    permission_user.permission = {"alarm": {"Integration-View"}}
+    source = _make_source("s-noteam")
+    now = timezone.now()
+    _scoped_event(source, "E-global-a", [1], now)
+    _scoped_event(source, "E-global-b", [2], now)
+
+    response, payload = _daily_stats(permission_user)
+
+    assert response.status_code == status.HTTP_200_OK
+    assert payload["data"] == {"today_count": 0, "yesterday_count": 0}
+
+
+@pytest.mark.django_db
+def test_daily_event_stats_rejects_foreign_team(permission_user):
+    permission_user.permission = {"alarm": {"Integration-View"}}
+    source = _make_source("s-foreign")
+    _scoped_event(source, "E-foreign", [2], timezone.now())
+
+    response, payload = _daily_stats(permission_user, current_team=2)
+
+    assert response.status_code == status.HTTP_403_FORBIDDEN
+    assert (payload.get("data") or {}).get("today_count", 0) == 0
+
+
+@pytest.mark.django_db
+def test_daily_event_stats_include_children_follows_request_scope(permission_user):
+    permission_user.permission = {"alarm": {"Integration-View"}}
+    permission_user.group_tree = [{"id": 1, "subGroups": [{"id": 11}]}]
+    source = _make_source("s-children")
+    now = timezone.now()
+    _scoped_event(source, "E-parent", [1], now)
+    _scoped_event(source, "E-child", [11], now)
+    _scoped_event(source, "E-other-org", [99], now)
+
+    own_response, own_payload = _daily_stats(permission_user, current_team=1, include_children="0")
+    child_response, child_payload = _daily_stats(permission_user, current_team=1, include_children="1")
+
+    assert own_response.status_code == status.HTTP_200_OK
+    assert own_payload["data"]["today_count"] == 1
+    assert child_response.status_code == status.HTTP_200_OK
+    assert child_payload["data"]["today_count"] == 2
+    assert child_payload["data"]["yesterday_count"] == 0
+
+
+@pytest.mark.django_db
+def test_daily_event_stats_superuser_follows_current_team_cookie(superuser):
+    source = _make_source("s-super-scope")
+    now = timezone.now()
+    _scoped_event(source, "E-super-a", [1], now)
+    _scoped_event(source, "E-super-b", [2], now)
+
+    scoped_response, scoped_payload = _daily_stats(superuser, current_team=1)
+    missing_response, missing_payload = _daily_stats(superuser)
+
+    assert scoped_response.status_code == status.HTTP_200_OK
+    assert scoped_payload["data"]["today_count"] == 1
+    assert scoped_payload["data"]["yesterday_count"] == 0
+    assert missing_response.status_code == status.HTTP_200_OK
+    assert missing_payload["data"] == {"today_count": 0, "yesterday_count": 0}

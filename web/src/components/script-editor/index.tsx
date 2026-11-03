@@ -11,7 +11,6 @@ import {
   FullscreenOutlined,
 } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
-import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import { insertTextAtRange, type TextPoint, type TextRange } from './insert-text';
 import 'ace-builds/src-noconflict/mode-sh';
 import 'ace-builds/src-noconflict/mode-batchfile';
@@ -252,19 +251,18 @@ const ScriptEditor: React.FC<ScriptEditorProps> = ({
       title: t('common.variableName'),
       dataIndex: 'token',
       key: 'token',
-      width: '46%',
-      ellipsis: true,
+      width: 168,
       render: (token: string) => (
-        <span className="font-mono text-[var(--color-primary)]">{token}</span>
+        <span className="whitespace-nowrap font-mono text-[var(--color-primary)]">{token}</span>
       ),
     },
     {
       title: t('common.description'),
       dataIndex: 'description',
       key: 'description',
-      ellipsis: true,
+      width: 84,
       render: (description: string) => (
-        <EllipsisWithTooltip text={description} className="block truncate" />
+        <span className="whitespace-nowrap">{description}</span>
       ),
     },
     {
@@ -390,7 +388,7 @@ const ScriptEditor: React.FC<ScriptEditorProps> = ({
   );
 
   const panel = panelVisible && expanded ? (
-    <aside className="flex w-80 shrink-0 flex-col self-stretch overflow-hidden rounded-md border border-[var(--color-border-1)] bg-[var(--color-bg-1)]">
+    <aside className="flex w-[328px] shrink-0 flex-col self-stretch overflow-hidden rounded-md border border-[var(--color-border-1)] bg-[var(--color-bg-1)]">
       <div className="flex h-10 shrink-0 items-center justify-between border-b border-[var(--color-border-1)] px-3">
         <span className="text-sm font-medium text-[var(--color-text-1)]">{t('common.optionalVariables')}</span>
             <Button

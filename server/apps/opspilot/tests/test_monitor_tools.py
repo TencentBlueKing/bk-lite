@@ -191,6 +191,7 @@ def test_monitor_planner_step_guidance_warns_against_snapshot_host_count():
     guidance = ToolsNodes._planned_tool_step_guidance()
     assert "monitor_get_host_resource_top_by_time" in guidance
     assert "host_count" in guidance
+    assert "禁止把返回的点写入 data" in guidance
 
 
 def test_monitor_constructor_has_no_identity_params():

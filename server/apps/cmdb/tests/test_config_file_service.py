@@ -198,6 +198,91 @@ def test_normalize_item_map_maps_legacy_graph_id_to_uuid():
     assert normalized[uuid_value]["status"] == ConfigFileVersionStatus.SUCCESS
 
 
+class _ContainsProbe(list):
+    """Count element comparisons performed by list membership."""
+
+    def __init__(self, values):
+        super().__init__(values)
+        self.candidate_visits = 0
+
+    def __contains__(self, item):
+        for candidate in self:
+            self.candidate_visits += 1
+            if candidate == item:
+                return True
+        return False
+
+
+def test_normalize_item_map_membership_avoids_linear_candidate_scans(monkeypatch):
+    original = S._get_expected_instance_ids.__func__
+    probes = {}
+
+    def _wrapped(cls, task):
+        probe = _ContainsProbe(original(cls, task))
+        probes[len(probe)] = probe
+        return probe
+
+    monkeypatch.setattr(S, "_get_expected_instance_ids", classmethod(_wrapped))
+
+    visits = []
+    for size in (100, 200, 400):
+        instance_ids = [f"inst-{index:04d}" for index in range(size)]
+        task = _task(instances=[{"inst_uuid": instance_id} for instance_id in instance_ids])
+        items = {
+            instance_id: {
+                "instance_id": instance_id,
+                "status": ConfigFileVersionStatus.SUCCESS,
+                "changed": False,
+                "version": "100",
+            }
+            for instance_id in instance_ids
+        }
+        normalized = S._normalize_item_map(task, items)
+        assert normalized == items
+        assert list(normalized) == instance_ids
+        visits.append(probes[size].candidate_visits)
+
+    uuid_value = "123e4567-e89b-42d3-a456-426614174000"
+    aliased = _task(instances=[{"_id": "10", "inst_uuid": uuid_value}])
+    unknown_dropped = S._normalize_item_map(
+        aliased,
+        {
+            "10": {"instance_id": "10", "version": "100", "status": ConfigFileVersionStatus.SUCCESS, "changed": False},
+            "orphan": {"instance_id": "orphan", "version": "900", "status": ConfigFileVersionStatus.ERROR, "changed": False},
+            uuid_value: {"instance_id": uuid_value, "version": "200", "status": ConfigFileVersionStatus.SUCCESS, "changed": True},
+        },
+    )
+    assert list(unknown_dropped) == [uuid_value]
+    assert unknown_dropped[uuid_value]["instance_id"] == uuid_value
+    assert unknown_dropped[uuid_value]["version"] == "200"
+    assert unknown_dropped[uuid_value]["changed"] is True
+
+    lower_later = S._normalize_item_map(
+        aliased,
+        {
+            uuid_value: {"instance_id": uuid_value, "version": "200", "status": ConfigFileVersionStatus.SUCCESS, "changed": True},
+            "10": {"instance_id": "10", "version": "100", "status": ConfigFileVersionStatus.ERROR, "changed": False},
+        },
+    )
+    assert list(lower_later) == [uuid_value]
+    assert lower_later[uuid_value]["version"] == "200"
+    assert lower_later[uuid_value]["changed"] is True
+
+    empty_task = _task(instances=[])
+    untouched = {
+        "orphan": {"instance_id": "orphan", "version": "9"},
+        "other": {"instance_id": "other", "version": "1"},
+    }
+    assert S._normalize_item_map(empty_task, untouched) == untouched
+    assert list(S._normalize_item_map(empty_task, untouched)) == ["orphan", "other"]
+
+    ordered = _task(instances=[{"_id": "10", "inst_uuid": uuid_value}, {"inst_uuid": "inst-0001"}])
+    assert type(original(S, ordered)) is list
+    assert original(S, ordered) == [uuid_value, "inst-0001"]
+
+    assert visits == [0, 0, 0]
+
+
 def test_build_summary_pending_ignores_duplicate_legacy_keys():
     uuid_value = "123e4567-e89b-42d3-a456-426614174000"
     task = _task(instances=[{"_id": "1", "inst_uuid": uuid_value}, {"_id": "2", "inst_uuid": "223e4567-e89b-42d3-a456-426614174000"}])

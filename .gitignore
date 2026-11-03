@@ -55,6 +55,7 @@ automation/
 .worktrees/
 /.claire/
 /server/.skill/
+/server/tmp/
 .agents/
 .projectmem/
 .codegraph/

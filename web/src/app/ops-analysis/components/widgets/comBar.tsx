@@ -25,10 +25,12 @@ import {
 } from '@/app/ops-analysis/utils/chartTheme';
 import ChartLegend from '@/app/ops-analysis/components/chartLegend';
 import WidgetState from '@/app/ops-analysis/components/widget-state';
+import type { DatasourceItem } from '@/app/ops-analysis/types/dataSource';
 import type {
   ScreenRenderContext,
   ValueConfig,
 } from '@/app/ops-analysis/types/dashBoard';
+import { toLineBarFieldMapping } from '@/app/ops-analysis/utils/lineBarFieldMapping';
 import {
   getScreenWidgetScale,
   scaleScreenMetric,
@@ -46,6 +48,7 @@ interface BarChartProps {
   loading?: boolean;
   onReady?: (ready: boolean) => void;
   config?: ValueConfig;
+  dataSource?: DatasourceItem;
   screenRenderContext?: ScreenRenderContext;
 }
 
@@ -54,6 +57,7 @@ const BarChart: React.FC<BarChartProps> = ({
   loading = false,
   onReady,
   config,
+  dataSource,
   screenRenderContext,
 }) => {
   const { t } = useTranslation();
@@ -76,10 +80,10 @@ const BarChart: React.FC<BarChartProps> = ({
   }, []);
 
   const transformData = (rawData: any) => {
-    return ChartDataTransformer.transformToLineBarData(rawData, {
-      dimensionField: config?.dimensionField,
-      valueField: config?.valueField,
-    });
+    return ChartDataTransformer.transformToLineBarData(
+      rawData,
+      toLineBarFieldMapping(config, dataSource?.field_schema),
+    );
   };
 
   const chartData = transformData(rawData);
@@ -360,7 +364,7 @@ const BarChart: React.FC<BarChartProps> = ({
   }
 
   return (
-    <div className="h-full flex flex-row">
+    <div className="mt-2 h-full flex flex-row">
       {/* 图表区域 */}
       <div ref={chartPaneRef} className="flex-1 min-h-0">
         <ReactEcharts

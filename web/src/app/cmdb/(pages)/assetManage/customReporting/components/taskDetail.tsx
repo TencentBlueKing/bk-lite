@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Button, Card, Descriptions, Drawer, Space, Table, Tag, Typography, message } from 'antd';
+import { Alert, Badge, Button, Card, Descriptions, Drawer, Space, Table, Tag, Typography, message } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
 import { useTranslation } from '@/utils/i18n';
@@ -224,6 +224,10 @@ export default function TaskDetail({
   const teamLabels = (task?.team || []).map(
     (item) => groupNameMap[item] || `${item}`,
   );
+  const credentialIssuedAt =
+    credential?.last_used_at ||
+    credential?.credential_data?.rotated_at ||
+    credential?.credential_data?.issued_at;
 
   const batchStatusTone = (status: string): StatusTone =>
     status === 'success'
@@ -287,9 +291,15 @@ export default function TaskDetail({
       extra={
         task ? (
           <Space>
-            <Button onClick={() => onOpenBatchReview(task)}>
-              {t('CustomReporting.batchReview')}
-            </Button>
+            <Badge
+              count={task.review_status_summary?.pending ?? 0}
+              size="small"
+              offset={[-4, 4]}
+            >
+              <Button onClick={() => onOpenBatchReview(task)}>
+                {t('CustomReporting.batchReview')}
+              </Button>
+            </Badge>
             <Button type="primary" onClick={() => onEdit(task)}>
               {t('common.edit')}
             </Button>
@@ -392,10 +402,9 @@ export default function TaskDetail({
                     {credential.is_enabled ? t('yes') : t('no')}
                   </Descriptions.Item>
                   <Descriptions.Item label={t('CustomReporting.lastUsedAt')}>
-                    {credential.last_used_at ||
-                      credential.credential_data?.rotated_at ||
-                      credential.credential_data?.issued_at ||
-                      '--'}
+                    {credentialIssuedAt
+                      ? dayjs(credentialIssuedAt).format('YYYY-MM-DD HH:mm:ss')
+                      : '--'}
                   </Descriptions.Item>
                 </Descriptions>
                 <Alert

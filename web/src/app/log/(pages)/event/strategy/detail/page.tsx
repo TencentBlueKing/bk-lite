@@ -18,12 +18,17 @@ import AlertConditionsForm from './alertConditionsForm';
 import NotificationForm from './notificationForm';
 import AlertNameVariables from './alertNameVariables';
 import LogPreview from './logPreview';
+import DryRunResultModal, { LogDryRunResult } from './dryRunResultModal';
 import usePolicyFieldCatalog from './usePolicyFieldCatalog';
 import {
   buildStrategyPayload,
   getDefaultShowFields,
   getLockedPolicyType,
+  normalizeCondition,
   pruneNoticeUsers,
+  readPolicyMinHits,
+  readPolicyRecoverAfter,
+  readPolicyTriggerCount,
   shouldPruneNoticeUsers,
   shouldRequireNoticeUsers
 } from './policyFormUtils';
@@ -35,7 +40,7 @@ import {
 const StrategyOperation = () => {
   const { t } = useTranslation();
   const { isLoading } = useApiClient();
-  const { getSystemChannelList, getPolicy, createPolicy, updatePolicy } =
+  const { getSystemChannelList, getPolicy, createPolicy, updatePolicy, dryRunPolicy } =
     useLogEventApi();
   const { getAllUsers } = useLogApi();
   const { getLogStreams } = useLogIntegrationApi();
@@ -51,6 +56,9 @@ const StrategyOperation = () => {
   const urlAlertType = searchParams.get('alert_type');
   const [pageLoading, setPageLoading] = useState<boolean>(false);
   const [confirmLoading, setConfirmLoading] = useState<boolean>(false);
+  const [dryRunLoading, setDryRunLoading] = useState<boolean>(false);
+  const [dryRunOpen, setDryRunOpen] = useState<boolean>(false);
+  const [dryRunResult, setDryRunResult] = useState<LogDryRunResult | null>(null);
   const [unit, setUnit] = useState<string>('min');
   const [periodUnit, setPeriodUnit] = useState<string>('min');
   const [conditions, setConditions] = useState<FilterItem[]>([]);
@@ -325,11 +333,15 @@ const StrategyOperation = () => {
       period: periodValue || '',
       schedule: scheduleValue || '',
       query: alert_condition.query || '',
-      group_by: alert_condition.group_by || null
+      group_by: alert_condition.group_by || null,
+      trigger_count: readPolicyTriggerCount(alert_condition),
+      min_hits: readPolicyMinHits(alert_condition),
+      recover_after: readPolicyRecoverAfter(alert_condition) ?? 3,
+      recover_enabled: readPolicyRecoverAfter(alert_condition) != null
     };
     if (alert_type === 'aggregate') {
       setTerm(alert_condition.rule?.mode || '');
-      setConditions(alert_condition.rule?.conditions || []);
+      setConditions((alert_condition.rule?.conditions || []).map((item) => normalizeCondition(item, data.alert_level)));
     } else {
       setConditions([{ op: null, field: null, value: '', func: null }]);
     }
@@ -359,12 +371,12 @@ const StrategyOperation = () => {
 
   const handleConditionsChange = (newConditions: FilterItem[]) => {
     setConditions(newConditions);
-    form.validateFields(['rule']);
+    form.validateFields(['rule', 'level_table']);
   };
 
   const handleTermChange = (val: string) => {
     setTerm(val);
-    form.validateFields(['rule']);
+    form.validateFields(['rule', 'level_table']);
   };
 
   const goBack = () => {
@@ -372,24 +384,41 @@ const StrategyOperation = () => {
     router.push(targetUrl);
   };
 
+  const buildCurrentPayload = (values: StrategyFields) =>
+    buildStrategyPayload(
+      {
+        ...values,
+        alert_type: lockedAlertType
+      },
+      {
+        unit,
+        periodUnit,
+        channelList,
+        conditions,
+        term,
+        isEdit,
+        formData
+      }
+    );
+
   const createStrategy = () => {
     form?.validateFields().then((values) => {
-      const params = buildStrategyPayload(
-        {
-          ...values,
-          alert_type: lockedAlertType
-        },
-        {
-          unit,
-          periodUnit,
-          channelList,
-          conditions,
-          term,
-          isEdit,
-          formData
-        }
-      );
-      operateStrategy(params);
+      operateStrategy(buildCurrentPayload(values));
+    });
+  };
+
+  const runDryRun = () => {
+    form?.validateFields().then(async (values) => {
+      try {
+        setDryRunLoading(true);
+        const result = await dryRunPolicy(buildCurrentPayload(values));
+        setDryRunResult(result as LogDryRunResult);
+        setDryRunOpen(true);
+      } catch (error) {
+        console.log(error);
+      } finally {
+        setDryRunLoading(false);
+      }
     });
   };
 
@@ -492,7 +521,7 @@ const StrategyOperation = () => {
               />
             </Form>
             <div className={strategyStyle.sidePanel}>
-              <AlertNameVariables form={form} groupBy={alertGroupBy} />
+              <AlertNameVariables form={form} groupBy={alertGroupBy} conditions={conditions} />
               <LogPreview
                 query={previewQuery}
                 logGroups={previewLogGroups}
@@ -501,6 +530,9 @@ const StrategyOperation = () => {
             </div>
           </div>
           <div className={strategyStyle.footer}>
+            <Button className="mr-[10px]" loading={dryRunLoading} onClick={runDryRun}>
+              {t('log.event.dryRun')}
+            </Button>
             <Button
               type="primary"
               className="mr-[10px]"
@@ -511,6 +543,12 @@ const StrategyOperation = () => {
             </Button>
             <Button onClick={goBack}>{t('common.cancel')}</Button>
           </div>
+          <DryRunResultModal
+            open={dryRunOpen}
+            data={dryRunResult}
+            onClose={() => setDryRunOpen(false)}
+            t={t}
+          />
         </div>
       )}
     </Spin>

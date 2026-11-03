@@ -4,13 +4,14 @@ from apps.cmdb.constants.constants import INSTANCE, OPERATOR_INSTANCE
 from apps.cmdb.models.change_record import COLLECT_AUTOMATION_CHANGE, CREATE_INST, DELETE_INST, UPDATE_INST
 from apps.cmdb.utils.change_record import batch_create_change_record
 
-SYSTEM_COLLECT_FIELDS = {"_id", "model_id", "collect_time", "collect_task", "auto_collect"}
+SYSTEM_COLLECT_FIELDS = {"_id", "model_id", "collect_time", "collect_task", "auto_collect", "_collect_sources", "manual_fields"}
 
 
 def write_collect_instance_change_records(management, result: dict):
-    add_records = _build_add_records(result.get("add", {}).get("success", []))
-    update_records = _build_update_records(management, result.get("update", {}).get("success", []))
-    delete_records = _build_delete_records(result.get("delete", {}).get("success", []))
+    task_name = str(getattr(management, "task_name", "") or "").strip()
+    add_records = _build_add_records(result.get("add", {}).get("success", []), task_name)
+    update_records = _build_update_records(management, result.get("update", {}).get("success", []), task_name)
+    delete_records = _build_delete_records(result.get("delete", {}).get("success", []), task_name)
 
     if add_records:
         batch_create_change_record(
@@ -38,7 +39,7 @@ def write_collect_instance_change_records(management, result: dict):
         )
 
 
-def _build_delete_records(success_items: list[dict]) -> list[dict]:
+def _build_delete_records(success_items: list[dict], task_name: str) -> list[dict]:
     records = []
     for item in success_items:
         instance = _success_instance(item)
@@ -50,13 +51,13 @@ def _build_delete_records(success_items: list[dict]) -> list[dict]:
                 "model_id": instance["model_id"],
                 "before_data": instance,
                 "model_object": OPERATOR_INSTANCE,
-                "message": _message("自动采集删除实例", instance),
+                "message": _message("自动采集删除实例", instance, task_name),
             }
         )
     return records
 
 
-def _build_add_records(success_items: list[dict]) -> list[dict]:
+def _build_add_records(success_items: list[dict], task_name: str) -> list[dict]:
     records = []
     for item in success_items:
         instance = _success_instance(item)
@@ -68,16 +69,18 @@ def _build_add_records(success_items: list[dict]) -> list[dict]:
                 "model_id": instance["model_id"],
                 "after_data": instance,
                 "model_object": OPERATOR_INSTANCE,
-                "message": _message("自动采集新增实例", instance),
+                "message": _message("自动采集新增实例", instance, task_name),
             }
         )
     return records
 
 
-def _build_update_records(management, success_items: list[dict]) -> list[dict]:
+def _build_update_records(management, success_items: list[dict], task_name: str) -> list[dict]:
     old_instances = {item.get("_id"): item for item in getattr(management, "old_data", []) or [] if item.get("_id") is not None}
     records = []
     for item in success_items:
+        if item.get("suppress_change_record"):
+            continue
         instance = _success_instance(item)
         if not instance:
             continue
@@ -92,7 +95,7 @@ def _build_update_records(management, success_items: list[dict]) -> list[dict]:
                 "before_data": before_data,
                 "after_data": instance,
                 "model_object": OPERATOR_INSTANCE,
-                "message": _message(title, instance),
+                "message": _message(title, instance, task_name),
             }
         )
     return records
@@ -112,6 +115,7 @@ def _changed_business_fields(before_data: dict, after_data: dict) -> list[str]:
     return [field for field in fields if before_data.get(field) != after_data.get(field)]
 
 
-def _message(title: str, instance: dict) -> str:
+def _message(title: str, instance: dict, task_name: str = "") -> str:
     instance_name = instance.get("inst_name") or instance.get("ip_addr") or instance.get("_id")
-    return f"{title}. 模型:{instance.get('model_id')} 实例:{instance_name}"
+    task_part = f"任务:{task_name} " if task_name else ""
+    return f"{title}. {task_part}模型:{instance.get('model_id')} 实例:{instance_name}"

@@ -26,7 +26,18 @@ export const DashboardExecutionRenderPageContent = ({
     let active = true;
     getExecutionRenderInput(executionId)
       .then((input) => {
-        if (active) setRenderInput(input);
+        if (!active) return;
+        if (!Array.isArray(input?.authorized_app_names)) {
+          failedRef.current = true;
+          emitDashboardRenderSignal({
+            type: 'report-failed',
+            dashboardId: String(executionId),
+            widgets: [],
+            error: 'Render input missing authorized apps',
+          });
+          return;
+        }
+        setRenderInput(input);
       })
       .catch(() => {
         if (!active || failedRef.current) return;
@@ -77,6 +88,7 @@ export const DashboardExecutionRenderPageContent = ({
         type: 'dashboard',
       }}
       renderMode
+      renderAuthorizedAppNames={renderInput.authorized_app_names}
       renderFilterValues={
         renderInput.input_snapshot.filter_values as Record<string, FilterValue>
       }

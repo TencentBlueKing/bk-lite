@@ -1,6 +1,5 @@
 from apps.system_mgmt.providers.schemas import ProviderManifest
 
-
 PROVIDER_MANIFEST = ProviderManifest.model_validate(
     {
         "key": "ad",
@@ -51,7 +50,11 @@ PROVIDER_MANIFEST = ProviderManifest.model_validate(
                                 "field_type": "string",
                                 "required": True,
                                 "placeholder": "administrator",
-                                "help_text": "Prefer a UPN (for example administrator@corp.example.com) or a full DN (for example CN=svc_ad,OU=Service,DC=corp,DC=example,DC=com). Avoid relying on a bare username for domain resolution.",
+                                "help_text": (
+                                    "Prefer a UPN (for example administrator@corp.example.com) or a full DN "
+                                    "(for example CN=svc_ad,OU=Service,DC=corp,DC=example,DC=com). "
+                                    "Avoid relying on a bare username for domain resolution."
+                                ),
                                 "reset_capabilities": ["login_auth", "user_sync"],
                             },
                             {
@@ -137,7 +140,10 @@ PROVIDER_MANIFEST = ProviderManifest.model_validate(
                                 "required": False,
                                 "default": "user",
                                 "placeholder": "user",
-                                "help_text": "Object class for user accounts in AD/LDAP. The common value is user; keep the default unless you need a different class.",
+                                "help_text": (
+                                    "Object class for user accounts in AD/LDAP. "
+                                    "The common value is user; keep the default unless you need a different class."
+                                ),
                             },
                             {
                                 "key": "user_filter",
@@ -146,7 +152,10 @@ PROVIDER_MANIFEST = ProviderManifest.model_validate(
                                 "required": False,
                                 "default": "(&(objectCategory=Person)(sAMAccountName=*))",
                                 "placeholder": "(&(objectCategory=Person)(sAMAccountName=*))",
-                                "help_text": "Extra filter on user accounts that decides who is pulled. Keep the default unless you need a different filter.",
+                                "help_text": (
+                                    "Extra filter on user accounts that decides who is pulled. "
+                                    "Keep the default unless you need a different filter."
+                                ),
                             },
                             {
                                 "key": "organization_object_class",
@@ -155,7 +164,10 @@ PROVIDER_MANIFEST = ProviderManifest.model_validate(
                                 "required": False,
                                 "default": "organizationalUnit",
                                 "placeholder": "organizationalUnit",
-                                "help_text": "Object class for organization/department entries in AD/LDAP. The AD default is organizationalUnit; keep it unless you need a different class.",
+                                "help_text": (
+                                    "Object class for organization/department entries in AD/LDAP. "
+                                    "The AD default is organizationalUnit; keep it unless you need a different class."
+                                ),
                             },
                         ],
                     }
@@ -170,6 +182,11 @@ PROVIDER_MANIFEST = ProviderManifest.model_validate(
                     "mobilePhone",
                     "distinguishedName",
                     "department_ids",
+                    "title",
+                    "employeeID",
+                    "employeeNumber",
+                    "manager",
+                    "userAccountControl",
                 ],
             },
         },
@@ -202,7 +219,7 @@ PROVIDER_MANIFEST = ProviderManifest.model_validate(
                             {"value": "sAMAccountName", "label": "Username (sAMAccountName)"},
                             {"value": "userPrincipalName", "label": "Email account (userPrincipalName)"},
                         ],
-                    }
+                    },
                 ],
                 "business_template": "login_auth_form",
             },

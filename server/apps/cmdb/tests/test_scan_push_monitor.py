@@ -385,8 +385,17 @@ def test_scan_push_does_not_import_monitor_internal_ingest():
     assert "push_with_credential" in source
 
 
-def test_middleware_hit_skips_monitor_push(mocker):
+def test_middleware_hit_creates_module_link_task(mocker):
     ingest = _patch_monitor_ingest(mocker)
+    push_with = mocker.patch("apps.cmdb.services.scan_push_monitor.CmdbToMonitorPushService.push_with_credential")
+    mocker.patch(
+        "apps.cmdb.services.scan_push_monitor.build_cmdb_push_actor_scope",
+        return_value={"allowed_org_ids": [1], "operator": "alice"},
+    )
+    create = mocker.patch(
+        "apps.cmdb.services.scan_push_monitor.CmdbMonitorTaskService.create",
+        return_value=mocker.Mock(id=77),
+    )
     task = ScanTask.objects.create(
         name="scan-mw",
         team=[1],
@@ -407,10 +416,55 @@ def test_middleware_hit_skips_monitor_push(mocker):
         cmdb_model_id="nginx",
         inst_uuid=UUID_SWITCH,
     )
-    result = ScanPushMonitorService.push(execution, [hit.id])
-    assert result["items"][0]["status"] == "skipped"
-    assert result["items"][0]["reason"] == "middleware_needs_monitor_credential"
+    request = mocker.Mock()
+    result = ScanPushMonitorService.push(execution, [hit.id], request=request)
+    assert result["items"][0]["status"] == "linked"
+    assert result["items"][0]["link_task_id"] == 77
+    assert result["pushed"] == 1
     ingest.assert_not_called()
+    push_with.assert_not_called()
+    create.assert_called_once()
+
+
+def test_mysql_hit_creates_module_link_task(mocker):
+    ingest = _patch_monitor_ingest(mocker)
+    push_with = mocker.patch("apps.cmdb.services.scan_push_monitor.CmdbToMonitorPushService.push_with_credential")
+    mocker.patch(
+        "apps.cmdb.services.scan_push_monitor.build_cmdb_push_actor_scope",
+        return_value={"allowed_org_ids": [1], "operator": "alice"},
+    )
+    create = mocker.patch(
+        "apps.cmdb.services.scan_push_monitor.CmdbMonitorTaskService.create",
+        return_value=mocker.Mock(id=88),
+    )
+    task = ScanTask.objects.create(
+        name="scan-mysql",
+        team=[1],
+        families=["database"],
+        access_point=[{"id": "node-1"}],
+        credentials={"database": [{"credential_id": "cred-db", "username": "u", "password": "p"}]},
+    )
+    execution = ScanExecution.objects.create(task=task, status=ScanExecution.STATUS_COMPLETED)
+    family_run = ScanFamilyRun.objects.create(execution=execution, model_id="mysql", driver_type="protocol")
+    hit = ScanHit.objects.create(
+        execution=execution,
+        family_run=family_run,
+        protocol="mysql",
+        host="10.0.1.10",
+        port=3306,
+        credential_id="",
+        status=ScanHit.STATUS_SUCCESS,
+        cmdb_model_id="mysql",
+        inst_uuid=UUID_SWITCH,
+        confidence=ScanHit.CONFIDENCE_LOW,
+    )
+    request = mocker.Mock()
+    result = ScanPushMonitorService.push(execution, [hit.id], request=request)
+    assert result["items"][0]["status"] == "linked"
+    assert result["items"][0]["link_task_id"] == 88
+    ingest.assert_not_called()
+    push_with.assert_not_called()
+    create.assert_called_once_with([UUID_SWITCH], request=request)
 
 
 def test_agent_host_without_node_skips_and_never_sends_ssh(mocker):

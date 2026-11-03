@@ -73,8 +73,11 @@ def sweep_abandoned_excel_materializations(*, limit: int = 50) -> dict[str, Any]
     errors = 0
     for ds_id in ds_ids:
         try:
-            datasource = DataSourceAPIModel.objects.get(pk=ds_id)
-            abandon_excel_materialization(datasource)
+            with transaction.atomic():
+                locked = DataSourceAPIModel.objects.select_for_update().get(pk=ds_id)
+                if locked.source_type == DataSourceAPIModel.SOURCE_TYPE_EXCEL:
+                    continue
+                abandon_excel_materialization(locked)
             cleaned += 1
         except DataSourceAPIModel.DoesNotExist:
             continue

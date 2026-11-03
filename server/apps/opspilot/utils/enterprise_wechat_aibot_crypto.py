@@ -2,6 +2,7 @@ import base64
 import hashlib
 import hmac
 import json
+import os
 from dataclasses import dataclass
 from typing import Any
 
@@ -38,6 +39,21 @@ class EnterpriseWechatAibotCrypto:
             return json.loads(self._decrypt(encrypted))
         except json.JSONDecodeError as exc:
             raise EnterpriseWechatAibotCryptoError("invalid decrypted json") from exc
+
+    def encrypt_reply(self, payload: dict[str, Any], *, timestamp: str, nonce: str) -> dict[str, str]:
+        """被动回复包。明文布局与回调解密一致，receiveid 为空。"""
+        content = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+        plain = os.urandom(16) + len(content).to_bytes(4, "big") + content
+        pad = 32 - (len(plain) % 32)
+        plain += bytes([pad]) * pad
+        key = self._aes_key()
+        cipher = Cipher(algorithms.AES(key), modes.CBC(key[:16]))
+        encryptor = cipher.encryptor()
+        encrypted = base64.b64encode(encryptor.update(plain) + encryptor.finalize()).decode("ascii")
+        timestamp = (timestamp or "").strip()
+        nonce = (nonce or "").strip()
+        signature = hashlib.sha1("".join(sorted([(self.token or "").strip(), timestamp, nonce, encrypted])).encode("utf-8")).hexdigest()
+        return {"encrypt": encrypted, "msgsignature": signature, "timestamp": timestamp, "nonce": nonce}
 
     def _signature_matches(self, msg_signature: str, timestamp: str, nonce: str, encrypted: str) -> bool:
         token = (self.token or "").strip()

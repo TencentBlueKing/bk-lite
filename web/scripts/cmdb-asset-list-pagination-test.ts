@@ -34,5 +34,10 @@ assert.match(
   pageSource,
   /setPagination\(\(prev\) => resetListPaginationToFirstPage\(prev\)\)/
 );
+assert.match(
+  pageSource,
+  /preserveSelectedRowKeys:\s*true/,
+  '翻页后再勾选应保留上一页已选实例'
+);
 
 console.log('cmdb asset list pagination tests passed');

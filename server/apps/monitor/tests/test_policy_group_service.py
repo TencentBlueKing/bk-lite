@@ -23,8 +23,8 @@ from apps.monitor.models import (
     PolicyTemplate,
 )
 from apps.monitor.services.policy import PolicyService
-from apps.monitor.services.policy_group import PolicyGroupService
-from apps.monitor.views.policy_group import _serialize_group
+from apps.monitor.services.policy_group import PolicyGroupService, no_data_carrier_rule_ids
+from apps.monitor.views.policy_group import _serialize_group, _serialize_rule
 
 pytestmark = pytest.mark.django_db
 
@@ -145,7 +145,7 @@ def test_rule_editor_keeps_group_fields_and_closes_alerts_for_recipe_changes():
     rule.refresh_from_db()
     policy.refresh_from_db()
     alert.refresh_from_db()
-    assert closed is False
+    assert closed["closes_alerts"] is False
     assert rule.name == "磁盘读速过高"
     assert policy.name == "磁盘读速过高"
     assert policy.alert_name == "新告警名"
@@ -157,7 +157,7 @@ def test_rule_editor_keeps_group_fields_and_closes_alerts_for_recipe_changes():
     closed = PolicyGroupService.apply_rule_editor(rule, {"algorithm": "max"})
     policy.refresh_from_db()
     alert.refresh_from_db()
-    assert closed is True
+    assert closed["closes_alerts"] is True
     assert policy.algorithm == "max"
     assert alert.status == "closed"
 
@@ -208,7 +208,7 @@ def test_rule_editor_name_save_ignores_form_echo():
     rule.refresh_from_db()
     policy.refresh_from_db()
     alert.refresh_from_db()
-    assert closed is False
+    assert closed["closes_alerts"] is False
     assert rule.name == "只改名字"
     assert rule.plugin_id == plugin.id
     assert policy.collect_type == "host"
@@ -223,10 +223,75 @@ def test_rule_editor_name_save_ignores_form_echo():
     rule.refresh_from_db()
     policy.refresh_from_db()
     alert.refresh_from_db()
-    assert closed is True
+    assert closed["closes_alerts"] is True
     assert rule.plugin_id == other.id
     assert policy.collect_type == "host"
     assert alert.status == "closed"
+
+
+@pytest.mark.django_db(transaction=True)
+def test_rule_editor_no_data_stays_on_one_rule_until_group_save():
+    group, wmi, _ssh = _mixed_group()
+    host = _instance(group.monitor_object, "web-01", 1)
+    _collect(host, wmi)
+    PolicyGroupService.join(instance=host, group=group)
+    disk_rule = group.rules.select_related("policy").get(name="WMI 磁盘")
+    cpu_rule = group.rules.select_related("policy").get(name="WMI CPU")
+
+    with _existence_query("web-01"):
+        opened = PolicyGroupService.apply_rule_editor(disk_rule, {"no_data": _no_data_payload()})
+
+    disk_rule.policy.refresh_from_db()
+    cpu_rule.policy.refresh_from_db()
+    assert opened["closes_alerts"] is False
+    assert opened["closes_no_data"] is False
+    assert "no_data" in (disk_rule.policy.enable_alerts or [])
+    assert disk_rule.policy.no_data_alert_name == "{{host}} 无数据"
+    assert "no_data" not in (cpu_rule.policy.enable_alerts or [])
+    assert _serialize_rule(disk_rule)["no_data_enabled"] is True
+    assert _serialize_rule(cpu_rule)["no_data_enabled"] is False
+    no_data_alert = MonitorAlert.objects.create(policy_id=disk_rule.policy_id, monitor_instance_id=host.id, status="new", alert_type="no_data")
+    threshold_alert = MonitorAlert.objects.create(policy_id=disk_rule.policy_id, monitor_instance_id=host.id, status="new", alert_type="alert")
+    before = set(PolicyInstanceBaseline.objects.filter(policy=disk_rule.policy).values_list("id", "metric_instance_id"))
+    assert before
+
+    with _existence_query("replaced"):
+        changed = PolicyGroupService.apply_rule_editor(
+            disk_rule,
+            {"no_data": _no_data_payload(period={"type": "min", "value": 15})},
+        )
+
+    disk_rule.policy.refresh_from_db()
+    no_data_alert.refresh_from_db()
+    threshold_alert.refresh_from_db()
+    assert changed["closes_alerts"] is False
+    assert changed["closes_no_data"] is False
+    assert disk_rule.policy.no_data_period == {"type": "min", "value": 15}
+    assert no_data_alert.status == "new"
+    assert threshold_alert.status == "new"
+    assert set(PolicyInstanceBaseline.objects.filter(policy=disk_rule.policy).values_list("id", "metric_instance_id")) == before
+
+    closed = PolicyGroupService.apply_rule_editor(disk_rule, {"no_data": {"enabled": False}})
+    disk_rule.policy.refresh_from_db()
+    no_data_alert.refresh_from_db()
+    threshold_alert.refresh_from_db()
+    assert closed["closes_alerts"] is False
+    assert closed["closes_no_data"] is True
+    assert "no_data" not in (disk_rule.policy.enable_alerts or [])
+    assert no_data_alert.status == "closed"
+    assert threshold_alert.status == "new"
+    assert not PolicyInstanceBaseline.objects.filter(policy=disk_rule.policy).exists()
+
+    with _existence_query("web-01"):
+        PolicyGroupService.apply_rule_editor(disk_rule, {"no_data": _no_data_payload()})
+        PolicyGroupService.update_detection(group, no_data=_no_data_payload())
+
+    disk_rule.policy.refresh_from_db()
+    cpu_rule.policy.refresh_from_db()
+    assert "no_data" not in (disk_rule.policy.enable_alerts or [])
+    assert "no_data" in (cpu_rule.policy.enable_alerts or [])
+    assert _serialize_rule(disk_rule)["no_data_enabled"] is False
+    assert _serialize_rule(cpu_rule, no_data_carrier=True)["no_data_carrier"] is True
 
 
 def test_create_group_keeps_one_policy_per_rule_and_skips_notice_users():
@@ -1604,6 +1669,171 @@ def test_multi_rule_rejects_recovery_threshold():
     alert.refresh_from_db()
     assert rule.policy.recovery_threshold == {}
     assert alert.status == "new"
+
+
+def _number_metric(monitor_object, plugin, name):
+    metric_group, _ = MetricGroup.objects.get_or_create(
+        monitor_object=monitor_object,
+        monitor_plugin=plugin,
+        name="os",
+    )
+    return Metric.objects.create(
+        monitor_object=monitor_object,
+        monitor_plugin=plugin,
+        metric_group=metric_group,
+        name=name,
+        query=f"{name}{{__$labels__}}",
+        instance_id_keys=["instance_id"],
+        data_type="Number",
+        unit="percent",
+    )
+
+
+def _multi_condition(metric, ref, group_by, algorithm="avg_over_time", group_algorithm="avg"):
+    return {
+        "ref": ref,
+        "metric_id": metric.id,
+        "filter": [],
+        "group_algorithm": group_algorithm,
+        "group_by": list(group_by),
+        "algorithm": algorithm,
+        "metric_unit": "percent",
+        "calculation_unit": "percent",
+        "threshold_unit": "percent",
+        "role": "level",
+        "threshold": [{"level": "warning", "method": ">", "value": 80}],
+    }
+
+
+def _multi_query(*conditions):
+    return {
+        "type": "multi",
+        "result_name": "磁盘与 CPU",
+        "combinator": "all",
+        "queries": list(conditions),
+    }
+
+
+def _same_plugin_rules():
+    """同一插件两条规则。磁盘先创建，id 更小。"""
+    monitor_object = _object()
+    monitor_object.instance_id_keys = ["instance_id"]
+    monitor_object.save(update_fields=["instance_id_keys"])
+    plugin = _plugin(monitor_object, "WMI")
+    group = PolicyGroupService.create_from_templates(
+        organization=1,
+        monitor_object=monitor_object,
+        name="主机默认告警",
+        templates=[
+            _template(monitor_object, plugin, "磁盘"),
+            _template(monitor_object, plugin, "CPU"),
+        ],
+    )
+    disk_rule = group.rules.select_related("policy").get(name="磁盘")
+    cpu_rule = group.rules.select_related("policy").get(name="CPU")
+    return monitor_object, plugin, disk_rule, cpu_rule
+
+
+@pytest.mark.django_db(transaction=True)
+def test_rule_editor_multi_save_follows_anchor_and_picks_instance_carrier():
+    monitor_object, plugin, disk_rule, cpu_rule = _same_plugin_rules()
+    cpu = _number_metric(monitor_object, plugin, "cpu_usage")
+    disk = _number_metric(monitor_object, plugin, "disk_usage")
+    policy = disk_rule.policy
+    policy.group_by = ["instance_id", "device"]
+    policy.algorithm = "max_over_time"
+    policy.threshold = [{"level": "warning", "value": 90, "method": ">="}]
+    policy.recovery_threshold = {"method": "<", "value": 20}
+    policy.compare_mode = "previous_window"
+    policy.compare_value_kind = "delta"
+    policy.count_predicate = {"method": ">", "value": 1}
+    policy.save()
+    cpu_rule.policy.group_by = ["instance_id"]
+    cpu_rule.policy.save(update_fields=["group_by", "updated_at"])
+    host = _instance(monitor_object, "disk-host", 1)
+    alert = MonitorAlert.objects.create(policy_id=policy.id, monitor_instance_id=host.id, status="new")
+    anchor_algorithm = "avg_over_time"
+
+    PolicyGroupService.apply_rule_editor(
+        disk_rule,
+        {
+            "query_condition": _multi_query(
+                _multi_condition(disk, "a", ["instance_id"], algorithm=anchor_algorithm),
+                _multi_condition(cpu, "b", ["instance_id"], algorithm="max_over_time", group_algorithm="max"),
+            )
+        },
+    )
+
+    policy.refresh_from_db()
+    cpu_rule.policy.refresh_from_db()
+    alert.refresh_from_db()
+    assert policy.group_by == ["instance_id"]
+    assert policy.algorithm == anchor_algorithm
+    assert policy.threshold == []
+    assert policy.recovery_threshold == {}
+    assert policy.compare_mode == "absolute"
+    assert policy.count_predicate == {}
+    assert policy.query_condition["queries"][0]["group_by"] == ["instance_id"]
+    assert no_data_carrier_rule_ids([disk_rule, cpu_rule]) == {min(disk_rule.id, cpu_rule.id)}
+    assert alert.status == "closed"
+
+
+@pytest.mark.django_db(transaction=True)
+def test_rule_editor_multi_save_drops_instance_level_when_anchor_has_extra_dimension():
+    monitor_object, plugin, disk_rule, cpu_rule = _same_plugin_rules()
+    cpu = _number_metric(monitor_object, plugin, "cpu_usage")
+    disk = _number_metric(monitor_object, plugin, "disk_usage")
+    disk_rule.policy.group_by = ["instance_id"]
+    disk_rule.policy.save(update_fields=["group_by", "updated_at"])
+    cpu_rule.policy.group_by = ["instance_id"]
+    cpu_rule.policy.save(update_fields=["group_by", "updated_at"])
+    assert disk_rule.id < cpu_rule.id
+    assert no_data_carrier_rule_ids([disk_rule, cpu_rule]) == {disk_rule.id}
+
+    PolicyGroupService.apply_rule_editor(
+        disk_rule,
+        {
+            "query_condition": _multi_query(
+                _multi_condition(disk, "a", ["instance_id", "device"]),
+                _multi_condition(cpu, "b", ["instance_id", "device"]),
+            )
+        },
+    )
+
+    disk_rule.policy.refresh_from_db()
+    assert disk_rule.policy.group_by == ["instance_id", "device"]
+    assert no_data_carrier_rule_ids([disk_rule, cpu_rule]) == {cpu_rule.id}
+
+
+@pytest.mark.django_db(transaction=True)
+def test_rule_editor_multi_save_rejects_missing_metric_without_changing_policy():
+    monitor_object, plugin, disk_rule, cpu_rule = _same_plugin_rules()
+    disk = _number_metric(monitor_object, plugin, "disk_usage")
+    policy = disk_rule.policy
+    policy.group_by = ["instance_id", "device"]
+    policy.threshold = [{"level": "warning", "value": 90, "method": ">="}]
+    policy.save()
+    before_query = copy.deepcopy(policy.query_condition)
+    before_group_by = copy.deepcopy(policy.group_by)
+    before_threshold = copy.deepcopy(policy.threshold)
+    host = _instance(monitor_object, "disk-host", 1)
+    alert = MonitorAlert.objects.create(policy_id=policy.id, monitor_instance_id=host.id, status="new")
+    missing = _multi_condition(disk, "b", ["instance_id"])
+    missing["metric_id"] = (Metric.objects.order_by("-id").values_list("id", flat=True).first() or 0) + 1000
+
+    with pytest.raises(ValidationAppException):
+        PolicyGroupService.apply_rule_editor(
+            disk_rule,
+            {"query_condition": _multi_query(_multi_condition(disk, "a", ["instance_id"]), missing)},
+        )
+
+    policy.refresh_from_db()
+    alert.refresh_from_db()
+    assert policy.query_condition == before_query
+    assert policy.group_by == before_group_by
+    assert policy.threshold == before_threshold
+    assert alert.status == "new"
+    assert cpu_rule.policy.group_by == ["instance_id"]
 
 
 @pytest.mark.parametrize(

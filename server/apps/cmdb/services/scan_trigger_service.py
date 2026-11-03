@@ -2,6 +2,7 @@ from datetime import timedelta
 from uuid import uuid4
 
 from django.db import transaction
+from django.db.models import Q
 from django.utils.dateparse import parse_datetime
 from django.utils.timezone import now
 
@@ -9,6 +10,7 @@ from apps.cmdb.constants.constants import CollectDriverTypes
 from apps.cmdb.models.scan_model import (
     SCAN_DATABASE_FAMILY,
     SCAN_DATABASE_TYPES,
+    SCAN_JOB_COLLECT_TYPES,
     SCAN_MIDDLEWARE_FAMILY,
     SCAN_MIDDLEWARE_TYPES,
     ScanExecution,
@@ -22,7 +24,8 @@ from apps.cmdb.models.scan_model import (
 from apps.cmdb.services import scan_schedule_service as scan_schedule
 from apps.cmdb.services.collect_credential_pool_service import CollectCredentialPoolService
 from apps.cmdb.services.port_fingerprint import scan_database_ports_by_type
-from apps.cmdb.services.scan_shot import ScanShot, build_scan_collect_headers, join_ip_ranges
+from apps.cmdb.services.scan_fingerprint_snapshot import build_scan_fingerprint_snapshot
+from apps.cmdb.services.scan_shot import SCAN_CREDENTIAL_RESULT_SUBJECT, ScanShot, build_scan_collect_headers, join_ip_ranges
 from apps.cmdb.services.stargazer_collect_trigger import StargazerCollectPermanentError, StargazerCollectRetryableError, StargazerCollectTriggerClient
 from apps.core.logger import cmdb_logger as logger
 
@@ -32,6 +35,8 @@ SCAN_WALL_CLOCK_MAX = timedelta(hours=2)
 SCAN_DEFAULT_PLUGIN_TIMEOUT = 60
 SCAN_ADMIT_CONCURRENCY = 16
 SCAN_JOB_BATCH_STUCK_FACTOR = 3
+SCAN_RECOVER_BATCH = 50
+_PROTOCOL_DISCOVERY_FAMILIES = frozenset({"network", "physcial_server"})
 
 _TERMINAL = frozenset(
     {
@@ -437,6 +442,89 @@ def _job_work_pending(execution: ScanExecution) -> bool:
     return not scan_schedule.family_run_finished(family_run) and not _batch_stuck(schedule)
 
 
+def _scan_host_login(task: ScanTask):
+    families = list(task.families or [])
+    has_login_family = "host" in families or SCAN_MIDDLEWARE_FAMILY in families or bool(set(families) & set(SCAN_MIDDLEWARE_TYPES))
+    if not has_login_family:
+        return None
+    decrypted = task.decrypt_credentials or {}
+    pool = CollectCredentialPoolService.normalize_pool(decrypted.get("host") or [])
+    if not _job_ssh_pool_ready(pool):
+        pool = _middleware_scan_pool(task, decrypted)
+    if not _job_ssh_pool_ready(pool):
+        pool = agent_placeholder_pool()
+    login = {"pool": _coerce_job_ssh_pool(pool)}
+    if task.cloud_region:
+        login["cloud_region"] = task.cloud_region
+    return login
+
+
+def _scan_collect_credentials(task: ScanTask) -> dict:
+    decrypted = task.decrypt_credentials or {}
+    families = list(task.families or [])
+    creds = {}
+    db_pool = CollectCredentialPoolService.normalize_pool(decrypted.get(SCAN_DATABASE_FAMILY) or [])
+    if not db_pool:
+        for model_id in SCAN_DATABASE_TYPES:
+            db_pool.extend(CollectCredentialPoolService.normalize_pool(decrypted.get(model_id) or []))
+    has_database = SCAN_DATABASE_FAMILY in families or bool(set(families) & set(SCAN_DATABASE_TYPES))
+    if has_database and db_pool:
+        for model_id in ("mysql", "postgresql", "mssql"):
+            creds[model_id] = db_pool
+    job_types = set(SCAN_JOB_COLLECT_TYPES) - {"host"}
+    if SCAN_MIDDLEWARE_FAMILY in families or bool(set(families) & set(SCAN_MIDDLEWARE_TYPES)):
+        pool = _middleware_scan_pool(task, decrypted)
+        if _job_ssh_pool_ready(pool):
+            for model_id in sorted(job_types):
+                creds[model_id] = pool
+    if "host" in families:
+        pool = CollectCredentialPoolService.normalize_pool(decrypted.get("host") or [])
+        if not _job_ssh_pool_ready(pool):
+            pool = _middleware_scan_pool(task, decrypted)
+        if not _job_ssh_pool_ready(pool):
+            pool = agent_placeholder_pool()
+        creds["host"] = _coerce_job_ssh_pool(pool)
+    if "influxdb" in families:
+        influx_pool = CollectCredentialPoolService.normalize_pool(decrypted.get("influxdb") or [])
+        if influx_pool:
+            creds["influxdb"] = influx_pool
+    return creds
+
+
+def _admit_scan_discover(task: ScanTask, execution: ScanExecution):
+    snapshot = build_scan_fingerprint_snapshot()
+    body = {
+        "execution_id": execution.id,
+        "ip_ranges": task.ip_ranges or [],
+        "port_fingerprints": snapshot["port_fingerprints"],
+        "process_fingerprints": snapshot["process_fingerprints"],
+        "credential_result_subject": SCAN_CREDENTIAL_RESULT_SUBJECT,
+        "access_point": task.access_point or [],
+        "collect_credentials": _scan_collect_credentials(task),
+        "skip_hosts": sorted(scan_schedule.snmp_success_hosts(execution)),
+    }
+    host_login = _scan_host_login(task)
+    if host_login:
+        host_login["execution_id"] = execution.id
+        body["host_login"] = host_login
+    try:
+        return StargazerCollectTriggerClient().admit_scan_discover(body)
+    except StargazerCollectRetryableError:
+        logger.warning("[ScanTrigger] 扫描发现可重试失败 execution=%s", execution.id)
+        raise
+    except StargazerCollectPermanentError:
+        logger.warning("[ScanTrigger] 扫描发现永久失败 execution=%s", execution.id)
+        raise
+
+
+def _iter_protocol_discovery_pools(task: ScanTask):
+    decrypted = task.decrypt_credentials or {}
+    for model_id in task.families or []:
+        if model_id not in _PROTOCOL_DISCOVERY_FAMILIES:
+            continue
+        yield str(model_id), CollectCredentialPoolService.normalize_pool(decrypted.get(model_id) or [])
+
+
 def trigger_scan_execution(execution_id):
     execution = _claim_execution(execution_id)
     if execution.status in _TERMINAL:
@@ -444,27 +532,31 @@ def trigger_scan_execution(execution_id):
 
     task = execution.task
     total = 0
-    families = []
-    for model_id, pool in _split_family_pools(task):
-        family_run = _admit_family(task, execution, str(model_id), pool)
-        total += int(family_run.target_count or 0)
-        families.append(str(model_id))
+    try:
+        result = _admit_scan_discover(task, execution)
+        total = int(result.total or 0)
+    except (StargazerCollectRetryableError, StargazerCollectPermanentError):
+        total = 0
 
+    protocol_families = []
+    for model_id, pool in _iter_protocol_discovery_pools(task):
+        family_run = _admit_family(task, execution, str(model_id), pool)
+        protocol_families.append(str(model_id))
+        del family_run
+
+    schedule = scan_schedule.initial_scan_schedule(task)
+    schedule["stage"] = "port"
+    schedule["scan_admitted"] = total > 0
     execution.target_count = total
     execution.deadline_at = estimate_deadline(total, task.timeout)
-    execution.schedule = scan_schedule.initial_scan_schedule(task)
+    execution.schedule = schedule
     execution.save(update_fields=["target_count", "deadline_at", "schedule", "updated_at"])
-    if _protocol_released(execution):
-        _advance_scan_jobs(task, execution)
-        execution.refresh_from_db()
-        total = int(execution.target_count or 0)
     _schedule_finalize(execution.id, execution.claim_token)
     logger.info(
-        "[ScanTrigger] 已触发 execution=%s protocol=%s job_pending=%s target_count=%s",
+        "[ScanTrigger] 已触发 execution=%s scan_targets=%s protocol=%s",
         execution.id,
-        families,
-        int(_job_work_pending(execution)),
         total,
+        protocol_families,
     )
     return {
         "status": "triggered",
@@ -497,6 +589,67 @@ def _finish_execution(execution, claim_token, terminal_status):
     return {"status": terminal_status, "execution_id": execution.id}
 
 
+def _protocol_discovery_pending(execution: ScanExecution) -> bool:
+    family_runs = ScanFamilyRun.objects.filter(execution=execution, model_id__in=_PROTOCOL_DISCOVERY_FAMILIES)
+    for family_run in family_runs:
+        if not scan_schedule.family_run_finished(family_run):
+            return True
+    return False
+
+
+def scan_pipeline_done(execution: ScanExecution) -> bool:
+    schedule = execution.schedule or {}
+    if schedule.get("scan_admitted"):
+        if not schedule.get("scan_done"):
+            return False
+        return not _protocol_discovery_pending(execution)
+    return int(execution.target_count or 0) > 0 and int(execution.received_count or 0) >= int(execution.target_count or 0)
+
+
+def _scan_received_done(execution: ScanExecution) -> bool:
+    return scan_pipeline_done(execution)
+
+
+def _scan_timed_out(execution: ScanExecution) -> bool:
+    return bool(execution.deadline_at and now() >= execution.deadline_at)
+
+
+def recover_due_scan_execution(execution: ScanExecution | None) -> ScanExecution | None:
+    """Celery 倒计时链丢失时，把已到期或扫描已结束的执行收口。"""
+    if execution is None:
+        return None
+    if execution.status in _TERMINAL or execution.status == ScanExecution.STATUS_FINALIZING:
+        return execution
+    if not _scan_received_done(execution) and not _scan_timed_out(execution):
+        return execution
+    poll_scan_finalize(execution.id, execution.claim_token)
+    execution.refresh_from_db()
+    return execution
+
+
+def recover_stuck_scan_executions(*, limit=SCAN_RECOVER_BATCH):
+    """周期补偿：不依赖有人打开抽屉，把到期或已 done 的 running 执行收口。"""
+    try:
+        batch_size = max(int(limit), 0)
+    except (TypeError, ValueError):
+        batch_size = SCAN_RECOVER_BATCH
+    running = ScanExecution.objects.filter(status=ScanExecution.STATUS_RUNNING)
+    due = running.filter(Q(deadline_at__lte=now()) | Q(schedule__scan_done=True)).order_by("id")
+    execution_ids = list(due.values_list("id", flat=True)[:batch_size])
+    recovered = 0
+    for execution_id in execution_ids:
+        execution = ScanExecution.objects.filter(pk=execution_id).first()
+        if execution is None:
+            continue
+        previous = execution.status
+        recover_due_scan_execution(execution)
+        execution.refresh_from_db()
+        if execution.status in _TERMINAL and execution.status != previous:
+            recovered += 1
+    logger.info("event=scan_executions_recovered scanned=%s recovered=%s", len(execution_ids), recovered)
+    return {"scanned": len(execution_ids), "recovered": recovered}
+
+
 def poll_scan_finalize(execution_id, claim_token):
     terminal_status = None
     with transaction.atomic():
@@ -508,18 +661,9 @@ def poll_scan_finalize(execution_id, claim_token):
         if execution.status == ScanExecution.STATUS_FINALIZING:
             return {"status": execution.status, "execution_id": execution.id}
 
-        task = execution.task
-        _advance_scan_jobs(task, execution)
-        execution.refresh_from_db()
-
-        if _job_work_pending(execution):
-            _schedule_finalize(execution.id, execution.claim_token)
-            return {"status": "waiting", "execution_id": execution.id}
-
-        timed_out = bool(execution.deadline_at and now() >= execution.deadline_at)
-        received_done = execution.target_count > 0 and execution.received_count >= execution.target_count
+        timed_out = _scan_timed_out(execution)
+        received_done = _scan_received_done(execution)
         empty_shot = execution.target_count == 0
-        jobs_selected = _jobs_selected(execution.schedule or {})
 
         if empty_shot:
             execution.status = ScanExecution.STATUS_FAILED
@@ -527,7 +671,7 @@ def poll_scan_finalize(execution_id, claim_token):
             execution.save(update_fields=["status", "finished_at", "updated_at"])
             return {"status": "failed", "execution_id": execution.id}
 
-        if received_done or jobs_selected:
+        if received_done:
             terminal_status = ScanExecution.STATUS_COMPLETED
         elif timed_out:
             terminal_status = ScanExecution.STATUS_TIMED_OUT

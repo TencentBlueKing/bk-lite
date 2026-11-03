@@ -34,6 +34,7 @@ from apps.opspilot.services.chat_attachment_service import (
     normalize_attachment_ids,
 )
 from apps.opspilot.services.history_service import HistoryService
+from apps.opspilot.services.ppt_master_runtime import remove_conversation_workspace
 from apps.opspilot.services.skill_channel_aibot import append_short_connection_file_links
 from apps.opspilot.services.skill_channel_service import channel_allows_team, resolve_ops_pilot_guest_id
 from apps.opspilot.services.skill_memory_service import (
@@ -1128,6 +1129,7 @@ def delete_skill_session(*, session_id: str, external_user_id: str, keep_memory:
             owner.user_id,
         )
     conv.delete()
+    remove_conversation_workspace(session_id)
 
 
 def _request_user_timezone(request_user) -> str:

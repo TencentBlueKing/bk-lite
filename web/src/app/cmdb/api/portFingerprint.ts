@@ -6,12 +6,13 @@ export interface PortFingerprintItem {
   protocol: string;
   target_type: string;
   built_in: boolean;
+  enabled: boolean;
   permission?: string[];
   [key: string]: any;
 }
 
 export const usePortFingerprintApi = () => {
-  const { get, post, del } = useApiClient();
+  const { get, post, del, patch } = useApiClient();
 
   // 获取端口指纹列表
   const getPortFingerprintList = (params?: any) =>
@@ -24,6 +25,9 @@ export const usePortFingerprintApi = () => {
     protocol?: string;
   }) => post('/cmdb/api/port_fingerprint/', params);
 
+  const updatePortFingerprint = (id: number | string, params: { enabled: boolean }) =>
+    patch(`/cmdb/api/port_fingerprint/${id}/`, params);
+
   // 删除端口指纹
   const deletePortFingerprint = (id: number | string) =>
     del(`/cmdb/api/port_fingerprint/${id}/`);
@@ -31,6 +35,7 @@ export const usePortFingerprintApi = () => {
   return {
     getPortFingerprintList,
     createPortFingerprint,
+    updatePortFingerprint,
     deletePortFingerprint,
   };
 };

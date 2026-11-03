@@ -233,6 +233,40 @@ def _row_host(row: dict) -> str:
     return str(row.get("ip_addr") or row.get("host") or row.get("ip") or "").strip()
 
 
+def _port_token(value) -> str:
+    if value in (None, "", "unknown"):
+        return ""
+    text = str(value).strip()
+    if text in {"", "unknown", "None"}:
+        return ""
+    if text.endswith(".0") and text[:-2].isdigit():
+        text = text[:-2]
+    return text
+
+
+def _info_port(info: dict) -> str:
+    if "port" in info and info.get("port") not in (None, "", "unknown"):
+        return _port_token(info.get("port"))
+    return _port_token(info.get("listen_port"))
+
+
+def _model_token(model_id: str, info: dict) -> str:
+    value = info.get("model_id")
+    if value not in (None, ""):
+        return str(value).strip()
+    return str(model_id or "").strip()
+
+
+def _instance_identity(model_id: str, info: dict):
+    """模型 + inst_name；没有 inst_name 时用模型、主机和端口。"""
+    model = _model_token(model_id, info if isinstance(info, dict) else {})
+    row = info if isinstance(info, dict) else {}
+    inst_name = str(row.get("inst_name") or "").strip()
+    if inst_name:
+        return ("name", model, inst_name)
+    return ("endpoint", model, _row_host(row), _info_port(row))
+
+
 def _controller_instances(controller_result: dict):
     for model_id, result in (controller_result or {}).items():
         if model_id in ("__raw_data__", "all") or not isinstance(result, dict):
@@ -246,37 +280,37 @@ def _controller_instances(controller_result: dict):
                 yield model_id, info
 
 
-def backfill_hit_identities(family_run: ScanFamilyRun, refined: dict, controller_result: dict):
-    model_by_host = {}
+def backfill_hit_identities(family_run: ScanFamilyRun, refined: dict, controller_result: dict, selected=None):
+    """回填本次勾选且控制器写成功的命中。对不上时不借用同主机的其他实例。"""
+    if not selected:
+        return
+
+    attempted = set()
     for model_id, rows in (refined or {}).items():
         for row in rows or []:
-            if not isinstance(row, dict):
-                continue
-            host = _row_host(row)
-            if host:
-                model_by_host[host] = model_id
+            if isinstance(row, dict):
+                attempted.add(_instance_identity(model_id, row))
 
-    uuid_by_host = {}
+    uuid_by_identity = {}
     for model_id, info in _controller_instances(controller_result):
-        host = _row_host(info)
         inst_uuid = str(info.get("inst_uuid") or "").strip()
-        if host and inst_uuid:
-            uuid_by_host[host] = (inst_uuid, str(info.get("model_id") or model_id))
+        if not inst_uuid:
+            continue
+        key = _instance_identity(model_id, info)
+        if key not in attempted:
+            continue
+        uuid_by_identity[key] = (inst_uuid, str(info.get("model_id") or model_id))
 
-    for hit in family_run.hits.all():
+    for hit, model_id, row in selected:
+        if getattr(hit, "family_run_id", None) != family_run.id:
+            continue
         if hit.status != ScanHit.STATUS_SUCCESS:
             continue
-        mapped = uuid_by_host.get(hit.host)
-        update_fields = []
-        if mapped:
-            hit.inst_uuid, hit.cmdb_model_id = mapped
-            update_fields.extend(["inst_uuid", "cmdb_model_id"])
-        elif hit.host in model_by_host and not hit.cmdb_model_id:
-            hit.cmdb_model_id = model_by_host[hit.host]
-            update_fields.append("cmdb_model_id")
-        if update_fields:
-            update_fields.append("updated_at")
-            hit.save(update_fields=update_fields)
+        mapped = uuid_by_identity.get(_instance_identity(model_id, row if isinstance(row, dict) else {}))
+        if not mapped:
+            continue
+        hit.inst_uuid, hit.cmdb_model_id = mapped
+        hit.save(update_fields=["inst_uuid", "cmdb_model_id", "updated_at"])
 
 
 def _snapshot_keys_for_family(model_id: str):

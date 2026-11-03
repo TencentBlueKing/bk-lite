@@ -1,7 +1,11 @@
 """全局扫描设置视图"""
 
+import json
+
+from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.exceptions import MethodNotAllowed
+from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
 
 from apps.core.decorators.api_permission import HasPermission
@@ -40,12 +44,28 @@ class ScanSettingViewSet(AuthViewSet):
         serializer = self.get_serializer(instance)
         return Response(serializer.data)
 
-    @action(detail=False, methods=["put", "patch"], url_path="save")
+    @action(
+        detail=False,
+        methods=["put", "patch"],
+        url_path="save",
+        parser_classes=[JSONParser, MultiPartParser, FormParser],
+    )
     @HasPermission("patch_scan_setting-Edit")
     def save_settings(self, request):
-        """保存全局扫描设置（单例，无需传 id）"""
+        """保存全局扫描设置。新的离线目录和其余设置在同一次请求里提交。"""
         instance = self.get_object()
-        serializer = self.get_serializer(instance, data=request.data, partial=request.method == "PATCH")
+        try:
+            payload, uploaded = _save_payload(request)
+        except ValueError as exc:
+            return Response({"payload": [str(exc)]}, status=status.HTTP_400_BAD_REQUEST)
+        context = self.get_serializer_context()
+        context["offline_catalog_upload"] = uploaded
+        serializer = self.get_serializer(
+            instance,
+            data=payload,
+            partial=request.method == "PATCH",
+            context=context,
+        )
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response(serializer.data)
@@ -68,3 +88,20 @@ class ScanSettingViewSet(AuthViewSet):
                 "users": candidates["users"],
             }
         )
+
+
+def _save_payload(request):
+    """没带文件时沿用 JSON 设置；带了文件时，设置放在 payload 里和文件一起提交。"""
+    uploaded = request.FILES.get("file")
+    if not uploaded:
+        return request.data, None
+    raw = request.data.get("payload")
+    if not isinstance(raw, str) or not raw.strip():
+        raise ValueError("保存内容缺失")
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise ValueError("保存内容不是有效的 JSON") from exc
+    if not isinstance(payload, dict):
+        raise ValueError("保存内容不是有效的 JSON")
+    return payload, uploaded

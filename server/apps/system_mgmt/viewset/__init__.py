@@ -16,6 +16,7 @@ from .operation_log_viewset import OperationLogViewSet  # noqa
 from .role_viewset import RoleViewSet  # noqa
 from .system_api_token_viewset import SystemAPITokenViewSet  # noqa
 from .system_settings_viewset import SystemSettingsViewSet  # noqa
+from .user_field_viewset import UserFieldViewSet  # noqa
 from .user_login_log_viewset import UserLoginLogViewSet  # noqa
 from .user_sync_source_viewset import UserSyncSourceViewSet  # noqa
 from .user_viewset import UserViewSet  # noqa

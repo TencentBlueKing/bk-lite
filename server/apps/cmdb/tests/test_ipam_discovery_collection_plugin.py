@@ -28,7 +28,10 @@ def test_ip_discovery_plugin_applies_vm_rows(monkeypatch):
     monkeypatch.setattr(IPAMDiscoveryCollectionPlugin, "get_collect_inst", lambda self: task)
     monkeypatch.setattr(
         "apps.cmdb.services.ipam_discovery.apply_ip_discovery_vm_rows",
-        lambda collect_task, rows: applied.update({"task": collect_task, "rows": rows}) or {
+        lambda collect_task, rows, snapshot_complete=None: applied.update(
+            {"task": collect_task, "rows": rows, "snapshot_complete": snapshot_complete}
+        )
+        or {
             "created": 1,
             "updated": 0,
             "offline": 0,
@@ -59,6 +62,7 @@ def test_ip_discovery_plugin_applies_vm_rows(monkeypatch):
     runner.format_metrics()
 
     assert applied["task"] is task
+    assert applied["snapshot_complete"] is None
     assert applied["rows"] == [
         {
             "__name__": "ip_info_gauge",

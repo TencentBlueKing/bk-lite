@@ -18,10 +18,81 @@ export interface ScanHitItem {
   inst_uuid: string;
   port?: number;
   unmatch_reason?: string;
+  cmdb_managed?: boolean;
+  monitor_managed?: boolean;
   snapshot?: Record<string, unknown>;
+  confidence?: 'low' | 'medium' | 'high' | string;
+  evidence?: string[];
 }
 
 export const TERMINAL_STATUSES = new Set(['completed', 'failed', 'timed_out']);
+export const SCAN_CONFIDENCE_LEVELS = ['high', 'medium', 'low'] as const;
+export type ScanConfidenceLevel = (typeof SCAN_CONFIDENCE_LEVELS)[number];
+export const DEFAULT_SCAN_CONFIDENCE_FILTER: ScanConfidenceLevel[] = ['high', 'medium'];
+export const SCAN_MANAGED_FILTERS = ['cmdb_unmanaged', 'cmdb_managed', 'monitor_unmanaged', 'monitor_managed'] as const;
+export type ScanManagedFilter = (typeof SCAN_MANAGED_FILTERS)[number];
+export const DEFAULT_SCAN_MANAGED_FILTER: ScanManagedFilter[] = [...SCAN_MANAGED_FILTERS];
+
+export const hitConfidence = (hit: ScanHitItem): ScanConfidenceLevel => {
+  const value = String(hit.confidence || 'low');
+  if (value === 'high' || value === 'medium' || value === 'low') {
+    return value;
+  }
+  return 'low';
+};
+
+export const countHitsByConfidence = (hits: ScanHitItem[]) => {
+  const counts: Record<ScanConfidenceLevel, number> = { high: 0, medium: 0, low: 0 };
+  hits.forEach((hit) => {
+    counts[hitConfidence(hit)] += 1;
+  });
+  return counts;
+};
+
+export const filterHitsByConfidence = (hits: ScanHitItem[], selected: Iterable<string>) => {
+  const wanted = new Set(selected);
+  if (wanted.size === 0) {
+    return [];
+  }
+  return hits.filter((hit) => wanted.has(hitConfidence(hit)));
+};
+
+export const hitIsCmdbManaged = (hit: ScanHitItem) => Boolean(hit.cmdb_managed);
+export const hitIsMonitorManaged = (hit: ScanHitItem) => Boolean(hit.monitor_managed);
+
+export const countHitsByManaged = (hits: ScanHitItem[]) => {
+  const counts: Record<ScanManagedFilter, number> = {
+    cmdb_unmanaged: 0,
+    cmdb_managed: 0,
+    monitor_unmanaged: 0,
+    monitor_managed: 0,
+  };
+  hits.forEach((hit) => {
+    if (hitIsCmdbManaged(hit)) {
+      counts.cmdb_managed += 1;
+    } else {
+      counts.cmdb_unmanaged += 1;
+    }
+    if (hitIsMonitorManaged(hit)) {
+      counts.monitor_managed += 1;
+    } else {
+      counts.monitor_unmanaged += 1;
+    }
+  });
+  return counts;
+};
+
+export const filterHitsByManaged = (hits: ScanHitItem[], selected: Iterable<string>) => {
+  const wanted = new Set(selected);
+  if (wanted.size === 0) {
+    return [];
+  }
+  return hits.filter((hit) => {
+    const cmdbKey = hitIsCmdbManaged(hit) ? 'cmdb_managed' : 'cmdb_unmanaged';
+    const monitorKey = hitIsMonitorManaged(hit) ? 'monitor_managed' : 'monitor_unmanaged';
+    return wanted.has(cmdbKey) && wanted.has(monitorKey);
+  });
+};
 export const HIT_FETCH_SIZE = 200;
 export const TABLE_PAGE_SIZE = 20;
 export const GROUP_PAGE_SIZE = 10;
@@ -42,7 +113,27 @@ export const SCAN_MIDDLEWARE_TYPES = [
 
 const SCAN_MIDDLEWARE_TYPE_SET = new Set<string>(SCAN_MIDDLEWARE_TYPES);
 
+export const SCAN_DATABASE_TYPES = ['mysql', 'postgresql', 'mssql'] as const;
+const SCAN_DATABASE_TYPE_SET = new Set<string>(SCAN_DATABASE_TYPES);
+
 export const isScanMiddlewareType = (modelId?: string) => Boolean(modelId && SCAN_MIDDLEWARE_TYPE_SET.has(modelId));
+
+export const isScanDatabaseType = (modelId?: string) => Boolean(modelId && SCAN_DATABASE_TYPE_SET.has(modelId));
+
+export const isScanLinkMonitorType = (hit: ScanHitItem) => {
+  const family = hit.family_model_id || hit.protocol;
+  return isScanMiddlewareType(family) || isScanDatabaseType(family) || isScanMiddlewareType(hit.cmdb_model_id) || isScanDatabaseType(hit.cmdb_model_id);
+};
+
+export const hitHasCollectCredential = (hit: ScanHitItem) => Boolean(String(hit.credential_id || '').trim());
+
+export const hitHasCmdbInstance = (hit: ScanHitItem) => Boolean(String(hit.inst_uuid || '').trim());
+
+export const isLinkMonitorFamilyTab = (familyTab?: string) =>
+  familyTab === 'middleware' ||
+  familyTab === 'database' ||
+  isScanMiddlewareType(familyTab) ||
+  isScanDatabaseType(familyTab);
 
 const FAMILY_ORDER = [
   'network',

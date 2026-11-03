@@ -15,6 +15,12 @@ export interface FrozenQueryClue {
   window_end?: number | string | null;
 }
 
+export interface FrozenJumpQuery {
+  query?: string;
+  window_start?: number | string | null;
+  window_end?: number | string | null;
+}
+
 export interface AlertSnapshotItem {
   type?: string;
   event_id?: string;
@@ -22,6 +28,7 @@ export interface AlertSnapshotItem {
   snapshot_time?: string;
   raw_data?: unknown;
   query_clue?: FrozenQueryClue | null;
+  jump_query?: FrozenJumpQuery | null;
 }
 
 export interface AlertInfoEvidence {
@@ -122,6 +129,36 @@ export interface FormattedCondition {
   conditions?: FormattedConditionRule[];
   groupBy?: string[];
   rawText?: string;
+}
+
+export interface AggregateResultCondition {
+  func?: string;
+  field?: string;
+  current?: number | null;
+  baseline?: number | null;
+  value?: number | null;
+  op?: string;
+  threshold?: string | number;
+  matched?: boolean;
+  reason?: string;
+  compare?: { kind?: string; to?: string; offset?: number };
+  params?: { quantile?: number; filter?: string };
+  level?: string | null;
+  role?: string;
+  thresholds?: Array<{ level: string; value: string | number; matched?: boolean }>;
+}
+
+export interface AggregateResultHit {
+  count?: number;
+  no_data?: boolean;
+  level?: string | null;
+  conditions?: AggregateResultCondition[];
+  baseline?: {
+    to?: string;
+    window?: { start?: number; end?: number };
+    status?: string;
+    values?: Record<string, number | string | null>;
+  };
 }
 
 export function parseAlertCondition(

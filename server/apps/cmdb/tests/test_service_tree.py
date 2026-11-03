@@ -1,10 +1,15 @@
 import logging
+from uuid import uuid4
+
+import pytest
 
 from apps.cmdb.services.application_system import expand_systems_to_host_uuids
+from apps.cmdb.services.instance import InstanceManage
 from apps.cmdb.services.service_tree import (
     APPLICATION_RUN_HOST,
     SYSTEM_CONTAINS_APPLICATION,
     ServiceTreeService,
+    _lookup_hosts_for_rows,
     applications_by_system,
     assign_host_plan,
     build_service_tree,
@@ -18,7 +23,7 @@ from apps.cmdb.services.service_tree import (
     transfer_host_plan,
     unbind_host_plan,
 )
-from apps.core.exceptions.base_app_exception import ValidationAppException
+from apps.core.exceptions.base_app_exception import BaseAppException, ValidationAppException
 
 
 def _edges(*items):
@@ -615,6 +620,229 @@ def test_plan_import_fails_unknown_host_without_creating_that_row():
     assert "主机" in plan["errors"][0]["message"]
 
 
+class _VisitCountingHosts:
+    """每次产出一台主机记一次，用来区分整批建索引和按行重扫。"""
+
+    def __init__(self, hosts):
+        self._hosts = list(hosts)
+        self.visits = 0
+
+    def __iter__(self):
+        for host in self._hosts:
+            self.visits += 1
+            yield host
+
+
+def _uuid4_hosts(size):
+    return [
+        {
+            "inst_uuid": str(uuid4()),
+            "inst_name": f"host-{index}",
+            "ip_addr": f"10.{(index // 65536) % 256}.{(index // 256) % 256}.{index % 256}",
+        }
+        for index in range(size)
+    ]
+
+
+def test_match_host_prefers_uuid_over_name_and_keeps_ambiguous_lists():
+    hosts = [
+        {"inst_uuid": "uuid-1", "inst_name": "same-name", "ip_addr": "10.1.0.1"},
+        {"inst_uuid": "same-name", "inst_name": "other", "ip_addr": "10.1.0.2"},
+        {"inst_uuid": "uuid-3", "inst_name": "solo", "ip_addr": "10.1.0.3"},
+    ]
+    assert match_host("same-name", hosts)["inst_uuid"] == "same-name"
+    assert match_host("solo", hosts)["inst_uuid"] == "uuid-3"
+    assert match_host("10.1.0.3", hosts)["inst_uuid"] == "uuid-3"
+
+    duplicate_names = [
+        {"inst_uuid": "n1", "inst_name": "dup", "ip_addr": "10.2.0.1"},
+        {"inst_uuid": "n2", "inst_name": "dup", "ip_addr": "10.2.0.2"},
+    ]
+    assert match_host("n1", duplicate_names)["inst_uuid"] == "n1"
+    try:
+        match_host("dup", duplicate_names)
+    except ValidationAppException as exc:
+        assert exc.message == "主机标识匹配不唯一"
+    else:
+        raise AssertionError("expected ValidationAppException")
+
+    duplicate_ips = [
+        {"inst_uuid": "i1", "inst_name": "ip-a", "ip_addr": "10.9.0.1"},
+        {"inst_uuid": "i2", "inst_name": "ip-b", "ip_addr": "10.9.0.1"},
+    ]
+    try:
+        match_host("10.9.0.1", duplicate_ips)
+    except ValidationAppException as exc:
+        assert exc.message == "主机标识匹配不唯一"
+    else:
+        raise AssertionError("expected ValidationAppException")
+
+    try:
+        match_host("missing-host", hosts)
+    except ValidationAppException as exc:
+        assert exc.message == "找不到对应的主机"
+    else:
+        raise AssertionError("expected ValidationAppException")
+
+
+def test_plan_import_rows_scans_each_host_once():
+    mismatches = []
+    for size in (1000, 2000):
+        raw_hosts = _uuid4_hosts(size)
+        assert all(len(host["inst_uuid"]) == 36 for host in raw_hosts)
+        counting = _VisitCountingHosts(raw_hosts)
+        rows = [
+            {"system": "门户", "application": "门户前端", "host": host["inst_uuid"]}
+            for host in raw_hosts
+        ]
+        plan = plan_import_rows(
+            system_name="门户",
+            system_uuid="s1",
+            rows=rows,
+            existing_tree={"apps": {}},
+            hosts=counting,
+        )
+        if counting.visits != size:
+            mismatches.append((size, counting.visits))
+        assert plan["errors"] == []
+        assert [item["host_uuid"] for item in plan["assign"]] == [host["inst_uuid"] for host in raw_hosts]
+    assert mismatches == []
+
+
+_HOST_UUID = "123e4567-e89b-42d3-a456-426614174000"
+_OTHER_HOST_UUID = "123e4567-e89b-42d3-a456-426614174001"
+
+
+def _import_row(host, application="门户前端", system="门户"):
+    return {"应用系统": system, "应用": application, "主机标识": host}
+
+
+class _RecordingGraph:
+    def __init__(self, hosts):
+        self.hosts = list(hosts)
+        self.calls = []
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        return False
+
+    def query_entity(self, label, params, **kwargs):
+        self.calls.append(list(params))
+        indexed = {item.get("field"): item.get("value") for item in params}
+        if indexed.get("model_id") != "host":
+            return [], 0
+        matched = list(self.hosts)
+        if "inst_uuid" in indexed:
+            wanted = set(indexed["inst_uuid"] or [])
+            matched = [item for item in matched if item.get("inst_uuid") in wanted]
+        elif "inst_name" in indexed:
+            wanted = set(indexed["inst_name"] or [])
+            matched = [item for item in matched if item.get("inst_name") in wanted]
+        elif "ip_addr" in indexed:
+            wanted = set(indexed["ip_addr"] or [])
+            matched = [item for item in matched if item.get("ip_addr") in wanted]
+        else:
+            matched = []
+        return matched, len(matched)
+
+
+def _patch_host_graph(monkeypatch, hosts):
+    graph = _RecordingGraph(hosts)
+
+    def factory(**kwargs):
+        return graph
+
+    monkeypatch.setattr("apps.cmdb.services.instance.GraphClient", factory)
+    monkeypatch.setattr("apps.cmdb.services.service_tree.GraphClient", factory)
+    return graph
+
+
+def _query_values(graph, field):
+    values = []
+    for params in graph.calls:
+        for item in params:
+            if item.get("field") == field:
+                values.extend(item.get("value") or [])
+    return values
+
+
+def test_import_preload_accepts_name_ip_and_uuid_and_keeps_unknown_row(monkeypatch, caplog):
+    caplog.set_level(logging.ERROR, logger="apps.core.exceptions.base_app_exception")
+    host = {
+        "inst_uuid": _HOST_UUID,
+        "inst_name": "web-1",
+        "ip_addr": "192.0.2.10",
+        "model_id": "host",
+    }
+    graph = _patch_host_graph(monkeypatch, [host])
+    rows = [
+        _import_row("web-1"),
+        _import_row("192.0.2.10"),
+        _import_row(_HOST_UUID),
+        _import_row("missing-host"),
+    ]
+
+    hosts = _lookup_hosts_for_rows(rows)
+
+    assert match_host("web-1", hosts)["inst_uuid"] == _HOST_UUID
+    assert match_host("192.0.2.10", hosts)["inst_uuid"] == _HOST_UUID
+    assert match_host(_HOST_UUID, hosts)["inst_uuid"] == _HOST_UUID
+    uuid_values = _query_values(graph, "inst_uuid")
+    assert uuid_values == [_HOST_UUID]
+    assert "web-1" not in uuid_values
+    assert "192.0.2.10" not in uuid_values
+    assert "missing-host" not in uuid_values
+    assert "web-1" in _query_values(graph, "inst_name")
+    assert "192.0.2.10" in _query_values(graph, "ip_addr")
+    assert "inst_uuid 必须是 UUIDv4" not in caplog.text
+
+    plan = plan_import_rows(
+        system_name="门户",
+        system_uuid="s1",
+        rows=rows,
+        existing_tree={"apps": {"a:/门户前端": "a1"}},
+        hosts=hosts,
+    )
+    assert plan["create_nodes"] == []
+    assert [item["host_uuid"] for item in plan["assign"]] == [_HOST_UUID, _HOST_UUID, _HOST_UUID]
+    assert [(item["row"], item["message"]) for item in plan["errors"]] == [(4, "找不到对应的主机")]
+
+
+def test_import_preload_reports_ambiguous_host_name_per_row(monkeypatch):
+    _patch_host_graph(
+        monkeypatch,
+        [
+            {
+                "inst_uuid": _HOST_UUID,
+                "inst_name": "web-1",
+                "ip_addr": "192.0.2.10",
+                "model_id": "host",
+            },
+            {
+                "inst_uuid": _OTHER_HOST_UUID,
+                "inst_name": "web-1",
+                "ip_addr": "192.0.2.11",
+                "model_id": "host",
+            },
+        ],
+    )
+    rows = [_import_row("web-1")]
+
+    plan = plan_import_rows(
+        system_name="门户",
+        system_uuid="s1",
+        rows=rows,
+        existing_tree={"apps": {}},
+        hosts=_lookup_hosts_for_rows(rows),
+    )
+
+    assert plan["assign"] == []
+    assert plan["create_nodes"] == []
+    assert [(item["row"], item["message"]) for item in plan["errors"]] == [(1, "主机标识匹配不唯一")]
+
+
 def test_build_service_tree_shows_contains_application_even_if_asst_id_is_not_seeded_name():
     tree = build_service_tree(
         system={"inst_uuid": "s1", "inst_name": "sys-ops"},
@@ -944,3 +1172,188 @@ def test_delete_node_logs_lifecycle_template(monkeypatch, caplog):
     assert records[0].args == ("s1", "a1", "application")
     assert records[0].getMessage() == "event=service_tree_node_deleted system_uuid=s1 node_uuid=a1 kind=application"
     assert "alice" not in records[0].getMessage()
+
+
+_PORTAL_SYSTEM = "11111111-1111-4111-8111-111111111111"
+_PORTAL_FRONT = "22222222-2222-4222-8222-222222222222"
+_PORTAL_BACK = "33333333-3333-4333-8333-333333333333"
+_HOST_WEB = "44444444-4444-4444-8444-444444444444"
+_HOST_DB = "55555555-5555-4555-8555-555555555555"
+
+
+def _service_tree_edge(asst_id, model_asst, src_model, src, dst_model, dst):
+    edge = _edge(model_asst, src_model, src, dst_model, dst)
+    edge["asst_id"] = asst_id
+    edge["_id"] = f"{model_asst}:{src}:{dst}"
+    return edge
+
+
+def _stub_service_tree_graph(monkeypatch, edges, entities):
+    """只替换图查询。批量实例查询仍走 query_entity_by_uuids 的重复校验。"""
+    queried: list[list[str]] = []
+
+    def _matches(edge, params):
+        for item in params or []:
+            field = item.get("field")
+            value = item.get("value")
+            kind = str(item.get("type") or "")
+            current = edge.get(field)
+            if kind.endswith("[]"):
+                if current not in set(value or []):
+                    return False
+            elif current != value:
+                return False
+        return True
+
+    def _wrap(edge):
+        src_uuid = edge["src_inst_uuid"]
+        dst_uuid = edge["dst_inst_uuid"]
+        src = dict(entities.get(src_uuid) or {"inst_uuid": src_uuid, "model_id": edge["src_model_id"]})
+        dst = dict(entities.get(dst_uuid) or {"inst_uuid": dst_uuid, "model_id": edge["dst_model_id"]})
+        return {"edge": dict(edge), "src": src, "dst": dst}
+
+    class _Graph:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def query_edge(self, _label, params, **_kwargs):
+            return [_wrap(edge) for edge in edges if _matches(edge, params)]
+
+        def query_entity_by_inst_uuids(self, values):
+            queried.append(list(values))
+            return [dict(entities[value]) for value in values if value in entities]
+
+    monkeypatch.setattr("apps.cmdb.services.service_tree._layer_schema", lambda: layer_schema_from([], []))
+    monkeypatch.setattr("apps.cmdb.services.application_system.GraphClient", lambda **_kwargs: _Graph())
+    monkeypatch.setattr("apps.cmdb.services.instance.GraphClient", lambda **_kwargs: _Graph())
+    return queried
+
+
+def _portal_entities(*hosts):
+    entities = {
+        _PORTAL_FRONT: {"inst_uuid": _PORTAL_FRONT, "inst_name": "门户前端", "model_id": "application"},
+        _PORTAL_BACK: {"inst_uuid": _PORTAL_BACK, "inst_name": "门户后端", "model_id": "application"},
+    }
+    for host_uuid, name in hosts:
+        entities[host_uuid] = {"inst_uuid": host_uuid, "inst_name": name, "model_id": "host", "ip_addr": "10.0.0.1"}
+    return entities
+
+
+def _portal_edges(*host_links):
+    edges = [
+        _service_tree_edge("contains", SYSTEM_CONTAINS_APPLICATION, "system", _PORTAL_SYSTEM, "application", _PORTAL_FRONT),
+        _service_tree_edge("contains", SYSTEM_CONTAINS_APPLICATION, "system", _PORTAL_SYSTEM, "application", _PORTAL_BACK),
+    ]
+    for app_uuid, host_uuid in host_links:
+        edges.append(_service_tree_edge("run", APPLICATION_RUN_HOST, "application", app_uuid, "host", host_uuid))
+    return edges
+
+
+def test_export_rows_distinct_hosts_keeps_one_row_per_application(monkeypatch):
+    queried = _stub_service_tree_graph(
+        monkeypatch,
+        _portal_edges((_PORTAL_FRONT, _HOST_WEB), (_PORTAL_BACK, _HOST_DB)),
+        _portal_entities((_HOST_WEB, "web-1"), (_HOST_DB, "db-1")),
+    )
+
+    rows = ServiceTreeService.export_rows({"inst_uuid": _PORTAL_SYSTEM, "inst_name": "门户"})
+
+    assert rows == [
+        {"应用系统": "门户", "应用": "门户前端", "主机标识": "web-1"},
+        {"应用系统": "门户", "应用": "门户后端", "主机标识": "db-1"},
+    ]
+    assert [call for call in queried if _HOST_WEB in call or _HOST_DB in call] == [[_HOST_WEB, _HOST_DB]]
+
+
+def test_export_rows_shared_host_keeps_one_row_per_application(monkeypatch):
+    with pytest.raises(BaseAppException, match="inst_uuid 不允许重复"):
+        InstanceManage.query_entity_by_uuids([_HOST_WEB, _HOST_WEB])
+
+    queried = _stub_service_tree_graph(
+        monkeypatch,
+        _portal_edges((_PORTAL_FRONT, _HOST_WEB), (_PORTAL_BACK, _HOST_WEB)),
+        _portal_entities((_HOST_WEB, "web-1")),
+    )
+
+    rows = ServiceTreeService.export_rows({"inst_uuid": _PORTAL_SYSTEM, "inst_name": "门户"})
+
+    assert rows == [
+        {"应用系统": "门户", "应用": "门户前端", "主机标识": "web-1"},
+        {"应用系统": "门户", "应用": "门户后端", "主机标识": "web-1"},
+    ]
+    assert [call for call in queried if _HOST_WEB in call] == [[_HOST_WEB]]
+
+
+def _service_tree_visibility_catalog():
+    return {
+        "aa": {"inst_uuid": "aa", "model_id": "application", "inst_name": "应用甲"},
+        "ab": {"inst_uuid": "ab", "model_id": "application", "inst_name": "应用乙"},
+        "hv": {"inst_uuid": "hv", "model_id": "host", "inst_name": "可见主机", "ip_addr": "10.1.1.1"},
+        "hb": {"inst_uuid": "hb", "model_id": "host", "inst_name": "隐藏主机", "ip_addr": "10.9.9.9"},
+        "hip": {"inst_uuid": "hip", "model_id": "host", "inst_name": "", "ip_addr": "10.2.2.2"},
+        "huid": {"inst_uuid": "huid", "model_id": "host", "inst_name": "", "ip_addr": ""},
+    }
+
+
+def _install_service_tree_visibility_graph(monkeypatch):
+    catalog = _service_tree_visibility_catalog()
+    graph = [
+        _edge(SYSTEM_CONTAINS_APPLICATION, "system", "s1", "application", "aa"),
+        _edge(SYSTEM_CONTAINS_APPLICATION, "system", "s1", "application", "ab"),
+        _edge(APPLICATION_RUN_HOST, "application", "aa", "host", "hv"),
+        _edge(APPLICATION_RUN_HOST, "application", "aa", "host", "hb"),
+        _edge(APPLICATION_RUN_HOST, "application", "aa", "host", "hm"),
+        _edge(APPLICATION_RUN_HOST, "application", "aa", "host", "hip"),
+        _edge(APPLICATION_RUN_HOST, "application", "aa", "host", "huid"),
+        _edge(APPLICATION_RUN_HOST, "application", "ab", "host", "hv"),
+    ]
+    monkeypatch.setattr("apps.cmdb.services.service_tree._layer_schema", lambda: layer_schema_from([], []))
+    monkeypatch.setattr("apps.cmdb.services.service_tree.query_association_edges", _loader(graph))
+    monkeypatch.setattr(
+        "apps.cmdb.services.service_tree.InstanceManage.instance_association_instance_list_by_uuid",
+        lambda *args, **kwargs: [],
+    )
+    monkeypatch.setattr(
+        "apps.cmdb.services.service_tree.InstanceManage.query_entity_by_uuids",
+        lambda uuids: [catalog[item] for item in uuids if item in catalog],
+    )
+
+
+def test_export_rows_omits_hidden_and_missing_hosts(monkeypatch):
+    _install_service_tree_visibility_graph(monkeypatch)
+    system = {"inst_uuid": "s1", "inst_name": "门户"}
+
+    def is_visible(item):
+        return item.get("inst_uuid") != "hb"
+
+    detail = ServiceTreeService.list_node_hosts(system, "aa", is_visible=is_visible)
+    listed = detail["hosts"]
+    assert "hb" not in [row["inst_uuid"] for row in listed]
+    assert "隐藏主机" not in [row["inst_name"] for row in listed]
+    assert "10.9.9.9" not in [row["ip_addr"] for row in listed]
+    assert "hv" in [row["inst_uuid"] for row in listed]
+
+    rows = ServiceTreeService.export_rows(system, is_visible=is_visible)
+    assert rows == [
+        {"应用系统": "门户", "应用": "应用甲", "主机标识": "可见主机"},
+        {"应用系统": "门户", "应用": "应用甲", "主机标识": "10.2.2.2"},
+        {"应用系统": "门户", "应用": "应用甲", "主机标识": "huid"},
+        {"应用系统": "门户", "应用": "应用乙", "主机标识": "可见主机"},
+    ]
+    identifiers = [row["主机标识"] for row in rows]
+    assert identifiers.count("可见主机") == 2
+    for leaked in ("隐藏主机", "10.9.9.9", "hb", "hm"):
+        assert leaked not in identifiers
+
+    plain = ServiceTreeService.export_rows(system, is_visible=None)
+    assert plain == [
+        {"应用系统": "门户", "应用": "应用甲", "主机标识": "可见主机"},
+        {"应用系统": "门户", "应用": "应用甲", "主机标识": "隐藏主机"},
+        {"应用系统": "门户", "应用": "应用甲", "主机标识": "10.2.2.2"},
+        {"应用系统": "门户", "应用": "应用甲", "主机标识": "huid"},
+        {"应用系统": "门户", "应用": "应用乙", "主机标识": "可见主机"},
+    ]
+    assert "hm" not in [row["主机标识"] for row in plain]

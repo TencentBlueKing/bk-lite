@@ -406,7 +406,7 @@ class OidMapping(MaintainerInfo, TimeInfo):
 
 
 class PortFingerprint(MaintainerInfo, TimeInfo):
-    """端口指纹：同一端口可对应多种类型，扫描数据库白名单另算。"""
+    """端口指纹：同一端口可对应多种类型；一阶段扫描读启用行。"""
 
     PROTOCOL_TCP = "tcp"
 
@@ -414,8 +414,24 @@ class PortFingerprint(MaintainerInfo, TimeInfo):
     protocol = models.CharField(max_length=16, default=PROTOCOL_TCP, help_text="协议")
     target_type = models.CharField(max_length=128, help_text="CMDB 模型 ID")
     built_in = models.BooleanField(default=False, verbose_name="是否内置")
+    enabled = models.BooleanField(default=True, verbose_name="是否启用")
 
     class Meta:
         verbose_name = "端口指纹"
         verbose_name_plural = verbose_name
         unique_together = (("port", "target_type"),)
+
+
+class ProcessFingerprint(MaintainerInfo, TimeInfo):
+    """进程指纹：登录主机后按进程名/命令行匹配 CMDB 模型。"""
+
+    target_type = models.CharField(max_length=128, help_text="CMDB 模型 ID")
+    linux_process = models.CharField(max_length=256, blank=True, default="", help_text="Linux 进程名或命令行正则")
+    windows_image = models.CharField(max_length=256, blank=True, default="", help_text="Windows 映像名或服务名")
+    built_in = models.BooleanField(default=False, verbose_name="是否内置")
+    enabled = models.BooleanField(default=True, verbose_name="是否启用")
+
+    class Meta:
+        verbose_name = "进程指纹"
+        verbose_name_plural = verbose_name
+        unique_together = (("target_type", "linux_process", "windows_image"),)

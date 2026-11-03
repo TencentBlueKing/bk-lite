@@ -2,15 +2,31 @@
 
 from __future__ import annotations
 
-from apps.cmdb.models.scan_model import SCAN_MIDDLEWARE_TYPES, ScanExecution, ScanHit, is_agent_credential, resolve_scan_task_credential
+from apps.cmdb.models.scan_model import (
+    SCAN_WRITE_DATABASE_TYPES,
+    SCAN_WRITE_MIDDLEWARE_TYPES,
+    ScanExecution,
+    ScanHit,
+    is_agent_credential,
+    resolve_scan_task_credential,
+)
 from apps.cmdb.services.instance import InstanceManage
 from apps.cmdb.services.module_push import CmdbToMonitorPushService, build_cmdb_push_actor_scope
 from apps.cmdb.services.scan_host_cloud import host_cloud_from_scan
 from apps.cmdb.services.scan_identity import ensure_scan_execution_terminal
 from apps.core.logger import cmdb_logger as logger
+from apps.module_link.services.cmdb_monitor import CmdbMonitorTaskService
+
+_LINK_MONITOR_TYPES = SCAN_WRITE_MIDDLEWARE_TYPES | (SCAN_WRITE_DATABASE_TYPES - {"influxdb"})
 
 _NETWORK_MODELS = frozenset({"switch", "router", "firewall", "loadbalance"})
 _DB_MODELS = frozenset({"mysql", "postgresql", "mssql", "influxdb"})
+
+
+def _is_module_link_hit(hit: ScanHit) -> bool:
+    family = str(getattr(hit.family_run, "model_id", "") or "").strip()
+    model = str(hit.cmdb_model_id or "").strip()
+    return family in _LINK_MONITOR_TYPES or model in _LINK_MONITOR_TYPES
 
 
 def _resolve_credential_item(task, family_model_id: str, credential_id: str) -> dict | None:
@@ -178,8 +194,22 @@ class ScanPushMonitorService:
                 "cmdb_model_id": hit.cmdb_model_id,
             }
 
-            if family_model_id in SCAN_MIDDLEWARE_TYPES:
-                item.update({"status": "skipped", "reason": "middleware_needs_monitor_credential"})
+            if _is_module_link_hit(hit):
+                live_uuid = str(hit.inst_uuid or "").strip()
+                if not live_uuid:
+                    item.update({"status": "skipped", "reason": "no_ci"})
+                    results.append(item)
+                    continue
+                if request is None:
+                    item.update({"status": "failed", "reason": "no_request"})
+                    results.append(item)
+                    continue
+                try:
+                    link_task = CmdbMonitorTaskService.create([live_uuid], request=request)
+                    item.update({"status": "linked", "link_task_id": getattr(link_task, "id", None)})
+                except Exception as exc:
+                    logger.exception("[ScanPushMonitor] 同步监控任务失败 hit=%s host=%s", hit.id, hit.host)
+                    item.update({"status": "failed", "reason": str(exc)})
                 results.append(item)
                 continue
             if not str(hit.inst_uuid or "").strip():
@@ -255,7 +285,7 @@ class ScanPushMonitorService:
                 item.update({"status": "failed", "reason": str(exc)})
             results.append(item)
 
-        pushed = sum(1 for row in results if row.get("status") == "pushed")
+        pushed = sum(1 for row in results if row.get("status") in {"pushed", "linked"})
         skipped = sum(1 for row in results if row.get("status") == "skipped")
         failed = sum(1 for row in results if row.get("status") == "failed")
         return {

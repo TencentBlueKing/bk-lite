@@ -148,6 +148,7 @@ class ExecutionRetentionCleanupService:
 
     @classmethod
     def _remove_artifact_dir(cls, execution_id: int) -> None:
+        directory = None
         try:
             root = DashboardReportRenderService._artifact_root()
             directory = (root / f"execution-{execution_id}").resolve()
@@ -158,12 +159,17 @@ class ExecutionRetentionCleanupService:
                 )
                 return
             if directory.is_dir():
-                shutil.rmtree(directory, ignore_errors=True)
+                shutil.rmtree(directory)
             elif directory.is_file():
                 directory.unlink(missing_ok=True)
         except Exception:
+            if directory is not None and directory.exists():
+                raise
             logger.warning(
                 "删除 Execution artifact 目录失败: execution_id=%s",
                 execution_id,
                 exc_info=True,
             )
+            return
+        if directory is not None and directory.exists():
+            raise OSError(f"artifact directory still exists: execution_id={execution_id}")

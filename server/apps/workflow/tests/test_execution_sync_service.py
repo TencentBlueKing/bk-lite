@@ -44,14 +44,14 @@ def test_background_sync_discovers_pending_approval_without_opening_execution_de
 
     execution.refresh_from_db()
     interaction = WorkflowInteraction.objects.get(execution=execution)
-    assert summary == {"synchronized": 1, "failed": 0}
+    assert summary == {"synchronized": 1, "failed": 0, "reconciled": 0}
     assert execution.status == WorkflowExecution.Status.WAITING_APPROVAL
     assert interaction.candidate_users == ["alice"]
     notification = Notification.objects.get(event_key=f"workflow_approval:{interaction.id}")
     assert notification.recipient_usernames == ["alice"]
     assert notification.app_module == "workflow"
     assert notification.source == "workflow_approval"
-    assert notification.target_url == "/workflow/executions?scope=mine"
+    assert notification.target_url == (f"/workflow/executions/{execution.id}?scope=mine&node=approval&instance_id={interaction.id}")
 
     with django_capture_on_commit_callbacks(execute=True):
         apply_remote_execution(execution, conductor.get_execution.return_value)

@@ -10,10 +10,12 @@ from apps.cmdb.serializers.scene_view import SceneViewSerializer
 from apps.cmdb.services.instance import InstanceManage
 from apps.cmdb.services.model import ModelManage
 from apps.cmdb.services.scene_view import (
+    CurrentOrganizationDenied,
     build_visible_scene_query,
     can_edit_scene,
     can_publish_global,
     can_publish_org,
+    can_use_current_organization,
     collect_all_scene_instances,
     execute_scene_query,
     merge_model_workbooks,
@@ -119,6 +121,8 @@ class SceneViewViewSet(viewsets.ModelViewSet):
                 org_id = int(team)
             except (TypeError, ValueError):
                 raise ValueError("组织共享需要当前组织")
+            if not can_use_current_organization(request.user, org_id):
+                raise CurrentOrganizationDenied()
             return {"visibility": visibility, "organization": org_id}
         return {"visibility": visibility, "organization": None}
 
@@ -151,6 +155,8 @@ class SceneViewViewSet(viewsets.ModelViewSet):
             return denied
         try:
             extra = self._save_visibility_fields(request, visibility)
+        except CurrentOrganizationDenied:
+            return WebUtils.response_error("无权使用当前组织", status_code=status.HTTP_403_FORBIDDEN)
         except ValueError as exc:
             return WebUtils.response_error(str(exc), status_code=status.HTTP_400_BAD_REQUEST)
         scene = serializer.save(
@@ -176,6 +182,8 @@ class SceneViewViewSet(viewsets.ModelViewSet):
             return denied
         try:
             extra = self._save_visibility_fields(request, visibility, existing=scene)
+        except CurrentOrganizationDenied:
+            return WebUtils.response_error("无权使用当前组织", status_code=status.HTTP_403_FORBIDDEN)
         except ValueError as exc:
             return WebUtils.response_error(str(exc), status_code=status.HTTP_400_BAD_REQUEST)
         scene = serializer.save(

@@ -8,6 +8,7 @@ def test_system_code_migration_deduplicates_and_adds_unique_constraint():
     old_target = [("cmdb", "0041_nodemgmtsyncconfig_collect_dispatch_claim")]
     new_target = [("cmdb", "0042_collectmodels_system_code_unique")]
     executor = MigrationExecutor(connection)
+    restore_targets = list(executor.loader.graph.leaf_nodes())
     executor.migrate(old_target)
     try:
         old_apps = executor.loader.project_state(old_target).apps
@@ -88,4 +89,8 @@ def test_system_code_migration_deduplicates_and_adds_unique_constraint():
                     system_code="node_mgmt_sync_host_collect_7",
                 )
     finally:
-        MigrationExecutor(connection).migrate(new_target)
+        MigrationExecutor(connection).migrate(restore_targets)
+
+    executor = MigrationExecutor(connection)
+    missing = [node for node in restore_targets if node not in executor.loader.applied_migrations]
+    assert not missing

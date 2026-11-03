@@ -129,7 +129,7 @@ def event_aggregation_alert():
             logger.info("[AlertTask] 告警聚合任务执行完成")
 
         except Exception as e:
-            logger.exception("[AlertTask] 告警聚合任务执行失败: %s", e)
+            logger.error("[AlertTask] 告警聚合任务执行失败: %s", e)
             aggregation_error = e
 
         try:

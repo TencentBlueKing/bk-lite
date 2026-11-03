@@ -2,9 +2,9 @@ export type ObjectDashboardMode = 'dashboard' | 'category' | 'metrics';
 
 /**
  * 代码里真正挂了专业盘的对象。只收录已有专业布局的路由，
- * 不按名字猜测。目前是主机分类盘和 MySQL 专业盘。
+ * 不按名字猜测。目前是主机分类盘、MySQL 专业盘和 Redis 专业盘。
  */
-const PRO_DASHBOARD_OBJECT_KEYS = ['host', 'mysql'] as const;
+const PRO_DASHBOARD_OBJECT_KEYS = ['host', 'mysql', 'redis'] as const;
 
 export interface DashboardModeOptionShape {
   labelKey: string;

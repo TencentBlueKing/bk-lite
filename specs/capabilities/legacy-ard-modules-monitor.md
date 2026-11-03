@@ -106,5 +106,8 @@
 ## 2026-10-19 Code-ARD 校准
 - `[monitor#20261019-001]` 主机 Telegraf Agent「已接入主机监控」只认活着的 Host 对象 `CollectConfig`。进程监控等同样 `collect_type=host` 的子配置不占用该节点；软删/删除后残留且已无活着采集配置的 host ChildConfig 会在再次接入前清理。
 
+## 2026-10-29 Code-ARD 校准
+- `[monitor#20261029-001]` 监控资产已配置采集模板多于 1 个时，可按 `instance_id` + `monitor_plugin_id` 解绑指定模板（`POST /monitor/api/monitor_instance/unbind_monitor_plugin/`）。删除该插件的 `CollectConfig`，并同步调用 `NodeMgmt.delete_child_configs` / `delete_configs`。不删除 `MonitorInstance`，不改 CMDB，不走 `remove_monitor_instance`。只剩一个已配置模板时拒绝。告警与策略只裁明确绑定该插件、且指标名不被其余已配置模板共享的部分。
+
 ## 7. 证据来源
 `server/apps/monitor/{urls.py,config.py,constants/alert_policy.py,models/*,tasks/*,views/monitor_policy.py:38-69,92-153,285-295,528-609,views/monitor_condition.py:23-54,63-112,140-176,views/collect_detect.py:15-86,services/flow_*.py,services/flow_access_guide.py:10,13,14,services/flow_sampling.py,services/collect_detect.py:29-69,198-213,utils/victoriametrics_api.py,nats/monitor.py,language/zh-Hans.yaml:4867,language/en.yaml:4865,migrations/0044_rename_monitor_object_type_os_to_host_resource.py:1-28,management/commands/{plugin_init.py:9,autodiscover.py:5,backfill_metric_instance_id_keys.py:12,gen_display_fields.py:59,refresh_display_fields.py:26,create_monitor_instance.py:14,21,create_monitor_instance.md:5},support-files/plugins/Telegraf/snmp/{access_topvision/policy.json,access_icotera/policy.json,switch_ipinfusion/policy.json,transmission_ifotec/policy.json,wireless_xirrus/policy.json}}`、`server/apps/rpc/monitor.py`、`web/src/app/monitor/api/integration.ts:220-239`、`web/src/app/monitor/hooks/integration/{index.tsx,objects/middleware/{jboss,jetty,tongWeb,webLogic}.tsx}`。

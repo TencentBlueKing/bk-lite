@@ -26,6 +26,8 @@ import { LEVEL_MAP } from '@/app/log/constants';
 import EventHeatMap, { getHeatMapCellColor } from '@/components/heat-map';
 import type { ListRef } from 'rc-virtual-list';
 import { isLogHitEvent } from './alertHandlerUtils';
+import { aggregateDetailRows, readEventAggregateResult } from '@/app/log/components/aggregateConditionHit';
+import type { AggregateResultHit } from '@/app/log/components/public/alertRawLogEvidence';
 
 const TIMELINE_ITEM_HEIGHT = 48;
 
@@ -46,6 +48,7 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig>(
     const [formData, setFormData] = useState<TableDataItem>({});
     const [title, setTitle] = useState<string>('');
     const [rawData, setRawData] = useState<TableDataItem[]>([]);
+    const [aggregateResult, setAggregateResult] = useState<AggregateResultHit | null>(null);
     const [activeTab, setActiveTab] = useState<string>('information');
     const [loading, setLoading] = useState<boolean>(false);
     const [eventLoading, setEventLoading] = useState<boolean>(false);
@@ -122,23 +125,25 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig>(
 
     const getRawData = async (form: TableDataItem = formData) => {
       setLoading(true);
+      setAggregateResult(null);
       try {
         const responseData = await getEventRaw(form.id);
         const isAggregate = form.alert_type === 'aggregate';
         const data = responseData?.raw_data?.data;
-        const aggregateData = data?.query_result ? [data?.query_result] : [];
         const result = !isAggregate
           ? Array.isArray(data)
             ? data
             : []
-          : aggregateData;
+          : aggregateDetailRows(data);
         const rawList = result.map((item: TableDataItem, index: number) => ({
           ...item,
           id: index
         }));
         setRawData(rawList);
+        setAggregateResult(readEventAggregateResult(responseData));
       } catch {
         setRawData([]);
+        setAggregateResult(null);
       } finally {
         setLoading(false);
       }
@@ -246,6 +251,7 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig>(
       setGroupVisible(false);
       setActiveTab('information');
       setRawData([]);
+      setAggregateResult(null);
       setEventData([]);
       timelineRef.current?.scrollTo(0);
     };
@@ -363,6 +369,7 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig>(
                       userList={userList}
                       onClose={closeModal}
                       rawData={rawData}
+                      aggregateResult={aggregateResult}
                     />
                   </Spin>
                 ) : (

@@ -12,6 +12,8 @@ import lark_oapi as lark
 from lark_oapi.api.im.v1 import (
     CreateFileRequest,
     CreateFileRequestBody,
+    CreateImageRequest,
+    CreateImageRequestBody,
     P2ImMessageReceiveV1,
     ReplyMessageRequest,
     ReplyMessageRequestBody,
@@ -176,6 +178,14 @@ class LarkFeishuTransport:
         if not response.success():
             raise FeishuDeliveryError("update rejected")
 
+    def reply_image(self, message_id: str, filename: str, content: bytes, content_type: str) -> None:
+        image_key = self._upload_image(filename, content, content_type)
+        body = ReplyMessageRequestBody.builder().msg_type("image").content(json.dumps({"image_key": image_key})).build()
+        request = ReplyMessageRequest.builder().message_id(message_id).request_body(body).build()
+        response = self._api.im.v1.message.reply(request)
+        if not response.success():
+            _reject(response, "image_reply")
+
     def reply_file(self, message_id: str, filename: str, content: bytes) -> None:
         file_key = self._upload(filename, content)
         body = ReplyMessageRequestBody.builder().msg_type("file").content(json.dumps({"file_key": file_key})).build()
@@ -183,6 +193,12 @@ class LarkFeishuTransport:
         response = self._api.im.v1.message.reply(request)
         if not response.success():
             _reject(response, "file_reply")
+
+    def _upload_image(self, filename: str, content: bytes, content_type: str) -> str:
+        response = self._api.im.v1.image.create(upload_image_request(filename, content, content_type))
+        if not response.success() or response.data is None or not response.data.image_key:
+            _reject(response, "image_upload")
+        return response.data.image_key
 
     def _upload(self, filename: str, content: bytes) -> str:
         response = self._api.im.v1.file.create(upload_file_request(filename, content))
@@ -204,6 +220,27 @@ def _safe_filename(filename: str) -> str:
     name = (filename or "file").replace("\\", "/").rsplit("/", 1)[-1].strip() or "file"
     name = "".join(ch for ch in name if ch not in '\\/:*?"<>|')
     return name or "file.txt"
+
+
+def upload_image_request(filename: str, content: bytes, content_type: str) -> CreateImageRequest:
+    """图片分段必须带文件名。飞书拒收没有 filename 的上传。"""
+    safe_name = _image_filename(filename, content_type)
+    payload = (safe_name, io.BytesIO(content), content_type or "image/png")
+    body = CreateImageRequestBody.builder().image_type("message").image(payload).build()
+    return CreateImageRequest.builder().request_body(body).build()
+
+
+def _image_filename(filename: str, content_type: str) -> str:
+    name = _safe_filename(filename)
+    if "." in name:
+        return name
+    extension = {
+        "image/jpeg": ".jpg",
+        "image/png": ".png",
+        "image/gif": ".gif",
+        "image/webp": ".webp",
+    }.get((content_type or "").split(";", 1)[0].strip().lower(), ".png")
+    return f"{name}{extension}"
 
 
 def upload_file_request(filename: str, content: bytes) -> CreateFileRequest:

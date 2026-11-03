@@ -1,5 +1,4 @@
 import types
-from unittest.mock import Mock
 
 import pytest
 from rest_framework.test import APIClient
@@ -7,6 +6,12 @@ from rest_framework.test import APIClient
 from apps.base.tests.factories import UserFactory
 from apps.mlops.constants import TrainJobStatus
 from apps.mlops.models.object_detection import ObjectDetectionServing
+
+
+@pytest.fixture(autouse=True)
+def _disable_license_guard(settings):
+    """测试环境无 license 时，LicenseAppGuardMiddleware 会对 /api/v1/mlops/ 直接 403。"""
+    settings.LICENSE_MGMT_ENABLED = False
 
 
 @pytest.fixture

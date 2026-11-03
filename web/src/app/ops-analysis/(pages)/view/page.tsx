@@ -30,6 +30,7 @@ import {
   getDisplayRecentCanvases,
   readRecentCanvases,
   recordRecentCanvas,
+  renameRecentCanvas,
   type RecentCanvasRecord,
 } from '@/app/ops-analysis/utils/recentCanvasStorage';
 import { isScreenModeEnabled } from '@/console-layout';
@@ -77,10 +78,58 @@ const ViewPage: React.FC = () => {
   const reportRef = useRef<ReportRef>(null);
   const networkTopologyRef = useRef<NetworkTopologyRef>(null);
   const sidebarRef = useRef<SidebarRef>(null);
+  const selectedItemRef = useRef(selectedItem);
+  const [canvasReloadToken, setCanvasReloadToken] = useState(0);
+  selectedItemRef.current = selectedItem;
   const previousSelectionRef = useRef<{
     type: DirectoryType;
     item: DirItem | null;
   } | null>(null);
+
+  const handleCanvasContentReplaced = (updatedItem: DirItem) => {
+    if (!isCanvasType(updatedItem.type)) {
+      return;
+    }
+    if (updatedItem.name) {
+      setRecentCanvases(
+        renameRecentCanvas(window.localStorage, {
+          id: updatedItem.id,
+          dataId: updatedItem.data_id,
+          type: updatedItem.type,
+          name: updatedItem.name,
+        }),
+      );
+    }
+    const current = selectedItemRef.current[updatedItem.type];
+    if (current?.data_id !== updatedItem.data_id) {
+      return;
+    }
+    setCanvasReloadToken((token) => token + 1);
+  };
+
+  const confirmBeforeImportUpdate = (item: DirItem) => {
+    if (!isCanvasType(item.type)) {
+      return Promise.resolve(true);
+    }
+    const current = selectedItemRef.current[item.type];
+    const isOpenCanvas =
+      current?.id === item.id || current?.data_id === item.data_id;
+    if (!isOpenCanvas || !checkUnsavedChanges()) {
+      return Promise.resolve(true);
+    }
+    return new Promise<boolean>((resolve) => {
+      Modal.confirm({
+        title: t('opsAnalysisSidebar.importUpdateUnsaved'),
+        content: t('opsAnalysisSidebar.importUpdateUnsavedWarning'),
+        okText: t('common.confirm'),
+        cancelText: t('common.cancel'),
+        okButtonProps: { danger: true },
+        centered: true,
+        onOk: () => resolve(true),
+        onCancel: () => resolve(false),
+      });
+    });
+  };
 
   const handleSidebarDataUpdate = (updatedItem: DirItem) => {
     if (!isCanvasType(updatedItem.type)) {
@@ -226,6 +275,8 @@ const ViewPage: React.FC = () => {
             ref={sidebarRef}
             onSelect={handleNavigation}
             onDataUpdate={handleSidebarDataUpdate}
+            onCanvasContentReplaced={handleCanvasContentReplaced}
+            beforeImportUpdate={confirmBeforeImportUpdate}
           />
         </div>
         {!screenMode && (
@@ -251,37 +302,38 @@ const ViewPage: React.FC = () => {
         {selectedType === 'screen' ? (
           <Screen
             ref={screenRef}
-            key={selectedItem.screen?.data_id ?? 'screen-empty'}
+            key={`${selectedItem.screen?.data_id ?? 'screen-empty'}:${canvasReloadToken}`}
             selectedScreen={selectedItem.screen}
             onEditingChange={handleScreenEditingChange}
           />
         ) : selectedType === 'report' ? (
           <Report
             ref={reportRef}
-            key={selectedItem.report?.data_id ?? 'report-empty'}
+            key={`${selectedItem.report?.data_id ?? 'report-empty'}:${canvasReloadToken}`}
             selectedReport={selectedItem.report}
           />
         ) : selectedType === 'architecture' ? (
           <Architecture
             ref={architectureRef}
+            key={`${selectedItem.architecture?.data_id ?? 'architecture-empty'}:${canvasReloadToken}`}
             selectedArchitecture={selectedItem.architecture}
           />
         ) : selectedType === 'topology' ? (
           <Topology
             ref={topologyRef}
-            key={selectedItem.topology?.data_id ?? 'topology-empty'}
+            key={`${selectedItem.topology?.data_id ?? 'topology-empty'}:${canvasReloadToken}`}
             selectedTopology={selectedItem.topology}
           />
         ) : selectedType === 'dashboard' ? (
           <Dashboard
             ref={dashboardRef}
-            key={selectedItem.dashboard?.data_id ?? 'dashboard-empty'}
+            key={`${selectedItem.dashboard?.data_id ?? 'dashboard-empty'}:${canvasReloadToken}`}
             selectedDashboard={selectedItem.dashboard}
           />
         ) : selectedType === 'networkTopology' ? (
           <NetworkTopology
             ref={networkTopologyRef}
-            key={selectedItem.networkTopology?.data_id ?? 'networkTopology-empty'}
+            key={`${selectedItem.networkTopology?.data_id ?? 'networkTopology-empty'}:${canvasReloadToken}`}
             selectedNetworkTopology={selectedItem.networkTopology}
           />
         ) : (

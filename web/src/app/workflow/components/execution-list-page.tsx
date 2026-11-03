@@ -199,6 +199,9 @@ export function ExecutionListPage({ initialExecutionId, initialNodeReference, in
   const listRequestKey = useMemo(() => JSON.stringify([pagination.current, pagination.pageSize, filters]), [filters, pagination.current, pagination.pageSize]);
   useAutoRequest(listRequestKey, loadExecutions);
   useEffect(() => {
+    setSelectedExecutionId(initialExecutionId);
+  }, [initialExecutionId]);
+  useEffect(() => {
     if (lastRouteMine.current === initialMine) return;
     lastRouteMine.current = initialMine;
     setSelectedExecutionId(undefined);
@@ -238,8 +241,8 @@ export function ExecutionListPage({ initialExecutionId, initialNodeReference, in
       const presentation = executionStatusPresentation[value] || { color: 'default', label: '--' };
       return <Tag color={presentation.color}>{t(`workflowOrchestration.execution.status.${value}`, presentation.label)}</Tag>;
     } },
-    { title: t('workflowOrchestration.trigger.title', '触发器'), dataIndex: 'trigger_type', key: 'trigger_type', width: 110, filters: Object.entries(triggerLabels).map(([value, text]) => ({ value, text })), filterMultiple: false, filteredValue: filters.triggerType ? [filters.triggerType] : null, render: (value: WorkflowTriggerType) => triggerLabels[value] || '--' },
     { title: t('workflowOrchestration.execution.mode', '模式'), dataIndex: 'mode', key: 'mode', width: 90, filters: Object.entries(modeLabels).map(([value, text]) => ({ value, text })), filterMultiple: false, filteredValue: filters.mode ? [filters.mode] : null, render: (value: ExecutionRecord['mode']) => modeLabels[value] || '--' },
+    { title: t('workflowOrchestration.trigger.title', '触发器'), dataIndex: 'trigger_type', key: 'trigger_type', width: 110, filters: Object.entries(triggerLabels).map(([value, text]) => ({ value, text })), filterMultiple: false, filteredValue: filters.triggerType ? [filters.triggerType] : null, render: (value: WorkflowTriggerType) => triggerLabels[value] || '--' },
     { title: t('workflowOrchestration.execution.startedBy', '发起人'), dataIndex: 'started_by', key: 'started_by', width: 120, render: (value: string) => <EllipsisWithTooltip text={formatStartedBy(value, t)} className="w-full overflow-hidden text-ellipsis whitespace-nowrap" /> },
     { title: t('workflowOrchestration.execution.startedAt', '开始时间'), dataIndex: 'created_at', key: 'created_at', width: 180, render: (value: string) => <span className="whitespace-nowrap tabular-nums">{value ? convertToLocalizedTime(value) : '--'}</span> },
     { title: t('workflowOrchestration.execution.duration', '耗时'), dataIndex: 'duration_ms', key: 'duration_ms', width: 100, render: (value: number | null) => <span className="tabular-nums">{formatDuration(value)}</span> },
@@ -340,7 +343,7 @@ export function ExecutionListPage({ initialExecutionId, initialNodeReference, in
         open={Boolean(selectedExecutionId)}
         onClose={() => {
           setSelectedExecutionId(undefined);
-          if (initialExecutionId) router.push(`/workflow/executions${filterQuery(filters)}`);
+          if (initialExecutionId) router.replace(`/workflow/executions${filterQuery(filters)}`);
         }}
         onExecutionChanged={() => {
           void loadExecutions(true);

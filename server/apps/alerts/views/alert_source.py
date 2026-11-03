@@ -422,13 +422,14 @@ class AlertSourceModelViewSet(ReadOnlyModelViewSet):
     @HasPermission("Integration-View")
     @action(methods=["get"], detail=False, url_path="daily_event_stats")
     def daily_event_stats(self, request):
-        """Return today's and yesterday's total event counts across all sources."""
+        """Return today's and yesterday's event counts visible to the current request."""
         now = timezone.localtime(timezone.now())
         today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
         yesterday_start = today_start - timedelta(days=1)
 
-        today_count = Event.objects.filter(received_at__gte=today_start).count()
-        yesterday_count = Event.objects.filter(
+        scoped_events = filter_event_queryset_for_request(Event.objects.all(), request)
+        today_count = scoped_events.filter(received_at__gte=today_start).count()
+        yesterday_count = scoped_events.filter(
             received_at__gte=yesterday_start,
             received_at__lt=today_start,
         ).count()

@@ -3,8 +3,8 @@
 补齐 enable / closed / last_event / stats / format_crontab 等未覆盖分支。
 只 mock 权限边界（get_permissions_rules），DB 走真实。
 """
-import pytest
 import minio.error
+import pytest
 from django.utils import timezone
 from django_celery_beat.models import CrontabSchedule, PeriodicTask
 from rest_framework import status
@@ -739,3 +739,57 @@ def test_stats_closed_alerts_still_use_default_seven_day_window(api_client, auth
     stats = stats_resp.json()["data"]
     assert stats["total"] == 0
     assert stats["time_series"] == []
+
+
+@pytest.mark.django_db
+def test_recovered_alert_rejects_close_claim_and_assign(api_client, authenticated_user, mocker):
+    policy = _create_policy("recovered-ops", organization=1)
+    alert = _create_alert(policy, "alert-recovered", status_value="recovered")
+    _mock_policy_permission(mocker, policy_id=policy.id, organization=1)
+    api_client.cookies["current_team"] = "1"
+
+    closed = api_client.post(f"/api/v1/log/alert/{alert.id}/closed/")
+    claim = api_client.post(f"/api/v1/log/alert/{alert.id}/claim/")
+    assign = api_client.post(
+        f"/api/v1/log/alert/{alert.id}/assign/",
+        {"handlers": [authenticated_user.id]},
+        format="json",
+    )
+    reassign = api_client.post(
+        f"/api/v1/log/alert/{alert.id}/reassign/",
+        {"handlers": [authenticated_user.id]},
+        format="json",
+    )
+
+    alert.refresh_from_db()
+    assert alert.status == "recovered"
+    assert alert.operator in (None, "")
+    assert closed.status_code == status.HTTP_200_OK
+    assert closed.json()["data"]["status"] == "recovered"
+    assert claim.status_code == 409
+    assert assign.status_code == 409
+    assert reassign.status_code == 409
+
+
+@pytest.mark.django_db
+def test_alert_list_and_stats_accept_comma_separated_status(api_client, authenticated_user, mocker):
+    from datetime import timedelta
+
+    policy = _create_policy("status-multi", organization=1)
+    _create_alert(policy, "alert-new", status_value="new")
+    _create_alert(policy, "alert-closed", status_value="closed")
+    recent = _create_alert(policy, "alert-recovered", status_value="recovered")
+    old = _create_alert(policy, "alert-recovered-old", status_value="recovered")
+    old_time = timezone.now() - timedelta(days=8)
+    Alert.objects.filter(id=old.id).update(created_at=old_time)
+    _mock_policy_permission(mocker, policy_id=policy.id, organization=1)
+    api_client.cookies["current_team"] = "1"
+
+    listed = api_client.get("/api/v1/log/alert/?status=closed,recovered")
+    assert listed.status_code == status.HTTP_200_OK
+    ids = {item["id"] for item in listed.json()["data"]["items"]}
+    assert ids == {"alert-closed", recent.id, old.id}
+
+    stats = api_client.get("/api/v1/log/alert/stats/?status=closed,recovered&step=60")
+    assert stats.status_code == status.HTTP_200_OK
+    assert stats.json()["data"]["total"] == 2

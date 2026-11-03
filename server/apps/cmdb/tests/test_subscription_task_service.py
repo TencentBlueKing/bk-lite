@@ -250,6 +250,18 @@ class TestRelationChangeSummary:
         assert "新增关联: [主机1]" in out
         assert "删除关联: [主机2]" in out
 
+    def test_名称含反斜杠_新增和删除关联按字面写入(self, mocker):
+        summary = "关联模型[host]变化, 新增关联: [1], 删除关联: [2]"
+        literal_name = "asset\\g"
+        mocker.patch.object(
+            SubscriptionTaskService,
+            "_get_instance_name_map",
+            return_value={1: literal_name, 2: literal_name},
+        )
+        out = SubscriptionTaskService._format_relation_change_summary(summary)
+        assert f"新增关联: [{literal_name}]" in out
+        assert f"删除关联: [{literal_name}]" in out
+
     def test_名称映射为空_原样返回(self, mocker):
         summary = "关联模型[host]变化, 新增关联: [1]"
         mocker.patch.object(SubscriptionTaskService, "_get_instance_name_map", return_value={})

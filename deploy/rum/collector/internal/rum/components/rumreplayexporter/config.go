@@ -30,7 +30,7 @@ const (
 
 var (
 	bucketPattern      = regexp.MustCompile(`^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$`)
-	redisSecretPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{32,256}$`)
+	redisSecretPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{16,256}$`)
 )
 
 // Config keeps the queue file-backed while Redis sequence leases linearize
@@ -124,7 +124,7 @@ func (cfg *Config) Validate() error {
 				result = errors.Join(result, errors.New("redis_password_file must be a clean absolute path"))
 			}
 		} else if !hasPassword || !redisSecretPattern.MatchString(password) {
-			result = errors.Join(result, errors.New("development redis_url must include a 32-256 character URL-safe password"))
+			result = errors.Join(result, errors.New("development redis_url must include a 16-256 character URL-safe password"))
 		}
 	}
 	if !cfg.QueueSettings.HasValue() {

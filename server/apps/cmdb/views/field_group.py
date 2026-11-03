@@ -6,7 +6,7 @@
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 
-from apps.cmdb.constants.constants import PERMISSION_MODEL, VIEW
+from apps.cmdb.constants.constants import OPERATE
 from apps.cmdb.filters.field_group import FieldGroupFilter
 from apps.cmdb.models.field_group import FieldGroup
 from apps.cmdb.serializers.field_group import (
@@ -34,6 +34,56 @@ class FieldGroupViewSet(CmdbPermissionMixin, viewsets.ModelViewSet):
     filterset_class = FieldGroupFilter
     pagination_class = CustomPageNumberPagination
 
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        visible_model_ids = getattr(self, "_visible_model_ids", None)
+        if visible_model_ids is not None:
+            queryset = queryset.filter(model_id__in=visible_model_ids)
+        return queryset
+
+    def _missing_model_response(self):
+        return WebUtils.response_error("模型不存在", status_code=status.HTTP_404_NOT_FOUND)
+
+    def _load_model(self, model_id):
+        return ModelManage.search_model_info(model_id) or None
+
+    def _operate_denied(self, request, model_id):
+        """写操作：组织交集 + OPERATE。默认组织的公开 VIEW 不在这里放行。"""
+        model_info = self._load_model(model_id)
+        if not model_info:
+            return self._missing_model_response()
+        return self.require_model_permission(
+            request,
+            model_info,
+            operator=OPERATE,
+            error_message="抱歉！您没有此模型的权限",
+        )
+
+    def _view_denied(self, request, model_info):
+        return self.require_model_view_permission(
+            request,
+            model_info,
+            default_group_id=get_default_group_id()[0],
+            error_message="抱歉！您没有此模型的查询权限",
+        )
+
+    def _viewable_model_ids(self, request, model_ids):
+        default_group_id = get_default_group_id()[0]
+        visible = []
+        for model_id in model_ids:
+            model_info = self._load_model(model_id)
+            if not model_info:
+                continue
+            error = self.require_model_view_permission(
+                request,
+                model_info,
+                default_group_id=default_group_id,
+                error_message="抱歉！您没有此模型的查询权限",
+            )
+            if error is None:
+                visible.append(model_id)
+        return visible
+
     @HasPermission("model_management-View")
     def list(self, request, *args, **kwargs):
         """
@@ -43,12 +93,34 @@ class FieldGroupViewSet(CmdbPermissionMixin, viewsets.ModelViewSet):
         - model_id: 模型ID（必填，通过查询参数传递）
         - group_name: 分组名称（可选，模糊搜索）
         """
+        model_id = request.query_params.get("model_id")
+        if model_id:
+            model_info = self._load_model(model_id)
+            if not model_info:
+                return self._missing_model_response()
+            denied = self._view_denied(request, model_info)
+            if denied:
+                return denied
+        else:
+            candidate_ids = list(
+                self.filter_queryset(self.get_queryset())
+                .order_by("model_id")
+                .values_list("model_id", flat=True)
+                .distinct()
+            )
+            self._visible_model_ids = self._viewable_model_ids(request, candidate_ids)
         return super().list(request, *args, **kwargs)
 
     @HasPermission("model_management-View")
     def retrieve(self, request, *args, **kwargs):
         """获取分组详情"""
         instance = self.get_object()
+        model_info = self._load_model(instance.model_id)
+        if not model_info:
+            return self._missing_model_response()
+        denied = self._view_denied(request, model_info)
+        if denied:
+            return denied
         serializer = self.get_serializer(instance)
         return WebUtils.response_success(serializer.data)
 
@@ -74,6 +146,10 @@ class FieldGroupViewSet(CmdbPermissionMixin, viewsets.ModelViewSet):
             return WebUtils.response_error(
                 serializer.errors, status_code=status.HTTP_400_BAD_REQUEST
             )
+
+        denied = self._operate_denied(request, model_id)
+        if denied:
+            return denied
 
         try:
             group = FieldGroupService.create_group(
@@ -110,6 +186,10 @@ class FieldGroupViewSet(CmdbPermissionMixin, viewsets.ModelViewSet):
                 serializer.errors, status_code=status.HTTP_400_BAD_REQUEST
             )
 
+        denied = self._operate_denied(request, instance.model_id)
+        if denied:
+            return denied
+
         try:
             group = FieldGroupService.update_group(
                 group=instance,
@@ -136,6 +216,9 @@ class FieldGroupViewSet(CmdbPermissionMixin, viewsets.ModelViewSet):
         }
         """
         instance = self.get_object()
+        denied = self._operate_denied(request, instance.model_id)
+        if denied:
+            return denied
 
         try:
             result = FieldGroupService.delete_group(group=instance)
@@ -172,6 +255,10 @@ class FieldGroupViewSet(CmdbPermissionMixin, viewsets.ModelViewSet):
             return WebUtils.response_error(
                 serializer.errors, status_code=status.HTTP_400_BAD_REQUEST
             )
+
+        denied = self._operate_denied(request, instance.model_id)
+        if denied:
+            return denied
 
         try:
             result = FieldGroupService.move_group(
@@ -273,6 +360,10 @@ class FieldGroupViewSet(CmdbPermissionMixin, viewsets.ModelViewSet):
                 serializer.errors, status_code=status.HTTP_400_BAD_REQUEST
             )
 
+        denied = self._operate_denied(request, model_id)
+        if denied:
+            return denied
+
         try:
             result = FieldGroupService.batch_update_attrs_group(
                 model_id=model_id, updates=serializer.validated_data["updates"]
@@ -317,6 +408,10 @@ class FieldGroupViewSet(CmdbPermissionMixin, viewsets.ModelViewSet):
         if not group_name:
             return WebUtils.response_error("group_name不能为空")
 
+        denied = self._operate_denied(request, model_id)
+        if denied:
+            return denied
+
         try:
             result = FieldGroupService.update_attr_group(
                 model_id=model_id, attr_id=attr_id, new_group_name=group_name, order_id=order_id
@@ -357,6 +452,10 @@ class FieldGroupViewSet(CmdbPermissionMixin, viewsets.ModelViewSet):
             return WebUtils.response_error("group_name不能为空")
         if not attr_orders or not isinstance(attr_orders, list):
             return WebUtils.response_error("attr_orders必须是属性ID数组")
+
+        denied = self._operate_denied(request, model_id)
+        if denied:
+            return denied
 
         try:
             result = FieldGroupService.reorder_group_attrs(

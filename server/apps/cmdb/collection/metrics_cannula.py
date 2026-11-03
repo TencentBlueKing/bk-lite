@@ -53,7 +53,11 @@ class MetricsCannula:
 
     def get_collection_metrics(self):
         """获取采集指标"""
-        new_metrics = self.collect_plugin(self.inst_name, self.inst_id, self.task_id, **self.plugin_kwargs)
+        # 任务对象已经在手时直接交给插件，格式化每条结果不必再查同一条任务。
+        plugin_kwargs = dict(self.plugin_kwargs)
+        if self.task is not None and "collect_inst" not in plugin_kwargs:
+            plugin_kwargs["collect_inst"] = self.task
+        new_metrics = self.collect_plugin(self.inst_name, self.inst_id, self.task_id, **plugin_kwargs)
         self.collect_plugin_instance = new_metrics
         result = new_metrics.run()
         self.collect_data = new_metrics.result
@@ -94,17 +98,26 @@ class MetricsCannula:
             align_collected_host_inst_names(list(old_by_id.values()), metrics)
 
         organizations = {str(value) for value in (self.organization or [])}
+        reconcile = self._reconcile_for(model_id)
+        member_ids = set(reconcile["member_order"]) if reconcile else set()
         conflicts = {}
         names = list(dict.fromkeys(row["inst_name"] for row in metrics))
         for start in range(0, len(names), 200):
             candidates, _ = ag.query_entity(INSTANCE, base_params + [{"field": "inst_name", "type": "str[]", "value": names[start : start + 200]}])
             for row in candidates:
                 owner = row.get("collect_task")
-                if str(owner) == self.task_id:
+                owner_id = "" if owner in (None, "") else str(owner)
+                same_org = bool(organizations.intersection(str(value) for value in (row.get("organization") or [])))
+                if owner_id == self.task_id:
                     old_by_id[row["_id"]] = row
-                elif owner not in (None, ""):
+                elif reconcile and owner_id in member_ids:
+                    if not same_org:
+                        conflicts[row["inst_name"]] = "已有资产不在当前采集组织范围内，无法自动接管"
+                    else:
+                        old_by_id[row["_id"]] = row
+                elif owner_id:
                     conflicts[row["inst_name"]] = "已有资产属于其他采集任务，无法自动接管"
-                elif not organizations.intersection(str(value) for value in (row.get("organization") or [])):
+                elif not same_org:
                     conflicts[row["inst_name"]] = "已有资产不在当前采集组织范围内，无法自动接管"
                 else:
                     old_by_id[row["_id"]] = row
@@ -118,6 +131,23 @@ class MetricsCannula:
                 accepted.append(row)
         old_data = [row for row in old_by_id.values() if row["inst_name"] not in conflicts]
         return old_data, accepted, failed
+
+    def _reconcile_for(self, model_id):
+        if not self.reconcile_task_assets:
+            return None
+        if not hasattr(self, "_reconcile_ctx"):
+            from apps.cmdb.services.collect_reconcile import load_write_context
+
+            self._reconcile_ctx = load_write_context(self.task_id)
+        ctx = self._reconcile_ctx
+        if not ctx:
+            return None
+        reconcile_model = ctx.get("model_id")
+        from apps.cmdb.collection.plugins.community.network.plugins import NETWORK_DEVICE_MODELS
+
+        if reconcile_model == model_id or (reconcile_model == "network" and model_id in NETWORK_DEVICE_MODELS):
+            return ctx
+        return None
 
     @staticmethod
     def _reuse_host_inst_name(ag, base_params, metrics):
@@ -140,9 +170,12 @@ class MetricsCannula:
     def _collect_models(self) -> dict:
         result = {}
         all_count = 0
+        pc_task_format_key = (
+            getattr(self.collect_plugin, "TASK_FORMAT_DATA_KEY", "__task_format_data__") if getattr(self.task, "model_id", None) == "pc" else None
+        )
         for model_id, metrics in self.collection_metrics.items():
-            # 任务级 format payload（含 pc_summary）不是实例列表，不能送进通用对账。
-            if not isinstance(metrics, list):
+            # PC 任务级结果已由专用对账写入，只用于汇总，不能再进入通用对账。
+            if model_id == pc_task_format_key or not isinstance(metrics, list):
                 continue
             all_count += len(metrics)
             params = [
@@ -173,6 +206,8 @@ class MetricsCannula:
                     reconcile_task_assets=self.reconcile_task_assets,
                     expire_days=getattr(self.task, "expire_days", 0) or 0,
                     collection_targets=getattr(self.task, "instances", None) or (),
+                    reconcile=self._reconcile_for(model_id),
+                    task_name=str(getattr(self.task, "name", "") or ""),
                 )
                 if conflicts:
                     management.delete_list = []
@@ -184,6 +219,10 @@ class MetricsCannula:
                 else:
                     collect_result = management.controller()
                 collect_result["update"]["failed"].extend(conflicts)
+                if collect_result.get("reconcile_stats") is not None:
+                    for item in conflicts:
+                        key = "org_conflicts" if "组织" in item.get("error", "") else "outside_owner_conflicts"
+                        collect_result["reconcile_stats"][key] = collect_result["reconcile_stats"].get(key, 0) + 1
                 result[model_id] = collect_result
         result["__raw_data__"] = self.raw_data
         result["all"] = all_count

@@ -93,6 +93,20 @@ class ReminderService:
         return interval_minutes, max_count
 
     @classmethod
+    def _restart_reminder_budget(cls, reminder: AlertReminderTask) -> None:
+        """把已有提醒的本轮次数清零。次数确实从非 0 打回 0 时，代数一并加一。"""
+        if reminder.reminder_count:
+            reminder.generation += 1
+        reminder.reminder_count = 0
+
+    @staticmethod
+    def _reminder_idempotency_key(reminder_id: int, generation: int, sequence: int) -> str:
+        """同一代、同一序号始终落到同一条 outbox。0 代保持旧键。"""
+        if int(generation or 0) > 0:
+            return f"reminder:{reminder_id}:{int(generation)}:{sequence}"
+        return f"reminder:{reminder_id}:{sequence}"
+
+    @classmethod
     def create_reminder_task(cls, alert: Alert, assignment: AlertAssignment) -> Optional[AlertReminderTask]:
         """创建提醒任务"""
         try:
@@ -121,7 +135,7 @@ class ReminderService:
                 existing_task.is_active = True
                 existing_task.current_frequency_minutes = interval_minutes
                 existing_task.current_max_reminders = max_count
-                existing_task.reminder_count = 0
+                cls._restart_reminder_budget(existing_task)
                 existing_task.last_reminder_time = None
                 existing_task.next_reminder_time = timezone.now() + timedelta(minutes=interval_minutes)
                 existing_task.save(
@@ -130,6 +144,7 @@ class ReminderService:
                         "is_active",
                         "current_frequency_minutes",
                         "current_max_reminders",
+                        "generation",
                         "reminder_count",
                         "last_reminder_time",
                         "next_reminder_time",
@@ -440,7 +455,7 @@ class ReminderService:
                 sequence = locked.reminder_count + 1
                 enqueue_notifications(
                     channel_params,
-                    idempotency_key=f"reminder:{reminder_id}:{sequence}",
+                    idempotency_key=cls._reminder_idempotency_key(reminder_id, locked.generation, sequence),
                 )
                 return cls._advance_reminder_after_enqueue(reminder_id)
 

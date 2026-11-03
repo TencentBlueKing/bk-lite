@@ -25,21 +25,31 @@ class K8sSetupService:
     """CMDB k8s 引导式接入：token / render / verify"""
 
     @staticmethod
-    def persist_tolerations(collector_cluster_id: str, tolerations) -> None:
+    def persist_tolerations(collector_cluster_id: str, tolerations, request) -> None:
         validate_collector_cluster_id(collector_cluster_id)
         normalized = normalize_k8s_daemonset_tolerations(tolerations)
-        tasks = CollectModels.objects.filter(
+        if request is None:
+            return
+
+        from apps.cmdb.views.collect import CollectModelViewSet
+
+        view = CollectModelViewSet()
+        candidates = view.queryset.filter(
             task_type=CollectPluginTypes.K8S,
             params__collector_cluster_id=collector_cluster_id,
         )
-        for task in tasks:
-            params = dict(task.params or {})
-            if normalized is None:
-                params.pop("tolerations", None)
-            else:
-                params["tolerations"] = normalized
-            task.params = params
-            task.save(update_fields=["params"])
+        scoped = view.get_queryset_by_permission(request, candidates)
+        matches = list(scoped[:2])
+        if len(matches) != 1:
+            return
+        task = matches[0]
+        params = dict(task.params or {})
+        if normalized is None:
+            params.pop("tolerations", None)
+        else:
+            params["tolerations"] = normalized
+        task.params = params
+        task.save(update_fields=["params"])
 
     @staticmethod
     def load_tolerations(collector_cluster_id: str):
@@ -70,7 +80,7 @@ class K8sSetupService:
         }
 
     @staticmethod
-    def generate_install_command(collector_cluster_id: str, cloud_region_id, tolerations=TOLERATIONS_UNSET) -> dict:
+    def generate_install_command(collector_cluster_id: str, cloud_region_id, tolerations=TOLERATIONS_UNSET, request=None) -> dict:
         """
         后端生成安装命令，URL 直连 Django open_api（不走 Next.js 代理），
         与 Monitor 的 ManualCollectService.generate_install_command 保持一致。
@@ -87,7 +97,7 @@ class K8sSetupService:
             raise BaseAppException(f"Missing NODE_SERVER_URL in cloud region {cloud_region_id}")
 
         if tolerations is not TOLERATIONS_UNSET:
-            K8sSetupService.persist_tolerations(collector_cluster_id, tolerations)
+            K8sSetupService.persist_tolerations(collector_cluster_id, tolerations, request)
 
         token = InfraService.generate_install_token(
             collector_cluster_id,

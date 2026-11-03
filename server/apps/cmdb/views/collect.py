@@ -120,7 +120,10 @@ class CollectModelViewSet(AuthViewSet):
         if action in {"list", "task_status", "collect_task_names"}:
             queryset = self.apply_visibility_filter(queryset)
         if action == "list" and request is not None and not str(request.query_params.get("custom_plugin_pk") or "").strip():
-            queryset = queryset.exclude(task_type=CollectPluginTypes.CUSTOM_SCRIPT)
+            # 内置插件列表按模型过滤，不能把同模型的自定义任务混进去。
+            # 总览和全部任务没有模型条件，自定义任务要留在列表里。
+            if str(request.query_params.get("model_id") or "").strip():
+                queryset = queryset.exclude(task_type=CollectPluginTypes.CUSTOM_SCRIPT)
         return queryset
 
     def _get_authorized_task(self, request, task_id):
@@ -601,7 +604,15 @@ class CollectModelViewSet(AuthViewSet):
 
         def increment(status_key, exec_status, total=1):
             if status_key not in data:
-                data[status_key] = {"success": 0, "failed": 0, "running": 0, "partial_success": 0}
+                data[status_key] = {
+                    "success": 0,
+                    "failed": 0,
+                    "running": 0,
+                    "partial_success": 0,
+                    "not_start": 0,
+                    "total": 0,
+                }
+            data[status_key]["total"] += total
             if exec_status == CollectRunStatusType.SUCCESS:
                 data[status_key]["success"] += total
             elif exec_status == CollectRunStatusType.ERROR:
@@ -610,12 +621,13 @@ class CollectModelViewSet(AuthViewSet):
                 data[status_key]["running"] += total
             elif exec_status == CollectRunStatusType.PARTIAL_SUCCESS:
                 data[status_key]["partial_success"] += total
+            elif exec_status == CollectRunStatusType.NOT_START:
+                data[status_key]["not_start"] += total
 
         for model_data in status_rows:
-            if model_data.get("task_type") == CollectPluginTypes.CUSTOM_SCRIPT:
-                plugin_pk = model_data.get("params__custom_plugin_pk")
-                if plugin_pk:
-                    increment(f"custom_script__{plugin_pk}", model_data["exec_status"], model_data["total"])
+            plugin_pk = model_data.get("params__custom_plugin_pk")
+            if plugin_pk:
+                increment(f"custom_script__{plugin_pk}", model_data["exec_status"], model_data["total"])
                 continue
             driver_type = model_data.get("driver_type") or ""
             status_key = f"{model_data['model_id']}__{driver_type}" if driver_type else model_data["model_id"]

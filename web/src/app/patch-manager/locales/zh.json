@@ -747,6 +747,16 @@
       "noticeConfigurationIncomplete": "请先完善通知配置",
       "triggerTitle": "什么时候会触发评估",
       "saveSettings": "保存设置",
+      "enableOfflineCatalog": "启用离线目录",
+      "offlineCatalogHelp": "启用后，Windows 评估使用已上传的离线目录，不再连接 Windows Update。关闭后继续使用目标机当前的在线更新服务。离线目录从微软下载：",
+      "offlineCatalogDrop": "点击或拖拽 CAB 文件到此处",
+      "offlineCatalogFileType": "请上传 .cab 文件",
+      "offlineCatalogKept": "已保存的目录仍会保留，保存设置后才会替换",
+      "uploadOfflineCatalog": "上传目录",
+      "offlineCatalogRequired": "请先上传离线目录",
+      "offlineCatalogUploaded": "离线目录已上传",
+      "offlineCatalogUpdatedTime": "更新于 {time}",
+      "offlineCatalogRemove": "移除文件",
       "scanSettings": "扫描设置"
     }
   }

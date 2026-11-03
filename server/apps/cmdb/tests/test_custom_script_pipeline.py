@@ -239,6 +239,58 @@ def test_custom_script_host_record_inherits_access_point_cloud(monkeypatch):
     assert collector.result["host"] == [{"inst_name": "demo-host-v2", "ip_addr": "10.10.41.149", "cloud": 1}]
 
 
+def test_network_custom_script_writes_device_models_not_network(monkeypatch):
+    task = SimpleNamespace(id=14, params={}, model_id="network", instances=[])
+
+    def boom(model_id):
+        raise AssertionError(model_id)
+
+    monkeypatch.setattr(CustomScriptCollectionPlugin, "_plugin", lambda self: SimpleNamespace(plugin_id="custom_network"))
+    monkeypatch.setattr("apps.cmdb.collection.plugins.community.custom_script.generic.ModelManage.search_model_attr", boom)
+    monkeypatch.setattr(
+        "apps.cmdb.collection.plugins.community.custom_script.generic._existing_device_models",
+        lambda names: {"10.10.69.1-firewall": "firewall"} if "10.10.69.1-firewall" in names else {},
+    )
+    collector = CustomScriptCollectionPlugin("task", 14, 14, collect_inst=task)
+    now = int(time.time())
+    collector.format_data(
+        {
+            "result": [
+                {
+                    "metric": {
+                        "__name__": "custom_network_info_gauge",
+                        "inst_name": "10.10.69.247-switch",
+                        "model_id": "switch",
+                        "sys_desc": "custom",
+                        "sysdescr": "raw",
+                    },
+                    "value": [now, "1"],
+                },
+                {
+                    "metric": {"__name__": "custom_network_info_gauge", "inst_name": "r1", "device_type": "router", "soid": "1.2.3"},
+                    "value": [now, "1"],
+                },
+                {
+                    "metric": {"__name__": "custom_network_info_gauge", "inst_name": "10.10.69.1-firewall", "sys_desc": "fw"},
+                    "value": [now, "1"],
+                },
+                {
+                    "metric": {"__name__": "custom_network_info_gauge", "inst_name": "unknown", "brand": "H3C"},
+                    "value": [now, "1"],
+                },
+            ]
+        }
+    )
+    collector.format_metrics()
+    assert "network" not in collector.result
+    assert collector.result["switch"] == [
+        {"inst_name": "10.10.69.247-switch", "sys_desc": "custom"},
+        {"inst_name": "unknown", "brand": "H3C"},
+    ]
+    assert collector.result["router"] == [{"inst_name": "r1", "soid": "1.2.3"}]
+    assert collector.result["firewall"] == [{"inst_name": "10.10.69.1-firewall", "sys_desc": "fw"}]
+
+
 def test_custom_script_sync_queries_the_vm_gauge_series(monkeypatch):
     plugin = SimpleNamespace(plugin_id="custom_host_linux_scan")
     task = SimpleNamespace(id=29, params={"custom_plugin_pk": 7}, model_id="host", instances=[])
@@ -251,3 +303,89 @@ def test_custom_script_sync_queries_the_vm_gauge_series(monkeypatch):
 def test_task_type_constant_is_custom_script():
     assert CollectPluginTypes.CUSTOM_SCRIPT == "custom_script"
     assert SimpleNamespace(task_type=CollectPluginTypes.CUSTOM_SCRIPT).task_type != "host"
+
+
+TASK_ID = 6613
+
+
+def _saved_passwords(*passwords):
+    return [{"username": f"user-{index}", "password": password, "port": 5986} for index, password in enumerate(passwords)]
+
+
+def _custom_script_node(monkeypatch, *, os_type, credentials):
+    plugin = SimpleNamespace(
+        id=7,
+        plugin_id="custom_host_scan",
+        os_type=os_type,
+        shell="powershell" if os_type == "windows" else "bash",
+        team=[1],
+    )
+    monkeypatch.setattr("apps.cmdb.node_configs.custom_script.load_plugin", lambda plugin_pk: plugin)
+    task = SimpleNamespace(
+        id=TASK_ID,
+        model_id="host",
+        driver_type="job",
+        task_type=CollectPluginTypes.CUSTOM_SCRIPT,
+        timeout=120,
+        access_point=[{"id": "node-1", "ip": "10.0.0.1"}],
+        params={"custom_plugin_pk": plugin.id, "os_type": os_type},
+        instances=[],
+        ip_range="",
+    )
+    return CustomScriptNodeParams(task, resolved_credentials=credentials)
+
+
+def _assert_indexed_password_envs(node, passwords):
+    env = node.env_config()
+    headers = node.custom_headers()
+    rendered = " ".join(headers.values())
+    for index, password in enumerate(passwords):
+        env_name = f"PASSWORD_password_cmdb_{TASK_ID}_{index}"
+        assert env[env_name] == password
+        assert headers[f"cmdbcredential_{index}_password"] == "${" + env_name + "}"
+        assert password not in rendered
+    assert f"PASSWORD_password_cmdb_{TASK_ID}" not in env
+
+
+def test_windows_two_saved_passwords_publish_indexed_env(monkeypatch):
+    passwords = ("saved-win-0", "saved-win-1")
+    node = _custom_script_node(monkeypatch, os_type="windows", credentials=_saved_passwords(*passwords))
+    _assert_indexed_password_envs(node, passwords)
+
+
+def test_windows_three_saved_passwords_publish_indexed_env(monkeypatch):
+    passwords = ("saved-win-0", "saved-win-1", "saved-win-2")
+    node = _custom_script_node(monkeypatch, os_type="windows", credentials=_saved_passwords(*passwords))
+    _assert_indexed_password_envs(node, passwords)
+
+
+def test_windows_single_password_keeps_unindexed_env_name(monkeypatch):
+    password = "saved-win-only"
+    node = _custom_script_node(monkeypatch, os_type="windows", credentials=_saved_passwords(password))
+    env = node.env_config()
+    headers = node.custom_headers()
+    env_name = f"PASSWORD_password_cmdb_{TASK_ID}"
+    assert env == {env_name: password}
+    assert headers["cmdbpassword"] == "${" + env_name + "}"
+    assert "cmdbcredential_0_password" not in headers
+    assert password not in " ".join(headers.values())
+
+
+@pytest.mark.parametrize(
+    ("passwords", "indexed"),
+    [
+        (("saved-linux-only",), False),
+        (("saved-linux-0", "saved-linux-1"), True),
+    ],
+)
+def test_linux_password_env_names_follow_parent(monkeypatch, passwords, indexed):
+    node = _custom_script_node(monkeypatch, os_type="linux", credentials=_saved_passwords(*passwords))
+    if indexed:
+        _assert_indexed_password_envs(node, passwords)
+        return
+    env = node.env_config()
+    headers = node.custom_headers()
+    env_name = f"PASSWORD_password_cmdb_{TASK_ID}"
+    assert env == {env_name: passwords[0]}
+    assert headers["cmdbpassword"] == "${" + env_name + "}"
+    assert passwords[0] not in " ".join(headers.values())

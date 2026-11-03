@@ -16,7 +16,7 @@ INVALID_ROOT_DEPARTMENT_IDS = {"", "__all__", "**all**"}
 PAGE_SIZE = 2000
 TIMEOUT = 10
 MAX_PAGES = 100
-USER_FIELDS = "username,display_name,email,telephone,departments"
+USER_FIELDS = "username,display_name,email,telephone,departments,leader,extras"
 _TRANSPORT_FAILURE_TEMPLATE = "event=blueking_request_failed failed_stage=%s error_type=%s"
 
 LOGIN_GET_USER_PATH = "/api/c/compapi/v2/bk_login/get_user/"
@@ -320,6 +320,45 @@ def user_department_ids(user):
     return ids
 
 
+_BLUEKING_RESERVED_USER_KEYS = frozenset(
+    {
+        "username",
+        "display_name",
+        "email",
+        "mobile",
+        "leader",
+        "department_ids",
+    }
+)
+
+
+def _blueking_custom_fields(raw):
+    """bk-user Profile.extras：接口返回 {字段 Key: 值}。只摊开字符串和数字，枚举多选是列表，不改写成字符串。"""
+    extras = raw.get("extras")
+    if not isinstance(extras, dict):
+        return {}
+    fields = {}
+    for key, value in extras.items():
+        name = str(key or "").strip()
+        if not name or name in _BLUEKING_RESERVED_USER_KEYS or name in fields:
+            continue
+        if isinstance(value, bool) or not isinstance(value, (str, int, float)):
+            continue
+        text = value.strip() if isinstance(value, str) else str(value)
+        if text:
+            fields[name] = text
+    return fields
+
+
+def _leader_name(raw):
+    leader = raw.get("leader")
+    if isinstance(leader, list):
+        leader = leader[0] if leader else ""
+    if isinstance(leader, dict):
+        return str(leader.get("username") or leader.get("display_name") or "").strip()
+    return str(leader or "").strip()
+
+
 def normalize_users(users, selected_department_ids=None):
     selected = set(selected_department_ids or [])
     normalized = []
@@ -336,6 +375,8 @@ def normalize_users(users, selected_department_ids=None):
                 "display_name": str(raw.get("display_name") or username),
                 "email": str(raw.get("email") or ""),
                 "mobile": str(raw.get("telephone") or raw.get("mobile") or ""),
+                "leader": _leader_name(raw),
+                **_blueking_custom_fields(raw),
                 "department_ids": department_ids,
             }
         )

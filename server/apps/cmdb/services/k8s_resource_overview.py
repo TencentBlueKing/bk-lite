@@ -3,6 +3,7 @@ from __future__ import annotations
 from rest_framework.exceptions import ValidationError
 
 from apps.cmdb.services.instance import InstanceManage
+from apps.cmdb.services.instance_identity import optional_inst_uuid
 
 
 MODEL_CLUSTER = "k8s_cluster"
@@ -165,9 +166,30 @@ class K8sResourceOverviewService:
         return sorted({related_id for related_ids in relation_map.values() for related_id in related_ids})
 
     @staticmethod
-    def _node(instance: dict, layer: str, **extra) -> dict:
+    def _external_id(instance: dict | None) -> str | None:
+        """对外身份只接受合法 inst_uuid，不回退图库数字 ID。"""
+        if not isinstance(instance, dict):
+            return None
+        return optional_inst_uuid(instance.get("inst_uuid"))
+
+    @classmethod
+    def _uuid_by_internal_id(cls, instances) -> dict[int, str]:
+        mapping = {}
+        for instance in instances:
+            internal_id = _id(instance)
+            external_id = cls._external_id(instance)
+            if internal_id is None or not external_id:
+                continue
+            mapping[internal_id] = external_id
+        return mapping
+
+    @classmethod
+    def _node(cls, instance: dict, layer: str, **extra) -> dict | None:
+        external_id = cls._external_id(instance)
+        if not external_id:
+            return None
         return {
-            "id": str(instance.get("_id")),
+            "id": external_id,
             "model_id": instance.get("model_id", ""),
             "name": _name(instance),
             "layer": layer,
@@ -175,8 +197,19 @@ class K8sResourceOverviewService:
         }
 
     @staticmethod
-    def _edge(source, target, kind: str) -> dict:
-        return {"id": f"{kind}:{source}:{target}", "source": str(source), "target": str(target), "kind": kind}
+    def _edge(source, target, kind: str) -> dict | None:
+        if source in (None, "") or target in (None, ""):
+            return None
+        source_text = str(source)
+        target_text = str(target)
+        if source_text.isdigit() or target_text.isdigit():
+            return None
+        return {"id": f"{kind}:{source_text}:{target_text}", "source": source_text, "target": target_text, "kind": kind}
+
+    @staticmethod
+    def _append_edge(edges: list, edge: dict | None) -> None:
+        if edge is not None:
+            edges.append(edge)
 
     @staticmethod
     def _collection_facts(cluster: dict) -> dict:
@@ -243,22 +276,44 @@ class K8sResourceOverviewService:
         pod_count = cls._count_ids(MODEL_POD, pod_ids, permission_maps=permission_maps, user=user)
 
         namespace_by_id = {_id(item): item for item in namespaces}
-        topology_nodes = [cls._node(cluster, "cluster")]
-        topology_nodes.extend(cls._node(item, "namespace") for item in namespaces)
+        uuid_by_id = cls._uuid_by_internal_id([cluster, *namespaces, *workloads, *nodes])
+        topology_nodes = [node for node in [cls._node(cluster, "cluster")] if node]
+        topology_nodes.extend(node for node in (cls._node(item, "namespace") for item in namespaces) if node)
         topology_nodes.extend(
-            cls._node(item, "workload", workload_type=_workload_type(item), pod_count=len(pod_map.get(_id(item), [])))
-            for item in workloads
+            node
+            for node in (
+                cls._node(
+                    item,
+                    "workload",
+                    workload_type=_workload_type(item),
+                    pod_count=len(pod_map.get(_id(item), [])),
+                )
+                for item in workloads
+            )
+            if node
         )
-        topology_nodes.extend(cls._node(item, "node") for item in nodes)
+        topology_nodes.extend(node for node in (cls._node(item, "node") for item in nodes) if node)
 
         cluster_node_id = _id(cluster)
-        topology_edges = [cls._edge(cluster_node_id, _id(item), "cluster-namespace") for item in namespaces]
-        topology_edges.extend(
-            cls._edge(workload_namespace[_id(item)], _id(item), "namespace-workload")
-            for item in workloads
-            if workload_namespace.get(_id(item)) in namespace_by_id
-        )
-        topology_edges.extend(cls._edge(cluster_node_id, _id(item), "cluster-node") for item in nodes)
+        topology_edges = []
+        for item in namespaces:
+            cls._append_edge(
+                topology_edges,
+                cls._edge(uuid_by_id.get(cluster_node_id), uuid_by_id.get(_id(item)), "cluster-namespace"),
+            )
+        for item in workloads:
+            parent_id = workload_namespace.get(_id(item))
+            if parent_id not in namespace_by_id:
+                continue
+            cls._append_edge(
+                topology_edges,
+                cls._edge(uuid_by_id.get(parent_id), uuid_by_id.get(_id(item)), "namespace-workload"),
+            )
+        for item in nodes:
+            cls._append_edge(
+                topology_edges,
+                cls._edge(uuid_by_id.get(cluster_node_id), uuid_by_id.get(_id(item)), "cluster-node"),
+            )
 
         business_count, other_count = cls._count_workloads_by_business_kind(
             workload_ids,
@@ -316,6 +371,7 @@ class K8sResourceOverviewService:
             user=user,
         ) != 1:
             raise ValidationError("Workload 不属于当前集群或无权限")
+        workload_external_id = cls._external_id(InstanceManage.query_entity_by_id(normalized_workload_id) or {})
 
         pod_ids = cls._relation_ids(
             InstanceManage.instance_association_map(MODEL_WORKLOAD, [normalized_workload_id], MODEL_POD)
@@ -336,43 +392,34 @@ class K8sResourceOverviewService:
         result_nodes = []
         result_edges = []
         seen_nodes = set()
+
+        def remember_virtual(node_id, name):
+            if node_id in seen_nodes:
+                return
+            seen_nodes.add(node_id)
+            result_nodes.append({"id": node_id, "model_id": "virtual", "name": name, "layer": "node"})
+
         for pod in pods:
+            pod_node = cls._node(pod, "pod")
+            if pod_node is None:
+                continue
             pod_id = _id(pod)
-            result_nodes.append(cls._node(pod, "pod"))
-            result_edges.append(cls._edge(normalized_workload_id, pod_id, "workload-pod"))
+            result_nodes.append(pod_node)
+            cls._append_edge(result_edges, cls._edge(workload_external_id, pod_node["id"], "workload-pod"))
             related_node_ids = pod_node_map.get(pod_id, [])
             related_node_id = related_node_ids[0] if related_node_ids else None
             if related_node_id in nodes_by_id:
-                node = cls._node(nodes_by_id[related_node_id], "node")
-                target_id = related_node_id
+                target_id = cls._external_id(nodes_by_id[related_node_id])
             elif related_node_id is not None:
-                node = {
-                    "id": "virtual:node-forbidden",
-                    "model_id": "virtual",
-                    "name": "目标 Node 无权限",
-                    "layer": "node",
-                }
                 target_id = "virtual:node-forbidden"
+                remember_virtual(target_id, "目标 Node 无权限")
             elif pod.get("node"):
-                node = {
-                    "id": "virtual:node-unmatched",
-                    "model_id": "virtual",
-                    "name": "Node 未匹配",
-                    "layer": "node",
-                }
                 target_id = "virtual:node-unmatched"
+                remember_virtual(target_id, "Node 未匹配")
             else:
-                node = {
-                    "id": "virtual:unscheduled",
-                    "model_id": "virtual",
-                    "name": "未调度",
-                    "layer": "node",
-                }
                 target_id = "virtual:unscheduled"
-            if node["model_id"] == "virtual" and node["id"] not in seen_nodes:
-                seen_nodes.add(node["id"])
-                result_nodes.append(node)
-            result_edges.append(cls._edge(pod_id, target_id, "pod-node"))
+                remember_virtual(target_id, "未调度")
+            cls._append_edge(result_edges, cls._edge(pod_node["id"], target_id, "pod-node"))
 
         return {
             "nodes": result_nodes,
@@ -424,32 +471,48 @@ class K8sResourceOverviewService:
             permission_maps=permission_maps, user=user,
         )
         nodes_by_id = {_id(node): node for node in node_rows}
+        parent_ids = sorted({direct_parent[pod_id] for pod_id in current_ids if pod_id in direct_parent})
+        parent_rows = []
+        if parent_ids:
+            parent_rows, _ = cls._query_page(
+                MODEL_NAMESPACE,
+                parent_ids,
+                page_size=max(1, len(parent_ids)),
+                order="name",
+                permission_maps=permission_maps,
+                user=user,
+            )
+        uuid_by_id = cls._uuid_by_internal_id([*parent_rows, *pods, *node_rows])
         nodes = []
         edges = []
         seen_virtual = set()
+
+        def remember_virtual(node_id, name):
+            if node_id in seen_virtual:
+                return
+            seen_virtual.add(node_id)
+            nodes.append({"id": node_id, "model_id": "virtual", "name": name, "layer": "node"})
+
         for pod in pods:
+            pod_node = cls._node(pod, "pod")
+            if pod_node is None:
+                continue
             pod_id = _id(pod)
-            nodes.append(cls._node(pod, "pod"))
-            edges.append(cls._edge(direct_parent[pod_id], pod_id, "namespace-pod"))
+            nodes.append(pod_node)
+            cls._append_edge(edges, cls._edge(uuid_by_id.get(direct_parent.get(pod_id)), pod_node["id"], "namespace-pod"))
             related_node_id = next(iter(pod_node_map.get(pod_id, [])), None)
             if related_node_id in nodes_by_id:
-                target_id = related_node_id
+                target_id = cls._external_id(nodes_by_id[related_node_id])
             elif related_node_id is not None:
                 target_id = "virtual:node-forbidden"
-                if target_id not in seen_virtual:
-                    seen_virtual.add(target_id)
-                    nodes.append({"id": target_id, "model_id": "virtual", "name": "目标 Node 无权限", "layer": "node"})
+                remember_virtual(target_id, "目标 Node 无权限")
             elif pod.get("node"):
                 target_id = "virtual:node-unmatched"
-                if target_id not in seen_virtual:
-                    seen_virtual.add(target_id)
-                    nodes.append({"id": target_id, "model_id": "virtual", "name": "Node 未匹配", "layer": "node"})
+                remember_virtual(target_id, "Node 未匹配")
             else:
                 target_id = "virtual:unscheduled"
-                if target_id not in seen_virtual:
-                    seen_virtual.add(target_id)
-                    nodes.append({"id": target_id, "model_id": "virtual", "name": "未调度", "layer": "node"})
-            edges.append(cls._edge(pod_id, target_id, "pod-node"))
+                remember_virtual(target_id, "未调度")
+            cls._append_edge(edges, cls._edge(pod_node["id"], target_id, "pod-node"))
         return {"nodes": nodes, "edges": edges, "count": count, "page": int(page), "page_size": int(page_size)}
 
     @classmethod
@@ -543,7 +606,7 @@ class K8sResourceOverviewService:
                 for related_workload_id in workload_ids:
                     pod_ids.update(workload_pod_map.get(related_workload_id, []))
                 items.append({
-                    "id": str(item_id),
+                    "id": cls._external_id(row),
                     "name": _name(row),
                     "workload_count": len(workload_ids),
                     "pod_count": len(pod_ids),
@@ -555,7 +618,7 @@ class K8sResourceOverviewService:
             )
             items = [
                 {
-                    "id": str(_id(row)),
+                    "id": cls._external_id(row),
                     "name": _name(row),
                     "role": row.get("role"),
                     "cpu": row.get("cpu"),
@@ -605,11 +668,12 @@ class K8sResourceOverviewService:
             for row in rows:
                 item_id = _id(row)
                 parent_id = workload_namespace[item_id]
+                parent = parent_by_id.get(parent_id)
                 items.append({
-                    "id": str(item_id),
+                    "id": cls._external_id(row),
                     "name": _name(row),
-                    "namespace": _name(parent_by_id[parent_id]) if parent_id in parent_by_id else None,
-                    "namespace_id": str(parent_id),
+                    "namespace": _name(parent) if parent is not None else None,
+                    "namespace_id": cls._external_id(parent),
                     "workload_type": _workload_type(row),
                     "replicas": row.get("replicas"),
                     "pod_count": len(pod_map.get(item_id, [])),
@@ -667,13 +731,15 @@ class K8sResourceOverviewService:
                 item_id = _id(row)
                 parent_id = next(iter(pod_namespace_map.get(item_id, [])), None)
                 owner_id = next(iter(pod_workload_map.get(item_id, [])), None)
+                parent = parent_by_id.get(parent_id)
+                owner = owner_by_id.get(owner_id)
                 items.append({
-                    "id": str(item_id),
+                    "id": cls._external_id(row),
                     "name": _name(row),
-                    "namespace": _name(parent_by_id[parent_id]) if parent_id in parent_by_id else None,
-                    "namespace_id": str(parent_id) if parent_id is not None else None,
-                    "workload": _name(owner_by_id[owner_id]) if owner_id in owner_by_id else None,
-                    "workload_id": str(owner_id) if owner_id is not None else None,
+                    "namespace": _name(parent) if parent is not None else None,
+                    "namespace_id": cls._external_id(parent),
+                    "workload": _name(owner) if owner is not None else None,
+                    "workload_id": cls._external_id(owner),
                     "node": row.get("node"),
                     "ip_addr": row.get("ip_addr"),
                     "request_cpu": row.get("request_cpu"),
@@ -729,7 +795,13 @@ class K8sResourceOverviewService:
             )
             parent_id = _id(cluster)
             edge_kind = f"cluster-{layer}"
-            edges = [cls._edge(parent_id, _id(row), edge_kind) for row in rows]
+            uuid_by_id = cls._uuid_by_internal_id([cluster, *rows])
+            edges = []
+            for row in rows:
+                cls._append_edge(
+                    edges,
+                    cls._edge(uuid_by_id.get(parent_id), uuid_by_id.get(_id(row)), edge_kind),
+                )
         else:
             cluster_namespace_ids = cls._visible_candidate_ids(
                 MODEL_NAMESPACE,
@@ -755,11 +827,30 @@ class K8sResourceOverviewService:
                 MODEL_WORKLOAD, sorted(workload_parent), page=page, page_size=normalized_page_size, order="name",
                 permission_maps=permission_maps, user=user,
             )
-            edges = [
-                cls._edge(workload_parent[_id(row)], _id(row), "namespace-workload") for row in rows
-            ]
+            parent_ids = sorted({workload_parent[_id(row)] for row in rows if _id(row) in workload_parent})
+            parent_rows = []
+            if parent_ids:
+                parent_rows, _ = cls._query_page(
+                    MODEL_NAMESPACE,
+                    parent_ids,
+                    page_size=max(1, len(parent_ids)),
+                    order="name",
+                    permission_maps=permission_maps,
+                    user=user,
+                )
+            uuid_by_id = cls._uuid_by_internal_id([*parent_rows, *rows])
+            edges = []
+            for row in rows:
+                cls._append_edge(
+                    edges,
+                    cls._edge(
+                        uuid_by_id.get(workload_parent.get(_id(row))),
+                        uuid_by_id.get(_id(row)),
+                        "namespace-workload",
+                    ),
+                )
         return {
-            "nodes": [cls._node(row, layer) for row in rows],
+            "nodes": [node for node in (cls._node(row, layer) for row in rows) if node],
             "edges": edges,
             "count": count,
             "page": int(page),

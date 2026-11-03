@@ -401,7 +401,8 @@ class NodeMgmtSyncReconciler:
         if current_status.endswith("_in_progress"):
             if state.updated_at > current_time - cls.NODE_CONFIG_CLAIM_TIMEOUT:
                 return NodeConfigClaimResult("contended")
-            stage = current_status.removesuffix("_in_progress")
+            # 停采后过期领取不能续接推送，否则关闭自动采集仍会再次下发节点配置。
+            stage = current_status.removesuffix("_in_progress") if auto_collect_enabled else "delete"
         elif auto_collect_enabled and current_status == "push_pending":
             stage = "push"
         else:

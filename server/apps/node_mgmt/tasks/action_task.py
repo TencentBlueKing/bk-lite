@@ -1,20 +1,14 @@
+from datetime import timedelta
+
 from celery import shared_task
 from django.db.models import Count, Q
+from django.utils import timezone
 
 from apps.node_mgmt.models.action import CollectorActionTask, CollectorActionTaskNode
 from apps.node_mgmt.models.sidecar import Node
-from apps.node_mgmt.utils.step_tracker import (
-    append_step,
-    now_iso,
-    update_last_running_step,
-    update_step_by_action,
-)
-from apps.node_mgmt.utils.task_result_schema import (
-    apply_result_envelope,
-    _extract_latest_failure_from_steps,
-    normalize_task_details,
-)
-
+from apps.node_mgmt.services.converge_slot import action_slot_key, release_converge_slot
+from apps.node_mgmt.utils.step_tracker import append_step, now_iso, update_last_running_step, update_step_by_action
+from apps.node_mgmt.utils.task_result_schema import _extract_latest_failure_from_steps, apply_result_envelope, normalize_task_details
 
 RUNNING_STATUS = 0
 FAILED_STATUS = 2
@@ -155,68 +149,130 @@ def _reconcile_collector_action_tasks(task_ids):
         )
 
 
-@shared_task
-def converge_collector_action_task_for_node(node_id):
-    node = Node.objects.filter(id=node_id).first()
-    if not node:
-        return
-
-    node_status = node.status or {}
-    collectors = node_status.get("collectors", [])
-    if not isinstance(collectors, list) or not collectors:
-        return
+def _collector_status_map(node) -> dict:
+    collectors = (node.status or {}).get("collectors", [])
+    if not isinstance(collectors, list):
+        return {}
 
     collector_status_map = {}
     for collector_item in collectors:
+        if not isinstance(collector_item, dict):
+            continue
         collector_id = collector_item.get("collector_id")
         if collector_id is None:
             continue
         collector_status_map[collector_id] = collector_item
+    return collector_status_map
 
-    running_task_nodes = CollectorActionTaskNode.objects.filter(
-        node_id=node_id,
-        status="running",
-    ).select_related("task")
 
+def _close_collector_action_from_status(task_node, collector_status_map) -> bool:
+    task_obj = task_node.task
+    collector_item = collector_status_map.get(task_obj.collector_id)
+    if not collector_item:
+        return False
+
+    collector_status = collector_item.get("status")
+    if collector_status is None:
+        return False
+
+    expected_node_status = _is_expected_status(task_obj.action, collector_status)
+    if expected_node_status not in ["success", "error"]:
+        return False
+
+    collector_message = _extract_collector_message(collector_item)
+    step_message = "Collector action completed" if expected_node_status == "success" else (collector_message or "Collector action failed")
+    final_message = "Collector action completed" if expected_node_status == "success" else (collector_message or "Collector action failed")
+    _update_last_running_step(
+        task_node,
+        expected_node_status,
+        step_message,
+        details=normalize_task_details(
+            {
+                "collector_status": collector_status,
+                "operation": task_obj.action,
+            },
+            message=step_message if expected_node_status == "error" else None,
+        ),
+    )
+    _save_node_result(
+        task_node,
+        expected_node_status,
+        expected_node_status,
+        final_message,
+    )
+    return True
+
+
+def _collector_action_timed_out(task_node, now) -> bool:
+    created_at = task_node.task.created_at
+    if created_at is None:
+        return False
+    return now - created_at >= timedelta(seconds=ACTION_TASK_TIMEOUT_SECONDS)
+
+
+def _mark_collector_action_node_timed_out(task_node):
+    _update_last_running_step(
+        task_node,
+        "timeout",
+        "Collector action timed out",
+        details=normalize_task_details(
+            {"error_type": "timeout"},
+            message="Collector action timed out",
+        ),
+    )
+    _add_step(
+        task_node,
+        "callback_or_timeout",
+        "timeout",
+        "Collector action timeout",
+        details=normalize_task_details(
+            {"error_type": "timeout"},
+            message="Collector action timeout",
+        ),
+    )
+    _save_node_result(
+        task_node,
+        "error",
+        "timeout",
+        "Collector action timed out",
+    )
+
+
+def _converge_collector_action_task_for_node(node_id):
+    node = Node.objects.filter(id=node_id).first()
+    if not node:
+        return
+
+    running_task_nodes = list(
+        CollectorActionTaskNode.objects.filter(
+            node_id=node_id,
+            status="running",
+        ).select_related("task")
+    )
+    if not running_task_nodes:
+        return
+
+    collector_status_map = _collector_status_map(node)
+    now = timezone.now()
     affected_task_ids = set()
 
     for task_node in running_task_nodes:
-        task_obj = task_node.task
-        collector_item = collector_status_map.get(task_obj.collector_id)
-        if not collector_item:
+        if _close_collector_action_from_status(task_node, collector_status_map):
+            affected_task_ids.add(task_node.task_id)
             continue
-
-        collector_status = collector_item.get("status")
-        if collector_status is None:
-            continue
-
-        collector_message = _extract_collector_message(collector_item)
-
-        expected_node_status = _is_expected_status(task_obj.action, collector_status)
-        if expected_node_status in ["success", "error"]:
-            step_message = "Collector action completed" if expected_node_status == "success" else (collector_message or "Collector action failed")
-            final_message = "Collector action completed" if expected_node_status == "success" else (collector_message or "Collector action failed")
-            _update_last_running_step(
-                task_node,
-                expected_node_status,
-                step_message,
-                details=normalize_task_details(
-                    {
-                        "collector_status": collector_status,
-                        "operation": task_obj.action,
-                    },
-                    message=step_message if expected_node_status == "error" else None,
-                ),
-            )
-            _save_node_result(
-                task_node,
-                expected_node_status,
-                expected_node_status,
-                final_message,
-            )
-            affected_task_ids.add(task_obj.id)
+        if _collector_action_timed_out(task_node, now):
+            _mark_collector_action_node_timed_out(task_node)
+            affected_task_ids.add(task_node.task_id)
 
     _reconcile_collector_action_tasks(affected_task_ids)
+
+
+@shared_task
+def converge_collector_action_task_for_node(node_id, claim_token=None):
+    try:
+        _converge_collector_action_task_for_node(node_id)
+    finally:
+        release_converge_slot(action_slot_key(node_id), claim_token)
 
 
 @shared_task
@@ -234,30 +290,6 @@ def timeout_collector_action_task(task_id):
     )
 
     for task_node in pending_nodes:
-        _update_last_running_step(
-            task_node,
-            "timeout",
-            "Collector action timed out",
-            details=normalize_task_details(
-                {"error_type": "timeout"},
-                message="Collector action timed out",
-            ),
-        )
-        _add_step(
-            task_node,
-            "callback_or_timeout",
-            "timeout",
-            "Collector action timeout",
-            details=normalize_task_details(
-                {"error_type": "timeout"},
-                message="Collector action timeout",
-            ),
-        )
-        _save_node_result(
-            task_node,
-            "error",
-            "timeout",
-            "Collector action timed out",
-        )
+        _mark_collector_action_node_timed_out(task_node)
 
     _reconcile_collector_action_tasks({task_id})

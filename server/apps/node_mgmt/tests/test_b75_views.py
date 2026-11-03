@@ -402,6 +402,31 @@ def test_package_destroy_rejects_unknown_type_for_superuser(api_client, authenti
 
 
 @pytest.mark.django_db
+def test_package_destroy_succeeds_after_delete_file_marks_deleting(api_client, authenticated_user):
+    """delete_file 会把 status 标成 deleting；ready queryset 二次 get 不得再 404。"""
+    authenticated_user.is_superuser = True
+    pkg = PackageVersion.objects.create(
+        type="collector",
+        os="linux",
+        cpu_architecture="x86_64",
+        object="telegraf",
+        version="2.0.0",
+        name="telegraf.tar.gz",
+        status=PackageVersion.STATUS_READY,
+    )
+
+    def mark_deleting(obj):
+        PackageVersion.objects.filter(pk=obj.pk).update(status=PackageVersion.STATUS_DELETING)
+        obj.status = PackageVersion.STATUS_DELETING
+
+    with patch("apps.node_mgmt.views.package.PackageService.delete_file", side_effect=mark_deleting) as delete:
+        resp = api_client.delete(f"{BASE}/api/package/{pkg.id}/")
+    delete.assert_called_once()
+    assert resp.status_code in (200, 204)
+    assert not PackageVersion.objects.filter(id=pkg.id).exists()
+
+
+@pytest.mark.django_db
 def test_package_download(api_client):
     pkg = PackageVersion.objects.create(
         type="collector", os="linux", cpu_architecture="x86_64",

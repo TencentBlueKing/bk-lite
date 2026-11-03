@@ -725,6 +725,14 @@
   margin-bottom: 18px;
 }
 
+.editor :global(.ant-form-item-label) {
+  padding-inline-end: 12px;
+}
+
+.editor :global(.ant-form-item-label > label::after) {
+  margin-inline-end: 0;
+}
+
 .stepContent :global(.ant-input),
 .stepContent :global(.ant-input-number),
 .stepContent :global(.ant-select),
@@ -738,28 +746,96 @@
   max-width: 560px;
 }
 
+.thresholdTable {
+  width: 100%;
+  max-width: 560px;
+  overflow-x: auto;
+}
+
 .numberWithUnit :global(.ant-input-number) {
   flex: 1;
   min-width: 0;
 }
 
+.numberPrefix,
 .numberUnit {
   display: inline-flex;
-  min-width: 52px;
+  flex: 0 0 auto;
   align-items: center;
   justify-content: center;
+  height: 32px;
   padding: 0 11px;
   color: var(--color-text-2);
+  white-space: nowrap;
   background: var(--color-fill-1);
   border: 1px solid var(--color-border);
+}
+
+.numberPrefix {
+  border-right: 0;
+  border-radius: 6px 0 0 6px;
+}
+
+.numberUnit {
+  min-width: 52px;
   border-left: 0;
   border-radius: 0 6px 6px 0;
 }
 
 .scopeHint {
   display: block;
-  margin: -6px 0 0 120px;
+  margin: -6px 0 0 152px;
   font-size: 12px;
+}
+
+.metricEditorItem :global(.ant-form-item-row) {
+  align-items: flex-start;
+}
+
+.metricEditorItem :global(.ant-form-item-label) {
+  padding-top: 10px;
+}
+
+.metricEditor {
+  /* 条件卡不在 Form.Item 里，自己补上和 labelCol 相同的 152px，才能和上面的范围字段左对齐。 */
+  width: calc(100% - 152px);
+  max-width: 560px;
+  margin-left: 152px;
+}
+
+.metricEditor :global(.ant-select),
+.metricEditor :global(.ant-input-number) {
+  width: 100%;
+  max-width: none;
+}
+
+.metricEditor .numberWithUnit {
+  max-width: none;
+}
+
+.conditionField {
+  width: 100%;
+  min-width: 0;
+  /* 外层 Form 的 .ant-form-item 规则会把 margin-bottom 设为 18px，导致条件卡内行距忽大忽小。 */
+  margin-bottom: 0 !important;
+}
+
+.conditionField :global(.ant-form-item-label) {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+  flex: 0 0 0 !important;
+}
+
+.conditionField :global(.ant-form-item-control) {
+  flex: 1 1 auto;
+  max-width: 100%;
 }
 
 .editor :global(.ant-steps-item-description) {
@@ -782,75 +858,63 @@
   background: var(--color-border-2);
 }
 
-.thresholdTitle {
-  display: block;
-  margin-bottom: 8px;
-  font-size: 14px;
+$compact-field-width: 220px;
+
+.minRequestCount :global(.ant-input-number),
+.offsetAmount :global(.ant-input-number) {
+  width: $compact-field-width;
+  max-width: $compact-field-width;
 }
 
-.thresholdTable {
-  width: 100%;
-  max-width: 840px;
-  margin-bottom: 24px;
-}
-
-.thresholdTable :global(.ant-table-cell) {
-  vertical-align: middle;
-}
-
-.thresholdTable :global(.ant-select),
-.thresholdTable :global(.ant-input-number) {
-  width: 100%;
-  max-width: none;
-}
-
-.thresholdTable :global(.ant-tag) {
-  min-width: 44px;
-  margin: 0;
-  text-align: center;
-  font-weight: 600;
-}
-
-.conditionRows {
+.conditionControls {
   display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.conditionRow,
-.conditionSentence {
-  display: flex;
-  align-items: center;
-}
-
-.conditionRow {
-  min-height: 40px;
-}
-
-.conditionLabel {
-  flex: 0 0 120px;
-  padding-right: 12px;
-  color: var(--color-text-1);
-  text-align: right;
-}
-
-.conditionLabel > span {
-  margin-right: 3px;
-  color: var(--color-fail);
-}
-
-.conditionSentence {
   flex-wrap: wrap;
-  color: var(--color-text-3);
+  align-items: center;
   gap: 8px;
 }
 
-.conditionSentence :global(.ant-input-number) {
-  width: 72px;
+.conditionControls :global(.ant-select) {
+  width: $compact-field-width;
+  max-width: $compact-field-width;
 }
 
-.conditionSentence :global(.ant-select) {
-  width: 176px;
+.conditionNumber {
+  width: $compact-field-width;
+  max-width: $compact-field-width;
+}
+
+.conditionWindow {
+  width: 280px;
+  max-width: 280px;
+}
+
+.conditionNumber :global(.ant-input-number),
+.conditionWindow :global(.ant-input-number),
+.recoveryValue {
+  flex: 1 1 auto;
+  width: auto;
+  min-width: 64px;
+  max-width: none;
+}
+
+.conditionMode:global(.ant-select) {
+  width: $compact-field-width;
+  max-width: $compact-field-width;
+}
+
+.recoveryCompact {
+  width: auto;
+  max-width: none;
+}
+
+.recoveryCompact :global(.ant-select) {
+  width: 72px;
+  max-width: 72px;
+}
+
+.recoveryCompact :global(.ant-input-number) {
+  width: $compact-field-width;
+  max-width: $compact-field-width;
 }
 
 .noDataAlertName {
@@ -894,9 +958,22 @@
   padding: 0;
 }
 
-.variableCode {
-  color: var(--color-primary);
-  font-size: 12px;
+.variableTable :global(.ant-table) {
+  background: transparent;
+}
+
+.variableTable :global(.ant-table-thead > tr > th) {
+  background: var(--color-fill-1) !important;
+  font-weight: 500;
+}
+
+.variableTable :global(.ant-table-cell) {
+  padding: 10px 12px !important;
+}
+
+.variableTable :global(.ant-table-tbody > tr > td:last-child),
+.variableTable :global(.ant-table-thead > tr > th:last-child) {
+  white-space: nowrap;
 }
 
 .previewHeading {
@@ -971,16 +1048,9 @@
     margin-left: 0;
   }
 
-  .conditionRow {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 6px;
-  }
-
-  .conditionLabel {
-    flex-basis: auto;
-    padding-right: 0;
-    text-align: left;
+  .metricEditor {
+    width: 100%;
+    margin-left: 0;
   }
 }
 
@@ -1040,6 +1110,7 @@
     flex: none !important;
     max-width: 100%;
     padding-bottom: 6px;
+    padding-inline-end: 0;
     text-align: left;
   }
 
@@ -1052,14 +1123,6 @@
     width: 100%;
     max-width: 100%;
     min-height: 40px;
-  }
-
-  .thresholdTable :global(.ant-table-cell) {
-    padding: 8px !important;
-  }
-
-  .thresholdTable .numberUnit {
-    display: none;
   }
 }
 

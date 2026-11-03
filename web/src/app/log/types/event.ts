@@ -73,12 +73,27 @@ export interface StrategyFields {
   query?: string;
   alert_type?: string;
   enable?: boolean;
+  no_data?: {
+    enabled?: boolean;
+    level?: string;
+  };
+  trigger_count?: number;
+  recover_after?: number | null;
+  recover_enabled?: boolean;
+  min_hits?: number;
   alert_condition?: {
     group_by?: string[];
     query?: string;
+    no_data?: {
+      enabled?: boolean;
+      level?: string;
+    };
     rule?: {
       mode: string;
       conditions: FilterItem[];
+      trigger_count?: number;
+      recover_after?: number | null;
+      min_hits?: number;
     };
   };
   show_fields?: string[];
@@ -101,7 +116,10 @@ export interface SelectCardsProps {
 export interface ConditionFilterProps {
   data: FilterItem[];
   fields: string[];
+  term: string | null;
+  onTermChange: (val: string) => void;
   onChange?: (data: FilterItem[]) => void;
+  section?: 'definition' | 'levels';
 }
 
 export interface FiltersConfig {

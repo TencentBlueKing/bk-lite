@@ -680,6 +680,61 @@ def test_stale_node_config_claim_can_be_recovered(config, region_task):
     assert _state(config).node_config_status == "healthy"
 
 
+def test_stale_push_claim_while_collect_disabled_deletes_instead_of_pushing(config, region_task):
+    config.auto_collect_enabled = False
+    config.save(update_fields=["auto_collect_enabled", "updated_at"])
+    state = NodeMgmtSyncRegionState.objects.create(
+        config=config,
+        config_version=config.version,
+        cloud_region_id="7",
+        collect_task=region_task,
+        scope_key="node-config:region:7",
+        node_config_status="push_in_progress",
+        reason_code="NODE_CONFIG_CLAIM:stale-push",
+    )
+    NodeMgmtSyncRegionState.objects.filter(pk=state.pk).update(updated_at=timezone.now() - timedelta(minutes=6))
+
+    with patch.object(CollectModelService, "delete_butch_node_params") as delete:
+        with patch.object(CollectModelService, "push_butch_node_params") as push:
+            result = _reconcile(config)
+
+    push.assert_not_called()
+    delete.assert_called_once_with(region_task)
+    state.refresh_from_db()
+    config.refresh_from_db()
+    assert state.node_config_status == "disabled"
+    assert config.auto_collect_enabled is False
+    assert result.node_config_status == "disabled"
+
+
+def test_fresh_push_claim_while_collect_disabled_stays_contended(config, region_task):
+    config.auto_collect_enabled = False
+    config.save(update_fields=["auto_collect_enabled", "updated_at"])
+    state = NodeMgmtSyncRegionState.objects.create(
+        config=config,
+        config_version=config.version,
+        cloud_region_id="7",
+        collect_task=region_task,
+        scope_key="node-config:region:7",
+        node_config_status="push_in_progress",
+        reason_code="NODE_CONFIG_CLAIM:active-push",
+    )
+    NodeMgmtSyncRegionState.objects.filter(pk=state.pk).update(updated_at=timezone.now() - timedelta(minutes=1))
+
+    with patch.object(CollectModelService, "delete_butch_node_params") as delete:
+        with patch.object(CollectModelService, "push_butch_node_params") as push:
+            result = _reconcile(config)
+
+    push.assert_not_called()
+    delete.assert_not_called()
+    state.refresh_from_db()
+    config.refresh_from_db()
+    assert state.node_config_status == "push_in_progress"
+    assert state.reason_code == "NODE_CONFIG_CLAIM:active-push"
+    assert config.auto_collect_enabled is False
+    assert result.node_config_status == "unknown"
+
+
 def test_old_node_config_claim_cannot_overwrite_new_claim(config, region_task):
     state = NodeMgmtSyncRegionState.objects.create(
         config=config,

@@ -164,7 +164,7 @@ class FieldGroupService:
         if group_count <= 1:
             raise BaseAppException("至少保留一个分组，无法删除")
 
-        #  查询分组下的属性，并迁移到第一个分组
+        # 查询分组下的属性，并迁移到删除后仍然存在、order 最小的分组
         model_info = ModelManage.search_model_info(model_id)
         if not model_info:
             raise BaseAppException("模型不存在")
@@ -175,13 +175,19 @@ class FieldGroupService:
         # 5. 执行删除
         with transaction.atomic():
             if attrs_in_group:
-                # 获取第一个分组（迁移目标）
-                first_group = FieldGroup.objects.filter(model_id=model_id).order_by("order").first()
-                target_group_name = first_group.group_name
+                target_group = (
+                    FieldGroup.objects.filter(model_id=model_id).exclude(pk=group.pk).order_by("order").first()
+                )
+                if target_group is None:
+                    raise BaseAppException("至少保留一个分组，无法删除")
+                target_group_name = target_group.group_name
 
-                # 迁移属性到第一个分组
+                migrated_ids = []
                 for attr in attrs_in_group:
                     attr["attr_group"] = target_group_name
+                    attr_id = attr.get("attr_id")
+                    if attr_id and attr_id not in migrated_ids:
+                        migrated_ids.append(attr_id)
 
                 # 更新模型属性
                 with GraphClient() as ag:
@@ -197,6 +203,13 @@ class FieldGroupService:
                 from apps.cmdb.display_field import ExcludeFieldsCache
 
                 ExcludeFieldsCache.invalidate_model_attrs(model_id)
+
+                existing_orders = list(target_group.attr_orders or [])
+                for attr_id in migrated_ids:
+                    if attr_id not in existing_orders:
+                        existing_orders.append(attr_id)
+                target_group.attr_orders = existing_orders
+                target_group.save(update_fields=["attr_orders"])
 
             # 删除分组
             group.delete()

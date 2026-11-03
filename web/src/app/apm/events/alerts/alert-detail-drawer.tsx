@@ -54,17 +54,39 @@ const STATUS_KEY = { active: 'apm.status.firing', recovered: 'apm.status.recover
 const SEVERITY_KEY: Record<ApmPolicySeverity, string> = { critical: 'apm.severity.critical', error: 'apm.severity.error', warning: 'apm.severity.warning' };
 const METRIC_KEY: Record<ApmPolicyMetric, string> = {
   error_rate: 'apm.common.errorRate',
+  error_count: 'apm.policies.metricErrorCount',
+  p50: 'apm.policies.metricP50',
+  p75: 'apm.policies.metricP75',
+  p90: 'apm.policies.metricP90',
   p95: 'apm.common.p95Latency',
   p99: 'apm.common.p99Latency',
+  latency_avg: 'apm.policies.metricLatencyAvg',
+  latency_max: 'apm.policies.metricLatencyMax',
+  slow_request_count: 'apm.policies.metricSlowCount',
+  slow_request_rate: 'apm.policies.metricSlowRate',
+  apdex: 'apm.policies.metricApdex',
   throughput: 'apm.common.throughput',
   no_traffic: 'apm.alerts.noTraffic',
+  slo_burn_rate: 'apm.policies.metricSloBurnRate',
 };
+const RATIO_METRICS: ApmPolicyMetric[] = ['error_rate', 'slow_request_rate', 'apdex'];
+const LATENCY_METRICS: ApmPolicyMetric[] = ['p50', 'p75', 'p90', 'p95', 'p99', 'latency_avg', 'latency_max'];
 const METRIC_UNIT_KEY: Record<ApmPolicyMetric, string | null> = {
   error_rate: 'apm.common.percentUnit',
+  error_count: 'apm.policies.timesUnit',
+  p50: 'apm.common.millisecondUnit',
+  p75: 'apm.common.millisecondUnit',
+  p90: 'apm.common.millisecondUnit',
   p95: 'apm.common.millisecondUnit',
   p99: 'apm.common.millisecondUnit',
+  latency_avg: 'apm.common.millisecondUnit',
+  latency_max: 'apm.common.millisecondUnit',
+  slow_request_count: 'apm.policies.timesUnit',
+  slow_request_rate: 'apm.common.percentUnit',
+  apdex: 'apm.common.percentUnit',
   throughput: 'apm.common.requestsPerSecondUnit',
   no_traffic: null,
+  slo_burn_rate: null,
 };
 const COMPARATOR_SYMBOL: Record<ApmPolicyComparator, string> = {
   gt: '>',
@@ -83,11 +105,12 @@ function formatMetricDisplayValue(
   if (value == null || value === '') return noDataLabel;
   const numeric = Number(value);
   if (!Number.isFinite(numeric)) return String(value);
-  if (metric === 'error_rate') {
+  if (unit === 'percent') return formatPercentage(numeric, numeric >= 10 ? 1 : 2);
+  if (RATIO_METRICS.includes(metric)) {
     const percent = unit === 'ratio' || Math.abs(numeric) <= 1 ? numeric * 100 : numeric;
     return formatPercentage(percent, percent >= 10 ? 1 : 2);
   }
-  if (metric === 'p95' || metric === 'p99') {
+  if (LATENCY_METRICS.includes(metric)) {
     return formatLatency(numeric, false, t);
   }
   if (metric === 'throughput') {
@@ -104,20 +127,22 @@ function toChartMetricNumber(
   if (value == null || value === '') return null;
   const numeric = Number(value);
   if (!Number.isFinite(numeric)) return null;
-  if (metric === 'error_rate' && (unit === 'ratio' || Math.abs(numeric) <= 1)) {
+  if (unit === 'percent') return numeric;
+  if (RATIO_METRICS.includes(metric) && (unit === 'ratio' || Math.abs(numeric) <= 1)) {
     return Number((numeric * 100).toFixed(4));
   }
   return numeric;
 }
 
 function formatChartAxisValue(metric: ApmPolicyMetric, value: number, t: Translate): string {
-  if (metric === 'error_rate') return formatPercentage(value, value >= 10 ? 1 : 2);
-  if (metric === 'p95' || metric === 'p99') {
+  if (RATIO_METRICS.includes(metric)) return formatPercentage(value, value >= 10 ? 1 : 2);
+  if (LATENCY_METRICS.includes(metric)) {
     return formatLatency(value, false, t);
   }
   if (metric === 'throughput') {
     return formatRequestRate(value, false, t);
   }
+  if (metric === 'slo_burn_rate') return `${value}×`;
   return String(value);
 }
 
@@ -133,7 +158,17 @@ interface SnapshotChartRow {
   elapsedMinutes: number;
   value: number | null;
   threshold: number | null;
+  recovery: number | null;
+  hold: number | null;
   event: number | null;
+  current: number | null;
+  baseline: number | null;
+  budget: number | null;
+}
+
+function snapshotUsesPercentAxis(snapshot: ApmAlertMetricSnapshot | null) {
+  return snapshot?.unit === 'percent'
+    || (snapshot?.snapshots ?? []).some((item) => item.result_unit === 'percent');
 }
 
 function buildAlertSnapshotChartRows(
@@ -152,22 +187,39 @@ function buildAlertSnapshotChartRows(
     const slot = Math.max(0, Math.round(dayjs(item.snapshot_time).diff(origin, 'minute') / intervalMin));
     bySlot.set(slot, item);
   });
+  const percentAxis = snapshotUsesPercentAxis(snapshot);
   let lastThreshold: number | null = null;
+  let lastRecovery: number | null = null;
   return Array.from({ length: lastSlot + 1 }, (_, slot) => {
     const item = bySlot.get(slot);
     const value = item
-      ? toChartMetricNumber(alert.metric_type, item.value, snapshot?.unit)
+      ? toChartMetricNumber(alert.metric_type, item.value, percentAxis ? 'percent' : snapshot?.unit)
       : null;
     const threshold = item
-      ? toChartMetricNumber(alert.metric_type, item.threshold?.value, snapshot?.unit)
+      ? toChartMetricNumber(alert.metric_type, item.threshold?.value, percentAxis ? 'percent' : snapshot?.unit)
       : lastThreshold;
     if (threshold != null) lastThreshold = threshold;
+    const recovery = item?.recovery_threshold?.value == null
+      ? lastRecovery
+      : toChartMetricNumber(alert.metric_type, item.recovery_threshold.value, percentAxis ? 'percent' : snapshot?.unit);
+    if (recovery != null) lastRecovery = recovery;
     return {
       timestamp: origin.add(slot * intervalMin, 'minute').toISOString(),
       elapsedMinutes: slot * intervalMin,
       value,
       threshold,
+      recovery,
+      hold: item?.data_state === 'hold' ? value : null,
       event: item?.type === 'event' ? value : null,
+      current: percentAxis && item
+        ? toChartMetricNumber(alert.metric_type, item.current_value, alert.metric_type === 'error_rate' ? 'ratio' : undefined)
+        : null,
+      baseline: percentAxis && item
+        ? toChartMetricNumber(alert.metric_type, item.baseline_value, alert.metric_type === 'error_rate' ? 'ratio' : undefined)
+        : null,
+      budget: item?.budget_remaining == null || item.budget_remaining === ''
+        ? null
+        : Number(item.budget_remaining),
     };
   });
 }
@@ -193,10 +245,20 @@ const STATE_TAG_CLASS: Record<ApmAlert['status'], string> = {
 };
 const METRIC_TAG_CLASS: Record<ApmPolicyMetric, string> = {
   error_rate: styles.alertDetailMetricTagError,
+  error_count: styles.alertDetailMetricTagError,
+  p50: styles.alertDetailMetricTagLatency,
+  p75: styles.alertDetailMetricTagLatency,
+  p90: styles.alertDetailMetricTagLatency,
   p95: styles.alertDetailMetricTagLatency,
   p99: styles.alertDetailMetricTagLatency,
+  latency_avg: styles.alertDetailMetricTagLatency,
+  latency_max: styles.alertDetailMetricTagLatency,
+  slow_request_count: styles.alertDetailMetricTagLatency,
+  slow_request_rate: styles.alertDetailMetricTagLatency,
+  apdex: styles.alertDetailMetricTagThroughput,
   throughput: styles.alertDetailMetricTagThroughput,
   no_traffic: styles.alertDetailMetricTagIdle,
+  slo_burn_rate: styles.alertDetailMetricTagThroughput,
 };
 
 function AlertStateTag({ status }: { status: ApmAlert['status'] }) {
@@ -443,6 +505,20 @@ export default function AlertDetailDrawer({
     () => (alert ? buildAlertSnapshotChartRows(alert, metricSnapshot) : []),
     [alert, metricSnapshot],
   );
+  const percentAxis = snapshotUsesPercentAxis(metricSnapshot);
+  const conditionRows = useMemo(() => {
+    const latest = [...(metricSnapshot?.snapshots ?? [])].reverse().find((item) =>
+      (item.condition_details?.length ?? 0) > 1 || Object.keys(item.condition_values || {}).length > 1,
+    );
+    if (!latest) return [];
+    if ((latest.condition_details?.length ?? 0) > 1) return latest.condition_details ?? [];
+    return Object.entries(latest.condition_values || {}).map(([ref, value]) => ({
+      ref,
+      value,
+      threshold: null,
+      matched_severity: null,
+    }));
+  }, [metricSnapshot]);
   const eventStreamRows = useMemo(() => {
     if (!alert) return [];
     const windowStart = dayjs(alert.started_at).valueOf();
@@ -692,6 +768,7 @@ export default function AlertDetailDrawer({
                     <Typography.Text type="secondary" className={styles.alertDetailChartHint}>
                       {t('apm.alerts.eachPolicyScan', '每点一次策略扫描')}
                       {metricSnapshot ? ` · ${t('apm.alerts.scanInterval', '检测频率 {minutes}m', { minutes: metricSnapshot.evaluation_interval })}` : ''}
+                      {percentAxis ? ` · ${t('apm.alerts.resultUnitPercent', '变化率（%）')}` : ''}
                       {METRIC_UNIT_KEY[alert.metric_type]
                         ? ` · ${t(METRIC_KEY[alert.metric_type])}(${t(METRIC_UNIT_KEY[alert.metric_type])})`
                         : ` · ${t(METRIC_KEY[alert.metric_type])}`}
@@ -702,6 +779,7 @@ export default function AlertDetailDrawer({
                   ) : metricSnapshotError ? (
                     <CatalogState kind={metricSnapshotError} onRetry={() => onRetrySnapshot(alert)} />
                   ) : metricSnapshotRows.length ? (
+                    <>
                     <div
                       className={styles.alertDetailChart}
                       role="img"
@@ -712,7 +790,17 @@ export default function AlertDetailDrawer({
                         xDataKey="timestamp"
                         getXLabel={(item) => snapshotElapsedLabel(item.elapsedMinutes, t('apm.alerts.trigger', '触发'), t)}
                         xAxisBoundaryGap={false}
-                        yAxes={[{ formatter: (value) => formatChartAxisValue(alert.metric_type, value, t) }]}
+                        yAxes={alert.metric_type === 'slo_burn_rate'
+                          ? [
+                            { formatter: (value) => formatChartAxisValue(alert.metric_type, value, t) },
+                            { formatter: (value) => formatPercentage(value, 1) },
+                          ]
+                          : percentAxis
+                            ? [
+                              { formatter: (value) => formatPercentage(value, Math.abs(value) >= 10 ? 1 : 2) },
+                              { formatter: (value) => formatChartAxisValue(alert.metric_type, value, t) },
+                            ]
+                            : [{ formatter: (value) => formatChartAxisValue(alert.metric_type, value, t) }]}
                         series={[
                           {
                             name: t('apm.alerts.evaluationValue', '评估值'),
@@ -733,6 +821,36 @@ export default function AlertDetailDrawer({
                             lineType: 'dashed',
                             lineWidth: 1.5,
                           },
+                          ...(alert.metric_type === 'slo_burn_rate'
+                            ? [{
+                              name: t('apm.alerts.budgetRemaining', '剩余预算'),
+                              type: 'line' as const,
+                              dataKey: 'budget',
+                              color: OBSERVABILITY_SERIES_COLORS[2],
+                              yAxisIndex: 1,
+                              lineWidth: 1.5,
+                            }]
+                            : []),
+                          ...(metricSnapshotRows.some((row) => row.recovery != null)
+                            ? [{
+                              name: t('apm.alerts.recoveryLine', '恢复阈值'),
+                              type: 'line' as const,
+                              dataKey: 'recovery',
+                              color: OBSERVABILITY_SERIES_COLORS[3],
+                              lineType: 'dashed' as const,
+                              lineWidth: 1.5,
+                            }]
+                            : []),
+                          ...(metricSnapshotRows.some((row) => row.hold != null)
+                            ? [{
+                              name: t('apm.alerts.holdBand', '恢复带内'),
+                              type: 'line' as const,
+                              dataKey: 'hold',
+                              color: OBSERVABILITY_SERIES_COLORS[0],
+                              showSymbol: true,
+                              lineWidth: 0,
+                            }]
+                            : []),
                           {
                             name: t('apm.alerts.lifecycleEvent', '生命周期事件'),
                             type: 'line',
@@ -741,9 +859,43 @@ export default function AlertDetailDrawer({
                             showSymbol: true,
                             lineWidth: 0,
                           },
+                          ...(percentAxis
+                            ? [
+                              {
+                                name: t('apm.alerts.currentValue', '当前值'),
+                                type: 'line' as const,
+                                dataKey: 'current',
+                                color: OBSERVABILITY_SERIES_COLORS[1],
+                                yAxisIndex: 1,
+                                lineWidth: 1,
+                              },
+                              {
+                                name: t('apm.alerts.baselineValue', '对照值'),
+                                type: 'line' as const,
+                                dataKey: 'baseline',
+                                color: OBSERVABILITY_SERIES_COLORS[2],
+                                yAxisIndex: 1,
+                                lineType: 'dashed' as const,
+                                lineWidth: 1,
+                              },
+                            ]
+                            : []),
                         ]}
                       />
                     </div>
+                    {conditionRows.length > 1 ? (
+                      <div className="mt-3">
+                        <Typography.Text strong>{t('apm.alerts.conditions', '条件')}</Typography.Text>
+                        <Descriptions size="small" column={1} className="mt-2">
+                          {conditionRows.map((row) => (
+                            <Descriptions.Item key={row.ref} label={row.ref}>
+                              {`${t('apm.alerts.currentValue', '当前值')} ${row.value ?? '—'} · ${t('apm.alerts.thresholdAtTime', '当时阈值')} ${row.threshold ?? '—'} · ${row.matched_severity ? t('apm.alerts.matched', '命中') : t('apm.alerts.notMatched', '未命中')}`}
+                            </Descriptions.Item>
+                          ))}
+                        </Descriptions>
+                      </div>
+                    ) : null}
+                    </>
                   ) : (
                     <CatalogState kind="empty" description={t('apm.alerts.noMetricSnapshot', '暂无告警指标快照')} />
                   )}

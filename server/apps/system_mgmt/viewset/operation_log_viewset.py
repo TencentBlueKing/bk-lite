@@ -12,6 +12,7 @@ from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.viewset_utils import LanguageViewSet
 from apps.system_mgmt.models import OperationLog
 from apps.system_mgmt.serializers.operation_log_serializer import OperationLogSerializer
+from apps.system_mgmt.utils.audit_log_export import export_limit_rejection
 from apps.system_mgmt.utils.group_filter_mixin import GroupFilterMixin
 
 
@@ -119,6 +120,8 @@ class OperationLogViewSet(GroupFilterMixin, LanguageViewSet):
         指定ID参数：
         - selected_ids: ID列表，如 [1, 2, 3]
 
+        行数超过 EXPORT_MAX_ROWS（10000）时返回 400，不截断。
+
         返回：Excel文件流
         """
         # 从POST请求体中获取参数
@@ -139,6 +142,10 @@ class OperationLogViewSet(GroupFilterMixin, LanguageViewSet):
             else:
                 # 如果筛选参数无效，返回错误
                 return Response({"result": False, "message": "Invalid filter parameters", "errors": filterset.errors}, status=400)
+
+        rejection = export_limit_rejection(request, queryset)
+        if rejection is not None:
+            return rejection
 
         # 创建Excel工作簿
         workbook = Workbook()

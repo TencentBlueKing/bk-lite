@@ -32,8 +32,11 @@ func TestRedisConfigAcceptsPasswordWithoutACLUser(t *testing.T) {
 	cfg := defaultConfig()
 	cfg.MinIOAccessKey = "access"
 	cfg.MinIOSecretKey = "secret"
-	cfg.RedisURL = "redis://:" + strings.Repeat("b", 48) + "@rum-redis:6379"
+	cfg.RedisURL = "redis://:" + strings.Repeat("b", 16) + "@rum-redis:6379"
 	require.NoError(t, cfg.Validate())
+
+	cfg.RedisURL = "redis://:" + strings.Repeat("b", 15) + "@rum-redis:6379"
+	require.ErrorContains(t, cfg.Validate(), "16-256")
 }
 
 func TestRedisConfigRequiresMatchingACLUserWhenEnabled(t *testing.T) {
@@ -85,7 +88,22 @@ func TestRedisPasswordFileFailsClosed(t *testing.T) {
 	require.NoError(t, os.WriteFile(secretPath, []byte("too-short"), 0o600))
 	cfg.RedisPasswordFile = secretPath
 	_, err = redisClientOptions(cfg)
-	require.ErrorContains(t, err, "32-256")
+	require.ErrorContains(t, err, "16-256")
+
+	platformPath := filepath.Join(t.TempDir(), "platform")
+	platformSecret := "platform+redis/secret=24"
+	require.Len(t, platformSecret, 24)
+	require.NoError(t, os.WriteFile(platformPath, []byte(platformSecret+"\n"), 0o600))
+	cfg.RedisPasswordFile = platformPath
+	options, err := redisClientOptions(cfg)
+	require.NoError(t, err)
+	require.Equal(t, platformSecret, options.Password)
+
+	longPath := filepath.Join(t.TempDir(), "long")
+	require.NoError(t, os.WriteFile(longPath, []byte(strings.Repeat("a", 257)), 0o600))
+	cfg.RedisPasswordFile = longPath
+	_, err = redisClientOptions(cfg)
+	require.ErrorContains(t, err, "16-256")
 
 	leakyPath := filepath.Join(t.TempDir(), "leaky")
 	require.NoError(t, os.WriteFile(leakyPath, []byte(strings.Repeat("x", 48)), 0o644))

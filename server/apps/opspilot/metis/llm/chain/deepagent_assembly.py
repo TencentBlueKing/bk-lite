@@ -15,6 +15,7 @@ from apps.opspilot.metis.llm.agent.tool_execution_planner import (
 )
 from apps.opspilot.metis.llm.chain.entity import HIDE_PLANNED_STEP_TEXT_KEY
 from apps.opspilot.metis.llm.common.tool_failure import is_tool_result_failure
+from apps.opspilot.services.ppt_master_runtime import PPT_AUTHORING_MIN_MODEL_CALLS, execution_guidance, is_ppt_master_package
 
 # HITL/选择卡和常驻附件工具会进目录，但不算业务工具：无业务工具的寒暄仍走轻量直答。
 _LIGHTWEIGHT_NON_BUSINESS_TOOL_NAMES = frozenset({"request_user_choice", "generate_attachment_file"})
@@ -514,15 +515,22 @@ class DeepAgentAssemblyMixin:
         return [f"- python3 /skills/{pkg_id}/scripts/{name}" for name in names]
 
     @staticmethod
-    def _skill_only_step_guidance(packages: list | None = None) -> str:
+    def _skill_only_step_guidance(packages: list | None = None, *, ppt_workspace: str = "") -> str:
         """纯技能步的硬约束：直跑脚本，禁止扫包/探环境。"""
+        ppt_note = ""
         package_hints: list[str] = []
         for package in packages or []:
             if not isinstance(package, dict):
                 continue
+            if is_ppt_master_package(package):
+                ppt_note = execution_guidance(ppt_workspace)
+                continue
             package_hints.extend(DeepAgentAssemblyMixin._skill_package_script_lines(package))
+        if ppt_note and not package_hints:
+            return ppt_note
         hint_lines = "\n".join(package_hints) if package_hints else "- python3 /skills/<包名>/scripts/<脚本>.py"
-        return (
+        prefix = f"{ppt_note}\n" if ppt_note else ""
+        return prefix + (
             "【技能包执行】连接参数已由平台注入，禁止 echo/$VAR/env/python -c 探测。"
             "禁止反复 read_file/ls/grep 扫技能包。"
             "禁止 --help/-h，禁止 2>&1 | head 或任何管道/重定向；用法已在本提示，不要先探命令。"
@@ -654,6 +662,8 @@ class DeepAgentAssemblyMixin:
             "禁止用 name、IP、id、cmdb_id，禁止用 CMDB 的 inst_id、inst_uuid、_id，禁止传负数。"
             "问全部实例的趋势、未来一段时间会不会超阈值时，用 monitor_summarize_metric_trend，"
             "它用完整历史算出汇总行；instance_ids 留空表示该对象全部已授权实例，禁止抽样查原始时序。"
+            "本步可见 mlops_predict_timeseries 时，monitor_query_metric_data 成功后立刻调用它，"
+            "原样复制这次查询的 metric、instance_ids，禁止把返回的点写入 data，禁止重发监控查询。"
             "monitor_query_metric_data 返回空矩阵、无时序或空值是查询成功但没有数据，不是参数错误。"
             "禁止把空值说成参数无效，禁止因此改 instance_ids、dimensions、时间窗或 metric 重试。有数值就按数值回答。"
             "问「最近 N 分钟哪些主机使用率高/Top N」时用 monitor_get_host_resource_top_by_time，"
@@ -710,7 +720,9 @@ class DeepAgentAssemblyMixin:
         return legacy_middleware
 
     @staticmethod
-    def _build_planned_execution_tool_visibility(*, skill_sources, skills_only_plan, registered_tools) -> tuple[set, set]:
+    def _build_planned_execution_tool_visibility(
+        *, skill_sources, skills_only_plan, registered_tools, ppt_authoring: bool = False
+    ) -> tuple[set, set]:
         from apps.opspilot.metis.llm.middleware.tool_runtime import (
             PLANNED_EXECUTION_ALWAYS_ON_BUSINESS_TOOLS,
             PLANNED_EXECUTION_ALWAYS_VISIBLE_FS_TOOLS,
@@ -719,9 +731,10 @@ class DeepAgentAssemblyMixin:
 
         always_visible: set = set()
         hidden_tools = set(PLANNED_EXECUTION_HIDDEN_DEEPAGENT_TOOLS)
-        if skill_sources and not skills_only_plan:
+        # ppt 要读 SKILL.md、写页面再多次执行脚本，不能沿用「只留 execute、读文件即停」的查询技能模式。
+        if skill_sources and (not skills_only_plan or ppt_authoring):
             always_visible |= set(PLANNED_EXECUTION_ALWAYS_VISIBLE_FS_TOOLS)
-        if skills_only_plan:
+        if skills_only_plan or ppt_authoring:
             hidden_tools.discard("execute")
             always_visible.add("execute")
         always_visible |= {
@@ -739,6 +752,7 @@ class DeepAgentAssemblyMixin:
         skills_only_plan,
         graph_request,
         token_usage_accumulator,
+        ppt_authoring: bool = False,
     ):
         from apps.opspilot.metis.llm.agent.tool_execution_planner import planned_execution_compact_limits_for_request
         from apps.opspilot.metis.llm.common.token_usage import TokenUsageAccumulator
@@ -753,6 +767,7 @@ class DeepAgentAssemblyMixin:
         from apps.opspilot.metis.llm.middleware.token_usage import TokenUsageTrackingMiddleware
         from apps.opspilot.metis.llm.middleware.tool_result_locale import ToolResultLocaleMiddleware
         from apps.opspilot.metis.llm.middleware.tool_runtime import (
+            PptExportFinishMiddleware,
             SkillExecutionGuardMiddleware,
             ToolExceptionAsResultMiddleware,
             ToolResultCompactionMiddleware,
@@ -776,9 +791,12 @@ class DeepAgentAssemblyMixin:
             soft_budget_ratio=resolve_planned_execution_soft_budget_ratio(graph_request),
             accumulator=(token_usage_accumulator if isinstance(token_usage_accumulator, TokenUsageAccumulator) else None),
         )
-        skill_guard = SkillExecutionGuardMiddleware(enabled=skills_only_plan)
+        if ppt_authoring:
+            limit_middleware.run_limit = max(limit_middleware.run_limit, PPT_AUTHORING_MIN_MODEL_CALLS)
+        skill_guard = SkillExecutionGuardMiddleware(enabled=bool(skills_only_plan) and not ppt_authoring)
         isolated_llm = self.get_llm_client(graph_request, disable_stream=True, isolated=True)
         runtime_middleware = [
+            *([PptExportFinishMiddleware(graph_request)] if ppt_authoring else []),
             ToolResultLocaleMiddleware(),
             visibility_middleware,
             skill_guard,

@@ -245,7 +245,7 @@ class TestSkillBackendSources:
         finally:
             os.environ.pop("DB_PASSWORD", None)
         assert "DB_PASSWORD" not in env
-        allowed = {"PATH", "LANG", "LC_ALL", "TMPDIR", "HOME", "KUBECONFIG"}
+        allowed = {"PATH", "LANG", "LC_ALL", "TMPDIR", "HOME", "KUBECONFIG", "PYTHONIOENCODING", "PYTHONUTF8"}
         allowed.update(n._WINDOWS_SOCKET_ENV_KEYS)
         assert set(env).issubset(allowed)
         assert env["TMPDIR"] == "/tmp/run-xyz"
@@ -634,6 +634,44 @@ class TestBuildDeepagentNodes:
         assert "execute" in visibility._always_visible_tools
         skill_guard = next(m for m in kwargs["middleware"] if isinstance(m, SkillExecutionGuardMiddleware))
         assert skill_guard.enabled is True
+
+    def test_ppt_master_skill_step_keeps_filesystem_and_disables_probe_guard(self):
+        from apps.opspilot.metis.llm.middleware.planned_execution_limits import PlannedExecutionLimitMiddleware
+        from apps.opspilot.services.ppt_master_runtime import PPT_AUTHORING_MIN_MODEL_CALLS
+
+        node = ToolsNodes()
+        node.all_tools = []
+        node._extra_config = SimpleNamespace(matched_skill_packages=[{"package_id": "ppt-master"}])
+        req = _request(user_message="帮我写个广州美食介绍的ppt", run_model_call_limit=10)
+        captured = {}
+        pkgs = [{"package_id": "ppt-master", "name": "PPT Master Skill", "description": "演示文稿"}]
+        fake_backend = MagicMock()
+
+        with (
+            patch.object(ToolsNodes, "_build_knowledge_retrieve_tool", return_value=None),
+            patch.object(ToolsNodes, "_resolve_skill_packages", return_value=pkgs),
+            patch.object(ToolsNodes, "_build_skill_backend_and_sources", return_value=(fake_backend, ["/skills/"], None)),
+        ):
+            self._run_wrapper(
+                node,
+                req,
+                captured,
+                plan_payload={
+                    "goal": "生成演示文稿",
+                    "steps": [{"objective": "按 ppt-master 读取技能、写页面并导出原生 pptx", "tools": ["__use_skills__"]}],
+                },
+            )
+
+        kwargs = captured["create_kwargs"]
+        visibility = next(m for m in kwargs["middleware"] if isinstance(m, ToolVisibilityMiddleware))
+        skill_guard = next(m for m in kwargs["middleware"] if isinstance(m, SkillExecutionGuardMiddleware))
+        limit = next(m for m in kwargs["middleware"] if isinstance(m, PlannedExecutionLimitMiddleware))
+        assert skill_guard.enabled is False
+        assert "read_file" in visibility._always_visible_tools
+        assert "write_file" in visibility._always_visible_tools
+        assert "execute" in visibility._always_visible_tools
+        assert "execute" not in visibility._hidden_tools
+        assert limit.run_limit >= PPT_AUTHORING_MIN_MODEL_CALLS
 
     def test_context_overflow_skips_current_step_and_continues_remaining(self):
         node = ToolsNodes()

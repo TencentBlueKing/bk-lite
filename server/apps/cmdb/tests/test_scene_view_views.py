@@ -17,7 +17,16 @@ from apps.cmdb.views.scene_view import SceneViewViewSet
 pytestmark = pytest.mark.unit
 
 
-def _user(*, username="alice", is_superuser=True, permission=None, domain="domain.com", roles=None):
+def _user(
+    *,
+    username="alice",
+    is_superuser=True,
+    permission=None,
+    domain="domain.com",
+    roles=None,
+    group_list=None,
+    group_tree=None,
+):
     return SimpleNamespace(
         username=username,
         is_superuser=is_superuser,
@@ -26,9 +35,22 @@ def _user(*, username="alice", is_superuser=True, permission=None, domain="domai
         domain=domain,
         locale="zh-Hans",
         permission=permission if permission is not None else {"cmdb": {"asset_info-View"}},
-        group_list=[{"id": 1, "name": "Default Team"}],
+        group_list=[{"id": 1, "name": "Default Team"}] if group_list is None else group_list,
+        group_tree=[] if group_tree is None else group_tree,
         roles=["admin"] if roles is None else roles,
     )
+
+
+def _org_share_user(**overrides):
+    fields = {
+        "is_superuser": False,
+        "permission": {"cmdb": {"asset_info-View", "asset_views_scene-Org Share"}},
+        "roles": ["cmdb_normal"],
+        "group_list": [{"id": 1, "name": "Default Team"}],
+        "group_tree": [{"id": 1}],
+    }
+    fields.update(overrides)
+    return _user(**fields)
 
 
 def _req(method, user, data=None, cookies=None, query=""):
@@ -155,7 +177,7 @@ def test_execute_uses_opener_identity_and_strips_graph_ids(monkeypatch):
     monkeypatch.setattr("apps.cmdb.views.scene_view.execute_scene_query", fake_execute)
     monkeypatch.setattr(
         "apps.cmdb.views.scene_view._model_table_columns",
-        lambda model_id, creator: [{"attr_id": "inst_name", "attr_name": "名称", "attr_type": "str"}],
+        lambda model_id, creator, language=None: [{"attr_id": "inst_name", "attr_name": "名称", "attr_type": "str"}],
     )
     monkeypatch.setattr(
         "apps.cmdb.views.scene_view.CmdbRulesFormatUtil.format_user_groups_permissions",
@@ -351,8 +373,11 @@ def test_serializer_accepts_org_when_request_present():
 def test_org_share_without_permission_is_403(monkeypatch):
     monkeypatch.setattr(SceneViewSerializer, "save", lambda self, **kwargs: _scene(visibility="organization"))
     visitor = _user(is_superuser=False, permission={"cmdb": {"asset_info-View"}}, roles=["cmdb_normal"])
-    response = SceneViewViewSet.as_view({"post": "create"})(_req("post", visitor, _payload(visibility="organization"), cookies={"current_team": "1"}))
+    response = SceneViewViewSet.as_view({"post": "create"})(
+        _req("post", visitor, _payload(visibility="organization"), cookies={"current_team": "1"})
+    )
     assert response.status_code == status.HTTP_403_FORBIDDEN
+    assert _body(response)["message"] == "没有组织共享权限"
 
 
 def test_org_create_binds_current_team(monkeypatch):
@@ -369,6 +394,111 @@ def test_org_create_binds_current_team(monkeypatch):
     assert response.status_code == status.HTTP_200_OK
     assert captured["visibility"] == "organization"
     assert captured["organization"] == 12
+
+
+def test_org_create_rejects_team_outside_caller_scope(monkeypatch):
+    saved = {"called": False}
+
+    def fake_save(self, **kwargs):
+        saved["called"] = True
+        return _scene(visibility="organization", organization=kwargs.get("organization"))
+
+    monkeypatch.setattr(SceneViewSerializer, "save", fake_save)
+    visitor = _org_share_user(group_list=[{"id": 1}], group_tree=[{"id": 1}])
+    response = SceneViewViewSet.as_view({"post": "create"})(
+        _req("post", visitor, _payload(visibility="organization"), cookies={"current_team": "99"})
+    )
+    assert response.status_code == status.HTTP_403_FORBIDDEN
+    assert _body(response)["message"] == "无权使用当前组织"
+    assert saved["called"] is False
+
+
+def test_org_create_allows_authorized_child_organization(monkeypatch):
+    captured = {}
+
+    def fake_save(self, **kwargs):
+        captured.update(kwargs)
+        return _scene(visibility="organization", organization=kwargs.get("organization"))
+
+    monkeypatch.setattr(SceneViewSerializer, "save", fake_save)
+    visitor = _org_share_user(
+        group_list=[{"id": 1}],
+        group_tree=[{"id": 1, "subGroups": [{"id": 12}]}],
+    )
+    response = SceneViewViewSet.as_view({"post": "create"})(
+        _req("post", visitor, _payload(visibility="organization"), cookies={"current_team": "12"})
+    )
+    assert response.status_code == status.HTTP_200_OK
+    assert captured["visibility"] == "organization"
+    assert captured["organization"] == 12
+
+
+def test_org_create_allows_group_list_when_tree_empty(monkeypatch):
+    captured = {}
+
+    def fake_save(self, **kwargs):
+        captured.update(kwargs)
+        return _scene(visibility="organization", organization=kwargs.get("organization"))
+
+    monkeypatch.setattr(SceneViewSerializer, "save", fake_save)
+    visitor = _org_share_user(group_list=[{"id": 1}], group_tree=[])
+    response = SceneViewViewSet.as_view({"post": "create"})(
+        _req("post", visitor, _payload(visibility="organization"), cookies={"current_team": "1"})
+    )
+    assert response.status_code == status.HTTP_200_OK
+    assert captured["organization"] == 1
+
+
+def test_org_create_rejects_foreign_team_when_group_tree_empty(monkeypatch):
+    saved = {"called": False}
+
+    def fake_save(self, **kwargs):
+        saved["called"] = True
+        return _scene(visibility="organization", organization=kwargs.get("organization"))
+
+    monkeypatch.setattr(SceneViewSerializer, "save", fake_save)
+    visitor = _org_share_user(group_list=[{"id": 1}], group_tree=[])
+    response = SceneViewViewSet.as_view({"post": "create"})(
+        _req("post", visitor, _payload(visibility="organization"), cookies={"current_team": "99"})
+    )
+    assert response.status_code == status.HTTP_403_FORBIDDEN
+    assert _body(response)["message"] == "无权使用当前组织"
+    assert saved["called"] is False
+
+
+def test_org_create_without_current_team_is_400(monkeypatch):
+    saved = {"called": False}
+
+    def fake_save(self, **kwargs):
+        saved["called"] = True
+        return _scene(visibility="organization")
+
+    monkeypatch.setattr(SceneViewSerializer, "save", fake_save)
+    response = SceneViewViewSet.as_view({"post": "create"})(
+        _req("post", _org_share_user(), _payload(visibility="organization"))
+    )
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert _body(response)["message"] == "组织共享需要当前组织"
+    assert saved["called"] is False
+
+
+def test_existing_org_share_keeps_organization_outside_current_team(monkeypatch):
+    scene = _scene(visibility=SceneView.Visibility.ORGANIZATION, created_by="alice", organization=1)
+    captured = {}
+
+    def fake_save(self, **kwargs):
+        captured.update(kwargs)
+        return scene
+
+    monkeypatch.setattr(SceneViewViewSet, "get_object", lambda self: scene)
+    monkeypatch.setattr(SceneViewSerializer, "save", fake_save)
+    visitor = _org_share_user(group_list=[{"id": 1}], group_tree=[{"id": 1}])
+    response = SceneViewViewSet.as_view({"put": "update"})(
+        _req("put", visitor, _payload(visibility="organization"), cookies={"current_team": "99"}),
+        pk=7,
+    )
+    assert response.status_code == status.HTTP_200_OK
+    assert captured["organization"] == 1
 
 
 def test_global_without_admin_is_403(monkeypatch):
@@ -437,7 +567,7 @@ def test_export_builds_one_sheet_per_hit_model(monkeypatch):
     )
     monkeypatch.setattr(
         "apps.cmdb.views.scene_view._model_table_columns",
-        lambda model_id, creator: [{"attr_id": "inst_name", "attr_name": "名称", "attr_type": "str"}],
+        lambda model_id, creator, language=None: [{"attr_id": "inst_name", "attr_name": "名称", "attr_type": "str"}],
     )
     monkeypatch.setattr(
         "apps.cmdb.views.scene_view.CmdbRulesFormatUtil.format_user_groups_permissions",

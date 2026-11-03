@@ -273,6 +273,13 @@ tools:
         description: Query host CPU/memory/disk avg and max snapshot.
       monitor_get_host_resource_top_by_time:
         description: Rank all hosts by CPU/memory/disk usage within a time window (Top N). Times without a timezone use the current user's timezone.
+  mlops:
+    name: MLOps
+    description: |
+      Call a bound MLOps time series forecast serving. The model queries monitor data or uses a pasted series, then asks the forecast service instead of extrapolating by itself.
+    tools:
+      mlops_predict_timeseries:
+        description: Forecast a bound serving over a future horizon. summary compares many series; trend returns points for one series.
   cmdb:
     name: CMDB
     description: |
@@ -1026,3 +1033,9 @@ skill_packages:
       Scenario skill package for deploying and managing Kubernetes workloads.
 
       Covers Deployments/StatefulSets, network policies, RBAC, Helm, troubleshooting, GitOps, service mesh, and multi-cluster operations.
+  ppt-master:
+    name: PPT Master
+    description: |
+      Scenario skill package for creating and revising editable presentations.
+
+      Produces native PPTX files and keeps the project available for later revisions in the same conversation.

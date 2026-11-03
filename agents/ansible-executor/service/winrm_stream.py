@@ -1,12 +1,17 @@
-"""复用单个 WinRM shell 增量接收 Windows 脚本输出。"""
+"""WinRM：先连接层 put_file 落文件，再对短命令做流式输出。"""
+
+from __future__ import annotations
 
 import asyncio
-import base64
 import contextlib
+import json
+import os
+import sys
 import time
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 from service.ansible_runner import (
@@ -18,14 +23,32 @@ from service.ansible_runner import (
     BufferedStreamPublisher,
     LineEventStreamer,
     StreamPublish,
+    _write_restricted_bytes,
+    cleanup_workspace,
+    create_task_workspace,
     decode_command_output,
+)
+from service.linux_script_delivery import ScriptDeliveryError, format_host_failure
+from service.windows_script_delivery import (
+    ConnectionOpener,
+    copy_windows_script_to_hosts,
+    prepare_windows_script_bytes,
+    remote_script_leaf,
+    stage_local_windows_script,
 )
 from winrm.exceptions import WinRMOperationTimeoutError
 from winrm.protocol import Protocol
 
+_EXECUTOR_ROOT = Path(__file__).resolve().parents[1]
+
 ProtocolFactory = Callable[[dict[str, Any]], Protocol]
-_SUPPORTED_SCRIPT_TYPES = {"bat", "powershell"}
+WindowsCopier = Callable[..., None]
+_SUPPORTED_SCRIPT_TYPES = {"bat", "powershell", "python"}
 _SUPPORTED_TRANSPORTS = {"auto", "basic", "certificate", "ntlm", "kerberos", "credssp", "plaintext", "ssl"}
+_UNSAFE_INTERPRETER_CHARS = set('|"&<>^%\r\n\t')
+
+# Back-compat names used by older unit tests.
+prepare_script_bytes = prepare_windows_script_bytes
 
 
 @dataclass
@@ -67,54 +90,97 @@ def _build_protocol(credential: dict[str, Any]) -> Protocol:
         username=str(credential.get("user") or ""),
         password=str(credential.get("password") or ""),
         server_cert_validation=cert_validation,
-        operation_timeout_sec=5,
-        read_timeout_sec=10,
+        operation_timeout_sec=60,
+        read_timeout_sec=70,
         proxy=None,
     )
 
 
-def _encoded_powershell(script: str) -> str:
-    return base64.b64encode(script.encode("utf-16-le")).decode("ascii")
-
-
-def _build_command(script_content: str, script_type: str) -> tuple[str, list[str]]:
+def build_execute_command(
+    token: str,
+    script_type: str,
+    *,
+    windows_interpreter: str = "python",
+) -> tuple[str, list[str]]:
+    """Short remote command that only references the uploaded file path."""
     if script_type not in _SUPPORTED_SCRIPT_TYPES:
         raise ValueError(f"unsupported Windows stream script type: {script_type}")
+    leaf = remote_script_leaf(token, script_type)
     if script_type == "powershell":
-        encoded = _encoded_powershell(script_content)
-    else:
-        token = uuid.uuid4().hex
-        encoded_script = base64.b64encode(script_content.encode("utf-8")).decode("ascii")
-        wrapper = "\n".join(
+        return (
+            "cmd.exe",
             [
-                f"$path = Join-Path $env:TEMP '.bklite-stream-{token}.cmd'",
-                f"$text = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('{encoded_script}'))",
-                "[IO.File]::WriteAllText($path, $text, [Text.Encoding]::Default)",
-                "$exitCode = 1",
-                "try {",
-                "    & cmd.exe /d /q /c $path",
-                "    $exitCode = [int]$LASTEXITCODE",
-                "} finally {",
-                "    Remove-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue",
-                "}",
-                "exit $exitCode",
-            ]
+                "/d",
+                "/q",
+                "/c",
+                f'powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "%TEMP%\\{leaf}"',
+            ],
         )
-        encoded = _encoded_powershell(wrapper)
-    return (
-        "powershell.exe",
-        ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-EncodedCommand", encoded],
-    )
+    if script_type == "python":
+        interpreter = str(windows_interpreter or "python").strip() or "python"
+        if any(char in _UNSAFE_INTERPRETER_CHARS for char in interpreter):
+            raise ValueError("invalid Windows Python interpreter")
+        return ("cmd.exe", ["/d", "/q", "/c", f'{interpreter} -u "%TEMP%\\{leaf}"'])
+    return ("cmd.exe", ["/d", "/q", "/c", f'"%TEMP%\\{leaf}"'])
+
+
+def build_cleanup_command(token: str, script_type: str) -> tuple[str, list[str]]:
+    leaf = remote_script_leaf(token, script_type)
+    return ("cmd.exe", ["/d", "/q", "/c", f'del /f /q "%TEMP%\\{leaf}" >nul 2>nul'])
+
+
+def _build_command(
+    script_content: str,
+    script_type: str,
+    *,
+    windows_interpreter: str = "python",
+    token: str | None = None,
+) -> tuple[str, list[str]]:
+    prepare_windows_script_bytes(script_content, script_type)
+    return build_execute_command(token or "testtoken", script_type, windows_interpreter=windows_interpreter)
+
+
+def _run_command_to_completion(
+    protocol: Protocol,
+    shell_id: str,
+    command: str,
+    arguments: list[str],
+    deadline: float,
+) -> tuple[int, bytes]:
+    command_id = protocol.run_command(shell_id, command, arguments)
+    collected = bytearray()
+    exit_code = 1
+    try:
+        while True:
+            if time.monotonic() >= deadline:
+                collected.extend(b"command timed out\n")
+                return 124, bytes(collected)
+            try:
+                stdout, stderr, current_exit_code, command_done = protocol.get_command_output_raw(shell_id, command_id)
+            except WinRMOperationTimeoutError:
+                continue
+            if stdout:
+                collected.extend(stdout)
+            if stderr:
+                collected.extend(stderr)
+            if command_done:
+                exit_code = current_exit_code
+                break
+    finally:
+        with contextlib.suppress(Exception):
+            protocol.cleanup_command(shell_id, command_id)
+    return exit_code, bytes(collected)
 
 
 def _run_host(
     index: int,
     credential: dict[str, Any],
-    command: str,
-    arguments: list[str],
+    token: str,
+    script_type: str,
     timeout: int,
     emit: Callable[[_ThreadEvent], None],
     protocol_factory: ProtocolFactory,
+    windows_interpreter: str,
 ) -> None:
     protocol = None
     shell_id = None
@@ -124,6 +190,7 @@ def _run_host(
     try:
         protocol = protocol_factory(credential)
         shell_id = protocol.open_shell()
+        command, arguments = build_execute_command(token, script_type, windows_interpreter=windows_interpreter)
         command_id = protocol.run_command(shell_id, command, arguments)
         while True:
             if time.monotonic() >= deadline:
@@ -149,8 +216,62 @@ def _run_host(
                 protocol.cleanup_command(shell_id, command_id)
         if protocol is not None and shell_id:
             with contextlib.suppress(Exception):
+                cleanup_command, cleanup_arguments = build_cleanup_command(token, script_type)
+                _run_command_to_completion(
+                    protocol,
+                    shell_id,
+                    cleanup_command,
+                    cleanup_arguments,
+                    min(deadline, time.monotonic() + 15),
+                )
+            with contextlib.suppress(Exception):
                 protocol.close_shell(shell_id)
         emit(_ThreadEvent(index, "done", exit_code=exit_code))
+
+
+async def _copy_windows_script_via_subprocess(
+    workspace: Path,
+    local_path: str,
+    leaf: str,
+    script_type: str,
+    host_credentials: list[dict[str, Any]],
+) -> None:
+    hosts = [str(item.get("host") or "") for item in host_credentials if item.get("host")]
+    payload_path = workspace / "windows-put-file-job.json"
+    _write_restricted_bytes(
+        payload_path,
+        json.dumps(
+            {
+                "local_path": local_path,
+                "leaf": leaf,
+                "script_type": script_type,
+                "host_credentials": host_credentials,
+            },
+            ensure_ascii=False,
+        ).encode("utf-8"),
+    )
+    env = os.environ.copy()
+    env["PYTHONPATH"] = os.pathsep.join([str(_EXECUTOR_ROOT), *[p for p in env.get("PYTHONPATH", "").split(os.pathsep) if p]])
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            sys.executable,
+            "-m",
+            "service.windows_script_delivery",
+            str(payload_path),
+            cwd=str(_EXECUTOR_ROOT),
+            env=env,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        _stdout, stderr = await proc.communicate()
+        if proc.returncode != 0:
+            detail = (stderr or b"").decode("utf-8", errors="replace").strip() or "Windows put_file subprocess failed"
+            failure = ScriptDeliveryError(detail, hosts)
+            failure.host_output = format_host_failure(hosts, detail)
+            raise failure
+    finally:
+        with contextlib.suppress(Exception):
+            payload_path.unlink(missing_ok=True)
 
 
 async def run_winrm_stream(
@@ -168,11 +289,58 @@ async def run_winrm_stream(
     stream_batch_size: int = DEFAULT_STREAM_BATCH_SIZE,
     stream_flush_timeout: float = DEFAULT_STREAM_FLUSH_TIMEOUT,
     stream_max_line_bytes: int = DEFAULT_STREAM_MAX_LINE_BYTES,
+    windows_interpreter: str = "python",
+    skip_put_file: bool = False,
+    copy_token: str | None = None,
+    script_copier: WindowsCopier | None = None,
+    connection_opener: ConnectionOpener | None = None,
 ) -> tuple[int, str, dict[str, Any]]:
-    """为每个 Windows 目标建立一个 WinRM shell，在同一会话中持续接收输出。"""
+    """WinRM put_file 上传脚本 → 短命令流式执行 → 清理远端与本地临时文件。"""
     if not host_credentials:
         raise ValueError("host_credentials are required for WinRM streaming")
-    command, arguments = _build_command(script_content, script_type)
+    if script_type not in _SUPPORTED_SCRIPT_TYPES:
+        raise ValueError(f"unsupported Windows stream script type: {script_type}")
+
+    script_bytes = prepare_windows_script_bytes(script_content, script_type)
+    token = copy_token or uuid.uuid4().hex
+    leaf = remote_script_leaf(token, script_type)
+    workspace: Path | None = None
+
+    started = time.monotonic()
+    if not skip_put_file:
+        workspace = create_task_workspace(execution_id)
+        try:
+            local_script = stage_local_windows_script(workspace, script_bytes, script_type)
+            # 注入 copier/opener（单测）走进程内；默认子进程投递，避免 executor event loop 内 WinRM stdin 挂死。
+            if script_copier is not None:
+                script_copier(
+                    str(local_script),
+                    leaf,
+                    script_type,
+                    list(host_credentials),
+                )
+            elif connection_opener is not None:
+                copy_windows_script_to_hosts(
+                    str(local_script),
+                    leaf,
+                    script_type,
+                    list(host_credentials),
+                    connection_opener=connection_opener,
+                )
+            else:
+                await _copy_windows_script_via_subprocess(
+                    workspace,
+                    str(local_script),
+                    leaf,
+                    script_type,
+                    list(host_credentials),
+                )
+        except Exception:
+            cleanup_workspace(workspace)
+            workspace = None
+            raise
+
+    remaining = max(1, int(timeout - (time.monotonic() - started)))
     loop = asyncio.get_running_loop()
     queue: asyncio.Queue[_ThreadEvent] = asyncio.Queue(maxsize=max(4, len(host_credentials) * 2))
     states = [
@@ -194,7 +362,7 @@ async def run_winrm_stream(
     stream_publisher.start()
 
     def emit(event: _ThreadEvent) -> None:
-        asyncio.run_coroutine_threadsafe(queue.put(event), loop).result()
+        asyncio.run_coroutine_threadsafe(queue.put(event), loop).result(timeout=max(5, min(remaining, 30)))
 
     async def publish_line(line: str) -> None:
         stream_publisher.offer(line)
@@ -205,11 +373,12 @@ async def run_winrm_stream(
                 _run_host,
                 index,
                 credential,
-                command,
-                arguments,
-                timeout,
+                token,
+                script_type,
+                remaining,
                 emit,
                 protocol_factory,
+                windows_interpreter,
             )
         )
         for index, credential in enumerate(host_credentials)
@@ -229,13 +398,13 @@ async def run_winrm_stream(
                 continue
 
             state.total_bytes += len(event.chunk)
-            remaining = max_output_bytes - retained_bytes
+            remaining_bytes = max_output_bytes - retained_bytes
             kept = b""
-            if remaining > 0:
-                kept = event.chunk[:remaining]
+            if remaining_bytes > 0:
+                kept = event.chunk[:remaining_bytes]
                 state.retained.extend(kept)
                 retained_bytes += len(kept)
-            if len(event.chunk) > max(remaining, 0):
+            if len(event.chunk) > max(remaining_bytes, 0):
                 truncated = True
             for line in state.streamer.feed(event.chunk):
                 await publish_line(line)
@@ -243,6 +412,8 @@ async def run_winrm_stream(
         await asyncio.gather(*workers)
     finally:
         stream_meta = await stream_publisher.close(stream_flush_timeout)
+        cleanup_workspace(workspace)
+
     output_parts = []
     for state in states:
         raw_status = "CHANGED" if state.exit_code == 0 else "FAILED"

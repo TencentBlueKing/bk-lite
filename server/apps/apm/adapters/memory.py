@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
+from dataclasses import replace
+from datetime import datetime
 
 from apps.apm.services.contracts import (
-    DeploymentReleaseQuery,
     ENTRY_SPAN_KINDS,
+    DeploymentReleaseQuery,
     InferredDeploymentRelease,
     InstanceActivity,
     InstanceActivityQuery,
@@ -31,13 +33,7 @@ from apps.apm.services.contracts import (
     TraceSearchQuery,
     TraceSummary,
 )
-from apps.apm.services.error_breakdown import (
-    RawErrorGroup,
-    attach_samples,
-    coalesce_error_type,
-    merge_error_groups,
-    rank_failed_endpoints,
-)
+from apps.apm.services.error_breakdown import RawErrorGroup, attach_samples, coalesce_error_type, merge_error_groups, rank_failed_endpoints
 from apps.apm.services.identity import normalize_identity
 
 
@@ -209,9 +205,7 @@ class InMemoryTraceStore:
                     ],
                 )
             )
-        recent = tuple(
-            sorted(entry_errors, key=lambda item: (item.started_at, item.span_id), reverse=True)[: query.sample_limit]
-        )
+        recent = tuple(sorted(entry_errors, key=lambda item: (item.started_at, item.span_id), reverse=True)[: query.sample_limit])
         return ServiceErrorBreakdown(
             request_count=request_count,
             error_count=error_count,
@@ -270,8 +264,32 @@ class InMemoryMetricStore:
         self._slo_measurements = [(key, item) for key, item in self._slo_measurements if key != query]
         self._slo_measurements.append((query, value))
 
+    def service_endpoints(self, query: ServiceMetricQuery, limit: int = 100) -> tuple:
+        return ()
+
+    def dependency_red(self, query) -> ServiceRed:
+        return ServiceRed(None, None, None, None)
+
+    def client_db_rollups(self, namespace: str, service_name: str, environment: str, started_at, ended_at) -> list:
+        return []
+
     def service_red(self, query: ServiceMetricQuery) -> ServiceRed:
         return next(value for key, value in self._service_metrics if key == query)
+
+    def service_red_by_window(self, query: ServiceMetricQuery, window_minutes: int) -> tuple:
+        return ()
+
+    def dependency_red_by_window(self, query, window_minutes: int) -> tuple:
+        return ()
+
+    def slo_compliance_by_window(self, query: SloMetricQuery, window_minutes: int) -> tuple:
+        return ()
+
+    def service_red_by_day(self, query: ServiceMetricQuery, windows: Sequence[tuple[datetime, datetime]]) -> tuple[ServiceRed, ...]:
+        return tuple(
+            self.service_red(replace(query, started_at=started_at, ended_at=ended_at, include_breakdown=False, include_endpoints=False))
+            for started_at, ended_at in windows
+        )
 
     def slo_measurement(self, query: SloMetricQuery) -> SloMeasurement:
         return next(value for key, value in self._slo_measurements if key == query)

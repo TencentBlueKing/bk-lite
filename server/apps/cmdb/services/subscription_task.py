@@ -466,12 +466,15 @@ class SubscriptionTaskService:
         if not id_name_map:
             return summary
 
+        def literal_replacement(text: str):
+            return lambda _match: text
+
         formatted = summary
         if added_match:
             added_names = [id_name_map.get(inst_id, str(inst_id)) for inst_id in added_ids]
             formatted = re.sub(
                 r"新增关联:\s*\[[^\]]*\]",
-                f"新增关联: [{', '.join(added_names)}]",
+                literal_replacement(f"新增关联: [{', '.join(added_names)}]"),
                 formatted,
                 count=1,
             )
@@ -479,7 +482,7 @@ class SubscriptionTaskService:
             removed_names = [id_name_map.get(inst_id, str(inst_id)) for inst_id in removed_ids]
             formatted = re.sub(
                 r"删除关联:\s*\[[^\]]*\]",
-                f"删除关联: [{', '.join(removed_names)}]",
+                literal_replacement(f"删除关联: [{', '.join(removed_names)}]"),
                 formatted,
                 count=1,
             )

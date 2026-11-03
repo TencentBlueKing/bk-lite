@@ -40,6 +40,13 @@ class Monitor(object):
         """
         return self.ingest_client.run("monitor_ingest_from_source", params=kwargs)
 
+    def instances_exist(self, **kwargs):
+        """按 cmdb_id / IP 批量判断监控实例是否已存在。
+
+        走 ingest_client。NATS 签名为 monitor_instances_exist(params)，须整包。
+        """
+        return self.ingest_client.run("monitor_instances_exist", params=kwargs)
+
     def list_cmdb_bind_candidates(self, **kwargs):
         """列出可手绑的监控实例（name/ip 检索）。
 

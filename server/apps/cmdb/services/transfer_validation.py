@@ -13,6 +13,8 @@ class ExportRequest(serializers.Serializer):
     inst_uuids = serializers.ListField(child=serializers.UUIDField(format="hex_verbose"), max_length=100000, default=list)
     attr_list = serializers.ListField(child=serializers.CharField(max_length=128), max_length=256, allow_empty=False)
     association_list = serializers.ListField(child=serializers.CharField(max_length=256), max_length=128, default=list)
+    query_list = serializers.ListField(child=serializers.DictField(), required=False, default=list)
+    advanced_filter = serializers.DictField(required=False)
 
     def validate(self, data):
         if data["scope"] == "all" and data["inst_uuids"]:

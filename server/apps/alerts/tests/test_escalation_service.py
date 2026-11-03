@@ -530,3 +530,44 @@ def test_escalation_task_freezes_template_bindings_and_releases_snapshot_referen
 
     assert ES.stop_escalation_task(alert) is True
     assert not NotificationTemplateReference.objects.filter(source_type="escalation_task", source_id=alert.alert_id).exists()
+
+
+@pytest.mark.django_db(transaction=True)
+@mock.patch("apps.alerts.common.notify.base.NotifyParamsFormat.format_content", return_value="c")
+@mock.patch("apps.alerts.common.notify.base.NotifyParamsFormat.format_title", return_value="t")
+def test_reset_escalation_cycle_notifies_layer_again(_title, _content, monkeypatch):
+    """改派重置后同一层必须产生新的升级通知，同一周期内重复推进仍复用幂等键。"""
+    from apps.alerts.models import AlertOutbox
+
+    alert = _make_alert(status="pending")
+    assignment = _make_assignment(
+        escalation=_chain(),
+        channels=[{"id": 7, "channel_type": "email", "name": "邮件"}],
+    )
+    task = _due_task(alert, assignment, index=0, minutes_ago=15)
+    assert task.cycle == 0
+    monkeypatch.setattr(
+        "apps.alerts.tasks.deliver_alert_outbox.delay",
+        lambda _pk: (_ for _ in ()).throw(RuntimeError("broker down")),
+    )
+
+    assert ES._advance_layer(task) is True
+    assert AlertOutbox.objects.count() == 1
+    assert AlertOutbox.objects.get().idempotency_key == f"escalation:{alert.alert_id}:1"
+
+    reset = ES.reset_escalation_task(alert, assignment)
+    assert reset.current_layer_index == 0
+    assert reset.cycle == 1
+
+    assert ES._advance_layer(reset) is True
+    keys = list(AlertOutbox.objects.order_by("pk").values_list("idempotency_key", flat=True))
+    assert keys == [
+        f"escalation:{alert.alert_id}:1",
+        f"escalation:{alert.alert_id}:1:1",
+    ]
+
+    reset.refresh_from_db()
+    reset.current_layer_index = 0
+    reset.save(update_fields=["current_layer_index", "updated_at"])
+    assert ES._advance_layer(reset) is True
+    assert list(AlertOutbox.objects.order_by("pk").values_list("idempotency_key", flat=True)) == keys

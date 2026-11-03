@@ -1,10 +1,10 @@
 import time
 from typing import Any
 
-from apps.core.logger import log_logger
-from apps.core.logger import safe_exception_info
+from apps.core.logger import log_logger, safe_exception_info
 from apps.log.constants.alert_policy import AlertConstants
 from apps.log.constants.web import WebConstants
+from apps.log.services.alert_notice_format import notice_context
 from apps.monitor.utils.system_mgmt_api import SystemMgmtUtils
 from apps.system_mgmt.models.channel import Channel, ChannelChoices
 
@@ -29,21 +29,13 @@ class LogAlertLifecycleNotifier:
 
     @classmethod
     def _is_alert_center_channel(cls, channel) -> bool:
-        return bool(
-            channel
-            and channel.channel_type == ChannelChoices.NATS
-            and (channel.config or {}).get("method_name") == cls.ALERT_CENTER_METHOD
-        )
+        return bool(channel and channel.channel_type == ChannelChoices.NATS and (channel.config or {}).get("method_name") == cls.ALERT_CENTER_METHOD)
 
     def is_alert_center_channel(self) -> bool:
         return self._is_alert_center_channel(self._get_channel())
 
     def _organizations(self) -> list[int]:
-        return list(
-            self.policy.policyorganization_set.order_by("organization")
-            .values_list("organization", flat=True)
-            .distinct()
-        )
+        return list(self.policy.policyorganization_set.order_by("organization").values_list("organization", flat=True).distinct())
 
     def _resource_name(self) -> str:
         return self.policy.name
@@ -73,6 +65,13 @@ class LogAlertLifecycleNotifier:
     def build_created_event(self, event) -> dict[str, Any]:
         alert = event.alert
         content = event.content or ""
+        context = notice_context(
+            event,
+            self.policy,
+            base_url=WebConstants.URL,
+            sample_limit=AlertConstants.SAMPLE_LIMIT_MAX,
+            text_limit=AlertConstants.NOTICE_SAMPLE_TEXT_MAX,
+        )
         # 日志告警没有稳定的指标项、指标值或 CMDB 资源类型，保持空值交由告警中心适配。
         return {
             "external_id": str(event.alert_id),
@@ -91,6 +90,9 @@ class LogAlertLifecycleNotifier:
             "organizations": self._organizations(),
             "tags": {},
             "labels": self._labels(alert),
+            "samples": context["samples"],
+            "search_url": context["search_url"],
+            "aggregate_result": context["aggregate_result"],
         }
 
     def build_closed_event(self, alert) -> dict[str, Any]:
@@ -116,6 +118,11 @@ class LogAlertLifecycleNotifier:
             "labels": self._labels(alert, include_operator=True),
         }
 
+    def build_recovered_event(self, alert) -> dict[str, Any]:
+        event = self.build_closed_event(alert)
+        event["action"] = "recovered"
+        return event
+
     @staticmethod
     def _parse_channel_result(send_result):
         if not isinstance(send_result, dict):
@@ -124,30 +131,21 @@ class LogAlertLifecycleNotifier:
         if send_result.get("result") is False:
             return (
                 False,
-                send_result.get("message")
-                or send_result.get("errmsg")
-                or send_result.get("msg")
-                or "Unknown error",
+                send_result.get("message") or send_result.get("errmsg") or send_result.get("msg") or "Unknown error",
             )
 
         errcode = send_result.get("errcode")
         if errcode is not None and errcode != 0:
             return (
                 False,
-                send_result.get("errmsg")
-                or send_result.get("msg")
-                or send_result.get("message")
-                or f"errcode={errcode}",
+                send_result.get("errmsg") or send_result.get("msg") or send_result.get("message") or f"errcode={errcode}",
             )
 
         code = send_result.get("code")
         if code is not None and code != 0:
             return (
                 False,
-                send_result.get("msg")
-                or send_result.get("message")
-                or send_result.get("errmsg")
-                or f"code={code}",
+                send_result.get("msg") or send_result.get("message") or send_result.get("errmsg") or f"code={code}",
             )
 
         return True, ""
@@ -215,10 +213,14 @@ class LogAlertLifecycleNotifier:
                     )
                     return True, send_result
 
-                last_result = send_result if isinstance(send_result, dict) else {
-                    "result": False,
-                    "message": error_message,
-                }
+                last_result = (
+                    send_result
+                    if isinstance(send_result, dict)
+                    else {
+                        "result": False,
+                        "message": error_message,
+                    }
+                )
                 self._log_lifecycle_failure(
                     external_id=external_id,
                     action=action,
@@ -293,10 +295,14 @@ class LogAlertLifecycleNotifier:
                         attempt,
                     )
                     return True, send_result if isinstance(send_result, dict) else {"result": True}
-                last_result = send_result if isinstance(send_result, dict) else {
-                    "result": False,
-                    "message": error_message,
-                }
+                last_result = (
+                    send_result
+                    if isinstance(send_result, dict)
+                    else {
+                        "result": False,
+                        "message": error_message,
+                    }
+                )
                 log_logger.error(
                     "event=assign_notify_failed policy_id=%s alert_id=%s attempt=%s failed_stage=send error_type=%s",
                     self.policy.id,
@@ -322,3 +328,44 @@ class LogAlertLifecycleNotifier:
 
     def notify_closed(self, alert, max_attempts=None) -> tuple[bool, dict]:
         return self._notify(self.build_closed_event(alert), max_attempts=max_attempts)
+
+    def notify_recovered(self, alert, max_attempts=None) -> tuple[bool, dict]:
+        return self._notify(self.build_recovered_event(alert), max_attempts=max_attempts)
+
+
+def deliver_log_alert_lifecycle(alert_id, event_time, action):
+    """关闭与自动恢复共用的告警中心投递。失败留下 notice=False，由补偿任务重投。"""
+    from apps.log.models.policy import Alert
+
+    try:
+        alert = Alert.objects.select_related("policy", "collect_type").prefetch_related("policy__policyorganization_set").get(id=alert_id)
+        notifier = LogAlertLifecycleNotifier(alert.policy)
+        if not alert.policy.notice or not notifier.is_alert_center_channel():
+            return
+        if action == AlertConstants.STATUS_RECOVERED:
+            success, _result = notifier.notify_recovered(alert)
+            expected_status = AlertConstants.STATUS_RECOVERED
+        else:
+            success, _result = notifier.notify_closed(alert)
+            expected_status = AlertConstants.STATUS_CLOSED
+        if success:
+            Alert.objects.filter(
+                id=alert_id,
+                status=expected_status,
+                end_event_time=event_time,
+                notice=False,
+            ).update(notice=True)
+    except Exception as exc:
+        if action == AlertConstants.STATUS_RECOVERED:
+            log_logger.warning(
+                "event=log_alert_recovered_notify_failed alert_id=%s error_type=%s",
+                alert_id,
+                type(exc).__name__,
+                exc_info=True,
+            )
+            return
+        log_logger.error(
+            "日志告警关闭事件推送异常 alert=%s",
+            alert_id,
+            exc_info=True,
+        )

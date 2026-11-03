@@ -11,6 +11,10 @@ CELERY_BEAT_SCHEDULE = {
         "task": "apps.cmdb.tasks.celery_tasks.recover_first_collection_runs",
         "schedule": crontab(minute="*"),
     },
+    "recover_due_scan_executions": {
+        "task": "apps.cmdb.tasks.celery_tasks.recover_due_scan_executions",
+        "schedule": crontab(minute="*"),
+    },
     "node_mgmt_sync_recovery_watchdog": {"task": "apps.cmdb.tasks.node_mgmt_sync.watch_node_mgmt_sync_recovery", "schedule": crontab(minute="*/5")},
     "sync_periodic_update_task_status": {"task": "apps.cmdb.tasks.celery_tasks.sync_periodic_update_task_status", "schedule": crontab(minute="*/5")},
     "sync_collect_tasks_gate": {"task": "apps.cmdb.tasks.celery_tasks.sync_collect_tasks_gate", "schedule": crontab(minute="*/5")},
@@ -27,6 +31,10 @@ CELERY_BEAT_SCHEDULE = {
     "reconcile_cmdb_operations_task": {"task": "apps.cmdb.tasks.celery_tasks.reconcile_cmdb_operations_task", "schedule": crontab(minute="*/5")},
     "recover_change_record_mirror_outbox_task": {
         "task": "apps.cmdb.tasks.celery_tasks.recover_change_record_mirror_outbox_task",
+        "schedule": crontab(minute="*/5"),
+    },
+    "reconcile_auto_relation_pending_task": {
+        "task": "apps.cmdb.tasks.celery_tasks.reconcile_auto_relation_pending_task",
         "schedule": crontab(minute="*/5"),
     },
 }

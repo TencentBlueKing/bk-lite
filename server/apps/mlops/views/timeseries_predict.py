@@ -1,4 +1,3 @@
-import json
 import os
 from copy import deepcopy
 from uuid import uuid4
@@ -597,6 +596,111 @@ class TimeSeriesPredictTrainDataViewSet(ModelViewSet):
         return super().update(request, *args, **kwargs)
 
 
+def execute_timeseries_predict(serving, data, steps, message):
+    """调用已发布的时序预测容器。HTTP 与 NATS 共用，不改变校验和错误映射。
+
+    message 是 ``(key, **values) -> str``，由调用方按请求语言解析。
+    返回 ``(body, http_status)``。
+    """
+    proxy_timeout_seconds = get_timeseries_predict_timeout_seconds()
+    try:
+        if not data:
+            return {"error": message("error.predict_input_required", field="data")}, status.HTTP_400_BAD_REQUEST
+
+        if not isinstance(data, list):
+            return {"error": message("error.predict_input_must_be_array", field="data")}, status.HTTP_400_BAD_REQUEST
+
+        max_batch_size = int(os.getenv("MLOPS_PREDICT_MAX_BATCH_SIZE", "10000"))
+        if len(data) > max_batch_size:
+            return (
+                {"error": message("error.predict_batch_limit_exceeded", limit=max_batch_size, count=len(data))},
+                status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            )
+
+        try:
+            predict_url = build_predict_url(
+                serving_id=f"TimeseriesPredict_Serving_{serving.id}",
+                container_info=serving.container_info,
+            )
+        except ValueError as exc:
+            return {"error": message(str(exc))}, status.HTTP_400_BAD_REQUEST
+
+        payload = {"data": data, "config": {"steps": steps}}
+        response = requests.post(
+            predict_url,
+            json=payload,
+            timeout=proxy_timeout_seconds,
+            headers={"Content-Type": "application/json"},
+        )
+
+        if response.status_code == 200:
+            result = response.json()
+            if result.get("success") is False:
+                error_info = result.get("error") or {}
+                error_code = error_info.get("code", "UNKNOWN")
+                error_message = error_info.get("message") or message("error.prediction_failed")
+                logger.error(
+                    "event=timeseries_predict_upstream_rejected serving_id=%s error_code=%s",
+                    serving.id,
+                    error_code,
+                )
+                return (
+                    {
+                        "error": error_message,
+                        "code": error_code,
+                        "error_code": error_code,
+                        "details": error_info.get("details"),
+                    },
+                    status.HTTP_400_BAD_REQUEST,
+                )
+            return result, status.HTTP_200_OK
+
+        error_msg = message("error.serving_prediction_service_error", status_code=response.status_code)
+        logger.error(
+            "event=timeseries_predict_upstream_http_error serving_id=%s status_code=%s",
+            serving.id,
+            response.status_code,
+        )
+        return (
+            {"error": error_msg, "detail": response.text},
+            map_predict_upstream_status(response.status_code),
+        )
+    except requests.exceptions.Timeout:
+        logger.error("event=timeseries_predict_timeout serving_id=%s", serving.id)
+        return (
+            {"error": message("error.serving_prediction_timeout_exceeded", seconds=proxy_timeout_seconds)},
+            status.HTTP_504_GATEWAY_TIMEOUT,
+        )
+    except requests.exceptions.ConnectionError as exc:
+        logger.error("event=timeseries_predict_connection_failed serving_id=%s error_type=%s", serving.id, type(exc).__name__)
+        return (
+            {"error": message("error.serving_prediction_connection_failed", detail=str(exc))},
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+        )
+    except requests.exceptions.RequestException as exc:
+        logger.error(
+            "event=timeseries_predict_request_failed serving_id=%s error_type=%s",
+            serving.id,
+            type(exc).__name__,
+            exc_info=True,
+        )
+        return (
+            {"error": message("error.serving_prediction_request_failed", detail=str(exc))},
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+    except Exception as exc:
+        logger.error(
+            "event=timeseries_predict_failed serving_id=%s error_type=%s",
+            serving.id,
+            type(exc).__name__,
+            exc_info=True,
+        )
+        return (
+            {"error": message("error.serving_prediction_failed", detail=str(exc))},
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+
 class TimeSeriesPredictServingViewSet(TeamModelViewSet):
     queryset = TimeSeriesPredictServing.objects.select_related("train_job", "train_job__dataset_version", "train_job__dataset_version__dataset").all()
     serializer_class = TimeSeriesPredictServingSerializer
@@ -1053,9 +1157,7 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
                 )
                 serving.save(update_fields=["container_info"])
                 response.data["container_info"] = serving.container_info
-                response.data["message"] = mlops_message(
-                        request, "message.serving_created_start_failed", detail=mlops_exception_message(request, e)
-                    )
+                response.data["message"] = mlops_message(request, "message.serving_created_start_failed", detail=mlops_exception_message(request, e))
                 return response
 
             # 构建 serving ID
@@ -1324,9 +1426,7 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
                                 max_recursive_feature_engineering_work=recursive_feature_work_limit,
                             )
                             rollback_port = int(rollback_result.get("port", 0)) if rollback_result.get("port") else old_port
-                            rollback_message = mlops_message(
-                                request, "message.config_rolled_back_old_service_restored_after_delete"
-                            )
+                            rollback_message = mlops_message(request, "message.config_rolled_back_old_service_restored_after_delete")
                         except Exception as rollback_error:
                             logger.error(f"对账后恢复旧 serving 失败: {rollback_error}", exc_info=True)
                             rollback_result = {
@@ -1710,128 +1810,20 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
     @action(detail=True, methods=["post"], url_path="predict")
     @HasPermission("timeseries_predict-Predict")
     def predict(self, request, *args, **kwargs):
-        """
-        调用 serving 服务进行时间序列预测
+        """调用 serving 服务进行时间序列预测。
 
         URL: POST /api/v1/mlops/timeseries_predict_servings/{pk}/predict/
-
-        请求参数:
-            url: 预测服务主机地址（如 http://192.168.1.100，不含端口）
-            data: 历史时间序列数据数组 [{"timestamp": "...", "value": ...}, ...]
-            config: { "steps": 预测步长 }
-
-        返回格式:
-            预测服务的响应（通常为 {"success": true, "history": [...], "prediction": [...], "metadata": {...}, "error": null}）
         """
-        try:
-            serving = self.get_object()
-
-            # 获取参数
-            data = request.data.get("data")
-            config = request.data.get("config", {})
-            steps = config.get("steps", 5)
-
-            # 参数校验
-            if not data:
-                return Response({"error": mlops_message(request, "error.predict_input_required", field="data")}, status=status.HTTP_400_BAD_REQUEST)
-
-            if not isinstance(data, list):
-                return Response(
-                    {"error": mlops_message(request, "error.predict_input_must_be_array", field="data")}, status=status.HTTP_400_BAD_REQUEST
-                )
-
-            max_batch_size = int(os.getenv("MLOPS_PREDICT_MAX_BATCH_SIZE", "10000"))
-            if len(data) > max_batch_size:
-                return Response(
-                    {"error": mlops_message(request, "error.predict_batch_limit_exceeded", limit=max_batch_size, count=len(data))},
-                    status=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-                )
-
-            try:
-                predict_url = build_predict_url(
-                    serving_id=f"TimeseriesPredict_Serving_{serving.id}",
-                    container_info=serving.container_info,
-                )
-            except ValueError as e:
-                return Response(
-                    {"error": mlops_message(request, str(e))},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-
-            # 构建请求体
-            payload = {"data": data, "config": {"steps": steps}}
-            proxy_timeout_seconds = get_timeseries_predict_timeout_seconds()
-
-            # 发起 HTTP POST 请求
-            response = requests.post(
-                predict_url,
-                json=payload,
-                timeout=proxy_timeout_seconds,
-                headers={"Content-Type": "application/json"},
-            )
-
-            # 处理响应
-            if response.status_code == 200:
-                result = response.json()
-
-                # 检查业务层面的 success 状态
-                if result.get("success") is False:
-                    # 预测服务返回失败
-                    error_info = result.get("error") or {}
-                    error_code = error_info.get("code", "UNKNOWN")
-                    error_message = error_info.get("message") or mlops_message(request, "error.prediction_failed")
-
-                    logger.error(f"预测服务返回失败: serving_id={serving.id}, code={error_code}, message={error_message}")
-                    return Response(
-                        {
-                            "error": error_message,
-                            "code": error_code,
-                            "error_code": error_code,
-                            "details": error_info.get("details"),
-                        },
-                        status=status.HTTP_400_BAD_REQUEST,
-                    )
-
-                # 预测成功
-                return Response(result)
-            else:
-                error_msg = mlops_message(request, "error.serving_prediction_service_error", status_code=response.status_code)
-                logger.error(f"{error_msg}, serving_id={serving.id}")
-                return Response(
-                    {"error": error_msg, "detail": response.text},
-                    status=map_predict_upstream_status(response.status_code),
-                )
-
-        except requests.exceptions.Timeout:
-            logger.error(f"预测超时: serving_id={serving.id}, url={predict_url}")
-            return Response(
-                {
-                    "error": mlops_message(
-                        request,
-                        "error.serving_prediction_timeout_exceeded",
-                        seconds=proxy_timeout_seconds,
-                    )
-                },
-                status=status.HTTP_504_GATEWAY_TIMEOUT,
-            )
-        except requests.exceptions.ConnectionError as e:
-            logger.error(f"预测连接失败: serving_id={serving.id}, url={predict_url}, error={e}")
-            return Response(
-                {"error": mlops_message(request, "error.serving_prediction_connection_failed", detail=str(e))},
-                status=status.HTTP_503_SERVICE_UNAVAILABLE,
-            )
-        except requests.exceptions.RequestException as e:
-            logger.error(f"预测请求异常: serving_id={serving.id}, error={e}", exc_info=True)
-            return Response(
-                {"error": mlops_message(request, "error.serving_prediction_request_failed", detail=str(e))},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
-        except Exception as e:
-            logger.error(f"预测失败: serving_id={serving.id}, error={str(e)}", exc_info=True)
-            return Response(
-                {"error": mlops_message(request, "error.serving_prediction_failed", detail=str(e))},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
+        serving = self.get_object()
+        config = request.data.get("config") or {}
+        steps = config.get("steps", 5)
+        body, http_status = execute_timeseries_predict(
+            serving,
+            request.data.get("data"),
+            steps,
+            lambda key, **values: mlops_message(request, key, **values),
+        )
+        return Response(body, status=http_status)
 
     def _resolve_model_uri(self, serving):
         """

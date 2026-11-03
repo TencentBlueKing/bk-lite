@@ -9,10 +9,7 @@ from apps.log.services.alert_lifecycle_notify import LogAlertLifecycleNotifier
 from apps.system_mgmt.models.channel import Channel
 
 _RESPONSE_BODY_SENTINEL = "SYNTHETIC_RESPONSE_BODY_SENTINEL\nsecond_line"
-_LIFECYCLE_FAILURE_LOG = (
-    "event=lifecycle_notify_failed policy_id=%s alert_id=%s action=%s "
-    "attempt=%s failed_stage=send error_type=%s"
-)
+_LIFECYCLE_FAILURE_LOG = "event=lifecycle_notify_failed policy_id=%s alert_id=%s action=%s " "attempt=%s failed_stage=send error_type=%s"
 
 pytestmark = [pytest.mark.django_db, pytest.mark.integration]
 
@@ -121,7 +118,30 @@ def test_build_created_event_uses_current_policy_and_log_event(alert_center_chan
             "log_alert_id": alert.id,
             "status": "new",
         },
+        "samples": [],
+        "search_url": "",
+        "aggregate_result": None,
     }
+
+
+def test_created_event_includes_truncated_samples_and_search_url(alert_center_channel):
+    policy = _make_policy(alert_center_channel)
+    policy.log_groups = ["g1"]
+    alert, event = _make_alert_event(policy)
+    event.raw_data = {
+        "aggregate_result": {"count": 3, "count_rate": 0.5, "count_delta": -2},
+        "samples": [{"message": "x" * 250}, {"_msg": "second\nline"}],
+        "jump_query": {"query": "level:error", "window_start": 100, "window_end": 160},
+    }
+
+    payload = LogAlertLifecycleNotifier(policy).build_created_event(event)
+
+    assert payload["aggregate_result"]["count"] == 3
+    assert payload["samples"] == ["x" * 200 + "…", "second line"]
+    assert "startTime=100000" in payload["search_url"]
+    assert "endTime=160000" in payload["search_url"]
+    assert "log_groups=g1" in payload["search_url"]
+    assert alert.id == payload["external_id"]
 
 
 def test_created_and_closed_events_use_same_alert_resource_identity(alert_center_channel):
@@ -161,6 +181,31 @@ def test_build_closed_event_uses_stable_close_time_and_operator(alert_center_cha
     assert payload["end_time"] == expected_time
     assert payload["labels"]["status"] == "closed"
     assert payload["labels"]["operator"] == "admin"
+
+
+def test_recovered_event_matches_closed_contract(alert_center_channel, mocker):
+    policy = _make_policy(alert_center_channel, alert_type="aggregate")
+    alert, _event = _make_alert_event(policy)
+    recovered_at = datetime(2026, 10, 29, 3, 4, 5, tzinfo=timezone.utc)
+    alert.status = "recovered"
+    alert.end_event_time = recovered_at
+    alert.operator = ""
+    alert.save(update_fields=["status", "end_event_time", "operator"])
+    send = mocker.patch(
+        "apps.log.services.alert_lifecycle_notify.SystemMgmtUtils.send_msg_with_channel",
+        return_value={"result": True},
+    )
+
+    notifier = LogAlertLifecycleNotifier(policy)
+    payload = notifier.build_recovered_event(alert)
+    closed = notifier.build_closed_event(alert)
+    assert set(payload) == set(closed)
+    assert payload["action"] == "recovered"
+    assert payload["value"] is None
+    assert payload["labels"]["operator"] == ""
+    success, _result = notifier.notify_recovered(alert, max_attempts=1)
+    assert success is True
+    assert send.call_args.args[2]["events"][0]["action"] == "recovered"
 
 
 @pytest.mark.parametrize(
@@ -237,11 +282,7 @@ def test_notify_created_retries_exception_without_leaking_payload(alert_center_c
 
 
 def _failure_records(caplog):
-    return [
-        record
-        for record in caplog.records
-        if record.name == "log" and record.msg == _LIFECYCLE_FAILURE_LOG
-    ]
+    return [record for record in caplog.records if record.name == "log" and record.msg == _LIFECYCLE_FAILURE_LOG]
 
 
 def _capture_notify_logs(caplog):

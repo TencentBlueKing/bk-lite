@@ -1,4 +1,6 @@
 import useApiClient from '@/utils/request';
+import type { CanvasType } from '@/app/ops-analysis/constants/canvasTypes';
+import { canvasImportUpdatePath } from '@/app/ops-analysis/utils/canvasImportUpdate';
 
 export type ObjectType =
   | 'dashboard'
@@ -107,6 +109,20 @@ export interface ImportSubmitResponse {
   summary: ImportSummary;
 }
 
+export interface ImportUpdateRequest {
+  object_type: CanvasType;
+  object_id: number;
+  yaml_content: string;
+}
+
+export interface ImportUpdateResponse {
+  canvas_id: number;
+  name: string;
+  desc: string;
+  object_type: CanvasType;
+  summary: ImportSummary;
+}
+
 export const useImportExportApi = () => {
   const { post } = useApiClient();
 
@@ -120,6 +136,12 @@ export const useImportExportApi = () => {
 
   const importSubmit = async (params: ImportSubmitRequest): Promise<ImportSubmitResponse> => {
     return post('/operation_analysis/api/import_export/import/submit/', params);
+  };
+
+  const importUpdateCanvas = async (params: ImportUpdateRequest): Promise<ImportUpdateResponse> => {
+    return post(canvasImportUpdatePath(params.object_type, params.object_id), {
+      yaml_content: params.yaml_content,
+    });
   };
 
   const downloadYaml = (content: string, filename: string) => {
@@ -138,6 +160,7 @@ export const useImportExportApi = () => {
     exportObjects,
     importPrecheck,
     importSubmit,
+    importUpdateCanvas,
     downloadYaml,
   };
 };

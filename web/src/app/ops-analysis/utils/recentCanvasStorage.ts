@@ -107,6 +107,41 @@ export const recordRecentCanvas = (
   return next;
 };
 
+export const renameRecentCanvas = (
+  storage: Pick<StorageLike, 'getItem' | 'setItem'> | null,
+  canvas: { id: string; dataId: string; type: CanvasType; name: string },
+): RecentCanvasRecord[] => {
+  const current = readRecentCanvases(storage);
+  const name = String(canvas.name ?? '').trim();
+  if (!storage || !name || !isCanvasType(canvas.type)) {
+    return current;
+  }
+
+  const dataId = String(canvas.dataId ?? '');
+  const id = String(canvas.id ?? '');
+  let changed = false;
+  const next = current.map((record) => {
+    const sameCanvas =
+      (id && record.id === id) ||
+      (dataId && record.dataId === dataId && record.type === canvas.type);
+    if (!sameCanvas || record.name === name) {
+      return record;
+    }
+    changed = true;
+    return { ...record, name };
+  });
+  if (!changed) {
+    return current;
+  }
+
+  try {
+    storage.setItem(RECENT_CANVAS_STORAGE_KEY, JSON.stringify(next));
+  } catch {
+    // Quota/private mode should not block the import-update refresh.
+  }
+  return next;
+};
+
 export const getDisplayRecentCanvases = (
   records: RecentCanvasRecord[],
 ): RecentCanvasRecord[] => records.slice(0, RECENT_CANVAS_DISPLAY_COUNT);

@@ -93,7 +93,7 @@ export default function RumCompliancePage() {
   useRumAuthedEffect(
     authReady,
     (isCancelled) => {
-      void listApplications()
+      void listApplications(true)
         .then((items) => {
           if (isCancelled()) return;
           const names = items.map((item) => item.application).filter(Boolean);

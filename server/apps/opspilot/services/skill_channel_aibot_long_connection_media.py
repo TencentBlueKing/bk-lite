@@ -17,6 +17,7 @@ _FILENAME_RE = re.compile(r"""['"]filename['"]\s*:\s*['"]([^'"]+)['"]""")
 # 企微长连接：普通文件 5 字节到 20MB，单片不超过 512KB，最多 100 片。
 _MIN_FILE_BYTES = 5
 _MAX_FILE_BYTES = 20 * 1024 * 1024
+_MAX_IMAGE_BYTES = 10 * 1024 * 1024
 _CHUNK_BYTES = 512 * 1024
 _MAX_FILENAME_BYTES = 256
 # 与企微 Node SDK 一致：分片失败后再试 2 次（共 3 次）。
@@ -93,9 +94,10 @@ def attachment_from_tool_result(event: dict[str, Any]) -> tuple[str, str] | None
     return filename, matched.group(1)
 
 
-def upload_wecom_file(exchange: Exchange, *, filename: str, content: bytes) -> str:
+def upload_wecom_file(exchange: Exchange, *, filename: str, content: bytes, media_type: str = "file") -> str:
     """分片上传并返回 media_id。exchange 发送一帧并返回企微回执。"""
-    if len(content) < _MIN_FILE_BYTES or len(content) > _MAX_FILE_BYTES:
+    limit = _MAX_IMAGE_BYTES if media_type == "image" else _MAX_FILE_BYTES
+    if len(content) < _MIN_FILE_BYTES or len(content) > limit:
         raise WecomMediaRejected("validate_size", reason="out_of_range")
     chunks = [content[start : start + _CHUNK_BYTES] for start in range(0, len(content), _CHUNK_BYTES)]
     safe_name = _safe_filename(filename)
@@ -105,7 +107,7 @@ def upload_wecom_file(exchange: Exchange, *, filename: str, content: bytes) -> s
             "cmd": "aibot_upload_media_init",
             "headers": {"req_id": uuid.uuid4().hex},
             "body": {
-                "type": "file",
+                "type": media_type,
                 "filename": safe_name,
                 "total_size": len(content),
                 "total_chunks": len(chunks),

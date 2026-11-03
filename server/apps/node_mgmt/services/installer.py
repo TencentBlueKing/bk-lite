@@ -4,11 +4,12 @@ from asgiref.sync import async_to_sync
 from django.db import transaction
 from django.db.models import Q
 
-from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.core.exceptions.base_app_exception import BaseAppException, ValidationAppException
 from apps.core.utils.crypto.aes_crypto import AESCryptor
 from apps.node_mgmt.constants.database import DatabaseConstants
 from apps.node_mgmt.constants.installer import InstallerConstants
 from apps.node_mgmt.constants.node import NodeConstants
+from apps.node_mgmt.constants.package import PackageConstants
 from apps.node_mgmt.models import Node, PackageVersion, SidecarEnv
 from apps.node_mgmt.models.installer import CollectorTask, CollectorTaskNode, ControllerTask, ControllerTaskNode
 from apps.node_mgmt.services.install_token import InstallTokenService
@@ -89,6 +90,71 @@ class InstallerService:
         raise BaseAppException(
             f"No package found for os={package_obj.os}, object={package_obj.object}, version={package_obj.version}, arch={normalized_arch}"
         )
+
+    @staticmethod
+    def match_collector_package(package_obj: PackageVersion | None, target_os: str, cpu_architecture: str) -> PackageVersion:
+        """返回与目标节点 OS、CPU 架构一致的采集器包。
+
+        解析失败、操作系统不一致或架构不一致时直接拒绝。空架构不再退回种子包，
+        因此 Linux 节点不会装上 Windows 包。x86_64 仍接受同系统的历史空架构包。
+        """
+        if package_obj is None:
+            raise ValidationAppException("Package version not found")
+        if package_obj.type != PackageConstants.TYPE_COLLECTOR:
+            raise ValidationAppException("Package is not a collector package")
+        if target_os not in {NodeConstants.LINUX_OS, NodeConstants.WINDOWS_OS}:
+            raise ValidationAppException(f"Unsupported operating system: {target_os}")
+
+        normalized_arch = normalize_cpu_architecture(cpu_architecture)
+        if not normalized_arch:
+            raise ValidationAppException(f"Missing or unsupported CPU architecture for os={target_os}")
+        if target_os == NodeConstants.WINDOWS_OS and normalized_arch != NodeConstants.X86_64_ARCH:
+            raise ValidationAppException(f"Unsupported CPU architecture for os={target_os}: {normalized_arch}")
+        if package_obj.os != target_os:
+            raise ValidationAppException(
+                f"Collector package operating system mismatch: package={package_obj.os}, target={target_os}"
+            )
+
+        resolved = PackageService.resolve_package_by_architecture(package_obj.id, normalized_arch)
+        if resolved is None or resolved.os != target_os:
+            raise ValidationAppException(
+                f"No collector package found for os={target_os}, object={package_obj.object}, "
+                f"version={package_obj.version}, arch={normalized_arch}"
+            )
+
+        resolved_arch = normalize_cpu_architecture(resolved.cpu_architecture)
+        legacy_x86 = not resolved.cpu_architecture and normalized_arch == NodeConstants.X86_64_ARCH
+        if resolved_arch != normalized_arch and not legacy_x86:
+            raise ValidationAppException(
+                f"Collector package architecture mismatch: package={resolved.os}/{resolved.cpu_architecture or 'unknown'}, "
+                f"target={target_os}/{normalized_arch}"
+            )
+        return resolved
+
+    @staticmethod
+    def _collector_install_nodes(node_ids) -> tuple[str, str, list[Node]]:
+        requested_ids: list[str] = []
+        seen: set[str] = set()
+        for node_id in node_ids or []:
+            if node_id in (None, ""):
+                continue
+            node_key = str(node_id)
+            if node_key in seen:
+                continue
+            seen.add(node_key)
+            requested_ids.append(node_key)
+
+        nodes = list(Node.objects.filter(id__in=requested_ids))
+        if not requested_ids or len(nodes) != len(requested_ids):
+            raise ValidationAppException("Node not found")
+
+        operating_systems = {node.operating_system for node in nodes}
+        architectures = {normalize_cpu_architecture(node.cpu_architecture) for node in nodes}
+        if len(operating_systems) != 1:
+            raise ValidationAppException("Selected nodes must share the same operating system")
+        if len(architectures) != 1:
+            raise ValidationAppException("Selected nodes must share the same CPU architecture")
+        return operating_systems.pop(), architectures.pop(), nodes
 
     @staticmethod
     def installer_metadata(target_os: str, cpu_architecture: str = "") -> dict:
@@ -449,17 +515,20 @@ class InstallerService:
     @staticmethod
     def install_collector(collector_package, nodes):
         """安装采集器"""
+        target_os, target_arch, node_rows = InstallerService._collector_install_nodes(nodes)
+        package_obj = PackageVersion.objects.filter(id=collector_package).first()
+        resolved_package = InstallerService.match_collector_package(package_obj, target_os, target_arch)
         task_obj = CollectorTask.objects.create(
             type="install",
             status="waiting",
-            package_version_id=collector_package,
+            package_version_id=resolved_package.id,
         )
         creates = []
-        for node_id in nodes:
+        for node in node_rows:
             creates.append(
                 CollectorTaskNode(
                     task_id=task_obj.id,
-                    node_id=node_id,
+                    node_id=node.id,
                     status="waiting",
                 )
             )

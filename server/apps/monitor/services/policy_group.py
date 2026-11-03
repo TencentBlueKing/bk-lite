@@ -298,11 +298,86 @@ def _is_multi_policy(policy):
     return query.get("type") == "multi"
 
 
+def _mirror_multi_anchor(policy, query, update_fields):
+    """多条件保存时，策略行跟随第一条条件，与单策略保存一致。
+
+    返回这些字段相对当前策略行是否有变化。调用方据此结束尚未恢复的告警。
+    """
+    from apps.monitor.expression.errors import FormulaError
+    from apps.monitor.expression.validators import validate_multi_condition
+    from apps.monitor.serializers.monitor_policy import MonitorPolicySerializer
+
+    query = copy.deepcopy(query)
+    try:
+        validate_multi_condition(query)
+    except FormulaError as exc:
+        raise ValidationAppException(str(exc)) from exc
+    errors = {}
+    MonitorPolicySerializer()._validate_multi_condition_metrics(query, errors)
+    if errors:
+        raise ValidationAppException(str(errors.get("query_condition") or "多指标条件不合法"))
+    attrs = {}
+    MonitorPolicySerializer(instance=policy)._mirror_multi_anchor_fields(attrs, query)
+    changed = False
+    for key, value in attrs.items():
+        stored = copy.deepcopy(value) if isinstance(value, (dict, list)) else value
+        if not _json_equal(getattr(policy, key), stored):
+            changed = True
+        setattr(policy, key, stored)
+        update_fields.append(key)
+    return changed
+
+
 def _enable_alerts_with_no_data(enable_alerts, enabled):
     current = [item for item in (enable_alerts or []) if item != AlertConstants.NO_DATA]
     if enabled:
         current.append(AlertConstants.NO_DATA)
     return current
+
+
+def _assign_rule_editor_no_data(policy, prepared, update_fields):
+    """把这条规则自己的无数据写到策略上。没有 no_data 时保持原值。"""
+    was_no_data = AlertConstants.NO_DATA in (policy.enable_alerts or [])
+    if "no_data" not in prepared:
+        return was_no_data, was_no_data, False
+    validated_no_data = _validate_no_data(prepared.get("no_data"))
+    no_data_enabled = validated_no_data["enabled"]
+    policy.enable_alerts = _enable_alerts_with_no_data(policy.enable_alerts, no_data_enabled)
+    update_fields.append("enable_alerts")
+    if no_data_enabled:
+        policy.no_data_period = copy.deepcopy(validated_no_data["period"])
+        policy.no_data_level = validated_no_data["level"]
+        policy.no_data_alert_name = validated_no_data["alert_name"]
+        policy.no_data_recovery_period = copy.deepcopy(validated_no_data["recovery_period"])
+    elif was_no_data:
+        policy.no_data_period = {}
+        policy.no_data_level = ""
+        policy.no_data_alert_name = ""
+        policy.no_data_recovery_period = {}
+    if no_data_enabled or was_no_data:
+        update_fields.extend(["no_data_period", "no_data_level", "no_data_alert_name", "no_data_recovery_period"])
+    return no_data_enabled, was_no_data, was_no_data and not no_data_enabled
+
+
+def _sync_rule_editor_baselines(
+    policy, *, operator, closes_alerts, closes_no_data, no_data_enabled, was_no_data, old_query, old_group_by, old_source
+):
+    """关掉无数据时清基准；打开或指标范围变了才重建。只改窗口不重建。"""
+    from apps.monitor.services.policy_baseline import PolicyBaselineService
+
+    baseline_changed = (
+        not _json_equal(old_query, policy.query_condition)
+        or not _json_equal(old_group_by, policy.group_by)
+        or not _json_equal(old_source, policy.source)
+    )
+    if closes_no_data and not closes_alerts:
+        no_data_alerts = list(MonitorAlert.objects.filter(policy_id=policy.id, alert_type=AlertConstants.NO_DATA, status="new"))
+        PolicyGroupService._publish_closed_alerts(no_data_alerts, [policy], operator, "no_data_disabled")
+    if closes_no_data:
+        PolicyBaselineService(policy).clear()
+        return
+    if no_data_enabled and (not was_no_data or baseline_changed):
+        PolicyBaselineService(policy).refresh()
 
 
 class PolicyGroupService:
@@ -879,7 +954,7 @@ class PolicyGroupService:
 
     @staticmethod
     def apply_rule_editor(rule, payload, operator="system"):
-        """写入这条规则自己的名称、指标和告警条件。组织、实例范围、频率、无数据和通知保持原值。"""
+        """写入这条规则自己的名称、指标、告警条件和无数据。组织、实例范围、频率和通知保持原值。"""
         if not isinstance(payload, dict):
             raise ValidationAppException("规则内容无效")
         with transaction.atomic():
@@ -889,6 +964,9 @@ class PolicyGroupService:
             closes_alerts = False
             update_fields = ["updated_by", "updated_at"]
             prepared = dict(payload)
+            old_query = copy.deepcopy(policy.query_condition)
+            old_group_by = copy.deepcopy(policy.group_by)
+            old_source = copy.deepcopy(policy.source)
             plugin = None
             if "collect_type" in prepared:
                 prepared["collect_type"], plugin = _editor_collect_type(rule, policy, prepared.get("collect_type"))
@@ -917,6 +995,10 @@ class PolicyGroupService:
                     closes_alerts = True
                 setattr(policy, field, copy.deepcopy(value) if isinstance(value, (dict, list)) else value)
                 update_fields.append(field)
+            prepared_query = prepared.get("query_condition")
+            if isinstance(prepared_query, dict) and prepared_query.get("type") == "multi":
+                if _mirror_multi_anchor(policy, prepared_query, update_fields):
+                    closes_alerts = True
             rule_fields = []
             if plugin is not None:
                 closes_alerts = True
@@ -948,6 +1030,7 @@ class PolicyGroupService:
                 rule_fields.append("name")
                 policy.name = name
                 update_fields.append("name")
+            no_data_enabled, was_no_data, closes_no_data = _assign_rule_editor_no_data(policy, prepared, update_fields)
             if rule_fields:
                 rule.updated_by = operator
                 rule.save(update_fields=[*dict.fromkeys(rule_fields), "updated_by", "updated_at"])
@@ -956,7 +1039,18 @@ class PolicyGroupService:
             if closes_alerts:
                 alerts = list(MonitorAlert.objects.filter(policy_id=policy.id, status="new"))
                 PolicyGroupService._publish_closed_alerts(alerts, [policy], operator, "policy_group_rule_changed")
-            return closes_alerts
+            _sync_rule_editor_baselines(
+                policy,
+                operator=operator,
+                closes_alerts=closes_alerts,
+                closes_no_data=closes_no_data,
+                no_data_enabled=no_data_enabled,
+                was_no_data=was_no_data,
+                old_query=old_query,
+                old_group_by=old_group_by,
+                old_source=old_source,
+            )
+            return {"closes_alerts": closes_alerts, "closes_no_data": closes_no_data and not closes_alerts}
 
     @staticmethod
     def update_detection(group, *, schedule=None, no_data=None, operator="system"):

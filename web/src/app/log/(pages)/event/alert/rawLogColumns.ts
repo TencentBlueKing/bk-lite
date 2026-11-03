@@ -23,8 +23,14 @@ export const buildLogAlertRawColumns = ({
   rawData = [],
   renderTime
 }: BuildLogAlertRawColumnsParams): ColumnItem[] => {
-  if (isAggregate && rawData.length) {
-    return Object.keys(rawData[0] || {})
+  const firstRow = rawData[0] || {};
+  const aggregateStatsRow =
+    isAggregate &&
+    rawData.length > 0 &&
+    !('message' in firstRow) &&
+    !('_msg' in firstRow);
+  if (aggregateStatsRow) {
+    return Object.keys(firstRow)
       .filter((item) => item !== 'id')
       .map((item) => ({
         title: item,

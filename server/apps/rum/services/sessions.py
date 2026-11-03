@@ -99,14 +99,18 @@ class SessionsService:
             )
             return empty_session_list(reason="analytics")
         if self.replay_index.available() and page.get("sessions"):
+            ready = self._ready_sessions(page["sessions"])
             replayed = 0
             for row in page["sessions"]:
-                has = self.replay_index.has_ready(row.get("application", ""), row.get("sessionId", ""))
+                has = _session_pair(row) in ready
                 row["hasReplay"] = has
                 if has:
                     replayed += 1
             page.setdefault("summary", {})["replayed"] = replayed
         return page
+
+    def _ready_sessions(self, rows: list[dict]) -> set[tuple[str, str]]:
+        return self.replay_index.ready_sessions([_session_pair(row) for row in rows])
 
     def _list_replay_sessions(self, opts: dict) -> dict:
         page_limit = int(opts.get("limit") or 0) or 200
@@ -125,6 +129,7 @@ class SessionsService:
             if not rows:
                 exhausted = True
                 break
+            ready = self._ready_sessions(rows)
             for row in rows:
                 if scanned >= 2000:
                     truncated = True
@@ -132,7 +137,7 @@ class SessionsService:
                 if len(matched) >= needed:
                     break
                 scanned += 1
-                has = self.replay_index.has_ready(row.get("application", ""), row.get("sessionId", ""))
+                has = _session_pair(row) in ready
                 row["hasReplay"] = bool(has)
                 if has:
                     matched.append(row)
@@ -286,3 +291,7 @@ class SessionsService:
         if not claims:
             raise ControlError("forbidden", "invalid or expired replay segment token")
         return claims
+
+
+def _session_pair(row: dict) -> tuple[str, str]:
+    return (row.get("application") or "", row.get("sessionId") or "")

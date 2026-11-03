@@ -2,7 +2,7 @@
 
 本文档说明 `server/apps/system_mgmt/providers/` 下 Provider 的实现约定、Manifest schema、能力 adapter 契约和验证方式。
 
-Provider 是随服务代码发布、在 Django 进程内运行的 Python 包。当前实现以 `builtin/` 为唯一自动扫描目录；新增 Provider 应放入 `builtin/<provider_key>/`，不应依赖其他目录被自动发现。
+Provider 是在 Django 进程内运行的 Python 包。镜像内的类型放在 `builtin/<provider_key>/`，由加载器自动扫描。企业版还可以把同一份目录打成 zip，在集成中心「Provider 包」页上传，见第 14 节。上传包不会替换同名内置类型。
 
 ## 1. 架构概览
 
@@ -50,8 +50,9 @@ server/apps/system_mgmt/providers/pack_i18n.py
 | `ad` | `login_auth`、`user_sync` |
 | `feishu` | `login_auth`、`user_sync`、`im_notification` |
 | `wechat` | `login_auth` |
-| `wecom` | `login_auth`、`user_sync`、`im_notification` |
-系统管理标准业务能力最多包括三种：`login_auth`（登录认证）、`user_sync`（用户同步）和 `im_notification`（IM 通知）。其他模块可以按需为对应 Provider 增加额外 capability；额外 capability 的业务契约由消费模块维护，不纳入本文。
+| `wecom` | `login_auth`、`user_sync`、`im_notification`、`im_group` |
+
+系统管理标准业务能力包括 `login_auth`（登录认证）、`user_sync`（用户同步）和 `im_notification`（IM 通知）。`im_group` 等额外 capability 的业务契约由消费模块维护，不纳入本文。
 
 ## 2. Provider 目录结构
 
@@ -638,6 +639,8 @@ phone        <- mobile
 
 外部字段不一致时，应通过 `field_mapping` 和 `available_external_fields` 支持，不要把字段名硬编码到平台服务中。
 
+档案、禁用和自定义字段同样走这张映射。平台按外部字段名读取 `user_list` 上的字符串，不解析嵌套对象。外部值如果是对象或列表，适配器先展成非空字符串再放进用户记录；与身份字段同名的键不要覆盖。`available_external_fields` 只提示稳定标准键。租户自己的自定义字段名由管理员填写，不必写进这份静态列表。
+
 如需兼容历史配置，可以覆盖：
 
 ```python
@@ -904,4 +907,42 @@ server/apps/system_mgmt/services/login_auth_binding_service.py
 server/apps/system_mgmt/services/user_sync_service.py
 server/apps/system_mgmt/services/im_notification_service.py
 server/apps/system_mgmt/providers/builtin/
+enterprise/server/apps/system_mgmt/enterprise/provider_pack_archive.py
+enterprise/server/apps/system_mgmt/enterprise/viewset/provider_pack_viewset.py
 ```
+
+## 14. 企业版上传包
+
+企业版集成中心可以上传 zip，不必把包打进镜像。社区版没有这个入口。包在服务进程内导入执行，上传前必须审查；加载过程不会安装新依赖。
+
+zip 有两种合法布局。推荐单层目录，目录里就是包：
+
+```text
+wecom/
+├── __init__.py
+├── manifest.py
+├── language/
+│   ├── en.yaml
+│   └── zh-Hans.yaml
+└── adapters/
+    ├── __init__.py
+    ├── client.py
+    ├── base_connection.py
+    └── ...
+```
+
+也可以把 `__init__.py` 放在 zip 根上，不要再套一层。压缩包里不要包含 `__pycache__`、`.pyc`。压缩前体积和解压后总体积都不能超过 10MB。路径必须是相对路径，不能含 `..`。
+
+上传的 `manifest.key` 不能与当时镜像里的内置目录名相同。内置目录里已经有 `wecom` 时，同 key 的上传会被拒绝。
+
+打包时保持这些约定：
+
+- `__init__.py` 只导出 `PROVIDER_MANIFEST`。
+- `manifest.key` 是上传后的 provider 身份。内置目录名必须等于该 key；上传包以 Manifest 里的 key 为准。
+- `adapter_path`、`base_connection_adapter_path` 写包内相对路径，例如 `adapters.login_auth.WeComLoginAuthAdapter`。
+- `adapter_key` 以 `{manifest.key}.` 开头。
+- 可以 import `apps.system_mgmt.providers.schemas`、`base`、`runtime`、`log`。这是宿主提供的契约，不是包内代码。
+- 包内模块互相引用用相对导入。
+- 语言文件仍是 `language/en.yaml` 与 `language/zh-Hans.yaml`。
+
+上传入口在企业版集成中心「Provider 包」页，接口接收字段 `file` 或 `archive`。新 key 直接生效。同 key 再次上传且不带确认时返回 409；确认更换后覆盖包体，该 key 下已有实例打回待验证，登录绑定、用户同步源和 IM 通道保留。有实例时不能卸载。加载失败的包仍留在列表里，不能用来新建实例。

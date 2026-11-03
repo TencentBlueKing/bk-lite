@@ -1,6 +1,7 @@
 from django.db import IntegrityError
-from rest_framework import mixins
+from rest_framework import mixins, status
 from rest_framework.decorators import action
+from rest_framework.response import Response
 from rest_framework.viewsets import GenericViewSet
 
 from apps.core.exceptions.base_app_exception import BaseAppException, ValidationAppException
@@ -51,11 +52,14 @@ class PackageMgmtView(
         require_package_write_permission(request, package_type, action)
 
     def destroy(self, request, *args, **kwargs):
-        # 删除文件，成功了再删除数据
+        # 删除文件，成功了再删除数据。
+        # delete_file 会把 status 标成 deleting；get_queryset 只含 ready，
+        # 不能再走 super().destroy() 二次 get_object()，否则 404 且行删不掉。
         obj = self.get_object()
         self._require_write_permission(request, obj.type, "destroy")
         PackageService.delete_file(obj)
-        return super().destroy(request, *args, **kwargs)
+        self.perform_destroy(obj)
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
     def create(self, request, *args, **kwargs):
         uploaded_file = request.FILES.get("file")

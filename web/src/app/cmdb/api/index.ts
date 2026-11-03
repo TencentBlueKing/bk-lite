@@ -4,6 +4,7 @@ export { useInstanceApi } from './instance';
 export { useChangeRecordApi } from './changeRecord';
 export { useOidApi } from './oid';
 export { usePortFingerprintApi, type PortFingerprintItem } from './portFingerprint';
+export { useProcessFingerprintApi, type ProcessFingerprintItem } from './processFingerprint';
 export { useCollectApi } from './collect';
 export { useScanApi } from './scan';
 export { useNodeMgmtSyncApi } from './nodeMgmtSync';

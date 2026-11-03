@@ -70,6 +70,13 @@ export const useSkillApi = () => {
     return get('/opspilot/model_provider_mgmt/skill_tools/');
   };
 
+  const fetchTimeseriesPredictServings = async (): Promise<{ id: number; name: string }[]> => {
+    const res = await get('/opspilot/model_provider_mgmt/skill_tools/timeseries_predict_servings/');
+    const payload = res?.data ?? res;
+    const items = Array.isArray(payload?.items) ? payload.items : [];
+    return items.map((item: { id: number; name: string }) => ({ id: item.id, name: item.name }));
+  };
+
   const testRedisConnection = async (instance: Omit<RedisInstanceFormValue, 'testStatus'>): Promise<void> => {
     await post('/opspilot/model_provider_mgmt/skill_tools/test_redis_connection/', instance);
   };
@@ -243,6 +250,7 @@ export const useSkillApi = () => {
     fetchLlmModels,
     saveSkillDetail,
     fetchSkillTools,
+    fetchTimeseriesPredictServings,
     testRedisConnection,
     testMysqlConnection,
     testOracleConnection,

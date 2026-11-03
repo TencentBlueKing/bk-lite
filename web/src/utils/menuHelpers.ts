@@ -228,6 +228,48 @@ export const getClosestAncestorMenuItems = (
   return filterVisibleMenuItems(matchedMenu?.children);
 };
 
+const MONITOR_POLICY_GROUP_MENU_URL = '/monitor/event/policy-group';
+
+interface SegmentMenu {
+  url?: string;
+  name?: string;
+}
+
+/**
+ * 组内规则编辑复用单策略页面。页签按地址会落在单策略上，这时改选策略组。
+ */
+export const resolveSegmentedSelectedUrl = (
+  pathname: string,
+  items: SegmentMenu[],
+  searchType?: string | null,
+): string => {
+  if (searchType === 'groupRule' && pathname.includes('/monitor/event/strategy/')) {
+    const groupUrl = items.find((menu) => menu.url === MONITOR_POLICY_GROUP_MENU_URL)?.url;
+    if (groupUrl) return groupUrl;
+  }
+
+  const exact = items.find((menu) => menu.url === pathname)?.url;
+  if (exact) return exact;
+
+  const prefix = items.find((menu) => menu.url && pathname.startsWith(menu.url))?.url;
+  if (prefix) return prefix;
+
+  const lastSegment = pathname.split('/').filter(Boolean).pop();
+  const byName = lastSegment ? items.find((menu) => menu.name === lastSegment)?.url : undefined;
+  return byName || pathname;
+};
+
+/** 已经停在策略组页签时再点一次，从组内规则编辑回到策略组列表。 */
+export const groupRuleListUrlFromEditor = (
+  pathname: string,
+  searchType: string | null | undefined,
+  monitorObjId: string | null | undefined,
+): string | null => {
+  if (searchType !== 'groupRule' || !pathname.includes('/monitor/event/strategy/')) return null;
+  if (!monitorObjId) return MONITOR_POLICY_GROUP_MENU_URL;
+  return `${MONITOR_POLICY_GROUP_MENU_URL}?objId=${encodeURIComponent(monitorObjId)}`;
+};
+
 /** Colored `zhishiku` is a card glyph; chrome nav uses the line-style top-menu icon. */
 export const resolveMenuIcon = (item: Pick<MenuItem, 'name' | 'icon'>): string => {
   if (item.name === 'wiki_list') {

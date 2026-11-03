@@ -17,7 +17,7 @@ const (
 	defaultAOFTimeout    = 2 * time.Second
 )
 
-var redisSecretPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{32,256}$`)
+var redisSecretPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{16,256}$`)
 
 type Config struct {
 	RedisURL                string        `mapstructure:"redis_url"`
@@ -69,7 +69,7 @@ func (cfg *Config) Validate() error {
 			return errors.New("redis_password_file must be a clean absolute path")
 		}
 	} else if !hasPassword || !redisSecretPattern.MatchString(password) {
-		return errors.New("development redis_url must include a 32-256 character URL-safe password")
+		return errors.New("development redis_url must include a 16-256 character URL-safe password")
 	}
 	if cfg.IdleTimeout != defaultIdleTimeout || cfg.MaximumLength != defaultMaximumLength {
 		return errors.New("idle_timeout and maximum_length are fixed product session boundaries")

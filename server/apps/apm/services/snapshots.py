@@ -8,6 +8,8 @@ from django.utils import timezone
 
 from apps.apm.models import ApmEvent, ApmEventSnapshot, ApmEventSnapshotPayload, ApmPolicy
 from apps.apm.services.contracts import PolicyQueryResult
+from apps.apm.services.metric_snapshots import resolve_result_unit
+from apps.apm.services.policy_conditions import condition_value_map, effective_conditions
 from apps.core.logger import apm_logger as logger
 
 SNAPSHOT_RETENTION_DAYS = 90
@@ -27,20 +29,40 @@ class ApmEventSnapshotStore:
         endpoint: str,
         version: str,
         threshold: dict[str, str] | None,
+        service=None,
+        dependency: str = "",
     ) -> ApmEventSnapshot:
         unit = {
             ApmPolicy.MetricType.ERROR_RATE: "ratio",
+            ApmPolicy.MetricType.SLOW_REQUEST_RATE: "ratio",
+            ApmPolicy.MetricType.APDEX: "ratio",
+            ApmPolicy.MetricType.ERROR_COUNT: "count",
+            ApmPolicy.MetricType.SLOW_REQUEST_COUNT: "count",
+            ApmPolicy.MetricType.P50: "ms",
+            ApmPolicy.MetricType.P75: "ms",
+            ApmPolicy.MetricType.P90: "ms",
             ApmPolicy.MetricType.P95: "ms",
             ApmPolicy.MetricType.P99: "ms",
+            ApmPolicy.MetricType.LATENCY_AVG: "ms",
+            ApmPolicy.MetricType.LATENCY_MAX: "ms",
             ApmPolicy.MetricType.THROUGHPUT: "req/s",
             ApmPolicy.MetricType.NO_TRAFFIC: "req/s",
+            ApmPolicy.MetricType.SLO_BURN_RATE: "x",
         }[policy.metric_type]
+        window_end = result.window_ended_at or event.occurred_at
         series = [
             {
                 "timestamp": point.timestamp.isoformat(),
                 "value": ApmEventSnapshotStore._point_value(policy.metric_type, point),
             }
             for point in result.series[-MAX_SNAPSHOT_POINTS:]
+        ]
+        baseline_series = [
+            {
+                "timestamp": point.timestamp.isoformat(),
+                "value": ApmEventSnapshotStore._point_value(policy.metric_type, point),
+            }
+            for point in result.baseline_series[-MAX_SNAPSHOT_POINTS:]
         ]
         defaults = {
             "alert": event.alert,
@@ -56,21 +78,36 @@ class ApmEventSnapshotStore:
                 "metric_type": policy.metric_type,
                 "evaluation_interval": policy.evaluation_interval,
                 "metric_window": policy.metric_window,
-                "aggregation": policy.aggregation,
                 "thresholds": list(policy.thresholds),
                 "trigger_after": policy.trigger_after,
                 "recover_after": policy.recover_after,
-                "no_data_after": policy.no_data_after,
-                "no_data_severity": policy.no_data_severity,
-                "no_data_alert_name": policy.no_data_alert_name,
+                "compare_mode": policy.compare_mode,
+                "compare_offset_amount": policy.compare_offset_amount,
+                "compare_value_kind": policy.compare_value_kind,
+                "min_request_count": policy.min_request_count,
+                "slow_threshold_ms": policy.slow_threshold_ms,
+                "apdex_threshold_ms": policy.apdex_threshold_ms,
+                "trigger_window": policy.trigger_window,
+                "recovery_threshold": dict(policy.recovery_threshold or {}),
+                "conditions": effective_conditions(policy),
+                "scope_mode": getattr(policy, "scope_mode", None) or "service",
+                "service_ids": [str(item) for item in (getattr(policy, "service_ids", None) or [])],
+                "endpoint_mode": getattr(policy, "endpoint_mode", None) or "service",
+                "instance_mode": getattr(policy, "instance_mode", None) or "all",
+                "target_kind": getattr(policy, "target_kind", None) or "entry",
+                "dependencies": list(getattr(policy, "dependencies", None) or []),
+                "slo": "" if getattr(policy, "slo_id", None) is None else str(policy.slo_id),
+                "burn_long_window_minutes": getattr(policy, "burn_long_window_minutes", None),
+                "burn_short_window_minutes": getattr(policy, "burn_short_window_minutes", None),
             },
             "object_snapshot": {
-                "service_id": str(policy.service_id),
-                "service_namespace": policy.service.namespace,
-                "service_name": policy.service.name,
+                "service_id": str((service or policy.service).id),
+                "service_namespace": (service or policy.service).namespace,
+                "service_name": (service or policy.service).name,
                 "endpoint": endpoint,
                 "environment": policy.environment,
                 "version": version,
+                **({"dependency": dependency} if dependency else {}),
             },
             "evaluation_snapshot": {
                 "value": str(result.value) if result.value is not None else None,
@@ -79,15 +116,19 @@ class ApmEventSnapshotStore:
                 "threshold": threshold.get("value") if threshold else None,
                 "severity": threshold.get("severity") if threshold else event.severity,
                 "data_state": str(result.data_state),
+                "current_value": str(result.current_value) if result.current_value is not None else None,
+                "baseline_value": str(result.baseline_value) if result.baseline_value is not None else None,
+                "result_unit": resolve_result_unit(policy),
+                "condition_values": condition_value_map(result),
             },
             "trace_context": {
-                "service_namespace": policy.service.namespace,
-                "service_name": policy.service.name,
+                "service_namespace": (service or policy.service).namespace,
+                "service_name": (service or policy.service).name,
                 "endpoint": endpoint,
                 "environment": policy.environment,
                 "version": version,
-                "started_at": (event.occurred_at - timedelta(minutes=policy.metric_window)).isoformat(),
-                "ended_at": event.occurred_at.isoformat(),
+                "started_at": (window_end - timedelta(minutes=policy.metric_window)).isoformat(),
+                "ended_at": window_end.isoformat(),
             },
             "pending_payload": {
                 "schema_version": 1,
@@ -95,6 +136,7 @@ class ApmEventSnapshotStore:
                 "event_point": event.occurred_at.isoformat(),
                 "threshold": threshold,
                 "series": series,
+                "baseline_series": baseline_series,
             },
             "retention_expires_at": event.occurred_at + timedelta(days=SNAPSHOT_RETENTION_DAYS),
         }
@@ -117,9 +159,7 @@ class ApmEventSnapshotStore:
             snapshot.save(update_fields=("payload_attempts", "updated_at"))
 
         try:
-            existing_path = (
-                ApmEventSnapshotPayload.objects.filter(snapshot_id=snapshot_id).values_list("data", flat=True).first()
-            )
+            existing_path = ApmEventSnapshotPayload.objects.filter(snapshot_id=snapshot_id).values_list("data", flat=True).first()
             if not existing_path:
                 field = ApmEventSnapshotPayload._meta.get_field("data")
                 uploaded_path = field._upload_to_s3(
@@ -194,9 +234,7 @@ class ApmEventSnapshotStore:
                     continue
                 if snapshot.payload_status == ApmEventSnapshot.PayloadStatus.EXPIRED:
                     continue
-                payload_path = (
-                    ApmEventSnapshotPayload.objects.filter(snapshot=snapshot).values_list("data", flat=True).first()
-                )
+                payload_path = ApmEventSnapshotPayload.objects.filter(snapshot=snapshot).values_list("data", flat=True).first()
             if payload_path:
                 try:
                     ApmEventSnapshotStore._delete_payload_object(payload_path)
@@ -280,10 +318,27 @@ class ApmEventSnapshotStore:
 
     @staticmethod
     def _point_value(metric_type: str, point) -> float | None:
+        if metric_type == ApmPolicy.MetricType.ERROR_COUNT:
+            return None if point.error_count is None else float(point.error_count)
+        if metric_type == ApmPolicy.MetricType.SLOW_REQUEST_COUNT:
+            return None if point.slow_count is None else float(point.slow_count)
+        if metric_type == ApmPolicy.MetricType.SLOW_REQUEST_RATE:
+            if point.slow_count is None or not point.request_count:
+                return None
+            return float(point.slow_count) / float(point.request_count)
+        if metric_type == ApmPolicy.MetricType.APDEX:
+            if point.satisfied_count is None or point.tolerating_count is None or not point.request_count:
+                return None
+            return (point.satisfied_count + point.tolerating_count / 2) / point.request_count
         return {
             ApmPolicy.MetricType.ERROR_RATE: point.error_rate,
+            ApmPolicy.MetricType.P50: point.p50_ms,
+            ApmPolicy.MetricType.P75: point.p75_ms,
+            ApmPolicy.MetricType.P90: point.p90_ms,
             ApmPolicy.MetricType.P95: point.p95_ms,
             ApmPolicy.MetricType.P99: point.p99_ms,
+            ApmPolicy.MetricType.LATENCY_AVG: point.avg_ms,
+            ApmPolicy.MetricType.LATENCY_MAX: point.max_ms,
             ApmPolicy.MetricType.THROUGHPUT: point.request_rate,
             ApmPolicy.MetricType.NO_TRAFFIC: point.request_rate,
         }[metric_type]

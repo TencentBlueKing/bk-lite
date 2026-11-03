@@ -6,6 +6,7 @@ from rest_framework.test import APIClient
 
 from apps.operation_analysis.models.datasource_models import DataSourceAPIModel, NameSpace
 from apps.operation_analysis.models.models import Architecture, Dashboard, Directory, NetworkTopology
+from apps.system_mgmt.models.app import App
 from apps.system_mgmt.models.menu import Menu
 from apps.system_mgmt.models.role import Role
 from apps.system_mgmt.models.user import Group, User
@@ -244,6 +245,35 @@ def test_cross_tenant_visitor_can_exchange_and_read_dashboard(settings, dashboar
     assert detail.data["id"] == dashboard.id
     assert "groups" not in detail.data
     assert "created_by" not in detail.data
+
+
+@pytest.mark.django_db
+def test_share_session_module_apps_follow_sharer_not_visitor(settings, dashboard, sharer, visitor, monkeypatch):
+    settings.DASHBOARD_SHARE_SIGNING_KEY = "test-signing-key-at-least-32-bytes"
+    monkeypatch.setattr("apps.operation_analysis.services.share_service.can_view_canvas", lambda **_: True)
+    App.objects.create(name="cmdb", display_name="CMDB", url="/cmdb")
+    App.objects.create(name="monitor", display_name="Monitor", url="/monitor")
+    cmdb_role = Role.objects.create(name="share-identity-guest", app="cmdb")
+    monitor_role = Role.objects.create(name="share-opener-guest", app="monitor")
+    alice = User.objects.get(username="alice", domain="domain.com")
+    alice.role_list = [cmdb_role.id]
+    # 角色解析按整数组织 ID 走；夹具里的 dict 组列表会让 get_user_all_roles 抛错。
+    alice.group_list = []
+    alice.save(update_fields=["role_list", "group_list"])
+    bob = User.objects.get(username="bob", domain="other.com")
+    bob.role_list = [monitor_role.id]
+    bob.group_list = []
+    bob.save(update_fields=["role_list", "group_list"])
+
+    _, _, detail = _open_share_session(
+        sharer,
+        visitor,
+        f"/api/v1/operation_analysis/api/dashboard/{dashboard.id}/share/",
+        1,
+    )
+
+    assert detail.status_code == 200
+    assert detail.data["authorized_app_names"] == ["cmdb"]
 
 
 def _group_tree_ids(nodes):
@@ -488,6 +518,7 @@ def test_share_datasource_metadata_is_scoped_and_secret_free(settings, dashboard
         name=f"shared-{uuid.uuid4()}",
         rest_api="monitor/test",
         groups=[1],
+        required_app="monitor",
         params=[{"name": "host", "type": "string"}],
         connection_config={"password": "secret"},
         created_by="alice",
@@ -521,6 +552,7 @@ def test_share_datasource_metadata_is_scoped_and_secret_free(settings, dashboard
     assert "query_config" not in response.data[0]
     assert "rest_api" not in response.data[0]
     assert "tag" not in response.data[0]
+    assert response.data[0]["required_app"] == "monitor"
 
 
 def _share_data_sources_for_dashboard(settings, dashboard, sharer, visitor, monkeypatch, datasource):
@@ -565,19 +597,28 @@ def test_share_datasource_includes_empty_groups_builtin(settings, dashboard, sha
 
 
 @pytest.mark.django_db
-def test_share_datasource_excludes_restricted_builtin_outside_space(settings, dashboard, sharer, visitor, monkeypatch):
+def test_share_datasource_returns_denied_stub_for_restricted_builtin_outside_space(settings, dashboard, sharer, visitor, monkeypatch):
     datasource = DataSourceAPIModel.objects.create(
         name=f"restricted-builtin-{uuid.uuid4()}",
         rest_api="builtin/restricted-share",
         groups=[2],
         is_build_in=True,
+        required_app="alarm",
         build_in_key=f"builtin::restricted-share-{uuid.uuid4()}",
         created_by="alice",
         updated_by="alice",
     )
     response = _share_data_sources_for_dashboard(settings, dashboard, sharer, visitor, monkeypatch, datasource)
     assert response.status_code == 200
-    assert [item["id"] for item in response.data] == []
+    assert response.data == [
+        {
+            "id": datasource.id,
+            "hasAuth": False,
+            "required_app": "alarm",
+        }
+    ]
+    assert "rest_api" not in response.data[0]
+    assert "name" not in response.data[0]
 
 
 @pytest.mark.django_db

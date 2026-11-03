@@ -80,8 +80,8 @@ const MERAKI_DERIVATIVE_OBJECT_NAMES = new Set([
  * 视图 / 专业大盘 / 事件侧栏把 Cisco Meraki 的派生对象挂到父节点下。
  * 名称集合覆盖内置五个子对象；parent 指向 Cisco Meraki 时也认，避免漏挂。
  * 集成 list/asset/group 走 attachCloudDerivatives=false，不挂这些子叶。
- * 云族挂父见 isCloudFamilySidebarType / buildMonitorObjectSidebarTree；
- * 禁止借此全局去掉 isDerivativeObject（VMware / K8s 等非云派生仍隐藏）。
+ * 云族挂父见 isCloudFamilySidebarType / buildMonitorObjectSidebarTree。
+ * 其余派生同样按 parent 挂父，仍用 isDerivativeObject 识别；禁止删掉该判断。
  */
 export const isMerakiSidebarDerivative = (
   item: ObjectItem,
@@ -530,8 +530,8 @@ const buildUnifiedCloudRoot = <T extends SidebarTreeNode>(
 
 export interface MonitorObjectSidebarTreeOptions {
   /**
-   * 默认 true：把挂父派生（云族 CVM 等、Meraki 五子）挂到父叶。
-   * 集成 list/asset/group 传 false，只露父接入。
+   * 默认 true：把挂父派生（云族 CVM 等、Meraki 五子，以及 Docker/K8s/VMware
+   * 等非云派生）挂到父叶。集成 list/asset/group 传 false，只露父接入。
    * attachCloudDerivatives 为旧名，语义相同。
    */
   attachSidebarDerivatives?: boolean;
@@ -568,12 +568,72 @@ const resolveSidebarTreeArgs = (
 };
 
 /**
+ * 非云、非 Meraki 派生的父对象。
+ * 优先 parent id；parent 缺失或悬空时，仅当同 type 只有一个 base 才回退。
+ * 不写死对象名，Hyper-V / CNwareStoragePool 等与 Docker、K8s、VMware 同一条路径。
+ */
+const resolveSidebarDerivativeParent = (
+  item: ObjectItem,
+  objects: ObjectItem[]
+): ObjectItem | undefined => {
+  if (item.parent != null) {
+    const byId = objects.find(
+      (obj) => obj.id === item.parent && obj.id !== item.id
+    );
+    if (byId) return byId;
+  }
+  const bases = baseObjectsOfType(item.type, objects);
+  return bases.length === 1 && bases[0].id !== item.id ? bases[0] : undefined;
+};
+
+const findSidebarNode = <T extends SidebarTreeNode>(
+  nodes: T[],
+  predicate: (node: T) => boolean
+): T | undefined => {
+  for (const node of nodes) {
+    if (predicate(node)) return node;
+    const nested = findSidebarNode((node.children || []) as T[], predicate);
+    if (nested) return nested;
+  }
+  return undefined;
+};
+
+/**
+ * 把非云派生挂到已在树上的父节点。找不到父节点时退回本 type 分组叶子，避免再被藏。
+ */
+const attachDerivativeSidebarChildren = <T extends SidebarTreeNode>(
+  groups: Record<string, T>,
+  derivatives: ObjectItem[],
+  objects: ObjectItem[],
+  toNode: (item: ObjectItem) => T,
+  ensureGroup: (item: ObjectItem) => T
+): void => {
+  for (const item of derivatives) {
+    const parent = resolveSidebarDerivativeParent(item, objects);
+    const roots = Object.values(groups);
+    const parentNode = parent
+      ? findSidebarNode(
+        roots,
+        (node) => String(node.key) === String(parent.id)
+      ) || findSidebarNode(roots, (node) => node.label === parent.name)
+      : undefined;
+    if (!parentNode) {
+      ensureGroup(item).children.push(toNode(item));
+      continue;
+    }
+    parentNode.children = parentNode.children || [];
+    parentNode.children.push(toNode(item));
+  }
+};
+
+/**
  * 视图 / 专业大盘 / 事件对象树：
  * - type=Cloud（及历史 Tencent Cloud / Aliyun Cloud 别名）挂到唯一「云」根下，派生挂父；
  * - bk-lite 不接入 WeOpsX catalog：即使传入深链叶也不挂树；
  * - Meraki 默认挂父；attachCloudDerivatives/attachSidebarDerivatives=false 时不挂
- *   （集成 list/asset/group 只露 Cisco Meraki 父接入）；
- * - 其余 type 仍按派生隐藏，禁止全局去掉 isDerivativeObject（VMware / K8s 等）。
+ *   （集成 list/asset/group 只露 Cisco Meraki 父接入，其它派生也不露）；
+ * - 其余派生（Docker Container、K8s Pod/Node、VMware ESXI/VM/DataStorage 等）
+ *   按 parent 挂到父叶，不写死名单。禁止删除 isDerivativeObject。
  */
 export const buildMonitorObjectSidebarTree = <T extends SidebarTreeNode>(
   objects: ObjectItem[],
@@ -589,6 +649,7 @@ export const buildMonitorObjectSidebarTree = <T extends SidebarTreeNode>(
   const typeOrder: string[] = [];
   const merakiDerivatives: ObjectItem[] = [];
   const cloudFamilyItems: ObjectItem[] = [];
+  const otherDerivatives: ObjectItem[] = [];
 
   const ensureGroup = (item: ObjectItem): T => {
     if (!groups[item.type]) {
@@ -618,6 +679,9 @@ export const buildMonitorObjectSidebarTree = <T extends SidebarTreeNode>(
       continue;
     }
     if (isDerivativeObject(item, objects)) {
+      if (attachSidebarDerivatives) {
+        otherDerivatives.push(item);
+      }
       continue;
     }
     ensureGroup(item).children.push(toNode(item));
@@ -636,6 +700,16 @@ export const buildMonitorObjectSidebarTree = <T extends SidebarTreeNode>(
       objects,
       toNode,
       attachSidebarDerivatives
+    );
+  }
+
+  if (attachSidebarDerivatives && otherDerivatives.length) {
+    attachDerivativeSidebarChildren(
+      groups,
+      otherDerivatives,
+      objects,
+      toNode,
+      ensureGroup
     );
   }
 

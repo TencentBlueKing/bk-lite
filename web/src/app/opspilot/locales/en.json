@@ -957,6 +957,11 @@
       "callerIdentityTitle": "Uses the caller identity",
       "callerIdentityDescription": "Monitor queries use the currently signed-in user and current group. No password, API secret, or other authentication credential is saved or sent."
     },
+    "mlops": {
+      "loadFailed": "Failed to load prediction services",
+      "servingRequired": "Select one time-series prediction service",
+      "servingPlaceholder": "Select a time-series prediction service"
+    },
     "redis": {
       "instances": "Redis Instances",
       "noInstances": "No Redis instances",

@@ -8,6 +8,9 @@ from apps.log.models.policy import Policy
 
 
 def snapshot_policy_organization_ids(policy) -> list[int]:
+    # 未保存的策略没有主键，不能走关联查询。试算构造的 Policy 属于这种情况。
+    if getattr(policy, "pk", None) is None:
+        return []
     related = getattr(policy, "policyorganization_set", None)
     if related is None:
         return []

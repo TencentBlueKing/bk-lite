@@ -268,6 +268,13 @@ tools:
         description: 查询主机 CPU/内存/磁盘均值与最高值快照。
       monitor_get_host_resource_top_by_time:
         description: 按时间窗查询全量主机 CPU/内存/磁盘使用率排行（Top N）。没写时区的时间按当前用户时区理解。
+  mlops:
+    name: MLOps
+    description: |
+      调用已绑定的 MLOps 时序预测服务。模型先查监控或使用用户贴出的序列，再把序列交给预测服务，不自己心算外推。
+    tools:
+      mlops_predict_timeseries:
+        description: 按未来天数预测已绑定服务上的时序。summary 比较多条序列，trend 只看一条序列的走势。
   cmdb:
     name: CMDB
     description: |
@@ -1021,3 +1028,9 @@ skill_packages:
       面向 Kubernetes 工作负载部署与治理的场景技能包。
 
       覆盖 Deployment/StatefulSet、网络策略、RBAC、Helm、排障、GitOps、服务网格与多集群等配置与运维场景。
+  ppt-master:
+    name: PPT Master
+    description: |
+      用于生成和修改可编辑演示文稿的场景技能包。
+
+      按对话产出原生 PPTX，并在同一对话里继续确认方案或改稿。

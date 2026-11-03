@@ -19,38 +19,45 @@ class TestApplyIpDiscoveryVmRows:
         task = SimpleNamespace(params={"subnet_uuids": [subnet_uuid_1, subnet_uuid_2]}, instances={})
         calls = []
 
-        def fake_apply(subnet_id, alive):
-            calls.append((str(subnet_id), alive))
+        def fake_apply(subnet_id, alive, snapshot_complete=True):
+            calls.append((str(subnet_id), alive, snapshot_complete))
             return {
                 "created": len(alive),
                 "updated": 0,
-                "offline": 1 if not alive else 0,
+                "offline": 1 if not alive and snapshot_complete is True else 0,
                 "failed": 0,
                 "format_data": {"add": [], "update": [], "delete": [], "association": [], "all": len(alive)},
             }
 
         monkeypatch.setattr(ipam_discovery, "apply_discovery_result", fake_apply)
 
-        result = ipam_discovery.apply_ip_discovery_vm_rows(
-            task,
-            [
-                {
-                    "collect_status": "success",
-                    "subnet_uuid": subnet_uuid_1,
-                    "ip_addr": "10.0.1.10",
-                    "mac": "AA:BB:CC:DD:EE:FF",
-                }
-            ],
-        )
+        rows = [
+            {
+                "collect_status": "success",
+                "subnet_uuid": subnet_uuid_1,
+                "ip_addr": "10.0.1.10",
+                "mac": "AA:BB:CC:DD:EE:FF",
+            }
+        ]
+        result = ipam_discovery.apply_ip_discovery_vm_rows(task, rows)
 
         assert calls == [
-            (subnet_uuid_1, [{"ip": "10.0.1.10", "mac": "AA:BB:CC:DD:EE:FF"}]),
-            (subnet_uuid_2, []),
+            (subnet_uuid_1, [{"ip": "10.0.1.10", "mac": "AA:BB:CC:DD:EE:FF"}], False),
+            (subnet_uuid_2, [], False),
         ]
         assert result["created"] == 1
-        assert result["offline"] == 1
+        assert result["offline"] == 0
         assert result["failed"] == 0
         assert set(result["format_data"].keys()) == {"add", "update", "delete", "association", "all"}
+
+        calls.clear()
+        complete = ipam_discovery.apply_ip_discovery_vm_rows(task, rows, snapshot_complete=True)
+        assert calls == [
+            (subnet_uuid_1, [{"ip": "10.0.1.10", "mac": "AA:BB:CC:DD:EE:FF"}], True),
+            (subnet_uuid_2, [], True),
+        ]
+        assert complete["created"] == 1
+        assert complete["offline"] == 1
 
     def test_忽略失败行和缺少关键字段的行(self, monkeypatch):
         from apps.cmdb.services import ipam_discovery
@@ -83,6 +90,118 @@ class TestApplyIpDiscoveryVmRows:
         assert result["created"] == 0
         assert result["failed"] == 0
         assert result["format_data"]["all"] == 0
+
+
+SUBNET_UUID = "63e4a531-b6bb-43cc-9eae-8eb8a09f795e"
+LEDGER_IPS = [
+    {"_id": 11, "ip_addr": "10.0.1.10", "auto_collect": True, "subnet_id": "1", "ip_status": ["online"]},
+    {"_id": 12, "ip_addr": "10.0.1.20", "auto_collect": True, "subnet_id": "1", "ip_status": ["online"]},
+    {"_id": 13, "ip_addr": "10.0.1.30", "auto_collect": False, "subnet_id": "1", "ip_status": ["online"]},
+]
+
+
+def _selected_subnet_task():
+    return SimpleNamespace(params={"subnet_uuids": [SUBNET_UUID]}, instances={})
+
+
+def _patch_subnet_ledger(monkeypatch, ipam_discovery, ips):
+    monkeypatch.setattr(
+        ipam_discovery,
+        "_load_subnets_by_ids",
+        lambda ids: [{"_id": 1, "organization": [7], "inst_uuid": SUBNET_UUID}],
+    )
+    monkeypatch.setattr(ipam_discovery, "_load_subnet_ips", lambda sid: list(ips))
+    writes = []
+    offlines = []
+
+    def fake_system(model_id, instance_info, existing_id=None, organization=None):
+        writes.append(
+            {
+                "model_id": model_id,
+                "existing_id": existing_id,
+                "info": instance_info,
+                "organization": organization,
+            }
+        )
+        return {"_id": existing_id or 501}
+
+    monkeypatch.setattr(ipam_discovery, "_system_create_or_update", staticmethod(fake_system))
+    monkeypatch.setattr(ipam_discovery, "_ensure_subnet_ip_association", lambda subnet_id, ip_id: None)
+    monkeypatch.setattr(ipam_discovery, "_mark_offline", lambda ip_id: offlines.append(ip_id))
+    monkeypatch.setattr(ipam_discovery, "_writeback_subnet_utilization", lambda sids: None)
+    return writes, offlines
+
+
+def _call_vm_rows(ipam_discovery, rows, snapshot_complete):
+    kwargs = {}
+    if snapshot_complete is not None:
+        kwargs["snapshot_complete"] = snapshot_complete
+    return ipam_discovery.apply_ip_discovery_vm_rows(_selected_subnet_task(), rows, **kwargs)
+
+
+class TestIncompleteSnapshotKeepsMissingAddresses:
+    """没有完整轮次时，缺失的自动发现地址保持原状态。"""
+
+    @pytest.mark.parametrize("snapshot_complete", [False, None])
+    def test_空结果不把未出现的自动发现地址标离线(self, monkeypatch, snapshot_complete):
+        from apps.cmdb.services import ipam_discovery
+
+        writes, offlines = _patch_subnet_ledger(monkeypatch, ipam_discovery, LEDGER_IPS)
+
+        result = _call_vm_rows(ipam_discovery, [], snapshot_complete)
+
+        assert offlines == []
+        assert writes == []
+        assert result["offline"] == 0
+        assert result["created"] == 0
+        assert result["updated"] == 0
+        assert result["failed"] == 0
+
+    def test_完整空结果仍把未出现的自动发现地址标离线(self, monkeypatch):
+        from apps.cmdb.services import ipam_discovery
+
+        writes, offlines = _patch_subnet_ledger(monkeypatch, ipam_discovery, LEDGER_IPS)
+
+        result = _call_vm_rows(ipam_discovery, [], True)
+
+        assert offlines == [11, 12]
+        assert 13 not in offlines
+        assert writes == []
+        assert result["offline"] == 2
+        assert result["failed"] == 0
+
+    @pytest.mark.parametrize("snapshot_complete", [False, None])
+    def test_不完整时写入已见地址并保留未见自动发现与手工地址(self, monkeypatch, snapshot_complete):
+        from apps.cmdb.services import ipam_discovery
+
+        writes, offlines = _patch_subnet_ledger(monkeypatch, ipam_discovery, LEDGER_IPS)
+        rows = [
+            {
+                "collect_status": "success",
+                "subnet_uuid": SUBNET_UUID,
+                "ip_addr": "10.0.1.10",
+                "mac": "AA:BB:CC:DD:EE:FF",
+            },
+            {"collect_status": "failed", "subnet_uuid": SUBNET_UUID, "ip_addr": "10.0.1.20", "mac": ""},
+            {
+                "collect_status": "success",
+                "subnet_uuid": SUBNET_UUID,
+                "ip_addr": "10.0.1.30",
+                "mac": "11:22:33:44:55:66",
+            },
+            {"collect_status": "failed", "subnet_uuid": SUBNET_UUID, "ip_addr": "10.0.1.99", "mac": ""},
+        ]
+
+        result = _call_vm_rows(ipam_discovery, rows, snapshot_complete)
+
+        assert [item["info"]["ip_addr"] for item in writes] == ["10.0.1.10"]
+        assert writes[0]["info"]["ip_status"] == ["online"]
+        assert writes[0]["existing_id"] == 11
+        assert offlines == []
+        assert result["offline"] == 0
+        assert result["updated"] == 1
+        assert result["created"] == 0
+        assert result["failed"] == 0
 
 
 class TestApplyDiscoveryResult:
@@ -456,7 +575,7 @@ class TestApplyIpDiscoveryVmRowsSubnetScoping:
         monkeypatch.setattr(
             ipam_discovery,
             "apply_discovery_result",
-            lambda subnet_id, alive: apply_calls.append((str(subnet_id), [a["ip"] for a in alive]))
+            lambda subnet_id, alive, snapshot_complete=True: apply_calls.append((str(subnet_id), [a["ip"] for a in alive]))
             or {"created": len(alive), "updated": 0, "offline": 0, "failed": 0, "format_data": empty_format_data()},
         )
 
@@ -578,3 +697,33 @@ class TestSubnetAssociation:
         rows = ipam_discovery._load_subnet_ips(1)
 
         assert {row["_id"] for row in rows} == {1, 2}
+
+
+class TestIpDiscoveryPluginForwardsSnapshot:
+    @pytest.mark.parametrize("snapshot_complete", [False, True])
+    def test_format_metrics_forwards_snapshot_complete(self, monkeypatch, snapshot_complete):
+        from apps.cmdb.collection.plugins.community.ipam.ip import IPAMDiscoveryCollectionPlugin
+
+        task = SimpleNamespace(id=7001, model_id="ip", instances={}, params={})
+        observed = {}
+
+        def fake_apply(collect_task, rows, snapshot_complete=None):
+            observed["task"] = collect_task
+            observed["rows"] = rows
+            observed["snapshot_complete"] = snapshot_complete
+            return {"format_data": empty_format_data()}
+
+        monkeypatch.setattr(IPAMDiscoveryCollectionPlugin, "get_collect_inst", lambda self: task)
+        monkeypatch.setattr("apps.cmdb.services.ipam_discovery.apply_ip_discovery_vm_rows", fake_apply)
+        runner = IPAMDiscoveryCollectionPlugin(
+            inst_name="ip",
+            inst_id=None,
+            task_id=7001,
+            snapshot_complete=snapshot_complete,
+        )
+        runner.collection_metrics_dict = {"ip_info": [{"ip_addr": "10.0.1.10", "collect_status": "success"}]}
+        runner.format_metrics()
+
+        assert observed["task"] is task
+        assert observed["snapshot_complete"] is snapshot_complete
+        assert observed["rows"] == [{"ip_addr": "10.0.1.10", "collect_status": "success"}]

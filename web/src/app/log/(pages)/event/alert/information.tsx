@@ -14,22 +14,26 @@ import { Button } from 'antd';
 import { LEVEL_MAP } from '@/app/log/constants';
 import { useLevelList } from '@/app/log/hooks/event';
 import CustomTable from '@/components/custom-table';
-import { FilterItem } from '@/app/log/types/integration';
 import { buildLogAlertRawColumns } from './rawLogColumns';
 import { formatUserDisplayName } from '@/utils/userDisplay';
 import AlertHandlerActions from './alertHandlerActions';
+import useLogEventApi from '@/app/log/api/event';
+import { buildSearchJumpUrl } from './buildSearchJumpUrl';
 import { formatAlertHandlers } from './alertHandlerUtils';
+import { AggregateHitSummary } from '@/app/log/components/aggregateConditionHit';
 
 const Information: React.FC<TableDataItem> = ({
   formData,
   userList,
   onClose,
-  rawData = []
+  rawData = [],
+  aggregateResult
 }) => {
   const { t } = useTranslation();
   const { convertToLocalizedTime } = useLocalizedTime();
   const LEVEL_LIST = useLevelList();
   const commonContext = useCommon();
+  const { getAlertSnapshots } = useLogEventApi();
   const organizationList: Organization[] =
     commonContext?.authOrganizations || [];
 
@@ -49,152 +53,39 @@ const Information: React.FC<TableDataItem> = ({
     });
   }, [convertToLocalizedTime, formData.show_fields, isAggregate, rawData]);
 
-  const buildVictoriaLogsQuery = () => {
-    try {
-      const alertCondition = formData.alert_condition;
-      if (!alertCondition) return '';
-      const { query, group_by, rule } = alertCondition;
-      const baseQuery = query || '*';
-      // 首先构建基础过滤查询（不包含聚合函数的条件）
-      const filterConditions: string[] = [];
-      const aggregateConditions: any[] = [];
-      if (rule?.conditions?.length) {
-        rule.conditions.forEach((condition: FilterItem) => {
-          const { field, op, value, func } = condition;
-          // 如果有聚合函数，放入聚合条件处理
-          if (func && ['count', 'sum', 'max', 'min', 'avg'].includes(func)) {
-            aggregateConditions.push(condition);
-          } else {
-            // 普通字段过滤条件
-            let fieldCondition = '';
-            switch (op) {
-              case '=':
-                fieldCondition = `${field}:"${value}"`;
-                break;
-              case '!=':
-                fieldCondition = `!${field}:"${value}"`;
-                break;
-              case '>':
-                fieldCondition = `${field}:>${value}`;
-                break;
-              case '<':
-                fieldCondition = `${field}:<${value}`;
-                break;
-              case 'in':
-                fieldCondition = `${field}:*${value}*`;
-                break;
-              case 'nin':
-                fieldCondition = `!${field}:*${value}*`;
-                break;
-              default:
-                fieldCondition = `${field}:"${value}"`;
-            }
-            filterConditions.push(fieldCondition);
-          }
-        });
-      }
-      // 构建基础查询部分
-      let victoriaQuery = baseQuery;
-      if (filterConditions.length > 0) {
-        const filterStr =
-          rule?.mode === 'and'
-            ? filterConditions.join(' AND ')
-            : filterConditions.join(' OR ');
-        if (victoriaQuery === '*' || !victoriaQuery) {
-          victoriaQuery = filterStr;
-        } else {
-          victoriaQuery = `(${victoriaQuery}) AND (${filterStr})`;
-        }
-      }
-      // 处理 group_by 字段 - 确保这些字段存在
-      if (group_by && group_by.length > 0) {
-        const groupByConditions = group_by.map((field: string) => `${field}:*`);
-        const groupByStr = groupByConditions.join(' AND ');
-        if (victoriaQuery === '*' || !victoriaQuery) {
-          victoriaQuery = groupByStr;
-        } else {
-          victoriaQuery = `(${victoriaQuery}) AND (${groupByStr})`;
-        }
-      }
-      // 如果有聚合条件或group_by，构建 stats 管道
-      if (aggregateConditions.length > 0 || (group_by && group_by.length > 0)) {
-        const statsExpressions: string[] = [];
-        // 添加聚合函数表达式
-        aggregateConditions.forEach((condition: FilterItem) => {
-          const { field, func } = condition;
-          let aggregateExpr = '';
-          switch (func) {
-            case 'count':
-              if (field === '*' || !field) {
-                aggregateExpr = 'count()';
-              } else {
-                aggregateExpr = `count(${field})`;
-              }
-              break;
-            case 'sum':
-              aggregateExpr = `sum(${field})`;
-              break;
-            case 'max':
-              aggregateExpr = `max(${field})`;
-              break;
-            case 'min':
-              aggregateExpr = `min(${field})`;
-              break;
-            case 'avg':
-              aggregateExpr = `avg(${field})`;
-              break;
-          }
-          if (aggregateExpr) {
-            statsExpressions.push(aggregateExpr);
-          }
-        });
-        // 如果没有聚合表达式但有group_by，添加count()
-        if (statsExpressions.length === 0 && group_by && group_by.length > 0) {
-          statsExpressions.push('count()');
-        }
-        // 构建完整的stats查询 - 正确的语法应该是 | stats by (fields) functions
-        if (statsExpressions.length > 0) {
-          if (group_by && group_by.length > 0) {
-            // 有group by的情况
-            victoriaQuery += ` | stats by (${group_by.join(
-              ', '
-            )}) ${statsExpressions.join(', ')}`;
-          } else {
-            // 没有group by的情况
-            victoriaQuery += ` | stats ${statsExpressions.join(', ')}`;
-          }
-        }
-      }
-      return victoriaQuery;
-    } catch (error) {
-      console.error('Error building VictoriaLogs query:', error);
-      return '';
-    }
-  };
-
-  const checkDetail = () => {
+  const checkDetail = async () => {
     const logGroups = Array.isArray(formData.log_groups)
       ? formData.log_groups.filter(Boolean)
       : [];
-    const params = {
-      query: formData.alert_condition?.query as string,
-      startTime: String(
+    let jumpQuery: { query?: string; window_start?: number; window_end?: number } | null = null;
+    if (formData.id) {
+      try {
+        const payload = await getAlertSnapshots(formData.id);
+        const snapshots = Array.isArray(payload?.snapshots) ? payload.snapshots : [];
+        for (let index = snapshots.length - 1; index >= 0; index -= 1) {
+          const jump = snapshots[index]?.jump_query;
+          if (jump?.query) {
+            jumpQuery = jump;
+            break;
+          }
+        }
+      } catch {
+        jumpQuery = null;
+      }
+    }
+    const url = buildSearchJumpUrl({
+      jumpQuery,
+      fallbackQuery: (formData.alert_condition?.query as string) || '',
+      fallbackStart: String(
         +new Date(convertToLocalizedTime(formData.start_event_time))
       ),
-      endTime: String(
+      fallbackEnd: String(
         isClosed
           ? +new Date(convertToLocalizedTime(formData.end_event_time))
           : +new Date()
-      )
-    };
-    if (isAggregate) {
-      params.query = buildVictoriaLogsQuery();
-    }
-    const queryString = new URLSearchParams([
-      ...Object.entries(params),
-      ...logGroups.map((group) => ['log_groups', String(group)])
-    ]).toString();
-    const url = `/log/search?${queryString}`;
+      ),
+      logGroups,
+    });
     window.open(url, '_blank', 'noopener,noreferrer');
   };
 
@@ -285,6 +176,7 @@ const Information: React.FC<TableDataItem> = ({
         </Button>
       </div>
       <div className="mt-4">
+        <AggregateHitSummary aggregateResult={aggregateResult} t={t} />
         <div>
           <h3 className="font-[600] text-[16px] mb-[15px]">
             {t('log.event.originalLog')}

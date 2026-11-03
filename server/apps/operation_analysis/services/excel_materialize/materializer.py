@@ -9,6 +9,7 @@ from typing import Any
 
 from django.core.files.base import ContentFile
 from django.db import transaction
+from django.utils import timezone
 
 from apps.core.logger import operation_analysis_logger as logger
 from apps.operation_analysis.models.datasource_models import DataSourceAPIModel
@@ -48,6 +49,7 @@ class ExcelMaterializer:
             status=ExcelMaterializationSlot.STATUS_PROCESSING,
             error_code="",
             error_summary="",
+            processing_started_at=timezone.now(),
         )
         if not claimed:
             slot.refresh_from_db()
@@ -84,14 +86,21 @@ class ExcelMaterializer:
                 )
 
             fields = infer_fields(rows)
+            if not _candidate_still_processing(slot.id):
+                return {"ok": False, "code": "slot_not_processing", "slot_id": slot.id}
             self._write_result_file(slot, rows)
+            # 落库前再确认仍是 processing。补扫可能已把超时槽改成 failed。
+            if not _candidate_still_processing(slot.id):
+                return {"ok": False, "code": "slot_not_processing", "slot_id": slot.id}
             # FileField.save(..., save=False) 只更新内存；切换前必须落库，否则
             # select_for_update 重载会丢掉 result_file 路径。
             slot.save(update_fields=["result_file", "updated_at"])
             try:
-                self._promote_success(slot, rows=rows, fields=fields)
+                promoted = self._promote_success(slot, rows=rows, fields=fields)
             except ExcelMaterializationSlot.DoesNotExist:
                 return {"ok": False, "code": "slot_missing", "slot_id": slot_id}
+            if not promoted:
+                return {"ok": False, "code": "slot_not_processing", "slot_id": slot.id}
             logger.info(
                 "[ExcelMaterializer] succeeded slot_id=%s datasource_id=%s rows=%s generation=%s",
                 slot.id,
@@ -141,12 +150,14 @@ class ExcelMaterializer:
         *,
         rows: list[dict[str, Any]],
         fields: list[dict[str, str]],
-    ) -> None:
+    ) -> bool:
         with transaction.atomic():
             locked = ExcelMaterializationSlot.objects.select_for_update().select_related("datasource").get(pk=slot.id)
+            if locked.status != ExcelMaterializationSlot.STATUS_PROCESSING:
+                return False
             datasource = locked.datasource
             if datasource.source_type != DataSourceAPIModel.SOURCE_TYPE_EXCEL:
-                return
+                return True
             if datasource.excel_candidate_slot_id != locked.id:
                 # Newer candidate won; keep this result file but do not switch pointers.
                 locked.status = ExcelMaterializationSlot.STATUS_SUCCEEDED
@@ -165,7 +176,7 @@ class ExcelMaterializer:
                         "updated_at",
                     ]
                 )
-                return
+                return True
 
             previous_success_id = datasource.excel_success_slot_id
             locked.role = ExcelMaterializationSlot.ROLE_SUCCESS
@@ -208,6 +219,7 @@ class ExcelMaterializer:
 
             if previous_success_id and previous_success_id != locked.id:
                 ExcelMaterializationSlot.objects.filter(pk=previous_success_id).delete()
+        return True
 
     def _mark_failed(self, slot: ExcelMaterializationSlot, *, code: str, summary: str) -> None:
         ExcelMaterializationSlot.objects.filter(
@@ -219,6 +231,14 @@ class ExcelMaterializer:
             error_code=code[:64],
             error_summary=(summary or "")[:512],
         )
+
+
+def _candidate_still_processing(slot_id: int) -> bool:
+    return ExcelMaterializationSlot.objects.filter(
+        pk=slot_id,
+        role=ExcelMaterializationSlot.ROLE_CANDIDATE,
+        status=ExcelMaterializationSlot.STATUS_PROCESSING,
+    ).exists()
 
 
 def script_hash(script: str) -> str:
@@ -277,6 +297,17 @@ def excel_has_saved_source(datasource) -> bool:
     return _slot_has_source_file(datasource.excel_candidate_slot) or _slot_has_source_file(datasource.excel_success_slot)
 
 
+def _excel_candidate_in_progress(candidate) -> bool:
+    return bool(
+        candidate
+        and candidate.status
+        in {
+            ExcelMaterializationSlot.STATUS_PENDING,
+            ExcelMaterializationSlot.STATUS_PROCESSING,
+        }
+    )
+
+
 def resolve_excel_runtime_status(datasource) -> str:
     """Derive Spec runtime status without requiring frontend."""
     success = datasource.excel_success_slot
@@ -284,11 +315,10 @@ def resolve_excel_runtime_status(datasource) -> str:
     query_config = datasource.query_config if isinstance(datasource.query_config, dict) else {}
     has_legacy = isinstance(query_config.get("imported_items"), list) and bool(query_config.get("imported_items"))
 
-    if candidate and candidate.status in {
-        ExcelMaterializationSlot.STATUS_PENDING,
-        ExcelMaterializationSlot.STATUS_PROCESSING,
-    }:
-        return "processing" if success or has_legacy else "processing"
+    if _excel_candidate_in_progress(candidate):
+        return "processing"
+    if getattr(datasource, "excel_resubmit_pending", False):
+        return "processing"
     if candidate and candidate.status == ExcelMaterializationSlot.STATUS_FAILED:
         return "update_failed_using_previous" if (success or has_legacy) else "failed"
     if success and success.status == ExcelMaterializationSlot.STATUS_SUCCEEDED:
@@ -299,9 +329,12 @@ def resolve_excel_runtime_status(datasource) -> str:
 
 
 def excel_can_retry(datasource) -> bool:
-    """Retry only when a saved original exists and the latest candidate failed."""
+    """Retry when a saved original exists and the latest attempt failed or never started."""
     if not excel_has_saved_source(datasource):
         return False
+    candidate = datasource.excel_candidate_slot
+    if getattr(datasource, "excel_resubmit_pending", False) and not _excel_candidate_in_progress(candidate):
+        return True
     status = resolve_excel_runtime_status(datasource)
     return status in {"failed", "update_failed_using_previous"}
 

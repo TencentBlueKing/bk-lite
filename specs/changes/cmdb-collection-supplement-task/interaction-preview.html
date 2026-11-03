@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>数据调和</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: light-dark(#f3f5f8, #10151c);
+      --surface: light-dark(#fff, #18202b);
+      --line: light-dark(#e3e8ef, #2c3948);
+      --text: light-dark(#1c2430, #e7edf5);
+      --muted: light-dark(#5c6b7c, #a9b7c8);
+      --primary: light-dark(#1677ff, #3c89e8);
+      --soft: light-dark(#e8f1ff, #1d3350);
+      --warn: light-dark(#fff7e6, #3a2e16);
+      --warn-text: light-dark(#ad6800, #ffc069);
+    }
+    * { box-sizing: border-box; }
+    [hidden] { display: none !important; }
+    body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.5 ui-sans-serif, system-ui, sans-serif; }
+    button, input, select { font: inherit; color: inherit; }
+    button { cursor: pointer; }
+    button:disabled { cursor: not-allowed; opacity: .45; }
+    .top { height: 52px; display: flex; align-items: center; gap: 16px; padding: 0 20px; background: var(--surface); border-bottom: 1px solid var(--line); }
+    .top nav { display: flex; gap: 4px; }
+    .btn, .top nav button { border: 1px solid var(--line); background: var(--surface); border-radius: 6px; padding: 6px 12px; }
+    .btn.primary, .top nav button[aria-selected="true"] { background: var(--primary); color: #fff; border-color: transparent; }
+    .layout { display: grid; grid-template-columns: 200px minmax(0, 1fr); min-height: calc(100vh - 52px); }
+    .tree { padding: 16px 12px; background: var(--surface); border-right: 1px solid var(--line); }
+    .tree .label { color: var(--muted); font-size: 12px; padding: 8px 10px 4px; }
+    .tree button { display: block; width: 100%; text-align: left; border: 0; background: transparent; border-radius: 6px; padding: 8px 10px; }
+    .tree button.active { background: var(--soft); }
+    .main { padding: 16px 20px 40px; }
+    .bar { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 12px; }
+    h1, h2 { margin: 0; font-weight: 500; }
+    h1 { font-size: 16px; }
+    h2 { font-size: 14px; }
+    .hint { margin: 0 0 12px; color: var(--muted); }
+    .actions { display: flex; gap: 8px; align-items: center; }
+    table { width: 100%; border-collapse: collapse; background: var(--surface); border: 1px solid var(--line); }
+    th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+    th { color: var(--muted); font-weight: 500; }
+    .panel { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 16px; }
+    .check { display: flex; gap: 8px; align-items: flex-start; padding: 10px 0; border-bottom: 1px solid var(--line); }
+    .check small { display: block; color: var(--muted); }
+    .chain { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+    .chip { padding: 2px 8px; border-radius: 999px; border: 1px solid var(--line); background: var(--bg); }
+    .arrow { color: var(--muted); }
+    ol { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; max-width: 520px; }
+    .row { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 6px; }
+    .split { display: grid; grid-template-columns: 280px minmax(0, 1fr); gap: 16px; }
+    .banner { margin-bottom: 12px; padding: 10px 12px; border-radius: 6px; background: var(--warn); color: var(--warn-text); }
+    .result { margin-top: 16px; padding: 12px; background: var(--soft); border-radius: 8px; }
+    label.field { display: block; margin-bottom: 12px; }
+    label.field span { display: block; margin-bottom: 4px; }
+    input[type="text"], select { width: 100%; max-width: 360px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); }
+    @media (max-width: 800px) { .layout, .split { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <header class="top">
+    <strong>配置发现</strong>
+    <nav>
+      <button type="button" data-screen="tasks" aria-selected="true">采集任务</button>
+      <button type="button" data-screen="groups" aria-selected="false">数据调和</button>
+    </nav>
+  </header>
+
+  <div class="layout" data-screen-panel="tasks">
+    <aside class="tree">
+      <div class="label">采集对象</div>
+      <button type="button" class="active">MySQL</button>
+    </aside>
+    <main class="main">
+      <div class="bar">
+        <h1>MySQL</h1>
+        <div class="actions">
+          <button type="button" class="btn primary" id="open-create">新建数据调和</button>
+        </div>
+      </div>
+      <p class="hint">采集任务表单里没有调和开关。A、B 都扫描 10.1.0.0/24，C 扫描 10.2.0.0/24。</p>
+      <table>
+        <thead><tr><th>任务</th><th>网段</th><th>组织</th><th>执行状态</th></tr></thead>
+        <tbody id="task-table"></tbody>
+      </table>
+    </main>
+  </div>
+
+  <main class="main" data-screen-panel="groups" hidden>
+    <section id="group-list">
+      <div class="bar">
+        <h1>数据调和</h1>
+        <button type="button" class="btn primary" id="create-group">新建</button>
+      </div>
+      <p class="hint">一条调和只圈定会采到同一批实例的任务。没被选中的任务保持现在的独占逻辑。</p>
+      <table>
+        <thead><tr><th>名称</th><th>模型</th><th>成员</th><th>状态</th><th></th></tr></thead>
+        <tbody id="group-table"></tbody>
+      </table>
+    </section>
+
+    <section id="group-form" hidden>
+      <div class="bar">
+        <h1>新建数据调和</h1>
+        <button type="button" class="btn" id="cancel-create">返回</button>
+      </div>
+      <div class="panel">
+        <label class="field"><span>名称</span><input id="group-name" type="text" value="MySQL 10.1 网段"></label>
+        <label class="field"><span>模型</span>
+          <select id="group-model"><option>MySQL</option></select>
+        </label>
+        <h2>选择采集任务</h2>
+        <p class="hint">至少两个。已经加入其他调和的任务不能再选。C 扫描的是另一网段，不需要选。</p>
+        <div id="task-picker"></div>
+        <p class="hint" id="form-error" hidden>请至少选择两个任务。</p>
+        <button type="button" class="btn primary" id="save-group">保存</button>
+      </div>
+    </section>
+
+    <section id="group-detail" hidden>
+      <div class="bar">
+        <h1 id="detail-title"></h1>
+        <button type="button" class="btn" id="back-list">返回列表</button>
+      </div>
+      <div class="banner" id="stopped" hidden>生效成员不足两个，调和已停止。剩下的任务按单任务直接写入自己输出的字段，没输出的字段保持原值。</div>
+      <div class="split">
+        <section class="panel">
+          <h2>成员顺序</h2>
+          <p class="hint">只决定实例归属，不决定字段值。越靠前越优先。</p>
+          <ol id="member-order"></ol>
+          <div id="add-member" class="actions" style="margin-top:12px"></div>
+        </section>
+        <section class="panel">
+          <h2>字段优先级</h2>
+          <p class="hint">一行一个字段。只列出会采集它的成员，从左到右优先级降低。</p>
+          <table>
+            <thead><tr><th>字段</th><th>高优先级在前</th><th></th></tr></thead>
+            <tbody id="field-table"></tbody>
+          </table>
+          <div id="field-editor" hidden>
+            <h2 id="field-editor-title" style="margin-top:16px"></h2>
+            <ol id="field-editor-list"></ol>
+          </div>
+        </section>
+      </div>
+      <div class="result" id="preview"></div>
+    </section>
+  </main>
+
+  <script>
+    const tasks = [
+      { id: "A", name: "MySQL 协议采集 A", range: "10.1.0.0/24", org: "基础架构", status: "成功", fields: ["ip_addr", "port", "version"] },
+      { id: "B", name: "自定义脚本 · 库容量 B", range: "10.1.0.0/24", org: "基础架构", status: "成功", fields: ["port", "version", "db_size"] },
+      { id: "C", name: "MySQL 协议采集 C", range: "10.2.0.0/24", org: "业务组", status: "成功", fields: ["ip_addr", "port", "version"] }
+    ];
+    const fieldNames = { ip_addr: "内网 IP", port: "端口", version: "版本", db_size: "库容量" };
+    const state = { screen: "tasks", mode: "list", editingField: null, group: null };
+
+    const $ = (sel) => document.querySelector(sel);
+    const taskById = (id) => tasks.find((task) => task.id === id);
+    const activeMembers = () => state.group ? state.group.members.filter((id) => taskById(id)) : [];
+
+    function show(screen) {
+      state.screen = screen;
+      document.querySelectorAll(".top nav button").forEach((button) => {
+        button.setAttribute("aria-selected", button.dataset.screen === screen ? "true" : "false");
+      });
+      document.querySelectorAll("[data-screen-panel]").forEach((panel) => {
+        panel.hidden = panel.dataset.screenPanel !== screen;
+      });
+    }
+
+    function renderTasks() {
+      const body = $("#task-table");
+      body.replaceChildren();
+      tasks.forEach((task) => {
+        const tr = document.createElement("tr");
+        [task.name, task.range, task.org, task.status].forEach((text) => {
+          const td = document.createElement("td");
+          td.textContent = text;
+          tr.appendChild(td);
+        });
+        body.appendChild(tr);
+      });
+    }
+
+    function renderGroupList() {
+      const body = $("#group-table");
+      body.replaceChildren();
+      if (!state.group) {
+        const tr = document.createElement("tr");
+        const td = document.createElement("td");
+        td.colSpan = 5;
+        td.textContent = "还没有数据调和";
+        tr.appendChild(td);
+        body.appendChild(tr);
+        return;
+      }
+      const tr = document.createElement("tr");
+      const members = activeMembers().map((id) => taskById(id).name).join("、");
+      const status = activeMembers().length >= 2 ? "生效" : "已停止";
+      [state.group.name, "MySQL", members || "无", status].forEach((text) => {
+        const td = document.createElement("td");
+        td.textContent = text;
+        tr.appendChild(td);
+      });
+      const action = document.createElement("td");
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "btn";
+      button.textContent = "配置";
+      button.addEventListener("click", () => { state.mode = "detail"; renderGroups(); });
+      action.appendChild(button);
+      tr.appendChild(action);
+      body.appendChild(tr);
+    }
+
+    function renderPicker() {
+      const picker = $("#task-picker");
+      picker.replaceChildren();
+      tasks.forEach((task) => {
+        const label = document.createElement("label");
+        label.className = "check";
+        const input = document.createElement("input");
+        input.type = "checkbox";
+        input.value = task.id;
+        const used = state.group && state.group.members.includes(task.id);
+        input.checked = !state.group && task.id !== "C";
+        input.disabled = Boolean(used);
+        if (used) input.checked = false;
+        const text = document.createElement("span");
+        const usedText = used ? " · 已在其他调和中" : "";
+        text.innerHTML = task.name + "<small>" + task.range + " · " + task.org + usedText + "</small>";
+        label.append(input, text);
+        picker.appendChild(label);
+      });
+    }
+
+    function chain(ids) {
+      const wrap = document.createElement("span");
+      wrap.className = "chain";
+      ids.forEach((id, index) => {
+        if (index) {
+          const arrow = document.createElement("span");
+          arrow.className = "arrow";
+          arrow.textContent = ">";
+          wrap.appendChild(arrow);
+        }
+        const chip = document.createElement("span");
+        chip.className = "chip";
+        chip.textContent = taskById(id).name;
+        wrap.appendChild(chip);
+      });
+      if (!ids.length) wrap.textContent = "没有成员采集这个字段";
+      return wrap;
+    }
+
+    function move(list, id, delta) {
+      const from = list.indexOf(id);
+      const to = from + delta;
+      if (from < 0 || to < 0 || to >= list.length) return;
+      const [item] = list.splice(from, 1);
+      list.splice(to, 0, item);
+      renderDetail();
+    }
+
+    function orderList(target, ids, listName) {
+      target.replaceChildren();
+      ids.forEach((id, index) => {
+        const li = document.createElement("li");
+        li.className = "row";
+        const label = document.createElement("span");
+        label.textContent = (index + 1) + ". " + taskById(id).name;
+        const actions = document.createElement("span");
+        actions.className = "actions";
+        const controls = listName === "member" ? [["上移", -1], ["下移", 1], ["移除", 0]] : [["上移", -1], ["下移", 1]];
+        controls.forEach(([text, delta]) => {
+          const button = document.createElement("button");
+          button.type = "button";
+          button.className = "btn";
+          button.textContent = text;
+          button.addEventListener("click", () => {
+            if (delta === 0) removeMember(id);
+            else move(listName === "member" ? state.group.members : state.group.fields[state.editingField], id, delta);
+          });
+          actions.appendChild(button);
+        });
+        li.append(label, actions);
+        target.appendChild(li);
+      });
+    }
+
+    function removeMember(id) {
+      const group = state.group;
+      group.members = group.members.filter((item) => item !== id);
+      Object.keys(group.fields).forEach((fieldId) => {
+        group.fields[fieldId] = group.fields[fieldId].filter((item) => item !== id);
+      });
+      if (state.editingField && group.fields[state.editingField].length < 2) state.editingField = null;
+      renderDetail();
+    }
+
+    function renderDetail() {
+      const group = state.group;
+      const members = activeMembers();
+      $("#detail-title").textContent = group.name;
+      $("#stopped").hidden = members.length >= 2;
+      orderList($("#member-order"), members, "member");
+      const addBox = $("#add-member");
+      addBox.replaceChildren();
+      tasks.filter((task) => !members.includes(task.id)).forEach((task) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "btn";
+        button.textContent = "加入 " + task.id;
+        button.addEventListener("click", () => {
+          state.group.members.push(task.id);
+          Object.keys(state.group.fields).forEach((fieldId) => {
+            if (task.fields.includes(fieldId)) state.group.fields[fieldId].push(task.id);
+          });
+          renderDetail();
+        });
+        addBox.appendChild(button);
+      });
+      const body = $("#field-table");
+      body.replaceChildren();
+      Object.keys(fieldNames).forEach((fieldId) => {
+        const ids = group.fields[fieldId];
+        const tr = document.createElement("tr");
+        const name = document.createElement("td");
+        name.textContent = fieldNames[fieldId];
+        const order = document.createElement("td");
+        order.appendChild(chain(ids));
+        const action = document.createElement("td");
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "btn";
+        button.textContent = ids.length > 1 ? "调整这个字段" : "只有一个任务";
+        button.disabled = ids.length < 2 || members.length < 2;
+        button.addEventListener("click", () => { state.editingField = fieldId; renderDetail(); });
+        action.appendChild(button);
+        tr.append(name, order, action);
+        body.appendChild(tr);
+      });
+      const editor = $("#field-editor");
+      editor.hidden = !state.editingField;
+      if (state.editingField) {
+        $("#field-editor-title").textContent = fieldNames[state.editingField] + " 的优先级";
+        orderList($("#field-editor-list"), group.fields[state.editingField], "field");
+      }
+      const port = group.fields.port;
+      const owner = members[0] ? taskById(members[0]).name : "无";
+      $("#preview").textContent = members.length < 2
+        ? "调和已停止。剩余任务写自己采到的字段，不比较优先级。"
+        : "10.1.1.8 被 A、B 同时扫到。端口以「" + port.map((id) => taskById(id).name).join(" > ") + "」为准。实例归属看成员顺序，当前所有者优先是「" + owner + "」。C 扫到这台实例仍然判冲突。";
+    }
+
+    function renderGroups() {
+      $("#group-list").hidden = state.mode !== "list";
+      $("#group-form").hidden = state.mode !== "form";
+      $("#group-detail").hidden = state.mode !== "detail";
+      if (state.mode === "list") renderGroupList();
+      if (state.mode === "form") renderPicker();
+      if (state.mode === "detail") renderDetail();
+    }
+
+    document.querySelectorAll(".top nav button").forEach((button) => {
+      button.addEventListener("click", () => show(button.dataset.screen));
+    });
+    $("#open-create").addEventListener("click", () => {
+      show("groups");
+      state.mode = "form";
+      renderGroups();
+    });
+    document.querySelector('.top nav button[data-screen="groups"]').addEventListener("click", () => {
+      if (state.mode === "form" && !state.group) state.mode = "list";
+      renderGroups();
+    });
+    $("#create-group").addEventListener("click", () => {
+      state.mode = "form";
+      renderGroups();
+    });
+    $("#cancel-create").addEventListener("click", () => { state.mode = "list"; renderGroups(); });
+    $("#back-list").addEventListener("click", () => { state.mode = "list"; state.editingField = null; renderGroups(); });
+    $("#save-group").addEventListener("click", () => {
+      const selected = [...document.querySelectorAll("#task-picker input:checked")].map((input) => input.value);
+      const error = $("#form-error");
+      error.hidden = selected.length >= 2;
+      if (selected.length < 2) return;
+      const fields = {};
+      Object.keys(fieldNames).forEach((fieldId) => {
+        fields[fieldId] = selected.filter((id) => taskById(id).fields.includes(fieldId));
+      });
+      state.group = { name: $("#group-name").value || "MySQL 数据调和", members: selected, fields };
+      state.mode = "detail";
+      renderGroups();
+    });
+
+    renderTasks();
+    renderGroups();
+  </script>
+</body>
+</html>

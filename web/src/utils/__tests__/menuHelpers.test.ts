@@ -99,6 +99,12 @@ const cmdbAutoDiscoveryMenus: MenuItem[] = [
             name: 'soid',
             isNotMenuItem: true,
           }),
+          menu({
+            title: '进程指纹',
+            url: '/cmdb/assetManage/autoDiscovery/featureLibrary/process',
+            name: 'soid',
+            isNotMenuItem: true,
+          }),
           menu({ title: '采集工具', url: '/cmdb/assetManage/autoDiscovery/featureLibrary/collectionTool', name: 'tool' }),
         ],
       }),
@@ -231,6 +237,14 @@ describe('getDeepestMatchedMenuItems', () => {
     const items = getDeepestMatchedMenuItems(
       cmdbAutoDiscoveryMenus,
       '/cmdb/assetManage/autoDiscovery/featureLibrary/port',
+    ).map((item) => item.title);
+    expect(items).toEqual(['采集', '特征库', '采集工具']);
+  });
+
+  it('keeps the process fingerprint tab off the auto-discovery sidebar', () => {
+    const items = getDeepestMatchedMenuItems(
+      cmdbAutoDiscoveryMenus,
+      '/cmdb/assetManage/autoDiscovery/featureLibrary/process',
     ).map((item) => item.title);
     expect(items).toEqual(['采集', '特征库', '采集工具']);
   });

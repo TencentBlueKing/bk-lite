@@ -1,7 +1,7 @@
 from django.db import transaction
 
 from apps.core.utils.team_utils import get_current_team
-from apps.core.utils.viewset_utils import build_json_membership_query
+from apps.core.utils.viewset_utils import build_json_membership_query, user_group_id_set
 from apps.operation_analysis.constants.import_export import ObjectType
 from apps.operation_analysis.models.canvas_draft import CanvasDraftCheckpoint
 from apps.operation_analysis.models.datasource_models import DataSourceAPIModel
@@ -17,10 +17,29 @@ def _username(user) -> str:
     return getattr(user, "username", "") or ""
 
 
+def _deny_unaffiliated_current_team(request) -> None:
+    """Reject a non-superuser whose current team is not one of their organizations.
+
+    Dashboard detail already does this in AuthViewSet.get_detail. Draft reads must
+    fail closed before the canvas row or any checkpoint is loaded.
+    """
+
+    user = getattr(request, "user", None)
+    if getattr(user, "is_superuser", False):
+        return
+    try:
+        team_id = int(get_current_team(request))
+    except (TypeError, ValueError):
+        raise DraftAccessDenied()
+    if team_id not in user_group_id_set(user):
+        raise DraftAccessDenied()
+
+
 def resolve_canvas(request, resource_type: str, resource_id: int):
     meta = CANVAS_TYPE_REGISTRY.get(resource_type)
     if meta is None:
         raise DraftNotFound()
+    _deny_unaffiliated_current_team(request)
     canvas = meta.model.objects.filter(pk=resource_id).first()
     if canvas is None:
         raise DraftNotFound()

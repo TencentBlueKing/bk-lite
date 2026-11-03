@@ -19,6 +19,7 @@ from service.ansible_runner import (
     parse_ansible_output_per_host,
     parse_playbook_recap,
     prepare_adhoc_execution,
+    prepare_mixed_python_script_execution,
     prepare_playbook_execution,
     prepare_windows_script_execution,
     run_command,
@@ -74,9 +75,22 @@ def test_to_adhoc_request_accepts_windows_stream_type():
     assert request.stream_remote_type == "powershell"
 
 
+def test_to_adhoc_request_accepts_python_stream_type():
+    request = to_adhoc_request(
+        {
+            "inventory": "localhost,",
+            "module": "win_shell",
+            "stream_remote_output": True,
+            "stream_remote_type": "Python",
+        }
+    )
+
+    assert request.stream_remote_type == "python"
+
+
 def test_to_adhoc_request_rejects_unknown_windows_stream_type():
-    with pytest.raises(ValueError, match="stream_remote_type must be bat or powershell"):
-        to_adhoc_request({"inventory": "localhost,", "stream_remote_type": "python"})
+    with pytest.raises(ValueError, match="stream_remote_type must be bat, powershell, or python"):
+        to_adhoc_request({"inventory": "localhost,", "stream_remote_type": "ruby"})
 
 
 def test_safe_workspace_path_rejects_parent_escape(tmp_path):
@@ -108,6 +122,25 @@ def test_safe_extract_zip_allows_regular_files(tmp_path):
         _safe_extract_zip(archive, workspace)
 
     assert (workspace / "nested" / "file.txt").read_text(encoding="utf-8") == "hello"
+
+
+def test_windows_file_distribution_creates_destination_directory():
+    content = ansible_runner._build_windows_file_distribution_playbook(
+        [{"name": "wsusscn2.cab", "local_path": "/tmp/wsusscn2.cab"}],
+        "C:/Windows/Temp/bk-lite-patches",
+        True,
+    )
+    tasks = ansible_runner.yaml.safe_load(content)[0]["tasks"]
+
+    assert tasks[0]["ansible.windows.win_file"] == {
+        "path": "C:/Windows/Temp/bk-lite-patches",
+        "state": "directory",
+    }
+    assert tasks[1]["ansible.windows.win_copy"]["dest"] == "C:/Windows/Temp/bk-lite-patches/wsusscn2.cab"
+
+
+def test_distributed_object_limit_accepts_windows_offline_catalog():
+    assert ansible_runner.PLAYBOOK_ARCHIVE_MAX_SIZE_BYTES >= 683_018_118
 
 
 def test_safe_extract_zip_rejects_too_many_members(tmp_path, monkeypatch):
@@ -710,6 +743,74 @@ def test_prepare_windows_bat_execution_converts_target_encoding_before_file_exec
         "{{ bklite_script_temp.path }}",
     ]
     assert tasks[1]["always"][0]["ansible.windows.win_file"]["state"] == "absent"
+
+
+def test_prepare_windows_python_execution_uses_interpreter_and_file(tmp_path, monkeypatch):
+    monkeypatch.setattr(ansible_runner, "BASE_TASK_DIR", tmp_path / "work")
+    script = "print('hello-windows')\n"
+
+    command, workspace = prepare_windows_script_execution(
+        AdhocRequest(
+            inventory="windows-host,",
+            module="win_shell",
+            module_args=script,
+            stream_remote_type="python",
+            extra_vars={"bklite_python_interpreter": "python3"},
+            task_id="windows-python-file",
+        )
+    )
+
+    script_path = workspace / "job-script.py"
+    assert script_path.read_bytes() == script.encode("utf-8")
+    assert script not in " ".join(command)
+
+    playbook = ansible_runner.yaml.safe_load((workspace / "playbook.yml").read_text(encoding="utf-8"))
+    execution_tasks = playbook[0]["tasks"][1]["block"]
+    assert execution_tasks[0]["ansible.windows.win_copy"]["src"] == str(script_path)
+    assert execution_tasks[1]["ansible.windows.win_command"]["argv"] == [
+        "python",
+        "-u",
+        "{{ bklite_script_temp.path }}",
+    ]
+
+
+def test_prepare_mixed_python_script_execution_builds_os_grouped_playbook(tmp_path, monkeypatch):
+    monkeypatch.setattr(ansible_runner, "BASE_TASK_DIR", tmp_path / "work")
+    script = "print('mixed')\n"
+
+    command, workspace = prepare_mixed_python_script_execution(
+        AdhocRequest(
+            module="bklite_mixed_python",
+            module_args=script,
+            stream_remote_type="python",
+            extra_vars={"bklite_python_interpreter": "python3"},
+            host_credentials=[
+                {"host": "10.0.0.1", "user": "root", "password": "x", "connection": "ssh"},
+                {
+                    "host": "10.0.0.2",
+                    "user": "Administrator",
+                    "password": "y",
+                    "connection": "winrm",
+                    "winrm_scheme": "http",
+                    "winrm_transport": "ntlm",
+                },
+            ],
+            task_id="mixed-python",
+        )
+    )
+
+    inventory = (workspace / "inventory.ini").read_text(encoding="utf-8")
+    assert "[linux]" in inventory
+    assert "[windows]" in inventory
+    assert "10.0.0.1" in inventory
+    assert "10.0.0.2" in inventory
+
+    playbook = ansible_runner.yaml.safe_load((workspace / "playbook.yml").read_text(encoding="utf-8"))
+    assert playbook[0]["hosts"] == "linux"
+    assert "python3 -u <<'__SCRIPT__'" in playbook[0]["tasks"][0]["raw"]
+    assert playbook[1]["hosts"] == "windows"
+    assert playbook[1]["tasks"][1]["block"][1]["ansible.windows.win_command"]["argv"][:2] == ["python", "-u"]
+    assert script not in " ".join(command)
 
 
 @pytest.mark.asyncio

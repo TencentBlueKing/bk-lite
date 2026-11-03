@@ -144,6 +144,12 @@ MODEL:
   qcloud_cmq_topic: 腾讯云CMQ主题
   qcloud_domain: 腾讯云域名
   qcloud_eip: 腾讯云公网IP
+  qcloud_tke_cluster: 腾讯云TKE集群
+  qcloud_tke_node: 腾讯云TKE节点
+  qcloud_vpn_gateway: 腾讯云VPN网关
+  qcloud_customer_gateway: 腾讯云对端网关
+  qcloud_vpn_connection: 腾讯云VPN通道
+  qcloud_nat_gateway: 腾讯云NAT网关
   qcloud_filesystem: 腾讯云文件系统
   qcloud_mongodb: 腾讯云MongoDB
   qcloud_mysql: 腾讯云MySQL
@@ -1875,6 +1881,123 @@ ATTR:
     charge_type: 付费类型
     create_time: 创建时间
     expired_time: 到期时间
+    auto_collect: 是否自动发现
+    collect_time: 上次更新时间
+    collect_task: 采集任务
+  qcloud_tke_cluster:
+    inst_name: 实例名
+    organization: 组织
+    resource_name: 资源名
+    resource_id: 资源ID
+    region: 地域
+    status: 状态
+    cluster_type: 集群类型
+    version: 集群版本
+    vpc: VPC
+    cluster_cidr: 集群CIDR
+    service_cidr: Service CIDR
+    network_type: 网络模式
+    node_num: 节点数
+    master_node_num: Master节点数
+    runtime: 容器运行时
+    runtime_version: 运行时版本
+    os_name: 集群OS
+    project_id: 项目ID
+    cluster_level: 集群规格
+    ha: 高可用
+    create_time: 创建时间
+    deletion_protection: 删除保护
+    tag: 标签
+    auto_collect: 是否自动发现
+    collect_time: 上次更新时间
+    collect_task: 采集任务
+  qcloud_tke_node:
+    inst_name: 实例名
+    organization: 组织
+    resource_name: 资源名
+    resource_id: 资源ID
+    region: 地域
+    cluster_id: 所属集群ID
+    ip_addr: 内网IP
+    instance_role: 节点角色
+    status: 状态
+    node_pool_id: 节点池ID
+    create_time: 创建时间
+    tag: 标签
+    auto_collect: 是否自动发现
+    collect_time: 上次更新时间
+    collect_task: 采集任务
+  qcloud_vpn_gateway:
+    inst_name: 实例名
+    organization: 组织
+    resource_name: 资源名
+    resource_id: 资源ID
+    region: 地域
+    zone: 可用区
+    vpc: VPC
+    status: 状态
+    type: 网关类型
+    ip_addr: 公网IP
+    bandwidth_mbps: 带宽上限(Mbps)
+    charge_type: 付费类型
+    create_time: 创建时间
+    expired_time: 到期时间
+    renew_flag: 续费标志
+    version: 协议版本
+    max_connection: 最大连接数
+    tag: 标签
+    auto_collect: 是否自动发现
+    collect_time: 上次更新时间
+    collect_task: 采集任务
+  qcloud_customer_gateway:
+    inst_name: 实例名
+    organization: 组织
+    resource_name: 资源名
+    resource_id: 资源ID
+    region: 地域
+    ip_addr: 公网IP
+    create_time: 创建时间
+    tag: 标签
+    auto_collect: 是否自动发现
+    collect_time: 上次更新时间
+    collect_task: 采集任务
+  qcloud_vpn_connection:
+    inst_name: 实例名
+    organization: 组织
+    resource_name: 资源名
+    resource_id: 资源ID
+    region: 地域
+    vpc: VPC
+    vpn_gateway_id: VPN网关ID
+    customer_gateway_id: 对端网关ID
+    status: 状态
+    net_status: 连通状态
+    vpn_proto: VPN协议
+    route_type: 路由类型
+    create_time: 创建时间
+    tag: 标签
+    auto_collect: 是否自动发现
+    collect_time: 上次更新时间
+    collect_task: 采集任务
+  qcloud_nat_gateway:
+    inst_name: 实例名
+    organization: 组织
+    resource_name: 资源名
+    resource_id: 资源ID
+    region: 地域
+    zone: 可用区
+    vpc: VPC
+    subnet: 子网
+    status: 状态
+    network_state: 网络状态
+    bandwidth_mbps: 出带宽上限(Mbps)
+    max_concurrent: 最大并发连接
+    eip_ids: 绑定EIP ID列表
+    eip_addrs: 绑定公网IP列表
+    product_version: 产品版本
+    restrict_state: 受限状态
+    create_time: 创建时间
+    tag: 标签
     auto_collect: 是否自动发现
     collect_time: 上次更新时间
     collect_task: 采集任务

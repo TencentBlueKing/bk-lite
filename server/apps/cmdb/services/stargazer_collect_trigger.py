@@ -131,6 +131,37 @@ class StargazerCollectTriggerClient:
         except requests.RequestException:
             raise StargazerCollectPermanentError("Stargazer 采集请求失败") from None
 
+    def admit_scan_discover(self, body):
+        url = f"{STARGAZER_URL.rstrip('/')}/api/collect/scan_discover"
+        try:
+            response = requests.post(
+                url,
+                json=body or {},
+                timeout=self.REQUEST_TIMEOUT_SECONDS,
+            )
+        except (
+            requests.Timeout,
+            requests.ConnectionError,
+            requests.exceptions.ChunkedEncodingError,
+            requests.exceptions.RetryError,
+        ):
+            raise StargazerCollectRetryableError("Stargazer 扫描发现请求发生可重试网络错误") from None
+        except requests.RequestException:
+            raise StargazerCollectPermanentError("Stargazer 扫描发现请求失败") from None
+
+        status = str(response.headers.get("X-Task-Status") or "").lower()
+        if response.status_code == 429 or status == "busy":
+            raise StargazerCollectRetryableError(f"Stargazer 扫描繁忙: HTTP {response.status_code}")
+        if response.status_code >= 500:
+            raise StargazerCollectRetryableError(f"Stargazer 扫描发现请求返回 HTTP {response.status_code}")
+        if response.status_code != 202:
+            raise StargazerCollectPermanentError(f"Stargazer 未按 202 接纳扫描发现: HTTP {response.status_code} status={status or 'unknown'}")
+        if status not in {"accepted", "duplicate_active"}:
+            raise StargazerCollectPermanentError(f"Stargazer 未接受扫描发现: status={status or 'unknown'}")
+        total = self._positive_int(response.headers.get("X-Target-Count"), "X-Target-Count")
+        result_status = "duplicate" if status == "duplicate_active" else "accepted"
+        return TriggerResult(result_status, total, total)
+
     def admit(self, headers):
         """按 Stargazer 当前契约接纳一枪：202 + X-Target-Count。不改 trigger() 的旧解析。"""
         try:

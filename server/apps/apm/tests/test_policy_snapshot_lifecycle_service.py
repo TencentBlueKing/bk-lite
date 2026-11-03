@@ -8,15 +8,16 @@ from apps.apm.adapters import InMemoryNotificationDispatcher
 from apps.apm.models import (
     ApmAlert,
     ApmAlertMetricSnapshot,
+    ApmAlertOutbox,
     ApmEvent,
     ApmEventSnapshot,
     ApmPolicy,
+    ApmPolicyNotificationTarget,
     ApmPolicyTargetState,
     ApmService,
     ApmServiceOrganization,
 )
-from apps.apm.services import ApmEventSnapshotStore, DjangoApmPolicyService
-from apps.apm.services import metric_snapshots
+from apps.apm.services import ApmEventSnapshotStore, DjangoApmPolicyService, metric_snapshots
 from apps.apm.services.contracts import MetricDataState, PolicyQueryResult, ServiceRed, ServiceRedPoint
 from apps.apm.services.metric_snapshots import ApmAlertMetricSnapshotStore
 from apps.apm.tests.helpers import bind_policy_organizations
@@ -65,7 +66,6 @@ def multilevel_policy():
         metric_type="error_rate",
         evaluation_interval=1,
         metric_window=5,
-        aggregation="max",
         thresholds=[
             {"severity": "critical", "comparator": "gt", "value": "0.20"},
             {"severity": "error", "comparator": "gt", "value": "0.10"},
@@ -155,11 +155,9 @@ def test_multilevel_lifecycle_creates_trigger_escalation_recovery_and_immutable_
     assert metric_store.queries[-1].version == "v2"
 
 
-def test_no_data_event_has_snapshot_and_does_not_fabricate_a_metric_value(multilevel_policy):
+def test_no_data_does_not_open_an_alert_and_an_active_alert_still_recovers(multilevel_policy):
     multilevel_policy.trigger_after = 1
-    multilevel_policy.no_data_after = 2
-    multilevel_policy.no_data_severity = "critical"
-    multilevel_policy.no_data_alert_name = "${service} 无数据告警"
+    multilevel_policy.recover_after = 2
     multilevel_policy.save()
     metric_store = MutableMetricStore(ServiceRed(None, None, None, None))
     evaluator = DjangoApmPolicyService(metric_store, InMemoryNotificationDispatcher())
@@ -168,26 +166,34 @@ def test_no_data_event_has_snapshot_and_does_not_fabricate_a_metric_value(multil
     evaluator.evaluate(multilevel_policy.id, evaluated_at=started_at)
     evaluator.evaluate(multilevel_policy.id, evaluated_at=started_at + timedelta(minutes=1))
 
-    event = ApmEvent.objects.get()
     state = ApmPolicyTargetState.objects.get(policy=multilevel_policy)
-    assert event.action == ApmEvent.Action.TRIGGERED
-    assert event.value is None
-    assert event.snapshot.policy_snapshot["no_data_alert_name"] == "${service} 无数据告警"
-    assert state.status == ApmPolicyTargetState.Status.ACTIVE
-    assert event.snapshot.evaluation_snapshot["data_state"] == "no_data"
-    assert event.snapshot.evaluation_snapshot["value"] is None
-    evaluator.evaluate(multilevel_policy.id, evaluated_at=started_at + timedelta(minutes=2))
-    metric_store.red = _red(started_at + timedelta(minutes=3), 0.01)
-    evaluator.evaluate(multilevel_policy.id, evaluated_at=started_at + timedelta(minutes=3))
-    evaluator.evaluate(multilevel_policy.id, evaluated_at=started_at + timedelta(minutes=4))
+    assert ApmEvent.objects.count() == 0
+    assert ApmAlert.objects.count() == 0
+    assert state.status == ApmPolicyTargetState.Status.NORMAL
+    assert state.consecutive_no_data == 2
 
-    metric_snapshots = event.alert.metric_snapshot.snapshots
-    assert [item["type"] for item in metric_snapshots] == ["no_data", "no_data", "info", "event"]
-    assert [item["data_state"] for item in metric_snapshots] == ["no_data", "no_data", "available", "available"]
-    assert metric_snapshots[0]["threshold"]["comparator"] == "no_data"
-    assert metric_snapshots[1]["threshold"] is None
-    assert [item["threshold"]["comparator"] for item in metric_snapshots[2:]] == ["gt", "gt"]
-    assert metric_snapshots[-1]["event_id"].endswith(":recovered:critical")
+    metric_store.red = _red(started_at + timedelta(minutes=2), 0.12)
+    evaluator.evaluate(multilevel_policy.id, evaluated_at=started_at + timedelta(minutes=2))
+    alert = ApmAlert.objects.get()
+    assert alert.status == ApmAlert.Status.ACTIVE
+
+    metric_store.red = ServiceRed(None, None, None, None)
+    evaluator.evaluate(multilevel_policy.id, evaluated_at=started_at + timedelta(minutes=3))
+    state.refresh_from_db()
+    alert.refresh_from_db()
+    assert alert.status == ApmAlert.Status.ACTIVE
+    assert state.consecutive_no_data == 1
+    quiet = alert.metric_snapshot.snapshots[-1]
+    assert quiet["type"] == "no_data"
+    assert quiet["value"] is None
+    assert quiet["threshold"] is None
+
+    metric_store.red = _red(started_at + timedelta(minutes=4), 0.01)
+    evaluator.evaluate(multilevel_policy.id, evaluated_at=started_at + timedelta(minutes=4))
+    evaluator.evaluate(multilevel_policy.id, evaluated_at=started_at + timedelta(minutes=5))
+    alert.refresh_from_db()
+    assert alert.status == ApmAlert.Status.RECOVERED
+    assert alert.metric_snapshot.snapshots[-1]["event_id"].endswith(":recovered:error")
 
 
 def test_snapshot_payload_failure_keeps_domain_event_and_retryable_evidence(multilevel_policy, mocker):
@@ -277,3 +283,69 @@ def test_alert_metric_snapshot_store_caps_oldest_entries(multilevel_policy, mock
     stored.refresh_from_db()
     assert len(stored.snapshots) == 8
     assert stored.snapshots[-1]["value"] == "0.12"
+
+
+class WindowMetricStore:
+    def __init__(self, current, baseline):
+        self.current = current
+        self.baseline = baseline
+        self.queries = []
+
+    def service_red(self, query):
+        self.queries.append(query)
+        if len(self.queries) % 2 == 1:
+            return self.current
+        return self.baseline
+
+
+def test_relative_event_and_snapshots_keep_current_baseline_and_compare_mode(multilevel_policy):
+    evaluated_at = timezone.now().replace(second=0, microsecond=0)
+    baseline_point = ServiceRedPoint(
+        timestamp=evaluated_at - timedelta(minutes=6),
+        request_rate=1,
+        error_rate=0.04,
+        p95_ms=10,
+        p99_ms=20,
+    )
+    multilevel_policy.compare_mode = ApmPolicy.CompareMode.PREVIOUS_WINDOW
+    multilevel_policy.compare_value_kind = ApmPolicy.CompareValueKind.PERCENT
+    multilevel_policy.min_request_count = 20
+    multilevel_policy.trigger_after = 1
+    multilevel_policy.thresholds = [{"severity": "error", "comparator": "gt", "value": "40"}]
+    multilevel_policy.save()
+    ApmPolicyNotificationTarget.objects.create(
+        policy=multilevel_policy,
+        channel_id=7,
+        channel_name="告警中心",
+        channel_type="nats",
+        delivery_mode="alert_event_copy",
+        recipient_mode="none",
+        recipients=[],
+    )
+    store = WindowMetricStore(
+        ServiceRed(20, 0.06, 100, 150, request_count=318),
+        ServiceRed(20, 0.04, 100, 150, timeseries=(baseline_point,), request_count=300),
+    )
+    DjangoApmPolicyService(store, InMemoryNotificationDispatcher()).evaluate(
+        multilevel_policy.id,
+        evaluated_at=evaluated_at,
+    )
+
+    alert = ApmAlert.objects.get()
+    point = alert.metric_snapshot.snapshots[-1]
+    assert alert.metric_snapshot.unit == "percent"
+    assert point["value"] == "50"
+    assert point["current_value"] == "0.06"
+    assert point["baseline_value"] == "0.04"
+    assert point["result_unit"] == "percent"
+    event = alert.events.get()
+    assert "当前 0.06，对照 0.04，变化 50" in event.description
+    snapshot = event.snapshot
+    assert snapshot.policy_snapshot["compare_mode"] == "previous_window"
+    assert snapshot.policy_snapshot["compare_value_kind"] == "percent"
+    assert snapshot.policy_snapshot["min_request_count"] == 20
+    assert snapshot.evaluation_snapshot["current_value"] == "0.06"
+    assert snapshot.evaluation_snapshot["baseline_value"] == "0.04"
+    assert snapshot.evaluation_snapshot["result_unit"] == "percent"
+    assert snapshot.pending_payload["baseline_series"] == [{"timestamp": baseline_point.timestamp.isoformat(), "value": 0.04}]
+    assert ApmAlertOutbox.objects.get().payload["labels"]["compare_mode"] == "previous_window"

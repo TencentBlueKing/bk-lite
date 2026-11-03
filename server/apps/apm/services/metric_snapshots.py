@@ -4,18 +4,33 @@ from django.db import transaction
 
 from apps.apm.models import ApmAlert, ApmAlertMetricSnapshot, ApmEvent, ApmPolicy
 from apps.apm.services.contracts import MetricDataState, PolicyQueryResult
+from apps.apm.services.policy_conditions import condition_value_map
 
 MAX_ALERT_METRIC_SNAPSHOTS = 1440
 
 
 def _metric_unit(metric_type: str) -> str:
+    if metric_type in ApmPolicy.RATIO_METRIC_TYPES:
+        return "ratio"
+    if metric_type in ApmPolicy.COUNT_METRIC_TYPES:
+        return "count"
+    if metric_type in ApmPolicy.LATENCY_METRIC_TYPES:
+        return "ms"
     return {
-        ApmPolicy.MetricType.ERROR_RATE: "ratio",
-        ApmPolicy.MetricType.P95: "ms",
-        ApmPolicy.MetricType.P99: "ms",
         ApmPolicy.MetricType.THROUGHPUT: "req/s",
         ApmPolicy.MetricType.NO_TRAFFIC: "req/s",
+        ApmPolicy.MetricType.SLO_BURN_RATE: "x",
     }[metric_type]
+
+
+def resolve_result_unit(policy: ApmPolicy) -> str:
+    """percent 用结果单位；delta 与 absolute 沿用指标单位。"""
+    if (
+        getattr(policy, "compare_mode", ApmPolicy.CompareMode.ABSOLUTE) != ApmPolicy.CompareMode.ABSOLUTE
+        and getattr(policy, "compare_value_kind", "") == ApmPolicy.CompareValueKind.PERCENT
+    ):
+        return "percent"
+    return _metric_unit(policy.metric_type)
 
 
 class ApmAlertMetricSnapshotStore:
@@ -34,8 +49,7 @@ class ApmAlertMetricSnapshotStore:
             snapshot, created = ApmAlertMetricSnapshot.objects.get_or_create(
                 alert=alert,
                 defaults={
-                    "unit": _metric_unit(policy.metric_type),
-                    "aggregation": policy.aggregation,
+                    "unit": resolve_result_unit(policy),
                     "evaluation_interval": policy.evaluation_interval,
                     "metric_window": policy.metric_window,
                     "snapshots": [],
@@ -44,17 +58,11 @@ class ApmAlertMetricSnapshotStore:
             if not created:
                 snapshot = ApmAlertMetricSnapshot.objects.select_for_update().get(pk=snapshot.pk)
 
-            snapshot_time = result.evaluated_at.isoformat()
+            snapshot_time = (result.window_ended_at or result.evaluated_at).isoformat()
             if any(item.get("snapshot_time") == snapshot_time for item in snapshot.snapshots):
                 return snapshot
 
-            snapshot_type = (
-                "no_data"
-                if result.data_state == MetricDataState.NO_DATA
-                else "event"
-                if event is not None
-                else "info"
-            )
+            snapshot_type = "no_data" if result.data_state == MetricDataState.NO_DATA else "event" if event is not None else "info"
             snapshot.snapshots.append(
                 {
                     "type": snapshot_type,
@@ -62,8 +70,23 @@ class ApmAlertMetricSnapshotStore:
                     "event_id": event.event_id if event is not None else None,
                     "event_time": event.occurred_at.isoformat() if event is not None else None,
                     "value": str(result.value) if result.value is not None else None,
+                    "current_value": str(result.current_value) if result.current_value is not None else None,
+                    "baseline_value": str(result.baseline_value) if result.baseline_value is not None else None,
+                    "result_unit": resolve_result_unit(policy),
                     "threshold": threshold,
                     "data_state": str(result.data_state),
+                    "recovery_threshold": dict(policy.recovery_threshold or {}) or None,
+                    "condition_values": condition_value_map(result),
+                    "condition_details": [
+                        {
+                            "ref": row.get("ref"),
+                            "value": None if row.get("compared_value") is None else str(row.get("compared_value")),
+                            "threshold": row.get("threshold_value"),
+                            "matched_severity": row.get("matched_severity"),
+                        }
+                        for row in (result.condition_rows or ())
+                    ],
+                    **({} if getattr(result, "budget_remaining", None) is None else {"budget_remaining": str(result.budget_remaining)}),
                 }
             )
             if len(snapshot.snapshots) > MAX_ALERT_METRIC_SNAPSHOTS:
@@ -79,7 +102,6 @@ class ApmAlertMetricSnapshotStore:
             items = items[-MAX_ALERT_METRIC_SNAPSHOTS:]
         return {
             "unit": snapshot.unit,
-            "aggregation": snapshot.aggregation,
             "evaluation_interval": snapshot.evaluation_interval,
             "metric_window": snapshot.metric_window,
             "snapshots": items,

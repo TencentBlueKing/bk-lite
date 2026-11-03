@@ -52,6 +52,10 @@ describe('useRumQueries domain calls', () => {
     const { result } = renderHook(() => useRumQueries());
     const listed = await result.current.listApplications();
     expect(get).toHaveBeenCalledWith('/rum/applications', undefined);
+    get.mockResolvedValueOnce([{ application: 'store', enabled: true }]);
+    const brief = await result.current.listApplications(true);
+    expect(get).toHaveBeenCalledWith('/rum/applications', { params: { brief: '1' } });
+    expect(brief[0].application).toBe('store');
     expect(listed[0].origins).toEqual([]);
     expect(listed[0].lastAcceptedAt).toBe(1_700_000_000);
     expect(listed[0].lastStoredAt).toBe(1_700_000_030);

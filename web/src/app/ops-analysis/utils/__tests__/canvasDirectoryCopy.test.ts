@@ -118,6 +118,7 @@ describe('canvas copy menu', () => {
       'delete',
       'copy',
       'export',
+      'importUpdate',
     ]);
     expect(getSidebarCanvasMenuKeys({ type: 'dashboard', is_build_in: true })).toEqual([
       'copy',
@@ -149,6 +150,15 @@ describe('canvas copy menu', () => {
       false,
     );
     expect(isBuiltinCanvasGroupEditable({ type: 'directory', is_build_in: true })).toBe(false);
+  });
+
+  it('offers import update on every ordinary canvas and never on builtins', () => {
+    const canvasTypes = ['dashboard', 'topology', 'architecture', 'screen', 'report', 'networkTopology'] as const;
+    for (const type of canvasTypes) {
+      expect(getSidebarCanvasMenuKeys({ type })).toContain('importUpdate');
+      expect(getSidebarCanvasMenuKeys({ type, is_build_in: true })).not.toContain('importUpdate');
+    }
+    expect(getSidebarCanvasMenuKeys({ type: 'directory' })).not.toContain('importUpdate');
   });
 });
 

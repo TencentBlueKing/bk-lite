@@ -117,6 +117,28 @@ class TestFinalizeExecution:
         ex.refresh_from_db()
         assert ex.status == ExecutionStatus.CANCELLED
 
+    def test_original_callback_dispatch_failure_does_not_block_terminal_status(self):
+        ex = _execution(status=ExecutionStatus.RUNNING)
+        with patch("apps.job_mgmt.services.execution_base_service.send_callback", side_effect=RuntimeError("broker down")):
+            Base.finalize_execution(ex, "t", [{"status": ExecutionStatus.SUCCESS}])
+        ex.refresh_from_db()
+        assert ex.status == ExecutionStatus.SUCCESS
+        assert ex.finished_at is not None
+
+    def test_async_callback_outbox_enqueue_failure_does_not_block_terminal_status(self):
+        ex = _execution(
+            status=ExecutionStatus.RUNNING,
+            async_callback_context={"callback_url": "https://example.com/cb", "callback_token": "tok"},
+        )
+        with patch("apps.job_mgmt.services.execution_base_service.send_callback"), patch(
+            "apps.job_mgmt.services.execution_base_service.enqueue_terminal_effects",
+            side_effect=RuntimeError("outbox write failed"),
+        ):
+            Base.finalize_execution(ex, "t", [{"status": ExecutionStatus.SUCCESS}])
+        ex.refresh_from_db()
+        assert ex.status == ExecutionStatus.SUCCESS
+        assert ex.finished_at is not None
+
 
 class TestAnsibleSelection:
     def test_should_use_ansible_non_manual_false(self):

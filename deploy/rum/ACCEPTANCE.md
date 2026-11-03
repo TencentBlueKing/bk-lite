@@ -33,7 +33,7 @@ APM `:4318` 只在受信内网，不进入这条公网链路。
 1. **镜像**。`deploy/rum/collector` 打出的固定 tag 已在生产仓库，不是 `latest`。digest 已记录。
 2. **依赖**。用的是平台现有 Redis，带密码且可写，库号不与 `REDIS_CACHE_URL` 相同。VictoriaLogs `v1.38.0`、VictoriaTraces `v0.9.4` 都单独部署，都带 `-delete.enable`，`GET /health` 可用。平台 MinIO 上已有 `rum-replay`，Gateway 可写，Server 可读。没有 ClickHouse。
 3. **NATS**。`rum_ctl` 和 `rum_controller` 是新建用户，加在平台现有 NATS 上，没有复用平台账号。权限与部署清单一致，碰不到 `agents.v1.>`、`otel.v1.>`、`apm.>`。Controller 使用 `tls://`，没有 `-nats-insecure`。口令不在 URL、日志和仓库里。
-4. **密钥**。新准备的只有 HMAC 和 `rum_controller` 口令。Redis 密码、MinIO secret 用平台现有的。`/run/secrets` 权限 `0400`、属主 `65532`。Gateway 与 Controller 的当前 HMAC 是同一个值，且不少于 32 字节。队列目录 `/var/lib/core-rum` 持久、可写、属主正确。
+4. **密钥**。新准备的只有 HMAC 和 `rum_controller` 口令。Redis 密码、MinIO secret 用平台现有的。Redis 密码为 16 到 256 个字符，字符不限，不因启用 RUM 轮换。`/run/secrets` 权限 `0400`、属主 `65532`。Gateway 与 Controller 的当前 HMAC 是同一个值，且不少于 32 字节。队列目录 `/var/lib/core-rum` 持久、可写、属主正确。
 5. **进程**。Gateway 日志出现 `Everything is ready`，`GET :13135/` 返回 200。Controller 日志出现 `bklite-rum-controller ready queue=rum-controller`。Maintainer 日志出现 `bklite-rum-maintainer ready`，`core_rum_operational_metrics_up 1`。`:13135`、`:8888`、`:9090` 只在内网。
 6. **Server**。现有 Server 发布已带上 RUM 变量，`rum` 已安装。缺 NATS、VictoriaLogs 或 Controller 时，接口返回 `controlUnavailable` 或 `analyticsUnavailable`，不显示成空数据，也不挡住 Django 启动。
 7. **Edge**。公网只有 `/rum/v1/collect` 和 `/rum/v1/replay`，且优先于控制台总路由。这两条没有登录校验。SDK 脚本仍由 Web 返回。`:4319`、`:4320` 和 APM `:4318` 都不能从公网直接访问。

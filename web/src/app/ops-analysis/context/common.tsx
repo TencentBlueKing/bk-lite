@@ -13,6 +13,7 @@ import {
 import { useDataSourceApi } from '@/app/ops-analysis/api/dataSource';
 import { useNamespaceApi } from '@/app/ops-analysis/api/namespace';
 import { useUserInfoContext } from '@/context/userInfo';
+import { retainRequestedDatasources } from '@/app/ops-analysis/utils/datasourceRecordId';
 import { addAuthToDataSources } from '@/app/ops-analysis/utils/permissionChecker';
 import { useSharedDataSourceQuery } from '@/app/ops-analysis/context/shareDataSource';
 import type {
@@ -32,6 +33,7 @@ interface OpsAnalysisContextType {
   refreshNamespaces: () => Promise<void>;
   fetchDataSources: (ids?: Array<number | string>) => Promise<DatasourceItem[]>;
   loadCanvasDataSources: (ids?: Array<number | string>) => Promise<DatasourceItem[]>;
+  resetCanvasDataSourceLookup: () => void;
 }
 
 const OpsAnalysisContext = createContext<OpsAnalysisContextType | undefined>(
@@ -41,13 +43,11 @@ const OpsAnalysisContext = createContext<OpsAnalysisContextType | undefined>(
 interface OpsAnalysisProviderCoreProps {
   children: ReactNode;
   selectedGroupId?: number | string;
-  trustBackendAuthorization?: boolean;
 }
 
 const OpsAnalysisProviderCore = ({
   children,
   selectedGroupId,
-  trustBackendAuthorization = false,
 }: OpsAnalysisProviderCoreProps) => {
   const sharedAccess = useSharedDataSourceQuery();
   const [rawNamespaces, setRawNamespaces] = useState<NamespaceItem[]>([]);
@@ -96,11 +96,14 @@ const OpsAnalysisProviderCore = ({
   }, []);
 
   const applyDataSourceAuth = useCallback(
-    (list: DatasourceItem[]) =>
-      sharedAccess || trustBackendAuthorization
-        ? (list || []).map((item) => ({ ...item, hasAuth: true }))
-        : addAuthToDataSources(list || [], selectedGroupId),
-    [selectedGroupId, sharedAccess, trustBackendAuthorization],
+    (list: DatasourceItem[]) => {
+      const items = list || [];
+      if (items.some((item) => typeof item.hasAuth === 'boolean')) {
+        return items;
+      }
+      return addAuthToDataSources(items, selectedGroupId);
+    },
+    [selectedGroupId],
   );
 
   const mergeDataSources = useCallback((incoming: DatasourceItem[]) => {
@@ -319,6 +322,13 @@ const OpsAnalysisProviderCore = ({
     }
   }, [applyDataSourceAuth, finishDataSourceRequest, getDataSourceDetails, mergeDataSources, normalizeDataSources, normalizeIds]);
 
+  const resetCanvasDataSourceLookup = useCallback(() => {
+    canvasDataSourceRequestIdRef.current += 1;
+    rawDataSourcesRef.current = [];
+    setRawDataSources([]);
+    setCanvasDataSourceLookupStatus('loading');
+  }, []);
+
   const loadCanvasDataSources = useCallback(async (ids: Array<number | string> = []) => {
     const requestedIds = Array.isArray(ids) ? ids : [];
     const normalizedIds = normalizeIds(requestedIds);
@@ -332,7 +342,10 @@ const OpsAnalysisProviderCore = ({
       return [];
     }
 
-    const currentDataSources = rawDataSourcesRef.current;
+    const currentDataSources = retainRequestedDatasources(
+      rawDataSourcesRef.current,
+      normalizedIds,
+    );
     const currentMap = new Map<number, DatasourceItem>();
     currentDataSources.forEach((item) => currentMap.set(item.id, item));
     const missingIds = normalizedIds.filter((id) => !currentMap.has(id));
@@ -353,7 +366,10 @@ const OpsAnalysisProviderCore = ({
       dataSourcesRequestingRef.current = true;
       setDataSourcesLoading(true);
       const response = await getDataSourceDetails(missingIds);
-      const responseDataSources = normalizeDataSources(response);
+      const responseDataSources = retainRequestedDatasources(
+        normalizeDataSources(response),
+        normalizedIds,
+      );
       const nextMap = new Map<number, DatasourceItem>(currentMap);
       responseDataSources.forEach((item) => nextMap.set(item.id, item));
       const scopedDataSources = normalizedIds
@@ -398,6 +414,7 @@ const OpsAnalysisProviderCore = ({
     refreshNamespaces,
     fetchDataSources,
     loadCanvasDataSources,
+    resetCanvasDataSourceLookup,
   };
 
   return (
@@ -419,10 +436,12 @@ export const OpsAnalysisProvider = ({ children }: { children: ReactNode }) => {
 
 export const DashboardRenderOpsAnalysisProvider = ({
   children,
+  selectedGroupId,
 }: {
   children: ReactNode;
+  selectedGroupId?: number | string;
 }) => (
-  <OpsAnalysisProviderCore trustBackendAuthorization>
+  <OpsAnalysisProviderCore selectedGroupId={selectedGroupId}>
     {children}
   </OpsAnalysisProviderCore>
 );

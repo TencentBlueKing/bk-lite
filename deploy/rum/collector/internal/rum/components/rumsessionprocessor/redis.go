@@ -81,8 +81,8 @@ func newRedisSessionStore(cfg *Config) (*redisSessionStore, error) {
 			return nil, fmt.Errorf("read Redis password file: %w", err)
 		}
 		password = strings.TrimSpace(string(contents))
-		if !redisSecretPattern.MatchString(password) {
-			return nil, errors.New("Redis password file must contain one URL-safe 32-256 character secret")
+		if len(password) < 16 || len(password) > 256 {
+			return nil, errors.New("Redis password file must contain 16-256 characters")
 		}
 	}
 	db := 0

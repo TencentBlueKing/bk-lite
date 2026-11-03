@@ -1,9 +1,11 @@
 # -*- coding: utf-8 -*-
 """拓扑重放用已入库接口解析/写边：不依赖本轮设备指标窗口。"""
+import logging
 from unittest import mock
 
 import pytest
 
+from apps.cmdb.collection import topology_interface_inventory
 from apps.cmdb.collection.collect_plugin.network import CollectNetworkMetrics
 from apps.cmdb.collection.constants import NETWORK_INTERFACES_RELATIONS
 from apps.cmdb.collection.topology_interface_inventory import (
@@ -70,6 +72,30 @@ def test_match_port_ambiguous_name_returns_none():
     assert match_port_to_inventory_inst_name(port, interfaces) is None
 
 
+def test_match_port_unique_mac_when_name_misses():
+    port = {"device_id": "10.0.0.1", "ifindex": "7", "ifname": "Gi0/0/8", "mac": "AA:BB:CC:DD:EE:FF"}
+    interfaces = [_iface(IFACE_A, name="Gi0/0/7", ip="10.0.0.1", mac="aa:bb:cc:dd:ee:ff")]
+    assert match_port_to_inventory_inst_name(port, interfaces) == IFACE_A
+
+
+def test_match_port_same_device_duplicate_mac_returns_none():
+    port = {"device_id": "10.0.0.1", "ifindex": "7", "ifname": "Gi0/0/8", "mac": "aa:bb:cc:dd:ee:ff"}
+    interfaces = [
+        _iface("10.0.0.1-switch-a", name="Gi0/0/1", ip="10.0.0.1", mac="aa:bb:cc:dd:ee:ff", _id=1),
+        _iface("10.0.0.1-switch-b", name="Gi0/0/2", ip="10.0.0.1", mac="aabbccddeeff", _id=2),
+    ]
+    assert match_port_to_inventory_inst_name(port, interfaces) is None
+
+
+def test_match_port_name_beats_mac():
+    port = {"device_id": "10.0.0.1", "ifindex": "7", "ifname": "Gi0/0/7", "mac": "aa:bb:cc:dd:ee:ff"}
+    interfaces = [
+        _iface("10.0.0.1-switch-by-mac", name="Gi0/0/8", ip="10.0.0.1", mac="aa:bb:cc:dd:ee:ff", _id=1),
+        _iface("10.0.0.1-switch-by-name", name="Gi0/0/7", ip="10.0.0.1", mac="11:11:11:11:11:11", _id=2),
+    ]
+    assert match_port_to_inventory_inst_name(port, interfaces) == "10.0.0.1-switch-by-name"
+
+
 def test_merge_inventory_port_index_fills_missing_ifindex_keys():
     index_map = {("10.0.0.1", "7"): IFACE_A}
     ports = [
@@ -83,6 +109,64 @@ def test_merge_inventory_port_index_fills_missing_ifindex_keys():
     merge_inventory_port_index(index_map, ports, interfaces)
     assert index_map[("10.0.0.1", "7")] == IFACE_A
     assert index_map[("10.0.0.2", "9")] == IFACE_B
+
+
+def test_merge_inventory_port_index_groups_each_device_once(monkeypatch):
+    """独立重放一轮只按设备分组：n 台设备的归属比较次数不超过 n。"""
+    original = topology_interface_inventory._iface_belongs_to_device
+    observed = {}
+    for n in (200, 400):
+        box = [0]
+
+        def counted(iface, device_id, _box=box):
+            _box[0] += 1
+            return original(iface, device_id)
+
+        monkeypatch.setattr(topology_interface_inventory, "_iface_belongs_to_device", counted)
+        ports = []
+        interfaces = []
+        expected = {}
+        for i in range(n):
+            device_id = f"dev{i}"
+            inst_name = f"{device_id}-switch-Gi0/1"
+            interfaces.append(
+                {
+                    "inst_name": inst_name,
+                    "name": "Gi0/1",
+                    "self_device": f"{device_id}-switch",
+                }
+            )
+            ports.append({"device_id": device_id, "ifindex": 1, "ifname": "Gi0/1"})
+            expected[(device_id, "1")] = inst_name
+        mapped = merge_inventory_port_index({}, ports, interfaces)
+        assert mapped == expected
+        observed[n] = box[0]
+    logging.getLogger("test_topology_interface_inventory").info(
+        "inventory_belongs_calls 200=%s 400=%s",
+        observed[200],
+        observed[400],
+    )
+    assert observed[200] <= 200 and observed[400] <= 400, observed
+
+
+def test_merge_inventory_port_index_matches_exact_self_device():
+    inst_name = "nic-1"
+    mapped = merge_inventory_port_index(
+        {},
+        [{"device_id": "host-a", "ifindex": "1", "ifname": "Gi0/1"}],
+        [{"inst_name": inst_name, "name": "Gi0/1", "self_device": "host-a"}],
+    )
+    assert mapped == {("host-a", "1"): inst_name}
+
+
+def test_merge_inventory_port_index_keeps_existing_key():
+    index_map = {("10.0.0.1", "1"): "already-mapped"}
+    merge_inventory_port_index(
+        index_map,
+        [{"device_id": "10.0.0.1", "ifindex": "1", "ifname": "Gi0/1"}],
+        [_iface("10.0.0.1-switch-Gi0/1", name="Gi0/1", ip="10.0.0.1")],
+    )
+    assert index_map == {("10.0.0.1", "1"): "already-mapped"}
 
 
 def test_pipeline_resolves_connect_from_inventory_when_round_index_empty():

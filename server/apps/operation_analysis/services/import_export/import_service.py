@@ -24,6 +24,7 @@ from apps.operation_analysis.constants.import_export import (
     RENAME_SUFFIX,
     SENSITIVE_PLACEHOLDER,
     ConflictAction,
+    ImportExportErrorCode,
     ImportStatus,
     ObjectType,
     is_sensitive_field_name,
@@ -80,6 +81,7 @@ class ImportService:
         existing_canvas_ids: dict[tuple[str, str], int] | None = None,
         preserve_existing_canvas_groups: bool = False,
         datasource_groups: list[int] | None = None,
+        conflict_decisions_by_type: dict[tuple[str, str], str] | None = None,
     ):
         """
         初始化导入服务
@@ -95,10 +97,13 @@ class ImportService:
             existing_canvas_ids: 由受信调用方按（对象类型，稳定键）解析的存量画布 ID
             preserve_existing_canvas_groups: 覆盖存量画布时保留其组织可见性配置
             datasource_groups: 新建数据源的组织名单；None 时沿用 groups
+            conflict_decisions_by_type: 按（对象类型，object_key）分开的冲突决策。
+                提供时优先于 conflict_decisions，避免画布键与数据源键相同互相覆盖。
         """
         self.doc = doc
         self.target_directory_id = target_directory_id
         self.conflict_decisions = conflict_decisions
+        self.conflict_decisions_by_type = conflict_decisions_by_type
         self.secret_supplements = secret_supplements
         self.created_by = created_by
         self.updated_by = updated_by
@@ -115,8 +120,13 @@ class ImportService:
         # 导入结果统计
         self.results: list[dict] = []
 
-    def _get_conflict_action(self, object_key: str) -> str:
-        """获取对象的冲突处理策略，默认为rename"""
+    def _get_conflict_action(self, object_key: str, object_type: str | None = None) -> str:
+        """获取对象的冲突处理策略，默认为rename。
+
+        分类型决策存在时只查（对象类型，object_key），不再回落到扁平 object_key。
+        """
+        if self.conflict_decisions_by_type is not None and object_type is not None:
+            return self.conflict_decisions_by_type.get((object_type, object_key), ConflictAction.RENAME.value)
         return self.conflict_decisions.get(object_key, ConflictAction.RENAME.value)
 
     def _get_secret_value(self, object_key: str, field: str, default: str = "") -> str:
@@ -229,17 +239,19 @@ class ImportService:
         status: str,
         message: str = "",
         new_id: int | None = None,
+        code: str | None = None,
     ):
         """记录单个对象的导入结果"""
-        self.results.append(
-            {
-                "object_key": object_key,
-                "object_type": object_type,
-                "status": status,
-                "message": message,
-                "new_id": new_id,
-            }
-        )
+        row = {
+            "object_key": object_key,
+            "object_type": object_type,
+            "status": status,
+            "message": message,
+            "new_id": new_id,
+        }
+        if code:
+            row["code"] = code
+        self.results.append(row)
 
     def _has_failed_results(self) -> bool:
         return any(result["status"] == ImportStatus.FAILED.value for result in self.results)
@@ -265,7 +277,7 @@ class ImportService:
             新建或已存在的命名空间ID
         """
         existing = NameSpace.objects.filter(name=ns_item.name).first()
-        action = self._get_conflict_action(ns_item.key)
+        action = self._get_conflict_action(ns_item.key, ObjectType.NAMESPACE.value)
 
         # 获取密码值（优先使用supplement，否则使用YAML中的值）
         password = self._get_secret_value(ns_item.key, "password")
@@ -334,6 +346,7 @@ class ImportService:
                     ObjectType.NAMESPACE.value,
                     ImportStatus.FAILED.value,
                     oa_message("messages.import_namespace_password_missing", "新建命名空间缺少密码"),
+                    code=ImportExportErrorCode.IMPORT_SECRET_REQUIRED,
                 )
                 return None
 
@@ -366,7 +379,7 @@ class ImportService:
             新建或已存在的数据源ID
         """
         existing = DataSourceAPIModel.objects.filter(name=ds_item.name, rest_api=ds_item.rest_api).first()
-        action = self._get_conflict_action(ds_item.key)
+        action = self._get_conflict_action(ds_item.key, ObjectType.DATASOURCE.value)
 
         targets_legacy_route = is_legacy_raw_monitor_query(
             source_type=ds_item.source_type,
@@ -378,6 +391,7 @@ class ImportService:
                 ObjectType.DATASOURCE.value,
                 ImportStatus.FAILED.value,
                 oa_message("messages.import_legacy_raw_monitor", LEGACY_RAW_MONITOR_QUERY_ERROR),
+                code=ImportExportErrorCode.YAML_SCHEMA_INVALID,
             )
             return None
 
@@ -410,6 +424,7 @@ class ImportService:
                             "数据源缺少敏感配置: {fields}",
                             fields=", ".join(missing_secrets),
                         ),
+                        code=ImportExportErrorCode.IMPORT_SECRET_REQUIRED,
                     )
                     return None
                 previous_source_type = existing.source_type
@@ -456,6 +471,7 @@ class ImportService:
                             "数据源缺少敏感配置: {fields}",
                             fields=", ".join(missing_secrets),
                         ),
+                        code=ImportExportErrorCode.IMPORT_SECRET_REQUIRED,
                     )
                     return None
                 new_name = self._generate_rename_name(ds_item.name, DataSourceAPIModel)
@@ -501,6 +517,7 @@ class ImportService:
                         "数据源缺少敏感配置: {fields}",
                         fields=", ".join(missing_secrets),
                     ),
+                    code=ImportExportErrorCode.IMPORT_SECRET_REQUIRED,
                 )
                 return None
             ds = DataSourceAPIModel.objects.create(
@@ -550,7 +567,7 @@ class ImportService:
             existing = model.objects.filter(pk=stable_existing_id).first()
         else:
             existing = model.objects.filter(name=canvas_item.name).first()
-        action = self._get_conflict_action(canvas_item.key)
+        action = self._get_conflict_action(canvas_item.key, object_type.value)
 
         # 获取目标目录
         directory = None

@@ -1757,6 +1757,36 @@ def test_compact_analyze_deployment_keeps_parseable_issues_detail_under_budget()
     assert len(out[0].content) <= 1500
 
 
+def test_colocate_mlops_predict_with_monitor_query():
+    from apps.opspilot.metis.llm.agent.tool_execution_planner import (
+        _MLOPS_MONITOR_LINK_HINT,
+        ToolExecutionPlan,
+        ToolExecutionStep,
+        colocate_mlops_predict_with_monitor_query,
+    )
+
+    plan = ToolExecutionPlan(
+        goal="预测磁盘",
+        steps=[
+            ToolExecutionStep(objective="查询磁盘时序", tools=["monitor_list_object_metrics", "monitor_query_metric_data"]),
+            ToolExecutionStep(objective="把查询结果交给预测", tools=["mlops_predict_timeseries"]),
+        ],
+    )
+    fixed = colocate_mlops_predict_with_monitor_query(
+        plan,
+        {"monitor_list_object_metrics", "monitor_query_metric_data", "mlops_predict_timeseries"},
+        max_tools_per_step=4,
+    )
+    assert len(fixed.steps) == 1
+    assert fixed.steps[0].tools == [
+        "monitor_list_object_metrics",
+        "monitor_query_metric_data",
+        "mlops_predict_timeseries",
+    ]
+    assert "禁止把监控点写入 data" in fixed.steps[0].objective
+    assert "原样复制" in _MLOPS_MONITOR_LINK_HINT
+
+
 def test_enforce_list_metrics_with_query_keeps_catalog_visible():
     from apps.opspilot.metis.llm.agent.tool_execution_planner import ToolExecutionPlan, ToolExecutionStep, enforce_list_metrics_with_query
 

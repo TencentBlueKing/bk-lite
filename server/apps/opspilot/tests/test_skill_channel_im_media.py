@@ -17,8 +17,7 @@ from apps.opspilot.services import skill_channel_im_media as im_media
 from apps.opspilot.services.wiki import parsed_media_service
 
 _MINIO_PRESIGN = (
-    "http://minio.internal:9000/munchkin-private/wiki/media/obj"
-    "?AWSAccessKeyId=AKIA_SENTINEL&Signature=SIG_SENTINEL&Expires=1893456000"
+    "http://minio.internal:9000/munchkin-private/wiki/media/obj" "?AWSAccessKeyId=AKIA_SENTINEL&Signature=SIG_SENTINEL&Expires=1893456000"
 )
 _LOCATOR = "wiki/media/1/2/" + ("d" * 64) + ".png"
 
@@ -262,6 +261,52 @@ def test_rewrite_and_dingtalk_body_omit_minio_presign(settings, monkeypatch):
     assert "https://web.example/api/proxy/" in text
 
 
+def test_wecom_stream_image_uses_raw_md5_without_url(monkeypatch):
+    import base64
+    import hashlib
+    import json
+
+    png = b"\x89PNG\r\n\x1a\nhello"
+    image = im_media.ImImage(
+        alt="图",
+        source_url="https://blocked.example/a.png?sig=secret",
+        public_url="https://blocked.example/a.png?sig=secret",
+        content=png,
+        content_type="image/png",
+    )
+    items = im_media.wecom_stream_image_items([image])
+    assert items[0]["image"]["md5"] == hashlib.md5(png).hexdigest()
+    assert "blocked.example" not in json.dumps(items)
+    assert items[0]["image"]["base64"] == base64.b64encode(png).decode("ascii")
+    monkeypatch.setattr(im_media, "prepare_im_markdown", lambda text: (f"说明 ![图]({image.source_url})", [image]))
+    visible, outbound = im_media.wecom_short_connection_outbound("说明")
+    assert visible == "说明"
+    assert "![" not in visible
+    assert outbound[0]["image"]["md5"] == hashlib.md5(png).hexdigest()
+    assert "blocked.example" not in visible
+    monkeypatch.setattr(im_media, "prepare_im_markdown", lambda text: (f"![图]({image.source_url})", []))
+    visible, outbound = im_media.wecom_short_connection_outbound("说明")
+    assert visible == "附图"
+    assert outbound == []
+    assert "blocked.example" not in visible
+
+
+def test_wecom_long_connection_outbound_returns_image_bytes_without_url(monkeypatch):
+    png = b"\x89PNG\r\n\x1a\nhello"
+    image = im_media.ImImage(
+        alt="图",
+        source_url="https://blocked.example/a.png?sig=secret",
+        public_url="https://blocked.example/a.png?sig=secret",
+        content=png,
+        content_type="image/png",
+    )
+    monkeypatch.setattr(im_media, "prepare_im_markdown", lambda text: (f"说明 ![图]({image.source_url})", [image]))
+    visible, files = im_media.wecom_long_connection_outbound("说明")
+    assert visible == "说明"
+    assert "blocked.example" not in visible
+    assert files == [("image-1.png", png)]
+
+
 def test_deliver_aibot_body_omits_minio_presign(settings, monkeypatch):
     settings.WEB_BASE_URL = "https://web.example"
     monkeypatch.setattr(im_media, "_try_minio_presign", lambda locator: _MINIO_PRESIGN)
@@ -280,7 +325,8 @@ def test_deliver_aibot_body_omits_minio_presign(settings, monkeypatch):
     assert "minio.internal" not in text
     assert "AWSAccessKeyId" not in text
     assert "Signature=" not in text
-    assert "https://web.example/api/proxy/" in text
+    assert "https://web.example/api/proxy/" not in text
+    assert "![" not in text
 
 
 def test_deliver_feishu_keeps_proxy_url_when_collect_empty(monkeypatch):
@@ -294,8 +340,9 @@ def test_deliver_feishu_keeps_proxy_url_when_collect_empty(monkeypatch):
         sender_id="ou_1",
         config={"message_id": "om_1"},
     )
-    handler.send_text_reply.assert_called_once_with(markdown, "ou_1", {"message_id": "om_1"})
+    handler.send_text_reply.assert_called_once_with("正文", "ou_1", {"message_id": "om_1"})
     handler.send_image_reply.assert_not_called()
+    assert "sig=ok" not in handler.send_text_reply.call_args.args[0]
 
 
 def test_deliver_feishu_falls_back_to_proxy_url_when_send_image_fails(monkeypatch):
@@ -318,7 +365,9 @@ def test_deliver_feishu_falls_back_to_proxy_url_when_send_image_fails(monkeypatc
         config={"message_id": "om_1"},
     )
     texts = [call.args[0] for call in handler.send_text_reply.call_args_list]
-    assert any("https://web.example/api/proxy/" in text for text in texts)
+    assert texts[0] == "正文"
+    assert all("https://web.example/api/proxy/" not in text for text in texts)
+    assert im_media.FEISHU_IMAGE_FAILED_TEXT in texts
     handler.send_image_reply.assert_called_once()
 
 
@@ -387,9 +436,7 @@ def test_collect_rejects_proxy_url_with_expired_signature(monkeypatch):
 
 
 def test_http_fetch_failure_log_omits_url_secrets(monkeypatch, caplog):
-    secret_url = (
-        "https://cdn.example/obj?AWSAccessKeyId=AKIA_SENTINEL&Signature=SIG_SENTINEL&sig=SIG_QUERY"
-    )
+    secret_url = "https://cdn.example/obj?AWSAccessKeyId=AKIA_SENTINEL&Signature=SIG_SENTINEL&sig=SIG_QUERY"
 
     def validate(url, allowlist=None):
         return url
@@ -424,7 +471,4 @@ def test_http_fetch_failure_log_omits_url_secrets(monkeypatch, caplog):
     assert "SIG_SENTINEL" not in blob
     assert "sig=SIG_QUERY" not in blob
     assert "cdn.example" in caplog.text
-    assert any(
-        record.name == "opspilot" and "error_type=" in (record.msg if isinstance(record.msg, str) else "")
-        for record in caplog.records
-    )
+    assert any(record.name == "opspilot" and "error_type=" in (record.msg if isinstance(record.msg, str) else "") for record in caplog.records)

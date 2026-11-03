@@ -11,6 +11,8 @@ import { usePermissions } from '@/context/permissions';
 import {
   getDeepestMatchedMenuItems,
   getFirstLayerSiblingMenuItems,
+  groupRuleListUrlFromEditor,
+  resolveSegmentedSelectedUrl,
 } from '@/utils/menuHelpers';
 import { isScreenModeEnabled, withScreenQuery } from '@/console-layout';
 
@@ -62,6 +64,7 @@ const WithSideMenuLayout: React.FC<WithSideMenuLayoutProps> = ({
   const curRouterName = usePathname();
   const searchParams = useSearchParams();
   const screenMode = isScreenModeEnabled(searchParams);
+  const editorType = searchParams.get('type');
   const pathname = pagePathName ?? curRouterName;
   const { menus } = usePermissions();
   const [selectedKey, setSelectedKey] = useState<string>(pathname ?? '');
@@ -98,25 +101,11 @@ const WithSideMenuLayout: React.FC<WithSideMenuLayoutProps> = ({
 
     // Update selectedKey with improved matching logic
     if (filteredItems.length > 0) {
-      let urlKey = filteredItems.find((menu) => menu.url === curRouterName)?.url;
-
-      if (!urlKey) {
-        urlKey = filteredItems.find(
-          (menu) => menu.url && curRouterName && curRouterName.startsWith(menu.url)
-        )?.url;
-      }
-
-      if (!urlKey && curRouterName) {
-        const pathSegments = curRouterName.split('/').filter(Boolean);
-        const lastSegment = pathSegments[pathSegments.length - 1];
-        urlKey = filteredItems.find((menu) => menu.name === lastSegment)?.url;
-      }
-
-      setSelectedKey(urlKey || curRouterName || '');
+      setSelectedKey(resolveSegmentedSelectedUrl(curRouterName || '', filteredItems, editorType));
     } else {
       setSelectedKey(curRouterName || '');
     }
-  }, [updateMenuItems, curRouterName, pagePathName]);
+  }, [updateMenuItems, curRouterName, pagePathName, editorType]);
 
   const handleSegmentChange = useCallback((key: string | number) => {
     router.push(withScreenQuery(key as string, isScreenModeEnabled(searchParams)));
@@ -126,7 +115,19 @@ const WithSideMenuLayout: React.FC<WithSideMenuLayoutProps> = ({
   const segmentedOptions = useMemo(() => {
     return menuItems.map(item => ({
       label: (
-        <div className="flex items-center justify-center">
+        <div
+          className="flex items-center justify-center"
+          onClick={() => {
+            if (item.url !== selectedKey) return;
+            const target = groupRuleListUrlFromEditor(
+              curRouterName || '',
+              editorType,
+              searchParams.get('monitorObjId'),
+            );
+            if (!target || !item.url || !target.startsWith(item.url)) return;
+            router.push(withScreenQuery(target, isScreenModeEnabled(searchParams)));
+          }}
+        >
           {item.icon && (
             <Icon type={item.icon} className="mr-2 text-sm" />
           )} {item.title}
@@ -134,7 +135,7 @@ const WithSideMenuLayout: React.FC<WithSideMenuLayoutProps> = ({
       ),
       value: item.url,
     }));
-  }, [menuItems]);
+  }, [menuItems, selectedKey, curRouterName, editorType, searchParams, router]);
 
   const sideMenuContent = useMemo(() => {
     const sideMenuProps = {

@@ -39,6 +39,7 @@ import {
   resolveApplication3DWallConfig,
   type Application3DWallConfig,
 } from '@/app/ops-analysis/utils/application3DWallConfig';
+import { persistLineBarFormFields } from '@/app/ops-analysis/utils/lineBarFieldMapping';
 import {
   persistSingleValueStyle,
   type SingleValueStyleConfig,
@@ -70,6 +71,8 @@ export interface WidgetConfigFormValues {
   barMax?: number;
   dimensionField?: string;
   valueField?: string;
+  valueFields?: string[];
+  seriesField?: string;
   pieScalarFields?: Array<{ field?: string; label?: string }>;
   multiValueLabelField?: string;
   multiValueValueField?: string;
@@ -134,6 +137,7 @@ export type WidgetSubmitError =
   | 'cardListLeadingFieldRequired'
   | 'chartRoleFieldsRequired'
   | 'chartRoleFieldPairRequired'
+  | 'lineBarSeriesFieldConflict'
   | 'relatedTopologyInstUuidRequired'
   | 'relatedTopologyModelIdRequired'
   | 'applicationTopologyInstUuidRequired'
@@ -414,6 +418,8 @@ const CARD_LIST_FOREIGN_KEYS = [
   'barMax',
   'dimensionField',
   'valueField',
+  'valueFields',
+  'seriesField',
   'multiValueLabelField',
   'multiValueValueField',
   'nodeGraphIdentityMode',
@@ -531,11 +537,23 @@ const SCREEN_OPTIONAL_KEYS_CLEARED_WHEN_ABSENT = [
   'descriptionField',
   'dimensionField',
   'valueField',
+  'valueFields',
+  'seriesField',
   'nodeGraphTargetPortField',
 ] as const;
 
-const isBlankOptionalValue = (value: unknown) =>
-  value == null || (typeof value === 'string' && value.trim() === '');
+const isBlankOptionalValue = (value: unknown) => {
+  if (value == null) {
+    return true;
+  }
+  if (typeof value === 'string') {
+    return value.trim() === '';
+  }
+  if (Array.isArray(value)) {
+    return value.every((item) => typeof item !== 'string' || item.trim() === '');
+  }
+  return false;
+};
 
 /** 大屏组件数据配置保存：新提交覆盖旧 valueConfig，并丢掉已清空的可选项。 */
 export const mergeScreenWidgetValueConfig = (
@@ -729,6 +747,21 @@ export const buildWidgetSubmitConfig = ({
 
   if (VALUE_FORMAT_CHART_TYPES.has(chartType)) {
     applyValueFormatFields(result, values);
+  }
+
+  if (chartType === 'line' || chartType === 'bar') {
+    const persisted = persistLineBarFormFields(values, forPreview);
+    if ('error' in persisted) {
+      return {
+        error: persisted.error === 'conflict'
+          ? 'lineBarSeriesFieldConflict'
+          : 'chartRoleFieldsRequired',
+      };
+    }
+    result.dimensionField = persisted.fields.dimensionField;
+    result.valueField = persisted.fields.valueField;
+    result.valueFields = persisted.fields.valueFields;
+    result.seriesField = persisted.fields.seriesField;
   }
 
   if (chartType === 'pie') {

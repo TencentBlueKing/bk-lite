@@ -87,7 +87,7 @@ export const getSidebarCanvasMenuKeys = (
   if (item.is_build_in) {
     return ['copy', 'export', 'edit', 'delete'];
   }
-  return ['edit', 'delete', 'copy', 'export'];
+  return ['edit', 'delete', 'copy', 'export', 'importUpdate'];
 };
 
 /** 编辑已有画布时只保留目录链内的组织，不把当前组织补回去。 */

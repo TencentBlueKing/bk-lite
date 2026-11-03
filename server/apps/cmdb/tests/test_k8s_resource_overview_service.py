@@ -21,6 +21,8 @@ def k8s_graph(monkeypatch):
         99: {"_id": 99, "model_id": "k8s_cluster", "inst_name": "other"},
         199: {"_id": 199, "model_id": "k8s_workload", "inst_name": "other-wl", "name": "other-wl", "workload_type": "deployment"},
     }
+    for row in instances.values():
+        row["inst_uuid"] = _inst_uuid(row["_id"])
 
     def group(src_model, dst_model, items, model_asst_id):
         return {
@@ -246,9 +248,9 @@ def test_workload_pods_use_real_edges_and_distinguish_node_states(k8s_graph):
 
     assert result["count"] == 2
     assert {node["name"] for node in result["nodes"]} == {"api-1", "api-2", "未调度"}
-    assert any(edge["source"] == "20" and edge["target"] == "30" for edge in result["edges"])
-    assert any(edge["source"] == "30" and edge["target"] == "40" for edge in result["edges"])
-    assert any(edge["source"] == "31" and edge["target"] == "virtual:unscheduled" for edge in result["edges"])
+    assert any(edge["source"] == _inst_uuid(20) and edge["target"] == _inst_uuid(30) for edge in result["edges"])
+    assert any(edge["source"] == _inst_uuid(30) and edge["target"] == _inst_uuid(40) for edge in result["edges"])
+    assert any(edge["source"] == _inst_uuid(31) and edge["target"] == "virtual:unscheduled" for edge in result["edges"])
 
 
 @pytest.mark.unit
@@ -257,8 +259,8 @@ def test_workload_pods_paginate_and_reject_cross_cluster_workload(k8s_graph):
     page_two = K8sResourceOverviewService.get_workload_pods(1, 20, page=2, page_size=1)
 
     assert page_one["count"] == 2
-    assert [node["id"] for node in page_one["nodes"] if node["model_id"] == "k8s_pod"] == ["30"]
-    assert [node["id"] for node in page_two["nodes"] if node["model_id"] == "k8s_pod"] == ["31"]
+    assert [node["id"] for node in page_one["nodes"] if node["model_id"] == "k8s_pod"] == [_inst_uuid(30)]
+    assert [node["id"] for node in page_two["nodes"] if node["model_id"] == "k8s_pod"] == [_inst_uuid(31)]
     with pytest.raises(ValidationError, match="不属于当前集群"):
         K8sResourceOverviewService.get_workload_pods(1, 199, page=1, page_size=50)
 
@@ -342,6 +344,8 @@ def test_base_layers_use_stable_limits_and_parent_complete_workloads(monkeypatch
     )
     all_instances = {int(item["_id"]): item for item in [cluster, *namespaces, *nodes]}
     all_instances.update({int(item["_id"]): item for rows in workloads.values() for item in rows})
+    for item in all_instances.values():
+        item["inst_uuid"] = _inst_uuid(item["_id"])
 
     def association_map(model_id, inst_ids, related_model=None):
         result = {}
@@ -455,6 +459,8 @@ def test_workload_pod_page_batches_node_relations_for_current_page(monkeypatch):
         31: {"_id": 31, "model_id": "k8s_pod", "name": "api-2", "node": "node-b"},
         41: {"_id": 41, "model_id": "k8s_node", "name": "node-b"},
     }
+    for row in instances.values():
+        row["inst_uuid"] = _inst_uuid(row["_id"])
     page_queries = []
     relation_calls = []
 
@@ -492,6 +498,61 @@ def test_workload_pod_page_batches_node_relations_for_current_page(monkeypatch):
     result = K8sResourceOverviewService.get_workload_pods(1, 20, page=2, page_size=1)
 
     assert result["count"] == 2
-    assert any(edge["source"] == "31" and edge["target"] == "41" for edge in result["edges"])
+    assert any(edge["source"] == _inst_uuid(31) and edge["target"] == _inst_uuid(41) for edge in result["edges"])
     assert relation_calls[-1] == ("k8s_pod", (31,), "k8s_node")
     assert page_queries[0] == (30, 31)
+
+
+def _inst_uuid(internal_id: int) -> str:
+    return f"00000000-0000-4000-8000-{int(internal_id):012d}"
+
+
+def _public_endpoints(payload: dict) -> set[str]:
+    endpoints = {node["id"] for node in payload.get("nodes", [])}
+    endpoints.update(node["id"] for node in payload.get("topology", {}).get("nodes", []))
+    for edge in [*payload.get("edges", []), *payload.get("topology", {}).get("edges", [])]:
+        endpoints.add(edge["source"])
+        endpoints.add(edge["target"])
+    return endpoints
+
+
+@pytest.mark.unit
+def test_public_topology_uses_inst_uuid_and_hides_instances_without_one(k8s_graph):
+    """对外节点和边使用 inst_uuid；缺 UUID 的实例不得退回数字 ID。"""
+    linked = (k8s_graph[1], k8s_graph[10], k8s_graph[20], k8s_graph[30], k8s_graph[40])
+    for instance in linked:
+        instance["inst_uuid"] = _inst_uuid(instance["_id"])
+    missing = k8s_graph[22]
+    missing.pop("inst_uuid", None)
+
+    overview = K8sResourceOverviewService.get_overview(1)
+    workload_nodes = [
+        node for node in overview["topology"]["nodes"] if node["layer"] == "workload" and node["name"] == "api"
+    ]
+    assert workload_nodes[0]["id"] == k8s_graph[20]["inst_uuid"]
+    assert workload_nodes[0]["id"] != str(k8s_graph[20]["_id"])
+    assert any(
+        k8s_graph[20]["inst_uuid"] in {edge["source"], edge["target"]}
+        for edge in overview["topology"]["edges"]
+    )
+    overview_endpoints = _public_endpoints(overview)
+    assert str(missing["_id"]) not in overview_endpoints
+    assert missing["name"] not in {node["name"] for node in overview["topology"]["nodes"]}
+    assert all(not endpoint.isdigit() for endpoint in overview_endpoints)
+
+    pods = K8sResourceOverviewService.get_workload_pods(1, 20, page=1, page_size=50)
+    pod_nodes = [node for node in pods["nodes"] if node["model_id"] == "k8s_pod" and node["name"] == "api-1"]
+    assert pod_nodes[0]["id"] == k8s_graph[30]["inst_uuid"]
+    assert pod_nodes[0]["id"] != str(k8s_graph[30]["_id"])
+    assert any(
+        edge["kind"] == "workload-pod"
+        and edge["source"] == k8s_graph[20]["inst_uuid"]
+        and edge["target"] == k8s_graph[30]["inst_uuid"]
+        for edge in pods["edges"]
+    )
+    assert str(k8s_graph[30]["_id"]) not in _public_endpoints(pods)
+
+    layer = K8sResourceOverviewService.get_layer(1, "workload", namespace_ids=[10])
+    assert any(node["id"] == k8s_graph[20]["inst_uuid"] for node in layer["nodes"])
+    assert str(missing["_id"]) not in _public_endpoints(layer)
+    assert missing["name"] not in {node["name"] for node in layer["nodes"]}

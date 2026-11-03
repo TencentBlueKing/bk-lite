@@ -13,6 +13,7 @@ from typing import Any, Callable
 
 from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.services.skill_channel_aibot_long_connection_media import WecomMediaRejected, upload_wecom_file
+from apps.opspilot.services.skill_channel_im_media import strip_markdown_images, wecom_long_connection_outbound
 from apps.opspilot.utils.enterprise_wechat_aibot_chat_flow_utils import EnterpriseWechatAibotChatFlowUtils
 
 
@@ -50,13 +51,13 @@ SUBSCRIBE_LOG_TEMPLATE = "event=wecom_aibot_long_connection_subscribed channel_i
 CONNECT_FAILED_LOG_TEMPLATE = "event=wecom_aibot_long_connection_connect_failed channel_id=%s failed_stage=connect error_type=%s"
 TRANSPORT_FAILED_LOG_TEMPLATE = "event=wecom_aibot_long_connection_transport_failed channel_id=%s failed_stage=read error_type=%s"
 REPLY_FINISHED_LOG_TEMPLATE = "event=wecom_aibot_long_connection_reply_finished channel_id=%s outcome=%s"
+IMAGE_REPLY_LOG_TEMPLATE = "event=wecom_aibot_long_connection_image_reply channel_id=%s image_count=%s"
+IMAGE_SENT_LOG_TEMPLATE = "event=wecom_aibot_long_connection_image_sent channel_id=%s"
+IMAGE_FAILED_LOG_TEMPLATE = "event=wecom_aibot_long_connection_image_failed channel_id=%s failed_stage=%s error_type=%s error_code=%s error_msg=%s"
+IMAGE_DELIVERY_FAILED_TEXT = "图片发送失败，请稍后重试"
 FILE_SENT_LOG_TEMPLATE = "event=wecom_aibot_long_connection_file_sent channel_id=%s"
-FILE_FAILED_LOG_TEMPLATE = (
-    "event=wecom_aibot_long_connection_file_failed channel_id=%s failed_stage=%s error_type=%s error_code=%s error_msg=%s"
-)
-FILE_NOTICE_FAILED_LOG_TEMPLATE = (
-    "event=wecom_aibot_long_connection_file_notice_failed channel_id=%s failed_stage=notify error_type=%s"
-)
+FILE_FAILED_LOG_TEMPLATE = "event=wecom_aibot_long_connection_file_failed channel_id=%s failed_stage=%s error_type=%s error_code=%s error_msg=%s"
+FILE_NOTICE_FAILED_LOG_TEMPLATE = "event=wecom_aibot_long_connection_file_notice_failed channel_id=%s failed_stage=notify error_type=%s"
 
 _RENEW_LOCK_SCRIPT = """
 if redis.call("get", KEYS[1]) == ARGV[1] then
@@ -64,6 +65,17 @@ if redis.call("get", KEYS[1]) == ARGV[1] then
 end
 return 0
 """
+
+
+def _long_connection_stream_outbound(content: str, *, finish: bool) -> tuple[str, list[tuple[str, bytes]]]:
+    """刷新帧去掉图片外链。结束帧只回文字，图片在流结束后按素材另发。历史仍存原文。"""
+    raw = content or ""
+    if not finish:
+        if "![" not in raw:
+            return raw, []
+        visible = strip_markdown_images(raw)
+        return (visible or "附图"), []
+    return wecom_long_connection_outbound(raw)
 
 
 def long_connection_url() -> str:
@@ -247,10 +259,13 @@ class WecomAibotConnection:
 
     def tick(self) -> None:
         now = self.clock.now()
+        image_batches: list[tuple[Turn, list[tuple[str, bytes]]]] = []
         with self._lock:
             for turn in list(self._turns.values()):
-                self._apply_deadline(turn, now)
+                image_batches.extend(self._apply_deadline(turn, now))
                 self._maybe_refresh(turn, now)
+        for turn, images in image_batches:
+            self._deliver_images(turn, images)
 
     def note_generated(self, turn: Turn, text: str) -> None:
         now = self.clock.now()
@@ -272,15 +287,17 @@ class WecomAibotConnection:
 
     def complete_turn(self, turn: Turn) -> None:
         files: list[tuple[str, bytes]] = []
+        images: list[tuple[str, bytes]] = []
         with self._lock:
             if turn.closed or (turn.request and turn.request.cancelled):
                 return
             turn.closed = True
             content = (turn.generated or "").strip() or EMPTY_ANSWER_TEXT
             files = list(turn.files)
-            self._send_stream(turn, content, finish=True)
+            images = self._send_stream(turn, content, finish=True)
             self._persist_assistant(turn, content)
             self._turns.pop(turn.session_key, None)
+        self._deliver_images(turn, images)
         self._deliver_files(turn, files)
         logger.info(REPLY_FINISHED_LOG_TEMPLATE, self.channel.id, "completed")
 
@@ -301,11 +318,12 @@ class WecomAibotConnection:
         session_id, external_user_id = _conversation_identity(body)
         session_key = session_id or external_user_id or req_id
         now = self.clock.now()
-        previous = None
         with self._lock:
             previous = self._turns.get(session_key)
             if previous is not None:
-                self._interrupt_locked(previous)
+                images = self._interrupt_locked(previous)
+                # 图片必须用旧 req_id，并且排在下一条流式帧之前。
+                self._deliver_images(previous, images)
             turn = Turn(
                 req_id=req_id,
                 stream_id=uuid.uuid4().hex,
@@ -324,33 +342,38 @@ class WecomAibotConnection:
             turn.displayed = PROCESSING_TEXT
         self.agent_runner(request)
 
-    def _interrupt_locked(self, turn: Turn) -> None:
+    def _interrupt_locked(self, turn: Turn) -> list[tuple[str, bytes]]:
         if turn.request is not None:
             turn.request.cancelled = True
         if turn.closed:
-            return
+            return []
         turn.closed = True
-        self._send_stream(turn, turn.displayed or PROCESSING_TEXT, finish=True)
-        generated = (turn.generated or "").strip()
-        if generated:
+        generated = turn.generated or ""
+        content = generated if generated.strip() else (turn.displayed or PROCESSING_TEXT)
+        images = list(self._send_stream(turn, content, finish=True))
+        if generated.strip():
             self._persist_assistant(turn, turn.generated)
         self._turns.pop(turn.session_key, None)
         logger.info(REPLY_FINISHED_LOG_TEMPLATE, self.channel.id, "interrupted")
+        return images
 
-    def _apply_deadline(self, turn: Turn, now: float) -> None:
+    def _apply_deadline(self, turn: Turn, now: float) -> list[tuple[Turn, list[tuple[str, bytes]]]]:
         if turn.closed:
-            return
+            return []
         if now - turn.started_at < STREAM_DEADLINE_SECONDS - STREAM_FINISH_LEAD_SECONDS:
-            return
+            return []
         if turn.request is not None:
             turn.request.cancelled = True
         turn.closed = True
         generated = (turn.generated or "").strip()
         content = turn.generated if generated else TIMEOUT_TEXT
-        self._send_stream(turn, content, finish=True)
+        images = self._send_stream(turn, content, finish=True)
         self._persist_assistant(turn, content)
         self._turns.pop(turn.session_key, None)
         logger.info(REPLY_FINISHED_LOG_TEMPLATE, self.channel.id, "timeout")
+        if not images:
+            return []
+        return [(turn, images)]
 
     def _maybe_refresh(self, turn: Turn, now: float) -> None:
         if turn.closed:
@@ -423,22 +446,62 @@ class WecomAibotConnection:
         except Exception as exc:
             logger.warning(FILE_NOTICE_FAILED_LOG_TEMPLATE, self.channel.id, type(exc).__name__)
 
-    def _send_stream(self, turn: Turn, content: str, *, finish: bool) -> None:
-        text = EnterpriseWechatAibotChatFlowUtils.truncate_markdown(content or "")
+    def _send_stream(self, turn: Turn, content: str, *, finish: bool) -> list[tuple[str, bytes]]:
+        visible, images = _long_connection_stream_outbound(content, finish=finish)
+        text = EnterpriseWechatAibotChatFlowUtils.truncate_markdown(visible or "")
+        stream: dict[str, Any] = {"id": turn.stream_id, "finish": finish, "content": text}
+        if finish and images:
+            logger.info(IMAGE_REPLY_LOG_TEMPLATE, self.channel.id, len(images))
         self.transport.send_json(
             {
                 "cmd": "aibot_respond_msg",
                 "headers": {"req_id": turn.req_id},
-                "body": {
-                    "msgtype": "stream",
-                    "stream": {
-                        "id": turn.stream_id,
-                        "finish": finish,
-                        "content": text,
-                    },
-                },
+                "body": {"msgtype": "stream", "stream": stream},
             }
         )
+        return images if finish else []
+
+    def _deliver_images(self, turn: Turn, images: list[tuple[str, bytes]]) -> None:
+        exchange = getattr(self.transport, "exchange", None)
+        if not images or exchange is None:
+            return
+        for filename, content in images:
+            stage = "upload"
+            try:
+                media_id = upload_wecom_file(exchange, filename=filename, content=content, media_type="image")
+                stage = "send"
+                exchange(
+                    {
+                        "cmd": "aibot_respond_msg",
+                        "headers": {"req_id": turn.req_id},
+                        "body": {"msgtype": "image", "image": {"media_id": media_id}},
+                    }
+                )
+            except Exception as exc:
+                failed_stage, error_code, error_msg = _file_failure_fields(exc, stage)
+                logger.warning(
+                    IMAGE_FAILED_LOG_TEMPLATE,
+                    self.channel.id,
+                    failed_stage,
+                    type(exc).__name__,
+                    error_code,
+                    error_msg,
+                )
+                self._notify_image_delivery_failed(turn, exchange)
+                continue
+            logger.info(IMAGE_SENT_LOG_TEMPLATE, self.channel.id)
+
+    def _notify_image_delivery_failed(self, turn: Turn, exchange) -> None:
+        try:
+            exchange(
+                {
+                    "cmd": "aibot_respond_msg",
+                    "headers": {"req_id": turn.req_id},
+                    "body": {"msgtype": "markdown", "markdown": {"content": IMAGE_DELIVERY_FAILED_TEXT}},
+                }
+            )
+        except Exception as exc:
+            logger.warning(FILE_NOTICE_FAILED_LOG_TEMPLATE, self.channel.id, type(exc).__name__)
 
     def _persist_user(self, turn: Turn) -> None:
         from apps.opspilot.models import SkillConversationMessage

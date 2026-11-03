@@ -25,6 +25,7 @@ import ElasticsearchToolEditor, { ElasticsearchToolEditorHandle } from './elasti
 import JenkinsToolEditor, { JenkinsToolEditorHandle } from './jenkinsToolEditor';
 import KubernetesToolEditor, { KubernetesToolEditorHandle } from './kubernetesToolEditor';
 import ActiveDirectoryToolEditor, { ActiveDirectoryToolEditorHandle } from './activeDirectoryToolEditor';
+import MlopsToolEditor, { MlopsToolEditorHandle } from './mlopsToolEditor';
 
 // ── tool type guards ──────────────────────────────────────────────────────────
 const REDIS_TOOL_NAME = 'redis';
@@ -35,6 +36,7 @@ const POSTGRES_TOOL_NAME = 'postgres';
 const ES_TOOL_NAME = 'elasticsearch';
 const JENKINS_TOOL_NAME = 'jenkins';
 const AD_TOOL_NAME = 'activedirectory';
+const MLOPS_TOOL_NAME = 'mlops';
 const KUBERNETES_TOOL_NAMES = new Set(['kubernetes', 'kubernetes_data_collection']);
 
 const isRedisTool = (tool?: SelectTool | null) => (tool?.rawName || tool?.name) === REDIS_TOOL_NAME;
@@ -45,6 +47,7 @@ const isPostgresTool = (tool?: SelectTool | null) => (tool?.rawName || tool?.nam
 const isEsTool = (tool?: SelectTool | null) => (tool?.rawName || tool?.name) === ES_TOOL_NAME;
 const isJenkinsTool = (tool?: SelectTool | null) => (tool?.rawName || tool?.name) === JENKINS_TOOL_NAME;
 const isActiveDirectoryTool = (tool?: SelectTool | null) => (tool?.rawName || tool?.name) === AD_TOOL_NAME;
+const isMlopsTool = (tool?: SelectTool | null) => (tool?.rawName || tool?.name) === MLOPS_TOOL_NAME;
 const isKubernetesTool = (tool?: SelectTool | null) => {
   const toolName = tool?.rawName || tool?.name;
   return toolName ? KUBERNETES_TOOL_NAMES.has(toolName) : false;
@@ -57,7 +60,7 @@ const isDbTool = (tool?: SelectTool | null) =>
 /** 连接类工具自带配置表单；其余工具只有声明了 kwargs 才需要打开配置。 */
 export const toolHasConfigurableFields = (tool?: SelectTool | null) => {
   if (!tool || isMonitorToolConfig(tool)) return false;
-  if (isDbTool(tool)) return true;
+  if (isMlopsTool(tool) || isDbTool(tool)) return true;
   return (tool.kwargs || []).some((item) => Boolean(String(item?.key || '').trim()));
 };
 
@@ -94,6 +97,7 @@ const ToolSelector: React.FC<ToolSelectorProps> = ({ defaultTools, onChange }) =
   const jenkinsRef = useRef<JenkinsToolEditorHandle>(null);
   const kubernetesRef = useRef<KubernetesToolEditorHandle>(null);
   const adRef = useRef<ActiveDirectoryToolEditorHandle>(null);
+  const mlopsRef = useRef<MlopsToolEditorHandle>(null);
 
   const commitSelectedTools = (nextTools: SelectTool[]) => {
     const normalizedTools = normalizeMonitorToolConfigs(nextTools);
@@ -244,6 +248,7 @@ const ToolSelector: React.FC<ToolSelectorProps> = ({ defaultTools, onChange }) =
     if (isJenkinsTool(editingTool)) { jenkinsRef.current?.save(); return; }
     if (isKubernetesTool(editingTool)) { kubernetesRef.current?.save(); return; }
     if (isActiveDirectoryTool(editingTool)) { adRef.current?.save(); return; }
+    if (isMlopsTool(editingTool)) { mlopsRef.current?.save(); return; }
 
     // Generic form-based tool
     form.validateFields().then((values) => {
@@ -388,6 +393,8 @@ const ToolSelector: React.FC<ToolSelectorProps> = ({ defaultTools, onChange }) =
             <KubernetesToolEditor ref={kubernetesRef} initialKwargs={editingTool?.kwargs ?? []} onSave={handleDbToolSaved} />
           ) : isActiveDirectoryTool(editingTool) ? (
             <ActiveDirectoryToolEditor ref={adRef} initialKwargs={editingTool?.kwargs ?? []} onSave={handleDbToolSaved} />
+          ) : isMlopsTool(editingTool) ? (
+            <MlopsToolEditor ref={mlopsRef} initialKwargs={editingTool?.kwargs ?? []} onSave={handleDbToolSaved} />
           ) : (
             <Form.List name="kwargs">
               {(fields) => (

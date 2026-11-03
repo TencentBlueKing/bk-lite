@@ -48,8 +48,14 @@ async def _iter_export_file(stream):
 class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
     @staticmethod
     def _transport_instance(instance):
-        """对外响应剥离图内部字段。"""
-        return {key: value for key, value in dict(instance or {}).items() if key not in {"_id", "_labels"}}
+        """对外响应剥离图内部字段，人工锁定只暴露字段名。"""
+        from apps.cmdb.collection.field_reconcile import COLLECT_SOURCES_ATTR, manual_field_ids
+
+        data = {key: value for key, value in dict(instance or {}).items() if key not in {"_id", "_labels", COLLECT_SOURCES_ATTR}}
+        manual_fields = manual_field_ids(instance or {})
+        if manual_fields:
+            data["manual_fields"] = manual_fields
+        return data
 
     K8S_CHILD_MODELS = ("k8s_namespace", "k8s_workload", "k8s_pod", "k8s_node")
 
@@ -75,6 +81,33 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
             return None, None, permission_error
         permission_maps = {model_id: CmdbRulesFormatUtil.format_user_groups_permissions(request, model_id) for model_id in self.K8S_CHILD_MODELS}
         return instance, permission_maps, None
+
+    def _resolve_k8s_internal_id(self, inst_uuid, expected_model):
+        """把对外 UUIDv4 解析成图内部 _id。模型不符或查不到时沿用实例不存在。"""
+        try:
+            instance = InstanceManage.query_entity_by_uuid(inst_uuid)
+        except BaseAppException:
+            return None, WebUtils.response_error("实例不存在", status_code=status.HTTP_404_NOT_FOUND)
+        if not instance or instance.get("model_id") != expected_model:
+            return None, WebUtils.response_error("实例不存在", status_code=status.HTTP_404_NOT_FOUND)
+        try:
+            return int(instance["_id"]), None
+        except (KeyError, TypeError, ValueError):
+            return None, WebUtils.response_error("实例不存在", status_code=status.HTTP_404_NOT_FOUND)
+
+    def _resolve_optional_k8s_internal_id(self, inst_uuid, expected_model):
+        if inst_uuid in (None, ""):
+            return None, None
+        return self._resolve_k8s_internal_id(inst_uuid, expected_model)
+
+    def _resolve_k8s_internal_ids(self, inst_uuids, expected_model):
+        resolved = []
+        for inst_uuid in inst_uuids or []:
+            internal_id, error = self._resolve_k8s_internal_id(inst_uuid, expected_model)
+            if error:
+                return None, error
+            resolved.append(internal_id)
+        return resolved, None
 
     @staticmethod
     def _get_allowed_org_ids(request) -> list[int]:
@@ -168,7 +201,7 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
 
             field = item.get("field")
             _type = item.get("type")
-            if not field or not _type:
+            if not field or not _type or field == "_collect_sources":
                 return
 
             if _type == "time":
@@ -303,16 +336,29 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
 
         case_sensitive = request.data.get("case_sensitive", True)
         permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(request, model_id)
-        instance_list, count = InstanceManage.instance_list(
-            model_id=model_id,
-            params=query_list,
-            page=page,
-            page_size=page_size,
-            order=request.data.get("order", ""),
-            permission_map=permissions_map,
-            creator=request.user.username,
-            case_sensitive=case_sensitive,
-        )
+        advanced_filter = request.data.get("advanced_filter") or None
+        try:
+            instance_list, count = InstanceManage.instance_list(
+                model_id=model_id,
+                params=query_list,
+                page=page,
+                page_size=page_size,
+                order=request.data.get("order", ""),
+                permission_map=permissions_map,
+                creator=request.user.username,
+                case_sensitive=case_sensitive,
+                advanced_filter=advanced_filter,
+                permission_lookup=lambda mid: CmdbRulesFormatUtil.format_user_groups_permissions(request, mid),
+            )
+        except Exception as exc:
+            from apps.cmdb.graph.advanced_filter import AdvancedFilterError, AdvancedFilterTimeout
+
+            if isinstance(exc, AdvancedFilterTimeout):
+                return WebUtils.response_error(str(exc), status_code=status.HTTP_400_BAD_REQUEST)
+            if isinstance(exc, AdvancedFilterError):
+                message = str(exc) if exc.index is None else f"第{exc.index}个条件：{exc}"
+                return WebUtils.response_error(message, status_code=status.HTTP_400_BAD_REQUEST)
+            raise
         self.add_instance_permission(
             instances=instance_list,
             permission_instances_map=permissions_map,
@@ -503,6 +549,12 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
                 error_message="监控实例已被其他配置项占用",
                 status_code=status.HTTP_409_CONFLICT,
             )
+        if status_name == "stale":
+            return WebUtils.response_error(
+                result,
+                error_message="绑定已变化，未解除当前关联",
+                status_code=status.HTTP_409_CONFLICT,
+            )
         if status_name == "skipped_model":
             return WebUtils.response_error("该模型不支持关联监控", status_code=status.HTTP_400_BAD_REQUEST)
         if status_name in ("not_found", "type_mismatch"):
@@ -678,6 +730,7 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
                 request_payload=instance_info,
                 event_context={
                     "attribute_snapshot": load_attribute_snapshot(model_id, instance_info.keys()),
+                    "audit_source": "手动",
                 },
             )
             inst = OperationService.execute_graph(
@@ -730,6 +783,7 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
             request.user.roles,
             [pk],
             request.user.username,
+            audit_source="手动",
         )
         return WebUtils.response_success()
 
@@ -783,10 +837,27 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
                 request.user.roles,
                 inst_uuids,
                 request.user.username,
+                audit_source="手动",
             )
         except BaseAppException as e:
             return WebUtils.response_error(error_message=e.message, status_code=status.HTTP_403_FORBIDDEN)
         return WebUtils.response_success()
+
+    @HasPermission("asset_info-Edit")
+    @action(methods=["post"], detail=True, url_path="restore_collect")
+    def restore_collect(self, request, pk: str):
+        if str(pk).isdigit():
+            return WebUtils.response_error("请使用 inst_uuid 定位实例，不再支持数字 ID", status_code=status.HTTP_400_BAD_REQUEST)
+        instance = InstanceManage.query_entity_by_uuid(pk)
+        if not instance or not self._is_instance_model_visible(instance):
+            return WebUtils.response_error("实例不存在", status_code=status.HTTP_404_NOT_FOUND)
+        if not self.check_creator_and_organizations(request, instance):
+            organizations = self.organizations(request, instance)
+            if not organizations or not self.check_instance_permission(request, instance, operator=OPERATE):
+                return WebUtils.response_error("抱歉！您没有此实例的权限", status_code=status.HTTP_403_FORBIDDEN)
+        fields = request.data.get("fields") if isinstance(request.data, dict) else None
+        updated = InstanceManage.restore_auto_collect(instance["_id"], fields)
+        return WebUtils.response_success(self._transport_instance(updated))
 
     @HasPermission("asset_info-Edit")
     def partial_update(self, request, pk: str):
@@ -841,6 +912,7 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
                     "before_data": instance,
                     "scenario": scenario,
                     "attribute_snapshot": load_attribute_snapshot(instance["model_id"], update_attr.keys()),
+                    "audit_source": "手动",
                 },
             )
             inst = OperationService.execute_graph(
@@ -922,6 +994,7 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
                 request.data["update_data"],
                 request.user.username,
                 allowed_org_ids=allowed_org_ids,
+                audit_source="手动",
             )
         except BaseAppException as e:
             return WebUtils.response_error(error_message=e.message, status_code=status.HTTP_403_FORBIDDEN)
@@ -1177,15 +1250,26 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
         export_ids = [item["_id"] for item in selected_instances]
 
         permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(request, model_id)
-        stream = InstanceManage.inst_export(
-            model_id=model_id,
-            ids=export_ids,
-            permissions_map=permissions_map,
-            attr_list=attr_list,
-            association_list=association_list,
-            creator=request.user.username,
-            file_backed=True,
-        )
+        try:
+            stream = InstanceManage.inst_export(
+                model_id=model_id,
+                ids=export_ids,
+                permissions_map=permissions_map,
+                attr_list=attr_list,
+                association_list=association_list,
+                extra_query=request.data.get("query_list") or [],
+                advanced_filter=request.data.get("advanced_filter") or None,
+                permission_lookup=lambda mid: CmdbRulesFormatUtil.format_user_groups_permissions(request, mid),
+                creator=request.user.username,
+                file_backed=True,
+            )
+        except Exception as exc:
+            from apps.cmdb.graph.advanced_filter import AdvancedFilterError, AdvancedFilterTimeout
+
+            if isinstance(exc, (AdvancedFilterError, AdvancedFilterTimeout)):
+                message = str(exc) if not isinstance(exc, AdvancedFilterError) or exc.index is None else f"第{exc.index}个条件：{exc}"
+                return WebUtils.response_error(message, status_code=status.HTTP_400_BAD_REQUEST)
+            raise
         response = FileResponse(stream, content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
         response["Content-Disposition"] = f"attachment;filename={f'{model_id}_export.xlsx'}"
         if isinstance(getattr(request, "_request", request), ASGIRequest):
@@ -1424,12 +1508,20 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
             return error
         serializer = K8sLayerQuerySerializer(data=request.query_params, context={"layer": layer})
         serializer.is_valid(raise_exception=True)
+        namespace_ids, error = self._resolve_k8s_internal_ids(
+            serializer.validated_data.get("namespace_ids"),
+            "k8s_namespace",
+        )
+        if error:
+            return error
         result = K8sResourceOverviewService.get_layer(
             cluster["_id"],
             layer,
+            page=serializer.validated_data["page"],
+            page_size=serializer.validated_data["page_size"],
+            namespace_ids=namespace_ids,
             permission_maps=permission_maps,
             user=request.user,
-            **serializer.validated_data,
         )
         return WebUtils.response_success(result)
 
@@ -1492,12 +1584,28 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
         kind_serializer.is_valid(raise_exception=True)
         serializer = K8sResourceListQuerySerializer(data=request.query_params)
         serializer.is_valid(raise_exception=True)
+        filters = serializer.validated_data
+        namespace_id, error = self._resolve_optional_k8s_internal_id(filters.get("namespace_id"), "k8s_namespace")
+        if error:
+            return error
+        workload_id, error = self._resolve_optional_k8s_internal_id(filters.get("workload_id"), "k8s_workload")
+        if error:
+            return error
+        node_id, error = self._resolve_optional_k8s_internal_id(filters.get("node_id"), "k8s_node")
+        if error:
+            return error
         result = K8sResourceOverviewService.list_resources(
             cluster["_id"],
             kind_serializer.validated_data["kind"],
+            page=filters["page"],
+            page_size=filters["page_size"],
+            search=filters.get("search") or "",
+            order=filters.get("order") or "name",
+            namespace_id=namespace_id,
+            workload_id=workload_id,
+            node_id=node_id,
             permission_maps=permission_maps,
             user=request.user,
-            **serializer.validated_data,
         )
         return WebUtils.response_success(result)
 

@@ -549,6 +549,31 @@ def test_put_config_rejects_invalid_view_sets(authenticated_user):
 
 
 @pytest.mark.django_db
+def test_put_config_rejects_non_array_metrics_without_server_error(authenticated_user):
+    authenticated_user.is_superuser = True
+    topology = _make_topology()
+    topology.view_sets = {"nodes": [_node_payload("kept")], "links": []}
+    topology.save()
+
+    node = _node_payload("audit-node")
+    node["metrics"] = 1
+    request = _request(
+        "put",
+        f"/operation_analysis/api/network_topology/{topology.id}/config/",
+        authenticated_user,
+        data={"nodes": [node], "links": []},
+    )
+
+    response = NetworkTopologyViewSet.as_view({"put": "config"})(request, pk=str(topology.id))
+    payload = _render(response)
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    joined = f"{payload['message']} {json.dumps(payload)}"
+    assert "metrics 必须是数组" in joined
+    topology.refresh_from_db()
+    assert [item["id"] for item in topology.view_sets["nodes"]] == ["kept"]
+
+
+@pytest.mark.django_db
 def test_delete_node_endpoint_cascades_to_links(authenticated_user):
     authenticated_user.is_superuser = True
     topology = _make_topology()

@@ -103,7 +103,7 @@ PROVIDER_MANIFEST = ProviderManifest.model_validate(
                                 "default": "department_id",
                                 "options": [
                                     {"value": "department_id", "label": "department_id"},
-                                    {"value": "open_department_id", "label": "open_department_id"}, 
+                                    {"value": "open_department_id", "label": "open_department_id"},
                                 ],
                             },
                             {
@@ -121,7 +121,20 @@ PROVIDER_MANIFEST = ProviderManifest.model_validate(
                         ],
                     }
                 ],
-                "available_external_fields": ["user_id", "open_id", "name", "email", "mobile", "department_ids"],
+                "available_external_fields": [
+                    "user_id",
+                    "open_id",
+                    "name",
+                    "email",
+                    "mobile",
+                    "department_ids",
+                    "job_title",
+                    "employee_no",
+                    "job_level_id",
+                    "leader_user_id",
+                    "is_resigned",
+                    "is_frozen",
+                ],
             },
             "im_notification_form": {
                 "title": "IM notification",

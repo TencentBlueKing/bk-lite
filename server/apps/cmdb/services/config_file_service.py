@@ -204,27 +204,34 @@ class ConfigFileService(object):
         version = cls._normalize_version(str(payload.get("version") or payload.get("collected_at") or ""))
         error_message = str(error) or "配置文件采集结果处理失败"
         instance_identifier = str(payload.get("instance_uuid") or "").strip()
-        expected_instance_ids = cls._get_expected_instance_ids(task)
-        instance_id, _ = cls._resolve_task_instance(task, instance_identifier)
-
-        if not instance_id or instance_id not in expected_instance_ids:
-            logger.info("[ConfigFileService] 异常回调目标不属于任务，不改写任务 task_id=%s", task.id)
+        # 失败发生在上一把事务锁释放之后。这里的 task 仍是当时的内存快照，
+        # 不能拿它覆盖其他回调已经提交的汇总。
+        try:
+            with transaction.atomic():
+                fresh_task = CollectModels.objects.select_for_update().get(id=task.id, is_system=False)
+                expected_instance_ids = cls._get_expected_instance_ids(fresh_task)
+                instance_id, _ = cls._resolve_task_instance(fresh_task, instance_identifier)
+                if not instance_id or instance_id not in expected_instance_ids:
+                    logger.info("[ConfigFileService] 异常回调目标不属于任务，不改写任务 task_id=%s", task.id)
+                    return False
+                stale_callback = cls._is_stale_callback(fresh_task, version, instance_id)
+                file_path = str(payload.get("file_path") or (fresh_task.params or {}).get("config_file_path") or "")
+                file_name = str(payload.get("file_name") or extract_file_name(file_path) or "")
+                return cls._update_task_lifecycle(
+                    task=fresh_task,
+                    instance_id=instance_id,
+                    version=version,
+                    status=ConfigFileVersionStatus.ERROR,
+                    changed=False,
+                    version_obj=None,
+                    error_message=error_message,
+                    stale_callback=stale_callback,
+                    file_path=file_path,
+                    file_name=file_name,
+                )
+        except CollectModels.DoesNotExist:
+            logger.info("[ConfigFileService] 异常回调时任务已不存在，不改写任务 task_id=%s", task.id)
             return False
-        stale_callback = cls._is_stale_callback(task, version, instance_id)
-        file_path = str(payload.get("file_path") or (task.params or {}).get("config_file_path") or "")
-        file_name = str(payload.get("file_name") or extract_file_name(file_path) or "")
-        return cls._update_task_lifecycle(
-            task=task,
-            instance_id=instance_id,
-            version=version,
-            status=ConfigFileVersionStatus.ERROR,
-            changed=False,
-            version_obj=None,
-            error_message=error_message,
-            stale_callback=stale_callback,
-            file_path=file_path,
-            file_name=file_name,
-        )
 
     @classmethod
     def _create_or_get_version(
@@ -567,8 +574,8 @@ class ConfigFileService(object):
         """把在途任务里旧图 _id 键收敛到 UUID，避免汇总按 len(items) 误判完成。"""
         raw_items = items if isinstance(items, dict) else {}
         aliases = cls._instance_key_aliases(task)
-        expected = cls._get_expected_instance_ids(task)
-        if not expected:
+        expected_ids = set(cls._get_expected_instance_ids(task))
+        if not expected_ids:
             return dict(raw_items)
 
         normalized: dict = {}
@@ -576,7 +583,7 @@ class ConfigFileService(object):
             if not isinstance(item, dict):
                 continue
             canonical = aliases.get(str(key), str(key))
-            if canonical not in expected:
+            if canonical not in expected_ids:
                 continue
             existing = normalized.get(canonical)
             if existing is None or str(item.get("version") or "") >= str(existing.get("version") or ""):

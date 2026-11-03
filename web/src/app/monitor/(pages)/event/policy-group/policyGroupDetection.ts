@@ -254,11 +254,9 @@ export const detectionConfirm = (payload: PolicyGroupDetectionPayload, initial?:
 
 export const policyGroupDetectionBadges = ({
   scheduleUniform = true,
-  noDataUniform = true,
 }: PolicyGroupDetectionBadgeInput): string[] => {
   const badges: string[] = [];
   if (scheduleUniform === false) badges.push('频率不一致');
-  if (noDataUniform === false) badges.push('无数据不一致');
   return badges;
 };
 

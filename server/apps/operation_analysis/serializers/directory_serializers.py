@@ -39,10 +39,37 @@ class DirectoryModelSerializer(BaseFormatTimeSerializer, AuthSerializer):
     permission_key = "directory"
 
     @staticmethod
+    def _max_descendant_edges(instance_pk):
+        if instance_pk is None:
+            return 0
+
+        children_by_parent = {}
+        for child_pk, parent_id in Directory.objects.values_list("pk", "parent_id"):
+            if parent_id is None:
+                continue
+            children_by_parent.setdefault(parent_id, []).append(child_pk)
+
+        max_edges = 0
+        pending = [(instance_pk, 0)]
+        visited = set()
+        while pending:
+            current_pk, edges = pending.pop()
+            if current_pk in visited:
+                continue
+            visited.add(current_pk)
+            max_edges = max(max_edges, edges)
+            for child_pk in children_by_parent.get(current_pk, ()):
+                pending.append((child_pk, edges + 1))
+        return max_edges
+
+    @staticmethod
     def _validate_parent_candidate(instance_pk, parent):
         candidate = Directory(pk=instance_pk, parent=parent)
         try:
             candidate.clean()
+            ancestor_count = 0 if parent is None else 1 + parent.get_level()
+            if ancestor_count + DirectoryModelSerializer._max_descendant_edges(instance_pk) > 2:
+                raise DjangoValidationError("Directory hierarchy cannot exceed 3 levels.")
         except DjangoValidationError as error:
             raise serializers.ValidationError(error.messages) from error
 

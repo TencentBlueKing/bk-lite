@@ -193,7 +193,6 @@ class Application3DQueryService:
         system_id = cls._instance_uuid(system)
         try:
             scope = cls._build_scope(request, [system])
-            system_health = cls._health_for_application(scope, system_id)
             apps_by_system = project_system_applications([system_id])
             associated_app_ids = list(dict.fromkeys(apps_by_system.get(system_id, [])))
             visible_app_rows = cls._visible_model_instances(request, "application", associated_app_ids)
@@ -207,6 +206,13 @@ class Application3DQueryService:
             visible_hosts_by_app = {
                 app_id: [host_id for host_id in host_ids_by_app.get(app_id, []) if host_id in visible_host_map] for app_id in visible_app_ids
             }
+            system_health, application_health, host_health = cls._architecture_node_health(
+                scope,
+                system_id,
+                visible_app_ids,
+                visible_hosts_by_app,
+                visible_host_map,
+            )
         except Application3DSourceFailure:
             raise
         except Exception as exc:
@@ -221,11 +227,7 @@ class Application3DQueryService:
             applications={
                 app_id: {
                     "name": cls._instance_name(visible_app_map[app_id]),
-                    "health": cls._architecture_member_health(
-                        scope,
-                        system_id,
-                        hosts=[visible_host_map[host_id] for host_id in visible_hosts_by_app.get(app_id, [])],
-                    ),
+                    "health": application_health[app_id],
                 }
                 for app_id in visible_app_ids
             },
@@ -233,7 +235,7 @@ class Application3DQueryService:
             hosts={
                 host_id: {
                     "name": cls._instance_name(host),
-                    "health": cls._host_node_health(scope, host),
+                    "health": host_health[host_id],
                     "ip_addr": str(host.get("ip_addr") or ""),
                     "os_name": str(host.get("os_name") or ""),
                 }
@@ -243,14 +245,68 @@ class Application3DQueryService:
         return {**tree, "refreshedAt": timezone.now().isoformat()}
 
     @classmethod
-    def _architecture_member_health(
+    def _architecture_node_health(
+        cls,
+        scope: _ApplicationScope,
+        system_id: str,
+        visible_app_ids: list[str],
+        visible_hosts_by_app: dict[str, list[str]],
+        visible_host_map: dict[str, dict[str, Any]],
+    ) -> tuple[dict[str, Any], dict[str, dict[str, Any]], dict[str, dict[str, Any]]]:
+        """One GROUP BY for every architecture node that would have aggregated monitors.
+
+        Early exits stay on the same helpers as the per-node path and contribute
+        no ids. Shared hosts remain one id in the union; each application still
+        collapses that monitor on its own.
+        """
+        union: set[str] = set()
+        system_target = cls._application_health_target(scope, system_id)
+        if isinstance(system_target, set):
+            union |= system_target
+
+        app_targets: dict[str, dict[str, Any] | set[str]] = {}
+        for app_id in visible_app_ids:
+            hosts = [visible_host_map[host_id] for host_id in visible_hosts_by_app.get(app_id, [])]
+            target = cls._architecture_member_health_target(scope, system_id, hosts=hosts)
+            app_targets[app_id] = target
+            if isinstance(target, set):
+                union |= target
+
+        host_targets: dict[str, dict[str, Any] | set[str]] = {}
+        for host_id, host in visible_host_map.items():
+            target = cls._host_node_health_target(scope, host)
+            host_targets[host_id] = target
+            if isinstance(target, set):
+                union |= target
+
+        rows_by_monitor: dict[str, list[dict[str, Any]]] = defaultdict(list)
+        if union:
+            for row in cls._grouped_alert_counts_by_monitor(scope, union):
+                rows_by_monitor[str(row["monitor_instance_id"])].append(row)
+
+        def resolve(target: dict[str, Any] | set[str]) -> dict[str, Any]:
+            if isinstance(target, set):
+                return cls._health_from_monitor_index(rows_by_monitor, target)
+            return target
+
+        return (
+            resolve(system_target),
+            {app_id: resolve(target) for app_id, target in app_targets.items()},
+            {host_id: resolve(target) for host_id, target in host_targets.items()},
+        )
+
+    @classmethod
+    def _architecture_member_health_target(
         cls,
         scope: _ApplicationScope,
         system_id: str,
         *,
         hosts: list[dict[str, Any]],
-    ) -> dict[str, Any]:
-        """Per-node health from actor-visible hosts; never forge a complete green subset."""
+    ) -> dict[str, Any] | set[str]:
+        """Per-node health from actor-visible hosts; never forge a complete green subset.
+
+        Returns early-exit health, or the monitor ids that health would have aggregated.
+        """
         if system_id in scope.empty_systems:
             return no_application_health()
         if not hosts:
@@ -260,10 +316,11 @@ class Application3DQueryService:
         monitor_ids = cls._readable_monitor_ids(scope, hosts)
         if not monitor_ids:
             return unavailable_health()
-        return cls._aggregate_monitor_health(scope, monitor_ids)
+        return monitor_ids
 
     @classmethod
-    def _host_node_health(cls, scope: _ApplicationScope, host: dict[str, Any]) -> dict[str, Any]:
+    def _host_node_health_target(cls, scope: _ApplicationScope, host: dict[str, Any]) -> dict[str, Any] | set[str]:
+        """Early-exit health, or the one monitor id `_host_node_health` would aggregate."""
         monitor_id = host.get("monitor_id")
         if monitor_id in (None, ""):
             return unmonitored_health()
@@ -271,11 +328,17 @@ class Application3DQueryService:
             return unavailable_health()
         if not cls._is_readable_host(scope, host):
             return monitor_unreadable_health()
-        return cls._aggregate_monitor_health(scope, {str(monitor_id)})
+        return {str(monitor_id)}
 
     @classmethod
-    def _aggregate_monitor_health(cls, scope: _ApplicationScope, monitor_ids: set[str]) -> dict[str, Any]:
-        rows = cls._grouped_alert_counts_by_monitor(scope, monitor_ids)
+    def _host_node_health(cls, scope: _ApplicationScope, host: dict[str, Any]) -> dict[str, Any]:
+        target = cls._host_node_health_target(scope, host)
+        if isinstance(target, set):
+            return cls._aggregate_monitor_health(scope, target)
+        return target
+
+    @classmethod
+    def _health_from_grouped_rows(cls, rows: list[dict[str, Any]]) -> dict[str, Any]:
         collapsed: dict[tuple[str, str], int] = defaultdict(int)
         for row in rows:
             key = (str(row.get("alert_type") or ""), str(row.get("level") or ""))
@@ -283,6 +346,17 @@ class Application3DQueryService:
         return aggregate_application_health(
             [{"alert_type": alert_type, "level": level, "count": count} for (alert_type, level), count in collapsed.items()]
         )
+
+    @classmethod
+    def _health_from_monitor_index(cls, rows_by_monitor: dict[str, list[dict[str, Any]]], monitor_ids: set[str]) -> dict[str, Any]:
+        rows: list[dict[str, Any]] = []
+        for monitor_id in monitor_ids:
+            rows.extend(rows_by_monitor.get(str(monitor_id), []))
+        return cls._health_from_grouped_rows(rows)
+
+    @classmethod
+    def _aggregate_monitor_health(cls, scope: _ApplicationScope, monitor_ids: set[str]) -> dict[str, Any]:
+        return cls._health_from_grouped_rows(cls._grouped_alert_counts_by_monitor(scope, monitor_ids))
 
     @classmethod
     def alarm_detail(cls, request, application_id: str, alarm_id: str) -> dict[str, Any]:
@@ -897,15 +971,23 @@ class Application3DQueryService:
         return health_by_app
 
     @classmethod
-    def _health_for_application(cls, scope: _ApplicationScope, app_id: str) -> dict[str, Any]:
-        """Detail/single-system health; same filter + aggregate semantics as Wall distribution."""
+    def _application_health_target(cls, scope: _ApplicationScope, app_id: str) -> dict[str, Any] | set[str]:
+        """Early-exit health, or the system monitor ids `_health_for_application` would aggregate."""
         if app_id in scope.empty_systems:
             return no_application_health()
         if app_id in scope.no_host_systems:
             return no_host_health()
         if app_id not in scope.complete_apps:
             return unavailable_health()
-        return cls._aggregate_monitor_health(scope, cls._monitor_ids_for_app(scope, app_id))
+        return cls._monitor_ids_for_app(scope, app_id)
+
+    @classmethod
+    def _health_for_application(cls, scope: _ApplicationScope, app_id: str) -> dict[str, Any]:
+        """Detail/single-system health; same filter + aggregate semantics as Wall distribution."""
+        target = cls._application_health_target(scope, app_id)
+        if isinstance(target, set):
+            return cls._aggregate_monitor_health(scope, target)
+        return target
 
     @classmethod
     def _paged_scoped_alerts(

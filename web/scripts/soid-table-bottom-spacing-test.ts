@@ -6,6 +6,7 @@ import { resolveTableDimensions } from '../src/components/custom-table/tableHeig
 const featureLibraryPages = [
   'src/app/cmdb/(pages)/assetManage/autoDiscovery/featureLibrary/soid/page.tsx',
   'src/app/cmdb/(pages)/assetManage/autoDiscovery/featureLibrary/port/page.tsx',
+  'src/app/cmdb/(pages)/assetManage/autoDiscovery/featureLibrary/process/page.tsx',
 ];
 const layoutSource = readFileSync(
   'src/app/cmdb/(pages)/assetManage/autoDiscovery/featureLibrary/layout.tsx',
@@ -15,7 +16,7 @@ const layoutSource = readFileSync(
 assert.match(
   layoutSource,
   /flex min-h-0 flex-1 flex-col overflow-hidden/,
-  '特征库内容区必须是纵向 flex，SOID / 端口指纹才能吃到剩余高度'
+  '特征库内容区必须是纵向 flex，SOID / 端口指纹 / 进程指纹才能吃到剩余高度'
 );
 
 for (const pagePath of featureLibraryPages) {

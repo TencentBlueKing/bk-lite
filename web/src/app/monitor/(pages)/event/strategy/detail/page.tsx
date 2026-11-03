@@ -1985,6 +1985,16 @@ const StrategyOperation = () => {
       );
       if (isGroupRule) {
         const editable = { ...(params as unknown as Record<string, unknown>) };
+        const alerts = Array.isArray(editable.enable_alerts) ? editable.enable_alerts : [];
+        editable.no_data = alerts.includes('no_data')
+          ? {
+            enabled: true,
+            period: editable.no_data_period,
+            recovery_period: editable.no_data_recovery_period,
+            level: editable.no_data_level,
+            alert_name: editable.no_data_alert_name,
+          }
+          : { enabled: false };
         [
           'source',
           'organizations',
@@ -2014,7 +2024,9 @@ const StrategyOperation = () => {
         message.success(
           result?.closes_alerts
             ? '已修改当前规则，未恢复告警会结束'
-            : '已修改当前规则，正在响的告警不结束'
+            : result?.closes_no_data
+              ? '已修改当前规则，未恢复的无数据告警会结束'
+              : '已修改当前规则，正在响的告警不结束'
         );
         goBack();
         return;
@@ -2208,7 +2220,12 @@ const StrategyOperation = () => {
                           recoveryThreshold={recoveryThreshold}
                           onRecoveryThresholdChange={setRecoveryThreshold}
                           isTrap={isTrap}
-                          hideNoData={isGroupRule}
+                          noDataSplitHint={
+                            isGroupRule &&
+                            sanitizeGroupBy(
+                              metricRows[0]?.groupBy || groupBy
+                            ).some((item) => item !== 'instance_id')
+                          }
                         />
                       ),
                       status: 'process'

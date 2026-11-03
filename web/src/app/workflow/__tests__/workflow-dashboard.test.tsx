@@ -133,7 +133,7 @@ describe('编排中心首页', () => {
     await waitFor(() => expect(mocks.get).toHaveBeenCalledTimes(1));
   });
 
-  it('最近执行按流程名筛选，待审批统一跳转到待我审批页签', async () => {
+  it('最近执行按流程名筛选，单条待审批打开对应执行抽屉', async () => {
     render(<IntlProvider locale="zh-CN" messages={{}}><App><WorkflowDashboardPage /></App></IntlProvider>);
 
     fireEvent.click(await screen.findByRole('button', { name: '详情' }));
@@ -143,8 +143,10 @@ describe('编排中心首页', () => {
     const destinations = mocks.push.mock.calls.map(([href]) => new URL(href, 'http://localhost'));
     expect(destinations[0].pathname).toBe('/workflow/executions');
     expect(destinations[0].searchParams.get('query')).toBe('主机健康巡检');
-    expect(destinations[1].pathname).toBe('/workflow/executions');
+    expect(destinations[1].pathname).toBe('/workflow/executions/execution-1');
     expect(destinations[1].searchParams.get('scope')).toBe('mine');
+    expect(destinations[1].searchParams.get('node')).toBe('approve_release');
+    expect(destinations[1].searchParams.get('instance_id')).toBe('approval-1');
     expect(screen.queryByText('执行详情')).toBeNull();
   });
 

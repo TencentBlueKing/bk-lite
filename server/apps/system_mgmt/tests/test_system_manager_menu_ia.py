@@ -9,7 +9,7 @@ from apps.system_mgmt.management.commands.init_realm_resource import create_reso
 from apps.system_mgmt.models import App, Menu, Role
 
 MENU_PATH = Path("support-files/system_mgmt/menus/system-manager.json")
-USER_CHILD_IDS = ["user_group", "login_auth", "user_sync", "security_settings", "super_admin"]
+USER_CHILD_IDS = ["user_group", "user_fields", "login_auth", "user_sync", "security_settings", "super_admin"]
 SETTING_CHILD_IDS = [
     "audit_log",
     "error_logs",
@@ -19,6 +19,7 @@ SETTING_CHILD_IDS = [
 ]
 FROZEN_CHILD_IDS = {
     "user_group",
+    "user_fields",
     "user_sync",
     "login_auth",
     "security_settings",

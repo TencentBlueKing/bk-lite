@@ -2,14 +2,17 @@
 
 import json
 import logging
+import re
 from types import SimpleNamespace
 from unittest.mock import Mock
 
 import openpyxl
 import pytest
+from openpyxl.utils import get_column_letter
 
 from apps.cmdb.services.instance import InstanceManage
 from apps.cmdb.services.model import ModelManage
+from apps.cmdb.utils.export import Export
 
 
 def uuid(number):
@@ -329,3 +332,71 @@ def test_export_keeps_user_text_as_text_instead_of_executable_formula(monkeypatc
     cell = openpyxl.load_workbook(stream).active.cell(4, 2)
     assert cell.value == '=HYPERLINK("private")'
     assert cell.data_type == "s"
+
+
+_ILLEGAL_EXCEL_SHEET_TITLE = re.compile(r"[\\*?:/\[\]]")
+
+
+def _enum_attr(attr_id, attr_name, option_name):
+    return {
+        "attr_id": attr_id,
+        "attr_name": attr_name,
+        "attr_type": "enum",
+        "option": [{"id": attr_id, "name": option_name}],
+    }
+
+
+def _sheet_title_from_validation(formula, last_row):
+    prefix = "='"
+    suffix = f"'!$A$1:$A{last_row}"
+    assert formula.startswith(prefix) and formula.endswith(suffix), formula
+    return formula[len(prefix) : -len(suffix)].replace("''", "'")
+
+
+@pytest.mark.parametrize("write_only", [False, True])
+def test_enum_display_names_keep_headers_when_sheet_titles_are_illegal(write_only):
+    """展示名含 Excel 工作表禁用字符时，表头保持原名，辅助表使用合法标题。"""
+    long_name = "枚举" + "字" * 30
+    assert len(long_name) > 31
+    attrs = [
+        _enum_attr("slash", "接口/类型", "网口"),
+        _enum_attr("backslash", "路径\\名称", "本地"),
+        _enum_attr("brackets", "分组[一]", "甲"),
+        _enum_attr("colon", "时间:点", "现在"),
+        _enum_attr("dup_a", "重复名", "一"),
+        _enum_attr("dup_b", "重复名", "二"),
+        _enum_attr("long", long_name, "值"),
+    ]
+    exporter = Export(attrs, model_id="host")
+    workbook = exporter.generate_header(write_only=write_only)
+    try:
+        loaded = openpyxl.load_workbook(exporter.return_bytesio(workbook))
+    finally:
+        exporter.close_workbook(workbook)
+
+    sheet = loaded["host"]
+    header = [cell.value for cell in sheet[1]]
+    while header and header[-1] is None:
+        header.pop()
+    assert header == ["字段名(请勿编辑)", *[attr["attr_name"] for attr in attrs]]
+
+    helper_titles = [name for name in loaded.sheetnames if name != "host"]
+    assert len(helper_titles) == len(attrs)
+    assert len({title.casefold() for title in helper_titles}) == len(helper_titles)
+    for title in helper_titles:
+        assert _ILLEGAL_EXCEL_SHEET_TITLE.search(title) is None
+        assert 1 <= len(title) <= 31
+
+    validations = list(sheet.data_validations.dataValidation)
+    assert len(validations) == len(attrs)
+    referenced = []
+    for index, (attr, validation) in enumerate(zip(attrs, validations), start=2):
+        column = get_column_letter(index)
+        assert str(validation.sqref) == f"{column}4:{column}999"
+        title = _sheet_title_from_validation(validation.formula1, last_row=1)
+        assert title in loaded.sheetnames
+        assert list(loaded[title].iter_rows(values_only=True)) == [(attr["option"][0]["name"],)]
+        referenced.append(title)
+    assert len(referenced) == len(set(referenced))
+    assert long_name not in helper_titles
+    assert "接口/类型" not in helper_titles

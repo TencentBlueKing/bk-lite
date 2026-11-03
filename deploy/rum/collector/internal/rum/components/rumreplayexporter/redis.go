@@ -143,8 +143,8 @@ func redisClientOptions(cfg *Config) (*redis.Options, error) {
 		return nil, fmt.Errorf("read Replay Redis password file: %w", err)
 	}
 	password := strings.TrimSpace(string(raw))
-	if !redisSecretPattern.MatchString(password) {
-		return nil, fmt.Errorf("Replay Redis password must contain 32-256 URL-safe characters")
+	if len(password) < 16 || len(password) > 256 {
+		return nil, errors.New("Replay Redis password must contain 16-256 characters")
 	}
 	options.Password = password
 	return options, nil

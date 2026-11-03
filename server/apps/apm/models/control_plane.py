@@ -302,10 +302,36 @@ class ApmDeploymentEvent(AuditedModel):
 class ApmPolicy(AuditedModel):
     class MetricType(models.TextChoices):
         ERROR_RATE = "error_rate", "错误率"
+        ERROR_COUNT = "error_count", "错误数"
+        P50 = "p50", "P50"
+        P75 = "p75", "P75"
+        P90 = "p90", "P90"
         P95 = "p95", "P95"
         P99 = "p99", "P99"
+        LATENCY_AVG = "latency_avg", "平均时延"
+        LATENCY_MAX = "latency_max", "最大时延"
+        SLOW_REQUEST_COUNT = "slow_request_count", "慢请求数"
+        SLOW_REQUEST_RATE = "slow_request_rate", "慢请求占比"
+        APDEX = "apdex", "Apdex"
         THROUGHPUT = "throughput", "吞吐"
         NO_TRAFFIC = "no_traffic", "无流量"
+        SLO_BURN_RATE = "slo_burn_rate", "SLO 燃烧率"
+
+    SLOW_METRIC_TYPES = frozenset({MetricType.SLOW_REQUEST_COUNT, MetricType.SLOW_REQUEST_RATE})
+    COUNT_METRIC_TYPES = frozenset({MetricType.ERROR_COUNT, MetricType.SLOW_REQUEST_COUNT})
+    LATENCY_METRIC_TYPES = frozenset(
+        {
+            MetricType.P50,
+            MetricType.P75,
+            MetricType.P90,
+            MetricType.P95,
+            MetricType.P99,
+            MetricType.LATENCY_AVG,
+            MetricType.LATENCY_MAX,
+        }
+    )
+    RATIO_METRIC_TYPES = frozenset({MetricType.ERROR_RATE, MetricType.SLOW_REQUEST_RATE, MetricType.APDEX})
+    MIN_REQUEST_METRIC_TYPES = frozenset({MetricType.ERROR_RATE, MetricType.SLOW_REQUEST_RATE, MetricType.APDEX, *LATENCY_METRIC_TYPES})
 
     class Comparator(models.TextChoices):
         GREATER_THAN = "gt", ">"
@@ -318,35 +344,91 @@ class ApmPolicy(AuditedModel):
         ERROR = "error", "错误"
         WARNING = "warning", "警告"
 
-    class Aggregation(models.TextChoices):
-        AVERAGE = "avg", "平均值"
-        MAXIMUM = "max", "最大值"
-        MINIMUM = "min", "最小值"
-        LAST = "last", "最新值"
+    class CompareMode(models.TextChoices):
+        ABSOLUTE = "absolute", "当前值"
+        PREVIOUS_WINDOW = "previous_window", "相对上一等长窗"
+        OFFSET_HOURS = "offset_hours", "N 小时前同窗"
+        OFFSET_DAYS = "offset_days", "N 天前同窗"
+        OFFSET_1H = "offset_1h", "1 小时前同窗"
+        OFFSET_24H = "offset_24h", "24 小时前同窗"
+        BASELINE_DAYS = "baseline_days", "近 N 天同窗均值"
+
+    MAX_COMPARE_OFFSET_HOURS = 840
+    MAX_COMPARE_OFFSET_DAYS = 35
+
+    class CompareValueKind(models.TextChoices):
+        DELTA = "delta", "变化量"
+        PERCENT = "percent", "变化率"
+        SIGMA = "sigma", "标准差倍数"
 
     class VersionMode(models.TextChoices):
         ALL = "all", "全部版本"
         SPECIFIC = "specific", "指定版本"
         GROUPED = "grouped", "按版本"
 
+    class ScopeMode(models.TextChoices):
+        SERVICE = "service", "单服务"
+        SERVICES = "services", "多服务"
+        APPLICATION = "application", "按应用"
+
+    class EndpointMode(models.TextChoices):
+        SERVICE = "service", "服务整体"
+        SELECTED = "selected", "手选端点"
+        ALL = "all", "全部端点"
+
+    class InstanceMode(models.TextChoices):
+        ALL = "all", "不按实例拆"
+        GROUPED = "grouped", "按实例"
+
+    class TargetKind(models.TextChoices):
+        ENTRY = "entry", "入口"
+        DEPENDENCY = "dependency", "下游依赖"
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=256)
     service = models.ForeignKey(ApmService, on_delete=models.CASCADE, related_name="policies")
+    scope_mode = models.CharField(max_length=16, choices=ScopeMode.choices, default=ScopeMode.SERVICE)
+    service_ids = models.JSONField(default=list, blank=True)
+    application = models.ForeignKey(
+        ApmApplication,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="policies",
+    )
     environment = models.CharField(max_length=256)
     alert_name = models.CharField(max_length=512, blank=True, default="")
     endpoints = models.JSONField(default=list)
+    endpoint_mode = models.CharField(max_length=16, choices=EndpointMode.choices, default=EndpointMode.SERVICE)
+    instance_mode = models.CharField(max_length=16, choices=InstanceMode.choices, default=InstanceMode.ALL)
+    target_kind = models.CharField(max_length=16, choices=TargetKind.choices, default=TargetKind.ENTRY)
+    dependencies = models.JSONField(default=list, blank=True)
+    slo = models.ForeignKey(
+        "ApmSlo",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="policies",
+    )
+    burn_long_window_minutes = models.PositiveIntegerField(null=True, blank=True)
+    burn_short_window_minutes = models.PositiveIntegerField(null=True, blank=True)
     version_mode = models.CharField(max_length=16, choices=VersionMode.choices, default=VersionMode.ALL)
     versions = models.JSONField(default=list)
     metric_type = models.CharField(max_length=32, choices=MetricType.choices)
     evaluation_interval = models.PositiveIntegerField(default=1)
     metric_window = models.PositiveIntegerField(default=5)
-    aggregation = models.CharField(max_length=16, choices=Aggregation.choices, default=Aggregation.AVERAGE)
+    compare_mode = models.CharField(max_length=32, choices=CompareMode.choices, default=CompareMode.ABSOLUTE)
+    compare_offset_amount = models.PositiveIntegerField(null=True, blank=True)
+    compare_value_kind = models.CharField(max_length=16, blank=True, default="")
+    min_request_count = models.PositiveIntegerField(null=True, blank=True)
+    slow_threshold_ms = models.PositiveIntegerField(null=True, blank=True)
+    apdex_threshold_ms = models.PositiveIntegerField(null=True, blank=True)
     thresholds = models.JSONField(default=list)
+    conditions = models.JSONField(default=list, blank=True)
     trigger_after = models.PositiveIntegerField(default=1)
+    trigger_window = models.PositiveIntegerField(null=True, blank=True)
+    recovery_threshold = models.JSONField(default=dict, blank=True)
     recover_after = models.PositiveIntegerField(default=3)
-    no_data_after = models.PositiveIntegerField(null=True, blank=True)
-    no_data_severity = models.CharField(max_length=16, choices=Severity.choices, blank=True, default="")
-    no_data_alert_name = models.CharField(max_length=512, blank=True, default="")
     handlers = models.JSONField(default=list)
     is_enabled = models.BooleanField(default=True, db_index=True)
 
@@ -415,10 +497,21 @@ class ApmPolicyTargetState(AuditedModel):
         ACTIVE = "active", "告警中"
 
     policy = models.ForeignKey(ApmPolicy, on_delete=models.CASCADE, related_name="target_states")
+    service = models.ForeignKey(
+        ApmService,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="policy_target_states",
+    )
     target_key = models.CharField(max_length=512)
     endpoint = models.CharField(max_length=512, blank=True, default="")
     version = models.CharField(max_length=256, blank=True, default="")
+    instance_id = models.CharField(max_length=256, blank=True, default="")
+    dependency = models.JSONField(default=dict, blank=True)
+    missed_rounds = models.PositiveIntegerField(default=0)
     evaluation_cursor = models.CharField(max_length=512, blank=True, default="")
+    hit_history = models.CharField(max_length=20, blank=True, default="")
     consecutive_hits = models.PositiveIntegerField(default=0)
     consecutive_recoveries = models.PositiveIntegerField(default=0)
     consecutive_no_data = models.PositiveIntegerField(default=0)
@@ -467,6 +560,8 @@ class ApmAlert(AuditedModel):
     status = models.CharField(max_length=16, choices=Status.choices, default=Status.ACTIVE, db_index=True)
     endpoint = models.CharField(max_length=512, blank=True, default="")
     version = models.CharField(max_length=256, blank=True, default="")
+    instance_id = models.CharField(max_length=256, blank=True, default="")
+    dependency = models.JSONField(default=dict, blank=True)
     operator = models.CharField(max_length=150, blank=True, default="")
     handlers = models.JSONField(default=list)
     current_value = models.DecimalField(max_digits=20, decimal_places=6, null=True, blank=True)
@@ -525,7 +620,6 @@ class ApmAlertMetricSnapshot(AuditedModel):
         related_name="metric_snapshot",
     )
     unit = models.CharField(max_length=32, blank=True, default="")
-    aggregation = models.CharField(max_length=16, choices=ApmPolicy.Aggregation.choices)
     evaluation_interval = models.PositiveIntegerField()
     metric_window = models.PositiveIntegerField()
     snapshots = models.JSONField(default=list, verbose_name="快照数据集合")

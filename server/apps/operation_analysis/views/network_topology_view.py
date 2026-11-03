@@ -21,6 +21,7 @@ Public endpoints (mounted under ``/api/network_topology/``):
   metrics for a node.
 * ``POST /<id>/weops/dimension_values/`` — proxy: list dimension
   values for a (node, metric) pair.
+* ``POST /<id>/import-update/`` — overwrite this canvas from YAML.
 
 The WeOps proxy endpoints exist so the React frontend can stay on the
 bk-lite origin (avoids CORS preflights and keeps ``x-token`` server-side
@@ -53,6 +54,7 @@ from apps.operation_analysis.services.network_topology.weops_adapter import WeOp
 from apps.operation_analysis.services.user_messages import oa_message
 from apps.operation_analysis.views.view import (
     BuiltinVisibleMixin,
+    CanvasImportUpdateMixin,
     _copy_canvas_response,
     _create_canvas_share_response,
     _execute_with_clean_validation_error,
@@ -90,7 +92,7 @@ class NetworkTopologyFeaturePermission(permissions.BasePermission):
         return bool(required.intersection(user_permissions if isinstance(user_permissions, set) else set()))
 
 
-class NetworkTopologyViewSet(BuiltinVisibleMixin, AuthViewSet):
+class NetworkTopologyViewSet(CanvasImportUpdateMixin, BuiltinVisibleMixin, AuthViewSet):
     """DRF view for the canvas CRUD + WeOps-aware actions."""
 
     queryset = NetworkTopology.objects.all()
@@ -105,6 +107,7 @@ class NetworkTopologyViewSet(BuiltinVisibleMixin, AuthViewSet):
             "partial_update",
             "test_saved_connection",
             "remove_node",
+            "import_update",
         }
     )
 

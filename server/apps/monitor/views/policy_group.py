@@ -8,6 +8,7 @@ from apps.core.decorators.api_permission import HasPermission
 from apps.core.exceptions.base_app_exception import BaseAppException, ValidationAppException
 from apps.core.utils.current_team_scope import resolve_current_team_data_scope
 from apps.core.utils.web_utils import WebUtils
+from apps.monitor.constants.alert_policy import AlertConstants
 from apps.monitor.models import (
     MonitorInstance,
     MonitorInstanceOrganization,
@@ -76,6 +77,7 @@ def _serialize_rule(rule, metric_names=None, alert_counts=None, no_data_carrier=
         "recovery_condition": rule.policy.recovery_condition,
         "recovery_threshold": rule.policy.recovery_threshold or {},
         "no_data_carrier": bool(no_data_carrier),
+        "no_data_enabled": AlertConstants.NO_DATA in (rule.policy.enable_alerts or []),
         "policy_id": rule.policy_id,
         "open_alert_count": counts.get(rule.policy_id, 0),
     }
@@ -409,7 +411,7 @@ class PolicyGroupViewSet(viewsets.ViewSet):
         rule = group.rules.select_related("policy").filter(id=request.data.get("rule_id")).first()
         if rule is None:
             raise BaseAppException("规则不存在")
-        closes_alerts = PolicyGroupService.apply_rule_editor(rule, request.data, operator=_operator(scope))
+        result = PolicyGroupService.apply_rule_editor(rule, request.data, operator=_operator(scope))
         log_operation(
             request,
             "update",
@@ -419,7 +421,7 @@ class PolicyGroupViewSet(viewsets.ViewSet):
             target_id=group.id,
             detail={"group_id": group.id, "rule_id": rule.id, "policy_id": rule.policy_id},
         )
-        return WebUtils.response_success({"id": rule.id, "closes_alerts": closes_alerts})
+        return WebUtils.response_success({"id": rule.id, **result})
 
     @action(methods=["post"], detail=False, url_path="update_detection")
     @HasPermission("strategy_list-Edit")

@@ -8,6 +8,7 @@ import {
   InputNumber,
   Modal,
   Select,
+  Switch,
   Tag,
   message,
 } from 'antd';
@@ -19,38 +20,26 @@ import SourceOriginBadge from '@/components/source-origin-badge';
 import PermissionWrapper from '@/components/permission';
 import { usePortFingerprintApi, type PortFingerprintItem } from '@/app/cmdb/api';
 import { useTranslation } from '@/utils/i18n';
+import {
+  FINGERPRINT_TARGET_TYPE_OPTIONS as PORT_TARGET_TYPE_OPTIONS,
+  getTargetTypeLabel,
+} from '../fingerprintTargets';
 
 const FEATURE_LIBRARY_PERMISSION_PATH = '/cmdb/assetManage/autoDiscovery/featureLibrary/soid';
 
-export const PORT_TARGET_TYPE_OPTIONS = [
-  { value: 'mysql', label: 'MySQL' },
-  { value: 'postgresql', label: 'PostgreSQL' },
-  { value: 'mssql', label: 'SQL Server (MSSQL)' },
-  { value: 'oracle', label: 'Oracle' },
-  { value: 'redis', label: 'Redis' },
-  { value: 'mongodb', label: 'MongoDB' },
-  { value: 'es', label: 'Elasticsearch' },
-  { value: 'memcached', label: 'Memcached' },
-  { value: 'nginx', label: 'Nginx' },
-  { value: 'tomcat', label: 'Tomcat' },
-  { value: 'apache', label: 'Apache' },
-  { value: 'kafka', label: 'Kafka' },
-  { value: 'rabbitmq', label: 'RabbitMQ' },
-  { value: 'zookeeper', label: 'ZooKeeper' },
-];
-
-export const getTargetTypeLabel = (value: string) => {
-  const found = PORT_TARGET_TYPE_OPTIONS.find((item) => item.value === value);
-  return found ? found.label : value;
-};
+export { PORT_TARGET_TYPE_OPTIONS, getTargetTypeLabel };
 
 const PortFingerprintPage: React.FC = () => {
   const { t } = useTranslation();
   const searchParams = useSearchParams();
   const typeFromUrl = (searchParams.get('type') || searchParams.get('target_type') || '').trim();
 
-  const { getPortFingerprintList, createPortFingerprint, deletePortFingerprint } =
-    usePortFingerprintApi();
+  const {
+    getPortFingerprintList,
+    createPortFingerprint,
+    updatePortFingerprint,
+    deletePortFingerprint,
+  } = usePortFingerprintApi();
 
   const [tableLoading, setTableLoading] = useState<boolean>(false);
   const [dataList, setDataList] = useState<PortFingerprintItem[]>([]);
@@ -126,6 +115,19 @@ const PortFingerprintPage: React.FC = () => {
     setPagination((prev) => ({ ...prev, current: 1 }));
     fetchData({ current: 1, type: '', port: '' });
   };
+
+  const handleToggleEnabled = useCallback(
+    async (record: PortFingerprintItem, enabled: boolean) => {
+      try {
+        await updatePortFingerprint(record.id, { enabled });
+        message.success(t('OidLibrary.operateSuccess'));
+        fetchData();
+      } catch (err: any) {
+        message.error(err?.message || t('OidLibrary.operateFailed'));
+      }
+    },
+    [updatePortFingerprint, fetchData, t]
+  );
 
   const handleDelete = (record: PortFingerprintItem) => {
     Modal.confirm({
@@ -220,6 +222,25 @@ const PortFingerprintPage: React.FC = () => {
         ),
       },
       {
+        title: t('OidLibrary.enabled'),
+        dataIndex: 'enabled',
+        key: 'enabled',
+        width: 100,
+        render: (_: boolean, record: PortFingerprintItem) => (
+          <PermissionWrapper
+            requiredPermissions={['Add']}
+            permissionPath={FEATURE_LIBRARY_PERMISSION_PATH}
+            instPermissions={record.permission}
+          >
+            <Switch
+              size="small"
+              checked={record.enabled}
+              onChange={(checked) => handleToggleEnabled(record, checked)}
+            />
+          </PermissionWrapper>
+        ),
+      },
+      {
         title: t('common.actions'),
         key: 'operation',
         width: 120,
@@ -242,7 +263,7 @@ const PortFingerprintPage: React.FC = () => {
         ),
       },
     ],
-    [t]
+    [t, handleToggleEnabled]
   );
 
   return (

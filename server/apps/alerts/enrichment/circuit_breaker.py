@@ -55,29 +55,16 @@ class CircuitBreaker:
         )
         return CircuitDecision(allowed=bool(acquired), is_probe=bool(acquired), permit=permit if acquired else "")
 
-    def after_call(self, scope_key: str, decision: CircuitDecision, *, success: bool) -> str | None:
-        if not decision.allowed:
-            return None
-        failure_key = self._failure_key(scope_key)
-        if success:
-            self.cache.delete(scope_key)
-            self.cache.delete(failure_key)
-            return "closed" if decision.is_probe else None
+    def _owns_current_probe(self, scope_key: str, decision: CircuitDecision) -> bool:
+        if not decision.permit:
+            return False
+        state = self.cache.get(scope_key) or {}
+        if state.get("status") != "open":
+            return False
+        retry_at = float(state.get("retry_at") or 0)
+        return self.cache.get(self._probe_key(scope_key, retry_at)) == decision.permit
 
-        if decision.is_probe:
-            failures = self.failure_threshold
-        else:
-            self.cache.add(failure_key, 0, timeout=self.failure_window_seconds)
-            try:
-                failures = self.cache.incr(failure_key)
-            except ValueError:
-                # DummyCache 等不保存 add 的后端不支持该原子序列；降级为一次失败，
-                # 生产 Redis/Memcached 仍走原子 incr。
-                failures = 1
-                self.cache.set(failure_key, failures, timeout=self.failure_window_seconds)
-        if failures < self.failure_threshold:
-            return None
-
+    def _open_window(self, scope_key: str, failure_key: str) -> None:
         self.cache.set(
             scope_key,
             {
@@ -87,4 +74,40 @@ class CircuitBreaker:
             timeout=self.open_seconds + self.failure_window_seconds,
         )
         self.cache.delete(failure_key)
+
+    def after_call(self, scope_key: str, decision: CircuitDecision, *, success: bool) -> str | None:
+        if not decision.allowed:
+            return None
+        failure_key = self._failure_key(scope_key)
+        # closed 放行的回调不能清掉随后打开的窗口；probe 只能改自己仍持有的那次 retry_at。
+        if decision.is_probe:
+            if not self._owns_current_probe(scope_key, decision):
+                return None
+            if success:
+                self.cache.delete(scope_key)
+                self.cache.delete(failure_key)
+                return "closed"
+            self._open_window(scope_key, failure_key)
+            return "open"
+
+        state = self.cache.get(scope_key) or {}
+        if state.get("status") == "open":
+            return None
+        if success:
+            self.cache.delete(scope_key)
+            self.cache.delete(failure_key)
+            return None
+
+        self.cache.add(failure_key, 0, timeout=self.failure_window_seconds)
+        try:
+            failures = self.cache.incr(failure_key)
+        except ValueError:
+            # DummyCache 等不保存 add 的后端不支持该原子序列；降级为一次失败，
+            # 生产 Redis/Memcached 仍走原子 incr。
+            failures = 1
+            self.cache.set(failure_key, failures, timeout=self.failure_window_seconds)
+        if failures < self.failure_threshold:
+            return None
+
+        self._open_window(scope_key, failure_key)
         return "open"
