@@ -12,6 +12,8 @@ from apps.cmdb.services.collect_object_tree import get_collect_obj_tree
         ("redis", True),
         ("docker", True),
         ("physcial_server", True),
+        ("hyperv_host", True),
+        ("vmware_vc", False),
         ("host", False),
         ("config_file", False),
         ("physcial_server_ipmi", False),
