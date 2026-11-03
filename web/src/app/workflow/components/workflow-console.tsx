@@ -9,7 +9,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import OperateModal from '@/components/operate-modal';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
-import useApiClient from '@/utils/request';
+import useApiClient, { HandledRequestError } from '@/utils/request';
 import { useTranslation } from '@/utils/i18n';
 import { WorkflowCanvasEdge } from './workflow-canvas-edge';
 import { defaultNodeInputValues, SchemaNodeField, SchemaNodeForm } from './schema-node-form';
@@ -1107,10 +1107,46 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
       const persisted = workflow.id
         ? workflow
         : await post<WorkflowRecord>(`${API}/workflows/`, { name: workflow.name.trim(), description: workflow.description, definition, canvas_metadata: canvasMetadata, starter: 'blank' });
-      const published = await post<WorkflowRecord>(`${API}/workflows/${persisted.id}/publish/`, { name: persisted.name, description: persisted.description, definition, canvas_metadata: canvasMetadata, draft_revision: persisted.draft_revision });
+      const published = await post<WorkflowRecord>(
+        `${API}/workflows/${persisted.id}/publish/`,
+        { name: persisted.name, description: persisted.description, definition, canvas_metadata: canvasMetadata, draft_revision: persisted.draft_revision },
+        { suppressErrorNotification: true },
+      );
       setWorkflow(published); setDefinition(published.definition); setMetadata(published.canvas_metadata as WorkflowCanvasMetadata); setDirty(false);
       if (!workflow.id) router.replace(`/workflow/workflows/${published.id}?mode=edit`);
       message.success(t('workflowOrchestration.editor.publishedAndEnabled', 'v{version} 已发布并启用', { version: published.current_version }));
+    } catch (error) {
+      if (error instanceof HandledRequestError) {
+        const hintByCode: Record<string, { id: string; defaultMessage: string }> = {
+          DRAFT_REVISION_CONFLICT: {
+            id: 'workflowOrchestration.editor.publishDraftConflictHint',
+            defaultMessage: '草稿已被更新。请重新载入后再发布，避免覆盖他人修改。',
+          },
+          PUBLISH_VERSION_CONFLICT: {
+            id: 'workflowOrchestration.editor.publishVersionConflictHint',
+            defaultMessage: '版本号已被并发发布占用。请刷新后重试。',
+          },
+          ENGINE_DEFINITION_CONFLICT: {
+            id: 'workflowOrchestration.editor.publishEngineConflictHint',
+            defaultMessage: '远端定义与本次内容冲突。请刷新核对是否上次发布未完成落库，不要强行覆盖。',
+          },
+        };
+        const hint = error.code ? hintByCode[error.code] : undefined;
+        if (hint) {
+          message.error(`${error.message} ${t(hint.id, hint.defaultMessage)}`);
+        } else if (error.status === 503) {
+          message.error(
+            t(
+              'workflowOrchestration.editor.publishUnavailableHint',
+              '发布服务暂时不可用。请稍后重试；不要假定本地已发布成功。',
+            ),
+          );
+        } else {
+          message.error(error.message);
+        }
+      } else {
+        message.error(error instanceof Error ? error.message : t('common.failed', '操作失败'));
+      }
     } finally { setPendingAction(null); }
   };
 

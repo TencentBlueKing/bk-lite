@@ -6,6 +6,7 @@ import {
   formatStartedBy,
   formatTriggerTypeLabel,
   presentExecutionInfoItem,
+  summarizeTerminationJobCancels,
 } from '../lib/presentation';
 
 const t = (id: string, defaultMessage?: string) => defaultMessage || id;
@@ -52,5 +53,40 @@ describe('execution presentation labels', () => {
     expect(presentExecutionInfoItem('started_by', 'workflow-scheduler', t, convert)).toEqual({ label: '发起人', children: '定时调度' });
     expect(presentExecutionInfoItem('duration_ms', 103056, t, convert)).toEqual({ label: '耗时', children: '1m 43s' });
     expect(presentExecutionInfoItem('retry_count', 0, t, convert)).toEqual({ label: '重试次数', children: '0' });
+  });
+});
+
+describe('summarizeTerminationJobCancels', () => {
+  it('returns null when cancels are missing or empty', () => {
+    expect(summarizeTerminationJobCancels(undefined)).toBeNull();
+    expect(summarizeTerminationJobCancels({})).toBeNull();
+    expect(summarizeTerminationJobCancels({ termination_job_cancels: [] })).toBeNull();
+  });
+
+  it('marks residual when any cancel failed', () => {
+    const summary = summarizeTerminationJobCancels({
+      termination_job_cancels: [
+        { task_id: 101, ok: true },
+        { task_id: '102', ok: false, error_type: 'JobPlatformError' },
+      ],
+    });
+    expect(summary).toEqual({
+      total: 2,
+      succeeded: 1,
+      failed: 1,
+      hasResidual: true,
+      items: [
+        { task_id: 101, ok: true, error_type: undefined },
+        { task_id: 102, ok: false, error_type: 'JobPlatformError' },
+      ],
+    });
+  });
+
+  it('has no residual when every cancel succeeded', () => {
+    const summary = summarizeTerminationJobCancels({
+      termination_job_cancels: [{ task_id: 9, ok: true }],
+    });
+    expect(summary?.hasResidual).toBe(false);
+    expect(summary?.succeeded).toBe(1);
   });
 });

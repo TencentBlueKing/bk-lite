@@ -40,6 +40,8 @@ class JobPlatformExecutor:
         timeout: int,
         actor: dict[str, Any],
         params: list[dict[str, str]] | None = None,
+        idempotency_key: str | None = None,
+        workflow_execution_id: str | None = None,
     ) -> int:
         if target_source not in {"node_mgmt", "manual"}:
             raise JobPlatformError("不支持的作业目标来源")
@@ -58,20 +60,25 @@ class JobPlatformExecutor:
                 }
             )
         actor_context = self._actor_context(actor, team)
+        payload = {
+            "name": name[:100],
+            "target_source": target_source,
+            "target_list": target_list,
+            "script_type": script_type,
+            "script_content": script_content,
+            "params": params or [],
+            "timeout": max(30, min(int(timeout), 3600)),
+            "team": [int(team)],
+            "callback_type": "nats",
+            "callback_subject": "bklite.workflow.job_result",
+        }
+        if idempotency_key:
+            payload["idempotency_key"] = str(idempotency_key)[:255]
+        if workflow_execution_id not in (None, ""):
+            payload["workflow_execution_id"] = str(workflow_execution_id)[:64]
         response = (
             self.client.execute_automation_script(
-                {
-                    "name": name[:100],
-                    "target_source": target_source,
-                    "target_list": target_list,
-                    "script_type": script_type,
-                    "script_content": script_content,
-                    "params": params or [],
-                    "timeout": max(30, min(int(timeout), 3600)),
-                    "team": [int(team)],
-                    "callback_type": "nats",
-                    "callback_subject": "bklite.workflow.job_result",
-                },
+                payload,
                 actor_context,
             )
             or {}

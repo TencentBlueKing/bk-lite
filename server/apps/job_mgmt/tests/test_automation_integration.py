@@ -83,6 +83,63 @@ def test_automation_script_validates_target_scope_and_records_actor(mocker):
 
 
 @pytest.mark.django_db
+def test_automation_script_idempotency_key_returns_same_task(mocker):
+    allowed = Target.objects.create(name="host-a", ip="10.0.0.8", os_type="linux", team=[7])
+    mocker.patch.object(nats_api, "dispatch_celery_task", return_value=True)
+    payload = {
+        "name": "idempotent script",
+        "target_source": "manual",
+        "target_list": [{"target_id": allowed.id, "name": allowed.name, "ip": str(allowed.ip)}],
+        "script_type": "shell",
+        "script_content": "echo ok",
+        "team": [7],
+        "callback_type": "nats",
+        "callback_subject": "bklite.workflow.job_result",
+        "idempotency_key": "workflow:exec-1:atom:9:group:manual",
+    }
+
+    first = nats_api.execute_automation_script_local(payload, ACTOR)
+    second = nats_api.execute_automation_script_local(payload, ACTOR)
+
+    assert first["result"] is True
+    assert second["result"] is True
+    assert first["data"]["task_id"] == second["data"]["task_id"]
+    assert second["data"].get("idempotent_replay") is True
+    assert JobExecution.objects.filter(client_request_id=payload["idempotency_key"]).count() == 1
+
+
+@pytest.mark.django_db
+def test_automation_script_rejects_create_when_workflow_execution_terminated(mocker):
+    from apps.workflow.models import Workflow, WorkflowExecution
+
+    allowed = Target.objects.create(name="host-b", ip="10.0.0.9", os_type="linux", team=[7])
+    mocker.patch.object(nats_api, "dispatch_celery_task", return_value=True)
+    workflow = Workflow.objects.create(name="terminated-gate", team=[7], definition={})
+    execution = WorkflowExecution.objects.create(
+        workflow=workflow,
+        workflow_version=1,
+        status=WorkflowExecution.Status.TERMINATED,
+        team=[7],
+    )
+    payload = {
+        "name": "should reject",
+        "target_source": "manual",
+        "target_list": [{"target_id": allowed.id, "name": allowed.name, "ip": str(allowed.ip)}],
+        "script_type": "shell",
+        "script_content": "echo ok",
+        "team": [7],
+        "callback_type": "nats",
+        "callback_subject": "bklite.workflow.job_result",
+        "workflow_execution_id": str(execution.id),
+    }
+
+    response = nats_api.execute_automation_script_local(payload, ACTOR)
+
+    assert response == {"result": False, "message": "关联流程执行已终止，拒绝创建作业"}
+    assert JobExecution.objects.count() == 0
+
+
+@pytest.mark.django_db
 def test_automation_execution_queries_hide_cross_team_jobs():
     allowed = JobExecution.objects.create(name="allowed", job_type=JobType.SCRIPT, status=ExecutionStatus.SUCCESS, team=[7])
     denied = JobExecution.objects.create(name="denied", job_type=JobType.SCRIPT, status=ExecutionStatus.SUCCESS, team=[8])

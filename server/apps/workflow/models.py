@@ -180,6 +180,13 @@ class WorkflowExecution(TimeInfo):
         blank=True,
         verbose_name="异步回调令牌摘要",
     )
+    reconcile_attempts = models.PositiveIntegerField(default=0, verbose_name="无引擎 ID 对账尝试次数")
+    reconcile_next_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        db_index=True,
+        verbose_name="下次无引擎 ID 对账时间",
+    )
 
     class Meta:
         db_table = "workflow_execution"
