@@ -201,7 +201,7 @@ def test_qcloud_tke_cluster_pages_and_maps_fields():
     assert first["master_node_num"] == 2
     assert first["ha"] == "true"
     assert first["deletion_protection"] == "false"
-    assert first["tag"] == "env:prod"
+    assert first["tag"] == ["env:prod"]
     assert first["project_id"] == 1001
 
 
@@ -273,7 +273,7 @@ def test_qcloud_tke_node_lists_clusters_then_instances_and_skips_one_failure():
     assert result[1]["cluster_id"] == "cls-ok"
     assert result[1]["cluster_name"] == "ok"
     assert result[1]["ip_addr"] == "10.0.0.9"
-    assert result[1]["tag"] == ""
+    assert "tag" not in result[1]
     assert len(records) == 1
     record = records[0]
     assert record.msg == "event=qcloud_collect_skipped failed_stage=%s region=%s cluster_id=%s error_type=%s"
@@ -458,12 +458,12 @@ def test_qcloud_vpn_connection_never_keeps_presharekey_and_nat_joins_eips():
     assert "PreShareKey" not in connection
     assert connection["vpn_gateway_id"] == "vpngw-1"
     assert connection["customer_gateway_id"] == "cgw-1"
-    assert connection["tag"] == "team:net"
+    assert connection["tag"] == ["team:net"]
     nat = manager.get_qcloud_nat_gateway()[0]
     assert nat["eip_ids"] == "eip-1,eip-2"
     assert nat["eip_addrs"] == "1.1.1.1,2.2.2.2"
     assert nat["bandwidth_mbps"] == 100
-    assert nat["tag"] == "env:prod"
+    assert nat["tag"] == ["env:prod"]
     gateway = manager.get_qcloud_vpn_gateway()[0]
     assert gateway["resource_id"] == "vpngw-1"
     assert gateway["max_connection"] == 50
@@ -523,6 +523,207 @@ def test_qcloud_exec_script_registers_p0_collectors():
         "qcloud_domain",
     }
     assert all(result[key] == [] for key in result)
+
+
+def test_qcloud_cvm_collects_tags_as_key_value_list_and_skips_illegal_values():
+    import logging
+
+    from plugins.inputs.qcloud import qcloud_info
+
+    sentinel = "TAG-SECRET-DO-NOT-LOG"
+    records = []
+
+    class _Handler(logging.Handler):
+        def emit(self, record):
+            records.append(record)
+
+    log = logging.getLogger("qcloud.tag.sync")
+    log.setLevel(logging.WARNING)
+    log.addHandler(_Handler())
+    original = qcloud_info.logger
+    qcloud_info.logger = log
+
+    def handler(region, action, params):
+        assert action == "DescribeInstances"
+        return {
+            "Response": {
+                "TotalCount": 1,
+                "InstanceSet": _page(
+                    [
+                        {
+                            "InstanceId": "ins-1",
+                            "InstanceName": "cvm-a",
+                            "Placement": {"Zone": "ap-guangzhou-1"},
+                            "Tags": [
+                                {"Key": "env", "Value": "prod"},
+                                {"TagKey": "team", "TagValue": "net"},
+                                {"Key": "owner", "Value": f"{sentinel} leaked"},
+                                {"Key": "blank", "Value": ""},
+                            ],
+                        }
+                    ],
+                    params,
+                ),
+            }
+        }
+
+    try:
+        result = _manager_with_client(handler, ["ap-guangzhou"]).get_qcloud_cvm()
+    finally:
+        qcloud_info.logger = original
+        log.removeHandler(log.handlers[-1])
+
+    assert result[0]["tag"] == ["env:prod", "team:net"]
+    assert records
+    assert records[0].msg == "event=qcloud_tag_normalized skipped=%s truncated=%s"
+    assert records[0].args == (2, 0)
+    rendered = records[0].getMessage()
+    assert sentinel not in rendered
+    assert sentinel not in str(records[0].args)
+
+
+def test_qcloud_mysql_redis_rocketmq_and_domain_read_their_tag_fields():
+    def handler(region, action, params):
+        if action == "DescribeDBInstances":
+            item = {"InstanceId": "cdb-1", "InstanceName": "db", "Status": 1, "PayType": 0, "TagList": [{"TagKey": "db", "TagValue": "mysql"}]}
+            return {"Response": {"TotalCount": 1, "Items": _page([item], params)}}
+        if action == "DescribeInstances":
+            item = {"InstanceId": "crs-1", "InstanceName": "cache", "Status": 2, "InstanceTags": [{"TagKey": "cache", "TagValue": "hot"}]}
+            return {"Response": {"TotalCount": 1, "InstanceSet": _page([item], params)}}
+        if action == "DescribeRocketMQClusters":
+            return {
+                "Response": {
+                    "ClusterList": [
+                        {
+                            "Info": {"ClusterId": "mq-1", "ClusterName": "mq", "TagList": [{"TagKey": "mq", "TagValue": "core"}]},
+                            "Config": {},
+                            "Status": "running",
+                        }
+                    ]
+                }
+            }
+        if action == "DescribeDomainNameList":
+            return {
+                "DomainList": [
+                    {"DomainName": "a.com", "DomainId": 1, "Tags": [{"Key": "site", "Value": "shop"}]},
+                    {"DomainName": "b.com", "DomainId": 2},
+                ]
+            }
+        return {"Response": {}}
+
+    manager = _manager_with_client(handler, ["ap-guangzhou"])
+    assert manager.get_qcloud_mysql()[0]["tag"] == ["db:mysql"]
+    redis = manager.get_qcloud_redis()[0]
+    assert redis["tag"] == ["cache:hot"]
+    assert manager.get_qcloud_rocketmq()[0]["tag"] == ["mq:core"]
+    domains = {item["resource_name"]: item for item in manager.get_qcloud_domain()}
+    assert domains["a.com"]["tag"] == ["site:shop"]
+    assert "tag" not in domains["b.com"]
+
+
+def test_qcloud_bucket_tagging_replaces_present_tags_and_skips_api_errors():
+    import logging
+
+    from plugins.inputs.qcloud import qcloud_info
+
+    sentinel = "SECRET-TAG-BODY"
+    records = []
+
+    class _Handler(logging.Handler):
+        def emit(self, record):
+            records.append(record)
+
+    class _Client:
+        def list_buckets(self):
+            return {
+                "Buckets": {
+                    "Bucket": [
+                        {"Name": "logs", "Location": "ap-guangzhou"},
+                        {"Name": "plain", "Location": "ap-guangzhou"},
+                        {"Name": "broken", "Location": "ap-guangzhou"},
+                    ]
+                }
+            }
+
+        def get_bucket_tagging(self, Bucket):
+            if Bucket == "logs":
+                return {"TagSet": {"Tag": [{"Key": "env", "Value": "prod"}, {"Key": "leak", "Value": f"{sentinel} leaked"}]}}
+            if Bucket == "plain":
+                error = RuntimeError(sentinel)
+                error.get_error_code = lambda: "NoSuchTagSet"
+                raise error
+            error = RuntimeError(sentinel)
+            error.get_error_code = lambda: "AccessDenied"
+            raise error
+
+    log = logging.getLogger("qcloud.bucket.tag")
+    log.setLevel(logging.WARNING)
+    log.addHandler(_Handler())
+    original = qcloud_info.logger
+    qcloud_info.logger = log
+    manager = _manager_with_client(lambda *_args: {}, ["ap-guangzhou"])
+    manager.get_tencent_cos_client = lambda region="": _Client()
+    try:
+        rows = {item["resource_id"]: item for item in manager.get_qcloud_bucket()}
+    finally:
+        qcloud_info.logger = original
+        log.removeHandler(log.handlers[-1])
+
+    assert rows["logs"]["tag"] == ["env:prod"]
+    assert rows["plain"]["tag"] == []
+    assert "tag" not in rows["broken"]
+    assert rows["broken"]["resource_name"] == "broken"
+    assert records[0].msg == "event=qcloud_tag_normalized skipped=%s truncated=%s"
+    denied = [record for record in records if record.msg == "event=qcloud_bucket_tag_skipped failed_stage=%s region=%s bucket=%s error_type=%s"]
+    assert denied[0].args == ("get_bucket_tagging", "ap-guangzhou", "broken", "RuntimeError")
+    rendered = "\n".join(record.getMessage() for record in records)
+    assert sentinel not in rendered
+    assert sentinel not in str([record.args for record in records])
+
+
+def _prometheus_label(line, name):
+    """按 Prometheus 文本转义还原一个标签值。"""
+    import re
+
+    match = re.search(rf'{name}="((?:\\.|[^"\\])*)"', line)
+    assert match, line
+    raw = match.group(1)
+    chars = []
+    index = 0
+    while index < len(raw):
+        if raw[index] == "\\" and index + 1 < len(raw):
+            escaped = raw[index + 1]
+            chars.append({"n": "\n", "\\": "\\", '"': '"'}.get(escaped, escaped))
+            index += 2
+            continue
+        chars.append(raw[index])
+        index += 1
+    return "".join(chars)
+
+
+def test_prometheus_tag_list_round_trips_value_containing_comma():
+    import json
+
+    from plugins.base_utils import convert_to_prometheus_format
+
+    tags = ["owner:acme,inc", "env:prod"]
+    text = convert_to_prometheus_format(
+        {
+            "qcloud_cvm": [
+                {"resource_id": "ins-1", "resource_name": "cvm", "tag": tags},
+                {"resource_id": "ins-2", "resource_name": "cvm", "tag": ["env:prod", "team:net"]},
+            ],
+            "qcloud_nat_gateway": [{"resource_id": "nat-1", "resource_name": "nat", "tag": []}],
+        }
+    )
+    cvm_line = next(line for line in text.splitlines() if "ins-1" in line)
+    assert json.loads(_prometheus_label(cvm_line, "tag")) == tags
+    assert "owner:acme,inc,env:prod" not in cvm_line
+    plain_line = next(line for line in text.splitlines() if "ins-2" in line)
+    assert 'tag="env:prod,team:net"' not in plain_line
+    assert json.loads(_prometheus_label(plain_line, "tag")) == ["env:prod", "team:net"]
+    nat_line = next(line for line in text.splitlines() if "nat-1" in line)
+    assert "tag=" not in nat_line
 
 
 def test_qcloud_empty_secret_matches_edit_task_sdk_error():

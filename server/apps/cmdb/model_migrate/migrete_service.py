@@ -587,6 +587,7 @@ class ModelMigrate:
     def _merge_existing_attr_config(existing_attr: dict, incoming_attr: dict) -> bool:
         changed = False
 
+        preserve_tag_options = existing_attr.get("attr_type") == "tag"
         incoming_attr_type = incoming_attr.get("attr_type")
         if incoming_attr_type and existing_attr.get("attr_type") != incoming_attr_type:
             existing_attr["attr_type"] = incoming_attr_type
@@ -603,9 +604,8 @@ class ModelMigrate:
                 existing_attr["user_prompt"] = user_prompt
                 changed = True
 
-        # 标签候选项由用户在页面/实例写入中自行积累，model_init 不得用种子 option 覆盖。
-        skip_option_overwrite = existing_attr.get("attr_type") == "tag"
-        if "option" in incoming_attr and not skip_option_overwrite and existing_attr.get("option") != incoming_attr.get("option"):
+        # 已经是 tag 的候选项由用户积累，model_init 不覆盖。str 迁到 tag 时仍写入种子 option。
+        if "option" in incoming_attr and not preserve_tag_options and existing_attr.get("option") != incoming_attr.get("option"):
             existing_attr["option"] = incoming_attr.get("option")
             changed = True
 
