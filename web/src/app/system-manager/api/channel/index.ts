@@ -6,6 +6,10 @@ export const useChannelApi = () => {
     return await get('/system_mgmt/channel/', { params });
   }
 
+  async function getNotificationTagCatalog() {
+    return await get('/system_mgmt/channel/tag_catalog/');
+  }
+
   async function getChannelDetail(id: string) {
     return await get(`/system_mgmt/channel/${id}`);
   }
@@ -32,6 +36,7 @@ export const useChannelApi = () => {
 
   return {
     getChannelData,
+    getNotificationTagCatalog,
     getChannelDetail,
     addChannel,
     updateChannel,

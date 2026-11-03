@@ -19,6 +19,7 @@ from apps.system_mgmt.openapi_serializers import (
     SystemMgmtNotificationSendSerializer,
     SystemMgmtUsersQuerySerializer,
 )
+from apps.system_mgmt.services.notification_tag import channel_tag_tokens
 from apps.system_mgmt.utils.group_utils import GroupUtils
 
 _ORG_SCOPE = (
@@ -443,15 +444,24 @@ def _notification_send_parameters(channel):
 def _openapi_notification_channel(channel):
     item = _notification_channel_capabilities(channel)
     item["send_parameters"] = _notification_send_parameters(channel)
+    item["tag"] = channel_tag_tokens(channel)
     return item
 
 
-def _external_notification_channels(query_ids):
-    return [
-        channel
-        for channel in Channel.objects.order_by("id")
-        if channel.channel_type in _EXTERNAL_NOTIFICATION_CHANNEL_TYPES and _channel_has_organization(channel, query_ids)
-    ]
+def _channels_matching_tags(queryset, tag_pairs):
+    wanted = {tuple(pair) for pair in tag_pairs or []}
+    if not wanted:
+        return queryset
+    matched = Q()
+    for key, value in wanted:
+        matched |= Q(tags__key=key, tags__value=value)
+    return queryset.filter(matched).distinct()
+
+
+def _external_notification_channels(query_ids, tag_pairs=None):
+    queryset = Channel.objects.filter(channel_type__in=_EXTERNAL_NOTIFICATION_CHANNEL_TYPES).prefetch_related("tags").order_by("id")
+    queryset = _channels_matching_tags(queryset, tag_pairs)
+    return [channel for channel in queryset if _channel_has_organization(channel, query_ids)]
 
 
 def _user_in_groups(user, query_ids):
@@ -494,6 +504,7 @@ def openapi_list_notification_channels(
     page_size=200,
     group_id=None,
     include_children=False,
+    tag=None,
     *,
     team=None,
     user_info=None,
@@ -508,7 +519,7 @@ def openapi_list_notification_channels(
         return error
     if not query_ids:
         return _paginate([], page, page_size)
-    serialized = [_openapi_notification_channel(channel) for channel in _external_notification_channels(query_ids)]
+    serialized = [_openapi_notification_channel(channel) for channel in _external_notification_channels(query_ids, tag)]
     return _paginate(serialized, page, page_size)
 
 

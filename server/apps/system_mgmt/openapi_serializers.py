@@ -3,6 +3,7 @@
 from rest_framework import serializers
 
 from apps.core.openapi.serializers import OpenAPIRequestSerializer
+from apps.system_mgmt.services.notification_tag import parse_tag_tokens
 
 _USER_SELECTORS = ("user_id", "username", "usernames", "search")
 _DIRECTORY_PAGE_SIZE_DEFAULT = 200
@@ -37,6 +38,18 @@ class SystemMgmtGroupsQuerySerializer(DirectoryPageSerializer):
 
 class SystemMgmtNotificationChannelQuerySerializer(DirectoryPageSerializer):
     """当前组织可外部投递的通知渠道。组织身份只允许由网关注入。"""
+
+    tag = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        default="",
+    )
+
+    def validate_tag(self, value):
+        text = str(value or "").strip()
+        if not text:
+            return []
+        return parse_tag_tokens([part.strip() for part in text.split(",") if part.strip()])
 
 
 class SystemMgmtNotificationSendSerializer(OpenAPIRequestSerializer):
@@ -80,6 +93,10 @@ class NotificationChannelItemSerializer(serializers.Serializer):
     recipient_mode = serializers.CharField(max_length=32)
     availability = serializers.CharField(max_length=32)
     send_parameters = NotificationSendParameterSerializer(many=True)
+    tag = serializers.ListField(
+        child=serializers.CharField(),
+        allow_empty=True,
+    )
 
 
 class NotificationChannelPageResponseSerializer(serializers.Serializer):

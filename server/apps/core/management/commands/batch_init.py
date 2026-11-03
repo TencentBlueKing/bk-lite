@@ -120,6 +120,7 @@ class Command(BaseCommand):
         call_command("init_custom_menu")
         call_command("init_bk_login_settings")
         call_command("clean_group_data")
+        call_command("init_notification_tags")
 
     def _bootstrap_admin(self) -> None:
         migrate_existing_password = self._should_migrate_admin_password()

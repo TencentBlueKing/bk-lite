@@ -9,7 +9,7 @@ from rest_framework.response import Response
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.loader import LanguageLoader
 from apps.core.utils.viewset_utils import GenericViewSetFun
-from apps.system_mgmt.models import Channel, ChannelChoices, User
+from apps.system_mgmt.models import Channel, ChannelChoices, NotificationTag, User
 from apps.system_mgmt.serializers import ChannelSerializer
 from apps.system_mgmt.utils.channel_utils import send_by_custom_webhook, send_by_dingtalk_bot, send_by_feishu_bot, send_by_wecom_bot, send_email
 from apps.system_mgmt.utils.network_whitelist_error import NETWORK_WHITELIST_REQUIRED, build_network_whitelist_error_payload
@@ -29,7 +29,7 @@ class ChannelViewSet(viewsets.ModelViewSet, GenericViewSetFun):
     - list/retrieve/update/destroy/update_settings 需要校验用户对 Channel.team 的访问权限
     """
 
-    queryset = Channel.objects.all()
+    queryset = Channel.objects.prefetch_related("tags").order_by("id")
     serializer_class = ChannelSerializer
     filterset_class = ChannelFilter
     # 仅允许 GET (list, retrieve), POST (create, actions), PUT (update), DELETE (destroy)
@@ -151,6 +151,12 @@ class ChannelViewSet(viewsets.ModelViewSet, GenericViewSetFun):
         for group_id in user_group_ids:
             query |= Q(team__contains=group_id)
         return queryset.filter(query)
+
+    @action(methods=["GET"], detail=False, url_path="tag_catalog")
+    @HasPermission("channel_list-View")
+    def tag_catalog(self, request):
+        tags = NotificationTag.objects.order_by("id")
+        return Response([{"key": tag.key, "value": tag.value} for tag in tags])
 
     @HasPermission("channel_list-View")
     def list(self, request, *args, **kwargs):

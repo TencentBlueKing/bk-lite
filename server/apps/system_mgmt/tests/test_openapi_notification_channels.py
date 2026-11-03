@@ -30,6 +30,7 @@ _ITEM_FIELDS = {
     "recipient_mode",
     "availability",
     "send_parameters",
+    "tag",
 }
 
 
@@ -162,6 +163,8 @@ def test_system_tenant_lists_own_external_channels_only(tenants, local_docs_cata
     assert "渠道侧接收人名" in webhook_parameters["receivers"]["description"]
     assert "不使用标题" in webhook_parameters["title"]["description"]
     assert all(set(item) == _ITEM_FIELDS for item in items)
+    assert items[0]["tag"] == []
+    assert items[1]["tag"] == []
     rendered = json.dumps(body, ensure_ascii=False)
     assert _SECRET not in rendered
     assert _WEBHOOK not in rendered
@@ -174,10 +177,59 @@ def test_system_tenant_lists_own_external_channels_only(tenants, local_docs_cata
         "system-mgmt/notification-channels/send",
     ]
     catalog = _endpoint(_acting(tenants.a), "GET")
-    channel_type = catalog["response_schema"]["properties"]["data"]["properties"]["results"]["items"]["properties"]["channel_type"]
+    item_properties = catalog["response_schema"]["properties"]["data"]["properties"]["results"]["items"]["properties"]
+    channel_type = item_properties["channel_type"]
     assert channel_type["type"] == "string"
     assert "enum" not in channel_type
+    assert item_properties["tag"]["type"] == "array"
+    tag_query = catalog["request_schema"]["properties"]["tag"]
+    assert tag_query["default"] == ""
+    assert "examples" not in tag_query
     assert "实时返回" in catalog["summary"]
+
+
+def test_list_returns_selected_tags_and_filters_by_any_match(tenants):
+    from apps.system_mgmt.models import NotificationTag
+
+    itsm, _ = NotificationTag.objects.get_or_create(key="用途", value="ITSM")
+    staging = NotificationTag.objects.create(key="用途", value="测试环境")
+    tenants.a.email.tags.add(itsm)
+    tenants.a.webhook.tags.add(staging)
+    tenants.b.email.tags.add(itsm)
+    untagged = _channel(name="无标签A", channel_type=ChannelChoices.EMAIL, team_id=tenants.a.team.id)
+
+    listed = APIClient().get(LIST_URL, **_acting(tenants.a))
+    assert listed.status_code == 200, listed.json()
+    by_id = {item["id"]: item for item in listed.json()["data"]["results"]}
+    assert by_id[tenants.a.email.id]["tag"] == ["用途:ITSM"]
+    assert by_id[tenants.a.webhook.id]["tag"] == ["用途:测试环境"]
+    assert by_id[untagged.id]["tag"] == []
+    assert tenants.b.email.id not in by_id
+
+    matched = APIClient().get(LIST_URL, {"tag": "用途:ITSM,用途:不存在"}, **_acting(tenants.a))
+    assert matched.status_code == 200, matched.json()
+    assert [item["id"] for item in matched.json()["data"]["results"]] == [tenants.a.email.id]
+
+    either = APIClient().get(LIST_URL, {"tag": "用途:ITSM,用途:测试环境"}, **_acting(tenants.a))
+    assert [item["id"] for item in either.json()["data"]["results"]] == [tenants.a.email.id, tenants.a.webhook.id]
+
+    rejected = APIClient().get(LIST_URL, {"tag": "用途,测试"}, **_acting(tenants.a))
+    assert rejected.status_code == 400
+    assert rejected.json()["code"] == "SCHEMA_INVALID"
+
+    send = APIClient().post(
+        SEND_URL,
+        {
+            "channel_id": tenants.a.email.id,
+            "content": "仍按渠道",
+            "receivers": [str(tenants.a.system_user.id)],
+            "tag": ["用途:ITSM"],
+        },
+        format="json",
+        **_acting(tenants.a),
+    )
+    assert send.status_code == 400
+    assert send.json()["code"] == "SCHEMA_INVALID"
 
 
 def test_other_org_channels_are_not_listed(tenants):
@@ -231,7 +283,14 @@ def test_system_tenant_sends_through_own_channel(tenants, monkeypatch, local_doc
     assert len(calls) == 1
     assert calls[0][0][0] == tenants.a.email.id
     request_schema = _endpoint(_acting(tenants.a), "POST")["request_schema"]["properties"]
-    assert set(request_schema) == {"channel_id", "title", "content", "receivers", "group_id", "include_children"}
+    assert set(request_schema) == {
+        "channel_id",
+        "title",
+        "content",
+        "receivers",
+        "group_id",
+        "include_children",
+    }
 
 
 def test_send_other_org_channel_is_forbidden(tenants, monkeypatch):
