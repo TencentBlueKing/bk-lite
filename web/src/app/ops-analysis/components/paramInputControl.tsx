@@ -129,7 +129,10 @@ export const ParamInputControl: React.FC<ParamInputControlProps> = ({
     );
   }
 
-  if (state.status === 'loading') return <Spin size="small" />;
+  // 单选没有下拉壳。下拉加载必须继续渲染 Select，裸 Spin 会丢掉宽度并把后面的筛项挤开。
+  if (state.status === 'loading' && inputConfig.control === 'radio') {
+    return <Spin size="small" />;
+  }
 
   if (state.status === 'blocked') {
     return (
@@ -145,6 +148,7 @@ export const ParamInputControl: React.FC<ParamInputControlProps> = ({
   }
 
   const options = state.status === 'success' ? state.options : [];
+  const optionsLoading = state.status === 'loading';
 
   if (inputConfig.control === 'radio') {
     return (
@@ -172,6 +176,7 @@ export const ParamInputControl: React.FC<ParamInputControlProps> = ({
           allowClear={allowClear}
           multiple={isMultiple}
           maxCount={isMultiple ? inputConfig.maxCount : undefined}
+          loading={optionsLoading}
           style={style}
         />
       );
@@ -182,6 +187,7 @@ export const ParamInputControl: React.FC<ParamInputControlProps> = ({
         disabled={disabled}
         placeholder={placeholder}
         allowClear={allowClear}
+        loading={optionsLoading}
         showSearch
         optionFilterProp="label"
         mode={inputConfig.multiple ? 'multiple' : undefined}
@@ -201,6 +207,7 @@ export const ParamInputControl: React.FC<ParamInputControlProps> = ({
       disabled={disabled}
       placeholder={placeholder}
       allowClear={allowClear}
+      loading={optionsLoading}
       showSearch
       optionFilterProp="label"
       style={{ width: '100%', ...style }}

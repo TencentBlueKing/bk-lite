@@ -14,6 +14,7 @@ interface ParamInputTableSelectProps {
   allowClear?: boolean;
   multiple?: boolean;
   maxCount?: number;
+  loading?: boolean;
   style?: React.CSSProperties;
 }
 
@@ -36,6 +37,7 @@ const ParamInputTableSelect: React.FC<ParamInputTableSelectProps> = ({
   allowClear = true,
   multiple = false,
   maxCount,
+  loading = false,
   style,
 }) => {
   const { t } = useTranslation();
@@ -119,10 +121,11 @@ const ParamInputTableSelect: React.FC<ParamInputTableSelectProps> = ({
         }
         open={false}
         showSearch={false}
+        loading={loading}
         style={{ width: '100%', ...style }}
         options={options}
         onOpenChange={(nextOpen) => {
-          if (nextOpen) {
+          if (nextOpen && !loading) {
             openModal();
           }
         }}
