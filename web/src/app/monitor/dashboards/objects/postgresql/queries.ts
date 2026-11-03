@@ -78,6 +78,18 @@ export const POSTGRES_STREAMING_REPLICAS_QUERY = 'max by (instance_id) (postgres
 /** 复制槽个数，含暂时没连上的槽。0 是采点，不是缺失。 */
 export const POSTGRES_REPLICATION_SLOTS_QUERY = 'max by (instance_id) (postgresql_replication_replication_slots{__$labels__})';
 
+/** 已连接副本写完收到变更的最长时间。0 是采到的延迟，不是缺失。 */
+export const POSTGRES_WRITE_LAG_QUERY = 'max by (instance_id) (postgresql_replication_write_lag_seconds{__$labels__})';
+
+/** 已连接副本把收到的变更落到磁盘的最长时间。0 是采到的延迟，不是缺失。 */
+export const POSTGRES_FLUSH_LAG_QUERY = 'max by (instance_id) (postgresql_replication_flush_lag_seconds{__$labels__})';
+
+/** 已连接副本把收到的变更应用到数据上的最长时间。0 是采到的延迟，不是缺失。 */
+export const POSTGRES_REPLAY_LAG_QUERY = 'max by (instance_id) (postgresql_replication_replay_lag_seconds{__$labels__})';
+
+/** 复制槽为了让副本还能接上而留着的数据量。0 是采到的积压，不是缺失。 */
+export const POSTGRES_SLOT_RESTART_LAG_QUERY = 'max by (instance_id) (postgresql_replication_slot_restart_lag_bytes{__$labels__})';
+
 /** 专业盘语句/等待查询。传统盘不加载这组指标。 */
 export const POSTGRES_DIGEST_METRICS: PostgresDigestMetric[] = [
   {

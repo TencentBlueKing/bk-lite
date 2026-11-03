@@ -1,11 +1,24 @@
+import type { ChartData } from '@/app/monitor/types';
+import { formatMetricValue } from '../../../shared/utils/format';
 import { postgresRoleLabel, type PostgresRoleLabel } from './architecture';
-import { postgresLatest, type PostgresMetricMap } from './series';
+import { postgresLatest, postgresPoints, type PostgresMetricMap } from './series';
 
-/** 复制 Tab 只认这三项。插件未采延迟，不在这里补估算。 */
+/** 写入 / 刷盘 / 回放延迟，以及复制槽仍留着的数据量。 */
+export const POSTGRES_REPLICATION_LAG_METRIC_NAMES = [
+  'postgresql_replication_write_lag_seconds',
+  'postgresql_replication_flush_lag_seconds',
+  'postgresql_replication_replay_lag_seconds',
+  'postgresql_replication_slot_restart_lag_bytes'
+] as const;
+
+export type PostgresReplicationLagMetricName = (typeof POSTGRES_REPLICATION_LAG_METRIC_NAMES)[number];
+
+/** 复制 Tab 要拉的指标：角色、连接、槽，再加上延迟与积压。 */
 export const POSTGRES_REPLICATION_METRIC_NAMES = [
   'postgresql_recovery_in_recovery',
   'postgresql_replication_streaming_replicas',
-  'postgresql_replication_replication_slots'
+  'postgresql_replication_replication_slots',
+  ...POSTGRES_REPLICATION_LAG_METRIC_NAMES
 ] as const;
 
 export type PostgresReplicationMetricName = (typeof POSTGRES_REPLICATION_METRIC_NAMES)[number];
@@ -61,6 +74,7 @@ export interface PostgresReplicationModel {
   slotsText: string;
   slotsPending: boolean;
   note: PostgresReplicationNote;
+  lag: PostgresReplicationLagModel;
 }
 
 const field = (
@@ -128,6 +142,96 @@ export const readPostgresReplication = (
       slots: slotsField.value,
       streamingPending: streamingField.pending,
       slotsPending: slotsField.pending
-    })
+    }),
+    lag: readPostgresReplicationLag(metricMap, pending, booting)
+  };
+};
+
+export type PostgresReplicationLagKey = 'write' | 'flush' | 'replay' | 'backlog';
+
+export type PostgresReplicationLagState = 'loading' | 'ready' | 'absent';
+
+export interface PostgresReplicationLagCard {
+  key: PostgresReplicationLagKey;
+  name: PostgresReplicationLagMetricName;
+  unit: 's' | 'bytes';
+  value: number | null;
+  text: string;
+  /** 真实采样。全 0 也保留，不另造非零点。 */
+  points: ChartData[];
+}
+
+export interface PostgresReplicationLagModel {
+  state: PostgresReplicationLagState;
+  /** 有序列才是 lag。无点、未回都不画趋势。 */
+  trends: 'lag' | 'none';
+  cards: PostgresReplicationLagCard[];
+}
+
+const LAG_SPECS: ReadonlyArray<{
+  key: PostgresReplicationLagKey;
+  name: PostgresReplicationLagMetricName;
+  unit: 's' | 'bytes';
+}> = [
+  { key: 'write', name: 'postgresql_replication_write_lag_seconds', unit: 's' },
+  { key: 'flush', name: 'postgresql_replication_flush_lag_seconds', unit: 's' },
+  { key: 'replay', name: 'postgresql_replication_replay_lag_seconds', unit: 's' },
+  { key: 'backlog', name: 'postgresql_replication_slot_restart_lag_bytes', unit: 'bytes' }
+];
+
+/** 秒类可读。0 保留为 0s，不当成没采到。 */
+export const formatPostgresLagSeconds = (value: number): string => {
+  if (!Number.isFinite(value)) return '—';
+  const formatted = formatMetricValue(value, 's');
+  return `${formatted.value}${formatted.unit || ''}`;
+};
+
+/** 字节类人类可读。0 是 0 B，不换成缺失。 */
+export const formatPostgresLagBytes = (value: number): string => {
+  if (!Number.isFinite(value)) return '—';
+  if (value === 0) return '0 B';
+  const formatted = formatMetricValue(value, 'bytes');
+  const unit = formatted.unit === 'Bytes' ? 'B' : formatted.unit;
+  return unit ? `${formatted.value} ${unit}` : formatted.value;
+};
+
+const formatLagValue = (unit: 's' | 'bytes', value: number) => (
+  unit === 'bytes' ? formatPostgresLagBytes(value) : formatPostgresLagSeconds(value)
+);
+
+/**
+ * 四项里有任一点（含真实 0）就出数并允许画趋势。
+ * 都没有样本时：查询还没回保持加载；全部落定才是本窗口未见采点。
+ * 不把缺失补成 0，也不造非零点。
+ */
+export const readPostgresReplicationLag = (
+  metricMap: PostgresMetricMap,
+  pending: ReadonlySet<string>,
+  booting = false
+): PostgresReplicationLagModel => {
+  const cards: PostgresReplicationLagCard[] = LAG_SPECS.map((spec) => {
+    const value = postgresLatest(metricMap, spec.name);
+    return {
+      key: spec.key,
+      name: spec.name,
+      unit: spec.unit,
+      value,
+      text: value == null ? '—' : formatLagValue(spec.unit, value),
+      points: postgresPoints(metricMap, spec.name)
+    };
+  });
+  const anyPoint = cards.some((card) => card.value != null);
+  if (anyPoint) {
+    return {
+      state: 'ready',
+      trends: cards.some((card) => card.points.length > 0) ? 'lag' : 'none',
+      cards
+    };
+  }
+  const waiting = booting || POSTGRES_REPLICATION_LAG_METRIC_NAMES.some((name) => pending.has(name));
+  return {
+    state: waiting ? 'loading' : 'absent',
+    trends: 'none',
+    cards
   };
 };

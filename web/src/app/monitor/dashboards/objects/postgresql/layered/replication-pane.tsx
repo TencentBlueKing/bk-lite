@@ -5,12 +5,16 @@ import {
   GrayTabEmptyState,
   ProDashLoading,
   ProSection,
+  ThinTimeSeries,
   proChromeClass
 } from '../../host/layered/pro-chrome';
+import host from '../../host/layered/layered.module.scss';
 import { PG_PALETTE } from '../config';
 import { PostgresHint } from './hint';
 import {
   readPostgresReplication,
+  type PostgresReplicationLagCard,
+  type PostgresReplicationLagKey,
   type PostgresReplicationNote
 } from './replication';
 import type { PostgresMetricMap } from './series';
@@ -21,7 +25,7 @@ const EMPTY = {
   action: '查看采集配置'
 };
 
-const LAG_ABSENT = '本环境未采复制延迟/积压，不展示趋势。';
+const LAG_ABSENT = '本窗口未见复制延迟/积压采点';
 
 const NOTE_COPY: Record<Exclude<PostgresReplicationNote, 'none'>, { title: string; hint: string }> = {
   unconfigured: {
@@ -51,6 +55,29 @@ const CARDS = [
     body: '这台库上的复制槽个数，包括暂时没连上的槽。显示 0 表示现在没有复制槽，不代表有积压。'
   }
 ] as const;
+
+const LAG_COPY: Record<PostgresReplicationLagKey, { label: string; body: string; color: string }> = {
+  write: {
+    label: '写入延迟',
+    body: '副本收到变更后，写到本地所花的最长时间。没有副本连着时，读数通常是 0。',
+    color: PG_PALETTE.blue
+  },
+  flush: {
+    label: '刷盘延迟',
+    body: '副本把收到的变更落到磁盘所花的最长时间。没有副本连着时，读数通常是 0。',
+    color: PG_PALETTE.cyan
+  },
+  replay: {
+    label: '回放延迟',
+    body: '副本把收到的变更应用到数据上所花的最长时间。没有副本连着时，读数通常是 0。',
+    color: PG_PALETTE.indigo
+  },
+  backlog: {
+    label: '复制槽积压',
+    body: '为了让暂时断开的副本还能接上，复制槽留着的数据量。没有槽在留数据时，读数通常是 0。',
+    color: PG_PALETTE.amber
+  }
+};
 
 function StatusCard({
   cardKey,
@@ -86,6 +113,44 @@ function StatusCard({
           </div>
         </>
       )}
+    </div>
+  );
+}
+
+function LagValueCard({ card }: { card: PostgresReplicationLagCard }) {
+  const copy = LAG_COPY[card.key];
+  return (
+    <div
+      className={proChromeClass.kpiCard}
+      data-postgres-replication-lag-card={card.key}
+      data-postgres-replication-lag-value={card.value == null ? 'missing' : String(card.value)}
+    >
+      <div className={`${proChromeClass.kpiLabel} inline-flex max-w-full items-center gap-1 !overflow-visible`}>
+        <span className="min-w-0 truncate">{copy.label}</span>
+        <PostgresHint kind={`pg-replication-lag-${card.key}`} title={copy.label} body={copy.body} />
+      </div>
+      <div
+        className={proChromeClass.kpiValue}
+        style={card.value == null ? undefined : { color: copy.color }}
+      >
+        {card.text}
+      </div>
+    </div>
+  );
+}
+
+function LagChart({ card }: { card: PostgresReplicationLagCard }) {
+  const copy = LAG_COPY[card.key];
+  return (
+    <div className="min-w-0" data-postgres-replication-lag-chart={card.key} data-postgres-replication-lag-points={String(card.points.length)}>
+      <ThinTimeSeries
+        title={copy.label}
+        unit={card.unit}
+        data={card.points}
+        legends={[{ label: copy.label, color: copy.color }]}
+        emptyText={LAG_ABSENT}
+        hintNode={<PostgresHint kind={`pg-replication-lag-chart-${card.key}`} title={copy.label} body={copy.body} />}
+      />
     </div>
   );
 }
@@ -148,11 +213,14 @@ export default function ReplicationPane({
     }
   ];
 
+  const lagCharts = model.lag.cards.filter((card) => card.points.length > 0);
+  const showLag = model.load !== 'loading';
+
   return (
     <div
-      className="w-full shrink-0"
+      className="flex w-full min-w-0 shrink-0 flex-col gap-4"
       data-postgres-replication-state={model.load === 'loading' ? 'loading' : 'ready'}
-      data-postgres-replication-trends="none"
+      data-postgres-replication-trends={model.lag.trends}
     >
       <ProSection title="状态" className="!gap-2">
         <div
@@ -182,13 +250,48 @@ export default function ReplicationPane({
             <div className="mt-1 text-[12px] leading-[1.5] text-[var(--color-text-3)]">{note.hint}</div>
           </div>
         ) : null}
-        <p
-          className="m-0 text-[12px] leading-5 text-[var(--color-text-3)]"
-          data-postgres-replication-lag-note=""
-        >
-          {LAG_ABSENT}
-        </p>
       </ProSection>
+      {showLag ? (
+        <ProSection title="延迟与积压" className="!gap-2">
+          {model.lag.state === 'loading' ? (
+            <div
+              className={`${proChromeClass.kpiCard} ${proChromeClass.kpiCardLoading}`}
+              data-postgres-replication-lag="loading"
+            >
+              <ProDashLoading />
+            </div>
+          ) : null}
+          {model.lag.state === 'absent' ? (
+            <p
+              className="m-0 text-[12px] leading-5 text-[var(--color-text-3)]"
+              data-postgres-replication-lag="absent"
+              data-postgres-replication-lag-note=""
+            >
+              {LAG_ABSENT}
+            </p>
+          ) : null}
+          {model.lag.state === 'ready' ? (
+            <>
+              <div
+                className={proChromeClass.kpiGrid}
+                style={{ gridTemplateColumns: 'repeat(4, minmax(0, 1fr))' }}
+                data-postgres-replication-lag="ready"
+              >
+                {model.lag.cards.map((card) => (
+                  <LagValueCard key={card.key} card={card} />
+                ))}
+              </div>
+              {lagCharts.length > 0 ? (
+                <div className={host.chartGrid2} data-postgres-replication-lag-charts="">
+                  {lagCharts.map((card) => (
+                    <LagChart key={card.key} card={card} />
+                  ))}
+                </div>
+              ) : null}
+            </>
+          ) : null}
+        </ProSection>
+      ) : null}
     </div>
   );
 }

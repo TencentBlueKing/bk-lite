@@ -1,8 +1,12 @@
 import type { SimpleDashboardConfig } from '../common/simple-dashboard-core';
 import {
+  POSTGRES_FLUSH_LAG_QUERY,
   POSTGRES_RECOVERY_QUERY,
+  POSTGRES_REPLAY_LAG_QUERY,
   POSTGRES_REPLICATION_SLOTS_QUERY,
-  POSTGRES_STREAMING_REPLICAS_QUERY
+  POSTGRES_SLOT_RESTART_LAG_QUERY,
+  POSTGRES_STREAMING_REPLICAS_QUERY,
+  POSTGRES_WRITE_LAG_QUERY
 } from './queries';
 
 /** PostgreSQL 监控高对比鲜活科技色板 */
@@ -223,6 +227,38 @@ export const POSTGRESQL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       unit: 'counts',
       query: POSTGRES_REPLICATION_SLOTS_QUERY,
       color: PG_PALETTE.cyan
+    },
+    {
+      name: 'postgresql_replication_write_lag_seconds',
+      display_name: '写入延迟',
+      description: '副本收到变更后写到本地所花的最长时间。0 是采到的延迟，不是缺失。',
+      unit: 's',
+      query: POSTGRES_WRITE_LAG_QUERY,
+      color: PG_PALETTE.blue
+    },
+    {
+      name: 'postgresql_replication_flush_lag_seconds',
+      display_name: '刷盘延迟',
+      description: '副本把收到的变更落到磁盘所花的最长时间。0 是采到的延迟，不是缺失。',
+      unit: 's',
+      query: POSTGRES_FLUSH_LAG_QUERY,
+      color: PG_PALETTE.cyan
+    },
+    {
+      name: 'postgresql_replication_replay_lag_seconds',
+      display_name: '回放延迟',
+      description: '副本把收到的变更应用到数据上所花的最长时间。0 是采到的延迟，不是缺失。',
+      unit: 's',
+      query: POSTGRES_REPLAY_LAG_QUERY,
+      color: PG_PALETTE.indigo
+    },
+    {
+      name: 'postgresql_replication_slot_restart_lag_bytes',
+      display_name: '复制槽积压',
+      description: '复制槽为了让暂时断开的副本还能接上而留着的数据量。0 是采到的积压，不是缺失。',
+      unit: 'bytes',
+      query: POSTGRES_SLOT_RESTART_LAG_QUERY,
+      color: PG_PALETTE.amber
     }
   ],
   summaryCards: [

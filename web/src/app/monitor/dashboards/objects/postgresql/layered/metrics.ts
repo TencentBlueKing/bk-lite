@@ -24,5 +24,9 @@ export const POSTGRES_CATEGORY_METRIC_NAMES = [
   'postgresql_conflicts_rate',
   'postgresql_recovery_in_recovery',
   'postgresql_replication_streaming_replicas',
-  'postgresql_replication_replication_slots'
+  'postgresql_replication_replication_slots',
+  'postgresql_replication_write_lag_seconds',
+  'postgresql_replication_flush_lag_seconds',
+  'postgresql_replication_replay_lag_seconds',
+  'postgresql_replication_slot_restart_lag_bytes'
 ] as const;
