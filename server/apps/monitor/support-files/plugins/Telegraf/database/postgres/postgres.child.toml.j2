@@ -9,9 +9,10 @@
         collect_type = "database"
         config_type = "postgres"
 
-# 恢复状态、流复制连接数和复制槽个数始终采集，供专业盘顶栏区分角色和形态。
+# 恢复状态、流复制连接数、复制延迟、复制槽个数和槽积压始终采集，供专业盘区分角色、形态和落后程度。
 # 语句与等待仅在对应开关打开时追加查询。基础 inputs.postgresql 保持不变。
-# 这里只采个数，不采延迟。某一条查询失败不会撤掉其余查询。
+# 复制指标按实例返回一行：多个已连接副本或槽取最大值。没有流复制连接时延迟为 0，没有保留 WAL 的槽时积压为 0。
+# 某一条查询失败不会撤掉其余查询。
 [[inputs.postgresql_extensible]]
     startup_error_behavior = "retry"
     address = "postgres://{{ username | urlencode }}:${PASSWORD__{{ config_id }}}@{{ host }}:{{ port }}/{{ dbname | default('postgres') | urlencode }}?sslmode={{ sslmode | default('disable') }}&statement_timeout=10000"
@@ -35,7 +36,39 @@
         min_version = 1000
         withdbname = false
         tagvalue = ""
-        sqlquery = """SELECT (SELECT COUNT(*)::double precision FROM pg_stat_replication) AS streaming_replicas, (SELECT COUNT(*)::double precision FROM pg_replication_slots) AS replication_slots"""
+        sqlquery = """
+            SELECT
+                (SELECT COUNT(*)::double precision FROM pg_stat_replication) AS streaming_replicas,
+                (SELECT COUNT(*)::double precision FROM pg_replication_slots) AS replication_slots,
+                COALESCE(
+                    (SELECT MAX(EXTRACT(EPOCH FROM write_lag)) FROM pg_stat_replication),
+                    0
+                )::double precision AS write_lag_seconds,
+                COALESCE(
+                    (SELECT MAX(EXTRACT(EPOCH FROM flush_lag)) FROM pg_stat_replication),
+                    0
+                )::double precision AS flush_lag_seconds,
+                COALESCE(
+                    (SELECT MAX(EXTRACT(EPOCH FROM replay_lag)) FROM pg_stat_replication),
+                    0
+                )::double precision AS replay_lag_seconds,
+                COALESCE(
+                    (
+                        SELECT MAX(
+                            pg_wal_lsn_diff(
+                                CASE
+                                    WHEN pg_is_in_recovery() THEN pg_last_wal_replay_lsn()
+                                    ELSE pg_current_wal_lsn()
+                                END,
+                                restart_lsn
+                            )
+                        )
+                        FROM pg_replication_slots
+                        WHERE restart_lsn IS NOT NULL
+                    ),
+                    0
+                )::double precision AS slot_restart_lag_bytes
+        """
 
 {% set _statements_on = (gather_pg_stat_statements | default(false, true) | lower) %}
 {% if _statements_on == 'true' or _statements_on == '1' %}

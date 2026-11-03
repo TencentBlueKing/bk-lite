@@ -469,6 +469,50 @@
       "dimensions": [],
       "description": "Replication slots on this instance, including slots whose peer is not connected. Above zero means replication topology. Zero is a real sample. This is not slot lag.",
       "query": "max by (instance_id) (postgresql_replication_replication_slots{__$labels__})"
+    },
+    {
+      "metric_group": "Topology",
+      "name": "postgresql_replication_write_lag_seconds",
+      "display_name": "Replication Write Lag",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "description": "Longest time a connected replica has taken to write received WAL. Zero when no streaming replica is connected.",
+      "query": "max by (instance_id) (postgresql_replication_write_lag_seconds{__$labels__})"
+    },
+    {
+      "metric_group": "Topology",
+      "name": "postgresql_replication_flush_lag_seconds",
+      "display_name": "Replication Flush Lag",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "description": "Longest time a connected replica has taken to flush received WAL. Zero when no streaming replica is connected.",
+      "query": "max by (instance_id) (postgresql_replication_flush_lag_seconds{__$labels__})"
+    },
+    {
+      "metric_group": "Topology",
+      "name": "postgresql_replication_replay_lag_seconds",
+      "display_name": "Replication Replay Lag",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "description": "Longest time a connected replica has taken to replay received WAL. Zero when no streaming replica is connected.",
+      "query": "max by (instance_id) (postgresql_replication_replay_lag_seconds{__$labels__})"
+    },
+    {
+      "metric_group": "Topology",
+      "name": "postgresql_replication_slot_restart_lag_bytes",
+      "display_name": "Replication Slot Backlog",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "description": "Most WAL still retained for a replication slot. Zero when no slot is retaining WAL.",
+      "query": "max by (instance_id) (postgresql_replication_slot_restart_lag_bytes{__$labels__})"
     }
   ]
 }

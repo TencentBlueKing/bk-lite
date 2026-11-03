@@ -104,6 +104,18 @@ monitor_object_metric:
     postgresql_replication_replication_slots:
       name: 复制槽个数
       desc: 本实例上的复制槽个数，包含暂时没有连上的槽。大于 0 表示存在复制拓扑。0 是采到的个数。不表示槽积压
+    postgresql_replication_write_lag_seconds:
+      name: 复制写入延迟
+      desc: 已连接副本把收到的 WAL 写完所花的最长时间，单位秒。没有流复制连接时为 0
+    postgresql_replication_flush_lag_seconds:
+      name: 复制刷盘延迟
+      desc: 已连接副本把收到的 WAL 刷盘所花的最长时间，单位秒。没有流复制连接时为 0
+    postgresql_replication_replay_lag_seconds:
+      name: 复制回放延迟
+      desc: 已连接副本把收到的 WAL 回放所花的最长时间，单位秒。没有流复制连接时为 0
+    postgresql_replication_slot_restart_lag_bytes:
+      name: 复制槽积压
+      desc: 复制槽仍保留的 WAL 中，最多的字节数。没有槽在保留 WAL 时为 0
 monitor_object_metric_group:
   Postgres:
     Connection: 连接

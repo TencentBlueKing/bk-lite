@@ -124,6 +124,22 @@ monitor_object_metric:
       desc: Replication slots on this instance, including slots whose peer is not
         connected. Above zero means replication topology exists. Zero is a
         collected count. This is not slot lag.
+    postgresql_replication_write_lag_seconds:
+      name: Replication Write Lag
+      desc: Longest time a connected replica has taken to write received WAL, in
+        seconds. Zero when no streaming replica is connected.
+    postgresql_replication_flush_lag_seconds:
+      name: Replication Flush Lag
+      desc: Longest time a connected replica has taken to flush received WAL, in
+        seconds. Zero when no streaming replica is connected.
+    postgresql_replication_replay_lag_seconds:
+      name: Replication Replay Lag
+      desc: Longest time a connected replica has taken to replay received WAL, in
+        seconds. Zero when no streaming replica is connected.
+    postgresql_replication_slot_restart_lag_bytes:
+      name: Replication Slot Backlog
+      desc: Most WAL still retained for a replication slot, in bytes. Zero when no
+        slot is retaining WAL.
 monitor_object_metric_group:
   Postgres:
     Connection: Connection

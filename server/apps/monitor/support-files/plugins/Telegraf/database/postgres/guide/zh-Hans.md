@@ -8,7 +8,7 @@
 - 准备可登录指定数据库并读取 `pg_stat_database`、`pg_stat_bgwriter` 的账号。PostgreSQL 10 及以上授予 `pg_read_all_stats`。同一授权也可读取当前会话等待。
 - 「Top SQL 采集」默认关闭。打开前，由 DBA 在页面填写的数据库中执行 `CREATE EXTENSION IF NOT EXISTS pg_stat_statements`（并已把它加入 `shared_preload_libraries`）。监控账号需能读取该视图。
 - 「等待事件采集」默认关闭。打开后采样当前正在等待的会话，不是累计等待时长。
-- 恢复状态、流复制连接数和复制槽个数随基础连接采集。备库，或连接数、槽个数大于 0，顶栏形态为「主从」。未处于恢复且两者都是 0，形态为「单机」。没有这些读数时不显示形态，也不把未处于恢复单独写成「单机」。本模板不采集复制延迟。
+- 恢复状态、流复制连接数和复制槽个数随基础连接采集。备库，或连接数、槽个数大于 0，顶栏形态为「主从」。未处于恢复且两者都是 0，形态为「单机」。没有这些读数时不显示形态，也不把未处于恢复单独写成「单机」。同一查询还采集已连接副本的写入、刷盘和回放延迟，以及复制槽仍保留的 WAL。没有流复制连接时延迟为 0；没有槽在保留 WAL 时积压为 0。
 - 目标的 `pg_hba.conf` 允许来自采集节点的该账号连接。
 - 页面可选 SSL 模式 `disable`、`prefer`、`require`；本模板不支持证书路径，`verify-ca` / `verify-full` 暂不可用。
 - 模板固定忽略 `template0` 和 `template1`。
@@ -68,6 +68,10 @@ psql --host db.example.com --port 5432 --username monitor --dbname postgres --pa
 - `postgresql_recovery_in_recovery`（0 为接受写入，1 为备库）
 - `postgresql_replication_streaming_replicas`（当前流复制连接数）
 - `postgresql_replication_replication_slots`（复制槽个数）
+- `postgresql_replication_write_lag_seconds`（已连接副本的写入延迟，秒）
+- `postgresql_replication_flush_lag_seconds`（已连接副本的刷盘延迟，秒）
+- `postgresql_replication_replay_lag_seconds`（已连接副本的回放延迟，秒）
+- `postgresql_replication_slot_restart_lag_bytes`（复制槽仍保留的 WAL，字节）
 
 打开「Top SQL 采集」并完成至少一个采集周期后，还可确认 `postgresql_statement_total_time_seconds`。打开「等待事件采集」后，有会话正在等待时可确认 `postgresql_wait_sessions`。
 
