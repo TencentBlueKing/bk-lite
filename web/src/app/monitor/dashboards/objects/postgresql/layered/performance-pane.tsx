@@ -56,7 +56,7 @@ const ZONES: ReadonlyArray<{
       {
         key: 'hit-read',
         title: '缓存命中与磁盘读',
-        body: '同窗对比：命中块速率与磁盘块读取速率。',
+        body: '同一时段内，对照缓存命中块速率与磁盘块读取速率。',
         series: [
           { name: 'postgresql_blks_hit_rate', label: '命中块速率', color: PG_PALETTE.emerald, unit: 'cps' },
           { name: 'postgresql_blks_read_rate', label: '磁盘块读取速率', color: PG_PALETTE.orange, unit: 'cps' }
@@ -65,7 +65,7 @@ const ZONES: ReadonlyArray<{
       {
         key: 'blk-write',
         title: '块写入耗时',
-        body: '块写入累计耗时的变化速率（时间压力旁证）。',
+        body: '块写入耗时的变化，用来观察写入是否变慢。',
         series: [{
           name: 'postgresql_blk_write_time',
           label: '块写入耗时',
@@ -137,7 +137,7 @@ const ZONES: ReadonlyArray<{
       {
         key: 'buffer-alloc',
         title: '缓冲区分配',
-        body: '新分配缓冲区的速率，作分配抬升旁证。',
+        body: '新分配缓冲区的速率。持续升高说明缓冲分配在加快。',
         series: [{
           name: 'postgresql_buffers_alloc_rate',
           label: '缓冲区分配',
@@ -155,7 +155,7 @@ const ZONES: ReadonlyArray<{
       {
         key: 'deadlock',
         title: '死锁与冲突',
-        body: '死锁速率与并发冲突速率的时序。',
+        body: '死锁速率与并发冲突速率随时间的变化。',
         series: [
           { name: 'postgresql_deadlocks_rate', label: '死锁', color: PG_PALETTE.rose, unit: 'cps' },
           { name: 'postgresql_conflicts_rate', label: '冲突', color: PG_PALETTE.amber, unit: 'cps' }
@@ -207,7 +207,7 @@ function PerformanceChart({
         independentAxes={mixedUnits}
         keepLegend={multi}
         loading={awaiting}
-        emptyText="窗口内暂无采样"
+        emptyText="本窗口暂无数据"
         data={data}
         legends={spec.series.map((item) => ({
           label: item.label,

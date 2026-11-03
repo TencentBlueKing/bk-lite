@@ -21,11 +21,11 @@ import type { PostgresMetricMap } from './series';
 
 const EMPTY = {
   title: '复制状态未采集',
-  hint: '本窗口未见复制/恢复相关采点；确认采集任务在跑且至少一个周期已上报。',
+  hint: '本窗口暂无复制或恢复相关数据。请确认采集已开启并完成至少一个上报周期。',
   action: '查看采集配置'
 };
 
-const LAG_ABSENT = '本窗口未见复制延迟/积压采点';
+const LAG_ABSENT = '本窗口暂无复制延迟或积压数据。';
 
 const NOTE_COPY: Record<Exclude<PostgresReplicationNote, 'none'>, { title: string; hint: string }> = {
   unconfigured: {
@@ -42,17 +42,17 @@ const CARDS = [
   {
     key: 'role',
     label: '角色',
-    body: '主库正在接受写入，备库还在回放变更。看不出是哪一种时显示 —。'
+    body: '本实例当前是主库还是备库。\n主库：对外提供写入。\n备库：持续回放主库变更。\n暂无法判断时显示 —。'
   },
   {
     key: 'streaming',
     label: '流复制连接数',
-    body: '当前连着本实例的副本个数。大于 0 表示有副本连着。显示 0 表示现在没有副本连接，不代表延迟。'
+    body: '当前连着本实例的副本个数。为 0 表示当前没有连接的副本，与延迟无关。'
   },
   {
     key: 'slots',
     label: '复制槽个数',
-    body: '这台库上的复制槽个数，包括暂时没连上的槽。显示 0 表示现在没有复制槽，不代表有积压。'
+    body: '本实例上的复制槽个数，包括暂时没有连上的槽。为 0 表示当前没有复制槽，与积压无关。'
   }
 ] as const;
 

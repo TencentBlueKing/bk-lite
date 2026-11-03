@@ -185,8 +185,8 @@ export function StatementPane({
         loading={loading}
         title={queryFailed ? '暂时无法显示' : '暂无 Top SQL 数据'}
         hint={queryFailed
-          ? '近窗没有返回可用结果。请稍后重试，不必为此去开启采集。'
-          : '请在采集配置中开启「Top SQL 采集」，并确认目标库已安装 pg_stat_statements，监控账号可以读取它。若已开启，保存配置后等待至少一个采集周期。'}
+          ? '当前窗口没有返回可用结果。请稍后重试，无需为此重新开启采集。'
+          : '请在采集配置中开启「Top SQL 采集」，并确认目标库已安装 pg_stat_statements，监控账号可以读取它。若已开启，保存配置后请稍候，下一次采集完成即可显示。'}
         actionLabel={queryFailed || !onOpenCollection ? undefined : '去开启 Top SQL 采集'}
         onAction={queryFailed ? undefined : onOpenCollection}
       />
@@ -365,8 +365,8 @@ export function WaitPane({
         loading={loading}
         title={queryFailed ? '暂时无法显示' : '暂无等待数据'}
         hint={queryFailed
-          ? '近窗没有返回可用结果。请稍后重试，不必为此去开启采集。'
-          : '请在采集配置中开启「等待事件采集」。开启后这里显示当前正在等待的会话；采集当时没有会话处于等待时，这里也会是空的。若已开启，保存后等待至少一个采集周期。'}
+          ? '当前窗口没有返回可用结果。请稍后重试，无需为此重新开启采集。'
+          : '请在采集配置中开启「等待事件采集」。开启后这里显示当前正在等待的会话；当时没有会话处于等待时，这里也会是空的。若已开启，保存配置后请稍候，下一次采集完成即可显示。'}
         actionLabel={queryFailed || !onOpenCollection ? undefined : '去开启等待事件采集'}
         onAction={queryFailed ? undefined : onOpenCollection}
       />

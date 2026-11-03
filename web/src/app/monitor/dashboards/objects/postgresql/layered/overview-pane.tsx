@@ -54,7 +54,7 @@ const KPI_SPECS = [
     metric: 'postgresql_numbackends',
     unit: 'counts' as const,
     color: PG_PALETTE.blue,
-    body: '当前连到本库的后端会话数。'
+    body: '当前连接到本库的会话数。'
   },
   {
     key: 'commit',

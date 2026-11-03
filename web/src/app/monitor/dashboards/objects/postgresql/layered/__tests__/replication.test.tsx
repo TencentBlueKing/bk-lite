@@ -199,7 +199,7 @@ describe('postgres replication pane', () => {
     expect(screen.queryByText('复制状态未采集')).toBeNull();
     expect(screen.queryByText('当前未配置复制')).toBeNull();
     expect(screen.queryByText('主库 · 暂无下游')).toBeNull();
-    expect(screen.getByText('本窗口未见复制延迟/积压采点')).toBeTruthy();
+    expect(screen.getByText('本窗口暂无复制延迟或积压数据。')).toBeTruthy();
     expect(document.querySelector('[data-postgres-replication-trends="none"]')).toBeTruthy();
     expect(document.querySelector('[data-postgres-replication-lag="absent"]')).toBeTruthy();
     expect(document.querySelector('[data-postgres-replication-lag-chart]')).toBeNull();
@@ -221,7 +221,7 @@ describe('postgres replication pane', () => {
     expect(card('streaming')?.textContent).toContain('0');
     expect(card('slots')?.textContent).toContain('0');
     expect(screen.getByText('主库 · 暂无下游')).toBeTruthy();
-    expect(screen.getByText('本窗口未见复制延迟/积压采点')).toBeTruthy();
+    expect(screen.getByText('本窗口暂无复制延迟或积压数据。')).toBeTruthy();
     expect(document.querySelector('[data-postgres-replication-trends="none"]')).toBeTruthy();
     expect(document.querySelector('[data-postgres-replication-status]')).toBeTruthy();
     expect(screen.queryByText('复制状态未采集')).toBeNull();
@@ -237,10 +237,10 @@ describe('postgres replication pane', () => {
       />
     );
     expect(screen.getByText('复制状态未采集')).toBeTruthy();
-    expect(screen.getByText('本窗口未见复制/恢复相关采点；确认采集任务在跑且至少一个周期已上报。')).toBeTruthy();
+    expect(screen.getByText('本窗口暂无复制或恢复相关数据。请确认采集已开启并完成至少一个上报周期。')).toBeTruthy();
     expect(screen.queryByText('去开启复制')).toBeNull();
     expect(document.querySelector('[data-postgres-replication-card]')).toBeNull();
-    expect(screen.queryByText('本窗口未见复制延迟/积压采点')).toBeNull();
+    expect(screen.queryByText('本窗口暂无复制延迟或积压数据。')).toBeNull();
     expect(screen.queryByText('延迟与积压')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: '查看采集配置' }));
     expect(onOpenCollection).toHaveBeenCalledOnce();
@@ -329,7 +329,7 @@ describe('postgres replication lag pane', () => {
     );
     expect(screen.getByText('主库')).toBeTruthy();
     expect(screen.queryByText('复制状态未采集')).toBeNull();
-    expect(screen.queryByText('本窗口未见复制延迟/积压采点')).toBeNull();
+    expect(screen.queryByText('本窗口暂无复制延迟或积压数据。')).toBeNull();
     expect(document.querySelector('[data-postgres-replication-trends="lag"]')).toBeTruthy();
     expect(document.querySelector('[data-postgres-replication-lag="ready"]')).toBeTruthy();
     expect(lagCard('write')?.getAttribute('data-postgres-replication-lag-value')).toBe('0');
@@ -374,7 +374,7 @@ describe('postgres replication lag pane', () => {
     expect(screen.getByText('主库')).toBeTruthy();
     expect(document.querySelector('[data-postgres-replication-lag="loading"]')).toBeTruthy();
     expect(document.querySelectorAll('[data-postgres-replication-lag="loading"]')).toHaveLength(1);
-    expect(screen.queryByText('本窗口未见复制延迟/积压采点')).toBeNull();
+    expect(screen.queryByText('本窗口暂无复制延迟或积压数据。')).toBeNull();
     expect(document.querySelector('[data-postgres-replication-lag-chart]')).toBeNull();
     expect(document.querySelector('[data-postgres-replication-trends="none"]')).toBeTruthy();
     expect(screen.queryByText('复制状态未采集')).toBeNull();
