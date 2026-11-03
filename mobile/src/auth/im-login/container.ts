@@ -1,10 +1,16 @@
-import type { ImContainer } from './types';
+import type { ImContainer, SilentLoginMode } from './types';
 
-const CONTAINER_PATTERNS: Array<{ container: ImContainer; pattern: RegExp }> = [
-  { container: 'feishu', pattern: /Feishu|Lark/i },
+export interface ImContainerRule {
+  providerKey: ImContainer;
+  silent: SilentLoginMode;
+  pattern: RegExp;
+}
+
+const CONTAINER_RULES: ImContainerRule[] = [
+  { providerKey: 'feishu', silent: 'jsapi', pattern: /Feishu|Lark/i },
+  { providerKey: 'wecom', silent: 'oauth', pattern: /wxwork/i },
 ];
 
-export function detectImContainer(userAgent: string): ImContainer | null {
-  const matched = CONTAINER_PATTERNS.find((item) => item.pattern.test(userAgent || ''));
-  return matched?.container ?? null;
+export function detectImContainer(userAgent: string): ImContainerRule | null {
+  return CONTAINER_RULES.find((item) => item.pattern.test(userAgent || '')) ?? null;
 }

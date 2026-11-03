@@ -458,3 +458,175 @@ test('login buttons only list bindings that advertise oauth', async () => {
   assert.equal(selectJsapiBinding([passwordOnly, oauthOnly, feishuBinding], 'feishu')?.id, 7);
   assert.equal(selectJsapiBinding([oauthOnly], 'feishu'), null);
 });
+
+const wecomBinding = {
+  id: 8,
+  name: '企业微信',
+  provider_key: 'wecom',
+  client_login: { evidence_modes: ['oauth'] },
+};
+
+const wecomUserAgent = 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 wxwork/4.1.0 MicroMessenger/7.0.1';
+
+test('mobile OAuth start asks for the oauth channel without naming a vendor', async () => {
+  const { buildExternalLoginStartBody, OAUTH_LOGIN_CHANNEL } = await loadTypeScriptModule('src/auth/im-login/oauth.ts');
+  const body = buildExternalLoginStartBody({
+    bindingId: 8,
+    callbackUrl: '/mobile/h5/',
+    redirectOrigin: 'https://bk.example',
+    resultPath: '/mobile/h5/auth/external',
+  });
+
+  assert.equal(body.login_channel, 'oauth');
+  assert.equal(body.login_channel, OAUTH_LOGIN_CHANNEL);
+  assert.equal(body.binding_id, 8);
+  assert.equal(body.result_path, '/mobile/h5/auth/external');
+  assert.equal(JSON.stringify(body).includes('wecom'), false);
+  assert.equal(JSON.stringify(body).includes('feishu'), false);
+});
+
+test('OAuth buttons include every binding that advertises oauth', async () => {
+  const { selectOauthBindings, selectProviderOauthBinding, selectJsapiBinding } = await loadTypeScriptModule(
+    'src/auth/im-login/bindings.ts',
+  );
+  const passwordOnly = { id: 1, name: '账号密码', provider_key: 'ad', client_login: { evidence_modes: [] } };
+
+  assert.deepEqual(
+    selectOauthBindings([passwordOnly, wecomBinding, feishuBinding]).map((item) => item.id),
+    [8, 7],
+  );
+  assert.equal(selectProviderOauthBinding([wecomBinding, feishuBinding], 'wecom')?.name, '企业微信');
+  assert.equal(selectJsapiBinding([wecomBinding, feishuBinding], 'wecom'), null);
+  assert.equal(selectJsapiBinding([wecomBinding, feishuBinding], 'feishu')?.id, 7);
+});
+
+test('WeCom workbench silently starts OAuth and does not call JSAPI', async () => {
+  const { runSilentImLogin } = await loadTypeScriptModule('src/auth/im-login/shell.ts');
+  const calls = [];
+
+  const outcome = await runSilentImLogin({
+    userAgent: wecomUserAgent,
+    loadBindings: async () => [feishuBinding, wecomBinding],
+    getAuthCode: async () => {
+      throw new Error('jsapi should not run');
+    },
+    exchange: async () => {
+      throw new Error('exchange should not run');
+    },
+    startOauth: async (binding) => {
+      calls.push(binding.id);
+      return true;
+    },
+    establishSession: async () => ({ status: 'success', token: 'token' }),
+  });
+
+  assert.deepEqual(outcome, { status: 'redirecting' });
+  assert.deepEqual(calls, [8]);
+});
+
+test('WeCom OAuth start failure degrades back to the login page', async () => {
+  const { runSilentImLogin } = await loadTypeScriptModule('src/auth/im-login/shell.ts');
+  let exchanged = false;
+
+  const refused = await runSilentImLogin({
+    userAgent: 'wxwork/4.1.0',
+    loadBindings: async () => [wecomBinding],
+    getAuthCode: async () => {
+      throw new Error('jsapi should not run');
+    },
+    exchange: async () => {
+      exchanged = true;
+      return null;
+    },
+    startOauth: async () => false,
+    establishSession: async () => ({ status: 'success', token: 'token' }),
+  });
+  const thrown = await runSilentImLogin({
+    userAgent: 'wxwork/4.1.0',
+    loadBindings: async () => [wecomBinding],
+    getAuthCode: async () => {
+      throw new Error('jsapi should not run');
+    },
+    exchange: async () => null,
+    startOauth: async () => {
+      throw new Error('network');
+    },
+    establishSession: async () => ({ status: 'success', token: 'token' }),
+  });
+
+  assert.equal(exchanged, false);
+  assert.deepEqual(refused, {
+    status: 'degraded',
+    notice: { reason: 'oauth_failed', name: '企业微信' },
+  });
+  assert.deepEqual(thrown.notice, { reason: 'oauth_failed', name: '企业微信' });
+});
+
+test('personal WeChat and a normal mobile browser do not auto-start WeCom OAuth', async () => {
+  const { runSilentImLogin } = await loadTypeScriptModule('src/auth/im-login/shell.ts');
+
+  for (const userAgent of [
+    'Mozilla/5.0 MicroMessenger/8.0.0',
+    'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)',
+  ]) {
+    let loaded = false;
+    const outcome = await runSilentImLogin({
+      userAgent,
+      loadBindings: async () => {
+        loaded = true;
+        return [wecomBinding];
+      },
+      getAuthCode: async () => {
+        throw new Error('jsapi should not run');
+      },
+      exchange: async () => null,
+      startOauth: async () => {
+        throw new Error('oauth should not start');
+      },
+      establishSession: async () => ({ status: 'success', token: 'token' }),
+    });
+    assert.deepEqual(outcome, { status: 'skipped' });
+    assert.equal(loaded, false, userAgent);
+  }
+});
+
+test('WeCom container without an oauth binding stays on the login page', async () => {
+  const { runSilentImLogin } = await loadTypeScriptModule('src/auth/im-login/shell.ts');
+  let started = false;
+  const outcome = await runSilentImLogin({
+    userAgent: 'wxwork/4.1.0',
+    loadBindings: async () => [{ id: 3, name: '企业微信', provider_key: 'wecom', client_login: { evidence_modes: [] } }],
+    getAuthCode: async () => {
+      throw new Error('jsapi should not run');
+    },
+    exchange: async () => null,
+    startOauth: async () => {
+      started = true;
+      return true;
+    },
+    establishSession: async () => ({ status: 'success', token: 'token' }),
+  });
+
+  assert.deepEqual(outcome, { status: 'skipped' });
+  assert.equal(started, false);
+});
+
+test('Feishu workbench still uses JSAPI when a WeCom OAuth binding also exists', async () => {
+  const { runSilentImLogin } = await loadTypeScriptModule('src/auth/im-login/shell.ts');
+  let started = false;
+
+  const outcome = await runSilentImLogin({
+    userAgent: 'Mozilla/5.0 Lark/7.18.0 Feishu',
+    loadBindings: async () => [wecomBinding, feishuBinding],
+    getAuthCode: async () => ({ code: 'jsapi-code', evidenceMode: 'jsapi', jsapiCodeType: 'request_access' }),
+    exchange: async (_binding, proof) => ({ id: 9, username: 'ada', token: proof.code }),
+    startOauth: async () => {
+      started = true;
+      return true;
+    },
+    establishSession: async (loginResult) => ({ status: 'success', token: loginResult.token }),
+  });
+
+  assert.deepEqual(outcome, { status: 'success', token: 'jsapi-code' });
+  assert.equal(started, false);
+});

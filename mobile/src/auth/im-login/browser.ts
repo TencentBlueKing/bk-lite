@@ -2,7 +2,14 @@ import { apiGet, apiPost } from '@/api/request';
 import { isTauriApp } from '@/utils/tauriFetch';
 import { withBasePath } from '@/utils/basePath';
 import { selectOauthBindings } from './bindings';
-import { saveOAuthPending, clearOAuthPending, completeOAuthReturn, readOAuthPending, readOAuthReturnStatus } from './oauth';
+import {
+  buildExternalLoginStartBody,
+  saveOAuthPending,
+  clearOAuthPending,
+  completeOAuthReturn,
+  readOAuthPending,
+  readOAuthReturnStatus,
+} from './oauth';
 import { getImAuthCodeProvider } from './providers';
 import { loadFeishuH5Sdk, type FeishuHost } from './providers/feishu';
 import { establishH5SessionFromLoginResult } from './session';
@@ -78,12 +85,15 @@ export async function loadOauthLoginBindings(): Promise<PublicLoginBinding[]> {
 }
 
 export async function startBrowserExternalLogin(binding: PublicLoginBinding): Promise<boolean> {
-  const response = await apiPost<StartLoginResponse>('/core/api/start_login_auth/', {
-    binding_id: binding.id,
-    callback_url: withBasePath('/'),
-    redirect_origin: window.location.origin,
-    result_path: withBasePath('/auth/external'),
-  });
+  const response = await apiPost<StartLoginResponse>(
+    '/core/api/start_login_auth/',
+    buildExternalLoginStartBody({
+      bindingId: binding.id,
+      callbackUrl: withBasePath('/'),
+      redirectOrigin: window.location.origin,
+      resultPath: withBasePath('/auth/external'),
+    }),
+  );
   const data = response?.data;
   if (!response?.result || !data?.login_url || !data.auth_request_id || !data.poll_token) {
     return false;
@@ -103,6 +113,7 @@ export function runBrowserSilentLogin(dependencies: SessionDependencies) {
     loadBindings: loadPublicBindings,
     getAuthCode: acquireAuthCode,
     exchange: exchangeAuthCode,
+    startOauth: startBrowserExternalLogin,
     establishSession: (loginResult) => establishH5SessionFromLoginResult(loginResult, dependencies),
   });
 }

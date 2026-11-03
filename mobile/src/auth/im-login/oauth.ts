@@ -2,6 +2,22 @@ import { noticeForExternalSession } from './session';
 import type { LoginNotice, OAuthPending } from './types';
 
 export const OAUTH_PENDING_STORAGE_KEY = 'bklite.mobile.oauthPending';
+export const OAUTH_LOGIN_CHANNEL = 'oauth';
+
+export function buildExternalLoginStartBody(input: {
+  bindingId: number;
+  callbackUrl: string;
+  redirectOrigin: string;
+  resultPath: string;
+}) {
+  return {
+    binding_id: input.bindingId,
+    callback_url: input.callbackUrl,
+    redirect_origin: input.redirectOrigin,
+    result_path: input.resultPath,
+    login_channel: OAUTH_LOGIN_CHANNEL,
+  };
+}
 
 interface KeyValueStorage {
   getItem: (key: string) => string | null;

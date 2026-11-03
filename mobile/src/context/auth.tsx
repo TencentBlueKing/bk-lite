@@ -247,8 +247,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [handleUnauthorized]);
 
   const trySilentImLogin = useCallback(async () => {
-    if (isTauriApp() || typeof window === 'undefined') return false;
-    if (window.location.pathname.includes('/auth/external')) return false;
+    if (isTauriApp() || typeof window === 'undefined') return 'continue' as const;
+    if (window.location.pathname.includes('/auth/external')) return 'continue' as const;
     try {
       const outcome = await runBrowserSilentLogin({
         signIn: (provider, options) => signIn(provider, options),
@@ -257,8 +257,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
       if (outcome.status === 'success') {
         await establishAuthenticatedState(outcome.token, null, false);
-        return true;
+        return 'success' as const;
       }
+      if (outcome.status === 'redirecting') return 'redirecting' as const;
       if (outcome.status === 'degraded') {
         writeLoginNotice(window.sessionStorage, outcome.notice);
       }
@@ -269,7 +270,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.error('Silent IM login failed:', error);
       writeLoginNotice(window.sessionStorage, { reason: 'jsapi_failed', name: '' });
     }
-    return false;
+    return 'continue' as const;
   }, [establishAuthenticatedState]);
 
   useEffect(() => {
@@ -278,6 +279,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const initializeAuth = async () => {
       setIsInitializing(true);
       setInitializationError(false);
+      let keepInitializing = false;
 
       try {
         await initSecureStorage();
@@ -301,8 +303,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           clearSession: clearH5Session,
         });
         if (!sessionToken) {
-          const signedIn = await trySilentImLogin();
-          if (signedIn) return;
+          const silent = await trySilentImLogin();
+          if (silent === 'success') return;
+          if (silent === 'redirecting') {
+            keepInitializing = true;
+            return;
+          }
           clearCurrentTeamCookie();
           return;
         }
@@ -320,7 +326,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           }
         }
       } finally {
-        if (active) setIsInitializing(false);
+        if (active && !keepInitializing) setIsInitializing(false);
       }
     };
 

@@ -2,7 +2,9 @@ export type EvidenceMode = 'oauth' | 'jsapi';
 
 export type JsapiCodeType = 'request_access' | 'request_auth_code';
 
-export type ImContainer = 'feishu';
+export type ImContainer = 'feishu' | 'wecom';
+
+export type SilentLoginMode = 'jsapi' | 'oauth';
 
 export interface ClientLoginDescriptor {
   evidence_modes?: string[];
@@ -45,6 +47,7 @@ export interface LoginNotice {
 export type SilentLoginOutcome =
   | { status: 'skipped' }
   | { status: 'success'; token: string }
+  | { status: 'redirecting' }
   | { status: 'degraded'; notice: LoginNotice };
 
 export interface OAuthPending {

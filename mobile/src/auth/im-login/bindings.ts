@@ -19,3 +19,10 @@ export function selectJsapiBinding(
 export function selectOauthBindings(bindings: PublicLoginBinding[]): PublicLoginBinding[] {
   return bindings.filter((binding) => evidenceModes(binding).includes('oauth'));
 }
+
+export function selectProviderOauthBinding(
+  bindings: PublicLoginBinding[],
+  providerKey: string,
+): PublicLoginBinding | null {
+  return selectOauthBindings(bindings).find((binding) => binding.provider_key === providerKey) ?? null;
+}
