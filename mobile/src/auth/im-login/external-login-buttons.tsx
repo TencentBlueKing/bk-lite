@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { Button, Toast } from 'antd-mobile';
 import { useTranslation } from '@/utils/i18n';
 import { loadOauthLoginBindings, startBrowserExternalLogin } from './browser';
+import { LOGIN_ACTION_BUTTON_CLASS, loginActionButtonStyle } from './login-button-style';
 import type { PublicLoginBinding } from './types';
 
 export function ExternalLoginButtons({ disabled }: { disabled: boolean }) {
@@ -54,21 +55,23 @@ export function ExternalLoginButtons({ disabled }: { disabled: boolean }) {
         <span>{t('login.or')}</span>
         <span className="h-px flex-1 bg-gray-200" />
       </div>
-      {bindings.map((binding) => (
-        <Button
-          key={binding.id}
-          fill="outline"
-          loading={startingId === binding.id}
-          disabled={disabled || startingId !== null}
-          className="w-full h-11"
-          onClick={() => {
-            void start(binding);
-          }}
-          style={{ fontSize: '16px' }}
-        >
-          {t('login.externalSignIn', undefined, { name: binding.name })}
-        </Button>
-      ))}
+      {bindings.map((binding) => {
+        const unavailable = disabled || startingId !== null;
+        return (
+          <Button
+            key={binding.id}
+            loading={startingId === binding.id}
+            disabled={unavailable}
+            className={LOGIN_ACTION_BUTTON_CLASS}
+            onClick={() => {
+              void start(binding);
+            }}
+            style={loginActionButtonStyle(unavailable)}
+          >
+            {t('login.externalSignIn', undefined, { name: binding.name })}
+          </Button>
+        );
+      })}
     </div>
   );
 }

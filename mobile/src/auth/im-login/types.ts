@@ -38,7 +38,7 @@ export interface ExternalLoginResult {
 }
 
 export interface LoginNotice {
-  reason: 'jsapi_failed' | 'exchange_failed' | 'session_failed' | 'oauth_failed' | 'oauth_cancelled';
+  reason: 'jsapi_failed' | 'exchange_failed' | 'session_failed' | 'oauth_failed' | 'oauth_cancelled' | 'otp_required' | 'password_reset_required';
   name: string;
 }
 

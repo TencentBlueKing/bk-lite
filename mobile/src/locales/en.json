@@ -353,9 +353,9 @@
         "externalSignIn": "Sign in with {name}",
         "externalUnavailable": "Unable to start {name} sign-in",
         "externalReturning": "Completing sign-in",
-        "silentFailed": "{name} sign-in did not finish. Use your account instead.",
-        "sessionFailed": "{name} sign-in did not finish. Use your account password.",
-        "oauthFailed": "{name} sign-in did not finish. Retry or use your account password.",
+        "silentFailed": "{name} sign-in did not finish. Continue on the sign-in page.",
+        "sessionFailed": "{name} sign-in did not finish. Continue on the sign-in page.",
+        "oauthFailed": "{name} sign-in did not finish. Retry or continue on the sign-in page.",
         "oauthCancelled": "{name} sign-in was cancelled"
     },
     "zoneinfo": {

@@ -6,7 +6,7 @@ import type {
   PublicLoginBinding,
   SilentLoginOutcome,
 } from './types';
-import type { ExternalSessionStatus } from './session';
+import { noticeForExternalSession, type ExternalSessionStatus } from './session';
 
 interface SilentLoginDependencies {
   userAgent: string;
@@ -53,5 +53,5 @@ export async function runSilentImLogin(
   if (session.status === 'success') {
     return { status: 'success', token: session.token };
   }
-  return { status: 'degraded', notice: { reason: 'session_failed', name: binding.name } };
+  return { status: 'degraded', notice: noticeForExternalSession(session.status, binding.name) };
 }

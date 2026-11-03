@@ -1,4 +1,4 @@
-import type { ExternalLoginResult } from './types';
+import type { ExternalLoginResult, LoginNotice } from './types';
 
 interface SignInResponseLike {
   ok?: boolean;
@@ -16,6 +16,12 @@ export type ExternalSessionStatus =
   | { status: 'password-reset-required' }
   | { status: 'invalid-credentials' }
   | { status: 'service-unavailable' };
+
+export function noticeForExternalSession(status: string, name: string): LoginNotice {
+  if (status === 'otp-required') return { reason: 'otp_required', name };
+  if (status === 'password-reset-required') return { reason: 'password_reset_required', name };
+  return { reason: 'session_failed', name };
+}
 
 function sessionToken(session: unknown): string | null {
   if (!session || typeof session !== 'object') return null;

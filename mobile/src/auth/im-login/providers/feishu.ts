@@ -2,10 +2,11 @@ import type { AuthCodeProof } from '../types';
 
 export const FEISHU_H5_SDK_URL = 'https://lf-scm-cn.feishucdn.com/lark/op/h5-js-sdk-1.5.44.js';
 export const FEISHU_REQUEST_ACCESS_UNSUPPORTED = 103;
+export const FEISHU_CALLBACK_TIMEOUT_MS = 8000;
 
 interface FeishuCallbackResult {
   code?: string;
-  errno?: number;
+  errno?: number | string;
   errString?: string;
 }
 
@@ -33,16 +34,42 @@ export interface FeishuHost {
 function readErrno(error: unknown): number | null {
   if (!error || typeof error !== 'object') return null;
   const errno = (error as { errno?: unknown }).errno;
-  return typeof errno === 'number' ? errno : null;
+  if (typeof errno === 'number') return Number.isFinite(errno) ? errno : null;
+  if (typeof errno !== 'string') return null;
+  const trimmed = errno.trim();
+  if (
+    trimmed === String(FEISHU_REQUEST_ACCESS_UNSUPPORTED)
+    || Number(trimmed) === FEISHU_REQUEST_ACCESS_UNSUPPORTED
+  ) {
+    return FEISHU_REQUEST_ACCESS_UNSUPPORTED;
+  }
+  return null;
+}
+
+function withTimeout<T>(work: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(message)), timeoutMs);
+    work.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
 }
 
 function callJsapi(
+  timeoutMs: number,
   invoke: (handlers: {
     success: (result: FeishuCallbackResult) => void;
     fail: (error: FeishuCallbackResult) => void;
   }) => void,
 ): Promise<string> {
-  return new Promise((resolve, reject) => {
+  const pending = new Promise<string>((resolve, reject) => {
     invoke({
       success: (result) => {
         if (result?.code) {
@@ -54,27 +81,28 @@ function callJsapi(
       fail: (error) => reject(error),
     });
   });
+  return withTimeout(pending, timeoutMs, 'feishu_jsapi_timeout');
 }
 
-async function whenFeishuReady(host: FeishuHost) {
+async function whenFeishuReady(host: FeishuHost, timeoutMs: number) {
   if (!host.h5sdk?.ready) return;
-  await new Promise<void>((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error('feishu_ready_timeout')), 8000);
-    host.h5sdk?.ready(() => {
-      clearTimeout(timer);
-      resolve();
-    });
-  });
+  await withTimeout(new Promise<void>((resolve) => {
+    host.h5sdk?.ready(() => resolve());
+  }), timeoutMs, 'feishu_ready_timeout');
 }
 
-export async function requestFeishuAuthCode(appId: string, host: FeishuHost): Promise<AuthCodeProof> {
-  await whenFeishuReady(host);
+export async function requestFeishuAuthCode(
+  appId: string,
+  host: FeishuHost,
+  timeoutMs = FEISHU_CALLBACK_TIMEOUT_MS,
+): Promise<AuthCodeProof> {
+  await whenFeishuReady(host, timeoutMs);
   const tt = host.tt;
   if (!tt) throw new Error('feishu_jsapi_missing');
 
   if (tt.requestAccess) {
     try {
-      const code = await callJsapi((handlers) => tt.requestAccess?.({
+      const code = await callJsapi(timeoutMs, (handlers) => tt.requestAccess?.({
         appID: appId,
         scopeList: [],
         ...handlers,
@@ -88,7 +116,7 @@ export async function requestFeishuAuthCode(appId: string, host: FeishuHost): Pr
   }
 
   if (!tt.requestAuthCode) throw new Error('feishu_jsapi_missing');
-  const code = await callJsapi((handlers) => tt.requestAuthCode?.({
+  const code = await callJsapi(timeoutMs, (handlers) => tt.requestAuthCode?.({
     appId,
     ...handlers,
   }));

@@ -17,20 +17,8 @@ import {
 } from 'antd-mobile-icons';
 import { withBasePath } from '@/utils/basePath';
 import { ExternalLoginButtons } from '@/auth/im-login/external-login-buttons';
-import { consumeLoginNotice } from '@/auth/im-login/notices';
-import type { LoginNotice } from '@/auth/im-login/types';
-
-const LOGIN_NOTICE_KEYS: Record<LoginNotice['reason'], string> = {
-  jsapi_failed: 'login.silentFailed',
-  exchange_failed: 'login.silentFailed',
-  session_failed: 'login.sessionFailed',
-  oauth_failed: 'login.oauthFailed',
-  oauth_cancelled: 'login.oauthCancelled',
-};
-
-function noticeMessageKey(notice: LoginNotice) {
-  return LOGIN_NOTICE_KEYS[notice.reason] || 'login.oauthFailed';
-}
+import { LOGIN_ACTION_BUTTON_CLASS, loginActionButtonStyle } from '@/auth/im-login/login-button-style';
+import { consumeLoginNotice, presentationForLoginNotice } from '@/auth/im-login/notices';
 
 export default function LoginPage() {
   const { t } = useTranslation();
@@ -49,11 +37,18 @@ export default function LoginPage() {
   useEffect(() => {
     const notice = consumeLoginNotice(window.sessionStorage);
     if (notice) {
-      const name = notice.name || t('login.thirdParty');
-      Toast.show({
-        content: t(noticeMessageKey(notice), undefined, { name }),
-        icon: 'fail',
-      });
+      const presentation = presentationForLoginNotice(notice.reason);
+      if (presentation.type === 'otp') {
+        setAuthStep('otp-verification');
+      } else if (presentation.type === 'password-reset') {
+        setAuthStep('reset-password');
+      } else {
+        const name = notice.name || t('login.thirdParty');
+        Toast.show({
+          content: t(presentation.messageKey, undefined, { name }),
+          icon: 'fail',
+        });
+      }
     }
     fetchDomainList();
 
@@ -317,15 +312,8 @@ export default function LoginPage() {
                 type="submit"
                 loading={isLoading}
                 disabled={isLoading || isInitializing || !domain}
-                className="w-full h-11 rounded-lg shadow-sm mt-5"
-                style={{
-                  backgroundColor:
-                    isLoading || isInitializing || !domain ? '#e5e7eb' : '#2563eb',
-                  color: '#ffffff',
-                  borderRadius: '0.5rem',
-                  fontSize: '16px',
-                  fontWeight: '500',
-                }}
+                className={`${LOGIN_ACTION_BUTTON_CLASS} mt-5`}
+                style={loginActionButtonStyle(isLoading || isInitializing || !domain)}
               >
                 {isLoading ? t('login.signingIn') : t('login.signIn')}
               </Button>

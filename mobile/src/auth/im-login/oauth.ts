@@ -1,3 +1,4 @@
+import { noticeForExternalSession } from './session';
 import type { LoginNotice, OAuthPending } from './types';
 
 export const OAUTH_PENDING_STORAGE_KEY = 'bklite.mobile.oauthPending';
@@ -89,5 +90,5 @@ export async function completeOAuthReturn(input: {
   if (session.status === 'success' && session.token) {
     return { status: 'success', token: session.token };
   }
-  return { status: 'degraded', notice: { reason: 'session_failed', name } };
+  return { status: 'degraded', notice: noticeForExternalSession(session.status, name) };
 }

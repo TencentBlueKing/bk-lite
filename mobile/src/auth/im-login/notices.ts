@@ -12,6 +12,28 @@ export function writeLoginNotice(storage: KeyValueStorage, notice: LoginNotice) 
   storage.setItem(LOGIN_NOTICE_STORAGE_KEY, JSON.stringify(notice));
 }
 
+const LOGIN_NOTICE_TOAST_KEYS: Partial<Record<LoginNotice['reason'], string>> = {
+  jsapi_failed: 'login.silentFailed',
+  exchange_failed: 'login.silentFailed',
+  session_failed: 'login.sessionFailed',
+  oauth_failed: 'login.oauthFailed',
+  oauth_cancelled: 'login.oauthCancelled',
+};
+
+export type LoginNoticePresentation =
+  | { type: 'otp' }
+  | { type: 'password-reset' }
+  | { type: 'toast'; messageKey: string };
+
+export function presentationForLoginNotice(reason: string): LoginNoticePresentation {
+  if (reason === 'otp_required') return { type: 'otp' };
+  if (reason === 'password_reset_required') return { type: 'password-reset' };
+  return {
+    type: 'toast',
+    messageKey: LOGIN_NOTICE_TOAST_KEYS[reason as LoginNotice['reason']] || 'login.oauthFailed',
+  };
+}
+
 export function consumeLoginNotice(storage: KeyValueStorage): LoginNotice | null {
   const raw = storage.getItem(LOGIN_NOTICE_STORAGE_KEY);
   if (!raw) return null;
