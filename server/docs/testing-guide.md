@@ -14,7 +14,7 @@ cd server
 make install                      # 安装依赖（含 pytest-bdd / factory-boy，均在 dev 组）
 
 # 运行全部测试（默认扫描 apps/，带覆盖率）
-make test                         # 等价于 uv run pytest
+make test                         # 应用与内嵌PPT工具两套独立进程测试，任一失败则整体失败
 
 # 运行单个 app / 单个文件 / 单个用例
 uv run pytest apps/cmdb/tests
@@ -29,6 +29,11 @@ uv run pytest -m bdd              # 只跑 BDD
 # 调试时临时关掉覆盖率统计，输出更干净
 uv run pytest apps/cmdb/tests/bdd/ --no-cov
 ```
+
+`make test` 是完整门禁：先执行Django应用测试，再在内嵌PPT脚本目录启动独立pytest进程，保留该工具的全部测试。
+两者都有顶层`config`模块，不能共享解释器；PPT子进程不加载Django配置、插件及父级conftest。
+结果分别保存在`test-results/server.xml`和`test-results/ppt-skill.xml`，首套失败也继续执行第二套并汇总退出码。
+直接`uv run pytest`以及`test-app`、`test-unit`、`test-fast`等快捷入口仅表示应用套件，不能替代完整`make test`。
 
 常用 Make 快捷命令（见 `server/Makefile`）：
 
