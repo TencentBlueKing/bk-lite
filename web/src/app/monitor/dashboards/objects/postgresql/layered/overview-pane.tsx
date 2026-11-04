@@ -20,6 +20,7 @@ import { describeFocusAxis, formatFocusHeadline, seriesSampleValues } from '../.
 import { PG_PALETTE } from '../config';
 import { useDashboardText } from '../../../shared/utils/content-i18n';
 import { formatCacheHitPercent } from './cache-hit';
+import { postgresKpiJump } from './ia';
 import { PostgresHint } from './hint';
 import {
   cacheHitReading,
@@ -81,7 +82,6 @@ const KPI_SPECS = [
     metric: 'postgresql_deadlocks_count',
     unit: 'counts' as const,
     color: PG_PALETTE.rose,
-    anchor: 'deadlock',
     body: '当前时间范围内发生的死锁次数。\n偶发需要关注冲突事务；持续出现时应排查锁顺序与长事务。\n暂无数据时显示 —。'
   }
 ] as const;
@@ -179,6 +179,10 @@ export default function OverviewPane({
       const label = item.key === 'deadlock' ? dt(item.label) : item.label;
       const body = item.key === 'deadlock' ? dt(item.body) : item.body;
       const info = <PostgresHint kind={`pg-kpi-${item.key}`} title={label} body={body} />;
+      const jump = postgresKpiJump(item.key);
+      const activate = jump
+        ? { onActivate: () => onOpenFocus(jump.anchor), activatesDialog: false as const }
+        : {};
       if (item.key === 'cache') {
         const value = hit.percent == null ? EMPTY : formatCacheHitPercent(hit.percent);
         return {
@@ -186,7 +190,8 @@ export default function OverviewPane({
           label,
           value,
           tone: hit.percent == null ? undefined : item.color,
-          info
+          info,
+          ...activate
         };
       }
       const latest = item.key === 'deadlock'
@@ -204,8 +209,7 @@ export default function OverviewPane({
         ),
         tone,
         info,
-        onActivate: item.key === 'deadlock' ? () => onOpenFocus(item.anchor) : undefined,
-        activatesDialog: item.key === 'deadlock' ? false : undefined
+        ...activate
       };
     });
     metricCards.push({

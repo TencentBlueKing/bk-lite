@@ -17,7 +17,8 @@ import pageStyles from '../index.module.scss';
 import { POSTGRES_DIGEST_METRICS } from '../queries';
 import type { PostgresMetricMap } from './series';
 import OverviewPane from './overview-pane';
-import PerformancePane from './performance-pane';
+import { CacheTxnPane, CheckpointAnomalyPane } from './performance-pane';
+import { isPostgresTab, POSTGRES_TABS, postgresOpenTarget, resolvePostgresTab, type PostgresTab } from './ia';
 import { StatementPane, WaitPane } from './digest-pane';
 import ReplicationPane from './replication-pane';
 import {
@@ -34,20 +35,6 @@ import {
   type PostgresStatementRow,
   type PostgresWaitRow
 } from './digest';
-
-type PostgresTab = 'overview' | 'performance' | 'statements' | 'waits' | 'replication';
-
-const TABS: ReadonlyArray<{ key: PostgresTab; label: string }> = [
-  { key: 'overview', label: '概览' },
-  { key: 'performance', label: '性能' },
-  { key: 'statements', label: 'Top SQL' },
-  { key: 'waits', label: '等待' },
-  { key: 'replication', label: '复制' }
-];
-
-const isTab = (value: string | null): value is PostgresTab => (
-  TABS.some((tab) => tab.key === value)
-);
 
 interface PostgresCategoryLayoutProps {
   instanceId: React.Key;
@@ -94,7 +81,7 @@ export default function PostgresCategoryLayout({
   const [statementId, setStatementId] = useState('');
   const [waitId, setWaitId] = useState('');
   const requested = searchParams.get('postgresTab');
-  const tabFromUrl: PostgresTab = isTab(requested) ? requested : 'overview';
+  const tabFromUrl = resolvePostgresTab(requested, searchParams.get('focus'));
   const [tab, setTab] = useState<PostgresTab>(tabFromUrl);
   const [alertCount, setAlertCount] = useState<number | null>(null);
   const [alertEvents, setAlertEvents] = useState<HostAlertRailEvent[]>([]);
@@ -139,7 +126,7 @@ export default function PostgresCategoryLayout({
   };
 
   useEffect(() => {
-    if (tab !== 'performance') return;
+    if (tab !== 'cache-txn' && tab !== 'checkpoint-anomaly') return;
     const anchor = searchParams.get('focus');
     if (!anchor) return;
     const target = document.getElementById(`pg-perf-${anchor}`)
@@ -293,9 +280,9 @@ export default function PostgresCategoryLayout({
             className={host.partitionTabs}
             activeKey={tab}
             onChange={(key) => {
-              if (isTab(key)) selectTab(key);
+              if (isPostgresTab(key)) selectTab(key);
             }}
-            items={TABS.map((item) => {
+            items={POSTGRES_TABS.map((item) => {
               const dimmed = item.key === 'statements'
                 ? statementsDimmed
                 : item.key === 'waits'
@@ -337,7 +324,10 @@ export default function PostgresCategoryLayout({
               alertEvents={alertEvents}
               eventsLoading={eventsPhase === 'loading'}
               onOpenAlerts={openAlerts}
-              onOpenFocus={(anchor) => selectTab('performance', anchor)}
+              onOpenFocus={(anchor) => {
+                const target = postgresOpenTarget(anchor);
+                selectTab(target.tab, target.anchor);
+              }}
               onFocusAlert={(alertId) => {
                 setFocusAlertId(alertId);
                 setAlertDrawerOpen(true);
@@ -345,8 +335,11 @@ export default function PostgresCategoryLayout({
               }}
             />
           ) : null}
-          {tab === 'performance' ? (
-            <PerformancePane metricMap={metricMap} pendingMetricNames={pendingMetricNames} />
+          {tab === 'cache-txn' ? (
+            <CacheTxnPane metricMap={metricMap} pendingMetricNames={pendingMetricNames} />
+          ) : null}
+          {tab === 'checkpoint-anomaly' ? (
+            <CheckpointAnomalyPane metricMap={metricMap} pendingMetricNames={pendingMetricNames} />
           ) : null}
           {tab === 'statements' ? (
             <div data-postgres-empty={statementsLoad === 'collected' ? undefined : 'statements'}>

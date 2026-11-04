@@ -36,12 +36,14 @@ interface ChartSpec {
   emptyText?: string;
 }
 
-const ZONES: ReadonlyArray<{
+interface ZoneSpec {
   id: string;
   title: string;
   grid: 'chartGrid3' | 'chartGrid2';
   charts: readonly ChartSpec[];
-}> = [
+}
+
+const CACHE_TXN_ZONES: readonly ZoneSpec[] = [
   {
     id: 'cache-disk',
     title: '缓存与磁盘',
@@ -115,7 +117,10 @@ const ZONES: ReadonlyArray<{
         ]
       }
     ]
-  },
+  }
+];
+
+const CHECKPOINT_ANOMALY_ZONES: readonly ZoneSpec[] = [
   {
     id: 'checkpoint',
     title: '检查点与缓冲区',
@@ -234,16 +239,20 @@ function PerformanceChart({
   );
 }
 
-export default function PerformancePane({
+function TrendSections({
+  pane,
+  zones,
   metricMap,
   pendingMetricNames
 }: {
+  pane: 'cache-txn' | 'checkpoint-anomaly';
+  zones: readonly ZoneSpec[];
   metricMap: PostgresMetricMap;
   pendingMetricNames: ReadonlySet<string>;
 }) {
   return (
-    <div data-postgres-pane="performance" className="contents">
-      {ZONES.map((zone) => (
+    <div data-postgres-pane={pane} className="contents">
+      {zones.map((zone) => (
         <ProSection key={zone.id} id={`pg-zone-${zone.id}`} title={zone.title}>
           <div className={host[zone.grid]} data-postgres-zone={zone.id}>
             {zone.charts.map((chart) => (
@@ -258,5 +267,39 @@ export default function PerformancePane({
         </ProSection>
       ))}
     </div>
+  );
+}
+
+export function CacheTxnPane({
+  metricMap,
+  pendingMetricNames
+}: {
+  metricMap: PostgresMetricMap;
+  pendingMetricNames: ReadonlySet<string>;
+}) {
+  return (
+    <TrendSections
+      pane="cache-txn"
+      zones={CACHE_TXN_ZONES}
+      metricMap={metricMap}
+      pendingMetricNames={pendingMetricNames}
+    />
+  );
+}
+
+export function CheckpointAnomalyPane({
+  metricMap,
+  pendingMetricNames
+}: {
+  metricMap: PostgresMetricMap;
+  pendingMetricNames: ReadonlySet<string>;
+}) {
+  return (
+    <TrendSections
+      pane="checkpoint-anomaly"
+      zones={CHECKPOINT_ANOMALY_ZONES}
+      metricMap={metricMap}
+      pendingMetricNames={pendingMetricNames}
+    />
   );
 }
