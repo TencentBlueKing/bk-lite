@@ -4,9 +4,11 @@ from types import SimpleNamespace
 import pytest
 
 from apps.monitor.services.host_dashboard import (
+    EMPTY_HEALTH_SNAPSHOT,
     EMPTY_SNAPSHOT,
     HostMetricRangeService,
     average_host_series,
+    build_host_health_snapshot,
     build_host_instance_rows,
     build_host_resource_snapshot,
     fold_host_range_series,
@@ -29,6 +31,7 @@ def test_average_host_series_means_points_then_hosts():
 
 def test_range_metric_type_rejects_unknown():
     validate_range_metric_type("cpu")
+    validate_range_metric_type("iowait")
     with pytest.raises(ValueError):
         validate_range_metric_type("health")
 
@@ -212,3 +215,22 @@ def test_snapshot_has_no_health_fields_and_computes_avg_max():
     assert "healthy" not in snapshot
     assert "unhealthy" not in snapshot
     assert set(EMPTY_SNAPSHOT) <= set(snapshot)
+
+
+def test_host_health_counts_reporting_alerts_and_no_data():
+    snapshot = build_host_health_snapshot(
+        selected_ids=["h1", "h2", "h3"],
+        reporting_ids=["h1", "h2"],
+        alerting_ids=["h2"],
+    )
+    assert snapshot == {
+        "host_count": 3,
+        "healthy_count": 1,
+        "unhealthy_count": 1,
+        "no_data_count": 1,
+        "healthy_percent": 33.3,
+    }
+
+
+def test_empty_health_snapshot_has_zero_counts():
+    assert build_host_health_snapshot(selected_ids=[], reporting_ids=["h1"], alerting_ids=["h1"]) == EMPTY_HEALTH_SNAPSHOT
