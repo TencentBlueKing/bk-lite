@@ -396,6 +396,54 @@ def test_task_format_payload_is_not_reconciled_as_instances(monkeypatch):
     assert deleted == []
 
 
+def test_empty_pc_metrics_are_not_reconciled_as_full_delete(monkeypatch):
+    """企业插件 run() 返回 {pc: []}。专用对账已写入，空列表不能再进通用立即清理。"""
+    seen = []
+    deleted = []
+
+    class _Graph:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def query_entity(self, _label, params):
+            if any(item.get("field") == "collect_task" for item in params):
+                return [{"_id": 1, "model_id": "pc", "inst_name": "WIN-EXISTING", "collect_task": 7}], 1
+            return [], 0
+
+    class _Management:
+        def __init__(self, _organization, _inst_name, model_id, old_data, new_data, *_args, **_kwargs):
+            seen.append(model_id)
+            if model_id == "pc" and old_data and not new_data:
+                deleted.extend(old_data)
+
+        def controller(self):
+            return {
+                "add": {"success": [], "failed": []},
+                "update": {"success": [], "failed": []},
+                "delete": {"success": [], "failed": []},
+            }
+
+    monkeypatch.setattr("apps.cmdb.collection.metrics_cannula.GraphClient", lambda *_a, **_k: _Graph())
+    monkeypatch.setattr("apps.cmdb.collection.metrics_cannula.Management", _Management)
+    cannula = MetricsCannula(
+        inst_id="cmdb_7",
+        organization=[1],
+        inst_name="pc-task",
+        task_id=7,
+        collect_plugin=SimpleNamespace(TASK_FORMAT_DATA_KEY="__task_format_data__"),
+        default_metrics={"pc": []},
+        reconcile_task_assets=True,
+        task=SimpleNamespace(model_id="pc", expire_days=0, instances=[]),
+    )
+    cannula._reconcile_for = lambda _model_id: None
+    cannula._collect_models()
+    assert seen == []
+    assert deleted == []
+
+
 def test_task_format_payload_outside_pc_keeps_original_behavior(monkeypatch):
     seen = []
 
