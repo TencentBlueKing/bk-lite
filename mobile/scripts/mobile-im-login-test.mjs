@@ -457,9 +457,55 @@ test('external login button reuses the sign-in button style', async () => {
   assert.equal(buttons.includes('provider_key'), false);
   assert.equal(buttons.includes('fill="outline"'), false);
   assert.equal(buttons.includes('icon-feishu'), false);
-  assert.equal(buttons.includes('flex flex-col gap-3'), true);
-  assert.equal(buttons.includes('space-y-3'), false);
   assert.equal(buttons.includes('externalSignInMessageId'), true);
+  assert.equal(page.includes('login.methodsTitle'), true);
+  assert.equal(page.includes('selectMobileLoginBindings'), false);
+  assert.equal(page.includes('loadMobileLoginBindings'), true);
+  assert.equal(page.includes('更多'), false);
+});
+
+test('mobile login methods keep builtin password and oauth-capable bindings', async () => {
+  const {
+    selectMobileLoginBindings,
+    resolveInitialMobileBindingId,
+    resolveSelectedMobileBinding,
+    isBuiltinLoginBinding,
+  } = await loadTypeScriptModule('src/auth/im-login/bindings.ts');
+  const builtin = { id: 1, name: '平台账号密码登录', provider_key: 'bk_lite_builtin', icon: 'zhanghaomima', client_login: { evidence_modes: [] } };
+  const wechat = { id: 2, name: '微信', provider_key: 'wechat', icon: 'wechat', client_login: { evidence_modes: [] } };
+  const feishu = { id: 3, name: '飞书', provider_key: 'feishu', icon: 'feishu', client_login: { evidence_modes: ['oauth', 'jsapi'], jsapi: { app_id: 'cli_x' } } };
+  const wecom = { id: 4, name: '企微登陆', provider_key: 'wecom', icon: 'wecom', client_login: { evidence_modes: ['oauth'] } };
+  // System browser: WeCom oauth is not usable, so hide it.
+  const methods = selectMobileLoginBindings([builtin, wechat, feishu, wecom], 'Mozilla/5.0 (iPhone)');
+  assert.deepEqual(methods.map((item) => item.id), [1, 3]);
+  assert.equal(resolveInitialMobileBindingId(methods), 1);
+  assert.equal(resolveSelectedMobileBinding(methods, 3)?.id, 3);
+  assert.equal(resolveSelectedMobileBinding(methods, 99)?.id, 1);
+  assert.equal(isBuiltinLoginBinding(builtin), true);
+  assert.equal(isBuiltinLoginBinding(feishu), false);
+});
+
+test('WeCom login method only appears inside the WeCom container', async () => {
+  const { selectMobileLoginBindings, isMobileBindingSupportedOnClient } = await loadTypeScriptModule(
+    'src/auth/im-login/bindings.ts',
+  );
+  const builtin = { id: 1, name: '平台账号密码登录', provider_key: 'bk_lite_builtin', client_login: { evidence_modes: [] } };
+  const feishu = { id: 3, name: '飞书', provider_key: 'feishu', client_login: { evidence_modes: ['oauth'] } };
+  const wecom = { id: 4, name: '企微登陆', provider_key: 'wecom', client_login: { evidence_modes: ['oauth'] } };
+  const browserUa = 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15';
+  const wecomUa = 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 wxwork/4.1.0 MicroMessenger/7.0.1';
+
+  assert.equal(isMobileBindingSupportedOnClient(wecom, browserUa), false);
+  assert.equal(isMobileBindingSupportedOnClient(wecom, wecomUa), true);
+  assert.equal(isMobileBindingSupportedOnClient(feishu, browserUa), true);
+  assert.deepEqual(
+    selectMobileLoginBindings([builtin, feishu, wecom], browserUa).map((item) => item.id),
+    [1, 3],
+  );
+  assert.deepEqual(
+    selectMobileLoginBindings([builtin, feishu, wecom], wecomUa).map((item) => item.id),
+    [1, 3, 4],
+  );
 });
 
 test('login buttons only list bindings that advertise oauth', async () => {

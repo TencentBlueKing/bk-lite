@@ -1,7 +1,7 @@
 import { apiGet, apiPost } from '@/api/request';
 import { isTauriApp } from '@/utils/tauriFetch';
 import { withBasePath } from '@/utils/basePath';
-import { selectOauthBindings } from './bindings';
+import { selectMobileLoginBindings, selectOauthBindings } from './bindings';
 import {
   buildExternalLoginStartBody,
   saveOAuthPending,
@@ -82,6 +82,15 @@ async function exchangeAuthCode(
 export async function loadOauthLoginBindings(): Promise<PublicLoginBinding[]> {
   if (isTauriApp()) return [];
   return selectOauthBindings(await loadPublicBindings());
+}
+
+export async function loadMobileLoginBindings(): Promise<PublicLoginBinding[]> {
+  const userAgent = typeof window !== 'undefined' ? window.navigator.userAgent : '';
+  const bindings = selectMobileLoginBindings(await loadPublicBindings(), userAgent);
+  if (isTauriApp()) {
+    return bindings.filter((binding) => binding.provider_key === 'bk_lite_builtin');
+  }
+  return bindings;
 }
 
 export async function startBrowserExternalLogin(binding: PublicLoginBinding): Promise<boolean> {

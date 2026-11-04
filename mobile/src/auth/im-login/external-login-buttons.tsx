@@ -50,27 +50,44 @@ export function ExternalLoginButtons({ disabled }: { disabled: boolean }) {
   };
 
   return (
-    <div className="flex flex-col gap-3 pt-2">
-      <div className="flex items-center gap-3 text-sm text-gray-400">
-        <span className="h-px flex-1 bg-gray-200" />
+    <div style={{ display: 'flex', flexDirection: 'column', paddingTop: 8 }}>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 12,
+          marginBottom: 12,
+          fontSize: 14,
+          color: '#9ca3af',
+        }}
+      >
+        <span style={{ height: 1, flex: 1, backgroundColor: '#e5e7eb' }} />
         <span>{t('login.or')}</span>
-        <span className="h-px flex-1 bg-gray-200" />
+        <span style={{ height: 1, flex: 1, backgroundColor: '#e5e7eb' }} />
       </div>
-      {bindings.map((binding) => {
+      {bindings.map((binding, index) => {
         const unavailable = disabled || startingId !== null;
         return (
-          <Button
+          <div
             key={binding.id}
-            loading={startingId === binding.id}
-            disabled={unavailable}
-            className={LOGIN_ACTION_BUTTON_CLASS}
-            onClick={() => {
-              void start(binding);
-            }}
-            style={loginActionButtonStyle(unavailable)}
+            style={{ marginBottom: index < bindings.length - 1 ? 12 : 0 }}
           >
-            {t(externalSignInMessageId(binding.name), undefined, { name: binding.name })}
-          </Button>
+            <Button
+              loading={startingId === binding.id}
+              disabled={unavailable}
+              className={LOGIN_ACTION_BUTTON_CLASS}
+              onClick={() => {
+                void start(binding);
+              }}
+              style={{
+                ...loginActionButtonStyle(unavailable),
+                width: '100%',
+                display: 'block',
+              }}
+            >
+              {t(externalSignInMessageId(binding.name), undefined, { name: binding.name })}
+            </Button>
+          </div>
         );
       })}
     </div>

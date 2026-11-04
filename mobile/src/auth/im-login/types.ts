@@ -17,6 +17,9 @@ export interface PublicLoginBinding {
   id: number;
   name: string;
   provider_key: string;
+  icon?: string;
+  description?: string;
+  order?: number;
   client_login?: ClientLoginDescriptor;
 }
 

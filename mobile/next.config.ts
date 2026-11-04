@@ -54,6 +54,11 @@ const devRewrites = !isProduction ? {
         destination: `${devProxyTarget}/api/v1/core/api/login_auth/callback/`,
       },
       {
+        // 飞书回跳常去掉末尾 /，需与带斜杠规则并存（仅本地开发反代）
+        source: '/api/v1/core/api/login_auth/callback',
+        destination: `${devProxyTarget}/api/v1/core/api/login_auth/callback/`,
+      },
+      {
         source: '/api/auth/:path*',
         destination: `${devAuthProxyTarget}/api/auth/:path*`,
       },
