@@ -460,13 +460,12 @@ def prepare_definition_for_publish(
     return published
 
 
-# Conductor 把未转义的 ${...} 当成工作流引用；literal-only 字段（如脚本正文）必须写成 $${...}。
+# Conductor 把未转义的 ${...} 当成工作流引用；仅脚本等字面量字段需写成 $${...}。
+# 不要包含通知 body/title：它们应保留 ${task.output.x} 供运行时解析。
 _LITERAL_INPUT_KEYS = frozenset(
     {
         "script_content",
         "execution_params",
-        "body",
-        "title",
         "url",
         "method",
         "headers",
