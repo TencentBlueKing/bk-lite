@@ -127,7 +127,7 @@ session sync` 统一链路，不新增 NextAuth provider，不复用旧个人微
 
 PC 扫码保持默认。移动端在 `start_login_auth` 上传 `login_channel=oauth` 时，授权地址改为企业微信网页授权，`scope=snsapi_base`，并带上 `agentid`。`code` 仍交给现有 `getuserinfo`，不新增身份接口。
 
-工作台免登只在企业微信容器里自动发起这次网页授权，不使用 JS-SDK 或 `getAuthCode`。失败退回移动端登录页。登录页按钮由公开绑定的 `oauth` 证据通用列出，不在 Mobile 里按厂商写死按钮。
+工作台免登只在企业微信容器里自动发起这次网页授权，不使用 JS-SDK 或 `getAuthCode`。失败退回移动端登录页。登录方式仍看公开绑定的 `oauth` 证据；标准 OAuth（如飞书）在系统浏览器与对应容器都能选，企业微信只在企业微信容器内展示入口并静默授权，系统浏览器不展示企业微信。
 
 #### 验收场景
 
@@ -140,6 +140,9 @@ PC 扫码保持默认。移动端在 `start_login_auth` 上传 `login_channel=oa
 
 - **WHEN** 企业 ID 与 AgentId 都已配置
 - **THEN** 公开登录绑定声明 `evidence_modes` 含 `oauth`，且不返回 Secret。
+
+- **WHEN** 用户在系统浏览器打开移动端登录页
+- **THEN** 登录方式选择区不展示企业微信；仅企业微信容器（User-Agent 含 `wxwork`）展示企业微信入口并可静默网页授权。
 
 ### IM 应用通知
 
