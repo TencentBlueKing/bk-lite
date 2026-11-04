@@ -351,4 +351,47 @@ const dynamicSource = {
   );
 }
 
+{
+  const hostSide: LegacyUnifiedFilterDefinition = {
+    id: 'hkaa-host',
+    key: 'instance_ids',
+    name: '主机',
+    type: 'string',
+    order: 2,
+    enabled: true,
+    defaultValue: ['h1'],
+    inputConfig: {
+      control: 'select',
+      multiple: true,
+      optionsSource: dynamicSource,
+    },
+  };
+  const haproxySide: LegacyUnifiedFilterDefinition = {
+    id: 'hkaa-haproxy',
+    key: 'instance_ids',
+    name: 'HAProxy',
+    type: 'string',
+    order: 3,
+    enabled: true,
+    defaultValue: ['p1'],
+    inputConfig: {
+      control: 'select',
+      multiple: true,
+      optionsSource: {
+        type: 'dynamic',
+        sourceRef: { type: 'rest_api', value: 'monitor/get_monitor_instance_list' },
+        valueField: 'id',
+        labelField: 'name',
+      },
+    },
+  };
+  const { definitions, warnings } = migrateUnifiedFilterDefinitions([hostSide, haproxySide], {});
+  assert.equal(definitions.length, 2, '同 key 不同 id 的筛选项应全部保留');
+  assert.deepEqual(
+    definitions.map((item) => item.id).sort(),
+    ['hkaa-haproxy', 'hkaa-host'],
+  );
+  assert.equal(warnings.length, 0);
+}
+
 console.log('ops analysis string param multiple migrate tests passed');

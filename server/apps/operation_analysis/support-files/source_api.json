@@ -320,6 +320,7 @@
             "type": "static",
             "staticItems": [
               {"label": "CPU使用率", "value": "cpu"},
+              {"label": "CPU IO Wait", "value": "iowait"},
               {"label": "内存使用率", "value": "memory"},
               {"label": "磁盘使用率", "value": "disk"},
               {"label": "5分钟负载", "value": "load5"},
@@ -417,6 +418,111 @@
       {"key": "max_cpu_host", "title": "最高CPU主机", "value_type": "string"},
       {"key": "max_memory", "title": "最高内存(%)", "value_type": "number"},
       {"key": "max_memory_host", "title": "最高内存主机", "value_type": "string"}
+    ]
+},
+{
+    "key": "主机健康快照::monitor/get_host_health_snapshot",
+    "name": "主机健康快照",
+    "desc": "按所选主机计算三态健康：有上报且无未关闭告警＝正常，有告警＝异常，未上报＝无数据。未选主机不退化为全量。",
+    "rest_api": "monitor/get_host_health_snapshot",
+    "tag": ["monitor"],
+    "chart_type": ["single"],
+    "params": [
+      {
+        "name": "instance_ids",
+        "type": "string",
+        "value": [],
+        "alias_name": "主机",
+        "filterType": "filter",
+        "inputConfig": {
+          "control": "select",
+          "multiple": true,
+          "optionsSource": {
+            "type": "dynamic",
+            "sourceRef": {"type": "rest_api", "value": "monitor/get_host_instance_list"},
+            "valueField": "instance_id",
+            "labelField": "display_name"
+          }
+        }
+      },
+      {
+        "name": "scope",
+        "type": "string",
+        "value": "",
+        "alias_name": "主机范围",
+        "filterType": "params",
+        "desc": "所选主机只看 instance_ids；全部授权主机忽略 instance_ids。空值与非法值都按所选主机。",
+        "inputConfig": {
+          "control": "select",
+          "optionsSource": {
+            "type": "static",
+            "staticItems": [
+              {"label": "所选主机", "value": "selected"},
+              {"label": "全部授权主机", "value": "all_authorized"}
+            ]
+          }
+        }
+      },
+      {
+        "name": "organization",
+        "type": "string",
+        "value": "",
+        "alias_name": "组织",
+        "filterType": "filter",
+        "inputConfig": {
+          "control": "organization"
+        }
+      }
+    ],
+    "field_schema": [
+      {"key": "host_count", "title": "主机数", "value_type": "number"},
+      {"key": "healthy_count", "title": "正常主机", "value_type": "number"},
+      {"key": "unhealthy_count", "title": "异常主机", "value_type": "number"},
+      {"key": "no_data_count", "title": "无数据主机", "value_type": "number"},
+      {"key": "healthy_percent", "title": "正常占比(%)", "value_type": "number"}
+    ]
+},
+{
+    "key": "进程健康快照::monitor/get_process_health_snapshot",
+    "name": "进程健康快照",
+    "desc": "按所选进程计算应用三态健康：有上报且无未关闭告警＝正常。告警只看进程实例，不继承主机告警。未选进程不退化为全量。",
+    "rest_api": "monitor/get_process_health_snapshot",
+    "tag": ["monitor"],
+    "chart_type": ["table"],
+    "params": [
+      {
+        "name": "instance_ids",
+        "type": "string",
+        "value": [],
+        "alias_name": "进程",
+        "filterType": "filter",
+        "inputConfig": {
+          "control": "select",
+          "multiple": true,
+          "optionsSource": {
+            "type": "dynamic",
+            "sourceRef": {"type": "rest_api", "value": "monitor/get_monitor_instance_list"},
+            "valueField": "instance_id",
+            "labelField": "display_name"
+          }
+        }
+      },
+      {
+        "name": "organization",
+        "type": "string",
+        "value": "",
+        "alias_name": "组织",
+        "filterType": "filter",
+        "inputConfig": {
+          "control": "organization"
+        }
+      }
+    ],
+    "field_schema": [
+      {"key": "app_name", "title": "应用", "value_type": "string"},
+      {"key": "process_name", "title": "进程", "value_type": "string"},
+      {"key": "host_name", "title": "主机", "value_type": "string"},
+      {"key": "status", "title": "状态", "value_type": "string"}
     ]
 },
 {
