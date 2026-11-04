@@ -128,19 +128,24 @@ export function processRoleTreeData(
   roleData: Array<{ id: number; name: string; display_name?: string; is_build_in?: boolean; children: Array<{ id: number; name: string }> }>,
   externalAppLabel = 'External App'
 ): TreeDataNode[] {
-  return roleData.map((item) => ({
-    key: item.id,
-    title: item.is_build_in === false
-      ? React.createElement('span', null, item.name, React.createElement(Tag, { color: 'green', className: 'ml-1', style: { fontSize: 11, padding: '0 4px' } }, externalAppLabel))
-      : item.name,
-    display_name: item.display_name,
-    selectable: false,
-    children: item.children.map((child) => ({
-      key: child.id,
-      title: child.name,
-      selectable: true,
-    })),
-  }));
+  return roleData.map((item) => {
+    const isExternal = item.is_build_in === false;
+    const visibleName = item.display_name || item.name;
+
+    return {
+      key: item.id,
+      title: isExternal
+        ? React.createElement('span', null, visibleName, React.createElement(Tag, { color: 'green', className: 'ml-1', style: { fontSize: 11, padding: '0 4px' } }, externalAppLabel))
+        : item.name,
+      ...(isExternal ? {} : { display_name: item.display_name }),
+      selectable: false,
+      children: item.children.map((child) => ({
+        key: child.id,
+        title: child.name,
+        selectable: true,
+      })),
+    };
+  });
 }
 
 /**

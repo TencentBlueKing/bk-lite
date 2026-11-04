@@ -1,4 +1,4 @@
-"""内置主机健康巡检脚本（Windows PowerShell / Linux Python）。
+"""内置主机健康巡检脚本（Windows PowerShell / Linux Shell）。
 
 约束：
 - 禁止出现 Conductor 表达式字面量 ``${...}``（发布时虽会转义，脚本源码仍保持干净便于契约测试）。
@@ -231,367 +231,446 @@ Write-Output ("result=" + ($result | ConvertTo-Json -Depth 8 -Compress))
 
 
 LINUX_HEALTH_SCRIPT = r"""
-#!/usr/bin/env python3
-import json
-import os
-import shutil
-import socket
-import subprocess
-import time
-from datetime import datetime, timezone
-from pathlib import Path
+#!/usr/bin/env bash
+# Linux 主机巡检（Excel）内置脚本：输出 result=JSON；禁止 Conductor 表达式字面量。
+set -eu
 
-collected_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+collected_at="$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u +%Y-%m-%dT%H:%M:%SZ)"
 
-
-def health(value, warning, critical):
-    value = float(value)
-    if value >= critical:
-        return "CRITICAL"
-    if value >= warning:
-        return "WARNING"
-    return "NORMAL"
-
-
-def metric(
-    category, object_type, object_name, dimensions, metric_name, display_name,
-    value, unit, warning_threshold, critical_threshold, health_status, detail,
-):
-    return {
-        "category": category,
-        "object_type": object_type,
-        "object_name": object_name,
-        "dimensions": dimensions,
-        "metric_name": metric_name,
-        "display_name": display_name,
-        "value": float(value),
-        "unit": unit,
-        "warning_threshold": warning_threshold,
-        "critical_threshold": critical_threshold,
-        "health_status": health_status,
-        "collected_at": collected_at,
-        "detail": detail,
-    }
-
-
-def read_text(path):
-    try:
-        return Path(path).read_text(encoding="utf-8", errors="ignore")
-    except OSError:
-        return ""
-
-
-def cpu_usage_percent(sample_seconds=1.0):
-    def snapshot():
-        for line in read_text("/proc/stat").splitlines():
-            if line.startswith("cpu "):
-                parts = [float(x) for x in line.split()[1:]]
-                idle = parts[3] + (parts[4] if len(parts) > 4 else 0.0)
-                total = sum(parts)
-                return idle, total
-        return 0.0, 1.0
-
-    idle1, total1 = snapshot()
-    time.sleep(sample_seconds)
-    idle2, total2 = snapshot()
-    didle = idle2 - idle1
-    dtotal = total2 - total1
-    if dtotal <= 0:
-        return 0.0
-    return round(max(0.0, min(100.0, (1.0 - didle / dtotal) * 100.0)), 2)
-
-
-cores = os.cpu_count() or 1
-load1 = load5 = load15 = 0.0
-try:
-    load1, load5, load15 = os.getloadavg()
-except OSError:
-    pass
-load_ratio = round((load1 / cores) * 100.0, 2) if cores else 0.0
-
-meminfo = {}
-for line in read_text("/proc/meminfo").splitlines():
-    parts = line.split()
-    if len(parts) >= 2 and parts[0].endswith(":"):
-        meminfo[parts[0][:-1]] = float(parts[1])
-mem_total = meminfo.get("MemTotal", 0.0)
-mem_avail = meminfo.get("MemAvailable", meminfo.get("MemFree", 0.0))
-memory = round((1.0 - mem_avail / mem_total) * 100.0, 2) if mem_total else 0.0
-mem_total_gb = round(mem_total / 1024.0 / 1024.0, 2)
-available_mb = round(mem_avail / 1024.0, 2)
-swap_total = meminfo.get("SwapTotal", 0.0)
-swap_free = meminfo.get("SwapFree", 0.0)
-swap_usage = round((1.0 - swap_free / swap_total) * 100.0, 2) if swap_total > 0 else 0.0
-
-uptime_hours = 0.0
-uptime_raw = read_text("/proc/uptime").split()
-if uptime_raw:
-    uptime_hours = round(float(uptime_raw[0]) / 3600.0, 2)
-
-os_version = ""
-for line in read_text("/etc/os-release").splitlines():
-    if line.startswith("PRETTY_NAME="):
-        os_version = line.split("=", 1)[1].strip().strip('"')
-        break
-if not os_version:
-    os_version = read_text("/proc/version").split("\n")[0][:120]
-
-arch = os.uname().machine if hasattr(os, "uname") else ""
-hostname = socket.gethostname()
-
-host = {
-    "hostname": hostname,
-    "os_version": os_version,
-    "architecture": arch,
-    "uptime_hours": uptime_hours,
-    "cpu_cores": int(cores),
-    "memory_total_gb": mem_total_gb,
-    "top_cpu": "",
-    "top_memory": "",
+json_escape() {
+  # shellcheck disable=SC2001
+  printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/	/\\t/g' \
+    | awk 'BEGIN{ORS=""} {gsub(/\r/,""); printf "%s", $0} END{}' \
+    | tr '\n' ' ' | sed 's/[[:space:]]*$//'
 }
 
-metrics = []
-cpu = cpu_usage_percent()
-metrics.append(metric(
-    "计算", "processor", "CPU Total", "core=all", "usage_percent", "CPU 使用率",
-    cpu, "%", 80, 90, health(cpu, 80, 90), "1 秒采样使用率",
-))
-metrics.append(metric(
-    "计算", "processor", "Load Average", "window=1m", "load_ratio_percent", "1 分钟负载/核",
-    load_ratio, "%", 80, 90, health(load_ratio, 80, 90), "load1=%.2f,cores=%s" % (load1, cores),
-))
-metrics.append(metric(
-    "内存", "physical_memory", "Memory Total", "scope=system", "usage_percent", "物理内存使用率",
-    memory, "%", 80, 90, health(memory, 80, 90),
-    "total_gb=%.2f,available_mb=%.2f" % (mem_total_gb, available_mb),
-))
-metrics.append(metric(
-    "内存", "physical_memory", "Memory Available", "scope=system", "available_mb", "可用物理内存",
-    available_mb, "MB", 0, 0, "NORMAL", "可用物理内存（仅展示）",
-))
-if swap_total > 0:
-    metrics.append(metric(
-        "内存", "swap", "Swap", "scope=system", "usage_percent", "Swap 使用率",
-        swap_usage, "%", 80, 90, health(swap_usage, 80, 90),
-        "total_mb=%.0f" % (swap_total / 1024.0),
-    ))
-else:
-    metrics.append(metric(
-        "内存", "swap", "Swap", "scope=system", "usage_percent", "Swap 使用率",
-        0, "%", 80, 90, "NORMAL", "未配置 Swap",
-    ))
+health_of() {
+  # args: value warning critical
+  awk -v v="$1" -v w="$2" -v c="$3" 'BEGIN{
+    if (v+0 >= c+0) { print "CRITICAL"; exit }
+    if (v+0 >= w+0) { print "WARNING"; exit }
+    print "NORMAL"
+  }'
+}
 
-# 磁盘：本地块设备挂载（跳过临时伪文件系统）
-skip_fs = {"tmpfs", "devtmpfs", "overlay", "squashfs", "proc", "sysfs", "cgroup", "cgroup2", "devpts", "securityfs", "pstore", "efivarfs", "bpf"}
-seen_mounts = set()
-for line in read_text("/proc/mounts").splitlines():
-    parts = line.split()
-    if len(parts) < 3:
-        continue
-    device, mount, fstype = parts[0], parts[1], parts[2]
-    if fstype in skip_fs or not device.startswith("/"):
-        continue
-    if mount in seen_mounts:
-        continue
-    seen_mounts.add(mount)
-    usage = shutil.disk_usage(mount)
-    pct = round((usage.used / usage.total) * 100.0, 2) if usage.total else 0.0
-    metrics.append(metric(
-        "磁盘", "logical_disk", mount, "mount=%s" % mount, "usage_percent", "磁盘使用率",
-        pct, "%", 80, 90, health(pct, 80, 90),
-        "total_gb=%.2f,used_gb=%.2f" % (usage.total / 1e9, usage.used / 1e9),
-    ))
-    # inode
-    try:
-        st = os.statvfs(mount)
-        inodes_total = st.f_files
-        inodes_free = st.f_ffree
-        if inodes_total > 0:
-            inode_pct = round((1.0 - inodes_free / inodes_total) * 100.0, 2)
-            metrics.append(metric(
-                "磁盘", "logical_disk", mount, "mount=%s,metric=inode" % mount, "inode_usage_percent", "inode 使用率",
-                inode_pct, "%", 80, 90, health(inode_pct, 80, 90),
-                "inodes_total=%s" % inodes_total,
-            ))
-    except OSError:
-        pass
-if not any(item["category"] == "磁盘" for item in metrics):
-    try:
-        usage = shutil.disk_usage("/")
-        pct = round((usage.used / usage.total) * 100.0, 2) if usage.total else 0.0
-        metrics.append(metric(
-            "磁盘", "logical_disk", "/", "mount=/", "usage_percent", "磁盘使用率",
-            pct, "%", 80, 90, health(pct, 80, 90),
-            "total_gb=%.2f,used_gb=%.2f" % (usage.total / 1e9, usage.used / 1e9),
-        ))
-    except OSError:
-        pass
+round2() {
+  awk -v v="$1" 'BEGIN{ printf "%.2f", v+0 }'
+}
 
-# 根只读
-root_ro = 0
-for line in read_text("/proc/mounts").splitlines():
-    parts = line.split()
-    if len(parts) >= 4 and parts[1] == "/":
-        opts = parts[3].split(",")
-        root_ro = 1 if "ro" in opts else 0
-        break
-metrics.append(metric(
-    "系统健康", "filesystem", "/", "mount=/", "read_only", "根分区只读",
-    float(root_ro), "bool", 1, 1, "WARNING" if root_ro else "NORMAL",
-    "根分区为只读挂载" if root_ro else "根分区可写",
-))
+METRICS_FILE="$(mktemp)"
+trap 'rm -f "$METRICS_FILE"' EXIT
 
-# 临时目录可写
-writable = 0
-try:
-    probe = Path("/tmp") / ("bklite-health-%s.tmp" % os.getpid())
-    probe.write_text("ok", encoding="utf-8")
-    probe.unlink(missing_ok=True)
-    writable = 1
-except OSError:
-    writable = 0
-metrics.append(metric(
-    "系统健康", "filesystem", "/tmp", "path=/tmp", "writable", "临时目录可写",
-    float(writable), "bool", 1, 1, "NORMAL" if writable else "CRITICAL",
-    "临时目录可写" if writable else "临时目录不可写",
-))
+append_metric() {
+  # category object_type object_name dimensions metric_name display_name value unit warn crit status detail
+  # 不用两位位置参数编号；也不写 Conductor 表达式字面量。
+  local category="$1" object_type="$2" object_name="$3" dimensions="$4"
+  local metric_name="$5" display_name="$6" value="$7" unit="$8" warn="$9"
+  shift 9
+  local crit="$1" status="$2" detail="$3"
+  local sep=""
+  if [ -s "$METRICS_FILE" ]; then
+    sep=","
+  fi
+  printf '%s{"category":"%s","object_type":"%s","object_name":"%s","dimensions":"%s",'\
+'"metric_name":"%s","display_name":"%s","value":%s,"unit":"%s",'\
+'"warning_threshold":%s,"critical_threshold":%s,"health_status":"%s",'\
+'"collected_at":"%s","detail":"%s"}' \
+    "$sep" \
+    "$(json_escape "$category")" \
+    "$(json_escape "$object_type")" \
+    "$(json_escape "$object_name")" \
+    "$(json_escape "$dimensions")" \
+    "$(json_escape "$metric_name")" \
+    "$(json_escape "$display_name")" \
+    "$(round2 "$value")" \
+    "$(json_escape "$unit")" \
+    "$warn" \
+    "$crit" \
+    "$(json_escape "$status")" \
+    "$(json_escape "$collected_at")" \
+    "$(json_escape "$detail")" \
+    >>"$METRICS_FILE"
+}
 
-# 时间同步
-time_ok = 0
-time_detail = "未检测到 chronyd/ntpd/systemd-timesyncd"
-for unit in ("chronyd", "chrony", "ntpd", "systemd-timesyncd"):
-    try:
-        proc = subprocess.run(["systemctl", "is-active", unit], capture_output=True, text=True, timeout=5)
-        if proc.returncode == 0 and proc.stdout.strip() == "active":
-            time_ok = 1
-            time_detail = "%s active" % unit
-            break
-    except (OSError, subprocess.SubprocessError):
-        continue
-metrics.append(metric(
-    "系统健康", "service", "time_sync", "scope=system", "running", "时间同步服务",
-    float(time_ok), "bool", 1, 1, "NORMAL" if time_ok else "WARNING", time_detail,
-))
+read_text() {
+  if [ -r "$1" ]; then
+    cat "$1" 2>/dev/null || true
+  fi
+}
 
-# 网络：非 lo 的 IPv4 地址
-try:
-    proc = subprocess.run(["ip", "-o", "-4", "addr", "show", "up"], capture_output=True, text=True, timeout=5)
-    for line in proc.stdout.splitlines():
-        parts = line.split()
-        if len(parts) < 4:
-            continue
-        ifname = parts[1]
-        if ifname == "lo":
-            continue
-        ip = parts[3].split("/")[0]
-        metrics.append(metric(
-            "网络", "network_adapter", ifname, "adapter=%s" % ifname, "link_up", "网卡链路",
-            1.0, "bool", 1, 1, "NORMAL", "ip=%s,status=up" % ip,
-        ))
-except (OSError, subprocess.SubprocessError):
-    pass
+# --- host basics ---
+cores="$(getconf _NPROCESSORS_ONLN 2>/dev/null || nproc 2>/dev/null || echo 1)"
+[ -n "$cores" ] || cores=1
+load1=0; load5=0; load15=0
+if [ -r /proc/loadavg ]; then
+  # shellcheck disable=SC2034
+  read -r load1 load5 load15 _ </proc/loadavg || true
+fi
+load_ratio="$(awk -v l="$load1" -v c="$cores" 'BEGIN{ if (c+0<=0){print "0.00"; exit} printf "%.2f", (l/c)*100 }')"
 
-# 进程热点
-top_cpu = []
-top_mem = []
-try:
-    proc = subprocess.run(["ps", "-eo", "pid,comm,%cpu,%mem", "--sort=-%cpu"], capture_output=True, text=True, timeout=5)
-    rows = [ln.split(None, 3) for ln in proc.stdout.splitlines()[1:4] if ln.strip()]
-    for idx, row in enumerate(rows, start=1):
-        if len(row) < 4:
-            continue
-        pid, comm, cpu_p, mem_p = row[0], row[1], float(row[2]), float(row[3])
-        top_cpu.append("%s=%.1f%%" % (comm, cpu_p))
-        metrics.append(metric("进程热点", "process", comm, "rank=%s" % idx, "cpu_percent", "CPU Top%s" % idx, cpu_p, "%", 0, 0, "NORMAL", "pid=%s" % pid))
-    proc = subprocess.run(["ps", "-eo", "pid,comm,%cpu,%mem", "--sort=-%mem"], capture_output=True, text=True, timeout=5)
-    rows = [ln.split(None, 3) for ln in proc.stdout.splitlines()[1:4] if ln.strip()]
-    for idx, row in enumerate(rows, start=1):
-        if len(row) < 4:
-            continue
-        pid, comm, cpu_p, mem_p = row[0], row[1], float(row[2]), float(row[3])
-        top_mem.append("%s=%.1f%%" % (comm, mem_p))
-        metrics.append(metric("进程热点", "process", comm, "rank=%s" % idx, "mem_percent", "内存 Top%s" % idx, mem_p, "%", 0, 0, "NORMAL", "pid=%s" % pid))
-except (OSError, subprocess.SubprocessError, ValueError):
-    pass
-host["top_cpu"] = "; ".join(top_cpu)
-host["top_memory"] = "; ".join(top_mem)
+mem_total=0; mem_avail=0; swap_total=0; swap_free=0
+while IFS= read -r line; do
+  case "$line" in
+    MemTotal:*) mem_total=$(echo "$line" | awk '{print $2}') ;;
+    MemAvailable:*) mem_avail=$(echo "$line" | awk '{print $2}') ;;
+    MemFree:*)
+      if [ -z "$mem_avail" ] || [ "$mem_avail" = "0" ]; then
+        mem_avail=$(echo "$line" | awk '{print $2}')
+      fi
+      ;;
+    SwapTotal:*) swap_total=$(echo "$line" | awk '{print $2}') ;;
+    SwapFree:*) swap_free=$(echo "$line" | awk '{print $2}') ;;
+  esac
+done <<EOF
+$(read_text /proc/meminfo)
+EOF
+
+memory="$(awk -v a="$mem_avail" -v t="$mem_total" 'BEGIN{ if (t+0<=0){print "0.00"; exit} printf "%.2f", (1-a/t)*100 }')"
+mem_total_gb="$(awk -v t="$mem_total" 'BEGIN{ printf "%.2f", t/1024/1024 }')"
+available_mb="$(awk -v a="$mem_avail" 'BEGIN{ printf "%.2f", a/1024 }')"
+if awk -v t="$swap_total" 'BEGIN{ exit !(t+0>0) }'; then
+  swap_usage="$(awk -v f="$swap_free" -v t="$swap_total" 'BEGIN{ printf "%.2f", (1-f/t)*100 }')"
+else
+  swap_usage="0.00"
+fi
+
+uptime_hours="0.00"
+if [ -r /proc/uptime ]; then
+  uptime_hours="$(awk '{ printf "%.2f", $1/3600 }' /proc/uptime)"
+fi
+
+os_version=""
+while IFS= read -r line; do
+  case "$line" in
+    PRETTY_NAME=*)
+      os_version="$(printf '%s\n' "$line" | sed -e 's/^PRETTY_NAME=//' -e 's/^\"//' -e 's/\"$//')"
+      ;;
+  esac
+done <<EOF
+$(read_text /etc/os-release)
+EOF
+if [ -z "$os_version" ]; then
+  os_version="$(read_text /proc/version | head -n1 | cut -c1-120)"
+fi
+
+arch="$(uname -m 2>/dev/null || true)"
+hostname="$(hostname 2>/dev/null || uname -n 2>/dev/null || echo unknown)"
+
+# CPU sample ~1s from /proc/stat
+cpu_snapshot() {
+  awk '/^cpu /{
+    idle=$5+($6+0); total=0;
+    for(i=2;i<=NF;i++) total+=$i;
+    print idle, total; exit
+  }' /proc/stat 2>/dev/null || echo "0 1"
+}
+read -r idle1 total1 <<EOF
+$(cpu_snapshot)
+EOF
+sleep 1
+read -r idle2 total2 <<EOF
+$(cpu_snapshot)
+EOF
+cpu="$(awk -v i1="$idle1" -v t1="$total1" -v i2="$idle2" -v t2="$total2" 'BEGIN{
+  di=i2-i1; dt=t2-t1;
+  if (dt<=0){ print "0.00"; exit }
+  u=(1-di/dt)*100; if(u<0)u=0; if(u>100)u=100;
+  printf "%.2f", u
+}')"
+
+append_metric "计算" "processor" "CPU Total" "core=all" "usage_percent" "CPU 使用率" \
+  "$cpu" "%" 80 90 "$(health_of "$cpu" 80 90)" "1 秒采样使用率"
+append_metric "计算" "processor" "Load Average" "window=1m" "load_ratio_percent" "1 分钟负载/核" \
+  "$load_ratio" "%" 80 90 "$(health_of "$load_ratio" 80 90)" "load1=$(round2 "$load1"),cores=$cores"
+append_metric "内存" "physical_memory" "Memory Total" "scope=system" "usage_percent" "物理内存使用率" \
+  "$memory" "%" 80 90 "$(health_of "$memory" 80 90)" "total_gb=$mem_total_gb,available_mb=$available_mb"
+append_metric "内存" "physical_memory" "Memory Available" "scope=system" "available_mb" "可用物理内存" \
+  "$available_mb" "MB" 0 0 "NORMAL" "可用物理内存（仅展示）"
+if awk -v t="$swap_total" 'BEGIN{ exit !(t+0>0) }'; then
+  swap_total_mb="$(awk -v t="$swap_total" 'BEGIN{ printf "%.0f", t/1024 }')"
+  append_metric "内存" "swap" "Swap" "scope=system" "usage_percent" "Swap 使用率" \
+    "$swap_usage" "%" 80 90 "$(health_of "$swap_usage" 80 90)" "total_mb=$swap_total_mb"
+else
+  append_metric "内存" "swap" "Swap" "scope=system" "usage_percent" "Swap 使用率" \
+    0 "%" 80 90 "NORMAL" "未配置 Swap"
+fi
+
+# disks from /proc/mounts + df
+has_disk=0
+skip_fs='tmpfs|devtmpfs|overlay|squashfs|proc|sysfs|cgroup|cgroup2|devpts|securityfs|pstore|efivarfs|bpf'
+seen_mounts=""
+while IFS= read -r line; do
+  # device mount fstype
+  device=$(echo "$line" | awk '{print $1}')
+  mount=$(echo "$line" | awk '{print $2}')
+  fstype=$(echo "$line" | awk '{print $3}')
+  case "$fstype" in
+    tmpfs|devtmpfs|overlay|squashfs|proc|sysfs|cgroup|cgroup2|devpts|securityfs|pstore|efivarfs|bpf) continue ;;
+  esac
+  case "$device" in
+    /*) ;;
+    *) continue ;;
+  esac
+  case " $seen_mounts " in
+    *" $mount "*) continue ;;
+  esac
+  seen_mounts="$seen_mounts $mount"
+  # df -P for portable numbers
+  df_line="$(df -P "$mount" 2>/dev/null | awk 'NR==2{print}')"
+  [ -n "$df_line" ] || continue
+  total_kb=$(echo "$df_line" | awk '{print $2}')
+  used_kb=$(echo "$df_line" | awk '{print $3}')
+  pct="$(awk -v u="$used_kb" -v t="$total_kb" 'BEGIN{ if(t+0<=0){print "0.00"; exit} printf "%.2f", (u/t)*100 }')"
+  total_gb="$(awk -v t="$total_kb" 'BEGIN{ printf "%.2f", t*1024/1e9 }')"
+  used_gb="$(awk -v u="$used_kb" 'BEGIN{ printf "%.2f", u*1024/1e9 }')"
+  append_metric "磁盘" "logical_disk" "$mount" "mount=$mount" "usage_percent" "磁盘使用率" \
+    "$pct" "%" 80 90 "$(health_of "$pct" 80 90)" "total_gb=$total_gb,used_gb=$used_gb"
+  has_disk=1
+  # inode via df -i if available
+  if df_i_line="$(df -iP "$mount" 2>/dev/null | awk 'NR==2{print}')"; then
+    inodes_total=$(echo "$df_i_line" | awk '{print $2}')
+    inodes_used=$(echo "$df_i_line" | awk '{print $3}')
+    if awk -v t="$inodes_total" 'BEGIN{ exit !(t+0>0) }'; then
+      inode_pct="$(awk -v u="$inodes_used" -v t="$inodes_total" 'BEGIN{ printf "%.2f", (u/t)*100 }')"
+      append_metric "磁盘" "logical_disk" "$mount" "mount=$mount,metric=inode" "inode_usage_percent" "inode 使用率" \
+        "$inode_pct" "%" 80 90 "$(health_of "$inode_pct" 80 90)" "inodes_total=$inodes_total"
+    fi
+  fi
+done <<EOF
+$(read_text /proc/mounts)
+EOF
+
+if [ "$has_disk" -eq 0 ]; then
+  df_line="$(df -P / 2>/dev/null | awk 'NR==2{print}')"
+  if [ -n "$df_line" ]; then
+    total_kb=$(echo "$df_line" | awk '{print $2}')
+    used_kb=$(echo "$df_line" | awk '{print $3}')
+    pct="$(awk -v u="$used_kb" -v t="$total_kb" 'BEGIN{ if(t+0<=0){print "0.00"; exit} printf "%.2f", (u/t)*100 }')"
+    total_gb="$(awk -v t="$total_kb" 'BEGIN{ printf "%.2f", t*1024/1e9 }')"
+    used_gb="$(awk -v u="$used_kb" 'BEGIN{ printf "%.2f", u*1024/1e9 }')"
+    append_metric "磁盘" "logical_disk" "/" "mount=/" "usage_percent" "磁盘使用率" \
+      "$pct" "%" 80 90 "$(health_of "$pct" 80 90)" "total_gb=$total_gb,used_gb=$used_gb"
+  fi
+fi
+
+# root read-only
+root_ro=0
+while IFS= read -r line; do
+  mount=$(echo "$line" | awk '{print $2}')
+  opts=$(echo "$line" | awk '{print $4}')
+  if [ "$mount" = "/" ]; then
+    case ",$opts," in
+      *,ro,*) root_ro=1 ;;
+    esac
+    break
+  fi
+done <<EOF
+$(read_text /proc/mounts)
+EOF
+if [ "$root_ro" -eq 1 ]; then
+  append_metric "系统健康" "filesystem" "/" "mount=/" "read_only" "根分区只读" \
+    1 "bool" 1 1 "WARNING" "根分区为只读挂载"
+else
+  append_metric "系统健康" "filesystem" "/" "mount=/" "read_only" "根分区只读" \
+    0 "bool" 1 1 "NORMAL" "根分区可写"
+fi
+
+# /tmp writable
+writable=0
+probe="/tmp/bklite-health-$$.tmp"
+if printf 'ok' >"$probe" 2>/dev/null; then
+  rm -f "$probe" || true
+  writable=1
+fi
+if [ "$writable" -eq 1 ]; then
+  append_metric "系统健康" "filesystem" "/tmp" "path=/tmp" "writable" "临时目录可写" \
+    1 "bool" 1 1 "NORMAL" "临时目录可写"
+else
+  append_metric "系统健康" "filesystem" "/tmp" "path=/tmp" "writable" "临时目录可写" \
+    0 "bool" 1 1 "CRITICAL" "临时目录不可写"
+fi
+
+# time sync
+time_ok=0
+time_detail="未检测到 chronyd/ntpd/systemd-timesyncd"
+for unit in chronyd chrony ntpd systemd-timesyncd; do
+  if command -v systemctl >/dev/null 2>&1; then
+    state="$(systemctl is-active "$unit" 2>/dev/null || true)"
+    if [ "$state" = "active" ]; then
+      time_ok=1
+      time_detail="$unit active"
+      break
+    fi
+  fi
+done
+if [ "$time_ok" -eq 1 ]; then
+  append_metric "系统健康" "service" "time_sync" "scope=system" "running" "时间同步服务" \
+    1 "bool" 1 1 "NORMAL" "$time_detail"
+else
+  append_metric "系统健康" "service" "time_sync" "scope=system" "running" "时间同步服务" \
+    0 "bool" 1 1 "WARNING" "$time_detail"
+fi
+
+# network ipv4 up (non-lo)
+if command -v ip >/dev/null 2>&1; then
+  while IFS= read -r line; do
+    [ -n "$line" ] || continue
+    ifname=$(echo "$line" | awk '{print $2}')
+    [ "$ifname" = "lo" ] && continue
+    ipaddr=$(echo "$line" | awk '{print $4}' | cut -d/ -f1)
+    [ -n "$ipaddr" ] || continue
+    append_metric "网络" "network_adapter" "$ifname" "adapter=$ifname" "link_up" "网卡链路" \
+      1 "bool" 1 1 "NORMAL" "ip=$ipaddr,status=up"
+  done <<EOF
+$(ip -o -4 addr show up 2>/dev/null || true)
+EOF
+fi
+
+# process hotspots
+top_cpu=""
+top_mem=""
+if command -v ps >/dev/null 2>&1; then
+  idx=0
+  while IFS= read -r line; do
+    idx=$((idx + 1))
+    [ "$idx" -le 3 ] || break
+    pid=$(echo "$line" | awk '{print $1}')
+    comm=$(echo "$line" | awk '{print $2}')
+    cpu_p=$(echo "$line" | awk '{print $3}')
+    [ -n "$comm" ] || continue
+    piece="$comm=$(round2 "$cpu_p")%"
+    if [ -z "$top_cpu" ]; then top_cpu="$piece"; else top_cpu="$top_cpu; $piece"; fi
+    append_metric "进程热点" "process" "$comm" "rank=$idx" "cpu_percent" "CPU Top$idx" \
+      "$(round2 "$cpu_p")" "%" 0 0 "NORMAL" "pid=$pid"
+  done <<EOF
+$(ps -eo pid,comm,%cpu,%mem --sort=-%cpu 2>/dev/null | awk 'NR>1 && NR<=4{print}')
+EOF
+  idx=0
+  while IFS= read -r line; do
+    idx=$((idx + 1))
+    [ "$idx" -le 3 ] || break
+    pid=$(echo "$line" | awk '{print $1}')
+    comm=$(echo "$line" | awk '{print $2}')
+    mem_p=$(echo "$line" | awk '{print $4}')
+    [ -n "$comm" ] || continue
+    piece="$comm=$(round2 "$mem_p")%"
+    if [ -z "$top_mem" ]; then top_mem="$piece"; else top_mem="$top_mem; $piece"; fi
+    append_metric "进程热点" "process" "$comm" "rank=$idx" "mem_percent" "内存 Top$idx" \
+      "$(round2 "$mem_p")" "%" 0 0 "NORMAL" "pid=$pid"
+  done <<EOF
+$(ps -eo pid,comm,%cpu,%mem --sort=-%mem 2>/dev/null | awk 'NR>1 && NR<=4{print}')
+EOF
+fi
 
 # sshd
-sshd_ok = 0
-sshd_detail = "sshd 未运行"
-for unit in ("sshd", "ssh"):
-    try:
-        proc = subprocess.run(["systemctl", "is-active", unit], capture_output=True, text=True, timeout=5)
-        if proc.returncode == 0 and proc.stdout.strip() == "active":
-            sshd_ok = 1
-            sshd_detail = "%s active" % unit
-            break
-    except (OSError, subprocess.SubprocessError):
-        continue
-metrics.append(metric(
-    "基础服务", "service", "sshd", "service=sshd", "running", "SSH 服务",
-    float(sshd_ok), "bool", 1, 1, "NORMAL" if sshd_ok else "WARNING", sshd_detail,
-))
+sshd_ok=0
+sshd_detail="sshd 未运行"
+for unit in sshd ssh; do
+  if command -v systemctl >/dev/null 2>&1; then
+    state="$(systemctl is-active "$unit" 2>/dev/null || true)"
+    if [ "$state" = "active" ]; then
+      sshd_ok=1
+      sshd_detail="$unit active"
+      break
+    fi
+  fi
+done
+if [ "$sshd_ok" -eq 1 ]; then
+  append_metric "基础服务" "service" "sshd" "service=sshd" "running" "SSH 服务" \
+    1 "bool" 1 1 "NORMAL" "$sshd_detail"
+else
+  append_metric "基础服务" "service" "sshd" "service=sshd" "running" "SSH 服务" \
+    0 "bool" 1 1 "WARNING" "$sshd_detail"
+fi
 
-# 防火墙
-fw_ok = 0
-fw_detail = "未检测到活跃防火墙服务"
-for unit in ("firewalld", "ufw", "nftables", "iptables"):
-    try:
-        proc = subprocess.run(["systemctl", "is-active", unit], capture_output=True, text=True, timeout=5)
-        if proc.returncode == 0 and proc.stdout.strip() == "active":
-            fw_ok = 1
-            fw_detail = "%s active" % unit
-            break
-    except (OSError, subprocess.SubprocessError):
-        continue
-metrics.append(metric(
-    "安全浅检", "service", "firewall", "scope=system", "running", "防火墙服务",
-    float(fw_ok), "bool", 1, 1, "NORMAL" if fw_ok else "WARNING", fw_detail,
-))
+# firewall
+fw_ok=0
+fw_detail="未检测到活跃防火墙服务"
+for unit in firewalld ufw nftables iptables; do
+  if command -v systemctl >/dev/null 2>&1; then
+    state="$(systemctl is-active "$unit" 2>/dev/null || true)"
+    if [ "$state" = "active" ]; then
+      fw_ok=1
+      fw_detail="$unit active"
+      break
+    fi
+  fi
+done
+if [ "$fw_ok" -eq 1 ]; then
+  append_metric "安全浅检" "service" "firewall" "scope=system" "running" "防火墙服务" \
+    1 "bool" 1 1 "NORMAL" "$fw_detail"
+else
+  append_metric "安全浅检" "service" "firewall" "scope=system" "running" "防火墙服务" \
+    0 "bool" 1 1 "WARNING" "$fw_detail"
+fi
 
-# 更新账龄：尽量读 dpkg/yum 记录，失败则 NORMAL + 说明
-update_days = 0.0
-update_status = "NORMAL"
-update_detail = "无法读取更新记录"
-stamp_candidates = [
-    "/var/log/dpkg.log",
-    "/var/log/yum.log",
-    "/var/log/dnf.log",
-    "/var/lib/apt/periodic/update-success-stamp",
-]
-newest = None
-for path in stamp_candidates:
-    try:
-        mtime = Path(path).stat().st_mtime
-        if newest is None or mtime > newest:
-            newest = mtime
-    except OSError:
-        continue
-if newest is not None:
-    update_days = round((time.time() - newest) / 86400.0, 0)
-    update_status = health(update_days, 90, 180)
-    update_detail = "days_since_package_log=%.0f" % update_days
-metrics.append(metric(
-    "更新账龄", "patch", "Package Updates", "scope=system", "days_since_update", "距上次更新天数",
-    update_days, "days", 90, 180, update_status, update_detail,
-))
+# update age
+update_days="0.00"
+update_status="NORMAL"
+update_detail="无法读取更新记录"
+newest=""
+for path in /var/log/dpkg.log /var/log/yum.log /var/log/dnf.log /var/lib/apt/periodic/update-success-stamp; do
+  if [ -e "$path" ]; then
+    mtime="$(stat -c %Y "$path" 2>/dev/null || stat -f %m "$path" 2>/dev/null || true)"
+    if [ -n "$mtime" ]; then
+      if [ -z "$newest" ] || [ "$mtime" -gt "$newest" ]; then
+        newest="$mtime"
+      fi
+    fi
+  fi
+done
+if [ -n "$newest" ]; then
+  now="$(date +%s)"
+  update_days="$(awk -v n="$now" -v m="$newest" 'BEGIN{ printf "%.0f", (n-m)/86400 }')"
+  update_status="$(health_of "$update_days" 90 180)"
+  update_detail="days_since_package_log=$update_days"
+fi
+append_metric "更新账龄" "patch" "Package Updates" "scope=system" "days_since_update" "距上次更新天数" \
+  "$update_days" "days" 90 180 "$update_status" "$update_detail"
 
-critical = [m for m in metrics if m["health_status"] == "CRITICAL"]
-warning = [m for m in metrics if m["health_status"] == "WARNING"]
-normal = [m for m in metrics if m["health_status"] == "NORMAL"]
-result = {
-    "collected_at": collected_at,
-    "host": host,
-    "metrics": metrics,
-    "metric_count": len(metrics),
-    "critical": critical,
-    "warning": warning,
-    "normal": normal,
-    "critical_count": len(critical),
-    "warning_count": len(warning),
-    "normal_count": len(normal),
-    "conclusion": "需关注" if (critical or warning) else "健康",
-}
-print("result=" + json.dumps(result, ensure_ascii=False, separators=(",", ":")))
+# 去掉可能混入的换行，保证整段 result= 是单行合法 JSON（下游按整段 json.loads）
+metrics_json="$(tr -d '\n\r' <"$METRICS_FILE")"
+
+critical_count="$(printf '%s' "$metrics_json" | grep -o '"health_status":"CRITICAL"' | wc -l | tr -d ' ')"
+warning_count="$(printf '%s' "$metrics_json" | grep -o '"health_status":"WARNING"' | wc -l | tr -d ' ')"
+normal_count="$(printf '%s' "$metrics_json" | grep -o '"health_status":"NORMAL"' | wc -l | tr -d ' ')"
+metric_count="$(awk -v s="$metrics_json" 'BEGIN{ n=gsub(/"metric_name"/,"&",s); print n+0 }')"
+
+# 报告汇总 SQL 主要吃 result.metrics；分类数组用空数组，避免纯 shell 二次拼装弄坏 JSON。
+critical_json="[]"
+warning_json="[]"
+normal_json="[]"
+
+if [ "$critical_count" -gt 0 ] || [ "$warning_count" -gt 0 ]; then
+  conclusion="需关注"
+else
+  conclusion="健康"
+fi
+
+host_json="$(printf '{"hostname":"%s","os_version":"%s","architecture":"%s",'\
+'"uptime_hours":%s,"cpu_cores":%s,"memory_total_gb":%s,"top_cpu":"%s","top_memory":"%s"}' \
+  "$(json_escape "$hostname")" \
+  "$(json_escape "$os_version")" \
+  "$(json_escape "$arch")" \
+  "$uptime_hours" \
+  "$cores" \
+  "$mem_total_gb" \
+  "$(json_escape "$top_cpu")" \
+  "$(json_escape "$top_mem")"
+)"
+
+printf 'result={"collected_at":"%s","host":%s,"metrics":[%s],"metric_count":%s,'\
+'"critical":%s,"warning":%s,"normal":%s,"critical_count":%s,'\
+'"warning_count":%s,"normal_count":%s,"conclusion":"%s"}\n' \
+  "$(json_escape "$collected_at")" \
+  "$host_json" \
+  "$metrics_json" \
+  "$metric_count" \
+  "$critical_json" \
+  "$warning_json" \
+  "$normal_json" \
+  "$critical_count" \
+  "$warning_count" \
+  "$normal_count" \
+  "$(json_escape "$conclusion")"
 """.strip()

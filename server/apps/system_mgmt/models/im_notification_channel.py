@@ -64,6 +64,7 @@ class IMNotificationChannel(MaintainerInfo, TimeInfo, PeriodicTaskUtils):
     external_receive_field = models.CharField(max_length=64, default=IMNotificationExternalFieldChoices.USER_ID)
     schedule_config = models.JSONField(default=dict, blank=True)
     team = models.JSONField(default=list, blank=True)
+    tags = models.ManyToManyField("system_mgmt.NotificationTag", blank=True, related_name="im_notification_channels")
 
     class Meta:
         ordering = ("name", "id")

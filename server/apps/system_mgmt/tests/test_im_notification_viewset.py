@@ -52,10 +52,10 @@ def test_channel_rejects_external_match_field_not_declared_by_manifest(ready_im_
             "status": "pending_sync",
             "platform_match_field": "email",
             "external_match_field": "name",
-                "external_receive_field": "user_id",
-                "team": [1],
-            }
-        )
+            "external_receive_field": "user_id",
+            "team": [1],
+        }
+    )
 
     assert serializer.is_valid() is False
     assert "external_match_field" in serializer.errors
@@ -258,8 +258,12 @@ def test_records_returns_channel_runs_only(api_client, authenticated_user, chann
         team=[],
     )
 
-    newer = IMNotificationSyncRun.objects.create(channel=channel, status="running", summary="newer", started_at=timezone.now(), locked_config_snapshot={})
-    IMNotificationSyncRun.objects.create(channel=other_channel, status="failed", summary="other", started_at=timezone.now(), locked_config_snapshot={})
+    newer = IMNotificationSyncRun.objects.create(
+        channel=channel, status="running", summary="newer", started_at=timezone.now(), locked_config_snapshot={}
+    )
+    IMNotificationSyncRun.objects.create(
+        channel=other_channel, status="failed", summary="other", started_at=timezone.now(), locked_config_snapshot={}
+    )
 
     response = api_client.get(f"/api/v1/system_mgmt/im_notification_channel/{channel.id}/records/", {"page": 1, "page_size": 10})
 
@@ -308,9 +312,7 @@ def test_list_prefetches_only_latest_sync_run_per_channel(api_client, authentica
     assert response.status_code == 200
     run_table = IMNotificationSyncRun._meta.db_table
     run_selects = [
-        query["sql"]
-        for query in context.captured_queries
-        if query["sql"].lstrip().upper().startswith("SELECT") and run_table in query["sql"]
+        query["sql"] for query in context.captured_queries if query["sql"].lstrip().upper().startswith("SELECT") and run_table in query["sql"]
     ]
     assert len(run_selects) == 1
     assert {item["latest_sync_summary"] for item in response.data["items"]} == {"latest"}
@@ -474,6 +476,39 @@ def test_create_accepts_team_in_user_scope(api_client, authenticated_user, ready
 
     assert response.status_code == 201
     assert IMNotificationChannel.objects.get(name="scoped-channel").team == [1]
+
+
+@pytest.mark.django_db
+def test_im_channel_saves_tags_from_the_shared_catalog(api_client, authenticated_user, ready_im_instance):
+    from django.core.management import call_command
+
+    call_command("init_notification_tags")
+    authenticated_user.group_list = [{"id": 1, "name": "Team A"}]
+    authenticated_user.save(update_fields=["group_list"])
+    authenticated_user.permission = {"system-manager": {"channel_list-Add", "channel_list-View", "channel_list-Edit"}}
+
+    created = api_client.post(
+        "/api/v1/system_mgmt/im_notification_channel/",
+        _im_channel_payload(ready_im_instance, name="tagged-im", tag=["用途:测试环境"]),
+    )
+    assert created.status_code == 201, created.data
+    assert created.data["tag"] == ["用途:测试环境"]
+
+    read = api_client.get(f"/api/v1/system_mgmt/im_notification_channel/{created.data['id']}/")
+    assert read.status_code == 200
+    assert read.data["tag"] == ["用途:测试环境"]
+
+    catalog = api_client.get("/api/v1/system_mgmt/channel/tag_catalog/")
+    assert catalog.status_code == 200
+    assert {"key": "system", "value": "itsm"} in catalog.data["results"]
+    assert {"key": "用途", "value": "测试环境"} in catalog.data["results"]
+
+    updated = api_client.put(
+        f"/api/v1/system_mgmt/im_notification_channel/{created.data['id']}/",
+        {"tag": ["用途:ITSM"]},
+    )
+    assert updated.status_code == 200, updated.data
+    assert updated.data["tag"] == ["用途:ITSM"]
 
 
 @pytest.mark.django_db
@@ -738,7 +773,9 @@ def test_test_send_uses_default_receiver_when_receivers_missing(api_client, auth
     authenticated_user.permission = {"system-manager": {"channel_list-Edit"}}
     authenticated_user.save(update_fields=["is_superuser"])
 
-    with patch("apps.system_mgmt.viewset.im_notification_channel_viewset.send_im_notification", return_value={"result": True, "message": "ok"}) as mock_send:
+    with patch(
+        "apps.system_mgmt.viewset.im_notification_channel_viewset.send_im_notification", return_value={"result": True, "message": "ok"}
+    ) as mock_send:
         response = api_client.post(
             f"/api/v1/system_mgmt/im_notification_channel/{channel.id}/test_send/",
             {"title": "Ping", "content": "Body"},

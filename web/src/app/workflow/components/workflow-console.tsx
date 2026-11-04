@@ -19,6 +19,7 @@ import { AtomIcon } from './atom-icon';
 import { FormSchemaEditor } from './form-schema-editor';
 import { DocumentRenderForm } from './document-render-form';
 import { FileSampleLinks } from './file-sample-links';
+import { FileDistributeForm } from './file-distribute-form';
 import { JobExecuteForm } from './job-execute-form';
 import { JobTargetSelectionDialog } from './job-target-selection-dialog';
 import { WORKFLOW_OVERLAY_MODAL_Z_INDEX } from './workflow-launch-dialog';
@@ -1518,29 +1519,47 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
                   onChange={changeTaskInputs}
                   onNodeTitleChange={changeTaskTitle}
                 />
-                : OPSPILOT_ATOM_KEYS.has(selectedTask.name)
-                  ? <OpsPilotAtomForm
-                    atomKey={selectedTask.name}
+                : selectedTask.name === 'bklite_file_distribute'
+                  ? <FileDistributeForm
+                    key={selectedTask.taskReferenceName}
                     schema={selectedAtom?.input_schema}
                     value={selectedTask.inputParameters || {}}
                     references={references}
-                    workflowId={workflow.id || null}
                     nodeTitle={resolveEditableNodeTitle(selectedAtom?.name || selectedTask.name)}
                     readOnly={readOnly}
+                    targetRecords={jobTargetRecords}
+                    fieldActions={readOnly ? {} : {
+                      targets: <WorkflowPermission operation="Edit" instancePermissions={workflow.permission}><Button onClick={() => {
+                        setJobTargetSelectorPurpose('params');
+                        setJobTargetSelectorOpen(true);
+                      }}>{t('workflowOrchestration.launch.selectTarget', '选择主机')}</Button></WorkflowPermission>,
+                    }}
                     onChange={changeTaskInputs}
                     onNodeTitleChange={changeTaskTitle}
                   />
-                  : <SchemaNodeForm
-                    schema={selectedAtom?.input_schema}
-                    uiSchema={selectedAtom?.ui_schema}
-                    value={selectedTask.inputParameters || {}}
-                    references={references}
-                    atomKey={selectedTask.name}
-                    nodeTitle={resolveEditableNodeTitle(selectedAtom?.name || selectedTask.name)}
-                    readOnly={readOnly}
-                    onChange={changeTaskInputs}
-                    onNodeTitleChange={changeTaskTitle}
-                  />)}
+                  : OPSPILOT_ATOM_KEYS.has(selectedTask.name)
+                    ? <OpsPilotAtomForm
+                      atomKey={selectedTask.name}
+                      schema={selectedAtom?.input_schema}
+                      value={selectedTask.inputParameters || {}}
+                      references={references}
+                      workflowId={workflow.id || null}
+                      nodeTitle={resolveEditableNodeTitle(selectedAtom?.name || selectedTask.name)}
+                      readOnly={readOnly}
+                      onChange={changeTaskInputs}
+                      onNodeTitleChange={changeTaskTitle}
+                    />
+                    : <SchemaNodeForm
+                      schema={selectedAtom?.input_schema}
+                      uiSchema={selectedAtom?.ui_schema}
+                      value={selectedTask.inputParameters || {}}
+                      references={references}
+                      atomKey={selectedTask.name}
+                      nodeTitle={resolveEditableNodeTitle(selectedAtom?.name || selectedTask.name)}
+                      readOnly={readOnly}
+                      onChange={changeTaskInputs}
+                      onNodeTitleChange={changeTaskTitle}
+                    />)}
             {selectedCondition && <ConditionEditor
               value={selectedCondition}
               references={references}
@@ -1699,7 +1718,7 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
       </Form> : null}
       {inspectorTestTrigger
         ? Object.keys(nodeTestInputContract.schema.properties || {}).length
-          ? selectedTask?.name === 'bklite_job_execute' && jobTestTargetsField
+          ? (selectedTask?.name === 'bklite_job_execute' || selectedTask?.name === 'bklite_file_distribute') && jobTestTargetsField
             ? <Form layout="vertical" className="flex flex-col gap-4">
               <Form.Item className="mb-0" label={t('workflowOrchestration.editor.targetHosts', '目标主机')} required>
                 <WorkflowPermission operation="Execute" instancePermissions={workflow.permission} className="block w-full"><button

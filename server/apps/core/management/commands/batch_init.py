@@ -120,6 +120,15 @@ class Command(BaseCommand):
         call_command("init_custom_menu")
         call_command("init_bk_login_settings")
         call_command("clean_group_data")
+        try:
+            call_command("init_notification_tags")
+        except Exception as error:  # noqa: BLE001 - 非关键可重建数据不得阻断启动
+            logger.warning(
+                "event=notification_tag_init_failed failed_stage=init_notification_tags error_type=%s",
+                type(error).__name__,
+                exc_info=safe_exception_info(error),
+            )
+            self.stdout.write(self.style.WARNING(f"通知渠道标签初始化跳过（{type(error).__name__}），可运行 init_notification_tags 重试"))
 
     def _bootstrap_admin(self) -> None:
         migrate_existing_password = self._should_migrate_admin_password()
