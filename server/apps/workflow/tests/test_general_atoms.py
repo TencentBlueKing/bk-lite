@@ -5,6 +5,7 @@ def test_mvp_atom_catalog_exposes_platform_atoms_without_removed_general_atoms()
     assert "bklite_http_request" in ATOM_CATALOG
     assert "bklite_document_render" in ATOM_CATALOG
     assert "bklite_job_execute" in ATOM_CATALOG
+    assert "bklite_file_distribute" in ATOM_CATALOG
     assert "bklite_notification" in ATOM_CATALOG
     assert "bklite_set" not in ATOM_CATALOG
     assert "bklite_json_transform" not in ATOM_CATALOG

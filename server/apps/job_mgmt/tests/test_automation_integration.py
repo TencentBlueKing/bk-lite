@@ -185,3 +185,52 @@ def test_automation_cancel_treats_terminal_as_idempotent_skip():
     assert response["result"] is True
     assert response["data"]["task_id"] == done.id
     assert response["data"]["status"] == "skipped"
+
+
+@pytest.mark.django_db
+def test_automation_file_distribute_validates_scope_and_rejects_expired(mocker):
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    from apps.job_mgmt.models import DistributionFile
+
+    allowed = Target.objects.create(name="allowed", ip="10.0.0.3", os_type="linux", team=[7])
+    fresh = DistributionFile.objects.create(
+        original_name="ok.conf",
+        file_key="job-files/ok.conf",
+        expire_at=timezone.now() + timedelta(days=1),
+        team=7,
+    )
+    expired = DistributionFile.objects.create(
+        original_name="old.conf",
+        file_key="job-files/old.conf",
+        expire_at=timezone.now() - timedelta(minutes=1),
+        team=7,
+    )
+    mocker.patch.object(nats_api, "dispatch_celery_task", return_value=True)
+    base = {
+        "name": "distribute",
+        "target_source": "manual",
+        "target_list": [{"target_id": allowed.id, "name": allowed.name, "ip": str(allowed.ip)}],
+        "target_path": "/tmp/",
+        "overwrite_strategy": "overwrite",
+        "timeout": 60,
+        "team": [7],
+        "callback_type": "nats",
+        "callback_subject": "bklite.workflow.job_result",
+    }
+
+    accepted = nats_api.execute_automation_file_distribute_local(
+        {**base, "file_keys": [fresh.file_key]},
+        ACTOR,
+    )
+    rejected = nats_api.execute_automation_file_distribute_local(
+        {**base, "file_keys": [expired.file_key]},
+        ACTOR,
+    )
+
+    assert accepted["result"] is True
+    assert JobExecution.objects.get(id=accepted["data"]["task_id"]).job_type == JobType.FILE_DISTRIBUTION
+    assert rejected["result"] is False
+    assert "old.conf" in str(rejected.get("message") or "")
