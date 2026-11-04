@@ -6,6 +6,13 @@ import type { TreeProps, TreeDataNode } from 'antd';
 import { cloneDeep } from 'lodash';
 import ObjectIcon from '@/app/monitor/components/objectIcon';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
+import EmptyModelVisibilityToggle from '@/components/empty-model-visibility-toggle';
+import { useHideEmptyModelPreference } from '@/components/empty-model-visibility-toggle/useHideEmptyModelPreference';
+import {
+  MONITOR_OBJECT_TREE_HIDE_EMPTY_MODEL_KEY,
+  omitEmptyCountedNodes,
+  treeHasInstanceCounts,
+} from '@/utils/emptyModelTree';
 import styles from './index.module.scss';
 import { shouldNotifyTreeNodeSelect } from './selectionNotify';
 
@@ -40,6 +47,13 @@ const TreeComponent: React.FC<TreeComponentProps> = ({
   const [originalTreeData, setOriginalTreeData] = useState<TreeItem[]>([]);
   const [treeData, setTreeData] = useState<TreeItem[]>([]);
   const lastNotifiedKeyRef = useRef('');
+  const appliedSearchRef = useRef('');
+  const {
+    hideEmptyModels,
+    hideEmptyModelsRef,
+    preferenceReady,
+    updateHideEmptyModels,
+  } = useHideEmptyModelPreference(MONITOR_OBJECT_TREE_HIDE_EMPTY_MODEL_KEY);
 
   const notifyNodeSelect = (key: React.Key) => {
     if (!shouldNotifyTreeNodeSelect(lastNotifiedKeyRef.current, key)) {
@@ -54,13 +68,6 @@ const TreeComponent: React.FC<TreeComponentProps> = ({
     setSelectedKeys([defaultSelectedKey]);
     notifyNodeSelect(defaultSelectedKey);
   }, [defaultSelectedKey]);
-
-  useEffect(() => {
-    setOriginalTreeData(data);
-    const filteredData = filterAllMenu(data);
-    setTreeData(filteredData);
-    setExpandedKeys(filteredData.map((item) => item.key));
-  }, [data]);
 
   const filterAllMenu = (data: TreeItem[], searchValue: string = '') => {
     if (!showAllMenu) {
@@ -141,22 +148,47 @@ const TreeComponent: React.FC<TreeComponentProps> = ({
       .filter(Boolean) as TreeItem[];
   };
 
+  const buildVisibleTree = (
+    source: TreeItem[],
+    searchValue: string,
+    hideEmpty: boolean
+  ) => {
+    const searched = searchValue
+      ? restoreMatchingNodeChildren(
+        filterAllMenu(filterTree(source, searchValue), searchValue),
+        source,
+        searchValue
+      )
+      : filterAllMenu(source);
+    return hideEmpty ? omitEmptyCountedNodes(searched) : searched;
+  };
+
+  useEffect(() => {
+    setOriginalTreeData(data);
+    appliedSearchRef.current = '';
+    const next = buildVisibleTree(data, '', hideEmptyModelsRef.current);
+    setTreeData(next);
+    setExpandedKeys(next.map((item) => item.key));
+  }, [data]);
+
   const handleSearchTree = (value: string) => {
-    if (!value) {
-      const filteredData = filterAllMenu(originalTreeData);
-      setTreeData(filteredData);
-      setExpandedKeys(filteredData.map((item) => item.key));
-      return;
-    }
-    const filteredData = filterTree(originalTreeData, value);
-    const allMenuFilteredData = filterAllMenu(filteredData, value);
-    const expandedFilteredData = restoreMatchingNodeChildren(
-      allMenuFilteredData,
+    appliedSearchRef.current = value;
+    const next = buildVisibleTree(
       originalTreeData,
-      value
+      value,
+      hideEmptyModelsRef.current
     );
-    setTreeData(expandedFilteredData);
-    setExpandedKeys(collectKeysWithChildren(expandedFilteredData));
+    setTreeData(next);
+    setExpandedKeys(
+      value ? collectKeysWithChildren(next) : next.map((item) => item.key)
+    );
+  };
+
+  const handleHideEmptyModelsChange = (hide: boolean) => {
+    updateHideEmptyModels(hide);
+    setTreeData(
+      buildVisibleTree(originalTreeData, appliedSearchRef.current, hide)
+    );
   };
 
   const onDrop: TreeProps['onDrop'] = (info) => {
@@ -285,6 +317,8 @@ const TreeComponent: React.FC<TreeComponentProps> = ({
     });
   };
 
+  const showEmptyModelToggle = preferenceReady && treeHasInstanceCounts(data);
+
   return (
     <div className="h-full">
       <Spin spinning={loading}>
@@ -296,6 +330,14 @@ const TreeComponent: React.FC<TreeComponentProps> = ({
           onChange={(e) => setTreeSearchValue(e.target.value)}
           onSearch={handleSearchTree}
         />
+        {showEmptyModelToggle ? (
+          <div className="mb-[10px] flex items-center">
+            <EmptyModelVisibilityToggle
+              hideEmptyModels={hideEmptyModels}
+              onChange={handleHideEmptyModelsChange}
+            />
+          </div>
+        ) : null}
         {treeData.length ? (
           <div className={styles.treeWrap}>
             <Tree

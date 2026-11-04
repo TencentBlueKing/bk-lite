@@ -4,6 +4,8 @@
     "collapse": "收起",
     "expandAll": "全部展开",
     "collapseAll": "全部折叠",
+    "showEmptyModel": "显示空模型",
+    "hideEmptyModel": "隐藏空模型",
     "edit": "编辑",
     "view": "查看",
     "builtIn": "内置",

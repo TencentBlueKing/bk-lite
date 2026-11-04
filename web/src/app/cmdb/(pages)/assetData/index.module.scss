@@ -59,7 +59,8 @@
 
       .treeSearchActions {
         display: flex;
-        justify-content: flex-end;
+        flex-wrap: wrap;
+        align-items: center;
         gap: 4px;
         margin-top: 4px;
       }

@@ -37,9 +37,15 @@ import CustomTable from '@/components/custom-table';
 import GroupTreeSelector from '@/components/group-tree-select';
 import PermissionWrapper from '@/components/permission';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
+import EmptyModelVisibilityToggle from '@/components/empty-model-visibility-toggle';
+import { useHideEmptyModelPreference } from '@/components/empty-model-visibility-toggle/useHideEmptyModelPreference';
 import RefreshIconButton from '@/components/refresh-icon-button';
 import ToolbarSplitShell from '@/components/toolbar-split-shell';
 import { useTranslation } from '@/utils/i18n';
+import {
+  CMDB_OBJECT_TREE_HIDE_EMPTY_MODEL_KEY,
+  omitEmptyModelGroups,
+} from '@/utils/emptyModelTree';
 import { useUserInfoContext } from '@/context/userInfo';
 import { useClientData } from '@/context/client';
 import { useModuleLinkApi } from '@/app/module-link/api';
@@ -324,6 +330,12 @@ const AssetDataContent = () => {
     pageSize: 20,
   });
   const [treeSearchText, setTreeSearchText] = useState('');
+  const appliedTreeSearchRef = useRef('');
+  const {
+    hideEmptyModels,
+    preferenceReady,
+    updateHideEmptyModels,
+  } = useHideEmptyModelPreference(CMDB_OBJECT_TREE_HIDE_EMPTY_MODEL_KEY);
   const [filteredTreeData, setFilteredTreeData] = useState<any[]>([]);
   const [modelInstCount, setModelInstCount] = useState<Record<string, number>>(
     {}
@@ -1072,11 +1084,26 @@ const AssetDataContent = () => {
     setExpandedTreeKeys([]);
   }, [modelGroup, persistCollapsedClassificationIds]);
 
+  const buildVisibleTree = useCallback(
+    (searchText: string) => {
+      const source = hideEmptyModels
+        ? omitEmptyModelGroups(modelGroup, modelInstCount)
+        : modelGroup;
+      const treeData = buildTreeData(source, renderModelTitle);
+      return filterTreeNodes(treeData, searchText, renderModelTitle);
+    },
+    [hideEmptyModels, modelGroup, modelInstCount, renderModelTitle]
+  );
+
+  useEffect(() => {
+    setFilteredTreeData(buildVisibleTree(appliedTreeSearchRef.current));
+  }, [buildVisibleTree]);
+
   const handleTreeSearch = useCallback(
     (searchText: string) => {
+      appliedTreeSearchRef.current = searchText;
       setTreeSearchText(searchText);
-      const treeData = buildTreeData(modelGroup, renderModelTitle);
-      const filtered = filterTreeNodes(treeData, searchText, renderModelTitle);
+      const filtered = buildVisibleTree(searchText);
       setFilteredTreeData(filtered);
       const validClassificationIds = modelGroup.map((item) => item.classification_id);
       const transition = transitionTreeExpansionSearch(
@@ -1088,12 +1115,8 @@ const AssetDataContent = () => {
       preferenceStateRef.current = transition.state;
       setExpandedTreeKeys(transition.expandedKeys);
     },
-    [modelGroup, renderModelTitle, userId]
+    [buildVisibleTree, modelGroup, userId]
   );
-
-  useEffect(() => {
-    setFilteredTreeData(buildTreeData(modelGroup, renderModelTitle));
-  }, [modelGroup, renderModelTitle]);
 
   useEffect(() => {
     const plan = planFirstVisitTreeScroll({
@@ -1416,26 +1439,34 @@ const AssetDataContent = () => {
               onChange={(e) => setTreeSearchText(e.target.value)}
             />
             <div className={assetDataStyle.treeSearchActions}>
-              <Tooltip title={t('common.expandAll')}>
-                <Button
-                  type="text"
-                  size="small"
-                  icon={<PlusSquareOutlined aria-hidden="true" />}
-                  aria-label={t('common.expandAll')}
-                  disabled={modelGroup.length === 0}
-                  onClick={handleExpandAllTreeGroups}
+              {preferenceReady ? (
+                <EmptyModelVisibilityToggle
+                  hideEmptyModels={hideEmptyModels}
+                  onChange={updateHideEmptyModels}
                 />
-              </Tooltip>
-              <Tooltip title={t('common.collapseAll')}>
-                <Button
-                  type="text"
-                  size="small"
-                  icon={<MinusSquareOutlined aria-hidden="true" />}
-                  aria-label={t('common.collapseAll')}
-                  disabled={modelGroup.length === 0}
-                  onClick={handleCollapseAllTreeGroups}
-                />
-              </Tooltip>
+              ) : null}
+              <div className="ml-auto flex shrink-0 items-center gap-1">
+                <Tooltip title={t('common.expandAll')}>
+                  <Button
+                    type="text"
+                    size="small"
+                    icon={<PlusSquareOutlined aria-hidden="true" />}
+                    aria-label={t('common.expandAll')}
+                    disabled={modelGroup.length === 0}
+                    onClick={handleExpandAllTreeGroups}
+                  />
+                </Tooltip>
+                <Tooltip title={t('common.collapseAll')}>
+                  <Button
+                    type="text"
+                    size="small"
+                    icon={<MinusSquareOutlined aria-hidden="true" />}
+                    aria-label={t('common.collapseAll')}
+                    disabled={modelGroup.length === 0}
+                    onClick={handleCollapseAllTreeGroups}
+                  />
+                </Tooltip>
+              </div>
             </div>
           </div>
           <div ref={treeWrapperRef} className={assetDataStyle.treeWrapper}>
