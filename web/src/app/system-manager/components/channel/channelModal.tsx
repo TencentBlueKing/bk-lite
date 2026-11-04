@@ -8,6 +8,7 @@ import OperateModal from '@/components/operate-modal'
 import { useChannelApi } from '@/app/system-manager/api/channel';
 import { useNatsChannelExtension } from '@/app/system-manager/hooks/useNatsChannelExtension';
 import { ChannelType } from '@/app/system-manager/types/channel';
+import NotificationTagSelect, { NotificationTagOption } from '@/app/system-manager/components/channel/NotificationTagSelect';
 
 interface ChannelModalProps {
   visible: boolean;
@@ -69,7 +70,7 @@ const ChannelModal: React.FC<ChannelModalProps> = ({
   const [form] = Form.useForm();
   const searchParams = useSearchParams();
   const channelType = (searchParams?.get('id') || 'email') as ChannelType;
-  const { addChannel, updateChannel, getChannelDetail, testChannel } = useChannelApi();
+  const { addChannel, updateChannel, getChannelDetail, testChannel, getNotificationTagCatalog } = useChannelApi();
   const natsExtension = useNatsChannelExtension();
   const [loading, setLoading] = useState<boolean>(false);
   const [confirmLoading, setConfirmLoading] = useState<boolean>(false);
@@ -80,6 +81,7 @@ const ChannelModal: React.FC<ChannelModalProps> = ({
   const [originalSignSecret, setOriginalSignSecret] = useState<string | undefined>(undefined);
   const [subType, setSubType] = useState<ChannelType>('enterprise_wechat_bot');
   const [pendingFormFill, setPendingFormFill] = useState<Record<string, unknown> | null>(null);
+  const [tagOptions, setTagOptions] = useState<NotificationTagOption[]>([]);
   const isFillingForm = useRef<boolean>(false);
 
   const isWebhookChannel = channelType === 'enterprise_wechat_bot';
@@ -130,6 +132,7 @@ const ChannelModal: React.FC<ChannelModalProps> = ({
         name: data.name,
         description: data.description,
         team: data.team,
+        tag: Array.isArray(data.tag) ? data.tag : [],
         ...mergedConfig,
       };
       if (isWebhookChannel) {
@@ -168,6 +171,9 @@ const ChannelModal: React.FC<ChannelModalProps> = ({
     if (isWebhookChannel) {
       setSubType(defaultSubType);
     }
+    getNotificationTagCatalog()
+      .then((rows) => setTagOptions(Array.isArray(rows) ? rows : []))
+      .catch(() => setTagOptions([]));
     if (type === 'edit' && channelId) {
       fetchChannelDetail(channelId);
     } else {
@@ -216,7 +222,7 @@ const ChannelModal: React.FC<ChannelModalProps> = ({
 
   const buildChannelPayload = (values: Record<string, any>, options?: { preserveEncryptedFields?: boolean }) => {
     const {
-      name, description, team,
+      name, description, team, tag,
       smtp_pwd, webhook_url, sign_secret,
       request_method, headers, body_template,
       ...config
@@ -253,6 +259,7 @@ const ChannelModal: React.FC<ChannelModalProps> = ({
       name,
       description,
       team,
+      tag: Array.isArray(tag) ? tag : [],
       config: finalConfig,
     };
   };
@@ -327,6 +334,17 @@ const ChannelModal: React.FC<ChannelModalProps> = ({
         placeholder: `${t('common.selectMsg')}${t('common.organization')}`,
         rules: [{ required: true, message: `${t('common.selectMsg')}${t('common.organization')}` }],
       },
+      {
+        name: 'tag',
+        type: 'notificationTag',
+        label: t('system.channel.settings.tag'),
+        component: (
+          <NotificationTagSelect
+            options={tagOptions}
+            placeholder={`${t('common.selectMsg')}${t('system.channel.settings.tag')}`}
+          />
+        ),
+      },
     ];
 
     if (isWebhookChannel) {
@@ -396,7 +414,7 @@ const ChannelModal: React.FC<ChannelModalProps> = ({
       });
 
     return [...basicFields, ...configFields];
-  }, [channelData.config, t, isWebhookChannel, watchedSmtpAuthEnabled, channelType, watchedNatsMode, natsExtension]);
+  }, [channelData.config, t, isWebhookChannel, watchedSmtpAuthEnabled, channelType, watchedNatsMode, natsExtension, tagOptions]);
 
   return (
     <OperateModal

@@ -27,11 +27,12 @@ class IMNotificationChannelViewSet(MaintainerViewSet):
     queryset = (
         IMNotificationChannel.objects.select_related("integration_instance")
         .prefetch_related(
+            "tags",
             Prefetch(
                 "sync_runs",
                 queryset=IMNotificationSyncRun.objects.filter(id=Subquery(latest_sync_run_id)),
                 to_attr="_prefetched_latest_run",
-            )
+            ),
         )
         .all()
         .order_by("name", "id")
