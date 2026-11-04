@@ -54,11 +54,24 @@ import useMonitorApi from '@/app/monitor/api';
 import { useTranslation } from '@/utils/i18n';
 import { ChartData, TimeSelectorDefaultValue, TimeValuesProps } from '@/app/monitor/types';
 import {
+  dashboardModeOptions,
+  resolveObjectDashboardMode,
+  writeObjectDashboardMode,
+  type ObjectDashboardMode
+} from '../../shared/utils/pro-dashboard';
+import { useLinkedHost } from '../../shared/use-linked-host';
+import hostChrome from '../host/index.module.scss';
+import {
   DASHBOARD_METRICS,
   MONGODB_COLLECTION_STATUS_QUERY,
   TREND_LEGENDS
 } from './config';
 import { MetricSeries, MetricUnit, MongoMetricConfig } from './types';
+import { readMongoInstanceFacts } from './layered/architecture';
+import MongoCategoryLayout from './layered/category-layout';
+import { MongoIdentityLine } from './layered/identity';
+import { MONGODB_CATEGORY_METRICS, MONGODB_CATEGORY_METRIC_NAMES } from './layered/metrics';
+import { mongoLatest } from './layered/series';
 import styles from './index.module.scss';
 
 interface InstanceOption {
@@ -67,6 +80,11 @@ interface InstanceOption {
   instanceIdValues: string[];
   searchTokens: string[];
   interval?: number;
+  nodeId?: string;
+  ip?: string;
+  databaseRole?: string;
+  version?: string;
+  port?: string;
 }
 
 const MEBIBYTE = 1024 * 1024;
@@ -127,8 +145,13 @@ export default function MongoDashboardPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const requestedInstanceKeyRef = useRef('');
+  const modeQuery = searchParams.toString();
   const [, setLoading] = useState(true);
-  const [displayMode, setDisplayMode] = useState<'dashboard' | 'metrics'>('dashboard');
+  const [displayMode, setDisplayMode] = useState<ObjectDashboardMode>(() => (
+    resolveObjectDashboardMode('mongodb', new URLSearchParams(modeQuery))
+  ));
+  const [pendingMetricNames, setPendingMetricNames] = useState<ReadonlySet<string>>(() => new Set());
   const [timeValues, setTimeValues] = useState<TimeValuesProps>({ timeRange: [], originValue: 15 });
   const [timeDefaultValue, setTimeDefaultValue] = useState<TimeSelectorDefaultValue>({
     selectValue: 15,
@@ -157,7 +180,11 @@ export default function MongoDashboardPage() {
   const instanceIdKeys = (searchParams.get('instance_id_keys') || 'instance_id').split(',').filter(Boolean);
   const objectDisplayText = normalizeDisplayText(monitorObjDisplayName) || normalizeDisplayText(monitorObjectName) || 'MongoDB';
   const normalizedInstanceName = normalizeDisplayText(instanceName);
-  const isDashboardMode = displayMode === 'dashboard';
+  const showsSeries = displayMode !== 'metrics';
+
+  useEffect(() => {
+    setDisplayMode(resolveObjectDashboardMode('mongodb', new URLSearchParams(modeQuery)));
+  }, [modeQuery]);
 
   useEffect(() => {
     if (!monitorObjectId) {
@@ -175,12 +202,18 @@ export default function MongoDashboardPage() {
           const value = String(item.instance_id || '');
           if (!value || uniqueOptions.has(value)) return;
           const label = buildInstanceDisplayName(item);
+          const facts = readMongoInstanceFacts(item);
           uniqueOptions.set(value, {
             label,
             value,
             instanceIdValues: resolveDashboardInstanceIdValues(item),
             searchTokens: buildInstanceSearchTokens(item, label),
-            interval: Number(item.interval) || undefined
+            interval: Number(item.interval) || undefined,
+            nodeId: String(item.node_id || '').trim(),
+            ip: String(item.ip || item.summary_facts?.['asset.ip'] || '').trim(),
+            databaseRole: facts.databaseRole,
+            version: facts.version,
+            port: facts.port
           });
         });
         setInstanceOptions(Array.from(uniqueOptions.values()));
@@ -239,12 +272,70 @@ export default function MongoDashboardPage() {
     );
   };
 
+  const loadCategoryMetrics = async (silent = false) => {
+    const loadSeq = loadSequence.begin();
+    const nextKey = `${String(instanceId)}|${idValuesKey}`;
+    const switching = requestedInstanceKeyRef.current !== nextKey;
+    requestedInstanceKeyRef.current = nextKey;
+    const fresh = !silent || switching;
+    if (fresh) {
+      setSeries({});
+      setPreviousSeries({});
+      setPendingMetricNames(new Set(MONGODB_CATEGORY_METRIC_NAMES));
+    }
+    if (!idValues.length) {
+      setSeries({});
+      setPreviousSeries({});
+      setCollectionStatusMetric(null);
+      setPendingMetricNames(new Set());
+      if (!silent) setLoading(false);
+      return;
+    }
+    const frozenTimeValues = freezeTimeValues(timeValues);
+    const frozenRange = resolveCollectionStatusRange(frozenTimeValues);
+    if (frozenRange) setQueryTimeRange(frozenRange);
+    if (!silent) setLoading(true);
+    await runWithConcurrency(MONGODB_CATEGORY_METRICS, METRIC_QUERY_CONCURRENCY, async (metric) => {
+      if (!loadSequence.isCurrent(loadSeq)) return;
+      let next: MetricSeries;
+      try {
+        const result = await getInstanceQuery(buildSearchParams(
+          metric.query,
+          metric.unit,
+          idValues,
+          instanceIdKeys,
+          frozenTimeValues,
+          undefined,
+          false,
+          currentInstanceInterval,
+          { monitorObjectId, instanceId }
+        ));
+        next = toMetricSeries(metric, result, instanceId, resolvedInstanceName, idValues, instanceIdKeys);
+      } catch {
+        next = { ...metric, viewData: [], loadState: 'error' };
+      }
+      if (!loadSequence.isCurrent(loadSeq)) return;
+      setSeries((prev) => (loadSequence.isCurrent(loadSeq) ? { ...prev, [metric.name]: next } : prev));
+      setPendingMetricNames((prev) => {
+        if (!loadSequence.isCurrent(loadSeq) || !prev.has(metric.name)) return prev;
+        const pending = new Set(prev);
+        pending.delete(metric.name);
+        return pending;
+      });
+    });
+    if (loadSequence.isCurrent(loadSeq)) setLoading(false);
+  };
+
   const loadMetrics = async (silent = false) => {
+    if (displayMode === 'category') {
+      await loadCategoryMetrics(silent);
+      return;
+    }
     const loadSeq = loadSequence.begin();
 
     if (!silent) setLoading(true);
     try {
-      if (isDashboardMode) {
+      if (displayMode === 'dashboard') {
         if (!idValues.length) {
           setSeries({});
           setPreviousSeries({});
@@ -352,19 +443,19 @@ export default function MongoDashboardPage() {
   };
 
   useEffect(() => {
-    if (isDashboardMode) {
+    if (showsSeries) {
       loadMetrics();
       return;
     }
     setLoading(false);
-  }, [currentInstanceInterval, instanceId, idValuesKey, timeValues, isDashboardMode]);
+  }, [currentInstanceInterval, instanceId, idValuesKey, timeValues, displayMode, showsSeries]);
 
   useEffect(() => {
     if (timerRef.current) {
       clearInterval(timerRef.current);
       timerRef.current = null;
     }
-    if (frequence > 0 && isDashboardMode) {
+    if (frequence > 0 && showsSeries) {
       timerRef.current = setInterval(() => {
         loadMetrics(true);
       }, frequence);
@@ -375,7 +466,7 @@ export default function MongoDashboardPage() {
         timerRef.current = null;
       }
     };
-  }, [currentInstanceInterval, frequence, timeValues, instanceId, idValuesKey, isDashboardMode]);
+  }, [currentInstanceInterval, frequence, timeValues, instanceId, idValuesKey, displayMode, showsSeries]);
 
   const metricMap = useMemo(() => series, [series]);
   const previousMetricMap = useMemo(() => previousSeries, [previousSeries]);
@@ -518,11 +609,50 @@ export default function MongoDashboardPage() {
 
 
   const pageTitle = displayMode === 'metrics' ? `${objectDisplayText} 全量指标` : 'MongoDB 监控仪表盘';
-  const instanceMetaItems = [
-    <span key="object-name" className={styles.instanceMetaInline}>{objectDisplayText}</span>,
-    <span key="engine" className={styles.instanceMetaInline}>引擎: WiredTiger</span>,
-    <span key="timezone" className={styles.instanceMetaInline}>时区: Asia/Shanghai</span>
-  ];
+  const proMode = displayMode === 'category';
+  const chrome = proMode ? hostChrome : styles;
+  const linkedHost = useLinkedHost(
+    currentInstanceOption?.nodeId || '',
+    currentInstanceOption?.ip || '',
+    proMode && !instanceLoading
+  );
+  const uptimeSeconds = (() => {
+    if (!proMode) return null;
+    const latest = mongoLatest(metricMap, 'mongodb_uptime_ns');
+    if (latest == null || latest < 0) return null;
+    return latest / 1e9;
+  })();
+  const instanceMetaItems = proMode
+    ? [
+      <MongoIdentityLine
+        key="pro-identity"
+        instanceName={resolvedInstanceName}
+        instanceId={String(instanceId || '')}
+        idValues={idValues}
+        databaseRole={currentInstanceOption?.databaseRole || ''}
+        version={currentInstanceOption?.version || ''}
+        port={currentInstanceOption?.port || ''}
+        uptimeSeconds={uptimeSeconds}
+        host={linkedHost.host}
+        hostHref={linkedHost.href}
+        hostPending={instanceLoading || linkedHost.pending}
+      />
+    ]
+    : [
+      <span key="object-name" className={styles.instanceMetaInline}>{objectDisplayText}</span>,
+      <span key="engine" className={styles.instanceMetaInline}>引擎: WiredTiger</span>,
+      <span key="timezone" className={styles.instanceMetaInline}>时区: Asia/Shanghai</span>
+    ];
+  const refreshView = () => (
+    showsSeries ? loadMetrics() : setMetricsRefreshSignal((value) => value + 1)
+  );
+  const onLayoutChange = (mode: string) => {
+    if (mode !== 'dashboard' && mode !== 'metrics' && mode !== 'category') return;
+    if (mode === displayMode) return;
+    setDisplayMode(mode);
+    const params = writeObjectDashboardMode(new URLSearchParams(searchParams.toString()), mode);
+    router.replace(`?${params.toString()}`, { scroll: false });
+  };
 
   const onTimeChange = (val: number[], originValue: number | null) => {
     setTimeValues({ timeRange: val, originValue });
@@ -615,23 +745,25 @@ export default function MongoDashboardPage() {
     { label: '监控指标全景', detail: '这里承载完整原始监控视图，适合在仪表盘发现异常后继续下钻排查。' }
   ];
   return (
-    <div className={styles.page}>
-      <div className={styles.shell}>
-        <div className={styles.unifiedShell} data-dashboard-shell="unified">
-          <div className={styles.pageIntro}>
+    <div className={proMode ? `${chrome.page} ${styles.proPage}` : styles.page}>
+      <div className={proMode ? `${chrome.shell} ${styles.proShell}` : styles.shell}>
+        <div className={chrome.unifiedShell} data-dashboard-shell="unified">
+          <div className={chrome.pageIntro}>
           <DashboardPageHeader
             title={pageTitle}
             displayMode={displayMode}
-            onDisplayModeChange={setDisplayMode}
+            onDisplayModeChange={onLayoutChange}
+            modeControl="pill"
+            modeOptions={dashboardModeOptions('mongodb')}
             timeDefaultValue={timeDefaultValue}
             onTimeChange={onTimeChange}
             onFrequenceChange={onFrequenceChange}
-            onRefresh={() => (isDashboardMode ? loadMetrics() : setMetricsRefreshSignal((value) => value + 1))}
+            onRefresh={refreshView}
             showTimeSelector={false}
-            styles={styles}
+            styles={chrome}
           />
           </div>
-          <div className={styles.unifiedHostBar}>
+          <div className={chrome.unifiedHostBar}>
           <DashboardInstanceCard
             instanceName={resolvedInstanceName}
             metaItems={instanceMetaItems}
@@ -643,19 +775,19 @@ export default function MongoDashboardPage() {
             onInstanceChange={onInstanceChange}
             selectorPlaceholder={resolvedInstanceName !== '--' ? resolvedInstanceName : '选择实例'}
             selectorTitle={currentInstanceOption?.label || normalizedInstanceName || resolvedInstanceName}
-            isDashboardMode={isDashboardMode}
+            isDashboardMode={showsSeries}
             timeSelectorProps={{
               timeDefaultValue,
               onTimeChange,
               onFrequenceChange,
-              onRefresh: () => (isDashboardMode ? loadMetrics() : setMetricsRefreshSignal((value) => value + 1))
+              onRefresh: refreshView
             }}
-            styles={styles}
+            styles={chrome}
           />
           </div>
         </div>
 
-        <div className={styles.unifiedBelow}>
+        <div className={chrome.unifiedBelow}>
           {displayMode === 'dashboard' ? (
             <>
               {/* 分区 1 · 健康概览：采集状态 + 关键 KPI */}
@@ -1079,6 +1211,18 @@ export default function MongoDashboardPage() {
                 </DetailPanel>
               </div>
             </>
+          ) : displayMode === 'category' ? (
+            <div className={styles.modeContent} data-mongodb-body="pro">
+              <MongoCategoryLayout
+                instanceId={instanceId}
+                monitorObjectId={monitorObjectId}
+                timeValues={timeValues}
+                queryTimeRange={queryTimeRange}
+                loading={pendingMetricNames.size > 0 && Object.keys(series).length === 0}
+                pendingMetricNames={pendingMetricNames}
+                metricMap={metricMap}
+              />
+            </div>
           ) : (
             <div className={`${styles.modeContent} ${styles.metricsMode}`}>
               <DashboardPanel

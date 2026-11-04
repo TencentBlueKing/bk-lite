@@ -151,6 +151,13 @@
       "template": "win_ad_DS_Directory_Searches_persec{instance_type=\"active_directory\", __$labels__}"
     },
     {
+      "id": "dashboard:v1:03cae739",
+      "object_names": [
+        "MongoDB"
+      ],
+      "template": "rate(mongodb_total_docs_scanned{__$labels__}[__$window__])"
+    },
+    {
       "id": "dashboard:v1:0444c91a",
       "object_names": [
         "Mysql"
@@ -611,6 +618,13 @@
         "Process"
       ],
       "template": "sum(procstat_memory_usage{instance_type=\"process\", __$labels__}) by (instance_id, process_name)"
+    },
+    {
+      "id": "dashboard:v1:1354d5ad",
+      "object_names": [
+        "MongoDB"
+      ],
+      "template": "increase(mongodb_cursor_timed_out_count{__$labels__}[__$window__])"
     },
     {
       "id": "dashboard:v1:139b9cb0",
@@ -2409,6 +2423,13 @@
       "template": "redis_mem_replication_backlog{__$labels__}"
     },
     {
+      "id": "dashboard:v1:4e1fe209",
+      "object_names": [
+        "MongoDB"
+      ],
+      "template": "rate(mongodb_document_deleted{__$labels__}[__$window__])"
+    },
+    {
       "id": "dashboard:v1:4e8928b2",
       "object_names": [
         "Mysql"
@@ -3927,6 +3948,13 @@
       "template": "win_iis_web_service_Bytes_Sent_persec{instance_type=\"iis\", instance=\"_Total\", __$labels__}"
     },
     {
+      "id": "dashboard:v1:86fca70f",
+      "object_names": [
+        "MongoDB"
+      ],
+      "template": "rate(mongodb_document_updated{__$labels__}[__$window__])"
+    },
+    {
       "id": "dashboard:v1:8759e6d3",
       "object_names": [
         "Loadbalance",
@@ -4571,6 +4599,13 @@
         "LlamaServer"
       ],
       "template": "avg(llamacpp:n_busy_slots_per_decode_counter{__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:9e4d383e",
+      "object_names": [
+        "MongoDB"
+      ],
+      "template": "rate(mongodb_document_inserted{__$labels__}[__$window__])"
     },
     {
       "id": "dashboard:v1:9e51c113",
@@ -6854,6 +6889,13 @@
         "JVM"
       ],
       "template": "sum(jvm_bufferpool_memoryused_value{__$labels__}) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:f3f9fd02",
+      "object_names": [
+        "MongoDB"
+      ],
+      "template": "increase(mongodb_assert_user{__$labels__}[__$window__])"
     },
     {
       "id": "dashboard:v1:f43753eb",
