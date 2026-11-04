@@ -557,7 +557,8 @@ def test_qcloud_cvm_collects_tags_as_key_value_list_and_skips_illegal_values():
                             "Tags": [
                                 {"Key": "env", "Value": "prod"},
                                 {"TagKey": "team", "TagValue": "net"},
-                                {"Key": "owner", "Value": f"{sentinel} leaked"},
+                                {"Key": "sys", "Value": "IT 361"},
+                                {"Key": "owner", "Value": f"{sentinel}:leaked"},
                                 {"Key": "blank", "Value": ""},
                             ],
                         }
@@ -573,7 +574,7 @@ def test_qcloud_cvm_collects_tags_as_key_value_list_and_skips_illegal_values():
         qcloud_info.logger = original
         log.removeHandler(log.handlers[-1])
 
-    assert result[0]["tag"] == ["env:prod", "team:net"]
+    assert result[0]["tag"] == ["env:prod", "team:net", "sys:IT 361"]
     assert records
     assert records[0].msg == "event=qcloud_tag_normalized skipped=%s truncated=%s"
     assert records[0].args == (2, 0)
@@ -647,7 +648,7 @@ def test_qcloud_bucket_tagging_replaces_present_tags_and_skips_api_errors():
 
         def get_bucket_tagging(self, Bucket):
             if Bucket == "logs":
-                return {"TagSet": {"Tag": [{"Key": "env", "Value": "prod"}, {"Key": "leak", "Value": f"{sentinel} leaked"}]}}
+                return {"TagSet": {"Tag": [{"Key": "env", "Value": "prod"}, {"Key": "leak", "Value": f"{sentinel}:leaked"}]}}
             if Bucket == "plain":
                 error = RuntimeError(sentinel)
                 error.get_error_code = lambda: "NoSuchTagSet"
@@ -701,9 +702,15 @@ def _prometheus_label(line, name):
     return "".join(chars)
 
 
-def test_prometheus_tag_list_round_trips_value_containing_comma():
+def _prometheus_tag_list(line):
+    from urllib.parse import unquote
+
     import json
 
+    return json.loads(unquote(_prometheus_label(line, "tag")))
+
+
+def test_prometheus_tag_list_round_trips_value_containing_comma():
     from plugins.base_utils import convert_to_prometheus_format
 
     tags = ["owner:acme,inc", "env:prod"]
@@ -717,13 +724,46 @@ def test_prometheus_tag_list_round_trips_value_containing_comma():
         }
     )
     cvm_line = next(line for line in text.splitlines() if "ins-1" in line)
-    assert json.loads(_prometheus_label(cvm_line, "tag")) == tags
+    assert _prometheus_tag_list(cvm_line) == tags
     assert "owner:acme,inc,env:prod" not in cvm_line
+    assert 'tag="[' not in cvm_line
     plain_line = next(line for line in text.splitlines() if "ins-2" in line)
     assert 'tag="env:prod,team:net"' not in plain_line
-    assert json.loads(_prometheus_label(plain_line, "tag")) == ["env:prod", "team:net"]
+    assert _prometheus_tag_list(plain_line) == ["env:prod", "team:net"]
     nat_line = next(line for line in text.splitlines() if "nat-1" in line)
     assert "tag=" not in nat_line
+
+
+def test_prometheus_tag_list_survives_influx_with_space_and_comma():
+    from urllib.parse import unquote
+
+    import json
+
+    from core.collection.contracts import StructuredMetricsPayload
+    from plugins.base_utils import convert_to_prometheus_format
+    from tasks.utils.nats_helper import convert_prometheus_to_influx, convert_structured_metrics_to_influx
+
+    tags = ["owner:acme,inc", "资产系统ID:IT-361", "BU/BA:林宏和"]
+    text = convert_to_prometheus_format(
+        {"qcloud_cvm": [{"resource_id": "ins-1", "resource_name": "cvm", "tag": tags}]}
+    )
+    lines = convert_prometheus_to_influx(text, {"instance_id": "cmdb_315"})
+    cvm = next(line for line in lines if "ins-1" in line)
+    assert "tag=[" not in cvm
+    assert 'tag="[' not in cvm
+    match = __import__("re").search(r"(?:^|,)tag=([^, ]+)", cvm)
+    assert match, cvm
+    assert json.loads(unquote(match.group(1))) == tags
+
+    structured = convert_structured_metrics_to_influx(
+        StructuredMetricsPayload(data={"qcloud_cvm": [{"resource_id": "ins-1", "resource_name": "cvm", "tag": tags}]}),
+        {"instance_id": "cmdb_315"},
+    )
+    structured_line = next(line for line in structured if "ins-1" in line)
+    assert "tag=[" not in structured_line
+    match = __import__("re").search(r"(?:^|,)tag=([^, ]+)", structured_line)
+    assert match, structured_line
+    assert json.loads(unquote(match.group(1))) == tags
 
 
 def test_qcloud_empty_secret_matches_edit_task_sdk_error():

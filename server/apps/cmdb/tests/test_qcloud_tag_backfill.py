@@ -17,6 +17,12 @@ def test_backfill_tag_property_converts_csv_and_leaves_existing_lists():
     assert values == ["env:prod", "team:net"]
     assert skipped == 1
     assert truncated == 0
+
+    from apps.cmdb.validators.field_validator import parse_collected_tag_wire
+
+    encoded = "%5B%22owner%3Aacme%2Cinc%22%2C%22owner%3Afoo%20bar%22%5D"
+    assert parse_collected_tag_wire(encoded) == ["owner:acme,inc", "owner:foo bar"]
+    assert parse_collected_tag_wire('["owner:acme,inc","env:prod"]') == ["owner:acme,inc", "env:prod"]
     assert backfill_tag_property(123) == ([], 1, 0)
 
     many = ",".join(f"k{i}:v{i}" for i in range(21))

@@ -716,7 +716,7 @@ def test_qcloud_cvm_metric_tag_label_becomes_list_and_blank_does_not_clear(monke
             {
                 "resource_name": "cvm-a",
                 "resource_id": "ins-1",
-                "tag": '["owner:acme,inc","env:prod"]',
+                "tag": "%5B%22owner%3Aacme%2Cinc%22%2C%22env%3Aprod%22%5D",
                 "vcpus": "2",
                 "memory_mb": "2048",
             },
