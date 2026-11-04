@@ -70,7 +70,7 @@ devshell:
 	uv run python manage.py shell
 
 test:
-	uv run python scripts/run_server_tests.py
+	uv run python -m apps.core.testing_runner
 
 # 只跑某个 app：make test-app APP=cmdb
 test-app:

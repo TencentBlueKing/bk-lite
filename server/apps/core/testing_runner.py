@@ -48,4 +48,4 @@ def run_suites(server_root: Path) -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(run_suites(Path(__file__).resolve().parents[1]))
+    raise SystemExit(run_suites(Path(__file__).resolve().parents[2]))

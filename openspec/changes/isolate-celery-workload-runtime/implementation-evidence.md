@@ -88,3 +88,15 @@ Beat路由命令在真实PostgreSQL上验证dry-run、排他0600快照、应用�
 针对这一运行边界，将`make test`改为两套独立pytest子进程：应用侧仅分离精确的PPT `scripts/tests`路径；PPT侧在脚本目录收集全部57个文件，不加载Django插件、配置和父级conftest。没有删除或跳过这套745个静态测试方法；两套均生成JUnit，任一失败则门禁失败，首套失败仍执行第二套。直接pytest及app/marker快捷命令仅代表应用套件，完整门禁入口已在测试指南更新。
 
 先写进程隔离行为回归并观察缺少入口的失败，再实现最小编排器：使用同名config与应用autouse fixture的临时工程，验证两套都实际收集并通过，以及任意一套失败均传递非零退出码。3项回归通过，新增编排器覆盖率90.91%。最终完整业务结果仍以更新后的远端CI为准，不将专项通过或测试收集修复报告为全量通过。
+
+第二轮CI（`41795468035`）实际执行PPT套件：735 passed、7 failed、3 skipped。应用收集暴露通用`scripts`命名空间冲突，编排器迁入唯一的`apps.core.testing_runner`，入口改为`python -m apps.core.testing_runner`，importlib模式下的3项回归仍通过、覆盖率90.91%。
+
+PPT七项失败逐一处理，未删除测试或放宽安全断言：
+
+- 四项音频测试缺少ffprobe/ffmpeg，在CI安装系统工具。
+- TLS测试替身使用SimpleNamespace，而当前urllib3对结果进行解包；替身改为同时保留属性与可解包形状的namedtuple，Host/IP/端口/SNI/CERT_REQUIRED/assert_hostname断言均保留，生产HTTP传输实现未改。
+- 两项页面/前端行为测试暴露旧版本漏包：`server/.gitignore`的裸`static`规则误忽略了内嵌工具资源。恢复官方[v6.7.2固定提交](https://github.com/hugohe3/ppt-master/tree/b113d23720260c411ee47b2b05a73615f954deeb)的原始资源，未从main获取新版本。已核对SKILL.md、三个服务端模块和相关两个测试的Git blob与仓库基线一致。
+
+仅恢复confirm_ui/static、svg_editor/static、spec_review/static三个目录，共28文件、581924字节，每文件与源Git blob核验一致；三个原始tree依次为`0e0fbd66f0137df4fda9536ae2ebf8b57c28e532`、`0a44cf30ecd3112ec38aa83acf5c332cb4b086e7`、`189865c2df52148effd1fa60bdf0d8eb2a6b6c86`。只为这三处添加精确gitignore例外，Django生成的static仍被忽略。
+
+本地七项针对性回归全部通过（Mac使用规范化TMPDIR=/private/tmp，避免/var与/private/var别名影响路径校验）；资源集合及逐blob复核通过。一次本地全PPT尝试因最小环境缺PyMuPDF而停止，未报告为完整通过；远端完整依赖下仍执行全部PPT测试。规范/规格复核未发现新增代码阻断，完整门禁以最终提交的远端结果为准。

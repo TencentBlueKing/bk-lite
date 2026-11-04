@@ -12,7 +12,7 @@ on:
       - 'server/Makefile'
       - 'server/pyproject.toml'
       - 'server/pytest.ini'
-      - 'server/scripts/run_server_tests.py'
+      - 'server/apps/core/testing_runner.py'
       - 'server/apps/core/tests/test_server_test_runner_service.py'
       - 'server/support-files/env/celery-runtime.env.template'
       - 'server/support-files/release/**'
@@ -73,6 +73,8 @@ jobs:
           python-version: '3.12'
       - name: 安装完整业务及测试依赖
         run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ffmpeg
           python -m pip install uv
           uv venv .venv --python 3.12
           uv pip install --python .venv/bin/python -e '.[cmdb,dev,mlops,opspilot]' \

@@ -4,7 +4,7 @@ import xml.etree.ElementTree as ET
 
 import pytest
 
-from scripts.run_server_tests import run_suites
+from apps.core.testing_runner import run_suites
 
 pytestmark = pytest.mark.integration
 
