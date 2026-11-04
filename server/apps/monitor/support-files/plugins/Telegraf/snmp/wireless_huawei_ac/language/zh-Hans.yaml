@@ -95,13 +95,13 @@ monitor_object_metric:
       desc: 无线控制器允许接入的最大 AP 数量（hwWlanAccessMaxApNumber）。已接入数接近该值表示容量或许可接近上限。
     wlan_cur_assoc_sta_num:
       name: 当前关联终端数
-      desc: 当前已关联会话数（hwWlanCurAssocStaNum）。与 hwWlanStaCurNum（当前终端对象数）口径不同；骤降可能表示射频、认证或控制器故障。
+      desc: 当前已关联终端数（hwWlanCurAssocStaNum，1.3.6.1.4.1.2011.6.139.12.1.2.2）。骤降可能表示射频、认证或控制器故障。wlan_sta_cur_num 是本指标的关联终端数兼容别名，采集侧复制同一次采样，时间戳相同。
     wlan_cur_auth_success_sta_num:
       name: 认证成功终端数
       desc: 当前认证成功的终端数量（hwWlanCurAuthSuccessStaNum）。与关联数差距扩大通常表示认证失败增多。
     wlan_sta_cur_num:
-      name: 当前终端数
-      desc: 当前在线终端数量（hwWlanStaCurNum）。这是与 hwWlanCurAssocStaNum（关联终端数）不同的口径：前者是控制器当前终端对象数，后者是已关联会话数；软件版本不同时两者可能不一致，应交叉核对，不要混用阈值。
+      name: 关联终端数兼容别名
+      desc: 关联终端数兼容别名。采集侧把 wlan_cur_assoc_sta_num（hwWlanCurAssocStaNum）的同一次采样写到本指标，数值与时间戳相同。原 Trap 对象 hwWlanStaCurNum 已停止轮询。
     wlan_cur_assoc_2g_sta_num:
       name: 2.4G 关联终端数
       desc: 当前 2.4G 频段关联终端数量（hwWlanCurAssoc2gStaNum）。
@@ -121,11 +121,11 @@ monitor_object_metric:
       name: 全局下行速率
       desc: 无线控制器全局下行速率（hwWlanGlobalDownSpeed），MIB 单位为 Kbps。采集值按 kbitps 原样展示，不做 bit/s 换算。
     wlan_vap_cur_num:
-      name: 当前 VAP 数
-      desc: 当前虚拟接入点数量（hwVapCurNum）。异常变化可能表示 SSID 部署漂移。
+      name: 当前 VAP 数（未轮询）
+      desc: 指标名保留。原 Trap 对象 hwVapCurNum 已停止轮询，本模板不绑定替身 OID。序列缺失不表示当前 VAP 数为 0。
     wlan_vap_max_num:
-      name: VAP 上限
-      desc: 允许配置的最大虚拟接入点数量（hwVapMaxNum）。
+      name: VAP 上限（未轮询）
+      desc: 指标名保留。原 Trap 对象 hwVapMaxNum 已停止轮询。VAP 上限未确认，本模板不下发轮询，也不绑定替身 OID。序列缺失不表示上限为 0。
     wlan_ap_run_state:
       name: AP 运行状态
       desc: 接入点运行状态（hwWlanApRunState）：idle(1)、autofind(2)、typeNotMatch(3)、fault(4)、config(5)、configFailed(6)、download(7)、normal(8)、committing(9)、commitFailed(10)、standby(11)、verMismatch(12)、nameConflicted(13)、invalid(14)、countryCodeMismatch(15)。应提供服务的 AP 处于 fault、configFailed、commitFailed 或 idle 时需立即排查。
@@ -179,10 +179,10 @@ monitor_object_metric:
       desc: 射频报文接收占比（hwWlanRadioRxRatio），0～100。索引与利用率、干扰率相同（AP MAC + 射频 ID）。255 表示无效，采集与查询会丢弃该值，不当作 255%。
     wlan_radio_sta_num:
       name: 射频终端数
-      desc: 射频当前接入终端数量（hwWlanRadioStaNum）。
+      desc: 各射频当前在线终端数（hwWlanRadioOnlineStaCnt，1.3.6.1.4.1.2011.6.139.16.1.2.1.40）。索引为 AP MAC 与射频 ID。
     wlan_radio_sta_max:
-      name: 射频终端上限
-      desc: 射频允许接入的最大终端数量（hwWlanRadioMaxStaNum）。
+      name: 射频终端上限（未确认）
+      desc: 指标名保留。每射频上限尚无经确认的只读 OID，本模板不下发轮询，也不用 AP 型号容量、配置上限或 SSID 上限代替。序列缺失不表示上限为 0。
 monitor_object_metric_group:
   Wireless:
     Base: 基础
