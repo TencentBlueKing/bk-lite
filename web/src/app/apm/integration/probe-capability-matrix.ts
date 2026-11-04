@@ -54,6 +54,30 @@ export const PROBE_CAPABILITY_MATRIX: Record<ProbeLanguage, ProbeCapability> = {
     inferredComponents: [],
     manualInstrumentation: false,
   },
+  ruby: {
+    version: 'SDK 1.13.1',
+    frameworks: ['Rack'],
+    inferredComponents: [],
+    manualInstrumentation: true,
+  },
+  cpp: {
+    version: 'v1.30.0',
+    frameworks: ['entry-span'],
+    inferredComponents: [],
+    manualInstrumentation: false,
+  },
+  erlang: {
+    version: 'SDK 1.7.0',
+    frameworks: ['entry-span'],
+    inferredComponents: [],
+    manualInstrumentation: false,
+  },
+  swift: {
+    version: '2.6.0',
+    frameworks: ['entry-span'],
+    inferredComponents: [],
+    manualInstrumentation: false,
+  },
 };
 
 const DOTNET_WINDOWS_CAPABILITY: ProbeCapability = {

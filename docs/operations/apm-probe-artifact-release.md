@@ -2,7 +2,7 @@
 
 本文面向负责 BK-Lite 构建、镜像发布和环境初始化的运维同学，说明接入脚本改为
 系统内下载后，发布流水线必须归档的离线包和对象存储初始化步骤。当前范围是
-Java、Python、Node.js、Go、PHP、.NET Linux、.NET Windows 和 OBI。
+Java、Python、Node.js、Go、PHP、.NET Linux、.NET Windows、OBI、Ruby、C++、Erlang/Elixir 和 Swift。
 
 ## 1. 变更摘要
 
@@ -27,8 +27,12 @@ Java、Python、Node.js、Go、PHP、.NET Linux、.NET Windows 和 OBI。
 | .NET Linux | `opentelemetry-dotnet-auto-linux-glibc-x64.zip` | `apm/probe/dotnet/opentelemetry-dotnet-auto-linux-glibc-x64.zip` | 官方 `opentelemetry-dotnet-instrumentation-linux-glibc-x64.zip` 原文件；仅 Linux x86_64 glibc |
 | .NET Windows | `opentelemetry-dotnet-auto-windows.zip` | `apm/probe/dotnet/opentelemetry-dotnet-auto-windows.zip` | 官方 `opentelemetry-dotnet-instrumentation-windows.zip` 改名；仅 Windows x64 主机 |
 | eBPF | `opentelemetry-ebpf-obi-linux-amd64.tar.gz` | `apm/probe/ebpf/opentelemetry-ebpf-obi-linux-amd64.tar.gz` | 官方 `obi-v1.0.0-linux-amd64.tar.gz` 改名；只收 amd64 |
+| Ruby | `opentelemetry-ruby-sdk.tar.gz` | `apm/probe/ruby/opentelemetry-ruby-sdk.tar.gz` | gem `cache/`：sdk 1.13.1、exporter-otlp 0.37.0、instrumentation-rack 0.31.2 及运行时依赖 |
+| C++ | `opentelemetry-cpp-sdk.tar.gz` | `apm/probe/cpp/opentelemetry-cpp-sdk.tar.gz` | v1.30.0 的安装前缀 `prefix/`，只含 OTLP/HTTP |
+| Erlang/Elixir | `opentelemetry-erlang-sdk.tar.gz` | `apm/probe/erlang/opentelemetry-erlang-sdk.tar.gz` | 已解包的 `opentelemetry` 1.7.0、`opentelemetry_exporter` 1.11.0、`opentelemetry_api` 1.5.0 及编译所需的 Hex 传递依赖 |
+| Swift | `opentelemetry-swift-sdk.tar.gz` | `apm/probe/swift/opentelemetry-swift-sdk.tar.gz` | `opentelemetry-swift` 2.6.0、配套 core 2.6.0，以及 HTTP exporter 的本地 path 依赖 |
 
-八份都要初始化。缺任意一个，只影响使用该制品的接入脚本。
+十二份都要初始化。缺任意一个，只影响使用该制品的接入脚本。
 Linux .NET 制品仍不支持 Alpine / musl、ARM64 和 Windows；Windows 是另一份制品，不要合并进 Linux zip。
 ARM 探针继续不做，见 `docs/design/product-decisions/apm-probe-coverage.md`。
 
@@ -54,7 +58,7 @@ ARM 探针继续不做，见 `docs/design/product-decisions/apm-probe-coverage.m
 
 ## 3. 构建并归档产物
 
-八份制品都必须固定版本，记录字节数和 SHA-256，不提交 Git，并至少保留上一版本
+十二份制品都必须固定版本，记录字节数和 SHA-256，不提交 Git，并至少保留上一版本
 供回滚。内网无法访问公网时，由构建环境一次性拉取后作为流水线制品传递。
 
 本版本钉死的探针号（与 Collector `0.153.0` 无关；发布时若流水线归档不同，以归档为准）：
@@ -69,6 +73,10 @@ ARM 探针继续不做，见 `docs/design/product-decisions/apm-probe-coverage.m
 | .NET Linux | `opentelemetry-dotnet-auto-linux-glibc-x64.zip` | `opentelemetry-dotnet-instrumentation` **v1.16.0**（官方 `opentelemetry-dotnet-instrumentation-linux-glibc-x64.zip`） |
 | .NET Windows | `opentelemetry-dotnet-auto-windows.zip` | 同一 **v1.16.0** 的官方 `opentelemetry-dotnet-instrumentation-windows.zip` |
 | eBPF | `opentelemetry-ebpf-obi-linux-amd64.tar.gz` | OBI **v1.0.0** 的 `obi-v1.0.0-linux-amd64.tar.gz` |
+| Ruby | `opentelemetry-ruby-sdk.tar.gz` | `opentelemetry-sdk` **1.13.1**，`opentelemetry-exporter-otlp` **0.37.0**，`opentelemetry-instrumentation-rack` **0.31.2** |
+| C++ | `opentelemetry-cpp-sdk.tar.gz` | `opentelemetry-cpp` **v1.30.0**，只含 OTLP/HTTP 安装前缀 |
+| Erlang/Elixir | `opentelemetry-erlang-sdk.tar.gz` | `opentelemetry` **1.7.0**，`opentelemetry_exporter` **1.11.0**，以及编译所需的 Hex 传递依赖 |
+| Swift | `opentelemetry-swift-sdk.tar.gz` | `opentelemetry-swift` **2.6.0**，配套 core **2.6.0**，HTTP exporter 闭包，Swift tools **6.2** |
 
 ### Java
 
@@ -180,6 +188,48 @@ dist/
 绝对路径写入 `exe_path_glob`，HTTP traces 打开、metrics 关闭，不配置 meter provider
 或端口发现。
 
+### Ruby
+
+在能访问 RubyGems 的构建机上，把下面三个钉死版本和它们的运行时依赖放进 `cache/`，归档根目录就是 `cache/`，文件名必须是 `opentelemetry-ruby-sdk.tar.gz`。目标机执行 `gem install --local --ignore-dependencies`，不再访问 RubyGems。
+
+- `opentelemetry-sdk` 1.13.1
+- `opentelemetry-exporter-otlp` 0.37.0
+- `opentelemetry-instrumentation-rack` 0.31.2
+
+Ruby 版本要求 `>= 3.3`。页面只写 Rack。不要把 Rails 或其他未进归档的 instrumentation 写进片段。
+
+### C++
+
+用官方 **v1.30.0** 源码在构建机安装到 `prefix/`，只打开 OTLP/HTTP，关闭 OTLP/gRPC 和测试。归档根目录就是 `prefix/`，文件名必须是 `opentelemetry-cpp-sdk.tar.gz`。目标机只对着这个前缀编译示例，不再拉取 CMake 依赖。进程启动时把 `prefix/lib` 放进 `LD_LIBRARY_PATH`，可执行文件上的 RUNPATH 不会传给它依赖的 OpenTelemetry 动态库。
+
+### Erlang/Elixir
+
+把下面这些 Hex 包解包到归档根目录，目录名与包名相同。文件名必须是 `opentelemetry-erlang-sdk.tar.gz`。rebar3 没有 path 依赖类型，片段把这些目录链到应用的 `_checkouts`，并覆盖会再去 Hex 或 Git 拉包的依赖和插件。Mix 示例使用本地 path。
+
+- `opentelemetry` 1.7.0
+- `opentelemetry_exporter` 1.11.0
+- `opentelemetry_api` 1.5.0
+- `grpcbox` 0.18.0
+- `tls_certificate_check` 1.18.1
+- `acceptor_pool` 1.0.1
+- `ctx` 0.6.0
+- `gproc` 1.2.0
+- `ts_chatterbox` 0.16.0（应用名 `chatterbox`）
+- `ssl_verify_fun` 1.1.9
+- `hpack_erl` 0.3.0（应用名 `hpack`）
+
+### Swift
+
+打包下面这些源码，并把包内依赖改成相对本地 path。归档根目录包含这些目录，文件名必须是 `opentelemetry-swift-sdk.tar.gz`。上游 `opentelemetry-swift` 还依赖 gRPC、NIO、metrics 和 tracing；离线包只保留 HTTP Trace exporter 的 target，避免再拉取这些包。片段只生成 Swift Package Manager 的本地 path 示例，tools 版本是 6.2，不生成 CocoaPods，也不访问远端包地址。Swift 片段面向 Linux，不提供 macOS 安装步骤。
+
+- `opentelemetry-swift` 2.6.0
+- `opentelemetry-swift-core` 2.6.0
+- `swift-atomics` 1.3.1
+- `swift-log` 1.16.2
+- `swift-protobuf` 1.39.0
+
+`swift-log` 和 `swift-protobuf` 的清单要求 Swift tools 6.2。
+
 ## 4. 初始化对象存储
 
 在具备正式环境配置、且能连接该环境 NATS 的 Server 运行环境中，对每个制品执行：
@@ -216,6 +266,22 @@ python manage.py apm_probe_init \
 python manage.py apm_probe_init \
   --artifact opentelemetry-ebpf-obi-linux-amd64.tar.gz \
   --file_path /path/to/opentelemetry-ebpf-obi-linux-amd64.tar.gz
+
+python manage.py apm_probe_init \
+  --artifact opentelemetry-ruby-sdk.tar.gz \
+  --file_path /path/to/opentelemetry-ruby-sdk.tar.gz
+
+python manage.py apm_probe_init \
+  --artifact opentelemetry-cpp-sdk.tar.gz \
+  --file_path /path/to/opentelemetry-cpp-sdk.tar.gz
+
+python manage.py apm_probe_init \
+  --artifact opentelemetry-erlang-sdk.tar.gz \
+  --file_path /path/to/opentelemetry-erlang-sdk.tar.gz
+
+python manage.py apm_probe_init \
+  --artifact opentelemetry-swift-sdk.tar.gz \
+  --file_path /path/to/opentelemetry-swift-sdk.tar.gz
 ```
 
 本地开发可用 `uv run python manage.py ...`。`--artifact` 只接受上表白名单名字。
@@ -250,6 +316,10 @@ http://10.10.10.1:8011/api/v1/apm/open_api/probe/download/opentelemetry-dotnet-a
 http://10.10.10.1:8011/api/v1/apm/open_api/probe/download/opentelemetry-php-auto-linux-glibc-x64.tar.gz
 http://10.10.10.1:8011/api/v1/apm/open_api/probe/download/opentelemetry-dotnet-auto-windows.zip
 http://10.10.10.1:8011/api/v1/apm/open_api/probe/download/opentelemetry-ebpf-obi-linux-amd64.tar.gz
+http://10.10.10.1:8011/api/v1/apm/open_api/probe/download/opentelemetry-ruby-sdk.tar.gz
+http://10.10.10.1:8011/api/v1/apm/open_api/probe/download/opentelemetry-cpp-sdk.tar.gz
+http://10.10.10.1:8011/api/v1/apm/open_api/probe/download/opentelemetry-erlang-sdk.tar.gz
+http://10.10.10.1:8011/api/v1/apm/open_api/probe/download/opentelemetry-swift-sdk.tar.gz
 ```
 
 注意：
@@ -257,12 +327,12 @@ http://10.10.10.1:8011/api/v1/apm/open_api/probe/download/opentelemetry-ebpf-obi
 - OTLP 上报地址仍是 `http://<receiver_host>:4318`，与探针下载地址不是同一个端口。
 - 下载接口免登录，但只允许白名单文件名。
 - 目标主机（以及 docker 构建环境）必须能访问 `NODE_SERVER_URL`，不再需要访问
-  GitHub / PyPI / npm / NuGet / proxy.golang.org。
+  GitHub / PyPI / npm / NuGet / proxy.golang.org / RubyGems / Hex。
 - Kubernetes 脚本不在集群内 curl；注释里会带上同一下载地址，供制作应用镜像。
 
 ## 6. 验收
 
-对八个制品分别执行：
+对十二个制品分别执行：
 
 ```bash
 for artifact in \
@@ -273,7 +343,11 @@ for artifact in \
   opentelemetry-dotnet-auto-linux-glibc-x64.zip \
   opentelemetry-php-auto-linux-glibc-x64.tar.gz \
   opentelemetry-dotnet-auto-windows.zip \
-  opentelemetry-ebpf-obi-linux-amd64.tar.gz
+  opentelemetry-ebpf-obi-linux-amd64.tar.gz \
+  opentelemetry-ruby-sdk.tar.gz \
+  opentelemetry-cpp-sdk.tar.gz \
+  opentelemetry-erlang-sdk.tar.gz \
+  opentelemetry-swift-sdk.tar.gz
 do
   curl --fail --silent --show-error --location \
     --output "/tmp/${artifact}" \

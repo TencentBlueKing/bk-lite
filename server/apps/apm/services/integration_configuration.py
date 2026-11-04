@@ -9,8 +9,10 @@ from django.core.validators import URLValidator
 
 from apps.apm.services.contracts import IngestSnippet, IngestSnippetRequest
 from apps.apm.services.probe_artifacts import (
+    CPP_SDK_ARTIFACT_NAME,
     DOTNET_AUTO_ARTIFACT_NAME,
     DOTNET_WINDOWS_ARTIFACT_NAME,
+    ERLANG_SDK_ARTIFACT_NAME,
     GO_SDK_ARTIFACT_NAME,
     JAVA_AGENT_ARTIFACT_NAME,
     LANGUAGE_PROBE_ARTIFACTS,
@@ -18,6 +20,8 @@ from apps.apm.services.probe_artifacts import (
     OBI_ARTIFACT_NAME,
     PHP_AUTO_ARTIFACT_NAME,
     PYTHON_WHEELS_ARTIFACT_NAME,
+    RUBY_SDK_ARTIFACT_NAME,
+    SWIFT_SDK_ARTIFACT_NAME,
     ProbeArtifactNotFound,
     build_probe_artifact_download_url,
     get_probe_artifact_sha256,
@@ -89,6 +93,192 @@ if err != nil {
 otel.SetTracerProvider(tracerProvider)
 defer tracerProvider.Shutdown(context.Background())
 GO"""
+
+_RUBY_SDK_GUIDE = """# Ruby 无通用零代码探针；下面生成 Rack 初始化示例，不会覆盖应用源码。
+# opentelemetry-sdk 1.13.1
+# opentelemetry-exporter-otlp 0.37.0
+# opentelemetry-instrumentation-rack 0.31.2
+mkdir -p telemetry
+if [ -e telemetry/otel.rb.example ]; then
+  printf "%s\\n" "telemetry/otel.rb.example already exists; refusing to overwrite" >&2
+  exit 1
+fi
+cat > telemetry/otel.rb.example <<'RUBY'
+require "opentelemetry/sdk"
+require "opentelemetry/exporter/otlp"
+require "opentelemetry/instrumentation/rack"
+
+OpenTelemetry::SDK.configure do |c|
+  c.use "OpenTelemetry::Instrumentation::Rack"
+end
+RUBY
+cat <<'RUBY'
+审阅 telemetry/otel.rb.example 后将其加入应用启动，并在 config.ru 中加入：
+
+use *OpenTelemetry::Instrumentation::Rack::Instrumentation.instance.middleware_args
+RUBY"""
+
+_CPP_SDK_GUIDE = """# C++ 无通用零代码探针；下面生成最小入口 Span 示例，不会覆盖应用源码。
+# opentelemetry-cpp v1.30.0
+mkdir -p telemetry
+if [ -e telemetry/otel.cpp.example ]; then
+  printf "%s\\n" "telemetry/otel.cpp.example already exists; refusing to overwrite" >&2
+  exit 1
+fi
+cat > telemetry/otel.cpp.example <<'CPP'
+#include <cstdlib>
+#include <memory>
+#include <string>
+
+#include "opentelemetry/exporters/otlp/otlp_http_exporter_factory.h"
+#include "opentelemetry/sdk/trace/simple_processor_factory.h"
+#include "opentelemetry/sdk/trace/tracer_provider_factory.h"
+#include "opentelemetry/trace/provider.h"
+
+int main() {
+    opentelemetry::exporter::otlp::OtlpHttpExporterOptions options;
+    if (const char* endpoint = std::getenv("OTEL_EXPORTER_OTLP_ENDPOINT")) {
+        options.url = std::string(endpoint) + "/v1/traces";
+    }
+    auto exporter = opentelemetry::exporter::otlp::OtlpHttpExporterFactory::Create(options);
+    auto processor = opentelemetry::sdk::trace::SimpleSpanProcessorFactory::Create(std::move(exporter));
+    std::shared_ptr<opentelemetry::trace::TracerProvider> provider =
+        opentelemetry::sdk::trace::TracerProviderFactory::Create(std::move(processor));
+    opentelemetry::trace::Provider::SetTracerProvider(provider);
+    auto tracer = provider->GetTracer("app");
+    opentelemetry::trace::StartSpanOptions span_options;
+    span_options.kind = opentelemetry::trace::SpanKind::kServer;
+    auto span = tracer->StartSpan("GET /", {}, span_options);
+    span->End();
+    return 0;
+}
+CPP
+cat <<'CPP'
+审阅 telemetry/otel.cpp.example 后，对着 .otel-cpp-sdk/prefix 编译并启动进程。
+CPP"""
+
+_ERLANG_SDK_GUIDE = """# Erlang/Elixir 无通用零代码探针；下面生成示例，不会覆盖应用源码。
+# opentelemetry 1.7.0
+# opentelemetry_exporter 1.11.0
+mkdir -p telemetry
+if [ -e telemetry/rebar.config.example ] || [ -e telemetry/mix.exs.example ] \
+  || [ -e telemetry/otel.erl.example ] || [ -e telemetry/otel.ex.example ]; then
+  printf "%s\\n" "telemetry example already exists; refusing to overwrite" >&2
+  exit 1
+fi
+cat > telemetry/rebar.config.example <<'ERL'
+{deps, [
+  opentelemetry_api,
+  opentelemetry,
+  opentelemetry_exporter,
+  grpcbox,
+  chatterbox,
+  hpack,
+  ctx,
+  acceptor_pool,
+  gproc,
+  tls_certificate_check,
+  ssl_verify_fun
+]}.
+{overrides, [
+  {override, gproc, [{deps, []}]},
+  {override, grpcbox, [
+    {deps, [chatterbox, ctx, acceptor_pool, gproc]},
+    {project_plugins, []}
+  ]},
+  {override, chatterbox, [{deps, [hpack]}]},
+  {override, opentelemetry, [{deps, [opentelemetry_api]}]},
+  {override, opentelemetry_exporter, [
+    {deps, [grpcbox, tls_certificate_check, opentelemetry, opentelemetry_api]}
+  ]},
+  {override, tls_certificate_check, [
+    {deps, [ssl_verify_fun]},
+    {project_plugins, []}
+  ]}
+]}.
+ERL
+mkdir -p _checkouts
+ln -sfn ../.otel-erlang-sdk/opentelemetry_api _checkouts/opentelemetry_api
+ln -sfn ../.otel-erlang-sdk/opentelemetry _checkouts/opentelemetry
+ln -sfn ../.otel-erlang-sdk/opentelemetry_exporter _checkouts/opentelemetry_exporter
+ln -sfn ../.otel-erlang-sdk/grpcbox _checkouts/grpcbox
+ln -sfn ../.otel-erlang-sdk/ts_chatterbox _checkouts/chatterbox
+ln -sfn ../.otel-erlang-sdk/hpack_erl _checkouts/hpack
+ln -sfn ../.otel-erlang-sdk/ctx _checkouts/ctx
+ln -sfn ../.otel-erlang-sdk/acceptor_pool _checkouts/acceptor_pool
+ln -sfn ../.otel-erlang-sdk/gproc _checkouts/gproc
+ln -sfn ../.otel-erlang-sdk/tls_certificate_check _checkouts/tls_certificate_check
+ln -sfn ../.otel-erlang-sdk/ssl_verify_fun _checkouts/ssl_verify_fun
+cat > telemetry/mix.exs.example <<'EX'
+defp deps do
+  [
+    {:opentelemetry_api, path: "../.otel-erlang-sdk/opentelemetry_api", override: true},
+    {:opentelemetry, path: "../.otel-erlang-sdk/opentelemetry", override: true},
+    {:opentelemetry_exporter, path: "../.otel-erlang-sdk/opentelemetry_exporter", override: true},
+    {:grpcbox, path: "../.otel-erlang-sdk/grpcbox", override: true},
+    {:chatterbox, path: "../.otel-erlang-sdk/ts_chatterbox", override: true},
+    {:hpack, path: "../.otel-erlang-sdk/hpack_erl", override: true},
+    {:ctx, path: "../.otel-erlang-sdk/ctx", override: true},
+    {:acceptor_pool, path: "../.otel-erlang-sdk/acceptor_pool", override: true},
+    {:gproc, path: "../.otel-erlang-sdk/gproc", override: true},
+    {:tls_certificate_check, path: "../.otel-erlang-sdk/tls_certificate_check", override: true},
+    {:ssl_verify_fun, path: "../.otel-erlang-sdk/ssl_verify_fun", override: true}
+  ]
+end
+EX
+cat > telemetry/otel.erl.example <<'ERL'
+-module(otel_entry).
+-export([start/0]).
+
+start() ->
+    Tracer = opentelemetry:get_application_tracer(?MODULE),
+    SpanCtx = otel_tracer:start_span(Tracer, <<"GET /">>, #{kind => server}),
+    otel_span:end_span(SpanCtx),
+    ok.
+ERL
+cat > telemetry/otel.ex.example <<'EX'
+require OpenTelemetry.Tracer
+
+OpenTelemetry.Tracer.with_span "GET /", kind: :server do
+  :ok
+end
+EX
+cat <<'ERL'
+审阅 telemetry 下的示例后接入应用。rebar3 使用上面的 _checkouts，不要从 Hex 或 Git 拉取包。
+启动 opentelemetry_exporter 和 opentelemetry 后再调用 otel_entry:start/0，短命进程要等导出完成后再退出。
+ERL"""
+
+_SWIFT_SDK_GUIDE = """# Swift 无通用零代码探针；下面生成 Swift Package Manager 示例，不会覆盖应用源码。
+# opentelemetry-swift 2.6.0
+mkdir -p telemetry
+if [ -e telemetry/Package.swift.example ]; then
+  printf "%s\\n" "telemetry/Package.swift.example already exists; refusing to overwrite" >&2
+  exit 1
+fi
+cat > telemetry/Package.swift.example <<'SWIFT'
+// swift-tools-version: 6.2
+import PackageDescription
+
+let package = Package(
+    name: "app",
+    dependencies: [
+        .package(path: "../.otel-swift-sdk/opentelemetry-swift"),
+        .package(path: "../.otel-swift-sdk/opentelemetry-swift-core")
+    ],
+    targets: [
+        .executableTarget(
+            name: "app",
+            dependencies: [
+                .product(name: "OpenTelemetrySdk", package: "opentelemetry-swift-core"),
+                .product(name: "OpenTelemetryProtocolExporterHTTP", package: "opentelemetry-swift")
+            ]
+        )
+    ]
+)
+SWIFT
+cat <<'SWIFT'
+审阅 telemetry/Package.swift.example 后接入应用。依赖只使用本地 path，不要改成远端包地址。
+SWIFT"""
 
 
 @dataclass(frozen=True)
@@ -247,6 +437,10 @@ def _kubernetes_snippet(language: str, environment: dict[str, str], probe_downlo
             "应用镜像需预装 PHP 8.1–8.4 NTS 扩展，并从离线包安装 " + " ".join((*PHP_COMPOSER_PACKAGES, *PHP_DATABASE_PACKAGES)) + "。PDO 与 MySQLi 仅用于 PHP 8.2+。"
             f"离线包：{probe_download_url}"
         ),
+        "ruby": f"Ruby >= 3.3，无通用自动探针；应用需先加入 Rack 初始化。离线包：{probe_download_url}",
+        "cpp": f"C++ 无通用自动探针；应用需先对着 prefix 编译入口 Span。离线包：{probe_download_url}",
+        "erlang": f"Erlang/Elixir 无通用自动探针；应用需先加入 path 依赖和入口 Span。离线包：{probe_download_url}",
+        "swift": f"Swift 无通用自动探针；应用需先使用本地 Swift Package。离线包：{probe_download_url}",
     }
     runtime_environment = {
         "nodejs": {"NODE_OPTIONS": "--require @opentelemetry/auto-instrumentations-node/register"},
@@ -333,6 +527,32 @@ PHP_DATABASE_PACKAGES = (
     "open-telemetry/opentelemetry-auto-pdo:0.6.0",
     "open-telemetry/opentelemetry-auto-mysqli:0.5.0",
 )
+
+
+def _ruby_version_gate() -> str:
+    return (
+        'ruby -e \'major, minor, = RUBY_VERSION.split(".").map(&:to_i); '
+        'abort("Ruby 3.3 or newer is required") if major < 3 || (major == 3 && minor < 3)\''
+    )
+
+
+def _manual_archive_install(artifact_name: str, directory: str, follow_up: str = "") -> tuple[str, ...]:
+    steps = (f"mkdir -p {directory}", f"tar -xf {artifact_name} -C {directory}")
+    if follow_up:
+        return (*steps, follow_up)
+    return steps
+
+
+_MANUAL_SDK_ARCHIVES = {
+    "ruby": (
+        RUBY_SDK_ARTIFACT_NAME,
+        ".otel-ruby-sdk",
+        "gem install --local --no-document --ignore-dependencies .otel-ruby-sdk/cache/*.gem",
+    ),
+    "cpp": (CPP_SDK_ARTIFACT_NAME, ".otel-cpp-sdk", ""),
+    "erlang": (ERLANG_SDK_ARTIFACT_NAME, ".otel-erlang-sdk", ""),
+    "swift": (SWIFT_SDK_ARTIFACT_NAME, ".otel-swift-sdk", ""),
+}
 
 
 def _go_module_download(prefix: str) -> str:
@@ -583,6 +803,16 @@ def _host_install_commands(language: str, probe_download_url: str, probe_sha256:
                 _php_prepare_script("otel-php"),
             )
         )
+    if language in _MANUAL_SDK_ARCHIVES:
+        artifact, directory, follow_up = _MANUAL_SDK_ARCHIVES[language]
+        steps = [
+            _curl_download(probe_download_url, artifact),
+            _probe_sha256_check(artifact, probe_sha256),
+            *_manual_archive_install(artifact, directory, follow_up),
+        ]
+        if language == "ruby":
+            steps.insert(0, _ruby_version_gate())
+        return "\n".join(steps)
     return "# Install the selected OpenTelemetry SDK."
 
 
@@ -652,6 +882,27 @@ def _docker_install_commands(language: str, probe_download_url: str, probe_sha25
                 "sh -c " + shlex.quote(_php_prepare_script("/opt/otel-php")),
             )
         )
+    manual_archives = {
+        "ruby": (
+            RUBY_SDK_ARTIFACT_NAME,
+            "/opt/otel-ruby-sdk",
+            "gem install --local --no-document --ignore-dependencies /opt/otel-ruby-sdk/cache/*.gem",
+        ),
+        "cpp": (CPP_SDK_ARTIFACT_NAME, "/opt/otel-cpp-sdk", ""),
+        "erlang": (ERLANG_SDK_ARTIFACT_NAME, "/opt/otel-erlang-sdk", ""),
+        "swift": (SWIFT_SDK_ARTIFACT_NAME, "/opt/otel-swift-sdk", ""),
+    }
+    if language in manual_archives:
+        artifact_name, directory, follow_up = manual_archives[language]
+        output = f"/tmp/{artifact_name}"
+        commands = [
+            f"curl --fail --silent --show-error --location --insecure {quoted_url} --output {output}",
+            _probe_sha256_check(output, probe_sha256),
+            *_manual_archive_install(output, directory, follow_up),
+        ]
+        if language == "ruby":
+            commands.insert(0, _ruby_version_gate())
+        return "RUN " + " && ".join(commands)
     return "# Install the selected OpenTelemetry SDK in the image."
 
 
@@ -843,11 +1094,14 @@ class DjangoIntegrationConfigurationService:
             "OTEL_RESOURCE_ATTRIBUTES": resource,
             **_trace_sampler_environment(request.sample_rate),
         }
-        if request.language in {"dotnet", "php", "obi"}:
+        if request.language in {"dotnet", "php", "obi", "ruby", "cpp", "erlang", "swift"}:
             environment.update(_traces_only_environment())
         if request.language == "php":
             environment["OTEL_PHP_AUTOLOAD_ENABLED"] = "true"
+        if request.language in {"php", "ruby", "cpp", "erlang", "swift"}:
             environment["OTEL_TRACES_EXPORTER"] = "otlp"
+        if request.language == "erlang":
+            environment["OTEL_EXPORTER_OTLP_PROTOCOL"] = "http_protobuf"
 
         if request.language == "dotnet" and request.probe_platform == "windows":
             code = _windows_dotnet_snippet(
@@ -880,6 +1134,10 @@ class DjangoIntegrationConfigurationService:
                 "go": "./app",
                 "dotnet": "dotnet App.dll",
                 "php": "php app.php",
+                "ruby": "rackup config.ru",
+                "cpp": "./app",
+                "erlang": "./app",
+                "swift": "./app",
             }
             runtime_environment = {
                 "nodejs": {"NODE_OPTIONS": "--require @opentelemetry/auto-instrumentations-node/register"},
@@ -925,6 +1183,10 @@ class DjangoIntegrationConfigurationService:
                 "go": _GO_SDK_GUIDE,
                 "dotnet": "dotnet App.dll",
                 "php": "php app.php",
+                "ruby": _RUBY_SDK_GUIDE,
+                "cpp": _CPP_SDK_GUIDE,
+                "erlang": _ERLANG_SDK_GUIDE,
+                "swift": _SWIFT_SDK_GUIDE,
             }
             export_lines = [f"# {runtime_profile.guidance}", *runtime_profile.identity_setup]
             for key, value in environment.items():

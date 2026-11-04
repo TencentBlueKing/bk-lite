@@ -51,6 +51,10 @@ const INTEGRATION_GROUPS: { key: string; title: string; icon: ReactNode; methods
       { key: 'dotnet', title: '.NET', icon: <DotNetOutlined aria-hidden="true" />, language: 'dotnet', available: true },
       { key: 'go', title: 'Go', icon: <CodeOutlined aria-hidden="true" />, language: 'go', available: true },
       { key: 'php', title: 'PHP', icon: <CodeOutlined aria-hidden="true" />, language: 'php', available: true },
+      { key: 'ruby', title: 'Ruby', icon: <CodeOutlined aria-hidden="true" />, language: 'ruby', available: true },
+      { key: 'cpp', title: 'C++', icon: <CodeOutlined aria-hidden="true" />, language: 'cpp', available: true },
+      { key: 'erlang', title: 'Erlang/Elixir', icon: <CodeOutlined aria-hidden="true" />, language: 'erlang', available: true },
+      { key: 'swift', title: 'Swift', icon: <CodeOutlined aria-hidden="true" />, language: 'swift', available: true },
     ],
   },
   { key: 'otel', title: 'OpenTelemetry', icon: <ApiOutlined aria-hidden="true" />, methods: [{ key: 'otel-collector', title: 'OTel Collector', icon: <DeploymentUnitOutlined aria-hidden="true" />, available: false }] },
@@ -221,6 +225,26 @@ function snippetOperationGuide(
       docker: t('apm.integration.guideGoDocker', '将 SDK 依赖安装进镜像，完成 Go SDK 初始化后重新构建、启动容器。'),
       kubernetes: t('apm.integration.guideGoKubernetes', '将以下环境变量合并到应用 Pod；应用二进制需先完成 OpenTelemetry Go SDK 初始化，然后滚动重启。'),
     },
+    ruby: {
+      agent: t('apm.integration.guideRubyHost', '按以下指南审阅 Rack 初始化示例，接入应用代码后重启 Ruby 进程。'),
+      docker: t('apm.integration.guideRubyDocker', '将离线 gem 安装进镜像，完成 Rack 初始化后重新构建、启动容器。'),
+      kubernetes: t('apm.integration.guideRubyKubernetes', '将以下环境变量合并到应用 Pod；应用需先完成 Rack 初始化，然后滚动重启。'),
+    },
+    cpp: {
+      agent: t('apm.integration.guideCppHost', '按以下指南审阅入口 Span 示例，对着离线 prefix 编译后重启进程。'),
+      docker: t('apm.integration.guideCppDocker', '将离线 prefix 放进镜像，完成入口 Span 后重新构建、启动容器。'),
+      kubernetes: t('apm.integration.guideCppKubernetes', '将以下环境变量合并到应用 Pod；应用二进制需先完成入口 Span，然后滚动重启。'),
+    },
+    erlang: {
+      agent: t('apm.integration.guideErlangHost', '按以下指南审阅 path 依赖和入口 Span 示例，接入应用后重启进程。'),
+      docker: t('apm.integration.guideErlangDocker', '将离线 Hex 包放进镜像，完成入口 Span 后重新构建、启动容器。'),
+      kubernetes: t('apm.integration.guideErlangKubernetes', '将以下环境变量合并到应用 Pod；应用需先完成入口 Span，然后滚动重启。'),
+    },
+    swift: {
+      agent: t('apm.integration.guideSwiftHost', '按以下指南审阅本地 Swift Package 示例，接入应用后重新编译并重启。'),
+      docker: t('apm.integration.guideSwiftDocker', '将本地 Swift Package 放进镜像，完成入口 Span 后重新构建、启动容器。'),
+      kubernetes: t('apm.integration.guideSwiftKubernetes', '将以下环境变量合并到应用 Pod；应用需先使用本地 Swift Package，然后滚动重启。'),
+    },
   };
   return guides[language][mode];
 }
@@ -247,7 +271,9 @@ function ProbeCapabilityPane({
   t: Translate;
 }) {
   const capability = getProbeCapability(language, platform);
-  const items = kind === 'frameworks' ? capability.frameworks : capability.inferredComponents;
+  const items = (kind === 'frameworks' ? capability.frameworks : capability.inferredComponents).map((item) => (
+    item === 'entry-span' ? t('apm.integration.entrySpan', '手动入口 Span') : item
+  ));
   return (
     <div className="flex flex-col gap-3 pt-1">
       <Typography.Text type="secondary" className="text-xs">
@@ -321,6 +347,22 @@ export default function ApmIntegrationAddPage() {
       },
       go: {
         description: t('apm.integration.goDesc', '手动接入，生成 OpenTelemetry Provider 示例'),
+        badge: t('apm.integration.manualSdk', '手动 SDK'),
+      },
+      ruby: {
+        description: t('apm.integration.rubyDesc', '手动接入，生成 Rack 初始化示例'),
+        badge: t('apm.integration.manualSdk', '手动 SDK'),
+      },
+      cpp: {
+        description: t('apm.integration.cppDesc', '手动接入，生成最小入口 Span 示例'),
+        badge: t('apm.integration.manualSdk', '手动 SDK'),
+      },
+      erlang: {
+        description: t('apm.integration.erlangDesc', '手动接入，生成 Erlang/Elixir path 依赖示例'),
+        badge: t('apm.integration.manualSdk', '手动 SDK'),
+      },
+      swift: {
+        description: t('apm.integration.swiftDesc', '手动接入，生成本地 Swift Package 示例'),
         badge: t('apm.integration.manualSdk', '手动 SDK'),
       },
       'otel-collector': {
@@ -405,16 +447,39 @@ export default function ApmIntegrationAddPage() {
     label: region.name,
   })), [cloudRegions]);
   const isGo = selectedMethod?.language === 'go';
+  const isManualSdk = isGo
+    || selectedMethod?.language === 'ruby'
+    || selectedMethod?.language === 'cpp'
+    || selectedMethod?.language === 'erlang'
+    || selectedMethod?.language === 'swift';
   const isObi = selectedMethod?.language === 'obi';
   const isDotnet = selectedMethod?.language === 'dotnet';
   const probePlatform: ProbePlatform = isDotnet && formValues?.probe_platform === 'windows' ? 'windows' : 'linux';
   const hostOnly = isObi || probePlatform === 'windows';
   const activeMode: SnippetMode = hostOnly ? 'agent' : mode;
+  const hostRuntimeLabel = isGo
+    ? t('apm.integration.goManual', 'Go 手动 SDK')
+    : isManualSdk
+      ? t('apm.integration.manualSdkRuntime', '{title} 手动 SDK', { title: selectedMethod?.title ?? '' })
+      : t('apm.integration.autoProbe', '{title} 自动探针', { title: selectedMethod?.title ?? '' });
   const generatedSnippetLabel = activeMode === 'kubernetes'
     ? t('apm.integration.k8sSnippet', 'Kubernetes 配置片段')
     : probePlatform === 'windows'
       ? t('apm.integration.powershellSnippet', 'PowerShell 接入片段')
-      : isGo ? t('apm.integration.goGuide', 'Go SDK 接入指南') : t('apm.integration.shellSnippet', 'Shell 接入片段');
+      : isGo
+        ? t('apm.integration.goGuide', 'Go SDK 接入指南')
+        : isManualSdk
+          ? t('apm.integration.manualGuide', '{title} SDK 接入指南', { title: selectedMethod?.title ?? '' })
+          : t('apm.integration.shellSnippet', 'Shell 接入片段');
+  const copyAriaLabel = probePlatform === 'windows'
+    ? t('apm.integration.copyPowershell', '复制 PowerShell 接入片段')
+    : activeMode === 'kubernetes'
+      ? t('apm.integration.copyK8s', '复制 Kubernetes 配置片段')
+      : isGo
+        ? t('apm.integration.copyGoGuide', '复制 Go SDK 接入指南')
+        : isManualSdk
+          ? t('apm.integration.copyManualGuide', '复制 {title} SDK 接入指南', { title: selectedMethod?.title ?? '' })
+          : t('apm.integration.copyShellSnippet', '复制 Shell 接入片段');
 
   const openMethod = (method: IntegrationMethod) => {
     if (!method.available || !method.language) return;
@@ -626,7 +691,7 @@ export default function ApmIntegrationAddPage() {
                   options={hostOnly
                     ? [{ label: isObi ? t('apm.integration.obiHost', '主机（指定 Go 进程）') : t('apm.integration.autoProbe', '{title} 自动探针', { title: selectedMethod?.title ?? '' }), value: 'agent' }]
                     : [
-                      { label: isGo ? t('apm.integration.goManual', 'Go 手动 SDK') : t('apm.integration.autoProbe', '{title} 自动探针', { title: selectedMethod?.title ?? '' }), value: 'agent' },
+                      { label: hostRuntimeLabel, value: 'agent' },
                       { label: t('apm.integration.dockerRuntime', 'Docker 运行（-e 注入）'), value: 'docker' },
                       { label: t('apm.integration.k8sPod', 'Kubernetes Pod（Downward API）'), value: 'kubernetes' },
                     ]}
@@ -671,13 +736,7 @@ export default function ApmIntegrationAddPage() {
                 <div role="group" aria-labelledby="apm-shell-snippet-title" className="mb-2 flex items-center justify-between gap-3">
                   <Typography.Text id="apm-shell-snippet-title" strong>{generatedSnippetLabel}</Typography.Text>
                   <Button
-                    aria-label={probePlatform === 'windows'
-                      ? t('apm.integration.copyPowershell', '复制 PowerShell 接入片段')
-                      : isGo && activeMode !== 'kubernetes'
-                        ? t('apm.integration.copyGoGuide', '复制 Go SDK 接入指南')
-                        : activeMode === 'kubernetes'
-                          ? t('apm.integration.copyK8s', '复制 Kubernetes 配置片段')
-                          : t('apm.integration.copyShellSnippet', '复制 Shell 接入片段')}
+                    aria-label={copyAriaLabel}
                     icon={<CopyOutlined aria-hidden />}
                     onClick={() => void copyWithFeedback(
                       snippet.code,

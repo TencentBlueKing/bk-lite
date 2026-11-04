@@ -84,7 +84,7 @@ class ApmIntegrationConfigSerializer(OpenAPIRequestSerializer):
 
     application_id = serializers.CharField(max_length=128)
     cloud_region_id = serializers.IntegerField(min_value=1)
-    language = serializers.ChoiceField(choices=("python", "nodejs", "java", "go", "dotnet", "php", "obi"))
+    language = serializers.ChoiceField(choices=("python", "nodejs", "java", "go", "dotnet", "php", "obi", "ruby", "cpp", "erlang", "swift"))
     runtime = serializers.ChoiceField(choices=("kubernetes", "docker", "host", "other"))
     service_name = serializers.CharField(max_length=256)
     service_version = serializers.CharField(required=False, allow_blank=True, max_length=256)

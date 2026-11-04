@@ -18,6 +18,18 @@ describe('APM 探针能力矩阵', () => {
     expect(PROBE_CAPABILITY_MATRIX.obi.frameworks).toEqual(['Go net/http']);
     expect(PROBE_CAPABILITY_MATRIX.python.frameworks).toEqual(expect.arrayContaining(['Django', 'Flask', 'FastAPI']));
     expect(PROBE_CAPABILITY_MATRIX.go.manualInstrumentation).toBe(true);
+    expect(PROBE_CAPABILITY_MATRIX.ruby.version).toBe('SDK 1.13.1');
+    expect(PROBE_CAPABILITY_MATRIX.ruby.frameworks).toEqual(['Rack']);
+    expect(PROBE_CAPABILITY_MATRIX.cpp.version).toBe('v1.30.0');
+    expect(PROBE_CAPABILITY_MATRIX.cpp.frameworks).toEqual(['entry-span']);
+    expect(PROBE_CAPABILITY_MATRIX.erlang.frameworks).toEqual(['entry-span']);
+    expect(PROBE_CAPABILITY_MATRIX.swift.frameworks).toEqual(['entry-span']);
+    expect(PROBE_CAPABILITY_MATRIX.cpp.manualInstrumentation).toBe(false);
+    expect(PROBE_CAPABILITY_MATRIX.erlang.version).toBe('SDK 1.7.0');
+    expect(PROBE_CAPABILITY_MATRIX.swift.version).toBe('2.6.0');
+    expect(PROBE_CAPABILITY_MATRIX.cpp.inferredComponents).toEqual([]);
+    expect(PROBE_CAPABILITY_MATRIX.erlang.inferredComponents).toEqual([]);
+    expect(PROBE_CAPABILITY_MATRIX.swift.inferredComponents).toEqual([]);
     expect(getProbeCapability('dotnet').frameworks).not.toContain('ASP.NET');
     expect(getProbeCapability('dotnet', 'windows').frameworks).toEqual(
       expect.arrayContaining(['ASP.NET Core', 'ASP.NET Framework', 'gRPC']),

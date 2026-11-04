@@ -235,6 +235,10 @@ type IntegrationKind =
   | 'dotnet'
   | 'go'
   | 'php'
+  | 'ruby'
+  | 'cpp'
+  | 'erlang'
+  | 'swift'
   | 'otc'
   | 'ebpf'
   | 'k8s';
@@ -254,6 +258,10 @@ const INTEGRATION_GROUPS: Array<{
       { kind: 'dotnet', title: '.NET', desc: '自动探针，支持 Linux x86_64 glibc' },
       { kind: 'go', title: 'Go', desc: '手动接入，生成 OpenTelemetry Provider 示例' },
       { kind: 'php', title: 'PHP', desc: '自动探针，支持 PHP NTS 8.1–8.4，含 Laravel / Symfony / Slim' },
+      { kind: 'ruby', title: 'Ruby', desc: '手动接入，生成 Rack 初始化示例', tag: '手动 SDK' },
+      { kind: 'cpp', title: 'C++', desc: '手动接入，生成最小入口 Span 示例', tag: '手动 SDK' },
+      { kind: 'erlang', title: 'Erlang/Elixir', desc: '手动接入，生成 path 依赖示例', tag: '手动 SDK' },
+      { kind: 'swift', title: 'Swift', desc: '手动接入，生成本地 Swift Package 示例', tag: '手动 SDK' },
     ],
   },
   {

@@ -23,6 +23,10 @@ DOTNET_AUTO_ARTIFACT_NAME = "opentelemetry-dotnet-auto-linux-glibc-x64.zip"
 DOTNET_WINDOWS_ARTIFACT_NAME = "opentelemetry-dotnet-auto-windows.zip"
 PHP_AUTO_ARTIFACT_NAME = "opentelemetry-php-auto-linux-glibc-x64.tar.gz"
 OBI_ARTIFACT_NAME = "opentelemetry-ebpf-obi-linux-amd64.tar.gz"
+RUBY_SDK_ARTIFACT_NAME = "opentelemetry-ruby-sdk.tar.gz"
+CPP_SDK_ARTIFACT_NAME = "opentelemetry-cpp-sdk.tar.gz"
+ERLANG_SDK_ARTIFACT_NAME = "opentelemetry-erlang-sdk.tar.gz"
+SWIFT_SDK_ARTIFACT_NAME = "opentelemetry-swift-sdk.tar.gz"
 
 # 允许对外下载的探针制品白名单；下载接口只接受这里列出的名字，
 # 不接受任意对象 key。
@@ -35,6 +39,10 @@ PROBE_ARTIFACT_OBJECT_KEYS = {
     DOTNET_WINDOWS_ARTIFACT_NAME: "apm/probe/dotnet/opentelemetry-dotnet-auto-windows.zip",
     PHP_AUTO_ARTIFACT_NAME: "apm/probe/php/opentelemetry-php-auto-linux-glibc-x64.tar.gz",
     OBI_ARTIFACT_NAME: "apm/probe/ebpf/opentelemetry-ebpf-obi-linux-amd64.tar.gz",
+    RUBY_SDK_ARTIFACT_NAME: "apm/probe/ruby/opentelemetry-ruby-sdk.tar.gz",
+    CPP_SDK_ARTIFACT_NAME: "apm/probe/cpp/opentelemetry-cpp-sdk.tar.gz",
+    ERLANG_SDK_ARTIFACT_NAME: "apm/probe/erlang/opentelemetry-erlang-sdk.tar.gz",
+    SWIFT_SDK_ARTIFACT_NAME: "apm/probe/swift/opentelemetry-swift-sdk.tar.gz",
 }
 
 LANGUAGE_PROBE_ARTIFACTS = {
@@ -45,6 +53,10 @@ LANGUAGE_PROBE_ARTIFACTS = {
     "dotnet": DOTNET_AUTO_ARTIFACT_NAME,
     "php": PHP_AUTO_ARTIFACT_NAME,
     "obi": OBI_ARTIFACT_NAME,
+    "ruby": RUBY_SDK_ARTIFACT_NAME,
+    "cpp": CPP_SDK_ARTIFACT_NAME,
+    "erlang": ERLANG_SDK_ARTIFACT_NAME,
+    "swift": SWIFT_SDK_ARTIFACT_NAME,
 }
 
 _EXECUTABLE_PART = re.compile(r"^[A-Za-z0-9._+-]+$")

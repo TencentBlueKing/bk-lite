@@ -14,7 +14,7 @@ APM 接入已经按 OpenTelemetry 官方探针交付：一种语言钉一个版�
 
 分两批补齐，调用链仍然只收 Trace。
 
-第一批补 PHP 零代码、.NET Windows 制品和 eBPF，并改掉三处页面口径。PHP 是一张新语言卡片。Windows 是同一张 .NET 卡片上的第二份制品，Linux 下载地址不变。eBPF 打开接入页上已经存在、目前标为规划中的那张卡片，安装片段只盯用户指定的 Go 可执行文件。第二批按现有 Go SDK 的方式补四种手动语言，第一批不打开这四张卡片。
+第一批补 PHP 零代码、.NET Windows 制品和 eBPF，并改掉三处页面口径。PHP 是一张新语言卡片。Windows 是同一张 .NET 卡片上的第二份制品，Linux 下载地址不变。eBPF 打开接入页上已经存在、目前标为规划中的那张卡片，安装片段只盯用户指定的 Go 可执行文件。第二批按现有 Go SDK 的方式补 Ruby、C++、Erlang/Elixir、Swift 四种手动语言。
 
 页面只写进了离线包、并且该版本默认会打出的库。拓扑推断查询不改：任何语言打出 Client Span，应用详情画布仍按现有别名出推断下游。
 
@@ -34,7 +34,7 @@ APM 接入已经按 OpenTelemetry 官方探针交付：一种语言钉一个版�
 
 ### 批次与卡片
 
-- 第一批交付 PHP、.NET Windows、eBPF，以及三处口径修正。第二批卡片保持不可用，直到该语言的版本、制品和片段按下面的手动 SDK 规则落地。
+- 第一批交付 PHP、.NET Windows、eBPF，以及三处口径修正。第二批在版本写入发布手册后打开 Ruby、C++、Erlang/Elixir、Swift。
 - PHP 使用语言 `php`。eBPF 使用语言 `obi`，挂在现有 eBPF 卡片上，不挂在 Go 语言下面。Kubernetes Operator 和自建 Collector 卡片保持不可用。
 - 接入配置仍然不落库。`service.namespace` 等于已创建应用 ID，组织继承应用，OTLP 不携带组织 ID，采样率只写进本次片段。这些约定对新语言不做例外。
 - 区域 Collector 保持只有 traces 流水线。不新增指标流水线，不把 OBI 或 PHP 的指标写入监控的 VictoriaMetrics，也不写入 APM 聚合库。
@@ -96,9 +96,14 @@ APM 接入已经按 OpenTelemetry 官方探针交付：一种语言钉一个版�
 ### 第二批手动 SDK
 
 - 顺序是 Ruby，然后 C++、Erlang/Elixir、Swift。每种语言一个离线包、一个钉死版本、一段片段，Trace 打到现有 OTLP 地址，指标和日志导出关闭。
-- 版本取打包当日该语言最新的非预发布 Trace SDK，写入发布手册后再把卡片设为可用。卡片未打开前，白名单不放空制品名。
-- Ruby 验收一个 Web 进程的入口 Span。后三种各自一个最小进程的入口 Span。Swift 使用 Swift Package Manager。
-- 交付形态对齐现有 Go SDK：系统内下载、校验 SHA-256、不访问公网、不覆盖已有应用源码。
+- 2026-11-04 钉死的非预发布版本：Ruby `opentelemetry-sdk` 1.13.1、`opentelemetry-exporter-otlp` 0.37.0、`opentelemetry-instrumentation-rack` 0.31.2；C++ `opentelemetry-cpp` v1.30.0；Erlang/Elixir `opentelemetry` 1.7.0、`opentelemetry_exporter` 1.11.0；Swift `opentelemetry-swift` 2.6.0。这些版本写入发布手册后，四张卡片可用。
+- 语言名分别是 `ruby`、`cpp`、`erlang`、`swift`。Erlang/Elixir 共用 `erlang` 这一张卡片。Swift 使用 Swift Package Manager，片段面向 Linux，不提供 macOS 安装步骤。
+- Ruby 验收一个 Rack Web 进程的入口 Span。后三种各自一个最小进程的入口 Span。
+- 交付形态对齐现有 Go SDK：系统内下载、校验 SHA-256、不访问公网、不覆盖已有应用源码。片段生成示例文件；目标文件已存在时退出。
+- 制品名：`opentelemetry-ruby-sdk.tar.gz`、`opentelemetry-cpp-sdk.tar.gz`、`opentelemetry-erlang-sdk.tar.gz`、`opentelemetry-swift-sdk.tar.gz`。对象 key 分别在 `apm/probe/ruby/`、`apm/probe/cpp/`、`apm/probe/erlang/`、`apm/probe/swift/`。四种语言传入 `probe_platform=windows` 时拒绝生成片段。
+- Erlang 片段的 OTLP 协议值是 `http_protobuf`，对应同一条 OTLP/HTTP 上报地址。其他语言仍是 `http/protobuf`。
+- Erlang 归档包含 `opentelemetry` 1.7.0、`opentelemetry_exporter` 1.11.0、`opentelemetry_api` 1.5.0，以及它们编译所需的 Hex 传递依赖。rebar3 没有 path 依赖类型，片段使用 `_checkouts`。Mix 示例使用本地 path。
+- Swift 归档包含 `opentelemetry-swift` 2.6.0、配套 `opentelemetry-swift-core` 2.6.0，以及 HTTP exporter 编译所需的 `swift-atomics` 1.3.1、`swift-log` 1.16.2、`swift-protobuf` 1.39.0。包内依赖改为本地 path，清单只保留 HTTP Trace exporter。片段 tools 版本是 6.2。
 
 ### 失败与权限
 
@@ -117,7 +122,8 @@ APM 接入已经按 OpenTelemetry 官方探针交付：一种语言钉一个版�
 - PHP：host 与 docker 含系统内下载地址、SHA-256 校验和离线 Composer 包名。kubernetes 与现有语言一样，是可解析的环境 patch，注释中带下载地址，环境变量关闭指标和日志，不在 patch 里重复校验和。四种运行方式都含 NTS 与 8.1–8.4 的说明。片段不含 `pecl`、`packagist.org`、`https://github.com`、ARM 或 Windows 安装步骤。host 与 docker 通过 `sh -n`。传入 `probe_platform=windows` 被拒绝。
 - .NET：缺省平台的片段仍含 `linux-x64` 原生库路径和现有 Linux 制品名，不含 Windows 制品名。Windows host 片段含 Windows 制品名、SHA-256 校验、ASP.NET Framework 说明，不含 `linux-x64` 的 `.so` 路径，不含 `Register-OpenTelemetryForWindowsService`、`Restart-Service` 和注册表写入。Windows 片段不纳入 `sh -n`。Windows 加 docker 或 kubernetes 被拒绝。
 - eBPF：host 片段含 amd64 制品、SHA-256、Config v2、关闭指标、以及校验后的绝对路径发现规则。片段不含 arm64 制品名，不含端口发现。空路径、相对路径、带空格或元字符的路径被拒绝。非 host 运行方式被拒绝。
-- 接入页：PHP 卡片可用，能力只含约定的六个库。eBPF 卡片可用且只写 Go `net/http`。Operator 与自建 Collector 仍不可用。Node.js 文案和能力列表不含 Fastify。Go 推断下游不含那四种库，框架列表仍含 Gin 与 Echo。Linux .NET 能力不含 ASP.NET Framework，Windows 能力含它。新增文案中英都有词条。
+- 接入页：PHP 卡片可用，能力只含约定的六个库。eBPF 卡片可用且只写 Go `net/http`。Operator 与自建 Collector 仍不可用。Node.js 文案和能力列表不含 Fastify。Go 推断下游不含那四种库，框架列表仍含 Gin 与 Echo。Linux .NET 能力不含 ASP.NET Framework，Windows 能力含它。Ruby 只写 Rack。C++、Erlang/Elixir、Swift 只写手动入口 Span，推断下游为空。新增文案中英都有词条。
+- 第二批：四种语言的 host 与 docker 含系统内下载地址、SHA-256 校验，且不含 `https://github.com`、`rubygems.org`、`hex.pm`。host 片段在示例文件已存在时退出。kubernetes 带下载地址，不重复校验和。Erlang 片段的协议值是 `http_protobuf`。传入 `probe_platform=windows` 被拒绝。
 - 权限：新语言的接入配置沿用现有接入页查看权限和双租户用例。无权限组织不能为该应用生成片段。下载接口仍只按白名单返回，不新增登录态。
 
 本地验证分成两道门，不能互相替代。
@@ -135,6 +141,7 @@ APM 接入已经按 OpenTelemetry 官方探针交付：一种语言钉一个版�
 - PHP：一台 Linux x86_64 glibc、PHP 8.2 NTS 的 Slim 进程打出入口 Span。片段在 ZTS 或 8.0 上退出。
 - .NET：一台 Windows 主机上的 ASP.NET Core 打出入口 Span，安装过程没有重启无关 Windows 服务。
 - eBPF：一台内核符合支持矩阵的 Linux amd64 上，未装 Go SDK 的 `net/http` 打出入口 Span；同机一个已装 Java 或 Go SDK 的进程没有第二份 Trace。指标不进监控库，也不进 APM 聚合库。
+- 第二批：Ruby 的 Rack 入口 Span，以及 C++、Erlang/Elixir、Swift 各自一个最小进程入口 Span。缺编译环境的条目保持未完成。
 
 ## Out of Scope
 
@@ -159,3 +166,5 @@ APM 接入已经按 OpenTelemetry 官方探针交付：一种语言钉一个版�
 - ADR 0008 不变：片段仍指向受信区域的 OTLP 地址，不生成 APM Token。
 - 官方 PHP 扩展 1.4.2 的 Release 资产只有 Windows 预编译包。Linux `.so` 是本系统的构建产物，不是把官方 zip 改名。
 - 2026-11-04 完成第一批代码。合并门禁：`test_ingest_snippets.py` 与不依赖数据库的制品测试通过。`test_probe_artifacts.py` 里 5 个下载接口用例，以及 `test_api_permissions.py`，仍在 sqlite 建库时停在既有错误 `NewSessionEventRelation has no field named 'event'`。前端接入页与能力矩阵测试通过。`pnpm type-check` 停在既有的 node-manager 类型错误，本次 APM 文件不在其中。`pnpm test:apm-i18n` 停在既有的其他 APM 页面文案问题。发布门禁的真实 Span 未执行。
+- 2026-11-04 完成第二批代码。四种手动 SDK 的片段测试和接入页测试通过。`test_probe_artifacts.py` 的 5 个下载用例仍在 sqlite 建库时失败，这次的错误是既有字段 `NewApmIngestSourceOrganization.ingest_source`。
+- 2026-11-04 在本机 Colima 的 linux/arm64 容器里，对既有区域 Collector 的 OTLP/HTTP `:4318` 打出入口 Span：Ruby Rack 服务 `ruby-rack-b2`（SDK `opentelemetry` 1.13.1）、Erlang 服务 `erlang-entry-b2`（SDK `opentelemetry` 1.7.0）、C++ 服务 `cpp-entry-b2`（SDK `opentelemetry` 1.30.0）、Swift 服务 `swift-entry-b2`。四条 Span 都是 server，资源带 `bk.cloud_region.id=local`。这证明 SDK 和现有采集链路，不是 amd64 发货门禁。Ruby 的 gem 缓存是 `aarch64-linux-gnu`，不能当作 amd64 制品。临时容器和镜像已删除，没有把这四份包写入共享对象存储。
