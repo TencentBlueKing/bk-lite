@@ -15,6 +15,7 @@ import { useNamespaceApi } from "@/app/ops-analysis/api/namespace";
 import { useUserInfoContext } from "@/context/userInfo";
 import { useTranslation } from "@/utils/i18n";
 import useUnsavedConfirm from "@/hooks/useUnsavedConfirm";
+import { markFormPristine } from "@/utils/formPristine";
 import {
   DataSourcePreviewResult,
   DataSourceSourceType,
@@ -561,6 +562,8 @@ const OperateModal: React.FC<OperateModalProps> = ({
         t,
       });
       form.setFieldsValue(hydrated.formValues);
+      // setFieldsValue 在 rc-field-form 2.x 会标记 touched，回填后清掉以免误报未保存
+      markFormPristine(form);
       setParams(hydrated.params);
       setSchemaFields(hydrated.schemaFields);
       if (hydrated.excelPreview) {
@@ -643,6 +646,8 @@ const OperateModal: React.FC<OperateModalProps> = ({
     }
 
     form.setFieldsValue({ namespaces: [namespaceList[0].id] });
+    // 只清掉这次程序赋值。命名空间列表可能晚于用户输入到达，不能把整张表单重新标成未改。
+    form.setFields([{ name: "namespaces", touched: false }]);
   }, [open, currentRow, namespaceList, form]);
 
   useEffect(() => {
