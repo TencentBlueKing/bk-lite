@@ -58,7 +58,8 @@ export function selectMobileLoginBindings(
 }
 
 export function resolveInitialMobileBindingId(bindings: PublicLoginBinding[]): number | null {
-  return bindings[0]?.id ?? null;
+  const builtin = bindings.find((binding) => isBuiltinLoginBinding(binding));
+  return builtin?.id ?? bindings[0]?.id ?? null;
 }
 
 export function resolveSelectedMobileBinding(

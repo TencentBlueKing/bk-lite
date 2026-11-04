@@ -297,6 +297,9 @@ def _resolve_platform_user(binding: LoginAuthBinding, external_user: dict):
 _PUBLIC_EVIDENCE_MODES = ("oauth", "jsapi")
 
 
+_DESCRIBE_CLIENT_LOGIN_FAILED = "event=login_auth_client_login_describe_failed provider_key=%s failed_stage=%s error_type=%s"
+
+
 def describe_public_client_login(instance) -> dict:
     runtime_service = RuntimeApplicationService()
     try:
@@ -310,9 +313,11 @@ def describe_public_client_login(instance) -> dict:
         return {"evidence_modes": []}
     except Exception as error:
         logger.warning(
-            "event=login_auth_client_login_describe_failed provider_key=%s error_type=%s",
+            _DESCRIBE_CLIENT_LOGIN_FAILED,
             getattr(instance, "provider_key", ""),
+            "describe_client_login",
             type(error).__name__,
+            exc_info=safe_exception_info(error),
         )
         return {"evidence_modes": []}
     if not getattr(result, "success", False):

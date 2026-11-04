@@ -365,6 +365,29 @@ test('session keeps otp and temporary password off the password sign-in path', a
   assert.equal(noticeForExternalSession(otp.status, '飞书').reason, 'otp_required');
 });
 
+test('session treats enable_otp alone as a normal token session', async () => {
+  const { establishH5SessionFromLoginResult } = await loadTypeScriptModule('src/auth/im-login/session.ts');
+  const calls = [];
+  const result = await establishH5SessionFromLoginResult(
+    { enable_otp: true, token: 'backend-token', username: 'ada', id: 9 },
+    {
+      signIn: async (provider, options) => {
+        calls.push(['signIn', provider, JSON.parse(String(options.userData))]);
+        return { ok: true };
+      },
+      getSession: async () => ({ user: { token: 'backend-token' } }),
+      signOut: async () => {
+        throw new Error('should not sign out');
+      },
+    },
+  );
+
+  assert.deepEqual(result, { status: 'success', token: 'backend-token' });
+  assert.equal(calls[0][0], 'signIn');
+  assert.equal(calls[0][2].enable_otp, true);
+  assert.equal(calls[0][2].token, 'backend-token');
+});
+
 test('otp and temporary password use the desktop prompts instead of a password-only notice', async () => {
   const { runSilentImLogin } = await loadTypeScriptModule('src/auth/im-login/shell.ts');
   const { completeOAuthReturn } = await loadTypeScriptModule('src/auth/im-login/oauth.ts');
@@ -432,11 +455,10 @@ test('external sign-in label skips a second 登录 when the binding name already
   assert.equal(en.login.externalUse, 'Use {name}');
 });
 
-test('external login button reuses the sign-in button style', async () => {
+test('login page reuses the sign-in button style and method switcher', async () => {
   const { LOGIN_ACTION_BUTTON_CLASS, loginActionButtonStyle } = await loadTypeScriptModule(
     'src/auth/im-login/login-button-style.ts',
   );
-  const buttons = await readFile(new URL('../src/auth/im-login/external-login-buttons.tsx', import.meta.url), 'utf8');
   const page = await readFile(new URL('../src/app/login/page.tsx', import.meta.url), 'utf8');
 
   assert.equal(LOGIN_ACTION_BUTTON_CLASS, 'w-full h-11 rounded-lg shadow-sm');
@@ -452,16 +474,13 @@ test('external login button reuses the sign-in button style', async () => {
     '--border-radius': '0.5rem',
   });
   assert.equal(loginActionButtonStyle(true).backgroundColor, '#e5e7eb');
-  assert.equal(buttons.includes('loginActionButtonStyle'), true);
   assert.equal(page.includes('loginActionButtonStyle'), true);
-  assert.equal(buttons.includes('provider_key'), false);
-  assert.equal(buttons.includes('fill="outline"'), false);
-  assert.equal(buttons.includes('icon-feishu'), false);
-  assert.equal(buttons.includes('externalSignInMessageId'), true);
+  assert.equal(page.includes('externalSignInMessageId'), true);
   assert.equal(page.includes('login.methodsTitle'), true);
   assert.equal(page.includes('selectMobileLoginBindings'), false);
   assert.equal(page.includes('loadMobileLoginBindings'), true);
   assert.equal(page.includes('更多'), false);
+  assert.equal(page.includes('ExternalLoginButtons'), false);
 });
 
 test('mobile login methods keep builtin password and oauth-capable bindings', async () => {
@@ -479,6 +498,8 @@ test('mobile login methods keep builtin password and oauth-capable bindings', as
   const methods = selectMobileLoginBindings([builtin, wechat, feishu, wecom], 'Mozilla/5.0 (iPhone)');
   assert.deepEqual(methods.map((item) => item.id), [1, 3]);
   assert.equal(resolveInitialMobileBindingId(methods), 1);
+  assert.equal(resolveInitialMobileBindingId([feishu, builtin, wecom]), 1);
+
   assert.equal(resolveSelectedMobileBinding(methods, 3)?.id, 3);
   assert.equal(resolveSelectedMobileBinding(methods, 99)?.id, 1);
   assert.equal(isBuiltinLoginBinding(builtin), true);

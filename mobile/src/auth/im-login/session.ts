@@ -39,7 +39,7 @@ export async function establishH5SessionFromLoginResult(
     await dependencies.signOut({ redirect: false });
     return { status: 'password-reset-required' };
   }
-  if (loginResult.require_otp || loginResult.enable_otp) {
+  if (loginResult.require_otp) {
     await dependencies.signOut({ redirect: false });
     return { status: 'otp-required' };
   }
@@ -54,7 +54,7 @@ export async function establishH5SessionFromLoginResult(
     locale: loginResult.locale || 'zh-CN',
     timezone: loginResult.timezone || 'Asia/Shanghai',
     temporary_pwd: false,
-    enable_otp: false,
+    enable_otp: Boolean(loginResult.enable_otp),
     qrcode: Boolean(loginResult.qrcode),
   };
 

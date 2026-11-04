@@ -2,6 +2,8 @@ from urllib.parse import urlencode
 
 import requests
 
+from apps.core.utils.safe_requests import SafeRequestsError, safe_post
+from apps.core.utils.ssrf_validator import SSRFError
 from apps.system_mgmt.providers.base import BaseLoginAuthAdapter
 from apps.system_mgmt.providers.log import logger
 from apps.system_mgmt.providers.runtime import CapabilityExecutionResult
@@ -86,7 +88,7 @@ class FeishuLoginAuthAdapter(BaseLoginAuthAdapter):
 
         token_url = _get_config_value(config, "login_auth_jsapi_token_url", FEISHU_JSAPI_TOKEN_URL)
         try:
-            token_response = requests.post(
+            token_response = safe_post(
                 token_url,
                 json={
                     "grant_type": "authorization_code",
@@ -96,13 +98,26 @@ class FeishuLoginAuthAdapter(BaseLoginAuthAdapter):
                 },
                 timeout=FEISHU_TIMEOUT,
             )
-        except requests.Timeout:
-            return CapabilityExecutionResult.failed_result("Feishu login request timed out", code="provider.timeout", retryable=True)
-        except requests.RequestException as error:
+        except SSRFError as error:
             logger.debug(
                 "Feishu JSAPI login request failed: endpoint=%s, error_type=%s",
                 _sanitize_url_for_log(token_url),
                 type(error).__name__,
+            )
+            return CapabilityExecutionResult.failed_result(
+                "Feishu login request target is not allowed",
+                code="provider.invalid_config",
+                field="login_auth_jsapi_token_url",
+            )
+        except SafeRequestsError as error:
+            cause = error.__cause__ or error.__context__
+            if isinstance(cause, requests.Timeout):
+                return CapabilityExecutionResult.failed_result("Feishu login request timed out", code="provider.timeout", retryable=True)
+            error_type = type(cause).__name__ if cause is not None else type(error).__name__
+            logger.debug(
+                "Feishu JSAPI login request failed: endpoint=%s, error_type=%s",
+                _sanitize_url_for_log(token_url),
+                error_type,
             )
             return CapabilityExecutionResult.failed_result("Feishu login request failed", code="provider.request_failed", retryable=True)
 

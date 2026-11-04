@@ -45,17 +45,25 @@ export function saveOAuthPending(storage: KeyValueStorage, pending: OAuthPending
   storage.setItem(OAUTH_PENDING_STORAGE_KEY, JSON.stringify(pending));
 }
 
+function parseOAuthPending(value: unknown): OAuthPending | null {
+  if (!value || typeof value !== 'object') return null;
+  const authRequestId = (value as { authRequestId?: unknown }).authRequestId;
+  const pollToken = (value as { pollToken?: unknown }).pollToken;
+  if (typeof authRequestId !== 'string' || !authRequestId) return null;
+  if (typeof pollToken !== 'string' || !pollToken) return null;
+  const bindingName = (value as { bindingName?: unknown }).bindingName;
+  return {
+    authRequestId,
+    pollToken,
+    bindingName: typeof bindingName === 'string' ? bindingName : '',
+  };
+}
+
 export function readOAuthPending(storage: KeyValueStorage): OAuthPending | null {
   const raw = storage.getItem(OAUTH_PENDING_STORAGE_KEY);
   if (!raw) return null;
   try {
-    const parsed = JSON.parse(raw) as OAuthPending;
-    if (!parsed?.authRequestId || !parsed.pollToken) return null;
-    return {
-      authRequestId: parsed.authRequestId,
-      pollToken: parsed.pollToken,
-      bindingName: parsed.bindingName || '',
-    };
+    return parseOAuthPending(JSON.parse(raw) as unknown);
   } catch {
     return null;
   }

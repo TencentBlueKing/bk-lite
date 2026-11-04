@@ -267,7 +267,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (error instanceof RejectedSessionError || error instanceof UnauthorizedRequestError) {
         throw error;
       }
-      console.error('Silent IM login failed:', error);
+      console.error(
+        'Silent IM login failed:',
+        error instanceof Error ? error.name : typeof error,
+      );
       writeLoginNotice(window.sessionStorage, { reason: 'jsapi_failed', name: '' });
     }
     return 'continue' as const;

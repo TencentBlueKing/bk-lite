@@ -34,14 +34,23 @@ export function presentationForLoginNotice(reason: string): LoginNoticePresentat
   };
 }
 
+function parseLoginNotice(value: unknown): LoginNotice | null {
+  if (!value || typeof value !== 'object') return null;
+  const reason = (value as { reason?: unknown }).reason;
+  if (typeof reason !== 'string') return null;
+  const name = (value as { name?: unknown }).name;
+  return {
+    reason: reason as LoginNotice['reason'],
+    name: typeof name === 'string' ? name : '',
+  };
+}
+
 export function consumeLoginNotice(storage: KeyValueStorage): LoginNotice | null {
   const raw = storage.getItem(LOGIN_NOTICE_STORAGE_KEY);
   if (!raw) return null;
   storage.removeItem(LOGIN_NOTICE_STORAGE_KEY);
   try {
-    const parsed = JSON.parse(raw) as LoginNotice;
-    if (!parsed || typeof parsed.reason !== 'string') return null;
-    return { reason: parsed.reason, name: parsed.name || '' };
+    return parseLoginNotice(JSON.parse(raw) as unknown);
   } catch {
     return null;
   }
