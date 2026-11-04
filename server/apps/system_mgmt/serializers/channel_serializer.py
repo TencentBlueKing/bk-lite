@@ -1,8 +1,10 @@
+from django.db import transaction
 from rest_framework import serializers
 
 from apps.core.utils.loader import LanguageLoader
 from apps.core.utils.serializers import UsernameSerializer
 from apps.system_mgmt.models import Channel, ChannelChoices
+from apps.system_mgmt.services.notification_tag import assign_channel_tags, channel_tag_tokens, parse_tag_tokens
 from apps.system_mgmt.utils.i18n import localized_channel_description
 
 try:
@@ -12,6 +14,8 @@ except (ImportError, ModuleNotFoundError):
 
 
 class ChannelSerializer(UsernameSerializer):
+    tag = serializers.ListField(child=serializers.CharField(), required=False, write_only=True)
+
     # 各 channel_type 需要加密的字段列表
     ENCRYPT_FIELDS_MAP = {
         ChannelChoices.EMAIL: ["smtp_pwd"],
@@ -24,14 +28,30 @@ class ChannelSerializer(UsernameSerializer):
 
     class Meta:
         model = Channel
-        fields = "__all__"
+        fields = (
+            "id",
+            "name",
+            "channel_type",
+            "config",
+            "description",
+            "team",
+            "created_by",
+            "updated_by",
+            "domain",
+            "updated_by_domain",
+            "tag",
+        )
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
         request = self.context.get("request")
         locale = getattr(getattr(request, "user", None), "locale", None)
         data["description"] = localized_channel_description(data.get("description"), locale)
+        data["tag"] = channel_tag_tokens(instance)
         return data
+
+    def validate_tag(self, value):
+        return parse_tag_tokens(value)
 
     def validate_team(self, value):
         if isinstance(value, (int, str)):
@@ -84,16 +104,29 @@ class ChannelSerializer(UsernameSerializer):
         return attrs
 
     def create(self, validated_data):
+        pairs = validated_data.pop("tag", [])
         if validated_data.get("config"):
             self.encode_config(validated_data)
-        return super().create(validated_data)
+        with transaction.atomic():
+            instance = super().create(validated_data)
+            assign_channel_tags(instance, pairs, actor=self._actor())
+        return instance
 
     def update(self, instance, validated_data):
+        tag_provided = "tag" in self.initial_data
+        pairs = validated_data.pop("tag", [])
         if validated_data.get("config"):
             self.encode_config(validated_data, instance.config)
         else:
             validated_data["config"] = instance.config
-        return super().update(instance, validated_data)
+        with transaction.atomic():
+            instance = super().update(instance, validated_data)
+            if tag_provided:
+                assign_channel_tags(instance, pairs, actor=self._actor())
+        return instance
+
+    def _actor(self):
+        return getattr(self.context.get("request"), "user", None)
 
     @staticmethod
     def encode_config(validated_data, old_config=None):
