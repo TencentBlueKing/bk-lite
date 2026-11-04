@@ -27,7 +27,7 @@ permissions:
 jobs:
   full-server:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
     services:
       postgres:
         image: postgres:15
@@ -65,7 +65,7 @@ jobs:
       MINIO_SECRET_KEY: full-server-validation-secret
       MINIO_USE_HTTPS: 'false'
       UV_NO_SYNC: '1'
-      PYTEST_ADDOPTS: '--maxfail=1'
+      PYTEST_ADDOPTS: '--maxfail=10 -o faulthandler_timeout=120'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

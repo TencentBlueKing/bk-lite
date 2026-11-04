@@ -100,3 +100,7 @@ PPT七项失败逐一处理，未删除测试或放宽安全断言：
 仅恢复confirm_ui/static、svg_editor/static、spec_review/static三个目录，共28文件、581924字节，每文件与源Git blob核验一致；三个原始tree依次为`0e0fbd66f0137df4fda9536ae2ebf8b57c28e532`、`0a44cf30ecd3112ec38aa83acf5c332cb4b086e7`、`189865c2df52148effd1fa60bdf0d8eb2a6b6c86`。只为这三处添加精确gitignore例外，Django生成的static仍被忽略。
 
 本地七项针对性回归全部通过（Mac使用规范化TMPDIR=/private/tmp，避免/var与/private/var别名影响路径校验）；资源集合及逐blob复核通过。一次本地全PPT尝试因最小环境缺PyMuPDF而停止，未报告为完整通过；远端完整依赖下仍执行全部PPT测试。规范/规格复核未发现新增代码阻断，完整门禁以最终提交的远端结果为准。
+
+第三轮CI（`41799128130`，提交`3e6e86f7e2`）：原生Linux专项、导入、迁移和代码安全扫描通过；PPT完整套件为742 passed、3 skipped。应用套件实际执行至160 passed、5 skipped、1 failed后停止：既有告警责任人端到端测试以`fp-{event.event_id}`构造超32字符指纹，触发PostgreSQL租约表字段长度限制。已核对目标基线`7fc417be`同一测试输入；改用项目现有32位指纹生成器，保留三个owner结果及三个operator结果断言，不调整生产字段或分派代码。
+
+全量CI的失败收集上限从1增至10，仍有任一失败即整体失败；新增120秒慢用例线程栈输出，并将作业时限调整为60分钟，以收集后续阻塞证据。上述测试输入修复的执行结果以新提交CI为准，尚不宣称全量通过。
