@@ -27,3 +27,56 @@
 - 16–32GB全组件同时MAX峰值、升级重叠、真实任务排队分位数和积压排空/回滚演练尚未执行。回收阈值不是单任务硬内存上限。
 
 当前交付为经过审查和本地验证的草稿PR，尚未达到生产发布或OpenSpec归档条件。没有部署生产、清空消息、批量重投或修改业务调度。
+
+## 单实例默认配置补充（2026-11-04）
+
+根据用户要求，启用Celery时缺失的新参数使用固定默认值：critical/notification/state为MIN=1、MAX=2，background为MIN=MAX=1，总并发上限12（含既有专用池默认2+2+1）。环境变量逐项覆盖；显式空值、非法值及超预算仍拒绝。旧CELERY_CONCURRENCY提示废弃并忽略，不复制到各池。默认预算不随覆盖值或副本数自动放大；默认值不是生产容量验收结果。
+
+TDD先得到5项预期失败，再实现默认值。使用独立Python3.12环境、Celery5.4.0、Django4.2.27验证：
+
+- 原110项相关测试范围更新后共116项通过（`DJANGO_SETTINGS_MODULE=apps.core.tests.celery_test_settings python -m pytest --noconftest -c /dev/null`，10个相关测试文件）；`--cov=apps.core.celery_runtime.config --cov-fail-under=75`结果为76语句、100%。新增覆盖默认启动、部分覆盖、旧变量忽略、固定总预算拒绝超额及模板一致性。
+- `CELERY_RUNTIME_INTEGRATION=1 python -m pytest --noconftest -c /dev/null -p no:django apps/core/tests/test_celery_runtime_integration.py -q`：5 passed，32.47秒。四池使用产品默认范围和预算，测试仅覆盖收缩等待为2秒，仍为本机macOS专用探针。
+- 4个触及Python文件black/isort/flake8检查通过；OpenSpec strict和diff检查通过。
+- `UV_PROJECT_ENVIRONMENT=/tmp/pr6882-review-20261104-venv UV_NO_SYNC=1 make test`已尝试，在Django初始化时因临时环境缺少rest_framework退出，未进入全量测试。该环境只安装公共runtime测试依赖，不代表全应用门禁已通过。
+
+本次仅消除新配置缺失及旧并发变量导致的启动阻塞。目标Linux、生产路由、整机容量、迁移与回滚待办保持未完成；没有更新远端PR或部署。
+
+## Linux运行层与迁移回滚验收（2026-11-04）
+
+### 环境及范围
+
+默认Docker实例存在containerd元数据I/O错误，未重置它。使用另一个可用实例中的独立临时容器，无外部网络，不挂载生产数据；内存上限1.5GiB、CPU上限1.5、进程上限160，Redis和PostgreSQL均在容器内部临时创建。
+
+Docker宿主为ARM64，测试容器为AMD64仿真环境：Linux6.8.0-50、Debian12/glibc2.36、Python3.12.10、Celery5.4.0、Kombu5.6.2、redis-py5.0.1、Redis8.2.3、PostgreSQL15.19。使用现有诊断镜像`sha256:3d991eee86870207744938a41e7c628f970423e46cf0c3b7904222d50b913b8d`和独立Python发行包。正式server-base没有ARM64清单，AMD64拉取持续超时；本次没有构建或运行完整发行镜像，也未加载全部业务应用。
+
+### 实际发现及修复
+
+- **生产依赖不兼容**：Celery5.4未约束Kombu次版本，解析到5.7后，Redis传输抛出`VersionMismatch`，要求redis-py≥6.1，而项目固定5.0.1。真实Redis测试因此得到5项错误、3项失败。生产`pyproject.toml`与独立测试清单统一锁定Kombu5.6.2；其[官方包元数据](https://pypi.org/pypi/kombu/5.6.2/json)声明的Redis额外依赖允许5.0.1，下载wheel核对SHA256后再完整验证。
+- **巡检探针不稳定**：消息均已完成，但0.5秒广播巡检不能稳定确认所有worker排空。改为定向检查全部存活节点，等待2秒回复，缺失回复仍失败；失败摘要仅记录节点、各阶段计数及ready，不记录任务参数。单独回滚探针及最后完整验收均通过。
+- 准备阶段发现独立容器缺少make/模板、子进程不能继承独立依赖目录，以及Python安装器的受管理环境保护；只修正临时容器准备方式，未修改业务代码绕过测试。保留准备和失败轮次日志。
+
+### 最后完整执行
+
+容器内设置独立测试库端口55432、`COVERAGE_FILE=/evidence/.coverage`后，执行：
+
+```bash
+bash scripts/check_celery_runtime.sh /evidence
+```
+
+| 验收范围 | 结果 |
+|---|---|
+| 默认配置、路由、观测、诊断、命令、真实PostgreSQL ORM/Beat路由恢复及发布启动契约 | 117 passed，0错误/失败/跳过，21.73秒 |
+| Redis四池隔离、伸缩、历史队列、ETA/重试、软硬超时及子进程回收 | 5 passed |
+| 旧积压+在途任务迁移、仅回退默认worker导致滞留的复现与接管、多队列+ETA+重试回滚 | 3 passed |
+| 合计真实Redis探针 | 8 passed，0错误/失败/跳过，97.46秒 |
+| 运行层覆盖率 | 92.61%（379语句、28未覆盖）；配置解析器100%，不是全仓覆盖率 |
+
+迁移演练在新消费者就绪后混合投递新旧路由，对旧worker发送TERM并确认等待受控在途任务释放，后台池排空旧队列。回滚演练先核对回退worker注册集、接管五个队列，再温和关闭新四池；未来ETA和重试保留原任务ID，ETA未提前，重试次数为1；核对探针执行次数，并检查全部存活节点的active/reserved/scheduled与五队列ready均为空。没有purge、批量重投或强杀在途任务。
+
+Beat路由命令在真实PostgreSQL上验证dry-run、排他0600快照、应用、恢复预览/应用及冲突拒绝，业务参数、周期、名称和启停保持不变。没有启动生产Beat，不把该测试视为部署唯一性证明。
+
+原始环境、源码SHA256、JUnit、worker日志和失败轮次保存在本机`/tmp/bklite-celery-linux-evidence-20261104/`。容器生命周期cgroup内存峰值926.12MiB（包含准备和失败重试），这不是全组件或真实业务容量结论。证据导出后停止临时PostgreSQL并删除本次容器及其匿名卷，未影响既有服务。
+
+已增加`server/scripts/check_celery_runtime.sh`、最小依赖清单、临时PostgreSQL设置和`.github/workflows/server-celery-runtime-check.yml`；CI尚未推送或远端执行。black/isort/flake8、requirements检查、bash语法及OpenSpec strict通过。再次执行全量`make test`仍在临时环境因缺少rest_framework失败，未进入全量业务测试。
+
+已完成独立Linux运行层和拓扑/协议迁移回滚验收。生产版本与显式路由核对、完整业务镜像/真实旧版本兼容性、全组件容量和30分钟/1000探针时延目标、唯一Beat部署切换仍未验收；相应待办不勾选，不据此宣称可直接上线。

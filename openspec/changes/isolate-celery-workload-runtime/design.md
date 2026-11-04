@@ -23,15 +23,17 @@
 
 ## 弹性、回收与内存预算
 
-保留 Celery5.4 原生 prefork。四池使用 `--autoscale=MAX,MIN`、`--prefetch-multiplier=1` 和唯一节点名前缀；不混用旧 CELERY_CONCURRENCY。收缩等待 AUTOSCALE_KEEPALIVE 默认60秒。MIN≥1、MIN≤MAX；每池数值必须显式配置。
+保留 Celery5.4 原生 prefork。四池使用 `--autoscale=MAX,MIN`、`--prefetch-multiplier=1` 和唯一节点名前缀；不混用旧 CELERY_CONCURRENCY。收缩等待 AUTOSCALE_KEEPALIVE 默认60秒。MIN≥1、MIN≤MAX；critical/notification/state默认MIN=1、MAX=2，background默认MIN=MAX=1，总并发上限默认12。环境变量逐项覆盖，显式空值或非法值仍报错。旧CELERY_CONCURRENCY仅提示废弃并忽略，不影响新池范围。
 
 保留上游 CELERY_MAX_TASKS_PER_CHILD（默认200）与 CELERY_MAX_MEMORY_PER_CHILD（默认512000 KiB）以及任务自身软/硬超时、ACK、重试声明。没有自定义执行池或 threads 兼容层。回收发生在子进程完成任务之后，内存阈值不是单任务实时硬内存上限。
+
+Linux验证发现：Celery5.4的传递依赖可解析到Kombu5.7，而其Redis传输要求redis-py≥6.1，与项目redis==5.0.1冲突。生产依赖和独立验收依赖统一锁定Kombu5.6.2，通过真实Redis验证连接及消息行为，避免仅凭导入检查判断worker可用。
 
 所有同时运行同构副本的容量预算：
 
 `CELERY_TOTAL_CONCURRENCY_LIMIT ≥ replicas × (四池 MAX 总和 + DASHBOARD_REPORT_RENDER_CONCURRENCY + 1个补丁维护槽 + 已启用 OpsPilot 的 OPSPILOT_CELERY_CONCURRENCY)`
 
-报表和补丁 worker 在当前 release 固定安装，必须计入；INSTALL_APPS为空或包含opspilot时再计入其并发。部署升级新旧实例重叠也必须占预算。多副本显式声明唯一 Beat 归属。该校验是进程并发预算，不是内存控制器：API/NATS/数据库/图库/算法服务、子进程RSS、COW破坏及任务内部并发均需现场测量。不给未经测量的生产 MIN/MAX 推荐。
+报表和补丁 worker 在当前 release 固定安装，必须计入；INSTALL_APPS为空或包含opspilot时再计入其并发。部署升级新旧实例重叠也必须占预算。多副本显式声明唯一 Beat 归属。该校验是进程并发预算，不是内存控制器：API/NATS/数据库/图库/算法服务、子进程RSS、COW破坏及任务内部并发均需现场测量。默认值用于单实例有界启动，不宣称满足生产时延或整机容量；总上限不随池范围或副本数自动扩大。
 
 ## 启动与配置
 

@@ -18,7 +18,8 @@ if not broker.startswith("redis://127.0.0.1:"):
 if sys.platform == "darwin":
     billiard.set_start_method("fork", force=True)
 app = Celery("runtime_probe", broker=broker, backend=broker)
-configure_routes(app)
+if os.getenv("CELERY_PROBE_LEGACY") != "1":
+    configure_routes(app)
 app.conf.worker_max_tasks_per_child = 2
 observer = install_observer()
 
@@ -30,14 +31,21 @@ NAMES = {
 }
 
 
-def probe(seconds=0, marker=None):
+def probe(seconds=0, marker=None, release_key=None):
     client = redis.Redis.from_url(broker)
     started = time.time()
+    executions = client.incr(f"executions:{current_task.request.id}")
     if marker:
         client.set(marker, "started", ex=60)
+    deadline = time.monotonic() + 45
+    while release_key and not client.exists(release_key):
+        if time.monotonic() >= deadline:
+            client.close()
+            raise TimeoutError("临时迁移探针未及时释放")
+        time.sleep(0.1)
     time.sleep(seconds)
     client.close()
-    return {"worker": current_task.request.hostname, "pid": os.getpid(), "started": started}
+    return {"worker": current_task.request.hostname, "pid": os.getpid(), "started": started, "id": current_task.request.id, "executions": executions}
 
 
 for name in NAMES.values():
@@ -45,10 +53,15 @@ for name in NAMES.values():
 
 
 @app.task(bind=True, name="runtime_probe.retry", shared=False, max_retries=1)
-def retry_probe(self):
+def retry_probe(self, countdown=1, marker=None):
+    client = redis.Redis.from_url(broker)
+    executions = client.incr(f"executions:{self.request.id}")
+    if marker:
+        client.set(marker, str(self.request.retries), ex=60)
+    client.close()
     if not self.request.retries:
-        raise self.retry(countdown=1)
-    return {"retries": self.request.retries, "worker": self.request.hostname}
+        raise self.retry(countdown=countdown)
+    return {"retries": self.request.retries, "worker": self.request.hostname, "id": self.request.id, "executions": executions, "started": time.time()}
 
 
 @app.task(bind=True, name="runtime_probe.limited", shared=False, time_limit=2, soft_time_limit=1)

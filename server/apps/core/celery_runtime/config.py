@@ -3,7 +3,16 @@
 import os
 from dataclasses import dataclass
 
+from apps.core.logger import celery_logger as logger
+
 POOL_IMPLEMENTATION = "celery.concurrency.prefork:TaskPool"
+DEFAULT_POOL_BOUNDS = {
+    "critical": (1, 2),
+    "notification": (1, 2),
+    "state": (1, 2),
+    "background": (1, 1),
+}
+DEFAULT_TOTAL_CONCURRENCY_LIMIT = 12
 DEDICATED_QUEUES = {
     "dashboard-report-render": ("dashboard_report_render",),
     "patch-maintenance": ("patch_maintenance",),
@@ -20,7 +29,7 @@ POOL_QUEUES = {
 def positive_integer(env, name, default=None):
     raw = env.get(name, default)
     if raw is None or not str(raw).isascii() or not str(raw).isdigit() or int(raw) < 1:
-        raise ValueError(f"{name} 必须显式配置为正整数")
+        raise ValueError(f"{name} 必须为正整数")
     return int(raw)
 
 
@@ -49,11 +58,12 @@ class RuntimeConfig:
         if enabled == "false":
             return cls(())
         if env.get("CELERY_CONCURRENCY"):
-            raise ValueError("请移除 CELERY_CONCURRENCY，改用各池 MIN/MAX")
+            logger.warning("CELERY_CONCURRENCY 已废弃并忽略；请使用各池 MIN/MAX 覆盖默认并发")
         pools = []
         for name in POOL_QUEUES:
-            minimum = positive_integer(env, f"CELERY_{name.upper()}_MIN")
-            maximum = positive_integer(env, f"CELERY_{name.upper()}_MAX")
+            default_min, default_max = DEFAULT_POOL_BOUNDS[name]
+            minimum = positive_integer(env, f"CELERY_{name.upper()}_MIN", default_min)
+            maximum = positive_integer(env, f"CELERY_{name.upper()}_MAX", default_max)
             if minimum > maximum:
                 raise ValueError(f"{name} 的 MIN 不能大于 MAX")
             pools.append(PoolConfig(name, minimum, maximum))
@@ -69,7 +79,7 @@ class RuntimeConfig:
             dedicated.append(PoolConfig("opspilot", opspilot_capacity, opspilot_capacity))
         config = cls(
             tuple(pools),
-            positive_integer(env, "CELERY_TOTAL_CONCURRENCY_LIMIT"),
+            positive_integer(env, "CELERY_TOTAL_CONCURRENCY_LIMIT", DEFAULT_TOTAL_CONCURRENCY_LIMIT),
             replicas,
             positive_integer(env, "AUTOSCALE_KEEPALIVE", "60"),
             beat == "true",

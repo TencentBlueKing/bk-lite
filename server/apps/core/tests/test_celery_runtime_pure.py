@@ -34,7 +34,6 @@ def test_four_consumers_have_independent_bounded_capacity():
         {"CELERY_STATE_MAX": ""},
         {"CELERY_STATE_MAX": "1.5"},
         {"CELERY_TOTAL_CONCURRENCY_LIMIT": "6"},
-        {"CELERY_CONCURRENCY": "4"},
         {"CELERY_WORKER_REPLICAS": "2"},
         {"AUTOSCALE_KEEPALIVE": "0"},
         {"ENABLE_CELERY": "tru"},
@@ -56,11 +55,40 @@ def test_multiple_replicas_require_explicit_beat_owner():
         RuntimeConfig.from_env(runtime_env(CELERY_WORKER_REPLICAS="2", CELERY_TOTAL_CONCURRENCY_LIMIT="24"))
 
 
-def test_missing_budget_is_not_inferred_from_cpu_count():
+def test_missing_budget_uses_fixed_limit_and_still_rejects_excess_capacity():
     env = runtime_env()
     del env["CELERY_TOTAL_CONCURRENCY_LIMIT"]
+    assert RuntimeConfig.from_env(env).total_limit == 12
+    env["CELERY_BACKGROUND_MAX"] = "2"
     with pytest.raises(ValueError, match="CELERY_TOTAL_CONCURRENCY_LIMIT"):
         RuntimeConfig.from_env(env)
+
+
+def test_enabled_celery_starts_with_bounded_defaults():
+    config = RuntimeConfig.from_env({"ENABLE_CELERY": "true"})
+    assert [(pool.name, pool.minimum, pool.maximum) for pool in config.pools] == [
+        ("critical", 1, 2),
+        ("notification", 1, 2),
+        ("state", 1, 2),
+        ("background", 1, 1),
+    ]
+    assert config.maximum_concurrency == config.total_limit == 12
+    assert config.supervisor_config().count("[program:") == 5
+
+
+def test_partial_overrides_preserve_defaults_and_budget():
+    config = RuntimeConfig.from_env({"ENABLE_CELERY": "true", "CELERY_CRITICAL_MAX": "3", "CELERY_TOTAL_CONCURRENCY_LIMIT": "13"})
+    assert "--autoscale=3,1" in config.worker_args("critical")
+    assert "--autoscale=1,1" in config.worker_args("background")
+    assert config.maximum_concurrency == 13
+
+
+@pytest.mark.parametrize("legacy", ["2", "100"])
+def test_legacy_concurrency_does_not_block_or_expand_new_workers(legacy, caplog):
+    config = RuntimeConfig.from_env({"ENABLE_CELERY": "true", "CELERY_CONCURRENCY": legacy})
+    assert config.maximum_concurrency == 12
+    assert "CELERY_CONCURRENCY" in caplog.text
+    assert "忽略" in caplog.text
 
 
 def test_disabled_celery_needs_no_capacity_and_generates_no_programs():

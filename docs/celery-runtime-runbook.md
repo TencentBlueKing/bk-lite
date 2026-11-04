@@ -6,7 +6,18 @@
 
 原默认工作负载拆为四类独立 worker：`critical`（告警）、`notification`（通知/回调）、`state`（节点状态/控制）、`background`（重后台）。后台同时消费历史 `celery` 队列；新注册但未映射的任务落到该默认队列并产生限频提示。路由清单在 `server/apps/core/celery_runtime/manifest.py`，不按模块通配。直接函数调用不受任务路由影响。
 
-每池保留上游原生 prefork，使用 `--autoscale=MAX,MIN` 伸缩。MIN≥1，MIN≤MAX；MIN=MAX 可固定容量。并发参数必须显式填写，不能依 CPU 数或“每池 1”推断够用。填写 [配置模板](../server/support-files/env/celery-runtime.env.template) 后由部署环境注入；命令示例均在 `server/` 执行。
+每池保留上游原生 prefork，使用 `--autoscale=MAX,MIN` 伸缩。MIN≥1，MIN≤MAX；MIN=MAX 可固定容量。启用 `ENABLE_CELERY=true` 后，未设置的新参数使用以下单实例默认值，无需逐项填写；[配置模板](../server/support-files/env/celery-runtime.env.template) 可直接作为覆盖参数参考。命令示例均在 `server/` 执行。
+
+| Worker | MIN | MAX |
+|---|---|---|
+| critical | 1 | 2 |
+| notification | 1 | 2 |
+| state | 1 | 2 |
+| background | 1 | 1 |
+
+`CELERY_TOTAL_CONCURRENCY_LIMIT` 默认12：四池MAX合计7，加上既有专用池默认2+2+1。默认常驻执行子进程合计9、峰值12（另有7个worker主进程）。这是有界启动配置，不按CPU数量放大，也不代表现场吞吐或整机内存已验收。
+
+环境变量逐项覆盖默认值；显式空值、非正整数、MIN>MAX或总并发超预算仍报错，不自动放大总预算。旧 `CELERY_CONCURRENCY` 仅记录废弃提示并忽略，不再阻断启动，也不复制到四池。多实例/升级重叠仍须设置副本数、唯一Beat归属和足够的显式总预算；默认12不会随副本数增长。
 
 ```bash
 python -m apps.core.celery_runtime.launcher --check
@@ -104,4 +115,29 @@ CELERY_RUNTIME_INTEGRATION=1 uv run --extra dev pytest --noconftest -c /dev/null
   apps/core/tests/test_celery_runtime_integration.py -q
 ```
 
-当前本机 macOS 验证采用测试专用 fork 模式，不能作为目标 Linux 镜像/全应用的结论。发布还必须完成 `make test`、目标 Linux Redis 多池验证、真实负载时延及整机容量验证、迁移回滚演练。具体结果见 [实施记录](../openspec/changes/isolate-celery-workload-runtime/implementation-evidence.md)。
+macOS历史结果采用测试专用fork模式；2026-11-04已补充独立Linux AMD64运行层、真实Redis/PostgreSQL和迁移回滚探针验收。发布仍须完成`make test`、目标完整业务镜像兼容性、真实负载时延和整机容量，以及真实混合版本/唯一Beat切换演练。具体环境与边界见[实施记录](../openspec/changes/isolate-celery-workload-runtime/implementation-evidence.md)。
+
+### Linux运行层及迁移回滚验收
+
+提供独立入口，不加载业务应用：Python3.12、可执行的redis-server和make、专用临时PostgreSQL（允许创建固定测试库`test_celery_runtime_validation`）及最小测试依赖。禁止指向生产数据库；Redis由测试在本机随机端口创建，不使用部署的broker配置。
+
+```bash
+python -m pip install -r support-files/tests/celery-runtime-requirements.txt
+# PostgreSQL基础库名固定为celery_runtime_validation；按临时实例设置以下变量。
+export CELERY_TEST_DB_HOST=127.0.0.1
+export CELERY_TEST_DB_PORT=55432
+export CELERY_TEST_DB_USER=postgres
+# 如需密码，经环境注入CELERY_TEST_DB_PASSWORD。
+bash scripts/check_celery_runtime.sh /tmp/celery-runtime-evidence
+```
+
+入口保存环境版本、源文件SHA256、JUnit及各worker日志；CI见`.github/workflows/server-celery-runtime-check.yml`。它验证的是运行拓扑和消息契约；legacy模式只模拟旧默认队列生产者/消费者，不等于真实旧业务镜像兼容性验收。全应用、生产容量及上线编排仍须单独核对。
+
+生产和测试统一使用Celery5.4.0、Kombu5.6.2及redis-py5.0.1。未锁定的Kombu5.7会拒绝该Redis客户端版本，出现`VersionMismatch`；应按更新后的依赖重建镜像，不能仅通过提高worker并发处理。版本信息以验收输出的`environment.json`为准。
+
+演练覆盖：
+
+1. 旧默认worker执行受控阻塞任务、默认队列已有积压时，先启动新四池，再混合投递新旧路由任务。TERM后必须等待在途任务释放；后台池继续消费旧积压。
+2. 复现仅回退镜像/默认worker时分类队列消息滞留，再核对注册集、恢复对应消费订阅；保留原消息和任务ID。
+3. 新四池已持有在途任务、未来ETA和到期重试时，先启动注册齐全、消费`critical,notification,state,background,celery`的回退worker，再温和关闭新四池。旧生产者和暂未退出的新生产者继续投递，核对任务结果、ETA下界、重试次数、执行次数及最终队列排空。
+4. PostgreSQL中验证Beat路由dry-run、快照应用、恢复预览/应用和并发冲突拒绝，调度周期、参数、名称及启停保持不变。此层不启动生产Beat，也不验证生产Beat唯一性。

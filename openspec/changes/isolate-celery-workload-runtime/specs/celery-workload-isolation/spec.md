@@ -34,15 +34,23 @@
 - **THEN** 该池保持固定执行容量，仍使用相同配置解析和预算校验
 
 ### Requirement: 最大容量预算校验
-系统 SHALL 使用唯一解析器生成运行配置。各池 MIN/MAX 和部署总并发上限 SHALL 显式配置，不能把并发 1 作为已验证容量推荐。所有可同时运行实例的 MAX 之和 SHALL 不超过总预算，副本数和升级重叠 SHALL 纳入部署核对。系统 SHALL 拒绝缺失参数、非法范围、遗漏/重复消费者和旧并发变量歧义，避免旧 worker 同时自启动。关闭 Celery 的既有部署行为 SHALL 保持有效。
+系统 SHALL 使用唯一解析器生成运行配置。启用Celery时，各池 MIN/MAX SHALL 提供单实例默认值：critical/notification/state为1/2，background为1/1，总并发上限默认12，允许环境变量逐项覆盖，不能把默认值作为已验证生产容量推荐。所有可同时运行实例的 MAX 之和 SHALL 不超过总预算，副本数和升级重叠 SHALL 纳入部署核对。系统 SHALL 对缺失参数使用固定默认值，拒绝显式空值、非法范围和遗漏/重复消费者，并忽略已废弃的旧并发变量，避免旧 worker 同时自启动。关闭 Celery 的既有部署行为 SHALL 保持有效。
 
 #### Scenario: 最小容量合规但最大容量超限
 - **WHEN** MIN 之和小于总预算但所有实例的 MAX 之和超过预算
 - **THEN** 发布检查失败，不允许依靠独立 autoscaler 在运行时竞争无约束额度
 
-#### Scenario: 旧并发变量产生歧义
-- **WHEN** 旧 CELERY_CONCURRENCY 仍影响新运行配置
-- **THEN** 启动前报出迁移错误，不把旧值复制成每个 worker 的并发
+#### Scenario: 仅使用默认配置启动
+- **WHEN** ENABLE_CELERY=true，未设置新的池范围或总并发变量
+- **THEN** 生成四池和唯一Beat，完整安装最大并发12，不依赖CPU数量推断配置
+
+#### Scenario: 默认总预算不会自动扩大
+- **WHEN** 覆盖池MAX或副本数导致总最大并发超过12，未覆盖总上限
+- **THEN** 启动校验失败，要求显式调整总预算
+
+#### Scenario: 旧并发变量不阻断升级
+- **WHEN** 旧 CELERY_CONCURRENCY 仍存在
+- **THEN** 记录废弃提示并忽略旧值，新池使用默认范围或各池显式覆盖，不把旧值复制成每个worker的并发
 
 ### Requirement: 保留上游执行策略
 系统 SHALL 保留最新上游 prefork 的有效任务软/硬超时、子进程按任务数/内存回收、ACK 和重试行为，不引入忽略这些配置的兼容层。四池预取乘数 SHALL 为1，禁止无限值0；它不代表ETA及全部驻留消息的硬上限。

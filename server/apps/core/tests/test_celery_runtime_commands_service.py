@@ -64,6 +64,38 @@ def test_launcher_reads_dotenv_like_django_without_overriding_exported_values(tm
     assert "最大并发=12" in result.stdout
 
 
+@pytest.mark.parametrize("legacy", [None, "100"])
+def test_launcher_generates_default_workers_without_new_environment_variables(tmp_path, legacy):
+    root = Path(__file__).resolve().parents[3]
+    env = {key: value for key, value in os.environ.items() if not key.startswith(("CELERY_", "ENABLE_CELERY", "AUTOSCALE_"))}
+    env.update(PYTHONPATH=str(root), ENABLE_CELERY="true", INSTALL_APPS="", DASHBOARD_REPORT_RENDER_CONCURRENCY="2", OPSPILOT_CELERY_CONCURRENCY="2")
+    if legacy:
+        env["CELERY_CONCURRENCY"] = legacy
+    target = tmp_path / "celery.conf"
+    result = subprocess.run(
+        [sys.executable, "-m", "apps.core.celery_runtime.launcher", "--supervisor", str(target)],
+        cwd=tmp_path,
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr
+    content = target.read_text()
+    assert content.count("[program:") == 5
+    assert content.count("--autoscale=2,1") == 3
+    assert "--autoscale=1,1 -Q background,celery" in content
+    assert ("CELERY_CONCURRENCY" in result.stderr) == bool(legacy)
+
+
+def test_environment_template_matches_default_capacity():
+    from dotenv import dotenv_values
+
+    from apps.core.celery_runtime.config import RuntimeConfig
+
+    template = Path(__file__).resolve().parents[3] / "support-files/env/celery-runtime.env.template"
+    assert RuntimeConfig.from_env(dotenv_values(template)) == RuntimeConfig.from_env({"ENABLE_CELERY": "true"})
+
+
 def test_worker_launcher_executes_configured_pool(monkeypatch):
     configure_env(monkeypatch)
     monkeypatch.setattr("sys.argv", ["launcher", "--worker", "critical"])
@@ -129,6 +161,45 @@ def test_route_command_preserves_safe_error_output(monkeypatch):
     output = io.StringIO()
     call_command(celery_routes.Command(), restore="snapshot.json", stdout=output)
     assert json.loads(output.getvalue())["applied"] is False
+
+
+@pytest.mark.django_db
+def test_route_command_dry_run_apply_and_restore_preserve_beat_schedule(monkeypatch, tmp_path):
+    from django_celery_beat.models import IntervalSchedule, PeriodicTask
+
+    name = "apps.monitor.tasks.monitor_policy.scan_policy_task"
+    interval = IntervalSchedule.objects.create(every=30, period="seconds")
+    row = PeriodicTask.objects.create(name="migration-cli", task=name, interval=interval, args="[42]", queue="celery")
+    app = Celery("migration_cli", broker="memory://", fixups=[], set_as_current=False)
+    configure_routes(app)
+
+    def scan_probe(policy_id):
+        return policy_id
+
+    app.task(name=name, shared=False)(scan_probe)
+    monkeypatch.setattr(celery_routes, "current_app", app)
+    snapshot = tmp_path / "routes.json"
+
+    def run(**options):
+        output = io.StringIO()
+        call_command(celery_routes.Command(), stdout=output, **options)
+        row.refresh_from_db()
+        assert (row.task, row.interval_id, row.args, row.enabled) == (name, interval.pk, "[42]", True)
+        return json.loads(output.getvalue())
+
+    try:
+        assert run(ids=[row.pk])["applied"] is False
+        assert row.queue == "celery"
+        assert not snapshot.exists()
+        assert run(ids=[row.pk], apply=True, snapshot=str(snapshot))["applied"] is True
+        assert row.queue == "critical"
+        assert snapshot.stat().st_mode & 0o777 == 0o600
+        assert run(restore=str(snapshot))["applied"] is False
+        assert row.queue == "critical"
+        assert run(restore=str(snapshot), apply=True)["applied"] is True
+        assert row.queue == "celery"
+    finally:
+        app.close()
 
 
 @pytest.mark.django_db

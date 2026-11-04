@@ -69,13 +69,17 @@ def cluster(tmp_path_factory):
                 return False
 
         eventually(ready)
-        env = dict(os.environ)
+        env = {key: value for key, value in os.environ.items() if not key.startswith("CELERY_")}
         env.pop("DJANGO_SETTINGS_MODULE", None)
-        env.update(CELERY_TEST_BROKER=broker, AUTOSCALE_KEEPALIVE="2", ENABLE_CELERY="true", CELERY_TOTAL_CONCURRENCY_LIMIT="12")
-        env.pop("CELERY_CONCURRENCY", None)
-        for pool in NAMES:
-            env[f"CELERY_{pool.upper()}_MIN"] = "1"
-            env[f"CELERY_{pool.upper()}_MAX"] = "1" if pool == "background" else "2"
+        # 使用产品默认范围启动四池，避免仅验证手写测试配置。
+        env.update(
+            CELERY_TEST_BROKER=broker,
+            AUTOSCALE_KEEPALIVE="2",
+            ENABLE_CELERY="true",
+            INSTALL_APPS="",
+            DASHBOARD_REPORT_RENDER_CONCURRENCY="2",
+            OPSPILOT_CELERY_CONCURRENCY="2",
+        )
         config = RuntimeConfig.from_env(env)
         root = Path(__file__).resolve().parents[3]
         for pool in NAMES:
