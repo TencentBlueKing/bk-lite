@@ -1,9 +1,8 @@
 """对话把明确要求记下的知识落成文本资料。"""
 
+import importlib
 from types import SimpleNamespace
 from unittest.mock import patch
-
-import importlib
 
 import pytest
 from django.apps import apps
@@ -11,6 +10,7 @@ from django.core.files.storage import InMemoryStorage
 from django.core.files.uploadedfile import SimpleUploadedFile
 
 from apps.opspilot.enum import SkillTypeChoices
+from apps.opspilot.metis.llm.tools.tools_loader import ToolsLoader
 from apps.opspilot.models import BuildRecord, KnowledgePage, LLMSkill, Material, WikiKnowledgeBase
 from apps.opspilot.services.caller_identity import CALLER_IDENTITY_CONFIG_KEY
 from apps.opspilot.services.wiki.chat_material_service import (
@@ -21,6 +21,7 @@ from apps.opspilot.services.wiki.chat_material_service import (
     REPLY_NOT_WRITTEN,
     REPLY_SUCCESS,
     REPLY_SWITCH_OFF,
+    SAVE_WIKI_MATERIAL_TOOL_NAME,
     WIKI_MATERIAL_ACTOR_KEY,
     WIKI_MATERIAL_TOOL_NAME,
     actor_for_chat_flow_input,
@@ -631,6 +632,18 @@ def test_runtime_strips_wiki_material_tool_by_url_or_category():
     assert [tool.get("name") for tool in chat_kwargs["tools_servers"]] == ["keep", WIKI_MATERIAL_TOOL_NAME]
 
 
+def test_wiki_material_stays_runtime_loadable_and_cannot_be_saved_as_a_choice():
+    loaded = ToolsLoader._discover_specific_tool("wiki_material")
+    assert any(item["func"].name == SAVE_WIKI_MATERIAL_TOOL_NAME for item in loaded)
+    kept = ToolsLoader.omit_catalog_hidden_skill_tools(
+        [
+            {"id": 1, "name": "wiki_material"},
+            {"id": 2, "name": "shell"},
+        ]
+    )
+    assert kept == [{"id": 2, "name": "shell"}]
+
+
 def test_chat_conflict_scope_follows_server_mark_not_path():
     assert is_chat_sourced_material(SimpleNamespace(source_relative_path="chat/12.txt", chat_sourced=False)) is False
     assert is_chat_sourced_material(SimpleNamespace(source_relative_path="uploads/note.txt", chat_sourced=True)) is True
@@ -639,9 +652,7 @@ def test_chat_conflict_scope_follows_server_mark_not_path():
 
 
 def test_upload_paths_and_forged_mark_do_not_relax_conflict_scope(api_client, authenticated_user):
-    authenticated_user.permission = {
-        "opspilot": {"wiki_list-View", "wiki_list-Add", "wiki_list-Edit", "wiki_list-Delete"}
-    }
+    authenticated_user.permission = {"opspilot": {"wiki_list-View", "wiki_list-Add", "wiki_list-Edit", "wiki_list-Delete"}}
     knowledge_base = WikiKnowledgeBase.objects.create(name="上传库", team=[1])
     created = api_client.post(
         "/api/v1/opspilot/wiki_mgmt/material/",

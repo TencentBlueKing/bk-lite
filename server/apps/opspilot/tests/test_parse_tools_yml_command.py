@@ -6,7 +6,9 @@ import pytest
 from django.core.management import CommandError, call_command
 
 from apps.opspilot.management.commands.parse_tools_yml import Command
+from apps.opspilot.metis.llm.tools.tools_loader import ToolsLoader
 from apps.opspilot.models import SkillTools
+from apps.opspilot.viewsets.llm_view import SkillToolsViewSet
 
 pytestmark = pytest.mark.django_db
 
@@ -160,6 +162,25 @@ def test_sync_sets_system_tags_and_keeps_user_tags():
     cmdb.refresh_from_db()
     assert cmdb.system_tags == ["asset", "platform_app"]
     assert cmdb.user_tags == ["机房"]
+
+
+def test_sync_removes_catalog_hidden_builtin_tool():
+    SkillTools.objects.create(
+        name="wiki_material",
+        description="对话写入",
+        is_build_in=True,
+        team=[1],
+        params={"url": "langchain:wiki_material", "name": "wiki_material", "kwargs": []},
+    )
+    assert SkillTools.objects.filter(name="wiki_material").exists()
+    assert SkillToolsViewSet().get_queryset().filter(name="wiki_material").exists() is False
+
+    visible_name = f"visible-{uuid.uuid4().hex[:8]}"
+    Command().save_to_database([{"id": visible_name, "name": visible_name, "description": "可见", "tools": [], "params": {}}])
+
+    assert not SkillTools.objects.filter(name="wiki_material", is_build_in=True).exists()
+    assert SkillTools.objects.filter(name=visible_name, is_build_in=True).exists()
+    assert "wiki_material" in ToolsLoader.CATALOG_HIDDEN_TOOL_NAMES
 
 
 def test_handle_writes_tools_and_raises_on_loader_failure():

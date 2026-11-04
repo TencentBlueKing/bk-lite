@@ -35,6 +35,7 @@ from apps.opspilot.metis.llm.tools.mysql.connection import normalize_mysql_insta
 from apps.opspilot.metis.llm.tools.oracle.connection import normalize_oracle_instance, test_oracle_instance
 from apps.opspilot.metis.llm.tools.postgres.connection import normalize_postgres_instance, test_postgres_instance
 from apps.opspilot.metis.llm.tools.redis.connection import normalize_redis_instance, test_redis_instance
+from apps.opspilot.metis.llm.tools.tools_loader import ToolsLoader
 from apps.opspilot.models import LLMModel, LLMSkill, SkillPackage, SkillRequestLog, SkillTools, UserPin
 from apps.opspilot.serializers.llm_serializer import (
     LLMModelSerializer,
@@ -217,6 +218,8 @@ class LLMViewSet(PinMixin, AuthViewSet):
                 params["skill_package_params"] = merge_package_params(validated, {})
             except ValueError as exc:
                 return JsonResponse({"result": False, "message": str(exc)})
+        if "tools" in params:
+            params["tools"] = ToolsLoader.omit_catalog_hidden_skill_tools(params.get("tools"))
         serializer = self.get_serializer(data=params)
         serializer.is_valid(raise_exception=True)
         self.perform_create(serializer)
@@ -338,6 +341,8 @@ class LLMViewSet(PinMixin, AuthViewSet):
         limit_error = self._normalize_run_model_call_limit(params)
         if limit_error is not None:
             return limit_error
+        if "tools" in params:
+            params["tools"] = ToolsLoader.omit_catalog_hidden_skill_tools(params.get("tools"))
         for tool in params.get("tools", []):
             for i in tool.get("kwargs", []):
                 if i.get("type") == "password":
@@ -1134,6 +1139,9 @@ class SkillToolsViewSet(AuthViewSet):
     queryset = SkillTools.objects.all().order_by("-id")
     filterset_class = ToolsFilter
     permission_key = "tools"
+
+    def get_queryset(self):
+        return super().get_queryset().exclude(is_build_in=True, name__in=ToolsLoader.CATALOG_HIDDEN_TOOL_NAMES)
 
     def _ssrf_error_response(self, error):
         """统一 SSRF 拦截响应，并为可通过白名单放行的目标提供稳定契约。"""
