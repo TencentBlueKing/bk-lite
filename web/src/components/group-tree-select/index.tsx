@@ -133,7 +133,8 @@ const GroupTreeSelect: React.FC<GroupTreeSelectProps> = ({
     const normalizedValue = normalizeValue(value);
     const validValues = normalizedValue.filter(id => isValidValue(id));
     // 锁定项始终保留（即便外部 value 暂未包含），且仅保留树中有效的锁定项
-    const withLocked = Array.from(new Set([...validValues, ...lockedIds.filter(id => isValidValue(id))]));
+    const lockedInTree = lockedIds.filter(id => isValidValue(id));
+    const withLocked = Array.from(new Set([...validValues, ...lockedInTree]));
 
     // Update internal state only when value actually changes
     const currentValueString = JSON.stringify(internalValue);
@@ -143,13 +144,17 @@ const GroupTreeSelect: React.FC<GroupTreeSelectProps> = ({
       setInternalValue(withLocked);
     }
 
-    // 锁定项并入后必须回写表单：仅改 internalValue 会「看得见但校验仍为空」
-    if (JSON.stringify(withLocked) !== JSON.stringify(normalizedValue)) {
-      if (multiple) {
-        onChange?.(withLocked);
-      } else {
-        onChange?.(withLocked.length > 0 ? withLocked[0] : undefined);
-      }
+    // 只把缺失的锁定项补进表单。树上暂时没有的已选 id 留在原值里，
+    // 避免打开选择器就把它们删掉，并把表单误标成已修改。
+    const missingLocked = lockedInTree.filter(id => !normalizedValue.includes(id));
+    if (missingLocked.length === 0) {
+      return;
+    }
+    const nextValue = Array.from(new Set([...normalizedValue, ...missingLocked]));
+    if (multiple) {
+      onChange?.(nextValue);
+    } else {
+      onChange?.(nextValue.length > 0 ? nextValue[0] : undefined);
     }
   }, [valueString, processedTreeData, isValidValue, normalizeValue, lockedIds, multiple, onChange]);
 
