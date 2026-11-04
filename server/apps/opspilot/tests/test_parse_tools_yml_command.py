@@ -116,6 +116,7 @@ def test_sync_sets_system_tags_and_keeps_user_tags():
                 "python",
                 "attachment_file",
                 "ops_analysis_dashboard",
+                "mlops",
             )
         ]
     )
@@ -145,6 +146,7 @@ def test_sync_sets_system_tags_and_keeps_user_tags():
         "python": ["general"],
         "attachment_file": ["general"],
         "ops_analysis_dashboard": ["general", "platform_app"],
+        "mlops": ["platform_app"],
     }
     for name, system_tags in expected.items():
         obj = SkillTools.objects.get(name=name, is_build_in=True)
