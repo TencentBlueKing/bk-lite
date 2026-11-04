@@ -351,6 +351,7 @@
         "or": "或",
         "thirdParty": "第三方",
         "externalSignIn": "使用{name}登录",
+        "externalUse": "使用{name}",
         "externalUnavailable": "暂时无法发起{name}登录",
         "externalReturning": "正在完成登录",
         "silentFailed": "{name}免登未完成，请在登录页继续",

@@ -419,6 +419,19 @@ test('otp and temporary password use the desktop prompts instead of a password-o
   }
 });
 
+test('external sign-in label skips a second 登录 when the binding name already has one', async () => {
+  const { externalSignInMessageId } = await loadTypeScriptModule('src/auth/im-login/external-sign-in-label.ts');
+  const zh = JSON.parse(await readFile(new URL('../src/locales/zh.json', import.meta.url), 'utf8'));
+  const en = JSON.parse(await readFile(new URL('../src/locales/en.json', import.meta.url), 'utf8'));
+  assert.equal(externalSignInMessageId('飞书'), 'login.externalSignIn');
+  assert.equal(externalSignInMessageId('企微登陆'), 'login.externalUse');
+  assert.equal(externalSignInMessageId('企业微信登录'), 'login.externalUse');
+  assert.equal(externalSignInMessageId('WeCom Login'), 'login.externalUse');
+  assert.equal(zh.login.externalSignIn, '使用{name}登录');
+  assert.equal(zh.login.externalUse, '使用{name}');
+  assert.equal(en.login.externalUse, 'Use {name}');
+});
+
 test('external login button reuses the sign-in button style', async () => {
   const { LOGIN_ACTION_BUTTON_CLASS, loginActionButtonStyle } = await loadTypeScriptModule(
     'src/auth/im-login/login-button-style.ts',
@@ -444,6 +457,9 @@ test('external login button reuses the sign-in button style', async () => {
   assert.equal(buttons.includes('provider_key'), false);
   assert.equal(buttons.includes('fill="outline"'), false);
   assert.equal(buttons.includes('icon-feishu'), false);
+  assert.equal(buttons.includes('flex flex-col gap-3'), true);
+  assert.equal(buttons.includes('space-y-3'), false);
+  assert.equal(buttons.includes('externalSignInMessageId'), true);
 });
 
 test('login buttons only list bindings that advertise oauth', async () => {

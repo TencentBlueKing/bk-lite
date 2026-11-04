@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { Button, Toast } from 'antd-mobile';
 import { useTranslation } from '@/utils/i18n';
 import { loadOauthLoginBindings, startBrowserExternalLogin } from './browser';
+import { externalSignInMessageId } from './external-sign-in-label';
 import { LOGIN_ACTION_BUTTON_CLASS, loginActionButtonStyle } from './login-button-style';
 import type { PublicLoginBinding } from './types';
 
@@ -49,7 +50,7 @@ export function ExternalLoginButtons({ disabled }: { disabled: boolean }) {
   };
 
   return (
-    <div className="space-y-3 pt-2">
+    <div className="flex flex-col gap-3 pt-2">
       <div className="flex items-center gap-3 text-sm text-gray-400">
         <span className="h-px flex-1 bg-gray-200" />
         <span>{t('login.or')}</span>
@@ -68,7 +69,7 @@ export function ExternalLoginButtons({ disabled }: { disabled: boolean }) {
             }}
             style={loginActionButtonStyle(unavailable)}
           >
-            {t('login.externalSignIn', undefined, { name: binding.name })}
+            {t(externalSignInMessageId(binding.name), undefined, { name: binding.name })}
           </Button>
         );
       })}

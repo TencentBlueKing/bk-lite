@@ -351,6 +351,7 @@
         "or": "or",
         "thirdParty": "SSO",
         "externalSignIn": "Sign in with {name}",
+        "externalUse": "Use {name}",
         "externalUnavailable": "Unable to start {name} sign-in",
         "externalReturning": "Completing sign-in",
         "silentFailed": "{name} sign-in did not finish. Continue on the sign-in page.",
