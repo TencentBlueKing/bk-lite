@@ -80,3 +80,11 @@ Beat路由命令在真实PostgreSQL上验证dry-run、排他0600快照、应用�
 已增加`server/scripts/check_celery_runtime.sh`、最小依赖清单、临时PostgreSQL设置和`.github/workflows/server-celery-runtime-check.yml`；CI尚未推送或远端执行。black/isort/flake8、requirements检查、bash语法及OpenSpec strict通过。再次执行全量`make test`仍在临时环境因缺少rest_framework失败，未进入全量业务测试。
 
 已完成独立Linux运行层和拓扑/协议迁移回滚验收。生产版本与显式路由核对、完整业务镜像/真实旧版本兼容性、全组件容量和30分钟/1000探针时延目标、唯一Beat部署切换仍未验收；相应待办不勾选，不据此宣称可直接上线。
+
+## 合入前全量CI（2026-11-04）
+
+提交`5b5b75c417`已推送PR #6882，远端原生Linux专项、导入、迁移及其他既有检查通过。新增完整依赖的`full-server`执行真实`make test`，发现8个收集错误：内嵌PPT工具与Django均使用顶层`config`模块，PPT测试错误导入`server/config`，并非Celery业务断言失败。结果见Actions运行`41792433550`、作业`126448678063`。
+
+针对这一运行边界，将`make test`改为两套独立pytest子进程：应用侧仅分离精确的PPT `scripts/tests`路径；PPT侧在脚本目录收集全部57个文件，不加载Django插件、配置和父级conftest。没有删除或跳过这套745个静态测试方法；两套均生成JUnit，任一失败则门禁失败，首套失败仍执行第二套。直接pytest及app/marker快捷命令仅代表应用套件，完整门禁入口已在测试指南更新。
+
+先写进程隔离行为回归并观察缺少入口的失败，再实现最小编排器：使用同名config与应用autouse fixture的临时工程，验证两套都实际收集并通过，以及任意一套失败均传递非零退出码。3项回归通过，新增编排器覆盖率90.91%。最终完整业务结果仍以更新后的远端CI为准，不将专项通过或测试收集修复报告为全量通过。

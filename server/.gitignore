@@ -23,6 +23,7 @@ requirements.txt
 dist
 *.log
 report.html
+test-results/
 mlruns
 uv.lock
 docs/api/*

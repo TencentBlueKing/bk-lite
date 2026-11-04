@@ -13,7 +13,7 @@
 make install          # uv sync 安装依赖
 make migrate          # makemigrations + migrate + 建缓存表
 make dev              # Uvicorn 启动于 :8011（--reload）
-make test             # pytest
+make test             # 应用与内嵌PPT工具独立测试，汇总两套退出码
 make test-unit        # 仅 unit marker
 make test-bdd         # 仅 bdd marker
 make test-fast        # 跳过 slow

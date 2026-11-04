@@ -11,6 +11,9 @@ on:
       - 'server/config/**'
       - 'server/Makefile'
       - 'server/pyproject.toml'
+      - 'server/pytest.ini'
+      - 'server/scripts/run_server_tests.py'
+      - 'server/apps/core/tests/test_server_test_runner_service.py'
       - 'server/support-files/env/celery-runtime.env.template'
       - 'server/support-files/release/**'
       - 'server/support-files/tests/celery-runtime-requirements.txt'
@@ -62,6 +65,7 @@ jobs:
       MINIO_SECRET_KEY: full-server-validation-secret
       MINIO_USE_HTTPS: 'false'
       UV_NO_SYNC: '1'
+      PYTEST_ADDOPTS: '--maxfail=1'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -83,6 +87,7 @@ jobs:
           path: |
             server/report.html
             server/coverage_html
+            server/test-results
 
   linux-runtime:
     runs-on: ubuntu-latest
