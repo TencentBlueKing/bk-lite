@@ -133,6 +133,22 @@ export const POSTGRESQL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       color: PG_PALETTE.amber
     },
     {
+      name: 'postgresql_deadlocks_count',
+      display_name: '死锁次数',
+      description: '当前统计窗口内发生的事务死锁次数。',
+      unit: 'counts',
+      query: 'sum without (db) (increase(postgresql_deadlocks{__$labels__}[__$window__]))',
+      color: PG_PALETTE.rose
+    },
+    {
+      name: 'postgresql_conflicts_count',
+      display_name: '冲突次数',
+      description: '当前统计窗口内发生的并发冲突次数。',
+      unit: 'counts',
+      query: 'sum without (db) (increase(postgresql_conflicts{__$labels__}[__$window__]))',
+      color: PG_PALETTE.amber
+    },
+    {
       name: 'postgresql_temp_files_rate',
       display_name: '临时文件创建速率',
       description: '复杂查询创建临时文件的速率。',

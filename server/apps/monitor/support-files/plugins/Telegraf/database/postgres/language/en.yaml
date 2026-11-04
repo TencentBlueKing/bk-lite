@@ -48,6 +48,12 @@ monitor_object_metric:
     postgresql_conflicts_rate:
       name: Concurrency Conflict Rate
       desc: Tracks conflicts caused by concurrent operations
+    postgresql_deadlocks_count:
+      name: Deadlock Count
+      desc: Number of transaction deadlocks in the current statistics window
+    postgresql_conflicts_count:
+      name: Conflict Count
+      desc: Number of concurrency conflicts in the current statistics window
     postgresql_temp_files_rate:
       name: Temporary Files Creation Rate
       desc: Reflects temporary file usage by complex queries

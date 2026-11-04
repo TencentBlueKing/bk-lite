@@ -88,6 +88,8 @@ interface ThinTimeSeriesProps {
    * 刻度线还在。数值有起伏时仍显示刻度。
    */
   hideFlatAxisLabels?: boolean;
+  /** 次数等非负轴下限钉在 0。全 0 仍留出 0 以上的空档，平线抬进图区。 */
+  pinAxisZero?: boolean;
 }
 
 const areaKeys = (data: ChartData[]) => {
@@ -206,25 +208,30 @@ export interface AxisBounds {
  * 非速率序列在数据离 0 较远时保持原基线，不把一小段起伏拉成贴底线。
  * 样本都 ≥ 0 时下限不再垫到负数。全 0 停在 0，不出现 -1。
  */
-export const sparseAxisBounds = (values: number[], unit: MetricUnit = 'none'): AxisBounds | null => {
+export const sparseAxisBounds = (
+  values: number[],
+  unit: MetricUnit = 'none',
+  pinZero = false
+): AxisBounds | null => {
   if (!values.length) return null;
   let lo = Math.min(...values);
   let hi = Math.max(...values);
   const rate = isRateUnit(unit);
-  const floorZero = rate || values.every((value) => value >= 0);
+  const pin = rate || pinZero;
+  const floorZero = pin || values.every((value) => value >= 0);
   if (!(hi > lo)) {
     const pad = Math.abs(lo) > 0 ? Math.abs(lo) * 0.5 : 1;
     lo -= pad;
     hi += pad;
   }
-  if (rate) {
+  if (pin) {
     lo = 0;
     if (!(hi > lo)) hi = 1;
   } else if (floorZero) {
     lo = Math.max(0, lo);
   }
   const span = hi - lo;
-  if (!rate && lo > 0 && lo < span * 0.25) lo = 0;
+  if (!pin && lo > 0 && lo < span * 0.25) lo = 0;
   if (!floorZero && hi < 0 && Math.abs(hi) < span * 0.25) hi = 0;
   const integerCount = INTEGER_COUNT_UNITS.has(unit) && values.every((value) => Number.isInteger(value));
   let interval = niceStep(Math.max(hi - lo, Number.EPSILON), 4);
@@ -357,10 +364,14 @@ const snapBounds = (
 };
 
 /** 相邻刻度格式化成同一个字时，把步长加大，避免竖排叠成一串相同数字。 */
-export const readableAxisBounds = (values: number[], unit: MetricUnit = 'none'): AxisBounds | null => {
-  const bounds = sparseAxisBounds(values, unit);
+export const readableAxisBounds = (
+  values: number[],
+  unit: MetricUnit = 'none',
+  pinZero = false
+): AxisBounds | null => {
+  const bounds = sparseAxisBounds(values, unit, pinZero);
   if (!bounds) return null;
-  const floorZero = isRateUnit(unit) || values.every((value) => value >= 0);
+  const floorZero = pinZero || isRateUnit(unit) || values.every((value) => value >= 0);
   const anchorLo = bounds.min;
   const anchorHi = bounds.max;
   let { min, max, interval } = bounds;
@@ -409,7 +420,8 @@ export default function ThinTimeSeries({
   keepLegend = false,
   alertLevel,
   onRetry,
-  hideFlatAxisLabels = false
+  hideFlatAxisLabels = false,
+  pinAxisZero = false
 }: ThinTimeSeriesProps) {
   const proTime = useProTimeWindow();
   const chartWindow = proTime?.window ?? null;
@@ -496,7 +508,7 @@ export default function ThinTimeSeries({
     const rateAxis = isRateUnit(unit);
     const useSparse = !flatAxis && (!focusAxis || rateAxis);
     const layoutOf = (samples: number[], axisUnit: MetricUnit) => (
-      useSparse ? readableAxisBounds(samples, axisUnit) : null
+      useSparse ? readableAxisBounds(samples, axisUnit, pinAxisZero) : null
     );
     const labeledAxis = !flatAxis && !focusAxis;
     const lockedAxis = valueBounds ? fixedPercentAxis(valueBounds.min, valueBounds.max) : null;
@@ -676,7 +688,7 @@ export default function ThinTimeSeries({
         };
       })
     };
-  }, [axisColor, chartWindow, hideFlatAxisLabels, keepLegend, keys, legendKey, mutedColor, numericAxis, panelColor, plotted, seriesColors, splitAxes, suspend, textColor, unit, valueBounds?.min, valueBounds?.max]);
+  }, [axisColor, chartWindow, hideFlatAxisLabels, keepLegend, keys, legendKey, mutedColor, numericAxis, panelColor, pinAxisZero, plotted, seriesColors, splitAxes, suspend, textColor, unit, valueBounds?.min, valueBounds?.max]);
   const { containerRef } = useECharts(option);
   const drawnSeriesCount = keys.filter((key) => plotted.some((point) => {
     const value = point[key];

@@ -5,10 +5,13 @@ import type { MetricUnit } from '../../../shared/types';
 import { formatMetricValue } from '../../../shared/utils/format';
 import { ProSection, ThinTimeSeries } from '../../host/layered/pro-chrome';
 import host from '../../host/layered/layered.module.scss';
+import { useDashboardText } from '../../../shared/utils/content-i18n';
 import { PG_PALETTE } from '../config';
 import { PostgresHint } from './hint';
 import {
   cacheHitChartPoints,
+  formatEventCount,
+  postgresCountMerged,
   postgresLatest,
   postgresMerged,
   type PostgresMetricMap
@@ -28,6 +31,9 @@ interface ChartSpec {
   series: readonly SeriesSpec[];
   /** 命中率图走成对分母，轴固定 0–100，不再乘 100。 */
   cacheHit?: boolean;
+  /** 次数桶。纵轴从 0 起，全 0 仍画平线。 */
+  countBuckets?: boolean;
+  emptyText?: string;
 }
 
 const ZONES: ReadonlyArray<{
@@ -155,10 +161,12 @@ const ZONES: ReadonlyArray<{
       {
         key: 'deadlock',
         title: '死锁与冲突',
-        body: '死锁速率与并发冲突速率随时间的变化。',
+        body: '各时间点上的死锁次数与并发冲突次数。\n用于观察冲突是否在窗口内反复出现。',
+        countBuckets: true,
+        emptyText: '本窗口暂无死锁或冲突数据。',
         series: [
-          { name: 'postgresql_deadlocks_rate', label: '死锁', color: PG_PALETTE.rose, unit: 'cps' },
-          { name: 'postgresql_conflicts_rate', label: '冲突', color: PG_PALETTE.amber, unit: 'cps' }
+          { name: 'postgresql_deadlocks_count', label: '死锁', color: PG_PALETTE.rose, unit: 'counts' },
+          { name: 'postgresql_conflicts_count', label: '冲突', color: PG_PALETTE.amber, unit: 'counts' }
         ]
       },
       {
@@ -177,6 +185,7 @@ const ZONES: ReadonlyArray<{
 const readingOf = (metricMap: PostgresMetricMap, name: string, unit: MetricUnit) => {
   const latest = postgresLatest(metricMap, name);
   if (latest == null) return '—';
+  if (unit === 'counts') return formatEventCount(Math.max(0, latest));
   const formatted = formatMetricValue(latest, unit);
   return `${formatted.value}${formatted.unit || ''}`;
 };
@@ -190,27 +199,32 @@ function PerformanceChart({
   metricMap: PostgresMetricMap;
   pending: ReadonlySet<string>;
 }) {
+  const { dt } = useDashboardText();
+  const copy = (text: string) => (spec.countBuckets ? dt(text) : text);
   const multi = spec.series.length > 1;
   const mixedUnits = new Set(spec.series.map((item) => item.unit)).size > 1;
   const data = spec.cacheHit
     ? cacheHitChartPoints(metricMap)
-    : postgresMerged(metricMap, spec.series.map((item) => ({ name: item.name, label: item.label })));
+    : spec.countBuckets
+      ? postgresCountMerged(metricMap, spec.series.map((item) => ({ name: item.name, label: item.label })))
+      : postgresMerged(metricMap, spec.series.map((item) => ({ name: item.name, label: item.label })));
   const awaiting = spec.series.some((item) => pending.has(item.name)) && data.length === 0;
   const unit = spec.series[0]?.unit || 'none';
   return (
     <div id={`pg-perf-${spec.key}`} className="min-w-0" data-postgres-chart={spec.key}>
       <ThinTimeSeries
-        title={spec.title}
-        hintNode={<PostgresHint kind={`pg-chart-${spec.key}`} title={spec.title} body={spec.body} />}
+        title={copy(spec.title)}
+        hintNode={<PostgresHint kind={`pg-chart-${spec.key}`} title={copy(spec.title)} body={copy(spec.body)} />}
         unit={unit}
         valueBounds={spec.cacheHit ? { min: 0, max: 100 } : undefined}
+        pinAxisZero={spec.countBuckets}
         independentAxes={mixedUnits}
         keepLegend={multi}
         loading={awaiting}
-        emptyText="本窗口暂无数据"
+        emptyText={spec.emptyText ? copy(spec.emptyText) : '本窗口暂无数据'}
         data={data}
         legends={spec.series.map((item) => ({
-          label: item.label,
+          label: copy(item.label),
           color: item.color,
           unit: mixedUnits ? item.unit : undefined,
           reading: multi ? readingOf(metricMap, item.name, item.unit) : undefined

@@ -12,7 +12,7 @@
   "default_metric": "any({instance_type='postgres'}) by (instance_id)",
   "instance_id_keys": ["instance_id"],
   "supplementary_indicators": ["postgresql_numbackends", "postgresql_blks_read_rate", "postgresql_temp_files_rate", "postgresql_cache_hit_ratio"],
-  "display_fields": [{"name":"活跃连接数","sort_order":0,"metrics":[{"plugin":"Postgres","metric":"postgresql_numbackends"}]}, {"name":"事务提交速率","sort_order":1,"metrics":[{"plugin":"Postgres","metric":"postgresql_xact_commit_rate"}]}, {"name":"缓存命中率","sort_order":2,"metrics":[{"plugin":"Postgres","metric":"postgresql_cache_hit_ratio"}]}, {"name":"死锁速率","sort_order":3,"metrics":[{"plugin":"Postgres","metric":"postgresql_deadlocks_rate"}]}],
+  "display_fields": [{"name":"活跃连接数","sort_order":0,"metrics":[{"plugin":"Postgres","metric":"postgresql_numbackends"}]}, {"name":"事务提交速率","sort_order":1,"metrics":[{"plugin":"Postgres","metric":"postgresql_xact_commit_rate"}]}, {"name":"缓存命中率","sort_order":2,"metrics":[{"plugin":"Postgres","metric":"postgresql_cache_hit_ratio"}]}, {"name":"死锁次数","sort_order":3,"metrics":[{"plugin":"Postgres","metric":"postgresql_deadlocks_count"}]}],
   "metrics": [
     {
       "metric_group": "Connection",
@@ -216,6 +216,38 @@
       ],
       "description": "Tracks conflicts caused by concurrent operations",
       "query": "rate(postgresql_conflicts{__$labels__}[5m])"
+    },
+    {
+      "metric_group": "Concurrency",
+      "name": "postgresql_deadlocks_count",
+      "display_name": "Deadlock Count",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {
+          "name": "db",
+          "description": "Database name"
+        }
+      ],
+      "description": "Number of transaction deadlocks in the current statistics window",
+      "query": "sum without (db) (increase(postgresql_deadlocks{__$labels__}[5m]))"
+    },
+    {
+      "metric_group": "Concurrency",
+      "name": "postgresql_conflicts_count",
+      "display_name": "Conflict Count",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {
+          "name": "db",
+          "description": "Database name"
+        }
+      ],
+      "description": "Number of concurrency conflicts in the current statistics window",
+      "query": "sum without (db) (increase(postgresql_conflicts{__$labels__}[5m]))"
     },
     {
       "metric_group": "TempFiles",

@@ -18,12 +18,15 @@ import EventsRail, { type HostAlertRailEvent } from '../../host/layered/events-r
 import FocusShortcutTitle from '../../host/layered/focus-shortcut-title';
 import { describeFocusAxis, formatFocusHeadline, seriesSampleValues } from '../../host/layered/focus-axis';
 import { PG_PALETTE } from '../config';
+import { useDashboardText } from '../../../shared/utils/content-i18n';
 import { formatCacheHitPercent } from './cache-hit';
 import { PostgresHint } from './hint';
 import {
   cacheHitReading,
+  formatEventCount,
   postgresLatest,
   postgresMerged,
+  postgresWindowCount,
   type PostgresMetricMap
 } from './series';
 
@@ -74,11 +77,12 @@ const KPI_SPECS = [
   },
   {
     key: 'deadlock',
-    label: '死锁速率',
-    metric: 'postgresql_deadlocks_rate',
-    unit: 'cps' as const,
+    label: '死锁次数',
+    metric: 'postgresql_deadlocks_count',
+    unit: 'counts' as const,
     color: PG_PALETTE.rose,
-    body: '每秒发生的死锁次数；持续抬升需排查冲突事务。'
+    anchor: 'deadlock',
+    body: '当前时间范围内发生的死锁次数。\n偶发需要关注冲突事务；持续出现时应排查锁顺序与长事务。\n暂无数据时显示 —。'
   }
 ] as const;
 
@@ -121,7 +125,7 @@ const FOCUS_SPECS = [
   }
 ] as const;
 
-/** 死锁速率：0 用中性色，大于 0 才用告警色。 */
+/** 死锁次数：0 用中性色，大于 0 才用告警色。 */
 export const postgresDeadlockTone = (latest: number | null, alertColor: string) => (
   latest != null && latest > 0 ? alertColor : undefined
 );
@@ -152,7 +156,7 @@ const HEALTH_PENDING = [
   'postgresql_cache_hit_ratio',
   'postgresql_blks_hit_rate',
   'postgresql_blks_read_rate',
-  'postgresql_deadlocks_rate'
+  'postgresql_deadlocks_count'
 ];
 
 export default function OverviewPane({
@@ -167,31 +171,41 @@ export default function OverviewPane({
   onOpenFocus,
   onFocusAlert
 }: OverviewPaneProps) {
+  const { dt } = useDashboardText();
   const hit = cacheHitReading(metricMap);
   const healthLoading = booting || HEALTH_PENDING.some((name) => pendingMetricNames.has(name));
   const cards = useMemo<KpiTileModel[]>(() => {
     const metricCards: KpiTileModel[] = KPI_SPECS.map((item) => {
-      const info = <PostgresHint kind={`pg-kpi-${item.key}`} title={item.label} body={item.body} />;
+      const label = item.key === 'deadlock' ? dt(item.label) : item.label;
+      const body = item.key === 'deadlock' ? dt(item.body) : item.body;
+      const info = <PostgresHint kind={`pg-kpi-${item.key}`} title={label} body={body} />;
       if (item.key === 'cache') {
         const value = hit.percent == null ? EMPTY : formatCacheHitPercent(hit.percent);
         return {
           key: item.key,
-          label: item.label,
+          label,
           value,
           tone: hit.percent == null ? undefined : item.color,
           info
         };
       }
-      const latest = postgresLatest(metricMap, item.metric);
+      const latest = item.key === 'deadlock'
+        ? postgresWindowCount(metricMap, item.metric)
+        : postgresLatest(metricMap, item.metric);
+      const shown = item.key === 'deadlock' && latest != null ? Math.round(latest) : latest;
       const tone = item.key === 'deadlock'
-        ? postgresDeadlockTone(latest, item.color)
+        ? postgresDeadlockTone(shown, item.color)
         : (latest == null ? undefined : item.color);
       return {
         key: item.key,
-        label: item.label,
-        value: latest == null ? EMPTY : joinMetric(latest, item.unit),
+        label,
+        value: latest == null ? EMPTY : (
+          item.key === 'deadlock' ? formatEventCount(latest) : joinMetric(latest, item.unit)
+        ),
         tone,
-        info
+        info,
+        onActivate: item.key === 'deadlock' ? () => onOpenFocus(item.anchor) : undefined,
+        activatesDialog: item.key === 'deadlock' ? false : undefined
       };
     });
     metricCards.push({
@@ -203,10 +217,14 @@ export default function OverviewPane({
       expanded: alertsOpen
     });
     return metricCards;
-  }, [alertCount, alertsOpen, hit.percent, metricMap, onOpenAlerts]);
+  }, [alertCount, alertsOpen, dt, hit.percent, metricMap, onOpenAlerts, onOpenFocus]);
 
   const loadingTiles: KpiTileModel[] = [
-    ...KPI_SPECS.map((item) => ({ key: item.key, label: item.label, value: '' })),
+    ...KPI_SPECS.map((item) => ({
+      key: item.key,
+      label: item.key === 'deadlock' ? dt(item.label) : item.label,
+      value: ''
+    })),
     { key: ALERT_KPI_KEY, label: ALERT_KPI_LABEL, value: '' }
   ];
 

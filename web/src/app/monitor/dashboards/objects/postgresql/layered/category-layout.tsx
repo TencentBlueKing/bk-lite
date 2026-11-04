@@ -142,7 +142,9 @@ export default function PostgresCategoryLayout({
     if (tab !== 'performance') return;
     const anchor = searchParams.get('focus');
     if (!anchor) return;
-    document.getElementById(`pg-zone-${anchor}`)?.scrollIntoView({ block: 'start' });
+    const target = document.getElementById(`pg-perf-${anchor}`)
+      || document.getElementById(`pg-zone-${anchor}`);
+    target?.scrollIntoView({ block: 'start' });
   }, [searchParams, tab]);
 
   useEffect(() => {

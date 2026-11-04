@@ -21,6 +21,8 @@ export interface KpiCardModel {
   detail?: string;
   extra?: React.ReactNode;
   onActivate?: () => void;
+  /** 为 false 时点击只是跳转，不声明成对话框。 */
+  activatesDialog?: boolean;
   expanded?: boolean;
   /** 本卡达档。不传或 none 时不打点、不加框。 */
   alertLevel?: TabAlertLevel;
@@ -107,8 +109,8 @@ export function KpiStrip({
             className={className}
             data-kpi={item.key}
             onClick={item.onActivate}
-            aria-expanded={Boolean(item.expanded)}
-            aria-haspopup="dialog"
+            aria-expanded={item.activatesDialog === false ? undefined : Boolean(item.expanded)}
+            aria-haspopup={item.activatesDialog === false ? undefined : 'dialog'}
           >
             {body}
           </button>

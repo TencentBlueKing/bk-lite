@@ -28,12 +28,28 @@ def dashboard_query_capability_id(template: str) -> str:
     return f"dashboard:v1:{value:08x}"
 
 
-def _query_window(start: int, end: int) -> str:
-    seconds = max(1, round((end - start) / 1000))
+def _format_duration(seconds: int) -> str:
+    seconds = max(1, int(seconds))
     for divisor, suffix in ((86400, "d"), (3600, "h"), (60, "m")):
         if seconds % divisor == 0:
             return f"{seconds // divisor}{suffix}"
     return f"{seconds}s"
+
+
+def _query_window(start: int, end: int) -> str:
+    return _format_duration(max(1, round((end - start) / 1000)))
+
+
+# 稀疏计数在范围查询里按图表步长分桶。整窗 increase 会把相邻点涂成滚动合计，
+# 看不出桶内是否反复发生。即时查询仍用整窗，其它 increase（如容器重启）不变。
+_BUCKET_COUNT_TOKENS = (
+    "increase(postgresql_deadlocks{",
+    "increase(postgresql_conflicts{",
+)
+
+
+def _uses_bucket_window(template: str) -> bool:
+    return any(token in template for token in _BUCKET_COUNT_TOKENS)
 
 
 @dataclass(frozen=True)
@@ -138,6 +154,7 @@ def build_dashboard_query(
     start: int,
     end: int,
     params=None,
+    step_seconds: int | None = None,
 ) -> str:
     instance_keys = [str(key).strip() for key in monitor_object.instance_id_keys or [] if str(key).strip()]
     if not instance_keys:
@@ -159,7 +176,10 @@ def build_dashboard_query(
         raise AuthorizedMetricQueryError("查询能力与监控对象不匹配", code="capability_object_mismatch")
 
     query = join_label_queries(capability.template, matcher_groups)
-    query = query.replace("__$window__", _query_window(start, end))
+    window = _query_window(start, end)
+    if step_seconds and _uses_bucket_window(capability.template):
+        window = _format_duration(step_seconds)
+    query = query.replace("__$window__", window)
     if "__$" in query:
         raise AuthorizedMetricQueryError("查询能力参数不完整", code="capability_template_invalid")
     return query

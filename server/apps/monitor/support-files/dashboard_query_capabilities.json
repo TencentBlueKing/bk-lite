@@ -6110,6 +6110,13 @@
       "template": "histogram_quantile(0.99, sum by (instance_id, le) (label_replace(rate({__name__=~\"vllm:request_prompt_tokens_[0-9.]+\", __$labels__}[5m]) keep_metric_names, \"le\", \"$1\", \"__name__\", \"vllm:request_prompt_tokens_(.+)\") or label_replace(rate({__name__=\"vllm:request_prompt_tokens_+Inf\", __$labels__}[5m]) keep_metric_names, \"le\", \"+Inf\", \"__name__\", \".*\")))"
     },
     {
+      "id": "dashboard:v1:d62a4dbd",
+      "object_names": [
+        "Postgres"
+      ],
+      "template": "sum without (db) (increase(postgresql_deadlocks{__$labels__}[__$window__]))"
+    },
+    {
       "id": "dashboard:v1:d6425958",
       "object_names": [
         "Switch"
@@ -7003,6 +7010,13 @@
         "Firewall"
       ],
       "template": "sum(netflow_in_packets{instance_type='firewall', collect_type='netflow', __$labels__} * label_value(netflow_in_packets{instance_type='firewall', collect_type='netflow', __$labels__}, \"effective_sampling_rate\")) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:f95302dc",
+      "object_names": [
+        "Postgres"
+      ],
+      "template": "sum without (db) (increase(postgresql_conflicts{__$labels__}[__$window__]))"
     },
     {
       "id": "dashboard:v1:f9d16f6f",

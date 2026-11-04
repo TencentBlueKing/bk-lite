@@ -46,6 +46,12 @@ monitor_object_metric:
     postgresql_conflicts_rate:
       name: 并发冲突速率
       desc: 跟踪并发操作引发的冲突情况
+    postgresql_deadlocks_count:
+      name: 死锁次数
+      desc: 当前统计窗口内发生的事务死锁次数
+    postgresql_conflicts_count:
+      name: 冲突次数
+      desc: 当前统计窗口内发生的并发冲突次数
     postgresql_temp_files_rate:
       name: 临时文件创建速率
       desc: 反映复杂查询对临时文件的依赖程度
