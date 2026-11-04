@@ -19,9 +19,11 @@ class TestDistributionFileUpload:
             resp = su_client.post(URL, {"file": f}, format="multipart")
         assert resp.status_code == 201
         assert resp.data["name"] == "app.tar.gz"
+        assert resp.data["file_key"]
         df = DistributionFile.objects.get(id=resp.data["id"])
         assert df.team == 1
         assert df.original_name == "app.tar.gz"
+        assert df.file_key == resp.data["file_key"]
         assert df.file_key.endswith(".gz")
 
     def test_upload_requires_file(self, su_client):

@@ -14,6 +14,11 @@ class FakeJobClient:
         self.actor_context = actor_context
         return {"result": True, "data": {"task_id": 9}}
 
+    def execute_automation_file_distribute(self, payload, actor_context):
+        self.submitted = payload
+        self.actor_context = actor_context
+        return {"result": True, "data": {"task_id": 11}}
+
     def cancel_automation_execution(self, data, actor_context):
         self.cancelled = data
         self.cancel_actor_context = actor_context
@@ -104,6 +109,40 @@ def test_cancel_rejection_is_typed_error():
             authorized_team_ids=[7],
             actor={"username": "operator", "domain": "example.com"},
         )
+
+
+def test_submit_file_distribute_uses_file_keys_and_path():
+    client = FakeJobClient()
+    task_id = JobPlatformExecutor(client=client).submit_file_distribute(
+        name="分发",
+        nodes=[
+            {
+                "id": "node:n1",
+                "source": "node_mgmt",
+                "source_id": "n1",
+                "name": "host",
+                "ip": "10.0.0.1",
+                "operating_system": "linux",
+            }
+        ],
+        team=7,
+        target_source="node_mgmt",
+        file_keys=["job-files/a.conf"],
+        target_path="/etc/nginx/",
+        timeout=120,
+        actor={"username": "operator", "domain": "example.com"},
+        overwrite_strategy="skip",
+        idempotency_key="workflow:e1:atom:2:group:node_mgmt",
+        workflow_execution_id="exec-1",
+    )
+
+    assert task_id == 11
+    assert client.submitted["file_keys"] == ["job-files/a.conf"]
+    assert client.submitted["target_path"] == "/etc/nginx/"
+    assert client.submitted["overwrite_strategy"] == "skip"
+    assert client.submitted["idempotency_key"] == "workflow:e1:atom:2:group:node_mgmt"
+    assert client.submitted["workflow_execution_id"] == "exec-1"
+    assert client.submitted["callback_subject"] == "bklite.workflow.job_result"
 
 
 def test_submit_manual_target_uses_controlled_target_id_not_ip_identity():

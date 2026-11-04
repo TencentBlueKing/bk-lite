@@ -1,0 +1,43 @@
+{
+  "type": "object",
+  "properties": {
+    "data": {
+      "type": "array",
+      "title": "主机列表",
+      "items": {
+        "type": "object",
+        "properties": {
+          "target": {"type": "object", "title": "目标"},
+          "status": {"type": "string", "enum": ["SUCCESS", "FAILED"], "title": "状态"},
+          "file_results": {
+            "type": "array",
+            "title": "文件结果",
+            "items": {
+              "type": "object",
+              "properties": {
+                "file_name": {"type": "string"},
+                "success": {"type": "boolean"},
+                "error": {"type": "string"}
+              },
+              "required": ["file_name", "success", "error"]
+            }
+          },
+          "error": {"type": ["string", "null"], "title": "错误"}
+        },
+        "required": ["target", "status", "file_results", "error"]
+      }
+    },
+    "summary": {
+      "type": "object",
+      "title": "执行汇总",
+      "properties": {
+        "total": {"type": "integer", "title": "总数"},
+        "succeeded": {"type": "integer", "title": "成功数"},
+        "failed": {"type": "integer", "title": "失败数"}
+      },
+      "required": ["total", "succeeded", "failed"]
+    },
+    "job_task_ids": {"type": "array", "title": "作业实例", "items": {"type": "integer"}}
+  },
+  "required": ["data", "summary", "job_task_ids"]
+}
