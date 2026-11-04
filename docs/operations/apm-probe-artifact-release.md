@@ -6,7 +6,7 @@ Java、Python、Node.js、Go、PHP、.NET Linux、.NET Windows、OBI、Ruby、C+
 
 ## 1. 变更摘要
 
-接入脚本不再访问 GitHub、PyPI、npm、NuGet、PECL、Packagist 或 Go module 公网源。
+接入脚本不再访问 GitHub、PyPI、npm、NuGet、PECL、Packagist、RubyGems、Hex 或 Go module 公网源。
 目标主机改为从本系统下载对应离线包：
 
 ```text
@@ -33,6 +33,7 @@ Java、Python、Node.js、Go、PHP、.NET Linux、.NET Windows、OBI、Ruby、C+
 | Swift | `opentelemetry-swift-sdk.tar.gz` | `apm/probe/swift/opentelemetry-swift-sdk.tar.gz` | `opentelemetry-swift` 2.6.0、配套 core 2.6.0，以及 HTTP exporter 的本地 path 依赖 |
 
 十二份都要初始化。缺任意一个，只影响使用该制品的接入脚本。
+相对已经交付的 Java、Python、Node.js、Go 和 .NET Linux，本次流水线新增 PHP、.NET Windows、eBPF、Ruby、C++、Erlang/Elixir 和 Swift。前五份下载仍为 200 且 SHA-256 与归档记录一致时，不重打。
 Linux .NET 制品仍不支持 Alpine / musl、ARM64 和 Windows；Windows 是另一份制品，不要合并进 Linux zip。
 ARM 探针继续不做，见 `docs/design/product-decisions/apm-probe-coverage.md`。
 
@@ -43,14 +44,14 @@ ARM 探针继续不做，见 `docs/design/product-decisions/apm-probe-coverage.m
 
 发布流水线必须完成以下三项，缺少任意一项都不能开放对应语言的接入指引：
 
-1. 归档上表八份**固定版本**离线包（禁止依赖 GitHub / PyPI / npm / NuGet / Packagist `latest`）。
+1. 归档上表十二份**固定版本**离线包（禁止依赖 GitHub / PyPI / npm / NuGet / Packagist / RubyGems / Hex 的 `latest`）。
 2. 在部署准备期、NATS 已可用的环境中，对每个制品执行一次 `apm_probe_init`。
 3. 确认各云区域 `NODE_SERVER_URL` 已配置，且目标主机能访问该地址的 8011
    （或实际 Server HTTP 端口）。
 
-建议顺序：归档八份离线包 → 发布 Server → NATS 就绪后执行八次 `apm_probe_init`
-→ 验收八个下载地址。该初始化是**部署准备期**步骤，失败应终止发布流水线并
-保留原始错误。
+建议顺序：归档十二份离线包 → 发布带新白名单的 Server → NATS 就绪后执行十二次 `apm_probe_init`
+→ 验收十二个下载地址。先发布 Server，再初始化；旧 Server 会拒绝新制品名。该初始化是**部署准备期**步骤，失败应终止发布流水线并
+保留原始错误。已有制品下载仍为 200 且 SHA-256 与归档记录一致时，不重新构建那份离线包；初始化命令可以重跑，它会覆盖同名对象。
 
 禁止把 `apm_probe_init` 放进 Server 容器 `startup.sh` 或 `batch_init`。制品缺失
 只影响接入脚本，不阻断 API、Worker、Beat、Listener 启动。启动边界见
@@ -183,28 +184,73 @@ dist/
 
 ### eBPF
 
-从 OBI v1.0.0 下载 `obi-v1.0.0-linux-amd64.tar.gz`，原文件改名为
-`opentelemetry-ebpf-obi-linux-amd64.tar.gz`。不要打入 arm64 包。接入片段只把用户填写的
+从 OBI v1.0.0 下载官方 amd64 包，原文件改名为制品名。不要打入 arm64 包。
+
+```text
+https://github.com/open-telemetry/opentelemetry-ebpf-instrumentation/releases/download/v1.0.0/obi-v1.0.0-linux-amd64.tar.gz
+```
+
+```bash
+curl --fail --silent --show-error --location \
+  --output opentelemetry-ebpf-obi-linux-amd64.tar.gz \
+  https://github.com/open-telemetry/opentelemetry-ebpf-instrumentation/releases/download/v1.0.0/obi-v1.0.0-linux-amd64.tar.gz
+```
+
+文件名必须是 `opentelemetry-ebpf-obi-linux-amd64.tar.gz`。接入片段只把用户填写的
 绝对路径写入 `exe_path_glob`，HTTP traces 打开、metrics 关闭，不配置 meter provider
 或端口发现。
 
 ### Ruby
 
-在能访问 RubyGems 的构建机上，把下面三个钉死版本和它们的运行时依赖放进 `cache/`，归档根目录就是 `cache/`，文件名必须是 `opentelemetry-ruby-sdk.tar.gz`。目标机执行 `gem install --local --ignore-dependencies`，不再访问 RubyGems。
+在 **linux/amd64**、Ruby `>= 3.3` 的构建机上安装下面三个钉死版本。安装会带上运行时依赖，其中 `google-protobuf` 必须是 `x86_64-linux` 平台。不要使用 aarch64 构建机的 gem 代替。
 
 - `opentelemetry-sdk` 1.13.1
 - `opentelemetry-exporter-otlp` 0.37.0
 - `opentelemetry-instrumentation-rack` 0.31.2
 
-Ruby 版本要求 `>= 3.3`。页面只写 Rack。不要把 Rails 或其他未进归档的 instrumentation 写进片段。
+```bash
+gem install --no-document --install-dir /tmp/otel-gems \
+  opentelemetry-sdk:1.13.1 \
+  opentelemetry-exporter-otlp:0.37.0 \
+  opentelemetry-instrumentation-rack:0.31.2
+mkdir -p /tmp/ruby-sdk/cache
+find /tmp/otel-gems -name '*.gem' -exec cp {} /tmp/ruby-sdk/cache/ \;
+tar -C /tmp/ruby-sdk -czf opentelemetry-ruby-sdk.tar.gz cache
+```
+
+归档根目录就是 `cache/`，里面直接是 `.gem` 文件。文件名必须是 `opentelemetry-ruby-sdk.tar.gz`。目标机执行 `gem install --local --no-document --ignore-dependencies`，不再访问 RubyGems。页面只写 Rack。不要把 Rack 框架、Rails 或其他未列在上面的 instrumentation 打进归档。
 
 ### C++
 
-用官方 **v1.30.0** 源码在构建机安装到 `prefix/`，只打开 OTLP/HTTP，关闭 OTLP/gRPC 和测试。归档根目录就是 `prefix/`，文件名必须是 `opentelemetry-cpp-sdk.tar.gz`。目标机只对着这个前缀编译示例，不再拉取 CMake 依赖。进程启动时把 `prefix/lib` 放进 `LD_LIBRARY_PATH`，可执行文件上的 RUNPATH 不会传给它依赖的 OpenTelemetry 动态库。
+在 **linux/amd64** 构建机上取出官方 tag `v1.30.0` 的源码，安装到 `prefix/`。CMake 选项名是 `OTELCPP_WITH_*`。只打开 OTLP/HTTP，关闭 OTLP/gRPC、OTLP 文件导出、Prometheus 和测试。构建机安装 libcurl 开发包，使用系统 curl，不要再抓一份 curl 源码。
+
+```text
+https://github.com/open-telemetry/opentelemetry-cpp/archive/refs/tags/v1.30.0.tar.gz
+```
+
+```bash
+cmake -S . -B /tmp/build \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_INSTALL_PREFIX=/opt/prefix \
+  -DBUILD_SHARED_LIBS=ON \
+  -DOTELCPP_INSTALL=ON \
+  -DOTELCPP_WITH_OTLP_HTTP=ON \
+  -DOTELCPP_WITH_OTLP_GRPC=OFF \
+  -DOTELCPP_WITH_OTLP_FILE=OFF \
+  -DOTELCPP_WITH_PROMETHEUS=OFF \
+  -DOTELCPP_BUILD_TESTING=OFF \
+  -DOTELCPP_WITH_BENCHMARK=OFF \
+  -DOTELCPP_WITH_EXAMPLES=OFF
+cmake --build /tmp/build
+cmake --install /tmp/build
+tar -C /opt -czf opentelemetry-cpp-sdk.tar.gz prefix
+```
+
+归档根目录就是 `prefix/`，文件名必须是 `opentelemetry-cpp-sdk.tar.gz`。目标机只对着这个前缀编译示例，不再拉取 CMake 依赖。进程启动时把 `prefix/lib` 放进 `LD_LIBRARY_PATH`。可执行文件上的 RUNPATH 不会传给它依赖的 OpenTelemetry 动态库。
 
 ### Erlang/Elixir
 
-把下面这些 Hex 包解包到归档根目录，目录名与包名相同。文件名必须是 `opentelemetry-erlang-sdk.tar.gz`。rebar3 没有 path 依赖类型，片段把这些目录链到应用的 `_checkouts`，并覆盖会再去 Hex 或 Git 拉包的依赖和插件。Mix 示例使用本地 path。
+从 Hex 下载下面这些包。每个地址形如 `https://repo.hex.pm/tarballs/<包名>-<版本>.tar`，其中的 `contents.tar.gz` 解到与包名相同的目录。归档根目录就是这些目录，不要改成应用名，也不要打入 `_build` 或 beam。文件名必须是 `opentelemetry-erlang-sdk.tar.gz`。
 
 - `opentelemetry` 1.7.0
 - `opentelemetry_exporter` 1.11.0
@@ -214,13 +260,23 @@ Ruby 版本要求 `>= 3.3`。页面只写 Rack。不要把 Rails 或其他未进
 - `acceptor_pool` 1.0.1
 - `ctx` 0.6.0
 - `gproc` 1.2.0
-- `ts_chatterbox` 0.16.0（应用名 `chatterbox`）
+- `ts_chatterbox` 0.16.0（应用名 `chatterbox`，目录仍叫 `ts_chatterbox`）
 - `ssl_verify_fun` 1.1.9
-- `hpack_erl` 0.3.0（应用名 `hpack`）
+- `hpack_erl` 0.3.0（应用名 `hpack`，目录仍叫 `hpack_erl`）
+
+rebar3 没有 path 依赖类型。片段把这些目录链到应用的 `_checkouts`，并覆盖会再去 Hex 或 Git 拉包的依赖和插件。Mix 示例使用本地 path。
 
 ### Swift
 
-打包下面这些源码，并把包内依赖改成相对本地 path。归档根目录包含这些目录，文件名必须是 `opentelemetry-swift-sdk.tar.gz`。上游 `opentelemetry-swift` 还依赖 gRPC、NIO、metrics 和 tracing；离线包只保留 HTTP Trace exporter 的 target，避免再拉取这些包。片段只生成 Swift Package Manager 的本地 path 示例，tools 版本是 6.2，不生成 CocoaPods，也不访问远端包地址。Swift 片段面向 Linux，不提供 macOS 安装步骤。
+打包下面这些源码。归档根目录包含这些目录，文件名必须是 `opentelemetry-swift-sdk.tar.gz`。
+
+```text
+opentelemetry-swift/
+opentelemetry-swift-core/
+swift-atomics/
+swift-log/
+swift-protobuf/
+```
 
 - `opentelemetry-swift` 2.6.0
 - `opentelemetry-swift-core` 2.6.0
@@ -228,7 +284,7 @@ Ruby 版本要求 `>= 3.3`。页面只写 Rack。不要把 Rails 或其他未进
 - `swift-log` 1.16.2
 - `swift-protobuf` 1.39.0
 
-`swift-log` 和 `swift-protobuf` 的清单要求 Swift tools 6.2。
+打进归档之前，把包内依赖改成相对本地 path。`opentelemetry-swift-core` 的 atomics 指向 `../swift-atomics`。`opentelemetry-swift` 只保留 HTTP Trace exporter 的 target，path 指向 `../opentelemetry-swift-core`、`../swift-log` 和 `../swift-protobuf`，去掉 gRPC、NIO、metrics 和 tracing。`swift-log` 与 `swift-protobuf` 的清单要求 Swift tools 6.2，片段里的 tools 版本也是 6.2。不要生成 CocoaPods。依赖列表里不要留 GitHub 包地址。上游清单里 SwiftLint 那段只有设置了 `OTEL_ENABLE_SWIFTLINT` 才会启用，不要把它放进 dependencies。Swift 片段面向 Linux，不提供 macOS 安装步骤。
 
 ## 4. 初始化对象存储
 
@@ -357,12 +413,14 @@ do
 done
 ```
 
-摘要必须与发布记录一致。再在 APM 接入页分别选择 Java / Python / Node.js / Go / PHP / .NET Linux
+摘要必须与发布记录一致。再在 APM 接入页分别选择 Java / Python / Node.js / Go / PHP / .NET Linux / Ruby / C++ / Erlang / Swift
 的 host 或 docker，以及 .NET Windows 和 eBPF 的主机片段，确认下载地址是上述系统内 URL，
-且不含 `https://github.com`、`pypi.org`、`npmjs`、`nuget.org`、`packagist.org`、`go get`。
+且不含 `https://github.com`、`pypi.org`、`npmjs`、`nuget.org`、`packagist.org`、`rubygems.org`、`hex.pm`、`go get`。
 发布验收还包括：PHP 8.2 NTS 的 Slim 入口 Span；ZTS 或 8.0 安装脚本退出；Windows 上
 ASP.NET Core 入口 Span，且不重启无关服务；合格 Linux amd64 主机上未插桩 Go net/http
 的入口 Span，已插桩进程不再产生第二份 Trace，指标不进入监控 VM 或 APM 聚合存储。
+Ruby 在 linux/amd64 上打出 Rack 入口 Span。C++、Erlang/Elixir、Swift 各自打出一个最小进程入口 Span。
+C++ 进程要把 `prefix/lib` 放进 `LD_LIBRARY_PATH`。Swift 只在 Linux 上验收。Ruby 的 gem 必须是目标架构，不能用 aarch64 包代替 amd64。
 
 ## 7. 常见失败与定位
 
@@ -380,6 +438,10 @@ ASP.NET Core 入口 Span，且不重启无关服务；合格 Linux amd64 主机�
 | .NET 启动找不到 Profiler | Linux 归档是否为官方 glibc x64 zip，目标是否为 glibc x86_64；Windows 是否用了 Windows zip 且自行重启了应用 |
 | PHP 扩展装不上 | 目标是否为 NTS 8.1–8.4；8.1 不应安装 PDO / MySQLi 包 |
 | OBI 没有 Span | 内核、BTF 和权限是否满足；`exe_path_glob` 是否就是目标 Go 二进制的绝对路径 |
+| Ruby `gem install` 失败或没有 Rack Span | gem `cache/` 是否为目标架构；Ruby 是否 `>= 3.3`；片段是否使用 Rack `middleware_args` |
+| C++ 进程找不到 `libopentelemetry_*.so` | 启动时 `LD_LIBRARY_PATH` 是否包含 `prefix/lib` |
+| Erlang `rebar3` 仍去拉 Hex 或 Git | 归档是否含手册列出的 Hex 包；应用是否使用 `_checkouts` 和 overrides |
+| Swift 解析到远端包或 tools 版本不够 | 归档是否含 2.6.0、core 和三份本地依赖；示例 tools 是否为 6.2；清单是否只保留 HTTP exporter |
 
 ## 8. 回滚
 
