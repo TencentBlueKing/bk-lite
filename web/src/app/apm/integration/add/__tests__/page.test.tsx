@@ -474,7 +474,7 @@ describe('APM 添加接入', () => {
     expect(within(panel).getByText('Express')).not.toBeNull();
     expect(within(panel).getByText('NestJS')).not.toBeNull();
     expect(within(panel).getByText('Koa')).not.toBeNull();
-    expect(within(panel).getByText('Fastify')).not.toBeNull();
+    expect(within(panel).queryByText('Fastify')).toBeNull();
   });
 
   it('Java 支持框架展示 2.31.1 与 Spring / Dubbo / gRPC', async () => {

@@ -9,13 +9,9 @@ from django.utils import timezone
 
 from apps.apm.adapters import TelemetryStoreUnavailable, VictoriaTracesTelemetryStore
 from apps.apm.adapters.victoriatraces import _encode_cursor
-from apps.apm.models import (
-    ApmApplication,
-    ApmService,
-    ApmServiceInstance,
-)
-from apps.apm.services.query import MAX_METRIC_WINDOW, DjangoTelemetryQueryService
+from apps.apm.models import ApmApplication, ApmService, ApmServiceInstance
 from apps.apm.services.contracts import ServiceMetricQuery, TraceSearchQuery
+from apps.apm.services.query import MAX_METRIC_WINDOW, DjangoTelemetryQueryService
 from apps.apm.services.trace_access import TraceAccessResolver, collect_visible_page
 
 TRACE_WINDOW = timedelta(hours=1)
@@ -49,11 +45,7 @@ def list_applications(*, team, page, page_size, keyword):
     ids = team_ids(team)
     if not ids:
         return page_result(ApmApplication.objects.none(), page, page_size, _application_item)
-    queryset = (
-        ApmApplication.objects.filter(is_builtin=False, organization_links__organization__in=ids)
-        .distinct()
-        .order_by("application_id", "id")
-    )
+    queryset = ApmApplication.objects.filter(is_builtin=False, organization_links__organization__in=ids).distinct().order_by("application_id", "id")
     if keyword:
         queryset = queryset.filter(Q(name__icontains=keyword) | Q(application_id__icontains=keyword))
     return page_result(queryset, page, page_size, _application_item)
@@ -64,10 +56,7 @@ def list_services(*, team, page, page_size, keyword, application_id=""):
     if not ids:
         return page_result(ApmService.objects.none(), page, page_size, _service_item)
     queryset = (
-        ApmService.objects.filter(organization_links__organization__in=ids)
-        .select_related("application")
-        .distinct()
-        .order_by("normalized_name", "id")
+        ApmService.objects.filter(organization_links__organization__in=ids).select_related("application").distinct().order_by("normalized_name", "id")
     )
     if application_id:
         queryset = queryset.filter(application__application_id=application_id)
@@ -252,11 +241,7 @@ def _owned_service(team, service_id):
         parsed = uuid.UUID(str(service_id))
     except ValueError:
         return None
-    return (
-        ApmService.objects.filter(id=parsed, organization_links__organization__in=ids)
-        .distinct()
-        .first()
-    )
+    return ApmService.objects.filter(id=parsed, organization_links__organization__in=ids).distinct().first()
 
 
 def _trace_item(item):
@@ -348,23 +333,26 @@ def create_integration_config(
     environment,
     service_version="",
     sample_rate=100,
+    probe_platform="linux",
+    process_executable="",
 ):
     from apps.apm.models import ApmApplication
     from apps.apm.services.contracts import IngestSnippetRequest
     from apps.apm.services.integration_configuration import CloudRegionConfigurationError, DjangoIntegrationConfigurationService
-    from apps.apm.services.probe_artifacts import LANGUAGE_PROBE_ARTIFACTS, ProbeArtifactNotFound
+    from apps.apm.services.probe_artifacts import ProbeArtifactNotFound, ProbeSelectionError, resolve_probe_artifact_name
     from apps.rpc.node_mgmt import NodeMgmt
 
     ids = team_ids(team)
     application = (
-        ApmApplication.objects.filter(application_id=application_id, is_builtin=False, organization_links__organization__in=ids)
-        .distinct()
-        .first()
+        ApmApplication.objects.filter(application_id=application_id, is_builtin=False, organization_links__organization__in=ids).distinct().first()
     )
     if application is None:
         return _rejected("应用不存在")
     service = DjangoIntegrationConfigurationService()
-    probe_artifact_name = LANGUAGE_PROBE_ARTIFACTS.get(language, "")
+    try:
+        probe_artifact_name = resolve_probe_artifact_name(language, probe_platform)
+    except ProbeSelectionError:
+        return _rejected("接入配置不能生成")
     try:
         endpoints = service.resolve_region(
             NodeMgmt(),
@@ -384,8 +372,12 @@ def create_integration_config(
                 environment=environment,
                 probe_download_url=endpoints.probe_download_url,
                 sample_rate=sample_rate,
+                probe_platform=probe_platform,
+                process_executable=process_executable,
             )
         )
+    except ProbeSelectionError:
+        return _rejected("接入配置不能生成")
     except ProbeArtifactNotFound:
         return _rejected("探针包不可用")
     except CloudRegionConfigurationError:

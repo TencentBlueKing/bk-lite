@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { PROBE_CAPABILITY_MATRIX } from '../probe-capability-matrix';
+import { getProbeCapability, PROBE_CAPABILITY_MATRIX } from '../probe-capability-matrix';
 
 describe('APM 探针能力矩阵', () => {
   it('按钉死探针版本维护精选 Web/RPC 框架', () => {
@@ -11,9 +11,18 @@ describe('APM 探针能力矩阵', () => {
     expect(PROBE_CAPABILITY_MATRIX.dotnet.version).toBe('1.16.0 Linux x86_64 glibc');
 
     expect(PROBE_CAPABILITY_MATRIX.java.frameworks).toEqual(expect.arrayContaining(['Spring MVC', 'Dubbo', 'gRPC']));
-    expect(PROBE_CAPABILITY_MATRIX.nodejs.frameworks).toEqual(expect.arrayContaining(['Express', 'NestJS', 'Koa', 'Fastify']));
+    expect(PROBE_CAPABILITY_MATRIX.nodejs.frameworks).toEqual(expect.arrayContaining(['Express', 'NestJS', 'Koa', 'HTTP']));
+    expect(PROBE_CAPABILITY_MATRIX.nodejs.frameworks).not.toContain('Fastify');
+    expect(PROBE_CAPABILITY_MATRIX.go.inferredComponents).toEqual([]);
+    expect(PROBE_CAPABILITY_MATRIX.php.frameworks).toEqual(expect.arrayContaining(['Laravel', 'Symfony', 'Slim', 'Guzzle']));
+    expect(PROBE_CAPABILITY_MATRIX.obi.frameworks).toEqual(['Go net/http']);
     expect(PROBE_CAPABILITY_MATRIX.python.frameworks).toEqual(expect.arrayContaining(['Django', 'Flask', 'FastAPI']));
     expect(PROBE_CAPABILITY_MATRIX.go.manualInstrumentation).toBe(true);
+    expect(getProbeCapability('dotnet').frameworks).not.toContain('ASP.NET');
+    expect(getProbeCapability('dotnet', 'windows').frameworks).toEqual(
+      expect.arrayContaining(['ASP.NET Core', 'ASP.NET Framework', 'gRPC']),
+    );
+    expect(getProbeCapability('dotnet', 'windows').inferredComponents).toEqual([]);
     expect(PROBE_CAPABILITY_MATRIX.java.manualInstrumentation).toBe(false);
   });
 

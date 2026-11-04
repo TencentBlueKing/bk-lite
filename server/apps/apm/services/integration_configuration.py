@@ -8,18 +8,22 @@ from django.core.exceptions import ValidationError
 from django.core.validators import URLValidator
 
 from apps.apm.services.contracts import IngestSnippet, IngestSnippetRequest
-from apps.apm.utils.locale_text import apm_text
 from apps.apm.services.probe_artifacts import (
     DOTNET_AUTO_ARTIFACT_NAME,
+    DOTNET_WINDOWS_ARTIFACT_NAME,
     GO_SDK_ARTIFACT_NAME,
     JAVA_AGENT_ARTIFACT_NAME,
     LANGUAGE_PROBE_ARTIFACTS,
     NODEJS_AUTO_ARTIFACT_NAME,
+    OBI_ARTIFACT_NAME,
+    PHP_AUTO_ARTIFACT_NAME,
     PYTHON_WHEELS_ARTIFACT_NAME,
     ProbeArtifactNotFound,
     build_probe_artifact_download_url,
     get_probe_artifact_sha256,
+    validate_probe_selection,
 )
+from apps.apm.utils.locale_text import apm_text
 
 
 class CloudRegionConfigurationError(ValueError):
@@ -165,9 +169,7 @@ _RUNTIME_PROFILES = {
 }
 
 
-_DOTNET_SUPPORT_NOTE = (
-    "仅支持 Linux x86_64 glibc（Ubuntu / Debian / CentOS 及同类容器镜像）；不支持 Alpine、ARM64、Windows。"
-)
+_DOTNET_SUPPORT_NOTE = "仅支持 Linux x86_64 glibc（Ubuntu / Debian / CentOS 及同类容器镜像）；不支持 Alpine、ARM64、Windows。"
 _DOTNET_PROFILER_CLSID = "{918728DD-259F-4A6A-AC2B-B85E1B658318}"
 _DOTNET_CONTAINER_HOME = "/otel-dotnet-auto"
 
@@ -195,7 +197,7 @@ def _trace_sampler_environment(sample_rate: int) -> dict[str, str]:
     }
 
 
-def _dotnet_traces_only_environment() -> dict[str, str]:
+def _traces_only_environment() -> dict[str, str]:
     return {
         "OTEL_METRICS_EXPORTER": "none",
         "OTEL_LOGS_EXPORTER": "none",
@@ -241,6 +243,10 @@ def _kubernetes_snippet(language: str, environment: dict[str, str], probe_downlo
         "java": f"应用镜像需包含 /opt/opentelemetry-javaagent.jar。离线包：{probe_download_url}",
         "go": f"Go 无通用自动探针；应用二进制需先完成 OpenTelemetry Go SDK 初始化。离线包：{probe_download_url}",
         "dotnet": f"应用镜像需包含 {_DOTNET_CONTAINER_HOME}，并使用 dotnet App.dll 启动。离线包：{probe_download_url}",
+        "php": (
+            "应用镜像需预装 PHP 8.1–8.4 NTS 扩展，并从离线包安装 " + " ".join((*PHP_COMPOSER_PACKAGES, *PHP_DATABASE_PACKAGES)) + "。PDO 与 MySQLi 仅用于 PHP 8.2+。"
+            f"离线包：{probe_download_url}"
+        ),
     }
     runtime_environment = {
         "nodejs": {"NODE_OPTIONS": "--require @opentelemetry/auto-instrumentations-node/register"},
@@ -305,8 +311,35 @@ def _probe_sha256_check(path: str, digest: str) -> str:
     )
 
 
-def _require_probe_sha256(language: str) -> str:
-    artifact_name = LANGUAGE_PROBE_ARTIFACTS[language]
+GO_OFFLINE_MODULES = (
+    "go.opentelemetry.io/otel",
+    "go.opentelemetry.io/otel/sdk",
+    "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp",
+    "go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp",
+    "go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc",
+    "go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin",
+    "go.opentelemetry.io/contrib/instrumentation/github.com/labstack/echo/otelecho",
+)
+
+PHP_COMPOSER_PACKAGES = (
+    "open-telemetry/sdk:1.15.0",
+    "open-telemetry/exporter-otlp:1.4.0",
+    "open-telemetry/opentelemetry-auto-laravel:1.10.0",
+    "open-telemetry/opentelemetry-auto-symfony:1.7.0",
+    "open-telemetry/opentelemetry-auto-slim:1.5.1",
+    "open-telemetry/opentelemetry-auto-guzzle:1.5.0",
+)
+PHP_DATABASE_PACKAGES = (
+    "open-telemetry/opentelemetry-auto-pdo:0.6.0",
+    "open-telemetry/opentelemetry-auto-mysqli:0.5.0",
+)
+
+
+def _go_module_download(prefix: str) -> str:
+    return f"{prefix} {' '.join(GO_OFFLINE_MODULES)}"
+
+
+def _require_probe_sha256(artifact_name: str) -> str:
     digest = get_probe_artifact_sha256(artifact_name)
     if len(digest) != 64 or any(character not in "0123456789abcdefABCDEF" for character in digest):
         raise ProbeArtifactNotFound(artifact_name)
@@ -319,6 +352,174 @@ def _python_offline_install(wheels_dir: str) -> tuple[str, str, str]:
         "opentelemetry-bootstrap -a requirements > otel-bootstrap-requirements.txt",
         f"python -m pip install --no-index --find-links {wheels_dir} -r otel-bootstrap-requirements.txt",
     )
+
+
+def _php_prepare_script(root: str) -> str:
+    web_packages = " ".join(PHP_COMPOSER_PACKAGES)
+    database_packages = " ".join(PHP_DATABASE_PACKAGES)
+    repository = json.dumps({"type": "artifact", "url": f"{root}/dist"}, separators=(",", ":"))
+    return "\n".join(
+        (
+            "# PHP NTS 8.1–8.4。ZTS 和其他版本直接退出。",
+            "php -r 'exit(PHP_ZTS !== 0 ? 1 : 0);' || { printf '%s\\n' 'PHP ZTS is not supported' >&2; exit 1; }",
+            """php_version=$(php -r 'echo PHP_MAJOR_VERSION.".".PHP_MINOR_VERSION;')""",
+            'case "$php_version" in',
+            "  8.1|8.2|8.3|8.4) ;;",
+            "  *) printf '%s\\n' \"PHP $php_version is not supported\" >&2; exit 1 ;;",
+            "esac",
+            """extension_dir=$(php -r 'echo ini_get("extension_dir");')""",
+            """scan_dir=$(php -r 'echo PHP_CONFIG_FILE_SCAN_DIR;')""",
+            'if [ -z "$scan_dir" ] || [ ! -d "$scan_dir" ]; then ' "printf '%s\\n' 'PHP additional ini directory is missing' >&2; exit 1; fi",
+            f'cp {root}/php/"$php_version"/nts/opentelemetry.so "$extension_dir/opentelemetry.so"',
+            "printf '%s\\n' 'extension=opentelemetry.so' > \"$scan_dir/99-opentelemetry.ini\"",
+            f"composer config repositories.otel {shlex.quote(repository)}",
+            "export COMPOSER_DISABLE_NETWORK=1",
+            f'composer_packages="{web_packages}"',
+            'case "$php_version" in',
+            f'  8.2|8.3|8.4) composer_packages="$composer_packages {database_packages}" ;;',
+            "esac",
+            "composer require --no-interaction --prefer-dist --update-with-dependencies $composer_packages",
+        )
+    )
+
+
+def _obi_config(endpoint: str, executable: str) -> str:
+    return "\n".join(
+        (
+            'file_format: "1.0"',
+            "tracer_provider:",
+            "  processors:",
+            "    - batch:",
+            "        exporter:",
+            "          otlp_http:",
+            f"            endpoint: {json.dumps(endpoint)}",
+            "extensions:",
+            "  obi:",
+            '    version: "2.0"',
+            "    capture:",
+            "      policy:",
+            "        default_action: exclude",
+            "      rules:",
+            "        - action: include",
+            "          match:",
+            "            process:",
+            f"              exe_path_glob: [{json.dumps(executable)}]",
+            "      instrumentation:",
+            "        http:",
+            "          enabled:",
+            "            traces: true",
+            "            metrics: false",
+        )
+    )
+
+
+def _obi_preflight() -> str:
+    return "\n".join(
+        (
+            "if [ \"$(uname -s)\" != Linux ]; then printf '%s\\n' 'OBI requires Linux' >&2; exit 1; fi",
+            "kernel_release=$(uname -r)",
+            "kernel_major=${kernel_release%%.*}",
+            "kernel_rest=${kernel_release#*.}",
+            "kernel_minor=${kernel_rest%%.*}",
+            'case "$kernel_major$kernel_minor" in',
+            "  *[!0-9]*) printf '%s\\n' 'OBI requires a numeric Linux kernel version' >&2; exit 1 ;;",
+            "esac",
+            'if [ "$kernel_major" -lt 4 ] || { [ "$kernel_major" -eq 4 ] && [ "$kernel_minor" -lt 18 ]; }; then',
+            "  printf '%s\\n' \"Linux kernel $kernel_release is older than 4.18\" >&2",
+            "  exit 1",
+            "fi",
+            'if [ "$kernel_major" -lt 5 ] || { [ "$kernel_major" -eq 5 ] && [ "$kernel_minor" -lt 8 ]; }; then',
+            "  if [ ! -r /sys/kernel/btf/vmlinux ]; then",
+            "    printf '%s\\n' \"Linux kernel $kernel_release needs an eBPF backport and BTF\" >&2",
+            "    exit 1",
+            "  fi",
+            "fi",
+            "if [ ! -r /sys/kernel/btf/vmlinux ]; then",
+            "  printf '%s\\n' 'OBI requires a readable /sys/kernel/btf/vmlinux' >&2",
+            "  exit 1",
+            "fi",
+            'if [ "$(id -u)" -ne 0 ]; then',
+            "  cap_eff=$(awk '/^CapEff:/ { print $2 }' /proc/self/status)",
+            '  case "$cap_eff" in',
+            "    ''|0000000000000000)",
+            "      printf '%s\\n' 'OBI needs root or the capabilities required by OBI v1.0.0' >&2",
+            "      exit 1",
+            "      ;;",
+            "  esac",
+            "fi",
+        )
+    )
+
+
+def _obi_host_snippet(
+    probe_download_url: str,
+    probe_sha256: str,
+    endpoint: str,
+    executable: str,
+    environment: dict[str, str],
+    resource_assignment: str,
+    identity_setup: tuple[str, ...],
+) -> str:
+    exports = list(identity_setup)
+    for key, value in environment.items():
+        if key == "OTEL_RESOURCE_ATTRIBUTES":
+            exports.append(f"export {key}={resource_assignment}")
+        else:
+            exports.append(f"export {key}={shlex.quote(value)}")
+    return "\n".join(
+        (
+            "# OBI v1.0.0 Linux amd64。未安装语言探针时，只采集指定 Go 可执行文件，不替换 Go SDK。",
+            "# 同一进程不要再装 Java、Python、Node.js、.NET、PHP 或 Go SDK。",
+            "# 内核需要 Linux 5.8+，或带 eBPF backport 且有 BTF 的 RHEL 系 4.18+。",
+            "# 需要 root 或上游要求的 capabilities。内核、BTF 或权限不够时退出，不修改应用二进制。",
+            "# 已知限制：子 Span 时间戳可能早于父 Span。",
+            _obi_preflight(),
+            _curl_download(probe_download_url, OBI_ARTIFACT_NAME),
+            _probe_sha256_check(OBI_ARTIFACT_NAME, probe_sha256),
+            'mkdir -p "$HOME/.otel-obi"',
+            f'tar -xf {OBI_ARTIFACT_NAME} -C "$HOME/.otel-obi"',
+            "cat > \"$HOME/.otel-obi/obi.yaml\" <<'OBI_CONFIG'",
+            _obi_config(endpoint, executable),
+            "OBI_CONFIG",
+            *exports,
+            'obi_bin=$(find "$HOME/.otel-obi" -type f -name obi | head -n 1)',
+            "if [ -z \"$obi_bin\" ]; then printf '%s\\n' 'OBI binary was not found' >&2; exit 1; fi",
+            'exec "$obi_bin" --config "$HOME/.otel-obi/obi.yaml"',
+        )
+    )
+
+
+def _windows_dotnet_snippet(probe_download_url: str, probe_sha256: str, environment: dict[str, str]) -> str:
+    lines = [
+        "# .NET Windows auto-instrumentation 1.16.0. ASP.NET Framework is available on this artifact.",
+        "# This script sets the current process only. Restart the application yourself.",
+        f"$artifact = '{DOTNET_WINDOWS_ARTIFACT_NAME}'",
+        f"$url = '{probe_download_url}'",
+        "curl.exe --fail --silent --show-error --location --insecure $url --output $artifact",
+        f"$expected = '{probe_sha256}'",
+        "$actual = (Get-FileHash -Algorithm SHA256 $artifact).Hash.ToLower()",
+        "if ($actual -ne $expected) { Write-Error 'probe SHA256 mismatch'; exit 1 }",
+        "$installDir = Join-Path $env:USERPROFILE '.otel-dotnet-auto'",
+        "Expand-Archive -Force -Path $artifact -DestinationPath $installDir",
+        "$env:OTEL_DOTNET_AUTO_HOME = $installDir",
+        "$env:CORECLR_ENABLE_PROFILING = '1'",
+        "$env:CORECLR_PROFILER = '{918728DD-259F-4A6A-AC2B-B85E1B658318}'",
+        "$env:CORECLR_PROFILER_PATH_64 = Join-Path $installDir 'win-x64\\OpenTelemetry.AutoInstrumentation.Native.dll'",
+        "$env:COR_ENABLE_PROFILING = '1'",
+        "$env:COR_PROFILER = '{918728DD-259F-4A6A-AC2B-B85E1B658318}'",
+        "$env:COR_PROFILER_PATH_64 = Join-Path $installDir 'win-x64\\OpenTelemetry.AutoInstrumentation.Native.dll'",
+        "$env:ASPNETCORE_HOSTINGSTARTUPASSEMBLIES = 'OpenTelemetry.AutoInstrumentation.AspNetCoreBootstrapper'",
+        "$env:DOTNET_STARTUP_HOOKS = Join-Path $installDir 'net\\OpenTelemetry.AutoInstrumentation.StartupHook.dll'",
+    ]
+    for key, value in environment.items():
+        if key == "OTEL_RESOURCE_ATTRIBUTES":
+            prefix = value.replace("${OTEL_SERVICE_INSTANCE_ID}", "").replace("'", "''")
+            lines.append("$instanceId = [guid]::NewGuid().ToString()")
+            lines.append(f"$env:OTEL_RESOURCE_ATTRIBUTES = '{prefix}' + $instanceId")
+            continue
+        lines.append(f"$env:{key} = '{value.replace(chr(39), chr(39) * 2)}'")
+    lines.append("Write-Output 'Start the application in this PowerShell session so it inherits these variables.'")
+    return "\n".join(lines)
 
 
 def _host_install_commands(language: str, probe_download_url: str, probe_sha256: str) -> str:
@@ -359,7 +560,7 @@ def _host_install_commands(language: str, probe_download_url: str, probe_sha256:
                 f"unzip -o -q {GO_SDK_ARTIFACT_NAME} -d .otel-go-sdk",
                 'export GOPROXY="file://$(pwd)/.otel-go-sdk"',
                 "export GOSUMDB=off",
-                "go mod download go.opentelemetry.io/otel go.opentelemetry.io/otel/sdk go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp",
+                _go_module_download("go mod download"),
             )
         )
     if language == "dotnet":
@@ -370,6 +571,16 @@ def _host_install_commands(language: str, probe_download_url: str, probe_sha256:
                 'mkdir -p "$HOME/.otel-dotnet-auto"',
                 f'unzip -o -q {DOTNET_AUTO_ARTIFACT_NAME} -d "$HOME/.otel-dotnet-auto"',
                 *_dotnet_host_clr_exports(),
+            )
+        )
+    if language == "php":
+        return "\n".join(
+            (
+                _curl_download(probe_download_url, PHP_AUTO_ARTIFACT_NAME),
+                _probe_sha256_check(PHP_AUTO_ARTIFACT_NAME, probe_sha256),
+                "mkdir -p otel-php",
+                f"tar -xf {PHP_AUTO_ARTIFACT_NAME} -C otel-php",
+                _php_prepare_script("otel-php"),
             )
         )
     return "# Install the selected OpenTelemetry SDK."
@@ -417,7 +628,7 @@ def _docker_install_commands(language: str, probe_download_url: str, probe_sha25
                 _probe_sha256_check(output, probe_sha256),
                 "mkdir -p /opt/otel-go-sdk",
                 f"unzip -o -q {output} -d /opt/otel-go-sdk",
-                "GOPROXY=file:///opt/otel-go-sdk GOSUMDB=off go mod download go.opentelemetry.io/otel go.opentelemetry.io/otel/sdk go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp",
+                _go_module_download("GOPROXY=file:///opt/otel-go-sdk GOSUMDB=off go mod download"),
             )
         )
     if language == "dotnet":
@@ -428,6 +639,17 @@ def _docker_install_commands(language: str, probe_download_url: str, probe_sha25
                 _probe_sha256_check(output, probe_sha256),
                 f"mkdir -p {_DOTNET_CONTAINER_HOME}",
                 f"unzip -o -q {output} -d {_DOTNET_CONTAINER_HOME}",
+            )
+        )
+    if language == "php":
+        output = f"/tmp/{PHP_AUTO_ARTIFACT_NAME}"
+        return " && ".join(
+            (
+                f"RUN curl --fail --silent --show-error --location --insecure {quoted_url} --output {output}",
+                _probe_sha256_check(output, probe_sha256),
+                "mkdir -p /opt/otel-php",
+                f"tar -xf {output} -C /opt/otel-php",
+                "sh -c " + shlex.quote(_php_prepare_script("/opt/otel-php")),
             )
         )
     return "# Install the selected OpenTelemetry SDK in the image."
@@ -593,6 +815,12 @@ class DjangoIntegrationConfigurationService:
         )
 
     def render_snippet(self, request: IngestSnippetRequest) -> IngestSnippet:
+        artifact_name = validate_probe_selection(
+            language=request.language,
+            runtime=request.runtime,
+            probe_platform=request.probe_platform,
+            process_executable=request.process_executable,
+        )
         runtime_profile = _RUNTIME_PROFILES[request.runtime]
         protocol = "http/protobuf"
         if request.language in LANGUAGE_PROBE_ARTIFACTS and not request.probe_download_url:
@@ -615,22 +843,43 @@ class DjangoIntegrationConfigurationService:
             "OTEL_RESOURCE_ATTRIBUTES": resource,
             **_trace_sampler_environment(request.sample_rate),
         }
-        if request.language == "dotnet":
-            environment.update(_dotnet_traces_only_environment())
+        if request.language in {"dotnet", "php", "obi"}:
+            environment.update(_traces_only_environment())
+        if request.language == "php":
+            environment["OTEL_PHP_AUTOLOAD_ENABLED"] = "true"
+            environment["OTEL_TRACES_EXPORTER"] = "otlp"
+
+        if request.language == "dotnet" and request.probe_platform == "windows":
+            code = _windows_dotnet_snippet(
+                request.probe_download_url,
+                _require_probe_sha256(artifact_name),
+                environment,
+            )
+            return IngestSnippet(environment=environment, code=code)
+        if request.language == "obi":
+            code = _obi_host_snippet(
+                request.probe_download_url,
+                _require_probe_sha256(artifact_name),
+                environment["OTEL_EXPORTER_OTLP_ENDPOINT"],
+                request.process_executable,
+                environment,
+                resource_assignment,
+                runtime_profile.identity_setup,
+            )
+            return IngestSnippet(environment=environment, code=code)
 
         if request.runtime == "kubernetes":
             code = _kubernetes_snippet(request.language, environment, request.probe_download_url)
         elif request.runtime == "docker":
-            probe_sha256 = _require_probe_sha256(request.language)
-            image_install_commands = _docker_install_commands(
-                request.language, request.probe_download_url, probe_sha256
-            )
+            probe_sha256 = _require_probe_sha256(artifact_name)
+            image_install_commands = _docker_install_commands(request.language, request.probe_download_url, probe_sha256)
             docker_start_commands = {
                 "python": "opentelemetry-instrument python app.py",
                 "nodejs": "node app.js",
                 "java": "java -jar app.jar",
                 "go": "./app",
                 "dotnet": "dotnet App.dll",
+                "php": "php app.php",
             }
             runtime_environment = {
                 "nodejs": {"NODE_OPTIONS": "--require @opentelemetry/auto-instrumentations-node/register"},
@@ -667,7 +916,7 @@ class DjangoIntegrationConfigurationService:
                 )
             )
         else:
-            probe_sha256 = _require_probe_sha256(request.language)
+            probe_sha256 = _require_probe_sha256(artifact_name)
             install_commands = _host_install_commands(request.language, request.probe_download_url, probe_sha256)
             start_commands = {
                 "python": "opentelemetry-instrument python app.py",
@@ -675,6 +924,7 @@ class DjangoIntegrationConfigurationService:
                 "java": "java -javaagent:./opentelemetry-javaagent.jar -jar app.jar",
                 "go": _GO_SDK_GUIDE,
                 "dotnet": "dotnet App.dll",
+                "php": "php app.php",
             }
             export_lines = [f"# {runtime_profile.guidance}", *runtime_profile.identity_setup]
             for key, value in environment.items():

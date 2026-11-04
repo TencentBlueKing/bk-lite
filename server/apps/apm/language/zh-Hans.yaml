@@ -90,6 +90,13 @@ error:
   cloud_region_config_unavailable: 云区域配置暂时不可用，请稍后重试。
   probe_artifact_missing: 探针文件不存在，请先在服务端初始化探针制品。
   probe_artifact_unavailable: 探针文件暂时不可用，请稍后重试。
+  probe_platform_invalid: 探针平台无效。
+  probe_platform_unsupported: 当前语言不支持所选平台。
+  probe_language_unsupported: 当前语言没有可下载的探针制品。
+  obi_runtime_unsupported: eBPF 探针只支持主机运行方式。
+  dotnet_windows_runtime_unsupported: .NET Windows 探针只支持主机运行方式。
+  process_executable_invalid: 进程路径必须是不含空格和特殊字符的绝对路径。
+  process_executable_unexpected: 只有 eBPF 探针接受进程路径。
   organization_missing: 缺少当前组织。
   channel_unavailable: 包含当前组织不可用的通知渠道。
   channel_rejects_recipients: "渠道 {name} 不接受接收人。"
