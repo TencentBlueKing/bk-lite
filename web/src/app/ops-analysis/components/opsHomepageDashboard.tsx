@@ -60,7 +60,7 @@ const OpsHomepageDashboard: React.FC<OpsHomepageDashboardProps> = ({ dashboardId
 
   if (loading || !access) {
     return (
-      <div className="flex h-[calc(100vh-90px)] items-center justify-center">
+      <div className="flex h-[calc(100vh-56px)] items-center justify-center">
         <Spin />
       </div>
     );
@@ -75,8 +75,9 @@ const OpsHomepageDashboard: React.FC<OpsHomepageDashboardProps> = ({ dashboardId
     is_build_in: access.is_build_in,
   };
 
+  // 高度只减顶栏 56px：仪表盘首页在根布局锁定了全幅视口（main 无 p-4）。
   return (
-    <div className="flex h-[calc(100vh-90px)] min-h-0 w-full flex-col overflow-hidden">
+    <div className="flex h-[calc(100vh-56px)] min-h-0 w-full flex-col overflow-hidden">
       <OpsAnalysisProvider>
         <Dashboard selectedDashboard={selectedDashboard} homepageMode />
       </OpsAnalysisProvider>
