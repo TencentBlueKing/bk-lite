@@ -39,6 +39,7 @@ import { jobTargetOperatingSystems } from '../lib/job-target-operating-systems';
 import { buildNodeTestInputContract, materializeNodeTestInputs } from '../lib/node-test-input-contract';
 import type { AtomCatalogItem, ConductorDefinition, ConductorTask, ExecutionRecord, JsonSchema, PaginatedResponse, WorkflowRecord, WorkflowTriggerType, WorkflowVersionRecord } from '../lib/types';
 import { useAutoRequest, useRequestCoordinator } from '../lib/use-request-coordinator';
+import { buildNatsAlertEnvelopeSchema } from '../lib/nats-trigger-schema';
 import { createUnsavedWorkflowDraft } from '../lib/workflow-draft';
 import { WorkflowPermission, type WorkflowPermissionArea } from './workflow-permission';
 import { AtomConfigTemplateActions } from './atom-config-template-actions';
@@ -594,7 +595,19 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
     if (!definition) return;
     const existing = workflowTriggerNodes(metadata);
     const id = uniqueId(`trigger_${type.toLowerCase()}`, new Set([...existing.map((item) => item.id), ...tasks.map((item) => item.taskReferenceName)]));
-    const item: WorkflowTriggerNode = { id, name: triggerLabels[type], trigger_type: type, input_schema: type === 'NATS' ? { type: 'object', properties: {}, required: [], additionalProperties: true } : type === 'SCHEDULE' ? scheduleOutputSchema : type === 'WEBHOOK' ? webhookInputSchema : { type: 'object', properties: {}, required: [], additionalProperties: false }, config: type === 'SCHEDULE' ? { frequency: 'daily', time: ['02:00'] } : type === 'WEBHOOK' ? { response_mode: 'IMMEDIATE' } : {} };
+    const item: WorkflowTriggerNode = {
+      id,
+      name: triggerLabels[type],
+      trigger_type: type,
+      input_schema: type === 'NATS'
+        ? buildNatsAlertEnvelopeSchema()
+        : type === 'SCHEDULE'
+          ? scheduleOutputSchema
+          : type === 'WEBHOOK'
+            ? webhookInputSchema
+            : { type: 'object', properties: {}, required: [], additionalProperties: false },
+      config: type === 'SCHEDULE' ? { frequency: 'daily', time: ['02:00'] } : type === 'WEBHOOK' ? { response_mode: 'IMMEDIATE' } : {},
+    };
     addNodeToCanvas(id, definition, { ...snapshotMetadata(), trigger_nodes: [...existing, item] });
   };
 
@@ -1151,27 +1164,63 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
     } finally { setPendingAction(null); }
   };
 
-  const debug = async (persistedWorkflowId = workflow?.id) => {
-    if (!persistedWorkflowId || !definition || !debugTrigger) return;
-    const missing = missingRequiredFields(debugTrigger.input_schema, debugInputs);
-    if (missing.length) {
-      message.warning(t('workflowOrchestration.form.completeRequired', '请完成必填字段：{fields}', {
-        fields: missing.map((key) => debugTrigger.input_schema.properties?.[key]?.title || key).join('、'),
-      }));
-      return;
+  const buildScheduleDebugInputs = async (trigger: WorkflowTriggerNode) => {
+    const result = await post<SchedulePreview>(`${API}/triggers/schedule-preview/`, {
+      config: normalizeScheduleConfig(trigger.config || {}),
+      count: 6,
+    });
+    return result.test_output;
+  };
+
+  const debug = async (
+    persistedWorkflowId = workflow?.id,
+    options?: { trigger?: WorkflowTriggerNode; inputs?: Record<string, unknown> },
+  ) => {
+    const trigger = options?.trigger || debugTrigger;
+    if (!persistedWorkflowId || !definition || !trigger) return;
+    let inputs = options?.inputs;
+    if (trigger.trigger_type === 'SCHEDULE') {
+      try {
+        inputs = inputs ?? await buildScheduleDebugInputs(trigger);
+      } catch (error) {
+        message.error(error instanceof Error ? error.message : t('workflowOrchestration.editor.scheduleTestFailed', '定时触发测试失败'));
+        return;
+      }
+    } else {
+      inputs = inputs ?? debugInputs;
+      const missing = missingRequiredFields(trigger.input_schema, inputs);
+      if (missing.length) {
+        message.warning(t('workflowOrchestration.form.completeRequired', '请完成必填字段：{fields}', {
+          fields: missing.map((key) => trigger.input_schema.properties?.[key]?.title || key).join('、'),
+        }));
+        return;
+      }
     }
-    const execution = await post<ExecutionRecord>(`${API}/workflows/${persistedWorkflowId}/debug/`, { inputs: debugInputs, trigger_id: debugTrigger.id, definition, canvas_metadata: snapshotMetadata() });
-    setDebugExecution(execution); setDebugOpen(false); message.success(t('workflowOrchestration.editor.debugStartedFromSnapshot', '已使用当前未保存快照启动调试'));
+    const execution = await post<ExecutionRecord>(`${API}/workflows/${persistedWorkflowId}/debug/`, {
+      inputs,
+      trigger_id: trigger.id,
+      definition,
+      canvas_metadata: snapshotMetadata(),
+    });
+    setDebugExecution(execution);
+    setDebugOpen(false);
+    message.success(t('workflowOrchestration.editor.debugStartedFromSnapshot', '已使用当前未保存快照启动调试'));
   };
 
   const openDebugDialog = () => {
-    const preferred = workflowTriggerNodes(metadata).find((item) => item.trigger_type === 'FORM') || workflowTriggerNodes(metadata)[0];
+    const triggers = workflowTriggerNodes(metadata);
+    const preferred = triggers.find((item) => item.trigger_type === 'FORM') || triggers[0];
     if (!preferred) {
       message.warning(t('workflowOrchestration.editor.noTriggerForDebug', '请先添加触发器再调试流程'));
       return;
     }
-    withPersistedDraft(() => {
+    withPersistedDraft((savedWorkflowId) => {
       setDebugTriggerId(preferred.id);
+      // 单一定时入口：与「执行节点」同手感，跳过调试表单直接开跑
+      if (triggers.length === 1 && preferred.trigger_type === 'SCHEDULE') {
+        void debug(savedWorkflowId, { trigger: preferred });
+        return;
+      }
       const cached = metadata.node_test_data?.[preferred.id];
       setDebugInputs(cached && typeof cached === 'object' && !Array.isArray(cached)
         ? cached as Record<string, unknown>
@@ -1804,7 +1853,11 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
         setDebugTriggerId(id);
         setDebugInputs(trigger ? defaultTriggerRuntimeInputs(trigger.input_schema) : {});
       }} /></Form.Item></Form> : null}
-      {debugTrigger && workflow.id ? <WorkflowTriggerRuntimeForm workflowId={workflow.id} schema={debugTrigger.input_schema} value={debugInputs} onChange={setDebugInputs} /> : <Empty description={t('workflowOrchestration.editor.noTriggers', '当前流程没有触发器')} />}
+      {debugTrigger && workflow.id
+        ? debugTrigger.trigger_type === 'SCHEDULE'
+          ? null
+          : <WorkflowTriggerRuntimeForm workflowId={workflow.id} schema={debugTrigger.input_schema} value={debugInputs} onChange={setDebugInputs} />
+        : <Empty description={t('workflowOrchestration.editor.noTriggers', '当前流程没有触发器')} />}
     </OperateModal>
     {atomDetail ? (
       <OperateModal

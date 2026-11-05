@@ -30,6 +30,7 @@ Date: 2026-11-04
 - 当前绕过: 两边触发 schema 都显式补齐所需公共字段（至少 `message`）；NATS 侧保留告警字段；改 cron 后必须再把 `message` 补回 SCHEDULE 再发布。
 - 判定: **产品契约易踩坑** + **编辑器实现缺陷**（改 cron 不应抹掉已扩展字段）。
 - 修复方向（未做）: 设计侧明确多触发公共参数声明；编辑器提示「仅交集可引用」；校验文案指向缺字段的触发器；`onChange` 合并而非覆盖 `input_schema`。
+- 局部进展（2026-11-05）: **新建 NATS** 默认写入告警信封 schema（`buildNatsAlertEnvelopeSchema`），单 NATS 流程可直接引用 `workflow.input.message`；**不**解决 SCHEDULE 覆盖 / 多触发交集本身。
 
 ## D5. 记忆上下文上限大于智能体 message 上限，月报支路易超限
 
@@ -45,6 +46,7 @@ Date: 2026-11-04
 - 原因: 触发 schema 里 `schedule` 类型是 `array`（真实 cron 事件为 `["0 9 1 * *"]`），但 `WorkflowSchemaForm` 对无 enum 的 array 退化成普通文本框，提交的是字符串。
 - 判定: **前端缺陷**（调试表单与 SCHEDULE 输出契约不匹配）。
 - 临时绕过: 不用调试弹窗；改 cron 后发布，等调度器真实触发；或等表单支持数组/ tags 后再用调试。
+- 状态: **已修（本地）** — SCHEDULE 调试不再渲染事件 schema 表单；用节点 `config` 调 `schedule-preview` 取 `test_output` 后直接 `/debug/`。单一定时入口跳过弹窗；多触发仅保留入口选择。FORM/WEBHOOK/NATS 调试未改。
 
 ## 相关验收进度（旁注）
 
