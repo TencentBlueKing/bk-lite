@@ -1497,7 +1497,7 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
               preview={schedulePreview}
               previewBusy={schedulePreviewBusy}
               previewError={schedulePreviewError}
-              onChange={(config) => changeTrigger({ config, input_schema: scheduleOutputSchema })}
+              onChange={(config) => changeTrigger({ config })}
             />}
             {selectedTrigger.trigger_type === 'WEBHOOK' && <>
               <WebhookTriggerPanel
@@ -1517,7 +1517,7 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
                     { value: 'IMMEDIATE', label: t('workflowOrchestration.editor.immediateResponse', '立即响应（返回 execution_id）') },
                     { value: 'WAIT', label: t('workflowOrchestration.editor.waitWebhookReturn', '等待流程结果（同步）') },
                   ]}
-                  onChange={(value) => changeTrigger({ config: { ...selectedTrigger.config, response_mode: value }, input_schema: webhookInputSchema })}
+                  onChange={(value) => changeTrigger({ config: { ...selectedTrigger.config, response_mode: value } })}
                 />
               </Form.Item>
             </>}

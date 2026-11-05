@@ -29,8 +29,9 @@ Date: 2026-11-04
 - 加重因素（2026-11-04 复现）: 编辑定时配置时 `ScheduleTriggerEditor.onChange` 会执行 `changeTrigger({ config, input_schema: scheduleOutputSchema })`，**整表覆盖** SCHEDULE 的 `input_schema`，把手工补的 `message` 冲掉，随后再发布必现 D3。
 - 当前绕过: 两边触发 schema 都显式补齐所需公共字段（至少 `message`）；NATS 侧保留告警字段；改 cron 后必须再把 `message` 补回 SCHEDULE 再发布。
 - 判定: **产品契约易踩坑** + **编辑器实现缺陷**（改 cron 不应抹掉已扩展字段）。
-- 修复方向（未做）: 设计侧明确多触发公共参数声明；编辑器提示「仅交集可引用」；校验文案指向缺字段的触发器；`onChange` 合并而非覆盖 `input_schema`。
-- 局部进展（2026-11-05）: **新建 NATS** 默认写入告警信封 schema（`buildNatsAlertEnvelopeSchema`），单 NATS 流程可直接引用 `workflow.input.message`；**不**解决 SCHEDULE 覆盖 / 多触发交集本身。
+- 修复方向: 交集与「定时器上补 message」视为流程配法问题，本轮不改契约/提示；编辑器侧 `onChange` 只更新 `config`，不再整表覆盖 `input_schema`。
+- 局部进展（2026-11-05）: **新建 NATS** 默认写入告警信封 schema（`buildNatsAlertEnvelopeSchema`），单 NATS 流程可直接引用 `workflow.input.message`。
+- 状态: **覆盖缺陷已修（本地）** — SCHEDULE / WEBHOOK 改配置不再冲掉扩展字段；多触发交集维持现状。
 
 ## D5. 记忆上下文上限大于智能体 message 上限，月报支路易超限
 
