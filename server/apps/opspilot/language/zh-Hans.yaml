@@ -275,6 +275,32 @@ tools:
     tools:
       mlops_predict_timeseries:
         description: 按未来天数预测已绑定服务上的时序。summary 比较多条序列，trend 只看一条序列的走势。
+  job_mgmt:
+    name: 作业管理
+    description: |
+      用当前用户和当前组织执行脚本库脚本、自定义脚本，并分发本会话暂存的文件。
+      也可按 Playbook 包内路径选择脚本。有脚本输出时直接展示给用户，模型只看作业号和终态。没有输出时给出作业记录链接。文件分发终态只看成功或失败；还在执行时给出作业记录链接，请用户到作业管理查看。
+    tools:
+      job_mgmt_list_scripts:
+        description: 列出当前组织的脚本库脚本，不含脚本正文。即使只有一个也要让用户确认名称和类型。
+      job_mgmt_list_playbook_scripts:
+        description: 按名称或路径列出当前组织的 Playbook 脚本，不含文件内容。
+      job_mgmt_describe_script:
+        description: 查看脚本参数定义。加密默认值保持掩码。
+      job_mgmt_search_targets:
+        description: 按名称或 IP 查找目标。执行时 target_ids 复制返回的 id，不要复制 IP 或名称。
+      job_mgmt_list_targets:
+        description: 按来源分页列出目标。执行时 target_ids 复制返回的 id。下一页把 next_cursor 填进参数 cursor。
+      job_mgmt_run_library:
+        description: 按脚本编号执行脚本库脚本。target_source 填作业管理目标或节点管理目标。target_ids 填查询结果的 id，多个用英文逗号连接；作业管理是数字 id，节点管理是节点主键，不要填 IP。
+      job_mgmt_run_custom:
+        description: 执行用户原话中的自定义脚本。script_type 只能是 shell、python、powershell、bat。target_ids 填查询结果的 id，不要填 IP。Linux 只接受 shell 和 python，Windows 只接受 powershell 和 bat。
+      job_mgmt_distribute:
+        description: 分发本会话暂存文件。target_ids 填查询结果的 id，不要填 IP。终态只有成功或失败。未结束时给出作业记录链接，请用户到作业管理查看，不要说成失败。
+      job_mgmt_query:
+        description: 查询本会话已记录的作业号，不重新提交。
+      job_mgmt_schedule_watch:
+        description: 用户同意后按间隔查看同一个作业号，不重新执行。
   cmdb:
     name: CMDB
     description: |

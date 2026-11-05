@@ -37,6 +37,7 @@ class TestDispatchExecutionJob:
                 "apps.job_mgmt.tasks.execute_script_task",
                 args=[7],
                 task_id=persisted_task_id,
+                queue="job",
             )
             mock_app.control.revoke.assert_called_once_with(persisted_task_id)
             mock_exec.objects.filter.assert_called_once_with(id=7)
@@ -90,5 +91,5 @@ class TestDispatchExecutionJob:
                         "converge_deadline_at": events[0][1]["converge_deadline_at"],
                     },
                 ),
-                ("dispatch", {"args": [7], "task_id": persisted_task_id}),
+                ("dispatch", {"args": [7], "task_id": persisted_task_id, "queue": "job"}),
             ]

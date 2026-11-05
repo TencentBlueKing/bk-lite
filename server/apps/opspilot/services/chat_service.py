@@ -18,6 +18,7 @@ from apps.opspilot.services.builtin_tools import (
     BUILTIN_ALERTS_TOOL_NAME,
     BUILTIN_ATTACHMENT_FILE_TOOL_NAME,
     BUILTIN_CMDB_TOOL_NAME,
+    BUILTIN_JOB_MGMT_TOOL_NAME,
     BUILTIN_LOG_TOOL_NAME,
     BUILTIN_MLOPS_TOOL_NAME,
     BUILTIN_MONITOR_TOOL_NAME,
@@ -30,6 +31,7 @@ from apps.opspilot.services.builtin_tools import (
     build_builtin_alerts_runtime_tool,
     build_builtin_attachment_file_runtime_tool,
     build_builtin_cmdb_runtime_tool,
+    build_builtin_job_mgmt_runtime_tool,
     build_builtin_log_runtime_tool,
     build_builtin_mlops_runtime_tool,
     build_builtin_monitor_runtime_tool,
@@ -466,6 +468,7 @@ class ChatService:
             BUILTIN_MSSQL_TOOL_NAME: None,
             BUILTIN_ACTIVEDIRECTORY_TOOL_NAME: None,
             BUILTIN_MLOPS_TOOL_NAME: None,
+            BUILTIN_JOB_MGMT_TOOL_NAME: None,
         }
         builtin_builders = {
             BUILTIN_ATTACHMENT_FILE_TOOL_NAME: build_builtin_attachment_file_runtime_tool,
@@ -479,6 +482,7 @@ class ChatService:
             BUILTIN_MSSQL_TOOL_NAME: build_builtin_mssql_runtime_tool,
             BUILTIN_ACTIVEDIRECTORY_TOOL_NAME: build_builtin_activedirectory_runtime_tool,
             BUILTIN_MLOPS_TOOL_NAME: build_builtin_mlops_runtime_tool,
+            BUILTIN_JOB_MGMT_TOOL_NAME: build_builtin_job_mgmt_runtime_tool,
         }
 
         selected_tool_ids = [tool["id"] for tool in selected_tools if isinstance(tool.get("id"), int) and tool["id"] > 0]
@@ -814,6 +818,12 @@ def _attach_pending_question(chat_kwargs: dict, kwargs: dict) -> None:
     skill_session_id = str(kwargs.get("skill_session_id") or "").strip()
     if skill_session_id:
         runtime_extra_config["skill_session_id"] = skill_session_id
+    session_id = str(kwargs.get("session_id") or "").strip()
+    if session_id:
+        runtime_extra_config["session_id"] = session_id
+    distribute_file_ids = kwargs.get("distribute_file_ids")
+    if distribute_file_ids:
+        runtime_extra_config["distribute_file_ids"] = distribute_file_ids
     pending_question = kwargs.get("pending_question")
     if isinstance(pending_question, dict):
         runtime_extra_config["pending_question"] = pending_question

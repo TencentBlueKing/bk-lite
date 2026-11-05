@@ -19,6 +19,7 @@ make test-bdd         # 仅 bdd marker
 make test-fast        # 跳过 slow
 make test-app         # 指定 app 测试
 make celery POOL=critical  # 默认工作负载四池之一；另启 notification/state/background
+make job-celery       # 作业 Celery worker，只消费 job 队列
 make celery-beat      # Beat 调度
 make start-nats       # NATS 监听
 make shell            # IPython shell_plus
@@ -224,4 +225,4 @@ Celery Beat 静态任务对账使用 `CELERY_BEAT_SCHEDULE_RECONCILE_MODE`，代
 
 ### Celery 工作负载隔离
 
-默认任务按 critical、notification、state、background 四池独立运行，critical/notification/state 默认 MIN=1、MAX=2，background 默认 MIN=MAX=1；保留 OpsPilot、报表渲染和补丁维护专用消费者及上游 prefork 超时/回收行为。旧 CELERY_CONCURRENCY 仅提示废弃并忽略；各池范围可通过环境变量覆盖。CELERY_TOTAL_CONCURRENCY_LIMIT 默认12，四池MAX和既有专用并发（含所有副本/升级重叠）仍须满足该预算。配置、只读巡检与回滚见[运行手册](docs/celery-runtime-runbook.md)，当前准确任务名见[182项清单](docs/celery-current-task-inventory.md)。
+默认任务按 critical、notification、state、background 四池独立运行，critical/notification/state 默认 MIN=1、MAX=2，background 默认 MIN=MAX=1；保留 OpsPilot、报表渲染和补丁维护专用消费者及上游 prefork 超时/回收行为。旧 CELERY_CONCURRENCY 仅提示废弃并忽略；各池范围可通过环境变量覆盖。CELERY_TOTAL_CONCURRENCY_LIMIT 默认12，四池MAX和既有专用并发（含所有副本/升级重叠）仍须满足该预算。作业执行、定时任务、回调和完成副作用仍进入 `job` 队列，由 `make job-celery` 或容器内 `job_celery` 消费，不进入上述四池。配置、只读巡检与回滚见[运行手册](docs/celery-runtime-runbook.md)，当前准确任务名见[182项清单](docs/celery-current-task-inventory.md)。

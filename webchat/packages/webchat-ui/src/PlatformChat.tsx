@@ -1195,6 +1195,7 @@ const PlatformChatInner = React.memo(React.forwardRef<HTMLDivElement, PlatformCh
                   sseUrl={chatUrl}
                   showHeader={false}
                   conversationHistoryEnabled={currentApp.enableConversationHistory !== false}
+                  jobMgmtEnabled={currentApp.jobMgmtEnabled === true}
                   initialContextUsage={sessionUsage}
                   enableStorage={false}
                   apiKey={apiKey}

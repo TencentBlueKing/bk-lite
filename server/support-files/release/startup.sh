@@ -25,16 +25,21 @@ fi
 # 检查是否包含 opspilot 模块
 opspilot_installed=false
 workflow_installed=false
+job_mgmt_installed=false
 if [ -z "$INSTALL_APPS" ]; then
     # 空表示安装所有模块
     opspilot_installed=true
     workflow_installed=true
+    job_mgmt_installed=true
 else
     case ",$INSTALL_APPS," in
         *,opspilot,*) opspilot_installed=true ;;
     esac
     case ",$INSTALL_APPS," in
         *,workflow,*) workflow_installed=true ;;
+    esac
+    case ",$INSTALL_APPS," in
+        *,job_mgmt,*) job_mgmt_installed=true ;;
     esac
 fi
 
@@ -46,6 +51,12 @@ if [ "$opspilot_installed" = false ]; then
     rm -f "$SUPERVISOR_CONF_DIR/opspilot_celery.conf"
     rm -f "$SUPERVISOR_CONF_DIR/opspilot_wecom_aibot_long_connection.conf"
     rm -f "$SUPERVISOR_CONF_DIR/opspilot_feishu_long_connection.conf"
+fi
+
+# 未安装作业模块时不拉起作业队列 worker。四池不消费 job 队列。
+if [ "$job_mgmt_installed" = false ]; then
+    echo "未安装 job_mgmt 模块，删除作业 Celery supervisor 配置..."
+    rm -f "$SUPERVISOR_CONF_DIR/job_celery.conf"
 fi
 
 # 编排 Worker、触发调度和产物清理由同一配置管理，只在安装编排中心时运行。
@@ -62,6 +73,7 @@ export CELERY_MAX_TASKS_PER_CHILD=${CELERY_MAX_TASKS_PER_CHILD:-200}
 export CELERY_MAX_MEMORY_PER_CHILD=${CELERY_MAX_MEMORY_PER_CHILD:-512000}
 export DASHBOARD_REPORT_RENDER_CONCURRENCY=${DASHBOARD_REPORT_RENDER_CONCURRENCY:-2}
 export OPSPILOT_CELERY_CONCURRENCY=${OPSPILOT_CELERY_CONCURRENCY:-2}
+export JOB_CELERY_CONCURRENCY=${JOB_CELERY_CONCURRENCY:-2}
 export NATS_NUMPROCS=${NATS_NUMPROCS:-4}
 
 # 校验时使用与专用消费者相同的已导出配置，避免 .env 与 shell 默认值造成预算偏差。
@@ -77,6 +89,7 @@ echo "  CELERY_MAX_TASKS_PER_CHILD=$CELERY_MAX_TASKS_PER_CHILD"
 echo "  CELERY_MAX_MEMORY_PER_CHILD=$CELERY_MAX_MEMORY_PER_CHILD"
 echo "  DASHBOARD_REPORT_RENDER_CONCURRENCY=$DASHBOARD_REPORT_RENDER_CONCURRENCY"
 echo "  OPSPILOT_CELERY_CONCURRENCY=$OPSPILOT_CELERY_CONCURRENCY"
+echo "  JOB_CELERY_CONCURRENCY=$JOB_CELERY_CONCURRENCY"
 echo "  NATS_NUMPROCS=$NATS_NUMPROCS"
 
 supervisord -n
