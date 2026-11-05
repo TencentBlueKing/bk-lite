@@ -15,6 +15,7 @@ import { SelectTool } from '@/app/opspilot/types/tool';
 import SkillMemorySettingsFields, {
   SKILL_CAPABILITY_TRAILING_SLOT_CLASS,
 } from '@/app/opspilot/components/skill/skillMemorySettingsFields';
+import SkillWikiMaterialWriteField from '@/app/opspilot/components/skill/skillWikiMaterialWriteField';
 import ToolSelector from '@/app/opspilot/components/skill/toolSelector';
 import { useMemoryApi, WorkflowMemorySpaceOption } from '@/app/opspilot/api/memory';
 import SkillPackageParamsModal, {
@@ -158,6 +159,7 @@ const SkillSettingsPage: React.FC = () => {
           guide,
           wiki_knowledge_bases: data.wiki_knowledge_bases || [],
           force_wiki_grounded: data.force_wiki_grounded ?? false,
+          allow_wiki_material_write: data.allow_wiki_material_write ?? false,
           memory_space: data.memory_space || undefined,
           memory_write_rounds: data.memory_write_rounds ?? 10,
           skill_params: data.skill_params || [],
@@ -249,6 +251,7 @@ const SkillSettingsPage: React.FC = () => {
         skill_params: (values.skill_params || []).filter((p: any) => p && p.key),
         wiki_knowledge_bases: values.wiki_knowledge_bases || [],
         force_wiki_grounded: !!values.force_wiki_grounded,
+        allow_wiki_material_write: !!values.allow_wiki_material_write,
         memory_space: values.memory_space || null,
         memory_write_rounds: values.memory_write_rounds ?? 10,
         skill_package_params: skillPackageParamsForSubmit(effectiveSkillCapabilityProfiles, skillPackageParams),
@@ -964,43 +967,46 @@ const SkillSettingsPage: React.FC = () => {
                   </div>
 
                   <Form.Item label={t('wiki.title')} className="!mb-3.5">
-                    <div className="flex items-center gap-2">
-                      <Form.Item name="wiki_knowledge_bases" noStyle>
-                        <Select
-                          mode="multiple"
-                          allowClear
-                          showSearch
-                          optionFilterProp="label"
-                          placeholder={t('wiki.title')}
-                          className="min-w-0 flex-1"
-                          options={wikiKbs.map((kb) => ({ value: kb.id, label: kb.name }))}
-                        />
-                      </Form.Item>
-                      <div className={SKILL_CAPABILITY_TRAILING_SLOT_CLASS}>
-                        <Form.Item name="force_wiki_grounded" valuePropName="checked" noStyle>
-                          <Switch
-                            size="small"
-                            disabled={!hasWikiKb}
+                    <div className="flex flex-col gap-2">
+                      <div className="flex items-center gap-2">
+                        <Form.Item name="wiki_knowledge_bases" noStyle>
+                          <Select
+                            mode="multiple"
+                            allowClear
+                            showSearch
+                            optionFilterProp="label"
+                            placeholder={t('wiki.title')}
+                            className="min-w-0 flex-1"
+                            options={wikiKbs.map((kb) => ({ value: kb.id, label: kb.name }))}
                           />
                         </Form.Item>
-                        <span
-                          className={`text-xs select-none ${
-                            hasWikiKb
-                              ? 'cursor-pointer text-[var(--color-text-2)] hover:text-[var(--color-text-1)]'
-                              : 'cursor-not-allowed text-[var(--color-text-4)]'
-                          }`}
-                          onClick={() => {
-                            if (hasWikiKb) {
-                              form.setFieldValue(
-                                'force_wiki_grounded',
-                                !form.getFieldValue('force_wiki_grounded')
-                              );
-                            }
-                          }}
-                        >
-                          {t('skill.form.forceWikiGrounded')}
-                        </span>
+                        <div className={SKILL_CAPABILITY_TRAILING_SLOT_CLASS}>
+                          <Form.Item name="force_wiki_grounded" valuePropName="checked" noStyle>
+                            <Switch
+                              size="small"
+                              disabled={!hasWikiKb}
+                            />
+                          </Form.Item>
+                          <span
+                            className={`text-xs select-none ${
+                              hasWikiKb
+                                ? 'cursor-pointer text-[var(--color-text-2)] hover:text-[var(--color-text-1)]'
+                                : 'cursor-not-allowed text-[var(--color-text-4)]'
+                            }`}
+                            onClick={() => {
+                              if (hasWikiKb) {
+                                form.setFieldValue(
+                                  'force_wiki_grounded',
+                                  !form.getFieldValue('force_wiki_grounded')
+                                );
+                              }
+                            }}
+                          >
+                            {t('skill.form.forceWikiGrounded')}
+                          </span>
+                        </div>
                       </div>
+                      <SkillWikiMaterialWriteField />
                     </div>
                   </Form.Item>
 

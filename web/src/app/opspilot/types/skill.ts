@@ -106,6 +106,7 @@ export interface SkillDetail extends Skill {
   tools?: unknown[];
   wiki_knowledge_bases?: number[];
   force_wiki_grounded?: boolean;
+  allow_wiki_material_write?: boolean;
   memory_space?: number | null;
   memory_write_rounds?: number;
   desc?: string;
@@ -187,6 +188,7 @@ export interface SkillDetailPayload {
   skill_packages?: Partial<SkillPackage>[];
   wiki_knowledge_bases?: number[];
   force_wiki_grounded?: boolean;
+  allow_wiki_material_write?: boolean;
   [key: string]: unknown;
 }
 

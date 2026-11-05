@@ -44,6 +44,11 @@ from apps.opspilot.services.history_service import history_service
 from apps.opspilot.services.llm_context_budget import DEFAULT_CHAT_SCENE_OUTPUT_TOKENS, working_budget_for_model
 from apps.opspilot.services.skill_memory_service import append_skill_memory_block
 from apps.opspilot.services.wiki.active_generation_query_service import ActiveGenerationReadError
+from apps.opspilot.services.wiki.chat_material_service import (
+    apply_wiki_material_runtime,
+    skill_allows_wiki_material_write,
+    wiki_grounded_uses_single_model_call,
+)
 from apps.opspilot.services.wiki.wiki_budget_service import WikiBudgetExceeded, load_wiki_budget_config
 from apps.opspilot.services.wiki.wiki_context_service import augment_prompt_with_trace, should_skip_wiki_retrieval
 from apps.opspilot.utils.agent_factory import create_agent_instance
@@ -632,6 +637,7 @@ class ChatService:
         wiki_budget_trace = {}
         wiki_kb_ids = kwargs.get("wiki_kb_ids")
         force_wiki_grounded = bool(kwargs.get("force_wiki_grounded"))
+        allow_wiki_material_write = skill_allows_wiki_material_write(kwargs.get("skill_id"))
         wiki_active = bool(wiki_kb_ids) and not should_skip_wiki_retrieval(user_message)
         if wiki_kb_ids and not wiki_active:
             wiki_budget_trace = {
@@ -710,7 +716,10 @@ class ChatService:
                 extra_config,
                 wiki_budget_trace,
                 derived,
-                force_wiki_grounded=force_wiki_grounded,
+                force_wiki_grounded=wiki_grounded_uses_single_model_call(
+                    force_wiki_grounded=force_wiki_grounded,
+                    allow_wiki_material_write=allow_wiki_material_write,
+                ),
             )
         run_model_call_limit = _optional_positive_int(kwargs.get("run_model_call_limit"))
         if run_model_call_limit:
@@ -784,6 +793,7 @@ class ChatService:
                 runtime_extra_config[CALLER_IDENTITY_CONFIG_KEY] = server_caller_identity
 
         _attach_pending_question(chat_kwargs, kwargs)
+        _attach_wiki_material_write(chat_kwargs, kwargs)
         return chat_kwargs, doc_map, title_map
 
 
@@ -813,6 +823,10 @@ def _attach_pending_question(chat_kwargs: dict, kwargs: dict) -> None:
     consumed = consume_pending_question(conversation_key)
     if consumed:
         runtime_extra_config["pending_question"] = consumed
+
+
+def _attach_wiki_material_write(chat_kwargs: dict, kwargs: dict) -> None:
+    apply_wiki_material_runtime(chat_kwargs, kwargs)
 
 
 # 常驻附件的弱提示。是否落盘只看用户本轮是否要文件，勾选工具不再强制生成。

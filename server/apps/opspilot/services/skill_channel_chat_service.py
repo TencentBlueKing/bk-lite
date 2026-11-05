@@ -47,6 +47,7 @@ from apps.opspilot.services.skill_memory_service import (
     snapshot_pending_messages,
 )
 from apps.opspilot.services.skill_package.runtime import build_skill_package_prompt, build_skill_package_strategy, hydrate_skill_packages
+from apps.opspilot.services.wiki.chat_material_service import actor_for_platform_user, external_actor
 from apps.opspilot.services.wiki.parsed_media_service import (
     _STORED_MEDIA_PROXY_URL_RE,
     history_media_proxy_url,
@@ -1145,7 +1146,14 @@ def _request_user_timezone(request_user) -> str:
     return str(stored or "").strip()
 
 
-def build_skill_chat_params(skill: LLMSkill, user_message: str, request_user, extra: dict | None = None) -> dict:
+def build_skill_chat_params(
+    skill: LLMSkill,
+    user_message: str,
+    request_user,
+    extra: dict | None = None,
+    *,
+    wiki_sender_id: str | None = None,
+) -> dict:
     tools = resolve_request_tools(None, skill.tools)
     params = {
         "user_message": user_message,
@@ -1187,6 +1195,11 @@ def build_skill_chat_params(skill: LLMSkill, user_message: str, request_user, ex
     params.update(build_skill_package_strategy(matched))
     if extra:
         params.update(extra)
+    params.pop("wiki_material_actor", None)
+    if wiki_sender_id is not None:
+        params["wiki_material_actor"] = external_actor(wiki_sender_id)
+    else:
+        params["wiki_material_actor"] = actor_for_platform_user(request_user)
     return params
 
 
@@ -1418,7 +1431,7 @@ def execute_skill_channel_im_sync(
     append_message(conversation, SkillConversationMessage.ROLE_USER, user_message)
 
     request_user = type("IMUser", (), {"username": external_user_id or "", "id": None, "locale": "en"})()
-    params = build_skill_chat_params(skill, user_message, request_user)
+    params = build_skill_chat_params(skill, user_message, request_user, wiki_sender_id=external_user_id or "")
     execution_id = ""
     if getattr(channel, "channel_type", "") == "enterprise_wechat_aibot":
         params["reply_language"] = "match_user"

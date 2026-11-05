@@ -46,6 +46,7 @@ class ToolsLoader:
         "mssql": ("apps.opspilot.metis.llm.tools.mssql", True),
         "mysql": ("apps.opspilot.metis.llm.tools.mysql", True),
         "monitor": ("apps.opspilot.metis.llm.tools.monitor", False),
+        "wiki_material": ("apps.opspilot.metis.llm.tools.wiki_material", False),
         "mlops": ("apps.opspilot.metis.llm.tools.mlops", True),
         "ops_analysis_dashboard": ("apps.opspilot.metis.llm.tools.ops_analysis_dashboard", False),
         "oracle": ("apps.opspilot.metis.llm.tools.oracle", True),
@@ -56,6 +57,8 @@ class ToolsLoader:
         "shell": ("apps.opspilot.metis.llm.tools.shell", False),
         "ssh": ("apps.opspilot.metis.llm.tools.ssh", False),
     }
+    # 运行时按 langchain: 名称加载，但不进入工具目录，也不能被智能体勾选。
+    CATALOG_HIDDEN_TOOL_NAMES = frozenset({"wiki_material"})
 
     @staticmethod
     def _discover_tools():
@@ -258,6 +261,8 @@ class ToolsLoader:
         metadata_list = []
 
         for tool_category, (module_or_path, enable_extra_prompt) in ToolsLoader.TOOL_MODULES.items():
+            if tool_category in ToolsLoader.CATALOG_HIDDEN_TOOL_NAMES:
+                continue
             module = ToolsLoader._resolve_tool_module(tool_category, module_or_path)
             if module is None:
                 continue
@@ -321,3 +326,11 @@ class ToolsLoader:
 
         logger.info(f"总共提取 {len(metadata_list)} 个工具/工具集的元数据")
         return metadata_list
+
+    @staticmethod
+    def omit_catalog_hidden_skill_tools(tools):
+        """丢掉目录里不展示的内置工具，避免智能体设置把它存成可选项。"""
+        if not isinstance(tools, list):
+            return tools
+        hidden = ToolsLoader.CATALOG_HIDDEN_TOOL_NAMES
+        return [tool for tool in tools if not (isinstance(tool, dict) and tool.get("name") in hidden)]

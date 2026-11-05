@@ -33,6 +33,7 @@ from apps.opspilot.services.wiki.build_service import (
     resolve_knowledge_conflict,
 )
 from apps.opspilot.services.wiki.cascade_service import cascade
+from apps.opspilot.services.wiki.chat_material_service import is_chat_sourced_material
 from apps.opspilot.services.wiki.conflict_candidate_routing_service import route_material_conflicts
 from apps.opspilot.services.wiki.decision_service import compute_schema_fingerprint
 from apps.opspilot.services.wiki.maintenance_errors import humanize_maintenance_error
@@ -292,6 +293,7 @@ def _prepare_rebuild(
                 budget=material_budget,
                 invoke_llm=_invoke_llm,
                 base_generation_id=kb.active_generation_id,
+                chat_sourced=is_chat_sourced_material(material),
             )
         budget_trace = material_budget.trace() if material_budget is not None else {}
         for incoming_index, page_data in enumerate(generated_pages):

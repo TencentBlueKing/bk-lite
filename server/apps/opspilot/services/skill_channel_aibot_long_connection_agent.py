@@ -119,7 +119,10 @@ def _run(request: AnswerRequest) -> None:
     skill = channel.skill
     conversation = get_or_create_conversation(channel, request.external_user_id, request.session_id or None)
     request_user = type("IMUser", (), {"username": request.external_user_id or "", "id": None, "locale": "en"})()
-    params = build_skill_chat_params(skill, request.user_message, request_user)
+    sender_id = getattr(request, "wiki_sender_id", None)
+    if sender_id is None:
+        sender_id = request.external_user_id or ""
+    params = build_skill_chat_params(skill, request.user_message, request_user, wiki_sender_id=str(sender_id or ""))
     inject_skill_memory_prompt(params, skill, request.external_user_id, request.user_message)
     params["reply_language"] = "match_user"
     params["execution_id"] = str(uuid.uuid4())

@@ -171,6 +171,10 @@ class AnswerRequest:
         self.session_id = turn.session_id
         self.cancelled = False
 
+    @property
+    def wiki_sender_id(self) -> str:
+        return (self.external_user_id or "").strip()
+
     def publish(self, text: str) -> None:
         self.session.note_generated(self.turn, text or "")
 

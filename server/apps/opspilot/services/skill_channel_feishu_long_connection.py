@@ -103,6 +103,11 @@ class AnswerRequest:
         self.session_id = turn.session_id
         self.cancelled = False
 
+    @property
+    def wiki_sender_id(self) -> str:
+        """写入知识库只用飞书 open_id。会话键可以退回 message_id，这里不能。"""
+        return (getattr(self.turn, "person_sender_id", "") or "").strip()
+
     def publish(self, text: str) -> None:
         self.session.note_generated(self.turn, text or "")
 
@@ -123,6 +128,7 @@ class Turn:
     bubble_id: str
     session_id: str
     external_user_id: str
+    person_sender_id: str
     user_message: str
     started_at: float
     last_sent_at: float
@@ -261,7 +267,8 @@ class FeishuConnection:
 
     def _begin_turn(self, event: FeishuInbound, text: str, bubble_id: str) -> None:
         now = self.clock.now()
-        sender = event.sender_open_id or event.message_id
+        person_sender_id = (event.sender_open_id or "").strip()
+        sender = person_sender_id or event.message_id
         interrupted: tuple[Turn, str] | None = None
         try:
             with self._lock:
@@ -276,6 +283,7 @@ class FeishuConnection:
                     bubble_id=bubble_id,
                     session_id=speaker_session_id(event.chat_id, sender),
                     external_user_id=sender,
+                    person_sender_id=person_sender_id,
                     user_message=text,
                     started_at=now,
                     last_sent_at=now,

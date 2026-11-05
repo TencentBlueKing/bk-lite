@@ -1702,7 +1702,8 @@
       "usageGroup": "使用组织",
       "guideDefault": "您好，请问有什么可以帮助您的吗？可以点击如下问题进行快速提问。\n[问题1]\n[问题2]",
       "usageGroupTip": "使用组织可调用该智能体进行对话/接口请求；管理组织会自动加入且不可移除",
-      "forceWikiGrounded": "强制"
+      "forceWikiGrounded": "强制",
+      "allowWikiMaterialWrite": "允许通过对话修改知识库"
     },
     "memory": {
       "title": "记忆",

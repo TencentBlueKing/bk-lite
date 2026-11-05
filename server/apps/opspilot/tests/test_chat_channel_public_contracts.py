@@ -115,6 +115,12 @@ def test_dingtalk_signature_and_chatflow_result_contract():
             "node_id": "ding-1",
             "channel": "ding_talk",
             "is_third_party": True,
+            "wiki_material_actor": {
+                "mode": "external",
+                "username": "",
+                "domain": "",
+                "sender_id": "user-1",
+            },
         }
     )
 
