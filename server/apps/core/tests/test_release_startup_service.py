@@ -44,6 +44,7 @@ def _supervisor_conf_dir(tmp_path):
         encoding="utf-8",
     )
     (supervisor_conf_dir / "celery.conf").write_text("[program:celery]\n", encoding="utf-8")
+    (supervisor_conf_dir / "job_celery.conf").write_text("[program:job_celery]\n", encoding="utf-8")
     (supervisor_conf_dir / "workflow_worker.conf").write_text(
         "[program:workflow_worker]\n",
         encoding="utf-8",
@@ -210,6 +211,7 @@ def test_release_startup_removes_opspilot_celery_conf_when_opspilot_not_installe
     assert not (conf_dir / "opspilot_feishu_long_connection.conf").exists()
     assert not (conf_dir / "consumer.conf").exists()
     assert (conf_dir / "celery.conf").exists()
+    assert not (conf_dir / "job_celery.conf").exists()
 
 
 def test_workflow_runtime_is_packaged_and_removed_when_app_is_not_installed(tmp_path):
@@ -248,6 +250,7 @@ def test_release_startup_keeps_opspilot_celery_conf_when_opspilot_installed(tmp_
     assert (conf_dir / "opspilot_feishu_long_connection.conf").exists()
     assert (conf_dir / "consumer.conf").exists()
     assert (conf_dir / "celery.conf").exists()
+    assert not (conf_dir / "job_celery.conf").exists()
 
 
 def test_release_startup_keeps_opspilot_celery_conf_when_install_apps_empty(tmp_path):
@@ -258,6 +261,29 @@ def test_release_startup_keeps_opspilot_celery_conf_when_install_apps_empty(tmp_
     assert (conf_dir / "opspilot_celery.conf").exists()
     assert (conf_dir / "opspilot_wecom_aibot_long_connection.conf").exists()
     assert (conf_dir / "opspilot_feishu_long_connection.conf").exists()
+    assert (conf_dir / "job_celery.conf").exists()
+
+
+def test_job_celery_worker_consumes_job_queue_and_follows_install(tmp_path):
+    dockerfile = (RELEASE_DIR / "Dockerfile").read_text(encoding="utf-8")
+    job_conf = (RELEASE_DIR / "supervisor/job_celery.conf").read_text(encoding="utf-8")
+    celery_conf = (RELEASE_DIR / "supervisor/celery.conf").read_text(encoding="utf-8")
+    startup = STARTUP_SCRIPT.read_text(encoding="utf-8")
+
+    assert "job_celery.conf" in dockerfile
+    assert "-Q job " in job_conf
+    assert "--pool prefork" in job_conf
+    assert "-Q" not in celery_conf
+    assert 'rm -f "$SUPERVISOR_CONF_DIR/job_celery.conf"' in startup
+    assert "JOB_CELERY_CONCURRENCY=${JOB_CELERY_CONCURRENCY:-2}" in startup
+
+    removed, _commands = _run_startup(tmp_path, migrate_returncode=0, install_apps="system_mgmt,opspilot")
+    assert removed.returncode == 0
+    assert not (tmp_path / "supervisor/job_celery.conf").exists()
+
+    kept, _commands = _run_startup(tmp_path, migrate_returncode=0, install_apps="system_mgmt,job_mgmt")
+    assert kept.returncode == 0
+    assert (tmp_path / "supervisor/job_celery.conf").exists()
 
 
 def test_cmdb_transfer_uses_existing_celery_worker_without_extra_process():
@@ -280,6 +306,7 @@ def test_cmdb_transfer_uses_existing_celery_worker_without_extra_process():
 
 def test_release_celery_workers_use_prefork_and_child_recycle():
     worker_confs = [
+        RELEASE_DIR / "supervisor/job_celery.conf",
         RELEASE_DIR / "supervisor/opspilot_celery.conf",
         RELEASE_DIR / "supervisor/dashboard_report_render_worker.conf",
         RELEASE_DIR / "supervisor/patch_maintenance.conf",

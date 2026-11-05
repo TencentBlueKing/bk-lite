@@ -136,6 +136,35 @@ def encode_stream_keepalive(encoder: EventEncoder, phase: str) -> str:
     )
 
 
+def encode_job_script_output(encoder: EventEncoder, tool_name: str, content: Any):
+    """脚本工具结束后，把已落库的展示块推给界面。模型仍只看到工具返回的终态。"""
+
+    if not str(tool_name or "").startswith("job_mgmt_"):
+        return None
+    payload = content
+    if isinstance(content, str):
+        try:
+            payload = json.loads(content)
+        except json.JSONDecodeError:
+            return None
+    if not isinstance(payload, dict) or not payload.get("task_id"):
+        return None
+    # 延迟导入：展示记录属于 OpsPilot 作业工具，chain 初始化时不必加载作业平台。
+    from apps.opspilot.services.job_tool_service import latest_display_payload
+
+    value = latest_display_payload(payload["task_id"])
+    if not value:
+        return None
+    return encoder.encode(
+        CustomEvent(
+            type=EventType.CUSTOM,
+            name="job_script_output",
+            value=value,
+            timestamp=int(time.time() * 1000),
+        )
+    )
+
+
 def encode_hidden_step_text(encoder: EventEncoder, delta: str) -> str:
     """步内被丢掉的模型正文改走 CUSTOM，刷新长连接，不进 TEXT_MESSAGE_*。"""
     return encoder.encode(
@@ -1235,6 +1264,9 @@ class BasicGraph(ABC):
             )
             # 标记已回填，避免后续 on_chain_end 用同一 ToolMessage 再发一遍 RESULT
             current_tool_calls[tool_call_id]["result_sent"] = True
+            output_event = encode_job_script_output(encoder, tool_name, self._normalize_tool_result_content(tool_output))
+            if output_event:
+                events.append(output_event)
         return events
 
     @staticmethod
@@ -1396,6 +1428,13 @@ class BasicGraph(ABC):
                 )
             )
             tool_info["result_sent"] = True
+            output_event = encode_job_script_output(
+                encoder,
+                str(getattr(message, "name", "") or ""),
+                str(getattr(message, "content", "") or ""),
+            )
+            if output_event:
+                events.append(output_event)
             emitted_tool_result = True
             latest_ai_message_after_tool_result = None
 

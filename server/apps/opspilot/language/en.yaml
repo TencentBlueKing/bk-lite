@@ -280,6 +280,32 @@ tools:
     tools:
       mlops_predict_timeseries:
         description: Forecast a bound serving over a future horizon. summary compares many series; trend returns points for one series.
+  job_mgmt:
+    name: Job management
+    description: |
+      Run library scripts and custom scripts, and distribute files staged in this conversation, as the current user and team.
+      Playbook scripts can be selected by path inside the package. Script output is shown to the user, and the model only sees the job id and final status. When there is no output, the reply includes a job record link. A finished file distribution reports only success or failure. An unfinished one includes the job record link and asks the user to check Job management.
+    tools:
+      job_mgmt_list_scripts:
+        description: List library scripts in the current team, without script bodies. Confirm the name and type with the user even when there is only one.
+      job_mgmt_list_playbook_scripts:
+        description: List playbook scripts in the current team by name or path, without file contents.
+      job_mgmt_describe_script:
+        description: Show script parameter definitions. Encrypted defaults stay masked.
+      job_mgmt_search_targets:
+        description: Find targets by name or IP. Copy the returned id into target_ids. Do not copy the IP or name.
+      job_mgmt_list_targets:
+        description: Page targets for one source. Copy the returned id into target_ids. Pass the previous next_cursor as the cursor argument.
+      job_mgmt_run_library:
+        description: Execute a library script by id. target_source is 作业管理目标 or 节点管理目标. target_ids is the id from search or list, comma-separated. Job targets use a numeric id. Nodes use the node primary key. Do not pass an IP.
+      job_mgmt_run_custom:
+        description: Execute a custom script from the user's own words. script_type is shell, python, powershell, or bat. target_ids is the id from search or list, not an IP. Linux accepts shell and python. Windows accepts powershell and bat.
+      job_mgmt_distribute:
+        description: Distribute files staged in this conversation. target_ids is the id from search or list, not an IP. A finished job reports only success or failure. An unfinished job returns the job record link and must not be called a failure.
+      job_mgmt_query:
+        description: Query a job id already stored for this conversation. Do not submit again.
+      job_mgmt_schedule_watch:
+        description: After the user agrees, check the same job id on an interval. Do not execute it again.
   cmdb:
     name: CMDB
     description: |

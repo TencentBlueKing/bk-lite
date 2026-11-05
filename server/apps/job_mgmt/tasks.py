@@ -17,6 +17,7 @@ from apps.job_mgmt.config import (
     DISTRIBUTION_FILE_CLEANUP_BATCH_SIZE,
     DISTRIBUTION_FILE_CLEANUP_MAX_CONCURRENCY,
     EXECUTION_TIMEOUT_SCAN_BATCH_SIZE,
+    JOB_CELERY_QUEUE,
     SCHEDULED_TASK_QUEUE_RETRY_COUNTDOWN,
     SCHEDULED_TASK_TEAM_BOUNDARY_ENFORCED,
 )
@@ -37,23 +38,23 @@ from apps.job_mgmt.utils.callback_signer import get_signed_headers
 from apps.node_mgmt.utils.s3 import delete_s3_files
 
 
-@shared_task(max_retries=0)
+@shared_task(max_retries=0, queue=JOB_CELERY_QUEUE)
 def execute_script_task(execution_id: int):
     ScriptExecutionRunner(execution_id).run()
 
 
-@shared_task(max_retries=0)
+@shared_task(max_retries=0, queue=JOB_CELERY_QUEUE)
 def distribute_files_task(execution_id: int):
     FileDistributionRunner(execution_id).run()
 
 
-@shared_task(max_retries=0)
+@shared_task(max_retries=0, queue=JOB_CELERY_QUEUE)
 def execute_playbook_task(execution_id: int):
     client = PlaybookExecution(execution_id)
     client.run()
 
 
-@shared_task(max_retries=0)
+@shared_task(max_retries=0, queue=JOB_CELERY_QUEUE)
 def finalize_cancelling_execution(execution_id: int):
     """兜底收敛：CANCELLING 滞留超时后强制收敛为 CANCELLED 终态。
 
@@ -112,7 +113,7 @@ def finalize_cancelling_execution(execution_id: int):
     logger.info(f"[finalize_cancelling_execution] 取消中任务已强制收敛为 CANCELLED: execution_id={execution_id}")
 
 
-@shared_task(max_retries=0)
+@shared_task(max_retries=0, queue=JOB_CELERY_QUEUE)
 def deliver_job_completion_outbox(record_id: int):
     """投递一条作业完成副作用；失败状态及退避时间由数据库 outbox 记录。"""
     from apps.job_mgmt.services.completion_outbox_service import deliver_outbox_record
@@ -120,7 +121,7 @@ def deliver_job_completion_outbox(record_id: int):
     return deliver_outbox_record(record_id)
 
 
-@shared_task(max_retries=0)
+@shared_task(max_retries=0, queue=JOB_CELERY_QUEUE)
 def dispatch_pending_job_completion_outbox():
     """重扫待投递副作用，并补偿取消与普通执行的超时收敛。"""
     from apps.job_mgmt.services.completion_outbox_service import due_outbox_ids
@@ -175,7 +176,7 @@ def dispatch_pending_job_completion_outbox():
     }
 
 
-@shared_task(max_retries=0)
+@shared_task(max_retries=0, queue=JOB_CELERY_QUEUE)
 def execute_scheduled_task(scheduled_task_id: int):
     logger.info(f"[execute_scheduled_task] 开始执行定时任务: scheduled_task_id={scheduled_task_id}")
 
@@ -335,7 +336,7 @@ def execute_scheduled_task(scheduled_task_id: int):
     logger.info(f"[execute_scheduled_task] 定时任务触发完成: scheduled_task_id={scheduled_task_id}, execution_id={execution_id}")
 
 
-@shared_task(max_retries=0)
+@shared_task(max_retries=0, queue=JOB_CELERY_QUEUE)
 def cleanup_expired_distribution_files_task():
     # 清理所有已到期文件（expire_at <= 当前时间）
     expire_before = timezone.now()
@@ -423,7 +424,7 @@ def _dispatch_execution_job(job_type: str, execution_id: int) -> bool:
         return False
 
     try:
-        current_app.send_task(task_name, args=[execution_id], task_id=celery_task_id)
+        current_app.send_task(task_name, args=[execution_id], task_id=celery_task_id, queue=JOB_CELERY_QUEUE)
     except Exception as e:
         logger.exception(f"[_dispatch_execution_job] Celery 派发失败: execution_id={execution_id}, job_type={job_type}, error={e}")
         try:
@@ -440,6 +441,7 @@ def _dispatch_execution_job(job_type: str, execution_id: int) -> bool:
 
 @shared_task(
     bind=True,
+    queue=JOB_CELERY_QUEUE,
     max_retries=5,
     default_retry_delay=5,
     autoretry_for=(Exception,),
@@ -493,7 +495,7 @@ def do_callback_task(self, url: str, payload: dict, execution_id: int) -> None:
         raise
 
 
-@shared_task(max_retries=0)
+@shared_task(max_retries=0, queue=JOB_CELERY_QUEUE)
 def do_nats_callback_task(subject: str, payload: dict, execution_id: int) -> None:
     """旧的非终态 nats 回调通道：用 request/reply 把作业结果投递到指定主题。
 

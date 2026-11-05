@@ -21,6 +21,8 @@ MAX_ATTACHMENTS = 5
 DOCUMENT_MAX_BYTES = 20 * 1024 * 1024
 IMAGE_MAX_BYTES = 5 * 1024 * 1024
 ORPHAN_AGE = timedelta(hours=24)
+# 分发暂存复用本表，不新增模型。这条前缀标出暂存文件，避免 24 小时孤儿清理把它删掉。
+DISTRIBUTE_STAGE_REASON_PREFIX = "job_distribute_staged:"
 PENDING_STALE_AGE = timedelta(minutes=10)
 PARSE_QUEUE = "opspilot_chat_parse"
 PARSE_TASK_NAME = "apps.opspilot.tasks.parse_chat_attachment"
@@ -328,7 +330,9 @@ def cleanup_chat_attachments(*, now=None) -> dict[str, int]:
     ).update(status=ChatAttachment.STATUS_FAILED, failure_reason="解析超时")
     logger.info(PENDING_CONVERGED_TEMPLATE, failed_count)
     deleted_count = 0
-    orphans = ChatAttachment.objects.filter(message__isnull=True, created_at__lt=current - ORPHAN_AGE)
+    orphans = ChatAttachment.objects.filter(message__isnull=True, created_at__lt=current - ORPHAN_AGE).exclude(
+        failure_reason__startswith=DISTRIBUTE_STAGE_REASON_PREFIX
+    )
     for attachment in orphans.iterator():
         attachment.delete()
         deleted_count += 1
