@@ -83,6 +83,7 @@ interface InstanceOption {
   nodeId?: string;
   ip?: string;
   databaseRole?: string;
+  nodeType?: string;
   version?: string;
   port?: string;
 }
@@ -212,6 +213,7 @@ export default function MongoDashboardPage() {
             nodeId: String(item.node_id || '').trim(),
             ip: String(item.ip || item.summary_facts?.['asset.ip'] || '').trim(),
             databaseRole: facts.databaseRole,
+            nodeType: facts.nodeType,
             version: facts.version,
             port: facts.port
           });
@@ -630,6 +632,8 @@ export default function MongoDashboardPage() {
         instanceId={String(instanceId || '')}
         idValues={idValues}
         databaseRole={currentInstanceOption?.databaseRole || ''}
+        nodeType={currentInstanceOption?.nodeType || ''}
+        replState={proMode ? mongoLatest(metricMap, 'mongodb_repl_state') : null}
         version={currentInstanceOption?.version || ''}
         port={currentInstanceOption?.port || ''}
         uptimeSeconds={uptimeSeconds}

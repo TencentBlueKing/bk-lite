@@ -1,10 +1,10 @@
 export type MongoTab = 'overview' | 'throughput' | 'cache' | 'replication';
 
-export const MONGO_TABS: ReadonlyArray<{ key: MongoTab; label: string; gray?: boolean }> = [
+export const MONGO_TABS: ReadonlyArray<{ key: MongoTab; label: string }> = [
   { key: 'overview', label: '概览' },
   { key: 'throughput', label: '连接与吞吐' },
   { key: 'cache', label: '缓存与内存' },
-  { key: 'replication', label: '复制', gray: true }
+  { key: 'replication', label: '复制' }
 ];
 
 const TAB_KEYS = new Set<string>(MONGO_TABS.map((tab) => tab.key));

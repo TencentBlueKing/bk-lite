@@ -7,6 +7,7 @@ import type { MongoMetricConfig } from '../types';
  * 插入/更新/删除速率已合在 mongodb_write_ops_rate 里，不再单独挂三套。
  * 缓存使用率和脏数据占比用已用、上限、脏字节配对，分母为 0 不发假百分比查询。
  * 断言和游标超时用 queries.ts 里的窗口 increase，盖过传统盘的累计查询。
+ * 复制延迟、oplog 窗口、副本状态和成员健康是即时读数。
  */
 export const MONGODB_CATEGORY_METRIC_NAMES = [
   'mongodb_uptime_ns',
@@ -36,7 +37,12 @@ export const MONGODB_CATEGORY_METRIC_NAMES = [
   'mongodb_net_out_bytes_count_rate',
   'mongodb_page_faults_rate',
   'mongodb_assert_user',
-  'mongodb_cursor_timed_out_count'
+  'mongodb_cursor_timed_out_count',
+  'mongodb_repl_lag',
+  'mongodb_repl_oplog_window_sec',
+  'mongodb_repl_state',
+  'mongodb_repl_member_health',
+  'mongodb_member_status'
 ] as const;
 
 const overlay = new Map(MONGODB_PRO_QUERIES.map((metric) => [metric.name, metric]));

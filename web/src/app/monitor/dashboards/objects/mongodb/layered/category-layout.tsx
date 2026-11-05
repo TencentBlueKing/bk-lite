@@ -17,7 +17,16 @@ import ThroughputPane from './throughput-pane';
 import CachePane from './cache-pane';
 import ReplicationPane from './replication-pane';
 import { isMongoTab, MONGO_TABS, resolveMongoTab, type MongoTab } from './ia';
+import {
+  mongoReplicationDimmed,
+  mongoReplicationLoad,
+  mongoReplicationTabMode
+} from './replication';
 import type { MongoMetricMap } from './series';
+
+const tabBadgeClass = (
+  'ml-1 inline-flex h-[18px] items-center rounded-full border border-[var(--color-border)] bg-[var(--color-bg)] px-1.5 text-[12px] font-normal leading-[18px] text-[var(--color-text-3)]'
+);
 
 interface MongoCategoryLayoutProps {
   instanceId: React.Key;
@@ -129,6 +138,13 @@ export default function MongoCategoryLayout({
     };
   }, [chartWindowKey, getMonitorAlert, instanceKey, tab]);
 
+  const replicationBooting = loading && pendingMetricNames.size === 0;
+  const replication = useMemo(
+    () => mongoReplicationLoad(metricMap, pendingMetricNames, replicationBooting),
+    [metricMap, pendingMetricNames, replicationBooting]
+  );
+  const replicationDimmed = mongoReplicationDimmed(replication);
+
   return (
     <ProTimeWindowProvider
       timeValues={timeValues}
@@ -143,18 +159,23 @@ export default function MongoCategoryLayout({
             onChange={(key) => {
               if (isMongoTab(key)) selectTab(key);
             }}
-            items={MONGO_TABS.map((item) => ({
-              key: item.key,
-              label: (
-                <span
-                  className={`${host.tabLabel}${item.gray ? ' !text-[var(--color-text-4)] [.ant-tabs-tab-active_&]:!text-[var(--color-text-1)]' : ''}`}
-                  data-mongodb-tab={item.key}
-                  data-mongodb-tab-mode={item.gray ? 'gray' : 'ready'}
-                >
-                  {item.label}
-                </span>
-              )
-            }))}
+            items={MONGO_TABS.map((item) => {
+              const dimmed = item.key === 'replication' && replicationDimmed;
+              const mode = item.key === 'replication' ? mongoReplicationTabMode(replication) : 'ready';
+              return {
+                key: item.key,
+                label: (
+                  <span
+                    className={`${host.tabLabel}${dimmed ? ' !text-[var(--color-text-4)] [.ant-tabs-tab-active_&]:!text-[var(--color-text-1)]' : ''}`}
+                    data-mongodb-tab={item.key}
+                    data-mongodb-tab-mode={mode}
+                  >
+                    {item.label}
+                    {dimmed ? <span className={tabBadgeClass}>未采集</span> : null}
+                  </span>
+                )
+              };
+            })}
           />
         </div>
         <div className={host.main}>
@@ -182,7 +203,13 @@ export default function MongoCategoryLayout({
           {tab === 'cache' ? (
             <CachePane metricMap={metricMap} pendingMetricNames={pendingMetricNames} />
           ) : null}
-          {tab === 'replication' ? <ReplicationPane /> : null}
+          {tab === 'replication' ? (
+            <ReplicationPane
+              metricMap={metricMap}
+              pendingMetricNames={pendingMetricNames}
+              booting={replicationBooting}
+            />
+          ) : null}
         </div>
         <HostAlertDrawer
           open={alertDrawerOpen}

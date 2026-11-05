@@ -3,7 +3,7 @@
 import { formatDuration } from '../../common/simple-dashboard-core';
 import type { LinkedHostCandidate } from '../../../shared/linked-host';
 import { LinkedHostSegment } from '../../../shared/widgets/linked-host-segment';
-import { mongoForm, mongoIdentityText, mongoRole, type MongoFormLabel } from './architecture';
+import { mongoForm, mongoIdentityText, mongoObservedRole, mongoRole, type MongoFormLabel } from './architecture';
 
 const chipClass = (
   'inline-flex h-5 shrink-0 items-center rounded-full border border-[color-mix(in_srgb,var(--color-primary)_32%,var(--color-border))] bg-[color-mix(in_srgb,var(--color-primary)_10%,var(--color-bg))] px-2 text-[12px] font-medium leading-none text-[var(--color-text-1)]'
@@ -25,6 +25,8 @@ export function MongoIdentityLine({
   instanceId,
   idValues,
   databaseRole,
+  nodeType = '',
+  replState = null,
   version,
   port,
   uptimeSeconds,
@@ -36,6 +38,8 @@ export function MongoIdentityLine({
   instanceId: string;
   idValues: readonly string[];
   databaseRole: string;
+  nodeType?: string;
+  replState?: number | null;
   version: string;
   port: string;
   uptimeSeconds: number | null;
@@ -44,8 +48,9 @@ export function MongoIdentityLine({
   hostPending: boolean;
 }) {
   const nameText = mongoIdentityText(instanceName, instanceId, ...idValues);
-  const form = mongoForm(nameText, databaseRole);
-  const role = mongoRole(databaseRole);
+  const observed = mongoObservedRole(databaseRole, nodeType);
+  const form = mongoForm(nameText, observed, replState);
+  const role = mongoRole(observed, replState);
   const facts = [
     version,
     port ? `端口 ${port}` : '',
