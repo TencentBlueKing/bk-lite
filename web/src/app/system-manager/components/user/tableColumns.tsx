@@ -241,9 +241,6 @@ export const createUserTableColumns = ({
         const { status } = record;
         return (
           <div className="flex flex-wrap items-center gap-2">
-            <Button type="link" className="p-0" onClick={() => onOpenDetail(key)}>
-              {t('common.detail')}
-            </Button>
             <PermissionWrapper requiredPermissions={['Edit User']}>
               <Button type="link" className="p-0" onClick={() => onEditUser(key)}>
                 {t('common.edit')}
