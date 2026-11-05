@@ -106,6 +106,19 @@ def _conversation(session_id):
     )
 
 
+def test_playbook_listing_does_not_claim_the_tools_can_execute_it():
+    from apps.opspilot.metis.llm.tools.job_mgmt.tools import JOB_MGMT_PROMPT, job_mgmt_list_playbook_scripts, job_mgmt_run_custom, job_mgmt_run_library
+
+    assert "不表示这些工具能执行 Playbook" in JOB_MGMT_PROMPT
+    assert "只执行作业脚本" in JOB_MGMT_PROMPT
+    description = job_mgmt_list_playbook_scripts.description
+    assert "不能跑 Playbook" in description
+    assert "只执行作业脚本" in description
+    assert "不提交作业" in description
+    for tool in (job_mgmt_run_library, job_mgmt_run_custom):
+        assert "Playbook" not in tool.description
+
+
 def test_list_playbook_scripts_uses_current_team_and_path():
     Playbook.objects.create(
         name="nginx",
@@ -326,6 +339,34 @@ def test_library_script_requires_the_name_in_the_user_message():
     assert JobExecution.objects.count() == 0
 
 
+def test_historical_script_name_does_not_confirm_library_script():
+    session = "sess-script-history"
+    conversation = _conversation(session)
+    conversation.messages.create(role=SkillConversationMessage.ROLE_USER, content="请执行库脚本，也跑一下 ls")
+    script = _script()
+    short = Script.objects.create(name="ls", content="ls", script_type="shell", timeout=77, team=[1])
+    target = _target()
+    for script_id in (script.id, short.id):
+        refused = run_library_script(
+            _config("创建一个快速执行作业", session=session),
+            script_id=script_id,
+            target_source="manual",
+            target_ids=[target.id],
+        )
+        assert refused["ask"] is True
+        assert refused["options"][0].startswith("使用脚本 ")
+    assert JobExecution.objects.count() == 0
+
+    accepted = run_library_script(
+        _config("使用脚本 库脚本", session=session),
+        script_id=script.id,
+        target_source="manual",
+        target_ids=[target.id],
+    )
+    assert json.loads(accepted)["status"] == "仍在执行"
+    assert JobExecution.objects.count() == 1
+
+
 def test_terminal_statuses_for_the_model_and_display(monkeypatch):
     def finish(task_func, execution):
         execution.status = ExecutionStatus.FAILED
@@ -474,6 +515,62 @@ def test_unfinished_file_distribution_returns_the_job_record_link(staged_storage
     assert checked["result_url"] == payload["result_url"]
 
 
+def test_file_query_failure_after_submit_keeps_the_record_link(staged_storage, monkeypatch):
+    monkeypatch.setattr(
+        "apps.opspilot.services.job_tool_service._poll",
+        lambda _user_info, _task_id: ({"result": False, "message": "作业平台暂时不可用"}, 1.2),
+    )
+    session = "sess-file-query-fail"
+    target = _target()
+    staged = _stage(session)
+    raw = distribute_staged_files(
+        _config("把 demo.txt 覆盖到 /data/opspilot-deliver", session=session),
+        file_ids=[staged.id],
+        target_source="manual",
+        target_ids=[target.id],
+        target_path="/data/opspilot-deliver",
+    )
+    execution = JobExecution.objects.get()
+    payload = json.loads(raw)
+    assert payload == {
+        "task_id": execution.id,
+        "status": "仍在执行",
+        "result_url": f"/job/execution/job-record?id={execution.id}",
+        "waited_seconds": 1,
+    }
+    assert raw != "失败"
+
+
+def test_reused_file_query_failure_keeps_the_record_link(staged_storage, monkeypatch):
+    session = "sess-file-reuse-query"
+    _conversation(session)
+    target = _target()
+    staged = _stage(session)
+    config = _config("把 demo.txt 覆盖到 /data/opspilot-deliver", session=session)
+    kwargs = {
+        "file_ids": [staged.id],
+        "target_source": "manual",
+        "target_ids": [target.id],
+        "target_path": "/data/opspilot-deliver",
+    }
+    first = json.loads(distribute_staged_files(config, **kwargs))
+    from apps.opspilot.services import job_tool_service
+
+    def fail_query(action, user_info, body):
+        if action == "query_execution":
+            return {"result": False, "message": "作业平台暂时不可用"}
+        return job_tool_service._rpc(action, user_info, body)
+
+    monkeypatch.setattr(job_tool_service, "_call", fail_query)
+    raw = distribute_staged_files(config, **kwargs)
+    payload = json.loads(raw)
+    assert payload["task_id"] == first["task_id"]
+    assert payload["status"] == "仍在执行"
+    assert payload["result_url"] == first["result_url"]
+    assert raw != "失败"
+    assert JobExecution.objects.count() == 1
+
+
 def test_failed_file_distribution_stays_a_plain_failure(staged_storage, monkeypatch):
     def finish(task_func, execution):
         execution.status = ExecutionStatus.FAILED
@@ -566,6 +663,147 @@ def test_earlier_message_names_the_file_when_several_are_staged(staged_storage):
     )
     assert result["ask"] is True
     assert "路径" in result["question"]
+
+
+def _stage(session_key, filename="demo.txt"):
+    return stage_distribute_file(
+        owner_key="alice@domain.com",
+        team_id="1",
+        session_key=session_key,
+        filename=filename,
+        data=b"file-bytes",
+    )
+
+
+def test_earlier_overwrite_does_not_choose_strategy_for_this_distribute(staged_storage):
+    session = "sess-old-overwrite"
+    conversation = _conversation(session)
+    conversation.messages.create(role=SkillConversationMessage.ROLE_USER, content="上次分发请覆盖，不要跳过")
+    _stage(session)
+    result = distribute_staged_files(
+        _config("把 demo.txt 发到 /opt/deliver", session=session),
+        target_source="manual",
+        target_ids=[_target().id],
+        target_path="/opt/deliver",
+    )
+    assert result["ask"] is True
+    assert result["options"] == ["覆盖", "跳过"]
+    assert JobExecution.objects.count() == 0
+
+    config = _config("把 demo.txt 发到 /opt/deliver", session="thread:overwrite-history")
+    config["configurable"]["graph_request"] = type(
+        "Request",
+        (),
+        {
+            "chat_history": [{"event": "user", "message": "请覆盖已有文件"}],
+            "user_message": "把 demo.txt 发到 /opt/deliver",
+        },
+    )()
+    _stage("thread:overwrite-history")
+    from_history = distribute_staged_files(
+        config,
+        target_source="manual",
+        target_ids=[_target().id],
+        target_path="/opt/deliver",
+    )
+    assert from_history["options"] == ["覆盖", "跳过"]
+    assert JobExecution.objects.count() == 0
+
+
+def test_shorter_path_is_not_accepted_from_a_longer_stated_path(staged_storage):
+    session = "sess-short-path"
+    _stage(session)
+    shortened = distribute_staged_files(
+        _config("把 demo.txt 覆盖到 /data/app/config", session=session),
+        target_source="manual",
+        target_ids=[_target().id],
+        target_path="/data",
+    )
+    assert shortened == {"ask": True, "question": "请给出文件要放到的目标路径。", "options": []}
+    parent = distribute_staged_files(
+        _config("把 demo.txt 覆盖到 /data/app/config", session=session),
+        target_source="manual",
+        target_ids=[_target().id],
+        target_path="/data/app",
+    )
+    assert parent["question"] == "请给出文件要放到的目标路径。"
+    assert JobExecution.objects.count() == 0
+
+
+def test_old_path_in_history_does_not_authorize_this_distribute(staged_storage):
+    session = "sess-old-path"
+    conversation = _conversation(session)
+    conversation.messages.create(role=SkillConversationMessage.ROLE_USER, content="请放到 /data/app/config")
+    _stage(session)
+    reused = distribute_staged_files(
+        _config("把 demo.txt 覆盖分发", session=session),
+        target_source="manual",
+        target_ids=[_target().id],
+        target_path="/data/app/config",
+    )
+    assert reused["question"] == "请给出文件要放到的目标路径。"
+    shortened = distribute_staged_files(
+        _config("把 demo.txt 覆盖分发", session=session),
+        target_source="manual",
+        target_ids=[_target().id],
+        target_path="/data",
+    )
+    assert shortened["question"] == "请给出文件要放到的目标路径。"
+    assert JobExecution.objects.count() == 0
+
+
+def test_path_equal_to_an_entire_earlier_statement_is_accepted(staged_storage):
+    session = "sess-whole-path"
+    conversation = _conversation(session)
+    conversation.messages.create(role=SkillConversationMessage.ROLE_USER, content="/data/app/config")
+    _stage(session)
+    raw = distribute_staged_files(
+        _config("覆盖", session=session),
+        target_source="manual",
+        target_ids=[_target().id],
+        target_path="/data/app/config",
+    )
+    payload = json.loads(raw)
+    assert payload["status"] == "仍在执行"
+    assert payload["result_url"].endswith(f"id={payload['task_id']}")
+    shortened = distribute_staged_files(
+        _config("覆盖", session=session),
+        target_source="manual",
+        target_ids=[_target().id],
+        target_path="/data",
+    )
+    assert shortened["question"] == "请给出文件要放到的目标路径。"
+
+
+def test_confirmed_path_uses_the_latest_full_token(staged_storage):
+    session = "sess-confirm-path"
+    conversation = _conversation(session)
+    conversation.messages.create(role=SkillConversationMessage.ROLE_USER, content="先放到 /tmp")
+    conversation.messages.create(role=SkillConversationMessage.ROLE_USER, content="放到 /data/app/config")
+    _stage(session)
+    target_id = _target().id
+    shortened = distribute_staged_files(
+        _config("确认路径", session=session),
+        target_source="manual",
+        target_ids=[target_id],
+        target_path="/data",
+    )
+    assert shortened["question"] == "请给出文件要放到的目标路径。"
+    older = distribute_staged_files(
+        _config("确认路径", session=session),
+        target_source="manual",
+        target_ids=[target_id],
+        target_path="/tmp",
+    )
+    assert older["question"] == "请给出文件要放到的目标路径。"
+    confirmed = distribute_staged_files(
+        _config("确认路径", session=session),
+        target_source="manual",
+        target_ids=[target_id],
+        target_path="/data/app/config",
+    )
+    assert confirmed["options"] == ["覆盖", "跳过"]
+    assert JobExecution.objects.count() == 0
 
 
 def test_overwrite_question_does_not_claim_the_target_already_has_the_file(staged_storage):

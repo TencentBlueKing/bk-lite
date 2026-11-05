@@ -23,9 +23,9 @@ from apps.opspilot.services.job_tool_service import (
 
 JOB_MGMT_PROMPT = """
 作业管理只使用当前提问人和当前组织，不能改组织、用户或执行人。没有调用身份就停止，不要提交作业。
-脚本库按脚本编号执行，不要索要或复述脚本正文。即使用户没点名、脚本库只有一个，也要用 request_user_choice 确认脚本名称和类型。用户原话里没有这个脚本名称时不能执行。重名时同样让用户选。
+脚本库按脚本编号执行，不要索要或复述脚本正文。即使用户没点名、脚本库只有一个，也要用 request_user_choice 确认脚本名称和类型。脚本名称必须出现在当前这句用户原话里，或当前这句选择了「使用脚本 名称」。更早消息里的同名片段不能当作确认。重名时同样让用户选。
 选定脚本和目标后先看操作系统。Linux 只能执行 shell 和 python，Windows 只能执行 powershell 和 bat。操作系统未知或不匹配时说明原因，不要提交。
-Playbook 用 job_mgmt_list_playbook_scripts 按名称或路径选择脚本。只使用返回的路径，不要索要或复述文件内容。这个工具只负责选择，不提交作业。
+Playbook 只能用 job_mgmt_list_playbook_scripts 按名称或路径查看可选脚本路径。只使用返回的路径，不要索要或复述文件内容。列出路径只用于查看，不表示这些工具能执行 Playbook，也不会提交作业。job_mgmt_run_library 和 job_mgmt_run_custom 只执行作业脚本（脚本库脚本和自定义脚本），不能执行 Playbook。
 每个参数单独问使用默认值还是自己填写。必填且没有默认值的必须填写。加密默认值保持 ******。枚举只能选已有选项。
 自定义脚本只接受 shell、python、powershell、bat。类型和正文必须出现在同一句用户原话里，可以是本会话较早的一句。不要代写或改写，也不要编指定句式让用户重说。选定目标后直接执行。
 目标先按名称或 IP 查询。用户已经说了节点管理或作业管理目标时，只在这个来源里找，不要把另一个来源放进选项。
@@ -35,7 +35,7 @@ Playbook 用 job_mgmt_list_playbook_scripts 按名称或路径选择脚本。只
 同一未结束作业再次执行时沿用原作业号，不要重新提交。失败、取消或执行超时后，必须等用户说出「确认重跑」才能再提交。
 脚本结果里的标准输出和标准错误只出现在对话展示块，不要写进回复。output_shown 为 true 时，输出已经展示，不要再叫用户去别处查看。
 output_shown 为 false 时，5 分钟内没有脚本输出。说明作业号、status、waited_seconds，并把 result_url 原样写成 markdown 链接。不要改地址，也不要只说去作业管理看。然后再问要不要「定时检查」，不要重新提交。
-文件分发只用本会话暂存文件。路径和覆盖或跳过都必须是用户说的，不要默认覆盖。
+文件分发只用本会话暂存文件。目标路径必须是当前这句里的完整路径，或与某一句用户原话整句相同。不要把更长路径截成父目录，也不要沿用无关历史里的路径。覆盖或跳过必须写在当前这句，不要沿用更早的选择，不要默认覆盖。
 问覆盖或跳过只是因为用户还没选策略，分发前不会检查目标磁盘。不要说目标上已经有这个文件，也不要说被同名文件阻塞。
 终态只说成功或失败。返回里有 result_url 时作业还在执行，不要说失败。
 告诉用户到作业管理查看任务状态，说明作业号和 waited_seconds，并把 result_url 原样写成 markdown 链接。
@@ -76,7 +76,15 @@ def job_mgmt_list_scripts(name: str = "", config: RunnableConfig = None):
     return _run(lambda: list_job_scripts(config, name))
 
 
-@tool(description=("按 Playbook 名称或包内路径列出当前组织可选的 Playbook 脚本。" "只返回编号、名称、版本、路径和参数定义，没有文件内容。" "多条路径用 request_user_choice 让用户选。这个工具只选择，不执行。"))
+@tool(
+    description=(
+        "按 Playbook 名称或包内路径列出当前组织可选的 Playbook 脚本路径。"
+        "只返回编号、名称、版本、路径和参数定义，没有文件内容。"
+        "多条路径用 request_user_choice 让用户选。"
+        "列出路径不表示可以执行 Playbook。这些作业工具不能跑 Playbook，"
+        "job_mgmt_run_library 和 job_mgmt_run_custom 只执行作业脚本。这个工具只查看，不提交作业。"
+    )
+)
 def job_mgmt_list_playbook_scripts(name: str = "", path: str = "", config: RunnableConfig = None):
     return _run(lambda: list_playbook_scripts(config, name, path))
 
@@ -110,7 +118,8 @@ def job_mgmt_list_targets(
     description=(
         '按脚本编号执行当前组织的脚本库脚本。params_json 是 [{"name","use_default","value"}]，每个参数都要有。'
         "use_default 为 true 时不要填写加密真值。危险规则需要确认时，等用户说出确认执行后再把 danger_confirmed 设为 true。"
-        "用户原话里没有脚本名称时先让用户确认，不要执行。目标系统不支持该脚本类型时不会创建作业。"
+        "当前这句用户原话里没有脚本名称，且没有选择「使用脚本 名称」时，先让用户确认，不要执行。更早消息里出现过名称不算确认。"
+        "目标系统不支持该脚本类型时不会创建作业。"
         "target_ids 填查询结果的 id，不填 IP。有脚本输出时只返回作业号和终态；没有输出时附带 result_url，原样作为链接给用户。"
     )
 )
@@ -174,10 +183,12 @@ def job_mgmt_run_custom(
 
 @tool(
     description=(
-        "分发当前用户、当前组织、当前会话暂存的文件。路径和覆盖策略必须来自用户原话，不要默认覆盖。"
+        "分发当前用户、当前组织、当前会话暂存的文件。"
+        "目标路径必须是当前这句里的完整路径，或与某一句用户原话整句相同。不要截成更短的父目录，不要默认覆盖。"
+        "覆盖或跳过必须出现在当前这句，更早的选择不算。"
         "问覆盖或跳过不代表已经看到目标上有同名文件。"
         "target_ids 填查询结果的 id，不填 IP。file_ids 为空时按用户提到的文件名匹配。"
-        "终态只有成功或失败。未结束且查询正常时返回作业号、仍在执行和 result_url，告诉用户到作业管理查看，不要说成失败。"
+        "终态只有成功或失败。作业已提交但还在执行，或提交后查询失败时，返回作业号、仍在执行和 result_url，告诉用户到作业管理查看，不要说成失败。"
     )
 )
 def job_mgmt_distribute(

@@ -389,6 +389,13 @@ def _unfinished_file_payload(data: dict, elapsed=None) -> dict:
     return payload
 
 
+def _file_result_when_query_fails(anchor, elapsed=None) -> str:
+    """作业已经提交。查询失败时仍返回作业号和记录链接，不说成一次没有作业的失败。"""
+
+    status = anchor.status if anchor.status not in TERMINAL_STATUSES else STATUS_PENDING
+    return _file_tool_result(anchor, {"task_id": anchor.task_id, "status": status}, elapsed)
+
+
 def _file_tool_result(anchor, data: dict, elapsed=None) -> str:
     """查询正常时，未结束的分发给出作业记录链接。终态仍只说成功或失败。"""
 
@@ -695,6 +702,18 @@ def _confirmed(flag, user_text, phrase):
     return bool(flag) and phrase in user_text
 
 
+def _library_script_name_confirmed(script_name: str, user_text: str) -> bool:
+    """脚本名必须在当前这句里，或当前这句选择了「使用脚本 {名称}」。更早的片段不算。"""
+
+    name = str(script_name or "").strip()
+    text = user_text or ""
+    if not name or not text:
+        return False
+    if f"使用脚本 {name}" in text:
+        return True
+    return name in text
+
+
 def run_library_script(config, *, script_id, target_source, target_ids, params=None, danger_confirmed=False, confirmed_rerun=False, name=""):
     user_info, session_key, _configurable = session_context(config)
     user_text = current_user_text(config, session_key)
@@ -717,8 +736,7 @@ def run_library_script(config, *, script_id, target_source, target_ids, params=N
     script_type = str(described["data"].get("script_type") or "")
     fingerprint = _fingerprint("script", body)
     anchor = _find_note(user_info, session_key, kind=KIND_SCRIPT, fingerprint=fingerprint)
-    stated = user_statement_texts(config, session_key)
-    if anchor is None and (not script_name or not any(script_name in text for text in stated)):
+    if anchor is None and not _library_script_name_confirmed(script_name, user_text):
         return {
             "ask": True,
             "question": f"是否使用脚本「{script_name}」（{script_type}）？",
@@ -777,6 +795,8 @@ def run_custom_script(
 
 
 def _overwrite_strategy(user_text: str):
+    """只认当前这句。更早的「覆盖」或「跳过」不能替这一次分发做选择。"""
+
     overwrite = "覆盖" in user_text or re.search(r"(?i)(?<![A-Za-z])overwrite(?![A-Za-z])", user_text or "")
     skip = "跳过" in user_text or re.search(r"(?i)(?<![A-Za-z])skip(?![A-Za-z])", user_text or "")
     if overwrite and not skip:
@@ -784,6 +804,81 @@ def _overwrite_strategy(user_text: str):
     if skip and not overwrite:
         return "skip"
     return None
+
+
+# 路径按最长连续片段截取，父目录不能从更长路径里截出来。
+_UNIX_PATH_TOKEN = re.compile(r"(?<![A-Za-z0-9./])(/(?:[\w.@+-]+/)*[\w.@+-]+)")
+_WIN_PATH_TOKEN = re.compile(r"(?<![A-Za-z0-9\\])([A-Za-z]:\\(?:[^\\/:*?\"<>|\s]+\\)*[^\\/:*?\"<>|\s]*)")
+_PATH_EDGE = ".,;:，。、)）]】\"'`"
+
+
+def _normalize_stated_path(path: str) -> str:
+    text = str(path or "").strip().strip("`\"'")
+    text = text.rstrip(_PATH_EDGE)
+    if len(text) > 1:
+        text = text.rstrip("/\\")
+    return text
+
+
+def _path_tokens(text: str) -> list[str]:
+    if not text:
+        return []
+    found = []
+    for pattern in (_UNIX_PATH_TOKEN, _WIN_PATH_TOKEN):
+        for match in pattern.findall(text):
+            token = _normalize_stated_path(match)
+            if token and token not in found:
+                found.append(token)
+    return found
+
+
+def _earlier_statements(current: str, statements: list[str]) -> list[str]:
+    """去掉排在最前的当前这句，剩下的是更早的用户原话。"""
+
+    skipped = False
+    current_text = (current or "").strip()
+    earlier = []
+    for text in statements or []:
+        if not isinstance(text, str):
+            continue
+        if not skipped and text.strip() == current_text:
+            skipped = True
+            continue
+        earlier.append(text)
+    return earlier
+
+
+def _just_confirmed_path_tokens(current: str, statements: list[str]) -> list[str]:
+    """当前这句在确认路径时，只接受最近一句里说清的完整路径，不接受更早的路径。"""
+
+    text = current or ""
+    if not re.search(r"确认路径|就用这个路径|使用这个路径|目标路径就", text):
+        return []
+    for statement in _earlier_statements(text, statements):
+        tokens = _path_tokens(statement)
+        if tokens:
+            return tokens
+    return []
+
+
+def _target_path_accepted(path: str, current: str, statements: list[str]) -> bool:
+    """目标路径必须是当前这句里的完整路径，或与某一句用户原话整句相同。
+
+    模型传入的更短父目录、以及只在更早长句里出现过的路径，都不能通过。
+    """
+
+    wanted = _normalize_stated_path(path)
+    if not wanted:
+        return False
+    current_tokens = _path_tokens(current)
+    if wanted in current_tokens:
+        return True
+    if current_tokens:
+        return False
+    for text in _earlier_statements(current, statements):
+        if _normalize_stated_path(text) == wanted:
+            return True
+    return wanted in _just_confirmed_path_tokens(current, statements)
 
 
 def _staged_reason(session_key: str) -> str:
@@ -978,11 +1073,10 @@ def distribute_staged_files(
     if error:
         return error
     rows, files = loaded
-    spoken = "\n".join(statements) or user_text
     path = str(target_path or "").strip()
-    if not path or path not in spoken:
+    if not _target_path_accepted(path, user_text, statements):
         return {"ask": True, "question": "请给出文件要放到的目标路径。", "options": []}
-    strategy = _overwrite_strategy(spoken)
+    strategy = _overwrite_strategy(user_text)
     if strategy is None:
         return {
             "ask": True,
@@ -1003,7 +1097,7 @@ def distribute_staged_files(
         result = _call(ACTION_QUERY, user_info, {"task_id": existing["reuse"].task_id})
         if result.get("result"):
             return _file_tool_result(existing["reuse"], result["data"])
-        return "失败"
+        return _file_result_when_query_fails(existing["reuse"])
     created = _commit_distribution(user_info, body, files)
     if not created.get("result"):
         if created.get("code") in {"need_path", "need_overwrite", "confirm", "forbidden"}:
@@ -1019,7 +1113,7 @@ def distribute_staged_files(
     )
     result, elapsed = _poll(user_info, anchor.task_id)
     if not result.get("result"):
-        return "失败"
+        return _file_result_when_query_fails(anchor, elapsed)
     return _file_tool_result(anchor, result["data"], elapsed)
 
 
