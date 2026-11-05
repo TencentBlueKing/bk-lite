@@ -14,6 +14,7 @@ import type {
   ValueConfig,
 } from '@/app/ops-analysis/types/dashBoard';
 import { useTranslation } from '@/utils/i18n';
+import { fullscreenPopupContainer } from '@/utils/fullscreenPopupContainer';
 import CustomTable from '@/components/custom-table';
 import {
   getOpsChartThemeByMode,
@@ -253,7 +254,7 @@ const EventTable: React.FC<EventTableProps> = ({
                 pageSize: pagination.pageSize,
                 total: pagination.total,
                 showSizeChanger: {
-                  getPopupContainer: () => document.body,
+                  getPopupContainer: fullscreenPopupContainer,
                 },
                 showQuickJumper: true,
                 showTotal: (total) =>

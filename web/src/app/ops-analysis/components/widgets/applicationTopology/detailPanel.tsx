@@ -12,10 +12,11 @@ import type { OpsChartThemeMode } from '@/app/ops-analysis/utils/chartTheme';
 import { useAppWidget, useLazyAppWidget } from '@/context/appCapabilities';
 import { useOptionalThemeTokens } from '@/theme';
 import { useTranslation } from '@/utils/i18n';
+import { fullscreenPopupContainer } from '@/utils/fullscreenPopupContainer';
 import type { ApplicationTopologyBandNode } from './bandModel';
 import styles from './detailPanel.module.scss';
 
-/** 大屏抽屉门户到 body，用实色，避免半透明表面透出系统页。 */
+/** 未全屏时抽屉门户到 body，用实色，避免半透明表面透出系统页。 */
 const SCREEN_DRAWER_SURFACE = {
   'screen-dark': '#14243a',
   'screen-light': '#ffffff',
@@ -118,7 +119,7 @@ const ApplicationTopologyDetailPanel = ({
     <OperateDrawer
       open
       width={800}
-      getContainer={() => document.body}
+      getContainer={fullscreenPopupContainer}
       title={node.name}
       subTitle={`${node.modelId} · ${statusLabel}`}
       destroyOnHidden

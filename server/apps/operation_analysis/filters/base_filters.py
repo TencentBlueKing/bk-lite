@@ -2,7 +2,6 @@
 # @File: base_filters.py
 # @Time: 2025/11/5 14:30
 # @Author: windyzhao
-from django.db.models import Q
 from django_filters import FilterSet
 
 from apps.core.utils.team_utils import get_current_team
@@ -73,13 +72,14 @@ class GroupPermissionMixin:
             # 超级用户,返回所有数据
             return queryset
 
-        if group_ids and len(group_ids) > 1:
-            org_query = Q()
-            for gid in group_ids:
-                org_query |= Q(groups__contains=int(gid))
-            return queryset.filter(org_query)
+        from apps.core.utils.viewset_utils import build_json_membership_query
 
-        return queryset.filter(groups__contains=int(current_team))
+        # 与目录树同一套组织归属。SQLite 不支持 JSON contains，走平台已有的跨库成员查询。
+        if group_ids and len(group_ids) > 1:
+            values = [int(group_id) for group_id in group_ids]
+        else:
+            values = [int(current_team)]
+        return queryset.filter(build_json_membership_query(queryset, "groups", values))
 
 
 class BaseGroupFilter(FilterSet):

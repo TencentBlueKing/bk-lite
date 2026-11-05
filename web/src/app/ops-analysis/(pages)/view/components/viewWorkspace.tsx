@@ -95,6 +95,8 @@ const ViewWorkspace: React.FC<ViewWorkspaceProps> = ({
           {filterBar && (
             <div
               className={`shrink-0 bg-[var(--color-bg-1)] px-2.5 pb-2 pt-3 ${filterBarVisible ? '' : 'hidden'}`}
+              inert={filterBarVisible ? undefined : true}
+              aria-hidden={filterBarVisible ? undefined : true}
             >
               {filterBar}
             </div>

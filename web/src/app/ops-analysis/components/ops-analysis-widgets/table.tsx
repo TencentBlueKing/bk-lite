@@ -14,6 +14,7 @@ import {
 } from '@/app/ops-analysis/components/ops-analysis-config-sections';
 import CustomTable from '@/components/custom-table';
 import { useTranslation } from '@/utils/i18n';
+import { fullscreenPopupContainer } from '@/utils/fullscreenPopupContainer';
 import { useInteractionSurface } from '@/app/ops-analysis/context/interactionSurface';
 import { InteractionActionCell, useWidgetDataLink } from '@/app/ops-analysis/components/interactionTitleIcon';
 import {
@@ -467,7 +468,7 @@ const OpsAnalysisTable: React.FC<OpsAnalysisTableProps> = ({
                 pageSize: pagination.pageSize,
                 total: pagination.total,
                 showSizeChanger: {
-                  getPopupContainer: () => document.body,
+                  getPopupContainer: fullscreenPopupContainer,
                 },
                 showQuickJumper: true,
                 showTotal: (total) => `${t('common.total')} ${total} ${t('common.items')}`,

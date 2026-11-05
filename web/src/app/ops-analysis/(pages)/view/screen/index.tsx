@@ -6,6 +6,7 @@ import {
   useCallback,
   useEffect,
   useImperativeHandle,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -17,9 +18,11 @@ import { FilterTemplateProvider } from "@/app/ops-analysis/context/filterTemplat
 import { InteractionSurfaceProvider } from "@/app/ops-analysis/context/interactionSurface";
 import { useTranslation } from "@/utils/i18n";
 import { useScreenApi } from "@/app/ops-analysis/api/screen";
+import { readPlaybackInitialDetail, usePlaybackInitialDetail } from "@/app/ops-analysis/context/playbackInitialDetail";
 import { useDirectoryApi } from "@/app/ops-analysis/api";
 import useBtnPermissions from "@/hooks/usePermissions";
 import { useCanvasPeriodicRefresh } from "@/app/ops-analysis/hooks/useCanvasPeriodicRefresh";
+import { canvasPeriodicRefreshEnabled } from "@/app/ops-analysis/utils/canvasPlaybackRefresh";
 import { canPersistCanvasRefreshInterval, normalizeCanvasRefreshInterval } from "@/app/ops-analysis/utils/canvasRefreshInterval";
 import type { CanvasRuntimeRefreshCause } from "@/app/ops-analysis/utils/canvasRefreshTimer";
 import { useCanvasShareAction } from "@/app/ops-analysis/hooks/useCanvasShareAction";
@@ -227,7 +230,13 @@ const ScreenDataConfig = memo(
   areScreenDataConfigPropsEqual,
 );
 
-const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode = false, onEditingChange }, ref) => {
+const Screen = forwardRef<ScreenRef, ScreenProps>(({
+  selectedScreen,
+  shareMode = false,
+  playbackMode = false,
+  playbackFullscreen = false,
+  onEditingChange,
+}, ref) => {
   const onEditingChangeRef = useRef(onEditingChange);
   onEditingChangeRef.current = onEditingChange;
   useEffect(() => {
@@ -518,6 +527,42 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
     hasUnsavedChanges,
   }));
 
+  const playbackDetail = usePlaybackInitialDetail();
+  const playbackDetailRef = useRef(playbackDetail);
+  playbackDetailRef.current = playbackDetail;
+  const playbackScreenViewRef = useRef<ReturnType<typeof normalizeScreenViewSets> | null>(null);
+  useLayoutEffect(() => {
+    if (!playbackMode || !selectedScreen?.data_id) {
+      return;
+    }
+    const detail = readPlaybackInitialDetail<{
+      view_sets?: unknown;
+      refresh_interval?: unknown;
+    }>(playbackDetail, "screen", selectedScreen.data_id);
+    if (!detail) {
+      playbackScreenViewRef.current = null;
+      return;
+    }
+    const normalized = labelSceneFilters(normalizeScreenViewSets(detail.view_sets));
+    playbackScreenViewRef.current = normalized;
+    setViewSets(normalized);
+    setSavedViewSets(normalized);
+    setDraftViewSets(normalized);
+    setSavedRefreshInterval(normalizeCanvasRefreshInterval(detail.refresh_interval));
+    setLoading(false);
+    queryState.resetQueryState({
+      definitions: normalized.filters ?? [],
+      organizationId: shareOrganizationSeed,
+    });
+  }, [
+    labelSceneFilters,
+    playbackDetail,
+    playbackMode,
+    queryState.resetQueryState,
+    selectedScreen?.data_id,
+    shareOrganizationSeed,
+  ]);
+
   useEffect(() => {
     sessionRef.current = null;
     pendingResizeRef.current = null;
@@ -540,6 +585,11 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
         definitions: emptyViewSets.filters ?? [],
         organizationId: shareOrganizationSeed,
       });
+      return;
+    }
+
+    if (playbackMode && playbackScreenViewRef.current) {
+      void syncScreenCanvasResources(playbackScreenViewRef.current);
       return;
     }
 
@@ -600,6 +650,7 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
   }, [
     getScreenDetail,
     labelSceneFilters,
+    playbackMode,
     queryState.resetQueryState,
     selectedScreen?.data_id,
     shareOrganizationSeed,
@@ -800,7 +851,7 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
       canvasId: selectedScreen?.data_id,
       savedInterval: savedRefreshInterval,
       canPersist: canPersistRefreshInterval,
-      enabled: !editMode,
+      enabled: canvasPeriodicRefreshEnabled(!editMode, playbackMode),
       patchRefreshInterval: async (interval) => {
         if (!selectedScreen?.data_id) {
           return;
@@ -1339,7 +1390,7 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
     () => (
       <ScreenCanvas
         viewSets={activeViewSets}
-        fullscreen={isFullscreen}
+        fullscreen={isFullscreen || playbackFullscreen}
         editMode={editMode}
         shareMode={shareMode}
         selectedItemId={selectedItemId}
@@ -1387,6 +1438,7 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
       refreshCause,
       handleSelectCanvasItem,
       isFullscreen,
+      playbackFullscreen,
       selectedItemId,
       resolveFilterTextRef,
       selectedScreen?.data_id,
@@ -1503,11 +1555,11 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
           loading={loading}
           titleFallback={t("opsAnalysis.screen.title")}
           emptyDescription={t("opsAnalysis.screen.selectFirst")}
-          headerVisible={!isFullscreen}
-          filterBarVisible={!isFullscreen}
+          headerVisible={!isFullscreen && !playbackMode}
+          filterBarVisible={!isFullscreen && !playbackMode}
           flushContent
-          contentClassName={isFullscreen ? "bg-slate-950" : undefined}
-          toolbar={
+          contentClassName={isFullscreen || playbackFullscreen ? "bg-slate-950" : undefined}
+          toolbar={playbackMode ? undefined : (
             <ScreenToolbar
               selectedScreen={selectedScreen}
               editMode={editMode}
@@ -1553,7 +1605,7 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
                 }),
               })}
             />
-          }
+          )}
           filterBar={filterBarElement}
         >
           {editorOpen ? (

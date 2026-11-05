@@ -6,6 +6,7 @@
 from rest_framework import routers
 
 from apps.operation_analysis.views.canvas_draft_view import CanvasDraftViewSet
+from apps.operation_analysis.views.carousel_view import CanvasCarouselViewSet
 from apps.operation_analysis.views.data_connection_view import DataConnectionViewSet
 from apps.operation_analysis.views.datasource_view import DataSourceAPIModelViewSet, DataSourceTagModelViewSet, NameSpaceModelViewSet
 from apps.operation_analysis.views.execution_view import DashboardReportExecutionViewSet
@@ -56,6 +57,7 @@ router.register(
 router.register(r"api/scene_widgets", SceneWidgetViewSet, basename="scene_widgets")
 router.register(r"api/network_topology", NetworkTopologyViewSet, basename="network_topology")
 router.register(r"api/homepage", HomepageViewSet, basename="ops_homepage")
+router.register(r"api/canvas_carousel", CanvasCarouselViewSet, basename="canvas_carousel")
 
 router_open_api = routers.DefaultRouter(trailing_slash=False)
 router_open_api.register(r"open_api/import_export", OpenImportExportViewSet, basename="open_import_export")

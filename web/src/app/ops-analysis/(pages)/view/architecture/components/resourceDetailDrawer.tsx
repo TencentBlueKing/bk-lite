@@ -6,6 +6,7 @@ import CompactEmptyState from '@/components/compact-empty-state';
 import OperateDrawer from '@/components/operate-drawer';
 import { useAppWidget, useLazyAppWidget } from '@/context/appCapabilities';
 import { useTranslation } from '@/utils/i18n';
+import { fullscreenPopupContainer } from '@/utils/fullscreenPopupContainer';
 import { buildAlarmHref, buildMonitorHrefFromContext, monitorObjectIdFromContext } from '../binding/links';
 import { useArchitectureMonitorLink } from '../binding/useMonitorLink';
 import type { ArchitectureNodeStatusItem } from '../binding/model';
@@ -123,6 +124,7 @@ const ResourceDetailDrawer = ({
     <OperateDrawer
       open
       width={detail.kind === 'resource' ? 800 : 520}
+      getContainer={fullscreenPopupContainer}
       destroyOnHidden
       title={headingTag ? (
         <span className="inline-flex items-center gap-2">

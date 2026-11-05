@@ -21,6 +21,7 @@ import {
   Input,
   message,
   Modal,
+  Segmented,
   Spin,
   Tree,
 } from 'antd';
@@ -84,9 +85,30 @@ import {
   homepageDirectoryLoadingPlaceholderKeys,
   type HomepageDirectoryActionKey,
 } from '@/app/ops-analysis/utils/homepageDirectoryActions';
+import CarouselList from '@/app/ops-analysis/components/carousel/carouselList';
+import AddToCarouselModal from '@/app/ops-analysis/components/carousel/addToCarouselModal';
+import CarouselInfoModal from '@/app/ops-analysis/components/carousel/carouselInfoModal';
+import type { CarouselSummary } from '@/app/ops-analysis/types/carousel';
 
 const Sidebar = forwardRef<SidebarRef, SidebarProps>(
-  ({ onSelect, onDataUpdate, onCanvasContentReplaced, beforeImportUpdate }, ref) => {
+  ({
+    onSelect,
+    onHydrateSelection,
+    onDataUpdate,
+    onCanvasContentReplaced,
+    beforeImportUpdate,
+    panel = 'directory',
+    carouselId = null,
+    carouselRefreshKey = 0,
+    onPanelChange,
+    onSelectCarousel,
+    onAutoSelectCarousel,
+    prepareCarouselLeave,
+    hasUnsavedCarouselChanges,
+    onCarouselCreated,
+    onCarouselUpdated,
+    onCarouselDeleted,
+  }, ref) => {
     const [form] = Form.useForm();
     const selectedCanvasType = Form.useWatch('canvasType', form) as
       | CanvasType
@@ -101,6 +123,8 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
     const [submitLoading, setSubmitLoading] = useState(false);
     const [connectionTesting, setConnectionTesting] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
+    const [carouselInfoOpen, setCarouselInfoOpen] = useState(false);
+    const [carouselInfoTarget, setCarouselInfoTarget] = useState<CarouselSummary | null>(null);
     const [modalVisible, setModalVisible] = useState(false);
     const [modalTitle, setModalTitle] = useState('');
     const [modalAction, setModalAction] = useState<ModalAction>('addRoot');
@@ -116,6 +140,10 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
       applyGlobal,
     } = useHomepagePreference();
     const [currentDir, setCurrentDir] = useState<DirItem | null>(null);
+    const [carouselTarget, setCarouselTarget] = useState<{
+      resourceType: CanvasType;
+      canvasId: number;
+    } | null>(null);
     const [groupScopeDirectoryId, setGroupScopeDirectoryId] = useState<
       number | string | null
     >(null);
@@ -647,6 +675,10 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
             disabled: true,
           });
         }
+        const builtinCarouselAction = addToCarouselAction(item);
+        if (builtinCarouselAction) {
+          builtinCanvasActions.push(builtinCarouselAction);
+        }
         return withHomepageActions(item, builtinCanvasActions);
       }
 
@@ -729,7 +761,27 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
       if (showResourceActions) {
         items.push(copyAction, exportAction, importUpdateAction);
       }
+      const carouselAction = addToCarouselAction(item);
+      if (carouselAction) {
+        items.push(carouselAction);
+      }
       return withHomepageActions(item, items);
+    };
+
+    const addToCarouselAction = (item: DirItem): MoreActionsDropdownItem | null => {
+      if (!isCanvasType(item.type) || !hasPermission(['EditChart'])) {
+        return null;
+      }
+      const resourceType = item.type;
+      const canvasId = Number(item.data_id);
+      if (!Number.isFinite(canvasId)) {
+        return null;
+      }
+      return {
+        key: 'addToCarousel',
+        label: t('opsCarousel.addToCarousel'),
+        onClick: () => setCarouselTarget({ resourceType, canvasId }),
+      };
     };
 
     const buildTreeData = (
@@ -855,8 +907,9 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
         isCanvasType(item.type)
       ) {
         setSelectedKeys([item.id]);
-        if (onSelect) {
-          onSelect(item.type, item);
+        const hydrate = panel === 'carousel' ? onHydrateSelection : onSelect;
+        if (hydrate) {
+          hydrate(item.type, item);
         }
       }
     };
@@ -888,10 +941,20 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
     }, []);
 
     return (
-      <div className="p-4 h-full flex flex-col">
+      <div className="flex h-full min-h-0 flex-col p-4">
         <h3 className="text-base font-semibold mb-4">
           {t('opsAnalysisSidebar.title')}
         </h3>
+        <Segmented
+          block
+          className="mb-4"
+          value={panel}
+          options={[
+            { label: t('opsCarousel.directory'), value: 'directory' },
+            { label: t('opsCarousel.carousel'), value: 'carousel' },
+          ]}
+          onChange={(value) => onPanelChange?.(value as 'directory' | 'carousel')}
+        />
         <div className="flex items-center mb-4">
           <Input.Search
             placeholder={t('common.search')}
@@ -899,19 +962,49 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
             className="flex-1"
             onSearch={handleSearch}
           />
-          <PermissionWrapper requiredPermissions={['AddCatalogue']}>
-            <Button
-              type="primary"
-              icon={<PlusOutlined />}
-              className="ml-2"
-              onClick={() =>
-                showModal('addRoot', t('opsAnalysisSidebar.addDir'))
-              }
-            />
-          </PermissionWrapper>
+          {panel === 'carousel' ? (
+            hasPermission(['AddChart']) ? (
+              <Button
+                type="primary"
+                icon={<PlusOutlined />}
+                className="ml-2"
+                aria-label={t('opsCarousel.newList')}
+                onClick={() => {
+                  setCarouselInfoTarget(null);
+                  setCarouselInfoOpen(true);
+                }}
+              />
+            ) : null
+          ) : (
+            <PermissionWrapper requiredPermissions={['AddCatalogue']}>
+              <Button
+                type="primary"
+                icon={<PlusOutlined />}
+                className="ml-2"
+                onClick={() =>
+                  showModal('addRoot', t('opsAnalysisSidebar.addDir'))
+                }
+              />
+            </PermissionWrapper>
+          )}
         </div>
 
-        <div className="overflow-auto flex-1">
+        <div className="min-h-0 flex-1 overflow-auto">
+          {panel === 'carousel' ? (
+            <CarouselList
+              keyword={searchTerm}
+              refreshKey={carouselRefreshKey}
+              selectedId={carouselId}
+              onSelect={(id) => onSelectCarousel?.(id)}
+              onAutoSelect={onAutoSelectCarousel}
+              onEditBasic={(carousel) => {
+                setCarouselInfoTarget(carousel);
+                setCarouselInfoOpen(true);
+              }}
+              hasUnsavedCarouselChanges={hasUnsavedCarouselChanges}
+              onDeleted={(id) => onCarouselDeleted?.(id)}
+            />
+          ) : (
           <Spin spinning={loading}>
             {filteredDirs.length > 0 ? (
               <Tree
@@ -945,7 +1038,22 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
               <CompactEmptyState description={t('common.noData')} />
             )}
           </Spin>
+          )}
         </div>
+
+        <CarouselInfoModal
+          open={carouselInfoOpen}
+          carousel={carouselInfoTarget}
+          onClose={() => setCarouselInfoOpen(false)}
+          beforeSubmit={prepareCarouselLeave}
+          onCreated={(detail) => {
+            onCarouselCreated?.(
+              detail.id,
+              (detail.items?.length ?? 0) === 0 && hasPermission(['EditChart']),
+            );
+          }}
+          onUpdated={() => onCarouselUpdated?.()}
+        />
 
         <Modal
           title={modalTitle}
@@ -1202,6 +1310,12 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
           />
         )}
 
+        <AddToCarouselModal
+          open={carouselTarget != null}
+          resourceType={carouselTarget?.resourceType ?? null}
+          canvasId={carouselTarget?.canvasId ?? null}
+          onClose={() => setCarouselTarget(null)}
+        />
         <CopyCanvasModal
           open={copyModalVisible}
           directories={dirs}
