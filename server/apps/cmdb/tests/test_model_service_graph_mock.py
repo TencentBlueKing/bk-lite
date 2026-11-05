@@ -499,24 +499,58 @@ def test_update_builtin_model_can_set_app_topo_layer_only(fake_graph):
 
 
 @pytest.mark.django_db
-def test_update_builtin_model_rejects_non_layer_fields(fake_graph):
+def test_update_builtin_model_accepts_name_icon_and_group(fake_graph):
     from apps.cmdb.services.model import ModelManage
-    from apps.core.exceptions.base_app_exception import BaseAppException
 
-    fake_graph(
+    fake = fake_graph(
         "apps.cmdb.services.model",
         query_entity=(
             [{"_id": 5, "model_id": "host", "model_name": "主机", "is_pre": True}],
             1,
         ),
+        set_entity_properties=[{"_id": 5, "model_name": "改名"}],
     )
 
-    with pytest.raises(BaseAppException, match="内置模型仅允许修改应用拓扑层级"):
-        ModelManage.update_model(
-            5,
-            {
-                "model_id": "host",
-                "model_name": "改名",
-                "app_topo_layer": "host",
-            },
-        )
+    ModelManage.update_model(
+        5,
+        {
+            "model_id": "host",
+            "model_name": "改名",
+            "icn": "icon-server",
+            "group": [1],
+            "app_topo_layer": "host",
+        },
+    )
+
+    update_calls = [call for call in fake.calls if call[0] == "set_entity_properties"]
+    assert update_calls[0][1][2]["model_name"] == "改名"
+    assert update_calls[0][1][2]["icn"] == "icon-server"
+    assert update_calls[0][1][2]["group"] == [1]
+    assert update_calls[0][1][2]["model_name_customized"] is True
+
+
+@pytest.mark.django_db
+def test_update_builtin_model_keeps_seed_name_unmarked(fake_graph):
+    from apps.cmdb.services.model import ModelManage
+
+    fake = fake_graph(
+        "apps.cmdb.services.model",
+        query_entity=(
+            [{"_id": 5, "model_id": "host", "model_name": "主机", "is_pre": True}],
+            1,
+        ),
+        set_entity_properties=[{"_id": 5, "icn": "icon-server"}],
+    )
+
+    ModelManage.update_model(
+        5,
+        {
+            "model_id": "host",
+            "model_name": "主机",
+            "icn": "icon-server",
+            "app_topo_layer": "host",
+        },
+    )
+
+    update_calls = [call for call in fake.calls if call[0] == "set_entity_properties"]
+    assert "model_name_customized" not in update_calls[0][1][2]

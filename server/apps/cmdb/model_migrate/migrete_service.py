@@ -30,6 +30,7 @@ from apps.cmdb.constants.field_constraints import (
 )
 from apps.cmdb.display_field import ExcludeFieldsCache
 from apps.cmdb.graph.drivers.graph_client import GraphClient
+from apps.cmdb.language.service import is_truthy_flag
 from apps.cmdb.model_ops.extensions import get_model_enterprise_extension
 from apps.cmdb.models.field_group import FieldGroup
 from apps.cmdb.models.public_enum_library import PublicEnumLibrary
@@ -908,7 +909,8 @@ class ModelMigrate:
                     continue
                 updates = {}
                 incoming_name = str(model.get("model_name") or "").strip()
-                if incoming_name and existing_model.get("model_name") != incoming_name:
+                name_customized = is_truthy_flag(existing_model.get("model_name_customized"))
+                if incoming_name and existing_model.get("model_name") != incoming_name and not name_customized:
                     updates["model_name"] = incoming_name
                 updates.update(self._app_topo_layer_updates(model, existing_model))
                 if not updates:
