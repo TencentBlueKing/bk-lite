@@ -7,6 +7,7 @@ from django.db import IntegrityError, transaction
 from apps.core.logger import system_mgmt_logger as logger
 from apps.core.openapi.token_scope import SCOPE_ALL
 from apps.system_mgmt.models import SystemAPIToken
+from apps.system_mgmt.utils.i18n import system_mgmt_message
 
 ITSM_SYSTEM_ID = "itsm"
 ITSM_TOKEN_NAME = "itsm"
@@ -26,7 +27,7 @@ class ItsmSystemTokenError(Exception):
 def get_or_create_itsm_token(key: str) -> str:
     if not isinstance(key, str) or _KEY_RE.fullmatch(key) is None:
         logger.warning(_REJECTED_LOG, "validate_key", "ItsmSystemTokenError")
-        raise ItsmSystemTokenError("ITSM 系统密钥格式不正确")
+        raise ItsmSystemTokenError(system_mgmt_message(None, "error.itsm_system_token_invalid_format"))
 
     secret_hash = SystemAPIToken.hash_secret(key)
     with transaction.atomic():
@@ -35,7 +36,7 @@ def get_or_create_itsm_token(key: str) -> str:
         )
         if other is not None:
             logger.warning(_REJECTED_ROW_LOG, "lookup", "ItsmSystemTokenError", other.system_id, other.pk)
-            raise ItsmSystemTokenError("该密钥已绑定其他系统")
+            raise ItsmSystemTokenError(system_mgmt_message(None, "error.itsm_system_token_bound_to_other_system"))
 
         row = SystemAPIToken.objects.select_for_update().filter(system_id=ITSM_SYSTEM_ID, name=ITSM_TOKEN_NAME).first()
         if row is None:
@@ -55,7 +56,7 @@ def get_or_create_itsm_token(key: str) -> str:
                 row = SystemAPIToken.objects.select_for_update().filter(system_id=ITSM_SYSTEM_ID, name=ITSM_TOKEN_NAME).first()
                 if row is None:
                     logger.warning(_REJECTED_LOG, "create", "IntegrityError")
-                    raise ItsmSystemTokenError("ITSM 系统密钥已存在") from None
+                    raise ItsmSystemTokenError(system_mgmt_message(None, "error.itsm_system_token_already_exists")) from None
                 return _apply_existing(row, secret_hash)
             logger.info(_CREATED_LOG, row.system_id, row.pk)
             return "created"
