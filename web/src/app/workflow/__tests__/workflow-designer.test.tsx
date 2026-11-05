@@ -413,6 +413,169 @@ describe('编排中心正式设计器', { timeout: 30000 }, () => {
     expect(mocks.post.mock.calls.filter(([url]) => String(url).endsWith('/debug/'))).toHaveLength(1);
   });
 
+  it('单一定时触发调试时跳过表单，按节点配置生成事件后直接开跑', async () => {
+    const scheduleWorkflow = {
+      ...workflow,
+      canvas_metadata: {
+        trigger_nodes: [{
+          id: 'trigger_schedule',
+          name: '定时触发器',
+          trigger_type: 'SCHEDULE',
+          input_schema: {
+            type: 'object',
+            properties: {
+              triggered_at: { type: 'string', title: '触发时间' },
+              scheduled_at: { type: 'string', title: '计划时间' },
+              timezone: { type: 'string', title: '生效时区' },
+              schedule: { type: 'array', title: '调度规则', items: { type: 'string' } },
+              test: { type: 'boolean', title: '是否测试' },
+            },
+            required: ['triggered_at', 'scheduled_at', 'timezone', 'schedule', 'test'],
+          },
+          config: { frequency: 'daily', time: ['02:00'] },
+        }],
+        return_nodes: [],
+        edges: [],
+      },
+    };
+    const testOutput = {
+      triggered_at: '2026-09-18T09:24:02+08:00',
+      scheduled_at: '2026-09-19T02:00:00+08:00',
+      timezone: 'Asia/Shanghai',
+      schedule: ['0 2 * * *'],
+      test: true,
+    };
+    mocks.get.mockImplementation((url: string) => {
+      if (url.endsWith('/workflows/1/')) return Promise.resolve(scheduleWorkflow);
+      if (url.includes('/workflows/atoms/')) return Promise.resolve([]);
+      return Promise.resolve([]);
+    });
+    mocks.post.mockImplementation((url: string) => {
+      if (url.endsWith('/triggers/schedule-preview/')) {
+        return Promise.resolve({
+          config: { frequency: 'daily', time: ['02:00'], expressions: ['0 2 * * *'], timezone: 'Asia/Shanghai' },
+          expressions: ['0 2 * * *'],
+          timezone: 'Asia/Shanghai',
+          next_runs: ['2026-09-19T02:00:00+08:00'],
+          test_output: testOutput,
+        });
+      }
+      if (url.endsWith('/workflows/1/debug/')) {
+        return Promise.resolve({
+          id: 'debug-schedule-1',
+          status: 'RUNNING',
+          mode: 'DEBUG',
+          trigger_type: 'SCHEDULE',
+          trigger_id: 'trigger_schedule',
+          permission: ['View'],
+        });
+      }
+      return Promise.reject(new Error(`unexpected POST ${url}`));
+    });
+
+    render(<App><WorkflowOrchestrationConsole workflowId={1} /></App>);
+    fireEvent.click(await screen.findByRole('button', { name: /调试流程/ }));
+
+    await waitFor(() => expect(mocks.post).toHaveBeenCalledWith(
+      '/workflow/api/triggers/schedule-preview/',
+      expect.objectContaining({ config: expect.objectContaining({ frequency: 'daily', time: ['02:00'] }) }),
+    ));
+    await waitFor(() => expect(mocks.post).toHaveBeenCalledWith(
+      '/workflow/api/workflows/1/debug/',
+      expect.objectContaining({ trigger_id: 'trigger_schedule', inputs: testOutput }),
+    ));
+    expect(screen.queryByText('调试当前草稿')).toBeNull();
+    expect(screen.queryByText('触发时间')).toBeNull();
+    expect(screen.queryByText('是否测试')).toBeNull();
+  });
+
+  it('多触发器调试选定时入口时不展示事件表单，开始调试时自动生成事件', async () => {
+    const multiTriggerWorkflow = {
+      ...workflow,
+      canvas_metadata: {
+        trigger_nodes: [
+          {
+            id: 'trigger_nats',
+            name: '事件触发器（NATS）',
+            trigger_type: 'NATS',
+            input_schema: { type: 'object', properties: { message: { type: 'string', title: '告警/输入内容' } }, required: [] },
+            config: {},
+          },
+          {
+            id: 'trigger_schedule',
+            name: '定时触发器',
+            trigger_type: 'SCHEDULE',
+            input_schema: {
+              type: 'object',
+              properties: {
+                triggered_at: { type: 'string', title: '触发时间' },
+                schedule: { type: 'array', title: '调度规则', items: { type: 'string' } },
+                test: { type: 'boolean', title: '是否测试' },
+              },
+              required: ['triggered_at', 'schedule', 'test'],
+            },
+            config: { frequency: 'daily', time: ['02:00'] },
+          },
+        ],
+        return_nodes: [],
+        edges: [],
+      },
+    };
+    const testOutput = {
+      triggered_at: '2026-09-18T09:24:02+08:00',
+      scheduled_at: '2026-09-19T02:00:00+08:00',
+      timezone: 'Asia/Shanghai',
+      schedule: ['0 2 * * *'],
+      test: true,
+    };
+    mocks.get.mockImplementation((url: string) => {
+      if (url.endsWith('/workflows/1/')) return Promise.resolve(multiTriggerWorkflow);
+      if (url.includes('/workflows/atoms/')) return Promise.resolve([]);
+      return Promise.resolve([]);
+    });
+    mocks.post.mockImplementation((url: string) => {
+      if (url.endsWith('/triggers/schedule-preview/')) {
+        return Promise.resolve({
+          config: { frequency: 'daily', time: ['02:00'], expressions: ['0 2 * * *'], timezone: 'Asia/Shanghai' },
+          expressions: ['0 2 * * *'],
+          timezone: 'Asia/Shanghai',
+          next_runs: ['2026-09-19T02:00:00+08:00'],
+          test_output: testOutput,
+        });
+      }
+      if (url.endsWith('/workflows/1/debug/')) {
+        return Promise.resolve({
+          id: 'debug-schedule-multi',
+          status: 'RUNNING',
+          mode: 'DEBUG',
+          trigger_type: 'SCHEDULE',
+          trigger_id: 'trigger_schedule',
+          permission: ['View'],
+        });
+      }
+      return Promise.reject(new Error(`unexpected POST ${url}`));
+    });
+
+    render(<App><WorkflowOrchestrationConsole workflowId={1} /></App>);
+    fireEvent.click(await screen.findByRole('button', { name: /调试流程/ }));
+
+    const debugDialog = (await screen.findByText('调试当前草稿')).closest<HTMLElement>('.ant-modal-content');
+    expect(debugDialog).not.toBeNull();
+    fireEvent.mouseDown(within(debugDialog!).getByRole('combobox'));
+    fireEvent.click(await screen.findByText('定时触发器 · SCHEDULE'));
+
+    expect(within(debugDialog!).queryByText('触发时间')).toBeNull();
+    expect(within(debugDialog!).queryByText('是否测试')).toBeNull();
+    expect(within(debugDialog!).queryByText('调度规则')).toBeNull();
+
+    fireEvent.click(within(debugDialog!).getByRole('button', { name: '开始调试' }));
+
+    await waitFor(() => expect(mocks.post).toHaveBeenCalledWith(
+      '/workflow/api/workflows/1/debug/',
+      expect.objectContaining({ trigger_id: 'trigger_schedule', inputs: testOutput }),
+    ));
+  });
+
   it('选择动作原子后立即加入画布，无需在配置弹窗保存', async () => {
     const { container } = render(<App><WorkflowOrchestrationConsole workflowId={null} initialName="空白流程" /></App>);
 
@@ -627,6 +790,41 @@ describe('编排中心正式设计器', { timeout: 30000 }, () => {
     expect(await screen.findByText('已捕获请求')).not.toBeNull();
     expect(screen.getByText('body.host')).not.toBeNull();
     expect(screen.getByText('body.severity')).not.toBeNull();
+  });
+
+  it('新建 NATS 触发器时默认写入告警信封 input_schema', async () => {
+    mocks.post.mockResolvedValue({ ...workflow, id: 8, name: 'NATS 空白流程' });
+    render(<App><WorkflowOrchestrationConsole workflowId={null} initialName="NATS 空白流程" /></App>);
+
+    fireEvent.click(await screen.findByRole('button', { name: '添加第一个节点' }));
+    fireEvent.click(await screen.findByRole('button', { name: /事件触发器（NATS）/ }));
+    await closeTopDialog();
+    fireEvent.click(screen.getByRole('button', { name: /保存草稿/ }));
+
+    await waitFor(() => expect(mocks.post).toHaveBeenCalledWith(
+      '/workflow/api/workflows/',
+      expect.objectContaining({
+        canvas_metadata: expect.objectContaining({
+          trigger_nodes: [
+            expect.objectContaining({
+              trigger_type: 'NATS',
+              input_schema: expect.objectContaining({
+                type: 'object',
+                additionalProperties: false,
+                required: [],
+                properties: expect.objectContaining({
+                  message: expect.objectContaining({ type: 'string', title: '告警/输入内容' }),
+                  team: expect.objectContaining({ type: 'string', title: '团队' }),
+                  user_ids: expect.objectContaining({ type: 'array', title: '用户' }),
+                  object_id: expect.objectContaining({ type: 'string', title: '对象ID' }),
+                  scene: expect.objectContaining({ type: 'string', title: '场景' }),
+                }),
+              }),
+            }),
+          ],
+        }),
+      }),
+    ));
   });
 
   it('NATS 只配置节点名称，并通过短时主题监听真实测试事件', async () => {
