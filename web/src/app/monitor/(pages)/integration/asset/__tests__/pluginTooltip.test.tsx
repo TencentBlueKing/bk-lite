@@ -32,9 +32,9 @@ describe('formatCollectorNodes', () => {
       formatCollectorNodes(
         'auto',
         [{ id: 'node-1', name: 'Alpha', removed: true }],
-        '已删除'
+        '采集节点已删除'
       )
-    ).toEqual(['Alpha (node-1) · 已删除']);
+    ).toEqual(['Alpha (node-1) · 采集节点已删除']);
   });
 
   it('formats multiple nodes and removes duplicate ids', () => {

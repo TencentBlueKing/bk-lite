@@ -451,6 +451,9 @@ const Asset = () => {
                 (plugin.collector_nodes || []).some((node) => node.removed)
               ) ? (
                 <span className="inline-flex items-center">
+                  <span>
+                    {t('monitor.integrations.collectorNodeRemoved')}
+                  </span>
                   <Button
                     type="link"
                     size="small"

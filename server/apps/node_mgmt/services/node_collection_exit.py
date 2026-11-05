@@ -28,8 +28,14 @@ class NodeCollectionExitService:
     def apply(cls, node, operator="system"):
         assignments = list(NodeCollectorConfiguration.objects.filter(node=node).select_related("collector_config__collector"))
         parent_ids = [row.collector_config_id for row in assignments]
-        child_ids = list(ChildConfig.objects.filter(collector_config_id__in=parent_ids).values_list("id", flat=True))
-        config_ids = list(dict.fromkeys([*parent_ids, *child_ids]))
+        shared_parent_ids = set(
+            NodeCollectorConfiguration.objects.filter(collector_config_id__in=parent_ids)
+            .exclude(node_id=node.id)
+            .values_list("collector_config_id", flat=True)
+        )
+        exclusive_parent_ids = [parent_id for parent_id in parent_ids if parent_id not in shared_parent_ids]
+        child_ids = list(ChildConfig.objects.filter(collector_config_id__in=exclusive_parent_ids).values_list("id", flat=True))
+        config_ids = list(dict.fromkeys([*exclusive_parent_ids, *child_ids]))
         cls._notify_monitor(node, config_ids, operator)
         cls._notify_log(node, config_ids, operator)
         cls._release_default_parent_names(assignments, node)
@@ -86,15 +92,14 @@ class NodeCollectionExitService:
             child_ids = {child.id for child in children}
             for child in children:
                 parent = child.collector_config
-                if cls._parent_has_other_owners(parent, owner_ids):
-                    replacement = cls._parent_bound_to_node(target_node, parent.collector)
-                    if child.collector_config_id != replacement.id:
-                        previous_parent_id = child.collector_config_id
-                        child.collector_config = replacement
-                        child.save(update_fields=["collector_config"])
-                        invalidate_configuration_etag(previous_parent_id)
-                else:
-                    parent.nodes.add(target_node)
+                if parent.nodes.filter(id=target_node.id).exists() and not cls._parent_has_other_owners(parent, owner_ids):
+                    continue
+                replacement = cls._parent_bound_to_node(target_node, parent.collector)
+                if child.collector_config_id != replacement.id:
+                    previous_parent_id = child.collector_config_id
+                    child.collector_config = replacement
+                    child.save(update_fields=["collector_config"])
+                    invalidate_configuration_etag(previous_parent_id)
             parents = CollectorConfiguration.objects.select_related("collector").filter(id__in=[item for item in requested if item not in child_ids])
             for parent in parents:
                 if cls._parent_has_other_owners(parent, owner_ids):

@@ -678,7 +678,7 @@
       "ipDes": "The IP address of the target host being monitored is used to identify the source of data collection.",
       "color": "Color",
       "collectionNode": "Collection Node",
-      "collectorNodeRemoved": "Removed",
+      "collectorNodeRemoved": "Collection node removed",
       "clearCollectorConfig": "Clear collection config",
       "clearCollectorConfigConfirm": "This removes the collection config and its child config. The instance stays.",
       "reassignCollectorNode": "Change collection node",

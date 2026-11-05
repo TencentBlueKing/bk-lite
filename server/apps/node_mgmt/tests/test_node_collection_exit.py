@@ -230,9 +230,12 @@ def test_log_clear_keeps_instance_and_reassign_sets_node():
 
     instance.refresh_from_db()
     child.refresh_from_db()
+    parent.refresh_from_db()
     assert instance.collector_node_removed is False
     assert instance.node_id == target.id
-    assert child.collector_config.nodes.filter(id=target.id).exists()
+    assert child.collector_config_id != parent.id
+    assert list(child.collector_config.nodes.values_list("id", flat=True)) == [target.id]
+    assert not parent.nodes.filter(id=target.id).exists()
 
     NodeCollectionExitService.apply(target, operator="alice")
     LogCollectorNodeExit.clear(instance.id)
@@ -242,6 +245,73 @@ def test_log_clear_keeps_instance_and_reassign_sets_node():
     assert instance.collector_node_removed is False
     assert not LogCollectConfig.objects.filter(collect_instance=instance).exists()
     assert not ChildConfig.objects.filter(id=child.id).exists()
+
+
+@pytest.mark.django_db
+def test_shared_parent_exit_keeps_instances_still_served_by_another_node():
+    region = CloudRegion.objects.create(name="exit-shared-region")
+    collector = _collector("exit-shared-telegraf", "Telegraf")
+    leaving = _node("exit-shared-leaving", region, ip="10.6.6.1")
+    staying = _node("exit-shared-staying", region, ip="10.6.6.2")
+    shared = _parent(collector, leaving, name="shared-parent")
+    shared.nodes.add(staying)
+    staying_child = _child(shared, "shared-staying-child", "[[inputs.redis]]")
+    staying_log_child = _child(shared, "shared-staying-log-child", "paths: [/var/log/stay]")
+    leaving_child = _child(shared, "shared-leaving-child", "paths: [/var/log/leave]")
+    exclusive = _parent(collector, leaving, name="exclusive-parent")
+    exclusive_child = _child(exclusive, "exclusive-child", "[[inputs.mysql]]")
+    staying_monitor = _monitor("shared-staying-monitor", "Redis")
+    leaving_monitor = _monitor("exclusive-monitor", "MySQL")
+    CollectConfig.objects.create(
+        id=staying_child.id,
+        monitor_instance=staying_monitor,
+        collector="Telegraf",
+        collect_type="database",
+        config_type="redis",
+        file_type="toml",
+        is_child=True,
+    )
+    CollectConfig.objects.create(
+        id=exclusive_child.id,
+        monitor_instance=leaving_monitor,
+        collector="Telegraf",
+        collect_type="database",
+        config_type="mysql",
+        file_type="toml",
+        is_child=True,
+    )
+    collect_type = CollectType.objects.create(name="shared-log", collector="Filebeat", icon="file")
+    staying_log = CollectInstance.objects.create(
+        id="shared-staying-log",
+        name="stay",
+        collect_type=collect_type,
+        node_id=staying.id,
+    )
+    leaving_log = CollectInstance.objects.create(
+        id="shared-leaving-log",
+        name="leave",
+        collect_type=collect_type,
+        node_id=leaving.id,
+    )
+    LogCollectConfig.objects.create(id=staying_log_child.id, collect_instance=staying_log, file_type="yaml", is_child=True)
+    LogCollectConfig.objects.create(id=leaving_child.id, collect_instance=leaving_log, file_type="yaml", is_child=True)
+
+    NodeCollectionExitService.apply(leaving, operator="alice")
+
+    staying_config = CollectConfig.objects.get(id=staying_child.id)
+    leaving_config = CollectConfig.objects.get(id=exclusive_child.id)
+    staying_log.refresh_from_db()
+    leaving_log.refresh_from_db()
+    staying_child.refresh_from_db()
+    assert staying_config.executor_node_removed is False
+    assert staying_log.collector_node_removed is False
+    assert staying_log.node_id == staying.id
+    assert staying_child.content == "[[inputs.redis]]"
+    assert ChildConfig.objects.filter(id=staying_log_child.id, content="paths: [/var/log/stay]").exists()
+    assert leaving_config.executor_node_removed is True
+    assert leaving_log.collector_node_removed is True
+    assert leaving_log.node_id is None
+    assert ChildConfig.objects.filter(id=exclusive_child.id, content="[[inputs.mysql]]").exists()
 
 
 @pytest.mark.django_db
