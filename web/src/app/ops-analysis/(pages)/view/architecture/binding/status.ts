@@ -173,10 +173,34 @@ const readCoord = (value: unknown): { x: number; y: number } | null => {
 export function architectureStatusRequestMode(input: {
   shareMode: boolean;
   editMode: boolean;
+  playbackMode?: boolean;
 }): 'off' | 'once' | 'poll' {
+  if (input.playbackMode) return 'once';
   if (input.shareMode) return 'off';
   if (input.editMode) return 'once';
   return 'poll';
+}
+
+export type ArchitectureStatusSurface = 'off' | 'nameplate' | 'runtime';
+
+/**
+ * How a fetched status map is drawn.
+ * `runtime` is the view overlay: node level, alert count, region badge,
+ * item click, and the resource detail drawer.
+ * `nameplate` is the edit plate (titles only; Isoflow treats a missing level
+ * as a name, not a runtime status).
+ * Playback keeps request mode `once` and still returns `runtime`, unless the
+ * canvas is actually being edited.
+ */
+export function architectureStatusSurface(input: {
+  shareMode: boolean;
+  editMode: boolean;
+  playbackMode?: boolean;
+}): ArchitectureStatusSurface {
+  const requestMode = architectureStatusRequestMode(input);
+  if (requestMode === 'off') return 'off';
+  if (!input.editMode && (input.playbackMode || requestMode === 'poll')) return 'runtime';
+  return 'nameplate';
 }
 
 export function shouldPauseArchitectureStatusRefresh(hidden: boolean): boolean {

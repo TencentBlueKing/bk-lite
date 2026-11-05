@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useLayoutEffect } from 'react';
 import type { MutableRefObject } from 'react';
 import type { Edge, Graph as X6Graph, Node } from '@antv/x6';
 import { Graph } from '@antv/x6';
@@ -434,7 +434,8 @@ export const useGraphInitializer = ({
     return cleanup;
   };
 
-  useEffect(() => {
+  // 图在绘制前创建，播放态才能在同一次提交里把缓存格子画上去。
+  useLayoutEffect(() => {
     if (!containerRef.current) return;
 
     registerNodes();

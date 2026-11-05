@@ -1,17 +1,21 @@
 import { useCallback } from 'react';
 import useApiClient from '@/utils/request';
 import { useShareCanvasDetailOverride } from '@/app/ops-analysis/context/shareCanvasDetail';
+import { loadPlaybackCanvasDetail, usePlaybackInitialDetail } from '@/app/ops-analysis/context/playbackInitialDetail';
 
 export const useTopologyApi = () => {
   const { get, post, put, del } = useApiClient();
   const shareDetailOverride = useShareCanvasDetailOverride();
+  const playbackDetail = usePlaybackInitialDetail();
 
   const getTopologyDetail = useCallback(async (id: string | number) => {
     if (shareDetailOverride) {
       return shareDetailOverride();
     }
-    return get(`/operation_analysis/api/topology/${id}/`);
-  }, [get, shareDetailOverride]);
+    return loadPlaybackCanvasDetail(playbackDetail, 'topology', id, () => (
+      get(`/operation_analysis/api/topology/${id}/`)
+    ));
+  }, [get, playbackDetail, shareDetailOverride]);
 
   const saveTopology = useCallback(async (id: string | number, data: any) => {
     return put(`/operation_analysis/api/topology/${id}/`, data);

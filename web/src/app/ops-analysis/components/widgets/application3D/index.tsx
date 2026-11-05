@@ -7,6 +7,7 @@ import CompactEmptyState from '@/components/compact-empty-state';
 import { ReloadOutlined } from '@ant-design/icons';
 import { useParams } from 'next/navigation';
 import { useTranslation } from '@/utils/i18n';
+import { fullscreenPopupContainer } from '@/utils/fullscreenPopupContainer';
 import { useShareMode } from '@/app/ops-analysis/context/shareMode';
 import InteractionDataMenu from '@/app/ops-analysis/components/interactionDataMenu';
 import { useWidgetDataLink } from '@/app/ops-analysis/components/interactionTitleIcon';
@@ -714,8 +715,8 @@ export default function Application3D({
           options={definition.options}
           placeholder={definition.label}
           className="min-w-48"
-          // Root uses overflow-hidden; keep popup on body so reopen isn't clipped/stuck.
-          getPopupContainer={() => document.body}
+          // 平时挂到 body，避免根节点 overflow 裁切。浏览器全屏时改挂到全屏节点。
+          getPopupContainer={fullscreenPopupContainer}
           popupMatchSelectWidth={false}
           onChange={(value) =>
             handleFilterChange(

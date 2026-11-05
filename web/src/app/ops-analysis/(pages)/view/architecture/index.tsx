@@ -3,6 +3,7 @@
 import {
   useState,
   useEffect,
+  useLayoutEffect,
   forwardRef,
   useImperativeHandle,
   useCallback,
@@ -22,9 +23,11 @@ import type {
   ItemControlsExtraTarget,
 } from '../../../../../../packages/isoflow';
 import { useArchitectureApi } from '@/app/ops-analysis/api/architecture';
+import { readPlaybackInitialDetail, usePlaybackInitialDetail } from '@/app/ops-analysis/context/playbackInitialDetail';
 import { useDirectoryApi } from '@/app/ops-analysis/api';
 import useBtnPermissions from '@/hooks/usePermissions';
 import { useCanvasPeriodicRefresh } from '@/app/ops-analysis/hooks/useCanvasPeriodicRefresh';
+import { canvasPeriodicRefreshEnabled } from '@/app/ops-analysis/utils/canvasPlaybackRefresh';
 import {
   canPersistCanvasRefreshInterval,
   normalizeCanvasRefreshInterval,
@@ -78,6 +81,7 @@ import {
 } from './binding/model';
 import {
   architectureStatusRequestMode,
+  architectureStatusSurface,
   bindingStatusLoading,
   blockResourceOpen,
   STATUS_DOT_COLOR,
@@ -140,7 +144,7 @@ export interface ArchitectureRef {
 }
 
 const Architecture = forwardRef<ArchitectureRef, ArchitectureProps>(
-  ({ selectedArchitecture, shareMode = false }, ref) => {
+  ({ selectedArchitecture, shareMode = false, playbackMode = false }, ref) => {
     const { t } = useTranslation();
     const {
       getArchitectureDetail,
@@ -218,6 +222,43 @@ const Architecture = forwardRef<ArchitectureRef, ArchitectureProps>(
       };
     }, []);
 
+    const playbackDetail = usePlaybackInitialDetail();
+    const playbackDetailRef = useRef(playbackDetail);
+    playbackDetailRef.current = playbackDetail;
+    const seededIsoflowMarkRef = useRef('');
+    useLayoutEffect(() => {
+      if (!playbackMode || !selectedArchitecture?.data_id) {
+        return;
+      }
+      const data = readPlaybackInitialDetail<{
+        name?: string;
+        view_sets?: { items?: DiagramData['items']; views?: DiagramData['views'] } | unknown[];
+        refresh_interval?: unknown;
+      }>(playbackDetail, 'architecture', selectedArchitecture.data_id);
+      if (!data) {
+        return;
+      }
+      const viewSets = Array.isArray(data.view_sets)
+        ? { items: [], views: [] }
+        : data.view_sets || { items: [], views: [] };
+      setDiagramName(data.name || '');
+      setSavedRefreshInterval(normalizeCanvasRefreshInterval(data.refresh_interval));
+      setDiagramData({
+        items: viewSets.items || [],
+        views: viewSets.views || [],
+        title: data.name || '',
+        icons: uniqueIcons,
+        colors: DEFAULT_COLORS,
+        fitToScreen: true,
+      });
+      const isoflowMark = `${selectedArchitecture.data_id}:${uniqueIcons.length}`;
+      if (seededIsoflowMarkRef.current !== isoflowMark) {
+        seededIsoflowMarkRef.current = isoflowMark;
+        setFossflowKey((current) => current + 1);
+      }
+      setLoading(false);
+    }, [playbackDetail, playbackMode, selectedArchitecture?.data_id, uniqueIcons]);
+
     useEffect(() => {
       if (uniqueIcons.length === 0) return;
 
@@ -229,21 +270,29 @@ const Architecture = forwardRef<ArchitectureRef, ArchitectureProps>(
       ) {
         (async () => {
           try {
-            setLoading(true);
+            const seeded = playbackMode
+              ? readPlaybackInitialDetail<Awaited<ReturnType<typeof getArchitectureDetail>>>(
+                playbackDetailRef.current,
+                'architecture',
+                currentArchitectureId,
+              )
+              : undefined;
             isUpdatingRef.current = true;
             invalidatePendingModelWrite();
-
-            setCurrentModel(null);
-            setSavedRefreshInterval(0);
-            setDiagramData({
-              title: 'Loading...',
-              icons: uniqueIcons,
-              colors: DEFAULT_COLORS,
-              items: [],
-              views: [],
-              fitToScreen: true,
-            });
-            const data = await getArchitectureDetail(currentArchitectureId);
+            if (!seeded) {
+              setLoading(true);
+              setCurrentModel(null);
+              setSavedRefreshInterval(0);
+              setDiagramData({
+                title: 'Loading...',
+                icons: uniqueIcons,
+                colors: DEFAULT_COLORS,
+                items: [],
+                views: [],
+                fitToScreen: true,
+              });
+            }
+            const data = seeded ?? await getArchitectureDetail(currentArchitectureId);
             const viewSets = Array.isArray(data.view_sets)
               ? { items: [], views: [] }
               : data.view_sets || { items: [], views: [] };
@@ -261,7 +310,9 @@ const Architecture = forwardRef<ArchitectureRef, ArchitectureProps>(
               setSavedRefreshInterval(normalizeCanvasRefreshInterval(data.refresh_interval));
               setDiagramData({ ...mergedData });
               setCurrentModel({ ...mergedData });
-              setFossflowKey((prev) => prev + 1);
+              if (!seeded) {
+                setFossflowKey((prev) => prev + 1);
+              }
               setHasUnsaved(false);
               setLoadedArchitectureId(currentArchitectureId);
               setIsEditMode(false);
@@ -302,6 +353,7 @@ const Architecture = forwardRef<ArchitectureRef, ArchitectureProps>(
       }
     }, [
       uniqueIcons,
+      playbackMode,
       selectedArchitecture?.data_id,
       loadedArchitectureId,
       invalidatePendingModelWrite,
@@ -581,6 +633,12 @@ const Architecture = forwardRef<ArchitectureRef, ArchitectureProps>(
     const requestMode = architectureStatusRequestMode({
       shareMode,
       editMode: isEditMode,
+      playbackMode,
+    });
+    const surface = architectureStatusSurface({
+      shareMode,
+      editMode: isEditMode,
+      playbackMode,
     });
     const modelNames = useMemo(
       () => Object.fromEntries(modelOptions.map((model) => [model.model_id, model.model_name])),
@@ -608,6 +666,7 @@ const Architecture = forwardRef<ArchitectureRef, ArchitectureProps>(
       enabled: requestMode === 'once',
       uuids: boundUuids,
       intervalMs: 0,
+      refreshOnVisible: !playbackMode,
     });
     const metricUuids = useMemo(() => collectMetricUuids(diagramViews), [diagramViews]);
     const selectedBoundUuid = useMemo(() => {
@@ -639,7 +698,7 @@ const Architecture = forwardRef<ArchitectureRef, ArchitectureProps>(
         canvasId: selectedArchitecture?.data_id,
         savedInterval: savedRefreshInterval,
         canPersist: canPersistRefreshInterval,
-        enabled: !shareMode && !isEditMode,
+        enabled: canvasPeriodicRefreshEnabled(!shareMode && !isEditMode, playbackMode),
         patchRefreshInterval: async (interval) => {
           if (!selectedArchitecture?.data_id) {
             return;
@@ -654,6 +713,7 @@ const Architecture = forwardRef<ArchitectureRef, ArchitectureProps>(
         onSavedIntervalChange: setSavedRefreshInterval,
       });
     const statusByUuid = requestMode === 'poll' ? viewStatus.byUuid : editStatus.byUuid;
+    const statusPhase = requestMode === 'poll' ? viewStatus.phase : editStatus.phase;
     const drawerStatus = drawerBinding?.binding
       ? editStatus.byUuid[drawerBinding.binding.inst_uuid] ?? null
       : null;
@@ -818,8 +878,8 @@ const Architecture = forwardRef<ArchitectureRef, ArchitectureProps>(
     }, [t]);
 
     const nodeStatus = useMemo(() => {
-      if (requestMode === 'off') return undefined;
-      if (requestMode === 'once') {
+      if (surface === 'off') return undefined;
+      if (surface === 'nameplate') {
         const source = Object.keys(editStatus.byUuid).length
           ? editStatus.byUuid
           : viewStatus.byUuid;
@@ -850,11 +910,11 @@ const Architecture = forwardRef<ArchitectureRef, ArchitectureProps>(
         }
         return Object.keys(next).length ? next : undefined;
       }
-      if (viewStatus.phase === 'idle' && Object.keys(viewStatus.byUuid).length === 0) {
+      if (statusPhase === 'idle' && Object.keys(statusByUuid).length === 0) {
         return undefined;
       }
-      const overlays = buildNodeStatus(diagramViews, viewStatus.byUuid);
-      const plates = buildIconPlates(diagramViews, viewStatus.byUuid, modelNames, iconNames);
+      const overlays = buildNodeStatus(diagramViews, statusByUuid);
+      const plates = buildIconPlates(diagramViews, statusByUuid, modelNames, iconNames);
       const next: Record<string, {
         level: 'normal' | 'warning' | 'critical' | 'unmonitored' | 'unknown' | 'invalid' | 'forbidden';
         count?: number;
@@ -928,18 +988,19 @@ const Architecture = forwardRef<ArchitectureRef, ArchitectureProps>(
       editStatus.byUuid,
       iconNames,
       modelNames,
-      requestMode,
+      statusByUuid,
       statusHintText,
+      statusPhase,
+      surface,
       t,
       viewStatus.byUuid,
-      viewStatus.phase,
     ]);
 
     const rectangleStatus = useMemo(() => {
-      if (requestMode === 'off') return undefined;
-      const viewing = requestMode === 'poll';
-      const source = viewing ? viewStatus.byUuid : editStatus.byUuid;
-      if (viewing && viewStatus.phase === 'idle' && Object.keys(source).length === 0) {
+      if (surface === 'off') return undefined;
+      const viewing = surface === 'runtime';
+      const source = statusByUuid;
+      if (viewing && statusPhase === 'idle' && Object.keys(source).length === 0) {
         return undefined;
       }
       const overlays = buildRectangleOverlays(diagramViews, source, {
@@ -982,12 +1043,11 @@ const Architecture = forwardRef<ArchitectureRef, ArchitectureProps>(
       return Object.keys(next).length ? next : undefined;
     }, [
       diagramViews,
-      editStatus.byUuid,
       overlayText,
-      requestMode,
+      statusByUuid,
+      statusPhase,
+      surface,
       t,
-      viewStatus.byUuid,
-      viewStatus.phase,
     ]);
 
     const nodeMetrics = useMemo(() => {
@@ -1123,11 +1183,11 @@ const Architecture = forwardRef<ArchitectureRef, ArchitectureProps>(
     }), [t]);
 
     const nodeBinding = useMemo(() => {
-      if (requestMode !== 'once' || !highlightUnbound) return undefined;
+      if (surface !== 'nameplate' || !highlightUnbound) return undefined;
       const marks: Record<string, { unbound: true }> = {};
       for (const id of bindingStats.unboundIds) marks[id] = { unbound: true };
       return Object.keys(marks).length ? marks : undefined;
-    }, [bindingStats, highlightUnbound, requestMode]);
+    }, [bindingStats, highlightUnbound, surface]);
 
     const closeDetail = useCallback(() => {
       setDetail(null);
@@ -1138,7 +1198,7 @@ const Architecture = forwardRef<ArchitectureRef, ArchitectureProps>(
       const action = decideDiagramClick({
         hit: item,
         views: diagramViews,
-        statusByUuid: viewStatus.byUuid,
+        statusByUuid,
       });
       if (action.type === 'toast') {
         const key = action.reason === 'unbound'
@@ -1170,7 +1230,7 @@ const Architecture = forwardRef<ArchitectureRef, ArchitectureProps>(
         return;
       }
       setDetail({ kind: 'connector', connectorId: action.connectorId });
-    }, [closeDetail, diagramViews, t, viewStatus.byUuid]);
+    }, [closeDetail, diagramViews, statusByUuid, t]);
 
     const openResource = useCallback((target: {
       instUuid: string;
@@ -1266,10 +1326,10 @@ const Architecture = forwardRef<ArchitectureRef, ArchitectureProps>(
           loading={loading}
           titleFallback={t('opsAnalysis.architecture.canvasTitle')}
           emptyDescription={t('opsAnalysis.architecture.emptySelect')}
-          headerVisible={!isFullscreen}
+          headerVisible={!isFullscreen && !playbackMode}
           flushContent
           contentClassName="bg-[var(--color-fill-1)]"
-          toolbar={isFullscreen ? undefined : architectureToolbar}
+          toolbar={isFullscreen || playbackMode ? undefined : architectureToolbar}
         >
         <div
           className={`relative h-full min-h-0 architecture-canvas ${styles.architectureCanvas}`}
@@ -1281,8 +1341,8 @@ const Architecture = forwardRef<ArchitectureRef, ArchitectureProps>(
             editorMode={shareMode || !isEditMode ? 'EXPLORABLE_READONLY' : 'EDITABLE'}
             sceneApiRef={sceneApiRef}
             onItemSelect={isEditMode && !shareMode ? handleItemSelect : undefined}
-            onItemClick={requestMode === 'poll' ? handleItemClick : undefined}
-            highlightedItemId={requestMode === 'poll' ? highlightId : undefined}
+            onItemClick={surface === 'runtime' ? handleItemClick : undefined}
+            highlightedItemId={surface === 'runtime' ? highlightId : undefined}
             nodeStatus={nodeStatus}
             nodeMetrics={nodeMetrics}
             nodeBinding={nodeBinding}
@@ -1334,12 +1394,12 @@ const Architecture = forwardRef<ArchitectureRef, ArchitectureProps>(
               onClose={() => setBindingNodeId(null)}
             />
           ) : null}
-          {requestMode === 'poll' && detail ? (
+          {surface === 'runtime' && detail ? (
             <ResourceDetailDrawer
               detail={detail}
               views={diagramViews}
               items={currentModel?.items ?? diagramData.items}
-              statusByUuid={viewStatus.byUuid}
+              statusByUuid={statusByUuid}
               modelNames={modelNames}
               onClose={closeDetail}
               onBack={backDetail}
