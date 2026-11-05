@@ -10,6 +10,9 @@ class CollectInstance(TimeInfo, MaintainerInfo):
     name = models.CharField(db_index=True, max_length=200, verbose_name="采集方式实例名称")
     collect_type = models.ForeignKey(CollectType, on_delete=models.CASCADE, verbose_name="采集方式")
     node_id = models.CharField(max_length=100, blank=True, null=True, verbose_name="Node ID")
+    collector_node_removed = models.BooleanField(default=False, verbose_name="采集节点已删除")
+    removed_collector_node_id = models.CharField(max_length=100, blank=True, default="", verbose_name="已删除的采集节点ID")
+    removed_collector_node_name = models.CharField(max_length=100, blank=True, default="", verbose_name="已删除的采集节点名称")
 
     class Meta:
         verbose_name = "采集方式实例"

@@ -29,8 +29,9 @@ from apps.node_mgmt.serializers.node import (
     NodeSerializer,
     TaskNodesQuerySerializer,
 )
-from apps.node_mgmt.services.module_push import ModulePushService, build_module_push_actor_scope, parse_retire_linked_flag
+from apps.node_mgmt.services.module_push import ModulePushService, build_module_push_actor_scope
 from apps.node_mgmt.services.node import NodeService
+from apps.node_mgmt.services.node_collection_exit import NodeCollectionExitService, log_collection_exit_failure
 from apps.node_mgmt.services.node_export import (
     EXPORT_LIMIT,
     build_export_filename,
@@ -447,11 +448,15 @@ class NodeViewSet(mixins.DestroyModelMixin, GenericViewSet):
             return error_response
         instance = nodes[0]
         # 删除节点必须清 CMDB 上悬挂的 node_id（实例保留）。
-        # retire_linked 另退役监控等已关联对象；失败都不阻断删除。
+        # 联动监控主机随动软退役；非联动采集只标记节点已删除。失败不阻断删除。
+        user = getattr(request, "user", None)
+        operator = getattr(user, "username", "") or "system"
+        try:
+            NodeCollectionExitService.apply(instance, operator=operator)
+        except Exception as exc:
+            log_collection_exit_failure(instance.id, "apply", exc)
         actor_scope = build_module_push_actor_scope(request)
         ModulePushService.best_effort_unlink_cmdb(instance, actor_scope=actor_scope)
-        if parse_retire_linked_flag(request):
-            ModulePushService.best_effort_retire_linked(instance, actor_scope=actor_scope)
         self.perform_destroy(instance)
         return WebUtils.response_success()
 

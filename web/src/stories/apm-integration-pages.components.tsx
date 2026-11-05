@@ -234,6 +234,11 @@ type IntegrationKind =
   | 'python'
   | 'dotnet'
   | 'go'
+  | 'php'
+  | 'ruby'
+  | 'cpp'
+  | 'erlang'
+  | 'swift'
   | 'otc'
   | 'ebpf'
   | 'k8s';
@@ -247,11 +252,16 @@ const INTEGRATION_GROUPS: Array<{
     group: 'SDK',
     icon: <CodeOutlined />,
     items: [
-      { kind: 'node', title: 'Node.js', desc: '自动探针，支持 Express / Nest / Koa / Fastify', tag: '推荐' },
+      { kind: 'node', title: 'Node.js', desc: '自动探针，支持 Express / Nest / Koa', tag: '推荐' },
       { kind: 'java', title: 'Java', desc: '自动探针，支持 Spring / Dubbo / gRPC', tag: '推荐' },
       { kind: 'python', title: 'Python', desc: '自动探针，支持 Django / Flask / FastAPI' },
       { kind: 'dotnet', title: '.NET', desc: '自动探针，支持 Linux x86_64 glibc' },
       { kind: 'go', title: 'Go', desc: '手动接入，生成 OpenTelemetry Provider 示例' },
+      { kind: 'php', title: 'PHP', desc: '自动探针，支持 PHP NTS 8.1–8.4，含 Laravel / Symfony / Slim' },
+      { kind: 'ruby', title: 'Ruby', desc: '手动接入，生成 Rack 初始化示例', tag: '手动 SDK' },
+      { kind: 'cpp', title: 'C++', desc: '手动接入，生成最小入口 Span 示例', tag: '手动 SDK' },
+      { kind: 'erlang', title: 'Erlang/Elixir', desc: '手动接入，生成 path 依赖示例', tag: '手动 SDK' },
+      { kind: 'swift', title: 'Swift', desc: '手动接入，生成本地 Swift Package 示例', tag: '手动 SDK' },
     ],
   },
   {
@@ -265,7 +275,7 @@ const INTEGRATION_GROUPS: Array<{
     group: 'eBPF',
     icon: <ExperimentOutlined />,
     items: [
-      { kind: 'ebpf', title: 'eBPF 自动注入(OBI)', desc: '内核态自动采集服务链路', tag: '低侵入' },
+      { kind: 'ebpf', title: 'eBPF 自动注入(OBI)', desc: '未安装语言探针时，只观察指定的 Go 可执行文件。不要和语言探针装在同一进程。', tag: '低侵入' },
     ],
   },
   {

@@ -3,17 +3,27 @@ from rest_framework.test import APIClient
 
 from apps.apm.management.commands.apm_probe_init import Command as ApmProbeInitCommand
 from apps.apm.services.probe_artifacts import (
+    CPP_SDK_ARTIFACT_NAME,
     DOTNET_AUTO_ARTIFACT_NAME,
+    DOTNET_WINDOWS_ARTIFACT_NAME,
+    ERLANG_SDK_ARTIFACT_NAME,
     GO_SDK_ARTIFACT_NAME,
     JAVA_AGENT_ARTIFACT_NAME,
     LANGUAGE_PROBE_ARTIFACTS,
     NODEJS_AUTO_ARTIFACT_NAME,
+    OBI_ARTIFACT_NAME,
+    PHP_AUTO_ARTIFACT_NAME,
     PROBE_ARTIFACT_LEGACY_OBJECT_KEYS,
     PROBE_ARTIFACT_OBJECT_KEYS,
     PYTHON_WHEELS_ARTIFACT_NAME,
+    RUBY_SDK_ARTIFACT_NAME,
+    SWIFT_SDK_ARTIFACT_NAME,
     ProbeArtifactNotFound,
+    ProbeSelectionError,
     build_probe_artifact_download_url,
+    resolve_probe_artifact_name,
     upload_probe_artifact,
+    validate_probe_selection,
 )
 
 
@@ -21,20 +31,56 @@ def test_download_url_only_covers_allowlisted_artifacts():
     assert build_probe_artifact_download_url("http://10.10.10.1:8011/", JAVA_AGENT_ARTIFACT_NAME) == (
         "http://10.10.10.1:8011/api/v1/apm/open_api/probe/download/opentelemetry-javaagent.jar"
     )
-    assert build_probe_artifact_download_url("http://10.10.10.1:8011", PYTHON_WHEELS_ARTIFACT_NAME).endswith(
-        "/opentelemetry-python-wheels.tar.gz"
-    )
+    assert build_probe_artifact_download_url("http://10.10.10.1:8011", PYTHON_WHEELS_ARTIFACT_NAME).endswith("/opentelemetry-python-wheels.tar.gz")
     assert LANGUAGE_PROBE_ARTIFACTS == {
         "java": JAVA_AGENT_ARTIFACT_NAME,
         "python": PYTHON_WHEELS_ARTIFACT_NAME,
         "nodejs": NODEJS_AUTO_ARTIFACT_NAME,
         "go": GO_SDK_ARTIFACT_NAME,
         "dotnet": DOTNET_AUTO_ARTIFACT_NAME,
+        "php": PHP_AUTO_ARTIFACT_NAME,
+        "obi": OBI_ARTIFACT_NAME,
+        "ruby": RUBY_SDK_ARTIFACT_NAME,
+        "cpp": CPP_SDK_ARTIFACT_NAME,
+        "erlang": ERLANG_SDK_ARTIFACT_NAME,
+        "swift": SWIFT_SDK_ARTIFACT_NAME,
     }
+    assert PROBE_ARTIFACT_OBJECT_KEYS[PHP_AUTO_ARTIFACT_NAME] == ("apm/probe/php/opentelemetry-php-auto-linux-glibc-x64.tar.gz")
+    assert PROBE_ARTIFACT_OBJECT_KEYS[DOTNET_WINDOWS_ARTIFACT_NAME] == ("apm/probe/dotnet/opentelemetry-dotnet-auto-windows.zip")
+    assert PROBE_ARTIFACT_OBJECT_KEYS[OBI_ARTIFACT_NAME] == ("apm/probe/ebpf/opentelemetry-ebpf-obi-linux-amd64.tar.gz")
+    assert PROBE_ARTIFACT_OBJECT_KEYS[RUBY_SDK_ARTIFACT_NAME] == "apm/probe/ruby/opentelemetry-ruby-sdk.tar.gz"
+    assert PROBE_ARTIFACT_OBJECT_KEYS[CPP_SDK_ARTIFACT_NAME] == "apm/probe/cpp/opentelemetry-cpp-sdk.tar.gz"
+    assert PROBE_ARTIFACT_OBJECT_KEYS[ERLANG_SDK_ARTIFACT_NAME] == "apm/probe/erlang/opentelemetry-erlang-sdk.tar.gz"
+    assert PROBE_ARTIFACT_OBJECT_KEYS[SWIFT_SDK_ARTIFACT_NAME] == "apm/probe/swift/opentelemetry-swift-sdk.tar.gz"
+    for language in ("ruby", "cpp", "erlang", "swift"):
+        with pytest.raises(ProbeSelectionError) as windows_manual:
+            validate_probe_selection(language=language, runtime="host", probe_platform="windows")
+        assert windows_manual.value.code == "probe_platform_unsupported"
+    assert resolve_probe_artifact_name("dotnet") == DOTNET_AUTO_ARTIFACT_NAME
+    assert resolve_probe_artifact_name("dotnet", "windows") == DOTNET_WINDOWS_ARTIFACT_NAME
+    assert validate_probe_selection(language="obi", runtime="host", process_executable="/usr/bin/checkout") == (OBI_ARTIFACT_NAME)
+    with pytest.raises(ProbeSelectionError) as windows_php:
+        validate_probe_selection(language="php", runtime="host", probe_platform="windows")
+    assert windows_php.value.code == "probe_platform_unsupported"
+    with pytest.raises(ProbeSelectionError) as obi_docker:
+        validate_probe_selection(language="obi", runtime="docker", process_executable="/usr/bin/checkout")
+    assert obi_docker.value.code == "obi_runtime_unsupported"
+    with pytest.raises(ProbeSelectionError) as bad_path:
+        validate_probe_selection(language="obi", runtime="host", process_executable="/tmp/my app")
+    assert bad_path.value.code == "process_executable_invalid"
+    for executable in ("", "checkout", "/tmp/../checkout", "/tmp/app;rm"):
+        with pytest.raises(ProbeSelectionError) as rejected:
+            validate_probe_selection(language="obi", runtime="host", process_executable=executable)
+        assert rejected.value.code == "process_executable_invalid"
+    assert validate_probe_selection(language="obi", runtime="host", process_executable="/opt/app+v2/bin/checkout") == (OBI_ARTIFACT_NAME)
+    with pytest.raises(ProbeSelectionError) as windows_docker:
+        validate_probe_selection(language="dotnet", runtime="docker", probe_platform="windows")
+    assert windows_docker.value.code == "dotnet_windows_runtime_unsupported"
+    with pytest.raises(ProbeSelectionError) as windows_kubernetes:
+        validate_probe_selection(language="dotnet", runtime="kubernetes", probe_platform="windows")
+    assert windows_kubernetes.value.code == "dotnet_windows_runtime_unsupported"
     assert DOTNET_AUTO_ARTIFACT_NAME == "opentelemetry-dotnet-auto-linux-glibc-x64.zip"
-    assert PROBE_ARTIFACT_OBJECT_KEYS[DOTNET_AUTO_ARTIFACT_NAME] == (
-        "apm/probe/dotnet/opentelemetry-dotnet-auto-linux-glibc-x64.zip"
-    )
+    assert PROBE_ARTIFACT_OBJECT_KEYS[DOTNET_AUTO_ARTIFACT_NAME] == ("apm/probe/dotnet/opentelemetry-dotnet-auto-linux-glibc-x64.zip")
     assert DOTNET_AUTO_ARTIFACT_NAME not in PROBE_ARTIFACT_LEGACY_OBJECT_KEYS
     assert build_probe_artifact_download_url("http://10.10.10.1:8011", DOTNET_AUTO_ARTIFACT_NAME) == (
         "http://10.10.10.1:8011/api/v1/apm/open_api/probe/download/opentelemetry-dotnet-auto-linux-glibc-x64.zip"

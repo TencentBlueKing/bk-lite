@@ -14,7 +14,7 @@ from apps.apm.serializers.control_plane import IngestSnippetSerializer
 from apps.apm.services import DjangoIntegrationConfigurationService
 from apps.apm.services.contracts import IngestSnippetRequest
 from apps.apm.services.integration_configuration import CloudRegionConfigurationError
-from apps.apm.services.probe_artifacts import JAVA_AGENT_ARTIFACT_NAME, ProbeArtifactNotFound, get_probe_artifact_sha256
+from apps.apm.services.probe_artifacts import JAVA_AGENT_ARTIFACT_NAME, ProbeArtifactNotFound, ProbeSelectionError, get_probe_artifact_sha256
 
 _PROBE_DOWNLOAD_URLS = {
     "java": "http://bklite.example.com:8011/api/v1/apm/open_api/probe/download/opentelemetry-javaagent.jar",
@@ -22,6 +22,12 @@ _PROBE_DOWNLOAD_URLS = {
     "nodejs": "http://bklite.example.com:8011/api/v1/apm/open_api/probe/download/opentelemetry-js-auto.tgz",
     "go": "http://bklite.example.com:8011/api/v1/apm/open_api/probe/download/opentelemetry-go-sdk.zip",
     "dotnet": "http://bklite.example.com:8011/api/v1/apm/open_api/probe/download/opentelemetry-dotnet-auto-linux-glibc-x64.zip",
+    "php": "http://bklite.example.com:8011/api/v1/apm/open_api/probe/download/opentelemetry-php-auto-linux-glibc-x64.tar.gz",
+    "obi": "http://bklite.example.com:8011/api/v1/apm/open_api/probe/download/opentelemetry-ebpf-obi-linux-amd64.tar.gz",
+    "ruby": "http://bklite.example.com:8011/api/v1/apm/open_api/probe/download/opentelemetry-ruby-sdk.tar.gz",
+    "cpp": "http://bklite.example.com:8011/api/v1/apm/open_api/probe/download/opentelemetry-cpp-sdk.tar.gz",
+    "erlang": "http://bklite.example.com:8011/api/v1/apm/open_api/probe/download/opentelemetry-erlang-sdk.tar.gz",
+    "swift": "http://bklite.example.com:8011/api/v1/apm/open_api/probe/download/opentelemetry-swift-sdk.tar.gz",
 }
 _PROBE_BYTES = b"probe-bytes"
 _PROBE_SHA256 = hashlib.sha256(_PROBE_BYTES).hexdigest()
@@ -301,7 +307,12 @@ def test_explicit_instance_identity_fails_closed_outside_the_safe_boundary(inval
         ("nodejs", "npm install --offline --save ./opentelemetry-js-auto.tgz", "node --require"),
         ("java", "curl --fail --silent --show-error --location --insecure", "java -javaagent:./opentelemetry-javaagent.jar"),
         ("go", 'export GOPROXY="file://$(pwd)/.otel-go-sdk"', "Go 无通用零代码探针"),
-        ("dotnet", ". \"$OTEL_DOTNET_AUTO_HOME/instrument.sh\"", "dotnet App.dll"),
+        ("dotnet", '. "$OTEL_DOTNET_AUTO_HOME/instrument.sh"', "dotnet App.dll"),
+        ("php", "COMPOSER_DISABLE_NETWORK=1", "php app.php"),
+        ("ruby", "gem install --local --no-document --ignore-dependencies", "opentelemetry-instrumentation-rack"),
+        ("cpp", "opentelemetry-cpp-sdk.tar.gz", "opentelemetry-cpp v1.30.0"),
+        ("erlang", "opentelemetry-erlang-sdk.tar.gz", "opentelemetry 1.7.0"),
+        ("swift", "opentelemetry-swift-sdk.tar.gz", "opentelemetry-swift 2.6.0"),
     ],
 )
 def test_host_snippet_installs_or_bootstraps_the_selected_sdk(language, expected_install, expected_start):
@@ -322,15 +333,18 @@ def test_host_snippet_installs_or_bootstraps_the_selected_sdk(language, expected
     assert _PROBE_DOWNLOAD_URLS[language] in snippet.code
     assert "pypi.org" not in snippet.code
     assert "npmjs" not in snippet.code
-    assert "github.com" not in snippet.code
+    assert "https://github.com" not in snippet.code
+    assert "packagist.org" not in snippet.code
     assert "go get " not in snippet.code
     assert "nuget.org" not in snippet.code
+    assert "rubygems.org" not in snippet.code
+    assert "hex.pm" not in snippet.code
     assert "# 1. 安装探针" in snippet.code
     assert "# 2. 配置上报" in snippet.code
     assert "# 3. 启动应用" in snippet.code
 
 
-@pytest.mark.parametrize("language", ["python", "nodejs", "java", "go", "dotnet"])
+@pytest.mark.parametrize("language", ["python", "nodejs", "java", "go", "dotnet", "php", "ruby", "cpp", "erlang", "swift"])
 @pytest.mark.parametrize("runtime", ["host", "docker"])
 def test_snippet_downloads_probe_from_the_system_address_instead_of_the_public_internet(language, runtime):
     snippet = DjangoIntegrationConfigurationService().render_snippet(
@@ -347,11 +361,13 @@ def test_snippet_downloads_probe_from_the_system_address_instead_of_the_public_i
 
     assert _PROBE_DOWNLOAD_URLS[language] in snippet.code
     assert "--insecure" in snippet.code
-    assert "github.com" not in snippet.code
+    assert "https://github.com" not in snippet.code
     assert "pypi.org" not in snippet.code
     assert "npmjs" not in snippet.code
     assert "go get " not in snippet.code
     assert "nuget.org" not in snippet.code
+    assert "rubygems.org" not in snippet.code
+    assert "hex.pm" not in snippet.code
     assert subprocess.run(["sh", "-n"], input=snippet.code, text=True, capture_output=True).returncode == 0
 
 
@@ -370,7 +386,7 @@ def _checksum_command(code: str, runtime: str) -> str:
     return match.group(0)
 
 
-@pytest.mark.parametrize("language", ["python", "nodejs", "java", "go", "dotnet"])
+@pytest.mark.parametrize("language", ["python", "nodejs", "java", "go", "dotnet", "php", "ruby", "cpp", "erlang", "swift"])
 @pytest.mark.parametrize("runtime", ["host", "docker"])
 def test_snippet_verifies_server_sha256_after_each_probe_download(language, runtime, tmp_path):
     snippet = DjangoIntegrationConfigurationService().render_snippet(
@@ -456,7 +472,7 @@ def test_host_snippet_fails_closed_instead_of_embedding_an_empty_probe_sha256(mo
         )
 
 
-@pytest.mark.parametrize("language", ["python", "nodejs", "java", "go", "dotnet"])
+@pytest.mark.parametrize("language", ["python", "nodejs", "java", "go", "dotnet", "php", "ruby", "cpp", "erlang", "swift"])
 @pytest.mark.parametrize("runtime", ["host", "docker", "kubernetes", "other"])
 def test_snippet_fails_closed_without_a_resolved_system_download_address(language, runtime):
     with pytest.raises(ValueError, match="probe_download_url"):
@@ -481,6 +497,13 @@ def test_snippet_fails_closed_without_a_resolved_system_download_address(languag
         ("nodejs", "opentelemetry-js-auto.tgz"),
         ("go", "opentelemetry-go-sdk.zip"),
         ("dotnet", "opentelemetry-dotnet-auto-linux-glibc-x64.zip"),
+        ("php", "opentelemetry-php-auto-linux-glibc-x64.tar.gz"),
+        ("dotnet-windows", "opentelemetry-dotnet-auto-windows.zip"),
+        ("obi", "opentelemetry-ebpf-obi-linux-amd64.tar.gz"),
+        ("ruby", "opentelemetry-ruby-sdk.tar.gz"),
+        ("cpp", "opentelemetry-cpp-sdk.tar.gz"),
+        ("erlang", "opentelemetry-erlang-sdk.tar.gz"),
+        ("swift", "opentelemetry-swift-sdk.tar.gz"),
     ],
 )
 def test_resolve_region_builds_the_probe_download_url_from_node_server_url(language, artifact_name):
@@ -598,6 +621,12 @@ def test_go_snippet_is_an_explicit_manual_sdk_guide_with_complete_provider_setup
     assert "Go 无通用零代码探针" in snippet.code
     assert _PROBE_DOWNLOAD_URLS["go"] in snippet.code
     assert "go get " not in snippet.code
+    assert "https://github.com" not in snippet.code
+    assert "go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp" in snippet.code
+    assert "go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc" in snippet.code
+    assert "go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin" in snippet.code
+    assert "go.opentelemetry.io/contrib/instrumentation/github.com/labstack/echo/otelecho" in snippet.code
+    assert snippet.code.count("go mod download") == 1
     assert "telemetry/otel.go.example" in snippet.code
     assert "func NewTracerProvider(ctx context.Context) (*sdktrace.TracerProvider, error)" in snippet.code
     assert "otlptracehttp.New(ctx)" in snippet.code
@@ -635,9 +664,11 @@ def test_dotnet_snippet_uses_the_glibc_x64_auto_probe_and_keeps_traces_only(runt
     assert snippet.environment["OTEL_LOGS_EXPORTER"] == "none"
     assert "github.com" not in snippet.code
     assert "nuget.org" not in snippet.code
+    assert "rubygems.org" not in snippet.code
+    assert "hex.pm" not in snippet.code
     assert "otel-dotnet-auto-install.sh" not in snippet.code
     if runtime == "host":
-        assert ". \"$OTEL_DOTNET_AUTO_HOME/instrument.sh\"" in snippet.code
+        assert '. "$OTEL_DOTNET_AUTO_HOME/instrument.sh"' in snippet.code
         assert subprocess.run(["sh", "-n"], input=snippet.code, text=True, capture_output=True).returncode == 0
     if runtime == "docker":
         assert "/otel-dotnet-auto" in snippet.code
@@ -646,9 +677,7 @@ def test_dotnet_snippet_uses_the_glibc_x64_auto_probe_and_keeps_traces_only(runt
         manifest = yaml.safe_load(snippet.code)
         container = manifest["spec"]["template"]["spec"]["containers"][0]
         environment = {item["name"]: item["value"] for item in container["env"] if "value" in item}
-        assert environment["CORECLR_PROFILER_PATH"] == (
-            "/otel-dotnet-auto/linux-x64/OpenTelemetry.AutoInstrumentation.Native.so"
-        )
+        assert environment["CORECLR_PROFILER_PATH"] == ("/otel-dotnet-auto/linux-x64/OpenTelemetry.AutoInstrumentation.Native.so")
         assert environment["DOTNET_ADDITIONAL_DEPS"] == "/otel-dotnet-auto/AdditionalDeps"
         assert environment["DOTNET_SHARED_STORE"] == "/otel-dotnet-auto/store"
         assert environment["OTEL_METRICS_EXPORTER"] == "none"
@@ -709,7 +738,7 @@ def test_snippet_separately_quotes_shell_literals_and_encodes_otel_resource_valu
     }
 
 
-@pytest.mark.parametrize("language", ["python", "nodejs", "java", "go", "dotnet"])
+@pytest.mark.parametrize("language", ["python", "nodejs", "java", "go", "dotnet", "php", "ruby", "cpp", "erlang", "swift"])
 @pytest.mark.parametrize("runtime", ["host", "docker"])
 def test_host_and_docker_snippets_require_probe_hash_for_any_language(monkeypatch, language, runtime):
     def missing(artifact_name):
@@ -735,7 +764,7 @@ def test_host_and_docker_snippets_require_probe_hash_for_any_language(monkeypatc
         )
 
 
-@pytest.mark.parametrize("language", ["python", "nodejs", "java", "go", "dotnet"])
+@pytest.mark.parametrize("language", ["python", "nodejs", "java", "go", "dotnet", "php", "ruby", "cpp", "erlang", "swift"])
 def test_kubernetes_snippets_do_not_hash_probe_artifacts(monkeypatch, language):
     def missing(artifact_name):
         raise ProbeArtifactNotFound(artifact_name)
@@ -824,3 +853,183 @@ def test_upload_probe_artifact_invalidates_sha256_cache(monkeypatch, tmp_path):
     upload_probe_artifact(JAVA_AGENT_ARTIFACT_NAME, str(file_path))
 
     assert JAVA_AGENT_ARTIFACT_NAME not in probe_artifacts_module._PROBE_ARTIFACT_SHA256_CACHE
+
+
+def test_php_snippet_pins_nts_packages_and_stays_offline():
+    for runtime in ("host", "docker", "kubernetes", "other"):
+        snippet = DjangoIntegrationConfigurationService().render_snippet(
+            _request(
+                language="php",
+                runtime=runtime,
+                endpoint="https://apm.example.com",
+                service_namespace="shop",
+                service_name="checkout",
+                service_version="1.0",
+                environment="production",
+            )
+        )
+
+        assert "PHP 8.1" in snippet.code or "8.1|8.2|8.3|8.4" in snippet.code
+        assert "NTS" in snippet.code or "ZTS" in snippet.code
+        assert "open-telemetry/sdk:1.15.0" in snippet.code
+        assert "open-telemetry/opentelemetry-auto-slim:1.5.1" in snippet.code
+        assert "open-telemetry/opentelemetry-auto-pdo:0.6.0" in snippet.code
+        assert "open-telemetry/opentelemetry-auto-mysqli:0.5.0" in snippet.code
+        assert "packagist.org" not in snippet.code
+        assert "pecl" not in snippet.code
+        assert "https://github.com" not in snippet.code
+        assert snippet.environment["OTEL_METRICS_EXPORTER"] == "none"
+        assert snippet.environment["OTEL_PHP_AUTOLOAD_ENABLED"] == "true"
+        if runtime == "kubernetes":
+            manifest = yaml.safe_load(snippet.code)
+            assert manifest["spec"]["template"]["spec"]["containers"][0]["name"] == "YOUR_CONTAINER_NAME"
+            assert "sha256sum" not in snippet.code
+        else:
+            assert "COMPOSER_DISABLE_NETWORK=1" in snippet.code
+            assert "8.2|8.3|8.4" in snippet.code
+            assert subprocess.run(["sh", "-n"], input=snippet.code, text=True, capture_output=True).returncode == 0
+
+
+def test_windows_dotnet_snippet_checks_sha256_without_restarting_services():
+    snippet = DjangoIntegrationConfigurationService().render_snippet(
+        _request(
+            language="dotnet",
+            runtime="host",
+            endpoint="https://apm.example.com",
+            service_namespace="shop",
+            service_name="checkout",
+            service_version="1.0",
+            environment="production",
+            probe_platform="windows",
+            probe_download_url=("http://bklite.example.com:8011/api/v1/apm/open_api/probe/download/" "opentelemetry-dotnet-auto-windows.zip"),
+        )
+    )
+
+    assert "opentelemetry-dotnet-auto-windows.zip" in snippet.code
+    assert "Get-FileHash" in snippet.code
+    assert "ASP.NET Framework" in snippet.code
+    assert "Expand-Archive" in snippet.code
+    assert "Start the application in this PowerShell session" in snippet.code
+    assert "dotnet App.dll" not in snippet.code
+    assert "Register-OpenTelemetryForWindowsService" not in snippet.code
+    assert "Restart-Service" not in snippet.code
+    assert "Set-ItemProperty" not in snippet.code
+    assert "MySQL" not in snippet.code
+    assert "linux-x64" not in snippet.code
+    assert "仅支持 Linux" not in snippet.code
+    assert snippet.environment["OTEL_METRICS_EXPORTER"] == "none"
+    assert snippet.environment["OTEL_LOGS_EXPORTER"] == "none"
+
+
+def test_obi_snippet_watches_only_the_given_executable():
+    snippet = DjangoIntegrationConfigurationService().render_snippet(
+        _request(
+            language="obi",
+            runtime="host",
+            endpoint="https://apm.example.com",
+            service_namespace="shop",
+            service_name="checkout",
+            service_version="1.0",
+            environment="production",
+            process_executable="/usr/bin/checkout",
+        )
+    )
+
+    assert 'exe_path_glob: ["/usr/bin/checkout"]' in snippet.code
+    assert "default_action: exclude" in snippet.code
+    assert "metrics: false" in snippet.code
+    assert "traces: true" in snippet.code
+    assert "meter_provider" not in snippet.code
+    assert "open_ports" not in snippet.code
+    assert "https://github.com" not in snippet.code
+    assert "service.namespace=shop" in snippet.code
+    assert "OBI requires a readable /sys/kernel/btf/vmlinux" in snippet.code
+    assert "OBI needs root or the capabilities required by OBI v1.0.0" in snippet.code
+    assert "同一进程不要再装" in snippet.code
+    assert snippet.environment["OTEL_METRICS_EXPORTER"] == "none"
+    assert subprocess.run(["sh", "-n"], input=snippet.code, text=True, capture_output=True).returncode == 0
+    with pytest.raises(ProbeSelectionError) as exc_info:
+        DjangoIntegrationConfigurationService().render_snippet(
+            _request(
+                language="obi",
+                runtime="docker",
+                endpoint="https://apm.example.com",
+                service_namespace="shop",
+                service_name="checkout",
+                service_version="1.0",
+                environment="production",
+                process_executable="/usr/bin/checkout",
+            )
+        )
+    assert exc_info.value.code == "obi_runtime_unsupported"
+
+
+def test_ingest_serializer_rejects_unsupported_probe_selection():
+    base = {
+        "application_id": "shop",
+        "cloud_region_id": 7,
+        "service_name": "checkout",
+        "environment": "production",
+    }
+    windows_php = IngestSnippetSerializer(data={**base, "language": "php", "runtime": "host", "probe_platform": "windows"})
+    assert windows_php.is_valid() is False
+    obi = IngestSnippetSerializer(data={**base, "language": "obi", "runtime": "host"})
+    assert obi.is_valid() is False
+    selected = IngestSnippetSerializer(data={**base, "language": "obi", "runtime": "host", "process_executable": "/usr/bin/checkout"})
+    assert selected.is_valid() is True, selected.errors
+    windows_ruby = IngestSnippetSerializer(data={**base, "language": "ruby", "runtime": "host", "probe_platform": "windows"})
+    assert windows_ruby.is_valid() is False
+
+
+def test_manual_sdk_snippets_stay_offline_and_do_not_overwrite_examples():
+    expectations = {
+        "ruby": ("opentelemetry-sdk 1.13.1", "OpenTelemetry::Instrumentation::Rack", "Ruby 3.3 or newer is required"),
+        "cpp": ("opentelemetry-cpp v1.30.0", "SpanKind::kServer", ".otel-cpp-sdk/prefix"),
+        "erlang": (
+            "opentelemetry 1.7.0",
+            "opentelemetry_exporter 1.11.0",
+            "ln -sfn ../.otel-erlang-sdk/opentelemetry_api _checkouts/opentelemetry_api",
+            "otel_span:end_span",
+        ),
+        "swift": ("opentelemetry-swift 2.6.0", '.package(path: "../.otel-swift-sdk/opentelemetry-swift")', "OpenTelemetryProtocolExporterHTTP"),
+    }
+    for language, markers in expectations.items():
+        for runtime in ("host", "docker", "kubernetes"):
+            snippet = DjangoIntegrationConfigurationService().render_snippet(
+                _request(
+                    language=language,
+                    runtime=runtime,
+                    endpoint="https://apm.example.com",
+                    service_namespace="shop",
+                    service_name="checkout",
+                    service_version="1.0",
+                    environment="production",
+                )
+            )
+            assert snippet.environment["OTEL_METRICS_EXPORTER"] == "none"
+            assert snippet.environment["OTEL_LOGS_EXPORTER"] == "none"
+            assert _PROBE_DOWNLOAD_URLS[language] in snippet.code
+            assert "https://github.com" not in snippet.code
+            assert "rubygems.org" not in snippet.code
+            assert "hex.pm" not in snippet.code
+            if runtime == "kubernetes":
+                assert "sha256sum -c -" not in snippet.code
+                continue
+            assert subprocess.run(["sh", "-n"], input=snippet.code, text=True, capture_output=True).returncode == 0
+            if runtime != "host":
+                continue
+            for marker in markers:
+                assert marker in snippet.code
+        if language == "erlang":
+            erlang = DjangoIntegrationConfigurationService().render_snippet(
+                _request(
+                    language="erlang",
+                    runtime="host",
+                    endpoint="https://apm.example.com",
+                    service_namespace="shop",
+                    service_name="checkout",
+                    service_version="1.0",
+                    environment="production",
+                )
+            )
+            assert erlang.environment["OTEL_EXPORTER_OTLP_PROTOCOL"] == "http_protobuf"
