@@ -73,6 +73,7 @@ SUPPORTED_RANGE_METRIC_TYPES = (
     "disk_write_rate",
     "processes_blocked",
     "processes_zombies",
+    "iowait",
 )
 
 
@@ -91,6 +92,10 @@ RANGE_METRIC_SPECS: dict[str, dict[str, Any]] = {
     },
     "load5": {
         "query": load5_query(),
+        "fold": RANGE_METRIC_FOLD_IDENTITY,
+    },
+    "iowait": {
+        "query": 'cpu_usage_iowait{cpu="cpu-total",instance_type="os"} or cpu_usage_iowait_total_gauge{instance_type="os"}',
         "fold": RANGE_METRIC_FOLD_IDENTITY,
     },
     "net_in": {
@@ -141,6 +146,14 @@ EMPTY_SNAPSHOT = {
     "max_cpu_host": None,
     "max_memory": None,
     "max_memory_host": None,
+}
+
+EMPTY_HEALTH_SNAPSHOT = {
+    "host_count": 0,
+    "healthy_count": 0,
+    "unhealthy_count": 0,
+    "no_data_count": 0,
+    "healthy_percent": None,
 }
 
 
@@ -514,6 +527,108 @@ class HostResourceSnapshotService:
     def _lookback(self, instances: list[Any]) -> int:
         host_meta = build_host_meta(instances)
         return max(2 * int(meta.get("interval") or DEFAULT_INTERVAL_SECONDS) for meta in host_meta.values())
+
+
+def _unique_host_ids(values: Iterable[Any]) -> list[str]:
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for item in values:
+        token = str(item or "").strip()
+        if not token or token in seen:
+            continue
+        seen.add(token)
+        ordered.append(token)
+    return ordered
+
+
+def reporting_instance_ids(
+    *,
+    host_meta: dict[str, dict[str, Any]],
+    cpu_candidates: list[HostCandidate],
+    memory_candidates: list[HostCandidate],
+    disk_candidates: list[HostCandidate],
+    now: datetime | None = None,
+) -> set[str]:
+    ids: set[str] = set()
+    for candidates in (cpu_candidates, memory_candidates, disk_candidates):
+        for item in normalize_metric_candidates(candidates, host_meta, now=now):
+            meta = host_meta.get(item.instance_id) or {}
+            storage = str(meta.get("storage_id") or item.instance_id)
+            ids.add(storage)
+            ids.add(str(item.instance_id))
+    return ids
+
+
+def build_host_health_snapshot(
+    *,
+    selected_ids: Iterable[str],
+    reporting_ids: Iterable[str],
+    alerting_ids: Iterable[str],
+) -> dict[str, Any]:
+    selected = _unique_host_ids(selected_ids)
+    if not selected:
+        return dict(EMPTY_HEALTH_SNAPSHOT)
+    reporting = set(_unique_host_ids(reporting_ids))
+    alerting = set(_unique_host_ids(alerting_ids))
+    healthy = unhealthy = no_data = 0
+    for host_id in selected:
+        if host_id not in reporting:
+            no_data += 1
+            continue
+        if host_id in alerting:
+            unhealthy += 1
+        else:
+            healthy += 1
+    host_count = len(selected)
+    return {
+        "host_count": host_count,
+        "healthy_count": healthy,
+        "unhealthy_count": unhealthy,
+        "no_data_count": no_data,
+        "healthy_percent": round(100.0 * healthy / host_count, 1),
+    }
+
+
+def empty_host_health_snapshot() -> dict[str, Any]:
+    return dict(EMPTY_HEALTH_SNAPSHOT)
+
+
+class HostHealthSnapshotService:
+    def __init__(self, *, vm_api, now: datetime | None = None):
+        self.snapshot = HostResourceSnapshotService(vm_api=vm_api, now=now)
+
+    def run(self, instances: list[Any], alerting_ids: Iterable[str]) -> dict[str, Any]:
+        counted = [item for item in instances if getattr(item, "id", None)]
+        selected_ids = [str(item.id) for item in counted]
+        if not selected_ids:
+            return empty_host_health_snapshot()
+        host_meta = build_host_meta(counted)
+        lookback = self.snapshot._lookback(counted)
+        now = self.snapshot.now or datetime.now(timezone.utc)
+        reporting = reporting_instance_ids(
+            host_meta=host_meta,
+            cpu_candidates=self.snapshot.top._query("cpu", lookback),
+            memory_candidates=self.snapshot.top._query("memory", lookback),
+            disk_candidates=self.snapshot.top._query("disk", lookback),
+            now=now,
+        )
+        alerting = set(_unique_host_ids(alerting_ids))
+        alerting_storage: set[str] = set()
+        for instance in counted:
+            storage = str(instance.id)
+            parsed = parse_instance_id(storage)
+            aliases = {storage}
+            if parsed:
+                aliases.add(str(parsed[0]))
+            if aliases & alerting:
+                alerting_storage.add(storage)
+            if aliases & reporting:
+                reporting.add(storage)
+        return build_host_health_snapshot(
+            selected_ids=selected_ids,
+            reporting_ids=reporting,
+            alerting_ids=alerting_storage,
+        )
 
 
 class HostResourceTopByTimeService:

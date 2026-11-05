@@ -279,6 +279,7 @@ class LLMSkill(MaintainerInfo):
     is_builtin = models.BooleanField(default=False, verbose_name="是否内置", db_index=True)
     wiki_knowledge_bases = models.ManyToManyField("WikiKnowledgeBase", blank=True, related_name="skills", verbose_name="Wiki知识库")
     force_wiki_grounded = models.BooleanField(default=False, verbose_name="强制知识库回答")
+    allow_wiki_material_write = models.BooleanField(default=False, verbose_name="允许通过对话修改知识库")
     memory_space = models.ForeignKey(
         "MemorySpace",
         on_delete=models.SET_NULL,

@@ -81,6 +81,7 @@ class DistributionFileViewSet(AuthViewSet):
             {
                 "id": distribution_file.id,
                 "name": distribution_file.original_name,
+                "file_key": distribution_file.file_key,
             },
             status=status.HTTP_201_CREATED,
         )

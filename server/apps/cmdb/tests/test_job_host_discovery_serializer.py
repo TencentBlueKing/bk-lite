@@ -60,6 +60,40 @@ def task_serializer(data=None, *, instance=None, team=1):
     return CollectModelSerializer(instance, data=payload, partial=instance is not None, context={"request": request})
 
 
+def test_hyperv_host_discovery_accepts_selected_hosts(catalog):
+    serializer = task_serializer(
+        {
+            "name": "hyperv-host",
+            "model_id": "hyperv_host",
+            "task_type": "vm",
+            "driver_type": "job",
+            "params": {
+                "target_source": "host",
+                "winrm_scheme": "http",
+                "winrm_transport": "ntlm",
+                "winrm_cert_validation": False,
+            },
+        }
+    )
+    assert serializer.is_valid(), serializer.errors
+    assert serializer.validated_data["instances"] == [catalog[HOST_UUID]]
+    assert serializer.validated_data["params"]["target_source"] == "host"
+    assert serializer.validated_data["params"]["winrm_scheme"] == "http"
+
+
+def test_vcenter_does_not_accept_host_discovery(catalog):
+    serializer = task_serializer(
+        {
+            "model_id": "vmware_vc",
+            "task_type": "vm",
+            "driver_type": "protocol",
+            "params": {"target_source": "host"},
+        }
+    )
+    assert not serializer.is_valid()
+    assert "params" in serializer.errors
+
+
 def test_host_discovery_uses_trusted_host_and_access_point_region(catalog):
     serializer = task_serializer()
     assert serializer.is_valid(), serializer.errors

@@ -452,3 +452,39 @@ def test_host_snapshot_failure_logs_failed_stage_without_payload(monkeypatch, ca
     assert sentinel not in str(record.args)
     assert sentinel not in record.getMessage()
     assert sentinel not in caplog.text
+
+
+def test_host_health_snapshot_empty_selection_skips_query(monkeypatch):
+    from apps.monitor.nats import host_health as hh
+
+    class FailVM:
+        def __init__(self):
+            raise AssertionError("empty selection must not query")
+
+    monkeypatch.setattr(hh, "VictoriaMetricsAPI", FailVM)
+    monkeypatch.setattr(
+        nm,
+        "_get_nats_actor_scope",
+        lambda user_info: (_ for _ in ()).throw(AssertionError("empty selection must not resolve scope")),
+    )
+    out = hh.get_host_health_snapshot(instance_ids=[], user_info={"user": "u", "team": 1})
+    assert out["result"] is True
+    assert out["data"]["host_count"] == 0
+    assert out["data"]["healthy_count"] == 0
+
+
+def test_process_health_snapshot_empty_selection_skips_query(monkeypatch):
+    from apps.monitor.nats import process_health as ph
+
+    class FailVM:
+        def __init__(self):
+            raise AssertionError("empty selection must not query")
+
+    monkeypatch.setattr(ph, "VictoriaMetricsAPI", FailVM)
+    monkeypatch.setattr(
+        nm,
+        "_get_nats_actor_scope",
+        lambda user_info: (_ for _ in ()).throw(AssertionError("empty selection must not resolve scope")),
+    )
+    out = ph.get_process_health_snapshot(instance_ids=[], user_info={"user": "u", "team": 1})
+    assert out == {"result": True, "data": [], "message": ""}

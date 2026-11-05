@@ -55,7 +55,7 @@ init-buckets:
 	python manage.py initialize_buckets
 
 celery:
-	uv run celery -A apps.core.celery worker --loglevel=info --pool threads
+	uv run python -m apps.core.celery_runtime.launcher --worker $(POOL)
 
 celery-beat:
 	uv run celery -A apps.core.celery beat --loglevel=info --scheduler django_celery_beat.schedulers:DatabaseScheduler
@@ -70,7 +70,7 @@ devshell:
 	uv run python manage.py shell
 
 test:
-	uv run pytest
+	uv run python -m apps.core.testing_runner
 
 # 只跑某个 app：make test-app APP=cmdb
 test-app:

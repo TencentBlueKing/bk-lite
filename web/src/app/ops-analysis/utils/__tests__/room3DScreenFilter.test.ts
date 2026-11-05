@@ -14,6 +14,7 @@ import {
   relabelBuiltinRoom3DFilter,
   resolveRoom3DCanvasSelection,
   resolveRoomFilterAppliedValue,
+  ROOM_FILTER_PASSTHROUGH,
 } from '../room3DScreenFilter';
 
 const ROOM_A = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
@@ -436,5 +437,15 @@ describe('resolveRoomFilterAppliedValue', () => {
         options,
       ),
     ).not.toBe(ROOM_B);
+  });
+
+  it('does not treat a split server_room_id digest id as the builtin room filter', () => {
+    expect(
+      resolveRoomFilterAppliedValue(
+        { ...definition, id: 'server_room_id__string__abcd1234' },
+        null,
+        options,
+      ),
+    ).toBe(ROOM_FILTER_PASSTHROUGH);
   });
 });

@@ -1,0 +1,13 @@
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+
+ARG RUNTIME_USER
+ARG PYTHON=python3
+USER root
+
+# MLflow 的 Debian 13 镜像：保留 MLflow / Pillow 版本及原启动入口。
+# 构建上下文为仓库根目录，复用 Server 的源码重建步骤。
+COPY server/support-files/release/rebuild_pillow.sh /tmp/bklite-rebuild-pillow.sh
+RUN PYTHON="$PYTHON" sh /tmp/bklite-rebuild-pillow.sh && rm /tmp/bklite-rebuild-pillow.sh
+
+USER ${RUNTIME_USER}

@@ -128,6 +128,13 @@
       "template": "disk_write_latency{instance_type=\"os\", __$labels__} or disk_write_latency_gauge{instance_type=\"os\", __$labels__} or disk_write_latency_gauge_value{instance_type=\"os\", config_type=\"windows_wmi\", __$labels__} or label_replace(win_logicaldisk_write_latency_ms{instance_type=\"os\", instance=~\"[A-Z]:\", __$labels__}, \"name\", \"$1\", \"instance\", \"(.*)\") or ((rate(diskio_write_time{instance_type=\"os\", __$labels__}[__$window__]) / rate(diskio_writes{instance_type=\"os\", __$labels__}[__$window__])) unless on(instance_id, name) label_replace(win_logicaldisk_write_latency_ms{instance_type=\"os\", instance=~\"[A-Z]:\", __$labels__}, \"name\", \"$1\", \"instance\", \"(.*)\")) or (rate(diskio_write_time_ms_gauge{instance_type=\"os\", __$labels__}[__$window__]) / rate(diskio_writes_total_gauge{instance_type=\"os\", __$labels__}[__$window__]))"
     },
     {
+      "id": "dashboard:v1:03b5a7d8",
+      "object_names": [
+        "Postgres"
+      ],
+      "template": "max by (instance_id) (postgresql_recovery_in_recovery{__$labels__})"
+    },
+    {
       "id": "dashboard:v1:03bfc51e",
       "object_names": [
         "Loadbalance",
@@ -170,6 +177,13 @@
         "Mysql"
       ],
       "template": "mysql_open_tables{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:04c477ba",
+      "object_names": [
+        "Postgres"
+      ],
+      "template": "sum by (instance_id, wait_event_type, wait_event) (postgresql_wait_sessions{__$labels__})"
     },
     {
       "id": "dashboard:v1:05108083",
@@ -1356,6 +1370,13 @@
       "template": "rate(redis_keyspace_misses{__$labels__}[__$window__])"
     },
     {
+      "id": "dashboard:v1:2d90d7b9",
+      "object_names": [
+        "Postgres"
+      ],
+      "template": "max by (instance_id, datname, queryid, query_text) (postgresql_statement_calls_total{__$labels__}) and on (instance_id, datname, queryid) topk(20, max by (instance_id, datname, queryid) (postgresql_statement_total_time_seconds{__$labels__}))"
+    },
+    {
       "id": "dashboard:v1:2de6fb29",
       "object_names": [
         "JVM"
@@ -1522,6 +1543,13 @@
         "Cluster"
       ],
       "template": "sum(prometheus_remote_write_container_memory_working_set_bytes{instance_type=\"k8s\", __$labels__})"
+    },
+    {
+      "id": "dashboard:v1:335c766b",
+      "object_names": [
+        "Postgres"
+      ],
+      "template": "topk(20, max by (instance_id, datname, queryid, query_text) (postgresql_statement_total_time_seconds{__$labels__}))"
     },
     {
       "id": "dashboard:v1:3365f98a",
@@ -1871,6 +1899,13 @@
       "template": "zookeeper_ephemerals_count{__$labels__}"
     },
     {
+      "id": "dashboard:v1:3e1af054",
+      "object_names": [
+        "Postgres"
+      ],
+      "template": "max by (instance_id) (postgresql_replication_replication_slots{__$labels__})"
+    },
+    {
       "id": "dashboard:v1:3ed547e5",
       "object_names": [
         "MSSQL"
@@ -1997,6 +2032,13 @@
         "SGLang"
       ],
       "template": "histogram_quantile(0.50, sum by (instance_id, le) (label_replace(rate({__name__=~\"sglang:e2e_request_latency_seconds_[0-9.]+\", __$labels__}[5m]) keep_metric_names, \"le\", \"$1\", \"__name__\", \"sglang:e2e_request_latency_seconds_(.+)\") or label_replace(rate({__name__=\"sglang:e2e_request_latency_seconds_+Inf\", __$labels__}[5m]) keep_metric_names, \"le\", \"+Inf\", \"__name__\", \".*\")))"
+    },
+    {
+      "id": "dashboard:v1:427e9858",
+      "object_names": [
+        "Postgres"
+      ],
+      "template": "max by (instance_id) (postgresql_replication_streaming_replicas{__$labels__})"
     },
     {
       "id": "dashboard:v1:42e2a318",
@@ -2258,6 +2300,13 @@
         "Mysql"
       ],
       "template": "mysql_aborted_connects{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:4b6294d0",
+      "object_names": [
+        "Postgres"
+      ],
+      "template": "sum without (db) (rate(postgresql_blk_write_time{__$labels__}[__$window__]))"
     },
     {
       "id": "dashboard:v1:4b784443",
@@ -3125,6 +3174,13 @@
       "template": "sum(jvm_memorypool_usage_committed_value{__$labels__}) by (instance_id)"
     },
     {
+      "id": "dashboard:v1:6b9472b9",
+      "object_names": [
+        "Postgres"
+      ],
+      "template": "sum by (instance_id, datname, queryid, query_text) (rate(postgresql_statement_total_time_seconds{__$labels__}[__$window__])) and on (instance_id, datname, queryid) topk(20, max by (instance_id, datname, queryid) (postgresql_statement_total_time_seconds{__$labels__}))"
+    },
+    {
       "id": "dashboard:v1:6baa43bf",
       "object_names": [
         "MongoDB"
@@ -3745,6 +3801,13 @@
       "template": "histogram_quantile(0.95, sum by (instance_id, le) (label_replace(rate({__name__=~\"vllm:time_to_first_token_seconds_[0-9.]+\", __$labels__}[5m]) keep_metric_names, \"le\", \"$1\", \"__name__\", \"vllm:time_to_first_token_seconds_(.+)\") or label_replace(rate({__name__=\"vllm:time_to_first_token_seconds_+Inf\", __$labels__}[5m]) keep_metric_names, \"le\", \"+Inf\", \"__name__\", \".*\")))"
     },
     {
+      "id": "dashboard:v1:8271fd11",
+      "object_names": [
+        "Postgres"
+      ],
+      "template": "max by (instance_id, datname, queryid, query_text) (postgresql_statement_rows_total{__$labels__}) and on (instance_id, datname, queryid) topk(20, max by (instance_id, datname, queryid) (postgresql_statement_total_time_seconds{__$labels__}))"
+    },
+    {
       "id": "dashboard:v1:82826b79",
       "object_names": [
         "Firewall"
@@ -4074,6 +4137,13 @@
         "TCPPort"
       ],
       "template": "avg(net_response_result_code{__$labels__} == bool 3) * 100"
+    },
+    {
+      "id": "dashboard:v1:8ef8fb37",
+      "object_names": [
+        "Postgres"
+      ],
+      "template": "max by (instance_id) (postgresql_replication_slot_restart_lag_bytes{__$labels__})"
     },
     {
       "id": "dashboard:v1:8f595b4a",
@@ -5970,11 +6040,25 @@
       "template": "sum by (queue, vhost) (rabbitmq_queue_messages{__$labels__})"
     },
     {
+      "id": "dashboard:v1:d34bbfcf",
+      "object_names": [
+        "Postgres"
+      ],
+      "template": "max by (instance_id) (postgresql_replication_flush_lag_seconds{__$labels__})"
+    },
+    {
       "id": "dashboard:v1:d3677097",
       "object_names": [
         "Redis"
       ],
       "template": "redis_blocked_clients{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:d3d41906",
+      "object_names": [
+        "Postgres"
+      ],
+      "template": "max by (instance_id) (postgresql_replication_write_lag_seconds{__$labels__})"
     },
     {
       "id": "dashboard:v1:d4412920",
@@ -5998,6 +6082,13 @@
       "template": "100 * clamp_min(sum(prometheus_remote_write_kube_deployment_spec_replicas{instance_type=\"k3s\",__$labels__}) - (sum(prometheus_remote_write_kube_deployment_status_replicas_unavailable{instance_type=\"k3s\",__$labels__}) or vector(0)), 0) / clamp_min(sum(prometheus_remote_write_kube_deployment_spec_replicas{instance_type=\"k3s\",__$labels__}),1)"
     },
     {
+      "id": "dashboard:v1:d5909316",
+      "object_names": [
+        "Postgres"
+      ],
+      "template": "max by (instance_id) (postgresql_replication_replay_lag_seconds{__$labels__})"
+    },
+    {
       "id": "dashboard:v1:d5eb0490",
       "object_names": [
         "K3SCluster"
@@ -6017,6 +6108,13 @@
         "VLLM"
       ],
       "template": "histogram_quantile(0.99, sum by (instance_id, le) (label_replace(rate({__name__=~\"vllm:request_prompt_tokens_[0-9.]+\", __$labels__}[5m]) keep_metric_names, \"le\", \"$1\", \"__name__\", \"vllm:request_prompt_tokens_(.+)\") or label_replace(rate({__name__=\"vllm:request_prompt_tokens_+Inf\", __$labels__}[5m]) keep_metric_names, \"le\", \"+Inf\", \"__name__\", \".*\")))"
+    },
+    {
+      "id": "dashboard:v1:d62a4dbd",
+      "object_names": [
+        "Postgres"
+      ],
+      "template": "sum without (db) (increase(postgresql_deadlocks{__$labels__}[__$window__]))"
     },
     {
       "id": "dashboard:v1:d6425958",
@@ -6912,6 +7010,13 @@
         "Firewall"
       ],
       "template": "sum(netflow_in_packets{instance_type='firewall', collect_type='netflow', __$labels__} * label_value(netflow_in_packets{instance_type='firewall', collect_type='netflow', __$labels__}, \"effective_sampling_rate\")) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:f95302dc",
+      "object_names": [
+        "Postgres"
+      ],
+      "template": "sum without (db) (increase(postgresql_conflicts{__$labels__}[__$window__]))"
     },
     {
       "id": "dashboard:v1:f9d16f6f",

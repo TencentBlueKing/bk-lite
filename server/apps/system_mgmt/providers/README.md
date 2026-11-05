@@ -507,6 +507,7 @@ authenticate()
 binding
 redirect_uri
 state
+login_channel   可选，qr 或 oauth。缺省沿用该厂商原有授权地址。
 ```
 
 成功 payload 应包含：

@@ -183,6 +183,9 @@ error:
   notification_delivery_failed: Notification channel delivery failed.
   alert_copy_rejected: The alert center did not accept the event copy.
   vault_secret_key_not_configured: SECRET_KEY is not configured; cannot encrypt or decrypt the vault
+  itsm_system_token_invalid_format: Invalid ITSM system key format
+  itsm_system_token_bound_to_other_system: This key is already bound to another system
+  itsm_system_token_already_exists: ITSM system key already exists
 success:
   menu_group_disabled: Menu group disabled
   batch_create: Batch creation successful

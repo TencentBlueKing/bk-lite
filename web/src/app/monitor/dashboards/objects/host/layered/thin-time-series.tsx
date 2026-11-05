@@ -32,6 +32,11 @@ export interface ThinLegend {
   readingTone?: string;
   /** 参考线：虚线、略细，不盖过主序列。 */
   dashed?: boolean;
+  /**
+   * 双轴卡上这条线自己的单位。缺省跟整张图的 unit。
+   * 只在 independentAxes 时分别格式化左右轴和 tooltip。
+   */
+  unit?: MetricUnit;
 }
 
 interface ThinTimeSeriesProps {
@@ -83,6 +88,8 @@ interface ThinTimeSeriesProps {
    * 刻度线还在。数值有起伏时仍显示刻度。
    */
   hideFlatAxisLabels?: boolean;
+  /** 次数等非负轴下限钉在 0。全 0 仍留出 0 以上的空档，平线抬进图区。 */
+  pinAxisZero?: boolean;
 }
 
 const areaKeys = (data: ChartData[]) => {
@@ -197,22 +204,34 @@ export interface AxisBounds {
 }
 
 /**
- * 最多 4 个刻度。数据离 0 远时不把基线拉回 0，避免把一小段起伏拉成一条贴底的线。
- * 速率，以及样本本身都 ≥ 0 的序列，下限不再垫到负数。全 0 停在 0，不出现 -1。
+ * 最多 4 个刻度。速率（/s、cps、msps、byteps 等）下限钉在 0。
+ * 非速率序列在数据离 0 较远时保持原基线，不把一小段起伏拉成贴底线。
+ * 样本都 ≥ 0 时下限不再垫到负数。全 0 停在 0，不出现 -1。
  */
-export const sparseAxisBounds = (values: number[], unit: MetricUnit = 'none'): AxisBounds | null => {
+export const sparseAxisBounds = (
+  values: number[],
+  unit: MetricUnit = 'none',
+  pinZero = false
+): AxisBounds | null => {
   if (!values.length) return null;
   let lo = Math.min(...values);
   let hi = Math.max(...values);
-  const floorZero = isRateUnit(unit) || values.every((value) => value >= 0);
+  const rate = isRateUnit(unit);
+  const pin = rate || pinZero;
+  const floorZero = pin || values.every((value) => value >= 0);
   if (!(hi > lo)) {
     const pad = Math.abs(lo) > 0 ? Math.abs(lo) * 0.5 : 1;
     lo -= pad;
     hi += pad;
   }
-  if (floorZero) lo = Math.max(0, lo);
+  if (pin) {
+    lo = 0;
+    if (!(hi > lo)) hi = 1;
+  } else if (floorZero) {
+    lo = Math.max(0, lo);
+  }
   const span = hi - lo;
-  if (lo > 0 && lo < span * 0.25) lo = 0;
+  if (!pin && lo > 0 && lo < span * 0.25) lo = 0;
   if (!floorZero && hi < 0 && Math.abs(hi) < span * 0.25) hi = 0;
   const integerCount = INTEGER_COUNT_UNITS.has(unit) && values.every((value) => Number.isInteger(value));
   let interval = niceStep(Math.max(hi - lo, Number.EPSILON), 4);
@@ -241,6 +260,34 @@ const seriesAxisValues = (data: ChartData[], key: string) => {
   });
   return values;
 };
+
+/**
+ * 整段贴在数值轴下限。速率轴把全 0 钉在 0，1.6px 描边和轴线重合，图区像没画。
+ * 略高于下限的平线已经落在轴内，不抬。
+ */
+export const seriesSitsOnAxisFloor = (
+  samples: readonly number[],
+  axisMin: number,
+  axisMax: number
+) => {
+  if (!samples.length || !(axisMax > axisMin)) return false;
+  let lo = samples[0];
+  let hi = samples[0];
+  for (let index = 1; index < samples.length; index += 1) {
+    const value = samples[index];
+    if (value < lo) lo = value;
+    if (value > hi) hi = value;
+  }
+  const slop = Math.max((axisMax - axisMin) * 0.004, 1e-9);
+  return hi <= axisMin + slop && lo >= axisMin - slop;
+};
+
+/** 多条都贴底时错开几像素，颜色还能分开。采样值不动。 */
+const FLOOR_LINE_LIFTS = [-8, -5, -2] as const;
+
+const floorLineLift = (index: number) => (
+  FLOOR_LINE_LIFTS[Math.min(index, FLOOR_LINE_LIFTS.length - 1)]
+);
 
 const shortNumber = (value: number) => {
   if (!Number.isFinite(value)) return '--';
@@ -317,10 +364,14 @@ const snapBounds = (
 };
 
 /** 相邻刻度格式化成同一个字时，把步长加大，避免竖排叠成一串相同数字。 */
-export const readableAxisBounds = (values: number[], unit: MetricUnit = 'none'): AxisBounds | null => {
-  const bounds = sparseAxisBounds(values, unit);
+export const readableAxisBounds = (
+  values: number[],
+  unit: MetricUnit = 'none',
+  pinZero = false
+): AxisBounds | null => {
+  const bounds = sparseAxisBounds(values, unit, pinZero);
   if (!bounds) return null;
-  const floorZero = isRateUnit(unit) || values.every((value) => value >= 0);
+  const floorZero = pinZero || isRateUnit(unit) || values.every((value) => value >= 0);
   const anchorLo = bounds.min;
   const anchorHi = bounds.max;
   let { min, max, interval } = bounds;
@@ -369,7 +420,8 @@ export default function ThinTimeSeries({
   keepLegend = false,
   alertLevel,
   onRetry,
-  hideFlatAxisLabels = false
+  hideFlatAxisLabels = false,
+  pinAxisZero = false
 }: ThinTimeSeriesProps) {
   const proTime = useProTimeWindow();
   const chartWindow = proTime?.window ?? null;
@@ -383,7 +435,7 @@ export default function ThinTimeSeries({
   const mutedColor = theme['--color-text-3'];
   const textColor = theme['--color-text-1'];
   const panelColor = theme['--color-bg'];
-  const legendKey = legends.map((item) => `${item.label}\0${item.title || ''}\0${item.color}\0${item.reading || ''}\0${item.dashed ? '1' : '0'}`).join('\n');
+  const legendKey = legends.map((item) => `${item.label}\0${item.title || ''}\0${item.color}\0${item.reading || ''}\0${item.dashed ? '1' : '0'}\0${item.unit || ''}`).join('\n');
   const legendBoxRef = useRef<HTMLDivElement>(null);
   const legendWidthRef = useRef(0);
   const [legendCompact, setLegendCompact] = useState(false);
@@ -455,11 +507,25 @@ export default function ThinTimeSeries({
     const flatAxis = hideFlatAxisLabels && keys.length === 1 && isFlatSeries(plotted, keys[0]);
     const rateAxis = isRateUnit(unit);
     const useSparse = !flatAxis && (!focusAxis || rateAxis);
-    const layoutOf = (samples: number[]) => (useSparse ? readableAxisBounds(samples, unit) : null);
+    const layoutOf = (samples: number[], axisUnit: MetricUnit) => (
+      useSparse ? readableAxisBounds(samples, axisUnit, pinAxisZero) : null
+    );
     const labeledAxis = !flatAxis && !focusAxis;
     const lockedAxis = valueBounds ? fixedPercentAxis(valueBounds.min, valueBounds.max) : null;
-    const valueAxis = (samples: number[], color: string, showSplit: boolean) => {
-      const bounds = lockedAxis ? null : layoutOf(samples);
+    const unitAt = (index: number): MetricUnit => (
+      splitAxes ? (legends[index]?.unit || unit) : unit
+    );
+    const extentOf = (samples: number[], axisUnit: MetricUnit) => {
+      if (lockedAxis) return { min: lockedAxis.min, max: lockedAxis.max };
+      const bounds = layoutOf(samples, axisUnit);
+      if (!bounds) return null;
+      return { min: bounds.min, max: bounds.max };
+    };
+    const sharedExtent = splitAxes
+      ? null
+      : extentOf(keys.flatMap((key) => seriesAxisValues(plotted, key)), unit);
+    const valueAxis = (samples: number[], color: string, showSplit: boolean, axisUnit: MetricUnit) => {
+      const bounds = lockedAxis ? null : layoutOf(samples, axisUnit);
       const axisMin = lockedAxis?.min ?? bounds?.min ?? 0;
       const axisMax = lockedAxis?.max ?? bounds?.max ?? 0;
       const peak = Math.max(Math.abs(axisMin), Math.abs(axisMax));
@@ -481,7 +547,7 @@ export default function ThinTimeSeries({
           show: !flatAxis,
           formatter: (value: number) => {
             if (focusAxis) return focusAxis.formatTick(Number(value));
-            return formatAxisTick(Number(value), unit, peak);
+            return formatAxisTick(Number(value), axisUnit, peak);
           }
         },
         axisTick: { show: false },
@@ -530,13 +596,14 @@ export default function ThinTimeSeries({
       },
       yAxis: splitAxes
         ? keys.map((key, index) => ({
-          ...valueAxis(seriesAxisValues(plotted, key), seriesColors[index] || mutedColor, index === 0),
+          ...valueAxis(seriesAxisValues(plotted, key), seriesColors[index] || mutedColor, index === 0, unitAt(index)),
           position: index === 0 ? 'left' as const : 'right' as const
         }))
         : valueAxis(
           keys.flatMap((key) => seriesAxisValues(plotted, key)),
           mutedColor,
-          true
+          true,
+          unit
         ),
       tooltip: {
         show: true,
@@ -572,7 +639,8 @@ export default function ThinTimeSeries({
               const raw = Array.isArray(item.value) ? item.value[1] : item.value;
               const name = item.seriesName || '';
               const color = seriesMarkerColor(legends, name, item.seriesIndex, item.color);
-              return `<div style="display:flex;align-items:center;justify-content:space-between;gap:16px"><span style="display:flex;align-items:center;gap:6px"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${color}"></span><span>${name}</span></span><span style="font-variant-numeric:tabular-nums;font-weight:600;color:${color}">${formatTooltipReading(raw, unit)}</span></div>`;
+              const seriesUnit = typeof item.seriesIndex === 'number' ? unitAt(item.seriesIndex) : unit;
+              return `<div style="display:flex;align-items:center;justify-content:space-between;gap:16px"><span style="display:flex;align-items:center;gap:6px"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${color}"></span><span>${name}</span></span><span style="font-variant-numeric:tabular-nums;font-weight:600;color:${color}">${formatTooltipReading(raw, seriesUnit)}</span></div>`;
             })
             .join('');
           return `<div style="min-width:160px"><div style="margin-bottom:6px;color:var(--color-text-3)">${time}</div>${rows}</div>`;
@@ -580,28 +648,47 @@ export default function ThinTimeSeries({
       },
       series: keys.map((key, index) => {
         const color = seriesColors[index];
+        const dashed = Boolean(legends[index]?.dashed);
+        const samples = seriesAxisValues(plotted, key);
+        const extent = splitAxes ? extentOf(samples, unitAt(index)) : sharedExtent;
+        // 贴底描边改成轴线色，彩色影子抬进图区。数值仍是采样本身，不造非零点。
+        const onFloor = Boolean(
+          axisColor
+          && extent
+          && seriesSitsOnAxisFloor(samples, extent.min, extent.max)
+        );
         return {
           type: 'line' as const,
           name: legends[index]?.title || legends[index]?.label || key,
           ...(splitAxes ? { yAxisIndex: index } : {}),
           showSymbol: false,
           symbol: 'none' as const,
-          smooth: 0.15,
+          smooth: onFloor ? 0 : 0.15,
           connectNulls: true,
+          ...(onFloor ? { clip: false as const, z: 8 } : {}),
           itemStyle: { color },
           data: plotted.map((point) => {
             const value = point[key];
             return [point.time, typeof value === 'number' ? value : null];
           }),
-          lineStyle: {
-            width: legends[index]?.dashed ? 1.2 : 1.6,
-            color,
-            type: legends[index]?.dashed ? 'dashed' as const : 'solid' as const
-          }
+          lineStyle: onFloor
+            ? {
+              width: dashed ? 1.2 : 2,
+              color: axisColor,
+              type: dashed ? 'dashed' as const : 'solid' as const,
+              shadowColor: color,
+              shadowBlur: 0,
+              shadowOffsetY: floorLineLift(index)
+            }
+            : {
+              width: dashed ? 1.2 : 1.6,
+              color,
+              type: dashed ? 'dashed' as const : 'solid' as const
+            }
         };
       })
     };
-  }, [axisColor, chartWindow, hideFlatAxisLabels, keepLegend, keys, legendKey, mutedColor, numericAxis, panelColor, plotted, seriesColors, splitAxes, suspend, textColor, unit, valueBounds?.min, valueBounds?.max]);
+  }, [axisColor, chartWindow, hideFlatAxisLabels, keepLegend, keys, legendKey, mutedColor, numericAxis, panelColor, pinAxisZero, plotted, seriesColors, splitAxes, suspend, textColor, unit, valueBounds?.min, valueBounds?.max]);
   const { containerRef } = useECharts(option);
   const drawnSeriesCount = keys.filter((key) => plotted.some((point) => {
     const value = point[key];

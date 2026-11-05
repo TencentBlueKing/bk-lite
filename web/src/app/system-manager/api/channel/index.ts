@@ -6,6 +6,26 @@ export const useChannelApi = () => {
     return await get('/system_mgmt/channel/', { params });
   }
 
+  async function getNotificationTagCatalog() {
+    const pageSize = 500;
+    const rows: Array<{ key: string; value: string }> = [];
+    let page = 1;
+    let count = 0;
+    do {
+      const data = await get('/system_mgmt/channel/tag_catalog/', {
+        params: { page, page_size: pageSize },
+      });
+      const results = Array.isArray(data?.results) ? data.results : [];
+      count = Number(data?.count || 0);
+      rows.push(...results);
+      if (results.length === 0 || rows.length >= count) {
+        break;
+      }
+      page += 1;
+    } while (page <= 1000);
+    return rows;
+  }
+
   async function getChannelDetail(id: string) {
     return await get(`/system_mgmt/channel/${id}`);
   }
@@ -32,6 +52,7 @@ export const useChannelApi = () => {
 
   return {
     getChannelData,
+    getNotificationTagCatalog,
     getChannelDetail,
     addChannel,
     updateChannel,

@@ -17,6 +17,10 @@ class ConductorUnavailable(RuntimeError):
     pass
 
 
+class ConductorRejected(RuntimeError):
+    """Engine clearly rejected the request; safe to mark failed without reconcile-or-restart ambiguity."""
+
+
 class ConductorConflict(RuntimeError):
     pass
 
@@ -27,6 +31,10 @@ class ExecutionStartUnknown(ConductorUnavailable):
     def __init__(self, execution, message: str = "Conductor 启动结果未知，禁止盲重试"):
         self.execution = execution
         super().__init__(message)
+
+
+# 4xx that do not prove the start was never accepted (treat as unavailable / UNKNOWN).
+_AMBIGUOUS_CLIENT_ERRORS = frozenset({408, 429})
 
 
 def workflow_definition_digest(definition: dict[str, Any]) -> str:
@@ -76,8 +84,11 @@ class ConductorClient:
             response.raise_for_status()
             return response
         except httpx.HTTPStatusError as error:
-            if error.response.status_code == 409:
+            status_code = error.response.status_code
+            if status_code == 409:
                 raise ConductorConflict("Conductor 流程版本已存在") from error
+            if 400 <= status_code < 500 and status_code not in _AMBIGUOUS_CLIENT_ERRORS:
+                raise ConductorRejected("Conductor 明确拒绝了请求") from error
             raise ConductorUnavailable("Conductor 服务不可用或拒绝了请求") from error
         except httpx.HTTPError as error:
             raise ConductorUnavailable("Conductor 服务不可用或拒绝了请求") from error

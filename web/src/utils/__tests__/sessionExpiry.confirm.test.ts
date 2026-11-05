@@ -7,6 +7,8 @@ import {
   isSessionExpiryConfirming,
   latchSessionExpired,
   resetSessionExpiredState,
+  shouldHandleSessionExpiry,
+  shouldTriggerSessionExpiry,
 } from '@/utils/sessionExpiry';
 
 afterEach(() => {
@@ -72,5 +74,25 @@ describe('session expiry confirmation', () => {
     expect(isSessionExpiredState()).toBe(false);
 
     window.removeEventListener(SESSION_EXPIRED_EVENT, onExpired);
+  });
+});
+
+describe('session expiry login requests', () => {
+  it('lets the expired-session OTP login through the latch', () => {
+    window.history.pushState({}, '', '/system-manager/user/security-settings');
+
+    expect(shouldHandleSessionExpiry('/api/proxy/core/api/verify_otp_login/')).toBe(false);
+    expect(shouldTriggerSessionExpiry(
+      '/api/proxy/core/api/verify_otp_login/',
+      'test',
+    )).toBe(false);
+    expect(shouldTriggerSessionExpiry(
+      '/api/proxy/core/api/login/',
+      'test',
+    )).toBe(false);
+    expect(shouldTriggerSessionExpiry(
+      '/api/proxy/system-manager/api/user/',
+      'test',
+    )).toBe(true);
   });
 });

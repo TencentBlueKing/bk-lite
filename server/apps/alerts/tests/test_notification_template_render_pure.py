@@ -335,3 +335,53 @@ def test_email_style_accepts_only_level_color_variable():
     assert fallback.value == '<p style="color:#FFAD42;">x</p>'
     with pytest.raises(TemplateValidationError, match="变量只能放在 HTML 文本节点中"):
         render_source('<strong style="color:{{ alert.title }};">{{ alert.level }}</strong>', context, channel_type="email")
+
+
+@pytest.mark.parametrize("prefix", ["https://example.test/alarm?alert_id=", "/alarm/", ""])
+def test_email_href_encodes_dynamic_values_without_changing_text(prefix):
+    from urllib.parse import quote
+
+    from apps.alerts.notification_templates.renderer import render_source
+
+    alert_id = 'A/1?x=2&y=" onclick="bad 中文'
+    result = render_source(
+        f'<a href="{prefix}{{{{ alert.alert_id }}}}">{{{{ alert.alert_id }}}}</a>',
+        {"alert": {"alert_id": alert_id}},
+        channel_type="email",
+    )
+    import html
+
+    assert result.value == f'<a href="{prefix}{quote(alert_id, safe="")}">{html.escape(alert_id, quote=False)}</a>'
+
+
+def test_email_href_keeps_level_color_and_repeated_variables():
+    from apps.alerts.notification_templates.renderer import render_source
+
+    result = render_source(
+        '<p style="color:{{ alert.level_color }}">{{ alert.title }}</p>'
+        '<a href="https://example.test/?id={{ alert.alert_id }}&title={{ alert.title }}">{{ alert.title }}</a>',
+        {"alert": {"level_color": "#FFAD42", "title": "A B", "alert_id": "A&1"}},
+        channel_type="email",
+    )
+    assert "color:#FFAD42" in result.value
+    assert "id=A%261&title=A%20B" in result.value
+    assert ">A B</a>" in result.value
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        '<a href="javascript:{{ alert.alert_id }}">open</a>',
+        '<a href="java{{ alert.alert_id }}script:alert(1)">open</a>',
+        '<a href="{{ alert.alert_id }}:alert(1)">open</a>',
+        '<a href="data:text/html,{{ alert.title }}">open</a>',
+        '<a title="{{ alert.title }}" href="https://example.test">open</a>',
+        '<img src="https://example.test/{{ alert.alert_id }}">',
+        '<a href="https://example.test/{{@ columns=title @}}">open</a>',
+    ],
+)
+def test_email_dynamic_href_preserves_other_safety_restrictions(source):
+    from apps.alerts.notification_templates.renderer import TemplateValidationError, validate_source
+
+    with pytest.raises(TemplateValidationError):
+        validate_source(source, channel_type="email")

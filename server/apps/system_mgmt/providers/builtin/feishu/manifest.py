@@ -184,6 +184,13 @@ PROVIDER_MANIFEST = ProviderManifest.model_validate(
                         "default": "https://open.feishu.cn/open-apis/authen/v1/access_token",
                     },
                     {
+                        "key": "login_auth_jsapi_token_url",
+                        "label": "JSAPI user token URL",
+                        "field_type": "string",
+                        "required": False,
+                        "default": "https://accounts.feishu.cn/oauth/v3/token",
+                    },
+                    {
                         "key": "login_auth_user_info_url",
                         "label": "User info URL",
                         "field_type": "string",

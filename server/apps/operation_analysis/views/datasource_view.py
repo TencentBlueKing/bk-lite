@@ -724,16 +724,6 @@ class DataSourceAPIModelViewSet(AuthViewSet):
         else:
             namespace, path = instance.rest_api.split("/", 1)
 
-        # 演示静态数据源（已注释，仅用于无 NATS 时本地预览组件效果，勿提交启用）：
-        # namespace=="demo" 时短路返回固定数据，无需 NATS。取消下方注释即可恢复。
-        # if namespace == "demo":
-        #     from apps.operation_analysis.common.demo_source import get_demo_source_data
-        #
-        #     demo_data = get_demo_source_data(path, params)
-        #     if demo_data is not None:
-        #         return Response(demo_data)
-        #     return _build_error_response("演示数据源不存在", status.HTTP_404_NOT_FOUND)
-
         param_specs = instance.params if isinstance(instance.params, list) else []
         client = GetNatsData(
             namespace=namespace,
@@ -1209,10 +1199,7 @@ class DataSourceAPIModelViewSet(AuthViewSet):
         return super(DataSourceAPIModelViewSet, self).retrieve(request, *args, **kwargs)
 
     def _list_canvas_referenced_datasources(self, request, raw_ids):
-        from apps.operation_analysis.services.canvas_datasource_lookup import (
-            build_canvas_datasource_payloads,
-            normalize_canvas_datasource_ids,
-        )
+        from apps.operation_analysis.services.canvas_datasource_lookup import build_canvas_datasource_payloads, normalize_canvas_datasource_ids
 
         ordered_ids = normalize_canvas_datasource_ids(raw_ids)
         if not ordered_ids:

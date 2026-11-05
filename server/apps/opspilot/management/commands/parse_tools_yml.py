@@ -163,5 +163,10 @@ class Command(BaseCommand):
                 updated_count += 1
                 self.stdout.write(self.style.WARNING(f"↻ 更新工具集: {toolkit_name} ({toolkit_id})"))
 
+        hidden_names = ToolsLoader.CATALOG_HIDDEN_TOOL_NAMES
+        removed, _details = SkillTools.objects.filter(is_build_in=True, name__in=hidden_names).delete()
+        if removed:
+            self.stdout.write(self.style.WARNING(f"已从工具目录移除 {removed} 个不展示的内置工具"))
+
         # 显示统计信息
         self.stdout.write(self.style.SUCCESS(f"\n完成！创建 {created_count} 个，更新 {updated_count} 个工具集"))

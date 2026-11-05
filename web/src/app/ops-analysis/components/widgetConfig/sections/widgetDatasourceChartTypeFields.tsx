@@ -20,6 +20,7 @@ import {
 import type { ChartTypeItem } from '@/app/ops-analysis/constants/common';
 import type {
   FilterBindings,
+  FilterValue,
   UnifiedFilterDefinition,
 } from '@/app/ops-analysis/types/dashBoard';
 import type { DatasourceItem, InputOption, ParamItem } from '@/app/ops-analysis/types/dataSource';
@@ -76,6 +77,8 @@ interface WidgetDatasourceChartTypeFieldsProps {
   hasUnifiedFilterBindings: boolean;
   previewFilterDefinitions: UnifiedFilterDefinition[];
   filterBindings: FilterBindings;
+  globalFilters?: UnifiedFilterDefinition[];
+  globalFilterValues?: Record<string, FilterValue>;
   chartType: string;
   chartTypes: ChartTypeItem[];
   onFilterBindingsChange: (bindings: FilterBindings) => void;
@@ -174,8 +177,8 @@ export const WidgetQueryFields: React.FC<
   Pick<WidgetDatasourceChartTypeFieldsProps,
     't' | 'selectedDataSource' | 'effectiveDataSource' | 'hasQueryParams' |
     'shouldShowUnifiedFilterSection' | 'hasUnifiedFilterBindings' |
-    'previewFilterDefinitions' | 'filterBindings' | 'onFilterBindingsChange' |
-    'onEditInputConfig' | 'onParamOptionsResolved' | 'children'>
+    'previewFilterDefinitions' | 'filterBindings' | 'globalFilters' | 'globalFilterValues' |
+    'onFilterBindingsChange' | 'onEditInputConfig' | 'onParamOptionsResolved' | 'children'>
 > = ({
   t,
   selectedDataSource,
@@ -185,6 +188,8 @@ export const WidgetQueryFields: React.FC<
   hasUnifiedFilterBindings,
   previewFilterDefinitions,
   filterBindings,
+  globalFilters,
+  globalFilterValues,
   onFilterBindingsChange,
   onEditInputConfig,
   onParamOptionsResolved,
@@ -199,6 +204,9 @@ export const WidgetQueryFields: React.FC<
         <DataSourceParamsConfig
           selectedDataSource={effectiveDataSource}
           includeFilterTypes={['params', 'fixed']}
+          globalFilters={globalFilters}
+          filterBindings={filterBindings}
+          globalFilterValues={globalFilterValues}
           onEditInputConfig={onEditInputConfig}
           onParamOptionsResolved={(param, options) =>
             onParamOptionsResolved(param, options)

@@ -2,6 +2,7 @@ import pytest
 from rest_framework.exceptions import ValidationError
 
 from apps.alerts.aggregation.builder.alert_builder import AlertBuilder
+from apps.alerts.aggregation.core.fingerprint import generate_fingerprint
 from apps.alerts.common.assignment import execute_auto_assignment_for_alerts
 from apps.alerts.common.source_adapter.restful import RestFulAdapter
 from apps.alerts.constants.constants import LevelType
@@ -328,7 +329,7 @@ def test_ingress_enrichment_aggregation_and_dispatch_cover_three_owner_paths(mon
             alerts.append(
                 AlertBuilder.create_or_update_alert(
                     {
-                        "fingerprint": f"fp-{event.event_id}",
+                        "fingerprint": generate_fingerprint({"event_id": str(event.event_id)}),
                         "event_ids": [event.event_id],
                         "alert_level": "1",
                         "alert_title": event.title,

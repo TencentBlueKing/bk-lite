@@ -247,7 +247,7 @@
         "normalGroup": "普通组织",
         "syncedGroup": "同步组织",
         "virtualGroup": "虚拟组织",
-        "noDataRules": "暂无数据权限",
+        "noDataRules": "未配置数据权限规则，默认全权限",
         "roleName": "角色名称",
         "roleSource": "来源",
         "directGrant": "直接授予",
@@ -1244,12 +1244,15 @@
         "subjectKeyPattern": "仅允许字母、数字、连字符（-）和下划线（_）",
         "subjectKeyPlaceholder": "例如 customer-alerts-prod",
         "natsModeRequestReply": "发送到内部服务",
-        "natsModeEventPublish": "发布给外部订阅方"
+        "natsModeEventPublish": "发布给外部订阅方",
+        "tag": "标签",
+        "tagFormatError": "标签的键和值不能包含冒号、空格、换行或逗号，且各不超过 64 个字符"
       },
       "table": {
         "description": "描述",
         "name": "名称",
-        "type": "类型"
+        "type": "类型",
+        "tag": "标签"
       },
       "emailDesc": "电子邮件渠道支持通过SMTP服务发送邮件通知。",
       "template": {

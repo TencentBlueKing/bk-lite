@@ -2,8 +2,8 @@
 
 ## 海外漏扫报告：OpenSSL、Log4j 与系统 Python 工具
 
-Fusion 执行器 OpenSSL 1.1.1k 的发行重建由社区 PR #6862 处理（固定 OpenSSL 3.5.9，
-并通过 `--verify-release` 校验最终冻结程序）。最终发行 Dockerfile 也必须运行该校验；
+Fusion 执行器 OpenSSL 1.1.1k 的升级构建由 PR #6862 提供（固定 OpenSSL 3.5.9），
+需要重新构建并分发完整执行器制品。镜像构建不再调用额外的执行器校验参数；
 仅更新宿主机 OpenSSL 或 Fusion 的 Ubuntu 系统包不能替换 `_internal` 中的库。
 
 报告中的 Conductor 3.32.1 携带 Log4j 2.25.4，Elasticsearch 7.17.21 携带 2.17.1。
@@ -61,6 +61,55 @@ docker build --pull --no-cache --platform linux/amd64 \
 - 第三方镜像没有位于本仓库的应用构建源码，使用下述派生镜像入口，
   交付流水线及部署清单必须切换到派生镜像的新版本后才算完成修复。
 - Fusion 执行器内置 OpenSSL 由 PR #6862 单独处理；系统 Brotli 更新不能替代该修复。
+
+## 补齐 Pillow 内置库与存量镜像
+
+系统 `libbrotli1` 修复不覆盖 Pillow 预编译 wheel 自带的 `pillow.libs`。
+Server 的发行构建现在会保留 `pyproject.toml` 中的 Pillow 版本，从源码重新安装，
+链接发行版 FreeType / Brotli；不再使用 PyPI wheel 内置的 Brotli。
+该步骤仅发生在镜像构建期，不增加启动检查、校验器或 Jenkins 门禁。
+安装图像、字体和排版的编译依赖，以保留 JPEG、PNG、TIFF、WebP、JPEG 2000、
+AVIF 和 Raqm 字体排版能力。当前入口面向 Debian 13 / Python 3.12 镜像。
+构建需要可访问 Debian 和 Python 软件源；离线客户接收构建好的镜像，不能在客户容器中联网安装。
+
+| 服务 | 本次补齐 / 使用方式 |
+|---|---|
+| Server | 原有发行 Dockerfile 自动源码重建 Pillow，需重新出包、替换容器 |
+| MLflow | 新增 `Dockerfile.mlflow`，同时更新系统 Brotli、源码重建当前 Pillow |
+| Conductor | 原有 `Dockerfile.conductor` 同时更新系统 Brotli 和 Log4j |
+| Webhookd | 原有 `agents/webhookd/Dockerfile` 已更新系统 Brotli，需重新出包、替换旧容器 |
+| FalkorDB | 沿用 `Dockerfile.falkordb`，同时更新原 Node 主版本及系统 Brotli；生产和开发镜像分别构建 |
+
+MLflow 补丁镜像的构建上下文与其他补丁入口不同，使用**仓库根目录**：
+
+```sh
+BASE_IMAGE='MLflow 当前镜像@sha256:实际摘要'
+CANDIDATE_IMAGE='本地候选镜像:新的修复标签'
+docker pull "$BASE_IMAGE"
+RUNTIME_USER=$(docker image inspect --format '{{.Config.User}}' "$BASE_IMAGE")
+docker build --pull --no-cache \
+  --build-arg BASE_IMAGE="$BASE_IMAGE" --build-arg RUNTIME_USER="${RUNTIME_USER:-0}" \
+  -f deploy/security/Dockerfile.mlflow -t "$CANDIDATE_IMAGE" .
+# 若应用使用独立虚拟环境，另传 --build-arg PYTHON=/实际虚拟环境/bin/python。
+docker save -o mlflow-patched.tar "$CANDIDATE_IMAGE"
+```
+
+离线环境导入 `docker load -i mlflow-patched.tar`，在原有 Compose 配置中替换对应服务的
+镜像标签，再按原配置重建该服务，保留现有卷和环境变量。回滚时切回原镜像标签。
+Conductor、Webhookd 和 FalkorDB 同样需要交付各自新镜像；仅更新 Server 不会修复其他容器。
+
+独立产物回归测试（不接入 Jenkins / 发布链路）位于
+`deploy/security/tests/integration/test_pillow_runtime.py`。在包含测试文件及
+DejaVu Sans 字体的候选镜像内，使用应用实际 Python 执行，例如：
+
+```sh
+PILLOW_EXPECTED_VERSION=11.3.0 python3 deploy/security/tests/integration/test_pillow_runtime.py
+# MLflow 对应截图环境设 PILLOW_EXPECTED_VERSION=12.1.1。
+```
+
+发布前在候选镜像中确认 Pillow 版本保持不变、`_imagingft` 经 FreeType 链接系统
+`libbrotlidec.so.1`，且不再引用 `pillow.libs` 中的 Brotli；同时验证图像读写、中文字体绘制、
+MLflow 实验与产物读写。检查实际运行进程时应使用同一 Python 环境，重新创建进程后再复核。
 
 ## 补丁基线
 
@@ -149,7 +198,7 @@ FalkorDB 检测到的 Node.js 24.14.0 不会因更新 libbrotli 而自动修复�
 - `LICENSE_IMAGE` 必须由授权服务仓库重建并提供安全镜像摘要。这个门禁检查 Node
   22/24 安全版本，不会把当前 22.23.3 自动变成安全版；未取得镜像时不能宣布全部覆盖。
 - `FUSION_IMAGE` 为重新构建的最终发行镜像，检查系统 libbrotli。OpenSSL
-  仍须由 #6862 的执行器发行验证保证，本 Brotli 门禁不代替 OpenSSL 检查。
+  升级仍需通过 #6862 的专用构建入口重新生成执行器，本 Brotli 门禁不代替 OpenSSL 修复。
 - Web、Server、Stargazer 沿用原构建阶段，部署清单同时锁定它们的实际修复镜像。
   推送在全部候选门禁通过后接入原凭据流程；推送后读取对应仓库 RepoDigest，禁止
   仅凭本地 image ID 或可变标签填写下方清单。

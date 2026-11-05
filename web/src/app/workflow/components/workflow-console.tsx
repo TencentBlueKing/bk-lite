@@ -9,7 +9,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import OperateModal from '@/components/operate-modal';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
-import useApiClient from '@/utils/request';
+import useApiClient, { HandledRequestError } from '@/utils/request';
 import { useTranslation } from '@/utils/i18n';
 import { WorkflowCanvasEdge } from './workflow-canvas-edge';
 import { defaultNodeInputValues, SchemaNodeField, SchemaNodeForm } from './schema-node-form';
@@ -19,6 +19,7 @@ import { AtomIcon } from './atom-icon';
 import { FormSchemaEditor } from './form-schema-editor';
 import { DocumentRenderForm } from './document-render-form';
 import { FileSampleLinks } from './file-sample-links';
+import { FileDistributeForm } from './file-distribute-form';
 import { JobExecuteForm } from './job-execute-form';
 import { JobTargetSelectionDialog } from './job-target-selection-dialog';
 import { WORKFLOW_OVERLAY_MODAL_Z_INDEX } from './workflow-launch-dialog';
@@ -38,6 +39,7 @@ import { jobTargetOperatingSystems } from '../lib/job-target-operating-systems';
 import { buildNodeTestInputContract, materializeNodeTestInputs } from '../lib/node-test-input-contract';
 import type { AtomCatalogItem, ConductorDefinition, ConductorTask, ExecutionRecord, JsonSchema, PaginatedResponse, WorkflowRecord, WorkflowTriggerType, WorkflowVersionRecord } from '../lib/types';
 import { useAutoRequest, useRequestCoordinator } from '../lib/use-request-coordinator';
+import { buildNatsAlertEnvelopeSchema } from '../lib/nats-trigger-schema';
 import { createUnsavedWorkflowDraft } from '../lib/workflow-draft';
 import { WorkflowPermission, type WorkflowPermissionArea } from './workflow-permission';
 import { AtomConfigTemplateActions } from './atom-config-template-actions';
@@ -593,7 +595,19 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
     if (!definition) return;
     const existing = workflowTriggerNodes(metadata);
     const id = uniqueId(`trigger_${type.toLowerCase()}`, new Set([...existing.map((item) => item.id), ...tasks.map((item) => item.taskReferenceName)]));
-    const item: WorkflowTriggerNode = { id, name: triggerLabels[type], trigger_type: type, input_schema: type === 'NATS' ? { type: 'object', properties: {}, required: [], additionalProperties: true } : type === 'SCHEDULE' ? scheduleOutputSchema : type === 'WEBHOOK' ? webhookInputSchema : { type: 'object', properties: {}, required: [], additionalProperties: false }, config: type === 'SCHEDULE' ? { frequency: 'daily', time: ['02:00'] } : type === 'WEBHOOK' ? { response_mode: 'IMMEDIATE' } : {} };
+    const item: WorkflowTriggerNode = {
+      id,
+      name: triggerLabels[type],
+      trigger_type: type,
+      input_schema: type === 'NATS'
+        ? buildNatsAlertEnvelopeSchema()
+        : type === 'SCHEDULE'
+          ? scheduleOutputSchema
+          : type === 'WEBHOOK'
+            ? webhookInputSchema
+            : { type: 'object', properties: {}, required: [], additionalProperties: false },
+      config: type === 'SCHEDULE' ? { frequency: 'daily', time: ['02:00'] } : type === 'WEBHOOK' ? { response_mode: 'IMMEDIATE' } : {},
+    };
     addNodeToCanvas(id, definition, { ...snapshotMetadata(), trigger_nodes: [...existing, item] });
   };
 
@@ -1107,34 +1121,106 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
       const persisted = workflow.id
         ? workflow
         : await post<WorkflowRecord>(`${API}/workflows/`, { name: workflow.name.trim(), description: workflow.description, definition, canvas_metadata: canvasMetadata, starter: 'blank' });
-      const published = await post<WorkflowRecord>(`${API}/workflows/${persisted.id}/publish/`, { name: persisted.name, description: persisted.description, definition, canvas_metadata: canvasMetadata, draft_revision: persisted.draft_revision });
+      const published = await post<WorkflowRecord>(
+        `${API}/workflows/${persisted.id}/publish/`,
+        { name: persisted.name, description: persisted.description, definition, canvas_metadata: canvasMetadata, draft_revision: persisted.draft_revision },
+        { suppressErrorNotification: true },
+      );
       setWorkflow(published); setDefinition(published.definition); setMetadata(published.canvas_metadata as WorkflowCanvasMetadata); setDirty(false);
       if (!workflow.id) router.replace(`/workflow/workflows/${published.id}?mode=edit`);
       message.success(t('workflowOrchestration.editor.publishedAndEnabled', 'v{version} 已发布并启用', { version: published.current_version }));
+    } catch (error) {
+      if (error instanceof HandledRequestError) {
+        const hintByCode: Record<string, { id: string; defaultMessage: string }> = {
+          DRAFT_REVISION_CONFLICT: {
+            id: 'workflowOrchestration.editor.publishDraftConflictHint',
+            defaultMessage: '草稿已被更新。请重新载入后再发布，避免覆盖他人修改。',
+          },
+          PUBLISH_VERSION_CONFLICT: {
+            id: 'workflowOrchestration.editor.publishVersionConflictHint',
+            defaultMessage: '版本号已被并发发布占用。请刷新后重试。',
+          },
+          ENGINE_DEFINITION_CONFLICT: {
+            id: 'workflowOrchestration.editor.publishEngineConflictHint',
+            defaultMessage: '远端定义与本次内容冲突。请刷新核对是否上次发布未完成落库，不要强行覆盖。',
+          },
+        };
+        const hint = error.code ? hintByCode[error.code] : undefined;
+        if (hint) {
+          message.error(`${error.message} ${t(hint.id, hint.defaultMessage)}`);
+        } else if (error.status === 503) {
+          message.error(
+            t(
+              'workflowOrchestration.editor.publishUnavailableHint',
+              '发布服务暂时不可用。请稍后重试；不要假定本地已发布成功。',
+            ),
+          );
+        } else {
+          message.error(error.message);
+        }
+      } else {
+        message.error(error instanceof Error ? error.message : t('common.failed', '操作失败'));
+      }
     } finally { setPendingAction(null); }
   };
 
-  const debug = async (persistedWorkflowId = workflow?.id) => {
-    if (!persistedWorkflowId || !definition || !debugTrigger) return;
-    const missing = missingRequiredFields(debugTrigger.input_schema, debugInputs);
-    if (missing.length) {
-      message.warning(t('workflowOrchestration.form.completeRequired', '请完成必填字段：{fields}', {
-        fields: missing.map((key) => debugTrigger.input_schema.properties?.[key]?.title || key).join('、'),
-      }));
-      return;
+  const buildScheduleDebugInputs = async (trigger: WorkflowTriggerNode) => {
+    const result = await post<SchedulePreview>(`${API}/triggers/schedule-preview/`, {
+      config: normalizeScheduleConfig(trigger.config || {}),
+      count: 6,
+    });
+    return result.test_output;
+  };
+
+  const debug = async (
+    persistedWorkflowId = workflow?.id,
+    options?: { trigger?: WorkflowTriggerNode; inputs?: Record<string, unknown> },
+  ) => {
+    const trigger = options?.trigger || debugTrigger;
+    if (!persistedWorkflowId || !definition || !trigger) return;
+    let inputs = options?.inputs;
+    if (trigger.trigger_type === 'SCHEDULE') {
+      try {
+        inputs = inputs ?? await buildScheduleDebugInputs(trigger);
+      } catch (error) {
+        message.error(error instanceof Error ? error.message : t('workflowOrchestration.editor.scheduleTestFailed', '定时触发测试失败'));
+        return;
+      }
+    } else {
+      inputs = inputs ?? debugInputs;
+      const missing = missingRequiredFields(trigger.input_schema, inputs);
+      if (missing.length) {
+        message.warning(t('workflowOrchestration.form.completeRequired', '请完成必填字段：{fields}', {
+          fields: missing.map((key) => trigger.input_schema.properties?.[key]?.title || key).join('、'),
+        }));
+        return;
+      }
     }
-    const execution = await post<ExecutionRecord>(`${API}/workflows/${persistedWorkflowId}/debug/`, { inputs: debugInputs, trigger_id: debugTrigger.id, definition, canvas_metadata: snapshotMetadata() });
-    setDebugExecution(execution); setDebugOpen(false); message.success(t('workflowOrchestration.editor.debugStartedFromSnapshot', '已使用当前未保存快照启动调试'));
+    const execution = await post<ExecutionRecord>(`${API}/workflows/${persistedWorkflowId}/debug/`, {
+      inputs,
+      trigger_id: trigger.id,
+      definition,
+      canvas_metadata: snapshotMetadata(),
+    });
+    setDebugExecution(execution);
+    setDebugOpen(false);
+    message.success(t('workflowOrchestration.editor.debugStartedFromSnapshot', '已使用当前未保存快照启动调试'));
   };
 
   const openDebugDialog = () => {
-    const preferred = workflowTriggerNodes(metadata).find((item) => item.trigger_type === 'FORM') || workflowTriggerNodes(metadata)[0];
+    const triggers = workflowTriggerNodes(metadata);
+    const preferred = triggers.find((item) => item.trigger_type === 'FORM') || triggers[0];
     if (!preferred) {
       message.warning(t('workflowOrchestration.editor.noTriggerForDebug', '请先添加触发器再调试流程'));
       return;
     }
-    withPersistedDraft(() => {
+    withPersistedDraft((savedWorkflowId) => {
       setDebugTriggerId(preferred.id);
+      // 单一定时入口：与「执行节点」同手感，跳过调试表单直接开跑
+      if (triggers.length === 1 && preferred.trigger_type === 'SCHEDULE') {
+        void debug(savedWorkflowId, { trigger: preferred });
+        return;
+      }
       const cached = metadata.node_test_data?.[preferred.id];
       setDebugInputs(cached && typeof cached === 'object' && !Array.isArray(cached)
         ? cached as Record<string, unknown>
@@ -1411,7 +1497,7 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
               preview={schedulePreview}
               previewBusy={schedulePreviewBusy}
               previewError={schedulePreviewError}
-              onChange={(config) => changeTrigger({ config, input_schema: scheduleOutputSchema })}
+              onChange={(config) => changeTrigger({ config })}
             />}
             {selectedTrigger.trigger_type === 'WEBHOOK' && <>
               <WebhookTriggerPanel
@@ -1431,7 +1517,7 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
                     { value: 'IMMEDIATE', label: t('workflowOrchestration.editor.immediateResponse', '立即响应（返回 execution_id）') },
                     { value: 'WAIT', label: t('workflowOrchestration.editor.waitWebhookReturn', '等待流程结果（同步）') },
                   ]}
-                  onChange={(value) => changeTrigger({ config: { ...selectedTrigger.config, response_mode: value }, input_schema: webhookInputSchema })}
+                  onChange={(value) => changeTrigger({ config: { ...selectedTrigger.config, response_mode: value } })}
                 />
               </Form.Item>
             </>}
@@ -1482,29 +1568,47 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
                   onChange={changeTaskInputs}
                   onNodeTitleChange={changeTaskTitle}
                 />
-                : OPSPILOT_ATOM_KEYS.has(selectedTask.name)
-                  ? <OpsPilotAtomForm
-                    atomKey={selectedTask.name}
+                : selectedTask.name === 'bklite_file_distribute'
+                  ? <FileDistributeForm
+                    key={selectedTask.taskReferenceName}
                     schema={selectedAtom?.input_schema}
                     value={selectedTask.inputParameters || {}}
                     references={references}
-                    workflowId={workflow.id || null}
                     nodeTitle={resolveEditableNodeTitle(selectedAtom?.name || selectedTask.name)}
                     readOnly={readOnly}
+                    targetRecords={jobTargetRecords}
+                    fieldActions={readOnly ? {} : {
+                      targets: <WorkflowPermission operation="Edit" instancePermissions={workflow.permission}><Button onClick={() => {
+                        setJobTargetSelectorPurpose('params');
+                        setJobTargetSelectorOpen(true);
+                      }}>{t('workflowOrchestration.launch.selectTarget', '选择主机')}</Button></WorkflowPermission>,
+                    }}
                     onChange={changeTaskInputs}
                     onNodeTitleChange={changeTaskTitle}
                   />
-                  : <SchemaNodeForm
-                    schema={selectedAtom?.input_schema}
-                    uiSchema={selectedAtom?.ui_schema}
-                    value={selectedTask.inputParameters || {}}
-                    references={references}
-                    atomKey={selectedTask.name}
-                    nodeTitle={resolveEditableNodeTitle(selectedAtom?.name || selectedTask.name)}
-                    readOnly={readOnly}
-                    onChange={changeTaskInputs}
-                    onNodeTitleChange={changeTaskTitle}
-                  />)}
+                  : OPSPILOT_ATOM_KEYS.has(selectedTask.name)
+                    ? <OpsPilotAtomForm
+                      atomKey={selectedTask.name}
+                      schema={selectedAtom?.input_schema}
+                      value={selectedTask.inputParameters || {}}
+                      references={references}
+                      workflowId={workflow.id || null}
+                      nodeTitle={resolveEditableNodeTitle(selectedAtom?.name || selectedTask.name)}
+                      readOnly={readOnly}
+                      onChange={changeTaskInputs}
+                      onNodeTitleChange={changeTaskTitle}
+                    />
+                    : <SchemaNodeForm
+                      schema={selectedAtom?.input_schema}
+                      uiSchema={selectedAtom?.ui_schema}
+                      value={selectedTask.inputParameters || {}}
+                      references={references}
+                      atomKey={selectedTask.name}
+                      nodeTitle={resolveEditableNodeTitle(selectedAtom?.name || selectedTask.name)}
+                      readOnly={readOnly}
+                      onChange={changeTaskInputs}
+                      onNodeTitleChange={changeTaskTitle}
+                    />)}
             {selectedCondition && <ConditionEditor
               value={selectedCondition}
               references={references}
@@ -1663,7 +1767,7 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
       </Form> : null}
       {inspectorTestTrigger
         ? Object.keys(nodeTestInputContract.schema.properties || {}).length
-          ? selectedTask?.name === 'bklite_job_execute' && jobTestTargetsField
+          ? (selectedTask?.name === 'bklite_job_execute' || selectedTask?.name === 'bklite_file_distribute') && jobTestTargetsField
             ? <Form layout="vertical" className="flex flex-col gap-4">
               <Form.Item className="mb-0" label={t('workflowOrchestration.editor.targetHosts', '目标主机')} required>
                 <WorkflowPermission operation="Execute" instancePermissions={workflow.permission} className="block w-full"><button
@@ -1749,7 +1853,11 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
         setDebugTriggerId(id);
         setDebugInputs(trigger ? defaultTriggerRuntimeInputs(trigger.input_schema) : {});
       }} /></Form.Item></Form> : null}
-      {debugTrigger && workflow.id ? <WorkflowTriggerRuntimeForm workflowId={workflow.id} schema={debugTrigger.input_schema} value={debugInputs} onChange={setDebugInputs} /> : <Empty description={t('workflowOrchestration.editor.noTriggers', '当前流程没有触发器')} />}
+      {debugTrigger && workflow.id
+        ? debugTrigger.trigger_type === 'SCHEDULE'
+          ? null
+          : <WorkflowTriggerRuntimeForm workflowId={workflow.id} schema={debugTrigger.input_schema} value={debugInputs} onChange={setDebugInputs} />
+        : <Empty description={t('workflowOrchestration.editor.noTriggers', '当前流程没有触发器')} />}
     </OperateModal>
     {atomDetail ? (
       <OperateModal

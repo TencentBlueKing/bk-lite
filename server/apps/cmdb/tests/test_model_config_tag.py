@@ -3,9 +3,10 @@ CMDB model_config.xlsx 默认 tag 字段回归测试
 
 业务背景:
 - 4 大目标分类(应用主机/中间件/数据库/物理设备)下的内置模型应统一开启 tag 标签属性
-- 184 个新加 tag 模型:attr_type='tag', option 含 mode=free, attr_group='基本信息',
+- 192 个 tag 模型:attr_type='tag', option 含 mode=free, attr_group='基本信息',
   is_required=False, editable=True, is_only=False
-- 14 个已有 tag 模型(qcloud_*/azure_* 14 个云资源):保持 attr_type='str',不迁移
+- 6 个 Azure 已有 tag 模型保持 attr_type='str'
+- 腾讯云相关内置模型统一为 attr_type='tag' 且 mode=free
 """
 import json
 import os
@@ -42,17 +43,9 @@ TARGET_CLASSIFICATION_IDS = frozenset(
     }
 )
 
-# 已存在 attr_id='tag' 的 14 个模型(保持 attr_type='str',不迁移)
-PRE_EXISTING_TAG_MODELS = frozenset(
+# Azure 上已有的字符串 tag，本次不改类型。
+AZURE_STR_TAG_MODELS = frozenset(
     {
-        "qcloud_mongodb",
-        "qcloud_pgsql",
-        "qcloud_plusar_cluster",
-        "qcloud_cmq",
-        "qcloud_cmq_topic",
-        "qcloud_clb",
-        "qcloud_eip",
-        "qcloud_filesystem",
         "azure_vm",
         "azure_redis",
         "azure_mysql",
@@ -125,15 +118,15 @@ def test_target_models_have_attr_sheets_with_tag_attribute():
 @pytest.mark.unit
 def test_new_tag_attributes_use_tag_type_and_free_mode():
     """
-    184 个新加 tag 模型:
+    192 个 tag 模型（含从 str 迁来的腾讯云模型）:
     - attr_type='tag'(专用类型,非 str)
     - option 含 mode=free
     - attr_group='基本信息'
     """
     sheets = _load_sheets()
     target_models = _list_target_models(sheets)
-    new_models = [m for m in target_models if m not in PRE_EXISTING_TAG_MODELS]
-    assert len(new_models) == 184, f"应为 184 个新加 tag 模型,实际 {len(new_models)}"
+    new_models = [m for m in target_models if m not in AZURE_STR_TAG_MODELS]
+    assert len(new_models) == 192, f"应为 192 个 tag 模型,实际 {len(new_models)}"
 
     wrong_type = []
     wrong_group = []
@@ -167,14 +160,11 @@ def test_new_tag_attributes_use_tag_type_and_free_mode():
 
 @pytest.mark.unit
 def test_pre_existing_tag_models_keep_str_type():
-    """
-    14 个已有 tag 模型保持 attr_type='str' —— 不批量迁移,
-    避免影响已上线实例(可能存在非 key:value 格式数据)。
-    """
+    """Azure 上原本的字符串 tag 保持 attr_type='str'。"""
     sheets = _load_sheets()
     violations = []
 
-    for model_id in PRE_EXISTING_TAG_MODELS:
+    for model_id in AZURE_STR_TAG_MODELS:
         sheet_name = f"attr-{model_id}"
         df = sheets.get(sheet_name)
         if df is None:
@@ -187,14 +177,59 @@ def test_pre_existing_tag_models_keep_str_type():
         if str(tag_row.iloc[0]["attr_type"]) != "str":
             violations.append((sheet_name, "attr_type changed"))
 
-    assert not violations, f"14 个已有 tag 模型应保持 str 类型: {violations}"
+    assert not violations, f"Azure 已有 tag 模型应保持 str 类型: {violations}"
+
+
+@pytest.mark.unit
+def test_qcloud_builtin_models_use_free_tag_type():
+    """腾讯云内置模型的 tag 一律是 tag + free，包括原先 attr_type=str 的 8 个。"""
+    sheets = _load_sheets()
+    df = sheets["models"]
+    model_ids = []
+    seen = set()
+    for model_id, classification_id in zip(df["model_id"], df["classification_id"]):
+        model_id = str(model_id)
+        if model_id in seen:
+            continue
+        if classification_id == "qcloud" or model_id.startswith("qcloud"):
+            seen.add(model_id)
+            model_ids.append(model_id)
+    assert {
+        "qcloud_mongodb",
+        "qcloud_pgsql",
+        "qcloud_plusar_cluster",
+        "qcloud_cmq",
+        "qcloud_cmq_topic",
+        "qcloud_clb",
+        "qcloud_eip",
+        "qcloud_filesystem",
+    } <= set(model_ids)
+
+    violations = []
+    for model_id in model_ids:
+        attr_df = sheets.get(f"attr-{model_id}")
+        if attr_df is None:
+            violations.append((model_id, "missing sheet"))
+            continue
+        tag_row = attr_df[attr_df["attr_id"].astype(str) == "tag"]
+        if tag_row.empty:
+            violations.append((model_id, "no tag attr"))
+            continue
+        row = tag_row.iloc[0]
+        if str(row["attr_type"]) != "tag":
+            violations.append((model_id, row["attr_type"]))
+            continue
+        option = json.loads(str(row["option"]).replace("'", '"'))
+        if option.get("mode") != "free":
+            violations.append((model_id, option))
+    assert not violations, violations
 
 
 @pytest.mark.unit
 def test_new_tag_attributes_are_optional_and_editable():
     """新增 tag 应可填可不填、可编辑,不会强制用户输入"""
     sheets = _load_sheets()
-    new_models = [m for m in _list_target_models(sheets) if m not in PRE_EXISTING_TAG_MODELS]
+    new_models = [m for m in _list_target_models(sheets) if m not in AZURE_STR_TAG_MODELS]
 
     violations = []
     for model_id in new_models:
@@ -223,7 +258,7 @@ def test_tag_attribute_positioned_in_basic_info_group_end():
     这是用户确认的插入位置策略。
     """
     sheets = _load_sheets()
-    new_models = [m for m in _list_target_models(sheets) if m not in PRE_EXISTING_TAG_MODELS]
+    new_models = [m for m in _list_target_models(sheets) if m not in AZURE_STR_TAG_MODELS]
 
     misplaced = []
     for model_id in new_models[:30]:  # 抽样前 30 个 sheet 验证

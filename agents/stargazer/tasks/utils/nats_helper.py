@@ -19,6 +19,7 @@ from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 from contextvars import ContextVar
 from typing import Any, Dict, Iterable, Iterator
+from urllib.parse import quote
 
 from core.collection.contracts import StructuredMetricsPayload
 from core.collection.host_proc_influx import host_proc_line
@@ -731,7 +732,18 @@ def _iter_structured_metrics_to_influx(payload: StructuredMetricsPayload, params
             _check_encode_cancelled()
             if not isinstance(item, dict):
                 continue
-            labels = {str(key): value for key, value in item.items() if value is not None and value != "" and not isinstance(value, (list, dict))}
+            labels = {}
+            for key, value in item.items():
+                if key == "tag" and isinstance(value, list) and all(isinstance(part, str) for part in value):
+                    items = [part.strip() for part in value if part.strip()]
+                    if items:
+                        labels["tag"] = quote(
+                            json.dumps(items, ensure_ascii=False, separators=(",", ":")),
+                            safe="",
+                        )
+                    continue
+                if value is not None and value != "" and not isinstance(value, (list, dict)):
+                    labels[str(key)] = value
             labels["model_id"] = str(model_id)
             labels.update(common_tags)
             if str(model_id) == "host_proc_usage":

@@ -16,6 +16,16 @@ def test_prepare_windows_script_bytes_rejects_over_512_kib():
         prepare_windows_script_bytes("x" * (512 * 1024 + 1), "python")
 
 
+def test_prepare_windows_script_bytes_prepends_utf8_console_bootstrap_for_powershell():
+    raw = prepare_windows_script_bytes("Write-Output '距上次补丁天数'", "powershell")
+    assert raw.startswith(b"\xef\xbb\xbf")
+    text = raw.decode("utf-8-sig")
+    assert "Encoding]::UTF8" in text
+    assert "$OutputEncoding" in text
+    assert text.index("$OutputEncoding") < text.index("距上次补丁天数")
+    assert prepare_windows_script_bytes("print(1)\n", "python") == b"print(1)\n"
+
+
 def test_connection_options_map_winrm_credentials():
     options = connection_options(
         {

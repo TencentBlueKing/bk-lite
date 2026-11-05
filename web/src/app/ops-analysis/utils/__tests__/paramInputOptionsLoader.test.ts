@@ -164,6 +164,39 @@ describe('paramInputOptionsLoader runtime errors', () => {
     assert.equal(getSourceDataByApiId.mock.calls[0]?.[0], 17);
   });
 
+  it('sends resolved query params and skips the request when upstream is empty', async () => {
+    const getSourceDataByApiId = vi.fn<GetSourceDataByApiId>(
+      async () => asSourceData([{ id: 'dev-1', name: '设备1' }]),
+    );
+    const loader = createParamInputOptionsLoader({
+      getDataSourceList: async () => [],
+      getSourceDataByApiId,
+    });
+    const config: InputControlConfig = {
+      control: 'select',
+      optionsSource: {
+        type: 'dynamic',
+        sourceId: 9,
+        valueField: 'id',
+        labelField: 'name',
+        queryParams: { room_id: { ref: 'server_room_id' } },
+      },
+    };
+
+    const blocked = loader.load(config, { blocked: true });
+    assert.equal(blocked.sync, true);
+    assert.deepEqual(blocked.initial, { status: 'blocked', options: [] });
+    assert.deepEqual(await blocked.promise, { status: 'blocked', options: [] });
+    assert.equal(getSourceDataByApiId.mock.calls.length, 0);
+
+    loader.reset();
+    assert.deepEqual(await loader.load(config, { resolvedParams: { room_id: 'room-1' } }).promise, {
+      status: 'success',
+      options: [{ value: 'dev-1', label: '设备1' }],
+    });
+    assert.deepEqual(getSourceDataByApiId.mock.calls[0]?.[1], { room_id: 'room-1' });
+  });
+
   it('maps a room list returned directly as data, matching get_source_data', async () => {
     const loader = createParamInputOptionsLoader({
       getDataSourceList: async () => ({

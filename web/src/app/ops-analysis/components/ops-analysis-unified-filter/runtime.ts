@@ -1,15 +1,12 @@
 import type {
   DatasourceItem,
   FilterBindings,
-  FilterValue,
   ParamItem,
   UnifiedFilterDefinition,
 } from '@/app/ops-analysis/components/ops-analysis-widgets';
 
-import {
-  isOrganizationControl,
-  normalizeInputConfig,
-} from '@/app/ops-analysis/utils/paramInputConfigUtils';
+import { isOrganizationControl } from '@/app/ops-analysis/utils/paramInputConfigUtils';
+import { scanDataSourceFilterParams } from '@/app/ops-analysis/utils/scanUnifiedFilterParams';
 
 export type BindableParamType = 'string' | 'timeRange';
 export type UnifiedFilterInputMode =
@@ -169,48 +166,16 @@ export const buildDefaultFilterBindings = (
 export const scanUnifiedFilterParams = (
   layoutItems: UnifiedFilterLayoutItemLike[],
   dataSources: DatasourceItem[],
-) => {
-  const paramMap = new Map<
-    string,
-    {
-      key: string;
-      type: BindableParamType;
-      componentCount: number;
-      sampleAlias: string;
-      sampleDefaultValue: FilterValue;
-      sampleInputConfig?: UnifiedFilterDefinition['inputConfig'];
-    }
-  >();
-
-  const usedDataSourceIds = new Set<number>();
-  layoutItems.forEach((item) => {
-    const dsId = item.valueConfig?.dataSource;
-    if (dsId) {
-      usedDataSourceIds.add(typeof dsId === 'string' ? parseInt(dsId, 10) : dsId);
-    }
-  });
-
-  dataSources.forEach((ds) => {
-    if (!usedDataSourceIds.has(ds.id)) return;
-
-    getBindableFilterParams(ds.params).forEach((param) => {
-      const compositeKey = `${param.name}__${param.type}`;
-      const existing = paramMap.get(compositeKey);
-
-      if (existing) {
-        existing.componentCount += 1;
-      } else {
-        paramMap.set(compositeKey, {
-          key: param.name,
-          type: param.type,
-          componentCount: 1,
-          sampleAlias: param.alias_name || param.name,
-          sampleDefaultValue: (param.value as FilterValue) ?? null,
-          sampleInputConfig: normalizeInputConfig(param),
-        });
-      }
-    });
-  });
-
-  return Array.from(paramMap.values());
-};
+) => scanDataSourceFilterParams(layoutItems, dataSources)
+  .filter((param) => param.type === 'string' || param.type === 'timeRange')
+  .map((param) => ({
+    id: param.id,
+    key: param.key,
+    type: param.type as BindableParamType,
+    componentCount: param.componentCount,
+    sampleAlias: param.sampleAlias,
+    suggestedName: param.suggestedName,
+    sampleDefaultValue: param.sampleDefaultValue,
+    sampleInputConfig: param.sampleInputConfig,
+    sourceHint: param.sourceHint,
+  }));

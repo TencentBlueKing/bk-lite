@@ -46,20 +46,20 @@ export const describeCollectorInstallTarget = (
 ): CollectorInstallTarget => {
   if (nodes.length) {
     const selection = getCollectorOperationSelection(nodes);
-    if (selection.disabled === false) {
-      const cpuArchitecture = normalizeCollectorCpuArchitecture(
-        selection.cpuArchitecture
-      );
-      if (!cpuArchitecture) {
-        return { ok: false, reason: 'unknown_architecture' };
-      }
-      return {
-        ok: true,
-        os: selection.operatingSystem.trim().toLowerCase(),
-        cpuArchitecture
-      };
+    if (selection.disabled === true) {
+      return { ok: false, reason: selection.reason };
     }
-    return { ok: false, reason: selection.reason };
+    const cpuArchitecture = normalizeCollectorCpuArchitecture(
+      selection.cpuArchitecture
+    );
+    if (!cpuArchitecture) {
+      return { ok: false, reason: 'unknown_architecture' };
+    }
+    return {
+      ok: true,
+      os: selection.operatingSystem.trim().toLowerCase(),
+      cpuArchitecture
+    };
   }
 
   const os = normalizeOperatingSystem(fallback?.os);

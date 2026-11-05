@@ -161,6 +161,8 @@ class Material(MaintainerInfo, TimeInfo):
     text_content = models.TextField(blank=True, default="")
     ocr_enhance = models.BooleanField(default=False)
     source_relative_path = models.CharField(max_length=1024, blank=True, default="")
+    # 只有对话写入会设为 True。上传请求可以指定 source_relative_path，不能指定这个标记。
+    chat_sourced = models.BooleanField(default=False)
     source_identity = models.CharField(max_length=255, blank=True, default="", db_index=True)
     source_folder_path = models.CharField(max_length=1024, blank=True, default="")
     classification_root = models.ForeignKey(

@@ -18,7 +18,6 @@ WORKDIR /apps
 
 ADD ./support-files/release/supervisor/app.conf  /etc/supervisor/conf.d/app.conf
 ADD ./support-files/release/supervisor/nats.conf  /etc/supervisor/conf.d/nats.conf
-ADD ./support-files/release/supervisor/beat.conf  /etc/supervisor/conf.d/beat.conf
 ADD ./support-files/release/supervisor/celery.conf  /etc/supervisor/conf.d/celery.conf
 ADD ./support-files/release/supervisor/patch_maintenance.conf  /etc/supervisor/conf.d/patch_maintenance.conf
 ADD ./support-files/release/supervisor/dashboard_report_render_worker.conf  /etc/supervisor/conf.d/dashboard_report_render_worker.conf
@@ -37,7 +36,8 @@ RUN if [ -n "$NEXUS_PYTHON_REPOSITY" ]; then \
     pip3 config set global.trusted-host "$(echo $NEXUS_PYTHON_REPOSITY | sed -E 's|^https?://([^/:]+).*|\1|')"; \
     fi
 
-RUN pip3 install -e ".[cmdb,dev,mlops,opspilot]"
+RUN pip3 install -e ".[cmdb,dev,mlops,opspilot]" && \
+    sh ./support-files/release/rebuild_pillow.sh
 
 # 构建期拉取 tiktoken 词表到本地缓存，运行容器无需访问 Azure。
 # cl100k_base：未知模型回退；o200k_base：gpt-4o 等默认编码器。

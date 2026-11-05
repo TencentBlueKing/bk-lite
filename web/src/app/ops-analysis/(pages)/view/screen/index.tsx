@@ -11,7 +11,7 @@ import {
   useState,
   type SetStateAction,
 } from "react";
-import { message, Modal, Select, Tabs } from "antd";
+import { Badge, message, Modal, Select, Tabs } from "antd";
 import { WidgetCsvExportRegistryProvider, notifyWidgetCsvExportNotStarted, useWidgetCsvExportRegistryState } from "@/app/ops-analysis/context/widgetCsvExportRegistry";
 import { FilterTemplateProvider } from "@/app/ops-analysis/context/filterTemplate";
 import { InteractionSurfaceProvider } from "@/app/ops-analysis/context/interactionSurface";
@@ -173,6 +173,7 @@ const ScreenDataConfig = memo(
     unifiedFilterValues,
     configSection,
     onConfigSectionChange,
+    onSectionErrorsChange,
     screenFrame,
     previewSingleStyle,
     previewHost,
@@ -187,6 +188,11 @@ const ScreenDataConfig = memo(
     unifiedFilterValues?: Record<string, FilterValue>;
     configSection?: "data" | "interaction";
     onConfigSectionChange?: (section: "data" | "interaction") => void;
+    onSectionErrorsChange?: (errors: {
+      data: boolean;
+      singleStyle: boolean;
+      interaction: boolean;
+    }) => void;
     screenFrame?: "panel" | "bare";
     previewSingleStyle?: SingleValueStyleConfig;
     previewHost?: HTMLElement | null;
@@ -200,6 +206,7 @@ const ScreenDataConfig = memo(
         variant="panel"
         configSection={configSection}
         onConfigSectionChange={onConfigSectionChange}
+        onSectionErrorsChange={onSectionErrorsChange}
         screenFrame={screenFrame}
         previewSingleStyle={previewSingleStyle}
         previewHost={previewHost}
@@ -274,6 +281,26 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
     y: number;
   } | null>(null);
   const [inspectorTab, setInspectorTab] = useState<"style" | "data" | "interaction">("style");
+  const [configSectionErrors, setConfigSectionErrors] = useState({
+    data: false,
+    interaction: false,
+  });
+  const handleSectionErrorsChange = useCallback((
+    errors: { data: boolean; interaction: boolean },
+  ) => {
+    setConfigSectionErrors((current) => (
+      current.data === errors.data && current.interaction === errors.interaction
+        ? current
+        : { data: errors.data, interaction: errors.interaction }
+    ));
+  }, []);
+  useEffect(() => {
+    setConfigSectionErrors((current) => (
+      current.data || current.interaction
+        ? { data: false, interaction: false }
+        : current
+    ));
+  }, [selectedItemId]);
   const [dataFormDirty, setDataFormDirty] = useState(false);
   const [pendingConfigItem, setPendingConfigItem] =
     useState<ComponentSelectorConfigItem | null>(null);
@@ -1380,6 +1407,7 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
       onReset={(values) => {
         queryState.applyQuery(values, queryState.namespaceDraftId);
       }}
+      onApplyInitial={queryState.setAppliedFilterValues}
       prefixContent={namespaceSelectorElement}
     />
   ) : null;
@@ -1387,16 +1415,32 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
   const inspectorTabKeys: Array<"style" | "data" | "interaction"> = pendingConfigItem
     ? ["data", "interaction"]
     : ["style", "data", "interaction"];
-  const inspectorTabItems = inspectorTabKeys.map((key) => ({
-    key,
-    label: t(
-      key === "style"
-        ? "opsAnalysis.screen.styleTab"
-        : key === "data"
-          ? "opsAnalysis.screen.dataTab"
-          : "opsAnalysis.screen.interactionTab",
-    ),
-  }));
+  const inspectorTabItems = inspectorTabKeys.map((key) => {
+    const sectionErrored = key === "data"
+      ? configSectionErrors.data
+      : key === "interaction"
+        ? configSectionErrors.interaction
+        : false;
+    return {
+      key,
+      label: (
+        <Badge
+          dot={sectionErrored}
+          color="var(--color-fail)"
+          offset={[4, 0]}
+          className={sectionErrored ? "config-section-error-dot" : undefined}
+        >
+          {t(
+            key === "style"
+              ? "opsAnalysis.screen.styleTab"
+              : key === "data"
+                ? "opsAnalysis.screen.dataTab"
+                : "opsAnalysis.screen.interactionTab",
+          )}
+        </Badge>
+      ),
+    };
+  });
   const activeInspectorTab = inspectorTabKeys.includes(inspectorTab)
     ? inspectorTab
     : (inspectorTabKeys[0] ?? "data");
@@ -1418,6 +1462,7 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
       unifiedFilterValues={queryState.filterValues}
       configSection={activeInspectorTab === "interaction" ? "interaction" : "data"}
       onConfigSectionChange={setInspectorTab}
+      onSectionErrorsChange={handleSectionErrorsChange}
       screenFrame={interactionScreenFrame}
       previewSingleStyle={
         pendingConfigItem

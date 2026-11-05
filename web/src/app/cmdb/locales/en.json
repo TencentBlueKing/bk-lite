@@ -489,6 +489,7 @@
         "confirmAndAssociate": "Confirm & Associate",
         "searchHistory": "Search History",
         "selectAttributes": "Select Attributes",
+        "exportAssetCount": "Selected assets: ",
         "selectAssociations": "Select Associations",
         "noAssociations": "No associations available",
         "atLeastOneAttribute": "Please select at least one attribute",
@@ -1110,6 +1111,7 @@
                 "objectType": "Object Type",
                 "instanceName": "Instance Name",
                 "pid": "PID",
+                "reportedAt": "Reported Time",
                 "status": "Write Status",
                 "errorReason": "Failure Reason"
             }
@@ -1566,6 +1568,7 @@
             "pluginIdPlaceholder": "host_scan",
             "targetModel": "Target model",
             "targetModelRequired": "Select a target model",
+            "targetModelExcluded": "Models under K8S cannot be the target model of a custom plugin",
             "targetModelPlaceholder": "Select an existing model",
             "operatingSystem": "Operating system",
             "script": "Script",

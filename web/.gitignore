@@ -24,7 +24,7 @@ node_modules/
 # production
 /build
 
-# @bk-lite/isoflow 的 webpack/tsc 产物。dev、build、type-check 会先构建，不提交 dist。
+# packages/isoflow 的 webpack/tsc 产物。dev、build、type-check 会先构建，不提交 dist。
 /packages/isoflow/dist/
 
 # misc

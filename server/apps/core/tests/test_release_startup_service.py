@@ -129,6 +129,8 @@ def test_release_startup_keeps_existing_success_path(tmp_path):
         "python3:manage.py createcachetable django_cache",
         "python3:manage.py collectstatic --noinput",
         "python3:manage.py batch_init --apps=opspilot",
+        f"python3:-m apps.core.celery_runtime.launcher --supervisor {tmp_path / 'supervisor/celery.conf'}",
+        "python3:-m apps.core.celery_runtime.launcher --check",
         "supervisord:-n",
     ]
 
@@ -174,7 +176,10 @@ RELEASE_DIR = REPOSITORY_ROOT / "server/support-files/release"
 
 def test_opspilot_celery_worker_is_packaged_without_default_worker_exclude():
     dockerfile = (RELEASE_DIR / "Dockerfile").read_text(encoding="utf-8")
-    celery_conf = (RELEASE_DIR / "supervisor/celery.conf").read_text(encoding="utf-8")
+    from apps.core.celery_runtime.config import RuntimeConfig
+    from apps.core.tests.test_celery_runtime_pure import runtime_env
+
+    celery_conf = RuntimeConfig.from_env(runtime_env()).supervisor_config()
     opspilot_conf = (RELEASE_DIR / "supervisor/opspilot_celery.conf").read_text(encoding="utf-8")
     startup = STARTUP_SCRIPT.read_text(encoding="utf-8")
 
@@ -183,9 +188,7 @@ def test_opspilot_celery_worker_is_packaged_without_default_worker_exclude():
     assert "opspilot_feishu_long_connection.conf" in dockerfile
     assert "-X" not in celery_conf
     assert "opspilot_channel" not in celery_conf
-    assert "--pool prefork" in celery_conf
-    assert "--max-tasks-per-child=%(ENV_CELERY_MAX_TASKS_PER_CHILD)s" in celery_conf
-    assert "--max-memory-per-child=%(ENV_CELERY_MAX_MEMORY_PER_CHILD)s" in celery_conf
+    assert "--pool=prefork" in celery_conf
     assert "--pool threads" not in celery_conf
     assert "--pool prefork" in opspilot_conf
     assert "-Q opspilot_channel,opspilot_wiki,opspilot_maintenance,opspilot_chat_parse" in opspilot_conf
@@ -258,20 +261,25 @@ def test_release_startup_keeps_opspilot_celery_conf_when_install_apps_empty(tmp_
 
 
 def test_cmdb_transfer_uses_existing_celery_worker_without_extra_process():
-    from apps.cmdb.tasks.transfer import execute_transfer
+    from celery import Celery
 
-    result = subprocess.run(["make", "-n", "celery"], cwd=REPOSITORY_ROOT / "server", capture_output=True, text=True)
+    from apps.core.celery_runtime.routing import configure_routes
+
+    app = Celery("transfer-route", broker="memory://", fixups=[], set_as_current=False)
+    configure_routes(app)
+
+    result = subprocess.run(["make", "-n", "celery", "POOL=background"], cwd=REPOSITORY_ROOT / "server", capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
-    assert "--pool threads" in result.stdout
-    route = execute_transfer.app.amqp.router.route(execute_transfer._get_exec_options(), execute_transfer.name)
-    assert route["queue"].name == execute_transfer.app.conf.task_default_queue
+    assert "--worker background" in result.stdout
+    route = app.amqp.router.route({}, "apps.cmdb.tasks.transfer.execute_transfer")
+    assert route["queue"].name == "background"
+    app.close()
     assert "cmdb_transfer_worker.conf" not in (RELEASE_DIR / "Dockerfile").read_text()
     assert not (RELEASE_DIR / "supervisor/cmdb_transfer_worker.conf").exists()
 
 
 def test_release_celery_workers_use_prefork_and_child_recycle():
     worker_confs = [
-        RELEASE_DIR / "supervisor/celery.conf",
         RELEASE_DIR / "supervisor/opspilot_celery.conf",
         RELEASE_DIR / "supervisor/dashboard_report_render_worker.conf",
         RELEASE_DIR / "supervisor/patch_maintenance.conf",
@@ -288,11 +296,14 @@ def test_release_celery_workers_use_prefork_and_child_recycle():
             assert flag in content, f"{conf_path.name} missing {flag}"
 
     startup = STARTUP_SCRIPT.read_text(encoding="utf-8")
-    assert "CELERY_CONCURRENCY=${CELERY_CONCURRENCY:-2}" in startup
+    assert "export CELERY_CONCURRENCY=" not in startup
     assert "CELERY_MAX_TASKS_PER_CHILD=${CELERY_MAX_TASKS_PER_CHILD:-200}" in startup
     assert "CELERY_MAX_MEMORY_PER_CHILD=${CELERY_MAX_MEMORY_PER_CHILD:-512000}" in startup
 
-    beat = (RELEASE_DIR / "supervisor/beat.conf").read_text(encoding="utf-8")
+    from apps.core.celery_runtime.config import RuntimeConfig
+    from apps.core.tests.test_celery_runtime_pure import runtime_env
+
+    beat = RuntimeConfig.from_env(runtime_env()).supervisor_config().split("[program:beat]", 1)[1]
     assert "--max-tasks-per-child" not in beat
     assert "--max-memory-per-child" not in beat
     assert "--pool" not in beat

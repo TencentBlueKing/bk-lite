@@ -3,6 +3,13 @@
 /venv/
 /logs/
 static
+# 内嵌PPT工具的源静态资源随技能包交付，不属于Django生成目录。
+!apps/opspilot/support-files/skill_packages/ppt-master/scripts/confirm_ui/static/
+!apps/opspilot/support-files/skill_packages/ppt-master/scripts/confirm_ui/static/**
+!apps/opspilot/support-files/skill_packages/ppt-master/scripts/svg_editor/static/
+!apps/opspilot/support-files/skill_packages/ppt-master/scripts/svg_editor/static/**
+!apps/opspilot/support-files/skill_packages/ppt-master/scripts/spec_review/static/
+!apps/opspilot/support-files/skill_packages/ppt-master/scripts/spec_review/static/**
 *.sqlite3
 */__pycache__/
 *.pyc
@@ -23,6 +30,7 @@ requirements.txt
 dist
 *.log
 report.html
+test-results/
 mlruns
 uv.lock
 docs/api/*

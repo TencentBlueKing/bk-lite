@@ -7,7 +7,7 @@ import re
 from dataclasses import dataclass
 
 from apps.core.logger import opspilot_logger as logger
-from apps.opspilot.models import PageVersion, WikiGeneration, WikiGenerationIndexEntry
+from apps.opspilot.models import KnowledgePage, PageVersion, WikiGeneration, WikiGenerationIndexEntry
 from apps.opspilot.services.wiki.build_service import BuildOutputInvalid
 from apps.opspilot.services.wiki.title_service import COMMON_TITLE_ALIASES, compact_title_key, title_identity_key
 from apps.opspilot.services.wiki.wiki_budget_service import WikiBudgetExceeded, estimate_tokens
@@ -21,29 +21,37 @@ _CONFLICT_LLM_MAX_ATTEMPTS = 2
 _MIN_BODY_EVIDENCE_TOKENS = 256
 _TOKEN_RE = re.compile(r"[\w\-]{2,}", re.UNICODE)
 _HEADING_RE = re.compile(r"^\s{0,3}#{1,6}\s+(.+)$", re.MULTILINE)
-_GENERIC_SUBJECTS = frozenset(
-    title_identity_key(item)
-    for item in (
-        "概述",
-        "简介",
-        "定义",
-        "说明",
-        "背景",
-        "摘要",
-        "介绍",
-        "总览",
-        "前言",
-        "目录",
-        "文档版本信息",
-        "文档信息",
-        "基本信息",
-        "模块定位",
-        "功能清单",
-        "修订记录",
-        "范围",
-        "目的",
-    )
+_LEGACY_GENERIC_TITLES = (
+    "概述",
+    "简介",
+    "定义",
+    "说明",
+    "背景",
+    "摘要",
+    "介绍",
+    "总览",
+    "前言",
+    "目录",
+    "文档版本信息",
+    "文档信息",
+    "基本信息",
+    "模块定位",
+    "功能清单",
+    "修订记录",
+    "范围",
+    "目的",
 )
+_CHAT_GENERIC_TITLES = _LEGACY_GENERIC_TITLES + (
+    "具体标准",
+    "作废说明",
+    "适用边界",
+    "版本说明",
+    "版本与作废说明",
+    "信息缺口",
+)
+_GENERIC_SUBJECTS = frozenset(title_identity_key(item) for item in _CHAT_GENERIC_TITLES)
+_LEGACY_GENERIC_SUBJECTS = frozenset(title_identity_key(item) for item in _LEGACY_GENERIC_TITLES)
+_SUBJECT_SUFFIX_MAX = 4
 _MIN_SUBJECT_CONTAINMENT_LEN = 4
 
 
@@ -80,13 +88,17 @@ def _heading_identity(text):
     return title_identity_key(match.group(1))
 
 
-def _concrete_subject(title, body):
+def _concrete_subject(title, body, *, chat_sourced=False):
+    generic = _GENERIC_SUBJECTS if chat_sourced else _LEGACY_GENERIC_SUBJECTS
     heading = _heading_identity(body)
-    if heading and heading not in _GENERIC_SUBJECTS:
+    if heading and heading not in generic:
         return heading
     title_key = title_identity_key(title)
-    if title_key and title_key not in _GENERIC_SUBJECTS:
+    if title_key and title_key not in generic:
         return title_key
+    if chat_sourced:
+        # 「定义」「概述」这类标题不能证明是另一个主题，留给后续冲突比较。
+        return ""
     return heading or title_key
 
 
@@ -97,7 +109,7 @@ def _canonical_subject_key(value):
     return compact_title_key(COMMON_TITLE_ALIASES.get(compact, value))
 
 
-def _subjects_compatible(left, right):
+def _subjects_compatible(left, right, *, chat_sourced=False):
     if not left or not right:
         return True
     if left == right:
@@ -109,15 +121,30 @@ def _subjects_compatible(left, right):
     if left_key == right_key:
         return True
     shorter, longer = sorted((left_key, right_key), key=len)
-    return len(shorter) >= _MIN_SUBJECT_CONTAINMENT_LEN and shorter in longer
+    if len(shorter) >= _MIN_SUBJECT_CONTAINMENT_LEN and shorter in longer:
+        return True
+    if chat_sourced:
+        return _shares_subject_stem(left_key, right_key)
+    return False
 
 
-def _distinct_subject_pair(page_data, old_title, old_body):
-    incoming_subject = _concrete_subject(page_data.get("title"), page_data.get("body"))
-    old_subject = _concrete_subject(old_title, old_body)
+def _shares_subject_stem(left_key, right_key):
+    """前缀相同且两侧只多了短后缀时，仍要做冲突比较。"""
+    limit = min(len(left_key), len(right_key))
+    stem = 0
+    while stem < limit and left_key[stem] == right_key[stem]:
+        stem += 1
+    if stem < _MIN_SUBJECT_CONTAINMENT_LEN:
+        return False
+    return len(left_key) - stem <= _SUBJECT_SUFFIX_MAX and len(right_key) - stem <= _SUBJECT_SUFFIX_MAX
+
+
+def _distinct_subject_pair(page_data, old_title, old_body, *, chat_sourced=False):
+    incoming_subject = _concrete_subject(page_data.get("title"), page_data.get("body"), chat_sourced=chat_sourced)
+    old_subject = _concrete_subject(old_title, old_body, chat_sourced=chat_sourced)
     if not incoming_subject or not old_subject:
         return False
-    return not _subjects_compatible(incoming_subject, old_subject)
+    return not _subjects_compatible(incoming_subject, old_subject, chat_sourced=chat_sourced)
 
 
 def _candidate_score(page_data, entry):
@@ -142,7 +169,7 @@ def _candidate_score(page_data, entry):
     return sum(5 if term in keywords else 1 for term in terms if term in haystack)
 
 
-def _compact_candidates(base_generation_id, pages_data):
+def _compact_candidates(base_generation_id, pages_data, *, chat_sourced=False):
     entries = list(WikiGenerationIndexEntry.objects.filter(generation_id=base_generation_id).order_by("page_id"))
     candidates = []
     for incoming_index, page_data in enumerate(pages_data):
@@ -179,7 +206,12 @@ def _compact_candidates(base_generation_id, pages_data):
         incoming_body = str(pages_data[item["incoming_index"]].get("body") or "").strip()
         if incoming_body and incoming_body == current_body:
             relation = "unchanged"
-        elif _distinct_subject_pair(pages_data[item["incoming_index"]], item["old_title"], current_body):
+        elif _distinct_subject_pair(
+            pages_data[item["incoming_index"]],
+            item["old_title"],
+            current_body,
+            chat_sourced=chat_sourced,
+        ):
             relation = "unrelated"
         else:
             relation = None
@@ -335,16 +367,23 @@ def _parse_comparisons(raw, allowed_pairs):
     return results
 
 
-def _reduce_by_incoming(comparisons):
+def _reduce_by_incoming(comparisons, *, chat_sourced=False):
     by_incoming = {}
     same_subject_priority = {"unresolved": 5, "conflict": 4, "supplement": 3, "unchanged": 2, "unrelated": 1}
     other_priority = {"unrelated": 4, "unchanged": 3, "supplement": 2, "conflict": 1, "unresolved": 0}
+    contributions = {}
+    if chat_sourced:
+        page_ids = {old_page_id for (_incoming_index, old_page_id) in comparisons}
+        contributions = dict(KnowledgePage.objects.filter(pk__in=page_ids).values_list("pk", "contribution"))
 
     def rank(item):
         relation = item["relation"]
+        edited = 0
+        if chat_sourced:
+            edited = 1 if contributions.get(item["old_page_id"]) not in (None, "", "ai") else 0
         if item.get("same_subject") is True:
-            return (1, same_subject_priority[relation])
-        return (0, other_priority[relation])
+            return (1, same_subject_priority[relation], edited)
+        return (0, other_priority[relation], 0)
 
     for (incoming_index, old_page_id), comparison in comparisons.items():
         candidate = {**comparison, "old_page_id": old_page_id}
@@ -436,6 +475,7 @@ def route_material_conflicts(
     budget,
     invoke_llm,
     base_generation_id=None,
+    chat_sourced=False,
 ):
     """Return a bounded comparison map keyed by incoming page index."""
 
@@ -444,7 +484,7 @@ def route_material_conflicts(
         base_generation_id = candidate.base_generation_id
     if base_generation_id is None or not pages_data:
         return ConflictRoutingResult({}, 0, (), 0, 0, False, ())
-    compact, overflow = _compact_candidates(base_generation_id, pages_data)
+    compact, overflow = _compact_candidates(base_generation_id, pages_data, chat_sourced=chat_sourced)
     deterministic = {}
     for item in compact:
         relation = item.get("deterministic_relation")
@@ -479,7 +519,7 @@ def route_material_conflicts(
             sorted(incoming_index for (incoming_index, _old_page_id), comparison in comparisons.items() if comparison["relation"] == "unresolved")
         )
         return ConflictRoutingResult(
-            _reduce_by_incoming(comparisons),
+            _reduce_by_incoming(comparisons, chat_sourced=chat_sourced),
             len(compact),
             evidence_page_ids,
             old_tokens,
@@ -523,7 +563,7 @@ def route_material_conflicts(
             sorted(incoming_index for (incoming_index, _old_page_id), comparison in comparisons.items() if comparison["relation"] == "unresolved")
         )
         return ConflictRoutingResult(
-            _reduce_by_incoming(comparisons),
+            _reduce_by_incoming(comparisons, chat_sourced=chat_sourced),
             len(compact),
             (),
             0,
@@ -562,7 +602,7 @@ def route_material_conflicts(
     unresolved_incoming.update(
         incoming_index for (incoming_index, _old_page_id), comparison in comparisons.items() if comparison["relation"] == "unresolved"
     )
-    by_incoming = _reduce_by_incoming(comparisons)
+    by_incoming = _reduce_by_incoming(comparisons, chat_sourced=chat_sourced)
     return ConflictRoutingResult(
         by_incoming,
         len(compact),

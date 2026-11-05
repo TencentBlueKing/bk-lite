@@ -461,6 +461,8 @@ class NotificationTemplateViewSet(ModelViewSet):
                     {"path": "events.count", "label": alerts_message(request, "catalog.event_count")},
                     {"path": "events.latest.title", "label": alerts_message(request, "catalog.latest_event_title")},
                     {"path": "events.latest.value", "label": alerts_message(request, "catalog.latest_event_value")},
+                    {"path": "events.latest.samples", "label": alerts_message(request, "catalog.latest_event_samples")},
+                    {"path": "events.latest.search_url", "label": alerts_message(request, "catalog.latest_event_search_url")},
                     {"path": "events.latest.tags.alert", "label": alerts_message(request, "catalog.latest_event_tag_example")},
                 ],
                 "event_block": {

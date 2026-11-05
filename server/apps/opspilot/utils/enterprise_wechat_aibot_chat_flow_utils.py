@@ -7,6 +7,7 @@ from django.http import HttpRequest, HttpResponse
 
 from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.models import Bot, BotWorkFlow
+from apps.opspilot.services.wiki.chat_material_service import WIKI_MATERIAL_ACTOR_KEY, external_actor
 from apps.opspilot.utils.base_chat_flow_utils import BaseChatFlowUtils
 from apps.opspilot.utils.chat_flow_utils.engine.factory import create_chat_flow_engine
 from apps.opspilot.utils.enterprise_wechat_aibot_crypto import EnterpriseWechatAibotCrypto, EnterpriseWechatAibotCryptoError
@@ -36,6 +37,7 @@ class EnterpriseWechatAibotChatFlowUtils(BaseChatFlowUtils):
             "entry_type": EnterpriseWechatAibotChatFlowUtils.channel_code,
             "session_id": session_id,
             "response_url": message.get("response_url") or "",
+            WIKI_MATERIAL_ACTOR_KEY: external_actor(sender_id),
         }
 
     @classmethod
