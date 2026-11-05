@@ -563,9 +563,9 @@ class TestRecoverNoDataAlerts:
 
 
 def test_no_data_event_keeps_mount_path_when_identity_is_fingerprinted():
-    from apps.monitor.utils.dimension import metric_instance_storage_key
+    from apps.monitor.utils.dimension import is_metric_instance_fingerprint, metric_instance_storage_key
 
-    mount = "/var/lib/kubelet/pods/" + ("a" * 80) + "/mount"
+    mount = "/var/lib/kubelet/pods/" + ("a" * 180) + "/mount"
     identity = ("os_10.64.200.21", mount, mount, "overlay")
     metric_instance_id = metric_instance_storage_key(identity)
     monitor_instance_id = "('os_10.64.200.21',)"
@@ -590,7 +590,43 @@ def test_no_data_event_keeps_mount_path_when_identity_is_fingerprinted():
 
     events = detector.detect_no_data_alerts()
 
+    assert is_metric_instance_fingerprint(metric_instance_id)
     assert len(events) == 1
     assert events[0]["metric_instance_id"] == metric_instance_id
     assert mount in events[0]["content"]
     assert events[0]["dimensions"]["path"] == mount
+
+
+def test_fingerprint_instance_lookup_uses_dimensions_not_the_hash():
+    from apps.monitor.utils.dimension import is_metric_instance_fingerprint, metric_instance_storage_key
+
+    class ParsingQuery:
+        metric = None
+
+        def get_monitor_instance_id_from_metric_instance_id(self, metric_instance_id):
+            return f"parsed:{metric_instance_id}"
+
+    mount = "/var/lib/kubelet/pods/" + ("a" * 180) + "/mount"
+    identity = ("os_10.64.200.21", mount, mount, "overlay")
+    metric_instance_id = metric_instance_storage_key(identity)
+    monitor_instance_id = "('os_10.64.200.21',)"
+    detector = AlertDetector(
+        _policy(group_by=["instance_id", "mount", "path", "fstype"]),
+        {monitor_instance_id: "host-a"},
+        {metric_instance_id: "not-in-scope"},
+        [],
+        ParsingQuery(),
+        baseline_dimensions={
+            metric_instance_id: {
+                "instance_id": "os_10.64.200.21",
+                "mount": mount,
+                "path": mount,
+                "fstype": "overlay",
+            }
+        },
+    )
+
+    assert is_metric_instance_fingerprint(metric_instance_id)
+    assert detector._match_scoped_monitor_instance(metric_instance_id) == ""
+    assert detector._extract_monitor_instance_id(metric_instance_id) == monitor_instance_id
+    assert detector._resolve_baseline_monitor_instance_id(metric_instance_id) == monitor_instance_id

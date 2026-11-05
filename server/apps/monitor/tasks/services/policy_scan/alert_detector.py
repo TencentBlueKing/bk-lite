@@ -212,6 +212,9 @@ class AlertDetector:
         ]
 
     def _extract_monitor_instance_id(self, metric_instance_id: str) -> str:
+        if is_metric_instance_fingerprint(metric_instance_id):
+            return self._monitor_instance_id_from_dimensions(metric_instance_id)
+
         resolved_id = self._match_scoped_monitor_instance(metric_instance_id)
         if resolved_id:
             return resolved_id
@@ -224,11 +227,15 @@ class AlertDetector:
         if method:
             return self.metric_query_service.get_monitor_instance_id_from_metric_instance_id(metric_instance_id)
 
+        return self._monitor_instance_id_from_dimensions(metric_instance_id) or extract_monitor_instance_id(metric_instance_id)
+
+    def _monitor_instance_id_from_dimensions(self, metric_instance_id: str) -> str:
         dimensions = self._parse_dimensions(metric_instance_id)
         monitor_key = self._get_monitor_instance_id_key()
-        if monitor_key in dimensions:
-            return str((dimensions[monitor_key],))
-        return extract_monitor_instance_id(metric_instance_id)
+        value = dimensions.get(monitor_key) if isinstance(dimensions, dict) else None
+        if value in (None, ""):
+            return ""
+        return str((value,))
 
     def _match_scoped_monitor_instance(self, metric_instance_id: str) -> str:
         """按对象身份键把指标维度解析回策略选择的监控实例。
@@ -237,7 +244,7 @@ class AlertDetector:
         同时包含父、子身份。只在策略范围内唯一匹配时采用候选值，避免跨父对象
         同名子对象被错误归属。
         """
-        if not self.instances_map:
+        if not self.instances_map or is_metric_instance_fingerprint(metric_instance_id):
             return ""
 
         return self._scoped_instance_matcher.resolve(

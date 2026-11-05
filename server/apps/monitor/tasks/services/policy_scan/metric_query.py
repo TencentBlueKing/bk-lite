@@ -29,7 +29,13 @@ from apps.monitor.tasks.utils.policy_multi import (
     is_multi_query,
     multi_queries,
 )
-from apps.monitor.utils.dimension import ScopedInstanceMatcher, build_dimensions, metric_instance_storage_key, parse_instance_id
+from apps.monitor.utils.dimension import (
+    ScopedInstanceMatcher,
+    build_dimensions,
+    is_metric_instance_fingerprint,
+    metric_instance_storage_key,
+    parse_instance_id,
+)
 from apps.monitor.utils.unit_converter import UnitConverter
 from apps.monitor.utils.victoriametrics_api import VictoriaMetricsAPI
 
@@ -712,4 +718,7 @@ class MetricQueryService:
         return str((instance_id_tuple[0],))
 
     def get_monitor_instance_id_from_metric_instance_id(self, metric_instance_id: str) -> str:
+        """从已落库的身份反查监控实例。指纹不能拆，调用方应使用同时保存的维度值。"""
+        if is_metric_instance_fingerprint(metric_instance_id):
+            return ""
         return self.get_monitor_instance_id_from_tuple(parse_instance_id(metric_instance_id))
