@@ -35,6 +35,65 @@ export function isAllowedChatFile(file: { name: string; size: number; type?: str
   return file.size <= (image ? 5 : 20) * 1024 * 1024;
 }
 
+export function jobDistributeEndpoints(sseUrl: string): { upload: string; list: string } | null {
+  const endpoints = chatAttachmentEndpoints(sseUrl);
+  if (!endpoints) return null;
+  const prefix = endpoints.upload.replace(/\/skill_channel\/chat_attachment\/upload\/$/, '');
+  return {
+    upload: `${prefix}/skill_channel/job_distribute_file/upload/`,
+    list: `${prefix}/skill_channel/job_distribute_file/`,
+  };
+}
+
+export async function listJobDistributeFiles(
+  sseUrl: string,
+  sessionId: string,
+  headers: HeadersInit,
+): Promise<Array<{ id: number; name: string; size: number }>> {
+  const endpoints = jobDistributeEndpoints(sseUrl);
+  if (!endpoints) {
+    throw new Error('缺少分发文件地址');
+  }
+  const query = new URLSearchParams({ session_id: sessionId });
+  const response = await fetch(`${endpoints.list}?${query.toString()}`, {
+    headers,
+    credentials: 'include',
+  });
+  const payload = await response.json();
+  if (!response.ok || payload?.result === false) {
+    throw new Error(payload?.message || '暂存文件查询失败');
+  }
+  return Array.isArray(payload.data) ? payload.data : [];
+}
+
+export async function uploadJobDistributeFile(
+  file: File,
+  sseUrl: string,
+  sessionId: string,
+  headers: HeadersInit,
+): Promise<{ id: number; name: string; size: number }> {
+  const endpoints = jobDistributeEndpoints(sseUrl);
+  if (!endpoints) {
+    throw new Error('缺少分发文件地址');
+  }
+  const body = new FormData();
+  body.append('file', file);
+  body.append('session_id', sessionId);
+  const requestHeaders = new Headers(headers);
+  requestHeaders.delete('Content-Type');
+  const response = await fetch(endpoints.upload, {
+    method: 'POST',
+    headers: requestHeaders,
+    body,
+    credentials: 'include',
+  });
+  const payload = await response.json();
+  if (!response.ok || payload?.result === false) {
+    throw new Error(payload?.message || '上传失败');
+  }
+  return payload.data as { id: number; name: string; size: number };
+}
+
 export async function uploadChatFile(file: File, sseUrl: string, headers: HeadersInit): Promise<StoredChatAttachment> {
   const endpoints = chatAttachmentEndpoints(sseUrl);
   if (!endpoints) {

@@ -205,6 +205,11 @@ urlpatterns += [
         name="upload_job_distribute_file",
     ),
     path(
+        r"skill_channel/job_distribute_file/",
+        views.list_job_distribute_files,
+        name="list_job_distribute_files",
+    ),
+    path(
         r"skill_channel/chat_attachment/<int:attachment_id>/download/",
         views.download_chat_attachment,
         name="download_chat_attachment",

@@ -2,6 +2,7 @@ import React from 'react';
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import DistributeFileButton from '../DistributeFileButton';
+import StagedDistributeFiles from '../StagedDistributeFiles';
 import { renderJobOutputHtml } from '../jobOutput';
 
 describe('job distribute entry', () => {
@@ -12,6 +13,17 @@ describe('job distribute entry', () => {
 
     render(<DistributeFileButton enabled label="分发文件" onFile={() => undefined} />);
     expect(screen.getByRole('button', { name: '分发文件' })).toBeTruthy();
+  });
+
+  it('lists staged file names and stays empty without files', () => {
+    const empty = render(<StagedDistributeFiles files={[]} label="待分发文件" />);
+    expect(empty.queryByTestId('staged-distribute-files')).toBeNull();
+    empty.unmount();
+
+    render(<StagedDistributeFiles files={[{ id: 17, name: '1111.txt' }, { id: 18, name: 'readme.md' }]} label="待分发文件" />);
+    expect(screen.getByText('待分发文件')).toBeTruthy();
+    expect(screen.getByText('1111.txt')).toBeTruthy();
+    expect(screen.getByText('readme.md')).toBeTruthy();
   });
 
   it('renders script output without letting it become markup', () => {

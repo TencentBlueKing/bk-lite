@@ -17,6 +17,7 @@ from apps.opspilot.services.job_output_text import model_visible_text
 from apps.opspilot.services.job_tool_service import (
     distribute_staged_files,
     list_playbook_scripts,
+    list_staged_distribute_files,
     run_custom_script,
     run_library_script,
     scan_job_watches,
@@ -602,6 +603,43 @@ def test_another_filename_does_not_use_the_only_staged_file(staged_storage):
     )
     assert result["result"] is False
     assert "没有可分发" in result["message"]
+
+
+def test_staged_file_list_shows_only_this_session(staged_storage):
+    stage_distribute_file(
+        owner_key="alice@domain.com",
+        team_id="1",
+        session_key="sess-a",
+        filename="1111.txt",
+        data=b"file-bytes",
+    )
+    stage_distribute_file(
+        owner_key="alice@domain.com",
+        team_id="1",
+        session_key="sess-b",
+        filename="other.txt",
+        data=b"other-bytes",
+    )
+    stage_distribute_file(
+        owner_key="bob@domain.com",
+        team_id="1",
+        session_key="sess-a",
+        filename="secret.txt",
+        data=b"secret-bytes",
+    )
+    stage_distribute_file(
+        owner_key="alice@domain.com",
+        team_id="2",
+        session_key="sess-a",
+        filename="team.txt",
+        data=b"team-bytes",
+    )
+    listed = list_staged_distribute_files(owner_key="alice@domain.com", team_id="1", session_key="sess-a")
+    assert [item["name"] for item in listed] == ["1111.txt"]
+    rendered = json.dumps(listed)
+    assert "file-bytes" not in rendered
+    assert "secret-bytes" not in rendered
+    assert list_staged_distribute_files(owner_key="alice@domain.com", team_id="1", session_key="") == []
 
 
 def test_staging_and_other_session_do_not_write_job_files(staged_storage):

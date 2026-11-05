@@ -799,6 +799,15 @@ def _staged_queryset(owner_key, team_id, session_key):
     )
 
 
+def list_staged_distribute_files(*, owner_key, team_id, session_key):
+    """只返回当前用户、当前组织、当前会话的文件名。不含正文。"""
+
+    if not session_key:
+        return []
+    rows = _staged_queryset(owner_key, team_id, session_key).order_by("id")
+    return [{"id": row.id, "name": row.original_name, "size": row.size} for row in rows]
+
+
 _NAMED_FILE = re.compile(r"(?<![\w.])([\w.-]+\.[A-Za-z][A-Za-z0-9]{0,7})(?![\w.])")
 
 
