@@ -192,8 +192,9 @@ const LayoutWithProviders = ({ children }: { children: React.ReactNode }) => {
   const hasResolvedPathname = pathname !== null;
   const isAuthRoute = Boolean(pathname && authPaths.includes(pathname));
   // 仪表盘登录首页忽略 screen=true，始终保留平台顶栏。
+  const isDashboardHomepage = isDashboardHomepagePath(pathname, searchParams);
   const screenMode = isScreenModeEnabled(searchParams)
-    && !isDashboardHomepagePath(pathname, searchParams);
+    && !isDashboardHomepage;
   const hidePathChrome = shouldHideConsoleTopNav(pathname);
   const hideConsoleChrome = shouldHideConsoleChrome(pathname, screenMode);
   const isDashboardRoute = isProfessionalDashboardRoute(pathname);
@@ -205,7 +206,8 @@ const LayoutWithProviders = ({ children }: { children: React.ReactNode }) => {
   const isStandaloneDashboardRoute = (
     isDashboardShareRoute || isDashboardRenderRoute
   );
-  const lockConsoleViewport = hidePathChrome || isDashboardShareRoute;
+  // 仪表盘登录首页也锁定全幅视口：去掉 main 的 p-4 灰边，画布贴边铺满（与裸工作台一致）。
+  const lockConsoleViewport = hidePathChrome || isDashboardShareRoute || isDashboardHomepage;
   const isLoading = isAuthLoading || (
     isAuthenticated
     && (
