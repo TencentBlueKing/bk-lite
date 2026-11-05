@@ -1,15 +1,18 @@
 """节点删除时可选 retire_linked → lifecycle 退役已关联模块对象。"""
 
+import logging
 from types import SimpleNamespace
 
 import pytest
 from rest_framework.test import APIRequestFactory, force_authenticate
 
+from apps.core.logger import SafeLogException, safe_log_value
 from apps.core.utils import current_team_scope
 from apps.node_mgmt.models.cloud_region import CloudRegion
 from apps.node_mgmt.models.sidecar import Node, NodeOrganization
 from apps.node_mgmt.services.module_push import ModulePushService, parse_retire_linked_flag
 from apps.node_mgmt.services.module_push_contract import EVENT_LIFECYCLE
+from apps.node_mgmt.services.node_collection_exit import EXIT_FAILED_LOG
 from apps.node_mgmt.views import node as node_view
 
 pytestmark = pytest.mark.django_db
@@ -150,11 +153,10 @@ def test_best_effort_retire_only_targets_with_ids(mocker, linked_node):
     assert monitor.call_count == 0
 
 
-def test_destroy_retire_linked_true_calls_lifecycle(mocker, linked_node, monkeypatch):
+def test_destroy_always_exits_collection_and_ignores_retire_linked(mocker, linked_node, monkeypatch):
     unlink = mocker.patch("apps.node_mgmt.views.node.ModulePushService.best_effort_unlink_cmdb")
-    retire = mocker.patch(
-        "apps.node_mgmt.views.node.ModulePushService.best_effort_retire_linked"
-    )
+    retire = mocker.patch("apps.node_mgmt.views.node.ModulePushService.best_effort_retire_linked")
+    exit_collection = mocker.patch("apps.node_mgmt.views.node.NodeCollectionExitService.apply")
     monkeypatch.setattr(current_team_scope, "SystemMgmt", _ScopedSystemMgmt)
     monkeypatch.setattr(
         node_view,
@@ -170,15 +172,14 @@ def test_destroy_retire_linked_true_calls_lifecycle(mocker, linked_node, monkeyp
 
     assert response.status_code == 200
     unlink.assert_called_once()
-    retire.assert_called_once()
+    retire.assert_not_called()
+    exit_collection.assert_called_once()
     destroy.assert_called_once_with(linked_node)
 
 
 def test_destroy_always_unlinks_cmdb_even_without_retire_linked(mocker, linked_node, monkeypatch):
     unlink = mocker.patch("apps.node_mgmt.views.node.ModulePushService.best_effort_unlink_cmdb")
-    retire = mocker.patch(
-        "apps.node_mgmt.views.node.ModulePushService.best_effort_retire_linked"
-    )
+    exit_collection = mocker.patch("apps.node_mgmt.views.node.NodeCollectionExitService.apply")
     monkeypatch.setattr(current_team_scope, "SystemMgmt", _ScopedSystemMgmt)
     monkeypatch.setattr(
         node_view,
@@ -194,11 +195,16 @@ def test_destroy_always_unlinks_cmdb_even_without_retire_linked(mocker, linked_n
 
     assert response.status_code == 200
     unlink.assert_called_once()
-    retire.assert_not_called()
+    exit_collection.assert_called_once()
     destroy.assert_called_once_with(linked_node)
 
 
-def test_destroy_proceeds_when_unlink_or_retire_fails(mocker, linked_node, monkeypatch):
+def test_destroy_proceeds_when_unlink_or_exit_fails(mocker, linked_node, monkeypatch, caplog):
+    secret = "APPLY-SECRET-MUST-NOT-ENTER-LOGS"
+
+    def _raise(*args, **kwargs):
+        raise RuntimeError(secret)
+
     monkeypatch.setattr(current_team_scope, "SystemMgmt", _ScopedSystemMgmt)
     monkeypatch.setattr(
         node_view,
@@ -206,11 +212,9 @@ def test_destroy_proceeds_when_unlink_or_retire_fails(mocker, linked_node, monke
         lambda request, node_ids, required_permission="View": ([linked_node], None),
     )
     destroy = mocker.patch.object(node_view.NodeViewSet, "perform_destroy")
-    mocker.patch(
-        "apps.node_mgmt.services.module_push.ModulePushService.retire_linked",
-        side_effect=RuntimeError("peer down"),
-    )
+    mocker.patch("apps.node_mgmt.views.node.NodeCollectionExitService.apply", side_effect=_raise)
 
+    caplog.set_level(logging.ERROR, logger="node")
     response = node_view.NodeViewSet.as_view({"delete": "destroy"})(
         _auth_delete(f"{NODE_URL}/{linked_node.id}/", query="retire_linked=1"),
         pk=linked_node.id,
@@ -218,3 +222,18 @@ def test_destroy_proceeds_when_unlink_or_retire_fails(mocker, linked_node, monke
 
     assert response.status_code == 200
     destroy.assert_called_once()
+    errors = [record for record in caplog.records if record.msg == EXIT_FAILED_LOG and record.exc_info]
+    assert len(errors) == 1
+    error_record = errors[0]
+    assert error_record.levelno == logging.ERROR
+    assert error_record.args == (safe_log_value(linked_node.id), "apply", "RuntimeError")
+    assert error_record.getMessage() == EXIT_FAILED_LOG % error_record.args
+    assert error_record.exc_info[0] is SafeLogException
+    assert error_record.exc_info[1].args == ("RuntimeError",)
+    traceback_frame = error_record.exc_info[2]
+    while traceback_frame.tb_next is not None:
+        traceback_frame = traceback_frame.tb_next
+    assert traceback_frame.tb_frame.f_code.co_name == "_raise"
+    formatted = logging.Formatter().format(error_record)
+    assert secret not in formatted
+    assert secret not in caplog.text
