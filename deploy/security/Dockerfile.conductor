@@ -8,4 +8,12 @@ COPY --from=upstream /app/libs/conductor-server.jar /work/source.jar
 RUN python patch_log4j.py conductor --artifacts /work/artifacts --source /work/source.jar --output /work/patched.jar
 
 FROM ${BASE_IMAGE}
+ARG RUNTIME_USER
+USER root
+# 同时更新 curl 动态链接的系统 Brotli，不能只替换 Log4j。
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends libbrotli1 && \
+    rm -rf /var/lib/apt/lists/*
 COPY --from=patched /work/patched.jar /app/libs/conductor-server.jar
+
+USER ${RUNTIME_USER}
