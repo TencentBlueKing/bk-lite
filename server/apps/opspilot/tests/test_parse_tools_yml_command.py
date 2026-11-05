@@ -8,6 +8,7 @@ from django.core.management import CommandError, call_command
 from apps.opspilot.management.commands.parse_tools_yml import Command
 from apps.opspilot.metis.llm.tools.tools_loader import ToolsLoader
 from apps.opspilot.models import SkillTools
+from apps.opspilot.services.asset_tags import apply_fallback_tool_tags, system_tags_for_tool
 from apps.opspilot.viewsets.llm_view import SkillToolsViewSet
 
 pytestmark = pytest.mark.django_db
@@ -117,6 +118,7 @@ def test_sync_sets_system_tags_and_keeps_user_tags():
                 "attachment_file",
                 "ops_analysis_dashboard",
                 "mlops",
+                "job_mgmt",
             )
         ]
     )
@@ -147,8 +149,10 @@ def test_sync_sets_system_tags_and_keeps_user_tags():
         "attachment_file": ["general"],
         "ops_analysis_dashboard": ["general", "platform_app"],
         "mlops": ["platform_app"],
+        "job_mgmt": ["platform_app"],
     }
     for name, system_tags in expected.items():
+        assert system_tags_for_tool(name) == system_tags
         obj = SkillTools.objects.get(name=name, is_build_in=True)
         assert obj.system_tags == system_tags
         if name != "cmdb":
@@ -164,6 +168,18 @@ def test_sync_sets_system_tags_and_keeps_user_tags():
     cmdb.refresh_from_db()
     assert cmdb.system_tags == ["asset", "platform_app"]
     assert cmdb.user_tags == ["机房"]
+
+
+def test_fallback_tool_tags_include_platform_app_before_persist():
+    mlops = apply_fallback_tool_tags({"name": "mlops"})
+    assert mlops["system_tags"] == ["platform_app"]
+    assert mlops["tags"] == ["platform_app"]
+    assert mlops["user_tags"] == []
+
+    job_mgmt = apply_fallback_tool_tags({"name": "job_mgmt"})
+    assert job_mgmt["system_tags"] == ["platform_app"]
+    assert job_mgmt["tags"] == ["platform_app"]
+    assert job_mgmt["user_tags"] == []
 
 
 def test_sync_removes_catalog_hidden_builtin_tool():

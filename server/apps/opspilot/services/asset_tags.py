@@ -31,6 +31,8 @@ BUILTIN_TOOL_SYSTEM_TAGS: dict[str, tuple[str, ...]] = {
     "python": ("general",),
     "attachment_file": ("general",),
     "ops_analysis_dashboard": ("general", "platform_app"),
+    "mlops": ("platform_app",),
+    "job_mgmt": ("platform_app",),
 }
 
 
