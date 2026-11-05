@@ -618,12 +618,6 @@ export default function MongoDashboardPage() {
     currentInstanceOption?.ip || '',
     proMode && !instanceLoading
   );
-  const uptimeSeconds = (() => {
-    if (!proMode) return null;
-    const latest = mongoLatest(metricMap, 'mongodb_uptime_ns');
-    if (latest == null || latest < 0) return null;
-    return latest / 1e9;
-  })();
   const instanceMetaItems = proMode
     ? [
       <MongoIdentityLine
@@ -636,7 +630,6 @@ export default function MongoDashboardPage() {
         replState={proMode ? mongoLatest(metricMap, 'mongodb_repl_state') : null}
         version={currentInstanceOption?.version || ''}
         port={currentInstanceOption?.port || ''}
-        uptimeSeconds={uptimeSeconds}
         host={linkedHost.host}
         hostHref={linkedHost.href}
         hostPending={instanceLoading || linkedHost.pending}

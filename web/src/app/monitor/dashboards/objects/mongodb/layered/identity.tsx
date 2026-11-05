@@ -1,6 +1,5 @@
 'use client';
 
-import { formatDuration } from '../../common/simple-dashboard-core';
 import type { LinkedHostCandidate } from '../../../shared/linked-host';
 import { LinkedHostSegment } from '../../../shared/widgets/linked-host-segment';
 import { mongoForm, mongoIdentityText, mongoObservedRole, mongoRole, type MongoFormLabel } from './architecture';
@@ -29,7 +28,6 @@ export function MongoIdentityLine({
   replState = null,
   version,
   port,
-  uptimeSeconds,
   host,
   hostHref,
   hostPending
@@ -42,7 +40,6 @@ export function MongoIdentityLine({
   replState?: number | null;
   version: string;
   port: string;
-  uptimeSeconds: number | null;
   host: LinkedHostCandidate | null;
   hostHref: string;
   hostPending: boolean;
@@ -53,10 +50,7 @@ export function MongoIdentityLine({
   const role = mongoRole(observed, replState);
   const facts = [
     version,
-    port ? `端口 ${port}` : '',
-    uptimeSeconds != null && Number.isFinite(uptimeSeconds) && uptimeSeconds >= 0
-      ? `运行 ${formatDuration(uptimeSeconds)}`
-      : ''
+    port ? `端口 ${port}` : ''
   ].filter(Boolean);
 
   return (

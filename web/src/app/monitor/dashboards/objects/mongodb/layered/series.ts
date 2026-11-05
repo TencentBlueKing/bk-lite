@@ -1,4 +1,5 @@
 import type { ChartData } from '@/app/monitor/types';
+import { formatDuration } from '../../common/simple-dashboard-core';
 import { formatMetricValue } from '../../../shared/utils/format';
 import type { MetricUnit } from '../../../shared/types';
 import { mergeChartSeries } from '../../../shared/utils/chart-data';
@@ -49,6 +50,12 @@ export const formatMongoPercent = (value: number | null) => {
   if (value == null || !Number.isFinite(value)) return '—';
   const formatted = formatMetricValue(value, 'percent');
   return `${formatted.value}${formatted.unit || ''}`;
+};
+
+/** 运行时间来自纳秒读数。没有读数时显示 —，不把缺失写成 0。 */
+export const mongoUptimeText = (nanoseconds: number | null) => {
+  if (nanoseconds == null || !Number.isFinite(nanoseconds) || nanoseconds < 0) return '—';
+  return formatDuration(nanoseconds / 1e9);
 };
 
 export const formatMongoReading = (value: number | null, unit: MetricUnit) => {

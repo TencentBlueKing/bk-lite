@@ -22,6 +22,7 @@ import {
   formatMongoPercent,
   formatMongoReading,
   mongoLatest,
+  mongoUptimeText,
   mongoMerged,
   mongoRatioPercent,
   mongoRatioPoints,
@@ -75,6 +76,14 @@ const KPI_SPECS = [
     unit: 'percent' as const,
     color: MONGODB_PALETTE.blue,
     body: 'WiredTiger 缓存已用容量占总上限的比例。接近上限时工作集更易挤出内存。\n已用 ÷ 上限 × 100%\n分母为 0 时显示 —，不用 0% 顶替。'
+  },
+  {
+    key: 'uptime',
+    label: '运行时间',
+    metric: 'mongodb_uptime_ns',
+    unit: 'ns' as const,
+    color: MONGODB_PALETTE.slate,
+    body: '本实例自上次启动以来持续运行的时间。中途重启会重新计时。'
   }
 ] as const;
 
@@ -136,7 +145,8 @@ const HEALTH_PENDING = [
   'mongodb_queries_rate',
   'mongodb_latency_commands_avg',
   'mongodb_wtcache_current_bytes',
-  'mongodb_wtcache_max_bytes_configured'
+  'mongodb_wtcache_max_bytes_configured',
+  'mongodb_uptime_ns'
 ];
 
 const focusQuiet = (latest: number | null, samples: readonly number[]) => (
@@ -184,10 +194,11 @@ export default function OverviewPane({
         };
       }
       const latest = mongoLatest(metricMap, item.metric);
+      const value = item.key === 'uptime' ? mongoUptimeText(latest) : formatMongoReading(latest, item.unit);
       return {
         key: item.key,
         label: item.label,
-        value: formatMongoReading(latest, item.unit),
+        value,
         tone: latest == null ? undefined : item.color,
         info,
         ...activate
@@ -215,7 +226,6 @@ export default function OverviewPane({
         <KpiTileRow
           items={healthLoading ? loadingTiles : cards}
           loading={healthLoading}
-          columns={5}
         />
       </ProSection>
       <ProSection
