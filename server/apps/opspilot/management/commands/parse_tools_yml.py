@@ -12,26 +12,6 @@ from apps.opspilot.metis.llm.tools.tools_loader import ToolsLoader
 from apps.opspilot.models import SkillTools
 from apps.opspilot.services.asset_tags import system_tags_for_tool
 
-# 对接平台应用的内置工具。同步时带上平台应用标签，领域标签仍从标签表读取。
-PLATFORM_APP_TOOLS = frozenset(
-    {
-        "alerts",
-        "cmdb",
-        "job_mgmt",
-        "log",
-        "mlops",
-        "monitor",
-        "ops_analysis_dashboard",
-    }
-)
-
-
-def system_tags_for_synced_tool(toolkit_id: str) -> list[str]:
-    tags = system_tags_for_tool(toolkit_id)
-    if toolkit_id in PLATFORM_APP_TOOLS and "platform_app" not in tags:
-        tags.append("platform_app")
-    return tags
-
 
 class Command(BaseCommand):
     help = "从代码动态发现工具并同步到数据库"
@@ -169,7 +149,7 @@ class Command(BaseCommand):
                     "description": toolkit_description,
                     "params": params_data,
                     "tools": tools,
-                    "system_tags": system_tags_for_synced_tool(toolkit_id),
+                    "system_tags": system_tags_for_tool(toolkit_id),
                 },
             )
             if not skill_tool.team:
