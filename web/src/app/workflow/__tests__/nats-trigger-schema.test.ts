@@ -14,6 +14,7 @@ describe('NATS 告警信封默认 schema', () => {
       'scene',
     ]);
     expect(schema.properties?.message).toMatchObject({ type: 'string', title: '告警/输入内容' });
+    expect(schema.properties?.team).toMatchObject({ type: 'integer', title: '团队' });
     expect(schema.properties?.user_ids).toMatchObject({ type: 'array', items: { type: 'string' } });
     expect(schema.required).toEqual([]);
     expect(schema.additionalProperties).toBe(false);

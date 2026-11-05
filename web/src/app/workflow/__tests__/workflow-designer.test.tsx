@@ -814,7 +814,7 @@ describe('编排中心正式设计器', { timeout: 30000 }, () => {
                 required: [],
                 properties: expect.objectContaining({
                   message: expect.objectContaining({ type: 'string', title: '告警/输入内容' }),
-                  team: expect.objectContaining({ type: 'string', title: '团队' }),
+                  team: expect.objectContaining({ type: 'integer', title: '团队' }),
                   user_ids: expect.objectContaining({ type: 'array', title: '用户' }),
                   object_id: expect.objectContaining({ type: 'string', title: '对象ID' }),
                   scene: expect.objectContaining({ type: 'string', title: '场景' }),
