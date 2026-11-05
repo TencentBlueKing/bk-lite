@@ -240,6 +240,21 @@ const useIntegrationApi = () => {
           data
         );
       },
+      clearRemovedCollector: async (data: { instance_id: React.Key }) => {
+        return await post(
+          '/monitor/api/monitor_instance/clear_removed_collector/',
+          data
+        );
+      },
+      reassignCollectorNode: async (data: {
+        instance_id: React.Key;
+        node_id: string;
+      }) => {
+        return await post(
+          '/monitor/api/monitor_instance/reassign_collector_node/',
+          data
+        );
+      },
       unbindMonitorPlugin: async (data: {
         instance_id: React.Key;
         monitor_plugin_id: React.Key;

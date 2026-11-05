@@ -339,7 +339,14 @@ class CollectTypeService:
                 "collect_type__collector": instance.collect_type.collector,
                 "organization": org_map.get(instance.id, []),
                 "config_id": conf_map.get(instance.id, []),
-                "node_name": node_map.get(instance.node_id, ""),
+                "collector_node_removed": bool(instance.collector_node_removed),
+                "removed_collector_node_id": instance.removed_collector_node_id,
+                "removed_collector_node_name": instance.removed_collector_node_name,
+                "node_name": (
+                    instance.removed_collector_node_name or instance.removed_collector_node_id
+                    if instance.collector_node_removed
+                    else node_map.get(instance.node_id, "")
+                ),
             }
             items.append(item)
 

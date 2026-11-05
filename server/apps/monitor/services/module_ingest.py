@@ -1192,6 +1192,11 @@ class MonitorModuleIngestService:
                 type(exc).__name__,
             )
 
+    @staticmethod
+    def _retired_by_node_exit(instance: MonitorInstance) -> bool:
+        """节点退出软退役的主机保持原实例 ID，后续推送另建关联。"""
+        return bool(instance.is_deleted and not instance.is_active)
+
     @classmethod
     def _find_by_pk(cls, instance_id: str) -> MonitorInstance | None:
         return MonitorInstance.objects.filter(id=instance_id).select_related("monitor_object").first()
@@ -1268,6 +1273,8 @@ class MonitorModuleIngestService:
             except ValueError:
                 continue
             by_pk = cls._find_by_pk(storage_key)
+            if by_pk and cls._retired_by_node_exit(by_pk):
+                continue
             if by_pk and by_pk.monitor_object and by_pk.monitor_object.name == object_name and not (active_only and not by_pk.is_active):
                 return by_pk
         ip_cloud = MonitorInstance.objects.filter(
@@ -1545,6 +1552,11 @@ class MonitorModuleIngestService:
         name = cls._extract_name(raw, ip=ip)
         instance_id = cls._new_instance_id(node_id=node_id, raw=raw)
         occupied = MonitorInstance.objects.select_for_update().filter(id=instance_id).select_related("monitor_object").first()
+        if occupied and cls._retired_by_node_exit(occupied):
+            if cmdb_id and MonitorInstance.objects.filter(cmdb_id=cmdb_id).exists():
+                cmdb_id = None
+            occupied = None
+            instance_id = uuid.uuid4().hex
         if occupied:
             if occupied.monitor_object_id != monitor_object.id:
                 raise ValueError("monitor instance id occupied")

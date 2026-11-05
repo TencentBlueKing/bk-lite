@@ -28,13 +28,14 @@ import { createAGUIEventHandler, shouldShowAnalyzingIndicator, shouldShowTypingP
 import { parseLegacyMessage } from './legacyMessage';
 import { useMessageHandlers } from './hooks/useMessageHandlers';
 import { ConfirmDialog } from './components/ConfirmDialog';
+import { DistributeAskDialog } from './components/DistributeAskDialog';
 import { formatDegradedCustomEvent, HitlPanels, isBlockingHitlEvent } from './components/HitlPanels';
 import { ConversationSkeleton } from './components/ConversationSkeleton';
 import { PillComposer } from './components/PillComposer';
 import ContextUsageRing from './components/ContextUsageRing';
 import { collectSessionAttachmentFiles } from './sessionFiles';
 import { applyPlannedExecutionStep, createPlannedExecutionState } from './plannedExecution';
-import { attachmentMetadata, chatAttachmentEndpoints, fetchChatAttachmentStatus, isAllowedChatFile, uploadChatFile, type StoredChatAttachment } from './chatAttachments';
+import { attachmentMetadata, chatAttachmentEndpoints, fetchChatAttachmentStatus, isAllowedChatFile, listJobDistributeFiles, uploadChatFile, uploadJobDistributeFile, type StoredChatAttachment } from './chatAttachments';
 import {
   pendingImagesReducer,
   readFileAsDataUrl,
@@ -101,6 +102,7 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
     showFullscreenButton = true,
     showClearButton = false,
     conversationHistoryEnabled = true,
+    jobMgmtEnabled = false,
     initialContextUsage = null,
     showHeader = true,
     apiKey,
@@ -153,6 +155,11 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
   const [isThinking, setIsThinking] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [stagedDistributeFiles, setStagedDistributeFiles] = useState<Array<{ id: number; name: string; size: number }>>([]);
+  const [stagedListVersion, setStagedListVersion] = useState(0);
+  const [pendingDistributeFile, setPendingDistributeFile] = useState<File | null>(null);
+  const distributeInputRef = useRef<HTMLInputElement>(null);
+  const distributeSessionId = typeof customData?.session_id === 'string' ? customData.session_id.trim() : '';
   const [imageSelectionError, setImageSelectionError] = useState<string | null>(null);
   const [uploadedImages, setUploadedImages] = useState<PendingImage[]>([]);
   const [documentChips, setDocumentChips] = useState<Array<StoredChatAttachment & { localKey: string }>>([]);
@@ -195,6 +202,27 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
   useEffect(() => {
     onMessageReceivedRef.current = onMessageReceived;
   }, [onMessageReceived]);
+
+  useEffect(() => {
+    setStagedDistributeFiles([]);
+  }, [jobMgmtEnabled, distributeSessionId]);
+
+  useEffect(() => {
+    if (!jobMgmtEnabled || !distributeSessionId || !sseUrl) {
+      return;
+    }
+    let cancelled = false;
+    listJobDistributeFiles(sseUrl, distributeSessionId, chatAuthHeaders(requestHeaders, apiKey))
+      .then((files) => {
+        if (!cancelled) {
+          setStagedDistributeFiles(files);
+        }
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [apiKey, distributeSessionId, jobMgmtEnabled, requestHeaders, sseUrl, stagedListVersion]);
 
   // Initialize core components
   useEffect(() => {
@@ -684,9 +712,10 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
   }, [queueImageFiles, reportImageError, t]);
 
   // Send message
-  const handleSendMessage = useCallback(async (value: string) => {
-    if ((!value.trim() && uploadedImages.length === 0 && documentChips.length === 0) || isLoading) return;
-    if (documentChips.some((item) => item.status !== 'ready')) return;
+  const handleSendMessage = useCallback(async (value: string, distributeFileIds: number[] = []) => {
+    const hasDraft = Boolean(value.trim() || uploadedImages.length || documentChips.length || distributeFileIds.length);
+    if (!hasDraft || isLoading) return;
+    if (!distributeFileIds.length && documentChips.some((item) => item.status !== 'ready')) return;
     plannedStateRef.current = createPlannedExecutionState();
 
     // Build message content
@@ -785,6 +814,7 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
         const requestBody = {
           message: value.trim(),
           attachment_ids: readyAttachments.map((item) => item.id),
+          ...(distributeFileIds.length ? { distribute_file_ids: distributeFileIds } : {}),
           sessionId: currentSession?.sessionId,
           ...customData,
           ...(pageContext ? { page_context: pageContext } : {}),
@@ -891,6 +921,34 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
     reportImageError,
     t,
   ]);
+
+  const stageDistributeFile = useCallback(async (file: File, distributeNow: boolean) => {
+    if (!sseUrl) {
+      reportImageError(new Error(t('file.uploadUnavailable', '当前对话不能上传文件')));
+      return;
+    }
+    if (!distributeSessionId) {
+      reportImageError(new Error(t('file.distributeNeedSession', '请先开始会话')));
+      return;
+    }
+    try {
+      const uploaded = await uploadJobDistributeFile(
+        file,
+        sseUrl,
+        distributeSessionId,
+        chatAuthHeaders(requestHeaders, apiKey),
+      );
+      setStagedDistributeFiles((current) => (
+        current.some((item) => item.id === uploaded.id) ? current : [...current, uploaded]
+      ));
+      setStagedListVersion((version) => version + 1);
+      if (distributeNow) {
+        void handleSendMessage(`请分发文件 ${uploaded.name}`, [uploaded.id]);
+      }
+    } catch (error) {
+      reportImageError(toError(error));
+    }
+  }, [apiKey, distributeSessionId, handleSendMessage, reportImageError, requestHeaders, sseUrl, t]);
 
   const handleStopStreaming = useCallback(() => {
     handleAGUIEvent.flushPendingText();
@@ -1129,6 +1187,21 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
         style={{ background: WC.composerWash }}
       >
         {/* Image preview area */}
+        {jobMgmtEnabled && stagedDistributeFiles.length > 0 ? (
+          <div className="flex flex-wrap items-center gap-1.5 px-4 pb-1 pt-2" data-testid="staged-distribute-files">
+            <span className="text-xs" style={{ color: WC.muted }}>{t('file.stagedDistribute', '待分发文件')}</span>
+            {stagedDistributeFiles.map((file) => (
+              <span
+                key={file.id}
+                className="max-w-[220px] truncate rounded-md border px-2 py-1 text-xs"
+                style={{ borderColor: WC.botBorder, color: WC.botText }}
+                title={file.name}
+              >
+                {file.name}
+              </span>
+            ))}
+          </div>
+        ) : null}
         {imageSelectionError && (
           <p role="alert" className="px-4 pt-2 text-xs" style={{ color: 'var(--color-fail)' }}>
             {imageSelectionError}
@@ -1199,18 +1272,52 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
                 loading={isLoading}
                 onPaste={handlePaste}
                 leftExtra={
-                  showClearButton ? (
-                    <button
-                      type="button"
-                      onClick={() => setShowClearConfirm(true)}
-                      className="flex h-7 w-7 items-center justify-center rounded"
-                      style={{ color: WC.muted }}
-                      title={t('chat.clearConversation', '清除对话')}
-                    >
-                      <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M3 6h18M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2M10 11v6M14 11v6"/>
-                      </svg>
-                    </button>
+                  jobMgmtEnabled || showClearButton ? (
+                    <>
+                      {jobMgmtEnabled ? (
+                        <>
+                          <button
+                            type="button"
+                            aria-label={t('file.distribute', '分发文件')}
+                            title={t('file.distribute', '分发文件')}
+                            disabled={isLoading}
+                            onClick={() => distributeInputRef.current?.click()}
+                            className="flex h-7 w-7 items-center justify-center rounded disabled:opacity-40"
+                            style={{ color: WC.muted }}
+                          >
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                              <path d="M22 2L11 13" />
+                              <path d="M22 2L15 22l-4-9-9-4 20-7z" />
+                            </svg>
+                          </button>
+                          <input
+                            ref={distributeInputRef}
+                            type="file"
+                            style={{ display: 'none' }}
+                            onChange={(event) => {
+                              const file = event.target.files?.[0];
+                              event.target.value = '';
+                              if (file) {
+                                setPendingDistributeFile(file);
+                              }
+                            }}
+                          />
+                        </>
+                      ) : null}
+                      {showClearButton ? (
+                        <button
+                          type="button"
+                          onClick={() => setShowClearConfirm(true)}
+                          className="flex h-7 w-7 items-center justify-center rounded"
+                          style={{ color: WC.muted }}
+                          title={t('chat.clearConversation', '清除对话')}
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M3 6h18M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2M10 11v6M14 11v6"/>
+                          </svg>
+                        </button>
+                      ) : null}
+                    </>
                   ) : undefined
                 }
                 imageSlot={
@@ -1258,7 +1365,27 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
         </div>
       </div>
 
-      {/* Clear Confirmation Dialog */}
+      <DistributeAskDialog
+        isOpen={pendingDistributeFile !== null}
+        title={t('file.distributeAsk', '是否现在分发')}
+        message={pendingDistributeFile?.name || ''}
+        confirmText={t('file.distributeNow', '现在分发')}
+        cancelText={t('file.distributeLater', '先暂存')}
+        onConfirm={() => {
+          const file = pendingDistributeFile;
+          setPendingDistributeFile(null);
+          if (file) {
+            void stageDistributeFile(file, true);
+          }
+        }}
+        onCancel={() => {
+          const file = pendingDistributeFile;
+          setPendingDistributeFile(null);
+          if (file) {
+            void stageDistributeFile(file, false);
+          }
+        }}
+      />
       <ConfirmDialog
         isOpen={showClearConfirm}
         title={t('sessions.clearConfirmTitle', '你即将清除当前对话，清除后将无法恢复，是否继续清除?')}

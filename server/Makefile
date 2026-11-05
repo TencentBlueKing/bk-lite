@@ -57,6 +57,9 @@ init-buckets:
 celery:
 	uv run python -m apps.core.celery_runtime.launcher --worker $(POOL)
 
+job-celery:
+	uv run celery -A apps.core.celery worker --loglevel=info --pool prefork --concurrency=$${JOB_CELERY_CONCURRENCY:-2} --max-tasks-per-child=$${CELERY_MAX_TASKS_PER_CHILD:-200} --max-memory-per-child=$${CELERY_MAX_MEMORY_PER_CHILD:-512000} -Q job -n job@%%h
+
 celery-beat:
 	uv run celery -A apps.core.celery beat --loglevel=info --scheduler django_celery_beat.schedulers:DatabaseScheduler
 

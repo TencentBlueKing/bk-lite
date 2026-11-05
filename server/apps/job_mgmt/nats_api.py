@@ -1151,3 +1151,7 @@ def cancel_automation_execution_local(data: dict, actor_context: dict):
             "message": message,
         },
     }
+
+
+# 导入即注册。放在文件末尾，避免和本模块的校验函数形成循环导入。
+from apps.job_mgmt import nats_opspilot as _job_opspilot_nats  # noqa: E402,F401

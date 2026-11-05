@@ -67,7 +67,6 @@ const ApplicationPage = () => {
               name={item.display_name || item.name}
               description={item.description}
               icon={item.icon || item.name}
-              origin={item.is_build_in ? 'builtin' : 'external'}
               menuItems={menuItems}
               onClick={() => handleCardClick(item)}
             />

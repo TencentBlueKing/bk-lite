@@ -38,6 +38,7 @@ from apps.opspilot.views.chat_flow import (
     validate_openai_token,
 )
 from apps.opspilot.views.hitl import LOCAL_SKILL_HITL_NODES, submit_approval
+from apps.opspilot.views.job_distribute_file import list_job_distribute_files, upload_job_distribute_file
 from apps.opspilot.views.skill_channel import (
     _require_login_and_web_channel,
     _serialize_published_web_skills,
@@ -108,5 +109,7 @@ __all__ = [
     "skill_execute",
     "submit_approval",
     "upload_chat_attachment",
+    "list_job_distribute_files",
+    "upload_job_distribute_file",
     "validate_openai_token",
 ]

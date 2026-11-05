@@ -151,6 +151,17 @@ def test_release_unbound_child_configs_deletes_orphans_only():
 
 
 @pytest.mark.django_db
+def test_release_unbound_keeps_child_of_soft_deleted_instance():
+    _create_live_collect_config("child-retired", is_deleted=True, instance_id="('retired-host',)")
+    node_mgmt = FakeNodeMgmt([{"id": "child-retired", "node_id": "node-1"}, {"id": "child-orphan", "node_id": "node-1"}])
+
+    released = HostDeploymentStatus(node_mgmt=node_mgmt).release_unbound_child_configs(["node-1"])
+
+    assert released == ["child-orphan"]
+    assert node_mgmt.deleted == [["child-orphan"]]
+
+
+@pytest.mark.django_db
 def test_registry_ignores_process_host_child_config_on_same_node():
     node, child_id = _create_host_topology(child_id="host-process-procstat")
     _create_live_collect_config(

@@ -410,19 +410,24 @@ def setup_periodic_tasks(sender, **kwargs):
             task_schedule = task_config.get("schedule")
             task_args = task_config.get("args", [])
             task_kwargs = task_config.get("kwargs", {})
+            task_options = task_config.get("options") or {}
+            task_queue = task_options.get("queue") or ""
 
             if isinstance(task_schedule, crontab):
                 schedule_obj, _ = _get_or_create_schedule(CrontabSchedule, **_crontab_schedule_lookup(task_schedule))
+                crontab_defaults = {
+                    "task": task_path,
+                    "crontab": schedule_obj,
+                    "interval": None,
+                    "args": json.dumps(task_args),
+                    "kwargs": json.dumps(task_kwargs),
+                    "enabled": True,
+                }
+                if task_queue:
+                    crontab_defaults["queue"] = task_queue
                 periodic_task, _ = PeriodicTask.objects.update_or_create(
                     name=task_name,
-                    defaults={
-                        "task": task_path,
-                        "crontab": schedule_obj,
-                        "interval": None,
-                        "args": json.dumps(task_args),
-                        "kwargs": json.dumps(task_kwargs),
-                        "enabled": True,
-                    },
+                    defaults=crontab_defaults,
                 )
                 _mark_config_managed(periodic_task)
                 current_names.add(task_name)
@@ -443,16 +448,19 @@ def setup_periodic_tasks(sender, **kwargs):
                     every=every,
                     period=period,
                 )
+                interval_defaults = {
+                    "task": task_path,
+                    "interval": schedule_obj,
+                    "crontab": None,
+                    "args": json.dumps(task_args),
+                    "kwargs": json.dumps(task_kwargs),
+                    "enabled": True,
+                }
+                if task_queue:
+                    interval_defaults["queue"] = task_queue
                 periodic_task, _ = PeriodicTask.objects.update_or_create(
                     name=task_name,
-                    defaults={
-                        "task": task_path,
-                        "interval": schedule_obj,
-                        "crontab": None,
-                        "args": json.dumps(task_args),
-                        "kwargs": json.dumps(task_kwargs),
-                        "enabled": True,
-                    },
+                    defaults=interval_defaults,
                 )
                 _mark_config_managed(periodic_task)
                 current_names.add(task_name)

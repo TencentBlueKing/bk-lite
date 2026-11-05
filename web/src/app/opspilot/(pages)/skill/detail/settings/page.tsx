@@ -48,6 +48,10 @@ import {
 } from '@/app/opspilot/utils/skillSettingsBootstrap';
 import AssetTagFilterBar from '@/app/opspilot/components/tool/assetTagFilterBar';
 import { collectTagChips, filterTaggedAssets } from '@/app/opspilot/utils/assetTagFilter';
+import {
+  skillDebugDistributeSessionId,
+  skillSelectionEnablesJobDistribute,
+} from '@/app/opspilot/utils/jobDistributeEntry';
 
 const { Option } = Select;
 const { TextArea } = Input;
@@ -70,7 +74,8 @@ const SkillSettingsPage: React.FC = () => {
   const hasWikiKb = Array.isArray(wikiKbIds) && wikiKbIds.length > 0;
 
   const [initialMessages] = useState<any[]>([]); // 稳定的空数组引用
-  const debugThreadIdRef = useRef(crypto.randomUUID());
+  const [debugThreadId, setDebugThreadId] = useState(() => crypto.randomUUID());
+  const pendingDistributeIds = useRef<number[]>([]);
 
   const [chatHistoryEnabled, setChatHistoryEnabled] = useState(true);
   const [llmModels, setLlmModels] = useState<{ id: number, name: string, enabled: boolean, llm_model_type: string, vendor_name?: string }[]>([]);
@@ -308,9 +313,12 @@ const SkillSettingsPage: React.FC = () => {
         .filter((item: { status?: string }) => item.status === 'ready' || item.status === undefined)
         .map((item: { id: number }) => item.id);
 
+      const distributeFileIds = pendingDistributeIds.current;
+
       const payload: any = {
         user_message: userMessage,
         ...(attachmentIds.length ? { attachment_ids: attachmentIds } : {}),
+        ...(distributeFileIds.length ? { distribute_file_ids: distributeFileIds } : {}),
         llm_model: values.llmModel,
         skill_prompt: values.prompt,
         skill_name: values.name,
@@ -337,7 +345,7 @@ const SkillSettingsPage: React.FC = () => {
         tools: buildStudioRuntimeTools(selectedTools),
         skill_type: 1,
         group: values.group?.[0],
-        thread_id: debugThreadIdRef.current,
+        thread_id: debugThreadId,
       };
 
       return {
@@ -1137,8 +1145,14 @@ const SkillSettingsPage: React.FC = () => {
                   initialMessages={initialMessages}
                   removePendingBotMessageOnCancel={true}
                   conversationHistoryEnabled={chatHistoryEnabled}
+                  distributeFilesEnabled={skillSelectionEnablesJobDistribute(selectedTools)}
+                  distributeSessionId={skillDebugDistributeSessionId(debugThreadId)}
+                  onDistributeReady={(fileIds) => {
+                    pendingDistributeIds.current = fileIds;
+                  }}
                   onConversationCleared={() => {
-                    debugThreadIdRef.current = crypto.randomUUID();
+                    pendingDistributeIds.current = [];
+                    setDebugThreadId(crypto.randomUUID());
                   }}
                 />
               </div>

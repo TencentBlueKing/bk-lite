@@ -15,12 +15,7 @@ from apps.core.utils.current_team_scope import (
     validate_assignable_organizations,
 )
 from apps.core.utils.loader import LanguageLoader
-from apps.core.utils.permission_utils import (
-    get_instance_permission_map,
-    get_instance_permissions,
-    get_permission_rules,
-    get_permissions_rules,
-)
+from apps.core.utils.permission_utils import get_instance_permission_map, get_instance_permissions, get_permission_rules, get_permissions_rules
 from apps.core.utils.web_utils import WebUtils
 from apps.log.constants.collect_type import DISPLAY_CATEGORY_ORDER
 from apps.log.constants.language import LanguageConstants
@@ -31,6 +26,7 @@ from apps.log.models.policy import Policy
 from apps.log.serializers.collect_config import CollectTypeSerializer
 from apps.log.services.access_scope import LogAccessScopeService
 from apps.log.services.collect_type import CollectTypeService
+from apps.log.services.collector_node_exit import LogCollectorNodeExit
 from apps.log.services.log_extractor.publication import mark_dirty
 from apps.log.services.search import SearchService
 from apps.rpc.node_mgmt import NodeMgmt
@@ -680,6 +676,24 @@ class CollectInstanceViewSet(ViewSet):
             CollectInstance.objects.filter(id__in=instance_ids).delete()
             if has_extractors:
                 mark_dirty()
+        return WebUtils.response_success()
+
+    @action(methods=["post"], detail=False, url_path="clear_removed_collector")
+    def clear_removed_collector(self, request):
+        instance_id = request.data.get("instance_id")
+        instances, error_response = self._authorize_instances(request, [instance_id])
+        if error_response:
+            return error_response
+        LogCollectorNodeExit.clear(instances[0].id)
+        return WebUtils.response_success()
+
+    @action(methods=["post"], detail=False, url_path="reassign_collector_node")
+    def reassign_collector_node(self, request):
+        instance_id = request.data.get("instance_id")
+        instances, error_response = self._authorize_instances(request, [instance_id])
+        if error_response:
+            return error_response
+        LogCollectorNodeExit.reassign(instances[0].id, request.data.get("node_id"))
         return WebUtils.response_success()
 
     @action(methods=["post"], detail=False, url_path="instance_update")

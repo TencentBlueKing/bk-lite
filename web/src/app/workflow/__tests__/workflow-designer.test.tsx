@@ -814,7 +814,7 @@ describe('编排中心正式设计器', { timeout: 30000 }, () => {
                 required: [],
                 properties: expect.objectContaining({
                   message: expect.objectContaining({ type: 'string', title: '告警/输入内容' }),
-                  team: expect.objectContaining({ type: 'string', title: '团队' }),
+                  team: expect.objectContaining({ type: 'integer', title: '团队' }),
                   user_ids: expect.objectContaining({ type: 'array', title: '用户' }),
                   object_id: expect.objectContaining({ type: 'string', title: '对象ID' }),
                   scene: expect.objectContaining({ type: 'string', title: '场景' }),
@@ -901,6 +901,147 @@ describe('编排中心正式设计器', { timeout: 30000 }, () => {
 
     expect(await screen.findByText('监听失败')).not.toBeNull();
     expect(screen.queryByText('已捕获事件')).toBeNull();
+  });
+
+  it('改定时频率只更新 config，不冲掉已扩展的 input_schema', async () => {
+    const extendedSchema = {
+      type: 'object',
+      properties: {
+        triggered_at: { type: 'string', title: '触发时间' },
+        schedule: { type: 'array', title: '调度规则', items: { type: 'string' } },
+        message: { type: 'string', title: '告警/输入内容' },
+      },
+      required: ['triggered_at', 'schedule'],
+      additionalProperties: false,
+    };
+    const scheduleWorkflow = {
+      ...workflow,
+      canvas_metadata: {
+        trigger_nodes: [{
+          id: 'trigger_schedule',
+          name: '定时触发器',
+          trigger_type: 'SCHEDULE',
+          input_schema: extendedSchema,
+          config: { frequency: 'daily', time: ['02:00'] },
+        }],
+        return_nodes: [],
+        edges: [],
+      },
+    };
+    mocks.get.mockImplementation((url: string) => {
+      if (url.endsWith('/workflows/1/')) return Promise.resolve(scheduleWorkflow);
+      if (url.includes('/workflows/atoms/')) return Promise.resolve([]);
+      return Promise.resolve([]);
+    });
+    mocks.post.mockResolvedValue({
+      config: { frequency: 'weekly', time: ['02:00'], weekdays: [1], expressions: ['0 2 * * 1'], timezone: 'Asia/Shanghai' },
+      expressions: ['0 2 * * 1'],
+      timezone: 'Asia/Shanghai',
+      next_runs: ['2026-09-22T02:00:00+08:00'],
+      test_output: { triggered_at: '2026-09-18T09:24:02+08:00', scheduled_at: '2026-09-22T02:00:00+08:00', timezone: 'Asia/Shanghai', schedule: ['0 2 * * 1'], test: true },
+    });
+    mocks.patch.mockResolvedValue({ ...scheduleWorkflow, draft_revision: 1 });
+
+    render(<App><WorkflowOrchestrationConsole workflowId={1} /></App>);
+    const trigger = (await screen.findByText('定时触发器')).closest('[data-workflow-node]')?.querySelector<HTMLButtonElement>('button');
+    expect(trigger).not.toBeNull();
+    if (!trigger) return;
+    fireEvent.doubleClick(trigger);
+
+    expect(await screen.findByText('触发频率')).not.toBeNull();
+    fireEvent.mouseDown(screen.getByText('每天'));
+    fireEvent.click(await screen.findByText('每周'));
+    await closeTopDialog();
+    fireEvent.click(screen.getByRole('button', { name: /保存草稿/ }));
+
+    await waitFor(() => expect(mocks.patch).toHaveBeenCalledWith(
+      '/workflow/api/workflows/1/',
+      expect.objectContaining({
+        canvas_metadata: expect.objectContaining({
+          trigger_nodes: [
+            expect.objectContaining({
+              trigger_type: 'SCHEDULE',
+              config: expect.objectContaining({ frequency: 'weekly' }),
+              input_schema: expect.objectContaining({
+                properties: expect.objectContaining({
+                  message: expect.objectContaining({ type: 'string', title: '告警/输入内容' }),
+                }),
+              }),
+            }),
+          ],
+        }),
+      }),
+    ));
+  });
+
+  it('改 Webhook 响应模式只更新 config，不冲掉已扩展的 input_schema', async () => {
+    const extendedSchema = {
+      type: 'object',
+      properties: {
+        body: {
+          type: 'object',
+          title: '请求正文',
+          properties: { alert: { type: 'string', title: '告警内容' } },
+          additionalProperties: true,
+        },
+      },
+      required: ['body'],
+      additionalProperties: false,
+    };
+    const webhookWorkflow = {
+      ...workflow,
+      canvas_metadata: {
+        trigger_nodes: [{
+          id: 'trigger_webhook',
+          name: 'Webhook 触发器',
+          trigger_type: 'WEBHOOK',
+          input_schema: extendedSchema,
+          config: { response_mode: 'IMMEDIATE' },
+        }],
+        return_nodes: [],
+        edges: [],
+      },
+    };
+    mocks.get.mockImplementation((url: string) => {
+      if (url.endsWith('/workflows/1/')) return Promise.resolve(webhookWorkflow);
+      if (url.includes('/workflows/atoms/')) return Promise.resolve([]);
+      return Promise.resolve([]);
+    });
+    mocks.patch.mockResolvedValue({ ...webhookWorkflow, draft_revision: 1 });
+
+    render(<App><WorkflowOrchestrationConsole workflowId={1} /></App>);
+    const trigger = (await screen.findByText('Webhook 触发器')).closest('[data-workflow-node]')?.querySelector<HTMLButtonElement>('button');
+    expect(trigger).not.toBeNull();
+    if (!trigger) return;
+    fireEvent.doubleClick(trigger);
+
+    fireEvent.mouseDown(await screen.findByText('立即响应（返回 execution_id）'));
+    fireEvent.click(await screen.findByText('等待流程结果（同步）'));
+    await closeTopDialog();
+    fireEvent.click(screen.getByRole('button', { name: /保存草稿/ }));
+
+    await waitFor(() => expect(mocks.patch).toHaveBeenCalledWith(
+      '/workflow/api/workflows/1/',
+      expect.objectContaining({
+        canvas_metadata: expect.objectContaining({
+          trigger_nodes: [
+            expect.objectContaining({
+              trigger_type: 'WEBHOOK',
+              config: expect.objectContaining({ response_mode: 'WAIT' }),
+              input_schema: expect.objectContaining({
+                properties: expect.objectContaining({
+                  body: expect.objectContaining({
+                    properties: expect.objectContaining({
+                      alert: expect.objectContaining({ type: 'string', title: '告警内容' }),
+                    }),
+                  }),
+                }),
+              }),
+            }),
+          ],
+        }),
+      }),
+    ));
   });
 
   it('定时触发使用结构化频率、预览下次执行并可立即模拟触发', async () => {

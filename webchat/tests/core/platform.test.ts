@@ -188,6 +188,18 @@ test('maps published platform skill channels and restores last selection', () =>
   );
 });
 
+test('maps job_mgmt_enabled only when the published skill turned the tool on', () => {
+  const apps = mapPlatformApplications([
+    { id: 8, skill_id: 88, name: '888', skill_name: '空白', job_mgmt_enabled: true },
+    { id: 9, skill_id: 89, skill_name: 'plain', job_mgmt_enabled: false },
+    { id: 10, skill_id: 90, skill_name: 'missing' },
+  ]);
+  assert.equal(apps[0].name, '888（空白）');
+  assert.equal(apps[0].jobMgmtEnabled, true);
+  assert.equal(apps[1].jobMgmtEnabled, undefined);
+  assert.equal(apps[2].jobMgmtEnabled, undefined);
+});
+
 test('maps enable_conversation_history only hiding the ring when the skill saved false', () => {
   const apps = mapPlatformApplications([
     { id: 1, skill_id: 10, skill_name: 'on' },

@@ -17,6 +17,7 @@ from apps.core.utils.user_group import normalize_user_group_ids
 from apps.core.utils.web_utils import WebUtils
 from apps.monitor.constants.permission import PermissionConstants
 from apps.monitor.models import MonitorInstance, MonitorInstanceOrganization, MonitorObject
+from apps.monitor.services.collector_node_exit import MonitorCollectorNodeExit
 from apps.monitor.services.effective_plugins import MonitorEffectivePluginService
 from apps.monitor.services.metrics import Metrics as MetricsService
 from apps.monitor.services.module_push import MonitorToCmdbPushService, build_monitor_push_actor_scope
@@ -612,6 +613,26 @@ class MonitorInstanceViewSet(viewsets.ViewSet):
             reason="manual_instance_deleted",
         )
 
+        return WebUtils.response_success()
+
+    @action(methods=["post"], detail=False, url_path="clear_removed_collector")
+    def clear_removed_collector(self, request):
+        instance_id = request.data.get("instance_id")
+        actor_context = _build_actor_context(request)
+        normalized_ids = _ensure_operate_instances(request, [instance_id], actor_context)
+        if not normalized_ids:
+            raise BaseAppException("instance_id 不能为空")
+        MonitorCollectorNodeExit.clear(normalized_ids[0])
+        return WebUtils.response_success()
+
+    @action(methods=["post"], detail=False, url_path="reassign_collector_node")
+    def reassign_collector_node(self, request):
+        instance_id = request.data.get("instance_id")
+        actor_context = _build_actor_context(request)
+        normalized_ids = _ensure_operate_instances(request, [instance_id], actor_context)
+        if not normalized_ids:
+            raise BaseAppException("instance_id 不能为空")
+        MonitorCollectorNodeExit.reassign(normalized_ids[0], request.data.get("node_id"))
         return WebUtils.response_success()
 
     @action(methods=["post"], detail=False, url_path="unbind_monitor_plugin")
