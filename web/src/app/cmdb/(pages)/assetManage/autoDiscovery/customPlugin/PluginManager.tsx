@@ -8,6 +8,7 @@ import { useCustomCollectPluginApi } from '@/app/cmdb/api/customCollectPlugin';
 import { useModelApi } from '@/app/cmdb/api';
 import { useTranslation } from '@/utils/i18n';
 import ScriptCodeEditor, { ShellSwitch } from './scriptCodeEditor';
+import { customPluginTargetOptions, isCustomPluginTargetModel } from './targetModel';
 
 const SCRIPT_FILE_TYPES: Record<string, { accept: string; label: string }> = {
   bash: { accept: '.sh,.bash', label: '.sh、.bash' },
@@ -81,6 +82,8 @@ export default function PluginManager({ lockedModelId = '' }: { lockedModelId?: 
   const osType = Form.useWatch('os_type', form) || 'linux';
   const shell = Form.useWatch('shell', form) || 'bash';
   const fileType = scriptFileType(shell);
+  const targetModelOptions = customPluginTargetOptions(models, editing?.model_id || '');
+  const createBlocked = Boolean(lockedModelId) && !isCustomPluginTargetModel(lockedModelId);
 
   const applyShell = (next: string) => {
     form.setFieldValue('shell', next);
@@ -119,6 +122,10 @@ export default function PluginManager({ lockedModelId = '' }: { lockedModelId?: 
   }, [lockedModelId]);
 
   const openCreate = () => {
+    if (lockedModelId && !isCustomPluginTargetModel(lockedModelId)) {
+      message.warning(t('Collection.customPlugin.targetModelExcluded'));
+      return;
+    }
     setEditing(null);
     setUploadedName('');
     form.setFieldsValue({ ...emptyForm, model_id: lockedModelId, content: '' });
@@ -148,11 +155,16 @@ export default function PluginManager({ lockedModelId = '' }: { lockedModelId?: 
       message.error(t('Collection.customPlugin.uploadTyped', undefined, { label: scriptFileType(values.shell).label }));
       return;
     }
+    const modelId = lockedModelId || values.model_id;
+    if ((!editing || editing.model_id !== modelId) && !isCustomPluginTargetModel(modelId)) {
+      message.error(t('Collection.customPlugin.targetModelExcluded'));
+      return;
+    }
     const teamId = Number(Cookies.get('current_team'));
     const payload = {
       name: values.name,
       plugin_id: values.plugin_id,
-      model_id: lockedModelId || values.model_id,
+      model_id: modelId,
       os_type: values.os_type,
       shell: values.shell,
       content: values.content,
@@ -177,7 +189,7 @@ export default function PluginManager({ lockedModelId = '' }: { lockedModelId?: 
     <div className="p-4">
       <div className="mb-3 flex justify-between">
         <div className="text-sm text-[var(--color-text-2)]">{t('Collection.customPlugin.intro')}</div>
-        <Button type="primary" onClick={openCreate}>{t('Collection.customPlugin.create')}</Button>
+        <Button type="primary" disabled={createBlocked} onClick={openCreate}>{t('Collection.customPlugin.create')}</Button>
       </div>
       <CustomTable
         loading={loading}
@@ -243,7 +255,7 @@ export default function PluginManager({ lockedModelId = '' }: { lockedModelId?: 
               showSearch
               optionFilterProp="label"
               disabled={Boolean(lockedModelId || editing)}
-              options={models}
+              options={targetModelOptions}
               placeholder={t('Collection.customPlugin.targetModelPlaceholder')}
             />
           </Form.Item>

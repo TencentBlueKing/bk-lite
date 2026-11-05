@@ -229,43 +229,14 @@ const normalizeFilterSystemId = (value: unknown): string => {
   return value.trim();
 };
 
-const systemOptionValues = (options: Array<Pick<InputOption, 'value'>>) =>
-  options
-    .map((option) => option.value)
-    .filter((value): value is string | number => typeof value === 'string' || typeof value === 'number');
-
-export const resolveApplicationSystemFilterAppliedValue = (
-  definition: Pick<UnifiedFilterDefinition, 'id' | 'key' | 'type' | 'defaultValue' | 'enabled'>,
-  current: FilterValue | null | undefined,
-  options: Array<Pick<InputOption, 'value'>>,
-): FilterValue | undefined | typeof ROOM_FILTER_PASSTHROUGH => {
-  const isSystemFilter = definition.id === APPLICATION_TOPOLOGY_FILTER_ID
-    || (definition.key === APPLICATION_TOPOLOGY_FILTER_KEY && definition.type === 'string');
-  if (!isSystemFilter || definition.enabled === false) {
-    return ROOM_FILTER_PASSTHROUGH;
-  }
-  const defaultId = normalizeFilterSystemId(definition.defaultValue);
-  const currentId = normalizeFilterSystemId(current);
-  if (currentId) return undefined;
-  if (defaultId) {
-    return (current ?? null) === defaultId ? undefined : defaultId;
-  }
-  if (!options.length) return undefined;
-  const first = systemOptionValues(options)[0];
-  if (first === undefined || (current ?? null) === first) return undefined;
-  return first;
-};
-
-/** 机房筛选和应用系统筛选都在选项到达时补上默认值，其它筛选项交给通用校正。 */
+/** 只有内置 3D 机房筛在选项到达时补默认机房。应用系统和拆行摘要 id 交给通用校正。 */
 export const resolveBuiltinCanvasFilterAppliedValue = (
   definition: Pick<UnifiedFilterDefinition, 'id' | 'key' | 'type' | 'defaultValue' | 'enabled'>,
   current: FilterValue | null | undefined,
   options: Array<Pick<InputOption, 'value'>>,
-): FilterValue | undefined | typeof ROOM_FILTER_PASSTHROUGH => {
-  const roomValue = resolveRoomFilterAppliedValue(definition, current, options);
-  if (roomValue !== ROOM_FILTER_PASSTHROUGH) return roomValue;
-  return resolveApplicationSystemFilterAppliedValue(definition, current, options);
-};
+): FilterValue | undefined | typeof ROOM_FILTER_PASSTHROUGH => (
+  resolveRoomFilterAppliedValue(definition, current, options)
+);
 
 /** 应用拓扑读画布筛选。运行时已选值优先，否则用筛选项默认值。 */
 export const resolveApplicationTopologyCanvasSelection = ({

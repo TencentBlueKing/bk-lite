@@ -20,4 +20,7 @@ RUN apt-get update && \
     dpkg --compare-versions "$(dpkg-query -W -f='${Version}' libbrotli1)" ge "$minimum" && \
     rm -rf /var/lib/apt/lists/*
 
+COPY upgrade_ubuntu_python.sh /usr/local/libexec/bklite-upgrade-python-tooling.sh
+RUN sh /usr/local/libexec/bklite-upgrade-python-tooling.sh
+
 USER ${RUNTIME_USER}

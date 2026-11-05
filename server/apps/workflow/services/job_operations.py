@@ -229,9 +229,18 @@ def _execution_params(raw: Any) -> list[dict[str, str]]:
     return [{"value": item} for item in text.split()] if text else []
 
 
-def _checkpoint_job_submissions(inputs: dict[str, Any], submissions: list[tuple[int, list[dict[str, Any]]]]) -> None:
+def _job_idempotency_key(inputs: dict[str, Any], target_source: str) -> str | None:
+    context = inputs.get("__bklite_context") if isinstance(inputs.get("__bklite_context"), dict) else {}
+    execution_id = context.get("execution_id") or inputs.get("__execution_id") or ""
+    atom_execution_id = inputs.get("__atom_execution_id")
+    if execution_id in (None, "") or atom_execution_id in (None, ""):
+        return None
+    return f"workflow:{execution_id}:atom:{atom_execution_id}:group:{target_source}"[:255]
+
+
+def _checkpoint_job_submissions(inputs: dict[str, Any], ledger: dict[str, int]) -> None:
     checkpoint: Callable[[list[int]], None] | None = inputs.get("__job_submit_checkpoint")
-    task_ids = [task_id for task_id, _targets in submissions]
+    task_ids = list(ledger.values())
     if callable(checkpoint):
         checkpoint(task_ids)
         return
@@ -242,9 +251,33 @@ def _checkpoint_job_submissions(inputs: dict[str, Any], submissions: list[tuple[
 
     AtomExecution.objects.filter(pk=atom_execution_id).update(
         job_task_id=task_ids[0] if task_ids else None,
-        output={"job_task_ids": task_ids, "submit_checkpoint": True},
+        output={"job_task_ids": task_ids, "job_submit_ledger": ledger, "submit_checkpoint": True},
         updated_at=timezone.now(),
     )
+
+
+def _assert_execution_allows_job_submit(inputs: dict[str, Any]) -> None:
+    context = inputs.get("__bklite_context")
+    execution_id = None
+    if isinstance(context, dict):
+        execution_id = context.get("execution_id")
+    if execution_id in (None, ""):
+        execution_id = inputs.get("__execution_id")
+    if execution_id in (None, ""):
+        return
+    from django.core.exceptions import ValidationError
+
+    from apps.workflow.models import WorkflowExecution
+
+    try:
+        status = WorkflowExecution.objects.filter(pk=execution_id).values_list("status", flat=True).first()
+    except (ValidationError, ValueError, TypeError):
+        return
+    if status in {
+        WorkflowExecution.Status.TERMINATING,
+        WorkflowExecution.Status.TERMINATED,
+    }:
+        raise ValueError("执行已终止，禁止提交新作业")
 
 
 def execute_custom_script(inputs: dict[str, Any], *, executor=None) -> dict[str, Any]:
@@ -257,33 +290,51 @@ def execute_custom_script(inputs: dict[str, Any], *, executor=None) -> dict[str,
     script_content = str(inputs.get("script_content") or "")
     if not script_content.strip() or len(script_content) > 100000:
         raise ValueError("作业脚本不能为空")
+    _assert_execution_allows_job_submit(inputs)
     groups = _target_groups(targets)
     params = _execution_params(inputs.get("execution_params"))
     team = team_id(inputs.get("team"))
     actor = actor_snapshot(inputs)
     timeout = int(inputs.get("timeout_seconds") or 600)
     runner = executor or JobPlatformExecutor()
+    prior_ledger = inputs.get("__job_submit_ledger")
+    ledger: dict[str, int] = {}
+    if isinstance(prior_ledger, dict):
+        for source, task_id in prior_ledger.items():
+            try:
+                ledger[str(source)] = int(task_id)
+            except (TypeError, ValueError):
+                continue
     prior_ids = inputs.get("__job_task_ids")
+    # Legacy full-list checkpoint: only reuse when every group has a paired id.
+    if not ledger and isinstance(prior_ids, list) and prior_ids and len(prior_ids) == len(groups):
+        for task_id, source in zip(prior_ids, groups.keys(), strict=True):
+            ledger[str(source)] = int(task_id)
+
+    context = inputs.get("__bklite_context") if isinstance(inputs.get("__bklite_context"), dict) else {}
+    workflow_execution_id = context.get("execution_id") or inputs.get("__execution_id")
+    workflow_execution_id = str(workflow_execution_id) if workflow_execution_id not in (None, "") else None
     submissions: list[tuple[int, list[dict[str, Any]]]] = []
-    if isinstance(prior_ids, list) and prior_ids and len(prior_ids) == len(groups):
-        # Resume wait for durable submissions instead of blind resubmit after lease reclaim.
-        for task_id, (_source, source_targets) in zip(prior_ids, groups.items(), strict=True):
-            submissions.append((int(task_id), source_targets))
-    else:
-        for source, source_targets in groups.items():
-            task_id = runner.submit(
-                name="编排中心-脚本执行",
-                nodes=source_targets,
-                team=team,
-                target_source=source,
-                script_type=script_type,
-                script_content=script_content,
-                timeout=timeout,
-                actor=actor,
-                params=params,
-            )
-            submissions.append((task_id, source_targets))
-            _checkpoint_job_submissions(inputs, submissions)
+    for source, source_targets in groups.items():
+        if source in ledger:
+            submissions.append((ledger[source], source_targets))
+            continue
+        task_id = runner.submit(
+            name="编排中心-脚本执行",
+            nodes=source_targets,
+            team=team,
+            target_source=source,
+            script_type=script_type,
+            script_content=script_content,
+            timeout=timeout,
+            actor=actor,
+            params=params,
+            idempotency_key=_job_idempotency_key(inputs, source),
+            workflow_execution_id=workflow_execution_id,
+        )
+        ledger[source] = int(task_id)
+        submissions.append((int(task_id), source_targets))
+        _checkpoint_job_submissions(inputs, ledger)
 
     results: list[dict[str, Any]] = []
     for task_id, source_targets in submissions:
@@ -295,4 +346,139 @@ def execute_custom_script(inputs: dict[str, Any], *, executor=None) -> dict[str,
         "data": results,
         "summary": {"total": len(results), "succeeded": succeeded, "failed": failed},
         "job_task_ids": [task_id for task_id, _targets in submissions],
+        "job_submit_ledger": ledger,
+    }
+
+
+def _normalize_distribute_files(raw: Any) -> list[dict[str, str]]:
+    if not isinstance(raw, list) or not 1 <= len(raw) <= 20:
+        raise ValueError("文件分发必须选择 1 到 20 个文件")
+    files: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for item in raw:
+        if not isinstance(item, dict):
+            raise ValueError("分发文件配置非法")
+        file_key = str(item.get("file_key") or "").strip()
+        name = str(item.get("name") or "").strip()
+        if not file_key or not name or len(file_key) > 512 or len(name) > 255:
+            raise ValueError("分发文件配置非法")
+        if file_key in seen:
+            continue
+        seen.add(file_key)
+        files.append({"file_key": file_key, "name": name})
+    if not files:
+        raise ValueError("文件分发必须选择 1 到 20 个文件")
+    return files
+
+
+def _file_distribute_results(detail: dict[str, Any], targets: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    target_map = {str(target.get("source_id")): target for target in targets}
+    returned: set[str] = set()
+    results: list[dict[str, Any]] = []
+    for raw in detail.get("execution_results", []) or []:
+        source_id = str(raw.get("target_key") or raw.get("node_id") or raw.get("target_id") or "")
+        target = target_map.get(source_id, {})
+        returned.add(source_id)
+        success = str(raw.get("status") or "").lower() == "success"
+        file_results = []
+        for item in raw.get("file_results") or []:
+            if not isinstance(item, dict):
+                continue
+            file_results.append(
+                {
+                    "file_name": str(item.get("file_name") or "")[:255],
+                    "success": bool(item.get("success")),
+                    "error": str(item.get("error") or "")[:500],
+                }
+            )
+        error = None if success else str(raw.get("error_message") or raw.get("stderr") or "文件分发失败")[:500]
+        results.append(
+            {
+                "target": _target_identity(target, source_id),
+                "status": "SUCCESS" if success else "FAILED",
+                "file_results": file_results,
+                "error": error,
+            }
+        )
+    for source_id, target in target_map.items():
+        if source_id in returned:
+            continue
+        results.append(
+            {
+                "target": _target_identity(target, source_id),
+                "status": "FAILED",
+                "file_results": [],
+                "error": "作业平台未返回该目标结果",
+            }
+        )
+    return results
+
+
+def execute_file_distribute(inputs: dict[str, Any], *, executor=None) -> dict[str, Any]:
+    targets = inputs.get("targets")
+    if not isinstance(targets, list):
+        raise ValueError("文件分发目标非法")
+    files = _normalize_distribute_files(inputs.get("files"))
+    target_path = str(inputs.get("target_path") or "").strip()
+    if not target_path or len(target_path) > 512:
+        raise ValueError("目标路径非法")
+    overwrite_strategy = str(inputs.get("overwrite_strategy") or "overwrite")
+    if overwrite_strategy not in {"overwrite", "skip"}:
+        raise ValueError("覆盖策略非法")
+    _assert_execution_allows_job_submit(inputs)
+    groups = _target_groups(targets)
+    team = team_id(inputs.get("team"))
+    actor = actor_snapshot(inputs)
+    timeout = int(inputs.get("timeout_seconds") or 600)
+    runner = executor or JobPlatformExecutor()
+    prior_ledger = inputs.get("__job_submit_ledger")
+    ledger: dict[str, int] = {}
+    if isinstance(prior_ledger, dict):
+        for source, task_id in prior_ledger.items():
+            try:
+                ledger[str(source)] = int(task_id)
+            except (TypeError, ValueError):
+                continue
+    prior_ids = inputs.get("__job_task_ids")
+    if not ledger and isinstance(prior_ids, list) and prior_ids and len(prior_ids) == len(groups):
+        for task_id, source in zip(prior_ids, groups.keys(), strict=True):
+            ledger[str(source)] = int(task_id)
+
+    context = inputs.get("__bklite_context") if isinstance(inputs.get("__bklite_context"), dict) else {}
+    workflow_execution_id = context.get("execution_id") or inputs.get("__execution_id")
+    workflow_execution_id = str(workflow_execution_id) if workflow_execution_id not in (None, "") else None
+    file_keys = [item["file_key"] for item in files]
+    submissions: list[tuple[int, list[dict[str, Any]]]] = []
+    for source, source_targets in groups.items():
+        if source in ledger:
+            submissions.append((ledger[source], source_targets))
+            continue
+        task_id = runner.submit_file_distribute(
+            name="编排中心-文件分发",
+            nodes=source_targets,
+            team=team,
+            target_source=source,
+            file_keys=file_keys,
+            target_path=target_path,
+            timeout=timeout,
+            actor=actor,
+            overwrite_strategy=overwrite_strategy,
+            idempotency_key=_job_idempotency_key(inputs, source),
+            workflow_execution_id=workflow_execution_id,
+        )
+        ledger[source] = int(task_id)
+        submissions.append((int(task_id), source_targets))
+        _checkpoint_job_submissions(inputs, ledger)
+
+    results: list[dict[str, Any]] = []
+    for task_id, source_targets in submissions:
+        detail = runner.wait(task_id, team=team, timeout=timeout + 60, actor=actor)
+        results.extend(_file_distribute_results(detail, source_targets))
+    succeeded = sum(item["status"] == "SUCCESS" for item in results)
+    failed = len(results) - succeeded
+    return {
+        "data": results,
+        "summary": {"total": len(results), "succeeded": succeeded, "failed": failed},
+        "job_task_ids": [task_id for task_id, _targets in submissions],
+        "job_submit_ledger": ledger,
     }

@@ -22,7 +22,11 @@ class RumApplicationViewSet(viewsets.ViewSet):
     @HasPermission("applications-View")
     def list(self, request):
         try:
-            return Response(_service().list_applications(actor_from_request(request)))
+            actor = actor_from_request(request)
+            brief = str(request.query_params.get("brief") or "").lower()
+            if brief in {"1", "true", "yes"}:
+                return Response(_service().list_application_names(actor))
+            return Response(_service().list_applications(actor))
         except ControlError as exc:
             return control_error_response(exc)
 

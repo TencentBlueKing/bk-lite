@@ -8,12 +8,23 @@ import {
   mapDynamicItems,
   resolveDynamicSourceId,
 } from '@/app/ops-analysis/utils/paramInputConfigUtils';
+import {
+  canonicalQueryParams,
+  stableStringify,
+} from '@/app/ops-analysis/utils/optionsQueryParamRefs';
 
 export type ParamInputOptionsState =
   | { status: 'idle'; options: [] }
   | { status: 'loading'; options: [] }
   | { status: 'success'; options: InputOption[] }
+  | { status: 'blocked'; options: [] }
   | { status: 'error'; options: []; errorMessage?: string };
+
+export interface ParamInputOptionsRequest {
+  resolvedParams?: Record<string, unknown>;
+  blocked?: boolean;
+  blockReason?: 'empty' | 'invalid';
+}
 
 export interface ParamInputOptionsLoad {
   sync: boolean;
@@ -74,7 +85,18 @@ export const getParamInputConfigKey = (config?: InputControlConfig): string => {
     'dynamic', config.control, source.sourceId,
     source.sourceRef?.type, source.sourceRef?.value,
     source.valueField, source.labelField,
+    canonicalQueryParams(source.queryParams),
   ]);
+};
+
+export const buildOptionsLoadSignature = (
+  config: InputControlConfig | undefined,
+  request?: ParamInputOptionsRequest,
+): string => {
+  if (request?.blocked) {
+    return `${getParamInputConfigKey(config)}|blocked:${request.blockReason ?? 'empty'}`;
+  }
+  return `${getParamInputConfigKey(config)}|${stableStringify(request?.resolvedParams ?? {})}`;
 };
 
 const resolved = (options: InputOption[]): ParamInputOptionsState =>
@@ -89,8 +111,11 @@ export const createParamInputOptionsLoader = (
   let currentLoad: ParamInputOptionsLoad | undefined;
   let settled = false;
 
-  const load = (config?: InputControlConfig): ParamInputOptionsLoad => {
-    const key = getParamInputConfigKey(config);
+  const load = (
+    config?: InputControlConfig,
+    request?: ParamInputOptionsRequest,
+  ): ParamInputOptionsLoad => {
+    const key = buildOptionsLoadSignature(config, request);
     if (key === currentKey && currentLoad) return currentLoad;
     currentKey = key;
     settled = false;
@@ -110,6 +135,13 @@ export const createParamInputOptionsLoader = (
     }
 
     const source = config.optionsSource;
+    if (request?.blocked) {
+      const initial: ParamInputOptionsState = { status: 'blocked', options: [] };
+      settled = true;
+      currentLoad = { sync: true, initial, promise: Promise.resolve(initial) };
+      return currentLoad;
+    }
+    const resolvedParams = request?.resolvedParams ?? {};
     const initial: ParamInputOptionsState = { status: 'loading', options: [] };
     const promise = (async (): Promise<ParamInputOptionsState | null> => {
       const loaderOptions = getLoaderOptions?.();
@@ -140,7 +172,7 @@ export const createParamInputOptionsLoader = (
           settled = true;
           return { status: 'error', options: [] };
         }
-        const { data } = await api.getSourceDataByApiId(sourceId, {}, requestOptions);
+        const { data } = await api.getSourceDataByApiId(sourceId, resolvedParams, requestOptions);
         const options = mapDynamicItems(
           extractDataSourceItems(data), source.valueField, source.labelField,
         );

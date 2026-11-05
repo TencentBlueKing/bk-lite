@@ -28,12 +28,14 @@ export default function TransferDrawer({ open, onClose, tasks, error, loading, o
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState('');
   const [preview, setPreview] = useState<ErrorReportTable>({ columns: [], rows: [] });
+  const [errorPage, setErrorPage] = useState({ current: 1, pageSize: 10 });
   const viewErrors = async (task: TransferTask) => {
     setBusy(`${task.task_id}:view_errors`);
     setPreviewOpen(true);
     setPreviewLoading(true);
     setPreviewError('');
     setPreview({ columns: [], rows: [] });
+    setErrorPage({ current: 1, pageSize: 10 });
     try {
       const blob = await api.download(task.task_id, 'errors');
       setPreview(await parseErrorReport(await blob.arrayBuffer()));
@@ -167,7 +169,13 @@ export default function TransferDrawer({ open, onClose, tasks, error, loading, o
           size="small"
           loading={previewLoading}
           rowKey="key"
-          pagination={preview.rows.length > 10 ? { pageSize: 10 } : false}
+          pagination={preview.rows.length > 10 ? {
+            current: errorPage.current,
+            pageSize: errorPage.pageSize,
+            showSizeChanger: true,
+            pageSizeOptions: [10, 20, 50, 100],
+            onChange: (current, pageSize) => setErrorPage({ current, pageSize }),
+          } : false}
           scroll={{ y: 420 }}
           locale={{ emptyText: <Empty description={t('Transfer.errorsEmpty')} /> }}
           columns={preview.columns.map((column) => ({

@@ -43,6 +43,11 @@ try {
     'login requests must remain excluded',
   );
   assert.equal(
+    triggerSessionExpiry('/api/proxy/core/api/verify_otp_login/', 'session-a'),
+    false,
+    'OTP login from the expired-session dialog must remain excluded',
+  );
+  assert.equal(
     triggerSessionExpiry('https://other.example.com/api/metrics/', 'session-a'),
     false,
     'cross-origin requests must remain excluded',

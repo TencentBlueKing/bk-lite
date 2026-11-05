@@ -273,7 +273,8 @@ test('login UI and AuthContext block submissions until session initialization fi
 
   assert.match(pageSource, /const \{ login, isInitializing \} = useAuth\(\)/);
   assert.match(pageSource, /if \(isInitializing\) return/);
-  assert.match(pageSource, /disabled=\{isLoading \|\| isInitializing/);
+  assert.match(pageSource, /const busy = isLoading \|\| isInitializing \|\| startingExternal/);
+  assert.match(pageSource, /disabled=\{busy/);
   assert.match(contextSource, /if \(isInitializing \|\| \(isAuthenticated && pathname === '\/login'\)\)/);
   assert.match(contextSource, /status: 'service-unavailable'/);
 });

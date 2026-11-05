@@ -56,7 +56,7 @@ import {
 } from './simple-dashboard-core';
 import { ChartData } from '@/app/monitor/types';
 import { useDashboardText } from '../../shared/utils/content-i18n';
-import { hasProDashboard } from '../../shared/utils/pro-dashboard';
+import { allowCategoryChromeMeta, hasProDashboard } from '../../shared/utils/pro-dashboard';
 
 // ─── Icon helper ─────────────────────────────────────────────────────────────
 
@@ -731,6 +731,10 @@ export interface DashboardShellProps {
   brandLabel?: string;
   /** 实例名右侧的小徽章，例如 Redis 架构芯片。 */
   identityExtra?: React.ReactNode;
+  /** 叠在共享 .page 上。专业盘用来取消 min-height:100%，短 Tab 不再撑满一屏灰底。 */
+  pageClassName?: string;
+  /** 叠在共享 .shell 上。 */
+  shellClassName?: string;
   styles: DashboardStyles;
 }
 
@@ -748,6 +752,8 @@ export const DashboardShell = ({
   unifiedChrome = true,
   brandLabel,
   identityExtra,
+  pageClassName,
+  shellClassName,
   styles
 }: DashboardShellProps) => {
   const { dt } = useDashboardText();
@@ -832,9 +838,15 @@ export const DashboardShell = ({
             <span key="brand" className={styles.instanceMetaInline}>{dt(brandLabel)}</span>
           ]
           : []),
-        ...dashboard.objectMetaItems.map((item, index) => (
-          <span key={index} className={styles.instanceMetaInline}>{typeof item === 'string' ? dt(item) : item}</span>
-        )),
+        ...dashboard.objectMetaItems
+          .filter((item) => (
+            activeMode !== 'category'
+            || typeof item !== 'string'
+            || allowCategoryChromeMeta(dashboard.routeKey, item)
+          ))
+          .map((item, index) => (
+            <span key={index} className={styles.instanceMetaInline}>{typeof item === 'string' ? dt(item) : item}</span>
+          )),
         ...(showLinkedHost
           ? [
             <LinkedHostSegment
@@ -879,8 +891,8 @@ export const DashboardShell = ({
   );
 
   return (
-  <div className={styles.page}>
-    <div className={styles.shell} data-view-mode={activeMode}>
+  <div className={[styles.page, pageClassName].filter(Boolean).join(' ')}>
+    <div className={[styles.shell, shellClassName].filter(Boolean).join(' ')} data-view-mode={activeMode}>
       {unifiedChrome ? (
         <>
           <div className={styles.unifiedShell} data-dashboard-shell="unified">

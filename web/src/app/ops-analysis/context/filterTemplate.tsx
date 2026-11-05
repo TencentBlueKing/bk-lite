@@ -123,6 +123,7 @@ export const FilterTemplateProvider = ({
       <FilterTemplateContext.Provider value={value}>
         <FilterDisplayLabelLoaders
           definitions={source}
+          values={appliedValues}
           enabled={resolveEnabled}
           store={store}
           canvasId={canvasId}

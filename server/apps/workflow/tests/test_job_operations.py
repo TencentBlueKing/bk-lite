@@ -2,21 +2,30 @@ import json
 
 import pytest
 
+from apps.workflow.atom_packages.bklite_file_distribute.runtime.handler import execute as execute_file_distribute_atom
 from apps.workflow.atom_packages.bklite_job_execute.runtime.handler import execute as execute_job_atom
-from apps.workflow.services.job_operations import execute_custom_script
+from apps.workflow.services.job_operations import execute_custom_script, execute_file_distribute
 
 
 class FakeExecutor:
     def __init__(self, details):
         self.details = details
         self.submissions = []
+        self._wait_results = dict(details) if isinstance(details, dict) else {}
 
     def submit(self, **kwargs):
         task_id = len(self.submissions) + 1
         self.submissions.append(kwargs)
+        if not isinstance(self.details, dict):
+            self._wait_results[task_id] = self.details[task_id - 1]
         return task_id
 
+    def submit_file_distribute(self, **kwargs):
+        return self.submit(**kwargs)
+
     def wait(self, task_id, **kwargs):
+        if task_id in self._wait_results:
+            return self._wait_results[task_id]
         return self.details[task_id - 1]
 
 
@@ -393,3 +402,179 @@ def test_execute_custom_script_checkpoints_job_ids_after_submit():
     assert len(runner.submissions) == 1
     assert checkpoints == [[1]]
     assert output["job_task_ids"] == [1]
+    assert output["job_submit_ledger"] == {"manual": 1}
+
+
+def test_execute_custom_script_resumes_partial_ledger_without_resubmitting_done_groups():
+    runner = FakeExecutor(
+        {
+            101: {"execution_results": [{"target_key": "5", "status": "success", "stdout": "ok"}]},
+            1: {"execution_results": [{"target_key": "n1", "status": "success", "stdout": "ok"}]},
+        }
+    )
+    checkpoints = []
+
+    output = execute_custom_script(
+        {
+            "targets": [
+                {
+                    "id": "manual:5",
+                    "source": "job_mgmt",
+                    "source_id": "5",
+                    "name": "host-a",
+                    "ip": "10.0.0.5",
+                    "operating_system": "linux",
+                },
+                {
+                    "id": "node:n1",
+                    "source": "node_mgmt",
+                    "source_id": "n1",
+                    "name": "host-b",
+                    "ip": "10.0.0.6",
+                    "operating_system": "linux",
+                },
+            ],
+            "script_type": "shell",
+            "script_content": "echo ok",
+            "team": 7,
+            "actor": {"username": "operator", "domain": "example.com"},
+            "__job_submit_ledger": {"manual": 101},
+            "__job_submit_checkpoint": checkpoints.append,
+            "__bklite_context": {"execution_id": "exec-1"},
+            "__atom_execution_id": 9,
+        },
+        executor=runner,
+    )
+
+    assert len(runner.submissions) == 1
+    assert runner.submissions[0]["target_source"] == "node_mgmt"
+    assert runner.submissions[0]["idempotency_key"] == "workflow:exec-1:atom:9:group:node_mgmt"
+    assert output["job_submit_ledger"]["manual"] == 101
+    assert "node_mgmt" in output["job_submit_ledger"]
+    assert checkpoints
+
+
+@pytest.mark.django_db
+def test_execute_custom_script_blocks_submit_when_execution_terminated():
+    from apps.workflow.models import Workflow, WorkflowExecution
+
+    workflow = Workflow.objects.create(name="已终止禁提交", team=[7], definition={})
+    execution = WorkflowExecution.objects.create(
+        workflow=workflow,
+        workflow_version=1,
+        team=[7],
+        status=WorkflowExecution.Status.TERMINATED,
+    )
+    runner = FakeExecutor([])
+
+    with pytest.raises(ValueError, match="执行已终止"):
+        execute_custom_script(
+            {
+                "targets": [
+                    {
+                        "id": "manual:5",
+                        "source": "job_mgmt",
+                        "source_id": "5",
+                        "name": "host",
+                        "ip": "10.0.0.5",
+                        "operating_system": "linux",
+                    }
+                ],
+                "script_type": "shell",
+                "script_content": "echo ok",
+                "team": 7,
+                "actor": {"username": "operator", "domain": "example.com"},
+                "__bklite_context": {"execution_id": str(execution.id)},
+            },
+            executor=runner,
+        )
+
+    assert runner.submissions == []
+
+
+def test_file_distribute_output_uses_per_host_file_results():
+    runner = FakeExecutor(
+        [
+            {
+                "execution_results": [
+                    {
+                        "target_key": "n1",
+                        "status": "success",
+                        "file_results": [{"file_name": "a.conf", "success": True, "error": ""}],
+                    }
+                ]
+            }
+        ]
+    )
+
+    output = execute_file_distribute(
+        {
+            "targets": [_target("n1")],
+            "files": [{"file_key": "job-files/a.conf", "name": "a.conf"}],
+            "target_path": "/etc/nginx/",
+            "overwrite_strategy": "overwrite",
+            "timeout_seconds": 60,
+            "team": 7,
+            "actor": {"username": "operator", "domain": "example.com"},
+        },
+        executor=runner,
+    )
+
+    assert output["summary"] == {"total": 1, "succeeded": 1, "failed": 0}
+    assert output["data"][0]["status"] == "SUCCESS"
+    assert output["data"][0]["file_results"] == [{"file_name": "a.conf", "success": True, "error": ""}]
+    assert runner.submissions[0]["file_keys"] == ["job-files/a.conf"]
+    assert runner.submissions[0]["target_path"] == "/etc/nginx/"
+
+
+def test_file_distribute_atom_revalidates_targets_with_trusted_context():
+    gateway = FakeTargetGateway()
+    runner = FakeExecutor(
+        [
+            {
+                "execution_results": [
+                    {
+                        "target_key": "5",
+                        "status": "success",
+                        "file_results": [{"file_name": "a.conf", "success": True, "error": ""}],
+                    }
+                ]
+            }
+        ]
+    )
+
+    output = execute_file_distribute_atom(
+        {
+            "targets": ["manual:5"],
+            "files": [{"file_key": "job-files/a.conf", "name": "a.conf"}],
+            "target_path": "/tmp/",
+            "overwrite_strategy": "skip",
+            "timeout_seconds": 90,
+            "team": 999,
+            "actor": {"username": "spoofed", "domain": "attacker.example"},
+            "__bklite_context": {
+                "organization_id": 7,
+                "actor": {"username": "operator", "domain": "example.com"},
+            },
+        },
+        gateway=gateway,
+        executor=runner,
+    )
+
+    assert gateway.calls == [("job_mgmt", ["5"])]
+    assert runner.submissions[0]["team"] == 7
+    assert runner.submissions[0]["overwrite_strategy"] == "skip"
+    assert output["summary"]["succeeded"] == 1
+
+
+def test_file_distribute_atom_rejects_missing_trusted_context():
+    with pytest.raises(ValueError, match="缺少可信流程上下文"):
+        execute_file_distribute_atom(
+            {
+                "targets": ["manual:5"],
+                "files": [{"file_key": "job-files/a.conf", "name": "a.conf"}],
+                "target_path": "/tmp/",
+            },
+            gateway=FakeTargetGateway(),
+            executor=FakeExecutor([]),
+        )

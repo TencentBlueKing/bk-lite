@@ -2,7 +2,7 @@
 
 import uuid
 
-from django.db.models import Q
+from django.db.models import CharField, F, Q, Value
 
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.openapi.decorators import openapi_expose
@@ -10,6 +10,7 @@ from apps.core.utils.current_team_scope import _normalize_organization_ids
 from apps.system_mgmt.models import Group, Role
 from apps.system_mgmt.models import User as SystemUser
 from apps.system_mgmt.models.channel import Channel, ChannelChoices
+from apps.system_mgmt.models.im_notification_channel import IMNotificationChannel, IMNotificationChannelStatusChoices
 from apps.system_mgmt.nats.channels import _channel_has_organization, _notification_channel_capabilities, dispatch_notification
 from apps.system_mgmt.openapi_serializers import (
     NotificationChannelPageResponseSerializer,
@@ -19,7 +20,11 @@ from apps.system_mgmt.openapi_serializers import (
     SystemMgmtNotificationSendSerializer,
     SystemMgmtUsersQuerySerializer,
 )
+from apps.system_mgmt.services.capability_contract_service import get_integration_capability_availability
+from apps.system_mgmt.services.im_notification_service import send_im_notification
+from apps.system_mgmt.services.notification_tag import channel_tag_tokens
 from apps.system_mgmt.utils.group_utils import GroupUtils
+from apps.system_mgmt.utils.i18n import localized_channel_description
 
 _ORG_SCOPE = (
     "组织口径：系统令牌授权范围为单个 Acting-Team；不传 group_id 时从该组织查起；"
@@ -31,6 +36,7 @@ _TEAM_OUT_OF_SCOPE_MESSAGE = "无权访问该组织"
 _GROUP_UNAVAILABLE_MESSAGE = "指定组织不存在或已归档"
 _CHANNEL_NOT_FOUND_MESSAGE = "通知渠道不存在。"
 _CHANNEL_UNSUPPORTED_MESSAGE = "该通知渠道不支持外部投递。"
+_CHANNEL_TYPE_MISMATCH_MESSAGE = "通知渠道类型不匹配。"
 _RECIPIENT_OUT_OF_SCOPE_MESSAGE = "通知接收人不在授权组织内。"
 _RECIPIENT_INVALID_MESSAGE = "通知接收人不符合渠道能力。"
 _DELIVERY_FAILED_MESSAGE = "通知渠道投递失败。"
@@ -46,7 +52,8 @@ _EXTERNAL_NOTIFICATION_CHANNEL_TYPES = frozenset(
     }
 )
 _CHANNEL_CATALOG_SUMMARY = (
-    "分页查询当前组织可外部投递的通知渠道。每条渠道的 send_parameters 说明投递接口要传的字段，"
+    "分页查询当前组织可外部投递的通知渠道。普通渠道和 IM 应用通知一起返回，"
+    "用 channel_type 区分，IM 应用通知的值是 im_notification。每条渠道的 send_parameters 说明投递接口要传的字段，"
     "渠道类型不同，标题是否生效、接收人怎么填会不一样。渠道实例以本接口实时返回为准，"
     "新增或停用渠道不新增、不删除网关路径。不返回连接配置。NATS 等内部通道不在此目录。" + _ORG_SCOPE
 )
@@ -71,7 +78,8 @@ _RECEIVER_PARAMETER_DESCRIPTION = {
     "free_text": "渠道侧接收人名，原样附在消息里，不是平台用户 ID。1 到 100 个，每个最长 150 个字符，不能重复。",
 }
 _CHANNEL_SEND_SUMMARY = (
-    "按通知渠道目录中的 channel_id 投递一条消息。"
+    "按通知渠道目录中的 channel_id 和 channel_type 投递一条消息。channel_type 必填，取目录返回的原值。"
+    "im_notification 投递 IM 应用通知，其他值投递对应的普通渠道。"
     "recipient_mode=system_user 时 receivers 为用户目录中的用户 ID 字符串；"
     "recipient_mode=free_text 时 receivers 为渠道侧接收人名。不接受附件，不投递内部 NATS 通道。" + _ORG_SCOPE
 )
@@ -255,11 +263,15 @@ def _users_in_groups_query(group_ids):
 def _paginate(items, page, page_size):
     count = len(items)
     start = (page - 1) * page_size
+    return _page_window(items[start : start + page_size], page, page_size, count)
+
+
+def _page_window(results, page, page_size, count):
     return {
         "count": count,
         "page": page,
         "page_size": page_size,
-        "results": items[start : start + page_size],
+        "results": results,
     }
 
 
@@ -429,6 +441,7 @@ def _notification_send_parameters(channel):
     capability = _notification_channel_capabilities(channel)
     return [
         _send_parameter("channel_id", "integer", True, f"固定填写 {channel.id}，对应渠道「{channel.name}」。"),
+        _send_parameter("channel_type", "string", True, f"固定填写 {channel.channel_type}。"),
         _send_parameter("title", "string", False, _TITLE_PARAMETER_DESCRIPTION.get(channel.channel_type, "标题。可以留空。最长 512 个字符。")),
         _send_parameter("content", "string", True, _CONTENT_PARAMETER_DESCRIPTION.get(channel.channel_type, "通知正文，不能为空。最长 20000 个字符。")),
         _send_parameter(
@@ -441,17 +454,110 @@ def _notification_send_parameters(channel):
 
 
 def _openapi_notification_channel(channel):
+    if isinstance(channel, IMNotificationChannel):
+        return _openapi_im_notification_channel(channel)
     item = _notification_channel_capabilities(channel)
     item["send_parameters"] = _notification_send_parameters(channel)
+    item["tag"] = channel_tag_tokens(channel)
     return item
 
 
-def _external_notification_channels(query_ids):
-    return [
-        channel
-        for channel in Channel.objects.order_by("id")
-        if channel.channel_type in _EXTERNAL_NOTIFICATION_CHANNEL_TYPES and _channel_has_organization(channel, query_ids)
-    ]
+def _im_notification_is_available(channel):
+    if not channel.enabled or channel.status != IMNotificationChannelStatusChoices.READY:
+        return False
+    availability = get_integration_capability_availability(channel.integration_instance, "im_notification")
+    return bool(availability.get("available"))
+
+
+def _openapi_im_notification_channel(channel):
+    return {
+        "id": channel.id,
+        "name": channel.name,
+        "channel_type": IMNotificationChannel.CHANNEL_TYPE,
+        "description": localized_channel_description(channel.description),
+        "delivery_mode": "message",
+        "recipient_mode": "system_user",
+        "availability": "available" if _im_notification_is_available(channel) else "unavailable",
+        "send_parameters": [
+            _send_parameter("channel_id", "integer", True, f"固定填写 {channel.id}，对应渠道「{channel.name}」。"),
+            _send_parameter("channel_type", "string", True, "固定填写 im_notification，用来和同号的普通渠道区分。"),
+            _send_parameter("title", "string", False, "IM 应用通知标题。可以留空。最长 512 个字符。"),
+            _send_parameter("content", "string", True, "IM 应用通知正文，不能为空。最长 20000 个字符。"),
+            _send_parameter("receivers", "string[]", True, _RECEIVER_PARAMETER_DESCRIPTION["system_user"]),
+        ],
+        "tag": channel_tag_tokens(channel),
+    }
+
+
+def _channels_matching_tags(queryset, tag_pairs):
+    wanted = {tuple(pair) for pair in tag_pairs or []}
+    if not wanted:
+        return queryset
+    matched = Q()
+    for key, value in wanted:
+        matched |= Q(tags__key=key, tags__value=value)
+    return queryset.filter(matched).distinct()
+
+
+def _team_overlap_q(organization_ids):
+    query = Q()
+    for raw in organization_ids or []:
+        try:
+            group_id = int(raw)
+        except (TypeError, ValueError):
+            continue
+        text = str(group_id)
+        query |= Q(team__contains=group_id) | Q(team__contains=[group_id]) | Q(team__contains=text) | Q(team__contains=[text])
+    return query
+
+
+def _catalog_keys(queryset, catalog_type):
+    if catalog_type is None:
+        labeled = queryset.annotate(catalog_type=F("channel_type"))
+    else:
+        labeled = queryset.annotate(catalog_type=Value(catalog_type, output_field=CharField(max_length=30)))
+    return labeled.order_by().values("id", "catalog_type").distinct()
+
+
+def _channels_for_catalog_keys(keys):
+    channel_ids = [row["id"] for row in keys if row["catalog_type"] != IMNotificationChannel.CHANNEL_TYPE]
+    im_ids = [row["id"] for row in keys if row["catalog_type"] == IMNotificationChannel.CHANNEL_TYPE]
+    channels = {item.id: item for item in Channel.objects.filter(id__in=channel_ids).prefetch_related("tags")}
+    im_channels = {
+        item.id: item for item in IMNotificationChannel.objects.filter(id__in=im_ids).select_related("integration_instance").prefetch_related("tags")
+    }
+    loaded = []
+    for row in keys:
+        if row["catalog_type"] == IMNotificationChannel.CHANNEL_TYPE:
+            item = im_channels.get(row["id"])
+        else:
+            item = channels.get(row["id"])
+        if item is not None:
+            loaded.append(item)
+    return loaded
+
+
+def _notification_channel_page(query_ids, tag_pairs, page, page_size):
+    team_q = _team_overlap_q(query_ids)
+    if not team_q:
+        return _page_window([], page, page_size, 0)
+    channels = _catalog_keys(
+        _channels_matching_tags(
+            Channel.objects.filter(channel_type__in=_EXTERNAL_NOTIFICATION_CHANNEL_TYPES),
+            tag_pairs,
+        ).filter(team_q),
+        None,
+    )
+    im_channels = _catalog_keys(
+        _channels_matching_tags(IMNotificationChannel.objects.all(), tag_pairs).filter(team_q),
+        IMNotificationChannel.CHANNEL_TYPE,
+    )
+    merged = channels.union(im_channels).order_by("id", "catalog_type")
+    count = merged.count()
+    start = (page - 1) * page_size
+    keys = list(merged[start : start + page_size])
+    results = [_openapi_notification_channel(channel) for channel in _channels_for_catalog_keys(keys)]
+    return _page_window(results, page, page_size, count)
 
 
 def _user_in_groups(user, query_ids):
@@ -494,6 +600,7 @@ def openapi_list_notification_channels(
     page_size=200,
     group_id=None,
     include_children=False,
+    tag=None,
     *,
     team=None,
     user_info=None,
@@ -507,9 +614,8 @@ def openapi_list_notification_channels(
     if error is not None:
         return error
     if not query_ids:
-        return _paginate([], page, page_size)
-    serialized = [_openapi_notification_channel(channel) for channel in _external_notification_channels(query_ids)]
-    return _paginate(serialized, page, page_size)
+        return _page_window([], page, page_size, 0)
+    return _notification_channel_page(query_ids, tag, page, page_size)
 
 
 @openapi_expose(
@@ -526,6 +632,7 @@ def openapi_send_notification(
     channel_id,
     content,
     receivers,
+    channel_type,
     title="",
     group_id=None,
     include_children=False,
@@ -541,6 +648,9 @@ def openapi_send_notification(
     )
     if error is not None:
         return error
+    channel_type = str(channel_type or "").strip()
+    if channel_type == IMNotificationChannel.CHANNEL_TYPE:
+        return _openapi_send_im_notification(channel_id, content, receivers, title, query_ids)
     channel = Channel.objects.filter(id=channel_id).first()
     if channel is None or not query_ids:
         return _soft_error(_CHANNEL_NOT_FOUND_MESSAGE)
@@ -551,6 +661,8 @@ def openapi_send_notification(
         return _soft_error(_CHANNEL_UNSUPPORTED_MESSAGE)
     if not in_scope:
         return _soft_error(_TEAM_OUT_OF_SCOPE_MESSAGE)
+    if channel.channel_type != channel_type:
+        return _soft_error(_CHANNEL_TYPE_MISMATCH_MESSAGE)
     capability = _notification_channel_capabilities(channel)
     if capability["recipient_mode"] == "system_user":
         recipient_error = _system_user_recipients_in_scope(receivers, query_ids)
@@ -574,5 +686,27 @@ def openapi_send_notification(
     return {
         "channel_id": channel.id,
         "channel_type": channel.channel_type,
+        "delivery_code": "delivered",
+    }
+
+
+def _openapi_send_im_notification(channel_id, content, receivers, title, query_ids):
+    channel = IMNotificationChannel.objects.filter(id=channel_id).first()
+    if channel is None or not query_ids:
+        return _soft_error(_CHANNEL_NOT_FOUND_MESSAGE)
+    if not _channel_has_organization(channel, query_ids):
+        return _soft_error(_TEAM_OUT_OF_SCOPE_MESSAGE)
+    recipient_error = _system_user_recipients_in_scope(receivers, query_ids)
+    if recipient_error is not None:
+        return recipient_error
+    result = send_im_notification(channel.id, title or "", content, list(receivers))
+    if not isinstance(result, dict) or result.get("result") is not True:
+        message = _DELIVERY_FAILED_MESSAGE
+        if isinstance(result, dict) and result.get("message"):
+            message = str(result["message"])
+        return _soft_error(message)
+    return {
+        "channel_id": channel.id,
+        "channel_type": IMNotificationChannel.CHANNEL_TYPE,
         "delivery_code": "delivered",
     }

@@ -322,6 +322,66 @@ describe('computePreviewDefinitions', () => {
     assert.equal(added?.order, 2);
     assert.equal(next.some((item) => item.key === 'q'), false);
   });
+
+  it('copies inputConfig and does not add a plain key__type row beside split filters', () => {
+    const source = (restApi: string) => ({
+      control: 'select' as const,
+      optionsSource: {
+        type: 'dynamic' as const,
+        sourceRef: { type: 'rest_api' as const, value: restApi },
+        valueField: 'id',
+        labelField: 'name',
+      },
+    });
+    const existing = [
+      {
+        id: 'device_id__string__aaaaaaaa',
+        key: 'device_id',
+        name: '设备 · cmdb',
+        type: 'string' as const,
+        order: 0,
+        enabled: true,
+        inputConfig: source('cmdb/devices'),
+      },
+      {
+        id: 'device_id__string__bbbbbbbb',
+        key: 'device_id',
+        name: '设备 · monitor',
+        type: 'string' as const,
+        order: 1,
+        enabled: true,
+        inputConfig: source('monitor/devices'),
+      },
+    ];
+    const next = computePreviewDefinitions(existing, {
+      params: [
+        {
+          name: 'device_id',
+          type: 'string',
+          filterType: 'filter',
+          inputConfig: source('monitor/devices'),
+        },
+        {
+          name: 'rack_id',
+          type: 'string',
+          filterType: 'filter',
+          alias_name: '机柜',
+          inputConfig: source('cmdb/racks'),
+        },
+      ],
+    } as DatasourceItem);
+    assert.equal(next.some((item) => item.id === 'device_id__string'), false);
+    assert.equal(next.filter((item) => item.key === 'device_id').length, 2);
+    const rack = next.find((item) => item.id === 'rack_id__string');
+    assert.equal(rack?.name, '机柜');
+    assert.equal(
+      rack?.inputConfig && rack.inputConfig.control === 'select'
+        && rack.inputConfig.optionsSource.type === 'dynamic'
+        ? rack.inputConfig.optionsSource.sourceRef?.value
+        : undefined,
+      'cmdb/racks',
+    );
+  });
 });
 
 describe('buildDataFetchSignature', () => {

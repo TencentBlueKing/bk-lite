@@ -42,6 +42,9 @@ import {
   processDataSourceParams,
 } from '@/app/ops-analysis/utils/widgetDataTransform';
 import { getDateRangeTimezone } from '@/app/ops-analysis/utils/dateRange';
+import { dynamicQueryParamsOf } from '@/app/ops-analysis/utils/optionsQueryParamRefs';
+import type { OptionsQueryEditorContext } from '@/app/ops-analysis/utils/optionsQueryCandidates';
+import { optionsSourceSummary } from '@/app/ops-analysis/utils/optionsSourceIdentity';
 import {
   clearComponentParamSwitch,
   findComponentSwitchParams,
@@ -98,6 +101,14 @@ import {
   type WidgetConfigFormValues,
 } from './widgetConfig/utils/submitConfig';
 import {
+  availableConfigSections,
+  emptySectionErrorFlags,
+  planValidationFailure,
+  sectionErrorFlagsFromNames,
+  type ConfigSection,
+  type SectionErrorFlags,
+} from './widgetConfig/utils/configSectionErrors';
+import {
   NETWORK_STATUS_TOPOLOGY,
   applyOpenedValueConfigToFormValues,
   buildDataFetchSignature,
@@ -139,15 +150,50 @@ import {
   normalizeDatasourceItemParams,
 } from '@/app/ops-analysis/utils/stringParamMultipleMigrate';
 
-const isInteractionFieldError = (error: unknown) => {
-  if (!error || typeof error !== 'object' || !('errorFields' in error)) return false;
-  const fields = (error as { errorFields?: { name?: (string | number)[] }[] }).errorFields;
-  return Array.isArray(fields) && fields.some((field) => field.name?.[0] === 'interaction');
-};
+interface PendingSectionScroll {
+  section: ConfigSection | null;
+  namePath: (string | number)[];
+}
 
 const readWidgetId = (item: ViewConfigItem | null | undefined) => (
   item && 'i' in item ? String(item.i || '') : ''
 );
+
+const optionQueryEditorContext = (
+  params: ParamItem[],
+  filters: UnifiedFilterDefinition[],
+  editingName?: string,
+) => {
+  const editingParam = params.find((param) => param.name === editingName);
+  const context: OptionsQueryEditorContext = {
+    scope: 'component',
+    self: {
+      key: editingName || '',
+      label: editingParam?.alias_name?.trim() || undefined,
+    },
+    componentParams: params.filter((param) => param.name).map((param) => ({
+      name: param.name,
+      label: param.alias_name || param.name,
+      type: param.type,
+      filterType: param.filterType,
+      value: param.value,
+      inputConfig: param.inputConfig,
+      inputMode: param.inputMode,
+      queryParams: dynamicQueryParamsOf(param.inputConfig),
+    })),
+    globalFilters: filters.filter((definition) => Boolean(definition.key)).map((definition) => ({
+      id: definition.id,
+      key: definition.key,
+      label: definition.name,
+      type: definition.type,
+      enabled: definition.enabled,
+      sourceHint: optionsSourceSummary(definition.inputConfig),
+      queryParams: dynamicQueryParamsOf(definition.inputConfig),
+      inputConfig: definition.inputConfig,
+    })),
+  };
+  return { optionsQueryContext: context };
+};
 
 interface ViewConfigPropsWithManager extends ViewConfigProps {
   dataSourceManager: ReturnType<typeof useDataSourceManager>;
@@ -171,6 +217,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
   variant = 'drawer',
   configSection,
   onConfigSectionChange,
+  onSectionErrorsChange,
   screenFrame,
   onDirtyChange,
   previewSingleStyle,
@@ -182,8 +229,60 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
   const [form] = Form.useForm();
   const handleClose = () => guardClose(form.isFieldsTouched(), onClose);
   const [chartType, setChartType] = useState<string>('');
-  const [drawerSection, setDrawerSection] = useState<'data' | 'interaction' | 'singleStyle'>('data');
+  const [drawerSection, setDrawerSection] = useState<ConfigSection>('data');
   const activeSection = variant === 'panel' ? (configSection ?? 'data') : drawerSection;
+  const [fieldSectionErrors, setFieldSectionErrors] = useState<SectionErrorFlags>(
+    emptySectionErrorFlags,
+  );
+  const [manualDataError, setManualDataError] = useState(false);
+  const [pendingScroll, setPendingScroll] = useState<PendingSectionScroll | null>(null);
+  const onSectionErrorsChangeRef = useRef(onSectionErrorsChange);
+  onSectionErrorsChangeRef.current = onSectionErrorsChange;
+  const reportedSectionErrorsRef = useRef<string | null>(null);
+  const sectionHasError = useMemo(() => ({
+    data: fieldSectionErrors.data || manualDataError,
+    singleStyle: fieldSectionErrors.singleStyle,
+    interaction: fieldSectionErrors.interaction,
+  }), [fieldSectionErrors, manualDataError]);
+  const clearRegisteredFieldErrors = useCallback(() => {
+    const errored = form.getFieldsError().filter((field) => field.errors.length > 0);
+    if (errored.length === 0) return;
+    form.setFields(errored.map((field) => ({ name: field.name, errors: [] })));
+  }, [form]);
+  const publishFieldSectionErrors = useCallback((
+    fields: Parameters<typeof sectionErrorFlagsFromNames>[0],
+  ) => {
+    const next = sectionErrorFlagsFromNames(fields);
+    setFieldSectionErrors((current) => (
+      current.data === next.data
+      && current.singleStyle === next.singleStyle
+      && current.interaction === next.interaction
+        ? current
+        : next
+    ));
+  }, []);
+
+  useEffect(() => {
+    if (!pendingScroll) return;
+    if (pendingScroll.section && pendingScroll.section !== activeSection) return;
+    const { namePath } = pendingScroll;
+    setPendingScroll(null);
+    form.scrollToField(namePath, { block: 'center' });
+  }, [activeSection, form, pendingScroll]);
+
+  useEffect(() => {
+    const key = `${sectionHasError.data}|${sectionHasError.singleStyle}|${sectionHasError.interaction}`;
+    if (reportedSectionErrorsRef.current === key) return;
+    reportedSectionErrorsRef.current = key;
+    onSectionErrorsChangeRef.current?.(sectionHasError);
+  }, [sectionHasError]);
+
+  // setFieldValue 不触发 onFieldsChange，条件区块要等这次渲染卸下后才离开 getFieldsError。
+  useEffect(() => {
+    publishFieldSectionErrors(form.getFieldsError());
+    setManualDataError(false);
+  }, [chartType, form, publishFieldSectionErrors]);
+
   const [filterBindings, setFilterBindings] = useState<FilterBindings>({});
   const [dataSourceSelectorVisible, setDataSourceSelectorVisible] = useState(false);
   const [editingInputConfigParam, setEditingInputConfigParam] = useState<ParamItem | null>(null);
@@ -804,6 +903,9 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
     abandonInteractionSample(widgetId);
     const { valueConfig } = widgetItem;
     setDrawerSection('data');
+    clearRegisteredFieldErrors();
+    setFieldSectionErrors(emptySectionErrorFlags());
+    setManualDataError(false);
     const sceneWidgetType = resolveOpenedSceneWidgetType(valueConfig);
     const isOpenedSceneWidget = Boolean(sceneWidgetType);
     const formValues = buildOpenedWidgetFormValues(widgetItem, {
@@ -824,8 +926,11 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
         dataSource: undefined,
         networkStatusTopology: buildOpenedSceneWidgetTopology(valueConfig),
       });
+      clearRegisteredFieldErrors();
       // setFieldsValue 在 rc-field-form 2.x 会标记 touched，初始化后清掉以免误报未保存
       markFormPristine(form);
+      setFieldSectionErrors(emptySectionErrorFlags());
+      setManualDataError(false);
       onDirtyChange?.(false);
       settleInteractionSample(requestId, widgetId);
       return;
@@ -1007,14 +1112,20 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
       'seriesField',
     ]);
     form.setFieldsValue(formValues);
+    clearRegisteredFieldErrors();
     // setFieldsValue 在 rc-field-form 2.x 会标记 touched，初始化后清掉以免误报未保存
     markFormPristine(form);
+    setFieldSectionErrors(emptySectionErrorFlags());
+    setManualDataError(false);
     onDirtyChange?.(false);
     settleInteractionSample(requestId, widgetId);
   };
 
   const resetForm = (): void => {
     form.resetFields();
+    setFieldSectionErrors(emptySectionErrorFlags());
+    setManualDataError(false);
+    setPendingScroll(null);
     setSelectedDataSource(undefined);
     setChartType('');
     setFilterBindings({});
@@ -1035,7 +1146,6 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
 
   const reconcileParamWithOptions = useCallback(
     (paramName: string, options: InputOption[]) => {
-      if (options.length === 0) return;
       resolvedParamOptionsRef.current.set(paramName, options);
       const currentParams = form.getFieldValue('params') || {};
       const nextValue = reconcileComponentParamValue(currentParams[paramName], options);
@@ -1116,6 +1226,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
 
   const handleFormValuesChange = (changedValues: Record<string, any>) => {
     onDirtyChange?.(true);
+    setManualDataError(false);
     if (!isTableLikeChartType) {
       return;
     }
@@ -1157,6 +1268,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
 
     if (hasVisibleColumn) {
       tableConfig.setDisplayColumnsError('');
+      setManualDataError(false);
     }
   }, [tableConfig.displayColumns, tableConfig.displayColumnsError]);
 
@@ -1176,7 +1288,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
         const reconciledFormParams = { ...formParams };
         effectiveDataSource.params.forEach((param) => {
           const optionsForParam = resolvedParamOptionsRef.current.get(param.name);
-          if (!optionsForParam?.length) return;
+          if (optionsForParam == null) return;
           reconciledFormParams[param.name] = reconcileComponentParamValue(
             reconciledFormParams[param.name],
             optionsForParam,
@@ -1352,11 +1464,34 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
     t,
   ]);
 
+  const revealConfigSection = (
+    section: ConfigSection | null,
+    namePath?: readonly (string | number)[],
+  ) => {
+    if (section && section !== activeSection) {
+      if (variant === 'panel') {
+        if (section === 'data' || section === 'interaction') {
+          onConfigSectionChange?.(section);
+        }
+      } else {
+        setDrawerSection(section);
+      }
+    }
+    if (namePath?.length) {
+      setPendingScroll({ section, namePath: [...namePath] });
+    }
+  };
+
   const handleConfirm = async () => {
+    const sections = availableConfigSections({
+      variant,
+      showSingleStyle: chartType === 'single' && showSingleValueStyle,
+    });
     try {
       const values: WidgetConfigFormValues = hydrateWidgetFormValues(
         await form.validateFields(),
       );
+      setFieldSectionErrors(emptySectionErrorFlags());
 
       if (isTableLikeChartType) {
         tableConfig.setDisplayColumnsError('');
@@ -1376,14 +1511,16 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
       });
 
       if (submitResult.error) {
+        setManualDataError(true);
+        revealConfigSection('data');
         if (submitResult.error === 'duplicateFieldKey') {
           message.error(t('dashboard.duplicateFieldKey'));
           return;
         }
         if (submitResult.error === 'atLeastOneVisibleColumn') {
-          tableConfig.setDisplayColumnsError(
-            t('dashboard.atLeastOneVisibleColumn'),
-          );
+          const columnMessage = t('dashboard.atLeastOneVisibleColumn');
+          tableConfig.setDisplayColumnsError(columnMessage);
+          message.error(columnMessage);
           return;
         }
         if (submitResult.error === 'multipleComponentSwitchParams') {
@@ -1430,25 +1567,27 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
           message.error(t('dashboard.applicationTopologyInstUuidRequired'));
           return;
         }
+        message.error(t('common.saveFailed'));
+        return;
       }
 
       if (submitResult.config) {
+        setManualDataError(false);
         onConfirm?.(submitResult.config);
       }
     } catch (error) {
-      if (isInteractionFieldError(error)) {
-        if (variant === 'panel') {
-          onConfigSectionChange?.('interaction');
-        } else {
-          setDrawerSection('interaction');
-        }
-        window.setTimeout(() => {
-          form.scrollToField(['interaction', 'url'], { block: 'center' });
-        }, 0);
+      const plan = planValidationFailure({
+        error,
+        current: activeSection,
+        available: sections,
+      });
+      if (plan.fallback) {
+        console.error('Form validation failed:', error);
+        message.error(t('common.saveFailed'));
         return;
       }
-      console.error('Form validation failed:', error);
-      message.error(t('common.saveFailed'));
+      setFieldSectionErrors(plan.errors);
+      revealConfigSection(plan.section, plan.namePath);
     }
   };
 
@@ -1521,6 +1660,9 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
         layout="vertical"
         initialValues={{ compare: false, compareMode: 'percent' }}
         onValuesChange={handleFormValuesChange}
+        onFieldsChange={(_, allFields) => {
+          publishFieldSectionErrors(allFields);
+        }}
         className="space-y-8"
       >
         <WidgetConfigBasicFields
@@ -1552,7 +1694,10 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
               {
                 key: 'data',
                 label: (
-                  <ConfigSectionTabLabel icon={<DataSectionTabIcon />}>
+                  <ConfigSectionTabLabel
+                    icon={<DataSectionTabIcon />}
+                    errored={sectionHasError.data}
+                  >
                     {t('dashboard.interactionDataTab', '数据')}
                   </ConfigSectionTabLabel>
                 ),
@@ -1561,7 +1706,10 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
                 ? [{
                   key: 'singleStyle',
                   label: (
-                    <ConfigSectionTabLabel icon={<StyleSectionTabIcon />}>
+                    <ConfigSectionTabLabel
+                      icon={<StyleSectionTabIcon />}
+                      errored={sectionHasError.singleStyle}
+                    >
                       {t('dashboard.singleStyleTab', '样式')}
                     </ConfigSectionTabLabel>
                   ),
@@ -1570,7 +1718,10 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
               {
                 key: 'interaction',
                 label: (
-                  <ConfigSectionTabLabel icon={<InteractionSectionTabIcon />}>
+                  <ConfigSectionTabLabel
+                    icon={<InteractionSectionTabIcon />}
+                    errored={sectionHasError.interaction}
+                  >
                     {t('dashboard.interactionTab', '交互')}
                   </ConfigSectionTabLabel>
                 ),
@@ -1649,6 +1800,8 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
             hasUnifiedFilterBindings={hasUnifiedFilterBindings}
             previewFilterDefinitions={previewFilterDefinitions}
             filterBindings={filterBindings}
+            globalFilters={filterDefinitions}
+            globalFilterValues={unifiedFilterValues}
             onFilterBindingsChange={setFilterBindings}
             onEditInputConfig={handleEditInputConfig}
             onParamOptionsResolved={(param, options) =>
@@ -1886,6 +2039,11 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
         componentSwitchEnabled={supportsComponentSwitch(chartType)}
         componentSwitchOwner={componentSwitchOwner}
         editingParamName={editingInputConfigParam?.name}
+        {...optionQueryEditorContext(
+          effectiveDataSource?.params ?? [],
+          filterDefinitions,
+          editingInputConfigParam?.name,
+        )}
       />
     </>
   );

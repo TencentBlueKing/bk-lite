@@ -301,11 +301,13 @@ export const migrateUnifiedFilterDefinitions = (
       if (preferredValue !== undefined) {
         nextValues[stringId] = preferredValue;
       }
+      group
+        .filter((item) => item.id !== stringId && item.id !== legacyId)
+        .forEach((item) => nextDefinitions.push(item));
       return;
     }
 
-    const [only] = group;
-    nextDefinitions.push(only);
+    group.forEach((definition) => nextDefinitions.push(definition));
     if (listOrigin) {
       const preferredValue = takeValue(legacyId, stringId);
       delete nextValues[legacyId];

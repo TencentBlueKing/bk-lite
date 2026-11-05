@@ -72,7 +72,8 @@ export function buildNodeTestInputContract(
   for (const field of workflowInputFields(taskInputs)) {
     const triggerField = triggerProperties[field];
     if (!triggerField) continue;
-    const usedByJobTargets = task.name === 'bklite_job_execute'
+    const usesJobStyleTargets = task.name === 'bklite_job_execute' || task.name === 'bklite_file_distribute';
+    const usedByJobTargets = usesJobStyleTargets
       && workflowInputFields(taskInputs.targets).has(field);
     properties[field] = usedByJobTargets ? jobTargetSchema(cloneSchema(triggerField)) : cloneSchema(triggerField);
     required.add(field);
@@ -83,7 +84,8 @@ export function buildNodeTestInputContract(
     const referencedWorkflowFields = workflowInputFields(configured);
     const referencesMissingTriggerField = referencedWorkflowFields.size > 0
       && [...referencedWorkflowFields].every((key) => !triggerProperties[key]);
-    const jobTargetsNeedConfirmation = task.name === 'bklite_job_execute'
+    const usesJobStyleTargets = task.name === 'bklite_job_execute' || task.name === 'bklite_file_distribute';
+    const jobTargetsNeedConfirmation = usesJobStyleTargets
       && field === 'targets'
       && Array.isArray(configured)
       && configured.every((item) => typeof item === 'string');
@@ -91,7 +93,7 @@ export function buildNodeTestInputContract(
     const fieldSchema = atomInputSchema?.properties?.[field];
     if (!fieldSchema) continue;
     const testField = `${NODE_OVERRIDE_PREFIX}${field}`;
-    properties[testField] = task.name === 'bklite_job_execute' && field === 'targets'
+    properties[testField] = usesJobStyleTargets && field === 'targets'
       ? jobTargetSchema(cloneSchema(fieldSchema))
       : cloneSchema(fieldSchema);
     nodeOverrides[testField] = field;

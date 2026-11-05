@@ -45,6 +45,7 @@ _OPTION_SOURCE_HINT = (
     "需要下拉时，在该参数 inputConfig 写 control=select，optionsSource 为 "
     "{type:dynamic, sourceId:optionSources 里的 id, valueField, labelField}，"
     "两个字段必须是该选项源 fields[].name。自由文本不要写 optionsSource。服务端不会替你选列表。"
+    "选项查询要带上游参数时，在 optionsSource.queryParams 写 {参数名: {ref: 其它参数name}}，整值引用，禁止把 $name$ 和字面量拼成一个字符串。"
 )
 _DATASOURCE_MISS_HINT = (
     "这些 dataSource 不存在。不要改试 1、2、10、20、100、200 或其他未列出的数字。"

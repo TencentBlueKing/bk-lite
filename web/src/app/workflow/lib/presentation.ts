@@ -1,4 +1,42 @@
-import type { ExecutionStatus, WorkflowStatus } from './types';
+import type { ExecutionStatus, TerminationJobCancelItem, WorkflowStatus } from './types';
+
+export interface TerminationJobCancelSummary {
+  total: number;
+  succeeded: number;
+  failed: number;
+  items: TerminationJobCancelItem[];
+  hasResidual: boolean;
+}
+
+/** 从执行 output 汇总终止关联作业取消结果；无有效记录返回 null。 */
+export function summarizeTerminationJobCancels(
+  output: Record<string, unknown> | null | undefined,
+): TerminationJobCancelSummary | null {
+  const raw = output?.termination_job_cancels;
+  if (!Array.isArray(raw) || raw.length === 0) return null;
+  const items: TerminationJobCancelItem[] = [];
+  for (const entry of raw) {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) continue;
+    const record = entry as Record<string, unknown>;
+    const taskId = Number(record.task_id);
+    if (!Number.isFinite(taskId)) continue;
+    items.push({
+      task_id: taskId,
+      ok: record.ok === true,
+      error_type: typeof record.error_type === 'string' ? record.error_type : undefined,
+    });
+  }
+  if (!items.length) return null;
+  const succeeded = items.filter((item) => item.ok).length;
+  const failed = items.length - succeeded;
+  return {
+    total: items.length,
+    succeeded,
+    failed,
+    items,
+    hasResidual: failed > 0,
+  };
+}
 
 export const workflowStatusPresentation: Record<WorkflowStatus, { label: string; color: string }> = {
   DRAFT: { label: '草稿', color: 'default' },

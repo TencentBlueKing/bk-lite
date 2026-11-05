@@ -35,6 +35,7 @@ export interface IMNotificationChannel {
   latest_sync_conflict_count: number | null;
   schedule_config: ScheduleConfig;
   team: number[];
+  tag?: string[];
   created_by?: string;
   updated_by?: string;
   created_at?: string;

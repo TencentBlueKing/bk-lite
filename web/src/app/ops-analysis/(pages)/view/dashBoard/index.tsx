@@ -1138,6 +1138,9 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
           setSavedRefreshInterval(applied.refreshInterval);
         }
         message.success(t('dashboard.aiApplySuccess'));
+        if (applied.warnings?.length) {
+          message.warning(t('paramInput.dynamic.proposalQueryIgnored'));
+        }
         void syncDashboardCanvasResources(syncedLayout).then((canvasDataSources) => {
           const latest = applyProposalRef.current;
           if (!latest.isEditMode || latest.shareMode || latest.appliedNamespaceId !== undefined) return;
@@ -2143,6 +2146,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
         values={filterValues}
         onSearch={handleFilterSearch}
         onReset={handleFilterReset}
+        onApplyInitial={setAppliedFilterValues}
         prefixContent={namespaceSelectorElement}
         popupZIndex={isFullscreen ? 1200 : undefined}
       />

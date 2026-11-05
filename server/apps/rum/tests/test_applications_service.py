@@ -3,11 +3,11 @@ from datetime import timedelta
 import pytest
 from django.utils import timezone
 
-from apps.rum.constants import DEFAULT_BUDGETS
+from apps.rum.constants import DEFAULT_BUDGETS, SUBJECT_APPLICATION_GET
 from apps.rum.models import RumApplication
 from apps.rum.services.analytics import UnavailableAnalytics
 from apps.rum.services.applications import ApplicationsService
-from apps.rum.services.control import MemoryControl, UnavailableControl
+from apps.rum.services.control import ControlError, MemoryControl, UnavailableControl
 from apps.rum.services.settings import RumRuntimeSettings
 from apps.rum.services.snippets import build_snippet
 from apps.rum.services.status import build_status
@@ -212,6 +212,88 @@ def test_build_status_waiting_when_evidence_older_than_window():
         now=now,
     )
     assert payload["status"] == "waiting"
+
+
+class _FailingGet(MemoryControl):
+    def __init__(self):
+        super().__init__()
+        self.gets = 0
+
+    def request(self, subject, actor, payload=None, expected_revision=None):
+        if subject == SUBJECT_APPLICATION_GET:
+            self.gets += 1
+            raise ControlError("unavailable", "down")
+        return super().request(subject, actor, payload, expected_revision)
+
+
+def test_catalog_and_brief_list_do_not_call_nats():
+    class _Counting(MemoryControl):
+        def __init__(self):
+            super().__init__()
+            self.calls = 0
+
+        def request(self, subject, actor, payload=None, expected_revision=None):
+            self.calls += 1
+            return super().request(subject, actor, payload, expected_revision)
+
+    class _Analytics:
+        def __init__(self):
+            self.apps = None
+
+        def available(self):
+            return True
+
+        def applications_page(self, tenant_id, start, end, enabled_apps):
+            self.apps = list(enabled_apps)
+            return (
+                [
+                    {
+                        "application": "zeta",
+                        "sessions": 2,
+                        "views": 3,
+                        "errors": 1,
+                        "lcpP75": 10,
+                        "inpP75": 4,
+                        "errorRate": 0.5,
+                    }
+                ],
+                {"zeta": [1.0]},
+            )
+
+    writer = ApplicationsService(MemoryControl(), _settings())
+    writer.create_application("tester", {"application": "alpha", "origins": ["https://alpha.example.test"]})
+    writer.create_application("tester", {"application": "zeta", "origins": ["https://zeta.example.test"]})
+    writer.disable_application("tester", "alpha")
+    control = _Counting()
+    analytics = _Analytics()
+    service = ApplicationsService(control, _settings(), analytics=analytics)
+
+    catalog = service.analytics_catalog("tester", "24h")
+    names = service.list_application_names("tester")
+
+    assert control.calls == 0
+    assert analytics.apps == ["zeta"]
+    assert [item["application"] for item in catalog["applications"]] == ["zeta", "alpha"]
+    assert catalog["applications"][0]["sessions"] == 2
+    assert catalog["applications"][1]["enabled"] is False
+    assert names == [
+        {"application": "zeta", "enabled": True},
+        {"application": "alpha", "enabled": False},
+    ]
+
+
+def test_full_list_stops_nats_after_the_first_control_failure():
+    writer = ApplicationsService(MemoryControl(), _settings())
+    writer.create_application("tester", {"application": "alpha", "origins": ["https://alpha.example.test"]})
+    writer.create_application("tester", {"application": "zeta", "origins": ["https://zeta.example.test"]})
+    control = _FailingGet()
+    service = ApplicationsService(control, _settings())
+
+    listed = service.list_applications("tester")
+
+    assert control.gets == 1
+    assert [item["application"] for item in listed] == ["zeta", "alpha"]
+    assert all(item["controlUnavailable"] is True for item in listed)
 
 
 def test_invalid_origins_raise():

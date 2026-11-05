@@ -538,6 +538,23 @@ describe('执行记录统一详情入口', () => {
     expect(loadingRegion.className).toContain('justify-center');
   });
 
+  it('详情加载失败时「执行记录不存在」占满内容区并水平垂直居中', async () => {
+    mocks.get.mockImplementation((url: string) => {
+      if (url.endsWith('/executions/execution-1/')) return Promise.reject(new Error('system error'));
+      return Promise.resolve({ count: 1, items: [execution] });
+    });
+
+    renderPage('execution-1');
+
+    const notFound = await screen.findByTestId('execution-detail-not-found');
+    expect(screen.getByText('执行记录不存在')).not.toBeNull();
+    expect(notFound.className).toContain('h-full');
+    expect(notFound.className).toContain('w-full');
+    expect(notFound.className).toContain('flex-1');
+    expect(notFound.className).toContain('items-center');
+    expect(notFound.className).toContain('justify-center');
+  });
+
   it('成功执行的非致命告警只在详情中补充说明', async () => {
     const warningNode = { ...approvalNode, state: 'WARNING', actionable_interaction_ids: [] };
     mocks.get.mockImplementation((url: string) => {

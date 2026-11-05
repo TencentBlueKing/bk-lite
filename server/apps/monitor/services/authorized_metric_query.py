@@ -232,7 +232,7 @@ class AuthorizedMetricQueryService:
             matchers.append(f'process_name=~"{values}"')
         return process_object, host_instance_ids, matchers
 
-    def _prepare(self, payload: dict) -> AuthorizedMetricQuery:
+    def _prepare(self, payload: dict, *, bucket_window: bool = False) -> AuthorizedMetricQuery:
         if not isinstance(payload, dict):
             raise AuthorizedMetricQueryError("请求体必须是对象", code="payload_invalid")
         if self.user is None or self.current_team in (None, ""):
@@ -284,7 +284,7 @@ class AuthorizedMetricQueryService:
 
         step = str(payload.get("step") or "5m")
         try:
-            Metrics.parse_step_to_seconds(step)
+            step_seconds = Metrics.parse_step_to_seconds(step)
         except ValueError as exc:
             raise AuthorizedMetricQueryError(str(exc), code="step_invalid") from exc
 
@@ -321,6 +321,7 @@ class AuthorizedMetricQueryService:
                 start=start,
                 end=end,
                 params=payload.get("capability_params"),
+                step_seconds=step_seconds if bucket_window else None,
             )
         else:
             metric = (
@@ -361,7 +362,7 @@ class AuthorizedMetricQueryService:
         )
 
     def query_range(self, payload: dict) -> dict:
-        prepared = self._prepare(payload)
+        prepared = self._prepare(payload, bucket_window=True)
         return Metrics.get_metrics_range(
             prepared.query,
             prepared.start,

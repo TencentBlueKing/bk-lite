@@ -93,3 +93,59 @@ describe.each([
     expect(onChange).not.toHaveBeenCalled();
   });
 });
+
+describe('split option sources', () => {
+  it('binds the parameter to the filter row with the same option source', () => {
+    const source = (restApi: string) => ({
+      control: 'select' as const,
+      optionsSource: {
+        type: 'dynamic' as const,
+        sourceRef: { type: 'rest_api' as const, value: restApi },
+        valueField: 'id',
+        labelField: 'name',
+      },
+    });
+    const monitorId = 'device_id__string__bbbbbbbb';
+    const definitions: UnifiedFilterDefinition[] = [
+      {
+        id: 'device_id__string__aaaaaaaa',
+        key: 'device_id',
+        name: '设备 · cmdb',
+        type: 'string',
+        enabled: true,
+        order: 0,
+        defaultValue: null,
+        inputConfig: source('cmdb/devices'),
+      },
+      {
+        id: monitorId,
+        key: 'device_id',
+        name: '设备 · monitor',
+        type: 'string',
+        enabled: true,
+        order: 1,
+        defaultValue: null,
+        inputConfig: source('monitor/devices'),
+      },
+    ];
+    const dataSourceParams: ParamItem[] = [{
+      name: 'device_id',
+      alias_name: '设备',
+      type: 'string',
+      filterType: 'filter',
+      value: null,
+      inputConfig: source('monitor/devices'),
+    }];
+    const onChange = vi.fn();
+    const view = render(
+      <FilterBindingPanel
+        definitions={definitions}
+        dataSourceParams={dataSourceParams}
+        filterBindings={{}}
+        onChange={onChange}
+      />,
+    );
+    fireEvent.click(view.getByRole('switch'));
+    expect(onChange).toHaveBeenCalledWith({ [monitorId]: false });
+  });
+});

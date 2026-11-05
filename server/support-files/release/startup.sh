@@ -53,7 +53,7 @@ if [ "$opspilot_installed" = false ]; then
     rm -f "$SUPERVISOR_CONF_DIR/opspilot_feishu_long_connection.conf"
 fi
 
-# 未安装作业模块时不拉起作业队列 worker。默认 worker 不消费 job 队列。
+# 未安装作业模块时不拉起作业队列 worker。四池不消费 job 队列。
 if [ "$job_mgmt_installed" = false ]; then
     echo "未安装 job_mgmt 模块，删除作业 Celery supervisor 配置..."
     rm -f "$SUPERVISOR_CONF_DIR/job_celery.conf"
@@ -68,7 +68,6 @@ fi
 
 # 设置进程数量环境变量默认值
 export APP_WORKERS=${APP_WORKERS:-8}
-export CELERY_CONCURRENCY=${CELERY_CONCURRENCY:-2}
 # 子进程回收：任务数或 RSS（KB）超限后退出，仅对 prefork 生效。Beat 不要设置这两项。
 export CELERY_MAX_TASKS_PER_CHILD=${CELERY_MAX_TASKS_PER_CHILD:-200}
 export CELERY_MAX_MEMORY_PER_CHILD=${CELERY_MAX_MEMORY_PER_CHILD:-512000}
@@ -77,9 +76,15 @@ export OPSPILOT_CELERY_CONCURRENCY=${OPSPILOT_CELERY_CONCURRENCY:-2}
 export JOB_CELERY_CONCURRENCY=${JOB_CELERY_CONCURRENCY:-2}
 export NATS_NUMPROCS=${NATS_NUMPROCS:-4}
 
+# 校验时使用与专用消费者相同的已导出配置，避免 .env 与 shell 默认值造成预算偏差。
+export INSTALL_APPS
+# 纯本地容量配置校验；避免错误配置启动无界消费者，不访问外部服务。
+python3 -m apps.core.celery_runtime.launcher --supervisor "$SUPERVISOR_CONF_DIR/celery.conf" || exit 1
+rm -f "$SUPERVISOR_CONF_DIR/beat.conf"
+
 echo "进程配置:"
 echo "  APP_WORKERS=$APP_WORKERS"
-echo "  CELERY_CONCURRENCY=$CELERY_CONCURRENCY"
+python3 -m apps.core.celery_runtime.launcher --check || exit 1
 echo "  CELERY_MAX_TASKS_PER_CHILD=$CELERY_MAX_TASKS_PER_CHILD"
 echo "  CELERY_MAX_MEMORY_PER_CHILD=$CELERY_MAX_MEMORY_PER_CHILD"
 echo "  DASHBOARD_REPORT_RENDER_CONCURRENCY=$DASHBOARD_REPORT_RENDER_CONCURRENCY"

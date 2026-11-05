@@ -13,11 +13,7 @@ import { useDataSourceManager } from '@/app/ops-analysis/hooks/useDataSource';
 import { useSingleValueConfig } from '@/app/ops-analysis/hooks/useSingleValueConfig';
 import { useDataSourceApi } from '@/app/ops-analysis/api/dataSource';
 import type { DatasourceItem, ParamItem } from '@/app/ops-analysis/types/dataSource';
-import type {
-  FilterBindings,
-  FilterValue,
-  UnifiedFilterDefinition,
-} from '@/app/ops-analysis/types/dashBoard';
+import type { FilterBindings } from '@/app/ops-analysis/types/dashBoard';
 import type {
   NodeConfPanelProps,
   NodeConfigFormValues,
@@ -35,8 +31,8 @@ import { normalizeColorFields } from '../utils/formColorUtils';
 import {
   buildDefaultFilterBindings,
   getBindableFilterParams,
-  getFilterDefinitionId,
 } from '@/app/ops-analysis/utils/widgetDataTransform';
+import { computePreviewDefinitions } from '@/app/ops-analysis/components/widgetConfig/utils/widgetConfigFormState';
 import {
   Form,
   Input,
@@ -50,31 +46,6 @@ import {
 import { QuestionCircleOutlined } from '@ant-design/icons';
 
 const QUERY_PARAM_FILTER_TYPES = ['params', 'fixed'];
-
-const computePreviewDefinitions = (
-  existingDefinitions: UnifiedFilterDefinition[],
-  dataSource: DatasourceItem | undefined,
-): UnifiedFilterDefinition[] => {
-  const existingMap = new Map(
-    existingDefinitions.map((def) => [def.id, def]),
-  );
-  const bindableParams = getBindableFilterParams(dataSource?.params);
-  bindableParams.forEach((param, index) => {
-    const id = getFilterDefinitionId(param.name, param.type);
-    if (!existingMap.has(id)) {
-      existingMap.set(id, {
-        id,
-        key: param.name,
-        name: param.alias_name || param.name,
-        type: param.type,
-        defaultValue: (param.value as FilterValue) ?? null,
-        order: existingDefinitions.length + index,
-        enabled: true,
-      });
-    }
-  });
-  return Array.from(existingMap.values());
-};
 
 type SingleValueFormValues = NodeConfigFormValues & {
   params?: Record<string, unknown>;

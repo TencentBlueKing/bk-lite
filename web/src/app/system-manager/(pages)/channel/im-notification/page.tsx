@@ -27,11 +27,13 @@ import TopSection from '@/components/top-section';
 import PageLayout from '@/components/page-layout';
 import SearchActionBar from '@/components/search-action-bar';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
+import type { NotificationTagOption } from '@/app/system-manager/components/channel/NotificationTagSelect';
 import IMNotificationConfigModal, {
   type IMNotificationChannelFormValues,
 } from '@/app/system-manager/components/channel/im-notification/IMNotificationConfigModal';
 import IMNotificationRecordsDrawer from '@/app/system-manager/components/channel/im-notification/IMNotificationRecordsDrawer';
 import IMNotificationSendModal from '@/app/system-manager/components/channel/im-notification/IMNotificationSendModal';
+import { useChannelApi } from '@/app/system-manager/api/channel';
 import { useImNotificationApi } from '@/app/system-manager/api/im-notification';
 import { useIntegrationCenterApi } from '@/app/system-manager/api/integration-center';
 import type {
@@ -130,6 +132,7 @@ const ImNotificationPage: React.FC = () => {
     getRecords,
     sendNotification,
   } = useImNotificationApi();
+  const { getNotificationTagCatalog } = useChannelApi();
   const { getProviders } = useIntegrationCenterApi();
 
   const [channels, setChannels] = useState<IMNotificationChannel[]>([]);
@@ -143,6 +146,7 @@ const ImNotificationPage: React.FC = () => {
   const [modalLoading, setModalLoading] = useState(false);
   const [editing, setEditing] = useState<IMNotificationChannel | null>(null);
   const [availableInstances, setAvailableInstances] = useState<AvailableInstance[]>([]);
+  const [tagOptions, setTagOptions] = useState<NotificationTagOption[]>([]);
   const [providers, setProviders] = useState<ProviderManifest[]>([]);
 
   const [sendForm] = Form.useForm();
@@ -285,6 +289,7 @@ const ImNotificationPage: React.FC = () => {
         schedule_enabled: parseScheduleConfig(record.schedule_config).scheduleEnabled,
         sync_time: parseScheduleConfig(record.schedule_config).syncTime,
         team: coerceImNotificationTeamIds(record.team),
+        tag: record.tag || [],
       });
     } else {
       form.resetFields();
@@ -293,8 +298,15 @@ const ImNotificationPage: React.FC = () => {
         schedule_enabled: false,
         sync_time: '',
         team: [],
+        tag: [],
         platform_match_field: 'email',
       });
+    }
+    try {
+      const rows = await getNotificationTagCatalog();
+      setTagOptions(Array.isArray(rows) ? rows : []);
+    } catch {
+      setTagOptions([]);
     }
     await fetchMeta();
     setModalOpen(true);
@@ -346,6 +358,7 @@ const ImNotificationPage: React.FC = () => {
         external_receive_field: values.external_receive_field,
         schedule_config: buildSchedulePayload(values.schedule_enabled ?? false, values.sync_time),
         team: coerceImNotificationTeamIds(values.team),
+        tag: values.tag || [],
       };
       if (editing) {
         const updated = await updateChannel(editing.id, payload);
@@ -491,6 +504,18 @@ const ImNotificationPage: React.FC = () => {
             text={record.description || '--'}
             className="truncate text-xs text-[var(--color-text-3)]"
           />
+        </div>
+      ),
+    },
+    {
+      key: 'tag',
+      title: t('system.channel.table.tag'),
+      dataIndex: 'tag',
+      render: (tags: string[] = []) => (
+        <div className="flex flex-wrap gap-1">
+          {tags.map((item) => (
+            <Tag key={item}>{item}</Tag>
+          ))}
         </div>
       ),
     },
@@ -722,6 +747,7 @@ const ImNotificationPage: React.FC = () => {
             manifestHintVisible={manifestHintVisible}
             showMatchFieldHint={showMatchFieldHint}
             showReceiveFieldHint={showReceiveFieldHint}
+            tagOptions={tagOptions}
             t={t}
             onOk={handleModalOk}
             onCancel={() => !modalLoading && setModalOpen(false)}

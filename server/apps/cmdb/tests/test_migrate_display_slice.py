@@ -313,6 +313,27 @@ class TestModelMigrateParsing:
         assert m._merge_existing_attr_config(existing, incoming) is False
         assert existing["option"] == {"mode": "free", "options": user_options}
 
+    def test_merge_existing_attr_config_migrates_str_tag_to_free_mode(self, monkeypatch):
+        m = self._make(monkeypatch)
+        existing = {
+            "attr_id": "tag",
+            "attr_type": "str",
+            "attr_name": "标签",
+            "option": {"validation_type": "unrestricted", "widget_type": "single_line"},
+        }
+        incoming = {
+            "attr_id": "tag",
+            "attr_type": "tag",
+            "attr_name": "标签",
+            "option": {"mode": "free", "options": []},
+        }
+
+        changed = m._merge_existing_attr_config(existing, incoming)
+
+        assert changed is True
+        assert existing["attr_type"] == "tag"
+        assert existing["option"] == {"mode": "free", "options": []}
+
 
 # ===========================================================================
 # ModelMigrate.get_model_config —— 真实 Excel 字节流喂入 pandas

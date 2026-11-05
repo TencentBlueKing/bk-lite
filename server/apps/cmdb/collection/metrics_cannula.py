@@ -170,9 +170,12 @@ class MetricsCannula:
     def _collect_models(self) -> dict:
         result = {}
         all_count = 0
+        pc_task_format_key = (
+            getattr(self.collect_plugin, "TASK_FORMAT_DATA_KEY", "__task_format_data__") if getattr(self.task, "model_id", None) == "pc" else None
+        )
         for model_id, metrics in self.collection_metrics.items():
-            # 任务级 format payload（含 pc_summary）不是实例列表，不能送进通用对账。
-            if not isinstance(metrics, list):
+            # PC 任务级结果已由专用对账写入；空的 pc 列表也不能再进入通用对账。
+            if (pc_task_format_key is not None and model_id in (pc_task_format_key, "pc")) or not isinstance(metrics, list):
                 continue
             all_count += len(metrics)
             params = [
@@ -204,6 +207,7 @@ class MetricsCannula:
                     expire_days=getattr(self.task, "expire_days", 0) or 0,
                     collection_targets=getattr(self.task, "instances", None) or (),
                     reconcile=self._reconcile_for(model_id),
+                    task_name=str(getattr(self.task, "name", "") or ""),
                 )
                 if conflicts:
                     management.delete_list = []

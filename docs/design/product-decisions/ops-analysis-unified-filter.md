@@ -1,6 +1,6 @@
 # 运营分析统一筛选产品决策记忆
 
-- 最近更新：2026-08-24
+- 最近更新：2026-10-30
 - 当前规格：`specs/changes/ops-analysis-string-param-multiple/spec.md`
 - 前序规格（已实现，类型表达已被当前规格修正）：`specs/changes/ops-analysis-unified-filter-string-list/spec.md`
 
@@ -31,7 +31,8 @@
 
 - 拓扑单值面板补参数输入配置齿轮。
 - 旧版静态筛选选项弹窗升级为完整参数输入配置。
-- 筛选方案收藏、级联下拉、图表钻取。
+- 筛选方案收藏、图表钻取。
+- 级联下拉：已由 `docs/design/product-decisions/ops-analysis-option-query-param-cascade.md` 拍板并实现（选项查询入参引用上游参数，不是新的 Cascader 控件）。
 - 跨仪表盘共享筛选状态。
 - 平台级多选硬顶（`maxCount`）。
 - 把 3D 机房下拉从组件内切换迁到统一筛选。

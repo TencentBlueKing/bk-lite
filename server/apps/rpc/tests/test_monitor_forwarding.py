@@ -240,6 +240,16 @@ def test_get_host_resource_snapshot(ana_rpc):
     assert _last(ana_rpc.client) == ("get_host_resource_snapshot", (), {"instance_ids": ["host-a"]})
 
 
+def test_get_host_health_snapshot(ana_rpc):
+    ana_rpc.get_host_health_snapshot(instance_ids=["host-a"])
+    assert _last(ana_rpc.client) == ("get_host_health_snapshot", (), {"instance_ids": ["host-a"]})
+
+
+def test_get_process_health_snapshot(ana_rpc):
+    ana_rpc.get_process_health_snapshot(instance_ids=["proc-a"])
+    assert _last(ana_rpc.client) == ("get_process_health_snapshot", (), {"instance_ids": ["proc-a"]})
+
+
 def test_get_host_resource_top(ana_rpc):
     ana_rpc.get_host_resource_top("cpu", instance_ids=["host-a"])
     assert _last(ana_rpc.client) == (

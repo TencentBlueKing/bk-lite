@@ -231,6 +231,70 @@ def job_script_execute(data: dict, **_ignored):
     return _run_script_execute(data)
 
 
+def _reject_if_workflow_execution_terminated(workflow_execution_id: str) -> str | None:
+    """双闸门：关联编排执行已终止时拒绝新建作业（workflow 未安装则跳过）。"""
+    execution_id = str(workflow_execution_id or "").strip()
+    if not execution_id:
+        return None
+    try:
+        from django.apps import apps
+
+        if not apps.is_installed("apps.workflow"):
+            return None
+        WorkflowExecution = apps.get_model("workflow", "WorkflowExecution")
+    except Exception:
+        return None
+    status = WorkflowExecution.objects.filter(pk=execution_id).values_list("status", flat=True).first()
+    if status in {"TERMINATING", "TERMINATED"}:
+        return "关联流程执行已终止，拒绝创建作业"
+    return None
+
+
+def _script_execute_idempotent_response(idempotency_key: str, team: list, async_fields: dict) -> dict | None:
+    """同幂等键已存在时返回回放响应；键无效或不存在返回 None。"""
+    if not idempotency_key:
+        return None
+    existing = JobExecution.objects.filter(client_request_id=idempotency_key).first()
+    if existing is None:
+        return None
+    existing_teams = {int(value) for value in (existing.team or []) if str(value).lstrip("-").isdigit()}
+    requested_teams = {int(value) for value in team if str(value).lstrip("-").isdigit()}
+    if not requested_teams or not requested_teams <= existing_teams:
+        return {"result": False, "message": "幂等键已存在但不属于当前组织"}
+    if async_fields:
+        return {"result": True, "data": {"accepted": True, "execution_id": str(existing.id), "idempotent_replay": True}}
+    return {"result": True, "data": {"task_id": existing.id, "idempotent_replay": True}}
+
+
+def _prepare_script_async_fields(async_ctx: dict, team: list, actor_name: str, actor_domain: str) -> tuple[dict | None, dict | None]:
+    """解析异步回调上下文；成功返回 (async_fields, None)，失败返回 (None, error_response)。"""
+    callback_token = async_ctx.get("callback_token") or ""
+    callback_url = (async_ctx.get("callback_url") or "").strip()
+    if not callback_url or not callback_token:
+        return None, {"result": False, "message": "callback_context.callback_url and callback_token are required"}
+    cb_err = _validate_callback_config(CallbackType.WEB, callback_url, "", "job_script_execute_async")
+    if cb_err:
+        return None, {"result": False, "message": cb_err}
+    callback_key = hashlib.sha256(callback_token.encode("utf-8")).hexdigest()
+    replay = _async_callback_replay(callback_key, team)
+    if replay is not None:
+        return None, replay
+    timeout_seconds = int(async_ctx.get("timeout") or 3600)
+    return {
+        "async_callback_context": {
+            "callback_url": callback_url,
+            "callback_token": callback_token,
+            "operator": async_ctx.get("operator") or "system",
+            "timeout": timeout_seconds,
+            "user": actor_name,
+            "domain": actor_domain,
+            "team_id": (team[0] if team else None),
+        },
+        "async_callback_deadline_at": timezone.now() + timedelta(seconds=timeout_seconds),
+        "async_callback_key": callback_key,
+    }, None
+
+
 def _run_script_execute(data: dict, *, trusted_actor=None):
     """
     脚本执行实现。
@@ -248,6 +312,7 @@ def _run_script_execute(data: dict, *, trusted_actor=None):
             - callback_type: 回调通道 web|nats|both（可选，默认 web）
             - callback_url: web 通道回调地址（callback_type 含 web 时使用）
             - callback_subject: nats 通道回调主题，如 bklite.alert_job_result（callback_type 含 nats 时必填）
+            - workflow_execution_id: 可选，编排执行 ID；已终止时拒绝创建
         trusted_actor: 仅网关封装传入的可信身份；NATS 入口不得传入。
 
     Returns:
@@ -271,6 +336,10 @@ def _run_script_execute(data: dict, *, trusted_actor=None):
     actor_name = actor.get("user") or "api"
     actor_domain = actor.get("domain") or "domain.com"
 
+    terminated_message = _reject_if_workflow_execution_terminated(str(data.get("workflow_execution_id") or ""))
+    if terminated_message:
+        return {"result": False, "message": terminated_message}
+
     if not name:
         return {"result": False, "message": job_message(None, "error.name_required", "name is required")}
     if target_source not in ("node_mgmt", "manual"):
@@ -286,31 +355,9 @@ def _run_script_execute(data: dict, *, trusted_actor=None):
 
     async_fields = {}
     if async_ctx:
-        callback_token = async_ctx.get("callback_token") or ""
-        callback_url = (async_ctx.get("callback_url") or "").strip()
-        if not callback_url or not callback_token:
-            return {"result": False, "message": "callback_context.callback_url and callback_token are required"}
-        cb_err = _validate_callback_config(CallbackType.WEB, callback_url, "", "job_script_execute_async")
-        if cb_err:
-            return {"result": False, "message": cb_err}
-        callback_key = hashlib.sha256(callback_token.encode("utf-8")).hexdigest()
-        replay = _async_callback_replay(callback_key, team)
-        if replay is not None:
-            return replay
-        timeout_seconds = int(async_ctx.get("timeout") or 3600)
-        async_fields = {
-            "async_callback_context": {
-                "callback_url": callback_url,
-                "callback_token": callback_token,
-                "operator": async_ctx.get("operator") or "system",
-                "timeout": timeout_seconds,
-                "user": actor_name,
-                "domain": actor_domain,
-                "team_id": (team[0] if team else None),
-            },
-            "async_callback_deadline_at": timezone.now() + timedelta(seconds=timeout_seconds),
-            "async_callback_key": callback_key,
-        }
+        async_fields, async_error = _prepare_script_async_fields(async_ctx, team, actor_name, actor_domain)
+        if async_error is not None:
+            return async_error
         callback_url = ""
         callback_subject = ""
         callback_type = CallbackType.WEB
@@ -341,6 +388,11 @@ def _run_script_execute(data: dict, *, trusted_actor=None):
     # NATS 入口绕过 REST serializer, 必须独立处理; worker 兜底仍保留。
     script_content = normalize_script_line_endings(script_content, script_type)
 
+    idempotency_key = str(data.get("idempotency_key") or "").strip()[:255]
+    idempotent_replay = _script_execute_idempotent_response(idempotency_key, team, async_fields)
+    if idempotent_replay is not None:
+        return idempotent_replay
+
     # 创建执行记录
 
     create_kwargs = {
@@ -366,9 +418,14 @@ def _run_script_execute(data: dict, *, trusted_actor=None):
         "updated_by_domain": actor_domain,
         **async_fields,
     }
+    if idempotency_key:
+        create_kwargs["client_request_id"] = idempotency_key
     try:
         execution = JobExecution.objects.create(**create_kwargs)
     except IntegrityError:
+        idempotent_replay = _script_execute_idempotent_response(idempotency_key, team, async_fields)
+        if idempotent_replay is not None:
+            return idempotent_replay
         replay = _async_callback_replay(async_fields.get("async_callback_key"), team)
         if replay is not None:
             return replay
@@ -426,6 +483,8 @@ def _run_file_distribute(data: dict, *, trusted_actor=None):
             - callback_type: 回调通道 web|nats|both（可选，默认 web）
             - callback_url: web 通道回调地址（callback_type 含 web 时使用）
             - callback_subject: nats 通道回调主题，如 bklite.alert_job_result（callback_type 含 nats 时必填）
+            - idempotency_key: 可选幂等键
+            - workflow_execution_id: 可选，编排执行 ID；已终止时拒绝创建
 
     Returns:
         {"result": True, "data": {"task_id": <int>}} 或 {"result": False, "message": "..."}
@@ -446,6 +505,10 @@ def _run_file_distribute(data: dict, *, trusted_actor=None):
     actor = trusted_actor if isinstance(trusted_actor, dict) else {}
     actor_name = actor.get("user") or "api"
     actor_domain = actor.get("domain") or "domain.com"
+
+    terminated_message = _reject_if_workflow_execution_terminated(str(data.get("workflow_execution_id") or ""))
+    if terminated_message:
+        return {"result": False, "message": terminated_message}
 
     if not name:
         return {"result": False, "message": job_message(None, "error.name_required", "name is required")}
@@ -479,9 +542,20 @@ def _run_file_distribute(data: dict, *, trusted_actor=None):
             ),
         }
 
-    # 文件必须属于本次作业声明的团队。将团队范围直接落到 ORM 查询，
+    idempotency_key = str(data.get("idempotency_key") or "").strip()[:255]
+    idempotent_replay = _script_execute_idempotent_response(idempotency_key, team, {})
+    if idempotent_replay is not None:
+        return idempotent_replay
+
+    # 文件必须属于本次作业声明的团队，且未过期。将团队范围直接落到 ORM 查询，
     # 对跨团队文件与历史无归属文件统一 fail-closed，避免泄露其存在性。
-    distribution_files = list(DistributionFile.objects.filter(file_key__in=file_keys, team__in=authorized_team_ids))
+    distribution_files = list(
+        DistributionFile.objects.filter(
+            file_key__in=file_keys,
+            team__in=authorized_team_ids,
+            expire_at__gt=timezone.now(),
+        )
+    )
     found_keys = {df.file_key for df in distribution_files}
     missing_keys = [k for k in file_keys if k not in found_keys]
     if missing_keys:
@@ -495,31 +569,39 @@ def _run_file_distribute(data: dict, *, trusted_actor=None):
     # 构建文件信息
     files_info = [{"name": df.original_name, "file_key": df.file_key} for df in distribution_files]
 
-    # 创建执行记录
-    execution = JobExecution.objects.create(
-        name=name,
-        job_type=JobType.FILE_DISTRIBUTION,
-        trigger_source=TriggerSource.API,
-        status=ExecutionStatus.PENDING,
-        files=files_info,
-        target_path=target_path,
-        overwrite_strategy=overwrite_strategy,
-        timeout=timeout,
-        total_count=len(target_list),
-        target_source=target_source,
-        target_list=target_list,
-        team=team,
-        callback_type=callback_type,
-        callback_url=callback_url,
-        callback_subject=callback_subject,
-        executor_user=actor_name,
+    create_kwargs = {
+        "name": name,
+        "job_type": JobType.FILE_DISTRIBUTION,
+        "trigger_source": TriggerSource.API,
+        "status": ExecutionStatus.PENDING,
+        "files": files_info,
+        "target_path": target_path,
+        "overwrite_strategy": overwrite_strategy,
+        "timeout": timeout,
+        "total_count": len(target_list),
+        "target_source": target_source,
+        "target_list": target_list,
+        "team": team,
+        "callback_type": callback_type,
+        "callback_url": callback_url,
+        "callback_subject": callback_subject,
+        "executor_user": actor_name,
         # 通用 MaintainerInfo 字段历史上限为 32；完整可信身份保存在
         # executor_user + domain，维护人列仅作兼容投影，避免合法长账号落库失败。
-        created_by=actor_name[:32],
-        updated_by=actor_name[:32],
-        domain=actor_domain,
-        updated_by_domain=actor_domain,
-    )
+        "created_by": actor_name[:32],
+        "updated_by": actor_name[:32],
+        "domain": actor_domain,
+        "updated_by_domain": actor_domain,
+    }
+    if idempotency_key:
+        create_kwargs["client_request_id"] = idempotency_key
+    try:
+        execution = JobExecution.objects.create(**create_kwargs)
+    except IntegrityError:
+        idempotent_replay = _script_execute_idempotent_response(idempotency_key, team, {})
+        if idempotent_replay is not None:
+            return idempotent_replay
+        raise
 
     # 触发异步执行（Celery Worker）
     if not dispatch_celery_task(distribute_files_task, execution):
@@ -908,6 +990,28 @@ def execute_automation_script_local(data: dict, actor_context: dict):
     if target_scope_error:
         return {"result": False, "message": target_scope_error}
     return _run_script_execute(data or {}, trusted_actor=actor)
+
+
+def execute_automation_file_distribute_local(data: dict, actor_context: dict):
+    """同进程文件分发入口：身份与组织来自已鉴权的调用上下文。"""
+    actor = _automation_actor_context(actor_context)
+    if actor is None:
+        return {"result": False, "message": "缺少可信执行上下文"}
+    requested_team_ids = normalize_team((data or {}).get("team"))
+    if not requested_team_ids or not requested_team_ids <= actor["authorized_team_ids"]:
+        return {"result": False, "message": "无权在目标组织执行作业"}
+    file_keys = (data or {}).get("file_keys") or []
+    if not isinstance(file_keys, list) or not file_keys:
+        return {"result": False, "message": job_message(None, "error.file_keys_required", "file_keys is required")}
+    scope_error = _validate_openapi_distribute_scope(
+        file_keys,
+        (data or {}).get("target_source"),
+        (data or {}).get("target_list") or [],
+        requested_team_ids,
+    )
+    if scope_error:
+        return {"result": False, "message": scope_error}
+    return _run_file_distribute(data or {}, trusted_actor=actor)
 
 
 def list_automation_targets_local(data: dict, actor_context: dict):

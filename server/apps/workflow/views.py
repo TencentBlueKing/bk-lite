@@ -64,7 +64,7 @@ from apps.workflow.services.agent_knowledge_inputs import store_uploaded_agent_k
 from apps.workflow.services.atom_registry import available_atom_catalog, ensure_platform_atom, task_definition_from_catalog_item
 from apps.workflow.services.atoms import TASK_DEFINITIONS, atom_catalog_payload, system_node_catalog_payload
 from apps.workflow.services.capability_profiles import capability_resource_snapshot
-from apps.workflow.services.conductor import ConductorClient, ConductorConflict, ConductorUnavailable
+from apps.workflow.services.conductor import ConductorClient, ConductorConflict, ConductorRejected, ConductorUnavailable
 from apps.workflow.services.data_contracts import validate_and_compile_workflow_data_contract
 from apps.workflow.services.definitions import (
     DefinitionValidationError,
@@ -82,6 +82,7 @@ from apps.workflow.services.demo_templates import SAMPLE_TEMPLATE_CONTENT_TYPES,
 from apps.workflow.services.execution_details import build_execution_node_detail, build_execution_node_summary
 from apps.workflow.services.execution_job_cancellation import cancel_linked_job_tasks
 from apps.workflow.services.executions import TERMINAL_STATUSES, apply_remote_execution
+from apps.workflow.services.file_distribute_assets import renew_workflow_file_distribute_assets
 from apps.workflow.services.graph_compiler import compile_canvas_graph
 from apps.workflow.services.interactions import InteractionConflict, InteractionForbidden, decide_interaction
 from apps.workflow.services.launch_plans import (
@@ -488,6 +489,7 @@ class WorkflowViewSet(AuthViewSet):
                 if team_ids is not None:
                     save_kwargs["team"] = team_ids
                 serializer.save(**save_kwargs)
+                renew_workflow_file_distribute_assets(definition=workflow.definition, team=workflow.team)
         except IntegrityError as error:
             if _is_workflow_name_conflict(error):
                 return _workflow_name_conflict_response()
@@ -842,6 +844,7 @@ class WorkflowViewSet(AuthViewSet):
             )
             sync_published_triggers(workflow, published_metadata, username=username, domain=domain)
             workflow.triggers.update(enabled=True)
+            renew_workflow_file_distribute_assets(definition=definition, team=workflow.team)
             transaction.on_commit(lambda workflow_id=workflow.pk: sync_workflow_nats_channels(workflow_id))
         _audit(request, "publish", f"发布流程 v{next_version}", target_type="workflow", target_id=workflow.id)
         return Response(self.get_serializer(workflow).data)
@@ -930,6 +933,8 @@ class WorkflowViewSet(AuthViewSet):
                 },
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        except ConductorRejected as error:
+            return Response({"detail": render_workflow_error(request, error)}, status=status.HTTP_400_BAD_REQUEST)
         except ConductorUnavailable as error:
             return Response({"detail": render_workflow_error(request, error)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
         _audit(request, "debug", "启动流程草稿调试", target_type="execution", target_id=execution.id)
@@ -1169,6 +1174,8 @@ class WorkflowViewSet(AuthViewSet):
             )
         except (ValueError, WorkflowVersion.DoesNotExist) as error:
             return Response({"detail": render_workflow_error(request, error)}, status=status.HTTP_409_CONFLICT)
+        except ConductorRejected as error:
+            return Response({"detail": render_workflow_error(request, error)}, status=status.HTTP_400_BAD_REQUEST)
         except ConductorUnavailable as error:
             return Response({"detail": render_workflow_error(request, error)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
         reused = bool(getattr(execution, "_launch_reused", False))
@@ -1692,8 +1699,13 @@ class WorkflowExecutionViewSet(AuthViewSet):
         }:
             try:
                 apply_remote_execution(execution, ConductorClient().get_execution(execution.conductor_workflow_id))
-            except ConductorUnavailable:
-                logger.warning("Conductor sync unavailable execution_id=%s", execution.id)
+            except (ConductorUnavailable, ConductorRejected) as error:
+                # Detail/nodes must still return local facts when the engine is down or the remote id is gone.
+                logger.warning(
+                    "event=workflow_execution_sync_skipped execution_id=%s failed_stage=conductor_query error_type=%s",
+                    execution.id,
+                    type(error).__name__,
+                )
         return execution
 
     @HasPermission("workflow-Execute", app_name=APP_NAME)
@@ -2068,6 +2080,8 @@ class WorkflowExecutionViewSet(AuthViewSet):
             return Response({"detail": render_workflow_error(request, error)}, status=status.HTTP_400_BAD_REQUEST)
         except TargetDependencyUnavailable as error:
             return Response({"detail": render_workflow_error(request, error)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        except ConductorRejected as error:
+            return Response({"detail": render_workflow_error(request, error)}, status=status.HTTP_400_BAD_REQUEST)
         except ConductorUnavailable as error:
             return Response({"detail": render_workflow_error(request, error)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
         reused = bool(getattr(execution, "_launch_reused", False))

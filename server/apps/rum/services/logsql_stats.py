@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from datetime import datetime, timedelta, timezone
 
-from apps.rum.services.victoria_client import parse_float, quote_logsql, rum_apps_filter
+from apps.rum.services.victoria_client import clamp_unit, parse_float, quote_logsql, rum_apps_filter
 
 FUNNEL_GROUP_LIMIT = 50000
 JOURNEY_EVENT_LIMIT = 20000
@@ -60,11 +60,7 @@ def session_page_query(tenant_id: str, opts: dict) -> str:
 
 def session_summary_query(tenant_id: str, opts: dict) -> str:
     grouped = _session_grouped(tenant_id, opts)
-    return (
-        f"{grouped} | stats count() as total, "
-        "count() if (error_count:>0) as errored, "
-        "quantile(0.5, duration) as median"
-    )
+    return f"{grouped} | stats count() as total, " "count() if (error_count:>0) as errored, " "quantile(0.5, duration) as median"
 
 
 def session_trend_query(tenant_id: str, opts: dict, step: timedelta) -> str:
@@ -97,7 +93,10 @@ def view_stats_query(tenant_id: str, opts: dict) -> str:
         "count() if (`rum.vital.lcp`:<=2500) as lcp_good, "
         "count() if (`rum.vital.lcp`:>2500 AND `rum.vital.lcp`:<=4000) as lcp_needs, "
         "count() if (`rum.vital.lcp`:>4000) as lcp_poor, "
-        'count() if ("rum.event.type":view ("user_agent.original":Mobile OR "user_agent.original":Android OR "user_agent.original":iPhone)) as mobile, '
+        "count() if ("
+        '"rum.event.type":view ("user_agent.original":Mobile OR '
+        '"user_agent.original":Android OR "user_agent.original":iPhone")'
+        ") as mobile, "
         'count() if ("rum.event.type":view) as view_events '
         "| sort by (views desc) | offset 0 | limit 500"
     )
@@ -176,8 +175,7 @@ def error_detail_query(tenant_id: str, fingerprint: str, opts: dict) -> str:
     base = _filtered(
         tenant_id,
         opts,
-        f'"rum.event.type":error ("rum.error.fingerprint":{quote_logsql(fingerprint)}'
-        f' OR "rum.error.group_key":{quote_logsql(fingerprint)})',
+        f'"rum.event.type":error ("rum.error.fingerprint":{quote_logsql(fingerprint)}' f' OR "rum.error.group_key":{quote_logsql(fingerprint)})',
     )
     return (
         f"{base} | stats count() as count, "
@@ -256,10 +254,7 @@ def monitor_metric_query(tenant_id: str, opts: dict) -> str:
         name = metric[: -len("_p75")]
         return f'{base} "rum.event.type":vital | stats quantile(0.75, `rum.vital.{name}`) as value'
     if metric == "error_rate":
-        return (
-            f"{base} | stats count_uniq(`rum.session.key`) as sessions, "
-            'count_uniq(`rum.session.key`) if ("rum.event.type":error) as errored'
-        )
+        return f"{base} | stats count_uniq(`rum.session.key`) as sessions, " 'count_uniq(`rum.session.key`) if ("rum.event.type":error) as errored'
     return f"{base} | stats count_uniq(`rum.session.key`) as value"
 
 
@@ -275,10 +270,7 @@ def metric_series_query(tenant_id: str, opts: dict, step: timedelta) -> str:
         )
     if metric.endswith("_p75"):
         name = metric[: -len("_p75")]
-        return (
-            f'{base} "rum.event.type":vital | stats by ({bucket}) '
-            f"quantile(0.75, `rum.vital.{name}`) as value"
-        )
+        return f'{base} "rum.event.type":vital | stats by ({bucket}) ' f"quantile(0.75, `rum.vital.{name}`) as value"
     return f"{base} | stats by ({bucket}) count_uniq(`rum.session.key`) as value"
 
 
@@ -528,3 +520,144 @@ def _fmt_dt(value: datetime | None) -> str | None:
     if value.tzinfo is None:
         value = value.replace(tzinfo=timezone.utc)
     return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+_OVERVIEW_FACETS = {"rum.environment", "rum.release"}
+# Same User-Agent words as view_stats_query. A session with any of them is mobile.
+_MOBILE_UA = '"user_agent.original":Mobile OR "user_agent.original":Android OR "user_agent.original":iPhone'
+
+
+def catalog_health_query(tenant_id: str, apps: list[str]) -> str:
+    base = rum_apps_filter(tenant_id, apps)
+    return (
+        f"{base} | stats by (`rum.application`) "
+        "count_uniq(`rum.session.key`) as sessions, "
+        'count() if ("rum.event.type":view) as views, '
+        'count() if ("rum.event.type":error) as errors, '
+        'count_uniq(`rum.session.key`) if ("rum.event.type":error) as errored_sessions, '
+        "quantile(0.75, `rum.measurement.lcp`) if (`rum.measurement.lcp`:*) as lcp_measurement_p75, "
+        "quantile(0.75, `rum.vital.lcp`) if (`rum.vital.lcp`:*) as lcp_p75, "
+        "quantile(0.75, `rum.measurement.inp`) if (`rum.measurement.inp`:*) as inp_measurement_p75, "
+        "quantile(0.75, `rum.vital.inp`) if (`rum.vital.inp`:*) as inp_p75, "
+        "max(_time) as last_seen, "
+        "values(`rum.environment`) as environment, "
+        "values(`rum.release`) as release, "
+        "values(`rum.sdk.version`) as sdk_version"
+    )
+
+
+def catalog_spark_query(tenant_id: str, apps: list[str], step: timedelta) -> str:
+    base = rum_apps_filter(tenant_id, apps)
+    bucket = _time_bucket(step)
+    return f'{base} "rum.event.type":view | stats by (`rum.application`, {bucket}) count() as views'
+
+
+def overview_country_query(tenant_id: str, application: str) -> str:
+    base = rum_apps_filter(tenant_id, [application])
+    return f'{base} "rum.event.type":view | stats by (`geo.country.iso_code`) ' "count() as views, count_uniq(`rum.session.key`) as sessions"
+
+
+def overview_facet_query(tenant_id: str, application: str, field: str) -> str:
+    if field not in _OVERVIEW_FACETS:
+        raise ValueError(f"unsupported overview facet: {field}")
+    base = rum_apps_filter(tenant_id, [application])
+    return f'{base} "{field}":* | stats by (`{field}`) ' 'count() if ("rum.event.type":view) as views, ' "count_uniq(`rum.session.key`) as sessions"
+
+
+def overview_device_query(tenant_id: str, application: str) -> str:
+    base = rum_apps_filter(tenant_id, [application])
+    return (
+        f"{base} | stats "
+        f"count_uniq(`rum.session.key`) if ({_MOBILE_UA}) as mobile, "
+        'count_uniq(`rum.session.key`) if ("user_agent.original":*) as sessions'
+    )
+
+
+def map_catalog_health(
+    rows: list[dict],
+    spark_rows: list[dict],
+    enabled_apps: list[str],
+    start: datetime,
+    end: datetime,
+    buckets: int,
+) -> tuple[list[dict], dict[str, list[float]]]:
+    found = {_text(row, "rum.application"): row for row in rows}
+    out = []
+    for app in enabled_apps:
+        src = found.get(app) or {}
+        sessions = int(_num(src, "sessions"))
+        errored = int(_num(src, "errored_sessions"))
+        seen = _parse_time(_text(src, "last_seen"))
+        out.append(
+            {
+                "application": app,
+                "sessions": sessions,
+                "views": int(_num(src, "views")),
+                "errors": int(_num(src, "errors")),
+                "lcpP75": _prefer_positive(src, "lcp_measurement_p75", "lcp_p75"),
+                "inpP75": _prefer_positive(src, "inp_measurement_p75", "inp_p75"),
+                "errorRate": clamp_unit(errored / sessions) if sessions else 0.0,
+                "environment": sample_text(src, "environment"),
+                "release": sample_text(src, "release"),
+                "sdkVersion": sample_text(src, "sdk_version"),
+                "lastSeenMs": int(seen.timestamp() * 1000) if seen else 0,
+            }
+        )
+    return out, _catalog_sparks(spark_rows, enabled_apps, start, end, buckets)
+
+
+def map_named_counts(rows: list[dict], source_key: str, out_key: str) -> list[dict]:
+    return [
+        {
+            out_key: _text(row, source_key),
+            "views": int(_num(row, "views")),
+            "sessions": int(_num(row, "sessions")),
+        }
+        for row in rows
+    ]
+
+
+def map_device_counts(rows: list[dict]) -> dict:
+    row = rows[0] if rows else {}
+    sessions = int(_num(row, "sessions"))
+    mobile = int(_num(row, "mobile"))
+    if mobile > sessions:
+        mobile = sessions
+    return {"mobile": mobile, "desktop": max(0, sessions - mobile)}
+
+
+def _prefer_positive(row: dict, primary: str, fallback: str) -> float:
+    primary_value = _num(row, primary)
+    if primary_value > 0:
+        return primary_value
+    return _num(row, fallback)
+
+
+def _catalog_sparks(
+    rows: list[dict],
+    enabled_apps: list[str],
+    start: datetime,
+    end: datetime,
+    buckets: int,
+) -> dict[str, list[float]]:
+    n = max(buckets, 1)
+    sparks = {app: [0.0] * n for app in enabled_apps}
+    width = end - start
+    if width.total_seconds() <= 0:
+        width = timedelta(hours=1)
+    origin = start if start.tzinfo else start.replace(tzinfo=timezone.utc)
+    for row in rows:
+        series = sparks.get(_text(row, "rum.application"))
+        if series is None:
+            continue
+        seen = _parse_time(_text(row, "_time"))
+        if seen is None:
+            continue
+        if seen.tzinfo is None:
+            seen = seen.replace(tzinfo=timezone.utc)
+        idx = int((seen - origin) / width * n)
+        if idx >= n:
+            idx = n - 1
+        if idx >= 0:
+            series[idx] += float(_num(row, "views"))
+    return sparks

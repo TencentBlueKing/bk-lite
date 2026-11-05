@@ -104,7 +104,7 @@ export default function RumViewsPage() {
   useRumAuthedEffect(
     authReady,
     (isCancelled) => {
-      void listApplications()
+      void listApplications(true)
         .then((items) => {
           if (!isCancelled()) setApps(items.map((item) => item.application).filter(Boolean));
         })

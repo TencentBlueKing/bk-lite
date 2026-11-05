@@ -14,6 +14,7 @@ FEISHU_TOKEN_URL = "https://open.feishu.cn/open-apis/auth/v3/tenant_access_token
 FEISHU_TIMEOUT = 10
 FEISHU_AUTHORIZE_URL = "https://accounts.feishu.cn/open-apis/authen/v1/authorize"
 FEISHU_AUTH_ACCESS_TOKEN_URL = "https://open.feishu.cn/open-apis/authen/v1/access_token"
+FEISHU_JSAPI_TOKEN_URL = "https://accounts.feishu.cn/oauth/v3/token"
 FEISHU_AUTH_USER_INFO_URL = "https://open.feishu.cn/open-apis/authen/v1/user_info"
 FEISHU_CONTACT_SCOPES_URL = "https://open.feishu.cn/open-apis/contact/v3/scopes"
 FEISHU_DEPARTMENTS_BATCH_URL = "https://open.feishu.cn/open-apis/contact/v3/departments/batch"
@@ -34,6 +35,8 @@ FEISHU_COMPANY_ROOT_DEPARTMENT_NAME = "根组织"
 _SYNTHETIC_SCOPE_ROOT_IDS = {"", "__all__", "**all**"}
 _FEISHU_TENANT_TOKEN_CACHE = {}
 _FEISHU_TENANT_TOKEN_CACHE_LOCK = Lock()
+
+
 def _get_config_value(config: dict, key: str, default: str):
     return (config or {}).get(key) or default
 
@@ -127,10 +130,7 @@ def _request_tenant_access_token(config: dict, capability_key: str):
             retryable=True,
         )
     except requests.RequestException as error:
-        logger.debug(
-            f"Feishu connection test request failed for capability '{capability_key}': "
-            f"error_type={type(error).__name__}"
-        )
+        logger.debug(f"Feishu connection test request failed for capability '{capability_key}': " f"error_type={type(error).__name__}")
         return CapabilityExecutionResult.failed_result(
             "Feishu connection request failed",
             code="provider.request_failed",
@@ -169,6 +169,7 @@ def _request_tenant_access_token(config: dict, capability_key: str):
         payload={"external_request_id": request_id},
     )
 
+
 def _fetch_tenant_access_token(config: dict, force_refresh: bool = False):
     app_id = (config or {}).get("app_id", "")
     app_secret = (config or {}).get("app_secret", "")
@@ -205,10 +206,7 @@ def _fetch_tenant_access_token(config: dict, force_refresh: bool = False):
         except requests.Timeout:
             return None, CapabilityExecutionResult.failed_result("Feishu access token request timed out", code="provider.timeout", retryable=True)
         except (requests.RequestException, ValueError) as error:
-            logger.debug(
-                f"Feishu access token request failed: endpoint={safe_token_url}, "
-                f"error_type={type(error).__name__}"
-            )
+            logger.debug(f"Feishu access token request failed: endpoint={safe_token_url}, " f"error_type={type(error).__name__}")
             return None, CapabilityExecutionResult.failed_result("Feishu access token request failed", code="provider.request_failed", retryable=True)
 
         request_id = response.headers.get("X-Tt-Logid", "")
@@ -235,6 +233,7 @@ def _fetch_tenant_access_token(config: dict, force_refresh: bool = False):
             "expires_at": current_time + max(expires_in, 0),
         }
         return token, None
+
 
 def _feishu_get_paginated(
     url: str,
@@ -267,10 +266,7 @@ def _feishu_get_paginated(
         except requests.Timeout:
             return None, CapabilityExecutionResult.failed_result("Feishu contact request timed out", code="provider.timeout", retryable=True)
         except (requests.RequestException, ValueError) as error:
-            logger.debug(
-                f"Feishu contact request failed: endpoint={_sanitize_url_for_log(url)}, "
-                f"error_type={type(error).__name__}"
-            )
+            logger.debug(f"Feishu contact request failed: endpoint={_sanitize_url_for_log(url)}, " f"error_type={type(error).__name__}")
             return None, CapabilityExecutionResult.failed_result("Feishu contact request failed", code="provider.request_failed", retryable=True)
 
         last_request_id = response.headers.get("X-Tt-Logid", "")
@@ -354,9 +350,7 @@ def _is_company_root_permission_denied(department_id: str, error) -> bool:
 
 def _fetch_department_children(config: dict, token: str, department_id: str, params: dict):
     return _feishu_get_paginated(
-        _get_config_value(config, "user_sync_departments_url", FEISHU_DEPARTMENT_CHILDREN_URL).format(
-            department_id=department_id
-        ),
+        _get_config_value(config, "user_sync_departments_url", FEISHU_DEPARTMENT_CHILDREN_URL).format(department_id=department_id),
         token,
         params=params,
         config=config,
@@ -400,9 +394,7 @@ def _collect_visible_department_ids(config: dict, token: str, department_id_type
     department_ids = list(root_ids)
 
     def fetch_children(scope_root_id: str):
-        child_payload, child_error = _fetch_department_children(
-            config, token, scope_root_id, children_params
-        )
+        child_payload, child_error = _fetch_department_children(config, token, scope_root_id, children_params)
         return scope_root_id, child_payload, child_error
 
     with ThreadPoolExecutor(max_workers=min(FEISHU_DEPARTMENT_CHILDREN_MAX_WORKERS, len(root_ids))) as executor:
@@ -411,9 +403,7 @@ def _collect_visible_department_ids(config: dict, token: str, department_id_type
             scope_root_id, child_payload, child_error = child_request.result()
             if child_error:
                 if _is_company_root_permission_denied(scope_root_id, child_error):
-                    logger.debug(
-                        "Feishu IM skipped company-root children fetch because the app cannot read department 0"
-                    )
+                    logger.debug("Feishu IM skipped company-root children fetch because the app cannot read department 0")
                     continue
                 return None, child_error
             external_request_id = child_payload.get("request_id") or external_request_id
@@ -454,9 +444,7 @@ def _list_users_in_departments(
         )
         if error:
             if _is_company_root_permission_denied(department_id, error):
-                logger.debug(
-                    "Feishu IM skipped company-root user fetch because the app cannot read department 0"
-                )
+                logger.debug("Feishu IM skipped company-root user fetch because the app cannot read department 0")
                 continue
             return None, error
         external_request_id = user_payload.get("request_id") or external_request_id

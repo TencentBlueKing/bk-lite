@@ -20,3 +20,4 @@ class Channel(MaintainerInfo, EncryptMixin):
     config = models.JSONField(default=dict)
     description = models.TextField()
     team = models.JSONField(default=list)
+    tags = models.ManyToManyField("system_mgmt.NotificationTag", blank=True, related_name="channels")

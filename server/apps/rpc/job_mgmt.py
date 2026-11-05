@@ -51,6 +51,9 @@ class JobMgmt:
     def execute_automation_script(self, data, actor_context):
         return self._run_local_automation("execute_automation_script_local", data, actor_context)
 
+    def execute_automation_file_distribute(self, data, actor_context):
+        return self._run_local_automation("execute_automation_file_distribute_local", data, actor_context)
+
     def get_automation_execution_statuses(self, data, actor_context):
         return self._run_local_automation("get_automation_execution_statuses_local", data, actor_context)
 

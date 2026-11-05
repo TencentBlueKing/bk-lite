@@ -13,16 +13,16 @@
           "url": "/system-manager/user/structure"
         },
         {
-          "title": "用户字段",
-          "icon": "shezhi",
-          "name": "user_fields",
-          "url": "/system-manager/user/fields"
-        },
-        {
           "title": "登录认证",
           "icon": "renzhengyuanguanli",
           "name": "login_auth",
           "url": "/system-manager/user/login-auth"
+        },
+        {
+          "title": "用户字段",
+          "icon": "shezhi",
+          "name": "user_fields",
+          "url": "/system-manager/user/fields"
         },
         {
           "title": "用户同步",
@@ -172,16 +172,16 @@
           "url": "/system-manager/user/structure"
         },
         {
-          "title": "User Fields",
-          "icon": "shezhi",
-          "name": "user_fields",
-          "url": "/system-manager/user/fields"
-        },
-        {
           "title": "Login Auth",
           "icon": "renzhengyuanguanli",
           "name": "login_auth",
           "url": "/system-manager/user/login-auth"
+        },
+        {
+          "title": "User Fields",
+          "icon": "shezhi",
+          "name": "user_fields",
+          "url": "/system-manager/user/fields"
         },
         {
           "title": "User Sync",

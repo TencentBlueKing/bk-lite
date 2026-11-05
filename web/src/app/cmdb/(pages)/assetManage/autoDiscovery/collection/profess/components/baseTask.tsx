@@ -268,23 +268,28 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
     };
 
     const isSslCerTask = modelId === 'ssl_cer';
+    const isHypervHostTask = modelId === 'hyperv_host';
     const supportsIpSelection =
-      !singleInstanceOnly &&
-      !isSslCerTask &&
-      IP_SELECTION_TASK_TYPES.includes(normalizedTaskType);
+      isHypervHostTask ||
+      (!singleInstanceOnly &&
+        !isSslCerTask &&
+        IP_SELECTION_TASK_TYPES.includes(normalizedTaskType));
     const supportsAssetOnlySelection =
       ASSET_ONLY_SELECTION_TASK_TYPES.includes(normalizedTaskType) ||
       isSslCerTask;
 
-    const requiresSingleInstanceSelect = singleInstanceOnly
-      || SINGLE_INSTANCE_SELECT_TASK_TYPES.includes(normalizedTaskType);
+    const requiresSingleInstanceSelect =
+      !isHypervHostTask &&
+      (singleInstanceOnly ||
+        SINGLE_INSTANCE_SELECT_TASK_TYPES.includes(normalizedTaskType));
     const requiresAccessPointSelect = ACCESS_POINT_TASK_TYPES.includes(
       normalizedTaskType
     );
 
     const isCommonSelectInstTask = (
       COMMON_SELECT_INST_TASK_TYPES.includes(normalizedTaskType) ||
-      directAssetModelId !== null
+      directAssetModelId !== null ||
+      isHypervHostTask
     ) && !isNetworkConfigFileTask;
     const isHostTask = normalizedTaskType === 'host';
     const isHostDiscovery = collectionType === 'host';
@@ -1067,7 +1072,9 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
                     onChange={(e) => handleCollectionTypeChange(e.target.value)}
                   >
                     <Radio value="ip">{t('Collection.chooseIp')}</Radio>
-                    {isCustomScriptTask ? (
+                    {isHypervHostTask ? (
+                      <Radio value="host">{t('Collection.chooseHost')}</Radio>
+                    ) : isCustomScriptTask ? (
                       <Radio value="asset">{t('Collection.chooseHost')}</Radio>
                     ) : (
                       <>

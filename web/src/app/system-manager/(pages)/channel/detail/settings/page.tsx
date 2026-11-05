@@ -1,7 +1,7 @@
 "use client";
 import React, { useState, useEffect } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import { Input, message, Button, Spin, Popconfirm, Tooltip } from "antd";
+import { Input, message, Button, Spin, Popconfirm, Tag, Tooltip } from "antd";
 import { ArrowLeftOutlined } from "@ant-design/icons";
 import { ColumnsType } from "antd/es/table";
 import { useTranslation } from "@/utils/i18n";
@@ -26,6 +26,7 @@ interface ChannelRow {
   key: string;
   name: string;
   description: string;
+  tag?: string[];
   channel_type?: string;
   config?: Record<string, any>;
 }
@@ -74,6 +75,18 @@ const ChannelSettingsPage: React.FC = () => {
       title: t("system.channel.table.description"),
       dataIndex: "description",
       width: 300,
+    },
+    {
+      title: t("system.channel.table.tag"),
+      dataIndex: "tag",
+      width: 220,
+      render: (tags: string[] = []) => (
+        <div className="flex flex-wrap gap-1">
+          {tags.map((item) => (
+            <Tag key={item}>{item}</Tag>
+          ))}
+        </div>
+      ),
     },
     {
       title: t("common.actions"),
@@ -131,13 +144,14 @@ const ChannelSettingsPage: React.FC = () => {
         typesToQuery.map((ct) => getChannelData({ channel_type: ct }))
       );
       const merged = results.flat();
-      const channels: ChannelRow[] = merged.map((item: { id: string; name: string; description: string; channel_type?: string; config?: Record<string, any> }) => ({
+      const channels: ChannelRow[] = merged.map((item: { id: string; name: string; description: string; tag?: string[]; channel_type?: string; config?: Record<string, any> }) => ({
         key: item.id,
         name: item.name,
         description: item.description,
+        tag: Array.isArray(item.tag) ? item.tag : [],
         config: item.config,
         ...(isWebhookChannel ? { channel_type: item.channel_type } : {}),
-      }));
+      })).sort((left, right) => Number(left.key) - Number(right.key));
       setAllTableData(channels);
       setTableData(getPaginatedData(filterData(channels)));
     } catch {

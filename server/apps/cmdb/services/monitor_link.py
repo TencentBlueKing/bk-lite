@@ -351,6 +351,7 @@ class MonitorLinkService:
                 allowed_org_ids=allowed_org_ids,
                 skip_permission_check=True,
                 expected_monitor_id=monitor_id,
+                audit_source="手动",
             )
         except StaleMonitorBinding:
             logger.info(_UNBIND_DONE_TEMPLATE, inst_uuid, "stale")
