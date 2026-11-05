@@ -129,6 +129,7 @@ from apps.opspilot.metis.llm.middleware.tool_runtime import (
 
 # from apps.opspilot.metis.llm.rag.naive_rag.pgvector.pgvector_rag import PgvectorRag  # 暂时禁用,master 合并后文件被删除
 from apps.opspilot.metis.llm.tools.tools_loader import ToolsLoader
+from apps.opspilot.services.job_output_text import model_visible_text
 from apps.opspilot.utils.pending_question import (
     KIND_K8S_REPAIR_MODE,
     KIND_LIMIT_CONTINUE,
@@ -325,7 +326,7 @@ class BasicNode:
                 if event == "user":
                     state["messages"].append(human_message_with_images(chat.message, chat.image_data))
                 elif event in {"assistant", "bot"}:
-                    content = str(getattr(chat, "message", "") or "")
+                    content = model_visible_text(str(getattr(chat, "message", "") or ""))
                     if pending_is_limit_resume:
                         content = scrub_exhausted_limit_claims(content)
                     if content:

@@ -1,5 +1,5 @@
 import React, { useState, useRef, forwardRef, useImperativeHandle, useEffect } from 'react';
-import { Input, Button, Form, message, Switch, Tag, Tooltip } from 'antd';
+import { Input, Button, Form, message, Switch, Tooltip } from 'antd';
 import { InfoCircleOutlined } from '@ant-design/icons';
 import OperateModal from '@/components/operate-modal';
 import type { FormInstance } from 'antd';
@@ -8,6 +8,7 @@ import { useGroupApi } from '@/app/system-manager/api/group';
 import { useUserApi } from '@/app/system-manager/api/user';
 import { useClientData } from '@/context/client';
 import RoleTransfer from '@/app/system-manager/components/user/roleTransfer';
+import { processRoleTreeData } from '@/app/system-manager/utils/userFormUtils';
 import type { DataNode as TreeDataNode } from 'antd/lib/tree';
 
 interface ModalProps {
@@ -24,6 +25,7 @@ interface ModalProps {
   }) => Promise<Array<{
     id: number;
     name: string;
+    display_name?: string;
     is_build_in?: boolean;
     children: Array<{ id: number; name: string }>;
   }>>;
@@ -92,21 +94,7 @@ const GroupEditModal = forwardRef<GroupModalRef, ModalProps>(({
     try {
       setRoleLoading(true);
       const roleData = await loadRoleList({ client_list: resolvedClientData });
-
-      const formattedRoles = roleData.map((item: any) => ({
-        key: item.id,
-        title: item.is_build_in === false
-          ? <span>{item.name}<Tag color="green" className="ml-1" style={{ fontSize: 11, padding: '0 4px' }}>{t('common.externalApp')}</Tag></span>
-          : item.name,
-        selectable: false,
-        children: item.children.map((child: any) => ({
-          key: child.id,
-          title: child.name,
-          selectable: true,
-        })),
-      }));
-
-      setRoleTreeData(formattedRoles);
+      setRoleTreeData(processRoleTreeData(roleData, t('common.externalApp')));
     } catch (error) {
       console.error('Failed to fetch roles:', error);
       message.error(t('common.fetchFailed'));

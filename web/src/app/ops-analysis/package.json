@@ -19,8 +19,7 @@
     "echarts-for-react": "^3.0.2",
     "gridstack": "^12.6.0",
     "react-rnd": "^10.5.3",
-    "three": "^0.185.1",
-    "@bk-lite/isoflow": "workspace:*"
+    "three": "^0.185.1"
   },
   "devDependencies": {
     "@types/three": "^0.185.0"

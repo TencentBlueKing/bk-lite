@@ -94,6 +94,15 @@ describe('APM 添加接入', () => {
     expect(dotnetMethod.querySelector('.anticon')).not.toBeNull();
   });
 
+  it('开放第二批手动 SDK 卡片', async () => {
+    renderPage();
+    expect(await screen.findByRole('button', { name: 'Ruby 接入' })).not.toBeNull();
+    expect(screen.getByRole('button', { name: 'C++ 接入' })).not.toBeNull();
+    expect(screen.getByRole('button', { name: 'Erlang/Elixir 接入' })).not.toBeNull();
+    expect(screen.getByRole('button', { name: 'Swift 接入' })).not.toBeNull();
+    expect(screen.queryByRole('button', { name: 'Ruby 接入，规划中' })).toBeNull();
+  });
+
   it('开放 .NET 自动探针并展示三种运行方式', async () => {
     api.getIngestSnippet.mockResolvedValue({
       application_id: 'bklite',
@@ -474,7 +483,7 @@ describe('APM 添加接入', () => {
     expect(within(panel).getByText('Express')).not.toBeNull();
     expect(within(panel).getByText('NestJS')).not.toBeNull();
     expect(within(panel).getByText('Koa')).not.toBeNull();
-    expect(within(panel).getByText('Fastify')).not.toBeNull();
+    expect(within(panel).queryByText('Fastify')).toBeNull();
   });
 
   it('Java 支持框架展示 2.31.1 与 Spring / Dubbo / gRPC', async () => {

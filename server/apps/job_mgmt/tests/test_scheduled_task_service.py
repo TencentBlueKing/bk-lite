@@ -43,6 +43,7 @@ class TestCreatePeriodicTask:
         assert pt is not None
         assert pt.name == ScheduledTaskService.get_periodic_task_name(st.id)
         assert pt.crontab is not None and pt.one_off is False
+        assert pt.queue == "job"
 
     def test_once_creates_clocked_task(self):
         st = _task(schedule_type=ScheduleType.ONCE, cron_expression="", scheduled_time=timezone.now() + timedelta(hours=1))

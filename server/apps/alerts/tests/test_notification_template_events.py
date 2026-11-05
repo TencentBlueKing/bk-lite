@@ -95,6 +95,43 @@ def test_rejected_event_fields_and_bad_limits():
             validate_source(source, channel_type="email", is_subject=source.startswith("标题"), scope="single_alert")
 
 
+def test_samples_and_search_url_are_allowed_event_fields():
+    from apps.alerts.notification_templates.renderer import validate_source
+
+    validate_source("{{ events.latest.samples }}", channel_type="email", scope="single_alert")
+    validate_source("{{ events.latest.search_url }}", channel_type="email", scope="single_alert")
+    validate_source(
+        "{{@ events columns=samples,search_url @}}",
+        channel_type="email",
+        scope="single_alert",
+    )
+
+
+def test_latest_samples_and_search_url_render():
+    from apps.alerts.notification_templates.renderer import render_source
+
+    context = {
+        "events": {
+            "count": 1,
+            "latest": {
+                "samples": ["帐户登录失败。", "登录类型: 3"],
+                "search_url": "https://example.com/log/search?q=4625",
+            },
+            "first": {},
+            "rows": [],
+        }
+    }
+
+    result = render_source(
+        "{{ events.latest.search_url }} {{ events.latest.samples }}",
+        context,
+        channel_type="custom_webhook",
+    )
+
+    assert result.value == 'https://example.com/log/search?q=4625 ["帐户登录失败。","登录类型: 3"]'
+    assert result.missing_fields == []
+
+
 def test_summary_scope_rejects_event_variables():
     from apps.alerts.notification_templates.renderer import TemplateValidationError, validate_source
 

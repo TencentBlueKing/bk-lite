@@ -90,6 +90,13 @@ error:
   cloud_region_config_unavailable: Cloud region configuration is temporarily unavailable. Try again later.
   probe_artifact_missing: The probe artifact does not exist. Initialize probe artifacts on the server first.
   probe_artifact_unavailable: The probe artifact is temporarily unavailable. Try again later.
+  probe_platform_invalid: The probe platform is invalid.
+  probe_platform_unsupported: The selected language does not support this platform.
+  probe_language_unsupported: The selected language has no downloadable probe artifact.
+  obi_runtime_unsupported: The eBPF probe only supports the host runtime.
+  dotnet_windows_runtime_unsupported: The .NET Windows probe only supports the host runtime.
+  process_executable_invalid: The process path must be an absolute path without spaces or special characters.
+  process_executable_unexpected: Only the eBPF probe accepts a process path.
   organization_missing: The current organization is missing.
   channel_unavailable: The request includes a notification channel that is unavailable in the current organization.
   channel_rejects_recipients: "Channel {name} does not accept recipients."

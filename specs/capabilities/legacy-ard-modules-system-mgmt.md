@@ -61,6 +61,8 @@ DRF Router 注册 13 个路由组：`group`/`user`/`role`/`channel`/`group_data_
 ## 5. 通知渠道【已实现/已存在】
 `models/channel.py` 的 `ChannelChoices` 定义 7 类渠道：`email`（邮件）、`enterprise_wechat`（企微）、`enterprise_wechat_bot`（企微机器人）、`nats`（NATS 消息）、`feishu_bot`（飞书机器人）、`dingtalk_bot`（钉钉机器人）、`custom_webhook`（自定义 Webhook）。发送实现见 `utils/channel_utils.py`；BK 用户对接 `utils/bk_user_utils.py`。
 
+渠道标签是全局 `NotificationTag`（`key`、`value` 唯一），`Channel` 与 `IMNotificationChannel` 各自用关联表保存选中项。配置接口字段为 `tag: ["key:value"]`。候选读取是 `GET /system_mgmt/channel/tag_catalog/`，按页返回，默认 200 条，最多 500 条。对外目录 `GET /openapi/v1/system-mgmt/notification-channels` 同时返回普通渠道和 IM 应用通知，用 `channel_type` 区分，IM 的值是 `im_notification`，并返回同样的 `tag` 数组。查询参数 `tag` 为逗号分隔的整串，命中任意一条即返回。发送接口不接收标签；`channel_type` 必填，为 `im_notification` 时投递对应 IM 渠道，为普通渠道类型时只投递该类型。初始化命令插入 `system` / `itsm`，已有渠道不自动关联。
+
 ## 6. 核心数据流 / 任务【已实现/已存在】
 `tasks.py` 定义 3 个 Celery 任务：
 - `write_error_log_async`：异步写入错误日志到 `ErrorLog`（`bind=True, max_retries=3, default_retry_delay=60`，失败按重试机制重试，超限返回失败）。

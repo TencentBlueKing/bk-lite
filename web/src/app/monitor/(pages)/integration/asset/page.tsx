@@ -73,6 +73,7 @@ import {
   sameMonitorInstance
 } from './instanceConfigLink';
 import PluginTooltipContent, { PluginTooltipTrigger } from './pluginTooltip';
+import ReassignCollectorModal from './reassignCollectorModal';
 import { getAssetSearchPlaceholderKey } from '@/app/monitor/utils/assetSearchPlaceholder';
 
 type TableRowSelection<T extends object = object> =
@@ -100,6 +101,8 @@ const Asset = () => {
   const { getMonitorObject } = useMonitorApi();
   const {
     deleteMonitorInstance,
+    clearRemovedCollector,
+    reassignCollectorNode,
     unbindMonitorPlugin,
     getInstanceListByPrimaryObject,
     updateCollectTemplateConfigs
@@ -162,6 +165,8 @@ const Asset = () => {
     searchparams.get('monitor_plugin_id') || ''
   );
   const [updatingKeys, setUpdatingKeys] = useState<React.Key[]>([]);
+  const [reassignInstanceId, setReassignInstanceId] = useState<string>('');
+  const [collectorRefreshKey, setCollectorRefreshKey] = useState(0);
   const [modal, modalContextHolder] = Modal.useModal();
 
   useEffect(() => {
@@ -396,6 +401,7 @@ const Asset = () => {
                     packVersionText={packVersionText}
                     collectMode={plugin.collect_mode}
                     collectorNodes={plugin.collector_nodes}
+                    removedNodeLabel={t('monitor.integrations.collectorNodeRemoved')}
                   />
                 );
 
@@ -441,6 +447,43 @@ const Asset = () => {
                   </React.Fragment>
                 );
               })}
+              {plugins.some((plugin: { collector_nodes?: { removed?: boolean }[] }) =>
+                (plugin.collector_nodes || []).some((node) => node.removed)
+              ) ? (
+                <span className="inline-flex items-center">
+                  <span>
+                    {t('monitor.integrations.collectorNodeRemoved')}
+                  </span>
+                  <Button
+                    type="link"
+                    size="small"
+                    onClick={() => {
+                      Modal.confirm({
+                        title: t('monitor.integrations.clearCollectorConfig'),
+                        content: t('monitor.integrations.clearCollectorConfigConfirm'),
+                        okText: t('common.confirm'),
+                        cancelText: t('common.cancel'),
+                        onOk: async () => {
+                          await clearRemovedCollector({
+                            instance_id: record.instance_id
+                          });
+                          message.success(t('common.updateSuccess'));
+                          setCollectorRefreshKey((key) => key + 1);
+                        }
+                      });
+                    }}
+                  >
+                    {t('monitor.integrations.clearCollectorConfig')}
+                  </Button>
+                  <Button
+                    type="link"
+                    size="small"
+                    onClick={() => setReassignInstanceId(String(record.instance_id))}
+                  >
+                    {t('monitor.integrations.reassignCollectorNode')}
+                  </Button>
+                </span>
+                ) : null}
             </div>
           );
         }
@@ -930,6 +973,11 @@ const Asset = () => {
       }
     }
   };
+
+  useEffect(() => {
+    if (!collectorRefreshKey || !objectId) return;
+    void getAssetInsts(objectId);
+  }, [collectorRefreshKey]);
 
   const getObjects = async (type?: string) => {
     try {
@@ -1547,6 +1595,23 @@ const Asset = () => {
         onSuccess={() => {
           getAssetInsts(objectId);
           if (objectId) void fetchUnassignedCount(objectId);
+        }}
+      />
+      <ReassignCollectorModal
+        open={Boolean(reassignInstanceId)}
+        title={t('monitor.integrations.reassignCollectorNode')}
+        placeholder={t('monitor.integrations.selectCollectorNode')}
+        confirmText={t('common.confirm')}
+        cancelText={t('common.cancel')}
+        onCancel={() => setReassignInstanceId('')}
+        onConfirm={async (nodeId) => {
+          await reassignCollectorNode({
+            instance_id: reassignInstanceId,
+            node_id: nodeId
+          });
+          message.success(t('common.updateSuccess'));
+          setReassignInstanceId('');
+          await getAssetInsts(objectId);
         }}
       />
       <TemplateConfigDrawer

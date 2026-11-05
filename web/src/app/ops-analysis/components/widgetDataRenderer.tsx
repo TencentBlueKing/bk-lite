@@ -85,6 +85,11 @@ import {
   validateTopologyMapWidgetData,
 } from "@/app/ops-analysis/utils/topologyMapWidgetContract";
 import { isSelfFetchSceneWidget } from "@/app/ops-analysis/types/sceneWidgetCapability";
+import {
+  dynamicQueryParamsOf,
+  resolveOptionsQueryParams,
+} from "@/app/ops-analysis/utils/optionsQueryParamRefs";
+import { readComponentOptionsQueryUpstream } from "@/app/ops-analysis/utils/optionsQueryCandidates";
 
 const validateTopNData = (
   data: unknown,
@@ -335,12 +340,36 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
       scheduleOptionsPhysical,
     ],
   );
+  const componentSwitchQuery = useMemo(() => {
+    return resolveOptionsQueryParams(dynamicQueryParamsOf(componentSwitchParam?.inputConfig), (ref) => (
+      readComponentOptionsQueryUpstream({
+        ref,
+        componentParams: effectiveComponentParams,
+        definitions: filterDefinitions || [],
+        filterBindings: config?.filterBindings,
+        readFilterValue: (id) => (
+          unifiedFilterValues && Object.prototype.hasOwnProperty.call(unifiedFilterValues, id)
+            ? unifiedFilterValues[id]
+            : undefined
+        ),
+      })
+    ));
+  }, [
+    componentSwitchParam,
+    config?.filterBindings,
+    effectiveComponentParams,
+    filterDefinitions,
+    unifiedFilterValues,
+  ]);
   const optionState = useParamInputOptions(
     componentSwitchParam?.inputConfig,
     componentSwitchOptionsLoaderOptions,
     {
       enabled: runtimeActive,
       getSourceDataByApiId: scheduledOptionsSourceData,
+      resolvedQueryParams: componentSwitchQuery.params,
+      optionsBlocked: componentSwitchQuery.blocked,
+      optionsBlockReason: componentSwitchQuery.blockReason,
     },
   );
   const rawSavedComponentSwitchValue = componentSwitchParam
@@ -405,21 +434,20 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
   }, [runtimeParamInitialValue, runtimeParamScopeKey]);
 
   useEffect(() => {
-    if (optionState.status !== "success") return;
+    if (optionState.status !== "success" && optionState.status !== "blocked") return;
     setRuntimeParamState((previous) => {
       if (previous.scopeKey !== runtimeParamScopeKey) {
         return { scopeKey: runtimeParamScopeKey, value: runtimeParamInitialValue };
       }
-      const reconciled = reconcileComponentSwitchValue(
-        previous.value,
-        optionState.options,
-      );
-      if (typeof reconciled !== "string" && typeof reconciled !== "number") {
-        return previous;
-      }
-      return reconciled === previous.value
+      const reconciled = optionState.status === "blocked"
+        ? null
+        : reconcileComponentSwitchValue(previous.value, optionState.options);
+      const nextValue = typeof reconciled === "string" || typeof reconciled === "number"
+        ? reconciled
+        : undefined;
+      return nextValue === previous.value
         ? previous
-        : { ...previous, value: reconciled };
+        : { ...previous, value: nextValue };
     });
   }, [optionState.status, optionState.options, runtimeParamInitialValue, runtimeParamScopeKey]);
 

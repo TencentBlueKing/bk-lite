@@ -135,19 +135,19 @@ monitor_object_metric:
         AP count approaching this value means the controller is near license or scale capacity.
     wlan_cur_assoc_sta_num:
       name: Associated STA Count
-      desc: Current associated station count on this Huawei WLAN AC (hwWlanCurAssocStaNum).
-        This is the associated-session counter, distinct from hwWlanStaCurNum. Sudden drops
-        can indicate RF, authentication, or controller faults.
+      desc: Current associated station count on this Huawei WLAN AC (hwWlanCurAssocStaNum,
+        1.3.6.1.4.1.2011.6.139.12.1.2.2). Sudden drops can indicate RF, authentication, or
+        controller faults. wlan_sta_cur_num is a compatibility alias of this same sample and
+        timestamp.
     wlan_cur_auth_success_sta_num:
       name: Auth-Success STA Count
       desc: Current stations that completed authentication on this Huawei WLAN AC (hwWlanCurAuthSuccessStaNum).
         A growing gap versus associated count points to auth failures.
     wlan_sta_cur_num:
-      name: Current STA Count
-      desc: Current station object count on this Huawei WLAN AC (hwWlanStaCurNum). This is a
-        different counter from associated STA count (hwWlanCurAssocStaNum). The former is the
-        controller's current STA objects, the latter is associated sessions. Software versions
-        may disagree; compare them and do not reuse the same threshold.
+      name: Associated STA Compatibility Alias
+      desc: Compatibility alias of the associated station count. The collector copies the
+        wlan_cur_assoc_sta_num sample (hwWlanCurAssocStaNum) onto this name, so both series
+        share one value and one timestamp. The former trap object hwWlanStaCurNum is not polled.
     wlan_cur_assoc_2g_sta_num:
       name: Associated 2.4G STA Count
       desc: Current associated 2.4 GHz station count (hwWlanCurAssoc2gStaNum). Useful for
@@ -173,13 +173,15 @@ monitor_object_metric:
       desc: Global wireless downlink speed reported by the Huawei WLAN AC (hwWlanGlobalDownSpeed).
         The MIB unit is Kbps. The collected value is stored as kbitps with no conversion to bit/s.
     wlan_vap_cur_num:
-      name: Current VAP Count
-      desc: Current VAP count on this Huawei WLAN AC (hwVapCurNum). Unexpected change can
-        mean SSID deployment drift.
+      name: Current VAP Count (Not Polled)
+      desc: Metric name retained. Polling of the former trap object hwVapCurNum is stopped,
+        and this template does not bind a replacement OID. A missing series is not a count of
+        zero.
     wlan_vap_max_num:
-      name: Max VAP Count
-      desc: Maximum VAP count on this Huawei WLAN AC (hwVapMaxNum). Current VAP count approaching
-        this value means the controller is near VAP scale capacity.
+      name: Max VAP Count (Not Polled)
+      desc: Metric name retained. Polling of the former trap object hwVapMaxNum is stopped.
+        The VAP maximum is unconfirmed, so this template does not poll it and does not bind a
+        replacement OID. A missing series is not a maximum of zero.
     wlan_ap_run_state:
       name: AP Run State
       desc: Run state of each AP managed by this Huawei WLAN AC (hwWlanApRunState) idle(1),
@@ -262,11 +264,14 @@ monitor_object_metric:
         invalid and is dropped; it is not 255%.
     wlan_radio_sta_num:
       name: Radio STA Count
-      desc: Current station count of each radio (hwWlanRadioStaNum).
+      desc: Online station count of each radio (hwWlanRadioOnlineStaCnt,
+        1.3.6.1.4.1.2011.6.139.16.1.2.1.40). Indexed by AP MAC and radio ID.
     wlan_radio_sta_max:
-      name: Radio Max STA Count
-      desc: Maximum station count of each radio (hwWlanRadioMaxStaNum). Current count approaching
-        max means that radio is near association capacity.
+      name: Radio Max STA Count (Unconfirmed)
+      desc: Metric name retained. Polling is stopped because the per-radio maximum has no
+        confirmed read-only OID. This template does not dispatch a poll and does not substitute
+        AP model capacity, a configured AP limit, or an SSID limit. A missing series is not a
+        maximum of zero.
 monitor_object_metric_group:
   Wireless:
     Base: Base

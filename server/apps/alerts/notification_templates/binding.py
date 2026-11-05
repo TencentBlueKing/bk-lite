@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from types import SimpleNamespace
 from typing import Any
 
+from django.db.models.fields.json import KeyTransform
 from rest_framework import serializers
 
 from apps.alerts.constants.constants import LevelType
@@ -98,7 +99,14 @@ def _event_level_names():
 
 
 def _event_queryset(alert):
-    return alert.events.select_related("source").defer("raw_data", "enrichment_meta")
+    return (
+        alert.events.select_related("source")
+        .defer("raw_data", "enrichment_meta")
+        .annotate(
+            samples=KeyTransform("samples", "raw_data"),
+            search_url=KeyTransform("search_url", "raw_data"),
+        )
+    )
 
 
 def _order_by(order):

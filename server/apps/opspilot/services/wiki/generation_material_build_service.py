@@ -29,6 +29,7 @@ from apps.opspilot.services.wiki.build_service import (
     published_pages_missing_contact_facts,
 )
 from apps.opspilot.services.wiki.colloquial_alias_service import enrich_generation_colloquial_aliases_safely
+from apps.opspilot.services.wiki.chat_material_service import is_chat_sourced_material
 from apps.opspilot.services.wiki.conflict_candidate_routing_service import route_material_conflicts
 from apps.opspilot.services.wiki.directory_assignment_service import resolve_page_directory
 from apps.opspilot.services.wiki.generation_wikilink_enrichment_service import apply_generation_wikilink_trace, enrich_generation_pages_wikilinks
@@ -177,6 +178,7 @@ def build_material_with_generation(
             llm_model_id=llm_model_id,
             budget=budget,
             invoke_llm=_invoke_llm,
+            chat_sourced=is_chat_sourced_material(material),
         )
         conflict_trace = {
             "compact_candidate_count": conflict_routing.compact_candidate_count,

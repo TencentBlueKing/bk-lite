@@ -2,6 +2,26 @@
 
 // sectionLabel 已上收到共享壳（带品牌蓝指示条与现代间距）；此处仅保留趋势图高度与图例微调。
 
+/* 专业盘页壳跟内容走。盖过共享 .page 的 min-height:100%，避免复制等短 Tab 把灰底撑满一屏。 */
+.proPage.proPage {
+  height: auto;
+  min-height: 0;
+  overflow: visible;
+}
+
+/* 底边距交给 Tab 内容区自己的 16px，页壳不再在卡底另垫一截。 */
+.proShell.proShell {
+  padding-bottom: 0;
+}
+
+/* 盖过主机 .root 的 min-height:100%。短 Tab 只跟内容高。 */
+.fitContent.fitContent {
+  flex: none;
+  height: auto;
+  min-height: 0;
+  overflow: visible;
+}
+
 .chartLegendHeader {
   justify-content: flex-end;
   max-width: none;

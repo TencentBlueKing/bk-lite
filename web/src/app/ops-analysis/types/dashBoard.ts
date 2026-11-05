@@ -314,8 +314,14 @@ export interface ViewConfigProps {
   variant?: 'drawer' | 'panel';
   /** 大屏检查器切换数据/交互时复用同一份表单。 */
   configSection?: 'data' | 'interaction';
-  /** 面板模式的页签在外部，交互校验失败时切回交互页。 */
+  /** 面板模式的页签在外部。校验失败时切到当前没显示、且仍有错误的分区。 */
   onConfigSectionChange?: (section: 'data' | 'interaction') => void;
+  /** 数据 / 样式 / 交互页当前是否有校验或提交错误，供外部页签画红点。 */
+  onSectionErrorsChange?: (errors: {
+    data: boolean;
+    singleStyle: boolean;
+    interaction: boolean;
+  }) => void;
   /** 大屏当前容器样式。样式页切换时单独传入，避免整表重开。 */
   screenFrame?: ScreenWidgetFrame;
   onDirtyChange?: (dirty: boolean) => void;

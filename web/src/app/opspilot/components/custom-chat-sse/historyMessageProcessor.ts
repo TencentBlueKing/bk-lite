@@ -31,6 +31,7 @@ import {
 import { isToolResultErrorContent } from './toolResultStatus';
 import type { PlannedExecutionStepValue } from '@/app/opspilot/types/chat';
 import { isRecord, looksLikePlannedExecutionPayload, unwrapCustomValue } from './plannedExecutionPayload';
+import { renderJobOutputHtml, type JobOutputValue } from './jobOutput';
 
 const escapeNewlinesInStrings = (raw: string) => {
   let result = '';
@@ -539,6 +540,15 @@ const buildFromEvents = (events: any[], finalize = true) => {
           const customName = msg.name || (isRecord(customValue) ? String(customValue.name || '') : '');
           const plannedKind = looksLikePlannedExecutionPayload(customValue);
           if (customName === 'stream_keepalive' || customName === 'planned_step_hidden_text') {
+            break;
+          }
+          if (customName === 'job_script_output' && customValue) {
+            if (currentText) {
+              parts.push(currentText);
+              currentText = '';
+            }
+            parts.push(renderJobOutputHtml(customValue as JobOutputValue));
+            lastBlockType = 'text';
             break;
           }
           if (customName === 'browser_step_progress' && customValue) {

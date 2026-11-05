@@ -44,6 +44,9 @@ def _build_runtime_inputs(*, inputs, atom_execution, task_type, execution):
     runtime_inputs = dict(inputs)
     if atom_execution is not None:
         runtime_inputs["__atom_execution_id"] = atom_execution.pk
+        prior_ledger = (atom_execution.output or {}).get("job_submit_ledger")
+        if isinstance(prior_ledger, dict) and prior_ledger:
+            runtime_inputs["__job_submit_ledger"] = prior_ledger
         prior_job_ids = (atom_execution.output or {}).get("job_task_ids")
         if isinstance(prior_job_ids, list) and prior_job_ids:
             runtime_inputs["__job_task_ids"] = prior_job_ids
@@ -53,6 +56,7 @@ def _build_runtime_inputs(*, inputs, atom_execution, task_type, execution):
         raise ValueError("原子缺少可信的流程执行上下文")
     return {
         **runtime_inputs,
+        "__execution_id": str(execution.id),
         "__bklite_context": {
             "execution_id": str(execution.id),
             "workflow_id": str(execution.workflow_id),

@@ -15,6 +15,7 @@ import os
 from celery import current_app
 
 from apps.core.logger import job_logger as logger
+from apps.job_mgmt.config import JOB_CELERY_QUEUE
 from apps.job_mgmt.constants import CallbackType
 from nats_client.clients import publish_sync
 
@@ -69,7 +70,11 @@ def _send_web_callback(execution) -> None:
     }
 
     logger.info(f"[callback][web] 提交回调任务: execution_id={execution.id}, url={callback_url}")
-    current_app.send_task("apps.job_mgmt.tasks.do_callback_task", args=[callback_url, payload, execution.id])
+    current_app.send_task(
+        "apps.job_mgmt.tasks.do_callback_task",
+        args=[callback_url, payload, execution.id],
+        queue=JOB_CELERY_QUEUE,
+    )
 
 
 def _send_nats_callback(execution) -> None:
@@ -81,7 +86,11 @@ def _send_nats_callback(execution) -> None:
 
     payload = build_callback_payload(execution)
     logger.info(f"[callback][nats] 提交回调任务: execution_id={execution.id}, subject={subject}")
-    current_app.send_task("apps.job_mgmt.tasks.do_nats_callback_task", args=[subject, payload, execution.id])
+    current_app.send_task(
+        "apps.job_mgmt.tasks.do_nats_callback_task",
+        args=[subject, payload, execution.id],
+        queue=JOB_CELERY_QUEUE,
+    )
 
 
 def publish_job_result_to_subject(subject: str, payload: dict) -> None:

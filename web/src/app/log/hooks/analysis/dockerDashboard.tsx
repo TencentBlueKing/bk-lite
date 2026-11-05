@@ -1,5 +1,10 @@
 import { useTranslation } from '@/utils/i18n';
 import { v4 as uuidv4 } from 'uuid';
+import {
+  DOCKER_ERROR_LINE_SEARCH_QUERY,
+  DOCKER_ERROR_LINE_STATS_QUERY,
+  DOCKER_LOG_VS_ERROR_TREND_QUERY
+} from './dockerLogQueries';
 
 export const useDockerDashboard = () => {
   const { t } = useTranslation();
@@ -66,9 +71,8 @@ export const useDockerDashboard = () => {
             tooltipField: 'errcount'
           },
           dataSourceParams: {
-            searchQuery: 'collect_type:"docker" stream:"stderr"',
-            query:
-              'collect_type:"docker" | extract "(?P<level>ERROR|FATAL)" from message | stats by (_time:${_time}) count() as errcount'
+            searchQuery: DOCKER_ERROR_LINE_SEARCH_QUERY,
+            query: DOCKER_ERROR_LINE_STATS_QUERY
           }
         }
       },
@@ -155,8 +159,7 @@ export const useDockerDashboard = () => {
           },
           dataSourceParams: {
             searchQuery: 'collect_type:"docker"',
-            query:
-              'collect_type:"docker" | stats by (_time:${_time}) count() as logcount, count() if (stream:="stderr") as errcount'
+            query: DOCKER_LOG_VS_ERROR_TREND_QUERY
           }
         }
       },

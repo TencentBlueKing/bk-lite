@@ -1,9 +1,9 @@
 import io
 import logging
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
 import pytest
-from logging.handlers import RotatingFileHandler
 
 from config.components.log import (
     DEFAULT_LOG_FILE_BACKUP_COUNT,
@@ -38,6 +38,17 @@ def test_deployment_env_templates_disable_debug_and_default_container_logging():
         assert "LOG_FILE_OUTPUT=false" in lines, f"{relative_path} must default file logging off"
 
 
+def test_celery_task_signature_debug_is_suppressed():
+    logger_config = LOGGING["loggers"]["celery.utils.functional"]
+    assert logger_config["level"] == "WARNING"
+    assert logger_config["propagate"] is True
+
+    signature_logger = logging.getLogger("celery.utils.functional")
+    signature_logger.setLevel(logger_config["level"])
+    assert not signature_logger.isEnabledFor(logging.DEBUG)
+    assert signature_logger.isEnabledFor(logging.WARNING)
+
+
 def test_http_client_success_logs_are_suppressed_but_warnings_remain():
     for logger_name in ("httpx", "httpcore", "openai"):
         logger_config = LOGGING["loggers"].get(logger_name)
@@ -60,11 +71,7 @@ def test_console_handler_uses_safe_stream_and_file_handlers_are_utf8():
 
 def _rotating_file_handlers(config=None):
     config = LOGGING if config is None else config
-    return {
-        name: handler
-        for name, handler in config["handlers"].items()
-        if handler.get("class") == "logging.handlers.RotatingFileHandler"
-    }
+    return {name: handler for name, handler in config["handlers"].items() if handler.get("class") == "logging.handlers.RotatingFileHandler"}
 
 
 def test_parse_positive_int_uses_default_and_rejects_disabled_rotation():
@@ -223,9 +230,7 @@ def test_configured_node_handler_rolls_over_when_file_exceeds_max_bytes(tmp_path
 
 
 def test_runtime_product_loggers_match_module_config():
-    file_output_enabled = any(
-        handler.get("class") == "logging.handlers.RotatingFileHandler" for handler in LOGGING["handlers"].values()
-    )
+    file_output_enabled = any(handler.get("class") == "logging.handlers.RotatingFileHandler" for handler in LOGGING["handlers"].values())
     for name in PRODUCT_APP_FILE_LOGGERS:
         logger = logging.getLogger(name)
         expected_level = logging._nameToLevel[LOGGING["loggers"][name]["level"]]

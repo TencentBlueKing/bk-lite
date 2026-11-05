@@ -359,12 +359,14 @@ export interface ApmApplicationInput {
 export interface ApmIngestSnippetInput {
   application_id: string;
   cloud_region_id: number;
-  language: 'python' | 'nodejs' | 'java' | 'go' | 'dotnet';
+  language: 'python' | 'nodejs' | 'java' | 'go' | 'dotnet' | 'php' | 'obi' | 'ruby' | 'cpp' | 'erlang' | 'swift';
   runtime: 'kubernetes' | 'docker' | 'host' | 'other';
   service_name: string;
   service_version?: string;
   environment: string;
   sample_rate?: number;
+  probe_platform?: 'linux' | 'windows';
+  process_executable?: string;
 }
 
 export interface ApmCloudRegion {

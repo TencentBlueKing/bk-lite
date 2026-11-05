@@ -775,3 +775,15 @@ class TestFeishuHistory:
         rows = list(conversation.messages.order_by("id").values_list("role", "content"))
         assert rows == [("user", "第一句"), ("assistant", "半截回答"), ("user", "第二句")]
         assert PROCESSING_TEXT not in [content for _role, content in rows]
+
+    def test_write_identity_uses_open_id_not_message_id(self):
+        channel = self._saved_channel(self._skill())
+        agent = RecordingAgent()
+        session, _gateway, _clock = _session(channel, agent)
+        session.handle(_text(sender_open_id="", message_id="om_not_a_person"))
+        assert agent.requests[0].external_user_id == "om_not_a_person"
+        assert agent.requests[0].wiki_sender_id == ""
+
+        session.handle(_text(sender_open_id="ou_real", message_id="om_other", chat_id="oc_other"))
+        assert agent.requests[1].external_user_id == "ou_real"
+        assert agent.requests[1].wiki_sender_id == "ou_real"

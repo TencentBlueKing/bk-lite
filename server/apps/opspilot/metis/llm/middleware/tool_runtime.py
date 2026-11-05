@@ -610,6 +610,7 @@ class ToolExceptionAsResultMiddleware(AgentMiddleware):
 
 
 _DEFAULT_TOOL_INVOKE_TIMEOUT_SECONDS = 300.0
+_JOB_TOOL_INVOKE_TIMEOUT_SECONDS = 360.0
 
 
 def tool_invoke_timeout_seconds() -> float:
@@ -633,16 +634,27 @@ class ToolTimeoutMiddleware(AgentMiddleware):
         if self._timeout_seconds <= 0:
             self._timeout_seconds = _DEFAULT_TOOL_INVOKE_TIMEOUT_SECONDS
 
+    def _timeout_for(self, request: Any) -> float:
+        call = getattr(request, "tool_call", None) or {}
+        name = str(call.get("name") or "")
+        if name.startswith("job_mgmt_"):
+            return _JOB_TOOL_INVOKE_TIMEOUT_SECONDS
+        return self._timeout_seconds
+
     def _timeout_message(self, request: Any) -> ToolMessage:
         call = getattr(request, "tool_call", None) or {}
         name = str(call.get("name") or "unknown")
         call_id = str(call.get("id") or "")
+        timeout_seconds = self._timeout_for(request)
         logger.warning(
             "event=agent_tool_timeout failed_stage=tool_call tool_name=%s timeout_seconds=%s",
             name,
-            self._timeout_seconds,
+            timeout_seconds,
         )
-        text = f"工具调用超时（>{int(self._timeout_seconds)}s），已中断。可换参数重试或改用其他方式。"
+        if name.startswith("job_mgmt_"):
+            text = "作业管理工具等待被中断。不要重新提交。请用 job_mgmt_query 查询本会话已记录的作业号。"
+        else:
+            text = f"工具调用超时（>{int(timeout_seconds)}s），已中断。可换参数重试或改用其他方式。"
         return ToolMessage(
             content=text[:2000],
             tool_call_id=call_id,
@@ -654,14 +666,14 @@ class ToolTimeoutMiddleware(AgentMiddleware):
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
             future = pool.submit(handler, request)
             try:
-                return future.result(timeout=self._timeout_seconds)
+                return future.result(timeout=self._timeout_for(request))
             except concurrent.futures.TimeoutError:
                 future.cancel()
                 return self._timeout_message(request)
 
     async def awrap_tool_call(self, request: Any, handler: Callable[[Any], Any]) -> Any:
         try:
-            return await asyncio.wait_for(handler(request), timeout=self._timeout_seconds)
+            return await asyncio.wait_for(handler(request), timeout=self._timeout_for(request))
         except asyncio.TimeoutError:
             return self._timeout_message(request)
 

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { Button, Drawer, Empty, Tooltip, message } from 'antd';
 import {
   ApartmentOutlined,
@@ -89,11 +89,26 @@ interface UserDetailDrawerProps {
 
 const dash = '--';
 
+/** 按应用稳定分组，用于表格里同应用行的纵向合并（grid row span）。 */
+function groupByApp<T extends { app?: string }>(items: T[]): { app: string; items: T[] }[] {
+  const groups = new Map<string, T[]>();
+  items.forEach((item) => {
+    const app = item.app || '';
+    const list = groups.get(app);
+    if (list) {
+      list.push(item);
+    } else {
+      groups.set(app, [item]);
+    }
+  });
+  return Array.from(groups, ([app, groupedItems]) => ({ app, items: groupedItems }));
+}
+
 const PRIMARY_CHIP =
   'rounded border border-[color-mix(in_srgb,var(--color-primary)_24%,transparent)] bg-[color-mix(in_srgb,var(--color-primary)_12%,var(--color-bg))] px-2 py-0.5 text-xs font-medium text-[var(--color-primary)]';
 const NEUTRAL_CHIP = 'rounded bg-[var(--color-fill-2)] px-2 py-0.5 text-xs font-medium text-[var(--color-text-2)]';
 const INHERIT_CHIP =
-  'inline-block max-w-full truncate rounded border border-[var(--color-border-2)] bg-[var(--color-fill-1)] px-2 py-0.5 text-xs font-medium text-[var(--color-text-2)]';
+  'inline-block max-w-full truncate rounded border border-[var(--color-border-3)] bg-[var(--color-fill-1)] px-2 py-0.5 text-xs font-medium text-[var(--color-text-2)]';
 
 const STATUS_TONE: Record<string, { badge: string; dot: string }> = {
   normal: {
@@ -102,7 +117,7 @@ const STATUS_TONE: Record<string, { badge: string; dot: string }> = {
     dot: 'bg-[var(--color-success)]',
   },
   disabled: {
-    badge: 'border-[var(--color-border-2)] bg-[var(--color-fill-2)] text-[var(--color-text-2)]',
+    badge: 'border-[var(--color-border-3)] bg-[var(--color-fill-2)] text-[var(--color-text-2)]',
     dot: 'bg-[var(--color-text-3)]',
   },
   locked: {
@@ -118,8 +133,8 @@ const STATUS_TONE: Record<string, { badge: string; dot: string }> = {
 };
 
 const UserDetailSkeleton = () => (
-  <div aria-busy="true" className="flex flex-col gap-3.5">
-    <div className="flex items-center gap-4 rounded-lg border border-[var(--color-border-1)] bg-[var(--color-bg)] p-5">
+  <div aria-busy="true" className="flex flex-col gap-2.5">
+    <div className="flex items-center gap-3 rounded-lg border border-[var(--color-border-2)] bg-[var(--color-bg)] p-3.5">
       <div className="h-12 w-12 animate-neutral-pulse rounded-full bg-[var(--color-fill-2)]" />
       <div className="flex flex-1 flex-col gap-2">
         <div className="h-5 w-40 animate-neutral-pulse rounded bg-[var(--color-fill-2)]" />
@@ -127,8 +142,8 @@ const UserDetailSkeleton = () => (
       </div>
     </div>
     {[0, 1, 2].map((section) => (
-      <div key={section} className="rounded-lg border border-[var(--color-border-1)] bg-[var(--color-bg)] p-5">
-        <div className="mb-4 h-4 w-28 animate-neutral-pulse rounded bg-[var(--color-fill-2)]" />
+      <div key={section} className="rounded-lg border border-[var(--color-border-2)] bg-[var(--color-bg)] p-3.5">
+        <div className="mb-2.5 h-4 w-28 animate-neutral-pulse rounded bg-[var(--color-fill-2)]" />
         <div className="grid grid-cols-2 gap-3">
           <div className="h-4 animate-neutral-pulse rounded bg-[var(--color-fill-2)]" />
           <div className="h-4 animate-neutral-pulse rounded bg-[var(--color-fill-2)]" />
@@ -175,8 +190,8 @@ const CardSection: React.FC<{
   title: string;
   children: React.ReactNode;
 }> = ({ icon, title, children }) => (
-  <div className="mb-3.5 rounded-lg border border-[var(--color-border-1)] bg-[var(--color-bg)] p-5 shadow-[0_1px_3px_rgba(0,0,0,0.03)] last:mb-0">
-    <div className="mb-4 flex items-center gap-2">
+  <div className="mb-2.5 rounded-lg border border-[var(--color-border-2)] bg-[var(--color-bg)] p-3.5 shadow-[0_1px_3px_rgba(0,0,0,0.03)] last:mb-0">
+    <div className="mb-2.5 flex items-center gap-2">
       <span className="text-[16px] text-[var(--color-primary)]">{icon}</span>
       <span className="text-[15px] font-semibold text-[var(--color-text-1)]">{title}</span>
     </div>
@@ -222,11 +237,11 @@ const UserDetailDrawer: React.FC<UserDetailDrawerProps> = ({ open, userId, onClo
       .then((data: UserDetailPayload) => {
         if (!cancelled) {
           setDetail(data || null);
-          if (data?.groups && data.groups.length > 0) {
-            setExpandedGroupIds([data.groups[0].id]);
-          } else {
-            setExpandedGroupIds([]);
-          }
+          // 默认只展开第一个配置了数据权限规则的组织；无规则（默认全权限）的组织保持收起
+          const firstGroupWithRules = (data?.groups || []).find(
+            (group) => (group.data_rules || []).length > 0
+          );
+          setExpandedGroupIds(firstGroupWithRules ? [firstGroupWithRules.id] : []);
         }
       })
       .catch(() => {
@@ -248,9 +263,14 @@ const UserDetailDrawer: React.FC<UserDetailDrawerProps> = ({ open, userId, onClo
     return clientData.find((item) => item.name === app)?.display_name || app;
   };
 
+  const roleAppGroups = useMemo(
+    () => groupByApp(detail?.effective_roles || []),
+    [detail?.effective_roles]
+  );
+
   const statusView = useMemo(() => {
     const tone = STATUS_TONE[detail?.status || ''] || {
-      badge: 'border-[var(--color-border-2)] bg-[var(--color-fill-2)] text-[var(--color-text-3)]',
+      badge: 'border-[var(--color-border-3)] bg-[var(--color-fill-2)] text-[var(--color-text-3)]',
       dot: 'bg-[var(--color-text-4)]',
     };
     const textByStatus: Record<string, string> = {
@@ -340,7 +360,7 @@ const UserDetailDrawer: React.FC<UserDetailDrawerProps> = ({ open, userId, onClo
       open={open}
       width={720}
       onClose={onClose}
-      classNames={{ body: 'flex flex-col bg-[var(--color-fill-1)] px-5 py-4' }}
+      classNames={{ body: '!p-4 flex flex-col bg-[var(--color-bg)]' }}
       destroyOnHidden
     >
       {loading && !detail ? (
@@ -350,7 +370,7 @@ const UserDetailDrawer: React.FC<UserDetailDrawerProps> = ({ open, userId, onClo
       ) : (
         <div>
             {/* 顶部个人摘要卡片 */}
-            <div className="mb-3.5 flex items-center gap-4 rounded-lg border border-[var(--color-border-1)] bg-[var(--color-bg)] p-5 shadow-[0_1px_3px_rgba(0,0,0,0.03)]">
+            <div className="mb-2.5 flex items-center gap-3 rounded-lg border border-[var(--color-border-2)] bg-[var(--color-bg)] p-3.5 shadow-[0_1px_3px_rgba(0,0,0,0.03)]">
               <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[color-mix(in_srgb,var(--color-primary)_12%,var(--color-bg))] text-[20px] font-semibold text-[var(--color-primary)]">
                 {(detail.display_name || detail.username || '?').slice(0, 1).toUpperCase()}
               </div>
@@ -375,10 +395,10 @@ const UserDetailDrawer: React.FC<UserDetailDrawerProps> = ({ open, userId, onClo
               icon={<UserOutlined />}
               title={t('system.user.detail.account')}
             >
-              <div className="mb-3 text-[13px] font-semibold text-[var(--color-text-1)]">
+              <div className="mb-2 text-[13px] font-semibold text-[var(--color-text-1)]">
                 {t('system.user.detail.basic')}
               </div>
-              <div className="grid grid-cols-2 gap-x-8 gap-y-3">
+              <div className="grid grid-cols-2 gap-x-6 gap-y-2">
                 <DetailItem label={t('system.user.table.username')}>
                   <span className="truncate">{text(detail.username)}</span>
                 </DetailItem>
@@ -459,12 +479,12 @@ const UserDetailDrawer: React.FC<UserDetailDrawerProps> = ({ open, userId, onClo
                 </DetailItem>
               </div>
 
-              <div className="my-4 border-b border-dashed border-[var(--color-border-2)]" />
+              <div className="my-2.5 border-b border-dashed border-[var(--color-border-2)]" />
 
-              <div className="mb-3 text-[13px] font-semibold text-[var(--color-text-1)]">
+              <div className="mb-2 text-[13px] font-semibold text-[var(--color-text-1)]">
                 {t('system.user.detail.employment')}
               </div>
-              <div className="grid grid-cols-2 gap-x-8 gap-y-3">
+              <div className="grid grid-cols-2 gap-x-6 gap-y-2">
                 <DetailItem label={t('system.user.form.employmentStatus')}>
                   {detail.employment_status === 'employed' ? (
                     <span className={PRIMARY_CHIP}>
@@ -519,11 +539,11 @@ const UserDetailDrawer: React.FC<UserDetailDrawerProps> = ({ open, userId, onClo
 
               {customFields.length > 0 && (
                 <>
-                  <div className="my-4 border-b border-dashed border-[var(--color-border-2)]" />
-                  <div className="mb-3 text-[13px] font-semibold text-[var(--color-text-1)]">
+                  <div className="my-2.5 border-b border-dashed border-[var(--color-border-2)]" />
+                  <div className="mb-2 text-[13px] font-semibold text-[var(--color-text-1)]">
                     {t('system.user.detail.custom')}
                   </div>
-                  <div className="grid grid-cols-2 gap-x-8 gap-y-3">
+                  <div className="grid grid-cols-2 gap-x-6 gap-y-2">
                     {customFields.map((field) => (
                       <DetailItem key={field.key} label={field.name || field.key}>
                         <span className="truncate">{text(field.value)}</span>
@@ -542,18 +562,19 @@ const UserDetailDrawer: React.FC<UserDetailDrawerProps> = ({ open, userId, onClo
               {(detail.groups || []).length === 0 ? (
                 <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} />
               ) : (
-                <div className="space-y-2.5">
+                <div className="space-y-2">
                   {(detail.groups || []).map((group) => {
                     const isExpanded = expandedGroupIds.includes(group.id);
+                    const rules = group.data_rules || [];
                     return (
                       <div
                         key={group.id}
-                        className="overflow-hidden rounded-md border border-[var(--color-border-1)]"
+                        className="overflow-hidden rounded-md border border-[var(--color-border-2)] bg-[var(--color-bg)]"
                       >
                         <button
                           type="button"
                           aria-expanded={isExpanded}
-                          className="flex w-full cursor-pointer items-center justify-between border-0 bg-[var(--color-bg)] px-3.5 py-2.5 text-left transition-colors hover:bg-[var(--color-fill-1)]"
+                          className="flex w-full cursor-pointer items-center justify-between border-0 bg-[var(--color-fill-1)] px-3 py-2 text-left transition-colors hover:bg-[var(--color-fill-2)]"
                           onClick={() => toggleGroupExpand(group.id)}
                         >
                           <div className="flex items-center gap-2 min-w-0">
@@ -583,22 +604,47 @@ const UserDetailDrawer: React.FC<UserDetailDrawerProps> = ({ open, userId, onClo
                         </button>
 
                         {isExpanded && (
-                          <div className="border-t border-[var(--color-border-1)] bg-[var(--color-fill-1)] p-3">
-                            {(group.data_rules || []).length === 0 ? (
-                              <div className="px-3 py-2 text-xs text-[var(--color-text-4)]">
+                          <div className="border-t border-[var(--color-border-2)] bg-[var(--color-bg)] px-2.5 pb-2.5 pt-2">
+                            {rules.length === 0 ? (
+                              <div className="px-1 py-0.5 text-[13px] text-[var(--color-text-3)]">
                                 {t('system.user.detail.noDataRules')}
                               </div>
                             ) : (
-                              <div className="space-y-2">
-                                {(group.data_rules || []).map((rule) => (
-                                  <div
-                                    key={rule.id}
-                                    className="flex items-center justify-between gap-3 rounded-md bg-[var(--color-fill-1)]/35 px-3 py-2 text-xs"
-                                  >
-                                    <span className="truncate font-medium text-[var(--color-text-3)]">{appLabel(rule.app)}</span>
-                                    <span className="truncate font-medium text-[var(--color-text-1)]">{rule.name}</span>
-                                  </div>
-                                ))}
+                              <div className="overflow-hidden rounded border border-[var(--color-border-2)]">
+                                <div className="grid grid-cols-[12rem_minmax(0,1fr)] border-b border-[var(--color-border-2)] bg-[var(--color-fill-1)] px-2.5 py-1.5 text-xs font-medium text-[var(--color-text-2)]">
+                                  <span className="pr-3 text-center">{t('system.permission.app')}</span>
+                                  <span>{t('system.permission.dataPermission')}</span>
+                                </div>
+                                <div className="grid grid-cols-[12rem_minmax(0,1fr)] bg-[var(--color-bg)] px-2.5 text-[13px] text-[var(--color-text-1)]">
+                                  {groupByApp(rules).map((appGroup, groupIndex, appGroups) => {
+                                    const isLastGroup = groupIndex === appGroups.length - 1;
+                                    return (
+                                      <Fragment key={appGroup.app || 'unknown-app'}>
+                                        <div
+                                          className={`flex min-w-0 items-center justify-center py-1.5 pr-3 ${
+                                            isLastGroup ? '' : 'border-b border-[var(--color-border-2)]'
+                                          }`}
+                                          style={{ gridRow: `span ${appGroup.items.length}` }}
+                                        >
+                                          <span className="truncate">{appLabel(appGroup.app)}</span>
+                                        </div>
+                                        {appGroup.items.map((rule, ruleIndex) => {
+                                          const isLastRow = isLastGroup && ruleIndex === appGroup.items.length - 1;
+                                          return (
+                                            <div
+                                              key={rule.id}
+                                              className={`flex min-w-0 items-center py-1.5 ${
+                                                isLastRow ? '' : 'border-b border-[var(--color-border-2)]'
+                                              }`}
+                                            >
+                                              <span className="truncate">{rule.name}</span>
+                                            </div>
+                                          );
+                                        })}
+                                      </Fragment>
+                                    );
+                                  })}
+                                </div>
                               </div>
                             )}
                           </div>
@@ -622,52 +668,68 @@ const UserDetailDrawer: React.FC<UserDetailDrawerProps> = ({ open, userId, onClo
               ) : (detail.effective_roles || []).length === 0 ? (
                 <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} />
               ) : (
-                <div className="space-y-2">
-                  <div className="grid grid-cols-[1.2fr_1.2fr_1.6fr] px-3 text-xs font-medium text-[var(--color-text-3)]">
-                    <span>{t('system.permission.app')}</span>
-                    <span>{t('system.user.detail.roleName')}</span>
-                    <span>{t('system.user.detail.roleSource')}</span>
+                <div className="overflow-hidden rounded border border-[var(--color-border-2)]">
+                  <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.2fr)] border-b border-[var(--color-border-2)] bg-[var(--color-fill-1)] text-xs font-medium text-[var(--color-text-2)]">
+                    <span className="border-r border-[var(--color-border-2)] px-2.5 py-1.5 text-center">{t('system.permission.app')}</span>
+                    <span className="border-r border-[var(--color-border-2)] px-2.5 py-1.5">{t('system.user.detail.roleName')}</span>
+                    <span className="px-2.5 py-1.5">{t('system.user.detail.roleSource')}</span>
                   </div>
-                  {(detail.effective_roles || []).map((role) => (
-                    <div
-                      key={role.id}
-                      className="grid grid-cols-[1.2fr_1.2fr_1.6fr] items-center gap-2 rounded-md bg-[var(--color-fill-1)]/35 px-3 py-2 text-[13px]"
-                    >
-                      <span className="truncate text-[var(--color-text-1)]">{appLabel(role.app)}</span>
-                      <div>
-                        <span className={PRIMARY_CHIP}>
-                          {role.name}
-                        </span>
-                      </div>
-                      <div className="flex min-w-0 flex-wrap gap-1.5">
-                        {role.sources.map((source, idx) => {
-                          if (source.kind === 'direct') {
+                  <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.2fr)] bg-[var(--color-bg)] text-[13px]">
+                    {roleAppGroups.map((appGroup, groupIndex) => {
+                      const isLastGroup = groupIndex === roleAppGroups.length - 1;
+                      return (
+                        <Fragment key={appGroup.app || 'unknown-app'}>
+                          <div
+                            className={`flex min-w-0 items-center justify-center border-r border-[var(--color-border-2)] px-2.5 py-1.5 text-[var(--color-text-1)] ${
+                              isLastGroup ? '' : 'border-b'
+                            }`}
+                            style={{ gridRow: `span ${appGroup.items.length}` }}
+                          >
+                            <span className="truncate">{appLabel(appGroup.app)}</span>
+                          </div>
+                          {appGroup.items.map((role, roleIndex) => {
+                            const isLastRow = isLastGroup && roleIndex === appGroup.items.length - 1;
                             return (
-                              <span key={`direct-${idx}`} className={PRIMARY_CHIP}>
-                                {t('system.user.detail.directGrant')}
-                              </span>
+                              <Fragment key={role.id}>
+                                <div className={`flex min-w-0 items-center border-r border-[var(--color-border-2)] px-2.5 py-1.5 ${isLastRow ? '' : 'border-b'}`}>
+                                  <span className={`${PRIMARY_CHIP} inline-block max-w-full truncate`}>
+                                    {role.name}
+                                  </span>
+                                </div>
+                                <div className={`flex min-w-0 flex-wrap items-center gap-1 px-2.5 py-1.5 ${isLastRow ? '' : 'border-b border-[var(--color-border-2)]'}`}>
+                                  {role.sources.map((source, idx) => {
+                                    if (source.kind === 'direct') {
+                                      return (
+                                        <span key={`direct-${idx}`} className={PRIMARY_CHIP}>
+                                          {t('system.user.detail.directGrant')}
+                                        </span>
+                                      );
+                                    }
+                                    const matchedGroup = source.group_id == null
+                                      ? undefined
+                                      : (detail.groups || []).find((group) => group.id === source.group_id);
+                                    const groupLabel = matchedGroup?.path || matchedGroup?.name || source.group_name;
+                                    const inheritText = groupLabel
+                                      ? t('system.user.detail.groupInheritFrom', 'Inherited from {group}', { group: groupLabel })
+                                      : t('system.user.detail.groupInherit');
+                                    return (
+                                      <span
+                                        key={`group-${source.group_id ?? source.group_name ?? idx}`}
+                                        className={INHERIT_CHIP}
+                                        title={inheritText}
+                                      >
+                                        {inheritText}
+                                      </span>
+                                    );
+                                  })}
+                                </div>
+                              </Fragment>
                             );
-                          }
-                          const matchedGroup = source.group_id == null
-                            ? undefined
-                            : (detail.groups || []).find((group) => group.id === source.group_id);
-                          const groupLabel = matchedGroup?.path || matchedGroup?.name || source.group_name;
-                          const inheritText = groupLabel
-                            ? t('system.user.detail.groupInheritFrom', 'Inherited from {group}', { group: groupLabel })
-                            : t('system.user.detail.groupInherit');
-                          return (
-                            <span
-                              key={`group-${source.group_id ?? source.group_name ?? idx}`}
-                              className={INHERIT_CHIP}
-                              title={inheritText}
-                            >
-                              {inheritText}
-                            </span>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  ))}
+                          })}
+                        </Fragment>
+                      );
+                    })}
+                  </div>
                 </div>
               )}
             </CardSection>

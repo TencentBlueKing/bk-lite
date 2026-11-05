@@ -137,6 +137,15 @@ class JobExecution(TimeInfo, MaintainerInfo):
     # Celery 任务 ID（用于 revoke 取消队列中的任务）
     celery_task_id = models.CharField(max_length=256, blank=True, default="", verbose_name="Celery任务ID")
 
+    # 可选提交幂等键（编排等调用方传入；同键重复提交返回原任务）
+    client_request_id = models.CharField(
+        max_length=255,
+        null=True,
+        blank=True,
+        unique=True,
+        verbose_name="客户端提交幂等键",
+    )
+
     # 组织归属
     team = models.JSONField(default=list, verbose_name="团队ID列表")
 

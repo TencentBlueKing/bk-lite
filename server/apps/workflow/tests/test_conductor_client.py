@@ -3,7 +3,7 @@ import json
 import httpx
 import pytest
 
-from apps.workflow.services.conductor import ConductorClient, ConductorConfigurationError
+from apps.workflow.services.conductor import ConductorClient, ConductorConfigurationError, ConductorRejected, ConductorUnavailable
 
 
 def test_rejects_unsafe_conductor_base_url():
@@ -130,3 +130,33 @@ def test_register_workflow_rejects_conflicting_content_without_overwrite():
         ("GET", "/api/metadata/workflow/demo"),
     ]
     assert "PUT" not in {request.method for request in requests}
+
+
+def test_start_workflow_maps_clear_client_error_to_rejected():
+    def handler(request):
+        return httpx.Response(400, json={"message": "bad request"})
+
+    client = ConductorClient("http://conductor:8080/api", transport=httpx.MockTransport(handler))
+
+    with pytest.raises(ConductorRejected):
+        client.start_workflow("demo", version=1, inputs={})
+
+
+def test_start_workflow_maps_server_error_to_unavailable():
+    def handler(request):
+        return httpx.Response(503, json={"message": "unavailable"})
+
+    client = ConductorClient("http://conductor:8080/api", transport=httpx.MockTransport(handler))
+
+    with pytest.raises(ConductorUnavailable):
+        client.start_workflow("demo", version=1, inputs={})
+
+
+def test_start_workflow_maps_request_timeout_to_unavailable():
+    def handler(request):
+        return httpx.Response(408, json={"message": "timeout"})
+
+    client = ConductorClient("http://conductor:8080/api", transport=httpx.MockTransport(handler))
+
+    with pytest.raises(ConductorUnavailable):
+        client.start_workflow("demo", version=1, inputs={})

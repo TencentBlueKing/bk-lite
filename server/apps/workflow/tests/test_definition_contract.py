@@ -88,6 +88,35 @@ def test_prepare_definition_escapes_script_content_literals_for_conductor():
     assert published["tasks"][0]["inputParameters"]["targets"] == "${workflow.input.targets}"
 
 
+def test_prepare_definition_keeps_notification_body_and_title_workflow_references():
+    definition = {
+        "tasks": [
+            {
+                "name": "bklite_agent",
+                "taskReferenceName": "agent",
+                "type": "SIMPLE",
+                "inputParameters": {"agent_id": 1, "message": "分析"},
+            },
+            {
+                "name": "bklite_notification",
+                "taskReferenceName": "notify",
+                "type": "SIMPLE",
+                "inputParameters": {
+                    "notification_type": "EMAIL",
+                    "channel_id": 1,
+                    "recipients": ["ops@example.com"],
+                    "title": "完成：${agent.output.message}",
+                    "body": "${agent.output.message}",
+                },
+            },
+        ]
+    }
+    published = prepare_definition_for_publish(definition, engine_name="wf", version=1)
+    notify = published["tasks"][1]["inputParameters"]
+    assert notify["body"] == "${agent.output.message}"
+    assert notify["title"] == "完成：${agent.output.message}"
+
+
 def test_health_scripts_avoid_conductor_expression_braces():
     from apps.workflow.services.health_inspection_scripts import LINUX_HEALTH_SCRIPT, WINDOWS_HEALTH_SCRIPT
 

@@ -27,6 +27,7 @@ from apps.opspilot.services.chat_service import ChatService
 from apps.opspilot.services.dingtalk_chat_flow_utils import DingTalkChatFlowUtils, start_dingtalk_stream_client
 from apps.opspilot.services.skill_execute_service import SkillExecuteService
 from apps.opspilot.services.wechat_official_chat_flow_utils import WechatOfficialChatFlowUtils
+from apps.opspilot.services.wiki.chat_material_service import WIKI_MATERIAL_ACTOR_KEY, actor_for_platform_user
 from apps.opspilot.services.workflow_attachment_service import resolve_signed_attachment_token
 from apps.opspilot.tasks import chat_flow_test_execute_task
 from apps.opspilot.utils.bot_utils import insert_skill_log
@@ -251,6 +252,7 @@ def get_skill_and_params(kwargs, team, bot_id=None):
         "tools": skill_obj.tools,
         "skill_type": skill_obj.skill_type,
         "group": skill_obj.team[0],
+        "skill_id": skill_obj.id,
         "wiki_kb_ids": list(skill_obj.wiki_knowledge_bases.values_list("id", flat=True)),
         "force_wiki_grounded": bool(getattr(skill_obj, "force_wiki_grounded", False)),
     }
@@ -337,6 +339,7 @@ def _build_chat_completion_service() -> ChatCompletionService:  # pragma: no cov
 
 def _enrich_openai_params(request, user, params):  # pragma: no cover
     params[CALLER_IDENTITY_CONFIG_KEY] = capture_caller_identity(request, user)
+    params[WIKI_MATERIAL_ACTOR_KEY] = actor_for_platform_user(user)
 
 
 @api_exempt

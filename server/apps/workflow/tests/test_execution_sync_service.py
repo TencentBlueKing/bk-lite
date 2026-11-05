@@ -1,3 +1,5 @@
+from datetime import timedelta
+
 import pytest
 from django.utils import timezone
 
@@ -201,6 +203,7 @@ def test_remote_terminal_can_finalize_terminating_execution():
         conductor_workflow_id="conductor-finalize",
         status=WorkflowExecution.Status.TERMINATING,
         team=[7],
+        output={"termination_job_cancels": [{"task_id": 101, "ok": False, "error_type": "JobPlatformError"}]},
     )
 
     apply_remote_execution(
@@ -211,3 +214,102 @@ def test_remote_terminal_can_finalize_terminating_execution():
     execution.refresh_from_db()
     assert execution.status == WorkflowExecution.Status.TERMINATED
     assert execution.finished_at is not None
+    assert execution.output.get("termination_job_cancels") == [{"task_id": 101, "ok": False, "error_type": "JobPlatformError"}]
+
+
+@pytest.mark.django_db
+def test_sync_budget_reserves_slots_for_non_unknown_executions(mocker):
+    from apps.workflow.services.executions import sync_active_executions
+
+    workflow = Workflow.objects.create(name="预算公平", team=[7], definition={})
+    for index in range(100):
+        WorkflowExecution.objects.create(
+            workflow=workflow,
+            workflow_version=1,
+            status=WorkflowExecution.Status.UNKNOWN,
+            team=[7],
+        )
+    running = WorkflowExecution.objects.create(
+        workflow=workflow,
+        workflow_version=1,
+        conductor_workflow_id="conductor-running-fair",
+        status=WorkflowExecution.Status.RUNNING,
+        team=[7],
+    )
+    conductor = mocker.Mock()
+    conductor.find_workflow_ids_by_correlation_id.return_value = []
+    conductor.get_execution.return_value = {
+        "status": "RUNNING",
+        "output": {"ok": True},
+        "tasks": [],
+    }
+
+    summary = sync_active_executions(client=conductor, limit=100)
+
+    assert summary["synchronized"] >= 1
+    conductor.get_execution.assert_any_call("conductor-running-fair")
+    running.refresh_from_db()
+    assert running.output.get("ok") is True
+
+
+@pytest.mark.django_db
+def test_sync_reconciles_queued_execution_without_engine_id(mocker):
+    workflow = Workflow.objects.create(name="QUEUED 无 ID 对账", team=[7], definition={})
+    queued = WorkflowExecution.objects.create(
+        workflow=workflow,
+        workflow_version=1,
+        status=WorkflowExecution.Status.QUEUED,
+        team=[7],
+    )
+    conductor = mocker.Mock()
+    conductor.find_workflow_ids_by_correlation_id.return_value = ["recovered-queued-1"]
+    conductor.get_execution.return_value = {
+        "status": "RUNNING",
+        "output": {"from": "queued"},
+        "tasks": [],
+    }
+
+    summary = sync_active_executions(client=conductor, limit=10)
+
+    queued.refresh_from_db()
+    assert summary["reconciled"] == 1
+    assert summary["synchronized"] == 1
+    assert queued.status == WorkflowExecution.Status.RUNNING
+    assert queued.conductor_workflow_id == "recovered-queued-1"
+    assert queued.reconcile_attempts == 0
+    assert queued.reconcile_next_at is None
+    conductor.find_workflow_ids_by_correlation_id.assert_called_once_with(str(queued.id))
+
+
+@pytest.mark.django_db
+def test_sync_skips_unattached_until_reconcile_next_at(mocker):
+    workflow = Workflow.objects.create(name="对账退避", team=[7], definition={})
+    deferred = WorkflowExecution.objects.create(
+        workflow=workflow,
+        workflow_version=1,
+        status=WorkflowExecution.Status.UNKNOWN,
+        team=[7],
+        reconcile_attempts=2,
+        reconcile_next_at=timezone.now() + timedelta(hours=1),
+    )
+    due = WorkflowExecution.objects.create(
+        workflow=workflow,
+        workflow_version=1,
+        status=WorkflowExecution.Status.UNKNOWN,
+        team=[7],
+        reconcile_attempts=1,
+        reconcile_next_at=timezone.now() - timedelta(seconds=1),
+    )
+    conductor = mocker.Mock()
+    conductor.find_workflow_ids_by_correlation_id.return_value = []
+
+    summary = sync_active_executions(client=conductor, limit=10)
+
+    assert summary == {"synchronized": 0, "failed": 0, "reconciled": 0}
+    conductor.find_workflow_ids_by_correlation_id.assert_called_once_with(str(due.id))
+    deferred.refresh_from_db()
+    due.refresh_from_db()
+    assert deferred.reconcile_attempts == 2
+    assert due.reconcile_attempts == 2
+    assert due.reconcile_next_at is not None
+    assert due.reconcile_next_at > timezone.now()

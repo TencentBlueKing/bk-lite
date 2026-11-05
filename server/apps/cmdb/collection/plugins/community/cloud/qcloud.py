@@ -39,6 +39,7 @@ class QCloudCollectionPlugin(AutoRegisterCollectionPluginMixin, QCloudCollectMet
             "resource_name": "resource_name",
             "resource_id": "resource_id",
             "region": "region",
+            "tag": "tag",
         },
         "qcloud_clb": {
             "inst_name": QCloudCollectMetrics.set_instance_inst_name,
@@ -102,6 +103,7 @@ class QCloudCollectionPlugin(AutoRegisterCollectionPluginMixin, QCloudCollectMet
             "vcpus": (int, "vcpus"),
             "memory_mb": (int, "memory_mb"),
             "charge_type": "charge_type",
+            "tag": "tag",
         },
         "qcloud_domain": {
             "inst_name": QCloudCollectMetrics.set_instance_inst_name,
@@ -111,6 +113,7 @@ class QCloudCollectionPlugin(AutoRegisterCollectionPluginMixin, QCloudCollectMet
             "tld": "tld",
             "status": "status",
             "expired_time": "expired_time",
+            "tag": "tag",
         },
         "qcloud_eip": {
             "inst_name": QCloudCollectMetrics.set_instance_inst_name,
@@ -283,6 +286,7 @@ class QCloudCollectionPlugin(AutoRegisterCollectionPluginMixin, QCloudCollectMet
             "volume": (int, "volume"),
             "memory_mb": (int, "memory_mb"),
             "charge_type": "charge_type",
+            "tag": "tag",
         },
         "qcloud_pgsql": {
             "inst_name": QCloudCollectMetrics.set_instance_inst_name,
@@ -348,6 +352,7 @@ class QCloudCollectionPlugin(AutoRegisterCollectionPluginMixin, QCloudCollectMet
             "client_limit": "client_limit",
             "net_limit": "net_limit",
             "charge_type": "charge_type",
+            "tag": "tag",
         },
         "qcloud_rocketmq": {
             "inst_name": QCloudCollectMetrics.set_instance_inst_name,
@@ -364,6 +369,7 @@ class QCloudCollectionPlugin(AutoRegisterCollectionPluginMixin, QCloudCollectMet
             "used_name_space_num": (int, "used_name_space_num"),
             "group_num": (int, "group_num"),
             "used_group_num": (int, "used_group_num"),
+            "tag": "tag",
         },
     }
 
@@ -373,7 +379,4 @@ class QCloudCollectionPlugin(AutoRegisterCollectionPluginMixin, QCloudCollectMet
 
     @property
     def model_field_mapping(self):
-        return {
-            model_id: bind_collection_mapping(self, mapping)
-            for model_id, mapping in self.field_mappings.items()
-        }
+        return {model_id: bind_collection_mapping(self, mapping) for model_id, mapping in self.field_mappings.items()}

@@ -42,6 +42,9 @@ class CollectConfig(TimeInfo, MaintainerInfo):
     vault_applied_version = models.PositiveIntegerField(default=0, verbose_name="已下发凭据版本")
     vault_sync_error = models.CharField(max_length=32, default="", verbose_name="凭据同步错误码")
     vault_synced_at = models.DateTimeField(null=True, blank=True, verbose_name="凭据下发时间")
+    executor_node_removed = models.BooleanField(default=False, verbose_name="采集节点已删除")
+    executor_node_id = models.CharField(max_length=100, blank=True, default="", verbose_name="已删除的采集节点ID")
+    executor_node_name = models.CharField(max_length=100, blank=True, default="", verbose_name="已删除的采集节点名称")
 
     class Meta:
         verbose_name = "采集配置"

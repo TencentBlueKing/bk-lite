@@ -36,7 +36,7 @@ export const createUserTableColumns = ({
     {
       title: t('system.user.table.username'),
       dataIndex: 'username',
-      width: 230,
+      width: 200,
       fixed: 'left',
       render: (text: string, record: UserDataType) => {
         const color = getRandomColor();
@@ -66,12 +66,12 @@ export const createUserTableColumns = ({
     {
       title: t('system.user.table.lastName'),
       dataIndex: 'name',
-      width: 100,
+      width: 120,
     },
     {
       title: t('system.user.table.status') || 'Status',
       dataIndex: 'status',
-      width: 120,
+      width: 90,
       render: (status?: UserDataType['status']) => {
         let dotColor = 'var(--color-text-4)';
         let text: string = status || '-';
@@ -106,7 +106,7 @@ export const createUserTableColumns = ({
     {
       title: t('system.user.form.employmentStatus'),
       dataIndex: 'employment_status',
-      width: 100,
+      width: 130,
       render: (value?: string) => {
         if (value === 'employed') return t('system.user.form.employmentEmployed');
         if (value === 'resigned') return t('system.user.form.employmentResigned');
@@ -116,23 +116,23 @@ export const createUserTableColumns = ({
     {
       title: t('system.user.table.email'),
       dataIndex: 'email',
-      width: 185,
+      width: 200,
     },
     {
       title: t('system.user.table.phone'),
       dataIndex: 'phone',
-      width: 140,
+      width: 130,
     },
     {
       title: t('system.user.table.lastLogin'),
       dataIndex: 'last_login',
-      width: 180,
+      width: 170,
       render: (text: string) => text ? convertToLocalizedTime(text) : '-'
     },
     {
       title: t('system.user.table.role'),
       dataIndex: 'roles',
-      width: 280,
+      width: 300,
       render: (_: string[], record: UserDataType) => {
         const personalRoles = (record.roles || []).reduce((acc: Record<string, string[]>, role: any) => {
           const roleName = typeof role === 'string' ? role : role.name;
@@ -235,15 +235,12 @@ export const createUserTableColumns = ({
     {
       title: t('common.actions'),
       dataIndex: 'key',
-      width: 320,
+      width: 240,
       fixed: 'right',
       render: (key: Key, record: UserDataType) => {
         const { status } = record;
         return (
           <div className="flex flex-wrap items-center gap-2">
-            <Button type="link" className="p-0" onClick={() => onOpenDetail(key)}>
-              {t('common.detail')}
-            </Button>
             <PermissionWrapper requiredPermissions={['Edit User']}>
               <Button type="link" className="p-0" onClick={() => onEditUser(key)}>
                 {t('common.edit')}

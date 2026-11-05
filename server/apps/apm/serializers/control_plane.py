@@ -52,19 +52,38 @@ class ApplicationMutationSerializer(OrganizationAssignmentSerializer):
         return attrs
 
 
+_PROBE_LANGUAGES = ("python", "nodejs", "java", "go", "dotnet", "php", "obi", "ruby", "cpp", "erlang", "swift")
+
+
 class IngestSnippetSerializer(serializers.Serializer):
     application_id = serializers.CharField(max_length=128)
     cloud_region_id = serializers.IntegerField(min_value=1)
-    language = serializers.ChoiceField(choices=("python", "nodejs", "java", "go", "dotnet"))
+    language = serializers.ChoiceField(choices=_PROBE_LANGUAGES)
     runtime = serializers.ChoiceField(choices=("kubernetes", "docker", "host", "other"))
     endpoint = serializers.CharField(max_length=512, required=False, write_only=True)
     service_name = serializers.CharField(max_length=256)
     service_version = serializers.CharField(max_length=256, required=False, allow_blank=True)
     environment = serializers.CharField(max_length=256, allow_blank=True)
     sample_rate = serializers.IntegerField(min_value=1, max_value=100, required=False, default=100)
+    probe_platform = serializers.ChoiceField(choices=("linux", "windows"), required=False, default="linux")
+    process_executable = serializers.CharField(max_length=4096, required=False, allow_blank=True, default="")
 
     def validate_endpoint(self, _value):
         raise serializers.ValidationError(serializer_text(self, "error.otlp_endpoint_server_resolved"))
+
+    def validate(self, attrs):
+        from apps.apm.services.probe_artifacts import ProbeSelectionError, validate_probe_selection
+
+        try:
+            validate_probe_selection(
+                language=attrs["language"],
+                runtime=attrs["runtime"],
+                probe_platform=attrs.get("probe_platform", "linux"),
+                process_executable=attrs.get("process_executable", ""),
+            )
+        except ProbeSelectionError as exc:
+            raise serializers.ValidationError(serializer_text(self, f"error.{exc.code}")) from exc
+        return attrs
 
 
 class CatalogListQuerySerializer(serializers.Serializer):

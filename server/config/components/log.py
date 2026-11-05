@@ -255,6 +255,12 @@ def build_logging_config(*, log_level=None, log_file_output=None):
             "level": log_level,
             "propagate": True,
         },
+        # head_from_fun 在 DEBUG 下把每个任务签名打成「def ... / return 1」。
+        # 那两行是 Celery 造的空函数，不是任务执行记录，不能用来排查。
+        "celery.utils.functional": {
+            "level": "WARNING",
+            "propagate": True,
+        },
         "uvicorn.access": {
             "handlers": ["uvicorn_access_console"],
             "level": "INFO",

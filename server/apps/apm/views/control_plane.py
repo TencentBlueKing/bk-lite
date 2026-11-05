@@ -83,7 +83,7 @@ from apps.apm.services.access import (
 from apps.apm.services.alerts import AlertHandlerConflict, AlertHandlerForbidden, AlertHandlerInvalid
 from apps.apm.services.contracts import IngestSnippetRequest, MetricDataState, ServiceErrorBreakdownQuery, ServiceMetricQuery
 from apps.apm.services.integration_configuration import CloudRegionConfigurationError
-from apps.apm.services.probe_artifacts import LANGUAGE_PROBE_ARTIFACTS, ProbeArtifactNotFound
+from apps.apm.services.probe_artifacts import ProbeArtifactNotFound, ProbeSelectionError, resolve_probe_artifact_name
 from apps.apm.services.status import ACTIVE_WINDOW, ARCHIVE_WINDOW
 from apps.apm.utils.locale_text import public_detail, request_text
 from apps.core.decorators.api_permission import HasPermission
@@ -299,7 +299,10 @@ class ApmIntegrationConfigurationViewSet(viewsets.GenericViewSet):
             "organization_links",
         )
         application = get_object_or_404(applications, application_id=data["application_id"])
-        probe_artifact_name = LANGUAGE_PROBE_ARTIFACTS.get(data["language"], "")
+        probe_artifact_name = resolve_probe_artifact_name(
+            data["language"],
+            data.get("probe_platform", "linux"),
+        )
         try:
             endpoints = self.service.resolve_region(
                 NodeMgmt(),
@@ -333,7 +336,14 @@ class ApmIntegrationConfigurationViewSet(viewsets.GenericViewSet):
                     environment=data["environment"],
                     probe_download_url=endpoints.probe_download_url,
                     sample_rate=data.get("sample_rate", 100),
+                    probe_platform=data.get("probe_platform", "linux"),
+                    process_executable=data.get("process_executable", ""),
                 )
+            )
+        except ProbeSelectionError as exc:
+            return Response(
+                {"code": exc.code, "detail": request_text(request, f"error.{exc.code}")},
+                status=status.HTTP_400_BAD_REQUEST,
             )
         except ProbeArtifactNotFound:
             return Response(

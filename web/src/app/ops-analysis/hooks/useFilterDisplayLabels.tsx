@@ -13,7 +13,7 @@ import type { FilterOptionLabelStore } from '@/app/ops-analysis/context/filterOp
 import { useParamInputOptions } from '@/app/ops-analysis/hooks/useParamInputOptions';
 import { useShareMode } from '@/app/ops-analysis/context/shareMode';
 import { useShareOrganization } from '@/app/ops-analysis/context/shareOrganization';
-import type { UnifiedFilterDefinition } from '@/app/ops-analysis/types/dashBoard';
+import type { FilterValue, UnifiedFilterDefinition } from '@/app/ops-analysis/types/dashBoard';
 import type { Group } from '@/types/index';
 import { UserInfoContext } from '@/context/userInfo';
 import { useTimeRangeList } from '@/constants/shared';
@@ -24,6 +24,13 @@ import {
 } from '@/app/ops-analysis/utils/filterTemplate';
 import { getParamInputConfigKey } from '@/app/ops-analysis/utils/paramInputOptionsLoader';
 import { isDynamicOptionFilter } from '@/app/ops-analysis/utils/optionBackedFilterValue';
+import {
+  dynamicQueryParamsOf,
+  readOptionsQueryUpstream,
+  resolveOptionsQueryParams,
+  stableStringify,
+  valueOfFoundOptionsQueryUpstream,
+} from '@/app/ops-analysis/utils/optionsQueryParamRefs';
 import { isOrganizationFilterDefinition } from '@/app/ops-analysis/utils/unifiedFilterState';
 
 const EMPTY_OPTION_LABELS: Record<string, Record<string, string> | undefined> = {};
@@ -61,9 +68,13 @@ const hasPublishedLabels = (
  */
 const DynamicOptionLabelLoader = ({
   definition,
+  definitions,
+  values,
   store,
 }: {
   definition: UnifiedFilterDefinition;
+  definitions: UnifiedFilterDefinition[];
+  values: Record<string, FilterValue>;
   store: FilterOptionLabelStore;
 }) => {
   const [active, setActive] = useState(false);
@@ -81,9 +92,27 @@ const DynamicOptionLabelLoader = ({
     return store.subscribe(decide);
   }, [definition.id, store]);
 
+  const queryResolution = useMemo(() => resolveOptionsQueryParams(
+    dynamicQueryParamsOf(definition.inputConfig),
+    (ref) => {
+      const upstream = readOptionsQueryUpstream(
+        ref,
+        definitions,
+        (id) => values[id],
+      );
+      if (upstream.found === false) return undefined;
+      return valueOfFoundOptionsQueryUpstream(upstream);
+    },
+  ), [definition.inputConfig, definitions, values]);
   const state = useParamInputOptions(definition.inputConfig, {
     suppressErrorNotification: true,
-  }, { enabled: active, reloadKey });
+  }, {
+    enabled: active,
+    reloadKey,
+    resolvedQueryParams: queryResolution.params,
+    optionsBlocked: queryResolution.blocked,
+    optionsBlockReason: queryResolution.blockReason,
+  });
 
   useEffect(() => {
     if (!active) return;
@@ -91,7 +120,7 @@ const DynamicOptionLabelLoader = ({
       store.publish(definition.id, mapOptionLabels(state.options));
       return;
     }
-    if (state.status === 'error') {
+    if (state.status === 'error' || state.status === 'blocked') {
       store.publish(definition.id, {});
     }
   }, [active, definition.id, state.options, state.status, store]);
@@ -101,11 +130,13 @@ const DynamicOptionLabelLoader = ({
 
 export const FilterDisplayLabelLoaders = ({
   definitions,
+  values = {},
   enabled,
   store,
   canvasId = '',
 }: {
   definitions: UnifiedFilterDefinition[];
+  values?: Record<string, FilterValue>;
   enabled: boolean;
   store: FilterOptionLabelStore;
   canvasId?: string;
@@ -115,8 +146,10 @@ export const FilterDisplayLabelLoaders = ({
     .filter((definition) => definition.enabled && isDynamicOptionFilter(definition))
     .map((definition) => (
       <DynamicOptionLabelLoader
-        key={`${canvasId}:${definition.id}:${getParamInputConfigKey(definition.inputConfig)}`}
+        key={`${canvasId}:${definition.id}:${getParamInputConfigKey(definition.inputConfig)}:${stableStringify(values)}`}
         definition={definition}
+        definitions={definitions}
+        values={values}
         store={store}
       />
     ));

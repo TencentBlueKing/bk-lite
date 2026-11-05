@@ -55,6 +55,12 @@ def test_build_flow_input_uses_chatid_as_session_id():
         "entry_type": "enterprise_wechat_aibot",
         "session_id": "chat-1",
         "response_url": "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=abc",
+        "wiki_material_actor": {
+            "mode": "external",
+            "username": "",
+            "domain": "",
+            "sender_id": "user-1",
+        },
     }
 
 
@@ -264,6 +270,12 @@ def test_handle_aibot_message_dispatches_text_message(request_factory):
             "entry_type": "enterprise_wechat_aibot",
             "session_id": "chat-1",
             "response_url": "https://example.com/response",
+            "wiki_material_actor": {
+                "mode": "external",
+                "username": "",
+                "domain": "",
+                "sender_id": "user-1",
+            },
         },
         sender_id="user-1",
         config={
