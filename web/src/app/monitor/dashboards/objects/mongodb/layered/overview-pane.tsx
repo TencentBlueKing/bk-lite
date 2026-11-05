@@ -103,7 +103,7 @@ const FOCUS_SPECS = [
     unit: 'cps' as const,
     unitLabel: '次/秒',
     color: MONGODB_PALETTE.cyan,
-    cta: '',
+    cta: '查看文档扫描',
     body: '每秒扫描的文档数。偏高常见于缺索引或查询条件过宽。'
   },
   {
@@ -112,7 +112,7 @@ const FOCUS_SPECS = [
     unit: 'cps' as const,
     unitLabel: '次/秒',
     color: MONGODB_PALETTE.red,
-    cta: '',
+    cta: '查看缺页趋势',
     body: '每秒缺页次数。升高通常意味着工作集未能很好落在内存中。'
   },
   {
@@ -235,7 +235,11 @@ export default function OverviewPane({
         <EventsRail events={alertEvents} loading={eventsLoading} onFocusAlert={onFocusAlert} />
       </ProSection>
       <ProSection title="重点关注">
-        <div className={proChromeClass.shortcutGrid} data-mongodb-focus="grid">
+        <div
+          className={proChromeClass.shortcutGrid}
+          data-mongodb-focus="grid"
+          data-mongodb-focus-count={FOCUS_SPECS.length}
+        >
           {FOCUS_SPECS.map((card) => {
             const percent = card.key === 'dirty';
             const plotted = percent

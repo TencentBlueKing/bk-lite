@@ -215,6 +215,19 @@ export default function CachePane({
             metricMap={metricMap}
             pending={pendingMetricNames}
           />
+          <MongoTrend
+            anchor="page-faults"
+            title="缺页频率"
+            body="每秒缺页次数。升高通常意味着工作集未能很好落在内存中。"
+            series={[{
+              name: 'mongodb_page_faults_rate',
+              label: '缺页',
+              color: MONGODB_PALETTE.red,
+              unit: 'cps'
+            }]}
+            metricMap={metricMap}
+            pending={pendingMetricNames}
+          />
         </div>
       </ProSection>
     </div>

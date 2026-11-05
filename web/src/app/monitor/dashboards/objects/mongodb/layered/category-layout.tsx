@@ -99,7 +99,11 @@ export default function MongoCategoryLayout({
     if (tab !== 'throughput' && tab !== 'cache') return;
     const anchor = searchParams.get('focus');
     if (!anchor) return;
-    document.getElementById(`mongo-${anchor}`)?.scrollIntoView({ block: 'start' });
+    const id = `mongo-${anchor}`;
+    const scroll = () => document.getElementById(id)?.scrollIntoView({ block: 'start' });
+    scroll();
+    const frame = window.requestAnimationFrame(scroll);
+    return () => window.cancelAnimationFrame(frame);
   }, [searchParams, tab]);
 
   useEffect(() => {

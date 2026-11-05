@@ -29,6 +29,8 @@ export const mongoKpiJump = (key: string): MongoFocusTarget | null => {
 
 export const mongoFocusJump = (key: string): MongoFocusTarget | null => {
   if (key === 'queued-writes') return { tab: 'throughput', anchor: 'queue' };
+  if (key === 'docs-scanned') return { tab: 'throughput', anchor: 'docs-scanned' };
+  if (key === 'page-faults') return { tab: 'cache', anchor: 'page-faults' };
   if (key === 'dirty') return { tab: 'cache', anchor: 'dirty' };
   return null;
 };

@@ -37,6 +37,14 @@ const CHARTS: readonly ChartSpec[] = [
     ]
   },
   {
+    anchor: 'docs-scanned',
+    title: '文档扫描频率',
+    body: '每秒扫描的文档数。偏高常见于缺索引或查询条件过宽。',
+    series: [
+      { name: 'mongodb_total_docs_scanned_rate', label: '文档扫描', color: MONGODB_PALETTE.cyan, unit: 'cps' }
+    ]
+  },
+  {
     anchor: 'documents',
     title: '文档操作吞吐',
     body: '每秒插入、更新、删除的文档数对照。',
