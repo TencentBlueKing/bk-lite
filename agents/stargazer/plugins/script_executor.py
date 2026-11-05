@@ -49,6 +49,9 @@ class SSHPlugin:
         script_path = params.get("script_path")
         self.username = params.get("username")
         self.password = params.get("password")
+        self.service_username = params.get("service_username")
+        self.service_password = params.get("service_password")
+        self.auth_source = params.get("auth_source")
         self.private_key = params.get("private_key")
         self.passphrase = params.get("passphrase")
         # header 常把缺省 port 打成 ""；params.get("port", 22) 无法回落到默认值
@@ -190,7 +193,6 @@ class SSHPlugin:
             if self.passphrase:
                 exec_params["passphrase"] = self.passphrase
         else:
-            # 本地执行时指定脚本类型
             shell_type = self._get_shell_type()
             exec_params["shell"] = shell_type
             logger.debug(
@@ -201,7 +203,44 @@ class SSHPlugin:
                 self.collection_task_id,
             )
 
+        service_env = self._service_execution_env()
+        if service_env:
+            exec_params["env"] = service_env
         return exec_params
+
+    @staticmethod
+    def _usable_secret(value) -> str:
+        secret = str(value or "")
+        if not secret.strip():
+            return ""
+        if secret.startswith("${") and secret.endswith("}"):
+            return ""
+        return secret
+
+    def _service_execution_env(self) -> Dict[str, str]:
+        """把服务凭据映射成脚本进程环境。SSH 登录口令不参与这次映射。"""
+        model_id = str(self.model_id or "").strip().lower()
+        if model_id == "redis":
+            env = {}
+            secret = self._usable_secret(self.service_password)
+            if secret:
+                env["REDISCLI_AUTH"] = secret
+            username = self._usable_secret(self.service_username)
+            if username:
+                env["REDIS_USER"] = username
+            return env
+        if model_id == "mongodb":
+            username = self._usable_secret(self.service_username)
+            secret = self._usable_secret(self.service_password)
+            if not username or not secret:
+                return {}
+            auth_source = self._usable_secret(self.auth_source) or "admin"
+            return {
+                "MONGO_USER": username,
+                "MONGO_PASSWORD": secret,
+                "MONGO_AUTH_DB": auth_source,
+            }
+        return {}
 
     def _ssh_material_present(self) -> bool:
         return any(str(value or "").strip() for value in (self.username, self.password, self.private_key))

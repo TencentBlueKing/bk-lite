@@ -491,7 +491,7 @@ COLLECT_OBJ_TREE = [
                 "credential_default_port": 22,
                 "tag": ["Agent", "JOB", "Linux"],
                 "desc": "采集Redis关键配置信息",
-                "encrypted_fields": ["password"],
+                "encrypted_fields": ["password", "service_password"],
             },
             {
                 "id": "mongodb",
@@ -501,7 +501,7 @@ COLLECT_OBJ_TREE = [
                 "type": CollectDriverTypes.JOB,
                 "tag": ["Agent", "JOB", "Linux"],
                 "desc": "发现与采集MongoDB基础配置信息",
-                "encrypted_fields": ["password"],
+                "encrypted_fields": ["password", "service_password"],
             },
             {
                 "id": "es",

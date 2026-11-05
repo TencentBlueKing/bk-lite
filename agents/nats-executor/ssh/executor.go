@@ -3,6 +3,7 @@ package ssh
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -70,6 +71,7 @@ type sshSession interface {
 	Close() error
 	SetStdout(w io.Writer)
 	SetStderr(w io.Writer)
+	SetStdin(r io.Reader)
 }
 
 type realSSHClient struct{ client *ssh.Client }
@@ -139,6 +141,7 @@ func (s realSSHSession) Signal(sig ssh.Signal) error { return s.session.Signal(s
 func (s realSSHSession) Close() error                { return s.session.Close() }
 func (s realSSHSession) SetStdout(w io.Writer)       { s.session.Stdout = w }
 func (s realSSHSession) SetStderr(w io.Writer)       { s.session.Stderr = w }
+func (s realSSHSession) SetStdin(r io.Reader)        { s.session.Stdin = r }
 
 func newStreamLogWriter(publisher eventPublisher, topic, executionID, stream string) *streamLogWriter {
 	return &streamLogWriter{publisher: publisher, topic: topic, executionID: executionID, stream: stream}
@@ -841,6 +844,51 @@ func passwordAuthMethods(password string) []ssh.AuthMethod {
 	}
 }
 
+func remoteCommandWithServiceEnv(script string, env map[string]string) (string, io.Reader) {
+	if len(env) == 0 {
+		return script, nil
+	}
+	var body bytes.Buffer
+	count := 0
+	for key, value := range env {
+		if value == "" || !safeServiceEnvKey(key) {
+			continue
+		}
+		count++
+		fmt.Fprintf(&body, "%s\n%s\n", key, base64.StdEncoding.EncodeToString([]byte(value)))
+	}
+	if count == 0 {
+		return script, nil
+	}
+	var payload bytes.Buffer
+	fmt.Fprintf(&payload, "%d\n", count)
+	payload.Write(body.Bytes())
+	payload.WriteString("---SCRIPT---\n")
+	payload.WriteString(script)
+	if !strings.HasSuffix(script, "\n") {
+		payload.WriteByte('\n')
+	}
+	command := `sh -c 'read __n; __i=0; while [ "$__i" -lt "$__n" ]; do read __k; read __b; __v=$(printf "%s" "$__b" | base64 -d); export "$__k=$__v"; __i=$((__i+1)); done; read __marker; exec sh'`
+	return command, &payload
+}
+
+func safeServiceEnvKey(key string) bool {
+	if key == "" {
+		return false
+	}
+	for index, char := range key {
+		switch {
+		case char == '_' || (char >= 'A' && char <= 'Z') || (char >= 'a' && char <= 'z'):
+			continue
+		case index > 0 && char >= '0' && char <= '9':
+			continue
+		default:
+			return false
+		}
+	}
+	return true
+}
+
 func Execute(req ExecuteRequest, instanceId string) ExecuteResponse {
 	return executeWithConn(req, instanceId, nil)
 }
@@ -1040,6 +1088,11 @@ func executeWithConn(req ExecuteRequest, instanceId string, nc *nats.Conn) Execu
 	}
 	session.SetStdout(stdoutWriter)
 	session.SetStderr(stderrWriter)
+	command := req.Command
+	if wrapped, stdin := remoteCommandWithServiceEnv(req.Command, req.Env); stdin != nil {
+		session.SetStdin(stdin)
+		command = wrapped
+	}
 
 	ctx, cancel := context.WithDeadline(context.Background(), deadline)
 	defer cancel()
@@ -1049,7 +1102,7 @@ func executeWithConn(req ExecuteRequest, instanceId string, nc *nats.Conn) Execu
 
 	errChan := make(chan error, 1)
 	go func() {
-		errChan <- session.Run(req.Command)
+		errChan <- session.Run(command)
 	}()
 
 	select {

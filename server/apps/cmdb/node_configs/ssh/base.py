@@ -22,6 +22,7 @@ class SSHNodeParamsMixin:
         }
         if self.credential:
             credential_data.update(self._auth_payload(self.credential))
+            credential_data.update(self._service_credential_payload(self.credential))
             credential_data["port"] = self.credential.get("port", 22)
             credential_data["username"] = self.credential.get("username", self.credential.get("user", ""))
             if self.credential.get("credential_id"):
@@ -35,8 +36,10 @@ class SSHNodeParamsMixin:
         if self.has_multiple_credentials:
             for index, credential in enumerate(self.credential_pool or []):
                 env.update(self._auth_env(credential, index))
+                env.update(self._service_credential_env(credential, index))
         else:
             env.update(self._auth_env(self.credential))
+            env.update(self._service_credential_env(self.credential))
         return env
 
     def build_credentials_pool(self):
@@ -50,6 +53,7 @@ class SSHNodeParamsMixin:
                 "username": credential.get("username", credential.get("user", "")),
             }
             item.update(self._auth_payload(credential, index))
+            item.update(self._service_credential_payload(credential, index))
             if credential.get("credential_id"):
                 item["credential_id"] = credential.get("credential_id")
             pool.append(item)
@@ -70,6 +74,28 @@ class SSHNodeParamsMixin:
                 env[self._passphrase_env_name(index)] = credential["passphrase"]
             return env
         return {self._password_env_name(index): credential.get("password", "")}
+
+    def _service_credential_payload(self, credential, index=None):
+        payload = {}
+        username = str(credential.get("service_username") or "").strip()
+        if username:
+            payload["service_username"] = username
+        auth_source = str(credential.get("auth_source") or "").strip()
+        if auth_source:
+            payload["auth_source"] = auth_source
+        if credential.get("service_password") not in (None, ""):
+            payload["service_password"] = "${" + self._service_password_env_name(index) + "}"
+        return payload
+
+    def _service_credential_env(self, credential, index=None):
+        secret = credential.get("service_password")
+        if secret in (None, ""):
+            return {}
+        return {self._service_password_env_name(index): secret}
+
+    def _service_password_env_name(self, index=None):
+        suffix = "" if index is None else f"_{index}"
+        return f"PASSWORD_service_password_{self._instance_id}{suffix}"
 
     def _password_env_name(self, index=None):
         if index is None:

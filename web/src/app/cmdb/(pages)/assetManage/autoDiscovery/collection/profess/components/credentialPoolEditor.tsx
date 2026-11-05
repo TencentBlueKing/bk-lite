@@ -1380,6 +1380,51 @@ function renderCredentialFields({
           />
         </InputRow>
       )}
+      {collectModelId === 'redis' && (
+        <>
+          <InputRow label={t('Collection.credentialPool.redisServiceUsername', 'Redis ACL 用户名')} required={false}>
+            <Input
+              value={item.service_username}
+              placeholder={t('common.inputTip', '请输入')}
+              onChange={(event) => updateItem(index, { service_username: event.target.value })}
+            />
+          </InputRow>
+          <InputRow label={t('Collection.credentialPool.redisServicePassword', 'Redis 口令')} required={false}>
+            <SecretInput
+              value={item.service_password}
+              placeholder={t('common.inputTip', '请输入')}
+              editMode={editMode}
+              onChange={(nextValue) => updateItem(index, { service_password: nextValue })}
+            />
+          </InputRow>
+        </>
+      )}
+      {collectModelId === 'mongodb' && (
+        <>
+          <InputRow label={t('Collection.credentialPool.mongoServiceUsername', 'MongoDB 用户名')} required={false}>
+            <Input
+              value={item.service_username}
+              placeholder={t('common.inputTip', '请输入')}
+              onChange={(event) => updateItem(index, { service_username: event.target.value })}
+            />
+          </InputRow>
+          <InputRow label={t('Collection.credentialPool.mongoServicePassword', 'MongoDB 口令')} required={false}>
+            <SecretInput
+              value={item.service_password}
+              placeholder={t('common.inputTip', '请输入')}
+              editMode={editMode}
+              onChange={(nextValue) => updateItem(index, { service_password: nextValue })}
+            />
+          </InputRow>
+          <InputRow label={t('Collection.credentialPool.mongoAuthSource', '认证库')} required={false}>
+            <Input
+              value={item.auth_source}
+              placeholder="admin"
+              onChange={(event) => updateItem(index, { auth_source: event.target.value })}
+            />
+          </InputRow>
+        </>
+      )}
       {shape === 'network_config_file' && (
         <InputRow label={t('Collection.credentialPool.enablePassword', '特权密码')} required={false}>
           <SecretInput
