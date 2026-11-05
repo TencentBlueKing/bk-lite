@@ -77,6 +77,8 @@ import {
 
 const DASHBOARD_GRID_MARGIN: [number, number] = [4, 4];
 const DASHBOARD_GRID_CONTAINER_PADDING: [number, number] = [6, 2];
+// 首页去掉外层灰边后，画布左右留白对齐顶栏的 16px 内缩。
+const HOMEPAGE_GRID_CONTAINER_PADDING: [number, number] = [16, 2];
 const DASHBOARD_WIDGET_RESIZE_HANDLES = 'se,sw,ne,nw,n,e,s,w';
 const DASHBOARD_WIDGET_RESIZE_HANDLE_SIZE = 14;
 // 角点 SVG 是 6px 的 L，臂宽 6-4.2。边中点改成与边平行的短线，长度略长于这条臂。
@@ -1394,6 +1396,10 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
     );
   });
 
+  const gridContainerPadding = homepageSurface
+    ? HOMEPAGE_GRID_CONTAINER_PADDING
+    : DASHBOARD_GRID_CONTAINER_PADDING;
+
   return (
     <WidgetCsvExportRegistryProvider registry={csvRegistry}>
     <DashboardRuntimeSchedulerProvider>
@@ -1401,7 +1407,7 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
       <div
         className="relative w-full"
         style={{
-          padding: `${DASHBOARD_GRID_CONTAINER_PADDING[1]}px ${DASHBOARD_GRID_CONTAINER_PADDING[0]}px`,
+          padding: `${gridContainerPadding[1]}px ${gridContainerPadding[0]}px`,
         }}
       >
       <style jsx global>{`
