@@ -95,35 +95,47 @@ class AlertRecoveryChecker:
             )
             return False
 
-        alert.status = AlertStatus.AUTO_RECOVERY
-        Alert.stamp_closed_at(alert)
+        # 扫描在锁外完成。写状态前重读，避免覆盖扫描期间已经关闭的告警。
+        with transaction.atomic():
+            locked = Alert.objects.select_for_update().get(pk=alert.pk)
+            if locked.status not in AlertStatus.ACTIVATE_STATUS:
+                alert.status = locked.status
+                alert.session_status = locked.session_status
+                alert.closed_at = locked.closed_at
+                return False
 
-        if alert.is_session_alert and alert.session_status == SessionStatus.OBSERVING:
-            alert.session_status = SessionStatus.RECOVERED
-            alert.save(update_fields=["status", "session_status", "updated_at", "closed_at"])
-            logger.info(
-                "[AlertRecovery] 会话 Alert %s 已自动恢复 (session_status=%s, CREATED 事件数=%s)",
-                alert.alert_id,
-                SessionStatus.RECOVERED,
-                created_count,
-            )
-        else:
-            alert.save(update_fields=["status", "updated_at", "closed_at"])
-            logger.info(
-                "[AlertRecovery] Alert %s 已自动恢复 (CREATED 事件数=%s)",
-                alert.alert_id,
-                created_count,
-            )
+            locked.status = AlertStatus.AUTO_RECOVERY
+            Alert.stamp_closed_at(locked)
+            if locked.is_session_alert and locked.session_status == SessionStatus.OBSERVING:
+                locked.session_status = SessionStatus.RECOVERED
+                locked.save(update_fields=["status", "session_status", "updated_at", "closed_at"])
+                logger.info(
+                    "[AlertRecovery] 会话 Alert %s 已自动恢复 (session_status=%s, CREATED 事件数=%s)",
+                    locked.alert_id,
+                    SessionStatus.RECOVERED,
+                    created_count,
+                )
+            else:
+                locked.save(update_fields=["status", "updated_at", "closed_at"])
+                logger.info(
+                    "[AlertRecovery] Alert %s 已自动恢复 (CREATED 事件数=%s)",
+                    locked.alert_id,
+                    created_count,
+                )
 
-        from apps.alerts.service.alert_lifecycle import dispatch_alert_lifecycle
-        from apps.alerts.service.recovery_notify import notify_alert_recovered
-        from apps.alerts.service.reminder_service import ReminderService
+            from apps.alerts.service.alert_lifecycle import dispatch_alert_lifecycle
+            from apps.alerts.service.recovery_notify import notify_alert_recovered
+            from apps.alerts.service.reminder_service import ReminderService
 
-        ReminderService.stop_reminder_task(alert)
-        recovered_alert_id = alert.alert_id
-        transaction.on_commit(lambda a=alert: notify_alert_recovered(a))
-        transaction.on_commit(lambda aid=recovered_alert_id: dispatch_alert_lifecycle([aid], "resolved"))
+            ReminderService.stop_reminder_task(locked)
+            recovered_alert_id = locked.alert_id
+            transaction.on_commit(lambda a=locked: notify_alert_recovered(a))
+            transaction.on_commit(lambda aid=recovered_alert_id: dispatch_alert_lifecycle([aid], "resolved"))
 
+        alert.status = locked.status
+        alert.session_status = locked.session_status
+        alert.closed_at = locked.closed_at
+        alert.updated_at = locked.updated_at
         return True
 
     @staticmethod
@@ -157,12 +169,12 @@ def deliver_recovery_reattach(payload: dict) -> None:
     alert_pk = payload.get("alert_pk")
     if not alert_pk:
         raise ValueError("recovery reattach missing alert_pk")
-    with transaction.atomic():
-        alert = Alert.objects.select_for_update().filter(pk=alert_pk).first()
-        if alert is None or alert.status not in AlertStatus.ACTIVATE_STATUS:
-            return
-        attach_visible_recoveries(alert)
-        AlertRecoveryChecker.check_and_recover_alert(alert)
+    alert = Alert.objects.filter(pk=alert_pk).first()
+    if alert is None or alert.status not in AlertStatus.ACTIVATE_STATUS:
+        return
+    # 不在扫描历史事件期间持有告警行锁；状态写回由 check_and_recover_alert 自己加短锁。
+    attach_visible_recoveries(alert)
+    AlertRecoveryChecker.check_and_recover_alert(alert)
 
 
 def _attach_primary_recoveries(alert: Alert) -> int:
