@@ -20,7 +20,7 @@ import type {
   IconPickerRequest,
   IsoflowSceneApi,
   ItemControlsExtraTarget,
-} from '@bk-lite/isoflow';
+} from '../../../../../../packages/isoflow';
 import { useArchitectureApi } from '@/app/ops-analysis/api/architecture';
 import { useDirectoryApi } from '@/app/ops-analysis/api';
 import useBtnPermissions from '@/hooks/usePermissions';
@@ -108,7 +108,7 @@ import {
 } from './binding/insertPlan';
 
 const Isoflow = dynamic(
-  () => import('@bk-lite/isoflow').then((mod) => ({ default: mod.Isoflow })),
+  () => import('../../../../../../packages/isoflow').then((mod) => ({ default: mod.Isoflow })),
   {
     ssr: false,
     loading: () => (
