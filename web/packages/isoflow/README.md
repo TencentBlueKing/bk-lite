@@ -1,6 +1,10 @@
-# @bk-lite/isoflow
+# isoflow
 
-运营分析架构图使用的 Isoflow 内部包。Next 只消费本包 `webpack + tsc` 产出的 `dist/`，不直接编译 `src/`。
+运营分析架构图使用的 Isoflow 源码目录。它不是 npm 包：`package.json` 没有 `name`，也不在 pnpm workspace 里。Next 用相对路径引用本目录，只消费 `webpack + tsc` 产出的 `dist/`（`main` / `types` 指向 `dist`），不直接编译 `src/`。
+
+构建依赖在 `web/package.json` 的 `devDependencies`。webpack 会把除 `react` / `react-dom` 以外的依赖打进 `dist`。在 `web/` 执行 `pnpm run build:isoflow`；`predev`、`prebuild` 和 `type-check` 会先跑它。
+
+zustand 固定为 4.4.3，只放在 web 的 devDependencies，供本目录构建。CMDB 继续在自己的 workspace 包里依赖 zustand 5.0.9。pnpm 默认 `node-linker=isolated` 且 `public-hoist-pattern` 为空，两份不会提升到同一层。
 
 ## 来源
 
