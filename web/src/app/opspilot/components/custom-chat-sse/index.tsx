@@ -1,5 +1,5 @@
 import React, {ReactNode, useCallback, useEffect, useMemo, useRef, useState} from 'react';
-import {Button, ButtonProps, Flex, Image, Input, message as antMessage, Popconfirm, Tooltip, Upload} from 'antd';
+import {Button, ButtonProps, Flex, Image, Input, message as antMessage, Modal, Popconfirm, Tooltip, Upload} from 'antd';
 import {DeleteOutlined, DownloadOutlined, FullscreenExitOutlined, FullscreenOutlined, LoadingOutlined, PaperClipOutlined, RightOutlined, SendOutlined} from '@ant-design/icons';
 import DOMPurify from 'dompurify';
 import Icon from '@/components/icon';
@@ -47,7 +47,9 @@ import {
   fetchChatAttachmentStatus,
   isImageMime,
   uploadChatAttachment,
+  uploadJobDistributeFile,
 } from './chatAttachments';
+import DistributeFileButton from './DistributeFileButton';
 
 const normalizeThinkingText = (value?: string) => {
   if (!value) return '';
@@ -152,6 +154,9 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
   conversationHistoryEnabled = true,
   initialContextUsage = null,
   onConversationCleared,
+  distributeFilesEnabled = false,
+  distributeSessionId,
+  onDistributeReady,
 }) => {
   const { t } = useTranslation();
   const imeEnterGuard = useImeEnterGuard();
@@ -615,6 +620,40 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
       )));
     }
   }, [drafts.length, token]);
+
+  const stageDistributeFile = useCallback(async (file: File, distributeNow: boolean) => {
+    if (!distributeSessionId) {
+      antMessage.error(t('chat.distributeNeedSession', '请先开始会话'));
+      return;
+    }
+    try {
+      const uploaded = await uploadJobDistributeFile(file, token, distributeSessionId);
+      if (!distributeNow) {
+        antMessage.success(t('chat.distributeStaged', '已暂存，之后在本会话说明要分发即可'));
+        return;
+      }
+      if (!token || loading) {
+        antMessage.success(t('chat.distributeStaged', '已暂存，之后在本会话说明要分发即可'));
+        return;
+      }
+      onDistributeReady?.([uploaded.id]);
+      // 确认框会等到 onOk 结束。对话一发出就返回，不要把整段执行留在弹窗后面。
+      void sendMessage(`请分发文件 ${uploaded.name}`);
+    } catch (uploadError) {
+      antMessage.error(uploadError instanceof Error ? uploadError.message : t('chat.distributeFailed', '分发文件暂存失败'));
+    }
+  }, [distributeSessionId, loading, onDistributeReady, sendMessage, t, token]);
+
+  const askDistributeFile = useCallback((file: File) => {
+    Modal.confirm({
+      title: t('chat.distributeAsk', '是否现在分发'),
+      content: file.name,
+      okText: t('chat.distributeNow', '现在分发'),
+      cancelText: t('chat.distributeLater', '先暂存'),
+      onOk: () => stageDistributeFile(file, true),
+      onCancel: () => stageDistributeFile(file, false),
+    });
+  }, [stageDistributeFile, t]);
 
   const handleCopyMessage = (content: string) => {
     // 移除 HTML 标签，保留纯文本
@@ -1087,6 +1126,13 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
                 </button>
               </Tooltip>
             </Upload>
+
+            <DistributeFileButton
+              enabled={distributeFilesEnabled}
+              disabled={loading}
+              label={t('chat.distributeFile', '分发文件')}
+              onFile={askDistributeFile}
+            />
 
             <Popconfirm
               title={t('chat.clearConfirm')}

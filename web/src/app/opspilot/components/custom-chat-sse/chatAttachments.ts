@@ -45,6 +45,29 @@ function authHeaders(token: string | null, extra?: Record<string, string>): Head
   return headers;
 }
 
+const DISTRIBUTE_UPLOAD_URL = '/api/proxy/opspilot/skill_channel/job_distribute_file/upload/';
+
+export async function uploadJobDistributeFile(
+  file: File,
+  token: string | null,
+  sessionId: string,
+): Promise<{ id: number; name: string; size: number }> {
+  const body = new FormData();
+  body.append('file', file);
+  body.append('session_id', sessionId);
+  const response = await fetch(DISTRIBUTE_UPLOAD_URL, {
+    method: 'POST',
+    headers: authHeaders(token),
+    body,
+    credentials: 'include',
+  });
+  const payload = await response.json();
+  if (!response.ok || payload?.result === false) {
+    throw new Error(payload?.message || '上传失败');
+  }
+  return payload.data as { id: number; name: string; size: number };
+}
+
 export async function uploadChatAttachment(file: File, token: string | null): Promise<ChatAttachmentMeta> {
   const body = new FormData();
   body.append('file', file);

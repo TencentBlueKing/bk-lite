@@ -34,6 +34,7 @@ from apps.opspilot.services.chat_attachment_service import (
     normalize_attachment_ids,
 )
 from apps.opspilot.services.history_service import HistoryService
+from apps.opspilot.services.job_output_text import model_visible_text
 from apps.opspilot.services.ppt_master_runtime import remove_conversation_workspace
 from apps.opspilot.services.skill_channel_aibot import append_short_connection_file_links
 from apps.opspilot.services.skill_channel_service import channel_allows_team, resolve_ops_pilot_guest_id
@@ -1223,7 +1224,13 @@ def parse_sse_json_payloads(text: str) -> list[dict]:
 
 def assemble_assistant_persist_content(events: list[dict]) -> str:
     """助手落库：有 AG-UI type 时存事件数组，供前端分步回放；否则拼 OpenAI 正文。"""
-    typed = [item for item in events if item.get("type") and not is_ephemeral_agui_custom_event(item)]
+    typed = [
+        item
+        for item in events
+        if item.get("type")
+        and not is_ephemeral_agui_custom_event(item)
+        and not (item.get("type") == "CUSTOM" and item.get("name") in {"job_script_output", "job_record"})
+    ]
     if typed:
         return json.dumps(typed, ensure_ascii=False)
     parts = []
@@ -1300,6 +1307,7 @@ def _generated_attachment_note(events: list) -> str:
 
 def visible_assistant_text(content: str) -> str:
     """给模型的上下文只用可见正文，丢掉计划/工具等 AG-UI 事件。成功生成的文件名保留。"""
+    content = model_visible_text(content)
     if not content:
         return ""
     stripped = content.strip()
@@ -1465,6 +1473,7 @@ def stream_skill_channel_chat(
     identity_user=None,
     page_context=None,
     attachment_ids=None,
+    distribute_file_ids=None,
 ) -> StreamingHttpResponse:
     skill = channel.skill
     persist_text = persistable_user_message_text(user_message)
@@ -1475,8 +1484,10 @@ def stream_skill_channel_chat(
             attachments = load_sendable_attachments(ids, external_user_id, str(get_current_team(request, "0")))
     except ChatAttachmentError as exc:
         raise SkillChannelChatError(exc.message, status=exc.status) from exc
-    if not (persist_text or "").strip() and not attachments:
+    if not (persist_text or "").strip() and not attachments and not distribute_file_ids:
         raise SkillChannelChatError("message 必填", status=400)
+    if not (persist_text or "").strip() and distribute_file_ids:
+        persist_text = "请分发刚才上传的文件"
     conversation = get_or_create_conversation(channel, external_user_id, session_id)
     user_row = append_message(conversation, SkillConversationMessage.ROLE_USER, persist_text)
     if attachments:
@@ -1546,6 +1557,16 @@ def stream_skill_channel_chat(
         params[CALLER_IDENTITY_CONFIG_KEY] = capture_caller_identity(request, user)
     except CallerIdentityError as e:
         return create_error_stream_response(str(e))
+    # 延迟导入：作业工具会回写会话消息，顶层互引会成环。
+    from apps.opspilot.services.job_tool_service import distribute_owner_key, owned_distribute_ids
+
+    caller = params[CALLER_IDENTITY_CONFIG_KEY]
+    params["distribute_file_ids"] = owned_distribute_ids(
+        distribute_file_ids,
+        owner_key=distribute_owner_key(caller["username"], caller["domain"]),
+        team_id=caller["team_id"],
+        session_key=conversation.session_id,
+    )
 
     current_ip = request.META.get("HTTP_X_FORWARDED_FOR")
     if current_ip:

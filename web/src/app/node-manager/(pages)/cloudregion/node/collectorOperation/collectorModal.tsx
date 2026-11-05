@@ -156,7 +156,7 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
         setCollectorVisible(true);
         setType(type);
         setInstallTargetError(
-          target.ok ? '' : installTargetErrorMessage(target.reason)
+          target.ok === false ? installTargetErrorMessage(target.reason) : ''
         );
         setNodeIds(ids || []);
         setSelectedNodes(nodes);

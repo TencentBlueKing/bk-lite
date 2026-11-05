@@ -19,6 +19,7 @@ make test-bdd         # 仅 bdd marker
 make test-fast        # 跳过 slow
 make test-app         # 指定 app 测试
 make celery           # Celery worker
+make job-celery       # 作业 Celery worker，只消费 job 队列
 make celery-beat      # Beat 调度
 make start-nats       # NATS 监听
 make shell            # IPython shell_plus

@@ -15,6 +15,7 @@ from apps.opspilot.tasks.channel import (
 )
 from apps.opspilot.tasks.chat_attachment import cleanup_chat_attachments_task, parse_chat_attachment_task
 from apps.opspilot.tasks.chatflow import chat_flow_celery_task, chat_flow_test_execute_task
+from apps.opspilot.tasks.job_tool import cleanup_opspilot_job_staged_files, scan_opspilot_job_watches
 from apps.opspilot.tasks.memory import (
     MemoryWriteLlmUnavailable,
     _apply_memory_write_plan,
@@ -91,6 +92,7 @@ __all__ = [
     "_wiki_running_build_has_identity",
     "chat_flow_celery_task",
     "cleanup_chat_attachments_task",
+    "cleanup_opspilot_job_staged_files",
     "chat_flow_test_execute_task",
     "cleanup_expired_workflow_attachments",
     "cleanup_expired_workflow_attachments_task",
@@ -103,6 +105,7 @@ __all__ = [
     "process_enterprise_wechat_aibot_reply",
     "process_memory_write",
     "process_memory_write_cache",
+    "scan_opspilot_job_watches",
     "process_skill_channel_aibot_message",
     "process_skill_channel_aibot_reply",
     "process_skill_channel_dingtalk_message",

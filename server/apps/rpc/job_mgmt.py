@@ -35,6 +35,13 @@ class JobMgmt:
         """触发脚本执行（NATS）。data 见 apps.job_mgmt.nats_api.job_script_execute。"""
         return self.client.run("job_script_execute", data)
 
+    def job_opspilot_action(self, data, timeout=30):
+        """OpsPilot 作业调用。远程走 NATS；只有 IS_LOCAL_RPC=1 才在调用时加载作业模块。"""
+
+        if self.is_local_client:
+            return AppClient("apps.job_mgmt.nats_opspilot").run("job_opspilot_action", data)
+        return self.client.run("job_opspilot_action", data, _timeout=timeout)
+
     def _run_local_automation(self, operation, *args):
         if not self.is_local_client:
             logger.warning("RPC local client required: operation=%s", operation)

@@ -42,6 +42,11 @@
    Worker 消费 `opspilot_channel` / `opspilot_wiki` / `opspilot_maintenance` / `opspilot_chat_parse`；
    未安装 opspilot 时 `startup.sh` 删除该 supervisor 配置，不拉起该进程。
    默认 Celery Worker 只听默认队列，不消费上述 OpsPilot 队列。
+   若 `INSTALL_APPS` 为空（全装）或包含 `job_mgmt`，另有作业 Celery Worker
+   只消费 `job` 队列。作业执行、定时任务、回调和完成副作用都进入该队列。
+   未安装 job_mgmt 时 `startup.sh` 删除 `job_celery.conf`。Beat 仍是容器内的
+   一份，不随作业 Worker 再起。本地单独启动用 `make -C server job-celery`
+   或 `server/support-files/job/start_celery.ps1`。
    同一条件下还有企微智能机器人长连接进程 `run_wecom_aibot_long_connection`，
    以及飞书长连接进程 `run_feishu_long_connection`。
    它们只在 `supervisord` 拉起后运行，不进入 `batch_init`，也不等待握手成功。

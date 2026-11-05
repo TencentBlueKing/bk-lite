@@ -41,6 +41,7 @@ class ToolsLoader:
         "fetch": ("apps.opspilot.metis.llm.tools.fetch", False),
         "github": ("apps.opspilot.metis.llm.tools.github", False),
         "jenkins": ("apps.opspilot.metis.llm.tools.jenkins", True),
+        "job_mgmt": ("apps.opspilot.metis.llm.tools.job_mgmt", False),
         "kubernetes": ("apps.opspilot.metis.llm.tools.kubernetes", True),
         "kubernetes_data_collection": ("apps.opspilot.metis.llm.tools.kubernetes_data_collection", True),
         "mssql": ("apps.opspilot.metis.llm.tools.mssql", True),

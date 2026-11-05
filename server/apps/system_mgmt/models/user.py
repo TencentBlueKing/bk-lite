@@ -1,8 +1,6 @@
 from django.db import models, transaction
 from django.utils import timezone as django_timezone
 
-from apps.core.utils.permission_cache import clear_user_permission_cache
-
 
 class EmploymentStatus(models.TextChoices):
     UNSPECIFIED = "unspecified", "未设置"
@@ -66,6 +64,10 @@ class User(models.Model):
                 pass
         with transaction.atomic():
             super().save(*args, **kwargs)
+            # 顶层导入 permission_cache 会在 user 模块尚未绑定 EmploymentStatus 时
+            # 经服务层回到本模块，URL 加载因此失败。
+            from apps.core.utils.permission_cache import clear_user_permission_cache
+
             clear_user_permission_cache(self.username, self.domain)
 
     @staticmethod

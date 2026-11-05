@@ -41,12 +41,12 @@ const normalizeOperatingSystem = (value: unknown) =>
     .toLowerCase();
 
 export const describeCollectorInstallTarget = (
-  nodes: Array<Pick<TableDataItem, 'operating_system' | 'cpu_architecture'>>,
+  nodes: TableDataItem[],
   fallback?: { os?: unknown; cpuArchitecture?: unknown }
 ): CollectorInstallTarget => {
   if (nodes.length) {
-    const selection = getCollectorOperationSelection(nodes as TableDataItem[]);
-    if (selection.disabled) {
+    const selection = getCollectorOperationSelection(nodes);
+    if (selection.disabled === true) {
       return { ok: false, reason: selection.reason };
     }
     const cpuArchitecture = normalizeCollectorCpuArchitecture(

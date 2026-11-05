@@ -64,8 +64,7 @@ def _description_without_machine_markers(description):
     return "\n".join(
         line
         for line in description.split("\n")
-        if not line.startswith(MANAGED_TASK_DESCRIPTION_PREFIX)
-        and line not in {RECONCILE_DISABLED_MARKER, LEGACY_IMPORTED_MARKER}
+        if not line.startswith(MANAGED_TASK_DESCRIPTION_PREFIX) and line not in {RECONCILE_DISABLED_MARKER, LEGACY_IMPORTED_MARKER}
     )
 
 
@@ -96,9 +95,7 @@ def _set_reconcile_provenance(task, *, disabled):
 
 def _refresh_managed_identity(task):
     description_lines = [
-        line
-        for line in task.description.split("\n")
-        if line == RECONCILE_DISABLED_MARKER or not line.startswith(MANAGED_TASK_DESCRIPTION_PREFIX)
+        line for line in task.description.split("\n") if line == RECONCILE_DISABLED_MARKER or not line.startswith(MANAGED_TASK_DESCRIPTION_PREFIX)
     ]
     task.description = "\n".join([_managed_task_marker(task), *description_lines])
 
@@ -173,14 +170,11 @@ def _prepare_legacy_managed_tasks(periodic_task_model, current_names, reconcile_
         return (), False
     if not names:
         return (), True
-    candidates, already_owned, missing, collisions, drifted = _legacy_import_candidates(
-        periodic_task_model, names, current_names
-    )
+    candidates, already_owned, missing, collisions, drifted = _legacy_import_candidates(periodic_task_model, names, current_names)
     if reconcile_mode != RECONCILE_MODE_ENFORCE:
         logger.warning(
             "Celery Beat 历史基线预检: candidates=%s already_owned=%s",
-            ", ".join(f"{task.name}@{_managed_task_marker(task)[len(MANAGED_TASK_DESCRIPTION_PREFIX):-1]}" for task in candidates)
-            or "-",
+            ", ".join(f"{task.name}@{_managed_task_marker(task)[len(MANAGED_TASK_DESCRIPTION_PREFIX):-1]}" for task in candidates) or "-",
             ", ".join(already_owned) or "-",
         )
         return tuple(name for name, _ in names), True
@@ -410,19 +404,24 @@ def setup_periodic_tasks(sender, **kwargs):
             task_schedule = task_config.get("schedule")
             task_args = task_config.get("args", [])
             task_kwargs = task_config.get("kwargs", {})
+            task_options = task_config.get("options") or {}
+            task_queue = task_options.get("queue") or ""
 
             if isinstance(task_schedule, crontab):
                 schedule_obj, _ = _get_or_create_schedule(CrontabSchedule, **_crontab_schedule_lookup(task_schedule))
+                crontab_defaults = {
+                    "task": task_path,
+                    "crontab": schedule_obj,
+                    "interval": None,
+                    "args": json.dumps(task_args),
+                    "kwargs": json.dumps(task_kwargs),
+                    "enabled": True,
+                }
+                if task_queue:
+                    crontab_defaults["queue"] = task_queue
                 periodic_task, _ = PeriodicTask.objects.update_or_create(
                     name=task_name,
-                    defaults={
-                        "task": task_path,
-                        "crontab": schedule_obj,
-                        "interval": None,
-                        "args": json.dumps(task_args),
-                        "kwargs": json.dumps(task_kwargs),
-                        "enabled": True,
-                    },
+                    defaults=crontab_defaults,
                 )
                 _mark_config_managed(periodic_task)
                 current_names.add(task_name)
@@ -443,16 +442,19 @@ def setup_periodic_tasks(sender, **kwargs):
                     every=every,
                     period=period,
                 )
+                interval_defaults = {
+                    "task": task_path,
+                    "interval": schedule_obj,
+                    "crontab": None,
+                    "args": json.dumps(task_args),
+                    "kwargs": json.dumps(task_kwargs),
+                    "enabled": True,
+                }
+                if task_queue:
+                    interval_defaults["queue"] = task_queue
                 periodic_task, _ = PeriodicTask.objects.update_or_create(
                     name=task_name,
-                    defaults={
-                        "task": task_path,
-                        "interval": schedule_obj,
-                        "crontab": None,
-                        "args": json.dumps(task_args),
-                        "kwargs": json.dumps(task_kwargs),
-                        "enabled": True,
-                    },
+                    defaults=interval_defaults,
                 )
                 _mark_config_managed(periodic_task)
                 current_names.add(task_name)

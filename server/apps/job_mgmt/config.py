@@ -53,16 +53,21 @@ EXECUTION_PENDING_TIMEOUT_SECONDS = max(1, _int_env("JOB_EXECUTION_PENDING_TIMEO
 # 每轮收敛扫描的上限，避免异常积压时单个 Beat 任务长期占用 worker。
 EXECUTION_TIMEOUT_SCAN_BATCH_SIZE = max(1, _int_env("JOB_EXECUTION_TIMEOUT_SCAN_BATCH_SIZE", 200))
 
+# 作业执行、定时任务和完成副作用都进这个队列，由作业 Celery worker 单独消费。
+JOB_CELERY_QUEUE = "job"
+
 
 CELERY_BEAT_SCHEDULE = {
     # 恢复 broker 入队失败、worker 崩溃留下的终态副作用
     "dispatch-pending-job-completion-outbox": {
         "task": "apps.job_mgmt.tasks.dispatch_pending_job_completion_outbox",
         "schedule": crontab(minute="*"),
+        "options": {"queue": JOB_CELERY_QUEUE},
     },
     # 清理过期分发文件 - 每天 00:00 执行
     "cleanup-expired-distribution-files": {
         "task": "apps.job_mgmt.tasks.cleanup_expired_distribution_files_task",
         "schedule": crontab(hour="0", minute="0"),
+        "options": {"queue": JOB_CELERY_QUEUE},
     },
 }
