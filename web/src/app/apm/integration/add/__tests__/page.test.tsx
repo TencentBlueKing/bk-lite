@@ -94,6 +94,38 @@ describe('APM 添加接入', () => {
     expect(dotnetMethod.querySelector('.anticon')).not.toBeNull();
   });
 
+  it('开放 Collector 转发配置并隐藏未推荐的 Operator 卡片', async () => {
+    api.getIngestSnippet.mockResolvedValue({
+      application_id: 'bklite',
+      application_name: 'BK-Lite',
+      cloud_region: { id: 1, name: '默认云区域' },
+      http_endpoint: 'http://proxy.example.com:4318/v1/traces',
+      environment: {},
+      code: 'exporters:\n  otlp_http/bklite: {}\n',
+    });
+    const user = userEvent.setup();
+    renderPage();
+
+    const collector = await screen.findByRole('button', { name: 'OTel Collector 接入' });
+    expect(collector).not.toBeNull();
+    expect((collector as HTMLButtonElement).disabled).toBe(false);
+    expect(screen.queryByRole('button', { name: /规划中/ })).toBeNull();
+    expect(screen.queryByText('Kubernetes 自动注入')).toBeNull();
+
+    await user.click(screen.getByRole('button', { name: 'OTel Collector 接入' }));
+    expect(screen.getByRole('radio', { name: '合并到现有 Collector' })).not.toBeNull();
+    expect(screen.queryByRole('radio', { name: 'Docker 运行（-e 注入）' })).toBeNull();
+    expect(screen.queryByRole('tab', { name: '支持框架' })).toBeNull();
+    await user.type(screen.getByRole('textbox', { name: /服务名称/ }), 'checkout');
+    await waitFor(() => expect(api.getIngestSnippet).toHaveBeenCalled(), { timeout: 3000 });
+    expect(api.getIngestSnippet).toHaveBeenCalledWith(expect.objectContaining({
+      language: 'collector',
+      runtime: 'host',
+      sample_rate: 100,
+    }));
+    expect(await screen.findByText('经过这条 pipeline 的 Trace 会归到所选应用。多个应用请各自生成一条 pipeline。')).not.toBeNull();
+  });
+
   it('开放第二批手动 SDK 卡片', async () => {
     renderPage();
     expect(await screen.findByRole('button', { name: 'Ruby 接入' })).not.toBeNull();

@@ -73,6 +73,14 @@ def test_download_url_only_covers_allowlisted_artifacts():
             validate_probe_selection(language="obi", runtime="host", process_executable=executable)
         assert rejected.value.code == "process_executable_invalid"
     assert validate_probe_selection(language="obi", runtime="host", process_executable="/opt/app+v2/bin/checkout") == (OBI_ARTIFACT_NAME)
+    assert resolve_probe_artifact_name("collector") == ""
+    assert validate_probe_selection(language="collector", runtime="kubernetes") == ""
+    with pytest.raises(ProbeSelectionError) as collector_windows:
+        validate_probe_selection(language="collector", runtime="host", probe_platform="windows")
+    assert collector_windows.value.code == "probe_platform_unsupported"
+    with pytest.raises(ProbeSelectionError) as collector_path:
+        validate_probe_selection(language="collector", runtime="host", process_executable="/usr/bin/checkout")
+    assert collector_path.value.code == "process_executable_unexpected"
     with pytest.raises(ProbeSelectionError) as windows_docker:
         validate_probe_selection(language="dotnet", runtime="docker", probe_platform="windows")
     assert windows_docker.value.code == "dotnet_windows_runtime_unsupported"
