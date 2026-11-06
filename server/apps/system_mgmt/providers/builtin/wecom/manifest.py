@@ -162,7 +162,7 @@ PROVIDER_MANIFEST = ProviderManifest.model_validate(
             {
                 "key": "login_auth",
                 "name": "Login Auth",
-                "description": "WeCom QR login.",
+                "description": "WeCom QR login and in-app web authorization.",
                 "adapter_key": "wecom.login_auth",
                 "adapter_path": "adapters.login_auth.WeComLoginAuthAdapter",
                 "connection_template": [
@@ -172,6 +172,14 @@ PROVIDER_MANIFEST = ProviderManifest.model_validate(
                         "field_type": "string",
                         "required": False,
                         "default": "https://open.work.weixin.qq.com/wwopen/sso/qrConnect",
+                        "reset_capabilities": ["login_auth"],
+                    },
+                    {
+                        "key": "login_auth_oauth_authorize_url",
+                        "label": "Web authorization URL",
+                        "field_type": "string",
+                        "required": False,
+                        "default": "https://open.weixin.qq.com/connect/oauth2/authorize",
                         "reset_capabilities": ["login_auth"],
                     },
                     {

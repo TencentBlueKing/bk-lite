@@ -1,6 +1,7 @@
 import {
   useState,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   forwardRef,
@@ -46,11 +47,21 @@ import { DirItem } from '@/app/ops-analysis/types';
 import { useDataSourceManager } from '@/app/ops-analysis/hooks/useDataSource';
 import { useUnifiedFilter } from '@/app/ops-analysis/hooks/useUnifiedFilter';
 import { useDashBoardApi } from '@/app/ops-analysis/api/dashBoard';
+import {
+  readPlaybackInitialDetail,
+  usePlaybackInitialDetail,
+} from '@/app/ops-analysis/context/playbackInitialDetail';
+import {
+  prepareDashboardPlaybackDocument,
+  type DashboardPlaybackDetail,
+  type DashboardPlaybackDocument,
+} from './playbackDocument';
 import { useDirectoryApi } from '@/app/ops-analysis/api';
 import useBtnPermissions from '@/hooks/usePermissions';
 import { useCanvasPeriodicRefresh } from '@/app/ops-analysis/hooks/useCanvasPeriodicRefresh';
+import { canvasPeriodicRefreshEnabled } from '@/app/ops-analysis/utils/canvasPlaybackRefresh';
 import { relabelApplicationTopologyFilters } from '@/app/ops-analysis/utils/applicationTopologyCanvasFilter';
-import { canPersistCanvasRefreshInterval, normalizeCanvasRefreshInterval } from '@/app/ops-analysis/utils/canvasRefreshInterval';
+import { canPersistCanvasRefreshInterval } from '@/app/ops-analysis/utils/canvasRefreshInterval';
 import type { CanvasRuntimeRefreshCause } from '@/app/ops-analysis/utils/canvasRefreshTimer';
 import {
   UnifiedFilterBar,
@@ -141,18 +152,12 @@ import {
   applySelectedOrganizationToFilterValues,
   fillMissingOrganizationFilterValues,
   isOrganizationFilterDefinition,
-  normalizeStoredFilterState,
   buildFilterConfigConfirmSnapshot,
   recomputeTimeRangeValuesFromDefaults,
   resolveCanvasOrganizationId,
 } from '@/app/ops-analysis/utils/unifiedFilterState';
 import { useShareOrganization } from '@/app/ops-analysis/context/shareOrganization';
 import { copyDashboardWidget } from '@/app/ops-analysis/utils/widgetCopy';
-import {
-  migrateFilterBindings,
-  migrateParamItemsFromStringList,
-  logStringParamMigrationWarnings,
-} from '@/app/ops-analysis/utils/stringParamMultipleMigrate';
 
 interface DashboardProps {
   selectedDashboard?: DirItem | null;
@@ -168,6 +173,8 @@ interface DashboardProps {
   renderDataSourceIds?: number[];
   /** 登录首页：只读已保存内容，隐藏筛选条和编辑工具。 */
   homepageMode?: boolean;
+  /** 轮播播放：只读展示，隐藏工具栏、筛选条和编辑入口，数据仍走登录态接口。 */
+  playbackMode?: boolean;
 }
 
 export interface DashboardRef {
@@ -186,6 +193,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
     renderFilterValues,
     renderDataSourceIds,
     homepageMode = false,
+    playbackMode = false,
   }, ref) => {
     const { t } = useTranslation();
     const labelStoredFilters = useCallback(
@@ -643,6 +651,9 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
       );
     }, [namespaceOptions, namespaceDraftId, t]);
 
+    const playbackDetail = usePlaybackInitialDetail();
+    const playbackDetailRef = useRef(playbackDetail);
+    playbackDetailRef.current = playbackDetail;
     const dashboardLoadSeqRef = useRef(0);
     const loadCanvasNamespacesRef = useRef(loadCanvasNamespaces);
     const syncDashboardCanvasResourcesRef = useRef(syncDashboardCanvasResources);
@@ -654,6 +665,97 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
     // 订阅页每次 lookup 状态更新都会给出新的 filter_values 引用；按内容签名依赖，
     // 避免 lookup 失败后反复 loading→error，把已决画布又打回整页 Spin。
     const renderFilterValuesSignature = JSON.stringify(renderFilterValues ?? null);
+    const renderFilterValuesRef = useRef(renderFilterValues);
+    renderFilterValuesRef.current = renderFilterValues;
+
+    // 换盘先丢掉上一张的数据源代数和筛选，再让本次加载占用新代数。
+    // 若复位落在播放种子的同步 lookup 之后，完成态会被打回 loading，加载门不再打开。
+    useEffect(() => {
+      resetCanvasDataSourceLookup();
+      collapsedGroupsHydratedKeyRef.current = null;
+      skipCollapsedGroupsPersistRef.current = false;
+      setCollapsedGroupsLayoutReadyId(null);
+      setIsEditMode(false);
+      setAddModalVisible(false);
+      setConfigDrawerVisible(false);
+      setCurrentConfigItem(undefined);
+      setIsNewComponentConfig(false);
+      setGroupNameModalVisible(false);
+      setGroupNameDraft('');
+      setEditingGroupId(null);
+      setIsCreatingGroupName(false);
+      setSaving(false);
+      setDashboardReloadVersion(0);
+      setRefreshCause('initial');
+      setSavedRefreshInterval(0);
+      setFilterSearchVersion(0);
+      setNamespaceSearchVersion(0);
+      setWidgetReloadVersions({});
+      setAppliedFilterDefinitions([]);
+      setAppliedFilterValues({});
+      setNamespaceDraftId(undefined);
+      setAppliedNamespaceId(undefined);
+      setUndoStack([]);
+      setRedoStack([]);
+      setPendingNewWidgetGroupId(null);
+    }, [resetCanvasDataSourceLookup, selectedDashboard?.data_id]);
+
+    const commitDashboardPlaybackDocument = useCallback((
+      playbackDocument: DashboardPlaybackDocument,
+      canvasId: string | number,
+    ) => {
+      if (playbackDocument.layout.length) {
+        setLayout(playbackDocument.layout);
+        setOriginalLayout([...playbackDocument.layout]);
+      } else {
+        setLayout([]);
+        setOriginalLayout([]);
+        void loadCanvasNamespacesRef.current([]);
+      }
+      setCollapsedGroupsLayoutReadyId(canvasId);
+      setOtherConfig(playbackDocument.other);
+      setOriginalOtherConfig({ ...playbackDocument.other });
+      setSavedRefreshInterval(playbackDocument.refreshInterval);
+      setDefinitions(playbackDocument.definitions);
+      setFilterValues(playbackDocument.values);
+      setAppliedFilterDefinitions(playbackDocument.definitions);
+      setAppliedFilterValues(playbackDocument.values);
+      setOriginalDefinitions([...playbackDocument.definitions]);
+      setLoading(false);
+    }, []);
+
+    useLayoutEffect(() => {
+      if (!playbackMode || dashboardId == null) {
+        return;
+      }
+      const detail = readPlaybackInitialDetail<DashboardPlaybackDetail>(
+        playbackDetail,
+        'dashboard',
+        dashboardId,
+      );
+      if (!detail) {
+        return;
+      }
+      commitDashboardPlaybackDocument(prepareDashboardPlaybackDocument(detail, {
+        canvasId: dashboardId,
+        labelFilters: labelStoredFilters,
+        syncValues: syncFilterValuesWithDefinitions,
+        organizationId: selectedOrganizationIdRef.current,
+        homepageMode,
+        renderMode,
+        renderFilterValues: renderFilterValuesRef.current,
+      }), dashboardId);
+    }, [
+      commitDashboardPlaybackDocument,
+      dashboardId,
+      homepageMode,
+      labelStoredFilters,
+      playbackDetail,
+      playbackMode,
+      renderFilterValuesSignature,
+      renderMode,
+      syncFilterValuesWithDefinitions,
+    ]);
 
     useEffect(() => {
       const requestId = dashboardLoadSeqRef.current + 1;
@@ -680,6 +782,35 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
           return;
         }
         try {
+          if (playbackMode) {
+            const seeded = readPlaybackInitialDetail<DashboardPlaybackDetail>(
+              playbackDetailRef.current,
+              'dashboard',
+              dashboard.data_id,
+            );
+            if (!seeded) {
+              setLoading(true);
+            }
+            const dashboardData = seeded ?? await getDashboardDetailRef.current(dashboard.data_id);
+            if (!isCurrentLoad()) {
+              return;
+            }
+            const playbackDocument = prepareDashboardPlaybackDocument(dashboardData, {
+              canvasId: dashboard.data_id,
+              labelFilters: labelStoredFilters,
+              syncValues: syncFilterValuesWithDefinitions,
+              organizationId: selectedOrganizationIdRef.current,
+              homepageMode,
+              renderMode,
+              renderFilterValues: renderFilterValuesRef.current,
+            });
+            if (!isCurrentLoad()) {
+              return;
+            }
+            commitDashboardPlaybackDocument(playbackDocument, dashboard.data_id);
+            void syncDashboardCanvasResourcesRef.current(playbackDocument.layout);
+            return;
+          }
           setLoading(true);
           const dashboardData = await getDashboardDetailRef.current(
             dashboard.data_id,
@@ -687,96 +818,20 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
           if (!isCurrentLoad()) {
             return;
           }
-          const preparedLayout = deserializeDashboardGridStackLayout(
-            dashboardData.view_sets,
-          ).map((item) => {
-            if (!isDashboardWidgetItem(item) || !item.valueConfig) {
-              return item;
-            }
-            const valueConfig = item.valueConfig;
-            return {
-              ...item,
-              valueConfig: {
-                ...valueConfig,
-                ...(valueConfig.filterBindings
-                  ? {
-                    filterBindings: migrateFilterBindings(
-                      valueConfig.filterBindings,
-                    ),
-                  }
-                  : {}),
-                ...(valueConfig.dataSourceParams
-                  ? (() => {
-                    const migratedParams = migrateParamItemsFromStringList(
-                      valueConfig.dataSourceParams,
-                    );
-                    logStringParamMigrationWarnings(migratedParams.warnings, {
-                      canvasId: dashboard.data_id,
-                    });
-                    return { dataSourceParams: migratedParams.params };
-                  })()
-                  : {}),
-              },
-            };
+          const playbackDocument = prepareDashboardPlaybackDocument(dashboardData, {
+            canvasId: dashboard.data_id,
+            labelFilters: labelStoredFilters,
+            syncValues: syncFilterValuesWithDefinitions,
+            organizationId: selectedOrganizationIdRef.current,
+            homepageMode,
+            renderMode,
+            renderFilterValues,
           });
-          const migratedGrid = migrateDashboardGridLayout(
-            preparedLayout,
-            dashboardData.other || {},
-          );
-          const nextLayout = migratedGrid.layout;
-          await syncDashboardCanvasResourcesRef.current(nextLayout);
+          await syncDashboardCanvasResourcesRef.current(playbackDocument.layout);
           if (!isCurrentLoad()) {
             return;
           }
-          if (nextLayout.length) {
-            setLayout(nextLayout);
-            setOriginalLayout([...nextLayout]);
-          } else {
-            setLayout([]);
-            setOriginalLayout([]);
-            void loadCanvasNamespacesRef.current([]);
-          }
-
-          setCollapsedGroupsLayoutReadyId(dashboard.data_id);
-
-          const savedOtherConfig = migratedGrid.other;
-          setOtherConfig(savedOtherConfig);
-          setOriginalOtherConfig({ ...savedOtherConfig });
-          setSavedRefreshInterval(
-            normalizeCanvasRefreshInterval(dashboardData.refresh_interval),
-          );
-
-          // Handle both legacy (unifiedFilters) and new (direct array) format
-          const rawFilters = dashboardData.filters;
-          const storedFilters = normalizeStoredFilterState(
-            rawFilters,
-            renderMode ? (renderFilterValues ?? {}) : {},
-            { canvasId: dashboard.data_id },
-          );
-          const loadedDefinitions = labelStoredFilters(storedFilters.definitions);
-          const migratedValues = storedFilters.values;
-
-          const filledValues = fillMissingOrganizationFilterValues(
-            loadedDefinitions,
-            syncFilterValuesWithDefinitions(
-              loadedDefinitions,
-              migratedValues,
-            ),
-            selectedOrganizationIdRef.current,
-          );
-          const initialValues = homepageMode
-            ? applySelectedOrganizationToFilterValues(
-              loadedDefinitions,
-              filledValues,
-              selectedOrganizationIdRef.current,
-            )
-            : filledValues;
-
-          setDefinitions(loadedDefinitions);
-          setFilterValues(initialValues);
-          setAppliedFilterDefinitions(loadedDefinitions);
-          setAppliedFilterValues(initialValues);
-          setOriginalDefinitions([...loadedDefinitions]);
+          commitDashboardPlaybackDocument(playbackDocument, dashboard.data_id);
         } catch (error) {
           if (!isCurrentLoad()) {
             return;
@@ -817,11 +872,14 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
         }
       };
     }, [
+      commitDashboardPlaybackDocument,
       dashboardId,
       homepageMode,
       labelStoredFilters,
+      playbackMode,
       renderMode,
       renderFilterValuesSignature,
+      syncFilterValuesWithDefinitions,
     ]);
 
     useEffect(() => {
@@ -868,37 +926,6 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
       filterValues,
       selectedOrganizationId,
     ]);
-
-    // 监听 selectedDashboard 的变化，重置状态
-    useEffect(() => {
-      resetCanvasDataSourceLookup();
-      collapsedGroupsHydratedKeyRef.current = null;
-      skipCollapsedGroupsPersistRef.current = false;
-      setCollapsedGroupsLayoutReadyId(null);
-      setIsEditMode(false);
-      setAddModalVisible(false);
-      setConfigDrawerVisible(false);
-      setCurrentConfigItem(undefined);
-      setIsNewComponentConfig(false);
-      setGroupNameModalVisible(false);
-      setGroupNameDraft('');
-      setEditingGroupId(null);
-      setIsCreatingGroupName(false);
-      setSaving(false);
-      setDashboardReloadVersion(0);
-      setRefreshCause('initial');
-      setSavedRefreshInterval(0);
-      setFilterSearchVersion(0);
-      setNamespaceSearchVersion(0);
-      setWidgetReloadVersions({});
-      setAppliedFilterDefinitions([]);
-      setAppliedFilterValues({});
-      setNamespaceDraftId(undefined);
-      setAppliedNamespaceId(undefined);
-      setUndoStack([]);
-      setRedoStack([]);
-      setPendingNewWidgetGroupId(null);
-    }, [resetCanvasDataSourceLookup, selectedDashboard?.data_id]);
 
     useEffect(() => {
       const selectedDashboardId = selectedDashboard?.data_id;
@@ -1267,7 +1294,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
         canvasId: selectedDashboard?.data_id,
         savedInterval: savedRefreshInterval,
         canPersist: canPersistRefreshInterval,
-        enabled: !renderMode && !isEditMode,
+        enabled: canvasPeriodicRefreshEnabled(!renderMode && !isEditMode, playbackMode),
         patchRefreshInterval: async (interval) => {
           if (!selectedDashboard?.data_id) {
             return;
@@ -2095,7 +2122,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
       void openShare(selectedDashboard?.data_id);
     };
 
-    const dashboardToolbar = renderMode || homepageMode ? null : (
+    const dashboardToolbar = renderMode || homepageMode || playbackMode ? null : (
       <DashboardToolbar
         selectedDashboard={selectedDashboard}
         chartTheme={chartTheme}
@@ -2194,8 +2221,9 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
           appliedFilterDefinitions={appliedFilterDefinitions}
           appliedNamespaceId={appliedNamespaceId}
           selectedDashboardLocked={selectedDashboard?.is_build_in}
-          csvExportHidden={homepageMode}
+          csvExportHidden={homepageMode || playbackMode}
           homepageSurface={homepageMode && !isDarkTheme}
+          playbackMode={playbackMode}
           shareMode={shareMode}
           isFullscreen={isFullscreen}
           onOpenAddModal={openAddModal}
@@ -2263,8 +2291,8 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
             loading={loading}
             titleFallback={t('dashboard.canvasTitle')}
             emptyDescription={t('dashboard.selectDashboardFirst')}
-            headerVisible={!isFullscreen}
-            filterBarVisible
+            headerVisible={!isFullscreen && !playbackMode}
+            filterBarVisible={!playbackMode}
             compactHeader={homepageMode}
             shellClassName={homepageMode && !isDarkTheme ? 'bg-transparent' : undefined}
             toolbar={dashboardToolbar}

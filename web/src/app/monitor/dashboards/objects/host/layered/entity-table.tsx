@@ -24,6 +24,8 @@ export interface LayeredColumn {
   /** 多行内容列关掉省略，避免 nowrap 把竖排路径挤成一行。 */
   ellipsis?: boolean;
   width?: number | string;
+  /** 列最小宽。表格变窄时改横向滚动，不把千分位裁成省略号。 */
+  minWidth?: number;
   align?: 'left' | 'right' | 'center';
   fixed?: 'left' | 'right';
   render?: (row: EntityTableRow, index: number) => React.ReactNode;
@@ -32,6 +34,11 @@ export interface LayeredColumn {
   defaultSortOrder?: 'ascend' | 'descend';
   /** 传入后该列受控。主机表不传，仍走 Ant 自己的表头状态。 */
   sortOrder?: 'ascend' | 'descend' | null;
+  /** 列头漏斗。不传则没有筛选图标。弹层用表格默认的多选、重置和确定。 */
+  filters?: { text: string; value: string }[];
+  filterMultiple?: boolean;
+  /** null 表示未筛。有值时漏斗高亮，表格不再自行藏行，由调用方过滤数据。 */
+  filteredValue?: string[] | null;
   /** 导出用的可读文本。缺省时跟 label / 单位格式化，不含色点和迷你条。 */
   csvValue?: (row: EntityTableRow) => string;
 }
@@ -105,11 +112,19 @@ export default function LayeredEntityTable({
     title: column.title,
     key: column.key,
     width: column.width,
+    minWidth: column.minWidth,
     align: column.align,
     fixed: column.fixed,
     ellipsis: column.ellipsis !== false,
     defaultSortOrder: column.defaultSortOrder,
     ...(column.sortOrder !== undefined ? { sortOrder: column.sortOrder } : {}),
+    ...(column.filters?.length
+      ? {
+        filters: column.filters,
+        filterMultiple: column.filterMultiple !== false,
+        filteredValue: column.filteredValue ?? null
+      }
+      : {}),
     sorter: column.sorter
       ? column.sorter
       : column.labelKey

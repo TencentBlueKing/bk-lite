@@ -46,6 +46,12 @@ monitor_object_metric:
     postgresql_conflicts_rate:
       name: 并发冲突速率
       desc: 跟踪并发操作引发的冲突情况
+    postgresql_deadlocks_count:
+      name: 死锁次数
+      desc: 当前统计窗口内发生的事务死锁次数
+    postgresql_conflicts_count:
+      name: 冲突次数
+      desc: 当前统计窗口内发生的并发冲突次数
     postgresql_temp_files_rate:
       name: 临时文件创建速率
       desc: 反映复杂查询对临时文件的依赖程度
@@ -80,6 +86,42 @@ monitor_object_metric:
     postgresql_sessions_killed:
       name: 会话异常终止速率
       desc: 因管理员命令、空闲会话超时、死锁处理等致命错误被终止的会话速率（pg_stat_database.sessions_killed，个/秒）。速率上升表明连接不稳定
+    postgresql_statement_time:
+      name: 语句耗时
+      desc: 单条语句的累计耗时，单位秒。有采点即表示该语句已被采集。需在高级采集中开启「Top SQL 采集」，且目标库已安装 pg_stat_statements
+    postgresql_statement_calls:
+      name: 语句执行次数
+      desc: 单条语句的累计执行次数，与累计耗时最高的语句一起展示。需在高级采集中开启「Top SQL 采集」
+    postgresql_statement_rows:
+      name: 语句返回行数
+      desc: 单条语句累计返回的行数，与累计耗时最高的语句一起展示。需在高级采集中开启「Top SQL 采集」
+    postgresql_statement_time_rate:
+      name: 语句耗时速率
+      desc: 单条语句每秒消耗的时间，用来看当前窗口内的负载变化。需在高级采集中开启「Top SQL 采集」
+    postgresql_wait_sessions:
+      name: 当前等待会话数
+      desc: 采集时刻处于该等待事件的会话数，是当前快照，不是累计等待时长。需在高级采集中开启「等待事件采集」。采集当时没有会话处于等待时为空
+    postgresql_recovery_in_recovery:
+      name: 是否处于恢复
+      desc: 实例是否处于恢复。0 表示正在接受写入（含单机主库），1 表示仍在回放的备库。没有读数时不判断角色
+    postgresql_replication_streaming_replicas:
+      name: 流复制连接数
+      desc: 当前连着的流复制对端个数。大于 0 表示主库侧有副本。0 是采到的个数，不是缺失。不表示复制延迟
+    postgresql_replication_replication_slots:
+      name: 复制槽个数
+      desc: 本实例上的复制槽个数，包含暂时没有连上的槽。大于 0 表示存在复制拓扑。0 是采到的个数。不表示槽积压
+    postgresql_replication_write_lag_seconds:
+      name: 复制写入延迟
+      desc: 已连接副本把收到的 WAL 写完所花的最长时间，单位秒。没有流复制连接时为 0
+    postgresql_replication_flush_lag_seconds:
+      name: 复制刷盘延迟
+      desc: 已连接副本把收到的 WAL 刷盘所花的最长时间，单位秒。没有流复制连接时为 0
+    postgresql_replication_replay_lag_seconds:
+      name: 复制回放延迟
+      desc: 已连接副本把收到的 WAL 回放所花的最长时间，单位秒。没有流复制连接时为 0
+    postgresql_replication_slot_restart_lag_bytes:
+      name: 复制槽积压
+      desc: 复制槽仍保留的 WAL 中，最多的字节数。没有槽在保留 WAL 时为 0
 monitor_object_metric_group:
   Postgres:
     Connection: 连接
@@ -91,3 +133,7 @@ monitor_object_metric_group:
     Checkpoint: 检查点
     Buffer: 缓冲
     WriteActivity: 写入行为
+    Statement: 语句
+    WaitEvent: 等待事件
+    Recovery: 恢复状态
+    Topology: 拓扑

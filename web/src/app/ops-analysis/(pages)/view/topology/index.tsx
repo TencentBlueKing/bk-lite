@@ -1,6 +1,7 @@
 import React, {
   useRef,
   useEffect,
+  useLayoutEffect,
   forwardRef,
   useImperativeHandle,
   useState,
@@ -29,8 +30,10 @@ import { useDataSourceManager } from '@/app/ops-analysis/hooks/useDataSource';
 import { useUnifiedFilter } from '@/app/ops-analysis/hooks/useUnifiedFilter';
 import { useCanvasShareAction } from '@/app/ops-analysis/hooks/useCanvasShareAction';
 import { useDirectoryApi } from '@/app/ops-analysis/api';
+import { readPlaybackInitialDetail, usePlaybackInitialDetail } from '@/app/ops-analysis/context/playbackInitialDetail';
 import useBtnPermissions from '@/hooks/usePermissions';
 import { useCanvasPeriodicRefresh } from '@/app/ops-analysis/hooks/useCanvasPeriodicRefresh';
+import { canvasPeriodicRefreshEnabled } from '@/app/ops-analysis/utils/canvasPlaybackRefresh';
 import { canPersistCanvasRefreshInterval, normalizeCanvasRefreshInterval } from '@/app/ops-analysis/utils/canvasRefreshInterval';
 import {
   TopologyProps,
@@ -75,7 +78,7 @@ import { syncAndFillOrganizationFilterValues } from '@/app/ops-analysis/utils/un
 import { bindCanvasDraftControls } from '@/app/ops-analysis/components/canvasDraftControls';
 
 const Topology = forwardRef<TopologyRef, TopologyProps>(
-  ({ selectedTopology, shareMode = false }, ref) => {
+  ({ selectedTopology, shareMode = false, playbackMode = false }, ref) => {
     const themeName = resolveOpsChartThemeName();
     const chartTheme = getOpsChartTheme(themeName);
     const isDarkTheme = themeName === 'dark';
@@ -187,17 +190,44 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
       setSingleValueFetchErrorTooltip,
     );
 
+    const playbackDetail = usePlaybackInitialDetail();
+    const paintedTopologyGraphRef = useRef<unknown>(null);
+    useLayoutEffect(() => {
+      if (!playbackMode || !selectedTopology?.data_id || !state.graphInstance) {
+        return;
+      }
+      const seeded = readPlaybackInitialDetail<{ view_sets?: TopologyViewSets }>(
+        playbackDetail,
+        'topology',
+        selectedTopology.data_id,
+      );
+      if (!seeded?.view_sets) {
+        return;
+      }
+      if (paintedTopologyGraphRef.current === state.graphInstance) {
+        return;
+      }
+      paintedTopologyGraphRef.current = state.graphInstance;
+      loadTopologyData(seeded.view_sets);
+    }, [
+      loadTopologyData,
+      playbackDetail,
+      playbackMode,
+      selectedTopology?.data_id,
+      state.graphInstance,
+    ]);
+
     const { handleEdgeConfigConfirm, closeEdgeConfig, handleMenuClick } =
       useContextMenuAndModal(containerRef, state);
 
     useEffect(() => {
-      setTopologyCsvExportHoverEnabled(resolveTopologyCsvExportHoverEnabled({
+      setTopologyCsvExportHoverEnabled(!playbackMode && resolveTopologyCsvExportHoverEnabled({
         editMode: state.isEditMode,
         shareMode,
         fullscreen: isFullscreen,
       }));
       return () => setTopologyCsvExportHoverEnabled(false);
-    }, [isFullscreen, shareMode, state.isEditMode]);
+    }, [isFullscreen, playbackMode, shareMode, state.isEditMode]);
 
     const handleContextMenuClick = useCallback((event: { key: string }) => {
       if (event.key !== 'exportCsv') {
@@ -298,7 +328,7 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
         canvasId: selectedTopology?.data_id,
         savedInterval: savedRefreshInterval,
         canPersist: canPersistRefreshInterval,
-        enabled: !state.isEditMode,
+        enabled: canvasPeriodicRefreshEnabled(!state.isEditMode, playbackMode),
         patchRefreshInterval: async (interval) => {
           if (!selectedTopology?.data_id) {
             return;
@@ -540,6 +570,9 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
 
     // 键盘快捷键监听
     useEffect(() => {
+      if (playbackMode) {
+        return undefined;
+      }
       const handleKeyDown = (e: KeyboardEvent) => {
         if (e.ctrlKey || e.metaKey) {
           if (e.key === 'z' && !e.shiftKey) {
@@ -556,7 +589,7 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
       return () => {
         document.removeEventListener('keydown', handleKeyDown);
       };
-    }, [undo, redo]);
+    }, [playbackMode, undo, redo]);
 
     const NodePanel =
       nodeType === 'single-value' ? SingleValueNodePanel : ShapeNodePanel;
@@ -623,6 +656,7 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
       <div
         className={`flex h-full min-h-0 overflow-hidden p-0 ${state.collapsed ? 'gap-0' : 'gap-2'}`}
       >
+        {!playbackMode && (
         <div className={isFullscreen ? 'hidden' : 'min-h-0 shrink-0'}>
           <NodeSidebar
             collapsed={state.collapsed}
@@ -633,6 +667,7 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
             onShowChartSelector={handleShowChartSelector}
           />
         </div>
+        )}
 
         <TopologyCanvasShell
           canvasContainerRef={canvasContainerRef}
@@ -665,9 +700,10 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
           selectedItem={selectedTopology}
           titleFallback={t('topology.canvasTitle')}
           emptyDescription={t('topology.emptySelect')}
-          toolbar={isFullscreen ? undefined : topologyToolbar}
+          toolbar={isFullscreen || playbackMode ? undefined : topologyToolbar}
           filterBar={topologyFilterBar}
-          headerVisible={!isFullscreen}
+          filterBarVisible={!playbackMode}
+          headerVisible={!isFullscreen && !playbackMode}
         >
           {topologyCanvasContent}
         </ViewWorkspace>

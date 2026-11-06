@@ -18,6 +18,8 @@ export interface PlatformApplication {
   /** 所属智能体名称，用于跨智能体同名渠道消歧 */
   skillName?: string;
   enableConversationHistory?: boolean;
+  /** 当前智能体启用了作业管理，对话里才出现分发文件入口。 */
+  jobMgmtEnabled?: boolean;
 }
 
 export interface PlatformSession {
@@ -107,6 +109,7 @@ export function mapPlatformApplications(
       const skillName = String(item.skill_name ?? '').trim() || undefined;
       const skillId =
         item.skill_id === undefined || item.skill_id === null ? undefined : String(item.skill_id);
+      const jobMgmtEnabled = item.job_mgmt_enabled === true;
       return {
         id,
         channelName,
@@ -114,6 +117,7 @@ export function mapPlatformApplications(
         skillId,
         skillName,
         enableConversationHistory: item.enable_conversation_history !== false,
+        ...(jobMgmtEnabled ? { jobMgmtEnabled: true } : {}),
       };
     })
     .filter((item) => item.id && item.channelId);
@@ -137,6 +141,7 @@ export function mapPlatformApplications(
       skillId: item.skillId,
       skillName: item.skillName,
       enableConversationHistory: item.enableConversationHistory,
+      ...(item.jobMgmtEnabled ? { jobMgmtEnabled: true } : {}),
     };
   });
 

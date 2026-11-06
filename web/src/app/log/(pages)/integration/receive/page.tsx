@@ -29,6 +29,7 @@ import { useCommon } from '@/app/log/context/common';
 import { useAssetMenuItems } from '@/app/log/hooks/integration/common/other';
 import { showGroupName } from '@/app/log/utils/common';
 import EditConfig from './updateConfig';
+import ReassignCollectorModal from './reassignCollectorModal';
 import EditK8sConfig from './updateK8sConfig';
 import EditInstance from './editInstance';
 import Permission from '@/components/permission';
@@ -51,6 +52,8 @@ const Asset = () => {
   const {
     getInstanceList,
     deleteLogInstance,
+    clearRemovedCollector,
+    reassignCollectorNode,
     getCollectTypes,
     getDisplayCategoryEnum,
     getLogExtractors
@@ -99,6 +102,8 @@ const Asset = () => {
   >(null);
   const [extractorInitialSourceField, setExtractorInitialSourceField] =
     useState<string | null>(null);
+  const [reassignInstanceId, setReassignInstanceId] = useState('');
+  const [collectorRefreshKey, setCollectorRefreshKey] = useState(0);
   const extractorQueryHandled = useRef<string | null>(null);
 
   const handleAssetMenuClick: MenuProps['onClick'] = (e) => {
@@ -156,7 +161,48 @@ const Asset = () => {
     {
       title: t('log.integration.collectionNode'),
       dataIndex: 'node_name',
-      key: 'node_name'
+      key: 'node_name',
+      render: (_: string, record: TableDataItem) => {
+        if (!record.collector_node_removed) {
+          return record.node_name || '--';
+        }
+        const removedName =
+          record.removed_collector_node_name || record.node_name || record.removed_collector_node_id;
+        return (
+          <div className="flex flex-col items-start">
+            <span>{`${t('log.integration.collectorNodeRemoved')}：${removedName || '--'}`}</span>
+            <span className="inline-flex items-center">
+              <Button
+                type="link"
+                size="small"
+                className="px-0"
+                onClick={() => {
+                  confirm({
+                    title: t('log.integration.clearCollectorConfig'),
+                    content: t('log.integration.clearCollectorConfigConfirm'),
+                    okText: t('common.confirm'),
+                    cancelText: t('common.cancel'),
+                    onOk: async () => {
+                      await clearRemovedCollector({ instance_id: record.id });
+                      message.success(t('common.updateSuccess'));
+                      setCollectorRefreshKey((key) => key + 1);
+                    }
+                  });
+                }}
+              >
+                {t('log.integration.clearCollectorConfig')}
+              </Button>
+              <Button
+                type="link"
+                size="small"
+                onClick={() => setReassignInstanceId(String(record.id))}
+              >
+                {t('log.integration.reassignCollectorNode')}
+              </Button>
+            </span>
+          </div>
+        );
+      }
     },
     {
       title: t('common.action'),
@@ -525,6 +571,11 @@ const Asset = () => {
     }
   };
 
+  useEffect(() => {
+    if (!collectorRefreshKey) return;
+    void getAssetInsts();
+  }, [collectorRefreshKey]);
+
   const deleteInstConfirm = async (row: any) => {
     setConfirmLoading(true);
     try {
@@ -632,6 +683,23 @@ const Asset = () => {
           onChange={handleTableChange}
           rowSelection={rowSelection}
         ></CustomTable>
+        <ReassignCollectorModal
+          open={Boolean(reassignInstanceId)}
+          title={t('log.integration.reassignCollectorNode')}
+          placeholder={t('log.integration.selectCollectorNode')}
+          confirmText={t('common.confirm')}
+          cancelText={t('common.cancel')}
+          onCancel={() => setReassignInstanceId('')}
+          onConfirm={async (nodeId) => {
+            await reassignCollectorNode({
+              instance_id: reassignInstanceId,
+              node_id: nodeId
+            });
+            message.success(t('common.updateSuccess'));
+            setReassignInstanceId('');
+            await getAssetInsts();
+          }}
+        />
         <EditConfig ref={configRef} onSuccess={() => getAssetInsts()} />
         <EditK8sConfig ref={k8sConfigRef} onSuccess={() => getAssetInsts()} />
         <EditInstance

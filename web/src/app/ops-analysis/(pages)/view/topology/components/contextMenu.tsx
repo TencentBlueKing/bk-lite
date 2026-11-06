@@ -1,6 +1,7 @@
 import React from 'react';
 import { Menu, Dropdown } from 'antd';
 import { useTranslation } from '@/utils/i18n';
+import { fullscreenPopupContainer } from '@/utils/fullscreenPopupContainer';
 import type { ContextMenuProps } from '@/app/ops-analysis/types/topology';
 import {
   VerticalAlignTopOutlined,
@@ -107,7 +108,7 @@ const ContextMenu: React.FC<ContextMenuProps> = ({
     <Dropdown
       overlay={getMenu()}
       open={visible}
-      getPopupContainer={() => document.body}
+      getPopupContainer={fullscreenPopupContainer}
       overlayStyle={{ zIndex: 1100 }}
     >
       <div

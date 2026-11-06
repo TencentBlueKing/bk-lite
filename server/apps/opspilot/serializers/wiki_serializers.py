@@ -62,6 +62,7 @@ class MaterialSerializer(serializers.ModelSerializer):
             "sync_policy",
             "text_content",
             "ocr_enhance",
+            # chat_sourced 不出现在这里：上传请求带了也会被丢掉，只有对话写入能设置。
             "source_relative_path",
             "source_identity",
             "source_folder_path",

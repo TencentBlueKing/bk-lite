@@ -150,6 +150,9 @@ def test_coerce_collected_tag_parses_csv_and_list_without_clearing_blank():
     assert "tag" not in Management.coerce_collected_tag({"tag": ""})
     assert Management.coerce_collected_tag({"tag": "env:prod,team:net"})["tag"] == ["env:prod", "team:net"]
     assert Management.coerce_collected_tag({"tag": '["owner:acme,inc","env:prod"]'})["tag"] == ["owner:acme,inc", "env:prod"]
+    encoded = "%5B%22owner%3Aacme%2Cinc%22%2C%22env%3Aprod%22%5D"
+    assert Management.coerce_collected_tag({"tag": encoded})["tag"] == ["owner:acme,inc", "env:prod"]
+    assert Management.coerce_collected_tag({"tag": ["owner:foo bar"]})["tag"] == ["owner:foo bar"]
 
 
 def test_coerce_collected_tag_skips_illegal_and_truncates_without_leaking_values(caplog):
@@ -160,7 +163,7 @@ def test_coerce_collected_tag_skips_illegal_and_truncates_without_leaking_values
     mixed = Management.coerce_collected_tag(
         {
             "resource_id": "ins-9",
-            "tag": ["env:prod", f"owner:{sentinel} leaked", "bad", "team:net"],
+            "tag": ["env:prod", f"owner:{sentinel}:leaked", "bad", "team:net"],
         }
     )
     overflow = [f"k{i}:v{i}" for i in range(21)]

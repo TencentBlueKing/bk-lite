@@ -1,7 +1,16 @@
 import type { SimpleDashboardConfig } from '../common/simple-dashboard-core';
+import {
+  POSTGRES_FLUSH_LAG_QUERY,
+  POSTGRES_RECOVERY_QUERY,
+  POSTGRES_REPLAY_LAG_QUERY,
+  POSTGRES_REPLICATION_SLOTS_QUERY,
+  POSTGRES_SLOT_RESTART_LAG_QUERY,
+  POSTGRES_STREAMING_REPLICAS_QUERY,
+  POSTGRES_WRITE_LAG_QUERY
+} from './queries';
 
 /** PostgreSQL 监控高对比鲜活科技色板 */
-const PG_PALETTE = {
+export const PG_PALETTE = {
   emerald: '#10B981',   // 事务提交速率、缓存命中率
   blue: '#2563EB',      // 活跃连接数、查询返回行、检查点写入
   cyan: '#06B6D4',      // 查询提取行、缓冲区分配
@@ -124,6 +133,22 @@ export const POSTGRESQL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       color: PG_PALETTE.amber
     },
     {
+      name: 'postgresql_deadlocks_count',
+      display_name: '死锁次数',
+      description: '当前统计窗口内发生的事务死锁次数。',
+      unit: 'counts',
+      query: 'sum without (db) (increase(postgresql_deadlocks{__$labels__}[__$window__]))',
+      color: PG_PALETTE.rose
+    },
+    {
+      name: 'postgresql_conflicts_count',
+      display_name: '冲突次数',
+      description: '当前统计窗口内发生的并发冲突次数。',
+      unit: 'counts',
+      query: 'sum without (db) (increase(postgresql_conflicts{__$labels__}[__$window__]))',
+      color: PG_PALETTE.amber
+    },
+    {
       name: 'postgresql_temp_files_rate',
       display_name: '临时文件创建速率',
       description: '复杂查询创建临时文件的速率。',
@@ -186,6 +211,70 @@ export const POSTGRESQL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       unit: 'cps',
       query: 'sum without (db) (rate(postgresql_maxwritten_clean{__$labels__}[__$window__]))',
       color: PG_PALETTE.indigo
+    },
+    {
+      name: 'postgresql_blk_write_time',
+      display_name: '块写入耗时',
+      description: '块写入累计耗时的变化速率。',
+      unit: 'msps',
+      query: 'sum without (db) (rate(postgresql_blk_write_time{__$labels__}[__$window__]))',
+      color: PG_PALETTE.indigo
+    },
+    {
+      name: 'postgresql_recovery_in_recovery',
+      display_name: '是否处于恢复',
+      description: '0 表示正在接受写入，1 表示备库仍在回放。没有采样时看不出角色。',
+      unit: 'none',
+      query: POSTGRES_RECOVERY_QUERY,
+      color: PG_PALETTE.indigo
+    },
+    {
+      name: 'postgresql_replication_streaming_replicas',
+      display_name: '流复制连接数',
+      description: '当前连着本实例做流复制的对端个数。0 是采到的个数，不是缺失，也不表示延迟。',
+      unit: 'counts',
+      query: POSTGRES_STREAMING_REPLICAS_QUERY,
+      color: PG_PALETTE.blue
+    },
+    {
+      name: 'postgresql_replication_replication_slots',
+      display_name: '复制槽个数',
+      description: '本实例上的复制槽个数，包含暂时没连上的槽。0 是采到的个数，不表示槽积压。',
+      unit: 'counts',
+      query: POSTGRES_REPLICATION_SLOTS_QUERY,
+      color: PG_PALETTE.cyan
+    },
+    {
+      name: 'postgresql_replication_write_lag_seconds',
+      display_name: '写入延迟',
+      description: '副本收到变更后写到本地所花的最长时间。0 是采到的延迟，不是缺失。',
+      unit: 's',
+      query: POSTGRES_WRITE_LAG_QUERY,
+      color: PG_PALETTE.blue
+    },
+    {
+      name: 'postgresql_replication_flush_lag_seconds',
+      display_name: '刷盘延迟',
+      description: '副本把收到的变更落到磁盘所花的最长时间。0 是采到的延迟，不是缺失。',
+      unit: 's',
+      query: POSTGRES_FLUSH_LAG_QUERY,
+      color: PG_PALETTE.cyan
+    },
+    {
+      name: 'postgresql_replication_replay_lag_seconds',
+      display_name: '回放延迟',
+      description: '副本把收到的变更应用到数据上所花的最长时间。0 是采到的延迟，不是缺失。',
+      unit: 's',
+      query: POSTGRES_REPLAY_LAG_QUERY,
+      color: PG_PALETTE.indigo
+    },
+    {
+      name: 'postgresql_replication_slot_restart_lag_bytes',
+      display_name: '复制槽积压',
+      description: '复制槽为了让暂时断开的副本还能接上而留着的数据量。0 是采到的积压，不是缺失。',
+      unit: 'bytes',
+      query: POSTGRES_SLOT_RESTART_LAG_QUERY,
+      color: PG_PALETTE.amber
     }
   ],
   summaryCards: [

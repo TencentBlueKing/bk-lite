@@ -33,11 +33,15 @@ BUILTIN_ACTIVEDIRECTORY_TOOL_NAME = "activedirectory"
 BUILTIN_MLOPS_TOOL_ID = -11
 BUILTIN_MLOPS_TOOL_NAME = "mlops"
 
+BUILTIN_JOB_MGMT_TOOL_ID = -12
+BUILTIN_JOB_MGMT_TOOL_NAME = "job_mgmt"
+
 IDENTITY_ONLY_BUILTIN_TOOLS = {
     BUILTIN_MONITOR_TOOL_ID: BUILTIN_MONITOR_TOOL_NAME,
     BUILTIN_CMDB_TOOL_ID: BUILTIN_CMDB_TOOL_NAME,
     BUILTIN_ALERTS_TOOL_ID: BUILTIN_ALERTS_TOOL_NAME,
     BUILTIN_LOG_TOOL_ID: BUILTIN_LOG_TOOL_NAME,
+    BUILTIN_JOB_MGMT_TOOL_ID: BUILTIN_JOB_MGMT_TOOL_NAME,
 }
 
 
@@ -441,6 +445,27 @@ def build_builtin_mlops_tool(loader: LanguageLoader):
         "is_build_in": True,
         "tools": _build_sub_tools(BUILTIN_MLOPS_TOOL_NAME, mlops_exports, loader),
     }
+
+
+def build_builtin_job_mgmt_tool(loader: LanguageLoader):
+    from apps.opspilot.metis.llm.tools.job_mgmt import __all__ as job_exports
+
+    return _build_identity_only_builtin_tool(
+        loader,
+        BUILTIN_JOB_MGMT_TOOL_ID,
+        BUILTIN_JOB_MGMT_TOOL_NAME,
+        "Job management",
+        "Job management built-in tool",
+        job_exports,
+    )
+
+
+def build_builtin_job_mgmt_runtime_tool(tool_kwargs):
+    from apps.opspilot.metis.llm.tools.job_mgmt.tools import JOB_MGMT_PROMPT
+
+    runtime = _build_identity_only_runtime_tool(BUILTIN_JOB_MGMT_TOOL_NAME)
+    runtime["extra_tools_prompt"] = JOB_MGMT_PROMPT
+    return runtime
 
 
 def build_builtin_mlops_runtime_tool(tool_kwargs):

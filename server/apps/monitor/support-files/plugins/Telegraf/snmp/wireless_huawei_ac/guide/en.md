@@ -52,7 +52,7 @@ Wait for at least one collection interval, then confirm the instance appears and
 - `device_cpu_usage` and `device_memory_usage` have entity-dimension readings.
 - Chassis power shows `device_power_used` / `device_power_total` in watts (`hwDevicePowerInfoUsedPower` / `hwDevicePowerInfoTotalPower`). Invalid samples (`-1` or empty) are dropped.
 - Fan-equipped models show `device_fan_state` / `device_fan_speed_pct` (percent of full speed), indexed by fan slot and serial number. Fanless SKUs may return an empty fan table.
-- `wlan_cur_joint_ap_num` and `wlan_cur_assoc_sta_num` roughly match the site.
+- `wlan_cur_joint_ap_num` and `wlan_cur_assoc_sta_num` roughly match the site. `wlan_sta_cur_num` should match `wlan_cur_assoc_sta_num` in value and timestamp.
 - `interface_ifHCInOctets` / `interface_ifHCOutOctets` show rates on the uplink.
 - Optical DDM series (`optical_temp_c`, `optical_voltage_mV`, `optical_bias_uA`, `optical_rx_dbm`, `optical_tx_dbm`) appear when transceivers are present.
 
@@ -78,9 +78,19 @@ Wireless objects are unauthorized, or the model does not expose those scalars or
 
 Confirm collection uses 64-bit `ifHCInOctets` / `ifHCOutOctets`. This template collects those counters through the shared IF-MIB table.
 
-### Two STA count series disagree
+### Associated STA compatibility alias
 
-`wlan_cur_assoc_sta_num` (`hwWlanCurAssocStaNum`) is the current associated session count. `wlan_sta_cur_num` (`hwWlanStaCurNum`) is the controller's current STA object count. They are different counters and may disagree across software versions or SNMP views. Compare associated count with the license `wlan_access_max_sta_number` for capacity; do not reuse one threshold on both series. Auth-success `wlan_cur_auth_success_sta_num` is a third series; a growing gap versus associated count usually means authentication failures.
+`wlan_cur_assoc_sta_num` (`hwWlanCurAssocStaNum`, `1.3.6.1.4.1.2011.6.139.12.1.2.2`) is the current associated station count. `wlan_sta_cur_num` is its compatibility alias: the collector copies that same sample onto the alias, so both series share one value and one timestamp. The former trap object `hwWlanStaCurNum` (`1.3.6.1.4.1.2011.6.139.12.3.2.6`) is no longer polled. Compare the associated count with the license `wlan_access_max_sta_number` for capacity. Auth-success `wlan_cur_auth_success_sta_num` remains a separate series; a growing gap versus the associated count usually means authentication failures.
+
+### Radio station count
+
+`wlan_radio_sta_num` polls `hwWlanRadioOnlineStaCnt` (`1.3.6.1.4.1.2011.6.139.16.1.2.1.40`), indexed by AP MAC and radio ID. The former trap object `hwWlanRadioStaNum` (`1.3.6.1.4.1.2011.6.139.16.1.1.2.41`) is no longer polled.
+
+`wlan_radio_sta_max` no longer polls the former trap object `hwWlanRadioMaxStaNum` (`1.3.6.1.4.1.2011.6.139.16.1.1.2.42`). The per-radio maximum has no confirmed poll OID. This template does not dispatch that poll and does not substitute AP model capacity, a configured AP limit, or an SSID limit. A missing series is not a maximum of zero.
+
+### Current VAP count and maximum
+
+`wlan_vap_cur_num` (former `hwVapCurNum`, `1.3.6.1.4.1.2011.6.139.17.2.2.6`) and `wlan_vap_max_num` (former `hwVapMaxNum`, `1.3.6.1.4.1.2011.6.139.17.2.2.1`) are no longer polled. The metric names are retained, and this template does not bind a replacement OID. A missing series is not a count of zero.
 
 ### Global wireless speed unit
 

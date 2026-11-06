@@ -2,6 +2,8 @@ import os
 
 from celery.schedules import crontab
 
+from apps.core.celery_schedule import beat_crontab
+
 # BOT 环境变量
 KUBE_NAMESPACE = os.getenv("KUBE_NAMESPACE", "lite")
 MUNCHKIN_BASE_URL = os.getenv("MUNCHKIN_BASE_URL", "http://munchkin")
@@ -34,6 +36,14 @@ CELERY_BEAT_SCHEDULE = {
     "cleanup-chat-attachments": {
         "task": "apps.opspilot.tasks.cleanup_chat_attachments_task",
         "schedule": crontab(minute=0),
+    },
+    "scan-opspilot-job-watches": {
+        "task": "apps.opspilot.tasks.scan_opspilot_job_watches",
+        "schedule": beat_crontab(minute="*"),
+    },
+    "cleanup-opspilot-job-staged-files": {
+        "task": "apps.opspilot.tasks.cleanup_opspilot_job_staged_files",
+        "schedule": beat_crontab(minute="15"),
     },
     "flush-pending-memory-write-cache": {
         "task": "apps.opspilot.tasks.flush_all_pending_memory_write_cache",

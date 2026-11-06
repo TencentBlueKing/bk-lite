@@ -1,0 +1,135 @@
+name: Server Celery Runtime Check
+
+on:
+  pull_request:
+    paths:
+      - 'server/apps/core/celery*'
+      - 'server/apps/core/celery_runtime/**'
+      - 'server/apps/core/management/commands/celery*.py'
+      - 'server/apps/core/tests/*celery*'
+      - 'server/apps/core/tests/test_release_startup_service.py'
+      - 'server/config/**'
+      - 'server/Makefile'
+      - 'server/pyproject.toml'
+      - 'server/pytest.ini'
+      - 'server/apps/core/testing_runner.py'
+      - 'server/apps/core/tests/test_server_test_runner_service.py'
+      - 'server/support-files/env/celery-runtime.env.template'
+      - 'server/support-files/release/**'
+      - 'server/support-files/tests/celery-runtime-requirements.txt'
+      - 'server/scripts/check_celery_runtime.sh'
+      - '.github/workflows/server-celery-runtime-check.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  full-server:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: full-server-validation
+          POSTGRES_DB: full_server_validation
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+    defaults:
+      run:
+        working-directory: server
+    env:
+      DB_ENGINE: postgresql
+      DB_NAME: full_server_validation
+      DB_USER: postgres
+      DB_PASSWORD: full-server-validation
+      DB_HOST: 127.0.0.1
+      DB_PORT: '5432'
+      SECRET_KEY: full-server-validation
+      ENABLE_CELERY: 'true'
+      CELERY_BROKER_URL: redis://127.0.0.1:6379/0
+      CELERY_RESULT_BACKEND: redis://127.0.0.1:6379/1
+      MINIO_ENDPOINT: 127.0.0.1:9000
+      MINIO_ACCESS_KEY: full-server-validation
+      MINIO_SECRET_KEY: full-server-validation-secret
+      MINIO_USE_HTTPS: 'false'
+      UV_NO_SYNC: '1'
+      PYTEST_ADDOPTS: '--maxfail=10 -o faulthandler_timeout=120'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: 安装完整业务及测试依赖
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ffmpeg
+          python -m pip install uv
+          uv venv .venv --python 3.12
+          uv pip install --python .venv/bin/python -e '.[cmdb,dev,mlops,opspilot]' \
+            'factory-boy>=3.3.3' 'opentelemetry-exporter-otlp-proto-http==1.37.0' 'pytest-bdd>=8.1.0'
+      - name: 执行仓库全量门禁
+        run: make test
+      - name: 保存全量测试结果
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: full-server-test-results
+          path: |
+            server/report.html
+            server/coverage_html
+            server/test-results
+
+  linux-runtime:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: celery-validation
+          POSTGRES_DB: celery_runtime_validation
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    defaults:
+      run:
+        working-directory: server
+    env:
+      CELERY_TEST_DB_PASSWORD: celery-validation
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: server/support-files/tests/celery-runtime-requirements.txt
+      - name: 安装独立运行层依赖
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends redis-server make
+          python -m pip install -r support-files/tests/celery-runtime-requirements.txt
+      - name: Linux隔离及迁移回滚演练
+        run: bash scripts/check_celery_runtime.sh /tmp/celery-runtime-evidence
+      - name: 保存测试证据
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: celery-runtime-evidence
+          path: /tmp/celery-runtime-evidence

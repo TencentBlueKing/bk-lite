@@ -87,6 +87,61 @@ class JobPlatformExecutor:
             raise JobPlatformError(str(response.get("message") or "作业平台拒绝了巡检任务"))
         return int(response["data"]["task_id"])
 
+    def submit_file_distribute(
+        self,
+        *,
+        name: str,
+        nodes: list[dict[str, Any]],
+        team: int,
+        target_source: str,
+        file_keys: list[str],
+        target_path: str,
+        timeout: int,
+        actor: dict[str, Any],
+        overwrite_strategy: str = "overwrite",
+        idempotency_key: str | None = None,
+        workflow_execution_id: str | None = None,
+    ) -> int:
+        if target_source not in {"node_mgmt", "manual"}:
+            raise JobPlatformError("不支持的作业目标来源")
+        if not file_keys:
+            raise JobPlatformError("文件分发缺少文件")
+        id_field = "node_id" if target_source == "node_mgmt" else "target_id"
+        target_list = []
+        for node in nodes:
+            source_id = node.get("source_id")
+            if source_id in (None, ""):
+                raise JobPlatformError("作业目标缺少受控引用 ID")
+            target_list.append(
+                {
+                    id_field: str(source_id) if target_source == "node_mgmt" else int(source_id),
+                    "name": str(node.get("name", "")),
+                    "ip": str(node.get("ip", "")),
+                    "os": str(node.get("operating_system") or node.get("os_type") or ""),
+                }
+            )
+        actor_context = self._actor_context(actor, team)
+        payload = {
+            "name": name[:100],
+            "file_keys": [str(item) for item in file_keys],
+            "target_source": target_source,
+            "target_list": target_list,
+            "target_path": str(target_path)[:512],
+            "overwrite_strategy": overwrite_strategy if overwrite_strategy in {"overwrite", "skip"} else "overwrite",
+            "timeout": max(30, min(int(timeout), 3600)),
+            "team": [int(team)],
+            "callback_type": "nats",
+            "callback_subject": "bklite.workflow.job_result",
+        }
+        if idempotency_key:
+            payload["idempotency_key"] = str(idempotency_key)[:255]
+        if workflow_execution_id not in (None, ""):
+            payload["workflow_execution_id"] = str(workflow_execution_id)[:64]
+        response = self.client.execute_automation_file_distribute(payload, actor_context) or {}
+        if not response.get("result") or not (response.get("data") or {}).get("task_id"):
+            raise JobPlatformError(str(response.get("message") or "作业平台拒绝了文件分发任务"))
+        return int(response["data"]["task_id"])
+
     def wait(self, task_id: int, *, team: int, timeout: int, actor: dict[str, Any]) -> dict[str, Any]:
         actor_context = self._actor_context(actor, team)
         deadline = time.monotonic() + timeout

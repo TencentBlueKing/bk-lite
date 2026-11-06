@@ -48,6 +48,12 @@ monitor_object_metric:
     postgresql_conflicts_rate:
       name: Concurrency Conflict Rate
       desc: Tracks conflicts caused by concurrent operations
+    postgresql_deadlocks_count:
+      name: Deadlock Count
+      desc: Number of transaction deadlocks in the current statistics window
+    postgresql_conflicts_count:
+      name: Conflict Count
+      desc: Number of concurrency conflicts in the current statistics window
     postgresql_temp_files_rate:
       name: Temporary Files Creation Rate
       desc: Reflects temporary file usage by complex queries
@@ -87,6 +93,59 @@ monitor_object_metric:
       desc: Rate of sessions terminated by fatal errors such as administrator commands,
         idle-session timeout, or deadlock resolution (pg_stat_database.sessions_killed),
         in sessions per second. A rising rate signals connection instability.
+    postgresql_statement_time:
+      name: Statement Time
+      desc: Cumulative time for one statement, in seconds. A point means the statement
+        was collected. Turn on Top SQL Collection, and install pg_stat_statements in
+        the target database.
+    postgresql_statement_calls:
+      name: Statement Executions
+      desc: Cumulative executions for one statement, shown with the statements that
+        have the most cumulative time. Turn on Top SQL Collection.
+    postgresql_statement_rows:
+      name: Statement Rows Returned
+      desc: Cumulative rows returned by one statement, shown with the statements that
+        have the most cumulative time. Turn on Top SQL Collection.
+    postgresql_statement_time_rate:
+      name: Statement Time Rate
+      desc: Time consumed per second by one statement, for the trend in the current
+        window. Turn on Top SQL Collection.
+    postgresql_wait_sessions:
+      name: Waiting Sessions
+      desc: Sessions in this wait at collection time. This is a current sample, not
+        cumulative wait time. Turn on Wait Event Collection. Empty when no session
+        is waiting at collection time.
+    postgresql_recovery_in_recovery:
+      name: In Recovery
+      desc: Whether the instance is in recovery. 0 means it accepts writes, including
+        a standalone primary. 1 means a standby still replaying. No reading means
+        the role is unknown.
+    postgresql_replication_streaming_replicas:
+      name: Streaming Replicas
+      desc: Connected streaming replication peers right now. Above zero means a
+        primary has replicas. Zero is a collected count, not a missing point.
+        This is not replication lag.
+    postgresql_replication_replication_slots:
+      name: Replication Slots
+      desc: Replication slots on this instance, including slots whose peer is not
+        connected. Above zero means replication topology exists. Zero is a
+        collected count. This is not slot lag.
+    postgresql_replication_write_lag_seconds:
+      name: Replication Write Lag
+      desc: Longest time a connected replica has taken to write received WAL, in
+        seconds. Zero when no streaming replica is connected.
+    postgresql_replication_flush_lag_seconds:
+      name: Replication Flush Lag
+      desc: Longest time a connected replica has taken to flush received WAL, in
+        seconds. Zero when no streaming replica is connected.
+    postgresql_replication_replay_lag_seconds:
+      name: Replication Replay Lag
+      desc: Longest time a connected replica has taken to replay received WAL, in
+        seconds. Zero when no streaming replica is connected.
+    postgresql_replication_slot_restart_lag_bytes:
+      name: Replication Slot Backlog
+      desc: Most WAL still retained for a replication slot, in bytes. Zero when no
+        slot is retaining WAL.
 monitor_object_metric_group:
   Postgres:
     Connection: Connection
@@ -98,3 +157,7 @@ monitor_object_metric_group:
     Checkpoint: Checkpoint
     Buffer: Buffer
     WriteActivity: Write Activity
+    Statement: Statements
+    WaitEvent: Wait Events
+    Recovery: Recovery
+    Topology: Topology

@@ -34,6 +34,7 @@ describe('与 OpsPilot 工作台对齐的节点图标', () => {
     ['bklite_memory_write', '#icon-zhishiku'],
     ['bklite_notification', '#icon-alarm'],
     ['bklite_http_request', '#icon-HTTP'],
+    ['bklite_file_distribute', '#icon-yuncunchu'],
   ])('%s 使用 %s', (atomKey, href) => {
     const { container } = render(<AtomIcon nodeType="ACTION" atomKey={atomKey} />);
     expect(iconHref(container)).toBe(href);
@@ -47,6 +48,10 @@ describe('与 OpsPilot 工作台对齐的节点图标', () => {
     const job = render(<AtomIcon nodeType="ACTION" category="作业平台" atomKey="bklite_job_execute" />);
     expect(iconHref(job.container)).toBe('#icon-job');
     job.unmount();
+
+    const fileDistribute = render(<AtomIcon nodeType="ACTION" category="作业平台" atomKey="bklite_file_distribute" />);
+    expect(iconHref(fileDistribute.container)).toBe('#icon-yuncunchu');
+    fileDistribute.unmount();
 
     const report = render(<AtomIcon nodeType="ACTION" category="报告" atomKey="bklite_document_render" />);
     expect(iconHref(report.container)).toBe('#icon-Word');

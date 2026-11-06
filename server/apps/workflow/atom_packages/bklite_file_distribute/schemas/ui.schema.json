@@ -1,0 +1,17 @@
+{
+  "targets": {
+    "ui:help": "优先从表单触发器拖入目标主机；也可在本节点选择主机。节点管理与作业平台来源不能混选。"
+  },
+  "files": {
+    "ui:help": "支持普通文件或压缩包，单文件不超过 500MB。保存/发布流程时会自动续期。"
+  },
+  "target_path": {
+    "ui:help": "例如 /etc/nginx/ 或 C:\\\\temp\\\\。命中高危路径时作业平台会拒绝分发。"
+  },
+  "overwrite_strategy": {
+    "ui:widget": "radio"
+  },
+  "timeout_seconds": {
+    "ui:help": "文件分发超时时间，超时后将自动终止。"
+  }
+}

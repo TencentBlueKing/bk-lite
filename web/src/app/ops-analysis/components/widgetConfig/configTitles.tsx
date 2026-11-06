@@ -1,18 +1,27 @@
 import React from 'react';
+import { Badge } from 'antd';
 import { LinkOutlined } from '@ant-design/icons';
 
 const tabIconClass = 'size-4 shrink-0';
 
 export const ConfigSectionTabLabel: React.FC<{
   icon: React.ReactNode;
+  errored?: boolean;
   children: React.ReactNode;
-}> = ({ icon, children }) => (
-  <span className="inline-flex items-center gap-1.5 font-medium">
-    <span className="inline-flex leading-none" aria-hidden>
-      {icon}
+}> = ({ icon, errored = false, children }) => (
+  <Badge
+    dot={errored}
+    color="var(--color-fail)"
+    offset={[4, 0]}
+    className={errored ? 'config-section-error-dot' : undefined}
+  >
+    <span className="inline-flex items-center gap-1.5 font-medium">
+      <span className="inline-flex leading-none" aria-hidden>
+        {icon}
+      </span>
+      {children}
     </span>
-    {children}
-  </span>
+  </Badge>
 );
 
 export const DataSectionTabIcon: React.FC = () => (

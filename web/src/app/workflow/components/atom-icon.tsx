@@ -30,6 +30,7 @@ const ACTION_ATOM_ICON: Record<string, string> = {
   bklite_notification: 'alarm',
   bklite_http_request: 'HTTP',
   bklite_data_transform: 'shujucaiji',
+  bklite_file_distribute: 'yuncunchu',
 };
 
 const ACTION_CATEGORY_ICON: Record<string, string> = {

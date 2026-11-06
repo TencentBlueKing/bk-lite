@@ -13,6 +13,7 @@ from django.http import JsonResponse
 from apps.core.logger import opspilot_logger as logger
 from apps.core.logger import safe_exception_info
 from apps.opspilot.models import Bot, BotWorkFlow
+from apps.opspilot.services.wiki.chat_material_service import WIKI_MATERIAL_ACTOR_KEY, external_actor
 from apps.opspilot.utils.base_chat_flow_utils import BaseChatFlowUtils
 from apps.opspilot.utils.chat_flow_utils.engine.factory import create_chat_flow_engine
 
@@ -184,6 +185,7 @@ class DingTalkChatFlowUtils(BaseChatFlowUtils):
             "node_id": node_id,
             "channel": "ding_talk",
             "is_third_party": is_third_party,
+            WIKI_MATERIAL_ACTOR_KEY: external_actor(sender_id),
         }
 
         # 执行ChatFlow

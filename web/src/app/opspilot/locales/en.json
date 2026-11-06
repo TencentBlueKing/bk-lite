@@ -1705,7 +1705,8 @@
       "usageGroup": "Usage org",
       "guideDefault": "Hello, how can I help? Click a question below.\n[Question 1]\n[Question 2]",
       "usageGroupTip": "Usage organizations can chat with / call this skill via API; management organizations are auto-included and cannot be removed.",
-      "forceWikiGrounded": "Force"
+      "forceWikiGrounded": "Force",
+      "allowWikiMaterialWrite": "Allow chat to update the knowledge base"
     },
     "memory": {
       "title": "Memory",

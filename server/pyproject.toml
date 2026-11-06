@@ -16,6 +16,8 @@ dependencies = [
     "singleton-decorator==1.0.0",
     "better-exceptions==0.3.3",
     "celery==5.4.0",
+    # Kombu5.7要求redis-py>=6.1，与本项目redis==5.0.1不兼容。
+    "kombu==5.6.2",
     "celery-singleton==0.3.1",
     "django==4.2.27",
     "django-celery-beat==2.6.0",

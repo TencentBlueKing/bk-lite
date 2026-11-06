@@ -7,13 +7,11 @@
 - token 和 userinfo 都缺 openid → failed_result(防御 KeyError)
 - 不调用 wechat_user_register,payload 无 login_result
 """
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
-import pytest
 import requests
 
 from apps.system_mgmt.providers.builtin.wechat.adapters.login_auth import WechatLoginAuthAdapter
-
 
 WECHAT_CONFIG = {
     "app_id": "wx-test-app",
@@ -35,14 +33,10 @@ def test_authenticate_decodes_utf8_nickname_from_text_plain_userinfo_response():
     userinfo_response.status_code = 200
     userinfo_response.headers["Content-Type"] = "text/plain"
     userinfo_response.encoding = requests.utils.get_encoding_from_headers(userinfo_response.headers)
-    userinfo_response._content = (
-        b'{"openid":"oxxx","nickname":"\xe5\xbc\xa0\xe4\xb8\x89\xf0\x9f\x98\x80"}'
-    )
+    userinfo_response._content = b'{"openid":"oxxx","nickname":"\xe5\xbc\xa0\xe4\xb8\x89\xf0\x9f\x98\x80"}'
 
     with patch("apps.system_mgmt.providers.builtin.wechat.adapters.client.requests.get", side_effect=[token_response, userinfo_response]):
-        result = WechatLoginAuthAdapter.authenticate(
-            config=WECHAT_CONFIG, provider_key="wechat", capability_key="login_auth", auth_code="auth-code"
-        )
+        result = WechatLoginAuthAdapter.authenticate(config=WECHAT_CONFIG, provider_key="wechat", capability_key="login_auth", auth_code="auth-code")
 
     assert result.success is True
     assert result.payload["external_user"]["nickname"] == "张三😀"
@@ -51,15 +45,18 @@ def test_authenticate_decodes_utf8_nickname_from_text_plain_userinfo_response():
 def test_authenticate_returns_external_user_with_real_field_names():
     """token + userinfo 成功 → payload.external_user 用 openid/unionid/nickname/headimgurl。"""
     token_response = _mock_response({"access_token": "AT", "openid": "oxxx", "unionid": "uxxx"})
-    userinfo_response = _mock_response({
-        "openid": "oxxx",
-        "unionid": "uxxx",
-        "nickname": "Alice",
-        "headimgurl": "https://wx.qq.com/avatar.png",
-    })
+    userinfo_response = _mock_response(
+        {
+            "openid": "oxxx",
+            "unionid": "uxxx",
+            "nickname": "Alice",
+            "headimgurl": "https://wx.qq.com/avatar.png",
+        }
+    )
 
-    with patch("apps.system_mgmt.providers.builtin.wechat.adapters.client.requests.get", side_effect=[token_response, userinfo_response]), \
-         patch("apps.system_mgmt.nats_api.wechat_user_register") as mock_register:
+    with patch("apps.system_mgmt.providers.builtin.wechat.adapters.client.requests.get", side_effect=[token_response, userinfo_response]), patch(
+        "apps.system_mgmt.nats_api.wechat_user_register"
+    ) as mock_register:
         result = WechatLoginAuthAdapter.authenticate(
             config=WECHAT_CONFIG, provider_key="wechat", capability_key="login_auth", auth_code="auth-code-123"
         )
@@ -83,9 +80,7 @@ def test_authenticate_handles_userinfo_missing_fields_gracefully():
     userinfo_response = _mock_response({"openid": "oxxx"})  # 只返回 openid
 
     with patch("apps.system_mgmt.providers.builtin.wechat.adapters.client.requests.get", side_effect=[token_response, userinfo_response]):
-        result = WechatLoginAuthAdapter.authenticate(
-            config=WECHAT_CONFIG, provider_key="wechat", capability_key="login_auth", auth_code="auth-code"
-        )
+        result = WechatLoginAuthAdapter.authenticate(config=WECHAT_CONFIG, provider_key="wechat", capability_key="login_auth", auth_code="auth-code")
 
     assert result.success is True
     assert result.payload["external_user"] == {
@@ -102,9 +97,7 @@ def test_authenticate_falls_back_to_token_openid_when_userinfo_lacks_openid():
     userinfo_response = _mock_response({"errcode": 0, "errmsg": "ok"})  # 畸形:无 openid
 
     with patch("apps.system_mgmt.providers.builtin.wechat.adapters.client.requests.get", side_effect=[token_response, userinfo_response]):
-        result = WechatLoginAuthAdapter.authenticate(
-            config=WECHAT_CONFIG, provider_key="wechat", capability_key="login_auth", auth_code="auth-code"
-        )
+        result = WechatLoginAuthAdapter.authenticate(config=WECHAT_CONFIG, provider_key="wechat", capability_key="login_auth", auth_code="auth-code")
 
     assert result.success is True
     assert result.payload["external_user"]["openid"] == "oxxx"
@@ -116,9 +109,7 @@ def test_authenticate_rejects_when_both_token_and_userinfo_lack_openid():
     userinfo_response = _mock_response({"errcode": 0, "errmsg": "ok"})  # 也缺 openid
 
     with patch("apps.system_mgmt.providers.builtin.wechat.adapters.client.requests.get", side_effect=[token_response, userinfo_response]):
-        result = WechatLoginAuthAdapter.authenticate(
-            config=WECHAT_CONFIG, provider_key="wechat", capability_key="login_auth", auth_code="auth-code"
-        )
+        result = WechatLoginAuthAdapter.authenticate(config=WECHAT_CONFIG, provider_key="wechat", capability_key="login_auth", auth_code="auth-code")
 
     # 实际是 token 阶段就 fail(openid 缺失),这是现有逻辑
     assert result.success is False
@@ -131,9 +122,7 @@ def test_authenticate_rejects_userinfo_errcode():
     userinfo_response = _mock_response({"errcode": 40001, "errmsg": "invalid credential"})
 
     with patch("apps.system_mgmt.providers.builtin.wechat.adapters.client.requests.get", side_effect=[token_response, userinfo_response]):
-        result = WechatLoginAuthAdapter.authenticate(
-            config=WECHAT_CONFIG, provider_key="wechat", capability_key="login_auth", auth_code="auth-code"
-        )
+        result = WechatLoginAuthAdapter.authenticate(config=WECHAT_CONFIG, provider_key="wechat", capability_key="login_auth", auth_code="auth-code")
 
     assert result.success is False
     assert result.errors[0].code == "provider.auth_failed"
@@ -146,18 +135,14 @@ def test_authenticate_rejects_token_missing_openid():
     token_response = _mock_response({"access_token": "AT"})  # 缺 openid
 
     with patch("apps.system_mgmt.providers.builtin.wechat.adapters.client.requests.get", return_value=token_response):
-        result = WechatLoginAuthAdapter.authenticate(
-            config=WECHAT_CONFIG, provider_key="wechat", capability_key="login_auth", auth_code="auth-code"
-        )
+        result = WechatLoginAuthAdapter.authenticate(config=WECHAT_CONFIG, provider_key="wechat", capability_key="login_auth", auth_code="auth-code")
 
     assert result.success is False
     assert result.errors[0].code == "provider.invalid_response"
 
 
 def test_authenticate_does_not_log_secret_or_auth_code_on_token_request_failure():
-    error = requests.RequestException(
-        "GET https://api.weixin.qq.com/token?secret=wx-test-secret&code=private-auth-code"
-    )
+    error = requests.RequestException("GET https://api.weixin.qq.com/token?secret=wx-test-secret&code=private-auth-code")
 
     with patch(
         "apps.system_mgmt.providers.builtin.wechat.adapters.client.requests.get",
@@ -179,9 +164,7 @@ def test_authenticate_does_not_log_secret_or_auth_code_on_token_request_failure(
 
 def test_authenticate_does_not_log_access_token_on_user_info_failure():
     token_response = _mock_response({"access_token": "private-access-token", "openid": "oxxx"})
-    error = requests.RequestException(
-        "GET https://api.weixin.qq.com/userinfo?access_token=private-access-token"
-    )
+    error = requests.RequestException("GET https://api.weixin.qq.com/userinfo?access_token=private-access-token")
 
     with patch(
         "apps.system_mgmt.providers.builtin.wechat.adapters.client.requests.get",
@@ -198,3 +181,20 @@ def test_authenticate_does_not_log_access_token_on_user_info_failure():
     log_text = str(logger.method_calls)
     assert "private-access-token" not in log_text
     assert "RequestException" in log_text
+
+
+def test_build_login_url_keeps_website_qr_when_oauth_channel_is_requested():
+    kwargs = {
+        "config": WECHAT_CONFIG,
+        "provider_key": "wechat",
+        "capability_key": "login_auth",
+        "redirect_uri": "https://bk/callback",
+        "state": "signed",
+    }
+    plain = WechatLoginAuthAdapter.build_login_url(**kwargs)
+    channeled = WechatLoginAuthAdapter.build_login_url(**kwargs, login_channel="oauth")
+
+    assert plain.success is True
+    assert channeled.payload == plain.payload
+    assert "snsapi_login" in plain.payload["authorize_url"]
+    assert "qrconnect" in plain.payload["authorize_url"]

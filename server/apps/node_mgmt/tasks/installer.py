@@ -1512,9 +1512,14 @@ def uninstall_controller(task_id):
                 next_steps=[_build_step("delete_node", "running", "Remove node record")],
             )
             if node_obj.node_id:
-                Node.objects.filter(id=node_obj.node_id, cloud_region_id=task_obj.cloud_region_id).delete()
+                targets = list(Node.objects.filter(id=node_obj.node_id, cloud_region_id=task_obj.cloud_region_id))
             else:
-                Node.objects.filter(cloud_region_id=task_obj.cloud_region_id, ip=node_obj.ip).delete()
+                targets = list(Node.objects.filter(cloud_region_id=task_obj.cloud_region_id, ip=node_obj.ip))
+            from apps.node_mgmt.services.node_collection_exit import NodeCollectionExitService
+
+            for target in targets:
+                NodeCollectionExitService.apply(target, operator=task_obj.created_by or "system")
+                target.delete()
             _update_step_status(node_obj, "success", "Node record removed")
 
         except Exception as e:

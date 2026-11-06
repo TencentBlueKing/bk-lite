@@ -4,17 +4,33 @@ import base64
 import pytest
 
 from apps.monitor.utils.dimension import (
-    build_safe_instance_id,
     build_dimensions,
+    build_metric_template_vars,
+    build_safe_instance_id,
     extract_monitor_instance_id,
     format_dimension_str,
-    build_metric_template_vars,
-    parse_instance_id,
-    normalize_instance_identity,
     format_dimension_value,
+    is_metric_instance_fingerprint,
+    metric_instance_storage_key,
+    normalize_instance_identity,
+    parse_instance_id,
 )
 
 pytestmark = pytest.mark.unit
+
+
+def test_storage_key_keeps_short_tuple_text():
+    assert metric_instance_storage_key(("h1", "eth0")) == "('h1', 'eth0')"
+    assert is_metric_instance_fingerprint("('h1', 'eth0')") is False
+
+
+def test_storage_key_fingerprints_tuple_text_past_the_column():
+    mount = "m" * 300
+    first = metric_instance_storage_key(("h1", mount))
+    assert is_metric_instance_fingerprint(first)
+    assert len(first) < 255
+    assert metric_instance_storage_key(("h1", mount)) == first
+    assert metric_instance_storage_key(("h1", mount + "x")) != first
 
 
 def test_build_safe_instance_id_is_decodable():
@@ -80,15 +96,18 @@ def test_build_metric_template_vars_prefix():
     assert build_metric_template_vars({"device": "eth0"}) == {"metric__device": "eth0"}
 
 
-@pytest.mark.parametrize("value,expected", [
-    (("a", "b"), ("a", "b")),
-    (["a", "b"], ("a", "b")),
-    ("('a', 'b')", ("a", "b")),
-    ("['a', 'b']", ("a", "b")),
-    ("123", (123,)),
-    ("plain", ("plain",)),
-    (42, (42,)),
-])
+@pytest.mark.parametrize(
+    "value,expected",
+    [
+        (("a", "b"), ("a", "b")),
+        (["a", "b"], ("a", "b")),
+        ("('a', 'b')", ("a", "b")),
+        ("['a', 'b']", ("a", "b")),
+        ("123", (123,)),
+        ("plain", ("plain",)),
+        (42, (42,)),
+    ],
+)
 def test_parse_instance_id_variants(value, expected):
     assert parse_instance_id(value) == expected
 

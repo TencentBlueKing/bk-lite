@@ -693,6 +693,14 @@ def test_build_login_url_does_not_emit_http_request():
             redirect_uri="https://bk/callback",
             state="signed",
         )
+        WeComLoginAuthAdapter.build_login_url(
+            CONFIG,
+            "wecom",
+            "login_auth",
+            redirect_uri="https://bk/callback",
+            state="signed",
+            login_channel="oauth",
+        )
 
     assert get.call_count == 0
     assert post.call_count == 0

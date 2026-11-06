@@ -23,6 +23,8 @@ export interface ChatProps extends WebChatConfig {
   showFullscreenButton?: boolean;
   showClearButton?: boolean;
   conversationHistoryEnabled?: boolean;
+  /** 平台渠道所属智能体启用了作业管理时，输入框显示分发文件。 */
+  jobMgmtEnabled?: boolean;
   initialContextUsage?: LlmContextUsage | null;
   showHeader?: boolean;
   apiKey?: string;

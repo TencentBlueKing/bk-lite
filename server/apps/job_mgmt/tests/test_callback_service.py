@@ -65,6 +65,7 @@ class TestSendCallback:
                     },
                     1,
                 ],
+                queue="job",
             )
             assert _nats_calls(mock_app) == []
 

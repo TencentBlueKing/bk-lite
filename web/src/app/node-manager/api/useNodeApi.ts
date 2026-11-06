@@ -81,15 +81,9 @@ const useNodeApi = () => {
     };
   };
 
-  // 删除节点必清 CMDB 悬挂 node_id（实例保留）。retire_linked=true 时额外退役监控。
-  const delNode = async (
-    id: React.Key,
-    options?: { retire_linked?: boolean }
-  ) => {
-    const query = options?.retire_linked
-      ? '?retire_linked=true'
-      : '';
-    return await del(`/node_mgmt/api/node/${String(id)}/${query}`);
+  // 删除节点必清 CMDB 悬挂 node_id（实例保留），并按统一规则处理关联采集。
+  const delNode = async (id: React.Key) => {
+    return await del(`/node_mgmt/api/node/${String(id)}/`);
   };
 
   // 详情补推 / 重新同步（无级联，仅推送列出的 targets）

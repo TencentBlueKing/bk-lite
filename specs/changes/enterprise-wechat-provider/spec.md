@@ -16,7 +16,7 @@ IntegrationInstance 运行时模型，首期提供以下三个能力：
 
 ### 登录形态
 
-首期只支持用户从 BK-Lite Web 登录页主动发起的企业微信扫码 OAuth：
+PC Web 登录页仍只主动发起企业微信扫码 OAuth。移动端网页授权见下文「移动端网页授权」：
 
 1. BK-Lite 创建登录请求并生成带签名 `state` 的企业微信扫码授权地址。
 2. 用户扫码并确认授权。
@@ -26,7 +26,6 @@ IntegrationInstance 运行时模型，首期提供以下三个能力：
 
 首期不实现以下形态：
 
-- 从企业微信工作台点击应用进入 BK-Lite 的应用免登。
 - 外部身份平台主动携带凭证跳转 BK-Lite 的通用 SSO。
 - 企业微信回调后固定重定向首页。扫码登录仍应保留并校验 BK-Lite 原始
   `callbackUrl`，没有合法目标时才回到首页。
@@ -124,6 +123,27 @@ session sync` 统一链路，不新增 NextAuth provider，不复用旧个人微
 - **WHEN** `state` 无效、过期或已消费，或 `code` 无效
 - **THEN** 登录失败，不能建立会话，错误信息不得泄露外部凭据。
 
+### 移动端网页授权
+
+PC 扫码保持默认。移动端在 `start_login_auth` 上传 `login_channel=oauth` 时，授权地址改为企业微信网页授权，`scope=snsapi_base`，并带上 `agentid`。`code` 仍交给现有 `getuserinfo`，不新增身份接口。
+
+工作台免登只在企业微信容器里自动发起这次网页授权，不使用 JS-SDK 或 `getAuthCode`。失败退回移动端登录页。登录方式仍看公开绑定的 `oauth` 证据；标准 OAuth（如飞书）在系统浏览器与对应容器都能选，企业微信只在企业微信容器内展示入口并静默授权，系统浏览器不展示企业微信。
+
+#### 验收场景
+
+- **WHEN** PC 登录不传 `login_channel`，或显式传入 `qr`
+- **THEN** 授权地址仍是扫码地址 `wwopen/sso/qrConnect`。
+
+- **WHEN** 移动端传入 `login_channel=oauth`
+- **THEN** 授权地址是 `connect/oauth2/authorize`，包含 `snsapi_base`、`agentid` 和 `#wechat_redirect`。
+- **AND** 私有化实例使用配置的网页授权地址，不猜测路径。
+
+- **WHEN** 企业 ID 与 AgentId 都已配置
+- **THEN** 公开登录绑定声明 `evidence_modes` 含 `oauth`，且不返回 Secret。
+
+- **WHEN** 用户在系统浏览器打开移动端登录页
+- **THEN** 登录方式选择区不展示企业微信；仅企业微信容器（User-Agent 含 `wxwork`）展示企业微信入口并可静默网页授权。
+
 ### IM 应用通知
 
 首期通知使用企业微信自建应用消息接口向用户发送文本消息，不等同于群机器人
@@ -157,7 +177,8 @@ adapter 直接读取实例配置中的实际接口 URL；不再使用 `api_base_
 | 用途 | 默认官方 URL |
 |---|---|
 | 获取 access token | `https://qyapi.weixin.qq.com/cgi-bin/gettoken`（基础连接） |
-| 扫码授权 | `https://open.work.weixin.qq.com/wwopen/sso/qrConnect`（login_auth） |
+| 扫码授权 | `https://open.work.weixin.qq.com/wwopen/sso/qrConnect`（login_auth，PC 默认） |
+| 移动端网页授权 | `https://open.weixin.qq.com/connect/oauth2/authorize`（login_auth，`login_channel=oauth`） |
 | OAuth code 换取用户身份 | `https://qyapi.weixin.qq.com/cgi-bin/auth/getuserinfo`（login_auth） |
 | 部门列表 | `https://qyapi.weixin.qq.com/cgi-bin/department/list`（user_sync） |
 | 成员列表 | `https://qyapi.weixin.qq.com/cgi-bin/user/list`（user_sync / im_notification） |
@@ -165,8 +186,8 @@ adapter 直接读取实例配置中的实际接口 URL；不再使用 `api_base_
 
 私有化场景由管理员直接将上述地址替换为私有化部署的实际接口地址。Adapter 不对
 私有化路径做猜测兼容；测试需证明每条外呼都尊重配置值。`build_login_url` 只
-构造给浏览器打开的扫码 URL，不产生后端 HTTP 请求，因此也不受 `proxy_url`
-影响。
+构造给浏览器打开的扫码或网页授权 URL，不产生后端 HTTP 请求，因此也不受
+`proxy_url` 影响。
 
 access token 可按 `(access_token_url, corp_id, corp_secret)` 的不可逆缓存键进行
 进程内缓存，并在临近过期或认证失败时刷新。缓存、异常和日志不得暴露 token
@@ -186,7 +207,7 @@ access token 可按 `(access_token_url, corp_id, corp_secret)` 的不可逆缓�
 
 ## 非目标
 
-- 企业微信工作台应用免登。
+- 企业微信 JS-SDK / `getAuthCode` 免登。移动端使用 `snsapi_base` 静默网页授权。
 - 通用外部 SSO 协议或 SSO 路由改造。
 - 群机器人 Webhook、群聊通知或已有企业微信机器人渠道迁移。
 - 卡片、Markdown、图片、文件等富消息。

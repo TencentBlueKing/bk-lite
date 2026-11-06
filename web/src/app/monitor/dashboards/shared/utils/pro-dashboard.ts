@@ -2,9 +2,17 @@ export type ObjectDashboardMode = 'dashboard' | 'category' | 'metrics';
 
 /**
  * 代码里真正挂了专业盘的对象。只收录已有专业布局的路由，
- * 不按名字猜测。目前是主机分类盘、MySQL 专业盘和 Redis 专业盘。
+ * 不按名字猜测。目前是主机分类盘、MySQL、Redis 和 PostgreSQL 专业盘。
  */
-const PRO_DASHBOARD_OBJECT_KEYS = ['host', 'mysql', 'redis'] as const;
+const PRO_DASHBOARD_OBJECT_KEYS = ['host', 'mysql', 'redis', 'postgres'] as const;
+
+/** 专业盘顶栏不出现采集器名。只挡 PostgreSQL 分类盘，传统盘仍用 config.metaItems。 */
+const CATEGORY_CHROME_BANNED = /telegraf|database|datasource|采集器/i;
+
+export const allowCategoryChromeMeta = (routeKey: string, item: string) => {
+  if (routeKey.trim().toLowerCase() !== 'postgres') return true;
+  return !CATEGORY_CHROME_BANNED.test(item);
+};
 
 export interface DashboardModeOptionShape {
   labelKey: string;

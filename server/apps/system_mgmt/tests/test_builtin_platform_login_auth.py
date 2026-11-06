@@ -348,6 +348,7 @@ def test_get_login_auth_bindings_returns_builtin_binding_public_payload():
             "provider_key": "bk_lite_builtin",
             "integration_instance_id": instance.id,
             "integration_instance_name": instance.name,
+            "client_login": {"evidence_modes": []},
         }
     ]
 

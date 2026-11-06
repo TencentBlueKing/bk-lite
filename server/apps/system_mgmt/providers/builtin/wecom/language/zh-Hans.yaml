@@ -77,6 +77,8 @@ capabilities:
     fields:
       login_auth_authorize_url:
         label: 扫码授权地址
+      login_auth_oauth_authorize_url:
+        label: 网页授权地址
       login_auth_user_info_url:
         label: 用户身份地址
   user_sync:

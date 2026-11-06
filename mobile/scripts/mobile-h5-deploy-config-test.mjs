@@ -134,7 +134,16 @@ test('nginx.h5.conf serves exported routes and proxies API requests', async () =
   assert.doesNotMatch(nginxConfig, /try_files[^;]*\$uri\//);
   assert.doesNotMatch(nginxConfig, /expires 1y/);
   assert.match(nginxConfig, /Cache-Control "public, max-age=31536000, immutable"/);
+  assert.match(nginxConfig, /location = \/api\/v1\/core\/api\/login_auth\/callback\//);
+  assert.match(
+    nginxConfig,
+    /proxy_pass http:\/\/bklite-server:8000\/api\/v1\/core\/api\/login_auth\/callback\//,
+  );
   assert.match(nginxConfig, /location \/api\/proxy\//);
+  assert.match(
+    nextConfig,
+    /source: '\/api\/v1\/core\/api\/login_auth\/callback\/'/,
+  );
   assert.match(
     nginxConfig,
     /proxy_pass http:\/\/bklite-server:8000\/api\/v1\//,

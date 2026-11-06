@@ -247,7 +247,7 @@
         "normalGroup": "Normal organization",
         "syncedGroup": "Synced organization",
         "virtualGroup": "Virtual organization",
-        "noDataRules": "No data permissions",
+        "noDataRules": "No data permission rules configured; full permission by default",
         "roleName": "Role",
         "roleSource": "Source",
         "directGrant": "Granted directly",

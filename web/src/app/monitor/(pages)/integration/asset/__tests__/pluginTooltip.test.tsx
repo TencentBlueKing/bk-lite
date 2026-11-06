@@ -27,6 +27,16 @@ describe('formatCollectorNodes', () => {
     ).toEqual(['Alpha (node-1)']);
   });
 
+  it('marks a removed node when a label is provided', () => {
+    expect(
+      formatCollectorNodes(
+        'auto',
+        [{ id: 'node-1', name: 'Alpha', removed: true }],
+        '采集节点已删除'
+      )
+    ).toEqual(['Alpha (node-1) · 采集节点已删除']);
+  });
+
   it('formats multiple nodes and removes duplicate ids', () => {
     expect(
       formatCollectorNodes('auto', [

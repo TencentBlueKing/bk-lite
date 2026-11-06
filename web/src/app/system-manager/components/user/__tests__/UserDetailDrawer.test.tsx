@@ -148,10 +148,16 @@ describe('UserDetailDrawer', () => {
     fireEvent.click(eyeButtons[0]);
     expect(screen.queryByText('daniel@example.com')).not.toBeNull();
 
-    // 第一个组织默认展开，显示其数据权限
+    // 第一个组织默认展开，应用与数据权限左对齐成表，没有单独的区块标题
     const groupButton = screen.getByRole('button', { name: /Default/ });
     expect(groupButton.getAttribute('aria-expanded')).toBe('true');
+    expect(screen.getAllByText('system.permission.app').length).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByText('system.permission.dataPermission')).not.toBeNull();
     expect(screen.queryByText('主机资源查看范围')).not.toBeNull();
+
+    const emptyGroupButton = screen.getByRole('button', { name: /SyncedGroup/ });
+    fireEvent.click(emptyGroupButton);
+    expect(screen.queryByText('system.user.detail.noDataRules')).not.toBeNull();
 
     // 点击第一个组织头部进行收起
     fireEvent.click(groupButton);

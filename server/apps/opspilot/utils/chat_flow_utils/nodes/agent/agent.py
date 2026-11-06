@@ -17,6 +17,7 @@ from apps.opspilot.services.caller_identity import CALLER_IDENTITY_CONFIG_KEY
 from apps.opspilot.services.chat_service import ChatService, chat_service
 from apps.opspilot.services.skill_package.runtime import build_skill_package_prompt, build_skill_package_strategy, hydrate_skill_packages
 from apps.opspilot.services.wiki.active_generation_query_service import ActiveGenerationReadError
+from apps.opspilot.services.wiki.chat_material_service import WIKI_MATERIAL_ACTOR_KEY, actor_for_chat_flow_input
 from apps.opspilot.services.wiki.wiki_budget_service import WikiBudgetExceeded
 from apps.opspilot.services.workflow_attachment_service import build_signed_attachment_download_url
 from apps.opspilot.utils.agent_factory import create_agent_instance
@@ -291,6 +292,7 @@ class AgentNode(BaseNodeExecutor):
             # 只透传 HTTP 入口已经校验并捕获的快照。不要从 Skill 的 team
             # 或其它运行参数推断身份；无快照的非交互入口应由 Monitor 明确拒绝。
             params[CALLER_IDENTITY_CONFIG_KEY] = dict(caller_identity)
+        params[WIKI_MATERIAL_ACTOR_KEY] = actor_for_chat_flow_input(flow_input)
         if isinstance(flow_input.get("pending_question"), dict):
             params["pending_question"] = flow_input["pending_question"]
         return params

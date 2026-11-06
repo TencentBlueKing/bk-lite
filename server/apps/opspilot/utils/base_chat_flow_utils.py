@@ -32,6 +32,7 @@ from django.http import HttpResponse
 
 from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.models import Bot, BotWorkFlow
+from apps.opspilot.services.wiki.chat_material_service import WIKI_MATERIAL_ACTOR_KEY, external_actor
 from apps.opspilot.utils.chat_flow_utils.engine.factory import create_chat_flow_engine
 
 # 两阶段去重缓存过期时间
@@ -110,6 +111,7 @@ class BaseChatFlowUtils(ABC):
             "node_id": node_id,
             "channel": self.channel_code,
             "is_third_party": True,
+            WIKI_MATERIAL_ACTOR_KEY: external_actor(sender_id),
         }
 
         # 执行 ChatFlow

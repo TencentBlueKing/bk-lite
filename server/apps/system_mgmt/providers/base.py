@@ -23,6 +23,13 @@ class BaseLoginAuthAdapter(BaseCapabilityAdapter):
     def authenticate(cls, config: dict, provider_key: str, capability_key: str, **kwargs):
         return CapabilityExecutionResult.not_implemented(capability_key, "authenticate")
 
+    @classmethod
+    def describe_client_login(cls, config: dict, provider_key: str, capability_key: str, **kwargs):
+        return CapabilityExecutionResult.success_result(
+            "Client login is not advertised",
+            payload={"evidence_modes": []},
+        )
+
 
 class BaseUserSyncAdapter(BaseCapabilityAdapter):
     capability_key = "user_sync"

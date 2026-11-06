@@ -15,13 +15,37 @@ from apps.system_mgmt.services.login_auth_binding_service import serialize_publi
 
 
 @nats_client.register
-def login_with_binding(binding_id, auth_code="", username="", password="", bk_token=""):
-    return _login_with_binding_service(binding_id, auth_code, username=username, password=password, bk_token=bk_token)
+def login_with_binding(binding_id, auth_code="", username="", password="", bk_token="", evidence_mode="", jsapi_code_type=""):
+    return _login_with_binding_service(
+        binding_id,
+        auth_code,
+        username=username,
+        password=password,
+        bk_token=bk_token,
+        evidence_mode=evidence_mode,
+        jsapi_code_type=jsapi_code_type,
+    )
 
 
-def _login_with_binding_service(binding_id, auth_code="", username="", password="", bk_token=""):
+def _login_with_binding_service(
+    binding_id,
+    auth_code="",
+    username="",
+    password="",
+    bk_token="",
+    evidence_mode="",
+    jsapi_code_type="",
+):
     try:
-        return execute_login_with_binding(int(binding_id), auth_code, username=username, password=password, bk_token=bk_token)
+        return execute_login_with_binding(
+            int(binding_id),
+            auth_code,
+            username=username,
+            password=password,
+            bk_token=bk_token,
+            evidence_mode=evidence_mode,
+            jsapi_code_type=jsapi_code_type,
+        )
     except (TypeError, ValueError):
         return {"result": False, "message": "Invalid login auth binding id"}
 

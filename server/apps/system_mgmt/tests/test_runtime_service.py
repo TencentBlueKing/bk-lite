@@ -1,7 +1,6 @@
-from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
 import logging
-
+from types import SimpleNamespace
+from unittest.mock import patch
 from urllib.parse import parse_qs, urlparse
 
 import pytest
@@ -15,8 +14,8 @@ from apps.system_mgmt.models import (
     LoginAuthBindingUnmatchedActionChoices,
     User,
 )
-from apps.system_mgmt.providers.builtin.feishu.adapters.login_auth import FeishuLoginAuthAdapter
 from apps.system_mgmt.providers.base import BaseUserSyncAdapter
+from apps.system_mgmt.providers.builtin.feishu.adapters.login_auth import FeishuLoginAuthAdapter
 from apps.system_mgmt.providers.runtime import CapabilityExecutionResult, RuntimeApplicationService
 from apps.system_mgmt.services.login_auth_binding_service import (
     build_login_auth_redirect,
@@ -117,7 +116,8 @@ def test_runtime_application_service_can_test_single_capability():
             SimpleNamespace(key="login_auth", adapter_key="demo.login_auth"),
         ],
         get_capability=lambda capability_key: next(
-            capability for capability in [
+            capability
+            for capability in [
                 SimpleNamespace(key="user_sync", adapter_key="demo.user_sync"),
                 SimpleNamespace(key="login_auth", adapter_key="demo.login_auth"),
             ]
@@ -153,11 +153,7 @@ def test_runtime_test_connection_returns_provider_unavailable_when_unregistered(
     assert result.errors[0].code == "provider.unavailable"
     assert "unavailable" in result.summary.lower()
     assert "Unknown provider" not in result.summary
-    records = [
-        record
-        for record in caplog.records
-        if record.name == "system-manager" and "provider_unavailable" in record.msg
-    ]
+    records = [record for record in caplog.records if record.name == "system-manager" and "provider_unavailable" in record.msg]
     assert len(records) == 1
     record = records[0]
     assert record.msg == "event=provider_unavailable pack_key=%s failed_stage=test_connection error_type=%s"
@@ -166,16 +162,11 @@ def test_runtime_test_connection_returns_provider_unavailable_when_unregistered(
 
 
 def _test_connection_runtime_with_results(results):
-    capabilities = [
-        SimpleNamespace(key=capability_key, adapter_key=f"demo.{capability_key}")
-        for capability_key in results
-    ]
+    capabilities = [SimpleNamespace(key=capability_key, adapter_key=f"demo.{capability_key}") for capability_key in results]
     manifest = SimpleNamespace(
         key="demo",
         capabilities=capabilities,
-        get_capability=lambda capability_key: next(
-            capability for capability in capabilities if capability.key == capability_key
-        ),
+        get_capability=lambda capability_key: next(capability for capability in capabilities if capability.key == capability_key),
     )
 
     adapters = {}
@@ -183,11 +174,7 @@ def _test_connection_runtime_with_results(results):
         adapters[f"demo.{capability_key}"] = type(
             f"{capability_key.title()}Adapter",
             (),
-            {
-                "test_connection": classmethod(
-                    lambda cls, config, provider_key, capability_key, _result=capability_result, **kwargs: _result
-                )
-            },
+            {"test_connection": classmethod(lambda cls, config, provider_key, capability_key, _result=capability_result, **kwargs: _result)},
         )
 
     service = RuntimeApplicationService()
@@ -367,9 +354,7 @@ def test_runtime_application_service_aggregates_capability_failures_into_one_log
     manifest = SimpleNamespace(
         key="demo",
         capabilities=capabilities,
-        get_capability=lambda capability_key: next(
-            item for item in capabilities if item.key == capability_key
-        ),
+        get_capability=lambda capability_key: next(item for item in capabilities if item.key == capability_key),
     )
     instance = SimpleNamespace(
         id=7,
@@ -389,11 +374,7 @@ def test_runtime_application_service_aggregates_capability_failures_into_one_log
     with caplog.at_level("WARNING"):
         result = service.test_connection(instance)
 
-    failure_logs = [
-        record.message
-        for record in caplog.records
-        if "Integration instance test connection failed" in record.message
-    ]
+    failure_logs = [record.message for record in caplog.records if "Integration instance test connection failed" in record.message]
     assert result.success is False
     assert len(failure_logs) == 1
     assert "login_auth" in failure_logs[0]
@@ -401,12 +382,8 @@ def test_runtime_application_service_aggregates_capability_failures_into_one_log
     assert "external-login_auth" in failure_logs[0]
     assert "external-user_sync" in failure_logs[0]
     assert "app_secret=hidden" not in failure_logs[0]
-    assert result.payload["capability_results"]["login_auth"]["summary"] == (
-        "login_auth failed with app_secret=hidden"
-    )
-    assert result.payload["capability_results"]["user_sync"]["errors"][0]["message"] == (
-        "user_sync failed with app_secret=hidden"
-    )
+    assert result.payload["capability_results"]["login_auth"]["summary"] == ("login_auth failed with app_secret=hidden")
+    assert result.payload["capability_results"]["user_sync"]["errors"][0]["message"] == ("user_sync failed with app_secret=hidden")
 
 
 def test_runtime_application_service_returns_not_implemented_for_base_list_departments():
@@ -505,6 +482,16 @@ def test_feishu_build_login_url_returns_authorize_url_payload():
     assert query["redirect_uri"] == [redirect_uri]
     assert query["state"] == ["state-1"]
 
+    channeled = FeishuLoginAuthAdapter.build_login_url(
+        config=config,
+        provider_key="feishu",
+        capability_key="login_auth",
+        redirect_uri=redirect_uri,
+        state="state-1",
+        login_channel="oauth",
+    )
+    assert channeled.payload == result.payload
+
 
 @pytest.mark.django_db
 def test_get_active_login_auth_bindings_includes_builtin_binding():
@@ -559,11 +546,21 @@ def test_build_login_auth_redirect_delegates_to_runtime_service():
     with patch("apps.system_mgmt.services.login_auth_binding_service.RuntimeApplicationService.execute", return_value=runtime_result) as mock_execute:
         result = build_login_auth_redirect(binding, redirect_uri="https://console.example.com/callback", state="signed")
 
-    assert result.success is True
-    assert result.payload["authorize_url"] == "https://example.com"
-    assert mock_execute.call_args.kwargs["binding"] == binding
-    assert mock_execute.call_args.kwargs["redirect_uri"] == "https://console.example.com/callback"
-    assert mock_execute.call_args.kwargs["state"] == "signed"
+        assert result.success is True
+        assert result.payload["authorize_url"] == "https://example.com"
+        assert mock_execute.call_args.kwargs["binding"] == binding
+        assert mock_execute.call_args.kwargs["redirect_uri"] == "https://console.example.com/callback"
+        assert mock_execute.call_args.kwargs["state"] == "signed"
+        assert "login_channel" not in mock_execute.call_args.kwargs
+
+        mock_execute.reset_mock()
+        build_login_auth_redirect(
+            binding,
+            redirect_uri="https://console.example.com/callback",
+            state="signed",
+            login_channel="oauth",
+        )
+        assert mock_execute.call_args.kwargs["login_channel"] == "oauth"
 
 
 @pytest.mark.django_db
@@ -719,9 +716,7 @@ def test_login_with_binding_creates_user_when_unmatched_action_is_create():
 
 @pytest.mark.django_db
 def test_login_with_binding_does_not_modify_existing_user_profile():
-    """登录认证不修改已有用户资料,只刷 last_login(由外层 login_with_binding 处理)。
-
-    """
+    """登录认证不修改已有用户资料,只刷 last_login(由外层 login_with_binding 处理)。"""
     instance = IntegrationInstance.objects.create(
         name="Feishu Login",
         provider_key="feishu",
@@ -796,21 +791,18 @@ def test_get_active_login_auth_bindings_keeps_ready_wechat_binding_without_login
 
 # ---------- login_with_binding 日志分级（按错误码区分 WARNING / ERROR / INFO）----------
 
-import logging as _logging
-
 
 @pytest.mark.django_db
 def test_login_with_binding_logs_warning_when_binding_not_found(caplog):
     """binding_id 不存在 → WARNING（业务查询 miss，可能合法场景）。"""
-    with caplog.at_level(_logging.WARNING, logger="system-manager"):
+    with caplog.at_level(logging.WARNING, logger="system-manager"):
         result = login_with_binding(999999, "auth-code")
 
     assert result["result"] is False
     assert result["message"] == "Login auth binding not found"
-    warning_records = [r for r in caplog.records if r.levelno == _logging.WARNING]
+    warning_records = [r for r in caplog.records if r.levelno == logging.WARNING]
     assert any(
-        "binding not found" in r.message and "binding_id=999999" in r.message
-        for r in warning_records
+        "binding not found" in r.message and "binding_id=999999" in r.message for r in warning_records
     ), f"Expected WARNING about missing binding, got: {[r.message for r in caplog.records]}"
 
 
@@ -834,15 +826,13 @@ def test_login_with_binding_logs_warning_when_binding_not_ready(caplog):
         unmatched_user_action=LoginAuthBindingUnmatchedActionChoices.DENY,
     )
 
-    with caplog.at_level(_logging.WARNING, logger="system-manager"):
+    with caplog.at_level(logging.WARNING, logger="system-manager"):
         result = login_with_binding(binding.id, "auth-code")
 
     assert result["result"] is False
-    warning_records = [r for r in caplog.records if r.levelno == _logging.WARNING]
+    warning_records = [r for r in caplog.records if r.levelno == logging.WARNING]
     assert any(
-        "not ready" in r.message and f"binding_id={binding.id}" in r.message
-        and "provider_key=feishu" in r.message
-        for r in warning_records
+        "not ready" in r.message and f"binding_id={binding.id}" in r.message and "provider_key=feishu" in r.message for r in warning_records
     ), f"Expected WARNING with binding_id context, got: {[r.message for r in caplog.records]}"
 
 
@@ -869,23 +859,18 @@ def test_login_with_binding_logs_error_when_runtime_authenticate_fails(caplog):
         platform_field=LoginAuthBindingPlatformFieldChoices.USERNAME,
         unmatched_user_action=LoginAuthBindingUnmatchedActionChoices.DENY,
     )
-    runtime_result = CapabilityExecutionResult.failed_result(
-        "AD user not found", code="provider.auth_failed", field="sAMAccountName"
-    )
+    runtime_result = CapabilityExecutionResult.failed_result("AD user not found", code="provider.auth_failed", field="sAMAccountName")
 
-    with caplog.at_level(_logging.ERROR, logger="system-manager"), patch(
+    with caplog.at_level(logging.ERROR, logger="system-manager"), patch(
         "apps.system_mgmt.services.login_auth_binding_service.RuntimeApplicationService.execute",
         return_value=runtime_result,
     ):
         result = login_with_binding(binding.id, "auth-code", username="zhangsan", password="x")
 
     assert result["result"] is False
-    error_records = [r for r in caplog.records if r.levelno == _logging.ERROR]
+    error_records = [r for r in caplog.records if r.levelno == logging.ERROR]
     assert any(
-        "binding_id=" in r.message
-        and "provider_key=ad" in r.message
-        and "provider.auth_failed" in r.message
-        and 'username=' in r.message
+        "binding_id=" in r.message and "provider_key=ad" in r.message and "provider.auth_failed" in r.message and "username=" in r.message
         for r in error_records
     ), f"Expected ERROR with full context, got: {[r.message for r in caplog.records]}"
 
@@ -911,7 +896,7 @@ def test_login_with_binding_logs_warning_when_no_matching_platform_user(caplog):
     )
     runtime_result = CapabilityExecutionResult.success_result("ok", payload={"external_user": {"user_id": "ghost"}})
 
-    with caplog.at_level(_logging.WARNING, logger="system-manager"), patch(
+    with caplog.at_level(logging.WARNING, logger="system-manager"), patch(
         "apps.system_mgmt.services.login_auth_binding_service.RuntimeApplicationService.execute",
         return_value=runtime_result,
     ):
@@ -919,11 +904,9 @@ def test_login_with_binding_logs_warning_when_no_matching_platform_user(caplog):
 
     assert result["result"] is False
     assert result["message"] == "No matching platform user found"
-    warning_records = [r for r in caplog.records if r.levelno == _logging.WARNING]
+    warning_records = [r for r in caplog.records if r.levelno == logging.WARNING]
     assert any(
-        "no matching platform user" in r.message
-        and f"binding_id={binding.id}" in r.message
-        for r in warning_records
+        "no matching platform user" in r.message and f"binding_id={binding.id}" in r.message for r in warning_records
     ), f"Expected WARNING about missing user, got: {[r.message for r in caplog.records]}"
 
 
@@ -946,7 +929,7 @@ def test_login_with_binding_logs_info_on_successful_login(caplog):
         platform_field=LoginAuthBindingPlatformFieldChoices.USERNAME,
         unmatched_user_action=LoginAuthBindingUnmatchedActionChoices.DENY,
     )
-    user = User.objects.create(
+    User.objects.create(
         username="alice",
         display_name="Alice",
         email="alice@example.com",
@@ -954,11 +937,9 @@ def test_login_with_binding_logs_info_on_successful_login(caplog):
         password="",
         domain="domain.com",
     )
-    runtime_result = CapabilityExecutionResult.success_result(
-        "ok", payload={"external_user": {"user_id": "alice"}}
-    )
+    runtime_result = CapabilityExecutionResult.success_result("ok", payload={"external_user": {"user_id": "alice"}})
 
-    with caplog.at_level(_logging.INFO, logger="system-manager"), patch(
+    with caplog.at_level(logging.INFO, logger="system-manager"), patch(
         "apps.system_mgmt.services.login_auth_binding_service.RuntimeApplicationService.execute",
         return_value=runtime_result,
     ), patch(
@@ -968,10 +949,8 @@ def test_login_with_binding_logs_info_on_successful_login(caplog):
         result = login_with_binding(binding.id, "auth-code")
 
     assert result["result"] is True
-    info_records = [r for r in caplog.records if r.levelno == _logging.INFO]
+    info_records = [r for r in caplog.records if r.levelno == logging.INFO]
     assert any(
-        "login_with_binding succeeded" in r.message
-        and f"binding_id={binding.id}" in r.message
-        and "username=alice" in r.message
+        "login_with_binding succeeded" in r.message and f"binding_id={binding.id}" in r.message and "username=alice" in r.message
         for r in info_records
     ), f"Expected INFO audit trail, got: {[r.message for r in caplog.records]}"

@@ -157,7 +157,7 @@ def _serialize_qcloud_tags(tags):
             skipped += 1
             continue
         key, value = [part.strip() for part in text.split(":", 1)]
-        if not key or not value or any(ch in value for ch in (" ", ":", "\n", "\r")):
+        if not key or not value or any(ch in value for ch in (":", "\n", "\r")):
             skipped += 1
             continue
         item = f"{key}:{value}"

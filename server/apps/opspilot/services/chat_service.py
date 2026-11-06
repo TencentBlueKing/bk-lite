@@ -18,6 +18,7 @@ from apps.opspilot.services.builtin_tools import (
     BUILTIN_ALERTS_TOOL_NAME,
     BUILTIN_ATTACHMENT_FILE_TOOL_NAME,
     BUILTIN_CMDB_TOOL_NAME,
+    BUILTIN_JOB_MGMT_TOOL_NAME,
     BUILTIN_LOG_TOOL_NAME,
     BUILTIN_MLOPS_TOOL_NAME,
     BUILTIN_MONITOR_TOOL_NAME,
@@ -30,6 +31,7 @@ from apps.opspilot.services.builtin_tools import (
     build_builtin_alerts_runtime_tool,
     build_builtin_attachment_file_runtime_tool,
     build_builtin_cmdb_runtime_tool,
+    build_builtin_job_mgmt_runtime_tool,
     build_builtin_log_runtime_tool,
     build_builtin_mlops_runtime_tool,
     build_builtin_monitor_runtime_tool,
@@ -44,6 +46,11 @@ from apps.opspilot.services.history_service import history_service
 from apps.opspilot.services.llm_context_budget import DEFAULT_CHAT_SCENE_OUTPUT_TOKENS, working_budget_for_model
 from apps.opspilot.services.skill_memory_service import append_skill_memory_block
 from apps.opspilot.services.wiki.active_generation_query_service import ActiveGenerationReadError
+from apps.opspilot.services.wiki.chat_material_service import (
+    apply_wiki_material_runtime,
+    skill_allows_wiki_material_write,
+    wiki_grounded_uses_single_model_call,
+)
 from apps.opspilot.services.wiki.wiki_budget_service import WikiBudgetExceeded, load_wiki_budget_config
 from apps.opspilot.services.wiki.wiki_context_service import augment_prompt_with_trace, should_skip_wiki_retrieval
 from apps.opspilot.utils.agent_factory import create_agent_instance
@@ -461,6 +468,7 @@ class ChatService:
             BUILTIN_MSSQL_TOOL_NAME: None,
             BUILTIN_ACTIVEDIRECTORY_TOOL_NAME: None,
             BUILTIN_MLOPS_TOOL_NAME: None,
+            BUILTIN_JOB_MGMT_TOOL_NAME: None,
         }
         builtin_builders = {
             BUILTIN_ATTACHMENT_FILE_TOOL_NAME: build_builtin_attachment_file_runtime_tool,
@@ -474,6 +482,7 @@ class ChatService:
             BUILTIN_MSSQL_TOOL_NAME: build_builtin_mssql_runtime_tool,
             BUILTIN_ACTIVEDIRECTORY_TOOL_NAME: build_builtin_activedirectory_runtime_tool,
             BUILTIN_MLOPS_TOOL_NAME: build_builtin_mlops_runtime_tool,
+            BUILTIN_JOB_MGMT_TOOL_NAME: build_builtin_job_mgmt_runtime_tool,
         }
 
         selected_tool_ids = [tool["id"] for tool in selected_tools if isinstance(tool.get("id"), int) and tool["id"] > 0]
@@ -632,6 +641,7 @@ class ChatService:
         wiki_budget_trace = {}
         wiki_kb_ids = kwargs.get("wiki_kb_ids")
         force_wiki_grounded = bool(kwargs.get("force_wiki_grounded"))
+        allow_wiki_material_write = skill_allows_wiki_material_write(kwargs.get("skill_id"))
         wiki_active = bool(wiki_kb_ids) and not should_skip_wiki_retrieval(user_message)
         if wiki_kb_ids and not wiki_active:
             wiki_budget_trace = {
@@ -710,7 +720,10 @@ class ChatService:
                 extra_config,
                 wiki_budget_trace,
                 derived,
-                force_wiki_grounded=force_wiki_grounded,
+                force_wiki_grounded=wiki_grounded_uses_single_model_call(
+                    force_wiki_grounded=force_wiki_grounded,
+                    allow_wiki_material_write=allow_wiki_material_write,
+                ),
             )
         run_model_call_limit = _optional_positive_int(kwargs.get("run_model_call_limit"))
         if run_model_call_limit:
@@ -784,6 +797,7 @@ class ChatService:
                 runtime_extra_config[CALLER_IDENTITY_CONFIG_KEY] = server_caller_identity
 
         _attach_pending_question(chat_kwargs, kwargs)
+        _attach_wiki_material_write(chat_kwargs, kwargs)
         return chat_kwargs, doc_map, title_map
 
 
@@ -804,6 +818,12 @@ def _attach_pending_question(chat_kwargs: dict, kwargs: dict) -> None:
     skill_session_id = str(kwargs.get("skill_session_id") or "").strip()
     if skill_session_id:
         runtime_extra_config["skill_session_id"] = skill_session_id
+    session_id = str(kwargs.get("session_id") or "").strip()
+    if session_id:
+        runtime_extra_config["session_id"] = session_id
+    distribute_file_ids = kwargs.get("distribute_file_ids")
+    if distribute_file_ids:
+        runtime_extra_config["distribute_file_ids"] = distribute_file_ids
     pending_question = kwargs.get("pending_question")
     if isinstance(pending_question, dict):
         runtime_extra_config["pending_question"] = pending_question
@@ -813,6 +833,10 @@ def _attach_pending_question(chat_kwargs: dict, kwargs: dict) -> None:
     consumed = consume_pending_question(conversation_key)
     if consumed:
         runtime_extra_config["pending_question"] = consumed
+
+
+def _attach_wiki_material_write(chat_kwargs: dict, kwargs: dict) -> None:
+    apply_wiki_material_runtime(chat_kwargs, kwargs)
 
 
 # 常驻附件的弱提示。是否落盘只看用户本轮是否要文件，勾选工具不再强制生成。

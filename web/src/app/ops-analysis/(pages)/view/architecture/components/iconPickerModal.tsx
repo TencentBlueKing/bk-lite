@@ -1,6 +1,6 @@
 import React from 'react';
 import OperateModal from '@/components/operate-modal';
-import type { IconPickerRequest } from '@bk-lite/isoflow';
+import type { IconPickerRequest } from '../../../../../../../packages/isoflow';
 
 interface IconPickerModalProps {
   request: IconPickerRequest | null;

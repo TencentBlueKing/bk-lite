@@ -1,5 +1,4 @@
 import hashlib
-import os
 import secrets
 import uuid
 from copy import deepcopy
@@ -7,9 +6,9 @@ from datetime import timedelta
 from urllib.parse import urlparse
 
 from django.conf import settings as django_settings
-from django.core.exceptions import ImproperlyConfigured
 from django.core import signing
 from django.core.cache import cache
+from django.core.exceptions import ImproperlyConfigured
 from django.utils import timezone
 
 from apps.core.logger import logger
@@ -39,6 +38,7 @@ LOGIN_RESULT_ALLOWED_KEYS = {
 }
 
 LOGIN_AUTH_CALLBACK_PATH = "/api/v1/core/api/login_auth/callback/"
+LOGIN_AUTH_RESULT_PATH = "/auth/signin/login-auth-result"
 
 
 def _split_first_header_value(value: str | None) -> str:
@@ -73,7 +73,7 @@ def _parse_origin_parts(origin: str) -> tuple[str, str, int] | None:
 
 
 def _parse_request_origin_parts(scheme: str, host: str) -> tuple[str, str, int] | None:
-    scheme = (scheme or "").strip().rstrip(':').lower()
+    scheme = (scheme or "").strip().rstrip(":").lower()
     host = _split_first_header_value(host)
     if scheme not in ("http", "https") or not host:
         return None
@@ -85,6 +85,7 @@ def _parse_request_origin_parts(scheme: str, host: str) -> tuple[str, str, int] 
     if not parsed.hostname:
         return None
     return scheme, parsed.hostname.lower(), port or _default_port(scheme)
+
 
 def _normalize_public_base_url(base_url: str) -> str:
     base_url = base_url.strip().rstrip("/")
@@ -98,7 +99,6 @@ def _normalize_public_base_url(base_url: str) -> str:
     if port == _default_port(parsed.scheme):
         return f"{parsed.scheme}://{parsed.hostname.lower()}"
     return base_url
-
 
 
 def validate_redirect_origin(request, redirect_origin) -> bool:
@@ -149,15 +149,10 @@ def get_login_auth_callback_uri(request=None, redirect_origin: str | None = None
       - 集成中心详情页「平台回调地址」展示
       - OAuth 启动流程中飞书/钉钉等 adapter 的 ``redirect_uri``
     """
-    if (
-        redirect_origin
-        and request is not None
-        and validate_redirect_origin(request, redirect_origin)
-    ):
+    if redirect_origin and request is not None and validate_redirect_origin(request, redirect_origin):
         result = f"{redirect_origin.rstrip('/')}{LOGIN_AUTH_CALLBACK_PATH}"
         logger.debug(
-            "[BK-Lite login-auth v2] path=redirect_origin redirect_origin=%r result=%r "
-            "HTTP_ORIGIN=%r X-Fwd-Host=%r X-Fwd-Proto=%r HTTP_HOST=%r",
+            "[BK-Lite login-auth v2] path=redirect_origin redirect_origin=%r result=%r " "HTTP_ORIGIN=%r X-Fwd-Host=%r X-Fwd-Proto=%r HTTP_HOST=%r",
             redirect_origin,
             result,
             request.META.get("HTTP_ORIGIN") if request else None,
@@ -194,6 +189,7 @@ def create_auth_request(
     redirect_origin: str | None = None,
     legacy_external_callback_url: str | None = None,
     legacy_third_login_code: str | None = None,
+    result_path: str | None = None,
 ) -> dict:
     auth_request_id = str(uuid.uuid4())
     poll_token = str(uuid.uuid4())
@@ -205,6 +201,7 @@ def create_auth_request(
         "binding_id": binding_id,
         "provider_key": provider_key,
         "callback_url": callback_url,
+        "result_path": result_path or LOGIN_AUTH_RESULT_PATH,
         "redirect_origin": redirect_origin or "",
         "legacy_external_callback_url": legacy_external_callback_url or "",
         "legacy_third_login_code": legacy_third_login_code or "",

@@ -12,7 +12,7 @@
   "default_metric": "any({instance_type='postgres'}) by (instance_id)",
   "instance_id_keys": ["instance_id"],
   "supplementary_indicators": ["postgresql_numbackends", "postgresql_blks_read_rate", "postgresql_temp_files_rate", "postgresql_cache_hit_ratio"],
-  "display_fields": [{"name":"活跃连接数","sort_order":0,"metrics":[{"plugin":"Postgres","metric":"postgresql_numbackends"}]}, {"name":"事务提交速率","sort_order":1,"metrics":[{"plugin":"Postgres","metric":"postgresql_xact_commit_rate"}]}, {"name":"缓存命中率","sort_order":2,"metrics":[{"plugin":"Postgres","metric":"postgresql_cache_hit_ratio"}]}, {"name":"死锁速率","sort_order":3,"metrics":[{"plugin":"Postgres","metric":"postgresql_deadlocks_rate"}]}],
+  "display_fields": [{"name":"活跃连接数","sort_order":0,"metrics":[{"plugin":"Postgres","metric":"postgresql_numbackends"}]}, {"name":"事务提交速率","sort_order":1,"metrics":[{"plugin":"Postgres","metric":"postgresql_xact_commit_rate"}]}, {"name":"缓存命中率","sort_order":2,"metrics":[{"plugin":"Postgres","metric":"postgresql_cache_hit_ratio"}]}, {"name":"死锁次数","sort_order":3,"metrics":[{"plugin":"Postgres","metric":"postgresql_deadlocks_count"}]}],
   "metrics": [
     {
       "metric_group": "Connection",
@@ -218,6 +218,38 @@
       "query": "rate(postgresql_conflicts{__$labels__}[5m])"
     },
     {
+      "metric_group": "Concurrency",
+      "name": "postgresql_deadlocks_count",
+      "display_name": "Deadlock Count",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {
+          "name": "db",
+          "description": "Database name"
+        }
+      ],
+      "description": "Number of transaction deadlocks in the current statistics window",
+      "query": "sum without (db) (increase(postgresql_deadlocks{__$labels__}[5m]))"
+    },
+    {
+      "metric_group": "Concurrency",
+      "name": "postgresql_conflicts_count",
+      "display_name": "Conflict Count",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {
+          "name": "db",
+          "description": "Database name"
+        }
+      ],
+      "description": "Number of concurrency conflicts in the current statistics window",
+      "query": "sum without (db) (increase(postgresql_conflicts{__$labels__}[5m]))"
+    },
+    {
       "metric_group": "TempFiles",
       "name": "postgresql_temp_files_rate",
       "display_name": "Temporary Files Creation Rate",
@@ -362,6 +394,157 @@
       ],
       "description": "Rate of database sessions terminated by fatal errors such as administrator commands, idle-session timeout, or deadlock resolution (pg_stat_database.sessions_killed), expressed as sessions per second. A rising rate signals connection instability.",
       "query": "rate(postgresql_sessions_killed{__$labels__}[5m])"
+    },
+    {
+      "metric_group": "Statement",
+      "name": "postgresql_statement_time",
+      "display_name": "Statement Time",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [
+        {"name": "datname", "description": "数据库名"},
+        {"name": "queryid", "description": "语句标识"},
+        {"name": "query_text", "description": "语句文本"}
+      ],
+      "description": "Cumulative time for one statement, in seconds. A point means the statement was collected. Turn on Top SQL Collection. The target database must have pg_stat_statements installed.",
+      "query": "topk(20, max by (instance_id, datname, queryid, query_text) (postgresql_statement_total_time_seconds{__$labels__}))"
+    },
+    {
+      "metric_group": "Statement",
+      "name": "postgresql_statement_calls",
+      "display_name": "Statement Executions",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {"name": "datname", "description": "数据库名"},
+        {"name": "queryid", "description": "语句标识"},
+        {"name": "query_text", "description": "语句文本"}
+      ],
+      "description": "Cumulative executions for one statement. Shown together with the statements that have the most cumulative time. Turn on Top SQL Collection.",
+      "query": "max by (instance_id, datname, queryid, query_text) (postgresql_statement_calls_total{__$labels__}) and on (instance_id, datname, queryid) topk(20, max by (instance_id, datname, queryid) (postgresql_statement_total_time_seconds{__$labels__}))"
+    },
+    {
+      "metric_group": "Statement",
+      "name": "postgresql_statement_rows",
+      "display_name": "Statement Rows Returned",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {"name": "datname", "description": "数据库名"},
+        {"name": "queryid", "description": "语句标识"},
+        {"name": "query_text", "description": "语句文本"}
+      ],
+      "description": "Cumulative rows returned by one statement. Shown together with the statements that have the most cumulative time. Turn on Top SQL Collection.",
+      "query": "max by (instance_id, datname, queryid, query_text) (postgresql_statement_rows_total{__$labels__}) and on (instance_id, datname, queryid) topk(20, max by (instance_id, datname, queryid) (postgresql_statement_total_time_seconds{__$labels__}))"
+    },
+    {
+      "metric_group": "Statement",
+      "name": "postgresql_statement_time_rate",
+      "display_name": "Statement Time Rate",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [
+        {"name": "datname", "description": "数据库名"},
+        {"name": "queryid", "description": "语句标识"},
+        {"name": "query_text", "description": "语句文本"}
+      ],
+      "description": "Time consumed per second by one statement, for the trend within the current window. Turn on Top SQL Collection.",
+      "query": "sum by (instance_id, datname, queryid, query_text) (rate(postgresql_statement_total_time_seconds{__$labels__}[5m])) and on (instance_id, datname, queryid) topk(20, max by (instance_id, datname, queryid) (postgresql_statement_total_time_seconds{__$labels__}))"
+    },
+    {
+      "metric_group": "WaitEvent",
+      "name": "postgresql_wait_sessions",
+      "display_name": "Waiting Sessions",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {"name": "wait_event_type", "description": "等待类型"},
+        {"name": "wait_event", "description": "等待事件"}
+      ],
+      "description": "Sessions currently in this wait. This is a sample of current sessions, not cumulative wait time. Turn on Wait Event Collection. An empty result means no session was waiting at collection time.",
+      "query": "sum by (instance_id, wait_event_type, wait_event) (postgresql_wait_sessions{__$labels__})"
+    },
+    {
+      "metric_group": "Recovery",
+      "name": "postgresql_recovery_in_recovery",
+      "display_name": "In Recovery",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "description": "Whether the instance is in recovery. 0 means it accepts writes (primary, including a standalone). 1 means a standby still replaying. No value means the role is unknown.",
+      "query": "max by (instance_id) (postgresql_recovery_in_recovery{__$labels__})"
+    },
+    {
+      "metric_group": "Topology",
+      "name": "postgresql_replication_streaming_replicas",
+      "display_name": "Streaming Replicas",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "description": "Connected streaming replication peers right now. Above zero means a primary with replicas. Zero is a real sample, not a missing point. This is not replication lag.",
+      "query": "max by (instance_id) (postgresql_replication_streaming_replicas{__$labels__})"
+    },
+    {
+      "metric_group": "Topology",
+      "name": "postgresql_replication_replication_slots",
+      "display_name": "Replication Slots",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "description": "Replication slots on this instance, including slots whose peer is not connected. Above zero means replication topology. Zero is a real sample. This is not slot lag.",
+      "query": "max by (instance_id) (postgresql_replication_replication_slots{__$labels__})"
+    },
+    {
+      "metric_group": "Topology",
+      "name": "postgresql_replication_write_lag_seconds",
+      "display_name": "Replication Write Lag",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "description": "Longest time a connected replica has taken to write received WAL. Zero when no streaming replica is connected.",
+      "query": "max by (instance_id) (postgresql_replication_write_lag_seconds{__$labels__})"
+    },
+    {
+      "metric_group": "Topology",
+      "name": "postgresql_replication_flush_lag_seconds",
+      "display_name": "Replication Flush Lag",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "description": "Longest time a connected replica has taken to flush received WAL. Zero when no streaming replica is connected.",
+      "query": "max by (instance_id) (postgresql_replication_flush_lag_seconds{__$labels__})"
+    },
+    {
+      "metric_group": "Topology",
+      "name": "postgresql_replication_replay_lag_seconds",
+      "display_name": "Replication Replay Lag",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "description": "Longest time a connected replica has taken to replay received WAL. Zero when no streaming replica is connected.",
+      "query": "max by (instance_id) (postgresql_replication_replay_lag_seconds{__$labels__})"
+    },
+    {
+      "metric_group": "Topology",
+      "name": "postgresql_replication_slot_restart_lag_bytes",
+      "display_name": "Replication Slot Backlog",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "description": "Most WAL still retained for a replication slot. Zero when no slot is retaining WAL.",
+      "query": "max by (instance_id) (postgresql_replication_slot_restart_lag_bytes{__$labels__})"
     }
   ]
 }

@@ -11,6 +11,7 @@ from apps.opspilot.enum import SkillChannelChoices
 from apps.opspilot.memory.identity import resolve_system_user_uuid
 from apps.opspilot.models import SkillChannel, UserWebchatPreference
 from apps.opspilot.services.caller_identity import CALLER_IDENTITY_CONFIG_KEY, CallerIdentityError, capture_caller_identity, mark_api_secret_identity
+from apps.opspilot.services.job_tool_service import skill_has_job_mgmt
 from apps.opspilot.services.session_context_usage import summarize_skill_session_usage
 from apps.opspilot.services.skill_channel_chat_service import (
     EMBEDDED,
@@ -71,6 +72,7 @@ def _serialize_saas_skill_channels(qs):
             "app_name": ch.name or (ch.skill.name if ch.skill_id else ""),
             "app_description": getattr(ch.skill, "introduction", "") or "",
             "enable_conversation_history": bool(getattr(ch.skill, "enable_conversation_history", False)),
+            "job_mgmt_enabled": skill_has_job_mgmt(ch.skill),
         }
         for ch in qs
     ]
@@ -135,6 +137,7 @@ def _serialize_published_web_skills(skills):
             "introduction": getattr(skill, "introduction", "") or "",
             "conversation_window_size": skill.conversation_window_size,
             "enable_conversation_history": bool(getattr(skill, "enable_conversation_history", False)),
+            "job_mgmt_enabled": skill_has_job_mgmt(skill),
         }
         for skill in skills
     ]
@@ -282,7 +285,8 @@ def execute_skill_channel_chat(request, channel_id):
         return create_error_stream_response(_shown(request, parse_error))
     message = kwargs.get("message", "") or kwargs.get("user_message", "")
     attachment_ids = kwargs.get("attachment_ids") or []
-    if not message and not attachment_ids:
+    distribute_file_ids = kwargs.get("distribute_file_ids") or []
+    if not message and not attachment_ids and not distribute_file_ids:
         return create_error_stream_response(_shown(request, "message 必填"))
     session_id = kwargs.get("session_id") or ""
     page_context = kwargs.get("page_context")
@@ -299,6 +303,7 @@ def execute_skill_channel_chat(request, channel_id):
             session_id=session_id or None,
             page_context=page_context,
             attachment_ids=attachment_ids,
+            distribute_file_ids=distribute_file_ids,
         )
     except SkillChannelChatError as e:
         return create_error_stream_response(_shown(request, e.message))

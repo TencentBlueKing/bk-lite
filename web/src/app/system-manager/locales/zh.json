@@ -247,7 +247,7 @@
         "normalGroup": "普通组织",
         "syncedGroup": "同步组织",
         "virtualGroup": "虚拟组织",
-        "noDataRules": "暂无数据权限",
+        "noDataRules": "未配置数据权限规则，默认全权限",
         "roleName": "角色名称",
         "roleSource": "来源",
         "directGrant": "直接授予",
