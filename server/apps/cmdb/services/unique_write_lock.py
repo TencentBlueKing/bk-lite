@@ -74,6 +74,15 @@ class UniqueWriteLockService:
         )
 
     @classmethod
+    def renew(cls, lock_key: str, *, owner_token: str, lease_seconds: int | None = None) -> bool:
+        lease_until = now() + timedelta(seconds=max(1, lease_seconds or cls.DEFAULT_LEASE_SECONDS))
+        return bool(
+            CmdbUniqueWriteLock.objects.filter(lock_key=cls._persistable_lock_key(lock_key), owner_token=owner_token).update(
+                lease_expires_at=lease_until
+            )
+        )
+
+    @classmethod
     def release(cls, lock_key: str, *, owner_token: str) -> bool:
         deleted, _ = CmdbUniqueWriteLock.objects.filter(lock_key=cls._persistable_lock_key(lock_key), owner_token=owner_token).delete()
         return bool(deleted)

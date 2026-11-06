@@ -1,5 +1,11 @@
 import { useCallback } from 'react';
 import useApiClient from '@/utils/request';
+import { getStoredLocale } from '@/utils/userPreferences';
+import {
+  invalidateModelAttrListCache,
+  loadCachedModelAttrList,
+  loadCachedModelAttrListBatch,
+} from './modelAttrListCache';
 
 export const useModelApi = () => {
   const { get, post, put, del } = useApiClient();
@@ -20,21 +26,37 @@ export const useModelApi = () => {
   const deleteModel = (modelId: string) =>
     del(`/cmdb/api/model/${modelId}/`);
 
-  // 获取模型属性列表
+  // 获取模型属性列表。同一模型的进行中请求和已返回结果在页面间共享。
   const getModelAttrList = (modelId: string) =>
-    get(`/cmdb/api/model/${modelId}/attr_list/`);
+    loadCachedModelAttrList(getStoredLocale(), modelId, (id) =>
+      get(`/cmdb/api/model/${id}/attr_list/`));
+
+  const getModelAttrListBatch = (modelIds: string[]) =>
+    loadCachedModelAttrListBatch(getStoredLocale(), modelIds, async (ids) => {
+      const payload = await post('/cmdb/api/model/attr_list/batch/', { model_ids: ids });
+      return payload?.attrs || {};
+    });
 
   // 创建模型属性
-  const createModelAttr = (modelId: string, params: any) =>
-    post(`/cmdb/api/model/${modelId}/attr/`, params);
+  const createModelAttr = async (modelId: string, params: any) => {
+    const result = await post(`/cmdb/api/model/${modelId}/attr/`, params);
+    invalidateModelAttrListCache(modelId);
+    return result;
+  };
 
   // 更新模型属性
-  const updateModelAttr = (modelId: string, params: any) =>
-    put(`/cmdb/api/model/${modelId}/attr_update/`, params);
+  const updateModelAttr = async (modelId: string, params: any) => {
+    const result = await put(`/cmdb/api/model/${modelId}/attr_update/`, params);
+    invalidateModelAttrListCache(modelId);
+    return result;
+  };
 
   // 删除模型属性
-  const deleteModelAttr = (modelId: string, attrId: string) =>
-    del(`/cmdb/api/model/${modelId}/attr/${attrId}/`);
+  const deleteModelAttr = async (modelId: string, attrId: string) => {
+    const result = await del(`/cmdb/api/model/${modelId}/attr/${attrId}/`);
+    invalidateModelAttrListCache(modelId);
+    return result;
+  };
 
   const getModelUniqueRules = (modelId: string, editingRuleId?: string) =>
     get(`/cmdb/api/model/${modelId}/unique_rules/${editingRuleId ? `?editing_rule_id=${editingRuleId}` : ''}`.replace('/?', '?'));
@@ -225,6 +247,7 @@ export const useModelApi = () => {
     updateModel,
     deleteModel,
     getModelAttrList,
+    getModelAttrListBatch,
     createModelAttr,
     updateModelAttr,
     deleteModelAttr,
