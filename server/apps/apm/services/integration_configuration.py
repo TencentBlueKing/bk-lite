@@ -387,6 +387,80 @@ def _trace_sampler_environment(sample_rate: int) -> dict[str, str]:
     }
 
 
+def _yaml_double_quoted(value: str) -> str:
+    escaped = value.replace("\\", "\\\\").replace('"', '\\"').replace("\r", "\\r").replace("\n", "\\n").replace("\t", "\\t")
+    return f'"{escaped}"'
+
+
+def _collector_forward_snippet(
+    *,
+    endpoint: str,
+    service_namespace: str,
+    service_name: str,
+    service_version: str,
+    deployment_environment: str,
+    sample_rate: int,
+) -> str:
+    """生成合并进用户已有 Collector 的 Trace 转发片段，不安装探针，也不写请求头。"""
+
+    _trace_sampler_environment(sample_rate)
+    attributes = [
+        ("service.namespace", service_namespace, "upsert"),
+        ("service.name", service_name, "insert"),
+    ]
+    if service_version:
+        attributes.append(("service.version", service_version, "insert"))
+    if deployment_environment:
+        attributes.append(("deployment.environment", deployment_environment, "insert"))
+    attribute_lines: list[str] = []
+    for key, value, action in attributes:
+        attribute_lines.extend(
+            (
+                f"      - key: {key}",
+                f"        value: {_yaml_double_quoted(value)}",
+                f"        action: {action}",
+            )
+        )
+    processors = ["resource/bklite"]
+    processor_blocks = [
+        "  resource/bklite:",
+        "    attributes:",
+        *attribute_lines,
+    ]
+    lines = [
+        "# 合并进已有 OpenTelemetry Collector，然后重启 Collector。",
+        "# receivers 改成这份 Collector 已经在用的接收器。",
+        "# Collector 必须位于所选云区域获准上报的网络内。不要添加 Authorization 或其他请求头。",
+        "# 只转发 Trace。不要为 otlp_http/bklite 增加 metrics 或 logs pipeline。",
+        "# service.namespace 写成所选应用。已有的 service.name、service.version、deployment.environment 保持不变。",
+    ]
+    if sample_rate < FULL_TRACE_SAMPLE_RATE:
+        lines.append("# 低于 100 的采样率使用 Collector Contrib 的 probabilistic_sampler。")
+        processors.append("probabilistic_sampler/bklite")
+        processor_blocks.extend(
+            (
+                "  probabilistic_sampler/bklite:",
+                f"    sampling_percentage: {sample_rate}",
+            )
+        )
+    lines.extend(
+        (
+            "exporters:",
+            "  otlp_http/bklite:",
+            f"    endpoint: {_yaml_double_quoted(endpoint)}",
+            "processors:",
+            *processor_blocks,
+            "service:",
+            "  pipelines:",
+            "    traces/bklite:",
+            "      receivers: [otlp]",
+            f"      processors: [{', '.join(processors)}]",
+            "      exporters: [otlp_http/bklite]",
+        )
+    )
+    return "\n".join(lines)
+
+
 def _traces_only_environment() -> dict[str, str]:
     return {
         "OTEL_METRICS_EXPORTER": "none",
@@ -1072,6 +1146,18 @@ class DjangoIntegrationConfigurationService:
             probe_platform=request.probe_platform,
             process_executable=request.process_executable,
         )
+        if request.language == "collector":
+            return IngestSnippet(
+                environment={},
+                code=_collector_forward_snippet(
+                    endpoint=request.endpoint.rstrip("/"),
+                    service_namespace=request.service_namespace,
+                    service_name=request.service_name,
+                    service_version=request.service_version,
+                    deployment_environment=request.environment,
+                    sample_rate=request.sample_rate,
+                ),
+            )
         runtime_profile = _RUNTIME_PROFILES[request.runtime]
         protocol = "http/protobuf"
         if request.language in LANGUAGE_PROBE_ARTIFACTS and not request.probe_download_url:

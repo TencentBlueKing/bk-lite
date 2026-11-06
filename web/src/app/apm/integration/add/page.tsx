@@ -12,7 +12,6 @@ import {
   DotNetOutlined,
   ExperimentOutlined,
   JavaScriptOutlined,
-  KubernetesOutlined,
   PythonOutlined,
 } from '@ant-design/icons';
 import { Alert, Button, Drawer, Form, Input, message, Segmented, Select, Space, Tabs, Tag, Typography } from 'antd';
@@ -57,9 +56,8 @@ const INTEGRATION_GROUPS: { key: string; title: string; icon: ReactNode; methods
       { key: 'swift', title: 'Swift', icon: <CodeOutlined aria-hidden="true" />, language: 'swift', available: true },
     ],
   },
-  { key: 'otel', title: 'OpenTelemetry', icon: <ApiOutlined aria-hidden="true" />, methods: [{ key: 'otel-collector', title: 'OTel Collector', icon: <DeploymentUnitOutlined aria-hidden="true" />, available: false }] },
+  { key: 'otel', title: 'OpenTelemetry', icon: <ApiOutlined aria-hidden="true" />, methods: [{ key: 'otel-collector', title: 'OTel Collector', icon: <DeploymentUnitOutlined aria-hidden="true" />, language: 'collector', available: true }] },
   { key: 'ebpf', title: 'eBPF', icon: <ExperimentOutlined aria-hidden="true" />, methods: [{ key: 'ebpf-obi', title: 'eBPF', icon: <ExperimentOutlined aria-hidden="true" />, language: 'obi', available: true }] },
-  { key: 'kubernetes', title: 'Kubernetes', icon: <KubernetesOutlined aria-hidden="true" />, methods: [{ key: 'otel-operator', title: 'Kubernetes', icon: <KubernetesOutlined aria-hidden="true" />, available: false }] },
 ];
 
 type PageState = 'loading' | 'empty' | 'ready' | 'error';
@@ -245,6 +243,11 @@ function snippetOperationGuide(
       docker: t('apm.integration.guideSwiftDocker', '将本地 Swift Package 放进镜像，完成入口 Span 后重新构建、启动容器。'),
       kubernetes: t('apm.integration.guideSwiftKubernetes', '将以下环境变量合并到应用 Pod；应用需先使用本地 Swift Package，然后滚动重启。'),
     },
+    collector: {
+      agent: t('apm.integration.guideCollector', '把下面的片段合并进已有 Collector 后重启。receivers 改成这份 Collector 已经在用的接收器。Collector 必须能访问所选云区域的内网地址，配置里不要加请求头。只转发 Trace，并把 service.namespace 写成所选应用。'),
+      docker: t('apm.integration.guideCollector', '把下面的片段合并进已有 Collector 后重启。receivers 改成这份 Collector 已经在用的接收器。Collector 必须能访问所选云区域的内网地址，配置里不要加请求头。只转发 Trace，并把 service.namespace 写成所选应用。'),
+      kubernetes: t('apm.integration.guideCollector', '把下面的片段合并进已有 Collector 后重启。receivers 改成这份 Collector 已经在用的接收器。Collector 必须能访问所选云区域的内网地址，配置里不要加请求头。只转发 Trace，并把 service.namespace 写成所选应用。'),
+    },
   };
   return guides[language][mode];
 }
@@ -376,10 +379,6 @@ export default function ApmIntegrationAddPage() {
         ),
         badge: t('apm.integration.lowIntrusion', '低侵入'),
       },
-      'otel-operator': {
-        title: t('apm.integration.k8sTitle', 'Kubernetes 自动注入'),
-        description: t('apm.integration.k8sDesc', 'OTel Operator 注解注入，自动接入集群服务'),
-      },
     };
     return INTEGRATION_GROUPS.map((group) => ({
       ...group,
@@ -453,33 +452,38 @@ export default function ApmIntegrationAddPage() {
     || selectedMethod?.language === 'erlang'
     || selectedMethod?.language === 'swift';
   const isObi = selectedMethod?.language === 'obi';
+  const isCollector = selectedMethod?.language === 'collector';
   const isDotnet = selectedMethod?.language === 'dotnet';
   const probePlatform: ProbePlatform = isDotnet && formValues?.probe_platform === 'windows' ? 'windows' : 'linux';
-  const hostOnly = isObi || probePlatform === 'windows';
+  const hostOnly = isObi || isCollector || probePlatform === 'windows';
   const activeMode: SnippetMode = hostOnly ? 'agent' : mode;
   const hostRuntimeLabel = isGo
     ? t('apm.integration.goManual', 'Go 手动 SDK')
     : isManualSdk
       ? t('apm.integration.manualSdkRuntime', '{title} 手动 SDK', { title: selectedMethod?.title ?? '' })
       : t('apm.integration.autoProbe', '{title} 自动探针', { title: selectedMethod?.title ?? '' });
-  const generatedSnippetLabel = activeMode === 'kubernetes'
-    ? t('apm.integration.k8sSnippet', 'Kubernetes 配置片段')
-    : probePlatform === 'windows'
-      ? t('apm.integration.powershellSnippet', 'PowerShell 接入片段')
-      : isGo
-        ? t('apm.integration.goGuide', 'Go SDK 接入指南')
-        : isManualSdk
-          ? t('apm.integration.manualGuide', '{title} SDK 接入指南', { title: selectedMethod?.title ?? '' })
-          : t('apm.integration.shellSnippet', 'Shell 接入片段');
-  const copyAriaLabel = probePlatform === 'windows'
-    ? t('apm.integration.copyPowershell', '复制 PowerShell 接入片段')
+  const generatedSnippetLabel = isCollector
+    ? t('apm.integration.collectorSnippet', 'Collector 配置片段')
     : activeMode === 'kubernetes'
-      ? t('apm.integration.copyK8s', '复制 Kubernetes 配置片段')
-      : isGo
-        ? t('apm.integration.copyGoGuide', '复制 Go SDK 接入指南')
-        : isManualSdk
-          ? t('apm.integration.copyManualGuide', '复制 {title} SDK 接入指南', { title: selectedMethod?.title ?? '' })
-          : t('apm.integration.copyShellSnippet', '复制 Shell 接入片段');
+      ? t('apm.integration.k8sSnippet', 'Kubernetes 配置片段')
+      : probePlatform === 'windows'
+        ? t('apm.integration.powershellSnippet', 'PowerShell 接入片段')
+        : isGo
+          ? t('apm.integration.goGuide', 'Go SDK 接入指南')
+          : isManualSdk
+            ? t('apm.integration.manualGuide', '{title} SDK 接入指南', { title: selectedMethod?.title ?? '' })
+            : t('apm.integration.shellSnippet', 'Shell 接入片段');
+  const copyAriaLabel = isCollector
+    ? t('apm.integration.copyCollector', '复制 Collector 配置片段')
+    : probePlatform === 'windows'
+      ? t('apm.integration.copyPowershell', '复制 PowerShell 接入片段')
+      : activeMode === 'kubernetes'
+        ? t('apm.integration.copyK8s', '复制 Kubernetes 配置片段')
+        : isGo
+          ? t('apm.integration.copyGoGuide', '复制 Go SDK 接入指南')
+          : isManualSdk
+            ? t('apm.integration.copyManualGuide', '复制 {title} SDK 接入指南', { title: selectedMethod?.title ?? '' })
+            : t('apm.integration.copyShellSnippet', '复制 Shell 接入片段');
 
   const openMethod = (method: IntegrationMethod) => {
     if (!method.available || !method.language) return;
@@ -565,21 +569,16 @@ export default function ApmIntegrationAddPage() {
         </ApmSurface>
       ) : (
         <div className="flex flex-col gap-4">
-          {integrationGroups.map((group) => (
+          {integrationGroups.filter((group) => group.methods.some((method) => method.available)).map((group) => (
             <ApmSurface key={group.key}>
               <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-[var(--color-text-1)]"><span className="text-[var(--color-primary)]">{group.icon}</span>{group.title}</div>
               <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                {group.methods.map((method) => (
+                {group.methods.filter((method) => method.available).map((method) => (
                   <button
                     key={method.key}
-                    aria-label={method.available
-                      ? t('apm.integration.methodAria', '{title} 接入', { title: method.title })
-                      : t('apm.integration.methodAriaClosed', '{title} 接入，规划中', { title: method.title })}
-                    className="min-h-32 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] p-4 text-left transition-colors duration-150 enabled:cursor-pointer enabled:hover:border-[var(--color-primary)] enabled:hover:bg-[var(--color-fill-1)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-primary)] disabled:cursor-not-allowed disabled:opacity-50"
-                    disabled={!method.available}
-                    title={method.available
-                      ? t('apm.integration.selectMethod', '选择 {title} 接入', { title: method.title })
-                      : t('apm.integration.methodClosed', '{title} 接入规划中', { title: method.title })}
+                    aria-label={t('apm.integration.methodAria', '{title} 接入', { title: method.title })}
+                    className="min-h-32 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] p-4 text-left transition-colors duration-150 cursor-pointer hover:border-[var(--color-primary)] hover:bg-[var(--color-fill-1)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-primary)]"
+                    title={t('apm.integration.selectMethod', '选择 {title} 接入', { title: method.title })}
                     type="button"
                     onClick={() => openMethod(method)}
                   >
@@ -593,7 +592,7 @@ export default function ApmIntegrationAddPage() {
                           <Typography.Text type="secondary" className="text-xs leading-5">{method.description}</Typography.Text>
                         </div>
                       </div>
-                      <Space direction="vertical" align="end" size={4}>{method.badge ? <Tag color="blue">{method.badge}</Tag> : null}{!method.available ? <Tag>{t('apm.integration.planned', '规划中')}</Tag> : null}</Space>
+                      {method.badge ? <Tag color="blue">{method.badge}</Tag> : null}
                     </div>
                   </button>
                 ))}
@@ -689,7 +688,14 @@ export default function ApmIntegrationAddPage() {
                   value={activeMode}
                   onChange={(value) => { setMode(value as SnippetMode); setSnippet(null); setGenerationError(null); }}
                   options={hostOnly
-                    ? [{ label: isObi ? t('apm.integration.obiHost', '主机（指定 Go 进程）') : t('apm.integration.autoProbe', '{title} 自动探针', { title: selectedMethod?.title ?? '' }), value: 'agent' }]
+                    ? [{
+                      label: isCollector
+                        ? t('apm.integration.collectorRuntime', '合并到现有 Collector')
+                        : isObi
+                          ? t('apm.integration.obiHost', '主机（指定 Go 进程）')
+                          : t('apm.integration.autoProbe', '{title} 自动探针', { title: selectedMethod?.title ?? '' }),
+                      value: 'agent',
+                    }]
                     : [
                       { label: hostRuntimeLabel, value: 'agent' },
                       { label: t('apm.integration.dockerRuntime', 'Docker 运行（-e 注入）'), value: 'docker' },
@@ -751,7 +757,9 @@ export default function ApmIntegrationAddPage() {
                   </Typography.Text>
                 ) : null}
                 <Typography.Text type="secondary" className="mt-1 block text-xs">
-                  {t('apm.integration.instanceIdentityHelp', '实例 ID 在应用进程启动时生成，每个副本唯一。')}
+                  {isCollector
+                    ? t('apm.integration.collectorIdentityHelp', '经过这条 pipeline 的 Trace 会归到所选应用。多个应用请各自生成一条 pipeline。')
+                    : t('apm.integration.instanceIdentityHelp', '实例 ID 在应用进程启动时生成，每个副本唯一。')}
                 </Typography.Text>
               </div>
             </div>
@@ -759,20 +767,22 @@ export default function ApmIntegrationAddPage() {
         </div>
               ),
             },
-            {
-              key: 'frameworks',
-              label: t('apm.integration.tabFrameworks', '支持框架'),
-              children: selectedMethod?.language ? (
-                <ProbeCapabilityPane language={selectedMethod.language} platform={probePlatform} kind="frameworks" t={t} />
-              ) : null,
-            },
-            {
-              key: 'discovery',
-              label: t('apm.integration.tabDiscovery', '发现能力'),
-              children: selectedMethod?.language ? (
-                <ProbeCapabilityPane language={selectedMethod.language} platform={probePlatform} kind="discovery" t={t} />
-              ) : null,
-            },
+            ...(!isCollector ? [
+              {
+                key: 'frameworks',
+                label: t('apm.integration.tabFrameworks', '支持框架'),
+                children: selectedMethod?.language ? (
+                  <ProbeCapabilityPane language={selectedMethod.language} platform={probePlatform} kind="frameworks" t={t} />
+                ) : null,
+              },
+              {
+                key: 'discovery',
+                label: t('apm.integration.tabDiscovery', '发现能力'),
+                children: selectedMethod?.language ? (
+                  <ProbeCapabilityPane language={selectedMethod.language} platform={probePlatform} kind="discovery" t={t} />
+                ) : null,
+              },
+            ] : []),
           ]}
         />
       </Drawer>

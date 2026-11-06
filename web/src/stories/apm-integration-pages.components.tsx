@@ -701,13 +701,13 @@ function OtcConfigPanel({ endpoint }: { endpoint: string }) {
       <CodeBlock
         language="YAML"
         code={`exporters:
-  otlphttp/saas:
+  otlp_http/saas:
     traces_endpoint: ${endpoint}
 
 service:
   pipelines:
     traces:
-      exporters: [otlphttp/saas]`}
+      exporters: [otlp_http/saas]`}
       />
     </div>
   );
