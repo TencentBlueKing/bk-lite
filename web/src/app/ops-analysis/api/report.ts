@@ -1,6 +1,7 @@
 import { useCallback } from 'react';
 import useApiClient from '@/utils/request';
 import { useShareCanvasDetailOverride } from '@/app/ops-analysis/context/shareCanvasDetail';
+import { loadPlaybackCanvasDetail, usePlaybackInitialDetail } from '@/app/ops-analysis/context/playbackInitialDetail';
 import type {
   ReportDetail,
   SaveReportViewSetsInput,
@@ -9,6 +10,7 @@ import type {
 export const useReportApi = () => {
   const { get, patch, post, del } = useApiClient();
   const shareDetailOverride = useShareCanvasDetailOverride();
+  const playbackDetail = usePlaybackInitialDetail();
 
   const getReportDetail = useCallback(async (
     id: string | number,
@@ -16,8 +18,10 @@ export const useReportApi = () => {
     if (shareDetailOverride) {
       return (await shareDetailOverride()) as ReportDetail;
     }
-    return get<ReportDetail>(`/operation_analysis/api/report/${id}/`);
-  }, [get, shareDetailOverride]);
+    return loadPlaybackCanvasDetail(playbackDetail, 'report', id, () => (
+      get<ReportDetail>(`/operation_analysis/api/report/${id}/`)
+    ));
+  }, [get, playbackDetail, shareDetailOverride]);
 
   const saveReportViewSets = useCallback(
     async (id: string | number, data: SaveReportViewSetsInput) =>

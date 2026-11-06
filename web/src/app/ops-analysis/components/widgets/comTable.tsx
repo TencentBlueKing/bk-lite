@@ -9,6 +9,7 @@ import { Input, Select, DatePicker, Tooltip } from 'antd';
 import { SearchOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { useTranslation } from '@/utils/i18n';
+import { fullscreenPopupContainer } from '@/utils/fullscreenPopupContainer';
 import CustomTable from '@/components/custom-table';
 import {
   getOpsChartThemeByMode,
@@ -520,7 +521,7 @@ const ComTable: React.FC<ComTableProps> = ({
                 pageSize: pagination.pageSize,
                 total: pagination.total,
                 showSizeChanger: {
-                  getPopupContainer: () => document.body,
+                  getPopupContainer: fullscreenPopupContainer,
                 },
                 showQuickJumper: true,
                 showTotal: (total) =>

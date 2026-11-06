@@ -14,6 +14,7 @@ import type {
   ValueConfig,
 } from '@/app/ops-analysis/components/ops-analysis-widgets';
 import CustomTable from '@/components/custom-table';
+import { fullscreenPopupContainer } from '@/utils/fullscreenPopupContainer';
 import { EventTableDetail } from '@/app/ops-analysis/components/ops-analysis-widgets/event-table-detail';
 import {
   parseTableLikeData,
@@ -209,7 +210,7 @@ const OpsAnalysisEventTable: React.FC<OpsAnalysisEventTableProps> = ({
                 pageSize: pagination.pageSize,
                 total: pagination.total,
                 showSizeChanger: {
-                  getPopupContainer: () => document.body,
+                  getPopupContainer: fullscreenPopupContainer,
                 },
                 showQuickJumper: true,
                 showTotal: (total) =>

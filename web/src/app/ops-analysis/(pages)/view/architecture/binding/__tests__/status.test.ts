@@ -1,6 +1,9 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   architectureStatusRequestMode,
+  architectureStatusSurface,
   blockResourceOpen,
   buildIconPlates,
   buildNodeStatus,
@@ -109,8 +112,67 @@ describe('architecture view status', () => {
     expect(architectureStatusRequestMode({ shareMode: true, editMode: true })).toBe('off');
     expect(architectureStatusRequestMode({ shareMode: false, editMode: true })).toBe('once');
     expect(architectureStatusRequestMode({ shareMode: false, editMode: false })).toBe('poll');
+    expect(architectureStatusRequestMode({ shareMode: false, editMode: false, playbackMode: false })).toBe('poll');
+    expect(architectureStatusRequestMode({ shareMode: false, editMode: true, playbackMode: false })).toBe('once');
+    expect(architectureStatusRequestMode({ shareMode: false, editMode: false, playbackMode: true })).toBe('once');
+    expect(architectureStatusRequestMode({ shareMode: true, editMode: false, playbackMode: true })).toBe('once');
+    expect(architectureStatusRequestMode({ shareMode: false, editMode: true, playbackMode: true })).toBe('once');
     expect(shouldPauseArchitectureStatusRefresh(true)).toBe(true);
     expect(shouldPauseArchitectureStatusRefresh(false)).toBe(false);
+  });
+
+  it('fetches playback status once and still paints the view overlay', () => {
+    const playback = { shareMode: false, editMode: false, playbackMode: true };
+    expect(architectureStatusRequestMode(playback)).toBe('once');
+    expect(architectureStatusSurface(playback)).toBe('runtime');
+
+    const viewing = { shareMode: false, editMode: false };
+    expect(architectureStatusRequestMode(viewing)).toBe('poll');
+    expect(architectureStatusSurface(viewing)).toBe('runtime');
+
+    const editing = { shareMode: false, editMode: true };
+    expect(architectureStatusRequestMode(editing)).toBe('once');
+    expect(architectureStatusSurface(editing)).toBe('nameplate');
+
+    const shared = { shareMode: true, editMode: false };
+    expect(architectureStatusRequestMode(shared)).toBe('off');
+    expect(architectureStatusSurface(shared)).toBe('off');
+
+    const sharedPlayback = { shareMode: true, editMode: false, playbackMode: true };
+    expect(architectureStatusRequestMode(sharedPlayback)).toBe('once');
+    expect(architectureStatusSurface(sharedPlayback)).toBe('runtime');
+
+    const editingPlayback = { shareMode: false, editMode: true, playbackMode: true };
+    expect(architectureStatusRequestMode(editingPlayback)).toBe('once');
+    expect(architectureStatusSurface(editingPlayback)).toBe('nameplate');
+
+    const page = readFileSync(
+      resolve(process.cwd(), 'src/app/ops-analysis/(pages)/view/architecture/index.tsx'),
+      'utf8',
+    );
+    const drawer = readFileSync(
+      resolve(process.cwd(), 'src/app/ops-analysis/(pages)/view/architecture/components/resourceDetailDrawer.tsx'),
+      'utf8',
+    );
+    const nameplateAt = page.indexOf("if (surface === 'nameplate')");
+    const levelAt = page.indexOf('level: overlay.level');
+    expect(nameplateAt).toBeGreaterThan(-1);
+    expect(levelAt).toBeGreaterThan(nameplateAt);
+    expect(page).toContain("const viewing = surface === 'runtime'");
+    expect(page).toContain('if (viewing && badge)');
+    expect(page).toContain("onItemClick={surface === 'runtime' ? handleItemClick : undefined}");
+    expect(page).toContain("highlightedItemId={surface === 'runtime' ? highlightId : undefined}");
+    expect(page).toContain("{surface === 'runtime' && detail ? (");
+    expect(page).toContain('<ResourceDetailDrawer');
+    expect(page).toContain('statusByUuid={statusByUuid}');
+    expect(page).toContain("enabled: requestMode === 'poll'");
+    expect(page).toContain("enabled: requestMode === 'once'");
+    expect(page).toContain('refreshOnVisible: !playbackMode');
+    expect(page).not.toContain("onItemClick={requestMode === 'poll'");
+    expect(page).not.toContain("requestMode === 'poll' && detail");
+    expect(page).toMatch(/architectureStatusRequestMode\(\{[^}]*playbackMode/s);
+    expect(page).toMatch(/architectureStatusSurface\(\{[^}]*playbackMode/s);
+    expect(drawer).toContain('getContainer={fullscreenPopupContainer}');
   });
 
   it('collects icon uuids and ignores rectangle bindings', () => {

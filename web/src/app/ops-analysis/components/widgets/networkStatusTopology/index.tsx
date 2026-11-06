@@ -11,6 +11,7 @@ import type {
   NetworkTopologyNode,
 } from '@/app/cmdb/components/networkTopology';
 import { useTranslation } from '@/utils/i18n';
+import { fullscreenPopupContainer } from '@/utils/fullscreenPopupContainer';
 import { applySameOriginNavigation } from '@/console-layout';
 import { useShareMode } from '@/app/ops-analysis/context/shareMode';
 import { useOpsAnalysisOptional } from '@/app/ops-analysis/context/common';
@@ -1619,6 +1620,7 @@ const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
         open={Boolean(alertModalNodeId)}
         title={alertModalTitle}
         footer={null}
+        getContainer={fullscreenPopupContainer}
         onCancel={closeAlertModal}
         destroyOnHidden
         width={720}
