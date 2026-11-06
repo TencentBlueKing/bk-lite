@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { DatePicker, Input, Select, Tooltip } from 'antd';
 import { SearchOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
@@ -35,8 +35,6 @@ import {
   applyTableRowFilters,
   buildTableQueryList,
 } from '@/app/ops-analysis/utils/tableQueryList';
-import { useTableBodyScrollY } from '@/app/ops-analysis/components/widgets/shared/useTableBodyScrollY';
-
 const { RangePicker } = DatePicker;
 const DEFAULT_CELL_MAX_WIDTH = 260;
 
@@ -66,7 +64,6 @@ const OpsAnalysisTable: React.FC<OpsAnalysisTableProps> = ({
   const { openPoint } = useWidgetDataLink(config);
   const dataLink = readWidgetInteraction(config);
   const dataLinkName = dataLink?.kind === 'data' ? dataLink.name : '';
-  const tableContainerRef = useRef<HTMLDivElement | null>(null);
   const [filters, setFilters] = useState<Record<string, any>>({});
   const [keywordDrafts, setKeywordDrafts] = useState<Record<string, string>>({});
   const [activeKeywordFieldKey, setActiveKeywordFieldKey] = useState<string>('');
@@ -97,11 +94,6 @@ const OpsAnalysisTable: React.FC<OpsAnalysisTableProps> = ({
     () => applyTableRowFilters(tableData, filters),
     [filters, tableData],
   );
-  const tableScrollY = useTableBodyScrollY({
-    containerRef: tableContainerRef,
-    hasPagination: isPaginated,
-  });
-
   const filterFields = useMemo<TableFilterFieldConfig[]>(() => {
     return config?.tableConfig?.filterFields || [];
   }, [config?.tableConfig?.filterFields]);
@@ -451,10 +443,10 @@ const OpsAnalysisTable: React.FC<OpsAnalysisTableProps> = ({
   };
 
   return (
-    <div className="mt-2 flex h-full flex-col">
+    <div className="flex h-full min-h-0 flex-col pt-2">
       {renderFilters()}
 
-      <div ref={tableContainerRef} className="min-h-0 flex-1 overflow-hidden">
+      <div className="min-h-0 flex-1 overflow-hidden">
         <CustomTable
           columns={antColumns}
           dataSource={displayedTableData}
@@ -476,7 +468,7 @@ const OpsAnalysisTable: React.FC<OpsAnalysisTableProps> = ({
               : false
           }
           onChange={isPaginated ? handleTableChange : undefined}
-          scroll={{ x: 'max-content', y: tableScrollY }}
+          scroll={{ x: 'max-content' }}
         />
       </div>
     </div>

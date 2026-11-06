@@ -10,10 +10,7 @@ import {
 } from '@ant-design/icons';
 import {
   CAROUSEL_FULLSCREEN_CHROME,
-  CAROUSEL_FULLSCREEN_EXIT_TIP_MS,
   CAROUSEL_FULLSCREEN_RESUME_HINT_MS,
-  markFullscreenExitTipSeen,
-  readFullscreenExitTipSeen,
   resolveCarouselFullscreenProgress,
   type FullscreenSlideProgressInput,
 } from '@/app/ops-analysis/utils/carouselFullscreenChrome';
@@ -148,7 +145,6 @@ export interface CarouselFullscreenChromeProps {
   playLabel: string;
   pauseLabel: string;
   resumeHint: string;
-  exitHint: string;
   disableStep: boolean;
   disablePlay: boolean;
   onPrevious: () => void;
@@ -169,7 +165,6 @@ const CarouselFullscreenChrome: React.FC<CarouselFullscreenChromeProps> = ({
   playLabel,
   pauseLabel,
   resumeHint,
-  exitHint,
   disableStep,
   disablePlay,
   onPrevious,
@@ -179,7 +174,6 @@ const CarouselFullscreenChrome: React.FC<CarouselFullscreenChromeProps> = ({
 }) => {
   const resumeSeen = useRef(false);
   const [resumeHintOn, setResumeHintOn] = useState(false);
-  const [exitTipOn, setExitTipOn] = useState(false);
   const controlsClassName = visible
     ? 'pointer-events-auto opacity-100'
     : 'pointer-events-none opacity-0';
@@ -196,20 +190,6 @@ const CarouselFullscreenChrome: React.FC<CarouselFullscreenChromeProps> = ({
     }, CAROUSEL_FULLSCREEN_RESUME_HINT_MS);
     return () => window.clearTimeout(timer);
   }, [paused, visible]);
-
-  useEffect(() => {
-    let storage: Storage | null = null;
-    try {
-      storage = window.sessionStorage;
-    } catch {
-      storage = null;
-    }
-    if (readFullscreenExitTipSeen(storage)) return undefined;
-    markFullscreenExitTipSeen(storage);
-    setExitTipOn(true);
-    const timer = window.setTimeout(() => setExitTipOn(false), CAROUSEL_FULLSCREEN_EXIT_TIP_MS);
-    return () => window.clearTimeout(timer);
-  }, []);
 
   const buttons = [
     {
@@ -239,14 +219,6 @@ const CarouselFullscreenChrome: React.FC<CarouselFullscreenChromeProps> = ({
 
   return (
     <div className="pointer-events-none absolute inset-0 z-20" style={chromeVars}>
-      {exitTipOn ? (
-        <div
-          className={`absolute bottom-[16px] left-[16px] ${hintClassName}`}
-          data-testid="carousel-fullscreen-exit-hint"
-        >
-          {exitHint}
-        </div>
-      ) : null}
       <div
         className="pointer-events-auto absolute bottom-[16px] right-[16px] h-[80px] w-[120px] cursor-auto"
         data-testid="carousel-fullscreen-hotzone"
