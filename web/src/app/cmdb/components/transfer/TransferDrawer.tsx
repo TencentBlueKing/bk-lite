@@ -7,6 +7,7 @@ import { useTransferApi } from '@/app/cmdb/api/transfer';
 import type { TransferTask } from '@/app/cmdb/types/transfer';
 import { downloadBlobFile } from '@/app/cmdb/(pages)/assetData/components/exportDownload';
 import { parseErrorReport, type ErrorReportTable } from './errorReport';
+import { createIdempotencyKey } from '@/app/cmdb/utils/idempotencyKey';
 import { StatusToneBadge } from '@/app/cmdb/utils/statusTone';
 
 interface Props {
@@ -53,7 +54,7 @@ export default function TransferDrawer({ open, onClose, tasks, error, loading, o
       if (action === 'cancel') await api.cancel(task.task_id);
       else if (action === 'delete') await api.remove(task.task_id);
       else if (action === 'retry') {
-        retryKeys.current[task.task_id] ||= crypto.randomUUID();
+        retryKeys.current[task.task_id] ||= createIdempotencyKey();
         await api.retry(task.task_id, retryKeys.current[task.task_id]);
         delete retryKeys.current[task.task_id];
       } else {

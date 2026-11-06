@@ -1,11 +1,6 @@
-from apps.cmdb.constants.constants import (
-    CLASSIFICATION,
-    CREATE_CLASSIFICATION_CHECK_ATTR_MAP,
-    MODEL,
-    UPDATE_CLASSIFICATION_check_attr_map,
-)
+from apps.cmdb.constants.constants import CLASSIFICATION, CREATE_CLASSIFICATION_CHECK_ATTR_MAP, MODEL, UPDATE_CLASSIFICATION_check_attr_map
 from apps.cmdb.graph.drivers.graph_client import GraphClient
-from apps.cmdb.language.service import SettingLanguage
+from apps.cmdb.language.service import catalog_display_name, mark_catalog_name_customized
 from apps.core.exceptions.base_app_exception import BaseAppException
 
 
@@ -65,8 +60,19 @@ class ClassificationManage(object):
         # 不能更新classification_id、exist_model
         data.pop("classification_id", "")
         data.pop("exist_model", "")
+        data = dict(data)
         with GraphClient() as ag:
             exist_items, _ = ag.query_entity(CLASSIFICATION, [])
+            current = next((item for item in exist_items if item.get("_id") == id), None)
+            data = mark_catalog_name_customized(
+                current,
+                data,
+                kind="CLASSIFICATION",
+                key=str((current or {}).get("classification_id") or ""),
+                name_field="classification_name",
+                flag_field="classification_name_customized",
+                preserve_seed_echo=True,
+            )
             # 排除当前正在更新的分类，避免自己和自己比较
             exist_items = [i for i in exist_items if i["_id"] != id]
             model = ag.set_entity_properties(
@@ -103,22 +109,23 @@ class ClassificationManage(object):
             if m.get("is_visible", True):
                 visible_counts[cid] = visible_counts.get(cid, 0) + 1
         for classification in classifications:
-            classification["exist_model"] = (
-                classification["classification_id"] in exist_model_classifications
-            )
+            classification["exist_model"] = classification["classification_id"] in exist_model_classifications
             if "order" not in classification:
                 classification["order"] = 999
             if "is_visible" not in classification:
                 classification["is_visible"] = True
 
-        lan = SettingLanguage(language)
         for classification in classifications:
-            classification["classification_name"] = (
-                lan.get_val("CLASSIFICATION", classification["classification_id"])
-                or classification["classification_name"]
+            classification["classification_name"] = catalog_display_name(
+                "CLASSIFICATION",
+                classification["classification_id"],
+                classification.get("classification_name"),
+                customized=classification.get("classification_name_customized"),
+                language=language,
             )
 
         if not include_hidden:
+
             def _keep(c):
                 cid = c["classification_id"]
                 if not c.get("is_visible", True):
@@ -127,6 +134,7 @@ class ClassificationManage(object):
                 if total_counts.get(cid, 0) > 0 and visible_counts.get(cid, 0) == 0:
                     return False
                 return True
+
             classifications = [c for c in classifications if _keep(c)]
 
         classifications.sort(key=lambda c: (c.get("order", 999), c["classification_id"]))
@@ -148,11 +156,13 @@ class ClassificationManage(object):
             target = by_id.get(cid)
             if not target:
                 continue
-            snapshot.append({
-                "classification_id": cid,
-                "order": int(target.get("order", 999)),
-                "is_visible": bool(target.get("is_visible", True)),
-            })
+            snapshot.append(
+                {
+                    "classification_id": cid,
+                    "order": int(target.get("order", 999)),
+                    "is_visible": bool(target.get("is_visible", True)),
+                }
+            )
         return snapshot
 
     @staticmethod

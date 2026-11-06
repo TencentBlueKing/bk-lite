@@ -1,18 +1,15 @@
 """快照记录服务 - 负责告警生命周期的指标快照记录"""
 
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 
 from django.db import transaction
 
-from apps.monitor.models import MonitorEventRawData, MonitorAlertMetricSnapshot
-from apps.monitor.tasks.utils.policy_calculate import _parse_finite_float
-from apps.monitor.tasks.utils.policy_multi import first_level_query, is_multi_query
-from apps.monitor.tasks.utils.policy_methods import (
-    COMPARE_MODE_ABSOLUTE,
-    period_to_seconds,
-)
-from apps.monitor.utils.dimension import parse_instance_id
 from apps.core.logger import celery_logger as logger
+from apps.monitor.models import MonitorAlertMetricSnapshot, MonitorEventRawData
+from apps.monitor.tasks.utils.policy_calculate import _parse_finite_float
+from apps.monitor.tasks.utils.policy_methods import COMPARE_MODE_ABSOLUTE, period_to_seconds
+from apps.monitor.tasks.utils.policy_multi import first_level_query, is_multi_query
+from apps.monitor.utils.dimension import is_metric_instance_fingerprint, metric_instance_storage_key, parse_instance_id
 
 
 class SnapshotRecorder:
@@ -41,9 +38,7 @@ class SnapshotRecorder:
             return
 
         instance_raw_data_map = self._build_instance_raw_data_map(event_objs, info_events)
-        fallback_raw_data_map = self._query_fallback_raw_data_map(
-            all_active_alerts, instance_raw_data_map
-        )
+        fallback_raw_data_map = self._query_fallback_raw_data_map(all_active_alerts, instance_raw_data_map)
 
         event_map = {}
         if event_objs:
@@ -116,7 +111,7 @@ class SnapshotRecorder:
             metric_id = self._get_alert_metric_instance_id(alert)
             if instance_raw_data_map.get(metric_id):
                 continue
-            if len(parse_instance_id(metric_id)) != len(group_by_keys):
+            if not is_metric_instance_fingerprint(metric_id) and len(parse_instance_id(metric_id)) != len(group_by_keys):
                 mismatched += 1
                 continue
             wanted.add(metric_id)
@@ -134,12 +129,10 @@ class SnapshotRecorder:
         if self._is_multi():
             return self._query_multi_fallback_raw_data_map(wanted, list(dict.fromkeys(instance_ids)))
 
-        data = self.metric_query_service.query_policy_window_metrics(
-            self.policy.period, list(dict.fromkeys(instance_ids))
-        )
+        data = self.metric_query_service.query_policy_window_metrics(self.policy.period, list(dict.fromkeys(instance_ids)))
         fallback_raw_data_map = {}
         for metric_info in data.get("data", {}).get("result", []):
-            current_metric_id = str(tuple(metric_info["metric"].get(key) for key in group_by_keys))
+            current_metric_id = metric_instance_storage_key(tuple(metric_info["metric"].get(key) for key in group_by_keys))
             if current_metric_id in wanted:
                 fallback_raw_data_map[current_metric_id] = metric_info
         return fallback_raw_data_map
@@ -171,9 +164,7 @@ class SnapshotRecorder:
 
             if is_new_alert and created:
                 metric_id = self._get_alert_metric_instance_id(alert)
-                pre_alert_snapshot = self._build_pre_alert_snapshot(
-                    metric_id, snapshot_time, monitor_instance_id=alert.monitor_instance_id
-                )
+                pre_alert_snapshot = self._build_pre_alert_snapshot(metric_id, snapshot_time, monitor_instance_id=alert.monitor_instance_id)
                 if pre_alert_snapshot:
                     snapshot_obj.snapshots.append(pre_alert_snapshot)
                     has_new_snapshot = True
@@ -233,9 +224,7 @@ class SnapshotRecorder:
             else:
                 logger.debug(f"No new snapshot data for alert {alert.id}, skipping save")
 
-    def _build_pre_alert_snapshot(
-        self, metric_instance_id, current_snapshot_time, monitor_instance_id=None
-    ):
+    def _build_pre_alert_snapshot(self, metric_instance_id, current_snapshot_time, monitor_instance_id=None):
         """构建告警前快照数据；只查该告警所属实例，不按策略全范围拉取。"""
         period_seconds = period_to_seconds(self.policy.period)
         pre_alert_time = datetime.fromtimestamp(current_snapshot_time.timestamp() - period_seconds, tz=timezone.utc)
@@ -287,7 +276,7 @@ class SnapshotRecorder:
 
         raw_data = {}
         for metric_info in pre_alert_metrics.get("data", {}).get("result", []):
-            current_metric_id = str(tuple([metric_info["metric"].get(key) for key in group_by_keys]))
+            current_metric_id = metric_instance_storage_key(tuple(metric_info["metric"].get(key) for key in group_by_keys))
 
             if current_metric_id == metric_instance_id:
                 raw_data = metric_info
@@ -352,7 +341,7 @@ class SnapshotRecorder:
         anchor_group_by = list(anchor.get("group_by") or [])
         anchor_item = None
         for item in (payloads_by_ref.get(anchor.get("ref")) or {}).get("data", {}).get("result", []):
-            key = str(tuple((item.get("metric") or {}).get(label) for label in anchor_group_by))
+            key = metric_instance_storage_key(tuple((item.get("metric") or {}).get(label) for label in anchor_group_by))
             if key == metric_instance_id:
                 anchor_item = item
                 break

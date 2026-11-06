@@ -12,14 +12,13 @@ from apps.monitor.utils.dimension import (
     extract_monitor_instance_id,
     format_dimension_str,
     format_dimension_value,
+    metric_instance_storage_key,
 )
 from apps.monitor.utils.unit_converter import UnitConverter
 
 _DATA_BYTES_SYSTEM = UnitConverterConstants.UNIT_SYSTEMS["data_bytes"]
 _DATA_BYTES_UNITS = frozenset(_DATA_BYTES_SYSTEM["units"])
-_DATA_BYTES_DISPLAY_TO_UNIT = dict(
-    zip(_DATA_BYTES_SYSTEM["display_units"], _DATA_BYTES_SYSTEM["units"])
-)
+_DATA_BYTES_DISPLAY_TO_UNIT = dict(zip(_DATA_BYTES_SYSTEM["display_units"], _DATA_BYTES_SYSTEM["units"]))
 
 
 def vm_to_dataframe(vm_data, instance_id_keys=None):
@@ -69,9 +68,7 @@ def _resolve_data_bytes_source_unit(source_unit: str, display_unit: str) -> str:
     return _DATA_BYTES_DISPLAY_TO_UNIT.get(display_unit or "", "")
 
 
-def _should_auto_adapt_data_bytes(
-    source_unit: str, scan_unit_converted: bool, enum_value_map: dict | None
-) -> bool:
+def _should_auto_adapt_data_bytes(source_unit: str, scan_unit_converted: bool, enum_value_map: dict | None) -> bool:
     if scan_unit_converted or enum_value_map:
         return False
     return bool(source_unit)
@@ -94,18 +91,11 @@ def _format_content_numbers(
     if _should_auto_adapt_data_bytes(resolved_unit, scan_unit_converted, enum_value_map):
         finite_values = [value for value in values if value is not None]
         if finite_values:
-            converted_values, target_unit = UnitConverter.auto_convert(
-                finite_values, resolved_unit
-            )
+            converted_values, target_unit = UnitConverter.auto_convert(finite_values, resolved_unit)
             target_display = UnitConverter.get_display_unit(target_unit)
             converted_iter = iter(converted_values)
-            adapted_values = [
-                next(converted_iter) if value is not None else None for value in values
-            ]
-            return [
-                _format_value_with_unit(value, target_display, enum_value_map)
-                for value in adapted_values
-            ]
+            adapted_values = [next(converted_iter) if value is not None else None for value in values]
+            return [_format_value_with_unit(value, target_display, enum_value_map) for value in adapted_values]
     return [_format_value_with_unit(value, display_unit, enum_value_map) for value in values]
 
 
@@ -150,7 +140,8 @@ def calculate_alerts(alert_name, df, thresholds, template_context=None, n=1, rec
 
     for _, row in df.iterrows():
         instance_id_tuple = row["instance_id"]
-        metric_instance_id = str(instance_id_tuple)
+        raw_metric_instance_id = str(instance_id_tuple)
+        metric_instance_id = metric_instance_storage_key(instance_id_tuple)
 
         dimensions = build_dimensions(instance_id_tuple, instance_id_keys)
         monitor_instance_id = _extract_monitor_instance_id_by_key(
@@ -160,7 +151,7 @@ def calculate_alerts(alert_name, df, thresholds, template_context=None, n=1, rec
         )
         resource_context = {}
         if callable(resource_context_resolver):
-            resource_context = resource_context_resolver(metric_instance_id) or {}
+            resource_context = resource_context_resolver(raw_metric_instance_id) or {}
             monitor_instance_id = resource_context.get("monitor_instance_id", monitor_instance_id)
         resource_name = resource_context.get(
             "resource_name",

@@ -34,16 +34,16 @@ REDIS_DISCOVER_FROM_PROCESS="${REDIS_DISCOVER_FROM_PROCESS:-yes}"
 BK_HOST_INNERIP="${BK_HOST_INNERIP:-}"
 
 # Input validation: allow only safe chars to reduce injection risk (type/format only; no shell execution from vars).
-_safe_host() { echo "$1" | tr -d '\r\n' | sed -n 's/^[0-9a-zA-Z._:-]*$/\0/p'; }
-_safe_port() { echo "$1" | tr -d '\r\n' | sed -n 's/^[0-9]*$/\0/p' | awk -v max=65535 '$1>=1 && $1<=max {print $1}'; }
-_safe_redis_user() { echo "$1" | tr -d '\r\n' | sed -n 's/^[0-9a-zA-Z_]*$/\0/p'; }
-_safe_cli_path() { echo "$1" | tr -d '\r\n' | sed -n 's/^[0-9a-zA-Z./_-]*$/\0/p'; }
+_safe_host() { echo "$1" | tr -d '\r\n' | sed -n 's/^[0-9a-zA-Z._:-]*$/&/p'; }
+_safe_port() { echo "$1" | tr -d '\r\n' | sed -n 's/^[0-9]*$/&/p' | awk -v max=65535 '$1>=1 && $1<=max {print $1}'; }
+_safe_redis_user() { echo "$1" | tr -d '\r\n' | sed -n 's/^[0-9a-zA-Z_]*$/&/p'; }
+_safe_cli_path() { echo "$1" | tr -d '\r\n' | sed -n 's/^[0-9a-zA-Z./_-]*$/&/p'; }
 _safe_path() {
   p=$(printf '%s' "$1" | tr -d '\r\n'); [ -z "$p" ] && return 0
   case "$p" in *..*) return 0;; esac
-  echo "$p" | sed -n 's/^[0-9a-zA-Z./_[[:space:]]-]*$/\0/p'
+  echo "$p" | sed -n 's/^[0-9a-zA-Z./_[[:space:]]-]*$/&/p'
 }
-_safe_sentinel_name() { echo "$1" | tr -d '\r\n' | sed -n 's/^[0-9a-zA-Z_-]*$/\0/p'; }
+_safe_sentinel_name() { echo "$1" | tr -d '\r\n' | sed -n 's/^[0-9a-zA-Z_-]*$/&/p'; }
 
 # Whitelist: only these Redis commands (auth via REDISCLI_AUTH env only, never -a on cmdline).
 _redis_cmd_ok() {
@@ -248,7 +248,48 @@ get_version_via_docker() {
   echo "$out" | parse_redis_version
 }
 
-probe_port() { command -v nc >/dev/null 2>&1 && nc -z "$1" "$2" 2>/dev/null || true; }
+# 0 = 端口开着，1 = 确认没人听，2 = 本机没有 nc，改由 redis-cli 判断。
+probe_port() {
+  if command -v nc >/dev/null 2>&1; then
+    nc -z -w 1 "$1" "$2" >/dev/null 2>&1
+    return $?
+  fi
+  return 2
+}
+
+_ping_exec() {
+  if command -v timeout >/dev/null 2>&1; then
+    timeout 2 "$@"
+  else
+    "$@"
+  fi
+}
+
+_ping_redis() {
+  host="$1" port="$2"
+  host=$(_safe_host "$host"); port=$(_safe_port "$port")
+  [ -z "$host" ] || [ -z "$port" ] && return 0
+  _cli=$(_safe_cli_path "$REDIS_CLI"); [ -z "$_cli" ] && return 0
+  if [ -n "${REDIS_USER:-}" ]; then
+    _user=$(_safe_redis_user "$REDIS_USER"); [ -z "$_user" ] && return 0
+    _ping_exec "$_cli" -h "$host" -p "$port" --user "$_user" PING 2>&1
+  else
+    _ping_exec "$_cli" -h "$host" -p "$port" PING 2>&1
+  fi
+}
+
+# 口令失败、redis-server 进程或容器里的 redis-server 版本，才算这是 Redis。
+_redis_confirmed() {
+  raw="$1" version="$2" path="$3"
+  case "$raw" in
+    *NOAUTH*|*WRONGPASS*|*NOPERM*|*Authentication\ required*) return 0 ;;
+  esac
+  [ -n "$version" ] && return 0
+  case "$path" in
+    *redis-server*|*redis-sentinel*) return 0 ;;
+  esac
+  return 1
+}
 
 detect_mode() {
   info_sentinel="$1" cluster_state="$2" role="$3"
@@ -315,12 +356,16 @@ parse_resp_maps() {
 
 collect_instance() {
   host="$1" port="$2" local_ip="$3"
-  probe_port "$host" "$port" || return 1
-  ping=$(run_redis "$host" "$port" PING 2>/dev/null)
+  probe_port "$host" "$port"
+  _probe_rc=$?
+  [ "$_probe_rc" -eq 1 ] && return 1
+  ping_raw=$(_ping_redis "$host" "$port")
+  ping=$(printf '%s\n' "$ping_raw" | head -1 | tr -d '\r')
   install_path=$(get_install_path_for_port "$port")
   case "$ping" in PONG|pong) ;; *)
     version=$(get_version_from_path "$install_path")
     [ -z "$version" ] && case "$host" in 127.0.0.1|localhost) version=$(get_version_via_docker "$port"); ;; esac
+    _redis_confirmed "$ping_raw" "$version" "$install_path" || return 1
     emit_partial_instance "$local_ip" "$port" "$version" "$install_path"
     return 1
   ;; esac

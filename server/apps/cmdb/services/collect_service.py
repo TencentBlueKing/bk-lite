@@ -399,6 +399,8 @@ class CollectModelService(object):
                         merged["enable_password"] = old_item.get("enable_password", "")
                 else:
                     merged.pop("enable_password", None)
+                if new_item.get("service_password") == API_SECRET_MASK and old_source == "vault" and old_item.get("service_password"):
+                    merged["service_password"] = old_item.get("service_password", "")
                 return merged
             if old_source == "vault":
                 # 从仓库切回一次性认证必须重填认证值；旧引用绝不参与新候选合并。

@@ -62,21 +62,35 @@ if (!/shoModelModal\(\s*'edit'[\s\S]{0,500}app_topo_layer:\s*modelDetail\.app_to
 if (!/shoModelModal\(\s*'edit'[\s\S]{0,500}is_pre:\s*modelDetail\.is_pre/.test(layoutSrc)) {
   failures.push('[detail/layout.tsx] 编辑弹窗未传入 is_pre');
 }
-if (!/EditTwoTone[\s\S]{0,1200}\{\s*!isPre && \(/.test(layoutSrc)) {
+if (!/EditOutlined[\s\S]{0,1200}\{\s*!isPre && \(/.test(layoutSrc)) {
   failures.push('[detail/layout.tsx] 有编辑权限时应显示内置模型编辑入口');
 }
-if (/\{\s*!isPre && \([\s\S]{0,400}EditTwoTone/.test(layoutSrc)) {
+if (/\{\s*!isPre && \([\s\S]{0,400}EditOutlined/.test(layoutSrc)) {
   failures.push('[detail/layout.tsx] 内置模型编辑入口仍被 is_pre 挡住');
 }
-if (!/\{\s*!isPre && \([\s\S]{0,400}DeleteTwoTone/.test(layoutSrc)) {
+if (!/\{\s*!isPre && \([\s\S]{0,800}DeleteOutlined/.test(layoutSrc)) {
   failures.push('[detail/layout.tsx] 内置模型删除入口必须仍被挡住');
 }
 
-if (!/\? \{ app_topo_layer: params\.app_topo_layer \}/.test(modalSrc)) {
-  failures.push('[modelModal.tsx] 内置模型更新必须只提交 app_topo_layer');
+if (!/model_name:\s*params\.model_name/.test(modalSrc)) {
+  failures.push('[modelModal.tsx] 编辑必须提交模型名称');
 }
-if (!/disabled=\{type === 'edit' && isBuiltinEdit\(\)\}/.test(modalSrc)) {
-  failures.push('[modelModal.tsx] 内置模型名称/组织必须只读');
+if (/isBuiltinEdit/.test(modalSrc)) {
+  failures.push('[modelModal.tsx] 内置模型名称、图标和组织必须可编辑');
+}
+const managementPagePath = path.join(
+  webRoot,
+  'src/app/cmdb/(pages)/assetManage/management/page.tsx'
+);
+const managementPageSrc = fs.readFileSync(managementPagePath, 'utf8');
+if (!/showGroupModal\('edit',\s*item\)/.test(managementPageSrc)) {
+  failures.push('[management/page.tsx] 模型分组必须提供编辑入口');
+}
+if (/\{\s*!item\.is_pre\s*&&\s*\([\s\S]{0,500}showGroupModal\('edit'/.test(managementPageSrc)) {
+  failures.push('[management/page.tsx] 内置模型分组编辑入口仍被 is_pre 挡住');
+}
+if (!/!item\.is_pre && !item\.list\.length/.test(managementPageSrc)) {
+  failures.push('[management/page.tsx] 内置模型分组删除入口必须仍被挡住');
 }
 
 if (!/from '@\/app\/cmdb\/utils\/applicationResourceLayer'/.test(overviewSrc)) {

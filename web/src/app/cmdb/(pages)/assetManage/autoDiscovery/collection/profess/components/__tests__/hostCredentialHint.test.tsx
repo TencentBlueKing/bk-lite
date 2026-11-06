@@ -27,6 +27,13 @@ it.each(['cisco_fc', 'brocade_fc'])('%s 不显示留空走 Agent 的提示', (mo
   expect(resolveCredentialHelp({ model_id: modelId, type: 'job', credential_protocol: 'ssh' }, (key) => key).instruction)
     .toBe('Collection.credentialHelp.instruction.deviceSsh');
 });
+it.each(['redis', 'mongodb'])('%s 的 Agent 提示不覆盖服务口令', (modelId) => {
+  renderTask(modelId, 'job');
+  expect(screen.getByRole('alert').textContent).toBe('Collection.serviceCredentialTip');
+  expect(zh.Collection.serviceCredentialTip).toContain('服务账号');
+  expect(resolveCredentialHelp({ model_id: modelId, type: 'job', credential_protocol: 'ssh' }, (key) => key).instruction)
+    .toBe(`Collection.credentialHelp.instruction.${modelId === 'redis' ? 'redisJob' : 'mongodbJob'}`);
+});
 it('主机 JOB 展示有前提的 Agent 提示', () => {
   renderTask('host', 'job');
   expect(screen.getByRole('alert').textContent).toBe('Collection.hostCredentialOptionalTip');

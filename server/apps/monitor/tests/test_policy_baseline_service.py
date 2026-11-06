@@ -3,14 +3,18 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from apps.monitor.constants.monitor_object import MonitorObjConstants
 from apps.monitor.models import (
-    MonitorObject,
+    MonitorAlert,
+    MonitorEvent,
     MonitorInstance,
     MonitorInstanceOrganization,
+    MonitorObject,
     MonitorPolicy,
     PolicyInstanceBaseline,
 )
 from apps.monitor.services.policy_baseline import PolicyBaselineService
+from apps.monitor.utils.dimension import is_metric_instance_fingerprint, metric_instance_storage_key
 
 pytestmark = [pytest.mark.unit, pytest.mark.django_db]
 
@@ -33,9 +37,7 @@ def policy(obj):
 
 
 def _baselines(policy):
-    return set(
-        PolicyInstanceBaseline.objects.filter(policy_id=policy.id).values_list("metric_instance_id", flat=True)
-    )
+    return set(PolicyInstanceBaseline.objects.filter(policy_id=policy.id).values_list("metric_instance_id", flat=True))
 
 
 def test_sync_adds_only_new_baselines(policy):
@@ -125,6 +127,65 @@ def test_refresh_replaces_baselines_on_successful_query(obj, policy):
 
     # group_by=["instance_id"] → metric_instance_id = "('i1',)",monitor_instance_id 同值且命中映射
     assert _baselines(policy) == {real_id}
+
+
+def _long_disk_mount():
+    return "/var/lib/kubelet/pods/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee" "/volumes/kubernetes.io~csi/pvc-aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/mount"
+
+
+def _long_disk_tuple():
+    mount = _long_disk_mount()
+    return ("os_10.64.200.21", mount, mount, "overlay")
+
+
+def test_long_disk_identity_stays_inside_the_existing_column():
+    raw = str(_long_disk_tuple())
+    key = metric_instance_storage_key(_long_disk_tuple())
+    assert len(raw) > MonitorObjConstants.METRIC_INSTANCE_ID_MAX_LENGTH
+    assert is_metric_instance_fingerprint(key)
+    assert key == metric_instance_storage_key(_long_disk_tuple())
+    for model in (PolicyInstanceBaseline, MonitorAlert, MonitorEvent):
+        assert model._meta.get_field("metric_instance_id").max_length == MonitorObjConstants.METRIC_INSTANCE_ID_MAX_LENGTH
+        assert len(key) <= model._meta.get_field("metric_instance_id").max_length
+
+
+def test_refresh_stores_long_disk_dimension_baseline(obj, policy):
+    metric_instance_id = metric_instance_storage_key(_long_disk_tuple())
+    monitor_instance_id = "('os_10.64.200.21',)"
+    policy.source = {"type": "instance", "values": [monitor_instance_id]}
+    policy.group_by = ["instance_id", "mount", "path", "fstype"]
+    policy.save()
+    MonitorInstance.objects.create(id=monitor_instance_id, name="host1", monitor_object=obj)
+
+    mount = _long_disk_mount()
+    fake_metrics = {
+        "data": {
+            "result": [
+                {
+                    "metric": {
+                        "instance_id": "os_10.64.200.21",
+                        "mount": mount,
+                        "path": mount,
+                        "fstype": "overlay",
+                    }
+                }
+            ]
+        }
+    }
+    fake_query_svc = MagicMock()
+    fake_query_svc.query_existence_metrics.return_value = fake_metrics
+
+    with patch(
+        "apps.monitor.tasks.services.policy_scan.metric_query.MetricQueryService",
+        return_value=fake_query_svc,
+    ):
+        PolicyBaselineService(policy).refresh()
+
+    assert _baselines(policy) == {metric_instance_id}
+    stored = PolicyInstanceBaseline.objects.get(policy_id=policy.id)
+    assert stored.dimensions["mount"] == mount
+    assert stored.dimensions["path"] == mount
+    assert stored.dimensions["fstype"] == "overlay"
 
 
 def test_refresh_keeps_existing_when_query_fails(obj, policy):

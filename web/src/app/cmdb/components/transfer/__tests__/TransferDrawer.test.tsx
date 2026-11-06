@@ -7,8 +7,9 @@ import type { TransferTask } from '@/app/cmdb/types/transfer';
 
 const cancel = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
 const download = vi.hoisted(() => vi.fn());
+const retry = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
 vi.mock('@/utils/i18n', () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
-vi.mock('@/app/cmdb/api/transfer', () => ({ useTransferApi: () => ({ cancel, download }) }));
+vi.mock('@/app/cmdb/api/transfer', () => ({ useTransferApi: () => ({ cancel, download, retry }) }));
 Object.defineProperty(window, 'matchMedia', { value: () => ({ matches: false, addListener: vi.fn(), removeListener: vi.fn() }), writable: true });
 
 it('renders neutral task-shaped skeletons while the first refresh is loading', () => {
@@ -112,4 +113,27 @@ it('pages the error report and changes the page size', async () => {
   expect(screen.getByText('失败原因-40')).toBeTruthy();
   expect(screen.queryByText('失败原因-20')).toBeNull();
   expect(screen.queryByText('失败原因-41')).toBeNull();
+});
+
+it('retries with a key built from getRandomValues when randomUUID is missing', async () => {
+  retry.mockClear();
+  const refresh = vi.fn().mockResolvedValue(undefined);
+  const getRandomValues = vi.fn((values: Uint8Array) => {
+    values.fill(0);
+    return values;
+  });
+  const task: TransferTask = {
+    task_id: 'failed-export', type: 'export', model_id: 'host', model_name: '主机', team_id: 1, filename: '',
+    status: 'failed', phase: 'exporting', processed_rows: 0, total_rows: null, summary: {}, message: '',
+    available_actions: ['retry'], created_at: '2026-09-21T00:00:00Z', finished_at: '2026-09-21T00:01:00Z', expires_at: '2026-09-28T00:00:00Z',
+  };
+  render(<TransferDrawer open onClose={() => undefined} tasks={[task]} error="" loading={false} onRefresh={refresh} />);
+  vi.stubGlobal('crypto', { getRandomValues });
+  try {
+    fireEvent.click(screen.getByText('Transfer.retry'));
+    await waitFor(() => expect(retry).toHaveBeenCalledWith('failed-export', '00000000-0000-4000-8000-000000000000'));
+    await waitFor(() => expect(refresh).toHaveBeenCalledTimes(1));
+  } finally {
+    vi.unstubAllGlobals();
+  }
 });

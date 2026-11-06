@@ -32,6 +32,63 @@ class SettingLanguage:
         return self.loader.get(f"{_type}.{key}")
 
 
+def is_truthy_flag(value) -> bool:
+    if isinstance(value, str):
+        return value.strip().lower() in {"true", "1", "yes"}
+    return value is True or value == 1
+
+
+def catalog_seed_names(kind: str, key: str) -> set[str]:
+    names: set[str] = set()
+    for locale in ("zh-Hans", "en"):
+        value = SettingLanguage(locale).get_val(kind, key) or ""
+        if value:
+            names.add(str(value))
+    return names
+
+
+def catalog_display_name(
+    kind: str,
+    key: str,
+    stored: str | None,
+    *,
+    customized: object = False,
+    language: str | None = None,
+) -> str:
+    """内置目录名走语言包。用户改过名称后，存储名覆盖语言包。"""
+    stored_text = "" if stored is None else str(stored)
+    translated = SettingLanguage(language).get_val(kind, key) or ""
+    if is_truthy_flag(customized) and stored_text:
+        return stored_text
+    return translated or stored_text
+
+
+def mark_catalog_name_customized(
+    current: dict | None,
+    data: dict,
+    *,
+    kind: str,
+    key: str,
+    name_field: str,
+    flag_field: str,
+    preserve_seed_echo: bool = False,
+) -> dict:
+    """内置目录改名后打标。分组编辑框里的名称可能是另一种语言的展示名，这种情况不改存储名。"""
+    data.pop(flag_field, None)
+    if not current or not is_truthy_flag(current.get("is_pre")):
+        return data
+    incoming = str(data.get(name_field) or "").strip()
+    stored = str(current.get(name_field) or "").strip()
+    if not incoming or incoming == stored:
+        return data
+    seeds = catalog_seed_names(kind, key)
+    if preserve_seed_echo and incoming in seeds and stored in seeds and not is_truthy_flag(current.get(flag_field)):
+        data[name_field] = stored
+        return data
+    data[flag_field] = True
+    return data
+
+
 def apply_attr_translations(attrs: list, model_id: str, language: str | None = None) -> list:
     """按 locale 覆盖内置属性展示名；attr_group 保持存储名以便与 FieldGroup 对齐。"""
     if not attrs:

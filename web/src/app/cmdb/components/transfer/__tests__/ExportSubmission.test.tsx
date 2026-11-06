@@ -130,3 +130,28 @@ it('shows all or the concrete selected asset count', async () => {
   });
   expect(screen.getByText('Model.exportAssetCount').nextElementSibling?.textContent).toBe('2');
 });
+
+it('submits the export when the page has no crypto.randomUUID', async () => {
+  exportFile.mockClear();
+  exportFile.mockResolvedValue({ task_id: 'http', status: 'queued', type: 'export' });
+  const getRandomValues = vi.fn((values: Uint8Array) => {
+    values.fill(0);
+    return values;
+  });
+  vi.stubGlobal('crypto', { getRandomValues });
+  try {
+    const onSubmitted = vi.fn();
+    const ref = createRef<ExportModalRef>();
+    render(<ExportModal ref={ref} models={[]} userList={[]} assoTypes={[]} canSubmit onSubmitted={onSubmitted} />);
+    await act(async () => {
+      ref.current?.showModal({ title: '导出', modelId: 'host', selectedKeys: [], exportType: 'all',
+        columns: [{ key: 'inst_name', title: '实例名', dataIndex: 'inst_name' }], tableData: [] });
+    });
+    fireEvent.click(screen.getByText('Transfer.submitExport'));
+    await waitFor(() => expect(onSubmitted).toHaveBeenCalled());
+    expect(exportFile.mock.calls[0][1]).toBe('00000000-0000-4000-8000-000000000000');
+    expect(getRandomValues).toHaveBeenCalled();
+  } finally {
+    vi.unstubAllGlobals();
+  }
+});

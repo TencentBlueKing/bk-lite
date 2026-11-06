@@ -138,7 +138,10 @@ CREATE_CLASSIFICATION_CHECK_ATTR_MAP = dict(
 UPDATE_CLASSIFICATION_check_attr_map = dict(
     is_only={"classification_name": "模型分类名称"},
     is_required={"classification_name": "模型分类名称"},
-    editable={"classification_name": "模型分类名称"},
+    editable={
+        "classification_name": "模型分类名称",
+        "classification_name_customized": "分类名称已自定义",
+    },
 )
 # 创建模型时校验属性
 CREATE_MODEL_CHECK_ATTR = dict(
@@ -155,6 +158,7 @@ UPDATE_MODEL_CHECK_ATTR_MAP = dict(
         "icn": "图标",
         "group": "组织",
         "app_topo_layer": "应用拓扑层级",
+        "model_name_customized": "模型名称已自定义",
     },
 )
 
@@ -487,7 +491,7 @@ COLLECT_OBJ_TREE = [
                 "credential_default_port": 22,
                 "tag": ["Agent", "JOB", "Linux"],
                 "desc": "采集Redis关键配置信息",
-                "encrypted_fields": ["password"],
+                "encrypted_fields": ["password", "service_password"],
             },
             {
                 "id": "mongodb",
@@ -497,7 +501,7 @@ COLLECT_OBJ_TREE = [
                 "type": CollectDriverTypes.JOB,
                 "tag": ["Agent", "JOB", "Linux"],
                 "desc": "发现与采集MongoDB基础配置信息",
-                "encrypted_fields": ["password"],
+                "encrypted_fields": ["password", "service_password"],
             },
             {
                 "id": "es",

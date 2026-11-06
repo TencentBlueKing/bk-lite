@@ -4,6 +4,8 @@
     "collapse": "Collapse",
     "expandAll": "Expand All",
     "collapseAll": "Collapse All",
+    "showEmptyModel": "Show empty models",
+    "hideEmptyModel": "Hide empty models",
     "edit": "Edit",
     "view": "View",
     "builtIn": "Built-in",

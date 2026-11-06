@@ -151,6 +151,9 @@ export const buildCredentialPool = (
       if (normalized.password === PASSWORD_PLACEHOLDER) {
         delete normalized.password;
       }
+      if (normalized.service_password === PASSWORD_PLACEHOLDER) {
+        delete normalized.service_password;
+      }
       if (normalized.community === PASSWORD_PLACEHOLDER) {
         delete normalized.community;
       }

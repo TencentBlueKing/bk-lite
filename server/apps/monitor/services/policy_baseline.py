@@ -3,11 +3,8 @@
 from datetime import datetime, timezone
 
 from apps.core.logger import monitor_logger as logger
-from apps.monitor.models import (
-    MonitorInstance,
-    MonitorInstanceOrganization,
-    PolicyInstanceBaseline,
-)
+from apps.monitor.models import MonitorInstance, MonitorInstanceOrganization, PolicyInstanceBaseline
+from apps.monitor.utils.dimension import build_dimensions, metric_instance_storage_key
 
 
 class PolicyBaselineService:
@@ -45,20 +42,21 @@ class PolicyBaselineService:
             self.clear()
             return
 
-        metric_instances = self._query_metric_instances(instances_map)
-        if metric_instances is None:
+        queried = self._query_metric_instances(instances_map)
+        if queried is None:
             logger.warning(f"Policy {self.policy.id}: baseline refresh query failed, keeping existing baselines")
             return
 
+        metric_instances, dimensions_by_id = queried
         if not metric_instances:
             logger.info(f"Policy {self.policy.id}: query succeeded but returned no metric data, clearing baselines")
             self.clear()
             return
 
-        self._replace_baselines(metric_instances)
+        self._replace_baselines(metric_instances, dimensions_by_id)
         logger.info(f"Policy {self.policy.id}: refreshed {len(metric_instances)} baselines")
 
-    def sync(self, metric_instances: dict[str, str]):
+    def sync(self, metric_instances: dict[str, str], dimensions_by_id: dict | None = None):
         """增量同步基准数据
 
         仅添加新的基准，不删除已有基准。
@@ -80,6 +78,7 @@ class PolicyBaselineService:
                         policy_id=self.policy.id,
                         monitor_instance_id=monitor_instance_id,
                         metric_instance_id=metric_instance_id,
+                        dimensions=self._dimensions_for(metric_instance_id, dimensions_by_id),
                     )
                 )
 
@@ -139,7 +138,8 @@ class PolicyBaselineService:
             instances_map: {monitor_instance_id: monitor_instance_name}
 
         Returns:
-            dict | None: 查询成功时返回 {metric_instance_id: monitor_instance_id}；
+            tuple | None: 查询成功时返回
+            ({metric_instance_id: monitor_instance_id}, {metric_instance_id: dimensions})；
             查询失败或结果不可信时返回 None
         """
         if not self.policy.last_run_time:
@@ -147,9 +147,7 @@ class PolicyBaselineService:
 
         try:
             # Lazy import to avoid circular dependency
-            from apps.monitor.tasks.services.policy_scan.metric_query import (
-                MetricQueryService,
-            )
+            from apps.monitor.tasks.services.policy_scan.metric_query import MetricQueryService
 
             metric_query_service = MetricQueryService(self.policy, instances_map)
             metric_query_service.set_monitor_obj_instance_key()
@@ -157,19 +155,19 @@ class PolicyBaselineService:
             metrics = metric_query_service.query_existence_metrics(self.policy.period)
 
             result = {}
+            dimensions_by_id = {}
             group_by_keys = self._get_result_group_by(metric_query_service)
 
             for metric_info in metrics.get("data", {}).get("result", []):
-                instance_id_tuple = tuple([metric_info["metric"].get(key) for key in group_by_keys])
-                metric_instance_id = str(instance_id_tuple)
-                monitor_instance_id = self._get_monitor_instance_id(
-                    metric_query_service, instance_id_tuple, group_by_keys
-                )
+                instance_id_tuple = tuple(metric_info["metric"].get(key) for key in group_by_keys)
+                metric_instance_id = metric_instance_storage_key(instance_id_tuple)
+                monitor_instance_id = self._get_monitor_instance_id(metric_query_service, instance_id_tuple, group_by_keys)
 
                 if monitor_instance_id in instances_map:
                     result[metric_instance_id] = monitor_instance_id
+                    dimensions_by_id[metric_instance_id] = build_dimensions(instance_id_tuple, group_by_keys)
 
-            return result
+            return result, dimensions_by_id
 
         except Exception as e:
             logger.error(
@@ -184,11 +182,7 @@ class PolicyBaselineService:
             return metric_query_service.get_result_group_by()
 
         service_group_by = getattr(metric_query_service, "instance_id_keys", None)
-        if (
-            self.policy.query_condition.get("type") == "formula"
-            and isinstance(service_group_by, (list, tuple))
-            and service_group_by
-        ):
+        if self.policy.query_condition.get("type") == "formula" and isinstance(service_group_by, (list, tuple)) and service_group_by:
             return list(service_group_by)
 
         return self.policy.group_by or []
@@ -199,22 +193,14 @@ class PolicyBaselineService:
         instance_id_tuple: tuple,
         group_by_keys: list,
     ) -> str:
-        method = getattr(
-            type(metric_query_service), "get_monitor_instance_id_from_tuple", None
-        )
+        method = getattr(type(metric_query_service), "get_monitor_instance_id_from_tuple", None)
         if method:
-            return metric_query_service.get_monitor_instance_id_from_tuple(
-                instance_id_tuple, group_by_keys
-            )
+            return metric_query_service.get_monitor_instance_id_from_tuple(instance_id_tuple, group_by_keys)
 
         if not instance_id_tuple:
             return ""
 
-        monitor_key = (
-            "source"
-            if getattr(self.policy, "collect_type", "") == "trap"
-            else "instance_id"
-        )
+        monitor_key = "source" if getattr(self.policy, "collect_type", "") == "trap" else "instance_id"
         if monitor_key in group_by_keys:
             index = group_by_keys.index(monitor_key)
             if index < len(instance_id_tuple):
@@ -222,11 +208,18 @@ class PolicyBaselineService:
 
         return str((instance_id_tuple[0],))
 
-    def _replace_baselines(self, metric_instances: dict[str, str]):
+    def _dimensions_for(self, metric_instance_id: str, dimensions_by_id: dict | None) -> dict:
+        dimensions = (dimensions_by_id or {}).get(metric_instance_id)
+        if isinstance(dimensions, dict) and dimensions:
+            return dimensions
+        return build_dimensions(metric_instance_id, self.policy.group_by or []) or {}
+
+    def _replace_baselines(self, metric_instances: dict[str, str], dimensions_by_id: dict | None = None):
         """全量替换基准数据
 
         Args:
             metric_instances: {metric_instance_id: monitor_instance_id}
+            dimensions_by_id: {metric_instance_id: 维度值}
         """
         PolicyInstanceBaseline.objects.filter(policy_id=self.policy.id).delete()
 
@@ -235,6 +228,7 @@ class PolicyBaselineService:
                 policy_id=self.policy.id,
                 monitor_instance_id=monitor_instance_id,
                 metric_instance_id=metric_instance_id,
+                dimensions=self._dimensions_for(metric_instance_id, dimensions_by_id),
             )
             for metric_instance_id, monitor_instance_id in metric_instances.items()
         ]

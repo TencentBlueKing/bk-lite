@@ -13,7 +13,7 @@ import useApiClient, { HandledRequestError } from '@/utils/request';
 import { useTranslation } from '@/utils/i18n';
 import { WorkflowCanvasEdge } from './workflow-canvas-edge';
 import { defaultNodeInputValues, SchemaNodeField, SchemaNodeForm } from './schema-node-form';
-import { WorkflowCanvasNode, type InteractiveWorkflowNodeData, type WorkflowNodeAction } from './workflow-canvas-node';
+import { WorkflowCanvasNode, type InteractiveWorkflowNodeData, type WorkflowCanvasNodeTestState, type WorkflowNodeAction } from './workflow-canvas-node';
 import { WorkflowCanvasActionRail, WorkflowCanvasControls, WorkflowCanvasEmptyState, WorkflowNodeInspector, WorkflowNodePickerPanel, type WorkflowPickerGroup } from './workflow-editor-surface';
 import { AtomIcon } from './atom-icon';
 import { FormSchemaEditor } from './form-schema-editor';
@@ -28,6 +28,7 @@ import { WebhookTriggerPanel, type WebhookTestSession } from './webhook-trigger-
 import { missingRequiredFields } from './workflow-schema-form';
 import { defaultTriggerRuntimeInputs, WorkflowTriggerRuntimeForm } from './workflow-trigger-runtime-form';
 import { OPSPILOT_ATOM_KEYS, OpsPilotAtomForm } from './opspilot-atom-form';
+import { ExecutionDetailDrawer } from './execution-detail-drawer';
 import { approvalDecisionReference, configureApprovalTask } from '../lib/approval-dsl';
 import { localizeAtom } from '../lib/atom-localization';
 import { BUILTIN_SAMPLE_TEMPLATE_URLS } from '../lib/sample-templates';
@@ -37,7 +38,7 @@ import { layoutWorkflowCanvas } from '../lib/canvas-layout';
 import { buildDataReferenceOptions, buildWorkflowOutputReferenceOptions, dataReferencePreview, resolveNodeTestInputs, resolveTriggerGroupLabel, type DataReferenceOption } from '../lib/data-references';
 import { jobTargetOperatingSystems } from '../lib/job-target-operating-systems';
 import { buildNodeTestInputContract, materializeNodeTestInputs } from '../lib/node-test-input-contract';
-import type { AtomCatalogItem, ConductorDefinition, ConductorTask, ExecutionRecord, JsonSchema, PaginatedResponse, WorkflowRecord, WorkflowTriggerType, WorkflowVersionRecord } from '../lib/types';
+import type { AtomCatalogItem, ConductorDefinition, ConductorTask, ExecutionNodeDetail, ExecutionNodeState, ExecutionNodesResponse, ExecutionRecord, JsonSchema, PaginatedResponse, WorkflowRecord, WorkflowTriggerType, WorkflowVersionRecord } from '../lib/types';
 import { useAutoRequest, useRequestCoordinator } from '../lib/use-request-coordinator';
 import { buildNatsAlertEnvelopeSchema } from '../lib/nats-trigger-schema';
 import { createUnsavedWorkflowDraft } from '../lib/workflow-draft';
@@ -51,6 +52,18 @@ const nodeTypes = { workflowCanvas: WorkflowCanvasNode };
 const edgeTypes = { workflowCanvas: WorkflowCanvasEdge };
 const connectionLineStyle = { stroke: 'var(--color-border-3)', strokeWidth: 2 };
 const TERMINAL_EXECUTION_STATUSES = new Set(['SUCCEEDED', 'FAILED', 'TIMED_OUT', 'TERMINATED']);
+const ACTIVE_DEBUG_STATUSES = new Set(['QUEUED', 'RUNNING', 'WAITING_APPROVAL', 'TERMINATING', 'UNKNOWN']);
+
+function canvasTestStateFromExecutionNode(state: ExecutionNodeState): WorkflowCanvasNodeTestState {
+  if (state === 'RUNNING' || state === 'WAITING' || state === 'ACTIONABLE') return 'running';
+  if (state === 'FAILED' || state === 'TIMED_OUT') return 'failed';
+  if (state === 'SUCCESS' || state === 'WARNING' || state === 'SKIPPED') return 'success';
+  return 'idle';
+}
+
+function isUserVisibleDebugNode(node: { task_type: string; task_name: string }): boolean {
+  return node.task_type !== 'END' && !(node.task_type === 'SWITCH' && node.task_name === 'approval_decision');
+}
 const CONDITION_OPERATOR_DEFAULTS: Record<ConditionOperator, string> = {
   EQ: '等于', NEQ: '不等于', GT: '大于', GTE: '大于等于', LT: '小于', LTE: '小于等于', CONTAINS: '包含',
   NOT_CONTAINS: '不包含', STARTS_WITH: '开头是', ENDS_WITH: '结尾是',
@@ -294,6 +307,8 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
   const [debugTriggerId, setDebugTriggerId] = useState('');
   const [debugInputs, setDebugInputs] = useState<Record<string, unknown>>({});
   const [debugExecution, setDebugExecution] = useState<ExecutionRecord>();
+  const [debugDrawerOpen, setDebugDrawerOpen] = useState(false);
+  const [debugNodeStates, setDebugNodeStates] = useState<Record<string, WorkflowCanvasNodeTestState>>({});
   const [nodeTestOpen, setNodeTestOpen] = useState(false);
   const [nodeTestBusy, setNodeTestBusy] = useState(false);
   const [nodeTestError, setNodeTestError] = useState('');
@@ -774,6 +789,8 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
       });
       setSchedulePreview(result);
       cacheInspectorTestData(selectedTrigger.id, result.test_output);
+      setSelectedId(trigger.id);
+      setInspectorOpen(true);
       message.success(t('workflowOrchestration.editor.scheduleTestSucceeded', '已立即模拟一次定时触发，未创建正式调度'));
     } catch (error) {
       setNodeTestError(error instanceof Error ? error.message : t('workflowOrchestration.editor.scheduleTestFailed', '定时触发测试失败'));
@@ -806,6 +823,7 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
     setNodeTestError('');
     cacheInspectorTestData(triggerId, inputs);
     try {
+      // 单步 / 配置内「执行节点」只回填 Inspector 输出，不进入全流程调试会话（不改底钮、不锁编辑、不刷画布态）。
       let execution = await post<ExecutionRecord>(`${API}/workflows/${persistedWorkflowId}/debug/`, {
         inputs,
         trigger_id: triggerId,
@@ -815,12 +833,12 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
         definition,
         canvas_metadata: metadata,
       });
-      setDebugExecution(execution);
       setNodeTestOpen(false);
+      setSelectedId(taskReference);
+      setInspectorOpen(true);
       for (let attempt = 0; attempt < 75 && !TERMINAL_EXECUTION_STATUSES.has(execution.status); attempt += 1) {
         await new Promise((resolve) => window.setTimeout(resolve, 800));
         execution = await get<ExecutionRecord>(`${API}/executions/${execution.id}/`);
-        setDebugExecution(execution);
       }
       if (execution.status !== 'SUCCEEDED') {
         setNodeTestError(execution.error_message || t('workflowOrchestration.editor.nodeTestDidNotSucceed', '节点测试未成功完成'));
@@ -828,6 +846,7 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
       }
       const output = Object.hasOwn(execution.output || {}, 'result') ? execution.output.result : execution.output;
       cacheInspectorTestData(taskReference, output);
+      setInspectorOpen(true);
       message.success(t('workflowOrchestration.editor.nodeTestSucceeded', '节点测试完成，输出已回填到右侧'));
     } catch (error) {
       setNodeTestError(error instanceof Error ? error.message : t('workflowOrchestration.editor.nodeTestDidNotSucceed', '节点测试未成功完成'));
@@ -922,6 +941,8 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
     }
     cacheInspectorTestData(trigger.id, nodeTestInputs);
     setNodeTestOpen(false);
+    setSelectedId(trigger.id);
+    setInspectorOpen(true);
     message.success(t('workflowOrchestration.editor.formTriggerTestReady', '表单输入已回填，可继续测试下游节点'));
   };
 
@@ -1172,6 +1193,35 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
     return result.test_output;
   };
 
+  const applyDebugNodeSummaries = useCallback((nodesSummary: ExecutionNodesResponse) => {
+    const next: Record<string, WorkflowCanvasNodeTestState> = {};
+    for (const node of nodesSummary.nodes) {
+      if (!isUserVisibleDebugNode(node)) continue;
+      const mapped = canvasTestStateFromExecutionNode(node.state);
+      if (mapped !== 'idle') next[node.reference] = mapped;
+    }
+    setDebugNodeStates(next);
+  }, []);
+
+  const refreshDebugCanvas = useCallback(async (executionId: string) => {
+    const [record, nodesSummary] = await Promise.all([
+      get<ExecutionRecord>(`${API}/executions/${executionId}/`),
+      get<ExecutionNodesResponse>(`${API}/executions/${executionId}/nodes/`),
+    ]);
+    setDebugExecution(record);
+    applyDebugNodeSummaries(nodesSummary);
+    return record;
+  }, [applyDebugNodeSummaries, get]);
+
+  const attachDebugSession = useCallback((execution: ExecutionRecord, options?: { openDrawer?: boolean }) => {
+    setDebugExecution(execution);
+    if (options?.openDrawer !== false) {
+      setInspectorOpen(false);
+      setDebugDrawerOpen(true);
+    }
+    void refreshDebugCanvas(execution.id).catch(() => undefined);
+  }, [refreshDebugCanvas]);
+
   const debug = async (
     persistedWorkflowId = workflow?.id,
     options?: { trigger?: WorkflowTriggerNode; inputs?: Record<string, unknown> },
@@ -1202,8 +1252,8 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
       definition,
       canvas_metadata: snapshotMetadata(),
     });
-    setDebugExecution(execution);
     setDebugOpen(false);
+    attachDebugSession(execution);
     message.success(t('workflowOrchestration.editor.debugStartedFromSnapshot', '已使用当前未保存快照启动调试'));
   };
 
@@ -1228,6 +1278,55 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
       setDebugOpen(true);
     });
   };
+
+  const onDebugPrimaryClick = () => {
+    if (debugExecution) {
+      setInspectorOpen(false);
+      setDebugDrawerOpen(true);
+      return;
+    }
+    // 不跨页探测未终态 DEBUG：离开再进仍显示「调试流程」，点击直接新开。
+    openDebugDialog();
+  };
+
+  useEffect(() => {
+    if (!debugExecution || !ACTIVE_DEBUG_STATUSES.has(debugExecution.status)) return;
+    const executionId = debugExecution.id;
+    const poll = () => {
+      if (document.visibilityState !== 'visible') return;
+      void refreshDebugCanvas(executionId).catch(() => undefined);
+    };
+    const timer = window.setInterval(poll, 5_000);
+    return () => window.clearInterval(timer);
+  }, [debugExecution, refreshDebugCanvas]);
+
+  // 调试附着且打开原子配置时，静默拉取节点输出写入 node_test_data（与单步测试同路径）；不改左侧输入，不加 loading。
+  useEffect(() => {
+    const reference = selectedId;
+    const executionId = debugExecution?.id;
+    const isTaskNode = Boolean(reference && definition && flattenTasks(definition.tasks || []).some((task) => task.taskReferenceName === reference));
+    if (!inspectorOpen || !executionId || !reference || !isTaskNode) return;
+    let cancelled = false;
+    void get<ExecutionNodeDetail>(`${API}/executions/${executionId}/nodes/${encodeURIComponent(reference)}/`)
+      .then((detail) => {
+        if (cancelled) return;
+        const output = detail.outputs || {};
+        const state = debugNodeStates[reference];
+        const finished = state === 'success' || state === 'failed';
+        const hasOutput = Boolean(output && typeof output === 'object' && !Array.isArray(output) && Object.keys(output).length);
+        // 未完成且尚无输出时保留原 node_test_data，避免右侧被空对象刷掉
+        if (!finished && !hasOutput) return;
+        setMetadata((current) => ({
+          ...current,
+          node_test_data: { ...(current.node_test_data || {}), [reference]: output },
+        }));
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+    // debugNodeStates：画布轮询到节点完成后刷新右侧输出
+  }, [debugExecution?.id, debugNodeStates, definition, get, inspectorOpen, selectedId]);
 
   const openVersions = async () => {
     if (!workflow?.id) return;
@@ -1255,12 +1354,11 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
 
   const action = (kind: WorkflowNodeAction, id: string, sourceHandle?: string) => {
     setSelectedId(id);
-    if (kind === 'add') {
-      setPendingSource({ id, handle: sourceHandle });
-      setInspectorOpen(false);
-      setPickerOpen(true);
+    const editingBlocked = Boolean(debugExecution && ACTIVE_DEBUG_STATUSES.has(debugExecution.status));
+    if (kind === 'configure') {
+      setInspectorOpen(true);
+      return;
     }
-    if (kind === 'configure') setInspectorOpen(true);
     if (kind === 'detail') {
       const task = flattenTasks(definition?.tasks || []).find((item) => item.taskReferenceName === id);
       const atom = localizedAtoms.find((item) => item.key === task?.name);
@@ -1269,6 +1367,13 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
         return;
       }
       setAtomDetail(atom);
+      return;
+    }
+    if (editingBlocked) return;
+    if (kind === 'add') {
+      setPendingSource({ id, handle: sourceHandle });
+      setInspectorOpen(false);
+      setPickerOpen(true);
     }
     if (kind === 'test' && definition) {
       const trigger = workflowTriggerNodes(metadata).find((item) => item.id === id);
@@ -1286,13 +1391,23 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
   const selectedNode = nodes.find((item) => item.id === selectedId);
   const debugTriggers = workflowTriggerNodes(metadata);
   const debugTrigger = debugTriggers.find((item) => item.id === debugTriggerId) || debugTriggers[0];
+  const debugLocked = Boolean(debugExecution && ACTIVE_DEBUG_STATUSES.has(debugExecution.status));
+  const formReadOnly = readOnly || debugLocked;
+  const canvasEditable = !formReadOnly;
   const interactive = nodes.map((node) => ({
     ...node,
-    className: readOnly ? 'nopan' : node.className,
-    data: { ...node.data, readOnly, locked: Boolean(debugExecution), onAction: action },
+    // 调试锁编辑与查看模板一样需要 nopan，否则双击会被画布平移吞掉，打不开只读配置。
+    className: formReadOnly ? 'nopan' : node.className,
+    data: {
+      ...node.data,
+      readOnly: formReadOnly,
+      locked: debugLocked,
+      testState: debugNodeStates[node.id] || node.data.testState,
+      onAction: action,
+    },
   }));
   const removeEdge = (edgeId: string) => {
-    if (readOnly || !definition) return;
+    if (!canvasEditable || !definition) return;
     const nextEdges = edges.filter((edge) => edge.id !== edgeId);
     setEdges(nextEdges);
     setMetadata((current) => ({
@@ -1308,7 +1423,7 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
     ...edge,
     type: 'workflowCanvas' as const,
     sourceHandle: edge.sourceHandle ?? (nodes.find((node) => node.id === edge.source)?.data.taskType === 'SWITCH' ? 'true' : undefined),
-    data: { ...(edge.data || {}), readOnly: readOnly || Boolean(debugExecution), onRemove: removeEdge },
+    data: { ...(edge.data || {}), readOnly: !canvasEditable, onRemove: removeEdge },
   }));
   const tidyCanvas = async () => {
     setNodes(await layoutWorkflowCanvas(nodes, edges));
@@ -1363,7 +1478,7 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
     <header className="relative flex h-[65px] shrink-0 items-center gap-3 border-b border-[var(--color-border-1)] bg-[var(--color-bg)] px-5">
       <WorkflowPermission operation="View" area={permissionArea}><Button type="text" aria-label={t('common.back', '返回')} icon={<ArrowLeftOutlined />} onClick={() => !readOnly && dirty ? modal.confirm({ title: t('workflowOrchestration.editor.leaveConfirm', '离开并丢失未保存修改？'), okText: t('workflowOrchestration.editor.leave', '离开'), okButtonProps: { danger: true }, onOk: () => router.push(listHref) }) : router.push(listHref)} /></WorkflowPermission>
       <div className="min-w-0 flex-1">
-        <Input variant="borderless" className="max-w-96 font-semibold" value={workflow.name} readOnly={readOnly} onChange={(event) => { setWorkflow({ ...workflow, name: event.target.value }); setDirty(true); }} />
+        <Input variant="borderless" className="max-w-96 font-semibold" value={workflow.name} readOnly={formReadOnly} onChange={(event) => { setWorkflow({ ...workflow, name: event.target.value }); setDirty(true); }} />
         {workflow.is_builtin ? null : <div className="flex items-center gap-2 px-3 text-xs text-[var(--color-text-3)]">
           {workflow.current_version ? <Tag color={workflow.enabled ? 'success' : 'default'}>{workflow.enabled ? t('workflowOrchestration.status.enabled', '已启用') : t('workflowOrchestration.status.disabled', '已停用')} · v{workflow.current_version}</Tag> : <Tag>{t('workflowOrchestration.status.draftOnly', '纯草稿')}</Tag>}
           {(workflow.has_draft || dirty) && workflow.current_version > 0 ? t('workflowOrchestration.editor.hasUnpublishedChanges', '有未发布更改') : t('workflowOrchestration.editor.publishedUnaffected', '发布版本不受草稿修改影响')}
@@ -1372,17 +1487,17 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
       {workflow.is_builtin ? null : <WorkflowPermission operation="View" area="executions" instancePermissions={workflow.permission}><Button disabled={!workflow.id} onClick={() => router.push(`/workflow/executions?query=${encodeURIComponent(workflow.name)}`)}>{t('workflowOrchestration.execution.records', '执行记录')}</Button></WorkflowPermission>}
       {workflow.is_builtin ? null : <WorkflowPermission operation="View" instancePermissions={workflow.permission}><Button disabled={!workflow.id} icon={<HistoryOutlined />} onClick={() => void openVersions()}>{t('common.version', '版本')}</Button></WorkflowPermission>}
       {!readOnly && <>
-        {showValidateButton ? <WorkflowPermission operation="Edit" instancePermissions={workflow.permission}><Button onClick={() => void validate()}>{t('workflowOrchestration.editor.validate', '校验')}</Button></WorkflowPermission> : null}
-        <WorkflowPermission operation="Edit" instancePermissions={workflow.permission}><Button icon={<SaveOutlined />} loading={pendingAction === 'save'} disabled={pendingAction === 'publish'} onClick={() => void save()}>{t('workflowOrchestration.editor.saveDraft', '保存草稿')}</Button></WorkflowPermission>
-        <WorkflowPermission operation="Publish" instancePermissions={workflow.permission}><Button type="primary" icon={<SendOutlined />} loading={pendingAction === 'publish'} disabled={pendingAction === 'save'} onClick={() => void publish()}>{t('workflowOrchestration.editor.publish', '发布')}</Button></WorkflowPermission>
+        {showValidateButton ? <WorkflowPermission operation="Edit" instancePermissions={workflow.permission}><Button disabled={debugLocked} onClick={() => void validate()}>{t('workflowOrchestration.editor.validate', '校验')}</Button></WorkflowPermission> : null}
+        <WorkflowPermission operation="Edit" instancePermissions={workflow.permission}><Button icon={<SaveOutlined />} loading={pendingAction === 'save'} disabled={debugLocked || pendingAction === 'publish'} onClick={() => void save()}>{t('workflowOrchestration.editor.saveDraft', '保存草稿')}</Button></WorkflowPermission>
+        <WorkflowPermission operation="Publish" instancePermissions={workflow.permission}><Button type="primary" icon={<SendOutlined />} loading={pendingAction === 'publish'} disabled={debugLocked || pendingAction === 'save'} onClick={() => void publish()}>{t('workflowOrchestration.editor.publish', '发布')}</Button></WorkflowPermission>
       </>}
     </header>
     <div className="flex min-h-0 flex-1">
       <section className="relative min-w-0 flex-1 bg-[var(--color-fill-1)]">
-        <WorkflowCanvasActionRail readOnly={readOnly} onOpenPicker={() => { setPendingSource(undefined); closeInspector(); setPickerOpen(true); }} />
-        <ReactFlow className={workflow.is_builtin ? 'h-full!' : 'h-[calc(100%-37px)]!'} nodes={interactive} edges={interactiveEdges} nodeTypes={nodeTypes} edgeTypes={edgeTypes} connectionLineStyle={connectionLineStyle} fitView fitViewOptions={{ maxZoom: 1 }} proOptions={{ hideAttribution: true }} deleteKeyCode={null} nodesDraggable={!readOnly} nodesConnectable={!readOnly} edgesReconnectable={!readOnly}
+        <WorkflowCanvasActionRail readOnly={!canvasEditable} onOpenPicker={() => { setPendingSource(undefined); closeInspector(); setPickerOpen(true); }} />
+        <ReactFlow className="h-full!" nodes={interactive} edges={interactiveEdges} nodeTypes={nodeTypes} edgeTypes={edgeTypes} connectionLineStyle={connectionLineStyle} fitView fitViewOptions={{ maxZoom: 1 }} proOptions={{ hideAttribution: true }} deleteKeyCode={null} nodesDraggable={canvasEditable} nodesConnectable={canvasEditable} edgesReconnectable={canvasEditable}
           onNodesChange={(changes) => {
-            if (readOnly) {
+            if (!canvasEditable) {
               onNodesChange(changes.filter((item) => item.type !== 'position' && item.type !== 'remove'));
               return;
             }
@@ -1390,7 +1505,7 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
             onNodesChange(changes);
           }}
           onEdgesChange={(changes: EdgeChange<Edge>[]) => {
-            if (readOnly) {
+            if (!canvasEditable) {
               onEdgesChange(changes.filter((item) => item.type === 'select'));
               return;
             }
@@ -1406,7 +1521,7 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
             }
           }}
           onConnect={(connection: Connection) => {
-            if (readOnly) return;
+            if (!canvasEditable) return;
             if (!connection.source || !connection.target || connection.source === connection.target) return;
             if (edges.some((edge) => edge.source === connection.source && edge.target === connection.target)) { message.warning(t('workflowOrchestration.editor.pathExists', '这条路径已经存在')); return; }
             const topLevel = new Set(definition.tasks.map((task) => task.taskReferenceName));
@@ -1436,33 +1551,37 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
           <Background variant={BackgroundVariant.Dots} gap={16} size={1} color="var(--color-border-3)" bgColor="var(--color-fill-1)" />
           <WorkflowCanvasControls viewArea={permissionArea} onTidy={tidyCanvas} />
         </ReactFlow>
-        {nodes.length === 0 && !readOnly && (
+        {nodes.length === 0 && canvasEditable && (
           <WorkflowPermission operation="Edit" instancePermissions={workflow.permission} className="contents">
             <WorkflowCanvasEmptyState
               onOpenPicker={() => { setPendingSource(undefined); closeInspector(); setPickerOpen(true); }}
             />
           </WorkflowPermission>
         )}
-        {!readOnly && !pickerOpen && <WorkflowPermission operation="Execute" instancePermissions={workflow.permission}><Button
-          className="absolute bottom-[53px] left-1/2 z-20 h-9! -translate-x-1/2 rounded-md! border-[var(--theme-color-status-warning)]! bg-[var(--theme-color-status-warning)]! text-white! shadow-md"
-          icon={<PlayCircleOutlined />}
-          onClick={openDebugDialog}
-        >{t('workflowOrchestration.editor.debugWorkflow', '调试流程')}</Button></WorkflowPermission>}
-        {workflow.is_builtin ? null : <div className="absolute inset-x-0 bottom-0 z-20 flex h-[37px] items-center justify-between border-t border-[var(--color-border-1)] bg-[var(--color-bg)] px-3 text-xs text-[var(--color-text-2)]">
-          <span>{t('workflowOrchestration.editor.debugOutput', '调试输出')}</span>
-          <WorkflowPermission operation="View" area="executions" instancePermissions={debugExecution?.permission}>
-            <Button
-              type="link"
-              size="small"
-              className="h-auto! p-0! text-xs!"
-              disabled={!debugExecution}
-              onClick={() => debugExecution && router.push(`/workflow/executions/${debugExecution.id}`)}
-            >
-              {debugExecution ? t('common.viewDetails', '查看详情') : t('workflowOrchestration.editor.runToViewDetails', '运行后可查看执行详情')}
-            </Button>
-          </WorkflowPermission>
-        </div>}
-        {issues.length > 0 && <Alert className="absolute bottom-[53px] left-1/2 z-10 w-[min(640px,calc(100%-32px))] -translate-x-1/2" type="error" showIcon closable message={t('workflowOrchestration.editor.pendingIssues', '流程存在待处理问题')} description={issues[0]} onClose={() => setIssues([])} />}
+        {!readOnly && !pickerOpen && (
+          debugExecution ? (
+            <WorkflowPermission operation="View" area="executions" instancePermissions={debugExecution.permission}>
+              <Button
+                className="absolute bottom-6 left-1/2 z-20 h-9! -translate-x-1/2 rounded-md! border-[var(--theme-color-status-warning)]! bg-[var(--theme-color-status-warning)]! text-white! shadow-md"
+                icon={<PlayCircleOutlined />}
+                onClick={onDebugPrimaryClick}
+              >
+                {t('workflowOrchestration.editor.debugDetails', '调试详情')}
+              </Button>
+            </WorkflowPermission>
+          ) : (
+            <WorkflowPermission operation="Execute" instancePermissions={workflow.permission}>
+              <Button
+                className="absolute bottom-6 left-1/2 z-20 h-9! -translate-x-1/2 rounded-md! border-[var(--theme-color-status-warning)]! bg-[var(--theme-color-status-warning)]! text-white! shadow-md"
+                icon={<PlayCircleOutlined />}
+                onClick={onDebugPrimaryClick}
+              >
+                {t('workflowOrchestration.editor.debugWorkflow', '调试流程')}
+              </Button>
+            </WorkflowPermission>
+          )
+        )}
+        {issues.length > 0 && <Alert className="absolute bottom-20 left-1/2 z-10 w-[min(640px,calc(100%-32px))] -translate-x-1/2" type="error" showIcon closable message={t('workflowOrchestration.editor.pendingIssues', '流程存在待处理问题')} description={issues[0]} onClose={() => setIssues([])} />}
 
         <WorkflowNodePickerPanel firstNodeOnly={firstNodeOnly} open={pickerOpen} query={query} groups={pickerGroups} onQueryChange={setQuery} onClose={() => { setPendingSource(undefined); setPickerOpen(false); }} />
       </section>
@@ -1471,8 +1590,8 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
         title={selectedNode.data.title}
         meta={selectedNode.data.meta}
         references={inspectorReferences}
-        readOnly={readOnly}
-        parameterActions={!readOnly && selectedTask?.type === 'SIMPLE' && selectedAtom ? <AtomConfigTemplateActions
+        readOnly={formReadOnly}
+        parameterActions={!formReadOnly && selectedTask?.type === 'SIMPLE' && selectedAtom ? <AtomConfigTemplateActions
           atomKey={selectedAtom.key}
           parameters={selectedTask.inputParameters || {}}
           nodeTitle={resolveEditableNodeTitle(selectedAtom.name || selectedTask.name)}
@@ -1483,17 +1602,17 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
         outputData={metadata.node_test_data?.[selectedNode.id]}
         outputBusy={selectedTrigger?.trigger_type === 'NATS' ? natsTestBusy : selectedTrigger?.trigger_type === 'WEBHOOK' ? webhookTestBusy : nodeTestBusy && nodeTestReference === selectedNode.id}
         outputError={selectedTrigger?.trigger_type === 'NATS' ? natsTestError : selectedTrigger?.trigger_type === 'WEBHOOK' ? webhookTestError : nodeTestReference === selectedNode.id ? nodeTestError : ''}
-        onExecute={!readOnly && (selectedTrigger || selectedTask?.type === 'SIMPLE') ? () => action('test', selectedNode.id) : undefined}
+        onExecute={!formReadOnly && (selectedTrigger || selectedTask?.type === 'SIMPLE') ? () => action('test', selectedNode.id) : undefined}
         executeLabel={selectedTrigger?.trigger_type === 'NATS' ? t('workflowOrchestration.editor.listenForTestEvent', '监听测试事件') : selectedTrigger?.trigger_type === 'WEBHOOK' ? t('workflowOrchestration.editor.listenForWebhook', '监听测试请求') : undefined}
         onClose={closeInspector}
         hideUpstreamInput={Boolean(selectedTrigger)}
       >
         <div className="flex flex-col gap-5">
-          {selectedTrigger && <Form className="flex flex-col gap-5" layout="vertical"><WorkflowNodeTitleField value={selectedTrigger.name} disabled={readOnly} onChange={(name) => changeTrigger({ name })} />
-            {selectedTrigger.trigger_type === 'FORM' && <section className="flex flex-col gap-4"><Alert type="info" showIcon message={t('workflowOrchestration.editor.triggerInputHint', '{trigger} 定义本入口的运行输入', { trigger: triggerLabels[selectedTrigger.trigger_type] })} /><FormSchemaEditor context="form" readOnly={readOnly} value={selectedTrigger.input_schema} onChange={(inputSchema) => changeTrigger({ input_schema: inputSchema })} /></section>}
+          {selectedTrigger && <Form className="flex flex-col gap-5" layout="vertical"><WorkflowNodeTitleField value={selectedTrigger.name} disabled={formReadOnly} onChange={(name) => changeTrigger({ name })} />
+            {selectedTrigger.trigger_type === 'FORM' && <section className="flex flex-col gap-4"><Alert type="info" showIcon message={t('workflowOrchestration.editor.triggerInputHint', '{trigger} 定义本入口的运行输入', { trigger: triggerLabels[selectedTrigger.trigger_type] })} /><FormSchemaEditor context="form" readOnly={formReadOnly} value={selectedTrigger.input_schema} onChange={(inputSchema) => changeTrigger({ input_schema: inputSchema })} /></section>}
             {selectedTrigger.trigger_type === 'SCHEDULE' && <ScheduleTriggerEditor
               value={selectedTrigger.config}
-              readOnly={readOnly}
+              readOnly={formReadOnly}
               preview={schedulePreview}
               previewBusy={schedulePreviewBusy}
               previewError={schedulePreviewError}
@@ -1511,7 +1630,7 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
               />
               <Form.Item className="mb-0" label={t('workflowOrchestration.editor.responseMode', '响应模式')} tooltip={t('workflowOrchestration.editor.responseModeHint', '立即响应只确认已受理，流程继续异步执行；等待结果会保持请求，直到达 Webhook 响应节点。')}>
                 <Select
-                  disabled={readOnly}
+                  disabled={formReadOnly}
                   value={String(selectedTrigger.config.response_mode || 'IMMEDIATE')}
                   options={[
                     { value: 'IMMEDIATE', label: t('workflowOrchestration.editor.immediateResponse', '立即响应（返回 execution_id）') },
@@ -1545,7 +1664,7 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
                 value={selectedTask.inputParameters || {}}
                 references={references}
                 nodeTitle={resolveEditableNodeTitle(selectedAtom?.name || selectedTask.name)}
-                readOnly={readOnly}
+                readOnly={formReadOnly}
                 workflowId={workflow.id || null}
                 onChange={changeTaskInputs}
                 onNodeTitleChange={changeTaskTitle}
@@ -1557,9 +1676,9 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
                   value={selectedTask.inputParameters || {}}
                   references={references}
                   nodeTitle={resolveEditableNodeTitle(selectedAtom?.name || selectedTask.name)}
-                  readOnly={readOnly}
+                  readOnly={formReadOnly}
                   targetRecords={jobTargetRecords}
-                  fieldActions={readOnly ? {} : {
+                  fieldActions={formReadOnly ? {} : {
                     targets: <WorkflowPermission operation="Edit" instancePermissions={workflow.permission}><Button onClick={() => {
                       setJobTargetSelectorPurpose('params');
                       setJobTargetSelectorOpen(true);
@@ -1575,9 +1694,9 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
                     value={selectedTask.inputParameters || {}}
                     references={references}
                     nodeTitle={resolveEditableNodeTitle(selectedAtom?.name || selectedTask.name)}
-                    readOnly={readOnly}
+                    readOnly={formReadOnly}
                     targetRecords={jobTargetRecords}
-                    fieldActions={readOnly ? {} : {
+                    fieldActions={formReadOnly ? {} : {
                       targets: <WorkflowPermission operation="Edit" instancePermissions={workflow.permission}><Button onClick={() => {
                         setJobTargetSelectorPurpose('params');
                         setJobTargetSelectorOpen(true);
@@ -1594,7 +1713,7 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
                       references={references}
                       workflowId={workflow.id || null}
                       nodeTitle={resolveEditableNodeTitle(selectedAtom?.name || selectedTask.name)}
-                      readOnly={readOnly}
+                      readOnly={formReadOnly}
                       onChange={changeTaskInputs}
                       onNodeTitleChange={changeTaskTitle}
                     />
@@ -1605,14 +1724,14 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
                       references={references}
                       atomKey={selectedTask.name}
                       nodeTitle={resolveEditableNodeTitle(selectedAtom?.name || selectedTask.name)}
-                      readOnly={readOnly}
+                      readOnly={formReadOnly}
                       onChange={changeTaskInputs}
                       onNodeTitleChange={changeTaskTitle}
                     />)}
             {selectedCondition && <ConditionEditor
               value={selectedCondition}
               references={references}
-              readOnly={readOnly}
+              readOnly={formReadOnly}
               nodeTitle={resolveEditableNodeTitle(t('workflowOrchestration.editor.conditionBranch', '条件分支'))}
               onChange={changeCondition}
               onNodeTitleChange={changeTaskTitle}
@@ -1620,18 +1739,18 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
             {selectedTask.type === 'HUMAN' && <Form className="flex flex-col gap-5" layout="vertical">
               <WorkflowNodeTitleField
                 value={resolveEditableNodeTitle(t('workflowOrchestration.editor.humanApproval', '人工审批'))}
-                disabled={readOnly}
+                disabled={formReadOnly}
                 onChange={changeTaskTitle}
               />
               <Form.Item className="mb-0" label={t('workflowOrchestration.editor.approvalTitle', '审批标题')} required>
-                <Input disabled={readOnly} value={String(selectedTask.inputParameters?.title || '')} onChange={(event) => changeApproval({ title: event.target.value })} />
+                <Input disabled={formReadOnly} value={String(selectedTask.inputParameters?.title || '')} onChange={(event) => changeApproval({ title: event.target.value })} />
               </Form.Item>
               <Form.Item className="mb-0" label={t('workflowOrchestration.approval.candidates', '候选审批人')}>
-                <Select mode="tags" disabled={readOnly} value={(selectedTask.inputParameters?.candidates || []) as string[]} onChange={(candidates) => changeApproval({ candidates })} />
+                <Select mode="tags" disabled={formReadOnly} value={(selectedTask.inputParameters?.candidates || []) as string[]} onChange={(candidates) => changeApproval({ candidates })} />
               </Form.Item>
             </Form>}
           </section>}
-          {selectedReturn && <Form className="flex flex-col gap-5" layout="vertical"><WorkflowNodeTitleField value={selectedReturn.name} disabled={readOnly} onChange={(name) => changeReturn({ name })} /><Form.Item className="mb-0" label={t('workflowOrchestration.editor.returnReference', '返回数据引用')} tooltip={t('workflowOrchestration.editor.returnReferenceHint', '从可用节点输出中选择，不支持自由表达式')}><Select showSearch optionFilterProp="label" disabled={readOnly} value={String(selectedReturn.config.body || '') || undefined} placeholder={t('workflowOrchestration.editor.selectNodeOutput', '选择节点输出')} options={returnReferences.map((item) => ({ value: item.value, label: item.label }))} onChange={(body) => changeReturn({ config: { ...selectedReturn.config, body } })} /></Form.Item></Form>}
+          {selectedReturn && <Form className="flex flex-col gap-5" layout="vertical"><WorkflowNodeTitleField value={selectedReturn.name} disabled={formReadOnly} onChange={(name) => changeReturn({ name })} /><Form.Item className="mb-0" label={t('workflowOrchestration.editor.returnReference', '返回数据引用')} tooltip={t('workflowOrchestration.editor.returnReferenceHint', '从可用节点输出中选择，不支持自由表达式')}><Select showSearch optionFilterProp="label" disabled={formReadOnly} value={String(selectedReturn.config.body || '') || undefined} placeholder={t('workflowOrchestration.editor.selectNodeOutput', '选择节点输出')} options={returnReferences.map((item) => ({ value: item.value, label: item.label }))} onChange={(body) => changeReturn({ config: { ...selectedReturn.config, body } })} /></Form.Item></Form>}
         </div>
       </WorkflowNodeInspector>}
     </div>
@@ -1944,7 +2063,7 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
                         {t('workflowOrchestration.editor.executionCount', '{count} 次执行', { count: item.execution_count ?? '--' })}
                       </div>
                     </div>
-                    {!readOnly ? (
+                    {!formReadOnly ? (
                       <WorkflowPermission operation="Edit" instancePermissions={workflow.permission}>
                         <Popconfirm
                           title={t('workflowOrchestration.editor.restoreConfirm', '基于 v{version} 覆盖当前草稿？', { version: item.version })}
@@ -1967,5 +2086,20 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
         )}
       </Spin>
     </Drawer>
+    <ExecutionDetailDrawer
+      executionId={debugExecution?.id}
+      open={Boolean(debugExecution && debugDrawerOpen)}
+      onClose={() => setDebugDrawerOpen(false)}
+      onExecutionChanged={() => {
+        if (!debugExecution) return;
+        void refreshDebugCanvas(debugExecution.id).catch(() => undefined);
+      }}
+      onRerunStarted={(executionId) => {
+        setDebugExecution((current) => current ? { ...current, id: executionId, status: 'QUEUED' } : current);
+        setDebugNodeStates({});
+        setDebugDrawerOpen(true);
+        void refreshDebugCanvas(executionId).catch(() => undefined);
+      }}
+    />
   </main>;
 }

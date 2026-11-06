@@ -655,62 +655,64 @@ class AggregationProcessor:
         for result in aggregation_results:
             try:
                 self._normalize_fingerprint(result, alert_levels)
-                with transaction.atomic():
-                    # 记录是否为新创建的告警
-                    fingerprint = result.get("fingerprint")
-                    is_new_alert = not self._is_existing_alert(fingerprint)
+                # 记录是否为新创建的告警。挂接事务由 create_or_update_alert 自己提交，
+                # 这里不能再包一层，否则全量归约和恢复匹配会一直占着告警行锁。
+                fingerprint = result.get("fingerprint")
+                is_new_alert = not self._is_existing_alert(fingerprint)
 
-                    alert = AlertBuilder.create_or_update_alert(
-                        aggregation_result=result,
-                        strategy=strategy,
-                        group_by_field=",".join(dimensions),
-                        window_end=window_end,
-                        member_pk_batches=self.db_conn.iter_member_pk_batches(
-                            grouping_expression,
-                            result.get("effective_group_dimension"),
-                        ),
-                    )
+                alert = AlertBuilder.create_or_update_alert(
+                    aggregation_result=result,
+                    strategy=strategy,
+                    group_by_field=",".join(dimensions),
+                    window_end=window_end,
+                    member_pk_batches=self.db_conn.iter_member_pk_batches(
+                        grouping_expression,
+                        result.get("effective_group_dimension"),
+                    ),
+                )
 
-                    linked_new_events = getattr(alert, "aggregation_linked_new_events", 0)
-                    linked_recoveries = attach_visible_recoveries(alert)
-                    if linked_new_events or linked_recoveries:
+                linked_new_events = getattr(alert, "aggregation_linked_new_events", 0)
+
+                # 需要(重新)分派:新建告警,或仍处 UNASSIGNED 的存量告警。
+                # 后者覆盖"首次分派 0 命中/失败"的死亡序列——告警停留 UNASSIGNED 时,
+                # 新事件必须把它重新送入分派链路,否则永远不会再被分派。
+                needs_assignment = is_new_alert or alert.status == AlertStatus.UNASSIGNED
+                if needs_assignment:
+                    should_delay_assignment = alert.is_session_alert and alert.session_status == SessionStatus.OBSERVING
+
+                    if should_delay_assignment:
+                        logger.info(
+                            "策略 %s: 会话窗口告警 %s 仍在观察期，等待超时确认后再自动分派",
+                            strategy.name,
+                            alert.alert_id,
+                        )
+                    else:
+                        new_alert_ids.append(alert.alert_id)
+                        if not is_new_alert:
+                            logger.info(
+                                "[AlertAggregation] 已有 UNASSIGNED 告警收到新事件，触发重试分派: alert_id=%s",
+                                alert.alert_id,
+                            )
+
+                # 恢复匹配各自提交，不和告警行锁绑在一起。
+                linked_recoveries = attach_visible_recoveries(alert)
+                if linked_new_events or linked_recoveries:
+                    with transaction.atomic():
                         enqueue_outbox(
                             "recovery_reattach",
                             {"alert_pk": alert.pk, "window_end": window_end.isoformat()},
                             f"recovery-reattach:{alert.pk}:{window_end.isoformat()}",
                         )
 
-                    # 需要(重新)分派:新建告警,或仍处 UNASSIGNED 的存量告警。
-                    # 后者覆盖"首次分派 0 命中/失败"的死亡序列——告警停留 UNASSIGNED 时,
-                    # 新事件必须把它重新送入分派链路,否则永远不会再被分派。
-                    needs_assignment = is_new_alert or alert.status == AlertStatus.UNASSIGNED
-                    if needs_assignment:
-                        should_delay_assignment = alert.is_session_alert and alert.session_status == SessionStatus.OBSERVING
+                if AlertRecoveryChecker.check_and_recover_alert(alert):
+                    recovered_count += 1
 
-                        if should_delay_assignment:
-                            logger.info(
-                                "策略 %s: 会话窗口告警 %s 仍在观察期，等待超时确认后再自动分派",
-                                strategy.name,
-                                alert.alert_id,
-                            )
-                        else:
-                            new_alert_ids.append(alert.alert_id)
-                            if not is_new_alert:
-                                logger.info(
-                                    "[AlertAggregation] 已有 UNASSIGNED 告警收到新事件，触发重试分派: alert_id=%s",
-                                    alert.alert_id,
-                                )
-
-                    # 检查是否应该自动恢复
-                    if AlertRecoveryChecker.check_and_recover_alert(alert):
-                        recovered_count += 1
-
-                    success_count += 1
-                    logger.debug(
-                        "[AlertAggregation] 策略 %s: 告警处理成功 fingerprint=%s",
-                        strategy.name,
-                        result.get("fingerprint"),
-                    )
+                success_count += 1
+                logger.debug(
+                    "[AlertAggregation] 策略 %s: 告警处理成功 fingerprint=%s",
+                    strategy.name,
+                    result.get("fingerprint"),
+                )
             except Exception as e:
                 fail_count += 1
                 logger.error(
