@@ -111,6 +111,21 @@ describe('WidgetConfigPreview pane', () => {
     );
     expect(screen.queryByTestId('widget-config-preview-stale')).toBeNull();
     expect(rendererProps.mock.calls.at(-1)?.[0].layoutEditable).toBe(false);
+
+    const chart = screen.getByTestId('widget-config-preview-chart');
+    expect(chart.getAttribute('style')).toBeNull();
+    expect(chart.className).toContain('flex-1');
+    expect(chart.className).toContain('min-h-0');
+    expect(chart.className).toContain('overflow-hidden');
+    const chartBody = chart.parentElement;
+    const chartCard = chartBody?.parentElement;
+    expect(chartBody?.className).toContain('flex-1');
+    expect(chartBody?.className).toContain('min-h-0');
+    expect(chartCard?.className).toContain('flex-1');
+    expect(chartCard?.className).toContain('min-h-0');
+    expect(chartCard?.className).toContain('overflow-hidden');
+    expect(screen.getByText('草稿名').className).toContain('truncate');
+    expect(screen.getByText('草稿描述').className).toContain('line-clamp-2');
   });
 
   it('hides room3D view-mode chrome in the config preview', async () => {
@@ -150,10 +165,15 @@ describe('WidgetConfigPreview pane', () => {
 
     await user.click(screen.getByText('dashboard.configPreviewRawJson'));
 
-    expect(screen.getByTestId('widget-config-preview-json').textContent).toBe(
-      JSON.stringify(rawData, null, 2),
-    );
+    const json = screen.getByTestId('widget-config-preview-json');
+    expect(json.textContent).toBe(JSON.stringify(rawData, null, 2));
+    expect(json.className).toContain('min-h-0');
+    expect(json.className).toContain('flex-1');
+    expect(json.className).toContain('overflow-auto');
+    expect(json.className).not.toContain('max-h-[');
+    expect(json.className).not.toContain('min-h-[');
     expect(screen.getByTestId('widget-config-preview-copy-json')).toBeTruthy();
+    expect(screen.getByTestId('widget-config-preview-chart').className).toContain('hidden');
   });
 
   it('shows loading instead of empty json while a refresh is in flight', async () => {
