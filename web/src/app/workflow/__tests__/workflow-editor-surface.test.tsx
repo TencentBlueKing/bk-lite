@@ -200,4 +200,5 @@ describe('n8n 风格流程画布表现层', () => {
     fireEvent.change(within(output).getByPlaceholderText('搜索输出字段'), { target: { value: '不存在的字段' } });
     expect(within(output).getByText('没有匹配的输出字段')).not.toBeNull();
   });
+
 });

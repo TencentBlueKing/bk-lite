@@ -5,8 +5,6 @@ import CarouselFullscreenChrome from '@/app/ops-analysis/components/carousel/car
 import { createCarouselRemainingClock } from '@/app/ops-analysis/utils/carouselRemainingClock';
 import {
   CAROUSEL_FULLSCREEN_CHROME,
-  CAROUSEL_FULLSCREEN_EXIT_TIP_KEY,
-  CAROUSEL_FULLSCREEN_EXIT_TIP_MS,
   CAROUSEL_FULLSCREEN_RESUME_HINT_MS,
 } from '@/app/ops-analysis/utils/carouselFullscreenChrome';
 
@@ -31,7 +29,6 @@ const baseProps = () => ({
   playLabel: '播放',
   pauseLabel: '暂停',
   resumeHint: '空格继续',
-  exitHint: 'Esc 退出',
   disableStep: false,
   disablePlay: false,
   onPrevious: vi.fn(),
@@ -50,7 +47,6 @@ const renderChrome = (
 
 describe('carousel fullscreen chrome', () => {
   it('stays quiet until the pointer enters the bottom-right hot zone', () => {
-    window.sessionStorage.setItem(CAROUSEL_FULLSCREEN_EXIT_TIP_KEY, '1');
     const { props } = renderChrome();
     const hotzone = screen.getByTestId('carousel-fullscreen-hotzone');
     expect(hotzone.className).toContain('h-[80px]');
@@ -80,7 +76,6 @@ describe('carousel fullscreen chrome', () => {
   });
 
   it('draws the three ghost buttons at the same weight and keeps the hold progress empty', () => {
-    window.sessionStorage.setItem(CAROUSEL_FULLSCREEN_EXIT_TIP_KEY, '1');
     const { props } = renderChrome({
       visible: true,
       slides: [
@@ -119,7 +114,6 @@ describe('carousel fullscreen chrome', () => {
 
   it('switches the 3px progress at 20 and shows a one-time space hint without a top banner', () => {
     vi.useFakeTimers();
-    window.sessionStorage.setItem(CAROUSEL_FULLSCREEN_EXIT_TIP_KEY, '1');
     const { rerender, props } = renderChrome({
       visible: true,
       slides: slides(20),
@@ -198,7 +192,6 @@ describe('carousel fullscreen chrome', () => {
   });
 
   it('advances the 3px progress from the clock without rerendering the chrome owner', () => {
-    window.sessionStorage.setItem(CAROUSEL_FULLSCREEN_EXIT_TIP_KEY, '1');
     const clock = createCarouselRemainingClock(15_000);
     let paints = 0;
     function Owner() {
@@ -217,24 +210,17 @@ describe('carousel fullscreen chrome', () => {
     ).toBe('1');
   });
 
-  it('shows the Esc tip once per tab and keeps it out of the button cluster', () => {
-    vi.useFakeTimers();
-    const first = renderChrome({ visible: true });
-    const tip = screen.getByTestId('carousel-fullscreen-exit-hint');
-    expect(tip.textContent).toBe('Esc 退出');
-    expect(screen.getByTestId('carousel-fullscreen-controls').contains(tip)).toBe(false);
-    expect(screen.getByTestId('carousel-fullscreen-controls').textContent).not.toMatch(/Esc/);
-    expect(window.sessionStorage.getItem(CAROUSEL_FULLSCREEN_EXIT_TIP_KEY)).toBe('1');
-    first.unmount();
-    renderChrome({ visible: true });
+  it('does not render an in-app Esc exit hint during carousel playback', () => {
+    renderChrome({ visible: true, paused: true });
     expect(screen.queryByTestId('carousel-fullscreen-exit-hint')).toBeNull();
-    window.sessionStorage.clear();
-    cleanup();
-    renderChrome({ visible: true });
-    expect(screen.getByTestId('carousel-fullscreen-exit-hint').textContent).toBe('Esc 退出');
-    act(() => {
-      vi.advanceTimersByTime(CAROUSEL_FULLSCREEN_EXIT_TIP_MS);
-    });
-    expect(screen.queryByTestId('carousel-fullscreen-exit-hint')).toBeNull();
+    expect(screen.queryByText(/Esc/)).toBeNull();
+    expect(screen.queryByText('按 Esc 退出全屏')).toBeNull();
+    expect(window.sessionStorage.length).toBe(0);
+    expect(screen.getByTestId('carousel-fullscreen-hotzone')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '上一张' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '播放' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '下一张' })).toBeTruthy();
+    expect(screen.getByTestId('carousel-fullscreen-progress')).toBeTruthy();
+    expect(screen.getByTestId('carousel-fullscreen-resume-hint').textContent).toBe('空格继续');
   });
 });

@@ -15,9 +15,6 @@ export const CAROUSEL_FULLSCREEN_CHROME = {
 export const CAROUSEL_FULLSCREEN_CONTROLS_IDLE_MS = 500;
 /** 暂停后热区内「空格继续」只亮一次，到点收起。 */
 export const CAROUSEL_FULLSCREEN_RESUME_HINT_MS = 2000;
-/** 每次浏览器标签第一次进入全屏时，「Esc 退出」亮这段时间。 */
-export const CAROUSEL_FULLSCREEN_EXIT_TIP_MS = 2500;
-export const CAROUSEL_FULLSCREEN_EXIT_TIP_KEY = 'ops-carousel-fullscreen-exit-tip';
 /** 画布数不超过这个值时进度条分段，再多就合成一条。 */
 export const CAROUSEL_FULLSCREEN_SEGMENT_MAX = 20;
 
@@ -80,28 +77,6 @@ export const planFullscreenChrome = (
 
 /** 全屏轮播舞台始终显示系统光标。三键簇收起时也不隐藏。 */
 export const fullscreenStageCursor = (): 'auto' => 'auto';
-
-export const readFullscreenExitTipSeen = (
-  storage: Pick<Storage, 'getItem'> | null,
-): boolean => {
-  if (!storage) return false;
-  try {
-    return storage.getItem(CAROUSEL_FULLSCREEN_EXIT_TIP_KEY) === '1';
-  } catch {
-    return false;
-  }
-};
-
-export const markFullscreenExitTipSeen = (
-  storage: Pick<Storage, 'setItem'> | null,
-): void => {
-  if (!storage) return;
-  try {
-    storage.setItem(CAROUSEL_FULLSCREEN_EXIT_TIP_KEY, '1');
-  } catch {
-    // 隐私模式写不进 sessionStorage 时，这次提示照样收起。
-  }
-};
 
 export const carouselDwellFill = (dwellSeconds: number, remainingMs: number): number => {
   const dwellMs = Math.max(1, dwellSeconds) * 1000;
