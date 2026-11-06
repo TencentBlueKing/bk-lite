@@ -138,12 +138,13 @@ function renderVaultDynamicFields(
     accessSecret: string;
     projectId?: string;
   },
+  editMode = false,
 ): React.ReactNode {
   const known = new Set([
     'port', 'snmp_port', 'https_port', 'database', 'scheme', 'verify_tls',
     'transport_protocol', 'privilege', 'ssl', 'regionId', 'regionName',
     'source', 'user_type', 'subscription_id', 'enable_password', 'project_id',
-    'projectId',
+    'projectId', 'service_username', 'service_password', 'auth_source',
   ]);
   const portKey = shape === 'snmp' ? 'snmp_port' : shape === 'winsphere' ? 'https_port' : 'port';
   const extras = Object.entries(item).filter(([key, value]) =>
@@ -188,6 +189,9 @@ function renderVaultDynamicFields(
             onChange={(next) => updateItem(index, { [portKey]: next ?? undefined })} />
         </InputRow>
       )}
+      {renderJobServiceCredentialFields({
+        collectModelId, item, index, editMode, t, updateItem,
+      })}
       {shape === 'cloud' && cloudCredentialLabels?.projectId && (
         <InputRow label={cloudCredentialLabels.projectId}>
           <Input
@@ -689,6 +693,108 @@ function InputRow({
       <div className={styles.credentialFieldControl}>{children}</div>
     </div>
   );
+}
+
+function renderJobServiceCredentialFields({
+  collectModelId,
+  item,
+  index,
+  editMode,
+  t,
+  updateItem,
+}: {
+  collectModelId?: string;
+  item: CredentialPoolItem;
+  index: number;
+  editMode: boolean;
+  t: (key: string, defaultMessage?: string) => string;
+  updateItem: (index: number, patch: Partial<CredentialPoolItem>) => void;
+}): React.ReactNode {
+  if (collectModelId === 'redis') {
+    return (
+      <>
+        <InputRow
+          label={t('Collection.credentialPool.redisServiceUsername', 'Redis ACL 用户名')}
+          required={false}
+          help={t(
+            'Collection.credentialHelp.fields.redisServiceUsername',
+            '可选。只在 Redis 6+ 使用 ACL 用户时填写。不要填写 SSH 登录账号。',
+          )}
+        >
+          <Input
+            value={item.service_username}
+            placeholder={t('common.inputTip', '请输入')}
+            onChange={(event) => updateItem(index, { service_username: event.target.value })}
+          />
+        </InputRow>
+        <InputRow
+          label={t('Collection.credentialPool.redisServicePassword', 'Redis 口令')}
+          required={false}
+          help={t(
+            'Collection.credentialHelp.fields.redisServicePassword',
+            'Redis requirepass 或 ACL 口令。留空表示实例没有访问口令。不会当作 SSH 密码。',
+          )}
+        >
+          <SecretInput
+            value={item.service_password}
+            placeholder={t('common.inputTip', '请输入')}
+            editMode={editMode}
+            onChange={(nextValue) => updateItem(index, { service_password: nextValue })}
+          />
+        </InputRow>
+      </>
+    );
+  }
+  if (collectModelId === 'mongodb') {
+    return (
+      <>
+        <InputRow
+          label={t('Collection.credentialPool.mongoServiceUsername', 'MongoDB 用户名')}
+          required={false}
+          help={t(
+            'Collection.credentialHelp.fields.mongoServiceUsername',
+            'MongoDB 认证用户。和口令必须成对填写；都不填时只读取配置文件。',
+          )}
+        >
+          <Input
+            value={item.service_username}
+            placeholder={t('common.inputTip', '请输入')}
+            onChange={(event) => updateItem(index, { service_username: event.target.value })}
+          />
+        </InputRow>
+        <InputRow
+          label={t('Collection.credentialPool.mongoServicePassword', 'MongoDB 口令')}
+          required={false}
+          help={t(
+            'Collection.credentialHelp.fields.mongoServicePassword',
+            '上述 MongoDB 用户的口令。不会当作 SSH 密码。',
+          )}
+        >
+          <SecretInput
+            value={item.service_password}
+            placeholder={t('common.inputTip', '请输入')}
+            editMode={editMode}
+            onChange={(nextValue) => updateItem(index, { service_password: nextValue })}
+          />
+        </InputRow>
+        <InputRow
+          label={t('Collection.credentialPool.mongoAuthSource', '认证库')}
+          required={false}
+          help={t(
+            'Collection.credentialHelp.fields.mongoAuthSource',
+            '认证库。不填时按 admin。',
+          )}
+        >
+          <Input
+            value={item.auth_source}
+            placeholder="admin"
+            onChange={(event) => updateItem(index, { auth_source: event.target.value })}
+          />
+        </InputRow>
+      </>
+    );
+  }
+  return null;
 }
 
 function renderCredentialFields({
@@ -1380,6 +1486,9 @@ function renderCredentialFields({
           />
         </InputRow>
       )}
+      {renderJobServiceCredentialFields({
+        collectModelId, item, index, editMode, t, updateItem,
+      })}
       {shape === 'network_config_file' && (
         <InputRow label={t('Collection.credentialPool.enablePassword', '特权密码')} required={false}>
           <SecretInput
@@ -1794,7 +1903,7 @@ export default function CredentialPoolEditor({
               {source === 'vault' ? renderVaultDynamicFields(
                 item, index, credentialShape, updateItem, t, showPort,
                 onCloudRegionRefresh, cloudRegionLoading, collectModelId,
-                cloudRegionOptions, cloudCredentialLabels,
+                cloudRegionOptions, cloudCredentialLabels, editMode,
               ) : renderCredentialFields({
                 collectModelId,
                 item,

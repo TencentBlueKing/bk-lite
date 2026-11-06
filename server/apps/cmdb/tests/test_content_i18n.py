@@ -5,7 +5,9 @@ import pytest
 from apps.cmdb.language.service import (
     SettingLanguage,
     apply_attr_translations,
+    catalog_display_name,
     group_display_name,
+    mark_catalog_name_customized,
     model_object_display_name,
     normalize_cmdb_language,
 )
@@ -36,6 +38,39 @@ def test_apply_attr_translations_zh_cn_uses_hans_catalog():
     attrs = [{"attr_id": "inst_name", "attr_name": "Name", "attr_type": "str"}]
     result = apply_attr_translations(attrs, "host", "zh-CN")
     assert result[0]["attr_name"] == "实例名"
+
+
+def test_catalog_display_name_uses_translation_until_user_renames():
+    assert catalog_display_name("MODEL", "host", "主机", language="en") == "Host"
+    assert catalog_display_name("MODEL", "host", "服务器", customized=True, language="en") == "服务器"
+    assert catalog_display_name("CLASSIFICATION", "device", "物理设备", language="en") == "Device"
+    assert catalog_display_name("CLASSIFICATION", "device", "我的设备", customized=True, language="zh-Hans") == "我的设备"
+
+
+def test_mark_catalog_name_customized_keeps_seed_echo_for_groups_only():
+    current = {"is_pre": True, "classification_name": "物理设备", "classification_id": "device"}
+    echoed = mark_catalog_name_customized(
+        current,
+        {"classification_name": "Device"},
+        kind="CLASSIFICATION",
+        key="device",
+        name_field="classification_name",
+        flag_field="classification_name_customized",
+        preserve_seed_echo=True,
+    )
+    assert echoed["classification_name"] == "物理设备"
+    assert "classification_name_customized" not in echoed
+
+    renamed = mark_catalog_name_customized(
+        {"is_pre": True, "model_name": "主机", "model_id": "host"},
+        {"model_name": "Host"},
+        kind="MODEL",
+        key="host",
+        name_field="model_name",
+        flag_field="model_name_customized",
+    )
+    assert renamed["model_name"] == "Host"
+    assert renamed["model_name_customized"] is True
 
 
 def test_group_display_name_builtin_and_custom():

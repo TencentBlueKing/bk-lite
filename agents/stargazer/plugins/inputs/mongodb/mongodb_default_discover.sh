@@ -77,15 +77,8 @@ Cover_Mongo(){
                 max_incoming_conn="default:819"
             fi
 
-            # 数据库角色采集
-            database_role=""
-            if [[ -n "$mongo_path" ]]; then
-                rs_status_output=$($mongo_path --port "$port_str" --eval "rs.status()" 2>/dev/null)
-                database_role=$(printf '%s\n' "$rs_status_output" | grep -i 'role' | awk '{print $2}' | head -n1)
-                if [[ -z "$database_role" ]] && printf '%s\n' "$rs_status_output" | grep -qi 'not running with --replSet'; then
-                    database_role="standalone"
-                fi
-            fi
+            # 数据库角色采集。口令只来自进程环境，不进入命令参数或 eval 文本。
+            database_role=$(query_mongo_role "$port_str" "$mongo_path")
 
             fork=$(cat $config 2>/dev/null | grep -v '^#'|awk '/fork:/ {print $2}')
             system_log=$(cat $config 2>/dev/null | grep -v '^#'| awk '/systemLog:/,/\}/' | awk '/path:/ {print $2}')
@@ -94,9 +87,95 @@ Cover_Mongo(){
             json_str=$(printf '{"inst_name":"%s","ip_addr":"%s","obj_id":"mongodb","bin_path":"%s","mongo_path":"%s","port":"%s","version":"%s","config":"%s","fork":"%s","system_log":"%s","db_path":"%s","max_incoming_conn":"%s","database_role":"%s"}' \
             "$inst_name" "$host_innerip" "$bin_path" "$mongo_path" "$port_str" "$version" "$config"  "$fork" "$system_log" "$db_path" "$max_incoming_conn" "$database_role")
             echo $json_str
+            MONGO_HOST_FOUND=1
         done
     done
 }
+
+query_mongo_role() {
+    local port="$1"
+    local mongo_bin="$2"
+    local output role client
+    if [[ -z "$port" ]]; then
+        return 0
+    fi
+    if [[ -n "${MONGO_USER:-}" && -n "${MONGO_PASSWORD:-}" ]]; then
+        client="$mongo_bin"
+        if command -v mongosh >/dev/null 2>&1; then
+            client=$(command -v mongosh)
+        fi
+        [[ -z "$client" || ! -x "$client" ]] && return 0
+        output=$("$client" --quiet --port "$port" --eval 'try { db.getSiblingDB(process.env.MONGO_AUTH_DB || "admin").auth(process.env.MONGO_USER, process.env.MONGO_PASSWORD); const st = rs.status(); const me = (st.members || []).find(function(m){ return m.self; }); if (me && me.stateStr) { print("role " + me.stateStr); } } catch (e) { if (/not running with --replSet|no replset config/i.test(String(e))) { print("role standalone"); } }' 2>/dev/null)
+        role=$(printf '%s\n' "$output" | grep -i 'role' | awk '{print $2}' | head -n1)
+        printf '%s' "$role"
+        return 0
+    fi
+    [[ -z "$mongo_bin" || ! -x "$mongo_bin" ]] && return 0
+    output=$("$mongo_bin" --port "$port" --eval "rs.status()" 2>/dev/null)
+    role=$(printf '%s\n' "$output" | grep -i 'role' | awk '{print $2}' | head -n1)
+    if [[ -z "$role" ]] && printf '%s\n' "$output" | grep -qi 'not running with --replSet'; then
+        role="standalone"
+    fi
+    printf '%s' "$role"
+}
+
+docker_mongo_env_args() {
+    local args=""
+    [[ -n "${MONGO_USER:-}" ]] && args="$args -e MONGO_USER"
+    [[ -n "${MONGO_PASSWORD:-}" ]] && args="$args -e MONGO_PASSWORD"
+    [[ -n "${MONGO_AUTH_DB:-}" ]] && args="$args -e MONGO_AUTH_DB"
+    printf '%s' "$args"
+}
+
+emit_mongo_json() {
+    printf '{"inst_name":"%s","ip_addr":"%s","obj_id":"mongodb","bin_path":"%s","mongo_path":"%s","port":"%s","version":"%s","config":"%s","fork":"%s","system_log":"%s","db_path":"%s","max_incoming_conn":"%s","database_role":"%s"}\n' \
+        "$1" "$2" "$3" "$4" "$5" "$6" "$7" "$8" "$9" "${10}" "${11}" "${12}"
+}
+
+discover_mongo_containers() {
+    command -v docker >/dev/null 2>&1 || return 0
+    local id mapping cport hport exe version config config_body max_incoming_conn fork system_log db_path database_role bin_path mongo_client env_args
+    while read -r id; do
+        [[ -z "$id" ]] && continue
+        exe=$(docker exec "$id" sh -c 'command -v mongod' 2>/dev/null) || continue
+        case "$exe" in
+            /*mongod) ;;
+            *) continue ;;
+        esac
+        bin_path=$(dirname "$exe")
+        mongo_client="$bin_path/mongosh"
+        [[ -x "$mongo_client" ]] || mongo_client="$bin_path/mongo"
+        version=$(docker exec "$id" "$exe" --version 2>/dev/null | grep -i "db version" | awk '{print $3}' | sed 's/^v//' | head -n1)
+        [[ -z "$version" ]] && continue
+        config=$(docker exec "$id" sh -c 'tr "\0" " " </proc/1/cmdline 2>/dev/null' | grep -oE '(--config|-f) [^ ]+' | awk '{print $2}' | head -n1)
+        [[ -z "$config" ]] && config="/etc/mongod.conf"
+        case "$config" in
+            *[!A-Za-z0-9._/-]*) config="/etc/mongod.conf" ;;
+        esac
+        config_body=$(docker exec "$id" sh -c "grep -v '^#' '$config' 2>/dev/null" || true)
+        max_incoming_conn=$(printf '%s\n' "$config_body" | awk '/^maxIncomingConnections:/ {print $2}' | sed 's/[;]//g' | head -n1)
+        [[ -z "$max_incoming_conn" ]] && max_incoming_conn="default:819"
+        fork=$(printf '%s\n' "$config_body" | awk '/^fork:/ {print $2}' | head -n1)
+        system_log=$(printf '%s\n' "$config_body" | awk '/systemLog:/,/}/' | awk '/path:/ {print $2}' | head -n1)
+        db_path=$(printf '%s\n' "$config_body" | awk '/storage:/,/}/' | awk '/dbPath:/ {print $2}' | head -n1)
+        while read -r mapping; do
+            cport=$(printf '%s\n' "$mapping" | sed -n 's#^\([0-9][0-9]*\)/tcp -> .*:\([0-9][0-9]*\)$#\1#p')
+            hport=$(printf '%s\n' "$mapping" | sed -n 's#^\([0-9][0-9]*\)/tcp -> .*:\([0-9][0-9]*\)$#\2#p')
+            [[ -z "$hport" ]] && continue
+            env_args=$(docker_mongo_env_args)
+            database_role=$(docker exec $env_args "$id" sh -c 'command -v mongosh || command -v mongo' 2>/dev/null | head -n1)
+            if [[ -n "$database_role" ]]; then
+                database_role=$(docker exec $env_args "$id" "$database_role" --quiet --port "$cport" --eval 'try { if (process.env.MONGO_USER && process.env.MONGO_PASSWORD) { db.getSiblingDB(process.env.MONGO_AUTH_DB || "admin").auth(process.env.MONGO_USER, process.env.MONGO_PASSWORD); } const st = rs.status(); const me = (st.members || []).find(function(m){ return m.self; }); if (me && me.stateStr) { print("role " + me.stateStr); } } catch (e) { if (/not running with --replSet|no replset config/i.test(String(e))) { print("role standalone"); } }' 2>/dev/null | grep -i 'role' | awk '{print $2}' | head -n1)
+            fi
+            emit_mongo_json "$host_innerip-mongodb-$hport" "$host_innerip" "$bin_path" "$mongo_client" "$hport" "$version" "$config" "$fork" "$system_log" "$db_path" "$max_incoming_conn" "$database_role"
+            break
+        done < <(docker port "$id" 2>/dev/null)
+    done < <(docker ps -q 2>/dev/null)
+}
+
 Cover_Mongo
+if [[ "${MONGO_HOST_FOUND:-0}" != "1" ]]; then
+    discover_mongo_containers
+fi
 
             

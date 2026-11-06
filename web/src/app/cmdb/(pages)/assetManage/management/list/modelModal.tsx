@@ -55,14 +55,6 @@ const ModelModal = forwardRef<ModelModalRef, ModelModalProps>(
     });
     const [iconId, setIconId] = useState<any>('');
 
-    const isBuiltinEdit = (info: Record<string, unknown> = modelInfo) => {
-      const flag = info?.is_pre;
-      if (typeof flag === 'string') {
-        return flag.trim().toLowerCase() === 'true' || flag.trim() === '1';
-      }
-      return flag === true || flag === 1;
-    };
-
     useEffect(() => {
       if (modelVisible) {
         formRef.current?.resetFields();
@@ -114,15 +106,13 @@ const ModelModal = forwardRef<ModelModalRef, ModelModalProps>(
 
         let requestParams = deepClone(params);
         if (type !== 'add') {
-          requestParams = isBuiltinEdit()
-            ? { app_topo_layer: params.app_topo_layer }
-            : {
-              classification_id: params.classification_id,
-              model_name: params.model_name,
-              icn: params.icn,
-              group: Array.isArray(params.group) ? params.group : [params.group],
-              app_topo_layer: params.app_topo_layer,
-            };
+          requestParams = {
+            classification_id: params.classification_id,
+            model_name: params.model_name,
+            icn: params.icn,
+            group: Array.isArray(params.group) ? params.group : [params.group],
+            app_topo_layer: params.app_topo_layer,
+          };
         }
 
         if (type === 'add') {
@@ -160,9 +150,6 @@ const ModelModal = forwardRef<ModelModalRef, ModelModalProps>(
     };
 
     const onSelectIcon = () => {
-      if (type === 'edit' && isBuiltinEdit()) {
-        return;
-      }
       selectIconRef.current?.showModal({
         title: t('Model.selectIcon'),
         defaultIcon: iconId,
@@ -191,11 +178,7 @@ const ModelModal = forwardRef<ModelModalRef, ModelModalProps>(
         >
           <div className="flex items-center justify-center flex-col">
             <div
-              className={`flex items-center justify-center w-[80px] h-[80px] rounded-full border-solid border-[1px] border-[var(--color-border)] ${
-                type === 'edit' && isBuiltinEdit()
-                  ? 'cursor-default'
-                  : 'cursor-pointer'
-              }`}
+              className="flex items-center justify-center w-[80px] h-[80px] rounded-full border-solid border-[1px] border-[var(--color-border)] cursor-pointer"
               onClick={onSelectIcon}
             >
               <ModelIcon
@@ -243,7 +226,6 @@ const ModelModal = forwardRef<ModelModalRef, ModelModalProps>(
               rules={[{ required: true, message: t('required') }]}
             >
               <GroupTreeSelector
-                disabled={type === 'edit' && isBuiltinEdit()}
                 placeholder={t('common.selectTip')}
               />
             </Form.Item>
@@ -269,7 +251,6 @@ const ModelModal = forwardRef<ModelModalRef, ModelModalProps>(
               rules={[{ required: true, message: t('required') }]}
             >
               <Input
-                disabled={type === 'edit' && isBuiltinEdit()}
                 placeholder={t('common.inputTip')}
               />
             </Form.Item>

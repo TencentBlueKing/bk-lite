@@ -773,6 +773,7 @@
         "ipRangeTooLarge": "IP 范围不可超过 /21 网段（最多 2048 个地址）",
         "ipRangeCycleHint": "当前 IP 段地址数较多，单次采集耗时会明显增加，请评估是否需要拉长采集周期。",
         "hostCredentialOptionalTip": "同一云区域里 NATS-Executor 在线的节点不用填写登录凭据；其他目标仍需要远程登录账号和密码。选择“已有凭据”时需选定凭据。",
+        "serviceCredentialTip": "登录凭据只用于 SSH。已接入可用 Agent 的节点可以不填登录账号。Redis 或 MongoDB 开了访问控制时，仍要填写下面的服务账号和口令。",
         "legacyNetworkCredentialTip": "当前任务沿用已有的平台账户凭据。",
         "legacyJobCredentialTip": "当前任务沿用已有的用户名密码凭据。",
         "switchToSshCredential": "改用 SSH 凭据",
@@ -1307,7 +1308,12 @@
                 "ipmiPassword": "密码",
                 "ipmiPort": "端口",
                 "ipmiPrivilege": "权限级别",
-                "enablePassword": "特权密码"
+                "enablePassword": "特权密码",
+                "redisServiceUsername": "Redis ACL 用户名",
+                "redisServicePassword": "Redis 口令",
+                "mongoServiceUsername": "MongoDB 用户名",
+                "mongoServicePassword": "MongoDB 口令",
+                "mongoAuthSource": "认证库"
             },
             "fields": {
                 "sshAccount": "目标设备或主机的登录用户名，需具备执行采集命令的权限。是否允许留空取决于该插件的执行方式，见填写说明。",
@@ -1371,7 +1377,12 @@
                 "ipmiPassword": "上述 BMC 账户对应的密码。",
                 "ipmiPort": "IPMI RMCP/RMCP+ 使用的 UDP 端口。",
                 "ipmiPrivilege": "BMC 会话权限；优先使用满足采集要求的最低权限。",
-                "enablePassword": "仅设备执行采集命令前需要进入特权模式时填写。"
+                "enablePassword": "仅设备执行采集命令前需要进入特权模式时填写。",
+                "redisServiceUsername": "可选。只在 Redis 6+ 使用 ACL 用户时填写。不要填写 SSH 登录账号。",
+                "redisServicePassword": "Redis requirepass 或 ACL 口令。留空表示实例没有访问口令。不会当作 SSH 密码。",
+                "mongoServiceUsername": "MongoDB 认证用户。和口令必须成对填写；都不填时只读取配置文件。",
+                "mongoServicePassword": "上述 MongoDB 用户的口令。不会当作 SSH 密码。",
+                "mongoAuthSource": "认证库。不填时按 admin。"
             },
             "protocol": {
                 "ssh": "SSH",
@@ -1443,7 +1454,9 @@
                 "ipmi": "填写目标物理服务器 BMC 的 IPMI 登录账户；建议使用满足资产读取所需的最低权限。",
                 "redfish": "填写目标物理服务器 BMC 的 Redfish 只读账户；固定使用 HTTPS，默认校验服务端证书。仅在受信任管理网络中接入自签名证书时关闭校验。",
                 "networkConfig": "填写可通过 SSH 或 Telnet 登录网络设备并执行只读配置查看命令的账户。优先使用 SSH；Telnet 明文传输账号口令，仅设备只开放 TCP/23 时选用。需要进入特权模式时再填写特权密码。",
-                "configFile": "填写可通过 SSH 登录目标主机并读取指定配置文件的操作系统账户。"
+                "configFile": "填写可通过 SSH 登录目标主机并读取指定配置文件的操作系统账户。",
+                "redisJob": "登录凭据只用于 SSH。已接入可用 Agent 的节点可以不填登录账号。Redis 开了访问控制时，另填 Redis 口令；ACL 用户名可选，不要把 SSH 账号填进去。",
+                "mongodbJob": "登录凭据只用于 SSH。已接入可用 Agent 的节点可以不填登录账号。MongoDB 开了认证时，用户名和口令成对填写；认证库不填则按 admin。"
             },
             "defaultPort": {
                 "snmp": "UDP 161"
@@ -1575,7 +1588,13 @@
             "operatingSystem": "操作系统",
             "script": "脚本",
             "scriptRequired": "请填写或上传脚本",
-            "outputHint": "脚本向 stdout 输出 JSON 数组，每条记录必须有 inst_name，字段名与模型属性一致。\n示例：[{\"inst_name\":\"192.168.1.10-demo\",\"ip_addr\":\"192.168.1.10\",\"port\":\"8080\"}]",
+            "scriptTip": "查看脚本说明和示例",
+            "scriptTipRule": "stdout 只输出一个 JSON 数组。每个值都是字符串，没有采集到就填空字符串，多个值用分号分隔。字段名要和目标模型的属性 ID 一致。",
+            "scriptTipInstName": "每条记录必须带非空 inst_name，否则整条会被丢掉。填写本机名称即可，不用拼成内置采集的“IP[云区域]”。",
+            "scriptTipHostMatch": "补采已有主机时再带上 ip_addr。示例里的占位符会在 Agent 执行时换成这次下发的内网 IP。入库按这个 IP 和任务接入点的云区域找到主机，并改用库里已有的实例名。",
+            "scriptTipReconcile": "主机已经属于另一条采集任务时，把两条任务放进同一条数据调和，并让本插件负责的字段优先。",
+            "windowsScriptExample": "Windows 主机",
+            "linuxScriptExample": "Linux 主机",
             "selectedFile": "已选择 {name}，确认保存后生效",
             "createUploadOnly": "新建只能上传脚本文件",
             "uploadReplace": "上传并覆盖脚本",

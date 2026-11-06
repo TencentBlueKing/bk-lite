@@ -773,6 +773,7 @@
         "ipRangeTooLarge": "IP range must not exceed a /21 network (2048 addresses max)",
         "ipRangeCycleHint": "This IP range covers many addresses and may take longer to finish. Please evaluate whether a longer collection interval is needed.",
         "hostCredentialOptionalTip": "Nodes in the same cloud region with NATS-Executor online do not need login credentials. Other targets still need a remote username and password. Select a credential when using Existing credentials.",
+        "serviceCredentialTip": "Login credentials are only for SSH. A node with an available agent can omit them. If Redis or MongoDB has access control, still fill in the service account and password below.",
         "legacyNetworkCredentialTip": "This task retains its existing platform account credential.",
         "legacyJobCredentialTip": "This task still uses its existing username/password credential.",
         "switchToSshCredential": "Switch to SSH credential",
@@ -1301,7 +1302,12 @@
                 "ipmiPassword": "Password",
                 "ipmiPort": "Port",
                 "ipmiPrivilege": "Privilege",
-                "enablePassword": "Enable password"
+                "enablePassword": "Enable password",
+                "redisServiceUsername": "Redis ACL username",
+                "redisServicePassword": "Redis password",
+                "mongoServiceUsername": "MongoDB username",
+                "mongoServicePassword": "MongoDB password",
+                "mongoAuthSource": "Authentication database"
             },
             "fields": {
                 "sshAccount": "Login username for the target device or host, with permission to run collection commands. See the instructions for whether this execution mode permits an empty value.",
@@ -1365,7 +1371,12 @@
                 "ipmiPassword": "The password for the BMC account above.",
                 "ipmiPort": "The UDP port used by IPMI RMCP/RMCP+.",
                 "ipmiPrivilege": "The BMC session privilege; use the lowest level that permits collection.",
-                "enablePassword": "Enter only when the device must enter privileged mode before running collection commands."
+                "enablePassword": "Enter only when the device must enter privileged mode before running collection commands.",
+                "redisServiceUsername": "Optional. Fill this only for a Redis 6+ ACL user. Do not enter the SSH login name.",
+                "redisServicePassword": "The Redis requirepass or ACL password. Leave it empty when the instance has no access password. It is not the SSH password.",
+                "mongoServiceUsername": "The MongoDB authentication user. Enter it together with the password. Leave both empty to read configuration files only.",
+                "mongoServicePassword": "The password for the MongoDB user above. It is not the SSH password.",
+                "mongoAuthSource": "Authentication database. Defaults to admin when empty."
             },
             "protocol": {
                 "ssh": "SSH",
@@ -1437,7 +1448,9 @@
                 "ipmi": "Enter the IPMI account for the target server BMC. Prefer the lowest privilege that permits inventory collection.",
                 "redfish": "Enter a read-only Redfish account for the target server BMC. HTTPS is always used and certificate verification is enabled by default. Disable verification only for self-signed certificates on a trusted management network.",
                 "networkConfig": "Enter an account that can run read-only configuration commands over SSH or Telnet. Prefer SSH. Telnet sends credentials in cleartext; use it only when the device exposes TCP/23 only. Provide an enable password only when privileged mode is required.",
-                "configFile": "Enter an operating-system account that can sign in over SSH and read the specified configuration file."
+                "configFile": "Enter an operating-system account that can sign in over SSH and read the specified configuration file.",
+                "redisJob": "Login credentials are only for SSH. A node with an available agent can omit them. If Redis has access control, enter the Redis password separately. The ACL username is optional and must not be the SSH account.",
+                "mongodbJob": "Login credentials are only for SSH. A node with an available agent can omit them. If MongoDB has authentication, enter the username and password together. The authentication database defaults to admin."
             },
             "defaultPort": {
                 "snmp": "UDP 161"
@@ -1573,7 +1586,13 @@
             "operatingSystem": "Operating system",
             "script": "Script",
             "scriptRequired": "Enter or upload a script",
-            "outputHint": "The script prints a JSON array to stdout. Each record must include inst_name, and field names must match model attributes.\nExample: [{\"inst_name\":\"192.168.1.10-demo\",\"ip_addr\":\"192.168.1.10\",\"port\":\"8080\"}]",
+            "scriptTip": "View the script notes and examples",
+            "scriptTipRule": "Print one JSON array to stdout. Every value is a string, use an empty string when a value is missing, and separate multiple values with a semicolon. Field names must match the target model's attribute IDs.",
+            "scriptTipInstName": "Each record needs a non-empty inst_name, or the whole record is dropped. Use the local machine name. The built-in host plugin is what formats a name as IP[cloud].",
+            "scriptTipHostMatch": "To fill a host that already exists, also output ip_addr. The placeholder in the examples becomes this run's target IP when an agent executes the script. Collection then matches the host by that IP and the task access point's cloud region, and keeps the instance name already stored.",
+            "scriptTipReconcile": "If the host already belongs to another collection task, put both tasks in the same data reconciliation and give this plugin priority on the fields it owns.",
+            "windowsScriptExample": "Windows host",
+            "linuxScriptExample": "Linux host",
             "selectedFile": "Selected {name}. It takes effect after you save.",
             "createUploadOnly": "A new plugin can only be created by uploading a script file.",
             "uploadReplace": "Upload and replace script",

@@ -13,16 +13,16 @@ REDIS_DISCOVER_FROM_PROCESS="${REDIS_DISCOVER_FROM_PROCESS:-yes}"
 BK_HOST_INNERIP="${BK_HOST_INNERIP:-}"
 
 # Input validation: allow only safe chars to reduce injection risk (type/format only; no shell execution from vars).
-_safe_host() { echo "$1" | tr -d '\r\n' | sed -n 's/^[0-9a-zA-Z._:-]*$/\0/p'; }
-_safe_port() { echo "$1" | tr -d '\r\n' | sed -n 's/^[0-9]*$/\0/p' | awk -v max=65535 '$1>=1 && $1<=max {print $1}'; }
-_safe_redis_user() { echo "$1" | tr -d '\r\n' | sed -n 's/^[0-9a-zA-Z_]*$/\0/p'; }
-_safe_cli_path() { echo "$1" | tr -d '\r\n' | sed -n 's/^[0-9a-zA-Z./_-]*$/\0/p'; }
+_safe_host() { echo "$1" | tr -d '\r\n' | sed -n 's/^[0-9a-zA-Z._:-]*$/&/p'; }
+_safe_port() { echo "$1" | tr -d '\r\n' | sed -n 's/^[0-9]*$/&/p' | awk -v max=65535 '$1>=1 && $1<=max {print $1}'; }
+_safe_redis_user() { echo "$1" | tr -d '\r\n' | sed -n 's/^[0-9a-zA-Z_]*$/&/p'; }
+_safe_cli_path() { echo "$1" | tr -d '\r\n' | sed -n 's/^[0-9a-zA-Z./_-]*$/&/p'; }
 _safe_path() {
   p=$(printf '%s' "$1" | tr -d '\r\n'); [ -z "$p" ] && return 0
   case "$p" in *..*) return 0;; esac
-  echo "$p" | sed -n 's/^[0-9a-zA-Z./_[[:space:]]-]*$/\0/p'
+  echo "$p" | sed -n 's/^[0-9a-zA-Z./_[[:space:]]-]*$/&/p'
 }
-_safe_sentinel_name() { echo "$1" | tr -d '\r\n' | sed -n 's/^[0-9a-zA-Z_-]*$/\0/p'; }
+_safe_sentinel_name() { echo "$1" | tr -d '\r\n' | sed -n 's/^[0-9a-zA-Z_-]*$/&/p'; }
 
 # Whitelist: only these Redis commands (auth via REDISCLI_AUTH env only, never -a on cmdline).
 _redis_cmd_ok() {
@@ -98,21 +98,38 @@ parse_info() {
 config_get_value() { sed -n '2p' 2>/dev/null | tr -d '\r'; }
 
 parse_ports() {
-  spec="${1:-}"; _out=""
-  printf '%s' "$spec" | tr ',' '\n' | tr -d '\r' | while read -r part; do
-    part=$(echo "$part" | tr -d ' ')
-    [ -z "$part" ] && continue
+  spec="${1:-}"
+  _old_ifs="$IFS"
+  IFS=','
+  _acc=""
+  for part in $spec; do
+    IFS="$_old_ifs"
+    part=$(printf '%s' "$part" | tr -d ' \r')
+    [ -z "$part" ] && { IFS=','; continue; }
     case "$part" in
-      *-*) start=${part%-*}; end=${part#*-}
+      *-*)
+        start=${part%-*}; end=${part#*-}
         [ "$start" -gt "$end" ] 2>/dev/null && { _t=$start; start=$end; end=$_t; }
         p=$start
-        while [ $p -le $end ]; do
-          [ $p -ge 1 ] && [ $p -le 65535 ] 2>/dev/null && echo $p
+        while [ "$p" -le "$end" ] 2>/dev/null; do
+          if [ "$p" -ge 1 ] && [ "$p" -le 65535 ] 2>/dev/null; then
+            _acc="${_acc}${_acc:+
+}$p"
+          fi
           p=$((p+1))
-        done ;;
-      *) [ "$part" -ge 1 ] 2>/dev/null && [ "$part" -le 65535 ] 2>/dev/null && echo "$part"; ;;
+        done
+        ;;
+      *)
+        if [ "$part" -ge 1 ] 2>/dev/null && [ "$part" -le 65535 ] 2>/dev/null; then
+          _acc="${_acc}${_acc:+
+}$part"
+        fi
+        ;;
     esac
-  done | sort -nu 2>/dev/null
+    IFS=','
+  done
+  IFS="$_old_ifs"
+  [ -n "$_acc" ] && printf '%s\n' "$_acc" | sort -nu
 }
 
 # Output "port|install_path" per line (path = first word of redis-server command)
@@ -200,20 +217,122 @@ get_version_from_path() {
   echo "$out" | parse_redis_version
 }
 
+find_container_for_port() {
+  port="$1"
+  [ -z "$port" ] && return 0
+  command -v docker >/dev/null 2>&1 || return 0
+  docker ps -q 2>/dev/null | while read -r id; do
+    id=$(_safe_cli_path "$id"); [ -z "$id" ] && continue
+    docker port "$id" 2>/dev/null | grep -qE ":${port}$" && echo "$id" && break
+  done
+}
+
+container_port_for_host_port() {
+  cid="$1"; host_port="$2"
+  [ -z "$cid" ] || [ -z "$host_port" ] && return 0
+  docker port "$cid" 2>/dev/null | sed -n "s#^\([0-9][0-9]*\)/tcp -> .*:${host_port}\$#\1#p" | head -1
+}
+
+docker_redis_env_args() {
+  _args=""
+  [ -n "${REDISCLI_AUTH:-}" ] && _args="$_args -e REDISCLI_AUTH"
+  [ -n "${REDIS_USER:-}" ] && _args="$_args -e REDIS_USER"
+  printf '%s' "$_args"
+}
+
+run_redis_in_container() {
+  cid="$1"; port="$2"; shift 2
+  cid=$(_safe_cli_path "$cid"); port=$(_safe_port "$port")
+  [ -z "$cid" ] || [ -z "$port" ] && return 0
+  _redis_cmd_ok "$@" || return 0
+  _env=$(docker_redis_env_args)
+  _user_args=""
+  if [ -n "${REDIS_USER:-}" ]; then
+    _user=$(_safe_redis_user "$REDIS_USER"); [ -z "$_user" ] && return 0
+    _user_args="--user $_user"
+  fi
+  # 变量名来自固定名单，值留在当前进程环境里，不放进 docker 参数。
+  # shellcheck disable=SC2086
+  docker exec $_env "$cid" redis-cli -h 127.0.0.1 -p "$port" $_user_args "$@" 2>/dev/null
+}
+
+collect_via_docker() {
+  host_port="$1"; local_ip="$2"
+  cid=$(find_container_for_port "$host_port")
+  [ -z "$cid" ] && return 0
+  cport=$(container_port_for_host_port "$cid" "$host_port")
+  [ -z "$cport" ] && cport="$host_port"
+  ping=$(run_redis_in_container "$cid" "$cport" PING 2>/dev/null)
+  case "$ping" in PONG|pong) ;; *) return 0 ;; esac
+  out_info_repl=$(run_redis_in_container "$cid" "$cport" INFO replication 2>/dev/null)
+  out_info_sentinel=$(run_redis_in_container "$cid" "$cport" INFO sentinel 2>/dev/null)
+  out_cluster=$(run_redis_in_container "$cid" "$cport" CLUSTER INFO 2>/dev/null)
+  out_config_mc=$(run_redis_in_container "$cid" "$cport" CONFIG GET maxclients 2>/dev/null)
+  out_config_mm=$(run_redis_in_container "$cid" "$cport" CONFIG GET maxmemory 2>/dev/null)
+  out_info_server=$(run_redis_in_container "$cid" "$cport" INFO server 2>/dev/null)
+  role=$(echo "$out_info_repl" | parse_info | grep -E '^role:' | cut -d: -f2 | tr -d '\r')
+  version=$(echo "$out_info_server" | parse_info | grep -E '^redis_version:' | cut -d: -f2 | tr -d '\r')
+  max_conn=$(echo "$out_config_mc" | config_get_value)
+  max_mem=$(echo "$out_config_mm" | config_get_value)
+  run_id=$(echo "$out_info_server" | parse_info | grep -E '^run_id:' | cut -d: -f2 | tr -d '\r')
+  install_path=$(echo "$out_info_server" | parse_info | grep -E '^executable:' | sed 's/^executable:[[:space:]]*//' | tr -d '\r')
+  cluster_state=$(echo "$out_cluster" | parse_info | grep -E '^cluster_state:' | cut -d: -f2 | tr -d '\r')
+  mode=$(detect_mode "$out_info_sentinel" "$cluster_state" "$role")
+  echo "${host_port}|${mode}|${role}|${version}|${install_path}|${max_conn}|${max_mem}|${run_id}|${local_ip}"
+}
+
 # When target is local and Docker is available: find container publishing port, get Redis version via docker exec
 get_version_via_docker() {
   port="$1"
   [ -z "$port" ] && return 0
-  command -v docker >/dev/null 2>&1 || return 0
-  cid=$(docker ps -q 2>/dev/null | while read -r id; do
-    docker port "$id" 2>/dev/null | grep -qE ":$port$|/$port/" && echo "$id" && break
-  done)
+  cid=$(find_container_for_port "$port")
   [ -z "$cid" ] && return 0
   out=$(docker exec "$cid" redis-server --version 2>/dev/null) || out=$(docker exec "$cid" redis-server -v 2>/dev/null)
   echo "$out" | parse_redis_version
 }
 
-probe_port() { command -v nc >/dev/null 2>&1 && nc -z "$1" "$2" 2>/dev/null || true; }
+# 0 = 端口开着，1 = 确认没人听，2 = 本机没有 nc，改由 redis-cli 判断。
+probe_port() {
+  if command -v nc >/dev/null 2>&1; then
+    nc -z -w 1 "$1" "$2" >/dev/null 2>&1
+    return $?
+  fi
+  return 2
+}
+
+_ping_exec() {
+  if command -v timeout >/dev/null 2>&1; then
+    timeout 2 "$@"
+  else
+    "$@"
+  fi
+}
+
+_ping_redis() {
+  host="$1" port="$2"
+  host=$(_safe_host "$host"); port=$(_safe_port "$port")
+  [ -z "$host" ] || [ -z "$port" ] && return 0
+  _cli=$(_safe_cli_path "$REDIS_CLI"); [ -z "$_cli" ] && return 0
+  if [ -n "${REDIS_USER:-}" ]; then
+    _user=$(_safe_redis_user "$REDIS_USER"); [ -z "$_user" ] && return 0
+    _ping_exec "$_cli" -h "$host" -p "$port" --user "$_user" PING 2>&1
+  else
+    _ping_exec "$_cli" -h "$host" -p "$port" PING 2>&1
+  fi
+}
+
+# 口令失败、redis-server 进程或容器里的 redis-server 版本，才算这是 Redis。
+_redis_confirmed() {
+  raw="$1" version="$2" path="$3"
+  case "$raw" in
+    *NOAUTH*|*WRONGPASS*|*NOPERM*|*Authentication\ required*) return 0 ;;
+  esac
+  [ -n "$version" ] && return 0
+  case "$path" in
+    *redis-server*|*redis-sentinel*) return 0 ;;
+  esac
+  return 1
+}
 
 detect_mode() {
   info_sentinel="$1" cluster_state="$2" role="$3"
@@ -280,12 +399,26 @@ parse_resp_maps() {
 
 collect_instance() {
   host="$1" port="$2" local_ip="$3"
-  probe_port "$host" "$port" || return 1
-  ping=$(run_redis "$host" "$port" PING 2>/dev/null)
+  probe_port "$host" "$port"
+  _probe_rc=$?
+  [ "$_probe_rc" -eq 1 ] && return 1
+  ping_raw=$(_ping_redis "$host" "$port")
+  ping=$(printf '%s\n' "$ping_raw" | head -1 | tr -d '\r')
   install_path=$(get_install_path_for_port "$port")
   case "$ping" in PONG|pong) ;; *)
     version=$(get_version_from_path "$install_path")
-    [ -z "$version" ] && case "$host" in 127.0.0.1|localhost) version=$(get_version_via_docker "$port"); ;; esac
+    case "$install_path" in
+      *redis-server*|*redis-sentinel*) ;;
+      *)
+        docker_line=$(collect_via_docker "$port" "$local_ip")
+        if [ -n "$docker_line" ]; then
+          echo "$docker_line"
+          return 0
+        fi
+        [ -z "$version" ] && case "$host" in 127.0.0.1|localhost) version=$(get_version_via_docker "$port"); ;; esac
+        ;;
+    esac
+    _redis_confirmed "$ping_raw" "$version" "$install_path" || return 1
     emit_partial_instance "$local_ip" "$port" "$version" "$install_path"
     return 1
   ;; esac

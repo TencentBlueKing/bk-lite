@@ -18,6 +18,21 @@ from apps.alerts.utils.queryset import iter_queryset_in_pk_batches
 from apps.core.logger import alert_logger as logger
 
 MAX_ALERT_OWNERS = 50
+# 全量归约写回的字段。不含状态、级别和事件时间，避免覆盖锁外期间的并发变更。
+REDUCED_ALERT_FIELDS = (
+    "source_name",
+    "push_source_ids",
+    "resource_id",
+    "resource_name",
+    "resource_type",
+    "item",
+    "labels",
+    "enrichment",
+    "enrichment_meta",
+    "dimensions",
+    "monitor_objects",
+    "owners",
+)
 
 
 class AlertBuilder:
@@ -216,9 +231,10 @@ class AlertBuilder:
     def _pk_batches_for_event_ids(event_ids: List):
         if not event_ids:
             return
-        queryset = Event.objects.filter(event_id__in=event_ids)
-        for batch in iter_queryset_in_pk_batches(queryset, AGGREGATION_BATCH_SIZE):
-            yield [event.pk for event in batch]
+        # 只取主键。按 event_id 找行时不需要把 raw_data 解出来。
+        pks = list(Event.objects.filter(event_id__in=event_ids).order_by("pk").values_list("pk", flat=True))
+        for offset in range(0, len(pks), AGGREGATION_BATCH_SIZE):
+            yield pks[offset : offset + AGGREGATION_BATCH_SIZE]
 
     @staticmethod
     def _link_pk_batches(alert: Alert, pk_batches) -> int:
@@ -235,11 +251,14 @@ class AlertBuilder:
         return added
 
     @staticmethod
-    def _fill_reduced_fields(alert: Alert, group_by_field: str) -> None:
+    def _fill_reduced_fields(alert: Alert, group_by_field: str) -> int:
         reducer = EventFieldReducer(group_by_field)
-        related = alert.events.select_related("source")
+        # 归约不读原始报文。defer 必须留在游标查询上，避免把 raw_data 解出来。
+        related = alert.events.select_related("source").defer("raw_data")
+        consumed = 0
         for batch in iter_queryset_in_pk_batches(related, AGGREGATION_BATCH_SIZE):
             reducer.consume(batch)
+            consumed += len(batch)
         fields = reducer.standard_fields()
         alert.source_name = fields["source_name"]
         alert.push_source_ids = fields["push_source_ids"]
@@ -253,6 +272,35 @@ class AlertBuilder:
         alert.dimensions = reducer.dimensions()
         alert.monitor_objects = reducer.monitor_objects
         alert.owners = reducer.owners
+        return consumed
+
+    @staticmethod
+    def _linked_event_count(alert: Alert) -> int:
+        return alert.events.count()
+
+    @staticmethod
+    def _persist_reduced_fields(alert: Alert, group_by_field: str) -> None:
+        """在告警行锁外扫描历史事件，再用短锁写回归约字段。"""
+        for _attempt in range(2):
+            consumed = AlertBuilder._fill_reduced_fields(alert, group_by_field)
+            values = {name: getattr(alert, name) for name in REDUCED_ALERT_FIELDS}
+            with transaction.atomic():
+                locked = Alert.objects.select_for_update().get(pk=alert.pk)
+                if AlertBuilder._linked_event_count(locked) != consumed:
+                    continue
+                for name, value in values.items():
+                    setattr(locked, name, value)
+                locked.save(update_fields=list(REDUCED_ALERT_FIELDS))
+            remember_snapshot(alert)
+            return
+
+        stored = Alert.objects.get(pk=alert.pk)
+        for name in REDUCED_ALERT_FIELDS:
+            setattr(alert, name, getattr(stored, name))
+        logger.warning(
+            "[AlertAggregation] skip stale reduced fields alert_id=%s",
+            alert.alert_id,
+        )
 
     @staticmethod
     def create_or_update_alert(
@@ -263,9 +311,10 @@ class AlertBuilder:
         member_pk_batches=None,
     ) -> Alert:
         """
-        创建或更新Alert（并发安全版本）
+        创建或更新 Alert。
 
-        使用行级锁防止多进程并发创建相同fingerprint的Alert
+        更新先在短事务里挂上新事件并保存时间与级别，提交后释放告警行锁，
+        再在锁外做全量归约。调用方不要把恢复匹配包进同一个事务。
         """
         fingerprint = aggregation_result.get("fingerprint")
         event_ids = aggregation_result.get("event_ids", [])
@@ -274,25 +323,31 @@ class AlertBuilder:
 
         from apps.alerts.service.active_fingerprint import bind_active_fingerprint, claim_active_fingerprint
 
-        lease, alert = claim_active_fingerprint(fingerprint)
-        if alert:
-            return AlertBuilder._update_existing_alert(
-                alert,
-                aggregation_result,
-                member_pk_batches,
-                strategy,
-                group_by_field,
-                window_end,
-            )
-
-        alert = AlertBuilder._create_new_alert(
-            aggregation_result,
-            strategy,
-            member_pk_batches,
-            group_by_field,
-            window_end,
-        )
-        bind_active_fingerprint(lease, alert)
+        with transaction.atomic():
+            lease, alert = claim_active_fingerprint(fingerprint)
+            if alert:
+                alert = AlertBuilder._update_existing_alert(
+                    alert,
+                    aggregation_result,
+                    member_pk_batches,
+                    strategy,
+                    window_end,
+                )
+                reduce_group_by = group_by_field or alert.group_by_field or ""
+                should_reduce = True
+            else:
+                alert = AlertBuilder._create_new_alert(
+                    aggregation_result,
+                    strategy,
+                    member_pk_batches,
+                    group_by_field,
+                    window_end,
+                )
+                bind_active_fingerprint(lease, alert)
+                should_reduce = False
+                reduce_group_by = ""
+        if should_reduce:
+            AlertBuilder._persist_reduced_fields(alert, reduce_group_by)
         return alert
 
     @staticmethod
@@ -343,24 +398,9 @@ class AlertBuilder:
         )
 
         added = AlertBuilder._link_pk_batches(alert, member_pk_batches)
+        # 新建告警只归约本批事件，写完后再注册创建回调，避免回调读到空字段。
         AlertBuilder._fill_reduced_fields(alert, group_by_field)
-        alert.save(
-            update_fields=[
-                "source_name",
-                "push_source_ids",
-                "resource_id",
-                "resource_name",
-                "resource_type",
-                "item",
-                "labels",
-                "enrichment",
-                "enrichment_meta",
-                "dimensions",
-                "monitor_objects",
-                "owners",
-                "updated_at",
-            ]
-        )
+        alert.save(update_fields=[*REDUCED_ALERT_FIELDS, "updated_at"])
         alert.aggregation_linked_new_events = added
 
         remember_snapshot(alert)
@@ -383,10 +423,9 @@ class AlertBuilder:
         result: Dict[str, Any],
         member_pk_batches,
         strategy: AlarmStrategy,
-        group_by_field: str = "",
         window_end=None,
     ) -> Alert:
-        # 与恢复事件关联、历史回填共用 Alert 行锁；锁内重读快照。
+        # 锁内只重读、挂接新事件并保存标量。历史归约在事务提交后进行。
         alert = Alert.objects.select_for_update().get(pk=alert.pk)
         alert.last_event_time = result["last_event_time"]
         # 确保level在ALERT类型的有效范围内
@@ -402,7 +441,6 @@ class AlertBuilder:
                 alert.session_end_time = window_config.get_session_end_time()
 
         added = AlertBuilder._link_pk_batches(alert, member_pk_batches)
-        AlertBuilder._fill_reduced_fields(alert, group_by_field or alert.group_by_field or "")
         alert.aggregation_linked_new_events = added
         alert.save(
             update_fields=[
@@ -410,19 +448,6 @@ class AlertBuilder:
                 "level",
                 "updated_at",
                 "session_end_time",
-                "source_name",
-                "push_source_ids",
-                "resource_id",
-                "resource_name",
-                "resource_type",
-                "monitor_objects",
-                "owners",
-                "item",
-                "labels",
-                "enrichment",
-                "enrichment_meta",
-                "dimensions",
             ]
         )
-        remember_snapshot(alert)
         return alert

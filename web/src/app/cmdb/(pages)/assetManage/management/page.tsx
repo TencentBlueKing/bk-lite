@@ -745,39 +745,37 @@ const AssetManage = () => {
                             （{item.count}）
                           </span>
                         </button>
-                        {!item.is_pre && (
-                          <div className={assetManageStyle.groupOperate}>
+                        <div className={assetManageStyle.groupOperate}>
+                          <PermissionWrapper
+                            requiredPermissions={['Edit Group']}
+                            instPermissions={item.permission}
+                          >
+                            <Button
+                              type="text"
+                              size="small"
+                              className={assetManageStyle.groupAction}
+                              aria-label={t('common.edit')}
+                              icon={<EditTwoTone aria-hidden="true" />}
+                              onClick={() => showGroupModal('edit', item)}
+                            />
+                          </PermissionWrapper>
+
+                          {!item.is_pre && !item.list.length && (
                             <PermissionWrapper
-                              requiredPermissions={['Edit Group']}
+                              requiredPermissions={['Delete Group']}
                               instPermissions={item.permission}
                             >
                               <Button
                                 type="text"
                                 size="small"
                                 className={assetManageStyle.groupAction}
-                                aria-label={t('common.edit')}
-                                icon={<EditTwoTone aria-hidden="true" />}
-                                onClick={() => showGroupModal('edit', item)}
+                                aria-label={t('common.delete')}
+                                icon={<DeleteTwoTone aria-hidden="true" />}
+                                onClick={() => showDeleteConfirm(item)}
                               />
                             </PermissionWrapper>
-
-                            {!item.list.length && (
-                              <PermissionWrapper
-                                requiredPermissions={['Delete Group']}
-                                instPermissions={item.permission}
-                              >
-                                <Button
-                                  type="text"
-                                  size="small"
-                                  className={assetManageStyle.groupAction}
-                                  aria-label={t('common.delete')}
-                                  icon={<DeleteTwoTone aria-hidden="true" />}
-                                  onClick={() => showDeleteConfirm(item)}
-                                />
-                              </PermissionWrapper>
-                            )}
-                          </div>
-                        )}
+                          )}
+                        </div>
                       </div>
                       {!isCollapsed && (
                         <ul

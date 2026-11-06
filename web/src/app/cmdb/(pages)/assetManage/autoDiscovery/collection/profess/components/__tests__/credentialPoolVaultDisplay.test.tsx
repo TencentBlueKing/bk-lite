@@ -117,6 +117,53 @@ it('已有 SNMP 凭据的额外表单只展示动态端口', () => {
   expect(screen.queryByText('crd-snmp-1')).toBeNull();
 });
 
+it.each([
+  ['redis', 'Redis ACL 用户名', 'Redis 口令'],
+  ['mongodb', 'MongoDB 用户名', 'MongoDB 口令'],
+] as const)('%s 使用已有凭据时仍可填写服务账号和口令，且这两项不是必填', (modelId, usernameLabel, passwordLabel) => {
+  const onChange = vi.fn();
+  function Editor() {
+    const [value, setValue] = React.useState<CredentialPoolItem[]>([{
+      port: 22,
+      username: 'root',
+      password: 'ssh-secret',
+      service_username: 'reader',
+      service_password: 'service-secret',
+      ...(modelId === 'mongodb' ? { auth_source: 'appdb' } : {}),
+    }]);
+    return (
+      <CredentialPoolEditor
+        credentialShape="ssh"
+        collectModelId={modelId}
+        vaultCategory="middleware"
+        vaultTypeKeys={['ssh']}
+        value={value}
+        onChange={(next) => { setValue(next); onChange(next); }}
+      />
+    );
+  }
+  render(<Editor />);
+  expect(screen.getByText(usernameLabel).closest('label')?.textContent).toBe(usernameLabel);
+  expect(screen.getByText(passwordLabel).closest('label')?.textContent).toBe(passwordLabel);
+  fireEvent.click(screen.getByRole('button', { name: '使用已有凭据' }));
+  expect(screen.getByText(usernameLabel).closest('label')?.textContent).toBe(usernameLabel);
+  expect(screen.getByText(passwordLabel).closest('label')?.textContent).toBe(passwordLabel);
+  expect(screen.getByDisplayValue('reader')).toBeTruthy();
+  if (modelId === 'mongodb') {
+    expect(screen.getByText('认证库').closest('label')?.textContent).toBe('认证库');
+    expect(screen.getByDisplayValue('appdb')).toBeTruthy();
+  }
+  expect(onChange.mock.lastCall?.[0][0]).toMatchObject({
+    credential_source: 'vault',
+    vault_type_key: 'ssh',
+    port: 22,
+    service_username: 'reader',
+    service_password: 'service-secret',
+  });
+  expect(onChange.mock.lastCall?.[0][0].password).toBeUndefined();
+  expect(onChange.mock.lastCall?.[0][0].username).toBeUndefined();
+});
+
 it('网络配置使用平台账户时仍可填写额外特权密码', () => {
   const { container } = render(<CredentialPoolEditor
     credentialShape="network_config_file" collectModelId="network_config_file"
