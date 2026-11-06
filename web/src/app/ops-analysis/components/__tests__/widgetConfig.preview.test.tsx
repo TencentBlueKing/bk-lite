@@ -274,6 +274,10 @@ describe('ViewConfig preview drawer', () => {
 
     const aside = await screen.findByTestId('widget-config-preview-aside');
     expect(aside).toBeTruthy();
+    expect(aside.className).toContain('max-w-[50%]');
+    expect(aside.className).toContain('min-w-[280px]');
+    const drawer = document.querySelector('.ant-drawer-content-wrapper') as HTMLElement | null;
+    expect(drawer?.style.width).toBe('min(1160px, 100vw)');
     await waitFor(() => {
       expect(screen.getByTestId('mock-preview-renderer').getAttribute('data-widget-id')).toBe(
         'config-preview:cpu-1',
@@ -454,6 +458,10 @@ describe('ViewConfig screen panel', () => {
     await waitFor(() => {
       expect(host.querySelector('[data-testid="widget-config-preview-aside"]')).toBeTruthy();
     });
+    const panelAside = host.querySelector('[data-testid="widget-config-preview-aside"]') as HTMLElement;
+    expect(panelAside.className).toContain('w-[480px]');
+    expect(panelAside.className).toContain('shrink-0');
+    expect(panelAside.className).not.toContain('max-w-[50%]');
 
     view.rerender(
       <ViewConfig

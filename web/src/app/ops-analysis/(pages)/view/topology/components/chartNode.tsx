@@ -18,6 +18,7 @@ import WidgetCsvHoverButton from '@/app/ops-analysis/components/widgetCsvHoverBu
 import { isWidgetCsvExportDataBlocked, supportsWidgetCsvExport } from '@/app/ops-analysis/utils/widgetCsvExport';
 import { useTopologyCsvExportHoverEnabled } from '../utils/topologyCsvExportHover';
 import ScreenWidgetThemeProvider from '@/app/ops-analysis/components/screenWidgetThemeProvider';
+import { fullscreenPopupContainer } from '@/utils/fullscreenPopupContainer';
 import WidgetErrorState from '@/app/ops-analysis/components/widgetErrorState';
 import {
   getTopologyNodeChromeKind,
@@ -263,7 +264,7 @@ const ChartNodeContent: React.FC<ChartNodeProps> = ({ node }) => {
               e.stopPropagation();
             }}
           >
-            <ConfigProvider getPopupContainer={() => document.body}>
+            <ConfigProvider getPopupContainer={fullscreenPopupContainer}>
               <ScreenWidgetThemeProvider mode={valueConfig?.chartThemeMode}>
                 <WidgetRenderer
                   surface="dashboard"

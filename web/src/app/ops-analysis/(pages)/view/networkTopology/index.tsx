@@ -18,13 +18,16 @@ import {
   AppViewFullscreenExit,
   useAppViewFullscreen,
 } from '@/app/ops-analysis/components/appFullscreen';
+import { usePlaybackInitialDetail } from '@/app/ops-analysis/context/playbackInitialDetail';
 import {
+  readPlaybackNetworkViewSets,
   useNetworkTopologyApi,
 } from '@/app/ops-analysis/api/networkTopology';
 import { useDirectoryApi } from '@/app/ops-analysis/api';
 import useBtnPermissions from '@/hooks/usePermissions';
 import { useCanvasShareAction } from '@/app/ops-analysis/hooks/useCanvasShareAction';
 import { useCanvasPeriodicRefresh } from '@/app/ops-analysis/hooks/useCanvasPeriodicRefresh';
+import { canvasPeriodicRefreshEnabled } from '@/app/ops-analysis/utils/canvasPlaybackRefresh';
 import { canPersistCanvasRefreshInterval, normalizeCanvasRefreshInterval } from '@/app/ops-analysis/utils/canvasRefreshInterval';
 import { shouldSkipIntervalTick } from '@/app/ops-analysis/utils/canvasRefreshTimer';
 import { useNetworkEditor } from './hooks/useNetworkEditor';
@@ -147,15 +150,25 @@ const detailPortPairNameClassName =
   'min-w-0 flex-1 break-all [overflow-wrap:anywhere] line-clamp-2 leading-5 text-[var(--color-text-2,#4b5563)]';
 
 const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
-  ({ selectedNetworkTopology, shareMode = false }, ref) => {
+  ({ selectedNetworkTopology, shareMode = false, playbackMode = false }, ref) => {
     const api = useNetworkTopologyApi();
     const { shareLoading, openShare } = useCanvasShareAction('networkTopology');
     const { updateItem } = useDirectoryApi();
     const { hasPermission } = useBtnPermissions();
     const { t } = useTranslation();
     const canvasId = selectedNetworkTopology?.data_id;
-    const [config, setConfig] = useState<NetworkTopologyConfig>(emptyConfig);
-    const [savedConfig, setSavedConfig] = useState<NetworkTopologyConfig>(emptyConfig);
+    const playbackDetail = usePlaybackInitialDetail();
+    const playbackDetailRef = useRef(playbackDetail);
+    playbackDetailRef.current = playbackDetail;
+    const seededNetworkConfig = playbackMode && canvasId != null
+      ? readPlaybackNetworkViewSets(playbackDetail, canvasId)
+      : undefined;
+    const [config, setConfig] = useState<NetworkTopologyConfig>(
+      () => seededNetworkConfig ?? emptyConfig,
+    );
+    const [savedConfig, setSavedConfig] = useState<NetworkTopologyConfig>(
+      () => seededNetworkConfig ?? emptyConfig,
+    );
     const [metricOptions, setMetricOptions] = useState<
       NetworkNodeDrawerPropsMetric[]
     >([]);
@@ -458,6 +471,31 @@ const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
       setRuntimeLinkOverrides({});
       setRuntimeInterfaceSummaryOverrides({});
       setSavedRefreshInterval(0);
+      const seeded = playbackMode
+        ? readPlaybackNetworkViewSets(playbackDetailRef.current, id)
+        : undefined;
+      if (seeded) {
+        setConfig(seeded);
+        setSavedConfig(seeded);
+        editor.resetConfig(seeded);
+        setViewSetsLoading(false);
+        api
+          .getNetworkTopologyDetail(id)
+          .then((detail) => {
+            if (!active) return;
+            setSavedRefreshInterval(
+              normalizeCanvasRefreshInterval(detail?.refresh_interval),
+            );
+          })
+          .catch(() => {
+            if (!active) return;
+            setSavedRefreshInterval(0);
+          });
+        void loadConfiguredRuntime(id, seeded);
+        return () => {
+          active = false;
+        };
+      }
       setViewSetsLoading(true);
       api
         .getNetworkTopologyDetail(id)
@@ -499,7 +537,7 @@ const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
       };
       // 故意省略 api/editor 等稳定依赖,避免画布切换以外的因素触发重新拉取。
        
-    }, [canvasId, shareMode]);
+    }, [canvasId, playbackMode, shareMode]);
 
     const loadNodeModels = useCallback(
       (id: string | number) => api.getNodeModels(id),
@@ -512,7 +550,7 @@ const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
     );
     const library = useNetworkLibrary({
       canvasId,
-      enabled: Boolean(canvasId) && !shareMode,
+      enabled: Boolean(canvasId) && !shareMode && !playbackMode,
       loadModels: loadNodeModels,
       loadNodes: loadLibraryNodes,
     });
@@ -560,7 +598,7 @@ const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
         canvasId,
         savedInterval: savedRefreshInterval,
         canPersist: canPersistRefreshInterval,
-        enabled: !editor.editMode,
+        enabled: canvasPeriodicRefreshEnabled(!editor.editMode, playbackMode),
         patchRefreshInterval: async (interval) => {
           if (!canvasId) {
             return;
@@ -1309,13 +1347,13 @@ const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
             titleFallback={t('opsAnalysis.networkTopology.title')}
             emptyDescription={t('opsAnalysis.networkTopology.selectFirst')}
             toolbar={
-              isFullscreen
+              isFullscreen || playbackMode
                 ? null
                 : selectedNetworkTopology
                   ? sidebarExtra
                   : null
             }
-            headerVisible={!isFullscreen}
+            headerVisible={!isFullscreen && !playbackMode}
             contentClassName={
               isFullscreen
                 ? 'bg-[var(--color-bg-2)] p-0'
@@ -1326,7 +1364,7 @@ const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
               className="flex h-full min-h-0 gap-[10px]"
               data-testid="network-topology-workspace"
             >
-              {!shareMode && !isFullscreen && (
+              {!shareMode && !playbackMode && !isFullscreen && (
                 <section
                   className="flex h-full min-h-0 shrink-0 flex-col overflow-visible rounded-lg border border-[var(--color-border-1,#d9e0e8)] bg-[var(--color-bg-1,#fff)] shadow-[0_10px_24px_rgba(34,47,62,0.05)]"
                   data-testid="network-topology-library-panel"

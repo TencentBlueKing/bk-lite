@@ -73,11 +73,18 @@ def _mq(metric=None, **kwargs):
 
 class TestDetectThresholdAlerts:
     def test_triggers_alert_when_above_threshold(self, mocker):
-        agg = {"data": {"result": [
-            {"metric": {"instance_id": "h1"}, "values": [[100, "95"]]},
-        ]}}
+        agg = {
+            "data": {
+                "result": [
+                    {"metric": {"instance_id": "h1"}, "values": [[100, "95"]]},
+                ]
+            }
+        }
         detector = AlertDetector(
-            _policy(), {"('h1',)": "主机1"}, {}, [],
+            _policy(),
+            {"('h1',)": "主机1"},
+            {},
+            [],
             _mq(agg=agg),
         )
         alerts, infos, holds = detector.detect_threshold_alerts()
@@ -88,11 +95,18 @@ class TestDetectThresholdAlerts:
         assert infos == []
 
     def test_below_threshold_yields_info(self, mocker):
-        agg = {"data": {"result": [
-            {"metric": {"instance_id": "h1"}, "values": [[100, "10"]]},
-        ]}}
+        agg = {
+            "data": {
+                "result": [
+                    {"metric": {"instance_id": "h1"}, "values": [[100, "10"]]},
+                ]
+            }
+        }
         detector = AlertDetector(
-            _policy(), {"('h1',)": "主机1"}, {}, [],
+            _policy(),
+            {"('h1',)": "主机1"},
+            {},
+            [],
             _mq(agg=agg),
         )
         alerts, infos, holds = detector.detect_threshold_alerts()
@@ -102,12 +116,18 @@ class TestDetectThresholdAlerts:
         assert infos[0]["level"] == "info"
 
     def test_hysteresis_band_yields_hold(self):
-        agg = {"data": {"result": [
-            {"metric": {"instance_id": "h1"}, "values": [[100, "75"]]},
-        ]}}
+        agg = {
+            "data": {
+                "result": [
+                    {"metric": {"instance_id": "h1"}, "values": [[100, "75"]]},
+                ]
+            }
+        }
         detector = AlertDetector(
             _policy(recovery_threshold={"method": "<", "value": 70}),
-            {"('h1',)": "主机1"}, {}, [],
+            {"('h1',)": "主机1"},
+            {},
+            [],
             _mq(agg=agg),
         )
         alerts, infos, holds = detector.detect_threshold_alerts()
@@ -117,13 +137,20 @@ class TestDetectThresholdAlerts:
         assert holds[0]["level"] == "hold"
 
     def test_filters_events_outside_scope(self, mocker):
-        agg = {"data": {"result": [
-            {"metric": {"instance_id": "h1"}, "values": [[100, "95"]]},
-            {"metric": {"instance_id": "h2"}, "values": [[100, "99"]]},
-        ]}}
+        agg = {
+            "data": {
+                "result": [
+                    {"metric": {"instance_id": "h1"}, "values": [[100, "95"]]},
+                    {"metric": {"instance_id": "h2"}, "values": [[100, "99"]]},
+                ]
+            }
+        }
         # instances_map 只含 h1，h2 应被 source 过滤掉
         detector = AlertDetector(
-            _policy(), {"('h1',)": "主机1"}, {}, [],
+            _policy(),
+            {"('h1',)": "主机1"},
+            {},
+            [],
             _mq(agg=agg),
         )
         alerts, infos, holds = detector.detect_threshold_alerts()
@@ -131,9 +158,13 @@ class TestDetectThresholdAlerts:
         assert ids == {"('h1',)"}
 
     def test_derivative_instance_template_exposes_child_and_parent_names(self):
-        agg = {"data": {"result": [
-            {"metric": {"pod": "orders-7f9"}, "values": [[100, "95"]]},
-        ]}}
+        agg = {
+            "data": {
+                "result": [
+                    {"metric": {"pod": "orders-7f9"}, "values": [[100, "95"]]},
+                ]
+            }
+        }
         parent = SimpleNamespace(id=10, instance_id_keys=["instance_id"])
         monitor_object = SimpleNamespace(
             name="K3SPod",
@@ -205,7 +236,10 @@ class TestGetMetricDisplayName:
     def test_no_metric_uses_query_condition(self):
         detector = AlertDetector(
             _policy(query_condition={"type": "metric", "metric_id": "mid-7"}),
-            {}, {}, [], _mq(metric=None),
+            {},
+            {},
+            [],
+            _mq(metric=None),
         )
         assert detector._get_metric_display_name() == "mid-7"
 
@@ -218,7 +252,10 @@ class TestDetectNoDataAlerts:
     def test_emits_event_for_missing_instance(self):
         # baselines 有 h1，但聚合结果为空 → h1 无数据
         detector = AlertDetector(
-            _policy(), {"('h1',)": "主机1"}, {"('h1',)": "('h1',)"}, [],
+            _policy(),
+            {"('h1',)": "主机1"},
+            {"('h1',)": "('h1',)"},
+            [],
             _mq(formatted={}),
         )
         events = detector.detect_no_data_alerts()
@@ -229,7 +266,10 @@ class TestDetectNoDataAlerts:
 
     def test_instance_with_data_not_reported(self):
         detector = AlertDetector(
-            _policy(), {"('h1',)": "主机1"}, {"('h1',)": "('h1',)"}, [],
+            _policy(),
+            {"('h1',)": "主机1"},
+            {"('h1',)": "('h1',)"},
+            [],
             _mq(formatted={"('h1',)": {"value": 1.0}}),
         )
         events = detector.detect_no_data_alerts()
@@ -266,16 +306,27 @@ class TestDetectNoDataAlerts:
 
     @pytest.mark.django_db
     def test_count_if_zero_match_row_is_info_not_no_data_and_increments_recovery(self):
-        comparison = {"data": {"result": [
-            {"metric": {"instance_id": "h1"}, "values": [[100, "0"]]},
-        ]}}
-        existence = {"data": {"result": [
-            {"metric": {"instance_id": "h1"}, "values": [[100, "12"]]},
-        ]}}
+        comparison = {
+            "data": {
+                "result": [
+                    {"metric": {"instance_id": "h1"}, "values": [[100, "0"]]},
+                ]
+            }
+        }
+        existence = {
+            "data": {
+                "result": [
+                    {"metric": {"instance_id": "h1"}, "values": [[100, "12"]]},
+                ]
+            }
+        }
         alert = MonitorAlert.objects.create(
-            policy_id=1, monitor_instance_id="('h1',)",
+            policy_id=1,
+            monitor_instance_id="('h1',)",
             metric_instance_id="('h1',)",
-            alert_type="alert", status="new", info_event_count=2,
+            alert_type="alert",
+            status="new",
+            info_event_count=2,
         )
         detector = AlertDetector(
             _policy(
@@ -298,12 +349,19 @@ class TestDetectNoDataAlerts:
         assert alert.info_event_count == 3
 
     def test_missing_comparison_does_not_report_no_data(self):
-        existence = {"data": {"result": [
-            {"metric": {"instance_id": "h1"}, "values": [[100, "12"]]},
-        ]}}
+        existence = {
+            "data": {
+                "result": [
+                    {"metric": {"instance_id": "h1"}, "values": [[100, "12"]]},
+                ]
+            }
+        }
         comparison = {"data": {"result": []}}
         detector = AlertDetector(
-            _policy(), {"('h1',)": "主机1"}, {"('h1',)": "('h1',)"}, [],
+            _policy(),
+            {"('h1',)": "主机1"},
+            {"('h1',)": "('h1',)"},
+            [],
             _mq(comparison=comparison, existence=existence),
         )
         alerts, infos, holds = detector.detect_threshold_alerts()
@@ -319,15 +377,19 @@ class TestBuildDimensionNameMap:
         assert detector._build_dimension_name_map() == {}
 
     def test_maps_name_to_display(self):
-        metric = SimpleNamespace(dimensions=[
-            {"name": "device", "display_name": "设备"},
-            {"name": "mount", "description": "挂载点"},
-            {"name": "plain"},
-            "not-a-dict",
-        ])
+        metric = SimpleNamespace(
+            dimensions=[
+                {"name": "device", "display_name": "设备"},
+                {"name": "mount", "description": "挂载点"},
+                {"name": "plain"},
+                "not-a-dict",
+            ]
+        )
         detector = AlertDetector(_policy(), {}, {}, [], _mq(metric=metric))
         assert detector._build_dimension_name_map() == {
-            "device": "设备", "mount": "挂载点", "plain": "plain",
+            "device": "设备",
+            "mount": "挂载点",
+            "plain": "plain",
         }
 
 
@@ -335,12 +397,20 @@ class TestBuildDimensionNameMap:
 class TestCountEvents:
     def test_increments_info_and_clears_alert(self):
         a1 = MonitorAlert.objects.create(
-            policy_id=1, monitor_instance_id="h1", metric_instance_id="('h1',)",
-            alert_type="alert", status="new", info_event_count=0,
+            policy_id=1,
+            monitor_instance_id="h1",
+            metric_instance_id="('h1',)",
+            alert_type="alert",
+            status="new",
+            info_event_count=0,
         )
         a2 = MonitorAlert.objects.create(
-            policy_id=1, monitor_instance_id="h2", metric_instance_id="('h2',)",
-            alert_type="alert", status="new", info_event_count=3,
+            policy_id=1,
+            monitor_instance_id="h2",
+            metric_instance_id="('h2',)",
+            alert_type="alert",
+            status="new",
+            info_event_count=3,
         )
         detector = AlertDetector(_policy(), {}, {}, [a1, a2], _mq())
         info_events = [{"metric_instance_id": "('h1',)"}]
@@ -348,13 +418,17 @@ class TestCountEvents:
         detector.count_events(alert_events, info_events)
         a1.refresh_from_db()
         a2.refresh_from_db()
-        assert a1.info_event_count == 1   # 命中 info → +1
-        assert a2.info_event_count == 0   # 命中 alert → 清零
+        assert a1.info_event_count == 1  # 命中 info → +1
+        assert a2.info_event_count == 0  # 命中 alert → 清零
 
     def test_hold_does_not_change_info_count(self):
         a1 = MonitorAlert.objects.create(
-            policy_id=1, monitor_instance_id="h1", metric_instance_id="('h1',)",
-            alert_type="alert", status="new", info_event_count=2,
+            policy_id=1,
+            monitor_instance_id="h1",
+            metric_instance_id="('h1',)",
+            alert_type="alert",
+            status="new",
+            info_event_count=2,
         )
         detector = AlertDetector(_policy(), {}, {}, [a1], _mq())
         detector.count_events([], [])
@@ -364,15 +438,14 @@ class TestCountEvents:
 
 @pytest.mark.django_db
 class TestRecoverThresholdAlerts:
-    def test_recovers_when_info_count_reaches_condition(
-        self, mocker, django_capture_on_commit_callbacks
-    ):
-        notifier = mocker.patch(
-            "apps.monitor.tasks.services.policy_scan.alert_detector.AlertLifecycleNotifier"
-        )
+    def test_recovers_when_info_count_reaches_condition(self, mocker, django_capture_on_commit_callbacks):
+        notifier = mocker.patch("apps.monitor.tasks.services.policy_scan.alert_detector.AlertLifecycleNotifier")
         alert = MonitorAlert.objects.create(
-            policy_id=1, monitor_instance_id="h1", alert_type="alert",
-            status="new", info_event_count=5,
+            policy_id=1,
+            monitor_instance_id="h1",
+            alert_type="alert",
+            status="new",
+            info_event_count=5,
         )
         detector = AlertDetector(_policy(recovery_condition=2), {}, {}, [alert], _mq())
         with django_capture_on_commit_callbacks(execute=True):
@@ -387,12 +460,13 @@ class TestRecoverThresholdAlerts:
         notifier.return_value.notify_alerts.assert_called_once()
 
     def test_no_recovery_when_condition_not_met(self, mocker):
-        mocker.patch(
-            "apps.monitor.tasks.services.policy_scan.alert_detector.AlertLifecycleNotifier"
-        )
+        mocker.patch("apps.monitor.tasks.services.policy_scan.alert_detector.AlertLifecycleNotifier")
         alert = MonitorAlert.objects.create(
-            policy_id=1, monitor_instance_id="h1", alert_type="alert",
-            status="new", info_event_count=1,
+            policy_id=1,
+            monitor_instance_id="h1",
+            alert_type="alert",
+            status="new",
+            info_event_count=1,
         )
         detector = AlertDetector(_policy(recovery_condition=5), {}, {}, [alert], _mq())
         detector.recover_threshold_alerts()
@@ -413,18 +487,20 @@ class TestRecoverNoDataAlerts:
         # 不应抛错，直接返回
         assert detector.recover_no_data_alerts() == []
 
-    def test_recovers_no_data_alert_when_data_returns(
-        self, mocker, django_capture_on_commit_callbacks
-    ):
-        notifier = mocker.patch(
-            "apps.monitor.tasks.services.policy_scan.alert_detector.AlertLifecycleNotifier"
-        )
+    def test_recovers_no_data_alert_when_data_returns(self, mocker, django_capture_on_commit_callbacks):
+        notifier = mocker.patch("apps.monitor.tasks.services.policy_scan.alert_detector.AlertLifecycleNotifier")
         alert = MonitorAlert.objects.create(
-            policy_id=1, monitor_instance_id="h1", metric_instance_id="('h1',)",
-            alert_type="no_data", status="new",
+            policy_id=1,
+            monitor_instance_id="h1",
+            metric_instance_id="('h1',)",
+            alert_type="no_data",
+            status="new",
         )
         detector = AlertDetector(
-            _policy(), {}, {}, [alert],
+            _policy(),
+            {},
+            {},
+            [alert],
             _mq(formatted={"('h1',)": {"value": 1.0}}),
         )
         with django_capture_on_commit_callbacks(execute=True):
@@ -436,24 +512,21 @@ class TestRecoverNoDataAlerts:
         notifier.return_value.notify_alerts.assert_called_once()
 
     def test_no_recovery_when_still_no_data(self, mocker):
-        mocker.patch(
-            "apps.monitor.tasks.services.policy_scan.alert_detector.AlertLifecycleNotifier"
-        )
+        mocker.patch("apps.monitor.tasks.services.policy_scan.alert_detector.AlertLifecycleNotifier")
         alert = MonitorAlert.objects.create(
-            policy_id=1, monitor_instance_id="h1", metric_instance_id="('h1',)",
-            alert_type="no_data", status="new",
+            policy_id=1,
+            monitor_instance_id="h1",
+            metric_instance_id="('h1',)",
+            alert_type="no_data",
+            status="new",
         )
         detector = AlertDetector(_policy(), {}, {}, [alert], _mq(formatted={}))
         detector.recover_no_data_alerts()
         alert.refresh_from_db()
         assert alert.status == "new"
 
-    def test_recovers_only_the_series_that_has_data(
-        self, mocker, django_capture_on_commit_callbacks
-    ):
-        notifier = mocker.patch(
-            "apps.monitor.tasks.services.policy_scan.alert_detector.AlertLifecycleNotifier"
-        )
+    def test_recovers_only_the_series_that_has_data(self, mocker, django_capture_on_commit_callbacks):
+        notifier = mocker.patch("apps.monitor.tasks.services.policy_scan.alert_detector.AlertLifecycleNotifier")
         api_alert = MonitorAlert.objects.create(
             policy_id=1,
             monitor_instance_id="pod-1",
@@ -487,3 +560,73 @@ class TestRecoverNoDataAlerts:
         assert api_alert.status == "recovered"
         assert worker_alert.status == "new"
         notifier.return_value.notify_alerts.assert_called_once()
+
+
+def test_no_data_event_keeps_mount_path_when_identity_is_fingerprinted():
+    from apps.monitor.utils.dimension import is_metric_instance_fingerprint, metric_instance_storage_key
+
+    mount = "/var/lib/kubelet/pods/" + ("a" * 180) + "/mount"
+    identity = ("os_10.64.200.21", mount, mount, "overlay")
+    metric_instance_id = metric_instance_storage_key(identity)
+    monitor_instance_id = "('os_10.64.200.21',)"
+    detector = AlertDetector(
+        _policy(
+            group_by=["instance_id", "mount", "path", "fstype"],
+            no_data_alert_name="$instance_name",
+        ),
+        {monitor_instance_id: "host-a"},
+        {metric_instance_id: monitor_instance_id},
+        [],
+        _mq(formatted={}),
+        baseline_dimensions={
+            metric_instance_id: {
+                "instance_id": "os_10.64.200.21",
+                "mount": mount,
+                "path": mount,
+                "fstype": "overlay",
+            }
+        },
+    )
+
+    events = detector.detect_no_data_alerts()
+
+    assert is_metric_instance_fingerprint(metric_instance_id)
+    assert len(events) == 1
+    assert events[0]["metric_instance_id"] == metric_instance_id
+    assert mount in events[0]["content"]
+    assert events[0]["dimensions"]["path"] == mount
+
+
+def test_fingerprint_instance_lookup_uses_dimensions_not_the_hash():
+    from apps.monitor.utils.dimension import is_metric_instance_fingerprint, metric_instance_storage_key
+
+    class ParsingQuery:
+        metric = None
+
+        def get_monitor_instance_id_from_metric_instance_id(self, metric_instance_id):
+            return f"parsed:{metric_instance_id}"
+
+    mount = "/var/lib/kubelet/pods/" + ("a" * 180) + "/mount"
+    identity = ("os_10.64.200.21", mount, mount, "overlay")
+    metric_instance_id = metric_instance_storage_key(identity)
+    monitor_instance_id = "('os_10.64.200.21',)"
+    detector = AlertDetector(
+        _policy(group_by=["instance_id", "mount", "path", "fstype"]),
+        {monitor_instance_id: "host-a"},
+        {metric_instance_id: "not-in-scope"},
+        [],
+        ParsingQuery(),
+        baseline_dimensions={
+            metric_instance_id: {
+                "instance_id": "os_10.64.200.21",
+                "mount": mount,
+                "path": mount,
+                "fstype": "overlay",
+            }
+        },
+    )
+
+    assert is_metric_instance_fingerprint(metric_instance_id)
+    assert detector._match_scoped_monitor_instance(metric_instance_id) == ""
+    assert detector._extract_monitor_instance_id(metric_instance_id) == monitor_instance_id
+    assert detector._resolve_baseline_monitor_instance_id(metric_instance_id) == monitor_instance_id

@@ -6,6 +6,8 @@ export const buildOpsAnalysisViewHref = (
   currentSearch?: string | URLSearchParams | null,
 ): string => {
   const params = toSearchParams(currentSearch);
+  params.delete('panel');
+  params.delete('carousel');
   params.set('type', type);
   params.set('id', id);
   return withScreenQuery(

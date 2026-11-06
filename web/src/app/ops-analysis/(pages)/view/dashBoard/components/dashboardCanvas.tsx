@@ -339,6 +339,7 @@ interface DashboardCanvasProps {
   renderMode?: boolean;
   pdfExportPreparing?: boolean;
   csvExportHidden?: boolean;
+  playbackMode?: boolean;
   /** 浅色首页透出系统背景。运营分析模块不走这套。 */
   homepageSurface?: boolean;
   scrollRootRef: RefObject<HTMLDivElement | null>;
@@ -378,6 +379,7 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
   renderMode = false,
   pdfExportPreparing = false,
   csvExportHidden = false,
+  playbackMode = false,
   homepageSurface = false,
   scrollRootRef,
   onWidgetRenderStatus,
@@ -1298,16 +1300,18 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
             </span>
           }
         >
-          <PermissionWrapper requiredPermissions={['EditChart']}>
-            <Button
-              type="primary"
-              icon={<PlusOutlined aria-hidden="true" />}
-              onClick={() => onOpenAddModal()}
-              disabled={selectedDashboardLocked}
-            >
-              {t('dashboard.addView')}
-            </Button>
-          </PermissionWrapper>
+          {!playbackMode && (
+            <PermissionWrapper requiredPermissions={['EditChart']}>
+              <Button
+                type="primary"
+                icon={<PlusOutlined aria-hidden="true" />}
+                onClick={() => onOpenAddModal()}
+                disabled={selectedDashboardLocked}
+              >
+                {t('dashboard.addView')}
+              </Button>
+            </PermissionWrapper>
+          )}
         </Empty>
       </div>
     );

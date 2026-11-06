@@ -114,6 +114,31 @@ describe('执行记录统一详情入口', () => {
     expect(mocks.replace).not.toHaveBeenCalled();
     expect(screen.getByRole('tab', { name: '全部执行' }).getAttribute('aria-selected')).toBe('true');
     expect(await screen.findByText('执行详情')).not.toBeNull();
+    expect(await screen.findByText(/生产变更前置检查 · v3/)).not.toBeNull();
+  });
+
+  it('调试执行详情副标题显示调试，不显示 v0', async () => {
+    const debugExecution = {
+      ...execution,
+      id: 'debug-1',
+      status: 'SUCCEEDED',
+      mode: 'DEBUG',
+      workflow_version: 0,
+      pending_approval_count: 0,
+      actionable_approval_ids: [],
+    };
+    mocks.get.mockImplementation((url: string) => {
+      if (url.endsWith('/executions/debug-1/')) return Promise.resolve(debugExecution);
+      if (url.endsWith('/executions/debug-1/nodes/')) {
+        return Promise.resolve({ nodes: [], default_node_reference: '' });
+      }
+      return Promise.resolve({ count: 1, items: [debugExecution] });
+    });
+    renderPage();
+    fireEvent.click(await screen.findByRole('button', { name: '查看' }));
+    expect(await screen.findByText('执行详情')).not.toBeNull();
+    expect(await screen.findByText(/生产变更前置检查 · 调试/)).not.toBeNull();
+    expect(screen.queryByText(/· v0/)).toBeNull();
   });
 
   it('系统发起人显示为双语映射文案', async () => {

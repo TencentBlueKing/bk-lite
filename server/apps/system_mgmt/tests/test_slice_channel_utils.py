@@ -1,5 +1,6 @@
 import pydantic.root_model  # noqa
 import pytest
+import requests
 
 from apps.system_mgmt.models import Channel
 from apps.system_mgmt.models.channel import ChannelChoices
@@ -205,6 +206,7 @@ def test_send_by_custom_webhook_json模板替换(mocker):
         },
     )
     fake_resp = mocker.Mock()
+    fake_resp.status_code = 200
     fake_resp.json.return_value = {"ok": 1}
     req = mocker.patch("apps.system_mgmt.utils.channel_utils.requests.request", return_value=fake_resp)
 
@@ -227,6 +229,7 @@ def test_send_by_custom_webhook_非json模板走文本分支(mocker):
         },
     )
     fake_resp = mocker.Mock()
+    fake_resp.status_code = 200
     fake_resp.json.return_value = {"ok": 1}
     req = mocker.patch("apps.system_mgmt.utils.channel_utils.requests.request", return_value=fake_resp)
 
@@ -248,6 +251,39 @@ def test_send_by_custom_webhook_请求异常(mocker):
     mocker.patch("apps.system_mgmt.utils.channel_utils.requests.request", side_effect=RuntimeError("x"))
     result = channel_utils.send_by_custom_webhook(ch, "c", [])
     assert result == {"result": False, "message": "failed to send custom webhook message"}
+
+
+def test_send_by_custom_webhook_2xx空正文视为成功(mocker):
+    ch = _make_channel(
+        ChannelChoices.CUSTOM_WEBHOOK,
+        {"webhook_url": "https://oapi.dingtalk.com/x", "body_template": '{"text": "{{content}}"}'},
+    )
+    fake_resp = mocker.Mock()
+    fake_resp.status_code = 202
+    fake_resp.json.side_effect = requests.exceptions.JSONDecodeError("Expecting value", "", 0)
+    log_exc = mocker.patch("apps.system_mgmt.utils.channel_utils.logger.exception")
+    mocker.patch("apps.system_mgmt.utils.channel_utils.requests.request", return_value=fake_resp)
+
+    result = channel_utils.send_by_custom_webhook(ch, "告警内容", [])
+
+    assert result == {"result": True}
+    log_exc.assert_not_called()
+
+
+def test_send_by_custom_webhook_非2xx视为失败(mocker):
+    ch = _make_channel(
+        ChannelChoices.CUSTOM_WEBHOOK,
+        {"webhook_url": "https://oapi.dingtalk.com/x", "body_template": '{"text": "{{content}}"}'},
+    )
+    fake_resp = mocker.Mock()
+    fake_resp.status_code = 401
+    fake_resp.json.return_value = {"error": {"code": "DirectApiAuthorizationRequired", "message": "sig-secret"}}
+    mocker.patch("apps.system_mgmt.utils.channel_utils.requests.request", return_value=fake_resp)
+
+    result = channel_utils.send_by_custom_webhook(ch, "告警内容", [])
+
+    assert result == {"result": False, "message": "failed to send custom webhook message"}
+    assert "sig-secret" not in str(result)
 
 
 # ----------------------- send_email_to_user -----------------------

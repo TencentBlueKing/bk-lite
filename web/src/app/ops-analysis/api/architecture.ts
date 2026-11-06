@@ -1,6 +1,7 @@
 import { useCallback } from 'react';
 import useApiClient from '@/utils/request';
 import { useShareCanvasDetailOverride } from '@/app/ops-analysis/context/shareCanvasDetail';
+import { loadPlaybackCanvasDetail, usePlaybackInitialDetail } from '@/app/ops-analysis/context/playbackInitialDetail';
 
 export interface ArchitectureResourceSearchParams {
   keyword: string;
@@ -13,12 +14,15 @@ export interface ArchitectureResourceSearchParams {
 export const useArchitectureApi = () => {
   const { get, put, post, del } = useApiClient();
   const shareDetailOverride = useShareCanvasDetailOverride();
+  const playbackDetail = usePlaybackInitialDetail();
 
   const getArchitectureDetail = async (id: string | number) => {
     if (shareDetailOverride) {
       return shareDetailOverride();
     }
-    return get(`/operation_analysis/api/architecture/${id}/`);
+    return loadPlaybackCanvasDetail(playbackDetail, 'architecture', id, () => (
+      get(`/operation_analysis/api/architecture/${id}/`)
+    ));
   };
 
   const saveArchitecture = async (id: string | number, data: any) => {

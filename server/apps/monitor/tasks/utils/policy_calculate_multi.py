@@ -14,6 +14,7 @@ from apps.monitor.utils.dimension import (
     build_metric_template_vars,
     format_dimension_str,
     format_dimension_value,
+    metric_instance_storage_key,
 )
 
 
@@ -93,10 +94,7 @@ def calculate_multi_alerts(alert_name, series_by_ref, conditions, template_conte
     if primary is None:
         return [], [], []
 
-    indexed = {
-        item.get("ref"): _index_series(series_by_ref.get(item.get("ref")) or [], item.get("group_by") or [])
-        for item in conditions
-    }
+    indexed = {item.get("ref"): _index_series(series_by_ref.get(item.get("ref")) or [], item.get("group_by") or []) for item in conditions}
     display_units = template_context.get("condition_display_units") or {}
     metric_names = template_context.get("condition_metric_names") or {}
     enum_maps = template_context.get("condition_enum_maps") or {}
@@ -137,7 +135,8 @@ def calculate_multi_alerts(alert_name, series_by_ref, conditions, template_conte
         if window is None:
             continue
 
-        metric_instance_id = str(anchor_key)
+        raw_metric_instance_id = str(anchor_key)
+        metric_instance_id = metric_instance_storage_key(anchor_key)
         dimensions = build_dimensions(anchor_key, instance_id_keys)
         monitor_instance_id = _extract_monitor_instance_id_by_key(
             anchor_key,
@@ -146,7 +145,7 @@ def calculate_multi_alerts(alert_name, series_by_ref, conditions, template_conte
         )
         resource_context = {}
         if callable(resource_context_resolver):
-            resource_context = resource_context_resolver(metric_instance_id) or {}
+            resource_context = resource_context_resolver(raw_metric_instance_id) or {}
             monitor_instance_id = resource_context.get("monitor_instance_id", monitor_instance_id)
         resource_name = resource_context.get(
             "resource_name",
@@ -275,10 +274,7 @@ def summarize_multi_rows(series_by_ref, conditions, n=1):
     if not level_conditions:
         return []
     trigger_count = max(1, int(n or 1))
-    indexed = {
-        item.get("ref"): _index_series(series_by_ref.get(item.get("ref")) or [], item.get("group_by") or [])
-        for item in conditions
-    }
+    indexed = {item.get("ref"): _index_series(series_by_ref.get(item.get("ref")) or [], item.get("group_by") or []) for item in conditions}
     primary_ref = level_conditions[0].get("ref")
     rows = []
     for anchor_key, anchor_item in indexed.get(anchor_ref, {}).items():

@@ -193,6 +193,9 @@ export interface ScreenViewSets {
 export interface ScreenProps {
   selectedScreen?: DirItem | null;
   shareMode?: boolean;
+  playbackMode?: boolean;
+  /** 轮播预览区进入浏览器全屏时，按大屏放大的适配方式铺到屏幕。 */
+  playbackFullscreen?: boolean;
   /** 大屏进入或离开编辑。查看页据此收起并恢复目录。 */
   onEditingChange?: (editing: boolean) => void;
 }

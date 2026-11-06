@@ -36,7 +36,8 @@ class _Request:
 
 
 @pytest.fixture(autouse=True)
-def _quiet_job_side_effects(monkeypatch):
+def _quiet_job_side_effects(monkeypatch, settings):
+    settings.CACHES = {"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache", "LOCATION": "job-tool-tests"}}
     monkeypatch.setenv("JOB_TOOL_POLL_SECONDS", "0")
     monkeypatch.setenv("JOB_TOOL_POLL_INTERVAL", "0")
     monkeypatch.setattr(
@@ -108,7 +109,12 @@ def _conversation(session_id):
 
 
 def test_playbook_listing_does_not_claim_the_tools_can_execute_it():
-    from apps.opspilot.metis.llm.tools.job_mgmt.tools import JOB_MGMT_PROMPT, job_mgmt_list_playbook_scripts, job_mgmt_run_custom, job_mgmt_run_library
+    from apps.opspilot.metis.llm.tools.job_mgmt.tools import (
+        JOB_MGMT_PROMPT,
+        job_mgmt_list_playbook_scripts,
+        job_mgmt_run_custom,
+        job_mgmt_run_library,
+    )
 
     assert "不表示这些工具能执行 Playbook" in JOB_MGMT_PROMPT
     assert "只执行作业脚本" in JOB_MGMT_PROMPT
@@ -145,13 +151,9 @@ def test_display_lookup_and_skill_session_key_survive_the_async_stream():
         content="用 python 执行 print('opspilot-ok')",
     )
     target = _target()
-    accepted = run_custom_script(
-        _config("选定节点", session="skill:sess-skill-key"),
-        script_type="python",
-        script_content="print('opspilot-ok')",
-        target_source="作业管理目标",
-        target_ids=[target.id],
-    )
+    args = dict(script_type="python", script_content="print('opspilot-ok')", target_source="作业管理目标", target_ids=[target.id])
+    run_custom_script(_config("选定节点", session="skill:sess-skill-key"), **args)
+    accepted = run_custom_script(_config("确认执行", session="skill:sess-skill-key"), **args)
     task_id = json.loads(accepted)["task_id"]
     assert conversation.messages.filter(role=SkillConversationMessage.ROLE_ASSISTANT, content__contains=f'"task_id": {task_id}').exists()
 
@@ -267,62 +269,54 @@ def test_library_result_hides_script_and_output_and_retry_keeps_one_job():
     assert JobExecution.objects.count() == 1
 
 
-def test_custom_script_must_come_from_the_user_message():
+def test_generated_custom_script_requires_user_confirmation(settings):
+    settings.CACHES = {"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache", "LOCATION": "job-confirm"}}
     target = _target()
-    refused = run_custom_script(
-        _config("帮我跑一下"),
-        script_type="python",
-        script_content="print('opspilot-ok')",
-        target_source="manual",
-        target_ids=[target.id],
-    )
-    assert refused["result"] is False
+    args = dict(script_type="shell", script_content="ps -ef", target_source="manual", target_ids=[target.id])
+    proposed = run_custom_script(_config("查看主机进程", session="generated-confirm"), **args)
+    assert proposed["ask"] is True
+    assert "ps -ef" in proposed["question"]
+    assert JobExecution.objects.count() == 0
+    accepted = run_custom_script(_config("确认执行", session="generated-confirm"), **args)
+    assert json.loads(accepted)["status"] == "仍在执行"
+    assert JobExecution.objects.get().script_content == "ps -ef"
+
+
+def test_custom_script_confirmation_cannot_authorize_changed_script_or_target():
+    target = _target()
+    args = dict(script_type="shell", script_content="ps -ef", target_source="manual", target_ids=[target.id])
+    run_custom_script(_config("查看进程", session="changed-script"), **args)
+    changed = run_custom_script(_config("确认执行", session="changed-script"), **{**args, "script_content": "id"})
+    assert changed["ask"] is True
+    assert JobExecution.objects.count() == 0
+    assert changed["options"][0] == "确认执行新脚本"
+    accepted = run_custom_script(_config("确认执行新脚本", session="changed-script"), **{**args, "script_content": "id"})
+    assert json.loads(accepted)["status"] == "仍在执行"
+    JobExecution.objects.all().delete()
+    run_custom_script(_config("查看进程", session="changed-target"), **args)
+    changed = run_custom_script(_config("确认执行", session="changed-target"), **{**args, "target_ids": [target.id + 1]})
+    assert changed["ask"] is True
     assert JobExecution.objects.count() == 0
 
-    message = "用 python 执行 print('opspilot-ok')"
-    accepted = run_custom_script(
-        _config(message, session="sess-custom"),
-        script_type="python",
-        script_content="print('opspilot-ok')",
-        target_source="manual",
-        target_ids=[target.id],
-    )
-    payload = json.loads(accepted)
-    assert payload["status"] == "仍在执行"
-    assert "print('opspilot-ok')" not in accepted
-    assert JobExecution.objects.get().script_type == "python"
-    assert JobExecution.objects.get().timeout == 600
 
+def test_custom_script_danger_confirmation_is_separate(monkeypatch):
+    from apps.opspilot.services import job_tool_service
 
-def test_custom_script_stays_valid_after_the_user_selects_a_target():
-    conversation = _conversation("sess-custom-later")
-    target = _target()
-    conversation.messages.create(
-        role=SkillConversationMessage.ROLE_USER,
-        content="用 python 执行 print('opspilot-ok')",
-    )
-    accepted = run_custom_script(
-        _config(f"web-1 10.0.0.8 (manual:{target.id})", session="sess-custom-later"),
-        script_type="python",
-        script_content="print('opspilot-ok')",
-        target_source="作业管理目标",
-        target_ids=[target.id],
-    )
-    assert json.loads(accepted)["status"] == "仍在执行"
-    assert JobExecution.objects.get().script_content == "print('opspilot-ok')"
+    calls = []
 
-    split = _conversation("sess-custom-split")
-    split.messages.create(role=SkillConversationMessage.ROLE_USER, content="脚本类型 python")
-    split.messages.create(role=SkillConversationMessage.ROLE_USER, content="脚本内容 print('opspilot-ok')")
-    refused = run_custom_script(
-        _config("用这个节点", session="sess-custom-split"),
-        script_type="python",
-        script_content="print('opspilot-ok')",
-        target_source="manual",
-        target_ids=[target.id],
-    )
-    assert refused["result"] is False
-    assert JobExecution.objects.filter(script_content="print('opspilot-ok')").count() == 1
+    def submit(_user_info, _session_key, body, _user_text, _confirmed_rerun):
+        calls.append(body.copy())
+        return {"result": False, "code": "confirm", "rules": ["危险规则"]} if not body["danger_confirmed"] else '{"status":"成功"}'
+
+    monkeypatch.setattr(job_tool_service, "_submit_script", submit)
+    args = dict(script_type="shell", script_content="dangerous command", target_source="manual", target_ids=[1], danger_confirmed=True)
+    run_custom_script(_config("执行命令", session="danger-confirm"), **args)
+    warning = run_custom_script(_config("确认执行", session="danger-confirm"), **args)
+    assert warning["code"] == "confirm"
+    assert calls[0]["danger_confirmed"] is False
+    result = run_custom_script(_config("确认高危执行", session="danger-confirm"), **args)
+    assert json.loads(result)["status"] == "成功"
+    assert calls[1]["danger_confirmed"] is True
 
 
 def test_library_script_requires_the_name_in_the_user_message():
@@ -411,13 +405,9 @@ def test_script_output_reaches_the_chat_without_a_saved_conversation(monkeypatch
     from apps.opspilot.services.job_tool_service import latest_display_payload
 
     target = _target()
-    raw = run_custom_script(
-        _config("用 python 执行 print('opspilot-ok')", session="thread:debug-job"),
-        script_type="python",
-        script_content="print('opspilot-ok')",
-        target_source="manual",
-        target_ids=[target.id],
-    )
+    args = dict(script_type="python", script_content="print('opspilot-ok')", target_source="manual", target_ids=[target.id])
+    run_custom_script(_config("用 python 执行 print('opspilot-ok')", session="thread:debug-job"), **args)
+    raw = run_custom_script(_config("确认执行", session="thread:debug-job"), **args)
     payload = json.loads(raw)
     assert payload["output_shown"] is True
     assert "result_url" not in payload
@@ -426,6 +416,39 @@ def test_script_output_reaches_the_chat_without_a_saved_conversation(monkeypatch
     display = latest_display_payload(payload["task_id"])
     assert display["targets"][0]["stdout"] == "STDOUT_SECRET"
     assert "result_url" not in display
+
+
+def test_query_existing_job_in_debug_session_without_saved_conversation():
+    from apps.opspilot.services.job_tool_service import latest_display_payload, query_job
+
+    script = _script()
+    target = _target()
+    session = "thread:query-debug"
+    created = run_library_script(_config("执行库脚本", session=session), script_id=script.id, target_source="manual", target_ids=[target.id])
+    task_id = json.loads(created)["task_id"]
+    JobExecution.objects.filter(id=task_id).update(
+        status=ExecutionStatus.SUCCESS,
+        execution_results=[{"name": "web-1", "ip": "10.0.0.8", "stdout": "PRIVATE_OUTPUT", "stderr": "", "exit_code": 0}],
+    )
+    result = query_job(_config(f"查询作业 {task_id}", session=session), task_id)
+    assert json.loads(result) == {"task_id": task_id, "status": "成功", "output_shown": True}
+    assert "PRIVATE_OUTPUT" not in result
+    assert latest_display_payload(task_id)["targets"][0]["stdout"] == "PRIVATE_OUTPUT"
+
+
+def test_explicit_job_query_does_not_fall_back_or_cross_organizations():
+    from apps.opspilot.services.job_tool_service import query_job
+
+    session = "query-current-team"
+    _conversation(session)
+    script, target = _script(), _target()
+    created = run_library_script(_config("执行库脚本", session=session), script_id=script.id, target_source="manual", target_ids=[target.id])
+    task_id = json.loads(created)["task_id"]
+    missing = query_job(_config("查询其他作业", session=session), task_id + 100)
+    assert missing == {"result": False, "message": "作业不存在或不属于当前组织"}
+    JobExecution.objects.filter(id=task_id).update(team=[2])
+    foreign = query_job(_config("查询其他组织的作业", session="another-session"), task_id)
+    assert foreign == {"result": False, "message": "作业不存在或不属于当前组织"}
 
 
 def test_pending_job_without_a_conversation_still_returns_the_record_link():

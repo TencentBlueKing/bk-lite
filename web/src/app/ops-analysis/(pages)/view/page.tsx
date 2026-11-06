@@ -35,6 +35,14 @@ import {
 } from '@/app/ops-analysis/utils/recentCanvasStorage';
 import { isScreenModeEnabled } from '@/console-layout';
 import { buildOpsAnalysisViewHref } from '@/app/ops-analysis/utils/viewHref';
+import {
+  buildOpsCarouselViewHref,
+  buildOpsDirectoryPanelHref,
+  carouselGuardIsCurrent,
+  carouselViewDecision,
+  resolveRequestedCarouselView,
+} from '@/app/ops-analysis/utils/carouselLinks';
+import CarouselEditor, { type CarouselEditorRef } from '../../components/carousel/carouselEditor';
 
 type SelectedCanvasItems = Record<CanvasType, DirItem | null>;
 
@@ -78,6 +86,28 @@ const ViewPage: React.FC = () => {
   const reportRef = useRef<ReportRef>(null);
   const networkTopologyRef = useRef<NetworkTopologyRef>(null);
   const sidebarRef = useRef<SidebarRef>(null);
+  const carouselEditorRef = useRef<CarouselEditorRef>(null);
+  const [carouselRefreshKey, setCarouselRefreshKey] = useState(0);
+  const [carouselInfoRevision, setCarouselInfoRevision] = useState(0);
+  const [editorRequest, setEditorRequest] = useState<{ id: string; nonce: number } | null>(null);
+  const requestedView = resolveRequestedCarouselView(searchParams);
+  const requestedPanel = requestedView.panel;
+  const requestedCarouselId = requestedView.carouselId;
+  const [panel, setPanel] = useState(requestedPanel);
+  const [carouselId, setCarouselId] = useState<string | null>(requestedCarouselId);
+  const viewRef = useRef({ panel, carouselId });
+  viewRef.current = { panel, carouselId };
+  const searchParamsRef = useRef(searchParams);
+  searchParamsRef.current = searchParams;
+  const routerRef = useRef(router);
+  routerRef.current = router;
+  const unsavedRef = useRef<() => boolean>(() => false);
+  const tRef = useRef(t);
+  tRef.current = t;
+  const guardToken = useRef(0);
+  const guardModal = useRef<{ destroy: () => void } | null>(null);
+  const pendingViewRef = useRef(requestedView);
+  pendingViewRef.current = requestedView;
   const selectedItemRef = useRef(selectedItem);
   const [canvasReloadToken, setCanvasReloadToken] = useState(0);
   selectedItemRef.current = selectedItem;
@@ -169,6 +199,107 @@ const ViewPage: React.FC = () => {
     return false;
   };
 
+  unsavedRef.current = checkUnsavedChanges;
+
+  const confirmDiscard = (onOk: () => void, onCancel?: () => void) => {
+    const dirty = checkUnsavedChanges() || Boolean(carouselEditorRef.current?.hasUnsavedChanges());
+    if (!dirty) {
+      onOk();
+      return;
+    }
+    Modal.confirm({
+      title: t('opsAnalysisSidebar.unsavedChanges'),
+      content: t('opsAnalysisSidebar.unsavedChangesWarning'),
+      okText: t('common.confirm'),
+      cancelText: t('common.cancel'),
+      okButtonProps: { danger: true },
+      centered: true,
+      onOk,
+      onCancel,
+    });
+  };
+
+  const prepareCarouselLeave = () => new Promise<boolean>((resolve) => {
+    confirmDiscard(() => resolve(true), () => resolve(false));
+  });
+
+  const commitCarouselLeave = () => {
+    if (carouselEditorRef.current?.hasUnsavedChanges()) {
+      carouselEditorRef.current.discardChanges();
+    }
+  };
+
+  useEffect(() => () => {
+    guardToken.current += 1;
+    guardModal.current?.destroy();
+    guardModal.current = null;
+  }, []);
+
+  useEffect(() => {
+    const requested = pendingViewRef.current;
+    const dirty = Boolean(carouselEditorRef.current?.hasUnsavedChanges()) || unsavedRef.current();
+    const decision = carouselViewDecision(viewRef.current, requested, dirty);
+    if (decision !== 'confirm') {
+      guardToken.current += 1;
+      guardModal.current?.destroy();
+      guardModal.current = null;
+      if (decision === 'apply') {
+        setPanel(requested.panel);
+        setCarouselId(requested.carouselId);
+      }
+      return;
+    }
+    if (guardModal.current) return;
+    const token = guardToken.current + 1;
+    guardToken.current = token;
+    const translate = tRef.current;
+    guardModal.current = Modal.confirm({
+      title: translate('opsAnalysisSidebar.unsavedChanges'),
+      content: translate('opsAnalysisSidebar.unsavedChangesWarning'),
+      okText: translate('common.confirm'),
+      cancelText: translate('common.cancel'),
+      okButtonProps: { danger: true },
+      centered: true,
+      onOk: () => {
+        if (!carouselGuardIsCurrent(guardToken.current, token)) return;
+        guardModal.current = null;
+        const target = pendingViewRef.current;
+        carouselEditorRef.current?.discardChanges();
+        setPanel(target.panel);
+        setCarouselId(target.carouselId);
+      },
+      onCancel: () => {
+        if (!carouselGuardIsCurrent(guardToken.current, token)) return;
+        guardModal.current = null;
+        const current = viewRef.current;
+        const search = searchParamsRef.current;
+        routerRef.current.replace(current.panel === 'carousel'
+          ? buildOpsCarouselViewHref(current.carouselId, search)
+          : buildOpsDirectoryPanelHref(search));
+      },
+    });
+  }, [requestedCarouselId, requestedPanel]);
+
+  const hydrateSelection = (type: DirectoryType, itemInfo?: DirItem) => {
+    setSelectedType(type);
+    setSelectedItem({
+      ...createEmptySelectedItems(),
+      ...(isCanvasType(type) ? { [type]: itemInfo || null } : {}),
+    });
+  };
+
+  const changePanel = (next: 'directory' | 'carousel') => {
+    if (next === requestedPanel) return;
+    router.push(next === 'carousel'
+      ? buildOpsCarouselViewHref(viewRef.current.carouselId, searchParams)
+      : buildOpsDirectoryPanelHref(searchParams));
+  };
+
+  const openCarousel = (id: string) => {
+    if (requestedPanel === 'carousel' && id === requestedCarouselId) return;
+    router.push(buildOpsCarouselViewHref(id, searchParams));
+  };
+
   // 处理导航
   const handleNavigation = (type: DirectoryType, itemInfo?: DirItem) => {
     const isLeavingContentPage =
@@ -252,12 +383,12 @@ const ViewPage: React.FC = () => {
 
   return (
     <div
-      className="flex w-full h-full relative rounded-lg"
+      className="relative flex h-full min-h-0 w-full overflow-hidden rounded-lg"
       style={{ minWidth: screenMode || collapsed ? 0 : 280 }}
     >
       <div
         hidden={screenMode}
-        className={`relative z-30 h-full border-r border-[var(--color-border-1)] transition-all duration-300 ${
+        className={`relative z-30 h-full min-h-0 border-r border-[var(--color-border-1)] transition-all duration-300 ${
           collapsed ? 'w-0 min-w-0 overflow-visible' : 'w-[280px] min-w-[280px]'
         }`}
         style={{
@@ -274,9 +405,42 @@ const ViewPage: React.FC = () => {
           <Sidebar
             ref={sidebarRef}
             onSelect={handleNavigation}
+            onHydrateSelection={hydrateSelection}
             onDataUpdate={handleSidebarDataUpdate}
             onCanvasContentReplaced={handleCanvasContentReplaced}
             beforeImportUpdate={confirmBeforeImportUpdate}
+            panel={panel}
+            carouselId={carouselId}
+            carouselRefreshKey={carouselRefreshKey}
+            onPanelChange={changePanel}
+            onSelectCarousel={openCarousel}
+            prepareCarouselLeave={prepareCarouselLeave}
+            hasUnsavedCarouselChanges={() => Boolean(carouselEditorRef.current?.hasUnsavedChanges())}
+            onAutoSelectCarousel={(id) => {
+              router.replace(buildOpsCarouselViewHref(id, searchParams));
+            }}
+            onCarouselCreated={(id, openEditor) => {
+              commitCarouselLeave();
+              setCarouselRefreshKey((value) => value + 1);
+              if (openEditor) {
+                setEditorRequest((current) => ({
+                  id: String(id),
+                  nonce: (current?.nonce ?? 0) + 1,
+                }));
+              }
+              router.replace(buildOpsCarouselViewHref(String(id), searchParams));
+            }}
+            onCarouselUpdated={() => {
+              setCarouselRefreshKey((value) => value + 1);
+              setCarouselInfoRevision((value) => value + 1);
+            }}
+            onCarouselDeleted={(id) => {
+              setCarouselRefreshKey((value) => value + 1);
+              if (String(id) === carouselId) {
+                commitCarouselLeave();
+                router.push(buildOpsCarouselViewHref(null, searchParams));
+              }
+            }}
           />
         </div>
         {!screenMode && (
@@ -298,8 +462,21 @@ const ViewPage: React.FC = () => {
           </Tooltip>
         )}
       </div>
-      <div className="h-full flex-1 flex" style={{ minWidth: 0 }}>
-        {selectedType === 'screen' ? (
+      <div className="flex h-full min-h-0 flex-1" style={{ minWidth: 0 }}>
+        {panel === 'carousel' ? (
+          <div className="h-full min-h-0 flex-1 overflow-hidden bg-[var(--color-bg-1)]">
+            <CarouselEditor
+              ref={carouselEditorRef}
+              carouselId={carouselId}
+              openEditorRequest={editorRequest}
+              infoRevision={carouselInfoRevision}
+              onSaved={(id) => {
+                setCarouselRefreshKey((value) => value + 1);
+                router.replace(buildOpsCarouselViewHref(String(id), searchParams));
+              }}
+            />
+          </div>
+        ) : selectedType === 'screen' ? (
           <Screen
             ref={screenRef}
             key={`${selectedItem.screen?.data_id ?? 'screen-empty'}:${canvasReloadToken}`}

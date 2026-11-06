@@ -1,5 +1,6 @@
 import React from 'react';
 import { Tooltip } from 'antd';
+import { fullscreenPopupContainer } from '@/utils/fullscreenPopupContainer';
 
 export interface SingleValueFetchErrorTooltipState {
   message: string;
@@ -19,7 +20,7 @@ const SingleValueFetchErrorTooltip: React.FC<SingleValueFetchErrorTooltipProps> 
   }
 
   return (
-    <Tooltip open title={tooltip.message} getPopupContainer={() => document.body}>
+    <Tooltip open title={tooltip.message} getPopupContainer={fullscreenPopupContainer}>
       <div
         aria-hidden
         style={{

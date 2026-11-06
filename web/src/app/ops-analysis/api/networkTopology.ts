@@ -1,6 +1,12 @@
 import { useCallback, useMemo } from 'react';
 import useApiClient from '@/utils/request';
 import { useShareCanvasDetailOverride } from '@/app/ops-analysis/context/shareCanvasDetail';
+import {
+  loadPlaybackCanvasDetail,
+  readPlaybackInitialDetail,
+  usePlaybackInitialDetail,
+  type PlaybackInitialDetail,
+} from '@/app/ops-analysis/context/playbackInitialDetail';
 import { useShareMode } from '@/app/ops-analysis/context/shareMode';
 import { useSharedNetworkTopologyRuntime } from '@/app/ops-analysis/context/shareNetworkTopologyRuntime';
 import {
@@ -73,10 +79,27 @@ export interface NetworkTopologyTestConnectionResult {
 const encodeNodeRef = (nodeRef: Record<string, unknown>): string =>
   encodeURIComponent(JSON.stringify(nodeRef));
 
+export const readPlaybackNetworkViewSets = (
+  seeded: PlaybackInitialDetail | null,
+  id: string | number,
+): NetworkTopologyConfig | undefined => {
+  const detail = readPlaybackInitialDetail<{ view_sets?: unknown }>(seeded, 'networkTopology', id);
+  const viewSets = detail?.view_sets;
+  if (!viewSets || typeof viewSets !== 'object' || Array.isArray(viewSets)) {
+    return undefined;
+  }
+  const payload = viewSets as Partial<NetworkTopologyConfig>;
+  return {
+    nodes: Array.isArray(payload.nodes) ? payload.nodes : [],
+    links: Array.isArray(payload.links) ? payload.links : [],
+  };
+};
+
 export const useNetworkTopologyApi = () => {
   const { get, post, put, del } = useApiClient();
   const shareMode = useShareMode();
   const shareDetailOverride = useShareCanvasDetailOverride();
+  const playbackDetail = usePlaybackInitialDetail();
   const shareRuntime = useSharedNetworkTopologyRuntime();
   const shareAccess = isNetworkTopologyShareAccess({
     shareMode,
@@ -89,9 +112,11 @@ export const useNetworkTopologyApi = () => {
       if (shareDetailOverride) {
         return (await shareDetailOverride()) as NetworkTopologyDetail;
       }
-      return get<NetworkTopologyDetail>(`/operation_analysis/api/network_topology/${id}/`);
+      return loadPlaybackCanvasDetail(playbackDetail, 'networkTopology', id, () => (
+        get<NetworkTopologyDetail>(`/operation_analysis/api/network_topology/${id}/`)
+      ));
     },
-    [get, shareDetailOverride],
+    [get, playbackDetail, shareDetailOverride],
   );
 
   const createNetworkTopology = useCallback(
@@ -139,11 +164,15 @@ export const useNetworkTopologyApi = () => {
         }
         return { nodes: [], links: [] } as NetworkTopologyConfig;
       }
+      const seeded = readPlaybackNetworkViewSets(playbackDetail, id);
+      if (seeded) {
+        return seeded;
+      }
       return get<NetworkTopologyConfig>(
         `/operation_analysis/api/network_topology/${id}/config/`,
       );
     },
-    [get, shareDetailOverride],
+    [get, playbackDetail, shareDetailOverride],
   );
 
   /** 全量替换画布 view_sets JSON(后端实际为 `PUT /config`)。 */

@@ -3,6 +3,9 @@ class MonitorObjConstants:
 
     INSTANCE_ID_MAX_LENGTH = 200
     INSTANCE_NAME_MAX_LENGTH = 200
+    # 告警、事件、基准上的指标实例身份。放得下的维度元组原样保存；放不下时改为定长指纹，
+    # 维度值写入 JSON。不要加长这列来容纳路径。
+    METRIC_INSTANCE_ID_MAX_LENGTH = 255
 
     # 监控对象关键字段
     OBJ_KEYS = ["name", "type", "default_metric", "instance_id_keys", "supplementary_indicators", "display_fields"]
