@@ -1,0 +1,139 @@
+# ITSM
+
+本目录目前只记录 M1-00 基线核对。应用骨架、模型与接口留到后续任务。
+
+## 基线核对
+
+核对日期：2026-11-06。工作分支 `feature_itsm`。
+
+### 上游提交
+
+| 项 | 值 |
+|---|---|
+| 当前 HEAD | `68eb738e06faf258eb666084ada46a5947696e70` |
+| 提交说明 | Merge pull request #6942 from CharlesWhj/master |
+| 与 `weops/master` | 2026-11-06 15:22 再次 fetch 后，HEAD 与 `weops/master` 同为 `68eb738e`，没有更新的提交 |
+| 计划核对点 | 《开发计划》V1.1 写的上游核对点是 `17174186`。该提交已被更新的上游合并超过。后续开发以当前 HEAD `68eb738e` 为基线，不以 `17174186` 为准 |
+
+### 阅读范围
+
+0.1 列出的五份文档在仓库中均存在：
+
+- `specs/capabilities/openapi-gateway.md`
+- `server/apps/core/openapi/README.md`
+- `server/apps/job_mgmt/docs/open_api.md`
+- `server/apps/workflow/docs/open_api.md`
+- `server/apps/workflow/atom_packages/README.md`
+
+同时核对了 `server/apps/job_mgmt/` 与 `server/apps/workflow/` 的 models、`nats_api.py`、`openapi_api.py`，以及编排启动执行的服务函数。
+
+### job_mgmt NATS 方法
+
+签名从 `@nats_client.register` 的函数定义抄录。`nats_api.py` 里另有同进程函数 `execute_automation_script_local`、`execute_automation_file_distribute_local`、`list_automation_targets_local`，未注册为 NATS 方法，不列入下表。
+
+| 函数 | 签名 | 所在文件 |
+|---|---|---|
+| `get_job_mgmt_module_list` | `get_job_mgmt_module_list()` | `server/apps/job_mgmt/nats_api.py` |
+| `get_job_mgmt_module_data` | `get_job_mgmt_module_data(module, child_module, page, page_size, group_id, *, team=None)` | 同上 |
+| `job_script_detail` | `job_script_detail(data: dict)` | 同上 |
+| `job_list` | `job_list(data: dict)` | 同上 |
+| `ansible_task_callback` | `ansible_task_callback(data: dict)` | 同上 |
+| `job_script_execute` | `job_script_execute(data: dict, **_ignored)` | 同上 |
+| `job_file_distribute` | `job_file_distribute(data: dict)` | 同上 |
+| `job_status_batch_query` | `job_status_batch_query(data: dict)` | 同上 |
+| `job_detail_query` | `job_detail_query(data: dict)` | 同上 |
+| `job_task_terminate` | `job_task_terminate(data=None, task_id=None, **kwargs)` | 同上 |
+| `job_target_list` | `job_target_list(data: dict)` | 同上 |
+| `get_job_usage_statistics` | `get_job_usage_statistics(user_info=None, time=None, **kwargs)` | 同上 |
+| `job_opspilot_action` | `job_opspilot_action(data: dict)` | `server/apps/job_mgmt/nats_opspilot.py` |
+
+计划点名的五个方法都在：`job_list`、`job_script_execute`、`job_status_batch_query`、`job_detail_query`、`job_target_list`。参数都收在 `data: dict` 里，不是展开的具名业务参数。`job_script_execute` 额外忽略调用方 kwargs。
+
+作业模型在 `server/apps/job_mgmt/models/`：`Script`、`Playbook`、`JobExecution`、`Target`、`DistributionFile`、`ScheduledTask`、`DangerousRule`、`DangerousPath`、`JobCompletionOutbox`，以及脚本 / Playbook 修订。
+
+### 编排中心启动执行
+
+进程内启动已发布流程的服务函数是 `apps.workflow.services.runtime.start_execution`，不是 `services/executions.py`。`executions.py` 负责把 Conductor 远端状态同步回本地执行记录。引擎客户端 `ConductorClient.start_workflow` 由 `start_execution` 在落库后调用。
+
+```python
+def start_execution(
+    workflow: Workflow,
+    *,
+    inputs: dict[str, Any],
+    started_by: str,
+    domain: str,
+    client: ConductorClient | None = None,
+    version_number: int | None = None,
+    mode: str = WorkflowExecution.Mode.PRODUCTION,
+    trigger_type: str = "FORM",
+    trigger_id: str = "",
+    parent_execution: WorkflowExecution | None = None,
+    launch_token_hash: str | None = None,
+    target_snapshot: dict[str, Any] | None = None,
+    entry_input_schema: dict[str, Any] | None = None,
+    async_callback_context: dict[str, Any] | None = None,
+    async_callback_deadline_at=None,
+    async_callback_key: str | None = None,
+) -> WorkflowExecution:
+```
+
+网关入口与详设「等价于 OpenAPI `workflow/execute-async`」一致：
+
+```python
+def openapi_workflow_execute_async(workflow_id, callback_context, inputs=None, *, team=None, user_info=None):
+```
+
+路径 `POST /openapi/v1/workflow/execute-async`。列表入口是 `openapi_workflow_list`，路径 `workflow/workflows`。
+
+模型 `Workflow`、`WorkflowExecution`、`WorkflowInteraction` 都在 `server/apps/workflow/models.py`。
+
+### IMNotificationChannel 支持的 IM 类型
+
+`IMNotificationChannel` 本身没有 IM 类型枚举。类型来自所绑定 `IntegrationInstance.provider_key`，且该 provider 必须声明 `im_notification` 能力。
+
+当前内置 provider 里声明了该能力的只有：
+
+| provider_key | 适配器 |
+|---|---|
+| `feishu` | `feishu.im_notification`（`server/apps/system_mgmt/providers/builtin/feishu/manifest.py`） |
+| `wecom` | `wecom.im_notification`（`server/apps/system_mgmt/providers/builtin/wecom/manifest.py`） |
+
+没有钉钉 provider，也没有钉钉的 `im_notification` 适配器。模型里的外部身份字段文案仍写着 Feishu User ID / Open ID，不代表只支持飞书。
+
+`system_mgmt.Channel`（`ChannelChoices`）是另一套渠道，当前取值：`email`、`enterprise_wechat`、`enterprise_wechat_bot`、`nats`、`feishu_bot`、`dingtalk_bot`、`custom_webhook`。机器人群通知里的飞书 / 钉钉走 `Channel`，不走 `IMNotificationChannel`。
+
+### system_mgmt.Group 负责人字段
+
+没有。`Group`（`server/apps/system_mgmt/models/user.py`）字段为：`name`、`description`、`parent_id`、`external_id`、`roles`、`is_virtual`、`allow_inherit_roles`、`sync_source`、`is_delete`。没有 `leader`、`owner` 或负责人字段。
+
+「提单人上级」第一期按已定决策使用 `HandlerGroup.leaders`，不依赖 `Group`。
+
+### OpsPilot 知识库写入接口
+
+有写入接口，路径不在详设写的 `knowledge_mgmt`。
+
+`server/apps/opspilot/urls.py` 当前知识库路由前缀是 `wiki_mgmt`。旧表 `knowledge_mgmt_*` 只出现在早期 migration 和过时的查询说明里，现行 urls 没有 `knowledge_mgmt`。
+
+可用的写入路径（挂在 `/api/v1/opspilot/` 下）：
+
+| 方法 | 路径 | 行为 |
+|---|---|---|
+| POST | `wiki_mgmt/page/` | `WikiPageViewSet.create`，调用 `create_manual_page` 写知识页面（title / body） |
+| PUT / PATCH | `wiki_mgmt/page/{id}/` | 更新知识页面 |
+| POST | `wiki_mgmt/knowledge_base/{id}/import_markdown_preflight/` | 上传文件做导入预检，不直接落页面 |
+| POST | `wiki_mgmt/knowledge_base/{id}/import_markdown_execute/` | 按预检 token 或 options 执行导入并写入 |
+| POST | `wiki_mgmt/knowledge_base/{id}/import_markdown/` | 兼容旧入口，实现上转去预检，不绕过 token 直接写入 |
+| POST | `wiki_mgmt/material/` | `WikiMaterialViewSet.create`，写入资料 |
+
+没有 `@openapi_expose` 的 OpsPilot 知识库写入网关。M3 同步若走进程内或控制台 REST，应使用 `wiki_mgmt/page/` 或 `import_markdown_execute/`，不要调用 `knowledge_mgmt`。
+
+### 与《详设》不一致
+
+| 详设 / 计划表述 | 代码事实 | 后续怎么用 |
+|---|---|---|
+| 开发计划基线提交 `17174186`（2026-11-06 上游 master） | 当前 `weops/master` 与 HEAD 是 `68eb738e`（Merge pull request #6942），已超过 `17174186` | 基线以 `68eb738e` 为准 |
+| 作业联动只列 NATS `job_list` / `job_script_execute` / `job_status_batch_query` / `job_detail_query`（计划另加 `job_target_list`） | 注册方法共 13 个，见上表；另有 OpenAPI `job-mgmt/script-execute`、`script-execute-async`、`job-status`、`job-detail` | M1 仍按决策直接调已有 NATS；调用时带上代码里的 `data: dict` 契约，不要按展开参数发明签名 |
+| 计划 0.3 把编排启动服务写成 `services/executions.py`、`services/conductor.py` | 启动函数是 `services/runtime.py` 的 `start_execution`；`executions.py` 只做执行状态同步；`ConductorClient.start_workflow(name, *, version, inputs, correlation_id="")` 是引擎 HTTP 客户端 | 进程内调用 `start_execution`。网关等价入口仍是 `workflow/execute-async`，与详设一致 |
+| `IMNotificationChannel` 仅飞书（含用户映射）；企微 / 邮件走 `Channel`；钉钉若无则 M5 再补 | `im_notification` 能力同时挂在 `feishu` 与 `wecom`。`Channel` 除邮件、企微、企微机器人外，已有 `feishu_bot`、`dingtalk_bot`、`nats`、`custom_webhook`。没有钉钉 IM 通知 provider | 飞书、企微的用户映射通知走 `IMNotificationChannel`。钉钉仍无该通道。群机器人飞书 / 钉钉用现有 `Channel`，不在 ITSM 里新做 |
+| `system_mgmt.Group` 可能有组织负责人 / leader，用于「提单人上级」 | `Group` 无负责人字段 | 按已定决策第一期用 `HandlerGroup.leaders` |
+| OpsPilot 知识库写入走 REST `knowledge_mgmt`；若只有上传文件接口则上传 Markdown | 现行写入在 `wiki_mgmt`：页面创建 `POST wiki_mgmt/page/`，文件导入 `POST wiki_mgmt/knowledge_base/{id}/import_markdown_execute/`。`import_markdown/` 只做预检 | M3 同步指向 `wiki_mgmt`，不要接已不存在的 `knowledge_mgmt` 路由 |
