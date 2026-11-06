@@ -5,23 +5,24 @@ from string import Template
 from django.db import transaction
 from django.db.models import F
 
+from apps.core.logger import celery_logger as logger
 from apps.monitor.models import MonitorAlert, MonitorEvent
 from apps.monitor.services.alert_lifecycle_events import record_lifecycle_events
 from apps.monitor.services.alert_lifecycle_notify import AlertLifecycleNotifier
-from apps.monitor.tasks.utils.policy_calculate import vm_to_dataframe, calculate_alerts
+from apps.monitor.tasks.utils.policy_calculate import calculate_alerts, vm_to_dataframe
 from apps.monitor.tasks.utils.policy_calculate_multi import calculate_multi_alerts
 from apps.monitor.tasks.utils.policy_multi import is_multi_query
 from apps.monitor.utils.alert_name_variables import overlay_dimension_field_values
 from apps.monitor.utils.dimension import (
+    ScopedInstanceMatcher,
     build_dimensions,
+    build_metric_template_vars,
     extract_monitor_instance_id,
     format_dimension_str,
     format_dimension_value,
-    build_metric_template_vars,
+    is_metric_instance_fingerprint,
     parse_instance_id,
-    ScopedInstanceMatcher,
 )
-from apps.core.logger import celery_logger as logger
 
 
 class AlertDetector:
@@ -36,10 +37,12 @@ class AlertDetector:
         resource_ip_map=None,
         display_variable_map=None,
         display_field_label_map=None,
+        baseline_dimensions=None,
     ):
         self.policy = policy
         self.instances_map = instances_map
         self.baselines_map = baselines_map
+        self.baseline_dimensions = baseline_dimensions or {}
         self.active_alerts = active_alerts
         self.metric_query_service = metric_query_service
         self.parent_instances_map = parent_instances_map or {}
@@ -47,8 +50,7 @@ class AlertDetector:
         self.display_variable_map = display_variable_map or {}
         self.display_field_label_map = display_field_label_map or {}
         self._scoped_instance_matcher = ScopedInstanceMatcher(
-            getattr(getattr(self.policy, "monitor_object", None), "instance_id_keys", None)
-            or [],
+            getattr(getattr(self.policy, "monitor_object", None), "instance_id_keys", None) or [],
             self.instances_map,
         )
 
@@ -57,9 +59,7 @@ class AlertDetector:
             return self._detect_multi_threshold_alerts()
         trigger_count = getattr(self.policy, "trigger_count", 1) or 1
         if vm_data is None:
-            vm_data = self.metric_query_service.query_comparison_metrics(
-                self.policy.period, trigger_count
-            )
+            vm_data = self.metric_query_service.query_comparison_metrics(self.policy.period, trigger_count)
             vm_data = self.metric_query_service.convert_metric_values(vm_data)
 
         group_by_keys = self._get_group_by_keys()
@@ -81,18 +81,12 @@ class AlertDetector:
             **self._content_unit_context(),
         }
 
-        thresholds = self.metric_query_service.convert_thresholds(
-            self.policy.threshold
-        )
+        thresholds = self.metric_query_service.convert_thresholds(self.policy.threshold)
         recovery_threshold = self._converted_recovery_threshold()
-        overlay_current_map, overlay_baseline_map = (
-            self.metric_query_service.query_overlay_last_values()
-        )
+        overlay_current_map, overlay_baseline_map = self.metric_query_service.query_overlay_last_values()
         template_context["overlay_current_map"] = overlay_current_map
         template_context["overlay_baseline_map"] = overlay_baseline_map
-        template_context["source_display_unit"] = (
-            self.metric_query_service.get_source_display_unit()
-        )
+        template_context["source_display_unit"] = self.metric_query_service.get_source_display_unit()
         alert_events, info_events, hold_events = calculate_alerts(
             self.policy.alert_name,
             df,
@@ -166,25 +160,15 @@ class AlertDetector:
         if callable(get_calc):
             source_unit = get_calc() or ""
         else:
-            source_unit = (
-                getattr(self.policy, "calculation_unit", None)
-                or getattr(self.policy, "metric_unit", None)
-                or ""
-            )
-        overlay_source_unit = (
-            getattr(self.policy, "calculation_unit", None)
-            or getattr(self.policy, "metric_unit", None)
-            or ""
-        )
+            source_unit = getattr(self.policy, "calculation_unit", None) or getattr(self.policy, "metric_unit", None) or ""
+        overlay_source_unit = getattr(self.policy, "calculation_unit", None) or getattr(self.policy, "metric_unit", None) or ""
         is_converted = getattr(self.metric_query_service, "is_metric_unit_converted", None)
         if callable(is_converted):
             scan_unit_converted = bool(is_converted())
         else:
             metric_unit = getattr(self.policy, "metric_unit", None) or ""
             calculation_unit = getattr(self.policy, "calculation_unit", None) or ""
-            scan_unit_converted = bool(
-                metric_unit and calculation_unit and metric_unit != calculation_unit
-            )
+            scan_unit_converted = bool(metric_unit and calculation_unit and metric_unit != calculation_unit)
         return {
             "source_unit": source_unit,
             "overlay_source_unit": overlay_source_unit,
@@ -224,16 +208,13 @@ class AlertDetector:
 
     def _filter_events_by_scope(self, events):
         return [
-            e
-            for e in events
-            if (
-                e.get("monitor_instance_id")
-                or self._extract_monitor_instance_id(e["metric_instance_id"])
-            )
-            in self.instances_map
+            e for e in events if (e.get("monitor_instance_id") or self._extract_monitor_instance_id(e["metric_instance_id"])) in self.instances_map
         ]
 
     def _extract_monitor_instance_id(self, metric_instance_id: str) -> str:
+        if is_metric_instance_fingerprint(metric_instance_id):
+            return self._monitor_instance_id_from_dimensions(metric_instance_id)
+
         resolved_id = self._match_scoped_monitor_instance(metric_instance_id)
         if resolved_id:
             return resolved_id
@@ -244,17 +225,17 @@ class AlertDetector:
             None,
         )
         if method:
-            return (
-                self.metric_query_service.get_monitor_instance_id_from_metric_instance_id(
-                    metric_instance_id
-                )
-            )
+            return self.metric_query_service.get_monitor_instance_id_from_metric_instance_id(metric_instance_id)
 
+        return self._monitor_instance_id_from_dimensions(metric_instance_id) or extract_monitor_instance_id(metric_instance_id)
+
+    def _monitor_instance_id_from_dimensions(self, metric_instance_id: str) -> str:
         dimensions = self._parse_dimensions(metric_instance_id)
         monitor_key = self._get_monitor_instance_id_key()
-        if monitor_key in dimensions:
-            return str((dimensions[monitor_key],))
-        return extract_monitor_instance_id(metric_instance_id)
+        value = dimensions.get(monitor_key) if isinstance(dimensions, dict) else None
+        if value in (None, ""):
+            return ""
+        return str((value,))
 
     def _match_scoped_monitor_instance(self, metric_instance_id: str) -> str:
         """按对象身份键把指标维度解析回策略选择的监控实例。
@@ -263,7 +244,7 @@ class AlertDetector:
         同时包含父、子身份。只在策略范围内唯一匹配时采用候选值，避免跨父对象
         同名子对象被错误归属。
         """
-        if not self.instances_map:
+        if not self.instances_map or is_metric_instance_fingerprint(metric_instance_id):
             return ""
 
         return self._scoped_instance_matcher.resolve(
@@ -290,9 +271,7 @@ class AlertDetector:
         }
 
     def _build_resource_context(self, monitor_instance_id: str, dimensions: dict | None = None) -> dict:
-        resource_name = self.instances_map.get(
-            monitor_instance_id, monitor_instance_id
-        )
+        resource_name = self.instances_map.get(monitor_instance_id, monitor_instance_id)
         display_values = overlay_dimension_field_values(
             self.display_variable_map.get(monitor_instance_id, {}),
             dimensions or {},
@@ -320,9 +299,7 @@ class AlertDetector:
         parent_resource_id = str(tuple(instance_values[:parent_key_count]))
         context.update(
             parent_resource_id=parent_resource_id,
-            parent_resource_name=self.parent_instances_map.get(
-                parent_resource_id, parent_resource_id
-            ),
+            parent_resource_name=self.parent_instances_map.get(parent_resource_id, parent_resource_id),
         )
         return context
 
@@ -339,13 +316,9 @@ class AlertDetector:
             if metric_instance_id in aggregation_result:
                 continue
 
-            monitor_instance_id = self._resolve_baseline_monitor_instance_id(
-                metric_instance_id
-            )
+            monitor_instance_id = self._resolve_baseline_monitor_instance_id(metric_instance_id)
             dimensions = self._parse_dimensions(metric_instance_id)
-            resource_context = self._build_resource_context(
-                monitor_instance_id, dimensions
-            )
+            resource_context = self._build_resource_context(monitor_instance_id, dimensions)
             resource_name = resource_context["resource_name"]
             dimension_str = self._format_dimension_str(dimensions)
             display_name = f"{resource_name} - {dimension_str}" if dimension_str else resource_name
@@ -387,6 +360,11 @@ class AlertDetector:
         return events
 
     def _parse_dimensions(self, metric_instance_id: str) -> dict:
+        stored = self.baseline_dimensions.get(metric_instance_id)
+        if isinstance(stored, dict) and stored:
+            return stored
+        if is_metric_instance_fingerprint(metric_instance_id):
+            return {}
         keys = self._get_group_by_keys()
         return build_dimensions(metric_instance_id, keys)
 
@@ -396,18 +374,12 @@ class AlertDetector:
             return self.metric_query_service.get_result_group_by()
 
         instance_id_keys = getattr(self.metric_query_service, "instance_id_keys", None)
-        if (
-            self.policy.query_condition.get("type") == "formula"
-            and isinstance(instance_id_keys, (list, tuple))
-            and instance_id_keys
-        ):
+        if self.policy.query_condition.get("type") == "formula" and isinstance(instance_id_keys, (list, tuple)) and instance_id_keys:
             return list(instance_id_keys)
         return self.policy.group_by or []
 
     def _get_monitor_instance_id_key(self) -> str:
-        method = getattr(
-            type(self.metric_query_service), "get_monitor_instance_id_key", None
-        )
+        method = getattr(type(self.metric_query_service), "get_monitor_instance_id_key", None)
         if method:
             return self.metric_query_service.get_monitor_instance_id_key()
 
@@ -555,10 +527,7 @@ class AlertDetector:
         for alert in no_data_alerts:
             alert_metric_id = self._get_alert_metric_instance_id(alert)
             should_recover = alert_metric_id in metric_instance_ids_with_data
-            logger.debug(
-                f"Policy {self.policy.id}: alert {alert.id} metric_id={alert_metric_id}, "
-                f"in_data_set={should_recover}"
-            )
+            logger.debug(f"Policy {self.policy.id}: alert {alert.id} metric_id={alert_metric_id}, " f"in_data_set={should_recover}")
             if should_recover:
                 alerts_to_recover.append(alert)
 
@@ -574,9 +543,7 @@ class AlertDetector:
             with transaction.atomic():
                 candidate_ids = [alert.id for alert in alerts_to_recover]
                 alerts_to_recover = list(
-                    MonitorAlert.objects.select_for_update()
-                    .filter(id__in=candidate_ids, status="new", alert_type="no_data")
-                    .order_by("id")
+                    MonitorAlert.objects.select_for_update().filter(id__in=candidate_ids, status="new", alert_type="no_data").order_by("id")
                 )
                 if not alerts_to_recover:
                     return []
