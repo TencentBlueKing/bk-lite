@@ -438,6 +438,7 @@ describe('编排中心正式设计器', { timeout: 30000 }, () => {
     ));
     expect(mocks.post.mock.calls.filter(([url]) => String(url).endsWith('/debug/'))).toHaveLength(1);
     expect(await screen.findByRole('button', { name: /调试详情/ })).not.toBeNull();
+    expect(screen.queryByRole('button', { name: /重新调试/ })).toBeNull();
     expect(await screen.findByText('执行详情')).not.toBeNull();
     expect(mocks.push).not.toHaveBeenCalledWith('/workflow/executions/debug-webhook-1');
   });
@@ -524,6 +525,7 @@ describe('编排中心正式设计器', { timeout: 30000 }, () => {
     expect(screen.queryByText('触发时间')).toBeNull();
     expect(screen.queryByText('是否测试')).toBeNull();
     expect(await screen.findByRole('button', { name: /调试详情/ })).not.toBeNull();
+    expect(screen.queryByRole('button', { name: /重新调试/ })).toBeNull();
     expect(await screen.findByText('执行详情')).not.toBeNull();
     expect(screen.getByRole('button', { name: /保存草稿/ }).hasAttribute('disabled')).toBe(true);
     expect(screen.getByRole('button', { name: /发布/ }).hasAttribute('disabled')).toBe(true);
@@ -1585,6 +1587,7 @@ describe('编排中心正式设计器', { timeout: 30000 }, () => {
       expect.objectContaining({ trigger_id: 'trigger_form' }),
     ));
     expect(await screen.findByRole('button', { name: /调试详情/ })).not.toBeNull();
+    expect(screen.queryByRole('button', { name: /重新调试/ })).toBeNull();
     expect(screen.getByRole('button', { name: /保存草稿/ }).hasAttribute('disabled')).toBe(true);
     expect(screen.getByRole('button', { name: /发布/ }).hasAttribute('disabled')).toBe(true);
     expect(mocks.push).not.toHaveBeenCalledWith('/workflow/executions/debug-stale-1');
@@ -1601,6 +1604,73 @@ describe('编排中心正式设计器', { timeout: 30000 }, () => {
     const nodeTitle = await screen.findByDisplayValue('发送巡检结果');
     expect(nodeTitle.hasAttribute('disabled')).toBe(true);
     expect(screen.getByText('只读')).not.toBeNull();
+  });
+
+  it('调试终态后保留调试详情并显示重新调试，开跑后重新调试隐藏', async () => {
+    const formWorkflow = {
+      ...workflow,
+      canvas_metadata: {
+        trigger_nodes: [{
+          id: 'trigger_form', name: '人工表单', trigger_type: 'FORM',
+          input_schema: { type: 'object', properties: {}, required: [] }, config: {},
+        }],
+        return_nodes: [],
+        edges: [{ id: 'from-form', source: 'trigger_form', target: 'notify' }],
+        node_titles: { notify: '发送巡检结果' },
+      },
+    };
+    const finishedDebug = {
+      id: 'debug-done-1',
+      status: 'SUCCEEDED',
+      mode: 'DEBUG',
+      trigger_type: 'FORM',
+      trigger_id: 'trigger_form',
+      permission: ['View', 'Execute'],
+      workflow_name: formWorkflow.name,
+    };
+    const nextDebug = {
+      id: 'debug-done-2',
+      status: 'RUNNING',
+      mode: 'DEBUG',
+      trigger_type: 'FORM',
+      trigger_id: 'trigger_form',
+      permission: ['View', 'Execute'],
+      workflow_name: formWorkflow.name,
+    };
+    mocks.get.mockImplementation((url: string) => {
+      if (url.endsWith('/workflows/1/')) return Promise.resolve(formWorkflow);
+      if (url.includes('/workflows/atoms/')) return Promise.resolve(atoms);
+      if (String(url).endsWith('/executions/debug-done-1/')) return Promise.resolve(finishedDebug);
+      if (String(url).endsWith('/executions/debug-done-1/nodes/')) {
+        return Promise.resolve({ nodes: [], default_node_reference: '' });
+      }
+      if (String(url).endsWith('/executions/debug-done-2/')) return Promise.resolve(nextDebug);
+      if (String(url).endsWith('/executions/debug-done-2/nodes/')) {
+        return Promise.resolve({ nodes: [], default_node_reference: '' });
+      }
+      return Promise.resolve([]);
+    });
+    mocks.post
+      .mockResolvedValueOnce(finishedDebug)
+      .mockResolvedValueOnce(nextDebug);
+
+    render(<App><WorkflowOrchestrationConsole workflowId={1} /></App>);
+    fireEvent.click(await screen.findByRole('button', { name: /调试流程/ }));
+    const firstDialog = (await screen.findByText('调试当前草稿')).closest<HTMLElement>('.ant-modal-content');
+    fireEvent.click(within(firstDialog!).getByRole('button', { name: '开始调试' }));
+
+    expect(await screen.findByRole('button', { name: /调试详情/ })).not.toBeNull();
+    expect(await screen.findByRole('button', { name: /重新调试/ })).not.toBeNull();
+    expect(screen.queryByRole('button', { name: /调试流程/ })).toBeNull();
+    await closeTopDialog();
+
+    fireEvent.click(screen.getByRole('button', { name: /重新调试/ }));
+    const againDialog = (await screen.findByText('调试当前草稿')).closest<HTMLElement>('.ant-modal-content');
+    fireEvent.click(within(againDialog!).getByRole('button', { name: '开始调试' }));
+
+    await waitFor(() => expect(mocks.post.mock.calls.filter(([url]) => String(url).endsWith('/debug/'))).toHaveLength(2));
+    expect(await screen.findByRole('button', { name: /调试详情/ })).not.toBeNull();
+    expect(screen.queryByRole('button', { name: /重新调试/ })).toBeNull();
   });
 
   it('调试附着时双击原子把本次输出写入右侧 node_test_data，展示与单步测试一致', async () => {
@@ -1658,6 +1728,7 @@ describe('编排中心正式设计器', { timeout: 30000 }, () => {
     const debugDialog = (await screen.findByText('调试当前草稿')).closest<HTMLElement>('.ant-modal-content');
     fireEvent.click(within(debugDialog!).getByRole('button', { name: '开始调试' }));
     expect(await screen.findByRole('button', { name: /调试详情/ })).not.toBeNull();
+    expect(await screen.findByRole('button', { name: /重新调试/ })).not.toBeNull();
     await closeTopDialog();
 
     const atom = await waitFor(() => {
