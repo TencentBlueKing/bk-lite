@@ -57,7 +57,8 @@ const ACTIVE_DEBUG_STATUSES = new Set(['QUEUED', 'RUNNING', 'WAITING_APPROVAL', 
 function canvasTestStateFromExecutionNode(state: ExecutionNodeState): WorkflowCanvasNodeTestState {
   if (state === 'RUNNING' || state === 'WAITING' || state === 'ACTIONABLE') return 'running';
   if (state === 'FAILED' || state === 'TIMED_OUT') return 'failed';
-  if (state === 'SUCCESS' || state === 'WARNING' || state === 'SKIPPED') return 'success';
+  // SKIPPED（分支未走 / 终止收口）不打角标，避免误标成功或与跳过混淆。
+  if (state === 'SUCCESS' || state === 'WARNING') return 'success';
   return 'idle';
 }
 
