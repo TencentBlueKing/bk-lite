@@ -225,6 +225,12 @@
           "icon": "shujumoxingguanli",
           "url": "/cmdb/assetManage/operationLog",
           "name": "operation_log"
+        },
+        {
+          "title": "系统设置",
+          "icon": "shujumoxingguanli",
+          "url": "/cmdb/assetManage/systemSettings",
+          "name": "model_management"
         }
       ]
     }
@@ -455,6 +461,12 @@
           "icon": "shujumoxingguanli",
           "url": "/cmdb/assetManage/operationLog",
           "name": "operation_log"
+        },
+        {
+          "title": "System Settings",
+          "icon": "shujumoxingguanli",
+          "url": "/cmdb/assetManage/systemSettings",
+          "name": "model_management"
         }
       ]
     }
