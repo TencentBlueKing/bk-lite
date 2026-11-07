@@ -719,6 +719,8 @@
         "reconcileMoveDown": "Move down",
         "reconcileStopped": "Fewer than two members remain, so reconciliation is stopped. The remaining task writes only the fields it outputs.",
         "reconcileManual": "Manual lock",
+        "reconcileManualHint": "This field is manually locked, so automatic collection will not overwrite the current value. After unlocking, the next collection run writes it again.",
+        "reconcileUnlock": "Unlock",
         "reconcileRestore": "Resume collection",
         "reconcileSkipped": "Skipped by priority",
         "reconcileOrgConflict": "Organization conflicts",
