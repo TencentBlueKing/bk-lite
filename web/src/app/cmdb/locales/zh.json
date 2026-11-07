@@ -721,6 +721,8 @@
         "reconcileMoveDown": "下移",
         "reconcileStopped": "生效成员不足两个，调和已停止。剩下的任务按单任务写入自己输出的字段。",
         "reconcileManual": "人工锁定",
+        "reconcileManualHint": "该字段已人工锁定，自动采集不会覆盖当前值。取消锁定后，下一轮采集会重新写入。",
+        "reconcileUnlock": "取消锁定",
         "reconcileRestore": "恢复自动采集",
         "reconcileSkipped": "优先级未写入",
         "reconcileOrgConflict": "组织冲突",
