@@ -162,7 +162,7 @@
       "type": "input",
       "required": false,
       "default_value": "",
-      "description": "逗号分隔的服务名，例如 Spooler,W32Time。仅采集名单中的服务，比较忽略大小写。",
+      "description": "逗号分隔的服务名，例如 Spooler,W32Time。仅采集名单中的服务，匹配时不区分大小写。",
       "widget_props": {
         "placeholder": "Spooler,W32Time"
       },
