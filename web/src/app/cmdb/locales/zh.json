@@ -1687,6 +1687,22 @@
             "collectTask": "采集任务"
         }
     },
+    "SystemSettings": {
+        "title": "系统设置",
+        "retentionTitle": "操作日志保留策略",
+        "modeOff": "不清理",
+        "modeDays": "按时长",
+        "modeCount": "按条数",
+        "days": "保留天数",
+        "count": "保留条数",
+        "save": "保存",
+        "saveSuccess": "保存成功",
+        "running": "正在清理",
+        "lastRun": "上次清理",
+        "deletedCount": "删除条数",
+        "confirmTitle": "确认清理",
+        "confirmContent": "将按策略删除超出范围的操作日志，不可恢复"
+    },
     "subscription": {
         "dataSubscription": "数据订阅",
         "subscribe": "订阅",
