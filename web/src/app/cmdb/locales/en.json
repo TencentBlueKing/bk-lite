@@ -1685,6 +1685,22 @@
             "collectTask": "Collection Task"
         }
     },
+    "SystemSettings": {
+        "title": "System Settings",
+        "retentionTitle": "Retention policy",
+        "modeOff": "Do not clean",
+        "modeDays": "By age",
+        "modeCount": "By count",
+        "days": "Retention days",
+        "count": "Retention count",
+        "save": "Save",
+        "saveSuccess": "Saved",
+        "running": "Cleaning",
+        "lastRun": "Last run",
+        "deletedCount": "Deleted",
+        "confirmTitle": "Confirm cleanup",
+        "confirmContent": "Records outside the policy will be permanently deleted"
+    },
     "subscription": {
         "dataSubscription": "Data Subscription",
         "subscribe": "Subscribe",
