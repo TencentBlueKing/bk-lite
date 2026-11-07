@@ -13,11 +13,11 @@
 | critical | 1 | 2 |
 | notification | 1 | 2 |
 | state | 1 | 2 |
-| background | 1 | 1 |
+| background | 1 | 4 |
 
-`CELERY_TOTAL_CONCURRENCY_LIMIT` 默认12：四池MAX合计7，加上既有专用池默认2+2+1。默认常驻执行子进程合计9、峰值12（另有7个worker主进程）。这是有界启动配置，不按CPU数量放大，也不代表现场吞吐或整机内存已验收。
+`CELERY_TOTAL_CONCURRENCY_LIMIT` 默认15：四池MAX合计10，加上既有专用池默认2+2+1。默认常驻执行子进程合计9、峰值15（另有7个worker主进程）。这是有界启动配置，不按CPU数量放大，也不代表现场吞吐或整机内存已验收。
 
-环境变量逐项覆盖默认值；显式空值、非正整数、MIN>MAX或总并发超预算仍报错，不自动放大总预算。旧 `CELERY_CONCURRENCY` 仅记录废弃提示并忽略，不再阻断启动，也不复制到四池。多实例/升级重叠仍须设置副本数、唯一Beat归属和足够的显式总预算；默认12不会随副本数增长。
+环境变量逐项覆盖默认值；显式空值、非正整数、MIN>MAX或总并发超预算仍报错，不自动放大总预算。旧 `CELERY_CONCURRENCY` 仅记录废弃提示并忽略，不再阻断启动，也不复制到四池。多实例/升级重叠仍须设置副本数、唯一Beat归属和足够的显式总预算；默认15不会随副本数增长。
 
 ```bash
 python -m apps.core.celery_runtime.launcher --check
