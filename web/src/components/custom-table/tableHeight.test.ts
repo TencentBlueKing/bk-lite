@@ -35,4 +35,40 @@ describe('resolveTableDimensions', () => {
       hasPagination: true,
     }).tableHeight).toBe(320);
   });
+
+  it('does not raise a measured numeric body height to the 160 floor', () => {
+    expect(resolveTableDimensions({
+      scrollY: 100,
+      viewportHeight: 900,
+      parentHeight: 180,
+      size: 'small',
+      hasPagination: false,
+    })).toEqual({
+      tableHeight: 100,
+      containerHeight: 147,
+    });
+  });
+
+  it('still raises a short pixel string so existing viewport estimates keep a usable body', () => {
+    expect(resolveTableDimensions({
+      scrollY: '80px',
+      viewportHeight: 900,
+      parentHeight: 180,
+      size: 'small',
+      hasPagination: false,
+    }).tableHeight).toBe(160);
+  });
+
+  it('leaves an unpaginated table unconstrained when scroll.y is omitted', () => {
+    expect(resolveTableDimensions({
+      scrollY: undefined,
+      viewportHeight: 900,
+      parentHeight: 400,
+      size: 'small',
+      hasPagination: false,
+    })).toEqual({
+      tableHeight: undefined,
+      containerHeight: undefined,
+    });
+  });
 });
