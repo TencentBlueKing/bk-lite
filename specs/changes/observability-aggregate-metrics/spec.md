@@ -170,3 +170,16 @@ APM 的首页、服务列表、服务 RED、可用性 SLO，RUM 的应用概览�
 
 - 验证报告与验证代码归档在 agent store 的 `aggregation-verification-2026-11-09/`。
 - 现有缺口（不在本变更范围）：VictoriaTraces 保留期不足 35 天时，30 天 SLO 仍会被标为可用。
+
+## Completion evidence
+
+### APM 可用性 SLO（04）
+
+可用性 SLI 在聚合库已配置、已记录 APM 起点、且窗口起点不早于该起点时，用
+`sum(increase(apm_calls_total{服务、环境、已有入口操作}[窗口秒]))` 计算总数，坏数是同一选择器加上
+`status_code="STATUS_CODE_ERROR"`。查询结束对齐到最近完整分钟，再留一个 60 秒刷出周期。起点未覆盖、未记录或未配置时仍走
+VictoriaTraces 按天切片。延迟 SLO 不变。聚合库错误不回退扫描，达成率不显示为 0：列表保留该 SLO 且达成率为空；首页若没有任何可展示达成率，SLO 区块标为失败。
+
+- `cd server && DB_ENGINE=sqlite DB_NAME=:memory: SECRET_KEY=cursor-cloud-dev ENABLE_CELERY=true INSTALL_APPS=system_mgmt,console_mgmt,node_mgmt,monitor,log,apm,alerts,rum,cmdb timeout 900 uv run pytest apps/apm/tests --no-cov --nomigrations -o addopts= -q -p no:cacheprovider`
+  结果：`11 failed, 866 passed, 2 skipped`。11 项失败都在既有 sqlite 基线内（topology_api 8 项、deployments backfill 1 项、cross_database_guard 1 项、owned_alert_lifecycle 1 项）。新增 17 项通过，覆盖 7 天、30 天、自然月、起点回退、延迟 SLO、降级、标签收窄与转义，以及首页和列表/详情同一达成率。
+- 功能清单已改为：可用性 SLO 在起点覆盖窗口后读聚合库，延迟 SLO 仍读 VictoriaTraces。未改前端。

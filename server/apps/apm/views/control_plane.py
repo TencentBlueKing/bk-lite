@@ -19,7 +19,7 @@ from apps.apm.adapters import (
     VictoriaTracesTelemetryStore,
     telemetry_error_payload,
 )
-from apps.apm.adapters.aggregate_red import apm_entry_red_store
+from apps.apm.adapters.aggregate_red import apm_availability_slo_store, apm_entry_red_store
 from apps.apm.adapters.errors import QUERY_TOO_LARGE_CODE, TELEMETRY_UNAVAILABLE_CODE
 from apps.apm.models import (
     ApmAlert,
@@ -755,7 +755,8 @@ class ApmSloViewSet(viewsets.GenericViewSet):
 
     @staticmethod
     def _service():
-        return DjangoApmReliabilityService(VictoriaTracesTelemetryStore())
+        traces = VictoriaTracesTelemetryStore()
+        return DjangoApmReliabilityService(apm_availability_slo_store(traces=traces))
 
     def get_queryset(self):
         queryset = ApmSlo.objects.select_related("service").prefetch_related("service__organization_links")

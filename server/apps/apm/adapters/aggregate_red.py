@@ -1,6 +1,6 @@
-"""入口 RED 的聚合库读取，以及相对 VictoriaTraces 的窗口路由。
+"""入口 RED 与可用性 SLO 的聚合库读取，以及相对 VictoriaTraces 的窗口路由。
 
-慢请求、Apdex、版本和实例仍走 VictoriaTraces。聚合库报错只向上抛，不回退扫明细。
+慢请求、Apdex、版本、实例和延迟 SLO 仍走 VictoriaTraces。聚合库报错只向上抛，不回退扫明细。
 """
 
 from __future__ import annotations
@@ -11,7 +11,15 @@ from datetime import UTC, datetime, timedelta
 
 from apps.apm.adapters.errors import TelemetryQueryTooLarge, TelemetryStoreUnavailable
 from apps.apm.adapters.victoriatraces import MAX_RED_POINTS, VictoriaTracesTelemetryStore
-from apps.apm.services.contracts import ServiceEndpointRed, ServiceMetricQuery, ServiceRed, ServiceRedPoint
+from apps.apm.services.contracts import (
+    MetricDataState,
+    ServiceEndpointRed,
+    ServiceMetricQuery,
+    ServiceRed,
+    ServiceRedPoint,
+    SloMeasurement,
+    SloMetricQuery,
+)
 from apps.core.aggregate_origin import recorded_origin
 from apps.core.aggregate_promql import AggregateMetricsTooLarge, AggregateMetricsUnavailable, AggregatePromqlClient, escape_promql_label_value
 
@@ -43,7 +51,7 @@ def _selector(labels: tuple[tuple[str, str], ...]) -> str:
     return ",".join(f'{key}="{escape_promql_label_value(value)}"' for key, value in labels)
 
 
-def _labels(query: ServiceMetricQuery, *, status_code: str = "") -> tuple[tuple[str, str], ...]:
+def _labels(query: ServiceMetricQuery | SloMetricQuery, *, status_code: str = "") -> tuple[tuple[str, str], ...]:
     # Collector 把空的命名空间和环境写成 unknown，序列标签与之一致。
     labels = [
         ("service_namespace", query.service_namespace or "unknown"),
@@ -280,6 +288,43 @@ class AggregateApmRedStore:
             )
         return tuple(points)
 
+    def slo_measurement(self, query: SloMetricQuery) -> SloMeasurement:
+        try:
+            return self._slo_measurement(query)
+        except AggregateMetricsTooLarge as exc:
+            raise TelemetryQueryTooLarge("聚合库响应超过大小上限") from exc
+        except AggregateMetricsUnavailable as exc:
+            raise TelemetryStoreUnavailable("聚合库查询不可用") from exc
+
+    def _slo_measurement(self, query: SloMetricQuery) -> SloMeasurement:
+        ended_at = align_query_end(query.ended_at, now=self.clock())
+        started_at = _as_utc(query.started_at)
+        window_seconds = int((ended_at - started_at).total_seconds())
+        if window_seconds <= 0:
+            return SloMeasurement(None, None, None, MetricDataState.NO_DATA)
+        total = _scalar(
+            self.client.query_instant(
+                _increase("apm_calls_total", _labels(query), window_seconds),
+                at=ended_at,
+            )
+        )
+        if total is None or total <= 0:
+            return SloMeasurement(None, None, None, MetricDataState.NO_DATA)
+        bad = _scalar(
+            self.client.query_instant(
+                _increase("apm_calls_total", _labels(query, status_code=ERROR_STATUS), window_seconds),
+                at=ended_at,
+            )
+        )
+        bad_count = 0.0 if bad is None else bad
+        good = max(0.0, total - bad_count)
+        return SloMeasurement(
+            compliance_percent=min(100.0, max(0.0, good / total * 100)),
+            good_rate=good / window_seconds,
+            total_rate=total / window_seconds,
+            data_state=MetricDataState.AVAILABLE,
+        )
+
     def _top_endpoints(self, query: ServiceMetricQuery, ended_at: datetime, window_seconds: int) -> tuple[ServiceEndpointRed, ...]:
         labels = _labels(query)
         requests = _by_label(
@@ -342,6 +387,40 @@ class ApmAggregateRedRouter:
         if origin is None:
             return False
         return _as_utc(query.started_at) >= _as_utc(origin)
+
+
+class ApmAvailabilitySloStore:
+    """可用性窗口被聚合起点覆盖时读聚合库；否则和延迟 SLO 一样读 VictoriaTraces。
+
+    聚合库报错只向上抛，不回退扫明细。
+    """
+
+    def __init__(self, *, traces, aggregate: AggregateApmRedStore, origin_at: Callable[[], datetime | None]):
+        self.traces = traces
+        self.aggregate = aggregate
+        self.origin_at = origin_at
+
+    def slo_measurement(self, query: SloMetricQuery) -> SloMeasurement:
+        if query.sli_type != "availability" or not self._covered(query):
+            return self.traces.slo_measurement(query)
+        return self.aggregate.slo_measurement(query)
+
+    def _covered(self, query: SloMetricQuery) -> bool:
+        if not self.aggregate.available:
+            return False
+        origin = self.origin_at()
+        if origin is None:
+            return False
+        return _as_utc(query.started_at) >= _as_utc(origin)
+
+
+def apm_availability_slo_store(*, traces=None, clock: Callable[[], datetime] | None = None) -> ApmAvailabilitySloStore:
+    detail_store = traces or VictoriaTracesTelemetryStore()
+    return ApmAvailabilitySloStore(
+        traces=detail_store,
+        aggregate=AggregateApmRedStore(AggregatePromqlClient.from_env(), clock=clock),
+        origin_at=lambda: recorded_origin("apm"),
+    )
 
 
 def apm_entry_red_store(*, traces=None, clock: Callable[[], datetime] | None = None) -> ApmAggregateRedRouter:

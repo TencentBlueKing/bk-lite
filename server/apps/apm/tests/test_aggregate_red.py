@@ -323,18 +323,23 @@ def test_router_reads_aggregate_when_the_window_starts_at_the_recorded_origin():
 def test_detail_paths_stay_on_victoria_traces():
     from apps.apm import tasks as apm_tasks
     from apps.apm.views.control_plane import ApmPolicyViewSet, ApmServiceViewSet, ApmSloViewSet
+    from apps.apm.views.dashboard import ApmDashboardViewSet
 
     sources = [
         inspect.getsource(ApmPolicyViewSet._service),
-        inspect.getsource(ApmSloViewSet._service),
         inspect.getsource(ApmServiceViewSet.error_breakdown),
         inspect.getsource(ApmServiceViewSet.client_rollups),
         inspect.getsource(apm_tasks.evaluate_apm_policy),
     ]
     for source in sources:
         assert "apm_entry_red_store" not in source
+        assert "apm_availability_slo_store" not in source
         assert "VictoriaTracesTelemetryStore" in source
     assert "apm_entry_red_store" not in inspect.getsource(ApmPolicyViewSet.dry_run)
+    slo_source = inspect.getsource(ApmSloViewSet._service)
+    dashboard_source = inspect.getsource(ApmDashboardViewSet.list)
+    assert "apm_availability_slo_store" in slo_source
+    assert "apm_availability_slo_store" in dashboard_source
 
 
 def _discover(application_id, namespace, name, instance, organization):

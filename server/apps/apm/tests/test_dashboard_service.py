@@ -295,6 +295,44 @@ def test_dashboard_slo_overview_skips_unavailable_evaluations(mocker):
     assert payload["slos"]["data"]["items"][0]["service_name"] == "checkout"
 
 
+def test_dashboard_slo_section_fails_when_every_evaluation_has_no_rate(mocker):
+    now = timezone.now()
+    service = _service(name="checkout", last_seen_at=now)
+    ApmSlo.objects.create(
+        name="结算可用性",
+        service=service,
+        environment="production",
+        sli_type="availability",
+        objective=Decimal("99.900"),
+        evaluation_window="rolling7d",
+        is_enabled=True,
+    )
+    reliability = mocker.Mock(spec=DjangoApmReliabilityService)
+    reliability.evaluate.return_value = SloEvaluation(
+        current_rate=None,
+        budget_remaining=None,
+        data_state="no_data",
+        started_at=now - timedelta(days=7),
+        ended_at=now,
+        reason="聚合库查询不可用",
+    )
+
+    failed = ApmDashboardService(reliability=reliability, now_fn=lambda: now).build(organization_id=10, window="1h")
+    reliability.evaluate.return_value = SloEvaluation(
+        current_rate=None,
+        budget_remaining=None,
+        data_state="no_data",
+        started_at=now - timedelta(days=7),
+        ended_at=now,
+        reason="no_samples",
+    )
+    empty = ApmDashboardService(reliability=reliability, now_fn=lambda: now).build(organization_id=10, window="1h")
+
+    assert failed["slos"]["status"] == "failed"
+    assert failed["slos"]["error"] == "聚合库查询不可用"
+    assert empty["slos"]["status"] == "empty"
+
+
 def test_dashboard_caps_red_queries_but_counts_all_visible_services_in_kpis(monkeypatch):
     now = timezone.now()
     red_by_name = {}

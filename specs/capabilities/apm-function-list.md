@@ -34,7 +34,7 @@ APM 提供应用性能观察与自有告警，覆盖接入、服务目录、调�
 
 | 功能项 | 功能说明 | 规格 / 约束 | 状态 |
 |---|---|---|---|
-| 首页总览 | 展示健康、SLO、告警与 Top 指标 | KPI、健康、服务 Top：聚合库已配置且窗口起点不早于已记录聚合起点时读聚合库，否则 VictoriaTraces；缺样本为无数据，聚合错误不回退明细。可用性 SLO 仍读 VictoriaTraces。分节可空或降级，不编造数据 | Beta |
+| 首页总览 | 展示健康、SLO、告警与 Top 指标 | KPI、健康、服务 Top、可用性 SLO：聚合库已配置且窗口起点不早于已记录聚合起点时读聚合库，否则 VictoriaTraces；缺样本为无数据，聚合错误不回退明细。延迟 SLO 仍读 VictoriaTraces。分节可空或降级，不编造数据 | Beta |
 | 调用链探索 | 检索近窗 Trace / Span 样本并下钻详情 | 最长 35 天；默认最多 50 条；不对账窗内错误率；敏感属性脱敏；禁止任意查询语言 | Beta |
 | Span / 端点探索 | 检索 Span 与端点 | 组织过滤；参数白名单 | Beta |
 | 错误聚合 | 按异常语义聚类错误 | 基于可见服务；服务详情错误 Tab 计数看入口失败、归因看该服务全部 Error Span，分区标注；探索错误分析按 Issue fingerprint 翻页并展示已加载种类；探索列表不标窗内错误合计 | Beta |
@@ -45,7 +45,7 @@ APM 提供应用性能观察与自有告警，覆盖接入、服务目录、调�
 
 | 功能项 | 功能说明 | 规格 / 约束 | 状态 |
 |---|---|---|---|
-| SLO | 定义并评估可用性或时延目标 | 目标 (0,100]；时延类必须带阈值 | Beta |
+| SLO | 定义并评估可用性或时延目标 | 目标 (0,100]；时延类必须带阈值。可用性（7 天、30 天、自然月）在聚合起点覆盖整个窗口时读聚合库 `apm_calls_total`，否则 VictoriaTraces；聚合库错误时该 SLO 降级且不回退。首页卡片与列表、详情同一条计算路径。延迟类仍读 VictoriaTraces | Beta |
 | 告警策略 | 配置并启停策略 | 仅五种指标；必选环境与所属组织；处理人必须属于策略组织且未禁用；不支持监控表达式 | Beta |
 | 告警与事件 | 查看生命周期，空单可认领 / 分派，当前处理人可转派；空单或当前处理人可手工关闭 | 告警状态 active/recovered/closed；事件不可变；认领 / 分派 / 转派写 `claimed` / `assigned` / `reassigned` 事件；手工分派与转派对系统用户渠道通知新处理人；`my_alert` 只筛处理人，列表与分布图同一套；分布图不含认领 / 分派 / 转派 | Beta |
 | 告警证据 | 查看扫描点趋势与事件原始证据 | 禁止用实时库重建历史；证据可 pending/expired | Beta |
@@ -56,12 +56,12 @@ APM 提供应用性能观察与自有告警，覆盖接入、服务目录、调�
 
 ## 三、能力边界与约束
 
-- 入口 RED（首页 KPI、健康、服务 Top，服务列表批量 RED，服务详情 RED 的整窗、趋势、Top 操作）在聚合库已配置、已记录聚合起点且查询窗口起点不早于该起点时读聚合库，否则读 VictoriaTraces。缺样本返回无数据，不当 0。聚合库错误时对应区块降级，不自动回退扫描 VictoriaTraces。最大耗时在聚合路径为空，页面显示“—”。可用性 SLO、慢请求、Apdex、延迟 SLO、版本、实例、依赖、告警策略和试算仍读 VictoriaTraces。明细、下钻与拓扑仍以 VictoriaTraces 为准。目标契约见 [ADR 0011](../../docs/adr/0011-apm-rum-aggregate-metrics-store.md)，落地见[聚合层变更](../changes/observability-aggregate-metrics/spec.md)。
+- 入口 RED（首页 KPI、健康、服务 Top，服务列表批量 RED，服务详情 RED 的整窗、趋势、Top 操作）和可用性 SLO（7 天、30 天、自然月；首页卡片与 SLO 列表、详情同一条计算路径）在聚合库已配置、已记录聚合起点且查询窗口起点不早于该起点时读聚合库，否则读 VictoriaTraces。缺样本返回无数据，不当 0。聚合库错误时对应区块或该 SLO 降级，不自动回退扫描 VictoriaTraces。最大耗时在聚合路径为空，页面显示“—”。慢请求、Apdex、延迟 SLO、版本、实例、依赖、告警策略和试算仍读 VictoriaTraces。明细、下钻与拓扑仍以 VictoriaTraces 为准。目标契约见 [ADR 0011](../../docs/adr/0011-apm-rum-aggregate-metrics-store.md)，落地见[聚合层变更](../changes/observability-aggregate-metrics/spec.md)。
 - 不提供尾采样或独立边缘网关。
 - 不提供跨租户公网 OTLP。
 - 不把监控对象、采集插件或日志检索纳入策略。
 
-> 证据来源：server/apps/apm/adapters/aggregate_red.py，server/apps/core/aggregate_promql.py，server/apps/apm/views/control_plane.py，server/apps/apm/views/dashboard.py，docs/adr/0011-apm-rum-aggregate-metrics-store.md　|　【已实现；可用性 SLO 仍读 VictoriaTraces】
+> 证据来源：server/apps/apm/adapters/aggregate_red.py，server/apps/core/aggregate_promql.py，server/apps/apm/views/control_plane.py，server/apps/apm/views/dashboard.py，docs/adr/0011-apm-rum-aggregate-metrics-store.md　|　【已实现；可用性 SLO 在起点覆盖窗口后读聚合库，延迟 SLO 仍读 VictoriaTraces】
 
 ## 四、平台协同
 

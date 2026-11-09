@@ -453,9 +453,13 @@ class ApmDashboardService:
             .order_by("name", "id")[: MAX_SLO_ROWS * 3]
         )
         rows = []
+        store_error = ""
         for slo in slos:
             evaluation = self.reliability.evaluate(slo, evaluated_at=self.now_fn())
             if evaluation.current_rate is None:
+                # 无样本仍是空态。存储失败不能伪装成「没有 SLO」，否则首页和列表对不上。
+                if evaluation.reason not in {"", "no_samples", "disabled"}:
+                    store_error = store_error or evaluation.reason
                 continue
             objective = float(slo.objective)
             met = evaluation.current_rate >= objective
@@ -473,6 +477,8 @@ class ApmDashboardService:
             if len(rows) >= MAX_SLO_ROWS:
                 break
         if not rows:
+            if store_error:
+                return _section_failed(store_error)
             return _section_empty({"items": []})
         return {"items": rows}
 
