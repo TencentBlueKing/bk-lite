@@ -268,22 +268,24 @@ describe('APM 添加接入', () => {
     expect(screen.queryByText('低侵入')).toBeNull();
 
     const expected = [
-      ['Node.js 接入', '自动探针'],
-      ['Java 接入', '自动探针'],
-      ['Python 接入', '自动探针'],
-      ['.NET 接入', '自动探针'],
-      ['PHP 接入', '自动探针'],
-      ['Go 接入', '手动接入'],
-      ['Ruby 接入', '手动接入'],
-      ['C++ 接入', '手动接入'],
-      ['Erlang/Elixir 接入', '手动接入'],
-      ['Swift 接入', '手动接入'],
-      ['OTel Collector 接入', '链路转发'],
-      ['eBPF 自动注入（OBI） 接入', '进程观测'],
+      ['Node.js 接入', '自动探针', '采集 Express / Nest / Koa 的调用链'],
+      ['Java 接入', '自动探针', '采集 Spring / Dubbo / gRPC 的调用链'],
+      ['Python 接入', '自动探针', '采集 Django / Flask / FastAPI 的调用链'],
+      ['.NET 接入', '自动探针', '采集 ASP.NET Core / gRPC 的调用链 Linux 限 x86_64 glibc，Windows 仅主机'],
+      ['PHP 接入', '自动探针', '采集 Laravel / Symfony / Slim 的调用链 仅 Linux 上的 PHP NTS 8.1–8.4'],
+      ['Go 接入', '手动接入', '接入后采集 net/http / Gin / Echo / gRPC 的调用链'],
+      ['Ruby 接入', '手动接入', '接入 Rack 后采集请求调用链'],
+      ['C++ 接入', '手动接入', '编译接入后，只采集进程入口调用链'],
+      ['Erlang/Elixir 接入', '手动接入', '用本地依赖接入后，只采集进程入口调用链'],
+      ['Swift 接入', '手动接入', '用本地 Package 接入后，只采集进程入口调用链'],
+      ['OTel Collector 接入', '链路转发', '把已有 Collector 的调用链转到平台'],
+      ['eBPF 自动注入（OBI） 接入', '进程观测', '只采集指定 Go 进程的调用链，不能和语言探针同进程'],
     ] as const;
 
-    for (const [name, mode] of expected) {
-      expect(within(screen.getByRole('button', { name })).getByText(mode)).not.toBeNull();
+    for (const [name, mode, description] of expected) {
+      const card = within(screen.getByRole('button', { name }));
+      expect(card.getByText(mode)).not.toBeNull();
+      expect(card.getByText(description)).not.toBeNull();
     }
   });
 

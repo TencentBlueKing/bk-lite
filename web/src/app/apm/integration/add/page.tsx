@@ -356,43 +356,43 @@ export default function ApmIntegrationAddPage() {
   const integrationGroups = useMemo(() => {
     const copy: Record<string, { description: string; title?: string }> = {
       nodejs: {
-        description: t('apm.integration.nodejsDesc', '支持 Express / Nest / Koa'),
+        description: t('apm.integration.nodejsDesc', '采集 Express / Nest / Koa 的调用链'),
       },
       java: {
-        description: t('apm.integration.javaDesc', '支持 Spring / Dubbo / gRPC'),
+        description: t('apm.integration.javaDesc', '采集 Spring / Dubbo / gRPC 的调用链'),
       },
       python: {
-        description: t('apm.integration.pythonDesc', '支持 Django / Flask / FastAPI'),
+        description: t('apm.integration.pythonDesc', '采集 Django / Flask / FastAPI 的调用链'),
       },
       dotnet: {
-        description: t('apm.integration.dotnetDesc', 'Linux x86_64 glibc；Windows 仅限主机'),
+        description: t('apm.integration.dotnetDesc', '采集 ASP.NET Core / gRPC 的调用链\nLinux 限 x86_64 glibc，Windows 仅主机'),
       },
       php: {
-        description: t('apm.integration.phpDesc', 'PHP NTS 8.1–8.4，含 Laravel / Symfony / Slim'),
+        description: t('apm.integration.phpDesc', '采集 Laravel / Symfony / Slim 的调用链\n仅 Linux 上的 PHP NTS 8.1–8.4'),
       },
       go: {
-        description: t('apm.integration.goDesc', '生成 OpenTelemetry Provider 示例'),
+        description: t('apm.integration.goDesc', '接入后采集 net/http / Gin / Echo / gRPC 的调用链'),
       },
       ruby: {
-        description: t('apm.integration.rubyDesc', '生成 Rack 初始化示例'),
+        description: t('apm.integration.rubyDesc', '接入 Rack 后采集请求调用链'),
       },
       cpp: {
-        description: t('apm.integration.cppDesc', '生成最小入口 Span 示例'),
+        description: t('apm.integration.cppDesc', '编译接入后，只采集进程入口调用链'),
       },
       erlang: {
-        description: t('apm.integration.erlangDesc', '生成 Erlang/Elixir path 依赖示例'),
+        description: t('apm.integration.erlangDesc', '用本地依赖接入后，只采集进程入口调用链'),
       },
       swift: {
-        description: t('apm.integration.swiftDesc', '生成本地 Swift Package 示例'),
+        description: t('apm.integration.swiftDesc', '用本地 Package 接入后，只采集进程入口调用链'),
       },
       'otel-collector': {
-        description: t('apm.integration.otelDesc', '自建 Collector 的 Trace 转到平台 OTLP 端点'),
+        description: t('apm.integration.otelDesc', '把已有 Collector 的调用链转到平台'),
       },
       'ebpf-obi': {
         title: t('apm.integration.ebpfTitle', 'eBPF 自动注入（OBI）'),
         description: t(
           'apm.integration.ebpfDesc',
-          '未安装语言探针时，只观察指定的 Go 可执行文件。不要和 Java、Python、Node.js、.NET、PHP 或 Go SDK 装在同一进程。',
+          '只采集指定 Go 进程的调用链，不能和语言探针同进程',
         ),
       },
     };
@@ -604,7 +604,7 @@ export default function ApmIntegrationAddPage() {
                         </span>
                         <div className="min-w-0">
                           <Typography.Title level={5} className="!mb-2 !text-sm">{method.title}</Typography.Title>
-                          <Typography.Text type="secondary" className="text-xs leading-5">{method.description}</Typography.Text>
+                          <Typography.Text type="secondary" className="whitespace-pre-line text-xs leading-5">{method.description}</Typography.Text>
                         </div>
                       </div>
                       <IntegrationModeBadge mode={method.mode} t={t} />
