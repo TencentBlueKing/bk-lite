@@ -8,6 +8,9 @@ const (
 	CommandKeyPrefix        = "ops:rum:v2:commands:"
 	SessionActivityIndexKey = "ops:rum:v2:session:activity"
 	SessionEndedKeyPrefix   = "ops:rum:v2:ended:"
+	// AggregateRouteKeyPrefix is the shared admission set for aggregate routes.
+	// The suffix is a hash of tenant and application. Members are admitted routes.
+	AggregateRouteKeyPrefix = "ops:rum:v2:aggregate:routes:"
 )
 
 // SessionEndedKey is the snapshot written for one authoritative session.

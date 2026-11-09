@@ -10,9 +10,10 @@
 [ADR 0006](../adr/0006-apm-regional-nats-victoriatraces-pipeline.md) 为准。
 
 APM 系统 Collector 的构建配置和 `deploy/apm/otel/system.yaml` 已经包含入口聚合流水线。
-发行版核心版本仍是 v0.153.0，镜像标签是 `0.153.0-bklite.2`。RUM 网关仍随
-[05 ticket](../../specs/changes/observability-aggregate-metrics/tickets/05-rum-gateway-aggregate-pipeline.md)
-落地后核对。本文不表示聚合库已经在生产部署；运维按本文重新打包镜像并部署聚合库。
+发行版核心版本仍是 v0.153.0，镜像标签是 `0.153.0-bklite.2`。RUM 网关的
+`deploy/rum/collector/otel/rum.gateway.yaml` 已经包含浏览、JS 错误和 Web Vitals 聚合流水线。
+发行版核心版本仍是 v0.154.0，镜像标签是 `0.1.0-bklite.2`。本文不表示聚合库已经在生产部署；
+运维按本文重新打包镜像并部署聚合库。
 
 ## 1. 用途与边界
 
@@ -61,6 +62,8 @@ Monitor 和 CMDB 继续使用自己的 VictoriaMetrics。聚合序列不写入�
 | `AGG_VICTORIAMETRICS_PASSWORD` | 上面三类进程，仅在启用基础认证时 | 基础认证口令 |
 | `APM_AGG_SHARD` | 每一个 APM 系统 Collector 写入进程 | 该进程固定的分片值 |
 | `RUM_AGG_SHARD` | 每一个 RUM 网关写入进程 | 该进程固定的分片值 |
+| `RUM_AGG_BATCH_TIMEOUT` | RUM 网关，可选 | 聚合指标刷出间隔。留空时用配置里的 `10s` |
+| `RUM_AGG_MAX_STREAMS` | RUM 网关，可选 | `deltatocumulative` 流上限。留空时用 `420000`。超出的样本记在网关指标 `otelcol_deltatocumulative_datapoints`，属性 `error=limit` |
 
 `AGG_VICTORIAMETRICS_WRITE_URL` 填写内网 remote write 地址，路径通常是
 `/api/v1/write`，主机写成实际内网名字，不要写进仓库。APM 侧只配在系统 Collector 上。
@@ -88,6 +91,15 @@ APM 不要用 Span 上的 `service.instance.id` 充当 `APM_AGG_SHARD`。原因�
 Collector 不能按空环境变量只关掉聚合分支。要保住明细，改挂
 `deploy/apm/otel/system-traces.yaml`，聚合分支不启用，这两个变量留空也可以启动。
 区域 Collector 不读这些变量。
+
+RUM 网关同样不能按空环境变量只关掉聚合分支。使用 `deploy/rum/collector/otel/rum.gateway.yaml`
+时，写入地址为空或 `RUM_AGG_SHARD` 为空都会让整个网关无法启动，VictoriaLogs 入库一起停。
+要保住明细，改挂同目录的 `rum.gateway.ingest.yaml`。基础认证放在 `rum.gateway.auth.yaml`，
+只在 `AGG_VICTORIAMETRICS_USER` 和 `AGG_VICTORIAMETRICS_PASSWORD` 都已设置时作为第二个
+`--config` 合并。不要在口令为空时加载它：空的 basicauth 仍会发送 `Authorization`。
+网关不回落到 `VICTORIAMETRICS_HOST`。remote write 关闭队列和重试，累计值靠下一次成功的刷出补上。
+本地夹具可以把写入地址设成一个不可达的占位，只为让带聚合分支的配置通过校验并启动；
+那不是已经接入聚合库。生产不要用占位地址代替空地址，也不要把它指到 `VICTORIAMETRICS_HOST`。
 
 ## 4. 写入规则
 
@@ -123,8 +135,11 @@ Collector 不能按空环境变量只关掉聚合分支。要保住明细，改�
 4. APM 指标名使用前缀 `apm_`，RUM 指标名使用前缀 `rum_`。
    原因：这一期不用 AccountID 区分租户，两个产品共用一个库，只靠前缀分开。聚合起点表示
    RED 序列开始存在：APM 只探测 `apm_calls_total`，每个产品记下起点后不再重复探测。
-   RUM 指标名尚未定，暂时按 `rum_` 前缀探测。前缀不能代替独立地址。监控扫描读不到这些
-   序列，是因为它们不在 `VICTORIAMETRICS_HOST` 那套库里。
+   RUM 探测 `rum_views_total`。同一条流水线还写 `rum_js_errors_total`，以及
+   `rum_web_vital_lcp_milliseconds`、`rum_web_vital_inp_milliseconds`、
+   `rum_web_vital_fcp_milliseconds`、`rum_web_vital_ttfb_milliseconds` 和
+   `rum_web_vital_cls` 直方图。毫秒直方图带 `_milliseconds` 后缀，数值仍是毫秒，不换成秒。
+   前缀不能代替独立地址。监控扫描读不到这些序列，是因为它们不在 `VICTORIAMETRICS_HOST` 那套库里。
 
 5. Server 启动和 `batch_init` 不依赖聚合库。
    原因：聚合库是运行期可以降级的依赖。启动阶段等待它，会在库未就绪时挡住 API、Worker、
@@ -157,9 +172,11 @@ APM 和 RUM 各自允许的业务维度由 02、05 ticket 锁定。那些白名�
   上线或维度变更，就要告警。第 7 节的 162 万和 342 万是压测场景的上限，不是告警阈值。
   规模更小的环境应在远低于这些数字时告警。活跃序列取 VictoriaMetrics 单节点自身的
   序列统计，具体指标名以所部署版本为准。
-- remote write 失败或丢弃。写入进程上，发送失败、入队失败或被丢弃的样本出现后就要告警。
-  常见指标名是 `otelcol_exporter_send_failed_metric_points` 和
-  `otelcol_exporter_enqueue_failed_metric_points`。镜像落地后以实际暴露的指标名为准。
+- remote write 失败或丢弃。写入进程上，发送失败或被丢弃的样本出现后就要告警。
+  常见指标名是 `otelcol_exporter_send_failed_metric_points`。RUM 和 APM 的聚合
+  remote write 都关闭了队列，不要把 `otelcol_exporter_enqueue_failed_metric_points`
+  当成这条流水线的丢弃信号。RUM 流上限丢弃看网关自身的
+  `otelcol_deltatocumulative_datapoints`，属性 `error=limit`。
 
 收到 remote write 告警时，先恢复聚合库或网络。不要为了清告警把导出失败退回给
 JetStream 或 RUM 接收接口。那样做会让调用链重复入库，或让 RUM 接收接口失败。
@@ -217,20 +234,29 @@ count 默认把时间打在 Span 结束时间上；晚到 Span 已经超过 5 �
 `memory_limiter`。内存用序列上限约束。remote write 不可达时，系统 Collector
 不对 JetStream NAK，VictoriaTraces 不因此把同一条 Span 写两次。
 
-RUM 网关保持 v0.154.0。准备新增：
+RUM 网关保持 v0.154.0，镜像标签 `0.1.0-bklite.2`。下面是这个镜像
+`bklite-rum-gateway components` 里和聚合有关的条目。配置里的导出器类型使用
+`prometheus_remote_write`；`prometheusremotewrite` 仍是别名，会打弃用警告。
 
-| 组件 | 上游类型 | 稳定性 | 作用 |
+| 组件 | `components` 名称 | 稳定性 | 作用 |
 |---|---|---|---|
-| Signal to Metrics 连接器 | `signal_to_metrics`（旧名 `signaltometrics`） | Alpha（`logs_to_metrics`） | 把浏览、JS 错误和 Web Vitals 变成计数和直方图 |
-| Forward 连接器 | `forward` | Beta（`logs_to_logs`） | 从写入 VictoriaLogs 的日志流水线旁路复制一份 |
-| Delta to Cumulative 处理器 | `deltatocumulative` | Alpha（metrics），有状态 | 把 Delta 累加成累计值 |
-| Prometheus Remote Write 导出器 | `prometheusremotewrite` | Beta（metrics） | 写到 `AGG_VICTORIAMETRICS_WRITE_URL` |
+| Signal to Metrics 连接器 | `signal_to_metrics` | Alpha（`logs_to_metrics`；同一次输出里 `metrics_to_metrics`、`traces_to_metrics` 也是 Alpha） | 把浏览、JS 错误和 Web Vitals 变成 Delta 计数和直方图 |
+| Forward 连接器 | `forward` | Beta（`logs_to_logs`；同一次输出里 `metrics_to_metrics`、`traces_to_traces` 也是 Beta） | 从写入 VictoriaLogs 的日志流水线旁路复制一份 |
+| 路由上限处理器 | `rumroutecap` | Alpha（logs） | 每个应用最多 100 条聚合路由，其余记为「其他」 |
+| Delta to Cumulative 处理器 | `deltatocumulative` | Alpha（metrics）。logs、traces 在输出里是 Undefined | 把 Delta 累加成累计值后再写 |
+| Prometheus Remote Write 导出器 | `prometheus_remote_write` | Beta（metrics） | 写到 `AGG_VICTORIAMETRICS_WRITE_URL` |
+| Basic Auth 扩展 | `basicauth` | Beta（extension） | 可选。只在追加 `rum.gateway.auth.yaml` 时启用，留空时不加载 |
+| Batch 处理器 | `batch` | Beta（metrics；traces、logs 也是 Beta） | 聚合指标流水线上合并刷出。这个处理器原来就在镜像里 |
 
-网关里已经有的 `batch` 会用在聚合指标流水线上，用来挡住 remote write 的错误，避免
-接收接口失败。它不是这次新增的组件。聚合专用的路由字段不写入 VictoriaLogs。
-`logs/rum_agg` 上的组件都不得向接收接口返回错误。2026-11-09 这轮没有重测完整的
-RUM 网关写入路径，容量夹具只覆盖了进程内的 `signal_to_metrics` 和
-`deltatocumulative`。网关行为以 05 ticket 的验证为准。
+`logs/rum` 先把原事件交给 VictoriaLogs，再经 `forward/rum_agg` 进入 `logs/rum_agg`。
+这条分支只有 `rumroutecap`，导出到 `signal_to_metrics/rum`。`metrics/rum_agg` 依次是
+`batch/rum_agg`、`deltatocumulative/rum`、`prometheus_remote_write/rum_agg`。
+聚合分支上没有 `memory_limiter`。`rumroutecap` 吞掉下游错误，remote write 关闭队列和重试。
+remote write 不可达时，接收接口仍成功，VictoriaLogs 不因此把同一条事件写两次。
+聚合专用的 `rum.aggregate.route` 只打在旁路副本上，不进入 VictoriaLogs。
+`deltatocumulative.max_streams` 默认 420000。超出后网关自身指标
+`otelcol_deltatocumulative_datapoints` 带 `error=limit`。不做晚到过滤，也没有
+`rum_aggregate_late_events_total`。
 
 ## 9. 启动约束
 

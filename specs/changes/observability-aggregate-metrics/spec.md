@@ -111,14 +111,18 @@ APM 的首页、服务列表、服务 RED、可用性 SLO，RUM 的应用概览�
 - 网关进程内旁路：`logs/rum` 的导出端增加 `forward` 连接器，进入专用的 `logs/rum_agg` 流水线：路由上限处理器 →
   `signal_to_metrics`；`metrics/rum_agg`：`batch → deltatocumulative → prometheusremotewrite`。聚合专用的路由字段不写入
   VictoriaLogs。`logs/rum_agg` 上的组件都不得返回错误（否则会让网关接收接口失败），`batch` 隔离 remote write 错误（已验证）。
-- 指标（最终名以写入后实际为准，测试锁定）：`rum_views_total`、`rum_js_errors_total`、LCP / INP / FCP / TTFB 毫秒直方图与
-  CLS 直方图，桶按需求：LCP 100、250、500、1000、2500、4000、8000、16000；INP 50、100、200、500、1000、2500；
+- 指标（容器契约已锁定写入名）：`rum_views_total`、`rum_js_errors_total`、
+  `rum_web_vital_lcp_milliseconds`、`rum_web_vital_inp_milliseconds`、`rum_web_vital_fcp_milliseconds`、
+  `rum_web_vital_ttfb_milliseconds` 与 `rum_web_vital_cls`。毫秒直方图带 `_milliseconds` 后缀，数值仍是毫秒。
+  桶按需求：LCP 100、250、500、1000、2500、4000、8000、16000；INP 50、100、200、500、1000、2500；
   CLS 0.01、0.05、0.1、0.25、0.5、1；FCP 100、250、500、1000、1800、3000、6000、12000；TTFB 50、100、200、400、800、1800、4000。
   浏览、JS 错误、各 vital 的判定条件与 Server 现有 LogsQL 完全一致。
 - 标签只有：租户、流量类型、应用、环境、聚合路由、`shard`（以及固定为同一分片值的 `signal_to_metrics` 实例标识）。
   资源属性按白名单带出；关闭 `target_info` 与 scope。
 - 路由上限：每个应用最多 100 条聚合路由，其余记为「其他」。准入表放在网关已依赖的 Redis 中、多副本共享（进程内缓存已准入
-  路由），保证同一路由在所有副本上的归属一致；Redis 暂不可用时未知路由记为「其他」并计数。`deltatocumulative.max_streams`
+  路由），保证同一路由在所有副本上的归属一致；Redis 暂不可用时未知路由记为「其他」并计数。键是
+  `ops:rum:v2:aggregate:routes:` 加租户和应用的 sha256，TTL 35 天，每次命中刷新；长期不活跃的应用会按之后的到达顺序重建。
+  溢出路由在进程内负缓存 1 分钟，Redis 失败不进这层缓存。`deltatocumulative.max_streams`
   只作兜底，丢弃有指标告警。
 - **不做晚到过滤**：网关已把偏离接收时间超过 5 分钟的事件时间改写为接收时间（`rum.timestamp.clamped`），VictoriaLogs 也按
   改写后的时间存储；聚合层按处理时间计数即与之一致。p398_931 中 `rum_aggregate_late_events_total` 不实现。

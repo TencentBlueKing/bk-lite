@@ -35,9 +35,10 @@ VictoriaLogs 里的事件。查询时间和数据量一起增长，长窗口先�
   RUM 夹具的直方图是 8 个边界，不是产品 Web Vitals 的桶。同一轮的进程堆增量大约是
   APM 236 MiB、RUM 331 MiB，不能当成磁盘。
 
-这轮验证没有覆盖“同一服务的多个实例只合并成一组序列”，也没有重测完整的 RUM 网关
-写入路径。RUM 容量只量了进程内的 signal_to_metrics 和 deltatocumulative。这两项留在
-后续聚合流水线 ticket 里补验。运维规则和容量口径见
+这轮验证没有覆盖“同一服务的多个实例只合并成一组序列”。RUM 容量夹具只量了进程内的
+signal_to_metrics 和 deltatocumulative。完整的 RUM 网关写入路径随后由 05 ticket 在
+`bklite/rum-collector:0.1.0-bklite.2` 上补验，标签、错误隔离和重启后的 `increase()`
+以该 ticket 的容器契约为准。运维规则和容量口径见
 [聚合库运维规则](../operations/aggregate-metrics-store.md)。
 
 ## Decision
@@ -66,7 +67,7 @@ VictoriaLogs 里的事件。查询时间和数据量一起增长，长窗口先�
 - 重投期间聚合数字会高于去重后的调用链。这是接受的偏差，不作为无条件的 1% 门槛。
 - Client Span、推断下游、慢请求、Apdex、延迟 SLO 和告警策略不进入聚合库。
 - 两个镜像要加入 Alpha 或 Beta 组件。升级 Collector 时必须回归聚合流水线。
-  组件清单以镜像落地后的 `components` 输出核对运维规则，本文不表示这些组件已经打进
-  当前镜像。
+  组件清单以镜像 `components` 输出核对运维规则。APM 镜像标签是 `0.153.0-bklite.2`，
+  RUM 镜像标签是 `0.1.0-bklite.2`。本文不表示聚合库已经在生产部署。
 - `deploy/apm` 的验收清单、README 和数据面配置测试在聚合流水线 ticket 中更新。
   那些文件在本次决定接受时仍描述调用链契约，不描述已经部署的聚合库。
