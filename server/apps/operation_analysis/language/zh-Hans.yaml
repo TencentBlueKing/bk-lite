@@ -630,7 +630,7 @@ dashboards:
           organization: 组织
   "dashboard::运维总览_内置":
     name: 运维总览
-    desc: 按所选组织查看资源、监控和告警的当前规模。主机性能和新增关闭趋势跟随所选时间。
+    desc: 按所选组织查看资源、监控和告警的当前规模。主机使用率取最新有效采样，不跟随时间；新增与关闭趋势跟随所选时间。告警应用数是有未恢复监控告警的应用个数，不是业务故障单。
     filters:
       organization:
         name: 组织
@@ -644,7 +644,7 @@ dashboards:
       ops-kpi-monitor:
         name: 监控实例
       ops-kpi-nodes:
-        name: 节点
+        name: 告警应用数
       ops-kpi-open-alerts:
         name: 未关闭告警
       ops-kpi-severe:
@@ -653,12 +653,6 @@ dashboards:
         name: 资源概览
       ops-resource-types:
         name: 资源类型分布
-      ops-app-total:
-        name: 应用总数
-      ops-app-with-alert:
-        name: 存在关联告警
-      ops-app-without-alert:
-        name: 无关联告警
       ops-app-top:
         name: 应用告警 TOP5
       group-monitor:
@@ -667,8 +661,23 @@ dashboards:
         name: 监控接入概况
       ops-host-key-metrics:
         name: 主机关键指标
+        params:
+          metric_type:
+            name: 指标类型
+            options:
+              cpu: CPU使用率
+              memory: 内存使用率
+              disk: 磁盘使用率
+          instance_ids: 主机
+          organization: 组织
       ops-monitor-alerts:
         name: 监控异常 TOP5
+        columns:
+          monitor_instance_name: 监控对象
+          metric_name: 监控项
+          value: 告警记录值
+          duration_text: 持续时长
+          level: 告警等级
       group-alert:
         name: 告警中心
       ops-alert-trend:
@@ -843,6 +852,31 @@ screens:
       network-topology-builtin-main:
         title: 网络状态拓扑总览
 datasources:
+  "监控异常严重度TOP5::monitor/query_latest_active_alerts":
+    name: 监控异常严重度 TOP5
+    desc: 在当前组织授权范围内，对全部未恢复监控告警按等级从高到低、同级按开始时间更早优先排序，固定返回前 5 条。告警记录值是触发或升级时保存的值，不是实时采样。未知等级排在已知等级之后。
+    fields:
+      monitor_instance_name:
+        title: 监控对象
+      metric_name:
+        title: 监控项
+        description: 策略指标展示名；没有展示名时用指标名，不翻译英文展示名
+      value:
+        title: 告警记录值
+        description: 触发或升级时保存的告警值，不是实时采样
+      duration_text:
+        title: 持续时长
+        description: 从未恢复告警开始到当前的时长
+      level:
+        title: 告警等级
+        description: critical、error、warning、info、no_data；未知级别不按高严重度处理
+    params:
+      order: 排序
+      limit: 返回条数
+      organization: 组织
+  "主机资源使用率Top10::monitor/get_host_resource_top":
+    params:
+      organization: 组织
   "机房设备类型分布::cmdb/get_room_device_type_distribution":
     name: 机房设备类型分布
     desc: 统计机房内经机柜挂载的可见设备，按模型显示名分组计数。server_room_id 为空时取第一个可见机房

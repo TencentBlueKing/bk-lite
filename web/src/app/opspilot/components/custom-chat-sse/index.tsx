@@ -180,6 +180,19 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
   const [drafts, setDrafts] = useState<Array<ChatAttachmentMeta & { localId: string; file?: File }>>([]);
   const [stagedDistributeFiles, setStagedDistributeFiles] = useState<Array<{ id: number; name: string; size: number }>>([]);
   const [stagedListVersion, setStagedListVersion] = useState(0);
+  const draftPreviewUrls = useRef(new Set<string>());
+  useEffect(() => {
+    const owned = draftPreviewUrls.current;
+    return () => {
+      owned.forEach((url) => URL.revokeObjectURL(url));
+      owned.clear();
+    };
+  }, []);
+  const releaseDraftPreview = useCallback((url?: string) => {
+    if (url && draftPreviewUrls.current.delete(url)) {
+      URL.revokeObjectURL(url);
+    }
+  }, []);
   const [markdownPreview, setMarkdownPreview] = useState<{ src: string; alt: string } | null>(null);
   const [messages, setMessages] = useState<CustomChatMessage[]>(
     initialMessages.length ? initialMessages : []
@@ -603,6 +616,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
     }
     const localId = `${file.name}-${Date.now()}`;
     const previewUrl = isImageMime(file.type) ? URL.createObjectURL(file) : undefined;
+    if (previewUrl) draftPreviewUrls.current.add(previewUrl);
     setDrafts((current) => [...current, {
       localId,
       id: 0,
@@ -1096,7 +1110,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
                 <button
                   type="button"
                   onClick={() => {
-                    if (draft.previewUrl) URL.revokeObjectURL(draft.previewUrl);
+                    releaseDraftPreview(draft.previewUrl);
                     setDrafts((current) => current.filter((item) => item.localId !== draft.localId));
                   }}
                   aria-label={t('chat.deleteImage', '删除图片')}
@@ -1124,8 +1138,8 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
               }
               if ((value.trim() || readyDrafts.length > 0) && !loading && !hasPendingDraft) {
                 const currentDrafts = [...readyDrafts];
-                currentDrafts.forEach((draft) => {
-                  if (draft.previewUrl) URL.revokeObjectURL(draft.previewUrl);
+                drafts.forEach((draft) => {
+                  releaseDraftPreview(draft.previewUrl);
                 });
                 setDrafts([]);
                 setValue('');
@@ -1226,8 +1240,8 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
                     if (hasPendingDraft) return;
                     if (value.trim() || readyDrafts.length > 0) {
                       const currentDrafts = [...readyDrafts];
-                      currentDrafts.forEach((draft) => {
-                        if (draft.previewUrl) URL.revokeObjectURL(draft.previewUrl);
+                      drafts.forEach((draft) => {
+                        releaseDraftPreview(draft.previewUrl);
                       });
                       setDrafts([]);
                       setValue('');
