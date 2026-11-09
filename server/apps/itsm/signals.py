@@ -1,4 +1,10 @@
-from django.dispatch import Signal
+from django.dispatch import Signal, receiver
 
-# 载荷在 M1-12 通知里约定。当前只提供可订阅的事件名。
+from apps.itsm.services.notify.service import deliver_with_retry
+
 itsm_event = Signal()
+
+
+@receiver(itsm_event)
+def send_itsm_notification(sender, event, receivers, variables, event_key="", **kwargs):
+    deliver_with_retry(event, variables or {}, list(receivers or []), event_key or "")

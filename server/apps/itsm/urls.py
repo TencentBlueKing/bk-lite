@@ -18,6 +18,7 @@ from apps.itsm.views.api import (
     workflows,
 )
 from apps.itsm.views.health import health
+from apps.itsm.views.tickets import operate_ticket, ticket_logs, tickets
 
 urlpatterns = [
     path("api/health/", health, name="itsm-health"),
@@ -36,4 +37,7 @@ urlpatterns = [
     path("api/workflow_variables/", workflow_variables, name="itsm-workflow-variables"),
     path("api/handler_groups/", handler_groups, name="itsm-handler-groups"),
     path("api/notify_templates/", notify_templates, name="itsm-notify-templates"),
+    path("api/tickets/", tickets, name="itsm-tickets"),
+    path("api/tickets/<int:ticket_id>/operate/", operate_ticket, name="itsm-ticket-operate"),
+    path("api/tickets/<int:ticket_id>/logs/", ticket_logs, name="itsm-ticket-logs"),
 ]

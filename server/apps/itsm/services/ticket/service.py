@@ -4,8 +4,8 @@ from django.utils import timezone
 from apps.itsm.flowable.client import FlowableClient, FlowableError
 from apps.itsm.models import Ticket, TicketLog, TicketStatus, TicketTask, WorkflowVersion
 from apps.itsm.services.form.validator import FormValidator
-from apps.itsm.services.notify.service import dispatch_notification
 from apps.itsm.services.workflow.assignee import AssigneeResolver
+from apps.itsm.signals import itsm_event
 
 
 class TicketService:
@@ -82,7 +82,13 @@ class TicketService:
                 },
             )
             if created and task.assignee:
-                dispatch_notification("task.created", {"title": ticket.title, "node": task.node_name}, [task.assignee])
+                itsm_event.send(
+                    sender=ticket,
+                    event="task.created",
+                    receivers=[task.assignee],
+                    variables={"title": ticket.title, "node": task.node_name, "url": f"/itsm/tickets/{ticket.id}"},
+                    event_key=f"itsm-task-{task.flowable_task_id}",
+                )
         ticket.tasks.filter(status=TicketTask.TaskStatus.PENDING).exclude(flowable_task_id__in=seen).update(status=TicketTask.TaskStatus.DONE)
 
     @transaction.atomic

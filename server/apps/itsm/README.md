@@ -11,7 +11,8 @@
 - Flowable 7.1 本地编排，REST 前缀 `/flowable-rest/service`。
 - 表单 schema 校验、设计 JSON 转 BPMN、附录 B 可部署。
 - 表单、字典、流程设计/发布、处理组、通知模板接口。
-- 工单创建与 submit/approve/reject/claim。
+- 工单创建与 submit/approve/reject/claim。或签在本地 Flowable 上跑通：一人通过后另一人任务结束，处理完成后状态为 finished。
+- 新任务通过 `itsm_event` 调控制台 `create_notification`，接收人写入 `recipient_usernames`。存在 email 通道时再调 `send_msg_with_channel`；当前库没有邮件通道，所以邮件发送被跳过。
 - 前端门户、表单设计、流程画布、工单列表和设置页入口。
 
 ## 基线核对
