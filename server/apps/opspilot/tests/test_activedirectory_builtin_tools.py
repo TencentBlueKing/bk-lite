@@ -435,7 +435,11 @@ class TestActiveDirectoryPaging:
         result = ad_tools.activedirectory_run_query.func("SELECT SAMAccountName FROM User", config={})
 
         assert result.splitlines()[:5] == ["SAMAccountName", "alice", "bob", "cara", "drew"]
-        assert result.endswith("结果已截断：本次 LDAP 读取在 4 条停止，目录里还有更多对象。请用 WHERE 缩小范围，或用 LIMIT/OFFSET 分段查询。")
+        assert result.endswith(
+            "结果已截断：本次 LDAP 读取在 4 条停止，目录里还有更多对象。"
+            "WHERE 同样只过滤已经读回的记录，不能把上限之外的对象补回来。"
+            "LIMIT/OFFSET 只能切分已读取上限内的行，不能读到上限之外的对象。"
+        )
         assert "erin" not in result
         warnings = [record for record in caplog.records if record.msg == ad_tools._AD_LDAP_TRUNCATED]
         assert len(warnings) == 1
