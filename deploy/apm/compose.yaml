@@ -77,7 +77,7 @@ services:
       - no-new-privileges:true
 
   apm-regional-collector:
-    image: ${APM_COLLECTOR_IMAGE:-bklite/apm-otel-collector:0.153.0-bklite.1}
+    image: ${APM_COLLECTOR_IMAGE:-bklite/apm-otel-collector:0.153.0-bklite.2}
     build:
       context: ./collector
     restart: unless-stopped
@@ -123,7 +123,7 @@ services:
       - no-new-privileges:true
 
   apm-system-collector:
-    image: ${APM_COLLECTOR_IMAGE:-bklite/apm-otel-collector:0.153.0-bklite.1}
+    image: ${APM_COLLECTOR_IMAGE:-bklite/apm-otel-collector:0.153.0-bklite.2}
     build:
       context: ./collector
     restart: unless-stopped
@@ -133,6 +133,8 @@ services:
       apm-nats-init:
         condition: service_completed_successfully
       apm-victoria-traces:
+        condition: service_started
+      apm-aggregate-metrics:
         condition: service_started
     environment:
       APM_NATS_URL: ${APM_SYSTEM_NATS_URL:-nats://apm_system:system-contract-password@apm-nats:4222}
@@ -147,6 +149,10 @@ services:
       APM_COLLECTOR_MEMORY_LIMIT_MIB: ${APM_SYSTEM_MEMORY_LIMIT_MIB:-384}
       APM_COLLECTOR_MEMORY_SPIKE_MIB: ${APM_SYSTEM_MEMORY_SPIKE_MIB:-96}
       APM_VICTORIATRACES_OTLP_ENDPOINT: ${APM_VICTORIATRACES_OTLP_ENDPOINT:-http://apm-victoria-traces:10428/insert/opentelemetry/v1/traces}
+      AGG_VICTORIAMETRICS_WRITE_URL: ${AGG_VICTORIAMETRICS_WRITE_URL:-http://apm-aggregate-metrics:8428/api/v1/write}
+      APM_AGG_SHARD: ${APM_AGG_SHARD:-local-system}
+      APM_AGG_FLUSH_INTERVAL: ${APM_AGG_FLUSH_INTERVAL:-60s}
+      APM_AGG_CARDINALITY_LIMIT: ${APM_AGG_CARDINALITY_LIMIT:-90000}
     expose: [13133, 8888]
     ports:
       - "${APM_SYSTEM_HEALTH_BIND:-127.0.0.1}:${APM_SYSTEM_HEALTH_PORT:-23133}:13133"
@@ -188,7 +194,32 @@ services:
     security_opt:
       - no-new-privileges:true
 
+  # 本地契约夹具里的聚合库。容器内监听 8428，宿主端口默认 18428，不占用宿主 8428。
+  apm-aggregate-metrics:
+    image: ${APM_AGG_VICTORIAMETRICS_IMAGE:-victoriametrics/victoria-metrics:v1.106.1}
+    restart: unless-stopped
+    command:
+      - -storageDataPath=/victoria-metrics-data
+      - -retentionPeriod=35d
+      - -httpListenAddr=:8428
+      - -search.latencyOffset=0s
+    ports:
+      - "${APM_AGG_METRICS_BIND:-127.0.0.1}:${APM_AGG_METRICS_PORT:-18428}:8428"
+    volumes:
+      - apm_aggregate_metrics_data:/victoria-metrics-data
+    healthcheck:
+      test: [CMD, /victoria-metrics-prod, -version]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    mem_limit: ${APM_AGG_MEMORY_LIMIT:-256m}
+    cpus: ${APM_AGG_CPU_LIMIT:-0.50}
+    security_opt:
+      - no-new-privileges:true
+
 volumes:
   apm_nats_data:
   apm_regional_queue:
   apm_victoria_traces_data:
+  apm_aggregate_metrics_data:

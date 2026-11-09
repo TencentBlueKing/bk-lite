@@ -26,7 +26,7 @@ test:
 	$(MAKE) -C collector test
 
 contract:
-	cd $(SERVER_DIR) && RUN_APM_CONTAINER_CONTRACT=1 uv run pytest -q ../deploy/apm/tests/test_data_plane_contract.py -s
+	cd $(SERVER_DIR) && RUN_APM_CONTAINER_CONTRACT=1 uv run pytest -q ../deploy/apm/tests/test_data_plane_contract.py ../deploy/apm/tests/test_aggregate_contract.py -s
 
 demo-up: up
 	cd $(SERVER_DIR) && uv run python manage.py shell < ../deploy/apm/demo/ensure_application.py

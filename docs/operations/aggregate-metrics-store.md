@@ -9,10 +9,10 @@
 [ADR 0011](../adr/0011-apm-rum-aggregate-metrics-store.md)。调用链传输的其余决定仍以
 [ADR 0006](../adr/0006-apm-regional-nats-victoriatraces-pipeline.md) 为准。
 
-当前仓库里的镜像和 `deploy/apm` 验收清单还没有这条聚合流水线。组件和配置随
-[02 ticket](../../specs/changes/observability-aggregate-metrics/tickets/02-apm-collector-aggregate-pipeline.md)、
+APM 系统 Collector 的构建配置和 `deploy/apm/otel/system.yaml` 已经包含入口聚合流水线。
+发行版核心版本仍是 v0.153.0，镜像标签是 `0.153.0-bklite.2`。RUM 网关仍随
 [05 ticket](../../specs/changes/observability-aggregate-metrics/tickets/05-rum-gateway-aggregate-pipeline.md)
-落地后核对。本文描述的是目标契约，不表示聚合库已经部署。
+落地后核对。本文不表示聚合库已经在生产部署；运维按本文重新打包镜像并部署聚合库。
 
 ## 1. 用途与边界
 
@@ -82,6 +82,12 @@ RUM 网关还要用同一个 `RUM_AGG_SHARD` 作为自身遥测资源的 `servic
 APM 不要用 Span 上的 `service.instance.id` 充当 `APM_AGG_SHARD`。原因见第 4 节第 2 条。
 
 写入地址为空时，不要回落到 `VICTORIAMETRICS_HOST`。明细入库配置保持原样。
+使用带聚合分支的 `deploy/apm/otel/system.yaml` 时，未设置的变量会展开成空字符串。
+写入地址为空时报 `invalid endpoint`，`APM_AGG_SHARD` 为空时报 external labels 为空。
+两种都会使整个系统 Collector 进程无法启动，VictoriaTraces 入库会一起停。
+Collector 不能按空环境变量只关掉聚合分支。要保住明细，改挂
+`deploy/apm/otel/system-traces.yaml`，聚合分支不启用，这两个变量留空也可以启动。
+区域 Collector 不读这些变量。
 
 ## 4. 写入规则
 
@@ -180,35 +186,34 @@ APM 的 76 GiB 对应入口 Span 的计数加直方图，不包含晚到计数�
 
 ## 8. 镜像变更
 
-本节列出两个产品镜像准备加入的上游组件。具体组件随 02 / 05 ticket 落地后核对。
-流水线形状、最终组件名和稳定性，以镜像 `components` 输出为准。升级 Collector 时要回归
-聚合流水线，至少覆盖标签集合、重复累计样本的 `increase()`，以及 remote write 不可达时
-明细仍入库且不重复。
+本节列出两个产品镜像里的聚合组件。流水线形状以仓库配置为准，稳定性以镜像
+`components` 输出为准。升级 Collector 时要回归聚合流水线，至少覆盖标签集合、重复累计样本的
+`increase()`，以及 remote write 不可达时明细仍入库且不重复。
 
-稳定性取自对应版本的上游 `metadata.yaml`。2026-11-09 构建出的 APM Collector 对
-`filter`、`count`、`span_metrics` 和 `prometheusremotewrite` 的 `components` 输出与下表
-一致。`deltatocumulative`、`transform`、`signal_to_metrics` 和 `forward` 没有出现在那次
-输出里。
+APM 系统 Collector 保持核心版本 v0.153.0，镜像标签 `0.153.0-bklite.2`。
+下面是这个镜像 `components` 里和聚合有关的条目。`deltatocumulative` 和 `transform`
+已经出现在输出里。输出没有单独列出旧名 `spanmetrics`，配置使用 `span_metrics`。
 
-APM 系统 Collector 的发行版保持核心版本 v0.153.0。准备新增：
-
-| 组件 | 上游类型 | 稳定性 | 作用 |
+| 组件 | `components` 名称 | 稳定性 | 作用 |
 |---|---|---|---|
-| Span Metrics 连接器 | `span_metrics`（旧名 `spanmetrics` 仍能通过校验） | Alpha（`traces_to_metrics`） | 把入口 Span 变成累计计数和累计直方图 |
-| Count 连接器 | `count` | Alpha（`traces_to_metrics`） | 统计晚到 Span。输出是 Delta |
+| Span Metrics 连接器 | `span_metrics` | Alpha（`traces_to_metrics`） | 把入口 Span 变成累计计数和累计直方图 |
+| Count 连接器 | `count` | Alpha（`traces_to_metrics`；同一次输出里 `logs_to_metrics`、`metrics_to_metrics` 也是 Alpha） | 统计晚到 Span。输出是 Delta |
 | Filter 处理器 | `filter` | Alpha（traces、metrics、logs） | 只保留入口 Span，并分开晚到 Span |
-| Delta to Cumulative 处理器 | `deltatocumulative` | Alpha（metrics），有状态 | 把 Delta 累加成累计值后再写 |
+| Delta to Cumulative 处理器 | `deltatocumulative` | Alpha（metrics）。logs、traces 在输出里是 Undefined | 把 Delta 累加成累计值后再写 |
+| Transform 处理器 | `transform` | Beta（traces、metrics、logs） | 用 `keep_keys` 收窄资源属性；晚到指标上把样本时间改成处理时刻 |
 | Prometheus Remote Write 导出器 | `prometheusremotewrite` | Beta（metrics） | 写到 `AGG_VICTORIAMETRICS_WRITE_URL` |
-| Transform 处理器（推荐） | `transform` | Beta（traces、metrics、logs） | 用 `keep_keys` 把资源属性收窄到服务命名空间、服务名和环境 |
+| Basic Auth 扩展 | `basicauth` | Beta（extension） | 可选。只在追加 `system-auth.yaml` 时启用，留空时不加载 |
+| Batch 处理器 | `batch` | Beta（metrics；traces、logs 也是 Beta） | 晚到分支上挡住导出错误。这个处理器原来就在镜像里 |
 
-资源属性收窄要放在 spanmetrics 之前。推荐 `transform`，是因为验证时还没有覆盖
-“同一服务多个实例只产生一组序列”。上游 metadata 给 `transform` 标了 Unsound
-Transformations 等警告，给 `filter` 标了 Orphaned Telemetry 等警告。换别的处理器时，
-仍要达到同样的收窄结果，并在 02 ticket 里核对。
+上游 metadata 仍给 `transform` 标了 Unsound Transformations 等警告，给 `filter` 标了
+Orphaned Telemetry，给 `deltatocumulative` 标了 Statefulness。资源属性收窄放在
+`span_metrics` 之前，资源分组键与留下的三个属性相同。同一服务的多个实例因此只产生一组序列。
 
-晚到计数分支使用镜像里已经有的 `batch`，再进入 `deltatocumulative`。spanmetrics
-分支本身不靠 `batch` 挡住导出错误。聚合分支上不能放置会把错误退回接收器的组件，
-包括 `memory_limiter`。内存用序列上限约束。remote write 不可达时，系统 Collector
+晚到计数分支使用 `batch`，把样本时间改成处理时刻，再进入 `deltatocumulative`。
+count 默认把时间打在 Span 结束时间上；晚到 Span 已经超过 5 分钟，不改的话即时查询看不到。
+`span_metrics` 分支本身不靠
+`batch` 挡住导出错误。聚合分支上不能放置会把错误退回接收器的组件，包括
+`memory_limiter`。内存用序列上限约束。remote write 不可达时，系统 Collector
 不对 JetStream NAK，VictoriaTraces 不因此把同一条 Span 写两次。
 
 RUM 网关保持 v0.154.0。准备新增：

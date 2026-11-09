@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
 import http.client
 import json
 import os
@@ -14,10 +13,10 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
-
 
 pytestmark = pytest.mark.skipif(
     os.getenv("RUN_APM_CONTAINER_CONTRACT") != "1",
@@ -29,10 +28,16 @@ COMPOSE_FILE = REPOSITORY_ROOT / "deploy/apm/compose.yaml"
 PYTHON_SDK_EMITTER = REPOSITORY_ROOT / "deploy/apm/tests/emit_python_sdk_trace.py"
 
 
+_RESERVED_HOST_PORTS = {4317, 4318, 8428, 9428, 10428, 13133, 18222, 18888, 18889, 23133, 18428}
+
+
 def _free_port() -> int:
-    with socket.socket() as sock:
-        sock.bind(("127.0.0.1", 0))
-        return sock.getsockname()[1]
+    while True:
+        with socket.socket() as sock:
+            sock.bind(("127.0.0.1", 0))
+            port = sock.getsockname()[1]
+        if port not in _RESERVED_HOST_PORTS:
+            return port
 
 
 def _request(url: str, *, data: bytes | None = None, headers: dict[str, str] | None = None):
@@ -66,9 +71,7 @@ def _trace_payload(trace_id: str) -> bytes:
                     {
                         "scope": {
                             "name": "bk-lite-apm-contract",
-                            "attributes": [
-                                {"key": "bk.forged.scope", "value": {"stringValue": "forged-scope"}}
-                            ],
+                            "attributes": [{"key": "bk.forged.scope", "value": {"stringValue": "forged-scope"}}],
                         },
                         "spans": [
                             {
@@ -90,9 +93,7 @@ def _trace_payload(trace_id: str) -> bytes:
                                     {
                                         "timeUnixNano": str(started_at + 1_000_000),
                                         "name": "contract-event",
-                                        "attributes": [
-                                            {"key": "bk.forged.event", "value": {"stringValue": "forged-event"}}
-                                        ],
+                                        "attributes": [{"key": "bk.forged.event", "value": {"stringValue": "forged-event"}}],
                                     }
                                 ],
                                 "status": {"code": 1},
@@ -105,11 +106,9 @@ def _trace_payload(trace_id: str) -> bytes:
                                 "kind": 3,
                                 "startTimeUnixNano": str(started_at + 1_000_000),
                                 "endTimeUnixNano": str(started_at + 13_000_000),
-                                "attributes": [
-                                    {"key": "server.address", "value": {"stringValue": "contract-downstream"}}
-                                ],
+                                "attributes": [{"key": "server.address", "value": {"stringValue": "contract-downstream"}}],
                                 "status": {"code": 1},
-                            }
+                            },
                         ],
                     }
                 ],
@@ -247,10 +246,14 @@ def test_trace_crosses_bounded_jetstream_and_reaches_victoria_traces_once():
     regional_metrics_port = _free_port()
     system_health_port = _free_port()
     system_metrics_port = _free_port()
+    aggregate_port = _free_port()
     trace_id = "0123456789abcdef0123456789abcdef"
     payload = _trace_payload(trace_id)
 
     environment = os.environ.copy()
+    environment.pop("COMPOSE_FILE", None)
+    environment["COMPOSE_PROJECT_NAME"] = project
+    environment.pop("AGG_VICTORIAMETRICS_WRITE_URL", None)
     environment.update(
         {
             "APM_CLOUD_REGION_ID": "contract_region",
@@ -272,6 +275,13 @@ def test_trace_crosses_bounded_jetstream_and_reaches_victoria_traces_once():
             "APM_REGIONAL_QUEUE_MAX_BYTES": str(8 * 1024 * 1024),
             "APM_TRACE_BATCH_SIZE": "1",
             "APM_TRACE_BATCH_MAX_SIZE": "1",
+            "APM_AGG_METRICS_BIND": "127.0.0.1",
+            "APM_AGG_METRICS_PORT": str(aggregate_port),
+            "APM_AGG_SHARD": "contract-shard",
+            "APM_COLLECTOR_IMAGE": os.environ.get(
+                "APM_AGG_VERIFY_IMAGE",
+                "bklite/apm-otel-collector:0.153.0-bklite.2",
+            ),
         }
     )
     compose = ["docker", "compose", "--project-name", project, "-f", str(COMPOSE_FILE)]
@@ -289,9 +299,7 @@ def test_trace_crosses_bounded_jetstream_and_reaches_victoria_traces_once():
 
         state, consumer = _eventually(
             lambda: _jetstream_state(nats_monitor_port),
-            lambda value: value[0]["messages"] == 3
-            and value[1]["ack_floor"]["stream_seq"] == 3
-            and value[1]["num_ack_pending"] == 0,
+            lambda value: value[0]["messages"] == 3 and value[1]["ack_floor"]["stream_seq"] == 3 and value[1]["num_ack_pending"] == 0,
         )
         assert state["bytes"] <= 32 * 1024 * 1024
         assert consumer["num_pending"] == 0
@@ -336,8 +344,7 @@ def test_trace_crosses_bounded_jetstream_and_reaches_victoria_traces_once():
         _compose_action(compose, environment, "start", "apm-nats")
         _eventually(
             lambda: _jetstream_state(nats_monitor_port),
-            lambda value: value[0]["last_seq"] == 6
-            and value[1]["ack_floor"]["stream_seq"] == 6,
+            lambda value: value[0]["last_seq"] == 6 and value[1]["ack_floor"]["stream_seq"] == 6,
         )
         _eventually(
             lambda: _request(f"http://127.0.0.1:{traces_port}/select/tempo/api/v2/traces/{queued_trace_id}"),
@@ -350,9 +357,7 @@ def test_trace_crosses_bounded_jetstream_and_reaches_victoria_traces_once():
         assert _post_trace(http_port, _trace_payload(pending_trace_id))[0] == 200
         _eventually(
             lambda: _jetstream_state(nats_monitor_port),
-            lambda value: value[0]["last_seq"] == 9
-            and value[1]["ack_floor"]["stream_seq"] == 6
-            and value[1]["num_pending"] >= 1,
+            lambda value: value[0]["last_seq"] == 9 and value[1]["ack_floor"]["stream_seq"] == 6 and value[1]["num_pending"] >= 1,
         )
         _compose_action(compose, environment, "start", "apm-system-collector")
         _eventually(
@@ -370,8 +375,7 @@ def test_trace_crosses_bounded_jetstream_and_reaches_victoria_traces_once():
         assert _post_trace(http_port, _trace_payload(retry_trace_id))[0] == 200
         _, retry_consumer = _eventually(
             lambda: _jetstream_state(nats_monitor_port),
-            lambda value: value[0]["last_seq"] == 12
-            and value[1]["ack_floor"]["stream_seq"] == 9,
+            lambda value: value[0]["last_seq"] == 12 and value[1]["ack_floor"]["stream_seq"] == 9,
         )
         assert retry_consumer["num_pending"] + retry_consumer["num_ack_pending"] >= 1
         _compose_action(compose, environment, "start", "apm-victoria-traces")
@@ -401,8 +405,7 @@ def test_trace_crosses_bounded_jetstream_and_reaches_victoria_traces_once():
             ),
             lambda value: value[0] == 200
             and any(
-                item.get("parent") == "apm-nats-contract"
-                and item.get("child") == "contract-downstream"
+                item.get("parent") == "apm-nats-contract" and item.get("child") == "contract-downstream"
                 for item in json.loads(value[1]).get("data", [])
             ),
             timeout=90,
@@ -411,24 +414,30 @@ def test_trace_crosses_bounded_jetstream_and_reaches_victoria_traces_once():
 
         # 模拟 ACK 崩溃窗口导致 VT 物理重复；受控聚合先按 trace_id/span_id 去重，不能双计数。
         direct_vt_url = f"http://127.0.0.1:{traces_port}/insert/opentelemetry/v1/traces"
-        assert _request(
-            direct_vt_url,
-            data=payload,
-            headers={"Content-Type": "application/json"},
-        )[0] == 200
-        assert _request(
-            direct_vt_url,
-            data=payload,
-            headers={"Content-Type": "application/json"},
-        )[0] == 200
+        assert (
+            _request(
+                direct_vt_url,
+                data=payload,
+                headers={"Content-Type": "application/json"},
+            )[0]
+            == 200
+        )
+        assert (
+            _request(
+                direct_vt_url,
+                data=payload,
+                headers={"Content-Type": "application/json"},
+            )[0]
+            == 200
+        )
         time.sleep(2)
         stats_query = (
             '* `resource_attr:service.namespace`:="contract-app" '
             '`resource_attr:service.name`:="apm-nats-contract" '
             '`resource_attr:deployment.environment`:="testing" kind:in("2","5") '
-            '| stats by (trace_id, span_id) max(duration) as duration, max(status_code) as status_code '
+            "| stats by (trace_id, span_id) max(duration) as duration, max(status_code) as status_code "
             '| stats count() as requests, count() if (status_code:="2") as errors, '
-            'quantile(0.95, duration) as p95, quantile(0.99, duration) as p99'
+            "quantile(0.95, duration) as p95, quantile(0.99, duration) as p99"
         )
         stats_status, stats_body = _query(
             f"http://127.0.0.1:{traces_port}/select/logsql/stats_query",
@@ -446,11 +455,11 @@ def test_trace_crosses_bounded_jetstream_and_reaches_victoria_traces_once():
         }
 
         activity_query = (
-            '`resource_attr:service.name`:* '
-            '| stats by (`resource_attr:service.namespace`, `resource_attr:service.name`, '
-            '`resource_attr:service.instance.id`, `resource_attr:deployment.environment`, '
-            '`resource_attr:service.version`) max(end_time_unix_nano) as last_seen '
-            '| sort by (last_seen) desc | limit 10000'
+            "`resource_attr:service.name`:* "
+            "| stats by (`resource_attr:service.namespace`, `resource_attr:service.name`, "
+            "`resource_attr:service.instance.id`, `resource_attr:deployment.environment`, "
+            "`resource_attr:service.version`) max(end_time_unix_nano) as last_seen "
+            "| sort by (last_seen) desc | limit 10000"
         )
         activity_status, activity_body = _query(
             f"http://127.0.0.1:{traces_port}/select/logsql/query",

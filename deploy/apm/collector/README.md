@@ -1,6 +1,11 @@
 # BK-Lite APM Collector 发行版
 
-该发行版固定在 OpenTelemetry Collector `0.153.0`，并增加三个仅处理 traces 的组件：
+该发行版固定在 OpenTelemetry Collector `0.153.0`（镜像标签 `0.153.0-bklite.2`）。
+区域配置只处理 traces。系统配置在同一条 JetStream 接收上增加入口聚合，使用
+`filter`、`transform`、`span_metrics`、`count`、`batch`、`deltatocumulative` 和
+`prometheusremotewrite`。可选基础认证使用 `basicauth`，只在追加 `system-auth.yaml` 时启用。
+
+traces 路径上的三个自研组件是：
 
 - `nats_jetstream` exporter：把 `ExportTraceServiceRequest` 的 OTLP Protobuf 正文发布到
   `apm.traces.<cloud_region_id>`，等待 JetStream 持久化 ACK，并以正文 SHA-256 设置
@@ -20,4 +25,5 @@ make build
 make validate
 ```
 
-`regional.yaml` 与 `system.yaml` 使用同一个镜像，但分别只启用所需的 receiver/exporter。
+`regional.yaml`、`system.yaml` 与 `system-traces.yaml` 使用同一个镜像。
+`system-traces.yaml` 只有 VictoriaTraces 流水线，供写入地址为空或单独回退聚合分支时使用。
