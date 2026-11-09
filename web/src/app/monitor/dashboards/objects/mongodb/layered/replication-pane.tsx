@@ -8,7 +8,6 @@ import {
   proChromeClass
 } from '../../host/layered/pro-chrome';
 import host from '../../host/layered/layered.module.scss';
-import { mongoReplicaStateLabel } from './architecture';
 import { MongoHint } from './hint';
 import { MONGODB_PALETTE } from './metrics';
 import {
@@ -18,10 +17,6 @@ import {
   type MongoReplicationLoad
 } from './replication';
 import { mongoLatest, mongoMerged, mongoPoints, type MongoMetricMap } from './series';
-
-const ROLE_CHIP = (
-  'inline-flex h-5 shrink-0 items-center rounded-full border border-[color-mix(in_srgb,var(--color-primary)_32%,var(--color-border))] bg-[color-mix(in_srgb,var(--color-primary)_10%,var(--color-bg))] px-2 text-[12px] font-medium leading-none text-[var(--color-text-1)]'
-);
 
 const EMPTY = {
   title: '当前没有副本集读数',
@@ -72,9 +67,9 @@ const TRENDS = [
 ] as const;
 
 /** 单卡没有读数时只留 —，不补 0，也不在状态卡里画折线。 */
-function QuietReading({ flush = false }: { flush?: boolean }) {
+function QuietReading() {
   return (
-    <div className={`${proChromeClass.kpiValue}${flush ? ' !mt-0' : ''}`} data-mongodb-replication-quiet="">
+    <div className={proChromeClass.kpiValue} data-mongodb-replication-quiet="">
       —
     </div>
   );
@@ -86,7 +81,6 @@ function StatusCard({
   body,
   text,
   tone,
-  note,
   loading,
   sample
 }: {
@@ -95,7 +89,6 @@ function StatusCard({
   body: string;
   text: string;
   tone?: string;
-  note?: string;
   loading: boolean;
   sample: number | null;
 }) {
@@ -111,22 +104,7 @@ function StatusCard({
             <span className="min-w-0 truncate">{title}</span>
             <MongoHint kind={`mongo-repl-${cardKey}`} title={title} body={body} />
           </div>
-          {note ? (
-            <div
-              className="mt-1 flex w-full min-w-0 items-center justify-between gap-2"
-              data-mongodb-member-row=""
-            >
-              {sample == null ? <QuietReading flush /> : (
-                <div
-                  className={`${proChromeClass.kpiValue} !mt-0`}
-                  style={tone ? { color: tone } : undefined}
-                >
-                  {text}
-                </div>
-              )}
-              <span className={ROLE_CHIP} data-mongodb-replica-state={note}>{note}</span>
-            </div>
-          ) : sample == null ? <QuietReading /> : (
+          {sample == null ? <QuietReading /> : (
             <div className={proChromeClass.kpiValue} style={tone ? { color: tone } : undefined}>
               {text}
             </div>
@@ -155,8 +133,6 @@ export default function ReplicationPane({
     );
   }
 
-  const state = mongoLatest(metricMap, 'mongodb_repl_state');
-  const stateLabel = mongoReplicaStateLabel(state);
   const trends = TRENDS.filter((card) => mongoPoints(metricMap, card.metric).length > 0);
 
   return (
@@ -185,7 +161,6 @@ export default function ReplicationPane({
                 body={card.body}
                 text={health ? health.text : mongoDurationText(sample)}
                 tone={health?.tone}
-                note={card.key === 'members' && stateLabel ? stateLabel : undefined}
                 loading={waiting}
                 sample={sample}
               />

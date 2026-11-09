@@ -48,17 +48,20 @@ function UsageCard({
     'mongodb_wtcache_current_bytes',
     'mongodb_wtcache_max_bytes_configured'
   );
-  const waiting = percent == null && (
+  const usedLatest = mongoLatest(metricMap, 'mongodb_wtcache_current_bytes');
+  const limitLatest = mongoLatest(metricMap, 'mongodb_wtcache_max_bytes_configured');
+  const waiting = percent == null && (usedLatest == null || limitLatest == null) && (
     pending.has('mongodb_wtcache_current_bytes') || pending.has('mongodb_wtcache_max_bytes_configured')
   );
   const tone = percent == null ? null : pressureOf(percent);
   const used = byteText(metricMap, 'mongodb_wtcache_current_bytes');
   const limit = byteText(metricMap, 'mongodb_wtcache_max_bytes_configured');
-  const fill = percent == null ? 0 : Math.min(100, Math.max(0, percent));
+  const note = used && limit ? `已用 ${used} / 上限 ${limit}` : '';
+  const quiet = !waiting && percent == null && !note;
   return (
     <section
       id="mongo-cache-usage"
-      className={`${classic.panel} ${host.chartPanel} flex flex-col`}
+      className={`${classic.panel} ${host.chartPanel} flex h-full min-h-0 flex-col`}
       data-mongodb-chart="cache-usage"
       data-mongodb-cache={waiting ? 'loading' : percent == null ? 'empty' : tone}
     >
@@ -70,36 +73,32 @@ function UsageCard({
           </span>
         </div>
       </div>
-      {waiting ? <ProDashLoading /> : percent == null ? (
+      {waiting ? (
+        <div className="flex flex-1 items-center justify-center">
+          <ProDashLoading />
+        </div>
+      ) : quiet ? (
         <div className={`${host.chartEmpty} flex-1`}>
           <span className="text-[13px] font-semibold text-[var(--color-text-2)]">本窗口暂无数据</span>
         </div>
       ) : (
-        <div className="flex flex-1 flex-col justify-center gap-3">
-          <div
-            className="text-[28px] font-bold leading-none tabular-nums"
-            style={{ color: tone ? PRESSURE_COLOR[tone] : undefined }}
-          >
-            {formatMongoPercent(percent)}
-          </div>
-          {used && limit ? (
-            <p className="m-0 text-[13px] tabular-nums text-[var(--color-text-1)]">
-              {`已用 ${used} / 上限 ${limit}`}
-            </p>
-          ) : null}
-          <div
-            className="h-1.5 w-full overflow-hidden rounded-full bg-[var(--color-fill-2)]"
-            role="meter"
-            aria-valuemin={0}
-            aria-valuemax={100}
-            aria-valuenow={Number(fill.toFixed(1))}
-            aria-label="缓存使用率"
-            data-mongodb-cache-meter={tone || 'empty'}
-          >
-            <span
-              className="block h-full rounded-full"
-              style={{ width: `${fill}%`, background: tone ? PRESSURE_COLOR[tone] : undefined }}
-            />
+        <div className="flex flex-1 flex-col justify-center">
+          <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+            <div
+              className="text-[28px] font-bold leading-none tabular-nums"
+              data-mongodb-cache-reading=""
+              style={{ color: tone ? PRESSURE_COLOR[tone] : undefined }}
+            >
+              {formatMongoPercent(percent)}
+            </div>
+            {note ? (
+              <p
+                className="m-0 min-w-0 text-[13px] leading-5 tabular-nums text-[var(--color-text-3)]"
+                data-mongodb-cache-note=""
+              >
+                {note}
+              </p>
+            ) : null}
           </div>
         </div>
       )}
@@ -114,6 +113,11 @@ export default function CachePane({
   metricMap: MongoMetricMap;
   pendingMetricNames: ReadonlySet<string>;
 }) {
+  const usagePoints = mongoRatioPoints(
+    metricMap,
+    'mongodb_wtcache_current_bytes',
+    'mongodb_wtcache_max_bytes_configured'
+  );
   const dirtyPoints = mongoRatioPoints(
     metricMap,
     'mongodb_wtcache_tracked_dirty_bytes',
@@ -123,7 +127,26 @@ export default function CachePane({
     <div data-mongodb-pane="cache" className="contents">
       <ProSection title="缓存">
         <div className="flex min-w-0 flex-col gap-3" data-mongodb-zone="cache">
-          <UsageCard metricMap={metricMap} pending={pendingMetricNames} />
+          <div className={host.chartGrid2} data-mongodb-cache-layout="usage-pair">
+            <UsageCard metricMap={metricMap} pending={pendingMetricNames} />
+            <MongoTrend
+              anchor="cache-usage-trend"
+              title="缓存使用率趋势"
+              hintTitle="缓存使用率"
+              body={USAGE_BODY}
+              series={[{
+                name: 'mongodb_wtcache_current_bytes',
+                label: '缓存使用率',
+                color: MONGODB_PALETTE.blue,
+                unit: 'percent'
+              }]}
+              metricMap={metricMap}
+              pending={pendingMetricNames}
+              pendingNames={['mongodb_wtcache_current_bytes', 'mongodb_wtcache_max_bytes_configured']}
+              points={usagePoints}
+              percent
+            />
+          </div>
           <div className={host.chartGrid2}>
             <MongoTrend
               anchor="dirty"

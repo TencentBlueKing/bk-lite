@@ -29,6 +29,7 @@ export function MongoTrend({
   pending,
   points,
   pendingNames,
+  hintTitle,
   percent = false,
   counts = false,
   emptyText = '本窗口暂无数据'
@@ -43,6 +44,8 @@ export function MongoTrend({
   points?: ChartData[];
   /** 派生折线的等待依据。不传就用序列名。 */
   pendingNames?: readonly string[];
+  /** 说明标题。不传就用卡片标题。 */
+  hintTitle?: string;
   percent?: boolean;
   counts?: boolean;
   emptyText?: string;
@@ -71,7 +74,7 @@ export function MongoTrend({
     >
       <ThinTimeSeries
         title={title}
-        hintNode={<MongoHint kind={`mongo-chart-${anchor}`} title={title} body={body} />}
+        hintNode={<MongoHint kind={`mongo-chart-${anchor}`} title={hintTitle || title} body={body} />}
         unit={unit}
         valueBounds={percent ? { min: 0, max: 100 } : undefined}
         pinAxisZero={counts || (!percent && (unit === 'cps' || unit === 'byteps' || unit === 'counts'))}
