@@ -14,6 +14,7 @@ import {
   Table,
   Tabs,
   Tag,
+  Tooltip,
   Typography,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
@@ -26,6 +27,7 @@ import {
   EyeOutlined,
   GlobalOutlined,
   PlusOutlined,
+  QuestionCircleOutlined,
   RocketOutlined,
   SearchOutlined,
   SettingOutlined,
@@ -375,19 +377,17 @@ function IntegrationCatalog() {
         <Space direction="vertical" size={20} style={{ width: '100%' }}>
           {INTEGRATION_GROUPS.map((g) => (
             <div key={g.group}>
-              <Space direction="vertical" size={2} style={{ marginBottom: 10 }}>
-                <Space size={8} align="center">
-                  {g.icon}
-                  <Title level={5} style={{ margin: 0 }}>
-                    {g.group}
-                  </Title>
-                  <Tag style={{ margin: 0 }}>{g.items.length} 种</Tag>
-                </Space>
+              <Space size={8} align="center" style={{ marginBottom: 10 }}>
+                {g.icon}
+                <Title level={5} style={{ margin: 0 }}>
+                  {g.group}
+                </Title>
                 {g.hint ? (
-                  <Text type="secondary" style={{ fontSize: 12, lineHeight: 1.6 }}>
-                    {g.hint}
-                  </Text>
+                  <Tooltip title={g.hint} placement="bottomLeft">
+                    <QuestionCircleOutlined style={{ color: TOKENS.textTertiary, fontSize: 12 }} />
+                  </Tooltip>
                 ) : null}
+                <Tag style={{ margin: 0 }}>{g.items.length} 种</Tag>
               </Space>
               <Row gutter={[12, 12]}>
                 {g.items.map((it) => (

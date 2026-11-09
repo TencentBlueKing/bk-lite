@@ -1245,6 +1245,7 @@
       "modeManual": "Manual",
       "modeForward": "Forward",
       "modeObserve": "Process",
+      "groupHintLabel": "{title} details",
       "groupSdkHint": "Automatic probes attach when the target process starts. Manual integration changes application code, then requires a rebuild or restart.",
       "groupOtelHint": "No probe is installed. Forward traces from an existing Collector to the platform.",
       "groupEbpfHint": "Leave the target program unchanged and start a separate observer process on the host.",

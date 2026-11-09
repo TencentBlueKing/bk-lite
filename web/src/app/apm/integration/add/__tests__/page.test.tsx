@@ -287,9 +287,17 @@ describe('APM 添加接入', () => {
       expect(card.getByText(mode)).not.toBeNull();
       expect(card.getByText(description)).not.toBeNull();
     }
-    expect(screen.getByText('自动探针在目标进程启动时挂上。手动接入要改代码，然后重新编译或重启。')).not.toBeNull();
-    expect(screen.getByText('不安装探针，把已有 Collector 的调用链转到平台。')).not.toBeNull();
-    expect(screen.getByText('不改目标程序，在主机上另起一个观测进程。')).not.toBeNull();
+    expect(screen.queryByText('自动探针在目标进程启动时挂上。手动接入要改代码，然后重新编译或重启。')).toBeNull();
+    const user = userEvent.setup();
+    const expectHint = async (name: string, text: string) => {
+      await user.hover(screen.getByRole('button', { name }));
+      await waitFor(() => {
+        expect(screen.getAllByRole('tooltip').some((node) => node.textContent?.includes(text))).toBe(true);
+      });
+    };
+    await expectHint('SDK 说明', '自动探针在目标进程启动时挂上。手动接入要改代码，然后重新编译或重启。');
+    await expectHint('OpenTelemetry 说明', '不安装探针，把已有 Collector 的调用链转到平台。');
+    await expectHint('eBPF 说明', '不改目标程序，在主机上另起一个观测进程。');
   });
 
   it('明确把 Go 呈现为手动 SDK 接入而不是自动探针', async () => {

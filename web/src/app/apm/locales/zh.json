@@ -1245,6 +1245,7 @@
       "modeManual": "手动接入",
       "modeForward": "链路转发",
       "modeObserve": "进程观测",
+      "groupHintLabel": "{title} 说明",
       "groupSdkHint": "自动探针在目标进程启动时挂上。手动接入要改代码，然后重新编译或重启。",
       "groupOtelHint": "不安装探针，把已有 Collector 的调用链转到平台。",
       "groupEbpfHint": "不改目标程序，在主机上另起一个观测进程。",

@@ -13,8 +13,9 @@ import {
   ExperimentOutlined,
   JavaScriptOutlined,
   PythonOutlined,
+  QuestionCircleOutlined,
 } from '@ant-design/icons';
-import { Alert, Button, Drawer, Form, Input, message, Segmented, Select, Space, Tabs, Tag, Typography } from 'antd';
+import { Alert, Button, Drawer, Form, Input, message, Segmented, Select, Space, Tabs, Tag, Tooltip, Typography } from 'antd';
 import useApmApi from '@/app/apm/api';
 import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell';
 import CatalogState, { type CatalogStateKind } from '@/app/apm/components/catalog-state';
@@ -268,6 +269,24 @@ function IntegrationModeBadge({ mode, t }: { mode: IntegrationMode; t: Translate
     <span className="inline-flex h-5 shrink-0 items-center self-start rounded-md bg-[var(--color-fill-1)] px-1.5 text-xs font-normal leading-none text-[var(--color-text-2)]">
       {integrationModeLabel(mode, t)}
     </span>
+  );
+}
+
+function GroupTitle({ icon, title, hint, hintLabel }: { icon: ReactNode; title: string; hint: string; hintLabel: string }) {
+  return (
+    <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-[var(--color-text-1)]">
+      <span className="text-[var(--color-primary)]">{icon}</span>
+      {title}
+      <Tooltip title={hint} placement="bottomLeft" trigger={['hover', 'focus']}>
+        <button
+          type="button"
+          aria-label={hintLabel}
+          className="inline-flex h-5 w-5 items-center justify-center border-0 bg-transparent p-0 text-xs font-normal text-[var(--color-text-3)] hover:text-[var(--color-text-2)]"
+        >
+          <QuestionCircleOutlined />
+        </button>
+      </Tooltip>
+    </div>
   );
 }
 
@@ -587,10 +606,12 @@ export default function ApmIntegrationAddPage() {
         <div className="flex flex-col gap-4">
           {integrationGroups.filter((group) => group.methods.some((method) => method.available)).map((group) => (
             <ApmSurface key={group.key}>
-              <div className="mb-3">
-                <div className="flex items-center gap-2 text-sm font-semibold text-[var(--color-text-1)]"><span className="text-[var(--color-primary)]">{group.icon}</span>{group.title}</div>
-                <p className="mb-0 mt-1 text-xs font-normal leading-5 text-[var(--color-text-3)]">{group.hint}</p>
-              </div>
+              <GroupTitle
+                icon={group.icon}
+                title={group.title}
+                hint={group.hint}
+                hintLabel={t('apm.integration.groupHintLabel', '{title} 说明', { title: group.title })}
+              />
               <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                 {group.methods.filter((method) => method.available).map((method) => (
                   <button
