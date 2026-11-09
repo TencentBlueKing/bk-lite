@@ -246,11 +246,13 @@ type IntegrationKind =
 const INTEGRATION_GROUPS: Array<{
   group: string;
   icon: React.ReactNode;
+  hint?: string;
   items: Array<{ kind: IntegrationKind; title: string; desc: string; tag?: string }>;
 }> = [
   {
     group: 'SDK',
     icon: <CodeOutlined />,
+    hint: '自动探针在目标进程启动时挂上。手动接入要改代码，然后重新编译或重启。',
     items: [
       { kind: 'node', title: 'Node.js', desc: '采集 Express / Nest / Koa 的调用链', tag: '自动探针' },
       { kind: 'java', title: 'Java', desc: '采集 Spring / Dubbo / gRPC 的调用链', tag: '自动探针' },
@@ -267,6 +269,7 @@ const INTEGRATION_GROUPS: Array<{
   {
     group: 'OTC',
     icon: <ApiOutlined />,
+    hint: '不安装探针，把已有 Collector 的调用链转到平台。',
     items: [
       { kind: 'otc', title: 'OTel Collector(链路)', desc: '把已有 Collector 的调用链转到平台', tag: '链路转发' },
     ],
@@ -274,8 +277,9 @@ const INTEGRATION_GROUPS: Array<{
   {
     group: 'eBPF',
     icon: <ExperimentOutlined />,
+    hint: '不改目标程序，在主机上另起一个观测进程。',
     items: [
-      { kind: 'ebpf', title: 'eBPF 自动注入(OBI)', desc: '只采集指定 Go 进程的调用链，不能和语言探针同进程', tag: '进程观测' },
+      { kind: 'ebpf', title: 'eBPF 自动注入(OBI)', desc: '只采集指定 Go 进程的调用链\n另起进程盯住这一个程序，程序本身不用改', tag: '进程观测' },
     ],
   },
   {
@@ -371,12 +375,19 @@ function IntegrationCatalog() {
         <Space direction="vertical" size={20} style={{ width: '100%' }}>
           {INTEGRATION_GROUPS.map((g) => (
             <div key={g.group}>
-              <Space size={8} align="center" style={{ marginBottom: 10 }}>
-                {g.icon}
-                <Title level={5} style={{ margin: 0 }}>
-                  {g.group}
-                </Title>
-                <Tag style={{ margin: 0 }}>{g.items.length} 种</Tag>
+              <Space direction="vertical" size={2} style={{ marginBottom: 10 }}>
+                <Space size={8} align="center">
+                  {g.icon}
+                  <Title level={5} style={{ margin: 0 }}>
+                    {g.group}
+                  </Title>
+                  <Tag style={{ margin: 0 }}>{g.items.length} 种</Tag>
+                </Space>
+                {g.hint ? (
+                  <Text type="secondary" style={{ fontSize: 12, lineHeight: 1.6 }}>
+                    {g.hint}
+                  </Text>
+                ) : null}
               </Space>
               <Row gutter={[12, 12]}>
                 {g.items.map((it) => (

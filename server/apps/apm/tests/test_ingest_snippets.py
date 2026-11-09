@@ -935,7 +935,12 @@ def test_obi_snippet_watches_only_the_given_executable():
         )
     )
 
+    checkout_config = '"$HOME/.otel-obi/configs/usr/bin/checkout/obi.yaml"'
     assert 'exe_path_glob: ["/usr/bin/checkout"]' in snippet.code
+    assert checkout_config in snippet.code
+    assert 'cat > "$HOME/.otel-obi/obi.yaml"' not in snippet.code
+    assert '-path "$HOME/.otel-obi/configs" -prune' in snippet.code
+    assert "opentelemetry-ebpf-obi-linux-amd64.tar.gz" in snippet.code
     assert "default_action: exclude" in snippet.code
     assert "metrics: false" in snippet.code
     assert "traces: true" in snippet.code
@@ -946,6 +951,25 @@ def test_obi_snippet_watches_only_the_given_executable():
     assert "OBI requires a readable /sys/kernel/btf/vmlinux" in snippet.code
     assert "OBI needs root or the capabilities required by OBI v1.0.0" in snippet.code
     assert "同一进程不要再装" in snippet.code
+    refund = DjangoIntegrationConfigurationService().render_snippet(
+        _request(
+            language="obi",
+            runtime="host",
+            endpoint="https://apm.example.com",
+            service_namespace="shop",
+            service_name="refund",
+            service_version="1.0",
+            environment="production",
+            process_executable="/opt/refund/bin/refund",
+        )
+    )
+    refund_config = '"$HOME/.otel-obi/configs/opt/refund/bin/refund/obi.yaml"'
+    assert refund_config in refund.code
+    assert checkout_config not in refund.code
+    assert refund_config not in snippet.code
+    assert 'exe_path_glob: ["/opt/refund/bin/refund"]' in refund.code
+    assert 'exe_path_glob: ["/usr/bin/checkout"]' not in refund.code
+    assert subprocess.run(["sh", "-n"], input=refund.code, text=True, capture_output=True).returncode == 0
     assert snippet.environment["OTEL_METRICS_EXPORTER"] == "none"
     assert subprocess.run(["sh", "-n"], input=snippet.code, text=True, capture_output=True).returncode == 0
     with pytest.raises(ProbeSelectionError) as exc_info:

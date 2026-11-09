@@ -179,6 +179,10 @@ function snippetOperationGuide(
   t: Translate,
   platform: ProbePlatform = 'linux',
 ): string {
+  const obiGuide = t(
+    'apm.integration.guideObiHost',
+    '在 Linux amd64 主机上执行。脚本会另起一个 OBI 进程，不修改 Go 程序，也不改它的启动命令。每个可执行文件路径各执行一次，并让对应进程保持运行。同一路径上的多个进程只算一个观测目标。这个 Go 进程不要再装语言探针或 Go SDK，否则调用链会重复；主机上的其他进程可以继续用语言探针。内核需要 Linux 5.8+，或带 eBPF backport 且有 BTF 的 RHEL 系 4.18+，并以 root 或 OBI v1.0.0 要求的权限运行。如果以前已经跑着一份 OBI，换成新脚本后先停掉旧进程，再按每个程序各启动一个。',
+  );
   const guides: Record<ApmIngestSnippetInput['language'], Record<SnippetMode, string>> = {
     nodejs: {
       agent: t('apm.integration.guideNodeHost', '在原有 Node.js 启动命令末尾追加以下内容，并重启应用。'),
@@ -208,18 +212,9 @@ function snippetOperationGuide(
       kubernetes: t('apm.integration.guidePhpKubernetes', '将以下环境变量合并到应用 Pod，确保镜像已预装 PHP NTS 8.1–8.4 扩展和钉死的 Composer 包后滚动重启。'),
     },
     obi: {
-      agent: t(
-        'apm.integration.guideObiHost',
-        '在符合内核和权限要求的 Linux amd64 主机上执行以下脚本。它只观察指定的 Go 可执行文件，不修改应用二进制，也不要和语言探针装在同一进程。',
-      ),
-      docker: t(
-        'apm.integration.guideObiHost',
-        '在符合内核和权限要求的 Linux amd64 主机上执行以下脚本。它只观察指定的 Go 可执行文件，不修改应用二进制，也不要和语言探针装在同一进程。',
-      ),
-      kubernetes: t(
-        'apm.integration.guideObiHost',
-        '在符合内核和权限要求的 Linux amd64 主机上执行以下脚本。它只观察指定的 Go 可执行文件，不修改应用二进制，也不要和语言探针装在同一进程。',
-      ),
+      agent: obiGuide,
+      docker: obiGuide,
+      kubernetes: obiGuide,
     },
     go: {
       agent: t('apm.integration.guideGoHost', '按以下指南审阅 OpenTelemetry Go SDK 示例，接入应用代码后重新编译并重启。'),
@@ -354,6 +349,11 @@ export default function ApmIntegrationAddPage() {
   const requestSequence = useRef(0);
 
   const integrationGroups = useMemo(() => {
+    const hints: Record<string, string> = {
+      sdk: t('apm.integration.groupSdkHint', '自动探针在目标进程启动时挂上。手动接入要改代码，然后重新编译或重启。'),
+      otel: t('apm.integration.groupOtelHint', '不安装探针，把已有 Collector 的调用链转到平台。'),
+      ebpf: t('apm.integration.groupEbpfHint', '不改目标程序，在主机上另起一个观测进程。'),
+    };
     const copy: Record<string, { description: string; title?: string }> = {
       nodejs: {
         description: t('apm.integration.nodejsDesc', '采集 Express / Nest / Koa 的调用链'),
@@ -392,12 +392,13 @@ export default function ApmIntegrationAddPage() {
         title: t('apm.integration.ebpfTitle', 'eBPF 自动注入（OBI）'),
         description: t(
           'apm.integration.ebpfDesc',
-          '只采集指定 Go 进程的调用链，不能和语言探针同进程',
+          '只采集指定 Go 进程的调用链\n另起进程盯住这一个程序，程序本身不用改',
         ),
       },
     };
     return INTEGRATION_GROUPS.map((group) => ({
       ...group,
+      hint: hints[group.key] ?? '',
       methods: group.methods.map((method) => ({
         ...method,
         title: copy[method.key]?.title ?? method.title,
@@ -586,7 +587,10 @@ export default function ApmIntegrationAddPage() {
         <div className="flex flex-col gap-4">
           {integrationGroups.filter((group) => group.methods.some((method) => method.available)).map((group) => (
             <ApmSurface key={group.key}>
-              <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-[var(--color-text-1)]"><span className="text-[var(--color-primary)]">{group.icon}</span>{group.title}</div>
+              <div className="mb-3">
+                <div className="flex items-center gap-2 text-sm font-semibold text-[var(--color-text-1)]"><span className="text-[var(--color-primary)]">{group.icon}</span>{group.title}</div>
+                <p className="mb-0 mt-1 text-xs font-normal leading-5 text-[var(--color-text-3)]">{group.hint}</p>
+              </div>
               <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                 {group.methods.filter((method) => method.available).map((method) => (
                   <button
@@ -686,6 +690,7 @@ export default function ApmIntegrationAddPage() {
                 <Form.Item
                   name="process_executable"
                   label={t('apm.integration.processExecutable', 'Go 可执行文件路径')}
+                  extra={t('apm.integration.processExecutableHelp', '按可执行文件绝对路径匹配。同一路径上的多个进程共用这一份观测；两个程序请各生成一份脚本。')}
                   rules={[
                     { required: true, whitespace: true, message: t('apm.integration.processExecutableRequired', '请输入绝对路径') },
                     {
@@ -774,7 +779,9 @@ export default function ApmIntegrationAddPage() {
                 <Typography.Text type="secondary" className="mt-1 block text-xs">
                   {isCollector
                     ? t('apm.integration.collectorIdentityHelp', '经过这条 pipeline 的 Trace 会归到所选应用。多个应用请各自生成一条 pipeline。')
-                    : t('apm.integration.instanceIdentityHelp', '实例 ID 在应用进程启动时生成，每个副本唯一。')}
+                    : isObi
+                      ? t('apm.integration.obiIdentityHelp', '实例 ID 在这份观测脚本启动时生成，调用链仍归到所选服务。')
+                      : t('apm.integration.instanceIdentityHelp', '实例 ID 在应用进程启动时生成，每个副本唯一。')}
                 </Typography.Text>
               </div>
             </div>

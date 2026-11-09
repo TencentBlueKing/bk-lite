@@ -279,7 +279,7 @@ describe('APM 添加接入', () => {
       ['Erlang/Elixir 接入', '手动接入', '用本地依赖接入后，只采集进程入口调用链'],
       ['Swift 接入', '手动接入', '用本地 Package 接入后，只采集进程入口调用链'],
       ['OTel Collector 接入', '链路转发', '把已有 Collector 的调用链转到平台'],
-      ['eBPF 自动注入（OBI） 接入', '进程观测', '只采集指定 Go 进程的调用链，不能和语言探针同进程'],
+      ['eBPF 自动注入（OBI） 接入', '进程观测', '只采集指定 Go 进程的调用链 另起进程盯住这一个程序，程序本身不用改'],
     ] as const;
 
     for (const [name, mode, description] of expected) {
@@ -287,6 +287,9 @@ describe('APM 添加接入', () => {
       expect(card.getByText(mode)).not.toBeNull();
       expect(card.getByText(description)).not.toBeNull();
     }
+    expect(screen.getByText('自动探针在目标进程启动时挂上。手动接入要改代码，然后重新编译或重启。')).not.toBeNull();
+    expect(screen.getByText('不安装探针，把已有 Collector 的调用链转到平台。')).not.toBeNull();
+    expect(screen.getByText('不改目标程序，在主机上另起一个观测进程。')).not.toBeNull();
   });
 
   it('明确把 Go 呈现为手动 SDK 接入而不是自动探针', async () => {
@@ -311,6 +314,34 @@ describe('APM 添加接入', () => {
     await waitFor(() => expect(api.getIngestSnippet).toHaveBeenCalled(), { timeout: 3000 });
 
     expect(await screen.findByText('Go SDK 接入指南')).not.toBeNull();
+  });
+
+  it('eBPF 抽屉说明按路径另起观测进程', async () => {
+    api.getIngestSnippet.mockResolvedValue({
+      application_id: 'bklite',
+      application_name: 'BK-Lite',
+      cloud_region: { id: 1, name: '默认云区域' },
+      http_endpoint: 'http://proxy.example.com:4318/v1/traces',
+      environment: {},
+      code: 'exec obi',
+    });
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: 'eBPF 自动注入（OBI） 接入' }));
+    expect(screen.getByText('按可执行文件绝对路径匹配。同一路径上的多个进程共用这一份观测；两个程序请各生成一份脚本。')).not.toBeNull();
+    expect(screen.getByRole('radio', { name: '主机（指定 Go 进程）' })).not.toBeNull();
+    await user.type(screen.getByRole('textbox', { name: /服务名称/ }), 'checkout');
+    await user.type(screen.getByRole('textbox', { name: 'Go 可执行文件路径' }), '/usr/bin/checkout');
+    await waitFor(() => expect(api.getIngestSnippet).toHaveBeenCalledWith(expect.objectContaining({
+      language: 'obi',
+      runtime: 'host',
+      process_executable: '/usr/bin/checkout',
+    })), { timeout: 3000 });
+
+    expect(await screen.findByText(/脚本会另起一个 OBI 进程/)).not.toBeNull();
+    expect(screen.getByText('实例 ID 在这份观测脚本启动时生成，调用链仍归到所选服务。')).not.toBeNull();
+    expect(screen.queryByText('实例 ID 在应用进程启动时生成，每个副本唯一。')).toBeNull();
   });
 
   it('将区域接收地址缺失转换为可恢复的用户提示', async () => {
