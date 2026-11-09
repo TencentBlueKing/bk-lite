@@ -77,6 +77,13 @@ class FlowableClient:
 def _variables(values: dict[str, Any]) -> list[dict[str, Any]]:
     result = []
     for name, value in values.items():
-        kind = "integer" if isinstance(value, int) and not isinstance(value, bool) else "boolean" if isinstance(value, bool) else "string"
-        result.append({"name": name, "value": value if kind != "string" else str(value), "type": kind})
+        if isinstance(value, bool):
+            kind, stored = "boolean", value
+        elif isinstance(value, int):
+            kind, stored = "integer", value
+        elif isinstance(value, (list, dict)):
+            kind, stored = "json", value
+        else:
+            kind, stored = "string", "" if value is None else str(value)
+        result.append({"name": name, "value": stored, "type": kind})
     return result
