@@ -269,7 +269,7 @@ def test_query_exposes_truncated_when_body_or_row_limit_is_hit(monkeypatch):
 
     monkeypatch.setattr(victoria_client, "urlopen", lambda req, timeout=0: Response())
     monkeypatch.setattr(victoria_client, "_MAX_RESPONSE_BYTES", 8)
-    client = VictoriaClient(logs_endpoint="http://victoria.example.test", traces_endpoint="http://victoria.example.test")
+    client = VictoriaClient(logs_endpoint="http://victoria.example.test")
     rows = client.query_logs("stats count()", None, None, limit=1)
     assert rows.truncated is True
 

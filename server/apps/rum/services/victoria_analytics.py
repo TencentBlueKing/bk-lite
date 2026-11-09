@@ -43,7 +43,6 @@ class VictoriaAnalytics:
         cls,
         *,
         logs_endpoint: str,
-        traces_endpoint: str,
         account_id: int = 0,
         project_id: int = 0,
         timeout_seconds: float = 15.0,
@@ -51,7 +50,6 @@ class VictoriaAnalytics:
     ) -> VictoriaAnalytics:
         client = VictoriaClient(
             logs_endpoint=logs_endpoint,
-            traces_endpoint=traces_endpoint,
             account_id=account_id,
             project_id=project_id,
             timeout_seconds=timeout_seconds,
