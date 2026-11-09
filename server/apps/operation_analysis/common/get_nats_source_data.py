@@ -18,6 +18,8 @@ _LOCAL_RPC_OVERLAY_MODULES = {
     ("cmdb", "get_monitor_ids_by_inst_uuids"): "apps.cmdb.nats.nats",
     ("monitor", "query_latest_active_alerts"): "apps.monitor.nats.monitor",
     ("monitor", "query_latest_interface_metrics"): "apps.monitor.nats.monitor",
+    # 运维总览待处理告警 TOP 的 order=severity 需本进程读到最新 handler，避免远端/旧 listener。
+    ("default", "get_active_alert_top"): "apps.alerts.nats.nats",
 }
 
 

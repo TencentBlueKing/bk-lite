@@ -76,10 +76,8 @@ export const resolveTableDimensions = ({
     };
   }
 
-  if (!hasPagination) {
-    return { tableHeight: undefined, containerHeight: undefined };
-  }
-
+  // 省略 scroll.y 时按父容器回填（有无分页都一样）。
+  // 运营分析 TOP5 等无分页卡片依赖这里；需要贴行高时用 scroll.y = 'auto'。
   if (parentHeight <= 0) {
     return { tableHeight: undefined, containerHeight: undefined };
   }
