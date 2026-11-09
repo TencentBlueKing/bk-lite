@@ -407,13 +407,20 @@ class InstanceSearch:
         )
         confs_map = {}
         config_ids_by_instance_plugin = {}
+        removed_by_config_id = {}
         for conf in confs:
             if conf.monitor_instance_id not in confs_map:
                 confs_map[conf.monitor_instance_id] = set()
             plugin_key = conf.monitor_plugin_id if conf.monitor_plugin_id else (self.monitor_obj.id, conf.collector, conf.collect_type)
             confs_map[conf.monitor_instance_id].add(plugin_key)
-            if conf.is_child:
+            if conf.is_child or conf.executor_node_removed:
                 config_ids_by_instance_plugin.setdefault((conf.monitor_instance_id, plugin_key), set()).add(conf.id)
+            if conf.executor_node_removed and conf.executor_node_id:
+                removed_by_config_id[str(conf.id)] = {
+                    "id": str(conf.executor_node_id),
+                    "name": conf.executor_node_name or str(conf.executor_node_id),
+                    "removed": True,
+                }
 
         nodes_by_config_id = self._batch_collection_nodes_by_config_ids(
             {config_id for config_ids in config_ids_by_instance_plugin.values() for config_id in config_ids}
@@ -541,6 +548,7 @@ class InstanceSearch:
                             collect_mode,
                             config_ids_by_instance_plugin,
                             nodes_by_config_id,
+                            removed_by_config_id,
                         ),
                     )
                     item["plugins"].append(info)
@@ -592,11 +600,16 @@ class InstanceSearch:
         collect_mode,
         config_ids_by_instance_plugin,
         nodes_by_config_id,
+        removed_by_config_id=None,
     ):
         if collect_mode != PluginConstants.COLLECT_MODE_AUTO:
             return []
         nodes_by_id = {}
+        removed_by_config_id = removed_by_config_id or {}
         for config_id in config_ids_by_instance_plugin.get((instance_id, plugin_key), set()):
+            removed = removed_by_config_id.get(str(config_id))
+            if removed and removed["id"] not in nodes_by_id:
+                nodes_by_id[removed["id"]] = removed
             for node in nodes_by_config_id.get(str(config_id), []):
                 nodes_by_id[node["id"]] = node
         return sorted(

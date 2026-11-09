@@ -21,7 +21,14 @@ from apps.core.openapi.call_audit import ENTRY_FORWARD_AUTH, ENTRY_INVOKE, persi
 from apps.core.openapi.catalog import build_docs_catalog
 from apps.core.openapi.dispatcher import dispatch
 from apps.core.openapi.envelope import ErrorCode, fail, ok
-from apps.core.openapi.identity import CREDENTIAL_API_TOKEN, CREDENTIAL_JWT, CREDENTIAL_SYSTEM_TOKEN, AuthenticationFailed, authenticate_request
+from apps.core.openapi.identity import (
+    CREDENTIAL_API_TOKEN,
+    CREDENTIAL_JWT,
+    CREDENTIAL_SYSTEM_TOKEN,
+    AuthenticationFailed,
+    CallerIdentity,
+    authenticate_request,
+)
 from apps.core.openapi.registry import default_registry
 from apps.core.openapi.token_scope import allows_external
 from apps.core.utils.exempt import api_exempt
@@ -141,13 +148,53 @@ def me_view(request):
     try:
         identity, response = _try_authenticate(request)
         if response is None:
-            response = ok(_build_me_payload(identity))
+            include_anchor_scopes = request.GET.get("include_anchor_scopes", "").lower() in ("1", "true")
+            response = ok(_build_me_payload(identity, include_anchor_scopes=include_anchor_scopes))
         return response
     finally:
         _audit(request, identity, response, started_at)
 
 
 _FORWARDED_URI_RE = re.compile(r"^/openapi/(?P<version>[a-z0-9]+)/(?P<service>[a-z][a-z0-9-]*)(?:/|$)")
+CREDENTIAL_CALLBACK = "callback"
+
+
+def _uri_matches_callback_paths(forwarded_uri: str, service: str, callback_paths) -> bool:
+    path = (forwarded_uri or "").split("?", 1)[0]
+    prefix = f"/openapi/v1/{service}"
+    if not path.startswith(prefix):
+        return False
+    remainder = path[len(prefix) :] or "/"
+    if not remainder.startswith("/"):
+        remainder = "/" + remainder
+    for item in callback_paths or []:
+        expected = item if str(item).startswith("/") else f"/{item}"
+        expected = expected.rstrip("/") or "/"
+        if remainder == expected or remainder == expected + "/" or remainder.startswith(expected + "/"):
+            return True
+    return False
+
+
+def _try_callback_auth(request, matched, entry):
+    """平台 worker 回调：路径命中 callback_paths 即放行，不查 API Key、不另要共享密钥。"""
+    if not matched or entry is None:
+        return None, False
+    if not _uri_matches_callback_paths(request.META.get("HTTP_X_FORWARDED_URI", ""), matched.group("service"), entry.get("callback_paths")):
+        return None, False
+    acting = request.META.get("HTTP_X_BKLITE_ACTING_USER", "system@bklite")
+    user, _, domain = acting.partition("@")
+    team_raw = request.META.get("HTTP_X_BKLITE_ACTING_TEAM", "")
+    team_ids = []
+    if team_raw.isdigit():
+        team_ids = [int(team_raw)]
+    identity = CallerIdentity(
+        user=user or "system",
+        domain=domain or "bklite",
+        credential_type=CREDENTIAL_CALLBACK,
+        team_ids=team_ids,
+        token_name="openapi-callback",
+    )
+    return identity, True
 
 
 @api_exempt
@@ -200,33 +247,35 @@ def forward_auth_view(request):
     identity = None
     response = None
     try:
-        identity, response = _try_authenticate(request)
-        if response is not None:
-            return response
-
         forwarded_uri = request.META.get("HTTP_X_FORWARDED_URI", "")
         matched = _FORWARDED_URI_RE.match(forwarded_uri)
         from apps.core.openapi.renderer import get_external_entry
 
         entry = get_external_entry(matched.group("service")) if matched else None
+        identity, callback_ok = _try_callback_auth(request, matched, entry)
+        if not callback_ok:
+            identity, response = _try_authenticate(request)
+            if response is not None:
+                return response
         if entry is None:
             # 快照中查无该外部服务：fail-closed，且与 invoke 的 404 语义一致
             response = fail(ErrorCode.NOT_FOUND, "no such endpoint")
             return response
 
-        if identity.credential_type == CREDENTIAL_SYSTEM_TOKEN:
-            response = fail(ErrorCode.ROLE_REQUIRED, "service role required")
-            return response
+        if not callback_ok:
+            if identity.credential_type == CREDENTIAL_SYSTEM_TOKEN:
+                response = fail(ErrorCode.ROLE_REQUIRED, "service role required")
+                return response
 
-        if identity.credential_type != CREDENTIAL_JWT and not allows_external(identity.token_scope, matched.group("service")):
-            response = fail(ErrorCode.SCOPE_DENIED, "endpoint not in token scope")
-            return response
+            if identity.credential_type != CREDENTIAL_JWT and not allows_external(identity.token_scope, matched.group("service")):
+                response = fail(ErrorCode.SCOPE_DENIED, "endpoint not in token scope")
+                return response
 
-        required = set(entry["required_roles"])
-        # 空列表语义（冻结）：放行任意已认证身份（api_token / JWT）
-        if required and not identity.is_superuser and not (required & set(identity.roles)):
-            response = fail(ErrorCode.ROLE_REQUIRED, "service role required")
-            return response
+            required = set(entry["required_roles"])
+            # 空列表语义（冻结）：放行任意已认证身份（api_token / JWT）
+            if required and not identity.is_superuser and not (required & set(identity.roles)):
+                response = fail(ErrorCode.ROLE_REQUIRED, "service role required")
+                return response
 
         response = JsonResponse({"result": True})
         response["X-BK-User"] = f"{identity.user}@{identity.domain}"
@@ -248,15 +297,8 @@ def forward_auth_view(request):
         )
 
 
-def _build_me_payload(identity):
-    from apps.system_mgmt.models import Group
+def _build_anchor_scopes(identity):
     from apps.system_mgmt.utils.group_utils import GroupUtils
-
-    if identity.groups is not None:
-        groups = identity.groups
-    else:
-        name_map = dict(Group.objects.filter(id__in=identity.team_ids).values_list("id", "name"))
-        groups = [{"id": team_id, "name": name_map.get(team_id, "")} for team_id in identity.team_ids]
 
     anchor_scopes = []
     for team_id in identity.team_ids:
@@ -275,20 +317,33 @@ def _build_me_payload(identity):
             logger.exception("anchor scope resolution failed for group %s", team_id)
             cascaded = [team_id]
         anchor_scopes.append({"anchor": team_id, "cascaded_group_ids": cascaded})
+    return anchor_scopes
 
+
+def _build_me_payload(identity, include_anchor_scopes=False):
     from apps.core.openapi.renderer import get_external_services
+    from apps.system_mgmt.models import Group
+
+    if identity.groups is not None:
+        groups = identity.groups
+    else:
+        name_map = dict(Group.objects.filter(id__in=identity.team_ids).values_list("id", "name"))
+        groups = [{"id": team_id, "name": name_map.get(team_id, "")} for team_id in identity.team_ids]
 
     services = [{"name": name, "kind": "internal"} for name in default_registry.services()] + [
         {"name": name, "kind": "external"} for name in get_external_services()
     ]
 
-    return {
+    payload = {
         "user": identity.user,
         "domain": identity.domain,
         "credential_type": identity.credential_type,
         "groups": groups,
-        "anchor_scopes": anchor_scopes,
         "roles": identity.roles,
         "services": services,
         "caller_system": identity.caller_system,
     }
+    # 超管 JWT 的 team_ids 为全部组织，逐个展开子树代价随组织数平方增长，故仅按需计算
+    if include_anchor_scopes:
+        payload["anchor_scopes"] = _build_anchor_scopes(identity)
+    return payload

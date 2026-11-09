@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Button, Dropdown, List, Popconfirm, Skeleton, Tag } from 'antd';
 import type { MenuProps } from 'antd';
@@ -21,6 +21,7 @@ interface WebChatChannel {
   introduction?: string;
   icon?: string;
   enable_conversation_history?: boolean;
+  job_mgmt_enabled?: boolean;
 };
 
 interface SkillChatSession {
@@ -86,6 +87,7 @@ const mapWebChatChannels = (
       introduction: item.introduction || '',
       icon: 'duihuazhinengti',
       enable_conversation_history: item.enable_conversation_history !== false,
+      job_mgmt_enabled: item.job_mgmt_enabled === true,
     };
   });
 };
@@ -95,6 +97,7 @@ const SkillWebChatPage: React.FC = () => {
   const searchParams = useSearchParams();
   const entryToken = searchParams?.get('entry') || '';
   const { fetchWebChatSkillChannels, fetchSkillConversations, fetchSkillSessionMessages, deleteSkillSession } = useSkillApi();
+  const pendingDistributeIds = useRef<Record<string, number[]>>({});
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [agentLoading, setAgentLoading] = useState(true);
   const [agentList, setAgentList] = useState<WebChatChannel[]>([]);
@@ -268,6 +271,7 @@ const SkillWebChatPage: React.FC = () => {
   const handleDeleteSession = async (sessionIdToDelete: string) => {
     const target = functionList.find((item) => item.id === sessionIdToDelete);
     try {
+      delete pendingDistributeIds.current[sessionIdToDelete];
       if (target?.persisted) {
         await deleteSkillSession(sessionIdToDelete);
       }
@@ -288,6 +292,7 @@ const SkillWebChatPage: React.FC = () => {
     userMessage?: { attachments?: Array<{ id: number; status?: string }>; choiceId?: string; choiceOption?: string },
   ) => {
     if (!currentAgent?.id) return null;
+    const distributeFileIds = pendingDistributeIds.current[panelSessionId] || [];
     const baseUrl = typeof window !== 'undefined' ? window.location.origin : '';
     const url = `${baseUrl}/api/proxy/opspilot/skill_channel/${currentAgent.id}/chat/`;
     const preview = message.replace(/\n/g, ' ').slice(0, 50);
@@ -320,6 +325,7 @@ const SkillWebChatPage: React.FC = () => {
         message,
         session_id: panelSessionId,
         attachment_ids: (userMessage?.attachments || []).filter((item) => item.status === 'ready' || item.status === undefined).map((item) => item.id),
+        distribute_file_ids: distributeFileIds,
         ...(userMessage?.choiceId ? {
           choice_id: userMessage.choiceId,
           choice_option: userMessage.choiceOption || '',
@@ -438,6 +444,11 @@ const SkillWebChatPage: React.FC = () => {
                 initialContextUsage={chat.initialContextUsage}
                 removePendingBotMessageOnCancel={true}
                 conversationHistoryEnabled={currentAgent?.enable_conversation_history !== false}
+                distributeFilesEnabled={currentAgent?.job_mgmt_enabled === true}
+                distributeSessionId={chat.id}
+                onDistributeReady={(fileIds) => {
+                  pendingDistributeIds.current[chat.id] = fileIds;
+                }}
               />
             </div>
           ))

@@ -66,6 +66,66 @@
         }
       ],
       "group_algorithm": "max"
+    },
+    {
+      "name": "Riverbed SteelHead优化服务未运行",
+      "alert_name": "WAN优化${resource_name} 优化服务未运行",
+      "description": "监控 Riverbed SteelHead 优化服务健康（optServiceStatus 派生，1=running，2=其余状态）。值为 2 表示优化服务不是 running，加速可能已停止。",
+      "metric_name": "opt_service_ok",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 2,
+          "method": "=="
+        }
+      ],
+      "group_algorithm": "max"
+    },
+    {
+      "name": "Riverbed SteelHead优化连接为0",
+      "alert_name": "WAN优化${resource_name} 优化连接为 0",
+      "description": "监控 Riverbed SteelHead 当前优化连接数。在业务应在加速时值为 0，表示优化已停止或连接全部变为 passthrough。",
+      "metric_name": "optimized_connections",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "warning",
+          "value": 0,
+          "method": "=="
+        }
+      ],
+      "group_algorithm": "min"
+    },
+    {
+      "name": "Riverbed SteelHead对端消失",
+      "alert_name": "WAN优化${resource_name} 对端消失",
+      "description": "监控 Riverbed SteelHead 优化对端行数。行数从有到 0 表示对端全部掉线或不可达。设备仍在上报时，空表会计为 0。",
+      "metric_name": "steelhead_peer_count",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 0,
+          "method": "=="
+        }
+      ],
+      "group_algorithm": "min"
+    },
+    {
+      "name": "Riverbed SteelHead半开连接持续升高",
+      "alert_name": "WAN优化${resource_name} 半开连接持续升高",
+      "description": "监控 Riverbed SteelHead 半开优化连接数（halfOpenedConnections）。窗口内最小值仍大于 0，说明半开连接没有回落，会话建立卡住。",
+      "metric_name": "half_opened_connections",
+      "algorithm": "min_over_time",
+      "threshold": [
+        {
+          "level": "warning",
+          "value": 0,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "min"
     }
   ]
 }

@@ -333,3 +333,160 @@ class TestAdLdapsCertificateVerification:
         tls.reset_mock()
         assert test_ad_instance(_ad_config(ca_cert=_CA_PEM)) is True
         tls.assert_called_once_with(validate=ssl.CERT_REQUIRED, version=ssl.PROTOCOL_TLS_CLIENT, ca_certs_data=_CA_PEM)
+
+
+class _PagedLdap:
+    def __init__(self, pages):
+        self._pages = list(pages)
+        self.calls = []
+        self.entries = []
+        self.result = {}
+        self.last_error = ""
+
+    def search(self, search_base, search_filter, search_scope, attributes, size_limit=0, paged_size=None, paged_cookie=None):
+        _ = (search_base, search_filter, search_scope, attributes)
+        self.calls.append({"size_limit": size_limit, "paged_size": paged_size, "paged_cookie": paged_cookie})
+        entries, cookie, code = self._pages.pop(0)
+        self.entries = entries
+        controls = {}
+        if cookie is not None:
+            controls["1.2.840.113556.1.4.319"] = {"value": {"cookie": cookie}}
+        self.result = {"result": code, "description": "success" if code == 0 else "sizeLimitExceeded", "controls": controls}
+        return code in {0, 4}
+
+
+def _user(name):
+    return FakeEntry(sAMAccountName=name, distinguishedName=f"CN={name}")
+
+
+def _single_directory():
+    config = _ad_config()
+    return {
+        "mode": "single",
+        "legacy_single": True,
+        "items": [{"index": 0, "name": "AD", "raw": config, "config": config}],
+    }
+
+
+class TestActiveDirectoryPaging:
+    def test_one_query_reads_every_ldap_page(self, mocker):
+        from apps.opspilot.metis.llm.tools.activedirectory import tools as ad_tools
+
+        conn = _PagedLdap(
+            [
+                ([_user("alice"), _user("bob")], b"page-2", 0),
+                ([_user("cara"), _user("drew")], b"page-3", 0),
+                ([_user("erin")], None, 0),
+            ]
+        )
+        mocker.patch.object(ad_tools, "AD_LDAP_PAGE_SIZE", 2)
+        mocker.patch.object(ad_tools, "build_ad_normalized_from_runnable", return_value=_single_directory())
+        mocker.patch.object(ad_tools, "get_ad_connection_from_item", return_value=conn)
+        unbind = mocker.patch.object(ad_tools, "safe_unbind")
+
+        result = ad_tools.activedirectory_run_query.func("SELECT SAMAccountName FROM User", config={})
+
+        assert [call["paged_cookie"] for call in conn.calls] == [None, b"page-2", b"page-3"]
+        assert [call["paged_size"] for call in conn.calls] == [2, 2, 2]
+        assert all(call["size_limit"] == 0 for call in conn.calls)
+        assert result.splitlines() == ["SAMAccountName", "alice", "bob", "cara", "drew", "erin"]
+        assert "结果已截断" not in result
+        unbind.assert_called_once_with(conn)
+
+    def test_simple_limit_stops_without_asking_the_model_for_pages(self, mocker):
+        from apps.opspilot.metis.llm.tools.activedirectory import tools as ad_tools
+
+        conn = _PagedLdap(
+            [
+                ([_user("alice")], b"more", 0),
+                ([_user("bob")], None, 0),
+            ]
+        )
+        mocker.patch.object(ad_tools, "build_ad_normalized_from_runnable", return_value=_single_directory())
+        mocker.patch.object(ad_tools, "get_ad_connection_from_item", return_value=conn)
+        mocker.patch.object(ad_tools, "safe_unbind")
+
+        result = ad_tools.activedirectory_run_query.func("SELECT SAMAccountName FROM User LIMIT 1", config={})
+
+        assert len(conn.calls) == 1
+        assert conn.calls[0]["paged_size"] == 1
+        assert result.splitlines() == ["SAMAccountName", "alice"]
+        assert "结果已截断" not in result
+
+    def test_cap_appends_one_truncation_notice_and_logs_counts_only(self, mocker, caplog):
+        from apps.opspilot.metis.llm.tools.activedirectory import sql_engine
+        from apps.opspilot.metis.llm.tools.activedirectory import tools as ad_tools
+
+        conn = _PagedLdap(
+            [
+                ([_user("alice"), _user("bob")], b"page-2", 0),
+                ([_user("cara"), _user("drew")], b"page-3", 0),
+                ([_user("erin"), _user("fran")], None, 0),
+            ]
+        )
+        mocker.patch.object(sql_engine, "AD_LDAP_FETCH_CAP", 4)
+        mocker.patch.object(ad_tools, "AD_LDAP_FETCH_CAP", 4)
+        mocker.patch.object(ad_tools, "AD_LDAP_PAGE_SIZE", 2)
+        mocker.patch.object(ad_tools, "build_ad_normalized_from_runnable", return_value=_single_directory())
+        mocker.patch.object(ad_tools, "get_ad_connection_from_item", return_value=conn)
+        mocker.patch.object(ad_tools, "safe_unbind")
+        caplog.set_level(logging.DEBUG, logger="opspilot")
+
+        result = ad_tools.activedirectory_run_query.func("SELECT SAMAccountName FROM User", config={})
+
+        assert result.splitlines()[:5] == ["SAMAccountName", "alice", "bob", "cara", "drew"]
+        assert result.endswith("结果已截断：本次 LDAP 读取在 4 条停止，目录里还有更多对象。请用 WHERE 缩小范围，或用 LIMIT/OFFSET 分段查询。")
+        assert "erin" not in result
+        warnings = [record for record in caplog.records if record.msg == ad_tools._AD_LDAP_TRUNCATED]
+        assert len(warnings) == 1
+        record = warnings[0]
+        assert record.name == "opspilot"
+        assert record.levelno == logging.WARNING
+        assert record.args == (4, 4)
+        assert record.exc_info is None
+        rendered = record.getMessage()
+        formatted = logging.Formatter("%(levelname)s %(name)s %(message)s").format(record)
+        assert rendered == "event=ad_ldap_search_truncated fetched=4 fetch_cap=4"
+        for text in (rendered, formatted, caplog.text, str(record.args), result):
+            assert _PASSWORD_SENTINEL not in text
+            assert _CA_SENTINEL not in text
+
+    def test_server_size_limit_without_cookie_is_truncated(self):
+        from apps.opspilot.metis.llm.tools.activedirectory.tools import _ldap_searcher
+
+        conn = _PagedLdap([([_user("alice"), _user("bob")], None, 4)])
+
+        found = _ldap_searcher(conn, "DC=example,DC=com", "(objectClass=user)", ["sAMAccountName"], 100)
+
+        assert [entry.entry_attributes_as_dict["sAMAccountName"] for entry in found] == ["alice", "bob"]
+        assert found.truncated is True
+
+    def test_filtered_and_sorted_queries_fetch_until_the_cap(self):
+        from apps.opspilot.metis.llm.tools.activedirectory.sql_engine import AD_LDAP_FETCH_CAP, execute_select
+
+        requested = []
+
+        def searcher(base_dn, search_filter, attrs, size_limit):
+            _ = (base_dn, search_filter, attrs)
+            requested.append(size_limit)
+            return []
+
+        execute_select("SELECT SAMAccountName FROM User", base_dn="DC=example,DC=com", searcher=searcher)
+        execute_select("SELECT SAMAccountName FROM User LIMIT 10 OFFSET 5", base_dn="DC=example,DC=com", searcher=searcher)
+        execute_select(
+            "SELECT SAMAccountName FROM User WHERE Department = 'IT' LIMIT 10",
+            base_dn="DC=example,DC=com",
+            searcher=searcher,
+        )
+        execute_select(
+            "SELECT SAMAccountName FROM User ORDER BY SAMAccountName LIMIT 10",
+            base_dn="DC=example,DC=com",
+            searcher=searcher,
+        )
+        execute_select(
+            "SELECT u.SAMAccountName, g.CN FROM User u LEFT JOIN Group g ON u.DN = g.Member LIMIT 5",
+            base_dn="DC=example,DC=com",
+            searcher=searcher,
+        )
+
+        assert requested == [AD_LDAP_FETCH_CAP, 15, AD_LDAP_FETCH_CAP, AD_LDAP_FETCH_CAP, AD_LDAP_FETCH_CAP, AD_LDAP_FETCH_CAP]

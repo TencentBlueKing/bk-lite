@@ -50,6 +50,12 @@ import {
 } from '@/app/cmdb/constants/professCollection';
 import { customScriptHostOsQuery } from './hostOsQuery';
 import {
+  buildHostPickerQuery,
+  formatHostOsType,
+  HOST_OS_OPTIONS,
+  type HostPickerFilter,
+} from './hostPickerFilter';
+import {
   NETWORK_COLLECTION_ASSET_MODELS,
   DEFAULT_NETWORK_ASSET_TAB,
   findDuplicateNetworkAssetIp,
@@ -239,6 +245,10 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
       pageSize: DEFAULT_INST_PAGE_SIZE,
       total: 0,
     });
+    const [hostNameKeyword, setHostNameKeyword] = useState('');
+    const [hostIpKeyword, setHostIpKeyword] = useState('');
+    const [hostOsKeyword, setHostOsKeyword] = useState<string | undefined>();
+    const hostPickerFilterRef = useRef<HostPickerFilter>({});
     const dropdownItems = {
       items: getNetworkDeviceOptions(t),
     };
@@ -258,23 +268,28 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
     };
 
     const isSslCerTask = modelId === 'ssl_cer';
+    const isHypervHostTask = modelId === 'hyperv_host';
     const supportsIpSelection =
-      !singleInstanceOnly &&
-      !isSslCerTask &&
-      IP_SELECTION_TASK_TYPES.includes(normalizedTaskType);
+      isHypervHostTask ||
+      (!singleInstanceOnly &&
+        !isSslCerTask &&
+        IP_SELECTION_TASK_TYPES.includes(normalizedTaskType));
     const supportsAssetOnlySelection =
       ASSET_ONLY_SELECTION_TASK_TYPES.includes(normalizedTaskType) ||
       isSslCerTask;
 
-    const requiresSingleInstanceSelect = singleInstanceOnly
-      || SINGLE_INSTANCE_SELECT_TASK_TYPES.includes(normalizedTaskType);
+    const requiresSingleInstanceSelect =
+      !isHypervHostTask &&
+      (singleInstanceOnly ||
+        SINGLE_INSTANCE_SELECT_TASK_TYPES.includes(normalizedTaskType));
     const requiresAccessPointSelect = ACCESS_POINT_TASK_TYPES.includes(
       normalizedTaskType
     );
 
     const isCommonSelectInstTask = (
       COMMON_SELECT_INST_TASK_TYPES.includes(normalizedTaskType) ||
-      directAssetModelId !== null
+      directAssetModelId !== null ||
+      isHypervHostTask
     ) && !isNetworkConfigFileTask;
     const isHostTask = normalizedTaskType === 'host';
     const isHostDiscovery = collectionType === 'host';
@@ -374,6 +389,27 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
       title: t('Collection.hostDiscoveryCloud'), dataIndex: 'cloud', key: 'cloud',
       render: (value: number | string) => String(value ?? '--'),
     };
+    const hostOsColumn = {
+      title: t('Collection.hostOsType'),
+      dataIndex: 'os_type',
+      key: 'os_type',
+      render: (value: unknown) => formatHostOsType(value),
+    };
+    const resolveDrawerModelId = () => {
+      if (isNetworkCollectionAssetTask) {
+        return assetTabModelId;
+      }
+      if (isHostDiscovery) {
+        return selectionModelId;
+      }
+      return resolveInstFetchModelId({
+        isCommonSelectInstTask,
+        instanceModelId,
+        collectionModelId: modelId,
+        relateType,
+      });
+    };
+    const showHostPickerFilters = resolveDrawerModelId() === 'host';
     const instColumns = [
       ...(isHostDiscovery ? [hostCloudColumn] : []),
       {
@@ -388,6 +424,7 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
         key: 'ip_addr',
         render: (text: any) => text || '--',
       },
+      ...(showHostPickerFilters ? [hostOsColumn] : []),
       ...(isNetworkCollectionAssetTask
         ? [
           {
@@ -453,6 +490,12 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
             params.query_list = [...(params.query_list || []), osQuery];
           }
         }
+        if (fetchModelId === 'host') {
+          params.query_list = buildHostPickerQuery(params.query_list, hostPickerFilterRef.current);
+          if (hostPickerFilterRef.current.instName?.trim() || hostPickerFilterRef.current.ip?.trim()) {
+            params.case_sensitive = false;
+          }
+        }
 
         const res = await instanceApi.searchInstances(params);
         setInstData(
@@ -473,6 +516,23 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
       }
     };
 
+    const clearHostPickerFilter = () => {
+      setHostNameKeyword('');
+      setHostIpKeyword('');
+      setHostOsKeyword(undefined);
+      hostPickerFilterRef.current = {};
+    };
+
+    const searchHostPicker = (patch: HostPickerFilter = {}) => {
+      const next = {
+        instName: patch.instName ?? hostNameKeyword,
+        ip: patch.ip ?? hostIpKeyword,
+        osType: 'osType' in patch ? patch.osType : hostOsKeyword,
+      };
+      hostPickerFilterRef.current = next;
+      fetchInstData(resolveDrawerModelId(), 1, instPagination.pageSize);
+    };
+
     const handleOpenDrawer = () => {
       if (isHostAssetMode && !canSelectHostAssets) {
         return;
@@ -484,6 +544,7 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
       } else {
         seedDrawerSelection();
       }
+      clearHostPickerFilter();
       setInstVisible(true);
       if (isNetworkCollectionAssetTask) {
         fetchInstData(assetTabModelId, 1, instPagination.pageSize);
@@ -522,6 +583,7 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
 
     const handleMenuClick = ({ key }: { key: string }) => {
       setRelateType(key);
+      clearHostPickerFilter();
       seedDrawerSelection();
       setInstVisible(true);
       fetchInstData(key, 1, instPagination.pageSize);
@@ -640,6 +702,7 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
           },
         ]
         : []),
+      ...((isHostTask || isHostDiscovery) ? [hostOsColumn] : []),
       {
         title: t('common.actions'),
         key: 'action',
@@ -1009,7 +1072,9 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
                     onChange={(e) => handleCollectionTypeChange(e.target.value)}
                   >
                     <Radio value="ip">{t('Collection.chooseIp')}</Radio>
-                    {isCustomScriptTask ? (
+                    {isHypervHostTask ? (
+                      <Radio value="host">{t('Collection.chooseHost')}</Radio>
+                    ) : isCustomScriptTask ? (
                       <Radio value="asset">{t('Collection.chooseHost')}</Radio>
                     ) : (
                       <>
@@ -1369,6 +1434,51 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
               }))}
             />
           ) : null}
+          {showHostPickerFilters ? (
+            <div className="mb-3 flex shrink-0 flex-wrap items-center gap-2">
+              <Input
+                allowClear
+                className="w-40"
+                placeholder={t('Collection.instanceName')}
+                value={hostNameKeyword}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  setHostNameKeyword(value);
+                  if (!value) {
+                    searchHostPicker({ instName: '' });
+                  }
+                }}
+                onPressEnter={() => searchHostPicker()}
+              />
+              <Input
+                allowClear
+                className="w-40"
+                placeholder={t('Collection.manageIp')}
+                value={hostIpKeyword}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  setHostIpKeyword(value);
+                  if (!value) {
+                    searchHostPicker({ ip: '' });
+                  }
+                }}
+                onPressEnter={() => searchHostPicker()}
+              />
+              <Select
+                allowClear
+                className="w-36"
+                placeholder={t('Collection.hostOsType')}
+                aria-label={t('Collection.hostOsType')}
+                options={HOST_OS_OPTIONS}
+                value={hostOsKeyword}
+                onChange={(value) => {
+                  setHostOsKeyword(value);
+                  searchHostPicker({ osType: value });
+                }}
+              />
+              <Button onClick={() => searchHostPicker()}>{t('common.search')}</Button>
+            </div>
+          ) : null}
           <div className="min-h-0 flex-1 overflow-hidden">
             <CustomTable
               columns={instColumns}
@@ -1384,22 +1494,7 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
                     nextPage: page,
                     nextPageSize: pageSize,
                   });
-                  if (isNetworkCollectionAssetTask) {
-                    fetchInstData(assetTabModelId, next.page, next.pageSize);
-                    return;
-                  }
-                  fetchInstData(
-                    isHostDiscovery
-                      ? selectionModelId
-                      : resolveInstFetchModelId({
-                        isCommonSelectInstTask,
-                        instanceModelId,
-                        collectionModelId: modelId,
-                        relateType,
-                      }),
-                    next.page,
-                    next.pageSize,
-                  );
+                  fetchInstData(resolveDrawerModelId(), next.page, next.pageSize);
                 },
               }}
               rowSelection={{

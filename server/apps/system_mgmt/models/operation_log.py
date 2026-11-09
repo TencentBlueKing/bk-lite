@@ -39,6 +39,7 @@ class OperationLog(TimeInfo):
     target_type = models.CharField("Target Type", max_length=50, blank=True, default="", db_index=True)
     target_id = models.CharField("Target ID", max_length=100, blank=True, default="", db_index=True)
     detail = JSONField("Detail", default=dict, blank=True)
+    idempotency_key = models.CharField("Idempotency Key", max_length=128, null=True, blank=True, unique=True)
 
     class Meta:
         verbose_name = "Operation Log"

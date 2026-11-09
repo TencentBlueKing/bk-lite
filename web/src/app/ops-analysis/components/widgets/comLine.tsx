@@ -26,10 +26,12 @@ import {
 } from '@/app/ops-analysis/utils/chartTheme';
 import ChartLegend from '@/app/ops-analysis/components/chartLegend';
 import WidgetState from '@/app/ops-analysis/components/widget-state';
+import type { DatasourceItem } from '@/app/ops-analysis/types/dataSource';
 import type {
   ScreenRenderContext,
   ValueConfig,
 } from '@/app/ops-analysis/types/dashBoard';
+import { toLineBarFieldMapping } from '@/app/ops-analysis/utils/lineBarFieldMapping';
 import {
   getScreenWidgetScale,
   scaleScreenMetric,
@@ -55,6 +57,7 @@ interface TrendLineProps {
   loading?: boolean;
   onReady?: (ready: boolean) => void;
   config?: ValueConfig;
+  dataSource?: DatasourceItem;
   screenRenderContext?: ScreenRenderContext;
 }
 
@@ -116,6 +119,7 @@ const TrendLine: React.FC<TrendLineProps> = ({
   loading = false,
   onReady,
   config,
+  dataSource,
   screenRenderContext,
 }) => {
   const { t } = useTranslation();
@@ -142,10 +146,10 @@ const TrendLine: React.FC<TrendLineProps> = ({
   }, []);
 
   const transformData = (rawData: any) => {
-    return ChartDataTransformer.transformToLineBarData(rawData, {
-      dimensionField: config?.dimensionField,
-      valueField: config?.valueField,
-    });
+    return ChartDataTransformer.transformToLineBarData(
+      rawData,
+      toLineBarFieldMapping(config, dataSource?.field_schema),
+    );
   };
 
   const chartData = transformData(rawData);

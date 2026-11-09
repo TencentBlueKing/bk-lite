@@ -65,6 +65,13 @@ def test_serializer_rejects_legacy_id_binding_and_empty_projection():
     assert "output_projection" in empty_projection.errors
 
 
+def test_serializer_accepts_cmdb_id_input_binding():
+    from apps.alerts.serializers.enrichment import EnrichmentRuleModelSerializer
+
+    binding = EnrichmentRuleModelSerializer().validate_input_binding({"model_id": "resource_type", "inst_uuid": "cmdb_id"})
+    assert binding == {"model_id": "resource_type", "inst_uuid": "cmdb_id"}
+
+
 # ============================================================
 # Task 2: EnrichmentRuleModelFilter
 # ============================================================

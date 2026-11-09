@@ -1,13 +1,18 @@
+from django.db import transaction
 from rest_framework import serializers
 
 from apps.core.utils.loader import LanguageLoader
 from apps.core.utils.serializers import UsernameSerializer
-from apps.system_mgmt.models import IMNotificationChannel, IMNotificationSyncRun, IMNotificationUserMapping, IntegrationInstanceStatusChoices
+from apps.system_mgmt.models import IMNotificationChannel, IMNotificationSyncRun, IMNotificationUserMapping
 from apps.system_mgmt.providers import RuntimeApplicationService
 from apps.system_mgmt.providers.pack_i18n import resolve_bound_instance_provider_name
 from apps.system_mgmt.services import im_notification_service
-from apps.system_mgmt.services.capability_contract_service import CapabilityContractError, validate_im_notification_contract
-from apps.system_mgmt.services.capability_contract_service import get_integration_capability_availability
+from apps.system_mgmt.services.capability_contract_service import (
+    CapabilityContractError,
+    get_integration_capability_availability,
+    validate_im_notification_contract,
+)
+from apps.system_mgmt.services.notification_tag import assign_channel_tags, channel_tag_tokens, parse_tag_tokens
 
 
 class IMNotificationSyncRunSerializer(serializers.ModelSerializer):
@@ -32,6 +37,7 @@ class IMNotificationUserMappingSerializer(serializers.ModelSerializer):
 
 
 class IMNotificationChannelSerializer(UsernameSerializer):
+    tag = serializers.ListField(child=serializers.CharField(), required=False, write_only=True)
     integration_instance_name = serializers.SerializerMethodField()
     provider_key = serializers.SerializerMethodField()
     provider_name = serializers.SerializerMethodField()
@@ -50,7 +56,49 @@ class IMNotificationChannelSerializer(UsernameSerializer):
 
     class Meta:
         model = IMNotificationChannel
-        fields = "__all__"
+        fields = (
+            "id",
+            "name",
+            "integration_instance",
+            "integration_instance_name",
+            "provider_key",
+            "provider_name",
+            "dependency_status",
+            "enabled",
+            "description",
+            "status",
+            "display_status",
+            "platform_match_field",
+            "external_match_field",
+            "external_receive_field",
+            "schedule_config",
+            "team",
+            "display_sync_status",
+            "display_sync_summary",
+            "latest_sync_status",
+            "latest_sync_started_at",
+            "latest_sync_finished_at",
+            "latest_sync_summary",
+            "latest_sync_total_external_user_count",
+            "latest_sync_matched_count",
+            "latest_sync_unmatched_count",
+            "latest_sync_conflict_count",
+            "created_by",
+            "updated_by",
+            "domain",
+            "updated_by_domain",
+            "created_at",
+            "updated_at",
+            "tag",
+        )
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        data["tag"] = channel_tag_tokens(instance)
+        return data
+
+    def validate_tag(self, value):
+        return parse_tag_tokens(value)
 
     def validate_team(self, value):
         if isinstance(value, (int, str)):
@@ -73,7 +121,7 @@ class IMNotificationChannelSerializer(UsernameSerializer):
 
     def get_integration_instance_name(self, obj):
         return obj.integration_instance.name if obj.integration_instance_id else ""
-    
+
     def get_provider_key(self, obj):
         return obj.integration_instance.provider_key if obj.integration_instance_id else ""
 
@@ -140,13 +188,11 @@ class IMNotificationChannelSerializer(UsernameSerializer):
         if integration_instance is None:
             raise serializers.ValidationError({"integration_instance": "Integration instance is required"})
         changes_instance = bool(
-            self.instance
-            and "integration_instance" in attrs
-            and integration_instance.id != self.instance.integration_instance_id
+            self.instance and "integration_instance" in attrs and integration_instance.id != self.instance.integration_instance_id
         )
-        if (self.instance is None or changes_instance) and not get_integration_capability_availability(
-            integration_instance, "im_notification"
-        )["available"]:
+        if (self.instance is None or changes_instance) and not get_integration_capability_availability(integration_instance, "im_notification")[
+            "available"
+        ]:
             raise serializers.ValidationError({"integration_instance": "Integration instance im_notification capability is not ready"})
 
         runtime_service = RuntimeApplicationService()
@@ -172,14 +218,25 @@ class IMNotificationChannelSerializer(UsernameSerializer):
         return attrs
 
     def create(self, validated_data):
-        instance = super().create(validated_data)
+        pairs = validated_data.pop("tag", [])
+        with transaction.atomic():
+            instance = super().create(validated_data)
+            assign_channel_tags(instance, pairs, actor=self._actor())
         self._sync_periodic_task(instance)
         return instance
 
     def update(self, instance, validated_data):
-        instance = super().update(instance, validated_data)
+        tag_provided = "tag" in self.initial_data
+        pairs = validated_data.pop("tag", [])
+        with transaction.atomic():
+            instance = super().update(instance, validated_data)
+            if tag_provided:
+                assign_channel_tags(instance, pairs, actor=self._actor())
         self._sync_periodic_task(instance)
         return instance
+
+    def _actor(self):
+        return getattr(self.context.get("request"), "user", None)
 
     def _get_latest_run(self, obj):
         latest_run = getattr(obj, "_prefetched_latest_run", None)

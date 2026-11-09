@@ -83,7 +83,7 @@ from apps.apm.services.access import (
 from apps.apm.services.alerts import AlertHandlerConflict, AlertHandlerForbidden, AlertHandlerInvalid
 from apps.apm.services.contracts import IngestSnippetRequest, MetricDataState, ServiceErrorBreakdownQuery, ServiceMetricQuery
 from apps.apm.services.integration_configuration import CloudRegionConfigurationError
-from apps.apm.services.probe_artifacts import LANGUAGE_PROBE_ARTIFACTS, ProbeArtifactNotFound
+from apps.apm.services.probe_artifacts import ProbeArtifactNotFound, ProbeSelectionError, resolve_probe_artifact_name
 from apps.apm.services.status import ACTIVE_WINDOW, ARCHIVE_WINDOW
 from apps.apm.utils.locale_text import public_detail, request_text
 from apps.core.decorators.api_permission import HasPermission
@@ -299,7 +299,10 @@ class ApmIntegrationConfigurationViewSet(viewsets.GenericViewSet):
             "organization_links",
         )
         application = get_object_or_404(applications, application_id=data["application_id"])
-        probe_artifact_name = LANGUAGE_PROBE_ARTIFACTS.get(data["language"], "")
+        probe_artifact_name = resolve_probe_artifact_name(
+            data["language"],
+            data.get("probe_platform", "linux"),
+        )
         try:
             endpoints = self.service.resolve_region(
                 NodeMgmt(),
@@ -333,7 +336,14 @@ class ApmIntegrationConfigurationViewSet(viewsets.GenericViewSet):
                     environment=data["environment"],
                     probe_download_url=endpoints.probe_download_url,
                     sample_rate=data.get("sample_rate", 100),
+                    probe_platform=data.get("probe_platform", "linux"),
+                    process_executable=data.get("process_executable", ""),
                 )
+            )
+        except ProbeSelectionError as exc:
+            return Response(
+                {"code": exc.code, "detail": request_text(request, f"error.{exc.code}")},
+                status=status.HTTP_400_BAD_REQUEST,
             )
         except ProbeArtifactNotFound:
             return Response(
@@ -828,7 +838,10 @@ class ApmSloViewSet(viewsets.GenericViewSet):
 
     @HasPermission("services-Operate")
     def destroy(self, request, *args, **kwargs):
-        self.get_object().delete()
+        slo = self.get_object()
+        with transaction.atomic():
+            DjangoApmPolicyService(None, None).retire_policies_for_slo(slo, evaluated_at=timezone.now())
+            slo.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     def _set_enabled(self, request, *, enabled):
@@ -1181,7 +1194,17 @@ class ApmPolicyViewSet(viewsets.GenericViewSet):
         saved_policy = get_object_or_404(self.get_queryset(), id=policy_id) if policy_id else None
         try:
             policy = ApmPolicy(service=service, **values)
-            result = self._service().dry_run(policy, evaluated_at=timezone.now(), saved_policy=saved_policy)
+            organizations = payload.get("organizations")
+            if organizations is not None:
+                policy._scope_organization_ids = organizations
+            elif saved_policy is not None:
+                policy._scope_organization_ids = list(saved_policy.organization_links.values_list("organization", flat=True))
+            result = self._service().dry_run(
+                policy,
+                evaluated_at=timezone.now(),
+                saved_policy=saved_policy,
+                replay_hours=int(payload.get("replay_hours") or 0),
+            )
         except TelemetryStoreUnavailable as exc:
             return Response(telemetry_error_payload(exc), status=status.HTTP_503_SERVICE_UNAVAILABLE)
         except Exception as exc:

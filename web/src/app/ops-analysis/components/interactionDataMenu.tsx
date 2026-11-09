@@ -8,6 +8,7 @@ import { useInteractionMenuScale } from '@/app/ops-analysis/context/interactionM
 import { useInteractionSurface } from '@/app/ops-analysis/context/interactionSurface';
 import { shouldNavigateInteraction } from '@/app/ops-analysis/utils/interactionLink';
 import { useTranslation } from '@/utils/i18n';
+import { fullscreenPopupContainer } from '@/utils/fullscreenPopupContainer';
 
 interface InteractionDataMenuProps {
   open: boolean;
@@ -29,7 +30,7 @@ const MENU_RADIUS_PX = 6;
 const menuLength = (pixels: number, scale: number) => `calc(${pixels}px * ${scale})`;
 
 /**
- * 数据链接的右键菜单。锚点 portal 到 body，按视口 clientX/Y 定位，
+ * 数据链接的右键菜单。锚点 portal 到浏览器全屏节点，未全屏时仍是 body，按视口 clientX/Y 定位，
  * 避免大屏 CSS transform 把 fixed 算进缩放层。
  * 基准跟组件卡片一样紧凑（12px 字），再用倍数改字号、行高、内边距和圆角，不用 transform。
  * 弹出层带上当前 ConfigProvider 的 cssVar 类，大屏暗色主题不必留在主题容器内部。
@@ -75,7 +76,7 @@ const InteractionDataMenu: React.FC<InteractionDataMenuProps> = ({
     <Dropdown
       open
       autoAdjustOverflow
-      getPopupContainer={() => document.body}
+      getPopupContainer={fullscreenPopupContainer}
       overlayStyle={{ zIndex: 1100 }}
       menu={{
         items: [
@@ -117,7 +118,7 @@ const InteractionDataMenu: React.FC<InteractionDataMenuProps> = ({
         style={{ left: x, top: y }}
       />
     </Dropdown>,
-    document.body,
+    fullscreenPopupContainer(),
   );
 };
 

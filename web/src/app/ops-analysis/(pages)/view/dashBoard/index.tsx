@@ -1,6 +1,7 @@
 import {
   useState,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   forwardRef,
@@ -12,8 +13,8 @@ import ViewSelector from '@/app/ops-analysis/components/widgetSelector';
 import ViewConfig from '@/app/ops-analysis/components/widgetConfig';
 import { mergeSanitizedWidgetValueConfig, omitForeignChartTypeFields } from '@/app/ops-analysis/components/widgetConfig/utils/submitConfig';
 import DashboardCanvas from './components/dashboardCanvas';
+import ModuleLicenseCanvasEmpty from './components/moduleLicenseCanvasEmpty';
 import DashboardToolbar from './components/dashboardToolbar';
-import HomepageViewToolbar from '@/app/ops-analysis/components/homepageViewToolbar';
 import DashboardSubscriptionModal from '@/app/ops-analysis/components/dashboardSubscriptionModal';
 import ViewWorkspace from '../components/viewWorkspace';
 import { Modal, message, Select } from 'antd';
@@ -24,6 +25,12 @@ import { WidgetCsvExportRegistryProvider } from '@/app/ops-analysis/context/widg
 import { filterTemplateAsyncDependencies } from '@/app/ops-analysis/utils/filterTemplate';
 import { useTranslation } from '@/utils/i18n';
 import { useOpsAnalysis } from '@/app/ops-analysis/context/common';
+import {
+  useDashboardModuleAccess,
+  useDashboardSelectedGroup,
+} from '@/app/ops-analysis/hooks/useDashboardModuleAccess';
+import { DashboardViewAuthProvider } from '@/app/ops-analysis/context/dashboardViewAuth';
+import { useDashboardViewAuthSnapshot } from '@/app/ops-analysis/hooks/useDashboardViewAuthSnapshot';
 import { useCanvasResources } from '@/app/ops-analysis/hooks/useCanvasResources';
 import { useCanvasShareAction } from '@/app/ops-analysis/hooks/useCanvasShareAction';
 import {
@@ -40,11 +47,21 @@ import { DirItem } from '@/app/ops-analysis/types';
 import { useDataSourceManager } from '@/app/ops-analysis/hooks/useDataSource';
 import { useUnifiedFilter } from '@/app/ops-analysis/hooks/useUnifiedFilter';
 import { useDashBoardApi } from '@/app/ops-analysis/api/dashBoard';
+import {
+  readPlaybackInitialDetail,
+  usePlaybackInitialDetail,
+} from '@/app/ops-analysis/context/playbackInitialDetail';
+import {
+  prepareDashboardPlaybackDocument,
+  type DashboardPlaybackDetail,
+  type DashboardPlaybackDocument,
+} from './playbackDocument';
 import { useDirectoryApi } from '@/app/ops-analysis/api';
 import useBtnPermissions from '@/hooks/usePermissions';
 import { useCanvasPeriodicRefresh } from '@/app/ops-analysis/hooks/useCanvasPeriodicRefresh';
+import { canvasPeriodicRefreshEnabled } from '@/app/ops-analysis/utils/canvasPlaybackRefresh';
 import { relabelApplicationTopologyFilters } from '@/app/ops-analysis/utils/applicationTopologyCanvasFilter';
-import { canPersistCanvasRefreshInterval, normalizeCanvasRefreshInterval } from '@/app/ops-analysis/utils/canvasRefreshInterval';
+import { canPersistCanvasRefreshInterval } from '@/app/ops-analysis/utils/canvasRefreshInterval';
 import type { CanvasRuntimeRefreshCause } from '@/app/ops-analysis/utils/canvasRefreshTimer';
 import {
   UnifiedFilterBar,
@@ -59,6 +76,7 @@ import {
   getOpsChartTheme,
   resolveOpsChartThemeName,
 } from '@/app/ops-analysis/utils/chartTheme';
+import { resolveDashboardChrome } from '@/app/ops-analysis/utils/homepageDashboardSurface';
 import { exportDashboardToPdf } from '@/app/ops-analysis/utils/exportPdf';
 import {
   AppViewFullscreenExit,
@@ -90,6 +108,12 @@ import {
   removeDashboardGroupHeader,
   sanitizeCollapsedGroups,
 } from '@/app/ops-analysis/utils/dashboardGroups';
+import {
+  isModuleLicenseCanvasEmpty,
+  selectDashboardViewRenderWidgetIds,
+  shouldHoldDashboardRenderSignal,
+} from '@/app/ops-analysis/utils/dashboardGroupViewVisibility';
+import { isCanvasDataSourceLookupDecided } from '@/app/ops-analysis/utils/widgetRequestVersion';
 import {
   buildDashboardRenderSignal,
   emitDashboardRenderSignal,
@@ -128,19 +152,12 @@ import {
   applySelectedOrganizationToFilterValues,
   fillMissingOrganizationFilterValues,
   isOrganizationFilterDefinition,
-  normalizeStoredFilterState,
   buildFilterConfigConfirmSnapshot,
   recomputeTimeRangeValuesFromDefaults,
   resolveCanvasOrganizationId,
 } from '@/app/ops-analysis/utils/unifiedFilterState';
 import { useShareOrganization } from '@/app/ops-analysis/context/shareOrganization';
-import { useUserInfoContext } from '@/context/userInfo';
 import { copyDashboardWidget } from '@/app/ops-analysis/utils/widgetCopy';
-import {
-  migrateFilterBindings,
-  migrateParamItemsFromStringList,
-  logStringParamMigrationWarnings,
-} from '@/app/ops-analysis/utils/stringParamMultipleMigrate';
 
 interface DashboardProps {
   selectedDashboard?: DirItem | null;
@@ -148,10 +165,16 @@ interface DashboardProps {
   shareSessionId?: string;
   getDashboardDetailOverride?: (id: string | number) => Promise<any>;
   renderMode?: boolean;
+  /** 订阅渲染身份的授权 App 名。renderMode 下替代 get_client。 */
+  renderAuthorizedAppNames?: readonly string[] | null;
+  /** 分享链接配置身份的授权 App 名。shareMode 下替代打开者的 get_client。 */
+  shareAuthorizedAppNames?: readonly string[] | null;
   renderFilterValues?: Record<string, FilterValue>;
   renderDataSourceIds?: number[];
   /** 登录首页：只读已保存内容，隐藏筛选条和编辑工具。 */
   homepageMode?: boolean;
+  /** 轮播播放：只读展示，隐藏工具栏、筛选条和编辑入口，数据仍走登录态接口。 */
+  playbackMode?: boolean;
 }
 
 export interface DashboardRef {
@@ -162,11 +185,15 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
   ({
     selectedDashboard,
     shareMode = false,
+    shareSessionId,
     getDashboardDetailOverride,
     renderMode = false,
+    renderAuthorizedAppNames = null,
+    shareAuthorizedAppNames = null,
     renderFilterValues,
     renderDataSourceIds,
     homepageMode = false,
+    playbackMode = false,
   }, ref) => {
     const { t } = useTranslation();
     const labelStoredFilters = useCallback(
@@ -178,7 +205,11 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
       [t],
     );
     const { data: session } = useSession();
-    const { selectedGroup } = useUserInfoContext();
+    const selectedGroup = useDashboardSelectedGroup(renderMode);
+    const { authorizedAppNames, appAccessReady } = useDashboardModuleAccess(
+      renderMode || shareMode,
+      shareMode ? shareAuthorizedAppNames : renderAuthorizedAppNames,
+    );
     const shareOrganization = useShareOrganization();
     const selectedOrganizationId = resolveCanvasOrganizationId({
       shareMode,
@@ -202,7 +233,12 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
       (dataSource?: string | number) => findDataSourceRef.current(dataSource),
       [dataSourceManager.dataSources],
     );
-    const { namespaceList, loadCanvasNamespaces } = useOpsAnalysis();
+    const {
+      namespaceList,
+      loadCanvasNamespaces,
+      canvasDataSourceLookupStatus,
+      resetCanvasDataSourceLookup,
+    } = useOpsAnalysis();
     const { syncCanvasResources } = useCanvasResources();
     const [isEditMode, setIsEditMode] = useState(false);
     const [addModalVisible, setAddModalVisible] = useState(false);
@@ -213,6 +249,17 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
     const [collapsedGroups, setCollapsedGroups] = useState<
       Record<string, true>
     >({});
+    const viewAuthSnapshot = useDashboardViewAuthSnapshot({
+      layout,
+      dataSources: dataSourceManager.dataSources,
+      dataSourcesReady: isCanvasDataSourceLookupDecided(canvasDataSourceLookupStatus),
+      isEditMode,
+      canvasDataId: selectedDashboard?.data_id,
+      shareSessionId,
+      authorizedAppNames,
+      appAccessReady,
+      enabled: true,
+    });
     const [groupNameModalVisible, setGroupNameModalVisible] = useState(false);
     const [groupNameDraft, setGroupNameDraft] = useState('');
     const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
@@ -458,11 +505,51 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
       titleLabelsSettledRef.current = !titleLabelsPending;
     }
 
+    const renderSignalWidgetIds = useMemo(() => {
+      if (!renderMode) {
+        return widgetLayoutItems.map((item) => item.i);
+      }
+      return selectDashboardViewRenderWidgetIds({
+        items: layout,
+        mode: isEditMode ? 'edit' : 'view',
+        resourcesReady: viewAuthSnapshot.resourcesReady,
+        frozen: viewAuthSnapshot.frozen,
+        dataSourceLookupStatus: canvasDataSourceLookupStatus,
+        isWidgetUnauthorized: viewAuthSnapshot.isWidgetUnauthorized,
+      });
+    }, [
+      canvasDataSourceLookupStatus,
+      isEditMode,
+      layout,
+      renderMode,
+      viewAuthSnapshot.frozen,
+      viewAuthSnapshot.isWidgetUnauthorized,
+      viewAuthSnapshot.resourcesReady,
+      widgetLayoutItems,
+    ]);
+
     const flushRenderSignal = useCallback(() => {
       if (!renderMode || emittedRenderSignalRef.current) return;
+      if (!viewAuthSnapshot.resourcesReady || !viewAuthSnapshot.frozen) return;
+      if (shouldHoldDashboardRenderSignal({
+        loading,
+        layoutReadyDashboardId: collapsedGroupsLayoutReadyId,
+        dashboardId: selectedDashboard?.data_id,
+      })) {
+        return;
+      }
+      const dashboardId = selectedDashboard?.data_id || 'unknown';
+      if (renderSignalWidgetIds.length === 0) {
+        void emitPreparedRenderSignal({
+          type: 'report-ready',
+          dashboardId: String(dashboardId),
+          widgets: [],
+        });
+        return;
+      }
       const signal = buildDashboardRenderSignal(
-        selectedDashboard?.data_id || 'unknown',
-        widgetLayoutItems.map((item) => item.i),
+        dashboardId,
+        renderSignalWidgetIds,
         renderResultsRef.current,
       );
       if (!signal) return;
@@ -471,12 +558,20 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
       }
       void emitPreparedRenderSignal(signal);
     }, [
+      collapsedGroupsLayoutReadyId,
       emitPreparedRenderSignal,
+      loading,
       renderMode,
+      renderSignalWidgetIds,
       selectedDashboard?.data_id,
       titleLabelsPending,
-      widgetLayoutItems,
+      viewAuthSnapshot.frozen,
+      viewAuthSnapshot.resourcesReady,
     ]);
+
+    useEffect(() => {
+      flushRenderSignal();
+    }, [flushRenderSignal]);
 
     const handleWidgetRenderStatus = useCallback(
       (result: DashboardWidgetRenderResult) => {
@@ -556,6 +651,9 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
       );
     }, [namespaceOptions, namespaceDraftId, t]);
 
+    const playbackDetail = usePlaybackInitialDetail();
+    const playbackDetailRef = useRef(playbackDetail);
+    playbackDetailRef.current = playbackDetail;
     const dashboardLoadSeqRef = useRef(0);
     const loadCanvasNamespacesRef = useRef(loadCanvasNamespaces);
     const syncDashboardCanvasResourcesRef = useRef(syncDashboardCanvasResources);
@@ -564,6 +662,100 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
     syncDashboardCanvasResourcesRef.current = syncDashboardCanvasResources;
     selectedDashboardRef.current = selectedDashboard;
     const dashboardId = selectedDashboard?.data_id;
+    // 订阅页每次 lookup 状态更新都会给出新的 filter_values 引用；按内容签名依赖，
+    // 避免 lookup 失败后反复 loading→error，把已决画布又打回整页 Spin。
+    const renderFilterValuesSignature = JSON.stringify(renderFilterValues ?? null);
+    const renderFilterValuesRef = useRef(renderFilterValues);
+    renderFilterValuesRef.current = renderFilterValues;
+
+    // 换盘先丢掉上一张的数据源代数和筛选，再让本次加载占用新代数。
+    // 若复位落在播放种子的同步 lookup 之后，完成态会被打回 loading，加载门不再打开。
+    useEffect(() => {
+      resetCanvasDataSourceLookup();
+      collapsedGroupsHydratedKeyRef.current = null;
+      skipCollapsedGroupsPersistRef.current = false;
+      setCollapsedGroupsLayoutReadyId(null);
+      setIsEditMode(false);
+      setAddModalVisible(false);
+      setConfigDrawerVisible(false);
+      setCurrentConfigItem(undefined);
+      setIsNewComponentConfig(false);
+      setGroupNameModalVisible(false);
+      setGroupNameDraft('');
+      setEditingGroupId(null);
+      setIsCreatingGroupName(false);
+      setSaving(false);
+      setDashboardReloadVersion(0);
+      setRefreshCause('initial');
+      setSavedRefreshInterval(0);
+      setFilterSearchVersion(0);
+      setNamespaceSearchVersion(0);
+      setWidgetReloadVersions({});
+      setAppliedFilterDefinitions([]);
+      setAppliedFilterValues({});
+      setNamespaceDraftId(undefined);
+      setAppliedNamespaceId(undefined);
+      setUndoStack([]);
+      setRedoStack([]);
+      setPendingNewWidgetGroupId(null);
+    }, [resetCanvasDataSourceLookup, selectedDashboard?.data_id]);
+
+    const commitDashboardPlaybackDocument = useCallback((
+      playbackDocument: DashboardPlaybackDocument,
+      canvasId: string | number,
+    ) => {
+      if (playbackDocument.layout.length) {
+        setLayout(playbackDocument.layout);
+        setOriginalLayout([...playbackDocument.layout]);
+      } else {
+        setLayout([]);
+        setOriginalLayout([]);
+        void loadCanvasNamespacesRef.current([]);
+      }
+      setCollapsedGroupsLayoutReadyId(canvasId);
+      setOtherConfig(playbackDocument.other);
+      setOriginalOtherConfig({ ...playbackDocument.other });
+      setSavedRefreshInterval(playbackDocument.refreshInterval);
+      setDefinitions(playbackDocument.definitions);
+      setFilterValues(playbackDocument.values);
+      setAppliedFilterDefinitions(playbackDocument.definitions);
+      setAppliedFilterValues(playbackDocument.values);
+      setOriginalDefinitions([...playbackDocument.definitions]);
+      setLoading(false);
+    }, []);
+
+    useLayoutEffect(() => {
+      if (!playbackMode || dashboardId == null) {
+        return;
+      }
+      const detail = readPlaybackInitialDetail<DashboardPlaybackDetail>(
+        playbackDetail,
+        'dashboard',
+        dashboardId,
+      );
+      if (!detail) {
+        return;
+      }
+      commitDashboardPlaybackDocument(prepareDashboardPlaybackDocument(detail, {
+        canvasId: dashboardId,
+        labelFilters: labelStoredFilters,
+        syncValues: syncFilterValuesWithDefinitions,
+        organizationId: selectedOrganizationIdRef.current,
+        homepageMode,
+        renderMode,
+        renderFilterValues: renderFilterValuesRef.current,
+      }), dashboardId);
+    }, [
+      commitDashboardPlaybackDocument,
+      dashboardId,
+      homepageMode,
+      labelStoredFilters,
+      playbackDetail,
+      playbackMode,
+      renderFilterValuesSignature,
+      renderMode,
+      syncFilterValuesWithDefinitions,
+    ]);
 
     useEffect(() => {
       const requestId = dashboardLoadSeqRef.current + 1;
@@ -590,6 +782,35 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
           return;
         }
         try {
+          if (playbackMode) {
+            const seeded = readPlaybackInitialDetail<DashboardPlaybackDetail>(
+              playbackDetailRef.current,
+              'dashboard',
+              dashboard.data_id,
+            );
+            if (!seeded) {
+              setLoading(true);
+            }
+            const dashboardData = seeded ?? await getDashboardDetailRef.current(dashboard.data_id);
+            if (!isCurrentLoad()) {
+              return;
+            }
+            const playbackDocument = prepareDashboardPlaybackDocument(dashboardData, {
+              canvasId: dashboard.data_id,
+              labelFilters: labelStoredFilters,
+              syncValues: syncFilterValuesWithDefinitions,
+              organizationId: selectedOrganizationIdRef.current,
+              homepageMode,
+              renderMode,
+              renderFilterValues: renderFilterValuesRef.current,
+            });
+            if (!isCurrentLoad()) {
+              return;
+            }
+            commitDashboardPlaybackDocument(playbackDocument, dashboard.data_id);
+            void syncDashboardCanvasResourcesRef.current(playbackDocument.layout);
+            return;
+          }
           setLoading(true);
           const dashboardData = await getDashboardDetailRef.current(
             dashboard.data_id,
@@ -597,96 +818,20 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
           if (!isCurrentLoad()) {
             return;
           }
-          const preparedLayout = deserializeDashboardGridStackLayout(
-            dashboardData.view_sets,
-          ).map((item) => {
-            if (!isDashboardWidgetItem(item) || !item.valueConfig) {
-              return item;
-            }
-            const valueConfig = item.valueConfig;
-            return {
-              ...item,
-              valueConfig: {
-                ...valueConfig,
-                ...(valueConfig.filterBindings
-                  ? {
-                    filterBindings: migrateFilterBindings(
-                      valueConfig.filterBindings,
-                    ),
-                  }
-                  : {}),
-                ...(valueConfig.dataSourceParams
-                  ? (() => {
-                    const migratedParams = migrateParamItemsFromStringList(
-                      valueConfig.dataSourceParams,
-                    );
-                    logStringParamMigrationWarnings(migratedParams.warnings, {
-                      canvasId: dashboard.data_id,
-                    });
-                    return { dataSourceParams: migratedParams.params };
-                  })()
-                  : {}),
-              },
-            };
+          const playbackDocument = prepareDashboardPlaybackDocument(dashboardData, {
+            canvasId: dashboard.data_id,
+            labelFilters: labelStoredFilters,
+            syncValues: syncFilterValuesWithDefinitions,
+            organizationId: selectedOrganizationIdRef.current,
+            homepageMode,
+            renderMode,
+            renderFilterValues,
           });
-          const migratedGrid = migrateDashboardGridLayout(
-            preparedLayout,
-            dashboardData.other || {},
-          );
-          const nextLayout = migratedGrid.layout;
-          await syncDashboardCanvasResourcesRef.current(nextLayout);
+          await syncDashboardCanvasResourcesRef.current(playbackDocument.layout);
           if (!isCurrentLoad()) {
             return;
           }
-          if (nextLayout.length) {
-            setLayout(nextLayout);
-            setOriginalLayout([...nextLayout]);
-          } else {
-            setLayout([]);
-            setOriginalLayout([]);
-            void loadCanvasNamespacesRef.current([]);
-          }
-
-          setCollapsedGroupsLayoutReadyId(dashboard.data_id);
-
-          const savedOtherConfig = migratedGrid.other;
-          setOtherConfig(savedOtherConfig);
-          setOriginalOtherConfig({ ...savedOtherConfig });
-          setSavedRefreshInterval(
-            normalizeCanvasRefreshInterval(dashboardData.refresh_interval),
-          );
-
-          // Handle both legacy (unifiedFilters) and new (direct array) format
-          const rawFilters = dashboardData.filters;
-          const storedFilters = normalizeStoredFilterState(
-            rawFilters,
-            renderMode ? (renderFilterValues ?? {}) : {},
-            { canvasId: dashboard.data_id },
-          );
-          const loadedDefinitions = labelStoredFilters(storedFilters.definitions);
-          const migratedValues = storedFilters.values;
-
-          const filledValues = fillMissingOrganizationFilterValues(
-            loadedDefinitions,
-            syncFilterValuesWithDefinitions(
-              loadedDefinitions,
-              migratedValues,
-            ),
-            selectedOrganizationIdRef.current,
-          );
-          const initialValues = homepageMode
-            ? applySelectedOrganizationToFilterValues(
-              loadedDefinitions,
-              filledValues,
-              selectedOrganizationIdRef.current,
-            )
-            : filledValues;
-
-          setDefinitions(loadedDefinitions);
-          setFilterValues(initialValues);
-          setAppliedFilterDefinitions(loadedDefinitions);
-          setAppliedFilterValues(initialValues);
-          setOriginalDefinitions([...loadedDefinitions]);
+          commitDashboardPlaybackDocument(playbackDocument, dashboard.data_id);
         } catch (error) {
           if (!isCurrentLoad()) {
             return;
@@ -727,11 +872,14 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
         }
       };
     }, [
+      commitDashboardPlaybackDocument,
       dashboardId,
       homepageMode,
       labelStoredFilters,
+      playbackMode,
       renderMode,
-      renderFilterValues,
+      renderFilterValuesSignature,
+      syncFilterValuesWithDefinitions,
     ]);
 
     useEffect(() => {
@@ -778,36 +926,6 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
       filterValues,
       selectedOrganizationId,
     ]);
-
-    // 监听 selectedDashboard 的变化，重置状态
-    useEffect(() => {
-      collapsedGroupsHydratedKeyRef.current = null;
-      skipCollapsedGroupsPersistRef.current = false;
-      setCollapsedGroupsLayoutReadyId(null);
-      setIsEditMode(false);
-      setAddModalVisible(false);
-      setConfigDrawerVisible(false);
-      setCurrentConfigItem(undefined);
-      setIsNewComponentConfig(false);
-      setGroupNameModalVisible(false);
-      setGroupNameDraft('');
-      setEditingGroupId(null);
-      setIsCreatingGroupName(false);
-      setSaving(false);
-      setDashboardReloadVersion(0);
-      setRefreshCause('initial');
-      setSavedRefreshInterval(0);
-      setFilterSearchVersion(0);
-      setNamespaceSearchVersion(0);
-      setWidgetReloadVersions({});
-      setAppliedFilterDefinitions([]);
-      setAppliedFilterValues({});
-      setNamespaceDraftId(undefined);
-      setAppliedNamespaceId(undefined);
-      setUndoStack([]);
-      setRedoStack([]);
-      setPendingNewWidgetGroupId(null);
-    }, [selectedDashboard?.data_id]);
 
     useEffect(() => {
       const selectedDashboardId = selectedDashboard?.data_id;
@@ -1047,6 +1165,9 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
           setSavedRefreshInterval(applied.refreshInterval);
         }
         message.success(t('dashboard.aiApplySuccess'));
+        if (applied.warnings?.length) {
+          message.warning(t('paramInput.dynamic.proposalQueryIgnored'));
+        }
         void syncDashboardCanvasResources(syncedLayout).then((canvasDataSources) => {
           const latest = applyProposalRef.current;
           if (!latest.isEditMode || latest.shareMode || latest.appliedNamespaceId !== undefined) return;
@@ -1173,7 +1294,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
         canvasId: selectedDashboard?.data_id,
         savedInterval: savedRefreshInterval,
         canPersist: canPersistRefreshInterval,
-        enabled: !renderMode && !isEditMode,
+        enabled: canvasPeriodicRefreshEnabled(!renderMode && !isEditMode, playbackMode),
         patchRefreshInterval: async (interval) => {
           if (!selectedDashboard?.data_id) {
             return;
@@ -1279,6 +1400,8 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
             barMax: config.barMax,
             dimensionField: config.dimensionField,
             valueField: config.valueField,
+            valueFields: config.valueFields,
+            seriesField: config.seriesField,
             multiValueLabelField: config.multiValueLabelField,
             multiValueValueField: config.multiValueValueField,
             eventTimeline: config.eventTimeline,
@@ -1814,6 +1937,8 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
                   barMax: values.barMax,
                   dimensionField: values.dimensionField,
                   valueField: values.valueField,
+                  valueFields: values.valueFields,
+                  seriesField: values.seriesField,
                   multiValueLabelField: values.multiValueLabelField,
                   multiValueValueField: values.multiValueValueField,
                   eventTimeline: values.eventTimeline,
@@ -1997,9 +2122,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
       void openShare(selectedDashboard?.data_id);
     };
 
-    const dashboardToolbar = renderMode ? null : homepageMode ? (
-      <HomepageViewToolbar dashboardId={selectedDashboard?.data_id} />
-    ) : (
+    const dashboardToolbar = renderMode || homepageMode || playbackMode ? null : (
       <DashboardToolbar
         selectedDashboard={selectedDashboard}
         chartTheme={chartTheme}
@@ -2034,13 +2157,23 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
       />
     );
 
-    const dashboardFilterBar = !homepageMode && (definitions.length > 0 ||
+    const moduleLicenseCanvasEmpty = isModuleLicenseCanvasEmpty({
+      mode: isEditMode ? 'edit' : 'view',
+      resourcesReady: viewAuthSnapshot.resourcesReady,
+      frozen: viewAuthSnapshot.frozen,
+      dataSourceLookupStatus: canvasDataSourceLookupStatus,
+      items: layout,
+      isWidgetUnauthorized: viewAuthSnapshot.isWidgetUnauthorized,
+    });
+
+    const dashboardFilterBar = !moduleLicenseCanvasEmpty && !homepageMode && (definitions.length > 0 ||
       namespaceSelectorElement) && (
       <UnifiedFilterBar
         definitions={definitions}
         values={filterValues}
         onSearch={handleFilterSearch}
         onReset={handleFilterReset}
+        onApplyInitial={setAppliedFilterValues}
         prefixContent={namespaceSelectorElement}
         popupZIndex={isFullscreen ? 1200 : undefined}
       />
@@ -2054,9 +2187,24 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
         }
         data-export-expand="true"
       >
+        {moduleLicenseCanvasEmpty ? (
+          <ModuleLicenseCanvasEmpty />
+        ) : (
+        <DashboardViewAuthProvider
+          value={{
+            frozen: viewAuthSnapshot.frozen,
+            scenePermissions: viewAuthSnapshot.scenePermissions,
+            isWidgetUnauthorized: viewAuthSnapshot.isWidgetUnauthorized,
+            isScenePermissionDenied: viewAuthSnapshot.isScenePermissionDenied,
+          }}
+        >
         <DashboardCanvas
           dashboardId={selectedDashboard?.data_id}
-          loading={loading}
+          // 冻结前不挂载画布，避免模块许可结论出来之前先打出取数 403。
+          loading={
+            loading
+            || (!isEditMode && (!viewAuthSnapshot.resourcesReady || !viewAuthSnapshot.frozen))
+          }
           isEditMode={isEditMode}
           isDarkTheme={isDarkTheme}
           key={selectedDashboard?.data_id ?? 'dashboard'}
@@ -2073,7 +2221,9 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
           appliedFilterDefinitions={appliedFilterDefinitions}
           appliedNamespaceId={appliedNamespaceId}
           selectedDashboardLocked={selectedDashboard?.is_build_in}
-          csvExportHidden={homepageMode}
+          csvExportHidden={homepageMode || playbackMode}
+          homepageSurface={homepageMode && !isDarkTheme}
+          playbackMode={playbackMode}
           shareMode={shareMode}
           isFullscreen={isFullscreen}
           onOpenAddModal={openAddModal}
@@ -2093,6 +2243,8 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
           scrollRootRef={canvasScrollRef}
           onWidgetRenderStatus={handleWidgetRenderStatus}
         />
+        </DashboardViewAuthProvider>
+        )}
       </div>
     );
 
@@ -2121,7 +2273,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
         }`}
         data-dashboard-edit-mode={isEditMode && !shareMode ? 'true' : 'false'}
         style={{
-          backgroundColor: isDarkTheme ? 'var(--color-bg-2)' : '#f7f8fa',
+          backgroundColor: resolveDashboardChrome(homepageMode && !isDarkTheme, isDarkTheme).canvasBackground,
           zIndex: isFullscreen ? 1100 : undefined,
         }}
       >
@@ -2139,14 +2291,19 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
             loading={loading}
             titleFallback={t('dashboard.canvasTitle')}
             emptyDescription={t('dashboard.selectDashboardFirst')}
-            headerVisible={!isFullscreen}
-            filterBarVisible
+            headerVisible={!isFullscreen && !playbackMode}
+            filterBarVisible={!playbackMode}
             compactHeader={homepageMode}
+            shellClassName={homepageMode && !isDarkTheme ? 'bg-transparent' : undefined}
             toolbar={dashboardToolbar}
             filterBar={dashboardFilterBar}
             contentRef={exportRef}
             contentClassName={
-              isDarkTheme ? 'bg-[var(--color-bg-2)]' : 'bg-[#f7f8fa]'
+              homepageMode && !isDarkTheme
+                ? 'bg-transparent'
+                : isDarkTheme
+                  ? 'bg-[var(--color-bg-2)]'
+                  : 'bg-[#f7f8fa]'
             }
           >
             {dashboardCanvas}

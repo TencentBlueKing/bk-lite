@@ -2,12 +2,13 @@ from urllib.parse import urlencode
 
 import requests
 
-from apps.system_mgmt.providers.log import logger
 from apps.system_mgmt.providers.base import BaseLoginAuthAdapter
+from apps.system_mgmt.providers.log import logger
 from apps.system_mgmt.providers.runtime import CapabilityExecutionResult
 
 from .client import (
     WECOM_DEFAULT_LOGIN_AUTH_AUTHORIZE_URL,
+    WECOM_DEFAULT_LOGIN_AUTH_OAUTH_AUTHORIZE_URL,
     WECOM_DEFAULT_LOGIN_AUTH_USER_INFO_URL,
     _get_access_token,
     _request_get,
@@ -15,6 +16,12 @@ from .client import (
     _sanitize_url_for_log,
     _validate_credentials,
 )
+
+LOGIN_CHANNEL_QR = "qr"
+LOGIN_CHANNEL_OAUTH = "oauth"
+EVIDENCE_OAUTH = "oauth"
+WECOM_OAUTH_SCOPE = "snsapi_base"
+WECOM_OAUTH_FRAGMENT = "wechat_redirect"
 
 
 class WeComLoginAuthAdapter(BaseLoginAuthAdapter):
@@ -34,18 +41,54 @@ class WeComLoginAuthAdapter(BaseLoginAuthAdapter):
                 "WeCom login redirect configuration is incomplete",
                 code="provider.invalid_config",
             )
-        authorize_url = _resolved_url(
-            config, "login_auth_authorize_url", WECOM_DEFAULT_LOGIN_AUTH_AUTHORIZE_URL
-        )
-        query = urlencode({
-            "appid": corp_id,
-            "agentid": agent_id,
-            "redirect_uri": redirect_uri,
-            "state": kwargs.get("state", ""),
-        })
+        # 缺省与 qr 保持 PC 扫码。oauth 是移动端网页授权，身份仍走下面的 getuserinfo。
+        channel = str(kwargs.get("login_channel") or LOGIN_CHANNEL_QR)
+        if channel == LOGIN_CHANNEL_OAUTH:
+            authorize_url = _resolved_url(
+                config,
+                "login_auth_oauth_authorize_url",
+                WECOM_DEFAULT_LOGIN_AUTH_OAUTH_AUTHORIZE_URL,
+            )
+            query = urlencode(
+                {
+                    "appid": corp_id,
+                    "redirect_uri": redirect_uri,
+                    "response_type": "code",
+                    "scope": WECOM_OAUTH_SCOPE,
+                    "agentid": agent_id,
+                    "state": kwargs.get("state", ""),
+                }
+            )
+            login_url = f"{authorize_url}?{query}#{WECOM_OAUTH_FRAGMENT}"
+        else:
+            authorize_url = _resolved_url(config, "login_auth_authorize_url", WECOM_DEFAULT_LOGIN_AUTH_AUTHORIZE_URL)
+            query = urlencode(
+                {
+                    "appid": corp_id,
+                    "agentid": agent_id,
+                    "redirect_uri": redirect_uri,
+                    "state": kwargs.get("state", ""),
+                }
+            )
+            login_url = f"{authorize_url}?{query}"
         return CapabilityExecutionResult.success_result(
             "WeCom login URL generated",
-            payload={"authorize_url": f"{authorize_url}?{query}"},
+            payload={"authorize_url": login_url},
+        )
+
+    @classmethod
+    def describe_client_login(cls, config, provider_key, capability_key, **kwargs):
+        config = config or {}
+        corp_id = str(config.get("corp_id") or "").strip()
+        agent_id = str(config.get("agent_id") or "").strip()
+        if not corp_id or not agent_id:
+            return CapabilityExecutionResult.success_result(
+                "WeCom client login is not configured",
+                payload={"evidence_modes": []},
+            )
+        return CapabilityExecutionResult.success_result(
+            "WeCom client login is available",
+            payload={"evidence_modes": [EVIDENCE_OAUTH]},
         )
 
     @classmethod
@@ -61,13 +104,9 @@ class WeComLoginAuthAdapter(BaseLoginAuthAdapter):
         token, error = _get_access_token(config)
         if error:
             return error
-        user_info_url = _resolved_url(
-            config, "login_auth_user_info_url", WECOM_DEFAULT_LOGIN_AUTH_USER_INFO_URL
-        )
+        user_info_url = _resolved_url(config, "login_auth_user_info_url", WECOM_DEFAULT_LOGIN_AUTH_USER_INFO_URL)
         try:
-            identity, response = _request_get(
-                user_info_url, config, token, {"code": code}, return_response=True
-            )
+            identity, response = _request_get(user_info_url, config, token, {"code": code}, return_response=True)
         except requests.Timeout:
             return CapabilityExecutionResult.failed_result(
                 "WeCom login request timed out",

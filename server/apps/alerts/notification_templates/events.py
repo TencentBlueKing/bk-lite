@@ -47,6 +47,8 @@ EVENT_SCALAR_FIELDS = {
     "push_source_id": "推送来源",
     "rule_id": "规则 ID",
     "source_name": "告警源",
+    "samples": "日志样本",
+    "search_url": "检索链接",
 }
 EVENT_JSON_ROOTS = {"tags", "labels", "enrichment"}
 ORDER_CHOICES = {"-start_time", "start_time", "-received_at", "received_at"}

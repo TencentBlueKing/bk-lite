@@ -118,6 +118,11 @@ class LogAlertLifecycleNotifier:
             "labels": self._labels(alert, include_operator=True),
         }
 
+    def build_recovered_event(self, alert) -> dict[str, Any]:
+        event = self.build_closed_event(alert)
+        event["action"] = "recovered"
+        return event
+
     @staticmethod
     def _parse_channel_result(send_result):
         if not isinstance(send_result, dict):
@@ -323,3 +328,44 @@ class LogAlertLifecycleNotifier:
 
     def notify_closed(self, alert, max_attempts=None) -> tuple[bool, dict]:
         return self._notify(self.build_closed_event(alert), max_attempts=max_attempts)
+
+    def notify_recovered(self, alert, max_attempts=None) -> tuple[bool, dict]:
+        return self._notify(self.build_recovered_event(alert), max_attempts=max_attempts)
+
+
+def deliver_log_alert_lifecycle(alert_id, event_time, action):
+    """关闭与自动恢复共用的告警中心投递。失败留下 notice=False，由补偿任务重投。"""
+    from apps.log.models.policy import Alert
+
+    try:
+        alert = Alert.objects.select_related("policy", "collect_type").prefetch_related("policy__policyorganization_set").get(id=alert_id)
+        notifier = LogAlertLifecycleNotifier(alert.policy)
+        if not alert.policy.notice or not notifier.is_alert_center_channel():
+            return
+        if action == AlertConstants.STATUS_RECOVERED:
+            success, _result = notifier.notify_recovered(alert)
+            expected_status = AlertConstants.STATUS_RECOVERED
+        else:
+            success, _result = notifier.notify_closed(alert)
+            expected_status = AlertConstants.STATUS_CLOSED
+        if success:
+            Alert.objects.filter(
+                id=alert_id,
+                status=expected_status,
+                end_event_time=event_time,
+                notice=False,
+            ).update(notice=True)
+    except Exception as exc:
+        if action == AlertConstants.STATUS_RECOVERED:
+            log_logger.warning(
+                "event=log_alert_recovered_notify_failed alert_id=%s error_type=%s",
+                alert_id,
+                type(exc).__name__,
+                exc_info=True,
+            )
+            return
+        log_logger.error(
+            "日志告警关闭事件推送异常 alert=%s",
+            alert_id,
+            exc_info=True,
+        )

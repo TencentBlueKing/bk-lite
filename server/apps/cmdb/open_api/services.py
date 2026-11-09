@@ -51,7 +51,7 @@ def serialize_instance(instance):
         "_created_at": "created_at",
         "_updated_at": "updated_at",
     }
-    hidden = {"_id", "_labels", "permission"}
+    hidden = {"_id", "_labels", "permission", "_collect_sources"}
     return {aliases.get(key, key): value for key, value in instance.items() if key not in hidden}
 
 
@@ -205,6 +205,7 @@ class CMDBOpenAPIService:
             data,
             self.context.user.username,
             allowed_org_ids=[self.context.team_id],
+            audit_source="OpenAPI",
         )
         return serialize_instance(result)
 
@@ -224,6 +225,7 @@ class CMDBOpenAPIService:
             data,
             self.context.user.username,
             allowed_org_ids=[self.context.team_id],
+            audit_source="OpenAPI",
         )
         return serialize_instance(result)
 
@@ -236,6 +238,7 @@ class CMDBOpenAPIService:
             self.context.user.roles,
             [deleted_uuid],
             self.context.user.username,
+            audit_source="OpenAPI",
         )
         return {"deleted": [deleted_uuid]}
 
@@ -335,6 +338,7 @@ class CMDBOpenAPIService:
                 items,
                 self.context.user.username,
                 [self.context.team_id],
+                audit_source="OpenAPI",
             )
         except InstanceBatchError as exc:
             _raise_open_api_batch_error(exc)
@@ -392,6 +396,7 @@ class CMDBOpenAPIService:
                 update_data,
                 self.context.user.username,
                 [self.context.team_id],
+                audit_source="OpenAPI",
             )
         except InstanceBatchError as exc:
             _raise_open_api_batch_error(exc)
@@ -410,6 +415,7 @@ class CMDBOpenAPIService:
                 self.context.user.roles,
                 inst_uuids,
                 self.context.user.username,
+                audit_source="OpenAPI",
             )
         except InstanceBatchError as exc:
             _raise_open_api_batch_error(exc)

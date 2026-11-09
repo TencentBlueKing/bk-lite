@@ -14,6 +14,7 @@ from datetime import date, datetime
 from datetime import timezone as dt_timezone
 from html.parser import HTMLParser
 from typing import Any, Mapping
+from urllib.parse import quote
 
 from apps.alerts.notification_templates.events import (
     MAX_EVENT_BLOCKS,
@@ -122,6 +123,7 @@ class _EmailHTMLValidator(HTMLParser):
         self.errors: list[str] = []
         self.marker_pattern = marker_pattern
         self.text_markers: list[str] = []
+        self.href_markers: list[str] = []
 
     def handle_data(self, data):
         self.text_markers.extend(self.marker_pattern.findall(data))
@@ -147,8 +149,13 @@ class _EmailHTMLValidator(HTMLParser):
             if name in self.URL_ATTRIBUTES:
                 if normalized_tag != "a" or name != "href":
                     self.errors.append(f"属性 {name} 不允许加载外部资源")
-                elif not self._safe_url(lowered):
+                # 动态片段只会被 URL 编码；协议必须来自模板固定部分。
+                elif not self._safe_url(self.marker_pattern.sub("value", lowered)) and not self.marker_pattern.fullmatch(lowered):
                     self.errors.append(f"属性 {name} 使用了不安全的 URL")
+                else:
+                    markers = self.marker_pattern.findall(value)
+                    self.href_markers.extend(markers)
+                    self.text_markers.extend(markers)
             if name == "style" and any(token in lowered for token in ("url(", "image-set(", "expression(", "@import", "behavior:", "\\", "/*")):
                 self.errors.append("style 中不允许外部资源或可执行表达式")
 
@@ -233,31 +240,48 @@ def validate_source(source: str, *, channel_type: str, is_subject: bool = False,
         raise TemplateValidationError("存在未闭合或不受支持的模板标记")
 
     if channel_type == "email" and not is_subject:
-        # 用合法 HTML 名称替换变量后再解析，避免 <{{ path }}> 被解析器当作
-        # 普通文本。变量必须完整地出现在文本节点中。唯一例外是 style 里的
-        # {{ alert.level_color }}，它会被替换成安全色值后再做结构检查。
-        html_source = _neutralize_level_color_in_style(source)
-        html_matches = list(TOKEN_PATTERN.finditer(html_source))
-        prefix = "bklitetemplatevariable"
-        decoded_source = html.unescape(html_source).lower()
-        while prefix in decoded_source:
-            prefix += "x"
-        markers = [f"{prefix}{index}end" for index in range(len(html_matches))]
-        marker_iter = iter(markers)
-        marked_source = TOKEN_PATTERN.sub(lambda _match: next(marker_iter), html_source)
-        parser = _EmailHTMLValidator(re.compile(rf"{prefix}\d+end"))
-        try:
-            parser.feed(marked_source)
-            if parser.rawdata:
-                raise TemplateValidationError("HTML 标签或注释未闭合")
-            parser.close()
-        except Exception as exc:
-            raise TemplateValidationError("HTML 结构无法解析") from exc
-        if parser.errors:
-            raise TemplateValidationError(parser.errors[0])
-        if parser.text_markers != markers:
-            raise TemplateValidationError("变量只能放在 HTML 文本节点中")
+        _validate_email_html(source)
     return paths
+
+
+def _validate_email_html(source: str) -> set[int]:
+    """校验 HTML，并返回允许在 a[href] 中进行 URL 编码的变量位置。"""
+    matches = list(TOKEN_PATTERN.finditer(source))
+    prefix = "bklitetemplatevariable"
+    while prefix in html.unescape(source).lower():
+        prefix += "x"
+    markers = [f"{prefix}{index}end" for index in range(len(matches))]
+    marker_iter = iter(markers)
+    marked_source = TOKEN_PATTERN.sub(lambda _match: next(marker_iter), source)
+    color_markers = {markers[index] for index, match in enumerate(matches) if match.group(2) and match.group(2).strip() == "alert.level_color"}
+    exempt_markers = set()
+
+    def neutralize_color(match):
+        value = match.group("value")
+        for marker in color_markers:
+            if marker in value:
+                exempt_markers.add(marker)
+                value = value.replace(marker, LEVEL_COLOR_FALLBACK)
+        return f"{match.group('prefix')}{value}{match.group('quote')}"
+
+    marked_source = STYLE_ATTRIBUTE_PATTERN.sub(neutralize_color, marked_source)
+    parser = _EmailHTMLValidator(re.compile(rf"{prefix}\d+end"))
+    try:
+        parser.feed(marked_source)
+        if parser.rawdata:
+            raise TemplateValidationError("HTML 标签或注释未闭合")
+        parser.close()
+    except Exception as exc:
+        raise TemplateValidationError("HTML 结构无法解析") from exc
+    if parser.errors:
+        raise TemplateValidationError(parser.errors[0])
+    if parser.text_markers != [marker for marker in markers if marker not in exempt_markers]:
+        raise TemplateValidationError("变量只能放在 HTML 文本节点中")
+    href_markers = set(parser.href_markers)
+    for index, match in enumerate(matches):
+        if markers[index] in href_markers and match.group(1) is not None:
+            raise TemplateValidationError("href 中不能使用事件区块")
+    return {match.start() for index, match in enumerate(matches) if markers[index] in href_markers}
 
 
 def wecom_level_color(level_id: Any) -> str:
@@ -363,6 +387,7 @@ def render_source(
     scope: str = "single_alert",
 ) -> TemplateRenderResult:
     validate_source(source, channel_type=channel_type, is_subject=is_subject, scope=scope)
+    href_positions = _validate_email_html(source) if channel_type == "email" and not is_subject else set()
     missing_fields: list[str] = []
     replacement_bytes = 0
     display_timezone = context.get("display_timezone") or DEFAULT_DISPLAY_TIMEZONE
@@ -396,13 +421,15 @@ def render_source(
         if not present:
             missing_fields.append(path)
         serialized = _serialize_value(value, display_timezone)
+        if match.start() in href_positions:
+            serialized = quote(serialized, safe="")
         replacement_bytes += len(serialized.encode("utf-8"))
         if replacement_bytes + len(source.encode("utf-8")) > MAX_OUTPUT_BYTES:
             raise TemplateValidationError("模板渲染结果不能超过 256KB")
         if is_subject:
             return serialized
         if channel_type == "email":
-            return html.escape(serialized, quote=False)
+            return html.escape(serialized, quote=match.start() in href_positions)
         if channel_type in MARKDOWN_CHANNELS:
             return _escape_markdown(serialized)
         return serialized

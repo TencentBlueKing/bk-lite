@@ -17,6 +17,17 @@ def search_model_info(model_id: str):
     return models[0]
 
 
+def search_models_by_ids(model_ids: list[str]) -> dict[str, dict]:
+    """按模型 ID 一次取回模型实体。重复 ID 只查一次。"""
+    unique_ids = list(dict.fromkeys(model_id for model_id in model_ids if model_id))
+    if not unique_ids:
+        return {}
+    query_data = [{"field": "model_id", "type": "str[]", "value": unique_ids}]
+    with GraphClient() as ag:
+        models, _ = ag.query_entity(MODEL, query_data)
+    return {model["model_id"]: model for model in models if isinstance(model, dict) and model.get("model_id")}
+
+
 def model_association_info_search(model_asst_id: str):
     with GraphClient() as ag:
         query_data = {

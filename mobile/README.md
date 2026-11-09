@@ -43,6 +43,47 @@ pnpm build:h5
 
 H5 固定部署在 `/mobile/h5`，使用同源 `/api/proxy` 和 `/api/auth`，不需要配置 API 地址或 basePath。
 
+### 移动端第三方登录
+
+Mobile 复用系统管理里已经启用的登录认证，不单独建一套应用或用户。登录方式列表看公开绑定的 `client_login.evidence_modes` 是否包含 `oauth`，并再按当前客户端过滤：标准 OAuth（如飞书）在系统浏览器与对应容器都能选；企业微信只在企业微信容器内展示。选中后点主按钮才发起认证，走现有 `start_login_auth` 并带 `login_channel=oauth`。回调地址与 PC 相同：`{域名}/api/v1/core/api/login_auth/callback/`。成功或失败都回到 `/mobile/h5/auth/external`，再建立会话或退回登录页（默认回到账号密码）。
+
+PC 不传 `login_channel`。企业微信因此仍是扫码；飞书、个人微信的授权地址也不因这个参数改变。
+
+#### 飞书
+
+- 工作台免登：飞书或 Lark 客户端打开移动端主页，页面调用 JSAPI `requestAccess` 取 code，再走现有 `login_auth` 换票。客户端低于 6.9 时回退 `requestAuthCode`。
+- 免登失败，或不在飞书容器里：登录页显示 OAuth 按钮。
+- 飞书开放平台需配置：重定向 URL（上面的回调）、H5 可信域名、移动端主页 `{域名}/mobile/h5/`。
+- Server 出网需能访问 `open.feishu.cn` 与 `accounts.feishu.cn`。
+
+#### 企业微信
+
+工作台免登不用 JS-SDK，也不调用 `getAuthCode`。企业微信容器（User-Agent 含 `wxwork`）发现启用的企业微信登录绑定后，自动打开官方网页授权：
+
+`https://open.weixin.qq.com/connect/oauth2/authorize?...&scope=snsapi_base&agentid={AgentId}#wechat_redirect`
+
+`snsapi_base` 在企业微信内静默拿到 `code`。服务端仍用现有 `cgi-bin/auth/getuserinfo` 换成 `userid`，再按登录绑定匹配平台用户。失败时退回登录页，可再点企业微信入口或使用账号密码。个人微信（只有 `MicroMessenger`、没有 `wxwork`）和普通手机浏览器**不会**自动跳转，登录方式选择区也**不展示**企业微信（官方网页授权只能在企业微信内打开）。
+
+企业微信管理后台：
+
+1. 自建应用的网页授权及 JS-SDK 可信域名，覆盖回调域名。
+2. OAuth 回调填 `{域名}/api/v1/core/api/login_auth/callback/`，与 PC 扫码是同一个地址。
+3. 应用主页填 `{域名}/mobile/h5/`。
+4. 可见范围包含要登录的成员。
+5. BK-Lite 集成中心填企业 ID、应用 Secret、AgentId，并验证登录认证。私有化部署把「网页授权地址」改成实际地址，缺省是 `https://open.weixin.qq.com/connect/oauth2/authorize`。
+6. 系统管理里启用企业微信登录绑定。外部字段用 `userid`。建议先同步用户；未匹配策略为拒绝时，通讯录里没有的成员不能登录。
+
+Server 出网需能访问 `qyapi.weixin.qq.com`（换票和身份）。企业微信内置浏览器要能打开 `open.weixin.qq.com`。
+
+真机自测：
+
+1. 企业微信工作台打开该应用，应静默进入移动端首页，不经过扫码页。
+2. 把成员移出可见范围或停用绑定后再打开，应回到登录页并出现失败提示；此时登录方式里可看到企业微信回落入口，账号密码仍可登录。
+3. 手机系统浏览器打开 `{域名}/mobile/h5/login`，应只有账号密码和飞书等可在浏览器完成的方式，**不要**出现企业微信。
+4. PC 登录页的企业微信仍是扫码。飞书工作台免登和飞书登录页 OAuth 保持可用。
+
+钉钉尚未接入。飞书免登仍是厂商自己的 JSAPI；新增标准 OAuth 厂商声明 `oauth` 后，登录页一般能列出按钮，但企业微信这类只能在对应客户端内授权的厂商仍有容器限制。
+
 ### Tauri 前端产物
 
 ```bash

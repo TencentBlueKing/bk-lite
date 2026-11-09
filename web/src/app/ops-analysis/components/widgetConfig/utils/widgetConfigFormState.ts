@@ -20,11 +20,14 @@ import {
   getDefaultScreenWidgetAppearance,
   resolveScreenWidgetAppearance,
 } from '@/app/ops-analysis/(pages)/view/screen/utils/layoutUtils';
+import { normalizeInputConfig } from '@/app/ops-analysis/utils/paramInputConfigUtils';
+import { matchFilterDefinitionForParam } from '@/app/ops-analysis/utils/scanUnifiedFilterParams';
 import {
   getBindableFilterParams,
   getFilterDefinitionId,
 } from '@/app/ops-analysis/utils/widgetDataTransform';
 import { readWidgetInteraction } from '@/app/ops-analysis/utils/interactionLink';
+import { normalizeLineBarFieldList } from '@/app/ops-analysis/utils/lineBarFieldMapping';
 import { readSingleValueStyle } from '@/app/ops-analysis/utils/singleValueStyle';
 import type { WidgetConfigFormValues } from './submitConfig';
 
@@ -139,18 +142,24 @@ export const computePreviewDefinitions = (
   );
   const bindableParams = getBindableFilterParams(dataSource?.params);
   bindableParams.forEach((param, index) => {
-    const id = getFilterDefinitionId(param.name, param.type);
-    if (!existingMap.has(id)) {
-      existingMap.set(id, {
-        id,
-        key: param.name,
-        name: param.alias_name || param.name,
-        type: param.type,
-        defaultValue: (param.value as FilterValue) ?? null,
-        order: existingDefinitions.length + index,
-        enabled: true,
-      });
+    if (matchFilterDefinitionForParam(existingDefinitions, param)) return;
+    if (existingDefinitions.some((definition) =>
+      definition.key === param.name && definition.type === param.type)) {
+      return;
     }
+    const id = getFilterDefinitionId(param.name, param.type);
+    if (existingMap.has(id)) return;
+    const inputConfig = normalizeInputConfig(param);
+    existingMap.set(id, {
+      id,
+      key: param.name,
+      name: param.alias_name || param.name,
+      type: param.type,
+      defaultValue: (param.value as FilterValue) ?? null,
+      order: existingDefinitions.length + index,
+      enabled: true,
+      ...(inputConfig ? { inputConfig } : {}),
+    });
   });
   return Array.from(existingMap.values());
 };
@@ -192,6 +201,8 @@ function buildClearedChartDependentFormFields() {
     barMax: undefined,
     dimensionField: undefined,
     valueField: undefined,
+    valueFields: [] as string[],
+    seriesField: undefined,
     multiValueLabelField: undefined,
     multiValueValueField: undefined,
     nodeGraphIdentityMode: 'ip' as const,
@@ -361,6 +372,14 @@ export function applyOpenedValueConfigToFormValues(
   if (valueConfig?.valueField !== undefined) {
     formValues.valueField = valueConfig.valueField;
   }
+  const openedValueFields = normalizeLineBarFieldList(valueConfig?.valueFields);
+  // 旧配置只有 valueField。不要补成 valueFields，否则再保存会从宽松校验变成严格校验。
+  if (openedValueFields.length > 0) {
+    formValues.valueFields = openedValueFields;
+  } else if (!valueConfig?.valueField?.trim()) {
+    formValues.valueFields = [];
+  }
+  formValues.seriesField = valueConfig?.seriesField?.trim() || undefined;
   formValues.pieScalarFields = valueConfig?.pieScalarFields?.length
     ? valueConfig.pieScalarFields
     : [];

@@ -55,6 +55,7 @@ import TreeSelector from '@/app/monitor/components/treeSelector';
 import EditConfig from './updateConfig';
 import EditInstance from './editInstance';
 import TemplateConfigDrawer from './templateConfigDrawer';
+import { canUnbindCollectTemplate } from './templateConfigDrawerLogic';
 import { buildMonitorObjectSidebarTree } from '@/app/monitor/utils/monitorObject';
 import CompactEmptyState from '@/components/compact-empty-state';
 import Permission from '@/components/permission';
@@ -72,6 +73,7 @@ import {
   sameMonitorInstance
 } from './instanceConfigLink';
 import PluginTooltipContent, { PluginTooltipTrigger } from './pluginTooltip';
+import ReassignCollectorModal from './reassignCollectorModal';
 import { getAssetSearchPlaceholderKey } from '@/app/monitor/utils/assetSearchPlaceholder';
 
 type TableRowSelection<T extends object = object> =
@@ -99,6 +101,9 @@ const Asset = () => {
   const { getMonitorObject } = useMonitorApi();
   const {
     deleteMonitorInstance,
+    clearRemovedCollector,
+    reassignCollectorNode,
+    unbindMonitorPlugin,
     getInstanceListByPrimaryObject,
     updateCollectTemplateConfigs
   } = useIntegrationApi();
@@ -160,6 +165,8 @@ const Asset = () => {
     searchparams.get('monitor_plugin_id') || ''
   );
   const [updatingKeys, setUpdatingKeys] = useState<React.Key[]>([]);
+  const [reassignInstanceId, setReassignInstanceId] = useState<string>('');
+  const [collectorRefreshKey, setCollectorRefreshKey] = useState(0);
   const [modal, modalContextHolder] = Modal.useModal();
 
   useEffect(() => {
@@ -233,7 +240,10 @@ const Asset = () => {
       objName: findByMonitorId(objects, objectId)?.name || '',
       monitorObjId: objectId,
       plugins: record.plugins || [],
-      showTemplateList: options?.showTemplateList ?? true
+      showTemplateList: options?.showTemplateList ?? true,
+      allowUnbind: Array.isArray(record.permission)
+        ? record.permission.includes('Operate')
+        : false
     });
   };
 
@@ -334,6 +344,9 @@ const Asset = () => {
         }),
         render: (_, record: any) => {
           const plugins = record.plugins || [];
+          const canUnbind =
+            Array.isArray(record.permission) &&
+            record.permission.includes('Operate');
           if (!plugins.length) return <>--</>;
 
           return (
@@ -388,6 +401,7 @@ const Asset = () => {
                     packVersionText={packVersionText}
                     collectMode={plugin.collect_mode}
                     collectorNodes={plugin.collector_nodes}
+                    removedNodeLabel={t('monitor.integrations.collectorNodeRemoved')}
                   />
                 );
 
@@ -402,6 +416,11 @@ const Asset = () => {
                       <PluginTooltipTrigger
                         ariaLabel={`${plugin.display_name || '--'}，${statusText}`}
                         color={statusInfo.color}
+                        closable={
+                          canUnbind &&
+                          canUnbindCollectTemplate(plugin, plugins)
+                        }
+                        onClose={() => confirmUnbindTemplate(record, plugin)}
                         onActivate={() =>
                           openTemplateDrawer(record, {
                             selectedConfigId: isAuto ? plugin.name : undefined,
@@ -428,6 +447,43 @@ const Asset = () => {
                   </React.Fragment>
                 );
               })}
+              {plugins.some((plugin: { collector_nodes?: { removed?: boolean }[] }) =>
+                (plugin.collector_nodes || []).some((node) => node.removed)
+              ) ? (
+                <span className="inline-flex items-center">
+                  <span>
+                    {t('monitor.integrations.collectorNodeRemoved')}
+                  </span>
+                  <Button
+                    type="link"
+                    size="small"
+                    onClick={() => {
+                      Modal.confirm({
+                        title: t('monitor.integrations.clearCollectorConfig'),
+                        content: t('monitor.integrations.clearCollectorConfigConfirm'),
+                        okText: t('common.confirm'),
+                        cancelText: t('common.cancel'),
+                        onOk: async () => {
+                          await clearRemovedCollector({
+                            instance_id: record.instance_id
+                          });
+                          message.success(t('common.updateSuccess'));
+                          setCollectorRefreshKey((key) => key + 1);
+                        }
+                      });
+                    }}
+                  >
+                    {t('monitor.integrations.clearCollectorConfig')}
+                  </Button>
+                  <Button
+                    type="link"
+                    size="small"
+                    onClick={() => setReassignInstanceId(String(record.instance_id))}
+                  >
+                    {t('monitor.integrations.reassignCollectorNode')}
+                  </Button>
+                </span>
+                ) : null}
             </div>
           );
         }
@@ -655,7 +711,7 @@ const Asset = () => {
         const key = String(column.key);
         let width = 150;
         if (key === ASSET_IP_COLUMN_KEY) width = 160;
-        else if (column.key === 'plugins') width = 320;
+        else if (column.key === 'plugins') width = 380;
         else if (column.key === 'organization') width = 140;
         else if (column.key === 'instance_name') width = 180;
         withWidth = { ...column, width };
@@ -918,6 +974,11 @@ const Asset = () => {
     }
   };
 
+  useEffect(() => {
+    if (!collectorRefreshKey || !objectId) return;
+    void getAssetInsts(objectId);
+  }, [collectorRefreshKey]);
+
   const getObjects = async (type?: string) => {
     try {
       setTreeLoading(type !== 'timer');
@@ -955,6 +1016,51 @@ const Asset = () => {
       }),
       { attachCloudDerivatives: false }
     );
+  };
+
+  const confirmUnbindTemplate = (row: any, plugin: any) => {
+    const templateName = plugin?.display_name || plugin?.name || '--';
+    modal.confirm({
+      title: t('monitor.integrations.unbindTemplateTitle'),
+      content: t('monitor.integrations.unbindTemplateContent', '', {
+        name: templateName
+      }),
+      centered: true,
+      okText: t('common.delete'),
+      cancelText: t('common.cancel'),
+      okButtonProps: { danger: true },
+      onOk: async () => {
+        await unbindMonitorPlugin({
+          instance_id: row.instance_id,
+          monitor_plugin_id: plugin.plugin_id
+        });
+        message.success(t('monitor.integrations.unbindTemplateSuccess'));
+        const keyword = instanceConfigSearchKeyword(
+          String(row.instance_id || ''),
+          String(row.instance_name || '')
+        );
+        const [refreshed] = await Promise.all([
+          getInstanceListByPrimaryObject({
+            id: String(objectId),
+            page: 1,
+            page_size: 50,
+            name: keyword
+          }),
+          getAssetInsts(objectId)
+        ]);
+        const refreshedRow = (refreshed?.results || []).find(
+          (item: { instance_id?: unknown }) =>
+            sameMonitorInstance(item.instance_id, row.instance_id)
+        );
+        const nextPlugins = Array.isArray(refreshedRow?.plugins)
+          ? refreshedRow.plugins
+          : (row.plugins || []).filter(
+            (item: { plugin_id?: unknown }) =>
+              String(item.plugin_id) !== String(plugin.plugin_id)
+          );
+        templateDrawerRef.current?.syncPlugins(row.instance_id, nextPlugins);
+      }
+    });
   };
 
   const deleteInstConfirm = async (row: any) => {
@@ -1491,9 +1597,36 @@ const Asset = () => {
           if (objectId) void fetchUnassignedCount(objectId);
         }}
       />
+      <ReassignCollectorModal
+        open={Boolean(reassignInstanceId)}
+        title={t('monitor.integrations.reassignCollectorNode')}
+        placeholder={t('monitor.integrations.selectCollectorNode')}
+        confirmText={t('common.confirm')}
+        cancelText={t('common.cancel')}
+        onCancel={() => setReassignInstanceId('')}
+        onConfirm={async (nodeId) => {
+          await reassignCollectorNode({
+            instance_id: reassignInstanceId,
+            node_id: nodeId
+          });
+          message.success(t('common.updateSuccess'));
+          setReassignInstanceId('');
+          await getAssetInsts(objectId);
+        }}
+      />
       <TemplateConfigDrawer
         ref={templateDrawerRef}
         onSuccess={() => getAssetInsts(objectId)}
+        onRequestUnbind={({ instanceId, instanceName, plugin, plugins }) =>
+          confirmUnbindTemplate(
+            {
+              instance_id: instanceId,
+              instance_name: instanceName,
+              plugins
+            },
+            plugin
+          )
+        }
       />
     </>
   );

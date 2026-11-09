@@ -1,7 +1,11 @@
 from django.db import models, transaction
 from django.utils import timezone as django_timezone
 
-from apps.core.utils.permission_cache import clear_user_permission_cache
+
+class EmploymentStatus(models.TextChoices):
+    UNSPECIFIED = "unspecified", "未设置"
+    EMPLOYED = "employed", "在职"
+    RESIGNED = "resigned", "离职"
 
 
 class User(models.Model):
@@ -12,6 +16,23 @@ class User(models.Model):
     phone = models.CharField(max_length=32, null=True, blank=True)
     password = models.CharField(max_length=128)
     disabled = models.BooleanField(default=False)
+    manager = models.ForeignKey(
+        "self",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="direct_reports",
+    )
+    employment_status = models.CharField(
+        max_length=32,
+        choices=EmploymentStatus.choices,
+        default=EmploymentStatus.UNSPECIFIED,
+        db_index=True,
+    )
+    job_title = models.CharField(max_length=128, blank=True, default="")
+    job_level = models.CharField(max_length=128, blank=True, default="")
+    employee_no = models.CharField(max_length=64, blank=True, default="")
+    account_expires_at = models.DateTimeField(null=True, blank=True)
     locale = models.CharField(max_length=32, default="zh-Hans")
     timezone = models.CharField(max_length=32, default="Asia/Shanghai")
     group_list = models.JSONField(default=list)
@@ -29,7 +50,7 @@ class User(models.Model):
         unique_together = ("username", "domain")
 
     def save(self, *args, **kwargs):
-        """重写save方法，自动更新password_last_modified"""
+        """重写save方法，自动更新password_last_modified。"""
         # 如果是更新操作，检查密码是否变化
         if self.pk:
             try:
@@ -43,6 +64,10 @@ class User(models.Model):
                 pass
         with transaction.atomic():
             super().save(*args, **kwargs)
+            # 顶层导入 permission_cache 会在 user 模块尚未绑定 EmploymentStatus 时
+            # 经服务层回到本模块，URL 加载因此失败。
+            from apps.core.utils.permission_cache import clear_user_permission_cache
+
             clear_user_permission_cache(self.username, self.domain)
 
     @staticmethod

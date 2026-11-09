@@ -103,7 +103,7 @@ PROVIDER_MANIFEST = ProviderManifest.model_validate(
                                 "default": "department_id",
                                 "options": [
                                     {"value": "department_id", "label": "department_id"},
-                                    {"value": "open_department_id", "label": "open_department_id"}, 
+                                    {"value": "open_department_id", "label": "open_department_id"},
                                 ],
                             },
                             {
@@ -121,7 +121,20 @@ PROVIDER_MANIFEST = ProviderManifest.model_validate(
                         ],
                     }
                 ],
-                "available_external_fields": ["user_id", "open_id", "name", "email", "mobile", "department_ids"],
+                "available_external_fields": [
+                    "user_id",
+                    "open_id",
+                    "name",
+                    "email",
+                    "mobile",
+                    "department_ids",
+                    "job_title",
+                    "employee_no",
+                    "job_level_id",
+                    "leader_user_id",
+                    "is_resigned",
+                    "is_frozen",
+                ],
             },
             "im_notification_form": {
                 "title": "IM notification",
@@ -169,6 +182,13 @@ PROVIDER_MANIFEST = ProviderManifest.model_validate(
                         "field_type": "string",
                         "required": False,
                         "default": "https://open.feishu.cn/open-apis/authen/v1/access_token",
+                    },
+                    {
+                        "key": "login_auth_jsapi_token_url",
+                        "label": "JSAPI user token URL",
+                        "field_type": "string",
+                        "required": False,
+                        "default": "https://accounts.feishu.cn/oauth/v3/token",
                     },
                     {
                         "key": "login_auth_user_info_url",

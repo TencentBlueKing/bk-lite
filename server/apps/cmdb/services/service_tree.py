@@ -22,7 +22,8 @@ from apps.cmdb.services.application_system import (
 from apps.cmdb.services.instance import InstanceManage
 from apps.cmdb.services.instance_identity import optional_inst_uuid
 from apps.core.exceptions.base_app_exception import ValidationAppException
-from apps.core.logger import cmdb_logger as logger, safe_log_value
+from apps.core.logger import cmdb_logger as logger
+from apps.core.logger import safe_log_value
 
 APPLICATION_MODEL = "application"
 SYSTEM_MODEL = "system"
@@ -204,7 +205,7 @@ def layer_schema_from(
 
 
 def _layer_schema() -> dict[str, Any]:
-    from apps.cmdb.language.service import SettingLanguage
+    from apps.cmdb.language.service import catalog_display_name
     from apps.cmdb.services.model import ModelManage
 
     pending = [SYSTEM_MODEL]
@@ -227,14 +228,22 @@ def _layer_schema() -> dict[str, Any]:
             for peer in (str(edge.get("src_model_id") or ""), str(edge.get("dst_model_id") or "")):
                 if peer and peer not in seen and peer != HOST_MODEL:
                     pending.append(peer)
-    language = SettingLanguage("zh-Hans")
     models = []
     for model_id in seen:
         info = ModelManage.search_model_info(model_id) or {}
         if not info:
             continue
         info = dict(info)
-        info["model_name"] = language.get_val("MODEL", model_id) or info.get("model_name") or model_id
+        info["model_name"] = (
+            catalog_display_name(
+                "MODEL",
+                model_id,
+                info.get("model_name"),
+                customized=info.get("model_name_customized"),
+                language="zh-Hans",
+            )
+            or model_id
+        )
         models.append(info)
     return layer_schema_from(associations, models)
 
@@ -1193,6 +1202,7 @@ class ServiceTreeService:
             {"inst_name": inst_name},
             operator,
             allowed_org_ids=allowed_org_ids,
+            audit_source="服务树",
         )
         return {"inst_uuid": node_uuid, "inst_name": inst_name, "kind": node["kind"]}
 
@@ -1212,7 +1222,7 @@ class ServiceTreeService:
         node = _find_tree_node(tree, node_uuid)
         if node is None or node["kind"] == SYSTEM_MODEL:
             raise ValidationAppException("不能删除该节点")
-        InstanceManage.instance_batch_delete_by_uuids(user_groups, roles, [node_uuid], operator)
+        InstanceManage.instance_batch_delete_by_uuids(user_groups, roles, [node_uuid], operator, audit_source="服务树")
         logger.info(
             "event=service_tree_node_deleted system_uuid=%s node_uuid=%s kind=%s",
             system.get("inst_uuid"),
@@ -1428,6 +1438,7 @@ def _create_instance(model_id: str, instance_info: dict[str, Any], operator: str
         dict(instance_info),
         operator,
         allowed_org_ids=allowed_org_ids,
+        audit_source="服务树",
     )
 
 
@@ -1472,11 +1483,7 @@ def _lookup_hosts_for_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     uuid_identifiers = [normalized for identifier in identifiers if (normalized := _optional_import_host_uuid(identifier))]
     by_name = InstanceManage.search_inst_batch(HOST_MODEL, inst_names=identifiers) or {}
     by_uuid = InstanceManage.search_inst_batch(HOST_MODEL, inst_uuids=uuid_identifiers) or {}
-    hosts = {
-        item["inst_uuid"]: item
-        for item in list(by_name.values()) + list(by_uuid.values())
-        if item.get("inst_uuid")
-    }
+    hosts = {item["inst_uuid"]: item for item in list(by_name.values()) + list(by_uuid.values()) if item.get("inst_uuid")}
     missing_ips = [value for value in identifiers if value not in by_name and value not in by_uuid]
     if missing_ips:
         with GraphClient() as graph:

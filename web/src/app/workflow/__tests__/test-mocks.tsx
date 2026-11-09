@@ -10,6 +10,16 @@ vi.mock('@/utils/i18n', () => ({
   }),
 }));
 
+vi.mock('@/context/userInfo', () => ({
+  useUserInfoContext: () => ({
+    userId: '1',
+    username: 'admin',
+    selectedGroup: { id: '7', name: '当前组织' },
+    flatGroups: [{ id: '7', name: '当前组织' }],
+    groupTree: [],
+  }),
+}));
+
 vi.mock('@/components/permission', () => ({
   default: ({ children, instPermissions }: PropsWithChildren<{ instPermissions?: string[] }>) => (
     <span data-instance-permissions={instPermissions?.join(',')}>{children}</span>

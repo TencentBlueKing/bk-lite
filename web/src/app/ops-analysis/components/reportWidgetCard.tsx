@@ -48,6 +48,7 @@ interface ReportWidgetCardProps {
   dataSource?: DatasourceItem;
   editing: boolean;
   shareMode?: boolean;
+  playbackMode?: boolean;
   isFullscreen?: boolean;
   renderMode?: boolean;
   pdfExportPreparing?: boolean;
@@ -71,6 +72,7 @@ const ReportWidgetCard: React.FC<ReportWidgetCardProps> = ({
   dataSource,
   editing,
   shareMode = false,
+  playbackMode = false,
   isFullscreen = false,
   renderMode = false,
   pdfExportPreparing = false,
@@ -129,7 +131,7 @@ const ReportWidgetCard: React.FC<ReportWidgetCardProps> = ({
     setNodeRef(element);
   };
 
-  const exportEntry = resolveWidgetCsvExportEntry({
+  const exportEntry = playbackMode ? 'none' : resolveWidgetCsvExportEntry({
     surface: 'report',
     chartType: section.valueConfig.chartType,
     editMode: editing,
@@ -138,7 +140,7 @@ const ReportWidgetCard: React.FC<ReportWidgetCardProps> = ({
     renderMode: renderMode || pdfExportPreparing,
     rawData: exportRawData,
   });
-  const menuKeys = buildDashboardWidgetMenuKeys({
+  const menuKeys = playbackMode ? [] : buildDashboardWidgetMenuKeys({
     surface: 'report',
     isEditMode: editing,
     shareMode,

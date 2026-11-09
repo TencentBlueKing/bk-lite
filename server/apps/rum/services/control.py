@@ -27,6 +27,17 @@ def control_unavailable(exc: BaseException | None) -> bool:
     return isinstance(exc, ControlError) and exc.code == "unavailable"
 
 
+def _nats_auth_rejection(exc: BaseException) -> bool:
+    """Broker rejected the credentials. Retrying only repeats the same denial."""
+    text = str(exc).lower()
+    return "authorization violation" in text or "permissions violation" in text
+
+
+async def _ignore_nats_client_error(exc: BaseException) -> None:
+    # nats-py otherwise logs this exception itself. The request boundary owns it.
+    del exc
+
+
 class ControlPlane(Protocol):
     def available(self) -> bool:
         ...
@@ -255,6 +266,8 @@ class NatsControlClient:
             except Exception as exc:  # noqa: BLE001 — map transport failures
                 last_exc = exc
                 self._abandon_loop()
+                if _nats_auth_rejection(exc):
+                    break
                 if attempt == 0:
                     continue
         logger.warning(
@@ -307,7 +320,14 @@ class NatsControlClient:
                     await nc.close()
                 except Exception:  # noqa: BLE001 — stale socket; nothing to recover
                     pass
-            options: dict[str, Any] = {"connect_timeout": self._timeout}
+            # Auth failures must surface on this attempt. Leaving reconnect on
+            # lets nats-py sit in "Authorization Violation" until the outer budget.
+            options: dict[str, Any] = {
+                "connect_timeout": self._timeout,
+                "allow_reconnect": False,
+                "max_reconnect_attempts": 0,
+                "error_cb": _ignore_nats_client_error,
+            }
             if self._user:
                 options["user"] = self._user
                 options["password"] = self._password

@@ -1,13 +1,25 @@
 FROM ghcr.io/tencentblueking/bk-lite/server-base:latest
 
+# CVE-2026-111497：更新系统解码库；软件源未提供补丁时禁止生成发行镜像。
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends libbrotli1 && \
+    . /etc/os-release && \
+    case "$ID:$VERSION_ID" in \
+      debian:12) minimum='1.0.9-2+deb12u1' ;; \
+      debian:13) minimum='1.1.0-2+deb13u1' ;; \
+      *) echo "未验证的 Brotli 发行版：$ID:$VERSION_ID" >&2; exit 1 ;; \
+    esac && \
+    dpkg --compare-versions "$(dpkg-query -W -f='${Version}' libbrotli1)" ge "$minimum" && \
+    rm -rf /var/lib/apt/lists/*
+
 ARG NEXUS_PYTHON_REPOSITY
 
 WORKDIR /apps
 
 ADD ./support-files/release/supervisor/app.conf  /etc/supervisor/conf.d/app.conf
 ADD ./support-files/release/supervisor/nats.conf  /etc/supervisor/conf.d/nats.conf
-ADD ./support-files/release/supervisor/beat.conf  /etc/supervisor/conf.d/beat.conf
 ADD ./support-files/release/supervisor/celery.conf  /etc/supervisor/conf.d/celery.conf
+ADD ./support-files/release/supervisor/job_celery.conf  /etc/supervisor/conf.d/job_celery.conf
 ADD ./support-files/release/supervisor/patch_maintenance.conf  /etc/supervisor/conf.d/patch_maintenance.conf
 ADD ./support-files/release/supervisor/dashboard_report_render_worker.conf  /etc/supervisor/conf.d/dashboard_report_render_worker.conf
 ADD ./support-files/release/supervisor/opspilot_celery.conf  /etc/supervisor/conf.d/opspilot_celery.conf
@@ -26,12 +38,11 @@ RUN if [ -n "$NEXUS_PYTHON_REPOSITY" ]; then \
     fi
 
 RUN pip3 install -e ".[cmdb,dev,mlops,opspilot]"
+RUN sh ./support-files/release/rebuild_pillow.sh
 
-# 构建期拉取 tiktoken 词表到本地缓存，运行容器无需访问 Azure。
-# cl100k_base：未知模型回退；o200k_base：gpt-4o 等默认编码器。
+# Prefetch tiktoken encodings at build time so runtime does not contact Azure.
 ENV TIKTOKEN_CACHE_DIR=/opt/tiktoken_cache
-RUN mkdir -p /opt/tiktoken_cache \
-    && python3 -c "import tiktoken; tiktoken.get_encoding('cl100k_base'); tiktoken.get_encoding('o200k_base')"
+RUN mkdir -p /opt/tiktoken_cache && python3 -c "import tiktoken; tiktoken.get_encoding('cl100k_base'); tiktoken.get_encoding('o200k_base')"
 
 RUN chmod +x ./support-files/release/startup.sh
 

@@ -33,7 +33,7 @@
 4. `batch_init`（启动硬门禁，失败会使 `startup.sh` 退出）
 5. 条件清理配置并设置进程数
 6. `supervisord -n`
-7. Supervisor 才启动 Django API、默认 Celery Worker、独立 Dashboard Report
+7. Supervisor 才启动 Django API、默认工作负载的四池 Celery Worker、独立 Dashboard Report
    Render Worker、Celery Beat、`nats_listener` 和 SNMP Bridge 等运行期进程。
    若 `INSTALL_APPS` 为空（全装）或包含 `workflow`，还会启动编排中心
    的 Conductor Worker、触发调度器与产物清理调度器；它们只在运行期访问 Conductor，
@@ -41,7 +41,11 @@
    若 `INSTALL_APPS` 为空（全装）或包含 `opspilot`，另有独立 OpsPilot Celery
    Worker 消费 `opspilot_channel` / `opspilot_wiki` / `opspilot_maintenance` / `opspilot_chat_parse`；
    未安装 opspilot 时 `startup.sh` 删除该 supervisor 配置，不拉起该进程。
-   默认 Celery Worker 只听默认队列，不消费上述 OpsPilot 队列。
+   默认工作负载拆为 critical、notification、state、background 四池；background 同时消费历史 celery，不消费上述 OpsPilot 队列，也不消费 `job` 队列。补丁维护 patch_maintenance 消费者也保留，四池和既有专用并发纳入总预算。
+   若 `INSTALL_APPS` 为空（全装）或包含 `job_mgmt`，另有作业 Celery Worker
+   只消费 `job` 队列。作业执行、定时任务、回调和完成副作用都进入该队列。
+   未安装 job_mgmt 时 `startup.sh` 删除 `job_celery.conf`。Beat 由启动脚本按四池配置生成一份，不随作业 Worker 再起。
+   本地单独启动用 `make -C server job-celery` 或 `server/support-files/job/start_celery.ps1`。
    同一条件下还有企微智能机器人长连接进程 `run_wecom_aibot_long_connection`，
    以及飞书长连接进程 `run_feishu_long_connection`。
    它们只在 `supervisord` 拉起后运行，不进入 `batch_init`，也不等待握手成功。
@@ -66,11 +70,9 @@ Supervisor 启动；启动期不得投递任务并等待它消费。
 短期 PDF，并按 Execution 子目录隔离；未配置时 Render 明确失败，不回退到容器
 本地 `/tmp`。临时文件清理属于运行期能力，不得加入 `batch_init`。
 
-CMDB 导入导出任务直接由现有默认 Celery Worker 执行，不增加队列或 Supervisor 进程。
+CMDB 导入导出任务由公共 background Worker 执行，不新增 CMDB 专用 Supervisor 进程；维护补发进入 state，日清进入 background。
 任务数据库领取约束多副本全局导入导出并发为 2，维护补发和日清也走默认队列。
-15 分钟协作预算由数据库截止时间和执行令牌检查；默认 threads 池不能强制终止单个任务，
-阻塞中的任务仍保留占用，必须确认执行退出后再解除。任务声明的 Celery soft/hard time limit
-只有在支持相应能力的池中才生效，不能据此宣称 threads 池具备 16 分钟进程终止保证。
+15 分钟协作预算由数据库截止时间和执行令牌检查；上游原生 prefork 的任务 soft/hard time limit 保留，超时与远端操作是否完成不能混为一谈。
 复用 `cmdb-config-file` 桶；不在启动期调用任务或声明额外桶。API 只接纳和投递，文件处理在 Celery 中执行。
 
 ## Stargazer 独立服务启动边界
@@ -148,6 +150,17 @@ startup.sh
 
 增加重试、延长超时或捕获异常都不会消除这条循环依赖。正确处理方式是把对账
 操作移到运行期，或由启动期仅记录待处理状态，再由运行期任务幂等接管。
+
+## CMDB 显示字段回填（运行期收敛，非启动硬依赖）
+
+实例 `_display` 是由 organization、user、enum、tag 原值算出的派生字段。新建和修改实例时，保存逻辑已经写入这份文本。存量回填只补历史实例，失败不影响实例读写。
+
+- 启动期：`batch_init` 只执行 `init_display_fields --models-only`，给模型补 `_display` 字段定义。
+- 启动期入队：`ensure_display_field_backfill_periodic_task()` 并 `backfill_cmdb_display_fields.delay(force=True)`。Broker 不可达只记告警，不让 `startup.sh` 退出。
+- 运行期：Worker 按页扫描。计算值和已有 `_display` 相同则不写；有差异时按字段批量写入。单次任务有实例数上限，未扫完则 1 秒后继续。查询失败停在游标上，由 `*/5` 周期任务重试。
+- 手动补偿：`python manage.py init_display_fields` 仍可在运行期扫完全部实例，同样跳过未变化的值。
+
+禁止把实例全量重写放回 `batch_init`。端口要等 `batch_init` 结束才开，实例扫描留在启动期会把健康检查挡在监听之前。
 
 ## CMDB 实例 UUID 清洗（运行期收敛，非启动硬依赖）
 

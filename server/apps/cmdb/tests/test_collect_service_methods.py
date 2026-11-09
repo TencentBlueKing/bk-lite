@@ -373,6 +373,12 @@ class TestFormatUpdateCredential:
         with pytest.raises(BaseAppException, match="采集凭据不能为空"):
             CollectModelService.format_update_credential(inst, {"credential": None})
 
+    def test_job_driver_accepts_explicit_empty_credential(self):
+        inst = fake_instance(is_k8s=False, driver_type="job", decrypt_credentials=[{"username": "old"}], task_type=CollectPluginTypes.HOST)
+        data = {"credential": []}
+        CollectModelService.format_update_credential(inst, data)
+        assert data["credential"] == []
+
     def test_ip任务允许空凭据并沿用旧值(self):
         inst = fake_instance(is_k8s=False, decrypt_credentials={}, task_type=CollectPluginTypes.IP)
         data = {"credential": None}

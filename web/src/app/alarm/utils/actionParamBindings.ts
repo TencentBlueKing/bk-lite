@@ -1,6 +1,6 @@
 import { ActionConfig } from '@/app/alarm/types/settings';
 
-export type ParamBinding = ActionConfig['param_bindings'][number];
+export type ParamBinding = NonNullable<ActionConfig['param_bindings']>[number];
 
 export interface ScriptParam {
   name: string;

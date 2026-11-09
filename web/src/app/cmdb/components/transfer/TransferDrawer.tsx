@@ -7,6 +7,7 @@ import { useTransferApi } from '@/app/cmdb/api/transfer';
 import type { TransferTask } from '@/app/cmdb/types/transfer';
 import { downloadBlobFile } from '@/app/cmdb/(pages)/assetData/components/exportDownload';
 import { parseErrorReport, type ErrorReportTable } from './errorReport';
+import { createIdempotencyKey } from '@/app/cmdb/utils/idempotencyKey';
 import { StatusToneBadge } from '@/app/cmdb/utils/statusTone';
 
 interface Props {
@@ -28,12 +29,14 @@ export default function TransferDrawer({ open, onClose, tasks, error, loading, o
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState('');
   const [preview, setPreview] = useState<ErrorReportTable>({ columns: [], rows: [] });
+  const [errorPage, setErrorPage] = useState({ current: 1, pageSize: 10 });
   const viewErrors = async (task: TransferTask) => {
     setBusy(`${task.task_id}:view_errors`);
     setPreviewOpen(true);
     setPreviewLoading(true);
     setPreviewError('');
     setPreview({ columns: [], rows: [] });
+    setErrorPage({ current: 1, pageSize: 10 });
     try {
       const blob = await api.download(task.task_id, 'errors');
       setPreview(await parseErrorReport(await blob.arrayBuffer()));
@@ -51,7 +54,7 @@ export default function TransferDrawer({ open, onClose, tasks, error, loading, o
       if (action === 'cancel') await api.cancel(task.task_id);
       else if (action === 'delete') await api.remove(task.task_id);
       else if (action === 'retry') {
-        retryKeys.current[task.task_id] ||= crypto.randomUUID();
+        retryKeys.current[task.task_id] ||= createIdempotencyKey();
         await api.retry(task.task_id, retryKeys.current[task.task_id]);
         delete retryKeys.current[task.task_id];
       } else {
@@ -167,7 +170,13 @@ export default function TransferDrawer({ open, onClose, tasks, error, loading, o
           size="small"
           loading={previewLoading}
           rowKey="key"
-          pagination={preview.rows.length > 10 ? { pageSize: 10 } : false}
+          pagination={preview.rows.length > 10 ? {
+            current: errorPage.current,
+            pageSize: errorPage.pageSize,
+            showSizeChanger: true,
+            pageSizeOptions: [10, 20, 50, 100],
+            onChange: (current, pageSize) => setErrorPage({ current, pageSize }),
+          } : false}
           scroll={{ y: 420 }}
           locale={{ emptyText: <Empty description={t('Transfer.errorsEmpty')} /> }}
           columns={preview.columns.map((column) => ({

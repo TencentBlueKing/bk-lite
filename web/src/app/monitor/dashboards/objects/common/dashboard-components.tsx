@@ -37,6 +37,8 @@ import {
   TrendChartPanel
 } from '../../shared/widgets';
 import { DashboardProtocolBarSlot } from '../../shared/widgets/dashboard-protocol-bar-slot';
+import { LinkedHostSegment } from '../../shared/widgets/linked-host-segment';
+import { useLinkedHost } from '../../shared/use-linked-host';
 import { GuideItem } from '../../shared/types';
 import { FLOW_VIEW_SWITCH_ROUTE_KEYS, resolvePreferredCollectTypeFromRoute } from '../../shared/utils/flow-view-navigation';
 import { isFlowSupportedObjectName } from '../flow-common/constants';
@@ -54,7 +56,7 @@ import {
 } from './simple-dashboard-core';
 import { ChartData } from '@/app/monitor/types';
 import { useDashboardText } from '../../shared/utils/content-i18n';
-import { hasProDashboard } from '../../shared/utils/pro-dashboard';
+import { allowCategoryChromeMeta, hasProDashboard } from '../../shared/utils/pro-dashboard';
 
 // ─── Icon helper ─────────────────────────────────────────────────────────────
 
@@ -727,6 +729,12 @@ export interface DashboardShellProps {
   preserveLayouts?: boolean;
   /** 可选品牌标签（如 'Cisco'）：共享对象仪表盘按实例品牌在头部高亮显示，便于辨认当前盘属于哪个品牌。 */
   brandLabel?: string;
+  /** 实例名右侧的小徽章，例如 Redis 架构芯片。 */
+  identityExtra?: React.ReactNode;
+  /** 叠在共享 .page 上。专业盘用来取消 min-height:100%，短 Tab 不再撑满一屏灰底。 */
+  pageClassName?: string;
+  /** 叠在共享 .shell 上。 */
+  shellClassName?: string;
   styles: DashboardStyles;
 }
 
@@ -743,6 +751,9 @@ export const DashboardShell = ({
   preserveLayouts = false,
   unifiedChrome = true,
   brandLabel,
+  identityExtra,
+  pageClassName,
+  shellClassName,
   styles
 }: DashboardShellProps) => {
   const { dt } = useDashboardText();
@@ -750,6 +761,13 @@ export const DashboardShell = ({
   const professionalCapable = hasProDashboard(dashboard.routeKey) && Boolean(categoryContent);
   const requestedMode = viewSwitcher?.mode ?? dashboard.displayMode;
   const activeMode = !professionalCapable && requestedMode === 'category' ? 'dashboard' : requestedMode;
+  // 专业盘顶栏复用所属主机槽。主机盘自己就是主机，不再链出去。
+  const showLinkedHost = activeMode === 'category' && dashboard.routeKey !== 'host';
+  const linkedHost = useLinkedHost(
+    dashboard.linkedNodeId,
+    dashboard.linkedIp,
+    showLinkedHost && !dashboard.instanceLoading
+  );
   const showsDashboardChrome = viewSwitcher ? activeMode !== 'metrics' : dashboard.isDashboardMode;
   const [visitedModes, setVisitedModes] = useState<string[]>(() => [activeMode]);
   useEffect(() => {
@@ -820,9 +838,25 @@ export const DashboardShell = ({
             <span key="brand" className={styles.instanceMetaInline}>{dt(brandLabel)}</span>
           ]
           : []),
-        ...dashboard.objectMetaItems.map((item, index) => (
-          <span key={index} className={styles.instanceMetaInline}>{typeof item === 'string' ? dt(item) : item}</span>
-        ))
+        ...dashboard.objectMetaItems
+          .filter((item) => (
+            activeMode !== 'category'
+            || typeof item !== 'string'
+            || allowCategoryChromeMeta(dashboard.routeKey, item)
+          ))
+          .map((item, index) => (
+            <span key={index} className={styles.instanceMetaInline}>{typeof item === 'string' ? dt(item) : item}</span>
+          )),
+        ...(showLinkedHost
+          ? [
+            <LinkedHostSegment
+              key="linked-host"
+              host={linkedHost.host}
+              href={linkedHost.href}
+              pending={dashboard.instanceLoading || linkedHost.pending}
+            />
+          ]
+          : [])
       ]}
       icon={<DatabaseOutlined />}
       selectorValue={dashboard.instanceSelectValue}
@@ -843,6 +877,7 @@ export const DashboardShell = ({
         onFrequenceChange: dashboard.setFrequence,
         onRefresh: dashboard.onRefresh
       }}
+      identityExtra={identityExtra}
       styles={styles}
     />
   );
@@ -856,8 +891,8 @@ export const DashboardShell = ({
   );
 
   return (
-  <div className={styles.page}>
-    <div className={styles.shell} data-view-mode={activeMode}>
+  <div className={[styles.page, pageClassName].filter(Boolean).join(' ')}>
+    <div className={[styles.shell, shellClassName].filter(Boolean).join(' ')} data-view-mode={activeMode}>
       {unifiedChrome ? (
         <>
           <div className={styles.unifiedShell} data-dashboard-shell="unified">

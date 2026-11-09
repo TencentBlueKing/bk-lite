@@ -8,6 +8,7 @@ from apps.alerts.models.alert_operator import AlertAssignment, AlertShield
 from apps.alerts.notification_templates.binding import sync_assignment_template_references, validate_assignment_template_bindings
 from apps.alerts.utils.i18n import serializer_message
 from apps.alerts.utils.rule_catalog import validate_rules_for_serializer
+from apps.alerts.utils.shield_runtime import classify_shield_runtime
 from apps.system_mgmt.models import Group, User
 from apps.system_mgmt.utils.group_filter_mixin import get_unauthorized_group_ids, get_user_group_ids, normalize_group_id_set
 from apps.system_mgmt.utils.group_utils import GroupUtils
@@ -214,9 +215,14 @@ class AlertShieldModelSerializer(serializers.ModelSerializer):
     This serializer is used to assign alerts to users or teams.
     """
 
+    runtime_status = serializers.SerializerMethodField()
+
     def validate_match_rules(self, value):
         validate_rules_for_serializer(value, "shield")
         return value
+
+    def get_runtime_status(self, obj):
+        return classify_shield_runtime(obj.is_active, obj.suppression_time, obj.created_by)
 
     class Meta:
         model = AlertShield

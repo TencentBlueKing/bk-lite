@@ -3680,3 +3680,7 @@ def get_monitor_effective_plugins(monitor_object_id=None, instance_id=None, user
     except UnauthorizedException:
         return {"result": True, "data": None, "message": ""}
     return {"result": True, "data": data, "message": ""}
+
+
+from apps.monitor.nats import host_health as _host_health_nats  # noqa: E402,F401
+from apps.monitor.nats import process_health as _process_health_nats  # noqa: E402,F401

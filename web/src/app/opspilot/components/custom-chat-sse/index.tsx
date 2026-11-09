@@ -1,5 +1,5 @@
 import React, {ReactNode, useCallback, useEffect, useMemo, useRef, useState} from 'react';
-import {Button, ButtonProps, Flex, Image, Input, message as antMessage, Popconfirm, Tooltip, Upload} from 'antd';
+import {Button, ButtonProps, Flex, Image, Input, message as antMessage, Modal, Popconfirm, Tooltip, Upload} from 'antd';
 import {DeleteOutlined, DownloadOutlined, FullscreenExitOutlined, FullscreenOutlined, LoadingOutlined, PaperClipOutlined, RightOutlined, SendOutlined} from '@ant-design/icons';
 import DOMPurify from 'dompurify';
 import Icon from '@/components/icon';
@@ -46,8 +46,12 @@ import {
   downloadChatAttachmentBlob,
   fetchChatAttachmentStatus,
   isImageMime,
+  listJobDistributeFiles,
   uploadChatAttachment,
+  uploadJobDistributeFile,
 } from './chatAttachments';
+import DistributeFileButton from './DistributeFileButton';
+import StagedDistributeFiles from './StagedDistributeFiles';
 
 const normalizeThinkingText = (value?: string) => {
   if (!value) return '';
@@ -152,6 +156,9 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
   conversationHistoryEnabled = true,
   initialContextUsage = null,
   onConversationCleared,
+  distributeFilesEnabled = false,
+  distributeSessionId,
+  onDistributeReady,
 }) => {
   const { t } = useTranslation();
   const imeEnterGuard = useImeEnterGuard();
@@ -171,6 +178,8 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
   const [value, setValue] = useState('');
   const [loading, setLoading] = useState(false);
   const [drafts, setDrafts] = useState<Array<ChatAttachmentMeta & { localId: string; file?: File }>>([]);
+  const [stagedDistributeFiles, setStagedDistributeFiles] = useState<Array<{ id: number; name: string; size: number }>>([]);
+  const [stagedListVersion, setStagedListVersion] = useState(0);
   const [markdownPreview, setMarkdownPreview] = useState<{ src: string; alt: string } | null>(null);
   const [messages, setMessages] = useState<CustomChatMessage[]>(
     initialMessages.length ? initialMessages : []
@@ -616,6 +625,71 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
     }
   }, [drafts.length, token]);
 
+  useEffect(() => {
+    setStagedDistributeFiles([]);
+  }, [distributeFilesEnabled, distributeSessionId]);
+
+  useEffect(() => {
+    if (!distributeFilesEnabled || !distributeSessionId) {
+      return;
+    }
+    let cancelled = false;
+    listJobDistributeFiles(token, distributeSessionId)
+      .then((files) => {
+        if (!cancelled) {
+          setStagedDistributeFiles(files);
+        }
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [distributeFilesEnabled, distributeSessionId, stagedListVersion, token]);
+
+  const stageDistributeFile = useCallback(async (file: File, distributeNow: boolean) => {
+    if (!distributeSessionId) {
+      antMessage.error(t('chat.distributeNeedSession', '请先开始会话'));
+      return;
+    }
+    try {
+      const uploaded = await uploadJobDistributeFile(file, token, distributeSessionId);
+      setStagedDistributeFiles((current) => (
+        current.some((item) => item.id === uploaded.id) ? current : [...current, uploaded]
+      ));
+      setStagedListVersion((version) => version + 1);
+      if (!distributeNow) {
+        antMessage.success(t('chat.distributeStaged', '已暂存，之后在本会话说明要分发即可'));
+        return;
+      }
+      if (!token || loading) {
+        antMessage.success(t('chat.distributeStaged', '已暂存，之后在本会话说明要分发即可'));
+        return;
+      }
+      onDistributeReady?.([uploaded.id]);
+      // 确认框会等到 onOk 结束。对话一发出就返回，不要把整段执行留在弹窗后面。
+      void sendMessage(`请分发文件 ${uploaded.name}`);
+    } catch (uploadError) {
+      antMessage.error(uploadError instanceof Error ? uploadError.message : t('chat.distributeFailed', '分发文件暂存失败'));
+    }
+  }, [distributeSessionId, loading, onDistributeReady, sendMessage, t, token]);
+
+  const askDistributeFile = useCallback((file: File) => {
+    // 技能测试和 Web 发布共用。平台发布的对应实现是 webchat DistributeAskDialog。
+    Modal.confirm({
+      title: t('chat.distributeAsk', '是否现在分发'),
+      content: file.name,
+      okText: t('chat.distributeNow', '现在分发'),
+      cancelText: t('chat.distributeLater', '先暂存'),
+      width: 416,
+      centered: false,
+      icon: undefined,
+      okButtonProps: { danger: false },
+      maskClosable: false,
+      onOk: () => stageDistributeFile(file, true),
+      onCancel: () => stageDistributeFile(file, false),
+    });
+  }, [stageDistributeFile, t]);
+
   const handleCopyMessage = (content: string) => {
     // 移除 HTML 标签，保留纯文本
     const tempDiv = document.createElement('div');
@@ -1002,6 +1076,12 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
 
     const composerComponent = (
       <div className="relative rounded-xl border border-[var(--color-border-1)] bg-[var(--color-bg)] transition-all focus-within:border-[var(--color-primary)] focus-within:ring-2 focus-within:ring-[var(--color-primary-bg-active)]">
+        {distributeFilesEnabled ? (
+          <StagedDistributeFiles
+            files={stagedDistributeFiles}
+            label={t('chat.stagedDistributeFiles', '待分发文件')}
+          />
+        ) : null}
         {drafts.length > 0 && (
           <div className="flex flex-wrap gap-2 p-2.5 pb-0">
             {drafts.map((draft) => (
@@ -1087,6 +1167,13 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
                 </button>
               </Tooltip>
             </Upload>
+
+            <DistributeFileButton
+              enabled={distributeFilesEnabled}
+              disabled={loading}
+              label={t('chat.distributeFile', '分发文件')}
+              onFile={askDistributeFile}
+            />
 
             <Popconfirm
               title={t('chat.clearConfirm')}

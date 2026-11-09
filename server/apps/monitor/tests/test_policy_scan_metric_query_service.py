@@ -128,9 +128,7 @@ class TestSetMonitorObjInstanceKey:
 class TestQueryAggregationMetrics:
     def test_calls_query_range_with_compiled_comparison_query(self, mocker):
         svc = MetricQueryService(_policy(algorithm="max", group_by=["instance_id"]), {})
-        vm = mocker.patch(
-            "apps.monitor.tasks.services.policy_scan.metric_query.VictoriaMetricsAPI"
-        )
+        vm = mocker.patch("apps.monitor.tasks.services.policy_scan.metric_query.VictoriaMetricsAPI")
         vm.return_value.query_range.return_value = {"data": {"result": []}}
         result = svc.query_comparison_metrics({"type": "min", "value": 5})
         assert result == {"data": {"result": []}}
@@ -150,15 +148,11 @@ class TestQueryAggregationMetrics:
             ),
             {},
         )
-        vm = mocker.patch(
-            "apps.monitor.tasks.services.policy_scan.metric_query.VictoriaMetricsAPI"
-        )
+        vm = mocker.patch("apps.monitor.tasks.services.policy_scan.metric_query.VictoriaMetricsAPI")
         vm.return_value.query_range.return_value = {"data": {"result": []}}
         svc.query_existence_metrics({"type": "min", "value": 5})
         args = vm.return_value.query_range.call_args.args
-        assert args[0] == (
-            "quantile_over_time(0.95, ((avg(up) by (instance_id))[5m:10s]))"
-        )
+        assert args[0] == ("quantile_over_time(0.95, ((avg(up) by (instance_id))[5m:10s]))")
         assert "offset" not in args[0]
 
     def test_existence_rate_uses_last_over_time(self, mocker):
@@ -170,9 +164,7 @@ class TestQueryAggregationMetrics:
             ),
             {},
         )
-        vm = mocker.patch(
-            "apps.monitor.tasks.services.policy_scan.metric_query.VictoriaMetricsAPI"
-        )
+        vm = mocker.patch("apps.monitor.tasks.services.policy_scan.metric_query.VictoriaMetricsAPI")
         vm.return_value.query_range.return_value = {"data": {"result": []}}
         svc.query_existence_metrics({"type": "min", "value": 5})
         args = vm.return_value.query_range.call_args.args
@@ -190,9 +182,7 @@ class TestQueryAggregationMetrics:
             ),
             {},
         )
-        vm = mocker.patch(
-            "apps.monitor.tasks.services.policy_scan.metric_query.VictoriaMetricsAPI"
-        )
+        vm = mocker.patch("apps.monitor.tasks.services.policy_scan.metric_query.VictoriaMetricsAPI")
         vm.return_value.query_range.return_value = {"data": {"result": []}}
         svc.query_comparison_metrics({"type": "min", "value": 5})
         query = vm.return_value.query_range.call_args.args[0]
@@ -218,9 +208,7 @@ def _metric_policy(instances_map, **kwargs):
     )
     base.update(kwargs)
     svc = MetricQueryService(_policy(**base), instances_map)
-    svc.metric = SimpleNamespace(
-        query='cpu{instance_type="os", __$labels__}', data_type="Number", unit=""
-    )
+    svc.metric = SimpleNamespace(query='cpu{instance_type="os", __$labels__}', data_type="Number", unit="")
     return svc
 
 
@@ -397,9 +385,7 @@ class TestConvertMetricValues:
         out = svc.convert_metric_values(data)
         assert out["data"]["result"][0]["values"] == [[100, "2048"]]
         assert svc.get_effective_calculation_unit() == "percent"
-        assert svc.convert_thresholds(
-            [{"level": "critical", "method": ">", "value": 50}]
-        )[0]["value"] == 50
+        assert svc.convert_thresholds([{"level": "critical", "method": ">", "value": 50}])[0]["value"] == 50
 
     def test_mid_series_conversion_failure_keeps_all_original_values(self, mocker):
         svc = MetricQueryService(_policy(metric_unit="bytes", calculation_unit="kibibytes"), {})
@@ -441,9 +427,7 @@ class TestConvertMetricValues:
 
 class TestConvertThresholds:
     def test_legacy_empty_threshold_unit_uses_calculation_unit(self):
-        svc = MetricQueryService(
-            _policy(calculation_unit="bytes", threshold_unit=""), {}
-        )
+        svc = MetricQueryService(_policy(calculation_unit="bytes", threshold_unit=""), {})
         original = [{"level": "critical", "method": ">", "value": 10}]
 
         converted = svc.convert_thresholds(original)
@@ -452,9 +436,7 @@ class TestConvertThresholds:
         assert converted is not original
 
     def test_gibibytes_threshold_converts_to_bytes_without_mutating_policy(self):
-        svc = MetricQueryService(
-            _policy(calculation_unit="bytes", threshold_unit="gibibytes"), {}
-        )
+        svc = MetricQueryService(_policy(calculation_unit="bytes", threshold_unit="gibibytes"), {})
         original = [{"level": "critical", "method": "<", "value": -2}]
 
         converted = svc.convert_thresholds(original)
@@ -463,14 +445,10 @@ class TestConvertThresholds:
         assert original[0]["value"] == -2
 
     def test_cross_system_threshold_raises(self):
-        svc = MetricQueryService(
-            _policy(calculation_unit="bytes", threshold_unit="percent"), {}
-        )
+        svc = MetricQueryService(_policy(calculation_unit="bytes", threshold_unit="percent"), {})
 
         with pytest.raises(BaseAppException, match="不能转换"):
-            svc.convert_thresholds(
-                [{"level": "critical", "method": ">", "value": 80}]
-            )
+            svc.convert_thresholds([{"level": "critical", "method": ">", "value": 80}])
 
 
 class TestGetDisplayUnit:
@@ -516,18 +494,14 @@ class TestEnumHelpers:
 
 class TestFormatAggregationMetrics:
     def test_derivative_dimension_resolves_selected_child_instance(self):
-        monitor_object = SimpleNamespace(
-            instance_id_keys=["instance_id", "pod"]
-        )
+        monitor_object = SimpleNamespace(instance_id_keys=["instance_id", "pod"])
         child_id = "('cluster-a', 'orders-7f9')"
         svc = MetricQueryService(
             _policy(group_by=["pod"], monitor_object=monitor_object),
             {child_id: "orders-7f9"},
         )
 
-        assert svc.get_monitor_instance_id_from_tuple(
-            ("orders-7f9",), ["pod"]
-        ) == child_id
+        assert svc.get_monitor_instance_id_from_tuple(("orders-7f9",), ["pod"]) == child_id
 
     def test_groups_by_keys_and_takes_last_value(self):
         svc = MetricQueryService(_policy(group_by=["instance_id"]), {})
@@ -567,3 +541,30 @@ class TestFormatAggregationMetrics:
         }
 
         assert svc.format_aggregation_metrics(metrics) == {}
+
+    def test_long_series_keeps_instance_id_and_does_not_parse_fingerprint(self):
+        from apps.monitor.utils.dimension import is_metric_instance_fingerprint
+
+        mount = "m" * 300
+        monitor_instance_id = "('h1',)"
+        svc = MetricQueryService(
+            _policy(group_by=["instance_id", "mount"]),
+            {monitor_instance_id: "host"},
+        )
+        metrics = {
+            "data": {
+                "result": [
+                    {"metric": {"instance_id": "h1", "mount": mount}, "values": [[0, "1"]]},
+                ]
+            }
+        }
+
+        out = svc.format_aggregation_metrics(metrics)
+
+        assert len(out) == 1
+        metric_instance_id, item = next(iter(out.items()))
+        assert is_metric_instance_fingerprint(metric_instance_id)
+        assert item["monitor_instance_id"] == monitor_instance_id
+        assert item["dimensions"]["mount"] == mount
+        assert svc.get_monitor_instance_id_from_metric_instance_id(metric_instance_id) == ""
+        assert svc.get_monitor_instance_id_from_metric_instance_id("('h1',)") == monitor_instance_id

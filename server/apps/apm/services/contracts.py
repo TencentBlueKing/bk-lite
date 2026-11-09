@@ -19,11 +19,13 @@ class IngestSnippetRequest:
     service_name: str
     service_version: str
     environment: str
-    # 本版本五类接入都需要的离线包下载地址，由服务器根据云区域
-    # NODE_SERVER_URL 解析，指向本系统的免登录下载接口。
+    # 离线包下载地址，由服务器根据云区域 NODE_SERVER_URL 解析，
+    # 指向本系统的免登录下载接口。
     probe_download_url: str = ""
     # 仅写入本次安装脚本的头采样百分比；100 表示沿用 SDK 全量默认。
     sample_rate: int = 100
+    probe_platform: str = "linux"
+    process_executable: str = ""
 
 
 @dataclass(frozen=True)
@@ -349,6 +351,24 @@ class ServiceMetricQuery:
     include_endpoints: bool = True
     slow_threshold_ms: int | None = None
     apdex_threshold_ms: int | None = None
+    instance_id: str = ""
+
+
+@dataclass(frozen=True)
+class DependencyMetricQuery:
+    """下游 Client Span 的 RED 查询。channel / system / statement 与 client rollup 分类一致。"""
+
+    service_namespace: str
+    service_name: str
+    environment: str
+    started_at: datetime
+    ended_at: datetime
+    channel: str
+    system: str
+    statement: str
+    slow_threshold_ms: int | None = None
+    apdex_threshold_ms: int | None = None
+    include_breakdown: bool = False
 
 
 @dataclass(frozen=True)
@@ -523,6 +543,7 @@ class MetricDataState(StrEnum):
     MISSING_BASELINE = "missing_baseline"
     INSUFFICIENT_SAMPLES = "insufficient_samples"
     HOLD = "hold"
+    MISSING_CONDITION_DATA = "missing_condition_data"
 
 
 @dataclass(frozen=True)
@@ -541,6 +562,10 @@ class PolicyQueryResult:
     result_unit: str = ""
     window_ended_at: datetime | None = None
     baseline_days_used: int | None = None
+    condition_rows: tuple[Mapping[str, object], ...] = ()
+    guard_rows: tuple[Mapping[str, object], ...] = ()
+    guard_blocked: bool = False
+    budget_remaining: Decimal | None = None
 
 
 @dataclass(frozen=True)

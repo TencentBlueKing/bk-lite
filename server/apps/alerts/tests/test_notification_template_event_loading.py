@@ -1,5 +1,8 @@
 from types import SimpleNamespace
 
+import pytest
+from django.utils import timezone
+
 from apps.alerts.notification_templates.events import event_row
 
 
@@ -12,6 +15,9 @@ class _EventQuery:
         return self
 
     def defer(self, *_args):
+        return self
+
+    def annotate(self, **_kwargs):
         return self
 
     def order_by(self, *_args):
@@ -65,6 +71,27 @@ def test_event_row_drops_raw_payload(monkeypatch):
     assert row["level"] == "严重"
     assert row["source_name"] == "Prometheus"
     assert row["tags"]["alert"] == "ConnHigh"
+    assert "raw_data" not in row
+    assert "secret-token" not in str(row)
+
+
+def test_event_row_copies_samples_and_search_url_without_raw_data():
+    event = SimpleNamespace(
+        level="2",
+        title="登录失败",
+        samples=["帐户登录失败。", "登录类型: 3"],
+        search_url="https://example.com/log/search?q=4625",
+        raw_data={"token": "secret-token", "samples": ["ignored"], "search_url": "ignored"},
+        tags={},
+        labels={"policy_name": "AD 登录失败 4625"},
+        enrichment={},
+        source=SimpleNamespace(name="lite-log"),
+    )
+
+    row = event_row(event, {"2": "警告"})
+
+    assert row["samples"] == ["帐户登录失败。", "登录类型: 3"]
+    assert row["search_url"] == "https://example.com/log/search?q=4625"
     assert "raw_data" not in row
     assert "secret-token" not in str(row)
 
@@ -137,3 +164,44 @@ def test_dispatcher_reuses_one_event_state_across_channels(monkeypatch):
     assert len(states) == 2
     assert states[0] is states[1]
     assert states[0]["hits"] == 2
+
+
+@pytest.mark.django_db
+def test_load_event_context_reads_samples_and_search_url_from_raw_data():
+    from apps.alerts.constants.constants import AlertStatus, EventAction
+    from apps.alerts.models.alert_source import AlertSource
+    from apps.alerts.models.models import Alert, Event
+    from apps.alerts.notification_templates.binding import load_event_context
+
+    source = AlertSource.objects.create(name="nats", source_id="nats", source_type="nats", secret="x")
+    event = Event.objects.create(
+        source=source,
+        title="登录失败(4625): 检测到 7 条匹配日志",
+        level="2",
+        start_time=timezone.now(),
+        event_id="EVENT-samples",
+        action=EventAction.CREATED,
+        team=[1],
+        raw_data={
+            "token": "secret-token",
+            "samples": ["帐户登录失败。", "登录类型: 3"],
+            "search_url": "https://example.com/log/search?q=4625",
+        },
+    )
+    alert = Alert.objects.create(
+        alert_id="ALERT-samples",
+        level="2",
+        title="AD 登录失败 4625",
+        content="登录失败",
+        fingerprint="alert-samples-fingerprint",
+        status=AlertStatus.PENDING,
+        team=[1],
+    )
+    alert.events.add(event)
+
+    context = load_event_context(alert, ("{{ events.latest.samples }} {{ events.latest.search_url }}",))
+
+    assert context["latest"]["samples"] == ["帐户登录失败。", "登录类型: 3"]
+    assert context["latest"]["search_url"] == "https://example.com/log/search?q=4625"
+    assert "raw_data" not in context["latest"]
+    assert "secret-token" not in str(context)

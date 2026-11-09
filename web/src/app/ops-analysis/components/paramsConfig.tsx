@@ -1,11 +1,19 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { useDebouncedOptionsQueryValues } from '@/app/ops-analysis/hooks/useDebouncedOptionsQueryValues';
+import { isFreeTextOptionsParam } from '@/app/ops-analysis/utils/optionsQueryTextDebounce';
 import TimeSelector from '@/components/time-selector';
 import { Form, Input, Select, DatePicker, InputNumber, Button, Tooltip } from 'antd';
 import type { FormInstance } from 'antd';
 import { SettingOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import type {
+  FilterBindings,
+  FilterValue,
+  UnifiedFilterDefinition,
+} from '@/app/ops-analysis/types/dashBoard';
+import type {
   DatasourceItem,
+  InputControlConfig,
   InputOption,
   ParamItem,
 } from '@/app/ops-analysis/types/dataSource';
@@ -13,6 +21,13 @@ import CompactEmptyState from '@/components/compact-empty-state';
 import { ParamInputControl } from '@/app/ops-analysis/components/paramInputControl';
 import { normalizeInputConfig } from '@/app/ops-analysis/utils/paramInputConfigUtils';
 import { getDataSourceFormParamInitialValue } from '@/app/ops-analysis/utils/dataSourceFormParams';
+import { readComponentOptionsQueryUpstream } from '@/app/ops-analysis/utils/optionsQueryCandidates';
+import {
+  dynamicQueryParamsOf,
+  resolveOptionsQueryParams,
+  stableStringify,
+  type ResolvedOptionsQuery,
+} from '@/app/ops-analysis/utils/optionsQueryParamRefs';
 import DateRangeSelector from './dateRangeSelector';
 import {
   getTimeSelectorDefaultValue,
@@ -85,9 +100,72 @@ interface DataSourceParamsConfigProps {
   fieldPrefix?: string;
   form?: FormInstance;
   preserveValues?: boolean;
+  /** 传入后按组件配置表单解析选项查询引用；缺省则保持原请求。 */
+  globalFilters?: UnifiedFilterDefinition[];
+  filterBindings?: FilterBindings | null;
+  globalFilterValues?: Record<string, FilterValue>;
   onEditInputConfig?: (param: ParamItem) => void;
   onParamOptionsResolved?: (param: ParamItem, options: InputOption[]) => void;
 }
+
+const formParamValue = (
+  formParams: Record<string, unknown> | undefined,
+  name: string,
+  fallback: ParamItem['value'],
+) => (
+  formParams && Object.prototype.hasOwnProperty.call(formParams, name)
+    ? formParams[name]
+    : fallback
+);
+
+const resolveParamOptionsQuery = ({
+  inputConfig,
+  enabled,
+  formParams,
+  sourceParams,
+  globalFilters,
+  filterBindings,
+  globalFilterValues,
+}: {
+  inputConfig?: InputControlConfig;
+  enabled: boolean;
+  formParams: Record<string, unknown> | undefined;
+  sourceParams: ParamItem[];
+  globalFilters?: UnifiedFilterDefinition[];
+  filterBindings?: FilterBindings | null;
+  globalFilterValues?: Record<string, FilterValue>;
+}): { resolution: ResolvedOptionsQuery; signature: string } | undefined => {
+  if (!enabled) return undefined;
+  const resolution = resolveOptionsQueryParams(
+    dynamicQueryParamsOf(inputConfig),
+    (ref) => readComponentOptionsQueryUpstream({
+      ref,
+      componentParams: sourceParams.map((param) => ({
+        name: param.name,
+        type: param.type,
+        filterType: param.filterType,
+        inputConfig: param.inputConfig,
+        inputMode: param.inputMode,
+        value: formParamValue(formParams, param.name, param.value),
+      })),
+      definitions: globalFilters ?? [],
+      filterBindings,
+      readFilterValue: (id) => (
+        globalFilterValues && Object.prototype.hasOwnProperty.call(globalFilterValues, id)
+          ? globalFilterValues[id]
+          : undefined
+      ),
+    }),
+  );
+  return {
+    resolution,
+    signature: stableStringify({
+      blocked: resolution.blocked,
+      blockReason: resolution.blockReason ?? null,
+      params: resolution.params,
+    }),
+  };
+};
 
 const DataSourceParamsConfig: React.FC<DataSourceParamsConfigProps> = ({
   selectedDataSource,
@@ -95,21 +173,38 @@ const DataSourceParamsConfig: React.FC<DataSourceParamsConfigProps> = ({
   includeFilterTypes = ['params', 'fixed', 'filter'],
   fieldPrefix = 'params',
   preserveValues = false,
+  globalFilters,
+  filterBindings,
+  globalFilterValues,
   onEditInputConfig,
   onParamOptionsResolved,
 }) => {
   const { t } = useTranslation();
   const [mounted, setMounted] = useState(false);
+  const form = Form.useFormInstance();
+  // useWatch 负责在未注册字段变化时重渲染；当次渲染读 store，避免订阅值晚一拍。
+  const watchedParams = Form.useWatch(fieldPrefix, { form, preserve: true }) as Record<string, unknown> | undefined;
+  const storedParams = form.getFieldsValue(true)?.[fieldPrefix] as Record<string, unknown> | undefined;
+  const formParams = storedParams ?? watchedParams;
+  const resolveOptionsQuery = globalFilters !== undefined;
 
   useEffect(() => {
     setMounted(true);
   }, []);
 
-  const configParams =
-    (Array.isArray(selectedDataSource?.params) ? selectedDataSource.params : []).filter(
-      (param: ParamItem) =>
-        includeFilterTypes.includes(param.filterType || 'fixed')
-    );
+  const sourceParams = useMemo(
+    () => (Array.isArray(selectedDataSource?.params) ? selectedDataSource.params : []),
+    [selectedDataSource?.params],
+  );
+  const typedParamNames = useMemo(
+    () => sourceParams.filter(isFreeTextOptionsParam).map((param) => param.name),
+    [sourceParams],
+  );
+  // 表单控件仍读 form 的即时值。选项查询只吃防抖后的文本/数字。
+  const optionsQueryFormParams = useDebouncedOptionsQueryValues(formParams ?? {}, typedParamNames);
+  const configParams = sourceParams.filter(
+    (param: ParamItem) => includeFilterTypes.includes(param.filterType || 'fixed'),
+  );
 
   if (configParams.length === 0) {
     return (
@@ -192,12 +287,26 @@ const DataSourceParamsConfig: React.FC<DataSourceParamsConfigProps> = ({
       return fallbackInput;
     }
 
+    const optionsQuery = resolveParamOptionsQuery({
+      inputConfig,
+      enabled: resolveOptionsQuery,
+      formParams: optionsQueryFormParams,
+      sourceParams,
+      globalFilters,
+      filterBindings,
+      globalFilterValues,
+    });
+
     return (
       <ParamInputControl
         inputConfig={inputConfig}
         fallback={fallbackInput}
         disabled={isDisabled}
         placeholder={t('common.selectTip')}
+        resolvedQueryParams={optionsQuery?.resolution.params}
+        optionsBlocked={optionsQuery?.resolution.blocked}
+        optionsBlockReason={optionsQuery?.resolution.blockReason}
+        optionsQuerySignature={optionsQuery?.signature}
         onOptionsResolved={(resolvedOptions) =>
           onParamOptionsResolved?.(param, resolvedOptions)
         }

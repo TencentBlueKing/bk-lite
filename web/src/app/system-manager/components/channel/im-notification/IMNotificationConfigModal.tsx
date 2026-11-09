@@ -12,6 +12,7 @@ import type {
 } from '@/app/system-manager/types/im-notification';
 import { formatIntegrationInstanceDisplayName } from '@/app/system-manager/utils/integrationCenter';
 import { getImNotificationUnavailableEditingInstance } from '@/app/system-manager/utils/imNotificationUtils';
+import NotificationTagSelect, { NotificationTagOption } from '@/app/system-manager/components/channel/NotificationTagSelect';
 
 export interface IMNotificationChannelFormValues extends IMNotificationChannelPayload {
   schedule_enabled?: boolean;
@@ -30,6 +31,7 @@ interface IMNotificationConfigModalProps {
   manifestHintVisible: boolean;
   showMatchFieldHint: boolean;
   showReceiveFieldHint: boolean;
+  tagOptions: NotificationTagOption[];
   t: (key: string, defaultMessage?: string, values?: Record<string, string | number>) => string;
   onOk: () => void;
   onCancel: () => void;
@@ -47,6 +49,7 @@ const IMNotificationConfigModal: React.FC<IMNotificationConfigModalProps> = ({
   manifestHintVisible,
   showMatchFieldHint,
   showReceiveFieldHint,
+  tagOptions,
   t,
   onOk,
   onCancel,
@@ -103,6 +106,12 @@ const IMNotificationConfigModal: React.FC<IMNotificationConfigModalProps> = ({
             placeholder={`${t('common.selectMsg')}${t('common.organization')}`}
             multiple
             mode="ownership"
+          />
+        </Form.Item>
+        <Form.Item name="tag" label={t('system.channel.settings.tag')}>
+          <NotificationTagSelect
+            options={tagOptions}
+            placeholder={`${t('common.selectMsg')}${t('system.channel.settings.tag')}`}
           />
         </Form.Item>
         <Form.Item name="description" label={t('system.channel.imNotificationPage.description')}>

@@ -126,7 +126,7 @@ export default function RumAlertEventsPage() {
   useRumAuthedEffect(
     authReady,
     (isCancelled) => {
-      void listApplications()
+      void listApplications(true)
         .then((list) => {
           if (!isCancelled()) setApps(list.map((item) => item.application).filter(Boolean));
         })

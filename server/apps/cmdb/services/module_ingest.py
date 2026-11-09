@@ -331,6 +331,7 @@ class CmdbModuleIngestService:
             raise ValueError("link_ids.node_id, link_ids.cmdb_id, or raw ip is required")
 
         operator = params.get("operator") or ""
+        audit_source = "监控接入" if source_module == "monitor" else "节点接入"
         model_id = resolve_ingest_model_id(raw)
         update_fields = cls._update_fields_for(model_id)
 
@@ -379,6 +380,7 @@ class CmdbModuleIngestService:
                     update_fields=update_fields,
                     operator=operator,
                     allowed_org_ids=list(allowed_org_ids),
+                    audit_source=audit_source,
                 )
                 return IngestResult(id=cls._public_cmdb_id(updated), updated=True).as_dict()
             if match.skipped:
@@ -401,6 +403,7 @@ class CmdbModuleIngestService:
                         update_fields=update_fields,
                         operator=operator,
                         allowed_org_ids=list(allowed_org_ids),
+                        audit_source=audit_source,
                     )
                     return IngestResult(id=cls._public_cmdb_id(updated), updated=True).as_dict()
             # 2) 无 node_id 但有 cmdb_id → 按实例 ID 更新
@@ -413,6 +416,7 @@ class CmdbModuleIngestService:
                         update_fields=update_fields,
                         operator=operator,
                         allowed_org_ids=list(allowed_org_ids),
+                        audit_source=audit_source,
                     )
                     return IngestResult(id=cls._public_cmdb_id(updated), updated=True).as_dict()
 
@@ -444,6 +448,7 @@ class CmdbModuleIngestService:
                 update_fields=update_fields,
                 operator=operator,
                 allowed_org_ids=list(allowed_org_ids),
+                audit_source=audit_source,
             )
             return IngestResult(id=cls._public_cmdb_id(claimed), claimed=True).as_dict()
 
@@ -454,6 +459,7 @@ class CmdbModuleIngestService:
                 update_fields=update_fields,
                 operator=operator,
                 allowed_org_ids=list(allowed_org_ids),
+                audit_source=audit_source,
             )
         except Exception as exc:
             recovered = cls._recover_host_after_unique_conflict(desired, exc) if model_id == "host" else None
@@ -465,6 +471,7 @@ class CmdbModuleIngestService:
                 update_fields=update_fields,
                 operator=operator,
                 allowed_org_ids=list(allowed_org_ids),
+                audit_source=audit_source,
             )
             return IngestResult(id=cls._public_cmdb_id(claimed), claimed=True).as_dict()
         return IngestResult(id=cls._public_cmdb_id(created), created=True).as_dict()
@@ -794,6 +801,7 @@ class CmdbModuleIngestService:
         update_fields: tuple[str, ...],
         operator: str,
         allowed_org_ids: list[int],
+        audit_source: str = "",
     ) -> dict[str, Any]:
         changes = cls._update_payload(existing, desired, update_fields)
         if not changes:
@@ -806,6 +814,7 @@ class CmdbModuleIngestService:
             operator=operator,
             allowed_org_ids=allowed_org_ids,
             skip_permission_check=True,
+            audit_source=audit_source,
         )
         return updated if isinstance(updated, dict) else {**existing, **changes}
 
@@ -818,6 +827,7 @@ class CmdbModuleIngestService:
         update_fields: tuple[str, ...],
         operator: str,
         allowed_org_ids: list[int],
+        audit_source: str = "",
     ) -> dict[str, Any]:
         # 认领：白名单字段；有 incoming node_id 时强制写入（调用方须已排除异 node_id 冲突）
         existing_node_id = str(existing.get("node_id") or "").strip()
@@ -837,6 +847,7 @@ class CmdbModuleIngestService:
             operator=operator,
             allowed_org_ids=allowed_org_ids,
             skip_permission_check=True,
+            audit_source=audit_source,
         )
         return updated if isinstance(updated, dict) else {**existing, **changes}
 
@@ -868,6 +879,7 @@ class CmdbModuleIngestService:
         update_fields: tuple[str, ...],
         operator: str,
         allowed_org_ids: list[int],
+        audit_source: str = "",
     ) -> dict[str, Any]:
         payload = {field: desired[field] for field in update_fields if field in desired and desired.get(field) not in (None, "")}
         created = InstanceManage.instance_create(
@@ -875,6 +887,7 @@ class CmdbModuleIngestService:
             instance_info=payload,
             operator=operator,
             allowed_org_ids=allowed_org_ids,
+            audit_source=audit_source,
         )
         return created if isinstance(created, dict) else payload
 

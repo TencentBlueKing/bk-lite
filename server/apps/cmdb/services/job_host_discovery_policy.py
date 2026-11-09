@@ -43,5 +43,5 @@ def validate_host_snapshots(instances, team, cloud_region_id):
 
 def supports_host_discovery(meta):
     return meta.get("type") == CollectDriverTypes.JOB and (
-        meta.get("task_type") in {CollectPluginTypes.DB, CollectPluginTypes.MIDDLEWARE} or meta.get("model_id") == "physcial_server"
+        meta.get("task_type") in {CollectPluginTypes.DB, CollectPluginTypes.MIDDLEWARE} or meta.get("model_id") in {"physcial_server", "hyperv_host"}
     )

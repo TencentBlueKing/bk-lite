@@ -30,6 +30,7 @@ from apps.cmdb.constants.field_constraints import (
 )
 from apps.cmdb.display_field import ExcludeFieldsCache
 from apps.cmdb.graph.drivers.graph_client import GraphClient
+from apps.cmdb.language.service import is_truthy_flag
 from apps.cmdb.model_ops.extensions import get_model_enterprise_extension
 from apps.cmdb.models.field_group import FieldGroup
 from apps.cmdb.models.public_enum_library import PublicEnumLibrary
@@ -587,6 +588,7 @@ class ModelMigrate:
     def _merge_existing_attr_config(existing_attr: dict, incoming_attr: dict) -> bool:
         changed = False
 
+        preserve_tag_options = existing_attr.get("attr_type") == "tag"
         incoming_attr_type = incoming_attr.get("attr_type")
         if incoming_attr_type and existing_attr.get("attr_type") != incoming_attr_type:
             existing_attr["attr_type"] = incoming_attr_type
@@ -603,9 +605,8 @@ class ModelMigrate:
                 existing_attr["user_prompt"] = user_prompt
                 changed = True
 
-        # 标签候选项由用户在页面/实例写入中自行积累，model_init 不得用种子 option 覆盖。
-        skip_option_overwrite = existing_attr.get("attr_type") == "tag"
-        if "option" in incoming_attr and not skip_option_overwrite and existing_attr.get("option") != incoming_attr.get("option"):
+        # 已经是 tag 的候选项由用户积累，model_init 不覆盖。str 迁到 tag 时仍写入种子 option。
+        if "option" in incoming_attr and not preserve_tag_options and existing_attr.get("option") != incoming_attr.get("option"):
             existing_attr["option"] = incoming_attr.get("option")
             changed = True
 
@@ -908,7 +909,8 @@ class ModelMigrate:
                     continue
                 updates = {}
                 incoming_name = str(model.get("model_name") or "").strip()
-                if incoming_name and existing_model.get("model_name") != incoming_name:
+                name_customized = is_truthy_flag(existing_model.get("model_name_customized"))
+                if incoming_name and existing_model.get("model_name") != incoming_name and not name_customized:
                     updates["model_name"] = incoming_name
                 updates.update(self._app_topo_layer_updates(model, existing_model))
                 if not updates:

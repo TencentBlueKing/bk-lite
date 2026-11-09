@@ -10,6 +10,7 @@ import { Alert, Button, message, Modal, Progress, Upload } from 'antd';
 import OperateModal from '@/components/operate-modal';
 import { useTranslation } from '@/utils/i18n';
 import { useTransferApi } from '@/app/cmdb/api/transfer';
+import { createIdempotencyKey } from '@/app/cmdb/utils/idempotencyKey';
 import type { TransferTask } from '@/app/cmdb/types/transfer';
 import type { UploadFile, UploadProps } from 'antd';
 import { InboxOutlined } from '@ant-design/icons';
@@ -61,7 +62,7 @@ const ImportInst = forwardRef<FieldModalRef, FieldModalProps>(
         setTitle(title);
         setModelId(model_id);
         setFileList([]);
-        submissionKey.current = crypto.randomUUID();
+        submissionKey.current = createIdempotencyKey();
         setUploadProgress(0);
       },
     }));
@@ -95,7 +96,7 @@ const ImportInst = forwardRef<FieldModalRef, FieldModalProps>(
 
     const handleChange: UploadProps['onChange'] = ({ fileList }) => {
       setFileList(fileList);
-      submissionKey.current = crypto.randomUUID();
+      submissionKey.current = createIdempotencyKey();
       setUploadProgress(0);
     };
 

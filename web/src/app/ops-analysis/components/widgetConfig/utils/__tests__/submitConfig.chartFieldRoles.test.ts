@@ -13,7 +13,7 @@ const baseInput = {
   actions: [],
 };
 
-test('line and bar submit ignore leftover dimension and value fields', () => {
+test('line and bar submit persist one value field and reject a partial mapping', () => {
   const line = buildWidgetSubmitConfig({
     ...baseInput,
     chartType: 'line',
@@ -31,15 +31,43 @@ test('line and bar submit ignore leftover dimension and value fields', () => {
       name: '柱状',
       chartType: 'bar',
       dimensionField: 'src_ip',
+      valueFields: [],
+    },
+  });
+  const wide = buildWidgetSubmitConfig({
+    ...baseInput,
+    chartType: 'line',
+    values: {
+      name: '折线',
+      chartType: 'line',
+      dimensionField: 'ts',
+      valueFields: ['cpu', 'mem'],
+      seriesField: 'host',
+    },
+  });
+  const long = buildWidgetSubmitConfig({
+    ...baseInput,
+    chartType: 'bar',
+    values: {
+      name: '柱状',
+      chartType: 'bar',
+      dimensionField: 'ts',
+      valueFields: ['value'],
+      seriesField: 'metric',
     },
   });
 
   assert.equal(line.error, undefined);
-  assert.equal(line.config?.dimensionField, undefined);
-  assert.equal(line.config?.valueField, undefined);
-  assert.equal(bar.error, undefined);
-  assert.equal(bar.config?.dimensionField, undefined);
-  assert.equal(bar.config?.valueField, undefined);
+  assert.equal(line.config?.dimensionField, 'src_ip');
+  assert.equal(line.config?.valueField, 'value');
+  assert.equal(line.config?.valueFields, undefined);
+  assert.equal(line.config?.seriesField, undefined);
+  assert.equal(bar.error, 'chartRoleFieldsRequired');
+  assert.equal(wide.error, 'lineBarSeriesFieldConflict');
+  assert.equal(long.error, undefined);
+  assert.equal(long.config?.valueField, 'value');
+  assert.deepEqual(long.config?.valueFields, ['value']);
+  assert.equal(long.config?.seriesField, 'metric');
 });
 
 test('pie submit allows saving without field roles', () => {

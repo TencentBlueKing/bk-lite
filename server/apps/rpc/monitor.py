@@ -293,6 +293,14 @@ class MonitorOperationAnaRpc(BaseOperationAnaRpc):
         """按所选主机返回 CPU/内存/磁盘均值与最高值快照。"""
         return self.client.run("get_host_resource_snapshot", **kwargs)
 
+    def get_host_health_snapshot(self, **kwargs):
+        """按所选主机返回正常/异常/无数据三态快照。未选主机不退化为全量。"""
+        return self.client.run("get_host_health_snapshot", **kwargs)
+
+    def get_process_health_snapshot(self, **kwargs):
+        """按所选进程返回应用健康行。未选进程不退化为全量。"""
+        return self.client.run("get_process_health_snapshot", **kwargs)
+
     def get_host_resource_top(self, metric_type: str, **kwargs):
         """查询主机资源使用率 Top10，可选 instance_ids 收窄。"""
         return self.client.run("get_host_resource_top", metric_type=metric_type, **kwargs)

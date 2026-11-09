@@ -25,6 +25,7 @@ def test_host_metric_range_binds_instance_ids_and_metric_switch():
     assert metric["inputConfig"]["componentSwitch"] is True
     assert {item["value"] for item in metric["inputConfig"]["optionsSource"]["staticItems"]} >= {
         "cpu",
+        "iowait",
         "memory",
         "disk",
         "load5",
@@ -78,3 +79,32 @@ def test_host_resource_snapshot_has_no_health_fields():
     assert "窗口均值" in source["desc"]
     assert "不退化为全量" in source["desc"]
     assert "topN" in source["chart_type"]
+
+
+def test_host_health_snapshot_is_separate_source():
+    source = _sources_by_api()["monitor/get_host_health_snapshot"]
+    assert source["chart_type"] == ["single"]
+    assert {field["key"] for field in source["field_schema"]} == {
+        "host_count",
+        "healthy_count",
+        "unhealthy_count",
+        "no_data_count",
+        "healthy_percent",
+    }
+    instance_ids = next(item for item in source["params"] if item["name"] == "instance_ids")
+    assert instance_ids["inputConfig"]["multiple"] is True
+    assert "不退化为全量" in source["desc"]
+
+
+def test_process_health_snapshot_is_table_source():
+    source = _sources_by_api()["monitor/get_process_health_snapshot"]
+    assert source["chart_type"] == ["table"]
+    assert {field["key"] for field in source["field_schema"]} == {
+        "app_name",
+        "process_name",
+        "host_name",
+        "status",
+    }
+    instance_ids = next(item for item in source["params"] if item["name"] == "instance_ids")
+    assert instance_ids["inputConfig"]["multiple"] is True
+    assert "不退化为全量" in source["desc"]

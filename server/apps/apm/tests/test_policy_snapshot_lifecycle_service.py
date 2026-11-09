@@ -66,7 +66,6 @@ def multilevel_policy():
         metric_type="error_rate",
         evaluation_interval=1,
         metric_window=5,
-        aggregation="max",
         thresholds=[
             {"severity": "critical", "comparator": "gt", "value": "0.20"},
             {"severity": "error", "comparator": "gt", "value": "0.10"},
@@ -156,11 +155,9 @@ def test_multilevel_lifecycle_creates_trigger_escalation_recovery_and_immutable_
     assert metric_store.queries[-1].version == "v2"
 
 
-def test_no_data_event_has_snapshot_and_does_not_fabricate_a_metric_value(multilevel_policy):
+def test_no_data_does_not_open_an_alert_and_an_active_alert_still_recovers(multilevel_policy):
     multilevel_policy.trigger_after = 1
-    multilevel_policy.no_data_after = 2
-    multilevel_policy.no_data_severity = "critical"
-    multilevel_policy.no_data_alert_name = "${service} 无数据告警"
+    multilevel_policy.recover_after = 2
     multilevel_policy.save()
     metric_store = MutableMetricStore(ServiceRed(None, None, None, None))
     evaluator = DjangoApmPolicyService(metric_store, InMemoryNotificationDispatcher())
@@ -169,26 +166,34 @@ def test_no_data_event_has_snapshot_and_does_not_fabricate_a_metric_value(multil
     evaluator.evaluate(multilevel_policy.id, evaluated_at=started_at)
     evaluator.evaluate(multilevel_policy.id, evaluated_at=started_at + timedelta(minutes=1))
 
-    event = ApmEvent.objects.get()
     state = ApmPolicyTargetState.objects.get(policy=multilevel_policy)
-    assert event.action == ApmEvent.Action.TRIGGERED
-    assert event.value is None
-    assert event.snapshot.policy_snapshot["no_data_alert_name"] == "${service} 无数据告警"
-    assert state.status == ApmPolicyTargetState.Status.ACTIVE
-    assert event.snapshot.evaluation_snapshot["data_state"] == "no_data"
-    assert event.snapshot.evaluation_snapshot["value"] is None
-    evaluator.evaluate(multilevel_policy.id, evaluated_at=started_at + timedelta(minutes=2))
-    metric_store.red = _red(started_at + timedelta(minutes=3), 0.01)
-    evaluator.evaluate(multilevel_policy.id, evaluated_at=started_at + timedelta(minutes=3))
-    evaluator.evaluate(multilevel_policy.id, evaluated_at=started_at + timedelta(minutes=4))
+    assert ApmEvent.objects.count() == 0
+    assert ApmAlert.objects.count() == 0
+    assert state.status == ApmPolicyTargetState.Status.NORMAL
+    assert state.consecutive_no_data == 2
 
-    metric_snapshots = event.alert.metric_snapshot.snapshots
-    assert [item["type"] for item in metric_snapshots] == ["no_data", "no_data", "info", "event"]
-    assert [item["data_state"] for item in metric_snapshots] == ["no_data", "no_data", "available", "available"]
-    assert metric_snapshots[0]["threshold"]["comparator"] == "no_data"
-    assert metric_snapshots[1]["threshold"] is None
-    assert [item["threshold"]["comparator"] for item in metric_snapshots[2:]] == ["gt", "gt"]
-    assert metric_snapshots[-1]["event_id"].endswith(":recovered:critical")
+    metric_store.red = _red(started_at + timedelta(minutes=2), 0.12)
+    evaluator.evaluate(multilevel_policy.id, evaluated_at=started_at + timedelta(minutes=2))
+    alert = ApmAlert.objects.get()
+    assert alert.status == ApmAlert.Status.ACTIVE
+
+    metric_store.red = ServiceRed(None, None, None, None)
+    evaluator.evaluate(multilevel_policy.id, evaluated_at=started_at + timedelta(minutes=3))
+    state.refresh_from_db()
+    alert.refresh_from_db()
+    assert alert.status == ApmAlert.Status.ACTIVE
+    assert state.consecutive_no_data == 1
+    quiet = alert.metric_snapshot.snapshots[-1]
+    assert quiet["type"] == "no_data"
+    assert quiet["value"] is None
+    assert quiet["threshold"] is None
+
+    metric_store.red = _red(started_at + timedelta(minutes=4), 0.01)
+    evaluator.evaluate(multilevel_policy.id, evaluated_at=started_at + timedelta(minutes=4))
+    evaluator.evaluate(multilevel_policy.id, evaluated_at=started_at + timedelta(minutes=5))
+    alert.refresh_from_db()
+    assert alert.status == ApmAlert.Status.RECOVERED
+    assert alert.metric_snapshot.snapshots[-1]["event_id"].endswith(":recovered:error")
 
 
 def test_snapshot_payload_failure_keeps_domain_event_and_retryable_evidence(multilevel_policy, mocker):

@@ -674,3 +674,5 @@ def test_search_hands_option_lists_to_the_model_without_choosing_one(monkeypatch
     assert [item["id"] for item in result["data"]["optionSources"]] == [70, 71]
     assert "由你根据参数别名" in result["_next_step_hint"]
     assert "服务端不会替你选列表" in result["_next_step_hint"]
+    assert "optionsSource.queryParams" in result["_next_step_hint"]
+    assert "{ref:" in result["_next_step_hint"]

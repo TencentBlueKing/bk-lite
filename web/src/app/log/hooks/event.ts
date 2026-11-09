@@ -18,6 +18,21 @@ export const useConditionList = (): ListItem[] => {
   );
 };
 
+export const useAggregateOperatorList = (): ListItem[] => {
+  const { t } = useTranslation();
+  return useMemo(
+    () => [
+      { id: '>', name: t('log.moreThan') },
+      { id: '>=', name: t('log.moreThanOrEqual') },
+      { id: '<', name: t('log.lessThan') },
+      { id: '<=', name: t('log.lessThanOrEqual') },
+      { id: '=', name: t('log.equalto') },
+      { id: '!=', name: t('log.notequalTo') }
+    ],
+    [t]
+  );
+};
+
 export const useAlgorithmList = (): CardItem[] => {
   const { t } = useTranslation();
   return useMemo(
@@ -128,7 +143,8 @@ export const useEventActionMap = () => {
       claimed: t('log.event.eventClaimed'),
       assigned: t('log.event.eventAssigned'),
       reassigned: t('log.event.eventReassigned'),
-      closed: t('log.event.eventClosed')
+      closed: t('log.event.eventClosed'),
+      recovered: t('log.event.recovery')
     }),
     [t]
   );

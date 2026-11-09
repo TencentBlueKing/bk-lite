@@ -49,6 +49,9 @@ class SSHPlugin:
         script_path = params.get("script_path")
         self.username = params.get("username")
         self.password = params.get("password")
+        self.service_username = params.get("service_username")
+        self.service_password = params.get("service_password")
+        self.auth_source = params.get("auth_source")
         self.private_key = params.get("private_key")
         self.passphrase = params.get("passphrase")
         # header 常把缺省 port 打成 ""；params.get("port", 22) 无法回落到默认值
@@ -190,7 +193,6 @@ class SSHPlugin:
             if self.passphrase:
                 exec_params["passphrase"] = self.passphrase
         else:
-            # 本地执行时指定脚本类型
             shell_type = self._get_shell_type()
             exec_params["shell"] = shell_type
             logger.debug(
@@ -201,7 +203,68 @@ class SSHPlugin:
                 self.collection_task_id,
             )
 
+        service_env = self._service_execution_env()
+        if service_env:
+            exec_params["env"] = service_env
         return exec_params
+
+    @staticmethod
+    def _usable_secret(value) -> str:
+        secret = str(value or "")
+        if not secret.strip():
+            return ""
+        if secret.startswith("${") and secret.endswith("}"):
+            return ""
+        return secret
+
+    def _service_execution_env(self) -> Dict[str, str]:
+        """把服务凭据映射成脚本进程环境。SSH 登录口令不参与这次映射。"""
+        model_id = str(self.model_id or "").strip().lower()
+        if model_id == "redis":
+            env = {}
+            secret = self._usable_secret(self.service_password)
+            if secret:
+                env["REDISCLI_AUTH"] = secret
+            username = self._usable_secret(self.service_username)
+            if username:
+                env["REDIS_USER"] = username
+            return env
+        if model_id == "mongodb":
+            username = self._usable_secret(self.service_username)
+            secret = self._usable_secret(self.service_password)
+            if not username or not secret:
+                return {}
+            auth_source = self._usable_secret(self.auth_source) or "admin"
+            return {
+                "MONGO_USER": username,
+                "MONGO_PASSWORD": secret,
+                "MONGO_AUTH_DB": auth_source,
+            }
+        return {}
+
+    def _ssh_material_present(self) -> bool:
+        return any(str(value or "").strip() for value in (self.username, self.password, self.private_key))
+
+    @staticmethod
+    def _is_nats_transport_error(error: BaseException) -> bool:
+        if isinstance(error, TimeoutError):
+            return True
+        return type(error).__name__ in {"NoRespondersError", "ConnectionClosedError", "TimeoutError"}
+
+    async def _request_execute(self, script_content: str, *, local: bool) -> Dict[str, Any]:
+        saved_node_info = self.node_info
+        if not local:
+            self.node_info = {}
+        try:
+            exec_params = self._build_exec_params(script_content)
+        finally:
+            self.node_info = saved_node_info
+        if local:
+            subject = f"local.execute.{saved_node_info['id']}"
+        else:
+            subject = f"ssh.execute.{self.node_id}"
+        payload = json.dumps({"args": [exec_params], "kwargs": {}}).encode()
+        return await nats_request(subject, payload=payload, timeout=self.nats_timeout)
 
     def _parse_collect_output(self, collect_output: str) -> List[Dict[str, Any]]:
         if not collect_output:
@@ -286,16 +349,7 @@ class SSHPlugin:
             # 1. 读取脚本内容
             script_content = await asyncio.to_thread(self._read_script)
 
-            # 2. 构建执行参数
-            exec_params = self._build_exec_params(script_content)
-            # 3. 判断执行模式（本地 or SSH）
             execution_mode = "local" if self.node_info else "ssh"
-            # 如果是local，则使用对应的node_id
-            if execution_mode == "local":
-                subject = f"{execution_mode}.execute.{self.node_info['id']}"
-            else:
-                subject = f"{execution_mode}.execute.{self.node_id}"
-
             logger.debug(
                 "event=ssh_script_execute mode=%s host=%s model_id=%s task_id=%s",
                 execution_mode,
@@ -303,10 +357,19 @@ class SSHPlugin:
                 self.model_id,
                 self.collection_task_id,
             )
-
-            # 4. 通过 NATS 执行
-            payload = json.dumps({"args": [exec_params], "kwargs": {}}).encode()
-            response = await nats_request(subject, payload=payload, timeout=self.nats_timeout)
+            try:
+                response = await self._request_execute(script_content, local=bool(self.node_info))
+            except Exception as error:
+                if not (self.node_info and self._is_nats_transport_error(error) and self._ssh_material_present()):
+                    raise
+                logger.warning(
+                    "event=ssh_script_local_fallback host=%s model_id=%s task_id=%s error_type=%s",
+                    self.host,
+                    self.model_id,
+                    self.collection_task_id,
+                    type(error).__name__,
+                )
+                response = await self._request_execute(script_content, local=False)
             if response.get("success"):
                 if need_raw:
                     return response

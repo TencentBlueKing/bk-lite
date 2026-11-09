@@ -1,0 +1,12 @@
+{
+  "openssl": {
+    "filename": "openssl-3.5.9.tar.gz",
+    "url": "https://github.com/openssl/openssl/releases/download/openssl-3.5.9/openssl-3.5.9.tar.gz",
+    "sha256": "603f5602e2eef00d77fbd429d34dcd5822bb301757a1bc9cdb24c670f1eb859a"
+  },
+  "cryptography": {
+    "filename": "cryptography-46.0.5.tar.gz",
+    "url": "https://files.pythonhosted.org/packages/60/04/ee2a9e8542e4fa2773b81771ff8349ff19cdd56b7258a0cc442639052edb/cryptography-46.0.5.tar.gz",
+    "sha256": "abace499247268e3757271b2f1e244b36b06f8515cf27c4d49468fc9eb16e93d"
+  }
+}

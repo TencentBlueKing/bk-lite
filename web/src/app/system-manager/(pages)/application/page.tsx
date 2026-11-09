@@ -43,7 +43,7 @@ const ApplicationPage = () => {
         description={t('system.application.pageDesc')}
         items={dataList}
         loading={loading || refreshing}
-        getSearchText={applicationListSearchText}
+        getSearchText={(item) => applicationListSearchText(item)}
         actions={addButton}
         getItemKey={(item) => item.id}
         renderCard={(item) => {
@@ -67,7 +67,6 @@ const ApplicationPage = () => {
               name={item.display_name || item.name}
               description={item.description}
               icon={item.icon || item.name}
-              origin={item.is_build_in ? 'builtin' : 'external'}
               menuItems={menuItems}
               onClick={() => handleCardClick(item)}
             />

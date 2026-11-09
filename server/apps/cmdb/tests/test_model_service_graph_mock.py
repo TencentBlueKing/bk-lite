@@ -96,6 +96,47 @@ def test_search_model_attr_normalizes(patch_graph):
     assert item["default_value"] == []
 
 
+@pytest.mark.django_db
+def test_search_model_attr_reuses_loaded_model(monkeypatch):
+    from apps.cmdb.services.model import ModelManage
+
+    def boom(*args, **kwargs):
+        raise AssertionError("should not query graph")
+
+    monkeypatch.setattr("apps.cmdb.services.model.GraphClient", boom)
+    monkeypatch.setattr("apps.cmdb.services.model_graph_query.GraphClient", boom)
+    attrs = [{"attr_id": "name", "attr_name": "名称", "attr_type": "str"}]
+    result = ModelManage.search_model_attr(
+        "host",
+        model_info={"model_id": "host", "attrs": json.dumps(attrs), "unique_rules": "[]"},
+    )
+    assert result[0]["attr_id"] == "name"
+
+
+@pytest.mark.django_db
+def test_search_models_by_ids_queries_once(monkeypatch):
+    from apps.cmdb.services.model_graph_query import search_models_by_ids
+
+    calls = []
+
+    class OnceGraph:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def query_entity(self, label, params, **kwargs):
+            calls.append(params)
+            return [{"model_id": "host"}, {"model_id": "mysql"}], 2
+
+    monkeypatch.setattr("apps.cmdb.services.model_graph_query.GraphClient", lambda *a, **k: OnceGraph())
+    found = search_models_by_ids(["host", "mysql", "host"])
+    assert list(found) == ["host", "mysql"]
+    assert len(calls) == 1
+    assert calls[0][0]["value"] == ["host", "mysql"]
+
+
 # --------------------------------------------------------------------------
 # delete_model / update_model（FakeGraphClient via fake_graph fixture）
 # --------------------------------------------------------------------------
@@ -499,24 +540,58 @@ def test_update_builtin_model_can_set_app_topo_layer_only(fake_graph):
 
 
 @pytest.mark.django_db
-def test_update_builtin_model_rejects_non_layer_fields(fake_graph):
+def test_update_builtin_model_accepts_name_icon_and_group(fake_graph):
     from apps.cmdb.services.model import ModelManage
-    from apps.core.exceptions.base_app_exception import BaseAppException
 
-    fake_graph(
+    fake = fake_graph(
         "apps.cmdb.services.model",
         query_entity=(
             [{"_id": 5, "model_id": "host", "model_name": "主机", "is_pre": True}],
             1,
         ),
+        set_entity_properties=[{"_id": 5, "model_name": "改名"}],
     )
 
-    with pytest.raises(BaseAppException, match="内置模型仅允许修改应用拓扑层级"):
-        ModelManage.update_model(
-            5,
-            {
-                "model_id": "host",
-                "model_name": "改名",
-                "app_topo_layer": "host",
-            },
-        )
+    ModelManage.update_model(
+        5,
+        {
+            "model_id": "host",
+            "model_name": "改名",
+            "icn": "icon-server",
+            "group": [1],
+            "app_topo_layer": "host",
+        },
+    )
+
+    update_calls = [call for call in fake.calls if call[0] == "set_entity_properties"]
+    assert update_calls[0][1][2]["model_name"] == "改名"
+    assert update_calls[0][1][2]["icn"] == "icon-server"
+    assert update_calls[0][1][2]["group"] == [1]
+    assert update_calls[0][1][2]["model_name_customized"] is True
+
+
+@pytest.mark.django_db
+def test_update_builtin_model_keeps_seed_name_unmarked(fake_graph):
+    from apps.cmdb.services.model import ModelManage
+
+    fake = fake_graph(
+        "apps.cmdb.services.model",
+        query_entity=(
+            [{"_id": 5, "model_id": "host", "model_name": "主机", "is_pre": True}],
+            1,
+        ),
+        set_entity_properties=[{"_id": 5, "icn": "icon-server"}],
+    )
+
+    ModelManage.update_model(
+        5,
+        {
+            "model_id": "host",
+            "model_name": "主机",
+            "icn": "icon-server",
+            "app_topo_layer": "host",
+        },
+    )
+
+    update_calls = [call for call in fake.calls if call[0] == "set_entity_properties"]
+    assert "model_name_customized" not in update_calls[0][1][2]

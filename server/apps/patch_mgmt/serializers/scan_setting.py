@@ -8,6 +8,12 @@ from rest_framework import serializers
 
 from apps.patch_mgmt.models import ScanSetting
 from apps.patch_mgmt.services.notification_config import load_notification_candidates
+from apps.patch_mgmt.services.offline_catalog import (
+    OfflineCatalogError,
+    assign_offline_catalog,
+    offline_catalog_is_available,
+    prepare_offline_catalog_upload,
+)
 from apps.patch_mgmt.tasks import run_periodic_compliance_scan
 from apps.patch_mgmt.utils.i18n import serializer_message
 
@@ -27,10 +33,23 @@ class ScanSettingSerializer(serializers.ModelSerializer):
             "is_enabled",
             "notification_enabled",
             "notification_rules",
+            "offline_catalog_enabled",
+            "offline_catalog_filename",
+            "offline_catalog_size",
+            "offline_catalog_uploaded_at",
             "created_at",
             "updated_at",
         ]
-        read_only_fields = ["id", "timezone", "created_at", "updated_at"]
+        read_only_fields = [
+            "id",
+            "timezone",
+            "offline_catalog_filename",
+            "offline_catalog_size",
+            "offline_catalog_uploaded_at",
+            "created_at",
+            "updated_at",
+        ]
+        extra_kwargs = {"offline_catalog_enabled": {"required": False}}
 
     def validate(self, attrs):
         frequency = attrs.get("frequency", self.instance.frequency if self.instance else "daily")
@@ -46,6 +65,14 @@ class ScanSettingSerializer(serializers.ModelSerializer):
             self.instance.notification_rules if self.instance else [],
         )
         schedule_enabled = attrs.get("is_enabled", self.instance.is_enabled if self.instance else True)
+        offline_enabled = attrs.get(
+            "offline_catalog_enabled",
+            self.instance.offline_catalog_enabled if self.instance else False,
+        )
+        uploaded = self.context.get("offline_catalog_upload")
+        catalog_ready = uploaded is not None or bool(self.instance and offline_catalog_is_available(self.instance))
+        if offline_enabled and not catalog_ready:
+            raise serializers.ValidationError({"offline_catalog_enabled": "启用离线目录前请先上传离线目录"})
         request = self.context.get("request")
         timezone_name = getattr(getattr(request, "user", None), "timezone", None)
 
@@ -113,6 +140,11 @@ class ScanSettingSerializer(serializers.ModelSerializer):
             # 关闭只改变生效状态：保留服务端已校验过的规则，也避免普通扫描设置
             # 保存依赖系统管理渠道服务。再次开启时会重新执行授权校验。
             attrs["notification_rules"] = self.instance.notification_rules if self.instance else []
+        if uploaded is not None:
+            try:
+                self._prepared_catalog = prepare_offline_catalog_upload(uploaded)
+            except OfflineCatalogError as exc:
+                raise serializers.ValidationError({"file": exc.message}) from exc
         return attrs
 
     def _validate_notification_rules(self, enabled: bool, rules) -> list[dict]:
@@ -173,10 +205,18 @@ class ScanSettingSerializer(serializers.ModelSerializer):
         return normalized
 
     def update(self, instance, validated_data):
+        uploaded = self.context.get("offline_catalog_upload")
+        prepared = getattr(self, "_prepared_catalog", None)
         with transaction.atomic():
             locked_instance = ScanSetting.objects.select_for_update().get(pk=instance.pk)
+            previous_name = ""
+            if uploaded is not None and prepared is not None:
+                previous_name = assign_offline_catalog(locked_instance, uploaded, prepared)
             locked_instance = super().update(locked_instance, validated_data)
             self._sync_periodic_task(locked_instance)
+            if previous_name:
+                storage = locked_instance.offline_catalog_file.storage
+                transaction.on_commit(lambda name=previous_name, storage=storage: storage.delete(name))
         return locked_instance
 
     def _sync_periodic_task(self, instance: ScanSetting):

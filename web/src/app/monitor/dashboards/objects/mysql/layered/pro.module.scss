@@ -205,33 +205,6 @@
   color: var(--color-warning, #faad14);
 }
 
-.hostSegment {
-  display: inline-flex;
-  align-items: center;
-  min-width: 0;
-  overflow: hidden;
-}
-
-.hostLabel {
-  flex: none;
-  margin-right: 4px;
-}
-
-.hostLink {
-  min-width: 0;
-  overflow: hidden;
-  color: var(--color-primary, #1677ff);
-  text-decoration: underline;
-  text-overflow: ellipsis;
-  text-underline-offset: 2px;
-  white-space: nowrap;
-}
-
-.hostUnlinked {
-  flex: none;
-  color: var(--color-text-3, #8c8c8c);
-}
-
 .identitySkeleton {
   display: inline-block;
   flex: none;
@@ -239,10 +212,6 @@
   height: 12px;
   border-radius: 4px;
   background: var(--color-fill-2);
-}
-
-.identitySkeletonHost {
-  width: 88px;
 }
 
 /* 线程圆点跟主值同色：运行中成功绿，停止告警红。 */

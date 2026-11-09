@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useMemo } from 'react';
-import dayjs from 'dayjs';
 import OperateModal from './components/operateModal';
 import CustomTable from '@/components/custom-table';
 import PermissionWrapper from '@/components/permission';
@@ -14,13 +13,17 @@ import { STATUS_TEXT } from '@/app/alarm/constants/colors';
 import { Button, Switch } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
-import { typeLabel, weekMap } from '@/app/alarm/constants/settings';
 import { useSettingsTable } from '@/app/alarm/hooks/useSettingsTable';
+import { useCommon } from '@/app/alarm/context/common';
+import { formatUserDisplayName, UserDisplayItem } from '@/utils/userDisplay';
+import { formatSuppressionTime, shieldRuntimeColor, shieldRuntimeLabelKey } from '@/app/alarm/utils/shieldDisplay';
 
 const ShieldStrategy: React.FC = () => {
   const { t } = useTranslation();
+  const { userList } = useCommon();
   const { getShieldList, deleteShield, patchShield } = useSettingApi();
   const { convertToLocalizedTime } = useLocalizedTime();
+  const creators = userList as UserDisplayItem[];
 
   const {
     tableLoading,
@@ -55,43 +58,42 @@ const ShieldStrategy: React.FC = () => {
     {
       title: t('settings.assignTime'),
       key: 'suppression_time',
-      width: 220,
-      render: (_: unknown, row: AlertShieldListItem) => {
-        const suppressionTime = row.suppression_time as Record<string, unknown>;
-        const type = suppressionTime.type as string;
-        const start_time = suppressionTime.start_time as string;
-        const end_time = suppressionTime.end_time as string;
-        const week_month = suppressionTime.week_month as number[] | undefined;
-        let label = typeLabel[type] || '';
-
-        const fmt = (time: string, pattern = 'HH:mm:ss') =>
-          dayjs(time, pattern).format(pattern);
-
-        if (type === 'one') {
-          return `${fmt(start_time, 'YYYY-MM-DD HH:mm:ss')}-${fmt(end_time, 'YYYY-MM-DD HH:mm:ss')}`;
-        } else if (type === 'week') {
-          label += ` ${(week_month || []).map((d: number) => weekMap[d]).join(',')}`;
-        } else if (type === 'month') {
-          label += ` ${(week_month || []).map((d: number) => `${d}日`).join(',')}`;
-        }
-        return `${label} ${fmt(start_time)} - ${fmt(end_time)}`;
-      },
+      width: 280,
+      render: (_: unknown, row: AlertShieldListItem) => formatSuppressionTime(row.suppression_time),
     },
     {
-      title: t('settings.assignStatus'),
-      dataIndex: 'assignStatus',
-      key: 'assignStatus',
-      width: 100,
-      render: (_: unknown, row: AlertShieldListItem) => {
-        const { is_active } = row;
-        return is_active ? (
-          <span style={{ color: STATUS_TEXT.ACTIVE_GREEN }}>{t('settings.effective')}</span>
-        ) : (
-          <span style={{ color: STATUS_TEXT.INACTIVE_RED }}>
-            {t('settings.ineffective')}
+      title: t('settings.shieldDisplay.runtimeStatus'),
+      dataIndex: 'runtime_status',
+      key: 'runtime_status',
+      width: 110,
+      render: (val: string) => {
+        const labelKey = shieldRuntimeLabelKey(val);
+        return (
+          <span style={{ color: shieldRuntimeColor(val) }}>
+            {labelKey ? t(labelKey) : '--'}
           </span>
         );
       },
+    },
+    {
+      title: t('settings.shieldDisplay.enableStatus'),
+      dataIndex: 'enableStatus',
+      key: 'enableStatus',
+      width: 100,
+      render: (_: unknown, row: AlertShieldListItem) => (
+        row.is_active ? (
+          <span style={{ color: STATUS_TEXT.ACTIVE_GREEN }}>{t('settings.shieldDisplay.enabled')}</span>
+        ) : (
+          <span style={{ color: STATUS_TEXT.INACTIVE_RED }}>{t('settings.shieldDisplay.disabled')}</span>
+        )
+      ),
+    },
+    {
+      title: t('settings.shieldDisplay.creator'),
+      dataIndex: 'created_by',
+      key: 'created_by',
+      width: 160,
+      render: (val: string) => formatUserDisplayName(val, creators),
     },
     {
       title: t('settings.assignCreateTime'),
@@ -143,7 +145,7 @@ const ShieldStrategy: React.FC = () => {
         </div>
       ),
     },
-  ], [t, loadingIds, handleStatusToggle, handleEdit, handleDelete, convertToLocalizedTime]);
+  ], [t, creators, loadingIds, handleStatusToggle, handleEdit, handleDelete, convertToLocalizedTime]);
 
   return (
     <div className="flex h-full min-h-0 w-full flex-1 flex-col">

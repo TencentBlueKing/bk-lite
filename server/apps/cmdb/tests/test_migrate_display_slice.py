@@ -313,6 +313,27 @@ class TestModelMigrateParsing:
         assert m._merge_existing_attr_config(existing, incoming) is False
         assert existing["option"] == {"mode": "free", "options": user_options}
 
+    def test_merge_existing_attr_config_migrates_str_tag_to_free_mode(self, monkeypatch):
+        m = self._make(monkeypatch)
+        existing = {
+            "attr_id": "tag",
+            "attr_type": "str",
+            "attr_name": "标签",
+            "option": {"validation_type": "unrestricted", "widget_type": "single_line"},
+        }
+        incoming = {
+            "attr_id": "tag",
+            "attr_type": "tag",
+            "attr_name": "标签",
+            "option": {"mode": "free", "options": []},
+        }
+
+        changed = m._merge_existing_attr_config(existing, incoming)
+
+        assert changed is True
+        assert existing["attr_type"] == "tag"
+        assert existing["option"] == {"mode": "free", "options": []}
+
 
 # ===========================================================================
 # ModelMigrate.get_model_config —— 真实 Excel 字节流喂入 pandas
@@ -868,6 +889,48 @@ class TestModelMigrateWithDB:
             "app_topo_layer": "infrastructure",
         }
         assert "icn" not in update_calls[0][1][2]
+
+    def test_migrate_models_keeps_user_renamed_builtin_model(self, monkeypatch):
+        from apps.cmdb.constants.constants import CLASSIFICATION, MODEL
+
+        cfg = {
+            "models": [
+                {
+                    "model_id": "sangforscp",
+                    "model_name": "SCP云平台",
+                    "classification_id": "sangforscp",
+                    "app_topo_layer": "infrastructure",
+                }
+            ]
+        }
+        m, mod = self._make(monkeypatch, cfg)
+        monkeypatch.setattr(mod.ExcludeFieldsCache, "refresh_cache", classmethod(lambda cls: True))
+        existing = {
+            "_id": "model-1",
+            "model_id": "sangforscp",
+            "model_name": "我的云平台",
+            "model_name_customized": True,
+            "classification_id": "sangforscp",
+            "app_topo_layer": "infrastructure",
+            "attrs": "[]",
+        }
+        fake = _patch_graph(
+            monkeypatch,
+            "apps.cmdb.model_migrate.migrete_service",
+            query_entity=lambda label, *args, **kwargs: (
+                ([existing], 1)
+                if label == MODEL
+                else ([{"_id": "classification-1", "classification_id": "sangforscp"}], 1)
+                if label == CLASSIFICATION
+                else ([], 0)
+            ),
+            set_entity_properties=[{**existing}],
+        )
+
+        m.migrate_models()
+
+        update_calls = [call for call in fake.calls if call[0] == "set_entity_properties"]
+        assert update_calls == []
 
     def test_migrate_models_fills_missing_app_topo_layer_on_builtin(self, monkeypatch):
         from apps.cmdb.constants.constants import CLASSIFICATION, MODEL

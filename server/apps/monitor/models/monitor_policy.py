@@ -316,7 +316,12 @@ class MonitorEvent(models.Model):
         max_length=MonitorObjConstants.INSTANCE_ID_MAX_LENGTH,
         verbose_name="监控对象实例ID",
     )
-    metric_instance_id = models.CharField(db_index=True, default="", max_length=255, verbose_name="指标实例ID")
+    metric_instance_id = models.CharField(
+        db_index=True,
+        default="",
+        max_length=MonitorObjConstants.METRIC_INSTANCE_ID_MAX_LENGTH,
+        verbose_name="指标实例ID",
+    )
     dimensions = models.JSONField(default=dict, verbose_name="维度值")
     created_at = models.DateTimeField(db_index=True, auto_now_add=True, verbose_name="事件生成时间")
     # 事件发生时间
@@ -380,7 +385,12 @@ class MonitorAlert(TimeInfo):
         max_length=MonitorObjConstants.INSTANCE_NAME_MAX_LENGTH,
         verbose_name="监控对象实例名称",
     )
-    metric_instance_id = models.CharField(db_index=True, default="", max_length=255, verbose_name="指标实例ID")
+    metric_instance_id = models.CharField(
+        db_index=True,
+        default="",
+        max_length=MonitorObjConstants.METRIC_INSTANCE_ID_MAX_LENGTH,
+        verbose_name="指标实例ID",
+    )
     dimensions = models.JSONField(default=dict, verbose_name="维度值")
     alert_type = models.CharField(
         db_index=True,
@@ -508,7 +518,11 @@ class PolicyInstanceBaseline(TimeInfo):
         max_length=MonitorObjConstants.INSTANCE_ID_MAX_LENGTH,
         verbose_name="监控实例ID",
     )
-    metric_instance_id = models.CharField(max_length=255, verbose_name="指标实例ID")
+    metric_instance_id = models.CharField(
+        max_length=MonitorObjConstants.METRIC_INSTANCE_ID_MAX_LENGTH,
+        verbose_name="指标实例ID",
+    )
+    dimensions = models.JSONField(default=dict, verbose_name="维度值")
 
     class Meta:
         verbose_name = "策略实例基准"

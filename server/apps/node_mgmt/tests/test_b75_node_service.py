@@ -144,9 +144,33 @@ def test_get_nodes_by_ips_returns_exact_minimal_nodes_in_organization(setup):
                 "id": node.id,
                 "ip": "10.1.1.1",
                 "operating_system": "linux",
+                "nats_executor_online": False,
             }
         ]
     }
+
+
+def test_nats_executor_online_reads_running_collector():
+    assert NodeService._nats_executor_online({"collectors": [{"collector_id": "natsexecutor_windows", "status": 0}]})
+    assert NodeService._nats_executor_online({"collectors": [{"collector_id": "natsexecutor_linux", "status": 2}]}) is False
+    assert NodeService._nats_executor_online({"collectors": [{"collector_id": "telegraf_linux", "status": 0}]}) is False
+    assert NodeService._nats_executor_online({}) is False
+
+
+@pytest.mark.django_db
+def test_get_nodes_by_ips_reports_running_nats_executor(setup):
+    region, _collector, node = setup
+    node.status = {
+        "collectors": [
+            {"collector_id": "natsexecutor_linux", "status": 0, "message": "Running"},
+            {"collector_id": "telegraf_linux", "status": 2},
+        ]
+    }
+    node.save(update_fields=["status"])
+
+    result = NodeService.get_nodes_by_ips(["10.1.1.1"], skip_permission=True)
+
+    assert result["nodes"][0]["nats_executor_online"] is True
 
 
 @pytest.mark.django_db

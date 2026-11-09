@@ -44,6 +44,7 @@ import json
 import re
 from dataclasses import dataclass, field
 from typing import Any, Dict, Literal
+from urllib.parse import unquote
 
 from apps.cmdb.constants.constants import ENUM_SELECT_MODE_SINGLE
 from apps.cmdb.constants.field_constraints import (
@@ -92,8 +93,8 @@ def _validate_tag_key_value(key: str, value: str) -> str | None:
         return "标签 key 不能为空"
     if not value:
         return "标签 value 不能为空"
-    if any(ch in value for ch in (" ", ":", "\n", "\r")):
-        return "标签 value 不能包含空格、冒号或换行符"
+    if any(ch in value for ch in (":", "\n", "\r")):
+        return "标签 value 不能包含冒号或换行符"
     return None
 
 
@@ -166,6 +167,27 @@ def validate_tag_values(values: list[str], config: TagFieldConfig) -> TagValidat
     return TagValidationResult(normalized_values=normalized_values, errors=errors)
 
 
+def parse_collected_tag_wire(value: Any) -> list[str]:
+    """采集链路里的 tag：percent-encoded JSON 优先，明文 JSON / 逗号分隔仍可用。"""
+    if isinstance(value, str):
+        raw = value.strip()
+        candidates = [raw]
+        if "%" in raw:
+            decoded = unquote(raw)
+            if decoded != raw:
+                candidates.insert(0, decoded)
+        for candidate in candidates:
+            if candidate.startswith("["):
+                try:
+                    parsed = json.loads(candidate)
+                except json.JSONDecodeError:
+                    parsed = None
+                if isinstance(parsed, list):
+                    return normalize_tag_input_values(parsed)
+        return normalize_tag_input_values(raw)
+    return normalize_tag_input_values(value)
+
+
 def normalize_tag_input_values(value: Any) -> list[str]:
     if value is None or value == "":
         return []
@@ -178,6 +200,42 @@ def normalize_tag_input_values(value: Any) -> list[str]:
         tokens = re.split(r"[,，\n\r]+", raw)
         return [t.strip() for t in tokens if t.strip()]
     raise BaseAppException("标签字段值必须是字符串或字符串数组")
+
+
+def sanitize_collected_tag_values(values: list[str]) -> tuple[list[str], int, int]:
+    """丢掉非法 key:value，超过上限的尾部截断。返回 (合法值, 跳过数, 截断数)。"""
+    legal: list[str] = []
+    seen: set[str] = set()
+    skipped = 0
+    for raw_item in values:
+        text = str(raw_item).strip()
+        if text.count(":") != 1:
+            skipped += 1
+            continue
+        key, value = [part.strip() for part in text.split(":", 1)]
+        if _validate_tag_key_value(key, value):
+            skipped += 1
+            continue
+        normalized = f"{key}:{value}"
+        if normalized in seen:
+            continue
+        seen.add(normalized)
+        legal.append(normalized)
+    truncated = 0
+    if len(legal) > TAG_MAX_PAIRS:
+        truncated = len(legal) - TAG_MAX_PAIRS
+        legal = legal[:TAG_MAX_PAIRS]
+    return legal, skipped, truncated
+
+
+def backfill_tag_property(value: Any) -> tuple[list[str] | None, int, int]:
+    """把历史标量 tag 收成 list。已经是 list 或字段缺失时不改。"""
+    if value is None or isinstance(value, list):
+        return None, 0, 0
+    if not isinstance(value, str):
+        return [], 1, 0
+    raw_values = normalize_tag_input_values(value)
+    return sanitize_collected_tag_values(raw_values)
 
 
 def normalize_enum_values(raw: str | list | None) -> list[str]:

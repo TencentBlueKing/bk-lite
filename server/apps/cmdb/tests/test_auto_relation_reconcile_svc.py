@@ -3,7 +3,7 @@
 对照 apps/cmdb/services/auto_relation_reconcile.py：
   - 匹配规则判定（exact/iexact/contains/未知）
   - 空值判定 / mapping 读取
-  - schedule_* 调度入口的规范化与去重、一律 send_task
+  - schedule_* 调度入口的规范化与去重、只写入待重算表
   - 期望目标集合计算、mapping 过滤（n:1/1:1 歧义、1:n 目标抢占）
   - reconcile_source_instance 的增删幂等、reconcile_for_instance / full_sync_rule 编排
 
@@ -538,58 +538,42 @@ def test_full_sync_rule_full_sync_path(monkeypatch):
 # --------------------------------------------------------------------------
 # schedule_* 调度入口
 # --------------------------------------------------------------------------
-def test_schedule_instance_reconcile_normalizes_and_sends_one_batch_task(monkeypatch, settings):
-    settings.DEBUG = True
-    sent = []
-    # transaction.on_commit 在非事务下立即执行回调
-    monkeypatch.setattr(mod.transaction, "on_commit", lambda fn: fn())
-    monkeypatch.setattr(mod.current_app, "send_task", lambda name, args: sent.append((name, args)))
+@pytest.mark.django_db
+def test_schedule_instance_reconcile_normalizes_and_records_unique_rows():
+    from apps.cmdb.models.auto_relation_pending import AutoRelationPending
 
     schedule_instance_auto_relation_reconcile([3, "3", 0, -1, "bad", 5])
-    assert sent == [(mod.INSTANCE_BATCH_RECONCILE_TASK, [[3, 5]])]
+    assert list(AutoRelationPending.objects.order_by("instance_id").values_list("instance_id", flat=True)) == [3, 5]
 
 
-def test_schedule_instance_reconcile_empty_noop(monkeypatch):
-    on_commit_called = []
-    monkeypatch.setattr(mod.transaction, "on_commit", lambda fn: on_commit_called.append(fn))
+def test_schedule_instance_reconcile_empty_noop():
     schedule_instance_auto_relation_reconcile([])
-    assert on_commit_called == []
 
 
-def test_schedule_instance_reconcile_sends_one_batch_task(monkeypatch, settings):
-    settings.DEBUG = False
-    monkeypatch.setattr(mod.transaction, "on_commit", lambda fn: fn())
-    sent = []
-    monkeypatch.setattr(mod.current_app, "send_task", lambda name, args: sent.append((name, args)))
+@pytest.mark.django_db
+def test_schedule_instance_reconcile_records_one_row_per_instance():
+    from apps.cmdb.models.auto_relation_pending import AutoRelationPending
+
     schedule_instance_auto_relation_reconcile([9, 10])
-    assert sent == [(mod.INSTANCE_BATCH_RECONCILE_TASK, [[9, 10]])]
+    assert list(AutoRelationPending.objects.order_by("instance_id").values_list("instance_id", flat=True)) == [9, 10]
 
 
-def test_batch_reconcile_task_delegates_to_service(monkeypatch):
-    monkeypatch.setattr(
-        SVC,
-        "reconcile_for_instances",
-        classmethod(lambda cls, ids: {"instances": len(ids), "success": True}),
-    )
+@pytest.mark.django_db
+def test_batch_reconcile_task_records_instances():
+    from apps.cmdb.models.auto_relation_pending import AutoRelationPending
     from apps.cmdb.tasks.celery_tasks import reconcile_instances_auto_association_task
 
     result = reconcile_instances_auto_association_task.run([1, 2])
-    assert result == {"instances": 2, "success": True}
+    assert result == {"recorded": True, "count": 2}
+    assert list(AutoRelationPending.objects.order_by("instance_id").values_list("instance_id", flat=True)) == [1, 2]
 
 
-def test_schedule_rule_full_sync_dedupes_and_clears_pending(monkeypatch, settings):
-    settings.DEBUG = True
-    mod._PENDING_RULE_FULL_SYNC_IDS.clear()
-    monkeypatch.setattr(mod.transaction, "on_commit", lambda fn: fn())
-    sent = []
-    monkeypatch.setattr(mod.current_app, "send_task", lambda name, args: sent.append((name, args)))
+@pytest.mark.django_db
+def test_schedule_rule_full_sync_records_unique_rules():
+    from apps.cmdb.models.auto_relation_pending import AutoRelationPending
+
     schedule_rule_auto_relation_full_sync(["r1", " r1 ", "", None, "r2"])
-    assert sent == [
-        (mod.RULE_FULL_SYNC_TASK, ["r1"]),
-        (mod.RULE_FULL_SYNC_TASK, ["r2"]),
-    ]
-    # dispatch 后 pending 应清空
-    assert mod._PENDING_RULE_FULL_SYNC_IDS == set()
+    assert list(AutoRelationPending.objects.order_by("model_asst_id").values_list("model_asst_id", flat=True)) == ["r1", "r2"]
 
 
 def test_schedule_incoming_by_model_ids(monkeypatch):

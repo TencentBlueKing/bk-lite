@@ -11,6 +11,10 @@ from typing import Any
 import nats.errors
 from core.config import ServiceConfig, logger
 from service.ansible_runner import (
+    MIXED_PYTHON_MODULE,
+    WINDOWS_FILE_SCRIPT_TYPES,
+    _resolve_python_interpreter,
+    _windows_python_executable,
     build_playbook_list_hosts_command,
     build_playbook_winrm_preflight_command,
     cleanup_workspace,
@@ -18,16 +22,22 @@ from service.ansible_runner import (
     parse_playbook_recap,
     prepare_adhoc_execution,
     prepare_playbook_execution,
-    prepare_windows_script_execution,
     run_command,
     to_adhoc_request,
     to_playbook_request,
 )
 from service.callback_delivery_service import CallbackDeliveryMixin
 from service.failure_summary import build_task_failure_summary, log_ansible_task_failed
+from service.linux_script_delivery import ScriptDeliveryError
+from service.mixed_python_stream import run_mixed_python_script_stream
 from service.nats_topology_service import NATSTopologyMixin
 from service.remote_shell_stream import run_remote_shell_stream
 from service.task_store import TERMINAL_TASK_STATUSES, TaskStore, _sanitize_callback_for_storage, _sanitize_payload_for_storage
+from service.winrm_stream import run_winrm_stream
+
+
+async def _noop_stream_publish(_subject: str, _data: bytes) -> None:
+    return None
 
 
 def _extract_payload(data: bytes) -> dict:
@@ -251,8 +261,12 @@ class AnsibleNATSService(NATSTopologyMixin, CallbackDeliveryMixin):
             if stream_log_topic and execution_id:
                 stream_subject = str(stream_log_topic).strip()
                 self._validate_stream_subject(stream_subject)
+
+                async def _stream_publish(subject: str, data: bytes) -> None:
+                    await self.nc.publish(subject, data)
+
                 stream_kwargs = {
-                    "stream_publish": lambda subject, data: self.nc.publish(subject, data),
+                    "stream_publish": _stream_publish,
                     "stream_log_topic": stream_subject,
                     "execution_id": str(execution_id),
                 }
@@ -261,22 +275,44 @@ class AnsibleNATSService(NATSTopologyMixin, CallbackDeliveryMixin):
                 request = to_adhoc_request(execution_payload)
                 request_module = getattr(request, "module", "")
                 request_stream_type = getattr(request, "stream_remote_type", None)
-                windows_file_execution = request_module == "win_shell" and request_stream_type in {"bat", "powershell"}
+                windows_file_execution = request_module == "win_shell" and request_stream_type in WINDOWS_FILE_SCRIPT_TYPES
+                mixed_python_execution = request_module == MIXED_PYTHON_MODULE
                 remote_stream_enabled = getattr(request, "stream_remote_output", False) and stream_kwargs
-                if windows_file_execution:
-                    cmd, workspace = prepare_windows_script_execution(request)
-                    code, output, output_meta = await run_command(cmd, request.execute_timeout, **stream_kwargs)
+                if mixed_python_execution:
+                    code, output, output_meta, workspace = await run_mixed_python_script_stream(
+                        request,
+                        stream_publish=stream_kwargs.get("stream_publish"),
+                        stream_log_topic=stream_kwargs.get("stream_log_topic"),
+                        execution_id=stream_kwargs.get("execution_id"),
+                    )
+                elif windows_file_execution:
+                    windows_publish = stream_kwargs.get("stream_publish") or _noop_stream_publish
+                    windows_topic = str(stream_kwargs.get("stream_log_topic") or f"job.stream.{request.task_id or 'windows'}.ansible")
+                    windows_execution_id = str(stream_kwargs.get("execution_id") or request.task_id or "windows")
+                    code, output, output_meta = await run_winrm_stream(
+                        list(request.host_credentials or []),
+                        script_content=request.module_args,
+                        script_type=str(request_stream_type),
+                        timeout=int(request.execute_timeout),
+                        stream_publish=windows_publish,
+                        stream_log_topic=windows_topic,
+                        execution_id=windows_execution_id,
+                        windows_interpreter=_windows_python_executable(_resolve_python_interpreter(request.extra_vars)),
+                    )
+                    workspace = None
                 else:
                     cmd, workspace = prepare_adhoc_execution(request)
-                if not windows_file_execution and remote_stream_enabled and request_module in {"raw", "shell"}:
+                if not windows_file_execution and not mixed_python_execution and remote_stream_enabled and request_module in {"raw", "shell"}:
                     code, output, output_meta = await run_remote_shell_stream(
                         cmd,
                         script_content=request.module_args,
                         shell_executable=str((request.extra_vars or {}).get("ansible_shell_executable") or "/bin/sh"),
                         timeout=request.execute_timeout,
+                        host_credentials=list(request.host_credentials or []),
+                        workspace=workspace,
                         **stream_kwargs,
                     )
-                elif not windows_file_execution:
+                elif not windows_file_execution and not mixed_python_execution:
                     code, output, output_meta = await run_command(cmd, request.execute_timeout, **stream_kwargs)
             else:
                 request = to_playbook_request(execution_payload)
@@ -286,6 +322,9 @@ class AnsibleNATSService(NATSTopologyMixin, CallbackDeliveryMixin):
                 winrm_preflight_cmd = build_playbook_winrm_preflight_command(prepared_request)
                 _, _, _ = await run_command(winrm_preflight_cmd, request.execute_timeout)
                 code, output, output_meta = await run_command(cmd, request.execute_timeout, **stream_kwargs)
+        except ScriptDeliveryError as err:
+            error = str(err)
+            output = err.host_output
         except Exception as err:
             error = str(err)
         finally:

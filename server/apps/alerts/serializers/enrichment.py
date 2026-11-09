@@ -20,6 +20,7 @@ class EnrichmentRuleModelSerializer(serializers.ModelSerializer):
         "level",
         "resource_type",
         "resource_id",
+        "cmdb_id",
         "content",
         "service",
         "location",

@@ -63,6 +63,7 @@ import {
   unwrapCustomValue,
   tryParseJsonValue,
 } from './plannedExecutionPayload';
+import { renderJobOutputHtml, type JobOutputValue } from './jobOutput';
 import { CONTEXT_USAGE_EVENT, parseLlmContextUsage, type LlmContextUsage } from './llmContextUsage';
 import { isToolResultErrorContent } from './toolResultStatus';
 
@@ -1019,6 +1020,14 @@ export class AGUIMessageHandler {
     this.updateMessageContent(this.getFullContent(), undefined, undefined, this.thinkingContent, this.isThinking);
   }
 
+  handleJobOutput(value: JobOutputValue) {
+    const html = renderJobOutputHtml(value);
+    if (!html) return;
+    this.flushCurrentTextBlock();
+    this.contentBlocks.push({ type: 'text', content: html });
+    this.updateMessageContent(this.getFullContent(), undefined, undefined, this.thinkingContent, this.isThinking);
+  }
+
   handleBrowserStepProgress(value: BrowserStepProgressValue) {
     this.stopThinking();
     const stepData = value as BrowserStepProgressData;
@@ -1152,6 +1161,8 @@ export class AGUIMessageHandler {
         const plannedKind = looksLikePlannedExecutionPayload(customValue);
         if (customName === 'stream_keepalive' || customName === 'planned_step_hidden_text') {
           return false;
+        } else if (customName === 'job_script_output' && customValue) {
+          this.handleJobOutput(customValue as JobOutputValue);
         } else if (customName === 'browser_step_progress' && customValue) {
           this.handleBrowserStepProgress(customValue as BrowserStepProgressValue);
         } else if (customName === 'browser_task_received' && customValue) {

@@ -1,0 +1,57 @@
+{
+  "type": "object",
+  "properties": {
+    "targets": {
+      "type": "array",
+      "title": "目标主机",
+      "description": "可从左侧拖入表单触发器或上游字段，也可从节点管理和作业平台选择主机；两个来源不能混选",
+      "items": {"type": "string", "pattern": "^(node:[^:]+|manual:[0-9]+)$"},
+      "minItems": 1,
+      "maxItems": 100,
+      "uniqueItems": true
+    },
+    "files": {
+      "type": "array",
+      "title": "分发文件",
+      "description": "设计时上传；运行时按 file_key 调用作业平台分发",
+      "items": {
+        "type": "object",
+        "properties": {
+          "file_key": {"type": "string", "minLength": 1, "maxLength": 512, "x-binding": "literal-only"},
+          "name": {"type": "string", "minLength": 1, "maxLength": 255, "x-binding": "literal-only"}
+        },
+        "required": ["file_key", "name"],
+        "additionalProperties": false
+      },
+      "minItems": 1,
+      "maxItems": 20,
+      "x-binding": "literal-only"
+    },
+    "target_path": {
+      "type": "string",
+      "title": "目标路径",
+      "description": "文件将被分发到目标主机的此路径",
+      "minLength": 1,
+      "maxLength": 512,
+      "x-binding": "literal-only"
+    },
+    "overwrite_strategy": {
+      "type": "string",
+      "title": "覆盖策略",
+      "enum": ["overwrite", "skip"],
+      "x-enum-labels": {"overwrite": "覆盖已存在文件", "skip": "跳过已存在文件"},
+      "default": "overwrite",
+      "x-binding": "literal-only"
+    },
+    "timeout_seconds": {
+      "type": "integer",
+      "title": "超时（秒）",
+      "minimum": 30,
+      "maximum": 3600,
+      "default": 600,
+      "x-binding": "literal-only"
+    }
+  },
+  "required": ["targets", "files", "target_path"],
+  "additionalProperties": false
+}

@@ -18,7 +18,7 @@ import { WorkflowLaunchDialog } from './workflow-launch-dialog';
 import { WorkflowPermission } from './workflow-permission';
 
 const API = '/workflow/api';
-const ACTIVE = new Set(['QUEUED', 'RUNNING', 'WAITING_APPROVAL', 'TERMINATING']);
+const ACTIVE = new Set(['QUEUED', 'RUNNING', 'WAITING_APPROVAL', 'TERMINATING', 'UNKNOWN']);
 
 const NODE_LABEL_DEFAULTS: Record<ExecutionNodeSummary['state'], string> = {
   ACTIONABLE: '待我处理',
@@ -298,7 +298,8 @@ export function ExecutionDetailDrawer({ executionId, initialNodeReference, initi
   }, [nodeDetailRequestCoordinator, open, requestCoordinator]);
 
   useEffect(() => {
-    if (!open || !execution || !ACTIVE.has(execution.status)) return;
+    if (!open || !execution) return;
+    if (!ACTIVE.has(execution.status)) return;
     const timer = window.setInterval(() => void load(true), 5_000);
     return () => window.clearInterval(timer);
   }, [execution, load, open]);
@@ -321,7 +322,13 @@ export function ExecutionDetailDrawer({ executionId, initialNodeReference, initi
         }}
         width={980}
         title={t('workflowOrchestration.execution.details', '执行详情')}
-        subTitle={execution ? `${execution.workflow_name} · v${execution.workflow_version}` : ''}
+        subTitle={execution
+          ? `${execution.workflow_name} · ${
+            execution.mode === 'DEBUG'
+              ? t('workflowOrchestration.execution.debug', '调试')
+              : `v${execution.workflow_version}`
+          }`
+          : ''}
         extra={execution ? <div className="flex items-center gap-2">
           <WorkflowPermission operation="View" area="executions" instancePermissions={execution.permission}><Button
             type="link"
@@ -425,7 +432,14 @@ export function ExecutionDetailDrawer({ executionId, initialNodeReference, initi
               </section>
             </div>
           </div>
-        ) : <Empty description={t('workflowOrchestration.execution.notFound', '执行记录不存在')} />}
+        ) : (
+          <div
+            data-testid="execution-detail-not-found"
+            className="flex h-full min-h-0 w-full flex-1 items-center justify-center p-6"
+          >
+            <Empty description={t('workflowOrchestration.execution.notFound', '执行记录不存在')} />
+          </div>
+        )}
       </OperateDrawer>
       {execution && rerunOpen ? <WorkflowLaunchDialog open title={t('workflowOrchestration.execution.rerunTitle', '重新执行')} subTitle={execution.workflow_name} planUrl={`${API}/executions/${execution.id}/launch-plan/`} submitUrl={`${API}/executions/${execution.id}/rerun/`} instancePermissions={execution.permission} onClose={() => setRerunOpen(false)} onStarted={(record) => { setRerunOpen(false); onRerunStarted?.(record.id); }} /> : null}
     </>

@@ -264,6 +264,19 @@ def test_handle_recovery_via_fallback_key(source):
 
 
 @pytest.mark.django_db
+def test_check_and_recover_does_not_overwrite_closed_alert(source):
+    created = _make_event(source, "E1", external_id="ext-1", action=EventAction.CREATED, start_minutes_ago=30)
+    recovery = _make_event(source, "E2", external_id="ext-1", action=EventAction.RECOVERY, start_minutes_ago=5)
+    alert = _make_active_alert(created, recovery)
+    Alert.objects.filter(pk=alert.pk).update(status=AlertStatus.CLOSED)
+
+    assert AlertRecoveryChecker.check_and_recover_alert(alert) is False
+    alert.refresh_from_db()
+    assert alert.status == AlertStatus.CLOSED
+    assert alert.closed_at is None
+
+
+@pytest.mark.django_db
 def test_check_and_recover_closed_action(source):
     created = _make_event(source, "E1", external_id="ext-1", action=EventAction.CREATED, start_minutes_ago=30)
     closed = _make_event(source, "E2", external_id="ext-1", action=EventAction.CLOSED, start_minutes_ago=5)

@@ -442,10 +442,20 @@ def send_by_custom_webhook(channel_obj: Channel, content, receivers):
                 timeout=10,
                 allow_redirects=False,
             )
-        return res.json()
+        return _custom_webhook_delivery_result(res)
     except Exception as e:
         logger.exception(e)
         return {"result": False, "message": "failed to send custom webhook message"}
+
+
+def _custom_webhook_delivery_result(response):
+    """2xx 且正文不是 JSON 时视为已接收。Teams Webhook 触发器会回 HTTP 202 和空正文。"""
+    if not 200 <= response.status_code < 300:
+        return {"result": False, "message": "failed to send custom webhook message"}
+    try:
+        return response.json()
+    except requests.exceptions.JSONDecodeError:
+        return {"result": True}
 
 
 # 先解析模板为结构体，再递归替换 {{content}}，避免 content 中的换行符等破坏 JSON 语法

@@ -455,7 +455,8 @@ def test_complete_snapshot_deletes_missing_software_and_audits(graph):
     assert record.model_id == "pc_software"
     assert record.scenario == COLLECT_AUTOMATION_CHANGE
     assert record.operator == "system"
-    assert "s1" in record.message
+    assert "任务:pc-task" in record.message
+    assert "快照:s1" in record.message
 
 
 @pytest.mark.django_db

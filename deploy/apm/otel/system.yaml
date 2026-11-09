@@ -27,7 +27,7 @@ processors:
     spike_limit_mib: ${env:APM_COLLECTOR_MEMORY_SPIKE_MIB}
 
 exporters:
-  otlphttp/victoria_traces:
+  otlp_http/victoria_traces:
     traces_endpoint: ${env:APM_VICTORIATRACES_OTLP_ENDPOINT}
     timeout: 10s
     sending_queue:
@@ -53,4 +53,4 @@ service:
     traces:
       receivers: [nats_jetstream]
       processors: [memory_limiter]
-      exporters: [otlphttp/victoria_traces]
+      exporters: [otlp_http/victoria_traces]

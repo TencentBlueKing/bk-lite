@@ -26,6 +26,31 @@ it('submits current-page UUIDs and fields, then reports acceptance rather than d
   expect(exportFile.mock.calls[0][1]).toMatch(/^[0-9a-f-]{36}$/);
 });
 
+it('includes the current search and advanced filter only when exporting all rows', async () => {
+  exportFile.mockClear();
+  exportFile.mockResolvedValue({ task_id: 'all', status: 'queued', type: 'export' });
+  const ref = createRef<ExportModalRef>();
+  const advanced = { logic: 'AND' as const, conditions: [{ path: ['mysql_run_host'], field: 'os_type', type: 'str=', value: 'Linux' }] };
+  const queryList = [{ field: 'version', type: 'str*', value: '8.0' }];
+  render(<ExportModal ref={ref} models={[]} userList={[]} assoTypes={[]} canSubmit onSubmitted={vi.fn()} />);
+  await act(async () => {
+    ref.current?.showModal({ title: '导出', modelId: 'mysql', selectedKeys: [], exportType: 'all',
+      columns: [{ key: 'inst_name', title: '实例名', dataIndex: 'inst_name' }], queryList, advancedFilter: advanced });
+  });
+  fireEvent.click(screen.getByText('Transfer.submitExport'));
+  await waitFor(() => expect(exportFile).toHaveBeenCalled());
+  expect(exportFile.mock.calls[0][0]).toMatchObject({ scope: 'all', query_list: queryList, advanced_filter: advanced });
+
+  exportFile.mockClear();
+  await act(async () => {
+    ref.current?.showModal({ title: '导出', modelId: 'mysql', selectedKeys: ['picked'], exportType: 'selected',
+      columns: [{ key: 'inst_name', title: '实例名', dataIndex: 'inst_name' }], queryList, advancedFilter: advanced });
+  });
+  fireEvent.click(screen.getByText('Transfer.submitExport'));
+  await waitFor(() => expect(exportFile).toHaveBeenCalled());
+  expect(exportFile.mock.calls[0][0]).toEqual({ model_id: 'mysql', scope: 'selected', inst_uuids: ['picked'], attr_list: ['inst_name'], association_list: [] });
+});
+
 it('opens task records immediately while export acceptance is still pending', async () => {
   let accept!: (value: { task_id: string; status: string; type: string }) => void;
   exportFile.mockImplementation(() => new Promise(resolve => { accept = resolve; }));
@@ -64,4 +89,69 @@ it('restores export settings after a failed submission and reuses the request ke
   fireEvent.click(retryButton);
   await waitFor(() => expect(onSubmitted).toHaveBeenCalledTimes(1));
   expect(exportFile.mock.calls[1]).toEqual(exportFile.mock.calls[0]);
+});
+
+it('shows all or the concrete selected asset count', async () => {
+  const ref = createRef<ExportModalRef>();
+  render(<ExportModal ref={ref} models={[]} userList={[]} assoTypes={[]} canSubmit onSubmitted={vi.fn()} />);
+  const columns = [{ key: 'inst_name', title: '实例名', dataIndex: 'inst_name' }];
+  await act(async () => {
+    ref.current?.showModal({
+      title: '导出',
+      modelId: 'host',
+      selectedKeys: Array.from({ length: 11 }, (_, index) => `host-${index}`),
+      exportType: 'selected',
+      columns,
+    });
+  });
+  expect(screen.getByText('Model.exportAssetCount').nextElementSibling?.textContent).toBe('11');
+
+  await act(async () => {
+    ref.current?.showModal({
+      title: '导出',
+      modelId: 'host',
+      selectedKeys: [],
+      exportType: 'all',
+      total: 128,
+      columns,
+    });
+  });
+  expect(screen.getByText('Model.exportAssetCount').nextElementSibling?.textContent).toBe('all（128）');
+
+  await act(async () => {
+    ref.current?.showModal({
+      title: '导出',
+      modelId: 'host',
+      selectedKeys: ['page-only'],
+      exportType: 'currentPage',
+      columns,
+      tableData: [{ inst_uuid: 'page-a' }, { inst_uuid: 'page-b' }],
+    });
+  });
+  expect(screen.getByText('Model.exportAssetCount').nextElementSibling?.textContent).toBe('2');
+});
+
+it('submits the export when the page has no crypto.randomUUID', async () => {
+  exportFile.mockClear();
+  exportFile.mockResolvedValue({ task_id: 'http', status: 'queued', type: 'export' });
+  const getRandomValues = vi.fn((values: Uint8Array) => {
+    values.fill(0);
+    return values;
+  });
+  vi.stubGlobal('crypto', { getRandomValues });
+  try {
+    const onSubmitted = vi.fn();
+    const ref = createRef<ExportModalRef>();
+    render(<ExportModal ref={ref} models={[]} userList={[]} assoTypes={[]} canSubmit onSubmitted={onSubmitted} />);
+    await act(async () => {
+      ref.current?.showModal({ title: '导出', modelId: 'host', selectedKeys: [], exportType: 'all',
+        columns: [{ key: 'inst_name', title: '实例名', dataIndex: 'inst_name' }], tableData: [] });
+    });
+    fireEvent.click(screen.getByText('Transfer.submitExport'));
+    await waitFor(() => expect(onSubmitted).toHaveBeenCalled());
+    expect(exportFile.mock.calls[0][1]).toBe('00000000-0000-4000-8000-000000000000');
+    expect(getRandomValues).toHaveBeenCalled();
+  } finally {
+    vi.unstubAllGlobals();
+  }
 });

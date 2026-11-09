@@ -1,5 +1,7 @@
 'use client';
 
+import ItsmTicket from '@/app/alarm/components/itsm-ticket';
+
 import BaseInfo from './baseInfo';
 import EventTable from '@/app/alarm/components/eventTable';
 import ActionTimeline from './actionTimeline';
@@ -514,6 +516,7 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig & { readonly?: boolean }>(
             <div className="min-h-0 flex-1 overflow-auto">
               <div className="flex flex-col gap-4">
                 <BaseInfo detail={formData} />
+                {formData.alert_id && <ItsmTicket alertId={String(formData.alert_id)} alertStatus={formData.status} readonly={readonly} />}
                 <RelatedAlertsPanel alert={formData} onRefresh={handleAction} />
               </div>
             </div>

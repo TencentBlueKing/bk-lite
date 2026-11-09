@@ -8,7 +8,6 @@ import React, {
 } from 'react';
 import {
   Button,
-  Checkbox,
   message,
   Space,
   Modal,
@@ -53,7 +52,9 @@ import EditNode from './editNode';
 import BatchEditOrganizations from './batchEditOrganizations';
 import { useCommon } from '@/app/node-manager/context/common';
 import {
+  collectorOperationBlockedMessageKey,
   getCollectorOperationSelection,
+  isCollectorOperationMenuDisabled,
   isControllerOperationDisabled
 } from '@/app/node-manager/utils/nodeOperation';
 import {
@@ -158,32 +159,16 @@ const Node = () => {
       });
     },
     deleteNode: (row: TableDataItem) => {
-      let retireLinked = false;
       confirm({
         title: t('common.prompt'),
-        content: (
-          <div>
-            <div className="mb-3">
-              {t('node-manager.cloudregion.node.deleteNodeTips')}
-            </div>
-            <Checkbox
-              onChange={(e) => {
-                retireLinked = e.target.checked;
-              }}
-            >
-              {t('node-manager.cloudregion.node.retireLinkedConfirm')}
-            </Checkbox>
-          </div>
-        ),
+        content: t('node-manager.cloudregion.node.deleteNodeTips'),
         okText: t('common.confirm'),
         cancelText: t('common.cancel'),
         centered: true,
         onOk: async () => {
           setLoading(true);
           try {
-            await delNode(row.id as string, {
-              retire_linked: retireLinked
-            });
+            await delNode(row.id as string);
             message.success(t('common.successfullyDeleted'));
             getNodes(searchFilters);
           } catch {
@@ -224,14 +209,9 @@ const Node = () => {
       selectedRowKeys,
       selectedNodeMap
     );
-    const operatingSystems = selectedNodes.map((node) => node.operating_system);
-    const architectures = selectedNodes.map(
-      (node) => node.cpu_architecture || ''
+    return isCollectorOperationMenuDisabled(
+      getCollectorOperationSelection(selectedNodes)
     );
-    const uniqueOS = [...new Set(operatingSystems)];
-    const uniqueArchitectures = [...new Set(architectures)];
-    // 采集器：检查操作系统和 CPU 架构是否一致
-    return uniqueOS.length !== 1 || uniqueArchitectures.length !== 1;
   }, [selectedRowKeys, selectedNodeMap]);
 
   const enableOperateController = useMemo(() => {
@@ -308,12 +288,15 @@ const Node = () => {
     const selection = getCollectorOperationSelection(selectedNodes);
 
     if (selection.disabled === true) {
-      if (selection.reason === 'unknown_architecture') {
+      const messageKey = collectorOperationBlockedMessageKey(selection);
+      if (messageKey) {
         message.error(
-          t(
-            'node-manager.cloudregion.node.collectorOperationUnknownArchitecture',
-            'The selected node has no CPU architecture. Please wait for node reporting or backfill the architecture before operating components.'
-          )
+          selection.reason === 'unknown_architecture'
+            ? t(
+              messageKey,
+              'The selected node has no CPU architecture. Please wait for node reporting or backfill the architecture before operating components.'
+            )
+            : t(messageKey)
         );
       }
       return;

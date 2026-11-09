@@ -78,4 +78,9 @@ def test_template_catalog_labels_follow_locale():
     assert orders["-start_time"] == "Occurrence time, newest first"
     fields = {item["path"]: item["label"] for item in response.data["event_block"]["fields"]}
     assert fields["title"] == "Event title"
+    assert fields["samples"] == "Log samples"
+    assert fields["search_url"] == "Search URL"
     assert "事件标题" not in fields.values()
+    paths = [item["path"] for item in response.data["variables"]]
+    assert "events.latest.samples" in paths
+    assert "events.latest.search_url" in paths

@@ -13,12 +13,14 @@ class JobCompletionOutbox(TimeInfo):
         PLAYBOOK_CLEANUP = "playbook_cleanup", "Playbook 临时文件清理"
         WEB_CALLBACK = "web_callback", "HTTP 回调"
         NATS_CALLBACK = "nats_callback", "NATS 回调"
+        ASYNC_CALLBACK = "async_callback", "通用异步回调"
 
     class Status(models.TextChoices):
         PENDING = "pending", "待投递"
         DELIVERING = "delivering", "投递中"
         DELIVERED = "delivered", "已投递"
         FAILED = "failed", "投递失败"
+        STOPPED = "stopped", "停止投递"
 
     execution_id = models.BigIntegerField(db_index=True, verbose_name="作业执行 ID")
     kind = models.CharField(max_length=32, choices=Kind.choices, db_index=True, verbose_name="副作用类型")

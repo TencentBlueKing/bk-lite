@@ -221,6 +221,9 @@ export interface CustomChatSSEProps {
   conversationHistoryEnabled?: boolean;
   initialContextUsage?: LlmContextUsage | null;
   onConversationCleared?: () => void;
+  distributeFilesEnabled?: boolean;
+  distributeSessionId?: string;
+  onDistributeReady?: (fileIds: number[]) => void;
 }
 
 export type ActionRender = (

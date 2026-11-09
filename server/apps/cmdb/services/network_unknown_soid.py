@@ -147,6 +147,7 @@ def ingest_network_rows(task, rows_by_model):
                 task.id,
                 reconcile_task_assets=True,
                 expire_days=getattr(task, "expire_days", 0) or 0,
+                task_name=str(getattr(task, "name", "") or ""),
             )
             results[model_id] = management.controller()
     return results

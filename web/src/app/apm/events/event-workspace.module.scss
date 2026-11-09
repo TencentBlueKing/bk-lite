@@ -746,6 +746,12 @@
   max-width: 560px;
 }
 
+.thresholdTable {
+  width: 100%;
+  max-width: 560px;
+  overflow-x: auto;
+}
+
 .numberWithUnit :global(.ant-input-number) {
   flex: 1;
   min-width: 0;
@@ -780,6 +786,56 @@
   display: block;
   margin: -6px 0 0 152px;
   font-size: 12px;
+}
+
+.metricEditorItem :global(.ant-form-item-row) {
+  align-items: flex-start;
+}
+
+.metricEditorItem :global(.ant-form-item-label) {
+  padding-top: 10px;
+}
+
+.metricEditor {
+  /* 条件卡不在 Form.Item 里，自己补上和 labelCol 相同的 152px，才能和上面的范围字段左对齐。 */
+  width: calc(100% - 152px);
+  max-width: 560px;
+  margin-left: 152px;
+}
+
+.metricEditor :global(.ant-select),
+.metricEditor :global(.ant-input-number) {
+  width: 100%;
+  max-width: none;
+}
+
+.metricEditor .numberWithUnit {
+  max-width: none;
+}
+
+.conditionField {
+  width: 100%;
+  min-width: 0;
+  /* 外层 Form 的 .ant-form-item 规则会把 margin-bottom 设为 18px，导致条件卡内行距忽大忽小。 */
+  margin-bottom: 0 !important;
+}
+
+.conditionField :global(.ant-form-item-label) {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+  flex: 0 0 0 !important;
+}
+
+.conditionField :global(.ant-form-item-control) {
+  flex: 1 1 auto;
+  max-width: 100%;
 }
 
 .editor :global(.ant-steps-item-description) {
@@ -838,20 +894,6 @@ $compact-field-width: 220px;
   flex: 1 1 auto;
   width: auto;
   min-width: 64px;
-  max-width: none;
-}
-
-.thresholdComparator:global(.ant-select) {
-  flex: 0 0 100px;
-  width: 100px;
-  max-width: 100px;
-  margin-right: 10px;
-}
-
-.thresholdValue {
-  flex: 1 1 auto;
-  width: auto;
-  min-width: 0;
   max-width: none;
 }
 
@@ -916,9 +958,22 @@ $compact-field-width: 220px;
   padding: 0;
 }
 
-.variableCode {
-  color: var(--color-primary);
-  font-size: 12px;
+.variableTable :global(.ant-table) {
+  background: transparent;
+}
+
+.variableTable :global(.ant-table-thead > tr > th) {
+  background: var(--color-fill-1) !important;
+  font-weight: 500;
+}
+
+.variableTable :global(.ant-table-cell) {
+  padding: 10px 12px !important;
+}
+
+.variableTable :global(.ant-table-tbody > tr > td:last-child),
+.variableTable :global(.ant-table-thead > tr > th:last-child) {
+  white-space: nowrap;
 }
 
 .previewHeading {
@@ -990,6 +1045,11 @@ $compact-field-width: 220px;
   }
 
   .scopeHint {
+    margin-left: 0;
+  }
+
+  .metricEditor {
+    width: 100%;
     margin-left: 0;
   }
 }

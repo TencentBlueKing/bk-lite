@@ -1,29 +1,15 @@
 """监控策略扫描执行器 - 主流程编排"""
 
-from apps.monitor.constants.alert_policy import AlertConstants
-from apps.monitor.models import (
-    MonitorInstanceOrganization,
-    MonitorAlert,
-    MonitorInstance,
-    PolicyInstanceBaseline,
-)
-from apps.monitor.services.policy_baseline import PolicyBaselineService
-from apps.monitor.tasks.services.policy_scan.metric_query import MetricQueryService
-from apps.monitor.tasks.services.policy_scan.alert_detector import AlertDetector
-from apps.monitor.tasks.services.policy_scan.event_alert_manager import (
-    EventAlertManager,
-)
-from apps.monitor.tasks.services.policy_scan.snapshot_recorder import SnapshotRecorder
-from apps.monitor.utils.alert_name_variables import (
-    field_label_map,
-    load_display_variable_map,
-    resolve_resource_ip,
-)
-from apps.monitor.utils.dimension import (
-    normalize_instance_identity,
-    parse_instance_id,
-)
 from apps.core.logger import celery_logger as logger
+from apps.monitor.constants.alert_policy import AlertConstants
+from apps.monitor.models import MonitorAlert, MonitorInstance, MonitorInstanceOrganization, PolicyInstanceBaseline
+from apps.monitor.services.policy_baseline import PolicyBaselineService
+from apps.monitor.tasks.services.policy_scan.alert_detector import AlertDetector
+from apps.monitor.tasks.services.policy_scan.event_alert_manager import EventAlertManager
+from apps.monitor.tasks.services.policy_scan.metric_query import MetricQueryService
+from apps.monitor.tasks.services.policy_scan.snapshot_recorder import SnapshotRecorder
+from apps.monitor.utils.alert_name_variables import field_label_map, load_display_variable_map, resolve_resource_ip
+from apps.monitor.utils.dimension import normalize_instance_identity, parse_instance_id
 
 
 class MonitorPolicyScan:
@@ -37,9 +23,7 @@ class MonitorPolicyScan:
             self.policy.monitor_object,
             list(self.instances_map.keys()),
         )
-        self.display_field_label_map = field_label_map(
-            getattr(self.policy.monitor_object, "display_fields", None)
-        )
+        self.display_field_label_map = field_label_map(getattr(self.policy.monitor_object, "display_fields", None))
         self.baselines_map = self._build_baselines_map()
         self.active_alerts = self._get_active_alerts()
 
@@ -54,6 +38,7 @@ class MonitorPolicyScan:
             resource_ip_map=self.resource_ip_map,
             display_variable_map=self.display_variable_map,
             display_field_label_map=self.display_field_label_map,
+            baseline_dimensions=self.baseline_dimensions,
         )
         self.event_alert_manager = EventAlertManager(policy, self.instances_map, self.active_alerts)
         self.snapshot_recorder = SnapshotRecorder(policy, self.instances_map, self.active_alerts, self.metric_query_service)
@@ -84,9 +69,7 @@ class MonitorPolicyScan:
         resource_ip_map = {}
         for instance in instances:
             instances_map[instance.id] = instance.name
-            resource_ip_map[instance.id] = resolve_resource_ip(
-                instance.summary_facts, instance.ip
-            )
+            resource_ip_map[instance.id] = resolve_resource_ip(instance.summary_facts, instance.ip)
         return instances_map, resource_ip_map
 
     def _build_parent_instances_map(self):
@@ -115,6 +98,7 @@ class MonitorPolicyScan:
 
     def _build_baselines_map(self):
         """构建基准映射: {metric_instance_id: monitor_instance_id}"""
+        self.baseline_dimensions = {}
         if not self.policy.source:
             return {}
 
@@ -122,7 +106,12 @@ class MonitorPolicyScan:
             policy_id=self.policy.id,
             monitor_instance_id__in=self.instances_map.keys(),
         )
-        return {b.metric_instance_id: b.monitor_instance_id for b in baselines}
+        mapping = {}
+        for baseline in baselines:
+            mapping[baseline.metric_instance_id] = baseline.monitor_instance_id
+            if isinstance(baseline.dimensions, dict) and baseline.dimensions:
+                self.baseline_dimensions[baseline.metric_instance_id] = baseline.dimensions
+        return mapping
 
     @staticmethod
     def _expand_instance_source_values(source_values):
@@ -136,9 +125,7 @@ class MonitorPolicyScan:
         for value in source_values or []:
             candidates = [str(value)]
             try:
-                candidates.append(
-                    normalize_instance_identity(value)["storage_instance_key"]
-                )
+                candidates.append(normalize_instance_identity(value)["storage_instance_key"])
             except ValueError:
                 pass
             for key in candidates:
@@ -252,20 +239,23 @@ class MonitorPolicyScan:
         existence = self.metric_query_service.query_existence_metrics(self.policy.period)
         formatted = self.metric_query_service.format_aggregation_metrics(existence)
         metric_instances = {}
-        for metric_instance_id in formatted:
+        dimensions_by_id = {}
+        for metric_instance_id, item in formatted.items():
             if metric_instance_id in self.baselines_map:
                 continue
-            monitor_instance_id = (
-                self.metric_query_service.get_monitor_instance_id_from_metric_instance_id(
-                    metric_instance_id
-                )
-            )
+            item = item if isinstance(item, dict) else {}
+            monitor_instance_id = item.get("monitor_instance_id") or ""
+            if not monitor_instance_id:
+                monitor_instance_id = self.metric_query_service.get_monitor_instance_id_from_metric_instance_id(metric_instance_id)
             if monitor_instance_id not in self.instances_map:
                 continue
             metric_instances[metric_instance_id] = monitor_instance_id
+            dimensions = item.get("dimensions")
+            if isinstance(dimensions, dict) and dimensions:
+                dimensions_by_id[metric_instance_id] = dimensions
 
         if metric_instances:
-            PolicyBaselineService(self.policy).sync(metric_instances)
+            PolicyBaselineService(self.policy).sync(metric_instances, dimensions_by_id)
 
     def _pre_check(self):
         """前置检查"""

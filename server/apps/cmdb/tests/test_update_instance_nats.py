@@ -37,6 +37,7 @@ def test_update_instance_by_uuid_hides_graph_id(mock_im):
         operator="admin",
         allowed_org_ids=[3],
         skip_permission_check=False,
+        audit_source="接口调用",
     )
 
 

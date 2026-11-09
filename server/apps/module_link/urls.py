@@ -2,8 +2,8 @@ from django.apps import apps
 
 
 def build_urlpatterns():
-    """裁剪安装不含 CMDB 时不导入它的模型，避免整站 URL 加载失败。"""
-    if not apps.is_installed("apps.cmdb"):
+    """CMDB 与监控都装入才注册胶水路由。缺一就不要导入对方模型，否则整站 URL 加载失败。"""
+    if not apps.is_installed("apps.cmdb") or not apps.is_installed("apps.monitor"):
         return []
     from rest_framework import routers
 

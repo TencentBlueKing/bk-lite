@@ -1499,6 +1499,52 @@ def test_node_push_reclaim_log_uses_stable_template(host_object, mock_collect_ap
 
 
 @pytest.mark.django_db
+def test_node_push_after_exit_does_not_revive_retired_host(host_object, mock_collect_apply):
+    canonical = normalize_instance_identity("1_os_10.0.0.1")["storage_instance_key"]
+    retired = MonitorInstance.objects.create(
+        id=canonical,
+        name="old-host",
+        monitor_object=host_object,
+        ip="10.0.0.1",
+        cloud_region_id=1,
+        node_id=None,
+        cmdb_id="ci-kept",
+        is_deleted=True,
+        is_active=False,
+    )
+    CollectConfig.objects.create(
+        id="retired-host-child",
+        monitor_instance=retired,
+        collector="Telegraf",
+        collect_type="host",
+        config_type="cpu",
+        file_type="toml",
+        is_child=True,
+    )
+
+    result = MonitorModuleIngestService.ingest(
+        _params(
+            source_id="n2",
+            link_ids={"node_id": "n2", "cmdb_id": "ci-kept"},
+            raw={"ip": "10.0.0.1", "name": "10.0.0.1"},
+        )
+    )
+
+    retired.refresh_from_db()
+    created = MonitorInstance.objects.get(id=result["id"])
+    assert result["id"] != canonical
+    assert result["created"] is True
+    assert retired.is_deleted is True
+    assert retired.is_active is False
+    assert retired.node_id is None
+    assert retired.cmdb_id == "ci-kept"
+    assert created.node_id == "n2"
+    assert created.cmdb_id in (None, "")
+    assert created.is_deleted is False
+    assert CollectConfig.objects.filter(id="retired-host-child", monitor_instance_id=canonical).exists()
+
+
+@pytest.mark.django_db
 def test_node_push_claims_telegraf_row_without_ip_field(host_object, mock_collect_apply):
     """接入页建行不写 ip 字段；节点推送仍须按规范主键认领，不能另建带外联 ID 的空壳。"""
     canonical = normalize_instance_identity("1_os_10.0.0.1")["storage_instance_key"]

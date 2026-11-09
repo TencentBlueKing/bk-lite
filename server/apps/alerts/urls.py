@@ -28,8 +28,10 @@ from apps.alerts.views import (
     request_test,
 )
 from apps.alerts.views.action import ActionCallbackView, ActionExecutionViewSet, ActionJobScriptDetailView, ActionJobScriptListView, ActionRuleViewSet
+from apps.alerts.views.itsm_integration import ItsmIntegrationViewSet
 
 router = routers.DefaultRouter()
+router.register(r"api/itsm_integration", ItsmIntegrationViewSet, basename="itsm_integration")
 router.register(r"api/alert_source", AlertSourceModelViewSet, basename="alert_source")
 router.register(r"api/push_source_ids", PushSourceIdViewSet, basename="push_source_ids")
 router.register(r"api/alerts", AlertModelViewSet, basename="alerts")

@@ -52,7 +52,7 @@ snmpget -v2c -c "$SNMP_COMMUNITY" "$TARGET" 1.3.6.1.2.1.1.2.0
 - `device_cpu_usage`、`device_memory_usage` 有实体维度读数。
 - 机箱功耗可见 `device_power_used` / `device_power_total`（`hwDevicePowerInfoUsedPower` / `hwDevicePowerInfoTotalPower`，单位瓦特）。无效值（`-1` / 空）会被丢弃。
 - 有风扇机型可见 `device_fan_state` / `device_fan_speed_pct`（满速百分比），维度为风扇槽位与序列号。无风扇机型风扇表可为空。
-- `wlan_cur_joint_ap_num`、`wlan_cur_assoc_sta_num` 与现场规模大致相符。
+- `wlan_cur_joint_ap_num`、`wlan_cur_assoc_sta_num` 与现场规模大致相符。`wlan_sta_cur_num` 应与 `wlan_cur_assoc_sta_num` 同值、同时间戳。
 - `interface_ifHCInOctets` / `interface_ifHCOutOctets` 在上联口上有速率。
 - 已插光模块时会出现光模块 DDM 序列（`optical_temp_c`、`optical_voltage_mV`、`optical_bias_uA`、`optical_rx_dbm`、`optical_tx_dbm`）。
 
@@ -78,9 +78,19 @@ snmpget -v2c -c "$SNMP_COMMUNITY" "$TARGET" 1.3.6.1.2.1.1.2.0
 
 请确认采集到的是 64 位 `ifHCInOctets` / `ifHCOutOctets`。本模板通过公共 IF-MIB 表采集这些计数器。
 
-### 两个终端数量口径不一致
+### 关联终端数兼容别名
 
-`wlan_cur_assoc_sta_num`（`hwWlanCurAssocStaNum`）是当前已关联会话数；`wlan_sta_cur_num`（`hwWlanStaCurNum`）是控制器当前终端对象数。二者不是同一计数，软件版本或视图差异下可能不相等。容量判断以许可上限 `wlan_access_max_sta_number` 对照关联数；不要把两个口径混用同一阈值。认证成功数 `wlan_cur_auth_success_sta_num` 是第三口径，与关联数差距扩大通常表示认证失败增多。
+`wlan_cur_assoc_sta_num`（`hwWlanCurAssocStaNum`，`1.3.6.1.4.1.2011.6.139.12.1.2.2`）是当前关联终端数。`wlan_sta_cur_num` 是它的关联终端数兼容别名：采集侧把同一次采样复制到兼容名，两者数值相同、时间戳相同。原 Trap 参数 `hwWlanStaCurNum`（`1.3.6.1.4.1.2011.6.139.12.3.2.6`）已停止轮询，不再下发。容量判断以许可上限 `wlan_access_max_sta_number` 对照该关联数。认证成功数 `wlan_cur_auth_success_sta_num` 仍是另一口径，与关联数差距扩大通常表示认证失败增多。
+
+### 射频终端数
+
+`wlan_radio_sta_num` 轮询 `hwWlanRadioOnlineStaCnt`（`1.3.6.1.4.1.2011.6.139.16.1.2.1.40`），索引为 AP MAC 与射频 ID。原 Trap 参数 `hwWlanRadioStaNum`（`1.3.6.1.4.1.2011.6.139.16.1.1.2.41`）已停止轮询。
+
+`wlan_radio_sta_max` 原 Trap 参数 `hwWlanRadioMaxStaNum`（`1.3.6.1.4.1.2011.6.139.16.1.1.2.42`）已停止轮询。每射频上限尚未确认可轮询 OID，模板不下发该轮询，也不用 AP 型号容量、配置上限或 SSID 上限代替。无数据不表示上限为 0。
+
+### 当前 VAP 数与上限
+
+`wlan_vap_cur_num`（原 `hwVapCurNum`，`1.3.6.1.4.1.2011.6.139.17.2.2.6`）和 `wlan_vap_max_num`（原 `hwVapMaxNum`，`1.3.6.1.4.1.2011.6.139.17.2.2.1`）已停止轮询。指标名保留，本次不绑定替身 OID。无数据不表示数量为 0。
 
 ### 全局无线速率单位
 

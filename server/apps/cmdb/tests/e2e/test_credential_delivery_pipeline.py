@@ -1,11 +1,13 @@
 import re
+from types import SimpleNamespace
 
 import pytest
 
 from apps.cmdb.constants.constants import CollectDriverTypes, CollectPluginTypes
 from apps.cmdb.models.collect_model import CollectModels
 from apps.cmdb.node_configs.config_factory import NodeParamsFactory
-
+from apps.cmdb.services.collect_credential_contract import API_SECRET_MASK
+from apps.cmdb.services.collect_service import CollectModelService
 
 ENV_REFERENCE = re.compile(r"^\$\{([^}]+)}$")
 
@@ -171,3 +173,133 @@ def test_cloud_scope_fields_survive_delivery_without_key_renaming():
     assert hwcloud_params["accessSecret"] == "hwcloud-sk"
     assert hwcloud_params["project_id"] == "project-123"
     assert hwcloud_params["region"] == "cn-north-4"
+
+
+def _persist_job_task(*, model_id, credential):
+    task = CollectModels.objects.create(
+        name=f"{model_id}-service-credential",
+        task_type=CollectPluginTypes.DB,
+        driver_type=CollectDriverTypes.JOB,
+        model_id=model_id,
+        cycle_value_type="cycle",
+        cycle_value="5",
+        instances=[{"_id": f"{model_id}-1", "model_id": model_id, "ip_addr": "10.10.41.149"}],
+        access_point=[{"id": "node-1"}],
+        credential=credential,
+        timeout=60,
+        params={},
+    )
+    task.refresh_from_db()
+    return task
+
+
+@pytest.mark.django_db
+def test_redis_service_password_is_delivered_separately_from_ssh_password():
+    task = _persist_job_task(
+        model_id="redis",
+        credential={
+            "username": "root",
+            "password": "ssh-secret",
+            "port": 22,
+            "service_username": "reader",
+            "service_password": "redis-secret",
+        },
+    )
+
+    assert task.credential["password"].startswith("enc:")
+    assert task.credential["service_password"].startswith("enc:")
+    node = NodeParamsFactory.get_node_params(task)
+    payload = node.main("push")[0]
+    assert "redis-secret" not in payload["content"]
+    assert "ssh-secret" not in payload["content"]
+
+    params = _resolve_stargazer_params(node.custom_headers(), payload["env_config"])
+    assert params["password"] == "ssh-secret"
+    assert params["service_password"] == "redis-secret"
+    assert params["service_username"] == "reader"
+    assert params["username"] == "root"
+
+
+@pytest.mark.django_db
+def test_mongodb_service_credential_reaches_stargazer_without_entering_the_script():
+    task = _persist_job_task(
+        model_id="mongodb",
+        credential={
+            "username": "root",
+            "password": "ssh-secret",
+            "port": 22,
+            "service_username": "reader",
+            "service_password": "mongo-secret",
+            "auth_source": "admin",
+        },
+    )
+
+    node = NodeParamsFactory.get_node_params(task)
+    payload = node.main("push")[0]
+    assert "mongo-secret" not in payload["content"]
+    params = _resolve_stargazer_params(node.custom_headers(), payload["env_config"])
+    assert params["password"] == "ssh-secret"
+    assert params["service_password"] == "mongo-secret"
+    assert params["service_username"] == "reader"
+    assert params["auth_source"] == "admin"
+
+
+def test_masked_service_password_stays_on_the_task():
+    inline = SimpleNamespace(
+        model_id="redis",
+        driver_type=CollectDriverTypes.JOB,
+        task_type=CollectPluginTypes.DB,
+        is_k8s=False,
+        decrypt_credentials=[
+            {
+                "credential_id": "c1",
+                "credential_source": "inline",
+                "username": "root",
+                "password": "ssh-secret",
+                "service_password": "redis-secret",
+                "port": 22,
+            }
+        ],
+    )
+    inline_data = {
+        "credential": [
+            {
+                "credential_id": "c1",
+                "username": "root",
+                "password": API_SECRET_MASK,
+                "service_password": API_SECRET_MASK,
+                "port": 22,
+            }
+        ]
+    }
+    CollectModelService.format_update_credential(inline, inline_data)
+    assert inline_data["credential"][0]["password"] == "ssh-secret"
+    assert inline_data["credential"][0]["service_password"] == "redis-secret"
+
+    vault = SimpleNamespace(
+        model_id="mongodb",
+        driver_type=CollectDriverTypes.JOB,
+        task_type=CollectPluginTypes.DB,
+        is_k8s=False,
+        decrypt_credentials=[
+            {
+                "credential_id": "c1",
+                "credential_source": "vault",
+                "vault_type_key": "ssh",
+                "service_password": "mongo-secret",
+            }
+        ],
+    )
+    vault_data = {
+        "credential": [
+            {
+                "credential_id": "c1",
+                "credential_source": "vault",
+                "vault_type_key": "ssh",
+                "vault_credential_id": "vault-1",
+                "service_password": API_SECRET_MASK,
+            }
+        ]
+    }
+    CollectModelService.format_update_credential(vault, vault_data)
+    assert vault_data["credential"][0]["service_password"] == "mongo-secret"

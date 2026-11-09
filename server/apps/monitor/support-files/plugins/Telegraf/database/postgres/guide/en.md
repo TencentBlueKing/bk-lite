@@ -5,7 +5,10 @@ This capability uses Telegraf `inputs.postgresql` to connect to a specified Post
 ## Prerequisites
 
 - The collector node can reach the target PostgreSQL host and actual port.
-- Prepare an account that can log in to the configured database and read `pg_stat_database` and `pg_stat_bgwriter`. On PostgreSQL 10 and later, grant `pg_read_all_stats`.
+- Prepare an account that can log in to the configured database and read `pg_stat_database` and `pg_stat_bgwriter`. On PostgreSQL 10 and later, grant `pg_read_all_stats`. The same grant can also read current session waits.
+- Top SQL Collection is off by default. Before turning it on, have the DBA run `CREATE EXTENSION IF NOT EXISTS pg_stat_statements` in the database named on the page (and include it in `shared_preload_libraries`). The monitoring account must be able to read that view.
+- Wait Event Collection is off by default. When on, it samples sessions currently waiting. It is not cumulative wait time.
+- Recovery state, the streaming-replica count, and the replication-slot count are collected with the basic connection. A standby, or a count above zero, labels the header as primary-standby. Not in recovery with both counts at zero labels it standalone. Without those readings the form chip stays hidden, and not-in-recovery alone is not labeled standalone. The same query also collects write, flush, and replay lag for connected replicas, and the WAL still retained by replication slots. Lag is 0 when no streaming replica is connected. Slot backlog is 0 when no slot is retaining WAL.
 - The target `pg_hba.conf` allows this account to connect from the collector node.
 - The page supports SSL modes `disable`, `prefer`, and `require`. Certificate paths are not supported; `verify-ca` and `verify-full` are unavailable in this template.
 - The template always ignores `template0` and `template1`.
@@ -48,6 +51,8 @@ The command must return a result without authentication, network, or statistics-
 | Database Name | Yes | Database used to establish the monitoring connection; default `postgres`. |
 | SSL Mode | Yes | `disable` / `prefer` / `require`; default `disable`. |
 | Interval | Yes | Collection interval in seconds; default `60`. |
+| Top SQL Collection | No | Advanced option, off by default. When on, the professional dashboard can show statement time, executions, and rows returned. |
+| Wait Event Collection | No | Advanced option, off by default. When on, current waiting sessions can be shown. |
 | Node | Yes | Collector node that can reach PostgreSQL. |
 | Instance Name | Yes | Display name in the platform. |
 | Group | No | Optional instance group. |
@@ -60,6 +65,15 @@ After saving and waiting for one interval, confirm that these metrics are querya
 - `postgresql_xact_commit_rate`
 - `postgresql_deadlocks_rate`
 - `postgresql_cache_hit_ratio`
+- `postgresql_recovery_in_recovery` (`0` accepts writes, `1` is a standby)
+- `postgresql_replication_streaming_replicas` (connected streaming replicas)
+- `postgresql_replication_replication_slots` (replication slots)
+- `postgresql_replication_write_lag_seconds` (write lag of connected replicas, seconds)
+- `postgresql_replication_flush_lag_seconds` (flush lag of connected replicas, seconds)
+- `postgresql_replication_replay_lag_seconds` (replay lag of connected replicas, seconds)
+- `postgresql_replication_slot_restart_lag_bytes` (WAL still retained by replication slots, bytes)
+
+After turning on Top SQL Collection and waiting one interval, `postgresql_statement_total_time_seconds` can also be confirmed. After turning on Wait Event Collection, `postgresql_wait_sessions` can be confirmed when a session is waiting.
 
 ## Troubleshooting
 

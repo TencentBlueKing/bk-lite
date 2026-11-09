@@ -4,6 +4,7 @@ import { Tag, Tooltip } from 'antd';
 export interface CollectorNode {
   id: string;
   name: string;
+  removed?: boolean;
 }
 
 interface PluginTooltipContentProps {
@@ -16,6 +17,7 @@ interface PluginTooltipContentProps {
   packVersionText: string;
   collectMode?: string;
   collectorNodes?: CollectorNode[];
+  removedNodeLabel?: string;
 }
 
 interface PluginTooltipTriggerProps {
@@ -24,11 +26,14 @@ interface PluginTooltipTriggerProps {
   onActivate: () => void;
   title: React.ReactNode;
   children: React.ReactNode;
+  closable?: boolean;
+  onClose?: (event: React.MouseEvent<HTMLElement>) => void;
 }
 
 export const formatCollectorNodes = (
   collectMode?: string,
-  collectorNodes?: CollectorNode[]
+  collectorNodes?: CollectorNode[],
+  removedNodeLabel = ''
 ): string[] => {
   if (collectMode !== 'auto' || !Array.isArray(collectorNodes)) return [];
 
@@ -38,7 +43,8 @@ export const formatCollectorNodes = (
     if (!id || seen.has(id)) return [];
     seen.add(id);
     const name = String(node?.name || id).trim() || id;
-    return [name === id ? id : `${name} (${id})`];
+    const text = name === id ? id : `${name} (${id})`;
+    return [node.removed && removedNodeLabel ? `${text} · ${removedNodeLabel}` : text];
   });
 };
 
@@ -51,9 +57,14 @@ const PluginTooltipContent = ({
   packVersionLabel,
   packVersionText,
   collectMode,
-  collectorNodes
+  collectorNodes,
+  removedNodeLabel
 }: PluginTooltipContentProps) => {
-  const formattedNodes = formatCollectorNodes(collectMode, collectorNodes);
+  const formattedNodes = formatCollectorNodes(
+    collectMode,
+    collectorNodes,
+    removedNodeLabel
+  );
 
   return (
     <div className="text-xs leading-5">
@@ -81,12 +92,20 @@ export const PluginTooltipTrigger = ({
   color,
   onActivate,
   title,
-  children
+  children,
+  closable = false,
+  onClose
 }: PluginTooltipTriggerProps) => {
   const handleKeyDown = (event: React.KeyboardEvent<HTMLElement>) => {
     if (event.key !== 'Enter' && event.key !== ' ') return;
     event.preventDefault();
     onActivate();
+  };
+
+  const handleClose = (event: React.MouseEvent<HTMLElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    onClose?.(event);
   };
 
   return (
@@ -101,6 +120,8 @@ export const PluginTooltipTrigger = ({
         aria-label={ariaLabel}
         color={color}
         className="cursor-pointer"
+        closable={closable}
+        onClose={closable ? handleClose : undefined}
         onClick={onActivate}
         onKeyDown={handleKeyDown}
       >

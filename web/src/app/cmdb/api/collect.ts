@@ -78,6 +78,24 @@ export const useCollectApi = () => {
   const pcTestConnection = (params: any) =>
     post('/cmdb/api/collect/pc_test_connection/', params);
 
+  const listCollectReconcile = (modelId: string) =>
+    get('/cmdb/api/collect_reconcile/', { params: { model_id: modelId } });
+  const getCollectReconcile = (id: number) => get(`/cmdb/api/collect_reconcile/${id}/`);
+  const createCollectReconcile = (params: {
+    name: string;
+    model_id: string;
+    task_ids: number[];
+    field_orders?: Record<string, number[]>;
+  }) => post('/cmdb/api/collect_reconcile/', params);
+  const updateCollectReconcile = (id: number, params: Record<string, unknown>) =>
+    put(`/cmdb/api/collect_reconcile/${id}/`, params);
+  const deleteCollectReconcile = (id: number) =>
+    del(`/cmdb/api/collect_reconcile/${id}/`);
+  const getReconcileCandidates = (modelId: string) =>
+    get(`/cmdb/api/collect_reconcile/candidates/?model_id=${encodeURIComponent(modelId)}`);
+  const saveReconcileStaleDays = (days: number) =>
+    post('/cmdb/api/collect_reconcile/stale_days/', { days });
+
   return {
     getCollectList,
     getCollectDetail,
@@ -98,5 +116,12 @@ export const useCollectApi = () => {
     saveUnknownSoidMappings,
     writeUnknownDevices,
     pcTestConnection,
+    listCollectReconcile,
+    getCollectReconcile,
+    createCollectReconcile,
+    updateCollectReconcile,
+    deleteCollectReconcile,
+    getReconcileCandidates,
+    saveReconcileStaleDays,
   };
 };

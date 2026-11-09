@@ -10,7 +10,16 @@ class SystemMgmt(object):
         return_data = self.client.run("bk_lite_user_login", username=username, domain=domain)
         return return_data
 
-    def login_with_binding(self, binding_id, auth_code="", username="", password="", bk_token=""):
+    def login_with_binding(
+        self,
+        binding_id,
+        auth_code="",
+        username="",
+        password="",
+        bk_token="",
+        evidence_mode="",
+        jsapi_code_type="",
+    ):
         return self.client.run(
             "login_with_binding",
             binding_id=binding_id,
@@ -18,6 +27,8 @@ class SystemMgmt(object):
             username=username,
             password=password,
             bk_token=bk_token,
+            evidence_mode=evidence_mode,
+            jsapi_code_type=jsapi_code_type,
         )
 
     def get_login_auth_bindings(self):
@@ -272,6 +283,10 @@ class SystemMgmt(object):
             target_id=target_id,
             detail=detail,
         )
+
+    def save_operation_logs(self, logs):
+        """批量保存操作日志。每条必须带 idempotency_key。"""
+        return self.client.run("save_operation_logs", logs=logs)
 
     def search_channel_list(self, channel_type, teams, include_children, channel_method=""):
         """

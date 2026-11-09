@@ -1,5 +1,5 @@
 ### 说明
-该插件通过腾讯云开放 API（SDK）采集腾讯云账户下的资产清单，包括 CVM、CDB（MySQL）、COS、Redis、MongoDB、Pulsar、RocketMQ、CLB、EIP、CFS、域名等资源类型，统一格式化后同步至 CMDB。采集为只读，agentless（无代理）方式，由你选择的“接入点”出网调用腾讯云 API。
+该插件通过腾讯云开放 API（SDK）采集腾讯云账户下的资产清单，包括 CVM、CDB（MySQL）、COS、Redis、MongoDB、Pulsar、RocketMQ、CLB、EIP、TKE 集群与节点、VPN 网关/对端网关/通道、NAT 网关、CFS、域名等资源类型，统一格式化后同步至 CMDB。采集为只读，agentless（无代理）方式，由你选择的“接入点”出网调用腾讯云 API。
 
 ### 操作入口与执行位置
 在 CMDB Web 页面：
@@ -54,9 +54,19 @@
 | CMQ Topic | qcloud_cmq_topic | resource_name、resource_id、region、status 等 |
 | 负载均衡 CLB | qcloud_clb | resource_name、resource_id、region、status、规格（CPU/内存/存储等，依资源类型而定）等 |
 | EIP 弹性公网 IP | qcloud_eip | resource_name、resource_id、region、status、ip_addr 等 |
+| TKE 集群 | qcloud_tke_cluster | resource_name、resource_id、region、status、version、vpc、cluster_cidr、node_num 等 |
+| TKE 节点 | qcloud_tke_node | resource_name、resource_id、region、cluster_id、ip_addr、instance_role、status 等 |
+| VPN 网关 | qcloud_vpn_gateway | resource_name、resource_id、region、zone、vpc、status、ip_addr、bandwidth_mbps 等 |
+| 对端网关 | qcloud_customer_gateway | resource_name、resource_id、region、ip_addr、create_time 等 |
+| VPN 通道 | qcloud_vpn_connection | resource_name、resource_id、region、vpc、vpn_gateway_id、customer_gateway_id、status、vpn_proto 等 |
+| NAT 网关 | qcloud_nat_gateway | resource_name、resource_id、region、zone、vpc、subnet、status、eip_ids、eip_addrs 等 |
 | COS 存储桶 | qcloud_bucket | resource_name、resource_id、region 等 |
 | 文件系统 CFS | qcloud_filesystem | resource_name、resource_id、region、zone、status、规格（CPU/内存/存储等，依资源类型而定）等 |
 | 域名 | qcloud_domain | resource_name、resource_id、status、到期时间 等 |
 
 **关联关系**
 - 上述各资源均以 `belong qcloud` 归属到对应腾讯云账号实例。
+- `qcloud_tke_node` 以 `belong qcloud_tke_cluster` 归属集群（`cluster_id` = ClusterId）；以 `connect qcloud_cvm` 连接云服务器（节点 InstanceId = CVM `resource_id`）。本轮未采到对端时不建边。
+- `qcloud_vpn_connection` 以 `connect qcloud_vpn_gateway`（VpnGatewayId）、`connect qcloud_customer_gateway`（CustomerGatewayId）连接两端。未命中不建边。
+- `qcloud_nat_gateway` 以 `connect qcloud_eip` 连接绑定的弹性公网 IP（AddressId = EIP `resource_id`），一个 NAT 可以有多条边。未命中的 AddressId 不建边。
+- VPN 通道不采集、不落库预共享密钥 `PreShareKey`。

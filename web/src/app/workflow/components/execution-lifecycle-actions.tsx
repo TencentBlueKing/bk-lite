@@ -36,6 +36,7 @@ export function ExecutionLifecycleActions({ execution, presentation, onExecution
     setBusy(true);
     try {
       const updated = await post<ExecutionRecord>(`${API}/executions/${execution.id}/terminate/`, { reason: normalizedReason });
+      // Residual cancel facts stay in API output for a later UI pass; toast stays a simple sync ack.
       message.success(t('workflowOrchestration.execution.terminateSubmitted', '已提交终止请求'));
       setTerminateOpen(false);
       setReason('');
@@ -67,8 +68,21 @@ export function ExecutionLifecycleActions({ execution, presentation, onExecution
         )}
         onCancel={() => { if (!busy) setTerminateOpen(false); }}
       >
-        <p className="text-sm text-[var(--color-text-2)]">{t('workflowOrchestration.execution.terminateHint', '后续节点将停止，已发生的外部副作用不会自动回滚。终止原因会写入审计。')}</p>
-        <Input.TextArea value={reason} onChange={(event) => setReason(event.target.value)} maxLength={500} showCount rows={3} placeholder={t('workflowOrchestration.execution.terminateReason', '请输入终止原因')} />
+        <p className="text-sm text-[var(--color-text-2)]">
+          {t(
+            'workflowOrchestration.execution.terminateHint',
+            '流程将停止继续执行，并尽量停止已下发的关联作业。已发生的外部副作用不会自动回滚。终止原因会写入审计。',
+          )}
+        </p>
+        <Input.TextArea
+          className="mt-3"
+          value={reason}
+          onChange={(event) => setReason(event.target.value)}
+          maxLength={500}
+          showCount
+          rows={3}
+          placeholder={t('workflowOrchestration.execution.terminateReason', '请输入终止原因')}
+        />
       </OperateModal>
     </>
   );

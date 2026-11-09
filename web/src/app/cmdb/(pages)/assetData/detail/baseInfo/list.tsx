@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import informationList from './list.module.scss';
-import { Form, Button, Collapse, Descriptions, message, Modal, Select, Tooltip } from 'antd';
+import { Form, Button, Collapse, Descriptions, message, Modal, Popover, Select, Tooltip } from 'antd';
 import {
   deepClone,
   getFieldItem,
@@ -26,6 +26,7 @@ import {
   DownOutlined,
   UpOutlined,
   QuestionCircleOutlined,
+  LockOutlined,
   SyncOutlined,
   LinkOutlined,
   DisconnectOutlined,
@@ -69,7 +70,7 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
   const { flatGroups } = useUserInfoContext();
   const { clientData, loading: clientLoading } = useClientData();
 
-  const { updateInstance, getInstanceProxys, pushToMonitor, unbindMonitor } = useInstanceApi();
+  const { updateInstance, getInstanceProxys, pushToMonitor, unbindMonitor, restoreCollect } = useInstanceApi();
 
   const searchParams = useSearchParams();
   const modelId: string =
@@ -274,6 +275,46 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0 flex-1">
               {item.attr_name}
+              {Array.isArray(instDetail.manual_fields) && instDetail.manual_fields.includes(item.attr_id) ? (
+                <Popover
+                  trigger="hover"
+                  placement="topLeft"
+                  mouseEnterDelay={0.15}
+                  mouseLeaveDelay={0.3}
+                  content={(
+                    <div className="max-w-[220px]">
+                      <p className="m-0 text-xs leading-5 text-[var(--color-text-2)]">
+                        {t('Collection.reconcileManualHint')}
+                      </p>
+                      <Button
+                        type="link"
+                        size="small"
+                        className="!mt-1 !h-auto !px-0 text-xs"
+                        onClick={async (event) => {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          await restoreCollect(instUuid, [item.attr_id]);
+                          onsuccessEdit?.();
+                        }}
+                      >
+                        {t('Collection.reconcileUnlock')}
+                      </Button>
+                    </div>
+                  )}
+                >
+                  <button
+                    type="button"
+                    className="ml-1 inline-flex h-4 items-center border-0 bg-transparent p-0 align-[-2px] text-[var(--color-text-3)] hover:text-[var(--color-primary)]"
+                    aria-label={t('Collection.reconcileManual')}
+                    onClick={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                    }}
+                  >
+                    <LockOutlined />
+                  </button>
+                </Popover>
+              ) : null}
               {item.is_required ? (
                 <span className={informationList.required}></span>
               ) : null}

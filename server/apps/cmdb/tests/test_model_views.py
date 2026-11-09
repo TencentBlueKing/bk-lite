@@ -195,9 +195,7 @@ def test_create_ok(superuser, monkeypatch):
         f"{VIEWS}.ModelManage.create_model",
         lambda data, username="admin": {"model_id": data["model_id"]},
     )
-    response = ModelViewSet.as_view({"post": "create"})(
-        _req("post", superuser, data={"model_id": "host", "model_name": "主机"})
-    )
+    response = ModelViewSet.as_view({"post": "create"})(_req("post", superuser, data={"model_id": "host", "model_name": "主机"}))
     assert _body(response)["data"]["model_id"] == "host"
 
 
@@ -225,9 +223,7 @@ def test_destroy_not_found(superuser, monkeypatch):
 
 @pytest.mark.django_db
 def test_destroy_no_org(superuser, monkeypatch):
-    monkeypatch.setattr(
-        f"{VIEWS}.ModelManage.search_model_info", lambda pk: {"model_id": "host", "group": [1], "_id": 1}
-    )
+    monkeypatch.setattr(f"{VIEWS}.ModelManage.search_model_info", lambda pk: {"model_id": "host", "group": [1], "_id": 1})
     monkeypatch.setattr(f"{VIEWS}.ModelViewSet.organizations", lambda self, r, m: [])
     response = ModelViewSet.as_view({"delete": "destroy"})(_req("delete", superuser), pk="host")
     assert response.status_code == status.HTTP_403_FORBIDDEN
@@ -265,9 +261,7 @@ def test_update_ok(superuser, monkeypatch):
         lambda pk: {"model_id": "host", "model_name": "主机", "group": [1], "_id": 7},
     )
     monkeypatch.setattr(f"{VIEWS}.ModelManage.update_model", lambda _id, data: {"_id": _id, **data})
-    response = ModelViewSet.as_view({"put": "update"})(
-        _req("put", superuser, data={"model_name": "主机2"}), pk="host"
-    )
+    response = ModelViewSet.as_view({"put": "update"})(_req("put", superuser, data={"model_name": "主机2"}), pk="host")
     assert _body(response)["data"]["model_name"] == "主机2"
 
 
@@ -287,9 +281,7 @@ def test_model_association_create_src_missing(superuser, monkeypatch):
 
 @pytest.mark.django_db
 def test_model_association_create_ok(superuser, monkeypatch):
-    monkeypatch.setattr(
-        f"{VIEWS}.ModelManage.search_model_info", lambda mid: {"model_id": mid, "group": [1], "_id": mid}
-    )
+    monkeypatch.setattr(f"{VIEWS}.ModelManage.search_model_info", lambda mid: {"model_id": mid, "group": [1], "_id": mid})
     monkeypatch.setattr(f"{VIEWS}.ModelManage.model_association_create", lambda **k: {"_id": 100})
     response = ModelViewSet.as_view({"post": "model_association_create"})(
         _req("post", superuser, data={"src_model_id": "a", "dst_model_id": "b", "asst_id": "c"})
@@ -305,9 +297,7 @@ def test_model_association_create_ok(superuser, monkeypatch):
 @pytest.mark.django_db
 def test_model_association_delete_not_found(superuser, monkeypatch):
     monkeypatch.setattr(f"{VIEWS}.ModelManage.model_association_info_search", lambda aid: {})
-    response = ModelViewSet.as_view({"delete": "model_association_delete"})(
-        _req("delete", superuser), model_asst_id="a_b_c"
-    )
+    response = ModelViewSet.as_view({"delete": "model_association_delete"})(_req("delete", superuser), model_asst_id="a_b_c")
     assert response.status_code == status.HTTP_404_NOT_FOUND
 
 
@@ -317,21 +307,15 @@ def test_model_association_delete_ok(superuser, monkeypatch):
         f"{VIEWS}.ModelManage.model_association_info_search",
         lambda aid: {"_id": 1, "src_model_id": "a", "dst_model_id": "b"},
     )
-    monkeypatch.setattr(
-        f"{VIEWS}.ModelManage.search_model_info", lambda mid: {"model_id": mid, "group": [1], "_id": mid}
-    )
+    monkeypatch.setattr(f"{VIEWS}.ModelManage.search_model_info", lambda mid: {"model_id": mid, "group": [1], "_id": mid})
     monkeypatch.setattr(f"{VIEWS}.ModelManage.model_association_delete", lambda _id: None)
-    response = ModelViewSet.as_view({"delete": "model_association_delete"})(
-        _req("delete", superuser), model_asst_id="a_b_c"
-    )
+    response = ModelViewSet.as_view({"delete": "model_association_delete"})(_req("delete", superuser), model_asst_id="a_b_c")
     assert response.status_code == status.HTTP_200_OK
 
 
 @pytest.mark.django_db
 def test_model_association_batch_delete_empty(superuser):
-    response = ModelViewSet.as_view({"post": "model_association_batch_delete"})(
-        _req("post", superuser, data={"model_asst_ids": []})
-    )
+    response = ModelViewSet.as_view({"post": "model_association_batch_delete"})(_req("post", superuser, data={"model_asst_ids": []}))
     assert response.status_code == status.HTTP_400_BAD_REQUEST
 
 
@@ -349,13 +333,9 @@ def test_model_association_batch_delete_mixed(superuser, monkeypatch):
         f"{VIEWS}.ModelManage.model_association_info_search",
         lambda aid: {"_id": 1, "src_model_id": "a", "dst_model_id": "b"},
     )
-    monkeypatch.setattr(
-        f"{VIEWS}.ModelManage.search_model_info", lambda mid: {"model_id": mid, "group": [1], "_id": mid}
-    )
+    monkeypatch.setattr(f"{VIEWS}.ModelManage.search_model_info", lambda mid: {"model_id": mid, "group": [1], "_id": mid})
     monkeypatch.setattr(f"{VIEWS}.ModelManage.model_association_delete", lambda _id: None)
-    response = ModelViewSet.as_view({"post": "model_association_batch_delete"})(
-        _req("post", superuser, data={"model_asst_ids": ["a_b_c", "", 123]})
-    )
+    response = ModelViewSet.as_view({"post": "model_association_batch_delete"})(_req("post", superuser, data={"model_asst_ids": ["a_b_c", "", 123]}))
     data = _body(response)["data"]
     assert data["success_count"] == 1
     assert data["failed_count"] == 2
@@ -368,9 +348,7 @@ def test_model_association_batch_delete_mixed(superuser, monkeypatch):
 
 @pytest.mark.django_db
 def test_model_association_list_ok(superuser, monkeypatch):
-    monkeypatch.setattr(
-        f"{VIEWS}.ModelManage.search_model_info", lambda mid: {"model_id": mid, "group": [1]}
-    )
+    monkeypatch.setattr(f"{VIEWS}.ModelManage.search_model_info", lambda mid: {"model_id": mid, "group": [1]})
     monkeypatch.setattr(
         f"{VIEWS}.ModelManage.model_association_search",
         lambda mid, **kwargs: [{"_id": 1}],
@@ -395,9 +373,7 @@ def test_auto_association_rules_get(superuser, monkeypatch):
 @pytest.mark.django_db
 def test_auto_association_rules_post_missing_asst(superuser, monkeypatch):
     monkeypatch.setattr(f"{VIEWS}.ModelManage.search_model_info", lambda mid: {"model_id": mid, "group": [1]})
-    response = ModelViewSet.as_view({"post": "model_auto_association_rules"})(
-        _req("post", superuser, data={}), model_id="host"
-    )
+    response = ModelViewSet.as_view({"post": "model_auto_association_rules"})(_req("post", superuser, data={}), model_id="host")
     assert response.status_code == status.HTTP_400_BAD_REQUEST
 
 
@@ -533,9 +509,7 @@ def test_model_attr_delete_ok(superuser, monkeypatch):
     monkeypatch.setattr(f"{VIEWS}.ModelManage.search_model_info", lambda mid: {"model_id": mid, "group": [1]})
     monkeypatch.setattr(f"{VIEWS}.ModelManage.delete_model_attr", lambda *a, **k: {"deleted": True})
     FieldGroup.objects.create(model_id="host", group_name="网络", order=1, created_by="admin", attr_orders=["ip"])
-    response = ModelViewSet.as_view({"delete": "model_attr_delete"})(
-        _req("delete", superuser), model_id="host", attr_id="ip"
-    )
+    response = ModelViewSet.as_view({"delete": "model_attr_delete"})(_req("delete", superuser), model_id="host", attr_id="ip")
     assert response.status_code == status.HTTP_200_OK
     fg = FieldGroup.objects.get(model_id="host", group_name="网络")
     assert "ip" not in fg.attr_orders
@@ -546,11 +520,93 @@ def test_model_attr_list(superuser, monkeypatch):
     monkeypatch.setattr(f"{VIEWS}.ModelManage.search_model_info", lambda mid: {"model_id": mid, "group": [1]})
     monkeypatch.setattr(
         f"{VIEWS}.ModelManage.search_model_attr",
-        lambda mid, locale: [{"attr_id": "ip"}, {"attr_id": "x", "is_display_field": True}],
+        lambda mid, locale, model_info=None: [{"attr_id": "ip"}, {"attr_id": "x", "is_display_field": True}],
     )
     response = ModelViewSet.as_view({"get": "model_attr_list"})(_req("get", superuser), model_id="host")
     data = _body(response)["data"]
     assert [a["attr_id"] for a in data] == ["ip"]  # display 字段被过滤
+
+
+def _visible_model(model_id: str) -> dict:
+    return {"model_id": model_id, "group": [1], "is_visible": True}
+
+
+@pytest.mark.django_db
+def test_model_attr_list_batch_dedupes_and_filters(superuser, monkeypatch):
+    queried = {}
+
+    def search(model_ids):
+        queried["ids"] = list(model_ids)
+        return {model_id: _visible_model(model_id) for model_id in model_ids}
+
+    monkeypatch.setattr(f"{VIEWS}.ModelManage.search_models_by_ids", search)
+    monkeypatch.setattr(
+        f"{VIEWS}.ModelManage.search_model_attr",
+        lambda mid, locale, model_info=None: [
+            {"attr_id": f"{mid}-ip"},
+            {"attr_id": "show", "is_display_field": True},
+        ],
+    )
+    response = ModelViewSet.as_view({"post": "model_attr_list_batch"})(
+        _req("post", superuser, data={"model_ids": ["host", "mysql", "host"]}),
+    )
+    assert response.status_code == status.HTTP_200_OK
+    data = _body(response)["data"]["attrs"]
+    assert queried["ids"] == ["host", "mysql"]
+    assert [item["attr_id"] for item in data["host"]] == ["host-ip"]
+    assert [item["attr_id"] for item in data["mysql"]] == ["mysql-ip"]
+
+
+@pytest.mark.django_db
+def test_model_attr_list_batch_rejects_empty_and_over_limit(superuser):
+    view = ModelViewSet.as_view({"post": "model_attr_list_batch"})
+    empty = view(_req("post", superuser, data={"model_ids": []}))
+    assert empty.status_code == status.HTTP_400_BAD_REQUEST
+    too_many = view(_req("post", superuser, data={"model_ids": [f"m{i}" for i in range(51)]}))
+    assert too_many.status_code == status.HTTP_400_BAD_REQUEST
+    invalid = view(_req("post", superuser, data={"model_ids": ["ok", 1]}))
+    assert invalid.status_code == status.HTTP_400_BAD_REQUEST
+
+
+@pytest.mark.django_db
+def test_model_attr_list_batch_missing_model_returns_404(superuser, monkeypatch):
+    monkeypatch.setattr(
+        f"{VIEWS}.ModelManage.search_models_by_ids",
+        lambda model_ids: {"host": _visible_model("host")},
+    )
+    called = {"attr": 0}
+
+    def attrs(*args, **kwargs):
+        called["attr"] += 1
+        return []
+
+    monkeypatch.setattr(f"{VIEWS}.ModelManage.search_model_attr", attrs)
+    response = ModelViewSet.as_view({"post": "model_attr_list_batch"})(
+        _req("post", superuser, data={"model_ids": ["host", "missing"]}),
+    )
+    assert response.status_code == status.HTTP_404_NOT_FOUND
+    assert called["attr"] == 0
+
+
+@pytest.mark.django_db
+def test_model_attr_list_batch_forbidden_returns_no_attrs(superuser, monkeypatch):
+    monkeypatch.setattr(
+        f"{VIEWS}.ModelManage.search_models_by_ids",
+        lambda model_ids: {model_id: _visible_model(model_id) for model_id in model_ids},
+    )
+    monkeypatch.setattr(f"{VIEWS}.CmdbRulesFormatUtil.has_object_permission", lambda **k: k["model_id"] != "secret")
+    called = {"attr": 0}
+
+    def attrs(*args, **kwargs):
+        called["attr"] += 1
+        return [{"attr_id": "ip"}]
+
+    monkeypatch.setattr(f"{VIEWS}.ModelManage.search_model_attr", attrs)
+    response = ModelViewSet.as_view({"post": "model_attr_list_batch"})(
+        _req("post", superuser, data={"model_ids": ["host", "secret"]}),
+    )
+    assert response.status_code == status.HTTP_403_FORBIDDEN
+    assert called["attr"] == 0
 
 
 # --------------------------------------------------------------------------
@@ -568,27 +624,21 @@ def test_unique_rules_get(superuser, monkeypatch):
 @pytest.mark.django_db
 def test_unique_rules_post(superuser, monkeypatch):
     monkeypatch.setattr(f"{VIEWS}.ModelManage.create_model_unique_rule", lambda *a, **k: {"rule_id": "u2"})
-    response = ModelViewSet.as_view({"post": "model_unique_rules"})(
-        _req("post", superuser, data={"attrs": []}), model_id="host"
-    )
+    response = ModelViewSet.as_view({"post": "model_unique_rules"})(_req("post", superuser, data={"attrs": []}), model_id="host")
     assert _body(response)["data"]["rule_id"] == "u2"
 
 
 @pytest.mark.django_db
 def test_unique_rule_detail_put(superuser, monkeypatch):
     monkeypatch.setattr(f"{VIEWS}.ModelManage.update_model_unique_rule", lambda *a, **k: {"ok": True})
-    response = ModelViewSet.as_view({"put": "model_unique_rule_detail"})(
-        _req("put", superuser, data={}), model_id="host", rule_id="u1"
-    )
+    response = ModelViewSet.as_view({"put": "model_unique_rule_detail"})(_req("put", superuser, data={}), model_id="host", rule_id="u1")
     assert response.status_code == status.HTTP_200_OK
 
 
 @pytest.mark.django_db
 def test_unique_rule_detail_delete(superuser, monkeypatch):
     monkeypatch.setattr(f"{VIEWS}.ModelManage.delete_model_unique_rule", lambda *a, **k: {"ok": True})
-    response = ModelViewSet.as_view({"delete": "model_unique_rule_detail"})(
-        _req("delete", superuser), model_id="host", rule_id="u1"
-    )
+    response = ModelViewSet.as_view({"delete": "model_unique_rule_detail"})(_req("delete", superuser), model_id="host", rule_id="u1")
     assert response.status_code == status.HTTP_200_OK
 
 
@@ -648,9 +698,7 @@ def test_export_model_config(superuser, monkeypatch):
         return io.BytesIO(b"xlsxdata")
 
     monkeypatch.setattr(f"{VIEWS}.ModelManage.export_model_config", fake_export)
-    response = ModelViewSet.as_view({"post": "export_model_config"})(
-        _req("post", superuser, data={"model_ids": ["host", "sw"]})
-    )
+    response = ModelViewSet.as_view({"post": "export_model_config"})(_req("post", superuser, data={"model_ids": ["host", "sw"]}))
     assert response.status_code == status.HTTP_200_OK
     assert response["Content-Disposition"].startswith("attachment")
     assert captured["model_ids"] == ["host", "sw"]

@@ -9,7 +9,6 @@ from rest_framework.test import APIRequestFactory, force_authenticate
 
 from apps.core.utils.open_base import login_exempt
 from apps.core.utils.user_group import normalize_user_group_ids
-from apps.operation_analysis.common.datasource_visibility import can_access_datasource_in_org
 from apps.operation_analysis.common.get_nats_source_data import is_organization_param_spec
 from apps.operation_analysis.constants.canvas_refresh import normalize_canvas_refresh_interval
 from apps.operation_analysis.models.datasource_models import DataSourceAPIModel
@@ -201,9 +200,22 @@ def _attach_share_organization(payload, principal):
     return payload
 
 
+def _share_identity_app_names(principal) -> list[str]:
+    """模块许可跟分享链接上的身份走，不跟打开链接的登录用户走。"""
+    from apps.operation_analysis.services.render_authorized_apps import resolve_execution_authorized_app_names
+
+    user = getattr(principal, "user", None)
+    return resolve_execution_authorized_app_names(
+        username=getattr(user, "username", "") or "",
+        domain=getattr(user, "domain", "") or "",
+    )
+
+
 def _serialize_shared_resource(principal, language=None):
     resource = principal.resource
     from apps.operation_analysis.services.builtin_i18n import overlay_canvas_payload
+
+    identity_app_names = _share_identity_app_names(principal)
 
     if principal.resource_type == "networkTopology":
         # Phase A：只返回脱敏配置；禁止 token / base_url / runtime cache 等 WeOps 凭证面。
@@ -216,6 +228,7 @@ def _serialize_shared_resource(principal, language=None):
             "is_build_in": bool(getattr(resource, "is_build_in", False)),
             "refresh_interval": normalize_canvas_refresh_interval(getattr(resource, "refresh_interval", 0)),
             "status": getattr(resource, "status", "") or "",
+            "authorized_app_names": identity_app_names,
         }
         overlay_canvas_payload(payload, resource, language)
         if _resource_has_organization_filter(resource):
@@ -228,6 +241,7 @@ def _serialize_shared_resource(principal, language=None):
         "desc": getattr(resource, "desc", "") or "",
         "view_sets": getattr(resource, "view_sets", None),
         "is_build_in": bool(getattr(resource, "is_build_in", False)),
+        "authorized_app_names": identity_app_names,
     }
     if hasattr(resource, "filters"):
         payload["filters"] = resource.filters
@@ -457,12 +471,32 @@ class DashboardShareAccessViewSet(viewsets.ViewSet):
         if principal.resource_type not in SHARE_DATASOURCE_RESOURCE_TYPES:
             return Response([])
 
-        allowed_ids = _canvas_data_source_ids(principal.resource)
-        data_sources = [
-            item
-            for item in DataSourceAPIModel.objects.filter(id__in=allowed_ids).prefetch_related("namespaces", "tag")
-            if can_access_datasource_in_org(item, principal.space_id)
-        ]
+        from apps.operation_analysis.services.canvas_datasource_lookup import build_canvas_datasource_payloads, normalize_canvas_datasource_ids
+
+        allowed_ids = normalize_canvas_datasource_ids(_canvas_data_source_ids(principal.resource))
+        instances = list(DataSourceAPIModel.objects.filter(id__in=allowed_ids).prefetch_related("namespaces", "tag"))
+
+        def serialize_allowed(item):
+            return {
+                "id": item.id,
+                "name": item.name,
+                "desc": item.desc or "",
+                "source_type": item.source_type,
+                "params": item.params or [],
+                "chart_type": item.chart_type or [],
+                "field_schema": item.field_schema or [],
+                "namespaces": list(item.namespaces.values_list("id", flat=True)),
+                "namespace_options": list(item.namespaces.values("id", "name")),
+                "groups": [principal.space_id],
+                "required_app": item.required_app or None,
+            }
+
+        payloads = build_canvas_datasource_payloads(
+            ordered_ids=allowed_ids,
+            instances=instances,
+            current_team=principal.space_id,
+            serialize_allowed=serialize_allowed,
+        )
         log_share_access(
             request,
             action="data_sources",
@@ -470,23 +504,7 @@ class DashboardShareAccessViewSet(viewsets.ViewSet):
             visitor=request.user,
             result="ok",
         )
-        return Response(
-            [
-                {
-                    "id": item.id,
-                    "name": item.name,
-                    "desc": item.desc or "",
-                    "source_type": item.source_type,
-                    "params": item.params or [],
-                    "chart_type": item.chart_type or [],
-                    "field_schema": item.field_schema or [],
-                    "namespaces": list(item.namespaces.values_list("id", flat=True)),
-                    "namespace_options": list(item.namespaces.values("id", "name")),
-                    "groups": [principal.space_id],
-                }
-                for item in data_sources
-            ]
-        )
+        return Response(payloads)
 
     def _delegated_scene_widget_operation(
         self,
@@ -642,6 +660,59 @@ class DashboardShareAccessViewSet(viewsets.ViewSet):
             action_name="application3d_metric",
             view_action="application3d_metric",
         )
+
+    @action(
+        detail=False,
+        methods=["post"],
+        url_path=r"session/(?P<session_id>[^/.]+)/dashboard_scene_permissions",
+    )
+    def dashboard_scene_permissions(self, request, session_id=None):
+        try:
+            principal = resolve_session(session_id=session_id, visitor=request.user)
+        except ShareRateLimited:
+            return Response({"detail": oa_message("messages.rate_limited", "请求过于频繁")}, status=status.HTTP_429_TOO_MANY_REQUESTS)
+        except ShareLinkInvalid:
+            log_share_access(request, action="dashboard_scene_permissions", result="reject", reason="invalid")
+            return Response(invalid_share_response(), status=status.HTTP_404_NOT_FOUND)
+
+        if principal.resource_type not in frozenset({"dashboard", "screen"}):
+            return Response(
+                {"detail": oa_message("messages.share_topology_widget_undeclared", "分享画布未声明关联拓扑组件")},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        view_sets = getattr(principal.resource, "view_sets", None)
+        if not (_view_sets_has_scene_widget(view_sets, "relatedTopology") or _view_sets_has_scene_widget(view_sets, "applicationTopology")):
+            log_share_access(
+                request,
+                action="dashboard_scene_permissions",
+                principal=principal,
+                visitor=request.user,
+                result="reject",
+                reason="scene_permission_not_declared",
+            )
+            return Response(
+                {"detail": oa_message("messages.share_topology_widget_undeclared", "分享画布未声明关联拓扑组件")},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        factory = APIRequestFactory()
+        delegated_request = factory.post("/", request.data or {}, format="json")
+        delegated_request.COOKIES["current_team"] = str(principal.space_id)
+        delegated_request.COOKIES["include_children"] = "0"
+        force_authenticate(delegated_request, user=_delegated_sharer_user(principal.user))
+
+        from apps.operation_analysis.views.scene_widget_view import SceneWidgetViewSet
+
+        response = SceneWidgetViewSet.as_view({"post": "dashboard_scene_permissions"})(delegated_request)
+        log_share_access(
+            request,
+            action="dashboard_scene_permissions",
+            principal=principal,
+            visitor=request.user,
+            result="ok" if getattr(response, "status_code", 500) < 400 else "reject",
+        )
+        return response
 
     @action(
         detail=False,

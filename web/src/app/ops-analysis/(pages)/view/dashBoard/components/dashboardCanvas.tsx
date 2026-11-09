@@ -28,8 +28,10 @@ import type {
 import type { DatasourceItem } from '@/app/ops-analysis/types/dataSource';
 import PermissionWrapper from '@/components/permission';
 import MoreActionsDropdown from '@/components/more-actions-dropdown';
+import { resolveDashboardChrome } from '@/app/ops-analysis/utils/homepageDashboardSurface';
 import { DASHBOARD_GRID_COLS } from '@/app/ops-analysis/utils/dashboardGridColumns';
 import { DASHBOARD_GRID_ROW_HEIGHT } from '@/app/ops-analysis/utils/dashboardGridRows';
+import { restoreGridStackMeasurableMinHeight } from '@/app/ops-analysis/utils/prepareDashboardPrintLayout';
 import {
   buildDashboardGridStackLayout,
   buildDashboardGridStackStructureKey,
@@ -46,6 +48,8 @@ import {
   isDashboardWidgetItem,
   sortDashboardLayoutItems,
 } from '@/app/ops-analysis/utils/dashboardGroups';
+import { deriveDashboardGridDisplayLayout } from '@/app/ops-analysis/utils/dashboardGroupViewVisibility';
+import { useDashboardViewAuth } from '@/app/ops-analysis/context/dashboardViewAuth';
 import {
   activateAllRuntimeWidgets,
   mergeRuntimeActivationStates,
@@ -73,6 +77,8 @@ import {
 
 const DASHBOARD_GRID_MARGIN: [number, number] = [4, 4];
 const DASHBOARD_GRID_CONTAINER_PADDING: [number, number] = [6, 2];
+// 首页去掉外层灰边后，画布左右留白对齐顶栏的 16px 内缩。
+const HOMEPAGE_GRID_CONTAINER_PADDING: [number, number] = [16, 2];
 const DASHBOARD_WIDGET_RESIZE_HANDLES = 'se,sw,ne,nw,n,e,s,w';
 const DASHBOARD_WIDGET_RESIZE_HANDLE_SIZE = 14;
 // 角点 SVG 是 6px 的 L，臂宽 6-4.2。边中点改成与边平行的短线，长度略长于这条臂。
@@ -333,6 +339,9 @@ interface DashboardCanvasProps {
   renderMode?: boolean;
   pdfExportPreparing?: boolean;
   csvExportHidden?: boolean;
+  playbackMode?: boolean;
+  /** 浅色首页透出系统背景。运营分析模块不走这套。 */
+  homepageSurface?: boolean;
   scrollRootRef: RefObject<HTMLDivElement | null>;
   onWidgetRenderStatus?: (result: DashboardWidgetRenderResult) => void;
 }
@@ -370,6 +379,8 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
   renderMode = false,
   pdfExportPreparing = false,
   csvExportHidden = false,
+  playbackMode = false,
+  homepageSurface = false,
   scrollRootRef,
   onWidgetRenderStatus,
 }) => {
@@ -394,13 +405,25 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
     dashboardId,
   );
 
+  const viewAuth = useDashboardViewAuth();
+  const displayLayout = useMemo(() => {
+    if (isEditMode || !viewAuth) {
+      return layout;
+    }
+    return deriveDashboardGridDisplayLayout({
+      items: layout,
+      mode: 'view',
+      isWidgetUnauthorized: viewAuth.isWidgetUnauthorized,
+    });
+  }, [isEditMode, layout, viewAuth]);
+
   const gridStackLayout = useMemo(
-    () => buildDashboardGridStackLayout(layout),
-    [layout],
+    () => buildDashboardGridStackLayout(displayLayout),
+    [displayLayout],
   );
   const gridStructureKey = useMemo(
-    () => buildDashboardGridStackStructureKey(layout),
-    [layout],
+    () => buildDashboardGridStackStructureKey(displayLayout),
+    [displayLayout],
   );
   const dashboardInstanceKey = useMemo(
     () => `${dashboardId ?? 'dashboard'}:${gridStructureKey}`,
@@ -425,7 +448,14 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
         .filter((node) => node.kind === 'widget')
         .map((node) => node.id)
         .concat(gridStackLayout.groupNodes.flatMap((node) => node.children.map((child) => child.id)));
-      setRuntimeStates(activateAllRuntimeWidgets(widgetIds));
+      setRuntimeStates((previous) => {
+        const previousKey = Object.keys(previous).sort().join('|');
+        const nextKey = [...widgetIds].sort().join('|');
+        if (previousKey === nextKey && widgetIds.every((widgetId) => previous[widgetId]?.active)) {
+          return previous;
+        }
+        return activateAllRuntimeWidgets(widgetIds);
+      });
       return undefined;
     }
 
@@ -591,21 +621,15 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
       const cardElement = document.createElement('div');
       cardElement.className =
         'flex min-h-0 flex-col overflow-hidden rounded-lg border';
-      cardElement.style.backgroundColor = isDarkTheme
-        ? 'rgba(255,255,255,0.02)'
-        : '#f7f8fa';
-      cardElement.style.borderColor = isDarkTheme
-        ? 'rgba(255,255,255,0.12)'
-        : 'rgba(61,79,104,0.14)';
+      const groupSurface = resolveDashboardChrome(homepageSurface, isDarkTheme);
+      cardElement.style.backgroundColor = groupSurface.groupBackground;
+      cardElement.style.borderColor = groupSurface.groupBorderColor;
+      cardElement.style.backdropFilter = groupSurface.groupBackdrop;
 
       const headerElement = document.createElement('div');
       headerElement.className = 'shrink-0 overflow-hidden rounded-t-lg';
-      headerElement.style.backgroundColor = isDarkTheme
-        ? 'rgba(255,255,255,0.03)'
-        : '#f1f3f8';
-      headerElement.style.borderBottom = isDarkTheme
-        ? '1px solid rgba(255,255,255,0.08)'
-        : '1px solid rgba(61,79,104,0.08)';
+      headerElement.style.backgroundColor = groupSurface.groupHeaderBackground;
+      headerElement.style.borderBottom = groupSurface.groupHeaderBorder;
 
       const headerHost = document.createElement('div');
       headerHost.dataset.groupHeaderHost = node.id;
@@ -630,7 +654,7 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
 
       return itemElement;
     },
-    [isDarkTheme],
+    [homepageSurface, isDarkTheme],
   );
 
   const buildCurrentLayout = useCallback((): DashboardLayoutItem[] => {
@@ -908,7 +932,9 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
   }, [emitLayoutChange, handleWidgetMutationStop]);
 
   useEffect(() => {
-    if (!gridRootRef.current) {
+    // 加载态不挂载 grid 根节点。若这次 effect 在 loading 时直接返回，
+    // 布局 key 不变时 loading 结束不会再进这里，查看态会一直空白。
+    if (loading || !gridRootRef.current) {
       return;
     }
 
@@ -984,6 +1010,7 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
         gridRootRef.current?.appendChild(itemElement);
       });
 
+      restoreGridStackMeasurableMinHeight(gridRootRef.current);
       const rootGrid = GridStack.init(
         {
           column: DASHBOARD_GRID_COLS,
@@ -1094,6 +1121,7 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
           return;
         }
 
+        restoreGridStackMeasurableMinHeight(subGridRoot);
         const subGrid = GridStack.init(
           {
             // 手动 init 时若写 auto，GridStack 会删掉该选项并回落默认 12；
@@ -1175,6 +1203,7 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
     createWidgetShell,
     dashboardInstanceKey,
     dashboardScopeKey,
+    loading,
     scheduleScrollRestore,
     syncGroupPresentation,
   ]);
@@ -1271,16 +1300,18 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
             </span>
           }
         >
-          <PermissionWrapper requiredPermissions={['EditChart']}>
-            <Button
-              type="primary"
-              icon={<PlusOutlined aria-hidden="true" />}
-              onClick={() => onOpenAddModal()}
-              disabled={selectedDashboardLocked}
-            >
-              {t('dashboard.addView')}
-            </Button>
-          </PermissionWrapper>
+          {!playbackMode && (
+            <PermissionWrapper requiredPermissions={['EditChart']}>
+              <Button
+                type="primary"
+                icon={<PlusOutlined aria-hidden="true" />}
+                onClick={() => onOpenAddModal()}
+                disabled={selectedDashboardLocked}
+              >
+                {t('dashboard.addView')}
+              </Button>
+            </PermissionWrapper>
+          )}
         </Empty>
       </div>
     );
@@ -1369,6 +1400,10 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
     );
   });
 
+  const gridContainerPadding = homepageSurface
+    ? HOMEPAGE_GRID_CONTAINER_PADDING
+    : DASHBOARD_GRID_CONTAINER_PADDING;
+
   return (
     <WidgetCsvExportRegistryProvider registry={csvRegistry}>
     <DashboardRuntimeSchedulerProvider>
@@ -1376,7 +1411,7 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
       <div
         className="relative w-full"
         style={{
-          padding: `${DASHBOARD_GRID_CONTAINER_PADDING[1]}px ${DASHBOARD_GRID_CONTAINER_PADDING[0]}px`,
+          padding: `${gridContainerPadding[1]}px ${gridContainerPadding[0]}px`,
         }}
       >
       <style jsx global>{`

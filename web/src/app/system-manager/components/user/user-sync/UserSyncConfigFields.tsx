@@ -1,6 +1,8 @@
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
+  Button,
+  Dropdown,
   Form,
   Input,
   InputNumber,
@@ -9,9 +11,11 @@ import {
   Switch,
   TreeSelect,
 } from 'antd';
+import { CloseOutlined, PlusOutlined } from '@ant-design/icons';
 
 import { useUserSyncApi } from '@/app/system-manager/api/user-sync';
 import { useChannelApi } from '@/app/system-manager/api/channel';
+import useApiClient from '@/utils/request';
 import type {
   BusinessTemplate,
   TemplateField,
@@ -24,6 +28,8 @@ import {
   shouldFetchDepartmentOptions,
 } from '@/app/system-manager/utils/userSyncUtils';
 import {
+  ALWAYS_SHOWN_PLATFORM_FIELDS,
+  OPTIONAL_PLATFORM_FIELDS,
   PLATFORM_FIELD_META,
   type MappingRow,
   updateMappingRowField,
@@ -45,11 +51,14 @@ interface UserSyncConfigFieldsProps {
 interface MappingInputRowProps {
   row: MappingRow;
   index: number;
+  label: string;
+  description?: string;
   placeholder: string;
   required?: boolean;
   invalid?: boolean;
-  t: (key: string, fallback?: string) => string;
   onChange: (index: number, value: string) => void;
+  onRemove?: () => void;
+  removeLabel?: string;
 }
 
 function toTreeSelectData(nodes: UserSyncDepartmentNode[]): Array<{
@@ -71,23 +80,34 @@ function toTreeSelectData(nodes: UserSyncDepartmentNode[]): Array<{
 const MappingInputRow = memo(({
   row,
   index,
+  label,
+  description,
   placeholder,
   required = false,
   invalid = false,
-  t,
   onChange,
+  onRemove,
+  removeLabel,
 }: MappingInputRowProps) => {
-  const meta = PLATFORM_FIELD_META[row.platformField as keyof typeof PLATFORM_FIELD_META];
-
   return (
     <div className="grid grid-cols-[minmax(0,1fr)_32px_minmax(0,1fr)] items-center gap-x-3">
-      <div className="flex h-8 items-center rounded border border-[var(--color-border)] bg-[var(--color-fill-1)] px-3 text-[13px] text-[var(--color-text-1)]">
-        <span className="font-medium">{meta ? t(meta.labelKey) : row.platformField}</span>
-        {required ? <span className="ml-1 text-[var(--color-error)]">*</span> : null}
-        {meta ? (
-          <span className="ml-2 hidden text-[12px] text-[var(--color-text-3)] sm:inline">
-            ({t(meta.descKey)})
+      <div className="flex h-8 min-w-0 items-center overflow-hidden rounded border border-[var(--color-border)] bg-[var(--color-fill-1)] px-3 text-[13px] text-[var(--color-text-1)]">
+        <span className="shrink-0 whitespace-nowrap font-medium">{label}</span>
+        {required ? <span className="ml-1 shrink-0 text-[var(--color-error)]">*</span> : null}
+        {description ? (
+          <span className="ml-2 hidden min-w-0 truncate text-[12px] text-[var(--color-text-3)] sm:inline" title={description}>
+            ({description})
           </span>
+        ) : null}
+        {onRemove ? (
+          <button
+            type="button"
+            className="ml-auto shrink-0 pl-2 text-[12px] leading-none text-[var(--color-text-3)]"
+            aria-label={removeLabel}
+            onClick={onRemove}
+          >
+            <CloseOutlined />
+          </button>
         ) : null}
       </div>
       <div className="flex items-center justify-center text-[13px] text-[var(--color-text-3)] select-none">
@@ -127,6 +147,9 @@ const UserSyncConfigFields: React.FC<UserSyncConfigFieldsProps> = ({
     { id: number; name: string }[]
   >([]);
   const fetchedRef = useRef(false);
+  const { get } = useApiClient();
+  const [customFieldOptions, setCustomFieldOptions] = useState<Array<{ key: string; name: string }>>([]);
+  const customFieldsFetchedRef = useRef(false);
 
   // 整个 UserSyncConfigFields 生命周期内仅 fetch 一次邮件 channel 列表。
   // 用 ref 锁住 (而非 deps) 避免 useChannelApi 每次返回新引用触发无限循环。
@@ -164,6 +187,16 @@ const UserSyncConfigFields: React.FC<UserSyncConfigFieldsProps> = ({
     return undefined;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (customFieldsFetchedRef.current) return;
+    customFieldsFetchedRef.current = true;
+    get('/system_mgmt/user_field/search/?enabled_only=1')
+      .then((rows: Array<{ key: string; name: string; is_enabled: boolean }>) => {
+        setCustomFieldOptions((Array.isArray(rows) ? rows : []).filter((item) => item.is_enabled));
+      })
+      .catch(() => setCustomFieldOptions([]));
+  }, [get]);
   const externalFieldPlaceholder = t('system.user.userSyncPage.externalFieldPlaceholder');
   const watchedDepartmentIdType = Form.useWatch(['business_config', 'department_id_type'], form);
   const departmentIdType = typeof watchedDepartmentIdType === 'string' ? watchedDepartmentIdType : '';
@@ -503,19 +536,60 @@ const UserSyncConfigFields: React.FC<UserSyncConfigFieldsProps> = ({
           <div>{t('system.user.userSyncPage.externalFieldColumn')}</div>
         </div>
         <div className="mt-3 space-y-2.5">
-          {mappingRows.map((row, index) => (
-            <MappingInputRow
-              key={row.platformField}
-              row={row}
-              index={index}
-              placeholder={externalFieldPlaceholder}
-              required={row.platformField === 'username'}
-              invalid={row.platformField === 'username' && Boolean(mappingError)}
-              t={t}
-              onChange={handleMappingRowChange}
-            />
-          ))}
+          {mappingRows.map((row, index) => {
+            const meta = PLATFORM_FIELD_META[row.platformField as keyof typeof PLATFORM_FIELD_META];
+            const customField = customFieldOptions.find((item) => item.key === row.platformField);
+            return (
+              <MappingInputRow
+                key={row.platformField}
+                row={row}
+                index={index}
+                label={meta ? t(meta.labelKey) : (customField?.name || row.platformField)}
+                description={meta ? t(meta.descKey) : undefined}
+                placeholder={externalFieldPlaceholder}
+                required={row.platformField === 'username'}
+                invalid={row.platformField === 'username' && Boolean(mappingError)}
+                onChange={handleMappingRowChange}
+                onRemove={ALWAYS_SHOWN_PLATFORM_FIELDS.includes(row.platformField as typeof ALWAYS_SHOWN_PLATFORM_FIELDS[number])
+                  ? undefined
+                  : () => onMappingRowsChange((rows) => rows.filter((item) => item.platformField !== row.platformField))}
+                removeLabel={t('common.delete')}
+              />
+            );
+          })}
         </div>
+        {(() => {
+          const taken = new Set(mappingRows.map((row) => row.platformField));
+          const addable = [
+            ...OPTIONAL_PLATFORM_FIELDS
+              .filter((key) => !taken.has(key))
+              .map((key) => ({ key, label: t(PLATFORM_FIELD_META[key].labelKey) })),
+            ...customFieldOptions
+              .filter((item) => !taken.has(item.key))
+              .map((item) => ({ key: item.key, label: item.name })),
+          ];
+          if (addable.length === 0) return null;
+          return (
+            <div className="mt-3 w-full [&_.ant-dropdown-trigger]:block [&_.ant-dropdown-trigger]:w-full">
+              <Dropdown
+                trigger={['click']}
+                menu={{
+                  items: addable,
+                  onClick: ({ key }) => {
+                    onMappingRowsChange((rows) => {
+                      if (rows.some((row) => row.platformField === key)) return rows;
+                      return [...rows, { platformField: key, externalField: '' }];
+                    });
+                  },
+                }}
+              >
+                <Button type="dashed" block htmlType="button" icon={<PlusOutlined />} className="w-full">
+                  {t('system.user.userSyncPage.addCustomField')}
+                </Button>
+              </Dropdown>
+            </div>
+          );
+        })()}
         {resolvedTemplate?.available_external_fields && resolvedTemplate.available_external_fields.length > 0 ? (
           <div className="mt-3.5 flex flex-wrap items-center gap-1.5 rounded-md bg-[var(--color-fill-1)] px-3 py-2 text-[12px] text-[var(--color-text-3)]">
             <span className="font-medium text-[var(--color-text-2)]">

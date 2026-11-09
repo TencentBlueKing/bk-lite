@@ -114,6 +114,26 @@ export const resolveScreenDisplayAdapter = ({
   return resolveScreenFitAdapter(adapter);
 };
 
+/** 全屏或分享里解析结果仍是 fill 时，按视口像素重算几何，不再用非等比 transform。 */
+export const shouldUseViewportPixelLayout = ({
+  adapter,
+  fullscreen = false,
+  shareMode = false,
+  forceContain = false,
+}: {
+  adapter: unknown;
+  editMode?: boolean;
+  fullscreen?: boolean;
+  shareMode?: boolean;
+  forceContain?: boolean;
+}): boolean =>
+  resolveScreenDisplayAdapter({
+    adapter,
+    fullscreen,
+    shareMode,
+    forceContain,
+  }) === 'fill';
+
 const scaleAxis = (value: number, ratio: number, minimum = 0) =>
   Math.max(minimum, Math.round(value * ratio));
 

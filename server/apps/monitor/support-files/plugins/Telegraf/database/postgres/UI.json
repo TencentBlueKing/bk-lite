@@ -15,8 +15,8 @@
       "required": true,
       "editable": false,
       "description": "用于访问接口的用户名",
-      "guide_short": "建议使用只读监控账号。PostgreSQL 10 及以上授予 pg_read_all_stats，用于读取 pg_stat_database 和 pg_stat_bgwriter。",
-      "guide_short_en": "Use a read-only monitoring account. On PostgreSQL 10 and later, grant pg_read_all_stats to read pg_stat_database and pg_stat_bgwriter.",
+      "guide_short": "建议使用只读监控账号。PostgreSQL 10 及以上授予 pg_read_all_stats，用于读取库统计和当前会话。打开「Top SQL 采集」前，请在本页填写的数据库中安装 pg_stat_statements，并确认该账号可以读取它。",
+      "guide_short_en": "Use a read-only monitoring account. On PostgreSQL 10 and later, grant pg_read_all_stats so it can read database statistics and current sessions. Before turning on Top SQL Collection, install pg_stat_statements in the database named on this page and confirm the account can read it.",
       "widget_props": {
         "placeholder": "用户名",
         "placeholder_en": "Username"
@@ -186,8 +186,47 @@
       },
       "label_en": "Interval",
       "description_en": "Collection time interval (unit: seconds)"
+    },
+    {
+      "name": "gather_pg_stat_statements",
+      "advanced": true,
+      "label": "Top SQL 采集",
+      "type": "switch",
+      "required": false,
+      "default_value": false,
+      "description": "开启后供「Top SQL」页查看。",
+      "guide_short": "默认关闭。打开后，「Top SQL」页才有语句耗时、执行次数和返回行。目标库须已安装 pg_stat_statements，且监控账号可读取；否则采集失败或持续为空。连接数、事务等常规指标不受影响。",
+      "guide_short_en": "Off by default. When on, the Top SQL tab shows statement time, calls, and rows returned. The target database must have pg_stat_statements installed and the monitoring account must be able to read it; otherwise collection fails or stays empty. Connections and transactions are unaffected.",
+      "widget_props": {},
+      "transform_on_edit": {
+        "origin_path": "child.content.config.gather_pg_stat_statements"
+      },
+      "label_en": "Top SQL Collection",
+      "description_en": "Powers the Top SQL tab when enabled."
+    },
+    {
+      "name": "gather_pg_wait_events",
+      "advanced": true,
+      "label": "等待事件采集",
+      "type": "switch",
+      "required": false,
+      "default_value": false,
+      "description": "开启后供「等待」页查看。",
+      "guide_short": "默认关闭。打开后采样当前正在等待的会话（快照，非累计等待时长）。采集当时无等待会话时页为空。与「Top SQL 采集」相互独立，无需额外扩展。",
+      "guide_short_en": "Off by default. When on, samples sessions currently waiting (a snapshot, not cumulative wait time). Empty if no session is waiting at collection time. Separate from Top SQL Collection; no extra extension.",
+      "widget_props": {},
+      "transform_on_edit": {
+        "origin_path": "child.content.config.gather_pg_wait_events"
+      },
+      "label_en": "Wait Event Collection",
+      "description_en": "Powers the Waits tab when enabled."
     }
   ],
+  "advanced_panel": {
+    "title": "高级采集选项",
+    "hint": "默认项覆盖基础监控。Top SQL 与等待事件默认关闭，展开后按需打开；详细说明见各开关旁的指引。",
+    "hint_en": "Defaults cover basic monitoring. Top SQL and wait events are off by default. Expand to turn them on; see the guide beside each switch."
+  },
   "table_columns": [
     {
       "name": "node_ids",

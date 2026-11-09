@@ -6,6 +6,7 @@ from typing import Optional
 from django_celery_beat.models import ClockedSchedule, CrontabSchedule, PeriodicTask
 
 from apps.core.logger import job_logger as logger
+from apps.job_mgmt.config import JOB_CELERY_QUEUE
 from apps.job_mgmt.constants import ScheduleType
 
 
@@ -83,6 +84,7 @@ class ScheduledTaskService:
                     "kwargs": json.dumps({}),
                     "enabled": scheduled_task.is_enabled,
                     "one_off": False,
+                    "queue": JOB_CELERY_QUEUE,
                 },
             )
 
@@ -120,6 +122,7 @@ class ScheduledTaskService:
                     "kwargs": json.dumps({}),
                     "enabled": scheduled_task.is_enabled,
                     "one_off": True,  # 单次执行
+                    "queue": JOB_CELERY_QUEUE,
                 },
             )
 

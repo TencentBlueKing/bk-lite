@@ -73,31 +73,29 @@ def test_rum_apps_filter_matches_wire_contract():
 
 def test_applications_page_queries_logsql():
     now = datetime(2026, 8, 18, 12, 0, 0, tzinfo=timezone.utc)
-    rows = [
-        {
-            "_time": (now - timedelta(minutes=2)).isoformat().replace("+00:00", "Z"),
-            "rum.application": "storefront",
-            "rum.session.id": "s1",
-            "rum.event.type": "view",
-            "rum.environment": "production",
-            "rum.release": "2026.08.18",
-            "rum.sdk.version": "1.2.3",
-        },
-        {
-            "_time": (now - timedelta(minutes=1)).isoformat().replace("+00:00", "Z"),
-            "rum.application": "storefront",
-            "rum.session.id": "s1",
-            "rum.event.type": "vital",
-            "rum.measurement.lcp": 2400,
-        },
-        {
-            "_time": (now - timedelta(seconds=30)).isoformat().replace("+00:00", "Z"),
-            "rum.application": "storefront",
-            "rum.session.id": "s2",
-            "rum.event.type": "error",
-        },
-    ]
-    server, base = _serve(rows)
+
+    def choose(query: str):
+        assert "stats" in query
+        if "_time:" in query:
+            return []
+        assert "stats by (`rum.application`)" in query
+        assert "quantile(0.75, `rum.measurement.lcp`)" in query
+        return [
+            {
+                "rum.application": "storefront",
+                "sessions": "2",
+                "views": "1",
+                "errors": "1",
+                "errored_sessions": "1",
+                "lcp_measurement_p75": "2400",
+                "environment": '["production"]',
+                "release": '["2026.08.18"]',
+                "sdk_version": '["1.2.3"]',
+            }
+        ]
+
+    server, base = _serve([])
+    _VLHandler.choose = choose
     try:
         analytics = VictoriaAnalytics.open(logs_endpoint=base, traces_endpoint=base, ping=True)
         assert analytics.available() is True
@@ -110,6 +108,7 @@ def test_applications_page_queries_logsql():
         assert page_rows[0]["sessions"] == 2
         assert page_rows[0]["views"] == 1
         assert page_rows[0]["errors"] == 1
+        assert abs(page_rows[0]["errorRate"] - 0.5) < 0.01
         assert page_rows[0]["lcpP75"] == 2400.0
         assert page_rows[0]["sdkVersion"] == "1.2.3"
         assert len(sparks["storefront"]) == 12
@@ -449,10 +448,7 @@ def test_list_views_fills_cwv_device_and_spark_fields():
         assert row["dist"]["missing"] == 0
         assert row["deviceMix"]["mobile"] == 1
         assert row["deviceMix"]["desktop"] == 1
-        assert any(
-            "quantile(0.75, `rum.vital.lcp`) if (`rum.vital.lcp`:*)" in query
-            for query in _VLHandler.queries
-        )
+        assert any("quantile(0.75, `rum.vital.lcp`) if (`rum.vital.lcp`:*)" in query for query in _VLHandler.queries)
         assert "stats by" in _VLHandler.got_query
         assert page["summary"]["inpP75"] == 120.0
     finally:
@@ -691,21 +687,12 @@ def test_list_error_issues_keeps_group_key_when_client_fingerprint_is_absent():
 
 def test_application_overview_counts_devices_by_session():
     now = datetime(2026, 8, 18, 12, 0, 0, tzinfo=timezone.utc)
-    stamp = now.isoformat().replace("+00:00", "Z")
-    desktop = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)"
-    phone = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) Mobile/15E148"
-    events = [
-        {"_time": stamp, "rum.application": "storefront", "rum.session.id": "desk", "rum.event.type": "view", "user_agent.original": desktop},
-        {"_time": stamp, "rum.application": "storefront", "rum.session.id": "desk", "rum.event.type": "resource", "user_agent.original": desktop},
-        {"_time": stamp, "rum.application": "storefront", "rum.session.id": "desk", "rum.event.type": "vital", "user_agent.original": desktop},
-        {"_time": stamp, "rum.application": "storefront", "rum.session.id": "phone", "rum.event.type": "view", "user_agent.original": phone},
-        {"_time": stamp, "rum.application": "storefront", "rum.session.id": "phone", "rum.event.type": "error", "user_agent.original": desktop},
-    ]
 
     def choose(query: str):
-        if "stats" in query:
-            return []
-        return events
+        assert "stats" in query
+        if "user_agent.original" in query:
+            return [{"mobile": "1", "sessions": "2"}]
+        return []
 
     server, base = _serve([])
     _VLHandler.choose = choose
@@ -713,6 +700,8 @@ def test_application_overview_counts_devices_by_session():
         analytics = VictoriaAnalytics.open(logs_endpoint=base, traces_endpoint=base)
         overview = analytics.application_overview("core", "storefront", now - timedelta(hours=1), now + timedelta(minutes=1))
         assert overview["devices"] == {"mobile": 1, "desktop": 1}
+        assert _VLHandler.queries
+        assert all("stats" in query for query in _VLHandler.queries)
     finally:
         server.shutdown()
 

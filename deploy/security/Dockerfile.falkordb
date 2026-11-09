@@ -1,0 +1,31 @@
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+
+ARG RUNTIME_USER
+USER root
+
+# 沿用原镜像 NodeSource 22.x / 24.x 源，不跨 Node 主版本升级。
+RUN . /etc/os-release && \
+    case "$ID:$VERSION_ID" in \
+      debian:12) ;; \
+      *) echo "未验证的 FalkorDB 发行版：$ID:$VERSION_ID" >&2; exit 1 ;; \
+    esac && \
+    dpkg-query -W -f='${db:Status-Abbrev}' nodejs | grep -q '^ii ' && \
+    case "$(node --version)" in \
+      v22.*) node_major=22; node_minimum=22.23.4 ;; \
+      v24.*) node_major=24; node_minimum=24.22.1 ;; \
+      *) echo "未验证的 Node 主版本" >&2; exit 1 ;; \
+    esac && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends libbrotli1 nodejs && \
+    dpkg --compare-versions "$(dpkg-query -W -f='${Version}' libbrotli1)" ge '1.0.9-2+deb12u1' && \
+    package_version="$(dpkg-query -W -f='${Version}' nodejs)" && \
+    dpkg --compare-versions "$package_version" ge "$node_minimum" && \
+    node_version="$(node --version)" && \
+    printf '%s\n' "$node_version" | grep -Eq "^v${node_major}\\.[0-9]+\\.[0-9]+$" && \
+    dpkg --compare-versions "${node_version#v}" ge "$node_minimum" && \
+    package_upstream="${package_version#*:}" && \
+    test "${package_upstream%%-*}" = "${node_version#v}" && \
+    rm -rf /var/lib/apt/lists/*
+
+USER ${RUNTIME_USER}

@@ -3,34 +3,29 @@ import { useEffect, useState, type RefObject } from 'react';
 interface UseTableBodyScrollYOptions {
   containerRef: RefObject<HTMLDivElement | null>;
   hasPagination: boolean;
-  scale?: number;
 }
 
+/**
+ * 与 CustomTable size="small" 加回的高度相同：表头 47、分页 56。
+ * widgetUiScale 已经用在大屏字号和单元格 padding 上，这里不能再乘一次。
+ * 公共表格收到显式 scroll.y 时还会把表体抬到至少 160，所以运营分析表格
+ * 不把这个返回值传给 CustomTable，只让它按父容器回填。
+ */
 export const resolveTableBodyScrollY = ({
   containerHeight,
   hasPagination,
-  scale = 1,
 }: {
   containerHeight: number;
   hasPagination: boolean;
-  scale?: number;
 }): number => {
-  // CustomTable size="small" 会按 47px 把表头加回锁定高度。这里必须用同一个数，
-  // 否则表格根节点比 overflow:hidden 的父级更高，分页器底部被裁掉。
-  const headerHeight = Math.round(47 * scale);
-  const paginationHeight = hasPagination ? Math.round(56 * scale) : 0;
-  const minBodyHeight = Math.round(120 * scale);
-
-  return Math.max(
-    containerHeight - headerHeight - paginationHeight,
-    minBodyHeight,
-  );
+  const headerHeight = 47;
+  const paginationHeight = hasPagination ? 56 : 0;
+  return Math.max(0, containerHeight - headerHeight - paginationHeight);
 };
 
 export const useTableBodyScrollY = ({
   containerRef,
   hasPagination,
-  scale = 1,
 }: UseTableBodyScrollYOptions): string | undefined => {
   const [tableScrollY, setTableScrollY] = useState<string>();
 
@@ -42,7 +37,6 @@ export const useTableBodyScrollY = ({
       const nextHeight = resolveTableBodyScrollY({
         containerHeight: container.clientHeight,
         hasPagination,
-        scale,
       });
       setTableScrollY(`${nextHeight}px`);
     };
@@ -60,7 +54,7 @@ export const useTableBodyScrollY = ({
       resizeObserver.disconnect();
       window.removeEventListener('resize', updateScrollY);
     };
-  }, [containerRef, hasPagination, scale]);
+  }, [containerRef, hasPagination]);
 
   return tableScrollY;
 };

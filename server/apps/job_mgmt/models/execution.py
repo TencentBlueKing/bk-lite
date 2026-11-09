@@ -124,9 +124,27 @@ class JobExecution(TimeInfo, MaintainerInfo):
     callback_type = models.CharField(max_length=16, choices=CallbackType.CHOICES, default=CallbackType.WEB, verbose_name="回调通道")
     callback_url = models.CharField(max_length=512, null=True, blank=True, verbose_name="回调地址（web通道）")
     callback_subject = models.CharField(max_length=256, null=True, blank=True, verbose_name="NATS回调主题（nats通道）")
+    async_callback_context = models.JSONField(null=True, blank=True, default=None, verbose_name="通用异步回调上下文")
+    async_callback_deadline_at = models.DateTimeField(null=True, blank=True, verbose_name="异步回调截止时间")
+    async_callback_key = models.CharField(
+        max_length=64,
+        unique=True,
+        null=True,
+        blank=True,
+        verbose_name="异步回调令牌摘要",
+    )
 
     # Celery 任务 ID（用于 revoke 取消队列中的任务）
     celery_task_id = models.CharField(max_length=256, blank=True, default="", verbose_name="Celery任务ID")
+
+    # 可选提交幂等键（编排等调用方传入；同键重复提交返回原任务）
+    client_request_id = models.CharField(
+        max_length=255,
+        null=True,
+        blank=True,
+        unique=True,
+        verbose_name="客户端提交幂等键",
+    )
 
     # 组织归属
     team = models.JSONField(default=list, verbose_name="团队ID列表")

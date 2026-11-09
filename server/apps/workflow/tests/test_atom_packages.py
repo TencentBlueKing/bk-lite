@@ -84,6 +84,7 @@ def test_platform_executable_atoms_share_the_standard_package_contract():
         "bklite_memory_write",
         "bklite_notification",
         "bklite_job_execute",
+        "bklite_file_distribute",
         "bklite_data_transform",
         "bklite_document_render",
         "bklite_http_request",
@@ -137,6 +138,24 @@ def test_job_atom_exposes_script_contract_only():
     assert atom_requires_trusted_context("bklite_document_render") is True
     assert atom_requires_trusted_context("bklite_notification") is True
     assert atom_requires_trusted_context("bklite_http_request") is True
+
+
+def test_file_distribute_atom_exposes_distribution_contract_only():
+    catalog = {item["key"]: item for item in package_catalog_payload()}
+
+    atom = catalog["bklite_file_distribute"]
+    assert set(atom["input_schema"]["properties"]) == {
+        "targets",
+        "files",
+        "target_path",
+        "overwrite_strategy",
+        "timeout_seconds",
+    }
+    assert atom["input_schema"]["required"] == ["targets", "files", "target_path"]
+    assert atom["input_schema"]["properties"]["files"]["maxItems"] == 20
+    assert atom["input_schema"]["properties"]["overwrite_strategy"]["enum"] == ["overwrite", "skip"]
+    assert set(atom["output_schema"]["properties"]) == {"data", "summary", "job_task_ids"}
+    assert atom_requires_trusted_context("bklite_file_distribute") is True
 
 
 def test_engine_nodes_are_not_atom_packages_or_conductor_task_definitions():

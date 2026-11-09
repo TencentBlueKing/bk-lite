@@ -107,6 +107,19 @@ const HostTask: React.FC<HostTaskFormProps> = ({
           if (password && password !== PASSWORD_PLACEHOLDER) {
             credential.password = password;
           }
+          if (modelId === 'redis' || modelId === 'mongodb') {
+            const serviceUsername = trimFormString(item.service_username);
+            const servicePassword = trimFormString(item.service_password);
+            credential.service_username = serviceUsername || '';
+            if (servicePassword && servicePassword !== PASSWORD_PLACEHOLDER) {
+              credential.service_password = servicePassword;
+            } else if (!servicePassword) {
+              credential.service_password = '';
+            }
+            if (modelId === 'mongodb') {
+              credential.auth_source = trimFormString(item.auth_source) || '';
+            }
+          }
           if (item.port !== undefined && item.port !== null && item.port !== '') {
             credential.port = item.port;
           }
@@ -125,6 +138,7 @@ const HostTask: React.FC<HostTaskFormProps> = ({
     credentialPool: normalizeCredentialPool(values.credential).map((item) => ({
       ...item,
       password: isCopy ? '' : PASSWORD_PLACEHOLDER,
+      service_password: isCopy ? '' : (item.service_password ? PASSWORD_PLACEHOLDER : ''),
     })),
     ipRange,
     ...getCleanupFormValues(values),
@@ -195,13 +209,16 @@ const HostTask: React.FC<HostTaskFormProps> = ({
             className={`${styles.formFieldHint} mb-4`}
             message={t(['brocade_fc', 'cisco_fc'].includes(modelId)
               ? 'Collection.deviceJobCredentialTip'
-              : 'Collection.hostCredentialOptionalTip')}
+              : ['redis', 'mongodb'].includes(modelId)
+                ? 'Collection.serviceCredentialTip'
+                : 'Collection.hostCredentialOptionalTip')}
           />}
           <Form.Item name="credentialPool">
             <CredentialPoolEditor
               vaultCategory={modelItem.credential_category}
               vaultTypeKeys={modelItem.credential_type_keys}
               credentialShape="ssh"
+              collectModelId={modelId}
               editMode={Boolean(editId)}
               credentialHelp={modelItem.type === 'job' ? resolveCredentialHelp(modelItem, t) : undefined}
             />

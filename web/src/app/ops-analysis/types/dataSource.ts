@@ -97,6 +97,8 @@ export interface DatasourceItem {
   tag?: number[];
   groups?: number[];
   hasAuth?: boolean;
+  /** 模块许可名，与 hasAppAccess / get_client 的 app 名对齐；空则不按模块隐藏 */
+  required_app?: string | null;
   field_schema?: ResponseFieldDefinition[];
   is_build_in?: boolean;
 }
@@ -141,12 +143,22 @@ export interface StaticOptionsSource {
   staticItems: InputOption[];
 }
 
+/** 选项查询入参：整值字面量，或整值引用其它参数。禁止与字面量拼接。 */
+export type OptionsQueryParamValue =
+  | string
+  | number
+  | boolean
+  | null
+  | { ref: string };
+
 export interface DynamicOptionsSource {
   type: 'dynamic';
   sourceId?: number;
   sourceRef?: SourceRef;
   valueField: string;
   labelField: string;
+  /** 选项查询请求参数。值为字面量或 { ref }；YAML 整值 $name$ / $name:type$ 读入时归一成 { ref }。 */
+  queryParams?: Record<string, OptionsQueryParamValue>;
 }
 
 export type InputControlConfig =

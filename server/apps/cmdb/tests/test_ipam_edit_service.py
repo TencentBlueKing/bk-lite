@@ -105,7 +105,7 @@ def test_execute_create_marks_manual_and_unknown_status(monkeypatch):
 
     class InstanceManage:
         @staticmethod
-        def instance_create(model_id, payload, operator, allowed_org_ids=None):
+        def instance_create(model_id, payload, operator, allowed_org_ids=None, **_extra):
             captured["payload"] = payload
             captured["operator"] = operator
             return created
@@ -149,11 +149,11 @@ def test_execute_create_rolls_back_when_association_fails(monkeypatch):
 
     class InstanceManage:
         @staticmethod
-        def instance_create(model_id, payload, operator, allowed_org_ids=None):
+        def instance_create(model_id, payload, operator, allowed_org_ids=None, **_extra):
             return created
 
         @staticmethod
-        def instance_batch_delete_by_uuids(user_groups, roles, uuids, operator):
+        def instance_batch_delete_by_uuids(user_groups, roles, uuids, operator, **_extra):
             captured["deleted"] = uuids
 
     monkeypatch.setattr("apps.cmdb.services.instance.InstanceManage", InstanceManage)
@@ -186,7 +186,7 @@ def test_execute_update_raises_when_association_fails(monkeypatch):
 
     class InstanceManage:
         @staticmethod
-        def instance_update(user_groups, roles, inst_id, update_attr, operator, allowed_org_ids=None):
+        def instance_update(user_groups, roles, inst_id, update_attr, operator, allowed_org_ids=None, **_extra):
             return {**existing, **update_attr}
 
         @staticmethod
