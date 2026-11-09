@@ -86,7 +86,7 @@ monitor_object_metric:
         for analyzing total write load and trends.
     diskio_write_bytes_total:
       name: Disk Written Bytes
-      desc: Cumulative bytes written since the statistics started, not bytes per second.
+      desc: Cumulative bytes written by the disk device, useful for analyzing write volume.
     diskio_write_bytes_total_rate:
       name: Disk Write Throughput
       desc: Average bytes written to disk per second over the last 5 minutes, used to observe write traffic.
@@ -99,7 +99,7 @@ monitor_object_metric:
         analyzing total read load and trends.
     diskio_read_bytes_total:
       name: Disk Read Bytes
-      desc: Cumulative bytes read since the statistics started, not bytes per second.
+      desc: Cumulative bytes read by the disk device, useful for analyzing read volume.
     host_disk_total_bytes:
       name: Filesystem Total Capacity
       desc: Represents the total capacity of the filesystem for a specific mount point, used to evaluate

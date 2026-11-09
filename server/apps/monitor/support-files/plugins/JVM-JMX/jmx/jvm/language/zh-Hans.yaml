@@ -75,13 +75,13 @@ monitor_object_metric:
       desc: Java NIO 中 BufferPool 的总内存容量大小，展示资源池最大承载能力
     jvm_gc_collectiontime_seconds_value:
       name: GC 收集总时间
-      desc: Java 虚拟机自启动以来垃圾回收累计消耗的时间（秒），不是 CPU 使用率。看最近一段时间请用「近 5 分钟 GC 耗时」。
+      desc: 垃圾回收累计消耗的时间（秒）。看最近一段时间请用「近 5 分钟 GC 耗时」。
     jvm_gc_collectiontime_seconds_increase:
       name: 近 5 分钟 GC 耗时
-      desc: 近 5 分钟垃圾回收消耗的时间（秒），按回收类型分开。这是这段时间的耗时，不是 CPU 使用率。
+      desc: 近 5 分钟垃圾回收消耗的时间（秒），按回收类型分开。
     jvm_gc_collectioncount_value:
       name: GC 收集总次数
-      desc: Java 虚拟机自启动以来垃圾回收的累计次数，不是每秒次数。看回收是否变频繁请用「GC 频率」。
+      desc: 垃圾回收的累计次数。看回收是否变频繁请用「GC 频率」。
     jvm_gc_collectioncount_rate:
       name: GC 频率
       desc: 近 5 分钟平均每秒垃圾回收次数，按回收类型分开，用于观察回收是否变频繁。

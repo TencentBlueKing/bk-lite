@@ -425,7 +425,7 @@
           "description": "Type of JMX data collection"
         }
       ],
-      "description": "Garbage collection time consumed during the last 5 minutes, in seconds, split by collector type. This is not a CPU usage percentage.",
+      "description": "Garbage collection time consumed during the last 5 minutes, in seconds, split by collector type.",
       "query": "sum(increase(jvm_gc_collectiontime_seconds_value{__$labels__}[5m])) by (instance_id,type)"
     }
   ]

@@ -63,7 +63,7 @@ monitor_object_metric:
       desc: 表示磁盘设备累计完成的写入操作次数，用于分析写入负载总量和变化趋势。
     diskio_write_bytes_total:
       name: 磁盘写入字节数
-      desc: 自统计起点累计写入的字节数，不是每秒写入量。
+      desc: 表示磁盘设备累计写入的数据量（字节），用于分析磁盘写入流量规模。
     diskio_write_bytes_total_rate:
       name: 磁盘写入吞吐
       desc: 近 5 分钟平均每秒写入磁盘的字节数，用于观察磁盘写入流量。
@@ -75,7 +75,7 @@ monitor_object_metric:
       desc: 表示磁盘设备累计完成的读取操作次数，用于分析读取负载总量和变化趋势。
     diskio_read_bytes_total:
       name: 磁盘读取字节数
-      desc: 自统计起点累计读取的字节数，不是每秒读取量。
+      desc: 表示磁盘设备累计读取的数据量（字节），用于分析磁盘读取流量规模。
     host_disk_total_bytes:
       name: 文件系统总容量
       desc: 表示单个挂载点对应文件系统的总容量，用于评估各挂载点的容量基线。

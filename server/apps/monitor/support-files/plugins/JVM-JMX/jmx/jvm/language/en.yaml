@@ -101,18 +101,16 @@ monitor_object_metric:
         carrying capacity of the resource pool.
     jvm_gc_collectiontime_seconds_value:
       name: GC Collection Time
-      desc: Cumulative garbage collection time, in seconds, since the Java process
-        started. This is not a CPU usage percentage. For the recent period, use GC
-        Time in Last 5 Minutes.
+      desc: Cumulative garbage collection time, in seconds. For the recent period, use
+        GC Time in Last 5 Minutes.
     jvm_gc_collectiontime_seconds_increase:
       name: GC Time in Last 5 Minutes
       desc: Garbage collection time, in seconds, consumed during the last 5 minutes,
-        split by collector type. This is time spent in that period, not a CPU usage
-        percentage.
+        split by collector type.
     jvm_gc_collectioncount_value:
       name: GC Collection Count
-      desc: Cumulative garbage collections since the Java process started, not collections
-        per second. To see whether collections are becoming more frequent, use GC Frequency.
+      desc: Cumulative garbage collections. To see whether collections are becoming more
+        frequent, use GC Frequency.
     jvm_gc_collectioncount_rate:
       name: GC Frequency
       desc: Average garbage collections per second over the last 5 minutes, split by
