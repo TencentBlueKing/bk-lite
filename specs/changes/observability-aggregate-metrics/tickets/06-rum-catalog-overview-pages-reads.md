@@ -22,3 +22,7 @@ Blocked by: 03 — Server 聚合查询客户端与 APM 首页、服务列表、�
 - 缺序列保持空；浏览序列存在而错误序列不存在时错误数为 0（与 APM RED 相同，表示没有错误样本）。聚合库错误记一条 WARNING，traceback 用 `safe_exception_info`，不回退把日志里的浏览/错误/p75 填回来。
 - `apps/rum/tests` 233 passed（新增 18），`apps/core/tests/test_aggregate_origin_probe.py` 8 passed，合计 241 passed。`apps/apm/tests` 11 failed, 866 passed, 2 skipped，失败项与 sqlite 基线相同。前端改动文件 eslint 通过，相关 vitest 24 passed，`pnpm type-check` 通过。
 - `specs/capabilities` 没有 RUM 功能清单。起点探测文档与 spec 已改为只探测 `rum_views_total`。
+
+## Notes
+
+浏览趋势只在整窗 `rum_views_total` 有值时，把窗口内且不早于聚合起点的空桶记为 0；整窗没有序列或聚合库报错时趋势保持全空。分位数不补 0。VictoriaLogs 原先对每个启用应用的空桶都预填 0。

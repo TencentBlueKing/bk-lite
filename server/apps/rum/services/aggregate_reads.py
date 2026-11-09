@@ -14,7 +14,7 @@ from __future__ import annotations
 import math
 import re
 from collections.abc import Callable
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from apps.core.aggregate_origin import recorded_origin
 from apps.core.aggregate_promql import AggregatePromqlClient, align_query_end, escape_promql_label_value
@@ -166,7 +166,27 @@ def _spark_index(seen: datetime, start: datetime, end: datetime, buckets: int) -
     return index
 
 
-def _fill_spark(points: list[tuple[float, float | None]], start: datetime, end: datetime, buckets: int) -> list[int | None]:
+def _bucket_open(index: int, start: datetime, end: datetime, buckets: int) -> datetime:
+    origin = _as_utc(start)
+    width = (_as_utc(end) - origin).total_seconds()
+    return origin + timedelta(seconds=width * index / buckets)
+
+
+def _fill_spark(
+    points: list[tuple[float, float | None]],
+    start: datetime,
+    end: datetime,
+    buckets: int,
+    *,
+    origin: datetime | None = None,
+    zero_gaps: bool = False,
+) -> list[int | None]:
+    """Place count samples. Quiet buckets become 0 only when the whole-window series exists.
+
+    A gap stays empty when it opens before the aggregate origin, or when ``zero_gaps`` is
+    false (no count series, or a percentile trend).
+    """
+
     if buckets <= 0 or (_as_utc(end) - _as_utc(start)).total_seconds() <= 0:
         return []
     totals: list[float | None] = [None] * buckets
@@ -177,6 +197,15 @@ def _fill_spark(points: list[tuple[float, float | None]], start: datetime, end: 
         if index is None:
             continue
         totals[index] = value if totals[index] is None else totals[index] + value
+    if zero_gaps and origin is not None:
+        covered_from = _as_utc(origin)
+        window_end = _as_utc(end)
+        for index, item in enumerate(totals):
+            if item is not None:
+                continue
+            opened = _bucket_open(index, start, end, buckets)
+            if covered_from <= opened < window_end:
+                totals[index] = 0
     return [None if item is None else _count(item) for item in totals]
 
 
@@ -286,7 +315,14 @@ class AggregateRumReader:
                 "errors": _count(errors[app]) if app in errors else 0,
                 "lcpP75": lcp.get(app),
                 "inpP75": inp.get(app),
-                "spark": _fill_spark(series.get(app) or [], start, end, buckets),
+                "spark": _fill_spark(
+                    series.get(app) or [],
+                    start,
+                    end,
+                    buckets,
+                    origin=self.origin_at(),
+                    zero_gaps=True,
+                ),
             }
         return found
 

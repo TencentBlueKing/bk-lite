@@ -8,7 +8,7 @@ import pytest
 
 from apps.core.aggregate_promql import AggregateMetricsUnavailable
 from apps.core.logger import SafeLogException
-from apps.rum.services.aggregate_reads import AggregateRumReader
+from apps.rum.services.aggregate_reads import AggregateRumReader, _fill_spark
 from apps.rum.services.analytics import _build_analytics
 from apps.rum.services.applications import ApplicationsService
 from apps.rum.services.control import MemoryControl
@@ -235,11 +235,9 @@ def test_catalog_maps_views_errors_and_millisecond_percentiles_without_traffic_o
     assert storefront["inpP75"] is None
     assert storefront["sessions"] == 4
     assert storefront["errorRate"] == 0.25
-    # 00:02:00 落在 16.5 分钟窗口的第 2 个 12 等分桶。缺桶保持空，不补 0。
-    assert sparks["storefront"][0] is None
+    # 00:02:00 落在第 2 个桶。整窗有浏览序列时，没有样本的桶记 0，和 VictoriaLogs 预填 0 一致。
     assert sparks["storefront"][1] == 15
-    assert sparks["storefront"][2] is None
-    assert all(value != 0 for value in sparks["storefront"])
+    assert sparks["storefront"].count(0) == 11
     checkout = rows[1]
     assert checkout["views"] is None
     assert checkout["errors"] is None
@@ -281,13 +279,32 @@ def test_zero_increase_stays_zero_and_a_missing_error_series_is_zero_errors():
 
     client = _Client(respond)
     rows = [{"application": "storefront", "sessions": 4, "views": 9, "errors": 8, "lcpP75": 999, "inpP75": 888, "errorRate": 0.25}]
+    sparks = {"storefront": [1]}
 
-    _reader(client).overlay_catalog(rows, {"storefront": [1]}, tenant_id="core", apps=["storefront"], start=START, end=END)
+    _reader(client).overlay_catalog(rows, sparks, tenant_id="core", apps=["storefront"], start=START, end=END)
 
     assert rows[0]["views"] == 0
     assert rows[0]["errors"] == 0
     assert rows[0]["lcpP75"] is None
     assert rows[0]["sessions"] == 4
+    assert sparks["storefront"] == [0] * 12
+
+
+def test_view_trend_keeps_gaps_before_the_origin_and_does_not_zero_percentile_gaps():
+    # 12 桶覆盖 990 秒，每桶 82.5 秒。起点落在第 2 桶开端之后，第 1 桶仍早于起点。
+    origin = START + timedelta(seconds=90)
+    points = [(START.timestamp() + 120, 15.0)]
+
+    counted = _fill_spark(points, START, END, 12, origin=origin, zero_gaps=True)
+    percentile = _fill_spark(points, START, END, 12, origin=origin, zero_gaps=False)
+
+    assert counted[0] is None
+    assert counted[1] == 15
+    assert counted[2] == 0
+    assert percentile[0] is None
+    assert percentile[1] == 15
+    assert percentile[2] is None
+    assert _fill_spark([], START, END, 12, origin=START, zero_gaps=False) == [None] * 12
 
 
 def test_route_list_uses_visitor_traffic_and_keeps_the_other_route():
