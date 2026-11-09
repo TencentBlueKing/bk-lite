@@ -138,3 +138,4 @@ def openapi_workflow_execute_async(workflow_id, callback_context, inputs=None, *
 | `system_mgmt.Group` 可能有组织负责人 / leader，用于「提单人上级」 | `Group` 无负责人字段 | 按已定决策第一期用 `HandlerGroup.leaders` |
 | OpsPilot 知识库写入走 REST `knowledge_mgmt`；若只有上传文件接口则上传 Markdown | 现行写入在 `wiki_mgmt`：页面创建 `POST wiki_mgmt/page/`，文件导入 `POST wiki_mgmt/knowledge_base/{id}/import_markdown_execute/`。`import_markdown/` 只做预检 | M3 同步指向 `wiki_mgmt`，不要接已不存在的 `knowledge_mgmt` 路由 |
 | 在现有 Postgres 初始化脚本里创建库 `flowable` | 上游 `68eb738e` 没有平台级 Postgres 初始化脚本，仓库里也没有名为 `postgres` 的平台 compose | `deploy/flowable/initdb/01-create-flowable-db.sql` 供挂到现有实例；本地 `deploy/flowable/compose.yaml` 自带一个名为 `postgres` 的库，才能按 JDBC 主机名把 Flowable 拉起来 |
+| 验收地址 `$FLOWABLE_URL/process-api/repository/deployments` | `flowable-rest:7.1.0` 的上下文是 `/flowable-rest`，仓库接口是 `/service/repository/deployments`，没有 `/process-api` | 本地验收用 `http://127.0.0.1:8088/flowable-rest/service/repository/deployments`。`FLOWABLE_URL` 仍是 `http://127.0.0.1:8088` |
