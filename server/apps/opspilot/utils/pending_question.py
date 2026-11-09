@@ -75,6 +75,24 @@ def resolve_conversation_key_from_mapping(source: Any) -> str:
     )
 
 
+def _skill_package_draft(draft: Any) -> dict[str, Any] | None:
+    """只保留确认写入要用的字段。正文留在缓存里，不进日志。"""
+    if not isinstance(draft, dict):
+        return None
+    triggers = draft.get("triggers") or []
+    if not isinstance(triggers, list):
+        triggers = []
+    return {
+        "skill_id": draft.get("skill_id"),
+        "name": str(draft.get("name") or ""),
+        "description": str(draft.get("description") or ""),
+        "triggers": [str(item) for item in triggers if str(item or "").strip()],
+        "skill_markdown": str(draft.get("skill_markdown") or ""),
+        "choice_id": str(draft.get("choice_id") or ""),
+        "confirm_option": str(draft.get("confirm_option") or ""),
+    }
+
+
 def _cache_key(conversation_key: str) -> str:
     return f"{PENDING_QUESTION_PREFIX}:{conversation_key}"
 
@@ -243,6 +261,9 @@ def save_pending_question(
         "k8s_analysis": payload.get("k8s_analysis"),
         "created_at": int(payload.get("created_at") or time.time() * 1000),
     }
+    draft = _skill_package_draft(payload.get("skill_package_draft"))
+    if draft is not None:
+        stored["skill_package_draft"] = draft
     cache.set(_cache_key(key), stored, PENDING_QUESTION_TTL_SECONDS)
     logger.info(_SAVED_LOG, key, kind, _evidence_tokens(stored["evidence_messages"]))
     return stored

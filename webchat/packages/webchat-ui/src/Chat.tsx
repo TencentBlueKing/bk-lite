@@ -684,7 +684,7 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
   }, [queueImageFiles, reportImageError, t]);
 
   // Send message
-  const handleSendMessage = useCallback(async (value: string) => {
+  const handleSendMessage = useCallback(async (value: string, choice?: { choiceId?: string; optionKey?: string }) => {
     if ((!value.trim() && uploadedImages.length === 0 && documentChips.length === 0) || isLoading) return;
     if (documentChips.some((item) => item.status !== 'ready')) return;
     plannedStateRef.current = createPlannedExecutionState();
@@ -782,13 +782,20 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
           return;
         }
         const readyAttachments = [...documentChips, ...uploadedAttachments].filter((item) => item.status === 'ready');
-        const requestBody = {
+        const requestBody: Record<string, unknown> = {
           message: value.trim(),
           attachment_ids: readyAttachments.map((item) => item.id),
           sessionId: currentSession?.sessionId,
           ...customData,
           ...(pageContext ? { page_context: pageContext } : {}),
         };
+        if (choice?.choiceId) {
+          requestBody.choice_id = choice.choiceId;
+          requestBody.choice_option = choice.optionKey || '';
+        } else {
+          delete requestBody.choice_id;
+          delete requestBody.choice_option;
+        }
         setDocumentChips([]);
         const stored = sessionManagerRef.current?.getSession()?.messages.find((item) => item.id === userMsg.id);
         if (stored) {

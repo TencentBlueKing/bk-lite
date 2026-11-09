@@ -282,7 +282,11 @@ const SkillWebChatPage: React.FC = () => {
     }
   };
 
-  const handleSendMessage = (panelSessionId: string) => async (message: string, _currentMessages?: unknown, userMessage?: { attachments?: Array<{ id: number; status?: string }> }) => {
+  const handleSendMessage = (panelSessionId: string) => async (
+    message: string,
+    _currentMessages?: unknown,
+    userMessage?: { attachments?: Array<{ id: number; status?: string }>; choiceId?: string; choiceOption?: string },
+  ) => {
     if (!currentAgent?.id) return null;
     const baseUrl = typeof window !== 'undefined' ? window.location.origin : '';
     const url = `${baseUrl}/api/proxy/opspilot/skill_channel/${currentAgent.id}/chat/`;
@@ -316,6 +320,10 @@ const SkillWebChatPage: React.FC = () => {
         message,
         session_id: panelSessionId,
         attachment_ids: (userMessage?.attachments || []).filter((item) => item.status === 'ready' || item.status === undefined).map((item) => item.id),
+        ...(userMessage?.choiceId ? {
+          choice_id: userMessage.choiceId,
+          choice_option: userMessage.choiceOption || '',
+        } : {}),
       },
       interruptRequest: {
         enabled: true,
