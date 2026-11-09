@@ -13,6 +13,7 @@ import { overviewHostAlertParams, readAlertCount } from '../../host/layered/host
 import host from '../../host/layered/layered.module.scss';
 import pageStyles from '../index.module.scss';
 import OverviewPane from './overview-pane';
+import ConnectionsPane from './connections-pane';
 import ThroughputPane from './throughput-pane';
 import CachePane from './cache-pane';
 import ReplicationPane from './replication-pane';
@@ -51,7 +52,8 @@ export default function MongoCategoryLayout({
   const searchParams = useSearchParams();
   const { getMonitorAlert } = useMonitorApi();
   const requested = searchParams.get('mongodbTab');
-  const tabFromUrl = resolveMongoTab(requested);
+  const focusFromUrl = searchParams.get('focus');
+  const tabFromUrl = resolveMongoTab(requested, focusFromUrl);
   const [tab, setTab] = useState<MongoTab>(tabFromUrl);
   const [alertCount, setAlertCount] = useState<number | null>(null);
   const [alertEvents, setAlertEvents] = useState<HostAlertRailEvent[]>([]);
@@ -87,19 +89,30 @@ export default function MongoCategoryLayout({
   }, [tabFromUrl]);
 
   const selectTab = (next: MongoTab, anchor?: string) => {
-    setTab(next);
+    const resolved = resolveMongoTab(next, anchor ?? null);
+    setTab(resolved);
     const params = new URLSearchParams(searchParams.toString());
-    params.set('mongodbTab', next);
+    params.set('mongodbTab', resolved);
     if (anchor) params.set('focus', anchor);
     else params.delete('focus');
     router.replace(`?${params.toString()}`, { scroll: false });
   };
 
+  const query = searchParams.toString();
   useEffect(() => {
-    if (tab !== 'throughput' && tab !== 'cache') return;
+    if (requested !== 'throughput' || (focusFromUrl !== 'connections' && focusFromUrl !== 'queue')) return;
+    const params = new URLSearchParams(query);
+    params.set('mongodbTab', 'connections');
+    const next = params.toString();
+    if (next === query) return;
+    router.replace(`?${next}`, { scroll: false });
+  }, [focusFromUrl, query, requested, router]);
+
+  useEffect(() => {
+    if (tab !== 'connections' && tab !== 'throughput' && tab !== 'cache') return;
     const anchor = searchParams.get('focus');
     if (!anchor) return;
-    const id = `mongo-${anchor}`;
+    const id = anchor === 'docs-ops' ? 'mongo-documents' : `mongo-${anchor}`;
     const scroll = () => document.getElementById(id)?.scrollIntoView({ block: 'start' });
     scroll();
     const frame = window.requestAnimationFrame(scroll);
@@ -200,6 +213,9 @@ export default function MongoCategoryLayout({
                 setAlertRefreshKey((key) => key + 1);
               }}
             />
+          ) : null}
+          {tab === 'connections' ? (
+            <ConnectionsPane metricMap={metricMap} pendingMetricNames={pendingMetricNames} />
           ) : null}
           {tab === 'throughput' ? (
             <ThroughputPane metricMap={metricMap} pendingMetricNames={pendingMetricNames} />
