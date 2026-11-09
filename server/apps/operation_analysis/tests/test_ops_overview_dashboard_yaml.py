@@ -126,11 +126,11 @@ def test_ops_overview_yaml_binds_organization_time_and_reusable_widgets():
         assert style["iconImage"].startswith("data:image/png;base64,")
         assert len(style["iconImage"]) == icon_length
     node = by_id["ops-kpi-nodes"]
-    assert node["name"] == "告警应用数"
+    assert node["name"] == "应用总数"
     assert "description" not in node
     assert (node["x"], node["y"], node["w"], node["h"]) == (10, 0, 4, 5)
     assert node["valueConfig"]["dataSource"] == "关联告警汇总::monitor/get_cmdb_relation_alert_aggregation"
-    assert node["valueConfig"]["selectedFields"] == ["with_alert_count"]
+    assert node["valueConfig"]["selectedFields"] == ["total_count"]
     assert set(node["valueConfig"]["singleStyle"]) == {"showIcon", "iconSource", "iconImage"}
     assert node["valueConfig"]["singleStyle"]["showIcon"] is True
     assert node["valueConfig"]["singleStyle"]["iconSource"] == "upload"
@@ -176,7 +176,7 @@ def test_ops_overview_yaml_binds_organization_time_and_reusable_widgets():
     assert host_metrics["valueConfig"]["interaction"]["url"] == "/monitor/view/dashboard/host"
     metric_type = next(param for param in host_metrics["valueConfig"]["dataSourceParams"] if param["name"] == "metric_type")
     assert metric_type["value"] == "cpu"
-    assert metric_type["inputConfig"]["control"] == "radio"
+    assert metric_type["inputConfig"]["control"] == "select"
     assert metric_type["inputConfig"]["componentSwitch"] is True
     assert {item["value"] for item in metric_type["inputConfig"]["optionsSource"]["staticItems"]} == {"cpu", "memory", "disk"}
     assert host_metrics["valueConfig"]["filterBindings"]["instance_ids__string"] is False
@@ -211,27 +211,31 @@ def test_ops_overview_yaml_binds_organization_time_and_reusable_widgets():
     assert monitor_order["limit"]["filterType"] == "fixed"
     monitor_columns = monitor_alerts["valueConfig"]["tableConfig"]["columns"]
     assert [column["key"] for column in monitor_columns] == [
+        "level",
         "monitor_instance_name",
         "metric_name",
         "value",
         "duration_text",
-        "level",
     ]
-    assert monitor_columns[2]["title"] == "告警记录值"
-    assert monitor_columns[3]["title"] == "持续时长"
-    assert monitor_columns[4]["title"] == "告警等级"
-    assert "cellType" not in monitor_columns[4]
-    assert any(item["value"] == "critical" and item["result"]["text"] == "严重" for item in monitor_columns[4]["valueMappings"])
-    assert any(item["value"] == "warning" and item["result"]["color"] == "#FFAD42" for item in monitor_columns[4]["valueMappings"])
-    alert_columns = by_id["ops-alert-top"]["valueConfig"]["tableConfig"]["columns"]
+    assert monitor_columns[0]["title"] == "等级"
+    assert monitor_columns[3]["title"] == "告警记录值"
+    assert monitor_columns[4]["title"] == "持续时长"
+    assert "cellType" not in monitor_columns[0]
+    assert any(item["value"] == "critical" and item["result"]["text"] == "严重" for item in monitor_columns[0]["valueMappings"])
+    assert any(item["value"] == "warning" and item["result"]["color"] == "#FFAD42" for item in monitor_columns[0]["valueMappings"])
+    alert_top = by_id["ops-alert-top"]
+    alert_order = {param["name"]: param for param in alert_top["valueConfig"]["dataSourceParams"]}
+    assert alert_order["order"]["value"] == "severity"
+    assert alert_order["order"]["filterType"] == "fixed"
+    alert_columns = alert_top["valueConfig"]["tableConfig"]["columns"]
     assert [column["key"] for column in alert_columns] == [
+        "level",
         "resource_name",
         "title",
-        "level",
         "created_at",
     ]
-    assert "cellType" not in alert_columns[2]
-    assert any(item["value"] == "严重" and item["result"]["color"] == "#F43B2C" for item in alert_columns[2]["valueMappings"])
+    assert "cellType" not in alert_columns[0]
+    assert any(item["value"] == "严重" and item["result"]["color"] == "#F43B2C" for item in alert_columns[0]["valueMappings"])
     assert by_id["ops-kpi-resources"]["valueConfig"]["interaction"]["url"] == "/cmdb/assetOverview"
     assert by_id["ops-app-top"]["valueConfig"]["interaction"]["name"] == "查看全部"
     assert "节点用法总览::node/get_node_usage_statistics" not in dashboard.refs.datasource_keys
@@ -330,6 +334,8 @@ def _description_paths(value, path=""):
         for index, child in enumerate(value):
             found.extend(_description_paths(child, f"{path}[{index}]"))
     return found
+
+
 KPI_ROW_ORDER = (
     "ops-kpi-resources",
     "ops-kpi-monitor",
@@ -359,8 +365,8 @@ UNCHANGED_WIDGET_SHA256 = {
     "ops-alert-level": "7e56f6c0990b344d992983319a05470a992f18c805a8ea709b2421287c964ab1",
 }
 DASHBOARD_META_SHA256 = "eb851050246b16a7dcf4ce7f0450b25ec87e853c757156762b7a22ddf0b88ff7"
-MONITOR_ALERTS_VALUE_CONFIG_SHA256 = "0df97225f57605c3c07c5353f5b8035134afef10447a53f2b01fccd33c366396"
-ALERT_TOP_VALUE_CONFIG_SHA256 = "1725b5f04fe56eaee9e4db26507b34f1bce440b86974e607388eb0ded197a528"
+MONITOR_ALERTS_VALUE_CONFIG_SHA256 = "6d3a383ff7cd3cee3e3e79d239c8c85872851399e57d26d7b244b48bd019b84d"
+ALERT_TOP_VALUE_CONFIG_SHA256 = "83ef2e80e7a83ac44b9aca591b0943989a919964ad00a2a0ead90068b6c15eae"
 
 
 def _canonical_sha256(value):
@@ -405,7 +411,7 @@ def test_ops_overview_syncs_dashboard80_display_without_touching_other_widgets()
     }
     prefix = "data:image/png;base64,"
     assert style["iconImage"].startswith(prefix)
-    raw = base64.b64decode(style["iconImage"][len(prefix):], validate=True)
+    raw = base64.b64decode(style["iconImage"][len(prefix) :], validate=True)
     assert len(raw) == 7375
     assert raw.startswith(b"\x89PNG\r\n\x1a\n")
     width, height, bit_depth, color_type = struct.unpack(">IIBB", raw[16:26])
@@ -421,7 +427,7 @@ def test_ops_overview_syncs_dashboard80_display_without_touching_other_widgets()
     }
     params = {param["name"]: param for param in host["valueConfig"]["dataSourceParams"]}
     assert list(params) == ["metric_type", "instance_ids", "organization"]
-    assert params["metric_type"]["inputConfig"]["control"] == "radio"
+    assert params["metric_type"]["inputConfig"]["control"] == "select"
     assert params["metric_type"]["filterType"] == "params"
     instance_ids = params["instance_ids"]
     assert instance_ids["filterType"] == "filter"
@@ -475,7 +481,7 @@ def test_ops_overview_syncs_dashboard80_display_without_touching_other_widgets()
         assert overlaid_by_id["ops-host-key-metrics"]["valueConfig"]["filterBindings"]["instance_ids__string"] is False
         assert overlaid_by_id["ops-kpi-nodes"]["valueConfig"]["singleStyle"]["iconImage"].startswith("data:image/png;base64,")
         stored_null = {
-            "name": "告警应用数",
+            "name": "应用总数",
             "description": None,
             "valueConfig": {"description": None},
         }
