@@ -1,0 +1,267 @@
+# APM / RUM 聚合库运维规则
+
+本文是给运维的部署与验收规则。研发锁死聚合库的用途、保留期、地址、写入方式和合格判定。
+生产进程怎么编排、镜像怎么进入仓库、告警接到哪条渠道，由运维自己的流水线决定。
+这和 [APM 数据面契约夹具](../../deploy/apm/README.md) 一样：契约硬，编排软。
+
+研发不提供生产 Compose 或 Helm。运维调整自己的流水线，重新打包 APM 系统 Collector
+和 RUM 网关两个产品镜像，并部署下面这套库。架构决定见
+[ADR 0011](../adr/0011-apm-rum-aggregate-metrics-store.md)。调用链传输的其余决定仍以
+[ADR 0006](../adr/0006-apm-regional-nats-victoriatraces-pipeline.md) 为准。
+
+当前仓库里的镜像和 `deploy/apm` 验收清单还没有这条聚合流水线。组件和配置随
+[02 ticket](../../specs/changes/observability-aggregate-metrics/tickets/02-apm-collector-aggregate-pipeline.md)、
+[05 ticket](../../specs/changes/observability-aggregate-metrics/tickets/05-rum-gateway-aggregate-pipeline.md)
+落地后核对。本文描述的是目标契约，不表示聚合库已经部署。
+
+## 1. 用途与边界
+
+聚合库是一套独立的单节点 VictoriaMetrics。它只保存 APM 和 RUM 的累计计数器与累计直方图。
+
+调用链明细仍在 VictoriaTraces。RUM 事件明细仍在 VictoriaLogs。聚合库不保存 Span 正文、
+RUM 原始事件、会话或回放。会话数、错误会话、国家、设备和版本分布继续读 VictoriaLogs。
+
+准备改读聚合库的是这些结果：APM 的入口 RED 与可用性 SLO；RUM 的浏览次数、JS 错误次数
+和 Web Vitals。策略、慢请求、Apdex、延迟 SLO、下钻和拓扑仍以 VictoriaTraces 为准。
+读取代码的落地范围见[聚合层变更](../../specs/changes/observability-aggregate-metrics/spec.md)。
+
+聚合库停掉或连不上时，VictoriaTraces 和 VictoriaLogs 照常入库。读聚合层的页面显示降级
+或缺数据，不把缺数据展示成 0，也不在故障时改去扫描明细库。只有查询窗口的起点早于聚合
+开始时间，才回退到原来的明细查询。页面上的降级和回退随 Server 读取 ticket 落地后核对。
+在那之前，运维先保证停库不影响明细入库，也不影响 Server 启动。
+
+Monitor 和 CMDB 继续使用自己的 VictoriaMetrics。聚合序列不写入那套库。监控策略扫描
+读不到 `apm_` 和 `rum_` 序列。
+
+## 2. 部署硬约束
+
+必须满足下面几条。用哪种进程管理、怎样打包镜像、告警规则写在哪套系统，由运维选择。
+
+- 独立进程、独立数据目录、独立地址，并且只部署一个节点。这一期不做集群，不用
+  AccountID 多租户，也不按 APM 和 RUM 拆成两个库或两套保留期。
+- 整库保留期不低于 35 天。单节点常用参数是 `-retentionPeriod=35d` 或更长，以所部署
+  版本的参数名为准。35 天用来盖住 30 天和自然月的可用性 SLO。
+- 写入和查询只走内网。聚合库没有公网入口，查询端口也不对浏览器或租户网络开放。
+- 写入地址和查询地址都使用第 3 节的变量。这些变量不读取、不复用 `VICTORIAMETRICS_HOST`。
+  聚合库地址和监控库地址必须不同。
+- 基础认证可选。启用时，聚合库、两个写入进程和 Server 使用同一组用户名和口令。
+  认证不能代替内网边界。
+- 用户名和口令只从环境注入。不写入 Git、镜像层、工单或日志。
+
+调用链明细库的磁盘和保留期另见 [APM 容量说明](../../deploy/apm/CAPACITY.md)。
+那份数字不包括聚合库。
+
+## 3. 环境变量
+
+| 变量 | 使用进程 | 填写内容 |
+|---|---|---|
+| `AGG_VICTORIAMETRICS_WRITE_URL` | APM 系统 Collector、RUM 网关 | 聚合库的 remote write 地址 |
+| `AGG_VICTORIAMETRICS_QUERY_URL` | Server | 同一套聚合库的查询入口 |
+| `AGG_VICTORIAMETRICS_USER` | 上面三类进程，仅在启用基础认证时 | 基础认证用户名 |
+| `AGG_VICTORIAMETRICS_PASSWORD` | 上面三类进程，仅在启用基础认证时 | 基础认证口令 |
+| `APM_AGG_SHARD` | 每一个 APM 系统 Collector 写入进程 | 该进程固定的分片值 |
+| `RUM_AGG_SHARD` | 每一个 RUM 网关写入进程 | 该进程固定的分片值 |
+
+`AGG_VICTORIAMETRICS_WRITE_URL` 填写内网 remote write 地址，路径通常是
+`/api/v1/write`，主机写成实际内网名字，不要写进仓库。APM 侧只配在系统 Collector 上。
+区域 Collector 仍然只发布调用链，不写聚合库。
+
+`AGG_VICTORIAMETRICS_QUERY_URL` 填写同一套库的内网查询入口，不要带 remote write 路径，
+也不要填成 `VICTORIAMETRICS_HOST`。Server 读取客户端落地时如果要收紧路径，再核对这一格。
+未设置查询地址表示 Server 侧聚合层不可用，进程继续启动。
+
+两个认证变量要么一起设置，要么一起留空。留空表示不发送基础认证。写入进程、Server
+和聚合库自己的认证配置使用同一组值。
+
+`APM_AGG_SHARD` 和 `RUM_AGG_SHARD` 各表示一个写入进程的身份。每个会执行 remote write
+的进程取一个值，所有这类进程的值互不相同，包括同一产品的多个副本。值写在部署配置里，
+进程重启后保持不变。不要用每次启动都会变的 Pod 名，也不要在进程里临时生成随机 UUID。
+有状态副本的固定序号可以充当这个值。
+
+RUM 网关还要用同一个 `RUM_AGG_SHARD` 作为自身遥测资源的 `service.instance.id`。
+APM 不要用 Span 上的 `service.instance.id` 充当 `APM_AGG_SHARD`。原因见第 4 节第 2 条。
+
+写入地址为空时，不要回落到 `VICTORIAMETRICS_HOST`。明细入库配置保持原样。
+
+## 4. 写入规则
+
+下面五条都是硬约束。查询由 Server 生成，页面不能提交 PromQL。
+
+1. 只写累计计数器和累计直方图。查询使用 `increase()`、`rate()` 和 `histogram_quantile()`。
+   禁止按增量对齐到分钟起点、再靠同一时间戳覆盖。
+   原因：2026-11-09 的验证里，spanmetrics 写出的是累计值。同一累计样本重复写入后，
+   `increase()` 不变；进程重启造成的计数器重置，也只把重启后的新 Span 算进去。
+   VictoriaMetrics 会留下同一序列、同一时间戳上的多个样本。开启去重时保留的是最大值，
+   不是最后一次写入。按增量对齐后指望同一时间戳只留最后一次，重试会多计，多个写入方会互相吞掉。
+   count 连接器输出的是 Delta，必须先变成累计值再写。一条不再增长的直方图如果先做
+   `increase()` 再取分位数，结果可能为空。空结果表示这个窗口没有新样本，按无数据处理，
+   不记成 0。
+
+2. 每个写入进程在 remote write 的 `external_labels` 里带固定标签 `shard`。值来自
+   `APM_AGG_SHARD` 或 `RUM_AGG_SHARD`，重启不变，不同写入进程互不相同。查询一律跨
+   `shard` 求和，不能把单个分片当成全集。组件自动加上的实例标识必须排除，或者固定成
+   与该进程分片值相同的配置值。
+   原因：同一条序列只能有一个写入方。两个进程写同一条序列时，重复时间戳会把累计值算乱。
+   分片让每个进程写自己的序列，查询再把各分片相加。随机实例标识会在重启后拆出新序列，
+   基数失控，`increase()` 也无法按原序列跨过重启。验证里 spanmetrics 默认给每条序列加
+   随机的 `collector.instance.id`，排除这个维度后可以没有它。`external_labels.shard`
+   能够写入 VictoriaMetrics。`service.instance.id` 不能当作 APM 的分片：它替换不了
+   `collector.instance.id`，留在 Span 资源上还会变成 Prometheus 的 `instance`。
+
+3. 标签里禁止出现用户、会话、原始 URL、查询串、SQL、`trace_id`、`span_id`、随机实例标识
+   和 Pod 名。
+   原因：这些值要么是用户数据，要么没有上界。写进标签后，聚合库会变成另一份明细，
+   磁盘和查询都随 Span、用户或 URL 增长。安全要求也是库里不能有用户、会话、原始 URL、
+   SQL、`trace_id`、`span_id` 或随机实例标识。
+
+4. APM 指标名使用前缀 `apm_`，RUM 指标名使用前缀 `rum_`。
+   原因：这一期不用 AccountID 区分租户，两个产品共用一个库，只靠前缀分开。Server 也按
+   这两个前缀探测各产品第一次出现序列的时间。前缀不能代替独立地址。监控扫描读不到这些
+   序列，是因为它们不在 `VICTORIAMETRICS_HOST` 那套库里。
+
+5. Server 启动和 `batch_init` 不依赖聚合库。
+   原因：聚合库是运行期可以降级的依赖。启动阶段等待它，会在库未就绪时挡住 API、Worker、
+   Beat 和 Listener。未配置查询地址表示聚合层不可用，不是启动失败。停库只影响读这层的
+   页面，明细入库继续。启动边界见第 9 节。
+
+## 5. 标签禁区
+
+库里不得出现 Span 正文和 RUM 原始事件。标签和指标名里不得出现：
+
+- 用户、会话、原始 URL、查询串、SQL（包括 SQL 原文）
+- `trace_id`、`span_id`
+- 随机实例标识、Pod 名、每次重启都会变的写入实例名
+- APM 序列上的 `collector.instance.id`、`span.kind`、Prometheus `instance`
+- scope 信息（例如 `otel_scope_name`）和 `target_info` 指标
+
+验收时不要把下面几项当成违规：
+
+- APM 上去不掉的 `job`，以及规则要求的 `shard`
+- RUM 上 `signal_to_metrics` 的实例标识，但该值必须等于这个进程的 `RUM_AGG_SHARD`
+
+APM 和 RUM 各自允许的业务维度由 02、05 ticket 锁定。那些白名单也不能突破本节的禁区。
+
+## 6. 告警
+
+告警接到运维自己的渠道。研发不提供生产告警编排。至少配置下面三类。
+
+- 聚合库数据目录所在文件系统：使用率达到 70% 时告警，达到 85% 时定为严重。
+- 活跃序列数相对本环境最近的稳定基线异常上涨。短时间内明显偏离基线，且没有对应的
+  上线或维度变更，就要告警。第 7 节的 162 万和 342 万是压测场景的上限，不是告警阈值。
+  规模更小的环境应在远低于这些数字时告警。活跃序列取 VictoriaMetrics 单节点自身的
+  序列统计，具体指标名以所部署版本为准。
+- remote write 失败或丢弃。写入进程上，发送失败、入队失败或被丢弃的样本出现后就要告警。
+  常见指标名是 `otelcol_exporter_send_failed_metric_points` 和
+  `otelcol_exporter_enqueue_failed_metric_points`。镜像落地后以实际暴露的指标名为准。
+
+收到 remote write 告警时，先恢复聚合库或网络。不要为了清告警把导出失败退回给
+JetStream 或 RUM 接收接口。那样做会让调用链重复入库，或让 RUM 接收接口失败。
+
+## 7. 容量参考
+
+下面是 35 天的上限估算，不是远程 VictoriaMetrics 上量到的磁盘占用。系数是约
+1 字节每个样本，样本间隔按 60 秒。刷出更快时，磁盘按比例增加。实际容量以压测为准。
+
+| 项 | APM | RUM |
+|---|---|---|
+| 组合规模 | 200 个服务，50 个入口操作，3 个环境，3 种状态，共 90,000 | 1 个租户，50 个应用，3 个环境，100 条路由，4 种流量类型，共 60,000 |
+| 每个组合的序列 | 1 条计数，加上 1 条直方图。直方图含 15 个桶（14 个显式桶和 `+Inf`），再加 `_count` 与 `_sum`，合计 18 条 | 2 条计数，加上 5 条直方图。夹具里每条直方图是 8 个边界，含 `+Inf` 为 9 个桶，再加 `_count` 与 `_sum`，合计 57 条 |
+| 序列总数 | 1,620,000 | 3,420,000 |
+| 35 天的样本数 | 50,400 | 50,400 |
+| 磁盘估算 | 1,620,000 × 50,400 × 1 字节，约 76 GiB | 3,420,000 × 50,400 × 1 字节，约 161 GiB |
+
+换算使用 1024 的三次方。81,648,000,000 字节约等于 76 GiB，172,368,000,000 字节约等于
+161 GiB。同一轮验证的进程堆增量大约是 APM 236 MiB、RUM 331 MiB，里面包含连接器状态和
+最后一次刷出。这是内存上界，不能当成 35 天磁盘。
+
+RUM 的 161 GiB 使用的是容量夹具：5 条直方图都按 8 个边界计算，不是产品里 Web Vitals
+的桶。产品桶数不同时，磁盘随桶数线性变化。本文不另给一个未经这轮验证的数字。
+APM 的 76 GiB 对应入口 Span 的计数加直方图，不包含晚到计数。压测时把晚到序列一并计入。
+
+## 8. 镜像变更
+
+本节列出两个产品镜像准备加入的上游组件。具体组件随 02 / 05 ticket 落地后核对。
+流水线形状、最终组件名和稳定性，以镜像 `components` 输出为准。升级 Collector 时要回归
+聚合流水线，至少覆盖标签集合、重复累计样本的 `increase()`，以及 remote write 不可达时
+明细仍入库且不重复。
+
+稳定性取自对应版本的上游 `metadata.yaml`。2026-11-09 构建出的 APM Collector 对
+`filter`、`count`、`span_metrics` 和 `prometheusremotewrite` 的 `components` 输出与下表
+一致。`deltatocumulative`、`transform`、`signal_to_metrics` 和 `forward` 没有出现在那次
+输出里。
+
+APM 系统 Collector 的发行版保持核心版本 v0.153.0。准备新增：
+
+| 组件 | 上游类型 | 稳定性 | 作用 |
+|---|---|---|---|
+| Span Metrics 连接器 | `span_metrics`（旧名 `spanmetrics` 仍能通过校验） | Alpha（`traces_to_metrics`） | 把入口 Span 变成累计计数和累计直方图 |
+| Count 连接器 | `count` | Alpha（`traces_to_metrics`） | 统计晚到 Span。输出是 Delta |
+| Filter 处理器 | `filter` | Alpha（traces、metrics、logs） | 只保留入口 Span，并分开晚到 Span |
+| Delta to Cumulative 处理器 | `deltatocumulative` | Alpha（metrics），有状态 | 把 Delta 累加成累计值后再写 |
+| Prometheus Remote Write 导出器 | `prometheusremotewrite` | Beta（metrics） | 写到 `AGG_VICTORIAMETRICS_WRITE_URL` |
+| Transform 处理器（推荐） | `transform` | Beta（traces、metrics、logs） | 用 `keep_keys` 把资源属性收窄到服务命名空间、服务名和环境 |
+
+资源属性收窄要放在 spanmetrics 之前。推荐 `transform`，是因为验证时还没有覆盖
+“同一服务多个实例只产生一组序列”。上游 metadata 给 `transform` 标了 Unsound
+Transformations 等警告，给 `filter` 标了 Orphaned Telemetry 等警告。换别的处理器时，
+仍要达到同样的收窄结果，并在 02 ticket 里核对。
+
+晚到计数分支使用镜像里已经有的 `batch`，再进入 `deltatocumulative`。spanmetrics
+分支本身不靠 `batch` 挡住导出错误。聚合分支上不能放置会把错误退回接收器的组件，
+包括 `memory_limiter`。内存用序列上限约束。remote write 不可达时，系统 Collector
+不对 JetStream NAK，VictoriaTraces 不因此把同一条 Span 写两次。
+
+RUM 网关保持 v0.154.0。准备新增：
+
+| 组件 | 上游类型 | 稳定性 | 作用 |
+|---|---|---|---|
+| Signal to Metrics 连接器 | `signal_to_metrics`（旧名 `signaltometrics`） | Alpha（`logs_to_metrics`） | 把浏览、JS 错误和 Web Vitals 变成计数和直方图 |
+| Forward 连接器 | `forward` | Beta（`logs_to_logs`） | 从写入 VictoriaLogs 的日志流水线旁路复制一份 |
+| Delta to Cumulative 处理器 | `deltatocumulative` | Alpha（metrics），有状态 | 把 Delta 累加成累计值 |
+| Prometheus Remote Write 导出器 | `prometheusremotewrite` | Beta（metrics） | 写到 `AGG_VICTORIAMETRICS_WRITE_URL` |
+
+网关里已经有的 `batch` 会用在聚合指标流水线上，用来挡住 remote write 的错误，避免
+接收接口失败。它不是这次新增的组件。聚合专用的路由字段不写入 VictoriaLogs。
+`logs/rum_agg` 上的组件都不得向接收接口返回错误。2026-11-09 这轮没有重测完整的
+RUM 网关写入路径，容量夹具只覆盖了进程内的 `signal_to_metrics` 和
+`deltatocumulative`。网关行为以 05 ticket 的验证为准。
+
+## 9. 启动约束
+
+Server 启动和 `batch_init` 都不依赖聚合库。启动阶段不连接它，不等待它的健康检查，
+也不因为查询地址为空或端口拒绝而让 `startup.sh` 失败。
+
+API、Worker、Beat 和 Listener 在聚合库缺失时仍然启动。未配置
+`AGG_VICTORIAMETRICS_QUERY_URL` 只表示聚合层不可用。停掉聚合库不影响 VictoriaTraces
+和 VictoriaLogs 的写入。
+
+这条边界与 [Server 启动顺序与服务依赖边界](server-startup-dependencies.md) 一致：
+非关键、可降级的外部资源失败不得阻断服务启动。不要用延长超时或在 `batch_init` 里
+重试来等待聚合库。
+
+## 10. 验收清单
+
+下面七条对应聚合库规则的验收。镜像内的契约测试随 02、05 ticket 落地后另行核对。
+本文交付的是规则和这份清单。
+
+1. 新库地址与 `VICTORIAMETRICS_HOST` 不同。`AGG_VICTORIAMETRICS_WRITE_URL` 和
+   `AGG_VICTORIAMETRICS_QUERY_URL` 都不回落到监控库。监控策略扫描读不到 `apm_`、
+   `rum_` 序列。
+2. 停掉聚合库后，APM 调用链仍进入 VictoriaTraces，RUM 事件仍进入 VictoriaLogs。
+   Server 正常启动，`batch_init` 不因聚合库失败而退出。读聚合层的页面在读取代码
+   落地后应显示降级或缺数据，不显示成 0。
+3. 保留期不低于 35 天。数据盘 70% 有告警，85% 定为严重。活跃序列数异常上涨有告警。
+   remote write 失败或丢弃有告警。
+4. 聚合库没有公网入口。页面不能直接提交 PromQL。查询只由 Server 按已经授权的对象
+   生成：APM 收窄到命名空间和服务，RUM 收窄到租户和应用。跨租户查询拿不到其他租户
+   的数据。单节点 VictoriaMetrics 不用 AccountID 做租户隔离，网络封闭和 Server
+   收窄是隔离手段。Server 的 PromQL 生成随读取 ticket 落地后核对；在那之前，先确认
+   查询端口不对浏览器和租户开放。
+5. 库中没有 Span 正文、RUM 原始事件，也没有用户、会话、原始 URL、查询串、SQL、
+   `trace_id`、`span_id`、随机实例标识或 Pod 名。APM 序列上没有
+   `collector.instance.id` 和 Prometheus `instance`。
+6. 同一批累计样本重复写入（模拟重试）后，`increase()` 的结果不变。写入进程落地后
+   做这次检查。规则本身在第 4 节第 1 条。
+7. 本文件已经写明部署硬约束、环境变量、写入规则、标签禁区、告警、容量参考、镜像组件
+   和本清单。运维可以按本文部署聚合库、配置两个写入进程、接上告警，并用本清单判定
+   是否合格。

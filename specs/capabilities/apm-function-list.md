@@ -56,11 +56,12 @@ APM 提供应用性能观察与自有告警，覆盖接入、服务目录、调�
 
 ## 三、能力边界与约束
 
-- 不提供 VictoriaMetrics、Span Metrics、尾采样或独立边缘网关。
+- 入口 RED 与可用性 SLO 允许读独立聚合库，明细、策略、慢请求、Apdex、延迟 SLO、下钻与拓扑仍以 VictoriaTraces 为准。目标契约见 [ADR 0011](../../docs/adr/0011-apm-rum-aggregate-metrics-store.md)，落地见[聚合层变更](../changes/observability-aggregate-metrics/spec.md)。当前已实现的 RED 与可用性 SLO 仍读 VictoriaTraces。
+- 不提供尾采样或独立边缘网关。
 - 不提供跨租户公网 OTLP。
 - 不把监控对象、采集插件或日志检索纳入策略。
 
-> 证据来源：deploy/apm/README.md:21-22,56-58，specs/capabilities/apm-alerting.md:7　|　同步基线：61bace9f　|　【已实现】
+> 证据来源：deploy/apm/README.md:21-22,56-58，specs/capabilities/apm-alerting.md:7，docs/adr/0011-apm-rum-aggregate-metrics-store.md　|　同步基线：61bace9f　|　【已实现；聚合库为目标契约，尚未部署】
 
 ## 四、平台协同
 
