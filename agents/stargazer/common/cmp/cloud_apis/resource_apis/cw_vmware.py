@@ -1159,7 +1159,8 @@ class Vmware(PrivateCloudManage):
             dims = (("instance", instance),)
 
         rate = value_info.value[k]
-        if metric in ["cpu_usage_average", "mem_usage_average", "disk_io_usage"]:
+        # cpu/mem.usage.average 是百分之一百分比；disk.usage.average（disk_io_usage）是 KBps 吞吐，不能 /100。
+        if metric in ["cpu_usage_average", "mem_usage_average"]:
             rate = rate / 100
         elif metric in ["mem_consumed_average"]:
             rate = rate / 1024
@@ -1273,7 +1274,8 @@ class Vmware(PrivateCloudManage):
                             dims = (("instance", instance),)
 
                         rate = value_info.value[k]
-                        if metric in ["cpu_usage_average", "mem_usage_average", "disk_io_usage"]:
+                        # cpu/mem.usage.average 是百分之一百分比；disk.usage.average（disk_io_usage）是 KBps 吞吐，不能 /100。
+                        if metric in ["cpu_usage_average", "mem_usage_average"]:
                             rate = rate / 100
                         elif metric in ["mem_consumed_average"]:
                             rate = rate / 1024
