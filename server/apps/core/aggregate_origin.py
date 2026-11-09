@@ -15,10 +15,11 @@ from apps.core.models.aggregate_origin import AggregateMetricOrigin
 
 LOOKBACK = "35d"
 MIN_UNIX_SECONDS = 1_000_000_000
-# 起点表示 RED 序列开始存在。APM 只认 apm_calls_total，晚到计数不能提前起点；RUM 指标名未定，暂时保留 rum_ 前缀，05 ticket 定名后再收紧。
+# 起点表示该产品的计数序列开始存在。APM 只认 apm_calls_total，RUM 只认 rum_views_total。
+# 晚到的其他序列不能提前起点。
 PRODUCT_METRICS = (
     ("apm", "apm_calls_total"),
-    ("rum", '{__name__=~"rum_.*"}'),
+    ("rum", "rum_views_total"),
 )
 
 

@@ -39,7 +39,7 @@ class _Scripted:
 
 
 APM_EXPR = "min(tfirst_over_time(apm_calls_total[35d]))"
-RUM_EXPR = 'min(tfirst_over_time({__name__=~"rum_.*"}[35d]))'
+RUM_EXPR = "min(tfirst_over_time(rum_views_total[35d]))"
 
 
 def _values(*, apm=None, rum=None):
@@ -65,6 +65,9 @@ def test_probe_persists_the_earliest_minute_and_ignores_later_or_empty_results()
     ]
     assert "apm_calls_total" in APM_EXPR
     assert "apm_.*" not in APM_EXPR
+    assert "rum_views_total" in RUM_EXPR
+    assert "rum_.*" not in RUM_EXPR
+    assert "__name__" not in RUM_EXPR
     assert AggregateMetricOrigin.objects.get(product="apm").started_at == MINUTE
     assert AggregateMetricOrigin.objects.get(product="rum").started_at == datetime(2026, 11, 10, 0, 20, tzinfo=UTC)
 

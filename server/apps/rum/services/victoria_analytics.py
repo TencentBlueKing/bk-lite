@@ -35,8 +35,9 @@ def _ua_is_mobile(ua: str) -> bool:
 class VictoriaAnalytics:
     """Analytics over VictoriaLogs LogsQL."""
 
-    def __init__(self, client: VictoriaClient):
+    def __init__(self, client: VictoriaClient, aggregate=None):
         self.client = client
+        self.aggregate = aggregate
 
     @classmethod
     def open(
@@ -64,7 +65,9 @@ class VictoriaAnalytics:
     def _tenant(self, tenant_id: str) -> str:
         return (tenant_id or "").strip() or "core"
 
-    def applications_page(self, tenant_id: str, start: datetime, end: datetime, enabled_apps: list[str]) -> tuple[list[dict], dict[str, list[float]]]:
+    def applications_page(
+        self, tenant_id: str, start: datetime, end: datetime, enabled_apps: list[str]
+    ) -> tuple[list[dict], dict[str, list[float | None]]]:
         if not enabled_apps:
             return [], {}
         interval, buckets = sparkline_layout(start, end)
@@ -93,6 +96,15 @@ class VictoriaAnalytics:
                 total, errored = counts.get(row["application"], (0, 0))
                 row["sessions"] = total
                 row["errorRate"] = clamp_unit(errored / total) if total else 0.0
+        if self.aggregate is not None:
+            self.aggregate.overlay_catalog(
+                rows=mapped,
+                sparks=sparks,
+                tenant_id=tenant,
+                apps=list(enabled_apps),
+                start=start,
+                end=end,
+            )
         return mapped, sparks
 
     def application_overview(self, tenant_id: str, application: str, start: datetime, end: datetime) -> dict:
@@ -283,13 +295,16 @@ class VictoriaAnalytics:
             values = [row[name] for row in mapped if row[name]]
             return sum(values) / len(values) if values else 0.0
 
-        return {
+        page = {
             "mode": mode,
             "summary": {"lcpP75": _avg("lcpP75"), "inpP75": _avg("inpP75"), "clsP75": _avg("clsP75")},
             "releases": releases,
             "rows": mapped,
             "truncated": bool(getattr(rows, "truncated", False)),
         }
+        if self.aggregate is not None:
+            return self.aggregate.overlay_views(page, tenant_id=self._tenant(tenant_id), opts=opts)
+        return page
 
     def list_error_issues(self, tenant_id: str, opts: dict) -> dict:
         apps = list(opts.get("applications") or [])

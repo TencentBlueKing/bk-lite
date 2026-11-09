@@ -135,7 +135,7 @@ RUM 网关同样不能按空环境变量只关掉聚合分支。使用 `deploy/r
 4. APM 指标名使用前缀 `apm_`，RUM 指标名使用前缀 `rum_`。
    原因：这一期不用 AccountID 区分租户，两个产品共用一个库，只靠前缀分开。聚合起点表示
    RED 序列开始存在：APM 只探测 `apm_calls_total`，每个产品记下起点后不再重复探测。
-   RUM 探测 `rum_views_total`。同一条流水线还写 `rum_js_errors_total`，以及
+   RUM 只探测 `rum_views_total`（`min(tfirst_over_time(rum_views_total[35d]))`），不用 `rum_` 前缀。同一条流水线还写 `rum_js_errors_total`，以及
    `rum_web_vital_lcp_milliseconds`、`rum_web_vital_inp_milliseconds`、
    `rum_web_vital_fcp_milliseconds`、`rum_web_vital_ttfb_milliseconds` 和
    `rum_web_vital_cls` 直方图。毫秒直方图带 `_milliseconds` 后缀，数值仍是毫秒，不换成秒。

@@ -1,0 +1,426 @@
+"""目录、概览与按路由页面列表的聚合库读取。
+
+聚合可用、已记录 RUM 起点、且窗口起点不早于起点时，浏览次数、JS 错误次数和
+Web Vitals p75 读聚合库。会话、分布和按版本的页面列表仍由调用方读 VictoriaLogs。
+聚合库报错只把对应数字降级，不回退扫明细。
+
+p75 使用 ``histogram_quantile(0.75, sum by (le) (increase(..._bucket[窗口])))``。
+这是桶上的估计分位数，不是 VictoriaLogs ``quantile(0.75)`` 的精确样本分位数。
+LCP / INP 直方图的数值仍是毫秒，CLS 无单位，与现有 LogsQL 字段一致。
+"""
+
+from __future__ import annotations
+
+import math
+import re
+from collections.abc import Callable
+from datetime import UTC, datetime
+
+from apps.core.aggregate_origin import recorded_origin
+from apps.core.aggregate_promql import AggregatePromqlClient, align_query_end, escape_promql_label_value
+from apps.core.logger import rum_logger as logger
+from apps.core.logger import safe_exception_info, safe_log_value
+from apps.rum.services.victoria_client import sparkline_layout
+
+# 与网关 batch/rum_agg 的 RUM_AGG_BATCH_TIMEOUT 默认 10s 一致。
+FLUSH_SECONDS = 10
+# rumroutecap 超出每个应用 100 条路由后写入的标签值；空路由是 unknown。
+OTHER_ROUTE = "其他"
+VIEWS_METRIC = "rum_views_total"
+ERRORS_METRIC = "rum_js_errors_total"
+VITALS = {
+    "lcp": "rum_web_vital_lcp_milliseconds",
+    "inp": "rum_web_vital_inp_milliseconds",
+    "cls": "rum_web_vital_cls",
+}
+# 与页面列表 LogsQL 一致：访客排除 bot / synthetic / crawler，其余（含 human、unknown）都算。
+_VISITOR_EXCLUDE = "bot|synthetic|crawler"
+
+
+def attach_aggregate_reader(analytics):
+    analytics.aggregate = AggregateRumReader()
+    return analytics
+
+
+def _as_utc(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)
+
+
+def _tenant(tenant_id: str) -> str:
+    return (tenant_id or "").strip() or "core"
+
+
+def _app_fragment(apps: list[str]) -> str:
+    unique = list(dict.fromkeys(app for app in apps if str(app).strip()))
+    if len(unique) == 1:
+        return f'rum_application="{escape_promql_label_value(unique[0])}"'
+    pattern = "|".join(re.escape(app) for app in unique)
+    return f'rum_application=~"{escape_promql_label_value(pattern)}"'
+
+
+def _traffic_fragment(traffic: str | None) -> str:
+    want = (traffic or "").strip().lower()
+    if want in {"", "all"}:
+        return ""
+    if want == "visitors":
+        return f'rum_traffic_class!~"{_VISITOR_EXCLUDE}"'
+    if want == "automated":
+        return f'rum_traffic_class=~"{_VISITOR_EXCLUDE}"'
+    return f'rum_traffic_class="{escape_promql_label_value(want)}"'
+
+
+def _selector(tenant_id: str, apps: list[str], traffic: str | None) -> str:
+    parts = [f'tenant_id="{escape_promql_label_value(_tenant(tenant_id))}"', _app_fragment(apps)]
+    traffic_part = _traffic_fragment(traffic)
+    if traffic_part:
+        parts.append(traffic_part)
+    return ",".join(parts)
+
+
+def _increase(metric: str, selector: str, window_seconds: int, by: str) -> str:
+    inner = f"increase({metric}{{{selector}}}[{window_seconds}s])"
+    return f"sum by ({by}) ({inner})"
+
+
+def _quantile(metric: str, selector: str, window_seconds: int, by: str) -> str:
+    return f"histogram_quantile(0.75, {_increase(metric + '_bucket', selector, window_seconds, by)})"
+
+
+def _number(raw: object) -> float | None:
+    if isinstance(raw, bool) or raw is None:
+        return None
+    try:
+        value = float(raw)
+    except (TypeError, ValueError):
+        return None
+    if math.isnan(value) or math.isinf(value):
+        return None
+    return value
+
+
+def _sample(series: dict) -> float | None:
+    raw = series.get("value")
+    if not isinstance(raw, (list, tuple)) or len(raw) < 2:
+        return None
+    return _number(raw[1])
+
+
+def _count(value: float | None) -> int | None:
+    if value is None or value < 0:
+        return None
+    return int(round(value))
+
+
+def _by_label(result: list[dict], label: str) -> dict[str, float]:
+    grouped: dict[str, float] = {}
+    for series in result:
+        metric = series.get("metric")
+        if not isinstance(metric, dict):
+            continue
+        name = str(metric.get(label) or "")
+        if not name:
+            continue
+        value = _sample(series)
+        if value is None:
+            continue
+        grouped[name] = value
+    return grouped
+
+
+def _matrix_by_label(result: list[dict], label: str) -> dict[str, list[tuple[float, float | None]]]:
+    grouped: dict[str, list[tuple[float, float | None]]] = {}
+    for series in result:
+        metric = series.get("metric")
+        if not isinstance(metric, dict):
+            continue
+        name = str(metric.get(label) or "")
+        if not name:
+            continue
+        values = series.get("values")
+        if not isinstance(values, list):
+            continue
+        points: list[tuple[float, float | None]] = []
+        for pair in values:
+            if not isinstance(pair, (list, tuple)) or len(pair) < 2:
+                continue
+            timestamp = _number(pair[0])
+            if timestamp is None:
+                continue
+            points.append((timestamp, _number(pair[1])))
+        grouped[name] = points
+    return grouped
+
+
+def _spark_index(seen: datetime, start: datetime, end: datetime, buckets: int) -> int | None:
+    origin = _as_utc(start)
+    width = (_as_utc(end) - origin).total_seconds()
+    if width <= 0:
+        return None
+    index = int((seen - origin).total_seconds() / width * buckets)
+    if index < 0:
+        return None
+    if index >= buckets:
+        return buckets - 1
+    return index
+
+
+def _fill_spark(points: list[tuple[float, float | None]], start: datetime, end: datetime, buckets: int) -> list[int | None]:
+    if buckets <= 0 or (_as_utc(end) - _as_utc(start)).total_seconds() <= 0:
+        return []
+    totals: list[float | None] = [None] * buckets
+    for timestamp, value in points:
+        if value is None:
+            continue
+        index = _spark_index(datetime.fromtimestamp(timestamp, tz=UTC), start, end, buckets)
+        if index is None:
+            continue
+        totals[index] = value if totals[index] is None else totals[index] + value
+    return [None if item is None else _count(item) for item in totals]
+
+
+class AggregateRumReader:
+    def __init__(
+        self,
+        client: AggregatePromqlClient | None = None,
+        *,
+        origin_at: Callable[[], datetime | None] | None = None,
+        clock: Callable[[], datetime] | None = None,
+    ):
+        self.client = client or AggregatePromqlClient.from_env()
+        self.origin_at = origin_at or (lambda: recorded_origin("rum"))
+        self.clock = clock or (lambda: datetime.now(UTC))
+
+    def overlay_catalog(self, rows: list[dict], sparks: dict, *, tenant_id: str, apps: list[str], start: datetime, end: datetime) -> None:
+        if not apps or not self._covered(start):
+            return
+        try:
+            metrics = self._catalog(tenant_id, apps, start, end)
+        except Exception as exc:  # noqa: BLE001 — 聚合失败只降级这组数字，页面其余部分继续
+            self._fail(tenant_id, "catalog", exc)
+            self._blank_catalog(rows, sparks, apps)
+            return
+        allowed = set(apps)
+        for row in rows:
+            app = row.get("application")
+            if app not in allowed:
+                continue
+            item = metrics.get(app)
+            if item is None:
+                self._blank_app(row, sparks, app)
+                continue
+            row["views"] = item["views"]
+            row["errors"] = item["errors"]
+            row["lcpP75"] = item["lcpP75"]
+            row["inpP75"] = item["inpP75"]
+            sparks[app] = item["spark"]
+
+    def overlay_views(self, page: dict, *, tenant_id: str, opts: dict) -> dict:
+        if not self._routes_eligible(opts) or not self._covered(opts.get("from")):
+            return page
+        try:
+            routes = self._routes(tenant_id, opts)
+        except Exception as exc:  # noqa: BLE001 — 聚合失败只降级这组数字，页面其余部分继续
+            self._fail(tenant_id, "views", exc)
+            return _degrade_views(page)
+        return _merge_views(page, routes)
+
+    def _covered(self, started_at: datetime | None) -> bool:
+        if not isinstance(started_at, datetime) or not self.client.available:
+            return False
+        origin = self.origin_at()
+        if origin is None:
+            return False
+        return _as_utc(started_at) >= _as_utc(origin)
+
+    def _routes_eligible(self, opts: dict) -> bool:
+        if (opts.get("mode") or "route").strip() != "route":
+            return False
+        if str(opts.get("release") or "").strip():
+            return False
+        return any(str(app).strip() for app in opts.get("applications") or [])
+
+    def _catalog(self, tenant_id: str, apps: list[str], start: datetime, end: datetime) -> dict[str, dict]:
+        aligned = align_query_end(end, now=self.clock(), flush_seconds=FLUSH_SECONDS)
+        window_seconds = int((aligned - _as_utc(start)).total_seconds())
+        names = list(dict.fromkeys(app for app in apps if str(app).strip()))
+        if window_seconds <= 0:
+            return {app: _empty_app() for app in names}
+        selector = _selector(tenant_id, names, None)
+        views = _by_label(
+            self.client.query_instant(_increase(VIEWS_METRIC, selector, window_seconds, "rum_application"), at=aligned),
+            "rum_application",
+        )
+        errors = _by_label(
+            self.client.query_instant(_increase(ERRORS_METRIC, selector, window_seconds, "rum_application"), at=aligned),
+            "rum_application",
+        )
+        lcp = _by_label(
+            self.client.query_instant(_quantile(VITALS["lcp"], selector, window_seconds, "le, rum_application"), at=aligned),
+            "rum_application",
+        )
+        inp = _by_label(
+            self.client.query_instant(_quantile(VITALS["inp"], selector, window_seconds, "le, rum_application"), at=aligned),
+            "rum_application",
+        )
+        _, buckets = sparkline_layout(start, end)
+        step = max(FLUSH_SECONDS, math.ceil(window_seconds / max(buckets, 1)))
+        series = _matrix_by_label(
+            self.client.query_range(
+                _increase(VIEWS_METRIC, selector, step, "rum_application"),
+                start=_as_utc(start),
+                end=aligned,
+                step_seconds=step,
+            ),
+            "rum_application",
+        )
+        found: dict[str, dict] = {}
+        for app in names:
+            view_count = _count(views.get(app)) if app in views else None
+            if view_count is None:
+                found[app] = _empty_app()
+                continue
+            found[app] = {
+                "views": view_count,
+                "errors": _count(errors[app]) if app in errors else 0,
+                "lcpP75": lcp.get(app),
+                "inpP75": inp.get(app),
+                "spark": _fill_spark(series.get(app) or [], start, end, buckets),
+            }
+        return found
+
+    def _routes(self, tenant_id: str, opts: dict) -> list[dict]:
+        aligned = align_query_end(opts["to"], now=self.clock(), flush_seconds=FLUSH_SECONDS)
+        window_seconds = int((aligned - _as_utc(opts["from"])).total_seconds())
+        apps = list(dict.fromkeys(app for app in opts.get("applications") or [] if str(app).strip()))
+        if window_seconds <= 0:
+            return []
+        traffic = opts.get("traffic")
+        if traffic is None or str(traffic).strip() == "":
+            traffic = "visitors"
+        selector = _selector(tenant_id, apps, str(traffic))
+        views = _by_label(
+            self.client.query_instant(_increase(VIEWS_METRIC, selector, window_seconds, "rum_aggregate_route"), at=aligned),
+            "rum_aggregate_route",
+        )
+        errors = _by_label(
+            self.client.query_instant(_increase(ERRORS_METRIC, selector, window_seconds, "rum_aggregate_route"), at=aligned),
+            "rum_aggregate_route",
+        )
+        vitals = {
+            name: _by_label(
+                self.client.query_instant(_quantile(metric, selector, window_seconds, "le, rum_aggregate_route"), at=aligned),
+                "rum_aggregate_route",
+            )
+            for name, metric in VITALS.items()
+        }
+        names = set(views) | set(errors) | set(vitals["lcp"]) | set(vitals["inp"]) | set(vitals["cls"])
+        rows = []
+        for route in names:
+            view_count = _count(views.get(route)) if route in views else None
+            if view_count is None:
+                error_count = _count(errors[route]) if route in errors else None
+            else:
+                error_count = _count(errors[route]) if route in errors else 0
+            rows.append(
+                {
+                    "route": route,
+                    "views": view_count,
+                    "errors": error_count,
+                    "lcpP75": vitals["lcp"].get(route),
+                    "inpP75": vitals["inp"].get(route),
+                    "clsP75": vitals["cls"].get(route),
+                }
+            )
+        return rows
+
+    def _blank_catalog(self, rows: list[dict], sparks: dict, apps: list[str]) -> None:
+        allowed = set(apps)
+        for row in rows:
+            app = row.get("application")
+            if app in allowed:
+                self._blank_app(row, sparks, app)
+
+    @staticmethod
+    def _blank_app(row: dict, sparks: dict, app: str) -> None:
+        row["views"] = None
+        row["errors"] = None
+        row["lcpP75"] = None
+        row["inpP75"] = None
+        sparks[app] = []
+
+    def _fail(self, tenant_id: str, stage: str, exc: BaseException) -> None:
+        logger.warning(
+            "event=rum_aggregate_read_failed tenant_id=%s failed_stage=%s error_type=%s",
+            safe_log_value(_tenant(tenant_id)),
+            stage,
+            type(exc).__name__,
+            exc_info=safe_exception_info(exc),
+        )
+
+
+def _empty_app() -> dict:
+    return {"views": None, "errors": None, "lcpP75": None, "inpP75": None, "spark": []}
+
+
+def _degrade_views(page: dict) -> dict:
+    rows = []
+    for row in page.get("rows") or []:
+        item = dict(row)
+        item["views"] = None
+        item["errors"] = None
+        item["lcpP75"] = None
+        item["inpP75"] = None
+        item["clsP75"] = None
+        rows.append(item)
+    return {**page, "rows": rows, "summary": {"lcpP75": None, "inpP75": None, "clsP75": None}}
+
+
+def _merge_views(page: dict, routes: list[dict]) -> dict:
+    by_route = {str(row.get("route") or ""): row for row in page.get("rows") or []}
+    merged = []
+    for item in routes:
+        route = item["route"]
+        base = dict(by_route.get(route) or _empty_route(route))
+        base["key"] = route
+        base["route"] = route
+        base["views"] = item["views"]
+        base["errors"] = item["errors"]
+        base["lcpP75"] = item["lcpP75"]
+        base["inpP75"] = item["inpP75"]
+        base["clsP75"] = item["clsP75"]
+        poor = int(((base.get("dist") or {}).get("poor")) or 0)
+        base["impact"] = poor * 10 + (0 if item["views"] is None else int(item["views"]))
+        merged.append(base)
+    merged.sort(key=lambda row: (-(row.get("impact") or 0), str(row.get("route") or "")))
+    return {
+        **page,
+        "rows": merged,
+        "releases": sorted({row["release"] for row in merged if row.get("release")}),
+        "summary": {
+            "lcpP75": _avg(merged, "lcpP75"),
+            "inpP75": _avg(merged, "inpP75"),
+            "clsP75": _avg(merged, "clsP75"),
+        },
+    }
+
+
+def _empty_route(route: str) -> dict:
+    return {
+        "key": route,
+        "route": route,
+        "release": "",
+        "sessions": None,
+        "loadingP75": None,
+        "dist": {"good": 0, "needsImprove": 0, "poor": 0, "missing": 0},
+        "mom": {"hasDelta": False, "spark": []},
+        "deviceMix": {"mobile": 0, "desktop": 0},
+    }
+
+
+def _avg(rows: list[dict], name: str) -> float | None:
+    values = [row[name] for row in rows if row.get(name) is not None]
+    if not values:
+        return None
+    return sum(values) / len(values)

@@ -134,7 +134,8 @@ APM 的首页、服务列表、服务 RED、可用性 SLO，RUM 的应用概览�
   配置只来自 `AGG_VICTORIAMETRICS_*`。未配置 = 聚合层不可用。
 - PromQL 只由 Server 生成：标签值来自 Server 已做权限校验的对象（APM 的命名空间+服务，RUM 的租户+应用），统一转义；
   请求参数不能拼接任意表达式。
-- 聚合起点：运行期周期任务探测各产品（`apm_` / `rum_`）首次出现序列的时间（按分钟对齐），持久化；未记录 = 视为没有聚合数据。
+- 聚合起点：运行期周期任务探测各产品首次出现序列的时间（按分钟对齐），持久化；未记录 = 视为没有聚合数据。
+  APM 只探测 `apm_calls_total`，RUM 只探测 `rum_views_total`。
   查询窗口起点早于起点时走原明细查询；30 天 SLO 与自然月 SLO 在起点覆盖整个窗口前继续走 VictoriaTraces。
 - 查询结束时间对齐到最近一个完整分钟，并留出一个刷出周期；缺样本返回“无数据”，不当 0；聚合库错误时该区块降级，
   不自动回退去扫明细（避免故障时把负载压回明细库）。
@@ -187,3 +188,12 @@ VictoriaTraces 按天切片。延迟 SLO 不变。聚合库错误不回退扫描
 - `cd server && DB_ENGINE=sqlite DB_NAME=:memory: SECRET_KEY=cursor-cloud-dev ENABLE_CELERY=true INSTALL_APPS=system_mgmt,console_mgmt,node_mgmt,monitor,log,apm,alerts,rum,cmdb timeout 900 uv run pytest apps/apm/tests --no-cov --nomigrations -o addopts= -q -p no:cacheprovider`
   结果：`11 failed, 866 passed, 2 skipped`。11 项失败都在既有 sqlite 基线内（topology_api 8 项、deployments backfill 1 项、cross_database_guard 1 项、owned_alert_lifecycle 1 项）。新增 17 项通过，覆盖 7 天、30 天、自然月、起点回退、延迟 SLO、降级、标签收窄与转义，以及首页和列表/详情同一达成率。
 - 功能清单已改为：可用性 SLO 在起点覆盖窗口后读聚合库，延迟 SLO 仍读 VictoriaTraces。未改前端。
+
+### RUM 目录、概览与页面列表（06）
+
+聚合可用、已记录 RUM 起点、且窗口起点不早于该起点时，应用目录和概览的浏览次数、JS 错误次数、LCP/INP p75、浏览趋势改读聚合库；按路由且未按版本筛选的页面列表，浏览次数、错误次数、LCP/INP/CLS p75 改读聚合库。会话、错误会话、国家/环境/版本/设备、加载耗时和按版本的页面列表仍读 VictoriaLogs。目录与概览不加流量过滤；页面列表默认访客，`traffic` 与现有 LogsQL 一致。查询结束对齐到最近完整分钟，再留出 RUM 默认 10 秒刷出周期。p75 是直方图分位数，单位仍是毫秒（CLS 无单位）。缺序列不是 0；聚合库错误只把这些数字降为无数据。起点探测改为 `min(tfirst_over_time(rum_views_total[35d]))`。`specs/capabilities` 里没有 RUM 功能清单可改。
+
+- `cd server && DB_ENGINE=sqlite DB_NAME=:memory: SECRET_KEY=cursor-cloud-dev ENABLE_CELERY=true INSTALL_APPS=system_mgmt,console_mgmt,node_mgmt,monitor,log,apm,alerts,rum,cmdb timeout 900 uv run pytest apps/rum/tests apps/core/tests/test_aggregate_origin_probe.py --no-cov --nomigrations -o addopts= -q -p no:cacheprovider`
+  结果：`241 passed`。其中 `apps/rum/tests` 233 项（基线 215，新增 18），起点探测 8 项。覆盖数值映射、流量口径、版本模式回退、起点回退、降级、`其他` 行、标签收窄与转义。
+- 共用对齐函数后 `apps/apm/tests`：`11 failed, 866 passed, 2 skipped`，11 项失败与既有 sqlite 基线相同。
+- 前端：改动文件 eslint 通过；相关 vitest 24 项通过；`pnpm type-check` 通过。未起浏览器，页面点击未做人工走查。

@@ -14,8 +14,8 @@ export const CWV_THRESHOLDS: Record<CwvMetric, [number, number]> = {
 
 export type CwvTone = 'success' | 'warning' | 'danger' | 'neutral';
 
-export function cwvTone(name: string, v: number): CwvTone {
-  if (v <= 0) return 'neutral';
+export function cwvTone(name: string, v: number | null | undefined): CwvTone {
+  if (v == null || v <= 0) return 'neutral';
   const bounds = CWV_THRESHOLDS[name as CwvMetric];
   if (!bounds) return 'neutral';
   const [good, poor] = bounds;
@@ -25,7 +25,11 @@ export function cwvTone(name: string, v: number): CwvTone {
 }
 
 /** App-level experience health from LCP/INP P75 + error rate (0–1). */
-export function appExperienceTone(lcpP75: number, inpP75: number, errorRate: number): CwvTone {
+export function appExperienceTone(
+  lcpP75: number | null,
+  inpP75: number | null,
+  errorRate: number,
+): CwvTone {
   const cwv = [cwvTone('lcp', lcpP75), cwvTone('inp', inpP75)];
   const errPct = errorRate * 100;
   if (errPct > 5 || cwv.includes('danger')) return 'danger';
@@ -45,8 +49,8 @@ export function formatPct(rate: number): string {
   return `${(unit * 100).toFixed(2)}%`;
 }
 
-export function formatMs(v: number): string {
-  return v > 0 ? `${Math.round(v)}ms` : '—';
+export function formatMs(v: number | null | undefined): string {
+  return v != null && v > 0 ? `${Math.round(v)}ms` : '—';
 }
 
 /** Status dots — semantic tokens only (DESIGN Token First). */

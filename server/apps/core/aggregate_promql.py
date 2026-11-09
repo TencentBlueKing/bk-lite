@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 import os
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from urllib.parse import urlsplit
 
 import requests
@@ -29,6 +29,19 @@ class AggregateMetricsUnavailable(RuntimeError):
 class AggregateMetricsTooLarge(AggregateMetricsUnavailable):
     def __init__(self):
         super().__init__("too_large")
+
+
+def align_query_end(ended_at: datetime, *, now: datetime, flush_seconds: int) -> datetime:
+    """对齐到最近一个完整分钟，再留出一个刷出周期。"""
+
+    def as_utc(value: datetime) -> datetime:
+        if value.tzinfo is None:
+            return value.replace(tzinfo=UTC)
+        return value.astimezone(UTC)
+
+    moment = min(as_utc(ended_at), as_utc(now))
+    complete_minute = moment.replace(second=0, microsecond=0)
+    return complete_minute - timedelta(seconds=flush_seconds)
 
 
 def escape_promql_label_value(value: object) -> str:
