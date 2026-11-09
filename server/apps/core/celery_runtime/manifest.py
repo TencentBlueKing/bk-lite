@@ -64,6 +64,7 @@ TASK_ROUTES = {
     "apps.cmdb.tasks.transfer.execute_transfer": "background",
     "apps.cmdb.tasks.transfer.maintain_transfers": "state",
     "apps.cmdb.tasks.uuid_migration.migrate_cmdb_instance_uuid_runtime": "background",
+    "apps.core.tasks.aggregate_origin.probe_aggregate_metric_origins": "background",
     "apps.core.tasks.auditlog_flush_task.clear_audit_logs": "background",
     "apps.job_mgmt.tasks.cleanup_expired_distribution_files_task": "background",
     "apps.job_mgmt.tasks.deliver_job_completion_outbox": "notification",

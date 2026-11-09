@@ -5,6 +5,7 @@ import pytest
 from django.db.models.query import QuerySet
 from django.utils import timezone
 
+from apps.apm.adapters.errors import TelemetryStoreUnavailable
 from apps.apm.models import ApmAlert, ApmDeploymentEvent, ApmService, ApmServiceInstance, ApmServiceOrganization, ApmSlo
 from apps.apm.services.contracts import ServiceRed, ServiceRedPoint, SloEvaluation, SloMeasurement
 from apps.apm.services.dashboard import ApmDashboardService
@@ -347,3 +348,44 @@ def test_dashboard_keeps_both_environments_of_one_service_within_target_cap():
     assert payload["empty"] is False
     assert checkout_environments == {"production", "staging"}
     assert len(store.service_red_calls) <= 40
+
+
+class _ExplodingRed:
+    def service_red(self, query):
+        raise TelemetryStoreUnavailable("聚合库查询不可用")
+
+
+def _health_counts(payload):
+    return {item["key"]: item["count"] for item in payload["health"]["data"]["buckets"]}
+
+
+def test_dashboard_keeps_counts_and_marks_health_unknown_without_samples():
+    now = timezone.now()
+    _service(last_seen_at=now)
+    traces = StubMetricStore({"checkout": _red()})
+    red_store = StubMetricStore({"checkout": ServiceRed(None, None, None, None)})
+
+    payload = ApmDashboardService(metric_store=traces, red_store=red_store, now_fn=lambda: now).build(organization_id=10, window="1h")
+
+    assert payload["kpis"]["status"] == "ok"
+    assert payload["kpis"]["data"]["service_count"] == 1
+    assert payload["kpis"]["data"]["request_rate"] is None
+    assert _health_counts(payload)["unknown"] == 1
+    assert _health_counts(payload)["healthy"] == 0
+    assert payload["top_error_rate"]["status"] == "empty"
+    assert traces.service_red_calls == []
+
+
+def test_dashboard_aggregate_error_does_not_scan_traces():
+    now = timezone.now()
+    _service(last_seen_at=now)
+    traces = StubMetricStore({"checkout": _red()})
+
+    payload = ApmDashboardService(metric_store=traces, red_store=_ExplodingRed(), now_fn=lambda: now).build(organization_id=10, window="1h")
+
+    assert traces.service_red_calls == []
+    assert payload["kpis"]["status"] == "ok"
+    assert payload["kpis"]["data"]["application_count"] == 1
+    assert payload["kpis"]["data"]["request_rate"] is None
+    assert _health_counts(payload)["unknown"] == 1
+    assert payload["health"]["status"] == "ok"

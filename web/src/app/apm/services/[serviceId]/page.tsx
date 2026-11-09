@@ -808,6 +808,9 @@ export default function ApmServiceDetailPage() {
                     </span>
                   ) : null}
                 </div>
+                <span className="text-xs text-[var(--color-text-3)]" data-testid="apm-red-max-latency">
+                  {t('apm.explore.maxDuration', '最大耗时')} {red.max_ms == null ? '—' : formatLatency(red.max_ms, false, t)}
+                </span>
               </div>
             </div>
           ) : null}

@@ -2,6 +2,7 @@ from rest_framework import status, viewsets
 from rest_framework.response import Response
 
 from apps.apm.adapters import VictoriaTracesTelemetryStore
+from apps.apm.adapters.aggregate_red import apm_entry_red_store
 from apps.apm.renderers import ApmRenderer
 from apps.apm.serializers import ApmDashboardQuerySerializer
 from apps.apm.services.access import visible_organization_ids
@@ -35,7 +36,8 @@ class ApmDashboardViewSet(viewsets.ViewSet):
                 {"code": "invalid_query", "detail": serializer.errors},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        service = ApmDashboardService(metric_store=VictoriaTracesTelemetryStore())
+        traces = VictoriaTracesTelemetryStore()
+        service = ApmDashboardService(metric_store=traces, red_store=apm_entry_red_store(traces=traces))
         return Response(
             service.build(
                 organization_ids=organization_ids,
