@@ -76,6 +76,7 @@ APM 接入已经按 OpenTelemetry 官方探针交付：一种语言钉一个版�
 
 - 版本钉 OpenTelemetry eBPF Instrumentation v1.0.0 的 Linux amd64 包。内核条件按该版本支持矩阵写进片段说明：Linux 5.8+，或带 eBPF backport 且有 BTF 的 RHEL 系 4.18+；需要 root 或该版本要求的 capabilities。
 - 片段使用 Config v2，只导出 Trace，关闭指标。发现规则只包含 `process_executable`。不使用端口发现，不扫描整个 PID 命名空间，不注入 JVM。
+- `resource.attributes` 写入所选 `service.name` 和 `service.namespace`。OBI v1.0.0 用这两项确定服务身份。只放在 `OTEL_RESOURCE_ATTRIBUTES` 时，服务名会被可执行文件名覆盖。
 - 每个可执行文件路径单独写一份配置：`$HOME/.otel-obi/configs/<去掉开头斜杠的绝对路径>/obi.yaml`。探针包仍解压到 `$HOME/.otel-obi`。同一路径再次生成只刷新这一份。片段不删除旧的 `$HOME/.otel-obi/obi.yaml`。查找 `obi` 二进制时排除 `configs` 目录。
 - 页面卡片说明这是另起进程盯住这一个 Go 程序，程序本身不用改。同一进程不要再装 Java、Python、Node.js、.NET、PHP 或 Go SDK，写在抽屉操作说明和片段注释里。页面只写 Go `net/http` 入口，推断下游留空。它不替换 Go SDK。
 - 内核、BTF 或权限不够时，片段说明失败原因并退出。不修改应用二进制。

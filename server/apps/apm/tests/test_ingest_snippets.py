@@ -630,6 +630,7 @@ def test_go_snippet_is_an_explicit_manual_sdk_guide_with_complete_provider_setup
     assert "telemetry/otel.go.example" in snippet.code
     assert "func NewTracerProvider(ctx context.Context) (*sdktrace.TracerProvider, error)" in snippet.code
     assert "otlptracehttp.New(ctx)" in snippet.code
+    assert "otelhttp.NewHandler" in snippet.code
     assert "resource.WithFromEnv()" in snippet.code
     assert "sdktrace.WithBatcher(exporter)" in snippet.code
     assert "defer tracerProvider.Shutdown" in snippet.code
@@ -937,6 +938,8 @@ def test_obi_snippet_watches_only_the_given_executable():
 
     checkout_config = '"$HOME/.otel-obi/configs/usr/bin/checkout/obi.yaml"'
     assert 'exe_path_glob: ["/usr/bin/checkout"]' in snippet.code
+    assert 'name: service.name\n      value: "checkout"' in snippet.code
+    assert 'name: service.namespace\n      value: "shop"' in snippet.code
     assert checkout_config in snippet.code
     assert 'cat > "$HOME/.otel-obi/obi.yaml"' not in snippet.code
     assert '-path "$HOME/.otel-obi/configs" -prune' in snippet.code
@@ -969,6 +972,9 @@ def test_obi_snippet_watches_only_the_given_executable():
     assert refund_config not in snippet.code
     assert 'exe_path_glob: ["/opt/refund/bin/refund"]' in refund.code
     assert 'exe_path_glob: ["/usr/bin/checkout"]' not in refund.code
+    assert 'value: "refund"' in refund.code
+    assert 'value: "checkout"' not in refund.code
+    assert 'value: "refund"' not in snippet.code
     assert subprocess.run(["sh", "-n"], input=refund.code, text=True, capture_output=True).returncode == 0
     assert snippet.environment["OTEL_METRICS_EXPORTER"] == "none"
     assert subprocess.run(["sh", "-n"], input=snippet.code, text=True, capture_output=True).returncode == 0

@@ -92,6 +92,12 @@ if err != nil {
 }
 otel.SetTracerProvider(tracerProvider)
 defer tracerProvider.Shutdown(context.Background())
+
+net/http 入口要包一层 otelhttp，否则没有入口 Span：
+
+import "go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+
+handler := otelhttp.NewHandler(mux, "server")
 GO"""
 
 _RUBY_SDK_GUIDE = """# Ruby 无通用零代码探针；下面生成 Rack 初始化示例，不会覆盖应用源码。
@@ -677,10 +683,16 @@ def _php_prepare_script(root: str) -> str:
     )
 
 
-def _obi_config(endpoint: str, executable: str) -> str:
+def _obi_config(endpoint: str, executable: str, service_name: str, service_namespace: str) -> str:
     return "\n".join(
         (
             'file_format: "1.0"',
+            "resource:",
+            "  attributes:",
+            "    - name: service.name",
+            f"      value: {json.dumps(service_name)}",
+            "    - name: service.namespace",
+            f"      value: {json.dumps(service_namespace)}",
             "tracer_provider:",
             "  processors:",
             "    - batch:",
@@ -762,6 +774,8 @@ def _obi_host_snippet(
     probe_sha256: str,
     endpoint: str,
     executable: str,
+    service_name: str,
+    service_namespace: str,
     environment: dict[str, str],
     resource_assignment: str,
     identity_setup: tuple[str, ...],
@@ -788,7 +802,7 @@ def _obi_host_snippet(
             f'tar -xf {OBI_ARTIFACT_NAME} -C "$HOME/.otel-obi"',
             f"mkdir -p {config_directory}",
             f"cat > {config_path} <<'OBI_CONFIG'",
-            _obi_config(endpoint, executable),
+            _obi_config(endpoint, executable, service_name, service_namespace),
             "OBI_CONFIG",
             *exports,
             'obi_bin=$(find "$HOME/.otel-obi" -path "$HOME/.otel-obi/configs" -prune -o -type f -name obi -print | head -n 1)',
@@ -1217,6 +1231,8 @@ class DjangoIntegrationConfigurationService:
                 _require_probe_sha256(artifact_name),
                 environment["OTEL_EXPORTER_OTLP_ENDPOINT"],
                 request.process_executable,
+                request.service_name,
+                request.service_namespace,
                 environment,
                 resource_assignment,
                 runtime_profile.identity_setup,
