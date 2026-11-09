@@ -1664,6 +1664,91 @@ def test_grouped_dependency_logsql_keeps_dependency_dimensions_dedup_and_limit()
     assert grouped_by in ranged
 
 
+def test_grouped_baseline_days_logsql_keeps_day_and_target_dimensions():
+    session = Mock()
+    labels = {"name": "GET /a", "_time": "2026-10-21T00:00:00Z"}
+    session.get.return_value = _response(_grouped_vector([(labels, {"requests": 4, "errors": 0, "p95": 100_000_000})]))
+    store = VictoriaTracesTelemetryStore(endpoint="http://traces.test", session=session)
+    windows = tuple((datetime(2026, 10, day, 2, 7, tzinfo=UTC), datetime(2026, 10, day, 2, 12, tzinfo=UTC)) for day in (19, 20, 21))
+
+    reds = store.service_red_grouped_by_day(
+        GroupedServiceRedQuery(
+            "shop",
+            "checkout",
+            "prod",
+            windows[0][0],
+            windows[-1][1],
+            group_by=("name",),
+            slow_threshold_ms=300,
+        ),
+        windows,
+    )
+
+    assert session.get.call_count == 1
+    query = session.get.call_args.kwargs["params"]["query"]
+    assert "stats by (_time:1d, name)" in query
+    assert "min(_time) as _time" in query
+    assert "max(name) as name" in query
+    assert "stats by (trace_id, span_id)" in query
+    assert f"| limit {MAX_UNIQUE_SPANS} |" in query
+    assert "_time:[2026-10-19T02:07:00Z, 2026-10-19T02:12:00Z)" in query
+    assert "_time:[2026-10-21T02:07:00Z, 2026-10-21T02:12:00Z)" in query
+    assert reds[("GET /a",)][2].request_count == 4
+    assert reds[("GET /a",)][0].request_count is None
+
+
+def test_grouped_baseline_days_skip_dedup_when_the_total_exceeds_one_day():
+    session = Mock()
+    session.get.return_value = _response({"status": "success", "data": {"resultType": "vector", "result": []}})
+    store = VictoriaTracesTelemetryStore(endpoint="http://traces.test", session=session)
+    windows = tuple((datetime(2026, 10, day, 0, 0, tzinfo=UTC), datetime(2026, 10, day, 13, 0, tzinfo=UTC)) for day in (19, 20, 21))
+
+    store.service_red_grouped_by_day(
+        GroupedServiceRedQuery("shop", "checkout", "prod", windows[0][0], windows[-1][1], group_by=("name", "version")),
+        windows,
+    )
+
+    query = session.get.call_args.kwargs["params"]["query"]
+    assert "stats by (_time:1d, name, `resource_attr:service.version`)" in query
+    assert "stats by (trace_id, span_id)" not in query
+    assert session.get.call_count == 1
+
+
+def test_grouped_dependency_baseline_days_logsql_and_overlapping_identity_falls_back():
+    now_labels = [
+        (
+            {"db_system_name": "mysql", "db_statement": "SELECT orders", "name": "SELECT", "_time": "2026-10-21T00:00:00Z"},
+            {"requests": 2, "errors": 0},
+        ),
+        (
+            {"db_system_name": "mysql", "db_query_text": "SELECT orders", "name": "SELECT", "_time": "2026-10-21T00:00:00Z"},
+            {"requests": 1, "errors": 0},
+        ),
+    ]
+    session = Mock()
+    session.get.return_value = _response(_grouped_vector(now_labels))
+    store = VictoriaTracesTelemetryStore(endpoint="http://traces.test", session=session)
+    windows = tuple((datetime(2026, 10, day, 2, 0, tzinfo=UTC), datetime(2026, 10, day, 2, 5, tzinfo=UTC)) for day in (20, 21))
+
+    with pytest.raises(TelemetryGroupedReadFallback, match="分组依赖键重叠"):
+        store.dependency_red_grouped_by_day(
+            GroupedDependencyRedQuery(
+                "shop",
+                "checkout",
+                "prod",
+                windows[0][0],
+                windows[-1][1],
+                targets=(("database", "mysql", "SELECT orders"),),
+            ),
+            windows,
+        )
+
+    query = session.get.call_args_list[0].kwargs["params"]["query"]
+    assert "stats by (_time:1d, db_system_name, db_system, db_statement, db_query_text, name)" in query
+    assert "max(`span_attr:db.statement`) as db_statement" in query
+    assert 'kind:="3"' in query
+
+
 def test_grouped_unique_span_limit_is_distinct_from_query_failure(monkeypatch):
     now = timezone.now()
     session = Mock()

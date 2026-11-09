@@ -1135,6 +1135,83 @@ class VictoriaTracesTelemetryStore:
         identities = _dependency_identities(reds, labels, query.targets)
         return {identity: reds[label_key] for identity, label_key in identities.items() if label_key in reds}
 
+    def service_red_grouped_by_day(
+        self,
+        query: GroupedServiceRedQuery,
+        windows: Sequence[tuple[datetime, datetime]],
+    ) -> dict[tuple[str, ...], tuple[ServiceRed, ...]]:
+        """近 N 天同窗一次取回，并按入口目标维度拆开。口径与逐目标 ``service_red_by_day`` 相同。"""
+
+        if not windows:
+            return {}
+        if not query.group_by:
+            raise ValueError("分组维度不能为空")
+        unknown = [item for item in query.group_by if item not in _ENTRY_GROUP_SPECS]
+        if unknown:
+            raise ValueError("不支持的分组维度")
+        specs = [_ENTRY_GROUP_SPECS[dimension] for dimension in query.group_by]
+        filters = self._entry_span_filters(query.service_namespace, query.service_name, query.environment)
+        return self._grouped_reds_by_day(query, windows, filters, specs, as_dependency=False)
+
+    def dependency_red_grouped_by_day(
+        self,
+        query: GroupedDependencyRedQuery,
+        windows: Sequence[tuple[datetime, datetime]],
+    ) -> dict[tuple[str, str, str], tuple[ServiceRed, ...]]:
+        if not windows:
+            return {}
+        filters = (
+            f"{self._service_span_filters(query.service_namespace, query.service_name, query.environment)} "
+            f'kind:="3" ({_DB_SYSTEM_NAME_FIELD}:* OR {_DB_SYSTEM_FIELD}:*)'
+        )
+        return self._grouped_reds_by_day(
+            query,
+            windows,
+            filters,
+            _DEPENDENCY_GROUP_FIELDS,
+            as_dependency=True,
+            targets=query.targets,
+        )
+
+    def _grouped_reds_by_day(self, query, windows, filters: str, specs, *, as_dependency: bool, targets=()):
+        total = sum((ended_at - started_at for started_at, ended_at in windows), timedelta(0))
+        exact_dedup = total <= RED_EXACT_DEDUP_WINDOW
+        spans = " or ".join(f"_time:[{_logsql_time(started_at)}, {_logsql_time(ended_at)})" for started_at, ended_at in windows)
+        scoped = f"({spans}) {filters}"
+        final = _red_final_stats(query).removeprefix("stats ")
+        if exact_dedup:
+            keeps = ", ".join(f"max({source}) as {alias}" for source, alias, _raw in specs)
+            deduped = (
+                f"{scoped} | stats by (trace_id, span_id) "
+                f"max(duration) as duration, max(status_code) as status_code, min(_time) as _time, {keeps}"
+            )
+            by_names = ", ".join(alias for _source, alias, _raw in specs)
+            aggregate = f"{self._bounded_spans(deduped)} | stats by (_time:1d, {by_names}) {final}"
+            labels = tuple(alias for _source, alias, _raw in specs)
+        else:
+            deduped = None
+            by_raw = ", ".join(source for source, _alias, _raw in specs)
+            aggregate = f"{scoped} | stats by (_time:1d, {by_raw}) {final}"
+            labels = tuple(raw for _source, _alias, raw in specs)
+        started_at = min(item[0] for item in windows)
+        ended_at = max(item[1] for item in windows)
+        values = self._values_by_day_and_labels(self._stats(aggregate, started_at, ended_at), labels)
+        if exact_dedup and deduped is not None:
+            observed = sum(item.get("requests", 0.0) for item in values.values())
+            self._reject_truncated_unique_spans(
+                deduped,
+                observed,
+                started_at,
+                ended_at,
+                exc_type=TelemetryUniqueSpanLimitExceeded,
+            )
+        reds = self._reds_by_day(values, windows)
+        if not as_dependency:
+            return reds
+        present = {key: series[0] for key, series in reds.items() if series}
+        identities = _dependency_identities(present, labels, targets)
+        return {identity: reds[label_key] for identity, label_key in identities.items() if label_key in reds}
+
     def _entry_grouped_queries(self, query: GroupedServiceRedQuery) -> tuple[str, str | None, str | None, tuple[str, ...], bool]:
         if not query.group_by:
             raise ValueError("分组维度不能为空")
@@ -2107,6 +2184,41 @@ class VictoriaTracesTelemetryStore:
         except (UnicodeDecodeError, ValueError) as exc:
             raise TelemetryStoreUnavailable("VictoriaTraces 返回了无效的 LogsQL 行结果") from exc
         return rows
+
+    @staticmethod
+    def _values_by_day_and_labels(
+        result: list[dict[str, Any]],
+        label_names: tuple[str, ...],
+    ) -> dict[tuple[str, tuple[str, ...]], dict[str, float]]:
+        grouped: dict[tuple[str, tuple[str, ...]], dict[str, float]] = {}
+        for series in result:
+            metric = series.get("metric", {})
+            raw_value = series.get("value", [])
+            if not isinstance(metric, dict) or not isinstance(raw_value, list) or len(raw_value) != 2:
+                continue
+            day = str(metric.get("_time", ""))
+            name = str(metric.get("__name__", ""))
+            parsed = _number(raw_value[1])
+            if not day or not name or parsed is None:
+                continue
+            key = (day, tuple(str(metric.get(label) or "") for label in label_names))
+            grouped.setdefault(key, {})[name] = parsed
+        return grouped
+
+    def _reds_by_day(
+        self,
+        values: dict[tuple[str, tuple[str, ...]], dict[str, float]],
+        windows: Sequence[tuple[datetime, datetime]],
+    ) -> dict[tuple[str, ...], tuple[ServiceRed, ...]]:
+        label_keys = {label_key for _day, label_key in values}
+        reds = {}
+        for label_key in label_keys:
+            points = []
+            for window_start, window_end in windows:
+                window_seconds = max(int((window_end - window_start).total_seconds()), 1)
+                points.append(self._red_from_values(values.get((_utc_day(window_start), label_key), {}), window_seconds))
+            reds[label_key] = tuple(points)
+        return reds
 
     @staticmethod
     def _values_by_day(result: list[dict[str, Any]]) -> dict[str, dict[str, float]]:

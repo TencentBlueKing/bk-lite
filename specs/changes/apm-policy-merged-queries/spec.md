@@ -1,6 +1,6 @@
 # APM 策略评估按目标合并查询
 
-Status: ready
+Status: done
 
 来源需求：p398_956。
 
@@ -63,3 +63,4 @@ APM 策略默认每分钟评估。调度按「策略 × 服务」拆成子任务
 ## Further Notes
 
 - 执行顺序见 `specs/changes/observability-aggregate-metrics/spec.md` 的「总执行顺序」。
+- HTTP 依赖仍逐目标查询；别名重叠或分位值无法合并时整轮退回逐目标。

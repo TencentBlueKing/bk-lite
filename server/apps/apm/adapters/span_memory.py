@@ -187,16 +187,43 @@ class InMemorySpanMetricStore:
     def dependency_red_grouped(self, query: GroupedDependencyRedQuery) -> dict[tuple[str, str, str], ServiceRed]:
         spans = self._client_spans(query)
         self._enforce_unique_limit(spans)
-        buckets: dict[tuple[str, str, str], list[MemorySpan]] = {}
-        for span in spans:
-            attributes = dict(span.attributes)
-            if grouped_dependency_conflicts(attributes, span.name, query.targets):
-                raise TelemetryGroupedReadFallback("分组依赖与逐目标过滤重叠，退回逐目标")
-            identity = dependency_identity(attributes, span.name)
-            if identity is None:
-                continue
-            buckets.setdefault(identity, []).append(span)
+        buckets = self._dependency_buckets(spans, query.targets)
         return {identity: self._finish(_dedup_spans(items), query) for identity, items in buckets.items()}
+
+    def service_red_grouped_by_day(
+        self,
+        query: GroupedServiceRedQuery,
+        windows: Sequence[tuple[datetime, datetime]],
+    ) -> dict[tuple[str, ...], tuple[ServiceRed, ...]]:
+        if not query.group_by:
+            raise ValueError("分组维度不能为空")
+        per_window, collected = self._window_groups(
+            windows,
+            lambda started_at, ended_at: self._entry_spans(
+                replace(query, started_at=started_at, ended_at=ended_at),
+                endpoint="",
+                version="",
+                instance_id="",
+            ),
+            query.group_by,
+        )
+        self._enforce_unique_limit(collected)
+        return self._reds_for_windows(query, windows, per_window)
+
+    def dependency_red_grouped_by_day(
+        self,
+        query: GroupedDependencyRedQuery,
+        windows: Sequence[tuple[datetime, datetime]],
+    ) -> dict[tuple[str, str, str], tuple[ServiceRed, ...]]:
+        per_window: list[dict[tuple[str, str, str], list[MemorySpan]]] = []
+        collected: list[MemorySpan] = []
+        for started_at, ended_at in windows:
+            spans = self._client_spans(replace(query, started_at=started_at, ended_at=ended_at))
+            collected.extend(spans)
+            buckets = self._dependency_buckets(spans, query.targets)
+            per_window.append({key: _dedup_spans(items) for key, items in buckets.items()})
+        self._enforce_unique_limit(collected)
+        return self._reds_for_windows(query, windows, per_window)
 
     def service_endpoints(self, query: ServiceMetricQuery, limit: int = 100) -> tuple[ServiceEndpointRed, ...]:
         spans = _dedup_spans(self._entry_spans(query, endpoint="", version="", instance_id=""))
@@ -241,6 +268,40 @@ class InMemorySpanMetricStore:
         ]
         rows.sort(key=lambda item: (-item["call_count"], item["statement"]))
         return rows
+
+    def _dependency_buckets(self, spans, targets) -> dict[tuple[str, str, str], list[MemorySpan]]:
+        buckets: dict[tuple[str, str, str], list[MemorySpan]] = {}
+        for span in spans:
+            attributes = dict(span.attributes)
+            if grouped_dependency_conflicts(attributes, span.name, targets):
+                raise TelemetryGroupedReadFallback("分组依赖与逐目标过滤重叠，退回逐目标")
+            identity = dependency_identity(attributes, span.name)
+            if identity is None:
+                continue
+            buckets.setdefault(identity, []).append(span)
+        return buckets
+
+    def _window_groups(self, windows, select, group_by: tuple[str, ...]):
+        per_window = []
+        collected: list[MemorySpan] = []
+        for started_at, ended_at in windows:
+            spans = select(started_at, ended_at)
+            collected.extend(spans)
+            per_window.append(_group_spans(_dedup_spans(spans), group_by))
+        return per_window, collected
+
+    def _reds_for_windows(self, query, windows, per_window):
+        keys = set()
+        for grouped in per_window:
+            keys.update(grouped)
+        result = {}
+        for key in keys:
+            reds = []
+            for index, (started_at, ended_at) in enumerate(windows):
+                scoped = replace(query, started_at=started_at, ended_at=ended_at, include_breakdown=False)
+                reds.append(self._finish(per_window[index].get(key, ()), scoped))
+            result[key] = tuple(reds)
+        return result
 
     def _finish(self, spans: Sequence[MemorySpan], query) -> ServiceRed:
         window_seconds = _window_seconds(query.started_at, query.ended_at)

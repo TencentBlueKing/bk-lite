@@ -38,7 +38,7 @@ from apps.apm.services.contracts import (
     top_endpoints_from_grouped,
 )
 from apps.apm.services.metric_snapshots import ApmAlertMetricSnapshotStore, resolve_result_unit
-from apps.apm.services.policy_conditions import evaluate_policy_conditions, uses_legacy_evaluation
+from apps.apm.services.policy_conditions import ConditionView, evaluate_policy_conditions, uses_legacy_evaluation
 from apps.apm.services.snapshots import ApmEventSnapshotStore
 from apps.core.logger import apm_logger as logger
 
@@ -826,6 +826,18 @@ class DjangoApmPolicyService:
         target_service=None,
         dependency=None,
     ):
+        cached = self._cached_baseline_windows(
+            policy,
+            windows,
+            endpoint=endpoint,
+            version=version,
+            cache=cache,
+            instance_id=instance_id,
+            target_service=target_service,
+            dependency=dependency,
+        )
+        if cached is not None:
+            return cached
         if not self._baseline_days_fallback:
             reader_name = "dependency_red_by_day" if dependency_parts(dependency) else "service_red_by_day"
             reader = getattr(self.metric_store, reader_name, None)
@@ -870,6 +882,43 @@ class DjangoApmPolicyService:
             self._log_baseline_failure(policy, exc)
             raise TelemetryStoreUnavailable("baseline") from None
         return tuple(reds)
+
+    def _cached_baseline_windows(
+        self,
+        policy,
+        windows,
+        *,
+        endpoint,
+        version,
+        cache,
+        instance_id,
+        target_service,
+        dependency,
+    ):
+        if not cache:
+            return None
+        target = target_service or policy.service
+        slow = getattr(policy, "slow_threshold_ms", None) or None
+        apdex = getattr(policy, "apdex_threshold_ms", None) or None
+        parts = dependency_parts(dependency)
+        found = []
+        for started_at, ended_at in windows:
+            key = self._window_cache_key(
+                service=target,
+                started_at=started_at,
+                ended_at=ended_at,
+                endpoint=endpoint,
+                version=version,
+                instance_id=instance_id,
+                dependency=parts,
+                slow=slow,
+                apdex=apdex,
+                include_endpoints=False,
+            )
+            if key not in cache:
+                return None
+            found.append(cache[key])
+        return tuple(found)
 
     def _metric_query(self, policy, *, started_at, ended_at, endpoint, version, instance_id: str = "", service=None, dependency=None):
         target = service or policy.service
@@ -1813,17 +1862,78 @@ class DjangoApmPolicyService:
             matched[(key[name_index],)] = item
         return top_endpoints_from_grouped(matched, name_index=0)
 
+    def _comparison_sources(self, policy):
+        """旧单条件读策略列；多条件各读自己的对照窗。前置条件没有对照窗。"""
+
+        if uses_legacy_evaluation(policy):
+            return [policy]
+        sources = []
+        for condition in list(getattr(policy, "conditions", None) or []):
+            if not isinstance(condition, dict) or condition.get("role") == "guard":
+                continue
+            sources.append(ConditionView(policy, condition, anchor=False))
+        return sources or [policy]
+
+    def _offset_variants(self, policy) -> dict[timedelta, list[tuple]]:
+        window = max(int(policy.metric_window or 1), 1)
+        grouped: dict[timedelta, list[tuple]] = {}
+        for source in self._comparison_sources(policy):
+            offset = self._baseline_offset(source, window)
+            if offset is None:
+                continue
+            pair = self._threshold_pair(getattr(source, "slow_threshold_ms", None), getattr(source, "apdex_threshold_ms", None))
+            bucket = grouped.setdefault(offset, [])
+            if pair not in bucket:
+                bucket.append(pair)
+        return grouped
+
+    def _baseline_day_variants(self, policy, evaluated_at: datetime) -> dict[tuple, list[tuple]]:
+        started_at, ended_at = self._window_bounds(policy, evaluated_at)
+        grouped: dict[tuple, list[tuple]] = {}
+        for source in self._comparison_sources(policy):
+            mode = getattr(source, "compare_mode", None) or ApmPolicy.CompareMode.ABSOLUTE
+            if mode != ApmPolicy.CompareMode.BASELINE_DAYS:
+                continue
+            amount = int(getattr(source, "compare_offset_amount", None) or 0)
+            if amount < 2:
+                continue
+            windows = tuple((started_at - timedelta(days=day), ended_at - timedelta(days=day)) for day in range(1, amount + 1))
+            pair = self._threshold_pair(getattr(source, "slow_threshold_ms", None), getattr(source, "apdex_threshold_ms", None))
+            bucket = grouped.setdefault(windows, [])
+            if pair not in bucket:
+                bucket.append(pair)
+        return grouped
+
     def _prime_current_window(self, policy, service, targets, *, evaluated_at: datetime, cache: dict, record_failure: bool) -> None:
-        """当前窗按目标分组取一次。历史对照窗留给下一张 ticket，仍走逐目标。"""
+        """当前窗和每个偏移类历史窗各按目标分组取一次。`baseline_days` 另走按天分组。"""
 
         if len(targets) < 2:
             return
         staged: dict = {}
         try:
-            if dependency_parts(targets[0].dependency):
-                self._prime_dependency_window(policy, service, targets, evaluated_at=evaluated_at, cache=staged)
-            else:
-                self._prime_entry_window(policy, service, targets, evaluated_at=evaluated_at, cache=staged)
+            started_at, ended_at = self._window_bounds(policy, evaluated_at)
+            self._prime_grouped_window(
+                policy,
+                service,
+                targets,
+                started_at=started_at,
+                ended_at=ended_at,
+                cache=staged,
+                include_endpoints=True,
+                variants=self._threshold_variants(policy),
+            )
+            for offset, variants in self._offset_variants(policy).items():
+                self._prime_grouped_window(
+                    policy,
+                    service,
+                    targets,
+                    started_at=started_at - offset,
+                    ended_at=ended_at - offset,
+                    cache=staged,
+                    include_endpoints=False,
+                    variants=tuple(variants),
+                )
+            self._prime_baseline_days(policy, service, targets, evaluated_at=evaluated_at, cache=staged)
         except TelemetryGroupedReadFallback as exc:
             self._log_grouped_read_fallback(policy, exc)
             return
@@ -1833,13 +1943,36 @@ class DjangoApmPolicyService:
             raise
         cache.update(staged)
 
-    def _prime_entry_window(self, policy, service, targets, *, evaluated_at: datetime, cache: dict) -> None:
+    def _prime_grouped_window(self, policy, service, targets, *, started_at, ended_at, cache, include_endpoints: bool, variants) -> None:
+        if dependency_parts(targets[0].dependency):
+            self._prime_dependency_window(
+                policy,
+                service,
+                targets,
+                started_at=started_at,
+                ended_at=ended_at,
+                cache=cache,
+                include_endpoints=include_endpoints,
+                variants=variants,
+            )
+            return
+        self._prime_entry_window(
+            policy,
+            service,
+            targets,
+            started_at=started_at,
+            ended_at=ended_at,
+            cache=cache,
+            include_endpoints=include_endpoints,
+            variants=variants,
+        )
+
+    def _prime_entry_window(self, policy, service, targets, *, started_at, ended_at, cache, include_endpoints: bool, variants) -> None:
         group_by = self._entry_group_by(targets)
         reader = getattr(self.metric_store, "service_red_grouped", None)
         if not group_by or reader is None:
             return
-        started_at, ended_at = self._window_bounds(policy, evaluated_at)
-        for slow, apdex in self._threshold_variants(policy):
+        for slow, apdex in variants:
             grouped = reader(
                 GroupedServiceRedQuery(
                     service_namespace=service.namespace,
@@ -1854,7 +1987,7 @@ class DjangoApmPolicyService:
                 )
             )
             endpoint_rows = None
-            if self._top_group_by(group_by) != group_by:
+            if include_endpoints and self._top_group_by(group_by) != group_by:
                 endpoint_rows = reader(
                     GroupedServiceRedQuery(
                         service_namespace=service.namespace,
@@ -1879,26 +2012,41 @@ class DjangoApmPolicyService:
                 ended_at=ended_at,
                 slow=slow,
                 apdex=apdex,
+                include_endpoints=include_endpoints,
                 endpoint_rows=endpoint_rows,
             )
 
-    def _prime_dependency_window(self, policy, service, targets, *, evaluated_at: datetime, cache: dict) -> None:
-        reader = getattr(self.metric_store, "dependency_red_grouped", None)
-        if reader is None:
-            return
-        # 现有 HTTP 过滤不是互斥的（http.route:*），分组会改数值，仍逐目标查。
-        identities = []
+    def _groupable_dependencies(self, targets):
+        """HTTP 过滤含 http.route:*，目标之间会重叠，不参与分组。"""
+
         kept = []
+        identities = []
         for target in targets:
             parts = dependency_parts(target.dependency)
             if parts is not None and parts[0] != "http":
                 kept.append(target)
                 identities.append(parts)
-        targets = kept
+        return kept, identities
+
+    def _prime_dependency_window(
+        self,
+        policy,
+        service,
+        targets,
+        *,
+        started_at,
+        ended_at,
+        cache,
+        include_endpoints: bool,
+        variants,
+    ) -> None:
+        reader = getattr(self.metric_store, "dependency_red_grouped", None)
+        if reader is None:
+            return
+        targets, identities = self._groupable_dependencies(targets)
         if len(targets) < 2:
             return
-        started_at, ended_at = self._window_bounds(policy, evaluated_at)
-        for slow, apdex in self._threshold_variants(policy):
+        for slow, apdex in variants:
             grouped = reader(
                 GroupedDependencyRedQuery(
                     service_namespace=service.namespace,
@@ -1906,7 +2054,7 @@ class DjangoApmPolicyService:
                     environment=policy.environment,
                     started_at=started_at,
                     ended_at=ended_at,
-                    include_breakdown=True,
+                    include_breakdown=include_endpoints,
                     slow_threshold_ms=slow,
                     apdex_threshold_ms=apdex,
                     targets=tuple(identities),
@@ -1923,6 +2071,100 @@ class DjangoApmPolicyService:
                 ended_at=ended_at,
                 slow=slow,
                 apdex=apdex,
+                include_endpoints=include_endpoints,
+            )
+
+    def _prime_baseline_days(self, policy, service, targets, *, evaluated_at: datetime, cache: dict) -> None:
+        plans = self._baseline_day_variants(policy, evaluated_at)
+        if not plans:
+            return
+        for windows, variants in plans.items():
+            if dependency_parts(targets[0].dependency):
+                self._prime_dependency_baseline_days(policy, service, targets, windows=windows, variants=variants, cache=cache)
+            else:
+                self._prime_entry_baseline_days(policy, service, targets, windows=windows, variants=variants, cache=cache)
+
+    def _prime_entry_baseline_days(self, policy, service, targets, *, windows, variants, cache: dict) -> None:
+        group_by = self._entry_group_by(targets)
+        reader = getattr(self.metric_store, "service_red_grouped_by_day", None)
+        if not group_by or reader is None:
+            return
+        for slow, apdex in variants:
+            grouped = reader(
+                GroupedServiceRedQuery(
+                    service_namespace=service.namespace,
+                    service_name=service.name,
+                    environment=policy.environment,
+                    started_at=windows[-1][0],
+                    ended_at=windows[0][1],
+                    group_by=group_by,
+                    include_breakdown=False,
+                    slow_threshold_ms=slow,
+                    apdex_threshold_ms=apdex,
+                ),
+                windows,
+            )
+            self._cache_grouped_days(
+                cache,
+                policy,
+                service,
+                targets,
+                grouped,
+                group_by=group_by,
+                windows=windows,
+                slow=slow,
+                apdex=apdex,
+            )
+
+    def _prime_dependency_baseline_days(self, policy, service, targets, *, windows, variants, cache: dict) -> None:
+        reader = getattr(self.metric_store, "dependency_red_grouped_by_day", None)
+        if reader is None:
+            return
+        kept, identities = self._groupable_dependencies(targets)
+        if len(kept) < 2:
+            return
+        for slow, apdex in variants:
+            grouped = reader(
+                GroupedDependencyRedQuery(
+                    service_namespace=service.namespace,
+                    service_name=service.name,
+                    environment=policy.environment,
+                    started_at=windows[-1][0],
+                    ended_at=windows[0][1],
+                    include_breakdown=False,
+                    slow_threshold_ms=slow,
+                    apdex_threshold_ms=apdex,
+                    targets=tuple(identities),
+                ),
+                windows,
+            )
+            self._cache_grouped_days(
+                cache,
+                policy,
+                service,
+                kept,
+                grouped,
+                group_by=(),
+                windows=windows,
+                slow=slow,
+                apdex=apdex,
+            )
+
+    def _cache_grouped_days(self, cache, policy, service, targets, grouped, *, group_by, windows, slow, apdex) -> None:
+        for index, (started_at, ended_at) in enumerate(windows):
+            sliced = {key: reds[index] for key, reds in grouped.items() if index < len(reds)}
+            self._cache_grouped_targets(
+                cache,
+                policy,
+                service,
+                targets,
+                sliced,
+                group_by=group_by,
+                started_at=started_at,
+                ended_at=ended_at,
+                slow=slow,
+                apdex=apdex,
+                include_endpoints=False,
             )
 
     def _cache_grouped_targets(
@@ -1938,15 +2180,17 @@ class DjangoApmPolicyService:
         ended_at,
         slow,
         apdex,
+        include_endpoints,
         endpoint_rows=None,
     ) -> None:
         empty = ServiceRed(None, None, None, None)
         for target in targets:
             if group_by:
                 red = grouped.get(self._group_key(target, group_by), empty)
-                tops = self._top_endpoints_for_target(target, group_by, red, endpoint_rows)
-                if tops:
-                    red = replace(red, top_endpoints=tops)
+                if include_endpoints:
+                    tops = self._top_endpoints_for_target(target, group_by, red, endpoint_rows)
+                    if tops:
+                        red = replace(red, top_endpoints=tops)
             else:
                 red = grouped.get(dependency_parts(target.dependency), empty)
             cache[
@@ -1960,7 +2204,7 @@ class DjangoApmPolicyService:
                     dependency=dependency_parts(target.dependency),
                     slow=slow,
                     apdex=apdex,
-                    include_endpoints=True,
+                    include_endpoints=include_endpoints,
                 )
             ] = red
 

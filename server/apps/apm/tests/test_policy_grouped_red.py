@@ -212,6 +212,7 @@ def _fingerprint(policy_id):
                     "type": item.get("type"),
                     "value": item.get("value"),
                     "current_value": item.get("current_value"),
+                    "baseline_value": item.get("baseline_value"),
                     "data_state": item.get("data_state"),
                 }
                 for item in snapshot.snapshots
@@ -225,7 +226,12 @@ def _fingerprint(policy_id):
                 "status": alert.status,
                 "points": points,
                 "evidence": [
-                    {"action": item.action, "series": item.pending_payload.get("series")} for item in alert.snapshots.order_by("occurred_at", "id")
+                    {
+                        "action": item.action,
+                        "series": item.pending_payload.get("series"),
+                        "baseline_series": item.pending_payload.get("baseline_series"),
+                    }
+                    for item in alert.snapshots.order_by("occurred_at", "id")
                 ],
             }
         )
