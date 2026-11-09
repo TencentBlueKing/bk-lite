@@ -8,9 +8,17 @@ import pytest
 import requests
 from django.utils import timezone
 
-from apps.apm.adapters import TelemetryQueryTooLarge, TelemetryStoreUnavailable, VictoriaTracesTelemetryStore
-from apps.apm.adapters.victoriatraces import MAX_RESPONSE_BYTES, RESPONSE_TOO_LARGE, _decode_cursor, _encode_cursor, _pack_trace_ids
+from apps.apm.adapters import (
+    TelemetryGroupedReadFallback,
+    TelemetryQueryTooLarge,
+    TelemetryStoreUnavailable,
+    TelemetryUniqueSpanLimitExceeded,
+    VictoriaTracesTelemetryStore,
+)
+from apps.apm.adapters.victoriatraces import MAX_RESPONSE_BYTES, MAX_UNIQUE_SPANS, RESPONSE_TOO_LARGE, _decode_cursor, _encode_cursor, _pack_trace_ids
 from apps.apm.services.contracts import (
+    GroupedDependencyRedQuery,
+    GroupedServiceRedQuery,
     InstanceActivityQuery,
     MetricDataState,
     ServiceErrorBreakdownQuery,
@@ -1533,3 +1541,154 @@ def test_baseline_days_skips_exact_dedup_when_the_total_window_exceeds_one_day()
     assert "stats by (_time:1d)" in query
     assert "stats by (trace_id, span_id)" not in query
     assert "min(_time) as _time" not in query
+
+
+def _grouped_matrix(groups):
+    result = []
+    timestamp = 1_785_888_000
+    for labels, values in groups:
+        for name, value in values.items():
+            result.append({"metric": {"__name__": name, **labels}, "values": [[timestamp, str(value)]]})
+    return {"status": "success", "data": {"resultType": "matrix", "result": result}}
+
+
+def _grouped_entry_query(**overrides):
+    now = timezone.now()
+    values = {
+        "service_namespace": "shop",
+        "service_name": "checkout",
+        "environment": "prod",
+        "started_at": now - timedelta(minutes=5),
+        "ended_at": now,
+        "group_by": ("name", "version", "instance"),
+        "include_breakdown": True,
+        "slow_threshold_ms": 300,
+        "apdex_threshold_ms": 100,
+    }
+    values.update(overrides)
+    return GroupedServiceRedQuery(**values)
+
+
+def test_grouped_entry_logsql_keeps_group_dimensions_dedup_and_limit():
+    session = Mock()
+    labels = {"name": "GET /a", "version": "v1", "instance": "pod-a"}
+    session.get.side_effect = [
+        _response(_grouped_vector([(labels, {"requests": 4, "errors": 1, "p95": 100_000_000})])),
+        _response(_grouped_matrix([(labels, {"requests": 4, "errors": 1})])),
+    ]
+    store = VictoriaTracesTelemetryStore(endpoint="http://traces.test", session=session)
+
+    reds = store.service_red_grouped(_grouped_entry_query())
+
+    assert session.get.call_count == 2
+    summary, trend = session.get.call_args_list
+    assert summary.args[0].endswith("/select/logsql/stats_query")
+    assert trend.args[0].endswith("/select/logsql/stats_query_range")
+    query = summary.kwargs["params"]["query"]
+    assert "stats by (trace_id, span_id)" in query
+    assert "max(name) as name" in query
+    assert "max(`resource_attr:service.version`) as version" in query
+    assert "max(`resource_attr:service.instance.id`) as instance" in query
+    assert f"| limit {MAX_UNIQUE_SPANS} |" in query
+    assert "stats by (name, version, instance)" in query
+    assert "count() if (duration:>300000000) as slow" in query
+    assert "count() if (duration:<=100000000) as satisfied" in query
+    assert 'kind:in("2","5")' in query
+    ranged = trend.kwargs["params"]["query"]
+    assert "stats by (trace_id, span_id)" in ranged
+    assert "stats by (name, version, instance)" in ranged
+    assert reds[("GET /a", "v1", "pod-a")].request_count == 4
+    assert len(reds[("GET /a", "v1", "pod-a")].timeseries) == 1
+
+
+def test_grouped_entry_logsql_skips_dedup_after_one_day():
+    now = timezone.now()
+    labels = {"name": "GET /a", "resource_attr:service.version": "v1", "resource_attr:service.instance.id": "pod-a"}
+    session = Mock()
+    session.get.side_effect = [
+        _response(_grouped_vector([(labels, {"requests": 6, "errors": 0})])),
+        _response(_grouped_matrix([(labels, {"requests": 6})])),
+    ]
+    store = VictoriaTracesTelemetryStore(endpoint="http://traces.test", session=session)
+
+    reds = store.service_red_grouped(
+        _grouped_entry_query(started_at=now - timedelta(days=2), ended_at=now, slow_threshold_ms=None, apdex_threshold_ms=None)
+    )
+
+    for call in session.get.call_args_list:
+        query = call.kwargs["params"]["query"]
+        assert "stats by (trace_id, span_id)" not in query
+        assert "limit " not in query
+        assert "stats by (name, `resource_attr:service.version`, `resource_attr:service.instance.id`)" in query
+    assert reds[("GET /a", "v1", "pod-a")].request_count == 6
+
+
+def test_grouped_dependency_logsql_keeps_dependency_dimensions_dedup_and_limit():
+    now = timezone.now()
+    session = Mock()
+    session.get.side_effect = [
+        _response(_grouped_vector([({"name": "SELECT orders"}, {"requests": 3, "errors": 0})])),
+        _response(_grouped_matrix([({"name": "SELECT orders"}, {"requests": 3})])),
+    ]
+    store = VictoriaTracesTelemetryStore(endpoint="http://traces.test", session=session)
+
+    store.dependency_red_grouped(
+        GroupedDependencyRedQuery(
+            service_namespace="shop",
+            service_name="checkout",
+            environment="prod",
+            started_at=now - timedelta(minutes=5),
+            ended_at=now,
+            include_breakdown=True,
+            slow_threshold_ms=300,
+        )
+    )
+
+    summary, trend = session.get.call_args_list
+    assert summary.args[0].endswith("/select/logsql/stats_query")
+    assert trend.args[0].endswith("/select/logsql/stats_query_range")
+    query = summary.kwargs["params"]["query"]
+    assert "stats by (trace_id, span_id)" in query
+    assert "max(`span_attr:db.statement`) as db_statement" in query
+    assert "max(`span_attr:db.system.name`) as db_system_name" in query
+    assert "max(name) as name" in query
+    assert f"| limit {MAX_UNIQUE_SPANS} |" in query
+    grouped_by = "stats by (db_system_name, db_system, db_statement, db_query_text, name)"
+    assert grouped_by in query
+    assert "http_method" not in query
+    assert "http.method" not in query
+    assert 'kind:="3"' in query
+    assert "count() if (duration:>300000000) as slow" in query
+    ranged = trend.kwargs["params"]["query"]
+    assert "stats by (trace_id, span_id)" in ranged
+    assert grouped_by in ranged
+
+
+def test_grouped_unique_span_limit_is_distinct_from_query_failure(monkeypatch):
+    now = timezone.now()
+    session = Mock()
+    session.get.side_effect = [
+        _response(_grouped_vector([({"name": "GET /a"}, {"requests": 2, "errors": 0})])),
+        _response(_vector(unique_spans=3)),
+    ]
+    monkeypatch.setattr("apps.apm.adapters.victoriatraces.MAX_UNIQUE_SPANS", 2)
+    store = VictoriaTracesTelemetryStore(endpoint="http://traces.test", session=session)
+
+    with pytest.raises(TelemetryUniqueSpanLimitExceeded, match="唯一 Span"):
+        store.service_red_grouped(GroupedServiceRedQuery("shop", "checkout", "prod", now - timedelta(minutes=1), now, group_by=("name",)))
+
+    assert session.get.call_count == 2
+    assert "| limit 2 |" in session.get.call_args_list[0].kwargs["params"]["query"]
+    assert "| limit 3 | stats count() as unique_spans" in session.get.call_args_list[1].kwargs["params"]["query"]
+
+    failed = Mock()
+    failed.status_code = 500
+    failed.headers = {}
+    failed.raise_for_status.side_effect = requests.HTTPError("500", response=failed)
+    failed.iter_content.return_value = []
+    session.get.side_effect = None
+    session.get.return_value = failed
+    with pytest.raises(TelemetryStoreUnavailable, match="查询不可用") as caught:
+        store.service_red_grouped(GroupedServiceRedQuery("shop", "checkout", "prod", now - timedelta(minutes=1), now, group_by=("name",)))
+    assert type(caught.value) is TelemetryStoreUnavailable
+    assert not isinstance(caught.value, TelemetryGroupedReadFallback)
