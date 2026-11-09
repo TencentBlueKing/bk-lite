@@ -1,9 +1,11 @@
-"""Merge ended session records with in-progress sessions from raw events.
+"""Merge ended session records with sessions that are still in progress.
 
 Records are stored at session end time. A session belongs to the window when
 its interval overlaps ``[from, to]``: query ``_time`` over ``[from, to + 4h15m]``,
-then keep ``started_at_ms <= to``. In-progress grouping only covers
-``[max(from, now-4h), to]`` and drops any session that already has a record.
+then keep ``started_at_ms <= to``. Ended sessions are filtered, sorted, and
+counted in VictoriaLogs. In-progress rows are only sessions whose last raw
+event is still inside the last 30 minutes, minus any candidate that already
+has a record.
 """
 
 from __future__ import annotations
@@ -12,12 +14,14 @@ from datetime import datetime, timedelta, timezone
 
 from apps.core.logger import rum_logger as logger
 from apps.rum.services import logsql_stats
-from apps.rum.services.victoria_client import _sessions_summary
+from apps.rum.services.victoria_client import sparkline_layout
 
 _LIVE_LOOKBACK = timedelta(hours=4)
+_LIVE_IDLE = timedelta(minutes=30)
 _RECORD_LOOKAHEAD = timedelta(hours=4, minutes=15)
 _EPOCH_TTL_SECONDS = 600
 _EPOCH_ABSENT = "absent"
+_KEY_BATCH = 100
 _COUNT_FIELDS = ("viewCount", "errorCount", "actionCount", "vitalCount", "eventCount")
 _TEXT_FIELDS = (
     "entryRoute",
@@ -36,37 +40,49 @@ _TEXT_FIELDS = (
 def read_session_page(query_logs, tenant_id: str, opts: dict) -> dict | None:
     """Return the merged page, or None when the window must use raw events."""
 
-    merged = _merged_or_none(query_logs, tenant_id, opts)
-    if merged is None:
+    window = _window(query_logs, tenant_id, opts)
+    if window is None:
         return None
-    rows, truncated = merged
-    if opts.get("hasError"):
-        rows = [row for row in rows if int(row.get("errorCount") or 0) > 0]
-    _sort_sessions(rows, opts.get("orderBy") or "impact")
+    start, end, now = window
     offset = _offset(opts.get("offset"))
     limit = _positive(opts.get("limit"), 200)
+    ended = _ended_page(query_logs, tenant_id, opts, start, end, offset + limit)
+    live, truncated = _live_candidates(query_logs, tenant_id, opts, start, end, now)
+    merged = ended + live
+    _sort_sessions(merged, opts.get("orderBy") or "impact")
     summary = {"total": 0, "errored": 0, "replayed": 0, "medianDurationMs": 0}
     if opts.get("includeSummary", True):
-        summary = _sessions_summary(rows)
-    return {"sessions": rows[offset : offset + limit], "summary": summary, "truncated": truncated}
+        summary = _summary(query_logs, tenant_id, opts, start, end, live)
+    return {"sessions": merged[offset : offset + limit], "summary": summary, "truncated": truncated}
 
 
 def read_session_counts(query_logs, tenant_id: str, opts: dict) -> dict[str, tuple[int, int]] | None:
-    """Per-application ``(sessions, errored)`` from the merged set.
+    """Per-application ``(sessions, errored)`` from record stats plus in-progress rows.
 
     None means the window is before the first session record, so the caller
     keeps the raw-event counts.
     """
 
-    merged = _merged_or_none(query_logs, tenant_id, opts)
-    if merged is None:
+    window = _window(query_logs, tenant_id, opts)
+    if window is None:
         return None
-    rows, truncated = merged
-    if truncated:
-        # A capped merge would publish 0 for every application that did not fit.
-        return None
+    start, end, now = window
     totals: dict[str, list[int]] = {}
-    for row in rows:
+    if not _has_country(opts):
+        apps = list(opts.get("applications") or [])
+        rows = query_logs(
+            logsql_stats.session_record_app_count_query(tenant_id, opts),
+            start,
+            end + _RECORD_LOOKAHEAD,
+            max(len(apps), 1),
+        )
+        for row in rows:
+            app = str(row.get("rum.application") or "")
+            if not app:
+                continue
+            totals[app] = [int(_num(row.get("sessions"))), int(_num(row.get("errored")))]
+    live, _truncated = _live_candidates(query_logs, tenant_id, opts, start, end, now)
+    for row in live:
         bucket = totals.setdefault(row["application"], [0, 0])
         bucket[0] += 1
         if int(row.get("errorCount") or 0) > 0:
@@ -75,7 +91,7 @@ def read_session_counts(query_logs, tenant_id: str, opts: dict) -> dict[str, tup
 
 
 def read_session_trend(query_logs, tenant_id: str, opts: dict) -> dict | None:
-    """Bucket the merged sessions. None means the raw-event trend should run.
+    """One point per session, in the bucket of its start. None uses the raw trend.
 
     The raw trend ignores route, user, country, and hasError. Keep that.
     """
@@ -89,16 +105,36 @@ def read_session_trend(query_logs, tenant_id: str, opts: dict) -> dict | None:
         "sessionId": "",
         "sessionIdPrefix": "",
     }
-    merged = _merged_or_none(query_logs, tenant_id, trend_opts)
-    if merged is None:
+    window = _window(query_logs, tenant_id, trend_opts)
+    if window is None:
         return None
-    rows, truncated = merged
-    start = _as_utc(opts.get("from"))
-    end = _as_utc(opts.get("to"))
-    return {"points": _trend_points(rows, start, end), "truncated": truncated}
+    start, end, now = window
+    interval, buckets = sparkline_layout(start, end)
+    count = max(buckets, 1)
+    step = max(60, int(interval.total_seconds()))
+    origin = start.timestamp()
+    points = [{"atMs": int((origin + index * step) * 1000), "total": 0, "errored": 0} for index in range(count)]
+    rows = query_logs(
+        logsql_stats.session_record_trend_query(tenant_id, trend_opts, int(origin * 1000), step * 1000),
+        start,
+        end + _RECORD_LOOKAHEAD,
+        count + 2,
+    )
+    truncated = bool(getattr(rows, "truncated", False))
+    for row in rows:
+        _add_trend_bucket(points, _bucket_index(row.get("bucket")), int(_num(row.get("total"))), int(_num(row.get("errored"))))
+    live, live_truncated = _live_candidates(query_logs, tenant_id, trend_opts, start, end, now)
+    truncated = truncated or live_truncated
+    for row in live:
+        begin = _parse_iso(row.get("startTime"))
+        if begin is None:
+            continue
+        errored = 1 if int(row.get("errorCount") or 0) > 0 else 0
+        _add_trend_bucket(points, int((begin.timestamp() - origin) // step), 1, errored)
+    return {"points": points, "truncated": truncated}
 
 
-def _merged_or_none(query_logs, tenant_id: str, opts: dict):
+def _window(query_logs, tenant_id: str, opts: dict):
     start = _as_utc(opts.get("from"))
     end = _as_utc(opts.get("to"))
     if start is None or end is None:
@@ -107,35 +143,136 @@ def _merged_or_none(query_logs, tenant_id: str, opts: dict):
     epoch = _record_epoch(query_logs, tenant_id, now)
     if epoch is None or start < epoch:
         return None
-    return _merged(query_logs, tenant_id, opts, start, end, now)
+    return start, end, now
 
 
-def _merged(query_logs, tenant_id: str, opts: dict, start: datetime, end: datetime, now: datetime):
-    limit = logsql_stats.SESSION_GROUP_LIMIT
-    # Country, route, and user are incomplete on a session record. Fetch every
-    # ended session first so its raw events cannot come back through the live query.
-    record_rows = query_logs(
-        logsql_stats.session_record_group_query(tenant_id, _record_query_opts(opts)),
+def _ended_page(query_logs, tenant_id: str, opts: dict, start: datetime, end: datetime, fetch: int) -> list[dict]:
+    if _has_country(opts) or fetch <= 0:
+        return []
+    rows = query_logs(
+        logsql_stats.session_record_page_query(tenant_id, opts, fetch),
         start,
         end + _RECORD_LOOKAHEAD,
-        limit,
+        fetch,
     )
-    truncated = bool(getattr(record_rows, "truncated", False))
-    records = _collapse(record_rows)
-    seen = {(row["application"], row["sessionId"]) for row in records}
-    records = [row for row in records if _record_matches(row, opts)]
-    live_from = max(start, now - _LIVE_LOOKBACK)
-    live: list[dict] = []
-    if live_from < end:
-        live_rows = query_logs(
-            logsql_stats.session_live_group_query(tenant_id, opts),
-            live_from,
-            end,
-            limit,
+    ended = _collapse(rows)
+    _sort_sessions(ended, opts.get("orderBy") or "impact")
+    return ended[:fetch]
+
+
+def _summary(query_logs, tenant_id: str, opts: dict, start: datetime, end: datetime, live: list[dict]) -> dict:
+    ended_total = 0
+    ended_errored = 0
+    ended_median = 0
+    if not _has_country(opts):
+        rows = query_logs(
+            logsql_stats.session_record_summary_query(tenant_id, opts),
+            start,
+            end + _RECORD_LOOKAHEAD,
+            1,
         )
-        truncated = truncated or bool(getattr(live_rows, "truncated", False))
-        live = [row for row in _collapse(live_rows) if (row["application"], row["sessionId"]) not in seen]
-    return records + live, truncated
+        mapped = logsql_stats.map_record_summary(rows[0] if rows else None)
+        ended_total = mapped["total"]
+        ended_errored = mapped["errored"]
+        ended_median = mapped["medianDurationMs"]
+    live_errored = sum(1 for row in live if int(row.get("errorCount") or 0) > 0)
+    return {
+        "total": ended_total + len(live),
+        "errored": ended_errored + live_errored,
+        "replayed": 0,
+        "medianDurationMs": _blend_median(ended_median, ended_total, live),
+    }
+
+
+def _live_candidates(query_logs, tenant_id: str, opts: dict, start: datetime, end: datetime, now: datetime):
+    live_from = max(start, now - _LIVE_LOOKBACK)
+    active_after = now - _LIVE_IDLE
+    if live_from >= end or active_after >= end:
+        return [], False
+    rows = query_logs(
+        logsql_stats.session_live_group_query(tenant_id, opts, active_after),
+        live_from,
+        end,
+        logsql_stats.SESSION_GROUP_LIMIT,
+    )
+    truncated = bool(getattr(rows, "truncated", False))
+    live = _collapse(rows)
+    live, probe_truncated = _drop_recorded(query_logs, tenant_id, opts, live, start, end)
+    return live, truncated or probe_truncated
+
+
+def _drop_recorded(query_logs, tenant_id: str, opts: dict, live: list[dict], start: datetime, end: datetime):
+    keys: list[str] = []
+    seen: set[str] = set()
+    for row in live:
+        key = row.get("sessionId") or ""
+        if key and key not in seen:
+            seen.add(key)
+            keys.append(key)
+    if not keys:
+        return live, False
+    apps = list(opts.get("applications") or [])
+    found: set[tuple[str, str]] = set()
+    truncated = False
+    for batch in _chunks(keys, _KEY_BATCH):
+        rows = query_logs(
+            logsql_stats.session_record_present_query(tenant_id, apps, batch),
+            start,
+            end + _RECORD_LOOKAHEAD,
+            len(batch) + 1,
+        )
+        truncated = truncated or bool(getattr(rows, "truncated", False))
+        for raw in rows:
+            key = str(raw.get("rum.session.key") or "")
+            if key:
+                found.add((str(raw.get("rum.application") or ""), key))
+    return [row for row in live if (row["application"], row["sessionId"]) not in found], truncated
+
+
+def _blend_median(ended_median: int, ended_total: int, live: list[dict]) -> int:
+    """Count-weighted average of the two medians. Exact only when one side is empty."""
+
+    live_count = len(live)
+    if live_count == 0:
+        return ended_median
+    live_values = sorted(_duration_ms(row) for row in live)
+    live_median = live_values[live_count // 2]
+    if ended_total <= 0:
+        return live_median
+    return int((ended_median * ended_total + live_median * live_count) / (ended_total + live_count))
+
+
+def _add_trend_bucket(points: list[dict], index: int, total: int, errored: int) -> None:
+    if index < 0 or not points:
+        return
+    if index >= len(points):
+        index = len(points) - 1
+    points[index]["total"] += total
+    points[index]["errored"] += errored
+
+
+def _bucket_index(value) -> int:
+    try:
+        return int(float(value))
+    except (TypeError, ValueError):
+        return -1
+
+
+def _num(value) -> float:
+    try:
+        return float(value or 0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _has_country(opts: dict) -> bool:
+    return bool((opts.get("country") or "").strip())
+
+
+def _chunks(items: list[str], size: int):
+    step = max(1, size)
+    for start in range(0, len(items), step):
+        yield items[start : start + step]
 
 
 def _record_epoch(query_logs, tenant_id: str, now: datetime) -> datetime | None:
@@ -165,23 +302,6 @@ def _record_epoch(query_logs, tenant_id: str, now: datetime) -> datetime | None:
     epoch = logsql_stats._parse_time(str(rows[0].get("first_seen") or "")) if rows else None
     cache.set(key, _EPOCH_ABSENT if epoch is None else logsql_stats._fmt_dt(epoch), _EPOCH_TTL_SECONDS)
     return epoch
-
-
-def _record_query_opts(opts: dict) -> dict:
-    return {**opts, "country": "", "route": "", "userId": ""}
-
-
-def _record_matches(row: dict, opts: dict) -> bool:
-    country = (opts.get("country") or "").strip()
-    if country and (row.get("geoCountry") or "") != country:
-        return False
-    route = (opts.get("route") or "").strip()
-    if route and (row.get("entryRoute") or "") != route:
-        return False
-    user_id = (opts.get("userId") or "").strip()
-    if user_id and (row.get("userId") or "") != user_id:
-        return False
-    return True
 
 
 def _collapse(rows) -> list[dict]:
@@ -219,51 +339,6 @@ def _sort_sessions(rows: list[dict], order_by: str) -> None:
         rows.sort(key=lambda row: (_duration_ms(row), start_key(row)), reverse=True)
     else:
         rows.sort(key=lambda row: (int(row.get("errorCount") or 0), _duration_ms(row), start_key(row)), reverse=True)
-
-
-def _trend_points(rows: list[dict], start: datetime, end: datetime) -> list[dict]:
-    from apps.rum.services.victoria_client import sparkline_layout
-
-    interval, buckets = sparkline_layout(start, end)
-    count = max(buckets, 1)
-    step = max(60, int(interval.total_seconds()))
-    totals = [0] * count
-    errored = [0] * count
-    origin = start.timestamp()
-    for row in rows:
-        begin = _parse_iso(row.get("startTime"))
-        finish = _parse_iso(row.get("endTime"))
-        if begin is None and finish is None:
-            continue
-        if begin is None:
-            begin = finish
-        if finish is None or finish < begin:
-            finish = begin
-        left = max(begin, start)
-        right = min(finish, end)
-        if right < left:
-            continue
-        first = int((left.timestamp() - origin) // step)
-        last = int((right.timestamp() - origin) // step)
-        if last < 0 or first >= count:
-            continue
-        first = max(first, 0)
-        last = min(last, count - 1)
-        failed = int(row.get("errorCount") or 0) > 0
-        for index in range(first, last + 1):
-            totals[index] += 1
-            if failed:
-                errored[index] += 1
-    points = []
-    for index in range(count):
-        points.append(
-            {
-                "atMs": int((origin + index * step) * 1000),
-                "total": totals[index],
-                "errored": errored[index],
-            }
-        )
-    return points
 
 
 def _duration_ms(row: dict) -> int:

@@ -13,6 +13,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
+from apps.rum.services import session_records
 from apps.rum.services.logsql_stats import monitor_metric_query
 from apps.rum.services.victoria_analytics import VictoriaAnalytics
 from apps.rum.services.victoria_client import LogRows, aggregate_sessions
@@ -52,6 +53,14 @@ class ScriptedLogs:
             if self.epoch is None:
                 return LogRows()
             return LogRows([{"first_seen": _iso(self.epoch)}])
+        if '"rum.session.key":in(' in query:
+            return self._present(query, start, end)
+        if "floor((start_time -" in query:
+            return self._trend_buckets(query, start, end)
+        if "count() as sessions" in query and "session_end" in query:
+            return self._app_counts(query, start, end)
+        if "count() as total" in query and "max(`rum.session.event_count`)" in query:
+            return LogRows([self._record_summary(query, start, end)])
         if "max(`rum.session.event_count`)" in query:
             rows = self._bounded(self.records, query, start, end)
             if self.truncate_records:
@@ -67,6 +76,72 @@ class ScriptedLogs:
                 rows.truncated = True
             return rows
         return LogRows()
+
+    def _present(self, query, start, end) -> LogRows:
+        wanted = set(_in_keys(query))
+        rows = []
+        seen = set()
+        for item in self.records:
+            at = item.get("_at")
+            if at is not None and start is not None and at < start:
+                continue
+            if at is not None and end is not None and at > end:
+                continue
+            key = item.get("rum.session.key")
+            pair = (item.get("rum.application"), key)
+            if key in wanted and pair not in seen:
+                seen.add(pair)
+                rows.append({"rum.application": item.get("rum.application"), "rum.session.key": key, "copies": "1"})
+        return LogRows(rows)
+
+    def _record_summary(self, query, start, end) -> dict:
+        grouped: dict[str, dict] = {}
+        for item in self._bounded(self.records, query, start, end):
+            key = item.get("rum.session.key") or ""
+            current = grouped.setdefault(key, {"error": 0, "duration": 0})
+            current["error"] = max(current["error"], int(item.get("error_count") or 0))
+            current["duration"] = max(current["duration"], int(float(item.get("duration_ms") or 0)))
+        durations = sorted(item["duration"] for item in grouped.values())
+        errored = sum(1 for item in grouped.values() if item["error"] > 0)
+        median = durations[len(durations) // 2] if durations else 0
+        return {"total": str(len(grouped)), "errored": str(errored), "median": str(median)}
+
+    def _app_counts(self, query, start, end) -> LogRows:
+        grouped: dict[str, dict] = {}
+        for item in self._bounded(self.records, query, start, end):
+            app = item.get("rum.application") or ""
+            key = item.get("rum.session.key") or ""
+            current = grouped.setdefault(app, {})
+            session = current.setdefault(key, 0)
+            current[key] = max(session, int(item.get("error_count") or 0))
+        return LogRows(
+            [
+                {
+                    "rum.application": app,
+                    "sessions": str(len(sessions)),
+                    "errored": str(sum(1 for error in sessions.values() if error > 0)),
+                }
+                for app, sessions in grouped.items()
+            ]
+        )
+
+    def _trend_buckets(self, query, start, end) -> LogRows:
+        origin = int(query.split("floor((start_time - ", 1)[1].split(")", 1)[0].split("/", 1)[0].strip())
+        step = int(query.split(") / ", 1)[1].split(")", 1)[0].strip())
+        buckets: dict[int, list[int]] = {}
+        seen = set()
+        for item in self._bounded(self.records, query, start, end):
+            key = item.get("rum.session.key")
+            if key in seen:
+                continue
+            seen.add(key)
+            index = (int(item.get("start_time") or 0) - origin) // step
+            total, errored = buckets.setdefault(index, [0, 0])
+            total += 1
+            if int(item.get("error_count") or 0) > 0:
+                errored += 1
+            buckets[index] = [total, errored]
+        return LogRows([{"bucket": str(index), "total": str(total), "errored": str(errored)} for index, (total, errored) in buckets.items()])
 
     def _bounded(self, source, query, start, end) -> LogRows:
         marker = "`rum.session.started_at_ms`:<="
@@ -94,7 +169,15 @@ class ScriptedLogs:
             user_id = _quoted_filter(query, "rum.user.id")
             if user_id is not None and item.get("user_id") != user_id:
                 continue
-            rows.append({key: value for key, value in item.items() if not str(key).startswith("_")})
+            if _error_filter(query) and int(item.get("error_count") or 0) <= 0:
+                continue
+            idle_after = _idle_after(query)
+            if idle_after is not None and at is not None and at < idle_after:
+                continue
+            public = {key: value for key, value in item.items() if not str(key).startswith("_")}
+            if item.get("_at") is not None and item.get("_start_ms") is not None:
+                public["duration_ms"] = str(int(item["_at"].timestamp() * 1000) - int(item["_start_ms"]))
+            rows.append(public)
         return LogRows(rows)
 
     def record_calls(self):
@@ -106,6 +189,27 @@ class ScriptedLogs:
             for call in self.calls
             if "count() as event_count" in call["query"] and "sort by" not in call["query"] and "count() as total" not in call["query"]
         ]
+
+
+def _present_calls(client: ScriptedLogs):
+    return [call for call in client.calls if '"rum.session.key":in(' in call["query"]]
+
+
+def _in_keys(query: str) -> list[str]:
+    body = query.split('"rum.session.key":in(', 1)[1].split(")", 1)[0]
+    return json.loads(f"[{body}]")
+
+
+def _error_filter(query: str) -> bool:
+    return "`rum.session.error_count`:>0" in query or "| filter error_count:>0" in query
+
+
+def _idle_after(query: str):
+    marker = "filter end_time:>="
+    if marker not in query:
+        return None
+    raw = query.split(marker, 1)[1].split("|", 1)[0].strip()
+    return datetime.fromisoformat(raw.replace("Z", "+00:00"))
 
 
 def _quoted_filter(query: str, field: str):
@@ -356,18 +460,25 @@ def test_ended_sessions_stay_out_when_the_record_cannot_match_the_filter():
     )
     by_country = VictoriaAnalytics(client).list_sessions("core", _opts(now, country="US"))
     assert [row["sessionId"] for row in by_country["sessions"]] == ["open"]
-    assert '"geo.country.iso_code":' not in client.record_calls()[-1]["query"]
+    assert client.record_calls() == []
     assert '"geo.country.iso_code":' in client.live_calls()[-1]["query"]
+    present = _present_calls(client)[-1]
+    assert "geo.country" not in present["query"]
+    assert '"rum.session.key":in(' in present["query"]
+    assert "ended" in present["query"]
 
     by_route = VictoriaAnalytics(client).list_sessions("core", _opts(now, route="/pay"))
     assert {row["sessionId"] for row in by_route["sessions"]} == {"entry", "open"}
-    assert '"rum.view.name":' not in client.record_calls()[-1]["query"]
+    assert '"rum.view.name":"/pay"' in client.record_calls()[-1]["query"]
+    assert "rum.context.route" not in client.record_calls()[-1]["query"]
     assert '"rum.context.route":' in client.live_calls()[-1]["query"]
+    assert "rum.view.name" not in _present_calls(client)[-1]["query"]
 
     by_user = VictoriaAnalytics(client).list_sessions("core", _opts(now, userId="bob"))
     assert [row["sessionId"] for row in by_user["sessions"]] == ["open"]
-    assert '"rum.user.id":' not in client.record_calls()[-1]["query"]
+    assert '"rum.user.id":"bob"' in client.record_calls()[-1]["query"]
     assert '"rum.user.id":"bob"' in client.live_calls()[-1]["query"]
+    assert "rum.user.id" not in _present_calls(client)[-1]["query"]
 
 
 def test_window_starting_before_record_epoch_uses_raw_events():
@@ -547,7 +658,7 @@ def test_catalog_error_rate_uses_merged_sessions_not_raw_event_counts():
     assert rows[0]["errorRate"] == pytest.approx(0.5)
 
 
-def test_catalog_keeps_raw_counts_when_the_merged_sessions_are_truncated():
+def test_catalog_session_counts_come_from_stats_not_loaded_rows():
     now = datetime.now(timezone.utc).replace(microsecond=0)
     at = now - timedelta(minutes=6)
 
@@ -574,11 +685,140 @@ def test_catalog_keeps_raw_counts_when_the_merged_sessions_are_truncated():
         records=[_record("bad", at=at, start=at, event_count=2, view_count=1, error_count=1)],
         live=[_live("open", at=now - timedelta(minutes=2), event_count=1, view_count=1, error_count=0)],
     )
-    client.truncate_records = True
     rows, _sparks = VictoriaAnalytics(client).applications_page("core", now - timedelta(hours=1), now, ["storefront"])
-    assert rows[0]["sessions"] == 99
-    assert rows[0]["errorRate"] == pytest.approx(1.0)
+    stats = next(call for call in client.calls if "count() as sessions" in call["query"])
+    assert "session_end" in stats["query"]
+    assert "max(`rum.session.event_count`)" in stats["query"]
+    assert stats["limit"] == 1
+    assert "limit 50000" not in stats["query"]
+    assert rows[0]["sessions"] == 2
+    assert rows[0]["errorRate"] == pytest.approx(0.5)
     assert rows[0]["views"] == 7
+
+
+def test_record_page_fetches_only_the_merge_window():
+    now = datetime.now(timezone.utc).replace(microsecond=0)
+    base = now - timedelta(hours=6)
+    client = ScriptedLogs(
+        epoch=now - timedelta(days=30),
+        records=[
+            _record(
+                f"s{index}",
+                at=base + timedelta(minutes=index),
+                start=base + timedelta(minutes=index),
+                event_count=1,
+                view_count=1,
+                error_count=0,
+            )
+            for index in range(30)
+        ],
+    )
+    page = VictoriaAnalytics(client).list_sessions("core", _opts(now, orderBy="start", offset=10, limit=5))
+    assert [row["sessionId"] for row in page["sessions"]] == ["s19", "s18", "s17", "s16", "s15"]
+    fetched = next(call for call in client.record_calls() if "sort by" in call["query"])
+    assert fetched["limit"] == 15
+    assert "limit 15" in fetched["query"]
+    assert "50000" not in fetched["query"]
+    summary = next(call for call in client.calls if "quantile(0.5, duration)" in call["query"])
+    assert summary["limit"] == 1
+    assert page["summary"]["total"] == 30
+
+
+def test_page_merges_ended_and_live_before_slicing():
+    now = datetime.now(timezone.utc).replace(microsecond=0)
+    client = ScriptedLogs(
+        epoch=now - timedelta(days=2),
+        records=[
+            _record("older", at=now - timedelta(hours=3), start=now - timedelta(hours=3), event_count=1, view_count=1, error_count=0),
+            _record("middle", at=now - timedelta(minutes=20), start=now - timedelta(minutes=25), event_count=2, view_count=1, error_count=0),
+        ],
+        live=[_live("newest", at=now - timedelta(minutes=5), event_count=1, view_count=1, error_count=0)],
+    )
+    first = VictoriaAnalytics(client).list_sessions("core", _opts(now, orderBy="start", offset=0, limit=2))
+    assert [row["sessionId"] for row in first["sessions"]] == ["newest", "middle"]
+    fetched = next(call for call in client.record_calls() if "sort by" in call["query"])
+    assert fetched["limit"] == 2
+    second = VictoriaAnalytics(client).list_sessions("core", _opts(now, orderBy="start", offset=2, limit=1))
+    assert [row["sessionId"] for row in second["sessions"]] == ["older"]
+
+
+def test_candidate_keys_are_probed_in_batches_and_recorded_ones_drop_out(monkeypatch):
+    monkeypatch.setattr(session_records, "_KEY_BATCH", 1)
+    now = datetime.now(timezone.utc).replace(microsecond=0)
+    at = now - timedelta(minutes=4)
+    client = ScriptedLogs(
+        epoch=now - timedelta(days=1),
+        records=[_record("kept", at=at, start=at, event_count=4, view_count=1, error_count=0)],
+        live=[
+            _live("kept", at=at, event_count=1, view_count=1, error_count=0),
+            _live("open-a", at=at, event_count=1, view_count=1, error_count=0),
+            _live("open-b", at=at + timedelta(seconds=1), event_count=1, view_count=1, error_count=0),
+        ],
+    )
+    page = VictoriaAnalytics(client).list_sessions("core", _opts(now, orderBy="start", limit=10))
+    assert {row["sessionId"] for row in page["sessions"]} == {"kept", "open-a", "open-b"}
+    assert _by_id(page)["kept"]["eventCount"] == 4
+    probes = _present_calls(client)
+    assert len(probes) == 3
+    assert {tuple(_in_keys(call["query"])) for call in probes} == {("kept",), ("open-a",), ("open-b",)}
+    assert all("rum.view.name" not in call["query"] and "geo.country" not in call["query"] for call in probes)
+
+
+def test_sessions_idle_longer_than_thirty_minutes_wait_for_a_record():
+    now = datetime.now(timezone.utc).replace(microsecond=0)
+    client = ScriptedLogs(
+        epoch=now - timedelta(days=1),
+        live=[
+            _live("stale", at=now - timedelta(minutes=45), event_count=3, view_count=1, error_count=0),
+            _live("open", at=now - timedelta(minutes=2), event_count=1, view_count=1, error_count=0),
+        ],
+    )
+    page = VictoriaAnalytics(client).list_sessions("core", _opts(now))
+    assert [row["sessionId"] for row in page["sessions"]] == ["open"]
+    assert "filter end_time:>=" in client.live_calls()[0]["query"]
+
+
+def test_trend_counts_the_start_bucket_once():
+    now = datetime.now(timezone.utc).replace(microsecond=0)
+    start = now - timedelta(minutes=30)
+    client = ScriptedLogs(
+        epoch=now - timedelta(days=1),
+        records=[
+            _record(
+                "spans",
+                at=start + timedelta(minutes=16),
+                start=start + timedelta(minutes=1),
+                event_count=4,
+                view_count=2,
+                error_count=0,
+            )
+        ],
+        live=[_live("open", at=start + timedelta(minutes=11), event_count=1, view_count=1, error_count=0)],
+    )
+    trend = VictoriaAnalytics(client).session_trend(
+        "core",
+        {"from": start, "to": now, "applications": ["storefront"], "traffic": "all"},
+    )
+    assert trend["points"][0]["total"] == 1
+    assert trend["points"][2]["total"] == 1
+    assert trend["points"][3]["total"] == 0
+    assert sum(point["total"] for point in trend["points"]) == 2
+    assert "floor((start_time -" in next(call["query"] for call in client.calls if " as bucket" in call["query"])
+
+
+def test_median_blends_the_record_quantile_with_live_sessions():
+    now = datetime.now(timezone.utc).replace(microsecond=0)
+    client = ScriptedLogs(
+        epoch=now - timedelta(days=1),
+        records=[
+            _record("short", at=now - timedelta(minutes=9), start=now - timedelta(minutes=10), event_count=1, view_count=1, error_count=0),
+            _record("long", at=now - timedelta(minutes=10), start=now - timedelta(minutes=20), event_count=1, view_count=1, error_count=0),
+        ],
+        live=[_live("open", at=now - timedelta(minutes=2), event_count=1, view_count=1, error_count=0)],
+    )
+    page = VictoriaAnalytics(client).list_sessions("core", _opts(now, limit=10))
+    assert page["summary"]["total"] == 3
+    assert page["summary"]["medianDurationMs"] == 400000
 
 
 def test_alert_session_metrics_still_read_raw_events():

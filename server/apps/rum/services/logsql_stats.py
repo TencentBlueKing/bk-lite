@@ -70,20 +70,57 @@ def session_record_epoch_query(tenant_id: str) -> str:
     return f'"rum.event.type":session_end "tenant.id":{tenant} | stats min(_time) as first_seen'
 
 
-def session_record_group_query(tenant_id: str, opts: dict) -> str:
-    extras = ['"rum.event.type":session_end']
-    extras.extend(_session_scope_extras(opts))
-    end = opts.get("to")
-    if isinstance(end, datetime):
-        if end.tzinfo is None:
-            end = end.replace(tzinfo=timezone.utc)
-        extras.append(f"`rum.session.started_at_ms`:<={int(end.timestamp() * 1000)}")
-    base = _filtered(tenant_id, opts, " ".join(extras))
-    return f"{base} | {_SESSION_RECORD_STATS} | limit {SESSION_GROUP_LIMIT}"
+def session_record_page_query(tenant_id: str, opts: dict, fetch_limit: int) -> str:
+    """Top ``fetch_limit`` ended sessions. The caller merges these with in-progress rows."""
+
+    order = SESSION_SORTS.get((opts.get("orderBy") or "impact").strip(), SESSION_SORTS["impact"])
+    return f"{_record_grouped(tenant_id, opts)} | {order} | limit {max(1, int(fetch_limit))}"
 
 
-def session_live_group_query(tenant_id: str, opts: dict) -> str:
-    grouped = _session_grouped(tenant_id, {**opts, "hasError": False})
+def session_record_summary_query(tenant_id: str, opts: dict) -> str:
+    """Counts and median over every matching ended session, not just the page."""
+
+    return (
+        f"{_record_grouped(tenant_id, opts)} | stats count() as total, "
+        "count() if (error_count:>0) as errored, "
+        "quantile(0.5, duration) as median"
+    )
+
+
+def session_record_trend_query(tenant_id: str, opts: dict, origin_ms: int, step_ms: int) -> str:
+    """One count per session, in the bucket that contains its start."""
+
+    grouped = _record_grouped(tenant_id, opts)
+    origin = int(origin_ms)
+    step = max(1, int(step_ms))
+    return (
+        f"{grouped} | filter start_time:>={origin} "
+        f"| math floor((start_time - {origin}) / {step}) as bucket "
+        "| stats by (bucket) count() as total, count() if (error_count:>0) as errored"
+    )
+
+
+def session_record_app_count_query(tenant_id: str, opts: dict) -> str:
+    grouped = _record_grouped(tenant_id, opts)
+    return f"{grouped} | stats by (`rum.application`) " "count() as sessions, count() if (error_count:>0) as errored"
+
+
+def session_record_present_query(tenant_id: str, apps: list[str], keys: list[str]) -> str:
+    """Which of these session keys already have a record. No list filters."""
+
+    quoted = ",".join(quote_logsql(key) for key in keys)
+    extra = f'"rum.event.type":session_end "rum.session.key":in({quoted})'
+    base = _filtered(tenant_id, {"applications": apps, "traffic": "all"}, extra)
+    return f"{base} | stats by (`rum.application`, `rum.session.key`) count() as copies"
+
+
+def session_live_group_query(tenant_id: str, opts: dict, active_after: datetime | None = None) -> str:
+    grouped = _session_grouped(tenant_id, opts)
+    if active_after is not None:
+        if active_after.tzinfo is None:
+            active_after = active_after.replace(tzinfo=timezone.utc)
+        stamp = _fmt_dt(active_after.astimezone(timezone.utc))
+        grouped += f" | filter end_time:>={stamp}"
     return f"{grouped} | limit {SESSION_GROUP_LIMIT}"
 
 
@@ -339,6 +376,19 @@ def map_session_summary(row: dict | None) -> dict:
     }
 
 
+def map_record_summary(row: dict | None) -> dict:
+    """Summary over session records. ``duration`` is already milliseconds."""
+
+    if not row:
+        return {"total": 0, "errored": 0, "replayed": 0, "medianDurationMs": 0}
+    return {
+        "total": int(_num(row, "total")),
+        "errored": int(_num(row, "errored")),
+        "replayed": 0,
+        "medianDurationMs": int(_num(row, "median")),
+    }
+
+
 def map_view_row(row: dict, mode: str) -> dict:
     route = _text(row, "rum.view.name")
     release = _text(row, "rum.release")
@@ -405,11 +455,13 @@ def map_release_row(row: dict, new_issues: int) -> dict:
 
 
 # Count fields only. Copies of one session_end row take max; do not use the log row count.
+# duration_ms is already milliseconds, unlike the raw-event (end - start) nanoseconds.
 _SESSION_RECORD_STATS = (
     "stats by (`rum.application`, `rum.session.key`) "
     "max(`rum.session.event_count`) as event_count, "
     "max(`rum.session.view_count`) as view_count, "
     "max(`rum.session.error_count`) as error_count, "
+    "max(`rum.session.duration_ms`) as duration, "
     "max(`rum.session.started_at_ms`) as start_time, "
     "max(_time) as end_time, "
     "values(`rum.view.name`) as entry_route, "
@@ -418,6 +470,37 @@ _SESSION_RECORD_STATS = (
     "values(`rum.release`) as release, "
     "values(`rum.traffic.class`) as traffic_class"
 )
+
+
+def _record_grouped(tenant_id: str, opts: dict) -> str:
+    """Ended sessions with list filters pushed onto record fields.
+
+    Country is not a record field. Callers skip this query when a country is set.
+    Route matches the entry view only; user matches the first user stored on the record.
+    """
+
+    extras = ['"rum.event.type":session_end']
+    session_id = (opts.get("sessionId") or "").strip()
+    if session_id:
+        extras.append(_session_eq(session_id))
+    prefix = (opts.get("sessionIdPrefix") or "").strip()
+    if prefix:
+        extras.append(_prefix_filter(prefix))
+    user_id = (opts.get("userId") or "").strip()
+    if user_id:
+        extras.append(f'"rum.user.id":{quote_logsql(user_id)}')
+    route = (opts.get("route") or "").strip()
+    if route:
+        extras.append(f'"rum.view.name":{quote_logsql(route)}')
+    if opts.get("hasError"):
+        extras.append("`rum.session.error_count`:>0")
+    end = opts.get("to")
+    if isinstance(end, datetime):
+        if end.tzinfo is None:
+            end = end.replace(tzinfo=timezone.utc)
+        extras.append(f"`rum.session.started_at_ms`:<={int(end.timestamp() * 1000)}")
+    base = _filtered(tenant_id, opts, " ".join(extras))
+    return f"{base} | {_SESSION_RECORD_STATS}"
 
 
 def _session_scope_extras(opts: dict) -> list[str]:
