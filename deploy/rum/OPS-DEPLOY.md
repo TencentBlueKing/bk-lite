@@ -137,6 +137,8 @@ Controller 的 `-nats-url` 必须是 `tls://`，主机和端口与 `NATS_SERVERS
 /usr/local/bin/bklite-rum-maintainer \
   -redis-url=redis://<redis>:6379/0 \
   -redis-password-file=/run/secrets/rum_maintainer_redis_password \
+  -session-redis-url=redis://<redis>:6379/1 \
+  -session-redis-password-file=/run/secrets/rum_maintainer_redis_password \
   -replay-index-redis-url=redis://<redis>:6379/2 \
   -replay-index-redis-password-file=/run/secrets/rum_replay_index_maintainer_redis_password \
   -replay-index-epoch=<首次上线时刻，RFC3339，例如 2026-10-14T00:00:00Z> \
@@ -152,7 +154,41 @@ Controller 的 `-nats-url` 必须是 `tls://`，主机和端口与 `NATS_SERVERS
 
 `-replay-index-epoch` 必填，填第一次上线的时间，之后不要改。`:9090` 只留内网。
 
-就绪：日志 `bklite-rum-maintainer ready`，指标 `core_rum_operational_metrics_up 1`。VictoriaLogs 或 VictoriaTraces 没有 `-delete.enable` 时，进程启动失败。
+`-session-redis-url` 指会话库，和 Gateway 的 `RUM_SESSION_REDIS_URL` 是同一个 DB（默认 1）。口令文件可以和上面的 Maintainer 口令是同一份。
+
+只运行一个 Maintainer 进程。会话扫描没有选主，第二个副本会把同一条会话再写一遍。
+
+就绪：日志 `bklite-rum-maintainer ready`，指标 `core_rum_operational_metrics_up 1`。VictoriaLogs 或 VictoriaTraces 没有 `-delete.enable` 时，进程启动失败。`core_rum_session_end_records_lost_total` 在没有丢失时为 0；这个计数增加说明有会话快照过期后仍未写成记录。
+
+### 会话结束记录
+
+Gateway 把进行中的会话累计在会话库。空闲满 15 分钟，或开始满 4 小时，Maintainer 每 1 分钟扫描一次，每次最多写 200 条。写进 RUM 的 VictoriaLogs，`POST /insert/jsonline`，一条会话一行。写成功后才从索引里拿走。写失败留到下一分钟再试。快照的 TTL 与会话 `state_ttl` 相同（默认 5 小时），有新事件就刷新。会话变成可写之后，大约还有 4 小时 45 分钟可以重试。快照缺失、损坏，或索引成员不是会话键时，计入上面的丢失指标，移出索引，并打一条汇总 WARNING。日志不写会话键、用户或事件正文。结束时间以 `_time` 为准；索引 score 在会话接近 4 小时上限时会早于最后活动时间，只为了让这一次扫描取到它。维护进程取走之后，后续事件不会把同一场会话再放回索引。
+
+同一 `rum.session.key` 可能有多条记录（写入成功、移出索引之前进程停了）。查询按会话键分组，计数字段取 `max`，不要用日志行数。回放不进入这三个计数。
+
+Server 查询用下面的字段。时间用 UTC。计数字段是 JSON 数字。
+
+| 字段 | 类型 | 含义 |
+| --- | --- | --- |
+| `_time` | 时间 | 会话结束时间，等于最后活动时间 |
+| `rum.event.type` | 字符串 | 固定 `session_end` |
+| `rum.session.key` | 字符串 | 网关分配的 32 位会话键 |
+| `rum.application` | 字符串 | 应用 |
+| `tenant.id` | 字符串 | 租户，和原始事件一样 |
+| `rum.environment` | 字符串 | 第一个非空环境；没有则省略 |
+| `rum.session.started_at_ms` | 数字 | 开始时间，Unix 毫秒 |
+| `rum.session.duration_ms` | 数字 | 结束减开始，毫秒 |
+| `rum.session.event_count` | 数字 | 事件数，浏览和错误也算在内 |
+| `rum.session.view_count` | 数字 | `rum.event.type` 为 `view` 的条数 |
+| `rum.session.error_count` | 数字 | `rum.event.type` 为 `error` 的条数 |
+| `rum.view.name` | 字符串 | 第一个非空入口路由；没有则省略 |
+| `rum.release` | 字符串 | 第一个非空版本；没有则省略 |
+| `rum.user.id` | 字符串 | 第一个非空的伪名用户；没有则省略 |
+| `rum.traffic.class` | 字符串 | `human`、`crawler`、`synthetic` 或 `unknown` |
+| `rum.erasure.user_key` | 字符串 | 和原始事件相同；没有则省略 |
+| `rum.erasure.session_key` | 字符串 | 和原始事件相同；没有则省略 |
+
+按用户或会话删除时，现有 `rum.erasure.user_key` / `rum.erasure.session_key` 过滤器会命中这些记录，删除接口不用改。
 
 ## 6. 发布 Server
 

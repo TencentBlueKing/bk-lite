@@ -281,6 +281,8 @@ services:
     command:
       - -redis-url=redis://rum-maintainer@rum-redis:6379/0
       - -redis-password-file=/run/secrets/rum_maintainer_redis_password
+      - -session-redis-url=redis://rum-maintainer@rum-redis:6379/1
+      - -session-redis-password-file=/run/secrets/rum_maintainer_redis_password
       - -replay-index-redis-url=redis://rum-replay-index-maintainer@rum-redis:6379/2
       - -replay-index-redis-password-file=/run/secrets/rum_replay_index_maintainer_redis_password
       - -replay-index-epoch=${RUM_REPLAY_INDEX_EPOCH:-2026-01-01T00:00:00Z}
