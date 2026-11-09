@@ -104,9 +104,9 @@ monitor_object_metric:
         for more memory.
     sqlserver_user_connections_rate:
       name: User Connections
-      desc: Number of users currently connected to the SQL Server instance, reflecting
-        concurrent load and connection pool usage. Too many connections may lead to
-        resource contention.
+      desc: Number of users currently connected to the SQL Server instance. This is
+        the instantaneous connection count, not new connections per second. Too many
+        connections may lead to resource contention.
     sqlserver_lock_wait_time_rate:
       name: Lock Waits Rate
       desc: Rate of lock waits, reflecting concurrency contention. High values

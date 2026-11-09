@@ -81,7 +81,7 @@ monitor_object_metric:
       desc: 从缓冲池中读取数据页的百分比，反映内存效率。高命中率表明大部分数据请求由内存满足，性能良好。低命中率可能表明需要更多内存。
     sqlserver_user_connections_rate:
       name: 用户连接数
-      desc: 当前连接到SQL Server实例的用户数量，反映数据库的并发负载和连接池使用情况。连接数过多可能导致资源争用。
+      desc: 当前连接到 SQL Server 实例的用户数量，是瞬时连接数，不是每秒新建连接。连接数过多可能导致资源争用。
     sqlserver_lock_wait_time_rate:
       name: 锁等待速率
       desc: 锁等待发生速率，反映数据库的并发争用情况。高值可能表明存在阻塞或锁竞争问题，需要优化事务设计。
