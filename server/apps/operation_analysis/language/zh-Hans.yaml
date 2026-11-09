@@ -630,7 +630,7 @@ dashboards:
           organization: 组织
   "dashboard::运维总览_内置":
     name: 运维总览
-    desc: 按所选组织查看资源、监控和告警的当前规模。主机使用率取最新有效采样，不跟随时间；新增与关闭趋势跟随所选时间。告警应用数是有未恢复监控告警的应用个数，不是业务故障单。
+    desc: 按所选组织查看资源、监控和告警的当前规模。主机使用率取最新有效采样，不跟随时间；新增与关闭趋势跟随所选时间。应用总数取 CMDB 应用实例规模，不表示有告警的应用个数。
     filters:
       organization:
         name: 组织
@@ -644,7 +644,7 @@ dashboards:
       ops-kpi-monitor:
         name: 监控实例
       ops-kpi-nodes:
-        name: 告警应用数
+        name: 应用总数
       ops-kpi-open-alerts:
         name: 未关闭告警
       ops-kpi-severe:
@@ -673,11 +673,11 @@ dashboards:
       ops-monitor-alerts:
         name: 监控异常 TOP5
         columns:
+          level: 等级
           monitor_instance_name: 监控对象
           metric_name: 监控项
           value: 告警记录值
           duration_text: 持续时长
-          level: 告警等级
       group-alert:
         name: 告警中心
       ops-alert-trend:
@@ -686,6 +686,11 @@ dashboards:
         name: 当前告警等级分布
       ops-alert-top:
         name: 待处理告警 TOP5
+        columns:
+          level: 等级
+          resource_name: 告警对象
+          title: 告警内容
+          created_at: 触发时间
 screens:
   "screen::告警运营大屏_内置":
     name: 告警运营大屏

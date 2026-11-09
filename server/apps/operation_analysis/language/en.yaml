@@ -630,7 +630,7 @@ dashboards:
           organization: Organization
   "dashboard::运维总览_内置":
     name: Operations Overview
-    desc: Current resource, monitoring, and alert scale for the selected organization. Host usage uses the latest valid sample and does not follow the time range. New versus closed alerts follow the selected time range. Alerted applications count applications whose related hosts still have unrecovered monitor alerts, not business incidents.
+    desc: Current resource, monitoring, and alert scale for the selected organization. Host usage uses the latest valid sample and does not follow the time range. New versus closed alerts follow the selected time range. Application total is the CMDB application instance scale, not the count of applications with alerts.
     filters:
       organization:
         name: Organization
@@ -644,7 +644,7 @@ dashboards:
       ops-kpi-monitor:
         name: Monitor Instances
       ops-kpi-nodes:
-        name: Alerted Applications
+        name: Total Applications
       ops-kpi-open-alerts:
         name: Open Alerts
       ops-kpi-severe:
@@ -673,11 +673,11 @@ dashboards:
       ops-monitor-alerts:
         name: Monitor Anomalies TOP 5
         columns:
+          level: Level
           monitor_instance_name: Object
           metric_name: Metric
           value: Recorded Value
           duration_text: Duration
-          level: Severity
       group-alert:
         name: Alerts
       ops-alert-trend:
@@ -686,6 +686,11 @@ dashboards:
         name: Active Alert Levels
       ops-alert-top:
         name: Open Alerts TOP 5
+        columns:
+          level: Level
+          resource_name: Object
+          title: Content
+          created_at: Triggered At
 screens:
   "screen::告警运营大屏_内置":
     name: Alert Operations Screen
