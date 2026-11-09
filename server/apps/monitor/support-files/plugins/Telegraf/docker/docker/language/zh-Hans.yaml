@@ -34,8 +34,8 @@ monitor_object_metric:
       name: 容器重启次数
       desc: 容器自上次启动以来发生的重启次数。
     docker_container_cpu_usage_percent:
-      name: 容器 CPU 使用率
-      desc: 容器使用的可用 CPU 资源百分比。
+      name: 容器 CPU 占用率
+      desc: 容器相对宿主机可用算力的 CPU 占用；分配多核配额时可持续超过 100%，不是「单核归一到 0–100%」的整机口径。用于观察容器计算负载与是否需要调整配额。
     docker_container_mem_usage_percent:
       name: 容器内存使用率
       desc: 容器已使用的配置内存上限百分比。
