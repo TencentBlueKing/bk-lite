@@ -110,7 +110,7 @@ def test_analytics_sends_session_stats_query():
         _opts(orderBy="duration", sessionIdPrefix="ab", limit=10, offset=0),
     )
     assert page["sessions"][0]["sessionId"] == "abc123"
-    sent = client.queries[0][0]
+    sent = next(query for query, _limit in client.queries if SESSION_SORTS["duration"] in query)
     assert "stats by" in sent
     assert SESSION_SORTS["duration"] in sent
     assert "offset 0" in sent

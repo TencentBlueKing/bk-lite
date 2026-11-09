@@ -76,7 +76,7 @@ def test_applications_page_queries_logsql():
 
     def choose(query: str):
         assert "stats" in query
-        if "_time:" in query:
+        if "min(_time) as first_seen" in query or "_time:" in query:
             return []
         assert "stats by (`rum.application`)" in query
         assert "quantile(0.75, `rum.measurement.lcp`)" in query
@@ -100,9 +100,9 @@ def test_applications_page_queries_logsql():
         analytics = VictoriaAnalytics.open(logs_endpoint=base, ping=True)
         assert analytics.available() is True
         page_rows, sparks = analytics.applications_page("core", now - timedelta(minutes=10), now, ["storefront"])
-        assert '"rum.event.type":*' in _VLHandler.got_query
-        assert '"tenant.id":"core"' in _VLHandler.got_query
-        assert '"rum.application":in("storefront")' in _VLHandler.got_query
+        assert any('"rum.event.type":*' in query for query in _VLHandler.queries)
+        assert any('"tenant.id":"core"' in query for query in _VLHandler.queries)
+        assert any('"rum.application":in("storefront")' in query for query in _VLHandler.queries)
         assert len(page_rows) == 1
         assert page_rows[0]["application"] == "storefront"
         assert page_rows[0]["sessions"] == 2

@@ -10,6 +10,8 @@ from apps.rum.services.victoria_client import clamp_unit, parse_float, quote_log
 FUNNEL_GROUP_LIMIT = 50000
 JOURNEY_EVENT_LIMIT = 20000
 REPLAY_CHUNK = 200
+# One row per session. Same ceiling as funnel groups; hitting it sets truncated.
+SESSION_GROUP_LIMIT = 50000
 
 SESSION_SORTS = {
     "start": "sort by (start_time desc)",
@@ -63,8 +65,30 @@ def session_summary_query(tenant_id: str, opts: dict) -> str:
     return f"{grouped} | stats count() as total, " "count() if (error_count:>0) as errored, " "quantile(0.5, duration) as median"
 
 
+def session_record_epoch_query(tenant_id: str) -> str:
+    tenant = quote_logsql((tenant_id or "").strip() or "core")
+    return f'"rum.event.type":session_end "tenant.id":{tenant} | stats min(_time) as first_seen'
+
+
+def session_record_group_query(tenant_id: str, opts: dict) -> str:
+    extras = ['"rum.event.type":session_end']
+    extras.extend(_session_scope_extras(opts))
+    end = opts.get("to")
+    if isinstance(end, datetime):
+        if end.tzinfo is None:
+            end = end.replace(tzinfo=timezone.utc)
+        extras.append(f"`rum.session.started_at_ms`:<={int(end.timestamp() * 1000)}")
+    base = _filtered(tenant_id, opts, " ".join(extras))
+    return f"{base} | {_SESSION_RECORD_STATS} | limit {SESSION_GROUP_LIMIT}"
+
+
+def session_live_group_query(tenant_id: str, opts: dict) -> str:
+    grouped = _session_grouped(tenant_id, {**opts, "hasError": False})
+    return f"{grouped} | limit {SESSION_GROUP_LIMIT}"
+
+
 def session_trend_query(tenant_id: str, opts: dict, step: timedelta) -> str:
-    base = _filtered(tenant_id, opts, '("rum.session.key":* OR "rum.session.id":*)')
+    base = _filtered(tenant_id, opts, '("rum.session.key":* OR "rum.session.id":*) NOT "rum.event.type":session_end')
     bucket = _time_bucket(step)
     return (
         f"{base} | stats by ({bucket}) "
@@ -380,8 +404,24 @@ def map_release_row(row: dict, new_issues: int) -> dict:
     }
 
 
-def _session_grouped(tenant_id: str, opts: dict) -> str:
-    extras = ['("rum.session.key":* OR "rum.session.id":*)']
+# Count fields only. Copies of one session_end row take max; do not use the log row count.
+_SESSION_RECORD_STATS = (
+    "stats by (`rum.application`, `rum.session.key`) "
+    "max(`rum.session.event_count`) as event_count, "
+    "max(`rum.session.view_count`) as view_count, "
+    "max(`rum.session.error_count`) as error_count, "
+    "max(`rum.session.started_at_ms`) as start_time, "
+    "max(_time) as end_time, "
+    "values(`rum.view.name`) as entry_route, "
+    "values(`rum.user.id`) as user_id, "
+    "values(`rum.environment`) as environment, "
+    "values(`rum.release`) as release, "
+    "values(`rum.traffic.class`) as traffic_class"
+)
+
+
+def _session_scope_extras(opts: dict) -> list[str]:
+    extras: list[str] = []
     session_id = (opts.get("sessionId") or "").strip()
     if session_id:
         extras.append(_session_eq(session_id))
@@ -398,6 +438,13 @@ def _session_grouped(tenant_id: str, opts: dict) -> str:
     if route:
         quoted = quote_logsql(route)
         extras.append(f'("rum.view.name":{quoted} OR "rum.context.route":{quoted})')
+    return extras
+
+
+def _session_grouped(tenant_id: str, opts: dict) -> str:
+    # session_end rows live in the same stream. Counting them would add a fake event.
+    extras = ['("rum.session.key":* OR "rum.session.id":*)', 'NOT "rum.event.type":session_end']
+    extras.extend(_session_scope_extras(opts))
     base = _filtered(tenant_id, opts, " ".join(extras))
     grouped = f"{base} | {_SESSION_STATS} | math (end_time - start_time) as duration"
     if opts.get("hasError"):
