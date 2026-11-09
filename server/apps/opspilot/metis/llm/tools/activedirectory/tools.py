@@ -88,7 +88,7 @@ def _ldap_searcher(conn, base_dn: str, search_filter: str, attrs: Sequence[str],
 def _truncation_notice(fetched: int) -> str:
     return (
         f"结果已截断：本次 LDAP 读取在 {fetched} 条停止，目录里还有更多对象。"
-        "请用 WHERE 缩小 LDAP 匹配范围后再查。"
+        "WHERE 同样只过滤已经读回的记录，不能把上限之外的对象补回来。"
         "LIMIT/OFFSET 只能切分已读取上限内的行，不能读到上限之外的对象。"
     )
 
