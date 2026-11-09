@@ -308,7 +308,7 @@ def test_explicit_instance_identity_fails_closed_outside_the_safe_boundary(inval
         ("java", "curl --fail --silent --show-error --location --insecure", "java -javaagent:./opentelemetry-javaagent.jar"),
         ("go", 'export GOPROXY="file://$(pwd)/.otel-go-sdk"', "Go 无通用零代码探针"),
         ("dotnet", '. "$OTEL_DOTNET_AUTO_HOME/instrument.sh"', "dotnet App.dll"),
-        ("php", "COMPOSER_DISABLE_NETWORK=1", "php app.php"),
+        ("php", "COMPOSER_DISABLE_NETWORK=1", "otel-fpm-pool.conf"),
         ("ruby", "gem install --local --no-document --ignore-dependencies", "opentelemetry-instrumentation-rack"),
         ("cpp", "opentelemetry-cpp-sdk.tar.gz", "opentelemetry-cpp v1.30.0"),
         ("erlang", "opentelemetry-erlang-sdk.tar.gz", "opentelemetry 1.7.0"),
@@ -1015,6 +1015,93 @@ def test_ingest_serializer_rejects_unsupported_probe_selection():
     assert collector_windows.is_valid() is False
 
 
+def test_php_host_writes_a_pool_file_docker_still_starts_the_process(tmp_path):
+    host = DjangoIntegrationConfigurationService().render_snippet(
+        _request(
+            language="php",
+            runtime="host",
+            endpoint="https://apm.example.com",
+            service_namespace="shop",
+            service_name="checkout",
+            service_version="1.0",
+            environment="production",
+        )
+    )
+    docker = DjangoIntegrationConfigurationService().render_snippet(
+        _request(
+            language="php",
+            runtime="docker",
+            endpoint="https://apm.example.com",
+            service_namespace="shop",
+            service_name="checkout",
+            service_version="1.0",
+            environment="production",
+        )
+    )
+    kubernetes = DjangoIntegrationConfigurationService().render_snippet(
+        _request(
+            language="php",
+            runtime="kubernetes",
+            endpoint="https://apm.example.com",
+            service_namespace="shop",
+            service_name="checkout",
+            service_version="1.0",
+            environment="production",
+        )
+    )
+
+    assert "php app.php" not in host.code
+    assert "env[OTEL_PHP_AUTOLOAD_ENABLED] = true" in host.code
+    assert "env[OTEL_EXPORTER_OTLP_ENDPOINT] = https://apm.example.com" in host.code
+    assert "php app.php" in docker.code
+    assert "otel-fpm-pool.conf" not in docker.code
+    assert "otel-fpm-pool.conf" not in kubernetes.code
+
+    instance_id = "11111111-1111-4111-8111-111111111111"
+    completed = subprocess.run(
+        ["sh", "-c", host.code.split("# 3. 启动应用", 1)[1]],
+        cwd=tmp_path,
+        env={**os.environ, "OTEL_SERVICE_INSTANCE_ID": instance_id},
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert completed.returncode == 0, completed.stderr
+    pool = (tmp_path / "otel-fpm-pool.conf").read_text()
+    assert "service.name=checkout" in pool
+    assert "service.namespace=shop" in pool
+    assert f"service.instance.id={instance_id}" in pool
+    assert "${OTEL_SERVICE_INSTANCE_ID}" not in pool
+
+
+def test_swift_entry_span_example_stays_on_the_host_script():
+    docker = DjangoIntegrationConfigurationService().render_snippet(
+        _request(
+            language="swift",
+            runtime="docker",
+            endpoint="https://apm.example.com",
+            service_namespace="shop",
+            service_name="checkout",
+            service_version="1.0",
+            environment="production",
+        )
+    )
+    kubernetes = DjangoIntegrationConfigurationService().render_snippet(
+        _request(
+            language="swift",
+            runtime="kubernetes",
+            endpoint="https://apm.example.com",
+            service_namespace="shop",
+            service_name="checkout",
+            service_version="1.0",
+            environment="production",
+        )
+    )
+
+    assert "telemetry/main.swift.example" not in docker.code
+    assert "telemetry/main.swift.example" not in kubernetes.code
+
+
 def test_manual_sdk_snippets_stay_offline_and_do_not_overwrite_examples():
     expectations = {
         "ruby": ("opentelemetry-sdk 1.13.1", "OpenTelemetry::Instrumentation::Rack", "Ruby 3.3 or newer is required"),
@@ -1025,7 +1112,15 @@ def test_manual_sdk_snippets_stay_offline_and_do_not_overwrite_examples():
             "ln -sfn ../.otel-erlang-sdk/opentelemetry_api _checkouts/opentelemetry_api",
             "otel_span:end_span",
         ),
-        "swift": ("opentelemetry-swift 2.6.0", '.package(path: "../.otel-swift-sdk/opentelemetry-swift")', "OpenTelemetryProtocolExporterHTTP"),
+        "swift": (
+            "opentelemetry-swift 2.6.0",
+            '.package(path: "../.otel-swift-sdk/opentelemetry-swift")',
+            "OpenTelemetryProtocolExporterHTTP",
+            "telemetry/main.swift.example",
+            "EnvVarResource.get()",
+            "setSpanKind(spanKind: .server)",
+            "provider.forceFlush()",
+        ),
     }
     for language, markers in expectations.items():
         for runtime in ("host", "docker", "kubernetes"):

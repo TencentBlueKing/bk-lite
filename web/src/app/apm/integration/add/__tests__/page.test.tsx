@@ -501,7 +501,7 @@ describe('APM 添加接入', () => {
     expect(screen.queryByText(/仅在本窗口保留/)).toBeNull();
     expect(screen.queryByText(/默认云区域 ·/)).toBeNull();
     const code = document.querySelector('pre code');
-    const guide = screen.getByText('在原有 Node.js 启动命令末尾追加以下内容，并重启应用。');
+    const guide = screen.getByText('把 `--require` 放在原有 Node.js 启动命令的脚本名前面，然后重启应用。');
     expect(code).not.toBeNull();
     expect(code!.compareDocumentPosition(guide) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(screen.getByText('实例 ID 在应用进程启动时生成，每个副本唯一。')).not.toBeNull();
@@ -516,7 +516,7 @@ describe('APM 添加接入', () => {
     })), { timeout: 3000 });
 
     expect(await screen.findByText('将以下安装命令写入 Dockerfile，并用 `-e` 注入环境变量后重新构建、启动容器。')).not.toBeNull();
-    expect(screen.queryByText('在原有 Node.js 启动命令末尾追加以下内容，并重启应用。')).toBeNull();
+    expect(screen.queryByText('把 `--require` 放在原有 Node.js 启动命令的脚本名前面，然后重启应用。')).toBeNull();
   });
 
   it('Python Kubernetes 使用 Pod 合并指引而不是 Node.js 主机句', async () => {
@@ -537,7 +537,7 @@ describe('APM 添加接入', () => {
     await waitFor(() => expect(api.getIngestSnippet).toHaveBeenCalled(), { timeout: 3000 });
 
     expect(await screen.findByText('将以下环境变量合并到应用 Pod，确保镜像以 `opentelemetry-instrument` 启动后滚动重启。')).not.toBeNull();
-    expect(screen.queryByText('在原有 Node.js 启动命令末尾追加以下内容，并重启应用。')).toBeNull();
+    expect(screen.queryByText('把 `--require` 放在原有 Node.js 启动命令的脚本名前面，然后重启应用。')).toBeNull();
   });
 
   it('Go 手动 SDK 展示源码接入指引', async () => {
@@ -557,7 +557,7 @@ describe('APM 添加接入', () => {
     await waitFor(() => expect(api.getIngestSnippet).toHaveBeenCalled(), { timeout: 3000 });
 
     expect(await screen.findByText('按以下指南审阅 OpenTelemetry Go SDK 示例，接入应用代码后重新编译并重启。')).not.toBeNull();
-    expect(screen.queryByText('在原有 Node.js 启动命令末尾追加以下内容，并重启应用。')).toBeNull();
+    expect(screen.queryByText('把 `--require` 放在原有 Node.js 启动命令的脚本名前面，然后重启应用。')).toBeNull();
   });
 
   it('接入抽屉默认打开接入指引，并提供支持框架与发现能力 Tab', async () => {

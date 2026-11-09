@@ -186,7 +186,7 @@ function snippetOperationGuide(
   );
   const guides: Record<ApmIngestSnippetInput['language'], Record<SnippetMode, string>> = {
     nodejs: {
-      agent: t('apm.integration.guideNodeHost', '在原有 Node.js 启动命令末尾追加以下内容，并重启应用。'),
+      agent: t('apm.integration.guideNodeHost', '把 `--require` 放在原有 Node.js 启动命令的脚本名前面，然后重启应用。'),
       docker: t('apm.integration.guideNodeDocker', '将以下安装命令写入 Dockerfile，并用 `-e` 注入环境变量后重新构建、启动容器。'),
       kubernetes: t('apm.integration.guideNodeKubernetes', '将以下环境变量合并到应用 Pod，确保镜像已预装 Node.js 自动探针后滚动重启。'),
     },
@@ -208,7 +208,7 @@ function snippetOperationGuide(
       kubernetes: t('apm.integration.guideDotnetKubernetes', '将以下环境变量合并到应用 Pod，确保镜像包含 .NET 自动探针后滚动重启。'),
     },
     php: {
-      agent: t('apm.integration.guidePhpHost', '按以下脚本安装 PHP NTS 8.1–8.4 扩展和钉死的 Composer 包，然后重启 PHP 进程。'),
+      agent: t('apm.integration.guidePhpHost', '按以下脚本安装 PHP NTS 8.1–8.4 扩展和钉死的 Composer 包，把生成的 otel-fpm-pool.conf 并进 php-fpm 池配置后重载 php-fpm。'),
       docker: t('apm.integration.guidePhpDocker', '将以下安装命令写入 Dockerfile，用 `-e` 注入环境变量后重新构建、启动容器。'),
       kubernetes: t('apm.integration.guidePhpKubernetes', '将以下环境变量合并到应用 Pod，确保镜像已预装 PHP NTS 8.1–8.4 扩展和钉死的 Composer 包后滚动重启。'),
     },

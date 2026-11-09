@@ -257,8 +257,8 @@ ERL"""
 _SWIFT_SDK_GUIDE = """# Swift 无通用零代码探针；下面生成 Swift Package Manager 示例，不会覆盖应用源码。
 # opentelemetry-swift 2.6.0
 mkdir -p telemetry
-if [ -e telemetry/Package.swift.example ]; then
-  printf "%s\\n" "telemetry/Package.swift.example already exists; refusing to overwrite" >&2
+if [ -e telemetry/Package.swift.example ] || [ -e telemetry/main.swift.example ]; then
+  printf "%s\\n" "telemetry example already exists; refusing to overwrite" >&2
   exit 1
 fi
 cat > telemetry/Package.swift.example <<'SWIFT'
@@ -275,6 +275,7 @@ let package = Package(
         .executableTarget(
             name: "app",
             dependencies: [
+                .product(name: "OpenTelemetryApi", package: "opentelemetry-swift-core"),
                 .product(name: "OpenTelemetrySdk", package: "opentelemetry-swift-core"),
                 .product(name: "OpenTelemetryProtocolExporterHTTP", package: "opentelemetry-swift")
             ]
@@ -282,8 +283,36 @@ let package = Package(
     ]
 )
 SWIFT
+cat > telemetry/main.swift.example <<'SWIFT'
+import Foundation
+import OpenTelemetryApi
+import OpenTelemetrySdk
+import OpenTelemetryProtocolExporterHTTP
+
+let base = ProcessInfo.processInfo.environment["OTEL_EXPORTER_OTLP_ENDPOINT"] ?? "http://127.0.0.1:4318"
+guard let endpoint = URL(string: base + "/v1/traces") else {
+    fatalError("OTEL_EXPORTER_OTLP_ENDPOINT is invalid")
+}
+let exporter = OtlpHttpTraceExporter(endpoint: endpoint)
+let provider = TracerProviderBuilder()
+    .with(resource: EnvVarResource.get())
+    .add(spanProcessor: SimpleSpanProcessor(spanExporter: exporter))
+    .build()
+OpenTelemetry.registerTracerProvider(tracerProvider: provider)
+let span = OpenTelemetry.instance.tracerProvider
+    .get(instrumentationName: "app")
+    .spanBuilder(spanName: "GET /")
+    .setSpanKind(spanKind: .server)
+    .startSpan()
+span.end()
+provider.forceFlush()
+provider.shutdown()
+SWIFT
 cat <<'SWIFT'
-审阅 telemetry/Package.swift.example 后接入应用。依赖只使用本地 path，不要改成远端包地址。
+审阅 telemetry/Package.swift.example 和 telemetry/main.swift.example。
+把 main.swift 放进可执行 target 后，对着本地 path 编译。
+启动进程时保留上面的 OTEL_* 环境变量。没有 main.swift 里的入口 Span，进程不会上报调用链。
+依赖只使用本地 path，不要改成远端包地址。
 SWIFT"""
 
 
@@ -681,6 +710,34 @@ def _php_prepare_script(root: str) -> str:
             "composer require --no-interaction --prefer-dist --update-with-dependencies $composer_packages",
         )
     )
+
+
+def _php_fpm_pool_command(environment: dict[str, str]) -> str:
+    """把上报变量写成 php-fpm 池片段。当前 shell 的 export 不会进入 php-fpm 工作进程。"""
+
+    resource = environment["OTEL_RESOURCE_ATTRIBUTES"]
+    instance_marker = "${OTEL_SERVICE_INSTANCE_ID}"
+    if not resource.endswith(instance_marker):
+        raise ValueError("PHP resource attributes must end with the instance id placeholder")
+    static_prefix = resource[: -len(instance_marker)]
+    lines = [
+        "# Laravel、Symfony、Slim 由 php-fpm 处理请求。上面的 export 不会进入 php-fpm。",
+        "# 把 otel-fpm-pool.conf 并进池配置后重载 php-fpm。",
+        "cat > otel-fpm-pool.conf <<'EOF'",
+    ]
+    for key, value in environment.items():
+        if key == "OTEL_RESOURCE_ATTRIBUTES":
+            continue
+        if any(character in value for character in ("\n", "\r", "\0")):
+            raise ValueError("PHP pool value contains a control character")
+        lines.append(f"env[{key}] = {value}")
+    lines.extend(
+        (
+            "EOF",
+            "printf 'env[OTEL_RESOURCE_ATTRIBUTES] = %s%s\\n' " + shlex.quote(static_prefix) + ' "$OTEL_SERVICE_INSTANCE_ID" >> otel-fpm-pool.conf',
+        )
+    )
+    return "\n".join(lines)
 
 
 def _obi_config(endpoint: str, executable: str, service_name: str, service_namespace: str) -> str:
@@ -1299,7 +1356,7 @@ class DjangoIntegrationConfigurationService:
                 "java": "java -javaagent:./opentelemetry-javaagent.jar -jar app.jar",
                 "go": _GO_SDK_GUIDE,
                 "dotnet": "dotnet App.dll",
-                "php": "php app.php",
+                "php": _php_fpm_pool_command(environment),
                 "ruby": _RUBY_SDK_GUIDE,
                 "cpp": _CPP_SDK_GUIDE,
                 "erlang": _ERLANG_SDK_GUIDE,
