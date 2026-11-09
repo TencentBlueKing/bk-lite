@@ -18,4 +18,5 @@ include(
     "components/nats.py",
     "components/extra.py",
     "components/mlflow.py",
+    "components/itsm.py",
 )
