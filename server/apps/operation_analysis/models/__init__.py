@@ -4,6 +4,7 @@
 # @Author: windyzhao
 
 from apps.operation_analysis.models.canvas_draft import CanvasDraftCheckpoint
+from apps.operation_analysis.models.carousel import CanvasCarousel, CanvasCarouselItem
 from apps.operation_analysis.models.datasource_models import DataConnection, DataSourceAPIModel, DataSourceTag, NameSpace
 from apps.operation_analysis.models.excel_materialization_models import ExcelMaterializationSlot
 from apps.operation_analysis.models.homepage import HomepagePreference
@@ -18,6 +19,8 @@ from apps.operation_analysis.models.subscription_models import (
 )
 
 __all__ = [
+    "CanvasCarousel",
+    "CanvasCarouselItem",
     "CanvasDraftCheckpoint",
     "DataConnection",
     "DataSourceAPIModel",

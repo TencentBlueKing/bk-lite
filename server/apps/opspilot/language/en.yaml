@@ -299,11 +299,11 @@ tools:
       job_mgmt_run_library:
         description: Execute a library script by id. target_source is 作业管理目标 or 节点管理目标. target_ids is the id from search or list, comma-separated. Job targets use a numeric id. Nodes use the node primary key. Do not pass an IP.
       job_mgmt_run_custom:
-        description: Execute a custom script from the user's own words. script_type is shell, python, powershell, or bat. target_ids is the id from search or list, not an IP. Linux accepts shell and python. Windows accepts powershell and bat.
+        description: Execute a custom script after user confirmation; the agent may generate it. script_type is shell, python, powershell, or bat. target_ids is the id from search or list, not an IP. Linux accepts shell and python. Windows accepts powershell and bat.
       job_mgmt_distribute:
         description: Distribute files staged in this conversation. target_ids is the id from search or list, not an IP. A finished job reports only success or failure. An unfinished job returns the job record link and must not be called a failure.
       job_mgmt_query:
-        description: Query a job id already stored for this conversation. Do not submit again.
+        description: Query a job by id in the current organization, or the latest job recorded in this conversation when no id is given. Do not submit again.
       job_mgmt_schedule_watch:
         description: After the user agrees, check the same job id on an interval. Do not execute it again.
   cmdb:

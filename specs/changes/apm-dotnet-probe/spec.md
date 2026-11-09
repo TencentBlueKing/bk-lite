@@ -123,8 +123,9 @@ Alpine（musl）、ARM64、Windows / IIS、macOS 与 .NET Framework 均不在第
 ## Out of Scope
 
 - Alpine / musl 制品与接入页「常规 Linux / Alpine」切换（第二版）。
-- ARM64（企业版）。
-- Windows / IIS、macOS、.NET Framework。
+- ARM64。2026-11-03 起全部 APM 探针的 ARM 都先不做，见 `docs/design/product-decisions/apm-probe-coverage.md`。
+- Windows / IIS 与 .NET Framework 的接入由 `specs/changes/apm-probe-coverage/spec.md` 承接。本规格仍只描述 Linux x86_64 glibc 这一份制品，其下载地址不变。
+- macOS。
 - 集合包或安装时自动探测 libc / 架构。
 - 前四种语言按 glibc / musl 拆分（现有一份 Linux 包维持不变）。
 - .NET metrics / logs 上报、Collector 卡片、eBPF、K8s Operator 注入。
@@ -140,4 +141,5 @@ Alpine（musl）、ARM64、Windows / IIS、macOS 与 .NET Framework 均不在第
 - 部署侧的现存问题（发布流水线未执行 `apm_probe_init`、制品名与对象 key 不同）见
   [TencentBlueKing/bk-lite#5097](https://github.com/TencentBlueKing/bk-lite/issues/5097)；
   .NET 制品应作为第五项一并纳入该流水线要求。
+- 2026-11-04：Windows 制品不再属于本规格的排除项，改由探针补齐规格交付。本文件的 Linux glibc 片段、制品名和「不支持 Alpine、ARM64、Windows」范围句保持有效，这句话指这一份 zip，不是产品没有 Windows 探针。
 - 相关 ADR：`0006`（区域 NATS / VictoriaTraces 管道）、`0008`（可信区域入口，客户端 `bk.*` 不进 Span）。

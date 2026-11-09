@@ -297,6 +297,18 @@ export const CREDENTIAL_DESCRIPTORS = {
         { key: 'azureTenantId' }, { key: 'azureSubscriptionId' },
       ],
     },
+    azurelocal_cmdb: {
+      ...platformApiDescriptor(443),
+      defaultPort: undefined,
+      credentialKindKey: 'azureOAuth',
+      instructionKey: 'azureOAuth',
+      fields: [
+        { key: 'azureClientId' }, { key: 'azureClientSecret' },
+        { key: 'azureTenantId' }, { key: 'azureSubscriptionId' },
+        { key: 'azureResourceGroup' }, { key: 'azureClusterName' },
+        { key: 'azureCloud' }, { key: 'azureResourceUri' },
+      ],
+    },
     aws: {
       formKind: 'cloud',
       protocolKey: 'aws',
@@ -400,6 +412,35 @@ export const CREDENTIAL_DESCRIPTORS = {
         { key: 'sshAccount' },
         { key: 'sshPassword' },
         { key: 'sshPort', defaultValue: '22' },
+      ],
+    },
+    redis: {
+      formKind: 'ssh',
+      protocolKey: 'ssh',
+      credentialKindKey: 'hostAccount',
+      instructionKey: 'redisJob',
+      defaultPort: 22,
+      fields: [
+        { key: 'sshAccount' },
+        { key: 'sshPassword' },
+        { key: 'sshPort', defaultValue: '22' },
+        { key: 'redisServiceUsername' },
+        { key: 'redisServicePassword' },
+      ],
+    },
+    mongodb: {
+      formKind: 'ssh',
+      protocolKey: 'ssh',
+      credentialKindKey: 'hostAccount',
+      instructionKey: 'mongodbJob',
+      defaultPort: 22,
+      fields: [
+        { key: 'sshAccount' },
+        { key: 'sshPassword' },
+        { key: 'sshPort', defaultValue: '22' },
+        { key: 'mongoServiceUsername' },
+        { key: 'mongoServicePassword' },
+        { key: 'mongoAuthSource', defaultValue: 'admin' },
       ],
     },
   },
@@ -511,6 +552,9 @@ export function getCredentialDescriptor(
       field.key.endsWith('Port') ? { ...field, defaultValue: String(port) } : field),
     };
   };
+  if (model.model_id === 'redis' || model.model_id === 'mongodb') {
+    return withPort(CREDENTIAL_DESCRIPTORS.models[model.model_id]);
+  }
   if (model.credential_protocol) {
     const protocolDescriptor = CREDENTIAL_DESCRIPTORS.protocols[
       model.credential_protocol as keyof typeof CREDENTIAL_DESCRIPTORS.protocols

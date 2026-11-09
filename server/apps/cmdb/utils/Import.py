@@ -18,6 +18,7 @@ from apps.cmdb.constants.field_constraints import TAG_ATTR_ID, TAG_MODE_FREE
 from apps.cmdb.graph.drivers.graph_client import GraphClient
 from apps.cmdb.model_ops.extensions import is_file_attr_type
 from apps.cmdb.models import CREATE_INST_ASST
+from apps.cmdb.services.host_sync_identity import CLOUD_ATTR_BY_MODEL, parse_cloud_id
 from apps.cmdb.services.instance_identity import prepare_new_instance_identity
 from apps.cmdb.services.model import ModelManage
 from apps.cmdb.services.unique_rule import build_unique_rule_context
@@ -45,6 +46,10 @@ class Import:
         self.model_asso_map = self.get_model_asso_map()
         # 用于收集数据验证错误
         self.validation_errors = []
+        # 一次导入只拉一次节点管理云区域。不可用时拒绝该字段，不把未核对的值写入。
+        self._cloud_region_loaded = False
+        self._cloud_region_rows = []
+        self._cloud_region_unavailable = False
         # 缓存的字段映射，由 _build_field_maps 初始化
         self._field_maps = None
         # 异步导入按 Excel 列号记住字段位置，供错误报告定位。
@@ -388,6 +393,56 @@ class Import:
 
         return enum_id, None, organization_cell_provided
 
+    def _ensure_cloud_regions(self):
+        """一次导入只问一次节点管理。清单不是列表或调用失败时，本文件内的云区域都拒绝。"""
+        if self._cloud_region_loaded:
+            return
+        self._cloud_region_loaded = True
+        try:
+            from apps.rpc.node_mgmt import NodeMgmt
+
+            rows = NodeMgmt().cloud_region_list()
+        except Exception:  # noqa: BLE001 - 节点管理不可用时按行拒绝，不把异常文本带回单元格
+            self._cloud_region_unavailable = True
+            return
+        if not isinstance(rows, list):
+            self._cloud_region_unavailable = True
+            return
+        self._cloud_region_rows = rows
+
+    @staticmethod
+    def match_cloud_region(value, regions):
+        """单元格按云区域 ID 或名称命中节点管理清单时，返回该云区域 ID。"""
+        by_id = {}
+        by_name = {}
+        for item in regions or []:
+            if not isinstance(item, dict):
+                continue
+            region_id = parse_cloud_id(item.get("id"))
+            if region_id is None:
+                continue
+            by_id[region_id] = region_id
+            name = str(item.get("name") or "").strip()
+            if name and name not in by_name:
+                by_name[name] = region_id
+        parsed = parse_cloud_id(value)
+        if parsed is not None and parsed in by_id:
+            return parsed
+        text = "" if value is None else str(value).strip()
+        if text in by_name:
+            return by_name[text]
+        return None
+
+    def _validated_cloud_region(self, key, value, row_index, field_maps):
+        attr_name = field_maps["attr_name_map"].get(key, key)
+        self._ensure_cloud_regions()
+        if self._cloud_region_unavailable:
+            return None, f"第{row_index}行，字段'{attr_name}'暂时无法核对云区域"
+        region_id = self.match_cloud_region(value, self._cloud_region_rows)
+        if region_id is None:
+            return None, f"第{row_index}行，字段'{attr_name}'的值'{value}'不在节点管理云区域中"
+        return region_id, None
+
     def _process_cell_value(self, key, value, row_index, field_maps, allowed_org_set, item):
         """处理单个单元格的值。
 
@@ -403,6 +458,14 @@ class Import:
             tuple: (should_continue, error_msg, organization_cell_provided)
         """
         organization_cell_provided = False
+
+        cloud_field = CLOUD_ATTR_BY_MODEL.get(self.model_id)
+        if cloud_field and key == cloud_field:
+            region_id, error_msg = self._validated_cloud_region(key, value, row_index, field_maps)
+            if error_msg:
+                return True, error_msg, organization_cell_provided
+            item[key] = region_id
+            return True, None, organization_cell_provided
 
         # 处理类型转换字段
         if key in field_maps["need_update_type"]:

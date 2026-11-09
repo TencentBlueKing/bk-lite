@@ -14,6 +14,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 
+from django.core.cache import cache
 from django.core.files.base import ContentFile
 from django.db import close_old_connections
 from django.utils import timezone
@@ -55,12 +56,6 @@ STAGED_FILE_DAYS = 7
 WATCH_HOURS = 24
 DEFAULT_WATCH_MINUTES = 60
 CUSTOM_TIMEOUT_SECONDS = 600
-_TYPE_PATTERNS = {
-    "shell": re.compile(r"(?i)(?<![A-Za-z0-9])(?:shell|bash|sh)(?![A-Za-z0-9])"),
-    "python": re.compile(r"(?i)(?<![A-Za-z0-9])python(?![A-Za-z0-9])"),
-    "powershell": re.compile(r"(?i)(?<![A-Za-z0-9])(?:powershell|pwsh|ps)(?![A-Za-z0-9])"),
-    "bat": re.compile(r"(?i)(?<![A-Za-z0-9])(?:bat|batch|cmd)(?![A-Za-z0-9])"),
-}
 
 
 class JobToolError(Exception):
@@ -745,13 +740,6 @@ def run_library_script(config, *, script_id, target_source, target_ids, params=N
     return _submit_script(user_info, session_key, body, user_text, confirmed_rerun)
 
 
-def _custom_script_stated(script_type: str, content: str, texts: list[str]) -> bool:
-    pattern = _TYPE_PATTERNS.get(script_type)
-    if not pattern or not content:
-        return False
-    return any(content in text and pattern.search(text) for text in texts)
-
-
 def run_custom_script(
     config,
     *,
@@ -767,11 +755,8 @@ def run_custom_script(
     user_info, session_key, _configurable = session_context(config)
     user_text = current_user_text(config, session_key)
     content = str(script_content or "").strip()
-    if not _custom_script_stated(script_type, content, user_statement_texts(config, session_key)):
-        return {
-            "result": False,
-            "message": "本会话里还没有同一句用户原话同时包含这种脚本类型和这段正文。不要代写，不要编指定句式让用户重说，也不要重新询问已经选过的目标。",
-        }
+    if script_type not in {"shell", "python", "powershell", "bat"} or not content:
+        return {"result": False, "message": "请提供有效的脚本类型和非空脚本内容。"}
     try:
         timeout_value = int(timeout or CUSTOM_TIMEOUT_SECONDS)
     except (TypeError, ValueError):
@@ -789,9 +774,49 @@ def run_custom_script(
         "target_ids": target_ids,
         "name": job_name,
         "timeout": timeout_value,
-        "danger_confirmed": _confirmed(danger_confirmed, user_text, "确认执行"),
+        "danger_confirmed": False,
     }
-    return _submit_script(user_info, session_key, body, user_text, confirmed_rerun)
+    key_material = json.dumps([user_info, session_key], ensure_ascii=False, sort_keys=True)
+    key = "opspilot:job-custom-confirm:" + hashlib.sha256(key_material.encode()).hexdigest()
+    fingerprint = _fingerprint("custom-confirm", {**body, "params": {"timeout": timeout_value}})
+    pending = cache.get(key)
+    confirmed = pending and user_text.strip() == pending.get("confirmation")
+    if not pending or pending.get("fingerprint") != fingerprint or not confirmed or pending.get("prompt_user_text") == user_text:
+        confirmation = "确认执行新脚本" if user_text.strip() == "确认执行" else "确认执行"
+        cache.set(key, {"fingerprint": fingerprint, "prompt_user_text": user_text, "stage": "script", "confirmation": confirmation}, timeout=1800)
+        return {
+            "ask": True,
+            "question": f"请确认在 {body['target_source']} 目标 {target_ids} 上执行以下 {script_type} 脚本：\n```{script_type}\n{content}\n```",
+            "options": [confirmation, "取消"],
+        }
+    body["danger_confirmed"] = pending.get("stage") == "danger" or pending.get("danger_confirmed", False)
+    lock_key = key + ":submitting"
+    if not cache.add(lock_key, True, timeout=360):
+        return {"result": False, "message": "该脚本正在提交或等待结果，请勿重复执行。"}
+    try:
+        if cache.get(key) != pending:
+            return {"result": False, "message": "确认状态已变化，请重新确认脚本。"}
+        result = _submit_script(user_info, session_key, body, user_text, confirmed_rerun)
+        if isinstance(result, dict) and result.get("code") == "confirm":
+            cache.set(key, {"fingerprint": fingerprint, "prompt_user_text": user_text, "stage": "danger", "confirmation": "确认高危执行"}, timeout=1800)
+            result = {**result, "message": "请先向用户展示命中的高危规则，等待用户选择「确认高危执行」后再提交。"}
+        elif isinstance(result, dict) and result.get("ask"):
+            cache.set(
+                key,
+                {
+                    "fingerprint": fingerprint,
+                    "prompt_user_text": user_text,
+                    "stage": "rerun",
+                    "confirmation": "确认重跑",
+                    "danger_confirmed": body["danger_confirmed"],
+                },
+                timeout=1800,
+            )
+        else:
+            cache.delete(key)
+        return result
+    finally:
+        cache.delete(lock_key)
 
 
 def _overwrite_strategy(user_text: str):
@@ -1129,11 +1154,20 @@ def distribute_staged_files(
 def query_job(config, task_id=None):
     user_info, session_key, _configurable = session_context(config)
     anchor = _find_note(user_info, session_key, task_id=task_id) if task_id else None
-    if anchor is None:
+    if task_id is None:
         anchor = _find_note(user_info, session_key)
-    if anchor is None:
+    if anchor is None and not task_id:
         return {"result": False, "message": "当前会话没有作业"}
-    result = _call(ACTION_QUERY, user_info, {"task_id": anchor.task_id})
+    result = _call(ACTION_QUERY, user_info, {"task_id": task_id if task_id else anchor.task_id})
+    if anchor is None:
+        if not result.get("result"):
+            return result
+        data = result["data"]
+        if data.get("job_type") == "file_distribution":
+            return _file_tool_result(None, data)
+        payload = _prepare_display(data)
+        _publish_display(payload)
+        return _model_script_json(payload)
     if anchor.kind == KIND_SCRIPT and not result.get("result"):
         payload = {
             "task_id": anchor.task_id,

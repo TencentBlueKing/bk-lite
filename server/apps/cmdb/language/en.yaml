@@ -31,6 +31,7 @@ CLASSIFICATION:
   inspurincloudrail: Inspur HCI
   sangforscp: Sangfor Platform
   nutanixhci: Nutanix HCI
+  azurelocal: Azure Local
   zstack: ZStack
   winsphere: WinSphere
   directory_mail: Directory and Mail
@@ -237,6 +238,9 @@ MODEL:
   nutanixhci_vg: Nutanix Volume Group
   nutanixhci_vd: Nutanix Virtual Disk
   nutanixhci_disk: Nutanix Physical Disk
+  azurelocal: Azure Local Cluster
+  azurelocal_node: Azure Local Node
+  azurelocal_vm: Azure Local VM
   opengauss: openGauss
   kingbase: KingbaseES
   vastbase: Vastbase
@@ -3381,6 +3385,46 @@ ATTR:
     status: Status
     serial_number: Serial Number
     disk_type: Disk Type
+  azurelocal:
+    inst_name: Name
+    organization: Organization
+    tag: Tag
+    resource_name: Resource Name
+    resource_id: Resource ID
+    subscription_id: Subscription ID
+    resource_group: Resource Group
+    location: Location
+    status: Status
+    connectivity_status: Connectivity Status
+    cluster_version: Cluster Version
+    manufacturer: Manufacturer
+    registration_time: Registration Time
+    last_sync_time: Last Sync Time
+  azurelocal_node:
+    inst_name: Name
+    organization: Organization
+    tag: Tag
+    resource_name: Resource Name
+    resource_id: Resource ID
+    manufacturer: Manufacturer
+    model: Model
+    serial_number: Serial Number
+    core_count: CPU Cores
+    memory_gib: Memory (GiB)
+    os_name: Operating System
+    os_version: OS Version
+  azurelocal_vm:
+    inst_name: Name
+    organization: Organization
+    tag: Tag
+    resource_name: Resource Name
+    resource_id: Resource ID
+    status: Status
+    os_name: Operating System
+    vcpus: vCPU Count
+    memory_mb: Memory (MB)
+    ip_addr: IP Address
+    cluster_node_name: Node
   opengauss:
     inst_name: Name
     organization: Organization

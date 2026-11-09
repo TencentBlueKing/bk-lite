@@ -76,11 +76,14 @@ Status: ready
 
 - 任一模块删除实例时，best-effort 通知另外两边的统一 lifecycle ingest（钩子失败不阻断删除）。
 - **节点删除/卸载**：
-  - 删除节点时 **必须** 向 CMDB 发 lifecycle：只清除 `node_id`，不删实例（悬挂 `node_id` 视为脏数据）。
-  - 页面确认 `retire_linked` 后额外向监控发 lifecycle：监控侧软删/停采。
+  - 删除节点时 **必须** 向 CMDB 发 lifecycle：只清除 `node_id`，不删实例（悬挂 `node_id` 视为脏数据）。卸载不新增 CMDB lifecycle。
+  - 删除与卸载使用同一套关联检查。页面不再用 `retire_linked` 决定监控侧行为。
+  - 联动监控主机（`node_id` / `monitor_id` 对应的那一台）随动软退役：离开在线列表、停采、关闭该实例活动告警；实例行和子配置保留，历史指标仍按原实例 ID 查看；同时清掉监控实例上的 `node_id`。节点以后重新出现按新推送建立关联，不自动捞回旧实例。
+  - 非联动监控采集对象和日志采集实例不删除、不删子配置，只去掉节点分配，并在页面展示「采集节点已删除」，提供清除采集配置和更换采集节点。清除只删这份配置和对应子配置。更换只把该实例自己的子配置挂到新节点父配置下。
+  - 默认父配置名「采集器-节点ID」在节点退出后让出。联动主机退役后，其主机子配置不能被无主主机子配置清理删掉。
   - CMDB：只清除 `node_id`，不删实例。
 - **CMDB / 监控删除**：对端一律只清关联 ID（`node_id` / `cmdb_id` / `monitor_id`），不做真删。删除通知在操作者组织为空时，用被删对象自身组织作为 lifecycle 授权；lifecycle 按精确 ID 清指针，组织缺失也必须能清掉对端指针。
-- **节点 `retire_linked`**：监控侧软删后还要清本行 `cmdb_id`，并通知 CMDB 清 `monitor_id`；CMDB 资产保留。
+- **节点删除不再发送 CMDB 退役**：联动主机软退役只发生在监控侧，不清监控行上的 `cmdb_id`，也不因此通知 CMDB 清 `monitor_id`。CMDB 资产保留，删除节点时仍只清 CMDB 上的 `node_id`。
 - **修改身份字段**：改 IP / 名称 / 组织不断开既有绑定，也不自动改绑；用户写路径不得覆盖 `monitor_id` / `cmdb_id` / `node_id`。
 - 节点侧 lifecycle 永不删节点，只清本侧关联指针。
 - ~~本能力就绪后关闭并退役 NodeMgmtSync 拉取同步；不得与推送长期并行双写。~~ 已被 [`cmdb-node-mgmt-sync-shared-identity`](../cmdb-node-mgmt-sync-shared-identity/spec.md) 取代：拉同步默认打开，与推送共用 `node_id` + ip/cloud 认实体，禁止双建。

@@ -322,7 +322,13 @@ export function ExecutionDetailDrawer({ executionId, initialNodeReference, initi
         }}
         width={980}
         title={t('workflowOrchestration.execution.details', '执行详情')}
-        subTitle={execution ? `${execution.workflow_name} · v${execution.workflow_version}` : ''}
+        subTitle={execution
+          ? `${execution.workflow_name} · ${
+            execution.mode === 'DEBUG'
+              ? t('workflowOrchestration.execution.debug', '调试')
+              : `v${execution.workflow_version}`
+          }`
+          : ''}
         extra={execution ? <div className="flex items-center gap-2">
           <WorkflowPermission operation="View" area="executions" instancePermissions={execution.permission}><Button
             type="link"

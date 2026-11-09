@@ -15,6 +15,7 @@ export interface ReportViewSets {
 export interface ReportProps {
   selectedReport?: DirItem | null;
   shareMode?: boolean;
+  playbackMode?: boolean;
   renderMode?: boolean;
   renderFilterValues?: Record<string, FilterValue>;
   renderDataSourceIds?: number[];

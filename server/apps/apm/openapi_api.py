@@ -218,6 +218,8 @@ def openapi_create_integration_config(
     environment,
     service_version="",
     sample_rate=100,
+    probe_platform="linux",
+    process_executable="",
     *,
     team=None,
     user_info=None,
@@ -233,4 +235,6 @@ def openapi_create_integration_config(
         environment=environment,
         service_version=service_version,
         sample_rate=sample_rate,
+        probe_platform=probe_platform,
+        process_executable=process_executable,
     )

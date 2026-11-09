@@ -12,14 +12,13 @@ import {
   DotNetOutlined,
   ExperimentOutlined,
   JavaScriptOutlined,
-  KubernetesOutlined,
   PythonOutlined,
 } from '@ant-design/icons';
 import { Alert, Button, Drawer, Form, Input, message, Segmented, Select, Space, Tabs, Tag, Typography } from 'antd';
 import useApmApi from '@/app/apm/api';
 import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell';
 import CatalogState, { type CatalogStateKind } from '@/app/apm/components/catalog-state';
-import { getProbeCapability, type ProbeLanguage } from '@/app/apm/integration/probe-capability-matrix';
+import { getProbeCapability, type ProbeLanguage, type ProbePlatform } from '@/app/apm/integration/probe-capability-matrix';
 import type { ApmApplication, ApmCloudRegion, ApmIngestSnippet, ApmIngestSnippetInput } from '@/app/apm/types';
 import { HandledRequestError } from '@/utils/request';
 import { useTranslation } from '@/utils/i18n';
@@ -50,11 +49,15 @@ const INTEGRATION_GROUPS: { key: string; title: string; icon: ReactNode; methods
       { key: 'python', title: 'Python', icon: <PythonOutlined aria-hidden="true" />, language: 'python', available: true },
       { key: 'dotnet', title: '.NET', icon: <DotNetOutlined aria-hidden="true" />, language: 'dotnet', available: true },
       { key: 'go', title: 'Go', icon: <CodeOutlined aria-hidden="true" />, language: 'go', available: true },
+      { key: 'php', title: 'PHP', icon: <CodeOutlined aria-hidden="true" />, language: 'php', available: true },
+      { key: 'ruby', title: 'Ruby', icon: <CodeOutlined aria-hidden="true" />, language: 'ruby', available: true },
+      { key: 'cpp', title: 'C++', icon: <CodeOutlined aria-hidden="true" />, language: 'cpp', available: true },
+      { key: 'erlang', title: 'Erlang/Elixir', icon: <CodeOutlined aria-hidden="true" />, language: 'erlang', available: true },
+      { key: 'swift', title: 'Swift', icon: <CodeOutlined aria-hidden="true" />, language: 'swift', available: true },
     ],
   },
-  { key: 'otel', title: 'OpenTelemetry', icon: <ApiOutlined aria-hidden="true" />, methods: [{ key: 'otel-collector', title: 'OTel Collector', icon: <DeploymentUnitOutlined aria-hidden="true" />, available: false }] },
-  { key: 'ebpf', title: 'eBPF', icon: <ExperimentOutlined aria-hidden="true" />, methods: [{ key: 'ebpf-obi', title: 'eBPF', icon: <ExperimentOutlined aria-hidden="true" />, available: false }] },
-  { key: 'kubernetes', title: 'Kubernetes', icon: <KubernetesOutlined aria-hidden="true" />, methods: [{ key: 'otel-operator', title: 'Kubernetes', icon: <KubernetesOutlined aria-hidden="true" />, available: false }] },
+  { key: 'otel', title: 'OpenTelemetry', icon: <ApiOutlined aria-hidden="true" />, methods: [{ key: 'otel-collector', title: 'OTel Collector', icon: <DeploymentUnitOutlined aria-hidden="true" />, language: 'collector', available: true }] },
+  { key: 'ebpf', title: 'eBPF', icon: <ExperimentOutlined aria-hidden="true" />, methods: [{ key: 'ebpf-obi', title: 'eBPF', icon: <ExperimentOutlined aria-hidden="true" />, language: 'obi', available: true }] },
 ];
 
 type PageState = 'loading' | 'empty' | 'ready' | 'error';
@@ -171,6 +174,7 @@ function snippetOperationGuide(
   language: ApmIngestSnippetInput['language'],
   mode: SnippetMode,
   t: Translate,
+  platform: ProbePlatform = 'linux',
 ): string {
   const guides: Record<ApmIngestSnippetInput['language'], Record<SnippetMode, string>> = {
     nodejs: {
@@ -189,14 +193,60 @@ function snippetOperationGuide(
       kubernetes: t('apm.integration.guidePythonKubernetes', '将以下环境变量合并到应用 Pod，确保镜像以 `opentelemetry-instrument` 启动后滚动重启。'),
     },
     dotnet: {
-      agent: t('apm.integration.guideDotnetHost', '按以下脚本安装自动探针并导出环境变量后，用原有 `dotnet` 启动命令重启应用。'),
+      agent: platform === 'windows'
+        ? t('apm.integration.guideDotnetWindowsHost', '在当前 PowerShell 会话执行以下脚本，然后自行重启目标应用。脚本只设置当前进程，不重启 Windows 服务，也不写入注册表。')
+        : t('apm.integration.guideDotnetHost', '按以下脚本安装自动探针并导出环境变量后，用原有 `dotnet` 启动命令重启应用。'),
       docker: t('apm.integration.guideDotnetDocker', '将自动探针安装进镜像，用 `-e` 注入 CLR 分析器环境变量后重新构建、启动容器。'),
       kubernetes: t('apm.integration.guideDotnetKubernetes', '将以下环境变量合并到应用 Pod，确保镜像包含 .NET 自动探针后滚动重启。'),
+    },
+    php: {
+      agent: t('apm.integration.guidePhpHost', '按以下脚本安装 PHP NTS 8.1–8.4 扩展和钉死的 Composer 包，然后重启 PHP 进程。'),
+      docker: t('apm.integration.guidePhpDocker', '将以下安装命令写入 Dockerfile，用 `-e` 注入环境变量后重新构建、启动容器。'),
+      kubernetes: t('apm.integration.guidePhpKubernetes', '将以下环境变量合并到应用 Pod，确保镜像已预装 PHP NTS 8.1–8.4 扩展和钉死的 Composer 包后滚动重启。'),
+    },
+    obi: {
+      agent: t(
+        'apm.integration.guideObiHost',
+        '在符合内核和权限要求的 Linux amd64 主机上执行以下脚本。它只观察指定的 Go 可执行文件，不修改应用二进制，也不要和语言探针装在同一进程。',
+      ),
+      docker: t(
+        'apm.integration.guideObiHost',
+        '在符合内核和权限要求的 Linux amd64 主机上执行以下脚本。它只观察指定的 Go 可执行文件，不修改应用二进制，也不要和语言探针装在同一进程。',
+      ),
+      kubernetes: t(
+        'apm.integration.guideObiHost',
+        '在符合内核和权限要求的 Linux amd64 主机上执行以下脚本。它只观察指定的 Go 可执行文件，不修改应用二进制，也不要和语言探针装在同一进程。',
+      ),
     },
     go: {
       agent: t('apm.integration.guideGoHost', '按以下指南审阅 OpenTelemetry Go SDK 示例，接入应用代码后重新编译并重启。'),
       docker: t('apm.integration.guideGoDocker', '将 SDK 依赖安装进镜像，完成 Go SDK 初始化后重新构建、启动容器。'),
       kubernetes: t('apm.integration.guideGoKubernetes', '将以下环境变量合并到应用 Pod；应用二进制需先完成 OpenTelemetry Go SDK 初始化，然后滚动重启。'),
+    },
+    ruby: {
+      agent: t('apm.integration.guideRubyHost', '按以下指南审阅 Rack 初始化示例，接入应用代码后重启 Ruby 进程。'),
+      docker: t('apm.integration.guideRubyDocker', '将离线 gem 安装进镜像，完成 Rack 初始化后重新构建、启动容器。'),
+      kubernetes: t('apm.integration.guideRubyKubernetes', '将以下环境变量合并到应用 Pod；应用需先完成 Rack 初始化，然后滚动重启。'),
+    },
+    cpp: {
+      agent: t('apm.integration.guideCppHost', '按以下指南审阅入口 Span 示例，对着离线 prefix 编译后重启进程。'),
+      docker: t('apm.integration.guideCppDocker', '将离线 prefix 放进镜像，完成入口 Span 后重新构建、启动容器。'),
+      kubernetes: t('apm.integration.guideCppKubernetes', '将以下环境变量合并到应用 Pod；应用二进制需先完成入口 Span，然后滚动重启。'),
+    },
+    erlang: {
+      agent: t('apm.integration.guideErlangHost', '按以下指南审阅 path 依赖和入口 Span 示例，接入应用后重启进程。'),
+      docker: t('apm.integration.guideErlangDocker', '将离线 Hex 包放进镜像，完成入口 Span 后重新构建、启动容器。'),
+      kubernetes: t('apm.integration.guideErlangKubernetes', '将以下环境变量合并到应用 Pod；应用需先完成入口 Span，然后滚动重启。'),
+    },
+    swift: {
+      agent: t('apm.integration.guideSwiftHost', '按以下指南审阅本地 Swift Package 示例，接入应用后重新编译并重启。'),
+      docker: t('apm.integration.guideSwiftDocker', '将本地 Swift Package 放进镜像，完成入口 Span 后重新构建、启动容器。'),
+      kubernetes: t('apm.integration.guideSwiftKubernetes', '将以下环境变量合并到应用 Pod；应用需先使用本地 Swift Package，然后滚动重启。'),
+    },
+    collector: {
+      agent: t('apm.integration.guideCollector', '把下面的片段合并进已有 Collector 后重启。receivers 改成这份 Collector 已经在用的接收器。Collector 必须能访问所选云区域的内网地址，配置里不要加请求头。只转发 Trace，并把 service.namespace 写成所选应用。'),
+      docker: t('apm.integration.guideCollector', '把下面的片段合并进已有 Collector 后重启。receivers 改成这份 Collector 已经在用的接收器。Collector 必须能访问所选云区域的内网地址，配置里不要加请求头。只转发 Trace，并把 service.namespace 写成所选应用。'),
+      kubernetes: t('apm.integration.guideCollector', '把下面的片段合并进已有 Collector 后重启。receivers 改成这份 Collector 已经在用的接收器。Collector 必须能访问所选云区域的内网地址，配置里不要加请求头。只转发 Trace，并把 service.namespace 写成所选应用。'),
     },
   };
   return guides[language][mode];
@@ -214,15 +264,19 @@ function CapabilityTagList({ items }: { items: readonly string[] }) {
 
 function ProbeCapabilityPane({
   language,
+  platform = 'linux',
   kind,
   t,
 }: {
   language: ProbeLanguage;
+  platform?: ProbePlatform;
   kind: 'frameworks' | 'discovery';
   t: Translate;
 }) {
-  const capability = getProbeCapability(language);
-  const items = kind === 'frameworks' ? capability.frameworks : capability.inferredComponents;
+  const capability = getProbeCapability(language, platform);
+  const items = (kind === 'frameworks' ? capability.frameworks : capability.inferredComponents).map((item) => (
+    item === 'entry-span' ? t('apm.integration.entrySpan', '手动入口 Span') : item
+  ));
   return (
     <div className="flex flex-col gap-3 pt-1">
       <Typography.Text type="secondary" className="text-xs">
@@ -240,7 +294,13 @@ function ProbeCapabilityPane({
           ? t('apm.integration.frameworksHint', '以下为当前钉死探针版本精选支持的 Web / RPC 框架，不是完整 instrumentation 清单。')
           : t('apm.integration.discoveryHint', '以下类型会在该探针打出 Client Span 后，出现在应用详情拓扑上，作为推断下游。')}
       </Typography.Paragraph>
-      <CapabilityTagList items={items} />
+      {kind === 'discovery' && items.length === 0 ? (
+        <Typography.Text type="secondary" className="text-xs">
+          {t('apm.integration.noInferredComponents', '当前探针不声明数据库或消息队列推断组件。')}
+        </Typography.Text>
+      ) : (
+        <CapabilityTagList items={items} />
+      )}
       {kind === 'discovery' ? (
         <Typography.Paragraph type="secondary" className="!mb-0 text-xs">
           {t('apm.integration.discoveryFooter', '这是应用详情拓扑上的推断节点，不是 CMDB 或监控自动发现，也不会进入服务目录或应用列表。给 Web 服务装探针后，mysql 不会作为独立应用出现。')}
@@ -272,7 +332,7 @@ export default function ApmIntegrationAddPage() {
   const integrationGroups = useMemo(() => {
     const copy: Record<string, { description: string; badge?: string; title?: string }> = {
       nodejs: {
-        description: t('apm.integration.nodejsDesc', '自动探针，支持 Express / Nest / Koa / Fastify'),
+        description: t('apm.integration.nodejsDesc', '自动探针，支持 Express / Nest / Koa'),
         badge: t('apm.integration.recommended', '推荐'),
       },
       java: {
@@ -283,10 +343,29 @@ export default function ApmIntegrationAddPage() {
         description: t('apm.integration.pythonDesc', '自动探针，支持 Django / Flask / FastAPI'),
       },
       dotnet: {
-        description: t('apm.integration.dotnetDesc', '自动探针，支持 Linux x86_64 glibc'),
+        description: t('apm.integration.dotnetDesc', '自动探针，支持 Linux x86_64 glibc；Windows 仅限主机'),
+      },
+      php: {
+        description: t('apm.integration.phpDesc', '自动探针，支持 PHP NTS 8.1–8.4，含 Laravel / Symfony / Slim'),
       },
       go: {
         description: t('apm.integration.goDesc', '手动接入，生成 OpenTelemetry Provider 示例'),
+        badge: t('apm.integration.manualSdk', '手动 SDK'),
+      },
+      ruby: {
+        description: t('apm.integration.rubyDesc', '手动接入，生成 Rack 初始化示例'),
+        badge: t('apm.integration.manualSdk', '手动 SDK'),
+      },
+      cpp: {
+        description: t('apm.integration.cppDesc', '手动接入，生成最小入口 Span 示例'),
+        badge: t('apm.integration.manualSdk', '手动 SDK'),
+      },
+      erlang: {
+        description: t('apm.integration.erlangDesc', '手动接入，生成 Erlang/Elixir path 依赖示例'),
+        badge: t('apm.integration.manualSdk', '手动 SDK'),
+      },
+      swift: {
+        description: t('apm.integration.swiftDesc', '手动接入，生成本地 Swift Package 示例'),
         badge: t('apm.integration.manualSdk', '手动 SDK'),
       },
       'otel-collector': {
@@ -294,12 +373,11 @@ export default function ApmIntegrationAddPage() {
       },
       'ebpf-obi': {
         title: t('apm.integration.ebpfTitle', 'eBPF 自动注入（OBI）'),
-        description: t('apm.integration.ebpfDesc', '内核态自动采集服务链路'),
+        description: t(
+          'apm.integration.ebpfDesc',
+          '未安装语言探针时，只观察指定的 Go 可执行文件。不要和 Java、Python、Node.js、.NET、PHP 或 Go SDK 装在同一进程。',
+        ),
         badge: t('apm.integration.lowIntrusion', '低侵入'),
-      },
-      'otel-operator': {
-        title: t('apm.integration.k8sTitle', 'Kubernetes 自动注入'),
-        description: t('apm.integration.k8sDesc', 'OTel Operator 注解注入，自动接入集群服务'),
       },
     };
     return INTEGRATION_GROUPS.map((group) => ({
@@ -368,9 +446,44 @@ export default function ApmIntegrationAddPage() {
     label: region.name,
   })), [cloudRegions]);
   const isGo = selectedMethod?.language === 'go';
-  const generatedSnippetLabel = mode === 'kubernetes'
-    ? t('apm.integration.k8sSnippet', 'Kubernetes 配置片段')
-    : isGo ? t('apm.integration.goGuide', 'Go SDK 接入指南') : t('apm.integration.shellSnippet', 'Shell 接入片段');
+  const isManualSdk = isGo
+    || selectedMethod?.language === 'ruby'
+    || selectedMethod?.language === 'cpp'
+    || selectedMethod?.language === 'erlang'
+    || selectedMethod?.language === 'swift';
+  const isObi = selectedMethod?.language === 'obi';
+  const isCollector = selectedMethod?.language === 'collector';
+  const isDotnet = selectedMethod?.language === 'dotnet';
+  const probePlatform: ProbePlatform = isDotnet && formValues?.probe_platform === 'windows' ? 'windows' : 'linux';
+  const hostOnly = isObi || isCollector || probePlatform === 'windows';
+  const activeMode: SnippetMode = hostOnly ? 'agent' : mode;
+  const hostRuntimeLabel = isGo
+    ? t('apm.integration.goManual', 'Go 手动 SDK')
+    : isManualSdk
+      ? t('apm.integration.manualSdkRuntime', '{title} 手动 SDK', { title: selectedMethod?.title ?? '' })
+      : t('apm.integration.autoProbe', '{title} 自动探针', { title: selectedMethod?.title ?? '' });
+  const generatedSnippetLabel = isCollector
+    ? t('apm.integration.collectorSnippet', 'Collector 配置片段')
+    : activeMode === 'kubernetes'
+      ? t('apm.integration.k8sSnippet', 'Kubernetes 配置片段')
+      : probePlatform === 'windows'
+        ? t('apm.integration.powershellSnippet', 'PowerShell 接入片段')
+        : isGo
+          ? t('apm.integration.goGuide', 'Go SDK 接入指南')
+          : isManualSdk
+            ? t('apm.integration.manualGuide', '{title} SDK 接入指南', { title: selectedMethod?.title ?? '' })
+            : t('apm.integration.shellSnippet', 'Shell 接入片段');
+  const copyAriaLabel = isCollector
+    ? t('apm.integration.copyCollector', '复制 Collector 配置片段')
+    : probePlatform === 'windows'
+      ? t('apm.integration.copyPowershell', '复制 PowerShell 接入片段')
+      : activeMode === 'kubernetes'
+        ? t('apm.integration.copyK8s', '复制 Kubernetes 配置片段')
+        : isGo
+          ? t('apm.integration.copyGoGuide', '复制 Go SDK 接入指南')
+          : isManualSdk
+            ? t('apm.integration.copyManualGuide', '复制 {title} SDK 接入指南', { title: selectedMethod?.title ?? '' })
+            : t('apm.integration.copyShellSnippet', '复制 Shell 接入片段');
 
   const openMethod = (method: IntegrationMethod) => {
     if (!method.available || !method.language) return;
@@ -398,7 +511,9 @@ export default function ApmIntegrationAddPage() {
       const result = await getIngestSnippet({
         ...values,
         language: selectedMethod.language,
-        runtime: mode === 'agent' ? 'host' : mode,
+        runtime: activeMode === 'agent' ? 'host' : activeMode,
+        probe_platform: selectedMethod.language === 'dotnet' ? (values.probe_platform ?? 'linux') : 'linux',
+        process_executable: selectedMethod.language === 'obi' ? values.process_executable : '',
       });
       if (sequence !== requestSequence.current) return;
       setSnippet(result);
@@ -409,7 +524,7 @@ export default function ApmIntegrationAddPage() {
     } finally {
       if (sequence === requestSequence.current) setGenerating(false);
     }
-  }, [getIngestSnippet, mode, selectedMethod?.language, t]);
+  }, [activeMode, getIngestSnippet, selectedMethod?.language, t]);
 
   const watchedFormKey = JSON.stringify(formValues ?? {});
   useEffect(() => {
@@ -454,21 +569,16 @@ export default function ApmIntegrationAddPage() {
         </ApmSurface>
       ) : (
         <div className="flex flex-col gap-4">
-          {integrationGroups.map((group) => (
+          {integrationGroups.filter((group) => group.methods.some((method) => method.available)).map((group) => (
             <ApmSurface key={group.key}>
               <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-[var(--color-text-1)]"><span className="text-[var(--color-primary)]">{group.icon}</span>{group.title}</div>
               <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                {group.methods.map((method) => (
+                {group.methods.filter((method) => method.available).map((method) => (
                   <button
                     key={method.key}
-                    aria-label={method.available
-                      ? t('apm.integration.methodAria', '{title} 接入', { title: method.title })
-                      : t('apm.integration.methodAriaClosed', '{title} 接入，规划中', { title: method.title })}
-                    className="min-h-32 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] p-4 text-left transition-colors duration-150 enabled:cursor-pointer enabled:hover:border-[var(--color-primary)] enabled:hover:bg-[var(--color-fill-1)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-primary)] disabled:cursor-not-allowed disabled:opacity-50"
-                    disabled={!method.available}
-                    title={method.available
-                      ? t('apm.integration.selectMethod', '选择 {title} 接入', { title: method.title })
-                      : t('apm.integration.methodClosed', '{title} 接入规划中', { title: method.title })}
+                    aria-label={t('apm.integration.methodAria', '{title} 接入', { title: method.title })}
+                    className="min-h-32 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] p-4 text-left transition-colors duration-150 cursor-pointer hover:border-[var(--color-primary)] hover:bg-[var(--color-fill-1)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-primary)]"
+                    title={t('apm.integration.selectMethod', '选择 {title} 接入', { title: method.title })}
                     type="button"
                     onClick={() => openMethod(method)}
                   >
@@ -482,7 +592,7 @@ export default function ApmIntegrationAddPage() {
                           <Typography.Text type="secondary" className="text-xs leading-5">{method.description}</Typography.Text>
                         </div>
                       </div>
-                      <Space direction="vertical" align="end" size={4}>{method.badge ? <Tag color="blue">{method.badge}</Tag> : null}{!method.available ? <Tag>{t('apm.integration.planned', '规划中')}</Tag> : null}</Space>
+                      {method.badge ? <Tag color="blue">{method.badge}</Tag> : null}
                     </div>
                   </button>
                 ))}
@@ -523,6 +633,8 @@ export default function ApmIntegrationAddPage() {
                 service_version: '',
                 environment: 'production',
                 sample_rate: 100,
+                probe_platform: 'linux',
+                process_executable: '',
               }}
               onValuesChange={() => {
                 setSnippet(null);
@@ -544,16 +656,51 @@ export default function ApmIntegrationAddPage() {
                   />
                 </Form.Item>
               </div>
+              {isDotnet ? (
+                <Form.Item name="probe_platform" label={t('apm.integration.probePlatform', '探针平台')}>
+                  <Segmented
+                    aria-label={t('apm.integration.probePlatform', '探针平台')}
+                    options={[
+                      { label: 'Linux', value: 'linux' },
+                      { label: 'Windows', value: 'windows' },
+                    ]}
+                  />
+                </Form.Item>
+              ) : null}
+              {isObi ? (
+                <Form.Item
+                  name="process_executable"
+                  label={t('apm.integration.processExecutable', 'Go 可执行文件路径')}
+                  rules={[
+                    { required: true, whitespace: true, message: t('apm.integration.processExecutableRequired', '请输入绝对路径') },
+                    {
+                      pattern: /^\/(?!.*(?:^|\/)\.\.?(?:\/|$))(?:[A-Za-z0-9._+-]+\/)*[A-Za-z0-9._+-]+$/,
+                      message: t('apm.integration.processExecutableInvalid', '路径必须是不含空格和特殊字符的绝对路径'),
+                    },
+                  ]}
+                >
+                  <Input placeholder="/usr/local/bin/checkout" />
+                </Form.Item>
+              ) : null}
               <Form.Item label={t('apm.integration.runtime', '运行方式')} className="!mb-4">
                 <Segmented
                   aria-label={t('apm.integration.runtime', '运行方式')}
-                  value={mode}
+                  value={activeMode}
                   onChange={(value) => { setMode(value as SnippetMode); setSnippet(null); setGenerationError(null); }}
-                  options={[
-                    { label: isGo ? t('apm.integration.goManual', 'Go 手动 SDK') : t('apm.integration.autoProbe', '{title} 自动探针', { title: selectedMethod?.title ?? '' }), value: 'agent' },
-                    { label: t('apm.integration.dockerRuntime', 'Docker 运行（-e 注入）'), value: 'docker' },
-                    { label: t('apm.integration.k8sPod', 'Kubernetes Pod（Downward API）'), value: 'kubernetes' },
-                  ]}
+                  options={hostOnly
+                    ? [{
+                      label: isCollector
+                        ? t('apm.integration.collectorRuntime', '合并到现有 Collector')
+                        : isObi
+                          ? t('apm.integration.obiHost', '主机（指定 Go 进程）')
+                          : t('apm.integration.autoProbe', '{title} 自动探针', { title: selectedMethod?.title ?? '' }),
+                      value: 'agent',
+                    }]
+                    : [
+                      { label: hostRuntimeLabel, value: 'agent' },
+                      { label: t('apm.integration.dockerRuntime', 'Docker 运行（-e 注入）'), value: 'docker' },
+                      { label: t('apm.integration.k8sPod', 'Kubernetes Pod（Downward API）'), value: 'kubernetes' },
+                    ]}
                 />
               </Form.Item>
               {generationError ? (
@@ -595,11 +742,7 @@ export default function ApmIntegrationAddPage() {
                 <div role="group" aria-labelledby="apm-shell-snippet-title" className="mb-2 flex items-center justify-between gap-3">
                   <Typography.Text id="apm-shell-snippet-title" strong>{generatedSnippetLabel}</Typography.Text>
                   <Button
-                    aria-label={isGo && mode !== 'kubernetes'
-                      ? t('apm.integration.copyGoGuide', '复制 Go SDK 接入指南')
-                      : mode === 'kubernetes'
-                        ? t('apm.integration.copyK8s', '复制 Kubernetes 配置片段')
-                        : t('apm.integration.copyShellSnippet', '复制 Shell 接入片段')}
+                    aria-label={copyAriaLabel}
                     icon={<CopyOutlined aria-hidden />}
                     onClick={() => void copyWithFeedback(
                       snippet.code,
@@ -610,11 +753,13 @@ export default function ApmIntegrationAddPage() {
                 <pre className="max-h-[420px] overflow-auto rounded-lg border border-[var(--color-code-block-border)] bg-[var(--color-code-block-bg)] p-4 font-mono text-sm leading-6 text-[var(--color-code-block-text)]"><code>{snippet.code}</code></pre>
                 {selectedMethod?.language ? (
                   <Typography.Text className="mt-2 block text-sm text-[var(--color-text-2)]">
-                    {snippetOperationGuide(selectedMethod.language, mode, t)}
+                    {snippetOperationGuide(selectedMethod.language, activeMode, t, probePlatform)}
                   </Typography.Text>
                 ) : null}
                 <Typography.Text type="secondary" className="mt-1 block text-xs">
-                  {t('apm.integration.instanceIdentityHelp', '实例 ID 在应用进程启动时生成，每个副本唯一。')}
+                  {isCollector
+                    ? t('apm.integration.collectorIdentityHelp', '经过这条 pipeline 的 Trace 会归到所选应用。多个应用请各自生成一条 pipeline。')
+                    : t('apm.integration.instanceIdentityHelp', '实例 ID 在应用进程启动时生成，每个副本唯一。')}
                 </Typography.Text>
               </div>
             </div>
@@ -622,20 +767,22 @@ export default function ApmIntegrationAddPage() {
         </div>
               ),
             },
-            {
-              key: 'frameworks',
-              label: t('apm.integration.tabFrameworks', '支持框架'),
-              children: selectedMethod?.language ? (
-                <ProbeCapabilityPane language={selectedMethod.language} kind="frameworks" t={t} />
-              ) : null,
-            },
-            {
-              key: 'discovery',
-              label: t('apm.integration.tabDiscovery', '发现能力'),
-              children: selectedMethod?.language ? (
-                <ProbeCapabilityPane language={selectedMethod.language} kind="discovery" t={t} />
-              ) : null,
-            },
+            ...(!isCollector ? [
+              {
+                key: 'frameworks',
+                label: t('apm.integration.tabFrameworks', '支持框架'),
+                children: selectedMethod?.language ? (
+                  <ProbeCapabilityPane language={selectedMethod.language} platform={probePlatform} kind="frameworks" t={t} />
+                ) : null,
+              },
+              {
+                key: 'discovery',
+                label: t('apm.integration.tabDiscovery', '发现能力'),
+                children: selectedMethod?.language ? (
+                  <ProbeCapabilityPane language={selectedMethod.language} platform={probePlatform} kind="discovery" t={t} />
+                ) : null,
+              },
+            ] : []),
           ]}
         />
       </Drawer>

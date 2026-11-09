@@ -4,19 +4,45 @@ from django.db import migrations
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("alerts", "0008_alarmstrategy_and_more"),
     ]
 
     operations = [
-        migrations.RemoveField(model_name="correlationrules", name="aggregation_rules",),
-        migrations.AlterUniqueTogether(name="sessioneventrelation", unique_together=None,),
-        migrations.RemoveField(model_name="sessioneventrelation", name="event",),
-        migrations.RemoveField(model_name="sessioneventrelation", name="session",),
-        migrations.RemoveField(model_name="sessionwindow", name="events",),
-        migrations.DeleteModel(name="AggregationRules",),
-        migrations.DeleteModel(name="CorrelationRules",),
-        migrations.DeleteModel(name="SessionEventRelation",),
-        migrations.DeleteModel(name="SessionWindow",),
+        migrations.RemoveField(
+            model_name="correlationrules",
+            name="aggregation_rules",
+        ),
+        migrations.AlterUniqueTogether(
+            name="sessioneventrelation",
+            unique_together=None,
+        ),
+        # SQLite 重做表时不会丢掉已删除字段上的索引。先删掉这两条索引，
+        # 否则删除 session 时仍会按已经不存在的 event 建索引。
+        migrations.RemoveIndex(model_name="sessioneventrelation", name="alerts_sess_event_i_5ab59a_idx"),
+        migrations.RemoveIndex(model_name="sessioneventrelation", name="alerts_sess_session_76b0b9_idx"),
+        migrations.RemoveField(
+            model_name="sessioneventrelation",
+            name="event",
+        ),
+        migrations.RemoveField(
+            model_name="sessioneventrelation",
+            name="session",
+        ),
+        migrations.RemoveField(
+            model_name="sessionwindow",
+            name="events",
+        ),
+        migrations.DeleteModel(
+            name="AggregationRules",
+        ),
+        migrations.DeleteModel(
+            name="CorrelationRules",
+        ),
+        migrations.DeleteModel(
+            name="SessionEventRelation",
+        ),
+        migrations.DeleteModel(
+            name="SessionWindow",
+        ),
     ]

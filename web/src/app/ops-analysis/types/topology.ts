@@ -418,6 +418,7 @@ export interface NodeConfigFormValues {
 export interface TopologyProps {
   selectedTopology?: DirItem | null;
   shareMode?: boolean;
+  playbackMode?: boolean;
 }
 
 export interface TopologyRef {

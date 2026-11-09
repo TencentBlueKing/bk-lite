@@ -14,9 +14,35 @@
   }
 
   > :global([class*="customTable"]) > :global(.ant-table-wrapper) {
+    display: flex;
     flex: 1 1 auto;
+    flex-direction: column;
     min-height: 0;
     overflow: hidden;
+  }
+
+  // 大屏字号会让表头高于 CustomTable 预留的 47px。分页改为文档流后，
+  // 仍沿用 parent-47-56 的 max-height 会把表体底部（含横向滚动条）推出 wrapper。
+  > :global([class*="customTable"]) > :global(.ant-table-wrapper) :global(.ant-spin-nested-loading),
+  > :global([class*="customTable"]) > :global(.ant-table-wrapper) :global(.ant-spin-container),
+  > :global([class*="customTable"]) > :global(.ant-table-wrapper) :global(.ant-table),
+  > :global([class*="customTable"]) > :global(.ant-table-wrapper) :global(.ant-table-container) {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-height: 0;
+    height: 100%;
+  }
+
+  > :global([class*="customTable"]) > :global(.ant-table-wrapper) :global(.ant-table-header) {
+    flex: 0 0 auto;
+  }
+
+  > :global([class*="customTable"]) > :global(.ant-table-wrapper) :global(.ant-table-body) {
+    flex: 1 1 auto;
+    min-height: 0;
+    max-height: none !important;
+    overflow: auto !important;
   }
 
   > :global([class*="customTable"]) > :global(.absolute.right-0.bottom-0) {

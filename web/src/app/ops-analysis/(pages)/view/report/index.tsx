@@ -1,6 +1,6 @@
 'use client';
 
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Button, Empty, Modal, message } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import { closestCenter, DndContext, PointerSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
@@ -13,10 +13,12 @@ import { filterTemplateAsyncDependencies } from '@/app/ops-analysis/utils/filter
 import { useTranslation } from '@/utils/i18n';
 import useBtnPermissions from '@/hooks/usePermissions';
 import { useReportApi } from '@/app/ops-analysis/api/report';
+import { readPlaybackInitialDetail, usePlaybackInitialDetail } from '@/app/ops-analysis/context/playbackInitialDetail';
 import { useDirectoryApi } from '@/app/ops-analysis/api';
 import { useDataSourceManager } from '@/app/ops-analysis/hooks/useDataSource';
 import { useShareOrganizationSeed } from '@/app/ops-analysis/context/shareOrganization';
 import { useCanvasPeriodicRefresh } from '@/app/ops-analysis/hooks/useCanvasPeriodicRefresh';
+import { canvasPeriodicRefreshEnabled } from '@/app/ops-analysis/utils/canvasPlaybackRefresh';
 import { useCanvasShareAction } from '@/app/ops-analysis/hooks/useCanvasShareAction';
 import type { ComponentSelectorConfigItem, FilterValue, LayoutItem, UnifiedFilterDefinition, WidgetConfig } from '@/app/ops-analysis/types/dashBoard';
 import type { ReportProps, ReportViewSets } from '@/app/ops-analysis/types/report';
@@ -124,6 +126,7 @@ const waitForReportWidgetsReady = (
 const Report = forwardRef<ReportRef, ReportProps>(({
   selectedReport,
   shareMode = false,
+  playbackMode = false,
   renderMode = false,
   renderFilterValues,
   renderDataSourceIds,
@@ -227,6 +230,44 @@ const Report = forwardRef<ReportRef, ReportProps>(({
   }, [dirty]);
 
   const loadCanvasDataSources = dataSourceManager.loadCanvasDataSources;
+  const playbackDetail = usePlaybackInitialDetail();
+  const playbackDetailRef = useRef(playbackDetail);
+  playbackDetailRef.current = playbackDetail;
+  const playbackReportReadyRef = useRef(false);
+  useLayoutEffect(() => {
+    if (!playbackMode || !selectedReport?.data_id) {
+      playbackReportReadyRef.current = false;
+      return;
+    }
+    const detail = readPlaybackInitialDetail<{
+      view_sets?: unknown;
+      updated_at?: string;
+      refresh_interval?: unknown;
+    }>(playbackDetail, 'report', selectedReport.data_id);
+    if (!detail) {
+      playbackReportReadyRef.current = false;
+      return;
+    }
+    const normalized = normalizeReportViewSets(detail.view_sets, t);
+    const initialFilterValues = retainOpeningFilterValues(
+      normalized.filters,
+      fillMissingOrganizationFilterValues(
+        normalized.filters,
+        buildResetFilterValues(normalized.filters),
+        shareOrganizationSeed,
+      ),
+    );
+    setSavedViewSets(normalized);
+    setDraftViewSets(normalized);
+    setSavedVersion(detail.updated_at || '');
+    setSavedRefreshInterval(normalizeCanvasRefreshInterval(detail.refresh_interval));
+    setFilterValues(initialFilterValues);
+    setAppliedFilterValues(initialFilterValues);
+    setAppliedFilterDefinitions(normalized.filters);
+    setLoading(false);
+    playbackReportReadyRef.current = true;
+  }, [playbackDetail, playbackMode, selectedReport?.data_id, shareOrganizationSeed, t]);
+
   const loadReport = useCallback(async () => {
     const requestId = beginReportLoad(loadGuardRef.current);
     const reportId = selectedReport?.data_id;
@@ -238,6 +279,29 @@ const Report = forwardRef<ReportRef, ReportProps>(({
       setFilterValues({});
       setAppliedFilterValues({});
       setAppliedFilterDefinitions([]);
+      return;
+    }
+
+    if (playbackMode && playbackReportReadyRef.current) {
+      const seeded = readPlaybackInitialDetail<{ view_sets?: unknown }>(
+        playbackDetailRef.current,
+        'report',
+        reportId,
+      );
+      const normalized = normalizeReportViewSets(seeded?.view_sets, t);
+      const seededDataSourceIds = Array.from(new Set([
+        ...normalized.sections
+          .map((section) => section.valueConfig.dataSource)
+          .filter((id): id is string | number => id !== undefined),
+        ...(renderDataSourceIds || []),
+      ]));
+      try {
+        await loadCanvasDataSources(seededDataSourceIds);
+      } finally {
+        if (isCurrentReportLoad(loadGuardRef.current, requestId)) {
+          setLoading(false);
+        }
+      }
       return;
     }
 
@@ -299,7 +363,7 @@ const Report = forwardRef<ReportRef, ReportProps>(({
         setLoading(false);
       }
     }
-  }, [loadCanvasDataSources, renderDataSourceIds, renderFilterValues, renderMode, selectedReport?.data_id, shareOrganizationSeed, t]);
+  }, [loadCanvasDataSources, playbackMode, renderDataSourceIds, renderFilterValues, renderMode, selectedReport?.data_id, shareOrganizationSeed, t]);
 
   useEffect(() => {
     setEditing(false);
@@ -378,7 +442,7 @@ const Report = forwardRef<ReportRef, ReportProps>(({
       canvasId: selectedReport?.data_id,
       savedInterval: savedRefreshInterval,
       canPersist: canPersistRefreshInterval,
-      enabled: !renderMode && !pdfExportPreparing && !editing,
+      enabled: canvasPeriodicRefreshEnabled(!renderMode && !pdfExportPreparing && !editing, playbackMode),
       patchRefreshInterval: async (interval) => {
         if (!selectedReport?.data_id) {
           return;
@@ -750,6 +814,7 @@ const Report = forwardRef<ReportRef, ReportProps>(({
                     dataSource={dataSourceManager.findDataSource(section.valueConfig.dataSource)}
                     editing={editing}
                     shareMode={shareMode}
+                    playbackMode={playbackMode}
                     isFullscreen={isFullscreen}
                     renderMode={renderMode}
                     pdfExportPreparing={pdfExportPreparing}
@@ -769,7 +834,7 @@ const Report = forwardRef<ReportRef, ReportProps>(({
     </div>
   );
 
-  const toolbar = renderMode ? null : (
+  const toolbar = renderMode || playbackMode ? null : (
     <ReportToolbar
       selectedReport={selectedReport}
       chartTheme={chartTheme}
@@ -832,6 +897,8 @@ const Report = forwardRef<ReportRef, ReportProps>(({
           emptyDescription={t('opsAnalysis.report.selectFirst')}
           toolbar={toolbar}
           filterBar={filterBar}
+          filterBarVisible={!playbackMode}
+          headerVisible={!playbackMode}
           contentRef={exportRef}
           contentClassName="bg-[var(--color-bg-2)]"
         >

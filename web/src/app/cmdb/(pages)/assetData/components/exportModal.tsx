@@ -18,6 +18,7 @@ import {
   ExportModalRef,
 } from '@/app/cmdb/types/assetData';
 import { useTransferApi } from '@/app/cmdb/api/transfer';
+import { createIdempotencyKey } from '@/app/cmdb/utils/idempotencyKey';
 import { exportFilterPayload } from '../list/advancedFilter';
 
 const ExportModal = forwardRef<ExportModalRef, ExportModalProps>(
@@ -212,7 +213,7 @@ const ExportModal = forwardRef<ExportModalRef, ExportModalProps>(
         };
 
         const content = JSON.stringify(exportData);
-        if (submission.current.content !== content) submission.current = { content, key: crypto.randomUUID() };
+        if (submission.current.content !== content) submission.current = { content, key: createIdempotencyKey() };
         setVisible(false);
         onSubmitStart?.();
         const task = await transferApi.exportFile(exportData, submission.current.key);

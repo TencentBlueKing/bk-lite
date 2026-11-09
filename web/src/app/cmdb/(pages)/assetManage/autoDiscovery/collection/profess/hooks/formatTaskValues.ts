@@ -117,7 +117,7 @@ export const withTaskCredentialSource = (
     });
     result.vault_credential_id = raw.vault_credential_id;
     result.vault_type_key = raw.vault_type_key;
-    for (const field of ['source', 'user_type', 'login_type', 'loginType', 'encrypt', 'api_url', 'scheme', 'project_id', 'subscription_id', 'api_version']) {
+    for (const field of ['source', 'user_type', 'login_type', 'loginType', 'encrypt', 'api_url', 'scheme', 'project_id', 'subscription_id', 'tenant_id', 'resource_group', 'cluster_name', 'azure_cloud', 'resource_uri', 'api_version']) {
       if (result[field] === undefined && raw[field] !== undefined) result[field] = raw[field];
     }
   }
@@ -150,6 +150,9 @@ export const buildCredentialPool = (
       });
       if (normalized.password === PASSWORD_PLACEHOLDER) {
         delete normalized.password;
+      }
+      if (normalized.service_password === PASSWORD_PLACEHOLDER) {
+        delete normalized.service_password;
       }
       if (normalized.community === PASSWORD_PLACEHOLDER) {
         delete normalized.community;

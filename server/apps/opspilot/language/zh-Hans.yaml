@@ -294,11 +294,11 @@ tools:
       job_mgmt_run_library:
         description: 按脚本编号执行脚本库脚本。target_source 填作业管理目标或节点管理目标。target_ids 填查询结果的 id，多个用英文逗号连接；作业管理是数字 id，节点管理是节点主键，不要填 IP。
       job_mgmt_run_custom:
-        description: 执行用户原话中的自定义脚本。script_type 只能是 shell、python、powershell、bat。target_ids 填查询结果的 id，不要填 IP。Linux 只接受 shell 和 python，Windows 只接受 powershell 和 bat。
+        description: 执行经用户确认的自定义脚本，可由智能体生成。script_type 只能是 shell、python、powershell、bat。target_ids 填查询结果的 id，不要填 IP。Linux 只接受 shell 和 python，Windows 只接受 powershell 和 bat。
       job_mgmt_distribute:
         description: 分发本会话暂存文件。target_ids 填查询结果的 id，不要填 IP。终态只有成功或失败。未结束时给出作业记录链接，请用户到作业管理查看，不要说成失败。
       job_mgmt_query:
-        description: 查询本会话已记录的作业号，不重新提交。
+        description: 按作业号查询当前组织的作业；未指定时查询本会话最近的作业，不重新提交。
       job_mgmt_schedule_watch:
         description: 用户同意后按间隔查看同一个作业号，不重新执行。
   cmdb:

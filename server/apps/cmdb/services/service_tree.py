@@ -205,7 +205,7 @@ def layer_schema_from(
 
 
 def _layer_schema() -> dict[str, Any]:
-    from apps.cmdb.language.service import SettingLanguage
+    from apps.cmdb.language.service import catalog_display_name
     from apps.cmdb.services.model import ModelManage
 
     pending = [SYSTEM_MODEL]
@@ -228,14 +228,22 @@ def _layer_schema() -> dict[str, Any]:
             for peer in (str(edge.get("src_model_id") or ""), str(edge.get("dst_model_id") or "")):
                 if peer and peer not in seen and peer != HOST_MODEL:
                     pending.append(peer)
-    language = SettingLanguage("zh-Hans")
     models = []
     for model_id in seen:
         info = ModelManage.search_model_info(model_id) or {}
         if not info:
             continue
         info = dict(info)
-        info["model_name"] = language.get_val("MODEL", model_id) or info.get("model_name") or model_id
+        info["model_name"] = (
+            catalog_display_name(
+                "MODEL",
+                model_id,
+                info.get("model_name"),
+                customized=info.get("model_name_customized"),
+                language="zh-Hans",
+            )
+            or model_id
+        )
         models.append(info)
     return layer_schema_from(associations, models)
 

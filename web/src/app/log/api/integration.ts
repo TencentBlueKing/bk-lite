@@ -192,6 +192,17 @@ const useIntegrationApi = () => {
     return await post(`/log/collect_instances/remove_collect_instance/`, data);
   };
 
+  const clearRemovedCollector = async (data: { instance_id: React.Key }) => {
+    return await post('/log/collect_instances/clear_removed_collector/', data);
+  };
+
+  const reassignCollectorNode = async (data: {
+    instance_id: React.Key;
+    node_id: string;
+  }) => {
+    return await post('/log/collect_instances/reassign_collector_node/', data);
+  };
+
   const updateMonitorInstance = async (data: InstanceInfo) => {
     return await post('/log/collect_instances/instance_update/', data);
   };
@@ -348,6 +359,8 @@ const useIntegrationApi = () => {
     checkK8sCollectStatus,
     getInstanceChildConfig,
     deleteLogInstance,
+    clearRemovedCollector,
+    reassignCollectorNode,
     updateMonitorInstance,
     setInstancesGroup,
     getConfigContent,

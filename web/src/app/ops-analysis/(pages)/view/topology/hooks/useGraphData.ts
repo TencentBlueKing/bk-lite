@@ -20,6 +20,7 @@ import {
 } from '@/app/ops-analysis/utils/canvasRefreshTimer';
 import { useTranslation } from '@/utils/i18n';
 import { useTopologyApi } from '@/app/ops-analysis/api/topology';
+import { readPlaybackInitialDetail, usePlaybackInitialDetail } from '@/app/ops-analysis/context/playbackInitialDetail';
 import { useDataSourceApi, withRuntimeSourceDataErrorSuppression } from '@/app/ops-analysis/api/dataSource';
 import type {
   EdgeConnectionType,
@@ -98,6 +99,7 @@ export const useGraphData = (
 ) => {
   const { t } = useTranslation();
   const [loading, setLoading] = useState(false);
+  const playbackDetail = usePlaybackInitialDetail();
   const { saveTopology, getTopologyDetail } = useTopologyApi();
   const { getSourceDataByApiId } = useDataSourceApi();
   const getRuntimeSourceDataByApiId = useMemo(
@@ -500,9 +502,15 @@ export const useGraphData = (
       };
     }
 
-    setLoading(true);
+    const seeded = readPlaybackInitialDetail<{
+      view_sets?: TopologyViewSets;
+      refresh_interval?: unknown;
+    }>(playbackDetail, 'topology', topologyId);
+    if (!seeded) {
+      setLoading(true);
+    }
     try {
-      const topologyData = await getTopologyDetail(topologyId);
+      const topologyData = seeded ?? await getTopologyDetail(topologyId);
       const viewSets = topologyData.view_sets || {};
 
       loadTopologyData(viewSets);
@@ -525,7 +533,7 @@ export const useGraphData = (
     } finally {
       setLoading(false);
     }
-  }, [graphInstance, getTopologyDetail, loadTopologyData]);
+  }, [graphInstance, getTopologyDetail, loadTopologyData, playbackDetail]);
 
   const refreshAllChartNodes = useCallback((
     unifiedFilterValues?: Record<string, FilterValue>,

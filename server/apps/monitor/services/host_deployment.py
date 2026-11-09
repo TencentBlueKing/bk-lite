@@ -69,15 +69,16 @@ class HostDeploymentStatus:
     def _live_child_config_ids(cls, child_ids):
         if not child_ids:
             return set(), set()
-        rows = CollectConfig.objects.filter(
-            id__in=child_ids,
-            monitor_instance__is_deleted=False,
-        ).values_list("id", "monitor_instance__monitor_object__name")
+        rows = CollectConfig.objects.filter(id__in=child_ids).values_list(
+            "id",
+            "monitor_instance__is_deleted",
+            "monitor_instance__monitor_object__name",
+        )
         protected_ids = set()
         live_host_ids = set()
-        for config_id, object_name in rows:
+        for config_id, is_deleted, object_name in rows:
             collect_id = str(config_id)
             protected_ids.add(collect_id)
-            if object_name == cls.MONITOR_OBJECT_NAME:
+            if not is_deleted and object_name == cls.MONITOR_OBJECT_NAME:
                 live_host_ids.add(collect_id)
         return live_host_ids, protected_ids

@@ -392,11 +392,6 @@ def apply_enum_validation_for_instance(instance_data: dict, attrs: list[dict]) -
 _ASSOCIATION_TYPE_NAME = {item["asst_id"]: item["asst_name"] for item in ASSOCIATION_TYPE}
 
 
-def _normalize_cmdb_display_language(language: str | None) -> str:
-    raw = str(language or "zh-Hans")
-    return "en" if raw.lower().startswith("en") else "zh-Hans"
-
-
 class InstanceManage(object):
     @staticmethod
     def _query_instance_map_by_ids(inst_ids: set[int]) -> dict[int, dict]:
@@ -635,36 +630,38 @@ class InstanceManage(object):
         ids = sorted({str(model_id) for model_id in model_ids if model_id not in (None, "")})
         if not ids:
             return {}
-        from apps.cmdb.language.service import SettingLanguage
+        from apps.cmdb.language.service import catalog_display_name
 
-        lan = SettingLanguage(_normalize_cmdb_display_language(language))
+        records = cls._query_stored_model_names(ids)
         names: dict[str, str] = {}
-        missing: list[str] = []
         for model_id in ids:
-            translated = lan.get_val("MODEL", model_id)
-            if translated:
-                names[model_id] = translated
-            else:
-                missing.append(model_id)
-        if missing:
-            names.update(cls._query_stored_model_names(missing))
-        for model_id in ids:
-            names.setdefault(model_id, model_id)
+            record = records.get(model_id) or {}
+            display = catalog_display_name(
+                "MODEL",
+                model_id,
+                record.get("model_name"),
+                customized=record.get("model_name_customized"),
+                language=language,
+            )
+            names[model_id] = display or model_id
         return names
 
     @staticmethod
-    def _query_stored_model_names(model_ids: list[str]) -> dict[str, str]:
+    def _query_stored_model_names(model_ids: list[str]) -> dict[str, dict]:
         if not model_ids:
             return {}
         with GraphClient() as ag:
             models, _ = ag.query_entity(MODEL, [{"field": "model_id", "type": "str[]", "value": sorted(model_ids)}])
-        names: dict[str, str] = {}
+        names: dict[str, dict] = {}
         for model in models:
             model_id = model.get("model_id")
             model_name = model.get("model_name")
             if model_id in (None, "") or model_name in (None, ""):
                 continue
-            names[str(model_id)] = str(model_name)
+            names[str(model_id)] = {
+                "model_name": str(model_name),
+                "model_name_customized": model.get("model_name_customized"),
+            }
         return names
 
     @classmethod

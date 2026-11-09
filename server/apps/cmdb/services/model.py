@@ -28,7 +28,7 @@ from apps.cmdb.custom_reporting.extensions import get_custom_reporting_extension
 from apps.cmdb.display_field.constants import DISPLAY_FIELD_TYPES, DISPLAY_SUFFIX
 from apps.cmdb.graph.drivers.graph_client import GraphClient
 from apps.cmdb.graph.validators import MAX_BATCH_UPDATE_PROPERTY_VALUES
-from apps.cmdb.language.service import SettingLanguage
+from apps.cmdb.language.service import catalog_display_name, mark_catalog_name_customized
 from apps.cmdb.model_ops.extensions import get_model_enterprise_extension, is_file_attr_type
 from apps.cmdb.models import CREATE_INST, DELETE_INST, UPDATE_INST, FieldGroup
 from apps.cmdb.models.change_record import MODEL_MANAGEMENT_CHANGE
@@ -59,6 +59,7 @@ from apps.cmdb.services.unique_rule import (
     guard_attr_change_against_unique_rules,
     list_unique_rule_candidate_fields,
     list_unique_rules,
+    parse_unique_rules,
     update_unique_rule,
     validate_unique_rules_against_existing_instances,
 )
@@ -723,24 +724,6 @@ class ModelManage(object):
         ExcludeFieldsCache.update_on_model_change(model_id)
 
     @staticmethod
-    def _is_builtin_model(model: dict | None) -> bool:
-        if not model:
-            return False
-        value = model.get("is_pre")
-        if isinstance(value, str):
-            return value.strip().lower() in {"true", "1", "yes"}
-        return value is True or value == 1
-
-    @staticmethod
-    def _restrict_builtin_model_update(current: dict | None, data: dict) -> dict:
-        if not ModelManage._is_builtin_model(current):
-            return data
-        extra = [key for key in data if key != "app_topo_layer"]
-        if extra or "app_topo_layer" not in data:
-            raise BaseAppException("内置模型仅允许修改应用拓扑层级")
-        return {"app_topo_layer": data["app_topo_layer"]}
-
-    @staticmethod
     def update_model(id: int, data: dict):
         """
         更新模型
@@ -759,7 +742,14 @@ class ModelManage(object):
                 current_items, _ = ag.query_entity(MODEL, [{"field": "model_id", "type": "str=", "value": model_id}])
                 current = next((item for item in current_items if item.get("_id") == id), None)
             exist_items = [item for item in exist_items if item.get("_id") != id]
-            data = ModelManage._restrict_builtin_model_update(current, data)
+            data = mark_catalog_name_customized(
+                current,
+                data,
+                kind="MODEL",
+                key=str((current or {}).get("model_id") or model_id),
+                name_field="model_name",
+                flag_field="model_name_customized",
+            )
             model = ag.set_entity_properties(MODEL, [id], data, UPDATE_MODEL_CHECK_ATTR_MAP, exist_items)
 
         if updates_attrs or updates_unique_rules:
@@ -834,10 +824,14 @@ class ModelManage(object):
                 )
                 models = [model for model in models if model["model_id"] in visible_models]
 
-        lan = SettingLanguage(language)
-
         for model in models:
-            model["model_name"] = lan.get_val("MODEL", model["model_id"]) or model["model_name"]
+            model["model_name"] = catalog_display_name(
+                "MODEL",
+                model["model_id"],
+                model.get("model_name"),
+                customized=model.get("model_name_customized"),
+                language=language,
+            )
             # 确保所有模型都有order_id
             if "order_id" not in model:
                 model["order_id"] = 0
@@ -1334,6 +1328,13 @@ class ModelManage(object):
         return query_model_info(model_id)
 
     @staticmethod
+    def search_models_by_ids(model_ids: list[str]) -> dict[str, dict]:
+        """一次查询多个模型实体，供属性批量接口复用。"""
+        from apps.cmdb.services.model_graph_query import search_models_by_ids as query_models_by_ids
+
+        return query_models_by_ids(model_ids)
+
+    @staticmethod
     def get_organization_option(items: list, result: list, name_prefix: str = ""):
         for item in items:
             if name_prefix:
@@ -1397,18 +1398,24 @@ class ModelManage(object):
         return ModelManage._clone_options(option)
 
     @staticmethod
-    def search_model_attr(model_id: str, language: str = "zh-Hans"):
+    def search_model_attr(model_id: str, language: str = "zh-Hans", *, model_info: dict | None = None):
         """
-        查询模型属性
+        查询模型属性。
+
+        传入已加载的 model_info 时不再访问图库，唯一规则直接取模型节点上的 unique_rules。
         """
-        model_info = ModelManage.search_model_info(model_id)
+        if model_info is None:
+            model_info = ModelManage.search_model_info(model_id)
+        if not model_info:
+            raise BaseAppException("模型不存在")
         attrs = ModelManage._normalize_attr_constraints(ModelManage.parse_attrs(model_info.get("attrs", "[]")))
         attrs = [ModelManage.sanitize_attr_default_value(attr, log_context="search_model_attr") for attr in attrs]
-        unique_rules = build_unique_rule_context(model_id).unique_rules
+        unique_rules = parse_unique_rules(model_info.get("unique_rules", "[]"))
         from apps.cmdb.language.service import apply_attr_translations
 
-        attrs = apply_attr_translations(attrs, model_id, language)
-        return enrich_attrs_with_unique_display(attrs, unique_rules, model_id)
+        resolved_model_id = model_info.get("model_id") or model_id
+        attrs = apply_attr_translations(attrs, resolved_model_id, language)
+        return enrich_attrs_with_unique_display(attrs, unique_rules, resolved_model_id)
 
     @staticmethod
     def search_model_attr_v2(model_id: str, language: str = "zh-Hans", *, attr_ids: list[str] | None = None):

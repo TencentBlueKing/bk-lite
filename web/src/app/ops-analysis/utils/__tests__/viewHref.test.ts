@@ -22,5 +22,8 @@ describe('ops-analysis view href', () => {
     expect(buildOpsAnalysisViewHref('dashboard', '7', '?type=topology&id=t1')).toBe(
       '/ops-analysis/view?type=dashboard&id=7',
     );
+    expect(
+      buildOpsAnalysisViewHref('dashboard', '7', '?panel=carousel&carousel=3&type=topology&id=t1'),
+    ).toBe('/ops-analysis/view?type=dashboard&id=7');
   });
 });
