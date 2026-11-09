@@ -58,7 +58,7 @@ function UsageCard({
   return (
     <section
       id="mongo-cache-usage"
-      className={`${classic.panel} ${host.chartPanel} flex h-full flex-col`}
+      className={`${classic.panel} ${host.chartPanel} flex flex-col`}
       data-mongodb-chart="cache-usage"
       data-mongodb-cache={waiting ? 'loading' : percent == null ? 'empty' : tone}
     >
@@ -114,11 +114,6 @@ export default function CachePane({
   metricMap: MongoMetricMap;
   pendingMetricNames: ReadonlySet<string>;
 }) {
-  const usagePoints = mongoRatioPoints(
-    metricMap,
-    'mongodb_wtcache_current_bytes',
-    'mongodb_wtcache_max_bytes_configured'
-  );
   const dirtyPoints = mongoRatioPoints(
     metricMap,
     'mongodb_wtcache_tracked_dirty_bytes',
@@ -127,52 +122,25 @@ export default function CachePane({
   return (
     <div data-mongodb-pane="cache" className="contents">
       <ProSection title="缓存">
-        <div className={host.chartGrid2} data-mongodb-zone="cache">
+        <div className="flex min-w-0 flex-col gap-3" data-mongodb-zone="cache">
           <UsageCard metricMap={metricMap} pending={pendingMetricNames} />
-          <MongoTrend
-            anchor="cache-usage-trend"
-            title="缓存使用率趋势"
-            body={USAGE_BODY}
-            series={[{
-              name: 'mongodb_wtcache_current_bytes',
-              label: '缓存使用率',
-              color: MONGODB_PALETTE.blue,
-              unit: 'percent'
-            }]}
-            metricMap={metricMap}
-            pending={pendingMetricNames}
-            pendingNames={['mongodb_wtcache_current_bytes', 'mongodb_wtcache_max_bytes_configured']}
-            points={usagePoints}
-            percent
-          />
-          <MongoTrend
-            anchor="cache-bytes"
-            title="缓存已用与上限"
-            body="WiredTiger 缓存当前占用与配置上限对照。"
-            series={[
-              { name: 'mongodb_wtcache_current_bytes', label: '已用', color: MONGODB_PALETTE.blue, unit: 'bytes' },
-              { name: 'mongodb_wtcache_max_bytes_configured', label: '上限', color: MONGODB_PALETTE.slate, unit: 'bytes' }
-            ]}
-            metricMap={metricMap}
-            pending={pendingMetricNames}
-          />
-          <MongoTrend
-            anchor="dirty"
-            title="脏数据占比"
-            body={DIRTY_BODY}
-            series={[{
-              name: 'mongodb_wtcache_tracked_dirty_bytes',
-              label: '脏数据占比',
-              color: MONGODB_PALETTE.orange,
-              unit: 'percent'
-            }]}
-            metricMap={metricMap}
-            pending={pendingMetricNames}
-            pendingNames={['mongodb_wtcache_tracked_dirty_bytes', 'mongodb_wtcache_current_bytes']}
-            points={dirtyPoints}
-            percent
-          />
-          <div className="min-w-0 min-[1101px]:col-span-2">
+          <div className={host.chartGrid2}>
+            <MongoTrend
+              anchor="dirty"
+              title="脏数据占比"
+              body={DIRTY_BODY}
+              series={[{
+                name: 'mongodb_wtcache_tracked_dirty_bytes',
+                label: '脏数据占比',
+                color: MONGODB_PALETTE.orange,
+                unit: 'percent'
+              }]}
+              metricMap={metricMap}
+              pending={pendingMetricNames}
+              pendingNames={['mongodb_wtcache_tracked_dirty_bytes', 'mongodb_wtcache_current_bytes']}
+              points={dirtyPoints}
+              percent
+            />
             <MongoTrend
               anchor="dirty-bytes"
               title="脏数据量"
@@ -190,7 +158,11 @@ export default function CachePane({
         </div>
       </ProSection>
       <ProSection title="内存">
-        <div className={host.chartGrid2} data-mongodb-zone="memory">
+        <div
+          className={host.chartGrid3}
+          data-mongodb-zone="memory"
+          data-mongodb-memory-layout="equal-3"
+        >
           <MongoTrend
             anchor="memory"
             title="常驻与虚拟内存"

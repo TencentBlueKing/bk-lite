@@ -10,15 +10,17 @@ export interface MongoChartSpec {
   emptyText?: string;
 }
 
-/** 连接签。只放连接趋势和活跃与排队。 */
+/**
+ * 连接签。趋势只画当前和打开，两条都是「个」，共用一条从 0 起的轴。
+ * 尚可接纳连接量级大得多，不进这张图，也不另开一条 Y 轴。
+ */
 export const CONNECTION_CHARTS: readonly MongoChartSpec[] = [
   {
     anchor: 'connections',
     title: '连接趋势',
-    body: '当前连接、尚可接纳连接与打开连接的对照，用于观察连接余量与并发。',
+    body: '当前连接与打开连接的对照，用于观察并发变化。尚可接纳见旁侧读数，避免量级差过大挤同一坐标轴。',
     series: [
       { name: 'mongodb_connections_current', label: '当前连接', color: MONGODB_PALETTE.blue, unit: 'counts' },
-      { name: 'mongodb_connections_available', label: '可用连接', color: MONGODB_PALETTE.violet, unit: 'counts' },
       { name: 'mongodb_open_connections', label: '打开连接', color: MONGODB_PALETTE.cyan, unit: 'counts' }
     ]
   },

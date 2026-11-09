@@ -19,6 +19,10 @@ import {
 } from './replication';
 import { mongoLatest, mongoMerged, mongoPoints, type MongoMetricMap } from './series';
 
+const ROLE_CHIP = (
+  'inline-flex h-5 shrink-0 items-center rounded-full border border-[color-mix(in_srgb,var(--color-primary)_32%,var(--color-border))] bg-[color-mix(in_srgb,var(--color-primary)_10%,var(--color-bg))] px-2 text-[12px] font-medium leading-none text-[var(--color-text-1)]'
+);
+
 const EMPTY = {
   title: '当前没有副本集读数',
   hint: '本窗口没有复制延迟、oplog 窗口或成员健康。单机实例通常没有这些读数。'
@@ -68,9 +72,9 @@ const TRENDS = [
 ] as const;
 
 /** 单卡没有读数时只留 —，不补 0，也不在状态卡里画折线。 */
-function QuietReading() {
+function QuietReading({ flush = false }: { flush?: boolean }) {
   return (
-    <div className={proChromeClass.kpiValue} data-mongodb-replication-quiet="">
+    <div className={`${proChromeClass.kpiValue}${flush ? ' !mt-0' : ''}`} data-mongodb-replication-quiet="">
       —
     </div>
   );
@@ -107,16 +111,26 @@ function StatusCard({
             <span className="min-w-0 truncate">{title}</span>
             <MongoHint kind={`mongo-repl-${cardKey}`} title={title} body={body} />
           </div>
-          {sample == null ? <QuietReading /> : (
+          {note ? (
+            <div
+              className="mt-1 flex w-full min-w-0 items-center justify-between gap-2"
+              data-mongodb-member-row=""
+            >
+              {sample == null ? <QuietReading flush /> : (
+                <div
+                  className={`${proChromeClass.kpiValue} !mt-0`}
+                  style={tone ? { color: tone } : undefined}
+                >
+                  {text}
+                </div>
+              )}
+              <span className={ROLE_CHIP} data-mongodb-replica-state={note}>{note}</span>
+            </div>
+          ) : sample == null ? <QuietReading /> : (
             <div className={proChromeClass.kpiValue} style={tone ? { color: tone } : undefined}>
               {text}
             </div>
           )}
-          {note ? (
-            <p className="m-0 mt-1 text-[12px] leading-4 text-[var(--color-text-3)]" data-mongodb-replica-state={note}>
-              {note}
-            </p>
-          ) : null}
         </>
       )}
     </div>

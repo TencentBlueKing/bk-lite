@@ -63,7 +63,12 @@ export function MongoTrend({
     return formatMongoReading(latest, item.unit);
   };
   return (
-    <div id={`mongo-${anchor}`} className="min-w-0" data-mongodb-chart={anchor}>
+    <div
+      id={`mongo-${anchor}`}
+      className="min-w-0"
+      data-mongodb-chart={anchor}
+      data-mongodb-axes={mixedUnits ? 'dual' : 'shared'}
+    >
       <ThinTimeSeries
         title={title}
         hintNode={<MongoHint kind={`mongo-chart-${anchor}`} title={title} body={body} />}
