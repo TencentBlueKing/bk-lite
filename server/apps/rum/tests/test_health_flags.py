@@ -108,8 +108,18 @@ def test_probe_marks_analytics_configured_from_logs_when_traces_are_empty():
     assert health.analytics_available is False
     payload = health.as_dict()
     assert payload["tracesConfigured"] is False
-    assert payload["tracesAvailable"] is False
-    assert payload["tracesUnavailable"] is True
+    assert "tracesAvailable" not in payload
+    assert "tracesUnavailable" not in payload
+
+    probed = probe_pipeline_health(
+        control=control,
+        analytics=UnavailableAnalytics(),
+        settings=_settings(victoria_logs_url="http://logs.example.test", victoria_traces_url=""),
+        probe_traces=True,
+    ).as_dict()
+    assert probed["tracesConfigured"] is False
+    assert probed["tracesAvailable"] is False
+    assert probed["tracesUnavailable"] is True
 
 
 class _ReadyAnalytics:
@@ -209,8 +219,25 @@ def test_health_reports_traces_up_without_changing_analytics(caplog):
         assert payload["analyticsAvailable"] is True
         assert "analyticsUnavailable" not in payload
         assert payload["tracesConfigured"] is True
-        assert payload["tracesAvailable"] is True
         assert "tracesUnavailable" not in payload
+    assert health["tracesAvailable"] is True
+    assert "tracesAvailable" not in meta
+
+
+def test_meta_does_not_probe_traces():
+    server, traces_url, paths = _recording_server()
+    try:
+        service = ApplicationsService(
+            MemoryControl(),
+            _settings(victoria_logs_url="http://logs.example.test", victoria_traces_url=traces_url),
+            analytics=_ReadyAnalytics(),
+        )
+        meta = service.meta()
+    finally:
+        server.shutdown()
+    assert paths == []
+    assert meta["tracesConfigured"] is True
+    assert "tracesAvailable" not in meta
 
 
 def test_health_reports_traces_down_while_analytics_stays_available(caplog):
@@ -223,6 +250,7 @@ def test_health_reports_traces_down_while_analytics_stays_available(caplog):
                 control=MemoryControl(),
                 analytics=_ReadyAnalytics(),
                 settings=_settings(victoria_logs_url="http://logs.example.test", victoria_traces_url=traces_url),
+                probe_traces=True,
             ).as_dict()
     finally:
         server.shutdown()

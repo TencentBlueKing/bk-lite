@@ -11,6 +11,7 @@ from apps.rum.services.victoria_client import ping_health
 
 REASON_CONTROL = "control"
 REASON_ANALYTICS = "analytics"
+_TRACES_PROBE_TIMEOUT_SECONDS = 3.0
 
 
 @dataclass(frozen=True)
@@ -20,7 +21,7 @@ class PipelineHealth:
     control_available: bool
     analytics_available: bool
     traces_configured: bool
-    traces_available: bool
+    traces_available: bool | None = None
 
     @property
     def control_unavailable(self) -> bool:
@@ -37,14 +38,15 @@ class PipelineHealth:
             "controlAvailable": self.control_available,
             "analyticsAvailable": self.analytics_available,
             "tracesConfigured": self.traces_configured,
-            "tracesAvailable": self.traces_available,
         }
         if self.control_unavailable:
             payload["controlUnavailable"] = True
         if self.analytics_unavailable:
             payload["analyticsUnavailable"] = True
-        if not self.traces_available:
-            payload["tracesUnavailable"] = True
+        if self.traces_available is not None:
+            payload["tracesAvailable"] = self.traces_available
+            if not self.traces_available:
+                payload["tracesUnavailable"] = True
         return payload
 
 
@@ -64,8 +66,13 @@ def probe_pipeline_health(
     analytics=None,
     settings: RumRuntimeSettings | None = None,
     actor: str = "system",
+    probe_traces: bool = False,
 ) -> PipelineHealth:
-    """Probe control + analytics availability for /meta and /health."""
+    """Probe control + analytics availability for /meta and /health.
+
+    VictoriaTraces is only probed when ``probe_traces`` is set (the /health check), so page loads
+    such as /meta never wait on it.
+    """
 
     from apps.rum.services.analytics import get_analytics
 
@@ -76,7 +83,7 @@ def probe_pipeline_health(
     control_configured = bool(settings.nats_url) or control.available()
     analytics_configured = bool(settings.victoria_logs_url)
     traces_configured = bool(settings.victoria_traces_url)
-    traces_available = _traces_available(settings)
+    traces_available = _traces_available(settings) if probe_traces else None
 
     control_available = False
     if control.available():
@@ -107,7 +114,7 @@ def _traces_available(settings: RumRuntimeSettings) -> bool:
     try:
         ping_health(
             settings.victoria_traces_url,
-            timeout_seconds=settings.victoria_timeout_seconds,
+            timeout_seconds=min(settings.victoria_timeout_seconds or _TRACES_PROBE_TIMEOUT_SECONDS, _TRACES_PROBE_TIMEOUT_SECONDS),
             label="VictoriaTraces",
         )
     except Exception as exc:  # noqa: BLE001 — traces health is reported; analytics stays independent

@@ -35,3 +35,4 @@ cd server && DB_ENGINE=sqlite DB_NAME=:memory: SECRET_KEY=cursor-cloud-dev ENABL
 ```
 
 - 没有改 `web/`。`/meta` 与 `/health` 只增加字段，现有读取保持原样。本机 `pnpm type-check` 在 `build:isoflow` 因缺少 `webpack` 无法启动，因此没有把可选类型写进前端。
+- 复核修正：`/meta` 不再同步探活 VictoriaTraces（只返回 `tracesConfigured`），避免接入页在 VictoriaTraces 不通时等待；`/health` 保留探活，超时上限 3 秒。复跑同一命令 196 passed。

@@ -462,6 +462,7 @@ class ApplicationsService:
             analytics=self.analytics,
             settings=self.settings,
             actor=actor,
+            probe_traces=True,
         ).as_dict()
 
     def snippets(self, body: dict) -> dict:
