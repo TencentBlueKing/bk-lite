@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import logging
+import traceback
 from datetime import datetime, timedelta, timezone
 
 import pytest
 
+from apps.core.logger import SafeLogException
 from apps.rum.services.control import MemoryControl
 from apps.rum.services.evaluator import AlertEvaluator
 from apps.rum.services.logsql_stats import (
@@ -304,18 +306,22 @@ def test_alert_read_failure_skips_without_changing_state(caplog):
     notifier = MemoryNotifier()
 
     class Boom:
+        def __init__(self):
+            self.error = RuntimeError(secret)
+
         def available(self):
             return True
 
         def monitor_metric(self, tenant_id, opts):
-            raise RuntimeError(secret)
+            raise self.error
 
     now = datetime(2026, 10, 12, 9, 0, tzinfo=timezone.utc)
+    boom = Boom()
     with caplog.at_level(logging.WARNING, logger="rum"):
         result = AlertEvaluator(
             policies=policies,
             events=events,
-            analytics=Boom(),
+            analytics=boom,
             notifier=notifier,
             now=lambda: now,
         ).evaluate_all()
@@ -336,6 +342,15 @@ def test_alert_read_failure_skips_without_changing_state(caplog):
     assert "error_type=RuntimeError" in rendered
     assert secret not in rendered
     assert secret not in caplog.text
+    assert record.exc_info[0] is SafeLogException
+    assert str(record.exc_info[1]) == "RuntimeError"
+    assert record.exc_info[2] is boom.error.__traceback__
+    assert str(boom.error) == secret
+    frames = traceback.extract_tb(record.exc_info[2])
+    assert any(frame.name == "monitor_metric" for frame in frames)
+    formatted = logging.Formatter().format(record)
+    assert formatted.count("Traceback (most recent call last)") == 1
+    assert secret not in formatted
 
 
 def test_monitor_metric_zero_is_an_empty_window_not_a_failure():

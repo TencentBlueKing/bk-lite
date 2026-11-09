@@ -1,12 +1,13 @@
-"""目录、概览与按路由页面列表的聚合库读取。
+"""目录、概览、按路由页面列表，以及 Web Vitals 告警的聚合库读取。
 
 聚合可用、已记录 RUM 起点、且窗口起点不早于起点时，浏览次数、JS 错误次数和
-Web Vitals p75 读聚合库。会话、分布和按版本的页面列表仍由调用方读 VictoriaLogs。
-聚合库报错只把对应数字降级，不回退扫明细。
+Web Vitals p75 读聚合库。会话、分布、按版本的页面列表，以及会话数、错误会话率
+告警仍由调用方读 VictoriaLogs。页面数字在聚合库报错时降级；告警评估把这次读取
+失败抛回现有状态机，告警详情趋势只清空曲线，都不回退扫明细。
 
 p75 使用 ``histogram_quantile(0.75, sum by (le) (increase(..._bucket[窗口])))``。
 这是桶上的估计分位数，不是 VictoriaLogs ``quantile(0.75)`` 的精确样本分位数。
-LCP / INP 直方图的数值仍是毫秒，CLS 无单位，与现有 LogsQL 字段一致。
+LCP / INP / FCP / TTFB 直方图的数值仍是毫秒，CLS 无单位，与现有 LogsQL 字段一致。
 """
 
 from __future__ import annotations
@@ -32,6 +33,15 @@ VITALS = {
     "lcp": "rum_web_vital_lcp_milliseconds",
     "inp": "rum_web_vital_inp_milliseconds",
     "cls": "rum_web_vital_cls",
+}
+# 告警策略只按应用收窄，没有环境、路由或版本。分位数用 sum by (le) 把这些标签并回同一组，
+# 与不带这些条件的 LogsQL quantile 同宽。FCP / TTFB 只用于告警，不进页面列表。
+ALERT_VITALS = {
+    "lcp_p75": VITALS["lcp"],
+    "inp_p75": VITALS["inp"],
+    "cls_p75": VITALS["cls"],
+    "fcp_p75": "rum_web_vital_fcp_milliseconds",
+    "ttfb_p75": "rum_web_vital_ttfb_milliseconds",
 }
 # 与页面列表 LogsQL 一致：访客排除 bot / synthetic / crawler，其余（含 human、unknown）都算。
 _VISITOR_EXCLUDE = "bot|synthetic|crawler"
@@ -77,6 +87,17 @@ def _selector(tenant_id: str, apps: list[str], traffic: str | None) -> str:
     if traffic_part:
         parts.append(traffic_part)
     return ",".join(parts)
+
+
+def _alert_selector(tenant_id: str, opts: dict) -> str:
+    apps = [str(app) for app in opts.get("applications") or [] if str(app).strip()]
+    if not apps:
+        application = str(opts.get("application") or "").strip()
+        apps = [application] if application else []
+    traffic = opts.get("traffic")
+    if traffic is None or str(traffic).strip() == "":
+        traffic = "visitors"
+    return _selector(tenant_id, apps, str(traffic))
 
 
 def _increase(metric: str, selector: str, window_seconds: int, by: str) -> str:
@@ -370,6 +391,94 @@ class AggregateRumReader:
                 }
             )
         return rows
+
+    def monitor_vital(self, tenant_id: str, opts: dict) -> tuple[bool, float | None]:
+        """读一条 Web Vitals 告警。未覆盖时交回 VictoriaLogs；缺样本是 None，不是 0。"""
+
+        plan = self._alert_plan(opts)
+        if plan is None:
+            return False, None
+        metric, aligned, window_seconds = plan
+        result = self.client.query_instant(
+            _quantile(metric, _alert_selector(tenant_id, opts), window_seconds, "le"),
+            at=aligned,
+        )
+        if not result:
+            return True, None
+        return True, _sample(result[0])
+
+    def vital_series(self, tenant_id: str, opts: dict) -> tuple[bool, list]:
+        """告警详情里的 Web Vitals 趋势。聚合失败只清空曲线，不改已经写好的事件。"""
+
+        plan = self._alert_plan(opts)
+        if plan is None:
+            return False, []
+        metric, aligned, _window_seconds = plan
+        try:
+            return True, self._vital_points(tenant_id, opts, metric, aligned)
+        except Exception as exc:  # noqa: BLE001 — 趋势失败只清空曲线，已固化的事件保持原样
+            self._fail(tenant_id, "alert_trend", exc)
+            return True, []
+
+    def _alert_plan(self, opts: dict) -> tuple[str, datetime, int] | None:
+        metric = ALERT_VITALS.get(str(opts.get("metric") or "").strip())
+        if metric is None:
+            return None
+        start = opts.get("from")
+        end = opts.get("to")
+        if not isinstance(start, datetime) or not isinstance(end, datetime):
+            return None
+        if not self.client.available:
+            return None
+        origin = self.origin_at()
+        if origin is None:
+            return None
+        window_seconds = int((_as_utc(end) - _as_utc(start)).total_seconds())
+        if window_seconds <= 0:
+            return None
+        aligned = align_query_end(end, now=self.clock(), flush_seconds=FLUSH_SECONDS)
+        if aligned - timedelta(seconds=window_seconds) < _as_utc(origin):
+            return None
+        return metric, aligned, window_seconds
+
+    def _vital_points(self, tenant_id: str, opts: dict, metric: str, aligned: datetime) -> list[dict]:
+        buckets = int(opts.get("points") or 12)
+        if buckets <= 0:
+            buckets = 12
+        start = _as_utc(opts["from"])
+        end = _as_utc(opts["to"])
+        step = (end - start) / buckets
+        # 查询步长必须是整数秒。分桶用同一个步长，避免窗口不能被点数整除时样本落到前一个桶。
+        # 第一个点从窗口起点之后一个步长开始，这样 increase 不会读到起点之前。
+        step_seconds = max(1, int(step.total_seconds()))
+        range_start = start + timedelta(seconds=step_seconds)
+        points: list[dict] = [{"atMs": int((start + step * index).timestamp() * 1000), "value": None} for index in range(buckets)]
+        if range_start > aligned:
+            return points
+        series = self.client.query_range(
+            _quantile(metric, _alert_selector(tenant_id, opts), step_seconds, "le"),
+            start=range_start,
+            end=aligned,
+            step_seconds=step_seconds,
+        )
+        for item in series:
+            values = item.get("values")
+            if not isinstance(values, list):
+                continue
+            for pair in values:
+                if not isinstance(pair, (list, tuple)) or len(pair) < 2:
+                    continue
+                timestamp = _number(pair[0])
+                if timestamp is None:
+                    continue
+                index = int((timestamp - start.timestamp()) // step_seconds) - 1
+                if index < 0 or index >= buckets:
+                    continue
+                value = _number(pair[1])
+                if value is None:
+                    continue
+                points[index]["value"] = value
+        return points
 
     def _blank_catalog(self, rows: list[dict], sparks: dict, apps: list[str]) -> None:
         allowed = set(apps)

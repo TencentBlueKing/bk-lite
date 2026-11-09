@@ -1,6 +1,6 @@
 # APM / RUM 入库旁路聚合层
 
-Status: ready
+Status: done
 
 来源需求：p398_930（公共组件，只交付规则）、p398_929（APM）、p398_931（RUM）。技术论断已在 2026-11-09 的两轮
 概念验证中实测：RUM 网关 v0.154.0 的 `signal_to_metrics → batch → deltatocumulative → prometheusremotewrite`
@@ -197,3 +197,11 @@ VictoriaTraces 按天切片。延迟 SLO 不变。聚合库错误不回退扫描
   结果：`241 passed`。其中 `apps/rum/tests` 233 项（基线 215，新增 18），起点探测 8 项。覆盖数值映射、流量口径、版本模式回退、起点回退、降级、`其他` 行、标签收窄与转义。
 - 共用对齐函数后 `apps/apm/tests`：`11 failed, 866 passed, 2 skipped`，11 项失败与既有 sqlite 基线相同。
 - 前端：改动文件 eslint 通过；相关 vitest 24 项通过；`pnpm type-check` 通过。未起浏览器，页面点击未做人工走查。
+
+### RUM Web Vitals 告警（07）
+
+策略只有应用，没有环境、路由或版本。聚合可用、已记录 RUM 起点、且对齐后的 increase 窗口不早于该起点时，LCP、INP、FCP、TTFB、CLS 的 p75 评估改为
+`histogram_quantile(0.75, sum by (le) (increase(<vital>_bucket{租户、应用、流量}[5/15/60 分钟])))`。结束时间对齐到最近完整分钟，再留出 RUM 默认 10 秒刷出周期。默认访客，`traffic` 与页面列表一致。环境、路由和分片被 `sum by (le)` 并回应用级，口径与原来不带这些条件的 LogsQL 相同。无样本是无数据，不是 0。起点未覆盖、未记录或未配置时仍走 VictoriaLogs，读取失败和无数据仍走原来的状态机。聚合查询失败不扫明细，也不触发或恢复。告警详情里这些指标的趋势读聚合库；失败只清空曲线。已经写入的告警值和事件不重画。会话数和错误会话率仍读 VictoriaLogs。`specs/capabilities` 里没有 RUM 告警功能清单可改。
+
+- `cd server && DB_ENGINE=sqlite DB_NAME=:memory: SECRET_KEY=cursor-cloud-dev ENABLE_CELERY=true INSTALL_APPS=system_mgmt,console_mgmt,node_mgmt,monitor,log,apm,alerts,rum,cmdb timeout 900 uv run pytest apps/rum/tests --no-cov --nomigrations -o addopts= -q -p no:cacheprovider`
+  结果：`256 passed`。基线 234，新增 22。覆盖五个 vital、三个窗口、无样本与 0、读取失败不改状态、起点与未配置回退、标签转义与流量收窄、会话类告警、趋势分桶和已固化事件。未改前端。

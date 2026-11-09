@@ -402,6 +402,10 @@ class VictoriaAnalytics:
         apps = list(opts.get("applications") or [])
         if not apps and not (opts.get("application") or "").strip():
             return None
+        if self.aggregate is not None:
+            from_aggregate, value = self.aggregate.monitor_vital(self._tenant(tenant_id), opts)
+            if from_aggregate:
+                return value
         metric = (opts.get("metric") or "").strip()
         rows = self._stats(tenant_id, logsql_stats.monitor_metric_query(self._tenant(tenant_id), opts), opts, limit=1)
         if not rows:
@@ -431,6 +435,10 @@ class VictoriaAnalytics:
         apps = list(opts.get("applications") or [])
         if not apps and not (opts.get("application") or "").strip():
             return points
+        if self.aggregate is not None:
+            from_aggregate, series = self.aggregate.vital_series(self._tenant(tenant_id), opts)
+            if from_aggregate:
+                return series
         metric = (opts.get("metric") or "").strip()
         rows = self._stats(
             tenant_id,
