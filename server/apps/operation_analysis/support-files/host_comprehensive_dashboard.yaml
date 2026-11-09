@@ -1202,7 +1202,7 @@ datasources:
           value: disk
   - name: instance_ids
     type: string
-    value: []
+    value: null
     alias_name: 主机
     filterType: filter
     inputConfig:
@@ -1215,6 +1215,13 @@ datasources:
           value: monitor/get_host_instance_list
         valueField: instance_id
         labelField: display_name
+  - name: organization
+    type: string
+    value: ''
+    alias_name: 组织
+    filterType: filter
+    inputConfig:
+      control: organization
   tags:
   - 监控
   chart_type:
