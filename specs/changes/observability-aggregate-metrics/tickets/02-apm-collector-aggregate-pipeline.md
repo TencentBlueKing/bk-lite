@@ -16,7 +16,8 @@ Blocked by: 01 — 聚合层规则文档与 ADR
 - [ ] 必验：标签集合、带单位的桶、溢出序列、晚到不计入且 `apm_aggregate_late_spans_total`（经 deltatocumulative）可查、
       remote write 不可达时不 NAK 且 VictoriaTraces 不重复（spanmetrics 与 count 两条分支都测）、重启后 `increase()` 正确
 - [ ] `deploy/apm` 的验收清单、README、容量文档与本地 fixture（compose 可加一个临时聚合库服务用于本地验证）同步；
-      `test_data_plane_config.py` 改为锁定新的聚合分支形状与约束
+      `test_data_plane_config.py` 改为锁定新的聚合分支形状与约束；`DEVELOP.md`「APM 数据面」的回滚一行改为
+      说明聚合分支可单独回退（去掉“不恢复 spanmetrics”的旧句）
 - [ ] `make -C deploy/apm test validate` 通过；容器级验证用临时容器，端口避开 8428/9428/10428，结束后清理
 
 ## Notes
