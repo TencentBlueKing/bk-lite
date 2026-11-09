@@ -282,6 +282,7 @@ app_name:
   apm: APM
   playground: Playground
   workflow: Workflow
+  itsm: ITSM
 app:
   ops-analysis: Integrate operation and maintenance data, analyze potential risks
     and optimization space from multiple dimensions through dashboards and canvases,
@@ -319,6 +320,7 @@ app:
     maintenance to continuously reduce security risks.
   workflow: Design visual workflows, automate execution, manage human
     approvals, and track cross-system operations in one place.
+  itsm: Request services, approve workflows, and handle tickets.
 action_type:
   create: Create
   delete: Delete
@@ -438,6 +440,10 @@ tag:
   workflow_execution: Workflow Execution
   automation: Automation
   approval: Human Approval
+  itsm_portal: Service portal
+  itsm_ticket: Tickets
+  itsm_workflow: Workflows
+  itsm_form: Forms and data
 # ops-analysis data-permission tabs. GroupDataRuleViewSet looks up display_name as a root key.
 "目录": Directory
 "仪表盘": Dashboard

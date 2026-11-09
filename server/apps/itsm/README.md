@@ -4,6 +4,8 @@
 
 健康检查：`GET /api/v1/itsm/api/health/`，免登录，返回 Flowable 是否返回 200。
 
+`init_realm_resource` 会把名为 `manager` 的角色改成全部菜单。菜单文件里的 `itsm--manager` 不含 `setting`，入库后会被这条平台逻辑盖掉。
+
 ## 基线核对
 
 核对日期：2026-11-06。工作分支 `feature_itsm`。
