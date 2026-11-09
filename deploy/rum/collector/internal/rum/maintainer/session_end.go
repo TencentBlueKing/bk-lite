@@ -149,40 +149,48 @@ type sessionEndRecord struct {
 }
 
 func sessionEndBody(snap sessionSnapshot) ([]byte, error) {
-	duration := snap.LastMS - snap.FirstMS
-	if duration < 0 {
-		duration = 0
-	}
+	return sessionEndBatchBody([]sessionSnapshot{snap})
+}
+
+func sessionEndBatchBody(snaps []sessionSnapshot) ([]byte, error) {
 	var buf bytes.Buffer
 	encoder := json.NewEncoder(&buf)
 	encoder.SetEscapeHTML(false)
-	if err := encoder.Encode(sessionEndRecord{
-		Time:           time.UnixMilli(snap.LastMS).UTC().Format(time.RFC3339Nano),
-		EventType:      "session_end",
-		SessionKey:     snap.SessionKey,
-		Application:    snap.Application,
-		TenantID:       snap.Tenant,
-		Environment:    snap.Environment,
-		StartedAtMS:    snap.FirstMS,
-		DurationMS:     duration,
-		EventCount:     snap.Events,
-		ViewCount:      snap.Views,
-		ErrorCount:     snap.Errors,
-		ViewName:       snap.Route,
-		Release:        snap.Version,
-		UserID:         snap.User,
-		TrafficClass:   snap.Traffic,
-		ErasureUser:    snap.ErasureUser,
-		ErasureSession: snap.ErasureSession,
-	}); err != nil {
-		return nil, err
+	for _, snap := range snaps {
+		duration := snap.LastMS - snap.FirstMS
+		if duration < 0 {
+			duration = 0
+		}
+		if err := encoder.Encode(sessionEndRecord{
+			Time:           time.UnixMilli(snap.LastMS).UTC().Format(time.RFC3339Nano),
+			EventType:      "session_end",
+			SessionKey:     snap.SessionKey,
+			Application:    snap.Application,
+			TenantID:       snap.Tenant,
+			Environment:    snap.Environment,
+			StartedAtMS:    snap.FirstMS,
+			DurationMS:     duration,
+			EventCount:     snap.Events,
+			ViewCount:      snap.Views,
+			ErrorCount:     snap.Errors,
+			ViewName:       snap.Route,
+			Release:        snap.Version,
+			UserID:         snap.User,
+			TrafficClass:   snap.Traffic,
+			ErasureUser:    snap.ErasureUser,
+			ErasureSession: snap.ErasureSession,
+		}); err != nil {
+			return nil, err
+		}
 	}
 	return buf.Bytes(), nil
 }
 
 // SessionEndScanner writes session_end records for index members whose score
-// is at least 15 minutes old, then removes them. The gateway stores last_seen
-// as that score until the 4 hour cap would arrive sooner.
+// is at least 15 minutes old, then removes them. One scan drains every due
+// member in batches, or stops when the context budget is spent or a batch
+// insert fails. The gateway stores last_seen as that score until the 4 hour
+// cap would arrive sooner.
 type SessionEndScanner struct {
 	client   *redis.Client
 	writer   *SessionLogWriter
@@ -260,61 +268,126 @@ type scanFailure struct {
 }
 
 func (scanner *SessionEndScanner) Scan(ctx context.Context, now time.Time) error {
-	cutoff := now.Add(-sessionIdleTimeout).UnixMilli()
-	members, err := scanner.client.ZRangeByScore(ctx, rumstate.SessionActivityIndexKey, &redis.ZRangeBy{
-		Min:    "-inf",
-		Max:    strconv.FormatInt(cutoff, 10),
-		Offset: 0,
-		Count:  sessionEndBatch,
-	}).Result()
-	if err != nil {
-		return err
-	}
+	cutoff := strconv.FormatInt(now.Add(-sessionIdleTimeout).UnixMilli(), 10)
 	var written, lost int
 	var failed scanFailure
-	for _, member := range members {
-		if err := ctx.Err(); err != nil {
-			return err
+	var scanErr error
+	for {
+		if ctx.Err() != nil {
+			break
 		}
-		snap, ok, err := scanner.loadSnapshot(ctx, member)
+		members, err := scanner.client.ZRangeByScore(ctx, rumstate.SessionActivityIndexKey, &redis.ZRangeBy{
+			Min:    "-inf",
+			Max:    cutoff,
+			Offset: 0,
+			Count:  sessionEndBatch,
+		}).Result()
 		if err != nil {
-			return err
-		}
-		if !ok {
-			removed, err := scanner.removeMember(ctx, member, false)
-			if err != nil {
-				return err
+			if ctx.Err() == nil {
+				scanErr = err
 			}
-			if removed {
-				lost++
+			break
+		}
+		if len(members) == 0 {
+			break
+		}
+		ready, dropped, err := scanner.classifyMembers(ctx, members)
+		if err != nil && ctx.Err() == nil {
+			scanErr = err
+		}
+		if len(dropped) > 0 {
+			removed, removeErr := scanner.removeMembers(ctx, dropped)
+			if removeErr != nil && ctx.Err() == nil {
+				scanErr = removeErr
+			}
+			lost += removed
+		}
+		if scanErr != nil || ctx.Err() != nil {
+			break
+		}
+		if len(ready) == 0 {
+			if len(members) < sessionEndBatch {
+				break
 			}
 			continue
 		}
-		body, err := sessionEndBody(snap)
+		body, err := sessionEndBatchBody(ready)
 		if err != nil {
-			return err
+			scanErr = err
+			break
 		}
 		if err := scanner.writer.Insert(ctx, body); err != nil {
-			noteInsertFailure(&failed, err)
-			continue
+			noteInsertFailure(&failed, err, len(ready))
+			break
 		}
-		removed, err := scanner.removeMember(ctx, member, true)
-		if err != nil {
-			return err
+		removed, err := scanner.removeWritten(ctx, ready)
+		written += removed
+		if err != nil && ctx.Err() == nil {
+			scanErr = err
+			break
 		}
-		if removed {
-			written++
+		if err != nil || len(members) < sessionEndBatch {
+			break
 		}
 	}
 	if lost > 0 && scanner.lost != nil {
 		scanner.lost.Add(float64(lost))
 	}
 	scanner.logScan(written, lost, failed)
-	return nil
+	return scanErr
 }
 
-func noteInsertFailure(failed *scanFailure, err error) {
-	failed.count++
+func (scanner *SessionEndScanner) classifyMembers(ctx context.Context, members []string) ([]sessionSnapshot, []string, error) {
+	ready := make([]sessionSnapshot, 0, len(members))
+	var dropped []string
+	for _, member := range members {
+		snap, ok, err := scanner.loadSnapshot(ctx, member)
+		if err != nil {
+			return ready, dropped, err
+		}
+		if !ok {
+			dropped = append(dropped, member)
+			continue
+		}
+		ready = append(ready, snap)
+	}
+	return ready, dropped, nil
+}
+
+func (scanner *SessionEndScanner) removeMembers(ctx context.Context, members []string) (int, error) {
+	if len(members) == 0 {
+		return 0, nil
+	}
+	args := make([]any, len(members))
+	for i, member := range members {
+		args[i] = member
+	}
+	removed, err := scanner.client.ZRem(ctx, rumstate.SessionActivityIndexKey, args...).Result()
+	return int(removed), err
+}
+
+func (scanner *SessionEndScanner) removeWritten(ctx context.Context, snaps []sessionSnapshot) (int, error) {
+	if len(snaps) == 0 {
+		return 0, nil
+	}
+	members := make([]any, len(snaps))
+	keys := make([]string, len(snaps))
+	for i, snap := range snaps {
+		members[i] = snap.SessionKey
+		keys[i] = rumstate.SessionEndedKey(snap.SessionKey)
+	}
+	pipe := scanner.client.Pipeline()
+	removedCmd := pipe.ZRem(ctx, rumstate.SessionActivityIndexKey, members...)
+	pipe.Del(ctx, keys...)
+	_, err := pipe.Exec(ctx)
+	return int(removedCmd.Val()), err
+}
+
+func noteInsertFailure(failed *scanFailure, err error, count int) {
+	if count < 1 {
+		count = 1
+	}
+	failed.count += count
 	if failed.errorType != "" {
 		return
 	}
@@ -412,20 +485,4 @@ func parseCount(value string) (int64, error) {
 		return 0, nil
 	}
 	return strconv.ParseInt(value, 10, 64)
-}
-
-func (scanner *SessionEndScanner) removeMember(ctx context.Context, member string, deleteSnapshot bool) (bool, error) {
-	removed, err := scanner.client.ZRem(ctx, rumstate.SessionActivityIndexKey, member).Result()
-	if err != nil {
-		return false, err
-	}
-	if removed == 0 {
-		return false, nil
-	}
-	if deleteSnapshot && sessionKeyPattern.MatchString(member) {
-		if err := scanner.client.Del(ctx, rumstate.SessionEndedKey(member)).Err(); err != nil {
-			return false, err
-		}
-	}
-	return true, nil
 }

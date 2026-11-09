@@ -28,7 +28,7 @@ Blocked by: None
 - 活动索引是一个 ZSET：`ops:rum:v2:session:activity`，member 为 32 位会话键。score 在距 4 小时上限还早时等于 `last_seen`；一旦 `first_seen + 4h - 15min` 更早，score 取这个更早的值。这样维护进程只用 `score <= now - 15min` 就能在开始满 4 小时的那个扫描周期取到仍在活动的会话。记录的结束时间仍是快照里的最后活动时间（`_time`），不是 score。
 - 每条事件都刷新当前会话的快照，不只在切换时写。没有后续事件时，空闲 15 分钟仍能写出记录。
 - 切换时只有该会话还在索引里才再次封存。维护进程已经取走的会话，后续事件不会把它放回索引，避免空闲或满 4 小时之后再写一条。spec 允许的重复只剩「写入成功、移出索引之前进程停了」；查询按会话键对数值取 `max`。不在存储层加幂等键。
-- 扫描每 1 分钟一次，每轮最多 200 条，一条会话一次 `POST /insert/jsonline`。
+- 扫描每 1 分钟一次。一轮内按每批最多 200 条排空到期会话，一批拼成多行 JSON、一次 `POST /insert/jsonline`；45 秒扫描预算用完或某批写入失败则停止，失败的那一批留在索引里，下一分钟再试。
 - 只累计 `rum.application` 路径：每条事件 `events + 1`，`view` 再 `views + 1`，`error` 再 `errors + 1`。入口路由、版本、用户、环境取第一个非空的 `rum.view.name`、`rum.release`、`rum.user.id`、`rum.environment`。回放不增加这三个计数，也不覆盖这四个已有值；仍会更新 `last_seen`、流量类型和快照 TTL。
 - 快照缺失（含过期）、字段损坏，或 member 不是 32 位十六进制，都计入 `core_rum_session_end_records_lost_total`，移出索引，打一条汇总 WARNING。不逐条、不写会话键。
 - 不删除活会话 hash。维护进程只有会话键，删活 hash 会和正在切换的 Lua 抢同一条状态。
@@ -41,3 +41,4 @@ Blocked by: None
 - 同一范围 `go test -json -count=1 ./internal/rum/... ./internal/rumprivacy/... ./pkg/rum/...`：`passed=349 failed=0 skipped=0`。
 - `GOTOOLCHAIN=auto GOPROXY=https://goproxy.cn,direct make -C deploy/rum validate`：compose config、gateway `validate`、`bklite-rum-gateway` / `bklite-rum-controller` / `bklite-rum-maintainer` 构建成功。
 - 未起临时 Redis / VictoriaLogs 容器。删除命中用 HTTP 桩和现有过滤器验证。
+- 吞吐修正：一轮内按每批最多 200 条排空。`make -C deploy/rum test` 全部 `ok`；`go test -json -count=1 ./internal/rum/... ./internal/rumprivacy/... ./pkg/rum/...` 为 `passed=352 failed=0 skipped=0`。`make -C deploy/rum validate` 通过。

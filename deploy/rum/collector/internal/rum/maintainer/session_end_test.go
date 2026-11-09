@@ -39,15 +39,16 @@ func TestScanWritesDueSessionAndSkipsOneStillInsideIdle(t *testing.T) {
 	require.NoError(t, err)
 
 	bodies := inserts.bodies()
-	require.Len(t, bodies, 2)
+	require.Equal(t, 1, inserts.calls())
+	require.Len(t, bodies, 1)
 	require.Equal(t, "/insert/jsonline", inserts.paths()[0])
 	require.Equal(t, "application/stream+json", inserts.contentTypes()[0])
 
 	byKey := map[string]map[string]any{}
-	for _, body := range bodies {
-		decoded := decodeJSONLine(t, body)
+	for _, decoded := range decodeJSONLines(t, bodies[0]) {
 		byKey[decoded["rum.session.key"].(string)] = decoded
 	}
+	require.Len(t, byKey, 2)
 	due := byKey[dueKey]
 	require.Equal(t, "2026-07-27T00:01:00Z", due["_time"])
 	require.Equal(t, "session_end", due["rum.event.type"])
@@ -188,10 +189,11 @@ func TestScanDropsMissingSnapshotAndCountsItLost(t *testing.T) {
 	require.Contains(t, text, `"failed_stage":"load_snapshot"`)
 }
 
-func TestScanStopsAfterTwoHundredSessions(t *testing.T) {
+func TestScanDrainsMoreThanOneBatchInOneRound(t *testing.T) {
 	client := testRedis(t)
 	start := time.Date(2026, 7, 27, 0, 0, 0, 0, time.UTC)
-	for index := 0; index < 201; index++ {
+	total := sessionEndBatch + 1
+	for index := 0; index < total; index++ {
 		key := fmt.Sprintf("%032x", index)
 		at := start.Add(time.Duration(index) * time.Millisecond)
 		seedSnapshot(t, client, key, at, at, at, "/checkout", "batch-user-sentinel")
@@ -200,11 +202,95 @@ func TestScanStopsAfterTwoHundredSessions(t *testing.T) {
 	server := inserts.server(t)
 	scanner, logs := testScanner(t, client, server.URL)
 	require.NoError(t, scanner.Scan(t.Context(), start.Add(time.Hour)))
-	require.Len(t, inserts.bodies(), 200)
-	require.Equal(t, float64(start.Add(200*time.Millisecond).UnixMilli()), mustScore(t, client, fmt.Sprintf("%032x", 200)))
-	require.Error(t, scoreErr(t, client, fmt.Sprintf("%032x", 0)))
-	require.Contains(t, logs.String(), `"written":200`)
-	require.NotContains(t, logs.String(), "batch-user-sentinel")
+
+	require.Equal(t, 2, inserts.calls())
+	bodies := inserts.bodies()
+	require.Len(t, bodies, 2)
+	require.Len(t, decodeJSONLines(t, bodies[0]), sessionEndBatch)
+	require.Len(t, decodeJSONLines(t, bodies[1]), 1)
+	require.Zero(t, mustCard(t, client))
+	require.Zero(t, mustExists(t, client, rumstate.SessionEndedKey(fmt.Sprintf("%032x", 0))))
+	require.Zero(t, mustExists(t, client, rumstate.SessionEndedKey(fmt.Sprintf("%032x", sessionEndBatch))))
+	text := logs.String()
+	require.Equal(t, 1, strings.Count(text, `"msg":"event=rum_session_end_written"`))
+	require.Contains(t, text, fmt.Sprintf(`"written":%d`, total))
+	require.NotContains(t, text, "batch-user-sentinel")
+}
+
+func TestScanLeavesTheBatchAndStopsWhenInsertFails(t *testing.T) {
+	client := testRedis(t)
+	start := time.Date(2026, 7, 27, 2, 0, 0, 0, time.UTC)
+	total := sessionEndBatch + 50
+	for index := 0; index < total; index++ {
+		key := fmt.Sprintf("%032x", index)
+		at := start.Add(time.Duration(index) * time.Millisecond)
+		seedSnapshot(t, client, key, at, at, at, "/checkout", "retry-user-sentinel")
+	}
+	inserts := &insertCapture{failFirst: 1, failBody: "response-body-sentinel"}
+	server := inserts.server(t)
+	scanner, logs := testScanner(t, client, server.URL)
+	require.NoError(t, scanner.Scan(t.Context(), start.Add(time.Hour)))
+
+	require.Equal(t, 1, inserts.calls())
+	require.Empty(t, inserts.bodies())
+	require.Equal(t, total, mustCard(t, client))
+	require.Equal(t, 1, mustExists(t, client, rumstate.SessionEndedKey(fmt.Sprintf("%032x", 0))))
+	require.Equal(t, float64(start.Add(time.Duration(total-1)*time.Millisecond).UnixMilli()), mustScore(t, client, fmt.Sprintf("%032x", total-1)))
+	text := logs.String()
+	require.Equal(t, 1, strings.Count(text, `"msg":"event=rum_session_end_write_failed"`))
+	require.Contains(t, text, fmt.Sprintf(`"failed":%d`, sessionEndBatch))
+	require.NotContains(t, text, "event=rum_session_end_written")
+	require.NotContains(t, text, "response-body-sentinel")
+	require.NotContains(t, text, "retry-user-sentinel")
+	require.NotContains(t, text, fmt.Sprintf("%032x", 0))
+}
+
+func TestScanContinuesAfterAFullBatchOfMissingSnapshots(t *testing.T) {
+	client := testRedis(t)
+	start := time.Date(2026, 7, 27, 3, 0, 0, 0, time.UTC)
+	for index := 0; index < sessionEndBatch; index++ {
+		key := fmt.Sprintf("%032x", index)
+		require.NoError(t, client.ZAdd(t.Context(), rumstate.SessionActivityIndexKey, redis.Z{
+			Score:  float64(start.UnixMilli()),
+			Member: key,
+		}).Err())
+	}
+	goodKey := fmt.Sprintf("%032x", sessionEndBatch)
+	seedSnapshot(t, client, goodKey, start, start, start.Add(time.Millisecond), "/checkout", "kept-user-sentinel")
+	inserts := &insertCapture{}
+	server := inserts.server(t)
+	scanner, logs := testScanner(t, client, server.URL)
+	require.NoError(t, scanner.Scan(t.Context(), start.Add(time.Hour)))
+
+	require.Equal(t, 1, inserts.calls())
+	bodies := inserts.bodies()
+	require.Len(t, bodies, 1)
+	lines := decodeJSONLines(t, bodies[0])
+	require.Len(t, lines, 1)
+	require.Equal(t, goodKey, lines[0]["rum.session.key"])
+	require.Zero(t, mustCard(t, client))
+	text := logs.String()
+	require.Contains(t, text, fmt.Sprintf(`"lost":%d`, sessionEndBatch))
+	require.Contains(t, text, `"written":1`)
+	require.NotContains(t, text, "kept-user-sentinel")
+}
+
+func TestScanStopsBeforeWritingWhenTheBudgetIsSpent(t *testing.T) {
+	client := testRedis(t)
+	start := time.Date(2026, 7, 27, 4, 0, 0, 0, time.UTC)
+	key := "ffffffffffffffffffffffffffffffff"
+	seedSnapshot(t, client, key, start, start, start, "/checkout", "budget-user-sentinel")
+	inserts := &insertCapture{}
+	server := inserts.server(t)
+	scanner, logs := testScanner(t, client, server.URL)
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	require.NoError(t, scanner.Scan(ctx, start.Add(time.Hour)))
+	require.Zero(t, inserts.calls())
+	require.Equal(t, float64(start.UnixMilli()), mustScore(t, client, key))
+	require.Equal(t, 1, mustExists(t, client, rumstate.SessionEndedKey(key)))
+	require.NotContains(t, logs.String(), "event=rum_session_end_written")
+	require.NotContains(t, logs.String(), "budget-user-sentinel")
 }
 
 func TestErasureFilterDeletesSessionEndRecord(t *testing.T) {
@@ -322,6 +408,12 @@ func (capture *insertCapture) server(t *testing.T) *httptest.Server {
 	}))
 	t.Cleanup(server.Close)
 	return server
+}
+
+func (capture *insertCapture) calls() int {
+	capture.mu.Lock()
+	defer capture.mu.Unlock()
+	return capture.seen
 }
 
 func (capture *insertCapture) bodies() [][]byte {
@@ -483,8 +575,22 @@ func mustBody(t *testing.T, snap sessionSnapshot) []byte {
 
 func decodeJSONLine(t *testing.T, body []byte) map[string]any {
 	t.Helper()
-	var decoded map[string]any
-	require.NoError(t, json.Unmarshal(bytes.TrimSpace(body), &decoded))
+	lines := decodeJSONLines(t, body)
+	require.Len(t, lines, 1)
+	return lines[0]
+}
+
+func decodeJSONLines(t *testing.T, body []byte) []map[string]any {
+	t.Helper()
+	var decoded []map[string]any
+	for _, line := range bytes.Split(bytes.TrimSpace(body), []byte("\n")) {
+		if len(bytes.TrimSpace(line)) == 0 {
+			continue
+		}
+		var item map[string]any
+		require.NoError(t, json.Unmarshal(line, &item))
+		decoded = append(decoded, item)
+	}
 	return decoded
 }
 
@@ -499,6 +605,13 @@ func scoreErr(t *testing.T, client *redis.Client, member string) error {
 	t.Helper()
 	_, err := client.ZScore(t.Context(), rumstate.SessionActivityIndexKey, member).Result()
 	return err
+}
+
+func mustCard(t *testing.T, client *redis.Client) int {
+	t.Helper()
+	count, err := client.ZCard(t.Context(), rumstate.SessionActivityIndexKey).Result()
+	require.NoError(t, err)
+	return int(count)
 }
 
 func mustExists(t *testing.T, client *redis.Client, key string) int {
