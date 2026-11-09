@@ -14,7 +14,7 @@ meta:
 dashboards:
 - key: dashboard::运维总览_内置
   name: 运维总览
-  desc: 按所选组织查看资源、监控和告警的当前规模。主机性能和新增关闭趋势跟随所选时间。
+  desc: 按所选组织查看资源、监控和告警的当前规模。主机使用率取最新有效采样，不跟随时间；新增与关闭趋势跟随所选时间。告警应用数是有未恢复监控告警的应用个数，不是业务故障单。
   other:
     gridCols: 24
     timeSelector:
@@ -114,8 +114,70 @@ dashboards:
             inputConfig:
               control: organization
       - h: 5
-        w: 5
+        w: 4
         x: 10
+        y: 0
+        id: ops-kpi-nodes
+        name: 告警应用数
+        itemType: widget
+        valueConfig:
+          compare: false
+          chartType: single
+          dataSource: 关联告警汇总::monitor/get_cmdb_relation_alert_aggregation
+          compareMode: percent
+          interaction:
+            url: /cmdb/views/application
+            kind: title
+            name: 查看应用
+            openMode: newTab
+          singleStyle:
+            showIcon: true
+            iconImage: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAQAAAAEACAYAAABccqhmAAAABmJLR0QA/wD/AP+gvaeTAAAchElEQVR4nO3de3xU5Z0/8M/3zOTGHUEuuYC0Kra21hLIcLNG627FLoIuuNpV6/7W5Sck4WKtRf1tTbE/rdRVIAlYtK9ardtaqBBQ2Z9WCBaFJKSyrLai8uOSSQg3CRAIycw83/0DcKkVmMk8z3nOzPm+/858nq8O85k5Z855BhBCCCGEEEIIIYQQQgghhBBCCCGEEEIIIUTqItsDCJHq+KqpFyIYGQJQD0B1h3K6g9QhsHMMrNrQW22n1auP257z80gBCJEALp7YH3CKwXQNiEcANBxA3/M9DMBuMLaB8A6Y12JAZi0tW9ZpfODzkAIQ4jz4W1MvQEf0NkDdDlAIOl43jOMgXgXCC+DDr1NNTTT5SRMnBSDEWfA1Ey8HB+aCcQsImQZXagGhAtmdlbRmzRFz6/w1KQAhPoOvuXE4OPAYmCeB4Li4dCuAhegZm+/WOQMpACFO4TFTc5AV+QGAuQCy7E1CTSD1IK2rft74SqYXECIV8DWTC8F4CcAXbc/yKcZv0a3jX0weFrj58UYIz2GA+OrJZWC8DS+9+AGAcAvasxr42ptHmFtCCJ/iqVMD2B+tAvh/257lPDpA+Edat/J3uoOlAIQv8YQJWTiR9QIYU23PEqcYmKbT+hXP6AyVAhC+w8XFQaDPCgB/Z3uWBDGY/5nWV/9CV2DqFUA5O+P37u7dQcEe4GiG7XHOhgJZnBnraN2wZEgrQGx7HhsuLvso68JgdvfoCdXH9iynZcQ66bWPf/RYb9WWKu/8nxUD0S20bsXLOsI8XgBMoZl7RiiO3UjshAB1KUBDkXInL6kFwH+CsIWB3x/v1/rW++WXW78MVKcxcxpzolHnOmK+gYCvMnAZgH625/qsaXtfxT/vX2N7jOQwjoPVeHpr1bvJRnmwAJhGlTRdS8STAZoEoMD2RPrxERBVK3Dl5oqCOtvTdFWo7GAvRvtkYkxi4FsAutue6VwK2z5E5c5KOFC2R9HhY+R0FCb7FaGnCqCoNHwtQI8DPNL2LK5hvMOsZtcvHlJve5R4XVz2UVY/lTOdHTwERn/b88SjX/QofvXxY7gg6uqVtobxb6im+rZkEjxRAKNKdl1OFHgYSJkzsropEF6Ewpy6qvyDtoc5O6ai0qYpAB6D174zP49Hws/hb1s32x5DP+YbaX316q4+3HIBMIVKmuYx4UGk3HG9EXsYNKe+Mu8l24N81th7WgZEg5HlAF1le5ZEjTj2MRbvWAhCGp6LZexG1vEv0+uvH+vKw6296K64r6V7qLRpORP+j805PGYwgX8TKmlaiHL2zP+TMaWNX40GorWp+OJ3oHB/80vp+eIHAMIQRLp/r6sPt/KPLFQWzs8+EV3PwM021vc6Jp4ZOtD0y8Jpm61/zRkqabwhBmwA4SLbs3TFtUe2YFjHHttjmMV8L183tXdXHup6AYwtaR7KTPUACt1eO5UwcHsga/Cq4hn7etiaIVQSvoOJVgPUy9YMybpz3xu2R3BDb0Sj07vyQFcLoHjGvh5RUtUAD3Jz3ZTFfP3xQGSZjcOBopLwGCY8gxQ+PBt1bBuGn2i0PYZLeObJKxwT4+KTy3Q80PlzAF9zb800wHx9aH/Tj9xcclzp7lwQlsHqPfHJu+FQyl5i0RWDgb7XJfog1wqgqLTpETBucWu9dMKEh0IlTZPcWKtwWnO3CJxXAOS5sZ4pOaoD1xzZYnsMdzHfkehDXCmA0PTGKwA84MZaaYqY+JeFZbuNf/ceyIzdD+DrptcxbXTbn5GjOmyP4S7CjVw4LaETx+58AgjQT1xbK331DrIz3+QCY+9pGQCme02u4ZaRbR/aHsGGHuh1oCiRBxh/UY4qa7yagQmm1/EDBm4OzWgebyo/mhEtB6GnqXw3jTzmywIAlLo2kT83XABMxPQTs2v4CzvqCYC1X8EZmtl4CRh36861oWesHUM79toeww7isYn8udECKCptugbAaJNr+FCoqHSP9hOCrOheANYvPNJhaMfe9L3y77zoskT+2mgBMLFc6WcCq/+lNe/kdQaufMvghqGdPn33BwDGEB4zNSfePzdYAEzEdKO5fB8jfGv89F3n+z26uIUONhUBGKwrz7a8jgO2R7CH4CAjelG8f26sAEIz94xAWm7m4QmZncHARG1pTGnz7g8APVS77RHsciju+wKMFYDimLz7m6RxN1uGSqvnKkel1W5riWOO+5uchK8djhfBKYKBEzEM/JEYi2Lk1DqxiGefaXICQYC/wUQ/IiBX+wKMq3XEhMoO9mJu/5KOrM9QBPy7UvwiWLn6nVzxkT8uROrt+KuRivsGMmMFAMWX6d5uhEDPDN2bO33ZMorpTTbmw8JpzSuDmepVBhK6QOO8CD3HT9/Vd8OSoYeSiWE+ding6P5aMeKApmyqzFulOTcuvYone3hXJTfQiXj/0sghQHE5B0EYojm2YUhqvfgBAA1Lcw9EO51vA9itOzsCJ+lzLMzOF3TM8hcI5bZe/Cdxm721PYDoaLx/aqQAWlt39tCeTViUai/+0xqW5h4A82zduexQ8iXrcJc2kjiHzlhHR5XmzETF/QJISxT/f7+RAsiKZWjfxMKJOSmza+7nqbswvxqA1q1pmJIvAGLS/FzRRw1Lv3hYb2bCMzTZXd8yB+H4/9QAFY1l6s6McSS1b+0qJwWgWWcksUr+un1mzc8Vx338aQzTNtsjWHSQ3lwR9zkQuUNPpB9WH9gewR5O6L9dCkCkn7eqw2Dssz2GHZTQz4VJAYi0QwDDwXrbc1jyZiJ/LAUg0pPCOtsjWBBDNJJQ8UkBiPQUcF4Dp8evgCZgI214NaELw6QARFqitS/vAuEPtudwFeGFRB8iBSDSWcIviJTF6IRDv0v0YVIAIo1lvATAH/cFEH6dyPf/p0kBiLRFNcvaQLTI9hzGMRQo9tOuPFQKQKS3SGcFGEdsj2HYclq3+v2uPFAKQKS1k2fF6ce25zCoA0H6164+WApApD869BSYttoew5DH6M0VXd5wRQpApD2qqYmCUAIgJW8nP4dtQJ/HkwmQAhC+QDUrNgBIo0MBPgGlbqOa55K6+1IKQPhHzZXzALxhewwtiGbRW6sSuvHn80gBCN8glCsg9p1Eb5n1HMISWrdyqY4oKQDhK1Sz+gAQ+Buw/j0aXbIS/TPKdIVJAQjfoZqXwwjyhJTbOoxpFXI6bqVly7SdzJQCEL5Eb1b/CQ6NS6HDgV+CDv09rVmjdWs8KQDhW7T25V2AugoJbqLhshiIH0LNyn+impqo7nApAOFrVLP6AGpW/g3Ac+G16wQY+8A0gdZVP0omfmYLUgBCgACmmurHQc7VAP7L9jwAGEzPQ2V8hdavMPq1pRSAEKfQupffBlpHNGYNeLTNybYzBNNWMF9N61d8l/6wbL/p5aQAhDgD1dRE//4LD/184vAf48nBU3AwmPxPL8SFaSuIv4sBwRG0vtq1nYzM/TioECnseCAbL/Urxqq+Y/DNw+9iQmsdRhz7CI7OQ/GTtykvh0PPU80KK7sYSwEIcQ7tThZe6Tsar/QdjQGRVow9+ieMPLYNhcc+wgXRhLcZYADvAVgLUmvRkfUGbVzWrn/q+EkBCBGnfRl9sPKCsVh5wVgAwIBIK4Z27sWQjn0YGPkE3VQnclQHclQHjjrdcNzJQruThcasAbjq8Hs3fTP6zlpas8ZTm5NIAQjRRfsy+mBfRh/Udx9+3r99reeIrfVL/tVTL35ATgIK4WtSAEL4mBSAED4mBSCEj0kBCOFjUgBC+JgUgBA+JgUghI9JAQjhY1IAQviYkQJwgoFO/aHI0Z7pvoDOMCIn+R1siHQ/V90057nOyXC0Pk8AkOFkeGu3oVOMFEBOv7wW6N5eiQI3a81zWXE5BwFcpDOTwW1JZzB074x72egZzV/SnOkqFcUXdWdGoZJ+rkwwUgA15RQFsEdnJgH3hsrC+Toz3XR8f3gigD56Uznpm0sIaNQxyZmR7Kh/A5g057qGHNypO/PYhYeP6s7Uwdw5AP0/vNCHmVaMn76rr+Zc4wpn7xwMogW6c5mSf/cOxFj7D2QwMCFU2vyo7lw3FJU03gTQP2iO3fd++eX6D4s1MFYARNrfWQDwyM5A4O1RM5vG6s/Wb+pUDhSVNk8ORIObAAzRvkAsui3ZiPyD+S0AIhqm+QsMnltU2vRiaNbegbqzTbhy9o4+RaVND4Pot9D9uiB0+ee7TTP2Ma2oLPwgGP/XVD6A7QBaDeYnywEwDNo/9n9qf11l/gAdQUWl4XcBXKkj63NEAPwJgPY97fWhbIAvBZBhJh5L6iryZxjJTpK5DUEUloOMFoD2EzWphIFXNMYth7kCyADwNUPZmhjZcv9Tinm10QWSYOwQoK4q/0MA/2kq3+8cpmpdWTFSv9GVJf5KW4+26DrbQ5yN6QuBlhnO96v29pzA73WFNVQM2Q5gi6488RfW1Dw37ITtIc7GaAEEFL8EQJlcw48YeGPrE4OO6U2lX+vNEwDA4FW2ZzgXowWwcXHBxwB+ZXINXyJ6VndkRrfMJQD26s71uf2Z3bK1HaqZYPxegECUHwRw3PQ6/sF/qK/I035S6e35Fx5l0Dzdub5GNO/t+Rd68gKg04wXwManC5pAVGF6Hb9gx5lrKrt7/9ylAP5sKt9feMexfq1LbU9xPq7cDdgZ6PwJ5ONl0hj4Xf2ivHdM5deUU9QBGSsYP2E4D3j16r8zuVIAWxYMa3XAt8LTF4N43mFF6gemF9lUmbeKmBaZXietMdbVV+b+1vYY8XBtP4BNlQU1YBj/B5ymYsT8nVNf1xkXjey5D2DXfqE2vfCOWMS5BSCzVxdp4uqGIHVV+U8CeN7NNdMBgebWVhW85tZ6DUtHRiiQORXQfqtwumsLAJMaluYesD1IvFzfEehEdnAGGJ69MsqDnq+tzHvC7UVrFw7cS44zCcB+t9dOUYqYbt9YWfBftgdJhOsFsPWJQcc+cdongJASx0iWPf8JtU+ztXjtotwGMMYDvMPWDCniBBPfWVuV5+nv/D+PxU0bmEaVhucT6D57M3gWAzyvrrKg3PYgADBqxo5B5GS8BuDrtmfxoD0O802bqgpqbQ/SFdZ3bQmVNs5i0KNIg73k9OAjxLjNzWP+eBRO2947kJH1LAhTbM/iHbQ5EFWTNz5dkLLnSqwXAACMnr3nIhWNVQL4tu1ZLGIAy2OkHnDrbH9XFJWFvw3mCoCG2Z7FGsZRdjA/GOR/2/hUQbvtcZLhiQI4bVRZ00RiroSJ3XO8bRMp5/u1i3M32B4kHmPmNObEIvgBTl40lGV7HhdFGPgFVOTh+sXDWmwPo4OnCgAACqc1dwtkxL4DolJ4fiOJpLQz8AaInjVxbb8bxpY0D406PB3MdwPoZ3seg5pAWBWI8ZOnbnBLG54rgDONLGv6ekBhIhPfgJNlkG17pqQQDjBjNcFZFevE6w1Lc9PiJqniu3Zkt3cPXsugG0H4Jk7u1uTpf1txeA+MVcxqZf3igs2pcmFPolLmSSou5+Cx/buHE2VcwqT6OAp9GOzpj59EdIiJjhJxS9SJftCw4CKtW6V71bj79/eMHOv4Cgj5TNyH4PSBUt79FSqiTjAfZQefOBTYFczO+NDrd/EJIYQQQgghhBBCCCGEEEIIIYQQQgghhBBCCCGEEEIIIYQQQgghhBAifaXMhiDj7t/fM3K8fTiRcxEYFzCjB8AZtuc6K3KYwK0MHCLl7EEga2ttRb8jtsdyw7jS3blRxxmuFOcRUXco7mN7pnMhUAeIDjOr1gDh487OvR80LB0ZsT2XG7xbAOXshA42FYFpEoMnAfiS7ZGSxAB2MPB7YqwOZPKbqb6j7GlX3NfSPedE5HommgTGDUj9/QE7CdjC4DXkBFbXLsptsD2QKZ4rgKKS8KUgzAEwCcBg2/MYdIjBPw8Eg1WbFgzeaXuYrgiVNE1i4rsBXIdU36/x3N4DoTLW4byQLvs4nuaZAiic1tw/kMX3gXkOgEzb87goQkxLcjjjoZrFA9psDxOPUFl4NDM9DvA3bM/isj0gzK2ryE+bH7i1XgCF05q7BTPVXAbuBdDd9jz28A4QldVV5L9qe5KzKSoJXwqH54Npku1ZLHsVCJbVVQ5K+d9MtFoAo2Y0FZDD1ZDfnPsfjOWxSMfdDUu/eNj2KGcaVdY0kRS/CEJP27N4xHFiPFRblb/A9iDJsFYApz5GrgB4kK0ZPOw9IkyorcgP2x4E+PT3G5+EhV+T9j6urOufPwvlpGxP0hVWCiBUEr6DCc/AXz8rlRjGThWk6zcvzNtma4SLyz7K6sc5zzJwu60ZUgLht5+g/c6PKy7psD1Kolxv9KKSxpuY8BzkxX9uhIscxRtCM5sLbY0gL/44MW65QOWsueK+lpQ7h+VqARSVhb8GoufdXjdlMfqz4lfGle7OdXvpUEn4AXnxJ4BwTdaJ6LO2x0iUay/Esfe0DACjGkAPt9ZMDzwogsCvC6dtdu2qx9GlTTcy4cdurZcuCLi1qDQ8x/YciXCpAJiiwchyAEPdWS/d8DeczEE/dWOl0MzGSxTzryCf0rpq/ujSxmLbQ8TLlSe5qKz5VoCucmOtdEXArKKS8N+ZXoeV87h81ZeUoAL9pnDa9t62B4mH8QK4vPz9TDA/Ynodn3jC5KHA6JLGEMCTTeX7yMBgZvZc20PEw3gB9DjQazpO/l68SBZhuJMx6G5T8cqhJ+CBq0PTAYNnF85qHmJ7jvMxWgDj7t/fk0EPmVzDb4jw8Lj792v/iD6qrGkiGON15/pYdiCm5tke4nyMFkCkveMmABeaXMOHBkaOd07XHUrM03RnCtwxZkbjxbaHOBezhwBMcjxpBN+mM+3UBSzX6cwUAAAnFqBbbA9xLsYKYMycxhyA/9ZUvs9dWVjafJmusJwTkeuR3vfz28OYanuEczFWANGocx18fXuvWQFSN+vKYvL97b0maS1r3YKmgon5BlPZACIMfEBAp8E1khUEcBlM3fPAmALgUQ1BBDRNSD7nrFoBbDeYr0MvAJeYCg+yugnAY6byk2GuAICvsv7YCBPmRQKRyi0LhrXqj9dr7D0tA6KB2JMg/kcD8V9BOTvJ3oY6rrRxcISd/rqG+hRjp0M0q2Bv7qvLllFMe75mRSXhMSB+FqAv685WhCt0Z+pirAD45LufTsoBTdlUkbdKc64x7zw9aB+A20OlTY0M1n1hSMaYlvDgjUBTMiFRxxkO3XeyM3ZSMGP0poUD927SHG1KXVX+xvHTd43vDARfB3ikzmxiePZ6ACPnAIrv2pEN3TvDEl7cVJk6L/4z1VbmPkjAGt25KoMKks5QnKdjljOxQzNrFw7cqzvXtA1Lhh5ihZtx8rBFH0LSz5MpRgrgaGaW/jv+WL2oPdM1xKSc7+Hk1uDaKKXhnYVJ90VFhy5qyX1Nc6Zr6hfnNTLwpObY3OJyNvZpOxlGCiCjG2kvgIAir59IOqdNi3P/DOADnZlESPrd2yHS/U3NzlQ45j8njr2sOTHQfrDJk1vfGSmAWEen9twoq5Tcc+0z9O4pz5z09unMKqBjlDOk/vOkoP0HW1Q05smt7uWebyF8TApACB+TAhDCx6QAhPAxKQAhfEwKQAgfkwIQwsekAITwMSkAIXxMCkAIH5MCEMLHpACE8DEpACF8TApACB+TAhDCx6QAhPAxKQAhfEwKQAgfkwIQwsekAITwMSkAIXxMCkAIH5MCEMLHpACE8DEpACF8TApACB+TAhDCx6QAhPAxKQAhfEwKQAgfkwIQwsekAITwMSkAIXxMCkAIH5MCEMLHpACE8DEpACF8TApACB8zUgDRYOZR3ZkUzMjTnek+ztEaR9SZbASTo/u5ykU5p/YbiwO9zxMAJxhI+rkywcgT9W7FoAMA2rWGcmy61jyXjZ++qy9Al+hNpSNJJzDv1jHJGQYX7Q9P0pzpLicwSndktKND+5uiDoaamhhAo+bMW4vKwt/Wm+mezoAzC0CGzkwiPpx0iKP7eQJA9FThtOb+2nNdUFzOQWLM1hwba8j9gp8KAABp/4dFYP730aWNxZpzjSsqabwJoId055Jy/n+yGZnRmO5PAAAwNJipXk21Eigu5+Dx/eGfAfia5uhdKCelOVOLoKlgZuwm7anUSwFvjCoLVwaU80JMRVq1L6FJkBwnClxMjnMHwLcB0P2/g7M5+GGyIRuWDD1UVBpuA9BDw0yfYqAokKm2hkrD5cyoYRWL6szXyQlmZivEio4faJoFoit15xOwTXemLsYKgBjrQfgnA9FBYsxWpGZTIGAgXo8YTr/i2dAK9KeaxQPaNIWtB2Di8GowAz8DAV5+rphj2tv5L/JBtQbjk2LsEKAzI1INoMNUvuCV+qKwTFuW+Guk8bnSzFgBbFkwrBXAG6by/Y6VqtaVJWVt1K66iryttoc4G7Pf15K8s5jAQHP94oLNuvK2LBjWCsbruvLE/2Bg5alvxTzJaAEQclYC+MTkGn5EhGr9/6j4F3rzBAA4DrR9UjPBaAHUVvQ7woRHTa7hQxEifkp3aF1VwQoC3tad62cE1NUuyquxPce5GL9k83i/wxUAtptexz/4Z7WLCj4yEk24D+a+tvAdBh7w8sd/wIUCeL/88k6Af2h6HZ9oo0Dmj02F11bkbwLIs2esU8wrdZX5a20PcT6u3LRRV5n/azDWubFWOiOmn9YuHLjX5Boxin0fQPKXGPtbTDnqAdtDxMOlu7aIg7HgrdB+f4CPEOqdTPVT08s0VAzZTkzfhRwKdBkxzdu8aMh7tueIh2u3bb7z9KB9ingK5PvmLqAWAm7e+FSB3jssz6K2Kq8akJO3XUHAy7VVuY/YniNert63vbmioI6Jy9xcMw2ccFhNrq3ID7u5aF3/vB8C9P/cXDMNvNueHbzT6yf+zuT6xg31FQXPEGMOAE/eHeUxionv3lRV4P615OWkuqmMKSD6D9fXTk17YgFn8tYnBh2zPUgirOzcUluVv4CJpwI4YWP9FNEG5in1FQUv2hqgZvGAtm79cicC/HNbM6QEwlYnGBjbsDDXxK3VRpm8Ceq8QjPD17DilQD1sjmHBzU67EzeVJX7R9uDnMRUVBp+GKCHbU/iOYzlJ3KCd6XaO/9pVgsAAApLmy8LQD0N4Grbs3jE2lin8w8NS3MP2B7ks0aVhG8hwgIAg23P4gExgB6pq8ydl0rH/J9lvQBOKyoNTwVQCWCA7Vks2QXCD+sq8l7w8j+owmnbewczsucxcQkA797kbxABv0eMv1e7pMCzd/nFyzMFAABj5jReEOukR0G4C0CW7Xlcsh9E82Ide37WsHRkxPYw8Ro1Y/cox3GeYmCc7VncQkCdYvX9+qohb9meRRdPFcBpY+9pGRANRv8FwF0ALrY8jgltYPwHE1dndsuufnv+hZ7cMDIeoZnNhUqpEgJuAtDH9jzaMXYSaBUCvPLkjT3e/XTWFZ4sgDOFyvZ8WSE2AYyRdHKzxouheXdd4wgHiLGNCVtJ8Ss5x6Jra54bllbfgBRO25zhZA2+GszXOsCVDFwBINV+y0EBvAvkbCOFjYp5Vf3i/C22hzLJ8wXwea64r6V797ZInygpTx8mZAGHggOHHK0pJ89uiGna+Om7+nYGsvpwrMO7/9YoGIlkdh49tYuVEEIIIYQQQgghhBBCCCGEEEIIIYQQQgghhBBCCCGEEEIIIYQQQgghhBBCCCGEEEIIIYQQQgghhBBCCCGEEEIIIYQQQgghhBBCCCGEEEIIIYQQQgghhBBCCCGEEMJP/hvkxrg7X4XBsgAAAABJRU5ErkJggg=='
+            iconSource: upload
+          filterBindings:
+            organization__string: true
+          selectedFields:
+          - with_alert_count
+          thresholdColors:
+          - color: '#366ce4'
+            value: '70'
+          - color: '#366ce4'
+            value: '30'
+          - color: '#366ce4'
+            value: '0'
+          dataSourceParams:
+          - name: view
+            type: string
+            value: summary
+            alias_name: 视图
+            filterType: fixed
+          - name: model_id
+            type: string
+            value: application
+            required: true
+            alias_name: 源模型
+            filterType: params
+          - name: model_asst_id
+            type: string
+            value: application_run_host
+            required: true
+            alias_name: 模型关联
+            filterType: params
+          - name: peer_model_id
+            type: string
+            value: host
+            alias_name: 对端模型
+            filterType: params
+          - name: organization
+            type: string
+            value: ''
+            alias_name: 组织
+            filterType: filter
+            inputConfig:
+              control: organization
+      - h: 5
+        w: 5
+        x: 14
         y: 0
         id: ops-kpi-open-alerts
         name: 未关闭告警
@@ -156,7 +218,7 @@ dashboards:
               control: organization
       - h: 5
         w: 5
-        x: 15
+        x: 19
         y: 0
         id: ops-kpi-severe
         name: 严重告警
@@ -195,47 +257,6 @@ dashboards:
             filterType: filter
             inputConfig:
               control: organization
-      - h: 5
-        w: 4
-        x: 20
-        y: 0
-        id: ops-kpi-nodes
-        name: 节点
-        itemType: widget
-        valueConfig:
-          compare: false
-          chartType: single
-          dataSource: 节点用法总览::node/get_node_usage_statistics
-          compareMode: percent
-          interaction:
-            url: /node-manager/cloudregion
-            kind: title
-            name: 节点管理
-            openMode: newTab
-          singleStyle:
-            iconKey: icons/mm-node_Node
-            iconSize: medium
-            showIcon: true
-            iconSource: builtin
-          filterBindings:
-            organization__string: true
-          selectedFields:
-          - node_total
-          thresholdColors:
-          - color: '#366ce4'
-            value: '70'
-          - color: '#366ce4'
-            value: '30'
-          - color: '#366ce4'
-            value: '0'
-          dataSourceParams:
-          - name: organization
-            type: string
-            value: ''
-            alias_name: 组织
-            filterType: filter
-            inputConfig:
-              control: organization
     sizeToContent: true
   - h: 10
     w: 24
@@ -248,7 +269,7 @@ dashboards:
     subGridOpts:
       children:
       - h: 8
-        w: 9
+        w: 12
         x: 0
         y: 0
         id: ops-app-top
@@ -307,8 +328,8 @@ dashboards:
             inputConfig:
               control: organization
       - h: 8
-        w: 7
-        x: 9
+        w: 12
+        x: 12
         y: 0
         id: ops-resource-types
         name: 资源类型分布
@@ -343,151 +364,6 @@ dashboards:
             filterType: filter
             inputConfig:
               control: organization
-      - h: 8
-        w: 4
-        x: 16
-        y: 0
-        id: ops-app-total
-        name: 应用总数
-        itemType: widget
-        valueConfig:
-          chartType: single
-          dataSource: 关联告警汇总::monitor/get_cmdb_relation_alert_aggregation
-          filterBindings:
-            organization__string: true
-          selectedFields:
-          - total_count
-          dataSourceParams:
-          - name: model_id
-            type: string
-            value: application
-            alias_name: 源模型
-            filterType: params
-          - name: model_asst_id
-            type: string
-            value: application_run_host
-            alias_name: 模型关联
-            filterType: params
-          - name: peer_model_id
-            type: string
-            value: host
-            alias_name: 对端模型
-            filterType: params
-          - name: organization
-            type: string
-            value: ''
-            alias_name: 组织
-            filterType: filter
-            inputConfig:
-              control: organization
-      - h: 4
-        w: 4
-        x: 20
-        y: 0
-        id: ops-app-with-alert
-        name: 存在关联告警应用
-        itemType: widget
-        valueConfig:
-          compare: false
-          chartType: single
-          dataSource: 关联告警汇总::monitor/get_cmdb_relation_alert_aggregation
-          compareMode: percent
-          filterBindings:
-            organization__string: true
-          selectedFields:
-          - with_alert_count
-          thresholdColors:
-          - color: '#dc2626'
-            value: '70'
-          - color: '#d97706'
-            value: '30'
-          - color: '#2563eb'
-            value: '0'
-          dataSourceParams:
-          - name: view
-            type: string
-            value: summary
-            alias_name: 视图
-            filterType: fixed
-          - name: model_id
-            type: string
-            value: application
-            required: true
-            alias_name: 源模型
-            filterType: params
-          - name: model_asst_id
-            type: string
-            value: application_run_host
-            required: true
-            alias_name: 模型关联
-            filterType: params
-          - name: peer_model_id
-            type: string
-            value: host
-            alias_name: 对端模型
-            filterType: params
-          - name: organization
-            type: string
-            value: ''
-            alias_name: 组织
-            filterType: filter
-            inputConfig:
-              control: organization
-          descriptionField: with_alert_share
-      - h: 4
-        w: 4
-        x: 20
-        y: 4
-        id: ops-app-without-alert
-        name: 无关联告警应用
-        itemType: widget
-        valueConfig:
-          compare: false
-          chartType: single
-          dataSource: 关联告警汇总::monitor/get_cmdb_relation_alert_aggregation
-          compareMode: percent
-          filterBindings:
-            organization__string: true
-          selectedFields:
-          - without_alert_count
-          thresholdColors:
-          - color: '#dc2626'
-            value: '70'
-          - color: '#d97706'
-            value: '30'
-          - color: '#2563eb'
-            value: '0'
-          dataSourceParams:
-          - name: view
-            type: string
-            value: summary
-            alias_name: 视图
-            filterType: fixed
-          - name: model_id
-            type: string
-            value: application
-            required: true
-            alias_name: 源模型
-            filterType: params
-          - name: model_asst_id
-            type: string
-            value: application_run_host
-            required: true
-            alias_name: 模型关联
-            filterType: params
-          - name: peer_model_id
-            type: string
-            value: host
-            alias_name: 对端模型
-            filterType: params
-          - name: organization
-            type: string
-            value: ''
-            alias_name: 组织
-            filterType: filter
-            inputConfig:
-              control: organization
-          descriptionField: without_alert_share
     sizeToContent: true
   - h: 10
     w: 24
@@ -508,7 +384,7 @@ dashboards:
         itemType: widget
         valueConfig:
           chartType: table
-          dataSource: 监控活跃告警::monitor/query_latest_active_alerts
+          dataSource: 监控异常严重度TOP5::monitor/query_latest_active_alerts
           interaction:
             url: /monitor/event/alert
             kind: title
@@ -526,13 +402,16 @@ dashboards:
               visible: true
             - key: value
               order: 2
-              title: 当前值
+              title: 告警记录值
+              visible: true
+            - key: duration_text
+              order: 3
+              title: 持续时长
               visible: true
             - key: level
-              order: 3
-              title: 状态
+              order: 4
+              title: 告警等级
               visible: true
-              cellType: colorBackground
               valueMappings:
               - type: value
                 value: critical
@@ -622,6 +501,16 @@ dashboards:
           filterBindings:
             organization__string: true
           dataSourceParams:
+          - name: order
+            type: string
+            value: severity
+            alias_name: 排序
+            filterType: fixed
+          - name: limit
+            type: number
+            value: 5
+            alias_name: 返回条数
+            filterType: fixed
           - name: organization
             type: string
             value: ''
@@ -637,31 +526,54 @@ dashboards:
         name: 主机关键指标
         itemType: widget
         valueConfig:
-          barMax: 100
           unitId: percent
-          barMode: absolute
           chartType: topN
-          dataSource: 主机资源快照::monitor/get_host_resource_snapshot
+          dataSource: 主机资源使用率Top10::monitor/get_host_resource_top
           interaction:
             url: /monitor/view/dashboard/host
             kind: title
             name: 查看全部
             openMode: newTab
           decimalPlaces: 1
+          topNLabelField: display_name
+          topNValueField: usage_percent
           filterBindings:
-            time__timeRange: true
+            instance_ids__string: false
             organization__string: true
           dataSourceParams:
-          - name: scope
+          - name: metric_type
             type: string
-            value: all_authorized
-            alias_name: 主机范围
+            value: cpu
+            alias_name: 指标类型
             filterType: params
-          - name: time
-            type: timeRange
-            value: 10080
-            alias_name: 时间范围
+            required: true
+            inputConfig:
+              control: radio
+              componentSwitch: true
+              optionsSource:
+                type: static
+                staticItems:
+                - label: CPU使用率
+                  value: cpu
+                - label: 内存使用率
+                  value: memory
+                - label: 磁盘使用率
+                  value: disk
+          - name: instance_ids
+            type: string
+            value: null
+            alias_name: 主机
             filterType: filter
+            inputConfig:
+              control: select
+              multiple: true
+              optionsSource:
+                type: dynamic
+                sourceRef:
+                  type: rest_api
+                  value: monitor/get_host_instance_list
+                labelField: display_name
+                valueField: instance_id
           - name: organization
             type: string
             value: ''
@@ -669,13 +581,6 @@ dashboards:
             filterType: filter
             inputConfig:
               control: organization
-          topNScalarFields:
-          - field: avg_cpu
-            label: CPU 使用率
-          - field: avg_memory
-            label: 内存使用率
-          - field: avg_disk
-            label: 磁盘使用率
       - h: 8
         w: 6
         x: 18
@@ -746,7 +651,6 @@ dashboards:
               order: 2
               title: 等级
               visible: true
-              cellType: colorBackground
               valueMappings:
               - type: value
                 value: 严重
@@ -888,7 +792,7 @@ dashboards:
       selectValue: 10080
   refs:
     datasource_keys:
-    - 主机资源快照::monitor/get_host_resource_snapshot
+    - 主机资源使用率Top10::monitor/get_host_resource_top
     - 关联告警 TOP::monitor/get_cmdb_relation_alert_aggregation
     - 关联告警汇总::monitor/get_cmdb_relation_alert_aggregation
     - 分类实例合计::cmdb/get_classification_instance_counts
@@ -898,6 +802,5 @@ dashboards:
     - 模型/实例/分类总数统计::cmdb/get_cmdb_statistics
     - 活跃告警 TOP N::get_active_alert_top
     - 监控中心总览统计::monitor/get_monitor_statistics
-    - 监控活跃告警::monitor/query_latest_active_alerts
-    - 节点用法总览::node/get_node_usage_statistics
+    - 监控异常严重度TOP5::monitor/query_latest_active_alerts
     namespace_keys: []
