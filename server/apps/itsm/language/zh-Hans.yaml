@@ -1,0 +1,4 @@
+message:
+  health_ok: "Flowable 可连通"
+error:
+  flowable_unreachable: "Flowable 不可连通"
