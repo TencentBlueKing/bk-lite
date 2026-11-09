@@ -979,6 +979,10 @@ def test_ingest_serializer_rejects_unsupported_probe_selection():
     assert selected.is_valid() is True, selected.errors
     windows_ruby = IngestSnippetSerializer(data={**base, "language": "ruby", "runtime": "host", "probe_platform": "windows"})
     assert windows_ruby.is_valid() is False
+    collector = IngestSnippetSerializer(data={**base, "language": "collector", "runtime": "host"})
+    assert collector.is_valid() is True, collector.errors
+    collector_windows = IngestSnippetSerializer(data={**base, "language": "collector", "runtime": "host", "probe_platform": "windows"})
+    assert collector_windows.is_valid() is False
 
 
 def test_manual_sdk_snippets_stay_offline_and_do_not_overwrite_examples():
@@ -1033,3 +1037,54 @@ def test_manual_sdk_snippets_stay_offline_and_do_not_overwrite_examples():
                 )
             )
             assert erlang.environment["OTEL_EXPORTER_OTLP_PROTOCOL"] == "http_protobuf"
+
+
+def test_collector_snippet_forwards_traces_without_installing_a_probe_or_adding_headers():
+    snippet = DjangoIntegrationConfigurationService().render_snippet(
+        IngestSnippetRequest(
+            language="collector",
+            runtime="docker",
+            endpoint="http://apm-east.example.com:4318/",
+            service_namespace='shop"\nwest',
+            service_name='check"out',
+            service_version="1.4.0",
+            environment="production",
+            sample_rate=10,
+        )
+    )
+    document = yaml.safe_load(snippet.code)
+    exporter = document["exporters"]["otlp_http/bklite"]
+    assert exporter == {"endpoint": "http://apm-east.example.com:4318"}
+    assert "headers" not in exporter
+    pipeline = document["service"]["pipelines"]
+    assert list(pipeline) == ["traces/bklite"]
+    assert pipeline["traces/bklite"]["exporters"] == ["otlp_http/bklite"]
+    assert pipeline["traces/bklite"]["processors"] == ["resource/bklite", "probabilistic_sampler/bklite"]
+    assert document["processors"]["probabilistic_sampler/bklite"] == {"sampling_percentage": 10}
+    attributes = document["processors"]["resource/bklite"]["attributes"]
+    assert attributes[0] == {"key": "service.namespace", "value": 'shop"\nwest', "action": "upsert"}
+    assert attributes[1] == {"key": "service.name", "value": 'check"out', "action": "insert"}
+    assert "Authorization:" not in snippet.code
+    assert "https://github.com" not in snippet.code
+    assert "/api/v1/apm/open_api/probe/download/" not in snippet.code
+    assert snippet.environment == {}
+
+    full = DjangoIntegrationConfigurationService().render_snippet(
+        IngestSnippetRequest(
+            language="collector",
+            runtime="host",
+            endpoint="http://apm-east.example.com:4318",
+            service_namespace="shop",
+            service_name="checkout",
+            service_version="",
+            environment="",
+            sample_rate=100,
+        )
+    )
+    full_document = yaml.safe_load(full.code)
+    assert "probabilistic_sampler/bklite" not in full_document["processors"]
+    assert full_document["service"]["pipelines"]["traces/bklite"]["processors"] == ["resource/bklite"]
+    assert [item["key"] for item in full_document["processors"]["resource/bklite"]["attributes"]] == [
+        "service.namespace",
+        "service.name",
+    ]

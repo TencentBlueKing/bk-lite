@@ -218,9 +218,11 @@ def migrate_unified_filter_definitions(definitions: Any) -> tuple[list[dict], li
             merged["order"] = min(list_migrated.get("order") or 0, string_migrated.get("order") or 0)
             merged["enabled"] = bool(list_migrated.get("enabled") or string_migrated.get("enabled"))
             next_definitions.append(merged)
+            legacy_id = f"{key}__{LEGACY_STRING_LIST_TYPE}"
+            next_definitions.extend(item for item in group if item.get("id") not in {string_id, legacy_id})
             continue
 
-        next_definitions.append(group[0])
+        next_definitions.extend(group)
 
     next_definitions.sort(key=lambda item: (item.get("order") or 0, str(item.get("id") or "")))
     return next_definitions, warnings

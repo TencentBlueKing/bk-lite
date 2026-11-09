@@ -4,13 +4,7 @@ from unittest.mock import patch
 import pytest
 from django.db import transaction
 
-from apps.cmdb.models.change_record import (
-    CREATE_INST,
-    MODEL_MANAGEMENT_CHANGE,
-    ORDINARY_ATTRIBUTE_CHANGE,
-    UPDATE_INST,
-    ChangeRecord,
-)
+from apps.cmdb.models.change_record import CREATE_INST, MODEL_MANAGEMENT_CHANGE, ORDINARY_ATTRIBUTE_CHANGE, UPDATE_INST, ChangeRecord
 from apps.cmdb.models.operation import ChangeRecordMirrorOutbox
 from apps.cmdb.services.change_record_mirror import ChangeRecordMirrorService
 from apps.cmdb.utils import change_record as cr
@@ -37,27 +31,26 @@ def _edit_model_name(**overrides):
 @patch("apps.cmdb.services.change_record_mirror.dispatch_change_record_mirror")
 @patch("apps.cmdb.services.change_record_mirror.SystemMgmt")
 def test_management_scenario_is_mirrored(mock_sm, _mock_dispatch):
-    mock_sm.return_value.save_operation_log.return_value = {"result": True}
+    mock_sm.return_value.save_operation_logs.return_value = {"result": True}
     edit = _edit_model_name()
     cr.create_change_record(**edit)
 
-    assert not mock_sm.return_value.save_operation_log.called
+    assert not mock_sm.return_value.save_operation_logs.called
     [outbox] = list(ChangeRecordMirrorOutbox.objects.all())
-    assert outbox.payloads == [
-        cr._build_mirror_payload(
-            inst_id=edit["inst_id"],
-            model_id=edit["model_id"],
-            _type=edit["_type"],
-            operator=edit["operator"],
-            scenario=edit["scenario"],
-            message=edit["message"],
-            model_object=edit["model_object"],
-            before_data=edit["before_data"],
-            after_data=edit["after_data"],
-        )
-    ]
+    stored = {key: value for key, value in outbox.payloads[0].items() if key != "idempotency_key"}
+    assert stored == cr._build_mirror_payload(
+        inst_id=edit["inst_id"],
+        model_id=edit["model_id"],
+        _type=edit["_type"],
+        operator=edit["operator"],
+        scenario=edit["scenario"],
+        message=edit["message"],
+        model_object=edit["model_object"],
+        before_data=edit["before_data"],
+        after_data=edit["after_data"],
+    )
     assert ChangeRecordMirrorService.consume(outbox.event_id, owner_token="worker-1") is True
-    kw = mock_sm.return_value.save_operation_log.call_args.kwargs
+    kw = mock_sm.return_value.save_operation_logs.call_args.kwargs["logs"][0]
     assert kw["app"] == "cmdb"
     assert kw["action_type"] == "update"
     assert kw["target_id"] == "42"
@@ -87,7 +80,7 @@ def test_ordinary_attribute_change_is_NOT_mirrored():
 @patch("apps.cmdb.services.change_record_mirror.dispatch_change_record_mirror")
 @patch("apps.cmdb.services.change_record_mirror.SystemMgmt")
 def test_mirror_failure_does_not_break_change_record(mock_sm, _mock_dispatch):
-    mock_sm.return_value.save_operation_log.side_effect = RuntimeError("nats down")
+    mock_sm.return_value.save_operation_logs.side_effect = RuntimeError("nats down")
     cr.create_change_record(**_edit_model_name(inst_id=7))
 
     assert ChangeRecord.objects.filter(inst_id=7).exists()

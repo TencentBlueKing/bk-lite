@@ -647,6 +647,7 @@
       "unsupportedConnection": "MVP 仅支持连接触发器、顶层节点和响应节点；嵌套路径由控制节点配置",
       "debugWorkflow": "调试流程",
       "debugDetails": "调试详情",
+      "debugAgain": "重新调试",
       "debugOutput": "调试输出",
       "startedWithId": "{id} · 已启动",
       "runToViewDetails": "运行后可查看执行详情",

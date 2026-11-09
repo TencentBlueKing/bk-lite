@@ -1,6 +1,6 @@
 'use client';
 
-import { ArrowLeftOutlined, CloseOutlined, CopyOutlined, HistoryOutlined, PlayCircleOutlined, PlusOutlined, SaveOutlined, SendOutlined, UploadOutlined } from '@ant-design/icons';
+import { ArrowLeftOutlined, CloseOutlined, CopyOutlined, FileSearchOutlined, HistoryOutlined, PlayCircleOutlined, PlusOutlined, SaveOutlined, SendOutlined, UploadOutlined } from '@ant-design/icons';
 import { applyEdgeChanges, Background, BackgroundVariant, ReactFlow, type Connection, type Edge, type EdgeChange, type Node, useEdgesState, useNodesState } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { Alert, App, Button, Descriptions, Drawer, Empty, Form, Input, InputNumber, Popconfirm, Select, Space, Spin, Tag, Timeline, Typography, Upload } from 'antd';
@@ -57,7 +57,8 @@ const ACTIVE_DEBUG_STATUSES = new Set(['QUEUED', 'RUNNING', 'WAITING_APPROVAL', 
 function canvasTestStateFromExecutionNode(state: ExecutionNodeState): WorkflowCanvasNodeTestState {
   if (state === 'RUNNING' || state === 'WAITING' || state === 'ACTIONABLE') return 'running';
   if (state === 'FAILED' || state === 'TIMED_OUT') return 'failed';
-  if (state === 'SUCCESS' || state === 'WARNING' || state === 'SKIPPED') return 'success';
+  // SKIPPED（分支未走 / 终止收口）不打角标，避免误标成功或与跳过混淆。
+  if (state === 'SUCCESS' || state === 'WARNING') return 'success';
   return 'idle';
 }
 
@@ -1279,15 +1280,15 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
     });
   };
 
-  const onDebugPrimaryClick = () => {
-    if (debugExecution) {
-      setInspectorOpen(false);
-      setDebugDrawerOpen(true);
-      return;
-    }
-    // 不跨页探测未终态 DEBUG：离开再进仍显示「调试流程」，点击直接新开。
-    openDebugDialog();
+  // 不跨页探测未终态 DEBUG：离开再进仍显示「调试流程」，点击直接新开。
+  const onDebugPrimaryClick = () => openDebugDialog();
+
+  const openDebugDetails = () => {
+    setInspectorOpen(false);
+    setDebugDrawerOpen(true);
   };
+
+  const debugSessionTerminal = Boolean(debugExecution && !ACTIVE_DEBUG_STATUSES.has(debugExecution.status));
 
   useEffect(() => {
     if (!debugExecution || !ACTIVE_DEBUG_STATUSES.has(debugExecution.status)) return;
@@ -1560,15 +1561,28 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
         )}
         {!readOnly && !pickerOpen && (
           debugExecution ? (
-            <WorkflowPermission operation="View" area="executions" instancePermissions={debugExecution.permission}>
-              <Button
-                className="absolute bottom-6 left-1/2 z-20 h-9! -translate-x-1/2 rounded-md! border-[var(--theme-color-status-warning)]! bg-[var(--theme-color-status-warning)]! text-white! shadow-md"
-                icon={<PlayCircleOutlined />}
-                onClick={onDebugPrimaryClick}
-              >
-                {t('workflowOrchestration.editor.debugDetails', '调试详情')}
-              </Button>
-            </WorkflowPermission>
+            <div className="absolute bottom-6 left-1/2 z-20 flex -translate-x-1/2 items-center gap-2">
+              {debugSessionTerminal ? (
+                <WorkflowPermission operation="Execute" instancePermissions={workflow.permission}>
+                  <Button
+                    className="h-9! rounded-md! border-[var(--theme-color-status-warning)]! bg-[var(--theme-color-status-warning)]! text-white! shadow-md"
+                    icon={<PlayCircleOutlined />}
+                    onClick={onDebugPrimaryClick}
+                  >
+                    {t('workflowOrchestration.editor.debugAgain', '重新调试')}
+                  </Button>
+                </WorkflowPermission>
+              ) : null}
+              <WorkflowPermission operation="View" area="executions" instancePermissions={debugExecution.permission}>
+                <Button
+                  className="h-9! rounded-md! border-[var(--color-border-2)]! bg-[var(--color-bg)]! text-[var(--color-text-1)]! shadow-md"
+                  icon={<FileSearchOutlined />}
+                  onClick={openDebugDetails}
+                >
+                  {t('workflowOrchestration.editor.debugDetails', '调试详情')}
+                </Button>
+              </WorkflowPermission>
+            </div>
           ) : (
             <WorkflowPermission operation="Execute" instancePermissions={workflow.permission}>
               <Button

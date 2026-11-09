@@ -245,6 +245,18 @@ export const BUILD_IN_MODEL: Array<{
     icon: 'cc-cloud-server',
   },
   {
+    key: 'azurelocal',
+    icon: 'cc-cloud-plat',
+  },
+  {
+    key: 'azurelocal_node',
+    icon: 'cc-cloud-host',
+  },
+  {
+    key: 'azurelocal_vm',
+    icon: 'cc-cloud-server',
+  },
+  {
     key: 'fusioninsight_host',
     icon: 'cc-cloud-server',
   },

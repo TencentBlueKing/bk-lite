@@ -85,6 +85,34 @@ export function buildRelationshipMenuSections({
     .filter((section) => section.children.length > 0);
 }
 
+export function relationshipTargetModelId(
+  item: unknown,
+  currentModelId: string,
+): string {
+  if (!item || typeof item !== 'object') return '';
+  const record = item as { src_model_id?: unknown; dst_model_id?: unknown };
+  const src = typeof record.src_model_id === 'string' ? record.src_model_id : '';
+  const dst = typeof record.dst_model_id === 'string' ? record.dst_model_id : '';
+  if (currentModelId && currentModelId === dst) return src;
+  return dst;
+}
+
+export function uniqueRelationshipTargetModelIds(
+  associations: readonly unknown[],
+  currentModelId: string,
+): string[] {
+  const seen = new Set<string>();
+  const modelIds: string[] = [];
+  associations.forEach((item) => {
+    if (getAssociationInstanceCount(item) <= 0) return;
+    const targetModelId = relationshipTargetModelId(item, currentModelId);
+    if (!targetModelId || seen.has(targetModelId)) return;
+    seen.add(targetModelId);
+    modelIds.push(targetModelId);
+  });
+  return modelIds;
+}
+
 export const getDefaultExpandedRelationshipKeys = (
   associations: readonly unknown[]
 ): string[] => associations.flatMap((item) => {

@@ -96,6 +96,47 @@ def test_search_model_attr_normalizes(patch_graph):
     assert item["default_value"] == []
 
 
+@pytest.mark.django_db
+def test_search_model_attr_reuses_loaded_model(monkeypatch):
+    from apps.cmdb.services.model import ModelManage
+
+    def boom(*args, **kwargs):
+        raise AssertionError("should not query graph")
+
+    monkeypatch.setattr("apps.cmdb.services.model.GraphClient", boom)
+    monkeypatch.setattr("apps.cmdb.services.model_graph_query.GraphClient", boom)
+    attrs = [{"attr_id": "name", "attr_name": "名称", "attr_type": "str"}]
+    result = ModelManage.search_model_attr(
+        "host",
+        model_info={"model_id": "host", "attrs": json.dumps(attrs), "unique_rules": "[]"},
+    )
+    assert result[0]["attr_id"] == "name"
+
+
+@pytest.mark.django_db
+def test_search_models_by_ids_queries_once(monkeypatch):
+    from apps.cmdb.services.model_graph_query import search_models_by_ids
+
+    calls = []
+
+    class OnceGraph:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def query_entity(self, label, params, **kwargs):
+            calls.append(params)
+            return [{"model_id": "host"}, {"model_id": "mysql"}], 2
+
+    monkeypatch.setattr("apps.cmdb.services.model_graph_query.GraphClient", lambda *a, **k: OnceGraph())
+    found = search_models_by_ids(["host", "mysql", "host"])
+    assert list(found) == ["host", "mysql"]
+    assert len(calls) == 1
+    assert calls[0][0]["value"] == ["host", "mysql"]
+
+
 # --------------------------------------------------------------------------
 # delete_model / update_model（FakeGraphClient via fake_graph fixture）
 # --------------------------------------------------------------------------
