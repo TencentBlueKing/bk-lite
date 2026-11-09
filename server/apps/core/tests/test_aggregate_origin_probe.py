@@ -38,10 +38,14 @@ class _Scripted:
         return value
 
 
+APM_EXPR = "min(tfirst_over_time(apm_calls_total[35d]))"
+RUM_EXPR = 'min(tfirst_over_time({__name__=~"rum_.*"}[35d]))'
+
+
 def _values(*, apm=None, rum=None):
     return {
-        'min(tfirst_over_time({__name__=~"apm_.*"}[35d]))': apm if apm is not None else [],
-        'min(tfirst_over_time({__name__=~"rum_.*"}[35d]))': rum if rum is not None else [],
+        APM_EXPR: apm if apm is not None else [],
+        RUM_EXPR: rum if rum is not None else [],
     }
 
 
@@ -56,23 +60,32 @@ def test_probe_persists_the_earliest_minute_and_ignores_later_or_empty_results()
 
     assert first == {"status": "ok", "recorded": ["apm", "rum"]}
     assert client.expressions == [
-        ('min(tfirst_over_time({__name__=~"apm_.*"}[35d]))', PROBE_AT),
-        ('min(tfirst_over_time({__name__=~"rum_.*"}[35d]))', PROBE_AT),
+        (APM_EXPR, PROBE_AT),
+        (RUM_EXPR, PROBE_AT),
     ]
+    assert "apm_calls_total" in APM_EXPR
+    assert "apm_.*" not in APM_EXPR
     assert AggregateMetricOrigin.objects.get(product="apm").started_at == MINUTE
     assert AggregateMetricOrigin.objects.get(product="rum").started_at == datetime(2026, 11, 10, 0, 20, tzinfo=UTC)
 
-    later = probe_aggregate_origins(_Scripted(_values(apm=_sample(datetime(2026, 11, 10, 0, 40, tzinfo=UTC)))), at=PROBE_AT)
-    assert later["recorded"] == ["apm"]
+    follow_up = _Scripted(_values(apm=_sample(datetime(2026, 11, 10, 0, 10, 59, tzinfo=UTC))))
+    again = probe_aggregate_origins(follow_up, at=PROBE_AT)
+    assert again == {"status": "ok", "recorded": []}
+    assert follow_up.expressions == []
     assert AggregateMetricOrigin.objects.get(product="apm").started_at == MINUTE
+    assert AggregateMetricOrigin.objects.get(product="rum").started_at == datetime(2026, 11, 10, 0, 20, tzinfo=UTC)
 
-    earlier = probe_aggregate_origins(_Scripted(_values(apm=_sample(datetime(2026, 11, 10, 0, 10, 59, tzinfo=UTC)))), at=PROBE_AT)
-    assert earlier["recorded"] == ["apm"]
-    assert AggregateMetricOrigin.objects.get(product="apm").started_at == datetime(2026, 11, 10, 0, 10, tzinfo=UTC)
 
-    probe_aggregate_origins(_Scripted(_values()), at=PROBE_AT)
-    assert AggregateMetricOrigin.objects.filter(product="apm").exists()
-    assert AggregateMetricOrigin.objects.filter(product="rum").exists()
+def test_recorded_product_is_not_queried_again():
+    AggregateMetricOrigin.objects.create(product="apm", started_at=MINUTE)
+    client = _Scripted(_values(apm=_sample(datetime(2026, 11, 10, 0, 1, tzinfo=UTC)), rum=_sample(RAW)))
+
+    result = probe_aggregate_origins(client, at=PROBE_AT)
+
+    assert result == {"status": "ok", "recorded": ["rum"]}
+    assert client.expressions == [(RUM_EXPR, PROBE_AT)]
+    assert "apm_calls_total" not in client.expressions[0][0]
+    assert AggregateMetricOrigin.objects.get(product="apm").started_at == MINUTE
 
 
 def test_probe_ignores_timestamps_before_the_unix_second_floor():

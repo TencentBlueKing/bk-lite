@@ -22,6 +22,7 @@ Blocked by: 02 — APM 中心 Collector 生成聚合指标
 ## Notes
 
 - 健康页可增加聚合库连通性展示，但不得让它影响 VictoriaTraces 相关健康结论。本张未做连通性展示。
+- 聚合起点表示 RED 序列开始存在。APM 只探测 `apm_calls_total`，不按 `apm_` 前缀，避免晚到计数把起点提前。RUM 指标名未定，暂时按 `rum_` 前缀探测。已记录起点的产品不再做 35 天探测；全部已记录时不发查询，直接返回 `ok`。
 
 ## Completion evidence
 
@@ -31,3 +32,4 @@ Blocked by: 02 — APM 中心 Collector 生成聚合指标
   结果：`11 failed, 849 passed, 2 skipped`。11 项失败都在既有 sqlite 基线内：`test_topology_service.py` 8 项、`test_deployments.py::test_backfill_table_queries_scale_by_batch_not_release_count`、`test_cross_database_guard_migration_service.py::test_existing_apm_outbox_data_survives_portable_unique_upgrade_and_rollback`、`test_owned_alert_lifecycle_migration.py::test_owned_alert_lifecycle_backfill_batches_queries_and_keeps_semantics`。
 - 新增 core 测试：`apps/core/tests/test_aggregate_promql_client.py` 13 项、`apps/core/tests/test_aggregate_origin_probe.py` 7 项，与 `apps/apm/tests/test_aggregate_red.py`、`test_dashboard_service.py` 的新增用例一起通过。
 - `cd web && pnpm exec eslint` 覆盖本次改动的 `services/[serviceId]/page.tsx`、其测试和 `types.ts`，无告警。全仓 `pnpm lint` 仍有既有错误，不在这些文件。`pnpm type-check` 通过（exit 0；isoflow 构建有既有体积警告）。服务详情页测试 `vitest` 12 项通过，其中最大耗时为空显示“—”。
+- 起点探测收紧后：`apps/core/tests/test_aggregate_origin_probe.py` 8 passed。同一环境下 `apps/apm/tests` 仍是 `11 failed, 849 passed, 2 skipped`，失败项与上面的 sqlite 基线相同。

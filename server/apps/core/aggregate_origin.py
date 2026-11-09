@@ -15,9 +15,9 @@ from apps.core.models.aggregate_origin import AggregateMetricOrigin
 
 LOOKBACK = "35d"
 MIN_UNIX_SECONDS = 1_000_000_000
-# 按产品前缀探测，不绑死某一个指标名。晚到计数和 RED 序列里更早的那个决定起点。
+# 起点表示 RED 序列开始存在。APM 只认 apm_calls_total，晚到计数不能提前起点；RUM 指标名未定，暂时保留 rum_ 前缀，05 ticket 定名后再收紧。
 PRODUCT_METRICS = (
-    ("apm", '{__name__=~"apm_.*"}'),
+    ("apm", "apm_calls_total"),
     ("rum", '{__name__=~"rum_.*"}'),
 )
 
@@ -74,11 +74,14 @@ def probe_aggregate_origins(client: AggregatePromqlClient | None = None, *, at: 
     reader = client or AggregatePromqlClient.from_env()
     if not reader.available:
         return {"status": "unconfigured", "recorded": []}
+    pending = [item for item in PRODUCT_METRICS if recorded_origin(item[0]) is None]
+    if not pending:
+        return {"status": "ok", "recorded": []}
     moment = at or datetime.now(UTC)
     recorded: list[str] = []
     failures: list[str] = []
     first_error: Exception | None = None
-    for product, selector in PRODUCT_METRICS:
+    for product, selector in pending:
         expression = f"min(tfirst_over_time({selector}[{LOOKBACK}]))"
         try:
             result = reader.query_instant(expression, at=moment)
