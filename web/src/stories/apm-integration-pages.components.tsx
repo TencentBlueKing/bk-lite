@@ -252,30 +252,30 @@ const INTEGRATION_GROUPS: Array<{
     group: 'SDK',
     icon: <CodeOutlined />,
     items: [
-      { kind: 'node', title: 'Node.js', desc: '自动探针，支持 Express / Nest / Koa', tag: '推荐' },
-      { kind: 'java', title: 'Java', desc: '自动探针，支持 Spring / Dubbo / gRPC', tag: '推荐' },
-      { kind: 'python', title: 'Python', desc: '自动探针，支持 Django / Flask / FastAPI' },
-      { kind: 'dotnet', title: '.NET', desc: '自动探针，支持 Linux x86_64 glibc' },
-      { kind: 'go', title: 'Go', desc: '手动接入，生成 OpenTelemetry Provider 示例' },
-      { kind: 'php', title: 'PHP', desc: '自动探针，支持 PHP NTS 8.1–8.4，含 Laravel / Symfony / Slim' },
-      { kind: 'ruby', title: 'Ruby', desc: '手动接入，生成 Rack 初始化示例', tag: '手动 SDK' },
-      { kind: 'cpp', title: 'C++', desc: '手动接入，生成最小入口 Span 示例', tag: '手动 SDK' },
-      { kind: 'erlang', title: 'Erlang/Elixir', desc: '手动接入，生成 path 依赖示例', tag: '手动 SDK' },
-      { kind: 'swift', title: 'Swift', desc: '手动接入，生成本地 Swift Package 示例', tag: '手动 SDK' },
+      { kind: 'node', title: 'Node.js', desc: '支持 Express / Nest / Koa', tag: '自动探针' },
+      { kind: 'java', title: 'Java', desc: '支持 Spring / Dubbo / gRPC', tag: '自动探针' },
+      { kind: 'python', title: 'Python', desc: '支持 Django / Flask / FastAPI', tag: '自动探针' },
+      { kind: 'dotnet', title: '.NET', desc: 'Linux x86_64 glibc；Windows 仅限主机', tag: '自动探针' },
+      { kind: 'go', title: 'Go', desc: '生成 OpenTelemetry Provider 示例', tag: '手动接入' },
+      { kind: 'php', title: 'PHP', desc: 'PHP NTS 8.1–8.4，含 Laravel / Symfony / Slim', tag: '自动探针' },
+      { kind: 'ruby', title: 'Ruby', desc: '生成 Rack 初始化示例', tag: '手动接入' },
+      { kind: 'cpp', title: 'C++', desc: '生成最小入口 Span 示例', tag: '手动接入' },
+      { kind: 'erlang', title: 'Erlang/Elixir', desc: '生成 path 依赖示例', tag: '手动接入' },
+      { kind: 'swift', title: 'Swift', desc: '生成本地 Swift Package 示例', tag: '手动接入' },
     ],
   },
   {
     group: 'OTC',
     icon: <ApiOutlined />,
     items: [
-      { kind: 'otc', title: 'OTel Collector(链路)', desc: '转发自建 Collector 链路到平台 OTLP 端点' },
+      { kind: 'otc', title: 'OTel Collector(链路)', desc: '自建 Collector 的 Trace 转到平台 OTLP 端点', tag: '链路转发' },
     ],
   },
   {
     group: 'eBPF',
     icon: <ExperimentOutlined />,
     items: [
-      { kind: 'ebpf', title: 'eBPF 自动注入(OBI)', desc: '未安装语言探针时，只观察指定的 Go 可执行文件。不要和语言探针装在同一进程。', tag: '低侵入' },
+      { kind: 'ebpf', title: 'eBPF 自动注入(OBI)', desc: '未安装语言探针时，只观察指定的 Go 可执行文件。不要和语言探针装在同一进程。', tag: '进程观测' },
     ],
   },
   {
@@ -323,11 +323,25 @@ function IntegrationCard({
         <Title level={5} style={{ margin: 0, color: TOKENS.text }}>
           {title}
         </Title>
-        {tag && (
-          <Tag color="blue" style={{ margin: 0 }}>
+        {tag ? (
+          <span
+            style={{
+              flexShrink: 0,
+              height: 20,
+              display: 'inline-flex',
+              alignItems: 'center',
+              padding: '0 6px',
+              borderRadius: 6,
+              background: TOKENS.bg,
+              color: TOKENS.textSecondary,
+              fontSize: 12,
+              fontWeight: 400,
+              lineHeight: 1,
+            }}
+          >
             {tag}
-          </Tag>
-        )}
+          </span>
+        ) : null}
       </div>
       <Text type="secondary" style={{ fontSize: 12, lineHeight: 1.6 }}>
         {desc}

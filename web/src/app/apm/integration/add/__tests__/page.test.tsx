@@ -259,6 +259,34 @@ describe('APM 添加接入', () => {
     expect(await screen.findByText('Kubernetes 配置片段')).not.toBeNull();
   });
 
+  it('接入卡片右上角只标接入方式，且每张卡都有', async () => {
+    renderPage();
+    await screen.findByRole('button', { name: 'Node.js 接入' });
+
+    expect(screen.queryByText('推荐')).toBeNull();
+    expect(screen.queryByText('手动 SDK')).toBeNull();
+    expect(screen.queryByText('低侵入')).toBeNull();
+
+    const expected = [
+      ['Node.js 接入', '自动探针'],
+      ['Java 接入', '自动探针'],
+      ['Python 接入', '自动探针'],
+      ['.NET 接入', '自动探针'],
+      ['PHP 接入', '自动探针'],
+      ['Go 接入', '手动接入'],
+      ['Ruby 接入', '手动接入'],
+      ['C++ 接入', '手动接入'],
+      ['Erlang/Elixir 接入', '手动接入'],
+      ['Swift 接入', '手动接入'],
+      ['OTel Collector 接入', '链路转发'],
+      ['eBPF 自动注入（OBI） 接入', '进程观测'],
+    ] as const;
+
+    for (const [name, mode] of expected) {
+      expect(within(screen.getByRole('button', { name })).getByText(mode)).not.toBeNull();
+    }
+  });
+
   it('明确把 Go 呈现为手动 SDK 接入而不是自动探针', async () => {
     api.getIngestSnippet.mockResolvedValue({
       application_id: 'bklite',
@@ -271,7 +299,9 @@ describe('APM 添加接入', () => {
     const user = userEvent.setup();
     renderPage();
 
-    expect((await screen.findAllByText('手动 SDK')).length).toBeGreaterThan(0);
+    expect(within(await screen.findByRole('button', { name: 'Go 接入' })).getByText('手动接入')).not.toBeNull();
+    expect(screen.queryByText('推荐')).toBeNull();
+    expect(screen.queryByText('低侵入')).toBeNull();
     await user.click(screen.getByRole('button', { name: 'Go 接入' }));
     expect(screen.getByRole('radio', { name: 'Go 手动 SDK' })).not.toBeNull();
     expect(screen.queryByRole('radio', { name: 'Go 自动探针' })).toBeNull();

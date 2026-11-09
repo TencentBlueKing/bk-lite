@@ -23,12 +23,14 @@ import type { ApmApplication, ApmCloudRegion, ApmIngestSnippet, ApmIngestSnippet
 import { HandledRequestError } from '@/utils/request';
 import { useTranslation } from '@/utils/i18n';
 
+type IntegrationMode = 'auto' | 'manual' | 'forward' | 'observe';
+
 interface IntegrationMethod {
   key: string;
   title: string;
   description: string;
   icon: ReactNode;
-  badge?: string;
+  mode: IntegrationMode;
   language?: ApmIngestSnippetInput['language'];
   available: boolean;
 }
@@ -37,6 +39,7 @@ interface IntegrationMethodDef {
   key: string;
   title: string;
   icon: ReactNode;
+  mode: IntegrationMode;
   language?: ApmIngestSnippetInput['language'];
   available: boolean;
 }
@@ -44,20 +47,20 @@ interface IntegrationMethodDef {
 const INTEGRATION_GROUPS: { key: string; title: string; icon: ReactNode; methods: IntegrationMethodDef[] }[] = [
   {
     key: 'sdk', title: 'SDK', icon: <CodeOutlined aria-hidden="true" />, methods: [
-      { key: 'nodejs', title: 'Node.js', icon: <JavaScriptOutlined aria-hidden="true" />, language: 'nodejs', available: true },
-      { key: 'java', title: 'Java', icon: <CoffeeOutlined aria-hidden="true" />, language: 'java', available: true },
-      { key: 'python', title: 'Python', icon: <PythonOutlined aria-hidden="true" />, language: 'python', available: true },
-      { key: 'dotnet', title: '.NET', icon: <DotNetOutlined aria-hidden="true" />, language: 'dotnet', available: true },
-      { key: 'go', title: 'Go', icon: <CodeOutlined aria-hidden="true" />, language: 'go', available: true },
-      { key: 'php', title: 'PHP', icon: <CodeOutlined aria-hidden="true" />, language: 'php', available: true },
-      { key: 'ruby', title: 'Ruby', icon: <CodeOutlined aria-hidden="true" />, language: 'ruby', available: true },
-      { key: 'cpp', title: 'C++', icon: <CodeOutlined aria-hidden="true" />, language: 'cpp', available: true },
-      { key: 'erlang', title: 'Erlang/Elixir', icon: <CodeOutlined aria-hidden="true" />, language: 'erlang', available: true },
-      { key: 'swift', title: 'Swift', icon: <CodeOutlined aria-hidden="true" />, language: 'swift', available: true },
+      { key: 'nodejs', title: 'Node.js', icon: <JavaScriptOutlined aria-hidden="true" />, mode: 'auto', language: 'nodejs', available: true },
+      { key: 'java', title: 'Java', icon: <CoffeeOutlined aria-hidden="true" />, mode: 'auto', language: 'java', available: true },
+      { key: 'python', title: 'Python', icon: <PythonOutlined aria-hidden="true" />, mode: 'auto', language: 'python', available: true },
+      { key: 'dotnet', title: '.NET', icon: <DotNetOutlined aria-hidden="true" />, mode: 'auto', language: 'dotnet', available: true },
+      { key: 'go', title: 'Go', icon: <CodeOutlined aria-hidden="true" />, mode: 'manual', language: 'go', available: true },
+      { key: 'php', title: 'PHP', icon: <CodeOutlined aria-hidden="true" />, mode: 'auto', language: 'php', available: true },
+      { key: 'ruby', title: 'Ruby', icon: <CodeOutlined aria-hidden="true" />, mode: 'manual', language: 'ruby', available: true },
+      { key: 'cpp', title: 'C++', icon: <CodeOutlined aria-hidden="true" />, mode: 'manual', language: 'cpp', available: true },
+      { key: 'erlang', title: 'Erlang/Elixir', icon: <CodeOutlined aria-hidden="true" />, mode: 'manual', language: 'erlang', available: true },
+      { key: 'swift', title: 'Swift', icon: <CodeOutlined aria-hidden="true" />, mode: 'manual', language: 'swift', available: true },
     ],
   },
-  { key: 'otel', title: 'OpenTelemetry', icon: <ApiOutlined aria-hidden="true" />, methods: [{ key: 'otel-collector', title: 'OTel Collector', icon: <DeploymentUnitOutlined aria-hidden="true" />, language: 'collector', available: true }] },
-  { key: 'ebpf', title: 'eBPF', icon: <ExperimentOutlined aria-hidden="true" />, methods: [{ key: 'ebpf-obi', title: 'eBPF', icon: <ExperimentOutlined aria-hidden="true" />, language: 'obi', available: true }] },
+  { key: 'otel', title: 'OpenTelemetry', icon: <ApiOutlined aria-hidden="true" />, methods: [{ key: 'otel-collector', title: 'OTel Collector', icon: <DeploymentUnitOutlined aria-hidden="true" />, mode: 'forward', language: 'collector', available: true }] },
+  { key: 'ebpf', title: 'eBPF', icon: <ExperimentOutlined aria-hidden="true" />, methods: [{ key: 'ebpf-obi', title: 'eBPF', icon: <ExperimentOutlined aria-hidden="true" />, mode: 'observe', language: 'obi', available: true }] },
 ];
 
 type PageState = 'loading' | 'empty' | 'ready' | 'error';
@@ -252,6 +255,27 @@ function snippetOperationGuide(
   return guides[language][mode];
 }
 
+function integrationModeLabel(mode: IntegrationMode, t: Translate) {
+  switch (mode) {
+    case 'auto':
+      return t('apm.integration.modeAuto', '自动探针');
+    case 'manual':
+      return t('apm.integration.modeManual', '手动接入');
+    case 'forward':
+      return t('apm.integration.modeForward', '链路转发');
+    case 'observe':
+      return t('apm.integration.modeObserve', '进程观测');
+  }
+}
+
+function IntegrationModeBadge({ mode, t }: { mode: IntegrationMode; t: Translate }) {
+  return (
+    <span className="inline-flex h-5 shrink-0 items-center self-start rounded-md bg-[var(--color-fill-1)] px-1.5 text-xs font-normal leading-none text-[var(--color-text-2)]">
+      {integrationModeLabel(mode, t)}
+    </span>
+  );
+}
+
 function CapabilityTagList({ items }: { items: readonly string[] }) {
   return (
     <div className="flex flex-wrap gap-2">
@@ -330,46 +354,39 @@ export default function ApmIntegrationAddPage() {
   const requestSequence = useRef(0);
 
   const integrationGroups = useMemo(() => {
-    const copy: Record<string, { description: string; badge?: string; title?: string }> = {
+    const copy: Record<string, { description: string; title?: string }> = {
       nodejs: {
-        description: t('apm.integration.nodejsDesc', '自动探针，支持 Express / Nest / Koa'),
-        badge: t('apm.integration.recommended', '推荐'),
+        description: t('apm.integration.nodejsDesc', '支持 Express / Nest / Koa'),
       },
       java: {
-        description: t('apm.integration.javaDesc', '自动探针，支持 Spring / Dubbo / gRPC'),
-        badge: t('apm.integration.recommended', '推荐'),
+        description: t('apm.integration.javaDesc', '支持 Spring / Dubbo / gRPC'),
       },
       python: {
-        description: t('apm.integration.pythonDesc', '自动探针，支持 Django / Flask / FastAPI'),
+        description: t('apm.integration.pythonDesc', '支持 Django / Flask / FastAPI'),
       },
       dotnet: {
-        description: t('apm.integration.dotnetDesc', '自动探针，支持 Linux x86_64 glibc；Windows 仅限主机'),
+        description: t('apm.integration.dotnetDesc', 'Linux x86_64 glibc；Windows 仅限主机'),
       },
       php: {
-        description: t('apm.integration.phpDesc', '自动探针，支持 PHP NTS 8.1–8.4，含 Laravel / Symfony / Slim'),
+        description: t('apm.integration.phpDesc', 'PHP NTS 8.1–8.4，含 Laravel / Symfony / Slim'),
       },
       go: {
-        description: t('apm.integration.goDesc', '手动接入，生成 OpenTelemetry Provider 示例'),
-        badge: t('apm.integration.manualSdk', '手动 SDK'),
+        description: t('apm.integration.goDesc', '生成 OpenTelemetry Provider 示例'),
       },
       ruby: {
-        description: t('apm.integration.rubyDesc', '手动接入，生成 Rack 初始化示例'),
-        badge: t('apm.integration.manualSdk', '手动 SDK'),
+        description: t('apm.integration.rubyDesc', '生成 Rack 初始化示例'),
       },
       cpp: {
-        description: t('apm.integration.cppDesc', '手动接入，生成最小入口 Span 示例'),
-        badge: t('apm.integration.manualSdk', '手动 SDK'),
+        description: t('apm.integration.cppDesc', '生成最小入口 Span 示例'),
       },
       erlang: {
-        description: t('apm.integration.erlangDesc', '手动接入，生成 Erlang/Elixir path 依赖示例'),
-        badge: t('apm.integration.manualSdk', '手动 SDK'),
+        description: t('apm.integration.erlangDesc', '生成 Erlang/Elixir path 依赖示例'),
       },
       swift: {
-        description: t('apm.integration.swiftDesc', '手动接入，生成本地 Swift Package 示例'),
-        badge: t('apm.integration.manualSdk', '手动 SDK'),
+        description: t('apm.integration.swiftDesc', '生成本地 Swift Package 示例'),
       },
       'otel-collector': {
-        description: t('apm.integration.otelDesc', '转发自建 Collector 链路到平台 OTLP 端点'),
+        description: t('apm.integration.otelDesc', '自建 Collector 的 Trace 转到平台 OTLP 端点'),
       },
       'ebpf-obi': {
         title: t('apm.integration.ebpfTitle', 'eBPF 自动注入（OBI）'),
@@ -377,7 +394,6 @@ export default function ApmIntegrationAddPage() {
           'apm.integration.ebpfDesc',
           '未安装语言探针时，只观察指定的 Go 可执行文件。不要和 Java、Python、Node.js、.NET、PHP 或 Go SDK 装在同一进程。',
         ),
-        badge: t('apm.integration.lowIntrusion', '低侵入'),
       },
     };
     return INTEGRATION_GROUPS.map((group) => ({
@@ -386,7 +402,6 @@ export default function ApmIntegrationAddPage() {
         ...method,
         title: copy[method.key]?.title ?? method.title,
         description: copy[method.key]?.description ?? '',
-        badge: copy[method.key]?.badge,
       })),
     }));
   }, [t]);
@@ -592,7 +607,7 @@ export default function ApmIntegrationAddPage() {
                           <Typography.Text type="secondary" className="text-xs leading-5">{method.description}</Typography.Text>
                         </div>
                       </div>
-                      {method.badge ? <Tag color="blue">{method.badge}</Tag> : null}
+                      <IntegrationModeBadge mode={method.mode} t={t} />
                     </div>
                   </button>
                 ))}
