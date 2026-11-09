@@ -6,6 +6,14 @@
 
 `init_realm_resource` 会把名为 `manager` 的角色改成全部菜单。菜单文件里的 `itsm--manager` 不含 `setting`，入库后会被这条平台逻辑盖掉。
 
+## M1 已实现
+
+- Flowable 7.1 本地编排，REST 前缀 `/flowable-rest/service`。
+- 表单 schema 校验、设计 JSON 转 BPMN、附录 B 可部署。
+- 表单、字典、流程设计/发布、处理组、通知模板接口。
+- 工单创建与 submit/approve/reject/claim。
+- 前端门户、表单设计、流程画布、工单列表和设置页入口。
+
 ## 基线核对
 
 核对日期：2026-11-06。工作分支 `feature_itsm`。
