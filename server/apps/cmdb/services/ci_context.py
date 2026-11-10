@@ -308,6 +308,7 @@ def _load_ci(ci_uuid: str) -> tuple[dict | None, list[str]]:
     roots = list(
         CmdbCiContext.objects.filter(Q(ci_uuid=ci_uuid) | Q(root_uuid=ci_uuid), context=CONTEXT_APPLICATION).values_list("root_uuid", flat=True)
     )
+    endpoint_uuids: list = []
     with GraphClient() as ag:
         instances = _query_instances(ag, [{"field": "inst_uuid", "type": "str=", "value": ci_uuid}])
         for field in ("src_inst_uuid", "dst_inst_uuid"):
@@ -320,8 +321,12 @@ def _load_ci(ci_uuid: str) -> tuple[dict | None, list[str]]:
                 or []
             )
             for item in edges:
-                _endpoints, application_uuids = _application_endpoints(item)
+                endpoints, application_uuids = _application_endpoints(item)
+                endpoint_uuids.extend(endpoints)
                 roots.extend(application_uuids)
+    endpoints = _distinct_texts(endpoint_uuids)
+    if endpoints:
+        roots.extend(CmdbCiContext.objects.filter(ci_uuid__in=endpoints, context=CONTEXT_APPLICATION).values_list("root_uuid", flat=True))
     instance = instances[0] if instances else None
     return instance, _distinct_texts(roots)
 
@@ -337,14 +342,15 @@ def _apply_ci(ci_uuid: str) -> None:
         CmdbCiContext.objects.filter(ci_uuid=ci_uuid).delete()
         _recompute_roots(roots)
         return
-    if str(instance.get("model_id") or "") == APPLICATION_MODEL:
-        recompute_application(ci_uuid)
-        return
     organization = _pick("organization", instance)
     CmdbCiContext.objects.filter(ci_uuid=ci_uuid).update(
         ip_addr=str(_pick("ip_addr", instance) or ""),
         organization=list(organization) if isinstance(organization, list) else [],
     )
+    if str(instance.get("model_id") or "") == APPLICATION_MODEL:
+        recompute_application(ci_uuid)
+        self_uuid = _normalize_uuid(ci_uuid)
+        roots = [root_uuid for root_uuid in roots if _normalize_uuid(root_uuid) != self_uuid]
     _recompute_roots(roots)
 
 
