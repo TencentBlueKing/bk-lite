@@ -126,7 +126,7 @@ monitor_object_metric:
       desc: 指定消费者组在指定主题和分区的当前近似滞后偏移量。
     process_cpu_seconds_total:
       name: 探针进程CPU总时间
-      desc: 监控探针进程累计消耗的 CPU 时间，单位为秒。负载请查看 CPU 使用率。
+      desc: 监控探针进程累计消耗的 CPU 时间，单位为秒。
     process_max_fds_gauge:
       name: 探针进程最大文件描述符数
       desc: 监控探针进程能够打开的最大文件描述符数。

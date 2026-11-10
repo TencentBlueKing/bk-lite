@@ -484,7 +484,7 @@
       "data_type": "Number",
       "unit": "s",
       "dimensions": [],
-      "description": "Cumulative CPU time consumed by the probe process, in seconds. For load, see CPU usage.",
+      "description": "Cumulative CPU time consumed by the probe process, in seconds.",
       "query": "process_cpu_seconds_total_counter{__$labels__}"
     },
     {

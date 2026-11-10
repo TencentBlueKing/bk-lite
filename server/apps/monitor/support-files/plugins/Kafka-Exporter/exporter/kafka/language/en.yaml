@@ -134,7 +134,7 @@ monitor_object_metric:
         partition.
     process_cpu_seconds_total:
       name: Probe Process CPU Time
-      desc: Cumulative CPU time consumed by the probe process, in seconds. For load, see CPU usage.
+      desc: Cumulative CPU time consumed by the probe process, in seconds.
     process_max_fds_gauge:
       name: Probe Process Max File Descriptors
       desc: Maximum number of file descriptors that the probe process can open.
