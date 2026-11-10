@@ -55,7 +55,7 @@ def test_custom_intervals_move_the_aligned_end(monkeypatch):
     assert align_apm_query_end(ENDED, now=ENDED) == datetime(2026, 11, 10, 0, 15, 30, tzinfo=UTC)
 
 
-def test_collector_duration_shapes_floor_to_whole_seconds(monkeypatch):
+def test_collector_duration_shapes_round_up_to_whole_seconds(monkeypatch):
     monkeypatch.setenv("APM_AGG_FLUSH_INTERVAL", "1m30s")
     monkeypatch.setenv("RUM_AGG_BATCH_TIMEOUT", "1h2m3s")
 
@@ -64,6 +64,9 @@ def test_collector_duration_shapes_floor_to_whole_seconds(monkeypatch):
     assert _aligned(90) == datetime(2026, 11, 10, 0, 14, 30, tzinfo=UTC)
 
     monkeypatch.setenv("APM_AGG_FLUSH_INTERVAL", "1500ms")
+    assert apm_flush_seconds() == 2
+
+    monkeypatch.setenv("APM_AGG_FLUSH_INTERVAL", "500ms")
     assert apm_flush_seconds() == 1
 
 

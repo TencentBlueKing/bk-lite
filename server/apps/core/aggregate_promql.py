@@ -56,7 +56,7 @@ class AggregateMetricsTooLarge(AggregateMetricsUnavailable):
 
 
 def _whole_seconds(raw: str) -> int | None:
-    """Parse a collector duration. Values under one second are not usable."""
+    """Parse a collector duration, rounding up so alignment covers the whole flush."""
 
     text = raw.strip()
     if not text or text[0] in "+-":
@@ -96,10 +96,10 @@ def _whole_seconds(raw: str) -> int | None:
         index += len(unit_name)
     if not math.isfinite(total) or total <= 0:
         return None
-    seconds = round(total * 1_000_000) // 1_000_000
-    if seconds < 1:
+    micros = round(total * 1_000_000)
+    if micros <= 0:
         return None
-    return seconds
+    return -(-micros // 1_000_000)
 
 
 def flush_interval_seconds(name: str, default_seconds: int) -> int:
