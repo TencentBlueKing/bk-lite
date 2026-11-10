@@ -23,8 +23,8 @@ monitor_object_metric:
       name: Topic Partition Count
       desc: Number of partitions for a given Kafka topic.
     kafka_topic_partition_current_offset:
-      name: Partition Log End Offset
-      desc: Log end offset watermark for the specified topic and partition.
+      name: Partition Current Offset
+      desc: Current offset for the specified topic and partition.
     kafka_topic_partition_current_offset_rate:
       name: Partition Message Write Rate
       desc: Average messages written to the partition per second over the last 5 minutes.
@@ -48,8 +48,8 @@ monitor_object_metric:
       name: Partition Under-Replicated Status
       desc: Value is 1 if the topic/partition is under-replicated, otherwise 0.
     kafka_consumergroup_current_offset:
-      name: Consumer Group Offset Watermark
-      desc: Offset watermark for the consumer group on the specified topic and partition.
+      name: Consumer Group Current Offset
+      desc: Current offset for the consumer group in the specified topic and partition.
     kafka_consumergroup_current_offset_rate:
       name: Consumer Group Consume Rate
       desc: Average messages consumed per second by the consumer group on the partition over the last 5 minutes.
@@ -107,8 +107,8 @@ monitor_object_metric:
       name: Topic Partition Count
       desc: Number of partitions for a given Kafka topic.
     topic_partition_current_offset:
-      name: Partition Log End Offset
-      desc: Log end offset watermark for the specified topic and partition.
+      name: Partition Current Offset
+      desc: Current offset for the specified topic and partition.
     topic_partition_oldest_offset:
       name: Partition Oldest Offset
       desc: Oldest offset for the specified topic and partition.
@@ -126,8 +126,8 @@ monitor_object_metric:
       name: Partition Under-Replicated Status
       desc: Value is 1 if the topic/partition is under-replicated, otherwise 0.
     consumergroup_current_offset:
-      name: Consumer Group Offset Watermark
-      desc: Offset watermark for the consumer group on the specified topic and partition.
+      name: Consumer Group Current Offset
+      desc: Current offset for the consumer group in the specified topic and partition.
     consumergroup_lag:
       name: Consumer Group Lag
       desc: Current approximate lag of the consumer group in the specified topic and

@@ -74,7 +74,7 @@
     {
       "metric_group": "Topic",
       "name": "kafka_topic_partition_current_offset",
-      "display_name": "Partition Log End Offset",
+      "display_name": "Partition Current Offset",
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
       "unit": "counts",
@@ -88,7 +88,7 @@
           "description": "Topic"
         }
       ],
-      "description": "Log end offset watermark for the specified topic and partition.",
+      "description": "Current offset for the specified topic and partition.",
       "query": "kafka_topic_partition_current_offset_gauge{__$labels__}"
     },
     {
@@ -234,7 +234,7 @@
     {
       "metric_group": "ConsumerGroup",
       "name": "kafka_consumergroup_current_offset",
-      "display_name": "Consumer Group Offset Watermark",
+      "display_name": "Consumer Group Current Offset",
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
       "unit": "counts",
@@ -252,7 +252,7 @@
           "description": "Topic"
         }
       ],
-      "description": "Offset watermark for the consumer group on the specified topic and partition.",
+      "description": "Current offset for the consumer group in the specified topic and partition.",
       "query": "kafka_consumergroup_current_offset_gauge{__$labels__}"
     },
     {
