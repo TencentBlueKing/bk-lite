@@ -1480,6 +1480,9 @@ class InstanceManage(object):
             result[0] = dict(result[0])
             result[0].pop("_cmdb_operation_id", None)
 
+            if any(field in update_attr and update_attr[field] != inst_info.get(field) for field in ("ip_addr", "organization")):
+                record_instance_field_ci_context(result[0] or inst_info)
+
             # 企业版：实例更新后落账（引用文件 committed、移除文件 orphaned）
             get_instance_enterprise_extension().commit_instance_files(inst_info["model_id"], result[0]["_id"], result[0], attrs, operator=operator)
 
@@ -1501,9 +1504,6 @@ class InstanceManage(object):
                     ),
                     scenario=scenario,
                 )
-
-            if any(field in update_attr and update_attr[field] != inst_info.get(field) for field in ("ip_addr", "organization")):
-                record_instance_field_ci_context(result[0] or inst_info)
 
             if schedule_post_actions:
                 from apps.cmdb.services.auto_relation_reconcile import schedule_instance_auto_relation_reconcile
@@ -1652,6 +1652,12 @@ class InstanceManage(object):
                 inst_id=mismatch_id,
             )
 
+        before_by_id = {int(item["_id"]): item for item in inst_list}
+        for updated in result:
+            before = before_by_id.get(int(updated["_id"])) if updated.get("_id") is not None else None
+            if before and any(field in update_attr and update_attr[field] != before.get(field) for field in ("ip_addr", "organization")):
+                record_instance_field_ci_context(updated or before)
+
         # 企业版：实例更新后对每个实例提交文件落账（pending→committed、移除文件标 orphaned）
         ext = get_instance_enterprise_extension()
         for updated in result:
@@ -1675,10 +1681,6 @@ class InstanceManage(object):
             for i in inst_list
         ]
         batch_create_change_record(INSTANCE, UPDATE_INST, change_records, operator=operator)
-
-        if any(field in update_attr for field in ("ip_addr", "organization")):
-            for updated in result:
-                record_instance_field_ci_context(updated)
 
         schedule_instance_auto_relation_reconcile([item["_id"] for item in result])
 
