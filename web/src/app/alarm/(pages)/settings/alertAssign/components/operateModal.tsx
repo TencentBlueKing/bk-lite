@@ -390,7 +390,7 @@ const OperateModalPage: React.FC<OperateModalProps> = ({
             min={0}
             max={100}
             precision={0}
-            className="w-[150px]"
+            className="w-full"
           />
         </Form.Item>
 
