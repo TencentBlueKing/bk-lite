@@ -113,10 +113,16 @@ v0.153 的 `routing` 支持 Span 上下文，默认动作为 `move`：晚到 Spa
 因此聚合库不可达时两个消费者都 ACK，VictoriaTraces 不因此把同一条 Span 写两次。
 
 `span_metrics` 的指标前缀是 `apm_`。它排除 `span.kind` 和 `collector.instance.id`，关闭
-exemplars，直方图单位是 `ms`，桶从 `5ms` 到 `10000ms`。`aggregation_cardinality_limit` 默认
-90000。资源分组键就是上面三个资源属性，这样同一个服务的多个 `service.instance.id` 只产生一组序列。
-超出上限的组合并进一条 `otel.metric.overflow=true` 序列。这条序列只有该标记，不再带服务名和操作名；
-`job` 仍是「命名空间/服务名」。
+exemplars，直方图单位是 `ms`，桶从 `5ms` 到 `10000ms`。资源分组键是上面三个资源属性，同一个服务的多个
+`service.instance.id` 只产生一组序列。`aggregation_cardinality_limit` 默认 500，按每服务资源计算
+（命名空间 + 服务名 + 环境），不是全局。大约相当于 166 个入口操作乘 3 种状态。超出的组合并进一条
+`otel.metric.overflow=true` 序列。这条序列只有该标记，不再带服务名、环境和操作名；`job` 仍是
+「命名空间/服务名」。Server 查询仍按服务名和环境，不改成按 `job`。
+
+`series_expiration` 默认 1 小时（`APM_AGG_SERIES_EXPIRATION`）。一条序列这么久没有新 Span，就从聚合进程
+内存删掉，组合名额释放给后来的接口。再出现时计数从 0 开始，`increase()` 按计数器重置处理。这不是按服务资源
+过期：空闲服务资源仍占 `resource_metrics_cache_size` 的名额，直到缓存换出。该缓存显式设为 1000，与容量文档一致。
+不设置 `metrics_expiration`，避免一整份服务资源被时间删掉。
 Prometheus 侧允许的业务标签是服务命名空间、服务名、环境、入口操作和状态；另有去不掉的 `job`
 以及 `shard`。不应出现 `instance`、`collector.instance.id`、`target_info` 或 scope 标签。
 

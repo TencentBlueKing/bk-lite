@@ -48,8 +48,10 @@
 
 | 产品 | 估算规模 | 序列数 | 磁盘 |
 |---|---|---|---|
-| APM | 200 个服务 × 50 个入口操作 × 3 个环境 | 约 162 万 | 约 76 GiB |
+| APM | 每服务资源上限 500，资源缓存 1000。典型是 200 个服务 × 3 个环境 × 50 个入口操作 × 3 种状态 | 最坏 900 万；典型约 162 万 | 最坏约 422 GiB；典型约 76 GiB |
 | RUM | 50 个应用 × 3 个环境 × 100 条路由 | 约 342 万 | 约 161 GiB |
+
+APM 没有全局组合上限。最坏值 = 500 × 1000 × 18。18 是每个组合的计数加直方图序列数。典型值没有把上限乘满。
 
 ## 3. APM Collector
 
@@ -113,7 +115,8 @@ nats consumer add APM_TRACES BKLITE_APM_AGGREGATE \
 | `APM_AGG_SHARD` | 这个进程固定的分片值。每个副本各不相同，重启不变。不要用 Pod 名或随机 ID，有状态副本序号可以 |
 | `AGG_VICTORIAMETRICS_USER` / `AGG_VICTORIAMETRICS_PASSWORD` | 可选。要么都设、要么都不设；都设时追加 `aggregate-auth.yaml` |
 | `APM_AGG_FLUSH_INTERVAL` | 可选，默认 `60s`。缩短后磁盘按比例增加 |
-| `APM_AGG_CARDINALITY_LIMIT` | 可选，默认 `90000` |
+| `APM_AGG_CARDINALITY_LIMIT` | 可选，默认 `500`。每个服务资源（命名空间 + 服务名 + 环境）的组合上限，不是全局 |
+| `APM_AGG_SERIES_EXPIRATION` | 可选，默认 `1h`。一条序列无新 Span 后从进程内存删除。再出现时从 0 计 |
 | `APM_AGG_COLLECTOR_MEMORY_LIMIT_MIB` | 可选，默认 `512`。`memory_limiter` 硬上限 |
 | `APM_AGG_COLLECTOR_MEMORY_SPIKE_MIB` | 可选，默认 `128`。软拒绝线是 384 MiB |
 | `APM_AGG_COLLECTOR_CONTAINER_MEMORY_LIMIT` | 可选，默认 `640m` |
@@ -234,7 +237,8 @@ VictoriaLogs 入库也会一起停。聚合库还没就绪时，改挂 `rum.gate
 | 对象 | 条件 |
 |---|---|
 | 聚合库数据盘 | 使用率 70% 告警，85% 严重 |
-| 聚合库活跃序列 | 相对本环境稳定基线异常上涨，且没有对应上线或维度变更 |
+| 聚合库活跃序列 | 相对本环境稳定基线异常上涨，且没有对应上线或维度变更。第 2 节的典型值和最坏值都不是告警阈值 |
+| APM 溢出序列 | `count(apm_calls_total{otel_metric_overflow="true"}) > 0`。某个服务资源的入口组合超过每资源上限。溢出序列没有服务名和环境；用 `job`（命名空间/服务名）定位。处理办法是修 Span 命名，或调高 `APM_AGG_CARDINALITY_LIMIT`。不要改 Server 查询去按 `job` 算 RED |
 | APM 聚合 Collector、RUM 网关 | `otelcol_exporter_send_failed_metric_points` 出现即告警。聚合写入关闭了队列，不要看 `enqueue_failed` |
 | RUM 网关 | `otelcol_deltatocumulative_datapoints{error="limit"}` 增长，说明超出流上限 |
 | RUM 维护进程 | `core_rum_session_end_records_lost_total` 增长 |

@@ -525,12 +525,66 @@ def test_cardinality_limit_collapses_overflow_into_one_series():
         assert len(overflow) == 1, rows
         assert float(overflow[0]["value"][1]) == 3.0
         assert "service_name" not in overflow[0]["metric"]
+        assert "deployment_environment" not in overflow[0]["metric"]
         assert "span_name" not in overflow[0]["metric"]
         assert len(kept) == 2, rows
         assert sum(float(row["value"][1]) for row in kept) == 2.0
         assert {row["metric"]["service_name"] for row in kept} == {"overflow-svc"}
         _assert_labels(rows)
         assert all("instance" not in row["metric"] for row in rows)
+    except AssertionError as error:
+        raise AssertionError(f"{error}\n{stack.logs()}") from error
+    finally:
+        stack.down()
+
+
+def test_expired_series_restarts_from_zero_and_increase_includes_both_sides():
+    now = time.time_ns()
+    stack = AggregateStack("expire", APM_AGG_SHARD="agg-expire", APM_AGG_SERIES_EXPIRATION="3s")
+    try:
+        stack.up()
+        stack.post(
+            [
+                _resource(
+                    "shop",
+                    "expire-svc",
+                    "pod-e",
+                    [
+                        _span("12121212121212121212121212121212", "1212121212121212", "GET /expire", 2, now - 12_000_000, now),
+                        _span("23232323232323232323232323232323", "2323232323232323", "GET /expire", 2, now - 12_000_000, now),
+                        _span("34343434343434343434343434343434", "3434343434343434", "GET /expire", 2, now - 12_000_000, now),
+                    ],
+                )
+            ]
+        )
+
+        def _value() -> float:
+            rows = _calls(stack, "expire-svc")
+            return sum(float(row["value"][1]) for row in rows)
+
+        def _increase() -> float:
+            rows = stack.vm_query('sum(increase(apm_calls_total{service_name="expire-svc"}[5m]))')
+            return float(rows[0]["value"][1]) if rows else 0.0
+
+        assert _eventually(_value, lambda value: value == 3.0, timeout=45) == 3.0
+        # 3s 过期加上 1s 刷出。等到下一次刷出把序列从内存删掉，再写入才会从 0 开始。
+        time.sleep(8)
+        again = time.time_ns()
+        stack.post(
+            [
+                _resource(
+                    "shop",
+                    "expire-svc",
+                    "pod-e2",
+                    [_span("45454545454545454545454545454545", "4545454545454545", "GET /expire", 2, again - 12_000_000, again)],
+                )
+            ]
+        )
+        assert _eventually(_value, lambda value: value == 1.0, timeout=45) == 1.0
+        assert _eventually(_increase, lambda value: value == 4.0, timeout=60) == 4.0
+        time.sleep(3)
+        assert _value() == 1.0
+        assert _increase() == 4.0
     except AssertionError as error:
         raise AssertionError(f"{error}\n{stack.logs()}") from error
     finally:

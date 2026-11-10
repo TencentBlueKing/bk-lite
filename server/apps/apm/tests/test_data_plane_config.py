@@ -208,7 +208,10 @@ def test_aggregate_pipeline_limits_memory_before_counting_and_splits_once():
         "5000ms",
         "10000ms",
     ]
-    assert span_metrics["aggregation_cardinality_limit"] == "${env:APM_AGG_CARDINALITY_LIMIT:-90000}"
+    assert span_metrics["aggregation_cardinality_limit"] == "${env:APM_AGG_CARDINALITY_LIMIT:-500}"
+    assert span_metrics["series_expiration"] == "${env:APM_AGG_SERIES_EXPIRATION:-1h}"
+    assert "metrics_expiration" not in span_metrics
+    assert span_metrics["resource_metrics_cache_size"] == 1000
     assert span_metrics["resource_metrics_key_attributes"] == [
         "service.namespace",
         "service.name",
@@ -264,6 +267,8 @@ def test_apm_compose_keeps_victoria_traces_and_a_separate_aggregate_store():
         "${AGG_VICTORIAMETRICS_WRITE_URL:-http://apm-aggregate-metrics:8428/api/v1/write}"
     )
     assert aggregate_collector["environment"]["APM_AGG_SHARD"] == "${APM_AGG_SHARD:-local-aggregate}"
+    assert aggregate_collector["environment"]["APM_AGG_CARDINALITY_LIMIT"] == "${APM_AGG_CARDINALITY_LIMIT:-500}"
+    assert aggregate_collector["environment"]["APM_AGG_SERIES_EXPIRATION"] == "${APM_AGG_SERIES_EXPIRATION:-1h}"
     assert aggregate_collector["environment"]["APM_COLLECTOR_MEMORY_LIMIT_MIB"] == "${APM_AGG_COLLECTOR_MEMORY_LIMIT_MIB:-512}"
     assert aggregate_collector["environment"]["APM_COLLECTOR_MEMORY_SPIKE_MIB"] == "${APM_AGG_COLLECTOR_MEMORY_SPIKE_MIB:-128}"
     assert aggregate_collector["mem_limit"] == "${APM_AGG_COLLECTOR_CONTAINER_MEMORY_LIMIT:-640m}"
@@ -346,6 +351,11 @@ def test_runtime_health_metrics_and_first_rollout_are_explicit():
     assert "regional_queue_bytes" in capacity
     assert "victoria_traces_bytes" in capacity
     assert "70%" in capacity and "85%" in capacity
+    assert "每服务资源" in capacity
+    assert "500 × 1000 × 18" in capacity
+    assert "90000" not in capacity
+    assert "9 万" not in capacity
+    assert 'otel_metric_overflow="true"' in capacity
     assert "不是发布流水线设计文档" in acceptance
     readme = (REPOSITORY_ROOT / "deploy/apm/README.md").read_text()
     assert "契约夹具" in readme
@@ -357,6 +367,16 @@ def test_runtime_health_metrics_and_first_rollout_are_explicit():
     assert "system-auth.yaml" not in readme
     assert "AGG_VICTORIAMETRICS_WRITE_URL" in readme
     assert "不回落" in readme
+    assert "每服务资源" in readme
+    assert "90000" not in readme
+    operations = (REPOSITORY_ROOT / "docs/operations/aggregate-metrics-store.md").read_text()
+    rollout = (REPOSITORY_ROOT / "docs/operations/apm-rum-query-performance-rollout.md").read_text()
+    overflow_query = 'count(apm_calls_total{otel_metric_overflow="true"}) > 0'
+    assert overflow_query in operations
+    assert overflow_query in rollout
+    assert "90000" not in operations
+    assert "9 万" not in operations
+    assert "90000" not in rollout
     assert "聚合写入可单独回退" in acceptance
     assert "system-traces.yaml" not in acceptance
     develop = (REPOSITORY_ROOT / "DEVELOP.md").read_text()

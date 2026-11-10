@@ -104,7 +104,12 @@ connectors:
       unit: ms
       explicit:
         buckets: [5ms, 10ms, 25ms, 50ms, 100ms, 200ms, 300ms, 500ms, 800ms, 1000ms, 2000ms, 3000ms, 5000ms, 10000ms]
-    aggregation_cardinality_limit: ${env:APM_AGG_CARDINALITY_LIMIT:-90000}
+    # 上限按服务资源（上面三个键）计数，不是全局。0 表示不限制，所以默认必须是正数。
+    aggregation_cardinality_limit: ${env:APM_AGG_CARDINALITY_LIMIT:-500}
+    # 单条序列过期。metrics_expiration 会整份丢掉服务资源，这里不用。
+    series_expiration: ${env:APM_AGG_SERIES_EXPIRATION:-1h}
+    # 上游默认也是 1000。显式写出，避免容量估算和运行时缓存不是同一个数。
+    resource_metrics_cache_size: 1000
   count/late:
     spans:
       apm.aggregate.late_spans:
