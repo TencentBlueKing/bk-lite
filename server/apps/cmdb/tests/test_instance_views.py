@@ -717,6 +717,84 @@ def test_download_file_returns_presigned_url_after_permission(superuser, monkeyp
 
 
 @pytest.mark.django_db
+def test_download_file_read_check_accepts_legacy_graph_id(superuser, monkeypatch):
+    """历史账本 inst_id 仍是图 _id；鉴权不得按 UUID 解析，否则图片展示 500。"""
+    from apps.cmdb.services.instance_identity import normalize_inst_uuid
+
+    inst = {
+        "_id": 3071,
+        "inst_uuid": U(1),
+        "model_id": "test",
+        "organization": [1],
+        "inst_name": "222",
+    }
+    seen = {}
+
+    def query_uuid(value):
+        seen["uuid"] = value
+        normalize_inst_uuid(value)
+        return inst
+
+    def query_id(value):
+        seen["id"] = int(value)
+        return inst if int(value) == 3071 else {}
+
+    monkeypatch.setattr(f"{VIEWS}.InstanceManage.query_entity_by_uuid", query_uuid)
+    monkeypatch.setattr(f"{VIEWS}.InstanceManage.query_entity_by_id", query_id)
+
+    def handle_download(*, request, file_id, check_read_permission=None, as_attachment=False):
+        seen["allowed"] = check_read_permission(3071)
+        return "https://minio/ok"
+
+    monkeypatch.setattr(
+        f"{VIEWS}.get_instance_enterprise_extension",
+        lambda: types.SimpleNamespace(handle_download=handle_download),
+    )
+    response = _call({"get": "download_file"}, _req("get", superuser), file_id="fid-1")
+    assert _body(response)["result"] is True
+    assert seen["allowed"] is True
+    assert seen.get("id") == 3071
+    assert "uuid" not in seen
+
+
+@pytest.mark.django_db
+def test_download_file_read_check_accepts_inst_uuid(superuser, monkeypatch):
+    inst = {
+        "_id": 3071,
+        "inst_uuid": U(1),
+        "model_id": "test",
+        "organization": [1],
+        "inst_name": "222",
+    }
+    seen = {}
+
+    def query_uuid(value):
+        seen["uuid"] = str(value)
+        return inst if str(value) == U(1) else {}
+
+    def query_id(value):
+        seen["id"] = int(value)
+        return inst
+
+    monkeypatch.setattr(f"{VIEWS}.InstanceManage.query_entity_by_uuid", query_uuid)
+    monkeypatch.setattr(f"{VIEWS}.InstanceManage.query_entity_by_id", query_id)
+
+    def handle_download(*, request, file_id, check_read_permission=None, as_attachment=False):
+        seen["allowed"] = check_read_permission(U(1))
+        return "https://minio/ok"
+
+    monkeypatch.setattr(
+        f"{VIEWS}.get_instance_enterprise_extension",
+        lambda: types.SimpleNamespace(handle_download=handle_download),
+    )
+    response = _call({"get": "download_file"}, _req("get", superuser), file_id="fid-1")
+    assert _body(response)["result"] is True
+    assert seen["allowed"] is True
+    assert seen.get("uuid") == U(1)
+    assert "id" not in seen
+
+
+@pytest.mark.django_db
 def test_download_file_attachment_disposition_when_download_flag(superuser, monkeypatch):
     """download=1 时透传 as_attachment=True，使企业实现生成附件 disposition 的预签名 URL。"""
     captured = {}

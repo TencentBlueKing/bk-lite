@@ -683,10 +683,20 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
         限制，从而绕开「直链请求不带令牌」的鉴权问题。
         """
 
-        def _check_read(inst_uuid):
-            if inst_uuid is None:
+        def _check_read(inst_ref):
+            # 台账过渡期可能仍存图 _id。纯数字先按图 ID 查，避免当成 UUID 解析并刷错误日志。
+            if inst_ref is None:
                 return False
-            instance = InstanceManage.query_entity_by_uuid(str(inst_uuid))
+            from apps.cmdb.services.instance_identity import optional_graph_id, optional_inst_uuid
+
+            graph_id = optional_graph_id(inst_ref)
+            if graph_id is not None:
+                instance = InstanceManage.query_entity_by_id(int(graph_id))
+            else:
+                inst_uuid = optional_inst_uuid(inst_ref)
+                if not inst_uuid:
+                    return False
+                instance = InstanceManage.query_entity_by_uuid(inst_uuid)
             return bool(instance) and self._check_instance_read_permission(request, instance)
 
         as_attachment = request.query_params.get("download") == "1"
