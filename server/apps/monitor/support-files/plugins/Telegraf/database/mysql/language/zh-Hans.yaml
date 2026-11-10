@@ -36,7 +36,7 @@ monitor_object_metric:
       desc: max_connections 的配置值；用于表示实例真实连接容量上限
     mysql_max_used_connections:
       name: 历史最大连接数
-      desc: MySQL 启动以来使用过的峰值连接数；用于评估连接池水位
+      desc: MySQL 启动以来观测到的峰值连接数，用于评估连接池水位。
     mysql_aborted_connects:
       name: 中断连接数
       desc: 连接尝试失败的次数；突增反映权限 / 网络配置问题

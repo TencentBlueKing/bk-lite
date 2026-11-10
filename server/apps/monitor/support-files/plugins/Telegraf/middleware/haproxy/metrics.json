@@ -435,8 +435,30 @@
           "description": "服务(FRONTEND/BACKEND/服务器名)"
         }
       ],
-      "description": "Cumulative number of errors connecting to backend servers since startup; growth indicates backend connectivity problems",
+      "description": "Cumulative number of errors connecting to backend servers since startup; growth indicates backend connectivity problems. For the error rate, use Connection Error Rate.",
       "query": "haproxy_econ{__$labels__}"
+    },
+    {
+      "metric_group": "Error",
+      "name": "haproxy_econ_rate",
+      "display_name": "Connection Error Rate",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [
+        {
+          "name": "pxname",
+          "description": "代理(前端/后端名)"
+        },
+        {
+          "name": "svname",
+          "description": "服务(FRONTEND/BACKEND/服务器名)"
+        }
+      ],
+      "description": "Average backend connection errors per second over the last 5 minutes.",
+      "query": "rate(haproxy_econ{__$labels__}[5m])"
     },
     {
       "metric_group": "Error",
@@ -545,8 +567,30 @@
           "description": "服务(FRONTEND/BACKEND/服务器名)"
         }
       ],
-      "description": "Cumulative number of times a request was redispatched to another backend server since startup",
+      "description": "Cumulative number of times a request was redispatched to another backend server since startup. For the redispatch rate, use Request Redispatch Rate.",
       "query": "haproxy_wredis{__$labels__}"
+    },
+    {
+      "metric_group": "Error",
+      "name": "haproxy_wredis_rate",
+      "display_name": "Request Redispatch Rate",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [
+        {
+          "name": "pxname",
+          "description": "代理(前端/后端名)"
+        },
+        {
+          "name": "svname",
+          "description": "服务(FRONTEND/BACKEND/服务器名)"
+        }
+      ],
+      "description": "Average requests redispatched to another backend per second over the last 5 minutes.",
+      "query": "rate(haproxy_wredis{__$labels__}[5m])"
     },
     {
       "metric_group": "Server",

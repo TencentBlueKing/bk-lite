@@ -83,7 +83,11 @@ monitor_object_metric:
     haproxy_econ:
       name: Connection Errors
       desc: Cumulative number of errors connecting to backend servers since startup;
-        growth indicates backend connectivity problems
+        growth indicates backend connectivity problems. For the error rate, use Connection
+        Error Rate.
+    haproxy_econ_rate:
+      name: Connection Error Rate
+      desc: Average backend connection errors per second over the last 5 minutes.
     haproxy_eresp:
       name: Response Errors
       desc: Cumulative number of response errors from backend servers since startup,
@@ -101,7 +105,11 @@ monitor_object_metric:
     haproxy_wredis:
       name: Request Redispatches
       desc: Cumulative number of times a request was redispatched to another backend
-        server since startup
+        server since startup. For the redispatch rate, use Request Redispatch Rate.
+    haproxy_wredis_rate:
+      name: Request Redispatch Rate
+      desc: Average requests redispatched to another backend per second over the last
+        5 minutes.
     haproxy_act:
       name: Active Servers
       desc: Number of active (non-backup) servers currently up in this backend, reflecting

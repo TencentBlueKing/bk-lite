@@ -132,7 +132,7 @@
       "data_type": "Number",
       "unit": "counts",
       "dimensions": [],
-      "description": "Historical peak of used connections, used to assess connection pool headroom",
+      "description": "Peak connections observed since MySQL startup, used to assess connection pool headroom",
       "query": "mysql_max_used_connections{__$labels__}"
     },
     {
