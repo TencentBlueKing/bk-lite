@@ -17,7 +17,7 @@ import ConnectionsPane from './connections-pane';
 import ThroughputPane from './throughput-pane';
 import CachePane from './cache-pane';
 import ReplicationPane from './replication-pane';
-import { isMongoTab, MONGO_TABS, resolveMongoTab, type MongoTab } from './ia';
+import { isMongoTab, mongoConnectionAnchor, MONGO_TABS, resolveMongoTab, type MongoTab } from './ia';
 import {
   mongoReplicationDimmed,
   mongoReplicationLoad,
@@ -100,7 +100,7 @@ export default function MongoCategoryLayout({
 
   const query = searchParams.toString();
   useEffect(() => {
-    if (requested !== 'throughput' || (focusFromUrl !== 'connections' && focusFromUrl !== 'queue')) return;
+    if (requested !== 'throughput' || !mongoConnectionAnchor(focusFromUrl)) return;
     const params = new URLSearchParams(query);
     params.set('mongodbTab', 'connections');
     const next = params.toString();

@@ -10,8 +10,12 @@ export const MONGO_TABS: ReadonlyArray<{ key: MongoTab; label: string }> = [
 
 const TAB_KEYS = new Set<string>(MONGO_TABS.map((tab) => tab.key));
 
-/** 旧合并签里属于连接故事的锚。throughput 深链带上它们时改落连接签。 */
-const CONNECTION_ANCHORS = new Set(['connections', 'queue']);
+/** 旧合并签里属于连接故事的锚。network 已迁到连接签。throughput 深链带上它们时改落连接签。 */
+const CONNECTION_ANCHORS = new Set(['connections', 'queue', 'network']);
+
+export const mongoConnectionAnchor = (focus: string | null) => (
+  focus != null && CONNECTION_ANCHORS.has(focus)
+);
 
 export const isMongoTab = (value: string | null): value is MongoTab => (
   value != null && TAB_KEYS.has(value)
@@ -41,11 +45,11 @@ export const mongoFocusJump = (key: string): MongoFocusTarget | null => {
 
 /**
  * URL `mongodbTab`。
- * 旧「连接与吞吐」的 key 仍是 throughput：focus 为 connections / queue 时改落连接签；
+ * 旧「连接与吞吐」的 key 仍是 throughput：focus 为 connections / queue / network 时改落连接签；
  * 吞吐侧锚点留在吞吐。没有 focus 的 throughput 就是拆开后的吞吐签。
  */
 export const resolveMongoTab = (requested: string | null, focus: string | null = null): MongoTab => {
-  if (requested === 'throughput' && focus != null && CONNECTION_ANCHORS.has(focus)) {
+  if (requested === 'throughput' && mongoConnectionAnchor(focus)) {
     return 'connections';
   }
   return isMongoTab(requested) ? requested : 'overview';

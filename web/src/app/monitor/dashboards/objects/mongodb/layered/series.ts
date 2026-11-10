@@ -53,39 +53,17 @@ export const formatMongoPercent = (value: number | null) => {
 };
 
 /**
- * 连接占用率。当前 ÷（当前 + 尚可接纳）× 100%。
- * 分母为 0、缺一侧或出现负数时返回 null，调用方显示 —。
+ * 可接纳上限 = 当前连接 + 尚可接纳。只做旁注，不当主读。
+ * 缺一侧、非数或出现负数时不给上限。
  */
-export const connectionOccupancyPercent = (
+export const connectionCap = (
   current: number | null,
   available: number | null
 ): number | null => {
   if (current == null || available == null) return null;
   if (!Number.isFinite(current) || !Number.isFinite(available)) return null;
   if (current < 0 || available < 0) return null;
-  const cap = current + available;
-  if (!(cap > 0)) return null;
-  return (100 * current) / cap;
-};
-
-/** 非 0 且小于 0.01% 时不收成 0%。分母无效时是 —。 */
-export const formatConnectionOccupancy = (percent: number | null) => {
-  if (percent == null || !Number.isFinite(percent) || percent < 0) return '—';
-  if (percent === 0) return '0%';
-  if (percent < 0.01) return '<0.01%';
-  const digits = percent < 10 ? 2 : 1;
-  const text = percent.toFixed(digits).replace(/(\.\d*?)0+$/, '$1').replace(/\.$/, '');
-  if (text === '0') return '<0.01%';
-  return `${text}%`;
-};
-
-/** 已用 / 上限。上限 = 当前 + 尚可接纳。分母无效时不给旁注。 */
-export const connectionOccupancyNote = (
-  current: number | null,
-  available: number | null
-) => {
-  if (connectionOccupancyPercent(current, available) == null || current == null || available == null) return '';
-  return `${formatMongoReading(current, 'counts')} / ${formatMongoReading(current + available, 'counts')}`;
+  return current + available;
 };
 
 export type ActiveQueueChartState = 'loading' | 'empty' | 'idle' | 'plot';

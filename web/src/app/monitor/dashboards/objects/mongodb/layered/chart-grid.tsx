@@ -9,23 +9,17 @@ export function MongoChartGrid({
   charts,
   zone,
   metricMap,
-  pendingMetricNames,
-  spanRow = false
+  pendingMetricNames
 }: {
   charts: readonly MongoChartSpec[];
   zone: string;
   metricMap: MongoMetricMap;
   pendingMetricNames: ReadonlySet<string>;
-  /** 单卡铺满一行，避免半行留白。高度仍跟折线卡，不跟着拉长。 */
-  spanRow?: boolean;
 }) {
   return (
-    <div className={host.chartGrid2} data-mongodb-zone={zone} data-mongodb-span={spanRow ? 'row' : 'cell'}>
+    <div className={host.chartGrid2} data-mongodb-zone={zone} data-mongodb-span="cell">
       {charts.map((chart) => (
-        <div
-          key={chart.anchor}
-          className={spanRow ? `${host.mongoChartCell} self-start min-[1101px]:col-span-2` : host.mongoChartCell}
-        >
+        <div key={chart.anchor} className={host.mongoChartCell}>
           <MongoTrend
             anchor={chart.anchor}
             title={chart.title}
