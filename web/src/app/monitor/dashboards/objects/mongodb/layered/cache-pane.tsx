@@ -47,8 +47,8 @@ export const cacheUsageBoundsFromSamples = (samples: readonly number[]) => {
   return { min: 0, max: cacheUsageAxisMax(vmax) };
 };
 
-/** ≥1100 左右约 0.36fr : 1fr；更窄则上 KPI 下趋势。气口 16px，不再套第二层卡边。 */
-const USAGE_COMPOSE_GRID = 'grid min-h-0 w-full min-w-0 flex-1 grid-cols-1 items-stretch gap-4 min-[1100px]:grid-cols-[minmax(200px,0.36fr)_minmax(0,1fr)]';
+/** ≥1100 左窄右宽，约 0.38fr : 1fr（1:2.6）。更窄则上 KPI 下趋势。卡间只留 12px。 */
+const USAGE_PAIR_GRID = 'grid w-full min-w-0 grid-cols-1 items-stretch gap-3 min-[1100px]:min-h-[180px] min-[1100px]:grid-cols-[minmax(200px,0.38fr)_minmax(0,1fr)]';
 
 function byteText(metricMap: MongoMetricMap, name: string) {
   const latest = mongoLatest(metricMap, name);
@@ -79,9 +79,9 @@ function UsageCard({
   const note = used && limit ? `已用 ${used} / 上限 ${limit}` : '';
   const quiet = !waiting && percent == null && !note;
   return (
-    <div
+    <section
       id="mongo-cache-usage"
-      className="flex h-full min-h-0 min-w-0 flex-col"
+      className={`${classic.panel} ${host.chartPanel} flex h-full min-w-0 flex-col`}
       data-mongodb-chart="cache-usage"
       data-mongodb-cache={waiting ? 'loading' : percent == null ? 'empty' : tone}
     >
@@ -124,7 +124,7 @@ function UsageCard({
           ) : null}
         </div>
       )}
-    </div>
+    </section>
   );
 }
 
@@ -149,37 +149,29 @@ export default function CachePane({
     <div data-mongodb-pane="cache" className="contents">
       <ProSection title="缓存">
         <div className="flex min-w-0 flex-col gap-3" data-mongodb-zone="cache">
-          <section
-            className={`${classic.panel} ${host.chartPanel} flex min-h-[180px] min-w-0 flex-col`}
-            data-mongodb-cache-layout="usage-compose"
-          >
-            <div className={USAGE_COMPOSE_GRID}>
-              <UsageCard metricMap={metricMap} pending={pendingMetricNames} />
-              <MongoTrend
-                bare
-                anchor="cache-usage-trend"
-                title="趋势"
-                hintTitle="缓存使用率"
-                body={USAGE_BODY}
-                series={[{
-                  name: 'mongodb_wtcache_current_bytes',
-                  label: '缓存使用率',
-                  color: MONGODB_PALETTE.blue,
-                  unit: 'percent'
-                }]}
-                metricMap={metricMap}
-                pending={pendingMetricNames}
-                pendingNames={['mongodb_wtcache_current_bytes', 'mongodb_wtcache_max_bytes_configured']}
-                points={usagePoints}
-                resolveValueBounds={cacheUsageBoundsFromSamples}
-                areaOpacity={0.12}
-                keepSeriesColor
-                showHint={false}
-                mutedTitle
-                percent
-              />
-            </div>
-          </section>
+          <div className={USAGE_PAIR_GRID} data-mongodb-cache-layout="usage-pair">
+            <UsageCard metricMap={metricMap} pending={pendingMetricNames} />
+            <MongoTrend
+              stretch
+              anchor="cache-usage-trend"
+              title="缓存使用率趋势"
+              body={USAGE_BODY}
+              series={[{
+                name: 'mongodb_wtcache_current_bytes',
+                label: '缓存使用率',
+                color: MONGODB_PALETTE.blue,
+                unit: 'percent'
+              }]}
+              metricMap={metricMap}
+              pending={pendingMetricNames}
+              pendingNames={['mongodb_wtcache_current_bytes', 'mongodb_wtcache_max_bytes_configured']}
+              points={usagePoints}
+              resolveValueBounds={cacheUsageBoundsFromSamples}
+              areaOpacity={0.12}
+              keepSeriesColor
+              percent
+            />
+          </div>
           <div className={host.chartGrid2}>
             <MongoTrend
               anchor="dirty"

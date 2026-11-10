@@ -34,6 +34,7 @@ export function MongoTrend({
   counts = false,
   emptyText = '本窗口暂无数据',
   bare = false,
+  stretch = false,
   areaOpacity,
   keepSeriesColor = false,
   showHint = true,
@@ -57,6 +58,8 @@ export function MongoTrend({
   emptyText?: string;
   /** 嵌进已有卡壳，不再套一层 panel。 */
   bare?: boolean;
+  /** 卡边拉满所在栅格行，和旁边的卡齐高。 */
+  stretch?: boolean;
   /**
    * 用窗口内采样决定百分比轴。传入后不再锁死 0–100。
    * 采样已忽略 null，并已裁到当前图表窗口。
@@ -66,7 +69,7 @@ export function MongoTrend({
   areaOpacity?: number;
   /** 贴轴时保持序列色。 */
   keepSeriesColor?: boolean;
-  /** 标题旁的问号。嵌进组合卡时说明留在主读数一侧。 */
+  /** 标题旁的问号。 */
   showHint?: boolean;
   /** 标题降成弱标签。 */
   mutedTitle?: boolean;
@@ -89,7 +92,7 @@ export function MongoTrend({
   return (
     <div
       id={`mongo-${anchor}`}
-      className="min-w-0"
+      className={stretch ? 'h-full min-w-0' : 'min-w-0'}
       data-mongodb-chart={anchor}
       data-mongodb-axes={mixedUnits ? 'dual' : 'shared'}
     >
@@ -98,6 +101,7 @@ export function MongoTrend({
         hintNode={showHint && title ? <MongoHint kind={`mongo-chart-${anchor}`} title={hintTitle || title} body={body} /> : undefined}
         unit={unit}
         bare={bare}
+        className={stretch ? 'h-full' : undefined}
         mutedTitle={mutedTitle}
         valueBounds={resolveValueBounds ? undefined : (percent ? { min: 0, max: 100 } : undefined)}
         resolveValueBounds={resolveValueBounds}
