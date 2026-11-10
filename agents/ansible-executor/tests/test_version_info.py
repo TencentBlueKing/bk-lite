@@ -5,42 +5,13 @@ import pytest
 
 import version_info
 import version_stamp
-from version_info import bake_version_stamp, current_version_line, detect_capabilities, resolve_git_sha, restore_version_stamp
+from version_info import PRODUCT_VERSION, bake_version_stamp, current_version_line, resolve_git_sha, restore_version_stamp
 
 
-def _write(path: Path, text: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(text, encoding="utf-8")
-
-
-def _write_tree(root: Path, *, encode: bool = True, delivery: bool = True) -> None:
-    raw_params = '{"_raw_params": module_args}' if encode else "module_args"
-    _write(
-        root / "service" / "ansible_runner.py",
-        f"def encode_adhoc_module_args(module, module_args):\n    return {raw_params}\n",
-    )
-    if delivery:
-        delivery_source = "def copy_script_to_hosts(script, remote, credentials, directory):\n    return None\n"
-    else:
-        delivery_source = "def unused():\n    return None\n"
-    _write(root / "service" / "linux_script_delivery.py", delivery_source)
-    reference = "transfer = copy_script_to_hosts" if delivery else "transfer = None"
-    _write(
-        root / "service" / "remote_shell_stream.py",
-        f"from service.linux_script_delivery import copy_script_to_hosts\ndef run_remote_shell_stream():\n    {reference}\n",
-    )
-
-
-def test_this_tree_reports_shipped_capabilities():
-    encode, delivery = detect_capabilities(Path(__file__).resolve().parent.parent)
-    assert (encode, delivery) == ("yes", "yes")
-
-
-def test_capability_flags_follow_the_tree(tmp_path: Path):
-    _write_tree(tmp_path)
-    assert detect_capabilities(tmp_path) == ("yes", "yes")
-    _write_tree(tmp_path, encode=False, delivery=False)
-    assert detect_capabilities(tmp_path) == ("no", "no")
+def test_product_version_is_checked_in():
+    assert PRODUCT_VERSION == "1.0.0"
+    source = Path(version_info.__file__).read_text(encoding="utf-8")
+    assert 'PRODUCT_VERSION = "1.0.0"' in source
 
 
 def test_resolve_git_sha_prefers_checkout_and_falls_back_to_env(tmp_path: Path, monkeypatch):
@@ -55,7 +26,6 @@ def test_resolve_git_sha_prefers_checkout_and_falls_back_to_env(tmp_path: Path, 
 
 
 def test_bake_writes_constants_and_restore_puts_the_original_bytes_back(tmp_path: Path, monkeypatch):
-    _write_tree(tmp_path)
     stamp = tmp_path / "version_stamp.py"
     original = b"GIT_SHA = 'unknown'\n"
     stamp.write_bytes(original)
@@ -71,8 +41,8 @@ def test_bake_writes_constants_and_restore_puts_the_original_bytes_back(tmp_path
     assert saved == original
     assert module.GIT_SHA == "0123456789abcdef0123456789abcdef01234567"
     assert module.BUILD_TIMESTAMP == "2026-11-10T01:49:00Z"
-    assert module.ENCODE_ADHOC_MODULE_ARGS == "yes"
-    assert module.LINUX_SCRIPT_DELIVERY == "yes"
+    assert not hasattr(module, "ENCODE_ADHOC_MODULE_ARGS")
+    assert not hasattr(module, "LINUX_SCRIPT_DELIVERY")
     restore_version_stamp(tmp_path, saved)
     assert stamp.read_bytes() == original
 
@@ -91,30 +61,19 @@ def test_frozen_binary_uses_baked_constants_only(monkeypatch):
     monkeypatch.setenv("ANSIBLE_EXECUTOR_GIT_SHA", "ffffffffffffffffffffffffffffffffffffffff")
     monkeypatch.setattr(version_stamp, "GIT_SHA", "0123456789abcdef0123456789abcdef01234567")
     monkeypatch.setattr(version_stamp, "BUILD_TIMESTAMP", "2026-11-10T01:49:00Z")
-    monkeypatch.setattr(version_stamp, "ENCODE_ADHOC_MODULE_ARGS", "yes")
-    monkeypatch.setattr(version_stamp, "LINUX_SCRIPT_DELIVERY", "yes")
 
     def forbidden(*_args, **_kwargs):
         raise AssertionError("packaged version must use baked constants")
 
     monkeypatch.setattr(version_info, "resolve_git_sha", forbidden)
-    monkeypatch.setattr(version_info, "detect_capabilities", forbidden)
-    assert current_version_line() == (
-        "ansible-executor git=0123456789abcdef0123456789abcdef01234567 "
-        "built=2026-11-10T01:49:00Z encode_adhoc_module_args=yes linux_script_delivery=yes"
-    )
+    assert current_version_line() == ("ansible-executor version=1.0.0 git=0123456789abcdef0123456789abcdef01234567 built=2026-11-10T01:49:00Z")
 
 
-def test_source_checkout_fills_unknown_fields_and_keeps_build_time_unknown(monkeypatch):
-    for name, value in (
-        ("GIT_SHA", "unknown"),
-        ("BUILD_TIMESTAMP", "unknown"),
-        ("ENCODE_ADHOC_MODULE_ARGS", "unknown"),
-        ("LINUX_SCRIPT_DELIVERY", "unknown"),
-    ):
-        monkeypatch.setattr(version_stamp, name, value)
+def test_source_checkout_fills_unknown_sha_and_keeps_build_time_unknown(monkeypatch):
+    monkeypatch.setattr(version_stamp, "GIT_SHA", "unknown")
+    monkeypatch.setattr(version_stamp, "BUILD_TIMESTAMP", "unknown")
     monkeypatch.setattr(version_info, "resolve_git_sha", lambda _root: "0123456789abcdef0123456789abcdef01234567")
-    monkeypatch.setattr(version_info, "detect_capabilities", lambda _root: ("yes", "no"))
-    assert current_version_line() == (
-        "ansible-executor git=0123456789abcdef0123456789abcdef01234567 built=unknown encode_adhoc_module_args=yes linux_script_delivery=no"
-    )
+    line = current_version_line()
+    assert line == "ansible-executor version=1.0.0 git=0123456789abcdef0123456789abcdef01234567 built=unknown"
+    assert "encode_adhoc_module_args" not in line
+    assert "linux_script_delivery" not in line

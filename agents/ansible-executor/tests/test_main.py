@@ -28,7 +28,7 @@ def test_version_and_help_share_one_line_without_ansible_config():
     project_root = Path(__file__).resolve().parent.parent
     line = current_version_line()
     assert re.fullmatch(
-        r"ansible-executor git=(?:[0-9a-f]{40}|unknown) built=unknown encode_adhoc_module_args=yes linux_script_delivery=yes",
+        r"ansible-executor version=1\.0\.0 git=(?:[0-9a-f]{40}|unknown) built=unknown",
         line,
     )
     env = os.environ.copy()
