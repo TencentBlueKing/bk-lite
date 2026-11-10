@@ -20,9 +20,12 @@ export function MongoChartGrid({
   spanRow?: boolean;
 }) {
   return (
-    <div className={host.chartGrid2} data-mongodb-zone={zone}>
-      {charts.map((chart) => {
-        const trend = (
+    <div className={host.chartGrid2} data-mongodb-zone={zone} data-mongodb-span={spanRow ? 'row' : 'cell'}>
+      {charts.map((chart) => (
+        <div
+          key={chart.anchor}
+          className={spanRow ? `${host.mongoChartCell} self-start min-[1101px]:col-span-2` : host.mongoChartCell}
+        >
           <MongoTrend
             anchor={chart.anchor}
             title={chart.title}
@@ -33,14 +36,8 @@ export function MongoChartGrid({
             counts={chart.counts}
             emptyText={chart.emptyText}
           />
-        );
-        if (!spanRow) return <div key={chart.anchor} className="min-w-0 h-full">{trend}</div>;
-        return (
-          <div key={chart.anchor} className="min-w-0 h-full min-[1101px]:col-span-2">
-            {trend}
-          </div>
-        );
-      })}
+        </div>
+      ))}
     </div>
   );
 }

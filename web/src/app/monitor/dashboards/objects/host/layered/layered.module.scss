@@ -931,6 +931,29 @@ button.kpiCard {
   height: 156px;
 }
 
+/* Mongo 趋势格。格子跟内容走，卡身固定 156，避免 h-full 把整行卡压成标题。 */
+.mongoChartCell {
+  min-width: 0;
+  height: auto;
+  min-height: min-content;
+}
+
+.mongoChartCell .chartPanel {
+  height: auto;
+  overflow: visible;
+}
+
+.mongoChartCell .chartBody {
+  flex: 0 0 156px;
+  height: 156px;
+  min-height: 156px;
+}
+
+.mongoChartCell .chartEmpty {
+  height: 100%;
+  min-height: 156px;
+}
+
 .chartEmpty {
   height: 100%;
   display: flex;
