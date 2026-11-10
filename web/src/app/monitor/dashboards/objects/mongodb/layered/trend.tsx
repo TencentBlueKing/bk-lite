@@ -32,7 +32,13 @@ export function MongoTrend({
   hintTitle,
   percent = false,
   counts = false,
-  emptyText = '本窗口暂无数据'
+  emptyText = '本窗口暂无数据',
+  bare = false,
+  areaOpacity,
+  keepSeriesColor = false,
+  showHint = true,
+  mutedTitle = false,
+  resolveValueBounds
 }: {
   anchor: string;
   title: string;
@@ -49,6 +55,21 @@ export function MongoTrend({
   percent?: boolean;
   counts?: boolean;
   emptyText?: string;
+  /** 嵌进已有卡壳，不再套一层 panel。 */
+  bare?: boolean;
+  /**
+   * 用窗口内采样决定百分比轴。传入后不再锁死 0–100。
+   * 采样已忽略 null，并已裁到当前图表窗口。
+   */
+  resolveValueBounds?: (samples: readonly number[]) => { min: number; max: number } | null;
+  /** 折线下浅面积。只给指定卡，不改其它趋势。 */
+  areaOpacity?: number;
+  /** 贴轴时保持序列色。 */
+  keepSeriesColor?: boolean;
+  /** 标题旁的问号。嵌进组合卡时说明留在主读数一侧。 */
+  showHint?: boolean;
+  /** 标题降成弱标签。 */
+  mutedTitle?: boolean;
 }) {
   const multi = series.length > 1;
   const mixedUnits = new Set(series.map((item) => item.unit)).size > 1;
@@ -74,9 +95,14 @@ export function MongoTrend({
     >
       <ThinTimeSeries
         title={title}
-        hintNode={<MongoHint kind={`mongo-chart-${anchor}`} title={hintTitle || title} body={body} />}
+        hintNode={showHint && title ? <MongoHint kind={`mongo-chart-${anchor}`} title={hintTitle || title} body={body} /> : undefined}
         unit={unit}
-        valueBounds={percent ? { min: 0, max: 100 } : undefined}
+        bare={bare}
+        mutedTitle={mutedTitle}
+        valueBounds={resolveValueBounds ? undefined : (percent ? { min: 0, max: 100 } : undefined)}
+        resolveValueBounds={resolveValueBounds}
+        areaOpacity={areaOpacity}
+        keepSeriesColor={keepSeriesColor}
         pinAxisZero={counts || (!percent && (unit === 'cps' || unit === 'byteps' || unit === 'counts'))}
         independentAxes={mixedUnits}
         keepLegend={multi}

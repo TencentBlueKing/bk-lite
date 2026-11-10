@@ -30,6 +30,26 @@ const pressureOf = (percent: number) => {
 const USAGE_BODY = 'WiredTiger 缓存已用容量占总上限的比例。\n已用 ÷ 上限 × 100%\n分母为 0 时显示 —，不用 0% 顶替。';
 const DIRTY_BODY = '缓存中尚未落盘的脏数据比例。\n脏数据 ÷ 当前缓存 × 100%\n分母为 0 时显示 —，不用 0% 顶替。';
 
+/** 低占用软顶。忽略 null 后的窗口 vmax：≤5 → 10，≤20 → 25，≤50 → 60，否则 100。 */
+export const cacheUsageAxisMax = (vmax: number) => {
+  if (!Number.isFinite(vmax) || vmax <= 5) return 10;
+  if (vmax <= 20) return 25;
+  if (vmax <= 50) return 60;
+  return 100;
+};
+
+/** 窗口内采样（已忽略 null）对应的 0–软顶轴。单位仍是 %。 */
+export const cacheUsageBoundsFromSamples = (samples: readonly number[]) => {
+  let vmax = Number.NEGATIVE_INFINITY;
+  samples.forEach((value) => {
+    if (typeof value === 'number' && Number.isFinite(value) && value > vmax) vmax = value;
+  });
+  return { min: 0, max: cacheUsageAxisMax(vmax) };
+};
+
+/** ≥1100 左右约 0.36fr : 1fr；更窄则上 KPI 下趋势。气口 16px，不再套第二层卡边。 */
+const USAGE_COMPOSE_GRID = 'grid min-h-0 w-full min-w-0 flex-1 grid-cols-1 items-stretch gap-4 min-[1100px]:grid-cols-[minmax(200px,0.36fr)_minmax(0,1fr)]';
+
 function byteText(metricMap: MongoMetricMap, name: string) {
   const latest = mongoLatest(metricMap, name);
   if (latest == null) return '';
@@ -59,9 +79,9 @@ function UsageCard({
   const note = used && limit ? `已用 ${used} / 上限 ${limit}` : '';
   const quiet = !waiting && percent == null && !note;
   return (
-    <section
+    <div
       id="mongo-cache-usage"
-      className={`${classic.panel} ${host.chartPanel} flex h-full min-h-0 flex-col`}
+      className="flex h-full min-h-0 min-w-0 flex-col"
       data-mongodb-chart="cache-usage"
       data-mongodb-cache={waiting ? 'loading' : percent == null ? 'empty' : tone}
     >
@@ -78,31 +98,33 @@ function UsageCard({
           <ProDashLoading />
         </div>
       ) : quiet ? (
-        <div className={`${host.chartEmpty} flex-1`}>
-          <span className="text-[13px] font-semibold text-[var(--color-text-2)]">本窗口暂无数据</span>
+        <div className="flex flex-1 flex-col justify-center gap-2">
+          <div
+            className="text-[30px] font-bold leading-none tabular-nums text-[var(--color-text-2)]"
+            data-mongodb-cache-reading=""
+          >
+            —
+          </div>
+          <p className="m-0 text-[13px] leading-5 text-[var(--color-text-3)]">本窗口暂无数据</p>
         </div>
       ) : (
         <div className="flex flex-1 flex-col justify-center">
-          <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-            <div
-              className="text-[28px] font-bold leading-none tabular-nums"
-              data-mongodb-cache-reading=""
-              style={{ color: tone ? PRESSURE_COLOR[tone] : undefined }}
-            >
-              {formatMongoPercent(percent)}
-            </div>
-            {note ? (
-              <p
-                className="m-0 min-w-0 text-[13px] leading-5 tabular-nums text-[var(--color-text-3)]"
-                data-mongodb-cache-note=""
-              >
-                {note}
-              </p>
-            ) : null}
+          <div
+            className="text-[30px] font-bold leading-none tabular-nums"
+            data-mongodb-cache-reading=""
+            style={{ color: tone ? PRESSURE_COLOR[tone] : 'var(--color-text-2)' }}
+          >
+            {formatMongoPercent(percent)}
           </div>
+          {note ? (
+            <div className="mt-3 flex w-full flex-col gap-0.5" data-mongodb-cache-note="">
+              <p className="m-0 text-[13px] leading-5 tabular-nums text-[var(--color-text-3)]">已用 {used}</p>
+              <p className="m-0 text-[13px] leading-5 tabular-nums text-[var(--color-text-3)]">上限 {limit}</p>
+            </div>
+          ) : null}
         </div>
       )}
-    </section>
+    </div>
   );
 }
 
@@ -127,26 +149,37 @@ export default function CachePane({
     <div data-mongodb-pane="cache" className="contents">
       <ProSection title="缓存">
         <div className="flex min-w-0 flex-col gap-3" data-mongodb-zone="cache">
-          <div className={host.chartGrid2} data-mongodb-cache-layout="usage-pair">
-            <UsageCard metricMap={metricMap} pending={pendingMetricNames} />
-            <MongoTrend
-              anchor="cache-usage-trend"
-              title="缓存使用率趋势"
-              hintTitle="缓存使用率"
-              body={USAGE_BODY}
-              series={[{
-                name: 'mongodb_wtcache_current_bytes',
-                label: '缓存使用率',
-                color: MONGODB_PALETTE.blue,
-                unit: 'percent'
-              }]}
-              metricMap={metricMap}
-              pending={pendingMetricNames}
-              pendingNames={['mongodb_wtcache_current_bytes', 'mongodb_wtcache_max_bytes_configured']}
-              points={usagePoints}
-              percent
-            />
-          </div>
+          <section
+            className={`${classic.panel} ${host.chartPanel} flex min-h-[180px] min-w-0 flex-col`}
+            data-mongodb-cache-layout="usage-compose"
+          >
+            <div className={USAGE_COMPOSE_GRID}>
+              <UsageCard metricMap={metricMap} pending={pendingMetricNames} />
+              <MongoTrend
+                bare
+                anchor="cache-usage-trend"
+                title="趋势"
+                hintTitle="缓存使用率"
+                body={USAGE_BODY}
+                series={[{
+                  name: 'mongodb_wtcache_current_bytes',
+                  label: '缓存使用率',
+                  color: MONGODB_PALETTE.blue,
+                  unit: 'percent'
+                }]}
+                metricMap={metricMap}
+                pending={pendingMetricNames}
+                pendingNames={['mongodb_wtcache_current_bytes', 'mongodb_wtcache_max_bytes_configured']}
+                points={usagePoints}
+                resolveValueBounds={cacheUsageBoundsFromSamples}
+                areaOpacity={0.12}
+                keepSeriesColor
+                showHint={false}
+                mutedTitle
+                percent
+              />
+            </div>
+          </section>
           <div className={host.chartGrid2}>
             <MongoTrend
               anchor="dirty"
