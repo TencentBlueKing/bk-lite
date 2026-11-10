@@ -99,6 +99,7 @@ const OpspilotSelectorOperateModal: React.FC<
 
   const filteredOptions = filterTaggedAssets(options, {
     selectedTags,
+    matchAllTags: true,
     keyword: searchTerm,
     chips: tagChips,
     systemTags: (option) => option.systemTags || [],

@@ -1,17 +1,19 @@
 """Kubernetes Node深度诊断工具"""
 import json
 from datetime import datetime, timezone
-from typing import Dict, List, Optional
+
+from kubernetes import client
 from kubernetes.client import ApiException
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
-from kubernetes import client
+
 from apps.core.logger import opspilot_logger as logger
-from apps.opspilot.metis.llm.tools.kubernetes.utils import prepare_context, parse_resource_quantity, format_bytes
+from apps.opspilot.metis.llm.tools.kubernetes.instance_scope import prepare_point_instance
+from apps.opspilot.metis.llm.tools.kubernetes.utils import format_bytes, parse_resource_quantity, prepare_context
 
 
 @tool()
-def diagnose_node_issues(node_name, config: RunnableConfig = None):
+def diagnose_node_issues(node_name, config: RunnableConfig = None, instance_name=None):  # noqa: C901
     """
     深度诊断Node健康状态、压力和调度能力
 
@@ -79,6 +81,10 @@ def diagnose_node_issues(node_name, config: RunnableConfig = None):
     - Taint分析基于当前Pod配置，实际调度还受其他因素影响
     - 资源碎片化分析基于requests，不考虑实际使用
     """
+    config, instance_error = prepare_point_instance(config, instance_name)
+    if instance_error:
+        return instance_error
+
     prepare_context(config)
 
     try:
@@ -90,9 +96,7 @@ def diagnose_node_issues(node_name, config: RunnableConfig = None):
             node = core_v1.read_node(node_name)
         except ApiException as e:
             if e.status == 404:
-                return json.dumps({
-                    "error": f"Node不存在: {node_name}"
-                })
+                return json.dumps({"error": f"Node不存在: {node_name}"})
             raise
 
         result = {
@@ -107,13 +111,12 @@ def diagnose_node_issues(node_name, config: RunnableConfig = None):
             "issues": [],
             "recommendations": [],
             "diagnosis_summary": "",
-            "check_time": datetime.now(timezone.utc).isoformat()
+            "check_time": datetime.now(timezone.utc).isoformat(),
         }
 
         # 1. 分析Node Conditions
         is_ready = False
         critical_conditions = []
-        warning_conditions = []
 
         if node.status.conditions:
             for condition in node.status.conditions:
@@ -122,7 +125,7 @@ def diagnose_node_issues(node_name, config: RunnableConfig = None):
                     "status": condition.status,
                     "reason": condition.reason,
                     "message": condition.message,
-                    "last_transition": condition.last_transition_time.isoformat() if condition.last_transition_time else None
+                    "last_transition": condition.last_transition_time.isoformat() if condition.last_transition_time else None,
                 }
                 result["conditions"].append(condition_info)
 
@@ -132,23 +135,22 @@ def diagnose_node_issues(node_name, config: RunnableConfig = None):
                         is_ready = True
                     else:
                         critical_conditions.append(f"节点NotReady: {condition.reason or condition.message}")
-                        result["issues"].append({
-                            "severity": "critical",
-                            "category": "node_health",
-                            "message": f"节点NotReady: {condition.reason}",
-                            "details": condition.message
-                        })
+                        result["issues"].append(
+                            {
+                                "severity": "critical",
+                                "category": "node_health",
+                                "message": f"节点NotReady: {condition.reason}",
+                                "details": condition.message,
+                            }
+                        )
 
                 # 检查压力Condition
                 pressure_types = ["DiskPressure", "MemoryPressure", "PIDPressure"]
                 if condition.type in pressure_types and condition.status == "True":
                     critical_conditions.append(f"{condition.type}: {condition.message}")
-                    result["issues"].append({
-                        "severity": "critical",
-                        "category": "resource_pressure",
-                        "message": f"节点{condition.type}",
-                        "details": condition.message
-                    })
+                    result["issues"].append(
+                        {"severity": "critical", "category": "resource_pressure", "message": f"节点{condition.type}", "details": condition.message}
+                    )
 
                     # 针对性建议
                     if condition.type == "DiskPressure":
@@ -161,12 +163,7 @@ def diagnose_node_issues(node_name, config: RunnableConfig = None):
                 # NetworkUnavailable
                 if condition.type == "NetworkUnavailable" and condition.status == "True":
                     critical_conditions.append("网络不可用")
-                    result["issues"].append({
-                        "severity": "critical",
-                        "category": "network",
-                        "message": "节点网络不可用",
-                        "details": condition.message
-                    })
+                    result["issues"].append({"severity": "critical", "category": "network", "message": "节点网络不可用", "details": condition.message})
 
         # 2. 检查Taints
         if node.spec.taints:
@@ -175,42 +172,37 @@ def diagnose_node_issues(node_name, config: RunnableConfig = None):
                     "key": taint.key,
                     "value": taint.value,
                     "effect": taint.effect,
-                    "description": f"{taint.key}={taint.value}:{taint.effect}"
+                    "description": f"{taint.key}={taint.value}:{taint.effect}",
                 }
                 result["taints"].append(taint_info)
 
                 if taint.effect in ["NoSchedule", "NoExecute"]:
-                    result["issues"].append({
-                        "severity": "medium",
-                        "category": "scheduling",
-                        "message": f"Taint阻止Pod调度: {taint.key}={taint.value}:{taint.effect}",
-                        "details": "只有带有对应Toleration的Pod才能调度到此节点"
-                    })
+                    result["issues"].append(
+                        {
+                            "severity": "medium",
+                            "category": "scheduling",
+                            "message": f"Taint阻止Pod调度: {taint.key}={taint.value}:{taint.effect}",
+                            "details": "只有带有对应Toleration的Pod才能调度到此节点",
+                        }
+                    )
 
-            result["recommendations"].append(
-                f"节点有{len(node.spec.taints)}个Taint，确保Pod配置了正确的Toleration"
-            )
+            result["recommendations"].append(f"节点有{len(node.spec.taints)}个Taint，确保Pod配置了正确的Toleration")
 
         # 3. 检查Cordoned状态
         if result["is_cordoned"]:
-            result["issues"].append({
-                "severity": "high",
-                "category": "scheduling",
-                "message": "节点已被Cordon（标记为不可调度）",
-                "details": "新Pod无法调度到此节点，通常用于节点维护"
-            })
+            result["issues"].append(
+                {"severity": "high", "category": "scheduling", "message": "节点已被Cordon（标记为不可调度）", "details": "新Pod无法调度到此节点，通常用于节点维护"}
+            )
             result["recommendations"].append("如果维护完成，使用 kubectl uncordon 恢复调度")
 
         # 4. 资源分析
         allocatable = node.status.allocatable or {}
-        allocatable_cpu = parse_resource_quantity(allocatable.get('cpu', '0'))
-        allocatable_memory = parse_resource_quantity(allocatable.get('memory', '0'))
-        allocatable_pods = int(allocatable.get('pods', '110'))
+        allocatable_cpu = parse_resource_quantity(allocatable.get("cpu", "0"))
+        allocatable_memory = parse_resource_quantity(allocatable.get("memory", "0"))
+        allocatable_pods = int(allocatable.get("pods", "110"))
 
         # 获取节点上的Pod
-        pods = core_v1.list_pod_for_all_namespaces(
-            field_selector=f"spec.nodeName={node_name}"
-        )
+        pods = core_v1.list_pod_for_all_namespaces(field_selector=f"spec.nodeName={node_name}")
 
         # 计算已分配资源
         allocated_cpu = 0
@@ -230,8 +222,8 @@ def diagnose_node_issues(node_name, config: RunnableConfig = None):
                 if pod.spec.containers:
                     for container in pod.spec.containers:
                         if container.resources and container.resources.requests:
-                            cpu_req = parse_resource_quantity(container.resources.requests.get('cpu', '0'))
-                            mem_req = parse_resource_quantity(container.resources.requests.get('memory', '0'))
+                            cpu_req = parse_resource_quantity(container.resources.requests.get("cpu", "0"))
+                            mem_req = parse_resource_quantity(container.resources.requests.get("memory", "0"))
                             allocated_cpu += cpu_req
                             allocated_memory += mem_req
                             pod_cpu += cpu_req
@@ -239,11 +231,7 @@ def diagnose_node_issues(node_name, config: RunnableConfig = None):
 
                 # 记录最大Pod
                 if pod_cpu > largest_pod["cpu"]:
-                    largest_pod = {
-                        "name": f"{pod.metadata.namespace}/{pod.metadata.name}",
-                        "cpu": pod_cpu,
-                        "memory": pod_memory
-                    }
+                    largest_pod = {"name": f"{pod.metadata.namespace}/{pod.metadata.name}", "cpu": pod_cpu, "memory": pod_memory}
 
         # 计算可用资源和利用率
         available_cpu = allocatable_cpu - allocated_cpu
@@ -259,25 +247,21 @@ def diagnose_node_issues(node_name, config: RunnableConfig = None):
                 "cpu": round(allocatable_cpu, 3),
                 "memory": allocatable_memory,
                 "memory_human": format_bytes(allocatable_memory),
-                "pods": allocatable_pods
+                "pods": allocatable_pods,
             },
             "allocated": {
                 "cpu": round(allocated_cpu, 3),
                 "memory": allocated_memory,
                 "memory_human": format_bytes(allocated_memory),
-                "pods": pod_count
+                "pods": pod_count,
             },
             "available": {
                 "cpu": round(available_cpu, 3),
                 "memory": available_memory,
                 "memory_human": format_bytes(available_memory),
-                "pods": available_pods
+                "pods": available_pods,
             },
-            "utilization_percent": {
-                "cpu": round(cpu_utilization, 2),
-                "memory": round(memory_utilization, 2),
-                "pods": round(pods_utilization, 2)
-            }
+            "utilization_percent": {"cpu": round(cpu_utilization, 2), "memory": round(memory_utilization, 2), "pods": round(pods_utilization, 2)},
         }
 
         # 5. 资源碎片化分析
@@ -285,19 +269,18 @@ def diagnose_node_issues(node_name, config: RunnableConfig = None):
         if available_cpu > 0 and available_memory > 0:
             # 检查是否能容纳一个与最大Pod同等大小的Pod
             if largest_pod["cpu"] > 0:
-                can_fit_largest = (
-                    available_cpu >= largest_pod["cpu"]
-                    and available_memory >= largest_pod["memory"]
-                )
+                can_fit_largest = available_cpu >= largest_pod["cpu"] and available_memory >= largest_pod["memory"]
 
                 if not can_fit_largest and cpu_utilization < 80:
                     fragmentation_risk = "high"
-                    result["issues"].append({
-                        "severity": "medium",
-                        "category": "fragmentation",
-                        "message": "资源碎片化：总资源充足但无法调度大Pod",
-                        "details": f"可用CPU {available_cpu:.2f}核，但最大Pod需要{largest_pod['cpu']:.2f}核"
-                    })
+                    result["issues"].append(
+                        {
+                            "severity": "medium",
+                            "category": "fragmentation",
+                            "message": "资源碎片化：总资源充足但无法调度大Pod",
+                            "details": f"可用CPU {available_cpu:.2f}核，但最大Pod需要{largest_pod['cpu']:.2f}核",
+                        }
+                    )
                     result["recommendations"].append("考虑重新调度Pod以减少资源碎片化")
                 elif cpu_utilization > 60 and available_cpu < largest_pod["cpu"] * 0.5:
                     fragmentation_risk = "medium"
@@ -305,11 +288,7 @@ def diagnose_node_issues(node_name, config: RunnableConfig = None):
         result["resource_analysis"]["fragmentation_risk"] = fragmentation_risk
 
         # 6. Pod统计
-        result["pod_summary"] = {
-            "total_pods": pod_count,
-            "by_phase": pods_by_phase,
-            "largest_pod": largest_pod if largest_pod["cpu"] > 0 else None
-        }
+        result["pod_summary"] = {"total_pods": pod_count, "by_phase": pods_by_phase, "largest_pod": largest_pod if largest_pod["cpu"] > 0 else None}
 
         # 7. Node信息
         if node.status.node_info:
@@ -320,7 +299,7 @@ def diagnose_node_issues(node_name, config: RunnableConfig = None):
                 "container_runtime": node_info.container_runtime_version,
                 "kubelet_version": node_info.kubelet_version,
                 "kube_proxy_version": node_info.kube_proxy_version,
-                "architecture": node_info.architecture
+                "architecture": node_info.architecture,
             }
 
         # 获取节点角色
@@ -335,44 +314,29 @@ def diagnose_node_issues(node_name, config: RunnableConfig = None):
 
         # 8. 资源使用预警
         if cpu_utilization > 90:
-            result["issues"].append({
-                "severity": "high",
-                "category": "capacity",
-                "message": f"CPU利用率过高: {cpu_utilization:.1f}%",
-                "details": "节点接近CPU容量上限，可能影响调度"
-            })
+            result["issues"].append(
+                {"severity": "high", "category": "capacity", "message": f"CPU利用率过高: {cpu_utilization:.1f}%", "details": "节点接近CPU容量上限，可能影响调度"}
+            )
             result["recommendations"].append("考虑将部分Pod迁移到其他节点或添加新节点")
         elif cpu_utilization > 80:
-            result["issues"].append({
-                "severity": "medium",
-                "category": "capacity",
-                "message": f"CPU利用率较高: {cpu_utilization:.1f}%",
-                "details": "建议监控节点负载"
-            })
+            result["issues"].append(
+                {"severity": "medium", "category": "capacity", "message": f"CPU利用率较高: {cpu_utilization:.1f}%", "details": "建议监控节点负载"}
+            )
 
         if memory_utilization > 90:
-            result["issues"].append({
-                "severity": "high",
-                "category": "capacity",
-                "message": f"内存利用率过高: {memory_utilization:.1f}%",
-                "details": "节点接近内存容量上限，可能触发OOM"
-            })
+            result["issues"].append(
+                {"severity": "high", "category": "capacity", "message": f"内存利用率过高: {memory_utilization:.1f}%", "details": "节点接近内存容量上限，可能触发OOM"}
+            )
             result["recommendations"].append("考虑将部分Pod迁移到其他节点或添加新节点")
         elif memory_utilization > 80:
-            result["issues"].append({
-                "severity": "medium",
-                "category": "capacity",
-                "message": f"内存利用率较高: {memory_utilization:.1f}%",
-                "details": "建议监控节点内存使用"
-            })
+            result["issues"].append(
+                {"severity": "medium", "category": "capacity", "message": f"内存利用率较高: {memory_utilization:.1f}%", "details": "建议监控节点内存使用"}
+            )
 
         if available_pods < 10:
-            result["issues"].append({
-                "severity": "medium",
-                "category": "capacity",
-                "message": f"Pod容量即将耗尽: 剩余{available_pods}个",
-                "details": "节点即将达到最大Pod数量限制"
-            })
+            result["issues"].append(
+                {"severity": "medium", "category": "capacity", "message": f"Pod容量即将耗尽: 剩余{available_pods}个", "details": "节点即将达到最大Pod数量限制"}
+            )
 
         # 9. 确定整体健康状态
         if len(critical_conditions) > 0 or not is_ready:
@@ -395,7 +359,4 @@ def diagnose_node_issues(node_name, config: RunnableConfig = None):
 
     except Exception as e:
         logger.error(f"诊断Node失败: {node_name}, 错误: {str(e)}")
-        return json.dumps({
-            "error": f"诊断Node失败: {str(e)}",
-            "node_name": node_name
-        })
+        return json.dumps({"error": f"诊断Node失败: {str(e)}", "node_name": node_name})
