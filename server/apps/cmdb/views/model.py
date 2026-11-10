@@ -326,6 +326,17 @@ class ModelViewSet(CmdbPermissionMixin, viewsets.ViewSet):
         )
         return WebUtils.response_success(result)
 
+    @HasPermission("model_management-Edit Model")
+    @action(detail=False, methods=["put"], url_path="association/(?P<model_asst_id>.+)/context_link")
+    def model_association_context_link(self, request, model_asst_id: str):
+        association_info, reason, error_code = self._association_operate_permission(request, model_asst_id)
+        if not association_info:
+            status_code = status.HTTP_403_FORBIDDEN if error_code == "permission_denied" else status.HTTP_404_NOT_FOUND
+            return WebUtils.response_error(reason, status_code=status_code)
+        payload = request.data if hasattr(request.data, "get") else {}
+        result = ModelManage.set_association_context_link(model_asst_id, payload.get("context_link"))
+        return WebUtils.response_success(result)
+
     @HasPermission("model_management-Delete Model")
     @action(detail=False, methods=["delete"], url_path="association/(?P<model_asst_id>.+?)")
     def model_association_delete(self, request, model_asst_id: str):
@@ -893,61 +904,58 @@ class ModelViewSet(CmdbPermissionMixin, viewsets.ViewSet):
         ModelManage.import_model_config(file)
         return WebUtils.response_success(response_data="", message="模型配置导入成功")
 
-    def _delete_model_association_with_permission(self, request, model_asst_id: str):
+    def _model_end_operate_permission(self, request, model_id: str, *, missing_message: str, denied_message: str):
+        model_info = ModelManage.search_model_info(model_id)
+        if not BusinessModelVisibility.is_visible(model_info):
+            return False, missing_message, "not_found"
+
+        permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(
+            request=request, model_id=model_id, permission_type=PERMISSION_MODEL
+        )
+        organizations = self.organizations(request, model_info)
+        if not organizations:
+            return False, denied_message, "permission_denied"
+
+        has_permission = CmdbRulesFormatUtil.has_object_permission(
+            obj_type=PERMISSION_MODEL,
+            operator=OPERATE,
+            model_id=model_id,
+            permission_instances_map=permissions_map,
+            instance=model_info,
+            default_group_id=self.default_group_id,
+        )
+        if not has_permission:
+            return False, denied_message, "permission_denied"
+        return True, "", ""
+
+    def _association_operate_permission(self, request, model_asst_id: str):
         association_info = ModelManage.model_association_info_search(model_asst_id)
         if not association_info:
-            return False, "模型关联不存在", "not_found"
+            return None, "模型关联不存在", "not_found"
 
-        src_model_id = association_info["src_model_id"]
-        dst_model_id = association_info["dst_model_id"]
-
-        # 检查源模型权限
-        src_model_info = ModelManage.search_model_info(src_model_id)
-        if not BusinessModelVisibility.is_visible(src_model_info):
-            return False, "源模型不存在", "not_found"
-
-        src_permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(
-            request=request, model_id=src_model_id, permission_type=PERMISSION_MODEL
+        ok, reason, error_code = self._model_end_operate_permission(
+            request,
+            association_info["src_model_id"],
+            missing_message="源模型不存在",
+            denied_message="抱歉！您没有源模型的权限",
         )
+        if not ok:
+            return None, reason, error_code
 
-        organizations = self.organizations(request, src_model_info)
-        if not organizations:
-            return False, "抱歉！您没有源模型的权限", "permission_denied"
-
-        src_has_permission = CmdbRulesFormatUtil.has_object_permission(
-            obj_type=PERMISSION_MODEL,
-            operator=OPERATE,
-            model_id=src_model_id,
-            permission_instances_map=src_permissions_map,
-            instance=src_model_info,
-            default_group_id=self.default_group_id,
+        ok, reason, error_code = self._model_end_operate_permission(
+            request,
+            association_info["dst_model_id"],
+            missing_message="目标模型不存在",
+            denied_message="抱歉！您没有目标模型的权限",
         )
-        if not src_has_permission:
-            return False, "抱歉！您没有源模型的权限", "permission_denied"
+        if not ok:
+            return None, reason, error_code
+        return association_info, "", ""
 
-        # 检查目标模型权限
-        dst_model_info = ModelManage.search_model_info(dst_model_id)
-        if not BusinessModelVisibility.is_visible(dst_model_info):
-            return False, "目标模型不存在", "not_found"
-
-        dst_permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(
-            request=request, model_id=dst_model_id, permission_type=PERMISSION_MODEL
-        )
-
-        organizations = self.organizations(request, dst_model_info)
-        if not organizations:
-            return False, "抱歉！您没有目标模型的权限", "permission_denied"
-
-        dst_has_permission = CmdbRulesFormatUtil.has_object_permission(
-            obj_type=PERMISSION_MODEL,
-            operator=OPERATE,
-            model_id=dst_model_id,
-            permission_instances_map=dst_permissions_map,
-            instance=dst_model_info,
-            default_group_id=self.default_group_id,
-        )
-        if not dst_has_permission:
-            return False, "抱歉！您没有目标模型的权限", "permission_denied"
+    def _delete_model_association_with_permission(self, request, model_asst_id: str):
+        association_info, reason, error_code = self._association_operate_permission(request, model_asst_id)
+        if not association_info:
+            return False, reason, error_code
 
         ModelManage.model_association_delete(association_info["_id"])
         return True, "", ""

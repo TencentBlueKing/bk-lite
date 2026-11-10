@@ -1,9 +1,15 @@
 from django.db.models import Q
 
-from apps.cmdb.constants.constants import INSTANCE, INSTANCE_ASSOCIATION
+from apps.cmdb.constants.constants import INSTANCE, INSTANCE_ASSOCIATION, MODEL_ASSOCIATION
 from apps.cmdb.graph.drivers.graph_client import GraphClient
 from apps.cmdb.models.ci_context import CmdbCiContext, CmdbCiContextPending
-from apps.cmdb.services.ci_context_policy import APPLICATION_MODEL, CONTEXT_APPLICATION, LINK_FOLLOW, classify_application_edge
+from apps.cmdb.services.ci_context_policy import (
+    APPLICATION_MODEL,
+    CONTEXT_APPLICATION,
+    LINK_FOLLOW,
+    classify_application_edge,
+    normalize_context_link,
+)
 from apps.core.logger import cmdb_logger as logger
 
 
@@ -116,11 +122,46 @@ def _edge_parts(item):
     return props, src_view, dst_view, dst if isinstance(dst, dict) else {}
 
 
-def _classifier_edge(props, src, dst) -> dict:
+def _model_context_link(ag, model_asst_id, link_cache) -> str:
+    """实例边没有 context_link 时，读模型关系上的覆盖。同一次重算按 model_asst_id 缓存。"""
+    if ag is None:
+        return LINK_FOLLOW
+    key = str(model_asst_id or "").strip()
+    if not key:
+        return LINK_FOLLOW
+    if link_cache is not None and key in link_cache:
+        return link_cache[key]
+    edges = (
+        ag.query_edge(
+            MODEL_ASSOCIATION,
+            [{"field": "model_asst_id", "type": "str=", "value": key}],
+        )
+        or []
+    )
+    link = LINK_FOLLOW
+    for edge in edges:
+        if not isinstance(edge, dict):
+            continue
+        props = edge.get("edge", edge)
+        if not isinstance(props, dict):
+            props = edge
+        link = normalize_context_link(props.get("context_link"))
+        break
+    if link_cache is not None:
+        link_cache[key] = link
+    return link
+
+
+def _classifier_edge(props, src, dst, ag=None, link_cache=None) -> dict:
+    raw = props.get("context_link")
+    if raw is None or not str(raw).strip():
+        link = _model_context_link(ag, props.get("model_asst_id"), link_cache)
+    else:
+        link = raw
     return {
         "asst_id": props.get("asst_id") or "",
         "model_asst_id": props.get("model_asst_id") or "",
-        "context_link": props.get("context_link") or LINK_FOLLOW,
+        "context_link": link or LINK_FOLLOW,
         "src": src,
         "dst": dst,
     }
@@ -195,10 +236,11 @@ def recompute_application(application_uuid) -> None:
             _delete_application_rows(application_uuid)
             return
 
+        link_cache: dict[str, str] = {}
         layer1: dict[str, dict] = {}
         for item in _outbound_edges(ag, application_uuid):
             props, src, dst, raw_dst = _edge_parts(item)
-            decision = classify_application_edge(_classifier_edge(props, src, dst), src_is_member=False)
+            decision = classify_application_edge(_classifier_edge(props, src, dst, ag, link_cache), src_is_member=False)
             if not (decision.include and decision.layer == 1):
                 continue
             record = _member_record(decision, dst, raw_dst, via_uuid=None)
@@ -210,7 +252,7 @@ def recompute_application(application_uuid) -> None:
         for via_uuid in layer1:
             for item in _outbound_edges(ag, via_uuid):
                 props, src, dst, raw_dst = _edge_parts(item)
-                decision = classify_application_edge(_classifier_edge(props, src, dst), src_is_member=True)
+                decision = classify_application_edge(_classifier_edge(props, src, dst, ag, link_cache), src_is_member=True)
                 if not (decision.include and decision.layer == 2):
                     continue
                 record = _member_record(decision, dst, raw_dst, via_uuid=decision.via_uuid or via_uuid)
@@ -233,7 +275,7 @@ def recompute_application(application_uuid) -> None:
         )
         for item in inbound:
             props, src, dst, _raw_dst = _edge_parts(item)
-            decision = classify_application_edge(_classifier_edge(props, src, dst), src_is_member=False)
+            decision = classify_application_edge(_classifier_edge(props, src, dst, ag, link_cache), src_is_member=False)
             system_id = _normalize_uuid(decision.attach_system_uuid)
             if system_id:
                 system_uuids.append(system_id)
