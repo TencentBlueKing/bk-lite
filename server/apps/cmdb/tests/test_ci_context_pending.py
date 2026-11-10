@@ -156,6 +156,55 @@ def test_drain_application_ci_updates_member_ip_and_parent_root(monkeypatch):
     assert CmdbCiContextPending.objects.filter(ci_uuid="app-child").count() == 0
 
 
+def test_missing_ci_failed_recompute_retries_and_drops_layer2(monkeypatch):
+    from apps.cmdb.services.ci_context import recompute_application as real_recompute
+
+    app = inst("app-wecenter", "application")
+    host = inst("host-1", "host", ip="10.1.0.1", org=[7])
+    mysql = inst("mysql-1", "mysql", ip="10.1.0.3", org=[8])
+    _bind(monkeypatch, [app, mysql], [edge("run", app, host)])
+    host_row = _context(ci_uuid="host-1", root_uuid="app-wecenter", layer=1, via_uuid=None, ip_addr="10.1.0.1", organization=[7])
+    mysql_row = _context(
+        ci_uuid="mysql-1",
+        ci_model="mysql",
+        root_uuid="app-wecenter",
+        layer=2,
+        via_uuid="host-1",
+        model_asst_id="host_run_mysql",
+        ip_addr="10.1.0.3",
+        organization=[8],
+    )
+    kept = _context(ci_uuid="host-keep", root_uuid="other-app", via_uuid=None)
+    CmdbCiContextPending.objects.create(ci_uuid="host-1")
+
+    calls = {"n": 0}
+
+    def flaky(root_uuid):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise RuntimeError("graph down")
+        return real_recompute(root_uuid)
+
+    monkeypatch.setattr("apps.cmdb.services.ci_context.recompute_application", flaky)
+
+    drain_ci_context_pending()
+
+    assert CmdbCiContextPending.objects.filter(ci_uuid="host-1").exists()
+    host_row.refresh_from_db()
+    mysql_row.refresh_from_db()
+    assert mysql_row.layer == 2
+    assert mysql_row.via_uuid == "host-1"
+    kept.refresh_from_db()
+    assert kept.root_uuid == "other-app"
+
+    drain_ci_context_pending()
+
+    assert not CmdbCiContext.objects.filter(ci_uuid="host-1").exists()
+    assert not CmdbCiContext.objects.filter(ci_uuid="mysql-1", root_uuid="app-wecenter").exists()
+    assert CmdbCiContext.objects.filter(pk=kept.pk, ci_uuid="host-keep", root_uuid="other-app").exists()
+    assert CmdbCiContextPending.objects.filter(ci_uuid="host-1").count() == 0
+
+
 def test_drain_ci_uuid_drops_rows_when_instance_is_missing(monkeypatch):
     _bind(monkeypatch, [], [])
     _context(ci_uuid="host-missing", root_uuid="app-wecenter")
