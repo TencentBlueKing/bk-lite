@@ -1259,6 +1259,7 @@
     "uploadIntroAfter": " 等目录。没有 ",
     "uploadIntroTail": " 时会读取 ",
     "uploadIntroEnd": " 顶部 YAML frontmatter，或从标题和目录名推导基础信息。",
+    "sourceConversation": "对话生成",
     "fetchButton": "获取工具"
   },
   "knowledge": {

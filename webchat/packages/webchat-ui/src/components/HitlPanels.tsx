@@ -36,7 +36,7 @@ interface HitlPanelsProps extends HitlSubmitContext {
   event: CustomProtocolEvent | null;
   approvalUrl?: string;
   choiceUrl?: string;
-  onSendMessage?: (text: string) => void;
+  onSendMessage?: (text: string, choice?: { choiceId?: string; optionKey?: string }) => void;
   onResolved: () => void;
 }
 
@@ -168,7 +168,10 @@ export const HitlPanels: React.FC<HitlPanelsProps> = ({
     const value = (event.value || {}) as WebchatChoiceValue;
     const options = (value.options || []) as WebchatChoiceOption[];
     const pick = (option: WebchatChoiceOption) => {
-      onSendMessage(option.label || option.key);
+      onSendMessage(option.label || option.key, {
+        choiceId: value.choice_id,
+        optionKey: option.key || option.label,
+      });
       onResolved();
     };
     return (

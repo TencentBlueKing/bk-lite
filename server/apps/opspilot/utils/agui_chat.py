@@ -8,6 +8,7 @@ import json
 import re
 import threading
 import time
+import uuid
 
 from asgiref.sync import sync_to_async
 
@@ -22,6 +23,7 @@ from apps.opspilot.metis.llm.common.llm_error_diagnostics import (
 from apps.opspilot.metis.llm.common.token_usage import TokenUsageAccumulator
 from apps.opspilot.models import LLMModel, SkillRequestLog
 from apps.opspilot.services.chat_service import chat_service
+from apps.opspilot.services.conversation_skill_package import try_commit_conversation_skill_package
 from apps.opspilot.services.wiki.active_generation_query_service import ActiveGenerationReadError
 from apps.opspilot.services.wiki.wiki_budget_service import WikiBudgetExceeded
 from apps.opspilot.utils.agent_factory import create_agent_instance
@@ -439,6 +441,17 @@ async def _generate_agui_stream(params, skill_name, skill_type, show_think, fina
     token = set_run_locale(locale)
     try:
         logger.info(f"[AGUI Chat] 开始异步流处理 - skill_name: {skill_name}, skill_type: {skill_type}, show_think: {show_think}")
+        direct_reply = await sync_to_async(try_commit_conversation_skill_package, thread_sensitive=True)(params)
+        if direct_reply:
+            message_id = uuid.uuid4().hex
+            now = int(time.time() * 1000)
+            for event_type, extra in (
+                ("TEXT_MESSAGE_START", {}),
+                ("TEXT_MESSAGE_CONTENT", {"delta": direct_reply}),
+                ("TEXT_MESSAGE_END", {}),
+            ):
+                yield _build_sse_line({"type": event_type, "message_id": message_id, "timestamp": now, **extra})
+            return
         # F044: 把取模型 / 格式化参数 / 创建 Agent 实例（构造 request/graph）的同步前置工作
         # 移入生成器内执行，经 sync_to_async 调用，避免在首个 flush 前阻塞请求线程，改善 TTFB。
         # 仍处于 try 内，任何异常仍以原有 ERROR 事件形状返回，线缆形状不变。

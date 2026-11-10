@@ -1257,6 +1257,7 @@
     "uploadIntroEnd": " is read, or basic info is derived from the title and folder names.",
     "sourceBuiltin": "Built-in",
     "sourceImported": "Imported",
+    "sourceConversation": "Conversation",
     "detailTitle": "Skill package details",
     "packageId": "Package ID",
     "dependentTools": "Required tools",
