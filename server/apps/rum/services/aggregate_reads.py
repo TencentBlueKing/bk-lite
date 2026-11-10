@@ -18,13 +18,11 @@ from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 
 from apps.core.aggregate_origin import recorded_origin
-from apps.core.aggregate_promql import AggregatePromqlClient, align_query_end, escape_promql_label_value
+from apps.core.aggregate_promql import AggregatePromqlClient, align_query_end, escape_promql_label_value, rum_flush_seconds
 from apps.core.logger import rum_logger as logger
 from apps.core.logger import safe_exception_info, safe_log_value
 from apps.rum.services.victoria_client import sparkline_layout
 
-# 与网关 batch/rum_agg 的 RUM_AGG_BATCH_TIMEOUT 默认 10s 一致。
-FLUSH_SECONDS = 10
 # rumroutecap 超出每个应用 100 条路由后写入的标签值；空路由是 unknown。
 OTHER_ROUTE = "其他"
 VIEWS_METRIC = "rum_views_total"
@@ -303,7 +301,7 @@ class AggregateRumReader:
         return any(str(app).strip() for app in opts.get("applications") or [])
 
     def _catalog(self, tenant_id: str, apps: list[str], start: datetime, end: datetime) -> dict[str, dict]:
-        aligned = align_query_end(end, now=self.clock(), flush_seconds=FLUSH_SECONDS)
+        aligned = align_query_end(end, now=self.clock(), flush_seconds=rum_flush_seconds())
         window_seconds = int((aligned - _as_utc(start)).total_seconds())
         names = list(dict.fromkeys(app for app in apps if str(app).strip()))
         if window_seconds <= 0:
@@ -364,7 +362,7 @@ class AggregateRumReader:
         return found
 
     def _routes(self, tenant_id: str, opts: dict) -> list[dict]:
-        aligned = align_query_end(opts["to"], now=self.clock(), flush_seconds=FLUSH_SECONDS)
+        aligned = align_query_end(opts["to"], now=self.clock(), flush_seconds=rum_flush_seconds())
         window_seconds = int((aligned - _as_utc(opts["from"])).total_seconds())
         apps = list(dict.fromkeys(app for app in opts.get("applications") or [] if str(app).strip()))
         if window_seconds <= 0:
@@ -452,7 +450,7 @@ class AggregateRumReader:
         window_seconds = int((_as_utc(end) - _as_utc(start)).total_seconds())
         if window_seconds <= 0:
             return None
-        aligned = align_query_end(end, now=self.clock(), flush_seconds=FLUSH_SECONDS)
+        aligned = align_query_end(end, now=self.clock(), flush_seconds=rum_flush_seconds())
         if aligned - timedelta(seconds=window_seconds) < _as_utc(origin):
             return None
         return metric, aligned, window_seconds

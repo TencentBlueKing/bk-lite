@@ -114,7 +114,7 @@ nats consumer add APM_TRACES BKLITE_APM_AGGREGATE \
 | `AGG_VICTORIAMETRICS_WRITE_URL` | 聚合库的 remote write 地址，路径通常是 `/api/v1/write` |
 | `APM_AGG_SHARD` | 这个进程固定的分片值。每个副本各不相同，重启不变。不要用 Pod 名或随机 ID，有状态副本序号可以 |
 | `AGG_VICTORIAMETRICS_USER` / `AGG_VICTORIAMETRICS_PASSWORD` | 可选。要么都设、要么都不设；都设时追加 `aggregate-auth.yaml` |
-| `APM_AGG_FLUSH_INTERVAL` | 可选，默认 `60s`。缩短后磁盘按比例增加 |
+| `APM_AGG_FLUSH_INTERVAL` | 可选，默认 `60s`。缩短后磁盘按比例增加。改这个值必须同时改 Server 的同名变量 |
 | `APM_AGG_CARDINALITY_LIMIT` | 可选，默认 `500`。每个服务资源（命名空间 + 服务名 + 环境）的组合上限，不是全局 |
 | `APM_AGG_SERIES_EXPIRATION` | 可选，默认 `1h`。一条序列无新 Span 后从进程内存删除。再出现时从 0 计 |
 | `APM_AGG_COLLECTOR_MEMORY_LIMIT_MIB` | 可选，默认 `512`。`memory_limiter` 硬上限 |
@@ -163,7 +163,7 @@ make image        # 产出 bklite/rum-collector:0.1.0-bklite.3
 |---|---|
 | `AGG_VICTORIAMETRICS_WRITE_URL` | 聚合库的 remote write 地址 |
 | `RUM_AGG_SHARD` | 这个网关进程固定的分片值：1 到 64 位，只含字母、数字和 `.` `_` `:` `-`。每个副本各不相同，重启不变 |
-| `RUM_AGG_BATCH_TIMEOUT` | 可选，默认 `10s` |
+| `RUM_AGG_BATCH_TIMEOUT` | 可选，默认 `10s`。改这个值必须同时改 Server 的同名变量 |
 | `RUM_AGG_MAX_STREAMS` | 可选，默认 `420000` |
 | `AGG_VICTORIAMETRICS_USER` / `AGG_VICTORIAMETRICS_PASSWORD` | 可选。都设时才追加 `--config=/etc/bklite-rum/rum.gateway.auth.yaml`；口令为空时不要加载 |
 
@@ -199,8 +199,11 @@ Redis 调用失败后熔断 5 秒，熔断期间未缓存路由记为「其他�
 |---|---|
 | `AGG_VICTORIAMETRICS_QUERY_URL` | 同一套聚合库的内网查询入口。不要带 `/api/v1/write`，不要填成 `VICTORIAMETRICS_HOST` |
 | `AGG_VICTORIAMETRICS_USER` / `AGG_VICTORIAMETRICS_PASSWORD` | 启用基础认证时设置 |
+| `APM_AGG_FLUSH_INTERVAL` | 与聚合 Collector 相同，默认 `60s`。查询结束时间按它留出刷出周期。改这个值必须同时改采集端和 Server |
+| `RUM_AGG_BATCH_TIMEOUT` | 与 RUM 网关相同，默认 `10s`。查询结束时间按它留出刷出周期。改这个值必须同时改采集端和 Server |
 
 这几个变量目前不在 Server 的环境变量模板里，要在 Server 的部署环境中手动添加。
+只改采集端、不改 Server 时，窗口末尾会少算。非法或非正的刷出间隔，Server 回落上面的默认值并记一条 WARN，不记录原始值。
 
 不配查询地址时，Server 照常启动，页面全部按原来的方式读明细。Server 启动和 `batch_init`
 都不连接聚合库，聚合库故障也不影响 Server 启动。

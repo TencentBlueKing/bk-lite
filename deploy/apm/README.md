@@ -132,6 +132,7 @@ remote write 写入 `AGG_VICTORIAMETRICS_WRITE_URL`。`external_labels.shard` �
 都不写聚合库。
 
 刷出间隔默认 60 秒（`APM_AGG_FLUSH_INTERVAL`）。容量估算按这个间隔；缩短后磁盘按比例增加。
+Server 用同名变量对齐查询结束时间。改这个值必须同时改采集端和 Server。
 本地夹具可以把该变量设为 `1s`。
 
 容量压测里聚合状态大约增加 236 MiB 堆，里面包含连接器状态和最后一次刷出。这份状态不再和明细入库挤在

@@ -33,5 +33,5 @@ Blocked by: None
 - `cd deploy/rum/collector && go test ./internal/rum/components/rumroutecap/ -count=1`：ok，1.351s。
 - `cd deploy/rum/collector && go test -race ./internal/rum/components/rumroutecap/ -count=1`：ok，2.466s。Makefile 的 `test` 没有 `-race`。
 - `make -C deploy/rum test`：退出码 0。包含 collector、controller、maintainer。`aggregatecontract` 未设置 `RUN_RUM_AGG_CONTRACT=1`，没有起容器。
-- 镜像构建仍是上一轮的结果：`make -C deploy/rum/collector image` 因 `public.ecr.aws` 拉取 `golang:1.26.10-alpine` 返回 EOF 而失败，`bklite/rum-collector:0.1.0-bklite.3` 当时没有打出来。这一轮没有再跑镜像构建。
+- 复核通过后，用修正后的代码构建 `bklite/rum-collector:0.1.0-bklite.3`，digest `sha256:64f93c0ed7ed`。
 

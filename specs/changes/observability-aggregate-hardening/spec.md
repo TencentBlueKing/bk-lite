@@ -1,6 +1,6 @@
 # APM / RUM 聚合链路上线前加固
 
-Status: ready
+Status: done
 
 来源：`observability-aggregate-metrics` 合入 master 后，对采集端和读取端的数据链路复核（2026-11-10）。
 本变更只处理复核中的 P0 / P1；P2 见 Out of Scope。

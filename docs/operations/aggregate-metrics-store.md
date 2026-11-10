@@ -67,7 +67,8 @@ Monitor 和 CMDB 继续使用自己的 VictoriaMetrics。聚合序列不写入�
 | `APM_AGG_CARDINALITY_LIMIT` | APM 聚合 Collector，可选 | 每个服务资源的组合上限。留空时用 `500`。不是全局上限 |
 | `APM_AGG_SERIES_EXPIRATION` | APM 聚合 Collector，可选 | 单条序列无新 Span 后从进程内存删除。留空时用 `1h` |
 | `RUM_AGG_SHARD` | 每一个 RUM 网关写入进程 | 该进程固定的分片值 |
-| `RUM_AGG_BATCH_TIMEOUT` | RUM 网关，可选 | 聚合指标刷出间隔。留空时用配置里的 `10s` |
+| `APM_AGG_FLUSH_INTERVAL` | APM 聚合 Collector 与 Server，可选 | 聚合指标刷出间隔。留空时用 `60s`。改这个值必须同时改采集端和 Server |
+| `RUM_AGG_BATCH_TIMEOUT` | RUM 网关与 Server，可选 | 聚合指标刷出间隔。留空时用 `10s`。改这个值必须同时改采集端和 Server |
 | `RUM_AGG_MAX_STREAMS` | RUM 网关，可选 | `deltatocumulative` 流上限。留空时用 `420000`。超出的样本记在网关指标 `otelcol_deltatocumulative_datapoints`，属性 `error=limit` |
 
 `AGG_VICTORIAMETRICS_WRITE_URL` 填写内网 remote write 地址，路径通常是
@@ -85,6 +86,10 @@ Monitor 和 CMDB 继续使用自己的 VictoriaMetrics。聚合序列不写入�
 `service.name`、`deployment.environment` 这一组，不是全部服务加在一起。同一服务的多个实例共用这一组的
 500 个组合名额；不同环境各自再有 500。`APM_AGG_SERIES_EXPIRATION` 只让一条序列过期，不删除整个服务资源。
 资源缓存上限写死为 1000，没有单独的开关。
+
+`APM_AGG_FLUSH_INTERVAL` 和 `RUM_AGG_BATCH_TIMEOUT` 同时给采集端和 Server 用。采集端按它刷出，
+Server 按它把查询结束时间留出一个周期。改其中一个值必须两边一起改，只改采集端时窗口末尾会少算。
+Server 遇到非法或非正值时回落默认 60 秒或 10 秒，并记一条 WARN，不记录原始值。
 
 `APM_AGG_SHARD` 和 `RUM_AGG_SHARD` 各表示一个写入进程的身份。每个会执行 remote write
 的进程取一个值，所有这类进程的值互不相同，包括同一产品的多个副本。值写在部署配置里，
