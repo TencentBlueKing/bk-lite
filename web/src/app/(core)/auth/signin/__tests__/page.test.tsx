@@ -100,6 +100,47 @@ describe('SigninPage session configuration', () => {
     expect(result).toEqual(expect.objectContaining({ type: LegacyThirdLoginAuthorizeBridge }));
   });
 
+  it('detects legacy third login against the request origin', async () => {
+    headers.mockResolvedValueOnce(new Headers({
+      host: 'weopsx-demo.canway.net',
+      'x-forwarded-proto': 'https',
+    }));
+
+    await SigninPage({
+      searchParams: Promise.resolve({
+        callbackUrl: 'https://weopsx-demo.canway.net/itsm/?third_login_code=bklite',
+        error: '',
+      }),
+    });
+
+    expect(getLegacyThirdLoginCode).toHaveBeenCalledWith(
+      'https://weopsx-demo.canway.net/itsm/?third_login_code=bklite',
+      'https://weopsx-demo.canway.net',
+    );
+  });
+
+  it('redirects authenticated users to a same-origin ITSM callback without the legacy bridge', async () => {
+    const { buildThirdLoginCallbackUrl } = await import('@/utils/authRedirect');
+    vi.mocked(getLegacyThirdLoginCode).mockReturnValue(undefined);
+    vi.mocked(buildThirdLoginCallbackUrl).mockReturnValue('/itsm/?third_login_code=bklite');
+    getServerSession.mockResolvedValueOnce({
+      user: { id: 'u1', token: 'jwt-token' },
+    });
+    headers.mockResolvedValueOnce(new Headers({
+      host: 'weopsx-demo.canway.net',
+      'x-forwarded-proto': 'https',
+    }));
+
+    await SigninPage({
+      searchParams: Promise.resolve({
+        callbackUrl: 'https://weopsx-demo.canway.net/itsm/?third_login_code=bklite',
+        error: '',
+      }),
+    });
+
+    expect(redirect).toHaveBeenCalledWith('/itsm/?third_login_code=bklite');
+  });
+
   it('keeps the NextAuth route on the dynamic provider configuration', async () => {
     const dynamicOptions = { providers: [{ id: 'wechat' }] };
     getAuthOptions.mockResolvedValueOnce(dynamicOptions);
