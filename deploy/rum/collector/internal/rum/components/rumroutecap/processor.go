@@ -12,9 +12,24 @@ import (
 )
 
 type routeCache struct {
-	mu       sync.Mutex
-	admitted map[string]struct{}
-	overflow map[string]time.Time
+	mu        sync.Mutex
+	admitted  map[string]struct{}
+	overflow  map[string]time.Time
+	lastSweep time.Time
+}
+
+type admissionCircuit struct {
+	mu        sync.Mutex
+	openUntil time.Time
+	errorType string
+}
+
+type failureLog struct {
+	mu        sync.Mutex
+	open      bool
+	start     time.Time
+	count     int64
+	errorType string
 }
 
 func newRouteCache() *routeCache {
@@ -32,13 +47,14 @@ func (cache *routeCache) hasAdmitted(key string) bool {
 }
 
 func (cache *routeCache) hasOverflow(key string) bool {
+	now := nowFn()
 	cache.mu.Lock()
 	defer cache.mu.Unlock()
 	until, ok := cache.overflow[key]
 	if !ok {
 		return false
 	}
-	if !time.Now().Before(until) {
+	if !now.Before(until) {
 		delete(cache.overflow, key)
 		return false
 	}
@@ -52,21 +68,61 @@ func (cache *routeCache) rememberAdmitted(key string) {
 	delete(cache.overflow, key)
 }
 
-func (cache *routeCache) rememberOverflow(key string) {
+func (cache *routeCache) maintain(now time.Time) {
 	cache.mu.Lock()
 	defer cache.mu.Unlock()
-	cache.overflow[key] = time.Now().Add(overflowCacheTTL)
+	cache.sweepLocked(now, false)
+}
+
+func (cache *routeCache) sweepLocked(now time.Time, force bool) {
+	if !force && !cache.lastSweep.IsZero() && now.Sub(cache.lastSweep) < overflowSweepInterval {
+		return
+	}
+	cache.lastSweep = now
+	for key, until := range cache.overflow {
+		if !now.Before(until) {
+			delete(cache.overflow, key)
+		}
+	}
+}
+
+func (cache *routeCache) rememberOverflow(key string) {
+	now := nowFn()
+	cache.mu.Lock()
+	defer cache.mu.Unlock()
+	if _, ok := cache.overflow[key]; ok {
+		cache.overflow[key] = now.Add(overflowCacheTTL)
+		return
+	}
+	if len(cache.overflow) >= overflowCacheLimit {
+		cache.sweepLocked(now, true)
+	}
+	if len(cache.overflow) >= overflowCacheLimit {
+		// Keep routes already known to be over the cap. Evicting one would
+		// send that hot route back to Redis. This route is still labeled 其他.
+		return
+	}
+	cache.overflow[key] = now.Add(overflowCacheTTL)
+}
+
+// nowFn is replaced by tests that need a frozen clock. Production stays on time.Now.
+var nowFn = time.Now
+
+type routeAdmittor interface {
+	admit(context.Context, string, string, string) (bool, error)
 }
 
 // limiter stamps rum.aggregate.route on a copy of the logs. The copy is the
 // only place that attribute exists, so the VictoriaLogs export keeps the
 // original route field and does not receive this one.
 type limiter struct {
-	store    *routeStore
-	cache    *routeCache
-	shard    string
-	logger   *zap.Logger
-	failures interface {
+	store      routeAdmittor
+	cache      *routeCache
+	circuit    admissionCircuit
+	failureLog failureLog
+	shard      string
+	logger     *zap.Logger
+	failures   interface {
 		Add(context.Context, int64)
 	}
 	next interface {
@@ -116,20 +172,23 @@ func aggregates(eventType string) bool {
 
 func (processor *limiter) routeFor(ctx context.Context, tenant, application, route string) string {
 	key := tenant + "\x00" + application + "\x00" + route
+	now := nowFn()
+	processor.cache.maintain(now)
 	if processor.cache.hasAdmitted(key) {
 		return route
 	}
 	if processor.cache.hasOverflow(key) {
 		return otherRoute
 	}
+	if open, errorType := processor.circuit.reject(now); open {
+		processor.noteUnavailable(ctx, errorType)
+		return otherRoute
+	}
 	admitted, err := processor.store.admit(ctx, tenant, application, route)
 	if err != nil {
-		processor.failures.Add(context.Background(), 1)
-		processor.logger.Warn(
-			"rum aggregate route redis lookup failed",
-			zap.String("failed_stage", "route_admission"),
-			zap.String("error_type", fmt.Sprintf("%T", err)),
-		)
+		errorType := errorTypeName(err)
+		processor.circuit.trip(nowFn(), errorType)
+		processor.noteUnavailable(ctx, errorType)
 		return otherRoute
 	}
 	if admitted {
@@ -138,6 +197,82 @@ func (processor *limiter) routeFor(ctx context.Context, tenant, application, rou
 	}
 	processor.cache.rememberOverflow(key)
 	return otherRoute
+}
+
+func (circuit *admissionCircuit) trip(now time.Time, errorType string) {
+	circuit.mu.Lock()
+	defer circuit.mu.Unlock()
+	until := now.Add(redisCircuitOpenFor)
+	if until.After(circuit.openUntil) {
+		circuit.openUntil = until
+	}
+	if errorType != "" {
+		circuit.errorType = errorType
+	}
+}
+
+func (circuit *admissionCircuit) reject(now time.Time) (bool, string) {
+	circuit.mu.Lock()
+	defer circuit.mu.Unlock()
+	if !now.Before(circuit.openUntil) {
+		return false, ""
+	}
+	errorType := circuit.errorType
+	if errorType == "" {
+		errorType = "circuit_open"
+	}
+	return true, errorType
+}
+
+func (processor *limiter) noteUnavailable(ctx context.Context, errorType string) {
+	processor.failures.Add(ctx, 1)
+	processor.recordFailure(nowFn(), errorType)
+}
+
+func (processor *limiter) recordFailure(now time.Time, errorType string) {
+	processor.failureLog.mu.Lock()
+	defer processor.failureLog.mu.Unlock()
+	if processor.failureLog.open && now.Sub(processor.failureLog.start) >= failureLogWindow {
+		processor.flushFailureLocked()
+	}
+	if !processor.failureLog.open {
+		processor.failureLog.open = true
+		processor.failureLog.start = now
+		processor.failureLog.count = 0
+		processor.failureLog.errorType = errorType
+	}
+	processor.failureLog.count++
+}
+
+func (processor *limiter) flushFailure() {
+	processor.failureLog.mu.Lock()
+	defer processor.failureLog.mu.Unlock()
+	processor.flushFailureLocked()
+}
+
+func (processor *limiter) flushFailureLocked() {
+	if !processor.failureLog.open || processor.failureLog.count == 0 {
+		processor.failureLog.open = false
+		processor.failureLog.count = 0
+		processor.failureLog.errorType = ""
+		return
+	}
+	processor.logger.Warn(
+		"rum aggregate route redis lookup failed",
+		zap.String("failed_stage", "route_admission"),
+		zap.String("error_type", processor.failureLog.errorType),
+		zap.Int64("failure_count", processor.failureLog.count),
+	)
+	processor.failureLog.open = false
+	processor.failureLog.count = 0
+	processor.failureLog.errorType = ""
+}
+
+func errorTypeName(err error) string {
+	if err == nil {
+		return "unknown"
+	}
+	return fmt.Sprintf("%T", err)
 }
 
 func attributeString(attrs pcommon.Map, key string) string {

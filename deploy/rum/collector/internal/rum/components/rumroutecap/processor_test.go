@@ -1,13 +1,16 @@
 package rumroutecap
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -20,6 +23,9 @@ import (
 	"go.opentelemetry.io/collector/processor/processortest"
 	"go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
+	"go.uber.org/zap/zaptest/observer"
 )
 
 func TestHundredthRouteStaysItselfAndTheNextIsOther(t *testing.T) {
@@ -202,6 +208,229 @@ func TestBlankRouteUsesUnknownAndShardIsRequired(t *testing.T) {
 	require.ErrorContains(t, cfg.Validate(), "shard")
 }
 
+func TestRedisOutageOpensCircuitAndResumes(t *testing.T) {
+	redisURL, server := startRedis(t)
+	logger, recorded, formatted := warnLogger()
+	sink := &captureLogs{}
+	proc, reader := startProcessorWithLogger(t, redisURL, "shard-a", sink, logger)
+	concrete := proc.(*logsProcessor)
+	counter := &countingAdmittor{inner: concrete.store}
+	concrete.store = counter
+	clock := useClock(t, time.Unix(1_700_000_000, 0))
+	const connectionSentinel = "redis://:super-secret-password@10.1.2.3:6379/0"
+	server.SetError("LOADING " + connectionSentinel)
+
+	require.NoError(t, proc.ConsumeLogs(t.Context(), oneEvent("core", "storefront", "route-secret-sentinel", "view")))
+	require.Equal(t, otherRoute, capturedRoute(t, sink))
+	require.Equal(t, 1, counter.callCount())
+
+	require.NoError(t, proc.ConsumeLogs(t.Context(), oneEvent("core", "storefront", "/second", "error")))
+	require.NoError(t, proc.ConsumeLogs(t.Context(), oneEvent("core", "storefront", "/third", "vital")))
+	require.Equal(t, otherRoute, capturedRoute(t, sink))
+	require.Equal(t, 1, counter.callCount())
+	require.Equal(t, int64(3), failureCount(t, reader))
+	require.Empty(t, recorded.All())
+
+	concrete.flushFailure()
+	entries := recorded.All()
+	require.Len(t, entries, 1)
+	require.Equal(t, "rum aggregate route redis lookup failed", entries[0].Message)
+	require.Equal(t, "route_admission", fieldString(t, entries[0], "failed_stage"))
+	require.NotEmpty(t, fieldString(t, entries[0], "error_type"))
+	require.Equal(t, int64(3), fieldInt(t, entries[0], "failure_count"))
+	blob := logBlob(entries[0]) + formatted.String()
+	require.Contains(t, formatted.String(), `"failed_stage":"route_admission"`)
+	require.Contains(t, formatted.String(), `"failure_count":3`)
+	require.NotContains(t, formatted.String(), "stacktrace")
+	for _, secret := range []string{
+		connectionSentinel,
+		"super-secret-password",
+		"10.1.2.3",
+		server.Addr(),
+		redisPassword(),
+		"route-secret-sentinel",
+		"/second",
+		"/third",
+		"user-secret",
+		"token=secret",
+	} {
+		require.NotContains(t, blob, secret)
+	}
+
+	*clock = clock.Add(redisCircuitOpenFor)
+	server.SetError("")
+	require.NoError(t, proc.ConsumeLogs(t.Context(), oneEvent("core", "storefront", "/after", "view")))
+	require.Equal(t, 2, counter.callCount())
+	require.Equal(t, "/after", capturedRoute(t, sink))
+	require.Equal(t, int64(3), failureCount(t, reader))
+}
+
+func TestRedisFailureLogRollsUpOneWarnPerWindow(t *testing.T) {
+	redisURL, _ := startRedis(t)
+	logger, recorded, formatted := warnLogger()
+	proc, _ := startProcessorWithLogger(t, redisURL, "shard-a", &captureLogs{}, logger)
+	concrete := proc.(*logsProcessor)
+	concrete.store = admitFunc(func(context.Context, string, string, string) (bool, error) {
+		return false, errors.New("dial redis://:super-secret-password@10.1.2.3:6379/0 route-secret-sentinel")
+	})
+	clock := useClock(t, time.Unix(1_710_000_000, 0))
+
+	require.NoError(t, proc.ConsumeLogs(t.Context(), oneEvent("core", "storefront", "route-secret-sentinel", "view")))
+	require.NoError(t, proc.ConsumeLogs(t.Context(), oneEvent("core", "storefront", "/second", "error")))
+	require.Empty(t, recorded.All())
+
+	*clock = clock.Add(failureLogWindow)
+	require.NoError(t, proc.ConsumeLogs(t.Context(), oneEvent("core", "storefront", "/third", "vital")))
+	entries := recorded.All()
+	require.Len(t, entries, 1)
+	require.Equal(t, "route_admission", fieldString(t, entries[0], "failed_stage"))
+	require.NotEmpty(t, fieldString(t, entries[0], "error_type"))
+	require.Equal(t, int64(2), fieldInt(t, entries[0], "failure_count"))
+	blob := logBlob(entries[0]) + formatted.String()
+	require.Contains(t, formatted.String(), `"failed_stage":"route_admission"`)
+	require.Contains(t, formatted.String(), `"failure_count":2`)
+	require.NotContains(t, formatted.String(), "stacktrace")
+	require.NotContains(t, blob, "super-secret-password")
+	require.NotContains(t, blob, "10.1.2.3")
+	require.NotContains(t, blob, "redis://")
+	require.NotContains(t, blob, "route-secret-sentinel")
+	require.NotContains(t, blob, "user-secret")
+	require.NotContains(t, blob, "token=secret")
+
+	concrete.flushFailure()
+	require.Len(t, recorded.All(), 2)
+	require.Equal(t, int64(1), fieldInt(t, recorded.All()[1], "failure_count"))
+}
+
+func TestOverflowCacheStaysWithinLimitAndDropsExpiredEntries(t *testing.T) {
+	cache := newRouteCache()
+	start := time.Unix(1_800_000_000, 0)
+	clock := useClock(t, start)
+	for index := 0; index < overflowCacheLimit; index++ {
+		cache.rememberOverflow(fmt.Sprintf("kept-%d", index))
+	}
+	cache.rememberOverflow("extra")
+	cache.mu.Lock()
+	require.Len(t, cache.overflow, overflowCacheLimit)
+	_, ok := cache.overflow["extra"]
+	require.False(t, ok)
+	_, ok = cache.overflow["kept-0"]
+	require.True(t, ok)
+	for key := range cache.overflow {
+		cache.overflow[key] = start.Add(-time.Second)
+	}
+	cache.mu.Unlock()
+
+	cache.rememberOverflow("after-expiry")
+	cache.mu.Lock()
+	require.LessOrEqual(t, len(cache.overflow), overflowCacheLimit)
+	_, ok = cache.overflow["after-expiry"]
+	require.True(t, ok)
+	cache.mu.Unlock()
+
+	cache.rememberOverflow("stale")
+	cache.maintain(*clock)
+	cache.mu.Lock()
+	cache.overflow["stale"] = start.Add(-time.Second)
+	cache.mu.Unlock()
+	cache.maintain(start.Add(time.Second))
+	cache.mu.Lock()
+	_, ok = cache.overflow["stale"]
+	require.True(t, ok)
+	cache.mu.Unlock()
+
+	*clock = start.Add(overflowSweepInterval)
+	cache.maintain(*clock)
+	cache.mu.Lock()
+	_, ok = cache.overflow["stale"]
+	require.False(t, ok)
+	cache.mu.Unlock()
+}
+
+func TestLaterRouteSweepsExpiredOverflowWithoutRepeatingIt(t *testing.T) {
+	redisURL, _ := startRedis(t)
+	sink := &captureLogs{}
+	proc, _ := startProcessor(t, redisURL, "shard-a", sink)
+	concrete := proc.(*logsProcessor)
+	clock := useClock(t, time.Unix(1_900_000_000, 0))
+	concrete.cache.mu.Lock()
+	concrete.cache.overflow["stale-route"] = clock.Add(-time.Second)
+	concrete.cache.lastSweep = clock.Add(-overflowSweepInterval)
+	concrete.cache.mu.Unlock()
+
+	require.NoError(t, proc.ConsumeLogs(t.Context(), oneEvent("core", "storefront", "/fresh", "view")))
+	require.Equal(t, "/fresh", capturedRoute(t, sink))
+	concrete.cache.mu.Lock()
+	_, ok := concrete.cache.overflow["stale-route"]
+	concrete.cache.mu.Unlock()
+	require.False(t, ok)
+}
+
+func TestFullOverflowCacheStillLabelsTheNewRouteOther(t *testing.T) {
+	redisURL, server := startRedis(t)
+	sink := &captureLogs{}
+	proc, _ := startProcessor(t, redisURL, "shard-a", sink)
+	concrete := proc.(*logsProcessor)
+	useClock(t, time.Unix(1_910_000_000, 0))
+	for index := 0; index < overflowCacheLimit; index++ {
+		concrete.cache.rememberOverflow(fmt.Sprintf("seed-%d", index))
+	}
+	key := admissionKey("core", "storefront")
+	for index := 0; index < maxRoutesPerApplication; index++ {
+		_, err := server.SAdd(key, routeName(index))
+		require.NoError(t, err)
+	}
+
+	require.NoError(t, proc.ConsumeLogs(t.Context(), oneEvent("core", "storefront", "/brand-new", "view")))
+	require.Equal(t, otherRoute, capturedRoute(t, sink))
+	concrete.cache.mu.Lock()
+	defer concrete.cache.mu.Unlock()
+	require.LessOrEqual(t, len(concrete.cache.overflow), overflowCacheLimit)
+	_, ok := concrete.cache.overflow["core\x00storefront\x00/brand-new"]
+	require.False(t, ok)
+}
+
+func TestConcurrentOutageAndOverflowCache(t *testing.T) {
+	redisURL, _ := startRedis(t)
+	proc, _ := startProcessor(t, redisURL, "shard-a", &captureLogs{})
+	concrete := proc.(*logsProcessor)
+	var calls atomic.Int32
+	concrete.store = admitFunc(func(_ context.Context, _, _, route string) (bool, error) {
+		calls.Add(1)
+		if strings.Contains(route, "/err-") {
+			return false, errors.New("redis unavailable")
+		}
+		return false, nil
+	})
+
+	const workers = 16
+	const loops = 80
+	var group sync.WaitGroup
+	errs := make(chan error, workers*loops)
+	for worker := 0; worker < workers; worker++ {
+		group.Add(1)
+		go func(worker int) {
+			defer group.Done()
+			for index := 0; index < loops; index++ {
+				route := fmt.Sprintf("/over-%d-%d", worker, index)
+				if index%5 == 0 {
+					route = fmt.Sprintf("/err-%d", worker)
+				}
+				errs <- proc.ConsumeLogs(context.Background(), oneEvent("core", "storefront", route, "view"))
+			}
+		}(worker)
+	}
+	group.Wait()
+	close(errs)
+	for err := range errs {
+		require.NoError(t, err)
+	}
+	concrete.cache.mu.Lock()
+	require.LessOrEqual(t, len(concrete.cache.overflow), overflowCacheLimit)
+	concrete.cache.mu.Unlock()
+	require.Positive(t, calls.Load())
+}
+
 func TestPasswordFileIsAcceptedAndEmbeddedPasswordIsRejectedWithIt(t *testing.T) {
 	secretPath := filepath.Join(t.TempDir(), "rum_sessionizer_redis_password")
 	require.NoError(t, os.WriteFile(secretPath, []byte(redisPassword()+"\n"), 0o600))
@@ -260,6 +489,11 @@ func redisClient(t *testing.T, server *miniredis.Miniredis) *redis.Client {
 
 func startProcessor(t *testing.T, redisURL, shard string, next consumer.Logs) (processor.Logs, *metric.ManualReader) {
 	t.Helper()
+	return startProcessorWithLogger(t, redisURL, shard, next, nil)
+}
+
+func startProcessorWithLogger(t *testing.T, redisURL, shard string, next consumer.Logs, logger *zap.Logger) (processor.Logs, *metric.ManualReader) {
+	t.Helper()
 	reader := metric.NewManualReader()
 	provider := metric.NewMeterProvider(metric.WithReader(reader))
 	factory := NewFactory()
@@ -268,6 +502,9 @@ func startProcessor(t *testing.T, redisURL, shard string, next consumer.Logs) (p
 	cfg.Shard = shard
 	set := processortest.NewNopSettings(factory.Type())
 	set.MeterProvider = provider
+	if logger != nil {
+		set.Logger = logger
+	}
 	created, err := factory.CreateLogs(t.Context(), set, cfg, next)
 	require.NoError(t, err)
 	require.NoError(t, created.Start(t.Context(), nil))
@@ -275,6 +512,88 @@ func startProcessor(t *testing.T, redisURL, shard string, next consumer.Logs) (p
 		require.NoError(t, created.Shutdown(context.Background()))
 	})
 	return created, reader
+}
+
+func warnLogger() (*zap.Logger, *observer.ObservedLogs, *bytes.Buffer) {
+	formatted := &bytes.Buffer{}
+	core, recorded := observer.New(zap.WarnLevel)
+	logger := zap.New(zapcore.NewTee(
+		core,
+		zapcore.NewCore(
+			zapcore.NewJSONEncoder(zap.NewProductionEncoderConfig()),
+			zapcore.AddSync(formatted),
+			zapcore.WarnLevel,
+		),
+	))
+	return logger, recorded, formatted
+}
+
+func useClock(t *testing.T, start time.Time) *time.Time {
+	t.Helper()
+	current := start
+	previous := nowFn
+	nowFn = func() time.Time { return current }
+	t.Cleanup(func() { nowFn = previous })
+	return &current
+}
+
+type countingAdmittor struct {
+	inner routeAdmittor
+	mu    sync.Mutex
+	calls int
+}
+
+func (counter *countingAdmittor) admit(ctx context.Context, tenant, application, route string) (bool, error) {
+	counter.mu.Lock()
+	counter.calls++
+	counter.mu.Unlock()
+	return counter.inner.admit(ctx, tenant, application, route)
+}
+
+func (counter *countingAdmittor) callCount() int {
+	counter.mu.Lock()
+	defer counter.mu.Unlock()
+	return counter.calls
+}
+
+type admitFunc func(context.Context, string, string, string) (bool, error)
+
+func (fn admitFunc) admit(ctx context.Context, tenant, application, route string) (bool, error) {
+	return fn(ctx, tenant, application, route)
+}
+
+func fieldString(t *testing.T, entry observer.LoggedEntry, key string) string {
+	t.Helper()
+	for _, field := range entry.Context {
+		if field.Key != key {
+			continue
+		}
+		require.Equal(t, zapcore.StringType, field.Type)
+		return field.String
+	}
+	require.Failf(t, "missing log field", "%s", key)
+	return ""
+}
+
+func fieldInt(t *testing.T, entry observer.LoggedEntry, key string) int64 {
+	t.Helper()
+	for _, field := range entry.Context {
+		if field.Key != key {
+			continue
+		}
+		require.Equal(t, zapcore.Int64Type, field.Type)
+		return field.Integer
+	}
+	require.Failf(t, "missing log field", "%s", key)
+	return 0
+}
+
+func logBlob(entry observer.LoggedEntry) string {
+	parts := []string{entry.Message}
+	for _, field := range entry.Context {
+		parts = append(parts, field.Key, field.String, strconv.FormatInt(field.Integer, 10), fmt.Sprint(field.Interface))
+	}
+	return strings.Join(parts, " ")
 }
 
 func oneEvent(tenant, application, route, eventType string) plog.Logs {

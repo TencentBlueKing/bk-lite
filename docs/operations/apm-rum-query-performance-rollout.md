@@ -16,7 +16,7 @@
 | APM 系统 Collector 配置 | 下发只写 VictoriaTraces 的 `system.yaml` | 必须 |
 | APM 聚合 Collector | 新进程。配置 `aggregate.yaml`，可选追加 `aggregate-auth.yaml`。消费 `BKLITE_APM_AGGREGATE` | 必须（读聚合前） |
 | APM 聚合 Collector 环境变量 | 聚合写入地址、分片值、独立的 ACK 等待和重投上限 | 必须 |
-| RUM 镜像 | `bklite/rum-collector` 升到 `0.1.0-bklite.2`，网关、控制器、维护进程共用 | 必须 |
+| RUM 镜像 | `bklite/rum-collector` 升到 `0.1.0-bklite.3`，网关、控制器、维护进程共用 | 必须 |
 | RUM 网关环境变量 | 新增聚合写入地址、分片值 | 必须（挂 `rum.gateway.yaml` 时） |
 | RUM 维护进程启动参数 | 新增会话库地址和口令文件；只能单副本 | 必须 |
 | Server 环境变量 | 新增聚合库查询地址 | 可选（不配则全部读明细） |
@@ -148,7 +148,7 @@ RUM 部署全文见 [deploy/rum/OPS-DEPLOY.md](../../deploy/rum/OPS-DEPLOY.md)�
 ```bash
 cd deploy/rum/collector
 make test
-make image        # 产出 bklite/rum-collector:0.1.0-bklite.2
+make image        # 产出 bklite/rum-collector:0.1.0-bklite.3
 ```
 
 构建参数、镜像内容和运行用户见 OPS-DEPLOY 第 1 节。镜像内置三份网关配置：
@@ -171,6 +171,8 @@ make image        # 产出 bklite/rum-collector:0.1.0-bklite.2
 VictoriaLogs 入库也会一起停。聚合库还没就绪时，改挂 `rum.gateway.ingest.yaml`。
 
 聚合路由准入复用会话 Redis：每个应用最多 100 条路由，其余记为「其他」。不需要新的 Redis 或 ACL。
+Redis 调用失败后熔断 5 秒，熔断期间未缓存路由记为「其他」且不再访问 Redis；失败按 5 秒汇总成一条 WARN。
+本地溢出缓存最多 1024 条，请求经过时清掉过期项。缓存已满时保留已经记下的溢出路由，新的溢出路由仍记为「其他」，只是这次不写入缓存。
 
 ### 4.3 维护进程（会话结束记录）
 
@@ -222,7 +224,7 @@ VictoriaLogs 入库也会一起停。聚合库还没就绪时，改挂 `rum.gate
 
 1. 部署聚合库，配好保留期、内网访问和第 7 节的告警。
 2. 发布 Server（自动执行迁移和新 Beat 任务）。先不配 `AGG_VICTORIAMETRICS_QUERY_URL`，行为与原来一致。
-3. 升级 RUM 网关、控制器、维护进程到 `bklite.2`：网关配写入地址和分片值，维护进程加会话库参数。
+3. 升级 RUM 网关、控制器、维护进程到 `bklite.3`：网关配写入地址和分片值，维护进程加会话库参数。
 4. 升级 APM 区域、系统和聚合 Collector 到 `bklite.3`。同一变更里预建 `BKLITE_APM_AGGREGATE`
    （`deliver new`）、启动聚合 Collector，并把系统 Collector 换成只写 VictoriaTraces 的 `system.yaml`。
    写入地址和分片值只配在聚合进程上。

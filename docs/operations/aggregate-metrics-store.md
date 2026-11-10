@@ -13,7 +13,7 @@ APM 聚合由独立进程承担，配置是 `deploy/apm/otel/aggregate.yaml`。�
 `deploy/apm/otel/system.yaml` 只写 VictoriaTraces。发行版核心版本仍是 v0.153.0，镜像标签是
 `0.153.0-bklite.3`。RUM 网关的
 `deploy/rum/collector/otel/rum.gateway.yaml` 已经包含浏览、JS 错误和 Web Vitals 聚合流水线。
-发行版核心版本仍是 v0.154.0，镜像标签是 `0.1.0-bklite.2`。本文不表示聚合库已经在生产部署；
+发行版核心版本仍是 v0.154.0，镜像标签是 `0.1.0-bklite.3`。本文不表示聚合库已经在生产部署；
 运维按本文重新打包镜像并部署聚合库。
 
 ## 1. 用途与边界
@@ -302,7 +302,7 @@ count 默认把时间打在 Span 结束时间上；晚到 Span 已经超过 5 �
 remote write 不可达时，聚合 Collector 不对 JetStream NAK，VictoriaTraces 不因此把同一条 Span 写两次。
 VictoriaTraces 不可用时，只有系统消费者 NAK；聚合消费者已经 ACK 的 Span 不会再计一次。
 
-RUM 网关保持 v0.154.0，镜像标签 `0.1.0-bklite.2`。下面是这个镜像
+RUM 网关保持 v0.154.0，镜像标签 `0.1.0-bklite.3`。下面是这个镜像
 `bklite-rum-gateway components` 里和聚合有关的条目。配置里的导出器类型使用
 `prometheus_remote_write`；`prometheusremotewrite` 仍是别名，会打弃用警告。
 
@@ -320,6 +320,7 @@ RUM 网关保持 v0.154.0，镜像标签 `0.1.0-bklite.2`。下面是这个镜�
 这条分支只有 `rumroutecap`，导出到 `signal_to_metrics/rum`。`metrics/rum_agg` 依次是
 `batch/rum_agg`、`deltatocumulative/rum`、`prometheus_remote_write/rum_agg`。
 聚合分支上没有 `memory_limiter`。`rumroutecap` 吞掉下游错误，remote write 关闭队列和重试。
+Redis 调用失败后，`rumroutecap` 熔断 5 秒：熔断期间未缓存路由记为「其他」，不再访问 Redis。失败按 5 秒汇总成一条 WARN。本地溢出缓存最多 1024 条，请求经过时清掉过期项；已缓存的溢出路由保留，满了就不再写入新的溢出项。
 remote write 不可达时，接收接口仍成功，VictoriaLogs 不因此把同一条事件写两次。
 聚合专用的 `rum.aggregate.route` 只打在旁路副本上，不进入 VictoriaLogs。
 `deltatocumulative.max_streams` 默认 420000。超出后网关自身指标
