@@ -39,7 +39,7 @@ describe('execution presentation labels', () => {
 
   it('maps system starters and trigger types for bilingual display', () => {
     expect(formatStartedBy('workflow-scheduler', t)).toBe('定时调度');
-    expect(formatStartedBy('mvp-verifier', t)).toBe('MVP 验收');
+    expect(formatStartedBy('mvp-verifier', t)).toBe('验收账号');
     expect(formatStartedBy('admin', t)).toBe('admin');
     expect(formatStartedBy('', t)).toBe('--');
     expect(formatTriggerTypeLabel('FORM', t)).toBe('表单');

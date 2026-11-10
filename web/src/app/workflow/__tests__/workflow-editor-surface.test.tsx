@@ -8,7 +8,7 @@ import { vi } from 'vitest';
 import { WorkflowCanvasActionRail, WorkflowCanvasControls, WorkflowNodeInspector, WorkflowNodePickerPanel } from '../components/workflow-editor-surface';
 
 describe('n8n 风格流程画布表现层', () => {
-  it('使用 n8n 风格画布控件，MVP 仅保留已实现的快捷操作', () => {
+  it('使用 n8n 风格画布控件，仅保留已实现的快捷操作', () => {
     render(
       <App>
         <ReactFlowProvider>
