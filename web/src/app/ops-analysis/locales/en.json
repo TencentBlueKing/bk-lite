@@ -2078,7 +2078,7 @@
     "backToHomepage": "Back to homepage"
   },
   "opsCarousel": {
-    "directory": "Directory",
+    "directory": "Canvases",
     "carousel": "Carousel",
     "newList": "New carousel",
     "editBasic": "Edit info",
@@ -2131,7 +2131,6 @@
     "allTypes": "All types",
     "duplicateHint": "This list has duplicate canvases. Remove the extras before saving",
     "alreadyContains": "Already included",
-    "spaceToResume": "Space to continue",
-    "escToExit": "Esc to exit"
+    "spaceToResume": "Space to continue"
   }
 }

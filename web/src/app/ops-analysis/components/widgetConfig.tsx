@@ -1433,8 +1433,9 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
 
   const formDrawerWidth = isNetworkStatusTopology ? 760 : 680;
   const previewPaneWidth = 480;
+  // 预览打开后不超过视口。1160px 在约 900px 可用宽度（侧栏或 DevTools）下会把整页撑出横向滚动。
   const drawerWidth = previewOpen
-    ? formDrawerWidth + previewPaneWidth
+    ? `min(${formDrawerWidth + previewPaneWidth}px, 100vw)`
     : formDrawerWidth;
 
   const handlePreview = useCallback(() => {
@@ -1614,7 +1615,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
       className={
         variant === 'panel'
           ? 'pointer-events-auto flex h-full min-h-0 w-[480px] max-w-full shrink-0 flex-col overflow-hidden border-l border-(--color-border-1) bg-(--color-bg) p-4'
-          : 'pointer-events-auto flex h-full min-h-0 w-[480px] max-w-full shrink-0 flex-col overflow-hidden border-r border-(--color-border-1) bg-(--color-fill-1)/20 p-4'
+          : 'pointer-events-auto flex h-full min-h-0 w-[480px] min-w-[280px] max-w-[50%] shrink flex-col overflow-hidden border-r border-(--color-border-1) bg-(--color-fill-1)/20 p-4'
       }
       data-testid="widget-config-preview-aside"
     >

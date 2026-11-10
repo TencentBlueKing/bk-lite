@@ -2078,7 +2078,7 @@
     "backToHomepage": "返回首页"
   },
   "opsCarousel": {
-    "directory": "目录",
+    "directory": "画布",
     "carousel": "轮播",
     "newList": "新建轮播",
     "editBasic": "编辑信息",
@@ -2131,7 +2131,6 @@
     "allTypes": "全部类型",
     "duplicateHint": "列表里有重复的画布，移除多余项后即可保存",
     "alreadyContains": "已包含",
-    "spaceToResume": "空格继续",
-    "escToExit": "Esc 退出"
+    "spaceToResume": "空格继续"
   }
 }

@@ -1,6 +1,6 @@
 'use client';
 
-import { DeleteOutlined, EditOutlined, EyeOutlined, PlayCircleOutlined, ReloadOutlined } from '@ant-design/icons';
+import { CheckOutlined, CloseOutlined, DeleteOutlined, EditOutlined, EyeOutlined, LoadingOutlined, PlayCircleOutlined } from '@ant-design/icons';
 import { Handle, NodeToolbar, Position, useNodeConnections, type Node, type NodeProps } from '@xyflow/react';
 import { Button, Tooltip } from 'antd';
 import type { ReactNode } from 'react';
@@ -11,10 +11,11 @@ import { AtomIcon } from './atom-icon';
 import { WorkflowPermission } from './workflow-permission';
 
 export type WorkflowNodeAction = 'configure' | 'test' | 'detail' | 'delete' | 'add';
+export type WorkflowCanvasNodeTestState = 'idle' | 'running' | 'started' | 'success' | 'failed';
 export interface InteractiveWorkflowNodeData extends WorkflowCanvasNodeData {
   readOnly?: boolean;
   locked?: boolean;
-  testState?: 'idle' | 'running' | 'started';
+  testState?: WorkflowCanvasNodeTestState;
   onAction?: (action: WorkflowNodeAction, reference: string, sourceHandle?: string) => void;
 }
 type WorkflowNode = Node<InteractiveWorkflowNodeData, 'workflowCanvas'>;
@@ -28,6 +29,42 @@ function NodeIcon({ data }: { data: InteractiveWorkflowNodeData }) {
     return <AtomIcon nodeType="CONTROL" className="text-5xl" />;
   }
   return <AtomIcon nodeType="ACTION" category={data.atomCategory} atomKey={data.atomKey} className="text-5xl" />;
+}
+
+/** n8n 风格：状态角标叠在节点右下角；执行中保留节点图标 + 旋转环。 */
+function NodeExecutionBadge({ state }: { state: WorkflowCanvasNodeTestState | undefined }) {
+  const { t } = useTranslation();
+  if (state === 'running') {
+    return (
+      <span
+        aria-label={t('workflowOrchestration.editor.nodeDebugRunning', '节点执行中')}
+        className="absolute -bottom-1.5 -right-1.5 grid h-5 w-5 place-items-center rounded-full border border-[var(--color-border-1)] bg-[var(--color-bg)] text-[10px] text-[var(--color-primary)] shadow-sm"
+      >
+        <LoadingOutlined spin />
+      </span>
+    );
+  }
+  if (state === 'success') {
+    return (
+      <span
+        aria-label={t('workflowOrchestration.editor.nodeDebugSuccess', '节点执行成功')}
+        className="absolute -bottom-1.5 -right-1.5 grid h-5 w-5 place-items-center rounded-full bg-[var(--color-success)] text-[10px] text-white shadow-sm"
+      >
+        <CheckOutlined />
+      </span>
+    );
+  }
+  if (state === 'failed') {
+    return (
+      <span
+        aria-label={t('workflowOrchestration.editor.nodeDebugFailed', '节点执行失败')}
+        className="absolute -bottom-1.5 -right-1.5 grid h-5 w-5 place-items-center rounded-full bg-[var(--color-fail)] text-[10px] text-white shadow-sm"
+      >
+        <CloseOutlined />
+      </span>
+    );
+  }
+  return null;
 }
 
 function ToolbarButton({ label, icon, danger, operation, onClick }: { label: string; icon: ReactNode; danger?: boolean; operation: 'View' | 'Edit' | 'Execute'; onClick: () => void }) {
@@ -97,10 +134,16 @@ export function WorkflowCanvasNode({ id, data, selected }: NodeProps<WorkflowNod
       type="button"
       aria-label={data.title}
       title={data.meta}
-      className={`grid h-24 w-24 place-items-center bg-[var(--color-bg)] text-[var(--color-text-2)] transition-shadow duration-150 ${cardShape} ${selected ? 'border border-[var(--color-border-2)] shadow-[0_0_0_6px_color-mix(in_srgb,var(--color-text-2)_10%,transparent)]' : 'border-[1.5px] border-[var(--color-border-2)] hover:shadow-[0_0_0_6px_var(--color-bg-hover)]'}`}
+      className={`grid h-24 w-24 place-items-center bg-[var(--color-bg)] text-[var(--color-text-2)] transition-[box-shadow,border-color] duration-150 ${cardShape} ${
+        data.testState === 'running'
+          ? 'border-[1.5px] border-[var(--color-primary)] shadow-[0_0_0_4px_color-mix(in_srgb,var(--color-primary)_20%,transparent)]'
+          : selected
+            ? 'border border-[var(--color-border-2)] shadow-[0_0_0_6px_color-mix(in_srgb,var(--color-text-2)_10%,transparent)]'
+            : 'border-[1.5px] border-[var(--color-border-2)] hover:shadow-[0_0_0_6px_var(--color-bg-hover)]'
+      }`}
       onDoubleClick={() => act('configure')}
     >
-      {data.testState === 'running' ? <ReloadOutlined spin /> : <NodeIcon data={data} />}
+      <NodeIcon data={data} />
     </button></WorkflowPermission>
     <div
       data-workflow-node-title
@@ -109,6 +152,7 @@ export function WorkflowCanvasNode({ id, data, selected }: NodeProps<WorkflowNod
       onDoubleClick={(event) => { event.stopPropagation(); act('configure'); }}
     >{data.title}</div>
     {data.testState === 'started' && <span className="absolute right-1 top-1 h-2.5 w-2.5 rounded-full border-2 border-[var(--color-bg)] bg-[var(--color-success)]" title={t('workflowOrchestration.editor.singleStepStarted', '单步执行已启动')} />}
+    <NodeExecutionBadge state={data.testState} />
     {branches.length ? <>{branches.map((branch, index) => {
       const top = `${((index + 1) / (branches.length + 1)) * 100}%`;
       const connected = defaultSourceConnections.some((connection) => connection.sourceHandle === branch.id);

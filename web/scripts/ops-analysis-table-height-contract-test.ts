@@ -10,6 +10,14 @@ const showcaseTableSource = readFileSync(
   new URL('../src/app/ops-analysis/components/ops-analysis-widgets/table.tsx', import.meta.url),
   'utf8',
 );
+const runtimeEventSource = readFileSync(
+  new URL('../src/app/ops-analysis/components/widgets/eventTable/eventTable.tsx', import.meta.url),
+  'utf8',
+);
+const showcaseEventSource = readFileSync(
+  new URL('../src/app/ops-analysis/components/ops-analysis-widgets/event-table.tsx', import.meta.url),
+  'utf8',
+);
 const dashboardCanvasSource = readFileSync(
   new URL(
     '../src/app/ops-analysis/(pages)/view/dashBoard/components/dashboardCanvas.tsx',
@@ -21,12 +29,15 @@ const dashboardCanvasSource = readFileSync(
 for (const [name, source] of [
   ['运行时表格', runtimeTableSource],
   ['组件展示表格', showcaseTableSource],
+  ['运行时事件表', runtimeEventSource],
+  ['组件展示事件表', showcaseEventSource],
 ] as const) {
-  assert.match(source, /useTableBodyScrollY\(/, `${name}必须监听可用高度`);
+  assert.doesNotMatch(source, /useTableBodyScrollY\(/, `${name}不能再预计算 scroll.y`);
+  assert.doesNotMatch(source, /y:\s*tableScrollY/, `${name}不能把预计算高度交给 CustomTable`);
   assert.match(
     source,
-    /scroll=\{\{\s*x:\s*'max-content',\s*y:\s*tableScrollY\s*\}\}/,
-    `${name}必须把计算后的高度交给表体滚动`,
+    /scroll=\{\{\s*x:\s*'max-content'\s*\}\}/,
+    `${name}只声明横向滚动，纵向高度交给父容器`,
   );
 }
 
@@ -39,6 +50,11 @@ assert.equal(
   resolveTableBodyScrollY({ containerHeight: 320, hasPagination: true }),
   217,
   '有分页表格还应为分页栏预留高度',
+);
+assert.equal(
+  resolveTableBodyScrollY({ containerHeight: 226, hasPagination: true }),
+  123,
+  '矮容器不能把表体抬到 160，否则锁定高度会超过父级',
 );
 assert.match(
   dashboardCanvasSource,
