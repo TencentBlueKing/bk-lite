@@ -392,6 +392,7 @@ const SkillSettingsPage: React.FC = () => {
   const filteredAvailableSkillAssets = useMemo(() => {
     return filterTaggedAssets(availableSkillAssets, {
       selectedTags: skillPickerTags,
+      matchAllTags: true,
       keyword: skillPickerKeyword,
       chips: skillPickerChips,
       systemTags: (asset) => asset.system_tags || [],

@@ -83,7 +83,11 @@ monitor_object_metric:
     iis_app_pool_recycles:
       name: Application Pool Recycles
       desc: >-
-        APP_POOL_WAS total application pool recycles.
+        APP_POOL_WAS cumulative application pool recycles.
+    iis_app_pool_recycles_rate:
+      name: Application Pool Recycle Rate
+      desc: >-
+        Average application pool recycles per second over the last 5 minutes.
     iis_worker_process_failures:
       name: Worker Process Failures
       desc: >-

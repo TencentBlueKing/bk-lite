@@ -132,7 +132,7 @@
       "data_type": "Number",
       "unit": "counts",
       "dimensions": [],
-      "description": "Historical peak of used connections, used to assess connection pool headroom",
+      "description": "Peak connections observed since MySQL startup, used to assess connection pool headroom",
       "query": "mysql_max_used_connections{__$labels__}"
     },
     {
@@ -869,7 +869,7 @@
       "data_type": "Number",
       "unit": "cps",
       "dimensions": [],
-      "description": "Estimated rate of temporary tables created in memory, derived from total temporary tables minus disk temporary tables",
+      "description": "Estimated rate of temporary tables created in memory.",
       "query": "clamp_min(rate(mysql_created_tmp_tables{__$labels__}[5m]) - rate(mysql_created_tmp_disk_tables{__$labels__}[5m]), 0)"
     },
     {
