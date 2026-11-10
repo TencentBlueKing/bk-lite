@@ -47,6 +47,14 @@ async def _iter_export_file(stream):
 
 
 class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
+    @classmethod
+    def as_view(cls, actions=None, **initkwargs):
+        view = super().as_view(actions=actions, **initkwargs)
+        # AuthMiddleware 认的是 as_view() 结果上的 api_exempt，不是 action 的 AllowAny。
+        if actions and "file_content" in actions.values():
+            view.api_exempt = True
+        return view
+
     @staticmethod
     def _transport_instance(instance):
         """对外响应剥离图内部字段，人工锁定只暴露字段名。"""

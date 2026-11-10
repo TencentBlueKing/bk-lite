@@ -845,6 +845,24 @@ def test_upload_file_delegates_to_extension(superuser, monkeypatch):
     assert body["data"]["file_name"] == "a.pdf"
 
 
+def test_file_content_as_view_is_api_exempt():
+    """<img src> 不带 Token；AuthMiddleware 只认 view.api_exempt，必须打在 as_view 结果上。"""
+    view = InstanceViewSet.as_view({"get": "file_content"})
+    assert getattr(view, "api_exempt", False) is True
+    download = InstanceViewSet.as_view({"get": "download_file"})
+    assert getattr(download, "api_exempt", False) is False
+
+
+def test_file_content_skips_auth_middleware_without_token():
+    from apps.core.middlewares.auth_middleware import AuthMiddleware
+
+    mw = AuthMiddleware(get_response=lambda r: None)
+    factory = APIRequestFactory()
+    request = factory.get("/api/v1/cmdb/api/instance/file_content/fid-img/")
+    view = InstanceViewSet.as_view({"get": "file_content"})
+    assert mw.process_view(request, view, [], {"file_id": "fid-img"}) is None
+
+
 @pytest.mark.django_db
 def test_file_content_allows_anonymous_ticket_and_streams(monkeypatch):
     """<img src> 不会带 Bearer；同源代理靠短时 ticket 拉流，不能要求登录。"""
