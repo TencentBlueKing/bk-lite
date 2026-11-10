@@ -64,6 +64,12 @@ monitor_object_metric:
     diskio_write_bytes_total:
       name: 磁盘写入字节数
       desc: 表示磁盘设备累计写入的数据量（字节），用于分析磁盘写入流量规模。
+    diskio_write_bytes_total_rate:
+      name: 磁盘写入吞吐
+      desc: 近 5 分钟平均每秒写入磁盘的字节数，用于观察磁盘写入流量。
+    diskio_read_bytes_total_rate:
+      name: 磁盘读取吞吐
+      desc: 近 5 分钟平均每秒从磁盘读取的字节数，用于观察磁盘读取流量。
     diskio_reads_total:
       name: 磁盘读取次数
       desc: 表示磁盘设备累计完成的读取操作次数，用于分析读取负载总量和变化趋势。
@@ -143,26 +149,26 @@ monitor_object_metric:
       name: 网络接收吞吐速率
       desc: 表示网络接口单位时间内接收的数据量，用于评估网络接收带宽使用情况。
     host_net_rx_bytes:
-      name: 网络接收字节数
-      desc: 表示单个网络接口累计接收的字节数，用于分析网卡接收流量规模。
+      name: 网络接收吞吐速率
+      desc: 近 1 分钟网卡接收带宽（每秒字节数），用于观察接收流量。
     net_bytes_sent_rate:
       name: 网络发送吞吐速率
       desc: 表示网络接口单位时间内发送的数据量，用于评估网络发送带宽使用情况。
     host_net_tx_bytes:
-      name: 网络发送字节数
-      desc: 表示单个网络接口累计发送的字节数，用于分析网卡发送流量规模。
+      name: 网络发送吞吐速率
+      desc: 近 1 分钟网卡平均每秒发送的字节数，用于观察发送流量。
     net_err_in_rate:
       name: 网络接收错误包速率
       desc: 表示网络接口单位时间内接收到的错误数据包数量，用于监控网络质量。
     host_net_rx_errors:
-      name: 网络接收错误数
-      desc: 表示单个网络接口累计接收错误次数，用于发现链路质量或驱动异常问题。
+      name: 网络接收错误速率
+      desc: 近 1 分钟平均每秒接收错误包次数。
     net_err_out_rate:
       name: 网络发送错误包速率
       desc: 表示网络接口单位时间内发送失败的错误数据包数量。
     host_net_tx_errors:
-      name: 网络发送错误数
-      desc: 表示单个网络接口累计发送错误次数，用于辅助排查网络发送异常或设备故障。
+      name: 网络发送错误速率
+      desc: 近 1 分钟平均每秒发送错误次数，用于辅助排查网络发送异常。
     net_drop_in_rate:
       name: 网络接收丢包速率
       desc: 表示网络接口单位时间内被丢弃的接收数据包数量，用于评估网络拥塞或异常情况。
