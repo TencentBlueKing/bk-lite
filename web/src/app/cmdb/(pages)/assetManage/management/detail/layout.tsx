@@ -178,6 +178,13 @@ const AboutLayout = ({ children }: { children: React.ReactNode }) => {
       operation: [],
     },
     {
+      name: 'duplicateRules',
+      title: t('Model.duplicateRules'),
+      url: '/cmdb/assetManage/management/detail/duplicateRules',
+      icon: '',
+      operation: [],
+    },
+    {
       name: 'autoAssociationRules',
       title: t('Model.autoAssociationRules'),
       url: '/cmdb/assetManage/management/detail/autoAssociationRules',
