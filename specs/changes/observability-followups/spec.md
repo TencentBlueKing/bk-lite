@@ -1,6 +1,6 @@
 # APM / RUM 查询性能改造的遗留问题收口
 
-Status: in-progress
+Status: done
 
 来源：`observability-aggregate-metrics`、`rum-session-end-records`、`apm-policy-merged-queries` 三份变更完成后的复核遗留。
 
