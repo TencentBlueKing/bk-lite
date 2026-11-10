@@ -431,11 +431,32 @@ export interface RumAlertEventPage {
   limit: number;
 }
 
+export interface RumAlertTrendPoint {
+  atMs: number;
+  value: number | null;
+}
+
+/** Keep a real number, including 0. Null, missing, and non-numeric samples stay empty. */
+export function parseAlertTrendValue(value: unknown): number | null {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return null;
+  return value;
+}
+
+export function parseAlertTrend(raw: unknown): RumAlertTrendPoint[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.map((item) => {
+    if (item === null || typeof item !== 'object') return { atMs: 0, value: null };
+    const point = item as { atMs?: unknown; value?: unknown };
+    const atMs = typeof point.atMs === 'number' && Number.isFinite(point.atMs) ? point.atMs : 0;
+    return { atMs, value: parseAlertTrendValue(point.value) };
+  });
+}
+
 export interface RumAlertEventDetail {
   alert: RumAlertItem;
   events: RumAlertTimelineEvent[];
   deliveries: RumAlertDeliveryItem[];
-  trend: { atMs: number; value: number }[];
+  trend: RumAlertTrendPoint[];
 }
 
 export interface RumEraseJob {
@@ -971,7 +992,7 @@ export function useRumQueries() {
         alert: data?.alert ?? ({} as RumAlertItem),
         events: Array.isArray(data?.events) ? data.events : [],
         deliveries: Array.isArray(data?.deliveries) ? data.deliveries : [],
-        trend: Array.isArray(data?.trend) ? data.trend : [],
+        trend: parseAlertTrend(data?.trend),
       };
     },
     [api],

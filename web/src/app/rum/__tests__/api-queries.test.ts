@@ -192,4 +192,27 @@ describe('useRumQueries domain calls', () => {
 
     expect(del).toHaveBeenCalled();
   });
+
+  it('keeps alert trend gaps null and keeps a real zero', async () => {
+    get.mockResolvedValueOnce({
+      alert: { id: 'a1' },
+      events: [],
+      deliveries: [],
+      trend: [
+        { atMs: 1000, value: null },
+        { atMs: 2000, value: 0 },
+        { atMs: 3000, value: undefined },
+        { atMs: 4000 },
+        { atMs: 5000, value: 'n/a' },
+        { atMs: 6000, value: Number.NaN },
+        { atMs: 7000, value: 12.5 },
+      ],
+    });
+
+    const { result } = renderHook(() => useRumQueries());
+    const detail = await result.current.getAlertEvent('a1');
+
+    expect(detail.trend.map((point) => point.value)).toEqual([null, 0, null, null, null, null, 12.5]);
+    expect(get).toHaveBeenCalledWith('/rum/alert-events/a1', undefined);
+  });
 });
