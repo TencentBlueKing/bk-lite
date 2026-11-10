@@ -5,6 +5,8 @@ import yaml
 REPOSITORY_ROOT = Path(__file__).resolve().parents[4]
 REGIONAL_CONFIG = REPOSITORY_ROOT / "deploy/apm/otel/regional.yaml"
 SYSTEM_CONFIG = REPOSITORY_ROOT / "deploy/apm/otel/system.yaml"
+SYSTEM_TRACES_CONFIG = REPOSITORY_ROOT / "deploy/apm/otel/system-traces.yaml"
+SYSTEM_AUTH_CONFIG = REPOSITORY_ROOT / "deploy/apm/otel/system-auth.yaml"
 BUILDER_CONFIG = REPOSITORY_ROOT / "deploy/apm/collector/builder-config.yaml"
 TRACE_GUARD = REPOSITORY_ROOT / "deploy/apm/collector/processor/traceguardprocessor/processor.go"
 NATS_CONFIG = REPOSITORY_ROOT / "deploy/apm/nats/nats-server.conf"
@@ -26,10 +28,18 @@ def test_custom_distribution_contains_real_trace_transport_components():
     config = _yaml(BUILDER_CONFIG)
 
     assert config["dist"]["otelcol_version"] == "0.153.0"
+    assert config["dist"]["version"] == "0.153.0-bklite.2"
     assert any("natsjetstreamexporter" in item["gomod"] for item in config["exporters"])
+    assert any("prometheusremotewriteexporter v0.153.0" in item["gomod"] for item in config["exporters"])
     assert any("natsjetstreamreceiver" in item["gomod"] for item in config["receivers"])
     assert any("filestorage" in item["gomod"] for item in config["extensions"])
+    assert any("basicauthextension v0.153.0" in item["gomod"] for item in config["extensions"])
     assert any("traceguardprocessor" in item["gomod"] for item in config["processors"])
+    assert any("filterprocessor v0.153.0" in item["gomod"] for item in config["processors"])
+    assert any("transformprocessor v0.153.0" in item["gomod"] for item in config["processors"])
+    assert any("deltatocumulativeprocessor v0.153.0" in item["gomod"] for item in config["processors"])
+    assert any("spanmetricsconnector v0.153.0" in item["gomod"] for item in config["connectors"])
+    assert any("countconnector v0.153.0" in item["gomod"] for item in config["connectors"])
 
 
 def test_regional_pipeline_cleans_and_stamps_before_persistent_nats_publish():
@@ -102,14 +112,110 @@ def test_system_pipeline_only_acks_after_direct_victoria_traces_export():
     }
     assert exporter["traces_endpoint"] == "${env:APM_VICTORIATRACES_OTLP_ENDPOINT}"
     assert exporter["sending_queue"]["enabled"] is False
-    assert "batch" not in config["processors"]
+    assert "batch/traces" not in config["processors"]
+    assert "memory_limiter" not in config["service"]["pipelines"]["traces/aggregate"]["processors"]
+    assert "memory_limiter" not in config["service"]["pipelines"]["traces/late"]["processors"]
 
 
-def test_apm_compose_is_traces_only_without_edge_or_victoria_metrics():
+def test_system_aggregate_branch_shape_and_write_constraints():
+    config = _yaml(SYSTEM_CONFIG)
+    rendered = SYSTEM_CONFIG.read_text()
+    pipelines = config["service"]["pipelines"]
+    span_metrics = config["connectors"]["span_metrics"]
+    remote_write = config["exporters"]["prometheusremotewrite/agg"]
+    narrow = config["processors"]["transform/narrow_resource"]["trace_statements"][0]
+
+    assert pipelines["traces/aggregate"] == {
+        "receivers": ["nats_jetstream"],
+        "processors": ["filter/entry", "filter/drop_late", "transform/narrow_resource"],
+        "exporters": ["span_metrics"],
+    }
+    assert pipelines["traces/late"] == {
+        "receivers": ["nats_jetstream"],
+        "processors": ["filter/entry", "filter/only_late", "transform/narrow_resource"],
+        "exporters": ["count/late"],
+    }
+    assert pipelines["metrics/apm_agg"] == {
+        "receivers": ["span_metrics"],
+        "exporters": ["prometheusremotewrite/agg"],
+    }
+    assert pipelines["metrics/apm_late"] == {
+        "receivers": ["count/late"],
+        "processors": ["batch/late", "transform/late_observed_at", "deltatocumulative"],
+        "exporters": ["prometheusremotewrite/agg"],
+    }
+    for name in ("traces/aggregate", "traces/late", "metrics/apm_agg", "metrics/apm_late"):
+        assert "memory_limiter" not in pipelines[name].get("processors", [])
+    assert pipelines["traces"]["processors"] == ["memory_limiter"]
+    assert config["processors"]["filter/entry"]["error_mode"] == "ignore"
+    assert config["processors"]["filter/drop_late"]["error_mode"] == "ignore"
+    assert config["processors"]["filter/only_late"]["error_mode"] == "ignore"
+    assert config["processors"]["transform/narrow_resource"]["error_mode"] == "ignore"
+    observed_at = config["processors"]["transform/late_observed_at"]
+    assert observed_at["error_mode"] == "ignore"
+    assert observed_at["metric_statements"][0]["statements"] == [
+        "set(start_time, Now())",
+        "set(time, Now())",
+    ]
+    late_window = "span.end_time_unix_nano < UnixNano(Now()) - 300000000000"
+    assert config["processors"]["filter/drop_late"]["traces"]["span"] == [late_window]
+    assert config["connectors"]["count/late"]["spans"]["apm.aggregate.late_spans"]["conditions"] == [late_window]
+    assert narrow["context"] == "resource"
+    assert 'keep_keys(attributes, ["service.namespace", "service.name", "deployment.environment"])' in narrow["statements"]
+    assert span_metrics["namespace"] == "apm"
+    assert span_metrics["exclude_dimensions"] == ["span.kind", "collector.instance.id"]
+    assert span_metrics["exemplars"]["enabled"] is False
+    assert span_metrics["histogram"]["unit"] == "ms"
+    assert span_metrics["histogram"]["explicit"]["buckets"] == [
+        "5ms",
+        "10ms",
+        "25ms",
+        "50ms",
+        "100ms",
+        "200ms",
+        "300ms",
+        "500ms",
+        "800ms",
+        "1000ms",
+        "2000ms",
+        "3000ms",
+        "5000ms",
+        "10000ms",
+    ]
+    assert span_metrics["aggregation_cardinality_limit"] == "${env:APM_AGG_CARDINALITY_LIMIT:-90000}"
+    assert span_metrics["resource_metrics_key_attributes"] == [
+        "service.namespace",
+        "service.name",
+        "deployment.environment",
+    ]
+    assert span_metrics["add_resource_attributes"] is False
+    assert remote_write["endpoint"] == "${env:AGG_VICTORIAMETRICS_WRITE_URL}"
+    assert remote_write["external_labels"]["shard"] == "${env:APM_AGG_SHARD}"
+    assert remote_write["resource_to_telemetry_conversion"]["enabled"] is False
+    assert remote_write["target_info"]["enabled"] is False
+    assert remote_write["disable_scope_info"] is True
+    assert "auth" not in remote_write
+    assert "basicauth" not in config["extensions"]
+    assert "VICTORIAMETRICS_HOST" not in rendered
+    assert "300e9" not in rendered
+
+    traces_only = _yaml(SYSTEM_TRACES_CONFIG)
+    assert traces_only["service"]["pipelines"] == {"traces": pipelines["traces"]}
+    assert "connectors" not in traces_only
+    assert "AGG_VICTORIAMETRICS_WRITE_URL" not in SYSTEM_TRACES_CONFIG.read_text()
+    auth = _yaml(SYSTEM_AUTH_CONFIG)
+    assert auth["extensions"]["basicauth/agg"]["client_auth"]["username"] == "${env:AGG_VICTORIAMETRICS_USER}"
+    assert auth["extensions"]["basicauth/agg"]["client_auth"]["password"] == "${env:AGG_VICTORIAMETRICS_PASSWORD}"
+    assert auth["exporters"]["prometheusremotewrite/agg"]["auth"]["authenticator"] == "basicauth/agg"
+
+
+def test_apm_compose_keeps_victoria_traces_and_a_separate_aggregate_store():
     compose = _yaml(COMPOSE_CONFIG)
     services = compose["services"]
     regional = services["apm-regional-collector"]
     traces = services["apm-victoria-traces"]
+    system = services["apm-system-collector"]
+    aggregate = services["apm-aggregate-metrics"]
 
     assert "apm-edge" not in services
     assert "apm-victoriametrics" not in services
@@ -117,13 +223,22 @@ def test_apm_compose_is_traces_only_without_edge_or_victoria_metrics():
     assert any(":4318" in port for port in regional["ports"])
     assert any(":4317" in port for port in regional["ports"])
     assert any(":8888" in port for port in regional["ports"])
-    assert any(":8888" in port for port in services["apm-system-collector"]["ports"])
+    assert any(":8888" in port for port in system["ports"])
     assert "-servicegraph.enableTask=true" in traces["command"]
     assert "-retentionPeriod=${APM_TRACE_RETENTION:-35d}" in traces["command"]
+    assert regional["image"] == "${APM_COLLECTOR_IMAGE:-bklite/apm-otel-collector:0.153.0-bklite.2}"
+    assert system["image"] == regional["image"]
+    assert aggregate["ports"] == ["${APM_AGG_METRICS_BIND:-127.0.0.1}:${APM_AGG_METRICS_PORT:-18428}:8428"]
+    assert system["environment"]["AGG_VICTORIAMETRICS_WRITE_URL"] == (
+        "${AGG_VICTORIAMETRICS_WRITE_URL:-http://apm-aggregate-metrics:8428/api/v1/write}"
+    )
+    assert system["environment"]["APM_AGG_SHARD"] == "${APM_AGG_SHARD:-local-system}"
+    assert system["depends_on"]["apm-aggregate-metrics"]["condition"] == "service_started"
     rendered = COMPOSE_CONFIG.read_text()
     assert "tail_sampling" not in rendered
     assert "spanmetrics" not in rendered
     assert "/telegraf/api" not in rendered
+    assert "VICTORIAMETRICS_HOST" not in rendered
 
 
 def test_jetstream_and_durable_consumer_are_bounded_and_ack_explicit():
@@ -197,6 +312,14 @@ def test_runtime_health_metrics_and_first_rollout_are_explicit():
     readme = (REPOSITORY_ROOT / "deploy/apm/README.md").read_text()
     assert "契约夹具" in readme
     assert "也不替运维设计流水线" in readme
+    assert "system-traces.yaml" in readme
+    assert "AGG_VICTORIAMETRICS_WRITE_URL" in readme
+    assert "不回落" in readme
+    assert "聚合分支可单独回退" in acceptance
+    develop = (REPOSITORY_ROOT / "DEVELOP.md").read_text()
+    assert "聚合分支可单独回退" in develop
+    assert "不恢复 spanmetrics" not in develop
+    assert "system-traces.yaml" in develop
 
 
 def test_apm_data_plane_has_makefile_lifecycle_and_server_runtime_contract():

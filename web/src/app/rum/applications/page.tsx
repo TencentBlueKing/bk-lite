@@ -41,6 +41,7 @@ import {
   CWV_THRESHOLDS,
   cwvTone,
   errorRateTone,
+  formatMs,
   formatPct,
   toneColor,
   toneDotClass,
@@ -48,6 +49,7 @@ import {
   toneTextClass,
   type CwvTone,
 } from '@/app/rum/lib/cwv';
+import { countText } from '@/app/rum/lib/metrics';
 import SemanticBadge from '@/components/semantic-badge';
 import { degradationReason } from '@/app/rum/lib/degradation';
 import { resolveRumPageState } from '@/app/rum/lib/page-state';
@@ -73,14 +75,14 @@ function relativeLastSeen(ms0: number, nowMs: number, locale: string): string {
   return rtf.format(Math.round(diffSec / 86400), 'day');
 }
 
-function CwvValue({ value, metric }: { value: number; metric: 'lcp' | 'inp' }) {
+function CwvValue({ value, metric }: { value: number | null; metric: 'lcp' | 'inp' }) {
   const tone = cwvTone(metric, value);
-  const gap = value > 0 ? value - CWV_THRESHOLDS[metric][0] : 0;
+  const gap = value != null && value > 0 ? value - CWV_THRESHOLDS[metric][0] : 0;
   const gapLabel = gap > 0 ? `+${Math.round(gap)}ms` : '';
   return (
     <div className="flex flex-col items-start gap-0.5">
       <span className={`font-mono tabular-nums ${toneTextClass(tone)}`}>
-        {value > 0 ? `${Math.round(value)}ms` : '—'}
+        {formatMs(value)}
       </span>
       {gapLabel ? (
         <span className="text-[11px] leading-tight text-[var(--theme-color-status-warning)]">{gapLabel}</span>
@@ -202,8 +204,8 @@ export default function RumApplicationsPage() {
             </span>
             <span className="truncate text-xs tabular-nums text-[var(--color-text-3)]">
               {t('rum.applications.subline', '{errors} 错误 · {views} 浏览 · {lastSeen}', {
-                errors: app.errors,
-                views: app.views,
+                errors: countText(app.errors),
+                views: countText(app.views),
                 lastSeen: relativeLastSeen(app.lastSeenMs || 0, renderNow, locale),
               })}
             </span>
@@ -253,7 +255,8 @@ export default function RumApplicationsPage() {
       width: 148,
       render: (_, app) => {
         const spark = page?.sparklines?.[app.application] || [];
-        return spark.length ? (
+        const drawn = spark.some((value) => typeof value === 'number' && Number.isFinite(value));
+        return drawn ? (
           <Sparkline
             data={spark}
             width={132}

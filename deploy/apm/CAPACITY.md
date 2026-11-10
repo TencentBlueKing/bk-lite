@@ -40,3 +40,12 @@ victoria_traces_bytes >= average_ingest_bytes_per_day × retention_days × stora
 
 调整采样（默认全量）、属性上限、批次、保留期或副本后须重新测量并更新工作表。如何接入运维
 监控系统由运维决定，门槛不得低于本文。
+
+## 聚合库
+
+`victoria_traces_bytes` 不含聚合库。聚合序列在独立的单节点 VictoriaMetrics 里，磁盘估算、
+标签禁区和告警见 [聚合库运维规则](../../docs/operations/aggregate-metrics-store.md)。
+系统 Collector 的 `aggregation_cardinality_limit` 默认 90000，对应那份估算里的
+200 个服务、50 个入口操作、3 个环境和 3 种状态。超出的组合并进 `otel.metric.overflow=true`。
+刷出间隔默认 60 秒；缩短间隔时磁盘按比例增加。聚合分支不使用 `memory_limiter`，内存由这个
+序列上限约束。本地夹具的宿主端口是 18428，不要把聚合写入指到宿主 8428。

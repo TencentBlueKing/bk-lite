@@ -102,12 +102,16 @@ def _build_analytics() -> Analytics:
     if not settings.victoria_logs_url:
         return UnavailableAnalytics()
     try:
-        return VictoriaAnalytics.open(
-            logs_endpoint=settings.victoria_logs_url,
-            account_id=settings.victoria_account_id,
-            project_id=settings.victoria_project_id,
-            timeout_seconds=settings.victoria_timeout_seconds,
-            ping=True,
+        from apps.rum.services.aggregate_reads import attach_aggregate_reader
+
+        return attach_aggregate_reader(
+            VictoriaAnalytics.open(
+                logs_endpoint=settings.victoria_logs_url,
+                account_id=settings.victoria_account_id,
+                project_id=settings.victoria_project_id,
+                timeout_seconds=settings.victoria_timeout_seconds,
+                ping=True,
+            )
         )
     except Exception as exc:  # noqa: BLE001 — degrade when VL is down
         logger.warning("rum victoria analytics unavailable: %s", exc)

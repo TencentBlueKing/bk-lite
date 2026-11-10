@@ -102,9 +102,9 @@ def _resample(values: list[float | None], points: int) -> list[float | None]:
 
 
 def _health_bucket(status: str, error_rate: float | None) -> str:
-    if status == "archived" or status == "silent":
+    if status == "archived" or status == "silent" or error_rate is None:
         return "unknown"
-    if error_rate is not None and error_rate >= 0.05:
+    if error_rate >= 0.05:
         return "critical"
     if error_rate is not None and error_rate >= 0.01:
         return "warning"
@@ -126,8 +126,10 @@ class ApmDashboardService:
         metric_store=None,
         reliability: DjangoApmReliabilityService | None = None,
         now_fn: Callable[[], datetime] | None = None,
+        red_store=None,
     ):
         self.metric_store = metric_store
+        self.red_store = metric_store if red_store is None else red_store
         if reliability is not None:
             self.reliability = reliability
         elif metric_store is not None:
@@ -256,7 +258,7 @@ class ApmDashboardService:
         started_at: datetime,
         ended_at: datetime,
     ) -> dict[str, ServiceRed | None]:
-        if self.metric_store is None or not targets:
+        if self.red_store is None or not targets:
             return {}
         results: dict[str, ServiceRed | None] = {}
 
@@ -271,7 +273,7 @@ class ApmDashboardService:
                 include_breakdown=True,
             )
             try:
-                return key, self.metric_store.service_red(query)
+                return key, self.red_store.service_red(query)
             except TelemetryStoreUnavailable:
                 return key, None
             except Exception as exc:  # noqa: BLE001
@@ -451,9 +453,13 @@ class ApmDashboardService:
             .order_by("name", "id")[: MAX_SLO_ROWS * 3]
         )
         rows = []
+        store_error = ""
         for slo in slos:
             evaluation = self.reliability.evaluate(slo, evaluated_at=self.now_fn())
             if evaluation.current_rate is None:
+                # 无样本仍是空态。存储失败不能伪装成「没有 SLO」，否则首页和列表对不上。
+                if evaluation.reason not in {"", "no_samples", "disabled"}:
+                    store_error = store_error or evaluation.reason
                 continue
             objective = float(slo.objective)
             met = evaluation.current_rate >= objective
@@ -471,6 +477,8 @@ class ApmDashboardService:
             if len(rows) >= MAX_SLO_ROWS:
                 break
         if not rows:
+            if store_error:
+                return _section_failed(store_error)
             return _section_empty({"items": []})
         return {"items": rows}
 

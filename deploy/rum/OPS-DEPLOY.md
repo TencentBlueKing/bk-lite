@@ -25,9 +25,9 @@
 | --- | --- |
 | Dockerfile | `deploy/rum/collector/Dockerfile` |
 | 构建上下文 | `deploy/rum/collector` |
-| 默认 tag | `bklite/rum-collector:0.1.0-bklite.1` |
+| 默认 tag | `bklite/rum-collector:0.1.0-bklite.2` |
 | 构建参数 | `GO_IMAGE` 默认 `public.ecr.aws/docker/library/golang:1.26.10-alpine`；`GOPROXY` 默认 `https://goproxy.cn,direct` |
-| 镜像内容 | 三个二进制，以及 `/etc/bklite-rum/rum.gateway.yaml` |
+| 镜像内容 | 三个二进制，以及 `/etc/bklite-rum/rum.gateway.yaml`、`rum.gateway.ingest.yaml`、`rum.gateway.auth.yaml` |
 | 运行用户 | `65532:65532`。镜像没有 shell，不能自己改目录属主 |
 
 tag 必须固定，禁止 `latest`。记下 digest，回滚只回到上一个已验收的 digest。
@@ -93,7 +93,25 @@ Controller 的 `-nats-url` 必须是 `tls://`，主机和端口与 `NATS_SERVERS
 /usr/local/bin/bklite-rum-gateway --config=/etc/bklite-rum/rum.gateway.yaml
 ```
 
-配置已在镜像里。环境变量：
+配置已在镜像里。`rum.gateway.yaml` 带聚合分支。`AGG_VICTORIAMETRICS_WRITE_URL` 或
+`RUM_AGG_SHARD` 为空时，配置校验失败，整个 Gateway 起不来，VictoriaLogs 入库会一起停。
+Collector 不能按空环境变量只关掉聚合分支，也不会回落到 `VICTORIAMETRICS_HOST`。
+要保住明细、先不写聚合库时，改挂镜像里的 ingest 配置，这两个变量留空也可以启动：
+
+```text
+/usr/local/bin/bklite-rum-gateway --config=/etc/bklite-rum/rum.gateway.ingest.yaml
+```
+
+聚合库启用基础认证时，只在 `AGG_VICTORIAMETRICS_USER` 和 `AGG_VICTORIAMETRICS_PASSWORD`
+都已注入后再追加第二个配置。留空也加载时，basicauth 仍会发送 `Authorization`：
+
+```text
+/usr/local/bin/bklite-rum-gateway \
+  --config=/etc/bklite-rum/rum.gateway.yaml \
+  --config=/etc/bklite-rum/rum.gateway.auth.yaml
+```
+
+环境变量：
 
 | 变量 | 值 |
 | --- | --- |
@@ -107,6 +125,16 @@ Controller 的 `-nats-url` 必须是 `tls://`，主机和端口与 `NATS_SERVERS
 | `RUM_MINIO_ENDPOINT` | `<minio>:9000` |
 | `RUM_MINIO_ACCESS_KEY` | 可写 `rum-replay` 的 access key |
 | `RUM_MINIO_SECURE` | 与平台 MinIO 是否走 TLS 一致 |
+| `AGG_VICTORIAMETRICS_WRITE_URL` | 聚合库 remote write，例如 `http://<aggregate-victoria-metrics>:8428/api/v1/write`。不读 `VICTORIAMETRICS_HOST` |
+| `RUM_AGG_SHARD` | 这个 Gateway 进程的固定分片，1 到 64 位，只含字母、数字和 `.` `_` `:` `-`。重启不变，多副本各不相同 |
+| `RUM_AGG_BATCH_TIMEOUT` | 可选。聚合刷出间隔，默认 `10s` |
+| `RUM_AGG_MAX_STREAMS` | 可选。`deltatocumulative` 流上限，默认 `420000` |
+| `AGG_VICTORIAMETRICS_USER` / `AGG_VICTORIAMETRICS_PASSWORD` | 可选。只在加载 `rum.gateway.auth.yaml` 时需要，不写入仓库 |
+
+聚合路由准入复用会话 Redis（`RUM_SESSION_REDIS_URL` 和生产的 `rum_sessionizer_redis_password`）。
+键是 `ops:rum:v2:aggregate:routes:` 加租户和应用的 sha256，集合里最多 100 条路由，TTL 35 天，每次命中刷新。
+超出的路由记为「其他」。Redis 失败时未知路由也记为「其他」，并增加 `core_rum_aggregate_route_redis_failures_total`。
+这个字段只出现在聚合分支，不写入 VictoriaLogs。
 
 `4319` 收数，`4320` 回放，只给 Edge 内网访问。`13135` 健康和 `8888` 指标只留内网。
 
