@@ -224,23 +224,35 @@ func TestRedisOutageOpensCircuitAndResumes(t *testing.T) {
 	require.Equal(t, otherRoute, capturedRoute(t, sink))
 	require.Equal(t, 1, counter.callCount())
 
+	require.Len(t, recorded.All(), 1)
+	require.Equal(t, int64(1), fieldInt(t, recorded.All()[0], "failure_count"))
+
 	require.NoError(t, proc.ConsumeLogs(t.Context(), oneEvent("core", "storefront", "/second", "error")))
 	require.NoError(t, proc.ConsumeLogs(t.Context(), oneEvent("core", "storefront", "/third", "vital")))
 	require.Equal(t, otherRoute, capturedRoute(t, sink))
 	require.Equal(t, 1, counter.callCount())
 	require.Equal(t, int64(3), failureCount(t, reader))
-	require.Empty(t, recorded.All())
+	require.Len(t, recorded.All(), 1)
 
-	concrete.flushFailure()
+	*clock = clock.Add(redisCircuitOpenFor)
+	server.SetError("")
+	require.NoError(t, proc.ConsumeLogs(t.Context(), oneEvent("core", "storefront", "/after", "view")))
+	require.Equal(t, 2, counter.callCount())
+	require.Equal(t, "/after", capturedRoute(t, sink))
+	require.Equal(t, int64(3), failureCount(t, reader))
 	entries := recorded.All()
-	require.Len(t, entries, 1)
+	require.Len(t, entries, 2)
 	require.Equal(t, "rum aggregate route redis lookup failed", entries[0].Message)
 	require.Equal(t, "route_admission", fieldString(t, entries[0], "failed_stage"))
 	require.NotEmpty(t, fieldString(t, entries[0], "error_type"))
-	require.Equal(t, int64(3), fieldInt(t, entries[0], "failure_count"))
-	blob := logBlob(entries[0]) + formatted.String()
+	require.Equal(t, int64(1), fieldInt(t, entries[0], "failure_count"))
+	require.Equal(t, "route_admission", fieldString(t, entries[1], "failed_stage"))
+	require.NotEmpty(t, fieldString(t, entries[1], "error_type"))
+	require.Equal(t, int64(2), fieldInt(t, entries[1], "failure_count"))
+	blob := logBlob(entries[0]) + logBlob(entries[1]) + formatted.String()
 	require.Contains(t, formatted.String(), `"failed_stage":"route_admission"`)
-	require.Contains(t, formatted.String(), `"failure_count":3`)
+	require.Contains(t, formatted.String(), `"failure_count":1`)
+	require.Contains(t, formatted.String(), `"failure_count":2`)
 	require.NotContains(t, formatted.String(), "stacktrace")
 	for _, secret := range []string{
 		connectionSentinel,
@@ -251,55 +263,85 @@ func TestRedisOutageOpensCircuitAndResumes(t *testing.T) {
 		"route-secret-sentinel",
 		"/second",
 		"/third",
+		"/after",
 		"user-secret",
 		"token=secret",
 	} {
 		require.NotContains(t, blob, secret)
 	}
-
-	*clock = clock.Add(redisCircuitOpenFor)
-	server.SetError("")
-	require.NoError(t, proc.ConsumeLogs(t.Context(), oneEvent("core", "storefront", "/after", "view")))
-	require.Equal(t, 2, counter.callCount())
-	require.Equal(t, "/after", capturedRoute(t, sink))
-	require.Equal(t, int64(3), failureCount(t, reader))
 }
 
 func TestRedisFailureLogRollsUpOneWarnPerWindow(t *testing.T) {
 	redisURL, _ := startRedis(t)
 	logger, recorded, formatted := warnLogger()
-	proc, _ := startProcessorWithLogger(t, redisURL, "shard-a", &captureLogs{}, logger)
+	sink := &captureLogs{}
+	proc, _ := startProcessorWithLogger(t, redisURL, "shard-a", sink, logger)
 	concrete := proc.(*logsProcessor)
+	admit := true
 	concrete.store = admitFunc(func(context.Context, string, string, string) (bool, error) {
+		if admit {
+			return true, nil
+		}
 		return false, errors.New("dial redis://:super-secret-password@10.1.2.3:6379/0 route-secret-sentinel")
 	})
 	clock := useClock(t, time.Unix(1_710_000_000, 0))
+	admit = false
 
 	require.NoError(t, proc.ConsumeLogs(t.Context(), oneEvent("core", "storefront", "route-secret-sentinel", "view")))
+	require.Len(t, recorded.All(), 1)
+	require.Equal(t, "route_admission", fieldString(t, recorded.All()[0], "failed_stage"))
+	require.NotEmpty(t, fieldString(t, recorded.All()[0], "error_type"))
+	require.Equal(t, int64(1), fieldInt(t, recorded.All()[0], "failure_count"))
+
 	require.NoError(t, proc.ConsumeLogs(t.Context(), oneEvent("core", "storefront", "/second", "error")))
-	require.Empty(t, recorded.All())
+	require.NoError(t, proc.ConsumeLogs(t.Context(), oneEvent("core", "storefront", "/third", "vital")))
+	require.Len(t, recorded.All(), 1)
 
 	*clock = clock.Add(failureLogWindow)
-	require.NoError(t, proc.ConsumeLogs(t.Context(), oneEvent("core", "storefront", "/third", "vital")))
+	admit = true
+	require.NoError(t, proc.ConsumeLogs(t.Context(), oneEvent("core", "storefront", "/after", "view")))
+	require.Equal(t, "/after", capturedRoute(t, sink))
 	entries := recorded.All()
-	require.Len(t, entries, 1)
-	require.Equal(t, "route_admission", fieldString(t, entries[0], "failed_stage"))
-	require.NotEmpty(t, fieldString(t, entries[0], "error_type"))
-	require.Equal(t, int64(2), fieldInt(t, entries[0], "failure_count"))
-	blob := logBlob(entries[0]) + formatted.String()
+	require.Len(t, entries, 2)
+	require.Equal(t, "route_admission", fieldString(t, entries[1], "failed_stage"))
+	require.NotEmpty(t, fieldString(t, entries[1], "error_type"))
+	require.Equal(t, int64(2), fieldInt(t, entries[1], "failure_count"))
+	blob := logBlob(entries[0]) + logBlob(entries[1]) + formatted.String()
 	require.Contains(t, formatted.String(), `"failed_stage":"route_admission"`)
+	require.Contains(t, formatted.String(), `"failure_count":1`)
 	require.Contains(t, formatted.String(), `"failure_count":2`)
 	require.NotContains(t, formatted.String(), "stacktrace")
 	require.NotContains(t, blob, "super-secret-password")
 	require.NotContains(t, blob, "10.1.2.3")
 	require.NotContains(t, blob, "redis://")
 	require.NotContains(t, blob, "route-secret-sentinel")
+	require.NotContains(t, blob, "/second")
+	require.NotContains(t, blob, "/third")
+	require.NotContains(t, blob, "/after")
 	require.NotContains(t, blob, "user-secret")
 	require.NotContains(t, blob, "token=secret")
+}
+
+func TestRedisFailureLogFlushesRemainderOnShutdown(t *testing.T) {
+	redisURL, _ := startRedis(t)
+	logger, recorded, _ := warnLogger()
+	proc, _ := startProcessorWithLogger(t, redisURL, "shard-a", &captureLogs{}, logger)
+	concrete := proc.(*logsProcessor)
+	concrete.store = admitFunc(func(context.Context, string, string, string) (bool, error) {
+		return false, errors.New("redis unavailable")
+	})
+	useClock(t, time.Unix(1_720_000_000, 0))
+
+	require.NoError(t, proc.ConsumeLogs(t.Context(), oneEvent("core", "storefront", "/one", "view")))
+	require.NoError(t, proc.ConsumeLogs(t.Context(), oneEvent("core", "storefront", "/two", "view")))
+	require.Len(t, recorded.All(), 1)
+	require.Equal(t, int64(1), fieldInt(t, recorded.All()[0], "failure_count"))
 
 	concrete.flushFailure()
 	require.Len(t, recorded.All(), 2)
 	require.Equal(t, int64(1), fieldInt(t, recorded.All()[1], "failure_count"))
+	concrete.flushFailure()
+	require.Len(t, recorded.All(), 2)
 }
 
 func TestOverflowCacheStaysWithinLimitAndDropsExpiredEntries(t *testing.T) {

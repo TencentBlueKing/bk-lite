@@ -320,7 +320,7 @@ RUM 网关保持 v0.154.0，镜像标签 `0.1.0-bklite.3`。下面是这个镜�
 这条分支只有 `rumroutecap`，导出到 `signal_to_metrics/rum`。`metrics/rum_agg` 依次是
 `batch/rum_agg`、`deltatocumulative/rum`、`prometheus_remote_write/rum_agg`。
 聚合分支上没有 `memory_limiter`。`rumroutecap` 吞掉下游错误，remote write 关闭队列和重试。
-Redis 调用失败后，`rumroutecap` 熔断 5 秒：熔断期间未缓存路由记为「其他」，不再访问 Redis。失败按 5 秒汇总成一条 WARN。本地溢出缓存最多 1024 条，请求经过时清掉过期项；已缓存的溢出路由保留，满了就不再写入新的溢出项。
+Redis 调用失败后，`rumroutecap` 熔断 5 秒：熔断期间未缓存路由记为「其他」，不再访问 Redis。第一次失败立即打一条 WARN；同一 5 秒内的其余失败，在窗口结束后的下一次路由处理（不论成败）或进程关闭时再汇总成一条。本地溢出缓存最多 1024 条，请求经过时清掉过期项；已缓存的溢出路由保留，满了就不再写入新的溢出项。
 remote write 不可达时，接收接口仍成功，VictoriaLogs 不因此把同一条事件写两次。
 聚合专用的 `rum.aggregate.route` 只打在旁路副本上，不进入 VictoriaLogs。
 `deltatocumulative.max_streams` 默认 420000。超出后网关自身指标

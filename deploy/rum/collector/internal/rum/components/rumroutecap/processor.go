@@ -28,7 +28,7 @@ type failureLog struct {
 	mu        sync.Mutex
 	open      bool
 	start     time.Time
-	count     int64
+	pending   int64
 	errorType string
 }
 
@@ -173,6 +173,7 @@ func aggregates(eventType string) bool {
 func (processor *limiter) routeFor(ctx context.Context, tenant, application, route string) string {
 	key := tenant + "\x00" + application + "\x00" + route
 	now := nowFn()
+	processor.rollFailureLog(now)
 	processor.cache.maintain(now)
 	if processor.cache.hasAdmitted(key) {
 		return route
@@ -229,43 +230,62 @@ func (processor *limiter) noteUnavailable(ctx context.Context, errorType string)
 	processor.recordFailure(nowFn(), errorType)
 }
 
+func (processor *limiter) rollFailureLog(now time.Time) {
+	processor.failureLog.mu.Lock()
+	defer processor.failureLog.mu.Unlock()
+	processor.rollFailureLogLocked(now)
+}
+
+func (processor *limiter) rollFailureLogLocked(now time.Time) {
+	if !processor.failureLog.open || now.Sub(processor.failureLog.start) < failureLogWindow {
+		return
+	}
+	processor.flushPendingLocked()
+}
+
 func (processor *limiter) recordFailure(now time.Time, errorType string) {
 	processor.failureLog.mu.Lock()
 	defer processor.failureLog.mu.Unlock()
-	if processor.failureLog.open && now.Sub(processor.failureLog.start) >= failureLogWindow {
-		processor.flushFailureLocked()
-	}
+	processor.rollFailureLogLocked(now)
 	if !processor.failureLog.open {
 		processor.failureLog.open = true
 		processor.failureLog.start = now
-		processor.failureLog.count = 0
+		processor.failureLog.pending = 0
+		processor.failureLog.errorType = ""
+		processor.emitFailureLocked(1, errorType)
+		return
+	}
+	if processor.failureLog.pending == 0 {
 		processor.failureLog.errorType = errorType
 	}
-	processor.failureLog.count++
+	processor.failureLog.pending++
 }
 
 func (processor *limiter) flushFailure() {
 	processor.failureLog.mu.Lock()
 	defer processor.failureLog.mu.Unlock()
-	processor.flushFailureLocked()
+	processor.flushPendingLocked()
 }
 
-func (processor *limiter) flushFailureLocked() {
-	if !processor.failureLog.open || processor.failureLog.count == 0 {
-		processor.failureLog.open = false
-		processor.failureLog.count = 0
-		processor.failureLog.errorType = ""
+func (processor *limiter) flushPendingLocked() {
+	pending := processor.failureLog.pending
+	errorType := processor.failureLog.errorType
+	processor.failureLog.open = false
+	processor.failureLog.pending = 0
+	processor.failureLog.errorType = ""
+	if pending == 0 {
 		return
 	}
+	processor.emitFailureLocked(pending, errorType)
+}
+
+func (processor *limiter) emitFailureLocked(count int64, errorType string) {
 	processor.logger.Warn(
 		"rum aggregate route redis lookup failed",
 		zap.String("failed_stage", "route_admission"),
-		zap.String("error_type", processor.failureLog.errorType),
-		zap.Int64("failure_count", processor.failureLog.count),
+		zap.String("error_type", errorType),
+		zap.Int64("failure_count", count),
 	)
-	processor.failureLog.open = false
-	processor.failureLog.count = 0
-	processor.failureLog.errorType = ""
 }
 
 func errorTypeName(err error) string {

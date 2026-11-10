@@ -62,7 +62,7 @@ Status: ready
 ### RUM 路由准入（03）
 
 - Redis 调用失败后进入短暂熔断（量级为数秒）：熔断期间未缓存的路由直接记为「其他」，不再调用 Redis。
-- 失败日志按时间窗汇总一条 WARN（带次数、`failed_stage`、`error_type`），失败计数指标照常累加。
+- 失败日志在窗口内第一次失败时立即打一条 WARN；同窗口后续失败在窗口结束后的下一次路由处理或关闭时再汇总一条，只含尚未输出的次数，字段仍是 `failed_stage`、`error_type`、`failure_count`。失败计数指标照常累加。
 - 本地溢出缓存设条目上限并定期清理过期项；准入缓存保持现状。
 - 改了网关代码，RUM 镜像升到 `0.1.0-bklite.3`。
 
@@ -77,7 +77,7 @@ Status: ready
   保留原有“聚合库不可达时明细不重复”“重启后 `increase()` 正确”。数据面配置契约锁住：系统配置没有聚合分支，聚合配置单条入口流水线且
   `memory_limiter` 在计数之前、没有 `VICTORIAMETRICS_HOST`。`make -C deploy/apm test validate`，契约按需 `contract`。
 - 02：契约覆盖超过每服务上限时并入溢出序列、序列过期后重新出现时 `increase()` 正确（夹具用短过期时间）。
-- 03：Go 单测覆盖 Redis 失败后熔断期间不再调用 Redis、日志只汇总一条、溢出缓存不超过上限且过期项被清理；`make -C deploy/rum test`。
+- 03：Go 单测覆盖 Redis 失败后熔断期间不再调用 Redis、第一次失败立即打出 WARN、窗口到期后一次成功调用刷出其余次数、溢出缓存不超过上限且过期项被清理；`make -C deploy/rum test`。
 - 04：Server 单测覆盖默认值、自定义值、非法值；sqlite 跑 `apps/apm/tests`、`apps/rum/tests`、`apps/core/tests`，对照 master 基线不新增失败。
 - 不连接用户本机的 8428、9428、10428，不操作用户正在运行的 `bk-lite-apm-*`、`bklite-dev-*` 容器。
 
