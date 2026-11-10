@@ -1037,6 +1037,8 @@
       "list": "SLO 列表",
       "disabledTag": "已停用",
       "evalError": "评估异常",
+      "retentionTooShort": "明细保留期不足",
+      "retentionInvalid": "明细保留期配置无效",
       "thresholdMs": "阈值 {duration}",
       "archivedServiceOption": "{name}（已归档）"
     },

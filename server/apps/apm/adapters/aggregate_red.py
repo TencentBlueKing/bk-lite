@@ -20,6 +20,7 @@ from apps.apm.services.contracts import (
     SloMeasurement,
     SloMetricQuery,
 )
+from apps.apm.services.trace_retention import trace_retention_block_reason
 from apps.core.aggregate_origin import recorded_origin
 from apps.core.aggregate_promql import AggregateMetricsTooLarge, AggregateMetricsUnavailable, AggregatePromqlClient
 from apps.core.aggregate_promql import align_query_end as align_aggregate_query_end
@@ -392,7 +393,7 @@ class ApmAggregateRedRouter:
 class ApmAvailabilitySloStore:
     """可用性窗口被聚合起点覆盖时读聚合库；否则和延迟 SLO 一样读 VictoriaTraces。
 
-    聚合库报错只向上抛，不回退扫明细。
+    聚合库报错只向上抛，不回退扫明细。回退到明细时，窗口长于保留期或保留期无法解析则不查询。
     """
 
     def __init__(self, *, traces, aggregate: AggregateApmRedStore, origin_at: Callable[[], datetime | None]):
@@ -402,6 +403,9 @@ class ApmAvailabilitySloStore:
 
     def slo_measurement(self, query: SloMetricQuery) -> SloMeasurement:
         if query.sli_type != "availability" or not self._covered(query):
+            reason = trace_retention_block_reason(query.started_at, query.ended_at)
+            if reason is not None:
+                raise TelemetryStoreUnavailable(reason)
             return self.traces.slo_measurement(query)
         return self.aggregate.slo_measurement(query)
 

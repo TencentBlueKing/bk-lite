@@ -183,6 +183,142 @@ def test_latency_slo_keeps_the_original_victoria_traces_query(sli_type):
     assert traces.queries[0].ended_at == EVALUATED
 
 
+def test_trace_fallback_omits_compliance_when_retention_is_shorter_than_the_window(monkeypatch):
+    monkeypatch.setenv("APM_TRACE_RETENTION", "7d")
+    traces = _Traces(TRACES_RESULT)
+    client = _Client(_counts)
+    store = _store(client, traces, origin=None)
+
+    with pytest.raises(TelemetryStoreUnavailable, match="^明细保留期不足$"):
+        store.slo_measurement(_query(started_at=START_30D))
+    result = DjangoApmReliabilityService(store).evaluate(
+        _rule(evaluation_window="rolling30d"),
+        evaluated_at=EVALUATED,
+    )
+
+    assert traces.queries == []
+    assert client.instant == []
+    assert result.current_rate is None
+    assert result.budget_remaining is None
+    assert result.data_state == "no_data"
+    assert result.reason == "明细保留期不足"
+
+
+@pytest.mark.parametrize("retention", ["7d", "168h"])
+def test_trace_fallback_calculates_when_retention_equals_the_window(monkeypatch, retention):
+    monkeypatch.setenv("APM_TRACE_RETENTION", retention)
+    traces = _Traces(TRACES_RESULT)
+    client = _Client(_counts)
+
+    result = DjangoApmReliabilityService(_store(client, traces, origin=None)).evaluate(
+        _rule(evaluation_window="rolling7d"),
+        evaluated_at=EVALUATED,
+    )
+
+    assert result.current_rate == 88.0
+    assert result.budget_remaining == 0.0
+    assert result.data_state == "available"
+    assert result.reason == ""
+    assert len(traces.queries) == 1
+    assert client.instant == []
+
+
+@pytest.mark.parametrize(
+    ("retention", "expected_rate"),
+    [
+        ("9d", None),
+        ("10d", 88.0),
+    ],
+)
+def test_calendar_month_compares_trace_retention_with_the_actual_span(monkeypatch, retention, expected_rate):
+    # 2026-11-01 00:00 到 2026-11-10 12:00:30，实际跨度 9 天 12.5 小时，不是固定 30 天。
+    monkeypatch.setenv("APM_TRACE_RETENTION", retention)
+    traces = _Traces(TRACES_RESULT)
+    client = _Client(_counts)
+
+    result = DjangoApmReliabilityService(_store(client, traces, origin=None)).evaluate(
+        _rule(evaluation_window="calendarMonth"),
+        evaluated_at=EVALUATED,
+    )
+
+    assert result.current_rate == expected_rate
+    assert client.instant == []
+    if expected_rate is None:
+        assert result.reason == "明细保留期不足"
+        assert result.budget_remaining is None
+        assert traces.queries == []
+    else:
+        assert result.data_state == "available"
+        assert traces.queries[0].started_at == START_MONTH
+
+
+def test_aggregate_path_ignores_trace_retention(monkeypatch):
+    monkeypatch.setenv("APM_TRACE_RETENTION", "7d")
+    traces = _Traces(TRACES_RESULT)
+    client = _Client(_counts)
+
+    result = DjangoApmReliabilityService(_store(client, traces, origin=START_30D)).evaluate(
+        _rule(evaluation_window="rolling30d"),
+        evaluated_at=EVALUATED,
+    )
+
+    assert result.current_rate == pytest.approx(97.5)
+    assert result.data_state == "available"
+    assert traces.queries == []
+    assert client.instant[0][0].startswith("sum(increase(apm_calls_total{")
+
+
+def test_latency_slo_omits_compliance_when_trace_retention_is_shorter_than_the_window(monkeypatch):
+    monkeypatch.setenv("APM_TRACE_RETENTION", "7d")
+    traces = _Traces(TRACES_RESULT)
+    client = _Client(_counts)
+
+    result = DjangoApmReliabilityService(_store(client, traces, origin=START_30D)).evaluate(
+        _rule(evaluation_window="rolling30d", sli_type="latency_p99", latency_threshold_ms=300),
+        evaluated_at=EVALUATED,
+    )
+
+    assert result.current_rate is None
+    assert result.budget_remaining is None
+    assert result.data_state == "no_data"
+    assert result.reason == "明细保留期不足"
+    assert traces.queries == []
+    assert client.instant == []
+
+
+def test_unparseable_trace_retention_omits_compliance_without_querying(monkeypatch):
+    monkeypatch.setenv("APM_TRACE_RETENTION", "35days")
+    traces = _Traces(TRACES_RESULT)
+    client = _Client(_counts)
+
+    result = DjangoApmReliabilityService(_store(client, traces, origin=None)).evaluate(
+        _rule(evaluation_window="rolling7d"),
+        evaluated_at=EVALUATED,
+    )
+
+    assert traces.queries == []
+    assert client.instant == []
+    assert result.current_rate is None
+    assert result.budget_remaining is None
+    assert result.data_state == "no_data"
+    assert result.reason == "明细保留期配置无效"
+
+
+def test_aggregate_path_ignores_unparseable_trace_retention(monkeypatch):
+    monkeypatch.setenv("APM_TRACE_RETENTION", "35days")
+    traces = _Traces(TRACES_RESULT)
+    client = _Client(_counts)
+
+    result = DjangoApmReliabilityService(_store(client, traces, origin=START_7D)).evaluate(
+        _rule(evaluation_window="rolling7d"),
+        evaluated_at=EVALUATED,
+    )
+
+    assert result.current_rate == pytest.approx(97.5)
+    assert result.data_state == "available"
+    assert traces.queries == []
+
+
 @pytest.mark.parametrize(
     ("error", "exc_type", "message"),
     [
@@ -383,3 +519,48 @@ def test_slo_pages_degrade_when_the_aggregate_store_fails(apm_api_client, monkey
     assert dashboard.status_code == 200
     assert dashboard.data["slos"]["status"] == "failed"
     assert dashboard.data["slos"]["error"] == "聚合库查询不可用"
+
+
+@pytest.mark.django_db
+def test_dashboard_list_and_detail_share_empty_rate_when_trace_retention_is_short(apm_api_client, monkeypatch):
+    service = _visible_service()
+    slo = ApmSlo.objects.create(
+        name="结算时延",
+        service=service,
+        environment="production",
+        sli_type="latency_p95",
+        objective="95.000",
+        latency_threshold_ms=300,
+        evaluation_window="rolling30d",
+    )
+    AggregateMetricOrigin.objects.create(product="apm", started_at=datetime(2026, 1, 1, tzinfo=UTC))
+    monkeypatch.setenv("APM_TRACE_RETENTION", "7d")
+    _run_dashboard_inline(monkeypatch)
+    monkeypatch.setattr("apps.apm.adapters.aggregate_red.AggregatePromqlClient.from_env", lambda: _Client(_counts))
+    scanned = []
+    monkeypatch.setattr(
+        "apps.apm.adapters.victoriatraces.VictoriaTracesTelemetryStore.slo_measurement",
+        lambda self, query: scanned.append(query) or SloMeasurement(50.0, 1.0, 2.0, MetricDataState.AVAILABLE),
+    )
+
+    dashboard = apm_api_client.get("/api/v1/apm/dashboard/?window=1h")
+    listed = apm_api_client.get("/api/v1/apm/slos/")
+    detail = apm_api_client.get(f"/api/v1/apm/slos/{slo.id}/")
+
+    assert scanned == []
+    assert listed.status_code == 200
+    assert listed.data[0]["current_rate"] is None
+    assert listed.data[0]["budget_remaining"] is None
+    assert listed.data[0]["data_state"] == "no_data"
+    assert listed.data[0]["reason"] == "明细保留期不足"
+    assert detail.status_code == 200
+    assert detail.data["current_rate"] is None
+    assert detail.data["reason"] == listed.data[0]["reason"]
+    assert detail.data["id"] == listed.data[0]["id"] == str(slo.id)
+    assert dashboard.status_code == 200
+    assert dashboard.data["slos"]["status"] == "ok"
+    card = dashboard.data["slos"]["data"]["items"][0]
+    assert card["current_rate"] is None
+    assert card["met"] is None
+    assert card["reason"] == listed.data[0]["reason"]
+    assert card["id"] == str(slo.id)

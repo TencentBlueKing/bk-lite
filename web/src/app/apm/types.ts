@@ -230,8 +230,9 @@ export interface ApmDashboardSloRow {
   service_name: string;
   environment: string;
   objective: number;
-  current_rate: number;
-  met: boolean;
+  current_rate: number | null;
+  met: boolean | null;
+  reason?: string;
 }
 
 export interface ApmDashboardTopRow {

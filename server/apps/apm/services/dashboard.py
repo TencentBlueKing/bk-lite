@@ -13,6 +13,7 @@ from apps.apm.models import ApmAlert, ApmDeploymentEvent, ApmService, ApmService
 from apps.apm.services.contracts import ServiceMetricQuery, ServiceRed
 from apps.apm.services.reliability import DjangoApmReliabilityService
 from apps.apm.services.status import catalog_status
+from apps.apm.services.trace_retention import TRACE_RETENTION_INVALID, TRACE_RETENTION_TOO_SHORT
 from apps.core.logger import apm_logger as logger
 from apps.core.utils.viewset_utils import build_json_membership_query
 
@@ -34,6 +35,7 @@ ALERT_SPARKLINE_HOURS = 24
 MAX_METRIC_TARGETS = 40
 MAX_TOP_ROWS = 5
 MAX_SLO_ROWS = 5
+_TRACE_RETENTION_REASONS = {TRACE_RETENTION_TOO_SHORT, TRACE_RETENTION_INVALID}
 MAX_ALERT_ROWS = 5
 MAX_RELEASE_ROWS = 5
 RELEASE_LOOKBACK = timedelta(days=7)
@@ -456,12 +458,28 @@ class ApmDashboardService:
         store_error = ""
         for slo in slos:
             evaluation = self.reliability.evaluate(slo, evaluated_at=self.now_fn())
-            if evaluation.current_rate is None:
-                # 无样本仍是空态。存储失败不能伪装成「没有 SLO」，否则首页和列表对不上。
-                if evaluation.reason not in {"", "no_samples", "disabled"}:
-                    store_error = store_error or evaluation.reason
-                continue
             objective = float(slo.objective)
+            if evaluation.current_rate is None:
+                # 保留期不够是这条 SLO 自己的空达成率，和列表用同一个原因，不当成存储故障或 0。
+                if evaluation.reason in _TRACE_RETENTION_REASONS:
+                    rows.append(
+                        {
+                            "id": str(slo.id),
+                            "service_id": str(slo.service_id),
+                            "service_name": slo.service.name,
+                            "environment": slo.environment,
+                            "objective": objective,
+                            "current_rate": None,
+                            "met": None,
+                            "reason": evaluation.reason,
+                        }
+                    )
+                elif evaluation.reason not in {"", "no_samples", "disabled"}:
+                    # 无样本仍是空态。存储失败不能伪装成「没有 SLO」，否则首页和列表对不上。
+                    store_error = store_error or evaluation.reason
+                if len(rows) >= MAX_SLO_ROWS:
+                    break
+                continue
             met = evaluation.current_rate >= objective
             rows.append(
                 {

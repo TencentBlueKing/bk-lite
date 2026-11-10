@@ -54,6 +54,7 @@ import {
   formatThroughput,
   isErrorRateDanger,
 } from '@/app/apm/components/metric-format';
+import { sloRetentionLabel } from '@/app/apm/components/slo-reason';
 import type {
   ApmClientRollupRow,
   ApmDeploymentEvent,
@@ -1249,9 +1250,15 @@ export default function ApmServiceDetailPage() {
                           width: APM_TABLE_COLUMN_WIDTHS.metricWide,
                           align: 'right',
                           responsive: ['md'],
-                          render: (value) => value == null
-                            ? '—'
-                            : <span className="tabular-nums">{formatPercentage(value)}</span>,
+                          render: (value, row) => {
+                            const retention = sloRetentionLabel(row.reason, t);
+                            if (retention) {
+                              return <span className="block truncate text-[var(--color-text-3)]" title={retention}>{retention}</span>;
+                            }
+                            return value == null
+                              ? '—'
+                              : <span className="tabular-nums">{formatPercentage(value)}</span>;
+                          },
                         },
                         {
                           title: t('apm.serviceDetail.errorBudget', '错误预算'),

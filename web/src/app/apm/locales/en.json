@@ -1037,6 +1037,8 @@
       "list": "SLO list",
       "disabledTag": "Disabled",
       "evalError": "Evaluation error",
+      "retentionTooShort": "Trace retention is shorter than this window",
+      "retentionInvalid": "Trace retention setting is invalid",
       "thresholdMs": "Threshold {duration}",
       "archivedServiceOption": "{name} (archived)"
     },
