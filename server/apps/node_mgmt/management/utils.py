@@ -3,6 +3,7 @@ from pathlib import Path
 from django.core.files import File
 
 from apps.core.logger import node_logger as logger
+from apps.node_mgmt.constants.package import PackageConstants
 from apps.node_mgmt.models import PackageVersion
 from apps.node_mgmt.services.package import PackageService
 
@@ -34,7 +35,9 @@ def package_version_upload(_type, options):
     )
 
     pk_v = PackageVersion.objects.filter(os=_os, cpu_architecture=cpu_architecture, object=_object, version=version).first()
-    if pk_v and not force_upload:
+    # version 精确等于 latest 时同键默认覆盖，行为等同 force_upload；其它版本号仍默认跳过。
+    overwrite_existing = bool(force_upload) or version == PackageConstants.VERSION_LATEST
+    if pk_v and not overwrite_existing:
         logger.warning(
             "包版本已存在，跳过上传 package_type=%s os=%s cpu_architecture=%s object=%s version=%s",
             _type,
