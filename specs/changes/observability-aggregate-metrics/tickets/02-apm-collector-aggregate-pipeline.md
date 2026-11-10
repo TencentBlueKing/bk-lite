@@ -27,9 +27,7 @@ Blocked by: 01 — 聚合层规则文档与 ADR
 - 复核决定（按推荐方案）：Collector 无法按空环境变量只停用一条流水线，所以接受“两份配置”的做法。
   挂 `system.yaml` 时必须配置写入地址和分片；聚合库未就绪时改挂 `system-traces.yaml`，明细不受影响。
   这一条已写进 `deploy/apm/README.md` 和验收清单。
-- 既有缺口（不属于本 ticket）：`test_data_plane_contract.py` 末尾的 Python SDK 片段断言没有传
-  `probe_download_url`。这个参数从 `999469c6b3`（2026-08-13）起变成必填，契约测试没有跟着更新。
-  Collector 和 VictoriaTraces 的断言已经通过。
+- 已在 observability-followups/01 修复：`test_data_plane_contract.py` 末尾的 Python SDK 片段按探针下载地址契约生成并执行。
 
 ## Completion evidence
 

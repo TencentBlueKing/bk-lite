@@ -2,19 +2,25 @@
 
 from __future__ import annotations
 
+import hashlib
 import http.client
+import io
 import json
 import os
 import socket
 import subprocess
 import sys
+import tarfile
 import tempfile
+import threading
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
 from datetime import UTC, datetime, timedelta
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -236,6 +242,74 @@ def _configuration_script(code: str) -> str:
     return section.split("\n", maxsplit=1)[1]
 
 
+_PYTHON_WHEEL_MEMBER = "contract-placeholder.whl"
+_PYTHON_WHEEL_BYTES = b"bk-lite-apm-contract-python-probe\n"
+
+
+def _python_wheels_archive() -> bytes:
+    """最小 wheelhouse。接入片段按 tar.gz 下载并解压，契约测试不把占位包装进解释器。"""
+
+    buffer = io.BytesIO()
+    with tarfile.open(fileobj=buffer, mode="w:gz") as archive:
+        info = tarfile.TarInfo(name=_PYTHON_WHEEL_MEMBER)
+        info.size = len(_PYTHON_WHEEL_BYTES)
+        info.mtime = 0
+        info.mode = 0o644
+        archive.addfile(info, io.BytesIO(_PYTHON_WHEEL_BYTES))
+    return buffer.getvalue()
+
+
+def _start_probe_download_server(payload: bytes, artifact_path: str):
+    class _Handler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            if urllib.parse.urlsplit(self.path).path != artifact_path:
+                self.send_error(404)
+                return
+            self.send_response(200)
+            self.send_header("Content-Type", "application/gzip")
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+
+        def log_message(self, format, *args):
+            return
+
+    last_error: Exception | None = None
+    for _ in range(8):
+        port = _free_port()
+        try:
+            server = ThreadingHTTPServer(("127.0.0.1", port), _Handler)
+        except OSError as error:
+            last_error = error
+            continue
+        thread = threading.Thread(target=server.serve_forever, name="apm-contract-probe-http", daemon=True)
+        thread.start()
+        return server, thread, port
+    raise RuntimeError(f"could not bind probe download server: {last_error}")
+
+
+def _execute_python_probe_download(code: str) -> None:
+    """执行片段里的下载、SHA-256 校验和 tar 解压，停在 pip 之前。"""
+
+    install = code.split("# 1. 安装探针", maxsplit=1)[1].split("# 2. 配置上报", maxsplit=1)[0]
+    assert "python -m pip install --no-index" in install
+    download = install.split("python -m pip", maxsplit=1)[0]
+    assert "curl --fail" in download
+    assert "tar -xf opentelemetry-python-wheels.tar.gz -C otel-python-wheels" in download
+    with tempfile.TemporaryDirectory(prefix="apm-contract-probe-") as directory:
+        completed = subprocess.run(
+            ["/bin/sh", "-c", download],
+            cwd=directory,
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+        assert completed.returncode == 0, f"{completed.stdout}\n{completed.stderr}"
+        extracted = Path(directory) / "otel-python-wheels" / _PYTHON_WHEEL_MEMBER
+        assert extracted.read_bytes() == _PYTHON_WHEEL_BYTES
+
+
 def test_trace_crosses_bounded_jetstream_and_reaches_victoria_traces_once():
     project = f"bk-lite-apm-contract-{os.getpid()}"
     http_port = _free_port()
@@ -285,6 +359,8 @@ def test_trace_crosses_bounded_jetstream_and_reaches_victoria_traces_once():
         }
     )
     compose = ["docker", "compose", "--project-name", project, "-f", str(COMPOSE_FILE)]
+    probe_server = None
+    probe_thread = None
 
     try:
         _compose_action(compose, environment, "up", "-d", "--wait", "--wait-timeout", "120", timeout=180)
@@ -478,6 +554,9 @@ def test_trace_crosses_bounded_jetstream_and_reaches_victoria_traces_once():
         )
 
         # Server 生成的标准环境变量必须能驱动真实 Python SDK 通过同一 4318 链路写入 VT。
+        # 探针地址按当前契约指向本测试的临时 HTTP 服务。下载、校验和解压真实执行；
+        # pip 不执行，避免把占位包装进本机解释器。SHA-256 仍由服务端对同一份字节计算，
+        # 不连接正在运行的 NATS 对象存储。
         import django
 
         os.environ.setdefault("DJANGO_SETTINGS_MODULE", "settings")
@@ -487,18 +566,47 @@ def test_trace_crosses_bounded_jetstream_and_reaches_victoria_traces_once():
         django.setup()
         from apps.apm.services import DjangoIntegrationConfigurationService
         from apps.apm.services.contracts import IngestSnippetRequest
-
-        generated = DjangoIntegrationConfigurationService().render_snippet(
-            IngestSnippetRequest(
-                language="python",
-                runtime="host",
-                endpoint=f"http://127.0.0.1:{http_port}",
-                service_namespace="sdk-contract-app",
-                service_name="sdk-checkout",
-                service_version="3.2.1",
-                environment="contract",
-            )
+        from apps.apm.services.probe_artifacts import (
+            _PROBE_ARTIFACT_SHA256_CACHE,
+            PYTHON_WHEELS_ARTIFACT_NAME,
+            ProbeArtifactNotFound,
+            build_probe_artifact_download_url,
         )
+
+        probe_archive = _python_wheels_archive()
+        probe_path = urllib.parse.urlsplit(build_probe_artifact_download_url("http://127.0.0.1", PYTHON_WHEELS_ARTIFACT_NAME)).path
+        probe_server, probe_thread, probe_port = _start_probe_download_server(probe_archive, probe_path)
+        probe_download_url = build_probe_artifact_download_url(
+            f"http://127.0.0.1:{probe_port}",
+            PYTHON_WHEELS_ARTIFACT_NAME,
+        )
+
+        def _open_served_probe(artifact_name: str):
+            if artifact_name != PYTHON_WHEELS_ARTIFACT_NAME:
+                raise ProbeArtifactNotFound(artifact_name)
+
+            def _chunks():
+                yield probe_archive
+
+            return _chunks(), artifact_name
+
+        _PROBE_ARTIFACT_SHA256_CACHE.pop(PYTHON_WHEELS_ARTIFACT_NAME, None)
+        with patch("apps.apm.services.probe_artifacts.open_probe_artifact_stream", _open_served_probe):
+            generated = DjangoIntegrationConfigurationService().render_snippet(
+                IngestSnippetRequest(
+                    language="python",
+                    runtime="host",
+                    endpoint=f"http://127.0.0.1:{http_port}",
+                    service_namespace="sdk-contract-app",
+                    service_name="sdk-checkout",
+                    service_version="3.2.1",
+                    environment="contract",
+                    probe_download_url=probe_download_url,
+                )
+            )
+        assert probe_download_url in generated.code
+        assert hashlib.sha256(probe_archive).hexdigest() in generated.code
+        _execute_python_probe_download(generated.code)
         sdk = subprocess.run(
             [
                 "/bin/sh",
@@ -523,6 +631,11 @@ def test_trace_crosses_bounded_jetstream_and_reaches_victoria_traces_once():
         assert "sdk-contract-app" in sdk_body
         assert "sdk-contract-instance" in sdk_body
     finally:
+        if probe_server is not None:
+            probe_server.shutdown()
+            probe_server.server_close()
+        if probe_thread is not None:
+            probe_thread.join(timeout=5)
         subprocess.run(
             [*compose, "down", "--volumes", "--remove-orphans"],
             cwd=REPOSITORY_ROOT,
