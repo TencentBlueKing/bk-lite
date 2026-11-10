@@ -6,7 +6,7 @@ from apps.core.aggregate_promql import align_query_end, apm_flush_seconds, rum_f
 
 ENDED = datetime(2026, 11, 10, 0, 16, 30, tzinfo=UTC)
 DEFAULT_APM_END = datetime(2026, 11, 10, 0, 15, tzinfo=UTC)
-DEFAULT_RUM_END = datetime(2026, 11, 10, 0, 15, 50, tzinfo=UTC)
+DEFAULT_RUM_END = datetime(2026, 11, 10, 0, 15, tzinfo=UTC)
 _TEMPLATE = "event=aggregate_flush_interval_invalid name=%s default_seconds=%s"
 
 
@@ -38,7 +38,7 @@ def test_unset_intervals_use_the_collector_defaults(monkeypatch):
     (apm_seconds, rum_seconds), records = _warnings(lambda: (apm_flush_seconds(), rum_flush_seconds()))
 
     assert apm_seconds == 60
-    assert rum_seconds == 10
+    assert rum_seconds == 60
     assert _aligned(apm_seconds) == DEFAULT_APM_END
     assert _aligned(rum_seconds) == DEFAULT_RUM_END
     assert records == []
@@ -46,12 +46,12 @@ def test_unset_intervals_use_the_collector_defaults(monkeypatch):
 
 def test_custom_intervals_move_the_aligned_end(monkeypatch):
     monkeypatch.setenv("APM_AGG_FLUSH_INTERVAL", "30s")
-    monkeypatch.setenv("RUM_AGG_BATCH_TIMEOUT", "1m")
+    monkeypatch.setenv("RUM_AGG_BATCH_TIMEOUT", "10s")
 
     assert apm_flush_seconds() == 30
-    assert rum_flush_seconds() == 60
+    assert rum_flush_seconds() == 10
     assert _aligned(apm_flush_seconds()) == datetime(2026, 11, 10, 0, 15, 30, tzinfo=UTC)
-    assert _aligned(rum_flush_seconds()) == DEFAULT_APM_END
+    assert _aligned(rum_flush_seconds()) == datetime(2026, 11, 10, 0, 15, 50, tzinfo=UTC)
     assert align_apm_query_end(ENDED, now=ENDED) == datetime(2026, 11, 10, 0, 15, 30, tzinfo=UTC)
 
 

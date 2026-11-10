@@ -4,8 +4,9 @@
 环境变量、按什么顺序上线、怎么验收和回滚。细则以文中链接的规则文档为准；本文与细则冲突时，
 以细则为准。
 
-对应代码：`master` 上的合并提交 `efc28fb228` 及其之前的四个需求合并
-（RUM 会话结束记录、APM 策略合并查询、可观测聚合层、遗留问题收口）。
+对应代码：`master` 上的以下合并：RUM 会话结束记录、APM 策略合并查询、可观测聚合层、遗留问题收口、
+聚合链路上线前加固（`observability-aggregate-hardening`）、APM `0006` 迁移修复，以及本文所在的上线复查修正。
+打包以包含这些合并的 `master` 为准。
 
 ## 1. 调整总览
 
@@ -83,8 +84,14 @@ make validate     # 用镜像校验 regional / system / aggregate 配置
 | `aggregate.yaml` | 聚合 Collector | 入口聚合。单条入口流水线，`memory_limiter` 在计数之前 |
 | `aggregate-auth.yaml` | 聚合 Collector | 聚合库启用基础认证时，作为第二个 `--config` 追加 |
 
-换镜像和换配置必须在同一次变更里完成。先建消费者并启动聚合进程的同时，系统 Collector 换成新的
-`system.yaml`。不要让旧镜像里的聚合分支和新进程同时写聚合库，也不要回放 Stream 积压。
+换镜像和换配置必须在同一次变更里完成，并严格按下面的顺序：
+
+1. 预建消费者 `BKLITE_APM_AGGREGATE`（见 3.3）。聚合从这一刻开始计数。
+2. 系统 Collector 换成 `bklite.3` 和新的 `system.yaml`。如果它原来带聚合分支，到这一步才停止写聚合库。
+3. 在 5 分钟内启动聚合 Collector。它会从第 1 步的位置开始消费。
+
+顺序反过来会出问题：先换系统 Collector、后建消费者，中间这段调用链永远不会进入聚合；第 3 步晚于 5 分钟，
+积压的 Span 会记成晚到，不进请求数和错误率。不要让旧镜像里的聚合分支和新进程同时写聚合库，也不要回放 Stream 积压。
 
 ### 3.3 消费者
 
@@ -163,7 +170,7 @@ make image        # 产出 bklite/rum-collector:0.1.0-bklite.3
 |---|---|
 | `AGG_VICTORIAMETRICS_WRITE_URL` | 聚合库的 remote write 地址 |
 | `RUM_AGG_SHARD` | 这个网关进程固定的分片值：1 到 64 位，只含字母、数字和 `.` `_` `:` `-`。每个副本各不相同，重启不变 |
-| `RUM_AGG_BATCH_TIMEOUT` | 可选，默认 `10s`。改这个值必须同时改 Server 的同名变量 |
+| `RUM_AGG_BATCH_TIMEOUT` | 可选，默认 `60s`。缩短后磁盘按比例增加（10 秒约为 6 倍）。改这个值必须同时改 Server 的同名变量 |
 | `RUM_AGG_MAX_STREAMS` | 可选，默认 `420000` |
 | `AGG_VICTORIAMETRICS_USER` / `AGG_VICTORIAMETRICS_PASSWORD` | 可选。都设时才追加 `--config=/etc/bklite-rum/rum.gateway.auth.yaml`；口令为空时不要加载 |
 
@@ -200,7 +207,7 @@ Redis 调用失败后熔断 5 秒，熔断期间未缓存路由记为「其他�
 | `AGG_VICTORIAMETRICS_QUERY_URL` | 同一套聚合库的内网查询入口。不要带 `/api/v1/write`，不要填成 `VICTORIAMETRICS_HOST` |
 | `AGG_VICTORIAMETRICS_USER` / `AGG_VICTORIAMETRICS_PASSWORD` | 启用基础认证时设置 |
 | `APM_AGG_FLUSH_INTERVAL` | 与聚合 Collector 相同，默认 `60s`。查询结束时间按它留出刷出周期。改这个值必须同时改采集端和 Server |
-| `RUM_AGG_BATCH_TIMEOUT` | 与 RUM 网关相同，默认 `10s`。查询结束时间按它留出刷出周期。改这个值必须同时改采集端和 Server |
+| `RUM_AGG_BATCH_TIMEOUT` | 与 RUM 网关相同，默认 `60s`。查询结束时间按它留出刷出周期。改这个值必须同时改采集端和 Server |
 
 这几个变量目前不在 Server 的环境变量模板里，要在 Server 的部署环境中手动添加。
 只改采集端、不改 Server 时，窗口末尾会少算。非法或非正的刷出间隔，Server 回落上面的默认值并记一条 WARN，不记录原始值。
@@ -228,8 +235,8 @@ Redis 调用失败后熔断 5 秒，熔断期间未缓存路由记为「其他�
 1. 部署聚合库，配好保留期、内网访问和第 7 节的告警。
 2. 发布 Server（自动执行迁移和新 Beat 任务）。先不配 `AGG_VICTORIAMETRICS_QUERY_URL`，行为与原来一致。
 3. 升级 RUM 网关、控制器、维护进程到 `bklite.3`：网关配写入地址和分片值，维护进程加会话库参数。
-4. 升级 APM 区域、系统和聚合 Collector 到 `bklite.3`。同一变更里预建 `BKLITE_APM_AGGREGATE`
-   （`deliver new`）、启动聚合 Collector，并把系统 Collector 换成只写 VictoriaTraces 的 `system.yaml`。
+4. 升级 APM 区域、系统和聚合 Collector 到 `bklite.3`，严格按 3.2 的顺序：先预建 `BKLITE_APM_AGGREGATE`
+   （`deliver new`），再把系统 Collector 换成只写 VictoriaTraces 的 `system.yaml`，然后 5 分钟内启动聚合 Collector。
    写入地址和分片值只配在聚合进程上。
 5. 确认聚合库里已有 `apm_calls_total` 和 `rum_views_total` 序列后，给 Server 配上
    `AGG_VICTORIAMETRICS_QUERY_URL` 并重启。约一分钟后聚合起点记录下来，此后的窗口开始读聚合库。
@@ -245,6 +252,8 @@ Redis 调用失败后熔断 5 秒，熔断期间未缓存路由记为「其他�
 | 聚合库活跃序列 | 相对本环境稳定基线异常上涨，且没有对应上线或维度变更。第 2 节的典型值和最坏值都不是告警阈值 |
 | APM 溢出序列 | `count(apm_calls_total{otel_metric_overflow="true"}) > 0`。某个服务资源的入口组合超过每资源上限。溢出序列没有服务名和环境；用 `job`（命名空间/服务名）定位。处理办法是修 Span 命名，或调高 `APM_AGG_CARDINALITY_LIMIT`。不要改 Server 查询去按 `job` 算 RED |
 | APM 聚合 Collector、RUM 网关 | `otelcol_exporter_send_failed_metric_points` 出现即告警。聚合写入关闭了队列，不要看 `enqueue_failed` |
+| APM 聚合消费者 | 聚合 Collector 健康检查失败，或 `BKLITE_APM_AGGREGATE` 的待投递消息数（`num_pending`）持续增长。Server 的健康探针不看这个消费者，必须单独告警。积压超过 5 分钟的 Span 恢复后会记成晚到，这段时间首页请求数偏少 |
+| APM 晚到计数 | `increase(apm_aggregate_late_spans_total[5m])` 相对基线突增。通常是聚合 Collector 停过或消费跟不上 |
 | RUM 网关 | `otelcol_deltatocumulative_datapoints{error="limit"}` 增长，说明超出流上限 |
 | RUM 维护进程 | `core_rum_session_end_records_lost_total` 增长 |
 

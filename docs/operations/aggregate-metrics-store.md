@@ -68,7 +68,7 @@ Monitor 和 CMDB 继续使用自己的 VictoriaMetrics。聚合序列不写入�
 | `APM_AGG_SERIES_EXPIRATION` | APM 聚合 Collector，可选 | 单条序列无新 Span 后从进程内存删除。留空时用 `1h` |
 | `RUM_AGG_SHARD` | 每一个 RUM 网关写入进程 | 该进程固定的分片值 |
 | `APM_AGG_FLUSH_INTERVAL` | APM 聚合 Collector 与 Server，可选 | 聚合指标刷出间隔。留空时用 `60s`。改这个值必须同时改采集端和 Server |
-| `RUM_AGG_BATCH_TIMEOUT` | RUM 网关与 Server，可选 | 聚合指标刷出间隔。留空时用 `10s`。改这个值必须同时改采集端和 Server |
+| `RUM_AGG_BATCH_TIMEOUT` | RUM 网关与 Server，可选 | 聚合指标刷出间隔。留空时用 `60s`，缩短后磁盘按比例增加。改这个值必须同时改采集端和 Server |
 | `RUM_AGG_MAX_STREAMS` | RUM 网关，可选 | `deltatocumulative` 流上限。留空时用 `420000`。超出的样本记在网关指标 `otelcol_deltatocumulative_datapoints`，属性 `error=limit` |
 
 `AGG_VICTORIAMETRICS_WRITE_URL` 填写内网 remote write 地址，路径通常是
@@ -89,7 +89,7 @@ Monitor 和 CMDB 继续使用自己的 VictoriaMetrics。聚合序列不写入�
 
 `APM_AGG_FLUSH_INTERVAL` 和 `RUM_AGG_BATCH_TIMEOUT` 同时给采集端和 Server 用。采集端按它刷出，
 Server 按它把查询结束时间留出一个周期。改其中一个值必须两边一起改，只改采集端时窗口末尾会少算。
-Server 遇到非法或非正值时回落默认 60 秒或 10 秒，并记一条 WARN，不记录原始值。
+Server 遇到非法或非正值时回落默认 60 秒，并记一条 WARN，不记录原始值。
 
 `APM_AGG_SHARD` 和 `RUM_AGG_SHARD` 各表示一个写入进程的身份。每个会执行 remote write
 的进程取一个值，所有这类进程的值互不相同，包括同一产品的多个副本。值写在部署配置里，
@@ -209,7 +209,7 @@ APM 和 RUM 各自允许的业务维度由 02、05 ticket 锁定。那些白名�
 
 ## 6. 告警
 
-告警接到运维自己的渠道。研发不提供生产告警编排。至少配置下面三类。
+告警接到运维自己的渠道。研发不提供生产告警编排。至少配置下面几类。
 
 - 聚合库数据目录所在文件系统：使用率达到 70% 时告警，达到 85% 时定为严重。
 - 活跃序列数相对本环境最近的稳定基线异常上涨。短时间内明显偏离基线，且没有对应的
@@ -226,6 +226,9 @@ APM 和 RUM 各自允许的业务维度由 02、05 ticket 锁定。那些白名�
   remote write 都关闭了队列，不要把 `otelcol_exporter_enqueue_failed_metric_points`
   当成这条流水线的丢弃信号。RUM 流上限丢弃看网关自身的
   `otelcol_deltatocumulative_datapoints`，属性 `error=limit`。
+- APM 聚合消费者积压。聚合 Collector 健康检查失败，或 `BKLITE_APM_AGGREGATE` 的待投递消息数
+  （`num_pending`）持续增长，就要告警。Server 的健康探针只看系统消费者，不反映这个消费者。
+  积压超过 5 分钟的 Span 恢复后记成晚到，`apm_aggregate_late_spans_total` 会突增，这段时间的请求数偏少。
 
 收到 remote write 告警时，先恢复聚合库或网络。不要为了清告警把导出失败退回给
 JetStream 或 RUM 接收接口。那样做会让调用链重复入库，或让 RUM 接收接口失败。
@@ -233,7 +236,7 @@ JetStream 或 RUM 接收接口。那样做会让调用链重复入库，或让 R
 ## 7. 容量参考
 
 下面是 35 天的容量估算，不是远程 VictoriaMetrics 上量到的磁盘占用。系数是约
-1 字节每个样本，样本间隔按 60 秒。刷出更快时，磁盘按比例增加。实际容量以压测为准。
+1 字节每个样本，样本间隔按 60 秒，即 APM、RUM 的默认刷出间隔。刷出更快时，磁盘按比例增加，例如 RUM 改成 10 秒时最坏约为表中的 6 倍。实际容量以压测为准。
 
 | 项 | APM | RUM |
 |---|---|---|
