@@ -1032,7 +1032,7 @@ tools:
       activedirectory_get_columns:
         description: List fields and data types for a selected Active Directory table. Output is CSV.
       activedirectory_run_query:
-        description: Run a read-only SELECT against Active Directory tables, with optional joins, filters, and sorting. Output is CSV. One call reads every LDAP page; do not pass a page number. Each table stops at 10000 LDAP entries and the result says when it is truncated.
+        description: Run a read-only SELECT against Active Directory tables, with optional joins, filters, and sorting. Output is CSV. One call reads every matching LDAP page; do not pass a page number. Equality, LIKE, AND, and OR on table columns are sent to the directory first, and the fetch limit applies to matching objects. Conditions that cannot be translated are applied after reading up to that limit. Each domain controller stops at its own fetch limit, or 10000 when unset, and the result says when it is truncated.
   elasticsearch:
     name: Elasticsearch
     description: |

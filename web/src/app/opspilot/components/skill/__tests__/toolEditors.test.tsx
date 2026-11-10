@@ -304,6 +304,69 @@ describe('Active Directory LDAPS 证书校验', () => {
   });
 });
 
+describe('Active Directory 单次查询上限', () => {
+  const adInstance = {
+    id: 'ad-1',
+    name: 'AD Production',
+    host: 'dc.example.com',
+    port: 636,
+    use_ssl: true,
+    bind_dn: 'CN=svc,DC=example,DC=com',
+    bind_password: 'secret',
+    base_dn: 'DC=example,DC=com',
+  };
+
+  it('留空时不写入上限，每个域控各自保存自己的条数', () => {
+    const ref = createRef<SaveHandle>();
+    const onSave = vi.fn<(kwargs: ToolVariable[]) => void>();
+    render(
+      <ActiveDirectoryToolEditor
+        ref={ref}
+        initialKwargs={[{
+          key: 'ad_instances',
+          value: JSON.stringify([
+            adInstance,
+            { ...adInstance, id: 'ad-2', name: 'AD Lab', fetch_limit: 3000 },
+          ]),
+        }]}
+        onSave={onSave}
+      />,
+    );
+
+    expect(screen.getByText('tool.activedirectory.fetchLimit')).toBeTruthy();
+    expect(screen.getByText('tool.activedirectory.fetchLimitHint')).toBeTruthy();
+    expect(screen.getByPlaceholderText('10000')).toBeTruthy();
+
+    act(() => { ref.current?.save(); });
+    const savedKwargs = onSave.mock.calls[0][0];
+    expect(savedKwargs.some(({ key }) => key === 'ad_fetch_limit')).toBe(false);
+    const savedInstances = JSON.parse(String(savedKwargs.find(({ key }) => key === 'ad_instances')?.value)) as Record<string, unknown>[];
+    expect(savedInstances[0]).not.toHaveProperty('fetch_limit');
+    expect(savedInstances[1]).toMatchObject({ id: 'ad-2', fetch_limit: 3000 });
+
+    cleanup();
+    const legacyRef = createRef<SaveHandle>();
+    const legacySave = vi.fn<(kwargs: ToolVariable[]) => void>();
+    render(
+      <ActiveDirectoryToolEditor
+        ref={legacyRef}
+        initialKwargs={[
+          { key: 'ad_instances', value: JSON.stringify([adInstance]) },
+          { key: 'ad_fetch_limit', value: '25000' },
+        ]}
+        onSave={legacySave}
+      />,
+    );
+
+    act(() => { legacyRef.current?.save(); });
+    const migrated = JSON.parse(
+      String(legacySave.mock.calls[0][0].find(({ key }) => key === 'ad_instances')?.value),
+    ) as Record<string, unknown>[];
+    expect(migrated[0]).toMatchObject({ fetch_limit: 25000 });
+    expect(legacySave.mock.calls[0][0].some(({ key }) => key === 'ad_fetch_limit')).toBe(false);
+  });
+});
+
 describe('连接失败反馈', () => {
   it('连接 API 拒绝时只把当前实例标记为失败', async () => {
     skillApiMocks.testRedisConnection.mockRejectedValueOnce(new Error('connection refused'));
