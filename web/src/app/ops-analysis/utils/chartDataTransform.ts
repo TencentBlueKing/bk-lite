@@ -1,5 +1,6 @@
 import dayjs from 'dayjs';
 import { formatOpsDisplayTime } from '@/app/ops-analysis/utils/dateTime';
+import { getStoredTimezone, normalizeTimezone } from '@/utils/userPreferences';
 import {
   chartLinkFields,
   chartLinkTime,
@@ -97,6 +98,9 @@ const scalarPieFields = (mapping?: ChartFieldMapping): PieScalarField[] => {
     .filter((item) => item.field);
   return fields.length >= 2 ? fields : [];
 };
+
+const TIME_LABEL_CACHE_LIMIT = 8192;
+const timeLabelCache = new Map<string, string>();
 
 export class ChartDataTransformer {
   static formatCategoryValue(value: any): string {
@@ -285,6 +289,33 @@ export class ChartDataTransformer {
   }
 
   static formatTimeValue(value: any): string {
+    const cacheKey = this.timeLabelCacheKey(value);
+    if (cacheKey) {
+      const cached = timeLabelCache.get(cacheKey);
+      if (cached !== undefined) return cached;
+    }
+    const label = this.formatTimeValueUncached(value);
+    if (cacheKey) {
+      if (timeLabelCache.size >= TIME_LABEL_CACHE_LIMIT) {
+        timeLabelCache.clear();
+      }
+      timeLabelCache.set(cacheKey, label);
+    }
+    return label;
+  }
+
+  private static timeLabelCacheKey(value: unknown): string | null {
+    if (typeof value === 'number') {
+      if (!Number.isFinite(value)) return null;
+      return `${normalizeTimezone(getStoredTimezone())}\0n:${value}`;
+    }
+    if (typeof value === 'string') {
+      return `${normalizeTimezone(getStoredTimezone())}\0s:${value}`;
+    }
+    return null;
+  }
+
+  private static formatTimeValueUncached(value: any): string {
     let dateValue: any = null;
 
     if (typeof value === 'number') {

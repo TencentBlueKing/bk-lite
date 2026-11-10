@@ -122,6 +122,8 @@ from apps.monitor.services.nats_query_contract import normalize_time_value as _n
 from apps.monitor.services.nats_query_contract import paginate_items as _paginate_items
 from apps.monitor.services.network_device_resource_top import NetworkDeviceResourceTopService
 from apps.monitor.services.network_device_resource_top import validate_metric_type as validate_network_metric_type
+from apps.monitor.services.range_step import explicit_range_step as _explicit_range_step
+from apps.monitor.services.range_step import resolve_range_step as _resolve_range_step
 from apps.monitor.services.zombie_host_query import ZombieHostQueryError, count_successful_logins, load_hosts_for_systems, load_selected_hosts
 from apps.monitor.services.zombie_host_report import (
     FOLD_MAX,
@@ -2239,11 +2241,12 @@ def get_host_metric_range(*args, **kwargs):
         return {"result": True, "data": {}, "message": ""}
 
     try:
+        step = _explicit_range_step(kwargs.get("step"))
         data = HostMetricRangeService(vm_api=VictoriaMetricsAPI()).run(
             metric_type=metric_type,
             time_range=kwargs.get("time"),
             instances=selected_instances,
-            step=kwargs.get("step") or "5m",
+            step=step,
         )
     except ValueError as exc:
         return {"result": False, "data": {}, "message": str(exc)}
@@ -3052,7 +3055,13 @@ def query_metric_series(*args, **kwargs):
 
     try:
         start, end = parse_rfc3339_range_utc(kwargs.get("time"))
-        step = _normalize_step(kwargs.get("step") or DEFAULT_RANGE_STEP)
+        duration = (end - start).total_seconds()
+        if mode == "range":
+            step = _resolve_range_step(duration, kwargs.get("step"))
+        else:
+            # instant 的 avg_over_time 用 step 做子查询分辨率。自动变粗会改变窗口平均，
+            # 所以缺省仍是 5m；调用方显式传入的 step 继续生效。
+            step = _normalize_step(kwargs.get("step") or DEFAULT_RANGE_STEP)
     except ValueError as exc:
         return {"result": False, "data": empty, "message": str(exc)}
 

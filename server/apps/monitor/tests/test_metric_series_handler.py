@@ -320,3 +320,105 @@ def test_query_metric_series_vm_failure_returns_generic_message(monkeypatch):
         user_info=USER,
     )
     assert out == {"result": False, "data": {}, "message": "指标查询失败"}
+
+
+SEVEN_DAYS = ["2026-08-13T00:00:00.000Z", "2026-08-20T00:00:00.000Z"]
+
+
+def _patched_flow_metric(monkeypatch):
+    switch = _object(1, "Switch")
+    _patch_scope(monkeypatch, {"sw-1": _instance("sw-1", switch)})
+    _patch_metrics(
+        monkeypatch,
+        {(1, "device_flow_bytes_rate"): [_metric("sum(netflow_in_bytes{instance_type='switch', __$labels__}) by (instance_id)")]},
+    )
+
+
+def test_query_metric_series_range_coarsens_seven_day_step(monkeypatch):
+    _patched_flow_metric(monkeypatch)
+    captured = {}
+
+    class FakeVM:
+        def query_range(self, query, start, end, step):
+            captured["step"] = step
+            captured["query"] = query
+            return {"status": "success", "data": {"result": [{"metric": {"instance_id": "sw-1"}, "values": [[1, "1"]]}]}}
+
+    monkeypatch.setattr(nm, "VictoriaMetricsAPI", FakeVM)
+    out = nm.query_metric_series(
+        metric="device_flow_bytes_rate",
+        mode="range",
+        instance_ids=["sw-1"],
+        time=SEVEN_DAYS,
+        user_info=USER,
+    )
+    assert out["result"] is True
+    assert captured["step"] == "15m"
+    assert "avg_over_time" not in captured["query"]
+
+
+def test_query_metric_series_range_keeps_explicit_step(monkeypatch):
+    _patched_flow_metric(monkeypatch)
+    captured = {}
+
+    class FakeVM:
+        def query_range(self, query, start, end, step):
+            captured["step"] = step
+            return {"status": "success", "data": {"result": []}}
+
+    monkeypatch.setattr(nm, "VictoriaMetricsAPI", FakeVM)
+    out = nm.query_metric_series(
+        metric="device_flow_bytes_rate",
+        mode="range",
+        instance_ids=["sw-1"],
+        time=SEVEN_DAYS,
+        step="1m",
+        user_info=USER,
+    )
+    assert out["result"] is True
+    assert captured["step"] == "1m"
+
+
+def test_query_metric_series_range_short_window_stays_five_minutes(monkeypatch):
+    _patched_flow_metric(monkeypatch)
+    captured = {}
+
+    class FakeVM:
+        def query_range(self, query, start, end, step):
+            captured["step"] = step
+            return {"status": "success", "data": {"result": []}}
+
+    monkeypatch.setattr(nm, "VictoriaMetricsAPI", FakeVM)
+    out = nm.query_metric_series(
+        metric="device_flow_bytes_rate",
+        mode="range",
+        instance_ids=["sw-1"],
+        time=TIME_RANGE,
+        user_info=USER,
+    )
+    assert out["result"] is True
+    assert captured["step"] == "5m"
+
+
+def test_query_metric_series_instant_keeps_five_minute_subquery_step(monkeypatch):
+    _patched_flow_metric(monkeypatch)
+    captured = {}
+
+    class FakeVM:
+        def query(self, query, step="5m", time=None, lookback_delta=None):
+            captured["step"] = step
+            captured["query"] = query
+            return {"status": "success", "data": {"result": [{"metric": {}, "value": [1, "3"]}]}}
+
+    monkeypatch.setattr(nm, "VictoriaMetricsAPI", FakeVM)
+    out = nm.query_metric_series(
+        metric="device_flow_bytes_rate",
+        mode="instant",
+        instance_ids=["sw-1"],
+        time=SEVEN_DAYS,
+        user_info=USER,
+    )
+    assert out["result"] is True
+    assert captured["step"] == "5m"
+    assert "avg_over_time" in captured["query"]
+    assert "[604800s]" in captured["query"]
