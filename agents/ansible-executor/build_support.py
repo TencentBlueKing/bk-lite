@@ -2,8 +2,18 @@ import shutil
 import subprocess
 from pathlib import Path
 
+from version_info import bake_version_stamp as _bake_version_stamp
+from version_info import restore_version_stamp as _restore_version_stamp
 
 PACKAGED_WIN_COPY_PATH = Path("_internal") / "collections" / "ansible_collections" / "ansible" / "windows" / "plugins" / "modules" / "win_copy.ps1"
+
+
+def bake_packaged_version_stamp(source_root: Path) -> bytes:
+    return _bake_version_stamp(Path(source_root))
+
+
+def restore_version_stamp(source_root: Path, original: bytes) -> None:
+    _restore_version_stamp(Path(source_root), original)
 
 
 def has_valid_ansible_windows_collection_layout(windows_root: Path) -> bool:
