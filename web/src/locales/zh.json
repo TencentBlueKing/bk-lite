@@ -317,7 +317,12 @@
     "verifyFailed": "验证失败",
     "verificationFailedMaxAttempts": "验证码错误次数已达上限，请重新发送验证码",
     "attemptsRemaining": "剩余尝试次数:{remaining}",
-    "verifyCodeSuccess": "邮箱验证成功，点击页面底部的【保存】按钮保存更改"
+    "verifyCodeSuccess": "邮箱验证成功，点击页面底部的【保存】按钮保存更改",
+    "otpAuth": "OTP 认证",
+    "otpBound": "已绑定",
+    "unbindOtp": "解绑",
+    "unbindOtpSuccess": "OTP 解绑成功",
+    "unbindOtpFailed": "OTP 解绑失败"
   },
   "signin": {
     "errors": {

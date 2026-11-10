@@ -35,8 +35,8 @@ monitor_object_metric:
       name: Container Restart Count
       desc: Number of times the container has restarted since its last start.
     docker_container_cpu_usage_percent:
-      name: Container CPU Usage
-      desc: Percentage of available CPU resources used by the container.
+      name: Container CPU Occupancy
+      desc: CPU the container uses relative to the compute available on the host. With a multi-core quota the value can stay above 100%. It is not a single-core whole-host reading scaled to 0–100%. Use it to watch container compute load and whether the quota should change.
     docker_container_mem_usage_percent:
       name: Container Memory Usage
       desc: Percentage of the configured memory limit used by the container.

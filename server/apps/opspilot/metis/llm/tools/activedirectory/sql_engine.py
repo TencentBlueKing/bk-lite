@@ -294,7 +294,23 @@ def parse_select(sql: str) -> ParsedSelect:
     )
 
 
+# 单表一次查询从目录拉取的上限。域控单页默认只有 1000，分页在这个上限内继续要下一页。
+AD_LDAP_FETCH_CAP = 10000
+
 Row = Dict[str, Any]
+
+
+def ldap_fetch_limit(parsed: ParsedSelect, *, cap: int | None = None) -> int:
+    """返回这次查询需要从 LDAP 拉回的行数。
+
+    没有 WHERE、JOIN、GROUP BY、ORDER BY 时，LIMIT/OFFSET 可以提前停。
+    其余语句要先拿够记录再在内存里过滤或排序，因此拉到保护上限。
+    """
+    if cap is None:
+        cap = AD_LDAP_FETCH_CAP
+    if parsed.limit is None or parsed.where or parsed.joins or parsed.group_by or parsed.order_by:
+        return cap
+    return min(cap, parsed.offset + parsed.limit)
 
 
 def _flatten_ldap_value(value: Any) -> Any:
@@ -615,9 +631,11 @@ def execute_select(
     *,
     base_dn: str,
     searcher: Callable[[str, str, Sequence[str], int], list[Any]],
-    fetch_limit: int = 1000,
+    fetch_limit: int | None = None,
 ) -> tuple[list[str], list[Row]]:
     parsed = parse_select(sql)
+    if fetch_limit is None:
+        fetch_limit = ldap_fetch_limit(parsed)
     base_table = get_table(parsed.from_table)
     tables: dict[str, TableDef] = {base_table.name: base_table}
     alias_map: dict[str, str] = {}

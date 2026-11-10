@@ -17,6 +17,8 @@ import { RACK_ROOM_ASSET_PERMISSION_PATH } from './rackRoomEdit';
 import {
   areAllRelationshipsExpanded,
   getDefaultExpandedRelationshipKeys,
+  relationshipTargetModelId,
+  uniqueRelationshipTargetModelIds,
   visibleRelationshipAssociations,
 } from '../../relationshipMenuData';
 import React, {
@@ -124,6 +126,12 @@ const AssoList = forwardRef<AssoListRef, AssoListProps>(
       setInstIds(newInstIds);
     };
 
+    const loadTargetAttrMap = (assoInstancesList: any[]) => {
+      const modelIds = uniqueRelationshipTargetModelIds(assoInstancesList, modelId);
+      if (!modelIds.length) return Promise.resolve({});
+      return modelApi.getModelAttrListBatch(modelIds);
+    };
+
     const updateInstAttrList = async (
       assoInstancesList: any,
       targetId?: string
@@ -133,12 +141,13 @@ const AssoList = forwardRef<AssoListRef, AssoListProps>(
           (item: any) => item.model_asst_id === targetId
         );
         if (targetItem) {
+          const attrMap = await loadTargetAttrMap([targetItem]);
           const updatedItem = await getModelAttrList(targetItem, {
             assoList: assoInstancesList,
             userData: userList,
             models: modelList,
             assoTypeList,
-          });
+          }, attrMap[relationshipTargetModelId(targetItem, modelId)] || []);
           setAssoCredentials((prev: any) => {
             const newCredentials = prev.map((item: any) =>
               item.model_asst_id === targetId ? updatedItem : item
@@ -156,6 +165,7 @@ const AssoList = forwardRef<AssoListRef, AssoListProps>(
         }
       }
 
+      const attrMap = await loadTargetAttrMap(assoInstancesList);
       const updatedItems = await Promise.all(
         assoInstancesList.map((item: any) =>
           getModelAttrList(item, {
@@ -163,7 +173,7 @@ const AssoList = forwardRef<AssoListRef, AssoListProps>(
             userData: userList,
             models: modelList,
             assoTypeList,
-          })
+          }, attrMap[relationshipTargetModelId(item, modelId)] || [])
         )
       );
       const allKeys = updatedItems.map((item) => item.model_asst_id);
@@ -230,7 +240,7 @@ const AssoList = forwardRef<AssoListRef, AssoListProps>(
       window.open(url, '_blank', 'noopener,noreferrer');
     };
 
-    const getModelAttrList = async (item: any, config: any) => {
+    const getModelAttrList = async (item: any, config: any, preloadedAttrs?: any[]) => {
       const instanceCount = Array.isArray(item.inst_list)
         ? item.inst_list.length
         : 0;
@@ -255,7 +265,9 @@ const AssoList = forwardRef<AssoListRef, AssoListProps>(
       }
 
       const attrId = getAttrId(item as CrentialsAssoDetailItem);
-      const responseData = await modelApi.getModelAttrList(attrId as string);
+      const responseData = preloadedAttrs !== undefined
+        ? preloadedAttrs
+        : await modelApi.getModelAttrList(attrId as string);
       const columns = [
         ...getAssetColumns({
           attrList: responseData,

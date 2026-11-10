@@ -8,8 +8,8 @@ monitor_object_type:
 monitor_object_metric:
   MSSQL:
     sqlserver_cpu_sqlserver_process_cpu_avg:
-      name: MSSQL进程CPU使用率
-      desc: SQL Server数据库进程的CPU使用率，直接反映数据库计算负载。持续高值可能表示查询需要优化或存在资源瓶颈。
+      name: 进程 CPU 使用率（近 5 分钟平均）
+      desc: SQL Server 数据库进程近 5 分钟平均 CPU 使用率（约 0–100%）。持续偏高可能表示查询需优化或存在计算资源瓶颈。
     sqlserver_cpu_system_idle_cpu_avg:
       name: 系统空闲CPU
       desc: 整个操作系统空闲的CPU百分比，反映服务器整体CPU资源利用率。低值表示CPU资源紧张，可能影响系统稳定性。

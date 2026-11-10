@@ -107,6 +107,64 @@ def test_migrate_dual_id_order_independent():
     assert first[0]["inputConfig"]["multiple"] is True
 
 
+def _instance_ids_filter(filter_id, name, order, value):
+    return {
+        "id": filter_id,
+        "key": "instance_ids",
+        "name": name,
+        "type": "string",
+        "order": order,
+        "enabled": True,
+        "defaultValue": [value],
+        "inputConfig": {
+            "control": "select",
+            "multiple": True,
+            "optionsSource": {
+                "type": "static",
+                "staticItems": [{"label": name, "value": value}],
+            },
+        },
+    }
+
+
+def test_migrate_keeps_same_key_filters_with_distinct_ids():
+    host = _instance_ids_filter("hkaa-host", "主机", 2, "host-1")
+    haproxy = _instance_ids_filter("hkaa-haproxy", "HAProxy", 3, "proxy-1")
+    migrated, warnings = migrate_unified_filter_definitions([host, haproxy])
+    assert warnings == []
+    assert [item["id"] for item in migrated] == ["hkaa-host", "hkaa-haproxy"]
+    assert [item["name"] for item in migrated] == ["主机", "HAProxy"]
+    assert all(item["inputConfig"]["multiple"] is True for item in migrated)
+
+
+def test_migrate_dual_id_keeps_extra_same_key_filters():
+    list_side = {
+        "id": "instance_ids__stringList",
+        "key": "instance_ids",
+        "name": "主机多选",
+        "type": "stringList",
+        "order": 1,
+        "enabled": True,
+        "inputConfig": {
+            "control": "select",
+            "optionsSource": {"type": "static", "staticItems": [{"label": "a", "value": "a"}]},
+        },
+    }
+    scalar_side = {
+        "id": "instance_ids__string",
+        "key": "instance_ids",
+        "name": "主机单选",
+        "type": "string",
+        "order": 0,
+        "enabled": False,
+        "inputConfig": {"control": "input"},
+    }
+    extra = _instance_ids_filter("hkaa-haproxy", "HAProxy", 3, "proxy-1")
+    migrated, warnings = migrate_unified_filter_definitions([scalar_side, list_side, extra])
+    assert [item["id"] for item in migrated] == ["instance_ids__string", "hkaa-haproxy"]
+    assert any(item["code"] == "string_list_dual_id_incompatible" for item in warnings)
+
+
 def test_precheck_emits_string_list_migration_warnings(monkeypatch):
     monkeypatch.setattr(PrecheckService, "identify_conflicts", lambda *_args, **_kwargs: [])
     document = {
@@ -388,3 +446,50 @@ def test_overwrite_import_merges_dual_bindings_without_duplicates(db):
         {},
     )
     assert second_export["view_sets"][0]["valueConfig"]["filterBindings"] == first_export["view_sets"][0]["valueConfig"]["filterBindings"]
+
+
+def test_import_export_keeps_distinct_instance_ids_filters(db):
+    directory = Directory.objects.create(name="import-multi-instance-ids", groups=[1], created_by="tester")
+    host = _instance_ids_filter("hkaa-host", "主机", 2, "host-1")
+    haproxy = _instance_ids_filter("hkaa-haproxy", "HAProxy", 3, "proxy-1")
+    doc = _doc(
+        dashboards=[
+            {
+                "key": "dashboard::hkaa",
+                "name": "hkaa-board",
+                "desc": "",
+                "other": {},
+                "view_sets": [
+                    {
+                        "id": "w-host",
+                        "itemType": "widget",
+                        "valueConfig": {
+                            "chartType": "line",
+                            "filterBindings": {"hkaa-host": True},
+                        },
+                    },
+                    {
+                        "id": "w-proxy",
+                        "itemType": "widget",
+                        "valueConfig": {
+                            "chartType": "line",
+                            "filterBindings": {"hkaa-haproxy": True},
+                        },
+                    },
+                ],
+                "filters": [host, haproxy],
+            }
+        ],
+    )
+
+    result = _service(doc, target_directory_id=directory.id).execute()
+    assert result["success"] is True
+    dashboard = Dashboard.objects.get(name="hkaa-board")
+    assert [item["id"] for item in dashboard.filters] == ["hkaa-host", "hkaa-haproxy"]
+    assert dashboard.view_sets[0]["valueConfig"]["filterBindings"] == {"hkaa-host": True}
+    assert dashboard.view_sets[1]["valueConfig"]["filterBindings"] == {"hkaa-haproxy": True}
+
+    exported = ExportService.convert_canvas_to_yaml(dashboard, ObjectType.DASHBOARD, {}, {})
+    assert [item["id"] for item in exported["filters"]] == ["hkaa-host", "hkaa-haproxy"]
+    assert exported["view_sets"][0]["valueConfig"]["filterBindings"] == {"hkaa-host": True}
+    assert exported["view_sets"][1]["valueConfig"]["filterBindings"] == {"hkaa-haproxy": True}

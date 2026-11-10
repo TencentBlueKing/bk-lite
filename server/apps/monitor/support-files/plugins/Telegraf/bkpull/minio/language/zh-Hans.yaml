@@ -36,7 +36,7 @@ monitor_object_metric:
       desc: 节点CPU的空闲时间百分比，反映CPU利用率，低空闲率可能表示CPU瓶颈 自 MinIO RELEASE.2023-10-07T15-07-38Z 起可采集（Metrics v2）。
     minio_node_mem_used_perc_gauge:
       name: 节点内存使用率
-      desc: 节点内存使用百分比，反映内存压力，过高使用率可能导致性能下降 自 MinIO RELEASE.2023-12-07T04-16-00Z 起可采集（Metrics v2）。
+      desc: MinIO 节点当前内存已用占比（约 0–100%）；为采集时刻瞬时值。过高可能导致性能下降，需关注节点内存与对象负载。需 MinIO 2023-12-07 及以后版本（Metrics v2）才可采集。
     minio_node_drive_perc_util_gauge:
       name: 驱动器使用率
       desc: 单个驱动器的使用百分比，反映存储设备空间使用情况，对容量规划重要 自 MinIO RELEASE.2023-10-07T15-07-38Z 起可采集（Metrics v2）。

@@ -75,6 +75,10 @@ def resolve_probe_artifact_name(language: str, probe_platform: str = "linux") ->
 
     if probe_platform not in {"linux", "windows"}:
         raise ProbeSelectionError("probe_platform_invalid")
+    if language == "collector":
+        if probe_platform != "linux":
+            raise ProbeSelectionError("probe_platform_unsupported")
+        return ""
     if probe_platform == "windows":
         if language != "dotnet":
             raise ProbeSelectionError("probe_platform_unsupported")
@@ -95,6 +99,10 @@ def validate_probe_selection(
     """返回本次片段应下载的制品名。非法组合在生成片段前拒绝。"""
 
     artifact_name = resolve_probe_artifact_name(language, probe_platform)
+    if language == "collector":
+        if process_executable:
+            raise ProbeSelectionError("process_executable_unexpected")
+        return artifact_name
     if language == "obi" and runtime != "host":
         raise ProbeSelectionError("obi_runtime_unsupported")
     if language == "dotnet" and probe_platform == "windows" and runtime != "host":

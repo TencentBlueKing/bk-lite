@@ -284,6 +284,10 @@ class SystemMgmt(object):
             detail=detail,
         )
 
+    def save_operation_logs(self, logs):
+        """批量保存操作日志。每条必须带 idempotency_key。"""
+        return self.client.run("save_operation_logs", logs=logs)
+
     def search_channel_list(self, channel_type, teams, include_children, channel_method=""):
         """
         :param channel_type: str， 目前只有email、enterprise_wechat

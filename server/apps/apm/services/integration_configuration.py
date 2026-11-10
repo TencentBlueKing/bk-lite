@@ -92,6 +92,12 @@ if err != nil {
 }
 otel.SetTracerProvider(tracerProvider)
 defer tracerProvider.Shutdown(context.Background())
+
+net/http 入口要包一层 otelhttp，否则没有入口 Span：
+
+import "go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+
+handler := otelhttp.NewHandler(mux, "server")
 GO"""
 
 _RUBY_SDK_GUIDE = """# Ruby 无通用零代码探针；下面生成 Rack 初始化示例，不会覆盖应用源码。
@@ -387,6 +393,80 @@ def _trace_sampler_environment(sample_rate: int) -> dict[str, str]:
     }
 
 
+def _yaml_double_quoted(value: str) -> str:
+    escaped = value.replace("\\", "\\\\").replace('"', '\\"').replace("\r", "\\r").replace("\n", "\\n").replace("\t", "\\t")
+    return f'"{escaped}"'
+
+
+def _collector_forward_snippet(
+    *,
+    endpoint: str,
+    service_namespace: str,
+    service_name: str,
+    service_version: str,
+    deployment_environment: str,
+    sample_rate: int,
+) -> str:
+    """生成合并进用户已有 Collector 的 Trace 转发片段，不安装探针，也不写请求头。"""
+
+    _trace_sampler_environment(sample_rate)
+    attributes = [
+        ("service.namespace", service_namespace, "upsert"),
+        ("service.name", service_name, "insert"),
+    ]
+    if service_version:
+        attributes.append(("service.version", service_version, "insert"))
+    if deployment_environment:
+        attributes.append(("deployment.environment", deployment_environment, "insert"))
+    attribute_lines: list[str] = []
+    for key, value, action in attributes:
+        attribute_lines.extend(
+            (
+                f"      - key: {key}",
+                f"        value: {_yaml_double_quoted(value)}",
+                f"        action: {action}",
+            )
+        )
+    processors = ["resource/bklite"]
+    processor_blocks = [
+        "  resource/bklite:",
+        "    attributes:",
+        *attribute_lines,
+    ]
+    lines = [
+        "# 合并进已有 OpenTelemetry Collector，然后重启 Collector。",
+        "# receivers 改成这份 Collector 已经在用的接收器。",
+        "# Collector 必须位于所选云区域获准上报的网络内。不要添加 Authorization 或其他请求头。",
+        "# 只转发 Trace。不要为 otlp_http/bklite 增加 metrics 或 logs pipeline。",
+        "# service.namespace 写成所选应用。已有的 service.name、service.version、deployment.environment 保持不变。",
+    ]
+    if sample_rate < FULL_TRACE_SAMPLE_RATE:
+        lines.append("# 低于 100 的采样率使用 Collector Contrib 的 probabilistic_sampler。")
+        processors.append("probabilistic_sampler/bklite")
+        processor_blocks.extend(
+            (
+                "  probabilistic_sampler/bklite:",
+                f"    sampling_percentage: {sample_rate}",
+            )
+        )
+    lines.extend(
+        (
+            "exporters:",
+            "  otlp_http/bklite:",
+            f"    endpoint: {_yaml_double_quoted(endpoint)}",
+            "processors:",
+            *processor_blocks,
+            "service:",
+            "  pipelines:",
+            "    traces/bklite:",
+            "      receivers: [otlp]",
+            f"      processors: [{', '.join(processors)}]",
+            "      exporters: [otlp_http/bklite]",
+        )
+    )
+    return "\n".join(lines)
+
+
 def _traces_only_environment() -> dict[str, str]:
     return {
         "OTEL_METRICS_EXPORTER": "none",
@@ -603,10 +683,16 @@ def _php_prepare_script(root: str) -> str:
     )
 
 
-def _obi_config(endpoint: str, executable: str) -> str:
+def _obi_config(endpoint: str, executable: str, service_name: str, service_namespace: str) -> str:
     return "\n".join(
         (
             'file_format: "1.0"',
+            "resource:",
+            "  attributes:",
+            "    - name: service.name",
+            f"      value: {json.dumps(service_name)}",
+            "    - name: service.namespace",
+            f"      value: {json.dumps(service_namespace)}",
             "tracer_provider:",
             "  processors:",
             "    - batch:",
@@ -671,11 +757,25 @@ def _obi_preflight() -> str:
     )
 
 
+def _obi_config_paths(executable: str) -> tuple[str, str]:
+    """返回这个可执行文件专属的配置目录和 obi.yaml 路径。
+
+    路径在生成片段前已经通过绝对路径校验，分段只含字母、数字和 . _ + -。
+    因此可以把相对路径放进双引号，$HOME 仍由 shell 展开。
+    """
+
+    relative = executable.lstrip("/")
+    directory = f'"$HOME/.otel-obi/configs/{relative}"'
+    return directory, f'"$HOME/.otel-obi/configs/{relative}/obi.yaml"'
+
+
 def _obi_host_snippet(
     probe_download_url: str,
     probe_sha256: str,
     endpoint: str,
     executable: str,
+    service_name: str,
+    service_namespace: str,
     environment: dict[str, str],
     resource_assignment: str,
     identity_setup: tuple[str, ...],
@@ -686,10 +786,12 @@ def _obi_host_snippet(
             exports.append(f"export {key}={resource_assignment}")
         else:
             exports.append(f"export {key}={shlex.quote(value)}")
+    config_directory, config_path = _obi_config_paths(executable)
     return "\n".join(
         (
             "# OBI v1.0.0 Linux amd64。未安装语言探针时，只采集指定 Go 可执行文件，不替换 Go SDK。",
             "# 同一进程不要再装 Java、Python、Node.js、.NET、PHP 或 Go SDK。",
+            "# 配置只写入这个可执行文件自己的目录，其他程序的配置保持不变。",
             "# 内核需要 Linux 5.8+，或带 eBPF backport 且有 BTF 的 RHEL 系 4.18+。",
             "# 需要 root 或上游要求的 capabilities。内核、BTF 或权限不够时退出，不修改应用二进制。",
             "# 已知限制：子 Span 时间戳可能早于父 Span。",
@@ -698,13 +800,14 @@ def _obi_host_snippet(
             _probe_sha256_check(OBI_ARTIFACT_NAME, probe_sha256),
             'mkdir -p "$HOME/.otel-obi"',
             f'tar -xf {OBI_ARTIFACT_NAME} -C "$HOME/.otel-obi"',
-            "cat > \"$HOME/.otel-obi/obi.yaml\" <<'OBI_CONFIG'",
-            _obi_config(endpoint, executable),
+            f"mkdir -p {config_directory}",
+            f"cat > {config_path} <<'OBI_CONFIG'",
+            _obi_config(endpoint, executable, service_name, service_namespace),
             "OBI_CONFIG",
             *exports,
-            'obi_bin=$(find "$HOME/.otel-obi" -type f -name obi | head -n 1)',
+            'obi_bin=$(find "$HOME/.otel-obi" -path "$HOME/.otel-obi/configs" -prune -o -type f -name obi -print | head -n 1)',
             "if [ -z \"$obi_bin\" ]; then printf '%s\\n' 'OBI binary was not found' >&2; exit 1; fi",
-            'exec "$obi_bin" --config "$HOME/.otel-obi/obi.yaml"',
+            f'exec "$obi_bin" --config {config_path}',
         )
     )
 
@@ -1072,6 +1175,18 @@ class DjangoIntegrationConfigurationService:
             probe_platform=request.probe_platform,
             process_executable=request.process_executable,
         )
+        if request.language == "collector":
+            return IngestSnippet(
+                environment={},
+                code=_collector_forward_snippet(
+                    endpoint=request.endpoint.rstrip("/"),
+                    service_namespace=request.service_namespace,
+                    service_name=request.service_name,
+                    service_version=request.service_version,
+                    deployment_environment=request.environment,
+                    sample_rate=request.sample_rate,
+                ),
+            )
         runtime_profile = _RUNTIME_PROFILES[request.runtime]
         protocol = "http/protobuf"
         if request.language in LANGUAGE_PROBE_ARTIFACTS and not request.probe_download_url:
@@ -1116,6 +1231,8 @@ class DjangoIntegrationConfigurationService:
                 _require_probe_sha256(artifact_name),
                 environment["OTEL_EXPORTER_OTLP_ENDPOINT"],
                 request.process_executable,
+                request.service_name,
+                request.service_namespace,
                 environment,
                 resource_assignment,
                 runtime_profile.identity_setup,
