@@ -43,8 +43,8 @@ export const PROBE_CAPABILITY_MATRIX: Record<ProbeLanguage, ProbeCapability> = {
     manualInstrumentation: false,
   },
   php: {
-    version: '1.4.2 / PHP NTS 8.1–8.4',
-    frameworks: ['Laravel', 'Symfony', 'Slim', 'Guzzle'],
+    version: '1.4.2 / PHP NTS 8.1–8.5',
+    frameworks: ['Laravel（PHP 8.2+）', 'Symfony', 'Slim', 'Guzzle'],
     inferredComponents: ['PDO（PHP 8.2+）', 'MySQLi（PHP 8.2+）'],
     manualInstrumentation: false,
   },

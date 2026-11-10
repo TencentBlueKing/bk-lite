@@ -272,7 +272,7 @@ describe('APM 添加接入', () => {
       ['Java 接入', '自动探针', '采集 Spring / Dubbo / gRPC 的调用链'],
       ['Python 接入', '自动探针', '采集 Django / Flask / FastAPI 的调用链'],
       ['.NET 接入', '自动探针', '采集 ASP.NET Core / gRPC 的调用链 Linux 限 x86_64 glibc，Windows 仅主机'],
-      ['PHP 接入', '自动探针', '采集 Laravel / Symfony / Slim 的调用链 仅 Linux 上的 PHP NTS 8.1–8.4'],
+      ['PHP 接入', '自动探针', '采集 Symfony / Slim / Guzzle 的调用链，Laravel 从 PHP 8.2 起 仅 Linux 上的 PHP NTS 8.1–8.5'],
       ['Go 接入', '手动接入', '接入后采集 net/http / Gin / Echo / gRPC 的调用链'],
       ['Ruby 接入', '手动接入', '接入 Rack 后采集请求调用链'],
       ['C++ 接入', '手动接入', '编译接入后，只采集进程入口调用链'],

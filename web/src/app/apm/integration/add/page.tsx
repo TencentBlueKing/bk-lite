@@ -182,7 +182,7 @@ function snippetOperationGuide(
 ): string {
   const obiGuide = t(
     'apm.integration.guideObiHost',
-    '在 Linux amd64 主机上执行。脚本会另起一个 OBI 进程，不修改 Go 程序，也不改它的启动命令。每个可执行文件路径各执行一次，并让对应进程保持运行。同一路径上的多个进程只算一个观测目标。这个 Go 进程不要再装语言探针或 Go SDK，否则调用链会重复；主机上的其他进程可以继续用语言探针。内核需要 Linux 5.8+，或带 eBPF backport 且有 BTF 的 RHEL 系 4.18+，并以 root 或 OBI v1.0.0 要求的权限运行。如果以前已经跑着一份 OBI，换成新脚本后先停掉旧进程，再按每个程序各启动一个。',
+    '在 Linux amd64 主机上执行。脚本会另起一个 OBI 进程，不修改 Go 程序，也不改它的启动命令。每个可执行文件路径各执行一次，并让对应进程保持运行。同一路径上的多个进程只算一个观测目标。这个 Go 进程不要再装语言探针或 Go SDK，否则调用链会重复；主机上的其他进程可以继续用语言探针。内核需要 Linux 6.6 或更新，OBI v1.0.0 依赖 uprobe_multi，并以 root 或该版本要求的权限运行。如果以前已经跑着一份 OBI，换成新脚本后先停掉旧进程，再按每个程序各启动一个。',
   );
   const guides: Record<ApmIngestSnippetInput['language'], Record<SnippetMode, string>> = {
     nodejs: {
@@ -208,9 +208,9 @@ function snippetOperationGuide(
       kubernetes: t('apm.integration.guideDotnetKubernetes', '将以下环境变量合并到应用 Pod，确保镜像包含 .NET 自动探针后滚动重启。'),
     },
     php: {
-      agent: t('apm.integration.guidePhpHost', '按以下脚本安装 PHP NTS 8.1–8.4 扩展和钉死的 Composer 包，把生成的 otel-fpm-pool.conf 并进 php-fpm 池配置后重载 php-fpm。'),
+      agent: t('apm.integration.guidePhpHost', '按以下脚本安装 PHP NTS 8.1–8.5 扩展和钉死的 Composer 包，把生成的 otel-fpm-pool.conf 并进 php-fpm 池配置后重载 php-fpm。Laravel 从 PHP 8.2 起安装。'),
       docker: t('apm.integration.guidePhpDocker', '将以下安装命令写入 Dockerfile，用 `-e` 注入环境变量后重新构建、启动容器。'),
-      kubernetes: t('apm.integration.guidePhpKubernetes', '将以下环境变量合并到应用 Pod，确保镜像已预装 PHP NTS 8.1–8.4 扩展和钉死的 Composer 包后滚动重启。'),
+      kubernetes: t('apm.integration.guidePhpKubernetes', '将以下环境变量合并到应用 Pod，确保镜像已预装 PHP NTS 8.1–8.5 扩展和钉死的 Composer 包后滚动重启。Laravel 从 PHP 8.2 起安装。'),
     },
     obi: {
       agent: obiGuide,
@@ -387,7 +387,7 @@ export default function ApmIntegrationAddPage() {
         description: t('apm.integration.dotnetDesc', '采集 ASP.NET Core / gRPC 的调用链\nLinux 限 x86_64 glibc，Windows 仅主机'),
       },
       php: {
-        description: t('apm.integration.phpDesc', '采集 Laravel / Symfony / Slim 的调用链\n仅 Linux 上的 PHP NTS 8.1–8.4'),
+        description: t('apm.integration.phpDesc', '采集 Symfony / Slim / Guzzle 的调用链，Laravel 从 PHP 8.2 起\n仅 Linux 上的 PHP NTS 8.1–8.5'),
       },
       go: {
         description: t('apm.integration.goDesc', '接入后采集 net/http / Gin / Echo / gRPC 的调用链'),
