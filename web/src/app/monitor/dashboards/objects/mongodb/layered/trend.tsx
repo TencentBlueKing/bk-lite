@@ -2,14 +2,18 @@
 
 import type { ChartData } from '@/app/monitor/types';
 import type { MetricUnit } from '../../../shared/types';
+import { clipChartDataToWindow } from '../../../shared/utils/pro-chart-window';
 import { ThinTimeSeries } from '../../host/layered/pro-chrome';
+import { useProTimeWindow } from '../../host/layered/pro-time-window';
 import { MongoHint } from './hint';
 import {
+  activeQueueChartState,
   formatEventCount,
   formatMongoReading,
   mongoCountMerged,
   mongoLatest,
   mongoMerged,
+  mongoPoints,
   type MongoMetricMap
 } from './series';
 
@@ -19,6 +23,8 @@ export interface MongoSeriesSpec {
   color: string;
   unit: MetricUnit;
 }
+
+const EMPTY_POINTS: ChartData[] = [];
 
 export function MongoTrend({
   anchor,
@@ -33,6 +39,7 @@ export function MongoTrend({
   percent = false,
   counts = false,
   emptyText = '本窗口暂无数据',
+  idleText,
   bare = false,
   stretch = false,
   areaOpacity,
@@ -56,6 +63,11 @@ export function MongoTrend({
   percent?: boolean;
   counts?: boolean;
   emptyText?: string;
+  /**
+   * 每条序列在当前窗口都有点、且值全是 0 时，不画线，改显示这句。
+   * 缺数仍走 emptyText。只给活跃与排队，其它趋势不传。
+   */
+  idleText?: string;
   /** 嵌进已有卡壳，不再套一层 panel。 */
   bare?: boolean;
   /** 卡边拉满所在栅格行，和旁边的卡齐高。 */
@@ -82,9 +94,26 @@ export function MongoTrend({
       : mongoMerged(metricMap, series.map((item) => ({ name: item.name, label: item.label }))));
   const waitFor = pendingNames ?? series.map((item) => item.name);
   const awaiting = waitFor.some((name) => pending.has(name)) && data.length === 0;
+  const proTime = useProTimeWindow();
+  const queueState = idleText
+    ? activeQueueChartState(
+      series.map((item) => clipChartDataToWindow(
+        mongoPoints(metricMap, item.name),
+        proTime?.window ?? null
+      ).flatMap((point) => (
+        typeof point.value1 === 'number' && Number.isFinite(point.value1) ? [point.value1] : []
+      ))),
+      series.map((item) => pending.has(item.name))
+    )
+    : null;
+  const hidePlot = queueState === 'idle' || queueState === 'empty' || queueState === 'loading';
+  const shownData = hidePlot ? EMPTY_POINTS : data;
+  const shownLoading = queueState === 'loading' || (queueState == null && awaiting);
+  const shownEmpty = queueState === 'idle' ? idleText : emptyText;
   const unit = series[0]?.unit || 'none';
   const readingOf = (item: MongoSeriesSpec) => {
     if (!multi) return undefined;
+    if (queueState === 'idle') return formatMongoReading(0, item.unit);
     const latest = mongoLatest(metricMap, item.name);
     if (counts) return latest == null ? '—' : formatEventCount(latest);
     return formatMongoReading(latest, item.unit);
@@ -95,6 +124,7 @@ export function MongoTrend({
       className={stretch ? 'h-full min-w-0' : 'min-w-0'}
       data-mongodb-chart={anchor}
       data-mongodb-axes={mixedUnits ? 'dual' : 'shared'}
+      data-mongodb-activity={queueState || undefined}
     >
       <ThinTimeSeries
         title={title}
@@ -110,9 +140,9 @@ export function MongoTrend({
         pinAxisZero={counts || (!percent && (unit === 'cps' || unit === 'byteps' || unit === 'counts'))}
         independentAxes={mixedUnits}
         keepLegend={multi}
-        loading={awaiting}
-        emptyText={emptyText}
-        data={data}
+        loading={shownLoading}
+        emptyText={shownEmpty}
+        data={shownData}
         legends={series.map((item) => ({
           label: item.label,
           color: item.color,

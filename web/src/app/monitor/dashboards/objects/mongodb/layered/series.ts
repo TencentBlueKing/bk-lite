@@ -52,6 +52,63 @@ export const formatMongoPercent = (value: number | null) => {
   return `${formatted.value}${formatted.unit || ''}`;
 };
 
+/**
+ * 连接占用率。当前 ÷（当前 + 尚可接纳）× 100%。
+ * 分母为 0、缺一侧或出现负数时返回 null，调用方显示 —。
+ */
+export const connectionOccupancyPercent = (
+  current: number | null,
+  available: number | null
+): number | null => {
+  if (current == null || available == null) return null;
+  if (!Number.isFinite(current) || !Number.isFinite(available)) return null;
+  if (current < 0 || available < 0) return null;
+  const cap = current + available;
+  if (!(cap > 0)) return null;
+  return (100 * current) / cap;
+};
+
+/** 非 0 且小于 0.01% 时不收成 0%。分母无效时是 —。 */
+export const formatConnectionOccupancy = (percent: number | null) => {
+  if (percent == null || !Number.isFinite(percent) || percent < 0) return '—';
+  if (percent === 0) return '0%';
+  if (percent < 0.01) return '<0.01%';
+  const digits = percent < 10 ? 2 : 1;
+  const text = percent.toFixed(digits).replace(/(\.\d*?)0+$/, '$1').replace(/\.$/, '');
+  if (text === '0') return '<0.01%';
+  return `${text}%`;
+};
+
+/** 已用 / 上限。上限 = 当前 + 尚可接纳。分母无效时不给旁注。 */
+export const connectionOccupancyNote = (
+  current: number | null,
+  available: number | null
+) => {
+  if (connectionOccupancyPercent(current, available) == null || current == null || available == null) return '';
+  return `${formatMongoReading(current, 'counts')} / ${formatMongoReading(current + available, 'counts')}`;
+};
+
+export type ActiveQueueChartState = 'loading' | 'empty' | 'idle' | 'plot';
+
+/**
+ * 活跃与排队。四点在窗口内都有数且全是 0 才是空闲。
+ * 任一点非 0 就画线。缺数且没有非 0 点当无数据。还在等的空序列继续加载。
+ */
+export const activeQueueChartState = (
+  samples: ReadonlyArray<readonly number[]>,
+  pending: ReadonlyArray<boolean>
+): ActiveQueueChartState => {
+  const anyNonZero = samples.some((values) => values.some((value) => value !== 0));
+  if (anyNonZero) return 'plot';
+  const idle = samples.length > 0 && samples.every((values) => (
+    values.length > 0 && values.every((value) => value === 0)
+  ));
+  if (idle) return 'idle';
+  const stillPending = samples.some((values, index) => values.length === 0 && pending[index]);
+  if (stillPending) return 'loading';
+  return 'empty';
+};
+
 /** 运行时间来自纳秒读数。没有读数时显示 —，不把缺失写成 0。 */
 export const mongoUptimeText = (nanoseconds: number | null) => {
   if (nanoseconds == null || !Number.isFinite(nanoseconds) || nanoseconds < 0) return '—';

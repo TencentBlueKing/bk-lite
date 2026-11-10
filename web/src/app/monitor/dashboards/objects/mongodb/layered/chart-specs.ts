@@ -8,34 +8,37 @@ export interface MongoChartSpec {
   series: readonly MongoSeriesSpec[];
   counts?: boolean;
   emptyText?: string;
+  /** 窗口内每条序列都有点且全是 0 时的空闲文案。不传就照常画线。 */
+  idleText?: string;
 }
 
 /**
- * 连接签。趋势只画当前和打开，两条都是「个」，共用一条从 0 起的轴。
- * 尚可接纳连接量级大得多，不进这张图，也不另开一条 Y 轴。
+ * 连接趋势只画当前和打开，两条都是「个」，共用一条从 0 起的轴。
+ * 不把尚可接纳画进这张图，也不另开一条 Y 轴。
  */
-export const CONNECTION_CHARTS: readonly MongoChartSpec[] = [
-  {
-    anchor: 'connections',
-    title: '连接趋势',
-    body: '当前连接与打开连接的对照，用于观察并发变化。尚可接纳见旁侧读数，避免量级差过大挤同一坐标轴。',
-    series: [
-      { name: 'mongodb_connections_current', label: '当前连接', color: MONGODB_PALETTE.blue, unit: 'counts' },
-      { name: 'mongodb_open_connections', label: '打开连接', color: MONGODB_PALETTE.cyan, unit: 'counts' }
-    ]
-  },
-  {
-    anchor: 'queue',
-    title: '活跃与排队',
-    body: '正在执行与正在等待的读/写操作数量对照。',
-    series: [
-      { name: 'mongodb_active_reads', label: '活跃读', color: MONGODB_PALETTE.blue, unit: 'counts' },
-      { name: 'mongodb_active_writes', label: '活跃写', color: MONGODB_PALETTE.green, unit: 'counts' },
-      { name: 'mongodb_queued_reads', label: '排队读', color: MONGODB_PALETTE.violet, unit: 'counts' },
-      { name: 'mongodb_queued_writes', label: '排队写', color: MONGODB_PALETTE.orange, unit: 'counts' }
-    ]
-  }
-];
+export const CONNECTION_TREND_CHART: MongoChartSpec = {
+  anchor: 'connections',
+  title: '连接趋势',
+  body: '当前连接与打开连接的对照，用于观察并发变化。',
+  series: [
+    { name: 'mongodb_connections_current', label: '当前连接', color: MONGODB_PALETTE.blue, unit: 'counts' },
+    { name: 'mongodb_open_connections', label: '打开连接', color: MONGODB_PALETTE.cyan, unit: 'counts' }
+  ]
+};
+
+/** 四点都有数且全是 0 时走空闲文案，不画 0–1 贴底线。无点仍用默认「本窗口暂无数据」。 */
+export const ACTIVE_QUEUE_CHART: MongoChartSpec = {
+  anchor: 'queue',
+  title: '活跃与排队',
+  body: '正在执行与正在等待的读/写操作数量对照。',
+  idleText: '本窗口暂无活跃或排队连接',
+  series: [
+    { name: 'mongodb_active_reads', label: '活跃读', color: MONGODB_PALETTE.blue, unit: 'counts' },
+    { name: 'mongodb_active_writes', label: '活跃写', color: MONGODB_PALETTE.green, unit: 'counts' },
+    { name: 'mongodb_queued_reads', label: '排队读', color: MONGODB_PALETTE.violet, unit: 'counts' },
+    { name: 'mongodb_queued_writes', label: '排队写', color: MONGODB_PALETTE.orange, unit: 'counts' }
+  ]
+};
 
 /** 吞吐签上行与中行：吞吐构成、文档扫描、文档操作、读写延迟。 */
 export const THROUGHPUT_DOCUMENT_CHARTS: readonly MongoChartSpec[] = [
