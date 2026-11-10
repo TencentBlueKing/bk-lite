@@ -26,6 +26,7 @@ describe('rum cwv tone helpers', () => {
   it('formats milliseconds and empty values', () => {
     expect(formatMs(1234.6)).toBe('1235ms');
     expect(formatMs(0)).toBe('—');
+    expect(formatMs(null)).toBe('—');
     expect(formatMs(-1)).toBe('—');
   });
 

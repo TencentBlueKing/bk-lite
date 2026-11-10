@@ -13,6 +13,7 @@ import {
   formatThroughput,
   isErrorRateDanger,
 } from '@/app/apm/components/metric-format';
+import { sloRetentionLabel } from '@/app/apm/components/slo-reason';
 import MetricValue from '@/app/apm/components/metric-value';
 import MiniTrend from '@/app/apm/components/mini-trend';
 import {
@@ -239,6 +240,18 @@ export default function ServiceCatalogTable({
       render: (_, item) => {
         const slo = sloByServiceEnv.get(metricKey(item.serviceId, item.environment));
         if (!slo) return <Typography.Text type="secondary">—</Typography.Text>;
+        const retention = sloRetentionLabel(slo.reason, t);
+        if (retention) {
+          return (
+            <Tag
+              bordered={false}
+              title={retention}
+              className="!m-0 !max-w-full !truncate !text-xs !bg-[color-mix(in_srgb,var(--theme-color-status-warning)_12%,var(--color-bg))] !text-[var(--theme-color-status-warning)]"
+            >
+              {retention}
+            </Tag>
+          );
+        }
         const met = slo.budget_remaining !== null && slo.budget_remaining > 0
           && slo.current_rate !== null
           && Number(slo.current_rate) >= Number(slo.objective);

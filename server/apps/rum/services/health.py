@@ -3,12 +3,15 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from apps.core.logger import rum_logger as logger
 from apps.rum.constants import SUBJECT_APPLICATION_LIST
 from apps.rum.services.control import ControlError, ControlPlane, control_unavailable, get_control_plane
 from apps.rum.services.settings import RumRuntimeSettings, load_rum_settings
+from apps.rum.services.victoria_client import ping_health
 
 REASON_CONTROL = "control"
 REASON_ANALYTICS = "analytics"
+_TRACES_PROBE_TIMEOUT_SECONDS = 3.0
 
 
 @dataclass(frozen=True)
@@ -17,6 +20,8 @@ class PipelineHealth:
     analytics_configured: bool
     control_available: bool
     analytics_available: bool
+    traces_configured: bool
+    traces_available: bool | None = None
 
     @property
     def control_unavailable(self) -> bool:
@@ -32,11 +37,16 @@ class PipelineHealth:
             "analyticsConfigured": self.analytics_configured,
             "controlAvailable": self.control_available,
             "analyticsAvailable": self.analytics_available,
+            "tracesConfigured": self.traces_configured,
         }
         if self.control_unavailable:
             payload["controlUnavailable"] = True
         if self.analytics_unavailable:
             payload["analyticsUnavailable"] = True
+        if self.traces_available is not None:
+            payload["tracesAvailable"] = self.traces_available
+            if not self.traces_available:
+                payload["tracesUnavailable"] = True
         return payload
 
 
@@ -56,8 +66,13 @@ def probe_pipeline_health(
     analytics=None,
     settings: RumRuntimeSettings | None = None,
     actor: str = "system",
+    probe_traces: bool = False,
 ) -> PipelineHealth:
-    """Probe control + analytics availability for /meta and /health."""
+    """Probe control + analytics availability for /meta and /health.
+
+    VictoriaTraces is only probed when ``probe_traces`` is set (the /health check), so page loads
+    such as /meta never wait on it.
+    """
 
     from apps.rum.services.analytics import get_analytics
 
@@ -66,7 +81,9 @@ def probe_pipeline_health(
     analytics = analytics if analytics is not None else get_analytics()
 
     control_configured = bool(settings.nats_url) or control.available()
-    analytics_configured = bool(settings.victoria_logs_url and settings.victoria_traces_url)
+    analytics_configured = bool(settings.victoria_logs_url)
+    traces_configured = bool(settings.victoria_traces_url)
+    traces_available = _traces_available(settings) if probe_traces else None
 
     control_available = False
     if control.available():
@@ -84,7 +101,30 @@ def probe_pipeline_health(
         analytics_configured=analytics_configured,
         control_available=control_available,
         analytics_available=analytics_available,
+        traces_configured=traces_configured,
+        traces_available=traces_available,
     )
+
+
+def _traces_available(settings: RumRuntimeSettings) -> bool:
+    """VictoriaTraces reachability. Empty or failed probes stay independent of analytics."""
+
+    if not settings.victoria_traces_url:
+        return False
+    try:
+        ping_health(
+            settings.victoria_traces_url,
+            timeout_seconds=min(settings.victoria_timeout_seconds or _TRACES_PROBE_TIMEOUT_SECONDS, _TRACES_PROBE_TIMEOUT_SECONDS),
+            label="VictoriaTraces",
+        )
+    except Exception as exc:  # noqa: BLE001 — traces health is reported; analytics stays independent
+        logger.warning(
+            "rum traces health unavailable failed_stage=%s error_type=%s",
+            "traces_health",
+            type(exc).__name__,
+        )
+        return False
+    return True
 
 
 def resolve_product_scope(

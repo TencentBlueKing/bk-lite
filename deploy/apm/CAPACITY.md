@@ -37,6 +37,36 @@ victoria_traces_bytes >= average_ingest_bytes_per_day × retention_days × stora
   不能通过缩短 ack wait 掩盖。
 - VT 磁盘 70%/85%、剩余空间、查询错误率/延迟和实际保留期告警。实际保留期低于 35 天时
   APM 健康必须 degraded，30 天/月历月 SLO 不得标为 available。
+- 聚合库出现溢出序列时告警。可执行条件是 `count(apm_calls_total{otel_metric_overflow="true"}) > 0`。
+  处理办法是修 Span 命名，或调高该环境的每服务资源上限。细节见聚合库运维规则。
 
 调整采样（默认全量）、属性上限、批次、保留期或副本后须重新测量并更新工作表。如何接入运维
 监控系统由运维决定，门槛不得低于本文。
+
+## 聚合库
+
+`victoria_traces_bytes` 不含聚合库。聚合序列在独立的单节点 VictoriaMetrics 里，磁盘估算、
+标签禁区和告警见 [聚合库运维规则](../../docs/operations/aggregate-metrics-store.md)。
+
+APM 序列没有全局上限。`aggregation_cardinality_limit` 默认 500，按每个服务资源生效。服务资源是
+`service.namespace`、`service.name`、`deployment.environment` 这一组；同一服务的多个实例算一个资源，
+不同环境算不同资源。每个组合在聚合库展开成 18 条序列：1 条 `apm_calls_total`，加上直方图 15 个桶
+（14 个显式桶和 `+Inf`）、`_count` 与 `_sum`。
+
+```text
+最坏序列数 = 每服务资源上限 × 服务资源缓存 × 每组合序列数
+         = 500 × 1000 × 18
+         = 9,000,000
+```
+
+`resource_metrics_cache_size` 显式为 1000，与上面的缓存项相同。打满时 35 天、60 秒间隔、约 1 字节每个样本，
+磁盘约 422 GiB（9,000,000 × 50,400 字节）。这是上限，不是预期用量。
+
+典型用量仍按 200 个服务、3 个环境、每个资源 50 个入口操作和 3 种状态：600 个服务资源 × 150 个组合 × 18
+= 1,620,000 条序列，约 76 GiB。150 低于每资源 500，所以典型值不是把上限乘满。
+
+超出每资源上限的组合并进 `otel.metric.overflow=true`，不带服务名和环境。刷出间隔默认 60 秒；缩短间隔时
+磁盘按比例增加。一条序列默认 1 小时没有新 Span 后从聚合进程内存删除，不再每分钟重写；聚合库里已写入的样本
+仍留到保留期。聚合进程有自己的 `memory_limiter`，容器上限与取值见
+[聚合库运维规则](../../docs/operations/aggregate-metrics-store.md)。
+本地夹具的宿主端口是 18428，不要把聚合写入指到宿主 8428。

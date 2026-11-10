@@ -18,7 +18,8 @@
 | MinIO / S3 | 对象存储；private buckets：`rewind-private`、`munchkin-private`、`log-alert-raw-data`、`monitor-alert-raw-data`、`apm-alert-snapshots`、`job-mgmt-private`、`cmdb-config-file`、`patch-mgmt-private`、`patch-mgmt-packages`、`operation-analysis-private`；public buckets：`rewind-public`、`munchkin-public`【已实现】 | `minio.py:19-31` |
 | VictoriaMetrics | 指标时序 | `monitor/utils/victoriametrics_api.py` |
 | VictoriaLogs | 日志（`VICTORIALOGS_*`） | `log/constants/victoriametrics.py` |
-| VictoriaTraces | APM 调用链唯一遥测库（`APM_VICTORIATRACES_*`）；数据面契约夹具 `deploy/apm/`【已实现】 | `apm/adapters/victoriatraces.py:151-156` |
+| VictoriaTraces | APM 调用链明细库（`APM_VICTORIATRACES_*`）。策略、慢请求、Apdex、延迟 SLO、下钻与拓扑仍以它为准；数据面契约夹具 `deploy/apm/`【已实现】 | `apm/adapters/victoriatraces.py:151-156` |
+| 聚合库（独立单节点 VictoriaMetrics） | 只存 APM / RUM 的累计计数和直方图。入口 RED 与可用性 SLO 的目标读路径。不复用 Monitor 的 `VICTORIAMETRICS_HOST`【目标契约，尚未部署】 | [aggregate-metrics-store.md](../../docs/operations/aggregate-metrics-store.md)；[ADR 0011](../../docs/adr/0011-apm-rum-aggregate-metrics-store.md) |
 | Neo4j / FalkorDB | CMDB 图谱 | `cmdb/graph/*` |
 | Wiki 嵌入 | OpsPilot Wiki 当前以结构化页面/材料为主；历史 pgvector RAG 路径已移除，不再作为部署硬依赖【已实现】 | `opspilot/models/wiki_mgmt.py` |
 | Elasticsearch | opspilot metis 工具 | opspilot/metis |

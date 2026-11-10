@@ -242,6 +242,35 @@ describe('APM 服务详情部署 Tab', () => {
   }, 15_000);
 });
 
+describe('APM 服务详情最大耗时', () => {
+  it('最大耗时为空时显示破折号', async () => {
+    renderWithApmIntl(<ApmServiceDetailPage />);
+
+    const maxLatency = await screen.findByTestId('apm-red-max-latency');
+    expect(maxLatency.textContent).toContain('最大耗时');
+    expect(maxLatency.textContent).toContain('—');
+  });
+
+  it('最大耗时有值时显示时长', async () => {
+    api.getServiceRed.mockResolvedValue({
+      service_id: 'svc-1',
+      environment: 'production',
+      started_at: '2026-08-24T00:00:00Z',
+      ended_at: '2026-08-24T01:00:00Z',
+      request_rate: 1,
+      error_rate: 0,
+      p95_ms: 100,
+      p99_ms: 120,
+      max_ms: 250,
+      timeseries: [],
+      top_endpoints: [],
+    });
+    renderWithApmIntl(<ApmServiceDetailPage />);
+
+    expect((await screen.findByTestId('apm-red-max-latency')).textContent).toContain('250毫秒');
+  });
+});
+
 describe('APM 服务详情错误 Tab', () => {
   it('用错误构成接口展示失败端点和错误原因，不再拉 Issue', async () => {
     api.getServiceRed.mockResolvedValue({

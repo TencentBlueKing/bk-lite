@@ -389,7 +389,8 @@
       "routeDetail": "路由明细",
       "sortByMetric": "按 {metric} 排序",
       "rowCount": "{n} 条",
-      "searchPlaceholder": "搜索路由"
+      "searchPlaceholder": "搜索路由",
+      "otherRoute": "其他（超出路由上限）"
     },
     "errors": {
       "title": "错误追踪",

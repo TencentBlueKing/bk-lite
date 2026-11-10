@@ -14,7 +14,9 @@ describe('APM 探针能力矩阵', () => {
     expect(PROBE_CAPABILITY_MATRIX.nodejs.frameworks).toEqual(expect.arrayContaining(['Express', 'NestJS', 'Koa', 'HTTP']));
     expect(PROBE_CAPABILITY_MATRIX.nodejs.frameworks).not.toContain('Fastify');
     expect(PROBE_CAPABILITY_MATRIX.go.inferredComponents).toEqual([]);
-    expect(PROBE_CAPABILITY_MATRIX.php.frameworks).toEqual(expect.arrayContaining(['Laravel', 'Symfony', 'Slim', 'Guzzle']));
+    expect(PROBE_CAPABILITY_MATRIX.php.version).toBe('1.4.2 / PHP NTS 8.1–8.5');
+    expect(PROBE_CAPABILITY_MATRIX.php.frameworks).toEqual(['Laravel（PHP 8.2+）', 'Symfony', 'Slim', 'Guzzle']);
+    expect(PROBE_CAPABILITY_MATRIX.php.inferredComponents).toEqual(['PDO（PHP 8.2+）', 'MySQLi（PHP 8.2+）']);
     expect(PROBE_CAPABILITY_MATRIX.obi.frameworks).toEqual(['Go net/http']);
     expect(PROBE_CAPABILITY_MATRIX.python.frameworks).toEqual(expect.arrayContaining(['Django', 'Flask', 'FastAPI']));
     expect(PROBE_CAPABILITY_MATRIX.go.manualInstrumentation).toBe(true);

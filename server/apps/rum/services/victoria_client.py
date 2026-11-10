@@ -8,26 +8,23 @@ from urllib.request import Request, urlopen
 
 
 class VictoriaClient:
-    """VictoriaLogs / VictoriaTraces LogsQL HTTP client."""
+    """VictoriaLogs LogsQL HTTP client. Analytics availability does not depend on VictoriaTraces."""
 
     def __init__(
         self,
         *,
         logs_endpoint: str,
-        traces_endpoint: str,
         account_id: int = 0,
         project_id: int = 0,
         timeout_seconds: float = 15.0,
     ):
         self.logs_endpoint = _absolute_url(logs_endpoint, "victoria logs_endpoint")
-        self.traces_endpoint = _absolute_url(traces_endpoint, "victoria traces_endpoint")
         self.account_id = str(account_id)
         self.project_id = str(project_id)
         self.timeout_seconds = timeout_seconds or 15.0
 
     def ping(self) -> None:
-        self._ping_host(self.logs_endpoint, "VictoriaLogs")
-        self._ping_host(self.traces_endpoint, "VictoriaTraces")
+        ping_health(self.logs_endpoint, timeout_seconds=self.timeout_seconds, label="VictoriaLogs")
 
     def query_logs(
         self,
@@ -37,13 +34,6 @@ class VictoriaClient:
         limit: int = 0,
     ) -> list[dict[str, str]]:
         return self._query(self.logs_endpoint, query, start, end, limit)
-
-    def _ping_host(self, base: str, label: str) -> None:
-        url = urljoin(base.rstrip("/") + "/", "health")
-        req = Request(url, method="GET")
-        with urlopen(req, timeout=self.timeout_seconds) as resp:  # noqa: S310 — operator-configured URL
-            if resp.status >= 300:
-                raise RuntimeError(f"ping {label}: status {resp.status}")
 
     def _query(
         self,
@@ -105,6 +95,17 @@ class LogRows(list):
     def __init__(self, iterable=()):
         super().__init__(iterable)
         self.truncated = False
+
+
+def ping_health(endpoint: str, *, timeout_seconds: float, label: str) -> None:
+    """GET ``{endpoint}/health``. Raises when the address is not absolute or the probe fails."""
+
+    base = _absolute_url(endpoint, label)
+    url = urljoin(base.rstrip("/") + "/", "health")
+    req = Request(url, method="GET")
+    with urlopen(req, timeout=timeout_seconds or 15.0) as resp:  # noqa: S310 — operator-configured URL
+        if resp.status >= 300:
+            raise RuntimeError(f"ping {label}: status {resp.status}")
 
 
 def _absolute_url(raw: str, label: str) -> str:

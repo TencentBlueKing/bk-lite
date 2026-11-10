@@ -23,6 +23,7 @@ import useApmApi from '@/app/apm/api';
 import ApmDataTable, { APM_TABLE_COLUMN_WIDTHS } from '@/app/apm/components/apm-data-table';
 import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell';
 import { formatLatency, formatPercentage } from '@/app/apm/components/metric-format';
+import { sloRetentionLabel } from '@/app/apm/components/slo-reason';
 import CatalogState, { catalogErrorKind, type CatalogStateKind } from '@/app/apm/components/catalog-state';
 import type {
   ApmService,
@@ -78,8 +79,10 @@ function BudgetProgress({ value }: { value: number | null }) {
 
 function EvaluationTag({ row }: { row: ApmSlo }) {
   const { t } = useTranslation();
+  const retention = sloRetentionLabel(row.reason, t);
   if (!row.is_enabled) return <Tag bordered={false}>{t('apm.slo.disabledTag', '已停用')}</Tag>;
   if (row.data_state === 'unavailable') return <Tag bordered={false} color="error">{t('apm.slo.evalError', '评估异常')}</Tag>;
+  if (retention) return <Tag bordered={false} color="warning" title={retention}>{retention}</Tag>;
   if (row.data_state === 'no_data' || row.current_rate === null) return <Tag bordered={false} color="warning">{t('common.noData', '暂无数据')}</Tag>;
   return row.current_rate >= Number(row.objective)
     ? <Tag bordered={false} color="success">{t('apm.services.met', '达标')}</Tag>
