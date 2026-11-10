@@ -7,6 +7,7 @@ from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 
 from apps.core.logger import opspilot_logger as logger
+from apps.opspilot.metis.llm.tools.kubernetes.instance_scope import prepare_point_instance
 from apps.opspilot.metis.llm.tools.kubernetes.utils import coerce_int, get_current_cluster_name, parse_resource_quantity, prepare_context
 from apps.opspilot.utils.pending_question import store_k8s_analysis_details
 
@@ -98,7 +99,7 @@ def resolve_deployment_analysis_scope(
 
 
 @tool()
-def check_kubernetes_resource_quotas(namespace=None, config: RunnableConfig = None):
+def check_kubernetes_resource_quotas(namespace=None, config: RunnableConfig = None, instance_name=None):
     """
     检查资源配额使用情况
 
@@ -109,6 +110,10 @@ def check_kubernetes_resource_quotas(namespace=None, config: RunnableConfig = No
     Returns:
         str: JSON格式的资源配额信息，包括配额限制和当前使用量
     """
+    config, instance_error = prepare_point_instance(config, instance_name)
+    if instance_error:
+        return instance_error
+
     prepare_context(config)
     try:
         core_v1 = client.CoreV1Api()
@@ -156,7 +161,7 @@ def check_kubernetes_resource_quotas(namespace=None, config: RunnableConfig = No
 
 
 @tool()
-def check_kubernetes_network_policies(namespace=None, config: RunnableConfig = None):
+def check_kubernetes_network_policies(namespace=None, config: RunnableConfig = None, instance_name=None):
     """
     检查网络策略配置
 
@@ -167,6 +172,10 @@ def check_kubernetes_network_policies(namespace=None, config: RunnableConfig = N
     Returns:
         str: JSON格式的网络策略信息
     """
+    config, instance_error = prepare_point_instance(config, instance_name)
+    if instance_error:
+        return instance_error
+
     prepare_context(config)
     try:
         networking_v1 = client.NetworkingV1Api()
@@ -197,13 +206,17 @@ def check_kubernetes_network_policies(namespace=None, config: RunnableConfig = N
 
 
 @tool()
-def check_kubernetes_persistent_volumes(config: RunnableConfig = None):
+def check_kubernetes_persistent_volumes(config: RunnableConfig = None, instance_name=None):
     """
     检查持久化卷状态和使用情况
 
     Returns:
         str: JSON格式的PV信息，包括状态、容量、回收策略等
     """
+    config, instance_error = prepare_point_instance(config, instance_name)
+    if instance_error:
+        return instance_error
+
     prepare_context(config)
     try:
         core_v1 = client.CoreV1Api()
@@ -235,7 +248,7 @@ def check_kubernetes_persistent_volumes(config: RunnableConfig = None):
 
 
 @tool()
-def check_kubernetes_ingress(namespace=None, config: RunnableConfig = None):
+def check_kubernetes_ingress(namespace=None, config: RunnableConfig = None, instance_name=None):
     """
     检查Ingress配置和状态
 
@@ -243,6 +256,10 @@ def check_kubernetes_ingress(namespace=None, config: RunnableConfig = None):
         namespace (str, optional): 要检查的命名空间
         config (RunnableConfig): 工具配置
     """
+    config, instance_error = prepare_point_instance(config, instance_name)
+    if instance_error:
+        return instance_error
+
     prepare_context(config)
     try:
         networking_v1 = client.NetworkingV1Api()
@@ -313,9 +330,9 @@ def check_kubernetes_daemonsets(namespace=None, instance_name=None, config: Runn
         config (RunnableConfig): 工具配置
     """
     if instance_name and config:
-        configurable = config.get("configurable", {})
-        configurable["instance_name"] = instance_name
-        config["configurable"] = configurable
+        configurable = {**config.get("configurable", {}), "instance_name": instance_name}
+        configurable.pop("instance_id", None)
+        config = {**config, "configurable": configurable}
     prepare_context(config)
     try:
         apps_v1 = client.AppsV1Api()
@@ -358,9 +375,9 @@ def check_kubernetes_statefulsets(namespace=None, instance_name=None, config: Ru
         config (RunnableConfig): 工具配置
     """
     if instance_name and config:
-        configurable = config.get("configurable", {})
-        configurable["instance_name"] = instance_name
-        config["configurable"] = configurable
+        configurable = {**config.get("configurable", {}), "instance_name": instance_name}
+        configurable.pop("instance_id", None)
+        config = {**config, "configurable": configurable}
     prepare_context(config)
     try:
         apps_v1 = client.AppsV1Api()
@@ -393,7 +410,7 @@ def check_kubernetes_statefulsets(namespace=None, instance_name=None, config: Ru
 
 
 @tool()
-def check_kubernetes_jobs(namespace=None, config: RunnableConfig = None):
+def check_kubernetes_jobs(namespace=None, config: RunnableConfig = None, instance_name=None):
     """
     检查Job和CronJob状态
 
@@ -401,6 +418,10 @@ def check_kubernetes_jobs(namespace=None, config: RunnableConfig = None):
         namespace (str, optional): 要检查的命名空间
         config (RunnableConfig): 工具配置
     """
+    config, instance_error = prepare_point_instance(config, instance_name)
+    if instance_error:
+        return instance_error
+
     prepare_context(config)
     try:
         batch_v1 = client.BatchV1Api()
@@ -481,7 +502,7 @@ def check_kubernetes_jobs(namespace=None, config: RunnableConfig = None):
 
 
 @tool()
-def check_kubernetes_endpoints(namespace=None, config: RunnableConfig = None):
+def check_kubernetes_endpoints(namespace=None, config: RunnableConfig = None, instance_name=None):
     """
     检查Service的Endpoints状态，帮助诊断服务发现问题
 
@@ -489,6 +510,10 @@ def check_kubernetes_endpoints(namespace=None, config: RunnableConfig = None):
         namespace (str, optional): 要检查的命名空间
         config (RunnableConfig): 工具配置
     """
+    config, instance_error = prepare_point_instance(config, instance_name)
+    if instance_error:
+        return instance_error
+
     prepare_context(config)
     try:
         core_v1 = client.CoreV1Api()
@@ -641,9 +666,9 @@ def analyze_deployment_configurations(  # noqa: C901
         str: JSON格式的分析结果，包含每个Deployment的配置评估及分页信息
     """
     if instance_name and config:
-        configurable = config.get("configurable", {})
-        configurable["instance_name"] = instance_name
-        config["configurable"] = configurable
+        configurable = {**config.get("configurable", {}), "instance_name": instance_name}
+        configurable.pop("instance_id", None)
+        config = {**config, "configurable": configurable}
 
     # 校正范围：全部意图下避免 name 抽样 / 未提及的 namespace 收窄，保证报告卡数字正确
     namespace, name = resolve_deployment_analysis_scope(namespace, name, config)
@@ -945,7 +970,7 @@ def analyze_deployment_configurations(  # noqa: C901
 
 
 @tool()
-def check_kubernetes_hpa_status(namespace=None, config: RunnableConfig = None):
+def check_kubernetes_hpa_status(namespace=None, config: RunnableConfig = None, instance_name=None):
     """
     检查 HPA (Horizontal Pod Autoscaler) 状态
 
@@ -956,6 +981,10 @@ def check_kubernetes_hpa_status(namespace=None, config: RunnableConfig = None):
     Returns:
         str: JSON格式的HPA状态信息
     """
+    config, instance_error = prepare_point_instance(config, instance_name)
+    if instance_error:
+        return instance_error
+
     prepare_context(config)
     try:
         autoscaling_v2 = client.AutoscalingV2Api()

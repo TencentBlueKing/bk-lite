@@ -21,9 +21,11 @@ import {
 import LevelIcon from '@/app/alarm/components/levelIcon';
 import { ChannelItem, NotifyOption } from '@/app/alarm/types/settings';
 import {
+  activeNotificationTemplateScenes,
   buildChannelsWithTemplateBindings,
   getNotificationTemplateBindings,
   NotificationTemplateOption,
+  NotificationTemplateScene,
 } from './notificationTemplateBinding';
 import { getNotificationTemplateChannel } from '@/app/alarm/utils/notificationTemplateChannels';
 import { channelOptionValue } from '@/app/alarm/utils/channelIdentity';
@@ -190,8 +192,21 @@ const OperateModalPage: React.FC<OperateModalProps> = ({
 
   const ruleType = Form.useWatch('match_type', form);
   const escalationEnabled = Form.useWatch(['escalation', 'enabled'], form);
+  const notificationScenario = Form.useWatch('notification_scenario', form);
+  const notificationFrequency = Form.useWatch('notification_frequency', form);
   const selectedChannelIds: string[] = Form.useWatch('notify_channels', form) || [];
   const channelCheckOptions = notifyOptions;
+  const templateScenes = activeNotificationTemplateScenes({
+    notificationScenario,
+    notificationFrequency,
+    escalationEnabled: !!escalationEnabled,
+  });
+  const templateSceneFields: Array<[NotificationTemplateScene, string]> = [
+    ['default', 'settings.notificationTemplate.sceneDefault'],
+    ['reminder', 'settings.notificationTemplate.sceneReminder'],
+    ['escalation', 'settings.notificationTemplate.sceneEscalation'],
+    ['recovery', 'settings.notificationTemplate.sceneRecovery'],
+  ];
 
   const onFinish = async (values: any) => {
     setSubmitLoading(true);
@@ -375,7 +390,7 @@ const OperateModalPage: React.FC<OperateModalProps> = ({
             min={0}
             max={100}
             precision={0}
-            className="w-[150px]"
+            className="w-full"
           />
         </Form.Item>
 
@@ -448,17 +463,12 @@ const OperateModalPage: React.FC<OperateModalProps> = ({
                       {channelConfig && <Tag>{t(channelConfig.labelKey)}</Tag>}
                     </Space>
                     <div className="grid grid-cols-1 gap-x-3 md:grid-cols-2">
-                      {([
-                        ['default', 'settings.notificationTemplate.sceneDefault'],
-                        ['reminder', 'settings.notificationTemplate.sceneReminder'],
-                        ['escalation', 'settings.notificationTemplate.sceneEscalation'],
-                        ['recovery', 'settings.notificationTemplate.sceneRecovery'],
-                      ] as const).map(([scene, labelKey]) => (
+                      {templateSceneFields.map(([scene, labelKey]) => (
                         <Form.Item
                           key={scene}
                           name={['notification_templates', channelId, scene]}
                           label={t(labelKey)}
-                          rules={[{ required: true, message: t('common.selectTip') }]}
+                          rules={templateScenes.includes(scene) ? [{ required: true, message: t('common.selectTip') }] : []}
                         >
                           <Select
                             className="w-full"

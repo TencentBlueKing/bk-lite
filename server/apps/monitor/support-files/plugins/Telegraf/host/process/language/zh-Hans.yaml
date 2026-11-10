@@ -8,11 +8,11 @@ monitor_object_type:
 monitor_object_metric:
   Process:
     process_cpu_usage:
-      name: CPU使用率
-      desc: 匹配进程的 CPU 使用率（按 process_name 聚合），用于定位主机上的热点进程。
+      name: 同名进程 CPU 占用合计
+      desc: 同名进程的 CPU 占用合计；按主机逻辑核累计，多核场景下可稳定超过 100%；同名多实例会叠加。用于定位主机上的热点进程，不宜当作「整机 0–100% 使用率」解读。
     process_mem_usage:
-      name: 应用内存使用率
-      desc: 匹配进程占用系统内存的比例（按 process_name 聚合），用于评估进程内存消耗。
+      name: 同名进程内存占比合计
+      desc: 同名进程占用主机内存的占比合计；多实例叠加后可能超过 100%。用于评估进程族内存消耗，不宜当作单一进程或整机上限内的归一使用率。
     process_memory_rss:
       name: 内存 RSS
       desc: 匹配进程的常驻内存（RSS，按 process_name 聚合），用于评估绝对内存占用。

@@ -10,8 +10,8 @@ import requests
 from django.utils import timezone
 
 from apps.apm.models import ApmPolicyNotificationTarget
+from apps.apm.services.trace_retention import retention_days, trace_retention_setting
 from apps.rpc.system_mgmt import SystemMgmt
-
 
 CATALOG_RECONCILE_HEALTH_KEY = "apm:catalog:reconcile:health"
 RUNTIME_DEPENDENCIES_HEALTH_KEY = "apm:runtime:dependencies:health"
@@ -32,7 +32,6 @@ RUNTIME_COMPONENTS = (
     "notification_responder",
 )
 MINIMUM_TRACE_RETENTION_DAYS = 35
-_DURATION_RE = re.compile(r"^(?P<amount>[1-9]\d*)(?P<unit>[dh])$")
 _PROMETHEUS_SAMPLE_RE = re.compile(
     r"^(?P<name>[a-zA-Z_:][a-zA-Z0-9_:]*)(?:\{(?P<labels>[^\n]*)\})?\s+(?P<value>-?(?:\d+(?:\.\d*)?|\.\d+))$",
     re.MULTILINE,
@@ -48,14 +47,6 @@ def _origin_health_url(endpoint: str) -> str:
     if parsed.scheme not in {"http", "https"} or not parsed.netloc:
         return ""
     return urlunsplit((parsed.scheme, parsed.netloc, "/health", "", ""))
-
-
-def _retention_days(value: str) -> float | None:
-    match = _DURATION_RE.fullmatch(value.strip())
-    if match is None:
-        return None
-    amount = int(match.group("amount"))
-    return float(amount) if match.group("unit") == "d" else amount / 24
 
 
 class RuntimeDependencyHealthProbe:
@@ -132,6 +123,7 @@ class RuntimeDependencyHealthProbe:
                 "last_failed_at": checked_at,
                 "error_code": "nats_publish_metrics_invalid",
             }
+
         def sample(name: str, *, exporter: bool = False) -> float | None:
             for match in samples:
                 labels = match.group("labels") or ""
@@ -245,8 +237,8 @@ class RuntimeDependencyHealthProbe:
 
     @staticmethod
     def _retention_health(checked_at: str) -> dict[str, object]:
-        configured = os.getenv("APM_TRACE_RETENTION", "35d")
-        days = _retention_days(configured)
+        configured = trace_retention_setting()
+        days = retention_days(configured)
         if days is None:
             return {
                 "status": "degraded",
@@ -265,11 +257,7 @@ class RuntimeDependencyHealthProbe:
 
     def probe(self) -> dict[str, dict[str, object]]:
         checked_at = timezone.now().isoformat()
-        traces_endpoint = (
-            os.getenv("VICTORIATRACES_HOST")
-            or os.getenv("APM_VICTORIATRACES_QUERY_ENDPOINT")
-            or "http://127.0.0.1:10428"
-        )
+        traces_endpoint = os.getenv("VICTORIATRACES_HOST") or os.getenv("APM_VICTORIATRACES_QUERY_ENDPOINT") or "http://127.0.0.1:10428"
         trace_user = os.getenv("APM_VICTORIATRACES_USER", "")
         trace_password = os.getenv("APM_VICTORIATRACES_PASSWORD", "")
         result = {

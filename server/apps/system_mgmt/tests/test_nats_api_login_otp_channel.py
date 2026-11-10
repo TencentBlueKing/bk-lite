@@ -213,7 +213,8 @@ def test_reset_pwd_requires_matching_caller(monkeypatch):
         patch("apps.system_mgmt.nats_api.PasswordValidator.validate_password", return_value=(True, "")),
     ):
         ok = nats_api.reset_pwd("self-user", "domain.com", "Newpass1!", caller_token=self_token)
-    assert ok == {"result": True}
+    assert ok["result"] is True
+    assert isinstance(ok["data"]["token"], str) and ok["data"]["token"]
 
 
 def test_send_msg_with_channel_missing_and_unsupported():

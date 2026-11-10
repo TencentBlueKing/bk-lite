@@ -43,7 +43,12 @@ export const useSendMessage = ({
 }: UseSendMessageProps) => {
   
   const sendMessage = useCallback(
-    async (content: string, currentMessages?: CustomChatMessage[], attachments?: any[]) => {
+    async (
+      content: string,
+      currentMessages?: CustomChatMessage[],
+      attachments?: any[],
+      choice?: { choiceId?: string; optionKey?: string },
+    ) => {
       if ((!content && !attachments?.length) || loading || !token) {
         return;
       }
@@ -56,7 +61,8 @@ export const useSendMessage = ({
         role: 'user',
         createAt: new Date().toISOString(),
         updateAt: new Date().toISOString(),
-        ...(attachments && attachments.length > 0 && { attachments })
+        ...(attachments && attachments.length > 0 && { attachments }),
+        ...(choice?.choiceId ? { choiceId: choice.choiceId, choiceOption: choice.optionKey || '' } : {}),
       };
 
       const botLoadingMessage: CustomChatMessage = {

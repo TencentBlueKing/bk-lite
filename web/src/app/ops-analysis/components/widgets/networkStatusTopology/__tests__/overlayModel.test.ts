@@ -53,6 +53,31 @@ describe('pickOverlayDataSourceIds', () => {
       ]),
     ).toEqual({ monitorId: 32 });
   });
+
+  it('prefers the overlay alerts source when two builtins share the rest_api', () => {
+    expect(
+      pickOverlayDataSourceIds([
+        { id: 18, rest_api: 'cmdb/get_monitor_ids_by_inst_uuids', is_build_in: true },
+        {
+          id: 9,
+          rest_api: 'monitor/query_latest_active_alerts',
+          is_build_in: true,
+          name: '监控活跃告警',
+          build_in_key: '监控活跃告警::monitor/query_latest_active_alerts',
+          params: [{ name: 'instance_ids' }],
+        },
+        {
+          id: 71,
+          rest_api: 'monitor/query_latest_active_alerts',
+          is_build_in: true,
+          name: '监控异常严重度 TOP5',
+          build_in_key: '监控异常严重度TOP5::monitor/query_latest_active_alerts',
+          params: [{ name: 'order' }, { name: 'limit' }],
+        },
+        { id: 10, rest_api: 'monitor/query_latest_interface_metrics', is_build_in: true },
+      ]),
+    ).toEqual({ cmdbId: 18, monitorId: 9, interfaceId: 10 });
+  });
 });
 
 describe('mapMonitorLevelToNodeStatus', () => {

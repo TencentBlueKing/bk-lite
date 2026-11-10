@@ -50,6 +50,7 @@ def test_isolated_build_and_failure_do_not_publish_partial_package(tmp_path, fai
             if fail_at != "wheel":
                 (wheelhouse / "cryptography-46.0.5-fixture.whl").write_bytes(b"wheel")
         if "PyInstaller" in argv:
+            assert env["ANSIBLE_EXECUTOR_GIT_SHA"] == "0123456789abcdef0123456789abcdef01234567"
             if fail_at == "freeze":
                 raise RuntimeError("frozen runtime rejected")
             candidate = args.work_dir / "candidate/ansible-executor"
@@ -61,6 +62,7 @@ def test_isolated_build_and_failure_do_not_publish_partial_package(tmp_path, fai
         patch.object(builder.platform, "system", return_value="Linux"),
         patch.object(builder.platform, "machine", return_value="x86_64"),
         patch.object(builder.subprocess, "check_output", return_value='["3.12.15", "3.5.9"]'),
+        patch.object(builder, "resolve_git_sha", return_value="0123456789abcdef0123456789abcdef01234567"),
         patch.object(builder, "run", side_effect=execute),
     ):
         if fail_at:
@@ -76,6 +78,22 @@ def test_isolated_build_and_failure_do_not_publish_partial_package(tmp_path, fai
             assert sync < custom < freeze
     assert (source / ".venv/keep").read_text() == "original"
     assert not (args.work_dir / "source/.venv").exists()
+
+
+def test_release_refuses_to_package_without_git_sha(tmp_path):
+    source, args = fixture(tmp_path)
+    with (
+        patch.object(builder, "SOURCE", source),
+        patch.object(builder.platform, "system", return_value="Linux"),
+        patch.object(builder.platform, "machine", return_value="x86_64"),
+        patch.object(builder.subprocess, "check_output", return_value='["3.12.15", "3.5.9"]'),
+        patch.object(builder, "resolve_git_sha", return_value="unknown"),
+        patch.object(builder, "run") as execute,
+    ):
+        with pytest.raises(RuntimeError, match="git SHA"):
+            builder.build(args)
+        execute.assert_not_called()
+    assert not (args.dist_dir / "ansible-executor").exists()
 
 
 @pytest.mark.parametrize("case", ["architecture", "nested-work", "existing-dist", "wrong-python", "existing-work"])

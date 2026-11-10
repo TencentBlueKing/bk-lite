@@ -109,6 +109,9 @@
 ## 2026-11-05 Code-ARD 校准
 - `[monitor#20261105-001]` 节点删除或卸载软退役联动主机后，该主机的 `CollectConfig` 行仍保护对应子配置，再次接入不会把它当成无主子配置删除。「已接入主机监控」仍只认未软删的 Host 对象。
 
+## 2026-11-06 Code-ARD 校准
+- `[monitor#20261106-001]` `query_latest_active_alerts` 增加可选 `order`。缺省和 `latest` 仍按开始时间倒序取调用方 limit（数据源默认 10）。`order=severity` 在授权组织内对全部 `status=new` 告警按 critical、error、warning、info、no_data 排序，未知级别最低，同级按开始时间更早优先，再截断。`get_host_resource_top` 的组织范围仍由调用方 `user_info.team` 决定；数据源可声明可选 `organization`，不带该参数时行为不变，额外 organization 入参不扩大范围。
+
 ## 2026-10-29 Code-ARD 校准
 - `[monitor#20261029-001]` 监控资产已配置采集模板多于 1 个时，可按 `instance_id` + `monitor_plugin_id` 解绑指定模板（`POST /monitor/api/monitor_instance/unbind_monitor_plugin/`）。删除该插件的 `CollectConfig`，并同步调用 `NodeMgmt.delete_child_configs` / `delete_configs`。不删除 `MonitorInstance`，不改 CMDB，不走 `remove_monitor_instance`。只剩一个已配置模板时拒绝。告警与策略只裁明确绑定该插件、且指标名不被其余已配置模板共享的部分。
 

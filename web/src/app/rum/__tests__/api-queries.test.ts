@@ -101,12 +101,29 @@ describe('useRumQueries domain calls', () => {
 
     const views = await result.current.listViews({ range: '24h' });
     expect(views.rows[0].views).toBe(3);
+    expect(views.rows[0].errors).toBeUndefined();
     expect(views.rows[0].dist).toEqual({ good: 0, needsImprove: 0, poor: 0, missing: 0 });
     expect(views.rows[0].deviceMix).toEqual({ mobile: 0, desktop: 0 });
 
     const errors = await result.current.listErrors({ range: '24h' });
     expect(errors.issues).toHaveLength(1);
     expect(errors.controlUnavailable).toBe(true);
+  });
+
+  it('keeps missing aggregate view numbers null', async () => {
+    get.mockResolvedValueOnce({
+      rows: [{ route: '其他', views: null, sessions: null, errors: null, lcpP75: null, clsP75: null }],
+      summary: { lcpP75: null, inpP75: null, clsP75: null },
+    });
+
+    const { result } = renderHook(() => useRumQueries());
+    const views = await result.current.listViews({ range: '1h' });
+
+    expect(views.rows[0].views).toBeNull();
+    expect(views.rows[0].sessions).toBeNull();
+    expect(views.rows[0].errors).toBeNull();
+    expect(views.rows[0].lcpP75).toBeNull();
+    expect(views.summary.clsP75).toBeNull();
   });
 
   it('covers replay, funnels, monitors, releases, alerts, compliance, saved views', async () => {
@@ -174,5 +191,28 @@ describe('useRumQueries domain calls', () => {
     await result.current.deleteSavedView('sv1');
 
     expect(del).toHaveBeenCalled();
+  });
+
+  it('keeps alert trend gaps null and keeps a real zero', async () => {
+    get.mockResolvedValueOnce({
+      alert: { id: 'a1' },
+      events: [],
+      deliveries: [],
+      trend: [
+        { atMs: 1000, value: null },
+        { atMs: 2000, value: 0 },
+        { atMs: 3000, value: undefined },
+        { atMs: 4000 },
+        { atMs: 5000, value: 'n/a' },
+        { atMs: 6000, value: Number.NaN },
+        { atMs: 7000, value: 12.5 },
+      ],
+    });
+
+    const { result } = renderHook(() => useRumQueries());
+    const detail = await result.current.getAlertEvent('a1');
+
+    expect(detail.trend.map((point) => point.value)).toEqual([null, 0, null, null, null, null, 12.5]);
+    expect(get).toHaveBeenCalledWith('/rum/alert-events/a1', undefined);
   });
 });

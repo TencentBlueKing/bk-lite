@@ -43,10 +43,10 @@ afterEach(() => {
 });
 
 describe('控制台修改密码弹窗拉取密码策略', () => {
-  it('打开后只请求一次 get_sys_set，保持打开不再请求', async () => {
+  it('打开后只请求一次 password_policy，保持打开不再请求', async () => {
     let calls = 0;
     getMock.mockImplementation(async (url: string) => {
-      expect(url).toBe('/system_mgmt/system_settings/get_sys_set/');
+      expect(url).toBe('/system_mgmt/system_settings/password_policy/');
       calls += 1;
       if (calls > 3) {
         return new Promise(() => undefined);
@@ -65,6 +65,12 @@ describe('控制台修改密码弹窗拉取密码策略', () => {
     });
 
     expect(calls).toBe(1);
+    const notice = document.body.textContent ?? '';
+    expect(notice).toContain('system.security.passwordLengthRange: 8-20');
+    expect(notice).toContain('system.security.requireLowercase');
+    expect(notice).toContain('system.security.requireDigit');
+    expect(notice).toContain('system.security.requireUppercase');
+    expect(notice).toContain('system.security.requireSpecial');
 
     view.rerender(
       <IntlProvider locale="zh" messages={{}}>

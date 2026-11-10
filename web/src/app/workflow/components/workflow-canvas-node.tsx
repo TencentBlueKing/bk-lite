@@ -160,7 +160,7 @@ export function WorkflowCanvasNode({ id, data, selected }: NodeProps<WorkflowNod
         <Handle id={branch.id} type="source" position={Position.Right} className={handleClassName} style={{ top }} isConnectable={connectable} isConnectableStart={connectable} isConnectableEnd={connectable} />
         {!connected && !data.readOnly && !data.locked
           ? <HandleExtension top={top} label={branch.label} onClick={() => act('add', branch.id)} />
-          : <span className="pointer-events-none absolute left-[108px] z-10 -translate-y-1/2 bg-[var(--color-fill-1)]/85 text-xs leading-3 text-[var(--color-text-3)]" style={{ top }}>{branch.label}</span>}
+          : null}
       </div>;
     })}</> : data.kind !== 'return' && <>
       <Handle type="source" position={Position.Right} className={handleClassName} isConnectable={connectable} isConnectableStart={connectable} isConnectableEnd={connectable} />

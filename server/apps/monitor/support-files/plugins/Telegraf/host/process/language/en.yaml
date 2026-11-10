@@ -8,11 +8,11 @@ monitor_object_type:
 monitor_object_metric:
   Process:
     process_cpu_usage:
-      name: CPU Usage
-      desc: CPU usage of matched processes aggregated by process_name, used to find hot processes on a host.
+      name: Combined CPU of Same-Named Processes
+      desc: Combined CPU of processes that share a name, totaled across the host's logical cores. On multi-core hosts the value can stay above 100%, and multiple instances of the same name are added together. Use it to find hot processes on a host. It should not be read as whole-host utilization on a 0–100% scale.
     process_mem_usage:
-      name: Application Memory Usage
-      desc: Memory usage percent of matched processes relative to system memory, aggregated by process_name.
+      name: Combined Memory Share of Same-Named Processes
+      desc: Combined share of host memory used by processes that share a name. Adding multiple instances together can push the value above 100%. Use it to assess memory consumption of a process family. It should not be read as normalized utilization for a single process or as a cap for the whole host.
     process_memory_rss:
       name: Memory RSS
       desc: Resident set size of matched processes aggregated by process_name, used to assess absolute memory usage.

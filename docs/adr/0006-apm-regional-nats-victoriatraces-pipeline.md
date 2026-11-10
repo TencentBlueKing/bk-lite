@@ -2,6 +2,8 @@
 
 Status: accepted
 
+[ADR 0011](0011-apm-rum-aggregate-metrics-store.md) 部分替代本决定：入口 RED 与可用性 SLO 可以读取独立聚合库。调用链明细、告警策略、慢请求、Apdex、延迟 SLO、下钻、拓扑、Edge、尾采样，以及 Monitor 的 VictoriaMetrics，仍以本决定为准。
+
 ## Context
 
 区域节点可能无法连接中心 VictoriaTraces，而 NATS 已是 BK-Lite 跨云区域传输基础设施。APM 尚未正式部署；仓库早期未发布方案曾设计 Edge Nginx、尾采样和 VictoriaMetrics Span Metrics，但该方案会形成独立入口与双存储语义，既不能复用区域 NATS 的可靠传输，也会使 RED、SLO、目录和策略跨 VictoriaTraces/VictoriaMetrics 两份事实源漂移。官方 `otelcol-contrib` 0.153.0 发行清单没有 NATS trace receiver/exporter；其 Go 模块要求 Go 1.25，仓库主机 Go 1.23.7 不能直接构建，但现有 Docker 工具链能够以固定 Go 1.25 镜像可重复构建自定义发行版。

@@ -32,6 +32,7 @@ const ComponentParamSwitchControl: React.FC<ComponentParamSwitchControlProps> = 
   if (inputConfig.control === 'radio') {
     control = (
       <Segmented
+        size="small"
         block={block}
         className="min-w-max"
         options={options}
@@ -42,7 +43,8 @@ const ComponentParamSwitchControl: React.FC<ComponentParamSwitchControlProps> = 
   } else if (inputConfig.control === 'select') {
     control = (
       <Select
-        className="min-w-32"
+        size="small"
+        className="min-w-28"
         options={options}
         value={value}
         onChange={(nextValue) => onChange?.(nextValue)}

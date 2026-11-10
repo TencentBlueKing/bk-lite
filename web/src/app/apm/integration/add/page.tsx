@@ -13,8 +13,9 @@ import {
   ExperimentOutlined,
   JavaScriptOutlined,
   PythonOutlined,
+  QuestionCircleOutlined,
 } from '@ant-design/icons';
-import { Alert, Button, Drawer, Form, Input, message, Segmented, Select, Space, Tabs, Tag, Typography } from 'antd';
+import { Alert, Button, Drawer, Form, Input, message, Segmented, Select, Space, Tabs, Tag, Tooltip, Typography } from 'antd';
 import useApmApi from '@/app/apm/api';
 import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell';
 import CatalogState, { type CatalogStateKind } from '@/app/apm/components/catalog-state';
@@ -23,12 +24,14 @@ import type { ApmApplication, ApmCloudRegion, ApmIngestSnippet, ApmIngestSnippet
 import { HandledRequestError } from '@/utils/request';
 import { useTranslation } from '@/utils/i18n';
 
+type IntegrationMode = 'auto' | 'manual' | 'forward' | 'observe';
+
 interface IntegrationMethod {
   key: string;
   title: string;
   description: string;
   icon: ReactNode;
-  badge?: string;
+  mode: IntegrationMode;
   language?: ApmIngestSnippetInput['language'];
   available: boolean;
 }
@@ -37,6 +40,7 @@ interface IntegrationMethodDef {
   key: string;
   title: string;
   icon: ReactNode;
+  mode: IntegrationMode;
   language?: ApmIngestSnippetInput['language'];
   available: boolean;
 }
@@ -44,20 +48,20 @@ interface IntegrationMethodDef {
 const INTEGRATION_GROUPS: { key: string; title: string; icon: ReactNode; methods: IntegrationMethodDef[] }[] = [
   {
     key: 'sdk', title: 'SDK', icon: <CodeOutlined aria-hidden="true" />, methods: [
-      { key: 'nodejs', title: 'Node.js', icon: <JavaScriptOutlined aria-hidden="true" />, language: 'nodejs', available: true },
-      { key: 'java', title: 'Java', icon: <CoffeeOutlined aria-hidden="true" />, language: 'java', available: true },
-      { key: 'python', title: 'Python', icon: <PythonOutlined aria-hidden="true" />, language: 'python', available: true },
-      { key: 'dotnet', title: '.NET', icon: <DotNetOutlined aria-hidden="true" />, language: 'dotnet', available: true },
-      { key: 'go', title: 'Go', icon: <CodeOutlined aria-hidden="true" />, language: 'go', available: true },
-      { key: 'php', title: 'PHP', icon: <CodeOutlined aria-hidden="true" />, language: 'php', available: true },
-      { key: 'ruby', title: 'Ruby', icon: <CodeOutlined aria-hidden="true" />, language: 'ruby', available: true },
-      { key: 'cpp', title: 'C++', icon: <CodeOutlined aria-hidden="true" />, language: 'cpp', available: true },
-      { key: 'erlang', title: 'Erlang/Elixir', icon: <CodeOutlined aria-hidden="true" />, language: 'erlang', available: true },
-      { key: 'swift', title: 'Swift', icon: <CodeOutlined aria-hidden="true" />, language: 'swift', available: true },
+      { key: 'nodejs', title: 'Node.js', icon: <JavaScriptOutlined aria-hidden="true" />, mode: 'auto', language: 'nodejs', available: true },
+      { key: 'java', title: 'Java', icon: <CoffeeOutlined aria-hidden="true" />, mode: 'auto', language: 'java', available: true },
+      { key: 'python', title: 'Python', icon: <PythonOutlined aria-hidden="true" />, mode: 'auto', language: 'python', available: true },
+      { key: 'dotnet', title: '.NET', icon: <DotNetOutlined aria-hidden="true" />, mode: 'auto', language: 'dotnet', available: true },
+      { key: 'go', title: 'Go', icon: <CodeOutlined aria-hidden="true" />, mode: 'manual', language: 'go', available: true },
+      { key: 'php', title: 'PHP', icon: <CodeOutlined aria-hidden="true" />, mode: 'auto', language: 'php', available: true },
+      { key: 'ruby', title: 'Ruby', icon: <CodeOutlined aria-hidden="true" />, mode: 'manual', language: 'ruby', available: true },
+      { key: 'cpp', title: 'C++', icon: <CodeOutlined aria-hidden="true" />, mode: 'manual', language: 'cpp', available: true },
+      { key: 'erlang', title: 'Erlang/Elixir', icon: <CodeOutlined aria-hidden="true" />, mode: 'manual', language: 'erlang', available: true },
+      { key: 'swift', title: 'Swift', icon: <CodeOutlined aria-hidden="true" />, mode: 'manual', language: 'swift', available: true },
     ],
   },
-  { key: 'otel', title: 'OpenTelemetry', icon: <ApiOutlined aria-hidden="true" />, methods: [{ key: 'otel-collector', title: 'OTel Collector', icon: <DeploymentUnitOutlined aria-hidden="true" />, language: 'collector', available: true }] },
-  { key: 'ebpf', title: 'eBPF', icon: <ExperimentOutlined aria-hidden="true" />, methods: [{ key: 'ebpf-obi', title: 'eBPF', icon: <ExperimentOutlined aria-hidden="true" />, language: 'obi', available: true }] },
+  { key: 'otel', title: 'OpenTelemetry', icon: <ApiOutlined aria-hidden="true" />, methods: [{ key: 'otel-collector', title: 'OTel Collector', icon: <DeploymentUnitOutlined aria-hidden="true" />, mode: 'forward', language: 'collector', available: true }] },
+  { key: 'ebpf', title: 'eBPF', icon: <ExperimentOutlined aria-hidden="true" />, methods: [{ key: 'ebpf-obi', title: 'eBPF', icon: <ExperimentOutlined aria-hidden="true" />, mode: 'observe', language: 'obi', available: true }] },
 ];
 
 type PageState = 'loading' | 'empty' | 'ready' | 'error';
@@ -176,9 +180,13 @@ function snippetOperationGuide(
   t: Translate,
   platform: ProbePlatform = 'linux',
 ): string {
+  const obiGuide = t(
+    'apm.integration.guideObiHost',
+    '在 Linux amd64 主机上执行。脚本会另起一个 OBI 进程，不修改 Go 程序，也不改它的启动命令。每个可执行文件路径各执行一次，并让对应进程保持运行。同一路径上的多个进程只算一个观测目标。这个 Go 进程不要再装语言探针或 Go SDK，否则调用链会重复；主机上的其他进程可以继续用语言探针。内核需要 Linux 6.6 或更新，OBI v1.0.0 依赖 uprobe_multi，并以 root 或该版本要求的权限运行。如果以前已经跑着一份 OBI，换成新脚本后先停掉旧进程，再按每个程序各启动一个。',
+  );
   const guides: Record<ApmIngestSnippetInput['language'], Record<SnippetMode, string>> = {
     nodejs: {
-      agent: t('apm.integration.guideNodeHost', '在原有 Node.js 启动命令末尾追加以下内容，并重启应用。'),
+      agent: t('apm.integration.guideNodeHost', '把 `--require` 放在原有 Node.js 启动命令的脚本名前面，然后重启应用。'),
       docker: t('apm.integration.guideNodeDocker', '将以下安装命令写入 Dockerfile，并用 `-e` 注入环境变量后重新构建、启动容器。'),
       kubernetes: t('apm.integration.guideNodeKubernetes', '将以下环境变量合并到应用 Pod，确保镜像已预装 Node.js 自动探针后滚动重启。'),
     },
@@ -200,23 +208,14 @@ function snippetOperationGuide(
       kubernetes: t('apm.integration.guideDotnetKubernetes', '将以下环境变量合并到应用 Pod，确保镜像包含 .NET 自动探针后滚动重启。'),
     },
     php: {
-      agent: t('apm.integration.guidePhpHost', '按以下脚本安装 PHP NTS 8.1–8.4 扩展和钉死的 Composer 包，然后重启 PHP 进程。'),
+      agent: t('apm.integration.guidePhpHost', '按以下脚本安装 PHP NTS 8.1–8.5 扩展和钉死的 Composer 包，把生成的 otel-fpm-pool.conf 并进 php-fpm 池配置后重载 php-fpm。Laravel 从 PHP 8.2 起安装。'),
       docker: t('apm.integration.guidePhpDocker', '将以下安装命令写入 Dockerfile，用 `-e` 注入环境变量后重新构建、启动容器。'),
-      kubernetes: t('apm.integration.guidePhpKubernetes', '将以下环境变量合并到应用 Pod，确保镜像已预装 PHP NTS 8.1–8.4 扩展和钉死的 Composer 包后滚动重启。'),
+      kubernetes: t('apm.integration.guidePhpKubernetes', '将以下环境变量合并到应用 Pod，确保镜像已预装 PHP NTS 8.1–8.5 扩展和钉死的 Composer 包后滚动重启。Laravel 从 PHP 8.2 起安装。'),
     },
     obi: {
-      agent: t(
-        'apm.integration.guideObiHost',
-        '在符合内核和权限要求的 Linux amd64 主机上执行以下脚本。它只观察指定的 Go 可执行文件，不修改应用二进制，也不要和语言探针装在同一进程。',
-      ),
-      docker: t(
-        'apm.integration.guideObiHost',
-        '在符合内核和权限要求的 Linux amd64 主机上执行以下脚本。它只观察指定的 Go 可执行文件，不修改应用二进制，也不要和语言探针装在同一进程。',
-      ),
-      kubernetes: t(
-        'apm.integration.guideObiHost',
-        '在符合内核和权限要求的 Linux amd64 主机上执行以下脚本。它只观察指定的 Go 可执行文件，不修改应用二进制，也不要和语言探针装在同一进程。',
-      ),
+      agent: obiGuide,
+      docker: obiGuide,
+      kubernetes: obiGuide,
     },
     go: {
       agent: t('apm.integration.guideGoHost', '按以下指南审阅 OpenTelemetry Go SDK 示例，接入应用代码后重新编译并重启。'),
@@ -250,6 +249,45 @@ function snippetOperationGuide(
     },
   };
   return guides[language][mode];
+}
+
+function integrationModeLabel(mode: IntegrationMode, t: Translate) {
+  switch (mode) {
+    case 'auto':
+      return t('apm.integration.modeAuto', '自动探针');
+    case 'manual':
+      return t('apm.integration.modeManual', '手动接入');
+    case 'forward':
+      return t('apm.integration.modeForward', '链路转发');
+    case 'observe':
+      return t('apm.integration.modeObserve', '进程观测');
+  }
+}
+
+function IntegrationModeBadge({ mode, t }: { mode: IntegrationMode; t: Translate }) {
+  return (
+    <span className="inline-flex h-5 shrink-0 items-center self-start rounded-md bg-[var(--color-fill-1)] px-1.5 text-xs font-normal leading-none text-[var(--color-text-2)]">
+      {integrationModeLabel(mode, t)}
+    </span>
+  );
+}
+
+function GroupTitle({ icon, title, hint, hintLabel }: { icon: ReactNode; title: string; hint: string; hintLabel: string }) {
+  return (
+    <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-[var(--color-text-1)]">
+      <span className="text-[var(--color-primary)]">{icon}</span>
+      {title}
+      <Tooltip title={hint} placement="bottomLeft" trigger={['hover', 'focus']}>
+        <button
+          type="button"
+          aria-label={hintLabel}
+          className="inline-flex h-5 w-5 items-center justify-center border-0 bg-transparent p-0 text-xs font-normal text-[var(--color-text-3)] hover:text-[var(--color-text-2)]"
+        >
+          <QuestionCircleOutlined />
+        </button>
+      </Tooltip>
+    </div>
+  );
 }
 
 function CapabilityTagList({ items }: { items: readonly string[] }) {
@@ -330,63 +368,60 @@ export default function ApmIntegrationAddPage() {
   const requestSequence = useRef(0);
 
   const integrationGroups = useMemo(() => {
-    const copy: Record<string, { description: string; badge?: string; title?: string }> = {
+    const hints: Record<string, string> = {
+      sdk: t('apm.integration.groupSdkHint', '自动探针在目标进程启动时挂上。手动接入要改代码，然后重新编译或重启。'),
+      otel: t('apm.integration.groupOtelHint', '不安装探针，把已有 Collector 的调用链转到平台。'),
+      ebpf: t('apm.integration.groupEbpfHint', '不改目标程序，在主机上另起一个观测进程。'),
+    };
+    const copy: Record<string, { description: string; title?: string }> = {
       nodejs: {
-        description: t('apm.integration.nodejsDesc', '自动探针，支持 Express / Nest / Koa'),
-        badge: t('apm.integration.recommended', '推荐'),
+        description: t('apm.integration.nodejsDesc', '采集 Express / Nest / Koa 的调用链'),
       },
       java: {
-        description: t('apm.integration.javaDesc', '自动探针，支持 Spring / Dubbo / gRPC'),
-        badge: t('apm.integration.recommended', '推荐'),
+        description: t('apm.integration.javaDesc', '采集 Spring / Dubbo / gRPC 的调用链'),
       },
       python: {
-        description: t('apm.integration.pythonDesc', '自动探针，支持 Django / Flask / FastAPI'),
+        description: t('apm.integration.pythonDesc', '采集 Django / Flask / FastAPI 的调用链'),
       },
       dotnet: {
-        description: t('apm.integration.dotnetDesc', '自动探针，支持 Linux x86_64 glibc；Windows 仅限主机'),
+        description: t('apm.integration.dotnetDesc', '采集 ASP.NET Core / gRPC 的调用链\nLinux 限 x86_64 glibc，Windows 仅主机'),
       },
       php: {
-        description: t('apm.integration.phpDesc', '自动探针，支持 PHP NTS 8.1–8.4，含 Laravel / Symfony / Slim'),
+        description: t('apm.integration.phpDesc', '采集 Symfony / Slim / Guzzle 的调用链，Laravel 从 PHP 8.2 起\n仅 Linux 上的 PHP NTS 8.1–8.5'),
       },
       go: {
-        description: t('apm.integration.goDesc', '手动接入，生成 OpenTelemetry Provider 示例'),
-        badge: t('apm.integration.manualSdk', '手动 SDK'),
+        description: t('apm.integration.goDesc', '接入后采集 net/http / Gin / Echo / gRPC 的调用链'),
       },
       ruby: {
-        description: t('apm.integration.rubyDesc', '手动接入，生成 Rack 初始化示例'),
-        badge: t('apm.integration.manualSdk', '手动 SDK'),
+        description: t('apm.integration.rubyDesc', '接入 Rack 后采集请求调用链'),
       },
       cpp: {
-        description: t('apm.integration.cppDesc', '手动接入，生成最小入口 Span 示例'),
-        badge: t('apm.integration.manualSdk', '手动 SDK'),
+        description: t('apm.integration.cppDesc', '编译接入后，只采集进程入口调用链'),
       },
       erlang: {
-        description: t('apm.integration.erlangDesc', '手动接入，生成 Erlang/Elixir path 依赖示例'),
-        badge: t('apm.integration.manualSdk', '手动 SDK'),
+        description: t('apm.integration.erlangDesc', '用本地依赖接入后，只采集进程入口调用链'),
       },
       swift: {
-        description: t('apm.integration.swiftDesc', '手动接入，生成本地 Swift Package 示例'),
-        badge: t('apm.integration.manualSdk', '手动 SDK'),
+        description: t('apm.integration.swiftDesc', '用本地 Package 接入后，只采集进程入口调用链'),
       },
       'otel-collector': {
-        description: t('apm.integration.otelDesc', '转发自建 Collector 链路到平台 OTLP 端点'),
+        description: t('apm.integration.otelDesc', '把已有 Collector 的调用链转到平台'),
       },
       'ebpf-obi': {
         title: t('apm.integration.ebpfTitle', 'eBPF 自动注入（OBI）'),
         description: t(
           'apm.integration.ebpfDesc',
-          '未安装语言探针时，只观察指定的 Go 可执行文件。不要和 Java、Python、Node.js、.NET、PHP 或 Go SDK 装在同一进程。',
+          '只采集指定 Go 进程的调用链\n另起进程盯住这一个程序，程序本身不用改',
         ),
-        badge: t('apm.integration.lowIntrusion', '低侵入'),
       },
     };
     return INTEGRATION_GROUPS.map((group) => ({
       ...group,
+      hint: hints[group.key] ?? '',
       methods: group.methods.map((method) => ({
         ...method,
         title: copy[method.key]?.title ?? method.title,
         description: copy[method.key]?.description ?? '',
-        badge: copy[method.key]?.badge,
       })),
     }));
   }, [t]);
@@ -571,7 +606,12 @@ export default function ApmIntegrationAddPage() {
         <div className="flex flex-col gap-4">
           {integrationGroups.filter((group) => group.methods.some((method) => method.available)).map((group) => (
             <ApmSurface key={group.key}>
-              <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-[var(--color-text-1)]"><span className="text-[var(--color-primary)]">{group.icon}</span>{group.title}</div>
+              <GroupTitle
+                icon={group.icon}
+                title={group.title}
+                hint={group.hint}
+                hintLabel={t('apm.integration.groupHintLabel', '{title} 说明', { title: group.title })}
+              />
               <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                 {group.methods.filter((method) => method.available).map((method) => (
                   <button
@@ -589,10 +629,10 @@ export default function ApmIntegrationAddPage() {
                         </span>
                         <div className="min-w-0">
                           <Typography.Title level={5} className="!mb-2 !text-sm">{method.title}</Typography.Title>
-                          <Typography.Text type="secondary" className="text-xs leading-5">{method.description}</Typography.Text>
+                          <Typography.Text type="secondary" className="whitespace-pre-line text-xs leading-5">{method.description}</Typography.Text>
                         </div>
                       </div>
-                      {method.badge ? <Tag color="blue">{method.badge}</Tag> : null}
+                      <IntegrationModeBadge mode={method.mode} t={t} />
                     </div>
                   </button>
                 ))}
@@ -671,6 +711,7 @@ export default function ApmIntegrationAddPage() {
                 <Form.Item
                   name="process_executable"
                   label={t('apm.integration.processExecutable', 'Go 可执行文件路径')}
+                  extra={t('apm.integration.processExecutableHelp', '按可执行文件绝对路径匹配。同一路径上的多个进程共用这一份观测；两个程序请各生成一份脚本。')}
                   rules={[
                     { required: true, whitespace: true, message: t('apm.integration.processExecutableRequired', '请输入绝对路径') },
                     {
@@ -759,7 +800,9 @@ export default function ApmIntegrationAddPage() {
                 <Typography.Text type="secondary" className="mt-1 block text-xs">
                   {isCollector
                     ? t('apm.integration.collectorIdentityHelp', '经过这条 pipeline 的 Trace 会归到所选应用。多个应用请各自生成一条 pipeline。')
-                    : t('apm.integration.instanceIdentityHelp', '实例 ID 在应用进程启动时生成，每个副本唯一。')}
+                    : isObi
+                      ? t('apm.integration.obiIdentityHelp', '实例 ID 在这份观测脚本启动时生成，调用链仍归到所选服务。')
+                      : t('apm.integration.instanceIdentityHelp', '实例 ID 在应用进程启动时生成，每个副本唯一。')}
                 </Typography.Text>
               </div>
             </div>

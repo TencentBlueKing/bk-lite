@@ -13,6 +13,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
+const sessionEndLostMetric = "core_rum_session_end_records_lost_total"
+
 type operationHealthSource interface {
 	CountOverdueErasures(context.Context, time.Time) (int64, error)
 }
@@ -31,6 +33,7 @@ type OperationalMetrics struct {
 	recentConflicts   prometheus.Gauge
 	lastReconcileTime prometheus.Gauge
 	up                prometheus.Gauge
+	sessionEndLost    prometheus.Counter
 	now               func() time.Time
 }
 
@@ -63,6 +66,10 @@ func NewOperationalMetrics(
 			Name: "core_rum_operational_metrics_up",
 			Help: "Whether the most recent Redis and warehouse operational health collection succeeded.",
 		}),
+		sessionEndLost: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: sessionEndLostMetric,
+			Help: "Session-end records dropped because their snapshot expired before it could be written.",
+		}),
 		now: time.Now,
 	}
 	registry.MustRegister(
@@ -71,8 +78,13 @@ func NewOperationalMetrics(
 		metrics.recentConflicts,
 		metrics.lastReconcileTime,
 		metrics.up,
+		metrics.sessionEndLost,
 	)
 	return metrics
+}
+
+func (metrics *OperationalMetrics) SessionEndLost() prometheus.Counter {
+	return metrics.sessionEndLost
 }
 
 func (metrics *OperationalMetrics) Run(ctx context.Context, address string) error {

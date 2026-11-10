@@ -13,7 +13,7 @@ from apps.console_mgmt.user_info_roles import collect_prefetched_group_role_ids
 from apps.core.utils.builtin_app_i18n import localized_app_display_name
 from apps.core.utils.loader import LanguageLoader
 from apps.rpc.system_mgmt import SystemMgmt
-from apps.system_mgmt.models import Group, Role, User
+from apps.system_mgmt.models import Group, Role, SystemSettings, User
 from apps.system_mgmt.models.app import App
 from apps.system_mgmt.utils.group_utils import GroupUtils
 from apps.system_mgmt.utils.operation_log_utils import log_operation
@@ -356,6 +356,9 @@ def get_user_info(request):
             groups = Group.objects.filter(id__in=user.group_list).prefetch_related("roles")
             role_ids.update(collect_prefetched_group_role_ids(groups))
 
+        is_otp_enabled = SystemSettings.objects.filter(key="enable_otp").values_list("value", flat=True).first() == "1"
+        user_has_otp = bool(user.otp_secret)
+
         # 将role_list中的ID转换为角色信息（包含app显示名称）
         role_info = []
         if role_ids:
@@ -382,12 +385,39 @@ def get_user_info(request):
                 getattr(request.user, "timezone", None),
             ),
             "temporary_pwd": user.temporary_pwd,
+            "has_otp": True if (is_otp_enabled and user_has_otp) else False,
         }
         return JsonResponse({"result": True, "data": user_info})
     except User.DoesNotExist:
         return JsonResponse({"result": False, "message": loader.get("error.user_not_found", "User not found")})
     except Exception as e:
         return JsonResponse({"result": False, "message": str(e)})
+
+
+def unbind_otp(request):
+    """当前用户自助解绑 OTP。解绑后下次登录按系统策略重新绑定。"""
+    actor = getattr(request, "user", None)
+    if actor is None or not getattr(actor, "is_authenticated", False):
+        loader = LanguageLoader(app="console_mgmt", default_lang="en")
+        return JsonResponse(
+            {"result": False, "message": loader.get("error.authentication_required", "Authentication required")},
+            status=401,
+        )
+
+    locale = getattr(actor, "locale", "en")
+    loader = LanguageLoader(app="console_mgmt", default_lang=locale)
+    try:
+        user = User.objects.get(username=actor.username, domain=actor.domain)
+    except User.DoesNotExist:
+        return JsonResponse({"result": False, "message": loader.get("error.user_not_found", "User not found")})
+
+    if user.otp_secret:
+        with transaction.atomic():
+            user.otp_secret = None
+            user.save(update_fields=["otp_secret"])
+            transaction.on_commit(lambda user_id=user.id: cache.delete(f"menus-user:{user_id}"), robust=True)
+        log_operation(request, "update", "console_mgmt", f"解绑OTP: {user.username}")
+    return JsonResponse({"result": True, "message": loader.get("success.otp_unbind", "OTP unbound successfully")})
 
 
 def reset_pwd(request):
@@ -412,10 +442,14 @@ def reset_pwd(request):
         client = SystemMgmt()
         res = client.reset_pwd(username, domain, password, caller_token=caller_token)
 
-        # 如果密码重置成功，记录操作日志
+        response = JsonResponse(res)
+        # 如果密码重置成功，记录操作日志，并把换发的 JWT 写回当前会话。
         if res.get("result"):
             log_operation(request, "update", "console_mgmt", f"重置用户密码: {username}")
+            from apps.core.views.index_view import _attach_rotated_token_cookie
 
-        return JsonResponse(res)
+            _attach_rotated_token_cookie(response, res)
+
+        return response
     except Exception as e:
         return JsonResponse({"result": False, "message": str(e)})

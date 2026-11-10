@@ -711,8 +711,13 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
     }
   }, [queueImageFiles, reportImageError, t]);
 
-  // Send message
-  const handleSendMessage = useCallback(async (value: string, distributeFileIds: number[] = []) => {
+  // Send message. 第二个参数要么是待分发文件 id，要么是选择卡点击。
+  const handleSendMessage = useCallback(async (
+    value: string,
+    extra?: number[] | { choiceId?: string; optionKey?: string },
+  ) => {
+    const distributeFileIds = Array.isArray(extra) ? extra : [];
+    const choice = !extra || Array.isArray(extra) ? undefined : extra;
     const hasDraft = Boolean(value.trim() || uploadedImages.length || documentChips.length || distributeFileIds.length);
     if (!hasDraft || isLoading) return;
     if (!distributeFileIds.length && documentChips.some((item) => item.status !== 'ready')) return;
@@ -811,7 +816,7 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
           return;
         }
         const readyAttachments = [...documentChips, ...uploadedAttachments].filter((item) => item.status === 'ready');
-        const requestBody = {
+        const requestBody: Record<string, unknown> = {
           message: value.trim(),
           attachment_ids: readyAttachments.map((item) => item.id),
           ...(distributeFileIds.length ? { distribute_file_ids: distributeFileIds } : {}),
@@ -819,6 +824,13 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
           ...customData,
           ...(pageContext ? { page_context: pageContext } : {}),
         };
+        if (choice?.choiceId) {
+          requestBody.choice_id = choice.choiceId;
+          requestBody.choice_option = choice.optionKey || '';
+        } else {
+          delete requestBody.choice_id;
+          delete requestBody.choice_option;
+        }
         setDocumentChips([]);
         const stored = sessionManagerRef.current?.getSession()?.messages.find((item) => item.id === userMsg.id);
         if (stored) {

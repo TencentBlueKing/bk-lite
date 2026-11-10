@@ -14,8 +14,8 @@ monitor_object_metric:
       name: Deferred Requests
       desc: Number of deferred requests.
     llamacpp:kv_cache_usage_ratio_gauge:
-      name: KV Cache Usage Ratio
-      desc: KV cache usage ratio (1 means 100%).
+      name: KV Cache Occupancy
+      desc: Share of KV cache capacity currently in use. The range is 0–1, where 1 means fully occupied. Set alert thresholds on the 0–1 scale, not 0–100.
     llamacpp:prompt_tokens_total_counter_rate:
       name: Prompt Token Rate
       desc: Prompt token processing rate over the last 5 minutes.

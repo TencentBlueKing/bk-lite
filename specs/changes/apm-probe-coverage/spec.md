@@ -20,7 +20,7 @@ APM 接入已经按 OpenTelemetry 官方探针交付：一种语言钉一个版�
 
 ## User Stories
 
-1. As an APM 使用者, I want 在接入页选择 PHP 后拿到只从本系统下载的离线包和片段, so that Linux 上的 PHP 8.1–8.4 NTS 应用不用上 PECL 或 Packagist 就能打出入口 Span。
+1. As an APM 使用者, I want 在接入页选择 PHP 后拿到只从本系统下载的离线包和片段, so that Linux 上的 PHP 8.1–8.5 NTS 应用不用上 PECL 或 Packagist 就能打出入口 Span。PHP 8.1 安装 Symfony、Slim 和 Guzzle；Laravel、PDO、MySQLi 从 8.2 起。
 2. As an APM 使用者, I want PHP 页面和片段只出现 Linux x86_64 glibc 的 NTS 步骤, so that 我不会按 ARM、Windows 或 ZTS 去装一份对不上的扩展。
 3. As an APM 使用者, I want .NET 卡片同时提供 Linux 和 Windows 两份 1.16.0 制品, so that Windows 上的 ASP.NET Core 能接入，而现有 Linux 片段和下载地址保持不变。
 4. As an APM 使用者, I want ASP.NET Framework 只出现在 Windows 说明里, so that 我不会在 Linux 制品上寻找它。
@@ -43,7 +43,7 @@ APM 接入已经按 OpenTelemetry 官方探针交付：一种语言钉一个版�
 
 - 下载仍只接受白名单制品名，沿用现有免登录下载路径。非白名单名字拒绝。初始化命令随白名单接受新制品名，不进入服务启动，不在 `batch_init` 完成前依赖对象存储。
 - 已交付五种制品的名字、对象 key 和下载地址不变。
-- PHP 制品名 `opentelemetry-php-auto-linux-glibc-x64.tar.gz`，对象 key `apm/probe/php/opentelemetry-php-auto-linux-glibc-x64.tar.gz`。一份归档同时包含四个 NTS 扩展和 Composer 包，不按框架再拆制品。
+- PHP 制品名 `opentelemetry-php-auto-linux-glibc-x64.tar.gz`，对象 key `apm/probe/php/opentelemetry-php-auto-linux-glibc-x64.tar.gz`。一份归档同时包含 PHP 8.1–8.5 的 NTS 扩展和 Composer 包，不按框架再拆制品。
 - .NET Windows 制品名 `opentelemetry-dotnet-auto-windows.zip`，对象 key `apm/probe/dotnet/opentelemetry-dotnet-auto-windows.zip`。归档官方 v1.16.0 的 `opentelemetry-dotnet-instrumentation-windows.zip` 原文件并改名，不与 Linux zip 合并。
 - eBPF 制品名 `opentelemetry-ebpf-obi-linux-amd64.tar.gz`，对象 key `apm/probe/ebpf/opentelemetry-ebpf-obi-linux-amd64.tar.gz`。归档官方 OBI v1.0.0 的 `obi-v1.0.0-linux-amd64.tar.gz` 原文件并改名。不放入 arm64 包。
 - 未传平台时，.NET 仍解析到现有 Linux glibc 制品。语言到制品的默认映射保持 Linux 这一份，Windows 只在显式选择 Windows 时使用。
@@ -58,10 +58,10 @@ APM 接入已经按 OpenTelemetry 官方探针交付：一种语言钉一个版�
 
 ### PHP
 
-- 扩展版本钉 `opentelemetry-php-instrumentation` 1.4.2。官方该版本没有 Linux 预编译包，由发布构建在 x86_64 glibc 环境编出 PHP 8.1、8.2、8.3、8.4 的 NTS `.so`。不编 ZTS，不在目标机执行 `pecl`。构建使用的镜像和 glibc 版本写进制品清单。
-- 同一归档带上这些钉死版本的 Composer 包：`open-telemetry/sdk`、`open-telemetry/exporter-otlp`、`open-telemetry/opentelemetry-auto-laravel`、`open-telemetry/opentelemetry-auto-symfony`、`open-telemetry/opentelemetry-auto-slim`、`open-telemetry/opentelemetry-auto-guzzle`、`open-telemetry/opentelemetry-auto-pdo`、`open-telemetry/opentelemetry-auto-mysqli`。版本取与扩展 1.4.2 配套、且 `ext-opentelemetry` 约束能被 1.4.2 满足的发布版，写进制品清单。禁止未钉版本的 `composer require`。
-- 页面入口只写 Laravel、Symfony、Slim。推断下游只写 PDO、MySQLi。HTTP 客户端只写 Guzzle。WordPress、Magento 等其余上游库不进归档，也不上页面。
-- 片段关闭指标和日志导出，Trace 用 OTLP/HTTP 打到所选云区域。安装时核对 PHP 是 8.1–8.4 且为 NTS，否则退出并说明原因，不复制错误的 `.so`。Composer 从归档离线安装。片段不出现 `pecl`、`packagist.org`、`https://github.com`、ARM 或 Windows 步骤。
+- 扩展版本钉 `opentelemetry-php-instrumentation` 1.4.2。官方该版本没有 Linux 预编译包，由发布构建在 x86_64 glibc 环境编出 PHP 8.1、8.2、8.3、8.4、8.5 的 NTS `.so`。不编 ZTS，不在目标机执行 `pecl`。构建使用的镜像和 glibc 版本写进制品清单。2026-11-10 确认不升到扩展 1.5.0 或 SDK 1.16.1：这两档的 Composer 约束是 PHP `^8.2`，覆盖的 PHP 版本没有变多。
+- 同一归档带上这些钉死版本的 Composer 包：`open-telemetry/sdk` 1.15.0、`open-telemetry/exporter-otlp` 1.4.0、`open-telemetry/opentelemetry-auto-laravel` 1.10.0、`open-telemetry/opentelemetry-auto-symfony` 1.7.0、`open-telemetry/opentelemetry-auto-slim` 1.5.1、`open-telemetry/opentelemetry-auto-guzzle` 1.5.0、`open-telemetry/opentelemetry-auto-pdo` 0.6.0、`open-telemetry/opentelemetry-auto-mysqli` 0.5.0，以及各 PHP 小版本会选中的框架传递依赖。`dist/` 同时保留 8.1、8.2、8.4 三套解析结果；8.3 落在 8.2 与 8.4 的并集里，8.5 与 8.4 相同。禁止未钉版本的 `composer require`。不打入被 Composer 安全公告拦截的 Laravel 10 和 11。
+- 页面入口写 Symfony、Slim、Guzzle；Laravel 标成 PHP 8.2+。推断下游只写 PDO、MySQLi，并标成 PHP 8.2+。WordPress、Magento 等其余上游库不进归档，也不上页面。
+- 片段关闭指标和日志导出，Trace 用 OTLP/HTTP 打到所选云区域。安装时核对 PHP 是 8.1–8.5 且为 NTS，否则退出并说明原因，不复制错误的 `.so`。ZTS 判断使用 `PHP_ZTS` 的真值，8.4 起该常量是布尔值。没有 `composer.json` 时先创建最小项目，再关闭 Packagist，然后只从归档离线安装。8.1 不安装 Laravel、PDO、MySQLi。片段不出现 `pecl`、`packagist.org`、`https://github.com`、ARM 或 Windows 步骤。
 - host、docker、kubernetes、other 四种运行方式都提供，实例 ID 沿用各运行方式的既有规则。验收用 Slim 打出一条入口 Span。页面上的 Laravel、Symfony 不逐个搭集成环境。
 
 ### .NET Windows
@@ -74,9 +74,11 @@ APM 接入已经按 OpenTelemetry 官方探针交付：一种语言钉一个版�
 
 ### eBPF
 
-- 版本钉 OpenTelemetry eBPF Instrumentation v1.0.0 的 Linux amd64 包。内核条件按该版本支持矩阵写进片段说明：Linux 5.8+，或带 eBPF backport 且有 BTF 的 RHEL 系 4.18+；需要 root 或该版本要求的 capabilities。
+- 版本钉 OpenTelemetry eBPF Instrumentation v1.0.0 的 Linux amd64 包。内核低于 6.6 时片段退出并说明 OBI v1.0.0 需要 `uprobe_multi`。仍需要可读的 BTF 和 root 或该版本要求的 capabilities。
 - 片段使用 Config v2，只导出 Trace，关闭指标。发现规则只包含 `process_executable`。不使用端口发现，不扫描整个 PID 命名空间，不注入 JVM。
-- 页面只写 Go `net/http` 入口，推断下游留空。说明它是未装语言探针时的零代码接入，不替换 Go SDK。同一进程不要再装 Java、Python、Node.js、.NET、PHP 或 Go SDK。
+- `resource.attributes` 写入所选 `service.name` 和 `service.namespace`。OBI v1.0.0 用这两项确定服务身份。只放在 `OTEL_RESOURCE_ATTRIBUTES` 时，服务名会被可执行文件名覆盖。
+- 每个可执行文件路径单独写一份配置：`$HOME/.otel-obi/configs/<去掉开头斜杠的绝对路径>/obi.yaml`。探针包仍解压到 `$HOME/.otel-obi`。同一路径再次生成只刷新这一份。片段不删除旧的 `$HOME/.otel-obi/obi.yaml`。查找 `obi` 二进制时排除 `configs` 目录。
+- 页面卡片说明这是另起进程盯住这一个 Go 程序，程序本身不用改。同一进程不要再装 Java、Python、Node.js、.NET、PHP 或 Go SDK，写在抽屉操作说明和片段注释里。页面只写 Go `net/http` 入口，推断下游留空。它不替换 Go SDK。
 - 内核、BTF 或权限不够时，片段说明失败原因并退出。不修改应用二进制。
 - 子 Span 时间戳可能早于父 Span，这是 v1.0.0 已记录的限制，写进片段说明。验收不把瀑布时序当作通过条件。
 - 验收：未装 Go SDK 的 Go `net/http` 出现入口 Span。已装 Go SDK 的进程不要求再出一份 eBPF Trace。
@@ -85,7 +87,7 @@ APM 接入已经按 OpenTelemetry 官方探针交付：一种语言钉一个版�
 
 - Node.js 0.79.0 的能力列表和卡片文案去掉 Fastify。Express、NestJS、Koa、HTTP 保留。
 - Go SDK 推断下游去掉 MySQL、PostgreSQL、Redis、Kafka。入口仍保留 net/http、gRPC、Gin、Echo，并继续标明需要手动加入 contrib。
-- 现有 Go 片段只下载 `otel`、`sdk` 和 `otlptracehttp`，离线包若不含 Gin、Echo、gRPC、net/http 的 contrib，页面会再次超前于包。第一批把这四个模块补进 Go 离线包，并让片段的 `go mod download` 带上它们，版本仍是 v1.46.0 及同期 contrib：
+- 现有 Go 片段下载钉死版本：`go.opentelemetry.io/otel`、`sdk`、`otlptracehttp` 为 v1.46.0，四个 contrib 模块为 v0.70.0。命令仍是一条 `go mod download`，不使用 `go get`。Go 低于 1.26 时退出，并设置 `GOTOOLCHAIN=local`，避免去公网下载工具链。四个 contrib 模块是：
   - `go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp`
   - `go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc`
   - `go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin`
@@ -119,7 +121,7 @@ APM 接入已经按 OpenTelemetry 官方探针交付：一种语言钉一个版�
 
 - 制品：白名单包含三份新制品和原有五份。`php` 默认映射到 PHP 归档，`dotnet` 默认仍是 Linux glibc 制品，显式 Windows 才映射到 Windows 制品，`obi` 映射到 amd64 归档。非白名单名字被拒绝。初始化命令接受新制品名。
 - 已有 Java、Python、Node.js、Go、.NET Linux 的下载地址断言保持通过。Go 片段在原有三个模块之外包含上面四个 contrib 模块，制品名不变。
-- PHP：host 与 docker 含系统内下载地址、SHA-256 校验和离线 Composer 包名。kubernetes 与现有语言一样，是可解析的环境 patch，注释中带下载地址，环境变量关闭指标和日志，不在 patch 里重复校验和。四种运行方式都含 NTS 与 8.1–8.4 的说明。片段不含 `pecl`、`packagist.org`、`https://github.com`、ARM 或 Windows 安装步骤。host 与 docker 通过 `sh -n`。传入 `probe_platform=windows` 被拒绝。
+- PHP：host 与 docker 含系统内下载地址、SHA-256 校验和离线 Composer 包名。kubernetes 与现有语言一样，是可解析的环境 patch，注释中带下载地址，环境变量关闭指标和日志，不在 patch 里重复校验和。四种运行方式都含 NTS 与 8.1–8.5 的说明。host 与 docker 在缺少 `composer.json` 时创建它，并关闭 Packagist。片段不含 `pecl`、`packagist.org`、`https://github.com`、ARM 或 Windows 安装步骤。host 与 docker 通过 `sh -n`。传入 `probe_platform=windows` 被拒绝。Java、Python、Node.js、Go 同样关闭指标和日志导出。Python 片段要求 CPython 3.12。
 - .NET：缺省平台的片段仍含 `linux-x64` 原生库路径和现有 Linux 制品名，不含 Windows 制品名。Windows host 片段含 Windows 制品名、SHA-256 校验、ASP.NET Framework 说明，不含 `linux-x64` 的 `.so` 路径，不含 `Register-OpenTelemetryForWindowsService`、`Restart-Service` 和注册表写入。Windows 片段不纳入 `sh -n`。Windows 加 docker 或 kubernetes 被拒绝。
 - eBPF：host 片段含 amd64 制品、SHA-256、Config v2、关闭指标、以及校验后的绝对路径发现规则。片段不含 arm64 制品名，不含端口发现。空路径、相对路径、带空格或元字符的路径被拒绝。非 host 运行方式被拒绝。
 - 接入页：PHP 卡片可用，能力只含约定的六个库。eBPF 卡片可用且只写 Go `net/http`。Operator 与自建 Collector 仍不可用。Node.js 文案和能力列表不含 Fastify。Go 推断下游不含那四种库，框架列表仍含 Gin 与 Echo。Linux .NET 能力不含 ASP.NET Framework，Windows 能力含它。Ruby 只写 Rack。C++、Erlang/Elixir、Swift 只写手动入口 Span，推断下游为空。新增文案中英都有词条。
@@ -138,14 +140,14 @@ APM 接入已经按 OpenTelemetry 官方探针交付：一种语言钉一个版�
 发布门禁在制品已经初始化和下载地址可访问之后执行。缺环境的条目保持未完成，不用单元测试勾掉：
 
 - 五种旧制品的下载地址仍返回原文件，SHA-256 与发布手册一致。
-- PHP：一台 Linux x86_64 glibc、PHP 8.2 NTS 的 Slim 进程打出入口 Span。片段在 ZTS 或 8.0 上退出。
+- PHP：一台 Linux x86_64 glibc、PHP 8.2 NTS 的 Slim 进程打出入口 Span。片段在 ZTS 或 8.0 上退出。内核低于 6.6 时 eBPF 片段退出。
 - .NET：一台 Windows 主机上的 ASP.NET Core 打出入口 Span，安装过程没有重启无关 Windows 服务。
-- eBPF：一台内核符合支持矩阵的 Linux amd64 上，未装 Go SDK 的 `net/http` 打出入口 Span；同机一个已装 Java 或 Go SDK 的进程没有第二份 Trace。指标不进监控库，也不进 APM 聚合库。
+- eBPF：一台 Linux 6.6 或更新、且有 BTF 的 amd64 主机上，未装 Go SDK 的 `net/http` 打出入口 Span；同机一个已装 Java 或 Go SDK 的进程没有第二份 Trace。指标不进监控库，也不进 APM 聚合库。
 - 第二批：Ruby 的 Rack 入口 Span，以及 C++、Erlang/Elixir、Swift 各自一个最小进程入口 Span。缺编译环境的条目保持未完成。
 
 ## Out of Scope
 
-- ARM、ARM64、macOS、.NET Alpine / musl、PHP Windows、PHP ZTS、PHP 8.0 与 8.5。
+- ARM、ARM64、macOS、.NET Alpine / musl、PHP Windows、PHP ZTS、PHP 8.0 与 PHP 7。
 - PHP Distro 0.7.0，以及 WordPress、Magento 等未列入归档的 PHP 库。
 - 把 OBI 做成主机级或跨语言探针，OBI 的 docker、Kubernetes、DaemonSet 和 Operator 注入。
 - 指标、日志、Profiles，以及把 OBI 指标接进监控或 APM 聚合库。

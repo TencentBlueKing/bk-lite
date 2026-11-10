@@ -50,6 +50,36 @@ async function main() {
     assert.equal(getLegacyThirdLoginCode('/playground?third_login_code=legacy-code'), undefined);
   });
 
+  await run('does not treat a same-origin absolute ITSM callback as legacy third login', () => {
+    assert.equal(
+      getLegacyThirdLoginCode(
+        'https://weopsx-demo.canway.net/itsm/?third_login_code=bklite',
+        'https://weopsx-demo.canway.net',
+      ),
+      undefined,
+    );
+  });
+
+  await run('still extracts a legacy third login code from a cross-origin callback', () => {
+    assert.equal(
+      getLegacyThirdLoginCode(
+        'https://bklite.ai/playground?third_login_code=legacy-code',
+        'https://weopsx-demo.canway.net',
+      ),
+      'legacy-code',
+    );
+  });
+
+  await run('still extracts a legacy third login code from a sibling-subdomain callback', () => {
+    assert.equal(
+      getLegacyThirdLoginCode(
+        'https://xxx.canway.net/app/?third_login_code=bklite',
+        'https://weopsx-demo.canway.net',
+      ),
+      'bklite',
+    );
+  });
+
   await run('authorize helper falls back in-site when the server rejects the callback host', async () => {
     const originalFetch = globalThis.fetch;
     globalThis.fetch = (async () => new Response(JSON.stringify({ result: false, message: 'no' }), { status: 400 })) as typeof fetch;

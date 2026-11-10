@@ -630,7 +630,7 @@ dashboards:
           organization: Organization
   "dashboard::运维总览_内置":
     name: Operations Overview
-    desc: Current resource, monitoring, and alert scale for the selected organization. Host performance and new versus closed alerts follow the selected time range.
+    desc: Current resource, monitoring, and alert scale for the selected organization. Host usage uses the latest valid sample and does not follow the time range. New versus closed alerts follow the selected time range. Application total is the CMDB application instance scale, not the count of applications with alerts.
     filters:
       organization:
         name: Organization
@@ -644,7 +644,7 @@ dashboards:
       ops-kpi-monitor:
         name: Monitor Instances
       ops-kpi-nodes:
-        name: Nodes
+        name: Total Applications
       ops-kpi-open-alerts:
         name: Open Alerts
       ops-kpi-severe:
@@ -653,12 +653,6 @@ dashboards:
         name: Resources
       ops-resource-types:
         name: Resource Types
-      ops-app-total:
-        name: Applications
-      ops-app-with-alert:
-        name: With Related Alerts
-      ops-app-without-alert:
-        name: Without Related Alerts
       ops-app-top:
         name: Application Alert TOP 5
       group-monitor:
@@ -667,8 +661,23 @@ dashboards:
         name: Monitor Access
       ops-host-key-metrics:
         name: Host Key Metrics
+        params:
+          metric_type:
+            name: Metric
+            options:
+              cpu: CPU usage
+              memory: Memory usage
+              disk: Disk usage
+          instance_ids: Host
+          organization: Organization
       ops-monitor-alerts:
         name: Monitor Anomalies TOP 5
+        columns:
+          level: Level
+          monitor_instance_name: Object
+          metric_name: Metric
+          value: Recorded Value
+          duration_text: Duration
       group-alert:
         name: Alerts
       ops-alert-trend:
@@ -677,6 +686,11 @@ dashboards:
         name: Active Alert Levels
       ops-alert-top:
         name: Open Alerts TOP 5
+        columns:
+          level: Level
+          resource_name: Object
+          title: Content
+          created_at: Triggered At
 screens:
   "screen::告警运营大屏_内置":
     name: Alert Operations Screen
@@ -843,6 +857,31 @@ screens:
       network-topology-builtin-main:
         title: Network Status Topology Overview
 datasources:
+  "监控异常严重度TOP5::monitor/query_latest_active_alerts":
+    name: Monitor Anomaly Severity TOP 5
+    desc: Ranks every unrecovered monitor alert in the authorized organization by severity, then by earlier start, and returns the first 5. The recorded value is saved at trigger or escalation, not a live sample. Unknown levels stay below known levels.
+    fields:
+      monitor_instance_name:
+        title: Object
+      metric_name:
+        title: Metric
+        description: Metric display name, or the metric name when no display name exists. English display names are not translated.
+      value:
+        title: Recorded Value
+        description: Value saved when the alert triggered or escalated, not a live sample
+      duration_text:
+        title: Duration
+        description: Time from the unrecovered alert start until now
+      level:
+        title: Severity
+        description: critical, error, warning, info, or no_data. Unknown levels are not treated as high severity.
+    params:
+      order: Order
+      limit: Limit
+      organization: Organization
+  "主机资源使用率Top10::monitor/get_host_resource_top":
+    params:
+      organization: Organization
   "机房设备类型分布::cmdb/get_room_device_type_distribution":
     name: Room Device Type Distribution
     desc: Count visible devices mounted through racks in a room, grouped by model display name. An empty server_room_id uses the first visible room.

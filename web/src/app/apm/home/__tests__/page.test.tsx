@@ -212,6 +212,35 @@ describe('ApmHomePage', () => {
     expect(screen.queryByText('RAW_CRITICAL')).toBeNull();
   });
 
+  it('shows an empty SLO rate when trace retention is shorter than the window', async () => {
+    api.getDashboard.mockResolvedValue({
+      ...loadedDashboard,
+      slos: {
+        status: 'ok',
+        data: {
+          items: [{
+            id: 'slo-retention',
+            service_id: 'svc-checkout',
+            service_name: 'checkout-retention',
+            environment: 'prod',
+            objective: 99.9,
+            current_rate: null,
+            met: null,
+            reason: '明细保留期不足',
+          }],
+        },
+      },
+    });
+    renderWithApmIntl(<ApmHomePage />);
+
+    expect(await screen.findByText('checkout-retention')).not.toBeNull();
+    expect(screen.getByText('明细保留期不足')).not.toBeNull();
+    expect(screen.getByText('无数据')).not.toBeNull();
+    expect(screen.queryByText('0.00%')).toBeNull();
+    expect(screen.queryByText('未达成')).toBeNull();
+    expect(screen.queryByText('加载失败，点击重试')).toBeNull();
+  });
+
   it('shows retry when a section failed', async () => {
     api.getDashboard.mockResolvedValue(failedAlertsDashboard);
     renderWithApmIntl(<ApmHomePage />);

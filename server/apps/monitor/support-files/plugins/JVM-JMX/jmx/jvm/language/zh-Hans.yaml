@@ -60,7 +60,10 @@ monitor_object_metric:
       desc: 系统当前可用于执行线程的处理器核心数量，影响程序并行处理能力
     jvm_os_processcputime_seconds_value:
       name: 进程 CPU 时间
-      desc: Java 虚拟机进程自启动以来消耗的 CPU 时间，衡量进程资源占用
+      desc: Java 虚拟机进程自启动以来累计消耗的 CPU 时间（秒），不是 CPU 使用率。
+    jvm_os_processcputime_seconds_increase:
+      name: 近 5 分钟 CPU 时间
+      desc: 近 5 分钟进程消耗的 CPU 时间（秒），不是 CPU 使用率。数值越大，表示这段时间占用的处理器时间越多。
     jvm_bufferpool_count_value:
       name: BufferPool 计数
       desc: Java NIO 中 BufferPool 的缓冲区对象数量，用于监控资源池规模
@@ -72,10 +75,16 @@ monitor_object_metric:
       desc: Java NIO 中 BufferPool 的总内存容量大小，展示资源池最大承载能力
     jvm_gc_collectiontime_seconds_value:
       name: GC 收集总时间
-      desc: Java 虚拟机中垃圾回收操作累计消耗的总时间，用于评估 GC 性能
+      desc: 垃圾回收累计消耗的时间（秒）。
+    jvm_gc_collectiontime_seconds_increase:
+      name: 近 5 分钟 GC 耗时
+      desc: 近 5 分钟垃圾回收消耗的时间（秒），按回收类型分开。
     jvm_gc_collectioncount_value:
       name: GC 收集总次数
-      desc: Java 虚拟机中垃圾回收操作的累计执行次数，反映 GC 活动频率
+      desc: 垃圾回收的累计次数。
+    jvm_gc_collectioncount_rate:
+      name: GC 频率
+      desc: 近 5 分钟平均每秒垃圾回收次数，按回收类型分开，用于观察回收是否变频繁。
     jvm_memorypool_usage_init_value:
       name: 内存池初始使用量
       desc: Java 虚拟机中内存池初始化分配的内存使用量，体现内存池初始状态

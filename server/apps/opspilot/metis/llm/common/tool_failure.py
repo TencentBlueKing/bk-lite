@@ -140,6 +140,14 @@ def classify_tool_failure_kind(content: Any, status: str = "") -> str:
     """把工具/技能脚本失败分成凭据/权限/配置/其它，供外层决定是否重规划。"""
     if is_control_guidance(content):
         return TOOL_FAILURE_OTHER
+    payload = content
+    if isinstance(content, str):
+        try:
+            payload = json.loads(content)
+        except (ValueError, TypeError):
+            payload = None
+    if str(status or "").lower() != "error" and isinstance(payload, dict) and payload.get("success") is True and not is_tool_result_failure(payload):
+        return TOOL_FAILURE_OTHER
     text = _tool_failure_text(content)
     if _AUTHN_FAILURE_RE.search(text):
         return TOOL_FAILURE_AUTHN

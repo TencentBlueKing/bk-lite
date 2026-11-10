@@ -8,6 +8,7 @@ from django.db.models import Q
 from django.utils import timezone
 
 from apps.apm.adapters import TelemetryStoreUnavailable, VictoriaTracesTelemetryStore
+from apps.apm.adapters.aggregate_red import apm_entry_red_store
 from apps.apm.adapters.victoriatraces import _encode_cursor
 from apps.apm.models import ApmApplication, ApmService, ApmServiceInstance
 from apps.apm.services.contracts import ServiceMetricQuery, TraceSearchQuery
@@ -131,7 +132,7 @@ def query_service_metrics(*, team, service_id, start, end, environment=""):
         include_breakdown=False,
     )
     try:
-        red = _telemetry().service_red(query)
+        red = _service_metrics_reader().service_red(query)
     except TelemetryStoreUnavailable:
         return {"result": False, "message": "服务指标暂不可用"}
     except ValueError as exc:
@@ -231,6 +232,10 @@ def get_trace(*, team, trace_id):
 def _telemetry():
     store = VictoriaTracesTelemetryStore()
     return DjangoTelemetryQueryService(metric_store=store, trace_store=store)
+
+
+def _service_metrics_reader():
+    return DjangoTelemetryQueryService(metric_store=apm_entry_red_store())
 
 
 def _owned_service(team, service_id):

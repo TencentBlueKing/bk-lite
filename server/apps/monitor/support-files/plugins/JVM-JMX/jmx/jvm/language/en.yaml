@@ -79,8 +79,13 @@ monitor_object_metric:
         in the system, affecting the program's parallel processing ability.
     jvm_os_processcputime_seconds_value:
       name: Process CPU Time
-      desc: The CPU time consumed by the Java Virtual Machine process since startup,
-        measuring process resource occupancy.
+      desc: Cumulative CPU time, in seconds, consumed by the Java process since startup.
+        This is not a CPU usage percentage.
+    jvm_os_processcputime_seconds_increase:
+      name: CPU Time in Last 5 Minutes
+      desc: CPU time, in seconds, consumed by the process during the last 5 minutes.
+        This is not a CPU usage percentage. A larger value means more processor time
+        was used in that period.
     jvm_bufferpool_count_value:
       name: BufferPool Count
       desc: The number of buffer objects in the BufferPool of Java NIO, used to monitor
@@ -95,12 +100,18 @@ monitor_object_metric:
         carrying capacity of the resource pool.
     jvm_gc_collectiontime_seconds_value:
       name: GC Collection Time
-      desc: The total cumulative time consumed by garbage collection operations in
-        the Java Virtual Machine, used to evaluate GC performance.
+      desc: Cumulative garbage collection time, in seconds.
+    jvm_gc_collectiontime_seconds_increase:
+      name: GC Time in Last 5 Minutes
+      desc: Garbage collection time, in seconds, consumed during the last 5 minutes,
+        split by collector type.
     jvm_gc_collectioncount_value:
       name: GC Collection Count
-      desc: The cumulative number of garbage collection operations in the Java Virtual
-        Machine, reflecting the frequency of GC activities.
+      desc: Cumulative garbage collections.
+    jvm_gc_collectioncount_rate:
+      name: GC Frequency
+      desc: Average garbage collections per second over the last 5 minutes, split by
+        collector type.
     jvm_memorypool_usage_init_value:
       name: MemoryPool Init Usage
       desc: The initialized memory usage of the memory pool in the Java Virtual Machine,

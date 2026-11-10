@@ -1,4 +1,4 @@
-"""飞书官方 SDK 适配。连接、心跳和重连仍由 lark.ws.Client 完成。"""
+"""飞书官方 SDK 适配。连接和心跳用官方客户端，重连由外层先断开再建立一条。"""
 
 from __future__ import annotations
 
@@ -29,6 +29,9 @@ from apps.opspilot.services.skill_channel_feishu_long_connection import FeishuDe
 
 _LOOP_READY = threading.Lock()
 _LOOP: asyncio.AbstractEventLoop | None = None
+_PING_GUARD = threading.Lock()
+_PING_TASKS: dict[int, asyncio.Task] = {}
+_CONNECT_TIMEOUT_SECONDS = 30
 
 
 def inbound_from_event(event: P2ImMessageReceiveV1) -> FeishuInbound | None:
@@ -91,35 +94,78 @@ def _ensure_loop() -> asyncio.AbstractEventLoop:
         return loop
 
 
-def _boot(client: lark.ws.Client) -> None:
+async def _connect_once(client: lark.ws.Client, abandoned: threading.Event) -> None:
+    """只连一次。失败或调用方放弃时先关掉，不进入 SDK 的无限重连。"""
     try:
-        loop = _ensure_loop()
+        await client._connect()
+    except BaseException:
+        await _disconnect_client(client)
+        raise
+    if abandoned.is_set():
+        await _disconnect_client(client)
+        raise TimeoutError("feishu long connection connect abandoned")
+    _start_ping(client)
 
-        async def start() -> None:
-            try:
-                await client._connect()
-            except Exception:
-                await client._disconnect()
-                if client._auto_reconnect:
-                    await client._reconnect()
-                else:
-                    raise
-            loop.create_task(client._ping_loop())
 
-        asyncio.run_coroutine_threadsafe(start(), loop).result(timeout=30)
+async def _disconnect_client(client: lark.ws.Client) -> None:
+    try:
+        await client._disconnect()
     except Exception as exc:
+        logger.warning("event=feishu_long_connection_sdk_disconnect_failed failed_stage=disconnect error_type=%s", type(exc).__name__)
+
+
+def _start_ping(client: lark.ws.Client) -> None:
+    loop = asyncio.get_running_loop()
+    task = loop.create_task(client._ping_loop())
+    with _PING_GUARD:
+        _PING_TASKS[id(client)] = task
+
+
+def _cancel_ping(client: lark.ws.Client, loop: asyncio.AbstractEventLoop | None) -> None:
+    with _PING_GUARD:
+        task = _PING_TASKS.pop(id(client), None)
+    if task is None or task.done() or loop is None:
+        return
+    loop.call_soon_threadsafe(task.cancel)
+
+
+def _boot(client: lark.ws.Client) -> None:
+    loop = _ensure_loop()
+    abandoned = threading.Event()
+    future = asyncio.run_coroutine_threadsafe(_connect_once(client, abandoned), loop)
+    try:
+        future.result(timeout=_CONNECT_TIMEOUT_SECONDS)
+    except Exception as exc:
+        abandoned.set()
+        future.cancel()
+        _shutdown(client)
         logger.warning("event=feishu_long_connection_sdk_connect_failed failed_stage=connect error_type=%s", type(exc).__name__)
         raise
 
 
 def _shutdown(client: lark.ws.Client) -> None:
     loop = _LOOP
+    _cancel_ping(client, loop)
     if loop is None:
         return
     try:
-        asyncio.run_coroutine_threadsafe(client._disconnect(), loop).result(timeout=5)
+        asyncio.run_coroutine_threadsafe(_disconnect_client(client), loop).result(timeout=5)
     except Exception as exc:
         logger.warning("event=feishu_long_connection_sdk_disconnect_failed failed_stage=disconnect error_type=%s", type(exc).__name__)
+
+
+def _ignore_p2p_chat_entered(_event) -> None:
+    """用户打开私聊时飞书会推这个事件。不需要回复，但必须登记，否则 SDK 回失败并打 ERROR。"""
+    return None
+
+
+def build_event_handler(on_message):
+    return (
+        lark.EventDispatcherHandler.builder("", "")
+        .register_p2_im_message_receive_v1(on_message)
+        .register_p2_im_chat_access_event_bot_p2p_chat_entered_v1(_ignore_p2p_chat_entered)
+        .build()
+    )
 
 
 class LarkFeishuTransport:
@@ -127,13 +173,14 @@ class LarkFeishuTransport:
 
     def __init__(self, app_id: str, app_secret: str):
         self._events: queue.Queue[FeishuInbound] = queue.Queue()
-        handler = lark.EventDispatcherHandler.builder("", "").register_p2_im_message_receive_v1(self._on_message).build()
+        handler = build_event_handler(self._on_message)
         self._ws = lark.ws.Client(
             app_id,
             app_secret,
             event_handler=handler,
             log_level=lark.LogLevel.WARNING,
             domain=lark.FEISHU_DOMAIN,
+            auto_reconnect=False,
         )
         self._api = lark.Client.builder().app_id(app_id).app_secret(app_secret).domain(lark.FEISHU_DOMAIN).build()
         self._bot_open_id = ""
@@ -147,6 +194,9 @@ class LarkFeishuTransport:
 
     def close(self) -> None:
         _shutdown(self._ws)
+
+    def connected(self) -> bool:
+        return getattr(self._ws, "_conn", None) is not None
 
     def bot_open_id(self) -> str:
         if self._bot_open_id:

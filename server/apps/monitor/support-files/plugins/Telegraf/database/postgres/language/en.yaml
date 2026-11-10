@@ -50,7 +50,7 @@ monitor_object_metric:
       desc: Tracks conflicts caused by concurrent operations
     postgresql_deadlocks_count:
       name: Deadlock Count
-      desc: Number of transaction deadlocks in the current statistics window
+      desc: Number of transaction deadlocks in the last 5 minutes.
     postgresql_conflicts_count:
       name: Conflict Count
       desc: Number of concurrency conflicts in the current statistics window

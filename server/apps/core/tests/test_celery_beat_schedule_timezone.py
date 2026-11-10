@@ -5,7 +5,7 @@ from celery.schedules import crontab
 
 pytestmark = pytest.mark.unit
 
-OWNED_BEAT_APPS = ("apm", "log", "monitor", "node_mgmt")
+OWNED_BEAT_APPS = ("apm", "core", "log", "monitor", "node_mgmt")
 
 
 def test_owned_static_beat_crontabs_declare_timezone():

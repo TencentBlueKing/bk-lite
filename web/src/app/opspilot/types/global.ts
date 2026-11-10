@@ -139,6 +139,9 @@ export interface CustomChatMessage {
   browserStepsHistory?: BrowserStepsHistory | null;
   approvalRequests?: ApprovalRequest[];
   userChoiceRequests?: UserChoiceRequest[];
+  /** 点选确认卡时带上，手打的下一条消息没有这两项。 */
+  choiceId?: string;
+  choiceOption?: string;
   configDiffReports?: ConfigDiffReport[];
   configAnalysisReports?: ConfigAnalysisReport[];
   reportFileDownloads?: ReportFileDownload[];

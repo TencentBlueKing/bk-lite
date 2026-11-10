@@ -25,6 +25,9 @@ monitor_object_metric:
     kafka_topic_partition_current_offset:
       name: Partition Current Offset
       desc: Current offset for the specified topic and partition.
+    kafka_topic_partition_current_offset_rate:
+      name: Partition Message Write Rate
+      desc: Average messages written to the partition per second over the last 5 minutes.
     kafka_topic_partition_oldest_offset:
       name: Partition Oldest Offset
       desc: Oldest offset for the specified topic and partition.
@@ -47,6 +50,9 @@ monitor_object_metric:
     kafka_consumergroup_current_offset:
       name: Consumer Group Current Offset
       desc: Current offset for the consumer group in the specified topic and partition.
+    kafka_consumergroup_current_offset_rate:
+      name: Consumer Group Consume Rate
+      desc: Average messages consumed per second by the consumer group on the partition over the last 5 minutes.
     kafka_consumergroup_current_offset_sum:
       name: Consumer Group Current Offset Sum
       desc: Sum of committed offsets for a consumer group and topic.
@@ -128,7 +134,7 @@ monitor_object_metric:
         partition.
     process_cpu_seconds_total:
       name: Probe Process CPU Time
-      desc: Total CPU time used by the probe process.
+      desc: Cumulative CPU time consumed by the probe process, in seconds.
     process_max_fds_gauge:
       name: Probe Process Max File Descriptors
       desc: Maximum number of file descriptors that the probe process can open.

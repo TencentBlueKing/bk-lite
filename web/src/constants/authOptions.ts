@@ -43,6 +43,12 @@ const applySessionUpdateToToken = (token: ExtendedJWT, session: any) => {
   token.locale = normalizeLocale(sessionUser.locale || session?.locale || token.locale || 'en');
   token.timezone = normalizeTimezone(sessionUser.timezone || session?.timezone || token.timezone || 'Asia/Shanghai');
   token.zoneinfo = token.timezone;
+  if (typeof sessionUser.token === 'string' && sessionUser.token) {
+    token.token = sessionUser.token;
+  }
+  if (typeof sessionUser.temporary_pwd === 'boolean') {
+    token.temporary_pwd = sessionUser.temporary_pwd;
+  }
   return token;
 };
 

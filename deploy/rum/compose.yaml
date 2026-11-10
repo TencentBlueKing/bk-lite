@@ -190,7 +190,7 @@ services:
 
   rum-gateway:
     profiles: [dataplane]
-    image: ${RUM_COLLECTOR_IMAGE:-bklite/rum-collector:0.1.0-bklite.1}
+    image: ${RUM_COLLECTOR_IMAGE:-bklite/rum-collector:0.1.0-bklite.3}
     build:
       context: ./collector
     restart: unless-stopped
@@ -221,6 +221,10 @@ services:
       RUM_MINIO_ENDPOINT: ${RUM_GATEWAY_MINIO_ENDPOINT:-rum-minio:9000}
       RUM_MINIO_ACCESS_KEY: ${RUM_GATEWAY_MINIO_ACCESS_KEY:-rumminio}
       RUM_MINIO_SECURE: ${RUM_GATEWAY_MINIO_SECURE:-false}
+      AGG_VICTORIAMETRICS_WRITE_URL: ${AGG_VICTORIAMETRICS_WRITE_URL:-http://127.0.0.1:9/api/v1/write}
+      RUM_AGG_SHARD: ${RUM_AGG_SHARD:-rum-agg-dev}
+      RUM_AGG_BATCH_TIMEOUT: ${RUM_AGG_BATCH_TIMEOUT:-60s}
+      RUM_AGG_MAX_STREAMS: ${RUM_AGG_MAX_STREAMS:-420000}
     ports:
       - "${RUM_GATEWAY_BIND:-127.0.0.1}:${RUM_GATEWAY_COLLECT_PORT:-4319}:4319"
       - "${RUM_GATEWAY_BIND:-127.0.0.1}:${RUM_GATEWAY_REPLAY_PORT:-4320}:4320"
@@ -241,7 +245,7 @@ services:
 
   rum-controller:
     profiles: [dataplane]
-    image: ${RUM_COLLECTOR_IMAGE:-bklite/rum-collector:0.1.0-bklite.1}
+    image: ${RUM_COLLECTOR_IMAGE:-bklite/rum-collector:0.1.0-bklite.3}
     build:
       context: ./collector
     restart: unless-stopped
@@ -272,7 +276,7 @@ services:
 
   rum-maintainer:
     profiles: [dataplane]
-    image: ${RUM_COLLECTOR_IMAGE:-bklite/rum-collector:0.1.0-bklite.1}
+    image: ${RUM_COLLECTOR_IMAGE:-bklite/rum-collector:0.1.0-bklite.3}
     build:
       context: ./collector
     restart: unless-stopped
@@ -281,6 +285,8 @@ services:
     command:
       - -redis-url=redis://rum-maintainer@rum-redis:6379/0
       - -redis-password-file=/run/secrets/rum_maintainer_redis_password
+      - -session-redis-url=redis://rum-maintainer@rum-redis:6379/1
+      - -session-redis-password-file=/run/secrets/rum_maintainer_redis_password
       - -replay-index-redis-url=redis://rum-replay-index-maintainer@rum-redis:6379/2
       - -replay-index-redis-password-file=/run/secrets/rum_replay_index_maintainer_redis_password
       - -replay-index-epoch=${RUM_REPLAY_INDEX_EPOCH:-2026-01-01T00:00:00Z}

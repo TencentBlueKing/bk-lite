@@ -92,6 +92,12 @@ if err != nil {
 }
 otel.SetTracerProvider(tracerProvider)
 defer tracerProvider.Shutdown(context.Background())
+
+net/http 入口要包一层 otelhttp，否则没有入口 Span：
+
+import "go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+
+handler := otelhttp.NewHandler(mux, "server")
 GO"""
 
 _RUBY_SDK_GUIDE = """# Ruby 无通用零代码探针；下面生成 Rack 初始化示例，不会覆盖应用源码。
@@ -99,8 +105,8 @@ _RUBY_SDK_GUIDE = """# Ruby 无通用零代码探针；下面生成 Rack 初始�
 # opentelemetry-exporter-otlp 0.37.0
 # opentelemetry-instrumentation-rack 0.31.2
 mkdir -p telemetry
-if [ -e telemetry/otel.rb.example ]; then
-  printf "%s\\n" "telemetry/otel.rb.example already exists; refusing to overwrite" >&2
+if [ -e telemetry/otel.rb.example ] || [ -e telemetry/config.ru.example ]; then
+  printf "%s\\n" "telemetry example already exists; refusing to overwrite" >&2
   exit 1
 fi
 cat > telemetry/otel.rb.example <<'RUBY'
@@ -112,10 +118,20 @@ OpenTelemetry::SDK.configure do |c|
   c.use "OpenTelemetry::Instrumentation::Rack"
 end
 RUBY
-cat <<'RUBY'
-审阅 telemetry/otel.rb.example 后将其加入应用启动，并在 config.ru 中加入：
+cat > telemetry/config.ru.example <<'RUBY'
+require "rack"
+require_relative "otel"
 
 use *OpenTelemetry::Instrumentation::Rack::Instrumentation.instance.middleware_args
+
+run lambda { |_env|
+  [200, {"content-type" => "text/plain"}, ["ok"]]
+}
+RUBY
+cat <<'RUBY'
+审阅 telemetry/otel.rb.example 和 telemetry/config.ru.example。
+Rack 由应用自己提供，不要从网络安装 rack gem。
+把 otel.rb.example 接到应用启动；config.ru.example 可作为最小 config.ru。
 RUBY"""
 
 _CPP_SDK_GUIDE = """# C++ 无通用零代码探针；下面生成最小入口 Span 示例，不会覆盖应用源码。
@@ -131,6 +147,7 @@ cat > telemetry/otel.cpp.example <<'CPP'
 #include <string>
 
 #include "opentelemetry/exporters/otlp/otlp_http_exporter_factory.h"
+#include "opentelemetry/sdk/resource/resource_detector.h"
 #include "opentelemetry/sdk/trace/simple_processor_factory.h"
 #include "opentelemetry/sdk/trace/tracer_provider_factory.h"
 #include "opentelemetry/trace/provider.h"
@@ -142,8 +159,9 @@ int main() {
     }
     auto exporter = opentelemetry::exporter::otlp::OtlpHttpExporterFactory::Create(options);
     auto processor = opentelemetry::sdk::trace::SimpleSpanProcessorFactory::Create(std::move(exporter));
+    auto resource = opentelemetry::sdk::resource::OTELResourceDetector().Detect();
     std::shared_ptr<opentelemetry::trace::TracerProvider> provider =
-        opentelemetry::sdk::trace::TracerProviderFactory::Create(std::move(processor));
+        opentelemetry::sdk::trace::TracerProviderFactory::Create(std::move(processor), resource);
     opentelemetry::trace::Provider::SetTracerProvider(provider);
     auto tracer = provider->GetTracer("app");
     opentelemetry::trace::StartSpanOptions span_options;
@@ -154,7 +172,9 @@ int main() {
 }
 CPP
 cat <<'CPP'
-审阅 telemetry/otel.cpp.example 后，对着 .otel-cpp-sdk/prefix 编译并启动进程。
+审阅 telemetry/otel.cpp.example 后复制为 telemetry/otel.cpp，再对着 .otel-cpp-sdk/prefix 编译。
+编译需要系统的 libcurl 头文件和库。不要直接编译 .example 文件。
+示例通过 OTELResourceDetector 读取 OTEL_RESOURCE_ATTRIBUTES。启动时保留上面的环境变量，并把 prefix/lib 放进 LD_LIBRARY_PATH。
 CPP"""
 
 _ERLANG_SDK_GUIDE = """# Erlang/Elixir 无通用零代码探针；下面生成示例，不会覆盖应用源码。
@@ -162,7 +182,8 @@ _ERLANG_SDK_GUIDE = """# Erlang/Elixir 无通用零代码探针；下面生成�
 # opentelemetry_exporter 1.11.0
 mkdir -p telemetry
 if [ -e telemetry/rebar.config.example ] || [ -e telemetry/mix.exs.example ] \
-  || [ -e telemetry/otel.erl.example ] || [ -e telemetry/otel.ex.example ]; then
+  || [ -e telemetry/otel.erl.example ] || [ -e telemetry/otel.ex.example ] \
+  || [ -e telemetry/ingest.app.src.example ]; then
   printf "%s\\n" "telemetry example already exists; refusing to overwrite" >&2
   exit 1
 fi
@@ -243,16 +264,30 @@ OpenTelemetry.Tracer.with_span "GET /", kind: :server do
   :ok
 end
 EX
+cat > telemetry/ingest.app.src.example <<'ERL'
+{application, ingest, [
+  {description, "ingest"},
+  {vsn, "1.0.0"},
+  {applications, [kernel, stdlib, opentelemetry_exporter, opentelemetry]},
+  {modules, [otel_entry]}
+]}.
+ERL
 cat <<'ERL'
 审阅 telemetry 下的示例后接入应用。rebar3 使用上面的 _checkouts，不要从 Hex 或 Git 拉取包。
-启动 opentelemetry_exporter 和 opentelemetry 后再调用 otel_entry:start/0，短命进程要等导出完成后再退出。
+把 telemetry/ingest.app.src.example 放到 src/ingest.app.src，把 otel.erl.example 放到 src/otel_entry.erl。
+启动顺序：
+application:ensure_all_started(opentelemetry_exporter),
+application:ensure_all_started(opentelemetry),
+otel_entry:start(),
+otel_tracer_provider:force_flush().
+force_flush 返回后，批处理器仍在异步导出。短命进程要再留一段运行时间，等导出完成再退出。
 ERL"""
 
 _SWIFT_SDK_GUIDE = """# Swift 无通用零代码探针；下面生成 Swift Package Manager 示例，不会覆盖应用源码。
 # opentelemetry-swift 2.6.0
 mkdir -p telemetry
-if [ -e telemetry/Package.swift.example ]; then
-  printf "%s\\n" "telemetry/Package.swift.example already exists; refusing to overwrite" >&2
+if [ -e telemetry/Package.swift.example ] || [ -e telemetry/main.swift.example ]; then
+  printf "%s\\n" "telemetry example already exists; refusing to overwrite" >&2
   exit 1
 fi
 cat > telemetry/Package.swift.example <<'SWIFT'
@@ -269,6 +304,7 @@ let package = Package(
         .executableTarget(
             name: "app",
             dependencies: [
+                .product(name: "OpenTelemetryApi", package: "opentelemetry-swift-core"),
                 .product(name: "OpenTelemetrySdk", package: "opentelemetry-swift-core"),
                 .product(name: "OpenTelemetryProtocolExporterHTTP", package: "opentelemetry-swift")
             ]
@@ -276,8 +312,36 @@ let package = Package(
     ]
 )
 SWIFT
+cat > telemetry/main.swift.example <<'SWIFT'
+import Foundation
+import OpenTelemetryApi
+import OpenTelemetrySdk
+import OpenTelemetryProtocolExporterHttp
+
+let base = ProcessInfo.processInfo.environment["OTEL_EXPORTER_OTLP_ENDPOINT"] ?? "http://127.0.0.1:4318"
+guard let endpoint = URL(string: base + "/v1/traces") else {
+    fatalError("OTEL_EXPORTER_OTLP_ENDPOINT is invalid")
+}
+let exporter = OtlpHttpTraceExporter(endpoint: endpoint)
+let provider = TracerProviderBuilder()
+    .with(resource: EnvVarResource.get())
+    .add(spanProcessor: SimpleSpanProcessor(spanExporter: exporter))
+    .build()
+OpenTelemetry.registerTracerProvider(tracerProvider: provider)
+let span = OpenTelemetry.instance.tracerProvider
+    .get(instrumentationName: "app")
+    .spanBuilder(spanName: "GET /")
+    .setSpanKind(spanKind: .server)
+    .startSpan()
+span.end()
+provider.forceFlush()
+provider.shutdown()
+SWIFT
 cat <<'SWIFT'
-审阅 telemetry/Package.swift.example 后接入应用。依赖只使用本地 path，不要改成远端包地址。
+审阅 telemetry/Package.swift.example 和 telemetry/main.swift.example。
+把 main.swift 放进可执行 target 后，对着本地 path 编译。
+启动进程时保留上面的 OTEL_* 环境变量。没有 main.swift 里的入口 Span，进程不会上报调用链。
+依赖只使用本地 path，不要改成远端包地址。
 SWIFT"""
 
 
@@ -502,13 +566,15 @@ def _kubernetes_snippet(language: str, environment: dict[str, str], probe_downlo
     """生成可作为 strategic merge patch 使用的容器环境片段。"""
 
     image_guidance = {
-        "python": f"应用镜像需预装 opentelemetry-distro[otlp] 并使用 opentelemetry-instrument 启动。离线包：{probe_download_url}",
+        "python": ("应用镜像需预装 CPython 3.12 的 opentelemetry-distro[otlp]，并使用 opentelemetry-instrument 启动。" f"离线包：{probe_download_url}"),
         "nodejs": f"应用镜像需预装 @opentelemetry/auto-instrumentations-node。离线包：{probe_download_url}",
         "java": f"应用镜像需包含 /opt/opentelemetry-javaagent.jar。离线包：{probe_download_url}",
         "go": f"Go 无通用自动探针；应用二进制需先完成 OpenTelemetry Go SDK 初始化。离线包：{probe_download_url}",
         "dotnet": f"应用镜像需包含 {_DOTNET_CONTAINER_HOME}，并使用 dotnet App.dll 启动。离线包：{probe_download_url}",
         "php": (
-            "应用镜像需预装 PHP 8.1–8.4 NTS 扩展，并从离线包安装 " + " ".join((*PHP_COMPOSER_PACKAGES, *PHP_DATABASE_PACKAGES)) + "。PDO 与 MySQLi 仅用于 PHP 8.2+。"
+            "应用镜像需预装 PHP 8.1–8.5 NTS 扩展，并从离线包安装 "
+            + " ".join((*PHP_COMPOSER_PACKAGES, PHP_LARAVEL_PACKAGE, *PHP_DATABASE_PACKAGES))
+            + "。Laravel、PDO 与 MySQLi 仅用于 PHP 8.2+。"
             f"离线包：{probe_download_url}"
         ),
         "ruby": f"Ruby >= 3.3，无通用自动探针；应用需先加入 Rack 初始化。离线包：{probe_download_url}",
@@ -580,23 +646,23 @@ def _probe_sha256_check(path: str, digest: str) -> str:
 
 
 GO_OFFLINE_MODULES = (
-    "go.opentelemetry.io/otel",
-    "go.opentelemetry.io/otel/sdk",
-    "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp",
-    "go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp",
-    "go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc",
-    "go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin",
-    "go.opentelemetry.io/contrib/instrumentation/github.com/labstack/echo/otelecho",
+    "go.opentelemetry.io/otel@v1.46.0",
+    "go.opentelemetry.io/otel/sdk@v1.46.0",
+    "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp@v1.46.0",
+    "go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp@v0.70.0",
+    "go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc@v0.70.0",
+    "go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin@v0.70.0",
+    "go.opentelemetry.io/contrib/instrumentation/github.com/labstack/echo/otelecho@v0.70.0",
 )
 
 PHP_COMPOSER_PACKAGES = (
     "open-telemetry/sdk:1.15.0",
     "open-telemetry/exporter-otlp:1.4.0",
-    "open-telemetry/opentelemetry-auto-laravel:1.10.0",
     "open-telemetry/opentelemetry-auto-symfony:1.7.0",
     "open-telemetry/opentelemetry-auto-slim:1.5.1",
     "open-telemetry/opentelemetry-auto-guzzle:1.5.0",
 )
+PHP_LARAVEL_PACKAGE = "open-telemetry/opentelemetry-auto-laravel:1.10.0"
 PHP_DATABASE_PACKAGES = (
     "open-telemetry/opentelemetry-auto-pdo:0.6.0",
     "open-telemetry/opentelemetry-auto-mysqli:0.5.0",
@@ -640,6 +706,13 @@ def _require_probe_sha256(artifact_name: str) -> str:
     return digest.lower()
 
 
+def _python_version_gate() -> str:
+    return (
+        "if ! python -c 'import sys; raise SystemExit(0 if sys.version_info[:2] == (3, 12) else 1)'; then "
+        "printf '%s\\n' 'CPython 3.12 is required' >&2; exit 1; fi"
+    )
+
+
 def _python_offline_install(wheels_dir: str) -> tuple[str, str, str]:
     return (
         f'python -m pip install --no-index --find-links {wheels_dir} "opentelemetry-distro[otlp]"',
@@ -648,17 +721,36 @@ def _python_offline_install(wheels_dir: str) -> tuple[str, str, str]:
     )
 
 
+def _go_version_gate() -> str:
+    return "\n".join(
+        (
+            "export GOTOOLCHAIN=local",
+            "go_version=$(go env GOVERSION 2>/dev/null) || { printf '%s\\n' 'Go 1.26 or newer is required' >&2; exit 1; }",
+            "go_rest=${go_version#go1.}",
+            "go_minor=${go_rest%%.*}",
+            'case "$go_minor" in',
+            "  ''|*[!0-9]*) printf '%s\\n' 'Go 1.26 or newer is required' >&2; exit 1 ;;",
+            "esac",
+            'if [ "$go_minor" -lt 26 ]; then',
+            "  printf '%s\\n' \"Go 1.26 or newer is required, found $go_version\" >&2",
+            "  exit 1",
+            "fi",
+        )
+    )
+
+
 def _php_prepare_script(root: str) -> str:
     web_packages = " ".join(PHP_COMPOSER_PACKAGES)
-    database_packages = " ".join(PHP_DATABASE_PACKAGES)
+    php_82_packages = " ".join((PHP_LARAVEL_PACKAGE, *PHP_DATABASE_PACKAGES))
     repository = json.dumps({"type": "artifact", "url": f"{root}/dist"}, separators=(",", ":"))
     return "\n".join(
         (
-            "# PHP NTS 8.1–8.4。ZTS 和其他版本直接退出。",
-            "php -r 'exit(PHP_ZTS !== 0 ? 1 : 0);' || { printf '%s\\n' 'PHP ZTS is not supported' >&2; exit 1; }",
+            "# PHP NTS 8.1–8.5。ZTS 和其他版本直接退出。",
+            "# Laravel、PDO、MySQLi 从 8.2 起安装。8.1 只安装 Symfony、Slim 和 Guzzle。",
+            "php -r 'exit(PHP_ZTS ? 1 : 0);' || { printf '%s\\n' 'PHP ZTS is not supported' >&2; exit 1; }",
             """php_version=$(php -r 'echo PHP_MAJOR_VERSION.".".PHP_MINOR_VERSION;')""",
             'case "$php_version" in',
-            "  8.1|8.2|8.3|8.4) ;;",
+            "  8.1|8.2|8.3|8.4|8.5) ;;",
             "  *) printf '%s\\n' \"PHP $php_version is not supported\" >&2; exit 1 ;;",
             "esac",
             """extension_dir=$(php -r 'echo ini_get("extension_dir");')""",
@@ -666,21 +758,58 @@ def _php_prepare_script(root: str) -> str:
             'if [ -z "$scan_dir" ] || [ ! -d "$scan_dir" ]; then ' "printf '%s\\n' 'PHP additional ini directory is missing' >&2; exit 1; fi",
             f'cp {root}/php/"$php_version"/nts/opentelemetry.so "$extension_dir/opentelemetry.so"',
             "printf '%s\\n' 'extension=opentelemetry.so' > \"$scan_dir/99-opentelemetry.ini\"",
+            "if [ ! -f composer.json ]; then composer init --name=app/app --no-interaction; fi",
+            "composer config repositories.packagist false",
             f"composer config repositories.otel {shlex.quote(repository)}",
             "export COMPOSER_DISABLE_NETWORK=1",
+            "export COMPOSER_ALLOW_SUPERUSER=1",
             f'composer_packages="{web_packages}"',
             'case "$php_version" in',
-            f'  8.2|8.3|8.4) composer_packages="$composer_packages {database_packages}" ;;',
+            f'  8.2|8.3|8.4|8.5) composer_packages="$composer_packages {php_82_packages}" ;;',
             "esac",
             "composer require --no-interaction --prefer-dist --update-with-dependencies $composer_packages",
         )
     )
 
 
-def _obi_config(endpoint: str, executable: str) -> str:
+def _php_fpm_pool_command(environment: dict[str, str]) -> str:
+    """把上报变量写成 php-fpm 池片段。当前 shell 的 export 不会进入 php-fpm 工作进程。"""
+
+    resource = environment["OTEL_RESOURCE_ATTRIBUTES"]
+    instance_marker = "${OTEL_SERVICE_INSTANCE_ID}"
+    if not resource.endswith(instance_marker):
+        raise ValueError("PHP resource attributes must end with the instance id placeholder")
+    static_prefix = resource[: -len(instance_marker)]
+    lines = [
+        "# Laravel、Symfony、Slim 由 php-fpm 处理请求。上面的 export 不会进入 php-fpm。",
+        "# 把 otel-fpm-pool.conf 并进池配置后重载 php-fpm。",
+        "cat > otel-fpm-pool.conf <<'EOF'",
+    ]
+    for key, value in environment.items():
+        if key == "OTEL_RESOURCE_ATTRIBUTES":
+            continue
+        if any(character in value for character in ("\n", "\r", "\0")):
+            raise ValueError("PHP pool value contains a control character")
+        lines.append(f"env[{key}] = {value}")
+    lines.extend(
+        (
+            "EOF",
+            "printf 'env[OTEL_RESOURCE_ATTRIBUTES] = %s%s\\n' " + shlex.quote(static_prefix) + ' "$OTEL_SERVICE_INSTANCE_ID" >> otel-fpm-pool.conf',
+        )
+    )
+    return "\n".join(lines)
+
+
+def _obi_config(endpoint: str, executable: str, service_name: str, service_namespace: str) -> str:
     return "\n".join(
         (
             'file_format: "1.0"',
+            "resource:",
+            "  attributes:",
+            "    - name: service.name",
+            f"      value: {json.dumps(service_name)}",
+            "    - name: service.namespace",
+            f"      value: {json.dumps(service_namespace)}",
             "tracer_provider:",
             "  processors:",
             "    - batch:",
@@ -718,15 +847,9 @@ def _obi_preflight() -> str:
             'case "$kernel_major$kernel_minor" in',
             "  *[!0-9]*) printf '%s\\n' 'OBI requires a numeric Linux kernel version' >&2; exit 1 ;;",
             "esac",
-            'if [ "$kernel_major" -lt 4 ] || { [ "$kernel_major" -eq 4 ] && [ "$kernel_minor" -lt 18 ]; }; then',
-            "  printf '%s\\n' \"Linux kernel $kernel_release is older than 4.18\" >&2",
+            'if [ "$kernel_major" -lt 6 ] || { [ "$kernel_major" -eq 6 ] && [ "$kernel_minor" -lt 6 ]; }; then',
+            "  printf '%s\\n' \"Linux kernel $kernel_release is older than 6.6; OBI v1.0.0 needs uprobe_multi\" >&2",
             "  exit 1",
-            "fi",
-            'if [ "$kernel_major" -lt 5 ] || { [ "$kernel_major" -eq 5 ] && [ "$kernel_minor" -lt 8 ]; }; then',
-            "  if [ ! -r /sys/kernel/btf/vmlinux ]; then",
-            "    printf '%s\\n' \"Linux kernel $kernel_release needs an eBPF backport and BTF\" >&2",
-            "    exit 1",
-            "  fi",
             "fi",
             "if [ ! -r /sys/kernel/btf/vmlinux ]; then",
             "  printf '%s\\n' 'OBI requires a readable /sys/kernel/btf/vmlinux' >&2",
@@ -745,11 +868,25 @@ def _obi_preflight() -> str:
     )
 
 
+def _obi_config_paths(executable: str) -> tuple[str, str]:
+    """返回这个可执行文件专属的配置目录和 obi.yaml 路径。
+
+    路径在生成片段前已经通过绝对路径校验，分段只含字母、数字和 . _ + -。
+    因此可以把相对路径放进双引号，$HOME 仍由 shell 展开。
+    """
+
+    relative = executable.lstrip("/")
+    directory = f'"$HOME/.otel-obi/configs/{relative}"'
+    return directory, f'"$HOME/.otel-obi/configs/{relative}/obi.yaml"'
+
+
 def _obi_host_snippet(
     probe_download_url: str,
     probe_sha256: str,
     endpoint: str,
     executable: str,
+    service_name: str,
+    service_namespace: str,
     environment: dict[str, str],
     resource_assignment: str,
     identity_setup: tuple[str, ...],
@@ -760,11 +897,13 @@ def _obi_host_snippet(
             exports.append(f"export {key}={resource_assignment}")
         else:
             exports.append(f"export {key}={shlex.quote(value)}")
+    config_directory, config_path = _obi_config_paths(executable)
     return "\n".join(
         (
             "# OBI v1.0.0 Linux amd64。未安装语言探针时，只采集指定 Go 可执行文件，不替换 Go SDK。",
             "# 同一进程不要再装 Java、Python、Node.js、.NET、PHP 或 Go SDK。",
-            "# 内核需要 Linux 5.8+，或带 eBPF backport 且有 BTF 的 RHEL 系 4.18+。",
+            "# 配置只写入这个可执行文件自己的目录，其他程序的配置保持不变。",
+            "# 内核需要 Linux 6.6 或更新。OBI v1.0.0 依赖 uprobe_multi，更低内核直接退出。",
             "# 需要 root 或上游要求的 capabilities。内核、BTF 或权限不够时退出，不修改应用二进制。",
             "# 已知限制：子 Span 时间戳可能早于父 Span。",
             _obi_preflight(),
@@ -772,13 +911,14 @@ def _obi_host_snippet(
             _probe_sha256_check(OBI_ARTIFACT_NAME, probe_sha256),
             'mkdir -p "$HOME/.otel-obi"',
             f'tar -xf {OBI_ARTIFACT_NAME} -C "$HOME/.otel-obi"',
-            "cat > \"$HOME/.otel-obi/obi.yaml\" <<'OBI_CONFIG'",
-            _obi_config(endpoint, executable),
+            f"mkdir -p {config_directory}",
+            f"cat > {config_path} <<'OBI_CONFIG'",
+            _obi_config(endpoint, executable, service_name, service_namespace),
             "OBI_CONFIG",
             *exports,
-            'obi_bin=$(find "$HOME/.otel-obi" -type f -name obi | head -n 1)',
+            'obi_bin=$(find "$HOME/.otel-obi" -path "$HOME/.otel-obi/configs" -prune -o -type f -name obi -print | head -n 1)',
             "if [ -z \"$obi_bin\" ]; then printf '%s\\n' 'OBI binary was not found' >&2; exit 1; fi",
-            'exec "$obi_bin" --config "$HOME/.otel-obi/obi.yaml"',
+            f'exec "$obi_bin" --config {config_path}',
         )
     )
 
@@ -821,6 +961,7 @@ def _host_install_commands(language: str, probe_download_url: str, probe_sha256:
         pip_install, bootstrap_requirements, bootstrap_install = _python_offline_install("otel-python-wheels")
         return "\n".join(
             (
+                _python_version_gate(),
                 _curl_download(probe_download_url, PYTHON_WHEELS_ARTIFACT_NAME),
                 _probe_sha256_check(PYTHON_WHEELS_ARTIFACT_NAME, probe_sha256),
                 "mkdir -p otel-python-wheels",
@@ -852,6 +993,7 @@ def _host_install_commands(language: str, probe_download_url: str, probe_sha256:
                 _probe_sha256_check(GO_SDK_ARTIFACT_NAME, probe_sha256),
                 "mkdir -p .otel-go-sdk",
                 f"unzip -o -q {GO_SDK_ARTIFACT_NAME} -d .otel-go-sdk",
+                _go_version_gate(),
                 'export GOPROXY="file://$(pwd)/.otel-go-sdk"',
                 "export GOSUMDB=off",
                 _go_module_download("go mod download"),
@@ -900,6 +1042,7 @@ def _docker_install_commands(language: str, probe_download_url: str, probe_sha25
                 _probe_sha256_check(output, probe_sha256),
                 "mkdir -p /opt/otel-python-wheels",
                 f"tar -xf {output} -C /opt/otel-python-wheels",
+                _python_version_gate(),
                 'python -m pip install --no-index --find-links /opt/otel-python-wheels "opentelemetry-distro[otlp]"',
                 "opentelemetry-bootstrap -a requirements > /tmp/otel-bootstrap-requirements.txt",
                 "python -m pip install --no-index --find-links /opt/otel-python-wheels -r /tmp/otel-bootstrap-requirements.txt",
@@ -932,7 +1075,8 @@ def _docker_install_commands(language: str, probe_download_url: str, probe_sha25
                 _probe_sha256_check(output, probe_sha256),
                 "mkdir -p /opt/otel-go-sdk",
                 f"unzip -o -q {output} -d /opt/otel-go-sdk",
-                _go_module_download("GOPROXY=file:///opt/otel-go-sdk GOSUMDB=off go mod download"),
+                "sh -c " + shlex.quote(_go_version_gate()),
+                _go_module_download("GOPROXY=file:///opt/otel-go-sdk GOSUMDB=off GOTOOLCHAIN=local go mod download"),
             )
         )
     if language == "dotnet":
@@ -1179,9 +1323,8 @@ class DjangoIntegrationConfigurationService:
             "OTEL_PROPAGATORS": "tracecontext,baggage",
             "OTEL_RESOURCE_ATTRIBUTES": resource,
             **_trace_sampler_environment(request.sample_rate),
+            **_traces_only_environment(),
         }
-        if request.language in {"dotnet", "php", "obi", "ruby", "cpp", "erlang", "swift"}:
-            environment.update(_traces_only_environment())
         if request.language == "php":
             environment["OTEL_PHP_AUTOLOAD_ENABLED"] = "true"
         if request.language in {"php", "ruby", "cpp", "erlang", "swift"}:
@@ -1202,6 +1345,8 @@ class DjangoIntegrationConfigurationService:
                 _require_probe_sha256(artifact_name),
                 environment["OTEL_EXPORTER_OTLP_ENDPOINT"],
                 request.process_executable,
+                request.service_name,
+                request.service_namespace,
                 environment,
                 resource_assignment,
                 runtime_profile.identity_setup,
@@ -1268,7 +1413,7 @@ class DjangoIntegrationConfigurationService:
                 "java": "java -javaagent:./opentelemetry-javaagent.jar -jar app.jar",
                 "go": _GO_SDK_GUIDE,
                 "dotnet": "dotnet App.dll",
-                "php": "php app.php",
+                "php": _php_fpm_pool_command(environment),
                 "ruby": _RUBY_SDK_GUIDE,
                 "cpp": _CPP_SDK_GUIDE,
                 "erlang": _ERLANG_SDK_GUIDE,

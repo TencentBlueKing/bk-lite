@@ -53,7 +53,10 @@ export default async function SigninPage({ searchParams }: SignInPageProp) {
     resolvedSearchParams.thirdLogin,
     resolvedSearchParams.third_login,
   );
-  const thirdLoginCode = getLegacyThirdLoginCode(resolvedSearchParams.callbackUrl);
+  const thirdLoginCode = getLegacyThirdLoginCode(
+    resolvedSearchParams.callbackUrl,
+    requestOrigin,
+  );
   const isPopupMode = resolvedSearchParams.popup === 'true' || resolvedSearchParams.popup === '1';
   const shouldRedirectAuthenticatedUser = Boolean(session?.user?.id);
 

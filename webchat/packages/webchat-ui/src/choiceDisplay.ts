@@ -5,6 +5,7 @@ export interface WebchatChoiceOption {
 }
 
 export interface WebchatChoiceValue {
+  choice_id?: string;
   title?: string;
   description?: string;
   options?: WebchatChoiceOption[];

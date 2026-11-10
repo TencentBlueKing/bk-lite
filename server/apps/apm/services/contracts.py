@@ -338,6 +338,11 @@ class TopologyGraph:
     diagnostics: tuple[str, ...] = ()
 
 
+GROUPED_RED_NAME = "name"
+GROUPED_RED_VERSION = "version"
+GROUPED_RED_INSTANCE = "instance"
+
+
 @dataclass(frozen=True)
 class ServiceMetricQuery:
     service_namespace: str
@@ -417,6 +422,72 @@ class ServiceRed:
     slow_count: int | None = None
     satisfied_count: int | None = None
     tolerating_count: int | None = None
+
+
+TOP_ENDPOINTS_LIMIT = 10
+
+
+def top_endpoints_from_grouped(
+    grouped: Mapping[tuple[str, ...], ServiceRed],
+    *,
+    name_index: int,
+    limit: int = TOP_ENDPOINTS_LIMIT,
+) -> tuple[ServiceEndpointRed, ...]:
+    """按请求数从分组 RED 取出前若干操作。同一窗口下请求率排序与请求数排序一致。"""
+
+    rows: list[ServiceEndpointRed] = []
+    for key, red in grouped.items():
+        if name_index >= len(key) or not red.request_count:
+            continue
+        endpoint = key[name_index]
+        if not endpoint:
+            continue
+        rows.append(
+            ServiceEndpointRed(
+                endpoint=endpoint,
+                request_rate=red.request_rate or 0.0,
+                error_rate=red.error_rate,
+                p95_ms=red.p95_ms,
+                p99_ms=red.p99_ms,
+            )
+        )
+    rows.sort(key=lambda item: (-item.request_rate, item.endpoint))
+    return tuple(rows[:limit])
+
+
+@dataclass(frozen=True)
+class GroupedServiceRedQuery:
+    """一个服务在一个时间窗内，按入口目标维度一次取回 RED。
+
+    ``group_by`` 是 ``name`` / ``version`` / ``instance`` 的子集，顺序即结果键的顺序。
+    历史窗复用同一查询，``include_breakdown`` 为假时不取趋势。
+    """
+
+    service_namespace: str
+    service_name: str
+    environment: str
+    started_at: datetime
+    ended_at: datetime
+    group_by: tuple[str, ...]
+    include_breakdown: bool = False
+    slow_threshold_ms: int | None = None
+    apdex_threshold_ms: int | None = None
+
+
+@dataclass(frozen=True)
+class GroupedDependencyRedQuery:
+    """一个服务在一个时间窗内，按下游依赖一次取回 RED。键是 ``(channel, system, statement)``。"""
+
+    service_namespace: str
+    service_name: str
+    environment: str
+    started_at: datetime
+    ended_at: datetime
+    include_breakdown: bool = False
+    slow_threshold_ms: int | None = None
+    apdex_threshold_ms: int | None = None
+    # 本轮要评估的依赖。用来发现「一条 Span 同时命中多个目标」；空表示不做这层校验。
+    targets: tuple[tuple[str, str, str], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -624,6 +695,12 @@ class TraceStore(Protocol):
 
 class MetricStore(Protocol):
     def service_red(self, query: ServiceMetricQuery) -> ServiceRed:
+        ...
+
+    def service_red_grouped(self, query: GroupedServiceRedQuery) -> Mapping[tuple[str, ...], ServiceRed]:
+        ...
+
+    def dependency_red_grouped(self, query: GroupedDependencyRedQuery) -> Mapping[tuple[str, str, str], ServiceRed]:
         ...
 
     def slo_measurement(self, query: SloMetricQuery) -> SloMeasurement:

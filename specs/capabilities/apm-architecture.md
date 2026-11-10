@@ -25,7 +25,7 @@ APM 是独立产品应用，负责应用目录、调用链查询、服务拓扑�
 | 探针开放下载 | `open_api/probe/download/<artifact>`，无登录态，仅白名单制品 |
 | 区域采集器 | 接收 OTLP，清洗后按区域主题发布 |
 | 中心采集器 | 消费区域主题并写入追踪库 |
-| 追踪存储 | VictoriaTraces，APM 唯一遥测事实源 |
+| 追踪存储 | VictoriaTraces。当前已实现的遥测查询来源；入口 RED 与可用性 SLO 的目标读路径见 [ADR 0011](../../docs/adr/0011-apm-rum-aggregate-metrics-store.md) |
 | 快照对象存储 | 告警事件原始证据的私有桶 |
 | 周期任务 | 目录对账、依赖探测、策略评估、发件箱投递、快照落盘与过期 |
 
@@ -67,13 +67,13 @@ flowchart LR
 | 存储 | 用途 |
 |---|---|
 | PostgreSQL | 控制面模型（应用/服务/实例/SLO/策略/告警/事件/发件箱） |
-| VictoriaTraces | 调用链与依赖图的唯一查询源 |
+| VictoriaTraces | 当前已实现的调用链与派生查询来源。明细、策略、慢请求、Apdex、延迟 SLO、下钻与拓扑仍以它为准 |
 | MinIO 私有桶 `apm-alert-snapshots` | 告警事件原始证据 |
 | NATS JetStream | 区域到中心的追踪投递（数据面；服务端监听器默认不启用 JetStream） |
 
-`deploy/apm/` 是数据面契约夹具，不是生产编排真相源。APM 不使用 VictoriaMetrics，不生成 Span Metrics。
+`deploy/apm/` 是数据面契约夹具，不是生产编排真相源。入口 RED 与可用性 SLO 允许读独立聚合库，明细、策略、慢请求、Apdex、延迟 SLO、下钻与拓扑仍以 VictoriaTraces 为准。目标契约见 [ADR 0011](../../docs/adr/0011-apm-rum-aggregate-metrics-store.md)，落地见[聚合层变更](../changes/observability-aggregate-metrics/spec.md)，当前尚未部署。
 
-> 证据来源：server/apps/apm/models/control_plane.py:22-509，server/apps/apm/adapters/victoriatraces.py:151-156，server/config/components/minio.py:19-31，deploy/apm/README.md:1-22,65　|　同步基线：61bace9f　|　【已实现】
+> 证据来源：server/apps/apm/models/control_plane.py:22-509，server/apps/apm/adapters/victoriatraces.py:151-156，server/config/components/minio.py:19-31，deploy/apm/README.md:1-22,65，docs/adr/0011-apm-rum-aggregate-metrics-store.md　|　同步基线：61bace9f　|　【已实现；聚合库为目标契约，尚未部署】
 
 ## 依赖【已实现】
 
@@ -81,5 +81,6 @@ flowchart LR
 - 节点管理：区域与接入点信息，用于生成接入指引。
 - 告警中心：仅可选单向事件副本，禁止回写。
 - 对象存储与追踪库：运行期依赖；数据面失败只降级 APM，不阻断服务启动。
+- 聚合库：目标契约下的运行期可选依赖。Server 启动和 `batch_init` 不连接它。入口 RED 与可用性 SLO 允许改读它，当前尚未部署。见 [ADR 0011](../../docs/adr/0011-apm-rum-aggregate-metrics-store.md)。
 
-> 证据来源：server/apps/apm/adapters/notifications.py:7-27，deploy/apm/README.md:92-94，specs/capabilities/apm-alerting.md:12　|　同步基线：61bace9f　|　【已实现】
+> 证据来源：server/apps/apm/adapters/notifications.py:7-27，deploy/apm/README.md:92-94，specs/capabilities/apm-alerting.md:12，docs/adr/0011-apm-rum-aggregate-metrics-store.md　|　同步基线：61bace9f　|　【已实现；聚合库为目标契约，尚未部署】

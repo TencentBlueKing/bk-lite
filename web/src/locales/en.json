@@ -322,7 +322,12 @@
     "verifyFailed": "Verification failed",
     "verificationFailedMaxAttempts": "Maximum verification attempts reached, please resend the code",
     "attemptsRemaining": "Remaining attempts: {remaining}",
-    "verifyCodeSuccess": "Email verification successful, click the 'Save' button at the bottom of the page to save changes"
+    "verifyCodeSuccess": "Email verification successful, click the 'Save' button at the bottom of the page to save changes",
+    "otpAuth": "OTP Authentication",
+    "otpBound": "Bound",
+    "unbindOtp": "Unbind",
+    "unbindOtpSuccess": "OTP unbound successfully",
+    "unbindOtpFailed": "Failed to unbind OTP"
   },
   "signin": {
     "errors": {

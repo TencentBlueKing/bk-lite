@@ -8,8 +8,8 @@ from kubernetes import client
 from kubernetes.client import ApiException
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
-from apps.core.logger import opspilot_logger as logger
 
+from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.metis.llm.tools.kubernetes.instance_scope import prepare_point_instance
 from apps.opspilot.metis.llm.tools.kubernetes.utils import coerce_bool, prepare_context
 
@@ -244,7 +244,7 @@ def _check_env_uses_configmap(pod, configmap_name):
 
 
 @tool()
-def find_configmap_consumers(configmap_name, namespace, config: RunnableConfig = None):
+def find_configmap_consumers(configmap_name, namespace, config: RunnableConfig = None, instance_name=None):
     """
     查找ConfigMap的消费者，评估变更影响范围
 
@@ -304,6 +304,10 @@ def find_configmap_consumers(configmap_name, namespace, config: RunnableConfig =
     步骤4: 用户确认后，调用 batch_restart_pods 重启
     ```
     """
+    config, instance_error = prepare_point_instance(config, instance_name)
+    if instance_error:
+        return instance_error
+
     prepare_context(config)
 
     try:

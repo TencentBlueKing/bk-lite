@@ -452,7 +452,7 @@
       "disk_used_average_gauge": "磁盘使用率",
       "disk_free_average_gauge": "磁盘剩余量",
       "store_accessible_gauge": "存储连接状态",
-      "disk_io_usage_gauge": "磁盘I/O使用率",
+      "disk_io_usage_gauge": "磁盘聚合 I/O 吞吐",
       "cluster_pod_count": "集群Pod总数",
       "cluster_node_count": "集群节点数",
       "cluster_memory_utilization": "集群总内存使用率",

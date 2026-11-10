@@ -5,8 +5,9 @@ from typing import Callable
 from uuid import uuid4
 
 from apps.core.logger import rum_logger as logger
-from apps.rum.services.alerteval import breached, should_renotify
+from apps.core.logger import safe_exception_info
 from apps.rum.services.alert_store import fmt_dt, parse_dt
+from apps.rum.services.alerteval import breached, should_renotify
 from apps.rum.services.notify import render_message
 
 LEVEL_TO_ALERT_CENTER = {
@@ -104,6 +105,7 @@ class RumAlertRuntime:
                     policy_id,
                     "monitor_metric",
                     type(exc).__name__,
+                    exc_info=safe_exception_info(exc),
                 )
                 return "failed"
             action = self._advance(policy, value, evaluated_at)
@@ -323,7 +325,17 @@ class RumAlertRuntime:
         self._enqueue(policy, saved, None, "renotify", evaluated_at, manual_only=True)
         return "renotified"
 
-    def _enqueue(self, policy: dict, alert: dict, event: dict | None, action: str, evaluated_at: datetime, *, manual_only: bool = False, copy_only: bool = False) -> None:
+    def _enqueue(
+        self,
+        policy: dict,
+        alert: dict,
+        event: dict | None,
+        action: str,
+        evaluated_at: datetime,
+        *,
+        manual_only: bool = False,
+        copy_only: bool = False,
+    ) -> None:
         targets = list(policy.get("notificationTargets") or [])
         if not targets:
             return

@@ -5,6 +5,7 @@ import pytest
 from django.db.models.query import QuerySet
 from django.utils import timezone
 
+from apps.apm.adapters.errors import TelemetryStoreUnavailable
 from apps.apm.models import ApmAlert, ApmDeploymentEvent, ApmService, ApmServiceInstance, ApmServiceOrganization, ApmSlo
 from apps.apm.services.contracts import ServiceRed, ServiceRedPoint, SloEvaluation, SloMeasurement
 from apps.apm.services.dashboard import ApmDashboardService
@@ -79,6 +80,9 @@ def test_dashboard_empty_when_organization_has_no_services():
 
     assert payload["empty"] is True
     assert payload["kpis"]["status"] == "empty"
+    assert payload["health"]["status"] == "empty"
+    assert payload["top_error_rate"]["status"] == "empty"
+    assert payload["top_p95"]["status"] == "empty"
     assert payload["releases"]["status"] == "empty"
 
 
@@ -294,6 +298,44 @@ def test_dashboard_slo_overview_skips_unavailable_evaluations(mocker):
     assert payload["slos"]["data"]["items"][0]["service_name"] == "checkout"
 
 
+def test_dashboard_slo_section_fails_when_every_evaluation_has_no_rate(mocker):
+    now = timezone.now()
+    service = _service(name="checkout", last_seen_at=now)
+    ApmSlo.objects.create(
+        name="结算可用性",
+        service=service,
+        environment="production",
+        sli_type="availability",
+        objective=Decimal("99.900"),
+        evaluation_window="rolling7d",
+        is_enabled=True,
+    )
+    reliability = mocker.Mock(spec=DjangoApmReliabilityService)
+    reliability.evaluate.return_value = SloEvaluation(
+        current_rate=None,
+        budget_remaining=None,
+        data_state="no_data",
+        started_at=now - timedelta(days=7),
+        ended_at=now,
+        reason="聚合库查询不可用",
+    )
+
+    failed = ApmDashboardService(reliability=reliability, now_fn=lambda: now).build(organization_id=10, window="1h")
+    reliability.evaluate.return_value = SloEvaluation(
+        current_rate=None,
+        budget_remaining=None,
+        data_state="no_data",
+        started_at=now - timedelta(days=7),
+        ended_at=now,
+        reason="no_samples",
+    )
+    empty = ApmDashboardService(reliability=reliability, now_fn=lambda: now).build(organization_id=10, window="1h")
+
+    assert failed["slos"]["status"] == "failed"
+    assert failed["slos"]["error"] == "聚合库查询不可用"
+    assert empty["slos"]["status"] == "empty"
+
+
 def test_dashboard_caps_red_queries_but_counts_all_visible_services_in_kpis(monkeypatch):
     now = timezone.now()
     red_by_name = {}
@@ -347,3 +389,96 @@ def test_dashboard_keeps_both_environments_of_one_service_within_target_cap():
     assert payload["empty"] is False
     assert checkout_environments == {"production", "staging"}
     assert len(store.service_red_calls) <= 40
+
+
+class _ExplodingRed:
+    def service_red(self, query):
+        raise TelemetryStoreUnavailable("聚合库查询不可用")
+
+
+def _health_counts(payload):
+    return {item["key"]: item["count"] for item in payload["health"]["data"]["buckets"]}
+
+
+def test_dashboard_keeps_counts_and_marks_health_unknown_without_samples():
+    now = timezone.now()
+    _service(last_seen_at=now)
+    traces = StubMetricStore({"checkout": _red()})
+    red_store = StubMetricStore({"checkout": ServiceRed(None, None, None, None)})
+
+    payload = ApmDashboardService(metric_store=traces, red_store=red_store, now_fn=lambda: now).build(organization_id=10, window="1h")
+
+    assert payload["kpis"]["status"] == "ok"
+    assert payload["kpis"]["data"]["service_count"] == 1
+    assert payload["kpis"]["data"]["request_rate"] is None
+    assert _health_counts(payload)["unknown"] == 1
+    assert _health_counts(payload)["healthy"] == 0
+    assert payload["top_error_rate"]["status"] == "empty"
+    assert payload["top_p95"]["status"] == "empty"
+    assert payload["health"]["status"] == "ok"
+    assert traces.service_red_calls == []
+
+
+def test_dashboard_aggregate_error_does_not_scan_traces():
+    now = timezone.now()
+    _service(last_seen_at=now)
+    traces = StubMetricStore({"checkout": _red()})
+
+    payload = ApmDashboardService(metric_store=traces, red_store=_ExplodingRed(), now_fn=lambda: now).build(organization_id=10, window="1h")
+
+    assert traces.service_red_calls == []
+    assert payload["kpis"]["status"] == "ok"
+    assert payload["kpis"]["data"]["application_count"] == 1
+    assert payload["kpis"]["data"]["request_rate"] is None
+    assert payload["health"] == {"status": "failed", "error": "聚合库查询不可用"}
+    assert payload["top_error_rate"] == {"status": "failed", "error": "聚合库查询不可用"}
+    assert payload["top_p95"] == {"status": "failed", "error": "聚合库查询不可用"}
+
+
+class _PartialAggregateRed:
+    def service_red(self, query):
+        if query.service_name == "payment":
+            raise TelemetryStoreUnavailable("聚合库查询不可用")
+        return _red(request_rate=10.0, error_rate=0.08, p95_ms=400.0)
+
+
+def test_dashboard_top_and_health_fail_when_every_service_store_is_unavailable():
+    now = timezone.now()
+    _service(name="checkout", last_seen_at=now)
+    _service(name="payment", last_seen_at=now)
+
+    payload = ApmDashboardService(metric_store=StubMetricStore({}), red_store=_ExplodingRed(), now_fn=lambda: now).build(
+        organization_id=10,
+        window="1h",
+    )
+
+    assert payload["empty"] is False
+    assert payload["kpis"]["status"] == "ok"
+    assert payload["kpis"]["data"]["request_rate"] is None
+    assert payload["kpis"]["data"]["error_request_rate"] is None
+    assert payload["kpis"]["data"]["p95_ms"] is None
+    assert payload["health"] == {"status": "failed", "error": "聚合库查询不可用"}
+    assert payload["top_error_rate"] == {"status": "failed", "error": "聚合库查询不可用"}
+    assert payload["top_p95"] == {"status": "failed", "error": "聚合库查询不可用"}
+
+
+def test_dashboard_top_and_health_keep_successful_services_when_store_fails_partially():
+    now = timezone.now()
+    _service(name="checkout", last_seen_at=now)
+    _service(name="payment", last_seen_at=now)
+
+    payload = ApmDashboardService(
+        metric_store=StubMetricStore({}),
+        red_store=_PartialAggregateRed(),
+        now_fn=lambda: now,
+    ).build(organization_id=10, window="1h")
+
+    assert payload["kpis"]["status"] == "ok"
+    assert payload["kpis"]["data"]["request_rate"] == pytest.approx(10.0)
+    assert payload["health"]["status"] == "ok"
+    assert _health_counts(payload)["critical"] == 1
+    assert _health_counts(payload)["unknown"] == 1
+    assert payload["top_error_rate"]["status"] == "ok"
+    assert [item["service_name"] for item in payload["top_error_rate"]["data"]["items"]] == ["checkout"]
+    assert payload["top_p95"]["status"] == "ok"
+    assert [item["service_name"] for item in payload["top_p95"]["data"]["items"]] == ["checkout"]

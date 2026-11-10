@@ -530,7 +530,7 @@ def _get_recently_restarted_kubernetes_pods_on_instance(namespace, top_n, config
 
 
 @tool()
-def get_kubernetes_node_capacity(config: RunnableConfig = None):
+def get_kubernetes_node_capacity(config: RunnableConfig = None, instance_name=None):
     """
     查看集群节点资源容量和使用情况
 
@@ -585,6 +585,10 @@ def get_kubernetes_node_capacity(config: RunnableConfig = None):
     - 资源不足需扩容 → 建议添加新节点或优化Pod资源配置
     - 检查资源碎片化 → 使用 check_pod_distribution
     """
+    config, instance_error = prepare_point_instance(config, instance_name)
+    if instance_error:
+        return instance_error
+
     prepare_context(config)
     try:
         core_v1 = client.CoreV1Api()
@@ -656,7 +660,7 @@ def get_kubernetes_node_capacity(config: RunnableConfig = None):
 
 
 @tool()
-def get_kubernetes_orphaned_resources(config: RunnableConfig = None):
+def get_kubernetes_orphaned_resources(config: RunnableConfig = None, instance_name=None):
     """
     发现孤立资源（无控制器管理）- 资源清理和审计
 
@@ -707,6 +711,10 @@ def get_kubernetes_orphaned_resources(config: RunnableConfig = None):
     - 批量清理Pod → 使用 cleanup_failed_pods
     - 查找ConfigMap使用者 → 使用 find_configmap_consumers
     """
+    config, instance_error = prepare_point_instance(config, instance_name)
+    if instance_error:
+        return instance_error
+
     prepare_context(config)
     try:
         core_v1 = client.CoreV1Api()

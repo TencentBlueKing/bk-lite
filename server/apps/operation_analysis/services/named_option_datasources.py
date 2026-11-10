@@ -156,20 +156,32 @@ def _resolve_option_datasource_ids(source_ids: set[int], rest_apis: set[str]) ->
 def _resolve_unique_rest_api_ids(rest_apis: set[str]) -> dict[str, int]:
     if not rest_apis:
         return {}
-    grouped: dict[str, list[tuple[int, bool]]] = defaultdict(list)
-    for ds_id, rest_api, is_build_in in DataSourceAPIModel.objects.filter(rest_api__in=rest_apis).values_list(
+    grouped: dict[str, list[tuple[int, bool, str, str, list]]] = defaultdict(list)
+    for ds_id, rest_api, is_build_in, name, build_in_key, params in DataSourceAPIModel.objects.filter(rest_api__in=rest_apis).values_list(
         "id",
         "rest_api",
         "is_build_in",
+        "name",
+        "build_in_key",
+        "params",
     ):
-        grouped[rest_api].append((ds_id, bool(is_build_in)))
+        grouped[rest_api].append((ds_id, bool(is_build_in), str(name or ""), str(build_in_key or ""), params if isinstance(params, list) else []))
 
     resolved: dict[str, int] = {}
     for rest_api, matches in grouped.items():
         if len(matches) == 1:
             resolved[rest_api] = matches[0][0]
             continue
-        builtins = [ds_id for ds_id, is_build_in in matches if is_build_in]
+        builtins = [item for item in matches if item[1]]
         if len(builtins) == 1:
-            resolved[rest_api] = builtins[0]
+            resolved[rest_api] = builtins[0][0]
+            continue
+        if rest_api == "monitor/query_latest_active_alerts":
+            preferred = [item for item in builtins if item[3] == "监控活跃告警::monitor/query_latest_active_alerts" or item[2] == "监控活跃告警"]
+            if len(preferred) == 1:
+                resolved[rest_api] = preferred[0][0]
+                continue
+        with_instance_ids = [item for item in builtins if any(isinstance(param, dict) and param.get("name") == "instance_ids" for param in item[4])]
+        if len(with_instance_ids) == 1:
+            resolved[rest_api] = with_instance_ids[0][0]
     return resolved

@@ -222,11 +222,15 @@ const DashboardWidgetCard = React.memo(function DashboardWidgetCard({
           }}
         >
           <div className="widget-header flex min-w-0 items-start gap-2">
-            <div className="min-w-0 flex-1">
-              <div className="flex min-w-0 items-center gap-1">
-                <h4 className="truncate text-[14px] font-medium leading-5 text-(--color-text-2)">
+            <div className="min-w-0 flex-1 overflow-hidden">
+              <div className="flex min-w-0 items-center gap-2">
+                <h4 className="min-w-0 shrink truncate text-[14px] font-medium leading-5 text-(--color-text-2)">
                   {title}
                 </h4>
+                <div
+                  ref={runtimeSlotRef}
+                  className="no-drag min-w-0 flex-1 overflow-x-auto"
+                />
               </div>
               {item.description?.trim() && (
                 <p className="mt-0.5 text-[11px] leading-4 text-(--color-text-3) wrap-break-word whitespace-normal">
@@ -234,28 +238,26 @@ const DashboardWidgetCard = React.memo(function DashboardWidgetCard({
                 </p>
               )}
             </div>
-            <div
-              ref={runtimeSlotRef}
-              className="no-drag ml-auto min-w-0 max-w-[70%] overflow-x-auto"
-            />
-            {showHoverExport && (
-              <WidgetCsvHoverButton
-                label={t('dashboard.exportCsv')}
-                onClick={exportCsv}
-              />
-            )}
-            <InteractionTitleIcon config={item.valueConfig} />
-            {menuItems.length > 0 && (
-              <div data-export-hidden="true" className="no-drag shrink-0">
-                <MoreActionsDropdown
-                  items={menuItems}
-                  trigger={['hover']}
-                  labelAlign="start"
-                  buttonClassName="no-drag cursor-pointer text-(--color-text-2) transition-colors hover:!bg-transparent hover:text-(--color-text-1)"
-                  iconStyle={{ fontSize: '18px' }}
+            <div className="flex shrink-0 items-center gap-1">
+              {showHoverExport && (
+                <WidgetCsvHoverButton
+                  label={t('dashboard.exportCsv')}
+                  onClick={exportCsv}
                 />
-              </div>
-            )}
+              )}
+              <InteractionTitleIcon config={item.valueConfig} />
+              {menuItems.length > 0 && (
+                <div data-export-hidden="true" className="no-drag shrink-0">
+                  <MoreActionsDropdown
+                    items={menuItems}
+                    trigger={['hover']}
+                    labelAlign="start"
+                    buttonClassName="no-drag cursor-pointer text-(--color-text-2) transition-colors hover:!bg-transparent hover:text-(--color-text-1)"
+                    iconStyle={{ fontSize: '18px' }}
+                  />
+                </div>
+              )}
+            </div>
           </div>
           <div
             className="widget-body flex-1 h-full min-h-0"

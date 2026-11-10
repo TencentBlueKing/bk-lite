@@ -1,6 +1,6 @@
 # APM 推断下游产品决策记忆
 
-- 最近更新：2026-09-01
+- 最近更新：2026-11-10
 - 当前规格：`specs/changes/apm-topology-ops-followup/spec.md`、`specs/changes/apm-inferred-downstream/spec.md`
 
 ## 产品定位
@@ -57,7 +57,7 @@ MVP 做成 **应用详情画布上的推断节点 + 调用链可解释**，不�
 - **节点分两类。** `instrumented`：已在当前组织可见的 `ApmService`。`inferred`：未插桩下游。推断节点展示类型（mysql / redis / kafka）和 Span 里实际有的地址 / 库名，角标「推断」。点推断节点打开调查栏：调用方、样本 Client Span（各样本可带自己的地址）、下钻调用链；**不提供服务详情、策略、SLO、组织调整**。
 - **RED 口径。** 推断节点没有独立吞吐。边的调用量 / 错误率 / P95 来自调用方 Client Span。节点健康度沿用拓扑错误率分档。截断时 `truncated=true`，文案不得说成全量拓扑。
 - **权限。** 推断节点只在调用方 `ApmService` 对当前组织可见时出现。不能靠推断节点枚举其他组织的库地址。
-- **Collector 保持 traces-only。** 不启用 `servicegraphconnector`、不恢复 spanmetrics、不增加 APM VictoriaMetrics。推断不经过 OTC 改写。
+- **入口聚合与推断下游分开。** 入口 RED 与可用性 SLO 允许读独立聚合库，明细、策略、慢请求、Apdex、延迟 SLO、下钻与拓扑仍以 VictoriaTraces 为准。目标契约见 [ADR 0011](../../adr/0011-apm-rum-aggregate-metrics-store.md)，落地见[聚合层变更](../../../specs/changes/observability-aggregate-metrics/spec.md)，当前尚未部署。推断下游不进聚合层，不启用 `servicegraphconnector`，也不经过 OTC 改写。
 - **`OTEL_SEMCONV_STABILITY_OPT_IN`。** 接入片段默认不打开 `database`。查询别名同时覆盖默认旧键与 opt-in 新键。若日后默认切到稳定约定，只改别名表和夹具，不改目录模型。
 - **推断节点只挂应用详情画布。** 全局服务拓扑 `include_inferred=false`。应用详情只展示本应用已插桩服务的直接推断下游，不进下属服务表 / KPI / 目录，避免 mysql 被理解成 APM 服务。一跳邻居自己的推断下游不进入本应用图。
 
@@ -76,7 +76,7 @@ MVP 做成 **应用详情画布上的推断节点 + 调用链可解释**，不�
 - 推断对象持久化、手工确认/忽略、与 CMDB / Monitor 实例关联。
 - 未插桩 HTTP/SaaS 的完整 inferred service（VictoriaTraces issue #121 级）。
 - 按 `server.address` 拆分多个 mysql 实例，或合并跨服务的同一库。
-- OTC 侧虚拟节点 metrics、spanmetrics。
+- 推断节点的 OTC 虚拟节点 metrics 与 spanmetrics。入口 RED 的聚合库不包含推断下游。
 - 给推断节点配 APM 策略 / SLO / 告警。
 - 在接入页按语言展示完整 Span 标签表（可作为内部对照，不进第一版 UI）。
 
@@ -94,6 +94,7 @@ MVP 做成 **应用详情画布上的推断节点 + 调用链可解释**，不�
 
 ## 已替代决策
 
+- 「Collector 保持 traces-only，不恢复 spanmetrics，不增加 APM VictoriaMetrics」：2026-11-10 改为入口 RED 与可用性 SLO 可以读独立聚合库，见 [ADR 0011](../../adr/0011-apm-rum-aggregate-metrics-store.md)。推断下游仍不进聚合层，不启用 `servicegraphconnector`，也不经过 OTC 改写。
 - 「装一个 Web 探针就会在应用列表发现 mysql」：2026-08-26 明确为不正确的产品说法；正确说法是拓扑上出现推断下游。
 - 「用 db.name 填推断节点地址」：2026-08-27 改为库名独立字段；地址只来自 host/port 别名。
 - 「fork OTC 用 Cloud 扫各语言探针标签」：2026-08-26 改为读各语言 instrumentation 的钉死 tag，查询走语义约定别名。
@@ -106,5 +107,5 @@ MVP 做成 **应用详情画布上的推断节点 + 调用链可解释**，不�
 - 2026-08-28 用户确认：应用详情拓扑要讲完整请求路径，画布补本应用已插桩服务的直接推断下游；一跳邻居的推断下游不进入本应用图。
 - 2026-08-27 用户确认：推断下游展示 Client Span 实际有的 host/port/库名；不按 IP 改折叠键；高基数拆分后置。
 - 2026-08-26 会话：服务发现身份、OTC+VT 能力边界、Span 属性可查询、探针制品文档无版本号、建议钉 2.31.1 / 0.65b0 / 0.79.0 / v1.46.0。
-- 仓库事实：`DjangoTelemetryCatalogService` 只认 Resource 身份；`docs/operations/apm-probe-artifact-release.md`；Collector `0.153.0` traces-only；拓扑切片改为有界 Trace 样本。
+- 仓库事实：`DjangoTelemetryCatalogService` 只认 Resource 身份；`docs/operations/apm-probe-artifact-release.md`；Collector `0.153.0` 当前发行版仍是 traces 流水线，入口聚合的目标契约见 [ADR 0011](../../adr/0011-apm-rum-aggregate-metrics-store.md)；拓扑切片改为有界 Trace 样本。
 - 对照而非目标架构：Datadog inferred services、OTel `servicegraphconnector` 虚拟节点、VictoriaTraces PR #117 / issue #121。

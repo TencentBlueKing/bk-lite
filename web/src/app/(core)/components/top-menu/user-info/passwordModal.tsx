@@ -14,7 +14,7 @@ import { usePasswordPolicy } from '@/components/security/password-policy/usePass
 interface PasswordModalProps {
   visible: boolean;
   onCancel: () => void;
-  onSuccess: () => void;
+  onSuccess: (rotatedToken?: string) => void | Promise<void>;
   fetchPolicyAction?: () => Promise<{
     pwd_set_required_char_types?: string | string[];
     pwd_set_min_length?: string;
@@ -46,7 +46,7 @@ const PasswordModal: React.FC<PasswordModalProps> = ({
     fetchPolicy: () =>
       fetchPolicyAction
         ? fetchPolicyAction()
-        : get('/system_mgmt/system_settings/get_sys_set/'),
+        : get('/system_mgmt/system_settings/password_policy/'),
   });
 
   const handleSubmit = async (values: Record<string, unknown>) => {
@@ -55,13 +55,17 @@ const PasswordModal: React.FC<PasswordModalProps> = ({
       const payload = {
         password: values.newPassword,
       };
-      if (resetPasswordAction) {
-        await resetPasswordAction(payload);
-      } else {
-        await post('/console_mgmt/reset_pwd/', payload);
-      }
+      const response = resetPasswordAction
+        ? await resetPasswordAction(payload)
+        : await post('/console_mgmt/reset_pwd/', payload);
+      const rotatedToken = response
+        && typeof response === 'object'
+        && 'token' in response
+        && typeof response.token === 'string'
+        ? response.token
+        : undefined;
       message.success(t('common.updateSuccess'));
-      onSuccess();
+      await onSuccess(rotatedToken);
     } catch {
       message.error(t('common.updateFailed'));
     } finally {

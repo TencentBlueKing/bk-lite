@@ -14,8 +14,8 @@ monitor_object_metric:
       name: Queued Requests
       desc: Number of requests waiting in the queue.
     sglang:token_usage_gauge:
-      name: Token Usage
-      desc: KV/token usage ratio (0–1).
+      name: Token Usage Ratio
+      desc: Share of token and KV-related capacity currently in use. The range is 0–1, where 1 means fully occupied. Set alert thresholds on the 0–1 scale, not 0–100.
     sglang:cache_hit_rate_gauge:
       name: Cache Hit Rate
       desc: Prefix cache hit rate (0–1).

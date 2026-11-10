@@ -15,7 +15,7 @@ monitor_object_metric:
       desc: 父服务器配置重新加载的次数，每次配置重载该值会增加
     apache_TotalAccesses:
       name: 总访问次数
-      desc: 累计处理的HTTP请求总数，用于衡量服务器的总体工作负载和处理能力
+      desc: 自启动以来累计处理的 HTTP 请求数，用于衡量服务器的总体工作负载。
     apache_ReqPerSec:
       name: 请求处理速率
       desc: 当前时刻服务器处理请求的速率，直接反映服务器的实时处理性能
@@ -41,8 +41,8 @@ monitor_object_metric:
       name: 15分钟系统负载
       desc: 过去15分钟内系统的平均负载，反映长期系统资源压力趋势
     apache_TotalAccesses_rate:
-      name: 请求速率变化率
-      desc: 基于5分钟时间窗口计算的每秒请求数变化率，反映请求流量的趋势和波动
+      name: HTTP 访问速率
+      desc: 近 5 分钟平均每秒处理的 HTTP 请求数。
     apache_scboard_open:
       name: 打开连接数
       desc: 记分板中当前处于打开状态的连接总数，反映当前的并发连接数量

@@ -50,6 +50,7 @@ const SearchFilter: React.FC<SearchFilterProps> = ({
   modelId = '',
   displayFieldKeys,
   allowShrink = false,
+  syncSearchAttr = true,
   beforeExactSearch,
   onSearch,
   onChange,
@@ -84,12 +85,13 @@ const SearchFilter: React.FC<SearchFilterProps> = ({
   // 是否折叠收藏的筛选条件
   const [isCompact, setIsCompact] = useState<boolean>(false);
 
-  // 监听器，同步 store 中的 searchAttr 到本地状态
+  // 列表头记住当前字段。关联弹窗不读这份缓存，避免把列表字段拉进来。
   useEffect(() => {
+    if (!syncSearchAttr) return;
     if (searchAttr_store !== searchAttr) {
       setSearchAttr(searchAttr_store);
     }
-  }, [searchAttr_store, searchAttr]);
+  }, [syncSearchAttr, searchAttr_store, searchAttr]);
 
   const searchableAttrs = useMemo(
     () => visibleSearchableFilterAttrs(attrList, displayFieldKeys),
@@ -101,11 +103,12 @@ const SearchFilter: React.FC<SearchFilterProps> = ({
     if (searchableAttrs.some((attr) => attr.attr_id === searchAttr)) return;
     const nextAttr = searchableAttrs[0].attr_id;
     setSearchAttr(nextAttr);
+    if (!syncSearchAttr) return;
     useAssetDataStore.setState((state) => ({
       ...state,
       searchAttr: nextAttr,
     }));
-  }, [searchAttr, searchableAttrs]);
+  }, [searchAttr, searchableAttrs, syncSearchAttr]);
 
   // 监听窗口大小变化，更新是否折叠收藏的筛选条件
   useEffect(() => {
@@ -185,18 +188,19 @@ const SearchFilter: React.FC<SearchFilterProps> = ({
 
   const onSearchAttrChange = (attr: string) => {
     setSearchValue('');
-    useAssetDataStore.setState((state) => ({
-      ...state,
-      searchAttr: attr,
-    }));
-
-    // 更新本地状态
+    if (syncSearchAttr) {
+      useAssetDataStore.setState((state) => ({
+        ...state,
+        searchAttr: attr,
+      }));
+    }
     setSearchAttr(attr);
   };
 
   const onExactSearchChange: CheckboxProps['onChange'] = (e) => {
     const checked = e.target.checked;
     setIsExactSearch(checked);
+    if (!syncSearchAttr) return;
     useAssetDataStore.setState((state) => ({
       ...state,
       case_sensitive: checked,
@@ -545,8 +549,8 @@ const SearchFilter: React.FC<SearchFilterProps> = ({
           </span>
         )}
 
-        {/* 收藏的筛选条件 */}
-        {savedFilters.length > 0 && (
+        {/* 收藏的筛选条件写在列表 store 上，弹窗不展示。 */}
+        {syncSearchAttr && savedFilters.length > 0 && (
           <div className={searchFilterStyle.savedFiltersWrapper}>
             <div className={searchFilterStyle.savedFiltersLabel}>
               <StarFilled className={searchFilterStyle.starIcon} />

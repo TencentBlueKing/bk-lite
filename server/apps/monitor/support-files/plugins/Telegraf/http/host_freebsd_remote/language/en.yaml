@@ -55,8 +55,7 @@ monitor_object_metric:
       desc: Indicates the amount of data read from disk per unit time, used to evaluate disk read throughput.
     diskio_read_bytes_total:
       name: Disk Read Bytes
-      desc: Disk read bytes for this device. Rate uses the 1s interval sample; totals come from iostat
-        -I when present.
+      desc: Cumulative bytes read for this device.
     disk_tm_act:
       name: Disk Busy
       desc: iostat %b, the share of time the disk was active.

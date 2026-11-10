@@ -19,12 +19,14 @@ import {
   GlobalOutlined,
   ClockCircleOutlined,
   ApartmentOutlined,
-  TeamOutlined
+  TeamOutlined,
+  SafetyCertificateOutlined,
 } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import { useClientData } from '@/context/client';
 import { useUserInfoContext } from '@/context/userInfo';
-import useApiClient from '@/utils/request';
+import useApiClient, { adoptClientAuthToken } from '@/utils/request';
+import { replaceAuthToken } from '@/utils/authTokenBridge';
 import { useLocale } from '@/context/locale';
 import { useSession } from 'next-auth/react';
 import { normalizeLocale, normalizeTimezone, persistTimezone } from '@/utils/userPreferences';
@@ -78,7 +80,7 @@ const UserInformation: React.FC<UserInformationProps> = ({
   const [countdown, setCountdown] = useState(0);
   const [userInfo, setUserInfo] = useState<any>({});
   const [currentEmail, setCurrentEmail] = useState<string>('');
-  const [verifyPasswordFor, setVerifyPasswordFor] = useState<'email' | 'password'>('email');
+  const [verifyPasswordFor, setVerifyPasswordFor] = useState<'email' | 'password' | 'otp'>('email');
   const [verifyCodeAttempts, setVerifyCodeAttempts] = useState(0);
   const MAX_VERIFY_ATTEMPTS = 10;
 
@@ -167,11 +169,20 @@ const UserInformation: React.FC<UserInformationProps> = ({
 
   // 验证密码
   const handleVerifyPassword = async (values: any) => {
+    let passwordVerified = false;
     try {
       setVerifyPasswordLoading(true);
       await post('/console_mgmt/validate_pwd/', { password: values.password });
+      passwordVerified = true;
       setVerifyIdentityModalVisible(false);
       verifyForm.resetFields();
+
+      if (verifyPasswordFor === 'otp') {
+        await post('/console_mgmt/unbind_otp/');
+        message.success(t('userInfo.unbindOtpSuccess'));
+        setUserInfo((prev: { has_otp?: boolean }) => ({ ...prev, has_otp: false }));
+        return;
+      }
 
       // 根据验证目的跳转到对应弹窗
       if (verifyPasswordFor === 'email') {
@@ -180,7 +191,11 @@ const UserInformation: React.FC<UserInformationProps> = ({
         setPasswordModalVisible(true);
       }
     } catch {
-      message.error(t('userInfo.passwordError'));
+      message.error(
+        passwordVerified && verifyPasswordFor === 'otp'
+          ? t('userInfo.unbindOtpFailed')
+          : t('userInfo.passwordError'),
+      );
     } finally {
       setVerifyPasswordLoading(false);
     }
@@ -342,6 +357,32 @@ const UserInformation: React.FC<UserInformationProps> = ({
                         </Button>
                       </div>
                     </Form.Item>
+
+                    {userInfo.has_otp ? (
+                      <Form.Item
+                        label={
+                          <div className="inline-flex min-w-20 items-center gap-1">
+                            <SafetyCertificateOutlined />
+                            <span>{t('userInfo.otpAuth')}</span>
+                          </div>
+                        }
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="text-base">{t('userInfo.otpBound')}</div>
+                          <Button
+                            type="link"
+                            size="small"
+                            className="p-0 h-auto"
+                            onClick={() => {
+                              setVerifyPasswordFor('otp');
+                              setVerifyIdentityModalVisible(true);
+                            }}
+                          >
+                            {t('userInfo.unbindOtp')}
+                          </Button>
+                        </div>
+                      </Form.Item>
+                    ) : null}
                 </Form>
               </div>
 
@@ -663,7 +704,19 @@ const UserInformation: React.FC<UserInformationProps> = ({
         visible={passwordModalVisible}
         zIndex={USER_INFO_DIALOG_Z_INDEX}
         onCancel={() => setPasswordModalVisible(false)}
-        onSuccess={() => {
+        onSuccess={async (rotatedToken) => {
+          if (rotatedToken) {
+            adoptClientAuthToken(rotatedToken);
+            replaceAuthToken(rotatedToken);
+            await update({
+              ...session,
+              user: {
+                ...(session?.user || {}),
+                token: rotatedToken,
+                temporary_pwd: false,
+              },
+            });
+          }
           setPasswordModalVisible(false);
         }}
       />

@@ -124,7 +124,7 @@ export function buildThirdLoginCallbackUrl(
   }
 }
 
-export function getLegacyThirdLoginCode(callbackUrl?: string): string | undefined {
+export function getLegacyThirdLoginCode(callbackUrl?: string, currentOrigin?: string): string | undefined {
   if (!callbackUrl) {
     return undefined;
   }
@@ -132,6 +132,12 @@ export function getLegacyThirdLoginCode(callbackUrl?: string): string | undefine
   try {
     const url = new URL(callbackUrl);
     if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+      return undefined;
+    }
+
+    // Same-origin apps (e.g. ITSM at /itsm/?third_login_code=bklite) reuse this
+    // query name but are in-site returns, not the bklite.ai playground flow.
+    if (isSameOriginUrl(callbackUrl, currentOrigin)) {
       return undefined;
     }
 

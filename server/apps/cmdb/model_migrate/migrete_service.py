@@ -672,7 +672,10 @@ class ModelMigrate:
 
                     existing_attr = existing_attr_map.get(attr_id)
                     if existing_attr:
-                        # 命中同 attr_id：做配置更新而非重复追加。
+                        # 内置初始化不改环境里已经存在的字段，避免覆盖客户改过的类型和约束。
+                        # 模型配置导入仍按种子表合并同 attr_id。
+                        if self.is_pre:
+                            continue
                         if self._merge_existing_attr_config(existing_attr, attr):
                             model_updated_attr_count += 1
                         continue

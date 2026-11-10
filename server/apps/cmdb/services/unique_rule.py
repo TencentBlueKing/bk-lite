@@ -100,6 +100,7 @@ class UniqueRuleCheckContext:
     unique_rules: list[ModelUniqueRule] = field(default_factory=list)
     builtin_unique_fields: set[str] = field(default_factory=set)
     legacy_unique_fields: set[str] = field(default_factory=set)
+    duplicate_field_ids: set[str] = field(default_factory=set)
 
 
 @dataclass(slots=True, frozen=True)
@@ -470,12 +471,15 @@ def build_unique_rule_context(model_id: str) -> UniqueRuleCheckContext:
     attrs_by_id = {attr.get("attr_id"): attr for attr in attrs if isinstance(attr, dict) and attr.get("attr_id") and not attr.get("is_display_field")}
     legacy_unique_fields = {attr_id for attr_id, attr in attrs_by_id.items() if attr.get("is_only") and attr_id != "inst_name"}
 
+    from apps.cmdb.model_ops.extensions import get_model_enterprise_extension
+
     return UniqueRuleCheckContext(
         model_id=model_id,
         attrs_by_id=attrs_by_id,
         unique_rules=parse_unique_rules(model_info.get("unique_rules", "[]")),
         builtin_unique_fields={"inst_name"},
         legacy_unique_fields=legacy_unique_fields,
+        duplicate_field_ids=set(get_model_enterprise_extension().duplicate_detection_field_ids_from_model(model_info)),
     )
 
 
@@ -526,7 +530,13 @@ def list_unique_rule_candidate_fields(model_id: str, editing_rule_id: str | None
     candidates: list[UniqueRuleFieldMeta] = []
     for attr_id, attr in ctx.attrs_by_id.items():
         attr_type = str(attr.get("attr_type") or "")
-        selectable, disabled_reason = _evaluate_field_selectability(attr_id, attr, attr_type, occupied_field_ids)
+        selectable, disabled_reason = _evaluate_field_selectability(
+            attr_id,
+            attr,
+            attr_type,
+            occupied_field_ids,
+            ctx.duplicate_field_ids,
+        )
 
         candidates.append(
             UniqueRuleFieldMeta(
@@ -547,6 +557,7 @@ def _evaluate_field_selectability(
     attr: dict[str, Any],
     attr_type: str,
     occupied_field_ids: set[str],
+    duplicate_field_ids: set[str] | None = None,
 ) -> tuple[bool, str]:
     if attr_id == "inst_name":
         return False, "inst_name 为内置唯一字段，不支持加入额外唯一规则"
@@ -560,6 +571,8 @@ def _evaluate_field_selectability(
         return False, "枚举、标签、布尔字段不可加入唯一规则"
     if attr_id in occupied_field_ids:
         return False, "该字段已被其他唯一规则使用"
+    if attr_id in (duplicate_field_ids or set()):
+        return False, "字段已被重复性检测使用，请先删除对应检测规则"
     return True, ""
 
 
@@ -608,6 +621,8 @@ def validate_unique_rule_payload(
             raise BaseAppException(f"字段 {_get_attr_name(ctx.attrs_by_id, field_id)} 的类型不支持加入唯一规则")
         if field_id in occupied_field_ids:
             raise BaseAppException(f"字段 {_get_attr_name(ctx.attrs_by_id, field_id)} 已被其他唯一规则使用")
+        if field_id in ctx.duplicate_field_ids:
+            raise BaseAppException(f"字段 {_get_attr_name(ctx.attrs_by_id, field_id)} 已被重复性检测使用，请先删除对应检测规则")
 
 
 def validate_unique_rules_against_existing_instances(
@@ -847,6 +862,17 @@ def delete_unique_rule(model_id: str, rule_id: str, operator: str) -> list[dict[
     )
 
 
+_DUPLICATE_INCOMPARABLE_ATTR_TYPES = {"enum", "tag", "bool", "attachment", "image", "table", "pwd", "password"}
+
+
+def _duplicate_detection_change_blocked(next_attr: dict[str, Any] | None, operation: str) -> bool:
+    if operation == "delete":
+        return True
+    if operation != "update_type" or not next_attr:
+        return False
+    return str(next_attr.get("attr_type") or "") in _DUPLICATE_INCOMPARABLE_ATTR_TYPES
+
+
 def guard_attr_change_against_unique_rules(
     model_id: str,
     target_attr_id: str,
@@ -872,6 +898,8 @@ def guard_attr_change_against_unique_rules(
     """
 
     ctx = build_unique_rule_context(model_id)
+    if target_attr_id in ctx.duplicate_field_ids and _duplicate_detection_change_blocked(next_attr, operation):
+        raise BaseAppException("字段已被重复性检测使用，请先删除对应检测规则")
     matched_rules = [rule for rule in ctx.unique_rules if target_attr_id in rule.field_ids]
     if not matched_rules:
         return

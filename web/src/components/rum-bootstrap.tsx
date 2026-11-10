@@ -5,11 +5,11 @@ import { useEffect } from 'react';
 
 import { readRumBootstrapConfig } from '@/utils/rumBootstrap';
 
-type RumFaro = {
+interface RumFaro {
   api: {
     setUser: (user: { id: string }) => void;
   };
-};
+}
 
 declare global {
   interface Window {

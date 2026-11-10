@@ -259,6 +259,47 @@ describe('APM 添加接入', () => {
     expect(await screen.findByText('Kubernetes 配置片段')).not.toBeNull();
   });
 
+  it('接入卡片右上角只标接入方式，且每张卡都有', async () => {
+    renderPage();
+    await screen.findByRole('button', { name: 'Node.js 接入' });
+
+    expect(screen.queryByText('推荐')).toBeNull();
+    expect(screen.queryByText('手动 SDK')).toBeNull();
+    expect(screen.queryByText('低侵入')).toBeNull();
+
+    const expected = [
+      ['Node.js 接入', '自动探针', '采集 Express / Nest / Koa 的调用链'],
+      ['Java 接入', '自动探针', '采集 Spring / Dubbo / gRPC 的调用链'],
+      ['Python 接入', '自动探针', '采集 Django / Flask / FastAPI 的调用链'],
+      ['.NET 接入', '自动探针', '采集 ASP.NET Core / gRPC 的调用链 Linux 限 x86_64 glibc，Windows 仅主机'],
+      ['PHP 接入', '自动探针', '采集 Symfony / Slim / Guzzle 的调用链，Laravel 从 PHP 8.2 起 仅 Linux 上的 PHP NTS 8.1–8.5'],
+      ['Go 接入', '手动接入', '接入后采集 net/http / Gin / Echo / gRPC 的调用链'],
+      ['Ruby 接入', '手动接入', '接入 Rack 后采集请求调用链'],
+      ['C++ 接入', '手动接入', '编译接入后，只采集进程入口调用链'],
+      ['Erlang/Elixir 接入', '手动接入', '用本地依赖接入后，只采集进程入口调用链'],
+      ['Swift 接入', '手动接入', '用本地 Package 接入后，只采集进程入口调用链'],
+      ['OTel Collector 接入', '链路转发', '把已有 Collector 的调用链转到平台'],
+      ['eBPF 自动注入（OBI） 接入', '进程观测', '只采集指定 Go 进程的调用链 另起进程盯住这一个程序，程序本身不用改'],
+    ] as const;
+
+    for (const [name, mode, description] of expected) {
+      const card = within(screen.getByRole('button', { name }));
+      expect(card.getByText(mode)).not.toBeNull();
+      expect(card.getByText(description)).not.toBeNull();
+    }
+    expect(screen.queryByText('自动探针在目标进程启动时挂上。手动接入要改代码，然后重新编译或重启。')).toBeNull();
+    const user = userEvent.setup();
+    const expectHint = async (name: string, text: string) => {
+      await user.hover(screen.getByRole('button', { name }));
+      await waitFor(() => {
+        expect(screen.getAllByRole('tooltip').some((node) => node.textContent?.includes(text))).toBe(true);
+      });
+    };
+    await expectHint('SDK 说明', '自动探针在目标进程启动时挂上。手动接入要改代码，然后重新编译或重启。');
+    await expectHint('OpenTelemetry 说明', '不安装探针，把已有 Collector 的调用链转到平台。');
+    await expectHint('eBPF 说明', '不改目标程序，在主机上另起一个观测进程。');
+  });
+
   it('明确把 Go 呈现为手动 SDK 接入而不是自动探针', async () => {
     api.getIngestSnippet.mockResolvedValue({
       application_id: 'bklite',
@@ -271,7 +312,9 @@ describe('APM 添加接入', () => {
     const user = userEvent.setup();
     renderPage();
 
-    expect((await screen.findAllByText('手动 SDK')).length).toBeGreaterThan(0);
+    expect(within(await screen.findByRole('button', { name: 'Go 接入' })).getByText('手动接入')).not.toBeNull();
+    expect(screen.queryByText('推荐')).toBeNull();
+    expect(screen.queryByText('低侵入')).toBeNull();
     await user.click(screen.getByRole('button', { name: 'Go 接入' }));
     expect(screen.getByRole('radio', { name: 'Go 手动 SDK' })).not.toBeNull();
     expect(screen.queryByRole('radio', { name: 'Go 自动探针' })).toBeNull();
@@ -279,6 +322,34 @@ describe('APM 添加接入', () => {
     await waitFor(() => expect(api.getIngestSnippet).toHaveBeenCalled(), { timeout: 3000 });
 
     expect(await screen.findByText('Go SDK 接入指南')).not.toBeNull();
+  });
+
+  it('eBPF 抽屉说明按路径另起观测进程', async () => {
+    api.getIngestSnippet.mockResolvedValue({
+      application_id: 'bklite',
+      application_name: 'BK-Lite',
+      cloud_region: { id: 1, name: '默认云区域' },
+      http_endpoint: 'http://proxy.example.com:4318/v1/traces',
+      environment: {},
+      code: 'exec obi',
+    });
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: 'eBPF 自动注入（OBI） 接入' }));
+    expect(screen.getByText('按可执行文件绝对路径匹配。同一路径上的多个进程共用这一份观测；两个程序请各生成一份脚本。')).not.toBeNull();
+    expect(screen.getByRole('radio', { name: '主机（指定 Go 进程）' })).not.toBeNull();
+    await user.type(screen.getByRole('textbox', { name: /服务名称/ }), 'checkout');
+    await user.type(screen.getByRole('textbox', { name: 'Go 可执行文件路径' }), '/usr/bin/checkout');
+    await waitFor(() => expect(api.getIngestSnippet).toHaveBeenCalledWith(expect.objectContaining({
+      language: 'obi',
+      runtime: 'host',
+      process_executable: '/usr/bin/checkout',
+    })), { timeout: 3000 });
+
+    expect(await screen.findByText(/脚本会另起一个 OBI 进程/)).not.toBeNull();
+    expect(screen.getByText('实例 ID 在这份观测脚本启动时生成，调用链仍归到所选服务。')).not.toBeNull();
+    expect(screen.queryByText('实例 ID 在应用进程启动时生成，每个副本唯一。')).toBeNull();
   });
 
   it('将区域接收地址缺失转换为可恢复的用户提示', async () => {
@@ -430,7 +501,7 @@ describe('APM 添加接入', () => {
     expect(screen.queryByText(/仅在本窗口保留/)).toBeNull();
     expect(screen.queryByText(/默认云区域 ·/)).toBeNull();
     const code = document.querySelector('pre code');
-    const guide = screen.getByText('在原有 Node.js 启动命令末尾追加以下内容，并重启应用。');
+    const guide = screen.getByText('把 `--require` 放在原有 Node.js 启动命令的脚本名前面，然后重启应用。');
     expect(code).not.toBeNull();
     expect(code!.compareDocumentPosition(guide) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(screen.getByText('实例 ID 在应用进程启动时生成，每个副本唯一。')).not.toBeNull();
@@ -445,7 +516,7 @@ describe('APM 添加接入', () => {
     })), { timeout: 3000 });
 
     expect(await screen.findByText('将以下安装命令写入 Dockerfile，并用 `-e` 注入环境变量后重新构建、启动容器。')).not.toBeNull();
-    expect(screen.queryByText('在原有 Node.js 启动命令末尾追加以下内容，并重启应用。')).toBeNull();
+    expect(screen.queryByText('把 `--require` 放在原有 Node.js 启动命令的脚本名前面，然后重启应用。')).toBeNull();
   });
 
   it('Python Kubernetes 使用 Pod 合并指引而不是 Node.js 主机句', async () => {
@@ -466,7 +537,7 @@ describe('APM 添加接入', () => {
     await waitFor(() => expect(api.getIngestSnippet).toHaveBeenCalled(), { timeout: 3000 });
 
     expect(await screen.findByText('将以下环境变量合并到应用 Pod，确保镜像以 `opentelemetry-instrument` 启动后滚动重启。')).not.toBeNull();
-    expect(screen.queryByText('在原有 Node.js 启动命令末尾追加以下内容，并重启应用。')).toBeNull();
+    expect(screen.queryByText('把 `--require` 放在原有 Node.js 启动命令的脚本名前面，然后重启应用。')).toBeNull();
   });
 
   it('Go 手动 SDK 展示源码接入指引', async () => {
@@ -486,7 +557,7 @@ describe('APM 添加接入', () => {
     await waitFor(() => expect(api.getIngestSnippet).toHaveBeenCalled(), { timeout: 3000 });
 
     expect(await screen.findByText('按以下指南审阅 OpenTelemetry Go SDK 示例，接入应用代码后重新编译并重启。')).not.toBeNull();
-    expect(screen.queryByText('在原有 Node.js 启动命令末尾追加以下内容，并重启应用。')).toBeNull();
+    expect(screen.queryByText('把 `--require` 放在原有 Node.js 启动命令的脚本名前面，然后重启应用。')).toBeNull();
   });
 
   it('接入抽屉默认打开接入指引，并提供支持框架与发现能力 Tab', async () => {

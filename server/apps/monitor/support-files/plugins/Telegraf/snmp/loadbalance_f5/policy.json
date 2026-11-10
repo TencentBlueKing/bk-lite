@@ -151,6 +151,81 @@
         }
       ],
       "group_algorithm": "avg"
+    },
+    {
+      "name": "F5负载均衡故障切换异常",
+      "alert_name": "负载均衡${resource_name} 故障切换异常",
+      "description": "监控 F5 BIG-IP 的故障切换角色。主用或备用为正常；离线、强制离线或角色未知时告警，提示高可用可能已经失效。",
+      "metric_name": "failover_ok",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 2,
+          "method": "="
+        }
+      ],
+      "group_algorithm": "max"
+    },
+    {
+      "name": "F5负载均衡配置同步异常",
+      "alert_name": "负载均衡${resource_name} 配置同步异常",
+      "description": "监控 F5 BIG-IP 的设备组配置同步。已同步、正在同步和单机视为正常，其余状态告警。单机不算故障。同步失败、对端失联和版本不兼容同时触发严重告警。",
+      "metric_name": "sync_ok",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "warning",
+          "value": 2,
+          "method": "="
+        }
+      ],
+      "group_algorithm": "max"
+    },
+    {
+      "name": "F5负载均衡配置同步失败",
+      "alert_name": "负载均衡${resource_name} 配置同步失败",
+      "description": "监控 F5 BIG-IP 的配置同步状态。同步失败表示本机与设备组不一致，需要人工处理。",
+      "metric_name": "sync_status",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 4,
+          "method": "="
+        }
+      ],
+      "group_algorithm": "max"
+    },
+    {
+      "name": "F5负载均衡配置同步失联",
+      "alert_name": "负载均衡${resource_name} 配置同步失联",
+      "description": "监控 F5 BIG-IP 的配置同步状态。对端失联表示设备没有连上任何同步对端，设备组配置无法保持一致。",
+      "metric_name": "sync_status",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 5,
+          "method": "="
+        }
+      ],
+      "group_algorithm": "max"
+    },
+    {
+      "name": "F5负载均衡配置版本不兼容",
+      "alert_name": "负载均衡${resource_name} 配置版本不兼容",
+      "description": "监控 F5 BIG-IP 的配置同步状态。版本不兼容表示本机软件版本与设备组内其他成员不一致，配置无法同步。",
+      "metric_name": "sync_status",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 8,
+          "method": "="
+        }
+      ],
+      "group_algorithm": "max"
     }
   ]
 }

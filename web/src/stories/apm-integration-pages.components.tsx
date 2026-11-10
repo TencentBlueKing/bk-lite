@@ -14,6 +14,7 @@ import {
   Table,
   Tabs,
   Tag,
+  Tooltip,
   Typography,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
@@ -26,6 +27,7 @@ import {
   EyeOutlined,
   GlobalOutlined,
   PlusOutlined,
+  QuestionCircleOutlined,
   RocketOutlined,
   SearchOutlined,
   SettingOutlined,
@@ -246,36 +248,40 @@ type IntegrationKind =
 const INTEGRATION_GROUPS: Array<{
   group: string;
   icon: React.ReactNode;
+  hint?: string;
   items: Array<{ kind: IntegrationKind; title: string; desc: string; tag?: string }>;
 }> = [
   {
     group: 'SDK',
     icon: <CodeOutlined />,
+    hint: '自动探针在目标进程启动时挂上。手动接入要改代码，然后重新编译或重启。',
     items: [
-      { kind: 'node', title: 'Node.js', desc: '自动探针，支持 Express / Nest / Koa', tag: '推荐' },
-      { kind: 'java', title: 'Java', desc: '自动探针，支持 Spring / Dubbo / gRPC', tag: '推荐' },
-      { kind: 'python', title: 'Python', desc: '自动探针，支持 Django / Flask / FastAPI' },
-      { kind: 'dotnet', title: '.NET', desc: '自动探针，支持 Linux x86_64 glibc' },
-      { kind: 'go', title: 'Go', desc: '手动接入，生成 OpenTelemetry Provider 示例' },
-      { kind: 'php', title: 'PHP', desc: '自动探针，支持 PHP NTS 8.1–8.4，含 Laravel / Symfony / Slim' },
-      { kind: 'ruby', title: 'Ruby', desc: '手动接入，生成 Rack 初始化示例', tag: '手动 SDK' },
-      { kind: 'cpp', title: 'C++', desc: '手动接入，生成最小入口 Span 示例', tag: '手动 SDK' },
-      { kind: 'erlang', title: 'Erlang/Elixir', desc: '手动接入，生成 path 依赖示例', tag: '手动 SDK' },
-      { kind: 'swift', title: 'Swift', desc: '手动接入，生成本地 Swift Package 示例', tag: '手动 SDK' },
+      { kind: 'node', title: 'Node.js', desc: '采集 Express / Nest / Koa 的调用链', tag: '自动探针' },
+      { kind: 'java', title: 'Java', desc: '采集 Spring / Dubbo / gRPC 的调用链', tag: '自动探针' },
+      { kind: 'python', title: 'Python', desc: '采集 Django / Flask / FastAPI 的调用链', tag: '自动探针' },
+      { kind: 'dotnet', title: '.NET', desc: '采集 ASP.NET Core / gRPC 的调用链\nLinux 限 x86_64 glibc，Windows 仅主机', tag: '自动探针' },
+      { kind: 'go', title: 'Go', desc: '接入后采集 net/http / Gin / Echo / gRPC 的调用链', tag: '手动接入' },
+      { kind: 'php', title: 'PHP', desc: '采集 Symfony / Slim / Guzzle 的调用链，Laravel 从 PHP 8.2 起\n仅 Linux 上的 PHP NTS 8.1–8.5', tag: '自动探针' },
+      { kind: 'ruby', title: 'Ruby', desc: '接入 Rack 后采集请求调用链', tag: '手动接入' },
+      { kind: 'cpp', title: 'C++', desc: '编译接入后，只采集进程入口调用链', tag: '手动接入' },
+      { kind: 'erlang', title: 'Erlang/Elixir', desc: '用本地依赖接入后，只采集进程入口调用链', tag: '手动接入' },
+      { kind: 'swift', title: 'Swift', desc: '用本地 Package 接入后，只采集进程入口调用链', tag: '手动接入' },
     ],
   },
   {
     group: 'OTC',
     icon: <ApiOutlined />,
+    hint: '不安装探针，把已有 Collector 的调用链转到平台。',
     items: [
-      { kind: 'otc', title: 'OTel Collector(链路)', desc: '转发自建 Collector 链路到平台 OTLP 端点' },
+      { kind: 'otc', title: 'OTel Collector(链路)', desc: '把已有 Collector 的调用链转到平台', tag: '链路转发' },
     ],
   },
   {
     group: 'eBPF',
     icon: <ExperimentOutlined />,
+    hint: '不改目标程序，在主机上另起一个观测进程。',
     items: [
-      { kind: 'ebpf', title: 'eBPF 自动注入(OBI)', desc: '未安装语言探针时，只观察指定的 Go 可执行文件。不要和语言探针装在同一进程。', tag: '低侵入' },
+      { kind: 'ebpf', title: 'eBPF 自动注入(OBI)', desc: '只采集指定 Go 进程的调用链\n另起进程盯住这一个程序，程序本身不用改', tag: '进程观测' },
     ],
   },
   {
@@ -323,13 +329,27 @@ function IntegrationCard({
         <Title level={5} style={{ margin: 0, color: TOKENS.text }}>
           {title}
         </Title>
-        {tag && (
-          <Tag color="blue" style={{ margin: 0 }}>
+        {tag ? (
+          <span
+            style={{
+              flexShrink: 0,
+              height: 20,
+              display: 'inline-flex',
+              alignItems: 'center',
+              padding: '0 6px',
+              borderRadius: 6,
+              background: TOKENS.bg,
+              color: TOKENS.textSecondary,
+              fontSize: 12,
+              fontWeight: 400,
+              lineHeight: 1,
+            }}
+          >
             {tag}
-          </Tag>
-        )}
+          </span>
+        ) : null}
       </div>
-      <Text type="secondary" style={{ fontSize: 12, lineHeight: 1.6 }}>
+      <Text type="secondary" style={{ fontSize: 12, lineHeight: 1.6, whiteSpace: 'pre-line' }}>
         {desc}
       </Text>
       <div style={{ marginTop: 12, color: TOKENS.primary, fontSize: 12 }}>查看接入详情 →</div>
@@ -362,6 +382,11 @@ function IntegrationCatalog() {
                 <Title level={5} style={{ margin: 0 }}>
                   {g.group}
                 </Title>
+                {g.hint ? (
+                  <Tooltip title={g.hint} placement="bottomLeft">
+                    <QuestionCircleOutlined style={{ color: TOKENS.textTertiary, fontSize: 12 }} />
+                  </Tooltip>
+                ) : null}
                 <Tag style={{ margin: 0 }}>{g.items.length} 种</Tag>
               </Space>
               <Row gutter={[12, 12]}>

@@ -629,8 +629,33 @@ class TestModelMigrateWithDB:
 
         assert invalidated == [["host"]]
 
-    def test_sync_added_attrs_updates_existing_attr_config(self, monkeypatch):
+    def test_sync_added_attrs_skips_existing_attr_on_builtin_init(self, monkeypatch):
         m, mod = self._make(monkeypatch, {})
+        monkeypatch.setattr(mod.ExcludeFieldsCache, "refresh_cache", classmethod(lambda cls: True))
+
+        ag = FakeGraph()
+        existing_attrs = [{"attr_id": "ip", "attr_type": "enum", "attr_name": "旧", "option": [{"id": "a", "name": "A"}]}]
+        existing_model_map = {"host": {"_id": "n1", "model_id": "host", "attrs": json.dumps(existing_attrs)}}
+        attrs_by_model = {
+            "host": [
+                {"attr_id": "ip", "attr_type": "str", "attr_name": "新名", "is_only": True},
+                {"attr_id": "os", "attr_type": "str", "attr_group": "基本信息"},
+            ]
+        }
+        res = m._sync_added_attrs_to_existing_models(ag, attrs_by_model, existing_model_map)
+        assert res["updated_attr_count"] == 0
+        assert res["added_attr_count"] == 1
+        write_calls = [call for call in ag.calls if call[0] == "set_entity_properties"]
+        written_attrs = json.loads(write_calls[0][1][2]["attrs"])
+        ip_attr = next(attr for attr in written_attrs if attr["attr_id"] == "ip")
+        assert ip_attr["attr_type"] == "enum"
+        assert ip_attr["attr_name"] == "旧"
+        assert ip_attr["option"] == [{"id": "a", "name": "A"}]
+        assert "is_only" not in ip_attr
+        assert any(attr["attr_id"] == "os" for attr in written_attrs)
+
+    def test_sync_added_attrs_updates_existing_attr_config_on_import(self, monkeypatch):
+        m, mod = self._make(monkeypatch, {}, is_pre=False)
         monkeypatch.setattr(mod.ExcludeFieldsCache, "refresh_cache", classmethod(lambda cls: True))
 
         ag = FakeGraph()
@@ -673,7 +698,7 @@ class TestModelMigrateWithDB:
         assert not any(call[0] == "set_entity_properties" for call in ag.calls)
 
     def test_sync_added_attrs_keeps_user_tag_options_when_name_updates(self, monkeypatch):
-        m, mod = self._make(monkeypatch, {})
+        m, mod = self._make(monkeypatch, {}, is_pre=False)
         monkeypatch.setattr(mod.ExcludeFieldsCache, "refresh_cache", classmethod(lambda cls: True))
 
         user_tag_options = [{"key": "env", "value": "prod"}]

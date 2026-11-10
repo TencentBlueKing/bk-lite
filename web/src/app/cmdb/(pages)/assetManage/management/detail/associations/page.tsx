@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Button, Modal, message } from 'antd';
+import Link from 'next/link';
+import { Alert, Button, Modal, Switch, Tooltip, message } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import SearchActionBar from '@/components/search-action-bar';
 import type { TableRowSelection } from 'antd/es/table/interface';
@@ -30,6 +31,8 @@ const Associations: React.FC = () => {
     batchDeleteModelAssociations,
     getModelAssociations,
     getModelAssociationTypes,
+    setModelAssociationRequired,
+    getModelIslandCounts,
   } = useModelApi();
   const { getClassificationList } = useClassificationApi();
   const commonContext = useCommon();
@@ -53,6 +56,7 @@ const Associations: React.FC = () => {
   const [modelList, setModelList] = useState<ModelItem[]>([]);
   const [assoTypeList, setAssoTypeList] = useState<AssoTypeItem[]>([]);
   const [groups, setGroups] = useState<GroupItem[]>([]);
+  const [islandCounts, setIslandCounts] = useState<Record<string, number>>({});
   const columns: TableColumnsType<any> = [
     {
       title: t('name'),
@@ -100,6 +104,41 @@ const Associations: React.FC = () => {
       render: (_, { mapping }) => (
         <>{CONSTRAINT_List.find((item) => item.id === mapping)?.name || '--'}</>
       ),
+    },
+    {
+      title: t('Governance.requiredRelation'),
+      dataIndex: 'required',
+      key: 'required',
+      width: 90,
+      render: (_, record) => (
+        <PermissionWrapper requiredPermissions={['Edit Model']} instPermissions={modelPermission}>
+          <Switch
+            checked={record.required === true}
+            onChange={(checked) => updateRequired(record, checked)}
+          />
+        </PermissionWrapper>
+      ),
+    },
+    {
+      title: (
+        <Tooltip title={t('Governance.islandSourceHint')}>
+          <span>{t('Governance.islandCount')}</span>
+        </Tooltip>
+      ),
+      dataIndex: 'island_count',
+      key: 'island_count',
+      width: 110,
+      render: (_, record) => {
+        if (record.required !== true) {
+          return <span className="text-[var(--color-text-3)]">{t('Governance.notChecked')}</span>;
+        }
+        const count = islandCounts[record.model_asst_id] || 0;
+        return (
+          <Link href={`/cmdb/assetManage/governance?path=island&model_id=${record.src_model_id}&rule_id=${record.model_asst_id}`}>
+            {count}
+          </Link>
+        );
+      },
     },
     {
       title: t('type'),
@@ -270,11 +309,31 @@ const Associations: React.FC = () => {
     setPagination(pagination);
   };
 
+  const loadIslandCounts = async () => {
+    if (!modelId) return;
+    const counts = await getModelIslandCounts(modelId);
+    setIslandCounts(counts || {});
+  };
+
+  const updateRequired = async (record: { model_asst_id: string }, required: boolean) => {
+    const previous = tableData;
+    setTableData((rows) => rows.map((row) => (
+      row.model_asst_id === record.model_asst_id ? { ...row, required } : row
+    )));
+    try {
+      await setModelAssociationRequired(modelId!, { model_asst_id: record.model_asst_id, required });
+      await loadIslandCounts();
+    } catch {
+      setTableData(previous);
+    }
+  };
+
   const fetchData = async () => {
     setLoading(true);
     try {
       const data = await getModelAssociations(modelId!);
       setTableData(data);
+      await loadIslandCounts();
     } finally {
       setLoading(false);
     }
@@ -311,6 +370,7 @@ const Associations: React.FC = () => {
         setAssoTypeList(assoTypeData);
         setModelList(modelListFromContext);
         setTableData(assoTableData);
+        loadIslandCounts().catch(() => setIslandCounts({}));
         pagination.total = res[1].length || 0;
         setPagination(pagination);
       })
@@ -322,6 +382,7 @@ const Associations: React.FC = () => {
   return (
     <div className="min-w-0 w-full">
       <div>
+        <Alert className="mb-4" type="info" showIcon message={t('Governance.relationTip')} />
         <SearchActionBar
           className="mb-4"
           spacing="flush"

@@ -10,6 +10,7 @@ import {
   createSessionExpiredRequestError,
   emitSessionExpired,
   isSessionExpiredState,
+  passwordChangedErrorCode,
   SESSION_EXPIRED_REQUEST_ERROR,
 } from '@/utils/sessionExpiry';
 import { forceLogoutAndRedirect } from '@/utils/forceLogout';
@@ -44,6 +45,10 @@ const apiClient = axios.create({
 const tokenRef: { current: string | null } = { current: null };
 
 const setToken = (token: string | null) => {
+  tokenRef.current = token;
+};
+
+export const adoptClientAuthToken = (token: string) => {
   tokenRef.current = token;
 };
 
@@ -202,7 +207,11 @@ apiClient.interceptors.response.use(
         void forceLogoutAndRedirect();
         return Promise.reject(error);
       } else if (status === 401) {
-        emitSessionExpired({ reason: "api-session-expired", status });
+        emitSessionExpired({
+          reason: passwordChangedErrorCode(payload) ? "password-changed" : "api-session-expired",
+          status,
+          errorCode: passwordChangedErrorCode(payload),
+        });
         return Promise.reject(error);
       } else if ([400, 403].includes(status)) {
         if (!suppressErrorNotification && presentation) {

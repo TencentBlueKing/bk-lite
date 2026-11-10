@@ -70,6 +70,24 @@ export const useModelApi = () => {
   const deleteModelUniqueRule = (modelId: string, ruleId: string) =>
     del(`/cmdb/api/model/${modelId}/unique_rules/${ruleId}/`);
 
+  const getModelDuplicateRules = (modelId: string) =>
+    get(`/cmdb/api/model/${modelId}/duplicate_rules/`);
+
+  const createModelDuplicateRule = (modelId: string, params: { field_ids: string[] }) =>
+    post(`/cmdb/api/model/${modelId}/duplicate_rules/`, params);
+
+  const updateModelDuplicateRule = (modelId: string, ruleId: string, params: { field_ids: string[] }) =>
+    put(`/cmdb/api/model/${modelId}/duplicate_rules/${ruleId}/`, params);
+
+  const deleteModelDuplicateRule = (modelId: string, ruleId: string) =>
+    del(`/cmdb/api/model/${modelId}/duplicate_rules/${ruleId}/`);
+
+  const setModelAssociationRequired = (modelId: string, params: { model_asst_id: string; required: boolean }) =>
+    put(`/cmdb/api/model/${modelId}/association_required/`, params);
+
+  const getModelIslandCounts = (modelId: string) =>
+    get(`/cmdb/api/model/${modelId}/island_counts/`);
+
   const getModelAutoAssociationRules = (modelId: string) =>
     get(`/cmdb/api/model/${modelId}/auto_association_rules/`);
 
@@ -255,6 +273,12 @@ export const useModelApi = () => {
     createModelUniqueRule,
     updateModelUniqueRule,
     deleteModelUniqueRule,
+    getModelDuplicateRules,
+    createModelDuplicateRule,
+    updateModelDuplicateRule,
+    deleteModelDuplicateRule,
+    setModelAssociationRequired,
+    getModelIslandCounts,
     getModelAutoAssociationRules,
     createModelAutoAssociationRule,
     updateModelAutoAssociationRule,

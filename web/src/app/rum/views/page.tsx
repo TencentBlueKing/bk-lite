@@ -20,6 +20,8 @@ import RumRangeSegmented from '@/app/rum/components/rum-range-segmented';
 import { RumTableSkeleton, rumSkeletonColumns } from '@/app/rum/components/rum-skeleton';
 import TrafficScopeControl from '@/app/rum/components/traffic-scope';
 import { cwvTone, formatMs, toneSemanticPalette, toneTextClass, type CwvTone } from '@/app/rum/lib/cwv';
+import { countText } from '@/app/rum/lib/metrics';
+import { AGGREGATE_OTHER_ROUTE, rumRouteLabel } from '@/app/rum/views/lib/route-label';
 import SemanticBadge from '@/components/semantic-badge';
 import { degradationReason } from '@/app/rum/lib/degradation';
 import { useRumSearchParams } from '@/app/rum/lib/search-params';
@@ -34,19 +36,23 @@ import { useTranslation } from '@/utils/i18n';
 type SortKey = 'impact' | 'views' | 'lcp' | 'inp' | 'cls';
 type Mode = 'route' | 'release';
 
+function sortValue(value: number | null | undefined): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : Number.NEGATIVE_INFINITY;
+}
+
 function sortRows(rows: RumViewAggregateRow[], key: SortKey): RumViewAggregateRow[] {
   const field: Record<SortKey, (r: RumViewAggregateRow) => number> = {
     impact: (r) => r.impact,
-    views: (r) => r.views,
-    lcp: (r) => r.lcpP75,
-    inp: (r) => r.inpP75,
-    cls: (r) => r.clsP75,
+    views: (r) => sortValue(r.views),
+    lcp: (r) => sortValue(r.lcpP75),
+    inp: (r) => sortValue(r.inpP75),
+    cls: (r) => sortValue(r.clsP75),
   };
   return [...rows].sort((a, b) => field[key](b) - field[key](a));
 }
 
 function rootCauseTone(row: RumViewAggregateRow): { labelKey: string; tone: CwvTone } {
-  if (row.views < 20) return { labelKey: 'lowSample', tone: 'neutral' };
+  if ((row.views ?? 0) < 20) return { labelKey: 'lowSample', tone: 'neutral' };
   const lcp = cwvTone('lcp', row.lcpP75);
   const inp = cwvTone('inp', row.inpP75);
   if (lcp === 'danger' || inp === 'danger') return { labelKey: 'poor', tone: 'danger' };
@@ -122,13 +128,15 @@ export default function RumViewsPage() {
     return rows.filter((r) => {
       const key = String(r.key || '').toLowerCase();
       const route = String(r.route || '').toLowerCase();
+      const label = rumRouteLabel(r.route || r.key, t).toLowerCase();
       const releaseName = String(r.release || '').toLowerCase();
-      return key.includes(needle) || route.includes(needle) || releaseName.includes(needle);
+      return key.includes(needle) || route.includes(needle) || label.includes(needle) || releaseName.includes(needle);
     });
-  }, [rows, routeQuery]);
+  }, [rows, routeQuery, t]);
   const sorted = useMemo(() => sortRows(filteredRows, sort), [filteredRows, sort]);
   const table = useRumClientPager(sorted, `${range}|${application}|${mode}|${release}|${sort}|${routeQuery}|${traffic}`);
   const summary = page?.summary || { lcpP75: 0, inpP75: 0, clsP75: 0 };
+  const showErrors = rows.some((row) => row.errors !== undefined);
   const degrade = degradationReason(page);
 
   function SortHead({ label, k }: { label: string; k: SortKey }) {
@@ -158,9 +166,9 @@ export default function RumViewsPage() {
           <div className="flex min-w-0 items-center gap-2">
             <code
               className="truncate font-medium text-[var(--color-text-1)] transition-colors group-hover:text-[var(--color-primary)] group-hover:underline"
-              title={r.key}
+              title={rumRouteLabel(r.key, t)}
             >
-              {r.key}
+              {rumRouteLabel(r.key, t)}
             </code>
             {cause.tone !== 'success' ? (
               <SemanticBadge
@@ -184,13 +192,21 @@ export default function RumViewsPage() {
       title: t('rum.analytics.kpiViews', '浏览'),
       key: 'views',
       width: 72,
-      render: (_, r) => <span className="tabular-nums">{r.views}</span>,
+      render: (_, r) => <span className="tabular-nums">{countText(r.views)}</span>,
     },
+    ...(showErrors
+      ? [{
+        title: t('rum.analytics.kpiErrors', '错误'),
+        key: 'errors',
+        width: 72,
+        render: (_: unknown, r: RumViewAggregateRow) => <span className="tabular-nums">{countText(r.errors)}</span>,
+      }]
+      : []),
     {
       title: t('rum.analytics.kpiSessions', '会话'),
       key: 'sessions',
       width: 72,
-      render: (_, r) => <span className="tabular-nums">{r.sessions}</span>,
+      render: (_, r) => <span className="tabular-nums">{countText(r.sessions)}</span>,
     },
     {
       title: <SortHead k="lcp" label="LCP P75" />,
@@ -218,7 +234,7 @@ export default function RumViewsPage() {
       width: 88,
       render: (_, r) => (
         <span className={`font-mono tabular-nums ${toneTextClass(cwvTone('cls', r.clsP75))}`}>
-          {r.clsP75 > 0 ? Number(r.clsP75).toFixed(3) : '—'}
+          {(r.clsP75 ?? 0) > 0 ? Number(r.clsP75).toFixed(3) : '—'}
         </span>
       ),
     },
@@ -248,8 +264,8 @@ export default function RumViewsPage() {
       key: 'route',
       ellipsis: true,
       render: (_, r) => (
-        <span className="truncate" title={r.route}>
-          {r.route || '—'}
+        <span className="truncate" title={rumRouteLabel(r.route, t)}>
+          {rumRouteLabel(r.route, t)}
         </span>
       ),
     },
@@ -257,13 +273,13 @@ export default function RumViewsPage() {
       title: t('rum.analytics.kpiViews', '浏览'),
       key: 'views',
       width: 88,
-      render: (_, r) => <span className="tabular-nums">{r.views}</span>,
+      render: (_, r) => <span className="tabular-nums">{countText(r.views)}</span>,
     },
     {
       title: t('rum.analytics.kpiSessions', '会话'),
       key: 'sessions',
       width: 88,
-      render: (_, r) => <span className="tabular-nums">{r.sessions}</span>,
+      render: (_, r) => <span className="tabular-nums">{countText(r.sessions)}</span>,
     },
     {
       title: <SortHead k="lcp" label="LCP P75" />,
@@ -291,7 +307,7 @@ export default function RumViewsPage() {
       width: 96,
       render: (_, r) => (
         <span className={`font-mono tabular-nums ${toneTextClass(cwvTone('cls', r.clsP75))}`}>
-          {r.clsP75 > 0 ? Number(r.clsP75).toFixed(3) : '—'}
+          {(r.clsP75 ?? 0) > 0 ? Number(r.clsP75).toFixed(3) : '—'}
         </span>
       ),
     },
@@ -367,7 +383,7 @@ export default function RumViewsPage() {
                   [
                     'cls',
                     summary.clsP75,
-                    summary.clsP75 > 0 ? Number(summary.clsP75).toFixed(3) : '—',
+                    (summary.clsP75 ?? 0) > 0 ? Number(summary.clsP75).toFixed(3) : '—',
                   ],
                 ] as const
               ).map(([metric, value, label]) => {
@@ -457,8 +473,12 @@ export default function RumViewsPage() {
                           `/rum/releases?application=${encodeURIComponent(application)}&range=${range}`,
                         );
                       } else {
+                        const route = r.route || r.key;
+                        const routeQuery = route && route !== AGGREGATE_OTHER_ROUTE
+                          ? `&route=${encodeURIComponent(route)}`
+                          : '';
                         router.push(
-                          `/rum/sessions?range=${range}&route=${encodeURIComponent(r.key)}${
+                          `/rum/sessions?range=${range}${routeQuery}${
                             application ? `&application=${encodeURIComponent(application)}` : ''
                           }`,
                         );

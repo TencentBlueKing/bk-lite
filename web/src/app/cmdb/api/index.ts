@@ -1,5 +1,6 @@
 export { useClassificationApi } from './classification';
 export { useModelApi } from './model';
+export { useGovernanceApi } from './governance';
 export { useInstanceApi } from './instance';
 export { useChangeRecordApi } from './changeRecord';
 export { useRetentionApi } from './retention';

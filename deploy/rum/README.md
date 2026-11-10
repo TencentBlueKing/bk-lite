@@ -18,7 +18,7 @@ Browser (Faro 2.8.2 / bklite-rum-sdk)
 Django apps.rum
   -> NATS rum.v1.control.*
   -> bklite-rum-controller -> Redis
-  -> bklite-rum-maintainer (erase + replay reconcile)
+  -> bklite-rum-maintainer (erase + replay reconcile + session end records)
 ```
 
 RUM 公网入口独立于 APM ADR 0008（4318 受信内网）。见
@@ -31,7 +31,9 @@ RUM 公网入口独立于 APM ADR 0008（4318 受信内网）。见
 | --- | --- | --- |
 | `collector/` | 研发（产品组件） | Go 数据面（gateway / controller / maintainer） |
 | `collector/Dockerfile` | 研发（产品组件） | 单镜像 `bklite/rum-collector`，内含三个二进制与生产 gateway 配置 |
-| `collector/otel/rum.gateway.yaml` | 研发（契约参考配置） | 生产 gateway 配置，已打进镜像 `/etc/bklite-rum/` |
+| `collector/otel/rum.gateway.yaml` | 研发（契约参考配置） | 生产 gateway 配置，含聚合分支，已打进镜像 `/etc/bklite-rum/` |
+| `collector/otel/rum.gateway.ingest.yaml` | 研发（契约参考配置） | 不带聚合分支的生产配置。写入地址为空时改挂这一份 |
+| `collector/otel/rum.gateway.auth.yaml` | 研发（契约参考配置） | 聚合库基础认证。只在用户名和口令都已设置时作为第二个 `--config` |
 | `packages/bklite-rum-sdk` | 研发 | 浏览器 Faro transport（由上游 `core-rum-sdk` 重命名） |
 | `compose.yaml` + `.env.example` | 契约夹具 | 本地依赖（Redis、NATS、VL、VT、MinIO）；`dataplane` profile 追加三个进程 |
 | `redis/` / `nats/` | 契约夹具 | 本地最小权限示例，**不是**生产凭据 |
@@ -54,5 +56,18 @@ make down
 
 `up-all` 会占用宿主机 4319 / 4320 / 13135；本机已有 gateway 进程时先停掉，或用
 `RUM_GATEWAY_COLLECT_PORT` 等变量改端口（见 `.env.example`）。
+
+本地夹具的 `AGG_VICTORIAMETRICS_WRITE_URL` 默认是容器内的 `http://127.0.0.1:9/api/v1/write`，
+只为让带聚合分支的配置能启动，不连接 `VICTORIAMETRICS_HOST`，也不占用宿主机 8428。
+要看到 `rum_` 序列时，把这个变量指到独立的聚合库。写入地址留空不能靠空环境变量关掉聚合分支；
+保住明细要改挂 `rum.gateway.ingest.yaml`。
+
+容器契约（标签、remote write 不可达时 VictoriaLogs 不重复、重启后 `increase()`）默认不跑。
+它会自建 `rum-agg-verify-<pid>` 网络和容器，不使用 6379、8428、9428、10428：
+
+```bash
+cd deploy/rum/collector
+RUN_RUM_AGG_CONTRACT=1 go test ./internal/rum/aggregatecontract/ -count=1 -timeout 12m
+```
 
 通过夹具不等于完成生产上线。生产编排、镜像流水线、容量与值班由运维自有平台落地，但必须满足 [ACCEPTANCE.md](./ACCEPTANCE.md)。

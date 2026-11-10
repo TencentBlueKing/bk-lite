@@ -259,13 +259,14 @@ def _guard_value(
     return service._raw_value(view, red)
 
 
-def evaluate_policy_conditions(service, policy, *, evaluated_at, endpoint, version, instance_id="", target_service=None, dependency=None):
+def evaluate_policy_conditions(service, policy, *, evaluated_at, endpoint, version, instance_id="", target_service=None, dependency=None, cache=None):
     if endpoint is None:
         endpoint, version = service._targets(policy)[0]
     conditions = effective_conditions(policy)
     regulars = regular_conditions(conditions)
     guards = guard_conditions(conditions)
-    cache: dict = {}
+    if cache is None:
+        cache = {}
     anchor = regulars[0]
     anchor_result = _query_one(
         service,

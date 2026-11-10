@@ -288,7 +288,7 @@ def execute_skill_channel_chat(request, channel_id):
     distribute_file_ids = kwargs.get("distribute_file_ids") or []
     if not message and not attachment_ids and not distribute_file_ids:
         return create_error_stream_response(_shown(request, "message 必填"))
-    session_id = kwargs.get("session_id") or ""
+    session_id = kwargs.get("session_id") or kwargs.get("sessionId") or ""
     page_context = kwargs.get("page_context")
     try:
         channel = get_enabled_channel(int(channel_id), PLATFORM_OR_WEB)
@@ -304,6 +304,8 @@ def execute_skill_channel_chat(request, channel_id):
             page_context=page_context,
             attachment_ids=attachment_ids,
             distribute_file_ids=distribute_file_ids,
+            choice_id=str(kwargs.get("choice_id") or "") or None,
+            choice_option=str(kwargs.get("choice_option") or "") or None,
         )
     except SkillChannelChatError as e:
         return create_error_stream_response(_shown(request, e.message))

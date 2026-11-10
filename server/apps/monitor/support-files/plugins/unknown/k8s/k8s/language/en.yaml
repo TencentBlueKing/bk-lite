@@ -47,13 +47,13 @@ monitor_object_metric:
       desc: Pod metadata from kube_pod_info, used as the carrier metric for the IP and Namespace display columns.
     pod_status_phase:
       name: Pod Phase
-      desc: Lifecycle phase: 0 Pending / 1 Running / 2 Succeeded / 3 Failed / 4 Unknown.
+      desc: 'Lifecycle phase: 0 Pending / 1 Running / 2 Succeeded / 3 Failed / 4 Unknown.'
     pod_container_restarts_total:
       name: Container Restart Count
       desc: Total number of container restarts in the Pod since startup.
     pod_cpu_utilization:
-      name: CPU Utilization
-      desc: Percentage of the configured CPU limit used by the Pod.
+      name: Pod CPU Utilization (vs Limit)
+      desc: Share of this Pod's CPU limit in use, averaged over about the last 5 minutes. The value can exceed 100% when the Pod is over its limit or during a short burst. If no CPU limit is set, the metric is usually missing or cannot be calculated. Confirm the limit first.
     pod_memory_utilization:
       name: Memory Utilization
       desc: Percentage of the configured memory limit used by the Pod.

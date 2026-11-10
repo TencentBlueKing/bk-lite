@@ -100,7 +100,7 @@ def _finalize_pod_logs(logs, *, pod_name, container, previous: bool, tail: bool,
 
 
 @tool()
-def get_kubernetes_namespaces(config: RunnableConfig):
+def get_kubernetes_namespaces(config: RunnableConfig, instance_name=None):
     """
     列出集群中的所有命名空间
 
@@ -131,6 +131,10 @@ def get_kubernetes_namespaces(config: RunnableConfig):
     - 获取namespace后 → 使用 list_kubernetes_pods 查看该空间的Pod
     - 检查资源配额 → 使用 check_kubernetes_resource_quotas
     """
+    config, instance_error = prepare_point_instance(config, instance_name)
+    if instance_error:
+        return instance_error
+
     prepare_context(config)
 
     try:
@@ -253,8 +257,12 @@ def _list_kubernetes_pods_on_instance(namespace, config: RunnableConfig = None):
 
 
 @tool()
-def list_kubernetes_nodes(config: RunnableConfig):
+def list_kubernetes_nodes(config: RunnableConfig, instance_name=None):
     """List all nodes and their status"""
+    config, instance_error = prepare_point_instance(config, instance_name)
+    if instance_error:
+        return instance_error
+
     try:
         prepare_context(config)
         core_v1 = client.CoreV1Api()
@@ -365,7 +373,7 @@ def _list_kubernetes_deployments_on_instance(namespace, limit, offset, config: R
 
 
 @tool()
-def list_kubernetes_services(namespace=None, config: RunnableConfig = None):
+def list_kubernetes_services(namespace=None, config: RunnableConfig = None, instance_name=None):
     """
     List services with optional namespace filter
 
@@ -385,6 +393,10 @@ def list_kubernetes_services(namespace=None, config: RunnableConfig = None):
             - selector (dict): Label selector used by the service
             - creation_time (str): Timestamp when service was created
     """
+    config, instance_error = prepare_point_instance(config, instance_name)
+    if instance_error:
+        return instance_error
+
     prepare_context(config)
     try:
         core_v1 = client.CoreV1Api()
@@ -768,7 +780,7 @@ def get_kubernetes_previous_pod_logs(
 
 
 @tool()
-def search_workload_across_namespaces(workload_name: str, config: RunnableConfig = None):
+def search_workload_across_namespaces(workload_name: str, config: RunnableConfig = None, instance_name=None):
     """
     在所有已配置的集群和命名空间中搜索指定名称的工作负载（Deployment/StatefulSet/DaemonSet）。
 
@@ -790,6 +802,7 @@ def search_workload_across_namespaces(workload_name: str, config: RunnableConfig
 
     Args:
         workload_name (str): 工作负载名称（必填），如 "order-api"、"scheduler"
+        instance_name (str, optional): 指定要搜索的集群；省略时搜索全部集群。
         config (RunnableConfig): 工具配置（自动传递）
 
     Returns:
@@ -804,6 +817,13 @@ def search_workload_across_namespaces(workload_name: str, config: RunnableConfig
 
     configurable = config.get("configurable", {}) if config else {}
     instances = get_kubernetes_instances_from_configurable(configurable)
+    if instance_name:
+        bound, instance_error = prepare_point_instance(config, instance_name)
+        if instance_error:
+            return instance_error
+        config = bound
+        configurable = config.get("configurable", {})
+        instances = [item for item in instances if item.get("id") == configurable.get("instance_id")]
 
     locations = []
 

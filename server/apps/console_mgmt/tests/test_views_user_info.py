@@ -6,11 +6,10 @@ get_user_group_paths / _format_datetime_for_user / validate_email_code。
 策略：用真实 User（DB）+ RequestFactory 直调视图函数，只 mock 外部边界
 （SystemMgmt RPC、cache、log_operation）。断言真实 JSON 输出、字段、分支、异常。
 """
-import pydantic.root_model  # noqa
-
 import json
 from unittest.mock import MagicMock, patch
 
+import pydantic.root_model  # noqa
 import pytest
 from django.test import RequestFactory
 
@@ -20,11 +19,12 @@ from apps.console_mgmt.views import (
     get_user_group_paths,
     get_user_info,
     reset_pwd,
+    unbind_otp,
     update_user_base_info,
     validate_email_code,
     validate_pwd,
 )
-from apps.system_mgmt.models import User
+from apps.system_mgmt.models import SystemSettings, User
 
 pytestmark = [pytest.mark.django_db, pytest.mark.integration]
 
@@ -53,12 +53,14 @@ class TestFormatDatetimeForUser:
 
     def test_无时区用本地时间(self):
         from django.utils import timezone
+
         now = timezone.now()
         out = _format_datetime_for_user(now)
         assert isinstance(out, str) and "T" in out
 
     def test_非法时区回退本地时间(self):
         from django.utils import timezone
+
         now = timezone.now()
         # 非法时区名触发 except 分支，回退 localtime
         out = _format_datetime_for_user(now, "Not/AZone")
@@ -66,6 +68,7 @@ class TestFormatDatetimeForUser:
 
     def test_合法时区生效(self):
         from django.utils import timezone
+
         now = timezone.now()
         out = _format_datetime_for_user(now, "Asia/Shanghai")
         assert isinstance(out, str)
@@ -116,6 +119,7 @@ class TestValidatePwd:
 
     def test_密码正确返回True(self):
         from django.contrib.auth.hashers import make_password
+
         u = _make_user()
         u.password = make_password("secret123")
         u.save()
@@ -126,6 +130,7 @@ class TestValidatePwd:
 
     def test_密码错误返回False(self):
         from django.contrib.auth.hashers import make_password
+
         u = _make_user()
         u.password = make_password("secret123")
         u.save()
@@ -181,6 +186,7 @@ class TestGetUserGroupPaths:
 
     def test_向上收集祖先并构建路径(self):
         from apps.system_mgmt.models import Group
+
         root = Group.objects.create(name="root", parent_id=0)
         child = Group.objects.create(name="child", parent_id=root.id)
         leaf = Group.objects.create(name="leaf", parent_id=child.id)
@@ -210,6 +216,60 @@ class TestGetUserInfo:
         assert data["email"] == "a@b.com"
         assert data["group_list"] == []
         assert data["role_list"] == []
+        assert data["has_otp"] is False
+
+    def test_全局otp开启且已绑定时返回has_otp(self):
+        _make_user(otp_secret="JBSWY3DPEHPK3PXP")
+        SystemSettings.objects.create(key="enable_otp", value="1")
+        req = _req("get")
+        req.user = MagicMock(username="alice", domain="domain.com", locale="en", timezone="UTC")
+        resp = get_user_info(req)
+        assert json.loads(resp.content)["data"]["has_otp"] is True
+
+    def test_全局otp关闭时无论是否绑定都返回has_otp为false(self):
+        SystemSettings.objects.create(key="enable_otp", value="0")
+        for secret in ("JBSWY3DPEHPK3PXP", None):
+            User.objects.filter(username="alice", domain="domain.com").delete()
+            _make_user(otp_secret=secret)
+            req = _req("get")
+            req.user = MagicMock(username="alice", domain="domain.com", locale="en", timezone="UTC")
+            resp = get_user_info(req)
+            assert json.loads(resp.content)["data"]["has_otp"] is False
+
+
+class TestUnbindOtp:
+    def test_未登录返回401(self):
+        req = _req("post")
+        req.user = MagicMock(is_authenticated=False, username="alice", domain="domain.com", locale="en")
+        resp = unbind_otp(req)
+        assert resp.status_code == 401
+        assert json.loads(resp.content)["result"] is False
+
+    def test_成功清空otp并记录操作日志(self, django_capture_on_commit_callbacks):
+        user = _make_user(otp_secret="JBSWY3DPEHPK3PXP")
+        req = _req("post", {})
+        req.user = MagicMock(is_authenticated=True, username="alice", domain="domain.com", locale="zh-Hans")
+        with patch.object(views, "cache") as cache_mock, patch.object(views, "log_operation") as log:
+            with django_capture_on_commit_callbacks(execute=True):
+                resp = unbind_otp(req)
+            cache_mock.delete.assert_called_once_with(f"menus-user:{user.id}")
+            log.assert_called_once_with(req, "update", "console_mgmt", "解绑OTP: alice")
+        body = json.loads(resp.content)
+        assert body["result"] is True
+        assert body["message"] == "OTP 解绑成功"
+        user.refresh_from_db()
+        assert user.otp_secret is None
+
+    def test_未绑定时直接成功且不改写日志(self):
+        user = _make_user(otp_secret=None)
+        req = _req("post", {})
+        req.user = MagicMock(is_authenticated=True, username="alice", domain="domain.com", locale="en")
+        with patch.object(views, "log_operation") as log:
+            resp = unbind_otp(req)
+            log.assert_not_called()
+        assert json.loads(resp.content)["result"] is True
+        user.refresh_from_db()
+        assert user.otp_secret is None
 
 
 class TestResetPwd:
@@ -233,6 +293,18 @@ class TestResetPwd:
             inst.reset_pwd.assert_called_once_with("alice", "domain.com", "newpw", caller_token="tok123")
             log.assert_called_once()
         assert json.loads(resp.content)["result"] is True
+        assert "bklite_token" not in resp.cookies
+
+    def test_重置成功把换发token写入cookie(self):
+        _make_user()
+        req = _req("post", {"password": "newpw"}, cookies={"bklite_token": "tok123"})
+        req.user = MagicMock(username="alice", domain="domain.com", locale="en")
+        with patch.object(views, "SystemMgmt") as MockRPC, patch.object(views, "log_operation"):
+            inst = MagicMock()
+            inst.reset_pwd.return_value = {"result": True, "data": {"token": "rotated-token"}}
+            MockRPC.return_value = inst
+            resp = reset_pwd(req)
+        assert resp.cookies["bklite_token"].value == "rotated-token"
 
     def test_空密码被拒(self):
         req = _req("post", {"password": ""})
