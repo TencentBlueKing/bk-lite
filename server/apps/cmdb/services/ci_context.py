@@ -339,8 +339,8 @@ def _recompute_roots(root_uuids) -> None:
 def _apply_ci(ci_uuid: str) -> None:
     instance, roots = _load_ci(ci_uuid)
     if instance is None:
-        CmdbCiContext.objects.filter(ci_uuid=ci_uuid).delete()
         _recompute_roots(roots)
+        CmdbCiContext.objects.filter(ci_uuid=ci_uuid).delete()
         return
     organization = _pick("organization", instance)
     CmdbCiContext.objects.filter(ci_uuid=ci_uuid).update(
