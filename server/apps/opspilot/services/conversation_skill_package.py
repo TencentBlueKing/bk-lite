@@ -19,6 +19,7 @@ from apps.opspilot.utils.pending_question import (
     peek_pending_question,
     resolve_conversation_key,
     resolve_conversation_key_from_mapping,
+    save_pending_question,
 )
 
 PREPARE_CONVERSATION_SKILL_PACKAGE_TOOL = "prepare_conversation_skill_package"
@@ -283,26 +284,30 @@ def try_commit_conversation_skill_package(params) -> str | None:
         logger.info(_REJECTED_LOG, "missing_team", skill.id)
         return _TEAM_REPLY
 
-    package = SkillPackage.objects.create(
-        package_id=uuid.uuid4().hex,
-        name=fields["name"],
-        version=PACKAGE_VERSION,
-        description=fields["description"],
-        category="",
-        source_type=SOURCE_CONVERSATION,
-        source_url="",
-        storage_path="",
-        manifest={},
-        skill_markdown=fields["skill_markdown"],
-        required_tools=[],
-        triggers=fields["triggers"],
-        team=team_ids,
-        system_tags=[],
-        user_tags=[],
-        is_enabled=True,
-        is_build_in=False,
-        **maintainer_kwargs(operator=str(authoring.get("username") or ""), domain=_actor_domain(authoring)),
-    )
+    try:
+        package = SkillPackage.objects.create(
+            package_id=uuid.uuid4().hex,
+            name=fields["name"],
+            version=PACKAGE_VERSION,
+            description=fields["description"],
+            category="",
+            source_type=SOURCE_CONVERSATION,
+            source_url="",
+            storage_path="",
+            manifest={},
+            skill_markdown=fields["skill_markdown"],
+            required_tools=[],
+            triggers=fields["triggers"],
+            team=team_ids,
+            system_tags=[],
+            user_tags=[],
+            is_enabled=True,
+            is_build_in=False,
+            **maintainer_kwargs(operator=str(authoring.get("username") or ""), domain=_actor_domain(authoring)),
+        )
+    except Exception:
+        save_pending_question(key, consumed)
+        raise
     logger.info(_SAVED_LOG, skill.id, package.package_id)
     return f"已写入技能包「{package.name}」。请刷新智能体配置页，在「添加技能包」里勾选。默认不会自动勾上。"
 

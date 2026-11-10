@@ -346,6 +346,50 @@ def test_confirm_rechecks_permission_and_entry():
 
 
 @pytest.mark.django_db
+def test_create_failure_restores_pending_card(caplog, monkeypatch):
+    skill = _skill()
+    _prepared, _request = _issue(skill)
+    pending = peek_pending_question("thread:thread-1")
+    draft = pending["skill_package_draft"]
+    created_at = pending["created_at"]
+    params = _confirm_params(skill, draft)
+    real_create = SkillPackage.objects.create
+    boom = RuntimeError("db down")
+
+    def _fail_once(*args, **kwargs):
+        if _fail_once.calls == 0:
+            _fail_once.calls += 1
+            raise boom
+        return real_create(*args, **kwargs)
+
+    _fail_once.calls = 0
+    monkeypatch.setattr(SkillPackage.objects, "create", _fail_once)
+    caplog.set_level(logging.INFO, logger="opspilot")
+
+    with pytest.raises(RuntimeError) as caught:
+        try_commit_conversation_skill_package(params)
+
+    restored = peek_pending_question("thread:thread-1")
+    assert caught.value is boom
+    assert SkillPackage.objects.count() == 0
+    assert restored["created_at"] == created_at
+    assert restored["kind"] == pending["kind"]
+    assert restored["skill_package_draft"]["choice_id"] == draft["choice_id"]
+    assert restored["skill_package_draft"]["name"] == draft["name"]
+    assert restored["skill_package_draft"]["skill_markdown"] == draft["skill_markdown"]
+    rendered = "\n".join(record.getMessage() for record in caplog.records if record.name == "opspilot")
+    assert "SECRET_BODY_SENTINEL" not in rendered
+    assert _BODY not in rendered
+
+    reply = try_commit_conversation_skill_package(params)
+    created = SkillPackage.objects.get()
+    assert "添加技能包" in reply
+    assert created.name == "查磁盘"
+    assert created.skill_markdown == _BODY
+    assert peek_pending_question("thread:thread-1") is None
+
+
+@pytest.mark.django_db
 def test_middleware_ends_turn_only_when_draft_is_complete():
     skill = _skill()
     authoring = authoring_context(_user(), "skill_test")

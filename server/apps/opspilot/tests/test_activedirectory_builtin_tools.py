@@ -180,6 +180,112 @@ class TestSqlEngine:
         )
         assert "sAMAccountName=*a*" not in blocked[0]
 
+    def test_join_does_not_push_unqualified_shared_column(self):
+        filters = []
+        users = [
+            FakeEntry(sAMAccountName="bob", name="bob", department="HR", distinguishedName="CN=bob"),
+            FakeEntry(sAMAccountName="alice", name="alice", department="IT", distinguishedName="CN=alice"),
+        ]
+        groups = [
+            FakeEntry(cn="admins", name="alice", member="CN=bob", distinguishedName="CN=admins"),
+            FakeEntry(cn="vpn", name="vpn", member="CN=alice", distinguishedName="CN=vpn"),
+        ]
+
+        def searcher(base_dn, search_filter, attrs, size_limit):
+            _ = (base_dn, attrs, size_limit)
+            filters.append(search_filter)
+            lowered = search_filter.lower()
+            if "objectcategory=person" in lowered:
+                rows = users
+            elif "objectclass=group" in lowered:
+                rows = groups
+            else:
+                return []
+            if "(name=" in lowered:
+                wanted = lowered.split("(name=", 1)[1].split(")", 1)[0]
+                rows = [row for row in rows if str(row.entry_attributes_as_dict.get("name", "")).lower() == wanted]
+            if "(department=" in lowered:
+                wanted = lowered.split("(department=", 1)[1].split(")", 1)[0]
+                rows = [row for row in rows if str(row.entry_attributes_as_dict.get("department", "")).lower() == wanted]
+            return rows
+
+        cols, rows = execute_select(
+            "SELECT User.SAMAccountName, Group.CN FROM User INNER JOIN Group ON User.DN = Group.Member WHERE Name = 'alice'",
+            base_dn="DC=example,DC=com",
+            searcher=searcher,
+        )
+        assert cols == ["User.SAMAccountName", "Group.CN"]
+        assert rows == [{"User.SAMAccountName": "bob", "Group.CN": "admins"}]
+        assert len(filters) == 2
+        assert all("(name=" not in item.lower() for item in filters)
+
+        filters.clear()
+        qualified_cols, qualified_rows = execute_select(
+            "SELECT User.SAMAccountName, Group.CN FROM User INNER JOIN Group ON User.DN = Group.Member WHERE User.Department = 'IT'",
+            base_dn="DC=example,DC=com",
+            searcher=searcher,
+        )
+        user_filters = [item for item in filters if "objectCategory=person" in item]
+        group_filters = [item for item in filters if "objectClass=group" in item]
+        assert qualified_cols == ["User.SAMAccountName", "Group.CN"]
+        assert qualified_rows == [{"User.SAMAccountName": "alice", "Group.CN": "vpn"}]
+        assert len(user_filters) == 1
+        assert len(group_filters) == 1
+        assert "(department=IT)" in user_filters[0]
+        assert "(department=" not in group_filters[0].lower()
+        assert "(name=" not in group_filters[0].lower()
+
+        filters.clear()
+        _, single_rows = execute_select(
+            "SELECT SAMAccountName FROM User WHERE Name = 'alice'",
+            base_dn="DC=example,DC=com",
+            searcher=searcher,
+        )
+        assert single_rows == [{"SAMAccountName": "alice"}]
+        assert len(filters) == 1
+        assert "(name=alice)" in filters[0]
+
+    def test_like_underscore_is_not_pushed_to_ldap(self):
+        filters = []
+        users = [
+            FakeEntry(sAMAccountName="alice", department="IT", distinguishedName="CN=alice"),
+            FakeEntry(sAMAccountName="abice", department="IT", distinguishedName="CN=abice"),
+            FakeEntry(sAMAccountName="axxice", department="HR", distinguishedName="CN=axxice"),
+            FakeEntry(sAMAccountName="bob", department="HR", distinguishedName="CN=bob"),
+        ]
+
+        def searcher(base_dn, search_filter, attrs, size_limit):
+            _ = (base_dn, attrs, size_limit)
+            filters.append(search_filter)
+            return users
+
+        cols, rows = execute_select(
+            "SELECT SAMAccountName FROM User WHERE SAMAccountName LIKE 'a_ice'",
+            base_dn="DC=example,DC=com",
+            searcher=searcher,
+        )
+        assert cols == ["SAMAccountName"]
+        assert [row["SAMAccountName"] for row in rows] == ["alice", "abice"]
+        assert "sAMAccountName=" not in filters[0]
+
+        filters.clear()
+        _, percent_rows = execute_select(
+            "SELECT SAMAccountName FROM User WHERE SAMAccountName LIKE 'a%'",
+            base_dn="DC=example,DC=com",
+            searcher=searcher,
+        )
+        assert [row["SAMAccountName"] for row in percent_rows] == ["alice", "abice", "axxice"]
+        assert "(sAMAccountName=a*)" in filters[0]
+
+        filters.clear()
+        execute_select(
+            "SELECT SAMAccountName FROM User WHERE Department = 'IT' AND SAMAccountName LIKE 'a_ice'",
+            base_dn="DC=example,DC=com",
+            searcher=searcher,
+        )
+        assert "(department=IT)" in filters[0]
+        assert "sAMAccountName=" not in filters[0]
+
 
 class FakeLoader:
     def __init__(self, mapping=None):
