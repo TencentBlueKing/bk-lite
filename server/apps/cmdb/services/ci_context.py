@@ -1,6 +1,9 @@
 from django.db.models import Q
 
+from apps.cmdb.constants.constants import INSTANCE, INSTANCE_ASSOCIATION
+from apps.cmdb.graph.drivers.graph_client import GraphClient
 from apps.cmdb.models.ci_context import CmdbCiContext, CmdbCiContextPending
+from apps.cmdb.services.ci_context_policy import APPLICATION_MODEL, CONTEXT_APPLICATION, LINK_FOLLOW, classify_application_edge
 
 
 def _distinct_texts(values) -> list[str]:
@@ -78,3 +81,167 @@ def lookup_ci_context(organization_ids, *, inst_uuids=None, ip_addrs=None, model
     for row in rows:
         found.setdefault(row.ci_uuid, []).append(_public_row(row))
     return found
+
+
+def _normalize_uuid(value) -> str:
+    if value is None:
+        return ""
+    return str(value).strip()
+
+
+def _edge_parts(item):
+    if isinstance(item, dict) and "edge" in item:
+        props = item.get("edge") or {}
+        src = item.get("src") or {}
+        dst = item.get("dst") or {}
+    else:
+        props, src, dst = item or {}, {}, {}
+    src_uuid = str(src.get("inst_uuid") or props.get("src_inst_uuid") or "")
+    dst_uuid = str(dst.get("inst_uuid") or props.get("dst_inst_uuid") or "")
+    src_model = str(src.get("model_id") or props.get("src_model_id") or "")
+    dst_model = str(dst.get("model_id") or props.get("dst_model_id") or "")
+    src_view = {"model_id": src_model, "inst_uuid": src_uuid}
+    dst_view = {"model_id": dst_model, "inst_uuid": dst_uuid}
+    return props, src_view, dst_view, dst if isinstance(dst, dict) else {}
+
+
+def _classifier_edge(props, src, dst) -> dict:
+    return {
+        "asst_id": props.get("asst_id") or "",
+        "model_asst_id": props.get("model_asst_id") or "",
+        "context_link": props.get("context_link") or LINK_FOLLOW,
+        "src": src,
+        "dst": dst,
+    }
+
+
+def _query_instances(ag, conditions) -> list[dict]:
+    rows, _count = ag.query_entity(INSTANCE, conditions)
+    return list(rows or [])
+
+
+def _outbound_edges(ag, src_uuid):
+    return ag.query_edge(
+        INSTANCE_ASSOCIATION,
+        [{"field": "src_inst_uuid", "type": "str=", "value": src_uuid}],
+        return_entity=True,
+    ) or []
+
+
+def _member_record(decision, dst_view, raw_dst, *, via_uuid) -> dict | None:
+    ci_uuid = _normalize_uuid(decision.ci_uuid)
+    if not ci_uuid:
+        return None
+    return {
+        "ci_uuid": ci_uuid,
+        "ci_model": str(dst_view.get("model_id") or ""),
+        "layer": decision.layer,
+        "via_uuid": _normalize_uuid(via_uuid) or None,
+        "model_asst_id": decision.model_asst_id or "",
+        "raw_dst": raw_dst if isinstance(raw_dst, dict) else {},
+    }
+
+
+def _pick(name, *sources):
+    for source in sources:
+        if not isinstance(source, dict) or name not in source:
+            continue
+        value = source.get(name)
+        if value is None:
+            continue
+        return value
+    return None
+
+
+def _load_member_instances(ag, uuids) -> dict[str, dict]:
+    wanted = list(dict.fromkeys(uuid for uuid in uuids if uuid))
+    if not wanted:
+        return {}
+    rows = _query_instances(ag, [{"field": "inst_uuid", "type": "str[]", "value": wanted}])
+    return {str(row.get("inst_uuid")): row for row in rows if row.get("inst_uuid")}
+
+
+def _delete_application_rows(root_uuid: str, *, keep=()) -> None:
+    stale = CmdbCiContext.objects.filter(root_uuid=root_uuid, context=CONTEXT_APPLICATION)
+    if keep:
+        stale = stale.exclude(ci_uuid__in=list(keep))
+    stale.delete()
+
+
+def recompute_application(application_uuid) -> None:
+    """从单个应用正向最多走两跳，重写该应用的 application 上下文成员。"""
+    application_uuid = _normalize_uuid(application_uuid)
+    if not application_uuid:
+        return
+
+    with GraphClient() as ag:
+        apps = _query_instances(ag, [{"field": "inst_uuid", "type": "str=", "value": application_uuid}])
+        app = apps[0] if apps else None
+        if not app or str(app.get("model_id") or "") != APPLICATION_MODEL:
+            _delete_application_rows(application_uuid)
+            return
+
+        layer1: dict[str, dict] = {}
+        for item in _outbound_edges(ag, application_uuid):
+            props, src, dst, raw_dst = _edge_parts(item)
+            decision = classify_application_edge(_classifier_edge(props, src, dst), src_is_member=False)
+            if not (decision.include and decision.layer == 1):
+                continue
+            record = _member_record(decision, dst, raw_dst, via_uuid=None)
+            if record is None or record["ci_uuid"] == application_uuid or record["ci_uuid"] in layer1:
+                continue
+            layer1[record["ci_uuid"]] = record
+
+        layer2: dict[str, dict] = {}
+        for via_uuid in layer1:
+            for item in _outbound_edges(ag, via_uuid):
+                props, src, dst, raw_dst = _edge_parts(item)
+                decision = classify_application_edge(_classifier_edge(props, src, dst), src_is_member=True)
+                if not (decision.include and decision.layer == 2):
+                    continue
+                record = _member_record(decision, dst, raw_dst, via_uuid=decision.via_uuid or via_uuid)
+                if record is None or record["ci_uuid"] in layer1 or record["ci_uuid"] in layer2:
+                    continue
+                if record["ci_uuid"] == application_uuid:
+                    continue
+                layer2[record["ci_uuid"]] = record
+
+        members = {**layer2, **layer1}
+        instances = _load_member_instances(ag, members)
+        system_uuids = []
+        inbound = ag.query_edge(
+            INSTANCE_ASSOCIATION,
+            [{"field": "dst_inst_uuid", "type": "str=", "value": application_uuid}],
+            return_entity=True,
+        ) or []
+        for item in inbound:
+            props, src, dst, _raw_dst = _edge_parts(item)
+            decision = classify_application_edge(_classifier_edge(props, src, dst), src_is_member=False)
+            system_id = _normalize_uuid(decision.attach_system_uuid)
+            if system_id:
+                system_uuids.append(system_id)
+        system_uuid = min(system_uuids) if system_uuids else None
+        root_model = str(app.get("model_id") or APPLICATION_MODEL)
+
+        for record in members.values():
+            inst = instances.get(record["ci_uuid"]) or {}
+            raw_dst = record["raw_dst"]
+            organization = _pick("organization", inst, raw_dst)
+            ci_model = _pick("model_id", inst, raw_dst) or record["ci_model"]
+            CmdbCiContext.objects.update_or_create(
+                ci_uuid=record["ci_uuid"],
+                context=CONTEXT_APPLICATION,
+                root_uuid=application_uuid,
+                defaults={
+                    "root_model": root_model,
+                    "ci_model": str(ci_model or ""),
+                    "ip_addr": str(_pick("ip_addr", inst, raw_dst) or ""),
+                    "organization": list(organization) if isinstance(organization, list) else [],
+                    "system_uuid": system_uuid,
+                    "layer": record["layer"],
+                    "via_uuid": record["via_uuid"],
+                    "model_asst_id": record["model_asst_id"] or "",
+                    "payload": {},
+                },
+            )
+        _delete_application_rows(application_uuid, keep=members)
