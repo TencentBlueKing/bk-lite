@@ -86,16 +86,20 @@ monitor_object_metric:
         for analyzing total write load and trends.
     diskio_write_bytes_total:
       name: Disk Written Bytes
-      desc: Represents the cumulative number of bytes written by the disk device, useful for analyzing
-        write traffic volume.
+      desc: Cumulative bytes written by the disk device, useful for analyzing write volume.
+    diskio_write_bytes_total_rate:
+      name: Disk Write Throughput
+      desc: Average bytes written to disk per second over the last 5 minutes, used to observe write traffic.
+    diskio_read_bytes_total_rate:
+      name: Disk Read Throughput
+      desc: Average bytes read from disk per second over the last 5 minutes, used to observe read traffic.
     diskio_reads_total:
       name: Disk Reads
       desc: Represents the cumulative number of read operations completed by the disk device, useful for
         analyzing total read load and trends.
     diskio_read_bytes_total:
       name: Disk Read Bytes
-      desc: Represents the cumulative number of bytes read by the disk device, useful for analyzing read
-        traffic volume.
+      desc: Cumulative bytes read by the disk device, useful for analyzing read volume.
     host_disk_total_bytes:
       name: Filesystem Total Capacity
       desc: Represents the total capacity of the filesystem for a specific mount point, used to evaluate
@@ -182,31 +186,30 @@ monitor_object_metric:
       desc: Represents the amount of data received per unit time on a network interface, used to evaluate
         inbound bandwidth utilization.
     host_net_rx_bytes:
-      name: Network Received Bytes
-      desc: Represents the cumulative number of bytes received on a specific network interface, used to
-        analyze inbound traffic volume.
+      name: Network Receive Throughput
+      desc: Receive bandwidth per interface over the last minute, in bytes per second, used to observe
+        inbound traffic.
     net_bytes_sent_rate:
       name: Network Send Throughput Rate
       desc: Represents the amount of data sent per unit time on a network interface, used to evaluate
         outbound bandwidth utilization.
     host_net_tx_bytes:
-      name: Network Transmitted Bytes
-      desc: Represents the cumulative number of bytes transmitted on a specific network interface, used
-        to analyze outbound traffic volume.
+      name: Network Transmit Throughput
+      desc: Average bytes sent per second on an interface over the last minute, used to observe outbound
+        traffic.
     net_err_in_rate:
       name: Network Receive Error Rate
       desc: Represents the number of errored packets received per unit time, used to monitor network quality.
     host_net_rx_errors:
-      name: Network Receive Errors
-      desc: Represents the cumulative receive error count on a specific network interface, useful for
-        identifying link quality or driver issues.
+      name: Network Receive Error Rate
+      desc: Average receive errors per second over the last minute.
     net_err_out_rate:
       name: Network Send Error Rate
       desc: Represents the number of errored packets sent per unit time on a network interface.
     host_net_tx_errors:
-      name: Network Transmit Errors
-      desc: Represents the cumulative transmit error count on a specific network interface, useful for
-        troubleshooting outbound network anomalies or device faults.
+      name: Network Transmit Error Rate
+      desc: Average transmit errors per second over the last minute, useful for troubleshooting outbound
+        network anomalies.
     net_drop_in_rate:
       name: Network Receive Drop Rate
       desc: Represents the number of incoming packets dropped per unit time, indicating congestion or

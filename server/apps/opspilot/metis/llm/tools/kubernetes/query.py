@@ -7,12 +7,13 @@ from kubernetes import client
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 
+from apps.opspilot.metis.llm.tools.kubernetes.instance_scope import prepare_point_instance
 from apps.opspilot.metis.llm.tools.kubernetes.utils import prepare_context
 
 
 @tool()
 def kubectl_get_resources(
-    resource_type, namespace=None, label_selector=None, field_selector=None, output_format="json", config: RunnableConfig = None
+    resource_type, namespace=None, label_selector=None, field_selector=None, output_format="json", config: RunnableConfig = None, instance_name=None
 ):
     """
     高级资源查询 - 类似kubectl get的灵活过滤
@@ -81,6 +82,10 @@ def kubectl_get_resources(
     - field_selector支持的字段有限（主要是status.phase、spec.nodeName等）
     - 复杂查询建议分步进行
     """
+    config, instance_error = prepare_point_instance(config, instance_name)
+    if instance_error:
+        return instance_error
+
     return _query_resources_internal(resource_type, namespace, label_selector, field_selector, output_format, config)
 
 
@@ -675,7 +680,7 @@ def _format_nodes_table(nodes):
 
 
 @tool()
-def kubectl_get_all_resources(namespace=None, config: RunnableConfig = None):
+def kubectl_get_all_resources(namespace=None, config: RunnableConfig = None, instance_name=None):
     """
     查看命名空间的所有主要资源 - 全景视图
 
@@ -732,6 +737,10 @@ def kubectl_get_all_resources(namespace=None, config: RunnableConfig = None):
     - 建议先查询单个命名空间
     - 此工具适合快速概览，不适合深度分析
     """
+    config, instance_error = prepare_point_instance(config, instance_name)
+    if instance_error:
+        return instance_error
+
     try:
         prepare_context(config)
 
