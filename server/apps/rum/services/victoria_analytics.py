@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
-from apps.rum.services import logsql_stats
-from apps.rum.services.victoria_client import VictoriaClient, funnel_reached, parse_event, sparkline_layout
+from apps.rum.services import logsql_stats, session_records
+from apps.rum.services.victoria_client import VictoriaClient, clamp_unit, funnel_reached, parse_event, sparkline_layout
 
 # Align with web/src/app/rum/lib/cwv.ts good / needs-improvement upper bounds.
 _CWV_BOUNDS = {
@@ -43,7 +43,6 @@ class VictoriaAnalytics:
         cls,
         *,
         logs_endpoint: str,
-        traces_endpoint: str,
         account_id: int = 0,
         project_id: int = 0,
         timeout_seconds: float = 15.0,
@@ -51,7 +50,6 @@ class VictoriaAnalytics:
     ) -> VictoriaAnalytics:
         client = VictoriaClient(
             logs_endpoint=logs_endpoint,
-            traces_endpoint=traces_endpoint,
             account_id=account_id,
             project_id=project_id,
             timeout_seconds=timeout_seconds,
@@ -84,7 +82,18 @@ class VictoriaAnalytics:
             opts,
             limit=max(len(enabled_apps) * max(buckets, 1), 1),
         )
-        return logsql_stats.map_catalog_health(rows, spark_rows, enabled_apps, start, end, buckets)
+        mapped, sparks = logsql_stats.map_catalog_health(rows, spark_rows, enabled_apps, start, end, buckets)
+        counts = session_records.read_session_counts(
+            self.client.query_logs,
+            tenant,
+            {"from": start, "to": end, "applications": list(enabled_apps), "traffic": "all"},
+        )
+        if counts is not None:
+            for row in mapped:
+                total, errored = counts.get(row["application"], (0, 0))
+                row["sessions"] = total
+                row["errorRate"] = clamp_unit(errored / total) if total else 0.0
+        return mapped, sparks
 
     def application_overview(self, tenant_id: str, application: str, start: datetime, end: datetime) -> dict:
         rows, sparks = self.applications_page(tenant_id, start, end, [application])
@@ -135,6 +144,9 @@ class VictoriaAnalytics:
                 "summary": {"total": 0, "errored": 0, "replayed": 0, "medianDurationMs": 0},
                 "truncated": False,
             }
+        merged = session_records.read_session_page(self.client.query_logs, self._tenant(tenant_id), opts)
+        if merged is not None:
+            return merged
         page_limit = int(opts.get("limit") or 0) or 200
         page = self._stats(
             tenant_id,
@@ -159,6 +171,9 @@ class VictoriaAnalytics:
         apps = list(opts.get("applications") or [])
         if not apps:
             return {"points": []}
+        merged = session_records.read_session_trend(self.client.query_logs, self._tenant(tenant_id), opts)
+        if merged is not None:
+            return merged
         interval, buckets = sparkline_layout(opts["from"], opts["to"])
         rows = self._stats(
             tenant_id,

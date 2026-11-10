@@ -99,12 +99,11 @@ def _build_analytics() -> Analytics:
     from apps.rum.services.victoria_analytics import VictoriaAnalytics
 
     settings = load_rum_settings()
-    if not settings.victoria_logs_url or not settings.victoria_traces_url:
+    if not settings.victoria_logs_url:
         return UnavailableAnalytics()
     try:
         return VictoriaAnalytics.open(
             logs_endpoint=settings.victoria_logs_url,
-            traces_endpoint=settings.victoria_traces_url,
             account_id=settings.victoria_account_id,
             project_id=settings.victoria_project_id,
             timeout_seconds=settings.victoria_timeout_seconds,

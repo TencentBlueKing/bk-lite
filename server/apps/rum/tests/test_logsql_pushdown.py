@@ -110,7 +110,7 @@ def test_analytics_sends_session_stats_query():
         _opts(orderBy="duration", sessionIdPrefix="ab", limit=10, offset=0),
     )
     assert page["sessions"][0]["sessionId"] == "abc123"
-    sent = client.queries[0][0]
+    sent = next(query for query, _limit in client.queries if SESSION_SORTS["duration"] in query)
     assert "stats by" in sent
     assert SESSION_SORTS["duration"] in sent
     assert "offset 0" in sent
@@ -269,7 +269,7 @@ def test_query_exposes_truncated_when_body_or_row_limit_is_hit(monkeypatch):
 
     monkeypatch.setattr(victoria_client, "urlopen", lambda req, timeout=0: Response())
     monkeypatch.setattr(victoria_client, "_MAX_RESPONSE_BYTES", 8)
-    client = VictoriaClient(logs_endpoint="http://victoria.example.test", traces_endpoint="http://victoria.example.test")
+    client = VictoriaClient(logs_endpoint="http://victoria.example.test")
     rows = client.query_logs("stats count()", None, None, limit=1)
     assert rows.truncated is True
 

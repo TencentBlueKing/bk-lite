@@ -16,7 +16,7 @@ collect + Session Replay gateway and control-plane controller.
 | `otel/rum.gateway.dev.yaml` | Local/dev gateway config (BK-Lite env names) |
 | `cmd/bklite-rum-gateway` | Faro `:4319` + replay `:4320` binary |
 | `cmd/bklite-rum-controller` | NATS `rum.v1.control.*` queue consumer |
-| `cmd/bklite-rum-maintainer` | Erase jobs + Replay reconcile / orphan scan |
+| `cmd/bklite-rum-maintainer` | Erase jobs + Replay reconcile / orphan scan + session end records |
 | `internal/rum/maintainer` | Maintainer Redis / Victoria / MinIO workers |
 | `env/*.env.example` | Dev env templates (Redis password required; ACL username optional) |
 | `VENDOR.md` | Source commit + rewrite rules |

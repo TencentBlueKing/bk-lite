@@ -18,7 +18,7 @@ Browser (Faro 2.8.2 / bklite-rum-sdk)
 Django apps.rum
   -> NATS rum.v1.control.*
   -> bklite-rum-controller -> Redis
-  -> bklite-rum-maintainer (erase + replay reconcile)
+  -> bklite-rum-maintainer (erase + replay reconcile + session end records)
 ```
 
 RUM 公网入口独立于 APM ADR 0008（4318 受信内网）。见
