@@ -46,6 +46,8 @@ const keptCopy = new Map<string, string>([
   ['星期', 'screen clock glyph'],
   ['应用系统', '已落库的应用拓扑筛选默认名，只用来识别种子项，不直接渲染'],
   ['展开层级', '已落库的应用拓扑筛选默认名，只用来识别种子项，不直接渲染'],
+  ['监控活跃告警', '已落库的内置数据源名称，只用来识别种子项，不直接渲染'],
+  ['监控活跃告警::monitor/query_latest_active_alerts', '已落库的内置数据源 build_in_key，只用来识别种子项，不直接渲染'],
 ]);
 
 /** 整文件跳过：Storybook / pilot / 测试夹具。 */
