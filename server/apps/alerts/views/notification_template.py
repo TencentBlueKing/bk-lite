@@ -47,39 +47,53 @@ from config.drf.pagination import CustomPageNumberPagination
 from config.drf.viewsets import ModelViewSet
 
 
-def _preview_events():
-    latest = {
-        "event_id": "EVENT-PREVIEW-2",
+def _preview_event(**overrides):
+    """预览示例要覆盖目录按钮和事件区块可选列，缺任一字段编辑器就会报缺少字段。"""
+    event = {
+        "event_id": "EVENT-PREVIEW",
+        "external_id": "EXT-PREVIEW",
         "title": "CPU 使用率过高",
+        "description": "CPU 使用率持续高于阈值",
         "level": "严重",
         "status": "received",
+        "action": "产生",
+        "event_type": "告警事件",
         "item": "cpu_usage",
         "value": 95,
-        "resource_name": "生产主机 01",
-        "resource_type": "host",
-        "source_name": "Prometheus",
+        "service": "主机监控",
+        "location": "机房 A",
         "start_time": "2026-09-08 10:05:00",
+        "end_time": "2026-09-08 10:10:00",
         "received_at": "2026-09-08 10:05:12",
-        "tags": {"alert": "CpuHigh"},
-        "labels": {"env": "prod"},
-        "enrichment": {"cmdb": {"owner": "张三"}},
-    }
-    first = {
-        "event_id": "EVENT-PREVIEW-1",
-        "title": "CPU 使用率过高",
-        "level": "警告",
-        "status": "received",
-        "item": "cpu_usage",
-        "value": 81,
+        "resource_id": "host-01",
         "resource_name": "生产主机 01",
         "resource_type": "host",
+        "push_source_id": "prometheus",
+        "rule_id": "rule-cpu-high",
         "source_name": "Prometheus",
-        "start_time": "2026-09-08 10:00:00",
-        "received_at": "2026-09-08 10:00:08",
+        "samples": ["CPU 使用率 95%，持续 5 分钟"],
+        "search_url": "https://log.example.com/search?q=cpu_usage&event=latest",
         "tags": {"alert": "CpuHigh"},
         "labels": {"env": "prod"},
         "enrichment": {"cmdb": {"owner": "张三"}},
     }
+    event.update(overrides)
+    return event
+
+
+def _preview_events():
+    latest = _preview_event(event_id="EVENT-PREVIEW-2", external_id="EXT-PREVIEW-2")
+    first = _preview_event(
+        event_id="EVENT-PREVIEW-1",
+        external_id="EXT-PREVIEW-1",
+        level="警告",
+        value=81,
+        start_time="2026-09-08 10:00:00",
+        end_time="2026-09-08 10:05:00",
+        received_at="2026-09-08 10:00:08",
+        samples=["CPU 使用率 81%，持续 5 分钟"],
+        search_url="https://log.example.com/search?q=cpu_usage&event=first",
+    )
     return {"count": 2, "latest": latest, "first": first, "rows": [latest, first]}
 
 
@@ -125,7 +139,13 @@ def _preview_context(sample):
     alert["feishu_color"] = feishu_level_color(alert.get("level_id"))
     return {
         "alert": alert,
-        "labels": {"env": "prod", **(sample.get("labels") if isinstance(sample.get("labels"), dict) else {})},
+        "labels": {
+            "env": "prod",
+            "ip": "10.0.0.8",
+            "probe": {"target": "https://10.0.0.8/health"},
+            "collector": {"nodes": "北京节点"},
+            **(sample.get("labels") if isinstance(sample.get("labels"), dict) else {}),
+        },
         "dimensions": {"instance": "10.0.0.8", **(sample.get("dimensions") if isinstance(sample.get("dimensions"), dict) else {})},
         "enrichment": {"cmdb": {"owner": "张三"}, **(sample.get("enrichment") if isinstance(sample.get("enrichment"), dict) else {})},
         "notification": {

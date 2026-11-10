@@ -951,3 +951,59 @@ class ModelViewSet(CmdbPermissionMixin, viewsets.ViewSet):
 
         ModelManage.model_association_delete(association_info["_id"])
         return True, "", ""
+
+    @action(detail=False, methods=["get", "post"], url_path="(?P<model_id>.+?)/duplicate_rules")
+    def model_duplicate_rules(self, request, model_id: str):
+        if request.method == "GET":
+            return self._model_duplicate_rule_list(request, model_id)
+        return self._model_duplicate_rule_create(request, model_id)
+
+    @action(detail=False, methods=["put", "delete"], url_path="(?P<model_id>.+?)/duplicate_rules/(?P<rule_id>.+?)")
+    def model_duplicate_rule_detail(self, request, model_id: str, rule_id: str):
+        if request.method == "PUT":
+            return self._model_duplicate_rule_update(request, model_id, rule_id)
+        return self._model_duplicate_rule_delete(request, model_id, rule_id)
+
+    @HasPermission("model_management-View")
+    def _model_duplicate_rule_list(self, request, model_id: str):
+        return WebUtils.response_success(_duplicate_rules().list_duplicate_rules(model_id))
+
+    @HasPermission("model_management-Edit Model")
+    def _model_duplicate_rule_create(self, request, model_id: str):
+        return WebUtils.response_success(
+            _duplicate_rules().create_duplicate_rule(model_id, request.data.get("field_ids") or [], request.user.username)
+        )
+
+    @HasPermission("model_management-Edit Model")
+    def _model_duplicate_rule_update(self, request, model_id: str, rule_id: str):
+        return WebUtils.response_success(
+            _duplicate_rules().update_duplicate_rule(model_id, rule_id, request.data.get("field_ids") or [], request.user.username)
+        )
+
+    @HasPermission("model_management-Edit Model")
+    def _model_duplicate_rule_delete(self, request, model_id: str, rule_id: str):
+        return WebUtils.response_success(_duplicate_rules().delete_duplicate_rule(model_id, rule_id, request.user.username))
+
+    @HasPermission("model_management-Edit Model")
+    @action(detail=False, methods=["put"], url_path="(?P<model_id>.+?)/association_required")
+    def model_association_required(self, request, model_id: str):
+        result = _duplicate_rules().set_association_required(
+            model_id,
+            request.data.get("model_asst_id") or "",
+            request.data.get("required"),
+            request.user.username,
+        )
+        return WebUtils.response_success(result)
+
+    @HasPermission("model_management-View")
+    @action(detail=False, methods=["get"], url_path="(?P<model_id>.+?)/island_counts")
+    def model_island_counts(self, request, model_id: str):
+        return WebUtils.response_success(_duplicate_rules().island_counts(model_id))
+
+
+def _duplicate_rules():
+    try:
+        from apps.cmdb_enterprise.governance import rule_store
+    except ImportError as exc:
+        raise BaseAppException("当前版本不支持数据治理规则") from exc
+    return rule_store
