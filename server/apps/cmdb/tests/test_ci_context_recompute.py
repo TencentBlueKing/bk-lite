@@ -326,3 +326,21 @@ def test_l1_wins_over_l2_for_same_ci(monkeypatch):
     assert not rows["mysql-1"].via_uuid
     assert rows["mysql-1"].model_asst_id == "application_connect_mysql"
     assert rows["host-1"].layer == 1
+
+
+def test_model_association_exclude_drops_run_host(monkeypatch):
+    """实例边没有 context_link，模型关系 application_run_host=exclude 时主机不进表。"""
+    app = inst("app-wecenter", "application")
+    host = inst("host-1", "host", ip="10.1.0.1")
+    graph = _bind(monkeypatch, [app, host], [edge("run", app, host)])
+    graph.model_edges = [
+        {
+            "model_asst_id": "application_run_host",
+            "asst_id": "run",
+            "context_link": "exclude",
+        }
+    ]
+
+    recompute_application("app-wecenter")
+
+    assert [row.ci_uuid for row in _rows("app-wecenter")] == []
