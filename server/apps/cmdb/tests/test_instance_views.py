@@ -846,6 +846,29 @@ def test_upload_file_delegates_to_extension(superuser, monkeypatch):
 
 
 @pytest.mark.django_db
+def test_file_content_allows_anonymous_ticket_and_streams(monkeypatch):
+    """<img src> 不会带 Bearer；同源代理靠短时 ticket 拉流，不能要求登录。"""
+    from django.http import HttpResponse
+
+    captured = {}
+
+    def handle_file_content(*, file_id, ticket, as_attachment=False):
+        captured.update(file_id=file_id, ticket=ticket, as_attachment=as_attachment)
+        return HttpResponse(b"\x89PNG", content_type="image/png")
+
+    monkeypatch.setattr(
+        f"{VIEWS}.get_instance_enterprise_extension",
+        lambda: types.SimpleNamespace(handle_file_content=handle_file_content),
+    )
+    factory = APIRequestFactory()
+    request = factory.get("/x/", data={"ticket": "tok-1", "download": "1"})
+    response = _call({"get": "file_content"}, request, file_id="fid-img")
+    assert response.status_code == 200
+    assert response.content == b"\x89PNG"
+    assert captured == {"file_id": "fid-img", "ticket": "tok-1", "as_attachment": True}
+
+
+@pytest.mark.django_db
 def test_delete_file_delegates_to_extension(superuser, monkeypatch):
     captured = {}
     monkeypatch.setattr(
