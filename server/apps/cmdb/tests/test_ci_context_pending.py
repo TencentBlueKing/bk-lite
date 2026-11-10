@@ -107,6 +107,55 @@ def test_drain_ci_uuid_refreshes_ip(monkeypatch):
     assert CmdbCiContextPending.objects.filter(ci_uuid="host-1").count() == 0
 
 
+def test_drain_ci_uuid_of_new_layer2_finds_app_via_host_membership(monkeypatch):
+    app = inst("app-wecenter", "application")
+    host = inst("host-1", "host", ip="10.1.0.1", org=[7])
+    mysql = inst("mysql-1", "mysql", ip="10.1.0.3", org=[8])
+    _bind(
+        monkeypatch,
+        [app, host, mysql],
+        [edge("run", app, host), edge("run", host, mysql)],
+    )
+    _context(ci_uuid="host-1", root_uuid="app-wecenter", ip_addr="10.1.0.1", organization=[7])
+    CmdbCiContextPending.objects.create(ci_uuid="mysql-1")
+
+    drain_ci_context_pending()
+
+    row = CmdbCiContext.objects.get(ci_uuid="mysql-1", root_uuid="app-wecenter", context=CONTEXT_APPLICATION)
+    assert row.layer == 2
+    assert row.via_uuid == "host-1"
+    assert row.model_asst_id == "host_run_mysql"
+    assert row.ip_addr == "10.1.0.3"
+    assert CmdbCiContextPending.objects.filter(ci_uuid="mysql-1").count() == 0
+
+
+def test_drain_application_ci_updates_member_ip_and_parent_root(monkeypatch):
+    parent = inst("app-parent", "application")
+    child = inst("app-child", "application", ip="10.8.8.8", org=[3])
+    _bind(monkeypatch, [parent, child], [edge("run", parent, child)])
+    row = _context(
+        ci_uuid="app-child",
+        ci_model="application",
+        root_uuid="app-parent",
+        ip_addr="1.1.1.1",
+        organization=[9],
+        layer=2,
+        via_uuid="stale-via",
+        model_asst_id="stale",
+    )
+    CmdbCiContextPending.objects.create(ci_uuid="app-child")
+
+    drain_ci_context_pending()
+
+    row.refresh_from_db()
+    assert row.ip_addr == "10.8.8.8"
+    assert row.organization == [3]
+    assert row.root_uuid == "app-parent"
+    assert row.layer == 1
+    assert not row.via_uuid
+    assert CmdbCiContextPending.objects.filter(ci_uuid="app-child").count() == 0
+
+
 def test_drain_ci_uuid_drops_rows_when_instance_is_missing(monkeypatch):
     _bind(monkeypatch, [], [])
     _context(ci_uuid="host-missing", root_uuid="app-wecenter")
