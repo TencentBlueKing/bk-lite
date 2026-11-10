@@ -19,7 +19,7 @@ from apps.rum.services.monitors import MonitorsService
 from apps.rum.services.victoria_analytics import VictoriaAnalytics
 
 WHEN = datetime(2026, 11, 10, 9, 0, 30, tzinfo=UTC)
-# 09:00:30 对齐到 09:00:00，再留出 RUM 默认 10 秒刷出周期。
+# 09:00:30 对齐到 09:00:00，再留出 10 秒刷出周期（见下方 fixture）。
 ALIGNED = datetime(2026, 11, 10, 8, 59, 50, tzinfo=UTC)
 # 15 分钟窗口的 increase 起点。早于它就还没被聚合覆盖。
 LOOKBACK = datetime(2026, 11, 10, 8, 44, 50, tzinfo=UTC)
@@ -32,6 +32,12 @@ VITALS = {
     "ttfb_p75": "rum_web_vital_ttfb_milliseconds_bucket",
     "cls_p75": "rum_web_vital_cls_bucket",
 }
+
+
+@pytest.fixture(autouse=True)
+def _ten_second_flush(monkeypatch):
+    # 时间点按 10 秒刷出周期构造；默认值由 core 的刷出间隔测试锁定。
+    monkeypatch.setenv("RUM_AGG_BATCH_TIMEOUT", "10s")
 
 
 def _p75(metric: str, seconds: int, selector: str = SELECTOR) -> str:

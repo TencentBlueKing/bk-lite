@@ -62,7 +62,7 @@ processors:
     state_ttl: 5h
     aof_timeout: 2s
   batch/rum_agg:
-    timeout: ${env:RUM_AGG_BATCH_TIMEOUT:-10s}
+    timeout: ${env:RUM_AGG_BATCH_TIMEOUT:-60s}
   deltatocumulative/rum:
     max_stale: 10m
     max_streams: ${env:RUM_AGG_MAX_STREAMS:-420000}

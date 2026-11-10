@@ -127,7 +127,7 @@ Collector 不能按空环境变量只关掉聚合分支，也不会回落到 `VI
 | `RUM_MINIO_SECURE` | 与平台 MinIO 是否走 TLS 一致 |
 | `AGG_VICTORIAMETRICS_WRITE_URL` | 聚合库 remote write，例如 `http://<aggregate-victoria-metrics>:8428/api/v1/write`。不读 `VICTORIAMETRICS_HOST` |
 | `RUM_AGG_SHARD` | 这个 Gateway 进程的固定分片，1 到 64 位，只含字母、数字和 `.` `_` `:` `-`。重启不变，多副本各不相同 |
-| `RUM_AGG_BATCH_TIMEOUT` | 可选。聚合刷出间隔，默认 `10s`。Server 用同名变量对齐查询结束时间，改这个值必须同时改网关和 Server |
+| `RUM_AGG_BATCH_TIMEOUT` | 可选。聚合刷出间隔，默认 `60s`，与 APM 一致；缩短后聚合库磁盘按比例增加。Server 用同名变量对齐查询结束时间，改这个值必须同时改网关和 Server |
 | `RUM_AGG_MAX_STREAMS` | 可选。`deltatocumulative` 流上限，默认 `420000` |
 | `AGG_VICTORIAMETRICS_USER` / `AGG_VICTORIAMETRICS_PASSWORD` | 可选。只在加载 `rum.gateway.auth.yaml` 时需要，不写入仓库 |
 

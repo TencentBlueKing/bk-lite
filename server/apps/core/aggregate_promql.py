@@ -5,7 +5,7 @@
 未配置查询地址时客户端不可用，构造和导入都不会访问网络。
 
 刷出间隔读 ``APM_AGG_FLUSH_INTERVAL``（默认 60 秒）和 ``RUM_AGG_BATCH_TIMEOUT``
-（默认 10 秒），写法与采集端的 Go duration 相同。对齐只用整秒。
+（默认 60 秒），写法与采集端的 Go duration 相同。对齐只用整秒。
 """
 
 from __future__ import annotations
@@ -24,7 +24,7 @@ from apps.core.logger import logger
 APM_FLUSH_INTERVAL_ENV = "APM_AGG_FLUSH_INTERVAL"
 RUM_FLUSH_INTERVAL_ENV = "RUM_AGG_BATCH_TIMEOUT"
 DEFAULT_APM_FLUSH_SECONDS = 60
-DEFAULT_RUM_FLUSH_SECONDS = 10
+DEFAULT_RUM_FLUSH_SECONDS = 60
 _DURATION_UNITS = (
     ("ms", 0.001),
     ("us", 1e-6),

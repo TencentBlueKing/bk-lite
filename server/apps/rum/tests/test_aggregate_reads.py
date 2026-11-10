@@ -17,7 +17,7 @@ from apps.rum.services.victoria_analytics import VictoriaAnalytics
 
 START = datetime(2026, 11, 10, 0, 0, tzinfo=UTC)
 END = datetime(2026, 11, 10, 0, 16, 30, tzinfo=UTC)
-# 00:16:30 对齐到 00:16:00，再留出 RUM 默认 10 秒刷出周期。
+# 00:16:30 对齐到 00:16:00，再留出 10 秒刷出周期（见下方 fixture）。
 ALIGNED = datetime(2026, 11, 10, 0, 15, 50, tzinfo=UTC)
 WINDOW = 950
 POINT = START.timestamp() + 120
@@ -27,6 +27,12 @@ LCP = "histogram_quantile(0.75, sum by (le, rum_application) " f"(increase(rum_w
 ROUTE_SELECTOR = 'tenant_id="core",rum_application="storefront",rum_traffic_class!~"bot|synthetic|crawler"'
 ROUTE_VIEWS = f"sum by (rum_aggregate_route) (increase(rum_views_total{{{ROUTE_SELECTOR}}}[{WINDOW}s]))"
 ROUTE_CLS = "histogram_quantile(0.75, sum by (le, rum_aggregate_route) " f"(increase(rum_web_vital_cls_bucket{{{ROUTE_SELECTOR}}}[{WINDOW}s])))"
+
+
+@pytest.fixture(autouse=True)
+def _ten_second_flush(monkeypatch):
+    # 时间点按 10 秒刷出周期构造；默认值由 core 的刷出间隔测试锁定。
+    monkeypatch.setenv("RUM_AGG_BATCH_TIMEOUT", "10s")
 
 
 def _settings() -> RumRuntimeSettings:
