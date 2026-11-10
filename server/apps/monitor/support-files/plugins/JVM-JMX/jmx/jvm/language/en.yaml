@@ -80,8 +80,7 @@ monitor_object_metric:
     jvm_os_processcputime_seconds_value:
       name: Process CPU Time
       desc: Cumulative CPU time, in seconds, consumed by the Java process since startup.
-        This is not a CPU usage percentage. For the recent increase, use CPU Time in
-        Last 5 Minutes.
+        This is not a CPU usage percentage.
     jvm_os_processcputime_seconds_increase:
       name: CPU Time in Last 5 Minutes
       desc: CPU time, in seconds, consumed by the process during the last 5 minutes.
@@ -101,16 +100,14 @@ monitor_object_metric:
         carrying capacity of the resource pool.
     jvm_gc_collectiontime_seconds_value:
       name: GC Collection Time
-      desc: Cumulative garbage collection time, in seconds. For the recent period, use
-        GC Time in Last 5 Minutes.
+      desc: Cumulative garbage collection time, in seconds.
     jvm_gc_collectiontime_seconds_increase:
       name: GC Time in Last 5 Minutes
       desc: Garbage collection time, in seconds, consumed during the last 5 minutes,
         split by collector type.
     jvm_gc_collectioncount_value:
       name: GC Collection Count
-      desc: Cumulative garbage collections. To see whether collections are becoming more
-        frequent, use GC Frequency.
+      desc: Cumulative garbage collections.
     jvm_gc_collectioncount_rate:
       name: GC Frequency
       desc: Average garbage collections per second over the last 5 minutes, split by

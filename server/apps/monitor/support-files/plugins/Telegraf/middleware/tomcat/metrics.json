@@ -22,7 +22,7 @@
       "data_type": "Number",
       "unit": "counts",
       "dimensions": [],
-      "description": "Cumulative HTTP requests processed by the connector since startup. For requests per second, use Request Processing Rate.",
+      "description": "Cumulative HTTP requests processed by the connector since startup.",
       "query": "tomcat_connector_request_count{__$labels__}"
     },
     {
@@ -33,7 +33,7 @@
       "data_type": "Number",
       "unit": "counts",
       "dimensions": [],
-      "description": "Cumulative error requests on the connector since startup. For errors per second, use Error Request Rate.",
+      "description": "Cumulative error requests on the connector since startup.",
       "query": "tomcat_connector_error_count{__$labels__}"
     },
     {
@@ -55,7 +55,7 @@
       "data_type": "Number",
       "unit": "bytes",
       "dimensions": [],
-      "description": "Cumulative bytes sent to clients by the connector since startup. For bytes per second, use Send Throughput.",
+      "description": "Cumulative bytes sent to clients by the connector since startup.",
       "query": "tomcat_connector_bytes_sent{__$labels__}"
     },
     {

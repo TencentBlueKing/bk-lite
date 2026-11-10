@@ -9,16 +9,16 @@ monitor_object_metric:
   Tomcat:
     tomcat_connector_request_count:
       name: 请求处理总数
-      desc: 连接器自启动以来累计处理的 HTTP 请求数，反映连接器的总工作负载。看每秒处理量请用「请求处理速率」。
+      desc: 连接器自启动以来累计处理的 HTTP 请求数，反映连接器的总工作负载。
     tomcat_connector_error_count:
       name: 错误请求总数
-      desc: 连接器自启动以来累计发生的错误请求数，反映服务可靠性问题。看每秒错误请用「错误请求速率」。
+      desc: 连接器自启动以来累计发生的错误请求数，反映服务可靠性问题。
     tomcat_connector_bytes_received:
       name: 接收字节总数
       desc: 连接器从客户端接收的字节数据累计总量，反映网络输入流量
     tomcat_connector_bytes_sent:
       name: 发送字节总数
-      desc: 连接器自启动以来累计向客户端发送的字节数，反映网络输出流量。看每秒发送量请用「发送吞吐」。
+      desc: 连接器自启动以来累计向客户端发送的字节数，反映网络输出流量。
     tomcat_connector_processing_time:
       name: 总处理时间
       desc: 连接器处理所有请求花费的时间累计总量，反映处理性能

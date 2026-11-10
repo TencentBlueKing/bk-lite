@@ -24,11 +24,9 @@ monitor_object_metric:
     haproxy_stot:
       name: Total Sessions
       desc: Cumulative number of sessions handled since startup, measuring overall workload.
-        For the 5-minute average of new sessions per second, use Average Session Rate.
     haproxy_stot_rate:
       name: Average Session Rate
-      desc: Average new sessions per second over the last 5 minutes. For the last-second
-        rate, use Session Rate.
+      desc: Average new sessions per second over the last 5 minutes.
     haproxy_rate:
       name: Session Rate
       desc: Number of new sessions established per second over the last second, reflecting
@@ -48,14 +46,14 @@ monitor_object_metric:
     haproxy_bin:
       name: Bytes In
       desc: Cumulative bytes received from clients since startup, measuring inbound
-        traffic volume. For bytes per second, use Inbound Throughput.
+        traffic volume.
     haproxy_bin_rate:
       name: Inbound Throughput
       desc: Average bytes received from clients per second over the last 5 minutes.
     haproxy_bout:
       name: Bytes Out
       desc: Cumulative bytes sent to clients since startup, measuring outbound traffic
-        volume. For bytes per second, use Outbound Throughput.
+        volume.
     haproxy_bout_rate:
       name: Outbound Throughput
       desc: Average bytes sent to clients per second over the last 5 minutes.
@@ -70,7 +68,7 @@ monitor_object_metric:
     haproxy_req_tot:
       name: Total HTTP Requests
       desc: Cumulative number of HTTP requests received since startup, measuring overall
-        request workload. For live throughput, use HTTP Request Rate.
+        request workload.
     haproxy_hrsp_2xx:
       name: 2xx Responses
       desc: Cumulative number of HTTP 2xx (success) responses returned, reflecting
@@ -85,8 +83,7 @@ monitor_object_metric:
     haproxy_hrsp_5xx:
       name: 5xx Responses
       desc: Cumulative HTTP 5xx (server error) responses returned since startup; growth
-        usually indicates backend service faults. For errors per second, use 5xx Response
-        Rate.
+        usually indicates backend service faults.
     haproxy_hrsp_5xx_rate:
       name: 5xx Response Rate
       desc: Average HTTP 5xx responses returned per second over the last 5 minutes,
@@ -94,7 +91,7 @@ monitor_object_metric:
     haproxy_ereq:
       name: Request Errors
       desc: Cumulative request errors since startup, such as invalid requests or client
-        timeouts before the request. For errors per second, use Request Error Rate.
+        timeouts before the request.
     haproxy_ereq_rate:
       name: Request Error Rate
       desc: Average request errors per second over the last 5 minutes.

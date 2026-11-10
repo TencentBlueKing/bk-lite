@@ -765,7 +765,7 @@
           "description": "服务(FRONTEND/BACKEND/服务器名)"
         }
       ],
-      "description": "Average new sessions per second over the last 5 minutes. For the last-second rate, use Session Rate.",
+      "description": "Average new sessions per second over the last 5 minutes.",
       "query": "rate(haproxy_stot{__$labels__}[5m])"
     },
     {

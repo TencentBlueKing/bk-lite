@@ -44,7 +44,7 @@
       "data_type": "Number",
       "unit": "counts",
       "dimensions": [],
-      "description": "Total HTTP requests processed since startup, measuring overall server workload. For requests per second, use HTTP Access Rate.",
+      "description": "Total HTTP requests processed since startup, measuring overall server workload.",
       "query": "apache_TotalAccesses{__$labels__}"
     },
     {

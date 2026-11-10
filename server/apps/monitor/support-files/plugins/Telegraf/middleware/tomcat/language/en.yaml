@@ -11,11 +11,11 @@ monitor_object_metric:
     tomcat_connector_request_count:
       name: Total Requests Processed
       desc: Cumulative HTTP requests processed by the connector since startup, reflecting
-        overall workload. For requests per second, use Request Processing Rate.
+        overall workload.
     tomcat_connector_error_count:
       name: Total Error Requests
       desc: Cumulative error requests on the connector since startup, indicating service
-        reliability. For errors per second, use Error Request Rate.
+        reliability.
     tomcat_connector_bytes_received:
       name: Total Bytes Received
       desc: Total bytes received from clients by connector, reflecting network input
@@ -23,7 +23,7 @@ monitor_object_metric:
     tomcat_connector_bytes_sent:
       name: Total Bytes Sent
       desc: Cumulative bytes sent to clients by the connector since startup, reflecting
-        outbound traffic. For bytes per second, use Send Throughput.
+        outbound traffic.
     tomcat_connector_processing_time:
       name: Total Processing Time
       desc: Total time spent processing all requests by connector, reflecting processing
