@@ -78,7 +78,10 @@ monitor_object_metric:
       desc: 近 5 分钟平均每秒发生的请求错误数。
     haproxy_econ:
       name: 连接错误数
-      desc: 启动以来连接后端服务器的累计错误数，增长表明后端连通性问题
+      desc: 启动以来连接后端服务器的累计错误数，增长表明后端连通性问题。
+    haproxy_econ_rate:
+      name: 连接错误速率
+      desc: 近 5 分钟平均每秒发生的后端连接错误数。
     haproxy_eresp:
       name: 响应错误数
       desc: 启动以来后端响应的累计错误数，包含中断和异常响应
@@ -93,7 +96,10 @@ monitor_object_metric:
       desc: 启动以来连接后端服务器的累计重试次数，偏高表明后端不稳定
     haproxy_wredis:
       name: 请求重分发数
-      desc: 启动以来请求被重新分发到其他后端服务器的累计次数
+      desc: 启动以来请求被重新分发到其他后端服务器的累计次数。
+    haproxy_wredis_rate:
+      name: 请求重分发速率
+      desc: 近 5 分钟平均每秒被重新分发到其他后端的请求数。
     haproxy_act:
       name: 活跃服务器数
       desc: 该后端中当前在线的活跃（非备份）服务器数量，反映可用服务能力
