@@ -1010,6 +1010,40 @@
     },
     {
       "metric_group": "Disk IO",
+      "name": "diskio_read_bytes_total_rate",
+      "query": "rate(diskio_read_bytes_total_gauge{instance_type=\"os\", __$labels__}[5m])",
+      "display_name": "Disk Read Throughput",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "device"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Average bytes read from disk per second over the last 5 minutes. Physical disks and LVM device-mapper volumes may both appear."
+    },
+    {
+      "metric_group": "Disk IO",
+      "name": "diskio_write_bytes_total_rate",
+      "query": "rate(diskio_write_bytes_total_gauge{instance_type=\"os\", __$labels__}[5m])",
+      "display_name": "Disk Write Throughput",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "device"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Average bytes written to disk per second over the last 5 minutes. Physical disks and LVM device-mapper volumes may both appear."
+    },
+    {
+      "metric_group": "Disk IO",
       "name": "diskio_io_util",
       "query": "(rate(diskio_io_time_ms_gauge{instance_type=\"os\", __$labels__}[5m]) / 10) or diskio_io_util_gauge{instance_type=\"os\", __$labels__}",
       "display_name": "Disk I/O Usage",

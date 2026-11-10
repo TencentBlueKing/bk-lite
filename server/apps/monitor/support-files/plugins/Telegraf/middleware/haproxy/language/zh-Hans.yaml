@@ -18,7 +18,10 @@ monitor_object_metric:
       desc: 配置的会话上限；当前会话接近该值时存在拒绝新连接的风险
     haproxy_stot:
       name: 累计会话数
-      desc: 启动以来累计处理的会话总数，单调递增计数器，衡量总体负载
+      desc: 启动以来累计处理的会话总数，衡量总体负载。
+    haproxy_stot_rate:
+      name: 平均会话建立速率
+      desc: 近 5 分钟平均每秒新建的会话数。
     haproxy_rate:
       name: 会话建立速率
       desc: 最近1秒内每秒新建会话数，反映实时连接压力
@@ -33,10 +36,16 @@ monitor_object_metric:
       desc: 启动以来观测到的最大排队请求数，反映后端峰值压力
     haproxy_bin:
       name: 入站字节数
-      desc: 启动以来从客户端接收的累计字节数，衡量入站流量
+      desc: 启动以来从客户端接收的累计字节数，衡量入站流量。
+    haproxy_bin_rate:
+      name: 入站吞吐
+      desc: 近 5 分钟平均每秒从客户端接收的字节数。
     haproxy_bout:
       name: 出站字节数
-      desc: 启动以来发送给客户端的累计字节数，衡量出站流量
+      desc: 启动以来发送给客户端的累计字节数，衡量出站流量。
+    haproxy_bout_rate:
+      name: 出站吞吐
+      desc: 近 5 分钟平均每秒发送给客户端的字节数。
     haproxy_req_rate:
       name: HTTP请求速率
       desc: 最近1秒内每秒接收的HTTP请求数，反映实时请求吞吐
@@ -45,7 +54,7 @@ monitor_object_metric:
       desc: 启动以来观测到的每秒最大HTTP请求速率，反映峰值请求压力
     haproxy_req_tot:
       name: 累计HTTP请求数
-      desc: 启动以来累计接收的HTTP请求总数，计数器，衡量总体请求负载
+      desc: 启动以来累计接收的HTTP请求总数，衡量总体请求负载。
     haproxy_hrsp_2xx:
       name: 2xx响应数
       desc: 累计返回的HTTP 2xx（成功）响应数，反映正常处理的请求
@@ -57,13 +66,22 @@ monitor_object_metric:
       desc: 累计返回的HTTP 4xx（客户端错误）响应数，持续增长可能表明客户端或鉴权问题
     haproxy_hrsp_5xx:
       name: 5xx响应数
-      desc: 累计返回的HTTP 5xx（服务端错误）响应数，增长通常表明后端服务故障
+      desc: 自启动以来累计返回的HTTP 5xx（服务端错误）响应数，增长通常表明后端服务故障。
+    haproxy_hrsp_5xx_rate:
+      name: 5xx 响应速率
+      desc: 近 5 分钟平均每秒返回的 HTTP 5xx 响应数，便于发现服务端错误是否在增加。
     haproxy_ereq:
       name: 请求错误数
-      desc: 启动以来累计的请求错误数（如非法请求、请求前客户端超时）
+      desc: 启动以来累计的请求错误数（如非法请求、请求前客户端超时）。
+    haproxy_ereq_rate:
+      name: 请求错误速率
+      desc: 近 5 分钟平均每秒发生的请求错误数。
     haproxy_econ:
       name: 连接错误数
-      desc: 启动以来连接后端服务器的累计错误数，增长表明后端连通性问题
+      desc: 启动以来连接后端服务器的累计错误数，增长表明后端连通性问题。
+    haproxy_econ_rate:
+      name: 连接错误速率
+      desc: 近 5 分钟平均每秒发生的后端连接错误数。
     haproxy_eresp:
       name: 响应错误数
       desc: 启动以来后端响应的累计错误数，包含中断和异常响应
@@ -78,7 +96,10 @@ monitor_object_metric:
       desc: 启动以来连接后端服务器的累计重试次数，偏高表明后端不稳定
     haproxy_wredis:
       name: 请求重分发数
-      desc: 启动以来请求被重新分发到其他后端服务器的累计次数
+      desc: 启动以来请求被重新分发到其他后端服务器的累计次数。
+    haproxy_wredis_rate:
+      name: 请求重分发速率
+      desc: 近 5 分钟平均每秒被重新分发到其他后端的请求数。
     haproxy_act:
       name: 活跃服务器数
       desc: 该后端中当前在线的活跃（非备份）服务器数量，反映可用服务能力

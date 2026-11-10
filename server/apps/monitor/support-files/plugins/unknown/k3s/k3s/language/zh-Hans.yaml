@@ -47,8 +47,8 @@ monitor_object_metric:
       name: 容器重启次数
       desc: Pod 内各容器自启动以来的重启总次数。
     pod_cpu_utilization:
-      name: CPU 使用率
-      desc: Pod 实际 CPU 使用量占配置 CPU 上限的百分比。
+      name: Pod CPU 使用率（相对限额）
+      desc: 相对该 Pod CPU 限额的使用比例（近 5 分钟平均）；超限或短暂突发时可超过 100%。未设置 CPU 限额时通常无数据或无法计算，请先确认限额配置。
     pod_memory_utilization:
       name: 内存使用率
       desc: Pod 当前内存工作集占配置内存上限的百分比。

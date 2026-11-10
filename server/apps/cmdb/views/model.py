@@ -18,6 +18,14 @@ from apps.core.decorators.api_permission import HasPermission
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.utils.web_utils import WebUtils
 
+MODEL_ATTR_LIST_BATCH_LIMIT = 50
+
+
+def _public_model_attrs(attrs: list) -> list:
+    from apps.cmdb.services.module_ingest import filter_user_facing_attrs
+
+    return [attr for attr in filter_user_facing_attrs(attrs) if not attr.get("is_display_field")]
+
 
 class ModelViewSet(CmdbPermissionMixin, viewsets.ViewSet):
     @property
@@ -639,11 +647,61 @@ class ModelViewSet(CmdbPermissionMixin, viewsets.ViewSet):
         if permission_error:
             return permission_error
 
-        result = ModelManage.search_model_attr(model_id, request.user.locale)
-        from apps.cmdb.services.module_ingest import filter_user_facing_attrs
+        result = ModelManage.search_model_attr(model_id, request.user.locale, model_info=model_info)
+        return WebUtils.response_success(_public_model_attrs(result))
 
-        filtered_attrs = [attr for attr in filter_user_facing_attrs(result) if not attr.get("is_display_field")]
-        return WebUtils.response_success(filtered_attrs)
+    @HasPermission("model_management-View")
+    @action(detail=False, methods=["post"], url_path="attr_list/batch")
+    def model_attr_list_batch(self, request):
+        """一次返回多个模型的用户可见属性。逐个模型校验查看权限，任一失败则整批拒绝。"""
+        model_ids = request.data.get("model_ids") if isinstance(request.data, dict) else None
+        if not isinstance(model_ids, list) or not model_ids:
+            return WebUtils.response_error("model_ids 不能为空", status_code=status.HTTP_400_BAD_REQUEST)
+        if len(model_ids) > MODEL_ATTR_LIST_BATCH_LIMIT:
+            return WebUtils.response_error(
+                f"单次最多查询{MODEL_ATTR_LIST_BATCH_LIMIT}个模型属性",
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
+
+        normalized: list[str] = []
+        seen: set[str] = set()
+        for model_id in model_ids:
+            if not isinstance(model_id, str) or not model_id or len(model_id) > 128:
+                return WebUtils.response_error("model_ids 含非法模型 ID", status_code=status.HTTP_400_BAD_REQUEST)
+            if model_id in seen:
+                continue
+            seen.add(model_id)
+            normalized.append(model_id)
+
+        model_map = ModelManage.search_models_by_ids(normalized)
+        visible_models = BusinessModelVisibility.filter_models(model_map.values())
+        permitted: list[dict] = []
+        for model_id in normalized:
+            model_info = visible_models.get(model_id)
+            if not model_info:
+                return WebUtils.response_error("模型不存在", status_code=status.HTTP_404_NOT_FOUND)
+            permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(
+                request=request,
+                model_id=model_id,
+                permission_type=PERMISSION_MODEL,
+            )
+            permission_error = self.require_model_view_permission(
+                request,
+                model_info,
+                default_group_id=self.default_group_id,
+                error_message="抱歉！您没有此模型的权限",
+                permissions_map=permissions_map,
+            )
+            if permission_error:
+                return permission_error
+            permitted.append(model_info)
+
+        locale = getattr(request.user, "locale", None) or "zh-Hans"
+        attrs = {
+            model_info["model_id"]: _public_model_attrs(ModelManage.search_model_attr(model_info["model_id"], locale, model_info=model_info))
+            for model_info in permitted
+        }
+        return WebUtils.response_success({"attrs": attrs})
 
     @HasPermission("model_management-View")
     def _model_unique_rule_list(self, request, model_id: str):

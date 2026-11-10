@@ -1595,6 +1595,30 @@
     ]
   },
   {
+    "id": "azurelocal_cmdb",
+    "name": "Azure Local",
+    "model_id": "azurelocal_cmdb",
+    "task_type": "cloud",
+    "type": "protocol",
+    "credential_protocol": null,
+    "credential_default_port": null,
+    "category": "vmware",
+    "edition": "企业版",
+    "original_form": "platform_api",
+    "form_source": "Azure Local CMDB 采集",
+    "binding": "cloud/oauth_client",
+    "inline_fields": [
+      "username",
+      "password",
+      "tenant_id",
+      "subscription_id",
+      "resource_group",
+      "cluster_name",
+      "azure_cloud",
+      "resource_uri"
+    ]
+  },
+  {
     "id": "host",
     "name": "主机",
     "model_id": "host",

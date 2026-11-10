@@ -10,9 +10,9 @@ DEFAULT_POOL_BOUNDS = {
     "critical": (1, 2),
     "notification": (1, 2),
     "state": (1, 2),
-    "background": (1, 1),
+    "background": (1, 4),
 }
-DEFAULT_TOTAL_CONCURRENCY_LIMIT = 12
+DEFAULT_TOTAL_CONCURRENCY_LIMIT = 15
 DEDICATED_QUEUES = {
     "dashboard-report-render": ("dashboard_report_render",),
     "patch-maintenance": ("patch_maintenance",),

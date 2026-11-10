@@ -59,6 +59,7 @@ from apps.cmdb.services.unique_rule import (
     guard_attr_change_against_unique_rules,
     list_unique_rule_candidate_fields,
     list_unique_rules,
+    parse_unique_rules,
     update_unique_rule,
     validate_unique_rules_against_existing_instances,
 )
@@ -1327,6 +1328,13 @@ class ModelManage(object):
         return query_model_info(model_id)
 
     @staticmethod
+    def search_models_by_ids(model_ids: list[str]) -> dict[str, dict]:
+        """一次查询多个模型实体，供属性批量接口复用。"""
+        from apps.cmdb.services.model_graph_query import search_models_by_ids as query_models_by_ids
+
+        return query_models_by_ids(model_ids)
+
+    @staticmethod
     def get_organization_option(items: list, result: list, name_prefix: str = ""):
         for item in items:
             if name_prefix:
@@ -1390,18 +1398,24 @@ class ModelManage(object):
         return ModelManage._clone_options(option)
 
     @staticmethod
-    def search_model_attr(model_id: str, language: str = "zh-Hans"):
+    def search_model_attr(model_id: str, language: str = "zh-Hans", *, model_info: dict | None = None):
         """
-        查询模型属性
+        查询模型属性。
+
+        传入已加载的 model_info 时不再访问图库，唯一规则直接取模型节点上的 unique_rules。
         """
-        model_info = ModelManage.search_model_info(model_id)
+        if model_info is None:
+            model_info = ModelManage.search_model_info(model_id)
+        if not model_info:
+            raise BaseAppException("模型不存在")
         attrs = ModelManage._normalize_attr_constraints(ModelManage.parse_attrs(model_info.get("attrs", "[]")))
         attrs = [ModelManage.sanitize_attr_default_value(attr, log_context="search_model_attr") for attr in attrs]
-        unique_rules = build_unique_rule_context(model_id).unique_rules
+        unique_rules = parse_unique_rules(model_info.get("unique_rules", "[]"))
         from apps.cmdb.language.service import apply_attr_translations
 
-        attrs = apply_attr_translations(attrs, model_id, language)
-        return enrich_attrs_with_unique_display(attrs, unique_rules, model_id)
+        resolved_model_id = model_info.get("model_id") or model_id
+        attrs = apply_attr_translations(attrs, resolved_model_id, language)
+        return enrich_attrs_with_unique_display(attrs, unique_rules, resolved_model_id)
 
     @staticmethod
     def search_model_attr_v2(model_id: str, language: str = "zh-Hans", *, attr_ids: list[str] | None = None):

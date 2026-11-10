@@ -44,7 +44,7 @@
       "data_type": "Number",
       "unit": "counts",
       "dimensions": [],
-      "description": "Total number of HTTP requests processed, measuring overall server workload and processing capacity",
+      "description": "Total HTTP requests processed since startup, measuring overall server workload.",
       "query": "apache_TotalAccesses{__$labels__}"
     },
     {
@@ -138,12 +138,12 @@
     {
       "metric_group": "Performance",
       "name": "apache_TotalAccesses_rate",
-      "display_name": "Request Rate Change",
+      "display_name": "HTTP Access Rate",
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
       "unit": "cps",
       "dimensions": [],
-      "description": "Rate of change in requests per second calculated over a 5-minute window, indicating traffic trends and fluctuations",
+      "description": "Average HTTP requests processed per second over the last 5 minutes.",
       "query": "rate(apache_TotalAccesses{__$labels__}[5m])"
     },
     {

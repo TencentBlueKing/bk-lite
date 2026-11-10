@@ -78,6 +78,12 @@ export const PROBE_CAPABILITY_MATRIX: Record<ProbeLanguage, ProbeCapability> = {
     inferredComponents: [],
     manualInstrumentation: false,
   },
+  collector: {
+    version: 'OTLP/HTTP',
+    frameworks: ['OTLP Trace'],
+    inferredComponents: [],
+    manualInstrumentation: false,
+  },
 };
 
 const DOTNET_WINDOWS_CAPABILITY: ProbeCapability = {

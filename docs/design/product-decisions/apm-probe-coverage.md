@@ -1,6 +1,6 @@
 # APM 探针覆盖产品决策记忆
 
-- 最近更新：2026-11-04
+- 最近更新：2026-11-09
 - 当前规格：`specs/changes/apm-probe-coverage/spec.md`。已交付的 Linux .NET 见 `specs/changes/apm-dotnet-probe/spec.md`，制品发布见 `docs/operations/apm-probe-artifact-release.md`。
 
 ## 产品定位
@@ -13,9 +13,12 @@ APM 探针按 OpenTelemetry 官方探针补齐。一种探针钉一个版本，T
 - 第一批：PHP 扩展钉 `1.4.2`，只做 Linux x86_64 glibc 的 PHP 8.1–8.4 NTS。同一份离线包含 Laravel、Symfony、Slim、Guzzle、PDO、MySQLi 及 SDK、OTLP 导出器。页面只写这组。
 - 第一批：.NET 在 `1.16.0` 上增加 Windows 制品。同一张卡片，Linux 下载地址不变。Windows 片段不重启服务、不写注册表。ASP.NET Framework 只出现在 Windows。
 - 第一批：打开现有 eBPF 卡片，钉 OBI `v1.0.0` 的 Linux amd64。片段只盯用户指定的 Go 可执行文件，只接受 host。验收只承诺未装 Go SDK 的 Go `net/http` 入口 Span。
+- 2026-11-09：同一主机上不同 Go 可执行文件各生成一份片段、各启动一个 OBI。配置按绝对路径分开写到 `$HOME/.otel-obi/configs/<路径>/obi.yaml`，避免后一份覆盖前一份。探针包和发现规则不变，仍是这一个路径。同一天补上：服务名和命名空间写进 OBI 配置的 `resource.attributes`，调用链归到页面所选服务，而不是可执行文件名。
 - 第一批口径：Node.js 0.79.0 去掉 Fastify。Go SDK 推断下游去掉 MySQL、PostgreSQL、Redis、Kafka。Gin、Echo、gRPC、net/http 留在手动框架列表，离线包补上对应 contrib 模块。
 - 第二批：Ruby SDK 1.13.1 加 Rack 0.31.2，C++ v1.30.0，Erlang/Elixir SDK 1.7.0 加 exporter 1.11.0，Swift 2.6.0。卡片已按发布手册里的这些版本打开。交付形态与 Go SDK 相同：系统内下载、校验 SHA-256、不访问公网、不覆盖已有应用源码。
 - 目标主机仍从本系统下载离线包。
+- 2026-11-06：自建 Collector 在接入页生成一段合并进已有 Collector 的 Trace 转发配置。端点仍是所选云区域的内网 OTLP/HTTP，片段不写请求头，也不安装探针。`service.namespace` 写成所选应用；已有的服务名保持不变。采样率低于 100 时才写入 Contrib 的 `probabilistic_sampler`。
+- Kubernetes Operator 不在接入页展示。语言探针原有的 Kubernetes 环境变量片段保留。
 
 ## 已确认设计决策
 
@@ -31,7 +34,7 @@ APM 探针按 OpenTelemetry 官方探针补齐。一种探针钉一个版本，T
 - macOS 探针包。
 - .NET 的 Alpine / musl 仍按 `specs/changes/apm-dotnet-probe/spec.md` 后置，本决定不把它提前。
 - Rust、Kotlin。上游把 Trace 标成 Stable 之前不钉版本。
-- PHP 的 Windows 包、ZTS、PHP Distro。Kubernetes Operator。OBI 的容器和集群运行方式。
+- PHP 的 Windows 包、ZTS、PHP Distro。Kubernetes Operator 注入。OBI 的容器和集群运行方式。OBI 仍只承诺指定的 Go `net/http` 进程。
 - 指标、日志、Profiles。
 
 ## 仍待确认
@@ -43,6 +46,7 @@ APM 探针按 OpenTelemetry 官方探针补齐。一种探针钉一个版本，T
 - 「.NET ARM64 作为企业版后置」（`specs/changes/apm-dotnet-probe/spec.md` 原出范围）：2026-11-03 改为全部 APM 探针的 ARM 都先不做，不单指 .NET，也不绑定企业版。
 - 「.NET 第一版不做 Windows / .NET Framework」（`specs/changes/apm-dotnet-probe/spec.md`）：2026-11-04 由探针补齐规格承接 Windows 制品。Linux glibc 制品契约不改。
 - 「eBPF 作为 Go 语言探针的一种」：2026-11-04 改为打开现有 eBPF 卡片，验收范围收在指定的 Go 进程。
+- 「接入页保留不可点击的自建 Collector 与 Kubernetes Operator 卡片」：2026-11-06 改为 Collector 生成转发片段，Operator 从接入页拿掉。
 
 ## 决策来源
 

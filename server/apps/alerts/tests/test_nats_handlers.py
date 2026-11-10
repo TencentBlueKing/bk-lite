@@ -966,6 +966,49 @@ def test_get_active_alert_top(user_info):
 
 
 @pytest.mark.django_db
+def test_get_active_alert_top_severity_order(user_info):
+    older_warning = Alert.objects.create(
+        alert_id="A-WARN-OLD",
+        level="2",
+        title="old warning",
+        content="c",
+        fingerprint="fp-warn-old",
+        team=[1],
+        status=AlertStatus.PENDING,
+    )
+    newer_critical = Alert.objects.create(
+        alert_id="A-CRIT-NEW",
+        level="0",
+        title="new critical",
+        content="c",
+        fingerprint="fp-crit-new",
+        team=[1],
+        status=AlertStatus.PENDING,
+    )
+    older_critical = Alert.objects.create(
+        alert_id="A-CRIT-OLD",
+        level="0",
+        title="old critical",
+        content="c",
+        fingerprint="fp-crit-old",
+        team=[1],
+        status=AlertStatus.PENDING,
+    )
+    Alert.objects.filter(pk=older_warning.pk).update(created_at=datetime.datetime(2026, 1, 1, tzinfo=datetime.timezone.utc))
+    Alert.objects.filter(pk=newer_critical.pk).update(created_at=datetime.datetime(2026, 3, 1, tzinfo=datetime.timezone.utc))
+    Alert.objects.filter(pk=older_critical.pk).update(created_at=datetime.datetime(2026, 2, 1, tzinfo=datetime.timezone.utc))
+
+    default_order = N.get_active_alert_top(limit=5, user_info=user_info)
+    assert [item["alert_id"] for item in default_order["data"]] == ["A-WARN-OLD", "A-CRIT-OLD", "A-CRIT-NEW"]
+
+    severity_order = N.get_active_alert_top(limit=5, order="severity", user_info=user_info)
+    assert [item["alert_id"] for item in severity_order["data"]] == ["A-CRIT-OLD", "A-CRIT-NEW", "A-WARN-OLD"]
+
+    invalid = N.get_active_alert_top(limit=5, order="nope", user_info=user_info)
+    assert invalid["result"] is False
+
+
+@pytest.mark.django_db
 def test_get_active_alert_top_created_at_uses_user_timezone_clock(user_info):
     alert = Alert.objects.create(alert_id="A1", level="0", title="t", content="c", fingerprint="fp", team=[1], status=AlertStatus.PENDING)
     Alert.objects.filter(pk=alert.pk).update(created_at=datetime.datetime(2026, 4, 27, 3, 22, 33, tzinfo=datetime.timezone.utc))

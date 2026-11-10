@@ -81,9 +81,10 @@ monitor_object_metric:
       desc: Represents the amount of memory currently available for the Oracle Database
         SGA, reflecting the amount of unused idle resources in the SGA
     oracledb_sga_used_percent_gauge:
-      name: OracleDb SGA Usage Percentage
-      desc: Represents the memory usage of the Oracle Database SGA and is used to
-        evaluate the efficiency of the SGA's resources
+      name: SGA Utilization
+      desc: Share of configured SGA capacity currently in use (about 0–100%), sampled
+        at collection time. Use it to judge SGA pressure and whether the configuration
+        is adequate.
     oracledb_pga_total_gauge:
       name: OracleDb PGA Total Size
       desc: A PGA is an independently allocated area of memory for each user process
@@ -106,8 +107,9 @@ monitor_object_metric:
       name: OracleDb Table Available Space
       desc: The size of the remaining disk space in the specified tablespace
     oracledb_tablespace_used_percent_gauge:
-      name: OracleDb Tablespace Usage Percentage
-      desc: The percentage of the used capacity of the specified tablespace
+      name: Tablespace Utilization
+      desc: Share of the specified tablespace capacity currently in use (about 0–100%),
+        sampled at collection time. Use it to warn on tablespace capacity.
     oracledb_rac_node_gauge:
       name: OracleDb RAC Node Count
       desc: The current number of Oracle database cluster nodes

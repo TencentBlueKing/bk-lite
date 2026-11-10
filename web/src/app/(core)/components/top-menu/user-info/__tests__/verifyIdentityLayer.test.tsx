@@ -33,6 +33,9 @@ import UserInformation from '../userInformation';
 const messages = {
   'userInfo.changePassword': '修改密码',
   'userInfo.verifyIdentity': '验证身份',
+  'userInfo.otpAuth': 'OTP 认证',
+  'userInfo.otpBound': '已绑定',
+  'userInfo.unbindOtp': '解绑',
 };
 
 beforeAll(() => {
@@ -90,5 +93,52 @@ describe('用户信息抽屉上的验证身份弹窗', () => {
     const drawer = document.querySelector('.ant-drawer');
 
     expect(popupZIndex(dialog)).toBeGreaterThan(popupZIndex(drawer));
+  });
+
+  it('未绑定 OTP 时不展示解绑入口', async () => {
+    render(
+      <IntlProvider locale="zh" messages={messages}>
+        <UserInformation
+          visible
+          onClose={() => undefined}
+          fetchUserInfoAction={async () => ({
+            username: 'admin',
+            display_name: 'admin',
+            email: 'admin@example.com',
+            timezone: 'Asia/Shanghai',
+            locale: 'zh-Hans',
+            has_otp: false,
+          })}
+        />
+      </IntlProvider>,
+    );
+
+    expect(await screen.findByRole('button', { name: '修改密码' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '解绑' })).toBeNull();
+    expect(screen.queryByText('OTP 认证')).toBeNull();
+  });
+
+  it('已绑定 OTP 时点击解绑先打开密码验证', async () => {
+    const user = userEvent.setup();
+    render(
+      <IntlProvider locale="zh" messages={messages}>
+        <UserInformation
+          visible
+          onClose={() => undefined}
+          fetchUserInfoAction={async () => ({
+            username: 'admin',
+            display_name: 'admin',
+            email: 'admin@example.com',
+            timezone: 'Asia/Shanghai',
+            locale: 'zh-Hans',
+            has_otp: true,
+          })}
+        />
+      </IntlProvider>,
+    );
+
+    await user.click(await screen.findByRole('button', { name: '解绑' }));
+    expect(await screen.findByText('验证身份')).toBeTruthy();
+    expect(screen.getByText('已绑定')).toBeTruthy();
   });
 });

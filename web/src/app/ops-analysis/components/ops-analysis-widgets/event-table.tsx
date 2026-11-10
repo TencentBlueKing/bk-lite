@@ -21,6 +21,8 @@ import {
 } from '@/app/ops-analysis/components/ops-analysis-widgets/table-like-data';
 import { useTranslation } from '@/utils/i18n';
 import { supportsServerPagination } from '@/app/ops-analysis/utils/tablePagination';
+import { useTableBodyScrollY } from '@/app/ops-analysis/components/widgets/shared/useTableBodyScrollY';
+import styles from '@/app/ops-analysis/components/widgets/comTable.module.scss';
 import { useInteractionSurface } from '@/app/ops-analysis/context/interactionSurface';
 import { InteractionActionCell, useWidgetDataLink } from '@/app/ops-analysis/components/interactionTitleIcon';
 import {
@@ -80,6 +82,9 @@ const OpsAnalysisEventTable: React.FC<OpsAnalysisEventTableProps> = ({
     ),
     [rawData, queryPagination, supportsPaginationParams],
   );
+  const { slotRef: tableSlotRef, tableScrollY } = useTableBodyScrollY({
+    hasPagination: isPaginated,
+  });
   const configuredColumns = useMemo<TableColumnConfigItem[]>(() => {
     return (config?.tableConfig?.columns || [])
       .filter((col) => col.visible)
@@ -185,7 +190,7 @@ const OpsAnalysisEventTable: React.FC<OpsAnalysisEventTableProps> = ({
     <div
       className="ops-analysis-event-table flex h-full min-h-0 flex-col pt-2"
     >
-      <div className="min-h-0 flex-1 overflow-hidden">
+      <div ref={tableSlotRef} className={`${styles.opsTableScroll} min-h-0 flex-1 overflow-hidden`}>
         <CustomTable
           columns={columns}
           dataSource={rows}
@@ -210,7 +215,10 @@ const OpsAnalysisEventTable: React.FC<OpsAnalysisEventTableProps> = ({
               : false
           }
           onChange={isPaginated ? handleTableChange : undefined}
-          scroll={{ x: 'max-content' }}
+          scroll={{
+            x: 'max-content',
+            y: tableScrollY,
+          }}
           expandable={{
             expandedRowKeys,
             onExpandedRowsChange: (keys) => {

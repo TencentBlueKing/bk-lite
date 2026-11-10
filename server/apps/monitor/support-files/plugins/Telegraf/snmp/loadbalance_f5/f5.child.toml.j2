@@ -67,6 +67,18 @@
     [[inputs.snmp.field]]
         oid = "1.3.6.1.4.1.3375.2.1.1.2.1.8.0"
         name = "lb_current_connections"
+    # ---- HA：故障切换与配置同步。标量，顶层 field 必须带 .0，禁止写成 table.field。----
+    # 故障切换：unknown(0) offline(1) forcedOffline(2) standby(3) active(4)
+    # 仅 standby(3)/active(4) 视为角色正常。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.3375.2.1.14.3.1.0"
+        name = "failover_status"
+    # 配置同步：unknown(0) syncing(1) needManualSync(2) inSync(3) syncFailed(4)
+    # syncDisconnected(5) standalone(6) awaitingInitialSync(7) incompatibleVersion(8) partialSync(9)
+    # 仅 syncing(1)/inSync(3)/standalone(6) 视为正常；单机不是故障。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.3375.2.1.14.1.1.0"
+        name = "sync_status"
     # F5 机箱传感器表：table.field 禁止 .0。
     # sysChassisTempTemperature 摄氏度；sysChassisFanStatus / sysChassisPowerSupplyStatus：good(1)→1，其余→2。
     [[inputs.snmp.table]]
@@ -109,3 +121,24 @@
         default = 2
         [processors.enum.mapping.value_mappings]
             "1" = 1
+# 故障切换：standby(3)/active(4) → 1（角色正常）；unknown/offline/forcedOffline → 2
+[[processors.enum]]
+    namepass = ["snmp"]
+    [[processors.enum.mapping]]
+        field = "failover_status"
+        dest = "failover_ok"
+        default = 2
+        [processors.enum.mapping.value_mappings]
+            "3" = 1
+            "4" = 1
+# 配置同步：syncing(1)/inSync(3)/standalone(6) → 1；其余 → 2。单机不算故障。
+[[processors.enum]]
+    namepass = ["snmp"]
+    [[processors.enum.mapping]]
+        field = "sync_status"
+        dest = "sync_ok"
+        default = 2
+        [processors.enum.mapping.value_mappings]
+            "1" = 1
+            "3" = 1
+            "6" = 1

@@ -25,9 +25,10 @@ monitor_object_metric:
       desc: Core cluster anomaly indicator, represents the count of unassigned shards;
         investigate if >0; long-term existence reduces data redundancy and availability
     elasticsearch_jvm_mem_heap_used_percent:
-      name: JVM Heap Usage
-      desc: Core JVM memory pressure metric, reflects JVM memory usage; high usage
-        triggers Full GC and cluster lag
+      name: JVM Heap Utilization
+      desc: Share of JVM heap currently in use (about 0–100%), sampled at collection
+        time. High heap occupancy often causes frequent garbage collection and cluster
+        stalls. This is a core memory-pressure indicator.
     elasticsearch_jvm_gc_collectors_young_collection_time_in_millis_rate:
       name: Young Gen GC Time Per Second
       desc: GC efficiency monitoring metric, reflects GC operation latency; sustained
@@ -45,9 +46,10 @@ monitor_object_metric:
       desc: Node-level count of documents marked deleted but not yet merged; a large
         backlog increases query overhead until segment merges reclaim space
     elasticsearch_process_cpu_percent:
-      name: Process CPU Usage
-      desc: Process compute load metric, reflects CPU load of the process; high load
-        degrades cluster read/write performance
+      name: Process CPU Occupancy
+      desc: Current CPU occupancy of the Elasticsearch process, totaled across logical
+        cores, so it can exceed 100% on a multi-core host. Sampled at collection time.
+        A sustained high value slows reads and writes.
     elasticsearch_process_open_file_descriptors:
       name: Open File Descriptors
       desc: File resource monitoring metric, reflects file descriptor usage; approaching
