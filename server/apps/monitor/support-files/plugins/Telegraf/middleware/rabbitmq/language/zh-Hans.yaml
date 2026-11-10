@@ -98,8 +98,8 @@ monitor_object_metric:
       name: 队列消费者
       desc: 队列上的消费者数量
     rabbitmq_queue_consumer_utilisation:
-      name: 队列消费者利用率
-      desc: 队列可向消费者投递的时间占比
+      name: 队列消费者投递时间占比
+      desc: 队列能够向消费者投递消息的时间占比（已按百分比展示，约 0–100%）；为当前采样值。反映消费者是否跟得上投递节奏，勿与消息堆积率或队列深度混淆。
     rabbitmq_queue_memory:
       name: 队列内存
       desc: 队列占用的内存

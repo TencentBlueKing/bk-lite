@@ -106,8 +106,8 @@ monitor_object_metric:
       name: Queue Consumers
       desc: Number of consumers on a queue
     rabbitmq_queue_consumer_utilisation:
-      name: Queue Consumer Utilisation
-      desc: Fraction of time the queue can deliver to consumers, as a percentage
+      name: Queue Consumer Delivery-Time Share
+      desc: Share of time the queue can deliver messages to consumers, shown as a percentage (about 0–100%) from the current sample. It shows whether consumers keep up with delivery. It should not be confused with message backlog or queue depth.
     rabbitmq_queue_memory:
       name: Queue Memory
       desc: Memory used by a queue

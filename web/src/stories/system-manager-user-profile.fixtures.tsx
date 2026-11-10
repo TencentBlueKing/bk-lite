@@ -6,6 +6,7 @@ export const systemManagerStorybookUserInfo = {
   email: 'storybook@example.com',
   timezone: 'Asia/Shanghai',
   locale: 'zh-hans',
+  has_otp: true,
 };
 
 export const systemManagerStorybookPasswordPolicy = {
