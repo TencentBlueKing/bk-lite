@@ -25,6 +25,15 @@ def test_packaged_collection_verification_rejects_missing_win_copy(tmp_path: Pat
         build_support.verify_packaged_ansible_windows_collection(packaged_root)
 
 
+def test_spec_bakes_version_before_archive_and_restores_after():
+    spec = Path(__file__).resolve().parent.parent.joinpath("ansible-executor.spec").read_text(encoding="utf-8")
+    bake = spec.index("bake_packaged_version_stamp")
+    analysis = spec.index("a = Analysis")
+    archive = spec.index("pyz = PYZ")
+    restore = spec.index("restore_version_stamp")
+    assert bake < analysis < archive < restore
+
+
 def test_packaged_collection_verification_accepts_win_copy(tmp_path: Path):
     packaged_root = tmp_path / "ansible-executor"
     module_file = packaged_root / "_internal" / "collections" / "ansible_collections" / "ansible" / "windows" / "plugins" / "modules" / "win_copy.ps1"
