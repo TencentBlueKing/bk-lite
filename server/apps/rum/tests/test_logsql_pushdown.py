@@ -426,6 +426,32 @@ def test_stats_queries_use_v138_functions():
     assert "`rum.vital.lcp`:>2500 AND `rum.vital.lcp`:<=4000" in view
     assert "`rum.vital.lcp`:>4000" in view
     assert "values(`user_agent.original`)" in queries[0]
+    for query in queries:
+        _assert_balanced(query)
+
+
+def _assert_balanced(query: str) -> None:
+    depth = 0
+    quote = ""
+    escaped = False
+    for char in query:
+        if quote:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == quote:
+                quote = ""
+            continue
+        if char in '"`':
+            quote = char
+        elif char == "(":
+            depth += 1
+        elif char == ")":
+            depth -= 1
+            assert depth >= 0, query
+    assert not quote, query
+    assert depth == 0, query
 
 
 def test_sample_text_reads_one_values_element():

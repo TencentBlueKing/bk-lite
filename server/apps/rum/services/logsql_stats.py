@@ -156,7 +156,7 @@ def view_stats_query(tenant_id: str, opts: dict) -> str:
         "count() if (`rum.vital.lcp`:>4000) as lcp_poor, "
         "count() if ("
         '"rum.event.type":view ("user_agent.original":Mobile OR '
-        '"user_agent.original":Android OR "user_agent.original":iPhone")'
+        '"user_agent.original":Android OR "user_agent.original":iPhone)'
         ") as mobile, "
         'count() if ("rum.event.type":view) as view_events '
         "| sort by (views desc) | offset 0 | limit 500"

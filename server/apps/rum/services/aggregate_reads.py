@@ -174,23 +174,31 @@ def _matrix_by_label(result: list[dict], label: str) -> dict[str, list[tuple[flo
     return grouped
 
 
-def _spark_index(seen: datetime, start: datetime, end: datetime, buckets: int) -> int | None:
-    origin = _as_utc(start)
-    width = (_as_utc(end) - origin).total_seconds()
-    if width <= 0:
+def _spark_step(start: datetime, end: datetime, buckets: int) -> int:
+    """桶宽。按原窗口均分，不用对齐后缩短的窗口，否则步长会小于桶宽。"""
+
+    width = (_as_utc(end) - _as_utc(start)).total_seconds()
+    if buckets <= 0 or width <= 0:
+        return 1
+    return max(1, int(width // buckets))
+
+
+def _interval_index(seen: datetime, start: datetime, buckets: int, step: int) -> int | None:
+    """``increase[step]`` 在时刻 t 统计的是 ``[t-step, t]``，放进该区间开启的桶。"""
+
+    if step <= 0:
         return None
-    index = int((seen - origin).total_seconds() / width * buckets)
-    if index < 0:
+    opened = (_as_utc(seen) - _as_utc(start)).total_seconds() - step
+    if opened < 0:
         return None
+    index = int(opened // step)
     if index >= buckets:
-        return buckets - 1
+        return None
     return index
 
 
 def _bucket_open(index: int, start: datetime, end: datetime, buckets: int) -> datetime:
-    origin = _as_utc(start)
-    width = (_as_utc(end) - origin).total_seconds()
-    return origin + timedelta(seconds=width * index / buckets)
+    return _as_utc(start) + timedelta(seconds=_spark_step(start, end, buckets) * index)
 
 
 def _fill_spark(
@@ -204,20 +212,23 @@ def _fill_spark(
 ) -> list[int | None]:
     """Place count samples. Quiet buckets become 0 only when the whole-window series exists.
 
-    A gap stays empty when it opens before the aggregate origin, or when ``zero_gaps`` is
-    false (no count series, or a percentile trend).
+    A sample at time t covers ``[t-step, t]`` and is stored in the bucket that interval opens.
+    Each bucket keeps one sample. A gap stays empty when it opens before the aggregate origin,
+    or when ``zero_gaps`` is false (no count series, or a percentile trend). A trailing bucket
+    with no complete interval keeps that same empty-or-zero rule.
     """
 
     if buckets <= 0 or (_as_utc(end) - _as_utc(start)).total_seconds() <= 0:
         return []
+    step = _spark_step(start, end, buckets)
     totals: list[float | None] = [None] * buckets
     for timestamp, value in points:
         if value is None:
             continue
-        index = _spark_index(datetime.fromtimestamp(timestamp, tz=UTC), start, end, buckets)
-        if index is None:
+        index = _interval_index(datetime.fromtimestamp(timestamp, tz=UTC), start, buckets, step)
+        if index is None or totals[index] is not None:
             continue
-        totals[index] = value if totals[index] is None else totals[index] + value
+        totals[index] = value
     if zero_gaps and origin is not None:
         covered_from = _as_utc(origin)
         window_end = _as_utc(end)
@@ -315,16 +326,21 @@ class AggregateRumReader:
             "rum_application",
         )
         _, buckets = sparkline_layout(start, end)
-        step = max(FLUSH_SECONDS, math.ceil(window_seconds / max(buckets, 1)))
-        series = _matrix_by_label(
-            self.client.query_range(
-                _increase(VIEWS_METRIC, selector, step, "rum_application"),
-                start=_as_utc(start),
-                end=aligned,
-                step_seconds=step,
-            ),
-            "rum_application",
-        )
+        # 步长按原窗口均分。increase 在时刻 t 统计 [t-step, t]，所以从起点之后一个步长开始查，
+        # 到对齐后的结束时间为止；还没有完整区间的尾桶不在这次结果里。
+        step = _spark_step(start, end, buckets)
+        range_start = _as_utc(start) + timedelta(seconds=step)
+        series: dict[str, list[tuple[float, float | None]]] = {}
+        if range_start <= aligned:
+            series = _matrix_by_label(
+                self.client.query_range(
+                    _increase(VIEWS_METRIC, selector, step, "rum_application"),
+                    start=range_start,
+                    end=aligned,
+                    step_seconds=step,
+                ),
+                "rum_application",
+            )
         found: dict[str, dict] = {}
         for app in names:
             view_count = _count(views.get(app)) if app in views else None

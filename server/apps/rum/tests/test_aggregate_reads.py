@@ -235,8 +235,8 @@ def test_catalog_maps_views_errors_and_millisecond_percentiles_without_traffic_o
     assert storefront["inpP75"] is None
     assert storefront["sessions"] == 4
     assert storefront["errorRate"] == 0.25
-    # 00:02:00 落在第 2 个桶。整窗有浏览序列时，没有样本的桶记 0，和 VictoriaLogs 预填 0 一致。
-    assert sparks["storefront"][1] == 15
+    # 00:02:00 是 [00:00:38, 00:02:00] 的结束点，落在第 1 个桶。整窗有浏览序列时，没有样本的桶记 0。
+    assert sparks["storefront"][0] == 15
     assert sparks["storefront"].count(0) == 11
     checkout = rows[1]
     assert checkout["views"] is None
@@ -250,9 +250,11 @@ def test_catalog_maps_views_errors_and_millisecond_percentiles_without_traffic_o
     assert "billing" not in "".join(expression for expression, _at in client.instant)
     assert all("rum_traffic_class" not in expression and "shard" not in expression for expression, _at in client.instant)
     _range, start, end, step = client.ranges[0]
-    assert start == START
+    # 990 秒 / 12 桶 = 82 秒。range 从窗口起点之后一个步长开始，避免把起点之前的 increase 算进来。
+    assert step == 82
+    assert start == START + timedelta(seconds=step)
     assert end == ALIGNED
-    assert step >= 10
+    assert "[82s]" in _range
 
 
 def test_catalog_selector_escapes_tenant_and_application_and_drops_other_apps():
@@ -291,9 +293,10 @@ def test_zero_increase_stays_zero_and_a_missing_error_series_is_zero_errors():
 
 
 def test_view_trend_keeps_gaps_before_the_origin_and_does_not_zero_percentile_gaps():
-    # 12 桶覆盖 990 秒，每桶 82.5 秒。起点落在第 2 桶开端之后，第 1 桶仍早于起点。
+    # 12 桶覆盖 990 秒，步长 82 秒。起点落在第 2 桶开端之后，第 1 桶仍早于起点。
+    # 样本时刻是区间结束点，所以 +164 覆盖 [+82, +164]，放进第 2 个桶。
     origin = START + timedelta(seconds=90)
-    points = [(START.timestamp() + 120, 15.0)]
+    points = [(START.timestamp() + 164, 15.0)]
 
     counted = _fill_spark(points, START, END, 12, origin=origin, zero_gaps=True)
     percentile = _fill_spark(points, START, END, 12, origin=origin, zero_gaps=False)
@@ -305,6 +308,44 @@ def test_view_trend_keeps_gaps_before_the_origin_and_does_not_zero_percentile_ga
     assert percentile[1] == 15
     assert percentile[2] is None
     assert _fill_spark([], START, END, 12, origin=START, zero_gaps=False) == [None] * 12
+
+
+def test_view_trend_does_not_double_count_the_opening_bucket():
+    # 不足 2 小时仍是 12 桶。对齐后窗口更短，旧步长 595 比桶宽 597 小，
+    # 从起点开始的两个点会同时落进第 1 个桶。
+    start = datetime(2026, 11, 10, 0, 0, tzinfo=UTC)
+    end = datetime(2026, 11, 10, 1, 59, 30, tzinfo=UTC)
+    step = 597
+    narrow = 595
+    bucket_values = [1500 + index for index in range(11)]
+
+    def respond(expression, *, kind):
+        if kind == "range":
+            points = [[start.timestamp(), "1552"], [start.timestamp() + narrow, "1500"]]
+            points.extend([start.timestamp() + (index + 1) * step, str(value)] for index, value in enumerate(bucket_values))
+            return [{"metric": {"rum_application": "storefront"}, "values": points}]
+        if "rum_views_total" in expression and "histogram" not in expression:
+            return [{"metric": {"rum_application": "storefront"}, "value": [1, str(sum(bucket_values))]}]
+        return []
+
+    client = _Client(respond)
+    rows = [{"application": "storefront", "sessions": 4, "views": 9, "errors": 1, "lcpP75": 1, "inpP75": 1, "errorRate": 0}]
+    sparks = {"storefront": []}
+    reader = AggregateRumReader(client, origin_at=lambda: start, clock=lambda: end)
+
+    reader.overlay_catalog(rows, sparks, tenant_id="core", apps=["storefront"], start=start, end=end)
+
+    spark = sparks["storefront"]
+    assert spark[:11] == bucket_values
+    assert spark[11] == 0
+    assert spark[0] == 1500
+    assert sum(spark) == sum(bucket_values)
+    assert rows[0]["views"] == sum(bucket_values)
+    _range, range_start, range_end, queried_step = client.ranges[0]
+    assert queried_step == step
+    assert range_start == start + timedelta(seconds=step)
+    assert range_end == datetime(2026, 11, 10, 1, 58, 50, tzinfo=UTC)
+    assert f"[{step}s]" in _range
 
 
 def test_route_list_uses_visitor_traffic_and_keeps_the_other_route():
@@ -454,7 +495,7 @@ def test_analytics_pages_replace_aggregate_numbers_and_keep_log_fields():
     assert rows[0]["errorRate"] == pytest.approx(0.25)
     assert rows[1]["views"] is None
     assert rows[1]["sessions"] == 0
-    assert sparks["storefront"][1] == 15
+    assert sparks["storefront"][0] == 15
     assert any("count_uniq(`rum.session.key`)" in query for query in logs.queries)
     overview = analytics.application_overview("core", "storefront", START, END)
     assert overview["kpi"]["views"] == 120

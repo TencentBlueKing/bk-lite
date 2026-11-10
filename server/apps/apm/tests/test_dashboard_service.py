@@ -80,6 +80,9 @@ def test_dashboard_empty_when_organization_has_no_services():
 
     assert payload["empty"] is True
     assert payload["kpis"]["status"] == "empty"
+    assert payload["health"]["status"] == "empty"
+    assert payload["top_error_rate"]["status"] == "empty"
+    assert payload["top_p95"]["status"] == "empty"
     assert payload["releases"]["status"] == "empty"
 
 
@@ -411,6 +414,8 @@ def test_dashboard_keeps_counts_and_marks_health_unknown_without_samples():
     assert _health_counts(payload)["unknown"] == 1
     assert _health_counts(payload)["healthy"] == 0
     assert payload["top_error_rate"]["status"] == "empty"
+    assert payload["top_p95"]["status"] == "empty"
+    assert payload["health"]["status"] == "ok"
     assert traces.service_red_calls == []
 
 
@@ -425,5 +430,55 @@ def test_dashboard_aggregate_error_does_not_scan_traces():
     assert payload["kpis"]["status"] == "ok"
     assert payload["kpis"]["data"]["application_count"] == 1
     assert payload["kpis"]["data"]["request_rate"] is None
-    assert _health_counts(payload)["unknown"] == 1
+    assert payload["health"] == {"status": "failed", "error": "聚合库查询不可用"}
+    assert payload["top_error_rate"] == {"status": "failed", "error": "聚合库查询不可用"}
+    assert payload["top_p95"] == {"status": "failed", "error": "聚合库查询不可用"}
+
+
+class _PartialAggregateRed:
+    def service_red(self, query):
+        if query.service_name == "payment":
+            raise TelemetryStoreUnavailable("聚合库查询不可用")
+        return _red(request_rate=10.0, error_rate=0.08, p95_ms=400.0)
+
+
+def test_dashboard_top_and_health_fail_when_every_service_store_is_unavailable():
+    now = timezone.now()
+    _service(name="checkout", last_seen_at=now)
+    _service(name="payment", last_seen_at=now)
+
+    payload = ApmDashboardService(metric_store=StubMetricStore({}), red_store=_ExplodingRed(), now_fn=lambda: now).build(
+        organization_id=10,
+        window="1h",
+    )
+
+    assert payload["empty"] is False
+    assert payload["kpis"]["status"] == "ok"
+    assert payload["kpis"]["data"]["request_rate"] is None
+    assert payload["kpis"]["data"]["error_request_rate"] is None
+    assert payload["kpis"]["data"]["p95_ms"] is None
+    assert payload["health"] == {"status": "failed", "error": "聚合库查询不可用"}
+    assert payload["top_error_rate"] == {"status": "failed", "error": "聚合库查询不可用"}
+    assert payload["top_p95"] == {"status": "failed", "error": "聚合库查询不可用"}
+
+
+def test_dashboard_top_and_health_keep_successful_services_when_store_fails_partially():
+    now = timezone.now()
+    _service(name="checkout", last_seen_at=now)
+    _service(name="payment", last_seen_at=now)
+
+    payload = ApmDashboardService(
+        metric_store=StubMetricStore({}),
+        red_store=_PartialAggregateRed(),
+        now_fn=lambda: now,
+    ).build(organization_id=10, window="1h")
+
+    assert payload["kpis"]["status"] == "ok"
+    assert payload["kpis"]["data"]["request_rate"] == pytest.approx(10.0)
     assert payload["health"]["status"] == "ok"
+    assert _health_counts(payload)["critical"] == 1
+    assert _health_counts(payload)["unknown"] == 1
+    assert payload["top_error_rate"]["status"] == "ok"
+    assert [item["service_name"] for item in payload["top_error_rate"]["data"]["items"]] == ["checkout"]
+    assert payload["top_p95"]["status"] == "ok"
+    assert [item["service_name"] for item in payload["top_p95"]["data"]["items"]] == ["checkout"]

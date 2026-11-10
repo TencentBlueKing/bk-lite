@@ -37,6 +37,7 @@ import {
   formatRelativeTime,
   formatThroughput,
 } from '@/app/apm/components/metric-format';
+import { sloRetentionLabel } from '@/app/apm/components/slo-reason';
 import type {
   ApmDashboard,
   ApmDashboardAlertRow,
@@ -261,34 +262,46 @@ function SloOverviewList({ items }: { items: ApmDashboardSloRow[] }) {
         <span className="text-right">{t('apm.home.sloRate', '达成率')}</span>
         <span className="text-center">{t('apm.home.sloStatus', '状态')}</span>
       </div>
-      {items.map((row, index) => (
-        <div
-          key={row.id}
-          className={`grid grid-cols-[minmax(0,1fr)_88px_72px_64px] items-center gap-2 py-2.5 ${
-            index < items.length - 1 ? 'border-b border-[var(--color-border)]' : ''
-          }`}
-        >
-          <Link
-            href={`/apm/services/${row.service_id}`}
-            className="truncate text-sm font-medium text-[var(--color-text-1)] hover:text-[var(--color-primary)]"
-            title={row.service_name}
+      {items.map((row, index) => {
+        const retention = sloRetentionLabel(row.reason, t);
+        const met = row.met === true;
+        return (
+          <div
+            key={row.id}
+            className={`grid grid-cols-[minmax(0,1fr)_88px_72px_64px] items-center gap-2 py-2.5 ${
+              index < items.length - 1 ? 'border-b border-[var(--color-border)]' : ''
+            }`}
           >
-            {row.service_name}
-          </Link>
-          <span className="text-right text-sm tabular-nums text-[var(--color-text-3)]">
-            {formatPercentage(row.objective, row.objective % 1 === 0 ? 1 : 2)}
-          </span>
-          <span
-            className="text-right text-sm font-semibold tabular-nums"
-            style={{ color: row.met ? 'var(--color-success)' : 'var(--color-fail)' }}
-          >
-            {formatPercentage(row.current_rate, 2)}
-          </span>
-          <span className="flex justify-center">
-            <StatusPill label={row.met ? t('apm.home.sloMet', '达成') : t('apm.home.sloUnmet', '未达成')} tone={row.met ? 'success' : 'danger'} />
-          </span>
-        </div>
-      ))}
+            <div className="min-w-0">
+              <Link
+                href={`/apm/services/${row.service_id}`}
+                className="block truncate text-sm font-medium text-[var(--color-text-1)] hover:text-[var(--color-primary)]"
+                title={row.service_name}
+              >
+                {row.service_name}
+              </Link>
+              {retention ? (
+                <div className="truncate text-xs text-[var(--color-text-3)]" title={retention}>{retention}</div>
+              ) : null}
+            </div>
+            <span className="text-right text-sm tabular-nums text-[var(--color-text-3)]">
+              {formatPercentage(row.objective, row.objective % 1 === 0 ? 1 : 2)}
+            </span>
+            <span
+              className="text-right text-sm font-semibold tabular-nums"
+              style={{ color: row.current_rate == null ? 'var(--color-text-3)' : met ? 'var(--color-success)' : 'var(--color-fail)' }}
+            >
+              {row.current_rate == null ? '—' : formatPercentage(row.current_rate, 2)}
+            </span>
+            <span className="flex justify-center">
+              <StatusPill
+                label={retention ? t('apm.common.noData', '无数据') : met ? t('apm.home.sloMet', '达成') : t('apm.home.sloUnmet', '未达成')}
+                tone={retention ? 'warning' : met ? 'success' : 'danger'}
+              />
+            </span>
+          </div>
+        );
+      })}
     </div>
   );
 }
