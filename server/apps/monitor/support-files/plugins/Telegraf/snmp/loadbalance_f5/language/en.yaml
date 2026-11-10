@@ -1,6 +1,6 @@
 Loadbalance F5 SNMP:
   name: F5 (Telegraf)
-  desc: "SNMP monitoring template for F5 load balancer. It reports uptime, CPU utilization, memory utilization, temperature, fan, power supply status, sessions/connections, and interface traffic, for BIG-IP (enterprise PEN 3375)."
+  desc: "SNMP monitoring template for F5 load balancer. It reports uptime, CPU utilization, memory utilization, temperature, fan, power supply status, sessions/connections, interface traffic, failover role, and configuration sync status, for BIG-IP (enterprise PEN 3375)."
 monitor_object:
   Loadbalance: Load Balance
 monitor_object_type:
@@ -49,6 +49,53 @@ monitor_object_metric:
       desc: This metric reports the number of active client connections currently
         tracked by the F5 BIG-IP (F5-BIGIP-SYSTEM-MIB sysStatClientCurConns). A rapidly
         rising count can indicate a traffic flood or connection-table pressure.
+    failover_ok:
+      name: Failover Health
+      desc: Whether this BIG-IP is in a normal failover role. 1 means active or
+        standby. 2 means offline, forced offline, or the role is unknown, so high
+        availability may already be lost.
+      enum:
+        "1": Normal
+        "2": Abnormal
+    failover_status:
+      name: Failover Role
+      desc: Current failover role of this BIG-IP. Active and standby are expected.
+        Offline, forced offline, or unknown means the device is not in a normal
+        high-availability role.
+      enum:
+        "0": Unknown
+        "1": Offline
+        "2": Forced offline
+        "3": Standby
+        "4": Active
+    sync_ok:
+      name: Config Sync Health
+      desc: Whether device-group configuration sync looks healthy. 1 means in sync,
+        currently syncing, or running standalone with no device group. 2 means a
+        manual sync is needed, sync failed, peers are disconnected, versions do
+        not match, only some peers received the last sync, the first sync has not
+        finished, or the status is unknown. Standalone is not a failure.
+      enum:
+        "1": Normal
+        "2": Abnormal
+    sync_status:
+      name: Config Sync Status
+      desc: How this BIG-IP stands with its device-group configuration. In sync,
+        syncing, and standalone are expected. A manual sync, a failed sync, lost
+        peers, an incompatible version, a partial sync, a pending first sync, or
+        an unknown status needs attention. Standalone is a normal single-device
+        setup, not a fault.
+      enum:
+        "0": Unknown
+        "1": Syncing
+        "2": Manual sync needed
+        "3": In sync
+        "4": Sync failed
+        "5": Peers disconnected
+        "6": Standalone
+        "7": Waiting for first sync
+        "8": Incompatible version
+        "9": Partial sync
     interface_ifHCInOctets:
       name: Interface Incoming Traffic Rate (HC)
       desc: This metric indicates the average rate of bytes received over the past
@@ -238,6 +285,7 @@ monitor_object_metric_group:
     Hardware Status: Hardware Status
     Packet Error: Packet Error
     Loadbalance: Load Balance
+    High Availability: High Availability
     Traffic Overview: Traffic Overview
     Sampling: Sampling
     Interface Traffic: Interface Traffic

@@ -22,7 +22,7 @@
       "data_type": "Number",
       "unit": "counts",
       "dimensions": [],
-      "description": "Total number of HTTP requests processed by connector, reflecting overall workload",
+      "description": "Cumulative HTTP requests processed by the connector since startup.",
       "query": "tomcat_connector_request_count{__$labels__}"
     },
     {
@@ -33,7 +33,7 @@
       "data_type": "Number",
       "unit": "counts",
       "dimensions": [],
-      "description": "Total number of error requests during processing, indicating service reliability issues",
+      "description": "Cumulative error requests on the connector since startup.",
       "query": "tomcat_connector_error_count{__$labels__}"
     },
     {
@@ -55,7 +55,7 @@
       "data_type": "Number",
       "unit": "bytes",
       "dimensions": [],
-      "description": "Total bytes sent to clients by connector, reflecting network output traffic",
+      "description": "Cumulative bytes sent to clients by the connector since startup.",
       "query": "tomcat_connector_bytes_sent{__$labels__}"
     },
     {
@@ -198,7 +198,7 @@
       "data_type": "Number",
       "unit": "cps",
       "dimensions": [],
-      "description": "Request processing rate per second calculated over 5-minute window, indicating real-time throughput",
+      "description": "Average HTTP requests processed per second over the last 5 minutes.",
       "query": "rate(tomcat_connector_request_count{__$labels__}[5m])"
     },
     {
@@ -209,18 +209,18 @@
       "data_type": "Number",
       "unit": "cps",
       "dimensions": [],
-      "description": "Error request rate per second calculated over 5-minute window, indicating service stability trend",
+      "description": "Average error requests per second over the last 5 minutes.",
       "query": "rate(tomcat_connector_error_count{__$labels__}[5m])"
     },
     {
       "metric_group": "Performance",
       "name": "tomcat_connector_bytes_sent_rate",
-      "display_name": "Data Sending Rate",
+      "display_name": "Send Throughput",
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
       "unit": "byteps",
       "dimensions": [],
-      "description": "Data sending rate per second calculated over 5-minute window, indicating network output traffic trend",
+      "description": "Average bytes sent to clients per second over the last 5 minutes.",
       "query": "rate(tomcat_connector_bytes_sent{__$labels__}[5m])"
     },
     {

@@ -9,3 +9,8 @@ monitor_object:
   K3SPod: K3S Pod
 monitor_object_type:
   K3S: K3S
+monitor_object_metric:
+  K3SPod:
+    pod_cpu_utilization:
+      name: Pod CPU Utilization (vs Limit)
+      desc: Share of this Pod's CPU limit in use, averaged over about the last 5 minutes. The value can exceed 100% when the Pod is over its limit or during a short burst. If no CPU limit is set, the metric is usually missing or cannot be calculated. Confirm the limit first.

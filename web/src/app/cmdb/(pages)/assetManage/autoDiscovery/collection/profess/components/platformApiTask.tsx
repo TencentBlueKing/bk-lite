@@ -125,12 +125,20 @@ const PlatformApiTask: React.FC<PlatformApiTaskProps> = ({
   const validateCredential = (_: unknown, value: any[]) => {
     const credential = normalizeCredentialPool(value)[0]
       || createPlatformApiCredential(modelId);
-    if (modelId === 'azure'
+    if ((modelId === 'azure' || modelId === 'azurelocal_cmdb')
       && !String(credential.subscription_id || '').trim()) {
       return Promise.reject(new Error(t('common.inputMsg') + t('Collection.azureTask.subscriptionId', '订阅 ID')));
     }
+    if (modelId === 'azurelocal_cmdb' && !String(credential.resource_uri || '').trim()) {
+      if (!String(credential.resource_group || '').trim()) {
+        return Promise.reject(new Error(t('common.inputMsg') + t('Collection.azureLocalTask.resourceGroup', '资源组')));
+      }
+      if (!String(credential.cluster_name || '').trim()) {
+        return Promise.reject(new Error(t('common.inputMsg') + t('Collection.azureLocalTask.clusterName', '集群名称')));
+      }
+    }
     if (credential.credential_source !== 'vault') {
-      const field = modelId === 'azure' ? 'tenant_id' : modelId === 'openstack' ? 'user_domain_name' : null;
+      const field = modelId === 'azure' || modelId === 'azurelocal_cmdb' ? 'tenant_id' : modelId === 'openstack' ? 'user_domain_name' : null;
       if (field && !String(credential[field] || '').trim()) {
         return Promise.reject(new Error(t('common.inputMsg') + (field === 'tenant_id'
           ? t('Collection.platformApiTask.tenantId', '租户 ID') : t('Collection.platformApiTask.userDomainName', '用户域名称'))));
@@ -173,7 +181,7 @@ const PlatformApiTask: React.FC<PlatformApiTaskProps> = ({
               vaultCategory={modelItem.credential_category}
               vaultTypeKeys={modelItem.credential_type_keys}
               credentialShape="platform_api"
-              showPort={modelId !== 'azure'}
+              showPort={modelId !== 'azure' && modelId !== 'azurelocal_cmdb'}
               editMode={Boolean(editId)}
               maxCount={1}
               allowAdd={false}

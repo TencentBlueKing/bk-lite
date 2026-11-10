@@ -15,10 +15,16 @@ from apps.opspilot.metis.llm.agent.tool_execution_planner import (
 )
 from apps.opspilot.metis.llm.chain.entity import HIDE_PLANNED_STEP_TEXT_KEY
 from apps.opspilot.metis.llm.common.tool_failure import is_tool_result_failure
+from apps.opspilot.services.conversation_skill_package import (
+    PREPARE_CONVERSATION_SKILL_PACKAGE_TOOL,
+    skill_package_request_needs_planner,
+)
 from apps.opspilot.services.ppt_master_runtime import PPT_AUTHORING_MIN_MODEL_CALLS, execution_guidance, is_ppt_master_package
 
-# HITL/选择卡和常驻附件工具会进目录，但不算业务工具：无业务工具的寒暄仍走轻量直答。
-_LIGHTWEIGHT_NON_BUSINESS_TOOL_NAMES = frozenset({"request_user_choice", "generate_attachment_file"})
+# HITL/选择卡、常驻附件和技能包成稿会进目录，但不算业务工具：无业务工具的寒暄仍走轻量直答。
+_LIGHTWEIGHT_NON_BUSINESS_TOOL_NAMES = frozenset(
+    {"request_user_choice", "generate_attachment_file", PREPARE_CONVERSATION_SKILL_PACKAGE_TOOL}
+)
 
 # 步间正文上限。结构化关键字段单独保留，避免被正文或 400 字切片切掉。
 _STEP_SUMMARY_MAX_CHARS = 1200
@@ -88,6 +94,11 @@ class DeepAgentAssemblyMixin:
         if not looks_like_attachment_file_task(user_message, conversation_messages=conversation_messages):
             return False
         return any(getattr(tool, "name", "") == GENERATE_ATTACHMENT_FILE_TOOL_NAME for tool in (tools or []))
+
+    @staticmethod
+    def _skill_package_request_needs_planner(tools, user_message: str, conversation_messages=None) -> bool:
+        """成稿工具不算业务工具，但用户明确要求做成技能包时必须进入规划。"""
+        return skill_package_request_needs_planner(tools, user_message, conversation_messages)
 
     @staticmethod
     def _should_use_lightweight_direct_reply(tools, skill_sources) -> bool:
@@ -703,6 +714,7 @@ class DeepAgentAssemblyMixin:
     def _build_legacy_deep_agent_middleware(self, token_usage_accumulator, graph_request) -> list:
         from apps.opspilot.metis.llm.common.token_usage import TokenUsageAccumulator
         from apps.opspilot.metis.llm.middleware.context_window import ContextWindowMiddleware
+        from apps.opspilot.metis.llm.middleware.conversation_skill_package import ConversationSkillPackageMiddleware
         from apps.opspilot.metis.llm.middleware.terminal_user_choice import TerminalUserChoiceMiddleware
         from apps.opspilot.metis.llm.middleware.token_usage import TokenUsageTrackingMiddleware
         from apps.opspilot.metis.llm.middleware.tool_result_locale import ToolResultLocaleMiddleware
@@ -713,6 +725,7 @@ class DeepAgentAssemblyMixin:
             ToolResultLocaleMiddleware(),
             ToolTimeoutMiddleware(),
             ContextWindowMiddleware(graph_request=graph_request, isolated_llm=isolated_llm),
+            ConversationSkillPackageMiddleware(),
             TerminalUserChoiceMiddleware(),
         ]
         if isinstance(token_usage_accumulator, TokenUsageAccumulator):
@@ -763,6 +776,7 @@ class DeepAgentAssemblyMixin:
             resolve_planned_execution_soft_budget_ratio,
             resolve_planned_execution_token_budget,
         )
+        from apps.opspilot.metis.llm.middleware.conversation_skill_package import ConversationSkillPackageMiddleware
         from apps.opspilot.metis.llm.middleware.terminal_user_choice import TerminalUserChoiceMiddleware
         from apps.opspilot.metis.llm.middleware.token_usage import TokenUsageTrackingMiddleware
         from apps.opspilot.metis.llm.middleware.tool_result_locale import ToolResultLocaleMiddleware
@@ -805,6 +819,7 @@ class DeepAgentAssemblyMixin:
             ToolResultCompactionMiddleware(max_tool_chars=max_tool_chars, max_ai_chars=max_ai_chars),
             ContextWindowMiddleware(graph_request=graph_request, isolated_llm=isolated_llm),
             limit_middleware,
+            ConversationSkillPackageMiddleware(),
             TerminalUserChoiceMiddleware(),
         ]
         if isinstance(token_usage_accumulator, TokenUsageAccumulator):

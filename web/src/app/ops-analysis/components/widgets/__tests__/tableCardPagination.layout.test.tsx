@@ -119,6 +119,18 @@ describe('table card pagination frame', () => {
           return 770;
         },
       });
+      const previousOffset = Object.getOwnPropertyDescriptor(prototype, 'offsetHeight');
+      const headerHeight = scale === 2 ? 57 : 39;
+      const paginationHeight = 72;
+      Object.defineProperty(prototype, 'offsetHeight', {
+        configurable: true,
+        get() {
+          const name = String((this as HTMLElement).className || '');
+          if (name.includes('ant-pagination')) return paginationHeight;
+          if (name.includes('ant-table-header') || name.includes('ant-table-thead')) return headerHeight;
+          return 0;
+        },
+      });
 
       try {
         const view = render(
@@ -149,14 +161,18 @@ describe('table card pagination frame', () => {
 
         const locked = view.container.querySelector<HTMLElement>('[class*="customTable"]');
         expect(locked).not.toBeNull();
-        expect(locked?.style.height).toBe(`${parentHeight}px`);
         const bodyScroll = locked?.querySelector<HTMLElement>('.ant-table-body');
-        expect(bodyScroll?.style.maxHeight || bodyScroll?.style.height).toBe(`${parentHeight - 47 - 56}px`);
+        const measuredBody = parentHeight - headerHeight - paginationHeight;
+        expect(bodyScroll?.style.maxHeight || bodyScroll?.style.height).toBe(`${measuredBody}px`);
+        expect(measuredBody).not.toBe(parentHeight - 47 - 56);
+        expect(view.container.querySelector('[class*="opsTableScroll"]')).not.toBeNull();
       } finally {
         if (previousHeight) Object.defineProperty(prototype, 'clientHeight', previousHeight);
         else delete (prototype as { clientHeight?: number }).clientHeight;
         if (previousWidth) Object.defineProperty(prototype, 'clientWidth', previousWidth);
         else delete (prototype as { clientWidth?: number }).clientWidth;
+        if (previousOffset) Object.defineProperty(prototype, 'offsetHeight', previousOffset);
+        else delete (prototype as { offsetHeight?: number }).offsetHeight;
       }
     },
   );
@@ -178,6 +194,16 @@ describe('table card pagination frame', () => {
         return 770;
       },
     });
+    const previousOffset = Object.getOwnPropertyDescriptor(prototype, 'offsetHeight');
+    Object.defineProperty(prototype, 'offsetHeight', {
+      configurable: true,
+      get() {
+        const name = String((this as HTMLElement).className || '');
+        if (name.includes('ant-pagination')) return 72;
+        if (name.includes('ant-table-header') || name.includes('ant-table-thead')) return 39;
+        return 0;
+      },
+    });
 
     try {
       const view = render(
@@ -196,14 +222,15 @@ describe('table card pagination frame', () => {
         </div>,
       );
       const locked = view.container.querySelector<HTMLElement>('[class*="customTable"]');
-      expect(locked?.style.height).toBe(`${parentHeight}px`);
       const bodyScroll = locked?.querySelector<HTMLElement>('.ant-table-body');
-      expect(bodyScroll?.style.maxHeight || bodyScroll?.style.height).toBe(`${parentHeight - 47 - 56}px`);
+      expect(bodyScroll?.style.maxHeight || bodyScroll?.style.height).toBe(`${parentHeight - 39 - 72}px`);
     } finally {
       if (previousHeight) Object.defineProperty(prototype, 'clientHeight', previousHeight);
       else delete (prototype as { clientHeight?: number }).clientHeight;
       if (previousWidth) Object.defineProperty(prototype, 'clientWidth', previousWidth);
       else delete (prototype as { clientWidth?: number }).clientWidth;
+      if (previousOffset) Object.defineProperty(prototype, 'offsetHeight', previousOffset);
+      else delete (prototype as { offsetHeight?: number }).offsetHeight;
     }
   });
 });

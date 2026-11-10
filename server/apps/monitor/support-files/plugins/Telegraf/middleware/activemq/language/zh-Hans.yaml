@@ -11,11 +11,17 @@ monitor_object_metric:
       name: 主题消费者数量
       desc: 指定主题的当前消费者连接数量，反映主题的消息消费能力
     activemq_topics_dequeue_count:
-      name: 主题出队消息数
-      desc: 从指定主题出队的消息总数，反映主题已处理的消息量
+      name: 主题累计出队消息数
+      desc: 从指定主题出队的累计消息数，反映主题已处理的消息量。
+    activemq_topics_dequeue_count_rate:
+      name: 主题出队速率
+      desc: 近 5 分钟平均每秒从指定主题出队的消息数。
     activemq_topics_enqueue_count:
-      name: 主题入队消息数
-      desc: 进入指定主题的消息总数，反映主题接收的消息量
+      name: 主题累计入队消息数
+      desc: 进入指定主题的累计消息数，反映主题接收的消息量。
+    activemq_topics_enqueue_count_rate:
+      name: 主题入队速率
+      desc: 近 5 分钟平均每秒进入指定主题的消息数。
     activemq_topics_size:
       name: 主题当前消息数
       desc: 指定主题当前存储的消息数量，反映主题积压情况

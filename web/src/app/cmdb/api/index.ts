@@ -3,6 +3,7 @@ export { useModelApi } from './model';
 export { useGovernanceApi } from './governance';
 export { useInstanceApi } from './instance';
 export { useChangeRecordApi } from './changeRecord';
+export { useRetentionApi } from './retention';
 export { useOidApi } from './oid';
 export { usePortFingerprintApi, type PortFingerprintItem } from './portFingerprint';
 export { useProcessFingerprintApi, type ProcessFingerprintItem } from './processFingerprint';

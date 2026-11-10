@@ -48,6 +48,30 @@ describe('asset tag filter', () => {
     expect(visible.map((item) => item.id)).toEqual([1, 2]);
   });
 
+  it('requires all selected tags when matchAllTags is enabled', () => {
+    const visible = filterTaggedAssets(items, {
+      selectedTags: ['asset', '机房'],
+      matchAllTags: true,
+      keyword: '资产',
+      chips,
+      systemTags: (item) => item.systemTags,
+      userTags: (item) => item.userTags,
+      name: (item) => item.name,
+      description: (item) => item.description,
+    });
+    expect(visible.map((item) => item.id)).toEqual([2]);
+    expect(filterTaggedAssets(items, {
+      selectedTags: ['database', 'asset'],
+      matchAllTags: true,
+      keyword: '',
+      chips,
+      systemTags: (item) => item.systemTags,
+      userTags: (item) => item.userTags,
+      name: (item) => item.name,
+      description: (item) => item.description,
+    })).toEqual([]);
+  });
+
   it('narrows the tag result by name or description', () => {
     const visible = filterTaggedAssets(items, {
       selectedTags: ['database', 'asset'],

@@ -10,6 +10,7 @@ import { WorkflowPermission } from './workflow-permission';
 
 interface WorkflowEdgeData extends Record<string, unknown> {
   readOnly?: boolean;
+  branchLabel?: string;
   onRemove?: (id: string) => void;
 }
 
@@ -23,6 +24,10 @@ export function WorkflowCanvasEdge({ id, sourceX, sourceY, targetX, targetY, sou
   const [path, labelX, labelY] = targetX <= sourceX
     ? getSmoothStepPath({ sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, borderRadius: 16, offset: 40 })
     : getBezierPath({ sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition });
+  const branchLabel = typeof data?.branchLabel === 'string' ? data.branchLabel.trim() : '';
+  const showDelete = selected && !data?.readOnly;
+  // 文案锚定路径几何中点；删线按钮上移，避免把文案挤离线。
+  const deleteY = branchLabel ? labelY - 22 : labelY;
 
   return <g onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}>
     <BaseEdge
@@ -36,29 +41,39 @@ export function WorkflowCanvasEdge({ id, sourceX, sourceY, targetX, targetY, sou
         strokeWidth: 2,
       }}
     />
-    {selected && !data?.readOnly ? <EdgeLabelRenderer>
-      <WorkflowPermission operation="Edit"><button
-        type="button"
-        aria-label={t('workflowOrchestration.editor.deleteEdge', '删除连线')}
-        className="nodrag nopan grid h-7 w-7 place-items-center rounded border border-[var(--color-border-2)] bg-[var(--color-bg)] shadow-[0_1px_3px_-1px_var(--color-border-3)]"
-        style={{
-          position: 'absolute',
-          zIndex: 10,
-          transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
-          pointerEvents: 'all',
-          cursor: 'pointer',
-          color: deleteHovered ? token.colorError : token.colorText,
-          borderColor: deleteHovered ? token.colorError : undefined,
-        }}
-        onMouseEnter={() => setDeleteHovered(true)}
-        onMouseLeave={() => setDeleteHovered(false)}
-        onClick={(event) => {
-          event.stopPropagation();
-          data?.onRemove?.(id);
-        }}
-      >
-        <DeleteOutlined style={{ color: deleteHovered ? token.colorError : token.colorText }} />
-      </button></WorkflowPermission>
+    {branchLabel || showDelete ? <EdgeLabelRenderer>
+      {branchLabel ? (
+        <span
+          className="nodrag nopan pointer-events-none absolute z-10 rounded bg-[var(--color-fill-1)] px-1 text-xs leading-4 text-[var(--color-text-3)]"
+          style={{ transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)` }}
+        >
+          {branchLabel}
+        </span>
+      ) : null}
+      {showDelete ? (
+        <WorkflowPermission operation="Edit"><button
+          type="button"
+          aria-label={t('workflowOrchestration.editor.deleteEdge', '删除连线')}
+          className="nodrag nopan grid h-7 w-7 place-items-center rounded border border-[var(--color-border-2)] bg-[var(--color-bg)] shadow-[0_1px_3px_-1px_var(--color-border-3)]"
+          style={{
+            position: 'absolute',
+            zIndex: 10,
+            transform: `translate(-50%, -50%) translate(${labelX}px, ${deleteY}px)`,
+            pointerEvents: 'all',
+            cursor: 'pointer',
+            color: deleteHovered ? token.colorError : token.colorText,
+            borderColor: deleteHovered ? token.colorError : undefined,
+          }}
+          onMouseEnter={() => setDeleteHovered(true)}
+          onMouseLeave={() => setDeleteHovered(false)}
+          onClick={(event) => {
+            event.stopPropagation();
+            data?.onRemove?.(id);
+          }}
+        >
+          <DeleteOutlined style={{ color: deleteHovered ? token.colorError : token.colorText }} />
+        </button></WorkflowPermission>
+      ) : null}
     </EdgeLabelRenderer> : null}
   </g>;
 }

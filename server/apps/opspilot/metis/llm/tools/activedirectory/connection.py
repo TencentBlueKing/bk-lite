@@ -12,6 +12,7 @@ from ldap3.core.exceptions import LDAPException
 
 from apps.core.logger import opspilot_logger as logger
 from apps.core.logger import safe_log_value
+from apps.opspilot.metis.llm.tools.activedirectory.sql_engine import resolve_ad_fetch_limit
 from apps.opspilot.metis.llm.tools.common.credentials import CredentialItem, CredentialValidationError, NormalizedCredentials, normalize_credentials
 
 AD_INSTANCE_FIELDS = (
@@ -25,6 +26,7 @@ AD_INSTANCE_FIELDS = (
     "bind_dn",
     "bind_password",
     "base_dn",
+    "fetch_limit",
 )
 
 _AD_LDAPS_VERIFY_DISABLED = "event=ad_ldaps_certificate_verification_disabled instance_id=%s host=%s"
@@ -55,6 +57,19 @@ def _normalize_int(value: Any, default: int) -> int:
         return default
 
 
+def _configured_fetch_limit(value: Any) -> int | None:
+    """域控自己的单次读取上限。空值表示沿用默认，不在这里填成 10000。"""
+    if value is None or (isinstance(value, str) and not value.strip()):
+        return None
+    try:
+        parsed = int(str(value).strip())
+    except (TypeError, ValueError):
+        return None
+    if parsed < 1:
+        return None
+    return resolve_ad_fetch_limit(parsed)
+
+
 def normalize_ad_instance(instance: dict[str, Any], fallback_name: str = "AD - 1", fallback_id: str = "ad-1") -> dict[str, Any]:
     use_ssl = _normalize_bool(instance.get("use_ssl"), default=True)
     default_port = 636 if use_ssl else 389
@@ -69,6 +84,7 @@ def normalize_ad_instance(instance: dict[str, Any], fallback_name: str = "AD - 1
         "bind_dn": _normalize_text(instance.get("bind_dn")),
         "bind_password": _normalize_text(instance.get("bind_password")),
         "base_dn": _normalize_text(instance.get("base_dn")),
+        "fetch_limit": _configured_fetch_limit(instance.get("fetch_limit")),
     }
 
 
@@ -112,6 +128,7 @@ class ActiveDirectoryCredentialAdapter:
                 "bind_dn": configurable.get("bind_dn") or configurable.get("ad_bind_dn"),
                 "bind_password": configurable.get("bind_password") or configurable.get("ad_bind_password"),
                 "base_dn": configurable.get("base_dn") or configurable.get("ad_base_dn"),
+                "fetch_limit": configurable.get("fetch_limit") if configurable.get("fetch_limit") is not None else configurable.get("ad_fetch_limit"),
             }
         )
 

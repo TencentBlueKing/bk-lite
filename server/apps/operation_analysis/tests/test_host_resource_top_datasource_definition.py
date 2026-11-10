@@ -18,6 +18,12 @@ def test_host_resource_top_data_source_supports_topn_table_and_metric_switch():
         "disk",
     }
     instance_ids = next(item for item in source["params"] if item["name"] == "instance_ids")
+    organization = next(item for item in source["params"] if item["name"] == "organization")
+    assert organization["value"] == ""
+    assert organization["filterType"] == "filter"
+    assert organization["inputConfig"]["control"] == "organization"
+    assert "required" not in organization
+    assert instance_ids["value"] is None
     assert instance_ids["type"] == "string"
     assert instance_ids["filterType"] == "filter"
     assert instance_ids["inputConfig"]["multiple"] is True

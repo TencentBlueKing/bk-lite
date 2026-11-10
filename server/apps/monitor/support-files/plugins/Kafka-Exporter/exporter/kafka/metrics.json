@@ -93,6 +93,26 @@
     },
     {
       "metric_group": "Topic",
+      "name": "kafka_topic_partition_current_offset_rate",
+      "display_name": "Partition Message Write Rate",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [
+        {
+          "name": "partition",
+          "description": "Partition"
+        },
+        {
+          "name": "topic",
+          "description": "Topic"
+        }
+      ],
+      "description": "Average messages written to the partition per second over the last 5 minutes.",
+      "query": "rate(kafka_topic_partition_current_offset_gauge{__$labels__}[5m])"
+    },
+    {
+      "metric_group": "Topic",
       "name": "kafka_topic_partition_oldest_offset",
       "display_name": "Partition Oldest Offset",
       "instance_id_keys": ["instance_id"],
@@ -234,6 +254,30 @@
       ],
       "description": "Current offset for the consumer group in the specified topic and partition.",
       "query": "kafka_consumergroup_current_offset_gauge{__$labels__}"
+    },
+    {
+      "metric_group": "ConsumerGroup",
+      "name": "kafka_consumergroup_current_offset_rate",
+      "display_name": "Consumer Group Consume Rate",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [
+        {
+          "name": "consumergroup",
+          "description": "Consumer Group"
+        },
+        {
+          "name": "partition",
+          "description": "Partition"
+        },
+        {
+          "name": "topic",
+          "description": "Topic"
+        }
+      ],
+      "description": "Average messages consumed per second by the consumer group on the partition over the last 5 minutes.",
+      "query": "rate(kafka_consumergroup_current_offset_gauge{__$labels__}[5m])"
     },
     {
       "metric_group": "ConsumerGroup",
@@ -440,7 +484,7 @@
       "data_type": "Number",
       "unit": "s",
       "dimensions": [],
-      "description": "Total CPU time used by the probe process.",
+      "description": "Cumulative CPU time consumed by the probe process, in seconds.",
       "query": "process_cpu_seconds_total_counter{__$labels__}"
     },
     {

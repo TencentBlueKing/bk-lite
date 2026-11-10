@@ -23,6 +23,12 @@ from apps.core.logger import opspilot_logger as logger
 from apps.core.logger import safe_exception_info
 from apps.opspilot.metis.llm.agent.stage_timing import elapsed_ms, log_stage_timing, monotonic_ms
 from apps.opspilot.metis.llm.chain.approval_tools import ApprovalToolsMixin, _build_approval_tool, _build_choice_tool  # noqa: E402,F401
+from apps.opspilot.metis.llm.tools.conversation_skill_package_tool import build_prepare_conversation_skill_package_tool
+from apps.opspilot.services.conversation_skill_package import (
+    ALLOWED_ENTRIES,
+    AUTHORING_EXTRA_KEY,
+    PREPARE_CONVERSATION_SKILL_PACKAGE_TOOL,
+)
 from apps.opspilot.metis.llm.chain.deepagent_assembly import (  # noqa: E402,F401
     DeepAgentAssemblyMixin,
     _append_planned_execution_step_prompt,
@@ -814,6 +820,16 @@ def build_planned_step_end_payload(
     if reused:
         payload["outcome"] = REUSED_PRIOR_RESULT
     return payload
+
+
+def _conversation_skill_package_authoring_enabled(graph_request) -> bool:
+    extra = getattr(graph_request, "extra_config", None) or {}
+    if not isinstance(extra, dict):
+        return False
+    authoring = extra.get(AUTHORING_EXTRA_KEY)
+    if not isinstance(authoring, dict) or not authoring.get("enabled"):
+        return False
+    return str(authoring.get("entry") or "") in ALLOWED_ENTRIES
 
 
 class ToolsNodes(
@@ -2212,6 +2228,10 @@ class ToolsNodes(
         # K8s 修复报告仍由后端状态机派发，不向模型暴露。
         if self._catalog_has_business_tools(tools) and not any(getattr(tool, "name", "") == "request_user_choice" for tool in tools):
             tools.append(self._build_choice_tool())
+        if _conversation_skill_package_authoring_enabled(graph_request) and not any(
+            getattr(tool, "name", "") == PREPARE_CONVERSATION_SKILL_PACKAGE_TOOL for tool in tools
+        ):
+            tools.append(build_prepare_conversation_skill_package_tool())
         return tools
 
     @staticmethod
@@ -2620,7 +2640,9 @@ class ToolsNodes(
             if self._should_use_lightweight_direct_reply(
                 registered_tools,
                 ["/skills/"] if has_skill_packages else [],
-            ) and not self._attachment_request_needs_planner(registered_tools, planning_question, original_messages):
+            ) and not self._attachment_request_needs_planner(
+                registered_tools, planning_question, original_messages
+            ) and not self._skill_package_request_needs_planner(registered_tools, planning_question, original_messages):
                 light_system = self._build_lightweight_system_prompt(getattr(graph_request, "system_message_prompt", "") or "")
                 if additional_system_prompt:
                     light_system = f"{light_system}\n\n{additional_system_prompt}"

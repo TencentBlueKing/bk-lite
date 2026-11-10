@@ -48,7 +48,7 @@ monitor_object_metric:
       desc: 跟踪并发操作引发的冲突情况
     postgresql_deadlocks_count:
       name: 死锁次数
-      desc: 当前统计窗口内发生的事务死锁次数
+      desc: 近 5 分钟内发生的死锁次数。
     postgresql_conflicts_count:
       name: 冲突次数
       desc: 当前统计窗口内发生的并发冲突次数

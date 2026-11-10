@@ -31,6 +31,7 @@ SEEN_LIMIT = 2048
 SEEN_TTL_SECONDS = float(STREAM_DEADLINE_SECONDS)
 
 CONNECT_FAILED_LOG_TEMPLATE = "event=feishu_long_connection_connect_failed channel_id=%s failed_stage=connect error_type=%s"
+CONNECTION_CLOSED_LOG_TEMPLATE = "event=feishu_long_connection_connection_closed channel_id=%s"
 REPLY_FAILED_LOG_TEMPLATE = "event=feishu_long_connection_reply_failed channel_id=%s failed_stage=%s error_type=%s"
 REPLY_FINISHED_LOG_TEMPLATE = "event=feishu_long_connection_reply_finished channel_id=%s outcome=%s"
 FILE_SENT_LOG_TEMPLATE = "event=feishu_long_connection_file_sent channel_id=%s"
@@ -489,6 +490,13 @@ class FeishuConnection:
         maybe_schedule_skill_memory_write(conversation)
 
 
+def _transport_connected(transport) -> bool:
+    check = getattr(transport, "connected", None)
+    if not callable(check):
+        return True
+    return bool(check())
+
+
 class FeishuLongConnectionLeader:
     """一个进程维护全部飞书长连接。未持锁时不建立连接。"""
 
@@ -518,6 +526,11 @@ class FeishuLongConnectionLeader:
             wanted = desired.get(app_id)
             if wanted is None or wanted[1] != current.secret or wanted[0].id != current.channel_id:
                 self._stop(app_id)
+                continue
+            if _transport_connected(current.transport):
+                continue
+            logger.info(CONNECTION_CLOSED_LOG_TEMPLATE, current.channel_id)
+            self._stop(app_id)
         for app_id, (channel, secret) in desired.items():
             if app_id not in self._live:
                 self._connect(channel, app_id, secret)

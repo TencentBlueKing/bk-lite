@@ -511,6 +511,19 @@ def _normalize_runtime_params(request_data):
     return runtime_params
 
 
+def _unspecified_host_top_instance_ids(instance, param_name, default_value):
+    """主机 Top 没传 instance_ids 时沿用当前授权主机。
+
+    源定义里的 [] 只是「未选择」。请求里明确带上的 [] 仍走显式筛选，
+    不在这里改掉。其它数据源的空列表默认值继续补齐。
+    """
+    return (
+        getattr(instance, "rest_api", None) == "monitor/get_host_resource_top"
+        and param_name == "instance_ids"
+        and default_value == []
+    )
+
+
 def _resolve_request_params(instance, request_data):
     configured_params = instance.params if isinstance(instance.params, list) else []
     allowed_specs = {
@@ -544,7 +557,7 @@ def _resolve_request_params(instance, request_data):
             # 导致整个请求 400(空字符串、null、空数组都被视为"未选时段")
             if param_type == "timeRange" and raw_value in (None, "", [], {}):
                 continue
-        elif default_value not in (None, ""):
+        elif default_value not in (None, "") and not _unspecified_host_top_instance_ids(instance, param_name, default_value):
             raw_value = default_value
         else:
             continue

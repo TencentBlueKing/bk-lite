@@ -40,10 +40,10 @@ monitor_object_metric:
   ESXI:
     cpu_usage_average_gauge:
       name: CPU 使用率
-      desc: ESXi 主机的 CPU 使用率。
+      desc: ESXi 主机在采集周期内的平均 CPU 使用率（约 0–100%）。
     mem_usage_average_gauge:
       name: 内存使用率
-      desc: ESXi 主机的内存使用率。
+      desc: ESXi 主机在采集周期内的平均内存使用率（约 0–100%）。
     mem_consumed_average_gauge:
       name: 已用内存
       desc: ESXi 主机实际消耗的活动内存。
@@ -54,10 +54,10 @@ monitor_object_metric:
       name: 磁盘写入吞吐量
       desc: 每秒写入磁盘的数据量。
     disk_numberRead_summation_gauge_rate:
-      name: 磁盘读取操作数
+      name: 磁盘读取操作速率
       desc: 每秒完成的磁盘读取操作数量。
     disk_numberWrite_summation_gauge_rate:
-      name: 磁盘写入操作数
+      name: 磁盘写入操作速率
       desc: 每秒完成的磁盘写入操作数量。
     net_bytesRx_average_gauge:
       name: 网络接收吞吐量
@@ -90,16 +90,16 @@ monitor_object_metric:
   VM:
     cpu_usage_average_gauge:
       name: CPU 使用率
-      desc: 虚拟机的 CPU 使用率。
+      desc: 虚拟机在采集周期内相对其配置 CPU 的平均使用率（约 0–100%）。
     mem_usage_average_gauge:
       name: 内存使用率
-      desc: 虚拟机的内存使用率。
+      desc: 虚拟机在采集周期内的平均内存使用率（约 0–100%）。
     mem_consumed_average_gauge:
       name: 已用内存
       desc: 虚拟机实际消耗的活动内存。
     disk_io_usage_gauge:
-      name: 磁盘 I/O 使用率
-      desc: 虚拟机磁盘 I/O 的使用率。
+      name: 磁盘聚合 I/O 吞吐
+      desc: 虚拟机磁盘的聚合 I/O 吞吐（来自 disk.usage.average），不是使用率或百分比。单位为 KB/s。
     disk_read_average_gauge:
       name: 磁盘读取吞吐量
       desc: 虚拟机的平均磁盘读取吞吐量。
@@ -107,10 +107,10 @@ monitor_object_metric:
       name: 磁盘使用率
       desc: 虚拟机已使用的磁盘空间百分比。
     disk_numberRead_summation_gauge_rate:
-      name: 磁盘读取操作数
+      name: 磁盘读取操作速率
       desc: 每秒完成的磁盘读取操作数量。
     disk_numberWrite_summation_gauge_rate:
-      name: 磁盘写入操作数
+      name: 磁盘写入操作速率
       desc: 每秒完成的磁盘写入操作数量。
     disk_write_average_gauge:
       name: 磁盘写入吞吐量

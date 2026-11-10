@@ -25,7 +25,7 @@ COLLECT_VAULT_BINDINGS = {
     "storage/cloud": "ibm_ds xsky".split(),
     "storage/snmp": "macrosan tape_library".split(),
     "cloud/cloud": "aliyun_account qcloud hwcloud aws".split(),
-    "cloud/oauth_client": "azure".split(),
+    "cloud/oauth_client": "azure azurelocal_cmdb".split(),
     "host/ipmi": "physcial_server_ipmi".split(),
     "host/redfish": "physcial_server_redfish server_bmc".split(),
     "host/winrm": "pc ad_exchange exchange hyperv_host".split(),

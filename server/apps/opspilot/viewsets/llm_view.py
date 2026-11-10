@@ -87,6 +87,7 @@ from apps.opspilot.services.skill_package.importer import DEFAULT_SKILL_PACKAGE_
 from apps.opspilot.services.skill_package.runtime import build_skill_package_prompt, build_skill_package_strategy, hydrate_skill_packages
 from apps.opspilot.services.usage_team import merge_usage_team
 from apps.opspilot.services.wiki.chat_material_service import WIKI_MATERIAL_ACTOR_KEY, actor_for_platform_user
+from apps.opspilot.services.conversation_skill_package import AUTHORING_EXTRA_KEY, ENTRY_SKILL_TEST, authoring_context
 from apps.opspilot.utils.agui_chat import stream_agui_chat
 from apps.opspilot.utils.mcp_cache import get_cached_mcp_tools, set_cached_mcp_tools
 from apps.opspilot.utils.pin_mixin import PinMixin
@@ -577,6 +578,9 @@ class LLMViewSet(PinMixin, AuthViewSet):
                     return self.create_error_stream_response(exc.message)
 
             # 调用AGUI协议的流式响应。调试聊天不回填附件消息，历史不回显。
+            params["choice_id"] = str(params.get("choice_id") or "")
+            params["choice_option"] = str(params.get("choice_option") or "")
+            params[AUTHORING_EXTRA_KEY] = authoring_context(request.user, ENTRY_SKILL_TEST)
             return stream_agui_chat(
                 params,
                 skill_obj.name,

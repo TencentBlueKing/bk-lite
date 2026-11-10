@@ -31,6 +31,7 @@ CLASSIFICATION:
   inspurincloudrail: 浪潮超融合
   sangforscp: 深信服平台
   nutanixhci: 路坦力超融合
+  azurelocal: Azure Local
   zstack: ZStack
   winsphere: 云宏 WinSphere
   directory_mail: 目录与邮件
@@ -237,6 +238,9 @@ MODEL:
   nutanixhci_vg: 路坦力卷组
   nutanixhci_vd: 路坦力虚拟磁盘
   nutanixhci_disk: 路坦力物理盘
+  azurelocal: Azure Local 集群
+  azurelocal_node: Azure Local 节点
+  azurelocal_vm: Azure Local 虚拟机
   opengauss: openGauss
   kingbase: 人大金仓KingbaseES
   vastbase: 海量数据库Vastbase
@@ -3381,6 +3385,46 @@ ATTR:
     status: 状态
     serial_number: 序列号
     disk_type: 磁盘类型
+  azurelocal:
+    inst_name: 实例名
+    organization: 组织
+    tag: 标签
+    resource_name: 资源名
+    resource_id: 资源ID
+    subscription_id: 订阅ID
+    resource_group: 资源组
+    location: 位置
+    status: 状态
+    connectivity_status: 连通状态
+    cluster_version: 集群版本
+    manufacturer: 厂商
+    registration_time: 注册时间
+    last_sync_time: 最近同步时间
+  azurelocal_node:
+    inst_name: 实例名
+    organization: 组织
+    tag: 标签
+    resource_name: 资源名
+    resource_id: 资源ID
+    manufacturer: 厂商
+    model: 型号
+    serial_number: 序列号
+    core_count: CPU核数
+    memory_gib: 内存(GiB)
+    os_name: 操作系统
+    os_version: 操作系统版本
+  azurelocal_vm:
+    inst_name: 实例名
+    organization: 组织
+    tag: 标签
+    resource_name: 资源名
+    resource_id: 资源ID
+    status: 状态
+    os_name: 操作系统
+    vcpus: vCPU数
+    memory_mb: 内存(MB)
+    ip_addr: 内网IP
+    cluster_node_name: 所在节点
   opengauss:
     inst_name: 实例名
     organization: 组织
