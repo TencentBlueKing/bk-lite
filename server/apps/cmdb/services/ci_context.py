@@ -132,11 +132,14 @@ def _query_instances(ag, conditions) -> list[dict]:
 
 
 def _outbound_edges(ag, src_uuid):
-    return ag.query_edge(
-        INSTANCE_ASSOCIATION,
-        [{"field": "src_inst_uuid", "type": "str=", "value": src_uuid}],
-        return_entity=True,
-    ) or []
+    return (
+        ag.query_edge(
+            INSTANCE_ASSOCIATION,
+            [{"field": "src_inst_uuid", "type": "str=", "value": src_uuid}],
+            return_entity=True,
+        )
+        or []
+    )
 
 
 def _member_record(decision, dst_view, raw_dst, *, via_uuid) -> dict | None:
@@ -220,11 +223,14 @@ def recompute_application(application_uuid) -> None:
         members = {**layer2, **layer1}
         instances = _load_member_instances(ag, members)
         system_uuids = []
-        inbound = ag.query_edge(
-            INSTANCE_ASSOCIATION,
-            [{"field": "dst_inst_uuid", "type": "str=", "value": application_uuid}],
-            return_entity=True,
-        ) or []
+        inbound = (
+            ag.query_edge(
+                INSTANCE_ASSOCIATION,
+                [{"field": "dst_inst_uuid", "type": "str=", "value": application_uuid}],
+                return_entity=True,
+            )
+            or []
+        )
         for item in inbound:
             props, src, dst, _raw_dst = _edge_parts(item)
             decision = classify_application_edge(_classifier_edge(props, src, dst), src_is_member=False)
@@ -391,6 +397,58 @@ def _drain_cis(ci_uuids: list[str]) -> int:
             continue
         done += 1
     return done
+
+
+def _endpoint(instance) -> tuple[str, str]:
+    if not isinstance(instance, dict):
+        return "", ""
+    model_id = str(instance.get("model_id") or "").strip()
+    inst_uuid = str(instance.get("inst_uuid") or "").strip()
+    return model_id, inst_uuid
+
+
+def record_association_ci_context(src, dst) -> None:
+    """src/dst 是带 model_id 与 inst_uuid 的实例。应用端登记 root，其余登记两端 ci。失败不外抛。"""
+    try:
+        endpoints = (_endpoint(src), _endpoint(dst))
+        if any(model_id == APPLICATION_MODEL for model_id, _inst_uuid in endpoints):
+            root_uuids = [inst_uuid for model_id, inst_uuid in endpoints if model_id == APPLICATION_MODEL and inst_uuid]
+            schedule_ci_context_pending(root_uuids=root_uuids)
+            return
+        schedule_ci_context_pending(ci_uuids=[inst_uuid for _model_id, inst_uuid in endpoints if inst_uuid])
+    except Exception:
+        logger.exception("failed to record association ci_context")
+
+
+def record_instance_field_ci_context(instance) -> None:
+    """存活实例的 IP 或组织变了。登记该 ci；应用实例同时登记 root，刷新其成员。失败不外抛。"""
+    try:
+        model_id, inst_uuid = _endpoint(instance)
+        if not inst_uuid:
+            return
+        if model_id == APPLICATION_MODEL:
+            schedule_ci_context_pending(root_uuids=[inst_uuid], ci_uuids=[inst_uuid])
+            return
+        schedule_ci_context_pending(ci_uuids=[inst_uuid])
+    except Exception:
+        logger.exception("failed to record instance field ci_context")
+
+
+def record_instances_deleted_ci_context(instances) -> None:
+    """图删除前后都可调用，入参是已经加载的实例。每个实例登记 ci；应用再登记 root。失败不外抛。"""
+    try:
+        ci_uuids = []
+        root_uuids = []
+        for instance in instances or []:
+            model_id, inst_uuid = _endpoint(instance)
+            if not inst_uuid:
+                continue
+            ci_uuids.append(inst_uuid)
+            if model_id == APPLICATION_MODEL:
+                root_uuids.append(inst_uuid)
+        schedule_ci_context_pending(root_uuids=root_uuids, ci_uuids=ci_uuids)
+    except Exception:
+        logger.exception("failed to record deleted instance ci_context")
 
 
 def drain_ci_context_pending(limit: int = 200) -> dict:

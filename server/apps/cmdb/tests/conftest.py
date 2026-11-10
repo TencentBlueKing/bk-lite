@@ -62,6 +62,12 @@ def fake_graph(monkeypatch):
     return _install
 
 
+@pytest.fixture(autouse=True)
+def _silence_ci_context_celery(monkeypatch):
+    """schedule() 会踢 Celery。CMDB 单测不连 .env 里的真实 broker。"""
+    monkeypatch.setattr("apps.cmdb.services.ci_context._enqueue_ci_context_drain", lambda: None)
+
+
 @pytest.fixture
 def transfer_owner(db):
     from apps.system_mgmt.models.user import User
