@@ -359,15 +359,16 @@ function layout(nodes: ImpactGraphNode[]) {
     groups.set(layer, row);
   });
   const rows = LAYER_ORDER.filter((layer) => groups.has(layer));
-  let width = PAD * 2;
+  const rowWidth = (count: number) => count * IMPACT_NODE_WIDTH + Math.max(0, count - 1) * GAP_X;
+  const contentWidth = rows.reduce((max, layer) => Math.max(max, rowWidth((groups.get(layer) || []).length)), 0);
+  const width = PAD * 2 + contentWidth;
   rows.forEach((layer, rowIndex) => {
     const row = groups.get(layer) || [];
+    const offset = PAD + (contentWidth - rowWidth(row.length)) / 2;
     row.forEach((node, index) => {
-      node.x = PAD + index * (IMPACT_NODE_WIDTH + GAP_X);
+      node.x = offset + index * (IMPACT_NODE_WIDTH + GAP_X);
       node.y = PAD + rowIndex * (IMPACT_NODE_HEIGHT + GAP_Y);
     });
-    const rowWidth = PAD * 2 + row.length * IMPACT_NODE_WIDTH + Math.max(0, row.length - 1) * GAP_X;
-    width = Math.max(width, rowWidth);
   });
   const height = Math.max(
     PAD * 2,

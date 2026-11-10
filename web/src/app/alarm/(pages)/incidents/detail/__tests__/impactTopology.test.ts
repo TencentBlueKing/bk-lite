@@ -7,6 +7,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildImpactGraph,
   collectSeedUuids,
+  IMPACT_NODE_WIDTH,
   type ImpactAlertRef,
 } from '../impactTopology';
 
@@ -170,6 +171,31 @@ describe('incident impact topology merge', () => {
     expect(model.nodes.map((node) => node.id)).toEqual(['unbound:1:0', 'unbound:2:0', 'unbound:3:0']);
     expect(model.nodes.map((node) => node.label)).toEqual(['裸对象', '裸对象', '只有标题']);
     expect(model.hint).toBe('这些告警没有绑定 CMDB 对象');
+  });
+
+  it('centers a shorter layer on the widest layer', () => {
+    const hostB = '00000000-0000-4000-8000-000000000004';
+    const model = buildImpactGraph(
+      [
+        alert({ id: 1, title: '应用', level: 1, monitor_objects: [{ cmdb_id: APP, resource_name: 'app' }] }),
+        alert({ id: 2, title: '主机1', level: 1, monitor_objects: [{ cmdb_id: HOST, resource_name: 'h1' }] }),
+        alert({ id: 3, title: '主机2', level: 1, monitor_objects: [{ cmdb_id: hostB, resource_name: 'h2' }] }),
+      ],
+      {
+        relation_status: 'ok',
+        nodes: [
+          { inst_uuid: APP, inst_name: 'app', layer: 'service', role: 'seed', found: true },
+          { inst_uuid: HOST, inst_name: 'h1', layer: 'host', role: 'seed', found: true },
+          { inst_uuid: hostB, inst_name: 'h2', layer: 'host', role: 'seed', found: true },
+        ],
+        links: [],
+      },
+    );
+    const app = model.nodes.find((node) => node.id === APP);
+    const hosts = model.nodes.filter((node) => node.layer === 'host').sort((a, b) => a.x - b.x);
+    const appCenter = (app?.x || 0) + IMPACT_NODE_WIDTH / 2;
+    const hostCenter = hosts[0].x + (hosts[1].x + IMPACT_NODE_WIDTH - hosts[0].x) / 2;
+    expect(appCenter).toBe(hostCenter);
   });
 
   it('keeps the page on the alarm api and the three alert views', () => {

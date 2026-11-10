@@ -135,11 +135,80 @@ describe('ImpactTopologyView', () => {
         }}
       />,
     );
-    const button = screen.getByRole('button', { name: /web-01/ });
+    const button = screen.getByRole('button', { name: /web-01/ }) as HTMLButtonElement;
     expect(button.textContent || '').toContain('2 条告警');
-    expect((button as HTMLButtonElement).style.borderColor).toBe('rgb(170, 0, 0)');
+    expect(button.style.borderColor).toBe('rgb(170, 0, 0)');
+    expect(button.style.backgroundColor).toContain('#aa0000');
     fireEvent.click(button);
+    expect(button.style.boxShadow).toContain('#aa0000');
+    expect(button.style.boxShadow).not.toContain('primary');
+    expect(button.style.borderStyle).toBe('solid');
     expect(screen.getByText('超时')).toBeTruthy();
     expect(screen.getByText('宕机')).toBeTruthy();
+  });
+
+  it('paints bridge and unbound nodes with the prototype colors', () => {
+    const bridge = '00000000-0000-4000-8000-000000000002';
+    renderView(
+      <ImpactTopologyView
+        alerts={[
+          alarm({
+            id: 1,
+            title: '超时',
+            level: '0',
+            monitor_objects: [{ monitor_id: 'm1', cmdb_id: HOST, resource_type: '主机', resource_name: 'web-01' }],
+          }),
+          alarm({
+            id: 2,
+            title: '未绑定告警',
+            resource_name: '裸告警',
+            monitor_objects: [],
+          }),
+        ]}
+        levels={[{ level_id: 0, level_display_name: '严重', color: '#aa0000' } as never]}
+        levelColors={{ 0: '#aa0000' }}
+        payload={{
+          relation_status: 'ok',
+          nodes: [
+            { inst_uuid: HOST, inst_name: 'web-01', layer: 'host', role: 'seed', found: true },
+            { inst_uuid: bridge, inst_name: '支付中台', layer: 'service', role: 'bridge', found: true },
+          ],
+          links: [],
+        }}
+      />,
+    );
+    const bridgeButton = screen.getByRole('button', { name: /支付中台/ }) as HTMLButtonElement;
+    expect(bridgeButton.style.borderColor).toBe('rgb(123, 225, 136)');
+    expect(bridgeButton.style.backgroundColor).toBe('rgb(240, 255, 241)');
+    expect(bridgeButton.style.borderStyle).toBe('dashed');
+    const unbound = screen.getByRole('button', { name: /裸告警/ }) as HTMLButtonElement;
+    expect(unbound.style.borderColor).toBe('rgb(201, 205, 212)');
+    expect(unbound.style.backgroundColor).toBe('rgb(242, 243, 245)');
+  });
+
+  it('pans the whole graph and keeps a click from opening the side panel', () => {
+    renderView(
+      <ImpactTopologyView
+        alerts={[alarm({
+          id: 1,
+          title: '支付超时',
+          monitor_objects: [{ monitor_id: 'm', cmdb_id: HOST, resource_type: '主机', resource_name: 'web-01' }],
+        })]}
+        levels={[{ level_id: 0, level_display_name: '严重', color: '#aa0000' } as never]}
+        levelColors={{ 0: '#aa0000' }}
+        payload={{
+          relation_status: 'ok',
+          nodes: [{ inst_uuid: HOST, inst_name: 'web-01', layer: 'host', role: 'seed', found: true }],
+          links: [],
+        }}
+      />,
+    );
+    const canvas = screen.getByTestId('impact-topology-canvas');
+    fireEvent.pointerDown(canvas, { button: 0, pointerId: 1, clientX: 10, clientY: 20 });
+    fireEvent.pointerMove(canvas, { pointerId: 1, clientX: 46, clientY: 40 });
+    fireEvent.pointerUp(canvas, { pointerId: 1 });
+    expect(screen.getByTestId('impact-topology-graph').style.transform).toBe('translate(36px, 20px)');
+    fireEvent.click(screen.getByRole('button', { name: /web-01/ }));
+    expect(screen.queryByText('支付超时')).toBeNull();
   });
 });
