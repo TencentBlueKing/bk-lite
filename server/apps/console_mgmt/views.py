@@ -442,10 +442,14 @@ def reset_pwd(request):
         client = SystemMgmt()
         res = client.reset_pwd(username, domain, password, caller_token=caller_token)
 
-        # 如果密码重置成功，记录操作日志
+        response = JsonResponse(res)
+        # 如果密码重置成功，记录操作日志，并把换发的 JWT 写回当前会话。
         if res.get("result"):
             log_operation(request, "update", "console_mgmt", f"重置用户密码: {username}")
+            from apps.core.views.index_view import _attach_rotated_token_cookie
 
-        return JsonResponse(res)
+            _attach_rotated_token_cookie(response, res)
+
+        return response
     except Exception as e:
         return JsonResponse({"result": False, "message": str(e)})

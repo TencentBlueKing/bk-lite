@@ -1,6 +1,7 @@
 # flake8: noqa
 from django.db import InterfaceError, OperationalError
 
+from apps.core.constants import PASSWORD_CHANGED_ERROR_CODE, PASSWORD_CHANGED_TOKEN_MESSAGE
 from apps.system_mgmt.services.user_access import is_account_expired, is_user_access_disabled
 
 from .common import *  # noqa: F401,F403
@@ -95,6 +96,8 @@ def verify_token(token):
         return_data = {"result": False, "message": error_message}
         if error_message == VERIFY_TOKEN_USER_NOT_FOUND_MESSAGE:
             return_data["error_code"] = VERIFY_TOKEN_USER_NOT_FOUND_CODE
+        elif error_message == PASSWORD_CHANGED_TOKEN_MESSAGE:
+            return_data["error_code"] = PASSWORD_CHANGED_ERROR_CODE
         return return_data
 
     user_id = user.id
