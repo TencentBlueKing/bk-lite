@@ -224,8 +224,12 @@ const EventTable: React.FC<EventTableProps> = ({
       style={screenTableStyle}
     >
       <div
-        className={`flex-1 min-h-0 overflow-hidden ${
-          usesScreenTheme ? styles.screenDarkTableWrap : ''
+        className={`flex-1 min-h-0 ${
+          usesScreenTheme
+            ? `overflow-hidden ${styles.screenDarkTableWrap}`
+            : isPaginated
+              ? 'overflow-hidden'
+              : 'overflow-auto'
         }`}
       >
         <CustomTable

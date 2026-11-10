@@ -487,7 +487,9 @@ const ComTable: React.FC<ComTableProps> = ({
         className={`flex-1 min-h-0 ${
           usesScreenTheme
             ? `overflow-hidden ${styles.screenDarkTableWrap}`
-            : 'overflow-hidden'
+            : isPaginated
+              ? 'overflow-hidden'
+              : 'overflow-auto'
         }`}
       >
         <CustomTable
@@ -522,9 +524,7 @@ const ComTable: React.FC<ComTableProps> = ({
               : false
           }
           onChange={isPaginated ? handleTableChange : undefined}
-          // 不把预先乘过 widgetScale 的像素高度传进去。CustomTable 会按固定的
-          // 47px 表头和 56px 分页加回高度，并把表体抬到至少 160px；那两步都会让
-          // 锁定高度超过 overflow:hidden 的父级。省略 y 后它按父容器回填。
+          // 有分页时省略 y，由 CustomTable 按父容器回填。无分页不传 y，避免被抬到至少 160px。
           scroll={{ x: 'max-content' }}
         />
       </div>

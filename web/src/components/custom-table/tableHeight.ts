@@ -71,15 +71,17 @@ export const resolveTableDimensions = ({
     };
   }
 
-  // 省略 scroll.y 时按父容器回填（有无分页都一样）。
-  // 运营分析 TOP5 等无分页卡片依赖这里；需要贴行高时用 scroll.y = 'auto'。
-  if (parentHeight <= 0) {
+  if (!hasPagination) {
     return { tableHeight: undefined, containerHeight: undefined };
   }
 
+  const tableHeight = Math.max(
+    MIN_TABLE_BODY_HEIGHT,
+    parentHeight - fixedHeight
+  );
   return {
-    tableHeight: Math.max(0, parentHeight - fixedHeight),
-    containerHeight: parentHeight,
+    tableHeight,
+    containerHeight: Math.max(parentHeight, tableHeight + fixedHeight),
   };
 };
 

@@ -38,11 +38,19 @@
     flex: 0 0 auto;
   }
 
-  > :global([class*="customTable"]) > :global(.ant-table-wrapper) :global(.ant-table-body) {
+  // 有分页时 CustomTable 会拆出 ant-table-body。无分页时没有这一层，行在 ant-table-content 里。
+  > :global([class*="customTable"]) > :global(.ant-table-wrapper) :global(.ant-table-body),
+  > :global([class*="customTable"]) > :global(.ant-table-wrapper) :global(.ant-table-content) {
     flex: 1 1 auto;
     min-height: 0;
     max-height: none !important;
     overflow: auto !important;
+  }
+
+  > :global([class*="customTable"]) > :global(.ant-table-wrapper) :global(.ant-table-content) :global(.ant-table-thead > tr > th) {
+    position: sticky;
+    top: 0;
+    z-index: 2;
   }
 
   > :global([class*="customTable"]) > :global(.absolute.right-0.bottom-0) {

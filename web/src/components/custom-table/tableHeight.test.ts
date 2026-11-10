@@ -27,7 +27,7 @@ describe('resolveTableDimensions', () => {
   });
 
 
-  it('fills the parent body height even without pagination when scroll.y is omitted', () => {
+  it('does not lock height when pagination is absent and scroll.y is omitted', () => {
     expect(resolveTableDimensions({
       scrollY: undefined,
       viewportHeight: 900,
@@ -35,8 +35,8 @@ describe('resolveTableDimensions', () => {
       size: 'small',
       hasPagination: false,
     })).toEqual({
-      tableHeight: 179,
-      containerHeight: 226,
+      tableHeight: undefined,
+      containerHeight: undefined,
     });
   });
 
