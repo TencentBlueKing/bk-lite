@@ -276,6 +276,98 @@ def test_instance_update_records_ip_change_and_skips_name_only(fake_graph, quiet
     assert calls == [moved]
 
 
+def test_instance_update_records_organization_change(fake_graph, quiet_instance_writes, monkeypatch):
+    calls = []
+    monkeypatch.setattr(f"{MODULE}.record_instance_field_ci_context", lambda instance: calls.append(instance))
+    current = {
+        "_id": 5,
+        "inst_uuid": HOST_UUID,
+        "model_id": "host",
+        "inst_name": "before",
+        "ip_addr": "10.0.0.1",
+        "organization": [9],
+    }
+    moved = {**current, "organization": [1]}
+    fake_graph(MODULE, query_entity_by_id=current, query_entity=([], 0), set_entity_properties=[moved])
+
+    InstanceManage.instance_update([{"id": 1}], ["admin"], 5, {"organization": [1]}, "admin")
+
+    assert calls == [moved]
+
+
+def test_instance_update_records_ip_when_audit_write_fails(fake_graph, quiet_instance_writes, monkeypatch):
+    calls = []
+    monkeypatch.setattr(f"{MODULE}.record_instance_field_ci_context", lambda instance: calls.append(instance))
+
+    def fail_audit(*args, **kwargs):
+        raise RuntimeError("audit down")
+
+    monkeypatch.setattr(f"{MODULE}.create_change_record", fail_audit)
+    current = {
+        "_id": 5,
+        "inst_uuid": HOST_UUID,
+        "model_id": "host",
+        "inst_name": "before",
+        "ip_addr": "10.0.0.1",
+        "organization": [1],
+    }
+    moved = {**current, "ip_addr": "10.0.0.2"}
+    fake_graph(MODULE, query_entity_by_id=current, query_entity=([], 0), set_entity_properties=[moved])
+
+    with pytest.raises(RuntimeError, match="audit down"):
+        InstanceManage.instance_update([{"id": 1}], ["admin"], 5, {"ip_addr": "10.0.0.2"}, "admin")
+
+    assert calls == [moved]
+
+
+def test_batch_instance_update_records_only_real_ip_changes(fake_graph, quiet_instance_writes, monkeypatch):
+    calls = []
+    monkeypatch.setattr(f"{MODULE}.record_instance_field_ci_context", lambda instance: calls.append(instance))
+    unchanged = {
+        "_id": 7,
+        "inst_uuid": HOST_UUID,
+        "model_id": "host",
+        "inst_name": "same",
+        "ip_addr": "10.0.0.2",
+        "organization": [1],
+    }
+    changed = {
+        "_id": 8,
+        "inst_uuid": DST_UUID,
+        "model_id": "host",
+        "inst_name": "move",
+        "ip_addr": "10.0.0.1",
+        "organization": [1],
+    }
+    catalog = {7: unchanged, 8: changed}
+
+    def query_entity_by_ids(inst_ids):
+        return [catalog[inst_id] for inst_id in inst_ids]
+
+    updated_changed = {**changed, "ip_addr": "10.0.0.2"}
+    fake_graph(
+        MODULE,
+        query_entity=([], 0),
+        query_entity_by_ids=query_entity_by_ids,
+        set_entity_properties=[unchanged, updated_changed],
+    )
+
+    InstanceManage.batch_instance_update([{"id": 1}], ["admin"], [7, 8], {"ip_addr": "10.0.0.2"}, "admin")
+
+    assert calls == [updated_changed]
+
+    calls.clear()
+    renamed = {**unchanged, "inst_name": "after"}
+    fake_graph(MODULE, query_entity=([], 0), query_entity_by_ids=lambda inst_ids: [unchanged], set_entity_properties=[renamed])
+    InstanceManage.batch_instance_update([{"id": 1}], ["admin"], [7], {"inst_name": "after"}, "admin")
+    assert calls == []
+
+    calls.clear()
+    fake_graph(MODULE, query_entity=([], 0), query_entity_by_ids=lambda inst_ids: [unchanged], set_entity_properties=[dict(unchanged)])
+    InstanceManage.batch_instance_update([{"id": 1}], ["admin"], [7], {"ip_addr": "10.0.0.2"}, "admin")
+    assert calls == []
+
+
 def test_instance_batch_delete_records_loaded_instances_after_graph_delete(fake_graph, quiet_instance_writes, monkeypatch):
     inst = {"_id": 8, "inst_uuid": HOST_UUID, "model_id": "host", "inst_name": "gone", "organization": [1]}
     order = []
