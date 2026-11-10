@@ -47,5 +47,6 @@ victoria_traces_bytes >= average_ingest_bytes_per_day × retention_days × stora
 标签禁区和告警见 [聚合库运维规则](../../docs/operations/aggregate-metrics-store.md)。
 系统 Collector 的 `aggregation_cardinality_limit` 默认 90000，对应那份估算里的
 200 个服务、50 个入口操作、3 个环境和 3 种状态。超出的组合并进 `otel.metric.overflow=true`。
-刷出间隔默认 60 秒；缩短间隔时磁盘按比例增加。聚合分支不使用 `memory_limiter`，内存由这个
-序列上限约束。本地夹具的宿主端口是 18428，不要把聚合写入指到宿主 8428。
+刷出间隔默认 60 秒；缩短间隔时磁盘按比例增加。聚合进程有自己的 `memory_limiter`，容器上限与取值见
+[聚合库运维规则](../../docs/operations/aggregate-metrics-store.md)。序列上限仍然约束组合数。
+本地夹具的宿主端口是 18428，不要把聚合写入指到宿主 8428。

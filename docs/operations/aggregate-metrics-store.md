@@ -4,13 +4,14 @@
 生产进程怎么编排、镜像怎么进入仓库、告警接到哪条渠道，由运维自己的流水线决定。
 这和 [APM 数据面契约夹具](../../deploy/apm/README.md) 一样：契约硬，编排软。
 
-研发不提供生产 Compose 或 Helm。运维调整自己的流水线，重新打包 APM 系统 Collector
-和 RUM 网关两个产品镜像，并部署下面这套库。架构决定见
+研发不提供生产 Compose 或 Helm。运维调整自己的流水线，重新打包 APM Collector
+和 RUM 网关两个产品镜像，并部署下面这套库。APM 镜像同时跑区域、系统和聚合三个进程。架构决定见
 [ADR 0011](../adr/0011-apm-rum-aggregate-metrics-store.md)。调用链传输的其余决定仍以
 [ADR 0006](../adr/0006-apm-regional-nats-victoriatraces-pipeline.md) 为准。
 
-APM 系统 Collector 的构建配置和 `deploy/apm/otel/system.yaml` 已经包含入口聚合流水线。
-发行版核心版本仍是 v0.153.0，镜像标签是 `0.153.0-bklite.2`。RUM 网关的
+APM 聚合由独立进程承担，配置是 `deploy/apm/otel/aggregate.yaml`。系统 Collector 的
+`deploy/apm/otel/system.yaml` 只写 VictoriaTraces。发行版核心版本仍是 v0.153.0，镜像标签是
+`0.153.0-bklite.3`。RUM 网关的
 `deploy/rum/collector/otel/rum.gateway.yaml` 已经包含浏览、JS 错误和 Web Vitals 聚合流水线。
 发行版核心版本仍是 v0.154.0，镜像标签是 `0.1.0-bklite.2`。本文不表示聚合库已经在生产部署；
 运维按本文重新打包镜像并部署聚合库。
@@ -56,18 +57,20 @@ Monitor 和 CMDB 继续使用自己的 VictoriaMetrics。聚合序列不写入�
 
 | 变量 | 使用进程 | 填写内容 |
 |---|---|---|
-| `AGG_VICTORIAMETRICS_WRITE_URL` | APM 系统 Collector、RUM 网关 | 聚合库的 remote write 地址 |
+| `AGG_VICTORIAMETRICS_WRITE_URL` | APM 聚合 Collector、RUM 网关 | 聚合库的 remote write 地址 |
 | `AGG_VICTORIAMETRICS_QUERY_URL` | Server | 同一套聚合库的查询入口 |
-| `AGG_VICTORIAMETRICS_USER` | 上面三类进程，仅在启用基础认证时 | 基础认证用户名 |
-| `AGG_VICTORIAMETRICS_PASSWORD` | 上面三类进程，仅在启用基础认证时 | 基础认证口令 |
-| `APM_AGG_SHARD` | 每一个 APM 系统 Collector 写入进程 | 该进程固定的分片值 |
+| `AGG_VICTORIAMETRICS_USER` | APM 聚合 Collector、RUM 网关、Server，仅在启用基础认证时 | 基础认证用户名 |
+| `AGG_VICTORIAMETRICS_PASSWORD` | APM 聚合 Collector、RUM 网关、Server，仅在启用基础认证时 | 基础认证口令 |
+| `APM_AGG_SHARD` | 每一个 APM 聚合 Collector 写入进程 | 该进程固定的分片值 |
+| `APM_AGG_NATS_ACK_WAIT` | APM 聚合消费者，可选 | ACK 等待。留空时用 `30s` |
+| `APM_AGG_NATS_MAX_DELIVER` | APM 聚合消费者，可选 | 重投上限。留空时用 `3` |
 | `RUM_AGG_SHARD` | 每一个 RUM 网关写入进程 | 该进程固定的分片值 |
 | `RUM_AGG_BATCH_TIMEOUT` | RUM 网关，可选 | 聚合指标刷出间隔。留空时用配置里的 `10s` |
 | `RUM_AGG_MAX_STREAMS` | RUM 网关，可选 | `deltatocumulative` 流上限。留空时用 `420000`。超出的样本记在网关指标 `otelcol_deltatocumulative_datapoints`，属性 `error=limit` |
 
 `AGG_VICTORIAMETRICS_WRITE_URL` 填写内网 remote write 地址，路径通常是
-`/api/v1/write`，主机写成实际内网名字，不要写进仓库。APM 侧只配在系统 Collector 上。
-区域 Collector 仍然只发布调用链，不写聚合库。
+`/api/v1/write`，主机写成实际内网名字，不要写进仓库。APM 侧只配在聚合 Collector 上。
+区域 Collector 仍然只发布调用链，系统 Collector 只写 VictoriaTraces，两者都不写聚合库。
 
 `AGG_VICTORIAMETRICS_QUERY_URL` 填写同一套库的内网查询入口，不要带 remote write 路径，
 也不要填成 `VICTORIAMETRICS_HOST`。Server 读取客户端落地时如果要收紧路径，再核对这一格。
@@ -85,12 +88,41 @@ RUM 网关还要用同一个 `RUM_AGG_SHARD` 作为自身遥测资源的 `servic
 APM 不要用 Span 上的 `service.instance.id` 充当 `APM_AGG_SHARD`。原因见第 4 节第 2 条。
 
 写入地址为空时，不要回落到 `VICTORIAMETRICS_HOST`。明细入库配置保持原样。
-使用带聚合分支的 `deploy/apm/otel/system.yaml` 时，未设置的变量会展开成空字符串。
+使用 `deploy/apm/otel/aggregate.yaml` 时，未设置的变量会展开成空字符串。
 写入地址为空时报 `invalid endpoint`，`APM_AGG_SHARD` 为空时报 external labels 为空。
-两种都会使整个系统 Collector 进程无法启动，VictoriaTraces 入库会一起停。
-Collector 不能按空环境变量只关掉聚合分支。要保住明细，改挂
-`deploy/apm/otel/system-traces.yaml`，聚合分支不启用，这两个变量留空也可以启动。
-区域 Collector 不读这些变量。
+两种都只让聚合 Collector 无法启动。系统 Collector 不读这些变量，VictoriaTraces 入库继续。
+区域 Collector 也不读这些变量。
+
+聚合消费者名是 `BKLITE_APM_AGGREGATE`，过滤 `apm.traces.>`，显式 ACK，pull，`deliver new`。
+首次创建不回放当时已在 Stream 里的消息，避免积压被记成晚到或把已经聚合过的历史再算一遍。
+已存在的同名消费者不要删掉重建。预建命令：
+
+```text
+nats consumer add APM_TRACES BKLITE_APM_AGGREGATE \
+  --filter "apm.traces.>" --pull --deliver new --ack explicit \
+  --wait 30s --max-deliver 3 --max-pending 256 --replay instant --defaults
+```
+
+`APM_AGG_NATS_ACK_WAIT` 默认 30 秒，短于系统消费者的 60 秒，并且必须大于聚合配置里写死的
+`downstream_timeout` 20 秒。聚合入口在内存里完成，不必盖住 VictoriaTraces 的导出重试。
+`APM_AGG_NATS_MAX_DELIVER` 默认 3。聚合流水线正常不把导出失败退回接收器，重投只发生在进程崩溃
+或处理卡住超过 ACK 等待。3 给在途消息再试两次，然后终止；取 1 会在每次重启时丢掉已拉取未 ACK 的消息。
+`max ack pending` 仍用 `APM_NATS_MAX_ACK_PENDING`，与接收器的拉取批量对齐。
+
+仓库内 `deploy/apm/nats/nats-server.conf` 对 consumer 使用 `APM_TRACES.*` 通配，不用改。
+生产账号如果按 consumer 名授权，要给 `BKLITE_APM_AGGREGATE` 补上 info、pull 和 ACK。
+
+同一变更里创建这个消费者、启动聚合 Collector，并把系统 Collector 换成只写 VictoriaTraces 的
+`system.yaml`。不要让旧的聚合分支和新进程同时消费。
+
+聚合进程内存按容量压测里约 236 MiB 的聚合堆取值，不另做压测。`memory_limiter` 的 `limit_mib`
+默认 512，`spike_limit_mib` 默认 128，软拒绝线是 384 MiB，比测到的堆高出约 148 MiB。容器上限默认
+640 MiB，等于 `limit_mib` + 128 MiB。拒收发生在计数之前，只 NAK 聚合消费者。系统 Collector 仍用
+384 / 96 / 512 MiB，只服务明细。
+
+回退聚合写入时停掉聚合 Collector。系统 Collector 继续用 `system.yaml` 写 VictoriaTraces。
+不要删除 Stream 或两个 consumer。`0.153.0-bklite.2` 及更早的镜像没有 `routing` 连接器，不能加载
+`aggregate.yaml`。退回那种镜像时要同时停掉聚合进程，并换回该镜像自带的系统配置。
 
 RUM 网关同样不能按空环境变量只关掉聚合分支。使用 `deploy/rum/collector/otel/rum.gateway.yaml`
 时，写入地址为空或 `RUM_AGG_SHARD` 为空都会让整个网关无法启动，VictoriaLogs 入库一起停。
@@ -208,31 +240,33 @@ APM 的 76 GiB 对应入口 Span 的计数加直方图，不包含晚到计数�
 `components` 输出为准。升级 Collector 时要回归聚合流水线，至少覆盖标签集合、重复累计样本的
 `increase()`，以及 remote write 不可达时明细仍入库且不重复。
 
-APM 系统 Collector 保持核心版本 v0.153.0，镜像标签 `0.153.0-bklite.2`。
+APM Collector 保持核心版本 v0.153.0，镜像标签 `0.153.0-bklite.3`。区域、系统和聚合三个进程共用这个镜像。
 下面是这个镜像 `components` 里和聚合有关的条目。`deltatocumulative` 和 `transform`
 已经出现在输出里。输出没有单独列出旧名 `spanmetrics`，配置使用 `span_metrics`。
 
 | 组件 | `components` 名称 | 稳定性 | 作用 |
 |---|---|---|---|
+| Routing 连接器 | `routing` | Alpha（`traces_to_traces`；同一次输出里 metrics、logs 也是 Alpha） | 按 Span 把晚到调用链移到晚到流水线，其余进入 `span_metrics` |
 | Span Metrics 连接器 | `span_metrics` | Alpha（`traces_to_metrics`） | 把入口 Span 变成累计计数和累计直方图 |
 | Count 连接器 | `count` | Alpha（`traces_to_metrics`；同一次输出里 `logs_to_metrics`、`metrics_to_metrics` 也是 Alpha） | 统计晚到 Span。输出是 Delta |
-| Filter 处理器 | `filter` | Alpha（traces、metrics、logs） | 只保留入口 Span，并分开晚到 Span |
+| Filter 处理器 | `filter` | Alpha（traces、metrics、logs） | 在分流前只保留入口 Span |
 | Delta to Cumulative 处理器 | `deltatocumulative` | Alpha（metrics）。logs、traces 在输出里是 Undefined | 把 Delta 累加成累计值后再写 |
 | Transform 处理器 | `transform` | Beta（traces、metrics、logs） | 用 `keep_keys` 收窄资源属性；晚到指标上把样本时间改成处理时刻 |
+| Memory Limiter 处理器 | `memory_limiter` | Beta（traces、metrics、logs） | 放在聚合入口、任何计数之前。拒收只重投聚合消费者 |
 | Prometheus Remote Write 导出器 | `prometheusremotewrite` | Beta（metrics） | 写到 `AGG_VICTORIAMETRICS_WRITE_URL` |
-| Basic Auth 扩展 | `basicauth` | Beta（extension） | 可选。只在追加 `system-auth.yaml` 时启用，留空时不加载 |
-| Batch 处理器 | `batch` | Beta（metrics；traces、logs 也是 Beta） | 晚到分支上挡住导出错误。这个处理器原来就在镜像里 |
+| Basic Auth 扩展 | `basicauth` | Beta（extension） | 可选。只在聚合进程追加 `aggregate-auth.yaml` 时启用，留空时不加载 |
+| Batch 处理器 | `batch` | Beta（metrics；traces、logs 也是 Beta） | 晚到指标上挡住导出错误，避免已经计入的 Span 随 NAK 再算一次。这个处理器原来就在镜像里 |
 
 上游 metadata 仍给 `transform` 标了 Unsound Transformations 等警告，给 `filter` 标了
 Orphaned Telemetry，给 `deltatocumulative` 标了 Statefulness。资源属性收窄放在
 `span_metrics` 之前，资源分组键与留下的三个属性相同。同一服务的多个实例因此只产生一组序列。
 
-晚到计数分支使用 `batch`，把样本时间改成处理时刻，再进入 `deltatocumulative`。
+晚到计数使用 `batch`，把样本时间改成处理时刻，再进入 `deltatocumulative`。
 count 默认把时间打在 Span 结束时间上；晚到 Span 已经超过 5 分钟，不改的话即时查询看不到。
-`span_metrics` 分支本身不靠
-`batch` 挡住导出错误。聚合分支上不能放置会把错误退回接收器的组件，包括
-`memory_limiter`。内存用序列上限约束。remote write 不可达时，系统 Collector
-不对 JetStream NAK，VictoriaTraces 不因此把同一条 Span 写两次。
+`span_metrics` 不把 remote write 失败交回 traces。`batch` 吃掉晚到导出的错误，使 `routing`
+不会把这个错误返回接收器。入口上的 `memory_limiter` 在计数之前，拒收只会让聚合消费者重投。
+remote write 不可达时，聚合 Collector 不对 JetStream NAK，VictoriaTraces 不因此把同一条 Span 写两次。
+VictoriaTraces 不可用时，只有系统消费者 NAK；聚合消费者已经 ACK 的 Span 不会再计一次。
 
 RUM 网关保持 v0.154.0，镜像标签 `0.1.0-bklite.2`。下面是这个镜像
 `bklite-rum-gateway components` 里和聚合有关的条目。配置里的导出器类型使用

@@ -25,7 +25,7 @@ pytestmark = pytest.mark.skipif(
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
 COMPOSE_FILE = REPOSITORY_ROOT / "deploy/apm/compose.yaml"
-RESERVED_HOST_PORTS = {4317, 4318, 8428, 9428, 10428, 13133, 18222, 18888, 18889, 23133, 18428}
+RESERVED_HOST_PORTS = {4317, 4318, 8428, 9428, 10428, 13133, 18222, 18888, 18889, 18890, 23133, 33133, 18428}
 ALLOWED_LABELS = {
     "__name__",
     "job",
@@ -52,7 +52,7 @@ FORBIDDEN_LABELS = {
     "db_statement",
 }
 EXPECTED_BUCKETS = ["5", "10", "25", "50", "100", "200", "300", "500", "800", "1000", "2000", "3000", "5000", "10000", "+Inf"]
-COLLECTOR_IMAGE = os.environ.get("APM_AGG_VERIFY_IMAGE", "bklite/apm-otel-collector:0.153.0-bklite.2")
+COLLECTOR_IMAGE = os.environ.get("APM_AGG_VERIFY_IMAGE", "bklite/apm-otel-collector:0.153.0-bklite.3")
 
 
 def _free_port() -> int:
@@ -148,6 +148,8 @@ class AggregateStack:
         self.regional_metrics_port = _free_port()
         self.system_health_port = _free_port()
         self.system_metrics_port = _free_port()
+        self.aggregate_health_port = _free_port()
+        self.aggregate_metrics_port = _free_port()
         self.aggregate_port = _free_port()
         self.environment = os.environ.copy()
         self.environment.pop("COMPOSE_FILE", None)
@@ -172,6 +174,10 @@ class AggregateStack:
                 "APM_SYSTEM_HEALTH_PORT": str(self.system_health_port),
                 "APM_SYSTEM_METRICS_BIND": "127.0.0.1",
                 "APM_SYSTEM_METRICS_PORT": str(self.system_metrics_port),
+                "APM_AGG_COLLECTOR_HEALTH_BIND": "127.0.0.1",
+                "APM_AGG_COLLECTOR_HEALTH_PORT": str(self.aggregate_health_port),
+                "APM_AGG_COLLECTOR_METRICS_BIND": "127.0.0.1",
+                "APM_AGG_COLLECTOR_METRICS_PORT": str(self.aggregate_metrics_port),
                 "APM_AGG_METRICS_BIND": "127.0.0.1",
                 "APM_AGG_METRICS_PORT": str(self.aggregate_port),
                 "APM_COLLECTOR_IMAGE": COLLECTOR_IMAGE,
@@ -191,6 +197,7 @@ class AggregateStack:
     def up(self):
         self._run("up", "-d", "--wait", "--wait-timeout", "180", timeout=240)
         assert _request(f"http://127.0.0.1:{self.system_health_port}/")[0] == 200
+        assert _request(f"http://127.0.0.1:{self.aggregate_health_port}/")[0] == 200
 
     def down(self):
         subprocess.run(
@@ -203,9 +210,15 @@ class AggregateStack:
             check=False,
         )
 
-    def restart_system(self):
-        self._run("restart", "apm-system-collector", timeout=90)
-        _eventually(lambda: _request(f"http://127.0.0.1:{self.system_health_port}/")[0], lambda status: status == 200)
+    def restart_aggregate(self):
+        self._run("restart", "apm-aggregate-collector", timeout=90)
+        _eventually(lambda: _request(f"http://127.0.0.1:{self.aggregate_health_port}/")[0], lambda status: status == 200)
+
+    def stop(self, service: str):
+        self._run("stop", service, timeout=60)
+
+    def start(self, service: str):
+        self._run("start", service, timeout=90)
 
     def post(self, resources: list):
         status, body = _request(
@@ -247,11 +260,12 @@ class AggregateStack:
         status, body = _request(f"http://127.0.0.1:{self.nats_port}/jsz?streams=true&consumers=true")
         assert status == 200, body
         detail = json.loads(body)["account_details"][0]["stream_detail"][0]
-        return detail["state"], detail["consumer_detail"][0]
+        consumers = {item["name"]: item for item in detail["consumer_detail"]}
+        return detail["state"], consumers
 
     def logs(self) -> str:
         completed = subprocess.run(
-            [*self.compose, "logs", "--tail=120", "apm-system-collector"],
+            [*self.compose, "logs", "--tail=160", "apm-aggregate-collector", "apm-system-collector"],
             cwd=REPOSITORY_ROOT,
             env=self.environment,
             capture_output=True,
@@ -416,7 +430,7 @@ def test_entry_aggregate_merges_instances_buckets_late_spans_and_restart_increas
             return float(rows[0]["value"][1]) if rows else 0.0
 
         assert _eventually(_increase, lambda value: value == 3.0) == 3.0
-        stack.restart_system()
+        stack.restart_aggregate()
         again = time.time_ns()
         stack.post(
             [
@@ -464,22 +478,27 @@ def test_remote_write_failure_does_not_duplicate_victoria_traces():
                 )
             ]
         )
+
         # 区域 Collector 的 batch size 是 1，三条 Span 会变成三条消息。
-        # 验收的是全部 ACK 且没有重投，不是消息条数本身。
+        # 明细消费者和聚合消费者都要 ACK，且没有重投。验收的不是消息条数本身。
+        def _acked(consumer: dict) -> bool:
+            return (
+                consumer["ack_floor"]["stream_seq"] == 3
+                and consumer["num_ack_pending"] == 0
+                and consumer["num_pending"] == 0
+                and consumer.get("num_redelivered", 0) == 0
+            )
+
         _eventually(
             stack.jetstream,
-            lambda value: value[0]["last_seq"] == 3
-            and value[1]["ack_floor"]["stream_seq"] == 3
-            and value[1]["num_ack_pending"] == 0
-            and value[1]["num_pending"] == 0
-            and value[1].get("num_redelivered", 0) == 0,
+            lambda value: value[0]["last_seq"] == 3 and _acked(value[1]["BKLITE_APM_SYSTEM"]) and _acked(value[1]["BKLITE_APM_AGGREGATE"]),
             timeout=40,
         )
         time.sleep(8)
-        state, consumer = stack.jetstream()
-        assert state["last_seq"] == 3, consumer
-        assert consumer["ack_floor"]["stream_seq"] == 3
-        assert consumer.get("num_redelivered", 0) == 0
+        state, consumers = stack.jetstream()
+        assert state["last_seq"] == 3, consumers
+        assert _acked(consumers["BKLITE_APM_SYSTEM"])
+        assert _acked(consumers["BKLITE_APM_AGGREGATE"])
         copies = _eventually(lambda: stack.vt_copies("iso-svc"), lambda value: value.get("spans") == 3 and value.get("rows") == 3)
         assert copies == {"spans": 3.0, "rows": 3.0}
     except AssertionError as error:
@@ -512,6 +531,47 @@ def test_cardinality_limit_collapses_overflow_into_one_series():
         assert {row["metric"]["service_name"] for row in kept} == {"overflow-svc"}
         _assert_labels(rows)
         assert all("instance" not in row["metric"] for row in rows)
+    except AssertionError as error:
+        raise AssertionError(f"{error}\n{stack.logs()}") from error
+    finally:
+        stack.down()
+
+
+def test_victoria_traces_outage_counts_each_entry_span_once():
+    now = time.time_ns()
+    stack = AggregateStack("vt-outage", APM_AGG_SHARD="agg-vt-outage")
+    spans = [_span(f"{index:032x}", f"{index:016x}", "GET /checkout", 2, now - 12_000_000, now) for index in range(1, 5)]
+    try:
+        stack.up()
+        stack.stop("apm-victoria-traces")
+        stack.post([_resource("shop", "vt-outage-svc", "pod-vt", spans)])
+
+        def _calls_value() -> float:
+            return sum(float(row["value"][1]) for row in _calls(stack, "vt-outage-svc"))
+
+        assert _eventually(_calls_value, lambda value: value == 4.0, timeout=45) == 4.0
+        state, consumers = stack.jetstream()
+        system_seq = consumers["BKLITE_APM_SYSTEM"].get("ack_floor", {}).get("stream_seq", 0)
+        aggregate_seq = consumers["BKLITE_APM_AGGREGATE"]["ack_floor"]["stream_seq"]
+        assert state["last_seq"] > 0
+        assert system_seq < state["last_seq"]
+        assert aggregate_seq == state["last_seq"]
+        time.sleep(6)
+        assert _calls_value() == 4.0
+        stack.start("apm-victoria-traces")
+        _eventually(
+            lambda: stack.jetstream()[1]["BKLITE_APM_SYSTEM"]["ack_floor"]["stream_seq"],
+            lambda seq: seq == state["last_seq"],
+            timeout=90,
+        )
+        copies = _eventually(
+            lambda: stack.vt_copies("vt-outage-svc"),
+            lambda value: value.get("spans") == 4 and value.get("rows") == 4,
+            timeout=90,
+        )
+        assert copies == {"spans": 4.0, "rows": 4.0}
+        time.sleep(6)
+        assert _calls_value() == 4.0
     except AssertionError as error:
         raise AssertionError(f"{error}\n{stack.logs()}") from error
     finally:

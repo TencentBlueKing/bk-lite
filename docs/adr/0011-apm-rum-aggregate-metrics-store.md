@@ -67,7 +67,7 @@ signal_to_metrics 和 deltatocumulative。完整的 RUM 网关写入路径随后
 - 重投期间聚合数字会高于去重后的调用链。这是接受的偏差，不作为无条件的 1% 门槛。
 - Client Span、推断下游、慢请求、Apdex、延迟 SLO 和告警策略不进入聚合库。
 - 两个镜像要加入 Alpha 或 Beta 组件。升级 Collector 时必须回归聚合流水线。
-  组件清单以镜像 `components` 输出核对运维规则。APM 镜像标签是 `0.153.0-bklite.2`，
+  组件清单以镜像 `components` 输出核对运维规则。APM 镜像标签是 `0.153.0-bklite.3`，
   RUM 镜像标签是 `0.1.0-bklite.2`。本文不表示聚合库已经在生产部署。
 - `deploy/apm` 的验收清单、README 和数据面配置测试在聚合流水线 ticket 中更新。
   那些文件在本次决定接受时仍描述调用链契约，不描述已经部署的聚合库。
