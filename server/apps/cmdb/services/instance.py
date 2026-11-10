@@ -43,6 +43,7 @@ from apps.cmdb.models.change_record import (
 from apps.cmdb.models.show_field import ShowField
 from apps.cmdb.permissions.instance_permission import PermissionManage
 from apps.cmdb.services.auto_relation_reconcile import schedule_instance_auto_relation_reconcile
+from apps.cmdb.services.ci_context import record_association_ci_context, record_instance_field_ci_context, record_instances_deleted_ci_context
 from apps.cmdb.services.host_sync_identity import apply_model_cloud_id, heal_legacy_cloud_id
 from apps.cmdb.services.instance_identity import (
     ensure_instance_identity_immutable,
@@ -1501,6 +1502,9 @@ class InstanceManage(object):
                     scenario=scenario,
                 )
 
+            if any(field in update_attr and update_attr[field] != inst_info.get(field) for field in ("ip_addr", "organization")):
+                record_instance_field_ci_context(result[0] or inst_info)
+
             if schedule_post_actions:
                 from apps.cmdb.services.auto_relation_reconcile import schedule_instance_auto_relation_reconcile
 
@@ -1672,6 +1676,10 @@ class InstanceManage(object):
         ]
         batch_create_change_record(INSTANCE, UPDATE_INST, change_records, operator=operator)
 
+        if any(field in update_attr for field in ("ip_addr", "organization")):
+            for updated in result:
+                record_instance_field_ci_context(updated)
+
         schedule_instance_auto_relation_reconcile([item["_id"] for item in result])
 
         return result
@@ -1739,6 +1747,8 @@ class InstanceManage(object):
 
         with GraphClient() as ag:
             ag.batch_delete_entity(INSTANCE, inst_ids)
+
+        record_instances_deleted_ci_context(inst_list)
 
         # 企业版：实例删除后把其附件/图片文件标记为待回收（批量单次处理）
         get_instance_enterprise_extension().on_instances_delete([item["_id"] for item in inst_list])
@@ -2299,6 +2309,7 @@ class InstanceManage(object):
                 e,
             )
 
+        record_association_ci_context(src, dst)
         return edge
 
     @staticmethod
@@ -2411,6 +2422,7 @@ class InstanceManage(object):
                 edge.get("_id"),
                 type(exc).__name__,
             )
+        record_association_ci_context(src, dst)
         return {
             "model_asst_id": model_asst_id,
             "src_inst_uuid": src["inst_uuid"],
@@ -2462,6 +2474,8 @@ class InstanceManage(object):
 
         with GraphClient() as ag:
             ag.delete_edge(asso_id)
+
+        record_association_ci_context(asso_info.get("src"), asso_info.get("dst"))
 
         # 同 create：端点实体可能未完全解析，全部 .get 兜底避免 KeyError
         src_info = asso_info.get("src") or {}

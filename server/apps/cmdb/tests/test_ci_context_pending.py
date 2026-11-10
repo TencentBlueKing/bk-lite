@@ -3,6 +3,7 @@
 import pytest
 
 from apps.cmdb.models.ci_context import CmdbCiContext, CmdbCiContextPending
+from apps.cmdb.services.ci_context import _enqueue_ci_context_drain as _real_enqueue_ci_context_drain
 from apps.cmdb.services.ci_context import drain_ci_context_pending, schedule_ci_context_pending
 from apps.cmdb.services.ci_context_policy import CONTEXT_APPLICATION
 from apps.cmdb.tests.test_ci_context_recompute import MemoryGraph, edge, inst
@@ -290,6 +291,7 @@ def test_schedule_enqueues_drain_after_insert_and_skips_empty(monkeypatch):
 def test_enqueue_swallows_delay_errors(monkeypatch):
     from apps.cmdb.tasks.ci_context import reconcile_ci_context_pending_task
 
+    monkeypatch.setattr("apps.cmdb.services.ci_context._enqueue_ci_context_drain", _real_enqueue_ci_context_drain)
     calls = {"n": 0}
 
     def boom(*args, **kwargs):

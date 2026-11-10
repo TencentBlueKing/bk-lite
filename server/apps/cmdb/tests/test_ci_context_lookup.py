@@ -10,12 +10,6 @@ from apps.cmdb.services.ci_context_policy import CONTEXT_APPLICATION
 pytestmark = pytest.mark.django_db
 
 
-@pytest.fixture(autouse=True)
-def _do_not_enqueue_ci_context_drain(monkeypatch):
-    """schedule() 入队后会踢 Celery。单测不连 .env 里的真实 broker。"""
-    monkeypatch.setattr("apps.cmdb.services.ci_context._enqueue_ci_context_drain", lambda: None)
-
-
 def _row(**overrides):
     data = dict(
         ci_uuid="host-1",
