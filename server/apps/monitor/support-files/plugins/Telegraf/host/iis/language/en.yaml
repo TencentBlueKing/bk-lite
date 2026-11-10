@@ -83,7 +83,7 @@ monitor_object_metric:
     iis_app_pool_recycles:
       name: Application Pool Recycles
       desc: >-
-        APP_POOL_WAS cumulative application pool recycles. For recycle frequency, use Application Pool Recycle Rate.
+        APP_POOL_WAS cumulative application pool recycles.
     iis_app_pool_recycles_rate:
       name: Application Pool Recycle Rate
       desc: >-

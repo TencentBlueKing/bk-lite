@@ -234,7 +234,7 @@ monitor_object_metric:
       desc: 创建的临时表总数（内存 + 磁盘）
     mysql_created_tmp_memory_tables_rate:
       name: 内存临时表创建速率
-      desc: 内存中创建的临时表估算速率，由总临时表数减去磁盘临时表数得到
+      desc: 内存中创建的临时表估算速率。
     mysql_tmp_disk_table_ratio:
       name: 磁盘临时表占比
       desc: 临时表中落盘到磁盘的比例；过高通常需要优化 SQL 或调大临时表内存

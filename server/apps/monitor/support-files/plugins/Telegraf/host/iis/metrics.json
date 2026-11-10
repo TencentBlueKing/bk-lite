@@ -431,7 +431,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "APP_POOL_WAS cumulative application pool recycles. For recycle frequency, use Application Pool Recycle Rate."
+      "description": "APP_POOL_WAS cumulative application pool recycles."
     },
     {
       "metric_group": "Application Pool",

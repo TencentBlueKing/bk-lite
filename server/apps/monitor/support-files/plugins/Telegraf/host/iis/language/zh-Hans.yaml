@@ -83,7 +83,7 @@ monitor_object_metric:
     iis_app_pool_recycles:
       name: 应用程序池回收次数
       desc: >-
-        APP_POOL_WAS 应用程序池累计回收次数。查看回收频率请用「应用程序池回收频率」。
+        APP_POOL_WAS 应用程序池累计回收次数。
     iis_app_pool_recycles_rate:
       name: 应用程序池回收频率
       desc: >-

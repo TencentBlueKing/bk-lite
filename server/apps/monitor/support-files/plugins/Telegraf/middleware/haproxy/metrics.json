@@ -435,7 +435,7 @@
           "description": "服务(FRONTEND/BACKEND/服务器名)"
         }
       ],
-      "description": "Cumulative number of errors connecting to backend servers since startup; growth indicates backend connectivity problems. For the error rate, use Connection Error Rate.",
+      "description": "Cumulative number of errors connecting to backend servers since startup; growth indicates backend connectivity problems.",
       "query": "haproxy_econ{__$labels__}"
     },
     {
@@ -567,7 +567,7 @@
           "description": "服务(FRONTEND/BACKEND/服务器名)"
         }
       ],
-      "description": "Cumulative number of times a request was redispatched to another backend server since startup. For the redispatch rate, use Request Redispatch Rate.",
+      "description": "Cumulative number of times a request was redispatched to another backend server since startup.",
       "query": "haproxy_wredis{__$labels__}"
     },
     {
