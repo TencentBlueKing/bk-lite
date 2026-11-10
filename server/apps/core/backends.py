@@ -310,7 +310,7 @@ class AuthBackend(ModelBackend):
             return None
 
         try:
-            result = self._verify_token_with_system_mgmt(token)
+            result = self._verify_token_with_system_mgmt(token, request)
             if not result:
                 return None
 
@@ -330,7 +330,7 @@ class AuthBackend(ModelBackend):
             logger.error(f"Token authentication failed: {e}")
             return None
 
-    def _verify_token_with_system_mgmt(self, token: str) -> Optional[Dict[str, Any]]:
+    def _verify_token_with_system_mgmt(self, token: str, request=None) -> Optional[Dict[str, Any]]:
         """使用SystemMgmt验证token"""
         try:
             client = SystemMgmt()
@@ -344,6 +344,8 @@ class AuthBackend(ModelBackend):
                 if error_code == VERIFY_TOKEN_USER_NOT_FOUND_CODE or error_message == VERIFY_TOKEN_USER_NOT_FOUND_MESSAGE:
                     raise DoesNotExist(error_message)
             if not result.get("result"):
+                if request is not None and result.get("error_code") == "PASSWORD_CHANGED":
+                    request.auth_error_code = "PASSWORD_CHANGED"
                 return None
 
             return result
