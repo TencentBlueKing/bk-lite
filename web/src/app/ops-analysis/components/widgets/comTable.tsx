@@ -3,7 +3,6 @@ import React, {
   useState,
   useMemo,
   useCallback,
-  useRef,
 } from 'react';
 import { Input, Select, DatePicker, Tooltip } from 'antd';
 import { SearchOutlined } from '@ant-design/icons';
@@ -20,6 +19,7 @@ import {
   resolveTableLikeColumns,
   type TableLikePaginationState,
 } from './shared/tableLikeData';
+import { useTableBodyScrollY } from './shared/useTableBodyScrollY';
 import styles from './comTable.module.scss';
 import type { DatasourceItem } from '@/app/ops-analysis/types/dataSource';
 import type {
@@ -49,7 +49,6 @@ import {
   applyTableRowFilters,
   buildTableQueryList,
 } from '@/app/ops-analysis/utils/tableQueryList';
-import { useTableBodyScrollY } from './shared/useTableBodyScrollY';
 import {
   opsTableCellTextStyle,
   resolveOpsTableColumnWidth,
@@ -90,7 +89,6 @@ const ComTable: React.FC<ComTableProps> = ({
   const { openPoint } = useWidgetDataLink(config);
   const dataLink = readWidgetInteraction(config);
   const dataLinkName = dataLink?.kind === 'data' ? dataLink.name : '';
-  const tableContainerRef = useRef<HTMLDivElement | null>(null);
   const [filters, setFilters] = useState<Record<string, any>>({});
   const [keywordDrafts, setKeywordDrafts] = useState<Record<string, string>>(
     {},
@@ -151,15 +149,14 @@ const ComTable: React.FC<ComTableProps> = ({
       isPaginated: parsed.isPaginated,
     };
   }, [rawData, queryPagination.current, queryPagination.pageSize, supportsPaginationParams]);
+  // 槽位挂上之后才测量。数字 y 用表头和分页的真实高度，不再乘 widgetUiScale。
+  const { slotRef: tableSlotRef, tableScrollY } = useTableBodyScrollY({
+    hasPagination: isPaginated,
+  });
   const displayedTableData = useMemo(
     () => applyTableRowFilters(tableData, filters),
     [filters, tableData],
   );
-  const tableScrollY = useTableBodyScrollY({
-    containerRef: tableContainerRef,
-    hasPagination: isPaginated,
-    scale: widgetScale,
-  });
 
   const filterFields = useMemo<TableFilterFieldConfig[]>(() => {
     return config?.tableConfig?.filterFields || [];
@@ -485,14 +482,15 @@ const ComTable: React.FC<ComTableProps> = ({
 
   return (
     <div
-      className={`mt-2 h-full flex flex-col ${usesScreenTheme ? styles.screenDarkRoot : ''}`}
+      // 标题和表格的间距必须在 h-full 内部。margin-top 会把同高的表格顶出卡片的 overflow:hidden，分页器底部被裁掉。
+      className={`flex h-full min-h-0 flex-col pt-2 ${usesScreenTheme ? styles.screenDarkRoot : ''}`}
       style={screenTableStyle}
     >
       {renderFilters()}
 
       <div
-        ref={tableContainerRef}
-        className={`flex-1 min-h-0 ${
+        ref={tableSlotRef}
+        className={`${styles.opsTableScroll} flex-1 min-h-0 ${
           usesScreenTheme
             ? `overflow-hidden ${styles.screenDarkTableWrap}`
             : 'overflow-hidden'
@@ -530,7 +528,12 @@ const ComTable: React.FC<ComTableProps> = ({
               : false
           }
           onChange={isPaginated ? handleTableChange : undefined}
-          scroll={{ x: 'max-content', y: tableScrollY }}
+          // y 是槽位减去当时表头和分页后的像素，未乘 widgetUiScale。
+          // 省略时无分页表格按内容撑高，会被卡片 overflow:hidden 裁掉且没有滚动条。
+          scroll={{
+            x: 'max-content',
+            y: tableScrollY,
+          }}
         />
       </div>
     </div>

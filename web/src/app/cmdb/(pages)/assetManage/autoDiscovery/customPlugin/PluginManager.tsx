@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Button, Form, Input, Modal, Select, Space, Upload, message } from 'antd';
+import { Button, Form, Input, Modal, Select, Space, Tooltip, Upload, message } from 'antd';
+import { QuestionCircleOutlined } from '@ant-design/icons';
 import Cookies from 'js-cookie';
 import CustomTable from '@/components/custom-table';
 import { useCustomCollectPluginApi } from '@/app/cmdb/api/customCollectPlugin';
@@ -9,6 +10,7 @@ import { useModelApi } from '@/app/cmdb/api';
 import { useTranslation } from '@/utils/i18n';
 import ScriptCodeEditor, { ShellSwitch } from './scriptCodeEditor';
 import { customPluginTargetOptions, isCustomPluginTargetModel } from './targetModel';
+import { LINUX_HOST_SCRIPT, WINDOWS_HOST_SCRIPT } from './hostScriptExamples';
 
 const SCRIPT_FILE_TYPES: Record<string, { accept: string; label: string }> = {
   bash: { accept: '.sh,.bash', label: '.sh、.bash' },
@@ -62,6 +64,42 @@ function formatVersionLabel(version: number, versionedAt?: string | null) {
   const pad = (value: number) => String(value).padStart(2, '0');
   const stamp = `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}`;
   return `${stamp}_v${version}`;
+}
+
+function ScriptExampleTip() {
+  const { t } = useTranslation();
+  return (
+    <Tooltip
+      placement="topLeft"
+      mouseEnterDelay={0.15}
+      getPopupContainer={() => document.body}
+      styles={{
+        root: { maxWidth: 'min(640px, calc(100vw - 48px))' },
+        body: { maxHeight: 420, overflow: 'auto' },
+      }}
+      title={
+        <div className="space-y-2 text-xs leading-5">
+          <div>{t('Collection.customPlugin.scriptTipRule')}</div>
+          <div>{t('Collection.customPlugin.scriptTipInstName')}</div>
+          <div>{t('Collection.customPlugin.scriptTipHostMatch')}</div>
+          <div>{t('Collection.customPlugin.scriptTipReconcile')}</div>
+          <div>
+            <div className="mb-1">{t('Collection.customPlugin.windowsScriptExample')}</div>
+            <pre className="m-0 whitespace-pre-wrap break-all font-mono">{WINDOWS_HOST_SCRIPT}</pre>
+          </div>
+          <div>
+            <div className="mb-1">{t('Collection.customPlugin.linuxScriptExample')}</div>
+            <pre className="m-0 whitespace-pre-wrap break-all font-mono">{LINUX_HOST_SCRIPT}</pre>
+          </div>
+        </div>
+      }
+    >
+      <QuestionCircleOutlined
+        className="ml-1 cursor-help text-[var(--color-text-4)]"
+        aria-label={t('Collection.customPlugin.scriptTip')}
+      />
+    </Tooltip>
+  );
 }
 
 function stripPluginPrefix(pluginId: string) {
@@ -275,11 +313,15 @@ export default function PluginManager({ lockedModelId = '' }: { lockedModelId?: 
             <ShellSwitch osType={osType} value={shell} onChange={applyShell} />
           </div>
           {editing ? (
-            <Form.Item name="content" label={t('Collection.customPlugin.script')} rules={[{ required: true, message: t('Collection.customPlugin.scriptRequired') }]} extra={t('Collection.customPlugin.outputHint')}>
+            <Form.Item
+              name="content"
+              label={<span>{t('Collection.customPlugin.script')}<ScriptExampleTip /></span>}
+              rules={[{ required: true, message: t('Collection.customPlugin.scriptRequired') }]}
+            >
               <ScriptCodeEditor shell={shell} />
             </Form.Item>
           ) : (
-            <Form.Item label={t('Collection.customPlugin.script')} required extra={uploadedName ? t('Collection.customPlugin.selectedFile', undefined, { name: uploadedName }) : t('Collection.customPlugin.createUploadTyped', undefined, { label: fileType.label })}>
+            <Form.Item label={<span>{t('Collection.customPlugin.script')}<ScriptExampleTip /></span>} required extra={uploadedName ? t('Collection.customPlugin.selectedFile', undefined, { name: uploadedName }) : t('Collection.customPlugin.createUploadTyped', undefined, { label: fileType.label })}>
               <Form.Item name="content" noStyle rules={[{ required: true, message: t('Collection.customPlugin.uploadTyped', undefined, { label: fileType.label }) }]}>
                 <Input type="hidden" />
               </Form.Item>

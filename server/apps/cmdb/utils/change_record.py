@@ -1,4 +1,7 @@
-from django.db import transaction
+import hashlib
+
+from django.db.models import Max
+from django.utils.timezone import now
 
 from apps.cmdb.constants.constants import INSTANCE, OPERATOR_INSTANCE
 from apps.cmdb.models.change_record import (
@@ -18,6 +21,7 @@ from apps.cmdb.models.change_record import (
 
 # 需要镜像进平台操作日志的"管理类"变更场景
 _MIRROR_SCENARIOS = {MODEL_MANAGEMENT_CHANGE, COLLECT_AUTOMATION_CHANGE, CUSTOM_REPORTING_CHANGE, RELATION_CHANGE}
+VERIFY_MESSAGE_PREFIX = "自动采集核实实例，无字段变化"
 _TYPE_ACTION_MAP = {
     CREATE_INST: "create",
     UPDATE_INST: "update",
@@ -26,6 +30,16 @@ _TYPE_ACTION_MAP = {
     DELETE_INST_ASST: "delete",
     EXECUTE: "execute",
 }
+
+
+def verify_content_hash(inst_id, model_id, change_type: str) -> str:
+    """同一实例反复核实、字段没变时使用的稳定标识。不包含时间、采集任务号。"""
+    raw = f"{inst_id}|{model_id}|{change_type}|verify"
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def is_verify_only_message(message: str) -> bool:
+    return str(message or "").startswith(VERIFY_MESSAGE_PREFIX)
 
 
 def format_instance_audit_message(action: str, model: str, inst_name: str, *, source: str = "") -> str:
@@ -69,12 +83,12 @@ def _build_mirror_payload(*, inst_id, model_id, _type, operator, scenario, messa
 
 
 def _mirror_change_record(*, inst_id, model_id, _type, operator, scenario, message="", model_object="", before_data=None, after_data=None):
-    """管理类变更写入现有镜像 outbox，提交后派发。负回执留给 consume 重试，不撤销源写入。"""
-    if scenario not in _MIRROR_SCENARIOS:
+    """管理类变更写入镜像 outbox，由周期任务批量推送。无变化核实不进入日志平台。"""
+    if scenario not in _MIRROR_SCENARIOS or is_verify_only_message(message):
         return
-    from apps.cmdb.services.change_record_mirror import ChangeRecordMirrorService, dispatch_change_record_mirror
+    from apps.cmdb.services.change_record_mirror import ChangeRecordMirrorService
 
-    outboxes = ChangeRecordMirrorService.enqueue_payloads(
+    ChangeRecordMirrorService.enqueue_payloads(
         [
             _build_mirror_payload(
                 inst_id=inst_id,
@@ -89,8 +103,6 @@ def _mirror_change_record(*, inst_id, model_id, _type, operator, scenario, messa
             )
         ]
     )
-    for outbox in outboxes:
-        transaction.on_commit(lambda event_id=outbox.event_id: dispatch_change_record_mirror(event_id))
 
 
 def create_change_record(
@@ -160,6 +172,61 @@ def create_change_record(
     return _record
 
 
+def _is_same_verify(latest: ChangeRecord, content_hash: str) -> bool:
+    if latest.content_hash and latest.content_hash == content_hash:
+        return True
+    return not latest.content_hash and is_verify_only_message(latest.message)
+
+
+def _latest_by_inst(inst_ids: list[int]) -> dict[int, ChangeRecord]:
+    latest: dict[int, ChangeRecord] = {}
+    for offset in range(0, len(inst_ids), 500):
+        chunk = inst_ids[offset : offset + 500]
+        id_rows = ChangeRecord.objects.filter(inst_id__in=chunk).values("inst_id").annotate(latest_id=Max("id"))
+        rows = ChangeRecord.objects.filter(id__in=[row["latest_id"] for row in id_rows])
+        latest.update({row.inst_id: row for row in rows})
+    return latest
+
+
+def _collapse_verify_records(records: list[dict], *, operator: str, scenario: str) -> tuple[list[dict], int]:
+    """同一实例的无变化核实只保留最后一条。和上一条核实用同一个哈希时，只刷新时间。"""
+    pending: dict[int, dict] = {}
+    order: list[int] = []
+    inserts: list[dict] = []
+    for record in records:
+        content_hash = record.get("content_hash") or ""
+        inst_id = record.get("inst_id")
+        if not content_hash or inst_id is None:
+            inserts.append(record)
+            continue
+        if inst_id not in pending:
+            order.append(inst_id)
+        pending[inst_id] = record
+    if not pending:
+        return inserts, 0
+    latest = _latest_by_inst(order)
+    refreshed = 0
+    current_time = now()
+    for inst_id in order:
+        record = pending[inst_id]
+        previous = latest.get(inst_id)
+        if previous is not None and _is_same_verify(previous, record["content_hash"]):
+            ChangeRecord.objects.filter(pk=previous.pk).update(
+                created_at=current_time,
+                before_data=record.get("before_data") or {},
+                after_data=record.get("after_data") or {},
+                message=record.get("message", ""),
+                content_hash=record["content_hash"],
+                operator=operator,
+                scenario=scenario,
+                model_object=record.get("model_object", ""),
+            )
+            refreshed += 1
+            continue
+        inserts.append(record)
+    return inserts, refreshed
+
+
 def batch_create_change_record(label, _type, change_records, operator="", scenario=ORDINARY_ATTRIBUTE_CHANGE):
     """创建实例变更记录"""
     normalized_records = []
@@ -194,10 +261,13 @@ def batch_create_change_record(label, _type, change_records, operator="", scenar
         for record in normalized_records:
             if not record.get("attribute_snapshot") and record.get("model_id") in snapshots:
                 record["attribute_snapshot"] = snapshots[record["model_id"]]
-    batch_change_data = [ChangeRecord(label=label, type=_type, operator=operator, scenario=scenario, **record) for record in normalized_records]
-    ChangeRecord.objects.bulk_create(batch_change_data)
+    to_insert, _refreshed = _collapse_verify_records(normalized_records, operator=operator, scenario=scenario)
+    if to_insert:
+        ChangeRecord.objects.bulk_create(
+            [ChangeRecord(label=label, type=_type, operator=operator, scenario=scenario, **record) for record in to_insert]
+        )
     if scenario in _MIRROR_SCENARIOS:
-        from apps.cmdb.services.change_record_mirror import ChangeRecordMirrorService, dispatch_change_record_mirror
+        from apps.cmdb.services.change_record_mirror import ChangeRecordMirrorService
 
         payloads = [
             _build_mirror_payload(
@@ -211,11 +281,12 @@ def batch_create_change_record(label, _type, change_records, operator="", scenar
                 before_data=rec.get("before_data"),
                 after_data=rec.get("after_data"),
             )
-            for rec in normalized_records
+            for rec in to_insert
+            if not rec.get("content_hash") and not is_verify_only_message(rec.get("message", ""))
         ]
-        outboxes = ChangeRecordMirrorService.enqueue_payloads(payloads)
-        for outbox in outboxes:
-            transaction.on_commit(lambda event_id=outbox.event_id: dispatch_change_record_mirror(event_id))
+        if payloads:
+            ChangeRecordMirrorService.enqueue_payloads(payloads)
+    return _refreshed
 
 
 def create_custom_reporting_change_record(
@@ -283,10 +354,10 @@ def create_change_record_by_asso(label, _type, data, operator="", message="", sc
         for inst_info in [data["src"], data["dst"]]
         if inst_info.get("model_id")
     ]
-    if mirror_records:
-        from apps.cmdb.services.change_record_mirror import ChangeRecordMirrorService, dispatch_change_record_mirror
+    if mirror_records and not is_verify_only_message(message):
+        from apps.cmdb.services.change_record_mirror import ChangeRecordMirrorService
 
-        outboxes = ChangeRecordMirrorService.enqueue_payloads(
+        ChangeRecordMirrorService.enqueue_payloads(
             [
                 _build_mirror_payload(
                     inst_id=rec["inst_id"],
@@ -302,5 +373,3 @@ def create_change_record_by_asso(label, _type, data, operator="", message="", sc
                 for rec in mirror_records
             ]
         )
-        for outbox in outboxes:
-            transaction.on_commit(lambda event_id=outbox.event_id: dispatch_change_record_mirror(event_id))

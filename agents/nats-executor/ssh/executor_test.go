@@ -3,6 +3,7 @@ package ssh
 import (
 	"crypto/rand"
 	"crypto/rsa"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"io"
@@ -80,6 +81,49 @@ func (s *stubSSHSession) Close() error {
 
 func (s *stubSSHSession) SetStdout(w io.Writer) { s.stdout = w }
 func (s *stubSSHSession) SetStderr(w io.Writer) { s.stderr = w }
+func (s *stubSSHSession) SetStdin(r io.Reader)  {}
+
+func TestRemoteCommandWithServiceEnvKeepsSecretOutOfTheCommand(t *testing.T) {
+	secret := "redis-secret-sentinel"
+	command, stdin := remoteCommandWithServiceEnv("redis-cli PING\n", map[string]string{
+		"REDISCLI_AUTH": secret,
+		"bad-key":       "nope",
+		"":              "missing",
+	})
+	if stdin == nil {
+		t.Fatal("expected a stdin payload")
+	}
+	if strings.Contains(command, secret) || strings.Contains(command, "redis-cli") {
+		t.Fatalf("wrapper must not contain the script or secret: %s", command)
+	}
+	raw, err := io.ReadAll(stdin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload := string(raw)
+	if strings.Contains(payload, secret) {
+		t.Fatal("stdin contains the plaintext secret")
+	}
+	if strings.Contains(payload, "bad-key") {
+		t.Fatal("invalid env key was forwarded")
+	}
+	if !strings.Contains(payload, "---SCRIPT---\nredis-cli PING\n") {
+		t.Fatalf("script missing from stdin: %s", payload)
+	}
+	lines := strings.Split(payload, "\n")
+	decoded, err := base64.StdEncoding.DecodeString(lines[2])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(decoded) != secret {
+		t.Fatalf("decoded env = %q", decoded)
+	}
+
+	plain, empty := remoteCommandWithServiceEnv("echo ok", nil)
+	if plain != "echo ok" || empty != nil {
+		t.Fatalf("empty env should keep the original command, got %q", plain)
+	}
+}
 
 // 测试 buildSCPCommand 函数 - 密码认证
 func TestBuildSCPCommandWithPassword(t *testing.T) {

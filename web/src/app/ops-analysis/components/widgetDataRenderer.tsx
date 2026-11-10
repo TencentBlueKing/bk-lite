@@ -935,6 +935,8 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
       setHasSettledRequest(true);
       if (isTableLikeChart) {
         setTableLoading(false);
+        // loading 初始就是 true，表格分支若只清 tableLoading，onRawData 会一直被挡住。
+        setLoading(false);
       } else {
         setLoading(false);
       }

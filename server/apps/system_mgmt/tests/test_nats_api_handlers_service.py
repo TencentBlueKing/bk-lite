@@ -92,6 +92,7 @@ def test_nats_api_compat_exports_local_and_nats_entrypoints():
         "verify_bk_token",
         "save_error_log",
         "save_operation_log",
+        "save_operation_logs",
     }
     local_only_entrypoints = {
         "_list_opspilot_nats_channels",

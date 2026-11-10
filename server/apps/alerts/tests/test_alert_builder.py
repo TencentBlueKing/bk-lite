@@ -304,6 +304,129 @@ def test_alert_owners_union_created_events_and_cap(alert_levels, source, strateg
 
 
 @pytest.mark.django_db
+def test_update_reduction_does_not_select_raw_data(alert_levels, source, strategy):
+    from django.db import connection, transaction
+    from django.test.utils import CaptureQueriesContext
+
+    _make_event(source, "E1", raw_data={"payload": "secret-raw-sentinel"})
+    result = {
+        "fingerprint": "fp-defer",
+        "event_ids": ["E1"],
+        "alert_level": "1",
+        "alert_title": "归约",
+        "alert_description": "desc",
+        "first_event_time": timezone.now(),
+        "last_event_time": timezone.now(),
+    }
+    with transaction.atomic():
+        AlertBuilder.create_or_update_alert(result, strategy)
+
+    _make_event(source, "E2", raw_data={"payload": "secret-raw-sentinel"})
+    with CaptureQueriesContext(connection) as captured:
+        with transaction.atomic():
+            AlertBuilder.create_or_update_alert({**result, "event_ids": ["E2"]}, strategy)
+
+    event_selects = [
+        query["sql"] for query in captured.captured_queries if "alerts_event" in query["sql"] and query["sql"].lstrip().upper().startswith("SELECT")
+    ]
+    assert any("alerts_event" in sql and "labels" in sql for sql in event_selects)
+    assert all("raw_data" not in sql and "secret-raw-sentinel" not in sql for sql in event_selects)
+
+
+@pytest.mark.django_db
+def test_update_reduces_outside_alert_row_lock(alert_levels, source, strategy, monkeypatch):
+    from django.db import transaction
+
+    # 测试外层事务不会提交，不能用 in_atomic_block 观察行锁释放。
+    # 这里只统计本次调用新进入的 atomic；更新路径的归约必须发生在这些事务退出之后。
+    depth = {"n": 0}
+    real_atomic = transaction.atomic
+
+    def tracking_atomic(*args, **kwargs):
+        class _Context:
+            def __enter__(self):
+                depth["n"] += 1
+                self._inner = real_atomic(*args, **kwargs)
+                return self._inner.__enter__()
+
+            def __exit__(self, exc_type, exc, tb):
+                try:
+                    return self._inner.__exit__(exc_type, exc, tb)
+                finally:
+                    depth["n"] -= 1
+
+        return _Context()
+
+    monkeypatch.setattr(transaction, "atomic", tracking_atomic)
+    calls = []
+    original = AlertBuilder._fill_reduced_fields
+
+    def wrapped(alert, group_by_field):
+        calls.append(depth["n"])
+        return original(alert, group_by_field)
+
+    monkeypatch.setattr(AlertBuilder, "_fill_reduced_fields", staticmethod(wrapped))
+    _make_event(source, "E1", assignee=["alice"])
+    result = {
+        "fingerprint": "fp-lock",
+        "event_ids": ["E1"],
+        "alert_level": "1",
+        "alert_title": "锁",
+        "alert_description": "desc",
+        "first_event_time": timezone.now(),
+        "last_event_time": timezone.now(),
+    }
+    AlertBuilder.create_or_update_alert(result, strategy)
+    _make_event(source, "E2", assignee=["bob"])
+    updated = AlertBuilder.create_or_update_alert({**result, "event_ids": ["E2"]}, strategy)
+
+    assert calls == [1, 0]
+    assert updated.owners == ["alice", "bob"]
+
+
+@pytest.mark.django_db
+def test_stale_reduction_is_not_written(alert_levels, source, strategy, monkeypatch, caplog):
+    import logging
+
+    from django.db import transaction
+
+    from apps.alerts.models.models import Alert
+
+    _make_event(source, "E1", assignee=["alice"], raw_data={"payload": "secret-raw-sentinel"})
+    result = {
+        "fingerprint": "fp-stale",
+        "event_ids": ["E1"],
+        "alert_level": "1",
+        "alert_title": "陈旧归约",
+        "alert_description": "desc",
+        "first_event_time": timezone.now(),
+        "last_event_time": timezone.now(),
+    }
+    with transaction.atomic():
+        alert = AlertBuilder.create_or_update_alert(result, strategy)
+    assert alert.owners == ["alice"]
+
+    monkeypatch.setattr(AlertBuilder, "_linked_event_count", staticmethod(lambda _alert: 10**9))
+    _make_event(source, "E2", assignee=["dave"], raw_data={"payload": "secret-raw-sentinel"})
+    with caplog.at_level(logging.WARNING, logger="alert"):
+        with transaction.atomic():
+            updated = AlertBuilder.create_or_update_alert({**result, "event_ids": ["E2"]}, strategy)
+
+    assert updated.owners == ["alice"]
+    assert updated.events.filter(event_id="E2").exists()
+    stored = Alert.objects.get(pk=alert.pk)
+    assert stored.owners == ["alice"]
+    matched = [record for record in caplog.records if record.msg == "[AlertAggregation] skip stale reduced fields alert_id=%s"]
+    assert len(matched) == 1
+    assert matched[0].args == (alert.alert_id,)
+    assert matched[0].exc_info is None
+    rendered = matched[0].getMessage()
+    assert rendered == f"[AlertAggregation] skip stale reduced fields alert_id={alert.alert_id}"
+    assert "secret-raw-sentinel" not in rendered
+    assert "secret-raw-sentinel" not in str(matched[0].args)
+
+
+@pytest.mark.django_db
 def test_owner_filter_matches_exact_member(alert_levels, source):
     from apps.alerts.constants.constants import AlertStatus
     from apps.alerts.filters.alert import AlertModelFilter

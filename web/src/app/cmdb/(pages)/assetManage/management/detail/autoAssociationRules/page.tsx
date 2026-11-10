@@ -33,6 +33,7 @@ const AutoAssociationRulesPage: React.FC = () => {
   const modelList = commonContext?.modelList || [];
   const {
     getModelAttrList,
+    getModelAttrListBatch,
     getModelAssociations,
     getModelAutoAssociationRules,
     createModelAutoAssociationRule,
@@ -87,13 +88,8 @@ const AutoAssociationRulesPage: React.FC = () => {
             .filter(Boolean),
         ),
       );
-      const targetAttrEntries = await Promise.all(
-        targetModelIds.map(async (targetModelId) => {
-          const attrs = await getModelAttrList(targetModelId) as AttrFieldType[];
-          return [targetModelId, attrs || []] as const;
-        }),
-      );
-      setAllModelAttrsMap(Object.fromEntries(targetAttrEntries));
+      const targetAttrs = await getModelAttrListBatch(targetModelIds);
+      setAllModelAttrsMap(targetAttrs as Record<string, AttrFieldType[]>);
     } finally {
       setLoading(false);
     }

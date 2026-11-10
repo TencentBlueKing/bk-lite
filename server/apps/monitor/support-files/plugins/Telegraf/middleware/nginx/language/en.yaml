@@ -26,7 +26,8 @@ monitor_object_metric:
         pool usage
     nginx_requests_rate:
       name: Request Rate
-      desc: Rate of requests handled by Nginx, reflecting real-time load
+      desc: Average requests handled per second over the last 5 minutes, used to observe
+        real-time load.
     nginx_accepts_rate:
       name: Connection Acceptance Rate
       desc: Rate of new connections accepted by Nginx, reflecting connection establishment

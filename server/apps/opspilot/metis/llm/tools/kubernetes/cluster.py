@@ -21,7 +21,7 @@ _DESCRIBE_NAMESPACE_REQUIRED = frozenset({"pod", "deployment", "service", "state
 
 
 @tool()
-def verify_kubernetes_connection(config: RunnableConfig = None):
+def verify_kubernetes_connection(config: RunnableConfig = None, instance_name=None):
     """
     验证K8s集群连接和权限 - 故障排查第一步
 
@@ -60,6 +60,10 @@ def verify_kubernetes_connection(config: RunnableConfig = None):
     - 连接失败 → 检查kubeconfig文件和网络配置
     - 权限不足 → 联系集群管理员分配权限
     """
+    config, instance_error = prepare_point_instance(config, instance_name)
+    if instance_error:
+        return instance_error
+
     try:
         prepare_context(config)
 
@@ -177,7 +181,7 @@ def get_kubernetes_contexts(config: RunnableConfig = None):
 
 
 @tool()
-def list_kubernetes_api_resources(api_group=None, config: RunnableConfig = None):
+def list_kubernetes_api_resources(api_group=None, config: RunnableConfig = None, instance_name=None):
     """
     列出Kubernetes API资源
 
@@ -190,6 +194,10 @@ def list_kubernetes_api_resources(api_group=None, config: RunnableConfig = None)
     Returns:
         str: JSON格式的API资源列表
     """
+    config, instance_error = prepare_point_instance(config, instance_name)
+    if instance_error:
+        return instance_error
+
     try:
         prepare_context(config)
 

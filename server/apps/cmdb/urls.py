@@ -3,6 +3,7 @@ from rest_framework import routers
 
 from apps.cmdb.open_api import views as open_views
 from apps.cmdb.views.change_record import ChangeRecordViewSet
+from apps.cmdb.views.change_record_retention import ChangeRecordRetentionView
 from apps.cmdb.views.classification import ClassificationViewSet
 from apps.cmdb.views.collect import CollectModelViewSet, OidModelViewSet
 from apps.cmdb.views.collect_reconcile import CollectReconcileViewSet
@@ -98,4 +99,10 @@ open_api_patterns = [
     ),
 ]
 
-urlpatterns = open_api_patterns + router.urls
+urlpatterns = (
+    [
+        path("api/change_record_retention/", ChangeRecordRetentionView.as_view()),
+    ]
+    + open_api_patterns
+    + router.urls
+)

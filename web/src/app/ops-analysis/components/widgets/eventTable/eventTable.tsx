@@ -2,7 +2,6 @@ import React, {
   useCallback,
   useEffect,
   useMemo,
-  useRef,
   useState,
 } from 'react';
 import { Tooltip } from 'antd';
@@ -25,11 +24,11 @@ import {
   parseTableLikeData,
   type TableLikePaginationState,
 } from '../shared/tableLikeData';
+import { useTableBodyScrollY } from '../shared/useTableBodyScrollY';
 import { getScreenWidgetScale } from '../shared/screenMetrics';
 import styles from '../comTable.module.scss';
 import WidgetState from '@/app/ops-analysis/components/widget-state';
 import { supportsServerPagination } from '@/app/ops-analysis/utils/tablePagination';
-import { useTableBodyScrollY } from '../shared/useTableBodyScrollY';
 import { useInteractionSurface } from '@/app/ops-analysis/context/interactionSurface';
 import { InteractionActionCell, useWidgetDataLink } from '@/app/ops-analysis/components/interactionTitleIcon';
 import {
@@ -70,7 +69,6 @@ const EventTable: React.FC<EventTableProps> = ({
   const { openPoint } = useWidgetDataLink(config);
   const dataLink = readWidgetInteraction(config);
   const dataLinkName = dataLink?.kind === 'data' ? dataLink.name : '';
-  const containerRef = useRef<HTMLDivElement | null>(null);
   const [expandedRowKeys, setExpandedRowKeys] = useState<React.Key[]>([]);
   const [queryPagination, setQueryPagination] =
     useState<TableLikePaginationState>({
@@ -121,12 +119,9 @@ const EventTable: React.FC<EventTableProps> = ({
     ),
     [rawData, queryPagination, supportsPaginationParams],
   );
-  const tableScrollY = useTableBodyScrollY({
-    containerRef,
+  const { slotRef: tableSlotRef, tableScrollY } = useTableBodyScrollY({
     hasPagination: isPaginated,
-    scale: widgetScale,
   });
-
   const configuredColumns = useMemo<TableColumnConfigItem[]>(() => {
     return (config?.tableConfig?.columns || [])
       .filter((col) => col.visible)
@@ -227,14 +222,14 @@ const EventTable: React.FC<EventTableProps> = ({
 
   return (
     <div
-      ref={containerRef}
-      className={`ops-analysis-event-table mt-2 h-full min-h-0 flex flex-col ${
+      className={`ops-analysis-event-table flex h-full min-h-0 flex-col pt-2 ${
         usesScreenTheme ? styles.screenDarkRoot : ''
       }`}
       style={screenTableStyle}
     >
       <div
-        className={`flex-1 min-h-0 overflow-hidden ${
+        ref={tableSlotRef}
+        className={`${styles.opsTableScroll} flex-1 min-h-0 overflow-hidden ${
           usesScreenTheme ? styles.screenDarkTableWrap : ''
         }`}
       >
@@ -263,11 +258,10 @@ const EventTable: React.FC<EventTableProps> = ({
               : false
           }
           onChange={isPaginated ? handleTableChange : undefined}
-          scroll={
-            tableScrollY
-              ? { x: 'max-content', y: tableScrollY }
-              : { x: 'max-content' }
-          }
+          scroll={{
+            x: 'max-content',
+            y: tableScrollY,
+          }}
           expandable={{
             expandedRowKeys,
             onExpandedRowsChange: (keys) => {

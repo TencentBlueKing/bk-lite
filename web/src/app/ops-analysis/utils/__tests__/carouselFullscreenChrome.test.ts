@@ -2,14 +2,11 @@ import { describe, expect, it } from 'vitest';
 import {
   CAROUSEL_FULLSCREEN_CHROME,
   CAROUSEL_FULLSCREEN_CONTROLS_IDLE_MS,
-  CAROUSEL_FULLSCREEN_EXIT_TIP_MS,
   CAROUSEL_FULLSCREEN_RESUME_HINT_MS,
   CAROUSEL_FULLSCREEN_SEGMENT_MAX,
   carouselDwellFill,
   fullscreenStageCursor,
-  markFullscreenExitTipSeen,
   planFullscreenChrome,
-  readFullscreenExitTipSeen,
   resolveCarouselFullscreenProgress,
 } from '@/app/ops-analysis/utils/carouselFullscreenChrome';
 
@@ -19,16 +16,6 @@ const slides = (count: number, unavailableAt: number[] = []) => (
     dwellSeconds: 30,
   }))
 );
-
-const memoryStorage = () => {
-  const values = new Map<string, string>();
-  return {
-    getItem: (key: string) => values.get(key) ?? null,
-    setItem: (key: string, value: string) => {
-      values.set(key, value);
-    },
-  };
-};
 
 describe('carousel fullscreen chrome', () => {
   it('splits progress into segments through 20 canvases and switches to one bar after that', () => {
@@ -114,7 +101,6 @@ describe('carousel fullscreen chrome', () => {
     const paused = { paused: true, hoveringHotzone: false };
     expect(CAROUSEL_FULLSCREEN_CONTROLS_IDLE_MS).toBe(500);
     expect(CAROUSEL_FULLSCREEN_RESUME_HINT_MS).toBe(2000);
-    expect(CAROUSEL_FULLSCREEN_EXIT_TIP_MS).toBe(2500);
     expect(CAROUSEL_FULLSCREEN_CHROME.border).toBe('rgba(103, 232, 249, 0.55)');
     expect(CAROUSEL_FULLSCREEN_CHROME).not.toHaveProperty('playSurface');
     expect(CAROUSEL_FULLSCREEN_CHROME).not.toHaveProperty('shade');
@@ -129,14 +115,5 @@ describe('carousel fullscreen chrome', () => {
     expect(planFullscreenChrome('hide-elapsed', paused)).toEqual({ visible: true, armIdleTimer: false });
     expect(planFullscreenChrome('resumed', hovering)).toEqual({ visible: true, armIdleTimer: false });
     expect(fullscreenStageCursor()).toBe('auto');
-  });
-
-  it('shows the Esc tip once per browser tab', () => {
-    const storage = memoryStorage();
-    expect(readFullscreenExitTipSeen(null)).toBe(false);
-    expect(readFullscreenExitTipSeen(storage)).toBe(false);
-    markFullscreenExitTipSeen(null);
-    markFullscreenExitTipSeen(storage);
-    expect(readFullscreenExitTipSeen(storage)).toBe(true);
   });
 });

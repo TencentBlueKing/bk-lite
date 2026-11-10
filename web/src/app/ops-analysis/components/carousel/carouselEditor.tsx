@@ -967,7 +967,6 @@ const CarouselEditor = forwardRef<CarouselEditorRef, CarouselEditorProps>(({
               playLabel={t('opsCarousel.play')}
               pauseLabel={t('opsCarousel.pause')}
               resumeHint={t('opsCarousel.spaceToResume')}
-              exitHint={t('opsCarousel.escToExit')}
               disableStep={playableCount <= 1}
               disablePlay={playableCount === 0 || slides.length <= 1}
               onPrevious={() => session.dispatch({ type: 'prev' })}

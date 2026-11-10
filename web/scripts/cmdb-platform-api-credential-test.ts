@@ -100,6 +100,7 @@ for (const modelId of [
   'sangforscp',
   'inspurincloudrail',
   'azure',
+  'azurelocal_cmdb',
 ]) {
   assert.equal(
     getCredentialDescriptor({ model_id: modelId })?.formKind,

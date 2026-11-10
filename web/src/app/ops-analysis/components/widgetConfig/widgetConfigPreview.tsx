@@ -25,9 +25,6 @@ import { WidgetHeaderRuntimeSlotProvider } from '@/app/ops-analysis/components/w
 
 export type WidgetConfigPreviewTab = 'chart' | 'json';
 
-const PREVIEW_CHART_HEIGHT = 320;
-const PREVIEW_SINGLE_HEIGHT = 168;
-
 interface WidgetConfigPreviewProps {
   widgetId: string;
   previewed: boolean;
@@ -99,8 +96,6 @@ const WidgetConfigPreview: React.FC<WidgetConfigPreviewProps> = ({
   const jsonText = useMemo(() => formatRawJson(rawData), [rawData]);
   const title = liveName || config?.name || t('dashboard.configPreviewUntitled');
   const description = liveDescription ?? config?.description;
-  const previewChartHeight =
-    config?.chartType === 'single' ? PREVIEW_SINGLE_HEIGHT : PREVIEW_CHART_HEIGHT;
 
   const handleCopyJson = useCallback(async () => {
     if (!jsonText) return;
@@ -203,7 +198,7 @@ const WidgetConfigPreview: React.FC<WidgetConfigPreviewProps> = ({
           <p className="text-sm text-(--color-text-2)">{t('dashboard.configPreviewEmpty')}</p>
         </div>
       ) : (
-        <div className="flex shrink-0 flex-col overflow-hidden rounded-lg bg-(--color-fill-1)/40">
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg bg-(--color-fill-1)/40">
           <div className="shrink-0 px-4 py-3">
             <h4 className="truncate text-sm font-medium leading-5 text-(--color-text-1)">
               {title}
@@ -215,12 +210,12 @@ const WidgetConfigPreview: React.FC<WidgetConfigPreviewProps> = ({
             ) : null}
           </div>
 
-          <div className="px-3 pb-3">
+          <div className="flex min-h-0 flex-1 flex-col px-3 pb-3">
             {tab === 'json' ? (
-              <div className="relative overflow-hidden rounded-md bg-(--color-bg)">
+              <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-md bg-(--color-bg)">
                 {loading ? (
                   <div
-                    className="flex min-h-[300px] items-center justify-center"
+                    className="flex min-h-0 flex-1 items-center justify-center"
                     data-testid="widget-config-preview-json-loading"
                   >
                     <Spin spinning />
@@ -242,7 +237,7 @@ const WidgetConfigPreview: React.FC<WidgetConfigPreviewProps> = ({
                       </Button>
                     ) : null}
                     <pre
-                      className="max-h-[500px] min-h-[300px] overflow-auto p-3 pr-16 text-xs font-mono leading-relaxed text-(--color-text-1) scrollbar-thin"
+                      className="min-h-0 flex-1 overflow-auto p-3 pr-16 text-xs font-mono leading-relaxed text-(--color-text-1) scrollbar-thin"
                       data-testid="widget-config-preview-json"
                     >
                       {jsonText || t('dashboard.configPreviewRawJsonEmpty')}
@@ -253,8 +248,7 @@ const WidgetConfigPreview: React.FC<WidgetConfigPreviewProps> = ({
             ) : null}
 
             <div
-              className={tab === 'chart' ? 'w-full overflow-hidden' : 'hidden'}
-              style={tab === 'chart' ? { height: previewChartHeight } : undefined}
+              className={tab === 'chart' ? 'h-full min-h-0 w-full flex-1 overflow-hidden' : 'hidden'}
               data-testid="widget-config-preview-chart"
             >
               <WidgetHeaderRuntimeSlotProvider>

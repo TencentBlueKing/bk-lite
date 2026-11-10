@@ -52,7 +52,7 @@ class ApplicationMutationSerializer(OrganizationAssignmentSerializer):
         return attrs
 
 
-_PROBE_LANGUAGES = ("python", "nodejs", "java", "go", "dotnet", "php", "obi", "ruby", "cpp", "erlang", "swift")
+_PROBE_LANGUAGES = ("python", "nodejs", "java", "go", "dotnet", "php", "obi", "ruby", "cpp", "erlang", "swift", "collector")
 
 
 class IngestSnippetSerializer(serializers.Serializer):

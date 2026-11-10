@@ -64,17 +64,20 @@ export const resolveTableDimensions = ({
       return { tableHeight: undefined, containerHeight: undefined };
     }
 
-    const tableHeight = Math.max(MIN_TABLE_BODY_HEIGHT, parsedHeight);
+    // 数字是调用方按父容器量好的表体高度。再抬到 160 会让矮卡片里的
+    // 滚动容器高出 overflow:hidden 的父级，滚动条落到可见区域外面。
+    // vh/px 字符串仍保留下限，避免把历史的视口估算收成一条缝。
+    const tableHeight = typeof scrollY === 'number'
+      ? Math.max(0, parsedHeight)
+      : Math.max(MIN_TABLE_BODY_HEIGHT, parsedHeight);
     return {
       tableHeight,
       containerHeight: tableHeight + fixedHeight,
     };
   }
 
-  if (!hasPagination) {
-    return { tableHeight: undefined, containerHeight: undefined };
-  }
-
+  // 省略 scroll.y 时按父容器回填（有无分页都一样）。
+  // 运营分析 TOP5 等无分页卡片依赖这里；需要贴行高时用 scroll.y = 'auto'。
   if (parentHeight <= 0) {
     return { tableHeight: undefined, containerHeight: undefined };
   }

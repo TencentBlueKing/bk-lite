@@ -1418,9 +1418,9 @@ def consume_change_record_mirror_outbox(event_id: str) -> bool:
 def recover_change_record_mirror_outbox_task() -> dict:
     from apps.cmdb.services.change_record_mirror import ChangeRecordMirrorService
 
-    dispatched = ChangeRecordMirrorService.recover_ready()
-    logger.info("[ChangeRecordMirror] 周期补偿派发完成: dispatched=%s", dispatched)
-    return {"dispatched": dispatched}
+    result = ChangeRecordMirrorService.push_ready()
+    logger.info("[ChangeRecordMirror] 周期批量推送完成: status=%s pushed=%s", result.get("status"), result.get("pushed"))
+    return result
 
 
 @shared_task(bind=True, name="apps.cmdb.tasks.celery_tasks.trigger_scan_execution")

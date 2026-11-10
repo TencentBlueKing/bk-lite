@@ -890,6 +890,48 @@ class TestModelMigrateWithDB:
         }
         assert "icn" not in update_calls[0][1][2]
 
+    def test_migrate_models_keeps_user_renamed_builtin_model(self, monkeypatch):
+        from apps.cmdb.constants.constants import CLASSIFICATION, MODEL
+
+        cfg = {
+            "models": [
+                {
+                    "model_id": "sangforscp",
+                    "model_name": "SCP云平台",
+                    "classification_id": "sangforscp",
+                    "app_topo_layer": "infrastructure",
+                }
+            ]
+        }
+        m, mod = self._make(monkeypatch, cfg)
+        monkeypatch.setattr(mod.ExcludeFieldsCache, "refresh_cache", classmethod(lambda cls: True))
+        existing = {
+            "_id": "model-1",
+            "model_id": "sangforscp",
+            "model_name": "我的云平台",
+            "model_name_customized": True,
+            "classification_id": "sangforscp",
+            "app_topo_layer": "infrastructure",
+            "attrs": "[]",
+        }
+        fake = _patch_graph(
+            monkeypatch,
+            "apps.cmdb.model_migrate.migrete_service",
+            query_entity=lambda label, *args, **kwargs: (
+                ([existing], 1)
+                if label == MODEL
+                else ([{"_id": "classification-1", "classification_id": "sangforscp"}], 1)
+                if label == CLASSIFICATION
+                else ([], 0)
+            ),
+            set_entity_properties=[{**existing}],
+        )
+
+        m.migrate_models()
+
+        update_calls = [call for call in fake.calls if call[0] == "set_entity_properties"]
+        assert update_calls == []
+
     def test_migrate_models_fills_missing_app_topo_layer_on_builtin(self, monkeypatch):
         from apps.cmdb.constants.constants import CLASSIFICATION, MODEL
 

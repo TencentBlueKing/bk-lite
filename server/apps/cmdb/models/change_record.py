@@ -25,6 +25,7 @@ ORDINARY_ATTRIBUTE_CHANGE = "ordinary_attribute_change"
 COLLECT_AUTOMATION_CHANGE = "collect_automation_change"
 MODEL_MANAGEMENT_CHANGE = "model_management_change"
 CUSTOM_REPORTING_CHANGE = "custom_reporting_change"
+GOVERNANCE_CONFIRM = "governance_confirm"
 
 SCENARIO_CHOICES = [
     (DEVICE_LIFECYCLE, "设备流转"),
@@ -33,6 +34,7 @@ SCENARIO_CHOICES = [
     (COLLECT_AUTOMATION_CHANGE, "自动采集"),
     (MODEL_MANAGEMENT_CHANGE, "模型管理变更"),
     (CUSTOM_REPORTING_CHANGE, "自定义上报变更"),
+    (GOVERNANCE_CONFIRM, "确认仍有效"),
 ]
 
 # 用户在"通用实例属性编辑页"可以修正的场景集合
@@ -66,6 +68,7 @@ class ChangeRecord(models.Model):
     created_at = models.DateTimeField(auto_now_add=True, db_index=True, verbose_name="创建时间")
     model_object = models.CharField(max_length=50, default="", verbose_name="模型对象", help_text="模型对象")
     message = models.TextField(default="", verbose_name="操作信息", help_text="操作信息")
+    content_hash = models.CharField(max_length=64, blank=True, default="", verbose_name="核实内容哈希")
     scenario = models.CharField(
         max_length=40,
         default=ORDINARY_ATTRIBUTE_CHANGE,

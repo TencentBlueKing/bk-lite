@@ -5,7 +5,7 @@
 
 import pytest
 
-from apps.cmdb.constants.constants import CLASSIFICATION, MODEL
+from apps.cmdb.constants.constants import CLASSIFICATION
 from apps.cmdb.services.classification import ClassificationManage
 from apps.core.exceptions.base_app_exception import BaseAppException
 
@@ -61,14 +61,58 @@ def test_update_model_classification(fake_graph):
         query_entity=([{"_id": 99}], 1),  # exist_items（会排除自身 id=12）
         set_entity_properties=[{"_id": 12, "classification_name": "网络2"}],
     )
-    result = ClassificationManage.update_model_classification(
-        12, {"classification_name": "网络2", "classification_id": "willpop", "exist_model": True}
-    )
+    result = ClassificationManage.update_model_classification(12, {"classification_name": "网络2", "classification_id": "willpop", "exist_model": True})
     assert result["classification_name"] == "网络2"
     # 校验 set_entity_properties 调用时已弹出 classification_id/exist_model
     call = next(c for c in fg.calls if c[0] == "set_entity_properties")
     assert "classification_id" not in call[1][2]
     assert "exist_model" not in call[1][2]
+
+
+@pytest.mark.django_db
+def test_update_builtin_classification_marks_custom_name(fake_graph):
+    fg = fake_graph(
+        MODULE,
+        query_entity=(
+            [
+                {
+                    "_id": 12,
+                    "classification_id": "device",
+                    "classification_name": "物理设备",
+                    "is_pre": True,
+                }
+            ],
+            1,
+        ),
+        set_entity_properties=[{"_id": 12, "classification_name": "我的设备"}],
+    )
+    ClassificationManage.update_model_classification(12, {"classification_name": "我的设备"})
+    call = next(c for c in fg.calls if c[0] == "set_entity_properties")
+    assert call[1][2]["classification_name"] == "我的设备"
+    assert call[1][2]["classification_name_customized"] is True
+
+
+@pytest.mark.django_db
+def test_update_builtin_classification_ignores_translated_name_echo(fake_graph):
+    fg = fake_graph(
+        MODULE,
+        query_entity=(
+            [
+                {
+                    "_id": 12,
+                    "classification_id": "device",
+                    "classification_name": "物理设备",
+                    "is_pre": True,
+                }
+            ],
+            1,
+        ),
+        set_entity_properties=[{"_id": 12, "classification_name": "物理设备"}],
+    )
+    ClassificationManage.update_model_classification(12, {"classification_name": "Device"})
+    call = next(c for c in fg.calls if c[0] == "set_entity_properties")
+    assert call[1][2]["classification_name"] == "物理设备"
+    assert "classification_name_customized" not in call[1][2]
 
 
 @pytest.mark.django_db

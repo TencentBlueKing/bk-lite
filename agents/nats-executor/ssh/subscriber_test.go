@@ -65,6 +65,7 @@ func (s *subscriberStubSSHSession) Close() error {
 
 func (s *subscriberStubSSHSession) SetStdout(w io.Writer) { s.stdout = w }
 func (s *subscriberStubSSHSession) SetStderr(w io.Writer) { s.stderr = w }
+func (s *subscriberStubSSHSession) SetStdin(r io.Reader)  {}
 
 func (s stubResponseMsg) Respond(payload []byte) error {
 	if s.respond == nil {

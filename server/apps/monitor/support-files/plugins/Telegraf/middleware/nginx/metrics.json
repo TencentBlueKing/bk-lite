@@ -64,9 +64,9 @@
       "display_name": "Request Rate",
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
-      "unit": "counts",
+      "unit": "cps",
       "dimensions": [],
-      "description": "Rate of requests handled by Nginx, reflecting real-time load",
+      "description": "Average requests handled per second over the last 5 minutes.",
       "query": "rate(nginx_requests{__$labels__}[5m])"
     },
     {

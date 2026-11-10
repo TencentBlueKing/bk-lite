@@ -41,10 +41,10 @@ monitor_object_metric:
   ESXI:
     cpu_usage_average_gauge:
       name: CPU Usage
-      desc: CPU utilization of the ESXi host.
+      desc: Average CPU usage of the ESXi host over the collection interval (about 0–100%).
     mem_usage_average_gauge:
       name: Memory Usage
-      desc: Memory utilization of the ESXi host.
+      desc: Average memory usage of the ESXi host over the collection interval (about 0–100%).
     mem_consumed_average_gauge:
       name: Memory Consumed
       desc: Active memory consumed by the ESXi host.
@@ -55,10 +55,10 @@ monitor_object_metric:
       name: Disk Write Throughput
       desc: Amount of data written to disk per second.
     disk_numberRead_summation_gauge_rate:
-      name: Disk Read Operations
+      name: Disk Read Operation Rate
       desc: Number of disk read operations completed per second.
     disk_numberWrite_summation_gauge_rate:
-      name: Disk Write Operations
+      name: Disk Write Operation Rate
       desc: Number of disk write operations completed per second.
     net_bytesRx_average_gauge:
       name: Network Receive Throughput
@@ -91,16 +91,16 @@ monitor_object_metric:
   VM:
     cpu_usage_average_gauge:
       name: CPU Usage
-      desc: CPU utilization of the virtual machine.
+      desc: Average CPU usage of the virtual machine relative to its configured CPU over the collection interval (about 0–100%).
     mem_usage_average_gauge:
       name: Memory Usage
-      desc: Memory utilization of the virtual machine.
+      desc: Average memory usage of the virtual machine over the collection interval (about 0–100%).
     mem_consumed_average_gauge:
       name: Memory Consumed
       desc: Active memory consumed by the virtual machine.
     disk_io_usage_gauge:
-      name: Disk I/O Usage
-      desc: Disk I/O utilization of the virtual machine.
+      name: Aggregate Disk I/O Throughput
+      desc: Aggregate disk I/O throughput of the virtual machine (from disk.usage.average), not a utilization percentage. Unit is KB/s.
     disk_read_average_gauge:
       name: Disk Read Throughput
       desc: Average disk read throughput of the virtual machine.
@@ -108,10 +108,10 @@ monitor_object_metric:
       name: Disk Usage
       desc: Percentage of disk space used by the virtual machine.
     disk_numberRead_summation_gauge_rate:
-      name: Disk Read Operations
+      name: Disk Read Operation Rate
       desc: Number of disk read operations completed per second.
     disk_numberWrite_summation_gauge_rate:
-      name: Disk Write Operations
+      name: Disk Write Operation Rate
       desc: Number of disk write operations completed per second.
     disk_write_average_gauge:
       name: Disk Write Throughput

@@ -4,6 +4,7 @@ import {
   areAllRelationshipsExpanded,
   buildRelationshipMenuSections,
   getDefaultExpandedRelationshipKeys,
+  uniqueRelationshipTargetModelIds,
   visibleRelationshipAssociations,
 } from '../relationshipMenuData';
 
@@ -77,5 +78,14 @@ describe('relationship menu data', () => {
     expect(areAllRelationshipsExpanded(['a'], ['a', 'b'])).toBe(false);
     expect(areAllRelationshipsExpanded(['a', 'b'], ['a', 'b'])).toBe(true);
     expect(areAllRelationshipsExpanded([], [])).toBe(false);
+  });
+
+  it('属性补查按对端模型去重，空分组不计入', () => {
+    expect(uniqueRelationshipTargetModelIds([
+      { src_model_id: 'host', dst_model_id: 'mysql', inst_list: [{ inst_uuid: 'a' }] },
+      { src_model_id: 'host', dst_model_id: 'mysql', inst_list: [{ inst_uuid: 'b' }] },
+      { src_model_id: 'biz', dst_model_id: 'host', inst_list: [{ inst_uuid: 'c' }] },
+      { src_model_id: 'host', dst_model_id: 'switch', inst_list: [] },
+    ], 'host')).toEqual(['mysql', 'biz']);
   });
 });

@@ -91,6 +91,30 @@ describe('OpspilotSelectorOperateModal', () => {
     expect(screen.queryByText('Redis')).toBeNull();
   });
 
+  it('requires every selected tag while keeping hidden selections', () => {
+    const onOk = vi.fn();
+    render(
+      <OpspilotSelectorOperateModal
+        visible
+        options={[
+          { id: 1, name: 'First', systemTags: ['database'], userTags: [] },
+          { id: 2, name: 'Both', systemTags: ['database'], userTags: ['production'] },
+          { id: 3, name: 'Last', systemTags: [], userTags: ['production'] },
+        ]}
+        selectedOptions={[1]}
+        onOk={onOk}
+        onCancel={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'database' }));
+    fireEvent.click(screen.getByRole('button', { name: 'production' }));
+    expect(screen.getByText('Both')).toBeTruthy();
+    expect(screen.queryByText('First')).toBeNull();
+    expect(screen.queryByText('Last')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: /confirm/i }));
+    expect(onOk).toHaveBeenCalledWith([1]);
+  });
+
   it('keeps a hidden selected tool in the selected count', () => {
     render(
       <OpspilotSelectorOperateModal

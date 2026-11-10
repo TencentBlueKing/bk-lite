@@ -25,9 +25,10 @@ JOB_MGMT_PROMPT = """
 作业管理只使用当前提问人和当前组织，不能改组织、用户或执行人。没有调用身份就停止，不要提交作业。
 脚本库按脚本编号执行，不要索要或复述脚本正文。即使用户没点名、脚本库只有一个，也要用 request_user_choice 确认脚本名称和类型。脚本名称必须出现在当前这句用户原话里，或当前这句选择了「使用脚本 名称」。更早消息里的同名片段不能当作确认。重名时同样让用户选。
 选定脚本和目标后先看操作系统。Linux 只能执行 shell 和 python，Windows 只能执行 powershell 和 bat。操作系统未知或不匹配时说明原因，不要提交。
-Playbook 只能用 job_mgmt_list_playbook_scripts 按名称或路径查看可选脚本路径。只使用返回的路径，不要索要或复述文件内容。列出路径只用于查看，不表示这些工具能执行 Playbook，也不会提交作业。job_mgmt_run_library 和 job_mgmt_run_custom 只执行作业脚本（脚本库脚本和自定义脚本），不能执行 Playbook。
+Playbook 只能用 job_mgmt_list_playbook_scripts 按名称或路径查看可选脚本路径。只使用返回的路径，不要索要或复述文件内容。
+列出路径只用于查看，不表示这些工具能执行 Playbook，也不会提交作业。job_mgmt_run_library 和 job_mgmt_run_custom 只执行作业脚本（脚本库脚本和自定义脚本），不能执行 Playbook。
 每个参数单独问使用默认值还是自己填写。必填且没有默认值的必须填写。加密默认值保持 ******。枚举只能选已有选项。
-自定义脚本只接受 shell、python、powershell、bat。类型和正文必须出现在同一句用户原话里，可以是本会话较早的一句。不要代写或改写，也不要编指定句式让用户重说。选定目标后直接执行。
+自定义脚本只接受 shell、python、powershell、bat。可以根据用户意图生成脚本；选定目标后调用工具获取确认问题，必须用 request_user_choice 原样展示完整问题和选项，用户选「确认执行」后用相同参数再次调用。脚本或目标变化要重新确认，不要让用户重新输入脚本。
 目标先按名称或 IP 查询。用户已经说了节点管理或作业管理目标时，只在这个来源里找，不要把另一个来源放进选项。
 唯一命中直接用。多个命中只在这些结果里用 request_user_choice。用户还没说来源且一台都没有时，再让用户选来源。
 用户消息里已经有 (node_mgmt:编号) 或 (manual:编号) 时，直接用括号里的编号执行，不要再搜索，不要再问是不是节点管理。
@@ -39,7 +40,7 @@ output_shown 为 false 时，5 分钟内没有脚本输出。说明作业号、s
 问覆盖或跳过只是因为用户还没选策略，分发前不会检查目标磁盘。不要说目标上已经有这个文件，也不要说被同名文件阻塞。
 终态只说成功或失败。返回里有 result_url 时作业还在执行，不要说失败。
 告诉用户到作业管理查看任务状态，说明作业号和 waited_seconds，并把 result_url 原样写成 markdown 链接。
-高危确认只能等用户说出「确认执行」。禁止级直接拒绝。
+高危确认必须展示命中的规则。自定义脚本的高危确认等用户选择「确认高危执行」；脚本库等用户说出「确认执行」。禁止级直接拒绝。
 """.strip()
 
 
@@ -149,18 +150,19 @@ def job_mgmt_run_library(
 
 @tool(
     description=(
-        "执行用户在本会话里已经写明类型和正文的自定义脚本。类型只能是 shell、python、powershell、bat。"
-        "类型和正文要在同一句用户原话里，可以是较早的一句。不要修改，选定目标后不要让用户重说。"
+        "执行自定义脚本，类型只能是 shell、python、powershell、bat。可以根据用户意图生成脚本。"
+        "先调用本工具，再用 request_user_choice 原样展示返回的完整确认问题和选项；用户确认后用相同参数再次调用。"
+        "高危规则要单独展示，等待用户选择「确认高危执行」。不要让用户重新输入脚本。"
         "Linux 只能执行 shell 和 python，Windows 只能执行 powershell 和 bat。"
         "target_ids 填查询结果的 id，不填 IP。操作系统不匹配时不会创建作业。有脚本输出时只返回作业号和终态；没有输出时附带 result_url，原样作为链接给用户。"
     )
 )
 def job_mgmt_run_custom(
     script_type: Annotated[str, Field(description="只能是 shell、python、powershell、bat")],
-    script_content: Annotated[str, Field(description="用户原话里的脚本正文，不要改写")],
+    script_content: Annotated[str, Field(description="待执行的完整脚本正文，须先展示给用户确认")],
     target_source: _TARGET_SOURCE,
     target_ids: _TARGET_IDS,
-    danger_confirmed: Annotated[bool, Field(description="只有用户原话包含「确认执行」才能为 true")] = False,
+    danger_confirmed: Annotated[bool, Field(description="仅在展示高危规则且用户选择「确认高危执行」后设为 true")] = False,
     confirmed_rerun: Annotated[bool, Field(description="只有用户原话包含「确认重跑」或「重新执行」才能为 true")] = False,
     name: Annotated[str, Field(description="作业名称。用户没起名就留空。")] = "",
     timeout: Annotated[int, Field(description="超时秒数，默认 600。用户没说超时不要改。")] = 600,
@@ -214,7 +216,7 @@ def job_mgmt_distribute(
     )
 
 
-@tool(description="查询本会话已记录的作业号。不要重新提交。脚本只返回作业号和终态。文件终态只返回成功或失败；文件还在执行时返回作业号和 result_url，让用户到作业管理查看。")
+@tool(description="按作业号查询当前组织内的作业；不指定作业号时查询本会话最近记录。不要重新提交。脚本只返回作业号和终态。文件终态只返回成功或失败；文件还在执行时返回作业号和 result_url，让用户到作业管理查看。")
 def job_mgmt_query(task_id: int = 0, config: RunnableConfig = None):
     return _run(lambda: query_job(config, task_id or None))
 

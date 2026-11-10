@@ -157,7 +157,7 @@ def test_update_model_attr_writes_fields(monkeypatch):
     assert invalidated == ["host"]
 
 
-def test_search_model_filters_hidden_and_permissions(monkeypatch):
+def test_search_model_filters_hidden_and_permissions():
     models = [
         {"model_id": "host", "model_name": "Host", "is_visible": True, "order_id": 1},
         {"model_id": "hidden", "model_name": "Hidden", "is_visible": False},
@@ -172,10 +172,6 @@ def test_search_model_filters_hidden_and_permissions(monkeypatch):
             assert perm[org_key][1]["value"] == ["host"]
             return models, 3
 
-    monkeypatch.setattr(
-        "apps.cmdb.services.model.SettingLanguage",
-        lambda language: type("L", (), {"get_val": staticmethod(lambda *a, **k: None)})(),
-    )
     with patch("apps.cmdb.services.model.GraphClient", return_value=_SearchGraph()):
         visible = ModelManage.search_model(
             language="zh-CN",
