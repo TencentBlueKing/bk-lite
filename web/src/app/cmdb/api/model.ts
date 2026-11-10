@@ -85,6 +85,9 @@ export const useModelApi = () => {
   const setModelAssociationRequired = (modelId: string, params: { model_asst_id: string; required: boolean }) =>
     put(`/cmdb/api/model/${modelId}/association_required/`, params);
 
+  const setAssociationContextLink = (modelAsstId: string, contextLink: 'follow' | 'include' | 'exclude') =>
+    put(`/cmdb/api/model/association/${modelAsstId}/context_link/`, { context_link: contextLink });
+
   const getModelIslandCounts = (modelId: string) =>
     get(`/cmdb/api/model/${modelId}/island_counts/`);
 
@@ -278,6 +281,7 @@ export const useModelApi = () => {
     updateModelDuplicateRule,
     deleteModelDuplicateRule,
     setModelAssociationRequired,
+    setAssociationContextLink,
     getModelIslandCounts,
     getModelAutoAssociationRules,
     createModelAutoAssociationRule,
