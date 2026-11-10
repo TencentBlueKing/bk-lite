@@ -40,7 +40,7 @@ try:
         datas=ansible_datas
         + copy_metadata("ansible-core")
         + copy_metadata("jinja2")
-        + [("config.example.yml", ".")]
+        + [("config.example.yml", "."), ("CHANGELOG.md", ".")]
         + ansible_windows_datas,
         hiddenimports=ansible_hiddenimports + ["nats.aio.client", "version_stamp"],
         hookspath=[],

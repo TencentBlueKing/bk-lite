@@ -32,6 +32,7 @@ def test_spec_bakes_version_before_archive_and_restores_after():
     archive = spec.index("pyz = PYZ")
     restore = spec.index("restore_version_stamp")
     assert bake < analysis < archive < restore
+    assert '("CHANGELOG.md", ".")' in spec
 
 
 def test_packaged_collection_verification_accepts_win_copy(tmp_path: Path):
