@@ -11,6 +11,10 @@ from langchain_core.tools import BaseTool
 from pydantic import BaseModel, Field
 
 from apps.core.logger import opspilot_logger as logger
+from apps.opspilot.services.conversation_skill_package import (
+    PREPARE_CONVERSATION_SKILL_PACKAGE_TOOL,
+    user_requested_skill_package,
+)
 from apps.opspilot.metis.llm.agent.stage_timing import elapsed_ms, log_stage_timing, monotonic_ms
 from apps.opspilot.metis.llm.common.token_usage import TokenUsageAccumulator
 from apps.opspilot.metis.llm.common.tool_failure import (  # noqa: F401
@@ -1810,6 +1814,31 @@ def enforce_generate_attachment_file(
     return ToolExecutionPlan(goal=plan.goal or "生成报告附件", steps=steps)
 
 
+def enforce_prepare_conversation_skill_package(
+    plan: ToolExecutionPlan,
+    available_names: set[str],
+    *,
+    user_message: str = "",
+    conversation_messages: Sequence[Any] | None = None,
+    max_steps: int = 4,
+) -> ToolExecutionPlan:
+    """用户明确要求做成技能包时，空计划也要带上成稿工具，避免被轻量直答吞掉。"""
+    if PREPARE_CONVERSATION_SKILL_PACKAGE_TOOL not in available_names:
+        return plan
+    if not user_requested_skill_package(user_message, conversation_messages):
+        return plan
+    if any(PREPARE_CONVERSATION_SKILL_PACKAGE_TOOL in (step.tools or []) for step in (plan.steps or [])):
+        return plan
+    step = ToolExecutionStep(objective="整理技能包成稿并请用户确认写入", tools=[PREPARE_CONVERSATION_SKILL_PACKAGE_TOOL])
+    steps = list(plan.steps or [])
+    if len(steps) >= max_steps > 0:
+        steps = [*steps[: max_steps - 1], step]
+    else:
+        steps = [*steps, step]
+    logger.info("event=conversation_skill_package_plan_enforced steps=%s", len(plan.steps or []))
+    return ToolExecutionPlan(goal=plan.goal or "整理技能包成稿", steps=steps)
+
+
 def _looks_like_empty_message_reply(raw_text: str) -> bool:
     text = " ".join((raw_text or "").split())
     if not text:
@@ -2184,11 +2213,18 @@ class ToolExecutionPlanner:
         hit_packages = skill_packages if ppt_master_packages is None else ppt_master_packages
         if packages_include_ppt_master(hit_packages):
             return _without_generate_attachment_file(plan)
-        return enforce_generate_attachment_file(
+        plan = enforce_generate_attachment_file(
             plan,
             available_names,
             user_message=user_message,
             agent_system_prompt=agent_system_prompt,
+            conversation_messages=conversation_messages,
+            max_steps=self._max_steps,
+        )
+        return enforce_prepare_conversation_skill_package(
+            plan,
+            available_names,
+            user_message=user_message,
             conversation_messages=conversation_messages,
             max_steps=self._max_steps,
         )

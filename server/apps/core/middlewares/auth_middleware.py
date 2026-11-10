@@ -2,6 +2,7 @@ import jwt
 from django.conf import settings
 from django.contrib import auth
 from django.db import InterfaceError, OperationalError
+from django.http import JsonResponse
 from django.utils.deprecation import MiddlewareMixin
 from django.utils.functional import LazyObject, empty
 
@@ -109,6 +110,19 @@ class AuthMiddleware(MiddlewareMixin):
         if not user:
             logger.warning("Token authentication failed for %s", safe_log_value(request.path))
             loader = self._get_loader(request)
+            if getattr(request, "auth_error_code", None) == "PASSWORD_CHANGED":
+                return JsonResponse(
+                    {
+                        "result": False,
+                        "message": self._get_loader_message(
+                            loader,
+                            "error.password_changed_relogin",
+                            "Your password was changed. Please sign in again with the new password.",
+                        ),
+                        "error_code": "PASSWORD_CHANGED",
+                    },
+                    status=401,
+                )
             return WebUtils.response_401(loader.get("error.please_provide_token", "Please provide Token"))
 
         auth.login(request, user)

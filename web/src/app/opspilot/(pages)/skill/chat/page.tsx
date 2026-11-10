@@ -286,7 +286,11 @@ const SkillWebChatPage: React.FC = () => {
     }
   };
 
-  const handleSendMessage = (panelSessionId: string) => async (message: string, _currentMessages?: unknown, userMessage?: { attachments?: Array<{ id: number; status?: string }> }) => {
+  const handleSendMessage = (panelSessionId: string) => async (
+    message: string,
+    _currentMessages?: unknown,
+    userMessage?: { attachments?: Array<{ id: number; status?: string }>; choiceId?: string; choiceOption?: string },
+  ) => {
     if (!currentAgent?.id) return null;
     const distributeFileIds = pendingDistributeIds.current[panelSessionId] || [];
     const baseUrl = typeof window !== 'undefined' ? window.location.origin : '';
@@ -322,6 +326,10 @@ const SkillWebChatPage: React.FC = () => {
         session_id: panelSessionId,
         attachment_ids: (userMessage?.attachments || []).filter((item) => item.status === 'ready' || item.status === undefined).map((item) => item.id),
         distribute_file_ids: distributeFileIds,
+        ...(userMessage?.choiceId ? {
+          choice_id: userMessage.choiceId,
+          choice_option: userMessage.choiceOption || '',
+        } : {}),
       },
       interruptRequest: {
         enabled: true,

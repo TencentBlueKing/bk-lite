@@ -294,17 +294,36 @@ def parse_select(sql: str) -> ParsedSelect:
     )
 
 
-# 单表一次查询从目录拉取的上限。域控单页默认只有 1000，分页在这个上限内继续要下一页。
+# 单表一次查询的默认上限。工具参数留空时使用。域控单页默认只有 1000，分页在这个上限内继续要下一页。
 AD_LDAP_FETCH_CAP = 10000
+# 配置值再大也停在这里，避免一次查询把整份目录载入进程。
+AD_LDAP_FETCH_CEILING = 100_000
 
 Row = Dict[str, Any]
+
+
+def resolve_ad_fetch_limit(value: Any, *, default: int | None = None, ceiling: int | None = None) -> int:
+    """把工具参数解析成一次 LDAP 读取上限。空值用默认值，非法或非正数同样回退，超过绝对上限时截断。"""
+    if default is None:
+        default = AD_LDAP_FETCH_CAP
+    if ceiling is None:
+        ceiling = AD_LDAP_FETCH_CEILING
+    if value is None or (isinstance(value, str) and not value.strip()):
+        return default
+    try:
+        parsed = int(str(value).strip())
+    except (TypeError, ValueError):
+        return default
+    if parsed < 1:
+        return default
+    return min(parsed, ceiling)
 
 
 def ldap_fetch_limit(parsed: ParsedSelect, *, cap: int | None = None) -> int:
     """返回这次查询需要从 LDAP 拉回的行数。
 
     没有 WHERE、JOIN、GROUP BY、ORDER BY 时，LIMIT/OFFSET 可以提前停。
-    其余语句要先拿够记录再在内存里过滤或排序，因此拉到保护上限。
+    其余语句拉到保护上限。能译成 LDAP 的 WHERE 会写进搜索过滤器，上限只作用于匹配对象。
     """
     if cap is None:
         cap = AD_LDAP_FETCH_CAP
@@ -329,15 +348,160 @@ def _flatten_ldap_value(value: Any) -> Any:
     return value
 
 
+def _ldap_escape(value: str) -> str:
+    escaped: list[str] = []
+    for char in value:
+        if char in {"*", "(", ")", "\\", "\x00"}:
+            escaped.append(f"\\{ord(char):02x}")
+        else:
+            escaped.append(char)
+    return "".join(escaped)
+
+
+def _tables_owning_column(column_name: str, tables: Sequence[TableDef]) -> list[TableDef]:
+    needle = column_name.lower()
+    owners: list[TableDef] = []
+    seen: set[str] = set()
+    for item in tables:
+        key = item.name.lower()
+        if key in seen:
+            continue
+        if any(column.name.lower() == needle for column in item.columns):
+            seen.add(key)
+            owners.append(item)
+    return owners
+
+
+def _column_ldap_attr(ident: str, table: TableDef, qualifiers: set[str], query_tables: Sequence[TableDef]) -> str | None:
+    """列能安全下推到当前表时返回 LDAP 属性。
+
+    带表名或别名的列只属于该表。未限定列名只在本次 FROM/JOIN 里恰好一张表有它时才属于该表。
+    """
+    path = _strip_ident_path(ident)
+    column_name = path
+    if "." in path:
+        qualifier, column_name = path.split(".", 1)
+        if qualifier.lower() not in {name.lower() for name in qualifiers}:
+            return None
+    else:
+        owners = _tables_owning_column(column_name, query_tables)
+        if len(owners) != 1 or owners[0].name.lower() != table.name.lower():
+            return None
+    for column in table.columns:
+        if column.name.lower() == column_name.lower():
+            return column.ldap_attr
+    return None
+
+
+def _unwrap_parens(expr: str) -> str:
+    expr = expr.strip()
+    while expr.startswith("(") and expr.endswith(")"):
+        depth = 0
+        wraps_all = True
+        for index, char in enumerate(expr):
+            if char == "(":
+                depth += 1
+            elif char == ")":
+                depth -= 1
+                if depth == 0 and index != len(expr) - 1:
+                    wraps_all = False
+                    break
+        if not wraps_all or depth != 0:
+            break
+        expr = expr[1:-1].strip()
+    return expr
+
+
+def _like_ldap_filter(attr: str, pattern: str) -> str | None:
+    """把 SQL LIKE 里的 % 译成 LDAP *。含单字符通配符 _ 时不下推，避免放宽成任意长度。"""
+    if "_" in pattern or pattern.strip("%") == "":
+        return None
+    pieces: list[str] = []
+    literal: list[str] = []
+
+    def flush() -> None:
+        if literal:
+            pieces.append(_ldap_escape("".join(literal)))
+            literal.clear()
+
+    for char in pattern:
+        if char == "%":
+            flush()
+            if not pieces or pieces[-1] != "*":
+                pieces.append("*")
+        else:
+            literal.append(char)
+    flush()
+    return f"({attr}={''.join(pieces)})"
+
+
+def _where_pushdown(expr: str, table: TableDef, qualifiers: set[str], query_tables: Sequence[TableDef]) -> str | None:
+    """把能安全缩小结果集的 WHERE 译成 LDAP 过滤器。译不了时返回 None，调用方仍用原对象过滤。"""
+    expr = _unwrap_parens(expr)
+    if not expr:
+        return None
+
+    or_parts = _split_top_level(expr, " OR ")
+    if len(or_parts) == 1:
+        or_parts = _split_top_level(expr, " or ")
+    if len(or_parts) > 1:
+        pushed = []
+        for part in or_parts:
+            item = _where_pushdown(part, table, qualifiers, query_tables)
+            if not item:
+                return None
+            pushed.append(item)
+        return pushed[0] if len(pushed) == 1 else "(|" + "".join(pushed) + ")"
+
+    and_parts = _split_top_level(expr, " AND ")
+    if len(and_parts) == 1:
+        and_parts = _split_top_level(expr, " and ")
+    if len(and_parts) > 1:
+        pushed = [item for part in and_parts if (item := _where_pushdown(part, table, qualifiers, query_tables))]
+        if not pushed:
+            return None
+        return pushed[0] if len(pushed) == 1 else "(&" + "".join(pushed) + ")"
+
+    atom = expr.strip()
+    like_match = re.match(rf"^({_IDENT}(?:\.{_IDENT})?)\s+LIKE\s+('([^']*)'|\"([^\"]*)\")$", atom, re.IGNORECASE)
+    if like_match:
+        attr = _column_ldap_attr(like_match.group(1), table, qualifiers, query_tables)
+        if not attr:
+            return None
+        pattern = like_match.group(3) if like_match.group(3) is not None else like_match.group(4)
+        return _like_ldap_filter(attr, pattern or "")
+
+    compare_match = re.match(rf"^({_IDENT}(?:\.{_IDENT})?)\s*(=|==)\s*(.+)$", atom, re.IGNORECASE)
+    if not compare_match:
+        return None
+    attr = _column_ldap_attr(compare_match.group(1), table, qualifiers, query_tables)
+    if not attr:
+        return None
+    right_raw = compare_match.group(3).strip()
+    if (right_raw.startswith("'") and right_raw.endswith("'")) or (right_raw.startswith('"') and right_raw.endswith('"')):
+        right = right_raw[1:-1]
+    elif re.match(r"^-?\d+(?:\.\d+)?$", right_raw):
+        right = right_raw
+    else:
+        return None
+    return f"({attr}={_ldap_escape(right)})"
+
+
 def fetch_table_rows(
     *,
     table: TableDef,
     base_dn: str,
     searcher: Callable[[str, str, Sequence[str], int], list[Any]],
     size_limit: int = 1000,
+    where: str | None = None,
+    qualifiers: set[str] | None = None,
+    query_tables: Sequence[TableDef] | None = None,
 ) -> list[Row]:
     attrs = [c.ldap_attr for c in table.columns]
-    entries = searcher(base_dn, table.object_filter, attrs, size_limit)
+    scope = tuple(query_tables) if query_tables else (table,)
+    extra_filter = _where_pushdown(where, table, qualifiers or {table.name}, scope) if where else None
+    search_filter = table.object_filter if not extra_filter else f"(&{table.object_filter}{extra_filter})"
+    entries = searcher(base_dn, search_filter, attrs, size_limit)
     rows: list[Row] = []
     for entry in entries:
         attrs_dict: dict[str, Any] = {}
@@ -514,13 +678,14 @@ def _join_rows(left_rows: list[Row], right_rows: list[Row], join: JoinClause) ->
 
 
 def _aggregate_rows(rows: list[Row], group_by: list[str], select_cols: list[str]) -> tuple[list[str], list[Row]]:
-    if not group_by:
-        return select_cols, rows
-
     buckets: dict[tuple[Any, ...], list[Row]] = {}
-    for row in rows:
-        key = tuple(_resolve_path_value(row, g) for g in group_by)
-        buckets.setdefault(key, []).append(row)
+    if not group_by:
+        # 没有 GROUP BY 时整批记录算一组，COUNT(*) 才能返回一行数字。
+        buckets[()] = list(rows)
+    else:
+        for row in rows:
+            key = tuple(_resolve_path_value(row, g) for g in group_by)
+            buckets.setdefault(key, []).append(row)
 
     out_cols: list[str] = []
     for col in select_cols:
@@ -528,7 +693,7 @@ def _aggregate_rows(rows: list[Row], group_by: list[str], select_cols: list[str]
 
     result: list[Row] = []
     for key, group_rows in buckets.items():
-        sample = group_rows[0]
+        sample = group_rows[0] if group_rows else {}
         row_out: Row = {}
         for col in select_cols:
             name = _output_col_name(col)
@@ -632,29 +797,47 @@ def execute_select(
     base_dn: str,
     searcher: Callable[[str, str, Sequence[str], int], list[Any]],
     fetch_limit: int | None = None,
+    fetch_cap: int | None = None,
 ) -> tuple[list[str], list[Row]]:
     parsed = parse_select(sql)
     if fetch_limit is None:
-        fetch_limit = ldap_fetch_limit(parsed)
+        fetch_limit = ldap_fetch_limit(parsed, cap=fetch_cap)
     base_table = get_table(parsed.from_table)
+    resolved_joins = [(join, get_table(join.table)) for join in parsed.joins]
+    query_tables = [base_table, *(table for _, table in resolved_joins)]
     tables: dict[str, TableDef] = {base_table.name: base_table}
     alias_map: dict[str, str] = {}
     if parsed.from_alias:
         alias_map[parsed.from_alias] = base_table.name
 
     left_rows = _qualify_rows(
-        fetch_table_rows(table=base_table, base_dn=base_dn, searcher=searcher, size_limit=fetch_limit),
+        fetch_table_rows(
+            table=base_table,
+            base_dn=base_dn,
+            searcher=searcher,
+            size_limit=fetch_limit,
+            where=parsed.where,
+            qualifiers={base_table.name, parsed.from_alias} - {None},
+            query_tables=query_tables,
+        ),
         base_table.name,
         parsed.from_alias,
     )
 
-    for join in parsed.joins:
-        right_table = get_table(join.table)
+    for join, right_table in resolved_joins:
         tables[right_table.name] = right_table
         if join.alias:
             alias_map[join.alias] = right_table.name
         right_rows = _qualify_rows(
-            fetch_table_rows(table=right_table, base_dn=base_dn, searcher=searcher, size_limit=fetch_limit),
+            fetch_table_rows(
+                table=right_table,
+                base_dn=base_dn,
+                searcher=searcher,
+                size_limit=fetch_limit,
+                where=parsed.where,
+                qualifiers={right_table.name, join.alias} - {None},
+                query_tables=query_tables,
+            ),
             right_table.name,
             join.alias,
         )

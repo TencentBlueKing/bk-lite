@@ -293,6 +293,18 @@ class TestResetPwd:
             inst.reset_pwd.assert_called_once_with("alice", "domain.com", "newpw", caller_token="tok123")
             log.assert_called_once()
         assert json.loads(resp.content)["result"] is True
+        assert "bklite_token" not in resp.cookies
+
+    def test_重置成功把换发token写入cookie(self):
+        _make_user()
+        req = _req("post", {"password": "newpw"}, cookies={"bklite_token": "tok123"})
+        req.user = MagicMock(username="alice", domain="domain.com", locale="en")
+        with patch.object(views, "SystemMgmt") as MockRPC, patch.object(views, "log_operation"):
+            inst = MagicMock()
+            inst.reset_pwd.return_value = {"result": True, "data": {"token": "rotated-token"}}
+            MockRPC.return_value = inst
+            resp = reset_pwd(req)
+        assert resp.cookies["bklite_token"].value == "rotated-token"
 
     def test_空密码被拒(self):
         req = _req("post", {"password": ""})

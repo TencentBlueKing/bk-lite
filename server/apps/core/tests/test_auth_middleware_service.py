@@ -1,7 +1,6 @@
-import pydantic.root_model  # noqa
-
 import json
 
+import pydantic.root_model  # noqa
 import pytest
 from django.conf import settings
 
@@ -91,6 +90,27 @@ class TestProcessView:
         req.session = session
         assert mw.process_view(req, object(), [], {}) is None
         login.assert_called_once()
+
+    def test_password_changed_401_names_the_reason(self, mw, mocker):
+        mocker.patch.object(mw, "_is_exempt", return_value=False)
+
+        def reject_after_password_change(request=None, **kwargs):
+            request.auth_error_code = "PASSWORD_CHANGED"
+            return None
+
+        mocker.patch.object(am.auth, "authenticate", side_effect=reject_after_password_change)
+        mocker.patch.object(am.LanguageLoader, "__init__", return_value=None)
+        mocker.patch.object(
+            am.LanguageLoader,
+            "get",
+            return_value="Your password was changed. Please sign in again with the new password.",
+        )
+        req = _Req(meta={settings.AUTH_TOKEN_HEADER_NAME: "tok"})
+        resp = mw.process_view(req, object(), [], {})
+        body = _body(resp)
+        assert resp.status_code == 401
+        assert body["error_code"] == "PASSWORD_CHANGED"
+        assert "new password" in body["message"]
 
     def test_auth_returns_none_user_401(self, mw, mocker):
         mocker.patch.object(mw, "_is_exempt", return_value=False)

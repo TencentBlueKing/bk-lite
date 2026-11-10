@@ -120,6 +120,172 @@ class TestSqlEngine:
         assert by_dept["HR"] == 1
         assert by_dept["IT"] == 2
 
+    def test_count_star_without_group_by_returns_one_number(self):
+        users = [
+            FakeEntry(sAMAccountName="a", department="IT", distinguishedName="CN=a"),
+            FakeEntry(sAMAccountName="b", department="HR", distinguishedName="CN=b"),
+        ]
+        searcher = _searcher_factory({"objectCategory=person": users})
+        cols, rows = execute_select(
+            "SELECT COUNT(*) AS cnt FROM User",
+            base_dn="DC=example,DC=com",
+            searcher=searcher,
+        )
+        assert cols == ["cnt"]
+        assert rows == [{"cnt": 2}]
+
+        filtered_cols, filtered_rows = execute_select(
+            "SELECT COUNT(*) AS cnt FROM User WHERE Department = 'IT'",
+            base_dn="DC=example,DC=com",
+            searcher=searcher,
+        )
+        assert filtered_cols == ["cnt"]
+        assert filtered_rows == [{"cnt": 1}]
+
+    def test_like_filter_is_sent_to_the_directory_before_counting(self):
+        filters = []
+
+        def searcher(base_dn, search_filter, attrs, size_limit):
+            _ = (base_dn, attrs, size_limit)
+            filters.append(search_filter)
+            if "sAMAccountName=*test*" in search_filter or "cn=*test*" in search_filter:
+                return [FakeEntry(sAMAccountName="testuser", cn="test user", distinguishedName="CN=testuser")]
+            return [FakeEntry(sAMAccountName=f"user{i}", cn=f"user{i}", distinguishedName=f"CN=user{i}") for i in range(5)]
+
+        cols, rows = execute_select(
+            "SELECT COUNT(*) AS cnt FROM User WHERE SAMAccountName LIKE '%test%' OR CN LIKE '%test%'",
+            base_dn="DC=example,DC=com",
+            searcher=searcher,
+        )
+
+        assert cols == ["cnt"]
+        assert rows == [{"cnt": 1}]
+        assert len(filters) == 1
+        assert "objectCategory=person" in filters[0]
+        assert "sAMAccountName=*test*" in filters[0]
+        assert "cn=*test*" in filters[0]
+        assert filters[0].startswith("(&")
+
+        blocked = []
+
+        def unfiltered(base_dn, search_filter, attrs, size_limit):
+            _ = (base_dn, attrs, size_limit)
+            blocked.append(search_filter)
+            return [FakeEntry(sAMAccountName="alice", userAccountControl="512", distinguishedName="CN=alice")]
+
+        execute_select(
+            "SELECT SAMAccountName FROM User WHERE SAMAccountName LIKE '%a%' OR UserAccountControl > 1",
+            base_dn="DC=example,DC=com",
+            searcher=unfiltered,
+        )
+        assert "sAMAccountName=*a*" not in blocked[0]
+
+    def test_join_does_not_push_unqualified_shared_column(self):
+        filters = []
+        users = [
+            FakeEntry(sAMAccountName="bob", name="bob", department="HR", distinguishedName="CN=bob"),
+            FakeEntry(sAMAccountName="alice", name="alice", department="IT", distinguishedName="CN=alice"),
+        ]
+        groups = [
+            FakeEntry(cn="admins", name="alice", member="CN=bob", distinguishedName="CN=admins"),
+            FakeEntry(cn="vpn", name="vpn", member="CN=alice", distinguishedName="CN=vpn"),
+        ]
+
+        def searcher(base_dn, search_filter, attrs, size_limit):
+            _ = (base_dn, attrs, size_limit)
+            filters.append(search_filter)
+            lowered = search_filter.lower()
+            if "objectcategory=person" in lowered:
+                rows = users
+            elif "objectclass=group" in lowered:
+                rows = groups
+            else:
+                return []
+            if "(name=" in lowered:
+                wanted = lowered.split("(name=", 1)[1].split(")", 1)[0]
+                rows = [row for row in rows if str(row.entry_attributes_as_dict.get("name", "")).lower() == wanted]
+            if "(department=" in lowered:
+                wanted = lowered.split("(department=", 1)[1].split(")", 1)[0]
+                rows = [row for row in rows if str(row.entry_attributes_as_dict.get("department", "")).lower() == wanted]
+            return rows
+
+        cols, rows = execute_select(
+            "SELECT User.SAMAccountName, Group.CN FROM User INNER JOIN Group ON User.DN = Group.Member WHERE Name = 'alice'",
+            base_dn="DC=example,DC=com",
+            searcher=searcher,
+        )
+        assert cols == ["User.SAMAccountName", "Group.CN"]
+        assert rows == [{"User.SAMAccountName": "bob", "Group.CN": "admins"}]
+        assert len(filters) == 2
+        assert all("(name=" not in item.lower() for item in filters)
+
+        filters.clear()
+        qualified_cols, qualified_rows = execute_select(
+            "SELECT User.SAMAccountName, Group.CN FROM User INNER JOIN Group ON User.DN = Group.Member WHERE User.Department = 'IT'",
+            base_dn="DC=example,DC=com",
+            searcher=searcher,
+        )
+        user_filters = [item for item in filters if "objectCategory=person" in item]
+        group_filters = [item for item in filters if "objectClass=group" in item]
+        assert qualified_cols == ["User.SAMAccountName", "Group.CN"]
+        assert qualified_rows == [{"User.SAMAccountName": "alice", "Group.CN": "vpn"}]
+        assert len(user_filters) == 1
+        assert len(group_filters) == 1
+        assert "(department=IT)" in user_filters[0]
+        assert "(department=" not in group_filters[0].lower()
+        assert "(name=" not in group_filters[0].lower()
+
+        filters.clear()
+        _, single_rows = execute_select(
+            "SELECT SAMAccountName FROM User WHERE Name = 'alice'",
+            base_dn="DC=example,DC=com",
+            searcher=searcher,
+        )
+        assert single_rows == [{"SAMAccountName": "alice"}]
+        assert len(filters) == 1
+        assert "(name=alice)" in filters[0]
+
+    def test_like_underscore_is_not_pushed_to_ldap(self):
+        filters = []
+        users = [
+            FakeEntry(sAMAccountName="alice", department="IT", distinguishedName="CN=alice"),
+            FakeEntry(sAMAccountName="abice", department="IT", distinguishedName="CN=abice"),
+            FakeEntry(sAMAccountName="axxice", department="HR", distinguishedName="CN=axxice"),
+            FakeEntry(sAMAccountName="bob", department="HR", distinguishedName="CN=bob"),
+        ]
+
+        def searcher(base_dn, search_filter, attrs, size_limit):
+            _ = (base_dn, attrs, size_limit)
+            filters.append(search_filter)
+            return users
+
+        cols, rows = execute_select(
+            "SELECT SAMAccountName FROM User WHERE SAMAccountName LIKE 'a_ice'",
+            base_dn="DC=example,DC=com",
+            searcher=searcher,
+        )
+        assert cols == ["SAMAccountName"]
+        assert [row["SAMAccountName"] for row in rows] == ["alice", "abice"]
+        assert "sAMAccountName=" not in filters[0]
+
+        filters.clear()
+        _, percent_rows = execute_select(
+            "SELECT SAMAccountName FROM User WHERE SAMAccountName LIKE 'a%'",
+            base_dn="DC=example,DC=com",
+            searcher=searcher,
+        )
+        assert [row["SAMAccountName"] for row in percent_rows] == ["alice", "abice", "axxice"]
+        assert "(sAMAccountName=a*)" in filters[0]
+
+        filters.clear()
+        execute_select(
+            "SELECT SAMAccountName FROM User WHERE Department = 'IT' AND SAMAccountName LIKE 'a_ice'",
+            base_dn="DC=example,DC=com",
+            searcher=searcher,
+        )
+        assert "(department=IT)" in filters[0]
+        assert "sAMAccountName=" not in filters[0]
+
 
 class FakeLoader:
     def __init__(self, mapping=None):
@@ -345,7 +511,7 @@ class _PagedLdap:
 
     def search(self, search_base, search_filter, search_scope, attributes, size_limit=0, paged_size=None, paged_cookie=None):
         _ = (search_base, search_filter, search_scope, attributes)
-        self.calls.append({"size_limit": size_limit, "paged_size": paged_size, "paged_cookie": paged_cookie})
+        self.calls.append({"size_limit": size_limit, "paged_size": paged_size, "paged_cookie": paged_cookie, "search_filter": search_filter})
         entries, cookie, code = self._pages.pop(0)
         self.entries = entries
         controls = {}
@@ -425,7 +591,6 @@ class TestActiveDirectoryPaging:
             ]
         )
         mocker.patch.object(sql_engine, "AD_LDAP_FETCH_CAP", 4)
-        mocker.patch.object(ad_tools, "AD_LDAP_FETCH_CAP", 4)
         mocker.patch.object(ad_tools, "AD_LDAP_PAGE_SIZE", 2)
         mocker.patch.object(ad_tools, "build_ad_normalized_from_runnable", return_value=_single_directory())
         mocker.patch.object(ad_tools, "get_ad_connection_from_item", return_value=conn)
@@ -436,9 +601,9 @@ class TestActiveDirectoryPaging:
 
         assert result.splitlines()[:5] == ["SAMAccountName", "alice", "bob", "cara", "drew"]
         assert result.endswith(
-            "结果已截断：本次 LDAP 读取在 4 条停止，目录里还有更多对象。"
-            "WHERE 同样只过滤已经读回的记录，不能把上限之外的对象补回来。"
-            "LIMIT/OFFSET 只能切分已读取上限内的行，不能读到上限之外的对象。"
+            "结果已截断：该域控的单次查询上限为 4 条，本次 LDAP 读取在 4 条停止，目录里还有更多对象。"
+            "WHERE 只过滤已经读回的记录，LIMIT/OFFSET 也不能读到上限之外。计数只统计已读取的记录。"
+            "这是配置上限，不是查询故障。如需更完整的结果，请提高该域控的单次查询上限。"
         )
         assert "erin" not in result
         warnings = [record for record in caplog.records if record.msg == ad_tools._AD_LDAP_TRUNCATED]
@@ -494,3 +659,136 @@ class TestActiveDirectoryPaging:
         )
 
         assert requested == [AD_LDAP_FETCH_CAP, 15, AD_LDAP_FETCH_CAP, AD_LDAP_FETCH_CAP, AD_LDAP_FETCH_CAP, AD_LDAP_FETCH_CAP]
+
+    def test_configured_fetch_limit_stops_at_that_count(self, mocker):
+        from apps.opspilot.metis.llm.tools.activedirectory import tools as ad_tools
+
+        conn = _PagedLdap(
+            [
+                ([_user("alice")], b"page-2", 0),
+                ([_user("bob")], b"page-3", 0),
+                ([_user("cara")], None, 0),
+            ]
+        )
+        directory = _single_directory()
+        directory["items"][0]["config"]["fetch_limit"] = 2
+        mocker.patch.object(ad_tools, "AD_LDAP_PAGE_SIZE", 1)
+        mocker.patch.object(ad_tools, "build_ad_normalized_from_runnable", return_value=directory)
+        mocker.patch.object(ad_tools, "get_ad_connection_from_item", return_value=conn)
+        mocker.patch.object(ad_tools, "safe_unbind")
+
+        result = ad_tools.activedirectory_run_query.func(
+            "SELECT SAMAccountName FROM User",
+            config={"configurable": {"ad_fetch_limit": "9"}},
+        )
+
+        assert len(conn.calls) == 2
+        assert result.splitlines()[:3] == ["SAMAccountName", "alice", "bob"]
+        assert "该域控的单次查询上限为 2 条" in result
+        assert "本次 LDAP 读取在 2 条停止" in result
+        assert "这是配置上限，不是查询故障" in result
+        assert "cara" not in result
+
+
+def test_resolve_ad_fetch_limit_defaults_and_clamps():
+    from apps.opspilot.metis.llm.tools.activedirectory.sql_engine import AD_LDAP_FETCH_CAP, AD_LDAP_FETCH_CEILING, resolve_ad_fetch_limit
+
+    assert resolve_ad_fetch_limit(None) == AD_LDAP_FETCH_CAP
+    assert resolve_ad_fetch_limit("") == AD_LDAP_FETCH_CAP
+    assert resolve_ad_fetch_limit("   ") == AD_LDAP_FETCH_CAP
+    assert resolve_ad_fetch_limit("abc") == AD_LDAP_FETCH_CAP
+    assert resolve_ad_fetch_limit(0) == AD_LDAP_FETCH_CAP
+    assert resolve_ad_fetch_limit("-3") == AD_LDAP_FETCH_CAP
+    assert resolve_ad_fetch_limit("20000") == 20000
+    assert resolve_ad_fetch_limit(AD_LDAP_FETCH_CEILING + 1) == AD_LDAP_FETCH_CEILING
+
+
+def test_normalize_keeps_each_domain_controller_fetch_limit():
+    from apps.opspilot.metis.llm.tools.activedirectory.connection import normalize_ad_instance
+    from apps.opspilot.metis.llm.tools.activedirectory.sql_engine import AD_LDAP_FETCH_CEILING
+
+    assert normalize_ad_instance(_ad_config())["fetch_limit"] is None
+    assert normalize_ad_instance(_ad_config(fetch_limit="25000"))["fetch_limit"] == 25000
+    assert normalize_ad_instance(_ad_config(fetch_limit="nope"))["fetch_limit"] is None
+    assert normalize_ad_instance(_ad_config(fetch_limit=AD_LDAP_FETCH_CEILING + 5))["fetch_limit"] == AD_LDAP_FETCH_CEILING
+
+
+def test_execute_select_uses_configured_fetch_cap():
+    from apps.opspilot.metis.llm.tools.activedirectory.sql_engine import execute_select
+
+    requested = []
+
+    def searcher(base_dn, search_filter, attrs, size_limit):
+        _ = (base_dn, search_filter, attrs)
+        requested.append(size_limit)
+        return []
+
+    execute_select("SELECT SAMAccountName FROM User", base_dn="DC=example,DC=com", searcher=searcher, fetch_cap=30)
+    execute_select(
+        "SELECT SAMAccountName FROM User LIMIT 10 OFFSET 5",
+        base_dn="DC=example,DC=com",
+        searcher=searcher,
+        fetch_cap=30,
+    )
+    execute_select(
+        "SELECT SAMAccountName FROM User WHERE Department = 'IT' LIMIT 10",
+        base_dn="DC=example,DC=com",
+        searcher=searcher,
+        fetch_cap=30,
+    )
+
+    assert requested == [30, 15, 30]
+
+
+def test_negative_builtin_ad_fetch_limit_reaches_runtime_config(mocker):
+    from apps.opspilot.services.builtin_tools import BUILTIN_ACTIVEDIRECTORY_TOOL_ID, BUILTIN_ACTIVEDIRECTORY_TOOL_NAME
+    from apps.opspilot.services.chat_service import ChatService
+
+    llm_model = mocker.Mock()
+    llm_model.openai_api_base = "https://example.com/v1"
+    llm_model.openai_api_key = "key"
+    llm_model.model_name = "gpt-4o"
+    llm_model.protocol_type = "openai"
+    llm_model.vendor_id = None
+    llm_model.pk = 1
+    llm_model.context_window_tokens = 128000
+    mocker.patch("apps.opspilot.services.history_service.history_service.process_user_message_and_images", return_value=("hello", []))
+    mocker.patch("apps.opspilot.services.history_service.history_service.process_chat_history", return_value=[])
+    mocker.patch("apps.opspilot.services.chat_service.resolve_skill_params", return_value="system")
+    mocker.patch("apps.opspilot.services.chat_service.SkillTools.objects.filter", return_value=[])
+    instances = '[{"id":"ad-1","name":"AD - 1","host":"dc.example.com","bind_password":"secret-value"}]'
+    request = {
+        "user_message": "hello",
+        "chat_history": [],
+        "skill_prompt": "system",
+        "skill_params": [],
+        "temperature": 0.1,
+        "user_id": 1,
+        "enable_rag": False,
+        "enable_rag_knowledge_source": False,
+        "skill_type": 1,
+        "locale": "zh-Hans",
+        "tools": [
+            {
+                "id": BUILTIN_ACTIVEDIRECTORY_TOOL_ID,
+                "name": BUILTIN_ACTIVEDIRECTORY_TOOL_NAME,
+                "kwargs": [
+                    {"key": "ad_instances", "value": instances, "type": "string"},
+                    {"key": "ad_default_instance_id", "value": "ad-1", "type": "string"},
+                    {"key": "ad_fetch_limit", "value": "20000", "type": "string"},
+                ],
+            }
+        ],
+    }
+
+    chat_kwargs, _, _ = ChatService.format_chat_server_kwargs(request, llm_model)
+
+    extra = chat_kwargs["extra_config"]
+    assert extra["ad_instances"] == instances
+    assert extra["ad_default_instance_id"] == "ad-1"
+    assert extra["ad_fetch_limit"] == "20000"
+
+    request["tools"][0]["kwargs"] = [item for item in request["tools"][0]["kwargs"] if item["key"] != "ad_fetch_limit"]
+    blank_kwargs, _, _ = ChatService.format_chat_server_kwargs(request, llm_model)
+    assert "ad_fetch_limit" not in blank_kwargs["extra_config"]
+    assert blank_kwargs["extra_config"]["ad_instances"] == instances

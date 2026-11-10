@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 
+const KNOWN_CHAR_TYPES = ['uppercase', 'lowercase', 'digit', 'special'] as const;
+
 export interface PasswordPolicyConfig {
   min_length?: number;
   max_length?: number;
@@ -9,6 +11,9 @@ export interface PasswordPolicyConfig {
   require_lowercase?: boolean;
   require_digit?: boolean;
   require_special?: boolean;
+  pwd_set_min_length?: string | number;
+  pwd_set_max_length?: string | number;
+  pwd_set_required_char_types?: string | string[];
   [key: string]: unknown;
 }
 
@@ -27,6 +32,49 @@ export interface PasswordValidationStatus {
 export type PasswordPolicySettings = PasswordPolicyConfig;
 
 export const PasswordPolicySettings = {} as PasswordPolicyConfig;
+
+function parseLength(value: unknown, fallback: number): number {
+  const parsed = typeof value === 'number' ? value : Number.parseInt(String(value ?? ''), 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function usesSystemPasswordSettings(policy: PasswordPolicyConfig): boolean {
+  return 'pwd_set_min_length' in policy || 'pwd_set_max_length' in policy;
+}
+
+function readLengths(policy: PasswordPolicyConfig | null, minFallback: number) {
+  if (policy && usesSystemPasswordSettings(policy)) {
+    return {
+      minLength: parseLength(policy.pwd_set_min_length, minFallback),
+      maxLength: parseLength(policy.pwd_set_max_length, 20),
+    };
+  }
+  const maxLength = policy?.max_length;
+  return {
+    minLength: parseLength(policy?.min_length, minFallback),
+    maxLength: typeof maxLength === 'number' && Number.isFinite(maxLength) ? maxLength : undefined,
+  };
+}
+
+function readRequiredCharTypes(policy: PasswordPolicyConfig | null): string[] {
+  const raw = policy?.pwd_set_required_char_types;
+  const tokens = typeof raw === 'string' ? raw.split(',') : Array.isArray(raw) ? raw : null;
+  if (tokens) {
+    const types = tokens
+      .map((item) => String(item).trim())
+      .filter((item) => (KNOWN_CHAR_TYPES as readonly string[]).includes(item));
+    if (types.length > 0) {
+      return types;
+    }
+  }
+  if (policy?.require_special) {
+    return ['uppercase', 'lowercase', 'digit', 'special'];
+  }
+  if (policy?.require_digit) {
+    return ['uppercase', 'lowercase', 'digit'];
+  }
+  return ['uppercase', 'lowercase'];
+}
 
 export interface UsePasswordPolicyOptions {
   enabled?: boolean;
@@ -79,25 +127,26 @@ export const usePasswordPolicy = ({
   const validatePassword = useCallback(
     async (password: string): Promise<void> => {
       const failedRules: string[] = [];
-      const effectiveMin = (policy?.min_length as number | undefined) ?? minLength;
+      const { minLength: effectiveMin, maxLength } = readLengths(policy, minLength);
       const status: PasswordValidationStatus = { passed: true };
-      if (password.length < effectiveMin) {
+      if (password.length < effectiveMin || (maxLength !== undefined && password.length > maxLength)) {
         status.length = 'min_length';
         failedRules.push('min_length');
       }
-      if (policy?.require_uppercase && !/[A-Z]/.test(password)) {
+      const requiredTypes = new Set(readRequiredCharTypes(policy));
+      if (requiredTypes.has('uppercase') && !/[A-Z]/.test(password)) {
         status.uppercase = 'require_uppercase';
         failedRules.push('require_uppercase');
       }
-      if (policy?.require_lowercase && !/[a-z]/.test(password)) {
+      if (requiredTypes.has('lowercase') && !/[a-z]/.test(password)) {
         status.lowercase = 'require_lowercase';
         failedRules.push('require_lowercase');
       }
-      if (policy?.require_digit && !/\d/.test(password)) {
+      if (requiredTypes.has('digit') && !/\d/.test(password)) {
         status.digit = 'require_digit';
         failedRules.push('require_digit');
       }
-      if (policy?.require_special && !/[^A-Za-z0-9]/.test(password)) {
+      if (requiredTypes.has('special') && !/[^A-Za-z0-9]/.test(password)) {
         status.special = 'require_special';
         failedRules.push('require_special');
       }
@@ -116,19 +165,15 @@ export const usePasswordPolicy = ({
     setValidationStatus((prev) => ({ ...prev, ...status }));
   }, []);
 
-  const effectiveMin = (policy?.min_length as number | undefined) ?? minLength;
+  const lengths = readLengths(policy, minLength);
 
   return {
     policy,
     loading,
     rulesLoading: loading,
-    minLength: effectiveMin,
-    maxLength: policy?.max_length as number | undefined,
-    requiredCharTypes: policy?.require_special
-      ? ['uppercase', 'lowercase', 'digit', 'special']
-      : policy?.require_digit
-        ? ['uppercase', 'lowercase', 'digit']
-        : ['uppercase', 'lowercase'],
+    minLength: lengths.minLength,
+    maxLength: lengths.maxLength,
+    requiredCharTypes: readRequiredCharTypes(policy),
     validatePassword,
     resetValidation,
     updateValidationStatus,

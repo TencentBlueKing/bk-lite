@@ -12,6 +12,8 @@ import tempfile
 import urllib.request
 from pathlib import Path
 
+from version_info import resolve_git_sha
+
 OPENSSL_VERSION = "3.5.9"
 PYTHON_VERSION = "3.12.15"
 
@@ -76,6 +78,11 @@ def build(args):
         LANG="C.UTF-8",
         LC_ALL="C.UTF-8",
     )
+    # 打包副本在源码目录外，spec 读不到 .git。这里把 HEAD 传给冻结步骤。
+    git_sha = resolve_git_sha(SOURCE)
+    if git_sha == "unknown":
+        raise RuntimeError("Unable to resolve source git SHA for the release package")
+    env["ANSIBLE_EXECUTOR_GIT_SHA"] = git_sha
     # A project sync may install a stock cryptography wheel; replace it only after sync.
     source = work / "source"
     shutil.copytree(

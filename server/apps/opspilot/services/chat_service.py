@@ -42,6 +42,7 @@ from apps.opspilot.services.builtin_tools import (
 )
 from apps.opspilot.services.caller_identity import CALLER_IDENTITY_CONFIG_KEY
 from apps.opspilot.services.chat_request import ChatRequest
+from apps.opspilot.services.conversation_skill_package import AUTHORING_EXTRA_KEY, AUTHORING_PROMPT_SUFFIX
 from apps.opspilot.services.history_service import history_service
 from apps.opspilot.services.llm_context_budget import DEFAULT_CHAT_SCENE_OUTPUT_TOKENS, working_budget_for_model
 from apps.opspilot.services.skill_memory_service import append_skill_memory_block
@@ -591,6 +592,12 @@ class ChatService:
         mlops_kwargs = selected_builtin_kwargs.get(BUILTIN_MLOPS_TOOL_NAME) or {}
         if mlops_kwargs.get("serving_ids") not in (None, ""):
             extra_config["serving_ids"] = mlops_kwargs["serving_ids"]
+        # 负 ID 内置工具不进 tool_map。AD 连接在 ad_instances 里，单次上限写在每个域控上。
+        # 旧的工具级 ad_fetch_limit 仍传入，只在某个域控没填自己的上限时兜底。
+        ad_kwargs = selected_builtin_kwargs.get(BUILTIN_ACTIVEDIRECTORY_TOOL_NAME) or {}
+        for key in ("ad_instances", "ad_default_instance_id", "ad_fetch_limit"):
+            if ad_kwargs.get(key) not in (None, ""):
+                extra_config[key] = ad_kwargs[key]
         extra_config.update({"execution_id": chat_kwargs["execution_id"]})
         if kwargs.get("attachment_id"):
             extra_config["attachment_id"] = kwargs["attachment_id"]
@@ -610,7 +617,7 @@ class ChatService:
         chat_kwargs.update({"extra_config": extra_config})
 
     @staticmethod
-    def format_chat_server_kwargs(kwargs, llm_model):
+    def format_chat_server_kwargs(kwargs, llm_model):  # noqa: C901
         """
         格式化聊天服务器请求参数
 
@@ -672,6 +679,9 @@ class ChatService:
             kwargs.get("locale"),
             match_user_message=kwargs.get("reply_language") == "match_user",
         )
+        authoring = kwargs.get(AUTHORING_EXTRA_KEY)
+        if isinstance(authoring, dict) and authoring.get("enabled"):
+            resolved_prompt = f"{resolved_prompt}{AUTHORING_PROMPT_SUFFIX}"
 
         vendor_type = llm_model.vendor.vendor_type if llm_model.vendor_id else ""
         # 对话温度固定 1；技能表与请求里的旧滑条值忽略。
@@ -770,6 +780,14 @@ class ChatService:
             extra_config["enabled_skill_packages"] = kwargs.get("enabled_skill_packages") or []
         if kwargs.get("skill_id") is not None:
             extra_config["skill_id"] = kwargs.get("skill_id")
+        if isinstance(authoring, dict) and authoring.get("enabled"):
+            extra_config[AUTHORING_EXTRA_KEY] = {
+                "enabled": True,
+                "entry": str(authoring.get("entry") or ""),
+                "can_add": bool(authoring.get("can_add")),
+                "username": str(authoring.get("username") or ""),
+                "domain": str(authoring.get("domain") or ""),
+            }
         if kwargs.get("skill_package_params_overlay") is not None:
             extra_config["skill_package_params_overlay"] = kwargs.get("skill_package_params_overlay")
 
