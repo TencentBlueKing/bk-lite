@@ -62,15 +62,16 @@ export function collectTagChips(
   return chips;
 }
 
-export function matchesTagSelection(item: TagSource, selected: string[], chips: TagChip[]): boolean {
+export function matchesTagSelection(item: TagSource, selected: string[], chips: TagChip[], matchAll = false): boolean {
   if (!selected.length) return true;
   const system = new Set(item.systemTags || []);
   const user = new Set(item.userTags || []);
-  return selected.some((value) => {
+  const matches = (value: string) => {
     const chip = chips.find((candidate) => candidate.value === value);
     const tokens = chip ? chip.matchValues : [value];
     return tokens.some((token) => system.has(token) || user.has(token));
-  });
+  };
+  return matchAll ? selected.every(matches) : selected.some(matches);
 }
 
 export function matchesKeyword(name: string, description: string, keyword: string, extra = ''): boolean {
@@ -83,6 +84,7 @@ export function filterTaggedAssets<T>(
   items: T[],
   options: {
     selectedTags: string[];
+    matchAllTags?: boolean;
     keyword: string;
     chips: TagChip[];
     systemTags: (item: T) => string[];
@@ -94,7 +96,7 @@ export function filterTaggedAssets<T>(
 ): T[] {
   return items.filter((item) => {
     const source = { systemTags: options.systemTags(item), userTags: options.userTags(item) };
-    if (!matchesTagSelection(source, options.selectedTags, options.chips)) return false;
+    if (!matchesTagSelection(source, options.selectedTags, options.chips, options.matchAllTags)) return false;
     return matchesKeyword(
       options.name(item),
       options.description(item),

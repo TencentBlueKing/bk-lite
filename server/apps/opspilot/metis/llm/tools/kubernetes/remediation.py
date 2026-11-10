@@ -9,8 +9,8 @@ from kubernetes import client
 from kubernetes.client import ApiException
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
-from apps.core.logger import opspilot_logger as logger
 
+from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.metis.llm.tools.kubernetes.instance_scope import prepare_point_instance
 from apps.opspilot.metis.llm.tools.kubernetes.utils import coerce_bool, coerce_int, prepare_context
 
@@ -328,7 +328,7 @@ def scale_deployment(deployment_name: str, namespace: str, replicas: int, instan
 
 
 @tool()
-def get_deployment_revision_history(deployment_name, namespace, config: RunnableConfig = None):
+def get_deployment_revision_history(deployment_name, namespace, config: RunnableConfig = None, instance_name=None):
     """
     获取Deployment的版本历史，用于回滚决策
 
@@ -371,6 +371,10 @@ def get_deployment_revision_history(deployment_name, namespace, config: Runnable
     - 过旧的版本会被自动清理
     - revision 编号是递增的，不会重复使用
     """
+    config, instance_error = prepare_point_instance(config, instance_name)
+    if instance_error:
+        return instance_error
+
     prepare_context(config)
 
     try:
