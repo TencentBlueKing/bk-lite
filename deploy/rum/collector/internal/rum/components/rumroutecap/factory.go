@@ -47,6 +47,7 @@ func createLogsProcessor(
 		logger = zap.NewNop()
 	}
 	return &logsProcessor{
+		redis: store,
 		limiter: limiter{
 			store:    store,
 			cache:    newRouteCache(),
@@ -68,6 +69,7 @@ func (counter failureCounter) Add(ctx context.Context, value int64) {
 
 type logsProcessor struct {
 	limiter
+	redis *routeStore
 }
 
 func (processor *logsProcessor) Capabilities() consumer.Capabilities {
@@ -91,16 +93,18 @@ func (processor *logsProcessor) ConsumeLogs(ctx context.Context, ld plog.Logs) e
 func (processor *logsProcessor) Start(ctx context.Context, _ component.Host) error {
 	pingCtx, cancel := context.WithTimeout(ctx, redisTimeout)
 	defer cancel()
-	if err := processor.store.client.Ping(pingCtx).Err(); err != nil {
+	if err := processor.redis.client.Ping(pingCtx).Err(); err != nil {
+		processor.circuit.trip(nowFn(), errorTypeName(err))
 		processor.logger.Warn(
 			"rum aggregate route redis is not reachable; unknown routes will be labeled 其他",
 			zap.String("failed_stage", "route_admission"),
-			zap.String("error_type", fmt.Sprintf("%T", err)),
+			zap.String("error_type", errorTypeName(err)),
 		)
 	}
 	return nil
 }
 
 func (processor *logsProcessor) Shutdown(context.Context) error {
-	return processor.store.close()
+	processor.flushFailure()
+	return processor.redis.close()
 }

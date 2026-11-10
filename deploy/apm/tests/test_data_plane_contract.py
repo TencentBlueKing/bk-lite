@@ -34,7 +34,7 @@ COMPOSE_FILE = REPOSITORY_ROOT / "deploy/apm/compose.yaml"
 PYTHON_SDK_EMITTER = REPOSITORY_ROOT / "deploy/apm/tests/emit_python_sdk_trace.py"
 
 
-_RESERVED_HOST_PORTS = {4317, 4318, 8428, 9428, 10428, 13133, 18222, 18888, 18889, 23133, 18428}
+_RESERVED_HOST_PORTS = {4317, 4318, 8428, 9428, 10428, 13133, 18222, 18888, 18889, 18890, 23133, 33133, 18428}
 
 
 def _free_port() -> int:
@@ -211,7 +211,8 @@ def _jetstream_state(port: int):
     status, body = _request(f"http://127.0.0.1:{port}/jsz?streams=true&consumers=true")
     assert status == 200, body
     detail = json.loads(body)["account_details"][0]["stream_detail"][0]
-    return detail["state"], detail["consumer_detail"][0]
+    system = next(item for item in detail["consumer_detail"] if item.get("name") == "BKLITE_APM_SYSTEM")
+    return detail["state"], system
 
 
 def _compose_action(compose, environment, *arguments, timeout=120):
@@ -320,6 +321,8 @@ def test_trace_crosses_bounded_jetstream_and_reaches_victoria_traces_once():
     regional_metrics_port = _free_port()
     system_health_port = _free_port()
     system_metrics_port = _free_port()
+    aggregate_collector_health_port = _free_port()
+    aggregate_collector_metrics_port = _free_port()
     aggregate_port = _free_port()
     trace_id = "0123456789abcdef0123456789abcdef"
     payload = _trace_payload(trace_id)
@@ -341,6 +344,10 @@ def test_trace_crosses_bounded_jetstream_and_reaches_victoria_traces_once():
             "APM_REGIONAL_METRICS_PORT": str(regional_metrics_port),
             "APM_SYSTEM_HEALTH_PORT": str(system_health_port),
             "APM_SYSTEM_METRICS_PORT": str(system_metrics_port),
+            "APM_AGG_COLLECTOR_HEALTH_BIND": "127.0.0.1",
+            "APM_AGG_COLLECTOR_HEALTH_PORT": str(aggregate_collector_health_port),
+            "APM_AGG_COLLECTOR_METRICS_BIND": "127.0.0.1",
+            "APM_AGG_COLLECTOR_METRICS_PORT": str(aggregate_collector_metrics_port),
             "APM_NATS_STREAM_MAX_BYTES": str(32 * 1024 * 1024),
             "APM_NATS_STREAM_MAX_AGE": "15m",
             "APM_NATS_MAX_DELIVER": "4",
@@ -354,7 +361,7 @@ def test_trace_crosses_bounded_jetstream_and_reaches_victoria_traces_once():
             "APM_AGG_SHARD": "contract-shard",
             "APM_COLLECTOR_IMAGE": os.environ.get(
                 "APM_AGG_VERIFY_IMAGE",
-                "bklite/apm-otel-collector:0.153.0-bklite.2",
+                "bklite/apm-otel-collector:0.153.0-bklite.3",
             ),
         }
     )
@@ -367,6 +374,7 @@ def test_trace_crosses_bounded_jetstream_and_reaches_victoria_traces_once():
 
         assert _request(f"http://127.0.0.1:{regional_health_port}/")[0] == 200
         assert _request(f"http://127.0.0.1:{system_health_port}/")[0] == 200
+        assert _request(f"http://127.0.0.1:{aggregate_collector_health_port}/")[0] == 200
 
         assert _post_trace(http_port, payload)[0] == 200
         grpc = _post_empty_grpc_trace(grpc_port)

@@ -3,16 +3,40 @@
 只读 ``AGG_VICTORIAMETRICS_QUERY_URL``、``AGG_VICTORIAMETRICS_USER``、
 ``AGG_VICTORIAMETRICS_PASSWORD``。不读取、不回落 ``VICTORIAMETRICS_HOST``。
 未配置查询地址时客户端不可用，构造和导入都不会访问网络。
+
+刷出间隔读 ``APM_AGG_FLUSH_INTERVAL``（默认 60 秒）和 ``RUM_AGG_BATCH_TIMEOUT``
+（默认 10 秒），写法与采集端的 Go duration 相同。对齐只用整秒。
 """
 
 from __future__ import annotations
 
 import json
+import math
 import os
+import threading
 from datetime import UTC, datetime, timedelta
 from urllib.parse import urlsplit
 
 import requests
+
+from apps.core.logger import logger
+
+APM_FLUSH_INTERVAL_ENV = "APM_AGG_FLUSH_INTERVAL"
+RUM_FLUSH_INTERVAL_ENV = "RUM_AGG_BATCH_TIMEOUT"
+DEFAULT_APM_FLUSH_SECONDS = 60
+DEFAULT_RUM_FLUSH_SECONDS = 10
+_DURATION_UNITS = (
+    ("ms", 0.001),
+    ("us", 1e-6),
+    ("µs", 1e-6),
+    ("μs", 1e-6),
+    ("ns", 1e-9),
+    ("h", 3600.0),
+    ("m", 60.0),
+    ("s", 1.0),
+)
+_flush_intervals: dict[tuple[str, str], int] = {}
+_flush_intervals_lock = threading.Lock()
 
 MAX_RESPONSE_BYTES = 2 * 1024 * 1024
 DEFAULT_TIMEOUT = (3.0, 10.0)
@@ -29,6 +53,85 @@ class AggregateMetricsUnavailable(RuntimeError):
 class AggregateMetricsTooLarge(AggregateMetricsUnavailable):
     def __init__(self):
         super().__init__("too_large")
+
+
+def _whole_seconds(raw: str) -> int | None:
+    """Parse a collector duration, rounding up so alignment covers the whole flush."""
+
+    text = raw.strip()
+    if not text or text[0] in "+-":
+        return None
+    total = 0.0
+    index = 0
+    length = len(text)
+    while index < length:
+        start = index
+        while index < length and text[index].isdigit():
+            index += 1
+        if index < length and text[index] == ".":
+            index += 1
+            fraction = index
+            while index < length and text[index].isdigit():
+                index += 1
+            if index == fraction:
+                return None
+        if index == start:
+            return None
+        try:
+            number = float(text[start:index])
+        except ValueError:
+            return None
+        if not math.isfinite(number):
+            return None
+        unit_name = ""
+        scale = 0.0
+        for name, unit_scale in _DURATION_UNITS:
+            if text.startswith(name, index):
+                unit_name = name
+                scale = unit_scale
+                break
+        if not unit_name:
+            return None
+        total += number * scale
+        index += len(unit_name)
+    if not math.isfinite(total) or total <= 0:
+        return None
+    micros = round(total * 1_000_000)
+    if micros <= 0:
+        return None
+    return -(-micros // 1_000_000)
+
+
+def flush_interval_seconds(name: str, default_seconds: int) -> int:
+    """Read one flush interval. The same invalid value warns once."""
+
+    raw = os.environ.get(name)
+    if raw is None or not raw.strip():
+        return default_seconds
+    key = (name, raw)
+    with _flush_intervals_lock:
+        cached = _flush_intervals.get(key)
+        if cached is not None:
+            return cached
+        parsed = _whole_seconds(raw)
+        if parsed is None:
+            logger.warning(
+                "event=aggregate_flush_interval_invalid name=%s default_seconds=%s",
+                name,
+                default_seconds,
+            )
+            _flush_intervals[key] = default_seconds
+            return default_seconds
+        _flush_intervals[key] = parsed
+        return parsed
+
+
+def apm_flush_seconds() -> int:
+    return flush_interval_seconds(APM_FLUSH_INTERVAL_ENV, DEFAULT_APM_FLUSH_SECONDS)
+
+
+def rum_flush_seconds() -> int:
+    return flush_interval_seconds(RUM_FLUSH_INTERVAL_ENV, DEFAULT_RUM_FLUSH_SECONDS)
 
 
 def align_query_end(ended_at: datetime, *, now: datetime, flush_seconds: int) -> datetime:

@@ -154,7 +154,7 @@ func newStack(t *testing.T) *stack {
 
 func (stack *stack) up(t *testing.T) {
 	t.Helper()
-	image := envOr("RUM_AGG_VERIFY_IMAGE", "bklite/rum-collector:0.1.0-bklite.2")
+	image := envOr("RUM_AGG_VERIFY_IMAGE", "bklite/rum-collector:0.1.0-bklite.3")
 	if err := exec.Command("docker", "image", "inspect", image).Run(); err != nil {
 		t.Fatalf("image %s is not present; build it before the contract", image)
 	}

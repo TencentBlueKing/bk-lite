@@ -220,6 +220,15 @@ def _view_page():
     }
 
 
+def test_catalog_end_follows_the_gateway_batch_timeout(monkeypatch):
+    monkeypatch.setenv("RUM_AGG_BATCH_TIMEOUT", "1m")
+    client = _Client(_catalog_response)
+
+    _reader(client).overlay_catalog(_catalog_rows(), {}, tenant_id="core", apps=["storefront"], start=START, end=END)
+
+    assert {at for _expression, at in client.instant} == {datetime(2026, 11, 10, 0, 15, tzinfo=UTC)}
+
+
 def test_catalog_maps_views_errors_and_millisecond_percentiles_without_traffic_or_shard():
     client = _Client(_catalog_response)
     rows = _catalog_rows()

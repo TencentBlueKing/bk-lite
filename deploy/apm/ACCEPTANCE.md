@@ -10,9 +10,8 @@
 OTel SDK / Agent
   -> 区域 Collector（OTLP/HTTP 4318；4317 仅手工兼容）
   -> NATS JetStream apm.traces.<cloud_region_id>
-  -> 系统级 Collector
-       -> VictoriaTraces
-       -> 独立聚合库（入口累计指标与晚到计数；库不可达时不阻断 VictoriaTraces）
+       -> 系统级 Collector -> VictoriaTraces
+       -> 聚合 Collector -> 独立聚合库（入口累计指标与晚到计数；库不可达时不阻断 VictoriaTraces）
 ```
 
 契约夹具与组件说明见 [README.md](./README.md)。本地/CI 可用 `cd deploy/apm && make test|validate|contract`
@@ -36,9 +35,13 @@ OTel SDK / Agent
 
 下列是依赖就绪的逻辑顺序；运维用自有流水线实现，但不得跳过验收点。
 
-1. **传输契约就绪**：有界 `APM_TRACES` Stream 与 `BKLITE_APM_SYSTEM` durable consumer
-   （max bytes/age/message、duplicate window、AckExplicit、ack wait、max deliver、max ack
-   pending）。同名对象配置不一致时停止并人工确认归属，不得当作旧 APM 直接复用。
+1. **传输契约就绪**：有界 `APM_TRACES` Stream，以及 `BKLITE_APM_SYSTEM`、`BKLITE_APM_AGGREGATE`
+   两个 durable consumer（max bytes/age/message、duplicate window、AckExplicit、ack wait、max deliver、
+   max ack pending）。系统消费者 `deliver all`，ACK 等待默认 60 秒，重投上限默认 8。聚合消费者
+   `deliver new`，ACK 等待默认 30 秒（`APM_AGG_NATS_ACK_WAIT`），重投上限默认 3
+   （`APM_AGG_NATS_MAX_DELIVER`）。首次创建不回放积压。同名对象配置不一致时停止并人工确认归属，
+   不得当作旧 APM 直接复用，也不要删除后重建聚合消费者。生产 ACL 若按 consumer 名授权，补上
+   `BKLITE_APM_AGGREGATE`；仓库内示例配置已是 `APM_TRACES.*` 通配。
 2. **VictoriaTraces 就绪**：保留期 ≥ 35 天，`-servicegraph.enableTask=true`；OTLP 写入、
    健康、查询与磁盘/保留期告警可用。
 3. **系统级 Collector 就绪**：VT 不可用时不 ACK、pending 增长，恢复后积压可排空。
@@ -63,8 +66,9 @@ OTel SDK / Agent
   VictoriaMetrics 不接收 `apm_` 序列。入口聚合写入 `AGG_VICTORIAMETRICS_WRITE_URL`，
   不回落到 `VICTORIAMETRICS_HOST`。
 - 同一服务的多个实例只产生一组聚合序列，序列上没有 `instance`。晚到 Span 不进入
-  `apm_calls_total`，只进入 `apm_aggregate_late_spans_total`。聚合库不可达时系统
-  Collector 不 NAK，VictoriaTraces 不因此把同一条 Span 写两次。
+  `apm_calls_total`，只进入 `apm_aggregate_late_spans_total`。聚合库不可达时聚合
+  Collector 不 NAK，VictoriaTraces 不因此把同一条 Span 写两次。VictoriaTraces 停止期间写入的入口
+  Span，恢复后在聚合库只计一次。
 
 ## 回滚约束
 
@@ -73,8 +77,9 @@ OTel SDK / Agent
 1. 停止新增区域；对未验收区域关闭 4318 并停止区域 Collector。
 2. 若 Server/Web 已开放 APM，回退本次应用发布或关闭入口；不得影响其他产品域。
 3. Collector 问题只回退到本次已验证的前一个候选 digest；没有已验证候选时停止对应
-   Collector，**不得临时引入其他接收代理**。聚合分支可单独回退：系统 Collector 改挂
-   `otel/system-traces.yaml` 后重启，VictoriaTraces 流水线保持不动。
+   Collector，**不得临时引入其他接收代理**。聚合写入可单独回退：停掉聚合 Collector，系统 Collector
+   仍用 `system.yaml` 写 VictoriaTraces。`bklite.2` 及更早的镜像没有 `routing` 连接器，不能加载
+   `aggregate.yaml`。退回那种镜像时，要同时停掉聚合进程并换回该镜像自带的系统配置，避免两个写入方。
 4. 保留 Stream、区域持久队列和 VictoriaTraces 已写数据，不清空、不手工重复发布。
 5. 删除 Stream/Consumer、VT 卷、Secret 或缩短保留期须独立显式审批，不由应用回滚脚本执行。
 6. 记录失败区域、digest、首个失败指标、积压边界与回滚动作，通过同一验收清单后再重试。

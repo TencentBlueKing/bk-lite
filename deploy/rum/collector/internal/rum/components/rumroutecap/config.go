@@ -16,6 +16,10 @@ const (
 	aggregateRouteAttribute = "rum.aggregate.route"
 	admissionTTL            = 35 * 24 * time.Hour
 	overflowCacheTTL        = time.Minute
+	overflowCacheLimit      = 1024
+	overflowSweepInterval   = time.Minute
+	redisCircuitOpenFor     = 5 * time.Second
+	failureLogWindow        = 5 * time.Second
 	redisTimeout            = 200 * time.Millisecond
 	failureInstrument       = "core_rum_aggregate_route_redis_failures"
 )

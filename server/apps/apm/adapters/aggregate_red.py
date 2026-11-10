@@ -24,10 +24,8 @@ from apps.apm.services.trace_retention import trace_retention_block_reason
 from apps.core.aggregate_origin import recorded_origin
 from apps.core.aggregate_promql import AggregateMetricsTooLarge, AggregateMetricsUnavailable, AggregatePromqlClient
 from apps.core.aggregate_promql import align_query_end as align_aggregate_query_end
-from apps.core.aggregate_promql import escape_promql_label_value
+from apps.core.aggregate_promql import apm_flush_seconds, escape_promql_label_value
 
-# 与系统 Collector 的 APM_AGG_FLUSH_INTERVAL 默认 60s 一致。
-FLUSH_SECONDS = 60
 ERROR_STATUS = "STATUS_CODE_ERROR"
 
 
@@ -40,12 +38,12 @@ def _as_utc(value: datetime) -> datetime:
 def align_query_end(ended_at: datetime, *, now: datetime) -> datetime:
     """对齐到最近一个完整分钟，再留出一个 APM 刷出周期。"""
 
-    return align_aggregate_query_end(ended_at, now=now, flush_seconds=FLUSH_SECONDS)
+    return align_aggregate_query_end(ended_at, now=now, flush_seconds=apm_flush_seconds())
 
 
 def _trend_step(window_seconds: int) -> int:
     # 刷出周期内通常只有一个样本。步长小于它时，increase 会把大多数点算成 0。
-    return max(FLUSH_SECONDS, math.ceil(window_seconds / (MAX_RED_POINTS - 1)))
+    return max(apm_flush_seconds(), math.ceil(window_seconds / (MAX_RED_POINTS - 1)))
 
 
 def _selector(labels: tuple[tuple[str, str], ...]) -> str:

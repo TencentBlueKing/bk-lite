@@ -1,6 +1,6 @@
 .PHONY: tidy test test-controller test-maintainer build build-gateway build-controller build-maintainer validate-config image
 
-RUM_COLLECTOR_IMAGE ?= bklite/rum-collector:0.1.0-bklite.2
+RUM_COLLECTOR_IMAGE ?= bklite/rum-collector:0.1.0-bklite.3
 
 tidy:
 	go mod tidy

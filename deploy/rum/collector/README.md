@@ -35,7 +35,7 @@ make tidy
 make test-controller test-maintainer
 make build          # gateway + controller + maintainer
 make validate-config
-make image          # bklite/rum-collector:0.1.0-bklite.2 (override RUM_COLLECTOR_IMAGE)
+make image          # bklite/rum-collector:0.1.0-bklite.3 (override RUM_COLLECTOR_IMAGE)
 ```
 
 The image ships all three binaries under `/usr/local/bin/` and

@@ -25,44 +25,6 @@ processors:
     check_interval: 1s
     limit_mib: ${env:APM_COLLECTOR_MEMORY_LIMIT_MIB}
     spike_limit_mib: ${env:APM_COLLECTOR_MEMORY_SPIKE_MIB}
-  filter/entry:
-    error_mode: ignore
-    traces:
-      span:
-        - 'span.kind != SPAN_KIND_SERVER and span.kind != SPAN_KIND_CONSUMER'
-  filter/drop_late:
-    error_mode: ignore
-    traces:
-      span:
-        - 'span.end_time_unix_nano < UnixNano(Now()) - 300000000000'
-  filter/only_late:
-    error_mode: ignore
-    traces:
-      span:
-        - 'span.end_time_unix_nano >= UnixNano(Now()) - 300000000000'
-  transform/narrow_resource:
-    error_mode: ignore
-    trace_statements:
-      - context: resource
-        statements:
-          - set(attributes["service.namespace"], "unknown") where attributes["service.namespace"] == nil or attributes["service.namespace"] == ""
-          - set(attributes["service.name"], "unknown") where attributes["service.name"] == nil or attributes["service.name"] == ""
-          - set(attributes["deployment.environment"], "unknown") where attributes["deployment.environment"] == nil or attributes["deployment.environment"] == ""
-          - keep_keys(attributes, ["service.namespace", "service.name", "deployment.environment"])
-  batch/late:
-    timeout: 1s
-    send_batch_size: 8192
-  # count 把样本时间打在 Span 结束时间上。晚到 Span 的结束时间已经超过 5 分钟，
-  # 即时查询和 increase[5m] 都看不到。改成处理时刻后再做累计。
-  transform/late_observed_at:
-    error_mode: ignore
-    metric_statements:
-      - context: datapoint
-        statements:
-          - set(start_time, Now())
-          - set(time, Now())
-  deltatocumulative:
-    max_stale: 5m
 
 exporters:
   otlp_http/victoria_traces:
@@ -75,58 +37,6 @@ exporters:
       initial_interval: 1s
       max_interval: 10s
       max_elapsed_time: 30s
-  prometheusremotewrite/agg:
-    endpoint: ${env:AGG_VICTORIAMETRICS_WRITE_URL}
-    timeout: 10s
-    external_labels:
-      shard: ${env:APM_AGG_SHARD}
-    resource_to_telemetry_conversion:
-      enabled: false
-    target_info:
-      enabled: false
-    disable_scope_info: true
-    remote_write_queue:
-      enabled: false
-    retry_on_failure:
-      enabled: false
-
-connectors:
-  span_metrics:
-    namespace: apm
-    aggregation_temporality: AGGREGATION_TEMPORALITY_CUMULATIVE
-    metrics_flush_interval: ${env:APM_AGG_FLUSH_INTERVAL:-60s}
-    exemplars:
-      enabled: false
-    events:
-      enabled: false
-    exclude_dimensions: [span.kind, collector.instance.id]
-    dimensions:
-      - name: service.namespace
-        default: unknown
-      - name: deployment.environment
-        default: unknown
-    resource_metrics_key_attributes:
-      - service.namespace
-      - service.name
-      - deployment.environment
-    add_resource_attributes: false
-    histogram:
-      unit: ms
-      explicit:
-        buckets: [5ms, 10ms, 25ms, 50ms, 100ms, 200ms, 300ms, 500ms, 800ms, 1000ms, 2000ms, 3000ms, 5000ms, 10000ms]
-    aggregation_cardinality_limit: ${env:APM_AGG_CARDINALITY_LIMIT:-90000}
-  count/late:
-    spans:
-      apm.aggregate.late_spans:
-        description: Entry spans ended more than 5 minutes before processing.
-        conditions:
-          - 'span.end_time_unix_nano < UnixNano(Now()) - 300000000000'
-    # 不覆盖时，count 会保留默认的 trace.span.event.count。这条条件永远不成立，用来关掉它。
-    spanevents:
-      apm.aggregate.ignored_span_events:
-        description: Never emitted. Overrides the connector default span-event counter.
-        conditions:
-          - 'Len(name) < 0'
 
 service:
   extensions: [health_check]
@@ -144,18 +54,3 @@ service:
       receivers: [nats_jetstream]
       processors: [memory_limiter]
       exporters: [otlp_http/victoria_traces]
-    traces/aggregate:
-      receivers: [nats_jetstream]
-      processors: [filter/entry, filter/drop_late, transform/narrow_resource]
-      exporters: [span_metrics]
-    traces/late:
-      receivers: [nats_jetstream]
-      processors: [filter/entry, filter/only_late, transform/narrow_resource]
-      exporters: [count/late]
-    metrics/apm_agg:
-      receivers: [span_metrics]
-      exporters: [prometheusremotewrite/agg]
-    metrics/apm_late:
-      receivers: [count/late]
-      processors: [batch/late, transform/late_observed_at, deltatocumulative]
-      exporters: [prometheusremotewrite/agg]

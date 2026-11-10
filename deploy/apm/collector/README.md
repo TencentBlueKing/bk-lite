@@ -1,9 +1,10 @@
 # BK-Lite APM Collector 发行版
 
-该发行版固定在 OpenTelemetry Collector `0.153.0`（镜像标签 `0.153.0-bklite.2`）。
-区域配置只处理 traces。系统配置在同一条 JetStream 接收上增加入口聚合，使用
-`filter`、`transform`、`span_metrics`、`count`、`batch`、`deltatocumulative` 和
-`prometheusremotewrite`。可选基础认证使用 `basicauth`，只在追加 `system-auth.yaml` 时启用。
+该发行版固定在 OpenTelemetry Collector `0.153.0`（镜像标签 `0.153.0-bklite.3`）。
+区域配置和系统配置只处理 traces。聚合配置使用独立的 JetStream 消费者，入口经过
+`memory_limiter`、`filter`、`transform` 后，由 `routing` 按 Span 分流到 `span_metrics` 和 `count`，
+再经 `batch`、`deltatocumulative` 和 `prometheusremotewrite` 写入聚合库。可选基础认证使用
+`basicauth`，只在聚合进程追加 `aggregate-auth.yaml` 时启用。
 
 traces 路径上的三个自研组件是：
 
@@ -25,5 +26,5 @@ make build
 make validate
 ```
 
-`regional.yaml`、`system.yaml` 与 `system-traces.yaml` 使用同一个镜像。
-`system-traces.yaml` 只有 VictoriaTraces 流水线，供写入地址为空或单独回退聚合分支时使用。
+`regional.yaml`、`system.yaml` 与 `aggregate.yaml` 使用同一个镜像。
+`system.yaml` 只写 VictoriaTraces。`aggregate.yaml` 只写聚合库。停掉聚合进程即可回退聚合写入。
