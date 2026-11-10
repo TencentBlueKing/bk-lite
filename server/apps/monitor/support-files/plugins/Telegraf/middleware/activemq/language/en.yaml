@@ -14,13 +14,19 @@ monitor_object_metric:
       desc: Current number of consumer connections for a specific topic, reflecting
         message consumption capacity
     activemq_topics_dequeue_count:
-      name: Topic Dequeue Count
-      desc: Total number of messages dequeued from a specific topic, reflecting processed
-        message volume
+      name: Topic Cumulative Dequeue Count
+      desc: Cumulative number of messages dequeued from a specific topic, reflecting
+        processed message volume.
+    activemq_topics_dequeue_count_rate:
+      name: Topic Dequeue Rate
+      desc: Average messages dequeued from the topic per second over the last 5 minutes.
     activemq_topics_enqueue_count:
-      name: Topic Enqueue Count
-      desc: Total number of messages enqueued to a specific topic, reflecting received
-        message volume
+      name: Topic Cumulative Enqueue Count
+      desc: Cumulative number of messages enqueued to a specific topic, reflecting
+        received message volume.
+    activemq_topics_enqueue_count_rate:
+      name: Topic Enqueue Rate
+      desc: Average messages enqueued to the topic per second over the last 5 minutes.
     activemq_topics_size:
       name: Topic Current Size
       desc: Current number of messages stored in a specific topic, reflecting backlog

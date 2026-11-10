@@ -22,6 +22,9 @@ monitor_object_metric:
     kafka_topic_partition_current_offset:
       name: 分区当前偏移量
       desc: 指定主题和分区的当前偏移量。
+    kafka_topic_partition_current_offset_rate:
+      name: 分区消息写入速率
+      desc: 近 5 分钟该分区平均每秒写入的消息数。
     kafka_topic_partition_oldest_offset:
       name: 分区最早偏移量
       desc: 指定主题和分区的最早偏移量。
@@ -43,6 +46,9 @@ monitor_object_metric:
     kafka_consumergroup_current_offset:
       name: 消费者组当前偏移量
       desc: 指定消费者组在指定主题和分区的当前偏移量。
+    kafka_consumergroup_current_offset_rate:
+      name: 消费者组消费速率
+      desc: 近 5 分钟该消费者组在指定分区平均每秒消费的消息数。
     kafka_consumergroup_current_offset_sum:
       name: 消费者组当前偏移量汇总
       desc: 指定消费者组在指定主题上的已提交偏移量汇总。
@@ -120,7 +126,7 @@ monitor_object_metric:
       desc: 指定消费者组在指定主题和分区的当前近似滞后偏移量。
     process_cpu_seconds_total:
       name: 探针进程CPU总时间
-      desc: 监控探针进程已使用的CPU时间总量。
+      desc: 监控探针进程累计消耗的 CPU 时间，单位为秒。
     process_max_fds_gauge:
       name: 探针进程最大文件描述符数
       desc: 监控探针进程能够打开的最大文件描述符数。

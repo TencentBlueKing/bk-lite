@@ -109,7 +109,7 @@
       "artifactDownload": "下载 {filename}",
       "startedBySystem": {
         "scheduler": "定时调度",
-        "mvpVerifier": "MVP 验收",
+        "mvpVerifier": "验收账号",
         "openapi": "OpenAPI"
       },
       "refresh": "刷新执行记录",
@@ -619,6 +619,10 @@
       "loadingWorkflow": "加载流程",
       "triggerGroupHint": "定义流程从何时、以什么输入开始。",
       "createEntry": "创建一个流程入口",
+      "formTriggerHint": "由人工填写表单后启动流程",
+      "scheduleTriggerHint": "按计划时间自动启动流程",
+      "webhookTriggerHint": "由外部 HTTP 回调启动流程",
+      "natsTriggerHint": "由 NATS 事件消息启动流程",
       "actionGroupHint": "调用作业平台和其他已注册的运维能力。",
       "controlGroupHint": "分支、汇聚或暂停流程等待人工决定。",
       "conditionBranch": "条件分支",
@@ -644,7 +648,7 @@
       "publishEngineConflictHint": "远端定义与本次内容冲突。请刷新核对是否上次发布未完成落库，不要强行覆盖。",
       "publishUnavailableHint": "发布服务暂时不可用。请稍后重试；不要假定本地已发布成功。",
       "pathExists": "这条路径已经存在",
-      "unsupportedConnection": "MVP 仅支持连接触发器、顶层节点和响应节点；嵌套路径由控制节点配置",
+      "unsupportedConnection": "仅支持连接触发器、顶层节点和响应节点；嵌套路径由控制节点配置",
       "debugWorkflow": "调试流程",
       "debugDetails": "调试详情",
       "debugAgain": "重新调试",

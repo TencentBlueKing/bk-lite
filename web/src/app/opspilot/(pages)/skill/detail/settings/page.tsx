@@ -346,6 +346,10 @@ const SkillSettingsPage: React.FC = () => {
         skill_type: 1,
         group: values.group?.[0],
         thread_id: debugThreadId,
+        ...(userMessageObj?.choiceId ? {
+          choice_id: userMessageObj.choiceId,
+          choice_option: userMessageObj.choiceOption || '',
+        } : {}),
       };
 
       return {
@@ -392,6 +396,7 @@ const SkillSettingsPage: React.FC = () => {
   const filteredAvailableSkillAssets = useMemo(() => {
     return filterTaggedAssets(availableSkillAssets, {
       selectedTags: skillPickerTags,
+      matchAllTags: true,
       keyword: skillPickerKeyword,
       chips: skillPickerChips,
       systemTags: (asset) => asset.system_tags || [],

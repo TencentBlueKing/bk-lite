@@ -23,6 +23,7 @@ type Translate = (
 const getSkillAssetSourceLabel = (sourceType: string | undefined, t: Translate) => {
   if (sourceType === 'builtin') return t('tool.sourceBuiltin', '内置');
   if (sourceType === 'zip') return t('tool.sourceImported', '导入');
+  if (sourceType === 'conversation') return t('tool.sourceConversation', '对话生成');
   return sourceType || t('common.noData');
 };
 

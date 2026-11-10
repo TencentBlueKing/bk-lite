@@ -9,10 +9,10 @@ monitor_object_type:
 monitor_object_metric:
   MSSQL:
     sqlserver_cpu_sqlserver_process_cpu_avg:
-      name: MSSQL Process CPU Usage
-      desc: CPU usage by the SQL Server database process, directly reflecting database
-        computational load. Sustained high values may indicate queries need optimization
-        or resource bottlenecks exist.
+      name: Process CPU Utilization (5-Minute Average)
+      desc: Average CPU utilization of the SQL Server process over the last 5 minutes
+        (about 0–100%). A sustained high value may mean queries need tuning or compute
+        is constrained.
     sqlserver_cpu_system_idle_cpu_avg:
       name: System Idle CPU
       desc: Overall operating system idle CPU percentage, indicating total CPU resource
@@ -104,9 +104,8 @@ monitor_object_metric:
         for more memory.
     sqlserver_user_connections_rate:
       name: User Connections
-      desc: Number of users currently connected to the SQL Server instance, reflecting
-        concurrent load and connection pool usage. Too many connections may lead to
-        resource contention.
+      desc: Current number of user connections to the SQL Server instance (instantaneous).
+        Too many connections may cause resource contention.
     sqlserver_lock_wait_time_rate:
       name: Lock Waits Rate
       desc: Rate of lock waits, reflecting concurrency contention. High values

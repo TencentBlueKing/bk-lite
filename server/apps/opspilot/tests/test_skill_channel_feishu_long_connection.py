@@ -8,6 +8,7 @@ import pytest
 
 from apps.opspilot.services.skill_channel_aibot_long_connection import LeaderLock
 from apps.opspilot.services.skill_channel_feishu_long_connection import (
+    CONNECTION_CLOSED_LOG_TEMPLATE,
     EMPTY_ANSWER_TEXT,
     FAILURE_TEXT,
     FILE_FAILED_TEXT,
@@ -170,6 +171,109 @@ def test_credentials_are_not_written_to_logs(caplog):
     assert opened[0][0] == "cli_a"
     assert opened[0][1] == SECRET_SENTINEL
     assert SECRET_SENTINEL not in caplog.text
+
+
+def test_dropped_connection_is_closed_before_the_next_reconnect(caplog):
+    redis = FakeRedis()
+    opened = []
+
+    class Transport:
+        def __init__(self):
+            self.closed = False
+            self.alive = True
+
+        def poll(self, timeout):
+            return None
+
+        def close(self):
+            self.closed = True
+
+        def connected(self):
+            return self.alive
+
+    def opener(app_id, secret):
+        transport = Transport()
+        opened.append(transport)
+        return transport
+
+    leader = _leader(redis, opener, RecordingAgent())
+    channel = _channel()
+    caplog.set_level(logging.INFO, logger="opspilot")
+    leader.reconcile([channel])
+    opened[0].alive = False
+    leader.reconcile([channel])
+
+    assert opened[0].closed is True
+    assert len(opened) == 2
+    assert opened[1].closed is False
+    records = [record for record in caplog.records if record.msg == CONNECTION_CLOSED_LOG_TEMPLATE]
+    assert records[-1].args == (channel.id,)
+    assert SECRET_SENTINEL not in caplog.text
+
+
+def test_connect_failure_closes_the_client_without_sdk_reconnect():
+    import asyncio
+
+    from apps.opspilot.services.skill_channel_feishu_long_connection_sdk import _boot
+
+    class Client:
+        def __init__(self):
+            self.closed = 0
+            self.reconnected = False
+
+        async def _connect(self):
+            raise OSError("name resolution failed")
+
+        async def _disconnect(self):
+            self.closed += 1
+
+        async def _reconnect(self):
+            self.reconnected = True
+
+        async def _ping_loop(self):
+            await asyncio.Event().wait()
+
+    client = Client()
+    with pytest.raises(OSError, match="name resolution failed"):
+        _boot(client)
+    assert client.closed >= 1
+    assert client.reconnected is False
+
+
+def test_connect_timeout_closes_the_client_without_sdk_reconnect(monkeypatch):
+    import asyncio
+    import time
+
+    from apps.opspilot.services import skill_channel_feishu_long_connection_sdk as sdk
+
+    monkeypatch.setattr(sdk, "_CONNECT_TIMEOUT_SECONDS", 0.05)
+
+    class Client:
+        def __init__(self):
+            self.closed = 0
+            self.reconnected = False
+            self.kept = False
+
+        async def _connect(self):
+            await asyncio.sleep(0.2)
+
+        async def _disconnect(self):
+            self.closed += 1
+
+        async def _reconnect(self):
+            self.reconnected = True
+
+        async def _ping_loop(self):
+            self.kept = True
+            await asyncio.Event().wait()
+
+    client = Client()
+    with pytest.raises(TimeoutError):
+        sdk._boot(client)
+    time.sleep(0.4)
+    assert client.closed >= 1
+    assert client.kept is False
+    assert client.reconnected is False
 
 
 def test_second_process_does_not_connect_while_lock_is_held():
@@ -674,6 +778,30 @@ def test_upload_image_request_includes_the_filename():
     assert b'filename="\xe7\xa4\xba\xe6\x84\x8f\xe5\x9b\xbe.png"' in encoded
     assert b"png-bytes" in encoded
     assert b"image_type" in encoded
+
+
+def test_p2p_chat_entered_event_is_acknowledged_without_a_message():
+    import json
+
+    from apps.opspilot.services.skill_channel_feishu_long_connection_sdk import build_event_handler
+
+    received = []
+    handler = build_event_handler(lambda event: received.append(event))
+    payload = json.dumps(
+        {
+            "schema": "2.0",
+            "header": {
+                "event_id": "evt-enter",
+                "event_type": "im.chat.access_event.bot_p2p_chat_entered_v1",
+                "app_id": "cli_a",
+                "token": "tok",
+            },
+            "event": {"chat_id": "oc_1", "last_message_id": "om_1"},
+        }
+    ).encode("utf-8")
+
+    assert handler._do_without_validation(payload) is None
+    assert received == []
 
 
 def test_inbound_event_keeps_mention_keys():

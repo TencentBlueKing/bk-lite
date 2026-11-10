@@ -10,6 +10,7 @@ import { useLocale } from '@/context/locale';
 import { useThemeMode } from '@/theme';
 import { useTranslation } from '@/utils/i18n';
 import { saveAuthToken } from '@/utils/crossDomainAuth';
+import { registerAuthTokenReplacer } from '@/utils/authTokenBridge';
 import { gmFetch } from '@/utils/gmTransport';
 import SigninClient from '@/app/(core)/auth/signin/SigninClient';
 import { AUTH_POPUP_SUCCESS_MESSAGE } from '@/utils/authRedirect';
@@ -21,6 +22,7 @@ import {
   latchSessionExpired,
   releaseSessionExpiryConfirmation,
   resetSessionExpiredState,
+  passwordChangedErrorCode,
   SESSION_EXPIRED_EVENT,
   shouldTriggerSessionExpiry,
 } from '@/utils/sessionExpiry';
@@ -154,7 +156,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       if (response.status === 401 && shouldTriggerForSession(input, requestSessionIdentity)) {
-        emitSessionExpired({ reason: 'global-fetch-session-expired', status: 401 });
+        let errorCode: string | undefined;
+        try {
+          errorCode = passwordChangedErrorCode(await response.clone().json());
+        } catch {
+          errorCode = undefined;
+        }
+        emitSessionExpired({
+          reason: errorCode ? 'password-changed' : 'global-fetch-session-expired',
+          status: 401,
+          errorCode,
+        });
       }
 
       return response;
@@ -180,7 +192,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
 
         if (response.status === 401 && shouldTriggerForSession(response.config.url, requestSessionIdentity)) {
-          emitSessionExpired({ reason: 'global-axios-session-expired', status: 401 });
+          const errorCode = passwordChangedErrorCode(response.data);
+          emitSessionExpired({
+            reason: errorCode ? 'password-changed' : 'global-axios-session-expired',
+            status: 401,
+            errorCode,
+          });
         }
 
         return response;
@@ -195,7 +212,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
 
         if (axios.isAxiosError(error) && error.response?.status === 401 && shouldTriggerForSession(error.config?.url, requestSessionIdentity)) {
-          emitSessionExpired({ reason: 'global-axios-session-expired', status: 401 });
+          const errorCode = passwordChangedErrorCode(error.response.data);
+          emitSessionExpired({
+            reason: errorCode ? 'password-changed' : 'global-axios-session-expired',
+            status: 401,
+            errorCode,
+          });
         }
 
         return Promise.reject(error);
@@ -458,6 +480,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => subscribeAuthRecovery((event) => {
     void recoverAuthenticatedSession(event);
   }), [recoverAuthenticatedSession]);
+
+  useEffect(() => {
+    registerAuthTokenReplacer((nextToken) => {
+      setToken(nextToken);
+      setIsAuthenticated(true);
+    });
+    return () => registerAuthTokenReplacer(null);
+  }, []);
 
   useEffect(() => {
     const retryPendingRecovery = () => {

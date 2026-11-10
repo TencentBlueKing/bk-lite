@@ -1073,7 +1073,7 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
     setDirty(true);
   };
 
-  // MVP 暂不展示工具栏「校验」；发布/调试已覆盖同一套服务端校验。改为 true 即可重新开放按钮。
+  // 暂不展示工具栏「校验」；发布/调试已覆盖同一套服务端校验。改为 true 即可重新开放按钮。
   const showValidateButton = false;
 
   const validate = async () => {
@@ -1420,12 +1420,39 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
     }));
     setDirty(true);
   };
-  const interactiveEdges = edges.map((edge) => ({
-    ...edge,
-    type: 'workflowCanvas' as const,
-    sourceHandle: edge.sourceHandle ?? (nodes.find((node) => node.id === edge.source)?.data.taskType === 'SWITCH' ? 'true' : undefined),
-    data: { ...(edge.data || {}), readOnly: !canvasEditable, onRemove: removeEdge },
-  }));
+  const interactiveEdges = edges.map((edge) => {
+    const sourceNode = nodes.find((node) => node.id === edge.source);
+    const sourceHandle = edge.sourceHandle ?? (sourceNode?.data.taskType === 'SWITCH' ? 'true' : undefined);
+    const branchOptions = sourceNode?.data.branches?.length
+      ? sourceNode.data.branches
+      : sourceNode?.data.taskType === 'SWITCH'
+        ? [{ id: 'true', label: '满足' }, { id: 'false', label: '不满足' }]
+        : sourceNode?.data.taskType === 'HUMAN'
+          ? [{ id: 'true', label: '通过' }, { id: 'false', label: '驳回' }]
+          : [];
+    const branch = sourceHandle ? branchOptions.find((item) => item.id === sourceHandle) : undefined;
+    const branchLabel = branch
+      ? (
+        branch.label === '通过' || (sourceNode?.data.taskType === 'HUMAN' && branch.id === 'true')
+          ? t('workflowOrchestration.editor.approvalBranchPass', '通过')
+          : branch.label === '驳回' || (sourceNode?.data.taskType === 'HUMAN' && branch.id === 'false')
+            ? t('workflowOrchestration.editor.approvalBranchReject', '驳回')
+            : branch.label === '超时' || branch.id === 'timeout'
+              ? t('workflowOrchestration.editor.approvalBranchTimeout', '超时')
+              : branch.label === '满足' || (sourceNode?.data.taskType === 'SWITCH' && branch.id === 'true')
+                ? t('workflowOrchestration.editor.conditionBranchMatch', '满足')
+                : branch.label === '不满足' || (sourceNode?.data.taskType === 'SWITCH' && branch.id === 'false')
+                  ? t('workflowOrchestration.editor.conditionBranchMiss', '不满足')
+                  : branch.label
+      )
+      : undefined;
+    return {
+      ...edge,
+      type: 'workflowCanvas' as const,
+      sourceHandle,
+      data: { ...(edge.data || {}), readOnly: !canvasEditable, onRemove: removeEdge, branchLabel },
+    };
+  });
   const tidyCanvas = async () => {
     setNodes(await layoutWorkflowCanvas(nodes, edges));
     setDirty(true);
@@ -1434,13 +1461,25 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
   const firstNodeOnly = nodes.length === 0;
   const waitingWebhookExists = workflowTriggerNodes(metadata).some((item) => item.trigger_type === 'WEBHOOK' && item.config.response_mode === 'WAIT');
   const webhookResponseExists = (metadata.return_nodes || []).some((item) => item.return_type === 'WEBHOOK');
+  const triggerHints = {
+    FORM: t('workflowOrchestration.editor.formTriggerHint', '由人工填写表单后启动流程'),
+    SCHEDULE: t('workflowOrchestration.editor.scheduleTriggerHint', '按计划时间自动启动流程'),
+    WEBHOOK: t('workflowOrchestration.editor.webhookTriggerHint', '由外部 HTTP 回调启动流程'),
+    NATS: t('workflowOrchestration.editor.natsTriggerHint', '由 NATS 事件消息启动流程'),
+  } as const;
   const allPickerGroups: WorkflowPickerGroup[] = [
     {
       key: 'trigger',
       title: t('workflowOrchestration.atom.nodeType.trigger', '触发'),
       description: t('workflowOrchestration.editor.triggerGroupHint', '定义流程从何时、以什么输入开始。'),
       items: (pendingSource ? [] : ['FORM', 'SCHEDULE', 'WEBHOOK', 'NATS'] as const)
-        .map((type) => ({ key: type, title: triggerLabels[type], description: t('workflowOrchestration.editor.createEntry', '创建一个流程入口'), icon: <AtomIcon nodeType="TRIGGER" triggerType={type} className="text-2xl" />, onClick: () => addTrigger(type) }))
+        .map((type) => ({
+          key: type,
+          title: triggerLabels[type],
+          description: triggerHints[type],
+          icon: <AtomIcon nodeType="TRIGGER" triggerType={type} className="text-2xl" />,
+          onClick: () => addTrigger(type),
+        }))
         .filter((item) => matchesPickerQuery(`${item.title} ${item.key} ${item.description}`)),
     },
     {
@@ -1531,7 +1570,7 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
             const supported = (triggerIds.has(connection.source) && topLevel.has(connection.target))
               || (topLevel.has(connection.source) && topLevel.has(connection.target))
               || (topLevel.has(connection.source) && returnIds.has(connection.target));
-            if (!supported) { message.warning(t('workflowOrchestration.editor.unsupportedConnection', 'MVP 仅支持连接触发器、顶层节点和响应节点；嵌套路径由控制节点配置')); return; }
+            if (!supported) { message.warning(t('workflowOrchestration.editor.unsupportedConnection', '仅支持连接触发器、顶层节点和响应节点；嵌套路径由控制节点配置')); return; }
             const nextVisibleEdges = [
               ...edges.filter((edge) => !(connection.sourceHandle && edge.source === connection.source && edge.sourceHandle === connection.sourceHandle)),
               { id: `${connection.source}-${connection.target}-${Date.now()}`, source: connection.source!, target: connection.target!, sourceHandle: connection.sourceHandle, targetHandle: connection.targetHandle },

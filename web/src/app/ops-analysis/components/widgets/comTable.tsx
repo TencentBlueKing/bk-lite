@@ -19,6 +19,7 @@ import {
   resolveTableLikeColumns,
   type TableLikePaginationState,
 } from './shared/tableLikeData';
+import { useTableBodyScrollY } from './shared/useTableBodyScrollY';
 import styles from './comTable.module.scss';
 import type { DatasourceItem } from '@/app/ops-analysis/types/dataSource';
 import type {
@@ -148,6 +149,10 @@ const ComTable: React.FC<ComTableProps> = ({
       isPaginated: parsed.isPaginated,
     };
   }, [rawData, queryPagination.current, queryPagination.pageSize, supportsPaginationParams]);
+  // 槽位挂上之后才测量。数字 y 用表头和分页的真实高度，不再乘 widgetUiScale。
+  const { slotRef: tableSlotRef, tableScrollY } = useTableBodyScrollY({
+    hasPagination: isPaginated,
+  });
   const displayedTableData = useMemo(
     () => applyTableRowFilters(tableData, filters),
     [filters, tableData],
@@ -484,12 +489,11 @@ const ComTable: React.FC<ComTableProps> = ({
       {renderFilters()}
 
       <div
-        className={`flex-1 min-h-0 ${
+        ref={tableSlotRef}
+        className={`${styles.opsTableScroll} flex-1 min-h-0 ${
           usesScreenTheme
             ? `overflow-hidden ${styles.screenDarkTableWrap}`
-            : isPaginated
-              ? 'overflow-hidden'
-              : 'overflow-auto'
+            : 'overflow-hidden'
         }`}
       >
         <CustomTable
@@ -524,8 +528,12 @@ const ComTable: React.FC<ComTableProps> = ({
               : false
           }
           onChange={isPaginated ? handleTableChange : undefined}
-          // 有分页时省略 y，由 CustomTable 按父容器回填。无分页不传 y，避免被抬到至少 160px。
-          scroll={{ x: 'max-content' }}
+          // y 是槽位减去当时表头和分页后的像素，未乘 widgetUiScale。
+          // 省略时无分页表格按内容撑高，会被卡片 overflow:hidden 裁掉且没有滚动条。
+          scroll={{
+            x: 'max-content',
+            y: tableScrollY,
+          }}
         />
       </div>
     </div>

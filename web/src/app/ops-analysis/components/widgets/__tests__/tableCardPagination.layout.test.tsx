@@ -97,37 +97,6 @@ describe('table card pagination frame', () => {
     expect(measured).not.toBe(frame);
   });
 
-  it('lets an unpaginated table scroll inside the card', () => {
-    const view = render(
-      <div style={{ width: 770, height: 180 }}>
-        <ComTable
-          rawData={{
-            items: [
-              { name: 'row-1' },
-              { name: 'row-2' },
-              { name: 'row-3' },
-              { name: 'row-4' },
-              { name: 'row-5' },
-            ],
-          }}
-          loading={false}
-          dataSource={{ params: [], field_schema: [] } as any}
-          config={{
-            chartType: 'table',
-            tableConfig: {
-              columns: [{ key: 'name', title: '名称', visible: true, order: 0 }],
-            },
-          }}
-        />
-      </div>,
-    );
-
-    const frame = frameClass(view.container);
-    const measured = frame.firstElementChild as HTMLElement | null;
-    expect(measured?.className).toContain('overflow-auto');
-    expect(measured?.className).not.toContain('overflow-hidden');
-  });
-
   it.each([
     { parentHeight: 226, scale: 1 },
     { parentHeight: 400, scale: 0.5 },
@@ -148,6 +117,18 @@ describe('table card pagination frame', () => {
         configurable: true,
         get() {
           return 770;
+        },
+      });
+      const previousOffset = Object.getOwnPropertyDescriptor(prototype, 'offsetHeight');
+      const headerHeight = scale === 2 ? 57 : 39;
+      const paginationHeight = 72;
+      Object.defineProperty(prototype, 'offsetHeight', {
+        configurable: true,
+        get() {
+          const name = String((this as HTMLElement).className || '');
+          if (name.includes('ant-pagination')) return paginationHeight;
+          if (name.includes('ant-table-header') || name.includes('ant-table-thead')) return headerHeight;
+          return 0;
         },
       });
 
@@ -179,22 +160,24 @@ describe('table card pagination frame', () => {
         );
 
         const locked = view.container.querySelector<HTMLElement>('[class*="customTable"]');
-        const bodyHeight = Math.max(160, parentHeight - 47 - 56);
-        const frameHeight = Math.max(parentHeight, bodyHeight + 47 + 56);
         expect(locked).not.toBeNull();
-        expect(locked?.style.height).toBe(`${frameHeight}px`);
         const bodyScroll = locked?.querySelector<HTMLElement>('.ant-table-body');
-        expect(bodyScroll?.style.maxHeight || bodyScroll?.style.height).toBe(`${bodyHeight}px`);
+        const measuredBody = parentHeight - headerHeight - paginationHeight;
+        expect(bodyScroll?.style.maxHeight || bodyScroll?.style.height).toBe(`${measuredBody}px`);
+        expect(measuredBody).not.toBe(parentHeight - 47 - 56);
+        expect(view.container.querySelector('[class*="opsTableScroll"]')).not.toBeNull();
       } finally {
         if (previousHeight) Object.defineProperty(prototype, 'clientHeight', previousHeight);
         else delete (prototype as { clientHeight?: number }).clientHeight;
         if (previousWidth) Object.defineProperty(prototype, 'clientWidth', previousWidth);
         else delete (prototype as { clientWidth?: number }).clientWidth;
+        if (previousOffset) Object.defineProperty(prototype, 'offsetHeight', previousOffset);
+        else delete (prototype as { offsetHeight?: number }).offsetHeight;
       }
     },
   );
 
-  it('keeps the event table body at the 160 minimum when the card is shorter', () => {
+  it('locks the event table to the same parent height without the 160 floor', () => {
     const parentHeight = 226;
     const prototype = HTMLElement.prototype;
     const previousHeight = Object.getOwnPropertyDescriptor(prototype, 'clientHeight');
@@ -209,6 +192,16 @@ describe('table card pagination frame', () => {
       configurable: true,
       get() {
         return 770;
+      },
+    });
+    const previousOffset = Object.getOwnPropertyDescriptor(prototype, 'offsetHeight');
+    Object.defineProperty(prototype, 'offsetHeight', {
+      configurable: true,
+      get() {
+        const name = String((this as HTMLElement).className || '');
+        if (name.includes('ant-pagination')) return 72;
+        if (name.includes('ant-table-header') || name.includes('ant-table-thead')) return 39;
+        return 0;
       },
     });
 
@@ -229,14 +222,15 @@ describe('table card pagination frame', () => {
         </div>,
       );
       const locked = view.container.querySelector<HTMLElement>('[class*="customTable"]');
-      expect(locked?.style.height).toBe('263px');
       const bodyScroll = locked?.querySelector<HTMLElement>('.ant-table-body');
-      expect(bodyScroll?.style.maxHeight || bodyScroll?.style.height).toBe('160px');
+      expect(bodyScroll?.style.maxHeight || bodyScroll?.style.height).toBe(`${parentHeight - 39 - 72}px`);
     } finally {
       if (previousHeight) Object.defineProperty(prototype, 'clientHeight', previousHeight);
       else delete (prototype as { clientHeight?: number }).clientHeight;
       if (previousWidth) Object.defineProperty(prototype, 'clientWidth', previousWidth);
       else delete (prototype as { clientWidth?: number }).clientWidth;
+      if (previousOffset) Object.defineProperty(prototype, 'offsetHeight', previousOffset);
+      else delete (prototype as { offsetHeight?: number }).offsetHeight;
     }
   });
 });

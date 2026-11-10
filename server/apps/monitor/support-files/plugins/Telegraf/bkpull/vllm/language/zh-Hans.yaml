@@ -14,8 +14,8 @@ monitor_object_metric:
       name: 排队请求数
       desc: 当前等待调度容量的请求数量。
     vllm:kv_cache_usage_perc_gauge:
-      name: KV缓存占用比例
-      desc: 已使用 KV cache 块占比（0–1）。
+      name: KV 缓存占用比例
+      desc: 当前已用 KV 缓存相对容量上限的占用比例。值域为 0–1（1 表示 100% 占满），配置告警阈值时请按 0–1 而非 0–100 填写。
     vllm:prompt_tokens_total_counter_rate:
       name: Prefill Token 速率
       desc: 最近5分钟 prompt（prefill）token 处理速率。

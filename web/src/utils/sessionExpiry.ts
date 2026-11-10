@@ -29,10 +29,21 @@ const SESSION_EXPIRY_IGNORED_REQUEST_PATHS = [
 let sessionExpiredDispatched = false;
 let sessionExpiryConfirming = false;
 
+export const PASSWORD_CHANGED_ERROR_CODE = 'PASSWORD_CHANGED';
+
 export interface SessionExpiredDetail {
   reason?: string;
   status?: number;
+  errorCode?: string;
 }
+
+export const passwordChangedErrorCode = (payload: unknown): string | undefined => {
+  if (!payload || typeof payload !== 'object') {
+    return undefined;
+  }
+  const code = (payload as { error_code?: unknown }).error_code;
+  return code === PASSWORD_CHANGED_ERROR_CODE ? PASSWORD_CHANGED_ERROR_CODE : undefined;
+};
 
 export const emitSessionExpired = (detail?: SessionExpiredDetail) => {
   if (typeof window === 'undefined' || sessionExpiredDispatched || sessionExpiryConfirming) {

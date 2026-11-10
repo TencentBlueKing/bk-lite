@@ -1027,7 +1027,7 @@ tools:
       activedirectory_get_columns:
         description: 查看指定表的字段列表与类型说明，结果为 CSV。
       activedirectory_run_query:
-        description: 对 Active Directory 虚拟表执行只读 SELECT 查询，支持 JOIN、条件筛选与排序，结果为 CSV。
+        description: 对 Active Directory 虚拟表执行只读 SELECT 查询，支持 JOIN、条件筛选与排序，结果为 CSV。一次查询会在内部翻完所有 LDAP 页，不需要指定页码；单表最多读取 10000 条，超出时结果会标明已截断。
   elasticsearch:
     name: Elasticsearch
     description: |

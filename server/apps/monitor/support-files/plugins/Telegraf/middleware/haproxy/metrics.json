@@ -435,8 +435,30 @@
           "description": "服务(FRONTEND/BACKEND/服务器名)"
         }
       ],
-      "description": "Cumulative number of errors connecting to backend servers since startup; growth indicates backend connectivity problems",
+      "description": "Cumulative number of errors connecting to backend servers since startup; growth indicates backend connectivity problems.",
       "query": "haproxy_econ{__$labels__}"
+    },
+    {
+      "metric_group": "Error",
+      "name": "haproxy_econ_rate",
+      "display_name": "Connection Error Rate",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [
+        {
+          "name": "pxname",
+          "description": "代理(前端/后端名)"
+        },
+        {
+          "name": "svname",
+          "description": "服务(FRONTEND/BACKEND/服务器名)"
+        }
+      ],
+      "description": "Average backend connection errors per second over the last 5 minutes.",
+      "query": "rate(haproxy_econ{__$labels__}[5m])"
     },
     {
       "metric_group": "Error",
@@ -545,8 +567,30 @@
           "description": "服务(FRONTEND/BACKEND/服务器名)"
         }
       ],
-      "description": "Cumulative number of times a request was redispatched to another backend server since startup",
+      "description": "Cumulative number of times a request was redispatched to another backend server since startup.",
       "query": "haproxy_wredis{__$labels__}"
+    },
+    {
+      "metric_group": "Error",
+      "name": "haproxy_wredis_rate",
+      "display_name": "Request Redispatch Rate",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [
+        {
+          "name": "pxname",
+          "description": "代理(前端/后端名)"
+        },
+        {
+          "name": "svname",
+          "description": "服务(FRONTEND/BACKEND/服务器名)"
+        }
+      ],
+      "description": "Average requests redispatched to another backend per second over the last 5 minutes.",
+      "query": "rate(haproxy_wredis{__$labels__}[5m])"
     },
     {
       "metric_group": "Server",
@@ -745,6 +789,116 @@
       ],
       "description": "Average total session time in milliseconds end to end, computed over the last 1024 requests",
       "query": "haproxy_ttime{__$labels__}"
+    },
+    {
+      "metric_group": "Session",
+      "name": "haproxy_stot_rate",
+      "display_name": "Average Session Rate",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [
+        {
+          "name": "pxname",
+          "description": "代理(前端/后端名)"
+        },
+        {
+          "name": "svname",
+          "description": "服务(FRONTEND/BACKEND/服务器名)"
+        }
+      ],
+      "description": "Average new sessions per second over the last 5 minutes.",
+      "query": "rate(haproxy_stot{__$labels__}[5m])"
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "haproxy_bin_rate",
+      "display_name": "Inbound Throughput",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "pxname",
+          "description": "代理(前端/后端名)"
+        },
+        {
+          "name": "svname",
+          "description": "服务(FRONTEND/BACKEND/服务器名)"
+        }
+      ],
+      "description": "Average bytes received from clients per second over the last 5 minutes.",
+      "query": "rate(haproxy_bin{__$labels__}[5m])"
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "haproxy_bout_rate",
+      "display_name": "Outbound Throughput",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "pxname",
+          "description": "代理(前端/后端名)"
+        },
+        {
+          "name": "svname",
+          "description": "服务(FRONTEND/BACKEND/服务器名)"
+        }
+      ],
+      "description": "Average bytes sent to clients per second over the last 5 minutes.",
+      "query": "rate(haproxy_bout{__$labels__}[5m])"
+    },
+    {
+      "metric_group": "Response",
+      "name": "haproxy_hrsp_5xx_rate",
+      "display_name": "5xx Response Rate",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [
+        {
+          "name": "pxname",
+          "description": "代理(前端/后端名)"
+        },
+        {
+          "name": "svname",
+          "description": "服务(FRONTEND/BACKEND/服务器名)"
+        }
+      ],
+      "description": "Average HTTP 5xx responses returned per second over the last 5 minutes.",
+      "query": "rate(haproxy_hrsp_5xx{__$labels__}[5m])"
+    },
+    {
+      "metric_group": "Error",
+      "name": "haproxy_ereq_rate",
+      "display_name": "Request Error Rate",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [
+        {
+          "name": "pxname",
+          "description": "代理(前端/后端名)"
+        },
+        {
+          "name": "svname",
+          "description": "服务(FRONTEND/BACKEND/服务器名)"
+        }
+      ],
+      "description": "Average request errors per second over the last 5 minutes.",
+      "query": "rate(haproxy_ereq{__$labels__}[5m])"
     }
   ]
 }

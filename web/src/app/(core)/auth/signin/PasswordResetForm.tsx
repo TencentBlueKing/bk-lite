@@ -69,8 +69,14 @@ export default function PasswordResetForm({
         return;
       }
       
-      // Update login data to remove temporary_pwd flag
-      const updatedLoginData = { ...loginData, temporary_pwd: false };
+      const rotatedToken = typeof responseData.data?.token === 'string'
+        ? responseData.data.token
+        : loginData.token;
+      const updatedLoginData = {
+        ...loginData,
+        temporary_pwd: false,
+        token: rotatedToken,
+      };
       onPasswordReset(updatedLoginData);
       
     } catch (error) {

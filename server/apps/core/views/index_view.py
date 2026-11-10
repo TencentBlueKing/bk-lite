@@ -84,6 +84,17 @@ def _parse_request_data(request):
     return request.POST.dict()
 
 
+def _attach_rotated_token_cookie(response, payload):
+    """自助改密成功后，把换发的登录 JWT 写回当前浏览器会话。"""
+    if not isinstance(payload, dict) or not payload.get("result"):
+        return response
+    data = payload.get("data")
+    token = data.get("token") if isinstance(data, dict) else None
+    if token:
+        _set_auth_cookie_on_response(response, token)
+    return response
+
+
 def _set_auth_cookie_on_response(response, token):
     """
     统一设置认证 cookie。
@@ -632,7 +643,9 @@ def reset_pwd(request):
         if not res.get("result"):
             logger.warning(f"Password reset failed for user: {username}")
 
-        return JsonResponse(res)
+        response = JsonResponse(res)
+        _attach_rotated_token_cookie(response, res)
+        return response
     except Exception as e:
         logger.error(f"Password reset error: {e}")
         return JsonResponse(

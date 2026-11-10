@@ -14,8 +14,8 @@ monitor_object_metric:
       name: 延迟请求数
       desc: 当前被延迟（deferred）的请求数量。
     llamacpp:kv_cache_usage_ratio_gauge:
-      name: KV缓存占用比例
-      desc: KV cache 占用比例（1 表示 100%）。
+      name: KV 缓存占用比例
+      desc: 当前已用 KV 缓存相对容量上限的占用比例。值域为 0–1（1 表示 100% 占满），配置告警阈值时请按 0–1 而非 0–100 填写。
     llamacpp:prompt_tokens_total_counter_rate:
       name: Prompt Token 速率
       desc: 最近5分钟 prompt token 处理速率。

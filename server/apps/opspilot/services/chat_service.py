@@ -41,6 +41,7 @@ from apps.opspilot.services.builtin_tools import (
     build_builtin_redis_runtime_tool,
 )
 from apps.opspilot.services.caller_identity import CALLER_IDENTITY_CONFIG_KEY
+from apps.opspilot.services.conversation_skill_package import AUTHORING_EXTRA_KEY, AUTHORING_PROMPT_SUFFIX
 from apps.opspilot.services.chat_request import ChatRequest
 from apps.opspilot.services.history_service import history_service
 from apps.opspilot.services.llm_context_budget import DEFAULT_CHAT_SCENE_OUTPUT_TOKENS, working_budget_for_model
@@ -672,6 +673,9 @@ class ChatService:
             kwargs.get("locale"),
             match_user_message=kwargs.get("reply_language") == "match_user",
         )
+        authoring = kwargs.get(AUTHORING_EXTRA_KEY)
+        if isinstance(authoring, dict) and authoring.get("enabled"):
+            resolved_prompt = f"{resolved_prompt}{AUTHORING_PROMPT_SUFFIX}"
 
         vendor_type = llm_model.vendor.vendor_type if llm_model.vendor_id else ""
         # 对话温度固定 1；技能表与请求里的旧滑条值忽略。
@@ -770,6 +774,14 @@ class ChatService:
             extra_config["enabled_skill_packages"] = kwargs.get("enabled_skill_packages") or []
         if kwargs.get("skill_id") is not None:
             extra_config["skill_id"] = kwargs.get("skill_id")
+        if isinstance(authoring, dict) and authoring.get("enabled"):
+            extra_config[AUTHORING_EXTRA_KEY] = {
+                "enabled": True,
+                "entry": str(authoring.get("entry") or ""),
+                "can_add": bool(authoring.get("can_add")),
+                "username": str(authoring.get("username") or ""),
+                "domain": str(authoring.get("domain") or ""),
+            }
         if kwargs.get("skill_package_params_overlay") is not None:
             extra_config["skill_package_params_overlay"] = kwargs.get("skill_package_params_overlay")
 
