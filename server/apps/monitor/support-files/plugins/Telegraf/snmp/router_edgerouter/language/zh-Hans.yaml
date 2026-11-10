@@ -29,14 +29,14 @@ monitor_object_metric:
       desc: 该指标报告路由器当前空闲的物理内存字节数（UCD-SNMP-MIB memAvailReal，原始单位 KB，已换算为字节）。空闲内存持续偏低可能意味着内存压力上升。
     device_memory_used:
       name: 已用内存
-      desc: 该指标报告路由器当前已使用的物理内存字节数（由内存总量减去空闲内存计算得到）。用于评估绝对内存消耗与压力。
+      desc: 路由器当前已使用的物理内存字节数。用于评估绝对内存消耗与压力。
     device_cpu_usage:
       name: CPU 使用率
       desc: 该指标报告 EdgeRouter 路由器各 CPU 核心的负载百分比（HOST-RESOURCES-MIB hrProcessorLoad，按 index
         维度上报）。持续偏高说明控制平面或转发负载吃紧。
     device_memory_usage:
       name: 内存使用率
-      desc: 该指标报告 EdgeRouter 路由器整机内存使用率，按 (总量 - 可用) / 总量 计算，数据来自 UCD-SNMP-MIB memTotalReal 与 memAvailReal 标量。持续偏高可能由内存泄漏或连接表过大导致。
+      desc: EdgeRouter 路由器整机内存使用率，数据来自 UCD-SNMP-MIB memTotalReal 与 memAvailReal 标量。持续偏高可能由内存泄漏或连接表过大导致。
     interface_ifHCInOctets:
       name: 接口接收流量速率(HC)
       desc: 该指标表示过去 5 分钟内接收字节数的平均速率，单位为字节每秒，基于 64 位 ifHCInOctets 计数器，在高速接口上不会回绕。

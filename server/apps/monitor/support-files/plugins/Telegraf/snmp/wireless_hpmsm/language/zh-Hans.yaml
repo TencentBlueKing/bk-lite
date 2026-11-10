@@ -27,7 +27,7 @@ monitor_object_metric:
       desc: 该指标表示 HPE MSM / Colubris 设备的空闲内存（coUsInfoRamFree）。设备以 Kb 上报，采集后换算为字节（×1024）。
     device_memory_usage:
       name: 内存使用率
-      desc: 该指标表示 HPE MSM / Colubris 设备的内存使用率，按 (总量−空闲)/总量×100 由 coUsInfoRamTotal 与 coUsInfoRamFree 计算。内存压力过高可能导致控制器丢弃终端关联或延迟 AP 上线。
+      desc: HPE MSM / Colubris 设备的内存使用率。内存压力过高可能导致控制器丢弃终端关联或延迟 AP 上线。
     device_storage_usage:
       name: 临时存储使用率
       desc: 该指标表示 HPE MSM / Colubris 设备临时存储使用率（coUsInfoStorageUseTemporary），单位为百分比。

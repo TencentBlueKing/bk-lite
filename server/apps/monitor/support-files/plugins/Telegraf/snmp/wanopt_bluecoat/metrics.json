@@ -36,7 +36,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric indicates the uptime of the Blue Coat / Symantec Edge SWG / Broadcom ProxySG appliance since the last restart, derived from sysUpTime. Monitoring uptime helps administrators understand device stability and identify unexpected reboots."
+      "description": "This metric indicates the uptime of the Blue Coat / Symantec Edge SWG / Broadcom ProxySG appliance since the last restart. Monitoring uptime helps administrators understand device stability and identify unexpected reboots."
     },
     {
       "metric_group": "CPU",

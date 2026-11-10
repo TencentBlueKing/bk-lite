@@ -72,8 +72,7 @@ monitor_object_metric:
         SNMP OID，并归一化为 0-100 的百分比。
     device_memory_usage:
       name: 内存使用率
-      desc: 该指标表示 DCN 交换机整体内存使用率，按 switchMemoryBusy/switchMemorySize（已是字节）计算
-        已用/总量*100，单位为百分比。内存偏高可能由内存泄漏、路由/MAC/ARP 表项过大或容量不足导致，可能引发不稳定或分配失败。
+      desc: DCN 交换机整体内存使用率，单位为百分比。内存偏高可能由内存泄漏、路由/MAC/ARP 表项过大或容量不足导致，可能引发不稳定或分配失败。
     device_memory_used:
       name: 内存已用量
       desc: 该指标表示 DCN 交换机系统内存当前已使用的字节数（DCN-MIB switchMemoryBusy，直接以字节上报）。它帮助管理员了解绝对内存消耗，并识别设备是否处于内存压力。

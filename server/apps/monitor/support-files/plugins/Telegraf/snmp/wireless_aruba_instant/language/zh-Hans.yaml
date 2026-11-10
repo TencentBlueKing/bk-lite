@@ -21,7 +21,7 @@ monitor_object_metric:
       desc: 各 AP 的空闲内存，单位字节（AI-AP-MIB aiAPMemoryFree）。
     device_memory_usage:
       name: 内存使用率
-      desc: 各 AP 的内存使用率，按 (总量 - 空闲) / 总量 * 100 计算。内存压力过高可能导致终端关联失败。
+      desc: 各 AP 的内存使用率。内存压力过高可能导致终端关联失败。
     wireless_ap_state:
       name: AP 状态
       desc: Virtual Controller 上各 AP 的状态（AI-AP-MIB aiAPStatus），归一为 1=up、2=down。

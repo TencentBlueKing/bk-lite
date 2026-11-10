@@ -30,8 +30,7 @@ monitor_object_metric:
         HOST-RESOURCES hrStorage 物理内存已用量。
     device_cpu_usage:
       name: CPU 使用率
-      desc: 该指标报告 6WIND VSR 路由器的整体 CPU 使用率，由 UCD-SNMP ssCpuIdle 按 100−idle 计算；缺 idle
-        时回退为 ssCpuUser+ssCpuSystem，再回退 HOST-RESOURCES hrProcessorLoad。持续偏高说明控制平面或转发负载吃紧。
+      desc: 6WIND VSR 路由器的整体 CPU 使用率。持续偏高说明控制平面或转发负载吃紧。
     device_memory_usage:
       name: 内存使用率
       desc: 该指标报告 6WIND VSR 路由器的物理内存使用率，按 (memTotalReal - memAvailReal) / memTotalReal

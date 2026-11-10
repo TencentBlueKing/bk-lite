@@ -29,7 +29,7 @@ monitor_object_metric:
       desc: Patton SmartNode 各 CPU 当前负载百分比（SMARTNODE-MIB cpuWorkloadCurrent）。持续偏高说明呼叫处理或控制面负载过高。
     device_memory_total:
       name: 内存池总量
-      desc: Patton SmartNode 各内存池总大小（memTotalBytes），单位字节；设备未上报时按 已分配+空闲 计算。
+      desc: Patton SmartNode 各内存池总大小（memTotalBytes），单位字节。
     device_memory_used:
       name: 内存池已分配
       desc: Patton SmartNode 各内存池已分配字节数（memAllocatedBytes）。
@@ -38,7 +38,7 @@ monitor_object_metric:
       desc: Patton SmartNode 各内存池空闲字节数（memFreeBytes）。
     device_memory_usage:
       name: 内存池使用率
-      desc: Patton SmartNode 各内存池使用率，采集时按 已分配/(已分配+空闲)*100 计算；空内存池丢弃。
+      desc: Patton SmartNode 各内存池使用率；空内存池丢弃。
     device_temperature_celsius:
       name: 设备温度
       desc: Patton SmartNode 各温度探头当前读数（SMARTNODE-MIB currentDegreesCelsius），单位摄氏度。用于识别散热异常、风道堵塞或过热风险。

@@ -43,7 +43,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric reports the power-supply health of the Nexans device, derived from the industrial alarm-relay output (NEXANS-BM-MIB infoAlarmStateM1). The raw codes (1=notSupported, 2=alarmOff meaning OK, 3 and higher=alarm asserted, including the explicit power-supply-S1/S2 fault codes 7/8/9) are normalized via telegraf processors.enum so that 1 = healthy and 2 = fault. A value greater than 1 indicates an asserted hardware/power alarm that warrants investigation."
+      "description": "This metric reports the power-supply health of the Nexans device. The raw codes (1=notSupported, 2=alarmOff meaning OK, 3 and higher=alarm asserted, including the explicit power-supply-S1/S2 fault codes 7/8/9) are normalized via telegraf processors.enum so that 1 = healthy and 2 = fault. A value greater than 1 indicates an asserted hardware/power alarm that warrants investigation."
     },
     {
       "metric_group": "Traffic",

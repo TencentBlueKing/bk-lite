@@ -31,7 +31,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric indicates the uptime of the Venturi Wireless optimisation server since the last restart, derived from sysUpTime. Monitoring uptime helps administrators understand device stability and identify unexpected reboots."
+      "description": "This metric indicates the uptime of the Venturi Wireless optimisation server since the last restart. Monitoring uptime helps administrators understand device stability and identify unexpected reboots."
     },
     {
       "metric_group": "CPU",
@@ -57,7 +57,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Venturi buffer pool usage as a 0-100 percentage, derived from VENTURI-SERVER-STATS-MIB vServerStatsSystemUsedVenturiBuffers / vServerSystemTotalVenturiBuffers."
+      "description": "Venturi buffer pool usage as a 0-100 percentage."
     }
   ]
 }
