@@ -1,0 +1,206 @@
+"""待重算名单排空：单轮最多 200 行，5 分钟 Celery 任务重算 ci_context。"""
+
+import pytest
+
+from apps.cmdb.models.ci_context import CmdbCiContext, CmdbCiContextPending
+from apps.cmdb.services.ci_context import drain_ci_context_pending, schedule_ci_context_pending
+from apps.cmdb.services.ci_context_policy import CONTEXT_APPLICATION
+from apps.cmdb.tests.test_ci_context_recompute import MemoryGraph, edge, inst
+
+pytestmark = pytest.mark.django_db
+
+TASK_NAME = "apps.cmdb.tasks.ci_context.reconcile_ci_context_pending_task"
+
+
+def _bind(monkeypatch, instances, edges):
+    graph = MemoryGraph(instances)
+    graph.edges = list(edges)
+    monkeypatch.setattr("apps.cmdb.services.ci_context.GraphClient", lambda *args, **kwargs: graph)
+    return graph
+
+
+def _context(**overrides):
+    data = dict(
+        ci_uuid="host-1",
+        context=CONTEXT_APPLICATION,
+        root_uuid="app-wecenter",
+        root_model="application",
+        ci_model="host",
+        ip_addr="10.0.0.1",
+        organization=[1],
+        layer=1,
+        model_asst_id="application_run_host",
+    )
+    data.update(overrides)
+    return CmdbCiContext.objects.create(**data)
+
+
+def _silence_enqueue(monkeypatch):
+    monkeypatch.setattr("apps.cmdb.services.ci_context._enqueue_ci_context_drain", lambda: None)
+
+
+def test_reconcile_task_is_a_five_minute_background_singleton():
+    from celery.schedules import crontab
+
+    from apps.cmdb.config import CELERY_BEAT_SCHEDULE
+    from apps.cmdb.tasks.ci_context import reconcile_ci_context_pending_task
+    from apps.core.celery_runtime.manifest import TASK_ROUTES
+
+    entry = CELERY_BEAT_SCHEDULE["reconcile_ci_context_pending_task"]
+    assert entry["task"] == TASK_NAME
+    assert entry["schedule"] == crontab(minute="*/5")
+    assert reconcile_ci_context_pending_task.lock_expiry == 30 * 60
+    assert reconcile_ci_context_pending_task.raise_on_duplicate is False
+    assert TASK_ROUTES[TASK_NAME] == "background"
+
+
+def test_drain_root_uuid_projects_wecenter_host(monkeypatch):
+    system = inst("sys-1", "system")
+    app = inst("app-wecenter", "application")
+    host = inst("host-1", "host", ip="10.1.0.1", org=[7])
+    _bind(
+        monkeypatch,
+        [system, app, host],
+        [edge("contains", system, app), edge("run", app, host)],
+    )
+    CmdbCiContextPending.objects.create(root_uuid="app-wecenter")
+
+    result = drain_ci_context_pending()
+
+    assert result["root_uuids"] == 1
+    assert result["model_asst_ids"] == 0
+    assert result["ci_uuids"] == 0
+    row = CmdbCiContext.objects.get(ci_uuid="host-1", root_uuid="app-wecenter", context=CONTEXT_APPLICATION)
+    assert row.layer == 1
+    assert row.model_asst_id == "application_run_host"
+    assert row.ip_addr == "10.1.0.1"
+    assert CmdbCiContextPending.objects.count() == 0
+
+
+def test_drain_model_asst_projects_application_host(monkeypatch):
+    app = inst("app-wecenter", "application")
+    host = inst("host-1", "host", ip="10.1.0.1", org=[7])
+    _bind(monkeypatch, [app, host], [edge("run", app, host, model_asst_id="application_run_host")])
+    CmdbCiContextPending.objects.create(model_asst_id="application_run_host")
+
+    result = drain_ci_context_pending()
+
+    assert result["model_asst_ids"] == 1
+    row = CmdbCiContext.objects.get(ci_uuid="host-1", root_uuid="app-wecenter", context=CONTEXT_APPLICATION)
+    assert row.ci_model == "host"
+    assert row.layer == 1
+    assert CmdbCiContextPending.objects.count() == 0
+
+
+def test_drain_ci_uuid_refreshes_ip(monkeypatch):
+    app = inst("app-wecenter", "application")
+    host = inst("host-1", "host", ip="10.9.9.9", org=[4])
+    _bind(monkeypatch, [app, host], [edge("run", app, host)])
+    row = _context(ip_addr="10.0.0.1", organization=[1])
+    CmdbCiContextPending.objects.create(ci_uuid="host-1")
+
+    result = drain_ci_context_pending()
+
+    assert result["ci_uuids"] == 1
+    row.refresh_from_db()
+    assert row.ip_addr == "10.9.9.9"
+    assert CmdbCiContextPending.objects.filter(ci_uuid="host-1").count() == 0
+
+
+def test_drain_ci_uuid_drops_rows_when_instance_is_missing(monkeypatch):
+    _bind(monkeypatch, [], [])
+    _context(ci_uuid="host-missing", root_uuid="app-wecenter")
+    _context(ci_uuid="host-missing", root_uuid="app-other")
+    kept = _context(ci_uuid="host-keep", root_uuid="app-untouched")
+    CmdbCiContextPending.objects.create(ci_uuid="host-missing")
+
+    drain_ci_context_pending()
+
+    assert not CmdbCiContext.objects.filter(ci_uuid="host-missing").exists()
+    assert CmdbCiContext.objects.filter(pk=kept.pk, ci_uuid="host-keep", root_uuid="app-untouched").exists()
+    assert CmdbCiContextPending.objects.count() == 0
+
+
+def test_claim_deletes_pending_before_recompute_and_duplicate_schedule_drains_clean(monkeypatch):
+    pending_during = []
+
+    def spy(_root_uuid):
+        pending_during.append(CmdbCiContextPending.objects.count())
+
+    monkeypatch.setattr("apps.cmdb.services.ci_context.recompute_application", spy)
+    _silence_enqueue(monkeypatch)
+    schedule_ci_context_pending(root_uuids=["app-1"])
+    schedule_ci_context_pending(root_uuids=["app-1"])
+    assert CmdbCiContextPending.objects.count() == 1
+
+    drain_ci_context_pending()
+
+    assert pending_during == [0]
+    assert CmdbCiContextPending.objects.count() == 0
+
+
+def test_failed_root_is_restored_and_later_roots_still_run(monkeypatch):
+    def flaky(root_uuid):
+        if root_uuid == "app-bad":
+            raise RuntimeError("graph down")
+
+    monkeypatch.setattr("apps.cmdb.services.ci_context.recompute_application", flaky)
+    CmdbCiContextPending.objects.bulk_create(
+        [
+            CmdbCiContextPending(root_uuid="app-bad"),
+            CmdbCiContextPending(root_uuid="app-ok"),
+        ]
+    )
+
+    result = drain_ci_context_pending()
+
+    assert result["root_uuids"] == 1
+    assert list(CmdbCiContextPending.objects.values_list("root_uuid", flat=True)) == ["app-bad"]
+
+
+def test_drain_claims_at_most_200_rows(monkeypatch):
+    CmdbCiContextPending.objects.bulk_create([CmdbCiContextPending(root_uuid=f"app-{index:04d}") for index in range(201)])
+    calls = []
+    monkeypatch.setattr("apps.cmdb.services.ci_context.recompute_application", lambda root_uuid: calls.append(root_uuid))
+
+    result = drain_ci_context_pending()
+
+    assert result["root_uuids"] == 200
+    assert len(calls) == 200
+    assert CmdbCiContextPending.objects.count() == 1
+    assert CmdbCiContextPending.objects.get().root_uuid not in calls
+
+
+def test_schedule_enqueues_drain_after_insert_and_skips_empty(monkeypatch):
+    calls = []
+
+    def mark():
+        calls.append(CmdbCiContextPending.objects.count())
+
+    monkeypatch.setattr("apps.cmdb.services.ci_context._enqueue_ci_context_drain", mark)
+
+    schedule_ci_context_pending(root_uuids=["app-real"])
+
+    assert calls == [1]
+    assert CmdbCiContextPending.objects.filter(root_uuid="app-real").exists()
+
+    schedule_ci_context_pending()
+    schedule_ci_context_pending(root_uuids=["", None, "  "], model_asst_ids=[], ci_uuids=None)
+    assert calls == [1]
+
+
+def test_enqueue_swallows_delay_errors(monkeypatch):
+    from apps.cmdb.tasks.ci_context import reconcile_ci_context_pending_task
+
+    calls = {"n": 0}
+
+    def boom(*args, **kwargs):
+        calls["n"] += 1
+        raise RuntimeError("broker down")
+
+    monkeypatch.setattr(reconcile_ci_context_pending_task, "delay", boom)
+
+    schedule_ci_context_pending(root_uuids=["app-real"])
+
+    assert calls["n"] == 1
+    assert CmdbCiContextPending.objects.filter(root_uuid="app-real").exists()

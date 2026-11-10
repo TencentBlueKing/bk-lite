@@ -4,6 +4,7 @@ from apps.cmdb.constants.constants import INSTANCE, INSTANCE_ASSOCIATION
 from apps.cmdb.graph.drivers.graph_client import GraphClient
 from apps.cmdb.models.ci_context import CmdbCiContext, CmdbCiContextPending
 from apps.cmdb.services.ci_context_policy import APPLICATION_MODEL, CONTEXT_APPLICATION, LINK_FOLLOW, classify_application_edge
+from apps.core.logger import cmdb_logger as logger
 
 
 def _distinct_texts(values) -> list[str]:
@@ -28,6 +29,16 @@ def schedule_ci_context_pending(*, root_uuids=None, model_asst_ids=None, ci_uuid
     if not rows:
         return
     CmdbCiContextPending.objects.bulk_create(rows, ignore_conflicts=True)
+    _enqueue_ci_context_drain()
+
+
+def _enqueue_ci_context_drain() -> None:
+    try:
+        from apps.cmdb.tasks.ci_context import reconcile_ci_context_pending_task
+
+        reconcile_ci_context_pending_task.delay()
+    except Exception:
+        logger.exception("failed to enqueue ci_context pending drain")
 
 
 def _public_row(row: CmdbCiContext) -> dict:
@@ -245,3 +256,155 @@ def recompute_application(application_uuid) -> None:
                 },
             )
         _delete_application_rows(application_uuid, keep=members)
+
+
+def _claim_pending(field: str, limit: int) -> list:
+    query = CmdbCiContextPending.objects.filter(**{f"{field}__isnull": False}).order_by("id").values_list("id", field)
+    rows = list(query[:limit])
+    if not rows:
+        return []
+    CmdbCiContextPending.objects.filter(id__in=[row[0] for row in rows]).delete()
+    return [row[1] for row in rows]
+
+
+def _restore_pending(**fields) -> None:
+    CmdbCiContextPending.objects.bulk_create([CmdbCiContextPending(**fields)], ignore_conflicts=True)
+
+
+def _application_endpoints(item) -> tuple[list, list[str]]:
+    _props, src, dst, _raw_dst = _edge_parts(item)
+    endpoints = [src.get("inst_uuid"), dst.get("inst_uuid")]
+    roots = []
+    if src.get("model_id") == APPLICATION_MODEL:
+        roots.append(src.get("inst_uuid"))
+    if dst.get("model_id") == APPLICATION_MODEL:
+        roots.append(dst.get("inst_uuid"))
+    return endpoints, roots
+
+
+def _roots_for_model_asst(model_asst_id: str) -> list[str]:
+    roots: list[str] = []
+    endpoint_uuids: list = []
+    with GraphClient() as ag:
+        edges = (
+            ag.query_edge(
+                INSTANCE_ASSOCIATION,
+                [{"field": "model_asst_id", "type": "str=", "value": model_asst_id}],
+                return_entity=True,
+            )
+            or []
+        )
+    for item in edges:
+        endpoints, application_uuids = _application_endpoints(item)
+        endpoint_uuids.extend(endpoints)
+        roots.extend(application_uuids)
+    endpoints = _distinct_texts(endpoint_uuids)
+    if endpoints:
+        roots.extend(CmdbCiContext.objects.filter(ci_uuid__in=endpoints, context=CONTEXT_APPLICATION).values_list("root_uuid", flat=True))
+    return _distinct_texts(roots)
+
+
+def _load_ci(ci_uuid: str) -> tuple[dict | None, list[str]]:
+    roots = list(
+        CmdbCiContext.objects.filter(Q(ci_uuid=ci_uuid) | Q(root_uuid=ci_uuid), context=CONTEXT_APPLICATION).values_list("root_uuid", flat=True)
+    )
+    with GraphClient() as ag:
+        instances = _query_instances(ag, [{"field": "inst_uuid", "type": "str=", "value": ci_uuid}])
+        for field in ("src_inst_uuid", "dst_inst_uuid"):
+            edges = (
+                ag.query_edge(
+                    INSTANCE_ASSOCIATION,
+                    [{"field": field, "type": "str=", "value": ci_uuid}],
+                    return_entity=True,
+                )
+                or []
+            )
+            for item in edges:
+                _endpoints, application_uuids = _application_endpoints(item)
+                roots.extend(application_uuids)
+    instance = instances[0] if instances else None
+    return instance, _distinct_texts(roots)
+
+
+def _recompute_roots(root_uuids) -> None:
+    for root_uuid in _distinct_texts(root_uuids):
+        recompute_application(root_uuid)
+
+
+def _apply_ci(ci_uuid: str) -> None:
+    instance, roots = _load_ci(ci_uuid)
+    if instance is None:
+        CmdbCiContext.objects.filter(ci_uuid=ci_uuid).delete()
+        _recompute_roots(roots)
+        return
+    if str(instance.get("model_id") or "") == APPLICATION_MODEL:
+        recompute_application(ci_uuid)
+        return
+    organization = _pick("organization", instance)
+    CmdbCiContext.objects.filter(ci_uuid=ci_uuid).update(
+        ip_addr=str(_pick("ip_addr", instance) or ""),
+        organization=list(organization) if isinstance(organization, list) else [],
+    )
+    _recompute_roots(roots)
+
+
+def _drain_roots(root_uuids: list[str]) -> int:
+    done = 0
+    for root_uuid in root_uuids:
+        try:
+            recompute_application(root_uuid)
+        except Exception:
+            logger.exception("ci_context pending drain failed, root_uuid=%s", root_uuid)
+            _restore_pending(root_uuid=root_uuid)
+            continue
+        done += 1
+    return done
+
+
+def _drain_model_assts(model_asst_ids: list[str]) -> int:
+    done = 0
+    for model_asst_id in model_asst_ids:
+        try:
+            _recompute_roots(_roots_for_model_asst(model_asst_id))
+        except Exception:
+            logger.exception("ci_context pending drain failed, model_asst_id=%s", model_asst_id)
+            _restore_pending(model_asst_id=model_asst_id)
+            continue
+        done += 1
+    return done
+
+
+def _drain_cis(ci_uuids: list[str]) -> int:
+    done = 0
+    for ci_uuid in ci_uuids:
+        try:
+            _apply_ci(ci_uuid)
+        except Exception:
+            logger.exception("ci_context pending drain failed, ci_uuid=%s", ci_uuid)
+            _restore_pending(ci_uuid=ci_uuid)
+            continue
+        done += 1
+    return done
+
+
+def drain_ci_context_pending(limit: int = 200) -> dict:
+    """排空待重算名单。单轮最多处理 limit 行，顺序是应用、关联规则、实例。"""
+    remaining = limit
+    root_uuids = _claim_pending("root_uuid", remaining)
+    remaining -= len(root_uuids)
+    root_done = _drain_roots(root_uuids)
+
+    model_asst_ids = _claim_pending("model_asst_id", remaining)
+    remaining -= len(model_asst_ids)
+    model_done = _drain_model_assts(model_asst_ids)
+
+    ci_uuids = _claim_pending("ci_uuid", remaining)
+    ci_done = _drain_cis(ci_uuids)
+    if root_done or model_done or ci_done:
+        logger.info(
+            "ci_context pending drain finished, root_uuids=%s, model_asst_ids=%s, ci_uuids=%s",
+            root_done,
+            model_done,
+            ci_done,
+        )
+    return {"root_uuids": root_done, "model_asst_ids": model_done, "ci_uuids": ci_done}
