@@ -297,6 +297,18 @@ export const CREDENTIAL_DESCRIPTORS = {
         { key: 'azureTenantId' }, { key: 'azureSubscriptionId' },
       ],
     },
+    azurelocal_cmdb: {
+      ...platformApiDescriptor(443),
+      defaultPort: undefined,
+      credentialKindKey: 'azureOAuth',
+      instructionKey: 'azureOAuth',
+      fields: [
+        { key: 'azureClientId' }, { key: 'azureClientSecret' },
+        { key: 'azureTenantId' }, { key: 'azureSubscriptionId' },
+        { key: 'azureResourceGroup' }, { key: 'azureClusterName' },
+        { key: 'azureCloud' }, { key: 'azureResourceUri' },
+      ],
+    },
     aws: {
       formKind: 'cloud',
       protocolKey: 'aws',

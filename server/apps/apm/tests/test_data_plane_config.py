@@ -88,7 +88,7 @@ def test_regional_pipeline_removes_reserved_sensitive_body_and_raw_url_attribute
 def test_system_pipeline_only_acks_after_direct_victoria_traces_export():
     config = _yaml(SYSTEM_CONFIG)
     receiver = config["receivers"]["nats_jetstream"]
-    exporter = config["exporters"]["otlphttp/victoria_traces"]
+    exporter = config["exporters"]["otlp_http/victoria_traces"]
     pipeline = config["service"]["pipelines"]["traces"]
 
     assert receiver["filter_subject"] == "apm.traces.>"
@@ -98,7 +98,7 @@ def test_system_pipeline_only_acks_after_direct_victoria_traces_export():
     assert pipeline == {
         "receivers": ["nats_jetstream"],
         "processors": ["memory_limiter"],
-        "exporters": ["otlphttp/victoria_traces"],
+        "exporters": ["otlp_http/victoria_traces"],
     }
     assert exporter["traces_endpoint"] == "${env:APM_VICTORIATRACES_OTLP_ENDPOINT}"
     assert exporter["sending_queue"]["enabled"] is False
@@ -226,9 +226,7 @@ def test_managed_region_proxy_exposes_otlp_http_to_the_regional_collector():
     assert collector["image"] == "${DOCKER_IMAGE_APM_COLLECTOR}"
     assert "4318:4318" in collector["ports"]
     assert collector["environment"]["APM_CLOUD_REGION_ID"] == "${ZONE_ID}"
-    assert collector["environment"]["APM_NATS_URL"] == (
-        "tls://${APM_NATS_USERNAME}:${APM_NATS_PASSWORD}@nats:4222"
-    )
+    assert collector["environment"]["APM_NATS_URL"] == ("tls://${APM_NATS_USERNAME}:${APM_NATS_PASSWORD}@nats:4222")
     assert collector["depends_on"]["apm-regional-queue-init"]["condition"] == "service_completed_successfully"
     assert queue_init["network_mode"] == "none"
     assert "DOCKER_IMAGE_APM_COLLECTOR=" in proxy_environment

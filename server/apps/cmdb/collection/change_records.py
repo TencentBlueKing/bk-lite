@@ -2,7 +2,7 @@
 
 from apps.cmdb.constants.constants import INSTANCE, OPERATOR_INSTANCE
 from apps.cmdb.models.change_record import COLLECT_AUTOMATION_CHANGE, CREATE_INST, DELETE_INST, UPDATE_INST
-from apps.cmdb.utils.change_record import batch_create_change_record
+from apps.cmdb.utils.change_record import batch_create_change_record, verify_content_hash
 
 SYSTEM_COLLECT_FIELDS = {"_id", "model_id", "collect_time", "collect_task", "auto_collect", "_collect_sources", "manual_fields"}
 
@@ -86,18 +86,21 @@ def _build_update_records(management, success_items: list[dict], task_name: str)
             continue
         before_data = old_instances.get(instance["_id"], {})
         title = "自动采集更新实例"
+        content_hash = ""
         if not _changed_business_fields(before_data, instance):
             title = "自动采集核实实例，无字段变化"
-        records.append(
-            {
-                "inst_id": instance["_id"],
-                "model_id": instance["model_id"],
-                "before_data": before_data,
-                "after_data": instance,
-                "model_object": OPERATOR_INSTANCE,
-                "message": _message(title, instance, task_name),
-            }
-        )
+            content_hash = verify_content_hash(instance["_id"], instance["model_id"], UPDATE_INST)
+        record = {
+            "inst_id": instance["_id"],
+            "model_id": instance["model_id"],
+            "before_data": before_data,
+            "after_data": instance,
+            "model_object": OPERATOR_INSTANCE,
+            "message": _message(title, instance, task_name),
+        }
+        if content_hash:
+            record["content_hash"] = content_hash
+        records.append(record)
     return records
 
 

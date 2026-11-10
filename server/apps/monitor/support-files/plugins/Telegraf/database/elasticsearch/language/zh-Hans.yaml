@@ -18,7 +18,7 @@ monitor_object_metric:
       desc: 集群异常核心标志，代表未分配分片的数量；该值大于 0 时需及时排查，长期存在会降低数据冗余度与系统可用性
     elasticsearch_jvm_mem_heap_used_percent:
       name: JVM 堆使用率
-      desc: JVM 内存压力核心指标，反映 JVM 内存的占用情况；内存占用过高易引发 Full GC，进而导致集群运行卡顿
+      desc: 当前 JVM 堆内存已用占比（约 0–100%）；为采集时刻瞬时值。堆占用过高易引发频繁垃圾回收，导致集群卡顿，是内存压力核心指标。
     elasticsearch_jvm_gc_collectors_young_collection_time_in_millis_rate:
       name: 年轻代 GC 每秒耗时
       desc: GC 效率监控指标，反映 GC 操作的耗时情况；该值持续偏高表示 GC 占用大量 CPU 资源，会对业务性能造成影响
@@ -32,8 +32,8 @@ monitor_object_metric:
       name: 未合并删除文档数
       desc: 节点上已标记删除但尚未段合并回收的文档数；堆积过大会增加查询开销
     elasticsearch_process_cpu_percent:
-      name: 进程 CPU 使用率
-      desc: 进程计算负载指标，反映进程的 CPU 负载情况；高负载会导致集群的读写性能下降
+      name: 进程 CPU 占用率
+      desc: Elasticsearch 进程当前 CPU 占用；按逻辑核累计，多核主机上可超过 100%。为采集时刻瞬时值，持续偏高会导致读写性能下降。
     elasticsearch_process_open_file_descriptors:
       name: 打开文件描述符数
       desc: 文件资源监控指标，反映文件描述符的使用情况；当使用量接近系统上限时，会影响分片的可用性

@@ -1306,6 +1306,34 @@ function renderCredentialFields({
             <InputRow label={t('Collection.azureTask.subscriptionId', '订阅 ID')}>
               <Input value={item.subscription_id} onChange={(event) => updateItem(index, { subscription_id: event.target.value })} />
             </InputRow>
+            {item.resource_group !== undefined && (
+              <InputRow label={t('Collection.azureLocalTask.resourceGroup', '资源组')}>
+                <Input value={item.resource_group} onChange={(event) => updateItem(index, { resource_group: event.target.value })} />
+              </InputRow>
+            )}
+            {item.cluster_name !== undefined && (
+              <InputRow label={t('Collection.azureLocalTask.clusterName', '集群名称')}>
+                <Input value={item.cluster_name} onChange={(event) => updateItem(index, { cluster_name: event.target.value })} />
+              </InputRow>
+            )}
+            {item.azure_cloud !== undefined && (
+              <InputRow label={t('Collection.azureLocalTask.cloud', '云环境')}>
+                <Select
+                  value={item.azure_cloud}
+                  options={[
+                    { label: 'AzureCloud', value: 'AzureCloud' },
+                    { label: 'AzureChinaCloud', value: 'AzureChinaCloud' },
+                    { label: 'AzureUSGovernment', value: 'AzureUSGovernment' },
+                  ]}
+                  onChange={(azure_cloud) => updateItem(index, { azure_cloud })}
+                />
+              </InputRow>
+            )}
+            {item.resource_uri !== undefined && (
+              <InputRow label={t('Collection.azureLocalTask.resourceUri', '集群资源路径')} required={false}>
+                <Input value={item.resource_uri} onChange={(event) => updateItem(index, { resource_uri: event.target.value })} />
+              </InputRow>
+            )}
           </>
         )}
         {item.user_domain_name !== undefined && (
@@ -1360,7 +1388,7 @@ function renderCredentialFields({
             onChange={(port) => updateItem(index, { port: port ?? undefined })}
           />
         </InputRow>}
-        {collectModelId !== 'azure' && <InputRow label={t('Collection.influxdbTask.verifyTls', '校验证书')}>
+        {collectModelId !== 'azure' && collectModelId !== 'azurelocal_cmdb' && <InputRow label={t('Collection.influxdbTask.verifyTls', '校验证书')}>
           <Switch
             disabled={collectModelId === 'smartx'}
             checked={collectModelId === 'smartx' || item.verify_tls !== false}

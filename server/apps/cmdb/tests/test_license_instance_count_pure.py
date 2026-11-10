@@ -3,11 +3,7 @@
 import pytest
 
 from apps.cmdb.constants.constants import INSTANCE
-from apps.cmdb.constants.license_catalog import (
-    CMDB_LICENSE_MODEL_IDS,
-    CMDB_LICENSE_OS_MODEL_ID,
-    CMDB_LICENSE_VM_MODEL_IDS,
-)
+from apps.cmdb.constants.license_catalog import CMDB_LICENSE_MODEL_IDS, CMDB_LICENSE_OS_MODEL_ID, CMDB_LICENSE_VM_MODEL_IDS
 from apps.cmdb.services.instance import InstanceManage
 
 EXPECTED_CMDB_LICENSE_MODEL_IDS = frozenset(
@@ -22,6 +18,8 @@ EXPECTED_CMDB_LICENSE_MODEL_IDS = frozenset(
         "hwcloud_ecs",
         "aws_ec2",
         "azure_vm",
+        "azurelocal_node",
+        "azurelocal_vm",
         "fusioninsight_host",
         "fusioncompute_host",
         "fusioncompute_vm",
@@ -58,6 +56,7 @@ EXPECTED_CMDB_LICENSE_VM_MODEL_IDS = frozenset(
         "hwcloud_ecs",
         "aws_ec2",
         "azure_vm",
+        "azurelocal_vm",
         "fusioncompute_vm",
         "h3c_cas_vm",
         "nutanixhci_vm",

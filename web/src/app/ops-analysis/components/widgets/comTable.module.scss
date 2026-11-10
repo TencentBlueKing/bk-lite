@@ -1,3 +1,71 @@
+.opsTableScroll {
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+
+  > :global([class*="customTable"]) {
+    display: flex;
+    flex-direction: column;
+    height: 100% !important;
+    min-height: 0;
+    max-height: 100%;
+  }
+
+  > :global([class*="customTable"]) > :global(.ant-table-wrapper) {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  > :global([class*="customTable"]) > :global(.ant-table-wrapper) :global(.ant-spin-nested-loading),
+  > :global([class*="customTable"]) > :global(.ant-table-wrapper) :global(.ant-spin-container),
+  > :global([class*="customTable"]) > :global(.ant-table-wrapper) :global(.ant-table),
+  > :global([class*="customTable"]) > :global(.ant-table-wrapper) :global(.ant-table-container) {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-height: 0;
+    height: 100%;
+  }
+
+  > :global([class*="customTable"]) > :global(.ant-table-wrapper) :global(.ant-table-header) {
+    flex: 0 0 auto;
+  }
+
+  // 表体已经到顶仍继续上滚时，Chrome 会把容器里高出滚动口的 table
+  // 算进 document.scrollHeight，整页竖条闪一下。卡片高度并不变。
+  // translateZ(0) 让这个容器成为包含块，那段溢出不再计入文档。
+  > :global([class*="customTable"]) > :global(.ant-table-wrapper) :global(.ant-table-container) {
+    transform: translateZ(0);
+  }
+
+  // 只锁纵向。overflow 简写会盖过 CustomTable 的 noHorizontalScroll，
+  // 纵条占位使列宽总和略大于 clientWidth 时就会露出一条假横条。
+  > :global([class*="customTable"]) > :global(.ant-table-wrapper) :global(.ant-table-body),
+  > :global([class*="customTable"]) > :global(.ant-table-wrapper) :global(.ant-table-content) {
+    flex: 1 1 auto;
+    min-height: 0;
+    height: auto !important;
+    max-height: none !important;
+    overflow-y: auto !important;
+  }
+
+  // hidden 仍允许脚本把 scrollLeft 拨过纵条占位。clip 才让未超宽的表停在 0。
+  > :global([class*="customTable"][class*="noHorizontalScroll"]) :global(.ant-table-body),
+  > :global([class*="customTable"][class*="noHorizontalScroll"]) :global(.ant-table-content) {
+    overflow-x: clip !important;
+  }
+
+  > :global([class*="customTable"]) > :global(.absolute.right-0.bottom-0) {
+    position: static !important;
+    flex: 0 0 auto;
+    width: 100%;
+    justify-content: flex-end;
+  }
+}
+
 .screenDarkRoot {
   color: var(--ops-screen-table-text);
 }
@@ -38,11 +106,22 @@
     flex: 0 0 auto;
   }
 
-  > :global([class*="customTable"]) > :global(.ant-table-wrapper) :global(.ant-table-body) {
+  > :global([class*="customTable"]) > :global(.ant-table-wrapper) :global(.ant-table-container) {
+    transform: translateZ(0);
+  }
+
+  > :global([class*="customTable"]) > :global(.ant-table-wrapper) :global(.ant-table-body),
+  > :global([class*="customTable"]) > :global(.ant-table-wrapper) :global(.ant-table-content) {
     flex: 1 1 auto;
     min-height: 0;
+    height: auto !important;
     max-height: none !important;
-    overflow: auto !important;
+    overflow-y: auto !important;
+  }
+
+  > :global([class*="customTable"][class*="noHorizontalScroll"]) :global(.ant-table-body),
+  > :global([class*="customTable"][class*="noHorizontalScroll"]) :global(.ant-table-content) {
+    overflow-x: clip !important;
   }
 
   > :global([class*="customTable"]) > :global(.absolute.right-0.bottom-0) {

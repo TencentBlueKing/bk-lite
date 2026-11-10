@@ -14,8 +14,8 @@ monitor_object_metric:
       name: Waiting Requests
       desc: Number of requests waiting for scheduler capacity.
     vllm:kv_cache_usage_perc_gauge:
-      name: KV Cache Usage
-      desc: Fraction of used KV cache blocks (0–1).
+      name: KV Cache Occupancy
+      desc: Share of KV cache capacity currently in use. The range is 0–1, where 1 means fully occupied. Set alert thresholds on the 0–1 scale, not 0–100.
     vllm:prompt_tokens_total_counter_rate:
       name: Prefill Token Rate
       desc: Prompt (prefill) token processing rate over the last 5 minutes.

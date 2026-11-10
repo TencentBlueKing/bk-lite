@@ -45,6 +45,7 @@ def test_collect_update_success_writes_no_change_instance_log(monkeypatch):
     assert record["after_data"] == new_instance
     assert record["model_object"] == OPERATOR_INSTANCE
     assert record["message"] == "自动采集核实实例，无字段变化. 任务:接口采集 模型:host 实例:h1"
+    assert record["content_hash"]
 
 
 def test_collect_delete_success_writes_delete_instance_log(monkeypatch):

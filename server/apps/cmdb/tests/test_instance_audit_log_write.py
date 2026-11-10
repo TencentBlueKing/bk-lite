@@ -99,6 +99,8 @@ def test_collect_writes_add_update_verify_and_delete_logs():
     assert rows[1].message == "自动采集更新实例. 任务:交换机接口采集 模型:host 实例:h1"
     assert rows[2].type == UPDATE_INST
     assert rows[2].message == "自动采集核实实例，无字段变化. 任务:交换机接口采集 模型:interface 实例:eth0"
+    assert rows[2].content_hash
+    assert not rows[1].content_hash
     assert rows[4].type == DELETE_INST
     assert rows[4].message == "自动采集删除实例. 任务:交换机接口采集 模型:pc_software 实例:old-sw"
     for row in rows.values():
@@ -106,6 +108,121 @@ def test_collect_writes_add_update_verify_and_delete_logs():
         assert row.scenario == COLLECT_AUTOMATION_CHANGE
         assert row.model_object == OPERATOR_INSTANCE
         assert row.label == INSTANCE
+
+
+def test_repeated_verify_refreshes_time_and_does_not_mirror():
+    from apps.cmdb.models.operation import ChangeRecordMirrorOutbox
+
+    verified = {"_id": 2, "model_id": "interface", "inst_name": "eth0", "speed": "1G"}
+    payload = {
+        "add": {"success": []},
+        "update": {"success": [{"inst_info": {**verified, "collect_time": "first"}}]},
+        "delete": {"success": []},
+    }
+    write_collect_instance_change_records(SimpleNamespace(task_name="交换机接口采集", old_data=[verified]), payload)
+    first = ChangeRecord.objects.get(inst_id=2)
+    ChangeRecord.objects.filter(pk=first.pk).update(created_at=first.created_at.replace(year=2020))
+    first.refresh_from_db()
+
+    payload["update"]["success"][0]["inst_info"]["collect_time"] = "second"
+    write_collect_instance_change_records(SimpleNamespace(task_name="交换机接口采集", old_data=[verified]), payload)
+
+    assert ChangeRecord.objects.filter(inst_id=2).count() == 1
+    refreshed = ChangeRecord.objects.get(inst_id=2)
+    assert refreshed.pk == first.pk
+    assert refreshed.created_at > first.created_at
+    assert refreshed.content_hash == first.content_hash
+    assert ChangeRecordMirrorOutbox.objects.count() == 0
+
+
+def test_vm_repeat_pull_does_not_duplicate_verify_or_platform_log():
+    """周期拉取 VM：关联把实例送进更新，但字段没变时不新增日志，也不推到日志平台。"""
+    from apps.cmdb.collection.common import Management
+    from apps.cmdb.models.operation import ChangeRecordMirrorOutbox
+    from apps.cmdb.services.change_record_mirror import ChangeRecordMirrorService
+    from apps.system_mgmt.models.operation_log import OperationLog
+    from apps.system_mgmt.nats_api import save_operation_logs
+
+    old = {
+        "_id": 101,
+        "model_id": "vmware_vm",
+        "inst_name": "vm-a",
+        "cpu": 2,
+        "memory": 4,
+        "collect_time": "2026-11-06T10:00:00",
+        "collect_task": "vm-task",
+        "auto_collect": True,
+    }
+    pulled = {key: value for key, value in old.items() if key != "_id"}
+    pulled["collect_time"] = "2026-11-06T10:05:00"
+    pulled["assos"] = [{"model_asst_id": "vmware_vm_run_vmware_esxi", "inst_name": "esxi-1"}]
+    assert Management.has_business_changes(old, pulled) is True
+
+    stored = {**old, "collect_time": pulled["collect_time"]}
+    _apply_vm_update(old, stored)
+    verify = ChangeRecord.objects.get(inst_id=101)
+    assert verify.message.startswith("自动采集核实实例，无字段变化")
+    assert verify.content_hash
+    assert ChangeRecordMirrorOutbox.objects.count() == 0
+
+    heartbeat = {**old, "_id": 102, "inst_name": "vm-b", "collect_time": "2026-11-06T10:05:00"}
+    assert Management.has_business_changes({**old, "_id": 102, "inst_name": "vm-b"}, heartbeat) is False
+    _apply_vm_update({**old, "_id": 102, "inst_name": "vm-b"}, heartbeat, heartbeat=True)
+    assert not ChangeRecord.objects.filter(inst_id=102).exists()
+
+    ChangeRecord.objects.filter(pk=verify.pk).update(created_at=verify.created_at.replace(year=2020))
+    verify.refresh_from_db()
+    again = {**stored, "collect_time": "2026-11-06T10:10:00"}
+    _apply_vm_update(stored, again)
+    assert ChangeRecord.objects.filter(inst_id=101).count() == 1
+    refreshed = ChangeRecord.objects.get(inst_id=101)
+    assert refreshed.pk == verify.pk
+    assert refreshed.created_at > verify.created_at
+    assert refreshed.content_hash == verify.content_hash
+    assert ChangeRecordMirrorOutbox.objects.count() == 0
+
+    changed = {**again, "cpu": 4, "collect_time": "2026-11-06T10:15:00"}
+    _apply_vm_update(again, changed)
+    assert ChangeRecord.objects.filter(inst_id=101).count() == 2
+    assert ChangeRecord.objects.filter(inst_id=101, message__startswith="自动采集更新实例").count() == 1
+    [outbox] = list(ChangeRecordMirrorOutbox.objects.all())
+    payloads = list(outbox.payloads)
+    assert len(payloads) == 1
+    assert "无字段变化" not in payloads[0]["summary"]
+
+    assert ChangeRecordMirrorService.consume(outbox.event_id, owner_token="worker-vm") is True
+    replay = save_operation_logs(logs=payloads)
+    assert replay["result"] is True
+    assert replay["duplicates"] == 1
+    logs = OperationLog.objects.filter(app="cmdb", target_id="101")
+    assert logs.count() == 1
+    assert logs.get().summary.startswith("自动采集更新实例")
+
+    unchanged_after_edit = {**changed, "collect_time": "2026-11-06T10:20:00"}
+    _apply_vm_update(changed, unchanged_after_edit)
+    later = {**unchanged_after_edit, "collect_time": "2026-11-06T10:25:00"}
+    _apply_vm_update(unchanged_after_edit, later)
+    assert ChangeRecord.objects.filter(inst_id=101).count() == 3
+    assert ChangeRecordMirrorOutbox.objects.count() == 1
+    assert OperationLog.objects.filter(app="cmdb", target_id="101").count() == 1
+
+
+def _apply_vm_update(old, stored, *, heartbeat=False):
+    from apps.cmdb.collection.common import Management
+
+    item = {"inst_info": stored}
+    if heartbeat:
+        item["heartbeat"] = True
+    management = SimpleNamespace(model_id="vmware_vm", task_name="VMware虚拟机采集", old_data=[old])
+    management._persist_collected_tag_options = lambda result: None
+    Management._after_instances_applied(
+        management,
+        {
+            "add": {"success": [], "failed": []},
+            "update": {"success": [item], "failed": []},
+            "delete": {"success": [], "failed": []},
+        },
+    )
 
 
 def test_collect_omits_blank_task_and_falls_back_to_ip_or_id():

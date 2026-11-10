@@ -120,11 +120,12 @@ function credentialFor(form: keyof typeof components, entry: Entry): CredentialP
   if (entry.model_id === 'mssql') result.database = 'app';
   if (entry.model_id === 'iris') result.namespace = 'APP';
   if (entry.model_id === 'couchbase') result.bucket = 'sample';
-  if (entry.model_id === 'azure') Object.assign(result, { tenant_id: 'tenant-test', subscription_id: 'subscription-test' });
+  if (entry.model_id === 'azure' || entry.model_id === 'azurelocal_cmdb') Object.assign(result, { tenant_id: 'tenant-test', subscription_id: 'subscription-test' });
+  if (entry.model_id === 'azurelocal_cmdb') Object.assign(result, { resource_group: 'rg-hci', cluster_name: 'hci-lab', azure_cloud: 'AzureCloud', resource_uri: '' });
   if (entry.model_id === 'openstack') Object.assign(result, { user_domain_name: 'Internal', project_id: 'project-test' });
   if (entry.model_id === 'nacos') result.scheme = 'https';
   if (entry.model_id === 'smartx') Object.assign(result, { source: 'LDAP', verify_tls: true });
-  if (entry.model_id === 'azure') { delete result.port; delete result.verify_tls; }
+  if (entry.model_id === 'azure' || entry.model_id === 'azurelocal_cmdb') { delete result.port; delete result.verify_tls; }
   if (entry.model_id === 'manageone') Object.assign(result, { region: 'region-1', api_version: '8.2.0' });
   if (entry.model_id === 'fusioncompute') result.user_type = '1';
   return result;
