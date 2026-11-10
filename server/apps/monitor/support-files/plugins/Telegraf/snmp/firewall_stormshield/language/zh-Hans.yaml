@@ -88,7 +88,7 @@ monitor_object_metric:
       desc: 该指标报告 Stormshield 防火墙各处理器核的 CPU 使用率（HOST-RESOURCES hrProcessorLoad，每核 0-100%）。持续高 CPU 可能意味着流量检测负载过重、攻击活动或控制平面瓶颈。
     device_memory_usage:
       name: 内存使用率
-      desc: 该指标报告 Stormshield 防火墙真实内存使用率，按 (memTotalReal - memAvailReal) / memTotalReal 计算。内存压力过高时可能拖慢会话处理性能。
+      desc: 该指标报告 Stormshield 防火墙真实内存使用率。内存压力过高时可能拖慢会话处理性能。
     device_memory_total:
       name: 内存总容量
       desc: 该指标报告 Stormshield 防火墙的物理内存总容量（UCD-SNMP-MIB memTotalReal，原始单位 KB，已换算为字节）。

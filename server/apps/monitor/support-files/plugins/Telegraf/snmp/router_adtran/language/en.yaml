@@ -56,9 +56,7 @@ monitor_object_metric:
         as a top-level field+.0.
     device_memory_usage:
       name: Memory Usage
-      desc: This metric reports Adtran AOS memory utilization, derived as (adGenAOSMemPool
-        - adGenAOSHeapFree) / adGenAOSMemPool * 100. Sustained high usage may indicate
-        memory pressure or leaks.
+      desc: This metric reports Adtran AOS memory utilization, from adGenAOSMemPool and adGenAOSHeapFree. Sustained high usage may indicate memory pressure or leaks.
     interface_ifHCInOctets:
       name: Interface Incoming Traffic Rate (HC)
       desc: This metric indicates the average rate of bytes received over the past

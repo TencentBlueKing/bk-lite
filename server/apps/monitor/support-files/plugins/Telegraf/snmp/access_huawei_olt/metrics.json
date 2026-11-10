@@ -181,7 +181,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric indicates the uptime of the device since the last restart."
+      "description": "This metric indicates the uptime of the device since the last restart, derived from IF-MIB sysUpTime."
     }
   ]
 }

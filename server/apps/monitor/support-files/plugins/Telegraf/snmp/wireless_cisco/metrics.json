@@ -31,7 +31,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric indicates the uptime of the wireless controller since the last restart. Monitoring uptime helps administrators understand device stability and identify unexpected reboots."
+      "description": "This metric indicates the uptime of the wireless controller since the last restart, derived from sysUpTime. Monitoring uptime helps administrators understand device stability and identify unexpected reboots."
     },
     {
       "metric_group": "Wireless",
@@ -57,7 +57,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Total controller memory in bytes. AireOS uses agentTotalMemory (KBytes × 1024); Catalyst 9800 derives total from CISCO-PROCESS-MIB CPU-wide used plus free memory (KBytes × 1024)."
+      "description": "Total controller memory in bytes. AireOS uses agentTotalMemory (KBytes × 1024)."
     },
     {
       "metric_group": "Wireless",

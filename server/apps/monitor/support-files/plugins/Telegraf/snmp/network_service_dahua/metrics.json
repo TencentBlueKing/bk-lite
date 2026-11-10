@@ -104,7 +104,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Device uptime since the last restart."
+      "description": "Device uptime since the last restart, derived from sysUpTime."
     }
   ]
 }
