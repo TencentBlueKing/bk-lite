@@ -360,12 +360,10 @@ class InstanceConfigService:
                 raw_content = config[content_key]
                 config["content"] = ConfigFormat.toml_to_dict(raw_content)
                 from apps.monitor.utils.disk_fstype_filters import expose_disk_fstype_filters_for_edit
-                from apps.monitor.utils.nginx_vts import expose_nginx_vts_for_edit
                 from apps.monitor.utils.snmp_ifmib_capability import is_interface_filter_capable_plugin
 
                 # 磁盘 fstype 过滤在 starlark.constants；表单只绑 content.config，需投影回显。
                 config["content"] = expose_disk_fstype_filters_for_edit(config["content"])
-                config["content"] = expose_nginx_vts_for_edit(config["content"])
                 if (config_obj.collect_type or "").startswith("snmp") and is_interface_filter_capable_plugin(
                     getattr(config_obj, "monitor_plugin", None)
                 ):
@@ -1349,7 +1347,6 @@ class InstanceConfigService:
                     child_interval,
                 )
             from apps.monitor.utils.disk_fstype_filters import sync_disk_fstype_filters_on_writeback
-            from apps.monitor.utils.nginx_vts import sync_nginx_vts_on_writeback
 
             existing_rows = NodeMgmt().get_child_configs_by_ids([child_info["id"]])
             if existing_rows and existing_rows[0].get("content"):
@@ -1358,8 +1355,6 @@ class InstanceConfigService:
 
             # 表单把 disk_*_fstypes 写在 content.config；Telegraf inputs.* 不认，必须挪回 starlark。
             child_info["content"] = sync_disk_fstype_filters_on_writeback(child_info.get("content"))
-            # VTS 开关不能留在 inputs.nginx，否则 Telegraf 拒载，stub_status 一并停采。
-            child_info["content"] = sync_nginx_vts_on_writeback(child_info.get("content"))
             if str(config_obj.collect_type or "").casefold() == "script":
                 from apps.monitor.services.custom_script_plugin import prepare_script_child_content_for_save
 
