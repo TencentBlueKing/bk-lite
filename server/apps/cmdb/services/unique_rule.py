@@ -713,8 +713,38 @@ def _log_invalid_unique_rule_payload(model_id: str, operator: str, field_ids: li
     )
 
 
+def _iter_model_instances(model_id: str, fields: list[str]):
+    from apps.cmdb.constants.constants import INSTANCE
+    from apps.cmdb.graph.drivers.graph_client import GraphClient
+
+    cursor = None
+    while True:
+        params = [{"field": "model_id", "type": "str=", "value": model_id}]
+        if cursor is not None:
+            params.append({"field": "id", "type": "id>", "value": cursor})
+        with GraphClient() as ag:
+            page, _ = ag.query_entity(
+                INSTANCE,
+                params,
+                page={"skip": 0, "limit": 500},
+                fields=fields,
+                include_count=False,
+            )
+        if not page:
+            break
+        yield from page
+        if len(page) < 500:
+            break
+        next_cursor = page[-1]["_id"]
+        if cursor is not None and next_cursor <= cursor:
+            break
+        cursor = next_cursor
+
+
 def _raise_conflict_if_rules_invalid(model_id: str, operator: str, action: str, rules: list[ModelUniqueRule]) -> None:
-    conflicts = validate_unique_rules_against_existing_instances(model_id, rules, _query_model_instances(model_id))
+    ctx = build_unique_rule_context(model_id)
+    fields = sorted({"_id", "inst_uuid"} | {field_id for rule in rules for field_id in rule.field_ids})
+    conflicts = _collect_existing_instance_conflicts(rules, _iter_model_instances(model_id, fields), ctx.attrs_by_id)
     if not conflicts:
         return
 

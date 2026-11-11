@@ -186,8 +186,14 @@ export const useInstanceApi = () => {
     post(`/cmdb/api/instance/${modelId}/show_field/settings/`, fields);
 
   // 获取关联实例列表
-  const getAssociationInstanceList = (modelId: string, instUuid: string) =>
-    get(`/cmdb/api/instance/association_instance_list/${modelId}/${instUuid}/`);
+  const getAssociationInstanceList = (
+    modelId: string,
+    instUuid: string,
+    params?: Record<string, string | number>,
+  ) =>
+    get(`/cmdb/api/instance/association_instance_list/${modelId}/${instUuid}/`, {
+      params,
+    });
 
   // 拓扑搜索更多实例
   const topoSearchMore = (params: {

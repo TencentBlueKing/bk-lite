@@ -15,7 +15,6 @@ import {
   conditionValueText,
   operatorNeedsValue,
   operatorsFor,
-  otherModelId,
   summarizeCondition,
   type AdvancedCondition,
   type AdvancedLogic,
@@ -152,7 +151,7 @@ export default function AdvancedFilterDrawer({
   const userConfigs = useAssetDataStore((state) => state.user_configs);
   const updateUserConfig = useAssetDataStore((state) => state.updateUserConfig);
   const queryList = useAssetDataStore((state) => state.query_list);
-  const edges = useModelEdges(modelId, open);
+  const edges = useModelEdges(modelId, open && drafts.length > 0);
   const [logic, setLogic] = useState<AdvancedLogic>('AND');
   const [drafts, setDrafts] = useState<DraftCondition[]>([]);
   const [attrsByModel, setAttrsByModel] = useState<Record<string, AttrFieldType[]>>({});
@@ -538,6 +537,27 @@ function ValueEditor({
   );
 }
 
+const modelEdgeRequests = new Map<string, Promise<AssocEdge[]>>();
+
+function loadModelEdges(
+  getModelAssociations: (modelId: string) => Promise<unknown>,
+  modelId: string,
+) {
+  const pending = modelEdgeRequests.get(modelId);
+  if (pending) return pending;
+  const request = Promise.resolve(getModelAssociations(modelId)).then((rows) => (rows || []) as AssocEdge[]);
+  modelEdgeRequests.set(modelId, request);
+  return request;
+}
+
+export function invalidateModelEdgeCache(modelId?: string) {
+  if (!modelId) {
+    modelEdgeRequests.clear();
+    return;
+  }
+  modelEdgeRequests.delete(modelId);
+}
+
 function useModelEdges(modelId: string, active: boolean) {
   const { getModelAssociations } = useModelApi();
   const [edges, setEdges] = useState<Record<string, AssocEdge[]>>({});
@@ -545,13 +565,8 @@ function useModelEdges(modelId: string, active: boolean) {
     if (!active || !modelId) return undefined;
     let cancelled = false;
     (async () => {
-      const first = ((await getModelAssociations(modelId)) || []) as AssocEdge[];
-      const map: Record<string, AssocEdge[]> = { [modelId]: first };
-      const nextIds = [...new Set(first.map((edge) => otherModelId(edge, modelId)).filter(Boolean))] as string[];
-      await Promise.all(nextIds.map(async (id) => {
-        map[id] = ((await getModelAssociations(id)) || []) as AssocEdge[];
-      }));
-      if (!cancelled) setEdges(map);
+      const first = ((await loadModelEdges(getModelAssociations, modelId)) || []) as AssocEdge[];
+      if (!cancelled) setEdges((current) => ({ ...current, [modelId]: first }));
     })().catch(() => {
       if (!cancelled) setEdges({});
     });

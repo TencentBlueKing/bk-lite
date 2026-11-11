@@ -9,7 +9,7 @@ from datetime import timedelta
 from uuid import uuid4
 
 from celery import shared_task
-from celery.exceptions import SoftTimeLimitExceeded
+from celery.exceptions import Retry, SoftTimeLimitExceeded
 from celery_singleton import Singleton
 from django.db.models import Q
 from django.utils.dateparse import parse_datetime
@@ -136,6 +136,32 @@ _NODE_MGMT_RAW_METRIC_TYPES = {
     "host_info_gauge": "host",
     "host_proc_usage_info_gauge": "process",
 }
+
+
+_COLLECT_FORMAT_MAX_ROWS = 50000
+_COLLECT_FORMAT_MAX_BYTES = 64 * 1024 * 1024
+
+
+def _clip_collect_format_data(format_data):
+    """明细最多 5 万行、序列化后最多 64MB。调用方先记下裁剪前的数量。"""
+    if not isinstance(format_data, dict):
+        return format_data
+    clipped = dict(format_data)
+    for key, value in list(clipped.items()):
+        if not isinstance(value, list):
+            continue
+        retained = []
+        size = 0
+        for row in value:
+            if len(retained) >= _COLLECT_FORMAT_MAX_ROWS:
+                break
+            encoded = len(json.dumps(row, ensure_ascii=False, default=str).encode())
+            if size + encoded > _COLLECT_FORMAT_MAX_BYTES:
+                break
+            retained.append(row)
+            size += encoded
+        clipped[key] = retained
+    return clipped
 
 
 def _bound_node_mgmt_raw_data(instance: CollectModels, format_data):
@@ -472,7 +498,7 @@ def recover_first_collection_runs():
     return FirstCollectionOrchestrator.recover()
 
 
-@shared_task(bind=True)
+@shared_task(bind=True, soft_time_limit=240, time_limit=270)
 def sync_collect_task(  # noqa: C901
     self,
     instance_id,
@@ -692,9 +718,10 @@ def sync_collect_task(  # noqa: C901
             snapshot_complete=resolved_snapshot_complete,
             prev_synced_round=prev_synced_round,
         )
+        stored_format_data = _clip_collect_format_data(format_data)
         update_values = {
             "collect_data": result,
-            "format_data": format_data,
+            "format_data": stored_format_data,
             "collect_digest": collect_digest,
             "exec_status": instance.exec_status,
             "updated_at": now(),
@@ -838,6 +865,8 @@ def sync_collect_tasks_gate():
     from apps.cmdb.services.node_mgmt_sync_service import NodeMgmtSyncService
     from apps.cmdb.services.topology_replay_service import maybe_replay_topology_from_gate
 
+    from apps.cmdb.services.scale_cursor import clear_scale_cursor, load_scale_cursor, save_scale_cursor
+
     logger.info("[RoundGate] 开始扫描采集对账守门")
     purged = _purge_legacy_vm_sync_beats()
     scanned = 0
@@ -847,7 +876,9 @@ def sync_collect_tasks_gate():
     retention_limited = 0
     vm_query_failed = 0
     topology_query_failed = 0
-    after_id = 0
+    after_id = int(load_scale_cursor("collect-gate").get("after_id") or 0)
+    dispatch_cap = int(os.getenv("CMDB_GATE_DISPATCH_CAP", "100"))
+    capped = False
     while True:
         page = list(
             CollectModels._default_manager.filter(id__gt=after_id)
@@ -870,6 +901,7 @@ def sync_collect_tasks_gate():
             )[:GATE_PAGE_SIZE]
         )
         if not page:
+            clear_scale_cursor("collect-gate")
             break
         completed_rounds = {}
         topology_rounds = {}
@@ -985,8 +1017,14 @@ def sync_collect_tasks_gate():
                         rows=len(topology_instance_ids),
                     )
 
+        last_handled = after_id
         for row in page:
+            if dispatched >= dispatch_cap:
+                save_scale_cursor("collect-gate", {"after_id": last_handled})
+                capped = True
+                break
             scanned += 1
+            last_handled = row["id"]
             task_id = row["id"]
             if row["exec_status"] == CollectRunStatusType.RUNNING:
                 skipped += 1
@@ -1054,8 +1092,12 @@ def sync_collect_tasks_gate():
                 )
                 if topo_status == "played":
                     topo_replayed += 1
+        if capped:
+            break
         after_id = page[-1]["id"]
+        save_scale_cursor("collect-gate", {"after_id": after_id})
         if len(page) < GATE_PAGE_SIZE:
+            clear_scale_cursor("collect-gate")
             break
     logger.info(
         "[RoundGate] 守门扫描完成 scanned=%s dispatched=%s skipped=%s "
@@ -1145,6 +1187,8 @@ def sync_cmdb_display_fields_task(self, data: dict):
                 try:
                     result = DisplayFieldSynchronizer.sync_all(refresh_display_sync_data(data))
                     logger.info(f"[SyncCMDBDisplayFields] 同步完成, 组织更新实例数: {result.get('organizations', 0)}, " f"用户更新实例数: {result.get('users', 0)}")
+                    if result.get("done") is False:
+                        raise self.retry(countdown=self.default_retry_delay)
                     return {
                         "result": True,
                         "message": "CMDB display fields synced successfully",
@@ -1152,6 +1196,8 @@ def sync_cmdb_display_fields_task(self, data: dict):
                     }
                 except SoftTimeLimitExceeded:
                     # 不在剩余硬时限内重扫全量；先退出 context 释放租约，再交给 Celery 有界重试。
+                    raise
+                except Retry:
                     raise
                 except Exception as exc:
                     if attempt == 0:
@@ -1274,7 +1320,7 @@ def daily_data_cleanup_task() -> dict:
 class _AutoRelationPendingSingleton(Singleton):
     """周期排空待重算名单。锁有过期时间，避免任务卡在队列里时后续调度被永久丢掉。"""
 
-    lock_expiry = 30 * 60
+    lock_expiry = 5 * 60
     raise_on_duplicate = False
 
 
