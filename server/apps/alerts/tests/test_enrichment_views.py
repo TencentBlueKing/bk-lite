@@ -390,3 +390,27 @@ def test_cmdb_context_fields_empty_when_cmdb_unavailable(superuser_client):
         resp = superuser_client.get("/api/v1/alerts/api/enrichment/cmdb_context_fields/")
     assert resp.status_code == 200
     assert resp.data == {"groups": []}
+
+
+@pytest.mark.django_db
+def test_cmdb_context_fields_empty_when_cmdb_rpc_times_out(superuser_client, caplog):
+    import logging
+    from unittest.mock import patch
+
+    from apps.rpc.exceptions import RpcTimeoutError
+
+    with patch("apps.alerts.views.enrichment.CMDB") as mock_cmdb:
+        mock_cmdb.return_value.search_model_attrs.side_effect = RpcTimeoutError("bklite", "search_model_attrs", 3)
+        with caplog.at_level(logging.WARNING, logger="alert"):
+            resp = superuser_client.get("/api/v1/alerts/api/enrichment/cmdb_context_fields/")
+    assert resp.status_code == 200
+    assert resp.data == {"groups": []}
+    warning = next(record for record in caplog.records if record.name == "alert" and record.levelno == logging.WARNING)
+    assert warning.msg == "[Enrichment] 读取 CMDB 模型字段失败 model_id=%s"
+    assert warning.args == ("application",)
+    assert warning.getMessage() == "[Enrichment] 读取 CMDB 模型字段失败 model_id=application"
+    assert warning.exc_info is not None
+    assert warning.exc_info[0] is RpcTimeoutError
+    assert not any(record.levelno >= logging.ERROR for record in caplog.records)
+    assert mock_cmdb.return_value.search_model_attrs.call_count == 1
+    assert mock_cmdb.return_value.search_model_attrs.call_args.kwargs["_timeout"] == 3

@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import React from 'react';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -72,6 +74,16 @@ describe('告警丰富出参投影', () => {
     expect(screen.getAllByDisplayValue('owner')).toHaveLength(2);
   });
 
+  it('拉取 CMDB 字段目录失败时不弹全局错误', () => {
+    const apiSource = readFileSync(
+      resolve(__dirname, '../../../../../api/settings.ts'),
+      'utf8'
+    );
+    expect(apiSource).toMatch(
+      /getCmdbContextFields[\s\S]*?suppressErrorNotification:\s*true/
+    );
+  });
+
   it('编辑未重命名的带点字段时右侧带来源名', async () => {
     render(
       <OperateModal
@@ -84,8 +96,26 @@ describe('告警丰富出参投影', () => {
       />
     );
     await waitFor(() =>
-      expect(screen.getAllByDisplayValue('application.inst_name')).toHaveLength(2)
+      expect(screen.getByDisplayValue('应用名称 (application.inst_name)')).toBeTruthy()
     );
+    expect(screen.getByDisplayValue('application.inst_name')).toBeTruthy();
+  });
+
+  it('下拉中的来源在左侧展示模型字段名', async () => {
+    render(
+      <OperateModal
+        open
+        onClose={() => undefined}
+        currentRow={{
+          ...baseRow,
+          output_projection: [{ source: 'system.operator' }],
+        }}
+      />
+    );
+    await waitFor(() =>
+      expect(screen.getByDisplayValue('运维人员 (system.operator)')).toBeTruthy()
+    );
+    expect(screen.getByDisplayValue('system.operator')).toBeTruthy();
   });
 
   it('已改过的重命名不会被来源字段覆盖', async () => {
@@ -100,8 +130,8 @@ describe('告警丰富出参投影', () => {
       />
     );
     await waitFor(() => expect(screen.getByDisplayValue('app_name')).toBeTruthy());
-    expect(screen.getByDisplayValue('application.inst_name')).toBeTruthy();
-    expect(screen.queryAllByDisplayValue('application.inst_name')).toHaveLength(1);
+    expect(screen.getByDisplayValue('应用名称 (application.inst_name)')).toBeTruthy();
+    expect(screen.queryByDisplayValue('application.inst_name')).toBeNull();
   });
 
   it('改左侧来源且右侧仍跟随时会同步重命名', async () => {
@@ -110,9 +140,10 @@ describe('告警丰富出参投影', () => {
     fireEvent.change(screen.getAllByDisplayValue('owner')[0], {
       target: { value: 'application.inst_name' },
     });
-    await waitFor(() =>
-      expect(screen.getAllByDisplayValue('application.inst_name')).toHaveLength(2)
-    );
+    await waitFor(() => {
+      expect(screen.getByDisplayValue('应用名称 (application.inst_name)')).toBeTruthy();
+      expect(screen.getByDisplayValue('application.inst_name')).toBeTruthy();
+    });
   });
 
   it('责任人来源下拉使用出参投影的重命名字段', async () => {

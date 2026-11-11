@@ -236,16 +236,29 @@ def build_snmp_trap_source_config():
 
 
 # 内置丰富规则预设
+BUILTIN_CMDB_OUTPUT_PROJECTION = [
+    {"source": "ip_addr"},
+    {"source": "operator"},
+    {"source": "bak_operator"},
+    {"source": "os_type"},
+    {"source": "cloud"},
+    {"source": "application.inst_name"},
+    {"source": "application.app_id"},
+    {"source": "system.operator"},
+]
+BUILTIN_CMDB_OWNER_FIELDS = ["operator", "bak_operator", "system.operator"]
+
 BUILTIN_ENRICHMENT_RULES = [
     {
         "name": "内置-CMDB资源丰富",
         "preset_key": "builtin_cmdb_resource",
         "provider_type": "cmdb",
         "input_binding": {"model_id": "resource_type", "inst_uuid": "cmdb_id"},
-        "provider_config": {"query_timeout_seconds": 3},
-        "output_projection": [
-            {"source": "owner"},
-        ],
+        "provider_config": {
+            "query_timeout_seconds": 3,
+            "owner_fields": list(BUILTIN_CMDB_OWNER_FIELDS),
+        },
+        "output_projection": [dict(item) for item in BUILTIN_CMDB_OUTPUT_PROJECTION],
         "on_multiple": "first",
         "namespace": "cmdb",
         "match_rules": [],
