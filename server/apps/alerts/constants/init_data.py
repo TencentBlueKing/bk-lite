@@ -245,7 +245,6 @@ BUILTIN_ENRICHMENT_RULES = [
         "provider_config": {"query_timeout_seconds": 3},
         "output_projection": [
             {"source": "owner"},
-            {"source": "business_system"},
         ],
         "on_multiple": "first",
         "namespace": "cmdb",

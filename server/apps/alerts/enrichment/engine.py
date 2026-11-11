@@ -16,6 +16,7 @@ from apps.alerts.enrichment.merge import merge_namespace_payload
 from apps.alerts.enrichment.owners import apply_enriched_owners, remember_owner_ids
 from apps.alerts.enrichment.projection import project
 from apps.alerts.enrichment.providers.base import FetchBatchResult, get_provider
+from apps.alerts.enrichment.providers.cmdb import ci_context_scopes_from_projection
 from apps.alerts.enrichment.result import EnrichmentBatchResult, EnrichmentSummary, RuleOutcome
 from apps.alerts.enrichment.telemetry import EnrichmentTelemetry
 from apps.core.logger import alert_logger as logger
@@ -275,6 +276,7 @@ class EnrichmentEngine:
         all_keys = list(key_to_events)
         cache_config = dict(rule.provider_config or {})
         cache_config["_authorized_team_ids"] = effective_team
+        cache_config["_ci_context_scopes"] = ci_context_scopes_from_projection(getattr(rule, "output_projection", None))
         records_by_key: Dict = {}
         status_by_key: Dict = {}
         miss_keys = []

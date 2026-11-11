@@ -12,7 +12,7 @@ const api = vi.hoisted(() => ({
   getChannelList: vi.fn(), getNotificationTemplateOptions: vi.fn(),
   createAssignment: vi.fn(), updateAssignment: vi.fn(), createShield: vi.fn(), updateShield: vi.fn(),
   getAlertSourceOptions: vi.fn(), getPushSourceIdOptions: vi.fn(),
-  createCorrelationRule: vi.fn(), updateCorrelationRule: vi.fn(), createEnrichment: vi.fn(), updateEnrichment: vi.fn(),
+  createCorrelationRule: vi.fn(), updateCorrelationRule: vi.fn(), createEnrichment: vi.fn(), updateEnrichment: vi.fn(), getCmdbContextFields: vi.fn(),
   createActionRule: vi.fn(), updateActionRule: vi.fn(), getActionJobScripts: vi.fn(), getActionJobScript: vi.fn(),
 }));
 vi.mock('@/app/alarm/api/settings', () => ({ useSettingApi: () => api }));
@@ -44,6 +44,7 @@ beforeEach(() => {
   api.getPushSourceIdOptions.mockResolvedValue([]);
   api.getActionJobScripts.mockResolvedValue([{id:1,name:'脚本'}]);
   api.getActionJobScript.mockResolvedValue({id:1,params:[]});
+  api.getCmdbContextFields.mockResolvedValue({ groups: [] });
   for (const save of [api.createCorrelationRule,api.updateCorrelationRule,api.createEnrichment,api.updateEnrichment,api.createActionRule,api.updateActionRule]) save.mockResolvedValue({});
   for (const save of [api.createAssignment, api.updateAssignment, api.createShield, api.updateShield]) save.mockResolvedValue({});
 });

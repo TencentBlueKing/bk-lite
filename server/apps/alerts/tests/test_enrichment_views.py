@@ -299,3 +299,36 @@ def test_event_serializer_exposes_enrichment_readable(authenticated_user):
     with patch("apps.core.utils.serializers.get_permission_rules", return_value=empty_rules):
         data = EventModelSerializer(event, context={"request": request}).data
     assert data.get("enrichment") == {"cmdb": {"owner": "alice"}}
+
+
+@pytest.mark.django_db
+def test_cmdb_context_fields_lists_application_and_system_attrs(superuser_client):
+    from unittest.mock import patch
+
+    attrs = {
+        "application": [{"attr_id": "inst_name", "attr_name": "应用名称", "attr_type": "str"}],
+        "system": [{"attr_id": "operator", "attr_name": "运维人员", "attr_type": "user"}],
+    }
+
+    def search_model_attrs(**kwargs):
+        params = kwargs.get("params") or kwargs
+        return attrs[params["model_id"]]
+
+    with patch("apps.alerts.views.enrichment.CMDB") as mock_cmdb:
+        mock_cmdb.return_value.search_model_attrs.side_effect = search_model_attrs
+        resp = superuser_client.get("/api/v1/alerts/api/enrichment/cmdb_context_fields/")
+    assert resp.status_code == 200, resp.content
+    groups = {item["model_id"]: item for item in resp.data["groups"]}
+    assert groups["application"]["fields"][0]["source"] == "application.inst_name"
+    assert groups["system"]["fields"][0]["source"] == "system.operator"
+
+
+@pytest.mark.django_db
+def test_cmdb_context_fields_empty_when_cmdb_unavailable(superuser_client):
+    from unittest.mock import patch
+
+    with patch("apps.alerts.views.enrichment.CMDB") as mock_cmdb:
+        mock_cmdb.side_effect = RuntimeError("cmdb down")
+        resp = superuser_client.get("/api/v1/alerts/api/enrichment/cmdb_context_fields/")
+    assert resp.status_code == 200
+    assert resp.data == {"groups": []}
