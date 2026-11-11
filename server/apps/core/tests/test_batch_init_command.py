@@ -61,6 +61,14 @@ def _stub_critical_schema_gate(monkeypatch):
     monkeypatch.delenv("BK_INIT_ADMIN_PASSWORD_MIGRATE_EXISTING", raising=False)
 
 
+def test_opspilot_init_seeds_workbench_skill_templates(calls):
+    _make_command()._init_opspilot()
+    names = [name for name, _args, _kwargs in calls]
+    assert "init_llm" not in names
+    assert names[:2] == ["init_skill_templates", "parse_tools_yml"]
+    assert "init_chatflow" in names
+
+
 class TestHandleDispatch:
     def test_critical_schema_is_verified_before_preload_and_dispatch(self, monkeypatch):
         events = []
