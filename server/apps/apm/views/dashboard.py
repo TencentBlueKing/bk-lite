@@ -29,6 +29,7 @@ class ApmDashboardViewSet(viewsets.ViewSet):
                     "top_error_rate": {"status": "empty"},
                     "top_p95": {"status": "empty"},
                     "releases": {"status": "empty", "data": {"items": []}},
+                    "aggregate_notice": None,
                 }
             )
         serializer = ApmDashboardQuerySerializer(data=request.query_params, context={"request": request})

@@ -447,13 +447,17 @@ def test_service_red_batch_skips_services_outside_the_tenant(apm_api_client, mon
     assert response.status_code == 200
     assert response.data["items"][0]["ok"] is True
     assert response.data["items"][0]["data_state"] == "no_data"
+    assert response.data["items"][0]["entry_truncated"] is False
     assert response.data["items"][1]["ok"] is False
     assert response.data["items"][1]["code"] == "not_found"
-    assert len(client.instant) == 1
-    expression = client.instant[0][0]
-    assert 'service_name="checkout"' in expression
-    assert "secret" not in expression
-    assert "billing" not in expression
+    assert "entry_truncated" not in response.data["items"][1]
+    assert len(client.instant) == 7
+    assert client.ranges == []
+    expressions = "\n".join(expression for expression, _moment in client.instant)
+    assert "shop/checkout" in expressions
+    assert 'service_name!=""' in expressions
+    assert "secret" not in expressions
+    assert "billing" not in expressions
 
 
 def test_service_red_api_degrades_when_the_aggregate_store_fails(apm_api_client, monkeypatch):
@@ -880,6 +884,177 @@ def test_grouped_read_failure_raises_the_same_store_errors():
     with pytest.raises(TelemetryQueryTooLarge, match="^聚合库响应超过大小上限$"):
         too_large.grouped_red([("shop", "checkout")], START, END)
     assert traces.queries == []
+
+
+def test_service_red_batch_marks_entry_truncation_for_the_authorized_service(apm_api_client, monkeypatch):
+    own = _discover("shop", "shop", "checkout", "pod-a", 10)
+    hidden = _discover("billing", "billing", "secret", "pod-b", 20)
+    AggregateMetricOrigin.objects.create(product="apm", started_at=datetime(2026, 1, 1, tzinfo=UTC))
+
+    def respond(expression):
+        if "otel_metric_overflow" in expression:
+            return [{"metric": {"job": "shop/checkout"}, "value": [1, "2"]}]
+        if "apm_calls_total" in expression and "status_code" not in expression:
+            return [
+                {
+                    "metric": {
+                        "service_namespace": "shop",
+                        "service_name": "checkout",
+                        "deployment_environment": "production",
+                    },
+                    "value": [1, "8"],
+                }
+            ]
+        return []
+
+    client = _Client(respond)
+    _install_reader(monkeypatch, client)
+    _install_inline_batch(monkeypatch)
+
+    response = apm_api_client.post(
+        "/api/v1/apm/services/metrics/batch/",
+        {
+            **_window_params(),
+            "include_breakdown": False,
+            "targets": [
+                {"service_id": str(own.id), "environment": "production"},
+                {"service_id": str(hidden.id), "environment": "production"},
+            ],
+        },
+        format="json",
+    )
+
+    expressions = "\n".join(expression for expression, _moment in client.instant)
+    assert response.status_code == 200
+    assert response.data["items"][0]["ok"] is True
+    assert response.data["items"][0]["entry_truncated"] is True
+    assert response.data["items"][0]["request_count"] == 8
+    assert response.data["items"][1]["code"] == "not_found"
+    assert "entry_truncated" not in response.data["items"][1]
+    assert "shop/checkout" in expressions
+    assert "secret" not in expressions
+    assert "billing" not in expressions
+
+
+def test_service_red_batch_reports_the_same_telemetry_error_for_each_visible_service(apm_api_client, monkeypatch):
+    own = _discover("shop", "shop", "checkout", "pod-a", 10)
+    other = _discover("pay-app", "shop", "payment", "pod-c", 10)
+    hidden = _discover("billing", "billing", "secret", "pod-b", 20)
+    AggregateMetricOrigin.objects.create(product="apm", started_at=datetime(2026, 1, 1, tzinfo=UTC))
+    client = _Client(error=AggregateMetricsUnavailable("http"))
+    _install_reader(monkeypatch, client)
+
+    response = apm_api_client.post(
+        "/api/v1/apm/services/metrics/batch/",
+        {
+            **_window_params(),
+            "include_breakdown": False,
+            "targets": [
+                {"service_id": str(own.id), "environment": "production"},
+                {"service_id": str(other.id), "environment": "production"},
+                {"service_id": str(hidden.id), "environment": "production"},
+            ],
+        },
+        format="json",
+    )
+
+    assert response.status_code == 200
+    for item in response.data["items"][:2]:
+        assert item["ok"] is False
+        assert item["code"] == "telemetry_unavailable"
+        assert item["detail"] == "聚合库查询不可用"
+        assert "entry_truncated" not in item
+    assert response.data["items"][2]["code"] == "not_found"
+    assert client.instant
+
+
+def test_service_red_batch_keeps_per_target_queries_when_breakdown_is_requested(apm_api_client, monkeypatch):
+    own = _discover("shop", "shop", "checkout", "pod-a", 10)
+    AggregateMetricOrigin.objects.create(product="apm", started_at=datetime(2026, 1, 1, tzinfo=UTC))
+    client = _Client(lambda expression: [])
+    _install_reader(monkeypatch, client)
+    _install_inline_batch(monkeypatch)
+
+    response = apm_api_client.post(
+        "/api/v1/apm/services/metrics/batch/",
+        {
+            **_window_params(),
+            "include_breakdown": True,
+            "targets": [{"service_id": str(own.id), "environment": "production"}],
+        },
+        format="json",
+    )
+
+    expressions = [expression for expression, _moment in client.instant]
+    assert response.status_code == 200
+    assert response.data["items"][0]["ok"] is True
+    assert response.data["items"][0]["entry_truncated"] is False
+    assert any('service_name="checkout"' in expression for expression in expressions)
+    assert all("job=~" not in expression for expression in expressions)
+
+
+def test_service_red_batch_rejects_a_blank_service_name_before_grouped_read(apm_api_client, monkeypatch):
+    own = _discover("shop", "shop", "checkout", "pod-a", 10)
+    own.__class__.objects.filter(pk=own.pk).update(name=" ")
+    AggregateMetricOrigin.objects.create(product="apm", started_at=datetime(2026, 1, 1, tzinfo=UTC))
+    client = _Client(lambda expression: [])
+    _install_reader(monkeypatch, client)
+
+    response = apm_api_client.post(
+        "/api/v1/apm/services/metrics/batch/",
+        {
+            **_window_params(),
+            "include_breakdown": False,
+            "targets": [{"service_id": str(own.id), "environment": "production"}],
+        },
+        format="json",
+    )
+
+    assert response.status_code == 200
+    assert response.data["items"][0]["ok"] is False
+    assert response.data["items"][0]["code"] == "invalid_query"
+    assert response.data["items"][0]["detail"] == "service.name 不能为空"
+    assert client.instant == []
+
+
+def test_service_red_batch_resolves_blank_and_unknown_environments_to_the_same_label(apm_api_client, monkeypatch):
+    own = _discover("shop", "shop", "checkout", "pod-a", 10)
+    AggregateMetricOrigin.objects.create(product="apm", started_at=datetime(2026, 1, 1, tzinfo=UTC))
+
+    def respond(expression):
+        if "apm_calls_total" in expression and "status_code" not in expression and "otel_metric_overflow" not in expression:
+            return [
+                {
+                    "metric": {
+                        "service_namespace": "shop",
+                        "service_name": "checkout",
+                        "deployment_environment": "unknown",
+                    },
+                    "value": [1, "12"],
+                }
+            ]
+        return []
+
+    client = _Client(respond)
+    _install_reader(monkeypatch, client)
+
+    response = apm_api_client.post(
+        "/api/v1/apm/services/metrics/batch/",
+        {
+            **_window_params(),
+            "include_breakdown": False,
+            "targets": [
+                {"service_id": str(own.id), "environment": ""},
+                {"service_id": str(own.id), "environment": "unknown"},
+            ],
+        },
+        format="json",
+    )
+
+    assert response.status_code == 200
+    assert [item["request_count"] for item in response.data["items"]] == [12, 12]
+    assert [item["environment"] for item in response.data["items"]] == ["", "unknown"]
+    assert [item["entry_truncated"] for item in response.data["items"]] == [False, False]
 
 
 def test_grouped_read_does_not_return_a_partial_result_when_a_later_query_fails():
