@@ -1,3 +1,5 @@
+import time
+
 from apps.cmdb.constants.constants import INSTANCE, INSTANCE_ASSOCIATION
 from apps.cmdb.graph.drivers.graph_client import GraphClient
 from apps.cmdb.models.auto_relation_pending import AutoRelationPending
@@ -23,6 +25,8 @@ INSTANCE_BATCH_RECONCILE_TASK = "apps.cmdb.tasks.celery_tasks.reconcile_instance
 RULE_FULL_SYNC_TASK = "apps.cmdb.tasks.celery_tasks.full_sync_auto_association_rule_task"
 INCOMING_FULL_SYNC_TASK = "apps.cmdb.tasks.celery_tasks.sync_incoming_auto_association_task"
 AUTO_RELATION_BATCH_SIZE = 500
+AUTO_RELATION_SOURCE_BUDGET = 2000
+AUTO_RELATION_ROUND_SECONDS = 60
 
 
 def schedule_instance_auto_relation_reconcile(instance_ids: list[int] | tuple[int, ...] | set[int] | None) -> None:
@@ -130,18 +134,18 @@ def _drain_instance_rows() -> tuple[int, list[str]]:
 
 
 def _drain_rule_rows(extra_rule_ids: list[str]) -> int:
-    claimed = _claim_pending("model_asst_id")
-    rule_ids = []
-    for model_asst_id in [*extra_rule_ids, *claimed]:
-        if model_asst_id and model_asst_id not in rule_ids:
-            rule_ids.append(model_asst_id)
+    schedule_rule_auto_relation_full_sync(extra_rule_ids)
+    rule_ids = list(
+        AutoRelationPending.objects.filter(model_asst_id__isnull=False).order_by("id").values_list("model_asst_id", flat=True)
+    )
     done: list[str] = []
     try:
         for model_asst_id in rule_ids:
-            AutoRelationRuleReconcileService.full_sync_rule(model_asst_id)
-            done.append(model_asst_id)
+            summary = AutoRelationRuleReconcileService.full_sync_rule(model_asst_id)
+            if summary.get("done", True):
+                AutoRelationPending.objects.filter(model_asst_id=model_asst_id).delete()
+                done.append(model_asst_id)
     except Exception:
-        _restore_pending_rules([model_asst_id for model_asst_id in rule_ids if model_asst_id not in done])
         raise
     return len(done)
 
@@ -616,6 +620,53 @@ class AutoRelationRuleReconcileService:
 
         return summary
 
+    @staticmethod
+    def _pending_rule_row(model_asst_id: str):
+        try:
+            return AutoRelationPending.objects.filter(model_asst_id=model_asst_id).first()
+        except Exception:
+            return None
+
+    @staticmethod
+    def _query_instance_page(model_id: str, fields: list[str], cursor: int) -> list[dict]:
+        conditions = [{"field": "model_id", "type": "str=", "value": model_id}]
+        if cursor:
+            conditions.append({"field": "id", "type": "id>", "value": cursor})
+        with GraphClient() as ag:
+            page, _ = ag.query_entity(
+                INSTANCE,
+                conditions,
+                page={"skip": 0, "limit": AUTO_RELATION_BATCH_SIZE},
+                fields=fields,
+                include_count=False,
+            )
+        return page
+
+    @classmethod
+    def _targets_for_page(cls, association, rules, page, dst_fields, exact_only):
+        if exact_only and rules and rules[0].match_pairs:
+            pair = rules[0].match_pairs[0]
+            values = []
+            for source in page:
+                value = source.get(pair.src_field_id)
+                if value not in (None, "") and value not in values:
+                    values.append(value)
+            if not values:
+                return TargetSnapshot([])
+            with GraphClient() as ag:
+                rows, _ = ag.query_entity(
+                    INSTANCE,
+                    [
+                        {"field": "model_id", "type": "str=", "value": association["dst_model_id"]},
+                        {"field": pair.dst_field_id, "type": "str[]", "value": values},
+                    ],
+                    page={"skip": 0, "limit": AUTO_RELATION_BATCH_SIZE},
+                    fields=dst_fields,
+                    include_count=False,
+                )
+            return TargetSnapshot(rows)
+        return TargetSnapshot(cls._query_instances_by_model(association["dst_model_id"], fields=dst_fields))
+
     @classmethod
     def full_sync_rule(cls, model_asst_id: str) -> dict:
         association = model_association_info_search(model_asst_id)
@@ -636,38 +687,68 @@ class AutoRelationRuleReconcileService:
             summary["deleted"] = cls.cleanup_auto_edges_by_rule(model_asst_id)
             return summary
 
-        target_instances = TargetSnapshot(
-            cls._query_instances_by_model(association["dst_model_id"], fields=cls._matching_fields(enabled_rules, "dst"))
-        )
-        source_instances = cls._query_instances_by_model(association["src_model_id"], fields=cls._matching_fields(enabled_rules, "src"))
         summary["mode"] = "full_sync"
-        summary["source_instances"] = len(source_instances)
-        # 快照已完整返回。先跨源删掉本规则下不再匹配的自动边，再创建。
-        # 若按源边删边建，1:n/1:1 换源时新边会撞上还没删的旧自动边，本轮被记成冲突后不再补建。
-        for source_instance in source_instances:
-            item_summary = cls.reconcile_source_instance(
-                source_instance,
-                association,
-                enabled_rules,
-                target_instances=target_instances,
-                phase="delete",
-            )
-            summary["deleted"] += item_summary["deleted"]
-
+        exact_only = all(
+            pair.matching_rule == AUTO_RELATION_MATCHING_RULE_EXACT for rule in enabled_rules for pair in rule.match_pairs
+        )
+        row = cls._pending_rule_row(model_asst_id)
+        phase = row.phase if row is not None else "delete"
+        cursor = int(row.cursor_id or 0) if row is not None else 0
+        started = time.monotonic()
+        processed = 0
+        src_fields = cls._matching_fields(enabled_rules, "src")
+        dst_fields = cls._matching_fields(enabled_rules, "dst")
         target_claims: dict[int, int] | None = {} if cls._get_mapping(association) in {"1:n", "1:1"} else None
-        for source_instance in source_instances:
-            item_summary = cls.reconcile_source_instance(
-                source_instance,
-                association,
-                enabled_rules,
-                target_instances=target_instances,
-                target_claims=target_claims,
-                phase="create",
-            )
-            summary["created"] += item_summary["created"]
-            summary["skipped"] += item_summary["skipped"]
-            summary["conflicts"] += item_summary["conflicts"]
-
+        done = False
+        while processed < AUTO_RELATION_SOURCE_BUDGET and time.monotonic() - started < AUTO_RELATION_ROUND_SECONDS:
+            page = cls._query_instance_page(association["src_model_id"], src_fields, cursor)
+            if not page:
+                if phase == "delete":
+                    phase = "create"
+                    cursor = 0
+                    if row is not None:
+                        row.phase = phase
+                        row.cursor_id = 0
+                        row.save(update_fields=["phase", "cursor_id"])
+                    continue
+                done = True
+                break
+            targets = cls._targets_for_page(association, enabled_rules, page, dst_fields, exact_only)
+            for source_instance in page:
+                item_summary = cls.reconcile_source_instance(
+                    source_instance,
+                    association,
+                    enabled_rules,
+                    target_instances=targets,
+                    target_claims=None if phase == "delete" else target_claims,
+                    phase=phase,
+                )
+                summary["deleted"] += item_summary["deleted"]
+                summary["created"] += item_summary["created"]
+                summary["skipped"] += item_summary["skipped"]
+                summary["conflicts"] += item_summary["conflicts"]
+            processed += len(page)
+            summary["source_instances"] += len(page)
+            cursor = int(page[-1]["_id"])
+            if row is not None:
+                row.cursor_id = cursor
+                row.phase = phase
+                row.save(update_fields=["phase", "cursor_id"])
+            if len(page) < AUTO_RELATION_BATCH_SIZE:
+                if phase == "delete":
+                    phase = "create"
+                    cursor = 0
+                    if row is not None:
+                        row.phase = phase
+                        row.cursor_id = 0
+                        row.save(update_fields=["phase", "cursor_id"])
+                    continue
+                done = True
+                break
+        summary["done"] = done
+        summary["phase"] = phase
+        if done and row is not None:
+            row.delete()
         return summary
 
     @classmethod

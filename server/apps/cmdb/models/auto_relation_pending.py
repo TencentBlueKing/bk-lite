@@ -7,6 +7,8 @@ class AutoRelationPending(models.Model):
 
     instance_id = models.BigIntegerField(null=True, unique=True)
     model_asst_id = models.CharField(max_length=255, null=True, unique=True)
+    cursor_id = models.BigIntegerField(default=0)
+    phase = models.CharField(max_length=16, default="delete")
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

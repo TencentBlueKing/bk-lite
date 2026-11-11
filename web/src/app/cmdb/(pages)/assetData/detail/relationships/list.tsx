@@ -63,6 +63,8 @@ const AssoList = forwardRef<AssoListRef, AssoListProps>(
       selectedAssoId,
       fetchAssoInstances,
       setSelectedAssoId,
+      loadAssociationPage,
+      dropAssociationPage,
     } = useRelationships();
 
     const visibleAssociations = useMemo(
@@ -241,9 +243,7 @@ const AssoList = forwardRef<AssoListRef, AssoListProps>(
     };
 
     const getModelAttrList = async (item: any, config: any, preloadedAttrs?: any[]) => {
-      const instanceCount = Array.isArray(item.inst_list)
-        ? item.inst_list.length
-        : 0;
+      const instanceCount = Number(item.inst_count ?? (Array.isArray(item.inst_list) ? item.inst_list.length : 0));
       const collapseItem = {
         key: item.model_asst_id,
         label: showConnectName(item, config),
@@ -383,6 +383,15 @@ const AssoList = forwardRef<AssoListRef, AssoListProps>(
 
     const handleCollapseChange = (keys: any) => {
       const nextKeys = Array.isArray(keys) ? keys : [keys].filter(Boolean);
+      const opened = nextKeys.filter((key) => !activeKey.includes(key));
+      const closed = activeKey.filter((key) => !nextKeys.includes(key));
+      opened.forEach((key) => {
+        const group = (assoInstances || []).find((item) => item.model_asst_id === key);
+        if (group && Number(group.inst_count) > 0 && !(group.inst_list || []).length) {
+          loadAssociationPage(key).catch((error) => console.error(error));
+        }
+      });
+      closed.forEach((key) => dropAssociationPage(key));
       setActiveKey(nextKeys);
     };
 
