@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Optional
 from urllib.parse import parse_qs, urlparse
 
 import json_repair
+from asgiref.sync import sync_to_async
 from deepagents import create_deep_agent
 from langchain_core.callbacks import adispatch_custom_event, dispatch_custom_event
 from langchain_core.messages import AIMessage, AIMessageChunk, BaseMessage, HumanMessage, SystemMessage, ToolMessage
@@ -23,12 +24,6 @@ from apps.core.logger import opspilot_logger as logger
 from apps.core.logger import safe_exception_info
 from apps.opspilot.metis.llm.agent.stage_timing import elapsed_ms, log_stage_timing, monotonic_ms
 from apps.opspilot.metis.llm.chain.approval_tools import ApprovalToolsMixin, _build_approval_tool, _build_choice_tool  # noqa: E402,F401
-from apps.opspilot.metis.llm.tools.conversation_skill_package_tool import build_prepare_conversation_skill_package_tool
-from apps.opspilot.services.conversation_skill_package import (
-    ALLOWED_ENTRIES,
-    AUTHORING_EXTRA_KEY,
-    PREPARE_CONVERSATION_SKILL_PACKAGE_TOOL,
-)
 from apps.opspilot.metis.llm.chain.deepagent_assembly import (  # noqa: E402,F401
     DeepAgentAssemblyMixin,
     _append_planned_execution_step_prompt,
@@ -132,9 +127,11 @@ from apps.opspilot.metis.llm.middleware.tool_runtime import (
     PLANNED_EXECUTION_HIDDEN_DEEPAGENT_TOOLS,
     is_progressive_tools_enabled,
 )
+from apps.opspilot.metis.llm.tools.conversation_skill_package_tool import build_prepare_conversation_skill_package_tool
 
 # from apps.opspilot.metis.llm.rag.naive_rag.pgvector.pgvector_rag import PgvectorRag  # 暂时禁用,master 合并后文件被删除
 from apps.opspilot.metis.llm.tools.tools_loader import ToolsLoader
+from apps.opspilot.services.conversation_skill_package import ALLOWED_ENTRIES, AUTHORING_EXTRA_KEY, PREPARE_CONVERSATION_SKILL_PACKAGE_TOOL
 from apps.opspilot.services.job_output_text import model_visible_text
 from apps.opspilot.utils.pending_question import (
     KIND_K8S_REPAIR_MODE,
@@ -158,6 +155,7 @@ from apps.opspilot.services.ppt_master_runtime import (
     apply_ppt_continuation_packages,
     begin_ppt_run,
     current_ppt_run,
+    discard_ppt_run,
     inspect_ppt_run,
     packages_include_ppt_master,
     settle_ppt_export,
@@ -2640,7 +2638,10 @@ class ToolsNodes(
                     final_system_prompt += "\n需要人工审批的工具在无人值守时不可执行；如任务需要它们，请说明未执行原因。"
                 interrupt_on = None
             token_usage_accumulator = config["configurable"].get("token_usage_accumulator")
+            from apps.opspilot.services.python_sandbox.attachments import ATTACHMENT_README
 
+            python_sandbox = config["configurable"]["python_sandbox"]
+            attachments = config["configurable"].get("sandbox_has_attachments", False)
             planning_question = str(getattr(graph_request, "user_message", "") or getattr(graph_request, "graph_user_message", "") or "").strip()
             if not planning_question:
                 for message in reversed(original_messages):
@@ -2666,12 +2667,14 @@ class ToolsNodes(
 
             # 无业务工具、无技能包：跳过规划器与 DeepAgent 内置 FS/execute 工具，直接短 system 回答。
             # 用户本轮要求生成文件时除外，否则常驻附件进不了规划。
-            if self._should_use_lightweight_direct_reply(
-                registered_tools,
-                ["/skills/"] if has_skill_packages else [],
-            ) and not self._attachment_request_needs_planner(
-                registered_tools, planning_question, original_messages
-            ) and not self._skill_package_request_needs_planner(registered_tools, planning_question, original_messages):
+            if (
+                self._should_use_lightweight_direct_reply(
+                    registered_tools,
+                    ["/skills/"] if has_skill_packages else [],
+                )
+                and not self._attachment_request_needs_planner(registered_tools, planning_question, original_messages)
+                and not self._skill_package_request_needs_planner(registered_tools, planning_question, original_messages)
+            ):
                 light_system = self._build_lightweight_system_prompt(getattr(graph_request, "system_message_prompt", "") or "")
                 if additional_system_prompt:
                     light_system = f"{light_system}\n\n{additional_system_prompt}"
@@ -2685,14 +2688,23 @@ class ToolsNodes(
                     log_reason="tools=0, skills=0",
                 )
 
+            if attachments:
+                final_system_prompt += "\n" + ATTACHMENT_README
             # 紧急关闭：回退全量 Schema + 单次 DeepAgent 调用
             if not is_progressive_tools_enabled():
-                backend, skill_sources, sandbox_dir = self._build_skill_backend_and_sources(graph_request, packages=skill_packages)
+                backend, skill_sources, sandbox_dir = await asyncio.to_thread(
+                    self._build_skill_backend_and_sources, graph_request, packages=skill_packages, sandbox=python_sandbox
+                )
+                legacy_middleware = self._build_legacy_deep_agent_middleware(token_usage_accumulator, graph_request)
+                if python_sandbox is not None:
+                    from apps.opspilot.metis.llm.middleware.python_sandbox import PythonSandboxMiddleware
+
+                    legacy_middleware.append(PythonSandboxMiddleware(python_sandbox))
                 agent_kwargs = self._build_deep_agent_kwargs(
                     llm=llm,
                     registered_tools=registered_tools,
                     final_system_prompt=final_system_prompt,
-                    runtime_middleware=self._build_legacy_deep_agent_middleware(token_usage_accumulator, graph_request),
+                    runtime_middleware=legacy_middleware,
                     backend=backend,
                     skill_sources=skill_sources,
                     interrupt_on=interrupt_on,
@@ -2711,6 +2723,7 @@ class ToolsNodes(
                         "attachment_versioning": True,
                         "prior_attachment_filenames": prior_attachment_filenames,
                         "attachment_run_token": attachment_run_token,
+                        "python_sandbox": python_sandbox,
                     },
                 }
                 try:
@@ -2743,7 +2756,7 @@ class ToolsNodes(
                         return {"messages": [AIMessage(content=tool_graph_failure_plain_text(_await_exc))]}
                 finally:
                     if sandbox_dir:
-                        await self._publish_ppt_master_export(graph_request, prior_attachment_filenames, config)
+                        await self._publish_ppt_master_export(graph_request, prior_attachment_filenames, config, sandbox=python_sandbox)
                         self._cleanup_sandbox(sandbox_dir)
 
                 final_messages = result.get("messages", [])
@@ -2861,9 +2874,11 @@ class ToolsNodes(
 
             needs_skill_runtime = has_skill_packages and _plan_needs_skill_runtime(plan)
             if needs_skill_runtime:
-                backend, skill_sources, sandbox_dir = self._build_skill_backend_and_sources(graph_request, packages=skill_packages)
+                backend, skill_sources, sandbox_dir = await asyncio.to_thread(
+                    self._build_skill_backend_and_sources, graph_request, packages=skill_packages, sandbox=python_sandbox
+                )
 
-            skills_only_plan = bool(skill_sources) and self._plan_is_skills_only(plan)
+            skills_only_plan = bool(skill_sources) and self._plan_is_skills_only(plan) and not attachments
             active_tools = []
             always_visible, hidden_tools = self._build_planned_execution_tool_visibility(
                 skill_sources=skill_sources,
@@ -2889,6 +2904,10 @@ class ToolsNodes(
                 token_usage_accumulator=token_usage_accumulator,
                 ppt_authoring=ppt_authoring,
             )
+            if python_sandbox is not None:
+                from apps.opspilot.metis.llm.middleware.python_sandbox import PythonSandboxMiddleware
+
+                runtime_middleware.append(PythonSandboxMiddleware(python_sandbox))
             final_system_prompt = self._append_planned_execution_step_prompt(final_system_prompt)
             final_system_prompt += auto_instruction
 
@@ -2907,16 +2926,18 @@ class ToolsNodes(
 
             deep_agent = _build_deep_agent()
 
-            def _ensure_skill_runtime_for_plan(candidate_plan) -> None:
+            async def _ensure_skill_runtime_for_plan(candidate_plan) -> None:
                 """重规划若新挂上技能运行时，补物化沙箱并重建 DeepAgent。"""
                 nonlocal backend, skill_sources, sandbox_dir, deep_agent, always_visible, final_system_prompt
                 if not has_skill_packages or not _plan_needs_skill_runtime(candidate_plan):
                     return
                 if skill_sources:
                     return
-                backend, skill_sources, sandbox_dir = self._build_skill_backend_and_sources(graph_request, packages=skill_packages)
+                backend, skill_sources, sandbox_dir = await asyncio.to_thread(
+                    self._build_skill_backend_and_sources, graph_request, packages=skill_packages, sandbox=python_sandbox
+                )
                 if skill_sources:
-                    skills_only = self._plan_is_skills_only(candidate_plan) and not ppt_authoring
+                    skills_only = self._plan_is_skills_only(candidate_plan) and not ppt_authoring and not attachments
                     skill_guard.enabled = skills_only
                     if ppt_authoring:
                         always_visible |= set(PLANNED_EXECUTION_ALWAYS_VISIBLE_FS_TOOLS)
@@ -2932,8 +2953,10 @@ class ToolsNodes(
                         )
                     else:
                         always_visible |= set(PLANNED_EXECUTION_ALWAYS_VISIBLE_FS_TOOLS)
-                        always_visible.discard("execute")
-                        visibility_middleware._hidden_tools = frozenset(PLANNED_EXECUTION_HIDDEN_DEEPAGENT_TOOLS)
+                        always_visible.add("execute")
+                        visibility_middleware._hidden_tools = frozenset(
+                            name for name in PLANNED_EXECUTION_HIDDEN_DEEPAGENT_TOOLS if name != "execute"
+                        )
                     visibility_middleware._always_visible_tools = frozenset(always_visible)
                     # 技能运行时启用后切回完整 deepagent system（含技能说明）。
                     final_system_prompt = self._append_planned_execution_step_prompt(
@@ -2963,6 +2986,7 @@ class ToolsNodes(
                     "attachment_versioning": True,
                     "prior_attachment_filenames": prior_attachment_filenames,
                     "attachment_run_token": attachment_run_token,
+                    "python_sandbox": python_sandbox,
                 },
             }
 
@@ -3074,7 +3098,7 @@ class ToolsNodes(
                 require_formatted_report = False
                 self._set_hide_planned_step_text(graph_request, True)
                 ppt_run = current_ppt_run(graph_request) or (begin_ppt_run(graph_request) if ppt_authoring else None)
-                ppt_workspace_text = str(ppt_run) if ppt_run else ""
+                ppt_workspace_text = "/workspace/ppt-workspace" if ppt_run else ""
 
                 while pending_steps:
                     step = pending_steps.pop(0)
@@ -3104,7 +3128,8 @@ class ToolsNodes(
                             prior_type = str(prior_attachment_filenames[-1]).rsplit(".", 1)[-1].lower()
                         type_line = f"file_type 必须是 {prior_type}，禁止改成其他格式。" if prior_type else "修改已有文件时必须保持原格式，禁止把 pptx 改成 md 或 docx。"
                         step_guidance = (
-                            "\n【附件】本步调用一次 generate_attachment_file，content 写入用户要求的全部章节，一次写完。"
+                            "\n【附件】本步调用一次 generate_attachment_file；已在沙箱生成文件时用 sandbox_path 指定文件路径，"
+                            "否则在 content 中写入全部章节。"
                             f"{type_line}"
                             "正文字体由系统设为微软雅黑，不要在回复里说不支持字体，也不要让用户自己改。"
                             "禁止因为写到中途就结束，禁止让用户再说一句才生成完整文件。"
@@ -3128,6 +3153,10 @@ class ToolsNodes(
                             unattended=unattended,
                         )
                     step_guidance += auto_instruction
+                    if attachments:
+                        step_guidance += "\n" + ATTACHMENT_README
+                    if python_sandbox is not None and python_sandbox.files():
+                        step_guidance += "\n本任务 Python 沙箱中的工具结果文件：" + ", ".join(python_sandbox.files())
                     finish_rule = "只完成本步骤；取得足够证据后立即结束，不要处理后续步骤。"
                     if ppt_authoring:
                         finish_rule = "本步只有写出 svg_output 里的页面才算完成。禁止只回复大纲或说即将开始。写完就停止，平台会导出 pptx。"
@@ -3163,7 +3192,7 @@ class ToolsNodes(
                             thread_id=missing_params_thread_id,
                             conversation_messages=original_messages,
                         )
-                        _ensure_skill_runtime_for_plan(replacement)
+                        await _ensure_skill_runtime_for_plan(replacement)
                         pending_steps = merge_replanned_pending_steps(replacement.steps, leftover_steps)
                         completed_steps.append(
                             CompletedExecutionStep(
@@ -3429,7 +3458,7 @@ class ToolsNodes(
                             }
                             continue
                         if ppt_authoring and ppt_run is not None:
-                            exported, page_count = await asyncio.to_thread(inspect_ppt_run, ppt_run)
+                            exported, page_count = await asyncio.to_thread(inspect_ppt_run, ppt_run, sandbox=python_sandbox)
                             if exported:
                                 setattr(graph_request, "_ppt_export_ready", True)
                             elif page_count < 3 and ppt_write_nudged < 1:
@@ -3456,7 +3485,7 @@ class ToolsNodes(
                                     "messages": list(agent_state.get("messages") or []) + [_internal_message(nudge)],
                                 }
                                 continue
-                            export_status = "exported" if exported else await asyncio.to_thread(settle_ppt_export, ppt_run)
+                            export_status = "exported" if exported else await asyncio.to_thread(settle_ppt_export, ppt_run, sandbox=python_sandbox)
                             if export_status == "exported":
                                 setattr(graph_request, "_ppt_export_ready", True)
                             elif ppt_write_nudged < 2:
@@ -3601,7 +3630,11 @@ class ToolsNodes(
                                 step_payload = {
                                     **agent_state,
                                     "messages": list(agent_state.get("messages") or [])
-                                    + [_internal_message("本步还没有生成新文件。现在调用一次 generate_attachment_file，" "把修改后的完整文档写入 content。调用成功前不要说已经生成新版本。")],
+                                    + [
+                                        _internal_message(
+                                            "本步还没有生成新文件。现在调用一次 generate_attachment_file，" "已有沙箱文件时传 sandbox_path，否则把完整文档写入 content。调用成功前不要说已经生成新版本。"
+                                        )
+                                    ],
                                 }
                                 continue
                         if USE_SKILLS_TOOL_NAME in (step.tools or []) and not tools_invoked_in_step(step_messages):
@@ -3662,7 +3695,7 @@ class ToolsNodes(
                     result = {"messages": list(agent_state.get("messages") or [])}
                 elif ppt_authoring:
                     if sandbox_dir:
-                        await self._publish_ppt_master_export(graph_request, prior_attachment_filenames, config)
+                        await self._publish_ppt_master_export(graph_request, prior_attachment_filenames, config, sandbox=python_sandbox)
                     notice = str(getattr(graph_request, "_ppt_user_notice", "") or "")
                     if isinstance(getattr(graph_request, "_ppt_download_event", None), dict):
                         notice = "PPT 已导出，可以下载。"
@@ -3771,7 +3804,7 @@ class ToolsNodes(
                 # sandbox_dir 只在 _build_skill_backend_and_sources 成功返回时
                 # 才会被赋值,setup 阶段抛错时这个变量不存在,直接 finally 会 NameError。
                 if sandbox_dir:
-                    await self._publish_ppt_master_export(graph_request, prior_attachment_filenames, config)
+                    await self._publish_ppt_master_export(graph_request, prior_attachment_filenames, config, sandbox=python_sandbox)
                     self._cleanup_sandbox(sandbox_dir)
                 log_stage_timing(
                     "planned_run",
@@ -3842,9 +3875,32 @@ class ToolsNodes(
         _deep_impl = deep_wrapper_node
 
         async def _signaled_deep_wrapper(state: Dict[str, Any], config: RunnableConfig) -> Dict[str, Any]:
-            result = await _deep_impl(state, config)
-            await publish_node_finished(config)
-            return result
+            from apps.opspilot.services.python_sandbox.attachments import ATTACHMENT_GRANT_KEY, resolve_attachment_grant
+            from apps.opspilot.services.python_sandbox.runtime import PythonSandbox
+
+            graph_request = config["configurable"]["graph_request"]
+            extra = getattr(graph_request, "extra_config", None) or {}
+            grant = extra.get(ATTACHMENT_GRANT_KEY) if isinstance(extra, dict) else getattr(extra, ATTACHMENT_GRANT_KEY, None)
+            attachments = await sync_to_async(resolve_attachment_grant, thread_sensitive=True)(grant) if grant else []
+            sandbox = PythonSandbox(attachments=attachments)
+            config = {
+                **config,
+                "configurable": {**config.get("configurable", {}), "python_sandbox": sandbox, "sandbox_has_attachments": bool(attachments)},
+            }
+            try:
+                result = await _deep_impl(state, config)
+                await publish_node_finished(config)
+                return result
+            finally:
+                try:
+                    await asyncio.to_thread(sandbox.close)
+                except Exception as exc:
+                    logger.warning(
+                        "event=python_sandbox_cleanup_failed execution_id=%s failed_stage=cleanup error_type=%s",
+                        _bounded_log_field(getattr(graph_request, "thread_id", "") or "-"),
+                        type(exc).__name__,
+                    )
+                await asyncio.to_thread(discard_ppt_run, graph_request)
 
         graph_builder.add_node(deep_wrapper_name, _signaled_deep_wrapper)
         return deep_wrapper_name

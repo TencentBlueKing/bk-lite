@@ -102,6 +102,10 @@ ATTACHMENT_FILE_TYPE_CONFIG = {
         "extension": "md",
         "mime_type": "text/markdown",
     },
+    "html": {
+        "extension": "html",
+        "mime_type": "text/html",
+    },
     "pdf": {
         "extension": "pdf",
         "mime_type": "application/pdf",
@@ -278,7 +282,7 @@ def build_attachment_bytes(content: str, file_type: str, title: str = "") -> byt
     safe_content = content or ""
     safe_title = title or "Attachment"
 
-    if normalized_type in ("md", "txt", "text"):
+    if normalized_type in ("md", "txt", "text", "html"):
         return safe_content.encode("utf-8")
     if normalized_type == "pdf":
         return _build_pdf_bytes(safe_content, safe_title)

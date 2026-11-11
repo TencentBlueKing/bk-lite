@@ -24,7 +24,6 @@ from apps.opspilot.metis.llm.chain.token_utils import count_text_tokens
 from apps.opspilot.metis.llm.common.llm_client_factory import DEFAULT_CHAT_TEMPERATURE
 from apps.opspilot.models import ChatAttachment, LLMSkill, SkillChannel, SkillConversation, SkillConversationMessage
 from apps.opspilot.services.caller_identity import CALLER_IDENTITY_CONFIG_KEY, CallerIdentityError, capture_caller_identity
-from apps.opspilot.services.conversation_skill_package import AUTHORING_EXTRA_KEY, authoring_context
 from apps.opspilot.services.chat_attachment_service import (
     ChatAttachmentError,
     attachment_token_budget,
@@ -34,6 +33,7 @@ from apps.opspilot.services.chat_attachment_service import (
     load_sendable_attachments,
     normalize_attachment_ids,
 )
+from apps.opspilot.services.conversation_skill_package import AUTHORING_EXTRA_KEY, authoring_context
 from apps.opspilot.services.history_service import HistoryService
 from apps.opspilot.services.job_output_text import model_visible_text
 from apps.opspilot.services.ppt_master_runtime import remove_conversation_workspace
@@ -939,7 +939,7 @@ def list_skill_conversations_for_admin(
                 "title": (conv.title or "").strip() or "新会话",
                 "skill_id": conv.skill_id,
                 "channel_id": conv.channel_id,
-                "channel_type": channel.channel_type if channel else "workbench",
+                "channel_type": channel.channel_type if channel else ("workflow" if conv.session_id.startswith("workflow_") else "workbench"),
                 "channel_name": (channel.name if channel else "") or "",
                 "external_user_id": external_user_id,
                 "person_display": displays.get(external_user_id) or external_user_id,
@@ -1456,6 +1456,10 @@ def execute_skill_channel_im_sync(
     inject_skill_memory_prompt(params, skill, external_user_id, user_message)
     params["chat_history"] = _history_from_conversation(conversation, skill.conversation_window_size or 10)
     params["skill_session_id"] = conversation.session_id
+    from apps.opspilot.services.python_sandbox.attachments import ATTACHMENT_GRANT_KEY, issue_attachment_grant
+
+    params[ATTACHMENT_GRANT_KEY] = issue_attachment_grant(owner_key=external_user_id, team_id="", conversation=conversation)
+
     result = chat_service.chat(params)
     content = ""
     if isinstance(result, dict):
@@ -1531,6 +1535,14 @@ def stream_skill_channel_chat(
         per_file_cap=token_budget,
     )
     params["skill_session_id"] = conversation.session_id
+    from apps.opspilot.services.python_sandbox.attachments import ATTACHMENT_GRANT_KEY, issue_attachment_grant
+
+    params[ATTACHMENT_GRANT_KEY] = issue_attachment_grant(
+        owner_key=external_user_id,
+        team_id=str(get_current_team(request, "0")),
+        conversation=conversation,
+        attachments=attachments,
+    )
     focused_titles = _focused_titles_from_page_context(persist_text, page_context)
     params["chat_history"] = _history_for_focused_charts(params["chat_history"], focused_titles)
     params["user_message"] = inject_page_context(injected_message, page_context, mode="inline")

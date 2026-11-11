@@ -15,16 +15,11 @@ from apps.opspilot.metis.llm.agent.tool_execution_planner import (
 )
 from apps.opspilot.metis.llm.chain.entity import HIDE_PLANNED_STEP_TEXT_KEY
 from apps.opspilot.metis.llm.common.tool_failure import is_tool_result_failure
-from apps.opspilot.services.conversation_skill_package import (
-    PREPARE_CONVERSATION_SKILL_PACKAGE_TOOL,
-    skill_package_request_needs_planner,
-)
+from apps.opspilot.services.conversation_skill_package import PREPARE_CONVERSATION_SKILL_PACKAGE_TOOL, skill_package_request_needs_planner
 from apps.opspilot.services.ppt_master_runtime import PPT_AUTHORING_MIN_MODEL_CALLS, execution_guidance, is_ppt_master_package
 
 # HITL/选择卡、常驻附件和技能包成稿会进目录，但不算业务工具：无业务工具的寒暄仍走轻量直答。
-_LIGHTWEIGHT_NON_BUSINESS_TOOL_NAMES = frozenset(
-    {"request_user_choice", "generate_attachment_file", PREPARE_CONVERSATION_SKILL_PACKAGE_TOOL}
-)
+_LIGHTWEIGHT_NON_BUSINESS_TOOL_NAMES = frozenset({"request_user_choice", "generate_attachment_file", PREPARE_CONVERSATION_SKILL_PACKAGE_TOOL})
 
 # 步间正文上限。结构化关键字段单独保留，避免被正文或 400 字切片切掉。
 _STEP_SUMMARY_MAX_CHARS = 1200
@@ -754,7 +749,7 @@ class DeepAgentAssemblyMixin:
         # ppt 要读 SKILL.md、写页面再多次执行脚本，不能沿用「只留 execute、读文件即停」的查询技能模式。
         if skill_sources and (not skills_only_plan or ppt_authoring):
             always_visible |= set(PLANNED_EXECUTION_ALWAYS_VISIBLE_FS_TOOLS)
-        if skills_only_plan or ppt_authoring:
+        if skill_sources:
             hidden_tools.discard("execute")
             always_visible.add("execute")
         always_visible |= {
@@ -777,13 +772,13 @@ class DeepAgentAssemblyMixin:
         from apps.opspilot.metis.llm.agent.tool_execution_planner import planned_execution_compact_limits_for_request
         from apps.opspilot.metis.llm.common.token_usage import TokenUsageAccumulator
         from apps.opspilot.metis.llm.middleware.context_window import ContextWindowMiddleware
+        from apps.opspilot.metis.llm.middleware.conversation_skill_package import ConversationSkillPackageMiddleware
         from apps.opspilot.metis.llm.middleware.planned_execution_limits import (
             PlannedExecutionLimitMiddleware,
             resolve_planned_execution_run_model_call_limit,
             resolve_planned_execution_soft_budget_ratio,
             resolve_planned_execution_token_budget,
         )
-        from apps.opspilot.metis.llm.middleware.conversation_skill_package import ConversationSkillPackageMiddleware
         from apps.opspilot.metis.llm.middleware.terminal_user_choice import TerminalUserChoiceMiddleware
         from apps.opspilot.metis.llm.middleware.token_usage import TokenUsageTrackingMiddleware
         from apps.opspilot.metis.llm.middleware.tool_result_locale import ToolResultLocaleMiddleware

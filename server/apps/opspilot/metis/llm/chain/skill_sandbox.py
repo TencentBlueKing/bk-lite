@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import asyncio
-from pathlib import Path
 
 from asgiref.sync import sync_to_async
 from langchain_core.callbacks import adispatch_custom_event
@@ -13,143 +12,55 @@ from apps.opspilot.services.ppt_master_runtime import (
     begin_ppt_run,
     discard_ppt_run,
     is_ppt_master_package,
-    link_workspace,
     packages_include_ppt_master,
     publish_latest_export,
 )
 
 
 class SkillSandboxMixin:
-    """Mixin for ToolsNodes; extracted without behavior change."""
+    """Configure the task container and publish skill artifacts."""
 
-    def _build_skill_backend_and_sources(self, graph_request, packages=None):
-        """把启用的 SkillPackage 物化到「一次性沙箱目录」，返回 (backend, sources, sandbox_dir)。
+    def _build_skill_backend_and_sources(self, graph_request, packages=None, *, sandbox=None):
+        """Materialize skills in the run container. Never fall back to host execution."""
+        from apps.opspilot.services.python_sandbox.runtime import SandboxUnavailable
+        from apps.opspilot.services.python_sandbox.skill_backend import ContainerSkillBackend
 
-        采用 deepagents 自带的 ``LocalShellBackend``：它既是 ``FilesystemBackend``
-        （读写技能文件），又实现 ``SandboxBackendProtocol``（提供 ``execute`` shell
-        工具）。技能即「CLI 自运行」：SKILL.md 里直接写 ``uvx ...`` / ``npx ...`` /
-        二进制命令，由模型通过 ``execute`` 在 shell 里跑，不依赖业务工具接线。
-
-        加固（人造沙箱，best-effort 隔离，非容器级强隔离），见实现注释：
-          1. 每次运行新建临时目录、用完即弃（调用方在 finally 中 rmtree）；
-          2. virtual_mode=True：文件工具关进沙箱，不能读写宿主任意路径；
-          3. inherit_env=False + 精简白名单：不把宿主 DB 密码/密钥泄露给技能 shell。
-        sandbox_dir 交给调用方清理。best-effort：无技能或失败返回 (None, [], None)。
-
-        **backend 替换方向(Phase 1):** 当前 backend 是 ``LocalShellBackend``,
-        ``execute`` 仍跑真实宿主 shell,绝对路径可访问宿主(非强隔离)。
-        Phase 1 将按 deepagents ``SandboxBackendProtocol`` 接口替换为
-        NATS worker / 容器沙箱实现,本函数调用方不变(materializer 接口
-        向后兼容,通过 feature flag 切换 backend)。
-        """
         if packages is None:
             packages = self._resolve_skill_packages(graph_request)
         if not packages:
             return None, [], None
-        backend = None
-        sources = []
-        sandbox_dir = None
-        ppt_workspace = None
+        if sandbox is None:
+            raise SandboxUnavailable("技能执行需要任务容器")
+        params, secrets = self._load_skill_package_runtime_params(graph_request, packages)
+        ppt_workspace = begin_ppt_run(graph_request) if packages_include_ppt_master(packages) else None
         try:
-            import os
-            import tempfile
+            backend = ContainerSkillBackend(sandbox, params_by_package=params, secret_values=secrets, ppt_workspace=ppt_workspace)
+            for package in packages:
+                from apps.opspilot.services.python_sandbox.provisioning import materialize_container_skill
 
-            from deepagents.backends import LocalShellBackend
+                materialize_container_skill(package, sandbox)
+                from apps.opspilot.services.skill_package.materializer import sanitize_skill_name
+                from apps.opspilot.utils.skill_package_params import format_skillenv
 
-            from apps.opspilot.services.skill_executor import PathRewritingBackend
-            from apps.opspilot.services.skill_executor.utf8_local_shell import bind_utf8_execute
-            from apps.opspilot.services.skill_package.materializer import materialize_skill_package, sanitize_skill_name
-            from apps.opspilot.utils.skill_package_params import format_skillenv
-
-            base = self._skill_sandbox_base()
-            os.makedirs(base, exist_ok=True)
-            # 一次性沙箱目录：run-XXXX，用完即弃（由调用方在 finally 中清理）
-            sandbox_dir = tempfile.mkdtemp(prefix="run-", dir=base)
-            skills_dir = os.path.join(sandbox_dir, "skills")
-            os.makedirs(skills_dir, exist_ok=True)
-
-            # 加固说明：
-            #   - virtual_mode=True：沙箱目录即虚拟根，read/write/ls/glob/grep 关在沙箱内。
-            #   - inherit_env=False + 精简白名单：杜绝 Django 进程 DB 密码/密钥外泄；
-            #     TMPDIR 也指向沙箱，临时文件不外溢。
-            #   - execute 的 cwd 即沙箱目录；技能命令用相对路径，产物随沙箱销毁。
-            # 局限：execute 跑真实宿主 shell，绝对路径仍可访问宿主，非强隔离；要强隔离
-            #   需换 NATS executor / 容器沙箱（替换 SandboxBackendProtocol 即可）。
-            #
-            # Phase 0 路径解析修复:deepagents 0.5.x 的 virtual_mode 不重写
-            # execute 命令字符串里的绝对路径(/skills/...)。
-            # PathRewritingBackend 在 execute 前正则替换 /skills/ → 物理 sandbox_dir/skills/。
-            params_by_dir, secret_values = self._load_skill_package_runtime_params(graph_request, packages)
-            injected = {name: sorted(env.keys()) for name, env in (params_by_dir or {}).items() if env}
-            if injected:
-                logger.info("技能包运行时参数已加载: %s", injected)
-            else:
-                logger.warning("技能包运行时参数为空，脚本将读不到 AD_HOST 等变量")
-            inner_backend = LocalShellBackend(
-                root_dir=sandbox_dir,
-                virtual_mode=True,
-                inherit_env=False,
-                env=self._sandbox_env(sandbox_dir),
-            )
-            bind_utf8_execute(inner_backend)
-            if packages_include_ppt_master(packages):
-                ppt_workspace = begin_ppt_run(graph_request)
-                link_workspace(Path(sandbox_dir) / "ppt-workspace", ppt_workspace)
-
-            def _mark_ppt_exported() -> None:
-                setattr(graph_request, "_ppt_export_ready", True)
-
-            backend = PathRewritingBackend(
-                inner=inner_backend,
-                sandbox_dir=sandbox_dir,
-                skills_root="/skills",
-                on_skill_access=self._make_lazy_skill_deps_callback(packages),
-                params_by_package=params_by_dir,
-                secret_values=secret_values,
-                ppt_workspace=ppt_workspace,
-                on_ppt_exported=_mark_ppt_exported if ppt_workspace is not None else None,
-            )
-            # 不在建沙箱时预装依赖:寒暄/未用技能时不应 pip install。
-            # 依赖在 read/execute 真正碰到 /skills/<name>/ 时按需安装。
-            # virtual_mode 下，物化到虚拟根的 /skills/ 即落在 sandbox_dir/skills/
-            for pkg in packages:
-                try:
-                    materialize_skill_package(pkg, backend, skills_root="/skills")
-                except Exception as me:  # 幂等：已存在/单包失败不影响其它技能
-                    import traceback
-
-                    logger.warning(
-                        "技能物化失败(%s): %s\n%s",
-                        pkg.get("name") if isinstance(pkg, dict) else pkg,
-                        me,
-                        traceback.format_exc(),
-                    )
-            for pkg in packages:
-                if not isinstance(pkg, dict):
-                    continue
-                dir_name = sanitize_skill_name(pkg.get("package_id") or pkg.get("name"))
-                env = params_by_dir.get(dir_name) or {}
-                if not env:
-                    continue
-                skillenv_path = f"/skills/{dir_name}/.skillenv"
-                try:
-                    backend.write(skillenv_path, format_skillenv(env))
-                    chmod = getattr(backend, "chmod", None)
-                    if callable(chmod):
-                        chmod(skillenv_path, 0o600)
-                except Exception as env_exc:
-                    logger.warning("写入 .skillenv 失败(%s): %r", dir_name, env_exc)
-            sources = ["/skills/"]
-            return backend, sources, sandbox_dir
-        except Exception as e:  # pragma: no cover - defensive
-            logger.warning("技能 backend 构建失败，跳过 skills: %r", e)
-            self._cleanup_sandbox(sandbox_dir)
+                name = sanitize_skill_name(package.get("package_id") or package.get("name"))
+                if params.get(name):
+                    sandbox.write_workspace_file(f"/workspace/skills/{name}/.skillenv", format_skillenv(params[name]).encode())
+            backend.set_packages(packages)
+        except BaseException:
             if ppt_workspace is not None:
                 discard_ppt_run(graph_request)
-            return None, [], None
+            raise
+        return backend, ["/workspace/skills/"], str(ppt_workspace) if ppt_workspace else None
 
     @staticmethod
-    async def _publish_ppt_master_export(graph_request, prior_filenames, config=None) -> None:
+    async def _publish_ppt_master_export(graph_request, prior_filenames, config=None, sandbox=None) -> None:
+        if sandbox is not None:
+            from apps.opspilot.services.ppt_master_runtime import current_ppt_run
+            from apps.opspilot.services.python_sandbox.ppt import sync_ppt_workspace
+
+            workspace = current_ppt_run(graph_request)
+            if workspace is not None:
+                await asyncio.to_thread(sync_ppt_workspace, sandbox, workspace)
         # 登记附件会写数据库。ASGI 请求里直接调用会抛 SynchronousOnlyOperation，下载卡片就出不来。
         await sync_to_async(publish_latest_export, thread_sensitive=True)(graph_request, prior_filenames)
         event = getattr(graph_request, "_ppt_download_event", None)
@@ -198,9 +109,8 @@ class SkillSandboxMixin:
     def _ensure_skill_deps(packages: list) -> None:  # noqa: C901
         """根据**被访问的**技能包,确保 host Python 装了对应的 Python 库。
 
-        当前 sandbox 是 LocalShellBackend(virtual_mode),execute 跑在 host,
-        共享 host 的 sys.path,所以装 host 即可。Phase 1 切到独立容器沙箱后,
-        这个函数会变成往镜像里塞依赖,而不是往 host 装。
+        仅供旧本地后端的独立调用方使用；正式智能体运行路径不再调用本函数。
+        统一容器的依赖安装由 ContainerSkillBackend._install_dependencies 负责。
 
         调用时机:PathRewritingBackend 在 read/execute 碰到 /skills/<name>/ 时
         按需触发;建沙箱阶段不再预装。

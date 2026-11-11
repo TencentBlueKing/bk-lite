@@ -1746,6 +1746,7 @@
       "types": {
         "platform": "Platform",
         "workbench": "Workbench",
+        "workflow": "Workflow",
         "web_chat": "Web Chat",
         "embedded_chat": "Embedded Chat",
         "enterprise_wechat": "Enterprise WeChat",

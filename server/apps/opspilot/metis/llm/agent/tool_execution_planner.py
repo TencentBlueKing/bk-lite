@@ -11,10 +11,6 @@ from langchain_core.tools import BaseTool
 from pydantic import BaseModel, Field
 
 from apps.core.logger import opspilot_logger as logger
-from apps.opspilot.services.conversation_skill_package import (
-    PREPARE_CONVERSATION_SKILL_PACKAGE_TOOL,
-    user_requested_skill_package,
-)
 from apps.opspilot.metis.llm.agent.stage_timing import elapsed_ms, log_stage_timing, monotonic_ms
 from apps.opspilot.metis.llm.common.token_usage import TokenUsageAccumulator
 from apps.opspilot.metis.llm.common.tool_failure import (  # noqa: F401
@@ -39,6 +35,7 @@ from apps.opspilot.metis.llm.common.tool_failure import (  # noqa: F401
     tool_graph_failure_plain_text,
     tool_graph_failure_user_prompt,
 )
+from apps.opspilot.services.conversation_skill_package import PREPARE_CONVERSATION_SKILL_PACKAGE_TOOL, user_requested_skill_package
 from apps.opspilot.services.ppt_master_runtime import packages_include_ppt_master
 from apps.opspilot.utils.pending_question import is_answer_after_choice_prompt
 
@@ -366,8 +363,8 @@ _ATTACHMENT_CATALOG_HINT = (
 _FILE_GENERATION_INTENT_RE = re.compile(
     r"(?:生成|导出|保存|写入|写成|输出成|做成|整理成|产出|写一份|写个|写一个|出一份|另存为|下载成)"
     r".{0,24}"
-    r"(?:文件|文档|报告|月报|附件|表格|txt|md\b|pdf|docx|xlsx|csv|markdown|\.md)"
-    r"|(?:write|export|save|generate).{0,24}(?:file|report|document|attachment|\.md\b|markdown|pdf|docx|xlsx|csv)",
+    r"(?:文件|文档|报告|月报|附件|表格|txt|md\b|pdf|docx|xlsx|csv|html|markdown|\.md)"
+    r"|(?:write|export|save|generate).{0,24}(?:file|report|document|attachment|\.md\b|markdown|pdf|docx|xlsx|csv|html)",
     re.IGNORECASE,
 )
 _ATTACHMENT_CHITCHAT_RE = re.compile(
@@ -388,7 +385,7 @@ _ATTACHMENT_FOLLOWUP_EDIT_RE = re.compile(
     r"字体|排版|配色|字号|幻灯片|润色|重点介绍|写详细|写具体|再改|改一版|这一版|新版本" r"|调整.{0,16}(?:字体|内容|结构|章节|标题|排版|正文)" r"|(?:字体|内容|结构|章节|标题|排版|正文).{0,16}调整",
 )
 _GENERATED_ATTACHMENT_NAME_RE = re.compile(
-    r"[\w\u4e00-\u9fff][\w\u4e00-\u9fff ._-]{0,80}\.(?:docx|xlsx|pptx|pdf|csv|txt|md)\b",
+    r"[\w\u4e00-\u9fff][\w\u4e00-\u9fff ._-]{0,80}\.(?:docx|xlsx|pptx|pdf|csv|txt|md|html)\b",
     re.IGNORECASE,
 )
 _ASSISTANT_GENERATED_ROLES = frozenset({"ai", "aimessage", "assistant", "bot"})

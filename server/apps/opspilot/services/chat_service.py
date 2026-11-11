@@ -827,6 +827,12 @@ class ChatService:
                 runtime_extra_config[CALLER_IDENTITY_CONFIG_KEY] = server_caller_identity
 
         runtime_extra = chat_kwargs.setdefault("extra_config", {})
+        from apps.opspilot.services.python_sandbox.attachments import ATTACHMENT_GRANT_KEY
+
+        runtime_extra.pop(ATTACHMENT_GRANT_KEY, None)
+        if kwargs.get(ATTACHMENT_GRANT_KEY):
+            runtime_extra[ATTACHMENT_GRANT_KEY] = kwargs[ATTACHMENT_GRANT_KEY]
+
         set_unattended_flag(runtime_extra, unattended)
         _attach_pending_question(chat_kwargs, kwargs)
         _attach_wiki_material_write(chat_kwargs, kwargs)

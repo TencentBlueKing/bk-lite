@@ -2,12 +2,13 @@ import threading
 from datetime import timedelta
 from io import StringIO
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from django.core.management import call_command
 from django.utils import timezone
 
-from apps.workflow.management.commands.run_workflow_worker import Command
+from apps.workflow.management.commands.run_workflow_worker import Command, _build_runtime_inputs
 from apps.workflow.models import AtomExecution, Workflow, WorkflowExecution
 from apps.workflow.services.conductor import ConductorUnavailable
 from apps.workflow.services.data_contracts import seal_sensitive_inputs
@@ -402,8 +403,20 @@ def test_worker_injects_trusted_execution_context_only_for_declared_atoms(mocker
         "organization_id": 7,
         "actor": {"username": "alice", "domain": "example.com"},
         "trigger_type": "FORM",
+        "task_reference": "agent",
     }
     assert "__bklite_context" not in AtomExecution.objects.get(execution=execution).input
+
+
+def test_agent_node_reference_comes_from_claimed_atom_not_input():
+    execution = SimpleNamespace(
+        id="run-1", workflow_id="flow-1", workflow_version=1, team=[7], started_by="alice", domain="example.com", trigger_type="NATS"
+    )
+    atom = SimpleNamespace(pk=3, output={}, task_reference="agent-real")
+    payload = _build_runtime_inputs(
+        inputs={"__bklite_context": {"task_reference": "agent-forged"}}, atom_execution=atom, task_type="bklite_agent", execution=execution
+    )
+    assert payload["__bklite_context"]["task_reference"] == "agent-real"
 
 
 @pytest.mark.django_db

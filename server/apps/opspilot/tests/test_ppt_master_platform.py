@@ -166,22 +166,23 @@ def test_confirmation_materializes_and_binds_ppt_workspace(tmp_path, monkeypatch
         "_load_skill_package_runtime_params",
         lambda self, graph_request, packages: ({}, []),
     )
-    backend, sources, sandbox_dir = node._build_skill_backend_and_sources(request)
+    from unittest.mock import MagicMock
+
+    sandbox = MagicMock()
+    materialize = MagicMock()
+    monkeypatch.setattr("apps.opspilot.services.python_sandbox.provisioning.materialize_container_skill", materialize)
+    backend, sources, sandbox_dir = node._build_skill_backend_and_sources(request, sandbox=sandbox)
     try:
-        assert sources == ["/skills/"]
-        assert backend is not None
-        assert backend._ppt_workspace is not None and backend._ppt_workspace.is_dir()
-        link = Path(sandbox_dir) / "ppt-workspace"
-        assert link.is_symlink()
-        assert link.resolve() == backend._ppt_workspace.resolve()
-        assert (Path(sandbox_dir) / "skills" / "ppt-master" / "SKILL.md").is_file()
-        assert not (Path(sandbox_dir) / "skills" / "notes").exists()
+        assert sources == ["/workspace/skills/"]
+        assert backend.sandbox is sandbox
+        assert Path(backend._ppt_workspace).is_dir()
+        assert not (Path(sandbox_dir) / "ppt-workspace").is_symlink()
+        assert materialize.call_count == 1
+        assert materialize.call_args.args[0]["package_id"] == "ppt-master"
         resolved = node._resolve_skill_packages(request)
-        text = DeepAgentAssemblyMixin._skill_only_step_guidance(resolved, ppt_workspace=str(backend._ppt_workspace))
+        text = DeepAgentAssemblyMixin._skill_only_step_guidance(resolved, ppt_workspace=backend._ppt_workspace)
         assert "【ppt-master】" in text
-        assert str(backend._ppt_workspace) in text
     finally:
-        node._cleanup_sandbox(sandbox_dir)
         discard_ppt_run(request)
 
 
@@ -202,8 +203,12 @@ def test_failed_sandbox_build_discards_ppt_run(tmp_path, monkeypatch):
         def __init__(self, *args, **kwargs):
             raise RuntimeError("boom")
 
-    monkeypatch.setattr("apps.opspilot.services.skill_executor.PathRewritingBackend", _Boom)
-    backend, sources, sandbox_dir = node._build_skill_backend_and_sources(request)
-    assert backend is None and sources == [] and sandbox_dir is None
+    from unittest.mock import MagicMock
+
+    import pytest
+
+    monkeypatch.setattr("apps.opspilot.services.python_sandbox.skill_backend.ContainerSkillBackend", _Boom)
+    with pytest.raises(RuntimeError, match="boom"):
+        node._build_skill_backend_and_sources(request, sandbox=MagicMock())
     assert getattr(request, "_ppt_run_dir", None) is None
     assert not any(path.is_dir() for path in tmp_path.iterdir())

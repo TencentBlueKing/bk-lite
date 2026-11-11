@@ -1743,6 +1743,7 @@
       "types": {
         "platform": "平台",
         "workbench": "工作台",
+        "workflow": "编排中心",
         "web_chat": "Web 对话",
         "embedded_chat": "嵌入式对话",
         "enterprise_wechat": "企微应用",

@@ -191,75 +191,51 @@ class TestSkillBackendSources:
             backend, sources, sandbox_dir = n._build_skill_backend_and_sources(_request())
         assert backend is None and sources == [] and sandbox_dir is None
 
-    def test_materializes_packages_into_ephemeral_sandbox(self):
-        import os
+    def test_materializes_packages_into_run_container(self):
+        from apps.opspilot.services.python_sandbox.skill_backend import ContainerSkillBackend
 
-        n = ToolsNodes()
-        pkgs = [{"name": "k8s-triage"}, {"name": "log-analysis"}]
+        node = ToolsNodes()
+        packages = [{"name": "k8s-triage"}, {"name": "log-analysis"}]
+        sandbox = MagicMock()
         with (
-            patch.object(ToolsNodes, "_resolve_skill_packages", return_value=pkgs),
-            patch("deepagents.backends.LocalShellBackend", return_value=MagicMock()) as backend_cls,
-            patch("apps.opspilot.services.skill_package.materializer.materialize_skill_package") as mat,
-            patch.object(ToolsNodes, "_ensure_skill_deps") as ensure_deps,
+            patch("deepagents.backends.LocalShellBackend") as host_backend,
+            patch("apps.opspilot.services.python_sandbox.provisioning.materialize_container_skill") as materialize,
         ):
-            backend, sources, sandbox_dir = n._build_skill_backend_and_sources(_request())
-        assert backend is not None
-        assert sources == ["/skills/"]
-        assert mat.call_count == 2
-        # 建沙箱只物化目录,不预装依赖(寒暄不应 pip install)
-        ensure_deps.assert_not_called()
-        # 一次性沙箱目录被创建（用完即弃，由调用方清理）
-        assert sandbox_dir and os.path.isdir(sandbox_dir)
-        # 用的是 LocalShellBackend：虚拟根 + 不继承宿主环境
-        _, kwargs = backend_cls.call_args
-        assert kwargs["virtual_mode"] is True
-        assert kwargs["inherit_env"] is False
-        n._cleanup_sandbox(sandbox_dir)
+            backend, sources, directory = node._build_skill_backend_and_sources(_request(), packages=packages, sandbox=sandbox)
+        assert isinstance(backend, ContainerSkillBackend)
+        assert backend.sandbox is sandbox
+        assert sources == ["/workspace/skills/"] and directory is None
+        assert materialize.call_count == 2
+        host_backend.assert_not_called()
+        sandbox.execute_command.assert_not_called()
 
-    def test_skill_deps_install_only_when_skill_path_accessed(self):
-        """读 /skills/<name>/SKILL.md 才装该包依赖;未访问不装。"""
-        n = ToolsNodes()
-        pkgs = [
-            {"name": "kubernetes-specialist", "package_id": "kubernetes-specialist"},
-            {"name": "pdf", "package_id": "pdf"},
-        ]
-        with (
-            patch.object(ToolsNodes, "_resolve_skill_packages", return_value=pkgs),
-            patch("deepagents.backends.LocalShellBackend", return_value=MagicMock()),
-            patch("apps.opspilot.services.skill_package.materializer.materialize_skill_package"),
-            patch.object(ToolsNodes, "_ensure_skill_deps") as ensure_deps,
-        ):
-            backend, _, sandbox_dir = n._build_skill_backend_and_sources(_request())
-            ensure_deps.assert_not_called()
-            backend.read("/skills/kubernetes-specialist/SKILL.md")
-            ensure_deps.assert_called_once()
-            ensured = ensure_deps.call_args[0][0]
-            assert len(ensured) == 1
-            assert ensured[0]["name"] == "kubernetes-specialist"
-            # 同一技能再次访问不重复装
-            backend.read("/skills/kubernetes-specialist/scripts/foo.py")
-            assert ensure_deps.call_count == 1
-            # 另一个技能按需再装
-            backend.execute("python3 /skills/pdf/create_pdf.py", timeout=5)
-            assert ensure_deps.call_count == 2
-            assert ensure_deps.call_args[0][0][0]["name"] == "pdf"
-        n._cleanup_sandbox(sandbox_dir)
+    def test_skill_deps_install_in_container_only_once_per_package(self):
+        from deepagents.backends.protocol import ExecuteResponse
 
-    def test_single_package_materialize_failure_is_isolated(self):
-        n = ToolsNodes()
-        pkgs = [{"name": "a"}, {"name": "b"}]
+        from apps.opspilot.services.python_sandbox.skill_backend import ContainerSkillBackend
+
+        sandbox = MagicMock()
+        sandbox.execute_command.side_effect = lambda *args, **kwargs: ExecuteResponse(output="ok", exit_code=0)
+        backend = ContainerSkillBackend(sandbox)
+        backend.set_packages([{"name": "demo", "required_python_packages": ["pandas"]}])
+        backend.execute("python /skills/demo/script.py")
+        backend.execute("python /skills/demo/script.py")
+        commands = [call.args[0] for call in sandbox.execute_command.call_args_list]
+        assert len([command for command in commands if "pip install" in command]) == 1
+        assert "npm install" in commands[0]
+        assert "pandas" in commands[0]
+
+    def test_materialize_failure_is_explicit_without_host_fallback(self):
+        node = ToolsNodes()
+        error = RuntimeError("boom")
         with (
-            patch.object(ToolsNodes, "_resolve_skill_packages", return_value=pkgs),
-            patch("deepagents.backends.LocalShellBackend", return_value=MagicMock()),
-            patch(
-                "apps.opspilot.services.skill_package.materializer.materialize_skill_package",
-                side_effect=[RuntimeError("boom"), None],
-            ),
+            patch("deepagents.backends.LocalShellBackend") as host_backend,
+            patch("apps.opspilot.services.python_sandbox.provisioning.materialize_container_skill", side_effect=error),
         ):
-            backend, sources, sandbox_dir = n._build_skill_backend_and_sources(_request())
-        # 单包失败不影响整体返回
-        assert backend is not None and sources == ["/skills/"]
-        n._cleanup_sandbox(sandbox_dir)
+            with pytest.raises(RuntimeError) as caught:
+                node._build_skill_backend_and_sources(_request(), packages=[{"name": "a"}], sandbox=MagicMock())
+        assert caught.value is error
+        host_backend.assert_not_called()
 
     def test_sandbox_env_excludes_host_secrets(self):
         n = ToolsNodes()

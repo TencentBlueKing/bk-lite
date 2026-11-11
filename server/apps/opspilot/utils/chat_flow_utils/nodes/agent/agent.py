@@ -78,7 +78,8 @@ class AgentNode(BaseNodeExecutor):
             user_id = str(flow_input.get("user_id") or "anonymous")
             run_id = str(flow_input.get("session_id") or flow_input.get("execution_id") or uuid.uuid4())
             identity = json.dumps([str(skill_id), str(flow_input.get("bot_id") or ""), str(node_id), user_id, run_id], ensure_ascii=False)
-            session_id = "workbench_" + uuid.uuid5(uuid.NAMESPACE_URL, identity).hex
+            source = "workflow_" if flow_input.get("entry_type") == "workflow" else "workbench_"
+            session_id = source + uuid.uuid5(uuid.NAMESPACE_URL, identity).hex
             message = params.get("user_message", "")
             if not isinstance(message, str):
                 message = json.dumps(message, ensure_ascii=False, default=str)
@@ -530,7 +531,7 @@ class AgentNode(BaseNodeExecutor):
 
         # 构建LLM参数
         llm_params = self._build_llm_params(skill, final_message, flow_input, node_id=node_id)
-        if auto_requested:
+        if auto_requested or flow_input.get("unattended") is True:
             llm_params["unattended"] = True
 
         return llm_params, skill.name, self._skill_supports_attachment_generation(skill)
