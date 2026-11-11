@@ -73,6 +73,8 @@ _MONITOR_TEMPLATE_ALLOWED_VARIABLES = {
     "metrics_modules",
     "monitor_plugin_id",
     "namespace",
+    "nginx_vts",
+    "nginx_vts_url",
     "node_id",
     "os_type",
     "operating_system",

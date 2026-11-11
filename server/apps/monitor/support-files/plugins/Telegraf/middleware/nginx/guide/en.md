@@ -30,9 +30,25 @@ The response must include `Active connections`, `Reading`, `Writing`, and `Waiti
 | --- | --- | --- |
 | URL | Yes | Full Nginx `stub_status` endpoint URL. |
 | Interval | Yes | Collection interval in seconds; default `60`. |
+| Virtual Host Traffic | No | Off by default. `inputs.nginx_vts` is collected only after it is turned on. |
+| VTS URL | Required when on | JSON status page of nginx-module-vts. |
 | Node | Yes | Collector node that can read the URL without authentication. |
 | Instance Name | Yes | Display name in the platform. |
 | Group | No | Optional instance group. |
+
+## Virtual Host Traffic (optional)
+
+This switch is off by default. While it is off, collection uses only the Status URL above. The existing stub_status address and charts stay as they are.
+
+Before turning it on, the target host must already:
+
+- Have `nginx-module-vts` installed, with `vhost_traffic_status_display` enabled.
+- Expose a JSON status page. The usual URL is `http://<host>/vts_status/format/json`, and the response Content-Type is `application/json`.
+- Allow the collector node to read that URL without Basic Auth.
+
+Tengine does not support `nginx-module-vts`. Do not enable this switch for Tengine.
+
+Enter a VTS URL for each instance. The Status URL remains the original `stub_status` address; the two URLs do not replace each other.
 
 ## Post-setup Verification
 
@@ -42,6 +58,10 @@ After saving and waiting for one interval, confirm that these metrics are querya
 - `nginx_reading`
 - `nginx_writing`
 - `nginx_requests_rate`
+- `nginx_http_requests_total`
+- `nginx_connections_accepted`
+- `nginx_connections_handled`
+- `nginx_up`
 
 ## Troubleshooting
 
@@ -57,4 +77,5 @@ After saving and waiting for one interval, confirm that these metrics are querya
 
 ### Only basic connection data is present
 
-- `stub_status` exposes a limited set of connection and request fields. The current capability covers only the data collected by its template.
+- With Virtual Host Traffic off, collection is `stub_status` only.
+- Status-code, upstream, and cache metrics require `nginx-module-vts` on the target and this switch turned on. Tengine is not supported.
