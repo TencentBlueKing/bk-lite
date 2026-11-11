@@ -14,9 +14,25 @@ RUN if [ -n "$NEXUS_PYTHON_REPOSITY" ]; then \
 
 RUN sed -i 's/deb.debian.org/repo.huaweicloud.com/g' /etc/apt/sources.list.d/debian.sources
 RUN apt-get update && \
+    apt-get upgrade -y && \
     apt-get install -y vim  unzip wget curl pkg-config libssl-dev supervisor gettext-base jq && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
+
+# Fail the build if the installed Brotli packages do not meet the repair baseline.
+RUN set -eu; \
+    . /etc/os-release; \
+    test "$ID" = "debian"; \
+    case "$VERSION_ID" in \
+        12) required='1.0.9-2+deb12u1' ;; \
+        13) required='1.1.0-2+deb13u1' ;; \
+        *) echo "Unsupported Debian version for Brotli baseline: $VERSION_ID"; exit 1 ;; \
+    esac; \
+    for pkg in libbrotli1 libbrotli-dev; do \
+        version="$(dpkg-query -W -f='${Version}' "$pkg")"; \
+        echo "$pkg=$version; required >= $required"; \
+        dpkg --compare-versions "$version" ge "$required"; \
+    done
 
 RUN curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl" && \
     chmod +x kubectl && mv kubectl /usr/local/bin/

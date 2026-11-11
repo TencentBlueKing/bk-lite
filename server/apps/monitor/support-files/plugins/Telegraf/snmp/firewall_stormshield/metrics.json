@@ -103,7 +103,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric reports the real memory utilization of the Stormshield firewall, derived as (total - free) / total * 100. High memory pressure can degrade connection handling performance."
+      "description": "This metric reports the real memory utilization of the Stormshield firewall. High memory pressure can degrade connection handling performance."
     },
     {
       "metric_group": "Firewall",

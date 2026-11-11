@@ -261,7 +261,7 @@ const INTEGRATION_GROUPS: Array<{
       { kind: 'python', title: 'Python', desc: '采集 Django / Flask / FastAPI 的调用链', tag: '自动探针' },
       { kind: 'dotnet', title: '.NET', desc: '采集 ASP.NET Core / gRPC 的调用链\nLinux 限 x86_64 glibc，Windows 仅主机', tag: '自动探针' },
       { kind: 'go', title: 'Go', desc: '接入后采集 net/http / Gin / Echo / gRPC 的调用链', tag: '手动接入' },
-      { kind: 'php', title: 'PHP', desc: '采集 Laravel / Symfony / Slim 的调用链\n仅 Linux 上的 PHP NTS 8.1–8.4', tag: '自动探针' },
+      { kind: 'php', title: 'PHP', desc: '采集 Symfony / Slim / Guzzle 的调用链，Laravel 从 PHP 8.2 起\n仅 Linux 上的 PHP NTS 8.1–8.5', tag: '自动探针' },
       { kind: 'ruby', title: 'Ruby', desc: '接入 Rack 后采集请求调用链', tag: '手动接入' },
       { kind: 'cpp', title: 'C++', desc: '编译接入后，只采集进程入口调用链', tag: '手动接入' },
       { kind: 'erlang', title: 'Erlang/Elixir', desc: '用本地依赖接入后，只采集进程入口调用链', tag: '手动接入' },

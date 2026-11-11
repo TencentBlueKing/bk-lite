@@ -9,9 +9,7 @@ monitor_object_metric:
   Transmission:
     snmp_uptime:
       name: System Uptime
-      desc: Uptime of the Alpine Optoelectronics TDCM-EDFA chassis since the last
-        restart, derived from sysUpTime. Monitoring uptime helps administrators
-        understand chassis stability and identify unexpected reboots or failures.
+      desc: Uptime of the Alpine Optoelectronics TDCM-EDFA chassis since the last restart, derived from sysUpTime. Monitoring uptime helps administrators understand chassis stability and identify unexpected reboots or failures.
     device_fan_speed:
       name: Fan Speed
       desc: Rotation speed of each Alpine TDCM-EDFA fan in RPM from alpineTEFanCardTable

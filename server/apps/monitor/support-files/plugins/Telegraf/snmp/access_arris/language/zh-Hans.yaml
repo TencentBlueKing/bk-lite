@@ -35,10 +35,10 @@ monitor_object_metric:
       desc: 各板卡尚未分配的动态堆内存（cadMeHeapRemaining），单位字节。空闲量持续降低可能表示板卡存在内存压力。
     device_memory_used:
       name: 堆内存已用量
-      desc: 各板卡已分配的动态堆内存，按 总量 - 空闲 计算，单位字节。
+      desc: 各板卡已分配的动态堆内存，单位字节。
     device_memory_usage:
       name: 堆内存使用率
-      desc: 各板卡动态堆内存使用率，按 (总量 - 空闲) / 总量 * 100 计算。持续偏高可能表示内存泄漏或业务表项过大。
+      desc: 各板卡动态堆内存使用率。持续偏高可能表示内存泄漏或业务表项过大。
     device_temperature_celsius:
       name: 系统温度
       desc: 接入设备系统温度读数，单位摄氏度。温度持续升高可能表示散热异常、环境温度过高或设备负载过高。

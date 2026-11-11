@@ -70,7 +70,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric reports overall memory utilization of the LANCOM LCOS router, computed as (total - free) / total * 100. The kilobyte units cancel, so the ratio is exact."
+      "description": "This metric reports overall memory utilization of the LANCOM LCOS router."
     },
     {
       "metric_group": "Temperature",

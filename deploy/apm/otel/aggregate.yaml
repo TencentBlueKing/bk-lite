@@ -1,0 +1,157 @@
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+
+receivers:
+  nats_jetstream:
+    urls: ["${env:APM_NATS_URL}"]
+    stream: ${env:APM_NATS_STREAM}
+    consumer: ${env:APM_NATS_CONSUMER}
+    filter_subject: apm.traces.>
+    credentials_file: ${env:APM_NATS_CREDENTIALS_FILE}
+    connect_timeout: 5s
+    # 必须小于聚合消费者的 ACK 等待（APM_AGG_NATS_ACK_WAIT 默认 30s），
+    # 否则处理尚未结束消息就会被重投。
+    downstream_timeout: 20s
+    nak_delay: 5s
+    pull_max_messages: ${env:APM_NATS_MAX_ACK_PENDING}
+    tls:
+      ca_file: ${env:APM_NATS_CA_FILE}
+      cert_file: ${env:APM_NATS_CERT_FILE}
+      key_file: ${env:APM_NATS_KEY_FILE}
+      server_name: ${env:APM_NATS_TLS_SERVER_NAME}
+      insecure_skip_verify: false
+
+processors:
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: ${env:APM_COLLECTOR_MEMORY_LIMIT_MIB}
+    spike_limit_mib: ${env:APM_COLLECTOR_MEMORY_SPIKE_MIB}
+  filter/entry:
+    error_mode: ignore
+    traces:
+      span:
+        - 'span.kind != SPAN_KIND_SERVER and span.kind != SPAN_KIND_CONSUMER'
+  transform/narrow_resource:
+    error_mode: ignore
+    trace_statements:
+      - context: resource
+        statements:
+          - set(attributes["service.namespace"], "unknown") where attributes["service.namespace"] == nil or attributes["service.namespace"] == ""
+          - set(attributes["service.name"], "unknown") where attributes["service.name"] == nil or attributes["service.name"] == ""
+          - set(attributes["deployment.environment"], "unknown") where attributes["deployment.environment"] == nil or attributes["deployment.environment"] == ""
+          - keep_keys(attributes, ["service.namespace", "service.name", "deployment.environment"])
+  batch/late:
+    timeout: 1s
+    send_batch_size: 8192
+  # count 把样本时间打在 Span 结束时间上。晚到 Span 的结束时间已经超过 5 分钟，
+  # 即时查询和 increase[5m] 都看不到。改成处理时刻后再做累计。
+  transform/late_observed_at:
+    error_mode: ignore
+    metric_statements:
+      - context: datapoint
+        statements:
+          - set(start_time, Now())
+          - set(time, Now())
+  deltatocumulative:
+    max_stale: 5m
+
+exporters:
+  prometheusremotewrite/agg:
+    endpoint: ${env:AGG_VICTORIAMETRICS_WRITE_URL}
+    timeout: 10s
+    external_labels:
+      shard: ${env:APM_AGG_SHARD}
+    resource_to_telemetry_conversion:
+      enabled: false
+    target_info:
+      enabled: false
+    disable_scope_info: true
+    remote_write_queue:
+      enabled: false
+    retry_on_failure:
+      enabled: false
+
+connectors:
+  # v0.153 routing 的 span 上下文按 Span 移动，不把整批克隆给两条流水线。
+  # 晚到 Span 移到 traces/late；其余进入 default_pipelines。默认动作是 move。
+  routing:
+    default_pipelines: [traces/aggregate]
+    table:
+      - context: span
+        condition: span.end_time_unix_nano < UnixNano(Now()) - 300000000000
+        pipelines: [traces/late]
+  span_metrics:
+    namespace: apm
+    aggregation_temporality: AGGREGATION_TEMPORALITY_CUMULATIVE
+    metrics_flush_interval: ${env:APM_AGG_FLUSH_INTERVAL:-60s}
+    exemplars:
+      enabled: false
+    events:
+      enabled: false
+    exclude_dimensions: [span.kind, collector.instance.id]
+    dimensions:
+      - name: service.namespace
+        default: unknown
+      - name: deployment.environment
+        default: unknown
+    resource_metrics_key_attributes:
+      - service.namespace
+      - service.name
+      - deployment.environment
+    add_resource_attributes: false
+    histogram:
+      unit: ms
+      explicit:
+        buckets: [5ms, 10ms, 25ms, 50ms, 100ms, 200ms, 300ms, 500ms, 800ms, 1000ms, 2000ms, 3000ms, 5000ms, 10000ms]
+    # 上限按服务资源（上面三个键）计数，不是全局。0 表示不限制，所以默认必须是正数。
+    aggregation_cardinality_limit: ${env:APM_AGG_CARDINALITY_LIMIT:-500}
+    # 单条序列过期。metrics_expiration 会整份丢掉服务资源，这里不用。
+    series_expiration: ${env:APM_AGG_SERIES_EXPIRATION:-1h}
+    # 上游默认也是 1000。显式写出，避免容量估算和运行时缓存不是同一个数。
+    resource_metrics_cache_size: 1000
+  count/late:
+    spans:
+      apm.aggregate.late_spans:
+        description: Entry spans ended more than 5 minutes before processing.
+        conditions:
+          - 'span.end_time_unix_nano < UnixNano(Now()) - 300000000000'
+    # 不覆盖时，count 会保留默认的 trace.span.event.count。这条条件永远不成立，用来关掉它。
+    spanevents:
+      apm.aggregate.ignored_span_events:
+        description: Never emitted. Overrides the connector default span-event counter.
+        conditions:
+          - 'Len(name) < 0'
+
+service:
+  extensions: [health_check]
+  telemetry:
+    metrics:
+      level: normal
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
+  pipelines:
+    # memory_limiter 在过滤、收窄和任何计数之前。拒收只 NAK 本消费者，不会先计数再重投。
+    traces:
+      receivers: [nats_jetstream]
+      processors: [memory_limiter, filter/entry, transform/narrow_resource]
+      exporters: [routing]
+    traces/aggregate:
+      receivers: [routing]
+      exporters: [span_metrics]
+    traces/late:
+      receivers: [routing]
+      exporters: [count/late]
+    metrics/apm_agg:
+      receivers: [span_metrics]
+      exporters: [prometheusremotewrite/agg]
+    # batch 吃掉导出错误。否则 count 的失败会经 routing 返回接收器，
+    # 同一条消息里已经计入 span_metrics 的 Span 会随 NAK 再算一次。
+    metrics/apm_late:
+      receivers: [count/late]
+      processors: [batch/late, transform/late_observed_at, deltatocumulative]
+      exporters: [prometheusremotewrite/agg]

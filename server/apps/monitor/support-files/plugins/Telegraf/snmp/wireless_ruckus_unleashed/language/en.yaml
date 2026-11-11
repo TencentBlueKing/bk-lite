@@ -11,9 +11,7 @@ monitor_object_metric:
   Wireless:
     snmp_uptime:
       name: System Uptime
-      desc: This metric indicates the uptime of the device since the last restart, derived from sysUpTime.
-        Monitoring uptime helps administrators understand device stability and identify unexpected reboots
-        or failures.
+      desc: This metric indicates the uptime of the device since the last restart, derived from sysUpTime. Monitoring uptime helps administrators understand device stability and identify unexpected reboots or failures.
     device_cpu_usage:
       name: CPU Usage
       desc: CPU utilization of the Ruckus Unleashed master AP reported directly as a 0-100 percentage.

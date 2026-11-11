@@ -29,7 +29,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric reports the power-supply health of the Advantech EKI device, derived from the redundant-power LED-state object (ADVANTECH-EKI-PRONEER-MIB ledPWR1Status). The raw codes (0=notSupported, 1=up meaning power present/OK, 2=down meaning power input lost) are normalized via telegraf processors.enum so that 1 = healthy and 2 = fault. A value greater than 1 indicates a lost power input on the monitored feed, which on a dual-feed industrial switch means loss of redundancy and warrants investigation."
+      "description": "This metric reports the power-supply health of the Advantech EKI device. The raw codes (0=notSupported, 1=up meaning power present/OK, 2=down meaning power input lost) are normalized via telegraf processors.enum so that 1 = healthy and 2 = fault. A value greater than 1 indicates a lost power input on the monitored feed, which on a dual-feed industrial switch means loss of redundancy and warrants investigation."
     },
     {
       "metric_group": "Traffic",

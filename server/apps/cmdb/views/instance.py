@@ -3,6 +3,7 @@ from django.core.handlers.asgi import ASGIRequest
 from django.http import FileResponse, HttpResponse, JsonResponse
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
+from rest_framework.permissions import AllowAny
 
 from apps.cmdb.constants.constants import NETWORK_TOPO_DEFAULT_HOP, NETWORK_TOPO_MAX_HOP, NETWORK_TOPO_NODE_LIMIT, OPERATE, PERMISSION_INSTANCES, VIEW
 from apps.cmdb.instance_ops.extensions import get_instance_enterprise_extension
@@ -46,6 +47,14 @@ async def _iter_export_file(stream):
 
 
 class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
+    @classmethod
+    def as_view(cls, actions=None, **initkwargs):
+        view = super().as_view(actions=actions, **initkwargs)
+        # AuthMiddleware 认的是 as_view() 结果上的 api_exempt，不是 action 的 AllowAny。
+        if actions and "file_content" in actions.values():
+            view.api_exempt = True
+        return view
+
     @staticmethod
     def _transport_instance(instance):
         """对外响应剥离图内部字段，人工锁定只暴露字段名。"""
@@ -673,20 +682,45 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
         meta = get_instance_enterprise_extension().handle_upload(request=request, model_id=model_id, attr_id=attr_id, uploaded_file=uploaded)
         return WebUtils.response_success(meta)
 
+    def get_authenticators(self):
+        # file_content 给 <img src> 用：initialize_request 时尚无 self.action，
+        # 按 action_map 判断，避免匿名拉流被默认认证拦下。
+        if self._is_file_content_request():
+            return []
+        return super().get_authenticators()
+
+    def get_permissions(self):
+        if self._is_file_content_request() or getattr(self, "action", None) == "file_content":
+            return [AllowAny()]
+        return super().get_permissions()
+
+    def _is_file_content_request(self):
+        action_map = getattr(self, "action_map", None) or {}
+        return "file_content" in action_map.values() or getattr(self, "action", None) == "file_content"
+
     @HasPermission("asset_info-View")
     @action(detail=False, methods=["get"], url_path="download_file/(?P<file_id>[^/]+)")
     def download_file(self, request, file_id: str):
-        """获取附件/图片的短时效预签名直链。
+        """获取附件/图片的同源代理地址。
 
-        校验实例读权限后返回预签名 URL（JSON）。前端经 axios（带令牌）调用本接口拿到
-        URL，再直接用于 <img src> / 下载——浏览器对 MinIO 的图片显示与下载导航不受 CORS
-        限制，从而绕开「直链请求不带令牌」的鉴权问题。
+        校验实例读权限后返回短时 ticket URL（JSON）。前端经 axios（带令牌）调用本接口拿到
+        URL，再用于 <img src> / 下载——浏览器对同源代理的图片请求不带 Bearer，靠 ticket 鉴权。
         """
 
-        def _check_read(inst_uuid):
-            if inst_uuid is None:
+        def _check_read(inst_ref):
+            # 台账过渡期可能仍存图 _id。纯数字先按图 ID 查，避免当成 UUID 解析并刷错误日志。
+            if inst_ref is None:
                 return False
-            instance = InstanceManage.query_entity_by_uuid(str(inst_uuid))
+            from apps.cmdb.services.instance_identity import optional_graph_id, optional_inst_uuid
+
+            graph_id = optional_graph_id(inst_ref)
+            if graph_id is not None:
+                instance = InstanceManage.query_entity_by_id(int(graph_id))
+            else:
+                inst_uuid = optional_inst_uuid(inst_ref)
+                if not inst_uuid:
+                    return False
+                instance = InstanceManage.query_entity_by_uuid(inst_uuid)
             return bool(instance) and self._check_instance_read_permission(request, instance)
 
         as_attachment = request.query_params.get("download") == "1"
@@ -697,6 +731,23 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
             as_attachment=as_attachment,
         )
         return WebUtils.response_success({"url": url})
+
+    @action(
+        detail=False,
+        methods=["get"],
+        url_path="file_content/(?P<file_id>[^/]+)",
+        authentication_classes=[],
+        permission_classes=[AllowAny],
+    )
+    def file_content(self, request, file_id: str):
+        """同源流式输出附件/图片，供 <img src> 使用（HMAC ticket，无需 Bearer）。"""
+        as_attachment = request.query_params.get("download") == "1"
+        ticket = request.query_params.get("ticket")
+        return get_instance_enterprise_extension().handle_file_content(
+            file_id=file_id,
+            ticket=ticket,
+            as_attachment=as_attachment,
+        )
 
     @HasPermission("asset_info-Add")
     @action(detail=False, methods=["delete"], url_path="delete_file/(?P<file_id>[^/]+)")

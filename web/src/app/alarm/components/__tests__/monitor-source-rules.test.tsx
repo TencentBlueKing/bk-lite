@@ -1,5 +1,5 @@
 import React from 'react';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import MatchRule from '../../(pages)/settings/components/matchRule';
 
@@ -26,12 +26,13 @@ describe('监控源类型和 AND/OR 结构', () => {
     fireEvent.click(screen.getAllByRole('button', { name: 'alarmCommon.removeRuleGroup' })[1]);
     expect(onChange).toHaveBeenLastCalledWith([[condition]]);
   });
-  it('屏蔽监控源为 any_of 数组，保留前导零', () => {
+  it('屏蔽监控源为 any_of 数组，保留前导零', async () => {
     const onChange=vi.fn();
     render(<MatchRule scope="shield" value={[[{key:'push_source_id',operator:'any_of',value:['001']}]]} onChange={onChange} />);
-    const input=screen.getByRole('combobox',{name:'alarmCommon.pushSourceInput'});
+    const input=screen.getByRole('combobox',{name:'alarmCommon.pushSourceSelect'});
     fireEvent.change(input,{target:{value:'0001'}});
     fireEvent.keyDown(input,{key:'Enter',keyCode:13});
     expect(onChange).toHaveBeenLastCalledWith([[{key:'push_source_id',operator:'any_of',value:['001','0001']}]]);
+    await act(async () => { await Promise.resolve(); });
   });
 });
