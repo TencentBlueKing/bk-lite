@@ -103,9 +103,10 @@ CONSTRUCTOR_PARAMS = []
 @tool()
 def generate_attachment_file(
     filename: str,
-    content: str,
+    content: str = "",
     file_type: str = "md",
     title: str = "",
+    sandbox_path: str = "",
     config: RunnableConfig = None,
 ) -> dict:
     """Generate a new downloadable file and return its download URL.
@@ -126,10 +127,12 @@ def generate_attachment_file(
     - filename: Desired file name including extension (e.g. "report.md", "data.xlsx").
     - content:  Complete file content to save. For xlsx/csv pass raw data; for md/txt/pdf
                 pass the full Markdown or plain-text body.
-    - file_type: File format — "txt", "md", "pdf", "docx", "pptx", "xlsx", or "csv".
+    - file_type: File format — "txt", "md", "html", "pdf", "docx", "pptx", "xlsx", or "csv".
                  Defaults to "md". Use "txt" for a text file; do not substitute md.
                  Use "pptx" when the user asks for PPT/PowerPoint. Never downgrade pptx to docx.
     - title:    Optional document title used as a header in PDF/Word output.
+    - sandbox_path: Existing file under /workspace to deliver byte-for-byte. When set,
+      content must be empty; file_type must match the file's actual format.
     """
 
     configurable = (config or {}).get("configurable", {}) if isinstance(config, dict) else {}
@@ -165,7 +168,19 @@ def generate_attachment_file(
             "message": "本轮已生成文件。同一次回复不要再生成第二个文件，也不要调用 request_user_choice。用户之后的新修改仍要重新生成。",
         }
     try:
-        attachment_bytes = build_attachment_bytes(content=content, file_type=normalized_type, title=title or normalized_filename)
+        if sandbox_path:
+            if content:
+                raise ValueError("content 与 sandbox_path 只能提供一个")
+            sandbox = configurable.get("python_sandbox")
+            if sandbox is None:
+                raise ValueError("当前任务没有可用的沙箱")
+            requested_extension = sandbox_path.rsplit(".", 1)[-1].lower() if "." in sandbox_path else ""
+            output_extension = normalized_filename.rsplit(".", 1)[-1].lower()
+            if requested_extension != output_extension:
+                raise ValueError("沙箱文件扩展名与附件类型不匹配")
+            attachment_bytes = sandbox.read_workspace_file(sandbox_path)
+        else:
+            attachment_bytes = build_attachment_bytes(content=content, file_type=normalized_type, title=title or normalized_filename)
         asset = create_workflow_attachment_asset(
             execution_id=execution_id,
             attachment_id=attachment_id,

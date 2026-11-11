@@ -89,6 +89,7 @@ def _variable_manager(context: dict[str, Any], inputs: dict[str, Any]):
         "execution_id": str(context.get("execution_id") or ""),
         "entry_type": "workflow",
         "trigger_type": str(context.get("trigger_type") or ""),
+        "unattended": context.get("trigger_type") in {"SCHEDULE", "NATS", "WEBHOOK"},
     }
     manager.set_variable("flow_input", flow_input)
     manager.set_variable("flow_id", str(context.get("workflow_id") or ""))
@@ -122,7 +123,7 @@ def execute_agent(inputs: dict[str, Any]) -> dict[str, Any]:
     )
     manager = _variable_manager(context, inputs)
     result = AgentNode(manager).execute(
-        "workflow_agent",
+        str(context.get("task_reference") or "workflow_agent"),
         {
             "data": {
                 "config": {

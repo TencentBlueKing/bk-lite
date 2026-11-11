@@ -64,6 +64,7 @@ def _build_runtime_inputs(*, inputs, atom_execution, task_type, execution):
             "organization_id": execution.team[0],
             "actor": {"username": execution.started_by, "domain": execution.domain},
             "trigger_type": execution.trigger_type,
+            **({"task_reference": atom_execution.task_reference} if task_type == "bklite_agent" and atom_execution else {}),
         },
     }
 

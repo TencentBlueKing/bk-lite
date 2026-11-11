@@ -4,37 +4,65 @@ from apps.opspilot.metis.llm.tools.python.executor import _execute_python_code
 from apps.opspilot.metis.llm.tools.shell import shell_tools
 
 
-def test_shell_execute_allows_safe_commands(mocker):
-    runner = mocker.patch.object(type(shell_tools.shell_tool), "run", autospec=True, return_value="ok")
+def test_shell_execute_uses_task_container_without_host_execution(mocker, capsys, caplog):
+    from types import SimpleNamespace
 
-    result = shell_tools._run_shell_commands(["echo hello", "hostname"])
-
+    sandbox = mocker.Mock()
+    sandbox.execute_command.return_value = SimpleNamespace(output="ok")
+    host = mocker.patch("langchain_community.tools.ShellTool", side_effect=AssertionError("host shell"))
+    sentinel = "shell-command-secret-sentinel"
+    commands = ["cd /workspace", f"echo {sentinel}"]
+    result = shell_tools.shell_execute.invoke({"commands": commands}, config={"configurable": {"python_sandbox": sandbox}})
     assert result == "ok"
-    runner.assert_called_once_with(shell_tools.shell_tool, {"commands": ["echo hello", "hostname"]})
+    sandbox.execute_command.assert_called_once_with(";".join(commands))
+    host.assert_not_called()
+    captured = capsys.readouterr()
+    assert sentinel not in captured.out + captured.err + caplog.text
 
 
 @pytest.mark.parametrize(
-    ("commands", "message"),
+    "command",
     [
-        (["rm -rf /tmp/demo"], "rm -rf"),
-        (["curl https://example.com"], "curl"),
-        (["dd if=/dev/zero of=/tmp/fill.img"], "dd"),
-        (["env"], "environment variable access"),
-        (["printenv BK_TOKEN"], "environment variable access"),
-        (["cat /etc/passwd"], "sensitive file access"),
-        (['python -c "print(1)"'], "python -c"),
-        (['sh -lc "hostname"'], "sh -lc"),
-        (['bash -lc "hostname"'], "bash -lc"),
-        (["cmd /c whoami"], "cmd /c"),
+        "curl --version",
+        "wget --help",
+        "env",
+        'python -c "print(1)"',
+        'sh -c "hostname"',
+        'bash -lc "hostname"',
+        "rm -rf /workspace/temporary",
     ],
 )
-def test_shell_execute_blocks_common_high_risk_commands(commands, message, mocker):
-    runner = mocker.patch.object(type(shell_tools.shell_tool), "run", autospec=True)
+def test_shell_commands_are_delegated_to_container_without_host_blacklist(command, mocker):
+    from types import SimpleNamespace
 
-    with pytest.raises(ValueError, match=message):
-        shell_tools._run_shell_commands(commands)
+    sandbox = mocker.Mock()
+    sandbox.execute_command.return_value = SimpleNamespace(output="ok")
+    assert shell_tools.shell_execute.invoke({"commands": [command]}, config={"configurable": {"python_sandbox": sandbox}}) == "ok"
+    sandbox.execute_command.assert_called_once_with(command)
 
-    runner.assert_not_called()
+
+@pytest.mark.parametrize("commands", [[], [""], ["echo ok", "  "]])
+def test_shell_rejects_empty_commands_before_execution(commands, mocker):
+    sandbox = mocker.Mock()
+    with pytest.raises(ValueError, match="空"):
+        shell_tools.shell_execute.invoke({"commands": commands}, config={"configurable": {"python_sandbox": sandbox}})
+    sandbox.execute_command.assert_not_called()
+
+
+def test_shell_missing_or_unavailable_container_never_falls_back(mocker):
+    from apps.opspilot.services.python_sandbox.runtime import SandboxUnavailable
+
+    host = mocker.patch("subprocess.run", side_effect=AssertionError("host shell"))
+    assert "没有配置沙箱" in shell_tools.shell_execute.invoke({"commands": ["echo test"]}, config={"configurable": {}})
+    sandbox = mocker.Mock()
+    sandbox.execute_command.side_effect = SandboxUnavailable("secret-daemon-error")
+    result = shell_tools.shell_execute.invoke({"commands": ["echo test"]}, config={"configurable": {"python_sandbox": sandbox}})
+    assert "隔离环境不可用" in result and "secret-daemon-error" not in result
+    host.assert_not_called()
+
+
+def test_shell_runtime_configuration_is_not_a_model_argument():
+    assert set(shell_tools.shell_execute.tool_call_schema.model_fields) == {"commands"}
 
 
 def test_python_execute_allows_safe_code():
