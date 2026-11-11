@@ -358,4 +358,42 @@ describe('ApmHomePage', () => {
     expect(await screen.findByText('slo-service-7d')).not.toBeNull();
     expect(screen.queryByText('加载失败，点击重试')).toBeNull();
   });
+
+  it('shows late-span and entry-limit notices above the KPIs', async () => {
+    api.getDashboard.mockResolvedValue({
+      ...loadedDashboard,
+      aggregate_notice: { late_spans: 3, truncated_service_count: 2 },
+    });
+    renderWithApmIntl(<ApmHomePage />);
+
+    expect(await screen.findByText(/这段时间有 3 个晚到 Span 没有计入请求数/)).not.toBeNull();
+    expect(screen.getByText(/2 个服务的入口组合超过上限，多出的入口没有计入该服务/)).not.toBeNull();
+    const alert = screen.getByText(/晚到 Span/).closest('.ant-alert');
+    expect(alert).not.toBeNull();
+    expect(alert?.className).toContain('ant-alert-info');
+  });
+
+  it('hides the aggregate notice when it is missing, null, or zero', async () => {
+    api.getDashboard.mockResolvedValue(loadedDashboard);
+    renderWithApmIntl(<ApmHomePage />);
+    expect(await screen.findByText('请求量')).not.toBeNull();
+    expect(screen.queryByText(/晚到 Span/)).toBeNull();
+    expect(screen.queryByText(/入口组合超过上限/)).toBeNull();
+
+    cleanup();
+    api.getDashboard.mockResolvedValue({ ...loadedDashboard, aggregate_notice: null });
+    renderWithApmIntl(<ApmHomePage />);
+    expect(await screen.findByText('请求量')).not.toBeNull();
+    expect(screen.queryByText(/晚到 Span/)).toBeNull();
+
+    cleanup();
+    api.getDashboard.mockResolvedValue({
+      ...loadedDashboard,
+      aggregate_notice: { late_spans: 0, truncated_service_count: 0 },
+    });
+    renderWithApmIntl(<ApmHomePage />);
+    expect(await screen.findByText('请求量')).not.toBeNull();
+    expect(screen.queryByText(/晚到 Span/)).toBeNull();
+    expect(screen.queryByText(/入口组合超过上限/)).toBeNull();
+  });
 });

@@ -15,7 +15,7 @@ import {
   ThunderboltOutlined,
   WarningOutlined,
 } from '@ant-design/icons';
-import { Button, Col, Row, Segmented, Skeleton, Space, Typography } from 'antd';
+import { Alert, Button, Col, Row, Segmented, Skeleton, Space, Typography } from 'antd';
 import useApmApi from '@/app/apm/api';
 import DonutChart, { HEALTH_DONUT_COLORS } from '@/app/apm/components/home/donut-chart';
 import { DEPLOYMENT_STATUS_META } from '@/app/apm/components/deployment-status';
@@ -413,6 +413,16 @@ export default function ApmHomePage() {
         : [];
 
   const sectionFailed = (section: ApmDashboardSection<unknown> | undefined) => section?.status === 'failed';
+  const notice = dashboard?.aggregate_notice;
+  const aggregateNoticeParts = [
+    notice && notice.late_spans != null && notice.late_spans > 0
+      ? t('apm.home.lateSpans', '这段时间有 {count} 个晚到 Span 没有计入请求数', { count: notice.late_spans })
+      : '',
+    notice && notice.truncated_service_count > 0
+      ? t('apm.home.truncatedServices', '{count} 个服务的入口组合超过上限，多出的入口没有计入该服务', { count: notice.truncated_service_count })
+      : '',
+  ].filter(Boolean);
+  const aggregateNoticeText = aggregateNoticeParts.length ? aggregateNoticeParts.join(' ') : '';
 
   return (
     <ApmRouteShell title={t('apm.home.title', '首页')} description={t('apm.home.description', '查看应用性能总览、健康分布与待处理告警。')}>
@@ -438,6 +448,9 @@ export default function ApmHomePage() {
         <HomeEmptyState />
       ) : (
         <>
+          {aggregateNoticeText ? (
+            <Alert className="!mb-4" message={aggregateNoticeText} showIcon type="info" />
+          ) : null}
           {sectionFailed(dashboard?.kpis) ? (
             <FailedSection onRetry={load} />
           ) : (
