@@ -859,7 +859,7 @@ button.kpiCard {
   min-height: 168px;
 }
 
-/* 空闲态和无点说明跟内容走，不再用 168 的图表卡把一句字撑出大块留白。 */
+/* 无点说明跟内容走，不再用 168 的图表卡把一句字撑出大块留白。 */
 .chartPanel[data-mongodb-face='compact'] {
   min-height: 0;
 }

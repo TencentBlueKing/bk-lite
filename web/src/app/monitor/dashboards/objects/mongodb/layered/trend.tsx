@@ -10,6 +10,7 @@ import host from '../../host/layered/layered.module.scss';
 import { useProTimeWindow } from '../../host/layered/pro-time-window';
 import { MongoHint } from './hint';
 import {
+  activeQueueAxisBounds,
   activeQueueChartState,
   formatEventCount,
   formatMongoReading,
@@ -36,7 +37,6 @@ function MongoCompactFace({
   hintTitle,
   showHint,
   activity,
-  status,
   children
 }: {
   anchor: string;
@@ -45,7 +45,6 @@ function MongoCompactFace({
   hintTitle?: string;
   showHint: boolean;
   activity: string;
-  status?: string;
   children: ReactNode;
 }) {
   return (
@@ -69,14 +68,6 @@ function MongoCompactFace({
               ) : null}
             </span>
           </div>
-          {status ? (
-            <span
-              className="shrink-0 text-[13px] font-semibold leading-5 text-[var(--color-success)]"
-              data-mongodb-queue-status={status}
-            >
-              {status}
-            </span>
-          ) : null}
         </div>
         {children}
       </section>
@@ -97,7 +88,7 @@ export function MongoTrend({
   percent = false,
   counts = false,
   emptyText = '本窗口暂无数据',
-  idleText,
+  activeQueue = false,
   compactEmpty = false,
   bare = false,
   stretch = false,
@@ -123,12 +114,10 @@ export function MongoTrend({
   counts?: boolean;
   emptyText?: string;
   /**
-   * 每条序列在当前窗口都有点、且值全是 0 时，不画线。
-   * 改成收紧的空闲态：状态词「空闲」、四个 0 读数，和这句说明。
-   * 缺数仍走 emptyText，高度也随内容收，不留 156 空白图区。
-   * 只给活跃与排队，其它趋势不传。
+   * 活跃与排队。窗口内有点就画四条折线，全是 0 也画，并用 0–4 计数软顶。
+   * 无点才收成一句说明。加载仍走卡身。
    */
-  idleText?: string;
+  activeQueue?: boolean;
   /** 无点时不留 156 空白图区，只留标题和一句说明。加载仍走卡身。 */
   compactEmpty?: boolean;
   /** 嵌进已有卡壳，不再套一层 panel。 */
@@ -160,7 +149,7 @@ export function MongoTrend({
   const proTime = useProTimeWindow();
   const suspend = Boolean(proTime?.suspend);
   const windowPoints = clipChartDataToWindow(data, proTime?.window ?? null);
-  const queueState = idleText
+  const queueState = activeQueue
     ? activeQueueChartState(
       series.map((item) => clipChartDataToWindow(
         mongoPoints(metricMap, item.name),
@@ -171,18 +160,15 @@ export function MongoTrend({
       series.map((item) => pending.has(item.name))
     )
     : null;
-  const hidePlot = queueState === 'idle' || queueState === 'empty' || queueState === 'loading';
+  const hidePlot = queueState === 'empty' || queueState === 'loading';
   const shownData = hidePlot ? EMPTY_POINTS : data;
   const shownLoading = queueState === 'loading' || (queueState == null && awaiting);
   const shownEmpty = emptyText;
-  const compactActivity = queueState === 'idle' || queueState === 'empty'
-    ? queueState
-    : 'empty';
   const showCompact = !suspend && (
-    queueState === 'idle'
-    || queueState === 'empty'
+    queueState === 'empty'
     || (compactEmpty && queueState == null && !awaiting && windowPoints.length === 0)
   );
+  const sampleBounds = activeQueue ? activeQueueAxisBounds : resolveValueBounds;
   const unit = series[0]?.unit || 'none';
   const readingOf = (item: MongoSeriesSpec) => {
     if (!multi) return undefined;
@@ -198,34 +184,11 @@ export function MongoTrend({
         body={body}
         hintTitle={hintTitle}
         showHint={showHint}
-        activity={compactActivity}
-        status={queueState === 'idle' ? '空闲' : undefined}
+        activity="empty"
       >
-        {queueState === 'idle' ? (
-          <>
-            <div
-              className="flex flex-wrap items-baseline gap-x-4 gap-y-1"
-              data-mongodb-queue-readings=""
-            >
-              {series.map((item) => (
-                <span key={item.name} className="text-[13px] leading-5 text-[var(--color-text-3)]">
-                  {item.label}
-                  {' '}
-                  <span className="font-semibold tabular-nums text-[var(--color-text-1)]">
-                    {formatMongoReading(0, item.unit)}
-                  </span>
-                </span>
-              ))}
-            </div>
-            <p className="m-0 mt-2 text-[13px] leading-5 text-[var(--color-text-3)]" data-mongodb-queue-idle="">
-              {idleText}
-            </p>
-          </>
-        ) : (
-          <p className="m-0 text-[13px] font-semibold leading-5 text-[var(--color-text-2)]" data-mongodb-chart-empty="">
-            {emptyText}
-          </p>
-        )}
+        <p className="m-0 text-[13px] font-semibold leading-5 text-[var(--color-text-2)]" data-mongodb-chart-empty="">
+          {emptyText}
+        </p>
       </MongoCompactFace>
     );
   }
@@ -245,10 +208,11 @@ export function MongoTrend({
         bare={bare}
         className={stretch ? 'h-full' : undefined}
         mutedTitle={mutedTitle}
-        valueBounds={resolveValueBounds ? undefined : (percent ? { min: 0, max: 100 } : undefined)}
-        resolveValueBounds={resolveValueBounds}
+        valueBounds={sampleBounds ? undefined : (percent ? { min: 0, max: 100 } : undefined)}
+        resolveValueBounds={sampleBounds}
         areaOpacity={areaOpacity}
-        keepSeriesColor={keepSeriesColor}
+        keepSeriesColor={keepSeriesColor || activeQueue}
+        markZeroCount={activeQueue}
         pinAxisZero={counts || (!percent && (unit === 'cps' || unit === 'byteps' || unit === 'counts'))}
         independentAxes={mixedUnits}
         keepLegend={multi}

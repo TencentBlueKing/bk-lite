@@ -106,6 +106,12 @@ interface ThinTimeSeriesProps {
    * 贴在轴下限时仍用序列色。缺省沿用贴地改轴线色，避免全 0 速率线看不见。
    */
   keepSeriesColor?: boolean;
+  /**
+   * 整窗全是 0 的计数折线保持序列色，线宽略强于轴线，并画出采样点。
+   * 不改成轴线色，不上下错开，也不在线下铺浅面积。
+   * 只给活跃与排队。其它趋势全 0 仍走原来的贴轴处理。
+   */
+  markZeroCount?: boolean;
 }
 
 const areaKeys = (data: ChartData[]) => {
@@ -301,6 +307,10 @@ export const seriesSitsOnAxisFloor = (
 /** 多条都贴底时错开几像素，颜色还能分开。采样值不动。 */
 const FLOOR_LINE_LIFTS = [-8, -5, -2] as const;
 
+/** 坐标轴线默认 1px。全 0 计数线略强一档，避免和 X 轴脊线融在一起。 */
+const ZERO_COUNT_LINE_WIDTH = 2;
+const ZERO_COUNT_SYMBOL_SIZE = 6;
+
 const floorLineLift = (index: number) => (
   FLOOR_LINE_LIFTS[Math.min(index, FLOOR_LINE_LIFTS.length - 1)]
 );
@@ -441,7 +451,8 @@ export default function ThinTimeSeries({
   hideFlatAxisLabels = false,
   pinAxisZero = false,
   areaOpacity,
-  keepSeriesColor = false
+  keepSeriesColor = false,
+  markZeroCount = false
 }: ThinTimeSeriesProps) {
   const proTime = useProTimeWindow();
   const chartWindow = proTime?.window ?? null;
@@ -548,6 +559,10 @@ export default function ThinTimeSeries({
     const sharedExtent = splitAxes
       ? null
       : extentOf(keys.flatMap((key) => seriesAxisValues(plotted, key)), unit);
+    const zeroCountLine = markZeroCount && keys.length > 0 && keys.every((key) => {
+      const samples = seriesAxisValues(plotted, key);
+      return samples.length > 0 && samples.every((value) => value === 0);
+    });
     const valueAxis = (samples: number[], color: string, showSplit: boolean, axisUnit: MetricUnit) => {
       const bounds = lockedAxis ? null : layoutOf(samples, axisUnit);
       const axisMin = lockedAxis?.min ?? bounds?.min ?? 0;
@@ -676,21 +691,24 @@ export default function ThinTimeSeries({
         const samples = seriesAxisValues(plotted, key);
         const extent = splitAxes ? extentOf(samples, unitAt(index)) : sharedExtent;
         // 贴底描边改成轴线色，彩色影子抬进图区。数值仍是采样本身，不造非零点。
-        const onFloor = !keepSeriesColor && Boolean(
+        // 全 0 计数趋势不走这条：线留在 0，靠序列色和采样点认出来。
+        const onFloor = !zeroCountLine && !keepSeriesColor && Boolean(
           axisColor
           && extent
           && seriesSitsOnAxisFloor(samples, extent.min, extent.max)
         );
-        const showArea = !dashed && typeof areaOpacity === 'number' && areaOpacity > 0;
+        const showArea = !zeroCountLine && !dashed && typeof areaOpacity === 'number' && areaOpacity > 0;
         return {
           type: 'line' as const,
           name: legends[index]?.title || legends[index]?.label || key,
           ...(splitAxes ? { yAxisIndex: index } : {}),
-          showSymbol: false,
-          symbol: 'none' as const,
-          smooth: onFloor ? 0 : 0.15,
+          showSymbol: zeroCountLine,
+          symbol: zeroCountLine ? 'circle' as const : 'none' as const,
+          ...(zeroCountLine ? { showAllSymbol: true, symbolSize: ZERO_COUNT_SYMBOL_SIZE, large: false } : {}),
+          smooth: onFloor || zeroCountLine ? 0 : 0.15,
           connectNulls: true,
           ...(onFloor ? { clip: false as const, z: 8 } : {}),
+          ...(zeroCountLine ? { clip: false as const, z: 4 } : {}),
           itemStyle: { color },
           data: plotted.map((point) => {
             const value = point[key];
@@ -707,7 +725,7 @@ export default function ThinTimeSeries({
               shadowOffsetY: floorLineLift(index)
             }
             : {
-              width: dashed ? 1.2 : 1.6,
+              width: zeroCountLine ? ZERO_COUNT_LINE_WIDTH : (dashed ? 1.2 : 1.6),
               color,
               ...(showArea ? { opacity: 1 } : {}),
               type: dashed ? 'dashed' as const : 'solid' as const
@@ -715,7 +733,7 @@ export default function ThinTimeSeries({
         };
       })
     };
-  }, [areaOpacity, axisColor, chartWindow, hideFlatAxisLabels, keepLegend, keepSeriesColor, keys, legendKey, mutedColor, numericAxis, panelColor, pinAxisZero, plotted, resolveValueBounds, seriesColors, splitAxes, suspend, textColor, unit, valueBounds?.min, valueBounds?.max]);
+  }, [areaOpacity, axisColor, chartWindow, hideFlatAxisLabels, keepLegend, keepSeriesColor, keys, legendKey, markZeroCount, mutedColor, numericAxis, panelColor, pinAxisZero, plotted, resolveValueBounds, seriesColors, splitAxes, suspend, textColor, unit, valueBounds?.min, valueBounds?.max]);
   const { containerRef } = useECharts(option);
   const drawnSeriesCount = keys.filter((key) => plotted.some((point) => {
     const value = point[key];

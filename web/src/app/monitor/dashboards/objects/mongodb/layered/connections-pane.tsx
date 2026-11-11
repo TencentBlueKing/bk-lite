@@ -128,7 +128,7 @@ export default function ConnectionsPane({
               series={ACTIVE_QUEUE_CHART.series}
               metricMap={metricMap}
               pending={pendingMetricNames}
-              idleText={ACTIVE_QUEUE_CHART.idleText}
+              activeQueue
             />
           </div>
         </div>

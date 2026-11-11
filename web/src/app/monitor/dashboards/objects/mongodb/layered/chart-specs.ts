@@ -8,11 +8,6 @@ export interface MongoChartSpec {
   series: readonly MongoSeriesSpec[];
   counts?: boolean;
   emptyText?: string;
-  /**
-   * 窗口内每条序列都有点且全是 0 时的空闲说明。
-   * 卡片另显示状态词「空闲」和四个 0，不画线。不传就照常画线。
-   */
-  idleText?: string;
 }
 
 /**
@@ -29,12 +24,11 @@ export const CONNECTION_TREND_CHART: MongoChartSpec = {
   ]
 };
 
-/** 四点都有数且全是 0 时走空闲态，不画 0–1 贴底线。无点仍用默认「本窗口暂无数据」。 */
+/** 有点就画四条计数折线，全 0 也画。无点仍用默认「本窗口暂无数据」。 */
 export const ACTIVE_QUEUE_CHART: MongoChartSpec = {
   anchor: 'queue',
   title: '活跃与排队',
   body: '正在执行与正在等待的读/写操作数量对照。',
-  idleText: '本窗口没有正在执行或等待的读写。',
   series: [
     { name: 'mongodb_active_reads', label: '活跃读', color: MONGODB_PALETTE.blue, unit: 'counts' },
     { name: 'mongodb_active_writes', label: '活跃写', color: MONGODB_PALETTE.green, unit: 'counts' },

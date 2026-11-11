@@ -66,25 +66,40 @@ export const connectionCap = (
   return current + available;
 };
 
-export type ActiveQueueChartState = 'loading' | 'empty' | 'idle' | 'plot';
+export type ActiveQueueChartState = 'loading' | 'empty' | 'plot';
 
 /**
- * 活跃与排队。四点在窗口内都有数且全是 0 才是空闲。
- * 任一点非 0 就画线。缺数且没有非 0 点当无数据。还在等的空序列继续加载。
+ * 活跃与排队。窗口里有点就画折线，四点全是 0 也画。
+ * 一个点都没有且还在等 → 加载。都返回了仍无点 → 无数据。
+ * 无点不造 0 线。
  */
 export const activeQueueChartState = (
   samples: ReadonlyArray<readonly number[]>,
   pending: ReadonlyArray<boolean>
 ): ActiveQueueChartState => {
-  const anyNonZero = samples.some((values) => values.some((value) => value !== 0));
-  if (anyNonZero) return 'plot';
-  const idle = samples.length > 0 && samples.every((values) => (
-    values.length > 0 && values.every((value) => value === 0)
-  ));
-  if (idle) return 'idle';
-  const stillPending = samples.some((values, index) => values.length === 0 && pending[index]);
-  if (stillPending) return 'loading';
+  if (samples.some((values) => values.length > 0)) return 'plot';
+  if (pending.some(Boolean)) return 'loading';
   return 'empty';
+};
+
+/**
+ * 全 0 的计数软顶。固定轴会把它画成 0、2、4。
+ * 出现非 0 就返回 null，交给按数据的软顶，不再锁 0–4。
+ * 没有采样也不锁，避免无点被画成一条 0 轴。
+ */
+export const activeQueueAxisBounds = (
+  samples: readonly number[]
+): { min: number; max: number } | null => {
+  if (!samples.length) return null;
+  let lo = samples[0];
+  let hi = samples[0];
+  for (let index = 1; index < samples.length; index += 1) {
+    const value = samples[index];
+    if (value < lo) lo = value;
+    if (value > hi) hi = value;
+  }
+  if (lo === 0 && hi === 0) return { min: 0, max: 4 };
+  return null;
 };
 
 /** 运行时间来自纳秒读数。没有读数时显示 —，不把缺失写成 0。 */
