@@ -62,9 +62,44 @@ function projectionAliases(rows: { source?: string; as?: string }[] | undefined)
   return options;
 }
 
+interface ContextFieldOption {
+  value: string;
+  label: string;
+}
+
 interface ContextFieldOptionGroup {
   label: string;
-  options: { value: string; label: string }[];
+  options: ContextFieldOption[];
+}
+
+function flattenContextFieldOptions(groups: ContextFieldOptionGroup[]) {
+  const items: ContextFieldOption[] = [];
+  for (const group of groups || []) {
+    for (const item of group.options || []) {
+      if (!item?.value) continue;
+      items.push({ value: item.value, label: String(item.label || item.value) });
+    }
+  }
+  return items;
+}
+
+function displayProjectionSource(source: string, groups: ContextFieldOptionGroup[]) {
+  const key = String(source || '');
+  if (!key) return key;
+  const hit = flattenContextFieldOptions(groups).find((item) => item.value === key);
+  return hit?.label || key;
+}
+
+function resolveProjectionSource(text: string, groups: ContextFieldOptionGroup[]) {
+  const raw = String(text || '');
+  const trimmed = raw.trim();
+  if (!trimmed) return raw;
+  const items = flattenContextFieldOptions(groups);
+  const byValue = items.find((item) => item.value === trimmed);
+  if (byValue) return byValue.value;
+  const byLabel = items.find((item) => item.label === trimmed);
+  if (byLabel) return byLabel.value;
+  return raw;
 }
 
 const ProjectionSourceAutoComplete: React.FC<{
@@ -75,14 +110,19 @@ const ProjectionSourceAutoComplete: React.FC<{
   placeholder?: string;
 }> = ({ value, onChange, aliasIndex, options, placeholder }) => {
   const form = Form.useFormInstance();
+  const fieldItems = flattenContextFieldOptions(options);
   return (
     <AutoComplete
       allowClear
-      value={value}
+      value={displayProjectionSource(value || '', options)}
       options={options}
       placeholder={placeholder}
       style={{ width: 280 }}
       filterOption={(input, option) => {
+        const exactSelected = fieldItems.some(
+          (item) => item.value === input || item.label === input
+        );
+        if (exactSelected) return true;
         const q = input.toLowerCase();
         const candidate = option as { value?: string; label?: unknown } | undefined;
         return (
@@ -91,7 +131,7 @@ const ProjectionSourceAutoComplete: React.FC<{
         );
       }}
       onChange={(nextValue) => {
-        const next = String(nextValue || '');
+        const next = resolveProjectionSource(String(nextValue || ''), options);
         const previous = String(value || '');
         onChange?.(next);
         window.setTimeout(() => {
@@ -99,7 +139,7 @@ const ProjectionSourceAutoComplete: React.FC<{
         }, 0);
       }}
       onSelect={(nextValue) => {
-        const next = String(nextValue || '');
+        const next = resolveProjectionSource(String(nextValue || ''), options);
         const previous = String(value || '');
         window.setTimeout(() => {
           fillProjectionAlias(form, aliasIndex, next, previous);

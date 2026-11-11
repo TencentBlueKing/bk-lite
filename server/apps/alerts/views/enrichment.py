@@ -148,17 +148,21 @@ class EnrichmentRuleModelViewSet(ModelViewSet):
     @HasPermission("alert_enrichment-View")
     def cmdb_context_fields(self, request, *args, **kwargs):
         try:
-            client = CMDB()
+            return Response({"groups": self._load_cmdb_context_field_groups()})
         except Exception:
             logger.warning("[Enrichment] CMDB 不可用，跳过应用上下文字段目录")
             return Response({"groups": []})
+
+    @staticmethod
+    def _load_cmdb_context_field_groups():
+        client = CMDB()
         groups = []
         for model_id, model_name in _CMDB_CONTEXT_MODELS:
             try:
-                attrs = client.search_model_attrs(params={"model_id": model_id}) or []
+                attrs = client.search_model_attrs(params={"model_id": model_id}, _timeout=3) or []
             except Exception:
                 logger.warning("[Enrichment] 读取 CMDB 模型字段失败 model_id=%s", model_id, exc_info=True)
-                continue
+                break
             if not isinstance(attrs, list):
                 continue
             fields = []
@@ -178,4 +182,4 @@ class EnrichmentRuleModelViewSet(ModelViewSet):
                 )
             if fields:
                 groups.append({"model_id": model_id, "model_name": model_name, "fields": fields})
-        return Response({"groups": groups})
+        return groups
