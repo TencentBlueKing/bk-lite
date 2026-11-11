@@ -5,8 +5,8 @@ from django.http import JsonResponse
 from rest_framework.decorators import action
 
 from apps.core.decorators.api_permission import HasPermission
-from apps.core.utils.permission_cache import clear_users_permission_cache
 from apps.core.utils.loader import LanguageLoader
+from apps.core.utils.permission_cache import clear_users_permission_cache
 from apps.core.utils.viewset_utils import LanguageViewSet
 from apps.system_mgmt.models import Group, Menu, Role, User
 from apps.system_mgmt.serializers.role_serializer import RoleSerializer
@@ -79,7 +79,7 @@ class RoleViewSet(LanguageViewSet, ViewSetUtils):
             app_role = role_map.get(client_obj["name"], [])
             return_data.append(
                 {
-                    "id": client_obj["id"] * 886,
+                    "id": client_obj["id"],
                     "name": client_obj["name"],
                     "is_build_in": client_obj.get("is_build_in", True),
                     "display_name": client_obj.get("display_name", ""),

@@ -6,18 +6,13 @@ import {
   processLeftTreeData,
   isNodeDisabled
 } from './role-tree-utils';
+import { getSelectableLeafKeys } from '@/app/system-manager/utils/roleTreeUtils';
 import TransferTreePanel from '@/app/system-manager/components/system-manager-transfer-tree-panel';
 
 const hasKey = (keys: React.Key[], targetKey: React.Key) =>
   keys.some((key) => String(key) === String(targetKey));
 
-const getLeafRoleKeys = (node: TreeDataNode): React.Key[] => {
-  if (!node.children || node.children.length === 0) {
-    return [node.key];
-  }
-
-  return node.children.flatMap((child) => getLeafRoleKeys(child));
-};
+const getLeafRoleKeys = getSelectableLeafKeys;
 
 const getRoleNodeCheckState = (
   node: TreeDataNode,
