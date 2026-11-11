@@ -52,6 +52,16 @@ processors:
     maximum_length: 4h
     state_ttl: 5h
     aof_timeout: 2s
+  # Aggregate branch only. Keep this off logs/rum so a full limiter cannot fail ingest.
+  batch/rum_agg:
+    timeout: ${env:RUM_AGG_BATCH_TIMEOUT:-60s}
+  deltatocumulative/rum:
+    max_stale: 10m
+    max_streams: ${env:RUM_AGG_MAX_STREAMS:-420000}
+  rumroutecap:
+    redis_url: ${env:RUM_SESSION_REDIS_URL}
+    redis_password_file: /run/secrets/rum_sessionizer_redis_password
+    shard: ${env:RUM_AGG_SHARD}
 
 exporters:
   rum_victoria/rum:
@@ -106,6 +116,103 @@ exporters:
     retry_on_failure:
       enabled: true
       max_elapsed_time: 336h
+  prometheus_remote_write/rum_agg:
+    endpoint: ${env:AGG_VICTORIAMETRICS_WRITE_URL}
+    timeout: 10s
+    external_labels:
+      shard: ${env:RUM_AGG_SHARD}
+    # Resource attributes were already reduced to the allowlist by signal_to_metrics.
+    resource_to_telemetry_conversion:
+      enabled: true
+    target_info:
+      enabled: false
+    disable_scope_info: true
+    remote_write_queue:
+      enabled: false
+    retry_on_failure:
+      enabled: false
+
+connectors:
+  forward/rum_agg: {}
+  signal_to_metrics/rum:
+    error_mode: ignore
+    logs:
+      - name: rum.views
+        description: Page views. Matches Server LogsQL "rum.event.type":view.
+        include_resource_attributes: &rum_agg_resource
+          - key: tenant.id
+          - key: rum.traffic.class
+            default_value: unknown
+        attributes: &rum_agg_attributes
+          - key: rum.application
+            default_value: unknown
+          - key: rum.environment
+            default_value: unknown
+          - key: rum.aggregate.route
+            default_value: "其他"
+        conditions:
+          - 'log.attributes["rum.event.type"] == "view"'
+        sum:
+          value: "1"
+          monotonic: true
+      - name: rum.js_errors
+        description: JavaScript exceptions. Matches Server LogsQL "rum.event.type":error.
+        include_resource_attributes: *rum_agg_resource
+        attributes: *rum_agg_attributes
+        conditions:
+          - 'log.attributes["rum.event.type"] == "error"'
+        sum:
+          value: "1"
+          monotonic: true
+      - name: rum.web_vital.lcp
+        description: Largest Contentful Paint. Value unit matches rum.vital.lcp milliseconds.
+        unit: ms
+        include_resource_attributes: *rum_agg_resource
+        attributes: *rum_agg_attributes
+        conditions:
+          - 'log.attributes["rum.event.type"] == "vital" and log.attributes["rum.vital.lcp"] != nil'
+        histogram:
+          buckets: [100, 250, 500, 1000, 2500, 4000, 8000, 16000]
+          value: 'Double(log.attributes["rum.vital.lcp"])'
+      - name: rum.web_vital.inp
+        description: Interaction to Next Paint. Value unit matches rum.vital.inp milliseconds.
+        unit: ms
+        include_resource_attributes: *rum_agg_resource
+        attributes: *rum_agg_attributes
+        conditions:
+          - 'log.attributes["rum.event.type"] == "vital" and log.attributes["rum.vital.inp"] != nil'
+        histogram:
+          buckets: [50, 100, 200, 500, 1000, 2500]
+          value: 'Double(log.attributes["rum.vital.inp"])'
+      - name: rum.web_vital.cls
+        description: Cumulative Layout Shift. Value matches unitless rum.vital.cls.
+        include_resource_attributes: *rum_agg_resource
+        attributes: *rum_agg_attributes
+        conditions:
+          - 'log.attributes["rum.event.type"] == "vital" and log.attributes["rum.vital.cls"] != nil'
+        histogram:
+          buckets: [0.01, 0.05, 0.1, 0.25, 0.5, 1]
+          value: 'Double(log.attributes["rum.vital.cls"])'
+      - name: rum.web_vital.fcp
+        description: First Contentful Paint. Value unit matches rum.vital.fcp milliseconds.
+        unit: ms
+        include_resource_attributes: *rum_agg_resource
+        attributes: *rum_agg_attributes
+        conditions:
+          - 'log.attributes["rum.event.type"] == "vital" and log.attributes["rum.vital.fcp"] != nil'
+        histogram:
+          buckets: [100, 250, 500, 1000, 1800, 3000, 6000, 12000]
+          value: 'Double(log.attributes["rum.vital.fcp"])'
+      - name: rum.web_vital.ttfb
+        description: Time to First Byte. Value unit matches rum.vital.ttfb milliseconds.
+        unit: ms
+        include_resource_attributes: *rum_agg_resource
+        attributes: *rum_agg_attributes
+        conditions:
+          - 'log.attributes["rum.event.type"] == "vital" and log.attributes["rum.vital.ttfb"] != nil'
+        histogram:
+          buckets: [50, 100, 200, 400, 800, 1800, 4000]
+          value: 'Double(log.attributes["rum.vital.ttfb"])'
 
 extensions:
   health_check:
@@ -141,7 +248,15 @@ service:
     logs/rum:
       receivers: [faro/rum]
       processors: [memory_limiter, rumsession]
-      exporters: [rum_victoria/rum]
+      exporters: [rum_victoria/rum, forward/rum_agg]
+    logs/rum_agg:
+      receivers: [forward/rum_agg]
+      processors: [rumroutecap]
+      exporters: [signal_to_metrics/rum]
+    metrics/rum_agg:
+      receivers: [signal_to_metrics/rum]
+      processors: [batch/rum_agg, deltatocumulative/rum]
+      exporters: [prometheus_remote_write/rum_agg]
     traces/rum:
       receivers: [faro/rum]
       processors: [memory_limiter]
@@ -151,6 +266,10 @@ service:
       processors: [memory_limiter, rumsession]
       exporters: [rum_replay]
   telemetry:
+    resource:
+      attributes:
+        - name: service.instance.id
+          value: ${env:RUM_AGG_SHARD}
     logs:
       level: info
     metrics:

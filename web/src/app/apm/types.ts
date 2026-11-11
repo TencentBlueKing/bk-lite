@@ -55,6 +55,7 @@ export interface ApmServiceRed {
   p99_ms: number | null;
   request_count: number | null;
   error_count: number | null;
+  max_ms?: number | null;
   timeseries: ApmServiceRedPoint[];
   top_endpoints: ApmServiceEndpointRed[];
 }
@@ -63,6 +64,7 @@ export type ApmServiceRedBatchItem = ApmServiceRed & {
   ok?: boolean;
   code?: string;
   detail?: string;
+  entry_truncated?: boolean;
 };
 
 export interface ApmServiceRedPoint {
@@ -71,6 +73,7 @@ export interface ApmServiceRedPoint {
   error_rate: number | null;
   p95_ms: number | null;
   p99_ms: number | null;
+  max_ms?: number | null;
 }
 
 export interface ApmClientRollupRow {
@@ -228,8 +231,9 @@ export interface ApmDashboardSloRow {
   service_name: string;
   environment: string;
   objective: number;
-  current_rate: number;
-  met: boolean;
+  current_rate: number | null;
+  met: boolean | null;
+  reason?: string;
 }
 
 export interface ApmDashboardTopRow {
@@ -268,9 +272,15 @@ export interface ApmDashboardReleaseRow {
   source?: ApmDeploymentSource;
 }
 
+export interface ApmAggregateNotice {
+  late_spans: number | null;
+  truncated_service_count: number;
+}
+
 export interface ApmDashboard {
   empty: boolean;
   window: ApmTimeWindow;
+  aggregate_notice?: ApmAggregateNotice | null;
   kpis: ApmDashboardSection<ApmDashboardKpiData>;
   health: ApmDashboardSection<ApmDashboardHealthData>;
   slos: ApmDashboardSection<{ items: ApmDashboardSloRow[] }>;

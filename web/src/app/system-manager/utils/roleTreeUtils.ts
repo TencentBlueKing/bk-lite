@@ -1,5 +1,6 @@
 import React from 'react';
 import type { DataNode as TreeDataNode } from 'antd/lib/tree';
+import { resolveAppDisplayName } from '@/utils/appDisplayName';
 
 export const TRANSFER_TREE_HEIGHT = 250;
 
@@ -146,10 +147,11 @@ export function resolveLeftExpandedKeys(input: {
   prevExpandedKeys: React.Key[];
   keysBeforeSearch: React.Key[] | null;
   userHasExpanded: boolean;
+  t?: RoleTreeTranslate;
 }): { expandedKeys: React.Key[]; keysBeforeSearch: React.Key[] | null } {
   if (input.searchValue) {
     return {
-      expandedKeys: getSearchExpandedKeys(input.treeData, input.searchValue),
+      expandedKeys: getSearchExpandedKeys(input.treeData, input.searchValue, input.t),
       keysBeforeSearch: input.keysBeforeSearch ?? input.prevExpandedKeys,
     };
   }
@@ -178,6 +180,46 @@ export function resolveLeftExpandedKeys(input: {
 
 export function isNodeDisabled(node: TreeDataNode): boolean {
   return node.disabled === true;
+}
+
+type SearchableTreeNode = TreeDataNode & { display_name?: string };
+
+type RoleTreeTranslate = (id: string, defaultMessage?: string) => string;
+
+/** 内置应用标题走界面语言词条；角色名和外部应用保持原标题。 */
+export function resolveRoleTreeLabel(
+  node: SearchableTreeNode,
+  t: RoleTreeTranslate,
+): React.ReactNode {
+  const rawTitle = typeof node.title === 'function' ? node.title(node) : node.title;
+  if (typeof node.display_name === 'string' && typeof rawTitle === 'string') {
+    return resolveAppDisplayName(
+      { name: rawTitle, display_name: node.display_name, is_build_in: true },
+      t,
+    );
+  }
+  return node.display_name || rawTitle;
+}
+
+function searchText(value: React.ReactNode | ((data: TreeDataNode) => React.ReactNode)): string {
+  return typeof value === 'function' ? '' : extractTextFromTitle(value).toLowerCase();
+}
+
+/** 只比较屏幕标题和节点原文。原文里的应用 ID、角色名仍可命中。 */
+function nodeMatchesSearch(node: TreeDataNode, searchValue: string, t?: RoleTreeTranslate): boolean {
+  const needle = searchValue.toLowerCase();
+  if (searchText(node.title).includes(needle)) {
+    return true;
+  }
+  return t ? searchText(resolveRoleTreeLabel(node, t)).includes(needle) : false;
+}
+
+/** 只收集可选中的角色叶子。应用节点不可选，它的 key 不能进入角色列表。 */
+export function getSelectableLeafKeys(node: TreeDataNode): React.Key[] {
+  if (node.children && node.children.length > 0) {
+    return node.children.flatMap((child) => getSelectableLeafKeys(child));
+  }
+  return node.selectable ? [node.key] : [];
 }
 
 export function extractTextFromTitle(title: React.ReactNode | ((data: TreeDataNode) => React.ReactNode)): string {
@@ -218,35 +260,40 @@ export function extractTextFromTitle(title: React.ReactNode | ((data: TreeDataNo
   return '';
 }
 
-export function filterTreeNode(node: TreeDataNode, searchValue: string): TreeDataNode | null {
-  const nodeTitle = extractTextFromTitle(node.title);
-  const match = nodeTitle.toLowerCase().includes(searchValue.toLowerCase());
+export function filterTreeNode(
+  node: TreeDataNode,
+  searchValue: string,
+  t?: RoleTreeTranslate,
+): TreeDataNode | null {
+  if (nodeMatchesSearch(node, searchValue, t)) {
+    return { ...node };
+  }
 
   if (node.children && node.children.length > 0) {
     const filteredChildren = node.children
-      .map(child => filterTreeNode(child, searchValue))
+      .map(child => filterTreeNode(child, searchValue, t))
       .filter(Boolean) as TreeDataNode[];
 
-    if (match || filteredChildren.length > 0) {
+    if (filteredChildren.length > 0) {
       return { ...node, children: filteredChildren };
     }
   }
 
-  return match ? node : null;
+  return null;
 }
 
-export function getSearchExpandedKeys(nodes: TreeDataNode[], searchValue: string): React.Key[] {
+export function getSearchExpandedKeys(
+  nodes: TreeDataNode[],
+  searchValue: string,
+  t?: RoleTreeTranslate,
+): React.Key[] {
   const keys: React.Key[] = [];
 
   const traverse = (node: TreeDataNode) => {
     if (node.children && node.children.length > 0) {
-      const nodeTitle = extractTextFromTitle(node.title);
-      const hasMatchInChildren = node.children.some(child => {
-        const childTitle = extractTextFromTitle(child.title);
-        return childTitle.toLowerCase().includes(searchValue.toLowerCase());
-      });
+      const hasMatchInChildren = node.children.some(child => nodeMatchesSearch(child, searchValue, t));
 
-      if (hasMatchInChildren || nodeTitle.toLowerCase().includes(searchValue.toLowerCase())) {
+      if (hasMatchInChildren || nodeMatchesSearch(node, searchValue, t)) {
         keys.push(node.key);
       }
 

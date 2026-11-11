@@ -82,7 +82,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Real memory utilization of the Mitel MiVoice 5000, derived as (memTotalReal - memAvailReal) / memTotalReal * 100."
+      "description": "Real memory utilization of the Mitel MiVoice 5000."
     },
     {
       "metric_group": "Memory",

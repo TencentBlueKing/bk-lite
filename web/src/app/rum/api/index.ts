@@ -8,6 +8,7 @@ import {
   type PipelineDegradation,
   type RumAnalyticsRange,
 } from '@/app/rum/lib/degradation';
+import { metricOrZero } from '@/app/rum/lib/metrics';
 
 export interface RumApplicationView {
   application: string;
@@ -76,10 +77,10 @@ export type RumApplicationHealthItem = RumApplicationView & {
   release?: string;
   sdkVersion?: string;
   sessions: number;
-  views: number;
-  errors: number;
-  lcpP75: number;
-  inpP75: number;
+  views: number | null;
+  errors: number | null;
+  lcpP75: number | null;
+  inpP75: number | null;
   errorRate: number;
   lastSeenMs?: number;
 };
@@ -88,14 +89,14 @@ export type RumApplicationsCatalog = PipelineDegradation & {
   configured: boolean;
   range: RumAnalyticsRange | string;
   applications: RumApplicationHealthItem[];
-  sparklines: Record<string, number[]>;
+  sparklines: Record<string, Array<number | null>>;
   kpi: {
     poorApps: number;
     sessions: number;
-    views: number;
-    errors: number;
-    worstLcp: number;
-    worstInp: number;
+    views: number | null;
+    errors: number | null;
+    worstLcp: number | null;
+    worstInp: number | null;
   };
 };
 
@@ -114,7 +115,7 @@ export type RumApplicationOverview = PipelineDegradation & {
   enabled: boolean;
   range: RumAnalyticsRange | string;
   kpi: RumApplicationHealthItem;
-  sparkline: number[];
+  sparkline: Array<number | null>;
   trend: RumSessionTrendPoint[];
   countries: RumOverviewCountry[];
   devices: { mobile: number; desktop: number };
@@ -194,16 +195,17 @@ export interface RumViewAggregateRow {
   key: string;
   release?: string;
   route?: string;
-  views: number;
-  sessions: number;
-  lcpP75: number;
+  views: number | null;
+  errors?: number | null;
+  sessions: number | null;
+  lcpP75: number | null;
   lcpTarget?: string;
   lcpAttribution?: string;
-  inpP75: number;
+  inpP75: number | null;
   inpTarget?: string;
   inpAttribution?: string;
-  clsP75: number;
-  loadingP75: number;
+  clsP75: number | null;
+  loadingP75: number | null;
   dist: RumViewDist;
   impact: number;
   mom: RumViewMom;
@@ -212,7 +214,7 @@ export interface RumViewAggregateRow {
 
 export type RumViewListPage = PipelineDegradation & {
   mode: string;
-  summary: { lcpP75: number; inpP75: number; clsP75: number };
+  summary: { lcpP75: number | null; inpP75: number | null; clsP75: number | null };
   releases: string[];
   rows: RumViewAggregateRow[];
 };
@@ -429,11 +431,32 @@ export interface RumAlertEventPage {
   limit: number;
 }
 
+export interface RumAlertTrendPoint {
+  atMs: number;
+  value: number | null;
+}
+
+/** Keep a real number, including 0. Null, missing, and non-numeric samples stay empty. */
+export function parseAlertTrendValue(value: unknown): number | null {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return null;
+  return value;
+}
+
+export function parseAlertTrend(raw: unknown): RumAlertTrendPoint[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.map((item) => {
+    if (item === null || typeof item !== 'object') return { atMs: 0, value: null };
+    const point = item as { atMs?: unknown; value?: unknown };
+    const atMs = typeof point.atMs === 'number' && Number.isFinite(point.atMs) ? point.atMs : 0;
+    return { atMs, value: parseAlertTrendValue(point.value) };
+  });
+}
+
 export interface RumAlertEventDetail {
   alert: RumAlertItem;
   events: RumAlertTimelineEvent[];
   deliveries: RumAlertDeliveryItem[];
-  trend: { atMs: number; value: number }[];
+  trend: RumAlertTrendPoint[];
 }
 
 export interface RumEraseJob {
@@ -575,10 +598,10 @@ export function useRumQueries() {
           ? data.applications.map((item) => ({
             ...normalizeApplication(item),
             sessions: Number(item.sessions) || 0,
-            views: Number(item.views) || 0,
-            errors: Number(item.errors) || 0,
-            lcpP75: Number(item.lcpP75) || 0,
-            inpP75: Number(item.inpP75) || 0,
+            views: metricOrZero(item.views),
+            errors: metricOrZero(item.errors),
+            lcpP75: metricOrZero(item.lcpP75),
+            inpP75: metricOrZero(item.inpP75),
             errorRate: Number(item.errorRate) || 0,
             environment: item.environment,
             release: item.release,
@@ -617,10 +640,10 @@ export function useRumQueries() {
             ...emptyHealth(name, Boolean(data.enabled)),
             ...data.kpi,
             sessions: Number(data.kpi.sessions) || 0,
-            views: Number(data.kpi.views) || 0,
-            errors: Number(data.kpi.errors) || 0,
-            lcpP75: Number(data.kpi.lcpP75) || 0,
-            inpP75: Number(data.kpi.inpP75) || 0,
+            views: metricOrZero(data.kpi.views),
+            errors: metricOrZero(data.kpi.errors),
+            lcpP75: metricOrZero(data.kpi.lcpP75),
+            inpP75: metricOrZero(data.kpi.inpP75),
             errorRate: Number(data.kpi.errorRate) || 0,
           }
           : emptyHealth(name, Boolean(data?.enabled)),
@@ -717,17 +740,22 @@ export function useRumQueries() {
       });
       return withDegradation({
         mode: data?.mode || 'route',
-        summary: data?.summary || { lcpP75: 0, inpP75: 0, clsP75: 0 },
+        summary: {
+          lcpP75: metricOrZero(data?.summary?.lcpP75),
+          inpP75: metricOrZero(data?.summary?.inpP75),
+          clsP75: metricOrZero(data?.summary?.clsP75),
+        },
         releases: Array.isArray(data?.releases) ? data.releases : [],
         rows: Array.isArray(data?.rows)
           ? data.rows.map((row) => ({
             ...row,
-            views: Number(row.views) || 0,
-            sessions: Number(row.sessions) || 0,
-            lcpP75: Number(row.lcpP75) || 0,
-            inpP75: Number(row.inpP75) || 0,
-            clsP75: Number(row.clsP75) || 0,
-            loadingP75: Number(row.loadingP75) || 0,
+            views: metricOrZero(row.views),
+            errors: Object.prototype.hasOwnProperty.call(row, 'errors') ? metricOrZero(row.errors) : undefined,
+            sessions: metricOrZero(row.sessions),
+            lcpP75: metricOrZero(row.lcpP75),
+            inpP75: metricOrZero(row.inpP75),
+            clsP75: metricOrZero(row.clsP75),
+            loadingP75: metricOrZero(row.loadingP75),
             impact: Number(row.impact) || 0,
             dist: row.dist || { good: 0, needsImprove: 0, poor: 0, missing: 0 },
             mom: row.mom || { hasDelta: false, spark: [] },
@@ -964,7 +992,7 @@ export function useRumQueries() {
         alert: data?.alert ?? ({} as RumAlertItem),
         events: Array.isArray(data?.events) ? data.events : [],
         deliveries: Array.isArray(data?.deliveries) ? data.deliveries : [],
-        trend: Array.isArray(data?.trend) ? data.trend : [],
+        trend: parseAlertTrend(data?.trend),
       };
     },
     [api],

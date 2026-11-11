@@ -24,6 +24,7 @@ func main() {
 
 func run() error {
 	var redisConfig maintainer.RedisConfig
+	var sessionRedisConfig maintainer.RedisConfig
 	var indexConfig maintainer.RedisIndexConfig
 	var victoriaConfig maintainer.VictoriaWarehouseConfig
 	var minIOConfig maintainer.MinIOConfig
@@ -33,6 +34,10 @@ func run() error {
 	flag.StringVar(&redisConfig.PasswordFile, "redis-password-file", "", "maintainer Redis password file")
 	flag.BoolVar(&redisConfig.RequireACLIdentity, "redis-require-acl-identity", false, "require the maintainer Redis URL username to match redis-acl-username")
 	flag.StringVar(&redisConfig.ACLUsername, "redis-acl-username", "rum-maintainer", "Redis ACL username checked when redis-require-acl-identity is set")
+	flag.StringVar(&sessionRedisConfig.URL, "session-redis-url", "", "session index Redis URL (the gateway session database)")
+	flag.StringVar(&sessionRedisConfig.PasswordFile, "session-redis-password-file", "", "session index Redis password file")
+	flag.BoolVar(&sessionRedisConfig.RequireACLIdentity, "session-redis-require-acl-identity", false, "require the session Redis URL username to match session-redis-acl-username")
+	flag.StringVar(&sessionRedisConfig.ACLUsername, "session-redis-acl-username", "rum-maintainer", "session Redis ACL username checked when session-redis-require-acl-identity is set")
 	flag.StringVar(&indexConfig.URL, "replay-index-redis-url", "", "Replay index Redis URL")
 	flag.StringVar(&indexConfig.PasswordFile, "replay-index-redis-password-file", "", "Replay index Redis password file")
 	flag.BoolVar(&indexConfig.RequireACLIdentity, "replay-index-redis-require-acl-identity", false, "require the Replay index Redis URL username to match replay-index-redis-acl-username")
@@ -53,6 +58,11 @@ func run() error {
 		return err
 	}
 	defer state.Close()
+	sessionRedis, err := maintainer.NewSessionRedis(sessionRedisConfig)
+	if err != nil {
+		return err
+	}
+	defer sessionRedis.Close()
 	epoch, err := time.Parse(time.RFC3339, strings.TrimSpace(indexEpoch))
 	if err != nil {
 		return fmt.Errorf("replay-index-epoch is required RFC3339: %w", err)
@@ -75,6 +85,7 @@ func run() error {
 	if err := state.Start(ctx); err != nil {
 		return err
 	}
+	// Session Redis is retried by the scanner. A down index must not stop erasure.
 	if err := indexes.Start(ctx); err != nil {
 		return err
 	}
@@ -90,6 +101,12 @@ func run() error {
 		return err
 	}
 	metrics := maintainer.NewOperationalMetrics(state, indexes)
+	sessionWriter, err := maintainer.NewSessionLogWriter(victoriaConfig.LogsEndpoint, 10*time.Second)
+	if err != nil {
+		return err
+	}
+	// One replica only: this scan has no leader election.
+	sessionScanner := maintainer.NewSessionEndScanner(sessionRedis.Client(), sessionWriter, metrics.SessionEndLost(), slog.Default())
 	group, groupCtx := errgroup.WithContext(ctx)
 	group.Go(func() error {
 		return state.Run(groupCtx, processor, reconciler)
@@ -126,6 +143,9 @@ func run() error {
 	})
 	group.Go(func() error {
 		return metrics.Run(groupCtx, metricsAddress)
+	})
+	group.Go(func() error {
+		return sessionScanner.Run(groupCtx)
 	})
 	slog.Info("bklite-rum-maintainer ready")
 	if err := group.Wait(); err != nil {

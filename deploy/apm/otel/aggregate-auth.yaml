@@ -1,0 +1,16 @@
+# 可选。只在 AGG_VICTORIAMETRICS_USER 和 AGG_VICTORIAMETRICS_PASSWORD 都已设置时，
+# 作为第二个 --config 与 aggregate.yaml 合并。不要在两个变量留空时加载本文件：
+# basicauth 扩展即使用户名为空也会发送 Authorization。
+extensions:
+  basicauth/agg:
+    client_auth:
+      username: ${env:AGG_VICTORIAMETRICS_USER}
+      password: ${env:AGG_VICTORIAMETRICS_PASSWORD}
+
+exporters:
+  prometheusremotewrite/agg:
+    auth:
+      authenticator: basicauth/agg
+
+service:
+  extensions: [health_check, basicauth/agg]

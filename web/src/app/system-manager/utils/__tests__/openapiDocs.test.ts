@@ -1,12 +1,58 @@
 import { describe, expect, it } from 'vitest';
 import {
+  filterOpenApiRows,
   formatAuthHeaderPlainText,
   formatChoices,
   formatChoicesDisplay,
   generateCurlCommand,
   injectDescriptionKey,
+  resolveOpenApiServiceLabel,
   splitLinkPlaceholder,
+  type OpenAPIDocRow,
 } from '@/app/system-manager/utils/openapiDocs';
+
+const serviceRow = (service: string): OpenAPIDocRow => ({
+  key: service,
+  kind: 'internal',
+  service,
+  method: 'GET',
+  path: `/openapi/v1/${service}/items`,
+  summary: 'list',
+  docUrl: '',
+  inject: '',
+  permission: '',
+  requestSchema: {},
+  responseSchema: null,
+  searchText: service,
+});
+
+describe('resolveOpenApiServiceLabel', () => {
+  const t = (id: string, fallback?: string) => {
+    if (id === 'apps.cmdb') return 'CMDB';
+    if (id === 'apps.job') return '作业管理';
+    if (id === 'apps.system-manager') return '系统管理';
+    return fallback || id;
+  };
+
+  it('translates gateway service ids through the app catalog', () => {
+    expect(resolveOpenApiServiceLabel('cmdb', t)).toBe('CMDB');
+    expect(resolveOpenApiServiceLabel('job-mgmt', t)).toBe('作业管理');
+    expect(resolveOpenApiServiceLabel('system-mgmt', t)).toBe('系统管理');
+  });
+
+  it('keeps an unknown service id', () => {
+    expect(resolveOpenApiServiceLabel('custom-app', t)).toBe('custom-app');
+  });
+
+  it('matches a search against the visible service name', () => {
+    const rows = [serviceRow('system-mgmt'), serviceRow('cmdb')];
+    const matched = filterOpenApiRows(rows, {
+      query: '系统管理',
+      serviceLabel: (service) => resolveOpenApiServiceLabel(service, t),
+    });
+    expect(matched.map((row) => row.service)).toEqual(['system-mgmt']);
+  });
+});
 
 describe('formatChoices', () => {
   it('joins arrays and treats empty as blank', () => {

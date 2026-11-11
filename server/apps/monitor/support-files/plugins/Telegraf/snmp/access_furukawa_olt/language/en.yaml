@@ -32,9 +32,7 @@ monitor_object_metric:
         counter. It helps administrators assess sending performance for traffic management and optimization.
     snmp_uptime:
       name: System Uptime
-      desc: This metric indicates the uptime of the device since the last restart, derived from sysUpTime.
-        Monitoring uptime helps administrators understand device stability and identify unexpected reboots
-        or failures.
+      desc: This metric indicates the uptime of the device since the last restart, derived from sysUpTime. Monitoring uptime helps administrators understand device stability and identify unexpected reboots or failures.
     device_cpu_usage:
       name: CPU Usage
       desc: CPU load of the Furukawa OLT 3516 as a percentage (oltGenHwCpu). Sustained high load indicates

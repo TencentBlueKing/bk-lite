@@ -288,7 +288,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Physical capacity usage of the cluster as a percentage, derived from usedPhysicalBytes / totalPhysicalBytes."
+      "description": "Physical capacity usage of the cluster as a percentage."
     },
     {
       "metric_group": "Cluster",

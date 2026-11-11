@@ -76,7 +76,7 @@ def test_applications_page_queries_logsql():
 
     def choose(query: str):
         assert "stats" in query
-        if "_time:" in query:
+        if "min(_time) as first_seen" in query or "_time:" in query:
             return []
         assert "stats by (`rum.application`)" in query
         assert "quantile(0.75, `rum.measurement.lcp`)" in query
@@ -97,12 +97,12 @@ def test_applications_page_queries_logsql():
     server, base = _serve([])
     _VLHandler.choose = choose
     try:
-        analytics = VictoriaAnalytics.open(logs_endpoint=base, traces_endpoint=base, ping=True)
+        analytics = VictoriaAnalytics.open(logs_endpoint=base, ping=True)
         assert analytics.available() is True
         page_rows, sparks = analytics.applications_page("core", now - timedelta(minutes=10), now, ["storefront"])
-        assert '"rum.event.type":*' in _VLHandler.got_query
-        assert '"tenant.id":"core"' in _VLHandler.got_query
-        assert '"rum.application":in("storefront")' in _VLHandler.got_query
+        assert any('"rum.event.type":*' in query for query in _VLHandler.queries)
+        assert any('"tenant.id":"core"' in query for query in _VLHandler.queries)
+        assert any('"rum.application":in("storefront")' in query for query in _VLHandler.queries)
         assert len(page_rows) == 1
         assert page_rows[0]["application"] == "storefront"
         assert page_rows[0]["sessions"] == 2
@@ -230,7 +230,7 @@ def test_list_sessions_excludes_sessionless_ingest_evidence():
     ]
     server, base = _serve(rows)
     try:
-        analytics = VictoriaAnalytics.open(logs_endpoint=base, traces_endpoint=base)
+        analytics = VictoriaAnalytics.open(logs_endpoint=base)
         page = analytics.list_sessions(
             "core",
             {
@@ -275,7 +275,7 @@ def test_session_journey_formats_event_timestamps():
 
     _VLHandler.choose = choose
     try:
-        analytics = VictoriaAnalytics.open(logs_endpoint=base, traces_endpoint=base)
+        analytics = VictoriaAnalytics.open(logs_endpoint=base)
         journey = analytics.session_journey(
             "core",
             "storefront",
@@ -294,7 +294,7 @@ def test_empty_application_list_never_queries_tenant_wide():
     """Fail closed: no enabled/requested apps → no LogsQL request at all."""
     server, base = _serve([])
     try:
-        analytics = VictoriaAnalytics.open(logs_endpoint=base, traces_endpoint=base)
+        analytics = VictoriaAnalytics.open(logs_endpoint=base)
         now = datetime(2026, 8, 18, 12, 0, 0, tzinfo=timezone.utc)
         page = analytics.list_sessions(
             "core",
@@ -423,7 +423,7 @@ def test_list_views_fills_cwv_device_and_spark_fields():
         }
     ]
     try:
-        analytics = VictoriaAnalytics.open(logs_endpoint=base, traces_endpoint=base)
+        analytics = VictoriaAnalytics.open(logs_endpoint=base)
         page = analytics.list_views(
             "core",
             {
@@ -548,7 +548,7 @@ def test_list_releases_fills_first_seen_users_issues_and_cwv():
 
     _VLHandler.choose = choose
     try:
-        analytics = VictoriaAnalytics.open(logs_endpoint=base, traces_endpoint=base)
+        analytics = VictoriaAnalytics.open(logs_endpoint=base)
         page = analytics.list_releases(
             "core",
             {
@@ -625,7 +625,7 @@ def test_list_error_issues_filters_by_release():
         }
     ]
     try:
-        analytics = VictoriaAnalytics.open(logs_endpoint=base, traces_endpoint=base)
+        analytics = VictoriaAnalytics.open(logs_endpoint=base)
         page = analytics.list_error_issues(
             "core",
             {
@@ -667,7 +667,7 @@ def test_list_error_issues_keeps_group_key_when_client_fingerprint_is_absent():
     ]
     server, base = _serve(_VLHandler.rows)
     try:
-        analytics = VictoriaAnalytics.open(logs_endpoint=base, traces_endpoint=base)
+        analytics = VictoriaAnalytics.open(logs_endpoint=base)
         page = analytics.list_error_issues(
             "core",
             {
@@ -697,11 +697,35 @@ def test_application_overview_counts_devices_by_session():
     server, base = _serve([])
     _VLHandler.choose = choose
     try:
-        analytics = VictoriaAnalytics.open(logs_endpoint=base, traces_endpoint=base)
+        analytics = VictoriaAnalytics.open(logs_endpoint=base)
         overview = analytics.application_overview("core", "storefront", now - timedelta(hours=1), now + timedelta(minutes=1))
         assert overview["devices"] == {"mobile": 1, "desktop": 1}
         assert _VLHandler.queries
         assert all("stats" in query for query in _VLHandler.queries)
+    finally:
+        server.shutdown()
+
+
+def test_open_pings_only_victoria_logs_without_a_traces_address():
+    paths: list[str] = []
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self):  # noqa: N802
+            paths.append(self.path)
+            self.send_response(200 if self.path.rstrip("/").endswith("/health") else 404)
+            self.end_headers()
+
+        def log_message(self, format, *args):  # noqa: A003
+            return
+
+    server = HTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    host, port = server.server_address
+    try:
+        analytics = VictoriaAnalytics.open(logs_endpoint=f"http://{host}:{port}", ping=True)
+        assert analytics.available() is True
+        assert paths == ["/health"]
     finally:
         server.shutdown()
 

@@ -21,16 +21,31 @@ type sessionState struct {
 }
 
 type assignment struct {
-	StateKey     string
-	ObservedAt   time.Time
-	CandidateKey string
-	TrafficClass string
+	StateKey          string
+	ObservedAt        time.Time
+	CandidateKey      string
+	TrafficClass      string
+	EventDelta        int64
+	ViewDelta         int64
+	ErrorDelta        int64
+	Route             string
+	Version           string
+	User              string
+	Environment       string
+	ErasureUserKey    string
+	ErasureSessionKey string
+	Tenant            string
+	Application       string
 }
 
 type assignedSession struct {
 	SessionKey   string
 	TrafficClass string
 	Rolled       bool
+	ClosedKey    string
+	EventCount   int64
+	ViewCount    int64
+	ErrorCount   int64
 }
 
 type sessionStore interface {
@@ -84,7 +99,8 @@ func (processor *sessionizer) processLogs(ctx context.Context, logs plog.Logs) (
 				}
 				application := attributeString(attrs, "rum.application")
 				outputAttribute := "rum.session.key"
-				if application == "" {
+				accumulate := application != ""
+				if !accumulate {
 					application = attributeString(attrs, "rum.replay.application")
 					outputAttribute = "rum.replay.session_key"
 				}
@@ -96,11 +112,30 @@ func (processor *sessionizer) processLogs(ctx context.Context, logs plog.Logs) (
 				if err != nil {
 					return logs, fmt.Errorf("create authoritative RUM session key: %w", err)
 				}
+				eventDelta, viewDelta, errorDelta := sessionDeltas(accumulate, attributeString(attrs, "rum.event.type"))
+				route, version, user, environment := "", "", "", ""
+				if accumulate {
+					route = attributeString(attrs, "rum.view.name")
+					version = attributeString(attrs, "rum.release")
+					user = attributeString(attrs, "rum.user.id")
+					environment = attributeString(attrs, "rum.environment")
+				}
 				assigned, err := processor.store.assign(ctx, assignment{
-					StateKey:     stateKey(tenant, application, erasureKey),
-					ObservedAt:   observed.UTC(),
-					CandidateKey: candidate,
-					TrafficClass: traffic,
+					StateKey:          stateKey(tenant, application, erasureKey),
+					ObservedAt:        observed.UTC(),
+					CandidateKey:      candidate,
+					TrafficClass:      traffic,
+					EventDelta:        eventDelta,
+					ViewDelta:         viewDelta,
+					ErrorDelta:        errorDelta,
+					Route:             route,
+					Version:           version,
+					User:              user,
+					Environment:       environment,
+					ErasureUserKey:    attributeString(attrs, "rum.erasure.user_key"),
+					ErasureSessionKey: erasureKey,
+					Tenant:            tenant,
+					Application:       application,
 				})
 				if err != nil {
 					return logs, fmt.Errorf("assign authoritative RUM session: %w", err)
@@ -112,6 +147,20 @@ func (processor *sessionizer) processLogs(ctx context.Context, logs plog.Logs) (
 		resourceAttrs.PutStr("rum.traffic.class", traffic)
 	}
 	return logs, nil
+}
+
+func sessionDeltas(accumulate bool, eventType string) (events, views, errorCount int64) {
+	if !accumulate {
+		return 0, 0, 0
+	}
+	events = 1
+	switch eventType {
+	case "view":
+		views = 1
+	case "error":
+		errorCount = 1
+	}
+	return events, views, errorCount
 }
 
 func newSessionKey() (string, error) {

@@ -9,9 +9,7 @@ monitor_object_metric:
   Wireless:
     snmp_uptime:
       name: System Uptime
-      desc: Uptime of the HPE MSM / Colubris wireless device since the last restart,
-        derived from sysUpTime. Monitoring uptime helps administrators understand
-        device stability and identify unexpected reboots.
+      desc: Uptime of the HPE MSM / Colubris wireless device since the last restart, derived from sysUpTime. Monitoring uptime helps administrators understand device stability and identify unexpected reboots.
     device_cpu_usage:
       name: CPU Utilization
       desc: Instantaneous CPU utilization of the HPE MSM / Colubris device

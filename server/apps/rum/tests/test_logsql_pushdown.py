@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import logging
+import traceback
 from datetime import datetime, timedelta, timezone
 
 import pytest
 
+from apps.core.logger import SafeLogException
 from apps.rum.services.control import MemoryControl
 from apps.rum.services.evaluator import AlertEvaluator
 from apps.rum.services.logsql_stats import (
@@ -110,7 +112,7 @@ def test_analytics_sends_session_stats_query():
         _opts(orderBy="duration", sessionIdPrefix="ab", limit=10, offset=0),
     )
     assert page["sessions"][0]["sessionId"] == "abc123"
-    sent = client.queries[0][0]
+    sent = next(query for query, _limit in client.queries if SESSION_SORTS["duration"] in query)
     assert "stats by" in sent
     assert SESSION_SORTS["duration"] in sent
     assert "offset 0" in sent
@@ -269,7 +271,7 @@ def test_query_exposes_truncated_when_body_or_row_limit_is_hit(monkeypatch):
 
     monkeypatch.setattr(victoria_client, "urlopen", lambda req, timeout=0: Response())
     monkeypatch.setattr(victoria_client, "_MAX_RESPONSE_BYTES", 8)
-    client = VictoriaClient(logs_endpoint="http://victoria.example.test", traces_endpoint="http://victoria.example.test")
+    client = VictoriaClient(logs_endpoint="http://victoria.example.test")
     rows = client.query_logs("stats count()", None, None, limit=1)
     assert rows.truncated is True
 
@@ -304,18 +306,22 @@ def test_alert_read_failure_skips_without_changing_state(caplog):
     notifier = MemoryNotifier()
 
     class Boom:
+        def __init__(self):
+            self.error = RuntimeError(secret)
+
         def available(self):
             return True
 
         def monitor_metric(self, tenant_id, opts):
-            raise RuntimeError(secret)
+            raise self.error
 
     now = datetime(2026, 10, 12, 9, 0, tzinfo=timezone.utc)
+    boom = Boom()
     with caplog.at_level(logging.WARNING, logger="rum"):
         result = AlertEvaluator(
             policies=policies,
             events=events,
-            analytics=Boom(),
+            analytics=boom,
             notifier=notifier,
             now=lambda: now,
         ).evaluate_all()
@@ -336,6 +342,15 @@ def test_alert_read_failure_skips_without_changing_state(caplog):
     assert "error_type=RuntimeError" in rendered
     assert secret not in rendered
     assert secret not in caplog.text
+    assert record.exc_info[0] is SafeLogException
+    assert str(record.exc_info[1]) == "RuntimeError"
+    assert record.exc_info[2] is boom.error.__traceback__
+    assert str(boom.error) == secret
+    frames = traceback.extract_tb(record.exc_info[2])
+    assert any(frame.name == "monitor_metric" for frame in frames)
+    formatted = logging.Formatter().format(record)
+    assert formatted.count("Traceback (most recent call last)") == 1
+    assert secret not in formatted
 
 
 def test_monitor_metric_zero_is_an_empty_window_not_a_failure():
@@ -411,6 +426,32 @@ def test_stats_queries_use_v138_functions():
     assert "`rum.vital.lcp`:>2500 AND `rum.vital.lcp`:<=4000" in view
     assert "`rum.vital.lcp`:>4000" in view
     assert "values(`user_agent.original`)" in queries[0]
+    for query in queries:
+        _assert_balanced(query)
+
+
+def _assert_balanced(query: str) -> None:
+    depth = 0
+    quote = ""
+    escaped = False
+    for char in query:
+        if quote:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == quote:
+                quote = ""
+            continue
+        if char in '"`':
+            quote = char
+        elif char == "(":
+            depth += 1
+        elif char == ")":
+            depth -= 1
+            assert depth >= 0, query
+    assert not quote, query
+    assert depth == 0, query
 
 
 def test_sample_text_reads_one_values_element():

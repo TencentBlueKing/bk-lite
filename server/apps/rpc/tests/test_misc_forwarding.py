@@ -227,6 +227,12 @@ def test_cmdb_network_topology_among_uuids(cmdb):
     assert _last(cmdb.client) == ("run", "network_topology_among_uuids", (), payload)
 
 
+def test_cmdb_incident_impact_topology(cmdb):
+    payload = {"inst_uuids": ["aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"], "user_info": {"team": 1, "user": "alice"}}
+    cmdb.incident_impact_topology(**payload)
+    assert _last(cmdb.client) == ("run", "incident_impact_topology", (), payload)
+
+
 def test_cmdb_network_topology_by_uuid(cmdb):
     payload = {
         "inst_uuid": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",

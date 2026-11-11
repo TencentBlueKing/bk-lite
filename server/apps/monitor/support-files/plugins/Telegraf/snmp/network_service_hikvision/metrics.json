@@ -57,7 +57,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Used memory of the Hikvision device in bytes, derived from memUsed and memSize (HIK-DEVICE-MIB 1.3.6.1.4.1.39165.1.11.0 / .10.0)."
+      "description": "Used memory of the Hikvision device in bytes."
     },
     {
       "metric_group": "NetworkService",

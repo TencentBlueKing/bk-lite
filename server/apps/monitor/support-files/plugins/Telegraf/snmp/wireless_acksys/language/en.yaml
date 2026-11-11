@@ -11,9 +11,7 @@ monitor_object_metric:
   Wireless:
     snmp_uptime:
       name: System Uptime
-      desc: This metric indicates the uptime of the device since the last restart,
-        derived from sysUpTime. Monitoring uptime helps administrators understand
-        device stability and identify unexpected reboots or failures.
+      desc: This metric indicates the uptime of the device since the last restart, derived from sysUpTime. Monitoring uptime helps administrators understand device stability and identify unexpected reboots or failures.
     interface_ifHCInOctets:
       name: Interface Incoming Traffic Rate
       desc: This metric indicates the average rate of bytes received over the past
@@ -49,15 +47,11 @@ monitor_object_metric:
       desc: Total heap size in bytes on the ACKSYS WaveOS platform. Together with
         free heap it is the denominator for heap utilization.
     heap_low_water_bytes:
-      name: Heap Low Water
-      desc: Heap low-water mark in bytes on the ACKSYS WaveOS platform. This is the
-        lowest free-heap observation since the watermark was last reset and helps
-        catch transient memory pressure.
+      name: Heap Minimum
+      desc: Minimum free heap in bytes on the ACKSYS WaveOS platform. This is the lowest free-heap observation since last reset and helps catch transient memory pressure.
     device_memory_usage:
       name: Heap Usage
-      desc: Heap utilization of the ACKSYS WaveOS platform derived as (total-free)/total
-        from heap total and free bytes. High usage indicates heap pressure rather
-        than a faked CPU or generic RAM percentage.
+      desc: Heap utilization of the ACKSYS WaveOS platform. High usage indicates heap pressure rather than a faked CPU or generic RAM percentage.
     device_temperature_celsius:
       name: Temperature
       desc: Motherboard sensor 0 temperature of the ACKSYS device. The SNMP scalar

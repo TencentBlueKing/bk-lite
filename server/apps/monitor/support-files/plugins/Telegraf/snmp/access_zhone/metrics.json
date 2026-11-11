@@ -125,7 +125,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Memory utilization of each card of the Zhone/DZS access device, computed as (cardTotalMem - cardAvailMem) / cardTotalMem * 100."
+      "description": "Memory utilization of each card of the Zhone/DZS access device."
     },
     {
       "metric_group": "Base",

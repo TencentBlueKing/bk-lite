@@ -9,9 +9,7 @@ monitor_object_metric:
   Wanopt:
     snmp_uptime:
       name: System Uptime
-      desc: This metric indicates the uptime of the Exinda / GFI ExOS WAN optimizer
-        since the last restart, derived from sysUpTime. Monitoring uptime helps
-        administrators understand device stability and identify unexpected reboots.
+      desc: This metric indicates the uptime of the Exinda / GFI ExOS WAN optimizer since the last restart, derived from sysUpTime. Monitoring uptime helps administrators understand device stability and identify unexpected reboots.
     device_cpu_usage:
       name: CPU Utilization
       desc: CPU utilization of the Exinda / GFI ExOS WAN optimizer (EXINDA-MIB

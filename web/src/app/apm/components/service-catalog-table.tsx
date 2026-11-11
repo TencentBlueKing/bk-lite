@@ -13,6 +13,7 @@ import {
   formatThroughput,
   isErrorRateDanger,
 } from '@/app/apm/components/metric-format';
+import { sloRetentionLabel } from '@/app/apm/components/slo-reason';
 import MetricValue from '@/app/apm/components/metric-value';
 import MiniTrend from '@/app/apm/components/mini-trend';
 import {
@@ -24,7 +25,8 @@ import {
   type TimeWindow,
 } from '@/app/apm/components/service-catalog-model';
 import ServiceLanguage from '@/app/apm/components/service-language';
-import type { ApmServiceRed, ApmSlo } from '@/app/apm/types';
+import { EntryLimitTag } from '@/app/apm/components/service-tag-overflow';
+import type { ApmServiceRedBatchItem, ApmSlo } from '@/app/apm/types';
 import MoreActionsDropdown from '@/components/more-actions-dropdown';
 import Permission from '@/components/permission';
 import { useTranslation } from '@/utils/i18n';
@@ -44,7 +46,7 @@ export default function ServiceCatalogTable({
   rowSelection,
 }: {
   rows: ServiceEnvironmentRow[];
-  redMetrics: Record<string, ApmServiceRed>;
+  redMetrics: Record<string, ApmServiceRedBatchItem>;
   metricFailureKeys: string[];
   alertCounts: Map<string, { count: number; level: number }>;
   sloByServiceEnv: Map<string, ApmSlo>;
@@ -75,6 +77,7 @@ export default function ServiceCatalogTable({
       ellipsis: true,
       render: (_, item) => {
         const silent = item.status === 'silent';
+        const entryTruncated = redMetrics[metricKey(item.serviceId, item.environment)]?.entry_truncated === true;
         const href = item.environment
           ? `/apm/services/${item.serviceId}?environment=${encodeURIComponent(item.environment)}&window=${timeWindow}`
           : undefined;
@@ -93,6 +96,7 @@ export default function ServiceCatalogTable({
             <ServiceLanguage language={item.language} />
             {name}
             {silent ? <Tag bordered={false} className="!m-0 !shrink-0 !text-xs text-[var(--color-text-3)]">{t('apm.status.silent', '静默')}</Tag> : null}
+            {entryTruncated ? <EntryLimitTag /> : null}
           </Space>
         );
       },
@@ -239,6 +243,18 @@ export default function ServiceCatalogTable({
       render: (_, item) => {
         const slo = sloByServiceEnv.get(metricKey(item.serviceId, item.environment));
         if (!slo) return <Typography.Text type="secondary">—</Typography.Text>;
+        const retention = sloRetentionLabel(slo.reason, t);
+        if (retention) {
+          return (
+            <Tag
+              bordered={false}
+              title={retention}
+              className="!m-0 !max-w-full !truncate !text-xs !bg-[color-mix(in_srgb,var(--theme-color-status-warning)_12%,var(--color-bg))] !text-[var(--theme-color-status-warning)]"
+            >
+              {retention}
+            </Tag>
+          );
+        }
         const met = slo.budget_remaining !== null && slo.budget_remaining > 0
           && slo.current_rate !== null
           && Number(slo.current_rate) >= Number(slo.objective);

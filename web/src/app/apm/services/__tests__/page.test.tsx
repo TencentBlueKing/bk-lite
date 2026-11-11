@@ -338,9 +338,81 @@ describe('APM 服务目录应用视角', () => {
     expect(screen.queryByText('RED 指标查询失败')).toBeNull();
     await waitFor(() => expect(screen.getByText('12.5')).not.toBeNull());
   });
+
+  it('入口超限时在应用卡和服务行标出', async () => {
+    api.getServiceRedBatch.mockImplementation(async (payload: {
+      targets: Array<{ service_id: string; environment: string }>;
+    }) => ({
+      items: payload.targets.map((target) => ({
+        ok: true,
+        service_id: target.service_id,
+        environment: target.environment,
+        started_at: '2026-07-31T05:25:01Z',
+        ended_at: '2026-07-31T06:25:01Z',
+        request_rate: 12.5,
+        error_rate: 0.02,
+        p95_ms: 80,
+        p99_ms: 120,
+        timeseries: [],
+        top_endpoints: [],
+        entry_truncated: target.service_id === 'service-bklite',
+      })),
+    }));
+    const user = userEvent.setup();
+    renderWithApmIntl(<ApmServicesPage />);
+
+    const card = (await screen.findByRole('link', { name: '查看应用 电商应用 详情' })).closest('article');
+    expect(card).not.toBeNull();
+    const tags = within(card!).getAllByText('入口超限');
+    expect(tags.length).toBeGreaterThan(0);
+    expect(tags[0].closest('a')).toBeNull();
+    expect(tags[0].className).toContain('pointer-events-auto');
+    expect(tags[0].getAttribute('title')).toBe('入口组合超过上限，多出的入口没有计入该服务');
+
+    await user.click(screen.getByRole('radio', { name: '服务' }).closest('label')!);
+    const serviceLink = await screen.findByRole('link', { name: 'bklite-server' });
+    const row = serviceLink.closest('tr');
+    expect(row).not.toBeNull();
+    expect(within(row!).getByText('入口超限')).not.toBeNull();
+  });
 });
 
 describe('APM 服务目录服务视角与归档', () => {
+  it('保留期不足时 SLO 列显示原因而不是未达标', async () => {
+    const user = userEvent.setup();
+    api.getSlos.mockResolvedValue([
+      {
+        id: 'slo-retention',
+        name: '可用性',
+        service_id: 'service-bklite',
+        environment: 'production',
+        endpoint: '',
+        sli_type: 'availability',
+        objective: '99',
+        evaluation_window: 'rolling30d',
+        is_enabled: true,
+        service_namespace: 'bklite',
+        service_name: 'bklite-server',
+        current_rate: null,
+        budget_remaining: null,
+        data_state: 'no_data',
+        reason: '明细保留期不足',
+        started_at: null,
+        ended_at: '2026-07-31T06:25:01Z',
+        created_at: '2026-07-01T00:00:00Z',
+        updated_at: '2026-07-31T06:25:01Z',
+        created_by: 'admin',
+        updated_by: 'admin',
+      },
+    ]);
+    renderWithApmIntl(<ApmServicesPage />);
+
+    await user.click((await screen.findByRole('radio', { name: '服务' })).closest('label')!);
+
+    expect(await screen.findByText('明细保留期不足')).not.toBeNull();
+    expect(screen.queryByText(/未达标/)).toBeNull();
+  });
+
   it('切换到服务视角后展示 RED、SLO、语言与最高活跃告警', async () => {
     const user = userEvent.setup();
     renderWithApmIntl(<ApmServicesPage />);

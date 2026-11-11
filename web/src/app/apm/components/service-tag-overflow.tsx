@@ -1,7 +1,7 @@
 'use client';
 
 import { useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
-import { Popover, Typography } from 'antd';
+import { Popover, Tag, Tooltip, Typography } from 'antd';
 import ServiceLanguage from '@/app/apm/components/service-language';
 import { useTranslation } from '@/utils/i18n';
 
@@ -9,6 +9,29 @@ export interface ServiceTagItem {
   name: string;
   silent: boolean;
   language?: string;
+  entryTruncated?: boolean;
+}
+
+export function EntryLimitTag() {
+  const { t } = useTranslation();
+  const tip = t('apm.services.entryTruncatedTip', '入口组合超过上限，多出的入口没有计入该服务');
+  const stopNavigation = (event: MouseEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+  };
+  return (
+    <Tooltip title={tip}>
+      <Tag
+        bordered={false}
+        title={tip}
+        className="relative z-20 !m-0 !shrink-0 cursor-default pointer-events-auto border-[color-mix(in_srgb,var(--color-warning)_35%,transparent)] bg-[color-mix(in_srgb,var(--color-warning)_12%,transparent)] !px-1 !text-[10px] !leading-4 text-[var(--color-warning)]"
+        onClick={stopNavigation}
+        onMouseDown={stopNavigation}
+      >
+        {t('apm.services.entryTruncated', '入口超限')}
+      </Tag>
+    </Tooltip>
+  );
 }
 
 const TAG_GAP = 6;
@@ -59,12 +82,13 @@ export function computeVisibleServiceTagCount(
   return count;
 }
 
-function ServiceChip({ name, silent, language }: ServiceTagItem) {
+function ServiceChip({ name, silent, language, entryTruncated }: ServiceTagItem) {
   const { t } = useTranslation();
   return (
     <span className={chipClassName(silent)} title={silent ? t('apm.tags.silentName', '{name}（静默）', { name }) : name}>
       <ServiceLanguage language={language} size={12} />
       {name}
+      {entryTruncated ? <EntryLimitTag /> : null}
     </span>
   );
 }
@@ -90,6 +114,7 @@ function OverflowList({ services }: { services: ServiceTagItem[] }) {
           {service.silent ? (
             <span className="shrink-0 text-[10px] text-[var(--color-text-4)]">{t('apm.tags.silent', '静默')}</span>
           ) : null}
+          {service.entryTruncated ? <EntryLimitTag /> : null}
         </div>
       ))}
     </div>
@@ -112,7 +137,7 @@ export default function ServiceTagOverflow({
   const [open, setOpen] = useState(false);
 
   const serviceKey = useMemo(
-    () => services.map((service) => `${service.name}:${service.language ?? ''}:${service.silent ? 1 : 0}`).join('|'),
+    () => services.map((service) => `${service.name}:${service.language ?? ''}:${service.silent ? 1 : 0}:${service.entryTruncated ? 1 : 0}`).join('|'),
     [services],
   );
 

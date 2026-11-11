@@ -130,6 +130,17 @@ class ScanTaskViewSet(AuthViewSet):
             .select_related("family_run", "execution__task")
             .order_by("family_run__model_id", "host", "id")
         )
+        confidence = request.GET.get("confidence")
+        model_id = request.GET.get("model_id")
+        matched = request.GET.get("matched")
+        if confidence:
+            queryset = queryset.filter(confidence=confidence)
+        if model_id:
+            queryset = queryset.filter(Q(family_run__model_id=model_id) | Q(family_run__model_id="", protocol=model_id))
+        if matched == "1":
+            queryset = queryset.exclude(cmdb_model_id="")
+        elif matched == "0":
+            queryset = queryset.filter(cmdb_model_id="")
         paginator = ScanHitPagination()
         page = paginator.paginate_queryset(queryset, request, view=self)
         if page is None:
