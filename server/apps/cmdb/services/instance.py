@@ -1,3 +1,4 @@
+import os
 from tempfile import TemporaryFile
 from time import perf_counter
 from uuid import uuid4
@@ -1848,6 +1849,104 @@ class InstanceManage(object):
             language=language,
         )
 
+    ASSOCIATION_PAGE_SIZE_MAX = 50
+
+    @staticmethod
+    def _graph_is_falkordb() -> bool:
+        return bool(os.getenv("FALKORDB_HOST", ""))
+
+    @staticmethod
+    def _association_edge_params(inst_field: str, inst_value, model_field: str | None, model_id: str | None, model_asst_id: str | None):
+        value_type = "str[]" if isinstance(inst_value, list) else "str="
+        params = [{"field": inst_field, "type": value_type, "value": inst_value}]
+        if model_asst_id:
+            params.append({"field": "model_asst_id", "type": "str=", "value": model_asst_id})
+        elif model_field and model_id:
+            params.append({"field": model_field, "type": "str=", "value": model_id})
+        return params
+
+    @staticmethod
+    def _association_item_matches(item, inst_uuids: set[str], model_id: str, *, return_entity: bool, related_model: str | None = None) -> bool:
+        if return_entity:
+            src = item.get("src") or {}
+            dst = item.get("dst") or {}
+            edge = item.get("edge") or {}
+            src_uuid = edge.get("src_inst_uuid") or src.get("inst_uuid")
+            dst_uuid = edge.get("dst_inst_uuid") or dst.get("inst_uuid")
+            src_model = edge.get("src_model_id") or src.get("model_id")
+            dst_model = edge.get("dst_model_id") or dst.get("model_id")
+        else:
+            edge = item
+            src_uuid = edge.get("src_inst_uuid")
+            dst_uuid = edge.get("dst_inst_uuid")
+            src_model = edge.get("src_model_id")
+            dst_model = edge.get("dst_model_id")
+        if src_uuid in inst_uuids and src_model == model_id and (not related_model or dst_model == related_model):
+            return True
+        if dst_uuid in inst_uuids and dst_model == model_id and (not related_model or src_model == related_model):
+            return True
+        return False
+
+    @staticmethod
+    def _load_association_edges(
+        inst_value,
+        model_id: str,
+        *,
+        return_entity: bool,
+        model_asst_id: str | None = None,
+        related_model: str | None = None,
+    ):
+        """先按实例和模型查。FalkorDB 查空时只去掉模型，保留 UUID。指定关联时不退回全图。"""
+        many = isinstance(inst_value, list)
+        inst_uuids = set(inst_value if many else [inst_value])
+        with GraphClient() as ag:
+            src_params = InstanceManage._association_edge_params("src_inst_uuid", inst_value, "src_model_id", model_id, model_asst_id)
+            dst_params = InstanceManage._association_edge_params("dst_inst_uuid", inst_value, "dst_model_id", model_id, model_asst_id)
+            if related_model and not model_asst_id:
+                src_params.append({"field": "dst_model_id", "type": "str=", "value": related_model})
+                dst_params.append({"field": "src_model_id", "type": "str=", "value": related_model})
+            src_edge = ag.query_edge(INSTANCE_ASSOCIATION, src_params, return_entity=return_entity)
+            dst_edge = ag.query_edge(INSTANCE_ASSOCIATION, dst_params, return_entity=return_entity)
+        edge_items = list(src_edge) + list(dst_edge)
+        if edge_items or model_asst_id:
+            return edge_items
+        if InstanceManage._graph_is_falkordb():
+            with GraphClient() as ag:
+                src_edge = ag.query_edge(
+                    INSTANCE_ASSOCIATION,
+                    InstanceManage._association_edge_params("src_inst_uuid", inst_value, None, None, None),
+                    return_entity=return_entity,
+                )
+                dst_edge = ag.query_edge(
+                    INSTANCE_ASSOCIATION,
+                    InstanceManage._association_edge_params("dst_inst_uuid", inst_value, None, None, None),
+                    return_entity=return_entity,
+                )
+            return [
+                item
+                for item in list(src_edge) + list(dst_edge)
+                if InstanceManage._association_item_matches(
+                    item,
+                    inst_uuids,
+                    model_id,
+                    return_entity=return_entity,
+                    related_model=related_model,
+                )
+            ]
+        with GraphClient() as ag:
+            scanned = ag.query_edge(INSTANCE_ASSOCIATION, [], return_entity=True if return_entity else True)
+        if return_entity:
+            return [
+                item
+                for item in scanned
+                if InstanceManage._association_item_matches(item, inst_uuids, model_id, return_entity=True, related_model=related_model)
+            ]
+        return [
+            item["edge"]
+            for item in scanned
+            if InstanceManage._association_item_matches(item, inst_uuids, model_id, return_entity=True, related_model=related_model)
+        ]
+
     @staticmethod
     def instance_association_instance_list_by_uuid(
         model_id: str,
@@ -1855,40 +1954,23 @@ class InstanceManage(object):
         *,
         business_only: bool = False,
         language: str = "en",
+        summary: bool = False,
+        model_asst_id: str | None = None,
+        page: int = 1,
+        page_size: int = 20,
+        endpoints_only: bool = False,
     ):
         """按边端点 UUID 属性查询关联实例列表。"""
         inst_uuid = normalize_inst_uuid(inst_uuid)
-        with GraphClient() as ag:
-            src_edge = ag.query_edge(
-                INSTANCE_ASSOCIATION,
-                [
-                    {"field": "src_inst_uuid", "type": "str=", "value": inst_uuid},
-                    {"field": "src_model_id", "type": "str=", "value": model_id},
-                ],
-                return_entity=True,
-            )
-            dst_edge = ag.query_edge(
-                INSTANCE_ASSOCIATION,
-                [
-                    {"field": "dst_inst_uuid", "type": "str=", "value": inst_uuid},
-                    {"field": "dst_model_id", "type": "str=", "value": model_id},
-                ],
-                return_entity=True,
-            )
-
-        edge_items = src_edge + dst_edge
-        # 兼容创建时未落盘 model_id 边属性：回退按端点实体过滤
-        if not edge_items:
-            with GraphClient() as ag:
-                all_items = ag.query_edge(INSTANCE_ASSOCIATION, [], return_entity=True)
-            edge_items = [
-                item
-                for item in all_items
-                if (
-                    ((item.get("src") or {}).get("inst_uuid") == inst_uuid and (item.get("src") or {}).get("model_id") == model_id)
-                    or ((item.get("dst") or {}).get("inst_uuid") == inst_uuid and (item.get("dst") or {}).get("model_id") == model_id)
-                )
-            ]
+        requested_asst_id = model_asst_id
+        if requested_asst_id and int(page_size) > InstanceManage.ASSOCIATION_PAGE_SIZE_MAX:
+            raise BaseAppException("page_size 不能超过 50")
+        edge_items = InstanceManage._load_association_edges(
+            inst_uuid,
+            model_id,
+            return_entity=True,
+            model_asst_id=model_asst_id,
+        )
 
         visible_associations = {}
         if business_only:
@@ -1906,18 +1988,18 @@ class InstanceManage(object):
         result = {}
         for item in edge_items:
             edge = item["edge"]
-            model_asst_id = edge["model_asst_id"]
+            group_asst_id = edge["model_asst_id"]
             src = item.get("src") or {}
             dst = item.get("dst") or {}
             src_model_id = edge.get("src_model_id") or src.get("model_id")
             dst_model_id = edge.get("dst_model_id") or dst.get("model_id")
             item_key = "src" if model_id == dst_model_id else "dst"
-            if model_asst_id not in result:
-                visible_association = visible_associations.get(model_asst_id, {})
-                result[model_asst_id] = {
+            if group_asst_id not in result:
+                visible_association = visible_associations.get(group_asst_id, {})
+                result[group_asst_id] = {
                     "src_model_id": src_model_id,
                     "dst_model_id": dst_model_id,
-                    "model_asst_id": model_asst_id,
+                    "model_asst_id": group_asst_id,
                     "asst_id": edge.get("asst_id"),
                     "src_model_name": visible_association.get("src_model_name", ""),
                     "dst_model_name": visible_association.get("dst_model_name", ""),
@@ -1925,11 +2007,34 @@ class InstanceManage(object):
                     "dst_model_icn": visible_association.get("dst_model_icn", ""),
                     "inst_list": [],
                 }
-            peer = dict(item[item_key])
-            peer.update(inst_asst_id=edge["_id"])
-            result[model_asst_id]["inst_list"].append(peer)
+            if endpoints_only:
+                peer = {
+                    "model_asst_id": group_asst_id,
+                    "src_inst_uuid": edge.get("src_inst_uuid") or src.get("inst_uuid"),
+                    "dst_inst_uuid": edge.get("dst_inst_uuid") or dst.get("inst_uuid"),
+                }
+            else:
+                peer = dict(item[item_key])
+                peer.update(inst_asst_id=edge["_id"])
+            result[group_asst_id]["inst_list"].append(peer)
 
-        return list(result.values())
+        groups = list(result.values())
+        if requested_asst_id:
+            groups = [group for group in groups if group.get("model_asst_id") == requested_asst_id]
+        page_number = max(1, int(page or 1))
+        size = max(1, int(page_size or 20))
+        for group in groups:
+            instances = group.get("inst_list") or []
+            group["inst_count"] = len(instances)
+            if summary:
+                group.pop("inst_list", None)
+                continue
+            if requested_asst_id:
+                start = (page_number - 1) * size
+                group["inst_list"] = instances[start : start + size]
+                group["page"] = page_number
+                group["page_size"] = size
+        return groups
 
     @staticmethod
     def instance_association(
@@ -1960,33 +2065,7 @@ class InstanceManage(object):
     ):
         """按边端点 UUID 属性查询关联边。"""
         inst_uuid = normalize_inst_uuid(inst_uuid)
-        with GraphClient() as ag:
-            src_edge = ag.query_edge(
-                INSTANCE_ASSOCIATION,
-                [
-                    {"field": "src_inst_uuid", "type": "str=", "value": inst_uuid},
-                    {"field": "src_model_id", "type": "str=", "value": model_id},
-                ],
-            )
-            dst_edge = ag.query_edge(
-                INSTANCE_ASSOCIATION,
-                [
-                    {"field": "dst_inst_uuid", "type": "str=", "value": inst_uuid},
-                    {"field": "dst_model_id", "type": "str=", "value": model_id},
-                ],
-            )
-        edges = src_edge + dst_edge
-        if not edges:
-            with GraphClient() as ag:
-                items = ag.query_edge(INSTANCE_ASSOCIATION, [], return_entity=True)
-            edges = [
-                item["edge"]
-                for item in items
-                if (
-                    ((item.get("src") or {}).get("inst_uuid") == inst_uuid and (item.get("src") or {}).get("model_id") == model_id)
-                    or ((item.get("dst") or {}).get("inst_uuid") == inst_uuid and (item.get("dst") or {}).get("model_id") == model_id)
-                )
-            ]
+        edges = InstanceManage._load_association_edges(inst_uuid, model_id, return_entity=False)
         if business_only:
             from apps.cmdb.services.model_visibility import BusinessModelVisibility
 
@@ -2052,22 +2131,19 @@ class InstanceManage(object):
         if not relation_map:
             return {}
 
-        with GraphClient() as ag:
-            src_query = [
-                {"field": "src_inst_uuid", "type": "str[]", "value": normalized},
-                {"field": "src_model_id", "type": "str=", "value": model_id},
-            ]
-            if related_model:
-                src_query.append({"field": "dst_model_id", "type": "str=", "value": related_model})
-            src_edges = ag.query_edge(INSTANCE_ASSOCIATION, src_query)
-
-            dst_query = [
-                {"field": "dst_inst_uuid", "type": "str[]", "value": normalized},
-                {"field": "dst_model_id", "type": "str=", "value": model_id},
-            ]
-            if related_model:
-                dst_query.append({"field": "src_model_id", "type": "str=", "value": related_model})
-            dst_edges = ag.query_edge(INSTANCE_ASSOCIATION, dst_query)
+        src_edges = []
+        dst_edges = []
+        loaded = InstanceManage._load_association_edges(
+            normalized,
+            model_id,
+            return_entity=False,
+            related_model=related_model,
+        )
+        for edge in loaded:
+            if edge.get("src_inst_uuid") in relation_map:
+                src_edges.append(edge)
+            if edge.get("dst_inst_uuid") in relation_map:
+                dst_edges.append(edge)
 
         for edge in src_edges:
             src_uuid = edge.get("src_inst_uuid")
@@ -2080,30 +2156,6 @@ class InstanceManage(object):
             src_uuid = edge.get("src_inst_uuid")
             if dst_uuid in relation_map and src_uuid:
                 relation_map[dst_uuid].add(src_uuid)
-
-        # 兼容边上缺少 model_id 属性的存量/旁路写入：回退到端点实体过滤
-        if not any(relation_map.values()):
-            with GraphClient() as ag:
-                items = ag.query_edge(INSTANCE_ASSOCIATION, [], return_entity=True)
-            for item in items:
-                src = item.get("src") or {}
-                dst = item.get("dst") or {}
-                src_uuid = src.get("inst_uuid")
-                dst_uuid = dst.get("inst_uuid")
-                if (
-                    src_uuid in relation_map
-                    and src.get("model_id") == model_id
-                    and (not related_model or dst.get("model_id") == related_model)
-                    and dst_uuid
-                ):
-                    relation_map[src_uuid].add(dst_uuid)
-                if (
-                    dst_uuid in relation_map
-                    and dst.get("model_id") == model_id
-                    and (not related_model or src.get("model_id") == related_model)
-                    and src_uuid
-                ):
-                    relation_map[dst_uuid].add(src_uuid)
 
         return {key: sorted(values) for key, values in relation_map.items()}
 
