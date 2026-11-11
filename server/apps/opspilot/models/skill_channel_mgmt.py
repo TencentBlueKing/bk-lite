@@ -69,6 +69,8 @@ class SkillConversation(TimeInfo):
         on_delete=models.CASCADE,
         related_name="conversations",
         verbose_name="渠道绑定",
+        null=True,
+        blank=True,
     )
     external_user_id = models.CharField(max_length=255, blank=True, default="", verbose_name="外部用户标识", db_index=True)
     title = models.CharField(max_length=255, blank=True, default="", verbose_name="会话标题")

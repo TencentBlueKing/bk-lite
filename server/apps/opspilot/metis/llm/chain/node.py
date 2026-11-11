@@ -2204,13 +2204,21 @@ class ToolsNodes(
     def _collect_deepagent_tools(self, graph_request) -> list:
         """汇总传给 deepagent 的业务工具：langchain + MCP（+ 知识库检索工具）。"""
         tools = list(self.all_tools or self.tools or [])
+        extra = getattr(graph_request, "extra_config", None) or {}
+        unattended = isinstance(extra, dict) and extra.get("unattended") is True
+        if unattended:
+            tools = [tool for tool in tools if getattr(tool, "name", "") != "request_user_choice"]
         kb_tool = self._build_knowledge_retrieve_tool(graph_request)
         if kb_tool is not None:
             tools.append(kb_tool)
 
         # 澄清卡只在本轮已有业务工具时注入；空目录寒暄走轻量直答。
         # K8s 修复报告仍由后端状态机派发，不向模型暴露。
-        if self._catalog_has_business_tools(tools) and not any(getattr(tool, "name", "") == "request_user_choice" for tool in tools):
+        if (
+            not unattended
+            and self._catalog_has_business_tools(tools)
+            and not any(getattr(tool, "name", "") == "request_user_choice" for tool in tools)
+        ):
             tools.append(self._build_choice_tool())
         return tools
 
@@ -2283,8 +2291,9 @@ class ToolsNodes(
             configurable = {}
         graph_request = configurable.get("graph_request")
         extra = getattr(graph_request, "extra_config", None) if graph_request is not None else None
+        unattended = isinstance(extra, dict) and extra.get("unattended") is True
         pending = extra.get("pending_question") if isinstance(extra, dict) else None
-        if isinstance(pending, dict) and pending.get("kind") == KIND_K8S_REPAIR_MODE:
+        if not unattended and isinstance(pending, dict) and pending.get("kind") == KIND_K8S_REPAIR_MODE:
             user_message = str(getattr(graph_request, "user_message", "") or getattr(graph_request, "graph_user_message", "") or "")
             group_by = self._match_repair_group_reply(user_message)
             if not group_by:
@@ -2308,6 +2317,9 @@ class ToolsNodes(
             "problematic": int(analysis.get("problematic") or 0),
             "issues_detail": analysis.get("issues_detail"),
         }
+        if unattended:
+            await self._emit_k8s_repair_report(k8s_analysis, "all", config, output_messages)
+            return True
         question_text, tool_message = finalize_user_choice(
             question=str(choice_args.get("question") or "请选择修复展示方式"),
             question_type=str(choice_args.get("question_type") or "single_select"),
@@ -2555,6 +2567,13 @@ class ToolsNodes(
             from apps.opspilot.metis.llm.tools.kubernetes.data_collection import k8s_target_lookup_exhausted_from_messages
 
             graph_request = config["configurable"]["graph_request"]
+            request_extra = getattr(graph_request, "extra_config", None) or {}
+            unattended = isinstance(request_extra, dict) and request_extra.get("unattended") is True
+            auto_instruction = (
+                ("\n\n【无人值守】本次没有用户在线回答问题。不要提问或请求确认；" "利用已知上下文和可用工具尽力完成目标，合理选择只读查询范围并说明假设。" "无法确定必要目标或缺少权限时，完成其余可行步骤并明确说明未完成原因；不得虚构数据或批准操作。")
+                if unattended
+                else ""
+            )
             missing_params_thread_id = getattr(graph_request, "thread_id", None)
 
             # 创建系统提示
@@ -2562,6 +2581,7 @@ class ToolsNodes(
                 "prompts/graph/deepagent_system_message",
                 {"user_system_message": graph_request.system_message_prompt, "additional_system_prompt": additional_system_prompt or ""},
             )
+            final_system_prompt += auto_instruction
 
             llm = self.get_llm_client(graph_request)
             enable_nested_token_streaming(llm)
@@ -2590,6 +2610,15 @@ class ToolsNodes(
             # 渐进路径推迟沙箱物化：空计划寒暄不应为技能包付 DeepAgent/FS 税。
             backend, skill_sources, sandbox_dir = None, [], None
             interrupt_on = self._build_interrupt_on(graph_request, tools)
+            if unattended and interrupt_on:
+                approval = getattr(graph_request, "approval_config", None)
+                if getattr(approval, "unattended_strategy", "skip") != "allow":
+                    blocked = set(interrupt_on)
+                    tools = [tool for tool in tools if getattr(tool, "name", "") not in blocked]
+                    registered_tools = list(tools)
+                    auto_instruction += "\n需要人工审批的工具在无人值守时不可执行；如任务需要它们，请说明未执行原因。"
+                    final_system_prompt += "\n需要人工审批的工具在无人值守时不可执行；如任务需要它们，请说明未执行原因。"
+                interrupt_on = None
             token_usage_accumulator = config["configurable"].get("token_usage_accumulator")
 
             planning_question = str(getattr(graph_request, "user_message", "") or getattr(graph_request, "graph_user_message", "") or "").strip()
@@ -2624,6 +2653,7 @@ class ToolsNodes(
                 light_system = self._build_lightweight_system_prompt(getattr(graph_request, "system_message_prompt", "") or "")
                 if additional_system_prompt:
                     light_system = f"{light_system}\n\n{additional_system_prompt}"
+                light_system += auto_instruction
                 return await self._invoke_lightweight_direct_reply(
                     llm=llm,
                     light_system=light_system,
@@ -2744,7 +2774,7 @@ class ToolsNodes(
                     tools,
                     skill_packages=skill_packages,
                     config=config,
-                    agent_system_prompt=str(getattr(graph_request, "system_message_prompt", "") or ""),
+                    agent_system_prompt=str(getattr(graph_request, "system_message_prompt", "") or "") + auto_instruction,
                     thread_id=missing_params_thread_id,
                     conversation_messages=original_messages,
                     ppt_master_packages=matched_for_ppt,
@@ -2793,6 +2823,7 @@ class ToolsNodes(
                     light_system = f"{light_system}\n当前可用工具: {', '.join(tool_names)}"
                 if additional_system_prompt:
                     light_system = f"{light_system}\n\n{additional_system_prompt}"
+                light_system += auto_instruction
                 return await self._invoke_lightweight_direct_reply(
                     llm=llm,
                     light_system=light_system,
@@ -2837,6 +2868,7 @@ class ToolsNodes(
                 ppt_authoring=ppt_authoring,
             )
             final_system_prompt = self._append_planned_execution_step_prompt(final_system_prompt)
+            final_system_prompt += auto_instruction
 
             def _build_deep_agent():
                 return create_deep_agent(
@@ -2891,6 +2923,7 @@ class ToolsNodes(
                             },
                         )
                     )
+                    final_system_prompt += auto_instruction
                     deep_agent = _build_deep_agent()
 
             # DeepAgent 返回 CompiledStateGraph；提高递归限制以容纳复杂任务
@@ -3070,7 +3103,9 @@ class ToolsNodes(
                             is_last_step=is_last_step,
                             user_message=planning_question,
                             agent_system_prompt=str(getattr(graph_request, "system_message_prompt", "") or ""),
+                            unattended=unattended,
                         )
+                    step_guidance += auto_instruction
                     finish_rule = "只完成本步骤；取得足够证据后立即结束，不要处理后续步骤。"
                     if ppt_authoring:
                         finish_rule = "本步只有写出 svg_output 里的页面才算完成。禁止只回复大纲或说即将开始。写完就停止，平台会导出 pptx。"
@@ -3294,7 +3329,8 @@ class ToolsNodes(
                                 )
                                 step_payload = {
                                     **agent_state,
-                                    "messages": list(agent_state.get("messages") or []) + [_internal_message(MISSING_PARAMS_CHOICE_HINT)],
+                                    "messages": list(agent_state.get("messages") or [])
+                                    + [_internal_message(auto_instruction if unattended else MISSING_PARAMS_CHOICE_HINT)],
                                 }
                                 continue
                             if is_non_replanable_tool_failure(failure):
@@ -3366,7 +3402,8 @@ class ToolsNodes(
                             agent_state = step_result
                             step_payload = {
                                 **agent_state,
-                                "messages": list(agent_state.get("messages") or []) + [_internal_message(MISSING_PARAMS_CHOICE_HINT)],
+                                "messages": list(agent_state.get("messages") or [])
+                                + [_internal_message(auto_instruction if unattended else MISSING_PARAMS_CHOICE_HINT)],
                             }
                             continue
                         if ppt_authoring and ppt_run is not None:

@@ -120,6 +120,30 @@ class TestBuildInterruptOn:
 
 
 class TestCollectTools:
+    def test_unattended_does_not_expose_choice_tool(self):
+        n = ToolsNodes()
+        n.all_tools = [_tool("monitor_list_objects")]
+        with patch.object(ToolsNodes, "_build_knowledge_retrieve_tool", return_value=None):
+            tools = n._collect_deepagent_tools(_request(extra_config={"unattended": True}))
+        assert [tool.name for tool in tools] == ["monitor_list_objects"]
+
+    def test_unattended_k8s_report_uses_default_without_question(self):
+        node = ToolsNodes()
+        node._enable_config_analysis_report = lambda: True
+        node._enable_repair_diff_report = lambda: True
+        node._emit_k8s_repair_report = AsyncMock()
+        config = {"configurable": {"graph_request": _request(extra_config={"unattended": True})}}
+        with patch(
+            "apps.opspilot.metis.llm.chain.node.find_pending_k8s_analysis_choice",
+            return_value={
+                "_deployments_full": [{"name": "api"}],
+                "problematic": 1,
+            },
+        ), patch("apps.opspilot.metis.llm.chain.node.finalize_user_choice") as choice:
+            assert asyncio.run(node._run_pending_k8s_repair_workflow([], config)) is True
+        assert node._emit_k8s_repair_report.await_args.args[1] == "all"
+        choice.assert_not_called()
+
     def test_uses_all_tools_and_appends_kb_tool(self):
         n = ToolsNodes()
         n.all_tools = [_tool("shell"), _tool("k8s")]
@@ -502,6 +526,53 @@ class TestBuildDeepagentNodes:
             # 用 `asyncio.run()` 自管理 loop 创建/关闭。
             result = asyncio.run(wrapper({"messages": input_messages}, config))
         return result
+
+    def test_unattended_planned_execution_exposes_no_choice_and_instructs_agent(self):
+        node = ToolsNodes()
+        node.all_tools = [_tool("alerts_list_alerts")]
+        req = _request(user_message="查询告警", extra_config={"unattended": True})
+        captured = {}
+        with patch.object(ToolsNodes, "_build_knowledge_retrieve_tool", return_value=None):
+            self._run_wrapper(
+                node,
+                req,
+                captured,
+                plan_payload={
+                    "goal": "查询告警",
+                    "steps": [{"objective": "查询告警", "tools": ["alerts_list_alerts"]}],
+                },
+            )
+        assert "request_user_choice" not in [tool.name for tool in captured["create_kwargs"]["tools"]]
+        assert "【无人值守】" in captured["create_kwargs"]["system_prompt"]
+        assert any("【无人值守】" in str(message.content) for message in captured["planner_calls"][0])
+
+    @pytest.mark.parametrize("strategy,allowed", [("skip", False), ("deny", False), ("allow", True)])
+    def test_unattended_respects_configured_approval_strategy(self, strategy, allowed):
+        node = ToolsNodes()
+        node.all_tools = [_tool("read_data"), _tool("danger_tool")]
+        req = _request(
+            user_message="查询",
+            extra_config={"unattended": True},
+            approval_config=SimpleNamespace(
+                enabled=True,
+                tools=["danger_tool"],
+                unattended_strategy=strategy,
+            ),
+        )
+        captured = {}
+        with patch.object(ToolsNodes, "_build_knowledge_retrieve_tool", return_value=None):
+            self._run_wrapper(
+                node,
+                req,
+                captured,
+                plan_payload={
+                    "goal": "查询",
+                    "steps": [{"objective": "读取", "tools": ["read_data"]}],
+                },
+            )
+        names = {tool.name for tool in captured["create_kwargs"]["tools"]}
+        assert ("danger_tool" in names) is allowed
+        assert "interrupt_on" not in captured["create_kwargs"]
 
     def test_lightweight_direct_reply_skips_planner_and_deepagent(self):
         node = ToolsNodes()
@@ -1399,6 +1470,26 @@ class TestBuildDeepagentNodes:
         assert len(captured["planner_calls"]) == 2
         replan_prompt = "\n".join(str(message.content) for message in captured["planner_calls"][1])
         assert "不存在" in replan_prompt
+
+    def test_unattended_missing_params_retries_without_asking(self):
+        node = ToolsNodes()
+        node.all_tools = [_tool("monitor_query_metric_data"), _tool("request_user_choice")]
+        req = _request(user_message="查询指标", extra_config={"unattended": True})
+        captured = {}
+        with patch.object(ToolsNodes, "_build_knowledge_retrieve_tool", return_value=None):
+            self._run_wrapper(
+                node,
+                req,
+                captured,
+                plan_payload={"goal": "查询指标", "steps": [{"objective": "查询指标", "tools": ["monitor_query_metric_data"]}]},
+                failing_agent_calls={
+                    1: {"content": '{"success": false, "error": "metric is required"}', "status": "success", "name": "monitor_query_metric_data"}
+                },
+            )
+        retry = "\n".join(str(message.content) for message in captured["ainvoke_messages"][1])
+        assert "【无人值守】" in retry
+        assert "必须立即调用 request_user_choice" not in retry
+        assert all("request_user_choice" not in names for names in captured["visible_tool_calls"])
 
     def test_missing_params_nudges_user_choice_without_replan(self, caplog):
         node = ToolsNodes()

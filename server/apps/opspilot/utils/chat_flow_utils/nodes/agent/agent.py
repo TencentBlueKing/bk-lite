@@ -2,16 +2,20 @@
 智能体节点
 """
 
+import json
 import time
+import uuid
 from typing import Any, Dict
 
 from asgiref.sync import sync_to_async
+from django.db import transaction
 
 from apps.core.logger import opspilot_logger as logger
+from apps.core.logger import safe_exception_info
 from apps.core.utils.safe_template import TemplateSecurityError, safe_render
 from apps.opspilot.metis.llm.common.llm_client_factory import DEFAULT_CHAT_TEMPERATURE
 from apps.opspilot.metis.llm.common.token_usage import TokenUsageAccumulator
-from apps.opspilot.models import LLMModel, LLMSkill, SkillRequestLog, WorkflowAttachmentAsset
+from apps.opspilot.models import LLMModel, LLMSkill, SkillConversation, SkillConversationMessage, SkillRequestLog, WorkflowAttachmentAsset
 from apps.opspilot.services.builtin_tools import BUILTIN_ATTACHMENT_FILE_TOOL_NAME
 from apps.opspilot.services.caller_identity import CALLER_IDENTITY_CONFIG_KEY
 from apps.opspilot.services.chat_service import ChatService, chat_service
@@ -22,6 +26,7 @@ from apps.opspilot.services.wiki.wiki_budget_service import WikiBudgetExceeded
 from apps.opspilot.services.workflow_attachment_service import build_signed_attachment_download_url
 from apps.opspilot.utils.agent_factory import create_agent_instance
 from apps.opspilot.utils.agui_chat import _build_sse_line
+from apps.opspilot.utils.auto_mode import parse_auto_command
 from apps.opspilot.utils.chat_flow_utils.engine.core.base_executor import BaseNodeExecutor
 from apps.opspilot.utils.prompt_utils import resolve_skill_params
 from apps.opspilot.utils.run_locale import reset_run_locale, set_run_locale
@@ -64,6 +69,55 @@ def _openai_usage(chat_result: Dict[str, Any]) -> Dict[str, int]:
 
 
 class AgentNode(BaseNodeExecutor):
+    def _record_workbench_conversation(self, *, node_id, skill_id, params, content):
+        """保存工作台中该智能体的输入输出，供智能体历史查询。"""
+        try:
+            from apps.opspilot.services.skill_channel_chat_service import append_message
+
+            flow_input = self.variable_manager.get_variable("flow_input", {}) or {}
+            user_id = str(flow_input.get("user_id") or "anonymous")
+            run_id = str(flow_input.get("session_id") or flow_input.get("execution_id") or uuid.uuid4())
+            identity = json.dumps([str(skill_id), str(flow_input.get("bot_id") or ""), str(node_id), user_id, run_id], ensure_ascii=False)
+            session_id = "workbench_" + uuid.uuid5(uuid.NAMESPACE_URL, identity).hex
+            message = params.get("user_message", "")
+            if not isinstance(message, str):
+                message = json.dumps(message, ensure_ascii=False, default=str)
+            with transaction.atomic():
+                conversation, _ = SkillConversation.objects.get_or_create(
+                    session_id=session_id,
+                    defaults={"skill_id": skill_id, "channel": None, "external_user_id": user_id},
+                )
+                append_message(conversation, SkillConversationMessage.ROLE_USER, message)
+                if content:
+                    append_message(conversation, SkillConversationMessage.ROLE_ASSISTANT, content)
+        except Exception as exc:
+            logger.error(
+                "event=workbench_agent_history_failed skill_id=%s node_id=%s failed_stage=%s error_type=%s",
+                skill_id,
+                node_id,
+                "persist",
+                type(exc).__name__,
+                exc_info=safe_exception_info(exc),
+            )
+
+    def _persist_workbench_stream(self, stream, *, node_id, skill_id, params):
+        async def generate():
+            from apps.opspilot.services.skill_channel_chat_service import assemble_assistant_persist_content, parse_sse_json_payloads
+
+            events = []
+            try:
+                async for chunk in stream:
+                    text = chunk.decode("utf-8") if isinstance(chunk, bytes) else str(chunk)
+                    events.extend(parse_sse_json_payloads(text))
+                    yield chunk
+            finally:
+                content = assemble_assistant_persist_content(events)
+                await sync_to_async(self._record_workbench_conversation, thread_sensitive=True)(
+                    node_id=node_id, skill_id=skill_id, params=params, content=content
+                )
+
+        return generate()
+
     def _get_skill(self, skill_id: str) -> LLMSkill:
         """获取技能对象
 
@@ -338,7 +392,8 @@ class AgentNode(BaseNodeExecutor):
         from apps.opspilot.utils.sse_chat import create_stream_generator
 
         # 返回异步生成器而不是 StreamingHttpResponse
-        return create_stream_generator(llm_params, skill_name, {}, None, input_data.get(input_key), skill_id)
+        stream = create_stream_generator(llm_params, skill_name, {}, None, input_data.get(input_key), skill_id)
+        return self._persist_workbench_stream(stream, node_id=node_id, skill_id=skill_id, params=llm_params)
 
     def agui_execute(self, node_id: str, node_config: Dict[str, Any], input_data: Dict[str, Any]):
         """AGUI协议流式执行agent节点，返回异步生成器"""
@@ -425,7 +480,7 @@ class AgentNode(BaseNodeExecutor):
             finally:
                 reset_run_locale(token)
 
-        return generate_agui_stream()
+        return self._persist_workbench_stream(generate_agui_stream(), node_id=node_id, skill_id=skill_id, params=llm_params)
 
     @staticmethod
     def _resolve_trigger_type(flow_input: Dict[str, Any]) -> str:
@@ -465,6 +520,7 @@ class AgentNode(BaseNodeExecutor):
 
         # 获取消息内容
         message = input_data.get(input_key)
+        auto_requested = parse_auto_command(message)[0]
         flow_input = self.variable_manager.get_variable("flow_input")
 
         # 构建最终消息（包含节点prompt和文件内容）
@@ -474,6 +530,8 @@ class AgentNode(BaseNodeExecutor):
 
         # 构建LLM参数
         llm_params = self._build_llm_params(skill, final_message, flow_input, node_id=node_id)
+        if auto_requested:
+            llm_params["unattended"] = True
 
         return llm_params, skill.name, self._skill_supports_attachment_generation(skill)
 
@@ -486,6 +544,7 @@ class AgentNode(BaseNodeExecutor):
 
         # 使用同步版本的 invoke_chat,避免异步上下文冲突
         data, _, _ = ChatService.invoke_chat(llm_params)
+        self._record_workbench_conversation(node_id=node_id, skill_id=config.get("agent"), params=llm_params, content=data.get("message") or "")
         self._record_agent_token_usage(
             node_id=node_id,
             skill_id=config.get("agent"),

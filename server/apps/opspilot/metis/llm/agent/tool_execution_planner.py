@@ -97,6 +97,23 @@ _MONITOR_CATALOG_HINT = (
     "禁止返回空 steps，不要改去规划 SSH/top/htop。"
 )
 
+
+def _monitor_catalog_hint(unattended: bool) -> str:
+    if not unattended:
+        return _MONITOR_CATALOG_HINT
+    return (
+        _MONITOR_CATALOG_HINT.replace(
+            "用户只给名称、未说明是主机/Pod/中间件时：先 monitor_list_objects，再规划 request_user_choice；",
+            "用户未说明对象类型时，先查询现有对象，根据证据判断，无法确定则说明；",
+        )
+        .replace("request_user_choice 必须用 single_select，options 放入 list_objects 返回的全部对象 name，禁止纯文本列出类型；", "")
+        .replace(
+            "禁止截断后按台循环；空列表禁止换 ID 重试；用户未声明类型时 request_user_choice 问对象类型，已声明则把空列表当该类型下无匹配；",
+            "禁止截断后按台循环；空列表禁止换 ID 重试；对象类型无法确定时说明范围不确定；",
+        )
+    )
+
+
 # CMDB 与监控的实例 ID 不是同一套；目录同时含两边工具时强制走联动映射。
 _CMDB_MONITOR_LINK_HINT = (
     "联动规则：CMDB 与监控的实例 ID 不是同一套。"
@@ -2031,6 +2048,7 @@ class ToolExecutionPlanner:
         *,
         user_message: str = "",
         agent_system_prompt: str = "",
+        unattended: bool = False,
     ) -> str:
         lines = []
         has_monitor = False
@@ -2081,7 +2099,7 @@ class ToolExecutionPlanner:
         catalog = "\n".join(lines)
         hints = []
         if has_monitor:
-            hints.append(_MONITOR_CATALOG_HINT)
+            hints.append(_monitor_catalog_hint(unattended))
         hints.extend(_mlops_monitor_link_hints(has_monitor, available_names))
         if has_monitor and has_cmdb:
             hints.append(_CMDB_MONITOR_LINK_HINT)
@@ -2255,17 +2273,21 @@ class ToolExecutionPlanner:
         skill_packages: Sequence[Any] = (),
         agent_system_prompt: str = "",
         conversation: str = "",
+        unattended: bool = False,
     ) -> str:
         brief = _agent_task_brief(agent_system_prompt)
         agent_block = f"助手任务说明（来自智能体 prompt，规划须对齐其目标；工具名只从目录选择）:\n{brief}\n\n" if brief else ""
         history_block = f"近期会话（已按对话窗口保留，不含本轮）:\n{conversation}\n\n" if conversation else ""
+        unattended_block = "【无人值守】没有用户在线回答，不规划提问或确认；利用已有信息与工具尽力完成，无法确定时说明原因。\n\n" if unattended else ""
+        catalog = self._catalog(tools, skill_packages, user_message=user_message, agent_system_prompt=agent_system_prompt, unattended=unattended)
         return (
+            f"{unattended_block}"
             f"{history_block}"
             f"用户问题:\n{user_message}\n\n"
             f"{agent_block}"
             f"已完成步骤:\n{completed_text}\n\n"
             f"最近失败或新证据:\n{failure_text}\n\n"
-            f"紧凑工具目录:\n{self._catalog(tools, skill_packages, user_message=user_message, agent_system_prompt=agent_system_prompt)}"
+            f"紧凑工具目录:\n{catalog}"
         )
 
     async def _ainvoke_plan(
@@ -2311,6 +2333,10 @@ class ToolExecutionPlanner:
         failure_text = failure.strip() or "无"
         packages = [item for item in (skill_packages or []) if isinstance(item, dict)]
         conversation = render_planning_conversation(conversation_messages, current_user_message=user_message)
+        configurable = (config or {}).get("configurable") or {}
+        graph_request = configurable.get("graph_request")
+        request_extra = getattr(graph_request, "extra_config", None) or {}
+        unattended = isinstance(request_extra, dict) and request_extra.get("unattended") is True
         system_prompt = self._system_prompt(_plan_locale(config))
         task_prompt = self._task_prompt(
             user_message,
@@ -2320,6 +2346,7 @@ class ToolExecutionPlanner:
             packages,
             agent_system_prompt=agent_system_prompt,
             conversation=conversation,
+            unattended=unattended,
         )
         primary_messages = [
             SystemMessage(content=system_prompt),
