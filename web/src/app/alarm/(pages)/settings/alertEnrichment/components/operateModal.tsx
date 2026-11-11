@@ -4,6 +4,7 @@ import { invalidMatchRules } from '@/app/alarm/utils/multivalueRules';
 
 import React, { useEffect, useState } from 'react';
 import { Drawer, Form, Input, Select, AutoComplete, Button, Space, message, Radio } from 'antd';
+import type { FormInstance } from 'antd';
 import { MinusCircleOutlined, PlusOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import { useSettingApi } from '@/app/alarm/api/settings';
@@ -27,6 +28,38 @@ const DEFAULT_MATCH_RULES = [
 function followSourceAlias(source: string, currentAs: string, previousSource: string) {
   if (!currentAs || currentAs === previousSource) return source;
   return currentAs;
+}
+
+function fillProjectionAlias(
+  form: FormInstance,
+  index: number,
+  nextSource: string,
+  previousSource: string
+) {
+  const rows = [...(form.getFieldValue('output_projection') || [])];
+  const row = { ...(rows[index] || {}), source: nextSource };
+  const currentAs = String(row.as || '');
+  const nextAs = followSourceAlias(nextSource, currentAs, previousSource);
+  if (row.as === nextAs && row.source === nextSource) return;
+  rows[index] = { ...row, as: nextAs };
+  form.setFieldsValue({ output_projection: rows });
+}
+
+function projectionAliases(rows: { source?: string; as?: string }[] | undefined) {
+  const options: { value: string; label: string }[] = [];
+  const seen = new Set<string>();
+  for (const row of rows || []) {
+    const source = String(row?.source || '').trim();
+    if (!source) continue;
+    const alias = String(row?.as || source).trim();
+    if (!alias || seen.has(alias)) continue;
+    seen.add(alias);
+    options.push({
+      value: alias,
+      label: alias === source ? alias : `${alias} (${source})`,
+    });
+  }
+  return options;
 }
 
 interface ContextFieldOptionGroup {
@@ -61,13 +94,16 @@ const ProjectionSourceAutoComplete: React.FC<{
         const next = String(nextValue || '');
         const previous = String(value || '');
         onChange?.(next);
-        const currentAs = String(
-          form.getFieldValue(['output_projection', aliasIndex, 'as']) || ''
-        );
-        form.setFieldValue(
-          ['output_projection', aliasIndex, 'as'],
-          followSourceAlias(next, currentAs, previous)
-        );
+        window.setTimeout(() => {
+          fillProjectionAlias(form, aliasIndex, next, previous);
+        }, 0);
+      }}
+      onSelect={(nextValue) => {
+        const next = String(nextValue || '');
+        const previous = String(value || '');
+        window.setTimeout(() => {
+          fillProjectionAlias(form, aliasIndex, next, previous);
+        }, 0);
       }}
     />
   );
@@ -82,6 +118,8 @@ const OperateModal: React.FC<OperateModalProps> = ({
   const { t } = useTranslation();
   const { createEnrichment, updateEnrichment, getCmdbContextFields } = useSettingApi();
   const [form] = Form.useForm();
+  const outputProjection = Form.useWatch('output_projection', form) || [];
+  const ownerFieldOptions = projectionAliases(outputProjection);
   const [submitLoading, setSubmitLoading] = useState(false);
   const [filterType, setFilterType] = useState<'all' | 'filter'>('all');
   const [contextFieldOptions, setContextFieldOptions] = useState<
@@ -131,7 +169,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
           { param: 'inst_uuid', field: 'resource_id' },
         ],
         output_projection: [{ source: 'owner', as: 'owner' }],
-        owner_fields: ['operator'],
+        owner_fields: [],
       });
     }
   }, [open, isEdit, currentRow, form]);
@@ -174,6 +212,9 @@ const OperateModal: React.FC<OperateModalProps> = ({
         .map((r: any) =>
           r.as ? { source: r.source, as: r.as } : { source: r.source }
         );
+      const projectionAliasSet = new Set(
+        output_projection.map((item: { source: string; as?: string }) => item.as || item.source)
+      );
 
       const match_rules = filterType === 'filter' ? values.match_rules : [];
 
@@ -186,7 +227,9 @@ const OperateModal: React.FC<OperateModalProps> = ({
         match_rules,
         provider_config: {
           ...(currentRow?.provider_config || {}),
-          owner_fields: (values.owner_fields || []).filter(Boolean),
+          owner_fields: (values.owner_fields || []).filter((name: string) =>
+            projectionAliasSet.has(name)
+          ),
         },
         input_binding,
         output_projection,
@@ -235,7 +278,27 @@ const OperateModal: React.FC<OperateModalProps> = ({
         </div>
       }
     >
-      <Form form={form} layout="vertical" onFinish={onFinish}>
+      <Form
+        form={form}
+        layout="vertical"
+        onFinish={onFinish}
+        onValuesChange={(changed) => {
+          const changedRows = changed?.output_projection;
+          if (!Array.isArray(changedRows)) return;
+          changedRows.forEach((row: { source?: string } | undefined, index: number) => {
+            if (!row || !Object.prototype.hasOwnProperty.call(row, 'source')) return;
+            const source = String(row.source || '');
+            const currentAs = String(
+              form.getFieldValue(['output_projection', index, 'as']) || ''
+            );
+            if (source && !currentAs) {
+              window.setTimeout(() => {
+                fillProjectionAlias(form, index, source, '');
+              }, 0);
+            }
+          });
+        }}
+      >
         <Form.Item
           name="name"
           label={t('settings.enrichmentName')}
@@ -368,7 +431,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
                 ))}
                 <Button
                   type="dashed"
-                  onClick={() => add()}
+                  onClick={() => add({ source: '', as: '' })}
                   icon={<PlusOutlined />}
                   block
                 >
@@ -385,9 +448,10 @@ const OperateModal: React.FC<OperateModalProps> = ({
           extra={t('settings.enrichmentOwnerFieldsTip')}
         >
           <Select
-            mode="tags"
-            tokenSeparators={[',']}
-            placeholder="operator"
+            mode="multiple"
+            allowClear
+            options={ownerFieldOptions}
+            placeholder={t('common.selectTip')}
           />
         </Form.Item>
         <Form.Item label={t('settings.enrichmentOwnerTarget')}>
