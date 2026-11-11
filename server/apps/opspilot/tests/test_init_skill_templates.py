@@ -16,12 +16,12 @@ def _prompt(workbench_id: str) -> str:
     return (CHATFLOW_DATA_DIR / workbench_id / "check.txt").read_text(encoding="utf-8")
 
 
-def test_replace_skill_templates_keeps_only_two_workbench_agents():
+def test_init_skill_templates_keeps_only_two_workbench_agents():
     LLMSkill.objects.create(name="Python Genius", is_template=True, skill_prompt="old")
     LLMSkill.objects.create(name="Kubernetes 助手", is_builtin=True, is_template=False, team=[1], skill_prompt="live")
     LLMSkill.objects.create(name="keep-normal", is_template=False, team=[1])
 
-    call_command("replace_skill_templates")
+    call_command("init_skill_templates")
 
     templates = list(LLMSkill.objects.filter(is_template=True).order_by("name"))
     assert [item.name for item in templates] == ["Kubernetes 助手", "Postgres DB 助手"]
@@ -52,7 +52,7 @@ def test_replace_skill_templates_keeps_only_two_workbench_agents():
     listed = sorted(item["name"] for item in _body(_dispatch(LLMViewSet, "get_template_list", "get")))
     assert listed == ["Kubernetes 助手", "Postgres DB 助手"]
 
-    call_command("replace_skill_templates")
+    call_command("init_skill_templates")
     assert list(LLMSkill.objects.filter(is_template=True).order_by("name").values_list("name", flat=True)) == [
         "Kubernetes 助手",
         "Postgres DB 助手",
@@ -70,7 +70,7 @@ def test_startup_leaves_existing_templates_untouched(monkeypatch):
 
 
 def test_init_llm_still_restores_legacy_template_catalog():
-    call_command("replace_skill_templates")
+    call_command("init_skill_templates")
     call_command("init_llm")
     names = set(LLMSkill.objects.filter(is_template=True).values_list("name", flat=True))
     assert "Python Genius" in names

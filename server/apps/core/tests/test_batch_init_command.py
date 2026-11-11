@@ -65,7 +65,7 @@ def test_opspilot_init_does_not_seed_skill_templates(calls):
     _make_command()._init_opspilot()
     names = [name for name, _args, _kwargs in calls]
     assert "init_llm" not in names
-    assert "replace_skill_templates" not in names
+    assert "init_skill_templates" not in names
     assert names[:1] == ["parse_tools_yml"]
     assert "init_chatflow" in names
 

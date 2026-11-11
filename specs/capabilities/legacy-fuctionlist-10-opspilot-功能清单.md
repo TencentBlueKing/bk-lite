@@ -74,7 +74,7 @@ OpsPilot 是 BK-Lite 的智能应用构建与运营平台，提供从基础模�
 |---|---|---|---|
 | 智能体列表 | 列表展示、搜索与置顶 | 支持置顶状态切换 | GA |
 | 智能体 CRUD | 智能体的创建、编辑、删除 | — | GA |
-| 模板化创建 | 智能体模板列表与模板化创建 | 内置目录是 Kubernetes 助手和 Postgres DB 助手，由 `replace_skill_templates` 手动替换；启动不再调用 `init_llm` | GA |
+| 模板化创建 | 智能体模板列表与模板化创建 | 内置目录是 Kubernetes 助手和 Postgres DB 助手，由 `init_skill_templates` 手动替换；启动不再调用 `init_llm` | GA |
 | 基础配置 | 配置模型、提示词、温度、简介、分组 | 默认温度 0.7 | GA |
 | 增强配置 | 聊天历史、工具增强、追问建议与问题优化 | 默认对话窗口大小 10；`enable_suggest` / `enable_query_rewrite` 默认关 | GA |
 | Wiki 知识库绑定 | 技能绑定一个或多个 Wiki 知识库 | `wiki_knowledge_bases` M2M；对话注入 Wiki 上下文，无旧 RAG 阈值/严格模式开关 | GA |
