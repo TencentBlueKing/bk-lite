@@ -295,7 +295,8 @@ class Command(BaseCommand):
     def _init_opspilot(self):
         """OpsPilot资源初始化"""
         self.stdout.write("OpsPilot资源初始化...")
-        call_command("init_llm")
+        # 用两个工作台智能体替换模板目录。不要改回 init_llm，它会写回旧的通用助手。
+        call_command("init_skill_templates")
         call_command("parse_tools_yml")
         try:
             call_command("init_skill_packages")
