@@ -7,6 +7,7 @@ import {
   getDeletableSubtreeKeys,
   cleanSelectedKeys,
   isNodeDisabled,
+  resolveRoleTreeLabel,
   TRANSFER_TREE_HEIGHT,
 } from '@/app/system-manager/utils/roleTreeUtils';
 
@@ -144,7 +145,7 @@ function transformRightTreeRole(
       title: (
         <div className="flex justify-between items-center w-full">
           <div className="flex items-center gap-2">
-            <span>{(node as TreeDataNode & { display_name?: string }).display_name || (typeof node.title === 'function' ? node.title(node) : node.title)}</span>
+            <span>{resolveRoleTreeLabel(node, t)}</span>
             {isLeafNode && isInherited && (
               <Tooltip title={`${t('system.role.inheritedFrom')}：${inheritedRoleSource}`}>
                 <Tag className='font-mini' color="green">
