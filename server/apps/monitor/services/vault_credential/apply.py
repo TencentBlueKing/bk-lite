@@ -247,8 +247,10 @@ def prepare_child_content_for_write(config_obj, content, env_config):
             child_interval,
         )
     from apps.monitor.utils.disk_fstype_filters import sync_disk_fstype_filters_on_writeback
+    from apps.monitor.utils.nginx_vts import sync_nginx_vts_on_writeback
 
     content = sync_disk_fstype_filters_on_writeback(content)
+    content = sync_nginx_vts_on_writeback(content)
     if str(config_obj.collect_type or "").casefold() == "script":
         from apps.monitor.services.custom_script_plugin import prepare_script_child_content_for_save
 
@@ -931,9 +933,11 @@ def _project_content(row, raw):
     if row.file_type == "toml":
         content = ConfigFormat.toml_to_dict(raw)
         from apps.monitor.utils.disk_fstype_filters import expose_disk_fstype_filters_for_edit
+        from apps.monitor.utils.nginx_vts import expose_nginx_vts_for_edit
         from apps.monitor.utils.snmp_ifmib_capability import is_interface_filter_capable_plugin
 
         content = expose_disk_fstype_filters_for_edit(content)
+        content = expose_nginx_vts_for_edit(content)
         if (row.collect_type or "").startswith("snmp") and is_interface_filter_capable_plugin(getattr(row, "monitor_plugin", None)):
             from apps.monitor.utils.snmp_interface_filters import expose_snmp_interface_filters_for_edit
             from apps.monitor.utils.snmp_interface_template import mark_closed_ifmib_edit_state
@@ -954,7 +958,9 @@ def _write_node_maps(configs, envs, contents, serialized, node_mgmt, *, file_typ
         content = contents.get(config_id)
         file_type = file_types.get(config_id) or row.file_type
         if file_type == "toml":
-            rendered = ConfigFormat.json_to_toml(content or {})
+            from apps.monitor.utils.nginx_vts import sync_nginx_vts_on_writeback
+
+            rendered = ConfigFormat.json_to_toml(sync_nginx_vts_on_writeback(content or {}) or {})
         elif file_type == "yaml":
             rendered = ConfigFormat.json_to_yaml(content or {})
         else:

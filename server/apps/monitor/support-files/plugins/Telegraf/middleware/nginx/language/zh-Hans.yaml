@@ -24,11 +24,99 @@ monitor_object_metric:
       desc: 近 5 分钟平均每秒处理的请求数，用于观察实时负载。
     nginx_accepts_rate:
       name: 连接接受速率
-      desc: Nginx接受新连接的速率，反映连接建立频率
+      desc: 近 5 分钟内平均每秒接受的新连接数。
     nginx_handled_rate:
       name: 连接处理速率
-      desc: Nginx处理连接的速率，反映连接处理能力
+      desc: 近 5 分钟内平均每秒处理的连接数。
+    nginx_http_requests_total:
+      name: HTTP 请求总数
+      desc: Nginx 已处理的 HTTP 请求总数。
+    nginx_connections_accepted:
+      name: 已接受连接数
+      desc: Nginx 已接受的客户端连接数。
+    nginx_connections_handled:
+      name: 已处理连接数
+      desc: Nginx 已处理的客户端连接数。
+    nginx_up:
+      name: 采集状态
+      desc: stub_status 采集成功时为 1，采集失败时为 0。
+      enum:
+        "0": 采集失败
+        "1": 采集成功
+    nginx_vts_server_connections:
+      name: 连接状态
+      desc: 按状态统计的连接数。
+    nginx_vts_server_requests:
+      name: Server 请求数
+      desc: 各 server zone 按响应状态码统计的请求数。
+    nginx_vts_server_bytes:
+      name: Server 字节数
+      desc: 各 server zone 的入站或出站字节数。
+    nginx_vts_server_cache:
+      name: Server 缓存结果
+      desc: 各 server zone 按缓存结果统计的请求数。
+    nginx_vts_server_requestMsec:
+      name: 请求处理时间
+      desc: 各 server zone 的平均请求处理时间。
+    nginx_vts_filter_requests:
+      name: Filter 请求数
+      desc: 各过滤器按响应状态码统计的请求数。
+    nginx_vts_filter_bytes:
+      name: Filter 字节数
+      desc: 各过滤器的入站或出站字节数。
+    nginx_vts_filter_requestMsec:
+      name: Filter 请求处理时间
+      desc: 各过滤器的平均请求处理时间。
+    nginx_vts_filter_cache:
+      name: Filter 缓存结果
+      desc: 各过滤器按缓存结果统计的请求数。
+    nginx_vts_upstream_requests:
+      name: Upstream 请求数
+      desc: 各上游服务器按响应状态码统计的请求数。
+    nginx_vts_upstream_bytes:
+      name: Upstream 字节数
+      desc: 各上游服务器的入站或出站字节数。
+    nginx_vts_upstream_requestMsec:
+      name: Upstream 请求处理时间
+      desc: 各上游服务器的平均请求处理时间。
+    nginx_vts_upstream_responseMsec:
+      name: Upstream 响应时间
+      desc: 各上游服务器的平均响应时间。
+    nginx_vts_upstream_down:
+      name: 上游下线标记
+      desc: 上游服务器是否被标记为下线。
+      enum:
+        "0": 未下线
+        "1": 已下线
+    nginx_vts_upstream_backup:
+      name: 上游备份标记
+      desc: 上游服务器是否为备份服务器。
+      enum:
+        "0": 非备份
+        "1": 备份
+    nginx_vts_upstream_weight:
+      name: 上游权重
+      desc: 上游服务器的负载权重。
+    nginx_vts_upstream_max_fails:
+      name: 最大失败次数
+      desc: 上游服务器允许的最大失败次数。
+    nginx_vts_upstream_fail_timeout:
+      name: 失败暂停时长
+      desc: 上游服务器达到最大失败次数后的暂停时长。
+    nginx_vts_cache_max_bytes:
+      name: 缓存容量上限
+      desc: 缓存区的容量上限。
+    nginx_vts_cache_used_bytes:
+      name: 缓存已用空间
+      desc: 缓存区已使用的空间。
+    nginx_vts_cache_bytes:
+      name: 缓存字节数
+      desc: 缓存区的入站或出站字节数。
+    nginx_vts_cache_responses:
+      name: 缓存结果计数
+      desc: 缓存区按缓存结果统计的请求数。
 monitor_object_metric_group:
   Nginx:
     StubStatus: Stub状态
     Performance: 性能
+    Vts: 虚拟主机流量

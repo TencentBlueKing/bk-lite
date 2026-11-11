@@ -3,22 +3,76 @@
   "plugin_desc": "By collecting metrics such as Nginx requests, connection status, and processing efficiency, this helps monitor and optimize the website's performance and stability.",
   "support_collect_detect": true,
   "status_query": "any({instance_type='nginx', collect_type='middleware'}) by (instance_id)",
-  "instance_fact_bindings": [{"fact":"asset.ip","value_type":"ip","resolver":"input","options":{"field":"url"}}],
-  "instance_summary_columns": [{"fact":"asset.ip","title":"monitor.views.assetIp","order":10}],
+  "instance_fact_bindings": [
+    {
+      "fact": "asset.ip",
+      "value_type": "ip",
+      "resolver": "input",
+      "options": {
+        "field": "url"
+      }
+    }
+  ],
+  "instance_summary_columns": [
+    {
+      "fact": "asset.ip",
+      "title": "monitor.views.assetIp",
+      "order": 10
+    }
+  ],
   "name": "Nginx",
   "icon": "mm-nginx_Nginx",
   "type": "Middleware",
   "description": "",
   "default_metric": "any({instance_type='nginx'}) by (instance_id)",
-  "instance_id_keys": ["instance_id"],
-  "supplementary_indicators": ["nginx_active", "nginx_requests_rate", "nginx_handled_rate"],
-  "display_fields": [{"name": "Active Connections", "sort_order": 0, "metrics": [{"plugin": "Nginx", "metric": "nginx_active"}]}, {"name": "Request Rate", "sort_order": 1, "metrics": [{"plugin": "Nginx", "metric": "nginx_requests_rate"}]}, {"name": "Connection Handling Rate", "sort_order": 2, "metrics": [{"plugin": "Nginx", "metric": "nginx_handled_rate"}]}],
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "nginx_active",
+    "nginx_requests_rate",
+    "nginx_handled_rate"
+  ],
+  "display_fields": [
+    {
+      "name": "Active Connections",
+      "sort_order": 0,
+      "metrics": [
+        {
+          "plugin": "Nginx",
+          "metric": "nginx_active"
+        }
+      ]
+    },
+    {
+      "name": "Request Rate",
+      "sort_order": 1,
+      "metrics": [
+        {
+          "plugin": "Nginx",
+          "metric": "nginx_requests_rate"
+        }
+      ]
+    },
+    {
+      "name": "Connection Handling Rate",
+      "sort_order": 2,
+      "metrics": [
+        {
+          "plugin": "Nginx",
+          "metric": "nginx_handled_rate"
+        }
+      ]
+    }
+  ],
   "metrics": [
     {
       "metric_group": "StubStatus",
       "name": "nginx_active",
       "display_name": "Active Connections",
-      "instance_id_keys": ["instance_id"],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "data_type": "Number",
       "unit": "counts",
       "dimensions": [],
@@ -29,7 +83,9 @@
       "metric_group": "StubStatus",
       "name": "nginx_reading",
       "display_name": "Reading Connections",
-      "instance_id_keys": ["instance_id"],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "data_type": "Number",
       "unit": "counts",
       "dimensions": [],
@@ -40,7 +96,9 @@
       "metric_group": "StubStatus",
       "name": "nginx_writing",
       "display_name": "Writing Connections",
-      "instance_id_keys": ["instance_id"],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "data_type": "Number",
       "unit": "counts",
       "dimensions": [],
@@ -51,7 +109,9 @@
       "metric_group": "StubStatus",
       "name": "nginx_waiting",
       "display_name": "Waiting Connections",
-      "instance_id_keys": ["instance_id"],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "data_type": "Number",
       "unit": "counts",
       "dimensions": [],
@@ -59,10 +119,64 @@
       "query": "nginx_waiting{__$labels__}"
     },
     {
+      "metric_group": "StubStatus",
+      "name": "nginx_http_requests_total",
+      "display_name": "Total HTTP Requests",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "description": "Total number of HTTP requests handled by Nginx.",
+      "query": "nginx_requests{__$labels__}"
+    },
+    {
+      "metric_group": "StubStatus",
+      "name": "nginx_connections_accepted",
+      "display_name": "Accepted Connections",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "description": "Client connections accepted by Nginx.",
+      "query": "nginx_accepts{__$labels__}"
+    },
+    {
+      "metric_group": "StubStatus",
+      "name": "nginx_connections_handled",
+      "display_name": "Handled Connections",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "description": "Client connections handled by Nginx.",
+      "query": "nginx_handled{__$labels__}"
+    },
+    {
+      "metric_group": "StubStatus",
+      "name": "nginx_up",
+      "display_name": "Collection Status",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"采集失败\",\"id\":0,\"color\":\"#ff4d4f\"},{\"name\":\"采集成功\",\"id\":1,\"color\":\"#1ac44a\"}]",
+      "dimensions": [],
+      "description": "1 when stub_status collection succeeds, and 0 when it fails.",
+      "query": "(nginx_active{__$labels__} >= bool 0) default 0"
+    },
+    {
       "metric_group": "Performance",
       "name": "nginx_requests_rate",
       "display_name": "Request Rate",
-      "instance_id_keys": ["instance_id"],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "data_type": "Number",
       "unit": "cps",
       "dimensions": [],
@@ -73,23 +187,515 @@
       "metric_group": "Performance",
       "name": "nginx_accepts_rate",
       "display_name": "Connection Acceptance Rate",
-      "instance_id_keys": ["instance_id"],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "data_type": "Number",
       "unit": "counts",
       "dimensions": [],
-      "description": "Rate of new connections accepted by Nginx, reflecting connection establishment frequency",
+      "description": "Average new connections accepted per second over the last 5 minutes.",
       "query": "rate(nginx_accepts{__$labels__}[5m])"
     },
     {
       "metric_group": "Performance",
       "name": "nginx_handled_rate",
       "display_name": "Connection Handling Rate",
-      "instance_id_keys": ["instance_id"],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "data_type": "Number",
       "unit": "counts",
       "dimensions": [],
-      "description": "Rate of connections handled by Nginx, reflecting connection processing capacity",
+      "description": "Average connections handled per second over the last 5 minutes.",
       "query": "rate(nginx_handled{__$labels__}[5m])"
+    },
+    {
+      "metric_group": "Vts",
+      "name": "nginx_vts_server_connections",
+      "display_name": "Server Connections",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {
+          "name": "status",
+          "description": "状态"
+        }
+      ],
+      "description": "Connection counts grouped by status.",
+      "query": "alias(label_replace(nginx_vts_connections_active{__$labels__}, \"status\", \"active\", \"__name__\", \".*\"), \"nginx_vts_server_connections\") or alias(label_replace(nginx_vts_connections_reading{__$labels__}, \"status\", \"reading\", \"__name__\", \".*\"), \"nginx_vts_server_connections\") or alias(label_replace(nginx_vts_connections_writing{__$labels__}, \"status\", \"writing\", \"__name__\", \".*\"), \"nginx_vts_server_connections\") or alias(label_replace(nginx_vts_connections_waiting{__$labels__}, \"status\", \"waiting\", \"__name__\", \".*\"), \"nginx_vts_server_connections\") or alias(label_replace(nginx_vts_connections_accepted{__$labels__}, \"status\", \"accepted\", \"__name__\", \".*\"), \"nginx_vts_server_connections\") or alias(label_replace(nginx_vts_connections_handled{__$labels__}, \"status\", \"handled\", \"__name__\", \".*\"), \"nginx_vts_server_connections\") or alias(label_replace(nginx_vts_connections_requests{__$labels__}, \"status\", \"requests\", \"__name__\", \".*\"), \"nginx_vts_server_connections\")"
+    },
+    {
+      "metric_group": "Vts",
+      "name": "nginx_vts_server_requests",
+      "display_name": "Server Requests",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {
+          "name": "zone",
+          "description": "区域"
+        },
+        {
+          "name": "code",
+          "description": "响应状态码"
+        }
+      ],
+      "description": "Requests per server zone, counted by response status code.",
+      "query": "alias(label_replace(nginx_vts_server_response_1xx_count{__$labels__}, \"code\", \"1xx\", \"__name__\", \".*\"), \"nginx_vts_server_requests\") or alias(label_replace(nginx_vts_server_response_2xx_count{__$labels__}, \"code\", \"2xx\", \"__name__\", \".*\"), \"nginx_vts_server_requests\") or alias(label_replace(nginx_vts_server_response_3xx_count{__$labels__}, \"code\", \"3xx\", \"__name__\", \".*\"), \"nginx_vts_server_requests\") or alias(label_replace(nginx_vts_server_response_4xx_count{__$labels__}, \"code\", \"4xx\", \"__name__\", \".*\"), \"nginx_vts_server_requests\") or alias(label_replace(nginx_vts_server_response_5xx_count{__$labels__}, \"code\", \"5xx\", \"__name__\", \".*\"), \"nginx_vts_server_requests\") or alias(label_replace(nginx_vts_server_requests{__$labels__}, \"code\", \"total\", \"__name__\", \".*\"), \"nginx_vts_server_requests\")"
+    },
+    {
+      "metric_group": "Vts",
+      "name": "nginx_vts_server_bytes",
+      "display_name": "Server Bytes",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [
+        {
+          "name": "zone",
+          "description": "区域"
+        },
+        {
+          "name": "direction",
+          "description": "方向"
+        }
+      ],
+      "description": "Inbound or outbound bytes for each server zone.",
+      "query": "alias(label_replace(nginx_vts_server_in_bytes{__$labels__}, \"direction\", \"in\", \"__name__\", \".*\"), \"nginx_vts_server_bytes\") or alias(label_replace(nginx_vts_server_out_bytes{__$labels__}, \"direction\", \"out\", \"__name__\", \".*\"), \"nginx_vts_server_bytes\")"
+    },
+    {
+      "metric_group": "Vts",
+      "name": "nginx_vts_server_cache",
+      "display_name": "Server Cache",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {
+          "name": "zone",
+          "description": "区域"
+        },
+        {
+          "name": "status",
+          "description": "状态"
+        }
+      ],
+      "description": "Requests per server zone, counted by cache result.",
+      "query": "alias(label_replace(nginx_vts_server_cache_miss{__$labels__}, \"status\", \"miss\", \"__name__\", \".*\"), \"nginx_vts_server_cache\") or alias(label_replace(nginx_vts_server_cache_bypass{__$labels__}, \"status\", \"bypass\", \"__name__\", \".*\"), \"nginx_vts_server_cache\") or alias(label_replace(nginx_vts_server_cache_expired{__$labels__}, \"status\", \"expired\", \"__name__\", \".*\"), \"nginx_vts_server_cache\") or alias(label_replace(nginx_vts_server_cache_stale{__$labels__}, \"status\", \"stale\", \"__name__\", \".*\"), \"nginx_vts_server_cache\") or alias(label_replace(nginx_vts_server_cache_updating{__$labels__}, \"status\", \"updating\", \"__name__\", \".*\"), \"nginx_vts_server_cache\") or alias(label_replace(nginx_vts_server_cache_revalidated{__$labels__}, \"status\", \"revalidated\", \"__name__\", \".*\"), \"nginx_vts_server_cache\") or alias(label_replace(nginx_vts_server_cache_hit{__$labels__}, \"status\", \"hit\", \"__name__\", \".*\"), \"nginx_vts_server_cache\") or alias(label_replace(nginx_vts_server_cache_scarce{__$labels__}, \"status\", \"scarce\", \"__name__\", \".*\"), \"nginx_vts_server_cache\")"
+    },
+    {
+      "metric_group": "Vts",
+      "name": "nginx_vts_server_requestMsec",
+      "display_name": "Request Processing Time",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "ms",
+      "dimensions": [
+        {
+          "name": "zone",
+          "description": "区域"
+        }
+      ],
+      "description": "Average request processing time for each server zone.",
+      "query": "nginx_vts_server_request_time{__$labels__}"
+    },
+    {
+      "metric_group": "Vts",
+      "name": "nginx_vts_filter_requests",
+      "display_name": "Filter Requests",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {
+          "name": "filter_name",
+          "description": "过滤器"
+        },
+        {
+          "name": "filter_key",
+          "description": "过滤键"
+        },
+        {
+          "name": "code",
+          "description": "响应状态码"
+        }
+      ],
+      "description": "Requests per filter, counted by response status code.",
+      "query": "alias(label_replace(nginx_vts_filter_response_1xx_count{__$labels__}, \"code\", \"1xx\", \"__name__\", \".*\"), \"nginx_vts_filter_requests\") or alias(label_replace(nginx_vts_filter_response_2xx_count{__$labels__}, \"code\", \"2xx\", \"__name__\", \".*\"), \"nginx_vts_filter_requests\") or alias(label_replace(nginx_vts_filter_response_3xx_count{__$labels__}, \"code\", \"3xx\", \"__name__\", \".*\"), \"nginx_vts_filter_requests\") or alias(label_replace(nginx_vts_filter_response_4xx_count{__$labels__}, \"code\", \"4xx\", \"__name__\", \".*\"), \"nginx_vts_filter_requests\") or alias(label_replace(nginx_vts_filter_response_5xx_count{__$labels__}, \"code\", \"5xx\", \"__name__\", \".*\"), \"nginx_vts_filter_requests\") or alias(label_replace(nginx_vts_filter_requests{__$labels__}, \"code\", \"total\", \"__name__\", \".*\"), \"nginx_vts_filter_requests\")"
+    },
+    {
+      "metric_group": "Vts",
+      "name": "nginx_vts_filter_bytes",
+      "display_name": "Filter Bytes",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [
+        {
+          "name": "filter_name",
+          "description": "过滤器"
+        },
+        {
+          "name": "filter_key",
+          "description": "过滤键"
+        },
+        {
+          "name": "direction",
+          "description": "方向"
+        }
+      ],
+      "description": "Inbound or outbound bytes for each filter.",
+      "query": "alias(label_replace(nginx_vts_filter_in_bytes{__$labels__}, \"direction\", \"in\", \"__name__\", \".*\"), \"nginx_vts_filter_bytes\") or alias(label_replace(nginx_vts_filter_out_bytes{__$labels__}, \"direction\", \"out\", \"__name__\", \".*\"), \"nginx_vts_filter_bytes\")"
+    },
+    {
+      "metric_group": "Vts",
+      "name": "nginx_vts_filter_requestMsec",
+      "display_name": "Filter Request Time",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "ms",
+      "dimensions": [
+        {
+          "name": "filter_name",
+          "description": "过滤器"
+        },
+        {
+          "name": "filter_key",
+          "description": "过滤键"
+        }
+      ],
+      "description": "Average request processing time for each filter.",
+      "query": "nginx_vts_filter_request_time{__$labels__}"
+    },
+    {
+      "metric_group": "Vts",
+      "name": "nginx_vts_filter_cache",
+      "display_name": "Filter Cache",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {
+          "name": "filter_name",
+          "description": "过滤器"
+        },
+        {
+          "name": "filter_key",
+          "description": "过滤键"
+        },
+        {
+          "name": "status",
+          "description": "状态"
+        }
+      ],
+      "description": "Requests per filter, counted by cache result.",
+      "query": "alias(label_replace(nginx_vts_filter_cache_miss{__$labels__}, \"status\", \"miss\", \"__name__\", \".*\"), \"nginx_vts_filter_cache\") or alias(label_replace(nginx_vts_filter_cache_bypass{__$labels__}, \"status\", \"bypass\", \"__name__\", \".*\"), \"nginx_vts_filter_cache\") or alias(label_replace(nginx_vts_filter_cache_expired{__$labels__}, \"status\", \"expired\", \"__name__\", \".*\"), \"nginx_vts_filter_cache\") or alias(label_replace(nginx_vts_filter_cache_stale{__$labels__}, \"status\", \"stale\", \"__name__\", \".*\"), \"nginx_vts_filter_cache\") or alias(label_replace(nginx_vts_filter_cache_updating{__$labels__}, \"status\", \"updating\", \"__name__\", \".*\"), \"nginx_vts_filter_cache\") or alias(label_replace(nginx_vts_filter_cache_revalidated{__$labels__}, \"status\", \"revalidated\", \"__name__\", \".*\"), \"nginx_vts_filter_cache\") or alias(label_replace(nginx_vts_filter_cache_hit{__$labels__}, \"status\", \"hit\", \"__name__\", \".*\"), \"nginx_vts_filter_cache\") or alias(label_replace(nginx_vts_filter_cache_scarce{__$labels__}, \"status\", \"scarce\", \"__name__\", \".*\"), \"nginx_vts_filter_cache\")"
+    },
+    {
+      "metric_group": "Vts",
+      "name": "nginx_vts_upstream_requests",
+      "display_name": "Upstream Requests",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {
+          "name": "upstream",
+          "description": "上游组"
+        },
+        {
+          "name": "upstream_address",
+          "description": "上游地址"
+        },
+        {
+          "name": "code",
+          "description": "响应状态码"
+        }
+      ],
+      "description": "Requests per upstream server, counted by response status code.",
+      "query": "alias(label_replace(nginx_vts_upstream_response_1xx_count{__$labels__}, \"code\", \"1xx\", \"__name__\", \".*\"), \"nginx_vts_upstream_requests\") or alias(label_replace(nginx_vts_upstream_response_2xx_count{__$labels__}, \"code\", \"2xx\", \"__name__\", \".*\"), \"nginx_vts_upstream_requests\") or alias(label_replace(nginx_vts_upstream_response_3xx_count{__$labels__}, \"code\", \"3xx\", \"__name__\", \".*\"), \"nginx_vts_upstream_requests\") or alias(label_replace(nginx_vts_upstream_response_4xx_count{__$labels__}, \"code\", \"4xx\", \"__name__\", \".*\"), \"nginx_vts_upstream_requests\") or alias(label_replace(nginx_vts_upstream_response_5xx_count{__$labels__}, \"code\", \"5xx\", \"__name__\", \".*\"), \"nginx_vts_upstream_requests\") or alias(label_replace(nginx_vts_upstream_requests{__$labels__}, \"code\", \"total\", \"__name__\", \".*\"), \"nginx_vts_upstream_requests\")"
+    },
+    {
+      "metric_group": "Vts",
+      "name": "nginx_vts_upstream_bytes",
+      "display_name": "Upstream Bytes",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [
+        {
+          "name": "upstream",
+          "description": "上游组"
+        },
+        {
+          "name": "upstream_address",
+          "description": "上游地址"
+        },
+        {
+          "name": "direction",
+          "description": "方向"
+        }
+      ],
+      "description": "Inbound or outbound bytes for each upstream server.",
+      "query": "alias(label_replace(nginx_vts_upstream_in_bytes{__$labels__}, \"direction\", \"in\", \"__name__\", \".*\"), \"nginx_vts_upstream_bytes\") or alias(label_replace(nginx_vts_upstream_out_bytes{__$labels__}, \"direction\", \"out\", \"__name__\", \".*\"), \"nginx_vts_upstream_bytes\")"
+    },
+    {
+      "metric_group": "Vts",
+      "name": "nginx_vts_upstream_requestMsec",
+      "display_name": "Upstream Request Time",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "ms",
+      "dimensions": [
+        {
+          "name": "upstream",
+          "description": "上游组"
+        },
+        {
+          "name": "upstream_address",
+          "description": "上游地址"
+        }
+      ],
+      "description": "Average request processing time for each upstream server.",
+      "query": "nginx_vts_upstream_request_time{__$labels__}"
+    },
+    {
+      "metric_group": "Vts",
+      "name": "nginx_vts_upstream_responseMsec",
+      "display_name": "Upstream Response Time",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "ms",
+      "dimensions": [
+        {
+          "name": "upstream",
+          "description": "上游组"
+        },
+        {
+          "name": "upstream_address",
+          "description": "上游地址"
+        }
+      ],
+      "description": "Average response time for each upstream server.",
+      "query": "nginx_vts_upstream_response_time{__$labels__}"
+    },
+    {
+      "metric_group": "Vts",
+      "name": "nginx_vts_upstream_down",
+      "display_name": "Upstream Down",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"未下线\",\"id\":0,\"color\":\"#1ac44a\"},{\"name\":\"已下线\",\"id\":1,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [
+        {
+          "name": "upstream",
+          "description": "上游组"
+        },
+        {
+          "name": "upstream_address",
+          "description": "上游地址"
+        }
+      ],
+      "description": "Whether the upstream server is marked down.",
+      "query": "nginx_vts_upstream_down{__$labels__}"
+    },
+    {
+      "metric_group": "Vts",
+      "name": "nginx_vts_upstream_backup",
+      "display_name": "Upstream Backup",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"非备份\",\"id\":0,\"color\":\"#8c8c8c\"},{\"name\":\"备份\",\"id\":1,\"color\":\"#faad14\"}]",
+      "dimensions": [
+        {
+          "name": "upstream",
+          "description": "上游组"
+        },
+        {
+          "name": "upstream_address",
+          "description": "上游地址"
+        }
+      ],
+      "description": "Whether the upstream server is a backup server.",
+      "query": "nginx_vts_upstream_backup{__$labels__}"
+    },
+    {
+      "metric_group": "Vts",
+      "name": "nginx_vts_upstream_weight",
+      "display_name": "Upstream Weight",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "none",
+      "dimensions": [
+        {
+          "name": "upstream",
+          "description": "上游组"
+        },
+        {
+          "name": "upstream_address",
+          "description": "上游地址"
+        }
+      ],
+      "description": "Load weight of the upstream server.",
+      "query": "nginx_vts_upstream_weight{__$labels__}"
+    },
+    {
+      "metric_group": "Vts",
+      "name": "nginx_vts_upstream_max_fails",
+      "display_name": "Max Fails",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {
+          "name": "upstream",
+          "description": "上游组"
+        },
+        {
+          "name": "upstream_address",
+          "description": "上游地址"
+        }
+      ],
+      "description": "Maximum failures allowed for the upstream server.",
+      "query": "nginx_vts_upstream_max_fails{__$labels__}"
+    },
+    {
+      "metric_group": "Vts",
+      "name": "nginx_vts_upstream_fail_timeout",
+      "display_name": "Fail Timeout",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [
+        {
+          "name": "upstream",
+          "description": "上游组"
+        },
+        {
+          "name": "upstream_address",
+          "description": "上游地址"
+        }
+      ],
+      "description": "Pause duration after the upstream server reaches its failure limit.",
+      "query": "nginx_vts_upstream_fail_timeout{__$labels__}"
+    },
+    {
+      "metric_group": "Vts",
+      "name": "nginx_vts_cache_max_bytes",
+      "display_name": "Cache Capacity",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [
+        {
+          "name": "zone",
+          "description": "区域"
+        }
+      ],
+      "description": "Capacity limit of the cache zone.",
+      "query": "nginx_vts_cache_max_bytes{__$labels__}"
+    },
+    {
+      "metric_group": "Vts",
+      "name": "nginx_vts_cache_used_bytes",
+      "display_name": "Cache Used",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [
+        {
+          "name": "zone",
+          "description": "区域"
+        }
+      ],
+      "description": "Space used by the cache zone.",
+      "query": "nginx_vts_cache_used_bytes{__$labels__}"
+    },
+    {
+      "metric_group": "Vts",
+      "name": "nginx_vts_cache_bytes",
+      "display_name": "Cache Bytes",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [
+        {
+          "name": "zone",
+          "description": "区域"
+        },
+        {
+          "name": "direction",
+          "description": "方向"
+        }
+      ],
+      "description": "Inbound or outbound bytes for the cache zone.",
+      "query": "alias(label_replace(nginx_vts_cache_in_bytes{__$labels__}, \"direction\", \"in\", \"__name__\", \".*\"), \"nginx_vts_cache_bytes\") or alias(label_replace(nginx_vts_cache_out_bytes{__$labels__}, \"direction\", \"out\", \"__name__\", \".*\"), \"nginx_vts_cache_bytes\")"
+    },
+    {
+      "metric_group": "Vts",
+      "name": "nginx_vts_cache_responses",
+      "display_name": "Cache Results",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {
+          "name": "zone",
+          "description": "区域"
+        },
+        {
+          "name": "status",
+          "description": "状态"
+        }
+      ],
+      "description": "Requests in the cache zone, counted by cache result.",
+      "query": "alias(label_replace(nginx_vts_cache_miss{__$labels__}, \"status\", \"miss\", \"__name__\", \".*\"), \"nginx_vts_cache_responses\") or alias(label_replace(nginx_vts_cache_bypass{__$labels__}, \"status\", \"bypass\", \"__name__\", \".*\"), \"nginx_vts_cache_responses\") or alias(label_replace(nginx_vts_cache_expired{__$labels__}, \"status\", \"expired\", \"__name__\", \".*\"), \"nginx_vts_cache_responses\") or alias(label_replace(nginx_vts_cache_stale{__$labels__}, \"status\", \"stale\", \"__name__\", \".*\"), \"nginx_vts_cache_responses\") or alias(label_replace(nginx_vts_cache_updating{__$labels__}, \"status\", \"updating\", \"__name__\", \".*\"), \"nginx_vts_cache_responses\") or alias(label_replace(nginx_vts_cache_revalidated{__$labels__}, \"status\", \"revalidated\", \"__name__\", \".*\"), \"nginx_vts_cache_responses\") or alias(label_replace(nginx_vts_cache_hit{__$labels__}, \"status\", \"hit\", \"__name__\", \".*\"), \"nginx_vts_cache_responses\") or alias(label_replace(nginx_vts_cache_scarce{__$labels__}, \"status\", \"scarce\", \"__name__\", \".*\"), \"nginx_vts_cache_responses\")"
     }
   ]
 }

@@ -30,13 +30,99 @@ monitor_object_metric:
         real-time load.
     nginx_accepts_rate:
       name: Connection Acceptance Rate
-      desc: Rate of new connections accepted by Nginx, reflecting connection establishment
-        frequency
+      desc: Average new connections accepted per second over the last 5 minutes.
     nginx_handled_rate:
       name: Connection Handling Rate
-      desc: Rate of connections handled by Nginx, reflecting connection processing
-        capacity
+      desc: Average connections handled per second over the last 5 minutes.
+    nginx_http_requests_total:
+      name: Total HTTP Requests
+      desc: Total number of HTTP requests handled by Nginx.
+    nginx_connections_accepted:
+      name: Accepted Connections
+      desc: Client connections accepted by Nginx.
+    nginx_connections_handled:
+      name: Handled Connections
+      desc: Client connections handled by Nginx.
+    nginx_up:
+      name: Collection Status
+      desc: 1 when stub_status collection succeeds, and 0 when it fails.
+      enum:
+        "0": Failed
+        "1": Succeeded
+    nginx_vts_server_connections:
+      name: Server Connections
+      desc: Connection counts grouped by status.
+    nginx_vts_server_requests:
+      name: Server Requests
+      desc: Requests per server zone, counted by response status code.
+    nginx_vts_server_bytes:
+      name: Server Bytes
+      desc: Inbound or outbound bytes for each server zone.
+    nginx_vts_server_cache:
+      name: Server Cache
+      desc: Requests per server zone, counted by cache result.
+    nginx_vts_server_requestMsec:
+      name: Request Processing Time
+      desc: Average request processing time for each server zone.
+    nginx_vts_filter_requests:
+      name: Filter Requests
+      desc: Requests per filter, counted by response status code.
+    nginx_vts_filter_bytes:
+      name: Filter Bytes
+      desc: Inbound or outbound bytes for each filter.
+    nginx_vts_filter_requestMsec:
+      name: Filter Request Time
+      desc: Average request processing time for each filter.
+    nginx_vts_filter_cache:
+      name: Filter Cache
+      desc: Requests per filter, counted by cache result.
+    nginx_vts_upstream_requests:
+      name: Upstream Requests
+      desc: Requests per upstream server, counted by response status code.
+    nginx_vts_upstream_bytes:
+      name: Upstream Bytes
+      desc: Inbound or outbound bytes for each upstream server.
+    nginx_vts_upstream_requestMsec:
+      name: Upstream Request Time
+      desc: Average request processing time for each upstream server.
+    nginx_vts_upstream_responseMsec:
+      name: Upstream Response Time
+      desc: Average response time for each upstream server.
+    nginx_vts_upstream_down:
+      name: Upstream Down
+      desc: Whether the upstream server is marked down.
+      enum:
+        "0": Not Down
+        "1": Down
+    nginx_vts_upstream_backup:
+      name: Upstream Backup
+      desc: Whether the upstream server is a backup server.
+      enum:
+        "0": Primary
+        "1": Backup
+    nginx_vts_upstream_weight:
+      name: Upstream Weight
+      desc: Load weight of the upstream server.
+    nginx_vts_upstream_max_fails:
+      name: Max Fails
+      desc: Maximum failures allowed for the upstream server.
+    nginx_vts_upstream_fail_timeout:
+      name: Fail Timeout
+      desc: Pause duration after the upstream server reaches its failure limit.
+    nginx_vts_cache_max_bytes:
+      name: Cache Capacity
+      desc: Capacity limit of the cache zone.
+    nginx_vts_cache_used_bytes:
+      name: Cache Used
+      desc: Space used by the cache zone.
+    nginx_vts_cache_bytes:
+      name: Cache Bytes
+      desc: Inbound or outbound bytes for the cache zone.
+    nginx_vts_cache_responses:
+      name: Cache Results
+      desc: Requests in the cache zone, counted by cache result.
 monitor_object_metric_group:
   Nginx:
     StubStatus: Stub Status
     Performance: Performance
+    Vts: Virtual Host Traffic

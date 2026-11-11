@@ -53,6 +53,52 @@
       },
       "label_en": "Interval",
       "description_en": "Collection time interval (unit: seconds)"
+    },
+    {
+      "name": "nginx_vts",
+      "label": "虚拟主机流量",
+      "type": "switch",
+      "required": false,
+      "default_value": false,
+      "description": "采集 nginx-module-vts。默认关闭，不改变 Status URL。",
+      "guide_short": "默认关闭。仅当目标已安装 nginx-module-vts，并暴露 JSON 状态页（常见 http://<host>/vts_status/format/json，响应类型为 application/json）时开启。Tengine 不支持。关闭时不采集 VTS，Status URL 仍只采 stub_status。",
+      "guide_short_en": "Off by default. Turn on only when nginx-module-vts is installed and exposes a JSON status page, commonly http://host/vts_status/format/json with content type application/json. Tengine is not supported. While off, VTS is not collected and the Status URL still collects only stub_status.",
+      "widget_props": {},
+      "transform_on_edit": {
+        "origin_path": "child.content.config.nginx_vts"
+      },
+      "label_en": "Virtual Host Traffic",
+      "description_en": "Collect nginx-module-vts. Off by default and does not change the Status URL."
+    },
+    {
+      "name": "nginx_vts_url",
+      "label": "VTS URL",
+      "type": "input",
+      "required": true,
+      "visible_in": "edit",
+      "description": "nginx-module-vts 的 JSON 状态页。",
+      "guide_short": "填写 vhost_traffic_status_display 的完整 JSON 地址，常见 http://<host>/vts_status/format/json。主机须已安装 nginx-module-vts。Tengine 不支持。",
+      "guide_short_en": "Full JSON URL of vhost_traffic_status_display, commonly http://host/vts_status/format/json. The host must already have nginx-module-vts installed. Tengine is not supported.",
+      "dependency": {
+        "field": "nginx_vts",
+        "value": true
+      },
+      "widget_props": {
+        "placeholder": "http://example.com/vts_status/format/json"
+      },
+      "rules": [
+        {
+          "type": "pattern",
+          "pattern": "^(http|https)://.*",
+          "message": "URL必须以http://或https://开头",
+          "message_en": "URL must start with http:// or https://"
+        }
+      ],
+      "transform_on_edit": {
+        "origin_path": "child.content.config.nginx_vts_url"
+      },
+      "label_en": "VTS URL",
+      "description_en": "JSON status page of nginx-module-vts."
     }
   ],
   "table_columns": [
@@ -92,6 +138,30 @@
         "target_field": "instance_name"
       },
       "label_en": "URL"
+    },
+    {
+      "name": "nginx_vts_url",
+      "label": "VTS URL",
+      "type": "input",
+      "required": true,
+      "description": "nginx-module-vts 的 JSON 状态页。主机须已安装该模块。Tengine 不支持。",
+      "description_en": "JSON status page of nginx-module-vts. The host must already have the module installed. Tengine is not supported.",
+      "dependency": {
+        "field": "nginx_vts",
+        "value": true
+      },
+      "widget_props": {
+        "placeholder": "http://example.com/vts_status/format/json"
+      },
+      "rules": [
+        {
+          "type": "pattern",
+          "pattern": "^(http|https)://.*",
+          "message": "URL必须以http://或https://开头",
+          "message_en": "URL must start with http:// or https://"
+        }
+      ],
+      "label_en": "VTS URL"
     },
     {
       "name": "instance_name",
