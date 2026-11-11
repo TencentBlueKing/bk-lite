@@ -220,7 +220,9 @@ APM 和 RUM 各自允许的业务维度由 02、05 ticket 锁定。那些白名�
   条件成立表示某个服务资源的入口组合已经超过 `APM_AGG_CARDINALITY_LIMIT`。溢出序列没有
   `service_name` 和 `deployment_environment`，`job` 仍是「命名空间/服务名」，用它定位是哪一个资源打满。
   处理办法是修 Span 命名，去掉原始路径和 ID；或者只调高这个环境的每服务资源上限。调高会让该资源的
-  内存和活跃序列按新上限增长。不要改 Server 查询去按 `job` 统计 RED，溢出不应当算进某个服务的请求数。
+  内存和活跃序列按新上限增长。Server 批量读取用 `job` 精确收窄到已授权服务，同时要求 `service_name` 非空。
+  溢出序列仍不计入任何服务的 RED。按服务和环境分组的口径不变。Server 用 POST 查询，单条查询低于 16 KiB，
+  不要把 `-search.maxQueryLen` 调小。
 - remote write 失败或丢弃。写入进程上，发送失败或被丢弃的样本出现后就要告警。
   常见指标名是 `otelcol_exporter_send_failed_metric_points`。RUM 和 APM 的聚合
   remote write 都关闭了队列，不要把 `otelcol_exporter_enqueue_failed_metric_points`
@@ -362,9 +364,9 @@ API、Worker、Beat 和 Listener 在聚合库缺失时仍然启动。未配置
 3. 保留期不低于 35 天。数据盘 70% 有告警，85% 定为严重。活跃序列数异常上涨有告警。
    `count(apm_calls_total{otel_metric_overflow="true"}) > 0` 有告警。remote write 失败或丢弃有告警。
 4. 聚合库没有公网入口。页面不能直接提交 PromQL。查询只由 Server 按已经授权的对象
-   生成：APM 收窄到命名空间和服务，RUM 收窄到租户和应用。跨租户查询拿不到其他租户
-   的数据。单节点 VictoriaMetrics 不用 AccountID 做租户隔离，网络封闭和 Server
-   收窄是隔离手段。Server 的 PromQL 生成随读取 ticket 落地后核对；在那之前，先确认
+   生成：APM 批量读取用 `job` 精确收窄到已授权服务，并要求 `service_name` 非空；RUM 收窄到租户和应用。
+   跨租户查询拿不到其他租户的数据。单节点 VictoriaMetrics 不用 AccountID 做租户隔离，网络封闭和 Server
+   收窄是隔离手段。Server 用 POST 查询，单条查询低于 16 KiB，不要把 `-search.maxQueryLen` 调小。
    查询端口不对浏览器和租户开放。
 5. 库中没有 Span 正文、RUM 原始事件，也没有用户、会话、原始 URL、查询串、SQL、
    `trace_id`、`span_id`、随机实例标识或 Pod 名。APM 序列上没有
