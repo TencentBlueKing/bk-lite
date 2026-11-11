@@ -118,18 +118,6 @@ monitor_object_metric:
     nginx_vts_upstream_fail_timeout:
       name: Fail Timeout
       desc: Pause duration after the upstream server reaches its failure limit.
-    nginx_vts_cache_max_bytes:
-      name: Cache Capacity
-      desc: Capacity limit of the cache zone.
-    nginx_vts_cache_used_bytes:
-      name: Cache Used
-      desc: Space used by the cache zone.
-    nginx_vts_cache_bytes:
-      name: Cache Bytes
-      desc: Inbound or outbound bytes for the cache zone.
-    nginx_vts_cache_responses:
-      name: Cache Results
-      desc: Requests in the cache zone, counted by cache result.
 monitor_object_metric_group:
   Nginx:
     StubStatus: Stub Status

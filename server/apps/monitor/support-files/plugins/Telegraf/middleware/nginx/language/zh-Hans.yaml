@@ -112,18 +112,6 @@ monitor_object_metric:
     nginx_vts_upstream_fail_timeout:
       name: 失败暂停时长
       desc: 上游服务器达到最大失败次数后的暂停时长。
-    nginx_vts_cache_max_bytes:
-      name: 缓存容量上限
-      desc: 缓存区的容量上限。
-    nginx_vts_cache_used_bytes:
-      name: 缓存已用空间
-      desc: 缓存区已使用的空间。
-    nginx_vts_cache_bytes:
-      name: 缓存字节数
-      desc: 缓存区的入站或出站字节数。
-    nginx_vts_cache_responses:
-      name: 缓存结果计数
-      desc: 缓存区按缓存结果统计的请求数。
 monitor_object_metric_group:
   Nginx:
     StubStatus: Stub状态
