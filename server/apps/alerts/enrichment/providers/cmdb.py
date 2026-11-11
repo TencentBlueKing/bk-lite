@@ -8,8 +8,19 @@ from apps.cmdb.constants.monitor_link import CMDB_MODEL_TO_MONITOR_OBJECT
 from apps.core.logger import alert_logger as logger
 from apps.rpc.cmdb import CMDB
 
+try:
+    from apps.cmdb.services.ci_context import lookup_ci_context
+except Exception:  # pragma: no cover
+
+    def lookup_ci_context(*args, **kwargs):
+        return {}
+
+
 # 事件 resource_type 是监控对象名（Host、Postgres），查询要用 CMDB 模型 ID（host、postgresql）。
 _MONITOR_OBJECT_TO_CMDB_MODEL = {name: model_id for model_id, name in CMDB_MODEL_TO_MONITOR_OBJECT.items()}
+_CONTEXT_MODEL_ID = {"application": "application", "system": "system"}
+_CONTEXT_SCOPE_PREFIX = {"application": "application.", "system": "system."}
+_CONTEXT_SCOPE_UUID = {"application": "root_uuid", "system": "system_uuid"}
 
 
 def _resolve_cmdb_model_id(value) -> str:
@@ -213,6 +224,7 @@ class CMDBProvider(EnrichmentProvider):
             meta = key_meta.get(key)
             inst = fetched.get(meta) if meta else None
             result[key] = [inst] if inst else []
+        _overlay_ci_context(client, result, keys, key_meta, config, remaining_timeout, failed_keys)
         if failed_keys:
             return FetchBatchResult(
                 records=result,
@@ -220,6 +232,143 @@ class CMDBProvider(EnrichmentProvider):
                 budget_exhausted_keys=budget_exhausted_keys,
             )
         return result
+
+
+def ci_context_scopes_from_projection(projection) -> list[str]:
+    sources = []
+    for item in projection or []:
+        if isinstance(item, dict):
+            sources.append(str(item.get("source") or ""))
+        else:
+            sources.append(str(item or ""))
+    scopes = []
+    for scope in ("application", "system"):
+        prefix = f"{scope}."
+        if any(source.startswith(prefix) for source in sources):
+            scopes.append(scope)
+    return scopes
+
+
+def _instance_uuid(inst, key, key_meta) -> str:
+    value = str((inst or {}).get("inst_uuid") or "").strip()
+    if value:
+        return value
+    meta = key_meta.get(key)
+    if not meta:
+        return ""
+    locator_type, locator = meta
+    if locator_type == "__monitor__":
+        return ""
+    return str(locator or "").strip()
+
+
+def _prefix_instance_fields(prefix: str, instance) -> dict:
+    if not isinstance(instance, dict):
+        return {}
+    return {f"{prefix}{key}": value for key, value in instance.items() if isinstance(key, str) and key}
+
+
+def _fetch_scoped_instances(client, model_id, uuids, authorized_team_ids, remaining_timeout, related_keys, failed_keys):
+    group_timeout = remaining_timeout(related_keys)
+    if group_timeout is None:
+        return None
+    try:
+        res = (
+            client.search_instances_batch(
+                params={
+                    "protocol_version": "2",
+                    "model_id": model_id,
+                    "inst_uuids": uuids,
+                    "organization_ids": authorized_team_ids,
+                },
+                _timeout=group_timeout,
+            )
+            or {}
+        )
+    except Exception:
+        logger.error("[Enrichment] CMDB 应用上下文查询失败 model_id=%s", model_id, exc_info=True)
+        failed_keys.update(related_keys)
+        return None
+    return {str(key): value for key, value in res.items() if isinstance(value, dict)}
+
+
+def _overlay_ci_context(client, result, keys, key_meta, config, remaining_timeout, failed_keys):
+    scopes = [scope for scope in (config.get("_ci_context_scopes") or []) if scope in _CONTEXT_MODEL_ID]
+    if not scopes:
+        return
+    uuid_by_key = {}
+    for key in keys:
+        if key in failed_keys:
+            continue
+        records = result.get(key) or []
+        inst = records[0] if records else None
+        if not isinstance(inst, dict):
+            continue
+        inst_uuid = _instance_uuid(inst, key, key_meta)
+        if inst_uuid:
+            uuid_by_key[key] = inst_uuid
+    if not uuid_by_key:
+        return
+    related_keys = set(uuid_by_key)
+    if remaining_timeout(related_keys) is None:
+        for key in related_keys:
+            result[key] = []
+        return
+    unique_uuids = list(dict.fromkeys(uuid_by_key.values()))
+    try:
+        members_by_ci = lookup_ci_context(config.get("_authorized_team_ids") or [], inst_uuids=unique_uuids) or {}
+    except Exception:
+        logger.error("[Enrichment] CMDB 应用归属查询失败", exc_info=True)
+        failed_keys.update(related_keys)
+        for key in related_keys:
+            result[key] = []
+        return
+
+    instances_by_scope = {}
+    for scope in scopes:
+        uuid_field = _CONTEXT_SCOPE_UUID[scope]
+        scoped_uuids = []
+        for members in members_by_ci.values():
+            for member in members or []:
+                value = str((member or {}).get(uuid_field) or "").strip()
+                if value and value not in scoped_uuids:
+                    scoped_uuids.append(value)
+        if not scoped_uuids:
+            instances_by_scope[scope] = {}
+            continue
+        fetched = _fetch_scoped_instances(
+            client,
+            _CONTEXT_MODEL_ID[scope],
+            scoped_uuids,
+            config.get("_authorized_team_ids") or [],
+            remaining_timeout,
+            related_keys,
+            failed_keys,
+        )
+        if fetched is None:
+            for key in related_keys:
+                result[key] = []
+            return
+        instances_by_scope[scope] = fetched
+
+    for key, inst_uuid in uuid_by_key.items():
+        inst = (result.get(key) or [None])[0]
+        members = members_by_ci.get(inst_uuid) or []
+        if not members or not isinstance(inst, dict):
+            continue
+        expanded = []
+        for member in members:
+            row = dict(inst)
+            for scope in scopes:
+                scoped_uuid = str((member or {}).get(_CONTEXT_SCOPE_UUID[scope]) or "").strip()
+                row.update(
+                    _prefix_instance_fields(
+                        _CONTEXT_SCOPE_PREFIX[scope],
+                        instances_by_scope.get(scope, {}).get(scoped_uuid) or {},
+                    )
+                )
+            expanded.append(row)
+        result[key] = expanded
 
 
 def _bounded_query_timeout(query_timeout) -> int:

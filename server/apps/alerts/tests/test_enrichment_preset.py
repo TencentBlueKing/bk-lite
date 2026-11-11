@@ -7,7 +7,9 @@ def test_builtin_cmdb_preset_shape():
     rule = next(r for r in BUILTIN_ENRICHMENT_RULES if r["provider_type"] == "cmdb")
     assert rule["preset_key"] == "builtin_cmdb_resource"
     assert rule["input_binding"] == {"model_id": "resource_type", "inst_uuid": "cmdb_id"}
-    assert rule["output_projection"]
+    sources = [item["source"] for item in rule["output_projection"]]
+    assert sources == ["owner"]
+    assert "business_system" not in sources
     assert rule["on_multiple"] == "first"
     assert rule["is_active"] is True
 

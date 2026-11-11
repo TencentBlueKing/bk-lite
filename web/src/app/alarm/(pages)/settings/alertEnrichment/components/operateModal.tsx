@@ -3,7 +3,7 @@
 import { invalidMatchRules } from '@/app/alarm/utils/multivalueRules';
 
 import React, { useEffect, useState } from 'react';
-import { Drawer, Form, Input, Select, Button, Space, message, Radio } from 'antd';
+import { Drawer, Form, Input, Select, AutoComplete, Button, Space, message, Radio } from 'antd';
 import { MinusCircleOutlined, PlusOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import { useSettingApi } from '@/app/alarm/api/settings';
@@ -31,10 +31,13 @@ const OperateModal: React.FC<OperateModalProps> = ({
   onSuccess,
 }) => {
   const { t } = useTranslation();
-  const { createEnrichment, updateEnrichment } = useSettingApi();
+  const { createEnrichment, updateEnrichment, getCmdbContextFields } = useSettingApi();
   const [form] = Form.useForm();
   const [submitLoading, setSubmitLoading] = useState(false);
   const [filterType, setFilterType] = useState<'all' | 'filter'>('all');
+  const [contextFieldOptions, setContextFieldOptions] = useState<
+    { label: string; options: { value: string; label: string }[] }[]
+  >([]);
   const isEdit = !!currentRow;
 
   const handleClose = () => {
@@ -78,14 +81,37 @@ const OperateModal: React.FC<OperateModalProps> = ({
           { param: 'model_id', field: 'resource_type' },
           { param: 'inst_uuid', field: 'resource_id' },
         ],
-        output_projection: [
-          { source: 'owner', as: '' },
-          { source: 'business_system', as: '' },
-        ],
+        output_projection: [{ source: 'owner', as: '' }],
         owner_fields: ['operator'],
       });
     }
   }, [open, isEdit, currentRow, form]);
+
+  useEffect(() => {
+    if (!open || typeof getCmdbContextFields !== 'function') return;
+    let cancelled = false;
+    getCmdbContextFields()
+      .then((data: { groups?: { model_id: string; model_name?: string; fields?: { source: string; attr_name?: string }[] }[] }) => {
+        if (cancelled) return;
+        setContextFieldOptions(
+          (data?.groups || []).map((group) => ({
+            label: group.model_name || group.model_id,
+            options: (group.fields || []).map((field) => ({
+              value: field.source,
+              label: field.attr_name
+                ? `${field.attr_name} (${field.source})`
+                : field.source,
+            })),
+          }))
+        );
+      })
+      .catch(() => {
+        if (!cancelled) setContextFieldOptions([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
 
   const onFinish = async (values: any) => {
     setSubmitLoading(true);
@@ -260,7 +286,11 @@ const OperateModal: React.FC<OperateModalProps> = ({
           </Form.List>
         </Form.Item>
 
-        <Form.Item label={t('settings.enrichmentOutputProjection')} required>
+        <Form.Item
+          label={t('settings.enrichmentOutputProjection')}
+          tooltip={t('settings.enrichmentContextFieldsTip')}
+          required
+        >
           <Form.List name="output_projection">
             {(fields, { add, remove }) => (
               <>
@@ -272,9 +302,22 @@ const OperateModal: React.FC<OperateModalProps> = ({
                       rules={[{ required: true, message: t('common.inputTip') }]}
                       noStyle
                     >
-                      <Input
+                      <AutoComplete
+                        allowClear
+                        options={contextFieldOptions}
                         placeholder={t('settings.enrichmentProjSource')}
                         style={{ width: 280 }}
+                        filterOption={(input, option) => {
+                          const q = input.toLowerCase();
+                          const label = String(option?.label ?? '');
+                          const value = String(
+                            (option as { value?: string } | undefined)?.value ?? ''
+                          );
+                          return (
+                            label.toLowerCase().includes(q) ||
+                            value.toLowerCase().includes(q)
+                          );
+                        }}
                       />
                     </Form.Item>
                     <Form.Item {...rest} name={[name, 'as']} noStyle>

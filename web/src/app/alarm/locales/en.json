@@ -1029,6 +1029,7 @@
     "enrichmentOwnerTarget": "Write target",
     "enrichmentOwnerTargetValue": "Alert owner",
     "enrichmentOnMultiple": "On Multiple",
+    "enrichmentContextFieldsTip": "You can select any field from the application and application-system models. Application membership is queried only when those fields are selected.",
     "enrichmentProjSource": "Source Field",
     "enrichmentProjAs": "Rename As",
     "enrichmentBindParam": "Query Param",

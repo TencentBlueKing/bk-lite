@@ -45,6 +45,40 @@ def _clear():
     cache.clear()
 
 
+@register_provider
+class _ScopeSpyProvider(EnrichmentProvider):
+    provider_type = "scope_spy_test"
+    configs = []
+
+    def fetch_batch(self, keys, config):
+        type(self).configs.append(config.get("_ci_context_scopes"))
+        return {k: [{"application.inst_name": "支付"}] for k in keys}
+
+
+def test_engine_passes_ci_context_scopes_from_projection():
+    from django.core.cache import cache
+
+    cache.clear()
+    _ScopeSpyProvider.configs = []
+    events = [
+        {
+            "resource_type": "host",
+            "resource_id": "63e4a531-b6bb-43cc-9eae-8eb8a09f795e",
+            "cmdb_id": "63e4a531-b6bb-43cc-9eae-8eb8a09f795e",
+            "enrichment": {},
+            "team": [1],
+        }
+    ]
+    rule = _rule(
+        provider_type="scope_spy_test",
+        input_binding={"model_id": "resource_type", "inst_uuid": "cmdb_id"},
+        output_projection=[{"source": "application.inst_name"}],
+    )
+    EnrichmentEngine(rules=[rule]).enrich_batch(events)
+    assert _ScopeSpyProvider.configs == [["application"]]
+    assert events[0]["enrichment"]["cmdb"] == {"application.inst_name": "支付"}
+
+
 def test_enrich_writes_namespaced_field():
     events = [{"resource_type": "host", "resource_id": "1", "enrichment": {}, "team": [1]}]
     EnrichmentEngine(rules=[_rule()]).enrich_batch(events)
