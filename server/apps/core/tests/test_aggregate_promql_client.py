@@ -35,7 +35,7 @@ class _Session:
         self.calls = []
         self.closed = False
 
-    def get(self, url, **kwargs):
+    def post(self, url, **kwargs):
         self.calls.append((url, kwargs))
         return self.response
 
@@ -96,9 +96,11 @@ def test_instant_and_range_use_aggregate_url_timeout_and_auth(monkeypatch):
     assert instant_kwargs["timeout"] == (3.0, 10.0)
     assert instant_kwargs["auth"] == ("agg-user", _sentinel("PASSWORD"))
     assert instant_kwargs["allow_redirects"] is False
-    assert instant_kwargs["params"]["query"] == 'sum(up{job="x"})'
-    assert instant_kwargs["params"]["time"] == "1794269700.000"
-    assert session.calls[1][1]["params"]["step"] == "15"
+    assert "params" not in instant_kwargs
+    assert instant_kwargs["data"]["query"] == 'sum(up{job="x"})'
+    assert instant_kwargs["data"]["time"] == "1794269700.000"
+    assert "query=" not in session.calls[0][0]
+    assert session.calls[1][1]["data"]["step"] == "15"
     assert _sentinel("PASSWORD") not in session.calls[0][0]
     assert "monitor.example" not in session.calls[0][0]
 
