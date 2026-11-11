@@ -151,9 +151,9 @@ export default function AdvancedFilterDrawer({
   const userConfigs = useAssetDataStore((state) => state.user_configs);
   const updateUserConfig = useAssetDataStore((state) => state.updateUserConfig);
   const queryList = useAssetDataStore((state) => state.query_list);
-  const edges = useModelEdges(modelId, open && drafts.length > 0);
   const [logic, setLogic] = useState<AdvancedLogic>('AND');
   const [drafts, setDrafts] = useState<DraftCondition[]>([]);
+  const edges = useModelEdges(modelId, open && drafts.length > 0);
   const [attrsByModel, setAttrsByModel] = useState<Record<string, AttrFieldType[]>>({});
   const [saveOpen, setSaveOpen] = useState(false);
   const [saveName, setSaveName] = useState('');
