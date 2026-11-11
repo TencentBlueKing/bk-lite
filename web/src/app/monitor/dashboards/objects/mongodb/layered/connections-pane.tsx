@@ -72,7 +72,7 @@ function CurrentConnectionsCard({
       ) : (
         <div className="flex flex-1 flex-col justify-center">
           <div
-            className="text-[30px] font-bold leading-none tabular-nums text-[var(--color-text-1)]"
+            className="text-[30px] font-bold leading-none tabular-nums text-[var(--color-success)]"
             data-mongodb-conn-reading=""
           >
             {formatMongoReading(current, 'counts')}
@@ -80,12 +80,13 @@ function CurrentConnectionsCard({
           {openText || capText ? (
             <div className="mt-3 flex w-full flex-col gap-0.5" data-mongodb-conn-note="">
               {openText ? (
-                <p className="m-0 text-[13px] leading-5 tabular-nums text-[var(--color-text-3)]" data-mongodb-conn-open="">
-                  打开 {openText}
+                <p className="m-0 text-[13px] leading-5 tabular-nums" data-mongodb-conn-open="">
+                  <span className="text-[var(--color-text-3)]">打开 </span>
+                  <span className="font-medium text-[var(--color-text-2)]">{openText}</span>
                 </p>
               ) : null}
               {capText ? (
-                <p className="m-0 text-[13px] leading-5 tabular-nums text-[var(--color-text-3)]" data-mongodb-conn-cap="">
+                <p className="m-0 text-[13px] font-normal leading-5 tabular-nums text-[var(--color-text-3)]" data-mongodb-conn-cap="">
                   上限 {capText}
                 </p>
               ) : null}

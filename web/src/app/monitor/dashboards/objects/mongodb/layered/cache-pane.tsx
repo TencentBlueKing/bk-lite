@@ -118,8 +118,13 @@ function UsageCard({
           </div>
           {note ? (
             <div className="mt-3 flex w-full flex-col gap-0.5" data-mongodb-cache-note="">
-              <p className="m-0 text-[13px] leading-5 tabular-nums text-[var(--color-text-3)]">已用 {used}</p>
-              <p className="m-0 text-[13px] leading-5 tabular-nums text-[var(--color-text-3)]">上限 {limit}</p>
+              <p className="m-0 text-[13px] leading-5 tabular-nums" data-mongodb-cache-used="">
+                <span className="text-[var(--color-text-3)]">已用 </span>
+                <span className="font-medium text-[var(--color-text-2)]">{used}</span>
+              </p>
+              <p className="m-0 text-[13px] font-normal leading-5 tabular-nums text-[var(--color-text-3)]" data-mongodb-cache-cap="">
+                上限 {limit}
+              </p>
             </div>
           ) : null}
         </div>
