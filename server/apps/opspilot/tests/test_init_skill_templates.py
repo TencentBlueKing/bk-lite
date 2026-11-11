@@ -60,13 +60,24 @@ def test_init_skill_templates_keeps_only_two_workbench_agents():
     assert LLMSkill.objects.filter(is_builtin=True, name="Kubernetes 助手").count() == 1
 
 
-def test_startup_leaves_existing_templates_untouched(monkeypatch):
-    legacy = LLMSkill.objects.create(name="Python Genius", is_template=True, skill_prompt="old")
-    monkeypatch.setattr("apps.core.management.commands.batch_init.call_command", lambda *args, **kwargs: None)
+def test_startup_replaces_legacy_templates(monkeypatch):
+    LLMSkill.objects.create(name="Python Genius", is_template=True, skill_prompt="old")
+    LLMSkill.objects.create(name="Kubernetes 助手", is_builtin=True, is_template=False, team=[1], skill_prompt="live")
+
+    def dispatch(name, *args, **kwargs):
+        if name == "init_skill_templates":
+            call_command(name, *args, **kwargs)
+
+    monkeypatch.setattr("apps.core.management.commands.batch_init.call_command", dispatch)
     Command()._init_opspilot()
-    legacy.refresh_from_db()
-    assert legacy.skill_prompt == "old"
-    assert list(LLMSkill.objects.filter(is_template=True).values_list("name", flat=True)) == ["Python Genius"]
+
+    assert list(LLMSkill.objects.filter(is_template=True).order_by("name").values_list("name", flat=True)) == [
+        "Kubernetes 助手",
+        "Postgres DB 助手",
+    ]
+    builtin = LLMSkill.objects.get(name="Kubernetes 助手", is_builtin=True)
+    assert builtin.is_template is False
+    assert builtin.skill_prompt == "live"
 
 
 def test_init_llm_still_restores_legacy_template_catalog():
