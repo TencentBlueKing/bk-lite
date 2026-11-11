@@ -250,25 +250,25 @@ def _grouped_expressions(regex: str, window_seconds: int, step_seconds: int, *, 
     return expressions
 
 
-def _expression_bytes(jobs: Sequence[str], window_seconds: int, step_seconds: int, *, include_overview: bool) -> int:
-    regex = _job_regex(jobs)
-    return max(
-        len(expression.encode("utf-8"))
-        for _, expression in _grouped_expressions(regex, window_seconds, step_seconds, include_overview=include_overview)
-    )
-
-
 def _chunk_jobs(jobs: Sequence[str], window_seconds: int, step_seconds: int, *, include_overview: bool) -> list[list[str]]:
+    # 每条表达式只含一次 job 正则，所以表达式长度 = 固定开销 + 正则长度。
+    overhead = max(
+        len(expression.encode("utf-8")) for _, expression in _grouped_expressions("", window_seconds, step_seconds, include_overview=include_overview)
+    )
+    budget = GROUPED_QUERY_LIMIT_BYTES - overhead
     chunks: list[list[str]] = []
     current: list[str] = []
+    used = 0
     for job in jobs:
-        trial = [*current, job]
-        too_wide = current and _expression_bytes(trial, window_seconds, step_seconds, include_overview=include_overview) > GROUPED_QUERY_LIMIT_BYTES
-        if too_wide:
+        piece = len(_job_regex([job]).encode("utf-8"))
+        extra = piece if not current else piece + 1
+        if current and used + extra > budget:
             chunks.append(current)
             current = [job]
+            used = piece
         else:
-            current = trial
+            current.append(job)
+            used += extra
     if current:
         chunks.append(current)
     return chunks
