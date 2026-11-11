@@ -1,6 +1,6 @@
 # APM 首页与服务列表按服务分组读取聚合库
 
-Status: ready
+Status: done
 
 来源：2026-11-11 对 APM / RUM 聚合架构的复核。`observability-aggregate-hardening` 的 Out of Scope 里留下的
 P2「Server 按服务批量查询聚合库（去掉首页 40 个目标的限制）」由本变更承接，并补上首页数字口径和页面提示。
@@ -186,3 +186,18 @@ P2「Server 按服务批量查询聚合库（去掉首页 40 个目标的限制�
   4. 采集端契约断言；运维规则、`deploy/apm/README.md`、APM 功能清单。
 - 每一步完成后用中文提交一次；完成后把本文件 `Status` 改为 `done`，并在文末追加 `## Completion evidence`，
   写明各验证命令的结果和基线对照。
+
+## Completion evidence
+
+本机 `server/.env` 的 `INSTALL_APPS` 不含 cmdb，pytest-dotenv 会让 Django 在收集阶段失败。下面的 Server 结果都额外加了空的 `INSTALL_APPS=`，让 dotenv 不再覆盖，从而加载全部应用。规格原文那条命令不加这个变量时，基线和完成后都是退出码 1、0 个用例：`AutoRelationPending` 没有 `app_label` 且不在 `INSTALLED_APPS`。
+
+- Server 基线（`INSTALL_APPS=` + 规格中的 sqlite 变量，`uv run pytest apps/apm/tests apps/core/tests apps/rum/tests --no-cov`）：36 failed，2511 passed，21 skipped，132.43s。
+- Server 完成后同一命令：36 failed，2536 passed，21 skipped，130.56s。失败名单与基线相同，没有新增失败；多出的 25 个通过来自本变更的新测试。日志里另有 `tests/test_application.py` 和 `dev/test_embedded.py` 的嵌套 FAILED 行，不在这 36 条里。
+- `make -C deploy/apm test`：三个 Go 包测试通过。
+- `make -C deploy/apm validate`：第一次在构建采集镜像时因 Alpine 仓库 TLS 失败；重试构建成功后，compose 配置和四份采集配置校验通过，退出码 0。
+- `make -C deploy/apm contract`：5 passed，1 failed，225.31s。失败的是 `test_data_plane_contract.py` 的 Django 启动，原因与上面的 `INSTALL_APPS` 相同，用例体没有跑到。五个聚合契约用例通过，包含空命名空间 `job=unknown/blank-ns` 和晚到计数带 `job`。使用独立 Compose project 和随机端口，没有连接 8428、9428、10428。
+- `cd web && pnpm lint`：退出码 0。102 条既有 warning、0 error，本次改动的 APM 文件没有新增问题。
+- `cd web && pnpm type-check`：退出码 0。
+- `pnpm test:apm-home-workflow`：11 passed。
+- `pnpm test:apm-service-workflow`：114 passed。
+- `pnpm test:apm-i18n`：失败，报错都在既有文件（`duration-share-bar.tsx`、告警详情、策略编辑器、调用链详情），本次改动的文件不在错误列表里。
