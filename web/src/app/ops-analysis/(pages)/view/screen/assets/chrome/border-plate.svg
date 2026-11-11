@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="400" height="240" viewBox="0 0 400 240" fill="none">
+  <!-- border-plate: even 4-side steel frame + L corners. 9-slice 16 16 16 16, no fill. -->
+  <!-- Strokes sit in the outer ~7px so a 16px paint still clears section titles inset at 8px. -->
+  <!-- No top-only highlight, glow, neon bolts, or punch-black blend. -->
+  <rect x="3.5" y="3.5" width="393" height="233" stroke="#4D6D8A" stroke-width="2"/>
+  <rect x="6.5" y="6.5" width="387" height="227" stroke="#2E4A64" stroke-width="1"/>
+  <path stroke="#7EA8C4" stroke-width="2.25" stroke-linecap="square" stroke-linejoin="miter" d="M2.5 13.5 V2.5 H13.5"/>
+  <path stroke="#7EA8C4" stroke-width="2.25" stroke-linecap="square" stroke-linejoin="miter" d="M386.5 2.5 H397.5 V13.5"/>
+  <path stroke="#7EA8C4" stroke-width="2.25" stroke-linecap="square" stroke-linejoin="miter" d="M2.5 226.5 V237.5 H13.5"/>
+  <path stroke="#7EA8C4" stroke-width="2.25" stroke-linecap="square" stroke-linejoin="miter" d="M386.5 237.5 H397.5 V226.5"/>
+</svg>

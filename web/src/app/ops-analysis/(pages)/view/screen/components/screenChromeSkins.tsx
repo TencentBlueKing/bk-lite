@@ -45,6 +45,7 @@ import border1 from '../assets/chrome/border-1.png';
 import border16 from '../assets/chrome/border-16.png';
 import border20 from '../assets/chrome/border-20.png';
 import border24 from '../assets/chrome/border-24.png';
+import borderPlate from '../assets/chrome/border-plate.svg';
 import tech01 from '../assets/chrome/tech01.png';
 import border27Lt from '../assets/chrome/border-27-lt.png';
 import {
@@ -381,6 +382,7 @@ const SectionTitle6: React.FC<{ item: ScreenTitleFrameItem }> = ({ item }) => {
   );
 };
 
+
 export const TitleFrameSkin: React.FC<{
   item: Pick<ScreenTitleFrameItem, 'preset' | 'content' | 'textStyle'>;
 }> = ({ item }) => {
@@ -407,7 +409,7 @@ const visionBorder21Width = (width: number, height: number) => {
   return 8;
 };
 
-type BorderImageMode = 'fixed-83' | 'fixed-25' | 'fluid' | 'tech' | 'fill';
+type BorderImageMode = 'fixed-83' | 'fixed-25' | 'fixed-16' | 'fluid' | 'tech' | 'fill';
 
 const positiveScale = (value: number) =>
   Number.isFinite(value) && value > 0 ? value : 1;
@@ -439,7 +441,9 @@ export const resolveVisionBorderFrame = (
         ? fluidTB
         : mode === 'fixed-25'
           ? Math.max(8, Math.round(100 * fixedScale))
-          : 83;
+          : mode === 'fixed-16'
+            ? 16
+            : 83;
   const sliceLR =
     mode === 'tech'
       ? Math.min(fluidLR, Math.max(8, width * 0.28))
@@ -447,7 +451,9 @@ export const resolveVisionBorderFrame = (
         ? fluidLR
         : mode === 'fixed-25'
           ? Math.max(8, Math.round(95 * fixedScale))
-          : 83;
+          : mode === 'fixed-16'
+            ? 16
+            : 83;
   const steppedBorder = Math.min(
     visionBorder21Width(width, height),
     Math.max(8, Math.floor(Math.min(width, height) * 0.18)),
@@ -479,6 +485,7 @@ const PANEL_FRAME_SKIN: Record<
   'border-16': { src: border16, mode: 'fill' },
   'border-20': { src: border20, mode: 'fill' },
   'border-24': { src: border24, mode: 'fill' },
+  'border-plate': { src: borderPlate, mode: 'fixed-16' },
 };
 
 const VisionBorderImage: React.FC<{
