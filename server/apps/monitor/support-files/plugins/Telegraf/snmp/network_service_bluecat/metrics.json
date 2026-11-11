@@ -57,7 +57,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "CPU utilization derived from UCD-SNMP idle percent (100 minus ssCpuIdle) as documented for BlueCat DNS/DHCP servers."
+      "description": "CPU utilization as documented for BlueCat DNS/DHCP servers."
     },
     {
       "metric_group": "NetworkService",
@@ -70,7 +70,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Memory utilization derived from UCD-SNMP memTotalReal and memTotalFree as documented for BlueCat DNS/DHCP servers."
+      "description": "Memory utilization as documented for BlueCat DNS/DHCP servers."
     },
     {
       "metric_group": "Traffic",

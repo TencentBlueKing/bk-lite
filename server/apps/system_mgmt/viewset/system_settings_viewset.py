@@ -287,3 +287,19 @@ class SystemSettingsViewSet(viewsets.ModelViewSet):
         policy_description = PasswordValidator.get_password_policy_description(locale=locale)
 
         return JsonResponse({"result": True, "data": {"settings": settings_dict, "policy_description": policy_description}})
+
+    @action(methods=["GET"], detail=False, url_path="password_policy")
+    def password_policy(self, request):
+        """已登录用户改密时读取长度和字符类型。不返回其余系统设置。"""
+        config = PasswordValidator.get_password_settings()
+        required_types = config.get("required_char_types") or []
+        return JsonResponse(
+            {
+                "result": True,
+                "data": {
+                    "pwd_set_min_length": str(config["min_length"]),
+                    "pwd_set_max_length": str(config["max_length"]),
+                    "pwd_set_required_char_types": ",".join(required_types),
+                },
+            }
+        )

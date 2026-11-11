@@ -43,10 +43,7 @@ monitor_object_metric:
         indicate control-plane or forwarding load.
     device_memory_usage:
       name: Memory Usage
-      desc: Real memory utilization of the 6WIND VSR router, derived as
-        (memTotalReal - memAvailReal) / memTotalReal * 100, falling back to
-        HOST-RESOURCES hrStorage physical-memory used/size. Sustained high usage
-        may indicate resource pressure.
+      desc: Real memory utilization of the 6WIND VSR router, falling back to HOST-RESOURCES hrStorage physical-memory used/size. Sustained high usage may indicate resource pressure.
     interface_ifHCInOctets:
       name: Interface Incoming Traffic Rate (HC)
       desc: This metric indicates the average rate of bytes received over the past

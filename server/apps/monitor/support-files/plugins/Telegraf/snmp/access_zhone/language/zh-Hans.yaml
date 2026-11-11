@@ -35,7 +35,7 @@ monitor_object_metric:
       desc: 接入设备当前可用的物理内存容量，单位为字节。空闲内存持续降低可能表示控制服务或业务表项造成内存压力。
     device_memory_usage:
       name: 内存使用率
-      desc: Zhone/DZS 接入设备各卡内存使用率，按 (cardTotalMem - cardAvailMem) / cardTotalMem * 100 计算。持续偏高可能表示转发表、用户表项或控制服务存在内存压力。
+      desc: Zhone/DZS 接入设备各卡内存使用率。持续偏高可能表示转发表、用户表项或控制服务存在内存压力。
     device_temperature_celsius:
       name: 系统温度
       desc: 接入设备系统温度读数，单位摄氏度。温度持续升高可能表示散热异常、环境温度过高或设备负载过高。

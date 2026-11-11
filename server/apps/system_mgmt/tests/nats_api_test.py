@@ -1,8 +1,8 @@
-import uuid
 import importlib.util
 import logging
 import sys
 import types
+import uuid
 from pathlib import Path
 
 import pytest
@@ -100,6 +100,7 @@ def _load_target_view(monkeypatch):
     _install_module(monkeypatch, "apps.rpc.executor", Executor=object)
     _install_module(monkeypatch, "apps.rpc.node_mgmt", NodeMgmt=object)
     _install_module(monkeypatch, "apps.rpc.system_mgmt", SystemMgmt=object)
+
     # 忠实复刻 exception_to_response 对 BaseAppException 的处理：返回 400 + 规范化外壳
     # （生产 CustomRenderer 会把 {"message": ...} 包装为 {"result": False, "message": ...}）
     def _fake_exception_to_response(e, context="", default_message="查询失败"):
@@ -1487,6 +1488,7 @@ def test_reset_pwd_caller与目标用户不一致时拒绝(monkeypatch):
     assert "Unauthorized" in result["message"]
 
 
+@pytest.mark.django_db
 def test_reset_pwd_caller与目标用户一致时允许执行(monkeypatch):
     """token 属于 alice，重置 alice 自己的密码——应通过校验并更新密码。"""
     caller = _make_caller("alice", "domain.com")
@@ -1495,6 +1497,7 @@ def test_reset_pwd_caller与目标用户一致时允许执行(monkeypatch):
     saved = {}
 
     class _FakeUser:
+        id = 1
         username = "alice"
         domain = "domain.com"
         temporary_pwd = True
@@ -1520,6 +1523,7 @@ def test_reset_pwd_caller与目标用户一致时允许执行(monkeypatch):
     assert saved["temporary_pwd"] is False
 
 
+@pytest.mark.django_db
 def test_reset_pwd_空domain与default_domain等价_不被跨domain绕过(monkeypatch):
     """caller.domain='domain.com' 与 target domain='' 应被视为同一域，不应误拒或被绕过。"""
     # caller domain 为 domain.com（默认域），目标 domain 为空（等价 domain.com）
@@ -1529,6 +1533,7 @@ def test_reset_pwd_空domain与default_domain等价_不被跨domain绕过(monkey
     saved = {}
 
     class _FakeUser:
+        id = 1
         username = "alice"
         domain = "domain.com"
         temporary_pwd = True
@@ -1599,6 +1604,7 @@ def test_search_opspilot_nats_channels_filters_by_source_and_bot():
     team3 = search_opspilot_nats_channels(teams=[3])
     assert {c["node_id"] for c in team3["data"]} == {"m1"}
 
+
 @pytest.mark.django_db
 def test_search_opspilot_nats_channels_projects_strict_notify_person():
     from apps.system_mgmt.models import Channel, ChannelChoices
@@ -1633,17 +1639,15 @@ def test_wechat_user_register_uses_select_for_update_inside_transaction(monkeypa
     若将修复代码 revert（去掉 transaction.atomic + select_for_update），本测试必须失败。
     """
     import threading
-    from unittest.mock import MagicMock, patch, call
+    from unittest.mock import MagicMock
+
     from apps.system_mgmt.nats_api import wechat_user_register
 
     select_for_update_called = threading.Event()
-    atomic_entered = threading.Event()
-
-    # 拦截 User.objects.select_for_update() 调用链
-    original_user_objects = nats_api.User.objects
 
     class _SFUQuerSet:
         """模拟 select_for_update() 返回的 queryset，支持 get_or_create"""
+
         def get_or_create(self, username, defaults=None):
             select_for_update_called.set()
             # 构造最小 User 对象
@@ -1669,21 +1673,32 @@ def test_wechat_user_register_uses_select_for_update_inside_transaction(monkeypa
     monkeypatch.setattr(nats_api.User, "objects", _FakeUserObjects())
 
     # 让 Group / Role 查询返回空，简化测试
-    monkeypatch.setattr(nats_api.Group, "objects", MagicMock(**{
-        "filter.return_value.first.return_value": None,
-    }))
-    monkeypatch.setattr(nats_api.Role, "objects", MagicMock(**{
-        "filter.return_value.values_list.return_value": [],
-    }))
+    monkeypatch.setattr(
+        nats_api.Group,
+        "objects",
+        MagicMock(
+            **{
+                "filter.return_value.first.return_value": None,
+            }
+        ),
+    )
+    monkeypatch.setattr(
+        nats_api.Role,
+        "objects",
+        MagicMock(
+            **{
+                "filter.return_value.values_list.return_value": [],
+            }
+        ),
+    )
 
     # 屏蔽 JWT 签名
     monkeypatch.setattr(nats_api, "_build_jwt_payload", lambda user_id: {})
     import jwt as _jwt
+
     monkeypatch.setattr(_jwt, "encode", lambda **kwargs: "fake-token")
 
     result = wechat_user_register("wx_test_race", "测试用户")
 
     assert result["result"] is True, "wechat_user_register 应返回 result=True"
-    assert select_for_update_called.is_set(), (
-        "select_for_update() 未被调用——RMW 操作缺少悲观锁，并发时会丢失更新（issue #3460）"
-    )
+    assert select_for_update_called.is_set(), "select_for_update() 未被调用——RMW 操作缺少悲观锁，并发时会丢失更新（issue #3460）"

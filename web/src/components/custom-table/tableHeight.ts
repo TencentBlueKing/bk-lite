@@ -76,8 +76,11 @@ export const resolveTableDimensions = ({
     };
   }
 
-  // 省略 scroll.y 时按父容器回填（有无分页都一样）。
-  // 运营分析 TOP5 等无分页卡片依赖这里；需要贴行高时用 scroll.y = 'auto'。
+  // 无分页且省略 scroll.y 时按内容撑开。短表父级往往只有表头高，回填会把表体锁成 0。
+  if (!hasPagination) {
+    return { tableHeight: undefined, containerHeight: undefined };
+  }
+
   if (parentHeight <= 0) {
     return { tableHeight: undefined, containerHeight: undefined };
   }

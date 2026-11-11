@@ -11,9 +11,7 @@ monitor_object_metric:
   NetworkService:
     snmp_uptime:
       name: System Uptime
-      desc: This metric indicates the uptime of the device since the last restart, derived from sysUpTime.
-        Monitoring uptime helps administrators understand device stability and identify unexpected reboots
-        or failures.
+      desc: This metric indicates the uptime of the device since the last restart, derived from sysUpTime. Monitoring uptime helps administrators understand device stability and identify unexpected reboots or failures.
     env_temperature_celsius:
       name: Temperature
       desc: Reading of each temperature probe in degrees Celsius.

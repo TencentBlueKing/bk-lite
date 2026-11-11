@@ -44,7 +44,7 @@ monitor_object_metric:
       desc: Polycom RealPresence DMA 服务器可选空闲内存（MIB 以 MB 上报，查询侧换算为字节）。部分 DMA 软件版本可能不返回该列。
     memory_usage_percent:
       name: 内存使用率
-      desc: Polycom RealPresence DMA 内存使用率，按 已用/总量*100 计算。持续偏高可能表示会话或会议资源压力。
+      desc: Polycom RealPresence DMA 内存使用率。持续偏高可能表示会话或会议资源压力。
 monitor_object_metric_group:
   VoiceGateway:
     Base: 基础

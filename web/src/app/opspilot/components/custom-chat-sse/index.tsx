@@ -572,7 +572,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
   const readyDrafts = drafts.filter((item) => item.status === 'ready' && item.id);
 
   const handleSend = useCallback(
-    async (msg: string, attachments?: ChatAttachmentMeta[]) => {
+    async (msg: string, attachments?: ChatAttachmentMeta[], choice?: { choiceId?: string; optionKey?: string }) => {
       const ready = (attachments || []).filter((item) => item.status === 'ready' && item.id);
       if ((msg.trim() || ready.length > 0) && !loading && token && !hasPendingDraft) {
         currentBotMessageRef.current = null;
@@ -583,7 +583,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
           size: item.size,
           status: item.status,
           previewUrl: item.previewUrl,
-        })));
+        })), choice);
       }
     },
     [hasPendingDraft, loading, token, sendMessage, messages]
@@ -868,7 +868,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
                     request={req}
                     token={token || ''}
                     onSubmit={handleUserChoiceSubmit}
-                    onSendMessage={(text) => { void handleSend(text); }}
+                    onSendMessage={(text, choice) => { void handleSend(text, undefined, choice); }}
                     readOnly={mode === 'display'}
                   />
                 ))}
@@ -931,7 +931,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
                   request={req}
                   token={token || ''}
                   onSubmit={handleUserChoiceSubmit}
-                  onSendMessage={(text) => { void handleSend(text); }}
+                  onSendMessage={(text, choice) => { void handleSend(text, undefined, choice); }}
                   readOnly={mode === 'display'}
                 />
               );
@@ -1007,7 +1007,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
                 request={req}
                 token={token || ''}
                 onSubmit={handleUserChoiceSubmit}
-                onSendMessage={(text) => { void handleSend(text); }}
+                onSendMessage={(text, choice) => { void handleSend(text, undefined, choice); }}
                 readOnly={mode === 'display'}
               />
             ))}

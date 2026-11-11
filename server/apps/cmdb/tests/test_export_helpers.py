@@ -158,6 +158,27 @@ def test_export_inst_list_empty():
     assert data[:2] == b"PK"
 
 
+def test_string_field_writes_legacy_enum_list_as_text():
+    attrs = [
+        {"attr_id": "inst_name", "attr_name": "系统名称", "attr_type": "str"},
+        {"attr_id": "system_code", "attr_name": "系统编号", "attr_type": "str"},
+    ]
+    stream = Export(attrs, model_id="system").export_inst_list(
+        [
+            {"inst_name": ["sap"], "system_code": "SYS-SAP"},
+            {"inst_name": ["a", "", "b"], "system_code": None},
+            {"inst_name": "plain", "system_code": 9999},
+        ]
+    )
+    sheet = openpyxl.load_workbook(stream).active
+    assert sheet["B4"].value == "sap"
+    assert sheet["C4"].value == "SYS-SAP"
+    assert sheet["B5"].value == "a,b"
+    assert sheet["C5"].value is None
+    assert sheet["B6"].value == "plain"
+    assert sheet["C6"].value == "9999"
+
+
 def test_sequential_export_preserves_headers_styles_and_enum_validation():
     exporter = Export(_ATTRS, model_id="host")
     workbook = exporter.generate_header(write_only=True)

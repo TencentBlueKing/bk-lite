@@ -363,6 +363,16 @@ class TestResetPwdView:
             resp = index_view.reset_pwd(req)
         assert _json(resp)["result"] is True
         mock_client.return_value.reset_pwd.assert_called_once_with("u", "domain.com", "new", caller_token="ct")
+        assert "bklite_token" not in resp.cookies
+
+    @pytest.mark.django_db
+    def test_success_writes_rotated_session_cookie(self):
+        user = MagicMock(username="u", domain="domain.com")
+        req = _post({"password": "new"}, cookies={"bklite_token": "ct"}, user=user)
+        with patch.object(index_view, "_create_system_mgmt_client") as mock_client:
+            mock_client.return_value.reset_pwd.return_value = {"result": True, "data": {"token": "rotated-token"}}
+            resp = index_view.reset_pwd(req)
+        assert resp.cookies["bklite_token"].value == "rotated-token"
 
 
 class TestOtpViews:

@@ -51,14 +51,14 @@
       "metric_group": "Memory",
       "name": "heap_low_water_bytes",
       "query": "min(heap_low_water_bytes{instance_type='wireless', collect_type='snmp_acksys', __$labels__}) by (instance_id)",
-      "display_name": "Heap Low Water",
+      "display_name": "Heap Minimum",
       "data_type": "Number",
       "unit": "bytes",
       "dimensions": [],
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Heap low-water mark in bytes on the ACKSYS WaveOS platform (os-statHeapLowWater, IANA PEN 28097). This is the lowest free-heap observation since the watermark was last reset and helps catch transient memory pressure."
+      "description": "Minimum free heap in bytes on the ACKSYS WaveOS platform (os-statHeapLowWater, IANA PEN 28097). This is the lowest free-heap observation since last reset and helps catch transient memory pressure."
     },
     {
       "metric_group": "Memory",
@@ -71,7 +71,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Heap utilization of the ACKSYS WaveOS platform, derived as (total-free)/total from os-statTotalHeap and os-statFreeHeap (IANA PEN 28097). High usage indicates heap pressure rather than a vendor-reported CPU or general RAM percentage."
+      "description": "Heap utilization of the ACKSYS WaveOS platform, from os-statTotalHeap and os-statFreeHeap (IANA PEN 28097). High usage indicates heap pressure rather than a vendor-reported CPU or general RAM percentage."
     },
     {
       "metric_group": "Temperature",

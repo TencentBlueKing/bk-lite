@@ -96,7 +96,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric reports the overall memory utilization of the Zyxel ZLD security gateway (ZYXEL private MIB sysRAMUsage), reported directly as a 0-100 percentage. No used/total byte OIDs are exposed, so utilization is not derived from byte counters. High memory pressure can degrade session-handling performance."
+      "description": "This metric reports the overall memory utilization of the Zyxel ZLD security gateway (ZYXEL private MIB sysRAMUsage), reported directly as a 0-100 percentage. High memory pressure can degrade session-handling performance."
     },
     {
       "metric_group": "Firewall",

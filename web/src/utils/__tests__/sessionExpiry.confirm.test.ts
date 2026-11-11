@@ -6,6 +6,7 @@ import {
   isSessionExpiredState,
   isSessionExpiryConfirming,
   latchSessionExpired,
+  passwordChangedErrorCode,
   resetSessionExpiredState,
   shouldHandleSessionExpiry,
   shouldTriggerSessionExpiry,
@@ -17,6 +18,21 @@ afterEach(() => {
 });
 
 describe('session expiry confirmation', () => {
+  it('recognizes a password-change 401 and ignores other payloads', () => {
+    expect(passwordChangedErrorCode({ error_code: 'PASSWORD_CHANGED' })).toBe('PASSWORD_CHANGED');
+    expect(passwordChangedErrorCode({ error_code: 'USER_NOT_FOUND' })).toBeUndefined();
+    expect(passwordChangedErrorCode(null)).toBeUndefined();
+
+    const codes: Array<string | undefined> = [];
+    const onExpired = (event: Event) => {
+      codes.push((event as CustomEvent<{ errorCode?: string }>).detail?.errorCode);
+    };
+    window.addEventListener(SESSION_EXPIRED_EVENT, onExpired);
+    emitSessionExpired({ reason: 'password-changed', status: 401, errorCode: 'PASSWORD_CHANGED' });
+    window.removeEventListener(SESSION_EXPIRED_EVENT, onExpired);
+    expect(codes).toEqual(['PASSWORD_CHANGED']);
+  });
+
   it('coalesces 401s until the probe confirms the session is expired', () => {
     const reasons: string[] = [];
     const onExpired = (event: Event) => {

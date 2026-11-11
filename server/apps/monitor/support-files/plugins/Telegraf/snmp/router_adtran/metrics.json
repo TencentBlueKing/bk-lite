@@ -144,7 +144,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric reports Adtran AOS memory utilization, derived as (adGenAOSMemPool - adGenAOSHeapFree) / adGenAOSMemPool * 100."
+      "description": "This metric reports Adtran AOS memory utilization, from adGenAOSMemPool and adGenAOSHeapFree."
     },
     {
       "metric_group": "Memory",

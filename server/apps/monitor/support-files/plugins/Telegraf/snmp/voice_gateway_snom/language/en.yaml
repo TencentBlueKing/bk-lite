@@ -11,9 +11,7 @@ monitor_object_metric:
   VoiceGateway:
     snmp_uptime:
       name: System Uptime
-      desc: This metric indicates the uptime of the device since the last restart, derived from sysUpTime.
-        Monitoring uptime helps administrators understand device stability and identify unexpected reboots
-        or failures.
+      desc: This metric indicates the uptime of the device since the last restart, derived from sysUpTime. Monitoring uptime helps administrators understand device stability and identify unexpected reboots or failures.
     device_cpu_load1:
       name: CPU Load Average (1 min)
       desc: 1-minute CPU load average of the phone, parsed from the load-average text reported by the
