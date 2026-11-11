@@ -422,7 +422,6 @@ export default function ApmHomePage() {
       ? t('apm.home.truncatedServices', '{count} 个服务的入口组合超过上限，多出的入口没有计入该服务', { count: notice.truncated_service_count })
       : '',
   ].filter(Boolean);
-  const aggregateNoticeText = aggregateNoticeParts.length ? aggregateNoticeParts.join(' ') : '';
 
   return (
     <ApmRouteShell title={t('apm.home.title', '首页')} description={t('apm.home.description', '查看应用性能总览、健康分布与待处理告警。')}>
@@ -448,8 +447,17 @@ export default function ApmHomePage() {
         <HomeEmptyState />
       ) : (
         <>
-          {aggregateNoticeText ? (
-            <Alert className="!mb-4" message={aggregateNoticeText} showIcon type="info" />
+          {aggregateNoticeParts.length ? (
+            <Alert
+              className="!mb-4"
+              message={(
+                <div className="flex flex-col gap-0.5">
+                  {aggregateNoticeParts.map((text) => <div key={text}>{text}</div>)}
+                </div>
+              )}
+              showIcon
+              type="info"
+            />
           ) : null}
           {sectionFailed(dashboard?.kpis) ? (
             <FailedSection onRetry={load} />
