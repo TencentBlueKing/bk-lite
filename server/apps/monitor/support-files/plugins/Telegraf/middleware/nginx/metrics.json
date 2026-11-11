@@ -224,8 +224,47 @@
           "description": "状态"
         }
       ],
-      "description": "Connection counts grouped by status.",
-      "query": "alias(label_replace(nginx_vts_connections_active{__$labels__}, \"status\", \"active\", \"__name__\", \".*\"), \"nginx_vts_server_connections\") or alias(label_replace(nginx_vts_connections_reading{__$labels__}, \"status\", \"reading\", \"__name__\", \".*\"), \"nginx_vts_server_connections\") or alias(label_replace(nginx_vts_connections_writing{__$labels__}, \"status\", \"writing\", \"__name__\", \".*\"), \"nginx_vts_server_connections\") or alias(label_replace(nginx_vts_connections_waiting{__$labels__}, \"status\", \"waiting\", \"__name__\", \".*\"), \"nginx_vts_server_connections\") or alias(label_replace(nginx_vts_connections_accepted{__$labels__}, \"status\", \"accepted\", \"__name__\", \".*\"), \"nginx_vts_server_connections\") or alias(label_replace(nginx_vts_connections_handled{__$labels__}, \"status\", \"handled\", \"__name__\", \".*\"), \"nginx_vts_server_connections\") or alias(label_replace(nginx_vts_connections_requests{__$labels__}, \"status\", \"requests\", \"__name__\", \".*\"), \"nginx_vts_server_connections\")"
+      "description": "Current connections grouped by status.",
+      "query": "alias(label_replace(nginx_vts_connections_active{__$labels__}, \"status\", \"active\", \"__name__\", \".*\"), \"nginx_vts_server_connections\") or alias(label_replace(nginx_vts_connections_reading{__$labels__}, \"status\", \"reading\", \"__name__\", \".*\"), \"nginx_vts_server_connections\") or alias(label_replace(nginx_vts_connections_writing{__$labels__}, \"status\", \"writing\", \"__name__\", \".*\"), \"nginx_vts_server_connections\") or alias(label_replace(nginx_vts_connections_waiting{__$labels__}, \"status\", \"waiting\", \"__name__\", \".*\"), \"nginx_vts_server_connections\")"
+    },
+    {
+      "metric_group": "Vts",
+      "name": "nginx_vts_connections_accepted",
+      "display_name": "Accepted Connections Total",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "description": "Client connections accepted by Nginx.",
+      "query": "nginx_vts_connections_accepted{__$labels__}"
+    },
+    {
+      "metric_group": "Vts",
+      "name": "nginx_vts_connections_handled",
+      "display_name": "Handled Connections Total",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "description": "Client connections handled by Nginx.",
+      "query": "nginx_vts_connections_handled{__$labels__}"
+    },
+    {
+      "metric_group": "Vts",
+      "name": "nginx_vts_connections_requests",
+      "display_name": "HTTP Requests Total",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "description": "HTTP requests handled by Nginx.",
+      "query": "nginx_vts_connections_requests{__$labels__}"
     },
     {
       "metric_group": "Vts",

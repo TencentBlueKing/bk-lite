@@ -51,7 +51,16 @@ monitor_object_metric:
         "1": Succeeded
     nginx_vts_server_connections:
       name: Server Connections
-      desc: Connection counts grouped by status.
+      desc: Current connections grouped by status.
+    nginx_vts_connections_accepted:
+      name: Accepted Connections Total
+      desc: Client connections accepted by Nginx.
+    nginx_vts_connections_handled:
+      name: Handled Connections Total
+      desc: Client connections handled by Nginx.
+    nginx_vts_connections_requests:
+      name: HTTP Requests Total
+      desc: HTTP requests handled by Nginx.
     nginx_vts_server_requests:
       name: Server Requests
       desc: Requests per server zone, counted by response status code.

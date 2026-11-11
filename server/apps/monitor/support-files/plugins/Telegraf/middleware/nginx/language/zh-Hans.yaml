@@ -45,7 +45,16 @@ monitor_object_metric:
         "1": 采集成功
     nginx_vts_server_connections:
       name: 连接状态
-      desc: 按状态统计的连接数。
+      desc: 按状态统计的当前连接数。
+    nginx_vts_connections_accepted:
+      name: 已接受连接累计
+      desc: Nginx 已接受的客户端连接数。
+    nginx_vts_connections_handled:
+      name: 已处理连接累计
+      desc: Nginx 已处理的客户端连接数。
+    nginx_vts_connections_requests:
+      name: HTTP 请求累计
+      desc: Nginx 已处理的 HTTP 请求数。
     nginx_vts_server_requests:
       name: Server 请求数
       desc: 各 server zone 按响应状态码统计的请求数。
