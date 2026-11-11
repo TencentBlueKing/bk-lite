@@ -17,7 +17,7 @@ from django.db.models import Q
 from django.utils import timezone
 
 import nats_client
-from apps.core.constants import VERIFY_TOKEN_USER_NOT_FOUND_CODE, VERIFY_TOKEN_USER_NOT_FOUND_MESSAGE
+from apps.core.constants import PASSWORD_CHANGED_TOKEN_MESSAGE, VERIFY_TOKEN_USER_NOT_FOUND_CODE, VERIFY_TOKEN_USER_NOT_FOUND_MESSAGE
 from apps.core.logger import system_mgmt_logger as logger
 from apps.core.utils.loader import LanguageLoader
 from apps.core.utils.permission_cache import (
@@ -203,4 +203,10 @@ def _verify_token(token):
     user = User.objects.filter(id=user_info["user_id"]).first()
     if not user or user.disabled:
         raise Exception(VERIFY_TOKEN_USER_NOT_FOUND_MESSAGE)
+    # 改密会使此前签发的登录 JWT 失效。同一秒内改密后新签发的 token 仍有效。
+    if user.password_last_modified:
+        pwd_mod_ts = int(user.password_last_modified.timestamp())
+        token_login_time = user_info.get("login_time")
+        if token_login_time is not None and int(token_login_time) < pwd_mod_ts:
+            raise Exception(PASSWORD_CHANGED_TOKEN_MESSAGE)
     return user

@@ -25,7 +25,8 @@ import {
 import { useTranslation } from '@/utils/i18n';
 import { useClientData } from '@/context/client';
 import { useUserInfoContext } from '@/context/userInfo';
-import useApiClient from '@/utils/request';
+import useApiClient, { adoptClientAuthToken } from '@/utils/request';
+import { replaceAuthToken } from '@/utils/authTokenBridge';
 import { useLocale } from '@/context/locale';
 import { useSession } from 'next-auth/react';
 import { normalizeLocale, normalizeTimezone, persistTimezone } from '@/utils/userPreferences';
@@ -703,7 +704,19 @@ const UserInformation: React.FC<UserInformationProps> = ({
         visible={passwordModalVisible}
         zIndex={USER_INFO_DIALOG_Z_INDEX}
         onCancel={() => setPasswordModalVisible(false)}
-        onSuccess={() => {
+        onSuccess={async (rotatedToken) => {
+          if (rotatedToken) {
+            adoptClientAuthToken(rotatedToken);
+            replaceAuthToken(rotatedToken);
+            await update({
+              ...session,
+              user: {
+                ...(session?.user || {}),
+                token: rotatedToken,
+                temporary_pwd: false,
+              },
+            });
+          }
           setPasswordModalVisible(false);
         }}
       />

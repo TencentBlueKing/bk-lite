@@ -109,6 +109,24 @@ def login(username, password):
     return result
 
 
+def _encode_rotated_login_token(user):
+    """签发改密后的登录 JWT。login_time 不早于 password_last_modified 的整秒。"""
+    secret_key = os.getenv("SECRET_KEY")
+    algorithm = os.getenv("JWT_ALGORITHM", "HS256")
+    payload = _build_jwt_payload(getattr(user, "id", None))
+    modified = getattr(user, "password_last_modified", None)
+    if modified:
+        pwd_mod_ts = int(modified.timestamp())
+        if payload["login_time"] < pwd_mod_ts:
+            expired_seconds = payload["exp"] - payload["login_time"]
+            payload["login_time"] = pwd_mod_ts
+            payload["exp"] = pwd_mod_ts + expired_seconds
+    token = jwt.encode(payload=payload, key=secret_key, algorithm=algorithm)
+    if isinstance(token, bytes):
+        return token.decode("utf-8")
+    return token
+
+
 @nats_client.register
 def reset_pwd(username, domain, password, caller_token=""):
     """
@@ -144,8 +162,10 @@ def reset_pwd(username, domain, password, caller_token=""):
 
     user.password = make_password(password)
     user.temporary_pwd = False
+    user.last_login = timezone.now()
     user.save()
-    return {"result": True}
+    # 只给当前这次自助改密换发会话。管理员重置走另一条接口，不签发 token。
+    return {"result": True, "data": {"token": _encode_rotated_login_token(user)}}
 
 
 def bk_lite_user_login(username, domain):

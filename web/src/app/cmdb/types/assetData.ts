@@ -100,6 +100,11 @@ export interface SearchFilterProps {
   displayFieldKeys?: string[];
   /** 列表工具条空间不够时，多 IP 输入框可以收缩，避免整行换行。 */
   allowShrink?: boolean;
+  /**
+   * 为 false 时，字段选择和精确匹配只留在本组件，不读写列表 store。
+   * 关联弹窗使用，避免和列表头对写 searchAttr。
+   */
+  syncSearchAttr?: boolean;
   /** 插在搜索按钮和「精确匹配」之间。 */
   beforeExactSearch?: ReactNode;
   onSearch: (condition: FilterItem | null, value: any) => void;

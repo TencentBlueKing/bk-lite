@@ -298,12 +298,29 @@ class Export:
                             _value = json.dumps(_value, ensure_ascii=False)
                     else:
                         _value = ""
+                elif attr["attr_type"] == "str":
+                    # 字段改回字符串后，历史枚举值仍可能是列表。单元格只接受文本。
+                    _value = Export._string_cell_value(_value)
                 sheet_data.append(_value)
             self.format_inst_asst_name(inst_info, sheet_data, association_values)
             if workbook.write_only:
                 workbook.active.append(self._literal_cell(workbook.active, value) for value in sheet_data)
             else:
                 workbook.active.append(sheet_data)
+
+    @staticmethod
+    def _string_cell_value(value):
+        """字符串字段写入前收成文本。单元素列表取出原值，多元素用逗号拼接。"""
+        if isinstance(value, (list, tuple)):
+            parts = []
+            for item in value:
+                if item in (None, ""):
+                    continue
+                parts.append(item if isinstance(item, str) else str(item))
+            return ",".join(parts)
+        if value is None or isinstance(value, str):
+            return value
+        return str(value)
 
     @staticmethod
     def _literal_cell(sheet, value):

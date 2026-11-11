@@ -1065,6 +1065,8 @@
       "baseDn": "搜索基 DN",
       "baseDnPlaceholder": "例如 DC=example,DC=com",
       "baseDnHint": "查询起点，可填域根或某个 OU 的 DN",
+      "fetchLimit": "单次查询上限",
+      "fetchLimitHint": "数值过大将延长查询时间，并导致内存占用过高。",
       "testConnection": "测试连接",
       "instanceNameRequired": "请输入实例名称",
       "hostRequired": "请输入域控地址",
@@ -1259,6 +1261,7 @@
     "uploadIntroAfter": " 等目录。没有 ",
     "uploadIntroTail": " 时会读取 ",
     "uploadIntroEnd": " 顶部 YAML frontmatter，或从标题和目录名推导基础信息。",
+    "sourceConversation": "对话生成",
     "fetchButton": "获取工具"
   },
   "knowledge": {
