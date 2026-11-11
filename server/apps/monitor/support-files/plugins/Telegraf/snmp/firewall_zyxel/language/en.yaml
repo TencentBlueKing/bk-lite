@@ -140,10 +140,7 @@ monitor_object_metric:
         load.
     device_memory_usage:
       name: Memory Usage
-      desc: This metric reports the overall memory utilization of the Zyxel ZLD security
-        gateway (ZYXEL private MIB sysRAMUsage), reported directly as a 0-100 percentage.
-        No used/total byte OIDs are exposed, so utilization is not derived from byte
-        counters. High memory pressure can degrade session-handling performance.
+      desc: This metric reports the overall memory utilization of the Zyxel ZLD security gateway (ZYXEL private MIB sysRAMUsage), reported directly as a 0-100 percentage. High memory pressure can degrade session-handling performance.
     device_memory_total:
       name: Total Memory
       desc: This metric reports the total physical memory capacity of the FortiGate

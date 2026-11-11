@@ -59,7 +59,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Memory utilization of the EAGLE mGuard firewall, computed from hmMemoryAllocated and hmMemoryFree as allocated / (allocated + free)."
+      "description": "Memory utilization of the EAGLE mGuard firewall."
     },
     {
       "metric_group": "Firewall",

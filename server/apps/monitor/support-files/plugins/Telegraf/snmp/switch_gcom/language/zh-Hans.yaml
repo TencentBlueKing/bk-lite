@@ -20,12 +20,10 @@ monitor_object_metric:
         位计数器可避免 32 位 ifOutOctets 在高速口上回绕。
     device_cpu_usage:
       name: CPU 使用率
-      desc: GCOM 以太网交换机的 CPU 使用率（0-100），在 gbnPlatformOAMSystem cpuIdle 读数位于 0-100 时按
-        100 减去空闲百分比计算。持续偏高可能表示控制平面过载。
+      desc: GCOM 以太网交换机的 CPU 使用率（0-100）。持续偏高可能表示控制平面过载。
     device_memory_usage:
       name: 内存使用率
-      desc: GCOM 以太网交换机的内存使用率（0-100），在总量为正且空闲读数合法时按 (memorySize - memoryIdle) / memorySize
-        x 100 计算。持续偏高表示设备内存承压。
+      desc: GCOM 以太网交换机的内存使用率（0-100）。持续偏高表示设备内存承压。
     device_memory_used:
       name: 内存已用量
       desc: GCOM 以太网交换机已使用内存，单位字节，由 gbnPlatformOAMSystem memorySize 减去 memoryIdle 得到。与空闲量和总量一起反映整机内存占用。

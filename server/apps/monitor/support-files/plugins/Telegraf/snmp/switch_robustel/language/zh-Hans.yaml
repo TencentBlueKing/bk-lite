@@ -24,7 +24,7 @@ monitor_object_metric:
       desc: 该指标表示 Robustel MG460 工业交换机当前已使用的物理内存（rosSysutilStatusMemoryUsedKb，已从 KB 换算为字节）。
     device_memory_usage:
       name: 内存使用率
-      desc: 该指标表示 Robustel MG460 工业交换机整体内存使用率，按 已用/总量*100 计算。持续偏高可能由内存泄漏、MAC/ARP 表过大或容量不足导致。
+      desc: Robustel MG460 工业交换机整体内存使用率。持续偏高可能由内存泄漏、MAC/ARP 表过大或容量不足导致。
     device_temperature_celsius:
       name: 温度
       desc: 该指标表示 Robustel MG460 工业交换机各 ROS-SYSUTIL 温度传感器读数，单位为摄氏度。索引 board=0 / junction=1。持续偏高可能意味着散热不良或环境过热。

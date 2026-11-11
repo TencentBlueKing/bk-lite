@@ -11,9 +11,7 @@ monitor_object_metric:
   Access:
     snmp_uptime:
       name: System Uptime
-      desc: This metric indicates the uptime of the device since the last restart, derived from sysUpTime.
-        Monitoring uptime helps administrators understand device stability and identify unexpected reboots
-        or failures.
+      desc: This metric indicates the uptime of the device since the last restart, derived from sysUpTime. Monitoring uptime helps administrators understand device stability and identify unexpected reboots or failures.
     device_board_cpu_usage:
       name: Board CPU Usage
       desc: CPU utilization of each board in percent. Sustained high usage indicates control-plane or

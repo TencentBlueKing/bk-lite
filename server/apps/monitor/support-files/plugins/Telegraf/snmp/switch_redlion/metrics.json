@@ -29,7 +29,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric reports the power-supply health of the Red Lion / N-Tron device, derived from the private dual power-input status object (ntronPowerFault). The raw codes (1=faultNone meaning both inputs OK, 2=faultPower1 meaning input 1 lost, 3=faultPower2 meaning input 2 lost) are normalized via telegraf processors.enum so that 1 = healthy and 2 = fault. A value greater than 1 indicates a lost power input that warrants investigation."
+      "description": "This metric reports the power-supply health of the Red Lion / N-Tron device. The raw codes (1=faultNone meaning both inputs OK, 2=faultPower1 meaning input 1 lost, 3=faultPower2 meaning input 2 lost) are normalized via telegraf processors.enum so that 1 = healthy and 2 = fault. A value greater than 1 indicates a lost power input that warrants investigation."
     },
     {
       "metric_group": "Traffic",
