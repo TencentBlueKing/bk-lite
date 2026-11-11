@@ -117,7 +117,9 @@ exemplars，直方图单位是 `ms`，桶从 `5ms` 到 `10000ms`。资源分组�
 `service.instance.id` 只产生一组序列。`aggregation_cardinality_limit` 默认 500，按每服务资源计算
 （命名空间 + 服务名 + 环境），不是全局。大约相当于 166 个入口操作乘 3 种状态。超出的组合并进一条
 `otel.metric.overflow=true` 序列。这条序列只有该标记，不再带服务名、环境和操作名；`job` 仍是
-「命名空间/服务名」。Server 查询仍按服务名和环境，不改成按 `job`。
+「命名空间/服务名」。Server 批量读取用 `job` 精确收窄到已授权服务，同时要求 `service_name` 非空。
+溢出序列仍不计入任何服务的 RED。按服务和环境分组的口径不变。Server 用 POST 查询，单条查询低于
+16 KiB，不要把 `-search.maxQueryLen` 调小。
 
 `series_expiration` 默认 1 小时（`APM_AGG_SERIES_EXPIRATION`）。一条序列这么久没有新 Span，就从聚合进程
 内存删掉，组合名额释放给后来的接口。再出现时计数从 0 开始，`increase()` 按计数器重置处理。这不是按服务资源

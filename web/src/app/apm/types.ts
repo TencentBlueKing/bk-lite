@@ -64,6 +64,7 @@ export type ApmServiceRedBatchItem = ApmServiceRed & {
   ok?: boolean;
   code?: string;
   detail?: string;
+  entry_truncated?: boolean;
 };
 
 export interface ApmServiceRedPoint {
@@ -271,9 +272,15 @@ export interface ApmDashboardReleaseRow {
   source?: ApmDeploymentSource;
 }
 
+export interface ApmAggregateNotice {
+  late_spans: number | null;
+  truncated_service_count: number;
+}
+
 export interface ApmDashboard {
   empty: boolean;
   window: ApmTimeWindow;
+  aggregate_notice?: ApmAggregateNotice | null;
   kpis: ApmDashboardSection<ApmDashboardKpiData>;
   health: ApmDashboardSection<ApmDashboardHealthData>;
   slos: ApmDashboardSection<{ items: ApmDashboardSloRow[] }>;

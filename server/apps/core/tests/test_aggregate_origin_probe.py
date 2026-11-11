@@ -159,7 +159,7 @@ def test_http_probe_failure_logs_one_traceback_without_credentials_or_body(monke
         def __init__(self):
             self.auth = None
 
-        def get(self, url, **kwargs):
+        def post(self, url, **kwargs):
             self.auth = kwargs.get("auth")
             return _Response()
 
