@@ -29,7 +29,7 @@ error:
   provider_config_must_be_object: "Provider 配置必须是对象"
   query_timeout_must_be_int: "query_timeout_seconds 必须是整数"
   query_timeout_range: "query_timeout_seconds 必须在 1 到 10 秒之间"
-  owner_fields_invalid: "责任人字段必须是最多 5 个不重复的属性 ID"
+  owner_fields_invalid: "责任人字段必须是最多 5 个不重复的出参名"
   prefer_alert_owner_bool: "优先通知告警责任人必须是布尔值"
   prefer_alert_owner_not_for_escalation: "升级层不支持优先通知告警责任人"
   provider_type_unsupported: "暂不支持的数据源类型"

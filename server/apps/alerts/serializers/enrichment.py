@@ -88,7 +88,7 @@ class EnrichmentRuleModelSerializer(serializers.ModelSerializer):
         cleaned = []
         for item in value:
             name = item.strip() if isinstance(item, str) else ""
-            if not name or not self.NAMESPACE_PATTERN.fullmatch(name) or name in cleaned:
+            if not name or not self.PROJECTION_ALIAS_PATTERN.fullmatch(name) or len(name) > 128 or name in cleaned:
                 raise serializers.ValidationError(serializer_message(self, "error.owner_fields_invalid"))
             cleaned.append(name)
         return cleaned

@@ -114,4 +114,31 @@ describe('告警丰富出参投影', () => {
       expect(screen.getAllByDisplayValue('application.inst_name')).toHaveLength(2)
     );
   });
+
+  it('责任人来源下拉使用出参投影的重命名字段', async () => {
+    render(
+      <OperateModal
+        open
+        onClose={() => undefined}
+        currentRow={{
+          ...baseRow,
+          output_projection: [
+            { source: 'operator' },
+            { source: 'bak_operator', as: 'bak_operator' },
+            { source: 'application.operator', as: 'app_operator' },
+          ],
+          provider_config: { owner_fields: ['app_operator'] },
+        }}
+      />
+    );
+    await waitFor(() => expect(screen.getByDisplayValue('application.operator')).toBeTruthy());
+    fireEvent.mouseDown(screen.getByLabelText('settings.enrichmentOwnerFields'));
+    expect(await screen.findByText('operator', { selector: '.ant-select-item-option-content' })).toBeTruthy();
+    expect(screen.getByText('bak_operator', { selector: '.ant-select-item-option-content' })).toBeTruthy();
+    expect(
+      screen.getByText('app_operator (application.operator)', {
+        selector: '.ant-select-item-option-content',
+      })
+    ).toBeTruthy();
+  });
 });
