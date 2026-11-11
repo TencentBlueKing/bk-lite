@@ -1,13 +1,18 @@
 import pytest
 
-from apps.alerts.constants.init_data import BUILTIN_ENRICHMENT_RULES
+from apps.alerts.constants.init_data import BUILTIN_CMDB_OUTPUT_PROJECTION, BUILTIN_CMDB_OWNER_FIELDS, BUILTIN_ENRICHMENT_RULES
 
 
 def test_builtin_cmdb_preset_shape():
     rule = next(r for r in BUILTIN_ENRICHMENT_RULES if r["provider_type"] == "cmdb")
+    sources = [item["source"] for item in rule["output_projection"]]
     assert rule["preset_key"] == "builtin_cmdb_resource"
     assert rule["input_binding"] == {"model_id": "resource_type", "inst_uuid": "cmdb_id"}
-    assert rule["output_projection"]
+    assert sources == [item["source"] for item in BUILTIN_CMDB_OUTPUT_PROJECTION]
+    assert "business_system" not in sources
+    assert "owner" not in sources
+    assert rule["provider_config"]["owner_fields"] == list(BUILTIN_CMDB_OWNER_FIELDS)
+    assert set(BUILTIN_CMDB_OWNER_FIELDS).issubset(set(sources))
     assert rule["on_multiple"] == "first"
     assert rule["is_active"] is True
 
@@ -20,6 +25,9 @@ def test_init_enrichment_rules_upsert_idempotent():
     init_enrichment_rules()
     init_enrichment_rules()  # second call must not duplicate
     assert EnrichmentRule.objects.filter(name="内置-CMDB资源丰富").count() == 1
+    rule = EnrichmentRule.objects.get(preset_key="builtin_cmdb_resource")
+    assert [item["source"] for item in rule.output_projection] == [item["source"] for item in BUILTIN_CMDB_OUTPUT_PROJECTION]
+    assert rule.provider_config["owner_fields"] == list(BUILTIN_CMDB_OWNER_FIELDS)
 
 
 @pytest.mark.django_db

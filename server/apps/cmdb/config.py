@@ -41,4 +41,8 @@ CELERY_BEAT_SCHEDULE = {
         "task": "apps.cmdb.tasks.celery_tasks.reconcile_auto_relation_pending_task",
         "schedule": crontab(minute="*/5"),
     },
+    "reconcile_ci_context_pending_task": {
+        "task": "apps.cmdb.tasks.ci_context.reconcile_ci_context_pending_task",
+        "schedule": crontab(minute="*/5"),
+    },
 }
