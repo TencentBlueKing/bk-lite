@@ -458,6 +458,25 @@ class TestInjectPageContext:
 
 
 class TestStreamPageContext:
+    def test_auto_mode_is_preserved_when_page_context_prefixes_the_message(self):
+        skill = _skill()
+        channel = _channel(skill)
+        user = _superuser("auto_page")
+        page_context = {"sections": [{"id": "integration-config", "label": "接入配置", "content": "插件: Host", "priority": 9}]}
+        with _patched_stream() as mock_stream, patch(
+            "apps.opspilot.services.skill_channel_chat_service.capture_caller_identity",
+            return_value={"username": "auto_page", "domain": "domain.com", "team_id": 1},
+        ):
+            chat_svc.stream_skill_channel_chat(
+                channel=channel,
+                user_message="/auto community 是什么",
+                request=_stream_request(user),
+                external_user_id="auto@domain.com",
+                session_id="sess-auto-page",
+                page_context=page_context,
+            )
+        assert mock_stream.call_args.args[0]["unattended"] is True
+
     def test_injects_into_llm_params_but_persists_plain_text(self):
         skill = _skill()
         ch = _channel(skill)

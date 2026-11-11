@@ -3125,6 +3125,7 @@ ATTR:
   fusioncompute:
     inst_name: 实例名
     organization: 组织
+    endpoint: 平台地址
     tag: 标签
   fusioncompute_host:
     inst_name: 实例名
@@ -3249,6 +3250,7 @@ ATTR:
   inspurincloudrail:
     inst_name: 实例名
     organization: 组织
+    endpoint: 平台地址
     tag: 标签
   inspurincloudrail_vm:
     inst_name: 实例名
@@ -3311,6 +3313,7 @@ ATTR:
   nutanixhci:
     inst_name: 实例名
     organization: 组织
+    endpoint: 平台地址
     tag: 标签
   nutanixhci_host:
     inst_name: 实例名

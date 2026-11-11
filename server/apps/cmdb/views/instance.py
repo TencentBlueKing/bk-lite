@@ -1165,14 +1165,31 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
         if permission_error:
             return permission_error
 
-        asso_insts = InstanceManage.instance_association_instance_list_by_uuid(
-            model_id,
-            inst_uuid,
-            business_only=True,
-            language=request.user.locale,
-        )
-        for group in asso_insts:
-            group["inst_list"] = [self._transport_instance(item) for item in group.get("inst_list", [])]
+        summary = request.GET.get("summary") in {"1", "true", "True"}
+        model_asst_id = request.GET.get("model_asst_id") or None
+        endpoints_only = request.GET.get("endpoints") in {"1", "true", "True"}
+        try:
+            page = int(request.GET.get("page") or 1)
+            page_size = int(request.GET.get("page_size") or 20)
+        except (TypeError, ValueError):
+            return WebUtils.response_error("分页参数不正确", status_code=status.HTTP_400_BAD_REQUEST)
+        try:
+            asso_insts = InstanceManage.instance_association_instance_list_by_uuid(
+                model_id,
+                inst_uuid,
+                business_only=True,
+                language=request.user.locale,
+                summary=summary,
+                model_asst_id=model_asst_id,
+                page=page,
+                page_size=page_size,
+                endpoints_only=endpoints_only,
+            )
+        except BaseAppException as exc:
+            return WebUtils.response_error(exc.message, status_code=status.HTTP_400_BAD_REQUEST)
+        if not endpoints_only:
+            for group in asso_insts:
+                group["inst_list"] = [self._transport_instance(item) for item in group.get("inst_list", [])]
         return WebUtils.response_success(asso_insts)
 
     @action(

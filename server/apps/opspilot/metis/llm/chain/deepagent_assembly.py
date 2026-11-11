@@ -15,16 +15,11 @@ from apps.opspilot.metis.llm.agent.tool_execution_planner import (
 )
 from apps.opspilot.metis.llm.chain.entity import HIDE_PLANNED_STEP_TEXT_KEY
 from apps.opspilot.metis.llm.common.tool_failure import is_tool_result_failure
-from apps.opspilot.services.conversation_skill_package import (
-    PREPARE_CONVERSATION_SKILL_PACKAGE_TOOL,
-    skill_package_request_needs_planner,
-)
+from apps.opspilot.services.conversation_skill_package import PREPARE_CONVERSATION_SKILL_PACKAGE_TOOL, skill_package_request_needs_planner
 from apps.opspilot.services.ppt_master_runtime import PPT_AUTHORING_MIN_MODEL_CALLS, execution_guidance, is_ppt_master_package
 
 # HITL/选择卡、常驻附件和技能包成稿会进目录，但不算业务工具：无业务工具的寒暄仍走轻量直答。
-_LIGHTWEIGHT_NON_BUSINESS_TOOL_NAMES = frozenset(
-    {"request_user_choice", "generate_attachment_file", PREPARE_CONVERSATION_SKILL_PACKAGE_TOOL}
-)
+_LIGHTWEIGHT_NON_BUSINESS_TOOL_NAMES = frozenset({"request_user_choice", "generate_attachment_file", PREPARE_CONVERSATION_SKILL_PACKAGE_TOOL})
 
 # 步间正文上限。结构化关键字段单独保留，避免被正文或 400 字切片切掉。
 _STEP_SUMMARY_MAX_CHARS = 1200
@@ -641,6 +636,7 @@ class DeepAgentAssemblyMixin:
         is_last_step: bool = False,
         user_message: str = "",
         agent_system_prompt: str = "",
+        unattended: bool = False,
     ) -> str:
         """业务工具步：与技能步共用停手契约，但不收掉本步多个计划工具。"""
         if is_last_step:
@@ -654,13 +650,19 @@ class DeepAgentAssemblyMixin:
                 "用户问按重启时间排序或最近重启的 Pod 时，以 last_restart_time 为准，禁止按累计 restart_count 排序。"
                 "已知具体 Pod 的重启原因时，优先看 last_state 和 previous 日志。"
             )
+        object_choice = "空列表且对象类型不明确时，说明范围不确定，不要当成查无此实例。" if unattended else "空列表且用户未确认对象类型时，必须 request_user_choice 让用户选择类型，不要当成查无此实例。"
+        metric_choice = (
+            "只命中一个 name 时直接查；多个候选时根据任务范围选择或说明不确定，没命中可换 keyword。"
+            if unattended
+            else "只命中一个 name 时直接查；没命中或命中多个时 request_user_choice 让用户选，不要逐个查。没命中可以换 keyword。"
+        )
         return (
             "【工具执行】只调用本步骤计划/可见工具。"
             "未计划工具会被拒绝，不要改调其他工具，也不要当作步骤失败去重规划。"
             "工具已返回结构化结果（含空列表）即不要把空当失败反复换参。"
             "monitor_list_object_instances 的 monitor_obj_id 只能来自 monitor_list_objects；"
             "每个 obj_id 只调用一次，禁止猜测/递增 ID，禁止截断主机名按台循环。"
-            "空列表且用户未确认对象类型时，必须 request_user_choice 让用户选择类型，不要当成查无此实例。"
+            f"{object_choice}"
             "用户已声明主机/Pod/中间件时不要再问类型，直接用对应对象 id。"
             "查未关闭/未分派工单用 alerts_*；查某台主机是否还在告时，"
             "若本步可见 monitor_list_active_alerts，须同时查监控策略活跃告警（可用主机名/IP），"
@@ -668,7 +670,7 @@ class DeepAgentAssemblyMixin:
             "monitor_query_metric_data 的 metric 必须来自本步 monitor_list_object_metrics 返回的 name；"
             "先 list_object_metrics，keyword 用用户原文里的指标名或指标说法，用户已写出指标名时不要改成类别词。"
             "禁止使用目录里没有的指标名。"
-            "只命中一个 name 时直接查；没命中或命中多个时 request_user_choice 让用户选，不要逐个查。没命中可以换 keyword。"
+            f"{metric_choice}"
             "monitor_query_metric_data 的 instance_ids 必须原样复制 list_object_instances 返回记录的 instance_id 字段，"
             "禁止用 name、IP、id、cmdb_id，禁止用 CMDB 的 inst_id、inst_uuid、_id，禁止传负数。"
             "问全部实例的趋势、未来一段时间会不会超阈值时，用 monitor_summarize_metric_trend，"
@@ -687,7 +689,7 @@ class DeepAgentAssemblyMixin:
             "工具抛出 AttributeError/TypeError 等实现异常时不要重试，把错误告诉用户。"
             "403 仅在可换 namespace 或实例时最多改参 1 次，否则把权限错误告诉用户。"
             "工具返回 Missing parameters、缺少必要参数或 metric/search/monitor_obj_id is required 时，"
-            "必须立即调用 request_user_choice 向用户澄清缺失项；"
+            f"{('先从上下文和工具证据补齐，无法确定时说明缺失项；' if unattended else '必须立即调用 request_user_choice 向用户澄清缺失项；')}"
             "禁止编造 uvx/CLI/白名单替代方案，禁止换其他工具盲猜。"
             "本步已用 CMDB 或监控列出主机后，不要再调另一数据源做「查不到再查」的兜底。"
             f"{tail}"
@@ -747,7 +749,7 @@ class DeepAgentAssemblyMixin:
         # ppt 要读 SKILL.md、写页面再多次执行脚本，不能沿用「只留 execute、读文件即停」的查询技能模式。
         if skill_sources and (not skills_only_plan or ppt_authoring):
             always_visible |= set(PLANNED_EXECUTION_ALWAYS_VISIBLE_FS_TOOLS)
-        if skills_only_plan or ppt_authoring:
+        if skill_sources:
             hidden_tools.discard("execute")
             always_visible.add("execute")
         always_visible |= {
@@ -770,13 +772,13 @@ class DeepAgentAssemblyMixin:
         from apps.opspilot.metis.llm.agent.tool_execution_planner import planned_execution_compact_limits_for_request
         from apps.opspilot.metis.llm.common.token_usage import TokenUsageAccumulator
         from apps.opspilot.metis.llm.middleware.context_window import ContextWindowMiddleware
+        from apps.opspilot.metis.llm.middleware.conversation_skill_package import ConversationSkillPackageMiddleware
         from apps.opspilot.metis.llm.middleware.planned_execution_limits import (
             PlannedExecutionLimitMiddleware,
             resolve_planned_execution_run_model_call_limit,
             resolve_planned_execution_soft_budget_ratio,
             resolve_planned_execution_token_budget,
         )
-        from apps.opspilot.metis.llm.middleware.conversation_skill_package import ConversationSkillPackageMiddleware
         from apps.opspilot.metis.llm.middleware.terminal_user_choice import TerminalUserChoiceMiddleware
         from apps.opspilot.metis.llm.middleware.token_usage import TokenUsageTrackingMiddleware
         from apps.opspilot.metis.llm.middleware.tool_result_locale import ToolResultLocaleMiddleware

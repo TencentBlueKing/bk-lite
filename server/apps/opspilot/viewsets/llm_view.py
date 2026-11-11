@@ -565,6 +565,10 @@ class LLMViewSet(PinMixin, AuthViewSet):
             # 合并前端传入的 skill_params 和 DB 中的值（处理 ****** 掩码）
 
             params["skill_params"] = merge_skill_params(params.get("skill_params", []), skill_obj.skill_params or [])
+            from apps.opspilot.services.chat_attachment_service import load_sendable_attachments
+            from apps.opspilot.services.python_sandbox.attachments import ATTACHMENT_GRANT_KEY, issue_attachment_grant
+
+            params.pop(ATTACHMENT_GRANT_KEY, None)
             raw_attachment_ids = params.pop("attachment_ids", None)
             if raw_attachment_ids:
                 llm_model = LLMModel.objects.filter(id=params.get("llm_model")).first()
@@ -575,6 +579,13 @@ class LLMViewSet(PinMixin, AuthViewSet):
                         owner_key=saas_external_user_id(request.user),
                         team_id=str(get_current_team(request, "0")),
                         llm_model=llm_model,
+                    )
+                    params[ATTACHMENT_GRANT_KEY] = issue_attachment_grant(
+                        owner_key=saas_external_user_id(request.user),
+                        team_id=str(get_current_team(request, "0")),
+                        attachments=load_sendable_attachments(
+                            raw_attachment_ids, saas_external_user_id(request.user), str(get_current_team(request, "0"))
+                        ),
                     )
                 except ChatAttachmentError as exc:
                     return self.create_error_stream_response(exc.message)

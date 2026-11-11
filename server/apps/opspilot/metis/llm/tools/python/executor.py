@@ -4,7 +4,6 @@ from io import StringIO
 
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
-from apps.core.logger import opspilot_logger as logger
 
 # BL-NEW-001：扩充危险内建黑名单。仅靠 SAFE_BUILTINS 白名单 + 屏蔽 import 不足以
 # 防住沙箱逃逸——这些内建函数可用于反射取属性、读全局命名空间、动态编译/执行或读写
@@ -147,21 +146,21 @@ def _execute_python_code(code: str) -> str:
 
 @tool(parse_docstring=True)
 def python_execute_direct(code: str, config: RunnableConfig) -> str:
-    """
-    直接执行Python代码的工具,不允许执行高危的、恶意的代码，不允许执行系统命令,不允许查看涉密信息。
+    """在隔离容器中执行 Python，可使用标准库、已安装的库和 /workspace 下的文件。
 
     Args:
-        code: 被执行的python代码
+        code: 被执行的 Python 代码
 
     Returns:
         执行结果
     """
-    try:
-        logger.info(f"Python直接执行工具执行代码:{code}")
-        final_result = _execute_python_code(code)
-        logger.info(f"Python直接执行工具执行结果:{final_result}")
-        return final_result
+    from apps.opspilot.services.python_sandbox.runtime import SandboxUnavailable
 
-    except Exception as e:
-        logger.error(f"Python直接执行工具执行失败:{e}")
-        return f"Python直接执行工具执行失败:{e}"
+    configurable = (config or {}).get("configurable", {})
+    sandbox = configurable.get("python_sandbox")
+    if sandbox is None:
+        return "Python 隔离环境不可用：当前任务没有配置沙箱"
+    try:
+        return sandbox.execute(code)
+    except SandboxUnavailable:
+        return "Python 隔离环境不可用，请检查 Docker 和沙箱镜像配置"

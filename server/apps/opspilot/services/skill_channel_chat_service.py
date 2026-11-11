@@ -24,7 +24,6 @@ from apps.opspilot.metis.llm.chain.token_utils import count_text_tokens
 from apps.opspilot.metis.llm.common.llm_client_factory import DEFAULT_CHAT_TEMPERATURE
 from apps.opspilot.models import ChatAttachment, LLMSkill, SkillChannel, SkillConversation, SkillConversationMessage
 from apps.opspilot.services.caller_identity import CALLER_IDENTITY_CONFIG_KEY, CallerIdentityError, capture_caller_identity
-from apps.opspilot.services.conversation_skill_package import AUTHORING_EXTRA_KEY, authoring_context
 from apps.opspilot.services.chat_attachment_service import (
     ChatAttachmentError,
     attachment_token_budget,
@@ -34,6 +33,7 @@ from apps.opspilot.services.chat_attachment_service import (
     load_sendable_attachments,
     normalize_attachment_ids,
 )
+from apps.opspilot.services.conversation_skill_package import AUTHORING_EXTRA_KEY, authoring_context
 from apps.opspilot.services.history_service import HistoryService
 from apps.opspilot.services.job_output_text import model_visible_text
 from apps.opspilot.services.ppt_master_runtime import remove_conversation_workspace
@@ -58,6 +58,7 @@ from apps.opspilot.services.wiki.parsed_media_service import (
 )
 from apps.opspilot.services.workflow_attachment_service import refresh_attachment_download_urls
 from apps.opspilot.utils.agui_chat import stream_agui_chat
+from apps.opspilot.utils.auto_mode import parse_auto_command
 from apps.opspilot.utils.prompt_utils import merge_skill_params
 from apps.opspilot.utils.skill_execution_params import resolve_request_tools
 from apps.opspilot.utils.sse_chat import create_error_stream_response
@@ -190,6 +191,8 @@ def get_or_create_conversation(channel: SkillChannel, external_user_id: str, ses
     if session_id:
         conv = SkillConversation.objects.select_related("channel", "skill", "skill__memory_space").filter(session_id=session_id).first()
         if conv:
+            if conv.channel_id is None:
+                raise SkillChannelChatError("无权使用该会话", status=403)
             if (conv.external_user_id or "") != (external_user_id or ""):
                 raise SkillChannelChatError("无权使用该会话", status=403)
             if conv.skill_id != channel.skill_id:
@@ -936,7 +939,7 @@ def list_skill_conversations_for_admin(
                 "title": (conv.title or "").strip() or "新会话",
                 "skill_id": conv.skill_id,
                 "channel_id": conv.channel_id,
-                "channel_type": channel.channel_type if channel else "",
+                "channel_type": channel.channel_type if channel else ("workflow" if conv.session_id.startswith("workflow_") else "workbench"),
                 "channel_name": (channel.name if channel else "") or "",
                 "external_user_id": external_user_id,
                 "person_display": displays.get(external_user_id) or external_user_id,
@@ -961,7 +964,7 @@ def get_skill_session_messages_for_admin(*, session_id: str) -> tuple[list[dict]
 
 
 def list_skill_conversations_for_user(*, skill_id: int, external_user_id: str, channel_id: int | None = None) -> list[dict]:
-    qs = SkillConversation.objects.filter(skill_id=skill_id, external_user_id=external_user_id, is_active=True)
+    qs = SkillConversation.objects.filter(skill_id=skill_id, external_user_id=external_user_id, is_active=True, channel__isnull=False)
     if channel_id is not None:
         qs = qs.filter(channel_id=channel_id)
     qs = annotate_pending_memory_rounds(qs.select_related("channel", "skill", "skill__memory_space").order_by("-updated_at", "-id"))
@@ -985,7 +988,11 @@ def list_skill_conversations_for_user(*, skill_id: int, external_user_id: str, c
 
 
 def _owned_skill_conversation(*, session_id: str, external_user_id: str) -> SkillConversation:
-    conv = SkillConversation.objects.filter(session_id=session_id, is_active=True).select_related("channel", "skill", "skill__llm_model").first()
+    conv = (
+        SkillConversation.objects.filter(session_id=session_id, is_active=True, channel__isnull=False)
+        .select_related("channel", "skill", "skill__llm_model")
+        .first()
+    )
     if not conv:
         raise SkillChannelChatError("会话不存在", status=404)
     if (conv.external_user_id or "") != (external_user_id or ""):
@@ -1110,7 +1117,7 @@ def get_skill_session_history(*, session_id: str, external_user_id: str) -> tupl
 
 
 def delete_skill_session(*, session_id: str, external_user_id: str, keep_memory: bool = False) -> None:
-    conv = SkillConversation.objects.select_related("skill", "skill__memory_space").filter(session_id=session_id).first()
+    conv = SkillConversation.objects.select_related("skill", "skill__memory_space").filter(session_id=session_id, channel__isnull=False).first()
     if not conv:
         raise SkillChannelChatError("会话不存在", status=404)
     if (conv.external_user_id or "") != (external_user_id or ""):
@@ -1449,6 +1456,10 @@ def execute_skill_channel_im_sync(
     inject_skill_memory_prompt(params, skill, external_user_id, user_message)
     params["chat_history"] = _history_from_conversation(conversation, skill.conversation_window_size or 10)
     params["skill_session_id"] = conversation.session_id
+    from apps.opspilot.services.python_sandbox.attachments import ATTACHMENT_GRANT_KEY, issue_attachment_grant
+
+    params[ATTACHMENT_GRANT_KEY] = issue_attachment_grant(owner_key=external_user_id, team_id="", conversation=conversation)
+
     result = chat_service.chat(params)
     content = ""
     if isinstance(result, dict):
@@ -1501,6 +1512,8 @@ def stream_skill_channel_chat(
 
     user = identity_user or request.user
     params = build_skill_chat_params(skill, persist_text, user)
+    if parse_auto_command(persist_text)[0]:
+        params["unattended"] = True
     page_loader = getattr(request, "opspilot_language_loader", None)
     if page_loader is not None:
         params["locale"] = page_loader.default_lang
@@ -1522,6 +1535,14 @@ def stream_skill_channel_chat(
         per_file_cap=token_budget,
     )
     params["skill_session_id"] = conversation.session_id
+    from apps.opspilot.services.python_sandbox.attachments import ATTACHMENT_GRANT_KEY, issue_attachment_grant
+
+    params[ATTACHMENT_GRANT_KEY] = issue_attachment_grant(
+        owner_key=external_user_id,
+        team_id=str(get_current_team(request, "0")),
+        conversation=conversation,
+        attachments=attachments,
+    )
     focused_titles = _focused_titles_from_page_context(persist_text, page_context)
     params["chat_history"] = _history_for_focused_charts(params["chat_history"], focused_titles)
     params["user_message"] = inject_page_context(injected_message, page_context, mode="inline")

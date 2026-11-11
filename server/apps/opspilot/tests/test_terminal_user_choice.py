@@ -85,6 +85,27 @@ def test_guard_rejection_does_not_end_run(monkeypatch):
     assert middleware.after_model(state, _Runtime({})) is None
 
 
+def test_unattended_choice_does_not_create_pending_question():
+    middleware = TerminalUserChoiceMiddleware()
+    state = {
+        "messages": [
+            AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "id": "choice",
+                        "name": "request_user_choice",
+                        "args": {"question": "选哪个", "question_type": "single_select", "options": ["a", "b"]},
+                    }
+                ],
+            )
+        ]
+    }
+    runtime = _Runtime({"thread_id": "unattended", "graph_request": SimpleNamespace(extra_config={"unattended": True})})
+    assert middleware.after_model(state, runtime) is None
+    assert consume_pending_question("thread:unattended") is None
+
+
 def test_choice_tool_description_mentions_turn_end():
     from apps.opspilot.metis.llm.chain.approval_tools import ApprovalToolsMixin
 
