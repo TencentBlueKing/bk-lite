@@ -24,6 +24,55 @@ const DEFAULT_MATCH_RULES = [
   [{ key: 'title', operator: 'eq', value: '' }],
 ];
 
+function followSourceAlias(source: string, currentAs: string, previousSource: string) {
+  if (!currentAs || currentAs === previousSource) return source;
+  return currentAs;
+}
+
+interface ContextFieldOptionGroup {
+  label: string;
+  options: { value: string; label: string }[];
+}
+
+const ProjectionSourceAutoComplete: React.FC<{
+  value?: string;
+  onChange?: (value: string) => void;
+  aliasIndex: number;
+  options: ContextFieldOptionGroup[];
+  placeholder?: string;
+}> = ({ value, onChange, aliasIndex, options, placeholder }) => {
+  const form = Form.useFormInstance();
+  return (
+    <AutoComplete
+      allowClear
+      value={value}
+      options={options}
+      placeholder={placeholder}
+      style={{ width: 280 }}
+      filterOption={(input, option) => {
+        const q = input.toLowerCase();
+        const candidate = option as { value?: string; label?: unknown } | undefined;
+        return (
+          String(candidate?.value ?? '').toLowerCase().includes(q) ||
+          String(candidate?.label ?? '').toLowerCase().includes(q)
+        );
+      }}
+      onChange={(nextValue) => {
+        const next = String(nextValue || '');
+        const previous = String(value || '');
+        onChange?.(next);
+        const currentAs = String(
+          form.getFieldValue(['output_projection', aliasIndex, 'as']) || ''
+        );
+        form.setFieldValue(
+          ['output_projection', aliasIndex, 'as'],
+          followSourceAlias(next, currentAs, previous)
+        );
+      }}
+    />
+  );
+};
+
 const OperateModal: React.FC<OperateModalProps> = ({
   open,
   onClose,
@@ -36,7 +85,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
   const [submitLoading, setSubmitLoading] = useState(false);
   const [filterType, setFilterType] = useState<'all' | 'filter'>('all');
   const [contextFieldOptions, setContextFieldOptions] = useState<
-    { label: string; options: { value: string; label: string }[] }[]
+    ContextFieldOptionGroup[]
   >([]);
   const isEdit = !!currentRow;
 
@@ -62,7 +111,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
         ),
         output_projection: (currentRow.output_projection || []).map((p) => ({
           source: p.source,
-          as: p.as || '',
+          as: p.as || p.source || '',
         })),
         owner_fields: currentRow.provider_config?.owner_fields?.length
           ? currentRow.provider_config.owner_fields
@@ -81,7 +130,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
           { param: 'model_id', field: 'resource_type' },
           { param: 'inst_uuid', field: 'resource_id' },
         ],
-        output_projection: [{ source: 'owner', as: '' }],
+        output_projection: [{ source: 'owner', as: 'owner' }],
         owner_fields: ['operator'],
       });
     }
@@ -302,22 +351,10 @@ const OperateModal: React.FC<OperateModalProps> = ({
                       rules={[{ required: true, message: t('common.inputTip') }]}
                       noStyle
                     >
-                      <AutoComplete
-                        allowClear
+                      <ProjectionSourceAutoComplete
+                        aliasIndex={name}
                         options={contextFieldOptions}
                         placeholder={t('settings.enrichmentProjSource')}
-                        style={{ width: 280 }}
-                        filterOption={(input, option) => {
-                          const q = input.toLowerCase();
-                          const label = String(option?.label ?? '');
-                          const value = String(
-                            (option as { value?: string } | undefined)?.value ?? ''
-                          );
-                          return (
-                            label.toLowerCase().includes(q) ||
-                            value.toLowerCase().includes(q)
-                          );
-                        }}
                       />
                     </Form.Item>
                     <Form.Item {...rest} name={[name, 'as']} noStyle>

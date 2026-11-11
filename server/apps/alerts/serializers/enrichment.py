@@ -29,6 +29,7 @@ class EnrichmentRuleModelSerializer(serializers.ModelSerializer):
     }
     MATCH_OPERATORS = {"eq", "ne", "contains", "not_contains", "re", "in", "not_in"}
     NAMESPACE_PATTERN = re.compile(r"^[A-Za-z][A-Za-z0-9_]{0,63}$")
+    PROJECTION_ALIAS_PATTERN = re.compile(r"^[A-Za-z][A-Za-z0-9_]{0,63}(?:\.[A-Za-z][A-Za-z0-9_]{0,63}){0,3}$")
 
     def validate_input_binding(self, value):
         if not isinstance(value, dict):
@@ -50,7 +51,7 @@ class EnrichmentRuleModelSerializer(serializers.ModelSerializer):
             if not isinstance(item, dict) or not str(item.get("source") or "").strip():
                 raise serializers.ValidationError(serializer_message(self, "error.projection_missing_source"))
             alias = str(item.get("as") or item["source"]).strip()
-            if not self.NAMESPACE_PATTERN.fullmatch(alias):
+            if not self.PROJECTION_ALIAS_PATTERN.fullmatch(alias) or len(alias) > 128:
                 raise serializers.ValidationError(serializer_message(self, "error.projection_alias_invalid", alias=alias))
             if alias in aliases:
                 raise serializers.ValidationError(serializer_message(self, "error.projection_alias_duplicate", alias=alias))
