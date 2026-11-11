@@ -72,6 +72,64 @@ def test_serializer_accepts_cmdb_id_input_binding():
     assert binding == {"model_id": "resource_type", "inst_uuid": "cmdb_id"}
 
 
+def test_serializer_accepts_dotted_projection_alias():
+    from apps.alerts.serializers.enrichment import EnrichmentRuleModelSerializer
+
+    serializer = EnrichmentRuleModelSerializer()
+    dotted = [{"source": "application.inst_name"}]
+    renamed = [{"source": "application.operator", "as": "application.operator"}]
+    custom = [{"source": "application.inst_name", "as": "app_name"}]
+    assert serializer.validate_output_projection(dotted) == dotted
+    assert serializer.validate_output_projection(renamed) == renamed
+    assert serializer.validate_output_projection(custom) == custom
+
+
+def test_serializer_rejects_invalid_dotted_projection_alias():
+    from rest_framework.exceptions import ValidationError
+
+    from apps.alerts.serializers.enrichment import EnrichmentRuleModelSerializer
+
+    serializer = EnrichmentRuleModelSerializer()
+    for invalid in (
+        [{"source": "application.inst_name", "as": "application."}],
+        [{"source": "application.inst_name", "as": ".operator"}],
+        [{"source": "application.inst_name", "as": "app..name"}],
+        [{"source": "1app.name"}],
+    ):
+        with pytest.raises(ValidationError):
+            serializer.validate_output_projection(invalid)
+
+
+def test_namespace_still_rejects_dots():
+    from rest_framework.exceptions import ValidationError
+
+    from apps.alerts.serializers.enrichment import EnrichmentRuleModelSerializer
+
+    with pytest.raises(ValidationError):
+        EnrichmentRuleModelSerializer().validate_namespace("cmdb.custom")
+
+
+@pytest.mark.django_db
+def test_serializer_persists_dotted_projection_alias():
+    from apps.alerts.serializers.enrichment import EnrichmentRuleModelSerializer
+
+    payload = {
+        "name": "带点出参",
+        "is_active": True,
+        "match_rules": [],
+        "provider_type": "cmdb",
+        "input_binding": {"model_id": "resource_type", "inst_uuid": "resource_id"},
+        "provider_config": {},
+        "output_projection": [{"source": "application.inst_name", "as": "application.inst_name"}],
+        "on_multiple": "first",
+        "namespace": "cmdb",
+    }
+    serializer = EnrichmentRuleModelSerializer(data=payload)
+    assert serializer.is_valid(), serializer.errors
+    obj = serializer.save()
+    assert obj.output_projection == [{"source": "application.inst_name", "as": "application.inst_name"}]
+
+
 # ============================================================
 # Task 2: EnrichmentRuleModelFilter
 # ============================================================
