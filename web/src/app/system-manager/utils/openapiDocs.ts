@@ -3,6 +3,7 @@ import type {
   OpenAPIJsonSchema,
   OpenAPIService,
 } from '@/app/system-manager/api/settings';
+import { resolveAppDisplayName } from '@/utils/appDisplayName';
 
 export const OPENAPI_GATEWAY_PREFIX = '/openapi/v1';
 
@@ -36,7 +37,36 @@ export interface OpenAPIFilterOptions {
   service?: string;
   method?: string;
   kind?: string;
+  serviceLabel?: (service: string) => string;
 }
+
+const OPENAPI_SERVICE_APP_IDS: Record<string, string> = {
+  alerts: 'alarm',
+  apm: 'apm',
+  cmdb: 'cmdb',
+  'job-mgmt': 'job',
+  log: 'log',
+  mlops: 'mlops',
+  monitor: 'monitor',
+  node: 'node',
+  'ops-analysis': 'ops-analysis',
+  'ops-console': 'ops-console',
+  opspilot: 'opspilot',
+  'patch-mgmt': 'patch',
+  rum: 'rum',
+  'system-mgmt': 'system-manager',
+  workflow: 'workflow',
+};
+
+type ServiceTranslate = (id: string, defaultMessage?: string) => string;
+
+export const resolveOpenApiServiceLabel = (service: string, t: ServiceTranslate): string => {
+  const appId = OPENAPI_SERVICE_APP_IDS[service];
+  if (!appId) {
+    return service;
+  }
+  return resolveAppDisplayName({ name: appId, display_name: service, is_build_in: true }, t);
+};
 
 const asSearchText = (parts: Array<string | undefined | null>): string =>
   parts
@@ -112,8 +142,11 @@ export const filterOpenApiRows = (
   const kind = options.kind;
 
   return rows.filter((row) => {
-    if (needle && !row.searchText.includes(needle)) {
-      return false;
+    if (needle) {
+      const label = options.serviceLabel?.(row.service).toLowerCase() ?? '';
+      if (!row.searchText.includes(needle) && !label.includes(needle)) {
+        return false;
+      }
     }
     if (service && service !== 'all' && row.service !== service) {
       return false;
