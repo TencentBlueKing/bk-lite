@@ -110,11 +110,12 @@ class Command(BaseCommand):
             "operation_analysis_orphan_removed": 0,
         }
         self._graph_uuid_by_id = {}
-        try:
-            self._preload_graph_uuids(batch_size)
-        except Exception as exc:
-            # 允许在无图连接的单测中仅通过 query_entity_by_ids 补映射
-            self.stdout.write(self.style.WARNING(f"预加载图 UUID 跳过: {exc}"))
+        if self._oa_graph_preload_required():
+            try:
+                self._preload_graph_uuids(batch_size)
+            except Exception as exc:
+                # 允许在无图连接的单测中仅通过 query_entity_by_ids 补映射
+                self.stdout.write(self.style.WARNING(f"预加载图 UUID 跳过: {exc}"))
 
         self._clean_operation_analysis_refs(batch_size, dry_run, stats)
         if verify:
@@ -122,6 +123,19 @@ class Command(BaseCommand):
             if blockers:
                 raise CommandError(f"OA UUID 迁移验证失败，仍存在待清洗项: {blockers}")
         self.stdout.write(self.style.SUCCESS(str(stats)))
+
+    def _oa_graph_preload_required(self) -> bool:
+        """已有运营分析模型的阶段都完成后，不再把全图 UUID 装进内存。"""
+        for model_name in self.OA_UUID_MODEL_FIELDS:
+            try:
+                model = django_apps.get_model("operation_analysis", model_name)
+            except LookupError:
+                continue
+            if not self._model_table_exists(model):
+                continue
+            if not CmdbUuidMigrationState.objects.filter(stage=f"oa_uuid:{model_name}", completed=True).exists():
+                return True
+        return False
 
     @staticmethod
     def _collect_legacy_instance_ids(value):

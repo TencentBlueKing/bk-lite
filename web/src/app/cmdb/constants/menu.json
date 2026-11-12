@@ -172,12 +172,6 @@
           ]
         },
         {
-          "title": "数据治理",
-          "icon": "shujumoxingguanli",
-          "url": "/cmdb/assetManage/governance",
-          "name": "asset_info"
-        },
-        {
           "title": "自动发现",
           "icon": "shujumoxingguanli",
           "url": "/cmdb/assetManage/autoDiscovery",
@@ -419,12 +413,6 @@
               "withParentPermission": true
             }
           ]
-        },
-        {
-          "title": "Data Governance",
-          "icon": "shujumoxingguanli",
-          "url": "/cmdb/assetManage/governance",
-          "name": "asset_info"
         },
         {
           "title": "Auto Discover",

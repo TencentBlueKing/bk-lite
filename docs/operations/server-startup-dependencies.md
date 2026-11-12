@@ -155,10 +155,22 @@ startup.sh
 
 实例 `_display` 是由 organization、user、enum、tag 原值算出的派生字段。新建和修改实例时，保存逻辑已经写入这份文本。存量回填只补历史实例，失败不影响实例读写。
 
-- 启动期：`batch_init` 只执行 `init_display_fields --models-only`，给模型补 `_display` 字段定义。
-- 启动期入队：`ensure_display_field_backfill_periodic_task()` 并 `backfill_cmdb_display_fields.delay(force=True)`。Broker 不可达只记告警，不让 `startup.sh` 退出。
-- 运行期：Worker 按页扫描。计算值和已有 `_display` 相同则不写；有差异时按字段批量写入。单次任务有实例数上限，未扫完则 1 秒后继续。查询失败停在游标上，由 `*/5` 周期任务重试。
-- 手动补偿：`python manage.py init_display_fields` 仍可在运行期扫完全部实例，同样跳过未变化的值。
+- 启动期：`batch_init` 只执行 `init_display_fields --models-only`，给模型补 `_display` 字段定义。只补定义时不加载用户表和组织表。
+- 启动期入队：`ensure_display_field_backfill_periodic_task()` 并 `backfill_cmdb_display_fields.delay(force=False)`。不删除完成标记，也不强制重扫。Broker 不可达只记告警，不让 `startup.sh` 退出。
+- 完成状态和游标记在 `CmdbRepairState` 的 `display_backfill` 阶段，不用会过期的缓存。阶段已完成且没有游标时，任务直接返回。某个模型真的写下了新的 `_display` 字段，才把该阶段改回未完成。
+- 运行期：Worker 按页扫描。计算值和已有 `_display` 相同则不写；有差异时按字段批量写入。单次任务有实例数上限，未扫完则 1 秒后继续。查询失败停在游标上，由 `*/5` 周期任务重试。这个周期任务只接下中途失败，不负责每次重启重扫。
+- 手动补偿：`python manage.py init_display_fields` 仍可在运行期扫完全部实例，同样跳过未变化的值。扫完后把同一阶段标成完成。
+
+## CMDB 实例形态清洗（运行期一次性，非启动硬依赖）
+
+实例组织、列表字段上的标量、以及种子里有变化的唯一规则，都不再在 `batch_init` 里读实例全文。
+
+- 启动期去掉实例组织全表修复，也不再同步执行 `cmdb_migrate_scalar_to_list`。
+- 阶段记在 `CmdbRepairState`：组织、标量改列表、每个有变化的唯一规则。顺序固定，前一个没完成时后一个不查实例。
+- 启动时如果组织、标量或任一唯一规则阶段未完成，只 `repair_cmdb_instance_shape.delay()` 一次。不注册 crontab。Broker 不可达只记告警，下次启动再投递，从游标继续。
+- 任务每页 500，单轮最多 2000 条；没做完就 1 秒后预约自己。唯一规则一轮只处理一个模型，看完该模型的规则字段再决定，不受 2000 条切开。
+- 阶段完成后，启动不再投递，也不抽查。要重做时，人工清掉对应阶段的完成标记。`cmdb_migrate_scalar_to_list` 只清掉标量阶段并投递同一次任务，命令自己不扫表；`--dry-run` 不改完成标记。
+- 唯一规则冲突时保留原规则，并记下种子指纹。指纹不变不再扫这个模型。界面导入模型仍同步校验，冲突直接报错。
 
 禁止把实例全量重写放回 `batch_init`。端口要等 `batch_init` 结束才开，实例扫描留在启动期会把健康检查挡在监听之前。
 
@@ -179,7 +191,10 @@ instances/结果快照、Operation snapshot/未成功 Outbox；不迁变更历�
   `migrate_cmdb_instance_uuid_runtime.delay()`（消息入队，等 Worker 起来后执行）；
 - **禁止**在 `batch_init` / `startup.sh` 同步执行 `--apply` 并阻断 `supervisord`；
 - Worker/Beat 起来后幂等 `--apply`；失败只打日志并由 `*/5` 周期任务重试；
-- 多 Worker 用缓存锁互斥；清洗完成可禁用周期任务减少空跑。
+- 图实例和图关联边分开记完成。两边都完成后，清洗命令直接返回，不再分页读实例，也不再把全部关联边装进内存。只剩边未完成时，做一次边收尾，并按需加载端点 UUID；
+- 运营分析各模型阶段都完成后，不再预加载全图 UUID；
+- 采集结果快照在阶段完成后，只处理更新时间晚于该阶段记录的采集任务；
+- 多 Worker 用缓存锁互斥；`*/5` 周期任务保留，用来接下中途失败。阶段完成后命令本身不再全表扫描。
 
 大流量切换仍可用维护窗口停写后手动 `--apply/--verify` 留证据；见
 `docs/operations/cmdb-instance-uuid-cutover.md`。

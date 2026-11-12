@@ -8,6 +8,7 @@ import json
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
+from urllib.parse import unquote
 
 # 必须先安装 Python 3.12 兼容别名，再导入会加载旧版 aliyunsdkcore 的 SDK。
 # isort: off
@@ -94,7 +95,7 @@ from common.cmp.cloud_apis.resource_apis.cw_aliyun import RESOURCE_MAP
 from common.cmp.cloud_apis.resource_apis.resource_format.common.base_format import get_format_method
 from common.cmp.utils import set_dir_size
 from core.logger import logger, safe_exception_info
-from plugins.base_utils import utc_to_dts
+from plugins.base_utils import COLLECTED_TAG_MAX_PAIRS, encode_collected_tag, utc_to_dts
 from six.moves import range
 from Tea.core import TeaCore
 
@@ -174,6 +175,83 @@ def checkout_required_parameters(required_list, kwargs):
     for item in required_list:
         if item not in kwargs:
             raise TypeError("need param {}".format(item))
+
+
+_ALIYUN_TAG_NESTED_KEYS = ("Tag", "TagVO", "Tags", "TagSet")
+_ALIYUN_EMPTY_TAG_CODES = {"NoSuchTagSet", "NoSuchTag"}
+
+
+def _aliyun_error_code(exc):
+    code = getattr(exc, "code", None)
+    data = getattr(exc, "data", None)
+    if not code and isinstance(data, dict):
+        code = data.get("Code") or data.get("code")
+    return str(code or "")
+
+
+def _aliyun_tag_pairs(tags):
+    if isinstance(tags, str):
+        text = tags.strip()
+        if ":" not in text:
+            return []
+        key, value = text.split(":", 1)
+        return [(unquote(key).strip(), unquote(value).strip())]
+    if isinstance(tags, list):
+        pairs = []
+        for item in tags:
+            if isinstance(item, (str, dict)):
+                pairs.extend(_aliyun_tag_pairs(item))
+        return pairs
+    if not isinstance(tags, dict):
+        return []
+    for key in _ALIYUN_TAG_NESTED_KEYS:
+        nested = tags.get(key)
+        if nested is not None:
+            return _aliyun_tag_pairs(nested)
+    key = tags.get("TagKey", tags.get("Key"))
+    if key in (None, ""):
+        return []
+    value = tags.get("TagValue", tags.get("Value"))
+    return [(str(key).strip(), "" if value is None else str(value).strip())]
+
+
+def _serialize_aliyun_tags(tags):
+    """云侧标签收成 list[str]（key:value）。字段缺失时返回 None，调用方不要写 tag。"""
+    if tags is None or tags == "":
+        return None
+    legal = []
+    seen = set()
+    skipped = 0
+    for key, value in _aliyun_tag_pairs(tags):
+        item = encode_collected_tag(key, value)
+        if not item:
+            skipped += 1
+            continue
+        if item in seen:
+            continue
+        seen.add(item)
+        legal.append(item)
+    truncated = 0
+    if len(legal) > COLLECTED_TAG_MAX_PAIRS:
+        truncated = len(legal) - COLLECTED_TAG_MAX_PAIRS
+        legal = legal[:COLLECTED_TAG_MAX_PAIRS]
+    if skipped or truncated:
+        logger.warning(
+            "event=aliyun_tag_normalized skipped=%s truncated=%s",
+            skipped,
+            truncated,
+        )
+    return legal
+
+
+def _put_aliyun_tag(payload, data):
+    if not isinstance(data, dict) or ("tag" not in data and "Tags" not in data):
+        return payload
+    source = data.get("tag") if "tag" in data else data.get("Tags")
+    serialized = _serialize_aliyun_tags(source)
+    if serialized is not None:
+        payload["tag"] = serialized
+    return payload
 
 
 class CwAliyun(object):
@@ -743,7 +821,10 @@ class Aliyun(object):
             request.set_InstanceIds(json.dumps(ids))
         kwargs["request"] = request
         request = self._set_vm_info_params(**kwargs)
-        return self._handle_list_request_with_page("vm", request)
+        result = self._handle_list_request_with_page("vm", request)
+        if result.get("result"):
+            self._overlay_service_tags(result.get("data") or [], "ecs", "resource_id")
+        return result
 
     def remote_connect_vm(self, **kwargs):
         """
@@ -1002,6 +1083,239 @@ class Aliyun(object):
             )
             return {"result": False, "message": repr(e)}
 
+    _TAG_ARN_TEMPLATES = {
+        "ecs": "arn:acs:ecs:{region}:{account}:instance/{resource_id}",
+        "rds": "arn:acs:rds:{region}:{account}:instance/{resource_id}",
+        "redis": "arn:acs:kvstore:{region}:{account}:instance/{resource_id}",
+        "mongodb": "arn:acs:mongodb:{region}:{account}:instance/{resource_id}",
+        "kafka": "arn:acs:alikafka:{region}:{account}:instance/{resource_id}",
+        "clb": "arn:acs:slb:{region}:{account}:loadbalancer/{resource_id}",
+        "oss": "arn:acs:oss:{region}:{account}:bucket/{resource_id}",
+    }
+
+    def _overlay_service_tags(self, items, kind, id_field, region_field=None):
+        """用标签服务补上产品列表接口不返回的系统标签。失败时不写 tag，避免把已有标签清空。"""
+        if not items or self.custom_endpoint or not getattr(self, "auth_config", None):
+            return
+        grouped = {}
+        for item in items:
+            if not isinstance(item, dict) or not item.get(id_field):
+                continue
+            region = self.RegionId
+            if region_field:
+                region = str(item.get(region_field) or "")
+                if region.startswith("oss-"):
+                    region = region[4:]
+            grouped.setdefault(region, []).append(item)
+        for region, region_items in grouped.items():
+            resource_ids = [item[id_field] for item in region_items]
+            found = self._list_service_tags(kind, region, resource_ids)
+            if found is None:
+                for item in region_items:
+                    item.pop("tag", None)
+                    item.pop("Tags", None)
+                continue
+            for item in region_items:
+                resource_id = item[id_field]
+                if resource_id in found or not _aliyun_tag_pairs(item.get("tag", item.get("Tags"))):
+                    pairs = found.get(resource_id, [])
+                    item.pop("Tags", None)
+                    item["tag"] = [{"TagKey": key, "TagValue": value} for key, value in pairs]
+
+    def _aliyun_account_id(self):
+        cached = getattr(self, "_cached_account_id", None)
+        if cached:
+            return cached
+        try:
+            body = self._openapi_call("sts.aliyuncs.com", "GetCallerIdentity", "2015-04-01", {})
+        except Exception as exc:
+            logger.warning(
+                "event=aliyun_tag_service_skipped host=%s region=%s task_id=%s failed_stage=%s error_type=%s",
+                self.custom_endpoint,
+                self.RegionId,
+                self.collection_task_id,
+                "get_caller_identity",
+                type(exc).__name__,
+            )
+            return None
+        account = str((body or {}).get("AccountId") or "")
+        if not account:
+            logger.warning(
+                "event=aliyun_tag_service_skipped host=%s region=%s task_id=%s failed_stage=%s error_type=%s",
+                self.custom_endpoint,
+                self.RegionId,
+                self.collection_task_id,
+                "get_caller_identity",
+                "MissingAccountId",
+            )
+            return None
+        self._cached_account_id = account
+        return account
+
+    def _list_service_tags(self, kind, region, resource_ids):
+        template = self._TAG_ARN_TEMPLATES.get(kind)
+        if not template or not region or not resource_ids:
+            return None
+        account = self._aliyun_account_id()
+        if not account:
+            return None
+        found = {}
+        try:
+            for start in range(0, len(resource_ids), 50):
+                batch = list(dict.fromkeys(resource_ids[start : start + 50]))
+                arn_by_id = {template.format(region=region, account=account, resource_id=resource_id): resource_id for resource_id in batch}
+                next_token = None
+                seen_tokens = set()
+                while True:
+                    query = {"RegionId": region, "Category": "All"}
+                    for index, arn in enumerate(arn_by_id, start=1):
+                        query[f"ResourceARN.{index}"] = arn
+                    if next_token:
+                        query["NextToken"] = next_token
+                    body = self._openapi_call(f"tag.{region}.aliyuncs.com", "ListTagResources", "2018-08-28", query)
+                    resources = body.get("TagResources") or []
+                    if isinstance(resources, dict):
+                        resources = resources.get("TagResource") or []
+                    known_ids = set(arn_by_id.values())
+                    for item in resources:
+                        arn = item.get("ResourceARN") or ""
+                        resource_id = arn_by_id.get(arn) or arn.rsplit("/", 1)[-1]
+                        if resource_id not in known_ids:
+                            continue
+                        found[resource_id] = [
+                            (tag.get("Key"), "" if tag.get("Value") is None else tag.get("Value")) for tag in (item.get("Tags") or [])
+                        ]
+                    next_token = body.get("NextToken") or ""
+                    if not next_token or next_token in seen_tokens:
+                        break
+                    seen_tokens.add(next_token)
+        except Exception as exc:
+            logger.warning(
+                "event=aliyun_tag_service_skipped host=%s region=%s task_id=%s failed_stage=%s error_type=%s",
+                self.custom_endpoint,
+                region,
+                self.collection_task_id,
+                "list_tag_resources",
+                type(exc).__name__,
+            )
+            return None
+        return found
+
+    def _openapi_call(self, endpoint, action, version, query):
+        from alibabacloud_tea_openapi import models as open_api_models
+        from alibabacloud_tea_openapi.client import Client as OpenApiClient
+        from alibabacloud_tea_util import models as util_models
+
+        last_error = None
+        for _attempt in (1, 2):
+            try:
+                config = copy.deepcopy(self.auth_config)
+                config.endpoint = endpoint
+                params = open_api_models.Params(
+                    action=action,
+                    version=version,
+                    protocol="HTTPS",
+                    pathname="/",
+                    method="POST",
+                    auth_type="AK",
+                    style="RPC",
+                    body_type="json",
+                    req_body_type="formData",
+                )
+                request = open_api_models.OpenApiRequest(query={key: "" if value is None else str(value) for key, value in query.items()})
+                response = OpenApiClient(config).call_api(params, request, util_models.RuntimeOptions())
+                body = response.get("body") if isinstance(response, dict) else None
+                if not isinstance(body, dict):
+                    raise RuntimeError("empty tag response")
+                return body
+            except Exception as exc:
+                last_error = exc
+        raise last_error
+
+    def _read_bucket_tags(self, bucket_name, runtime):
+        """GetBucketTags。没有标签是空列表；其它失败不阻断桶采集，也不写 tag。"""
+        if not bucket_name or not hasattr(self.oss_client, "get_bucket_tags_with_options"):
+            return None
+        last_error = None
+        for _attempt in (1, 2):
+            try:
+                resp = self.oss_client.get_bucket_tags_with_options(bucket_name, {}, runtime)
+                result = TeaCore.to_map(resp.body) or {}
+                return result.get("TagSet") or {"Tag": []}
+            except Exception as exc:
+                if _aliyun_error_code(exc) in _ALIYUN_EMPTY_TAG_CODES:
+                    return {"Tag": []}
+                last_error = exc
+        logger.warning(
+            "event=aliyun_bucket_tag_skipped host=%s region=%s task_id=%s bucket=%s failed_stage=%s error_type=%s",
+            self.custom_endpoint,
+            self.RegionId,
+            self.collection_task_id,
+            bucket_name,
+            "get_bucket_tags",
+            type(last_error).__name__,
+        )
+        return None
+
+    def _attach_rds_tags(self, instances):
+        """DescribeDBInstances 不带标签，再用 ListTagResources 按实例补上。失败则整批不写 tag。"""
+        if not instances or not hasattr(self.rds_client, "list_tag_resources_with_options"):
+            return
+        instance_ids = [item.get("DBInstanceId") for item in instances if item.get("DBInstanceId")]
+        if not instance_ids:
+            return
+        grouped = None
+        last_error = None
+        for _attempt in (1, 2):
+            try:
+                grouped = self._list_rds_tags(instance_ids)
+                break
+            except Exception as exc:
+                last_error = exc
+                grouped = None
+        if grouped is None:
+            logger.warning(
+                "event=aliyun_rds_tag_skipped host=%s region=%s task_id=%s failed_stage=%s error_type=%s",
+                self.custom_endpoint,
+                self.RegionId,
+                self.collection_task_id,
+                "list_tag_resources",
+                type(last_error).__name__,
+            )
+            return
+        for item in instances:
+            resource_id = item.get("DBInstanceId")
+            if not resource_id:
+                continue
+            item["Tags"] = {"Tag": [{"TagKey": tag.get("TagKey"), "TagValue": tag.get("TagValue")} for tag in grouped.get(resource_id, [])]}
+
+    def _list_rds_tags(self, instance_ids):
+        grouped = {instance_id: [] for instance_id in instance_ids}
+        runtime = util_models.RuntimeOptions()
+        for start in range(0, len(instance_ids), 50):
+            batch = instance_ids[start : start + 50]
+            next_token = None
+            seen_tokens = set()
+            while True:
+                request = rds_20140815_models.ListTagResourcesRequest(
+                    region_id=self.RegionId,
+                    resource_type="INSTANCE",
+                    resource_id=list(batch),
+                    next_token=next_token,
+                )
+                resp = self.rds_client.list_tag_resources_with_options(request, runtime)
+                result = TeaCore.to_map(resp.body) or {}
+                resources = ((result.get("TagResources") or {}).get("TagResource")) or []
+                for item in resources:
+                    resource_id = item.get("ResourceId")
+                    if resource_id in grouped:
+                        grouped[resource_id].append(item)
+                next_token = result.get("NextToken") or ""
+                if not next_token or next_token in seen_tokens:
+                    break
+                seen_tokens.add(next_token)
+        return grouped
+
     def list_buckets(self, **kwargs):
         """
         查询OSS存储桶列表
@@ -1031,6 +1345,10 @@ class Aliyun(object):
                 resp = self.oss_client.get_bucket_info_with_options(bucket_name, {}, runtime)
                 result = TeaCore.to_map(resp.body)
                 bucket.update(result.get("Bucket", {}))
+                tags = self._read_bucket_tags(bucket_name, runtime)
+                if tags is not None:
+                    bucket["Tags"] = tags
+            self._overlay_service_tags(buckets, "oss", "Name", "Location")
             return {"result": True, "data": buckets}
         except Exception as e:
             logger.exception(
@@ -1065,6 +1383,8 @@ class Aliyun(object):
                     break
                 rds_instances.extend(db_instances)
                 describe_db_instances_request.page_number += 1
+            self._attach_rds_tags(rds_instances)
+            self._overlay_service_tags(rds_instances, "rds", "DBInstanceId")
             return {"result": True, "data": rds_instances}
         except Exception as e:
             logger.exception(
@@ -1095,6 +1415,7 @@ class Aliyun(object):
                     break
                 redis_instances.extend(instances)
                 describe_instances_request.page_number += 1
+            self._overlay_service_tags(redis_instances, "redis", "InstanceId")
             return {"result": True, "data": redis_instances}
         except Exception as e:
             logger.exception(
@@ -1134,6 +1455,7 @@ serverless"""
                         break
                     mongodb_instances.extend(instances)
                     describe_db_instances_request.page_number += 1
+            self._overlay_service_tags(mongodb_instances, "mongodb", "DBInstanceId")
             return {"result": True, "data": mongodb_instances}
         except Exception as e:
             logger.exception(
@@ -1156,6 +1478,7 @@ serverless"""
             resp = self.kafka_client.get_instance_list_with_options(get_instance_list_request, runtime)
             result = TeaCore.to_map(resp.body)
             kafka_instances = result.get("InstanceList", {}).get("InstanceVO", [])
+            self._overlay_service_tags(kafka_instances, "kafka", "InstanceId")
             return {"result": True, "data": kafka_instances}
         except Exception as e:
             logger.exception(
@@ -1310,6 +1633,7 @@ serverless"""
                 if total <= describe_load_balancers_request.page_number * describe_load_balancers_request.page_size:
                     break
                 describe_load_balancers_request.page_number += 1
+            self._overlay_service_tags(clb_instances, "clb", "LoadBalancerId")
             return {"result": True, "data": clb_instances}
         except Exception as e:
             logger.exception(
@@ -1718,6 +2042,7 @@ serverless"""
                     "expired_time": data["expired_time"],
                 }
             )
+            _put_aliyun_tag(result[-1], data)
 
         return result
 
@@ -1739,6 +2064,7 @@ serverless"""
                     "creation_date": utc_to_dts(data["CreationDate"], utc_fmt="%Y-%m-%dT%H:%M:%S.%fZ"),
                 }
             )
+            _put_aliyun_tag(result[-1], data)
 
         return result
 
@@ -1771,6 +2097,7 @@ serverless"""
                     "expire_time": utc_to_dts(data.get("ExpireTime")),
                 }
             )
+            _put_aliyun_tag(result[-1], data)
         return result
 
     @staticmethod
@@ -1802,6 +2129,7 @@ serverless"""
                     "expire_time": utc_to_dts(data.get("ExpireTime")),
                 }
             )
+            _put_aliyun_tag(result[-1], data)
         return result
 
     @staticmethod
@@ -1830,6 +2158,7 @@ serverless"""
                     "end_time": utc_to_dts(data.get("EndTime")),
                 }
             )
+            _put_aliyun_tag(result[-1], data)
         return result
 
     @staticmethod
@@ -1857,6 +2186,7 @@ serverless"""
                     "expire_time": utc_to_dts(data.get("ExpireTime"), utc_fmt="%Y-%m-%dT%H:%MZ"),
                 }
             )
+            _put_aliyun_tag(result[-1], data)
         return result
 
     @staticmethod
@@ -1889,6 +2219,7 @@ serverless"""
                     "create_time": create_time,
                 }
             )
+            _put_aliyun_tag(result[-1], data)
         return result
 
     @staticmethod
@@ -1910,6 +2241,7 @@ serverless"""
                     "create_time": utc_to_dts(data["CreateTime"], utc_fmt="%Y-%m-%dT%H:%MZ"),
                 }
             )
+            _put_aliyun_tag(result[-1], data)
         return result
 
     @property

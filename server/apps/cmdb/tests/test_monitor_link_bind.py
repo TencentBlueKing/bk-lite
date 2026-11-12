@@ -275,7 +275,7 @@ def test_late_unbind_does_not_clear_rebound_monitor(mocker, monkeypatch):
     monkeypatch.setattr("apps.cmdb.services.instance.create_change_record", lambda *a, **k: None)
     monkeypatch.setattr(
         "apps.cmdb.services.auto_relation_reconcile.schedule_instance_auto_relation_reconcile",
-        lambda ids: None,
+        lambda *args, **kwargs: None,
     )
     monkeypatch.setattr(
         "apps.cmdb.services.instance.InstanceManage._build_unique_rule_check_attr_map",

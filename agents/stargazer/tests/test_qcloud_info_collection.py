@@ -285,6 +285,27 @@ def test_qcloud_tke_node_lists_clusters_then_instances_and_skips_one_failure():
     assert sentinel not in str(record.args)
 
 
+def test_qcloud_tke_node_collects_tags_from_instance_payload():
+    def handler(region, action, params):
+        if action == "DescribeClusters":
+            return {"Response": {"Clusters": [{"ClusterId": "cls-1", "ClusterName": "c1"}]}}
+        return {
+            "Response": {
+                "InstanceSet": [
+                    {
+                        "InstanceId": "ins-1",
+                        "LanIP": "10.0.0.9",
+                        "Tags": [{"Key": "env", "Value": "prod"}, {"Key": "blank", "Value": ""}],
+                    }
+                ]
+            }
+        }
+
+    nodes = _manager_with_client(handler, ["ap-guangzhou"]).get_qcloud_tke_node()
+    assert nodes[0]["resource_id"] == "ins-1"
+    assert nodes[0]["tag"] == ["env:prod", "blank:"]
+
+
 def test_qcloud_tke_cluster_and_node_share_one_describe_clusters_call():
     calls = []
 
@@ -560,6 +581,7 @@ def test_qcloud_cvm_collects_tags_as_key_value_list_and_skips_illegal_values():
                                 {"Key": "sys", "Value": "IT 361"},
                                 {"Key": "owner", "Value": f"{sentinel}:leaked"},
                                 {"Key": "blank", "Value": ""},
+                                {"Key": "bad", "Value": "a\nb"},
                             ],
                         }
                     ],
@@ -574,10 +596,10 @@ def test_qcloud_cvm_collects_tags_as_key_value_list_and_skips_illegal_values():
         qcloud_info.logger = original
         log.removeHandler(log.handlers[-1])
 
-    assert result[0]["tag"] == ["env:prod", "team:net", "sys:IT 361"]
+    assert result[0]["tag"] == ["env:prod", "team:net", "sys:IT 361", f"owner:{sentinel}%3Aleaked", "blank:"]
     assert records
     assert records[0].msg == "event=qcloud_tag_normalized skipped=%s truncated=%s"
-    assert records[0].args == (2, 0)
+    assert records[0].args == (1, 0)
     rendered = records[0].getMessage()
     assert sentinel not in rendered
     assert sentinel not in str(records[0].args)
@@ -670,11 +692,11 @@ def test_qcloud_bucket_tagging_replaces_present_tags_and_skips_api_errors():
         qcloud_info.logger = original
         log.removeHandler(log.handlers[-1])
 
-    assert rows["logs"]["tag"] == ["env:prod"]
+    assert rows["logs"]["tag"] == ["env:prod", f"leak:{sentinel}%3Aleaked"]
     assert rows["plain"]["tag"] == []
     assert "tag" not in rows["broken"]
     assert rows["broken"]["resource_name"] == "broken"
-    assert records[0].msg == "event=qcloud_tag_normalized skipped=%s truncated=%s"
+    assert records[0].msg == "event=qcloud_bucket_tag_skipped failed_stage=%s region=%s bucket=%s error_type=%s"
     denied = [record for record in records if record.msg == "event=qcloud_bucket_tag_skipped failed_stage=%s region=%s bucket=%s error_type=%s"]
     assert denied[0].args == ("get_bucket_tagging", "ap-guangzhou", "broken", "RuntimeError")
     rendered = "\n".join(record.getMessage() for record in records)
@@ -703,9 +725,8 @@ def _prometheus_label(line, name):
 
 
 def _prometheus_tag_list(line):
-    from urllib.parse import unquote
-
     import json
+    from urllib.parse import unquote
 
     return json.loads(unquote(_prometheus_label(line, "tag")))
 
@@ -731,22 +752,19 @@ def test_prometheus_tag_list_round_trips_value_containing_comma():
     assert 'tag="env:prod,team:net"' not in plain_line
     assert _prometheus_tag_list(plain_line) == ["env:prod", "team:net"]
     nat_line = next(line for line in text.splitlines() if "nat-1" in line)
-    assert "tag=" not in nat_line
+    assert _prometheus_tag_list(nat_line) == []
 
 
 def test_prometheus_tag_list_survives_influx_with_space_and_comma():
-    from urllib.parse import unquote
-
     import json
+    from urllib.parse import unquote
 
     from core.collection.contracts import StructuredMetricsPayload
     from plugins.base_utils import convert_to_prometheus_format
     from tasks.utils.nats_helper import convert_prometheus_to_influx, convert_structured_metrics_to_influx
 
     tags = ["owner:acme,inc", "资产系统ID:IT-361", "BU/BA:林宏和"]
-    text = convert_to_prometheus_format(
-        {"qcloud_cvm": [{"resource_id": "ins-1", "resource_name": "cvm", "tag": tags}]}
-    )
+    text = convert_to_prometheus_format({"qcloud_cvm": [{"resource_id": "ins-1", "resource_name": "cvm", "tag": tags}]})
     lines = convert_prometheus_to_influx(text, {"instance_id": "cmdb_315"})
     cvm = next(line for line in lines if "ins-1" in line)
     assert "tag=[" not in cvm
