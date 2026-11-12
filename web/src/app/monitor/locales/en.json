@@ -934,8 +934,6 @@
       "scriptDemoHint": "Example scripts you can insert into the editor, then edit as needed.",
       "scriptDemoOverwriteTitle": "Overwrite the current script?",
       "scriptDemoOverwriteContent": "Inserting this example will replace the current editor content.",
-      "runAsRequiredLinux": "Execution user is required on Linux nodes",
-      "runAsNonRoot": "Running as root is not allowed",
       "runAsWindowsHelper": "Windows runs as the service account. The execution user cannot be edited.",
       "intervalMin60": "Collection interval must be at least 60 seconds",
       "scriptTimeoutFollowsInterval": "Script timeout = collection interval − 1s",

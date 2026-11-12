@@ -90,6 +90,8 @@ def is_script_self_monitor_metric_name(name, collect_type=None) -> bool:
 # 插件契约：script 为脚本正文（可从旧字段 command 迁入）；data_format /
 # command / commands / script_file 不下发。interval 由平台传秒，模板拼 "Ns"。
 # timeout 不下发，由采集器按 interval-1s 推导。
+# run_as 仅在 Linux 填写了执行用户时渲染。留空不写该键，按采集进程用户（当前为 root）运行。
+# 平台不创建账号。用户不存在或无权只让该条脚本失败，不在下发前拒绝整份配置。
 SCRIPT_MIN_INTERVAL_SECONDS = 60
 SCRIPT_INTERVAL_MIN_ERROR = "脚本采集间隔不能小于 60 秒"
 SCRIPT_DETECT_TIMEOUT_MARGIN = 10
@@ -247,11 +249,16 @@ DEFAULT_SCRIPT_UI_TEMPLATE = {
             "label_en": "Run As",
             "type": "input",
             "required": False,
-            "default_value": "telegraf",
-            "description": "Linux 必填，且不能为 root 或 UID 0。",
-            "description_en": "Required on Linux. Cannot be root or UID 0.",
+            "description": ("留空则按采集进程用户运行（当前为 root），不下发该字段。" "填写后降权到采集端已有用户，可为 root；平台不创建账号。" "用户不存在或无权时仅该脚本失败。"),
+            "description_en": (
+                "Leave empty to run as the collector process (currently root) and omit this field. "
+                "A value drops privileges to that existing OS user, including root. "
+                "The platform does not create accounts. "
+                "A missing user or missing permission fails only this script."
+            ),
             "widget_props": {
-                "placeholder": "telegraf",
+                "placeholder": "留空按采集进程运行",
+                "placeholder_en": "Empty runs as the collector process",
             },
             "transform_on_edit": {
                 "origin_path": "child.content.config.run_as",
@@ -430,6 +437,38 @@ def assert_script_interval(interval):
     return interval_seconds
 
 
+def script_run_as_targets_windows(context) -> bool:
+    """与表单一致：显式 script_os 优先；缺省时才看节点操作系统。未知目标按 Linux。"""
+    script_os = str((context or {}).get("script_os") or "").strip().lower()
+    if script_os == "windows":
+        return True
+    if script_os == "linux":
+        return False
+    return str((context or {}).get("operating_system") or "").strip().lower() == "windows"
+
+
+def normalize_script_run_as(context) -> None:
+    """调试与正式采集使用同一执行用户。
+
+    Windows 省略 run_as，仍由服务账号执行。
+    Linux 空白则删除 run_as，按采集进程用户运行；非空（含 root / UID 0）原样下发。
+    不在这里校验用户是否存在，避免一条脚本挡住整次下发或整台采集进程。
+    """
+    if not isinstance(context, dict):
+        return
+    if script_run_as_targets_windows(context):
+        context.pop("run_as", None)
+        return
+    raw = context.get("run_as")
+    if raw is None:
+        return
+    text = str(raw).strip()
+    if not text:
+        context.pop("run_as", None)
+        return
+    context["run_as"] = text
+
+
 def prepare_script_child_content_for_save(content):
     """编辑保存：校验间隔，去掉 timeout，由采集器按 interval-1s 推导。"""
     if not isinstance(content, dict):
@@ -438,6 +477,7 @@ def prepare_script_child_content_for_save(content):
     config = prepared.get("config") if isinstance(prepared.get("config"), dict) else {}
     assert_script_interval(config.get("interval"))
     config.pop("timeout", None)
+    normalize_script_run_as(config)
     prepared["config"] = config
     return prepared
 
@@ -453,6 +493,7 @@ def _child_render_context(context: dict) -> dict:
     if interval_seconds is not None:
         render_context["interval"] = interval_seconds
     render_context.pop("timeout", None)
+    normalize_script_run_as(render_context)
     return render_context
 
 
