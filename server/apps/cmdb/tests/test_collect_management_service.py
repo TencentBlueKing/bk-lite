@@ -93,7 +93,7 @@ def _patch_common(monkeypatch, fake, attrs=None):
     # 关闭自动关联调度
     import apps.cmdb.services.auto_relation_reconcile as ar
 
-    monkeypatch.setattr(ar, "schedule_instance_auto_relation_reconcile", lambda ids: None)
+    monkeypatch.setattr(ar, "schedule_instance_auto_relation_reconcile", lambda *args, **kwargs: None)
     monkeypatch.setattr(ar, "schedule_incoming_rule_full_sync_by_model_ids", lambda ids: None)
 
 
@@ -401,7 +401,7 @@ def test_add_inst_success_and_schedule(monkeypatch):
     scheduled = []
     import apps.cmdb.services.auto_relation_reconcile as ar
 
-    monkeypatch.setattr(ar, "schedule_instance_auto_relation_reconcile", lambda ids: scheduled.append(list(ids)))
+    monkeypatch.setattr(ar, "schedule_instance_auto_relation_reconcile", lambda ids, **kwargs: scheduled.append(list(ids)))
     result = m.add_inst([{"inst_name": "new", "assos": []}])
     assert len(result["success"]) == 1
     assert result["success"][0]["inst_info"]["_id"] == 55
@@ -462,7 +462,7 @@ def test_refresh_heartbeat_updates_only_runtime_metadata_without_querying_instan
     scheduled = []
     import apps.cmdb.services.auto_relation_reconcile as ar
 
-    monkeypatch.setattr(ar, "schedule_instance_auto_relation_reconcile", lambda ids: scheduled.append(ids))
+    monkeypatch.setattr(ar, "schedule_instance_auto_relation_reconcile", lambda ids, **kwargs: scheduled.append(ids))
     result = m.refresh_heartbeat([{"_id": 7, "inst_name": "a"}])
     assert len(result["success"]) == 1
     assert fake.set_props == [

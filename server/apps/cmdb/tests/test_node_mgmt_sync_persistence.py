@@ -264,7 +264,8 @@ def test_retry_reloads_persisted_hosts_without_duplicate_create(mocker, sync_run
     assert first["summary"]["add_success"] == 1
     assert second["summary"]["add"] == 0
     assert second["summary"]["update"] == 0
-    assert existing_loader.call_count == 2
+    assert second["summary"]["source_unchanged"] is True
+    assert existing_loader.call_count == 1
     create.assert_called_once()
     ensure.assert_not_called()
     retry_run.refresh_from_db()
@@ -321,7 +322,10 @@ def test_changed_hosts_schedule_relation_reconcile_once(mocker, sync_run, existi
 
     NodeMgmtSyncService._do_sync_hosts(run, config)
 
-    reconcile.assert_called_once_with([7, 8])
+    reconcile.assert_called_once()
+    assert sorted(reconcile.call_args.args[0]) == [7, 8]
+    assert reconcile.call_args.kwargs["model_id"] == "host"
+    assert set(reconcile.call_args.kwargs["changed_fields_by_instance"][7]) >= {"organization", "os_type"}
 
 
 @pytest.mark.django_db
@@ -382,7 +386,7 @@ def test_multi_region_sync_loads_existing_hosts_once_and_reuses_snapshot(mocker,
 
     NodeMgmtSyncService._do_sync_hosts(run, config)
 
-    loader.assert_called_once_with(task_id=0, run=run)
+    loader.assert_called_once_with(task_id=0, run=run, fields=NodeMgmtSyncService.HOST_SYNC_READ_FIELDS)
 
 
 def test_persist_skips_when_ip_or_cloud_missing(mocker, desired_host):

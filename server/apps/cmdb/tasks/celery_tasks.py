@@ -859,13 +859,12 @@ def _log_round_gate_marker_query_failure(error: BaseException, *, failed_stage: 
 
 
 @shared_task(soft_time_limit=240, time_limit=270)
-def sync_collect_tasks_gate():
+def sync_collect_tasks_gate():  # noqa: C901
     """全局 5 分钟守门：仅在出现新完整轮次时触发对账。"""
     from apps.cmdb.models.collect_model import COLLECTION_ROLE_DEVICE, COLLECTION_ROLE_TOPOLOGY, normalize_topology_contract
     from apps.cmdb.services.node_mgmt_sync_service import NodeMgmtSyncService
-    from apps.cmdb.services.topology_replay_service import maybe_replay_topology_from_gate
-
     from apps.cmdb.services.scale_cursor import clear_scale_cursor, load_scale_cursor, save_scale_cursor
+    from apps.cmdb.services.topology_replay_service import maybe_replay_topology_from_gate
 
     logger.info("[RoundGate] 开始扫描采集对账守门")
     purged = _purge_legacy_vm_sync_beats()
@@ -1324,7 +1323,7 @@ class _AutoRelationPendingSingleton(Singleton):
     raise_on_duplicate = False
 
 
-@shared_task(base=_AutoRelationPendingSingleton)
+@shared_task(base=_AutoRelationPendingSingleton, soft_time_limit=240, time_limit=270)
 def reconcile_auto_relation_pending_task() -> dict:
     from apps.cmdb.services.auto_relation_reconcile import drain_auto_relation_pending
 
