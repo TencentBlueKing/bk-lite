@@ -13,6 +13,7 @@ from apps.core.logger import SafeLogException
 pytestmark = pytest.mark.django_db
 
 COMMAND = "apps.cmdb.management.commands.rebuild_ci_context"
+SERVICE = "apps.cmdb.services.ci_context"
 PAGE_SIZE = 200
 SECRET = "SECRET-sentinel"
 
@@ -46,7 +47,7 @@ class PagingGraph:
 
 def _patch_graph(monkeypatch, pages):
     graph = PagingGraph(pages)
-    monkeypatch.setattr(f"{COMMAND}.GraphClient", lambda *args, **kwargs: graph)
+    monkeypatch.setattr(f"{SERVICE}.GraphClient", lambda *args, **kwargs: graph)
     return graph
 
 
@@ -59,7 +60,7 @@ def _patch_recompute(monkeypatch, calls, fail_uuid=None, raised=None):
                 raised["error"] = error
             raise error
 
-    monkeypatch.setattr(f"{COMMAND}.recompute_application", recompute)
+    monkeypatch.setattr(f"{SERVICE}.recompute_application", recompute)
 
 
 def test_default_pages_two_batches_and_recomputes_each_uuid(monkeypatch):
@@ -114,10 +115,10 @@ def test_model_asst_id_recomputes_roots_only(monkeypatch):
         seen.append(model_asst_id)
         return ["app-root-1", "app-root-2"]
 
-    monkeypatch.setattr(f"{COMMAND}.GraphClient", forbid_graph)
+    monkeypatch.setattr(f"{SERVICE}.GraphClient", forbid_graph)
     monkeypatch.setattr(f"{COMMAND}._roots_for_model_asst", roots)
     recomputed = []
-    _patch_recompute(monkeypatch, recomputed)
+    monkeypatch.setattr(f"{COMMAND}.recompute_application", lambda inst_uuid: recomputed.append(inst_uuid) or recomputed[-1])
     stdout = StringIO()
 
     call_command("rebuild_ci_context", "--model-asst-id=application_run_host", stdout=stdout)

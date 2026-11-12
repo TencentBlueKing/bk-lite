@@ -6,13 +6,11 @@
 
 from django.core.management.base import BaseCommand, CommandError
 
-from apps.cmdb.constants.constants import INSTANCE
-from apps.cmdb.graph.drivers.graph_client import GraphClient
-from apps.cmdb.services.ci_context import _roots_for_model_asst, recompute_application
-from apps.cmdb.services.ci_context_policy import APPLICATION_MODEL
-from apps.core.logger import cmdb_logger as logger, safe_exception_info, safe_log_value
+from apps.cmdb.services.ci_context import APPLICATION_PAGE_SIZE, _roots_for_model_asst, rebuild_ci_context_bounded, recompute_application
+from apps.core.logger import cmdb_logger as logger
+from apps.core.logger import safe_exception_info, safe_log_value
 
-PAGE_SIZE = 200
+PAGE_SIZE = APPLICATION_PAGE_SIZE
 
 
 class Command(BaseCommand):
@@ -24,52 +22,46 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         model_asst_id = str(options.get("model_asst_id") or "").strip()
         if model_asst_id:
-            application_uuids = _application_uuids(_roots_for_model_asst(model_asst_id))
+            ok_count, fail_count = _rebuild_uuids(_application_uuids(_roots_for_model_asst(model_asst_id)))
         else:
-            application_uuids = _page_application_uuids()
-
-        ok_count = 0
-        fail_count = 0
-        for inst_uuid in application_uuids:
-            try:
-                recompute_application(inst_uuid)
-            except Exception as exc:
-                fail_count += 1
-                logger.exception(
-                    "event=ci_context_rebuild_failed inst_uuid=%s failed_stage=%s error_type=%s",
-                    safe_log_value(inst_uuid),
-                    "recompute_application",
-                    type(exc).__name__,
-                    exc_info=safe_exception_info(exc),
-                )
-                continue
-            ok_count += 1
+            ok_count, fail_count = _rebuild_all()
 
         if fail_count:
             raise CommandError(f"ci_context rebuild failed recomputed={ok_count} failed={fail_count}")
         self.stdout.write(self.style.SUCCESS(f"ci_context rebuild finished recomputed={ok_count}"))
 
 
-def _page_application_uuids() -> list:
-    found = []
+def _rebuild_all() -> tuple[int, int]:
     skip = 0
-    with GraphClient() as client:
-        while True:
-            rows, _count = client.query_entity(
-                INSTANCE,
-                [{"field": "model_id", "type": "str=", "value": APPLICATION_MODEL}],
-                page={"skip": skip, "limit": PAGE_SIZE},
-                fields=["inst_uuid"],
-                include_count=False,
+    ok_count = 0
+    fail_count = 0
+    while True:
+        result = rebuild_ci_context_bounded(skip=skip, limit=PAGE_SIZE)
+        ok_count += result["ok_count"]
+        fail_count += result["fail_count"]
+        if result["done"]:
+            return ok_count, fail_count
+        skip = result["next_skip"]
+
+
+def _rebuild_uuids(inst_uuids) -> tuple[int, int]:
+    ok_count = 0
+    fail_count = 0
+    for inst_uuid in inst_uuids:
+        try:
+            recompute_application(inst_uuid)
+        except Exception as exc:
+            fail_count += 1
+            logger.exception(
+                "event=ci_context_rebuild_failed inst_uuid=%s failed_stage=%s error_type=%s",
+                safe_log_value(inst_uuid),
+                "recompute_application",
+                type(exc).__name__,
+                exc_info=safe_exception_info(exc),
             )
-            batch = list(rows or [])
-            if not batch:
-                break
-            found.extend(_application_uuids(row.get("inst_uuid") for row in batch if isinstance(row, dict)))
-            if len(batch) < PAGE_SIZE:
-                break
-            skip += PAGE_SIZE
-    return _application_uuids(found)
+            continue
+        ok_count += 1
+    return ok_count, fail_count
 
 
 def _application_uuids(values) -> list:

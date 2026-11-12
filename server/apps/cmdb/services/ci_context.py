@@ -11,6 +11,9 @@ from apps.cmdb.services.ci_context_policy import (
     normalize_context_link,
 )
 from apps.core.logger import cmdb_logger as logger
+from apps.core.logger import safe_exception_info, safe_log_value
+
+APPLICATION_PAGE_SIZE = 200
 
 
 def _distinct_texts(values) -> list[str]:
@@ -514,3 +517,51 @@ def drain_ci_context_pending(limit: int = 200) -> dict:
             ci_done,
         )
     return {"root_uuids": root_done, "model_asst_ids": model_done, "ci_uuids": ci_done}
+
+
+def list_application_page(*, skip=0, limit=APPLICATION_PAGE_SIZE) -> list[str]:
+    with GraphClient() as client:
+        rows, _count = client.query_entity(
+            INSTANCE,
+            [{"field": "model_id", "type": "str=", "value": APPLICATION_MODEL}],
+            page={"skip": skip, "limit": limit},
+            fields=["inst_uuid"],
+            include_count=False,
+        )
+    found = []
+    seen = set()
+    for row in rows or []:
+        inst_uuid = str((row or {}).get("inst_uuid") or "").strip() if isinstance(row, dict) else ""
+        if not inst_uuid or inst_uuid in seen:
+            continue
+        seen.add(inst_uuid)
+        found.append(inst_uuid)
+    return found
+
+
+def rebuild_ci_context_bounded(*, skip=0, limit=APPLICATION_PAGE_SIZE) -> dict:
+    """重算一页应用的 ci_context。供手工命令和运行期任务共用。"""
+    uuids = list_application_page(skip=skip, limit=limit)
+    ok_count = 0
+    fail_count = 0
+    for inst_uuid in uuids:
+        try:
+            recompute_application(inst_uuid)
+        except Exception as exc:
+            fail_count += 1
+            logger.exception(
+                "event=ci_context_rebuild_failed inst_uuid=%s failed_stage=%s error_type=%s",
+                safe_log_value(inst_uuid),
+                "recompute_application",
+                type(exc).__name__,
+                exc_info=safe_exception_info(exc),
+            )
+            continue
+        ok_count += 1
+    return {
+        "ok_count": ok_count,
+        "fail_count": fail_count,
+        "seen": len(uuids),
+        "done": len(uuids) < limit,
+        "next_skip": skip + len(uuids),
+    }
