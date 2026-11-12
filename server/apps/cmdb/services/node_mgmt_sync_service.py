@@ -21,10 +21,12 @@ from apps.cmdb.models.collect_model import CollectModels
 from apps.cmdb.services.host_sync_identity import (
     build_host_inst_name,
     host_lookup_key,
+    host_sync_values_equal,
     is_node_mgmt_sidecar_id,
     is_unique_conflict,
     node_id_to_write,
     normalize_link_id,
+    normalize_org_ids,
     parse_cloud_id,
     resolve_host_identity,
     should_refresh_host_inst_name,
@@ -848,13 +850,7 @@ class NodeMgmtSyncService:
 
     @staticmethod
     def _normalize_org_ids(org_ids: list[Any] | None) -> list[int]:
-        result = []
-        for item in org_ids or []:
-            try:
-                result.append(int(item))
-            except (TypeError, ValueError):
-                continue
-        return sorted(set(result))
+        return normalize_org_ids(org_ids)
 
     @staticmethod
     def _node_mgmt_client() -> NodeMgmt:
@@ -1504,14 +1500,14 @@ class NodeMgmtSyncService:
                 continue
             desired_value = desired.get(field)
             existing_value = existing.get(field)
+            if host_sync_values_equal(field, existing_value, desired_value):
+                continue
             if field == "cloud":
-                desired_parsed = parse_cloud_id(desired_value)
-                existing_parsed = parse_cloud_id(existing_value)
-                if desired_parsed is not None:
-                    if existing_parsed != desired_parsed or existing_value != desired_parsed:
-                        changes[field] = desired_parsed
-                    continue
-            if desired_value != existing_value:
+                parsed = parse_cloud_id(desired_value)
+                changes[field] = parsed if parsed is not None else desired_value
+            elif field == "organization":
+                changes[field] = normalize_org_ids(desired_value)
+            else:
                 changes[field] = desired_value
         if not should_refresh_host_inst_name(existing, desired):
             changes.pop("inst_name", None)

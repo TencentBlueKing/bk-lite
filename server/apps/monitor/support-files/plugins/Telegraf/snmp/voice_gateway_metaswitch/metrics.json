@@ -41,7 +41,7 @@
       "metric_group": "CPU",
       "name": "metaswitch_ems_cpu_usage_hwm",
       "query": "metaswitch_ems_cpu_usage_hwm{instance_type='voice_gateway', collect_type='snmp_metaswitch', __$labels__}",
-      "display_name": "EMS CPU Usage High-Water Mark",
+      "display_name": "EMS CPU Usage Peak",
       "data_type": "Number",
       "unit": "percent",
       "dimensions": [
@@ -53,7 +53,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "High-water mark of total CPU usage of a MetaView EMS node (METASWITCH-MIB emsStatsTotCPUUsageHighWaterMark, Unsigned32 0-100)."
+      "description": "Peak total CPU usage of a MetaView EMS node (METASWITCH-MIB emsStatsTotCPUUsageHighWaterMark, Unsigned32 0-100)."
     },
     {
       "metric_group": "Memory",

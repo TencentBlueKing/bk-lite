@@ -11,13 +11,15 @@ import {
   LockOutline,
   UserOutline,
 } from 'antd-mobile-icons';
+import { useIntl } from 'react-intl';
 import { useAuth } from '@/context/auth';
-import { getDomainList } from '@/api/auth';
+import { getDomainList, resetPassword, verifyOtpLogin } from '@/api/auth';
 import { AuthStep } from '@/types/auth';
 import { useTranslation } from '@/utils/i18n';
 import { withBasePath } from '@/utils/basePath';
 import {
   isBuiltinLoginBinding,
+  isPasswordLoginBinding,
   resolveInitialMobileBindingId,
   resolveSelectedMobileBinding,
 } from '@/auth/im-login/bindings';
@@ -30,11 +32,69 @@ import { LOGIN_ACTION_BUTTON_CLASS, loginActionButtonStyle } from '@/auth/im-log
 import { LoginMethodIcon } from '@/auth/im-login/login-method-icon';
 import { LoginProviderIconSprite } from '@/auth/im-login/login-provider-icon-sprite';
 import { consumeLoginNotice, presentationForLoginNotice } from '@/auth/im-login/notices';
-import type { PublicLoginBinding } from '@/auth/im-login/types';
+import {
+  clearPendingLogin,
+  continuationOfLoginData,
+  pendingForStorage,
+  readPendingLogin,
+  savePendingLogin,
+} from '@/auth/im-login/pending-login';
+import type { ExternalLoginResult, PublicLoginBinding } from '@/auth/im-login/types';
 import styles from './page.module.css';
 
+const AD_LOGIN_DOMAIN = 'domain.com';
+
+function formatSetupKey(key: string) {
+  return key.replace(/\s+/g, '').replace(/(.{4})(?=.)/g, '$1 ');
+}
+
+function copyText(value: string) {
+  const input = document.createElement('textarea');
+  input.value = value;
+  input.setAttribute('readonly', '');
+  input.style.position = 'fixed';
+  input.style.top = '0';
+  input.style.left = '0';
+  input.style.opacity = '0';
+  document.body.appendChild(input);
+  input.focus();
+  input.select();
+  input.setSelectionRange(0, value.length);
+  let copied = false;
+  try {
+    copied = document.execCommand('copy');
+  } finally {
+    document.body.removeChild(input);
+  }
+  if (!copied) {
+    throw new Error('copy failed');
+  }
+}
+
+async function copySetupKeyText(value: string) {
+  if (window.isSecureContext && navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(value);
+      return;
+    } catch {
+      copyText(value);
+      return;
+    }
+  }
+  copyText(value);
+}
+
+function formatAppList(apps: string[], orWord: string, locale: string) {
+  if (apps.length <= 1) return apps[0] ?? '';
+  const last = apps[apps.length - 1];
+  const rest = apps.slice(0, -1);
+  if (locale.startsWith('zh')) return `${rest.join('、')} ${orWord} ${last}`;
+  if (apps.length === 2) return `${apps[0]} ${orWord} ${last}`;
+  return `${rest.join(', ')}, ${orWord} ${last}`;
+}
+
 const INPUT_STYLE = {
-  '--font-size': '16px',
+  '--font-size': 'var(--font-size-subtitle)',
   '--color': '#111827',
   '--placeholder-color': '#9ca3af',
   height: '46px',
@@ -46,7 +106,8 @@ const INPUT_STYLE = {
 
 export default function LoginPage() {
   const { t } = useTranslation();
-  const { login, isInitializing } = useAuth();
+  const intl = useIntl();
+  const { login, completeLogin, isInitializing } = useAuth();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [domain, setDomain] = useState('');
@@ -60,21 +121,36 @@ export default function LoginPage() {
   const [authStep, setAuthStep] = useState<AuthStep>('login');
   const [showPassword, setShowPassword] = useState(false);
   const [showDomainSelector, setShowDomainSelector] = useState(false);
+  const [pendingLogin, setPendingLogin] = useState<ExternalLoginResult | null>(null);
+  const [otpCode, setOtpCode] = useState('');
+  const [showSetupKey, setShowSetupKey] = useState(false);
+  const [showQr, setShowQr] = useState(false);
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [stepError, setStepError] = useState('');
   const retryTimerRef = React.useRef<NodeJS.Timeout | null>(null);
 
   const selectedBinding = resolveSelectedMobileBinding(bindings, selectedBindingId);
   const showMethodSelector = authStep === 'login' && bindings.length > 1;
-  const isPasswordMethod = !selectedBinding || isBuiltinLoginBinding(selectedBinding);
+  const isPasswordMethod = !selectedBinding || isPasswordLoginBinding(selectedBinding);
+  const isBuiltinMethod = !selectedBinding || isBuiltinLoginBinding(selectedBinding);
+  const isAdMethod = Boolean(selectedBinding && isPasswordLoginBinding(selectedBinding) && !isBuiltinLoginBinding(selectedBinding));
   const busy = isLoading || isInitializing || startingExternal;
 
   useEffect(() => {
     const notice = consumeLoginNotice(window.sessionStorage);
-    if (notice) {
+    const pending = readPendingLogin(window.sessionStorage);
+    const continuation = continuationOfLoginData(pending);
+    if (continuation === 'otp' || continuation === 'reset') {
+      setPendingLogin(pending);
+      setAuthStep(continuation === 'otp' ? 'otp-verification' : 'reset-password');
+    } else if (notice) {
       const presentation = presentationForLoginNotice(notice.reason);
-      if (presentation.type === 'otp') {
-        setAuthStep('otp-verification');
-      } else if (presentation.type === 'password-reset') {
-        setAuthStep('reset-password');
+      if (presentation.type === 'otp' || presentation.type === 'password-reset') {
+        Toast.show({
+          content: t('login.sessionFailed', undefined, { name: notice.name || t('login.thirdParty') }),
+          icon: 'fail',
+        });
       } else {
         const name = notice.name || t('login.thirdParty');
         Toast.show({
@@ -157,18 +233,21 @@ export default function LoginPage() {
     if (isInitializing) return;
     setIsLoading(true);
     try {
-      const result = await login({ username, password, domain });
+      const result = await login({
+        username,
+        password,
+        domain: isAdMethod ? AD_LOGIN_DOMAIN : domain,
+        bindingId: isAdMethod ? selectedBinding?.id : undefined,
+      });
       if (result.status === 'invalid-credentials') {
         Toast.show({ content: result.message || t('auth.loginFailed'), icon: 'fail' });
         setPassword('');
         return;
       }
-      if (result.status === 'password-reset-required') {
-        setAuthStep('reset-password');
-        return;
-      }
-      if (result.status === 'otp-required') {
-        setAuthStep('otp-verification');
+      if (result.status === 'password-reset-required' || result.status === 'otp-required') {
+        setPendingLogin(readPendingLogin(window.sessionStorage));
+        setStepError('');
+        setAuthStep(result.status === 'otp-required' ? 'otp-verification' : 'reset-password');
         return;
       }
       if (result.status === 'service-unavailable') {
@@ -203,31 +282,284 @@ export default function LoginPage() {
     }
   };
 
-  const renderPasswordResetForm = () => (
-    <div className={styles.statePanel}>
-      <div className={styles.stateIcon} style={{ background: '#ffedd5' }}>
-        <LockOutline fontSize={36} className="text-orange-600" />
-      </div>
-      <h3 className={styles.stateTitle}>{t('login.passwordResetRequired')}</h3>
-      <p className={styles.stateHint}>{t('login.passwordResetHint')}</p>
-      <Button color="primary" fill="outline" onClick={() => setAuthStep('login')} className="w-full h-11" style={{ fontSize: '16px' }}>
-        {t('login.backToLogin')}
-      </Button>
-    </div>
+  const returnToLogin = () => {
+    clearPendingLogin(window.sessionStorage);
+    setPendingLogin(null);
+    setOtpCode('');
+    setNewPassword('');
+    setConfirmPassword('');
+    setStepError('');
+    setAuthStep('login');
+  };
+
+  const finishPending = async (next: ExternalLoginResult) => {
+    const stored = pendingForStorage(next);
+    const continuation = continuationOfLoginData(stored);
+    if (continuation === 'otp' || continuation === 'reset') {
+      savePendingLogin(window.sessionStorage, stored);
+      setPendingLogin(stored);
+      setStepError('');
+      setAuthStep(continuation === 'otp' ? 'otp-verification' : 'reset-password');
+      return;
+    }
+    const result = await completeLogin(next);
+    if (result.status === 'success') return;
+    setStepError(result.status === 'invalid-credentials'
+      ? t('auth.loginFailed')
+      : t('login.serviceUnavailable'));
+  };
+
+  const handleOtpSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!otpCode) {
+      setStepError(t('login.otpRequired'));
+      return;
+    }
+    if (!pendingLogin?.challenge_id) {
+      setStepError(t('login.sessionFailed', undefined, { name: '' }));
+      return;
+    }
+    setIsLoading(true);
+    setStepError('');
+    try {
+      const response = await verifyOtpLogin({
+        challenge_id: pendingLogin.challenge_id,
+        otp_code: otpCode,
+      });
+      if (!response?.result || !response.data) {
+        setStepError(response?.message || t('login.invalidOtp'));
+        return;
+      }
+      await finishPending({
+        ...pendingLogin,
+        ...response.data,
+        require_otp: false,
+        challenge_id: undefined,
+      });
+    } catch {
+      setStepError(t('login.serviceUnavailable'));
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handlePasswordReset = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (newPassword !== confirmPassword) {
+      setStepError(t('login.passwordMismatch'));
+      return;
+    }
+    if (newPassword.length < 8) {
+      setStepError(t('login.passwordTooShort'));
+      return;
+    }
+    if (!pendingLogin?.token) {
+      setStepError(t('login.sessionFailed', undefined, { name: '' }));
+      return;
+    }
+    setIsLoading(true);
+    setStepError('');
+    try {
+      const response = await resetPassword(pendingLogin.token, newPassword);
+      if (!response?.result) {
+        setStepError(response?.message || t('login.passwordResetFailed'));
+        return;
+      }
+      const rotatedToken = typeof response.data?.token === 'string' ? response.data.token : pendingLogin.token;
+      await finishPending({
+        ...pendingLogin,
+        token: rotatedToken,
+        temporary_pwd: false,
+        require_otp: false,
+        challenge_id: undefined,
+      });
+    } catch {
+      setStepError(t('login.serviceUnavailable'));
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const renderStepError = () => (
+    stepError ? <p className={styles.stepError}>{stepError}</p> : null
   );
 
-  const renderOtpVerificationForm = () => (
-    <div className={styles.statePanel}>
-      <div className={styles.stateIcon} style={{ background: '#dbeafe' }}>
-        <LockOutline fontSize={36} className="text-blue-600" />
+  const renderPasswordResetForm = () => (
+    <form onSubmit={handlePasswordReset}>
+      <p className={styles.stateHint}>{t('login.passwordResetDescription')}</p>
+      <div className={styles.field}>
+        <label className={styles.label}>{t('auth.username')}</label>
+        <Input className={`${styles.stepInput} login-input`} value={pendingLogin?.username || username} disabled />
       </div>
-      <h3 className={styles.stateTitle}>{t('login.twoFactorAuth')}</h3>
-      <p className={styles.stateHint}>{t('login.twoFactorHint')}</p>
-      <Button color="primary" fill="outline" onClick={() => setAuthStep('login')} className="w-full h-11" style={{ fontSize: '16px' }}>
-        {t('login.backToLogin')}
-      </Button>
-    </div>
+      <div className={styles.field}>
+        <label className={styles.label}>{t('login.newPassword')}</label>
+        <Input
+          className={`${styles.stepInput} login-input`}
+          type="password"
+          value={newPassword}
+          onChange={setNewPassword}
+          placeholder={t('login.newPasswordPlaceholder')}
+          disabled={busy}
+        />
+      </div>
+      <div className={styles.field}>
+        <label className={styles.label}>{t('login.confirmPassword')}</label>
+        <Input
+          className={`${styles.stepInput} login-input`}
+          type="password"
+          value={confirmPassword}
+          onChange={setConfirmPassword}
+          placeholder={t('login.confirmPasswordPlaceholder')}
+          disabled={busy}
+        />
+      </div>
+      {renderStepError()}
+      <div className={styles.stepActions}>
+        <Button
+          type="submit"
+          loading={isLoading}
+          disabled={busy}
+          className={`w-full rounded-lg shadow-sm ${styles.stepButton}`}
+          style={{ ...loginActionButtonStyle(busy), height: 40, fontSize: 'var(--font-size-body)' }}
+        >
+          {isLoading ? t('login.resettingPassword') : t('login.resetPasswordSubmit')}
+        </Button>
+        <Button
+          color="primary"
+          fill="outline"
+          onClick={returnToLogin}
+          className={`w-full ${styles.stepButton}`}
+          style={{ height: 40, fontSize: 'var(--font-size-body)', borderRadius: 8 }}
+        >
+          {t('login.backToLogin')}
+        </Button>
+      </div>
+    </form>
   );
+
+  const renderOtpVerificationForm = () => {
+    const apps = pendingLogin?.otp_recommended_apps ?? [];
+    const isBinding = Boolean(pendingLogin?.qr_code || pendingLogin?.need_binding);
+    const appList = formatAppList(apps, t('login.or'), intl.locale);
+    const copySetupKey = async () => {
+      const setupKey = pendingLogin?.otp_setup_key;
+      if (!setupKey) return;
+      try {
+        await copySetupKeyText(setupKey.replace(/\s+/g, ''));
+        Toast.show({ content: t('login.otpCopied') });
+      } catch {
+        Toast.show({ content: t('login.otpCopyFailed'), icon: 'fail' });
+      }
+    };
+    const codeField = (placeholder: string, compact = false) => (
+      <div className={compact ? styles.bindField : styles.field}>
+        <Input
+          className={`${styles.stepInput} ${styles.otpInput} login-input`}
+          value={otpCode}
+          onChange={(value) => setOtpCode(value.replace(/\D/g, '').slice(0, 6))}
+          placeholder={placeholder}
+          maxLength={6}
+          disabled={busy}
+        />
+      </div>
+    );
+    return (
+      <form onSubmit={handleOtpSubmit}>
+        {isBinding ? (
+          <div className={styles.bindSections}>
+            <div>
+            <h2 className={styles.sectionTitle}>{t('login.otpStepAdd')}</h2>
+            <p className={styles.bindHint}>
+              {apps.length > 0
+                ? t('login.otpBindStepHintApps', undefined, { apps: appList })
+                : t('login.otpBindStepHint')}
+            </p>
+            {pendingLogin?.qr_code ? (
+              <div className={styles.modeSwitch} role="tablist">
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={!showQr}
+                  className={!showQr ? `${styles.modeOption} ${styles.modeOptionActive}` : styles.modeOption}
+                  onClick={() => setShowQr(false)}
+                >
+                  {t('login.otpManualTitle')}
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={showQr}
+                  className={showQr ? `${styles.modeOption} ${styles.modeOptionActive}` : styles.modeOption}
+                  onClick={() => setShowQr(true)}
+                >
+                  {t('login.otpQrTitle')}
+                </button>
+              </div>
+            ) : null}
+            {showQr && pendingLogin?.qr_code ? (
+              <div className={styles.qrPanel}>
+                <div className={styles.qrFrame}>
+                  <img
+                    src={`data:image/png;base64,${pendingLogin.qr_code}`}
+                    alt={t('login.otpQrAlt')}
+                  />
+                </div>
+              </div>
+            ) : pendingLogin?.otp_setup_key ? (
+              <>
+                <p className={styles.quietLabel}>{t('login.otpSetupKeyLabel')}</p>
+                <div className={styles.keyBox}>
+                  <p className={showSetupKey ? styles.setupKeyValue : styles.setupKeyMasked}>
+                    {showSetupKey ? formatSetupKey(pendingLogin.otp_setup_key) : t('login.otpKeyHidden')}
+                  </p>
+                  <div className={styles.keyActions}>
+                    <button
+                      type="button"
+                      className={styles.showKey}
+                      aria-pressed={showSetupKey}
+                      onClick={() => setShowSetupKey((visible) => !visible)}
+                    >
+                      {t(showSetupKey ? 'login.otpHideKey' : 'login.otpShowKey')}
+                    </button>
+                    <button type="button" className={styles.copyLink} onClick={() => void copySetupKey()}>
+                      {t('login.otpCopyKey')}
+                    </button>
+                  </div>
+                </div>
+                <p className={styles.keyHint}>{t('login.otpKeepSecret')}</p>
+              </>
+            ) : null}
+            </div>
+            <div>
+            <h2 className={styles.sectionTitle}>{t('login.otpStepVerify')}</h2>
+            {codeField(t('login.otpPlaceholderBind'), true)}
+            </div>
+          </div>
+        ) : (
+          <>
+            <p className={styles.stateHint}>{t('login.otpDescription')}</p>
+            {codeField(t('login.otpPlaceholderBind'), true)}
+          </>
+        )}
+        {renderStepError()}
+        <div className={`${styles.stepActions} ${styles.bindActions}`}>
+          <Button
+            type="submit"
+            loading={isLoading}
+            disabled={busy}
+            className={LOGIN_ACTION_BUTTON_CLASS}
+            style={loginActionButtonStyle(busy)}
+          >
+            {isLoading ? t('login.verifyingOtp') : t(isBinding ? 'login.otpFinishBind' : 'login.verifyOtp')}
+          </Button>
+          <button type="button" className={styles.textAction} onClick={returnToLogin}>
+            {t(isBinding ? 'login.otpLeaveBind' : 'login.backToLogin')}
+          </button>
+        </div>
+        {isBinding ? null : <p className={styles.secretNote}>{t('login.otpResetHint')}</p>}
+      </form>
+    );
+  };
 
   const renderDomainField = () => (
     <div className={styles.field}>
@@ -235,7 +567,7 @@ export default function LoginPage() {
       {loadingDomains ? (
         <div className={styles.picker} style={{ justifyContent: 'center', gap: 8 }}>
           <SpinLoading color="primary" />
-          <span style={{ color: '#6b7280', fontSize: 16 }}>{t('login.loadingDomains')}</span>
+          <span style={{ color: '#6b7280', fontSize: 'var(--font-size-subtitle)' }}>{t('login.loadingDomains')}</span>
         </div>
       ) : (
         <div className={styles.picker} onClick={() => setShowDomainSelector(true)}>
@@ -257,7 +589,7 @@ export default function LoginPage() {
 
   const renderPasswordContent = () => (
     <form onSubmit={handleLoginSubmit}>
-      {renderDomainField()}
+      {isBuiltinMethod ? renderDomainField() : null}
       <div className={styles.field}>
         <label className={styles.label}>{t('auth.username')}</label>
         <div className={styles.control}>
@@ -293,9 +625,9 @@ export default function LoginPage() {
       <Button
         type="submit"
         loading={isLoading}
-        disabled={busy || !domain}
+        disabled={busy || (isBuiltinMethod && !domain)}
         className={LOGIN_ACTION_BUTTON_CLASS}
-        style={loginActionButtonStyle(busy || !domain)}
+        style={loginActionButtonStyle(busy || (isBuiltinMethod && !domain))}
       >
         {isLoading ? t('login.signingIn') : t('login.signIn')}
       </Button>
@@ -331,11 +663,13 @@ export default function LoginPage() {
     );
   };
 
+  const isOtpBinding = authStep === 'otp-verification' && Boolean(pendingLogin?.qr_code || pendingLogin?.need_binding);
+  const bindAccountName = pendingLogin?.username || username;
   const pageTitle =
     authStep === 'reset-password'
       ? t('login.resetPassword')
       : authStep === 'otp-verification'
-        ? t('login.verifyIdentity')
+        ? t(isOtpBinding ? 'login.otpBindTitle' : 'login.verifyIdentity')
         : t('login.signIn');
 
   return (
@@ -353,6 +687,7 @@ export default function LoginPage() {
             />
           </div>
           <h1 className={styles.title}>{pageTitle}</h1>
+          {authStep === 'otp-verification' && bindAccountName ? <p className={styles.accountCaption}>{bindAccountName}</p> : null}
         </div>
 
         <div className={styles.card}>
@@ -427,7 +762,7 @@ export default function LoginPage() {
                 </div>
               ))}
             </div>
-            <Button fill="outline" className="w-full h-11" onClick={() => setShowDomainSelector(false)} style={{ fontSize: '16px' }}>
+            <Button fill="outline" className="w-full h-11" onClick={() => setShowDomainSelector(false)} style={{ fontSize: 'var(--font-size-subtitle)' }}>
               {t('common.cancel')}
             </Button>
           </div>

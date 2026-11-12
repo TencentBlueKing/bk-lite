@@ -32,7 +32,7 @@ monitor_object_metric:
       desc: 控制台服务器的输入电源状态，统一归一为 1=正常、2=异常。未知或非正常码均按电源路径风险处理。
     device_cpu_usage:
       name: CPU 使用率
-      desc: Opengear 控制台服务器最近 1 分钟的 CPU 使用率，按 100 - ssCpuIdle（UCD-SNMP-MIB）计算。持续偏高可能表示串口会话或管理进程负载过重。
+      desc: Opengear 控制台服务器最近 1 分钟的 CPU 使用率。持续偏高可能表示串口会话或管理进程负载过重。
     device_memory_total:
       name: 内存总量
       desc: Opengear 控制台服务器的物理内存总量，单位字节（memTotalReal）。
@@ -41,7 +41,7 @@ monitor_object_metric:
       desc: Opengear 控制台服务器的可用物理内存，单位字节（memAvailReal）。
     device_memory_usage:
       name: 内存使用率
-      desc: Opengear 控制台服务器的内存使用率，按 (总量 - 可用) / 总量 * 100 计算。持续偏高可能表示内存泄漏或资源紧张。
+      desc: Opengear 控制台服务器的内存使用率。持续偏高可能表示内存泄漏或资源紧张。
 monitor_object_metric_group:
   ConsoleServer:
     CPU: CPU

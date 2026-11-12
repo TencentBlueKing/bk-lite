@@ -280,7 +280,8 @@ export const buildTopNCsvTable = (
   const labelHeader = resolveTopNHeaderLabel(config?.topNLabelField, schema, { preferTitleOnly })
     || labels.name;
   const valueHeader = appendUnit(
-    resolveTopNHeaderLabel(config?.topNValueField, schema, { preferTitleOnly }) || labels.value,
+    resolveTopNHeaderLabel(config?.topNValueField, schema, { preferTitleOnly })
+      || labels.value,
     config,
   );
   const items = buildTopNItems(rawData, config?.topNLabelField, config?.topNValueField, {

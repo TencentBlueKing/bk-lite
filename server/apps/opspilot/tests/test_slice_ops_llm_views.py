@@ -83,6 +83,38 @@ class TestLLMViewSet:
         names = {i["name"] for i in body}
         assert names == {"tpl"}
 
+    def test_create_保留请求中的提示词和空参数工具(self, mocker):
+        mocker.patch(f"{LLM_MOD}.log_operation")
+        resp = _dispatch(
+            LLMViewSet,
+            "create",
+            "post",
+            data={
+                "name": "from-template",
+                "introduction": "Kubernetes 助手",
+                "skill_type": 3,
+                "skill_prompt": "巡检提示词",
+                "tools": [{"id": 8, "name": "kubernetes", "kwargs": []}],
+            },
+        )
+        assert resp.status_code == 201
+        obj = LLMSkill.objects.get(name="from-template")
+        assert obj.skill_prompt == "巡检提示词"
+        assert obj.skill_type == 3
+        assert obj.introduction == "Kubernetes 助手"
+        assert obj.tools == [{"id": 8, "name": "kubernetes", "kwargs": []}]
+        assert obj.llm_model_id is None
+        assert obj.enable_conversation_history is True
+        assert obj.is_template is False
+        assert obj.is_builtin is False
+        assert obj.team == [1]
+
+    def test_create_空白提示词仍用默认文案(self, mocker):
+        mocker.patch(f"{LLM_MOD}.log_operation")
+        resp = _dispatch(LLMViewSet, "create", "post", data={"name": "blank-prompt", "team": [1], "skill_prompt": "  "})
+        assert resp.status_code == 201
+        assert "professional assistant" in LLMSkill.objects.get(name="blank-prompt").skill_prompt
+
     def test_create_成功落库(self, mocker):
         mocker.patch(f"{LLM_MOD}.log_operation")
         resp = _dispatch(LLMViewSet, "create", "post", data={"name": "skill-a", "team": [1]})

@@ -165,6 +165,10 @@ class TerminalUserChoiceMiddleware(AgentMiddleware):
         if not calls:
             return None
         configurable = _configurable(runtime)
+        request = configurable.get("graph_request")
+        extra = getattr(request, "extra_config", None) or {}
+        if isinstance(extra, dict) and extra.get("unattended") is True:
+            return None
         config = getattr(runtime, "config", None)
         for call in calls:
             rejection = guard_rejection(call, configurable)

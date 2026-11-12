@@ -95,7 +95,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Real memory utilization of the RELIANOID load balancer, computed at collection time as (memTotalReal - memAvailReal) / memTotalReal * 100."
+      "description": "Real memory utilization of the RELIANOID load balancer."
     },
     {
       "metric_group": "Loadbalance",

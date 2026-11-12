@@ -35,12 +35,20 @@ import {
 } from '@/api/request';
 import {
   clearRejectedH5Session,
-  loginWithH5Session,
   logoutH5Session,
   restoreH5Session,
 } from '@/auth/h5Auth';
 import { runBrowserSilentLogin } from '@/auth/im-login/browser';
 import { writeLoginNotice } from '@/auth/im-login/notices';
+import {
+  clearPendingLogin,
+  continuationOfLoginData,
+  pendingFromLoginData,
+  savePendingLogin,
+} from '@/auth/im-login/pending-login';
+import { isSilentLoginSuppressed, suppressSilentLogin } from '@/auth/im-login/silent-guard';
+import { establishH5SessionFromLoginResult } from '@/auth/im-login/session';
+import type { ExternalLoginResult } from '@/auth/im-login/types';
 import { clearCurrentTeamCookie, getCurrentTeamCookie, getIncludeChildrenCookie, setCurrentTeamCookie, setIncludeChildrenCookie, syncCurrentTeamCookie } from '@/utils/teamCookie';
 import { clearCachedAccountOverview } from '@/utils/accountOverviewCache';
 import {
@@ -246,8 +254,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => setUnauthorizedHandler(null);
   }, [handleUnauthorized]);
 
+  const h5SessionDependencies = useCallback(() => ({
+    signIn: (provider: string, options: Record<string, unknown>) => signIn(provider, options),
+    getSession,
+    signOut: (options: { redirect: false }) => signOut(options),
+  }), []);
+
   const trySilentImLogin = useCallback(async () => {
     if (isTauriApp() || typeof window === 'undefined') return 'continue' as const;
+    if (isSilentLoginSuppressed(window.sessionStorage)) return 'continue' as const;
     if (window.location.pathname.includes('/auth/external')) return 'continue' as const;
     try {
       const outcome = await runBrowserSilentLogin({
@@ -368,21 +383,35 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setIsLoading(true);
     try {
       if (!isTauriApp()) {
-        const result = await loginWithH5Session(credentials, {
-          signIn: (provider, options) => signIn(provider, options),
-          getSession,
+        const response = await authLogin({
+          username: credentials.username,
+          password: credentials.password,
+          domain: credentials.domain,
+          ...(credentials.bindingId ? { binding_id: credentials.bindingId } : {}),
         });
-        if (result.status !== 'success') {
-          if (
-            result.status === 'otp-required'
-            || result.status === 'password-reset-required'
-          ) {
-            await clearH5Session();
-          }
-          return result;
+        if (!response?.result || !response.data) {
+          return {
+            status: 'invalid-credentials',
+            message: response?.message,
+          };
         }
 
-        await establishAuthenticatedState(result.token, null, false);
+        const pending = pendingFromLoginData(response.data as ExternalLoginResult);
+        const step = continuationOfLoginData(pending);
+        if (step === 'otp' || step === 'reset') {
+          savePendingLogin(window.sessionStorage, pending);
+          return { status: step === 'otp' ? 'otp-required' : 'password-reset-required' };
+        }
+        if (step !== 'session' || !pending.token) {
+          return { status: 'invalid-credentials', message: response?.message };
+        }
+
+        clearPendingLogin(window.sessionStorage);
+        const session = await establishH5SessionFromLoginResult(pending, h5SessionDependencies());
+        if (session.status !== 'success') {
+          return { status: 'service-unavailable' };
+        }
+        await establishAuthenticatedState(session.token, null, false);
         navigateAfterLogin();
         return { status: 'success' };
       }
@@ -418,6 +447,37 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return {
         status: 'service-unavailable',
       };
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const completeLogin = async (loginResult: ExternalLoginResult): Promise<AuthLoginResult> => {
+    if (isTauriApp()) {
+      return { status: 'service-unavailable' };
+    }
+    setIsLoading(true);
+    try {
+      const pending = pendingFromLoginData(loginResult);
+      const step = continuationOfLoginData(pending);
+      if (step === 'otp' || step === 'reset') {
+        savePendingLogin(window.sessionStorage, pending);
+        return { status: step === 'otp' ? 'otp-required' : 'password-reset-required' };
+      }
+      if (step !== 'session' || !pending.token) {
+        return { status: 'invalid-credentials' };
+      }
+      clearPendingLogin(window.sessionStorage);
+      const session = await establishH5SessionFromLoginResult(pending, h5SessionDependencies());
+      if (session.status !== 'success') {
+        return { status: 'service-unavailable' };
+      }
+      await establishAuthenticatedState(session.token, null, false);
+      navigateAfterLogin();
+      return { status: 'success' };
+    } catch (error) {
+      console.error('Login error:', error);
+      return { status: 'service-unavailable' };
     } finally {
       setIsLoading(false);
     }
@@ -479,6 +539,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.error('退出登录过程中发生错误:', error);
       Toast.show({ content: t('login.logoutIncomplete'), icon: 'fail' });
     } finally {
+      if (!isTauriApp()) {
+        suppressSilentLogin(window.sessionStorage);
+      }
       const storageCleared = await resetLocalState();
       if (!storageCleared) {
         Toast.show({ content: t('login.logoutIncomplete'), icon: 'fail' });
@@ -528,6 +591,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         organizationScope,
         applyOrganizationScope,
         login,
+        completeLogin,
         logout,
         updateUserInfo,
       }}

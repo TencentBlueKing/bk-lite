@@ -440,7 +440,7 @@ def test_integration_config_java_snippet_uses_the_system_probe_download_address(
     [
         ("python", "opentelemetry-python-wheels.tar.gz", "pypi.org"),
         ("nodejs", "opentelemetry-js-auto.tgz", "npmjs"),
-        ("go", "opentelemetry-go-sdk.zip", "go get "),
+        ("go", "opentelemetry-go-sdk.zip", "proxy.golang.org"),
         ("dotnet", "opentelemetry-dotnet-auto-linux-glibc-x64.zip", "nuget.org"),
     ],
 )
@@ -469,8 +469,13 @@ def test_integration_config_snippets_use_system_probe_download_addresses(
     )
 
     assert response.status_code == 200
-    assert f"http://10.10.10.1:8011/api/v1/apm/open_api/probe/download/{artifact_name}" in response.data["code"]
-    assert forbidden not in response.data["code"]
+    code = response.data["code"]
+    assert f"http://10.10.10.1:8011/api/v1/apm/open_api/probe/download/{artifact_name}" in code
+    assert forbidden not in code
+    if language == "go":
+        install, _, _ = code.partition("# 2. 配置上报")
+        assert "go get " not in install
+        assert code.count("\ngo get ") == 1
 
 
 def test_integration_config_java_snippet_reports_missing_probe_download_address(apm_api_client, monkeypatch):
@@ -675,9 +680,7 @@ def test_integration_config_hides_probe_download_rpc_failures_from_clients(apm_a
     region = Mock()
     region.cloud_region_list.return_value = [{"id": 7, "name": "华东一区"}]
     region.get_cloud_region_proxy_address.return_value = "apm-east.example.com"
-    region.get_cloud_region_public_config.side_effect = TimeoutError(
-        "nats: no responders available for request"
-    )
+    region.get_cloud_region_public_config.side_effect = TimeoutError("nats: no responders available for request")
 
     with pytest.MonkeyPatch.context() as monkeypatch:
         monkeypatch.setattr("apps.apm.views.control_plane.NodeMgmt", lambda: region)
@@ -898,4 +901,3 @@ def test_virtual_assets_stay_hidden_without_virtual_organization_permission(apm_
     listed = apm_api_client.get("/api/v1/apm/applications/")
     assert listed.status_code == 200
     assert {item["application_id"] for item in listed.data} == {"shop"}
-

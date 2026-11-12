@@ -63,12 +63,28 @@ export function createMonitorNodeQueryCache<T>() {
 
 const queryCaches = new Map<string, ReturnType<typeof createMonitorNodeQueryCache<never>>>();
 
+export function buildMonitorNodeCacheScope(
+  pluginId: string | number | null | undefined,
+  organizationId: string | number | null | undefined,
+  includeChildren = false,
+) {
+  return [
+    String(organizationId ?? ''),
+    includeChildren ? 'children' : 'self',
+    String(pluginId || 'default'),
+  ].join(':');
+}
+
 export function monitorNodeQueryCache<T>(scope: string) {
   const existing = queryCaches.get(scope) as ReturnType<typeof createMonitorNodeQueryCache<T>> | undefined;
   if (existing) return existing;
   const created = createMonitorNodeQueryCache<T>();
   queryCaches.set(scope, created as ReturnType<typeof createMonitorNodeQueryCache<never>>);
   return created;
+}
+
+export function clearMonitorNodeQueryCaches() {
+  queryCaches.clear();
 }
 
 export function scheduleMonitorNodeSearch(

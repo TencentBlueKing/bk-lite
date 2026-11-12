@@ -32,11 +32,11 @@ monitor_object_metric:
       name: 堆总量
       desc: ACKSYS WaveOS 堆内存总字节数。与空闲量一起作为堆使用率的分母。
     heap_low_water_bytes:
-      name: 堆低水位
-      desc: ACKSYS WaveOS 堆空闲低水位字节数，记录自上次复位以来观察到的最低空闲堆，用于发现瞬时内存压力。
+      name: 堆最低值
+      desc: ACKSYS WaveOS 堆空闲最低值字节数，记录自上次复位以来观察到的最低空闲堆，用于发现瞬时内存压力。
     device_memory_usage:
       name: 堆使用率
-      desc: 由堆总量与空闲字节推导的 ACKSYS WaveOS 堆使用率，单位为百分比。持续偏高表示堆内存压力，而不是伪造的 CPU 或通用内存百分比。
+      desc: ACKSYS WaveOS 堆使用率，单位为百分比。持续偏高表示堆内存压力，而不是伪造的 CPU 或通用内存百分比。
     device_temperature_celsius:
       name: 温度
       desc: ACKSYS 主板传感器 0 的温度，原始值为毫摄氏度，查询时除以 1000 转为摄氏度。读数不高于 -274000 毫摄氏度表示传感器不可用。温度过高可能表示机箱温升或射频硬件热压力。

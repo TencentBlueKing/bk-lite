@@ -133,7 +133,7 @@ export function processRoleTreeData(
     const visibleName = item.display_name || item.name;
 
     return {
-      key: item.id,
+      key: item.name,
       title: isExternal
         ? React.createElement('span', null, visibleName, React.createElement(Tag, { color: 'green', className: 'ml-1', style: { fontSize: 11, padding: '0 4px' } }, externalAppLabel))
         : item.name,

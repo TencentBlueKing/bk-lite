@@ -859,6 +859,11 @@ button.kpiCard {
   min-height: 168px;
 }
 
+/* 无点说明跟内容走，不再用 168 的图表卡把一句字撑出大块留白。 */
+.chartPanel[data-mongodb-face='compact'] {
+  min-height: 0;
+}
+
 .chartHead {
   display: flex;
   align-items: baseline;
@@ -929,6 +934,29 @@ button.kpiCard {
 
 .chartBody {
   height: 156px;
+}
+
+/* Mongo 趋势格。格子跟内容走，卡身固定 156，避免 h-full 把整行卡压成标题。 */
+.mongoChartCell {
+  min-width: 0;
+  height: auto;
+  min-height: min-content;
+}
+
+.mongoChartCell .chartPanel {
+  height: auto;
+  overflow: visible;
+}
+
+.mongoChartCell .chartBody {
+  flex: 0 0 156px;
+  height: 156px;
+  min-height: 156px;
+}
+
+.mongoChartCell .chartEmpty {
+  height: 100%;
+  min-height: 156px;
 }
 
 .chartEmpty {

@@ -9,9 +9,7 @@ monitor_object_metric:
   Wireless:
     snmp_uptime:
       name: System Uptime
-      desc: This metric indicates the uptime of the wireless controller since the last
-        restart, derived from sysUpTime. Monitoring uptime helps administrators understand
-        device stability and identify unexpected reboots or failures.
+      desc: This metric indicates the uptime of the wireless controller since the last restart, derived from sysUpTime. Monitoring uptime helps administrators understand device stability and identify unexpected reboots or failures.
     device_cpu_usage:
       name: CPU Usage
       desc: CPU utilization of the Cisco wireless LAN controller. AireOS reports a
@@ -20,8 +18,7 @@ monitor_object_metric:
         and controller responsiveness.
     device_memory_total:
       name: Memory Total
-      desc: Total controller memory in bytes. AireOS uses agentTotalMemory (KBytes ×
-        1024); Catalyst 9800 derives total from used plus free memory.
+      desc: Total controller memory in bytes. AireOS uses agentTotalMemory (KBytes × 1024).
     device_memory_free:
       name: Memory Free
       desc: Free controller memory in bytes (KBytes × 1024). AireOS uses

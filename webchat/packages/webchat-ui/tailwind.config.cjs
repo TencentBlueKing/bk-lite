@@ -6,7 +6,7 @@ module.exports = {
   corePlugins: {
     preflight: false,
   },
-  content: ['./src/**/*.{js,ts,jsx,tsx}'],
+  content: ['./src/**/*.{js,ts,jsx,tsx}', '../../../web/packages/chat-content/src/**/*.{ts,tsx}', '../../node_modules/@bk-lite/chat-content/src/**/*.{ts,tsx}'],
   theme: {
     extend: {
       keyframes: {

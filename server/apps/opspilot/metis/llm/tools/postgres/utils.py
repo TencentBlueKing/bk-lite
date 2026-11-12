@@ -3,9 +3,9 @@ import json
 
 import psycopg2
 from langchain_core.runnables import RunnableConfig
-from apps.core.logger import opspilot_logger as logger
 from psycopg2.extras import RealDictCursor
 
+from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.metis.llm.tools.common.sql_guard import log_db_failure, run_blocking
 
 
@@ -38,7 +38,7 @@ def prepare_context(config: RunnableConfig = None) -> dict:
     return db_config
 
 
-def get_db_connection(config: RunnableConfig = None, database: str = None):
+def get_db_connection(config: RunnableConfig = None, database: str = None, instance_name: str = None, instance_id: str = None):
     """
     获取数据库连接。优先使用多实例配置（postgres_instances），
     无多实例配置时回退到平铺字段（host/port/database/user/password）。
@@ -54,26 +54,23 @@ def get_db_connection(config: RunnableConfig = None, database: str = None):
 
     # 多实例路径
     if configurable.get("postgres_instances"):
-        from apps.opspilot.metis.llm.tools.postgres.connection import build_postgres_normalized_from_runnable, get_postgres_connection_from_item
+        from apps.opspilot.metis.llm.tools.postgres.connection import (
+            build_postgres_normalized_from_runnable,
+            get_postgres_connection_from_item,
+            get_postgres_instances_from_configurable,
+            resolve_postgres_instance,
+        )
 
-        normalized = build_postgres_normalized_from_runnable(config)
-        item = normalized.items[0]
-        conn = get_postgres_connection_from_item(item)
+        instances, default_id = get_postgres_instances_from_configurable(configurable)
+        instance = resolve_postgres_instance(instances, default_id, instance_name=instance_name, instance_id=instance_id)
+        normalized = build_postgres_normalized_from_runnable(config, instance_id=instance["id"])
+        item = normalized["items"][0]
         if database:
-            # psycopg2 不支持 USE；通过重新连接切换 database
-            cfg = dict(item["config"])
-            cfg["database"] = database
-            conn.close()
-            conn = psycopg2.connect(
-                host=cfg["host"],
-                port=cfg["port"],
-                database=cfg["database"],
-                user=cfg["user"],
-                password=cfg["password"],
-                cursor_factory=RealDictCursor,
-                connect_timeout=10,
-            )
-        return conn
+            item = {**item, "config": {**item["config"], "database": database}}
+        return get_postgres_connection_from_item(item)
+
+    if instance_name or instance_id:
+        raise ValueError("PostgreSQL instance selection is unavailable for legacy single-instance configuration")
 
     # 平铺字段（legacy）回退路径
     db_config = prepare_context(config)
@@ -97,13 +94,20 @@ def get_db_connection(config: RunnableConfig = None, database: str = None):
         raise
 
 
-def _execute_readonly_query_blocking(query: str, params: tuple = None, config: RunnableConfig = None, database: str = None):
+def _execute_readonly_query_blocking(
+    query: str,
+    params: tuple = None,
+    config: RunnableConfig = None,
+    database: str = None,
+    instance_name: str = None,
+    instance_id: str = None,
+):
     """阻塞实现:建立连接、开启只读事务、执行查询并返回结果。"""
     conn = None
     cursor = None
 
     try:
-        conn = get_db_connection(config, database=database)
+        conn = get_db_connection(config, database=database, instance_name=instance_name, instance_id=instance_id)
         cursor = conn.cursor()
 
         # 开启只读事务
@@ -137,7 +141,14 @@ def _execute_readonly_query_blocking(query: str, params: tuple = None, config: R
             conn.close()
 
 
-def execute_readonly_query(query: str, params: tuple = None, config: RunnableConfig = None, database: str = None):
+def execute_readonly_query(
+    query: str,
+    params: tuple = None,
+    config: RunnableConfig = None,
+    database: str = None,
+    instance_name: str = None,
+    instance_id: str = None,
+):
     """
     安全执行只读查询。阻塞 IO 在异步上下文中自动卸载到线程,避免阻塞事件循环 (F038)。
 
@@ -150,7 +161,15 @@ def execute_readonly_query(query: str, params: tuple = None, config: RunnableCon
     Returns:
         list: 查询结果列表
     """
-    return run_blocking(_execute_readonly_query_blocking, query, params=params, config=config, database=database)
+    return run_blocking(
+        _execute_readonly_query_blocking,
+        query,
+        params=params,
+        config=config,
+        database=database,
+        instance_name=instance_name,
+        instance_id=instance_id,
+    )
 
 
 def format_size(bytes_value: int) -> str:

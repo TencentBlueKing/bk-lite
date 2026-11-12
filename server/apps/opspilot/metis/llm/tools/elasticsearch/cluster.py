@@ -6,30 +6,30 @@ from apps.opspilot.metis.llm.tools.elasticsearch.utils import build_error_respon
 
 
 @tool()
-def es_ping(config: RunnableConfig = None):
+def es_ping(config: RunnableConfig = None, instance_name: str = None, instance_id: str = None):
     """检查 Elasticsearch 连通性。"""
     try:
-        client = get_es_client(config=config)
+        client = get_es_client(config=config, instance_name=instance_name, instance_id=instance_id)
         return build_success_response({"pong": client.ping()})
     except Exception as e:
         return build_error_response(e, error_type="connection_error")
 
 
 @tool()
-def es_info(config: RunnableConfig = None):
+def es_info(config: RunnableConfig = None, instance_name: str = None, instance_id: str = None):
     """获取 Elasticsearch 基础信息。"""
     try:
-        client = get_es_client(config=config)
+        client = get_es_client(config=config, instance_name=instance_name, instance_id=instance_id)
         return build_success_response(client.info())
     except Exception as e:
         return build_error_response(e)
 
 
 @tool()
-def es_cluster_health(index: str = None, config: RunnableConfig = None):
+def es_cluster_health(index: str = None, config: RunnableConfig = None, instance_name: str = None, instance_id: str = None):
     """获取 Elasticsearch 集群健康状态。"""
     try:
-        client = get_es_client(config=config)
+        client = get_es_client(config=config, instance_name=instance_name, instance_id=instance_id)
         if index:
             return build_success_response(client.cluster.health(index=index), index=index)
         return build_success_response(client.cluster.health())
@@ -38,30 +38,30 @@ def es_cluster_health(index: str = None, config: RunnableConfig = None):
 
 
 @tool()
-def es_cluster_stats(config: RunnableConfig = None):
+def es_cluster_stats(config: RunnableConfig = None, instance_name: str = None, instance_id: str = None):
     """获取 Elasticsearch 集群统计信息。"""
     try:
-        client = get_es_client(config=config)
+        client = get_es_client(config=config, instance_name=instance_name, instance_id=instance_id)
         return build_success_response(client.cluster.stats())
     except Exception as e:
         return build_error_response(e)
 
 
 @tool()
-def es_nodes_info(config: RunnableConfig = None):
+def es_nodes_info(config: RunnableConfig = None, instance_name: str = None, instance_id: str = None):
     """获取 Elasticsearch 节点信息。"""
     try:
-        client = get_es_client(config=config)
+        client = get_es_client(config=config, instance_name=instance_name, instance_id=instance_id)
         return build_success_response(client.nodes.info())
     except Exception as e:
         return build_error_response(e)
 
 
 @tool()
-def es_nodes_stats(config: RunnableConfig = None):
+def es_nodes_stats(config: RunnableConfig = None, instance_name: str = None, instance_id: str = None):
     """获取 Elasticsearch 节点统计信息。"""
     try:
-        client = get_es_client(config=config)
+        client = get_es_client(config=config, instance_name=instance_name, instance_id=instance_id)
         return build_success_response(client.nodes.stats())
     except Exception as e:
         return build_error_response(e)

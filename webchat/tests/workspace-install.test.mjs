@@ -36,6 +36,8 @@ test('root package owns the complete WebChat workspace install graph', () => {
   assert.equal(uiPackage.dependencies['@webchat/core'], corePackage.version);
   assert.equal(demoPackage.dependencies['@webchat/ui'], uiPackage.version);
   assert.doesNotMatch(JSON.stringify(uiPackage.dependencies), /file:/);
+  assert.doesNotMatch(JSON.stringify(corePackage.dependencies || {}), /file:/);
+  assert.equal(uiPackage.devDependencies['@bk-lite/chat-content'], 'file:../../../web/packages/chat-content');
   assert.doesNotMatch(JSON.stringify(demoPackage.dependencies), /file:/);
 });
 
@@ -51,6 +53,23 @@ test('reachable CI uses the root lockfile instead of installing child packages i
   assert.doesNotMatch(workflow, /publish:\n[\s\S]*if: github\.event_name == 'push'/);
   assert.match(workflow, /publish:\n[\s\S]*run: npm ci/);
   assert.match(workflow, /node scripts\/publish-workspaces\.mjs/);
+});
+
+test('published type declarations do not depend on the private content package', () => {
+  function inspect(directory) {
+    for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+      const file = path.join(directory, entry.name);
+      if (entry.isDirectory()) inspect(file);
+      else if (entry.name.endsWith('.d.ts')) {
+        assert.doesNotMatch(fs.readFileSync(file, 'utf8'), /@bk-lite\/chat-content/, file);
+      }
+    }
+  }
+  for (const name of ['core', 'ui']) {
+    const dist = path.join(rootDir, `packages/webchat-${name}/dist`);
+    assert.ok(fs.existsSync(path.join(dist, 'chat-content/types.d.ts')));
+    inspect(dist);
+  }
 });
 
 test('packed core package supports both ESM import and CommonJS require', () => {
@@ -121,6 +140,9 @@ test('packed UI package installs with its published dependencies and supports ES
     const packedUi = JSON.parse(packageJsonResult.stdout);
     assert.equal(packedUi.dependencies['@webchat/core'], corePackage.version);
     assert.doesNotMatch(JSON.stringify(packedUi.dependencies), /file:/);
+    const contents = spawnSync('tar', ['-tf', path.join(fixture, uiFilename)], { encoding: 'utf8' });
+    assert.equal(contents.status, 0, contents.stderr);
+    assert.match(contents.stdout, /package\/dist\/chat-content\/ui.d.ts/);
     assert.equal(packedUi.peerDependencies['@ant-design/x'], '^1.6.1');
     assert.equal(packedUi.peerDependencies.antd, '^5.28.0');
 

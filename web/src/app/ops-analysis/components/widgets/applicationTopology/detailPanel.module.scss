@@ -4,4 +4,13 @@
   :global(.ant-drawer-footer) {
     background: var(--ops-topology-drawer-surface, var(--color-modal-header-color)) !important;
   }
+
+  /* 标题/底栏分隔线跟内容上的大屏 --color-border-*，避免继承系统浅色边框。 */
+  :global(.ant-drawer-header) {
+    border-bottom-color: var(--color-border-1);
+  }
+
+  :global(.ant-drawer-footer) {
+    border-top-color: var(--color-border-1);
+  }
 }

@@ -1545,6 +1545,24 @@ class ModelManage(object):
         return query_association_info(model_asst_id)
 
     @staticmethod
+    def set_association_context_link(model_asst_id, context_link):
+        """把模型关系的 context_link 写成 follow/include/exclude，并排队重算应用上下文。"""
+        asso = ModelManage.model_association_info_search(model_asst_id)
+        if not asso:
+            raise BaseAppException("association not found!")
+        from apps.cmdb.services.ci_context_policy import normalize_context_link
+
+        link = normalize_context_link(context_link)
+        with GraphClient() as ag:
+            updated = ag.set_edge_properties(asso["_id"], {"context_link": link})
+        from apps.cmdb.services.ci_context import schedule_ci_context_pending
+
+        schedule_ci_context_pending(model_asst_ids=[model_asst_id])
+        if isinstance(updated, dict) and updated:
+            return updated
+        return {"model_asst_id": model_asst_id, "context_link": link}
+
+    @staticmethod
     def model_association_search(
         model_id: str,
         *,

@@ -186,11 +186,17 @@ const hslToRgb = (
   ];
 };
 
+const legendColorCache = new Map<OpsChartThemeName, string[]>();
+
 export const randomColorForLegend = (themeName?: OpsChartThemeName) => {
   const maxColorsTotal = 1000;
   const maxColorsCount = 80;
   const customColorsRow = 4;
   const resolvedThemeName = themeName ?? resolveOpsChartThemeName();
+  const cached = legendColorCache.get(resolvedThemeName);
+  if (cached) {
+    return cached;
+  }
   let colors: string[] = [];
   const opacity =
     resolvedThemeName === 'dark'
@@ -209,6 +215,7 @@ export const randomColorForLegend = (themeName?: OpsChartThemeName) => {
     }
   }
 
+  legendColorCache.set(resolvedThemeName, colors);
   return colors;
 };
 

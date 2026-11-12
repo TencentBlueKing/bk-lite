@@ -1,3 +1,4 @@
+import { applyAnsweredUserChoices } from '@bk-lite/chat-content/userChoiceOptions';
 import type { ChatState, Message, PlatformContract, WebChatConfig } from './types';
 import {
   assembleAguiHistoryParts,
@@ -251,7 +252,7 @@ function hasToolCallChunks(chunks: HistoryContentChunk[] | undefined): boolean {
 }
 
 export function mapPlatformMessages(rows: Record<string, unknown>[]): Message[] {
-  return rows
+  const messages = rows
     .map((item, index) => {
       const role: Message['sender'] =
         item.conversation_role === 'user' || item.role === 'user' ? 'user' : 'bot';
@@ -269,6 +270,8 @@ export function mapPlatformMessages(rows: Record<string, unknown>[]): Message[] 
         : undefined;
       const attachments = historyAttachments(item.attachments);
       const metadata = {
+        ...(parts?.structured || {}),
+        ...(parts?.plannedSteps.length ? { plannedSteps: parts.plannedSteps } : {}),
         ...(thinking ? { thinking, isThinking: false } : {}),
         ...(contentChunks ? { contentChunks } : {}),
         ...(attachments.length > 0 ? { attachments } : {}),
@@ -285,10 +288,18 @@ export function mapPlatformMessages(rows: Record<string, unknown>[]): Message[] 
     .filter(
       (item) =>
         String(item.content).trim() !== '' ||
+        Object.values(item.metadata || {}).some(value => Array.isArray(value) && value.length > 0) ||
         Boolean(item.metadata?.thinking) ||
         hasToolCallChunks(item.metadata?.contentChunks as HistoryContentChunk[] | undefined) ||
         (Array.isArray(item.metadata?.attachments) && item.metadata.attachments.length > 0)
     );
+  const answered = applyAnsweredUserChoices(messages.map(item => ({
+    role: item.sender, content: item.content, userChoiceRequests: item.metadata?.userChoiceRequests,
+  })));
+  return messages.map((item, index) => answered[index].userChoiceRequests?.length
+    ? { ...item, metadata: { ...item.metadata, userChoiceRequests: answered[index].userChoiceRequests } }
+    : item);
+
 }
 
 function historyAttachments(value: unknown): Array<Record<string, unknown>> {

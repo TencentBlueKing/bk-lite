@@ -9,9 +9,7 @@ monitor_object_metric:
   Wireless:
     snmp_uptime:
       name: System Uptime
-      desc: This metric indicates the uptime of the device since the last restart,
-        derived from sysUpTime. Monitoring uptime helps administrators understand
-        device stability and identify unexpected reboots or failures.
+      desc: This metric indicates the uptime of the device since the last restart, derived from sysUpTime. Monitoring uptime helps administrators understand device stability and identify unexpected reboots or failures.
     device_cpu_usage:
       name: CPU Utilization
       desc: CPU utilization of the UHP VSAT terminal (cpuLoad, 1.3.6.1.4.1.8000.22.8.2.0,

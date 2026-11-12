@@ -203,7 +203,7 @@ def test_check_configuration_tuning_attaches_advice():
     wal_info = {"current_wal_lsn": "0/1", "wal_level": "replica"}
     wal_stats = {"wal_bytes": 2048, "stats_reset": None}
 
-    def fake_query(sql, params=None, config=None, database=None):
+    def fake_query(sql, params=None, config=None, database=None, instance_name=None, instance_id=None):
         if "pg_stat_wal" in sql:
             return [wal_stats]
         return [wal_info]
@@ -213,7 +213,7 @@ def test_check_configuration_tuning_attaches_advice():
     assert wal["wal_info"]["wal_level"] == "replica"
     assert wal["wal_stats"]["wal_size"]
 
-    def missing_stat(sql, params=None, config=None, database=None):
+    def missing_stat(sql, params=None, config=None, database=None, instance_name=None, instance_id=None):
         if "pg_stat_wal" in sql:
             raise RuntimeError("relation pg_stat_wal does not exist")
         return [wal_info]

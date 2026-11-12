@@ -7,7 +7,7 @@ from apps.opspilot.metis.llm.tools.mssql.utils import execute_readonly_query, fo
 
 
 @tool()
-def get_database_metrics(config: RunnableConfig = None):
+def get_database_metrics(config: RunnableConfig = None, instance_name: str = None, instance_id: str = None):
     """
     获取数据库级别监控指标
 
@@ -58,8 +58,8 @@ def get_database_metrics(config: RunnableConfig = None):
     """
 
     try:
-        results = execute_readonly_query(query, config=config)
-        cache_stats = execute_readonly_query(cache_query, config=config)
+        results = execute_readonly_query(query, config=config, instance_name=instance_name, instance_id=instance_id)
+        cache_stats = execute_readonly_query(cache_query, config=config, instance_name=instance_name, instance_id=instance_id)
 
         # 创建缓存统计映射
         cache_map = {row["database_name"]: row for row in cache_stats}
@@ -81,7 +81,7 @@ def get_database_metrics(config: RunnableConfig = None):
 
 
 @tool()
-def get_table_metrics(schema_name: str = "dbo", table: str = None, config: RunnableConfig = None):
+def get_table_metrics(schema_name: str = "dbo", table: str = None, config: RunnableConfig = None, instance_name: str = None, instance_id: str = None):
     """
     获取表级别监控指标
 
@@ -155,7 +155,7 @@ def get_table_metrics(schema_name: str = "dbo", table: str = None, config: Runna
         params = (schema_name,)
 
     try:
-        results = execute_readonly_query(query, params=params, config=config)
+        results = execute_readonly_query(query, params=params, config=config, instance_name=instance_name, instance_id=instance_id)
 
         # 格式化数据
         for row in results:
@@ -172,7 +172,7 @@ def get_table_metrics(schema_name: str = "dbo", table: str = None, config: Runna
 
 
 @tool()
-def get_wait_stats(config: RunnableConfig = None):
+def get_wait_stats(config: RunnableConfig = None, instance_name: str = None, instance_id: str = None):
     """
     获取等待统计信息
 
@@ -219,7 +219,7 @@ def get_wait_stats(config: RunnableConfig = None):
     """
 
     try:
-        results = execute_readonly_query(query, config=config)
+        results = execute_readonly_query(query, config=config, instance_name=instance_name, instance_id=instance_id)
 
         # 分类等待类型
         io_waits = [r for r in results if "PAGEIO" in r["wait_type"] or "IO" in r["wait_type"]]
@@ -238,7 +238,7 @@ def get_wait_stats(config: RunnableConfig = None):
 
 
 @tool()
-def get_instance_metrics(config: RunnableConfig = None):
+def get_instance_metrics(config: RunnableConfig = None, instance_name: str = None, instance_id: str = None):
     """
     获取实例级别监控指标
 
@@ -321,13 +321,13 @@ def get_instance_metrics(config: RunnableConfig = None):
     """
 
     try:
-        perf_counters = execute_readonly_query(perf_query, config=config)
-        memory_info = execute_readonly_query(memory_query, config=config)
-        server_info = execute_readonly_query(server_query, config=config)
+        perf_counters = execute_readonly_query(perf_query, config=config, instance_name=instance_name, instance_id=instance_id)
+        memory_info = execute_readonly_query(memory_query, config=config, instance_name=instance_name, instance_id=instance_id)
+        server_info = execute_readonly_query(server_query, config=config, instance_name=instance_name, instance_id=instance_id)
 
         # CPU信息可能不总是可用
         try:
-            cpu_info = execute_readonly_query(cpu_query, config=config)
+            cpu_info = execute_readonly_query(cpu_query, config=config, instance_name=instance_name, instance_id=instance_id)
         except Exception:
             cpu_info = [{"sql_cpu_percent": None, "system_idle_percent": None}]
 
@@ -358,7 +358,7 @@ def get_instance_metrics(config: RunnableConfig = None):
 
 
 @tool()
-def get_io_stats(config: RunnableConfig = None):
+def get_io_stats(config: RunnableConfig = None, instance_name: str = None, instance_id: str = None):
     """
     获取I/O统计信息
 
@@ -407,7 +407,7 @@ def get_io_stats(config: RunnableConfig = None):
     """
 
     try:
-        results = execute_readonly_query(query, config=config)
+        results = execute_readonly_query(query, config=config, instance_name=instance_name, instance_id=instance_id)
 
         # 识别高延迟文件(>20ms平均延迟)
         high_latency_files = [r for r in results if r["avg_read_latency_ms"] > 20 or r["avg_write_latency_ms"] > 20]
@@ -428,7 +428,7 @@ def get_io_stats(config: RunnableConfig = None):
 
 
 @tool()
-def check_backup_status(database_name: str = None, days: int = 7, config: RunnableConfig = None):
+def check_backup_status(database_name: str = None, days: int = 7, config: RunnableConfig = None, instance_name: str = None, instance_id: str = None):
     """
     检查数据库备份状态
 
@@ -457,7 +457,7 @@ def check_backup_status(database_name: str = None, days: int = 7, config: Runnab
     """
 
     try:
-        table_check = execute_readonly_query(backupset_check, config=config)
+        table_check = execute_readonly_query(backupset_check, config=config, instance_name=instance_name, instance_id=instance_id)
         has_backupset_table = table_check[0]["has_backupset_table"] == 1 if table_check else False
 
         if not has_backupset_table:
@@ -539,8 +539,10 @@ def check_backup_status(database_name: str = None, days: int = 7, config: Runnab
     """
 
     try:
-        backup_history = execute_readonly_query(backup_history_query, params=params, config=config)
-        last_backups = execute_readonly_query(last_backup_query, config=config)
+        backup_history = execute_readonly_query(
+            backup_history_query, params=params, config=config, instance_name=instance_name, instance_id=instance_id
+        )
+        last_backups = execute_readonly_query(last_backup_query, config=config, instance_name=instance_name, instance_id=instance_id)
 
         # 格式化备份历史
         for row in backup_history:
@@ -592,7 +594,9 @@ def check_backup_status(database_name: str = None, days: int = 7, config: Runnab
 
 
 @tool()
-def check_agent_jobs(job_name: str = None, include_history: bool = True, config: RunnableConfig = None):
+def check_agent_jobs(
+    job_name: str = None, include_history: bool = True, config: RunnableConfig = None, instance_name: str = None, instance_id: str = None
+):
     """
     检查SQL Server代理作业状态
 
@@ -621,7 +625,7 @@ def check_agent_jobs(job_name: str = None, include_history: bool = True, config:
     """
 
     try:
-        table_check = execute_readonly_query(agent_check, config=config)
+        table_check = execute_readonly_query(agent_check, config=config, instance_name=instance_name, instance_id=instance_id)
         has_sysjobs_table = table_check[0]["has_sysjobs_table"] == 1 if table_check else False
 
         if not has_sysjobs_table:
@@ -730,12 +734,12 @@ def check_agent_jobs(job_name: str = None, include_history: bool = True, config:
     """
 
     try:
-        jobs = execute_readonly_query(jobs_query, params=job_params, config=config)
-        failed_jobs = execute_readonly_query(failed_jobs_query, config=config)
+        jobs = execute_readonly_query(jobs_query, params=job_params, config=config, instance_name=instance_name, instance_id=instance_id)
+        failed_jobs = execute_readonly_query(failed_jobs_query, config=config, instance_name=instance_name, instance_id=instance_id)
 
         history = []
         if include_history:
-            history = execute_readonly_query(history_query, config=config)
+            history = execute_readonly_query(history_query, config=config, instance_name=instance_name, instance_id=instance_id)
 
         # 格式化作业信息
         for row in jobs:
@@ -788,7 +792,7 @@ def check_agent_jobs(job_name: str = None, include_history: bool = True, config:
 
 
 @tool()
-def check_replication_status(config: RunnableConfig = None):
+def check_replication_status(config: RunnableConfig = None, instance_name: str = None, instance_id: str = None):
     """
     检查数据库复制(发布/订阅)状态
 
@@ -911,20 +915,20 @@ def check_replication_status(config: RunnableConfig = None):
 
     try:
         # 首先检查sys.publications表是否存在
-        table_check = execute_readonly_query(publications_table_check, config=config)
+        table_check = execute_readonly_query(publications_table_check, config=config, instance_name=instance_name, instance_id=instance_id)
         has_publications_table = table_check[0]["has_publications_table"] == 1 if table_check else False
 
         if not has_publications_table:
             return safe_json_dumps({"has_replication": False, "message": "当前数据库未配置复制功能（sys.publications表不存在）"})
 
         # 检查是否有分发数据库
-        dist_check = execute_readonly_query(distributor_check, config=config)
+        dist_check = execute_readonly_query(distributor_check, config=config, instance_name=instance_name, instance_id=instance_id)
         has_distributor = dist_check[0]["has_distributor"] == 1 if dist_check else False
 
         if not has_distributor:
             # 没有分发数据库，检查是否有发布
             try:
-                publications = execute_readonly_query(publications_query, config=config)
+                publications = execute_readonly_query(publications_query, config=config, instance_name=instance_name, instance_id=instance_id)
                 if not publications:
                     return safe_json_dumps({"has_replication": False, "message": "当前数据库未配置复制功能"})
             except Exception:
@@ -933,14 +937,14 @@ def check_replication_status(config: RunnableConfig = None):
         # 获取发布信息
         publications = []
         try:
-            publications = execute_readonly_query(publications_query, config=config)
+            publications = execute_readonly_query(publications_query, config=config, instance_name=instance_name, instance_id=instance_id)
         except Exception:
             pass
 
         # 获取订阅信息
         subscriptions = []
         try:
-            subscriptions = execute_readonly_query(subscriptions_query, config=config)
+            subscriptions = execute_readonly_query(subscriptions_query, config=config, instance_name=instance_name, instance_id=instance_id)
         except Exception:
             pass
 
@@ -948,7 +952,7 @@ def check_replication_status(config: RunnableConfig = None):
         agents = []
         if has_distributor:
             try:
-                agents = execute_readonly_query(agents_query, config=config)
+                agents = execute_readonly_query(agents_query, config=config, instance_name=instance_name, instance_id=instance_id)
                 for row in agents:
                     row["start_time"] = str(row["start_time"]) if row.get("start_time") else None
                     row["last_activity_time"] = str(row["last_activity_time"]) if row.get("last_activity_time") else None
@@ -961,7 +965,7 @@ def check_replication_status(config: RunnableConfig = None):
         pending = []
         if has_distributor:
             try:
-                pending = execute_readonly_query(pending_commands_query, config=config)
+                pending = execute_readonly_query(pending_commands_query, config=config, instance_name=instance_name, instance_id=instance_id)
                 for row in pending:
                     row["oldest_command_time"] = str(row["oldest_command_time"]) if row.get("oldest_command_time") else None
             except Exception:
@@ -1002,7 +1006,9 @@ def check_replication_status(config: RunnableConfig = None):
 
 
 @tool()
-def check_database_size_growth(database_name: str = None, days: int = 30, config: RunnableConfig = None):
+def check_database_size_growth(
+    database_name: str = None, days: int = 30, config: RunnableConfig = None, instance_name: str = None, instance_id: str = None
+):
     """
     检查数据库大小增长趋势
 
@@ -1031,7 +1037,7 @@ def check_database_size_growth(database_name: str = None, days: int = 30, config
     """
 
     try:
-        table_check = execute_readonly_query(backupset_check, config=config)
+        table_check = execute_readonly_query(backupset_check, config=config, instance_name=instance_name, instance_id=instance_id)
         has_backupset_table = table_check[0]["has_backupset_table"] == 1 if table_check else False
 
         if not has_backupset_table:
@@ -1112,9 +1118,9 @@ def check_database_size_growth(database_name: str = None, days: int = 30, config
     """
 
     try:
-        backup_history = execute_readonly_query(growth_query, params=params, config=config)
-        current_sizes = execute_readonly_query(current_size_query, config=config)
-        file_settings = execute_readonly_query(file_growth_query, config=config)
+        backup_history = execute_readonly_query(growth_query, params=params, config=config, instance_name=instance_name, instance_id=instance_id)
+        current_sizes = execute_readonly_query(current_size_query, config=config, instance_name=instance_name, instance_id=instance_id)
+        file_settings = execute_readonly_query(file_growth_query, config=config, instance_name=instance_name, instance_id=instance_id)
 
         # 按数据库分组分析增长趋势
         growth_by_db = {}

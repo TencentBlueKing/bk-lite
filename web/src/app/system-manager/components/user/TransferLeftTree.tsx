@@ -6,19 +6,15 @@ import {
   isFullySelected,
   processLeftTreeData,
   isNodeDisabled,
+  getSelectableLeafKeys,
+  resolveRoleTreeLabel,
   TRANSFER_TREE_HEIGHT,
 } from '@/app/system-manager/utils/roleTreeUtils';
 
 const hasKey = (keys: React.Key[], targetKey: React.Key) =>
   keys.some((key) => String(key) === String(targetKey));
 
-const getLeafRoleKeys = (node: TreeDataNode): React.Key[] => {
-  if (!node.children || node.children.length === 0) {
-    return [node.key];
-  }
-
-  return node.children.flatMap((child) => getLeafRoleKeys(child));
-};
+const getLeafRoleKeys = getSelectableLeafKeys;
 
 const getRoleNodeCheckState = (
   node: TreeDataNode,
@@ -123,7 +119,8 @@ function transformRoleTreeData(
   organizationRoleIds: React.Key[],
   disabled: boolean,
   loading: boolean,
-  onChange: (keys: React.Key[]) => void
+  onChange: (keys: React.Key[]) => void,
+  t: (id: string, defaultMessage?: string) => string,
 ): TreeDataNode[] {
   return nodes.map((node) => {
     const { checked, indeterminate } = getRoleNodeCheckState(node, personalRoleIds, organizationRoleIds);
@@ -157,11 +154,11 @@ function transformRoleTreeData(
             onClick={(event) => event.stopPropagation()}
             disabled={disabled || loading}
           />
-          <span>{(node as TreeDataNode & { display_name?: string }).display_name || (typeof node.title === 'function' ? node.title(node) : node.title)}</span>
+          <span>{resolveRoleTreeLabel(node, t)}</span>
         </div>
       ),
       children: node.children
-        ? transformRoleTreeData(node.children, personalRoleIds, organizationRoleIds, disabled, loading, onChange)
+        ? transformRoleTreeData(node.children, personalRoleIds, organizationRoleIds, disabled, loading, onChange, t)
         : undefined,
     };
   });
@@ -202,7 +199,8 @@ const TransferLeftTree: React.FC<TransferLeftTreeProps> = ({
         organizationRoleIds,
         disabled,
         loading,
-        onChange
+        onChange,
+        t,
       );
     }
 

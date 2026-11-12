@@ -92,7 +92,8 @@ export type ScreenPanelFramePresetId =
   | 'tech'
   | 'border-16'
   | 'border-20'
-  | 'border-24';
+  | 'border-24'
+  | 'border-plate';
 
 /** 分隔线。`a`/`b` 只用于读旧数据。 */
 export type ScreenDividerPresetId =

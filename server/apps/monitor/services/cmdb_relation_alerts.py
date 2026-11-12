@@ -108,6 +108,7 @@ def empty_relation_alert_payload(view: str) -> dict[str, Any] | list[dict[str, A
         "total_count": 0,
         "with_alert_count": 0,
         "without_alert_count": 0,
+        "alert_count": 0,
         "with_alert_share": with_share,
         "without_alert_share": without_share,
     }
@@ -166,10 +167,129 @@ def build_relation_alert_view(
     total_count = len(rows)
     with_alert_count = len(with_alert)
     with_share, without_share = instance_share_pair(with_alert_count, total_count)
+    unique_peers = collect_peer_uuids(peers_by_source)
+    counts = alert_count_by_peer or {}
+    unique_alert_count = sum(int(counts.get(peer) or 0) for peer in unique_peers)
     return {
         "total_count": total_count,
         "with_alert_count": with_alert_count,
         "without_alert_count": total_count - with_alert_count,
+        "alert_count": unique_alert_count,
         "with_alert_share": with_share,
         "without_alert_share": without_share,
     }
+
+
+def collect_peer_uuids(peers_by_source: dict[str, list[str]]) -> list[str]:
+    """按首次出现顺序收集去重后的对端 uuid。"""
+    collected: list[str] = []
+    seen: set[str] = set()
+    for peers in peers_by_source.values():
+        for peer in peers:
+            if peer in seen:
+                continue
+            seen.add(peer)
+            collected.append(peer)
+    return collected
+
+
+def normalize_model_asst_ids(value: Any) -> list[str]:
+    """一个字符串保持一跳；字符串列表按顺序构成关联路径。"""
+    if value in (None, ""):
+        raise ValueError("模型关联不能为空")
+    if isinstance(value, str):
+        association_id = value.strip()
+        if not association_id:
+            raise ValueError("模型关联不能为空")
+        if "," in association_id:
+            parts = [part.strip() for part in association_id.split(",")]
+            if any(not part for part in parts):
+                raise ValueError("模型关联不能为空")
+            return parts
+        return [association_id]
+    if isinstance(value, (list, tuple)):
+        association_ids: list[str] = []
+        for raw in value:
+            if isinstance(raw, (list, tuple)):
+                raise ValueError("模型关联路径格式不正确")
+            association_id = str(raw or "").strip()
+            if not association_id:
+                raise ValueError("模型关联不能为空")
+            association_ids.append(association_id)
+        if not association_ids:
+            raise ValueError("模型关联不能为空")
+        return association_ids
+    raise ValueError("模型关联路径格式不正确")
+
+
+def compose_path_peers(
+    hop_edges: list[list[dict[str, Any]] | None],
+    source_uuids: list[str],
+    model_ids: list[str],
+) -> dict[str, list[str]]:
+    """按关联路径把源实例展开到最终对象；同一最终对象在同一源下只保留一次。"""
+    if len(model_ids) != len(hop_edges) + 1:
+        raise ValueError("关联路径与模型列表不匹配")
+    if not hop_edges:
+        return {uuid: [] for uuid in source_uuids}
+
+    current_ids = source_uuids
+    current_model = model_ids[0]
+    current_peers: dict[str, list[str]] | None = None
+    for index, edges in enumerate(hop_edges):
+        next_model = model_ids[index + 1]
+        nxt = peers_by_source_from_edges(edges, current_ids, current_model, next_model)
+        if current_peers is None:
+            current_peers = {uuid: list(nxt.get(uuid) or []) for uuid in source_uuids}
+        else:
+            composed: dict[str, list[str]] = {uuid: [] for uuid in source_uuids}
+            seen_by_source: dict[str, set[str]] = {uuid: set() for uuid in source_uuids}
+            for source_uuid, mids in current_peers.items():
+                collected = composed.setdefault(source_uuid, [])
+                seen_finals = seen_by_source.setdefault(source_uuid, set())
+                for mid in mids:
+                    for final_uuid in nxt.get(mid) or []:
+                        if final_uuid in seen_finals:
+                            continue
+                        seen_finals.add(final_uuid)
+                        collected.append(final_uuid)
+            current_peers = composed
+        current_model = next_model
+        current_ids = collect_peer_uuids(current_peers)
+    return current_peers or {uuid: [] for uuid in source_uuids}
+
+
+def compose_two_hop_peers(
+    first_edges: list[dict[str, Any]] | None,
+    second_edges: list[dict[str, Any]] | None,
+    source_uuids: list[str],
+    source_model_id: str,
+    intermediate_model_id: str,
+    final_model_id: str,
+) -> dict[str, list[str]]:
+    """源经中间模型再到最终对象；同一最终对象在同一源下只保留一次。"""
+    return compose_path_peers(
+        [first_edges, second_edges],
+        source_uuids,
+        [source_model_id, intermediate_model_id, final_model_id],
+    )
+
+
+def edges_from_peers(
+    peers_by_source: dict[str, list[str]],
+    source_model_id: str,
+    peer_model_id: str,
+) -> list[dict[str, Any]]:
+    """把源到对端的映射展成 build_relation_alert_view 可用的单向边。"""
+    edges: list[dict[str, Any]] = []
+    for source_uuid, peers in peers_by_source.items():
+        for peer_uuid in peers:
+            edges.append(
+                {
+                    "src_model_id": source_model_id,
+                    "dst_model_id": peer_model_id,
+                    "src_inst_uuid": source_uuid,
+                    "dst_inst_uuid": peer_uuid,
+                }
+            )
+    return edges

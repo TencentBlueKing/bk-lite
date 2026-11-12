@@ -1,6 +1,6 @@
 """OpsPilot 作业工具的会话侧流程。
 
-提交前先记下作业号。脚本输出写入展示块，返回给模型的只有作业号和终态。
+提交后先记下作业号。脚本输出同时写入展示块和工具返回值，供用户查看与模型分析。
 """
 
 from __future__ import annotations
@@ -471,6 +471,7 @@ def _model_script_json(payload: dict) -> str:
         "task_id": payload["task_id"],
         "status": payload["status"],
         "output_shown": _has_script_output(payload),
+        "targets": payload.get("targets") or [],
     }
     if payload.get("result_url"):
         body["result_url"] = payload["result_url"]

@@ -2,7 +2,7 @@
 
 from datetime import timedelta
 
-from django.db.models import Count, IntegerField, OuterRef, Subquery, Value
+from django.db.models import Count, IntegerField, OuterRef, Q, Subquery, Value
 from django.db.models.functions import Coalesce
 from django.utils import timezone
 
@@ -72,7 +72,6 @@ SKILL_CONVERSATION_SUMMARY_PROMPT = """你是对话记忆助手。根据对话�
 """
 
 _SKILL_MEMORY_PROMPT_GUIDE = (
-    "以下是该用户的个人长期记忆，来自其在本平台、Web、IM 等渠道的历史对话，跨会话持续有效。"
     "本轮必须优先使用这些记忆里的环境、资产、已确认结论、检查约定与阈值："
     "只取与当前问题相关的条目，不要把其它技术栈的检查项混进来；"
     "直接复用已沉淀的检查项、优先级和阈值，不要另起一套通用清单，也不要编造记忆里没有的整段 SQL/脚本；"
@@ -101,7 +100,7 @@ def _user_team_ids(user) -> set[int]:
 
 
 def is_usable_skill_memory_space(space: MemorySpace | None) -> bool:
-    return space is not None and space.scope == MemorySpace.SCOPE_PERSONAL
+    return space is not None and space.scope in {MemorySpace.SCOPE_PERSONAL, MemorySpace.SCOPE_TEAM}
 
 
 def skill_has_conversation_memory(skill: LLMSkill | None) -> bool:
@@ -145,7 +144,7 @@ def validate_skill_memory_binding(space_id: int | None, user=None) -> MemorySpac
     if space is None:
         raise SkillMemoryConfigError("记忆体不存在")
     if not is_usable_skill_memory_space(space):
-        raise SkillMemoryConfigError("智能体只能挂接用户自建的个人记忆体")
+        raise SkillMemoryConfigError("记忆体无效")
     if user is not None and not user_can_use_memory_space(user, space):
         raise SkillMemoryConfigError("无权使用该记忆体")
     return space
@@ -184,13 +183,19 @@ def resolve_skill_memory_model_id(skill: LLMSkill, memory_space: MemorySpace | N
 
 def count_pending_memory_rounds(conversation: SkillConversation) -> int:
     watermark = conversation.memory_written_message_id or 0
-    return conversation.messages.filter(role=SkillConversationMessage.ROLE_ASSISTANT, id__gt=watermark).count()
+    return conversation.messages.filter(_memory_message_scope_filter(), role=SkillConversationMessage.ROLE_ASSISTANT, id__gt=watermark).count()
+
+
+def _memory_message_scope_filter() -> Q:
+    # 旧消息、没有组织上下文的 IM 消息不能沉淀到组织记忆。
+    return Q(conversation__skill__memory_space__scope=MemorySpace.SCOPE_PERSONAL) | Q(organization_id__isnull=False)
 
 
 def annotate_pending_memory_rounds(queryset):
     """水位线之后的 assistant 条数。"""
     pending_sub = (
         SkillConversationMessage.objects.filter(
+            _memory_message_scope_filter(),
             conversation_id=OuterRef("pk"),
             role=SkillConversationMessage.ROLE_ASSISTANT,
             id__gt=OuterRef("memory_written_message_id"),
@@ -216,7 +221,10 @@ def load_messages_after_watermark(conversation: SkillConversation):
 
 
 def snapshot_pending_messages(conversation: SkillConversation) -> list[dict]:
-    return [{"id": msg.id, "role": msg.role, "content": msg.content or ""} for msg in load_messages_after_watermark(conversation)]
+    return [
+        {"id": msg.id, "role": msg.role, "content": msg.content or "", "organization_id": msg.organization_id}
+        for msg in load_messages_after_watermark(conversation)
+    ]
 
 
 def _clip_transcript_text(text: str, max_chars: int) -> str:
@@ -274,15 +282,18 @@ def append_skill_memory_block(prompt: str, block: str) -> str:
     return f"{remainder}\n\n{memory_block}" if remainder else memory_block
 
 
-def build_skill_memory_prompt_block(skill: LLMSkill, external_user_id: str, user_message: str) -> str:
+def build_skill_memory_prompt_block(skill: LLMSkill, external_user_id: str, user_message: str, *, organization_id: int | None = None) -> str:
     memory_space = resolve_skill_conversation_memory_space(skill)
     if memory_space is None:
+        return ""
+    is_team = memory_space.scope == MemorySpace.SCOPE_TEAM
+    if is_team and organization_id is None:
         return ""
     query = user_message if isinstance(user_message, str) else ""
     try:
         engine = MemoryEngineRegistry.get_engine(memory_space.id)
         result = engine.read(
-            entity=MemoryEntity(user_id=external_user_id or ""),
+            entity=MemoryEntity(organization_id=organization_id) if is_team else MemoryEntity(user_id=external_user_id or ""),
             query=query,
             top_k=SKILL_MEMORY_READ_TOP_K,
         )
@@ -295,11 +306,15 @@ def build_skill_memory_prompt_block(skill: LLMSkill, external_user_id: str, user
         return ""
     truncated = truncate_memory_context(context)
     logger.debug(_SKILL_MEMORY_INJECTED_LOG, skill.id, memory_space.id, len(truncated))
-    return f"## 用户记忆\n{_SKILL_MEMORY_PROMPT_GUIDE}\n\n{truncated}\n\n{_SKILL_MEMORY_PROMPT_FOOTER}"
+    title = "组织记忆" if is_team else "用户记忆"
+    source = "以下是当前组织的共享长期记忆，来自该组织成员的历史对话，跨会话持续有效。" if is_team else "以下是该用户的个人长期记忆，来自其在本平台、Web、IM 等渠道的历史对话，跨会话持续有效。"
+    return f"## {title}\n{source}{_SKILL_MEMORY_PROMPT_GUIDE}\n\n{truncated}\n\n{_SKILL_MEMORY_PROMPT_FOOTER}"
 
 
-def inject_skill_memory_prompt(params: dict, skill: LLMSkill, external_user_id: str, user_message: str) -> dict:
-    block = build_skill_memory_prompt_block(skill, external_user_id, user_message)
+def inject_skill_memory_prompt(
+    params: dict, skill: LLMSkill, external_user_id: str, user_message: str, *, organization_id: int | None = None
+) -> dict:
+    block = build_skill_memory_prompt_block(skill, external_user_id, user_message, organization_id=organization_id)
     if not block:
         return params
     params["skill_memory_block"] = block
@@ -332,7 +347,7 @@ def iter_idle_skill_conversation_ids(*, idle_minutes: int = SKILL_MEMORY_IDLE_MI
         SkillConversation.objects.filter(
             is_active=True,
             skill__memory_space_id__isnull=False,
-            skill__memory_space__scope=MemorySpace.SCOPE_PERSONAL,
+            skill__memory_space__scope__in=[MemorySpace.SCOPE_PERSONAL, MemorySpace.SCOPE_TEAM],
         )
         .annotate(
             last_msg_at=Subquery(
@@ -344,6 +359,7 @@ def iter_idle_skill_conversation_ids(*, idle_minutes: int = SKILL_MEMORY_IDLE_MI
             pending_count=Coalesce(
                 Subquery(
                     SkillConversationMessage.objects.filter(
+                        _memory_message_scope_filter(),
                         conversation_id=OuterRef("pk"),
                         role=SkillConversationMessage.ROLE_ASSISTANT,
                         id__gt=OuterRef("memory_written_message_id"),

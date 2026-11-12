@@ -3,7 +3,8 @@
 import { invalidMatchRules } from '@/app/alarm/utils/multivalueRules';
 
 import React, { useEffect, useState } from 'react';
-import { Drawer, Form, Input, Select, Button, Space, message, Radio } from 'antd';
+import { Drawer, Form, Input, Select, AutoComplete, Button, Space, message, Radio } from 'antd';
+import type { FormInstance } from 'antd';
 import { MinusCircleOutlined, PlusOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import { useSettingApi } from '@/app/alarm/api/settings';
@@ -24,6 +25,130 @@ const DEFAULT_MATCH_RULES = [
   [{ key: 'title', operator: 'eq', value: '' }],
 ];
 
+function followSourceAlias(source: string, currentAs: string, previousSource: string) {
+  if (!currentAs || currentAs === previousSource) return source;
+  return currentAs;
+}
+
+function fillProjectionAlias(
+  form: FormInstance,
+  index: number,
+  nextSource: string,
+  previousSource: string
+) {
+  const rows = [...(form.getFieldValue('output_projection') || [])];
+  const row = { ...(rows[index] || {}), source: nextSource };
+  const currentAs = String(row.as || '');
+  const nextAs = followSourceAlias(nextSource, currentAs, previousSource);
+  if (row.as === nextAs && row.source === nextSource) return;
+  rows[index] = { ...row, as: nextAs };
+  form.setFieldsValue({ output_projection: rows });
+}
+
+function projectionAliases(rows: { source?: string; as?: string }[] | undefined) {
+  const options: { value: string; label: string }[] = [];
+  const seen = new Set<string>();
+  for (const row of rows || []) {
+    const source = String(row?.source || '').trim();
+    if (!source) continue;
+    const alias = String(row?.as || source).trim();
+    if (!alias || seen.has(alias)) continue;
+    seen.add(alias);
+    options.push({
+      value: alias,
+      label: alias === source ? alias : `${alias} (${source})`,
+    });
+  }
+  return options;
+}
+
+interface ContextFieldOption {
+  value: string;
+  label: string;
+}
+
+interface ContextFieldOptionGroup {
+  label: string;
+  options: ContextFieldOption[];
+}
+
+function flattenContextFieldOptions(groups: ContextFieldOptionGroup[]) {
+  const items: ContextFieldOption[] = [];
+  for (const group of groups || []) {
+    for (const item of group.options || []) {
+      if (!item?.value) continue;
+      items.push({ value: item.value, label: String(item.label || item.value) });
+    }
+  }
+  return items;
+}
+
+function displayProjectionSource(source: string, groups: ContextFieldOptionGroup[]) {
+  const key = String(source || '');
+  if (!key) return key;
+  const hit = flattenContextFieldOptions(groups).find((item) => item.value === key);
+  return hit?.label || key;
+}
+
+function resolveProjectionSource(text: string, groups: ContextFieldOptionGroup[]) {
+  const raw = String(text || '');
+  const trimmed = raw.trim();
+  if (!trimmed) return raw;
+  const items = flattenContextFieldOptions(groups);
+  const byValue = items.find((item) => item.value === trimmed);
+  if (byValue) return byValue.value;
+  const byLabel = items.find((item) => item.label === trimmed);
+  if (byLabel) return byLabel.value;
+  return raw;
+}
+
+const ProjectionSourceAutoComplete: React.FC<{
+  value?: string;
+  onChange?: (value: string) => void;
+  aliasIndex: number;
+  options: ContextFieldOptionGroup[];
+  placeholder?: string;
+}> = ({ value, onChange, aliasIndex, options, placeholder }) => {
+  const form = Form.useFormInstance();
+  const fieldItems = flattenContextFieldOptions(options);
+  return (
+    <AutoComplete
+      allowClear
+      value={displayProjectionSource(value || '', options)}
+      options={options}
+      placeholder={placeholder}
+      style={{ width: 280 }}
+      filterOption={(input, option) => {
+        const exactSelected = fieldItems.some(
+          (item) => item.value === input || item.label === input
+        );
+        if (exactSelected) return true;
+        const q = input.toLowerCase();
+        const candidate = option as { value?: string; label?: unknown } | undefined;
+        return (
+          String(candidate?.value ?? '').toLowerCase().includes(q) ||
+          String(candidate?.label ?? '').toLowerCase().includes(q)
+        );
+      }}
+      onChange={(nextValue) => {
+        const next = resolveProjectionSource(String(nextValue || ''), options);
+        const previous = String(value || '');
+        onChange?.(next);
+        window.setTimeout(() => {
+          fillProjectionAlias(form, aliasIndex, next, previous);
+        }, 0);
+      }}
+      onSelect={(nextValue) => {
+        const next = resolveProjectionSource(String(nextValue || ''), options);
+        const previous = String(value || '');
+        window.setTimeout(() => {
+          fillProjectionAlias(form, aliasIndex, next, previous);
+        }, 0);
+      }}
+    />
+  );
+};
+
 const OperateModal: React.FC<OperateModalProps> = ({
   open,
   onClose,
@@ -31,10 +156,15 @@ const OperateModal: React.FC<OperateModalProps> = ({
   onSuccess,
 }) => {
   const { t } = useTranslation();
-  const { createEnrichment, updateEnrichment } = useSettingApi();
+  const { createEnrichment, updateEnrichment, getCmdbContextFields } = useSettingApi();
   const [form] = Form.useForm();
+  const outputProjection = Form.useWatch('output_projection', form) || [];
+  const ownerFieldOptions = projectionAliases(outputProjection);
   const [submitLoading, setSubmitLoading] = useState(false);
   const [filterType, setFilterType] = useState<'all' | 'filter'>('all');
+  const [contextFieldOptions, setContextFieldOptions] = useState<
+    ContextFieldOptionGroup[]
+  >([]);
   const isEdit = !!currentRow;
 
   const handleClose = () => {
@@ -59,7 +189,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
         ),
         output_projection: (currentRow.output_projection || []).map((p) => ({
           source: p.source,
-          as: p.as || '',
+          as: p.as || p.source || '',
         })),
         owner_fields: currentRow.provider_config?.owner_fields?.length
           ? currentRow.provider_config.owner_fields
@@ -78,14 +208,37 @@ const OperateModal: React.FC<OperateModalProps> = ({
           { param: 'model_id', field: 'resource_type' },
           { param: 'inst_uuid', field: 'resource_id' },
         ],
-        output_projection: [
-          { source: 'owner', as: '' },
-          { source: 'business_system', as: '' },
-        ],
-        owner_fields: ['operator'],
+        output_projection: [{ source: 'owner', as: 'owner' }],
+        owner_fields: [],
       });
     }
   }, [open, isEdit, currentRow, form]);
+
+  useEffect(() => {
+    if (!open || typeof getCmdbContextFields !== 'function') return;
+    let cancelled = false;
+    getCmdbContextFields()
+      .then((data: { groups?: { model_id: string; model_name?: string; fields?: { source: string; attr_name?: string }[] }[] }) => {
+        if (cancelled) return;
+        setContextFieldOptions(
+          (data?.groups || []).map((group) => ({
+            label: group.model_name || group.model_id,
+            options: (group.fields || []).map((field) => ({
+              value: field.source,
+              label: field.attr_name
+                ? `${field.attr_name} (${field.source})`
+                : field.source,
+            })),
+          }))
+        );
+      })
+      .catch(() => {
+        if (!cancelled) setContextFieldOptions([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
 
   const onFinish = async (values: any) => {
     setSubmitLoading(true);
@@ -99,6 +252,9 @@ const OperateModal: React.FC<OperateModalProps> = ({
         .map((r: any) =>
           r.as ? { source: r.source, as: r.as } : { source: r.source }
         );
+      const projectionAliasSet = new Set(
+        output_projection.map((item: { source: string; as?: string }) => item.as || item.source)
+      );
 
       const match_rules = filterType === 'filter' ? values.match_rules : [];
 
@@ -111,7 +267,9 @@ const OperateModal: React.FC<OperateModalProps> = ({
         match_rules,
         provider_config: {
           ...(currentRow?.provider_config || {}),
-          owner_fields: (values.owner_fields || []).filter(Boolean),
+          owner_fields: (values.owner_fields || []).filter((name: string) =>
+            projectionAliasSet.has(name)
+          ),
         },
         input_binding,
         output_projection,
@@ -160,7 +318,27 @@ const OperateModal: React.FC<OperateModalProps> = ({
         </div>
       }
     >
-      <Form form={form} layout="vertical" onFinish={onFinish}>
+      <Form
+        form={form}
+        layout="vertical"
+        onFinish={onFinish}
+        onValuesChange={(changed) => {
+          const changedRows = changed?.output_projection;
+          if (!Array.isArray(changedRows)) return;
+          changedRows.forEach((row: { source?: string } | undefined, index: number) => {
+            if (!row || !Object.prototype.hasOwnProperty.call(row, 'source')) return;
+            const source = String(row.source || '');
+            const currentAs = String(
+              form.getFieldValue(['output_projection', index, 'as']) || ''
+            );
+            if (source && !currentAs) {
+              window.setTimeout(() => {
+                fillProjectionAlias(form, index, source, '');
+              }, 0);
+            }
+          });
+        }}
+      >
         <Form.Item
           name="name"
           label={t('settings.enrichmentName')}
@@ -260,7 +438,11 @@ const OperateModal: React.FC<OperateModalProps> = ({
           </Form.List>
         </Form.Item>
 
-        <Form.Item label={t('settings.enrichmentOutputProjection')} required>
+        <Form.Item
+          label={t('settings.enrichmentOutputProjection')}
+          tooltip={t('settings.enrichmentContextFieldsTip')}
+          required
+        >
           <Form.List name="output_projection">
             {(fields, { add, remove }) => (
               <>
@@ -272,9 +454,10 @@ const OperateModal: React.FC<OperateModalProps> = ({
                       rules={[{ required: true, message: t('common.inputTip') }]}
                       noStyle
                     >
-                      <Input
+                      <ProjectionSourceAutoComplete
+                        aliasIndex={name}
+                        options={contextFieldOptions}
                         placeholder={t('settings.enrichmentProjSource')}
-                        style={{ width: 280 }}
                       />
                     </Form.Item>
                     <Form.Item {...rest} name={[name, 'as']} noStyle>
@@ -288,7 +471,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
                 ))}
                 <Button
                   type="dashed"
-                  onClick={() => add()}
+                  onClick={() => add({ source: '', as: '' })}
                   icon={<PlusOutlined />}
                   block
                 >
@@ -305,9 +488,10 @@ const OperateModal: React.FC<OperateModalProps> = ({
           extra={t('settings.enrichmentOwnerFieldsTip')}
         >
           <Select
-            mode="tags"
-            tokenSeparators={[',']}
-            placeholder="operator"
+            mode="multiple"
+            allowClear
+            options={ownerFieldOptions}
+            placeholder={t('common.selectTip')}
           />
         </Form.Item>
         <Form.Item label={t('settings.enrichmentOwnerTarget')}>

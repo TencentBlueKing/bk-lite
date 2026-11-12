@@ -34,8 +34,7 @@ monitor_object_metric:
         1.3.6.1.4.1.9.9.48.1.1.1.5）。ciscoMemoryPoolValid 不为 true(1) 的池会被丢弃。
     device_memory_usage:
       name: 内存使用率
-      desc: Cisco ACE 各内存池使用率，采集时按 used/(used+free)*100 计算并四舍五入到 0.01%。仅保留
-        ciscoMemoryPoolValid 为 true(1) 且 used+free 大于 0 的池。
+      desc: Cisco ACE 各内存池使用率。仅保留 ciscoMemoryPoolValid 为 true(1) 且 used+free 大于 0 的池。
     lb_current_connections:
       name: 当前连接数
       desc: Cisco ACE 当前 SLB 连接数（CISCO-SLB-EXT-MIB cslbxStatsCurrConnections，

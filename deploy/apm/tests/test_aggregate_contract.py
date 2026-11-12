@@ -349,6 +349,12 @@ def test_entry_aggregate_merges_instances_buckets_late_spans_and_restart_increas
                     "pod-w",
                     [_span("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "4444444444444444", "consume-order", 5, fresh_start, fresh_end)],
                 ),
+                _resource(
+                    "",
+                    "blank-ns",
+                    "pod-blank",
+                    [_span("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", "9999999999999999", "GET /blank", 2, fresh_start, fresh_end)],
+                ),
             ]
         )
         checkout = _eventually(lambda: _calls(stack, "checkout"), lambda rows: len(rows) == 1 and float(rows[0]["value"][1]) == 2.0)
@@ -361,6 +367,13 @@ def test_entry_aggregate_merges_instances_buckets_late_spans_and_restart_increas
         assert "instance" not in checkout[0]["metric"]
         worker = _calls(stack, "worker")
         assert len(worker) == 1 and float(worker[0]["value"][1]) == 1.0
+        blank = _eventually(
+            lambda: _calls(stack, "blank-ns"),
+            lambda rows: len(rows) == 1 and float(rows[0]["value"][1]) == 1.0,
+        )
+        assert blank[0]["metric"]["job"] == "unknown/blank-ns"
+        assert blank[0]["metric"]["service_namespace"] == "unknown"
+        assert blank[0]["metric"]["service_name"] == "blank-ns"
 
         buckets = _series(
             stack.vm_query('apm_duration_milliseconds_bucket{service_name="checkout",status_code="STATUS_CODE_OK"}'),
@@ -389,6 +402,8 @@ def test_entry_aggregate_merges_instances_buckets_late_spans_and_restart_increas
             lambda rows: rows and sum(float(row["value"][1]) for row in rows) >= 1,
         )
         assert _calls(stack, "late-svc") == []
+        assert late
+        assert all(row["metric"].get("job") for row in late)
         _assert_labels(late)
         names = {row["metric"]["__name__"] for row in stack.vm_query('{__name__=~"apm_.*|target_info|trace_.*"}')}
         assert names <= {

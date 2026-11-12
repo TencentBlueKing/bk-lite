@@ -69,7 +69,8 @@ const OpenApiDocsToolbar: React.FC<OpenApiDocsToolbarProps> = ({
           onChange={(e) => onQueryChange(e.target.value)}
         />
         <Select
-          className="w-36"
+          className="w-40"
+          popupMatchSelectWidth={false}
           value={serviceFilter}
           onChange={onServiceFilterChange}
           options={serviceOptions}

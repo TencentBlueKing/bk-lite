@@ -6,7 +6,7 @@ interface UseMessageHandlersProps {
   messages: Message[];
   setMessages: React.Dispatch<React.SetStateAction<Message[]>>;
   sessionManagerRef: React.MutableRefObject<SessionManager | null>;
-  handleSendMessage: (content: string) => Promise<void>;
+  handleSendMessage: (content: string, extra?: { replayMessage: Message }) => Promise<void>;
 }
 
 export const useMessageHandlers = ({
@@ -26,25 +26,10 @@ export const useMessageHandlers = ({
       const currentMessages = messagesRef.current;
       const plan = planMessageRegeneration(currentMessages, messageId);
       if (plan) {
-        setMessages(plan.preservedMessages);
-
-        // Update session storage
-        if (sessionManagerRef.current) {
-          const session = sessionManagerRef.current.getSession();
-          if (session) {
-            session.messages = plan.preservedMessages;
-            sessionManagerRef.current.clearSession();
-            sessionManagerRef.current.initSession();
-            plan.preservedMessages.forEach((msg) =>
-              sessionManagerRef.current?.addMessage(msg)
-            );
-          }
-        }
-
-        setTimeout(() => handleSendMessage(plan.contentToSend), 100);
+        void handleSendMessage(plan.contentToSend, { replayMessage: plan.messageToSend });
       }
     },
-    [handleSendMessage, setMessages, sessionManagerRef]
+    [handleSendMessage]
   );
 
   // Handle message copy

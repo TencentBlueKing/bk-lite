@@ -73,6 +73,7 @@ from apps.opspilot.services.builtin_tools import (
 )
 from apps.opspilot.services.caller_identity import CALLER_IDENTITY_CONFIG_KEY, CallerIdentityError, capture_caller_identity
 from apps.opspilot.services.chat_attachment_service import ChatAttachmentError, apply_current_turn_attachments
+from apps.opspilot.services.conversation_skill_package import AUTHORING_EXTRA_KEY, ENTRY_SKILL_TEST, authoring_context
 from apps.opspilot.services.llm_context_budget import parse_context_window_tokens
 from apps.opspilot.services.mcp_client import MCPClient
 from apps.opspilot.services.skill_channel_chat_service import saas_external_user_id
@@ -87,7 +88,6 @@ from apps.opspilot.services.skill_package.importer import DEFAULT_SKILL_PACKAGE_
 from apps.opspilot.services.skill_package.runtime import build_skill_package_prompt, build_skill_package_strategy, hydrate_skill_packages
 from apps.opspilot.services.usage_team import merge_usage_team
 from apps.opspilot.services.wiki.chat_material_service import WIKI_MATERIAL_ACTOR_KEY, actor_for_platform_user
-from apps.opspilot.services.conversation_skill_package import AUTHORING_EXTRA_KEY, ENTRY_SKILL_TEST, authoring_context
 from apps.opspilot.utils.agui_chat import stream_agui_chat
 from apps.opspilot.utils.mcp_cache import get_cached_mcp_tools, set_cached_mcp_tools
 from apps.opspilot.utils.pin_mixin import PinMixin
@@ -205,13 +205,15 @@ class LLMViewSet(PinMixin, AuthViewSet):
                 message = message.format(validate_msg=validate_msg)
             return JsonResponse({"result": False, "message": message})
         params["enable_conversation_history"] = True
-        params["skill_prompt"] = (self.loader.get("skill.default_prompt") if self.loader else None) or (
-            "You are a professional assistant. Reply according to these rules:\n"
-            "1. For the user's question, retrieve related knowledge from the knowledge base and summarize the answer.\n"
-            "2. Based on the user's need, choose and run the appropriate tool.\n"
-            "3. Keep the reply accurate. Do not make things up.\n"
-            "4. Organize the answer in clear points."
-        )
+        supplied_prompt = params.get("skill_prompt")
+        if not isinstance(supplied_prompt, str) or not supplied_prompt.strip():
+            params["skill_prompt"] = (self.loader.get("skill.default_prompt") if self.loader else None) or (
+                "You are a professional assistant. Reply according to these rules:\n"
+                "1. For the user's question, retrieve related knowledge from the knowledge base and summarize the answer.\n"
+                "2. Based on the user's need, choose and run the appropriate tool.\n"
+                "3. Keep the reply accurate. Do not make things up.\n"
+                "4. Organize the answer in clear points."
+            )
         for item in params.get("skill_params", []):
             if item.get("type") == "password":
                 EncryptMixin.encrypt_field("value", item)
@@ -563,6 +565,10 @@ class LLMViewSet(PinMixin, AuthViewSet):
             # 合并前端传入的 skill_params 和 DB 中的值（处理 ****** 掩码）
 
             params["skill_params"] = merge_skill_params(params.get("skill_params", []), skill_obj.skill_params or [])
+            from apps.opspilot.services.chat_attachment_service import load_sendable_attachments
+            from apps.opspilot.services.python_sandbox.attachments import ATTACHMENT_GRANT_KEY, issue_attachment_grant
+
+            params.pop(ATTACHMENT_GRANT_KEY, None)
             raw_attachment_ids = params.pop("attachment_ids", None)
             if raw_attachment_ids:
                 llm_model = LLMModel.objects.filter(id=params.get("llm_model")).first()
@@ -573,6 +579,13 @@ class LLMViewSet(PinMixin, AuthViewSet):
                         owner_key=saas_external_user_id(request.user),
                         team_id=str(get_current_team(request, "0")),
                         llm_model=llm_model,
+                    )
+                    params[ATTACHMENT_GRANT_KEY] = issue_attachment_grant(
+                        owner_key=saas_external_user_id(request.user),
+                        team_id=str(get_current_team(request, "0")),
+                        attachments=load_sendable_attachments(
+                            raw_attachment_ids, saas_external_user_id(request.user), str(get_current_team(request, "0"))
+                        ),
                     )
                 except ChatAttachmentError as exc:
                     return self.create_error_stream_response(exc.message)

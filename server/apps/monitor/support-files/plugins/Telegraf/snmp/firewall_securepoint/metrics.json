@@ -59,7 +59,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Memory utilization of the Securepoint UTM firewall, computed from UCD-SNMP-MIB memTotalReal and memAvailReal (falling back to memTotalFree when memAvailReal is absent) as (total - free) / total. Sustained high usage can indicate connection-tracking or proxy pressure."
+      "description": "Memory utilization of the Securepoint UTM firewall. Sustained high usage can indicate connection-tracking or proxy pressure."
     },
     {
       "metric_group": "Firewall",
