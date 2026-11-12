@@ -102,6 +102,10 @@ ATTACHMENT_FILE_TYPE_CONFIG = {
         "extension": "md",
         "mime_type": "text/markdown",
     },
+    "html": {
+        "extension": "html",
+        "mime_type": "text/html",
+    },
     "pdf": {
         "extension": "pdf",
         "mime_type": "application/pdf",
@@ -278,7 +282,7 @@ def build_attachment_bytes(content: str, file_type: str, title: str = "") -> byt
     safe_content = content or ""
     safe_title = title or "Attachment"
 
-    if normalized_type in ("md", "txt", "text"):
+    if normalized_type in ("md", "txt", "text", "html"):
         return safe_content.encode("utf-8")
     if normalized_type == "pdf":
         return _build_pdf_bytes(safe_content, safe_title)
@@ -704,6 +708,7 @@ def _escape_pdf_text(text: str) -> str:
 
 def _resolve_pdf_font() -> str:
     from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.cidfonts import UnicodeCIDFont
     from reportlab.pdfbase.ttfonts import TTFont
 
     font_candidates = [
@@ -713,6 +718,7 @@ def _resolve_pdf_font() -> str:
         ("宋体", "C:/Windows/Fonts/simsun.ttc"),
         ("文泉驿微米黑", "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc"),
         ("DroidSansFallback", "/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf"),
+        ("Heiti SC", "/System/Library/Fonts/STHeiti Light.ttc"),
     ]
     registered = set(pdfmetrics.getRegisteredFontNames())
     for font_name, font_path in font_candidates:
@@ -723,5 +729,8 @@ def _resolve_pdf_font() -> str:
             return font_name
         except Exception:
             continue
-    logger.warning("工作流附件 PDF 未找到可用中文字体，回退 Helvetica")
-    return "Helvetica"
+    font_name = "STSong-Light"
+    if font_name not in registered:
+        pdfmetrics.registerFont(UnicodeCIDFont(font_name))
+    logger.warning("工作流附件 PDF 未找到可嵌入中文字体，使用标准中文字体 STSong-Light")
+    return font_name

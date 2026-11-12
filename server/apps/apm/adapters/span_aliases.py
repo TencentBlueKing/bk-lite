@@ -93,6 +93,53 @@ def client_db_statement(attributes: Mapping[str, object], name: str = "") -> str
     return span_attribute_text(attributes, DB_STATEMENT_KEYS) or str(name or "").strip()
 
 
+def dependency_identity(attributes: Mapping[str, object], name: str = "") -> tuple[str, str, str] | None:
+    """一个 Client Span 在依赖目录里的唯一身份。语句最长 256。"""
+
+    database = classify_client_db_rollup(attributes)
+    if database is not None:
+        channel, system = database
+        statement = client_db_statement(attributes, name)[:256]
+        if system and statement:
+            return channel, system, statement
+        return None
+    return classify_client_http_rollup(attributes, name)
+
+
+def client_dependency_matches(attributes: Mapping[str, object], name: str, *, channel: str, system: str, statement: str) -> bool:
+    """与逐目标依赖过滤相同：系统名和语句都是别名或关系，不是互斥分类。"""
+
+    if channel == "http":
+        if not span_attribute_text(attributes, HTTP_CLIENT_METHOD_KEYS):
+            return False
+        route = span_attribute_text(attributes, HTTP_ROUTE_KEYS)
+        peer = span_attribute_text(attributes, PEER_SERVICE_KEYS)
+        return str(name or "") == statement or bool(route) or peer == system
+    systems = {
+        span_attribute_text(attributes, ("db.system.name",)),
+        span_attribute_text(attributes, ("db.system",)),
+    }
+    if system not in systems:
+        return False
+    statements = {
+        span_attribute_text(attributes, ("db.statement",)),
+        span_attribute_text(attributes, ("db.query.text",)),
+        str(name or ""),
+    }
+    return statement in statements
+
+
+def grouped_dependency_conflicts(attributes: Mapping[str, object], name: str, targets: tuple[tuple[str, str, str], ...]) -> bool:
+    """分组身份盖不住逐目标 OR 过滤时，这一行不能直接当成该目标的 RED。"""
+
+    if not targets:
+        return False
+    matched = {target for target in targets if client_dependency_matches(attributes, name, channel=target[0], system=target[1], statement=target[2])}
+    if not matched:
+        return False
+    return matched != {dependency_identity(attributes, name)}
+
+
 def classify_client_http_rollup(attributes: Mapping[str, object], name: str = "") -> tuple[str, str, str] | None:
     """把无数据库系统的 HTTP Client Span 归到出站 HTTP。
 

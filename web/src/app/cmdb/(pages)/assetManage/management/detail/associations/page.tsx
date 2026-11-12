@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Button, Modal, message } from 'antd';
+import Link from 'next/link';
+import { Alert, Button, Dropdown, Modal, Switch, Tooltip, message } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import SearchActionBar from '@/components/search-action-bar';
 import type { TableRowSelection } from 'antd/es/table/interface';
@@ -30,6 +31,9 @@ const Associations: React.FC = () => {
     batchDeleteModelAssociations,
     getModelAssociations,
     getModelAssociationTypes,
+    setModelAssociationRequired,
+    setAssociationContextLink,
+    getModelIslandCounts,
   } = useModelApi();
   const { getClassificationList } = useClassificationApi();
   const commonContext = useCommon();
@@ -53,6 +57,7 @@ const Associations: React.FC = () => {
   const [modelList, setModelList] = useState<ModelItem[]>([]);
   const [assoTypeList, setAssoTypeList] = useState<AssoTypeItem[]>([]);
   const [groups, setGroups] = useState<GroupItem[]>([]);
+  const [islandCounts, setIslandCounts] = useState<Record<string, number>>({});
   const columns: TableColumnsType<any> = [
     {
       title: t('name'),
@@ -102,6 +107,41 @@ const Associations: React.FC = () => {
       ),
     },
     {
+      title: t('Governance.requiredRelation'),
+      dataIndex: 'required',
+      key: 'required',
+      width: 90,
+      render: (_, record) => (
+        <PermissionWrapper requiredPermissions={['Edit Model']} instPermissions={modelPermission}>
+          <Switch
+            checked={record.required === true}
+            onChange={(checked) => updateRequired(record, checked)}
+          />
+        </PermissionWrapper>
+      ),
+    },
+    {
+      title: (
+        <Tooltip title={t('Governance.islandSourceHint')}>
+          <span>{t('Governance.islandCount')}</span>
+        </Tooltip>
+      ),
+      dataIndex: 'island_count',
+      key: 'island_count',
+      width: 110,
+      render: (_, record) => {
+        if (record.required !== true) {
+          return <span className="text-[var(--color-text-3)]">{t('Governance.notChecked')}</span>;
+        }
+        const count = islandCounts[record.model_asst_id] || 0;
+        return (
+          <Link href={`/cmdb/assetManage/governance?path=island&model_id=${record.src_model_id}&rule_id=${record.model_asst_id}`}>
+            {count}
+          </Link>
+        );
+      },
+    },
+    {
       title: t('type'),
       key: 'asst_id',
       dataIndex: 'asst_id',
@@ -122,22 +162,59 @@ const Associations: React.FC = () => {
     {
       title: t('common.actions'),
       key: 'action',
-      render: (_, record) => (
-        <>
-          <PermissionWrapper
-            requiredPermissions={['Edit Model']}
-            instPermissions={modelPermission}
-          >
-            <Button
-              type="link"
-              danger
-              onClick={() => showDeleteConfirm(record.model_asst_id)}
+      render: (_, record) => {
+        const contextLink = record.context_link === 'include' || record.context_link === 'exclude'
+          ? record.context_link
+          : 'follow';
+        return (
+          <>
+            {modelId === 'application' ? (
+              <PermissionWrapper
+                requiredPermissions={['Edit Model']}
+                instPermissions={modelPermission}
+              >
+                <Dropdown
+                  menu={{
+                    selectable: true,
+                    selectedKeys: [contextLink],
+                    items: [
+                      {
+                        key: 'follow',
+                        label: t('Model.ciContextFollow'),
+                        onClick: () => updateContextLink(record.model_asst_id, 'follow'),
+                      },
+                      {
+                        key: 'include',
+                        label: t('Model.ciContextInclude'),
+                        onClick: () => updateContextLink(record.model_asst_id, 'include'),
+                      },
+                      {
+                        key: 'exclude',
+                        label: t('Model.ciContextExclude'),
+                        onClick: () => updateContextLink(record.model_asst_id, 'exclude'),
+                      },
+                    ],
+                  }}
+                >
+                  <Button type="link">{t('Model.ciContextMore')}</Button>
+                </Dropdown>
+              </PermissionWrapper>
+            ) : null}
+            <PermissionWrapper
+              requiredPermissions={['Edit Model']}
+              instPermissions={modelPermission}
             >
-              {t('common.delete')}
-            </Button>
-          </PermissionWrapper>
-        </>
-      ),
+              <Button
+                type="link"
+                danger
+                onClick={() => showDeleteConfirm(record.model_asst_id)}
+              >
+                {t('common.delete')}
+              </Button>
+            </PermissionWrapper>
+          </>
+        );
+      },
     },
   ];
 
@@ -270,11 +347,44 @@ const Associations: React.FC = () => {
     setPagination(pagination);
   };
 
+  const loadIslandCounts = async () => {
+    if (!modelId) return;
+    const counts = await getModelIslandCounts(modelId);
+    setIslandCounts(counts || {});
+  };
+
+  const updateContextLink = async (
+    modelAsstId: string,
+    contextLink: 'follow' | 'include' | 'exclude',
+  ) => {
+    try {
+      await setAssociationContextLink(modelAsstId, contextLink);
+      message.success(t('successfullyModified'));
+      await fetchData();
+    } catch {
+      // 请求层已提示失败
+    }
+  };
+
+  const updateRequired = async (record: { model_asst_id: string }, required: boolean) => {
+    const previous = tableData;
+    setTableData((rows) => rows.map((row) => (
+      row.model_asst_id === record.model_asst_id ? { ...row, required } : row
+    )));
+    try {
+      await setModelAssociationRequired(modelId!, { model_asst_id: record.model_asst_id, required });
+      await loadIslandCounts();
+    } catch {
+      setTableData(previous);
+    }
+  };
+
   const fetchData = async () => {
     setLoading(true);
     try {
       const data = await getModelAssociations(modelId!);
       setTableData(data);
+      await loadIslandCounts();
     } finally {
       setLoading(false);
     }
@@ -311,6 +421,7 @@ const Associations: React.FC = () => {
         setAssoTypeList(assoTypeData);
         setModelList(modelListFromContext);
         setTableData(assoTableData);
+        loadIslandCounts().catch(() => setIslandCounts({}));
         pagination.total = res[1].length || 0;
         setPagination(pagination);
       })
@@ -322,6 +433,10 @@ const Associations: React.FC = () => {
   return (
     <div className="min-w-0 w-full">
       <div>
+        <Alert className="mb-4" type="info" showIcon message={t('Governance.relationTip')} />
+        {modelId === 'application' ? (
+          <Alert className="mb-4" type="info" showIcon message={t('Model.ciContextHint')} />
+        ) : null}
         <SearchActionBar
           className="mb-4"
           spacing="flush"

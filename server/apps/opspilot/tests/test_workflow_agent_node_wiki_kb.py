@@ -142,6 +142,16 @@ def test_agent_node_ignores_explicit_none_caller_identity(agent_node):
     assert CALLER_IDENTITY_CONFIG_KEY not in params
 
 
+def test_workbench_auto_command_survives_node_prompt(agent_node, mocker):
+    skill = _make_skill_with_kb(team=99, kb_ids=[])
+    skill.name = "测试智能体"
+    mocker.patch.object(agent_node, "_get_skill", return_value=skill)
+    mocker.patch.object(agent_node, "_build_final_message", return_value="节点提示\n/auto 检查告警")
+    mocker.patch.object(agent_node.variable_manager, "get_variable", return_value={"entry_type": "web_chat"})
+    params, _, _ = agent_node.set_llm_params("node-1", {"agent": "1"}, {"last_message": "/auto 检查告警"})
+    assert params["unattended"] is True
+
+
 @pytest.mark.parametrize(
     ("entry_type", "expected_trigger"),
     [

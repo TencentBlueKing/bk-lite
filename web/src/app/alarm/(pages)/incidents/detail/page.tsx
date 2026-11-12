@@ -29,8 +29,12 @@ import {
   CheckOutlined,
   CloseOutlined,
   AppstoreOutlined,
+  ApartmentOutlined,
   ReloadOutlined,
 } from '@ant-design/icons';
+import ImpactTopologyView from './ImpactTopologyView';
+import { collectSeedUuids } from './impactTopology';
+import type { ImpactTopologyPayload } from './impactTopology';
 import {
   Breadcrumb,
   Descriptions,
@@ -67,13 +71,14 @@ const IncidentDetail: React.FC = () => {
   const abortControllerRef = useRef<AbortController | null>(null);
   const [timeLineData, setTimeLineData] = useState<TimeLineItem[]>([]);
   const [recordLoading, setRecordLoading] = useState<boolean>(false);
-  const { levelListIncident, levelMapIncident, userList } = useCommon();
+  const { levelListIncident, levelMapIncident, levelList, levelMap, userList } = useCommon();
   const { getAlarmList } = useAlarmApi();
   const {
     getIncidentDetail,
     modifyIncidentDetail,
     addAlertsToIncident,
     removeAlertsFromIncident,
+    getImpactTopology,
   } = useIncidentsApi();
   const STATE_MAP = useStateMap();
   const searchParams = useSearchParams();
@@ -81,7 +86,11 @@ const IncidentDetail: React.FC = () => {
   const incidentId = searchParams.get('incident_id') || '';
   const [tableData, setTableData] = useState<AlarmTableDataItem[]>([]);
   const [tabLoading, setTabLoading] = useState<boolean>(false);
-  const [viewType, setViewType] = useState<'table' | 'gantt'>('table');
+  const [viewType, setViewType] = useState<'table' | 'gantt' | 'topology'>('table');
+  const [topologyRefresh, setTopologyRefresh] = useState(0);
+  const [impactPayload, setImpactPayload] = useState<ImpactTopologyPayload | null>(null);
+  const [impactResultKey, setImpactResultKey] = useState('');
+  const [impactLoading, setImpactLoading] = useState(false);
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
   const [operateVisible, setOperateVisible] = useState(false);
   const [editingAssignee, setEditingAssignee] = useState(false);
@@ -191,6 +200,43 @@ const IncidentDetail: React.FC = () => {
       setTabLoading(false);
     }
   };
+
+  const impactSeedKey = useMemo(() => collectSeedUuids(tableData).join('\n'), [tableData]);
+  const impactRequestKey = `${rowDetailId}|${tableData.length}|${impactSeedKey}|${topologyRefresh}`;
+  const impactReady = viewType === 'topology' && impactResultKey === impactRequestKey;
+
+  useEffect(() => {
+    if (viewType !== 'topology' || !rowDetailId || tableData.length === 0) {
+      setImpactLoading(false);
+      return undefined;
+    }
+    let cancelled = false;
+    const requestKey = impactRequestKey;
+    setImpactLoading(true);
+    getImpactTopology(rowDetailId, impactSeedKey ? impactSeedKey.split('\n') : [])
+      .then((data: ImpactTopologyPayload) => {
+        if (cancelled) return;
+        setImpactPayload(data);
+        setImpactResultKey(requestKey);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setImpactPayload({
+          relation_status: 'unavailable',
+          message: t('incidents.impactUnavailable', '配置关系暂时查不到'),
+          truncated: false,
+          nodes: [],
+          links: [],
+        });
+        setImpactResultKey(requestKey);
+      })
+      .finally(() => {
+        if (!cancelled) setImpactLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [viewType, impactRequestKey]);
 
   const userOptions = useMemo(() => userList.map((u: UserItem) => ({
     label: `${u.display_name} (${u.username})`,
@@ -722,12 +768,26 @@ const IncidentDetail: React.FC = () => {
                             </span>
                           ),
                         },
+                        {
+                          value: 'topology',
+                          label: (
+                            <span className="inline-flex items-center">
+                              <ApartmentOutlined className="mr-1" />
+                              {t('incidents.impactTopology')}
+                            </span>
+                          ),
+                        },
                       ]}
                       onChange={setViewType as any}
                     />
                   )}
                   trailing={(
                     <>
+                      {viewType === 'topology' ? (
+                        <Button icon={<ReloadOutlined />} onClick={() => setTopologyRefresh((value) => value + 1)}>
+                          {t('incidents.refreshTopology')}
+                        </Button>
+                      ) : null}
                       <SearchFilter
                         attrList={alarmAttrList}
                         onSearch={(condition) => {
@@ -775,12 +835,20 @@ const IncidentDetail: React.FC = () => {
                       </PermissionWrapper>
                     )}
                   />
-                ) : (
+                ) : viewType === 'gantt' ? (
                   <GanttChart
                     loading={tabLoading}
                     alarmData={tableData}
                     selectedTasks={collectSelectedAlertIds(selectedRowKeys)}
                     onSelectionChange={(keys) => setSelectedRowKeys(keys)}
+                  />
+                ) : (
+                  <ImpactTopologyView
+                    alerts={tableData}
+                    payload={impactReady ? impactPayload : null}
+                    loading={tabLoading || impactLoading || (tableData.length > 0 && !impactReady)}
+                    levels={levelList}
+                    levelColors={levelMap}
                   />
                 )}
               </div>

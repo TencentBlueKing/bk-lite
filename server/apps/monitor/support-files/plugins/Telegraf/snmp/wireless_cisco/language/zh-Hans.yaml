@@ -15,7 +15,7 @@ monitor_object_metric:
       desc: Cisco 无线控制器的整体 CPU 使用率。AireOS 以 0-100 百分比直接上报；Catalyst 9800 回退为 5 分钟平均。持续偏高可能表示接入点或客户端管理负载过高，会影响漫游与管理响应。
     device_memory_total:
       name: 内存总量
-      desc: 无线控制器内存总量（字节）。AireOS 来自 agentTotalMemory（KBytes×1024）；Catalyst 9800 由已用加空闲内存推导。
+      desc: 无线控制器内存总量（字节）。AireOS 来自 agentTotalMemory（KBytes×1024）。
     device_memory_free:
       name: 内存空闲
       desc: 无线控制器空闲内存（字节，KBytes×1024）。AireOS 来自 agentFreeMemory；Catalyst 9800 来自 CPU 范围空闲内存。

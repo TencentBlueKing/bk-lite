@@ -57,7 +57,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Venturi buffer pool usage as a 0-100 percentage, derived from VENTURI-SERVER-STATS-MIB vServerStatsSystemUsedVenturiBuffers / vServerSystemTotalVenturiBuffers."
+      "description": "Venturi buffer pool usage as a 0-100 percentage."
     }
   ]
 }

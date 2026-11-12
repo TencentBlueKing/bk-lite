@@ -21,7 +21,7 @@ monitor_object_metric:
       desc: 该指标表示 Peplink/Pepwave 路由器当前已使用的物理内存（DEVICE.mib deviceMemoryUsage）。原始单位为 KB，查询侧乘 1024 换算为字节。
     device_memory_usage:
       name: 内存使用率
-      desc: 该指标表示 Peplink/Pepwave 路由器整体内存使用率，按 已用/总量*100 计算。持续偏高可能由内存泄漏、会话表过大或容量不足导致。
+      desc: Peplink/Pepwave 路由器整体内存使用率。持续偏高可能由内存泄漏、会话表过大或容量不足导致。
     peplink_wan_signal_dbm:
       name: WAN 信号强度
       desc: 该指标表示 Peplink/Pepwave 路由器 WAN/蜂窝口接收信号强度（wanSignal），单位 dBm。超出可用无线电范围（-150 到 0 dBm）的读数会被丢弃。持续偏低提示覆盖不足或天线异常。

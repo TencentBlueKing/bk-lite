@@ -48,7 +48,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric reports the power-supply health of the EtherWAN device, derived from the dual power-input status table (ewnPowerSupplyTable ewnPowerSupplyStatus, one row per input). The raw codes (0=up meaning the input is present and OK, 1=down meaning the input is lost or absent) are normalized via telegraf processors.enum so that 1 = healthy and 2 = fault, and the worst input is taken per device. A value greater than 1 indicates a failed or absent power input that warrants investigation."
+      "description": "This metric reports the power-supply health of the EtherWAN device. The raw codes (0=up meaning the input is present and OK, 1=down meaning the input is lost or absent) are normalized via telegraf processors.enum so that 1 = healthy and 2 = fault, and the worst input is taken per device. A value greater than 1 indicates a failed or absent power input that warrants investigation."
     },
     {
       "metric_group": "Traffic",

@@ -10,9 +10,10 @@ from django.utils import timezone
 
 from apps.apm.adapters.errors import TelemetryStoreUnavailable
 from apps.apm.models import ApmAlert, ApmDeploymentEvent, ApmService, ApmServiceInstance, ApmSlo
-from apps.apm.services.contracts import ServiceMetricQuery, ServiceRed
+from apps.apm.services.contracts import GroupedRed, ServiceMetricQuery, ServiceRed
 from apps.apm.services.reliability import DjangoApmReliabilityService
 from apps.apm.services.status import catalog_status
+from apps.apm.services.trace_retention import TRACE_RETENTION_INVALID, TRACE_RETENTION_TOO_SHORT
 from apps.core.logger import apm_logger as logger
 from apps.core.utils.viewset_utils import build_json_membership_query
 
@@ -34,6 +35,7 @@ ALERT_SPARKLINE_HOURS = 24
 MAX_METRIC_TARGETS = 40
 MAX_TOP_ROWS = 5
 MAX_SLO_ROWS = 5
+_TRACE_RETENTION_REASONS = {TRACE_RETENTION_TOO_SHORT, TRACE_RETENTION_INVALID}
 MAX_ALERT_ROWS = 5
 MAX_RELEASE_ROWS = 5
 RELEASE_LOOKBACK = timedelta(days=7)
@@ -50,6 +52,13 @@ class _ServiceTarget:
     last_seen_at: datetime
 
 
+@dataclass
+class _GroupedDashboard:
+    rows: list[tuple]
+    result: GroupedRed | None
+    error: str
+
+
 def _section_ok(data: Any) -> dict[str, Any]:
     return {"status": "ok", "data": data}
 
@@ -63,6 +72,15 @@ def _section_empty(data: Any = None) -> dict[str, Any]:
 
 def _section_failed(error: str) -> dict[str, Any]:
     return {"status": "failed", "error": error}
+
+
+def _ranked_section(rows: list[dict[str, Any]], store_error: str) -> dict[str, Any]:
+    """没有可排行项时，存储不可用标为失败，避免和「没有服务」一样显示暂无数据。"""
+    if rows:
+        return {"items": rows}
+    if store_error:
+        return _section_failed(store_error)
+    return _section_empty({"items": []})
 
 
 def _flat_sparkline(value: float | int | None, points: int) -> list[float | None]:
@@ -102,9 +120,9 @@ def _resample(values: list[float | None], points: int) -> list[float | None]:
 
 
 def _health_bucket(status: str, error_rate: float | None) -> str:
-    if status == "archived" or status == "silent":
+    if status == "archived" or status == "silent" or error_rate is None:
         return "unknown"
-    if error_rate is not None and error_rate >= 0.05:
+    if error_rate >= 0.05:
         return "critical"
     if error_rate is not None and error_rate >= 0.01:
         return "warning"
@@ -126,8 +144,10 @@ class ApmDashboardService:
         metric_store=None,
         reliability: DjangoApmReliabilityService | None = None,
         now_fn: Callable[[], datetime] | None = None,
+        red_store=None,
     ):
         self.metric_store = metric_store
+        self.red_store = metric_store if red_store is None else red_store
         if reliability is not None:
             self.reliability = reliability
         elif metric_store is not None:
@@ -154,21 +174,47 @@ class ApmDashboardService:
                 "top_error_rate": _section_empty(),
                 "top_p95": _section_empty(),
                 "releases": _section_empty({"items": []}),
+                "aggregate_notice": None,
             }
 
-        targets = self._metric_targets(visible_services, ended_at)
-        red_by_key = self._load_service_red(targets, started_at, ended_at)
+        grouped = self._read_grouped(visible_services, started_at, ended_at, window)
+        overview = None
+        use_grouped = grouped is not None and grouped.result is not None and not grouped.error
+        if grouped is not None and grouped.error:
+            targets = self._shell_targets(grouped.rows, ended_at)
+            red_by_key = {}
+            store_error = grouped.error
+            aggregate_notice = None
+        elif use_grouped:
+            targets, red_by_key = self._targets_from_grouped(grouped.rows, grouped.result, ended_at)
+            store_error = ""
+            overview = grouped.result.overview
+            aggregate_notice = {
+                "late_spans": None if overview is None else overview.late_spans,
+                "truncated_service_count": len(grouped.result.truncated_services),
+            }
+        else:
+            targets = self._metric_targets(visible_services, ended_at)
+            red_by_key, store_error = self._load_service_red(targets, started_at, ended_at)
+            aggregate_notice = None
 
         return {
             "empty": False,
             "window": window,
-            "kpis": self._safe_section(lambda: self._build_kpis(ids, started_at, ended_at, window, targets, red_by_key)),
-            "health": self._safe_section(lambda: self._build_health(targets, red_by_key)),
+            "kpis": self._safe_section(
+                lambda: (
+                    self._build_grouped_kpis(ids, started_at, ended_at, window, overview)
+                    if use_grouped
+                    else self._build_kpis(ids, started_at, ended_at, window, targets, red_by_key)
+                )
+            ),
+            "health": self._safe_section(lambda: self._build_health(targets, red_by_key, store_error)),
             "slos": self._safe_section(lambda: self._build_slos(ids)),
             "alerts": self._safe_section(lambda: self._build_alerts(ids)),
-            "top_error_rate": self._safe_section(lambda: self._build_top_error_rate(targets, red_by_key)),
-            "top_p95": self._safe_section(lambda: self._build_top_p95(targets, red_by_key)),
+            "top_error_rate": self._safe_section(lambda: self._build_top_error_rate(targets, red_by_key, store_error)),
+            "top_p95": self._safe_section(lambda: self._build_top_p95(targets, red_by_key, store_error)),
             "releases": self._safe_section(lambda: self._build_releases(ids)),
+            "aggregate_notice": aggregate_notice,
         }
 
     @staticmethod
@@ -250,17 +296,109 @@ class ApmDashboardService:
         targets.sort(key=lambda item: (0 if item.status == "active" else 1, -item.last_seen_at.timestamp(), item.name))
         return targets
 
+    def _read_grouped(
+        self,
+        visible_services: QuerySet[ApmService],
+        started_at: datetime,
+        ended_at: datetime,
+        window: str,
+    ) -> _GroupedDashboard | None:
+        """覆盖时才取出全部可见服务。空列表探测只判断覆盖，不产生指标查询。"""
+        reader = getattr(self.red_store, "grouped_red", None)
+        if not callable(reader):
+            return None
+        points = SPARKLINE_POINTS[window]
+        try:
+            covered = reader((), started_at, ended_at, include_overview=True, overview_points=points)
+        except TelemetryStoreUnavailable as exc:
+            return _GroupedDashboard(self._grouped_service_rows(visible_services), None, str(exc) or exc.__class__.__name__)
+        if covered is None:
+            return None
+        rows = self._grouped_service_rows(visible_services)
+        try:
+            grouped = reader(
+                [(namespace, name) for _service_id, namespace, name, _last_seen_at, _archived_at in rows],
+                started_at,
+                ended_at,
+                include_overview=True,
+                overview_points=points,
+            )
+        except TelemetryStoreUnavailable as exc:
+            return _GroupedDashboard(rows, None, str(exc) or exc.__class__.__name__)
+        if grouped is None:
+            return None
+        return _GroupedDashboard(rows, grouped, "")
+
+    @staticmethod
+    def _grouped_service_rows(visible_services: QuerySet[ApmService]) -> list[tuple]:
+        return list(visible_services.values_list("id", "namespace", "name", "last_seen_at", "archived_at"))
+
+    def _shell_targets(self, rows: list[tuple], observed_at: datetime) -> list[_ServiceTarget]:
+        return [
+            _ServiceTarget(
+                service_id=str(service_id),
+                namespace=namespace,
+                name=name,
+                environment="",
+                status=catalog_status(last_seen_at=last_seen_at, archived_at=archived_at, observed_at=observed_at),
+                last_seen_at=last_seen_at,
+            )
+            for service_id, namespace, name, last_seen_at, archived_at in rows
+        ]
+
+    def _targets_from_grouped(
+        self,
+        rows: list[tuple],
+        grouped: GroupedRed,
+        observed_at: datetime,
+    ) -> tuple[list[_ServiceTarget], dict[str, ServiceRed | None]]:
+        by_service: dict[tuple[str, str], list[tuple[str, ServiceRed]]] = {}
+        for (namespace, name, environment), red in grouped.by_target.items():
+            by_service.setdefault((namespace, name), []).append((environment, red))
+        targets: list[_ServiceTarget] = []
+        red_by_key: dict[str, ServiceRed | None] = {}
+        for service_id, namespace, name, last_seen_at, archived_at in rows:
+            status = catalog_status(last_seen_at=last_seen_at, archived_at=archived_at, observed_at=observed_at)
+            matches = by_service.get((namespace, name))
+            if not matches:
+                targets.append(
+                    _ServiceTarget(
+                        service_id=str(service_id),
+                        namespace=namespace,
+                        name=name,
+                        environment="",
+                        status=status,
+                        last_seen_at=last_seen_at,
+                    )
+                )
+                continue
+            for environment, red in matches:
+                display_environment = "" if environment == "unknown" else environment
+                targets.append(
+                    _ServiceTarget(
+                        service_id=str(service_id),
+                        namespace=namespace,
+                        name=name,
+                        environment=display_environment,
+                        status=status,
+                        last_seen_at=last_seen_at,
+                    )
+                )
+                red_by_key[f"{service_id}:{display_environment}"] = red
+        return targets, red_by_key
+
     def _load_service_red(
         self,
         targets: list[_ServiceTarget],
         started_at: datetime,
         ended_at: datetime,
-    ) -> dict[str, ServiceRed | None]:
-        if self.metric_store is None or not targets:
-            return {}
+    ) -> tuple[dict[str, ServiceRed | None], str]:
+        if self.red_store is None or not targets:
+            return {}, ""
         results: dict[str, ServiceRed | None] = {}
+        store_error = ""
 
-        def _fetch(target: _ServiceTarget) -> tuple[str, ServiceRed | None]:
+        def _fetch(target: _ServiceTarget) -> tuple[str, ServiceRed | None, str]:
             key = f"{target.service_id}:{target.environment}"
             query = ServiceMetricQuery(
                 service_namespace=target.namespace,
@@ -271,19 +409,21 @@ class ApmDashboardService:
                 include_breakdown=True,
             )
             try:
-                return key, self.metric_store.service_red(query)
-            except TelemetryStoreUnavailable:
-                return key, None
+                return key, self.red_store.service_red(query), ""
+            except TelemetryStoreUnavailable as exc:
+                return key, None, str(exc) or exc.__class__.__name__
             except Exception as exc:  # noqa: BLE001
                 logger.warning("APM dashboard RED query failed for %s: %s", key, exc)
-                return key, None
+                return key, None, ""
 
         with ThreadPoolExecutor(max_workers=min(SECTION_WORKERS, len(targets))) as pool:
             futures = [pool.submit(_fetch, target) for target in targets]
             for future in as_completed(futures):
-                key, value = future.result()
+                key, value, error = future.result()
                 results[key] = value
-        return results
+                if error and not store_error:
+                    store_error = error
+        return results, store_error
 
     def _build_kpis(
         self,
@@ -361,6 +501,37 @@ class ApmDashboardService:
             },
         }
 
+    def _build_grouped_kpis(
+        self,
+        organization_ids: Sequence[int],
+        started_at: datetime,
+        ended_at: datetime,
+        window: str,
+        overview,
+    ) -> dict[str, Any]:
+        points = SPARKLINE_POINTS[window]
+        in_window = self._visible_services(organization_ids).filter(last_seen_at__gte=started_at).order_by()
+        app_count = in_window.values("namespace").distinct().count()
+        service_count = in_window.values("name").distinct().count()
+        alert_count = self._active_alert_queryset(organization_ids).count()
+
+        return {
+            "application_count": app_count,
+            "service_count": service_count,
+            "active_alert_count": alert_count,
+            "request_rate": None if overview is None else overview.request_rate,
+            "error_request_rate": None if overview is None else overview.error_request_rate,
+            "p95_ms": None if overview is None else overview.p95_ms,
+            "sparklines": {
+                "application_count": _flat_sparkline(app_count, points),
+                "service_count": _flat_sparkline(service_count, points),
+                "active_alert_count": self._alert_sparkline(organization_ids, ended_at),
+                "request_rate": _flat_sparkline(None, points) if overview is None else _resample(list(overview.request_trend), points),
+                "error_request_rate": _flat_sparkline(None, points) if overview is None else _resample(list(overview.error_trend), points),
+                "p95_ms": _flat_sparkline(None, points) if overview is None else _resample(list(overview.p95_trend), points),
+            },
+        }
+
     def _alert_sparkline(self, organization_ids: Sequence[int], ended_at: datetime) -> list[float | None]:
         started_at = ended_at - timedelta(hours=ALERT_SPARKLINE_HOURS)
         queryset = ApmAlert.objects.filter(started_at__gte=started_at, started_at__lte=ended_at)
@@ -412,7 +583,16 @@ class ApmDashboardService:
             result.append(total / count if count else None)
         return result
 
-    def _build_health(self, targets: list[_ServiceTarget], red_by_key: dict[str, ServiceRed | None]) -> dict[str, Any]:
+    def _build_health(
+        self,
+        targets: list[_ServiceTarget],
+        red_by_key: dict[str, ServiceRed | None],
+        store_error: str,
+    ) -> dict[str, Any]:
+        # 全部没有 RED，且至少一条是存储不可用时，不能把健康度画成「未知」。
+        missing_red = all(red_by_key.get(f"{target.service_id}:{target.environment}") is None for target in targets)
+        if store_error and targets and missing_red:
+            return _section_failed(store_error)
         # 按服务去重：同一服务多环境取最差健康档
         rank = {"critical": 0, "warning": 1, "unknown": 2, "healthy": 3}
         by_service: dict[str, str] = {}
@@ -451,11 +631,31 @@ class ApmDashboardService:
             .order_by("name", "id")[: MAX_SLO_ROWS * 3]
         )
         rows = []
+        store_error = ""
         for slo in slos:
             evaluation = self.reliability.evaluate(slo, evaluated_at=self.now_fn())
-            if evaluation.current_rate is None:
-                continue
             objective = float(slo.objective)
+            if evaluation.current_rate is None:
+                # 保留期不够是这条 SLO 自己的空达成率，和列表用同一个原因，不当成存储故障或 0。
+                if evaluation.reason in _TRACE_RETENTION_REASONS:
+                    rows.append(
+                        {
+                            "id": str(slo.id),
+                            "service_id": str(slo.service_id),
+                            "service_name": slo.service.name,
+                            "environment": slo.environment,
+                            "objective": objective,
+                            "current_rate": None,
+                            "met": None,
+                            "reason": evaluation.reason,
+                        }
+                    )
+                elif evaluation.reason not in {"", "no_samples", "disabled"}:
+                    # 无样本仍是空态。存储失败不能伪装成「没有 SLO」，否则首页和列表对不上。
+                    store_error = store_error or evaluation.reason
+                if len(rows) >= MAX_SLO_ROWS:
+                    break
+                continue
             met = evaluation.current_rate >= objective
             rows.append(
                 {
@@ -471,6 +671,8 @@ class ApmDashboardService:
             if len(rows) >= MAX_SLO_ROWS:
                 break
         if not rows:
+            if store_error:
+                return _section_failed(store_error)
             return _section_empty({"items": []})
         return {"items": rows}
 
@@ -528,7 +730,12 @@ class ApmDashboardService:
             ]
         }
 
-    def _build_top_error_rate(self, targets: list[_ServiceTarget], red_by_key: dict[str, ServiceRed | None]) -> dict[str, Any]:
+    def _build_top_error_rate(
+        self,
+        targets: list[_ServiceTarget],
+        red_by_key: dict[str, ServiceRed | None],
+        store_error: str,
+    ) -> dict[str, Any]:
         rows = []
         for target in targets:
             red = red_by_key.get(f"{target.service_id}:{target.environment}")
@@ -544,12 +751,14 @@ class ApmDashboardService:
                 }
             )
         rows.sort(key=lambda item: item["value"], reverse=True)
-        rows = rows[:MAX_TOP_ROWS]
-        if not rows:
-            return _section_empty({"items": []})
-        return {"items": rows}
+        return _ranked_section(rows[:MAX_TOP_ROWS], store_error)
 
-    def _build_top_p95(self, targets: list[_ServiceTarget], red_by_key: dict[str, ServiceRed | None]) -> dict[str, Any]:
+    def _build_top_p95(
+        self,
+        targets: list[_ServiceTarget],
+        red_by_key: dict[str, ServiceRed | None],
+        store_error: str,
+    ) -> dict[str, Any]:
         rows = []
         for target in targets:
             red = red_by_key.get(f"{target.service_id}:{target.environment}")
@@ -565,10 +774,7 @@ class ApmDashboardService:
                 }
             )
         rows.sort(key=lambda item: item["value"], reverse=True)
-        rows = rows[:MAX_TOP_ROWS]
-        if not rows:
-            return _section_empty({"items": []})
-        return {"items": rows}
+        return _ranked_section(rows[:MAX_TOP_ROWS], store_error)
 
     @staticmethod
     def _active_alert_queryset(organization_ids: Sequence[int]) -> QuerySet[ApmAlert]:

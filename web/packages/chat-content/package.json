@@ -1,0 +1,35 @@
+{
+  "name": "@bk-lite/chat-content",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./core": "./src/core.ts",
+    "./ui": "./src/ui.ts",
+    "./style.css": "./src/style.css",
+    "./*": "./src/*.ts"
+  },
+  "peerDependencies": {
+    "react": ">=18 <20",
+    "react-dom": ">=18 <20",
+    "antd": "^5.28.0",
+    "@ant-design/icons": "^5.6.1"
+  },
+  "dependencies": {
+    "markdown-it": "^14.2.0",
+    "dompurify": "^3.3.1",
+    "highlight.js": "^11.11.1",
+    "@types/markdown-it": "^14.1.2"
+  },
+  "typesVersions": {
+    "*": {
+      "*": [
+        "src/*"
+      ]
+    }
+  },
+  "files": [
+    "src",
+    "tsconfig.json"
+  ]
+}

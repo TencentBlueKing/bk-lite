@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { applyAnsweredUserChoices, choiceRequestFromVisibleText, isUserChoiceRequestClosed, normalizeUserChoiceOptions, stripChoicePromptFromContent } from '../src/app/opspilot/components/custom-chat-sse/userChoiceOptions';
 
 const source = readFileSync(
-  new URL('../src/app/opspilot/components/custom-chat-sse/UserChoiceCard.tsx', import.meta.url),
+  new URL('../packages/chat-content/src/UserChoiceCard.tsx', import.meta.url),
   'utf8',
 );
 
@@ -61,6 +61,8 @@ assert.doesNotMatch(
 
 assert.doesNotMatch(source, /postUserChoice/);
 assert.match(source, /onSendMessage\?\.\(labels\.join/);
+assert.match(source, /choiceId:\s*request\.choice_id/);
+assert.match(source, /optionKey:\s*keys\[0\]/);
 assert.doesNotMatch(source, /if \(isCompleted\) \{\s*return null/);
 
 {

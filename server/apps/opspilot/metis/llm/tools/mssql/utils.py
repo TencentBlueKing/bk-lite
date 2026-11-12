@@ -6,8 +6,8 @@ from numbers import Number
 
 import pyodbc
 from langchain_core.runnables import RunnableConfig
-from apps.core.logger import opspilot_logger as logger
 
+from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.metis.llm.tools.common.sql_guard import log_db_failure, run_blocking
 
 # 合法的数据库标识符:字母、数字、下划线,长度受限,防止 SQL 注入(如 ']' 逃逸 [] 引用)
@@ -33,6 +33,7 @@ def quote_database_identifier(database: str) -> str:
     if not database or not _VALID_DATABASE_IDENTIFIER.match(database):
         raise ValueError(f"非法的数据库名: {database!r}。仅允许字母、数字和下划线,且长度为1-128。")
     return f"[{database}]"
+
 
 UNIT_FIELD_FORMATTERS = {
     "size_bytes": lambda value: format_size(value),
@@ -121,7 +122,7 @@ LEGACY_FORMATTED_FIELD_ALIASES = {
 }
 
 
-def prepare_context(config: RunnableConfig = None) -> dict:
+def prepare_context(config: RunnableConfig = None, instance_name: str = None, instance_id: str = None) -> dict:
     """
     准备MSSQL连接上下文
 
@@ -146,8 +147,11 @@ def prepare_context(config: RunnableConfig = None) -> dict:
 
     instances, default_instance_id = get_mssql_instances_from_configurable(configurable)
     if instances:
-        instance = resolve_mssql_instance(instances, default_instance_id)
+        instance = resolve_mssql_instance(instances, default_instance_id, instance_name=instance_name, instance_id=instance_id)
         return build_mssql_config_from_instance(instance)
+
+    if instance_name or instance_id:
+        raise ValueError("MSSQL instance selection is unavailable for legacy single-instance configuration")
 
     return {
         "host": configurable.get("host", "localhost"),
@@ -205,17 +209,12 @@ def get_db_connection(config: RunnableConfig = None, database: str = None, insta
     Returns:
         pyodbc.Connection: 数据库连接对象
     """
-    if instance_name or instance_id:
-        from apps.opspilot.metis.llm.tools.mssql.connection import get_mssql_connection
-        conn = get_mssql_connection(config, instance_name=instance_name, instance_id=instance_id)
-        if database:
-            conn.execute(f"USE {quote_database_identifier(database)}")
-        return conn
-
-    db_config = prepare_context(config)
+    db_config = prepare_context(config, instance_name=instance_name, instance_id=instance_id)
 
     # 如果提供了database参数,则覆盖配置中的database
     if database:
+        if instance_name or instance_id:
+            quote_database_identifier(database)
         db_config["database"] = database
 
     try:
@@ -242,7 +241,14 @@ def get_db_connection(config: RunnableConfig = None, database: str = None, insta
         raise
 
 
-def execute_readonly_query(query: str, params: tuple = None, config: RunnableConfig = None, database: str = None):
+def execute_readonly_query(
+    query: str,
+    params: tuple = None,
+    config: RunnableConfig = None,
+    database: str = None,
+    instance_name: str = None,
+    instance_id: str = None,
+):
     """
     安全执行只读查询
 
@@ -255,12 +261,13 @@ def execute_readonly_query(query: str, params: tuple = None, config: RunnableCon
     Returns:
         list: 查询结果列表
     """
+
     def _run():
         conn = None
         cursor = None
 
         try:
-            conn = get_db_connection(config, database=database)
+            conn = get_db_connection(config, database=database, instance_name=instance_name, instance_id=instance_id)
 
             # 只读事务强制 (F066):与 PostgreSQL 的 ``SET TRANSACTION READ ONLY`` 对齐。
             # T-SQL 无直接的 "READ ONLY 事务" 语法,这里采用两层措施:

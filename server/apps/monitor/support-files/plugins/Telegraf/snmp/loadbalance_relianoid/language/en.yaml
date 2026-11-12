@@ -39,9 +39,7 @@ monitor_object_metric:
         minus memAvailReal and converted from kB to bytes.
     device_memory_usage:
       name: Memory Usage
-      desc: Real memory utilization of the RELIANOID load balancer, derived as
-        (memTotalReal - memAvailReal) / memTotalReal * 100. Sustained high usage may
-        degrade connection-handling performance.
+      desc: Real memory utilization of the RELIANOID load balancer. Sustained high usage may degrade connection-handling performance.
     device_load1:
       name: Load Average (1m)
       desc: Optional 1-minute load average of the RELIANOID load balancer (UCD-SNMP

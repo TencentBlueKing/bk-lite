@@ -2,21 +2,21 @@ import argparse
 import asyncio
 import os
 
-from core.config import load_config
 from dotenv import load_dotenv
+
+from core.config import load_config
 from service.nats_service import AnsibleNATSService
 from service.runtime import configure_ansible_environment, find_config_path, find_dotenv_path, repair_ansible_windows_collection_layout
+from version_info import current_version_line
 
 
 def main() -> None:
-    configure_ansible_environment()
-    collections_path = os.environ.get("ANSIBLE_COLLECTIONS_PATH")
-    if collections_path:
-        repair_ansible_windows_collection_layout(collections_path)
-    dotenv_path = find_dotenv_path()
-    if dotenv_path:
-        load_dotenv(dotenv_path)
-    parser = argparse.ArgumentParser(description="ansible-executor service")
+    version_line = current_version_line()
+    parser = argparse.ArgumentParser(
+        description=f"ansible-executor service\n\n{version_line}",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument("--version", action="version", version=version_line)
     parser.add_argument(
         "--config",
         required=False,
@@ -34,6 +34,13 @@ def main() -> None:
         help="arguments forwarded to embedded ansible helper",
     )
     args = parser.parse_args()
+    configure_ansible_environment()
+    collections_path = os.environ.get("ANSIBLE_COLLECTIONS_PATH")
+    if collections_path:
+        repair_ansible_windows_collection_layout(collections_path)
+    dotenv_path = find_dotenv_path()
+    if dotenv_path:
+        load_dotenv(dotenv_path)
     if args.internal_ansible_cli:
         from service.embedded_ansible import run_embedded_ansible
 

@@ -9,10 +9,7 @@ monitor_object_metric:
   Wanopt:
     snmp_uptime:
       name: System Uptime
-      desc: This metric indicates the uptime of the Blue Coat / Symantec Edge
-        SWG / Broadcom ProxySG appliance since the last restart, derived from
-        sysUpTime. Monitoring uptime helps administrators understand device
-        stability and identify unexpected reboots.
+      desc: This metric indicates the uptime of the Blue Coat / Symantec Edge SWG / Broadcom ProxySG appliance since the last restart, derived from sysUpTime. Monitoring uptime helps administrators understand device stability and identify unexpected reboots.
     device_cpu_usage:
       name: CPU Utilization
       desc: CPU utilization of the ProxySG appliance (BLUECOAT-SG-PROXY-MIB

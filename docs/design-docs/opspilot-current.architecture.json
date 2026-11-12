@@ -27,7 +27,7 @@
         "id": "risk-boundary",
         "label": "工具执行安全边界",
         "focus": ["agent", "model_tools", "object_cache", "external_ai_ops"],
-        "note": "审批、预算、Shell 黑名单、临时目录与宿主执行分散在运行时组装代码中。"
+        "note": "审批、预算、本地工作区与子进程、临时目录与宿主执行分散在运行时组装代码中。"
       }
     ]
   },
@@ -72,7 +72,7 @@
       "id": "model_tools", "type": "security", "label": "模型、技能与工具组装", "sublabel": "Provider / Tool Registry / Approval / Shell", "tag": "ToolsNodes 4,068 行", "pos": [830, 105], "size": [190, 100],
       "sources": [
         {"path": "server/apps/opspilot/metis/llm/chain/node.py", "line": 661, "label": "工具节点组合根"},
-        {"path": "server/apps/opspilot/metis/llm/middleware/shell_guard.py", "line": 1, "label": "Shell 黑名单"}
+        {"path": "server/apps/opspilot/services/python_sandbox/runtime.py", "line": 1, "label": "本地工作区与子进程"}
       ]
     },
     {

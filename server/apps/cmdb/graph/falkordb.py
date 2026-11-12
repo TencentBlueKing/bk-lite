@@ -1470,39 +1470,8 @@ class FalkorDBClient:
         return inst_objs
 
     def query_topo(self, label: str, inst_id: int):
-        """查询实例拓扑（参数化版本）"""
-
-        # 验证参数
-        if self.ENABLE_PARAMETERIZATION:
-            if label:
-                CQLValidator.validate_label(label)
-            CQLValidator.validate_id(inst_id)
-
-        label_str = f":{label}" if label else ""
-
-        # 修复 FalkorDB 兼容性问题
-        # 查询从指定节点出发的所有路径（作为源节点）
-        if self.ENABLE_PARAMETERIZATION:
-            src_query = f"MATCH p=(n{label_str})-[*]->(m{label_str}) WHERE ID(n) = $inst_id RETURN p"
-            dst_query = f"MATCH p=(m{label_str})-[*]->(n{label_str}) WHERE ID(n) = $inst_id RETURN p"
-            query_params = {"inst_id": inst_id}
-        else:
-            src_query = f"MATCH p=(n{label_str})-[*]->(m{label_str}) WHERE ID(n) = {inst_id} RETURN p"
-            dst_query = f"MATCH p=(m{label_str})-[*]->(n{label_str}) WHERE ID(n) = {inst_id} RETURN p"
-            query_params = None
-
-        try:
-            src_objs = self._execute_query(src_query, params=query_params)
-            dst_objs = self._execute_query(dst_query, params=query_params)
-        except Exception as e:
-            logger.error(f"Query topo failed: {e}")
-            # 如果复杂查询失败，使用简单的直接关系查询
-            return {}
-
-        return dict(
-            src_result=self.format_topo(inst_id, src_objs, True),
-            dst_result=self.format_topo(inst_id, dst_objs, False),
-        )
+        """实例拓扑固定深度 3，走有节点上限的一跳扩展。"""
+        return self.query_topo_lite(label, inst_id, depth=3)
 
     @staticmethod
     def get_topo_config() -> dict:
@@ -1610,34 +1579,167 @@ class FalkorDBClient:
         )
 
     def query_topo_lite(self, label: str, inst_id: int, depth: int = 3, exclude_ids=None):
-        """查询实例拓扑：限制返回层级，减少前端一次性渲染与网络传输压力"""
+        """按层一跳扩展。每一层一条无向查询，节点超过上限后停止。"""
 
         depth = max(1, int(depth))
-        probe_depth = depth + 1
-
+        inst_id = int(inst_id)
         if self.ENABLE_PARAMETERIZATION:
             if label:
                 CQLValidator.validate_label(label)
             CQLValidator.validate_id(inst_id)
 
         label_str = f":{label}" if label else ""
+        exclude = set()
+        for value in exclude_ids or []:
+            try:
+                exclude.add(int(value))
+            except (TypeError, ValueError):
+                continue
+        exclude.discard(inst_id)
 
-        if self.ENABLE_PARAMETERIZATION:
-            query_params = {"inst_id": inst_id}
-            src_query = f"MATCH p=(n{label_str})-[*1..{probe_depth}]->(m{label_str}) WHERE ID(n) = $inst_id RETURN p"
-            dst_query = f"MATCH p=(m{label_str})-[*1..{probe_depth}]->(n{label_str}) WHERE ID(n) = $inst_id RETURN p"
-        else:
-            query_params = None
-            src_query = f"MATCH p=(n{label_str})-[*1..{probe_depth}]->(m{label_str}) WHERE ID(n) = {inst_id} RETURN p"
-            dst_query = f"MATCH p=(m{label_str})-[*1..{probe_depth}]->(n{label_str}) WHERE ID(n) = {inst_id} RETURN p"
+        seen = {inst_id}
+        node_count = 1
+        truncated_parents = set()
+        out_frontier = [inst_id]
+        in_frontier = [inst_id]
+        out_edges, out_entities = [], {}
+        in_edges, in_entities = [], {}
+        self._last_topo_queries = []
 
-        src_objs = self._execute_query(src_query, params=query_params)
-        dst_objs = self._execute_query(dst_query, params=query_params)
+        for _level in range(depth):
+            hop_ids = list(dict.fromkeys([*out_frontier, *in_frontier]))
+            if not hop_ids or node_count >= self.TOPO_NODE_LIMIT:
+                break
+            edges, entities = self._query_topo_hop(label_str, hop_ids)
+            if inst_id in entities:
+                out_entities.setdefault(inst_id, entities[inst_id])
+                in_entities.setdefault(inst_id, entities[inst_id])
+            out_set = set(out_frontier)
+            in_set = set(in_frontier)
+            next_out, next_in = [], []
+            for index, edge in enumerate(edges):
+                src_id = edge.get("src_inst_id")
+                dst_id = edge.get("dst_inst_id")
+                if src_id in exclude or dst_id in exclude:
+                    continue
+                if src_id in out_set:
+                    self._accept_topo_child(
+                        edge,
+                        dst_id,
+                        src_id,
+                        entities,
+                        out_edges,
+                        out_entities,
+                        seen,
+                        next_out,
+                        truncated_parents,
+                    )
+                    node_count = len(seen)
+                if dst_id in in_set:
+                    self._accept_topo_child(
+                        edge,
+                        src_id,
+                        dst_id,
+                        entities,
+                        in_edges,
+                        in_entities,
+                        seen,
+                        next_in,
+                        truncated_parents,
+                    )
+                    node_count = len(seen)
+                if node_count >= self.TOPO_NODE_LIMIT:
+                    for pending in edges[index + 1 :]:
+                        pending_src = pending.get("src_inst_id")
+                        pending_dst = pending.get("dst_inst_id")
+                        if pending_src in out_set:
+                            truncated_parents.add(pending_src)
+                        if pending_dst in in_set:
+                            truncated_parents.add(pending_dst)
+                    break
+            out_frontier = next_out
+            in_frontier = next_in
 
         return dict(
-            src_result=self.format_topo_lite(inst_id, src_objs, True, depth=depth, exclude_ids=exclude_ids),
-            dst_result=self.format_topo_lite(inst_id, dst_objs, False, depth=depth, exclude_ids=exclude_ids),
+            src_result=self._topo_tree(inst_id, out_edges, out_entities, True, depth, truncated_parents),
+            dst_result=self._topo_tree(inst_id, in_edges, in_entities, False, depth, truncated_parents),
         )
+
+    TOPO_NODE_LIMIT = 100
+
+    def _query_topo_hop(self, label_str: str, ids: list[int]):
+        normalized = [int(item) for item in ids]
+        if self.ENABLE_PARAMETERIZATION:
+            query = f"MATCH p=(n{label_str})-[r]-(m{label_str}) WHERE ID(n) IN $ids RETURN p"
+            params = {"ids": normalized}
+        else:
+            id_list = ", ".join(str(item) for item in normalized)
+            query = f"MATCH p=(n{label_str})-[r]-(m{label_str}) WHERE ID(n) IN [{id_list}] RETURN p"
+            params = None
+        self._last_topo_queries.append(query)
+        return self._paths_to_topo_edges(self._execute_query(query, params=params))
+
+    def _paths_to_topo_edges(self, objs):
+        edge_map = {}
+        entity_map = {}
+        for obj in getattr(objs, "result_set", []) or []:
+            elements = obj if isinstance(obj, (list, tuple)) else [obj]
+            for element in elements:
+                if isinstance(element, str):
+                    continue
+                for node in getattr(element, "_nodes", []) or []:
+                    props = {key: value for key, value in node.properties.items() if key != "_id"}
+                    entity_map[node.id] = dict(_id=node.id, _label=node.labels[0], **props)
+                for relationship in getattr(element, "_edges", []) or []:
+                    props = {key: value for key, value in relationship.properties.items() if key != "_id"}
+                    edge_map[relationship.id] = dict(_id=relationship.id, _label=relationship.relation, **props)
+                    edge_map[relationship.id].update(
+                        src_inst_id=self._relationship_endpoint_id(relationship.src_node),
+                        dst_inst_id=self._relationship_endpoint_id(relationship.dest_node),
+                    )
+        edges = [edge for edge in edge_map.values() if edge.get("src_inst_id") != edge.get("dst_inst_id")]
+        return edges, entity_map
+
+    def _accept_topo_child(self, edge, child_id, parent_id, entities, edge_list, entity_map, seen, frontier, truncated_parents):
+        if child_id in (None, parent_id):
+            return
+        parent = entities.get(parent_id)
+        child = entities.get(child_id)
+        if parent is not None:
+            entity_map.setdefault(parent_id, parent)
+        if child_id in seen:
+            return
+        if len(seen) >= self.TOPO_NODE_LIMIT:
+            truncated_parents.add(parent_id)
+            return
+        if child is None:
+            return
+        seen.add(child_id)
+        entity_map[child_id] = child
+        edge_list.append(edge)
+        frontier.append(child_id)
+
+    def _topo_tree(self, inst_id, edges, entities, entity_is_src, depth, truncated_parents):
+        if inst_id not in entities:
+            return {}
+        tree = self.create_node_lite(
+            entities[inst_id],
+            edges,
+            list(entities.values()),
+            entity_is_src,
+            level=1,
+            max_depth=max(1, int(depth)),
+        )
+        self._stamp_topo_truncated(tree, truncated_parents)
+        return tree
+
+    def _stamp_topo_truncated(self, node, truncated_parents):
+        if not isinstance(node, dict):
+            return
+        if node.get("_id") in truncated_parents:
+            node["has_more"] = True
+        for child in node.get("children") or []:
+            self._stamp_topo_truncated(child, truncated_parents)
 
     def query_network_topo(self, inst_id: int, belong_asst_id: str):
         """网络拓扑：以设备为中心，查其接口直连的对端设备。返回扁平行列表。

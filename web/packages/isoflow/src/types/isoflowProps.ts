@@ -24,6 +24,7 @@ export type NodeStatusLevel = (typeof nodeStatusLevels)[number];
 export interface NodeMetricLine {
   name: string;
   text: string;
+  tone?: 'warning' | 'critical';
 }
 
 /** View mode. The host already chose the lines and formatted the values. */

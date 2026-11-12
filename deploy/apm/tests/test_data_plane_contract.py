@@ -2,22 +2,27 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+import hashlib
 import http.client
+import io
 import json
 import os
 import socket
 import subprocess
 import sys
+import tarfile
 import tempfile
+import threading
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from datetime import UTC, datetime, timedelta
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
-
 
 pytestmark = pytest.mark.skipif(
     os.getenv("RUN_APM_CONTAINER_CONTRACT") != "1",
@@ -29,10 +34,16 @@ COMPOSE_FILE = REPOSITORY_ROOT / "deploy/apm/compose.yaml"
 PYTHON_SDK_EMITTER = REPOSITORY_ROOT / "deploy/apm/tests/emit_python_sdk_trace.py"
 
 
+_RESERVED_HOST_PORTS = {4317, 4318, 8428, 9428, 10428, 13133, 18222, 18888, 18889, 18890, 23133, 33133, 18428}
+
+
 def _free_port() -> int:
-    with socket.socket() as sock:
-        sock.bind(("127.0.0.1", 0))
-        return sock.getsockname()[1]
+    while True:
+        with socket.socket() as sock:
+            sock.bind(("127.0.0.1", 0))
+            port = sock.getsockname()[1]
+        if port not in _RESERVED_HOST_PORTS:
+            return port
 
 
 def _request(url: str, *, data: bytes | None = None, headers: dict[str, str] | None = None):
@@ -66,9 +77,7 @@ def _trace_payload(trace_id: str) -> bytes:
                     {
                         "scope": {
                             "name": "bk-lite-apm-contract",
-                            "attributes": [
-                                {"key": "bk.forged.scope", "value": {"stringValue": "forged-scope"}}
-                            ],
+                            "attributes": [{"key": "bk.forged.scope", "value": {"stringValue": "forged-scope"}}],
                         },
                         "spans": [
                             {
@@ -90,9 +99,7 @@ def _trace_payload(trace_id: str) -> bytes:
                                     {
                                         "timeUnixNano": str(started_at + 1_000_000),
                                         "name": "contract-event",
-                                        "attributes": [
-                                            {"key": "bk.forged.event", "value": {"stringValue": "forged-event"}}
-                                        ],
+                                        "attributes": [{"key": "bk.forged.event", "value": {"stringValue": "forged-event"}}],
                                     }
                                 ],
                                 "status": {"code": 1},
@@ -105,11 +112,9 @@ def _trace_payload(trace_id: str) -> bytes:
                                 "kind": 3,
                                 "startTimeUnixNano": str(started_at + 1_000_000),
                                 "endTimeUnixNano": str(started_at + 13_000_000),
-                                "attributes": [
-                                    {"key": "server.address", "value": {"stringValue": "contract-downstream"}}
-                                ],
+                                "attributes": [{"key": "server.address", "value": {"stringValue": "contract-downstream"}}],
                                 "status": {"code": 1},
-                            }
+                            },
                         ],
                     }
                 ],
@@ -206,7 +211,8 @@ def _jetstream_state(port: int):
     status, body = _request(f"http://127.0.0.1:{port}/jsz?streams=true&consumers=true")
     assert status == 200, body
     detail = json.loads(body)["account_details"][0]["stream_detail"][0]
-    return detail["state"], detail["consumer_detail"][0]
+    system = next(item for item in detail["consumer_detail"] if item.get("name") == "BKLITE_APM_SYSTEM")
+    return detail["state"], system
 
 
 def _compose_action(compose, environment, *arguments, timeout=120):
@@ -237,6 +243,74 @@ def _configuration_script(code: str) -> str:
     return section.split("\n", maxsplit=1)[1]
 
 
+_PYTHON_WHEEL_MEMBER = "contract-placeholder.whl"
+_PYTHON_WHEEL_BYTES = b"bk-lite-apm-contract-python-probe\n"
+
+
+def _python_wheels_archive() -> bytes:
+    """最小 wheelhouse。接入片段按 tar.gz 下载并解压，契约测试不把占位包装进解释器。"""
+
+    buffer = io.BytesIO()
+    with tarfile.open(fileobj=buffer, mode="w:gz") as archive:
+        info = tarfile.TarInfo(name=_PYTHON_WHEEL_MEMBER)
+        info.size = len(_PYTHON_WHEEL_BYTES)
+        info.mtime = 0
+        info.mode = 0o644
+        archive.addfile(info, io.BytesIO(_PYTHON_WHEEL_BYTES))
+    return buffer.getvalue()
+
+
+def _start_probe_download_server(payload: bytes, artifact_path: str):
+    class _Handler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            if urllib.parse.urlsplit(self.path).path != artifact_path:
+                self.send_error(404)
+                return
+            self.send_response(200)
+            self.send_header("Content-Type", "application/gzip")
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+
+        def log_message(self, format, *args):
+            return
+
+    last_error: Exception | None = None
+    for _ in range(8):
+        port = _free_port()
+        try:
+            server = ThreadingHTTPServer(("127.0.0.1", port), _Handler)
+        except OSError as error:
+            last_error = error
+            continue
+        thread = threading.Thread(target=server.serve_forever, name="apm-contract-probe-http", daemon=True)
+        thread.start()
+        return server, thread, port
+    raise RuntimeError(f"could not bind probe download server: {last_error}")
+
+
+def _execute_python_probe_download(code: str) -> None:
+    """执行片段里的下载、SHA-256 校验和 tar 解压，停在 pip 之前。"""
+
+    install = code.split("# 1. 安装探针", maxsplit=1)[1].split("# 2. 配置上报", maxsplit=1)[0]
+    assert "python -m pip install --no-index" in install
+    download = install.split("python -m pip", maxsplit=1)[0]
+    assert "curl --fail" in download
+    assert "tar -xf opentelemetry-python-wheels.tar.gz -C otel-python-wheels" in download
+    with tempfile.TemporaryDirectory(prefix="apm-contract-probe-") as directory:
+        completed = subprocess.run(
+            ["/bin/sh", "-c", download],
+            cwd=directory,
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+        assert completed.returncode == 0, f"{completed.stdout}\n{completed.stderr}"
+        extracted = Path(directory) / "otel-python-wheels" / _PYTHON_WHEEL_MEMBER
+        assert extracted.read_bytes() == _PYTHON_WHEEL_BYTES
+
+
 def test_trace_crosses_bounded_jetstream_and_reaches_victoria_traces_once():
     project = f"bk-lite-apm-contract-{os.getpid()}"
     http_port = _free_port()
@@ -247,10 +321,16 @@ def test_trace_crosses_bounded_jetstream_and_reaches_victoria_traces_once():
     regional_metrics_port = _free_port()
     system_health_port = _free_port()
     system_metrics_port = _free_port()
+    aggregate_collector_health_port = _free_port()
+    aggregate_collector_metrics_port = _free_port()
+    aggregate_port = _free_port()
     trace_id = "0123456789abcdef0123456789abcdef"
     payload = _trace_payload(trace_id)
 
     environment = os.environ.copy()
+    environment.pop("COMPOSE_FILE", None)
+    environment["COMPOSE_PROJECT_NAME"] = project
+    environment.pop("AGG_VICTORIAMETRICS_WRITE_URL", None)
     environment.update(
         {
             "APM_CLOUD_REGION_ID": "contract_region",
@@ -264,6 +344,10 @@ def test_trace_crosses_bounded_jetstream_and_reaches_victoria_traces_once():
             "APM_REGIONAL_METRICS_PORT": str(regional_metrics_port),
             "APM_SYSTEM_HEALTH_PORT": str(system_health_port),
             "APM_SYSTEM_METRICS_PORT": str(system_metrics_port),
+            "APM_AGG_COLLECTOR_HEALTH_BIND": "127.0.0.1",
+            "APM_AGG_COLLECTOR_HEALTH_PORT": str(aggregate_collector_health_port),
+            "APM_AGG_COLLECTOR_METRICS_BIND": "127.0.0.1",
+            "APM_AGG_COLLECTOR_METRICS_PORT": str(aggregate_collector_metrics_port),
             "APM_NATS_STREAM_MAX_BYTES": str(32 * 1024 * 1024),
             "APM_NATS_STREAM_MAX_AGE": "15m",
             "APM_NATS_MAX_DELIVER": "4",
@@ -272,15 +356,25 @@ def test_trace_crosses_bounded_jetstream_and_reaches_victoria_traces_once():
             "APM_REGIONAL_QUEUE_MAX_BYTES": str(8 * 1024 * 1024),
             "APM_TRACE_BATCH_SIZE": "1",
             "APM_TRACE_BATCH_MAX_SIZE": "1",
+            "APM_AGG_METRICS_BIND": "127.0.0.1",
+            "APM_AGG_METRICS_PORT": str(aggregate_port),
+            "APM_AGG_SHARD": "contract-shard",
+            "APM_COLLECTOR_IMAGE": os.environ.get(
+                "APM_AGG_VERIFY_IMAGE",
+                "bklite/apm-otel-collector:0.153.0-bklite.3",
+            ),
         }
     )
     compose = ["docker", "compose", "--project-name", project, "-f", str(COMPOSE_FILE)]
+    probe_server = None
+    probe_thread = None
 
     try:
         _compose_action(compose, environment, "up", "-d", "--wait", "--wait-timeout", "120", timeout=180)
 
         assert _request(f"http://127.0.0.1:{regional_health_port}/")[0] == 200
         assert _request(f"http://127.0.0.1:{system_health_port}/")[0] == 200
+        assert _request(f"http://127.0.0.1:{aggregate_collector_health_port}/")[0] == 200
 
         assert _post_trace(http_port, payload)[0] == 200
         grpc = _post_empty_grpc_trace(grpc_port)
@@ -289,9 +383,7 @@ def test_trace_crosses_bounded_jetstream_and_reaches_victoria_traces_once():
 
         state, consumer = _eventually(
             lambda: _jetstream_state(nats_monitor_port),
-            lambda value: value[0]["messages"] == 3
-            and value[1]["ack_floor"]["stream_seq"] == 3
-            and value[1]["num_ack_pending"] == 0,
+            lambda value: value[0]["messages"] == 3 and value[1]["ack_floor"]["stream_seq"] == 3 and value[1]["num_ack_pending"] == 0,
         )
         assert state["bytes"] <= 32 * 1024 * 1024
         assert consumer["num_pending"] == 0
@@ -336,8 +428,7 @@ def test_trace_crosses_bounded_jetstream_and_reaches_victoria_traces_once():
         _compose_action(compose, environment, "start", "apm-nats")
         _eventually(
             lambda: _jetstream_state(nats_monitor_port),
-            lambda value: value[0]["last_seq"] == 6
-            and value[1]["ack_floor"]["stream_seq"] == 6,
+            lambda value: value[0]["last_seq"] == 6 and value[1]["ack_floor"]["stream_seq"] == 6,
         )
         _eventually(
             lambda: _request(f"http://127.0.0.1:{traces_port}/select/tempo/api/v2/traces/{queued_trace_id}"),
@@ -350,9 +441,7 @@ def test_trace_crosses_bounded_jetstream_and_reaches_victoria_traces_once():
         assert _post_trace(http_port, _trace_payload(pending_trace_id))[0] == 200
         _eventually(
             lambda: _jetstream_state(nats_monitor_port),
-            lambda value: value[0]["last_seq"] == 9
-            and value[1]["ack_floor"]["stream_seq"] == 6
-            and value[1]["num_pending"] >= 1,
+            lambda value: value[0]["last_seq"] == 9 and value[1]["ack_floor"]["stream_seq"] == 6 and value[1]["num_pending"] >= 1,
         )
         _compose_action(compose, environment, "start", "apm-system-collector")
         _eventually(
@@ -370,8 +459,7 @@ def test_trace_crosses_bounded_jetstream_and_reaches_victoria_traces_once():
         assert _post_trace(http_port, _trace_payload(retry_trace_id))[0] == 200
         _, retry_consumer = _eventually(
             lambda: _jetstream_state(nats_monitor_port),
-            lambda value: value[0]["last_seq"] == 12
-            and value[1]["ack_floor"]["stream_seq"] == 9,
+            lambda value: value[0]["last_seq"] == 12 and value[1]["ack_floor"]["stream_seq"] == 9,
         )
         assert retry_consumer["num_pending"] + retry_consumer["num_ack_pending"] >= 1
         _compose_action(compose, environment, "start", "apm-victoria-traces")
@@ -401,8 +489,7 @@ def test_trace_crosses_bounded_jetstream_and_reaches_victoria_traces_once():
             ),
             lambda value: value[0] == 200
             and any(
-                item.get("parent") == "apm-nats-contract"
-                and item.get("child") == "contract-downstream"
+                item.get("parent") == "apm-nats-contract" and item.get("child") == "contract-downstream"
                 for item in json.loads(value[1]).get("data", [])
             ),
             timeout=90,
@@ -411,24 +498,30 @@ def test_trace_crosses_bounded_jetstream_and_reaches_victoria_traces_once():
 
         # 模拟 ACK 崩溃窗口导致 VT 物理重复；受控聚合先按 trace_id/span_id 去重，不能双计数。
         direct_vt_url = f"http://127.0.0.1:{traces_port}/insert/opentelemetry/v1/traces"
-        assert _request(
-            direct_vt_url,
-            data=payload,
-            headers={"Content-Type": "application/json"},
-        )[0] == 200
-        assert _request(
-            direct_vt_url,
-            data=payload,
-            headers={"Content-Type": "application/json"},
-        )[0] == 200
+        assert (
+            _request(
+                direct_vt_url,
+                data=payload,
+                headers={"Content-Type": "application/json"},
+            )[0]
+            == 200
+        )
+        assert (
+            _request(
+                direct_vt_url,
+                data=payload,
+                headers={"Content-Type": "application/json"},
+            )[0]
+            == 200
+        )
         time.sleep(2)
         stats_query = (
             '* `resource_attr:service.namespace`:="contract-app" '
             '`resource_attr:service.name`:="apm-nats-contract" '
             '`resource_attr:deployment.environment`:="testing" kind:in("2","5") '
-            '| stats by (trace_id, span_id) max(duration) as duration, max(status_code) as status_code '
+            "| stats by (trace_id, span_id) max(duration) as duration, max(status_code) as status_code "
             '| stats count() as requests, count() if (status_code:="2") as errors, '
-            'quantile(0.95, duration) as p95, quantile(0.99, duration) as p99'
+            "quantile(0.95, duration) as p95, quantile(0.99, duration) as p99"
         )
         stats_status, stats_body = _query(
             f"http://127.0.0.1:{traces_port}/select/logsql/stats_query",
@@ -446,11 +539,11 @@ def test_trace_crosses_bounded_jetstream_and_reaches_victoria_traces_once():
         }
 
         activity_query = (
-            '`resource_attr:service.name`:* '
-            '| stats by (`resource_attr:service.namespace`, `resource_attr:service.name`, '
-            '`resource_attr:service.instance.id`, `resource_attr:deployment.environment`, '
-            '`resource_attr:service.version`) max(end_time_unix_nano) as last_seen '
-            '| sort by (last_seen) desc | limit 10000'
+            "`resource_attr:service.name`:* "
+            "| stats by (`resource_attr:service.namespace`, `resource_attr:service.name`, "
+            "`resource_attr:service.instance.id`, `resource_attr:deployment.environment`, "
+            "`resource_attr:service.version`) max(end_time_unix_nano) as last_seen "
+            "| sort by (last_seen) desc | limit 10000"
         )
         activity_status, activity_body = _query(
             f"http://127.0.0.1:{traces_port}/select/logsql/query",
@@ -469,6 +562,9 @@ def test_trace_crosses_bounded_jetstream_and_reaches_victoria_traces_once():
         )
 
         # Server 生成的标准环境变量必须能驱动真实 Python SDK 通过同一 4318 链路写入 VT。
+        # 探针地址按当前契约指向本测试的临时 HTTP 服务。下载、校验和解压真实执行；
+        # pip 不执行，避免把占位包装进本机解释器。SHA-256 仍由服务端对同一份字节计算，
+        # 不连接正在运行的 NATS 对象存储。
         import django
 
         os.environ.setdefault("DJANGO_SETTINGS_MODULE", "settings")
@@ -478,18 +574,47 @@ def test_trace_crosses_bounded_jetstream_and_reaches_victoria_traces_once():
         django.setup()
         from apps.apm.services import DjangoIntegrationConfigurationService
         from apps.apm.services.contracts import IngestSnippetRequest
-
-        generated = DjangoIntegrationConfigurationService().render_snippet(
-            IngestSnippetRequest(
-                language="python",
-                runtime="host",
-                endpoint=f"http://127.0.0.1:{http_port}",
-                service_namespace="sdk-contract-app",
-                service_name="sdk-checkout",
-                service_version="3.2.1",
-                environment="contract",
-            )
+        from apps.apm.services.probe_artifacts import (
+            _PROBE_ARTIFACT_SHA256_CACHE,
+            PYTHON_WHEELS_ARTIFACT_NAME,
+            ProbeArtifactNotFound,
+            build_probe_artifact_download_url,
         )
+
+        probe_archive = _python_wheels_archive()
+        probe_path = urllib.parse.urlsplit(build_probe_artifact_download_url("http://127.0.0.1", PYTHON_WHEELS_ARTIFACT_NAME)).path
+        probe_server, probe_thread, probe_port = _start_probe_download_server(probe_archive, probe_path)
+        probe_download_url = build_probe_artifact_download_url(
+            f"http://127.0.0.1:{probe_port}",
+            PYTHON_WHEELS_ARTIFACT_NAME,
+        )
+
+        def _open_served_probe(artifact_name: str):
+            if artifact_name != PYTHON_WHEELS_ARTIFACT_NAME:
+                raise ProbeArtifactNotFound(artifact_name)
+
+            def _chunks():
+                yield probe_archive
+
+            return _chunks(), artifact_name
+
+        _PROBE_ARTIFACT_SHA256_CACHE.pop(PYTHON_WHEELS_ARTIFACT_NAME, None)
+        with patch("apps.apm.services.probe_artifacts.open_probe_artifact_stream", _open_served_probe):
+            generated = DjangoIntegrationConfigurationService().render_snippet(
+                IngestSnippetRequest(
+                    language="python",
+                    runtime="host",
+                    endpoint=f"http://127.0.0.1:{http_port}",
+                    service_namespace="sdk-contract-app",
+                    service_name="sdk-checkout",
+                    service_version="3.2.1",
+                    environment="contract",
+                    probe_download_url=probe_download_url,
+                )
+            )
+        assert probe_download_url in generated.code
+        assert hashlib.sha256(probe_archive).hexdigest() in generated.code
+        _execute_python_probe_download(generated.code)
         sdk = subprocess.run(
             [
                 "/bin/sh",
@@ -514,6 +639,11 @@ def test_trace_crosses_bounded_jetstream_and_reaches_victoria_traces_once():
         assert "sdk-contract-app" in sdk_body
         assert "sdk-contract-instance" in sdk_body
     finally:
+        if probe_server is not None:
+            probe_server.shutdown()
+            probe_server.server_close()
+        if probe_thread is not None:
+            probe_thread.join(timeout=5)
         subprocess.run(
             [*compose, "down", "--volumes", "--remove-orphans"],
             cwd=REPOSITORY_ROOT,

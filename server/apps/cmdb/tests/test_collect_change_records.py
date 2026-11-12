@@ -48,6 +48,37 @@ def test_collect_update_success_writes_no_change_instance_log(monkeypatch):
     assert record["content_hash"]
 
 
+def test_collect_update_ignores_internal_operation_id_when_deciding_verify(monkeypatch):
+    calls = []
+    monkeypatch.setattr(
+        "apps.cmdb.collection.change_records.batch_create_change_record",
+        lambda *args, **kwargs: calls.append((args, kwargs)),
+    )
+    old_instance = {
+        "_id": 1,
+        "model_id": "host",
+        "inst_name": "h1",
+        "version": "1.0",
+        "_cmdb_operation_id": "old-op",
+    }
+    new_instance = {
+        "_id": 1,
+        "model_id": "host",
+        "inst_name": "h1",
+        "version": "1.0",
+        "_cmdb_operation_id": "new-op",
+    }
+
+    write_collect_instance_change_records(
+        SimpleNamespace(model_id="host", old_data=[old_instance], task_name="主机采集"),
+        {"add": {"success": []}, "update": {"success": [{"inst_info": new_instance}]}, "delete": {"success": []}},
+    )
+
+    record = calls[0][0][2][0]
+    assert record["message"].startswith("自动采集核实实例，无字段变化")
+    assert record["content_hash"]
+
+
 def test_collect_delete_success_writes_delete_instance_log(monkeypatch):
     calls = []
     monkeypatch.setattr(

@@ -72,6 +72,64 @@ def test_serializer_accepts_cmdb_id_input_binding():
     assert binding == {"model_id": "resource_type", "inst_uuid": "cmdb_id"}
 
 
+def test_serializer_accepts_dotted_projection_alias():
+    from apps.alerts.serializers.enrichment import EnrichmentRuleModelSerializer
+
+    serializer = EnrichmentRuleModelSerializer()
+    dotted = [{"source": "application.inst_name"}]
+    renamed = [{"source": "application.operator", "as": "application.operator"}]
+    custom = [{"source": "application.inst_name", "as": "app_name"}]
+    assert serializer.validate_output_projection(dotted) == dotted
+    assert serializer.validate_output_projection(renamed) == renamed
+    assert serializer.validate_output_projection(custom) == custom
+
+
+def test_serializer_rejects_invalid_dotted_projection_alias():
+    from rest_framework.exceptions import ValidationError
+
+    from apps.alerts.serializers.enrichment import EnrichmentRuleModelSerializer
+
+    serializer = EnrichmentRuleModelSerializer()
+    for invalid in (
+        [{"source": "application.inst_name", "as": "application."}],
+        [{"source": "application.inst_name", "as": ".operator"}],
+        [{"source": "application.inst_name", "as": "app..name"}],
+        [{"source": "1app.name"}],
+    ):
+        with pytest.raises(ValidationError):
+            serializer.validate_output_projection(invalid)
+
+
+def test_namespace_still_rejects_dots():
+    from rest_framework.exceptions import ValidationError
+
+    from apps.alerts.serializers.enrichment import EnrichmentRuleModelSerializer
+
+    with pytest.raises(ValidationError):
+        EnrichmentRuleModelSerializer().validate_namespace("cmdb.custom")
+
+
+@pytest.mark.django_db
+def test_serializer_persists_dotted_projection_alias():
+    from apps.alerts.serializers.enrichment import EnrichmentRuleModelSerializer
+
+    payload = {
+        "name": "带点出参",
+        "is_active": True,
+        "match_rules": [],
+        "provider_type": "cmdb",
+        "input_binding": {"model_id": "resource_type", "inst_uuid": "resource_id"},
+        "provider_config": {},
+        "output_projection": [{"source": "application.inst_name", "as": "application.inst_name"}],
+        "on_multiple": "first",
+        "namespace": "cmdb",
+    }
+    serializer = EnrichmentRuleModelSerializer(data=payload)
+    assert serializer.is_valid(), serializer.errors
+    obj = serializer.save()
+    assert obj.output_projection == [{"source": "application.inst_name", "as": "application.inst_name"}]
+
+
 # ============================================================
 # Task 2: EnrichmentRuleModelFilter
 # ============================================================
@@ -299,3 +357,60 @@ def test_event_serializer_exposes_enrichment_readable(authenticated_user):
     with patch("apps.core.utils.serializers.get_permission_rules", return_value=empty_rules):
         data = EventModelSerializer(event, context={"request": request}).data
     assert data.get("enrichment") == {"cmdb": {"owner": "alice"}}
+
+
+@pytest.mark.django_db
+def test_cmdb_context_fields_lists_application_and_system_attrs(superuser_client):
+    from unittest.mock import patch
+
+    attrs = {
+        "application": [{"attr_id": "inst_name", "attr_name": "应用名称", "attr_type": "str"}],
+        "system": [{"attr_id": "operator", "attr_name": "运维人员", "attr_type": "user"}],
+    }
+
+    def search_model_attrs(**kwargs):
+        params = kwargs.get("params") or kwargs
+        return attrs[params["model_id"]]
+
+    with patch("apps.alerts.views.enrichment.CMDB") as mock_cmdb:
+        mock_cmdb.return_value.search_model_attrs.side_effect = search_model_attrs
+        resp = superuser_client.get("/api/v1/alerts/api/enrichment/cmdb_context_fields/")
+    assert resp.status_code == 200, resp.content
+    groups = {item["model_id"]: item for item in resp.data["groups"]}
+    assert groups["application"]["fields"][0]["source"] == "application.inst_name"
+    assert groups["system"]["fields"][0]["source"] == "system.operator"
+
+
+@pytest.mark.django_db
+def test_cmdb_context_fields_empty_when_cmdb_unavailable(superuser_client):
+    from unittest.mock import patch
+
+    with patch("apps.alerts.views.enrichment.CMDB") as mock_cmdb:
+        mock_cmdb.side_effect = RuntimeError("cmdb down")
+        resp = superuser_client.get("/api/v1/alerts/api/enrichment/cmdb_context_fields/")
+    assert resp.status_code == 200
+    assert resp.data == {"groups": []}
+
+
+@pytest.mark.django_db
+def test_cmdb_context_fields_empty_when_cmdb_rpc_times_out(superuser_client, caplog):
+    import logging
+    from unittest.mock import patch
+
+    from apps.rpc.exceptions import RpcTimeoutError
+
+    with patch("apps.alerts.views.enrichment.CMDB") as mock_cmdb:
+        mock_cmdb.return_value.search_model_attrs.side_effect = RpcTimeoutError("bklite", "search_model_attrs", 3)
+        with caplog.at_level(logging.WARNING, logger="alert"):
+            resp = superuser_client.get("/api/v1/alerts/api/enrichment/cmdb_context_fields/")
+    assert resp.status_code == 200
+    assert resp.data == {"groups": []}
+    warning = next(record for record in caplog.records if record.name == "alert" and record.levelno == logging.WARNING)
+    assert warning.msg == "[Enrichment] 读取 CMDB 模型字段失败 model_id=%s"
+    assert warning.args == ("application",)
+    assert warning.getMessage() == "[Enrichment] 读取 CMDB 模型字段失败 model_id=application"
+    assert warning.exc_info is not None
+    assert warning.exc_info[0] is RpcTimeoutError
+    assert not any(record.levelno >= logging.ERROR for record in caplog.records)
+    assert mock_cmdb.return_value.search_model_attrs.call_count == 1
+    assert mock_cmdb.return_value.search_model_attrs.call_args.kwargs["_timeout"] == 3

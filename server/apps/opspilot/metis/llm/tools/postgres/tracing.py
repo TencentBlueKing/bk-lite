@@ -1,15 +1,12 @@
 """PostgreSQL慢查询追踪和会话分析工具"""
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
-from apps.opspilot.metis.llm.tools.postgres.utils import (
-    execute_readonly_query,
-    safe_json_dumps,
-    format_duration,
-)
+
+from apps.opspilot.metis.llm.tools.postgres.utils import execute_readonly_query, format_duration, safe_json_dumps
 
 
 @tool()
-def get_top_queries(order_by: str = "mean_time", limit: int = 20, config: RunnableConfig = None):
+def get_top_queries(order_by: str = "mean_time", limit: int = 20, config: RunnableConfig = None, instance_name: str = None, instance_id: str = None):
     """
     获取Top查询
 
@@ -34,17 +31,12 @@ def get_top_queries(order_by: str = "mean_time", limit: int = 20, config: Runnab
     Returns:
         JSON格式,包含Top查询列表
     """
-    order_mapping = {
-        "mean_time": "mean_exec_time",
-        "total_time": "total_exec_time",
-        "calls": "calls",
-        "rows": "rows"
-    }
+    order_mapping = {"mean_time": "mean_exec_time", "total_time": "total_exec_time", "calls": "calls", "rows": "rows"}
 
     order_column = order_mapping.get(order_by, "mean_exec_time")
 
     query = f"""
-    SELECT 
+    SELECT
         queryid,
         substring(query, 1, 200) as query,
         calls,
@@ -63,7 +55,7 @@ def get_top_queries(order_by: str = "mean_time", limit: int = 20, config: Runnab
     """
 
     try:
-        results = execute_readonly_query(query, params=(limit,), config=config)
+        results = execute_readonly_query(query, params=(limit,), config=config, instance_name=instance_name, instance_id=instance_id)
 
         # 格式化时间
         for row in results:
@@ -72,23 +64,18 @@ def get_top_queries(order_by: str = "mean_time", limit: int = 20, config: Runnab
             row["min_time_formatted"] = format_duration(row["min_time"])
             row["max_time_formatted"] = format_duration(row["max_time"])
 
-        return safe_json_dumps({
-            "order_by": order_by,
-            "total_queries": len(results),
-            "queries": results
-        })
+        return safe_json_dumps({"order_by": order_by, "total_queries": len(results), "queries": results})
     except Exception as e:
         error_msg = str(e)
         if "pg_stat_statements" in error_msg:
-            return safe_json_dumps({
-                "error": "pg_stat_statements扩展未安装或未启用",
-                "suggestion": "请在postgresql.conf中添加 shared_preload_libraries = 'pg_stat_statements' 并重启数据库"
-            })
+            return safe_json_dumps(
+                {"error": "pg_stat_statements扩展未安装或未启用", "suggestion": "请在postgresql.conf中添加 shared_preload_libraries = 'pg_stat_statements' 并重启数据库"}
+            )
         return safe_json_dumps({"error": error_msg})
 
 
 @tool()
-def trace_lock_chain(config: RunnableConfig = None):
+def trace_lock_chain(config: RunnableConfig = None, instance_name: str = None, instance_id: str = None):
     """
     追踪锁等待链
 
@@ -111,7 +98,7 @@ def trace_lock_chain(config: RunnableConfig = None):
     query = """
     WITH RECURSIVE lock_chain AS (
         -- 找出所有被阻塞的进程
-        SELECT 
+        SELECT
             blocked.pid AS blocked_pid,
             blocked.usename AS blocked_user,
             blocked.query AS blocked_query,
@@ -121,7 +108,7 @@ def trace_lock_chain(config: RunnableConfig = None):
             1 AS level
         FROM pg_catalog.pg_locks blocked
         JOIN pg_catalog.pg_stat_activity blocked_activity ON blocked.pid = blocked_activity.pid
-        JOIN pg_catalog.pg_locks blocking 
+        JOIN pg_catalog.pg_locks blocking
             ON blocking.locktype = blocked.locktype
             AND blocking.database IS NOT DISTINCT FROM blocked.database
             AND blocking.relation IS NOT DISTINCT FROM blocked.relation
@@ -135,11 +122,11 @@ def trace_lock_chain(config: RunnableConfig = None):
             AND blocking.pid != blocked.pid
         JOIN pg_catalog.pg_stat_activity blocking_activity ON blocking.pid = blocking_activity.pid
         WHERE NOT blocked.granted
-        
+
         UNION ALL
-        
+
         -- 递归查找阻塞链
-        SELECT 
+        SELECT
             lc.blocked_pid,
             lc.blocked_user,
             lc.blocked_query,
@@ -149,7 +136,7 @@ def trace_lock_chain(config: RunnableConfig = None):
             lc.level + 1
         FROM lock_chain lc
         JOIN pg_catalog.pg_locks blocked ON lc.blocking_pid = blocked.pid
-        JOIN pg_catalog.pg_locks blocking 
+        JOIN pg_catalog.pg_locks blocking
             ON blocking.locktype = blocked.locktype
             AND blocking.pid != blocked.pid
         JOIN pg_catalog.pg_stat_activity blocking_activity ON blocking.pid = blocking_activity.pid
@@ -160,36 +147,31 @@ def trace_lock_chain(config: RunnableConfig = None):
     """
 
     try:
-        results = execute_readonly_query(query, config=config)
+        results = execute_readonly_query(query, config=config, instance_name=instance_name, instance_id=instance_id)
 
         if not results:
-            return safe_json_dumps({
-                "has_lock_chain": False,
-                "message": "未检测到锁等待链"
-            })
+            return safe_json_dumps({"has_lock_chain": False, "message": "未检测到锁等待链"})
 
         # 分析锁链深度
         max_level = max(row["level"] for row in results)
         root_blockers = [row for row in results if row["level"] == 1]
 
-        return safe_json_dumps({
-            "has_lock_chain": True,
-            "max_chain_depth": max_level,
-            "total_blocked_processes": len(set(row["blocked_pid"] for row in results)),
-            "root_blocking_processes": len(set(row["blocking_pid"] for row in root_blockers)),
-            "lock_chain": results,
-            "recommendations": [
-                f"发现{max_level}级锁等待链,建议终止根源阻塞进程",
-                "检查长事务和应用逻辑",
-                "考虑设置lock_timeout参数"
-            ]
-        })
+        return safe_json_dumps(
+            {
+                "has_lock_chain": True,
+                "max_chain_depth": max_level,
+                "total_blocked_processes": len({row["blocked_pid"] for row in results}),
+                "root_blocking_processes": len({row["blocking_pid"] for row in root_blockers}),
+                "lock_chain": results,
+                "recommendations": [f"发现{max_level}级锁等待链,建议终止根源阻塞进程", "检查长事务和应用逻辑", "考虑设置lock_timeout参数"],
+            }
+        )
     except Exception as e:
         return safe_json_dumps({"error": str(e)})
 
 
 @tool()
-def get_active_sessions(min_duration_seconds: int = 0, config: RunnableConfig = None):
+def get_active_sessions(min_duration_seconds: int = 0, config: RunnableConfig = None, instance_name: str = None, instance_id: str = None):
     """
     获取活跃会话信息
 
@@ -211,7 +193,7 @@ def get_active_sessions(min_duration_seconds: int = 0, config: RunnableConfig = 
         JSON格式,包含活跃会话列表
     """
     query = """
-    SELECT 
+    SELECT
         pid,
         usename as username,
         datname as database,
@@ -237,18 +219,14 @@ def get_active_sessions(min_duration_seconds: int = 0, config: RunnableConfig = 
     """
 
     try:
-        results = execute_readonly_query(
-            query, params=(min_duration_seconds,), config=config)
+        results = execute_readonly_query(query, params=(min_duration_seconds,), config=config, instance_name=instance_name, instance_id=instance_id)
 
         # 格式化时间并分类
         for row in results:
             row["backend_start"] = str(row["backend_start"])
-            row["transaction_start"] = str(
-                row["transaction_start"]) if row["transaction_start"] else None
-            row["query_start"] = str(
-                row["query_start"]) if row["query_start"] else None
-            row["state_change"] = str(
-                row["state_change"]) if row["state_change"] else None
+            row["transaction_start"] = str(row["transaction_start"]) if row["transaction_start"] else None
+            row["query_start"] = str(row["query_start"]) if row["query_start"] else None
+            row["state_change"] = str(row["state_change"]) if row["state_change"] else None
 
             # 分类会话
             duration = row["query_duration_seconds"] or 0
@@ -261,20 +239,15 @@ def get_active_sessions(min_duration_seconds: int = 0, config: RunnableConfig = 
             else:
                 row["duration_category"] = "short"
 
-        long_sessions = sum(1 for row in results if row["duration_category"] in [
-                            "long", "very_long"])
+        long_sessions = sum(1 for row in results if row["duration_category"] in ["long", "very_long"])
 
-        return safe_json_dumps({
-            "total_active_sessions": len(results),
-            "long_running_sessions": long_sessions,
-            "sessions": results
-        })
+        return safe_json_dumps({"total_active_sessions": len(results), "long_running_sessions": long_sessions, "sessions": results})
     except Exception as e:
         return safe_json_dumps({"error": str(e)})
 
 
 @tool()
-def analyze_query_pattern(hours: int = 24, config: RunnableConfig = None):
+def analyze_query_pattern(hours: int = 24, config: RunnableConfig = None, instance_name: str = None, instance_id: str = None):
     """
     分析查询模式
 
@@ -299,8 +272,8 @@ def analyze_query_pattern(hours: int = 24, config: RunnableConfig = None):
         JSON格式,包含查询模式分析
     """
     query = """
-    SELECT 
-        CASE 
+    SELECT
+        CASE
             WHEN query LIKE 'SELECT%' THEN 'SELECT'
             WHEN query LIKE 'INSERT%' THEN 'INSERT'
             WHEN query LIKE 'UPDATE%' THEN 'UPDATE'
@@ -318,27 +291,19 @@ def analyze_query_pattern(hours: int = 24, config: RunnableConfig = None):
     """
 
     try:
-        results = execute_readonly_query(query, config=config)
+        results = execute_readonly_query(query, config=config, instance_name=instance_name, instance_id=instance_id)
 
         total_calls = sum(row["total_calls"] for row in results)
 
         # 计算百分比
         for row in results:
-            row["call_percent"] = round(
-                (row["total_calls"] / total_calls) * 100, 2) if total_calls > 0 else 0
+            row["call_percent"] = round((row["total_calls"] / total_calls) * 100, 2) if total_calls > 0 else 0
             row["total_time_formatted"] = format_duration(row["total_time"])
-            row["avg_mean_time_formatted"] = format_duration(
-                row["avg_mean_time"])
+            row["avg_mean_time_formatted"] = format_duration(row["avg_mean_time"])
 
-        return safe_json_dumps({
-            "analysis_period_hours": hours,
-            "total_query_calls": total_calls,
-            "query_patterns": results
-        })
+        return safe_json_dumps({"analysis_period_hours": hours, "total_query_calls": total_calls, "query_patterns": results})
     except Exception as e:
         error_msg = str(e)
         if "pg_stat_statements" in error_msg:
-            return safe_json_dumps({
-                "error": "pg_stat_statements扩展未安装或未启用"
-            })
+            return safe_json_dumps({"error": "pg_stat_statements扩展未安装或未启用"})
         return safe_json_dumps({"error": error_msg})

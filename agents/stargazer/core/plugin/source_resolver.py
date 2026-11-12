@@ -1,10 +1,16 @@
 import importlib
-
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Optional, Union
 
 from core.logger import logger
+
+# 采集槽位 model_id 与插件目录不一致时的查找别名。
+# storage 是华为 OceanStor 的采集槽位，插件目录是 oceanstor。
+# 请求目录下已经有 plugin.yml 时不改道，避免盖住同名插件。
+PLUGIN_DIRECTORY_ALIASES = {
+    "storage": "oceanstor",
+}
 
 
 @dataclass
@@ -24,12 +30,12 @@ class PluginSourceResolver:
         self,
         oss_plugins_base_dir: Optional[Union[str, Path]] = None,
         enterprise_root: Optional[Union[str, Path]] = None,
-        enterprise_package: str = 'enterprise'
+        enterprise_package: str = "enterprise",
     ):
-        self.oss_plugins_base_dir = Path(oss_plugins_base_dir) if oss_plugins_base_dir else Path('plugins/inputs')
+        self.oss_plugins_base_dir = Path(oss_plugins_base_dir) if oss_plugins_base_dir else Path("plugins/inputs")
         self.base_dir = self.oss_plugins_base_dir.parent.parent
-        self.enterprise_root = Path(enterprise_root) if enterprise_root else self.base_dir / 'enterprise'
-        self.enterprise_plugins_base_dir = self.enterprise_root / 'plugins' / 'inputs'
+        self.enterprise_root = Path(enterprise_root) if enterprise_root else self.base_dir / "enterprise"
+        self.enterprise_plugins_base_dir = self.enterprise_root / "plugins" / "inputs"
         self.enterprise_package = enterprise_package
         self._resolution_cache: Dict[tuple[str, bool], PluginResolution] = {}
         self._enterprise_available: Optional[bool] = None
@@ -49,7 +55,7 @@ class PluginSourceResolver:
         try:
             importlib.import_module(self.enterprise_package)
         except ImportError as exc:
-            logger.debug(f'Enterprise package unavailable, skipping enterprise plugins: {exc}')
+            logger.debug(f"Enterprise package unavailable, skipping enterprise plugins: {exc}")
             self._enterprise_available = False
             return self._enterprise_available
 
@@ -61,8 +67,9 @@ class PluginSourceResolver:
         if cache_key in self._resolution_cache:
             return self._resolution_cache[cache_key]
 
-        oss_plugin_path = self.oss_plugins_base_dir / model_id / 'plugin.yml'
-        enterprise_plugin_path = self.enterprise_plugins_base_dir / model_id / 'plugin.yml'
+        lookup_id = self._lookup_directory(model_id)
+        oss_plugin_path = self.oss_plugins_base_dir / lookup_id / "plugin.yml"
+        enterprise_plugin_path = self.enterprise_plugins_base_dir / lookup_id / "plugin.yml"
 
         enterprise_available = self.is_enterprise_available()
         has_enterprise_plugin = enterprise_available and enterprise_plugin_path.exists()
@@ -70,52 +77,60 @@ class PluginSourceResolver:
 
         if has_enterprise_plugin and has_oss_plugin:
             logger.info(
-                f'Plugin source conflict detected: model_id={model_id}, '
-                f'enterprise_path={enterprise_plugin_path}, oss_path={oss_plugin_path}, '
-                'final_selected_source=enterprise'
+                f"Plugin source conflict detected: model_id={model_id}, "
+                f"enterprise_path={enterprise_plugin_path}, oss_path={oss_plugin_path}, "
+                "final_selected_source=enterprise"
             )
 
         if prefer_enterprise and has_enterprise_plugin:
             resolution = PluginResolution(
                 model_id=model_id,
-                source='enterprise',
+                source="enterprise",
                 plugin_path=enterprise_plugin_path,
                 plugin_root=enterprise_plugin_path.parent,
                 has_oss_fallback=has_oss_plugin,
-                fallback_plugin_path=oss_plugin_path if has_oss_plugin else None
+                fallback_plugin_path=oss_plugin_path if has_oss_plugin else None,
             )
         elif has_oss_plugin:
             resolution = PluginResolution(
                 model_id=model_id,
-                source='oss',
+                source="oss",
                 plugin_path=oss_plugin_path,
                 plugin_root=oss_plugin_path.parent,
                 has_oss_fallback=False,
-                fallback_plugin_path=None
+                fallback_plugin_path=None,
             )
         elif has_enterprise_plugin:
             resolution = PluginResolution(
                 model_id=model_id,
-                source='enterprise',
+                source="enterprise",
                 plugin_path=enterprise_plugin_path,
                 plugin_root=enterprise_plugin_path.parent,
                 has_oss_fallback=False,
-                fallback_plugin_path=None
+                fallback_plugin_path=None,
             )
         else:
             checked_paths = [str(oss_plugin_path)]
             if enterprise_available:
                 checked_paths.insert(0, str(enterprise_plugin_path))
-            raise FileNotFoundError(
-                f"Plugin config not found for model '{model_id}'. Checked paths: {checked_paths}"
-            )
+            raise FileNotFoundError(f"Plugin config not found for model '{model_id}'. Checked paths: {checked_paths}")
 
         logger.info(
-            f'Plugin resolved: model_id={model_id}, selected_source={resolution.source}, '
-            f'selected_plugin_path={resolution.plugin_path}, has_fallback={resolution.has_oss_fallback}'
+            f"Plugin resolved: model_id={model_id}, selected_source={resolution.source}, "
+            f"selected_plugin_path={resolution.plugin_path}, has_fallback={resolution.has_oss_fallback}"
         )
         self._resolution_cache[cache_key] = resolution
         return resolution
+
+    def _lookup_directory(self, model_id: str) -> str:
+        alias = PLUGIN_DIRECTORY_ALIASES.get(model_id)
+        if not alias or alias == model_id:
+            return model_id
+        if (self.oss_plugins_base_dir / model_id / "plugin.yml").exists():
+            return model_id
+        if (self.enterprise_plugins_base_dir / model_id / "plugin.yml").exists():
+            return model_id
+        return alias
 
     def clear_cache(self):
         self._resolution_cache.clear()

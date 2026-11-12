@@ -88,10 +88,28 @@ class MetricsCannula:
         """当前任务资产参与清理；本轮命中的同组织无任务资产只参与接管。"""
         base_params = [{"field": "model_id", "type": "str=", "value": model_id}]
         old_by_id = {}
+        asset_fields = ["_id", "inst_uuid", "inst_name", "collect_task", "collect_time", "organization", "ip_addr"]
         # 历史数据同时存在整数和字符串任务 ID。
         for field_type, task_id in (("str=", self.task_id), ("int=", int(self.task_id))):
-            rows, _ = ag.query_entity(INSTANCE, base_params + [{"field": "collect_task", "type": field_type, "value": task_id}])
-            old_by_id.update((row["_id"], row) for row in rows)
+            cursor = None
+            while True:
+                params = base_params + [{"field": "collect_task", "type": field_type, "value": task_id}]
+                if cursor is not None:
+                    params.append({"field": "id", "type": "id>", "value": cursor})
+                rows, _ = ag.query_entity(
+                    INSTANCE,
+                    params,
+                    page={"skip": 0, "limit": 500},
+                    fields=asset_fields,
+                    include_count=False,
+                )
+                old_by_id.update((row["_id"], row) for row in rows)
+                if len(rows) < 500:
+                    break
+                next_cursor = rows[-1]["_id"]
+                if cursor is not None and next_cursor <= cursor:
+                    break
+                cursor = next_cursor
 
         if model_id == "host":
             self._reuse_host_inst_name(ag, base_params, metrics)
@@ -189,7 +207,25 @@ class MetricsCannula:
                 if self.reconcile_task_assets:
                     already_data, metrics, conflicts = self._query_task_assets(ag, model_id, metrics)
                 else:
-                    already_data, _ = ag.query_entity(INSTANCE, params)
+                    already_data = []
+                    cursor = None
+                    while True:
+                        page_params = list(params)
+                        if cursor is not None:
+                            page_params.append({"field": "id", "type": "id>", "value": cursor})
+                        page_rows, _ = ag.query_entity(
+                            INSTANCE,
+                            page_params,
+                            page={"skip": 0, "limit": 500},
+                            include_count=False,
+                        )
+                        already_data.extend(page_rows)
+                        if len(page_rows) < 500:
+                            break
+                        next_cursor = page_rows[-1]["_id"]
+                        if cursor is not None and next_cursor <= cursor:
+                            break
+                        cursor = next_cursor
                 if model_id == "host":
                     preserve_collected_host_machine_type(already_data, metrics)
                 management = Management(

@@ -82,4 +82,24 @@ describe('ComTopN bar scale', () => {
     );
     expect(barWidths()).toEqual(['1%']);
   });
+
+  it('gives names max-content width, values content width, and keeps a minimum bar track', () => {
+    const { container, getByText } = renderTopN(
+      <ComTopN
+        rawData={[{ name: 'BJ-IDC-A01-RACK-01', value: 10 }]}
+        config={{ chartType: 'topN', topNLabelField: 'name', topNValueField: 'value' }}
+      />,
+    );
+    const grids = Array.from(container.querySelectorAll<HTMLElement>('.grid'));
+    expect(grids.length).toBeGreaterThan(0);
+    grids.forEach((grid) => {
+      expect(grid.style.gridTemplateColumns).toBe(
+        'minmax(0, max-content) minmax(56px, 1fr) max-content',
+      );
+    });
+    const name = getByText('BJ-IDC-A01-RACK-01');
+    expect(name.className).toContain('whitespace-nowrap');
+    expect(name.className).toContain('truncate');
+    expect(name.getAttribute('title')).toBe('BJ-IDC-A01-RACK-01');
+  });
 });

@@ -149,6 +149,13 @@
               "withParentPermission": true
             },
             {
+              "title": "重复性检测",
+              "icon": "shujumoxingguanli",
+              "url": "/cmdb/assetManage/management/detail/duplicateRules",
+              "name": "model_duplicate_rules",
+              "withParentPermission": true
+            },
+            {
               "title": "自动关联规则",
               "icon": "shujumoxingguanli",
               "url": "/cmdb/assetManage/management/detail/autoAssociationRules",
@@ -163,6 +170,12 @@
               "withParentPermission": true
             }
           ]
+        },
+        {
+          "title": "数据治理",
+          "icon": "shujumoxingguanli",
+          "url": "/cmdb/assetManage/governance",
+          "name": "asset_info"
         },
         {
           "title": "自动发现",
@@ -385,6 +398,13 @@
               "withParentPermission": true
             },
             {
+              "title": "Duplicate Detection",
+              "icon": "shujumoxingguanli",
+              "url": "/cmdb/assetManage/management/detail/duplicateRules",
+              "name": "model_duplicate_rules",
+              "withParentPermission": true
+            },
+            {
               "title": "Auto Association Rules",
               "icon": "shujumoxingguanli",
               "url": "/cmdb/assetManage/management/detail/autoAssociationRules",
@@ -399,6 +419,12 @@
               "withParentPermission": true
             }
           ]
+        },
+        {
+          "title": "Data Governance",
+          "icon": "shujumoxingguanli",
+          "url": "/cmdb/assetManage/governance",
+          "name": "asset_info"
         },
         {
           "title": "Auto Discover",

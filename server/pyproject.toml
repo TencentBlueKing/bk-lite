@@ -162,6 +162,8 @@ opspilot = [
     # 可选记忆引擎依赖
     "mem0ai>=0.1.0",
     "zep-cloud>=2.0.0",
+    # 原任务镜像中的流式 JSON 解析能力，随本地执行迁入 Server。
+    "ijson>=3.3,<4",
 ]
 
 [dependency-groups]

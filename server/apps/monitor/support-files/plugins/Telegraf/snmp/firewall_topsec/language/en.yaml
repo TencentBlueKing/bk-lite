@@ -9,9 +9,7 @@ monitor_object_metric:
   Firewall:
     snmp_uptime:
       name: System Uptime
-      desc: Uptime of the Topsec TOS firewall since the last restart, derived
-        from sysUpTime. Monitoring uptime helps administrators understand
-        device stability and identify unexpected reboots.
+      desc: Uptime of the Topsec TOS firewall since the last restart, derived from sysUpTime. Monitoring uptime helps administrators understand device stability and identify unexpected reboots.
     device_cpu_usage:
       name: CPU Usage
       desc: CPU utilization of the Topsec TOS firewall (TOS-SYSSTATE cpuLoad).

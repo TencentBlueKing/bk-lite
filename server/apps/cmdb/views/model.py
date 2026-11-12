@@ -326,6 +326,17 @@ class ModelViewSet(CmdbPermissionMixin, viewsets.ViewSet):
         )
         return WebUtils.response_success(result)
 
+    @HasPermission("model_management-Edit Model")
+    @action(detail=False, methods=["put"], url_path="association/(?P<model_asst_id>.+)/context_link")
+    def model_association_context_link(self, request, model_asst_id: str):
+        association_info, reason, error_code = self._association_operate_permission(request, model_asst_id)
+        if not association_info:
+            status_code = status.HTTP_403_FORBIDDEN if error_code == "permission_denied" else status.HTTP_404_NOT_FOUND
+            return WebUtils.response_error(reason, status_code=status_code)
+        payload = request.data if hasattr(request.data, "get") else {}
+        result = ModelManage.set_association_context_link(model_asst_id, payload.get("context_link"))
+        return WebUtils.response_success(result)
+
     @HasPermission("model_management-Delete Model")
     @action(detail=False, methods=["delete"], url_path="association/(?P<model_asst_id>.+?)")
     def model_association_delete(self, request, model_asst_id: str):
@@ -893,61 +904,114 @@ class ModelViewSet(CmdbPermissionMixin, viewsets.ViewSet):
         ModelManage.import_model_config(file)
         return WebUtils.response_success(response_data="", message="模型配置导入成功")
 
-    def _delete_model_association_with_permission(self, request, model_asst_id: str):
+    def _model_end_operate_permission(self, request, model_id: str, *, missing_message: str, denied_message: str):
+        model_info = ModelManage.search_model_info(model_id)
+        if not BusinessModelVisibility.is_visible(model_info):
+            return False, missing_message, "not_found"
+
+        permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(
+            request=request, model_id=model_id, permission_type=PERMISSION_MODEL
+        )
+        organizations = self.organizations(request, model_info)
+        if not organizations:
+            return False, denied_message, "permission_denied"
+
+        has_permission = CmdbRulesFormatUtil.has_object_permission(
+            obj_type=PERMISSION_MODEL,
+            operator=OPERATE,
+            model_id=model_id,
+            permission_instances_map=permissions_map,
+            instance=model_info,
+            default_group_id=self.default_group_id,
+        )
+        if not has_permission:
+            return False, denied_message, "permission_denied"
+        return True, "", ""
+
+    def _association_operate_permission(self, request, model_asst_id: str):
         association_info = ModelManage.model_association_info_search(model_asst_id)
         if not association_info:
-            return False, "模型关联不存在", "not_found"
+            return None, "模型关联不存在", "not_found"
 
-        src_model_id = association_info["src_model_id"]
-        dst_model_id = association_info["dst_model_id"]
-
-        # 检查源模型权限
-        src_model_info = ModelManage.search_model_info(src_model_id)
-        if not BusinessModelVisibility.is_visible(src_model_info):
-            return False, "源模型不存在", "not_found"
-
-        src_permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(
-            request=request, model_id=src_model_id, permission_type=PERMISSION_MODEL
+        ok, reason, error_code = self._model_end_operate_permission(
+            request,
+            association_info["src_model_id"],
+            missing_message="源模型不存在",
+            denied_message="抱歉！您没有源模型的权限",
         )
+        if not ok:
+            return None, reason, error_code
 
-        organizations = self.organizations(request, src_model_info)
-        if not organizations:
-            return False, "抱歉！您没有源模型的权限", "permission_denied"
-
-        src_has_permission = CmdbRulesFormatUtil.has_object_permission(
-            obj_type=PERMISSION_MODEL,
-            operator=OPERATE,
-            model_id=src_model_id,
-            permission_instances_map=src_permissions_map,
-            instance=src_model_info,
-            default_group_id=self.default_group_id,
+        ok, reason, error_code = self._model_end_operate_permission(
+            request,
+            association_info["dst_model_id"],
+            missing_message="目标模型不存在",
+            denied_message="抱歉！您没有目标模型的权限",
         )
-        if not src_has_permission:
-            return False, "抱歉！您没有源模型的权限", "permission_denied"
+        if not ok:
+            return None, reason, error_code
+        return association_info, "", ""
 
-        # 检查目标模型权限
-        dst_model_info = ModelManage.search_model_info(dst_model_id)
-        if not BusinessModelVisibility.is_visible(dst_model_info):
-            return False, "目标模型不存在", "not_found"
-
-        dst_permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(
-            request=request, model_id=dst_model_id, permission_type=PERMISSION_MODEL
-        )
-
-        organizations = self.organizations(request, dst_model_info)
-        if not organizations:
-            return False, "抱歉！您没有目标模型的权限", "permission_denied"
-
-        dst_has_permission = CmdbRulesFormatUtil.has_object_permission(
-            obj_type=PERMISSION_MODEL,
-            operator=OPERATE,
-            model_id=dst_model_id,
-            permission_instances_map=dst_permissions_map,
-            instance=dst_model_info,
-            default_group_id=self.default_group_id,
-        )
-        if not dst_has_permission:
-            return False, "抱歉！您没有目标模型的权限", "permission_denied"
+    def _delete_model_association_with_permission(self, request, model_asst_id: str):
+        association_info, reason, error_code = self._association_operate_permission(request, model_asst_id)
+        if not association_info:
+            return False, reason, error_code
 
         ModelManage.model_association_delete(association_info["_id"])
         return True, "", ""
+
+    @action(detail=False, methods=["get", "post"], url_path="(?P<model_id>.+?)/duplicate_rules")
+    def model_duplicate_rules(self, request, model_id: str):
+        if request.method == "GET":
+            return self._model_duplicate_rule_list(request, model_id)
+        return self._model_duplicate_rule_create(request, model_id)
+
+    @action(detail=False, methods=["put", "delete"], url_path="(?P<model_id>.+?)/duplicate_rules/(?P<rule_id>.+?)")
+    def model_duplicate_rule_detail(self, request, model_id: str, rule_id: str):
+        if request.method == "PUT":
+            return self._model_duplicate_rule_update(request, model_id, rule_id)
+        return self._model_duplicate_rule_delete(request, model_id, rule_id)
+
+    @HasPermission("model_management-View")
+    def _model_duplicate_rule_list(self, request, model_id: str):
+        return WebUtils.response_success(_duplicate_rules().list_duplicate_rules(model_id))
+
+    @HasPermission("model_management-Edit Model")
+    def _model_duplicate_rule_create(self, request, model_id: str):
+        return WebUtils.response_success(
+            _duplicate_rules().create_duplicate_rule(model_id, request.data.get("field_ids") or [], request.user.username)
+        )
+
+    @HasPermission("model_management-Edit Model")
+    def _model_duplicate_rule_update(self, request, model_id: str, rule_id: str):
+        return WebUtils.response_success(
+            _duplicate_rules().update_duplicate_rule(model_id, rule_id, request.data.get("field_ids") or [], request.user.username)
+        )
+
+    @HasPermission("model_management-Edit Model")
+    def _model_duplicate_rule_delete(self, request, model_id: str, rule_id: str):
+        return WebUtils.response_success(_duplicate_rules().delete_duplicate_rule(model_id, rule_id, request.user.username))
+
+    @HasPermission("model_management-Edit Model")
+    @action(detail=False, methods=["put"], url_path="(?P<model_id>.+?)/association_required")
+    def model_association_required(self, request, model_id: str):
+        result = _duplicate_rules().set_association_required(
+            model_id,
+            request.data.get("model_asst_id") or "",
+            request.data.get("required"),
+            request.user.username,
+        )
+        return WebUtils.response_success(result)
+
+    @HasPermission("model_management-View")
+    @action(detail=False, methods=["get"], url_path="(?P<model_id>.+?)/island_counts")
+    def model_island_counts(self, request, model_id: str):
+        return WebUtils.response_success(_duplicate_rules().island_counts(model_id))
+
+
+def _duplicate_rules():
+    try:
+        from apps.cmdb_enterprise.governance import rule_store
+    except ImportError as exc:
+        raise BaseAppException("当前版本不支持数据治理规则") from exc
+    return rule_store

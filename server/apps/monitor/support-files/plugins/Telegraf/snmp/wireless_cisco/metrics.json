@@ -57,7 +57,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Total controller memory in bytes. AireOS uses agentTotalMemory (KBytes × 1024); Catalyst 9800 derives total from CISCO-PROCESS-MIB CPU-wide used plus free memory (KBytes × 1024)."
+      "description": "Total controller memory in bytes. AireOS uses agentTotalMemory (KBytes × 1024)."
     },
     {
       "metric_group": "Wireless",

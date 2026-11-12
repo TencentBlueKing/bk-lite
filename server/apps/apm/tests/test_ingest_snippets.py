@@ -308,7 +308,7 @@ def test_explicit_instance_identity_fails_closed_outside_the_safe_boundary(inval
         ("java", "curl --fail --silent --show-error --location --insecure", "java -javaagent:./opentelemetry-javaagent.jar"),
         ("go", 'export GOPROXY="file://$(pwd)/.otel-go-sdk"', "Go 无通用零代码探针"),
         ("dotnet", '. "$OTEL_DOTNET_AUTO_HOME/instrument.sh"', "dotnet App.dll"),
-        ("php", "COMPOSER_DISABLE_NETWORK=1", "php app.php"),
+        ("php", "COMPOSER_DISABLE_NETWORK=1", "otel-fpm-pool.conf"),
         ("ruby", "gem install --local --no-document --ignore-dependencies", "opentelemetry-instrumentation-rack"),
         ("cpp", "opentelemetry-cpp-sdk.tar.gz", "opentelemetry-cpp v1.30.0"),
         ("erlang", "opentelemetry-erlang-sdk.tar.gz", "opentelemetry 1.7.0"),
@@ -335,13 +335,20 @@ def test_host_snippet_installs_or_bootstraps_the_selected_sdk(language, expected
     assert "npmjs" not in snippet.code
     assert "https://github.com" not in snippet.code
     assert "packagist.org" not in snippet.code
-    assert "go get " not in snippet.code
+    if language == "go":
+        assert "go get " not in _install_section(snippet.code, "host")
+    else:
+        assert "go get " not in snippet.code
     assert "nuget.org" not in snippet.code
     assert "rubygems.org" not in snippet.code
     assert "hex.pm" not in snippet.code
     assert "# 1. 安装探针" in snippet.code
     assert "# 2. 配置上报" in snippet.code
     assert "# 3. 启动应用" in snippet.code
+    assert snippet.environment["OTEL_METRICS_EXPORTER"] == "none"
+    assert snippet.environment["OTEL_LOGS_EXPORTER"] == "none"
+    if language == "python":
+        assert "CPython 3.12 is required" in snippet.code
 
 
 @pytest.mark.parametrize("language", ["python", "nodejs", "java", "go", "dotnet", "php", "ruby", "cpp", "erlang", "swift"])
@@ -364,7 +371,10 @@ def test_snippet_downloads_probe_from_the_system_address_instead_of_the_public_i
     assert "https://github.com" not in snippet.code
     assert "pypi.org" not in snippet.code
     assert "npmjs" not in snippet.code
-    assert "go get " not in snippet.code
+    if language == "go" and runtime in {"host", "docker"}:
+        assert "go get " not in _install_section(snippet.code, runtime)
+    else:
+        assert "go get " not in snippet.code
     assert "nuget.org" not in snippet.code
     assert "rubygems.org" not in snippet.code
     assert "hex.pm" not in snippet.code
@@ -605,7 +615,7 @@ def test_kubernetes_snippet_uses_downward_api_pod_uid_and_standard_otel_environm
     assert "pypi.org" not in snippet.code
 
 
-def test_go_snippet_is_an_explicit_manual_sdk_guide_with_complete_provider_setup():
+def test_go_snippet_is_an_explicit_manual_sdk_guide_with_complete_provider_setup(tmp_path):
     snippet = DjangoIntegrationConfigurationService().render_snippet(
         _request(
             language="go",
@@ -620,13 +630,25 @@ def test_go_snippet_is_an_explicit_manual_sdk_guide_with_complete_provider_setup
 
     assert "Go 无通用零代码探针" in snippet.code
     assert _PROBE_DOWNLOAD_URLS["go"] in snippet.code
-    assert "go get " not in snippet.code
+    assert "go get " not in _install_section(snippet.code, "host")
+    assert snippet.code.count("\ngo get ") == 1
+    assert (
+        "go get go.opentelemetry.io/otel@v1.46.0 "
+        "go.opentelemetry.io/otel/sdk@v1.46.0 "
+        "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp@v1.46.0 "
+        "go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp@v0.70.0"
+    ) in snippet.code
+    assert 'export GOPROXY="file://$(pwd)/.otel-go-sdk"' in snippet.code
+    assert "不要省略版本，也不要只取 otelhttp" in snippet.code
     assert "https://github.com" not in snippet.code
-    assert "go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp" in snippet.code
-    assert "go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc" in snippet.code
-    assert "go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin" in snippet.code
-    assert "go.opentelemetry.io/contrib/instrumentation/github.com/labstack/echo/otelecho" in snippet.code
-    assert snippet.code.count("go mod download") == 1
+    assert "go.opentelemetry.io/otel@v1.46.0" in snippet.code
+    assert "go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp@v0.70.0" in snippet.code
+    assert "go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc@v0.70.0" in snippet.code
+    assert "go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin@v0.70.0" in snippet.code
+    assert "go.opentelemetry.io/contrib/instrumentation/github.com/labstack/echo/otelecho@v0.70.0" in snippet.code
+    assert "GOTOOLCHAIN=local" in snippet.code
+    assert "Go 1.26 or newer is required" in snippet.code
+    assert snippet.code.count("go mod download go.opentelemetry.io/otel@v1.46.0") == 1
     assert "telemetry/otel.go.example" in snippet.code
     assert "func NewTracerProvider(ctx context.Context) (*sdktrace.TracerProvider, error)" in snippet.code
     assert "otlptracehttp.New(ctx)" in snippet.code
@@ -636,6 +658,47 @@ def test_go_snippet_is_an_explicit_manual_sdk_guide_with_complete_provider_setup
     assert "defer tracerProvider.Shutdown" in snippet.code
     assert "Initialize the OpenTelemetry Go SDK" not in snippet.code
     assert subprocess.run(["sh", "-n"], input=snippet.code, text=True, capture_output=True).returncode == 0
+
+    guide = subprocess.run(
+        ["sh", "-c", snippet.code.split("# 3. 启动应用", 1)[1]],
+        cwd=tmp_path,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert guide.returncode == 0, guide.stderr
+    assert "go get go.opentelemetry.io/otel@v1.46.0 " in guide.stdout
+    assert (tmp_path / "telemetry" / "otel.go.example").is_file()
+    assert not (tmp_path / "go.mod").exists()
+
+    docker = DjangoIntegrationConfigurationService().render_snippet(
+        _request(
+            language="go",
+            runtime="docker",
+            endpoint="https://apm.example.com",
+            service_namespace="shop",
+            service_name="checkout",
+            service_version="1.0",
+            environment="production",
+        )
+    )
+    assert "go get " not in _install_section(docker.code, "docker")
+    assert docker.code.count("go get ") == 1
+    assert "GOPROXY=file:///opt/otel-go-sdk GOSUMDB=off GOTOOLCHAIN=local go get go.opentelemetry.io/otel@v1.46.0 " in docker.code
+    assert subprocess.run(["sh", "-n"], input=docker.code, text=True, capture_output=True).returncode == 0
+
+    kubernetes = DjangoIntegrationConfigurationService().render_snippet(
+        _request(
+            language="go",
+            runtime="kubernetes",
+            endpoint="https://apm.example.com",
+            service_namespace="shop",
+            service_name="checkout",
+            service_version="1.0",
+            environment="production",
+        )
+    )
+    assert "go get " not in kubernetes.code
 
 
 @pytest.mark.parametrize("runtime", ["host", "docker", "kubernetes"])
@@ -870,9 +933,10 @@ def test_php_snippet_pins_nts_packages_and_stays_offline():
             )
         )
 
-        assert "PHP 8.1" in snippet.code or "8.1|8.2|8.3|8.4" in snippet.code
+        assert "PHP 8.1–8.5" in snippet.code or "8.1|8.2|8.3|8.4|8.5" in snippet.code
         assert "NTS" in snippet.code or "ZTS" in snippet.code
         assert "open-telemetry/sdk:1.15.0" in snippet.code
+        assert "open-telemetry/opentelemetry-auto-laravel:1.10.0" in snippet.code
         assert "open-telemetry/opentelemetry-auto-slim:1.5.1" in snippet.code
         assert "open-telemetry/opentelemetry-auto-pdo:0.6.0" in snippet.code
         assert "open-telemetry/opentelemetry-auto-mysqli:0.5.0" in snippet.code
@@ -886,8 +950,13 @@ def test_php_snippet_pins_nts_packages_and_stays_offline():
             assert manifest["spec"]["template"]["spec"]["containers"][0]["name"] == "YOUR_CONTAINER_NAME"
             assert "sha256sum" not in snippet.code
         else:
+            assert "composer init --name=app/app --no-interaction" in snippet.code
+            assert "repositories.packagist false" in snippet.code
             assert "COMPOSER_DISABLE_NETWORK=1" in snippet.code
-            assert "8.2|8.3|8.4" in snippet.code
+            assert "8.1|8.2|8.3|8.4|8.5" in snippet.code
+            assert "8.2|8.3|8.4|8.5" in snippet.code
+            assert "PHP_ZTS ? 1 : 0" in snippet.code
+            assert "PHP_ZTS !== 0" not in snippet.code
             assert subprocess.run(["sh", "-n"], input=snippet.code, text=True, capture_output=True).returncode == 0
 
 
@@ -952,6 +1021,7 @@ def test_obi_snippet_watches_only_the_given_executable():
     assert "https://github.com" not in snippet.code
     assert "service.namespace=shop" in snippet.code
     assert "OBI requires a readable /sys/kernel/btf/vmlinux" in snippet.code
+    assert "older than 6.6; OBI v1.0.0 needs uprobe_multi" in snippet.code
     assert "OBI needs root or the capabilities required by OBI v1.0.0" in snippet.code
     assert "同一进程不要再装" in snippet.code
     refund = DjangoIntegrationConfigurationService().render_snippet(
@@ -1015,17 +1085,120 @@ def test_ingest_serializer_rejects_unsupported_probe_selection():
     assert collector_windows.is_valid() is False
 
 
+def test_php_host_writes_a_pool_file_docker_still_starts_the_process(tmp_path):
+    host = DjangoIntegrationConfigurationService().render_snippet(
+        _request(
+            language="php",
+            runtime="host",
+            endpoint="https://apm.example.com",
+            service_namespace="shop",
+            service_name="checkout",
+            service_version="1.0",
+            environment="production",
+        )
+    )
+    docker = DjangoIntegrationConfigurationService().render_snippet(
+        _request(
+            language="php",
+            runtime="docker",
+            endpoint="https://apm.example.com",
+            service_namespace="shop",
+            service_name="checkout",
+            service_version="1.0",
+            environment="production",
+        )
+    )
+    kubernetes = DjangoIntegrationConfigurationService().render_snippet(
+        _request(
+            language="php",
+            runtime="kubernetes",
+            endpoint="https://apm.example.com",
+            service_namespace="shop",
+            service_name="checkout",
+            service_version="1.0",
+            environment="production",
+        )
+    )
+
+    assert "php app.php" not in host.code
+    assert "env[OTEL_PHP_AUTOLOAD_ENABLED] = true" in host.code
+    assert "env[OTEL_EXPORTER_OTLP_ENDPOINT] = https://apm.example.com" in host.code
+    assert "php app.php" in docker.code
+    assert "otel-fpm-pool.conf" not in docker.code
+    assert "otel-fpm-pool.conf" not in kubernetes.code
+
+    instance_id = "11111111-1111-4111-8111-111111111111"
+    completed = subprocess.run(
+        ["sh", "-c", host.code.split("# 3. 启动应用", 1)[1]],
+        cwd=tmp_path,
+        env={**os.environ, "OTEL_SERVICE_INSTANCE_ID": instance_id},
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert completed.returncode == 0, completed.stderr
+    pool = (tmp_path / "otel-fpm-pool.conf").read_text()
+    assert "service.name=checkout" in pool
+    assert "service.namespace=shop" in pool
+    assert f"service.instance.id={instance_id}" in pool
+    assert "${OTEL_SERVICE_INSTANCE_ID}" not in pool
+
+
+def test_swift_entry_span_example_stays_on_the_host_script():
+    docker = DjangoIntegrationConfigurationService().render_snippet(
+        _request(
+            language="swift",
+            runtime="docker",
+            endpoint="https://apm.example.com",
+            service_namespace="shop",
+            service_name="checkout",
+            service_version="1.0",
+            environment="production",
+        )
+    )
+    kubernetes = DjangoIntegrationConfigurationService().render_snippet(
+        _request(
+            language="swift",
+            runtime="kubernetes",
+            endpoint="https://apm.example.com",
+            service_namespace="shop",
+            service_name="checkout",
+            service_version="1.0",
+            environment="production",
+        )
+    )
+
+    assert "telemetry/main.swift.example" not in docker.code
+    assert "telemetry/main.swift.example" not in kubernetes.code
+
+
 def test_manual_sdk_snippets_stay_offline_and_do_not_overwrite_examples():
     expectations = {
-        "ruby": ("opentelemetry-sdk 1.13.1", "OpenTelemetry::Instrumentation::Rack", "Ruby 3.3 or newer is required"),
-        "cpp": ("opentelemetry-cpp v1.30.0", "SpanKind::kServer", ".otel-cpp-sdk/prefix"),
+        "ruby": (
+            "opentelemetry-sdk 1.13.1",
+            "OpenTelemetry::Instrumentation::Rack",
+            "telemetry/config.ru.example",
+            "Ruby 3.3 or newer is required",
+        ),
+        "cpp": ("opentelemetry-cpp v1.30.0", "OTELResourceDetector", "libcurl", "telemetry/otel.cpp"),
         "erlang": (
             "opentelemetry 1.7.0",
             "opentelemetry_exporter 1.11.0",
             "ln -sfn ../.otel-erlang-sdk/opentelemetry_api _checkouts/opentelemetry_api",
             "otel_span:end_span",
+            "telemetry/ingest.app.src.example",
+            "otel_tracer_provider:force_flush()",
         ),
-        "swift": ("opentelemetry-swift 2.6.0", '.package(path: "../.otel-swift-sdk/opentelemetry-swift")', "OpenTelemetryProtocolExporterHTTP"),
+        "swift": (
+            "opentelemetry-swift 2.6.0",
+            '.package(path: "../.otel-swift-sdk/opentelemetry-swift")',
+            "OpenTelemetryProtocolExporterHTTP",
+            "import OpenTelemetryProtocolExporterHttp",
+            "telemetry/main.swift.example",
+            "EnvVarResource.get()",
+            "setSpanKind(spanKind: .server)",
+            "provider.forceFlush()",
+        ),
     }
     for language, markers in expectations.items():
         for runtime in ("host", "docker", "kubernetes"):

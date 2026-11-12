@@ -241,6 +241,8 @@ export interface CrentialsAssoInstItem {
   label: string;
   children: React.ReactElement;
   inst_list: CrentialsAssoDetailItem[];
+  model_asst_id?: string;
+  inst_count?: number;
   [key: string]: unknown;
 }
 

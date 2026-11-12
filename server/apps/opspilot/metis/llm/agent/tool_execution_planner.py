@@ -35,6 +35,7 @@ from apps.opspilot.metis.llm.common.tool_failure import (  # noqa: F401
     tool_graph_failure_plain_text,
     tool_graph_failure_user_prompt,
 )
+from apps.opspilot.services.conversation_skill_package import PREPARE_CONVERSATION_SKILL_PACKAGE_TOOL, user_requested_skill_package
 from apps.opspilot.services.ppt_master_runtime import packages_include_ppt_master
 from apps.opspilot.utils.pending_question import is_answer_after_choice_prompt
 
@@ -96,6 +97,23 @@ _MONITOR_CATALOG_HINT = (
     "也不要先列实例再逐台 query_metric_data 手工排序；"
     "禁止返回空 steps，不要改去规划 SSH/top/htop。"
 )
+
+
+def _monitor_catalog_hint(unattended: bool) -> str:
+    if not unattended:
+        return _MONITOR_CATALOG_HINT
+    return (
+        _MONITOR_CATALOG_HINT.replace(
+            "用户只给名称、未说明是主机/Pod/中间件时：先 monitor_list_objects，再规划 request_user_choice；",
+            "用户未说明对象类型时，先查询现有对象，根据证据判断，无法确定则说明；",
+        )
+        .replace("request_user_choice 必须用 single_select，options 放入 list_objects 返回的全部对象 name，禁止纯文本列出类型；", "")
+        .replace(
+            "禁止截断后按台循环；空列表禁止换 ID 重试；用户未声明类型时 request_user_choice 问对象类型，已声明则把空列表当该类型下无匹配；",
+            "禁止截断后按台循环；空列表禁止换 ID 重试；对象类型无法确定时说明范围不确定；",
+        )
+    )
+
 
 # CMDB 与监控的实例 ID 不是同一套；目录同时含两边工具时强制走联动映射。
 _CMDB_MONITOR_LINK_HINT = (
@@ -345,8 +363,8 @@ _ATTACHMENT_CATALOG_HINT = (
 _FILE_GENERATION_INTENT_RE = re.compile(
     r"(?:生成|导出|保存|写入|写成|输出成|做成|整理成|产出|写一份|写个|写一个|出一份|另存为|下载成)"
     r".{0,24}"
-    r"(?:文件|文档|报告|月报|附件|表格|txt|md\b|pdf|docx|xlsx|csv|markdown|\.md)"
-    r"|(?:write|export|save|generate).{0,24}(?:file|report|document|attachment|\.md\b|markdown|pdf|docx|xlsx|csv)",
+    r"(?:文件|文档|报告|月报|附件|表格|txt|md\b|pdf|docx|xlsx|csv|html|markdown|\.md)"
+    r"|(?:write|export|save|generate).{0,24}(?:file|report|document|attachment|\.md\b|markdown|pdf|docx|xlsx|csv|html)",
     re.IGNORECASE,
 )
 _ATTACHMENT_CHITCHAT_RE = re.compile(
@@ -367,7 +385,7 @@ _ATTACHMENT_FOLLOWUP_EDIT_RE = re.compile(
     r"字体|排版|配色|字号|幻灯片|润色|重点介绍|写详细|写具体|再改|改一版|这一版|新版本" r"|调整.{0,16}(?:字体|内容|结构|章节|标题|排版|正文)" r"|(?:字体|内容|结构|章节|标题|排版|正文).{0,16}调整",
 )
 _GENERATED_ATTACHMENT_NAME_RE = re.compile(
-    r"[\w\u4e00-\u9fff][\w\u4e00-\u9fff ._-]{0,80}\.(?:docx|xlsx|pptx|pdf|csv|txt|md)\b",
+    r"[\w\u4e00-\u9fff][\w\u4e00-\u9fff ._-]{0,80}\.(?:docx|xlsx|pptx|pdf|csv|txt|md|html)\b",
     re.IGNORECASE,
 )
 _ASSISTANT_GENERATED_ROLES = frozenset({"ai", "aimessage", "assistant", "bot"})
@@ -1810,6 +1828,31 @@ def enforce_generate_attachment_file(
     return ToolExecutionPlan(goal=plan.goal or "生成报告附件", steps=steps)
 
 
+def enforce_prepare_conversation_skill_package(
+    plan: ToolExecutionPlan,
+    available_names: set[str],
+    *,
+    user_message: str = "",
+    conversation_messages: Sequence[Any] | None = None,
+    max_steps: int = 4,
+) -> ToolExecutionPlan:
+    """用户明确要求做成技能包时，空计划也要带上成稿工具，避免被轻量直答吞掉。"""
+    if PREPARE_CONVERSATION_SKILL_PACKAGE_TOOL not in available_names:
+        return plan
+    if not user_requested_skill_package(user_message, conversation_messages):
+        return plan
+    if any(PREPARE_CONVERSATION_SKILL_PACKAGE_TOOL in (step.tools or []) for step in (plan.steps or [])):
+        return plan
+    step = ToolExecutionStep(objective="整理技能包成稿并请用户确认写入", tools=[PREPARE_CONVERSATION_SKILL_PACKAGE_TOOL])
+    steps = list(plan.steps or [])
+    if len(steps) >= max_steps > 0:
+        steps = [*steps[: max_steps - 1], step]
+    else:
+        steps = [*steps, step]
+    logger.info("event=conversation_skill_package_plan_enforced steps=%s", len(plan.steps or []))
+    return ToolExecutionPlan(goal=plan.goal or "整理技能包成稿", steps=steps)
+
+
 def _looks_like_empty_message_reply(raw_text: str) -> bool:
     text = " ".join((raw_text or "").split())
     if not text:
@@ -2031,6 +2074,7 @@ class ToolExecutionPlanner:
         *,
         user_message: str = "",
         agent_system_prompt: str = "",
+        unattended: bool = False,
     ) -> str:
         lines = []
         has_monitor = False
@@ -2081,7 +2125,7 @@ class ToolExecutionPlanner:
         catalog = "\n".join(lines)
         hints = []
         if has_monitor:
-            hints.append(_MONITOR_CATALOG_HINT)
+            hints.append(_monitor_catalog_hint(unattended))
         hints.extend(_mlops_monitor_link_hints(has_monitor, available_names))
         if has_monitor and has_cmdb:
             hints.append(_CMDB_MONITOR_LINK_HINT)
@@ -2184,11 +2228,18 @@ class ToolExecutionPlanner:
         hit_packages = skill_packages if ppt_master_packages is None else ppt_master_packages
         if packages_include_ppt_master(hit_packages):
             return _without_generate_attachment_file(plan)
-        return enforce_generate_attachment_file(
+        plan = enforce_generate_attachment_file(
             plan,
             available_names,
             user_message=user_message,
             agent_system_prompt=agent_system_prompt,
+            conversation_messages=conversation_messages,
+            max_steps=self._max_steps,
+        )
+        return enforce_prepare_conversation_skill_package(
+            plan,
+            available_names,
+            user_message=user_message,
             conversation_messages=conversation_messages,
             max_steps=self._max_steps,
         )
@@ -2255,17 +2306,21 @@ class ToolExecutionPlanner:
         skill_packages: Sequence[Any] = (),
         agent_system_prompt: str = "",
         conversation: str = "",
+        unattended: bool = False,
     ) -> str:
         brief = _agent_task_brief(agent_system_prompt)
         agent_block = f"助手任务说明（来自智能体 prompt，规划须对齐其目标；工具名只从目录选择）:\n{brief}\n\n" if brief else ""
         history_block = f"近期会话（已按对话窗口保留，不含本轮）:\n{conversation}\n\n" if conversation else ""
+        unattended_block = "【无人值守】没有用户在线回答，不规划提问或确认；利用已有信息与工具尽力完成，无法确定时说明原因。\n\n" if unattended else ""
+        catalog = self._catalog(tools, skill_packages, user_message=user_message, agent_system_prompt=agent_system_prompt, unattended=unattended)
         return (
+            f"{unattended_block}"
             f"{history_block}"
             f"用户问题:\n{user_message}\n\n"
             f"{agent_block}"
             f"已完成步骤:\n{completed_text}\n\n"
             f"最近失败或新证据:\n{failure_text}\n\n"
-            f"紧凑工具目录:\n{self._catalog(tools, skill_packages, user_message=user_message, agent_system_prompt=agent_system_prompt)}"
+            f"紧凑工具目录:\n{catalog}"
         )
 
     async def _ainvoke_plan(
@@ -2311,6 +2366,10 @@ class ToolExecutionPlanner:
         failure_text = failure.strip() or "无"
         packages = [item for item in (skill_packages or []) if isinstance(item, dict)]
         conversation = render_planning_conversation(conversation_messages, current_user_message=user_message)
+        configurable = (config or {}).get("configurable") or {}
+        graph_request = configurable.get("graph_request")
+        request_extra = getattr(graph_request, "extra_config", None) or {}
+        unattended = isinstance(request_extra, dict) and request_extra.get("unattended") is True
         system_prompt = self._system_prompt(_plan_locale(config))
         task_prompt = self._task_prompt(
             user_message,
@@ -2320,6 +2379,7 @@ class ToolExecutionPlanner:
             packages,
             agent_system_prompt=agent_system_prompt,
             conversation=conversation,
+            unattended=unattended,
         )
         primary_messages = [
             SystemMessage(content=system_prompt),

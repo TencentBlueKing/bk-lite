@@ -174,7 +174,7 @@ cd algorithms/<svc> && make install && make serving  # BentoML :3000；uv run py
 - test `make test && make validate`；全链路契约 `make contract`（需 Docker）
 - release 运维按 [deploy/apm/ACCEPTANCE.md](deploy/apm/ACCEPTANCE.md) 验收；容量下界见 `CAPACITY.md`；Server 运行期变量模板见 `server/support-files/env/.env.apm.example`
 - 常见失败:镜像 tag 不存在;NATS ACL/Stream 漂移;4318 对非受信网络开放;把本地 Compose 参数直接当生产容量
-- 回滚:只回退本次上线的区域/系统 Collector、Stream/Consumer 与 VT；不恢复 Edge/APM VM/spanmetrics；编排回退由运维流水线执行
+- 回滚:只回退本次上线的区域/系统 Collector、聚合 Collector、Stream/Consumer 与 VT；聚合写入可单独回退（停掉聚合 Collector，系统 Collector 仍用 `system.yaml` 写 VictoriaTraces）；不恢复 Edge；编排回退由运维流水线执行
 
 ### K8s 采集器（`deploy/dist/bk-lite-kubernetes-collector/`）
 - release:`kubectl apply -f bk-lite-metric-collector.yaml` / `bk-lite-log-collector.yaml`

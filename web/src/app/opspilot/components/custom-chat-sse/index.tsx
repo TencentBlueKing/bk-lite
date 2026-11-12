@@ -1,12 +1,13 @@
+import { findRegenerationMessage } from '@bk-lite/chat-content/regeneration';
 import React, {ReactNode, useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {Button, ButtonProps, Flex, Image, Input, message as antMessage, Modal, Popconfirm, Tooltip, Upload} from 'antd';
 import {DeleteOutlined, DownloadOutlined, FullscreenExitOutlined, FullscreenOutlined, LoadingOutlined, PaperClipOutlined, RightOutlined, SendOutlined} from '@ant-design/icons';
-import DOMPurify from 'dompurify';
+import { ChatContentProvider, renderChatMarkdown, sanitizeChatHtml as sanitizeHtml } from '@bk-lite/chat-content/ui';
+import '@bk-lite/chat-content/style.css';
+import useApiClient from '@/utils/request';
+import { useWikiApi } from '@/app/opspilot/api/wiki';
 import Icon from '@/components/icon';
 import {useTranslation} from '@/utils/i18n';
-import MarkdownIt from 'markdown-it';
-import hljs from 'highlight.js';
-import 'highlight.js/styles/atom-one-dark.css';
 import styles from '../custom-chat/index.module.scss';
 import MessageActions from '../custom-chat/actions';
 import PermissionWrapper from '@/components/permission';
@@ -120,30 +121,6 @@ const ThinkingPanel: React.FC<{ thinking?: string; isThinking?: boolean }> = ({ 
   );
 };
 
-const md = new MarkdownIt({
-  html: true, // Enable raw HTML (sanitized by DOMPurify)
-  highlight: function (str: string, lang: string) {
-    if (lang && hljs.getLanguage(lang)) {
-      try {
-        return hljs.highlight(str, { language: lang }).value;
-      } catch {}
-    }
-    return '';
-  },
-});
-
-// Sanitize HTML to prevent XSS and CSS injection.
-// SECURITY: 'style' tag (block CSS) is intentionally excluded: allowing it
-// enables CSS injection via LLM prompt injection.
-// Inline style attributes are kept because guide/reference link renderers use them.
-const sanitizeHtml = (html: string): string => {
-  return DOMPurify.sanitize(html, {
-    ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'u', 'code', 'pre', 'span', 'div', 'a', 'ul', 'ol', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'img', 'svg', 'use', 'button'],
-    ALLOWED_ATTR: ['class', 'style', 'href', 'target', 'rel', 'data-ref-number', 'data-chunk-id', 'data-knowledge-id', 'data-chunk-type', 'data-content', 'data-suggestion', 'data-expanded', 'data-tool-id', 'data-has-detail', 'src', 'alt', 'width', 'height', 'aria-hidden'],
-    ALLOW_DATA_ATTR: false,
-  });
-};
-
 const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
   handleSendMessage,
   initialMessages = [],
@@ -161,6 +138,8 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
   onDistributeReady,
 }) => {
   const { t } = useTranslation();
+  const { post } = useApiClient();
+  const { fetchPage, fetchMaterialInfo } = useWikiApi();
   const imeEnterGuard = useImeEnterGuard();
 
   let session = null;
@@ -530,34 +509,60 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
     onConversationCleared?.();
   };
 
-  const hydratedAttachmentIds = useRef(new Set<number>());
+  const attachmentPreviews = useRef(new Map<number, { url?: string }>());
 
   useEffect(() => {
-    if (!token) return undefined;
+    const previews = attachmentPreviews.current;
+    return () => {
+      previews.forEach(({ url }) => {
+        if (url) URL.revokeObjectURL(url);
+      });
+      previews.clear();
+    };
+  }, []);
+
+  useEffect(() => {
+    const previews = attachmentPreviews.current;
+    const visibleIds = new Set(messages.flatMap((msg) => (
+      (msg.attachments || []).filter((item) => isImageMime(item.mime)).map((item) => item.id)
+    )));
+    previews.forEach(({ url }, id) => {
+      if (!visibleIds.has(id)) {
+        if (url) URL.revokeObjectURL(url);
+        previews.delete(id);
+      }
+    });
+    if (!token) return;
+    const applyPreview = (id: number, previewUrl: string) => {
+      updateMessages((prev) => prev.map((item) => ({
+        ...item,
+        attachments: item.attachments?.map((current) => (
+          current.id === id ? { ...current, previewUrl } : current
+        )),
+      })));
+    };
     messages.forEach((msg) => {
       (msg.attachments || []).forEach((attachment) => {
-        if (!isImageMime(attachment.mime) || attachment.previewUrl || hydratedAttachmentIds.current.has(attachment.id)) {
+        if (!isImageMime(attachment.mime) || attachment.previewUrl) {
           return;
         }
-        hydratedAttachmentIds.current.add(attachment.id);
+        const existing = previews.get(attachment.id);
+        if (existing) {
+          if (existing.url) applyPreview(attachment.id, existing.url);
+          return;
+        }
+        const preview: { url?: string } = {};
+        previews.set(attachment.id, preview);
         downloadChatAttachmentBlob(attachment.id, token)
           .then((blob) => {
+            if (previews.get(attachment.id) !== preview) return;
             const previewUrl = URL.createObjectURL(blob);
-            updateMessages((prev) => prev.map((item) => (
-              item.id === msg.id
-                ? {
-                  ...item,
-                  attachments: item.attachments?.map((current) => (
-                    current.id === attachment.id ? { ...current, previewUrl } : current
-                  )),
-                }
-                : item
-            )));
+            preview.url = previewUrl;
+            applyPreview(attachment.id, previewUrl);
           })
           .catch(() => undefined);
       });
     });
-    return undefined;
   }, [messages, token, updateMessages]);
 
   useEffect(() => {
@@ -572,7 +577,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
   const readyDrafts = drafts.filter((item) => item.status === 'ready' && item.id);
 
   const handleSend = useCallback(
-    async (msg: string, attachments?: ChatAttachmentMeta[]) => {
+    async (msg: string, attachments?: ChatAttachmentMeta[], choice?: { choiceId?: string; optionKey?: string }) => {
       const ready = (attachments || []).filter((item) => item.status === 'ready' && item.id);
       if ((msg.trim() || ready.length > 0) && !loading && token && !hasPendingDraft) {
         currentBotMessageRef.current = null;
@@ -583,7 +588,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
           size: item.size,
           status: item.status,
           previewUrl: item.previewUrl,
-        })));
+        })), choice);
       }
     },
     [hasPendingDraft, loading, token, sendMessage, messages]
@@ -742,20 +747,8 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
     async (id: string) => {
       if (!token) return;
 
-      const targetIndex = messages.findIndex(msg => msg.id === id);
-      if (targetIndex === -1) return;
-
-      // 从被点击的消息往前找到对应的用户提问（而非始终取最后一个问题）
-      let userIndex = -1;
-      for (let i = targetIndex; i >= 0; i--) {
-        if (messages[i].role === 'user') {
-          userIndex = i;
-          break;
-        }
-      }
-      if (userIndex === -1) return;
-
-      const userMessage = messages[userIndex];
+      const userMessage = findRegenerationMessage(messages, id);
+      if (!userMessage) return;
       // 保留全部对话记录，仅用被点击消息对应的问题重新生成（在末尾追加新答案）
       await sendMessage(userMessage.content, messages, userMessage.attachments);
     },
@@ -808,14 +801,14 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
 
       if (!hasMarkers) {
         const html = replacedContent.trim()
-          ? sanitizeHtml(hydrateGeneratedFileLinks(sanitizeHtml(md.render(replacedContent)), reportFileDownloads))
+          ? sanitizeHtml(hydrateGeneratedFileLinks(sanitizeHtml(renderChatMarkdown(replacedContent, true)), reportFileDownloads))
           : '';
         return (
           <>
             {html ? (
               <div
                 dangerouslySetInnerHTML={{ __html: html }}
-                className={styles.markdownBody}
+                className="chat-markdown"
                 onClick={handleMarkdownBodyClick}
               />
             ) : null}
@@ -868,7 +861,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
                     request={req}
                     token={token || ''}
                     onSubmit={handleUserChoiceSubmit}
-                    onSendMessage={(text) => { void handleSend(text); }}
+                    onSendMessage={(text, choice) => { void handleSend(text, undefined, choice); }}
                     readOnly={mode === 'display'}
                   />
                 ))}
@@ -896,12 +889,12 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
       for (let i = 0; i < segments.length; i++) {
         const segment = segments[i].trim();
         if (segment) {
-          const segHtml = sanitizeHtml(hydrateGeneratedFileLinks(sanitizeHtml(md.render(segment)), reportFileDownloads));
+          const segHtml = sanitizeHtml(hydrateGeneratedFileLinks(sanitizeHtml(renderChatMarkdown(segment, true)), reportFileDownloads));
           elements.push(
             <div
               key={`seg-${i}`}
               dangerouslySetInnerHTML={{ __html: segHtml }}
-              className={styles.markdownBody}
+              className="chat-markdown"
               onClick={handleMarkdownBodyClick}
             />
           );
@@ -931,7 +924,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
                   request={req}
                   token={token || ''}
                   onSubmit={handleUserChoiceSubmit}
-                  onSendMessage={(text) => { void handleSend(text); }}
+                  onSendMessage={(text, choice) => { void handleSend(text, undefined, choice); }}
                   readOnly={mode === 'display'}
                 />
               );
@@ -1007,7 +1000,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
                 request={req}
                 token={token || ''}
                 onSubmit={handleUserChoiceSubmit}
-                onSendMessage={(text) => { void handleSend(text); }}
+                onSendMessage={(text, choice) => { void handleSend(text, undefined, choice); }}
                 readOnly={mode === 'display'}
               />
             ))}
@@ -1284,6 +1277,10 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
   const guideData = parseGuideItems(guide || '');
 
   return (
+    <ChatContentProvider value={{ translate: t, post, submitApproval: async body => { await post('/opspilot/bot_mgmt/submit_approval/', body); }, loadCitation: async citation => {
+      if (citation.kind.includes('material')) { const info = await fetchMaterialInfo(citation.id); return info.parsed_markdown || info.original || info.ai_summary || ''; }
+      return (await fetchPage(citation.id)).body || '';
+    } }}>
     <div className={`rounded-lg h-full ${isFullscreen ? styles.fullscreen : ''}`}>
       {markdownPreview ? <span data-testid="markdown-preview-open" hidden>{markdownPreview.src}</span> : null}
       <Image
@@ -1420,6 +1417,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
         )}
       </div>
     </div>
+    </ChatContentProvider>
   );
 };
 

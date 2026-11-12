@@ -231,7 +231,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Optimization service health derived from STEELHEAD-MIB optServiceStatus. 1 means running. 2 means any other state, including none, unmanaged, pending, stopping, and stopped."
+      "description": "Optimization service health. 1 means running. 2 means any other state, including none, unmanaged, pending, stopping, and stopped."
     },
     {
       "metric_group": "Service",

@@ -26,6 +26,52 @@ def _context(*, organization_id=7):
 
 
 @pytest.mark.django_db
+@pytest.mark.parametrize(
+    "trigger_type,message,expected",
+    [("SCHEDULE", "检查告警", True), ("NATS", "检查告警", True), ("WEBHOOK", "检查告警", True), ("FORM", "检查告警", False), ("FORM", "/auto 检查告警", True)],
+)
+def test_workflow_agent_runs_with_trigger_appropriate_auto_mode(mocker, trigger_type, message, expected):
+    from apps.opspilot.services.chat_service import ChatService
+
+    model = LLMModel.objects.create(name="auto-model", enabled=True, team=[7])
+    skill = LLMSkill.objects.create(name="auto-agent", llm_model=model, team=[7], usage_team=[7])
+    mocker.patch("apps.workflow.services.opspilot_atoms.resolve_uploaded_agent_knowledge", return_value=[])
+    mocker.patch("apps.opspilot.services.chat_service.consume_pending_question", return_value=None)
+    seen = {}
+
+    def invoke(params):
+        formatted, _, _ = ChatService.format_chat_server_kwargs(params, model)
+        seen.update(formatted.get("extra_config") or {})
+        return {"success": True, "message": "处理完成"}, None, None
+
+    mocker.patch.object(ChatService, "invoke_chat", side_effect=invoke)
+    context = {**_context(), "trigger_type": trigger_type, "task_reference": "agent-a"}
+    result = execute_agent({"agent_id": skill.id, "message": message, "prompt": "附加提示", "__bklite_context": context})
+    assert result == {"message": "处理完成"}
+    assert seen.get("unattended", False) is expected
+
+
+@pytest.mark.django_db
+def test_workflow_agent_history_separates_distinct_nodes(mocker):
+    from apps.opspilot.models import SkillConversation
+    from apps.opspilot.services.chat_service import ChatService
+    from apps.opspilot.services.skill_channel_chat_service import list_skill_conversations_for_admin
+
+    model = LLMModel.objects.create(name="history-model", enabled=True, team=[7])
+    skill = LLMSkill.objects.create(name="history-agent", llm_model=model, team=[7], usage_team=[7])
+    mocker.patch("apps.workflow.services.opspilot_atoms.resolve_uploaded_agent_knowledge", return_value=[])
+    mocker.patch.object(ChatService, "invoke_chat", return_value=({"success": True, "message": "完成"}, None, None))
+    for node in ("agent-a", "agent-b"):
+        context = {**_context(), "task_reference": node}
+        execute_agent({"agent_id": skill.id, "message": f"查询 {node}", "__bklite_context": context})
+    data = list_skill_conversations_for_admin(skill_id=skill.id)
+    assert data["count"] == 2
+    assert all(row["channel_type"] == "workflow" for row in data["items"])
+    assert SkillConversation.objects.filter(skill=skill).count() == 2
+    assert sorted(row["title"] for row in data["items"]) == ["查询 agent-a", "查询 agent-b"]
+
+
+@pytest.mark.django_db
 def test_agent_and_intent_atoms_reuse_opspilot_nodes_with_clean_contract(mocker):
     model = LLMModel.objects.create(name="classification-model", enabled=True, team=[7])
     skill = LLMSkill.objects.create(name="inspection-agent", llm_model=model, team=[7], usage_team=[7])
@@ -63,6 +109,7 @@ def test_agent_and_intent_atoms_reuse_opspilot_nodes_with_clean_contract(mocker)
     )
 
     assert agent_result == {"message": "inspection complete"}
+    assert agent_execute.call_args.args[0] == "workflow_agent"
     assert agent_execute.call_args.args[1]["data"]["config"]["agent"] == skill.id
     assert agent_execute.call_args.args[1]["data"]["config"]["uploadedFiles"] == [{"name": "runbook.md", "content": "check disk"}]
     resolve_knowledge.assert_called_once_with(

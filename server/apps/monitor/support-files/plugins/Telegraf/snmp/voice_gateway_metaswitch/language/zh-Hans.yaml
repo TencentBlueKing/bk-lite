@@ -34,8 +34,8 @@ monitor_object_metric:
       name: EMS CPU 使用率
       desc: MetaView EMS 节点当前 5 分钟汇总周期的总 CPU 使用率（METASWITCH-MIB emsStatsTotCPUUsage，0-100%）。
     metaswitch_ems_cpu_usage_hwm:
-      name: EMS CPU 使用率高水位
-      desc: MetaView EMS 节点总 CPU 使用率高水位（METASWITCH-MIB emsStatsTotCPUUsageHighWaterMark，0-100%）。
+      name: EMS CPU 使用率峰值
+      desc: MetaView EMS 节点总 CPU 使用率峰值（METASWITCH-MIB emsStatsTotCPUUsageHighWaterMark，0-100%）。
     metaswitch_ems_mem_total_mb:
       name: EMS 物理内存总量
       desc: MetaView EMS 节点物理内存总量，单位 MB（METASWITCH-MIB emsStatsTotPhysMem）。
@@ -44,7 +44,7 @@ monitor_object_metric:
       desc: MetaView EMS 节点物理内存已用量，单位 MB（METASWITCH-MIB emsStatsPhysMemUsage）。
     metaswitch_ems_mem_usage_percent:
       name: EMS 内存使用率
-      desc: MetaView EMS 节点物理内存使用率，由已用 MB ×100 / 总量 MB 计算。
+      desc: MetaView EMS 节点物理内存使用率。
 monitor_object_metric_group:
   VoiceGateway:
     Base: 基础

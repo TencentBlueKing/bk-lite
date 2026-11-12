@@ -21,4 +21,6 @@ FROM scratch
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 COPY --from=builder /out/ /usr/local/bin/
 COPY otel/rum.gateway.yaml /etc/bklite-rum/rum.gateway.yaml
+COPY otel/rum.gateway.ingest.yaml /etc/bklite-rum/rum.gateway.ingest.yaml
+COPY otel/rum.gateway.auth.yaml /etc/bklite-rum/rum.gateway.auth.yaml
 USER 65532:65532

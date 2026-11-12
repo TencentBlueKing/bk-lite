@@ -4,11 +4,13 @@ on:
   pull_request:
     paths:
       - 'webchat/**'
+      - 'web/packages/chat-content/**'
       - '.github/workflows/webchat-tests.yml'
   push:
     branches: [master]
     paths:
       - 'webchat/**'
+      - 'web/packages/chat-content/**'
       - '.github/workflows/webchat-tests.yml'
   workflow_dispatch:
     inputs:

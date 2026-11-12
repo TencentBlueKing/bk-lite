@@ -931,7 +931,7 @@ tools:
       - executor: Python代码执行工具
 
       **主要特性：**
-      - 安全执行Python代码
+      - 在 Server 子进程中执行 Python 代码
       - 支持数据处理和计算
       - 返回执行结果
 
@@ -939,25 +939,22 @@ tools:
       - python_execute_direct: 直接执行Python代码
     tools:
       python_execute_direct:
-        description: 直接执行Python代码的工具，不允许执行高危的、恶意的代码，支持数据处理和计算并返回执行结果
+        description: 在 Server 子进程中执行 Python，支持常用库、网络访问和工作目录文件读写
   shell:
     name: Shell执行
     description: |
       Shell工具模块
 
-      在系统shell中执行命令，用于自动化运维、构建、部署、信息获取等场景。
-
-      **安全要求：**
-      1. 不允许执行高危命令（如 rm -rf /, dd, mkfs 等）
-      2. 不允许执行需要交互式输入的命令
-      3. 不允许执行可能泄露敏感信息的命令
-      4. 执行前应明确命令用途与风险
+      在 Server 内执行命令，与 Python 和技能 execute 共享本轮工作目录。
+      支持 curl、管道、重定向和脚本执行。命令列表在同一个 shell 中依次执行。
+      默认总超时 120 秒，合并输出最多 64 KiB，不支持交互式输入。
+      代码拥有 Server 运行用户的系统权限，不提供宿主隔离；操作目标主机请使用 SSH、K8s 等对应工具。
 
       **工具列表：**
       - shell_execute: 执行shell命令列表，按顺序执行并返回结果
     tools:
       shell_execute:
-        description: 在系统shell中执行命令列表，按顺序执行并返回每个命令的执行结果，包括标准输出、标准错误和退出码
+        description: 在 Server 本地任务工作目录中依次执行 shell 命令，返回合并输出，失败时附带退出码
   browser_use:
     name: 浏览器自动化
     description: |
@@ -1027,7 +1024,7 @@ tools:
       activedirectory_get_columns:
         description: 查看指定表的字段列表与类型说明，结果为 CSV。
       activedirectory_run_query:
-        description: 对 Active Directory 虚拟表执行只读 SELECT 查询，支持 JOIN、条件筛选与排序，结果为 CSV。一次查询会在内部翻完所有 LDAP 页，不需要指定页码；单表最多读取 10000 条，超出时结果会标明已截断。
+        description: 对 Active Directory 虚拟表执行只读 SELECT 查询，支持 JOIN、条件筛选与排序，结果为 CSV。一次查询会在内部翻完匹配的 LDAP 页，不需要指定页码。列上的等于、LIKE、AND、OR 会先交给域控筛选，单次查询上限只作用于匹配对象；无法下推的条件才先读到上限再在本地过滤。每个域控按自己配置的条数停止，未配置时为 10000 条，超出时结果会标明已截断。
   elasticsearch:
     name: Elasticsearch
     description: |

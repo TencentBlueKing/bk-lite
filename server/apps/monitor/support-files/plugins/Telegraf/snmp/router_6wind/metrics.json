@@ -82,7 +82,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Real memory utilization of the 6WIND VSR router, derived as (memTotalReal - memAvailReal) / memTotalReal * 100, falling back to HOST-RESOURCES hrStorage physical-memory used/size."
+      "description": "Real memory utilization of the 6WIND VSR router, falling back to HOST-RESOURCES hrStorage physical-memory used/size."
     },
     {
       "metric_group": "Traffic",

@@ -43,7 +43,7 @@
       "query": "max(snmp_device_memory_usage{instance_type='switch', collect_type='snmp_gcom', __$labels__}) by (instance_id)",
       "unit": "percent",
       "data_type": "Number",
-      "description": "Memory utilization of the GCOM Ethernet switch, computed as (memorySize - memoryIdle) / memorySize x 100 when size is positive and idle is in range."
+      "description": "Memory utilization of the GCOM Ethernet switch as a 0-100 percentage."
     },
     {
       "metric_group": "Memory",

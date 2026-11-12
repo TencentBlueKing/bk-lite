@@ -137,14 +137,16 @@ def encode_stream_keepalive(encoder: EventEncoder, phase: str) -> str:
 
 
 def encode_job_script_output(encoder: EventEncoder, tool_name: str, content: Any):
-    """脚本工具结束后，把已落库的展示块推给界面。模型仍只看到工具返回的终态。"""
+    """脚本工具结束后，把展示块推给界面；模型从工具返回值读取状态和输出。"""
 
     if not str(tool_name or "").startswith("job_mgmt_"):
         return None
     payload = content
-    if isinstance(content, str):
+    if isinstance(content, ToolMessage):
+        payload = content.artifact if isinstance(content.artifact, dict) and content.artifact.get("task_id") else content.content
+    if isinstance(payload, str):
         try:
-            payload = json.loads(content)
+            payload = json.loads(payload)
         except json.JSONDecodeError:
             return None
     if not isinstance(payload, dict) or not payload.get("task_id"):
@@ -1264,7 +1266,7 @@ class BasicGraph(ABC):
             )
             # 标记已回填，避免后续 on_chain_end 用同一 ToolMessage 再发一遍 RESULT
             current_tool_calls[tool_call_id]["result_sent"] = True
-            output_event = encode_job_script_output(encoder, tool_name, self._normalize_tool_result_content(tool_output))
+            output_event = encode_job_script_output(encoder, tool_name, tool_output)
             if output_event:
                 events.append(output_event)
         return events
@@ -1431,7 +1433,7 @@ class BasicGraph(ABC):
             output_event = encode_job_script_output(
                 encoder,
                 str(getattr(message, "name", "") or ""),
-                str(getattr(message, "content", "") or ""),
+                message,
             )
             if output_event:
                 events.append(output_event)

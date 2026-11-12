@@ -49,6 +49,18 @@ class ModelEnterpriseExtension:
         """模型字段变更记录中的企业版字段差异文案。默认无差异。"""
         return ""
 
+    def duplicate_detection_field_ids_from_model(self, model: dict) -> set:
+        """从已经读出的模型节点解析重复性检测占用字段。社区默认没有这套规则。"""
+        return set()
+
+    def duplicate_detection_field_ids(self, model_id: str) -> set:
+        """已被重复性检测占用的字段。社区默认没有这套规则。"""
+        return set()
+
+    def guard_duplicate_detection_attr_change(self, model_id: str, attr_id: str, next_attr: dict | None, operation: str) -> None:
+        """字段变更撞上重复性检测时拒绝。社区默认放行。"""
+        return None
+
 
 _EMPTY_MODEL_EXTENSION = ModelEnterpriseExtension()
 
