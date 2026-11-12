@@ -162,6 +162,9 @@ def test_host_sync_values_equal_ignores_graph_type_noise():
     assert host_sync_values_equal("organization", [1.0, 2], [2, 1]) is True
     assert host_sync_values_equal("organization", [1], [2]) is False
     assert host_sync_values_equal("os_type", 1, "1") is True
+    assert host_sync_values_equal("os_type", ["1"], "1") is True
+    assert host_sync_values_equal("os_type", "1", ["1"]) is True
+    assert host_sync_values_equal("os_type", ["1"], "2") is False
     assert host_sync_values_equal("os_type", "1", "2") is False
     assert host_sync_values_equal("ip_addr", "10.0.0.7", "10.0.0.7") is True
     assert normalize_org_ids(["1", 2, 2]) == [1, 2]
