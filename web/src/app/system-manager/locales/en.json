@@ -598,6 +598,31 @@
           "disabledDesc": "Updated from the mapped external field; blank or unrecognized values are ignored"
         },
         "deleteConfirmContent": "Deleting \"{sourceName}\" will archive its root organization and all sub-organizations, and delete synced users of this source. Archived organizations cannot be restored to the active tree; you can permanently delete them later from Archived Organizations."
+      },
+      "accountAssociation": {
+        "tab": "IM Account Association",
+        "search": "Search account associations",
+        "results": "Association Results",
+        "records": "Synchronized Log",
+        "receiveField": "Receive Field",
+        "updateCycle": "Update Cycle",
+        "update": "Update Association",
+        "updated": "Started updating association",
+        "deleteConfirm": "Delete this account association?",
+        "deleteConfirmContent": "Deleting \"{name}\" also deletes its mappings and sync records, and they cannot be restored. If an IM notification still uses it, choose another account association before deleting.",
+        "statusReady": "Available",
+        "statusNeedsResync": "Needs Re-sync",
+        "statusPending": "Pending Sync",
+        "latestSyncLabel": "Latest sync: ",
+        "daily": "Daily",
+        "manual": "Manual",
+        "platformField": "Platform Account Field",
+        "imField": "IM Account Field",
+        "schedule": "Schedule",
+        "time": "Time",
+        "platformUser": "Platform User",
+        "externalIdentity": "External Identity",
+        "externalName": "External Name"
       }
     },
     "security": {
@@ -1272,7 +1297,7 @@
       "imNotification": "IM Notification",
       "imNotificationDesc": "The IM Notification channel supports sending message notifications to enterprise IM applications.",
       "imNotificationPage": {
-        "pageDesc": "Manage IM application notification channels, configure integration instances and user field mappings, and use dedicated actions for mapping sync and test send.",
+        "pageDesc": "Manage IM application notification channels. Choose an integration instance and an account association to send messages to the linked IM accounts.",
         "name": "Name",
         "integrationInstance": "Integrated System",
         "integrationInstancePlaceholder": "Please select an integrated system",

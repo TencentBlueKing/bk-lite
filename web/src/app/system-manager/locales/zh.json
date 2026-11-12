@@ -598,6 +598,31 @@
           "disabledDesc": "按映射到的外部字段更新，空值或无法识别时不覆盖"
         },
         "deleteConfirmContent": "删除「{sourceName}」后，将归档其根组织及全部子组织，并删除该同步源的同步用户。归档组织不可恢复到活动组织树，可在「归档组织」中永久删除。"
+      },
+      "accountAssociation": {
+        "tab": "IM 账号关联",
+        "search": "搜索账号关联",
+        "results": "关联结果",
+        "records": "同步记录",
+        "receiveField": "消息接收标识",
+        "updateCycle": "更新周期",
+        "update": "更新关联",
+        "updated": "已开始更新关联",
+        "deleteConfirm": "删除这个账号关联？",
+        "deleteConfirmContent": "删除「{name}」后，映射结果和同步记录会一起删除，不能恢复。仍被 IM 应用通知选用时，需要先改选其他账号关联才能删除。",
+        "statusReady": "可用",
+        "statusNeedsResync": "需重新同步",
+        "statusPending": "待同步",
+        "latestSyncLabel": "最近同步：",
+        "daily": "每天",
+        "manual": "手动",
+        "platformField": "平台账号字段",
+        "imField": "IM 账号字段",
+        "schedule": "定时",
+        "time": "时间",
+        "platformUser": "平台用户",
+        "externalIdentity": "外部身份",
+        "externalName": "外部名称"
       }
     },
     "security": {
@@ -1272,7 +1297,7 @@
       "imNotification": "IM应用通知",
       "imNotificationDesc": "IM应用通知渠道支持向企业IM应用发送消息通知。",
       "imNotificationPage": {
-        "pageDesc": "维护 IM 应用通知渠道，配置集成实例与用户字段映射，并通过独立入口管理映射同步与测试发送。",
+        "pageDesc": "维护 IM 应用通知渠道。选择集成实例和账号关联，用于向已关联的 IM 账号发送消息。",
         "name": "名称",
         "integrationInstance": "集成系统",
         "integrationInstancePlaceholder": "请选择集成系统",

@@ -19,21 +19,24 @@ export interface IMNotificationChannel {
   enabled: boolean;
   description: string;
   status: ChannelStatus;
-  platform_match_field: PlatformMatchField;
-  external_match_field: string;
-  external_receive_field: string;
+  account_association: number | null;
+  account_association_name?: string;
+  provider_name?: string;
+  platform_match_field?: PlatformMatchField;
+  external_match_field?: string;
+  external_receive_field?: string;
   display_status: DisplayStatus;
-  display_sync_status: SyncRunStatus;
-  display_sync_summary: string;
-  latest_sync_status: SyncRunStatus | '';
-  latest_sync_started_at: string | null;
-  latest_sync_finished_at: string | null;
-  latest_sync_summary: string;
-  latest_sync_total_external_user_count: number | null;
-  latest_sync_matched_count: number | null;
-  latest_sync_unmatched_count: number | null;
-  latest_sync_conflict_count: number | null;
-  schedule_config: ScheduleConfig;
+  display_sync_status?: SyncRunStatus;
+  display_sync_summary?: string;
+  latest_sync_status?: SyncRunStatus | '';
+  latest_sync_started_at?: string | null;
+  latest_sync_finished_at?: string | null;
+  latest_sync_summary?: string;
+  latest_sync_total_external_user_count?: number | null;
+  latest_sync_matched_count?: number | null;
+  latest_sync_unmatched_count?: number | null;
+  latest_sync_conflict_count?: number | null;
+  schedule_config?: ScheduleConfig;
   team: number[];
   tag?: string[];
   created_by?: string;
@@ -96,6 +99,13 @@ export type IMNotificationChannelPayload = Omit<
   | 'integration_instance_name'
   | 'provider_key'
   | 'dependency_status'
+  | 'status'
+  | 'account_association'
+  | 'account_association_name'
+  | 'platform_match_field'
+  | 'external_match_field'
+  | 'external_receive_field'
+  | 'schedule_config'
   | 'display_status'
   | 'display_sync_status'
   | 'display_sync_summary'
@@ -114,5 +124,6 @@ export type IMNotificationChannelPayload = Omit<
 > & {
   enabled?: boolean;
   status?: ChannelStatus;
+  account_association?: number | null;
   team?: number[];
 };
