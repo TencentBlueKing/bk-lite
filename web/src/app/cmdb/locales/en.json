@@ -534,7 +534,7 @@
         "applyTagBatch": "Apply",
         "tagBatchPlaceholder": "One key:value per line",
         "tagBatchFormatError": "Invalid format. Use one key:value per line",
-        "tagValueFormatError": "Tag value cannot contain spaces, colon, or newlines",
+        "tagValueFormatError": "Tag cannot contain newlines",
         "tagDuplicateError": "Duplicate tag entries are not allowed",
         "enumSelectMode": "Selection Mode",
         "singleSelect": "Single Select",

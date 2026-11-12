@@ -1,4 +1,5 @@
 import type { AttrFieldType, EnumList, UserItem } from '@/app/cmdb/types/assetManage';
+import { encodeCollectedTag } from '@/utils/collectedTag';
 
 interface TagOptionItem {
   key?: string;
@@ -40,7 +41,7 @@ export const getTagOptions = (field?: AttrFieldType): GroupedSelectOption[] => {
     const key = String(item?.key || '').trim();
     const value = String(item?.value || '').trim();
 
-    if (!key || !value) {
+    if (!key) {
       return acc;
     }
 
@@ -49,8 +50,8 @@ export const getTagOptions = (field?: AttrFieldType): GroupedSelectOption[] => {
     }
 
     acc[key].push({
-      label: `${key}:${value}`,
-      value: `${key}:${value}`,
+      label: value ? `${key}:${value}` : `${key}:`,
+      value: encodeCollectedTag(key, value),
     });
 
     return acc;

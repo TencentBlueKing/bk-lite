@@ -413,7 +413,7 @@
         "applyTagBatch": "生效",
         "tagBatchPlaceholder": "每行一个 key:value",
         "tagBatchFormatError": "格式错误，请按每行 key:value 填写",
-        "tagValueFormatError": "标签值不能包含空格、冒号或换行",
+        "tagValueFormatError": "标签不能包含换行符",
         "tagDuplicateError": "标签项不能重复",
         "enumSelectMode": "选择模式",
         "singleSelect": "单选",

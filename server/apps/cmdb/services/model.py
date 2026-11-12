@@ -232,12 +232,15 @@ class ModelManage(object):
             (str(item.get("key", "")).strip(), str(item.get("value", "")).strip()) for item in option.get("options", []) if isinstance(item, dict)
         }
         changed = False
+        from apps.cmdb.validators.field_validator import split_collected_tag
+
         for raw in values:
-            if not isinstance(raw, str) or raw.count(":") != 1:
+            if not isinstance(raw, str):
                 continue
-            key, value = [part.strip() for part in raw.split(":", 1)]
-            if not key or not value:
+            parsed = split_collected_tag(raw)
+            if parsed is None:
                 continue
+            key, value = parsed
             pair = (key, value)
             if pair in existing:
                 continue
