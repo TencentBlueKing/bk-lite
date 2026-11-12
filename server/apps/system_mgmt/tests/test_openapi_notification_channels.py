@@ -162,10 +162,10 @@ def test_system_tenant_lists_own_external_channels_only(tenants, local_docs_cata
     assert email_parameters["channel_id"]["description"].startswith(f"固定填写 {tenants.a.email.id}")
     assert "用户 ID" in email_parameters["receivers"]["description"]
     assert "邮件主题" in email_parameters["title"]["description"]
-    assert email_parameters["content"]["description"] == "邮件正文，原样作为 HTML 发送。不会转义标签，也不会把换行改成换行标签。"
+    assert email_parameters["content"]["description"] == "邮件正文。按 HTML 发送，不会转义标签，换行也不会改成换行标签。"
     assert "渠道侧接收人名" in webhook_parameters["receivers"]["description"]
     assert "不使用标题" in webhook_parameters["title"]["description"]
-    assert webhook_parameters["content"]["description"] == "通知正文，原样替换该渠道模板中的 {{content}}。接收人名会以 <br> 追加在正文后面。"
+    assert webhook_parameters["content"]["description"] == "通知正文，会替换该渠道模板中的 {{content}}。接收人名会追加在正文后面。"
     assert all(set(item) == _ITEM_FIELDS for item in items)
     assert items[0]["tag"] == []
     assert items[1]["tag"] == []
