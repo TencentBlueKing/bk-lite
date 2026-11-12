@@ -13,7 +13,6 @@ interface TopSectionProps {
   iconAlt?: string;
   variant?: string;
   className?: string;
-  extra?: React.ReactNode;
 }
 
 /** 独立页眉：标题和说明单独成条，高度随两行说明增长。 */
@@ -23,7 +22,6 @@ const TopSection: React.FC<TopSectionProps> = ({
   iconType,
   icon,
   className = '',
-  extra,
 }) => {
   const resolvedIcon = icon ? (
     icon
@@ -43,7 +41,6 @@ const TopSection: React.FC<TopSectionProps> = ({
           />
         ) : null}
       </div>
-      {extra ? <div className="shrink-0 self-start">{extra}</div> : null}
     </div>
   );
 };

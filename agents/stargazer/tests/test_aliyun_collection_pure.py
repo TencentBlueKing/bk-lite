@@ -1,4 +1,5 @@
 """阿里云配置采集回归：真实 SDK 响应模型、分页和传输边界，无外部 IO。"""
+import json
 from types import SimpleNamespace
 from unittest.mock import Mock
 
@@ -243,3 +244,332 @@ def test_format_failure_owns_safe_traceback_and_preserves_other_resources(monkey
     assert result["result"]["aliyun_mysql"][0]["resource_id"] == "rds-test"
     assert result["result"]["aliyun_bucket"] == [{"collect_status": "failed", "cmdb_collect_error": "format_metrics failed: ValueError"}]
     assert secret not in rendered + repr(record.args) + repr(result) + capsys.readouterr().out
+
+
+def _ecs_source(**extra):
+    source = {
+        "resource_name": "ecs",
+        "resource_id": "i-1",
+        "inner_ip": ["10.0.0.8"],
+        "public_ip": [],
+        "region": "cn-guangzhou",
+        "zone": "cn-guangzhou-a",
+        "vpc": "vpc-1",
+        "status": "Running",
+        "instance_type": "ecs.g6",
+        "os_name": "linux",
+        "vcpus": 2,
+        "memory": 4096,
+        "charge_type": "PostPaid",
+        "create_time": "",
+        "expired_time": "",
+    }
+    source.update(extra)
+    return source
+
+
+def test_ecs_collects_system_tags_empty_values_and_drops_newlines(monkeypatch, caplog):
+    import logging
+
+    import plugins.inputs.aliyun.aliyun_info as module
+
+    secret = "SENTINEL_ALIYUN_TAG_VALUE"
+    test_logger = logging.getLogger("test.aliyun.tag")
+    monkeypatch.setattr(module, "logger", test_logger)
+    with caplog.at_level(logging.WARNING, logger=test_logger.name):
+        row = Aliyun.format_ecs_data(
+            [
+                _ecs_source(
+                    tag=[
+                        {"TagKey": "env", "TagValue": "prod"},
+                        {"TagKey": "acs:rm:rgId", "TagValue": secret},
+                        {"TagKey": "team", "TagValue": "net"},
+                        {"TagKey": "blank", "TagValue": ""},
+                        {"TagKey": "bad", "TagValue": "a\nb"},
+                    ]
+                )
+            ]
+        )[0]
+    assert row["tag"] == ["env:prod", f"acs%3Arm%3ArgId:{secret}", "team:net", "blank:"]
+    assert row["ip_addr"] == "10.0.0.8"
+    records = [record for record in caplog.records if record.name == test_logger.name]
+    assert len(records) == 1
+    assert records[0].msg == "event=aliyun_tag_normalized skipped=%s truncated=%s"
+    assert records[0].args == (1, 0)
+    rendered = records[0].getMessage()
+    assert secret not in rendered
+    assert secret not in repr(records[0].args)
+    assert "tag" not in Aliyun.format_ecs_data([_ecs_source()])[0]
+    assert Aliyun.format_ecs_data([_ecs_source(tag=[])])[0]["tag"] == []
+
+
+@pytest.mark.parametrize(
+    "formatter,source,expected",
+    [
+        (
+            Aliyun.format_aliyun_clb,
+            {
+                "LoadBalancerId": "lb-1",
+                "LoadBalancerName": "lb",
+                "CreateTime": "2024-01-01T00:00Z",
+                "Tags": {"Tag": [{"TagKey": "env", "TagValue": "prod"}]},
+            },
+            ["env:prod"],
+        ),
+        (
+            Aliyun.format_aliyun_redis,
+            {
+                "InstanceId": "r-1",
+                "InstanceName": "redis",
+                "RegionId": "cn-guangzhou",
+                "ZoneId": "cn-guangzhou-a",
+                "EngineVersion": "5.0",
+                "ArchitectureType": "cluster",
+                "Capacity": 1024,
+                "NetworkType": "VPC",
+                "ConnectionDomain": "r-1.redis.rds.aliyuncs.com",
+                "Port": 6379,
+                "Bandwidth": 10,
+                "QPS": 1000,
+                "InstanceClass": "redis.master.small.default",
+                "PackageType": "standard",
+                "ChargeType": "PostPaid",
+                "Tags": {"Tag": [{"Key": "cache", "Value": "hot"}]},
+            },
+            ["cache:hot"],
+        ),
+        (
+            Aliyun.format_aliyun_mongodb,
+            {"DBInstanceId": "dds-1", "Tags": {"Tag": [{"Key": "db", "Value": "mongo"}]}},
+            ["db:mongo"],
+        ),
+        (
+            Aliyun.format_aliyun_kafka_inst,
+            {"InstanceId": "alikafka-1", "Tags": {"TagVO": [{"Key": "mq", "Value": "core"}]}},
+            ["mq:core"],
+        ),
+        (
+            Aliyun.format_aliyun_mysql,
+            {"DBInstanceId": "rm-1", "Tags": {"Tag": [{"TagKey": "db", "TagValue": "mysql"}]}},
+            ["db:mysql"],
+        ),
+    ],
+)
+def test_aliyun_resource_formatters_keep_native_tag_shapes(formatter, source, expected):
+    assert formatter([source])[0]["tag"] == expected
+    bare = {key: value for key, value in source.items() if key != "Tags"}
+    assert "tag" not in formatter([bare])[0]
+
+
+def test_list_rds_attaches_tags_across_pages_and_survives_tag_api_failure(monkeypatch, caplog):
+    import logging
+
+    import plugins.inputs.aliyun.aliyun_info as module
+    from alibabacloud_rds20140815 import models as rds
+    from Tea.exceptions import TeaException
+
+    plugin = Aliyun.__new__(Aliyun)
+    plugin.RegionId, plugin.custom_endpoint, plugin.collection_task_id = "cn-guangzhou", None, "audit"
+    secret = "SENTINEL_RDS_TAG_ERROR"
+    described = {"count": 0}
+
+    def describe(_request, _runtime):
+        described["count"] += 1
+        if described["count"] == 1:
+            body = rds.DescribeDBInstancesResponseBody(
+                items=rds.DescribeDBInstancesResponseBodyItems(
+                    dbinstance=[rds.DescribeDBInstancesResponseBodyItemsDBInstance(dbinstance_id="rm-1", pay_type="Postpaid")]
+                )
+            )
+        else:
+            body = rds.DescribeDBInstancesResponseBody()
+        return SimpleNamespace(body=body)
+
+    tag_requests = []
+
+    def list_tags(request, _runtime):
+        tag_requests.append(request.resource_id)
+        if request.next_token:
+            body = rds.ListTagResourcesResponseBody(
+                tag_resources=rds.ListTagResourcesResponseBodyTagResources(
+                    tag_resource=[rds.ListTagResourcesResponseBodyTagResourcesTagResource(resource_id="rm-1", tag_key="team", tag_value="net")]
+                )
+            )
+        else:
+            body = rds.ListTagResourcesResponseBody(
+                next_token="page-2",
+                tag_resources=rds.ListTagResourcesResponseBodyTagResources(
+                    tag_resource=[rds.ListTagResourcesResponseBodyTagResourcesTagResource(resource_id="rm-1", tag_key="env", tag_value="prod")]
+                ),
+            )
+        return SimpleNamespace(body=body)
+
+    plugin.rds_client = SimpleNamespace(
+        describe_dbinstances_with_options=describe,
+        list_tag_resources_with_options=list_tags,
+    )
+    result = plugin.list_rds(engine="MySQL")
+    assert result["result"] is True
+    assert result["data"][0]["Tags"]["Tag"] == [
+        {"TagKey": "env", "TagValue": "prod"},
+        {"TagKey": "team", "TagValue": "net"},
+    ]
+    assert tag_requests == [["rm-1"], ["rm-1"]]
+    assert Aliyun.format_aliyun_mysql(result["data"])[0]["tag"] == ["env:prod", "team:net"]
+
+    def deny(_request, _runtime):
+        raise TeaException({"code": "AccessDenied", "message": secret, "data": {}})
+
+    described["count"] = 0
+    plugin.rds_client.list_tag_resources_with_options = deny
+    test_logger = logging.getLogger("test.aliyun.rds.tag")
+    monkeypatch.setattr(module, "logger", test_logger)
+    with caplog.at_level(logging.WARNING, logger=test_logger.name):
+        failed = plugin.list_rds(engine="MySQL")
+    assert failed["result"] is True
+    assert "Tags" not in failed["data"][0]
+    records = [record for record in caplog.records if record.name == test_logger.name]
+    assert records[-1].msg == "event=aliyun_rds_tag_skipped host=%s region=%s task_id=%s failed_stage=%s error_type=%s"
+    assert records[-1].args == (None, "cn-guangzhou", "audit", "list_tag_resources", "TeaException")
+    rendered = records[-1].getMessage()
+    assert secret not in rendered + repr(records[-1].args)
+
+
+def test_list_buckets_reads_tags_and_skips_tag_errors_without_dropping_buckets(monkeypatch, caplog):
+    import logging
+
+    import plugins.inputs.aliyun.aliyun_info as module
+    from alibabacloud_oss20190517 import models as oss
+    from Tea.exceptions import TeaException
+
+    plugin = Aliyun.__new__(Aliyun)
+    plugin.RegionId, plugin.custom_endpoint, plugin.collection_task_id = "cn-guangzhou", None, "audit"
+    secret = "SENTINEL_OSS_TAG_ERROR"
+    pages = {
+        "tagged": oss.GetBucketTagsResponseBody(tag_set=oss.TagSet(tags=[oss.Tag(key="env", value="prod")])),
+    }
+
+    def list_page(_request, *_args):
+        return SimpleNamespace(
+            body=oss.ListBucketsResponseBody(
+                buckets=[oss.Bucket(name="tagged"), oss.Bucket(name="empty"), oss.Bucket(name="broken")],
+                is_truncated=False,
+            )
+        )
+
+    def bucket_tags(bucket_name, *_args):
+        if bucket_name == "broken":
+            raise TeaException({"code": "AccessDenied", "message": secret, "data": {}})
+        if bucket_name == "empty":
+            raise TeaException({"code": "NoSuchTagSet", "message": "no tags", "data": {}})
+        return SimpleNamespace(body=pages["tagged"])
+
+    def bucket_info(bucket_name, *_args):
+        return SimpleNamespace(
+            body=oss.BucketInfo(
+                bucket=oss.BucketInfoBucket(
+                    name=bucket_name,
+                    location="oss-cn-guangzhou",
+                    extranet_endpoint="oss-cn-guangzhou.aliyuncs.com",
+                    intranet_endpoint="oss-cn-guangzhou-internal.aliyuncs.com",
+                    storage_class="Standard",
+                    cross_region_replication="Disabled",
+                    creation_date="2024-01-01T00:00:00.000Z",
+                )
+            )
+        )
+
+    plugin.oss_client = SimpleNamespace(
+        list_buckets_with_options=list_page,
+        get_bucket_info_with_options=bucket_info,
+        get_bucket_tags_with_options=bucket_tags,
+    )
+    test_logger = logging.getLogger("test.aliyun.bucket.tag")
+    monkeypatch.setattr(module, "logger", test_logger)
+    with caplog.at_level(logging.WARNING, logger=test_logger.name):
+        result = plugin.list_buckets()
+    assert result["result"] is True
+    by_name = {item["Name"]: item for item in result["data"]}
+    assert by_name["tagged"]["Tags"] == {"Tag": [{"Key": "env", "Value": "prod"}]}
+    assert by_name["empty"]["Tags"] == {"Tag": []}
+    assert "Tags" not in by_name["broken"]
+    assert Aliyun.format_bucket_data([by_name["tagged"]])[0]["tag"] == ["env:prod"]
+    records = [record for record in caplog.records if record.name == test_logger.name]
+    assert records[0].msg == ("event=aliyun_bucket_tag_skipped host=%s region=%s task_id=%s bucket=%s failed_stage=%s error_type=%s")
+    assert records[0].args == (None, "cn-guangzhou", "audit", "broken", "get_bucket_tags", "TeaException")
+    assert secret not in records[0].getMessage() + repr(records[0].args)
+
+
+def test_aliyun_ecs_tag_survives_prometheus_transport():
+    from urllib.parse import unquote
+
+    tags = ["owner:acme,inc", "env:prod"]
+    text = convert_to_prometheus_format({"aliyun_ecs": [Aliyun.format_ecs_data([_ecs_source(tag=tags)])[0]]})
+    marker = 'tag="'
+    start = text.index(marker) + len(marker)
+    encoded = text[start : text.index('"', start)]
+    assert json.loads(unquote(encoded)) == tags
+    empty = convert_to_prometheus_format({"aliyun_ecs": [Aliyun.format_ecs_data([_ecs_source(tag=[])])[0]]})
+    empty_start = empty.index(marker) + len(marker)
+    assert json.loads(unquote(empty[empty_start : empty.index('"', empty_start)])) == []
+
+
+def test_service_tags_replace_product_tags_and_failure_omits_them(monkeypatch, caplog):
+    import logging
+
+    import plugins.inputs.aliyun.aliyun_info as module
+
+    plugin = Aliyun.__new__(Aliyun)
+    plugin.RegionId = "cn-guangzhou"
+    plugin.custom_endpoint = None
+    plugin.collection_task_id = "audit"
+    plugin.auth_config = object()
+    secret = "SENTINEL_TAG_SERVICE"
+    items = [{"resource_id": "i-1", "tag": ["env:prod"]}, {"resource_id": "i-2", "tag": []}]
+
+    def found(_kind, _region, _ids):
+        return {"i-1": [("acs:rm:rgId", secret), ("env", "prod")]}
+
+    plugin._list_service_tags = found
+    plugin._overlay_service_tags(items, "ecs", "resource_id")
+    assert items[0]["tag"] == [{"TagKey": "acs:rm:rgId", "TagValue": secret}, {"TagKey": "env", "TagValue": "prod"}]
+    assert items[1]["tag"] == []
+    assert module._serialize_aliyun_tags(items[0]["tag"]) == [f"acs%3Arm%3ArgId:{secret}", "env:prod"]
+    assert module._serialize_aliyun_tags(items[1]["tag"]) == []
+
+    plugin._list_service_tags = lambda *_args: None
+    test_logger = logging.getLogger("test.aliyun.tag.service")
+    monkeypatch.setattr(module, "logger", test_logger)
+    failed = [{"resource_id": "i-1", "tag": ["env:prod"]}]
+    with caplog.at_level(logging.WARNING, logger=test_logger.name):
+        plugin._overlay_service_tags(failed, "ecs", "resource_id")
+    assert "tag" not in failed[0]
+    assert secret not in caplog.text
+
+
+def test_tag_service_failure_logs_stage_without_payload(monkeypatch, caplog):
+    import logging
+
+    import plugins.inputs.aliyun.aliyun_info as module
+
+    secret = "SENTINEL_TAG_SERVICE_BODY"
+    plugin = Aliyun.__new__(Aliyun)
+    plugin.RegionId = "cn-guangzhou"
+    plugin.custom_endpoint = None
+    plugin.collection_task_id = "audit"
+    plugin._cached_account_id = "100"
+
+    def boom(*_args, **_kwargs):
+        raise RuntimeError(secret)
+
+    plugin._openapi_call = boom
+    test_logger = logging.getLogger("test.aliyun.tag.service.fail")
+    monkeypatch.setattr(module, "logger", test_logger)
+    with caplog.at_level(logging.WARNING, logger=test_logger.name):
+        assert plugin._list_service_tags("ecs", "cn-guangzhou", ["i-1"]) is None
+    records = [record for record in caplog.records if record.name == test_logger.name]
+    assert records[-1].msg == "event=aliyun_tag_service_skipped host=%s region=%s task_id=%s failed_stage=%s error_type=%s"
+    assert records[-1].args == (None, "cn-guangzhou", "audit", "list_tag_resources", "RuntimeError")
+    rendered = records[-1].getMessage()
+    assert secret not in rendered
+    assert secret not in repr(records[-1].args)

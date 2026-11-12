@@ -31,6 +31,7 @@ import {
   QuestionCircleOutlined,
 } from '@ant-design/icons';
 import { deepClone } from '@/app/cmdb/utils/common';
+import { decodeCollectedTag, encodeCollectedTag } from '@/utils/collectedTag';
 import { useSearchParams } from 'next/navigation';
 import {
   AttrFieldType,
@@ -67,7 +68,7 @@ const LONG_TOOLTIP_OVERLAY_STYLE = {
 
 const useAttributeEnterpriseExtension = loadAttributeEnterpriseExtension();
 
-const TAG_VALUE_REGEX = /^[^\s:\n\r]+$/;
+const tagHasNewline = (text: string): boolean => /[\n\r]/.test(text);
 
 interface AttrModalProps {
   onSuccess: (type?: unknown) => void;
@@ -339,7 +340,7 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
           option = {
             mode: values.tag_mode || 'free',
             options: (Array.isArray(tagList) ? tagList : [])
-              .filter((item) => item.key && item.value)
+              .filter((item) => item.key)
               .map((item) => ({ key: item.key.trim(), value: item.value.trim() })),
           } as TagAttrOption;
           values.attr_id = 'tag';
@@ -460,10 +461,10 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
     };
 
     const validateSingleTagItem = (key: string, value: string): string | null => {
-      if (!key || !value) {
+      if (!key) {
         return t('required');
       }
-      if (!TAG_VALUE_REGEX.test(value)) {
+      if (tagHasNewline(key) || tagHasNewline(value)) {
         return t('Model.tagValueFormatError');
       }
       return null;
@@ -479,13 +480,13 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
         const item = list[i];
         const key = (item.key || '').trim();
         const value = (item.value || '').trim();
-        if (!key || !value) {
-          errors[i] = { key: !key, value: !value };
+        if (!key) {
+          errors[i] = { key: true };
           if (!firstErr) firstErr = t('required');
-        } else if (!TAG_VALUE_REGEX.test(value)) {
+        } else if (tagHasNewline(key) || tagHasNewline(value)) {
           if (!firstErr) firstErr = t('Model.tagValueFormatError');
         }
-        const pair = `${key}:${value}`;
+        const pair = encodeCollectedTag(key, value);
         if (seen.has(pair)) {
           if (!firstErr) firstErr = t('Model.tagDuplicateError');
         }
@@ -508,7 +509,8 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
     const serializeTagList = (list: Array<{ key: string; value: string }>) => {
       return (Array.isArray(list) ? list : [])
         .filter((item) => item.key || item.value)
-        .map((item) => `${(item.key || '').trim()}:${(item.value || '').trim()}`)
+        .map((item) => encodeCollectedTag((item.key || '').trim(), (item.value || '').trim()))
+        .filter((item): item is string => Boolean(item))
         .join('\n');
     };
 
@@ -525,17 +527,16 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
       const parsed: Array<{ key: string; value: string }> = [];
       const seen = new Set<string>();
       for (const line of lines) {
-        const splitIndex = line.indexOf(':');
-        if (splitIndex <= 0 || splitIndex === line.length - 1) {
+        const parsedItem = decodeCollectedTag(line);
+        if (!parsedItem) {
           throw new Error(t('Model.tagBatchFormatError'));
         }
-        const key = line.slice(0, splitIndex).trim();
-        const value = line.slice(splitIndex + 1).trim();
+        const { key, value } = parsedItem;
         const err = validateSingleTagItem(key, value);
         if (err) {
           throw new Error(err);
         }
-        const pair = `${key}:${value}`;
+        const pair = encodeCollectedTag(key, value);
         if (seen.has(pair)) {
           throw new Error(t('Model.tagDuplicateError'));
         }

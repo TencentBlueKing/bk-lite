@@ -155,6 +155,9 @@ def test_batch_init_cmdb_registers_runtime_task_without_sync_apply(mocker):
         return_value=SimpleNamespace(pk=1),
     )
     delay = mocker.patch("apps.cmdb.tasks.uuid_migration.migrate_cmdb_instance_uuid_runtime.delay")
+    mocker.patch("apps.cmdb.tasks.display_field_backfill.backfill_cmdb_display_fields.delay")
+    mocker.patch("apps.cmdb.tasks.display_field_backfill.ensure_display_field_backfill_periodic_task")
+    mocker.patch("apps.cmdb.tasks.instance_shape_repair.repair_cmdb_instance_shape.delay")
     call_cmd = mocker.patch(
         "apps.core.management.commands.batch_init.call_command",
         return_value=None,
@@ -181,6 +184,9 @@ def test_batch_init_cmdb_continues_when_delay_fails(mocker):
         "apps.cmdb.tasks.uuid_migration.migrate_cmdb_instance_uuid_runtime.delay",
         side_effect=RuntimeError("broker down"),
     )
+    mocker.patch("apps.cmdb.tasks.display_field_backfill.backfill_cmdb_display_fields.delay")
+    mocker.patch("apps.cmdb.tasks.display_field_backfill.ensure_display_field_backfill_periodic_task")
+    mocker.patch("apps.cmdb.tasks.instance_shape_repair.repair_cmdb_instance_shape.delay")
     mocker.patch(
         "apps.core.management.commands.batch_init.call_command",
         return_value=None,

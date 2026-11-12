@@ -200,7 +200,7 @@ class Command(BaseCommand):
         call_command("init_field_groups")
         call_command("init_display_fields", models_only=True)
         self._schedule_display_field_backfill()
-        call_command("cmdb_migrate_scalar_to_list")
+        self._schedule_instance_shape_repair()
         call_command("migrate_field_constraints")
         call_command("reconcile_node_mgmt_sync")
         # UUID 存量清洗：只注册运行期任务并投递一次；禁止在此同步 --apply（避免挡 supervisord）。
@@ -221,20 +221,11 @@ class Command(BaseCommand):
     def _schedule_display_field_backfill(self) -> None:
         """实例 _display 回填是可重建派生数据，启动期只入队，不扫描实例。"""
         try:
-            from django.core.cache import cache
-
-            from apps.cmdb.tasks.display_field_backfill import (
-                DISPLAY_BACKFILL_COMPLETED_KEY,
-                DISPLAY_BACKFILL_CURSOR_KEY,
-                backfill_cmdb_display_fields,
-                ensure_display_field_backfill_periodic_task,
-            )
+            from apps.cmdb.tasks.display_field_backfill import backfill_cmdb_display_fields, ensure_display_field_backfill_periodic_task
 
             ensure_display_field_backfill_periodic_task()
-            cache.delete(DISPLAY_BACKFILL_COMPLETED_KEY)
-            cache.delete(DISPLAY_BACKFILL_CURSOR_KEY)
             try:
-                backfill_cmdb_display_fields.delay(force=True)
+                backfill_cmdb_display_fields.delay(force=False)
             except Exception as exc:
                 logger.warning(
                     "event=display_backfill_enqueue_failed failed_stage=enqueue error_type=%s",
@@ -251,6 +242,34 @@ class Command(BaseCommand):
                 exc_info=safe_exception_info(exc),
             )
             self.stdout.write(self.style.WARNING(f"CMDB 显示字段回填注册跳过: {type(exc).__name__}"))
+
+    def _schedule_instance_shape_repair(self) -> None:
+        """实例组织、标量改列表和变更过的唯一规则只在未完成时投递一次。"""
+        try:
+            from apps.cmdb.services.instance_shape_repair import instance_shape_repair_pending
+            from apps.cmdb.tasks.instance_shape_repair import repair_cmdb_instance_shape
+
+            if not instance_shape_repair_pending():
+                self.stdout.write("CMDB 实例形态已完成，跳过清洗投递")
+                return
+            try:
+                repair_cmdb_instance_shape.delay()
+            except Exception as exc:
+                logger.warning(
+                    "event=instance_shape_repair_enqueue_failed failed_stage=enqueue error_type=%s",
+                    type(exc).__name__,
+                    exc_info=safe_exception_info(exc),
+                )
+                self.stdout.write(self.style.WARNING(f"CMDB 实例形态清洗投递跳过（{type(exc).__name__}），下次启动会再投递"))
+            else:
+                self.stdout.write("已投递 CMDB 实例形态清洗（一次性，不阻断启动）")
+        except Exception as exc:
+            logger.warning(
+                "event=instance_shape_repair_register_failed failed_stage=register error_type=%s",
+                type(exc).__name__,
+                exc_info=safe_exception_info(exc),
+            )
+            self.stdout.write(self.style.WARNING(f"CMDB 实例形态清洗注册跳过: {type(exc).__name__}"))
 
     def _init_console_mgmt(self):
         """控制台管理资源初始化"""

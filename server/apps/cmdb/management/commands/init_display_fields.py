@@ -52,6 +52,10 @@ class Command(BaseCommand):
             result = initializer.initialize_all(instances=not models_only)
 
             # 输出结果
+            if result["success"] and not models_only:
+                from apps.cmdb.models.repair_state import mark_display_backfill_complete
+
+                mark_display_backfill_complete()
             if result["success"]:
                 self.stdout.write(
                     self.style.SUCCESS(
