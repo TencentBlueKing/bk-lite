@@ -8,9 +8,11 @@ from apps.cmdb.services.host_sync_identity import (
     build_host_inst_name,
     heal_legacy_cloud_id,
     host_lookup_key,
+    host_sync_values_equal,
     is_node_mgmt_sidecar_id,
     is_unique_conflict,
     node_id_to_write,
+    normalize_org_ids,
     parse_cloud_id,
     resolve_host_identity,
     should_refresh_host_inst_name,
@@ -150,6 +152,22 @@ def test_resolve_skips_when_ip_or_cloud_missing_after_id_miss():
     )
     assert match.skipped is True
     assert match.instance is None
+
+
+def test_host_sync_values_equal_ignores_graph_type_noise():
+    assert host_sync_values_equal("cloud", "2", 2) is True
+    assert host_sync_values_equal("cloud", 2.0, 2) is True
+    assert host_sync_values_equal("cloud", 2, 3) is False
+    assert host_sync_values_equal("organization", [1], ["1"]) is True
+    assert host_sync_values_equal("organization", [1.0, 2], [2, 1]) is True
+    assert host_sync_values_equal("organization", [1], [2]) is False
+    assert host_sync_values_equal("os_type", 1, "1") is True
+    assert host_sync_values_equal("os_type", ["1"], "1") is True
+    assert host_sync_values_equal("os_type", "1", ["1"]) is True
+    assert host_sync_values_equal("os_type", ["1"], "2") is False
+    assert host_sync_values_equal("os_type", "1", "2") is False
+    assert host_sync_values_equal("ip_addr", "10.0.0.7", "10.0.0.7") is True
+    assert normalize_org_ids(["1", 2, 2]) == [1, 2]
 
 
 def test_node_id_to_write_fills_empty_only():
