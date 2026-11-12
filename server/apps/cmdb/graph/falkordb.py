@@ -865,6 +865,21 @@ class FalkorDBClient:
             return [coerce_cloud_id_properties(row) for row in FormatDBResult(objs).to_list_of_lists()], count
         return self.entity_to_list(objs), count
 
+    def query_scalar_rows(self, query: str, params: dict | None = None) -> list[dict]:
+        """执行返回标量列的查询，按表头拼成字典。"""
+        result = self._execute_query(query, params=params)
+        header = getattr(result, "header", None) or []
+        names = []
+        for item in header:
+            if isinstance(item, (list, tuple)) and len(item) > 1:
+                names.append(item[1])
+            else:
+                names.append(str(item))
+        rows = []
+        for record in getattr(result, "result_set", None) or []:
+            rows.append({names[index]: record[index] for index in range(min(len(names), len(record)))})
+        return rows
+
     def query_compiled_entities(
         self,
         match,

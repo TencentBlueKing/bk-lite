@@ -2176,15 +2176,33 @@ class ModelManage(object):
         keep_existing_unique_rules_on_conflict: bool = False,
     ):
         with GraphClient() as ag:
-            for sheet_name, rows in model_config.items():
-                if not sheet_name.startswith("attr-"):
-                    continue
+            attr_sheets = [(name, rows) for name, rows in model_config.items() if name.startswith("attr-")]
+            model_ids = [name.replace("attr-", "", 1) for name, _rows in attr_sheets]
+            models_by_id = {}
+            if model_ids:
+                found, _ = ag.query_entity(MODEL, [{"field": "model_id", "type": "str[]", "value": model_ids}])
+                models_by_id = {item.get("model_id"): item for item in found if item.get("model_id")}
+            for sheet_name, rows in attr_sheets:
                 model_id = sheet_name.replace("attr-", "", 1)
-                model_info = ModelManage.search_model_info(model_id)
+                model_info = models_by_id.get(model_id)
                 if not model_info:
                     continue
                 try:
-                    rules = build_unique_rules_from_attr_rows(model_id, rows)
+                    rules = build_unique_rules_from_attr_rows(
+                        model_id,
+                        rows,
+                        model_info=model_info,
+                        preserve_existing_ids=True,
+                    )
+                    stored_groups = tuple(tuple(rule.field_ids) for rule in parse_unique_rules(model_info.get("unique_rules")))
+                    desired_groups = tuple(tuple(rule.field_ids) for rule in rules)
+                    if stored_groups == desired_groups:
+                        continue
+                    if keep_existing_unique_rules_on_conflict:
+                        from apps.cmdb.services.instance_shape_repair import defer_unique_rule
+
+                        defer_unique_rule(model_id, desired_groups)
+                        continue
                     exist_items, _ = ag.query_entity(
                         INSTANCE,
                         [{"field": "model_id", "type": "str=", "value": model_id}],
@@ -2195,15 +2213,6 @@ class ModelManage(object):
                         exist_items,
                     )
                     if conflicts:
-                        if keep_existing_unique_rules_on_conflict:
-                            logger.warning(
-                                "[UniqueRule] 存量实例与待应用规则冲突，保留原唯一规则并继续初始化 " "model_id=%s sheet_name=%s conflict_count=%s reason=%s",
-                                model_id,
-                                sheet_name,
-                                len(conflicts),
-                                conflicts[0].message,
-                            )
-                            continue
                         raise BaseAppException(conflicts[0].message)
                     ag.set_entity_properties(
                         MODEL,

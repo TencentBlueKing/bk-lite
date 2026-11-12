@@ -1504,9 +1504,15 @@ class TestModelMigrateWithDB:
         monkeypatch.setattr(m, "migrate_public_enum_libraries", lambda: {"created": 0})
         monkeypatch.setattr(m, "migrate_models", lambda: (["m"], ["ca"]))
         monkeypatch.setattr(m, "migrate_associations", lambda: ["a"])
+        called = {"organization": 0}
         monkeypatch.setattr(m, "check_and_update_old_models_group", lambda: None)
-        monkeypatch.setattr(m, "check_and_update_old_instances_organization", lambda: None)
+        monkeypatch.setattr(
+            m,
+            "check_and_update_old_instances_organization",
+            lambda: called.__setitem__("organization", called["organization"] + 1),
+        )
         res = m.main()
+        assert called["organization"] == 0
         assert res == {
             "classification": ["c"],
             "public_enum_libraries": {"created": 0},
@@ -1525,10 +1531,16 @@ class TestModelMigrateWithDB:
         def _boom():
             raise RuntimeError("graph down")
 
+        called = {"organization": 0}
         monkeypatch.setattr(m, "check_and_update_old_models_group", _boom)
-        monkeypatch.setattr(m, "check_and_update_old_instances_organization", _boom)
-        # 异常被吞掉，main 仍返回完整结构
+        monkeypatch.setattr(
+            m,
+            "check_and_update_old_instances_organization",
+            lambda: called.__setitem__("organization", called["organization"] + 1),
+        )
+        # 模型组织修补的异常被吞掉，main 仍返回完整结构。实例组织全表修复不再进入启动。
         res = m.main()
+        assert called["organization"] == 0
         assert set(res.keys()) == {"classification", "public_enum_libraries", "model", "classification_assos", "association"}
 
     def test_check_and_update_old_instances_organization(self, monkeypatch):

@@ -1085,14 +1085,6 @@ class ModelMigrate:
 
             logger.error(f"Error updating old models group: {traceback.format_exc()}")
 
-        try:
-            # 检查并修复旧实例的 organization 字段类型
-            self.check_and_update_old_instances_organization()
-        except Exception as err:  # noqa
-            import traceback
-
-            logger.error(f"Error updating old instances organization: {traceback.format_exc()}")
-
         return dict(
             classification=classification_resp,
             public_enum_libraries=public_enum_library_resp,
@@ -1125,9 +1117,10 @@ class ModelMigrate:
                 )
 
     def check_and_update_old_instances_organization(self):
-        """检查并修复旧实例的 organization 字段类型
+        """检查并修复旧实例的 organization 字段类型。
 
-        将单个整数类型的 organization 转换为列表类型，以保持与模型定义一致
+        启动不再调用这个方法。存量实例改由运行期一次性任务按页修复。
+        将单个整数类型的 organization 转换为列表类型，以保持与模型定义一致。
         """
         with GraphClient() as ag:
             # 查询所有实例

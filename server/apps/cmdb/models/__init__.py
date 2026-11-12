@@ -1,5 +1,4 @@
 from apps.cmdb.models.auto_relation_pending import *  # noqa
-from apps.cmdb.models.scale_cursor import *  # noqa
 from apps.cmdb.models.change_record import *  # noqa
 from apps.cmdb.models.collect_model import *  # noqa
 from apps.cmdb.models.collect_reconcile import *  # noqa
@@ -12,6 +11,8 @@ from apps.cmdb.models.ipam_models import IPAMReconcileRun, IPAMReconcileSource  
 from apps.cmdb.models.node_mgmt_sync import *  # noqa
 from apps.cmdb.models.operation import *  # noqa
 from apps.cmdb.models.public_enum_library import *  # noqa
+from apps.cmdb.models.repair_state import *  # noqa
+from apps.cmdb.models.scale_cursor import *  # noqa
 from apps.cmdb.models.scan_model import *  # noqa
 from apps.cmdb.models.scene_view import *  # noqa
 from apps.cmdb.models.show_field import *  # noqa

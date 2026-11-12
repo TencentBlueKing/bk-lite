@@ -31,10 +31,15 @@ class Command(BaseCommand):
         with GraphClient() as ag:
             models, _ = ag.query_entity(MODEL, [])
 
-        # 2. 为每个模型提取并创建分组
+        # 2. 为每个模型提取并创建分组。分组一次读出，内容和顺序没变则不写。
         total_created = 0
         total_skipped = 0
         total_updated = 0
+        model_ids = [model.get("model_id") for model in models if model.get("model_id")]
+        prefetched_groups = {}
+        if not force:
+            for group in FieldGroup.objects.filter(model_id__in=model_ids):
+                prefetched_groups.setdefault(group.model_id, {})[group.group_name] = group
 
         for model in models:
             model_id = model.get("model_id")
@@ -81,16 +86,21 @@ class Command(BaseCommand):
             created_count = 0
             updated_count = 0
             try:
-                # 重新查询现有分组（force模式下已删除，这里为空）
-                existing_groups_dict = {g.group_name: g for g in FieldGroup.objects.filter(model_id=model_id)}
+                if force:
+                    existing_groups_dict = {}
+                else:
+                    existing_groups_dict = prefetched_groups.get(model_id, {})
 
                 for idx, group_name in enumerate(group_names, start=1):
                     # 收集该分组下的所有属性ID（按attrs中的顺序）
                     group_attr_orders = [attr.get("attr_id") for attr in attrs if attr.get("attr_group") == group_name and attr.get("attr_id")]
 
                     if group_name in existing_groups_dict:
-                        # 更新已存在的分组
+                        # 内容和顺序都没变时不写库
                         group = existing_groups_dict[group_name]
+                        current_orders = group.attr_orders or []
+                        if group.order == idx and current_orders == group_attr_orders:
+                            continue
                         group.attr_orders = group_attr_orders
                         group.order = idx
                         group.save(update_fields=["attr_orders", "order"])
