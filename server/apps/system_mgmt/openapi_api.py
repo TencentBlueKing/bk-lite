@@ -1,7 +1,5 @@
 """ITSM 用户目录、组织目录与通知渠道统一 OpenAPI 网关端点。"""
 
-import uuid
-
 from django.db.models import CharField, F, Q, Value
 
 from apps.core.exceptions.base_app_exception import BaseAppException
@@ -11,7 +9,8 @@ from apps.system_mgmt.models import Group, Role
 from apps.system_mgmt.models import User as SystemUser
 from apps.system_mgmt.models.channel import Channel, ChannelChoices
 from apps.system_mgmt.models.im_notification_channel import IMNotificationChannel, IMNotificationChannelStatusChoices
-from apps.system_mgmt.nats.channels import _channel_has_organization, _notification_channel_capabilities, dispatch_notification
+from apps.system_mgmt.nats import channels as notification_channels
+from apps.system_mgmt.nats.channels import _channel_has_organization, _notification_channel_capabilities
 from apps.system_mgmt.openapi_serializers import (
     NotificationChannelPageResponseSerializer,
     NotificationSendResponseSerializer,
@@ -58,20 +57,20 @@ _CHANNEL_CATALOG_SUMMARY = (
     "新增或停用渠道不新增、不删除网关路径。不返回连接配置。NATS 等内部通道不在此目录。" + _ORG_SCOPE
 )
 _TITLE_PARAMETER_DESCRIPTION = {
-    ChannelChoices.EMAIL: "邮件主题。可以留空。",
+    ChannelChoices.EMAIL: "邮件主题，原样发送。可以留空。",
     ChannelChoices.ENTERPRISE_WECHAT: "企微应用消息不使用标题，传空字符串即可。",
     ChannelChoices.ENTERPRISE_WECHAT_BOT: "企微机器人只发送正文，标题不会出现在消息里，传空字符串即可。",
-    ChannelChoices.FEISHU_BOT: "飞书卡片标题。留空时渠道侧显示为「通知」。",
-    ChannelChoices.DINGTALK_BOT: "钉钉 markdown 标题。留空时渠道侧显示为「通知」。",
+    ChannelChoices.FEISHU_BOT: "飞书卡片标题，原样发送。留空时渠道侧显示为「通知」。",
+    ChannelChoices.DINGTALK_BOT: "钉钉 markdown 标题，原样发送。留空时渠道侧显示为「通知」。",
     ChannelChoices.CUSTOM_WEBHOOK: "自定义 Webhook 不使用标题，传空字符串即可。",
 }
 _CONTENT_PARAMETER_DESCRIPTION = {
-    ChannelChoices.EMAIL: "邮件正文。换行会保留。",
-    ChannelChoices.ENTERPRISE_WECHAT: "企微应用文本消息正文。",
-    ChannelChoices.ENTERPRISE_WECHAT_BOT: "企微机器人 markdown 正文。接收人名会追加在正文后面。",
-    ChannelChoices.FEISHU_BOT: "飞书卡片 markdown 正文。接收人名会追加在正文后面。",
-    ChannelChoices.DINGTALK_BOT: "钉钉 markdown 正文。接收人名会追加在正文后面。",
-    ChannelChoices.CUSTOM_WEBHOOK: "通知正文，会替换该渠道模板中的 {{content}}。接收人名会追加在正文后面。",
+    ChannelChoices.EMAIL: "邮件正文，原样作为 HTML 发送。不会转义标签，也不会把换行改成换行标签。",
+    ChannelChoices.ENTERPRISE_WECHAT: "企微应用文本消息正文，原样发送。",
+    ChannelChoices.ENTERPRISE_WECHAT_BOT: "企微机器人 markdown 正文，原样发送。接收人名会换行追加在正文后面。",
+    ChannelChoices.FEISHU_BOT: "飞书卡片 markdown 正文，原样发送。接收人名会换行追加在正文后面。",
+    ChannelChoices.DINGTALK_BOT: "钉钉 markdown 正文，原样发送。接收人名会以 <br> 追加在正文后面。",
+    ChannelChoices.CUSTOM_WEBHOOK: "通知正文，原样替换该渠道模板中的 {{content}}。接收人名会以 <br> 追加在正文后面。",
 }
 _RECEIVER_PARAMETER_DESCRIPTION = {
     "system_user": "平台用户 ID 字符串，取自 GET /openapi/v1/system-mgmt/users 返回的 id，且必须属于当前组织。不要传用户名。1 到 100 个，不能重复。",
@@ -87,6 +86,20 @@ _CHANNEL_SEND_SUMMARY = (
 
 def _soft_error(message):
     return {"result": False, "message": message}
+
+
+def _channel_delivery_accepted(result):
+    """与公开投递一致：只有非字典或 result 明确为 false 才拒绝。"""
+    return isinstance(result, dict) and result.get("result") is not False
+
+
+def _channel_delivery_failure_message(result):
+    if isinstance(result, dict):
+        for key in ("errmsg", "msg", "message"):
+            value = result.get(key)
+            if value:
+                return str(value)
+    return _DELIVERY_FAILED_MESSAGE
 
 
 def _injected_team_ids(team):
@@ -668,21 +681,15 @@ def openapi_send_notification(
         recipient_error = _system_user_recipients_in_scope(receivers, query_ids)
         if recipient_error is not None:
             return recipient_error
-    result = dispatch_notification(
-        delivery_key=uuid.uuid4().hex,
-        channel_id=channel.id,
-        organization_ids=query_ids,
-        recipients=list(receivers),
-        title=title or "",
-        body=content,
-        event_payload={},
-        producer="itsm",
+    result = notification_channels.send_msg_with_channel(
+        channel.id,
+        title or "",
+        content,
+        [str(receiver).strip() for receiver in receivers],
+        channel_type=channel.channel_type,
     )
-    if not isinstance(result, dict) or result.get("result") is not True or result.get("code") != "delivered":
-        message = _DELIVERY_FAILED_MESSAGE
-        if isinstance(result, dict) and result.get("message"):
-            message = str(result["message"])
-        return _soft_error(message)
+    if not _channel_delivery_accepted(result):
+        return _soft_error(_channel_delivery_failure_message(result))
     return {
         "channel_id": channel.id,
         "channel_type": channel.channel_type,
@@ -700,11 +707,8 @@ def _openapi_send_im_notification(channel_id, content, receivers, title, query_i
     if recipient_error is not None:
         return recipient_error
     result = send_im_notification(channel.id, title or "", content, list(receivers))
-    if not isinstance(result, dict) or result.get("result") is not True:
-        message = _DELIVERY_FAILED_MESSAGE
-        if isinstance(result, dict) and result.get("message"):
-            message = str(result["message"])
-        return _soft_error(message)
+    if not _channel_delivery_accepted(result):
+        return _soft_error(_channel_delivery_failure_message(result))
     return {
         "channel_id": channel.id,
         "channel_type": IMNotificationChannel.CHANNEL_TYPE,
