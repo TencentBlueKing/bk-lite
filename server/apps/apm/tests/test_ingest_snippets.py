@@ -335,7 +335,10 @@ def test_host_snippet_installs_or_bootstraps_the_selected_sdk(language, expected
     assert "npmjs" not in snippet.code
     assert "https://github.com" not in snippet.code
     assert "packagist.org" not in snippet.code
-    assert "go get " not in snippet.code
+    if language == "go":
+        assert "go get " not in _install_section(snippet.code, "host")
+    else:
+        assert "go get " not in snippet.code
     assert "nuget.org" not in snippet.code
     assert "rubygems.org" not in snippet.code
     assert "hex.pm" not in snippet.code
@@ -368,7 +371,10 @@ def test_snippet_downloads_probe_from_the_system_address_instead_of_the_public_i
     assert "https://github.com" not in snippet.code
     assert "pypi.org" not in snippet.code
     assert "npmjs" not in snippet.code
-    assert "go get " not in snippet.code
+    if language == "go" and runtime in {"host", "docker"}:
+        assert "go get " not in _install_section(snippet.code, runtime)
+    else:
+        assert "go get " not in snippet.code
     assert "nuget.org" not in snippet.code
     assert "rubygems.org" not in snippet.code
     assert "hex.pm" not in snippet.code
@@ -609,7 +615,7 @@ def test_kubernetes_snippet_uses_downward_api_pod_uid_and_standard_otel_environm
     assert "pypi.org" not in snippet.code
 
 
-def test_go_snippet_is_an_explicit_manual_sdk_guide_with_complete_provider_setup():
+def test_go_snippet_is_an_explicit_manual_sdk_guide_with_complete_provider_setup(tmp_path):
     snippet = DjangoIntegrationConfigurationService().render_snippet(
         _request(
             language="go",
@@ -624,7 +630,16 @@ def test_go_snippet_is_an_explicit_manual_sdk_guide_with_complete_provider_setup
 
     assert "Go 无通用零代码探针" in snippet.code
     assert _PROBE_DOWNLOAD_URLS["go"] in snippet.code
-    assert "go get " not in snippet.code
+    assert "go get " not in _install_section(snippet.code, "host")
+    assert snippet.code.count("\ngo get ") == 1
+    assert (
+        "go get go.opentelemetry.io/otel@v1.46.0 "
+        "go.opentelemetry.io/otel/sdk@v1.46.0 "
+        "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp@v1.46.0 "
+        "go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp@v0.70.0"
+    ) in snippet.code
+    assert 'export GOPROXY="file://$(pwd)/.otel-go-sdk"' in snippet.code
+    assert "不要省略版本，也不要只取 otelhttp" in snippet.code
     assert "https://github.com" not in snippet.code
     assert "go.opentelemetry.io/otel@v1.46.0" in snippet.code
     assert "go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp@v0.70.0" in snippet.code
@@ -633,7 +648,7 @@ def test_go_snippet_is_an_explicit_manual_sdk_guide_with_complete_provider_setup
     assert "go.opentelemetry.io/contrib/instrumentation/github.com/labstack/echo/otelecho@v0.70.0" in snippet.code
     assert "GOTOOLCHAIN=local" in snippet.code
     assert "Go 1.26 or newer is required" in snippet.code
-    assert snippet.code.count("go mod download") == 1
+    assert snippet.code.count("go mod download go.opentelemetry.io/otel@v1.46.0") == 1
     assert "telemetry/otel.go.example" in snippet.code
     assert "func NewTracerProvider(ctx context.Context) (*sdktrace.TracerProvider, error)" in snippet.code
     assert "otlptracehttp.New(ctx)" in snippet.code
@@ -643,6 +658,47 @@ def test_go_snippet_is_an_explicit_manual_sdk_guide_with_complete_provider_setup
     assert "defer tracerProvider.Shutdown" in snippet.code
     assert "Initialize the OpenTelemetry Go SDK" not in snippet.code
     assert subprocess.run(["sh", "-n"], input=snippet.code, text=True, capture_output=True).returncode == 0
+
+    guide = subprocess.run(
+        ["sh", "-c", snippet.code.split("# 3. 启动应用", 1)[1]],
+        cwd=tmp_path,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert guide.returncode == 0, guide.stderr
+    assert "go get go.opentelemetry.io/otel@v1.46.0 " in guide.stdout
+    assert (tmp_path / "telemetry" / "otel.go.example").is_file()
+    assert not (tmp_path / "go.mod").exists()
+
+    docker = DjangoIntegrationConfigurationService().render_snippet(
+        _request(
+            language="go",
+            runtime="docker",
+            endpoint="https://apm.example.com",
+            service_namespace="shop",
+            service_name="checkout",
+            service_version="1.0",
+            environment="production",
+        )
+    )
+    assert "go get " not in _install_section(docker.code, "docker")
+    assert docker.code.count("go get ") == 1
+    assert "GOPROXY=file:///opt/otel-go-sdk GOSUMDB=off GOTOOLCHAIN=local go get go.opentelemetry.io/otel@v1.46.0 " in docker.code
+    assert subprocess.run(["sh", "-n"], input=docker.code, text=True, capture_output=True).returncode == 0
+
+    kubernetes = DjangoIntegrationConfigurationService().render_snippet(
+        _request(
+            language="go",
+            runtime="kubernetes",
+            endpoint="https://apm.example.com",
+            service_namespace="shop",
+            service_name="checkout",
+            service_version="1.0",
+            environment="production",
+        )
+    )
+    assert "go get " not in kubernetes.code
 
 
 @pytest.mark.parametrize("runtime", ["host", "docker", "kubernetes"])

@@ -249,6 +249,7 @@ def get_user_login_token(user, username, skip_token_for_otp=False):
         if qr_code_base64:
             response_data["qr_code"] = qr_code_base64
             response_data["need_binding"] = True  # Flag to indicate first-time binding
+            response_data["otp_setup_key"] = pending_otp_secret
 
         return {
             "result": True,

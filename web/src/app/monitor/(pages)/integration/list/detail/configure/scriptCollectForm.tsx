@@ -69,6 +69,7 @@ const isScriptCollectPayload = (
 
 /**
  * Windows 提交/调试载荷完全省略 run_as（不写空串），由服务账号执行。
+ * Linux 留空同样省略 run_as，按采集进程用户运行；只有填写了才下发。
  * 解释器不在当前 OS 白名单内时，重置为该 OS 的默认项。
  */
 export const applyScriptCollectSubmit = <T extends Record<string, any>>(
@@ -89,21 +90,38 @@ export const applyScriptCollectSubmit = <T extends Record<string, any>>(
   }
   if (os === 'windows') {
     delete next.run_as;
+  } else {
+    const runAs = String(next.run_as ?? '').trim();
+    if (!runAs) {
+      delete next.run_as;
+    } else {
+      next.run_as = runAs;
+    }
   }
   delete next.timeout;
   return next as T;
 };
 
-/** 编辑保存沿用已落库配置时，Windows 必须删掉历史 run_as，避免空串再次下发。 */
-export const omitPersistedWindowsRunAs = (
+/**
+ * 编辑保存沿用已落库配置时：
+ * Windows 删掉历史 run_as；Linux 留空也删掉，避免空串再次下发。
+ */
+export const omitUnspecifiedScriptRunAs = (
   result: { child?: { content?: { config?: Record<string, any> } } } | null | undefined,
   values: Record<string, any> | null | undefined
 ) => {
-  if (values?.script_os !== 'windows') return;
   const config = result?.child?.content?.config;
-  if (config && Object.prototype.hasOwnProperty.call(config, 'run_as')) {
+  if (!config || !Object.prototype.hasOwnProperty.call(config, 'run_as')) return;
+  if (values?.script_os === 'windows') {
     delete config.run_as;
+    return;
   }
+  const runAs = String(values?.run_as ?? '').trim();
+  if (!runAs) {
+    delete config.run_as;
+    return;
+  }
+  config.run_as = runAs;
 };
 
 /** 脚本采集不下发 timeout，由采集器按 interval-1s 推导。 */
@@ -173,19 +191,24 @@ export const normalizeScriptCollectFormFields = (fields: any[] = []) => {
     label_en: 'Run As',
     type: 'input',
     required: false,
-    default_value: previousRunAs.default_value || 'telegraf',
     os_driven: true,
     rules: [],
-    description: 'Linux 必填，且不能为 root 或 UID 0。',
+    description: '填写采集端已有用户。',
+    description_en: 'Enter an existing user on the collector.',
+    tooltip:
+      '留空则跟随采集进程的用户运行，一般为 root。填写后按采集端已有用户运行，平台不会创建账号。用户不存在或没有权限时，仅这条脚本失败。',
+    tooltip_en:
+      'Leave empty to run as the collector process user, typically root. A specified value runs as that existing user on the collector. The platform does not create accounts. If the user does not exist or lacks permission, only this script fails.',
     widget_props: {
       ...(previousRunAs.widget_props || {}),
-      placeholder: 'telegraf'
+      placeholder: '留空按采集进程运行'
     },
     transform_on_edit: previousRunAs.transform_on_edit || {
       origin_path: 'child.content.config.run_as',
       to_api: {}
     }
   };
+  delete runAs.default_value;
   const rest = kept
     .filter(
       (field) =>
@@ -205,8 +228,6 @@ export const normalizeScriptCollectFormFields = (fields: any[] = []) => {
     });
   return [scriptOs, interpreter, runAs, ...rest];
 };
-
-const LINUX_RUN_AS_DEFAULT = 'telegraf';
 
 export const ScriptIntervalField: React.FC<{
   intervalField?: Record<string, any>;
@@ -267,24 +288,14 @@ export const ScriptIntervalField: React.FC<{
   );
 };
 
-/**
- * 先写入 run_as，再改 script_os。
- * 依赖校验会在 script_os 变更时抓当前值；若之后才补默认值，异步校验仍会用空串报「不能为空」。
- */
+/** Windows 清空执行用户。Linux 不补默认值，留空表示按采集进程用户运行。 */
 export const syncScriptRunAsForOs = (form: FormInstance, os: string) => {
   if (os === 'windows') {
     form.setFields([{ name: 'run_as', value: '', errors: [] }]);
-  } else {
-    const current = String(form.getFieldValue('run_as') || '').trim();
-    if (!current) {
-      form.setFields([{ name: 'run_as', value: LINUX_RUN_AS_DEFAULT, errors: [] }]);
-    } else {
-      form.setFields([{ name: 'run_as', errors: [] }]);
-    }
+    return;
   }
-  void Promise.resolve().then(() => {
-    form.validateFields(['run_as']).catch(() => undefined);
-  });
+  const current = String(form.getFieldValue('run_as') || '').trim();
+  form.setFields([{ name: 'run_as', value: current, errors: [] }]);
 };
 
 export const ScriptOsSegmented: React.FC<{
@@ -382,7 +393,7 @@ export const ScriptRunAsInput: React.FC<{
       disabled={Boolean(disabled || windows)}
       style={style}
       value={windows ? '' : value}
-      placeholder={windows ? '服务账号' : placeholder || 'telegraf'}
+      placeholder={windows ? '服务账号' : placeholder || '留空按采集进程运行'}
       onChange={windows ? undefined : onChange}
     />
   );
