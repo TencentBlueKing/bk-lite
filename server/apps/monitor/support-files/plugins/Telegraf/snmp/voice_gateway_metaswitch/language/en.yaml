@@ -12,9 +12,7 @@ monitor_object_metric:
   VoiceGateway:
     snmp_uptime:
       name: System Uptime
-      desc: This metric indicates the uptime of the device since the last restart,
-        derived from sysUpTime. Monitoring uptime helps administrators understand
-        device stability and identify unexpected reboots or failures.
+      desc: This metric indicates the uptime of the device since the last restart, derived from sysUpTime. Monitoring uptime helps administrators understand device stability and identify unexpected reboots or failures.
     interface_ifHCInOctets:
       name: Interface Incoming Traffic Rate
       desc: This metric indicates the average rate of bytes received over the past
@@ -53,9 +51,8 @@ monitor_object_metric:
       desc: Total CPU usage of a MetaView EMS node for the current 5-minute summary
         period (METASWITCH-MIB emsStatsTotCPUUsage, 0-100 percent).
     metaswitch_ems_cpu_usage_hwm:
-      name: EMS CPU Usage High-Water Mark
-      desc: High-water mark of total CPU usage of a MetaView EMS node
-        (METASWITCH-MIB emsStatsTotCPUUsageHighWaterMark, 0-100 percent).
+      name: EMS CPU Usage Peak
+      desc: Peak total CPU usage of a MetaView EMS node (METASWITCH-MIB emsStatsTotCPUUsageHighWaterMark, 0-100 percent).
     metaswitch_ems_mem_total_mb:
       name: EMS Physical Memory Total
       desc: Total physical memory of a MetaView EMS node in megabytes

@@ -7,6 +7,24 @@
   min-width: 0;
 }
 
+/* 专业盘页壳跟内容走。盖过共享 .page 的 min-height:100%，避免复制等短 Tab 把灰底撑满一屏。 */
+.proPage.proPage {
+  height: auto;
+  min-height: 0;
+  overflow: visible;
+}
+
+.proShell.proShell {
+  padding-bottom: 0;
+}
+
+.fitContent.fitContent {
+  flex: none;
+  height: auto;
+  min-height: 0;
+  overflow: visible;
+}
+
 .metricsMode {
   display: flex;
   flex-direction: column;

@@ -9,9 +9,7 @@ monitor_object_metric:
   VoiceGateway:
     snmp_uptime:
       name: System Uptime
-      desc: This metric indicates the uptime of the device since the last restart,
-        derived from sysUpTime. Monitoring uptime helps administrators understand
-        device stability and identify unexpected reboots or failures.
+      desc: This metric indicates the uptime of the device since the last restart, derived from sysUpTime. Monitoring uptime helps administrators understand device stability and identify unexpected reboots or failures.
     interface_ifHCInOctets:
       name: Interface Incoming Traffic Rate
       desc: This metric indicates the average rate of bytes received over the past
@@ -66,9 +64,7 @@ monitor_object_metric:
         memAvailReal and converted from kB to bytes.
     memory_usage_percent:
       name: Memory Usage
-      desc: Real memory utilization of the Mitel MiVoice 5000, derived as (memTotalReal
-        - memAvailReal) / memTotalReal * 100. Sustained high usage may indicate resource
-        pressure.
+      desc: Real memory utilization of the Mitel MiVoice 5000. Sustained high usage may indicate resource pressure.
     memory_total_free:
       name: Total Free Memory
       desc: Optional total free memory of the Mitel MiVoice 5000 (UCD-SNMP memTotalFree,

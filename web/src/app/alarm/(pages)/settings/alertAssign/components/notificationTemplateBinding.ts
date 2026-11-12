@@ -6,12 +6,33 @@ export interface NotificationTemplateOption {
   value: number;
 }
 
+const TEMPLATE_SCENES = ['default', 'reminder', 'escalation', 'recovery'] as const;
+
+export type NotificationTemplateScene = (typeof TEMPLATE_SCENES)[number];
+
 export type NotificationTemplateBindings = Record<
   string,
-  Partial<Record<'default' | 'reminder' | 'escalation' | 'recovery', number | null | undefined>>
+  Partial<Record<NotificationTemplateScene, number | null | undefined>>
 >;
 
-const TEMPLATE_SCENES = ['default', 'reminder', 'escalation', 'recovery'] as const;
+export const activeNotificationTemplateScenes = ({
+  notificationScenario,
+  notificationFrequency,
+  escalationEnabled,
+}: {
+  notificationScenario?: string[] | null;
+  notificationFrequency?: Record<string, { interval_minutes?: number | null } | null | undefined> | null;
+  escalationEnabled?: boolean;
+}): NotificationTemplateScene[] => {
+  const scenes: NotificationTemplateScene[] = ['default'];
+  const reminderEnabled = Object.values(notificationFrequency || {}).some(
+    (level) => Number(level?.interval_minutes || 0) > 0,
+  );
+  if (reminderEnabled) scenes.push('reminder');
+  if (escalationEnabled) scenes.push('escalation');
+  if ((notificationScenario || []).includes('recovery')) scenes.push('recovery');
+  return scenes;
+};
 
 export const getNotificationTemplateBindings = (channels: ChannelItem[]): NotificationTemplateBindings =>
   Object.fromEntries(channels.flatMap((channel) => {

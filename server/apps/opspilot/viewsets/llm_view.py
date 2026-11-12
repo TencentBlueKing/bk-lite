@@ -205,13 +205,15 @@ class LLMViewSet(PinMixin, AuthViewSet):
                 message = message.format(validate_msg=validate_msg)
             return JsonResponse({"result": False, "message": message})
         params["enable_conversation_history"] = True
-        params["skill_prompt"] = (self.loader.get("skill.default_prompt") if self.loader else None) or (
-            "You are a professional assistant. Reply according to these rules:\n"
-            "1. For the user's question, retrieve related knowledge from the knowledge base and summarize the answer.\n"
-            "2. Based on the user's need, choose and run the appropriate tool.\n"
-            "3. Keep the reply accurate. Do not make things up.\n"
-            "4. Organize the answer in clear points."
-        )
+        supplied_prompt = params.get("skill_prompt")
+        if not isinstance(supplied_prompt, str) or not supplied_prompt.strip():
+            params["skill_prompt"] = (self.loader.get("skill.default_prompt") if self.loader else None) or (
+                "You are a professional assistant. Reply according to these rules:\n"
+                "1. For the user's question, retrieve related knowledge from the knowledge base and summarize the answer.\n"
+                "2. Based on the user's need, choose and run the appropriate tool.\n"
+                "3. Keep the reply accurate. Do not make things up.\n"
+                "4. Organize the answer in clear points."
+            )
         for item in params.get("skill_params", []):
             if item.get("type") == "password":
                 EncryptMixin.encrypt_field("value", item)

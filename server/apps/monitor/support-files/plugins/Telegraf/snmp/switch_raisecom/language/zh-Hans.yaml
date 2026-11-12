@@ -21,7 +21,7 @@ monitor_object_metric:
       desc: 该指标表示 Raisecom ISCOM/Gazelle 交换机系统可用内存（raisecomMemoryAvailable），单位为字节。空闲量持续偏低说明存在内存压力。
     device_memory_usage:
       name: 内存使用率
-      desc: 该指标表示 Raisecom ISCOM/Gazelle 交换机整体内存使用率，按 (总量-空闲)/总量*100 计算。持续偏高可能由内存泄漏、MAC/ARP 表过大或容量不足导致。
+      desc: Raisecom ISCOM/Gazelle 交换机整体内存使用率。持续偏高可能由内存泄漏、MAC/ARP 表过大或容量不足导致。
     device_temperature_celsius:
       name: 机箱温度
       desc: 该指标表示 Raisecom ISCOM/Gazelle 交换机的机箱温度（raisecomTemperatureValue），单位为摄氏度。持续偏高可能意味着散热不良或环境过热。

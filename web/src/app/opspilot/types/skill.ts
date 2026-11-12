@@ -228,14 +228,18 @@ export interface SkillTemplate {
   name: string;
   introduction: string;
   skill_type: number;
+  skill_prompt?: string;
+  tools?: { name: string }[];
 }
 
 export interface CreateSkillPayload {
   name: string;
   introduction: string;
-  team: string[];
+  team?: number[] | string[];
   usage_team?: number[] | string[];
   skill_type: number;
+  skill_prompt?: string;
+  tools?: { id?: number; name: string; icon?: string; kwargs: [] }[];
 }
 
 export interface SkillPackage {

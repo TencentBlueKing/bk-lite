@@ -15,7 +15,7 @@ import {
   ThunderboltOutlined,
   WarningOutlined,
 } from '@ant-design/icons';
-import { Button, Col, Row, Segmented, Skeleton, Space, Typography } from 'antd';
+import { Alert, Button, Col, Row, Segmented, Skeleton, Space, Typography } from 'antd';
 import useApmApi from '@/app/apm/api';
 import DonutChart, { HEALTH_DONUT_COLORS } from '@/app/apm/components/home/donut-chart';
 import { DEPLOYMENT_STATUS_META } from '@/app/apm/components/deployment-status';
@@ -37,6 +37,7 @@ import {
   formatRelativeTime,
   formatThroughput,
 } from '@/app/apm/components/metric-format';
+import { sloRetentionLabel } from '@/app/apm/components/slo-reason';
 import type {
   ApmDashboard,
   ApmDashboardAlertRow,
@@ -261,34 +262,46 @@ function SloOverviewList({ items }: { items: ApmDashboardSloRow[] }) {
         <span className="text-right">{t('apm.home.sloRate', '达成率')}</span>
         <span className="text-center">{t('apm.home.sloStatus', '状态')}</span>
       </div>
-      {items.map((row, index) => (
-        <div
-          key={row.id}
-          className={`grid grid-cols-[minmax(0,1fr)_88px_72px_64px] items-center gap-2 py-2.5 ${
-            index < items.length - 1 ? 'border-b border-[var(--color-border)]' : ''
-          }`}
-        >
-          <Link
-            href={`/apm/services/${row.service_id}`}
-            className="truncate text-sm font-medium text-[var(--color-text-1)] hover:text-[var(--color-primary)]"
-            title={row.service_name}
+      {items.map((row, index) => {
+        const retention = sloRetentionLabel(row.reason, t);
+        const met = row.met === true;
+        return (
+          <div
+            key={row.id}
+            className={`grid grid-cols-[minmax(0,1fr)_88px_72px_64px] items-center gap-2 py-2.5 ${
+              index < items.length - 1 ? 'border-b border-[var(--color-border)]' : ''
+            }`}
           >
-            {row.service_name}
-          </Link>
-          <span className="text-right text-sm tabular-nums text-[var(--color-text-3)]">
-            {formatPercentage(row.objective, row.objective % 1 === 0 ? 1 : 2)}
-          </span>
-          <span
-            className="text-right text-sm font-semibold tabular-nums"
-            style={{ color: row.met ? 'var(--color-success)' : 'var(--color-fail)' }}
-          >
-            {formatPercentage(row.current_rate, 2)}
-          </span>
-          <span className="flex justify-center">
-            <StatusPill label={row.met ? t('apm.home.sloMet', '达成') : t('apm.home.sloUnmet', '未达成')} tone={row.met ? 'success' : 'danger'} />
-          </span>
-        </div>
-      ))}
+            <div className="min-w-0">
+              <Link
+                href={`/apm/services/${row.service_id}`}
+                className="block truncate text-sm font-medium text-[var(--color-text-1)] hover:text-[var(--color-primary)]"
+                title={row.service_name}
+              >
+                {row.service_name}
+              </Link>
+              {retention ? (
+                <div className="truncate text-xs text-[var(--color-text-3)]" title={retention}>{retention}</div>
+              ) : null}
+            </div>
+            <span className="text-right text-sm tabular-nums text-[var(--color-text-3)]">
+              {formatPercentage(row.objective, row.objective % 1 === 0 ? 1 : 2)}
+            </span>
+            <span
+              className="text-right text-sm font-semibold tabular-nums"
+              style={{ color: row.current_rate == null ? 'var(--color-text-3)' : met ? 'var(--color-success)' : 'var(--color-fail)' }}
+            >
+              {row.current_rate == null ? '—' : formatPercentage(row.current_rate, 2)}
+            </span>
+            <span className="flex justify-center">
+              <StatusPill
+                label={retention ? t('apm.common.noData', '无数据') : met ? t('apm.home.sloMet', '达成') : t('apm.home.sloUnmet', '未达成')}
+                tone={retention ? 'warning' : met ? 'success' : 'danger'}
+              />
+            </span>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -400,6 +413,15 @@ export default function ApmHomePage() {
         : [];
 
   const sectionFailed = (section: ApmDashboardSection<unknown> | undefined) => section?.status === 'failed';
+  const notice = dashboard?.aggregate_notice;
+  const aggregateNoticeParts = [
+    notice && notice.late_spans != null && notice.late_spans > 0
+      ? t('apm.home.lateSpans', '这段时间有 {count} 个晚到 Span 没有计入请求数', { count: notice.late_spans })
+      : '',
+    notice && notice.truncated_service_count > 0
+      ? t('apm.home.truncatedServices', '{count} 个服务的入口组合超过上限，多出的入口没有计入该服务', { count: notice.truncated_service_count })
+      : '',
+  ].filter(Boolean);
 
   return (
     <ApmRouteShell title={t('apm.home.title', '首页')} description={t('apm.home.description', '查看应用性能总览、健康分布与待处理告警。')}>
@@ -425,6 +447,18 @@ export default function ApmHomePage() {
         <HomeEmptyState />
       ) : (
         <>
+          {aggregateNoticeParts.length ? (
+            <Alert
+              className="!mb-4"
+              message={(
+                <div className="flex flex-col gap-0.5">
+                  {aggregateNoticeParts.map((text) => <div key={text}>{text}</div>)}
+                </div>
+              )}
+              showIcon
+              type="info"
+            />
+          ) : null}
           {sectionFailed(dashboard?.kpis) ? (
             <FailedSection onRetry={load} />
           ) : (

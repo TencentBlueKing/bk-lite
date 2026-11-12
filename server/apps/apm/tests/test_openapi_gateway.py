@@ -373,7 +373,7 @@ def test_api_tenant_can_query_own_service_metrics(tenants, monkeypatch):
     application = _application(organization=tenants.a.team.id)
     service = _service(application, tenants.a.team.id)
     monkeypatch.setattr(
-        "apps.apm.openapi_service._telemetry",
+        "apps.apm.openapi_service._service_metrics_reader",
         lambda: _Telemetry(red=ServiceRed(request_rate=1.5, error_rate=0.0, p95_ms=12.0, p99_ms=20.0, request_count=10, error_count=0)),
     )
 
@@ -392,7 +392,7 @@ def test_api_tenant_cannot_query_other_org_service_metrics(tenants, monkeypatch)
     application = _application(organization=tenants.a.team.id)
     service = _service(application, tenants.a.team.id)
     monkeypatch.setattr(
-        "apps.apm.openapi_service._telemetry",
+        "apps.apm.openapi_service._service_metrics_reader",
         lambda: (_ for _ in ()).throw(AssertionError("queried")),
     )
 

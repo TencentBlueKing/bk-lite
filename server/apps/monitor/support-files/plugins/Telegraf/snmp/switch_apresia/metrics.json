@@ -125,7 +125,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric reports the fan health of the APRESIA device, derived from the per-fan status table (APRESIA-NP-HW npFanStatus, one row per fan). The raw codes (normal(1), abnormal(2)) are normalized via telegraf processors.enum so that 1 = healthy and 2 = fault, and the worst fan is taken per device. A value greater than 1 indicates a failed fan that risks thermal damage and warrants investigation."
+      "description": "This metric reports the fan health of the APRESIA device. The raw codes (normal(1), abnormal(2)) are normalized via telegraf processors.enum so that 1 = healthy and 2 = fault, and the worst fan is taken per device. A value greater than 1 indicates a failed fan that risks thermal damage and warrants investigation."
     },
     {
       "metric_group": "Hardware Status",
@@ -143,7 +143,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric reports the power-supply health of the APRESIA device, derived from the per-power-supply status table (APRESIA-NP-HW npPowerStatus, one row per power supply). The raw codes (inOperation(1)=OK, failed(2)=fault, empty(3)=slot unpopulated) are normalized via telegraf processors.enum so that 1 = healthy and 2 = fault, with empty(3) treated as healthy because an unpopulated slot is not a fault, and the worst supply is taken per device. A value greater than 1 indicates a failed power supply that warrants investigation."
+      "description": "This metric reports the power-supply health of the APRESIA device. The raw codes (inOperation(1)=OK, failed(2)=fault, empty(3)=slot unpopulated) are normalized via telegraf processors.enum so that 1 = healthy and 2 = fault, with empty(3) treated as healthy because an unpopulated slot is not a fault, and the worst supply is taken per device. A value greater than 1 indicates a failed power supply that warrants investigation."
     },
     {
       "metric_group": "Traffic",

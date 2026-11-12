@@ -30,7 +30,7 @@ monitor_object_metric:
       desc: Furukawa OLT 3516 的 CPU 负载百分比（oltGenHwCpu）。持续偏高说明控制面负载过高。
     device_memory_usage:
       name: 内存使用率
-      desc: Furukawa OLT 3516 的内存使用率，按 (总量 - 空闲) / 总量 计算（oltGenHwMemTot、oltGenHwMemFree）。持续偏高可能表示内存泄漏或业务表项过大。
+      desc: Furukawa OLT 3516 的内存使用率（oltGenHwMemTot、oltGenHwMemFree）。持续偏高可能表示内存泄漏或业务表项过大。
     device_temperature_celsius:
       name: 设备温度
       desc: Furukawa OLT 3516 机箱温度，单位摄氏度（oltGenHwTemperature）。温度持续升高可能表示散热异常。

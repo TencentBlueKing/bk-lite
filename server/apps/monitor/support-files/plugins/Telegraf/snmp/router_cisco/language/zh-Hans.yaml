@@ -23,7 +23,7 @@ monitor_object_metric:
       desc: 该指标表示 Cisco 各内存池当前空闲可用的字节数。它与已用量一起决定整体内存使用率；空闲量持续偏低说明该内存池存在内存压力。
     device_memory_usage:
       name: 内存使用率
-      desc: 该指标表示 Cisco 路由器有效内存池整体使用率，按 已用/(已用+空闲)*100 计算。采集时会丢弃 lsmpi_io、Reserved 等无效内存池。内存偏高可能由内存泄漏、路由表过大或容量不足导致。
+      desc: Cisco 路由器有效内存池整体使用率。采集时会丢弃 lsmpi_io、Reserved 等无效内存池。内存偏高可能由内存泄漏、路由表过大或容量不足导致。
     device_temperature_celsius:
       name: 温度
       desc: 该指标表示 Cisco 各硬件温度传感器的读数（CISCO-ENVMON-MIB），单位为摄氏度。温度异常升高可能意味着风扇故障、散热受阻或环境过热，若不处理可能触发热保护或损坏硬件。

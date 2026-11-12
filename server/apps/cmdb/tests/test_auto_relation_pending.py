@@ -45,7 +45,7 @@ def test_five_minute_task_is_a_singleton_with_lock_expiry():
     entry = CELERY_BEAT_SCHEDULE["reconcile_auto_relation_pending_task"]
     assert entry["task"] == "apps.cmdb.tasks.celery_tasks.reconcile_auto_relation_pending_task"
     assert entry["schedule"] == crontab(minute="*/5")
-    assert reconcile_auto_relation_pending_task.lock_expiry == 30 * 60
+    assert reconcile_auto_relation_pending_task.lock_expiry == 5 * 60
     assert reconcile_auto_relation_pending_task.raise_on_duplicate is False
 
 
