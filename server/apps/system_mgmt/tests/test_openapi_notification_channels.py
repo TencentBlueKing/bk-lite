@@ -162,8 +162,10 @@ def test_system_tenant_lists_own_external_channels_only(tenants, local_docs_cata
     assert email_parameters["channel_id"]["description"].startswith(f"固定填写 {tenants.a.email.id}")
     assert "用户 ID" in email_parameters["receivers"]["description"]
     assert "邮件主题" in email_parameters["title"]["description"]
+    assert email_parameters["content"]["description"] == "邮件正文。按 HTML 发送，不会转义标签，换行也不会改成换行标签。"
     assert "渠道侧接收人名" in webhook_parameters["receivers"]["description"]
     assert "不使用标题" in webhook_parameters["title"]["description"]
+    assert webhook_parameters["content"]["description"] == "通知正文，会替换该渠道模板中的 {{content}}。接收人名会追加在正文后面。"
     assert all(set(item) == _ITEM_FIELDS for item in items)
     assert items[0]["tag"] == []
     assert items[1]["tag"] == []
@@ -455,6 +457,8 @@ def test_system_tenant_sends_through_own_channel(tenants, monkeypatch, local_doc
     }
     assert len(calls) == 1
     assert calls[0][0][0] == tenants.a.email.id
+    assert calls[0][0][2] == "请处理"
+    assert calls[0][1]["channel_type"] == "email"
     request_schema = _endpoint(_acting(tenants.a), "POST")["request_schema"]
     assert set(request_schema["properties"]) == {
         "channel_id",
@@ -466,6 +470,85 @@ def test_system_tenant_sends_through_own_channel(tenants, monkeypatch, local_doc
         "include_children",
     }
     assert "channel_type" in request_schema["required"]
+
+
+def test_email_html_is_forwarded_without_escaping(tenants, monkeypatch):
+    calls = _capture_send(monkeypatch)
+    html = "<p>工单</p>\n<table><tr><td>标题</td></tr></table>"
+    response = APIClient().post(
+        SEND_URL,
+        {
+            "channel_id": tenants.a.email.id,
+            "channel_type": "email",
+            "title": "工单创建成功",
+            "content": html,
+            "receivers": [str(tenants.a.system_user.id)],
+        },
+        format="json",
+        **_acting(tenants.a),
+    )
+
+    assert response.status_code == 200, response.json()
+    assert response.json()["data"]["delivery_code"] == "delivered"
+    assert calls[0][0][1] == "工单创建成功"
+    assert calls[0][0][2] == html
+
+
+def test_padded_user_id_reaches_the_channel_as_a_plain_id(tenants, monkeypatch):
+    calls = _capture_send(monkeypatch)
+    user_id = str(tenants.a.system_user.id)
+    response = APIClient().post(
+        SEND_URL,
+        {
+            "channel_id": tenants.a.email.id,
+            "channel_type": "email",
+            "title": "工单提醒",
+            "content": "请处理",
+            "receivers": [f" {user_id} "],
+        },
+        format="json",
+        **_acting(tenants.a),
+    )
+
+    assert response.status_code == 200, response.json()
+    assert response.json()["data"]["delivery_code"] == "delivered"
+    assert calls[0][0][3] == [user_id]
+
+
+def test_provider_results_map_to_delivery_outcome(tenants, monkeypatch):
+    outcomes = []
+
+    def fake_send(*args, **kwargs):
+        return outcomes.pop(0)
+
+    monkeypatch.setattr("apps.system_mgmt.nats.channels.send_msg_with_channel", fake_send)
+    payload = {
+        "channel_id": tenants.a.email.id,
+        "channel_type": "email",
+        "title": "工单提醒",
+        "content": "请处理",
+        "receivers": [str(tenants.a.system_user.id)],
+    }
+    cases = [
+        ({"result": True}, 200, None),
+        ({"errcode": 0, "errmsg": "ok"}, 200, None),
+        ({"code": 0, "msg": "success"}, 200, None),
+        ({"accepted": True}, 200, None),
+        ({"errcode": 1, "errmsg": "boom"}, 200, None),
+        ({"code": "accepted", "msg": "sign error"}, 200, None),
+        ({"result": False, "message": "No valid recipients found"}, 400, "No valid recipients found"),
+        ("ok", 400, "通知渠道投递失败。"),
+    ]
+
+    for provider_result, status, message in cases:
+        outcomes.append(provider_result)
+        response = APIClient().post(SEND_URL, payload, format="json", **_acting(tenants.a))
+        assert response.status_code == status, response.json()
+        body = response.json()
+        if status == 200:
+            assert body["data"]["delivery_code"] == "delivered"
+        else:
+            assert body["message"] == message
 
 
 def test_send_other_org_channel_is_forbidden(tenants, monkeypatch):
