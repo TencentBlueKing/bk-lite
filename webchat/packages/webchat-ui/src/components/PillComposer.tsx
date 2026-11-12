@@ -122,7 +122,7 @@ export const PillComposer = React.memo(function PillComposer({
           lineHeight: `${COMPOSER_HEIGHT}px`,
         }}
         onKeyDown={(event) => {
-          if (!imeEnterGuard.shouldSubmitOnEnter(event)) {
+          if (!imeEnterGuard.handleEnterKey(event)) {
             return;
           }
           event.preventDefault();

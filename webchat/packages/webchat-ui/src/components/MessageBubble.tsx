@@ -1,7 +1,6 @@
-import React, { useState, type ComponentPropsWithoutRef } from 'react';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import rehypeSanitize from 'rehype-sanitize';
+import { ChatMarkdown, ContentCards, type ContentCardsProps } from '@bk-lite/chat-content/ui';
+import '@bk-lite/chat-content/style.css';
+import React, { useState } from 'react';
 import { Message, type MessageContent } from '@webchat/core';
 import { MessageActions } from './MessageActions';
 import { ConfirmDialog } from './ConfirmDialog';
@@ -15,14 +14,6 @@ import { ThinkingPanel } from './ThinkingPanel';
 import { stripWebchatChoiceDump, type WebchatChoiceValue } from '../choiceDisplay';
 import { WC } from '../chrome';
 import { useTranslator } from '../useTranslator';
-
-const markdownPlugins = {
-  remarkPlugins: [remarkGfm],
-  rehypePlugins: [rehypeSanitize],
-};
-
-const markdownClassName =
-  'max-w-none break-words text-sm leading-[1.7] [&_h1]:mb-2 [&_h1]:mt-3 [&_h1]:text-base [&_h1]:font-semibold [&_h2]:mb-2 [&_h2]:mt-3 [&_h2]:text-sm [&_h2]:font-semibold [&_h3]:mb-1 [&_h3]:mt-2 [&_h3]:font-semibold [&_p]:my-1.5 [&_ul]:my-1.5 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:my-1.5 [&_ol]:list-decimal [&_ol]:pl-5 [&_li]:my-0.5 [&_pre]:my-2 [&_pre]:overflow-x-auto [&_pre]:rounded-md [&_pre]:p-3 [&_pre]:bg-[var(--color-code-block-bg,var(--color-fill-1,#f6f8f9))] [&_pre]:text-[var(--color-code-block-text,var(--color-text-1,#1e252e))] [&_code]:rounded [&_code]:px-1 [&_code]:bg-[var(--color-code-block-bg,var(--color-fill-1,#f6f8f9))] [&_a]:text-[var(--color-primary,#155AEF)] [&_blockquote]:my-2 [&_blockquote]:border-l-2 [&_blockquote]:border-[var(--color-border-1,#edeff3)] [&_blockquote]:pl-3 [&_hr]:my-3';
 
 const userBubbleStyle: React.CSSProperties = {
   background: WC.botBubble,
@@ -132,6 +123,10 @@ function StoredAttachmentCards({
 }
 
 interface MessageBubbleProps {
+  contentReadOnly?: boolean;
+  onApproval?: ContentCardsProps['onApproval'];
+  onChoice?: ContentCardsProps['onChoice'];
+  onSendMessage?: ContentCardsProps['onSendMessage'];
   message: Message;
   loadAttachment?: (id: number) => Promise<Blob>;
   isLastBotMessage?: boolean;
@@ -144,32 +139,6 @@ interface MessageBubbleProps {
 type ContentChunk = 
   | { type: 'text'; content: string }
   | { type: 'toolCalls'; toolCalls: ToolCall[] };
-
-type CodeBlockProps = ComponentPropsWithoutRef<'code'> & {
-  inline?: boolean;
-  node?: unknown;
-};
-
-// Custom code block renderer with syntax highlighting
-const CodeBlock = ({ inline, className, children, style, ...props }: CodeBlockProps) => {
-  const match = /language-(\w+)/.exec(className || '');
-  const language = match ? match[1] : '';
-
-  return !inline && language ? (
-    <pre
-      className="my-2 overflow-x-auto rounded-md p-3 text-sm leading-6"
-      style={style}
-    >
-      <code className={className} {...props}>
-        {String(children).replace(/\n$/, '')}
-      </code>
-    </pre>
-  ) : (
-    <code className={className} style={style} {...props}>
-      {children}
-    </code>
-  );
-};
 
 function AnsweredChoice({ value }: { value: WebchatChoiceValue }) {
   const options = value.options || [];
@@ -218,7 +187,7 @@ function AnsweredChoice({ value }: { value: WebchatChoiceValue }) {
 }
 
 export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
-  ({ message, isLastBotMessage, fillWidth, onRegenerate, onCopy, onDelete, loadAttachment }) => {
+  ({ message, contentReadOnly, onApproval, onChoice, onSendMessage, isLastBotMessage, fillWidth, onRegenerate, onCopy, onDelete, loadAttachment }) => {
     const t = useTranslator();
     const isBot = message.sender === 'bot';
     const [showActions, setShowActions] = useState(false);
@@ -289,28 +258,14 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
               );
             } else if (item.type === 'message' && item.message) {
               return (
-                <div key={`msg-${index}`} className={markdownClassName}>
-                  <ReactMarkdown
-                    {...markdownPlugins}
-                    components={{
-                      code: CodeBlock
-                    }}
-                  >
-                    {item.message}
-                  </ReactMarkdown>
+                <div key={`msg-${index}`} className="min-w-0">
+                  <ChatMarkdown content={item.message} />
                 </div>
               );
             } else if (item.type === 'text' && item.text) {
               return (
-                <div key={`text-${index}`} className={markdownClassName}>
-                  <ReactMarkdown
-                    {...markdownPlugins}
-                    components={{
-                      code: CodeBlock
-                    }}
-                  >
-                    {item.text}
-                  </ReactMarkdown>
+                <div key={`text-${index}`} className="min-w-0">
+                  <ChatMarkdown content={item.text} />
                 </div>
               );
             }
@@ -329,15 +284,8 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
         : 'max-w-[78%]';
 
     const renderMarkdown = (source: string) => (
-      <div className={markdownClassName}>
-        <ReactMarkdown
-          {...markdownPlugins}
-          components={{
-            code: CodeBlock
-          }}
-        >
-          {source}
-        </ReactMarkdown>
+      <div className="min-w-0">
+        <ChatMarkdown content={source} />
       </div>
     );
 
@@ -387,6 +335,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
           : hasContent
             ? renderBotAnswer(renderMarkdown(visibleText(message.content as string)))
             : null}
+        <ContentCards state={message.metadata || {}} content={typeof message.content === 'string' ? message.content : ''} readOnly={contentReadOnly} onApproval={onApproval} onChoice={onChoice} onSendMessage={onSendMessage} />
         <AttachmentDownloadCards files={downloads} />
         {choiceValue?.answered ? <AnsweredChoice value={choiceValue} /> : null}
       </div>

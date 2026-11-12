@@ -390,6 +390,7 @@ export function createAGUIEventHandler(deps: AGUIEventHandlerDeps): AGUIEventDis
       }
 
       case 'RUN_FINISHED':
+        setMessages(prev => prev.map(message => message.id === currentMessageIdRef.current ? { ...message, metadata: { ...message.metadata, ...(message.metadata?.browserStepsHistory ? { browserStepsHistory: { ...(message.metadata.browserStepsHistory as object), isRunning: false } } : {}), ...(message.metadata?.plannedExecutionStatus ? { plannedExecutionStatus: { ...(message.metadata.plannedExecutionStatus as object), phase: 'idle' } } : {}) } } : message));
         flushAndPersistPendingText();
         if (plannedStateRef) {
           plannedStateRef.current = finalizePlannedExecutionSteps(plannedStateRef.current);
