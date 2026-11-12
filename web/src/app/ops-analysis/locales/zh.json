@@ -512,6 +512,7 @@
       "followAlertHint": "开启后，区域边框和状态牌将根据区域内已绑定资源的告警进行显示",
       "regionIconCount": "区域内图标 {total} 个，已绑定资源 {bound} 个",
       "resourceAlertHint": "区域内 {n} 个资源，共 {m} 条告警（已按告警去重）",
+      "plateUnmonitored": "未接入",
       "hintUnmonitored": "该资源未接入监控",
       "hintUnknown": "暂时无法获取状态，请稍后刷新",
       "hintForbidden": "无权查看该资源",
@@ -764,7 +765,8 @@
         "tech": "边框 6",
         "border-16": "边框 7",
         "border-20": "边框 8",
-        "border-24": "边框 9"
+        "border-24": "边框 9",
+        "border-plate": "边框·角板"
       },
       "divider": {
         "line-1": "分隔线 1",

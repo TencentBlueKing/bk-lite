@@ -1,8 +1,10 @@
-import { readBinding } from './model';
+import { formatMetricValue } from '@/app/monitor/utils/formatMetricValue';
+import { readBinding, type ArchitectureNodeAlert, type ArchitectureNodeStatusItem } from './model';
 
 export const ARCHITECTURE_METRIC_BATCH_SIZE = 50;
 
 const FIELD_KEY_PREFIX = 'field::';
+const VACANT_DISPLAY_UNITS = new Set(['', 'counts', 'short', 'none']);
 
 export interface MetricColumn {
   name: string;
@@ -29,9 +31,12 @@ export interface MetricChoice {
   keys: string[];
 }
 
+export type MetricLineTone = 'warning' | 'critical';
+
 export interface MetricCardLine {
   name: string;
   text: string;
+  tone?: MetricLineTone;
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -65,14 +70,72 @@ export function visibleColumns(columns: MetricColumn[], choice: MetricChoice | u
 
 export function formatMetricText(cell: MetricCell | undefined): string {
   if (!cell || cell.value === null || cell.value === '') return '—';
-  const unit = cell.unit ? ` ${cell.unit}` : '';
-  return `${cell.value}${unit}`;
+  const numeric = Number(cell.value);
+  if (Number.isNaN(numeric)) {
+    const unit = cell.unit ? ` ${cell.unit}` : '';
+    return `${cell.value}${unit}`;
+  }
+  // Display metrics already carry UnitConverter display units (`%`, `cps`, or
+  // empty for counts). Feed those into the monitor instance-list formatter so
+  // architecture cards use the same precision as the monitor module.
+  const formatted = formatMetricValue(cell.value, formatUnitId(cell.unit, numeric));
+  const unit = cell.unit && !VACANT_DISPLAY_UNITS.has(cell.unit) ? ` ${cell.unit}` : '';
+  return `${formatted}${unit}`;
+}
+
+function formatUnitId(unit: string, numeric: number): string {
+  // `counts` (and its empty display unit) should stay integers. Rates that
+  // are catalogued as counts, such as nginx_requests_rate, still need the
+  // default two-decimal rule used for other non-count metrics.
+  if (unit === 'counts' || unit === '') {
+    return Number.isInteger(numeric) ? 'counts' : unit;
+  }
+  return unit;
+}
+
+function compactMetricToken(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/memory/g, 'mem')
+    .replace(/utilisation/g, 'utilization')
+    .replace(/percent/g, '')
+    .replace(/usage/g, 'use')
+    .replace(/used/g, 'use')
+    .replace(/[^a-z0-9\u4e00-\u9fff]+/g, '');
+}
+
+function alertMatchesColumn(column: MetricColumn, alert: ArchitectureNodeAlert): boolean {
+  const names = [alert.metric_key, alert.metric_name].filter((name): name is string => Boolean(name));
+  const keyLeaves = column.keys.map((key) => key.split('::').pop() || '');
+  for (const name of names) {
+    if (name === column.name || keyLeaves.includes(name)) return true;
+    const compactName = compactMetricToken(name);
+    if (compactName && compactMetricToken(column.name) === compactName) return true;
+    if (compactName && keyLeaves.some((key) => {
+      const compactKey = compactMetricToken(key);
+      return compactKey === compactName || compactKey.includes(compactName);
+    })) return true;
+  }
+  return Boolean(column.name && alert.content.includes(column.name));
+}
+
+export function metricLineTone(
+  column: MetricColumn,
+  alerts: ArchitectureNodeAlert[] | undefined,
+): MetricLineTone | undefined {
+  const matched = (alerts ?? []).filter((alert) => alertMatchesColumn(column, alert));
+  if (!matched.length) return undefined;
+  return matched.some((alert) => {
+    const level = alert.level.trim().toLowerCase();
+    return level === 'critical' || level === 'error';
+  }) ? 'critical' : 'warning';
 }
 
 export function metricCardLines(
   columns: MetricColumn[],
   values: Record<string, MetricCell>,
   choice: MetricChoice | undefined,
+  alerts?: ArchitectureNodeAlert[],
 ): MetricCardLine[] {
   return visibleColumns(columns, choice).map((column) => {
     let cell: MetricCell | undefined;
@@ -83,7 +146,10 @@ export function metricCardLines(
         break;
       }
     }
-    return { name: column.name, text: formatMetricText(cell) };
+    const line: MetricCardLine = { name: column.name, text: formatMetricText(cell) };
+    const tone = metricLineTone(column, alerts);
+    if (tone) line.tone = tone;
+    return line;
   });
 }
 
@@ -211,6 +277,7 @@ export function buildNodeMetricCards(
   views: unknown,
   byUuid: Record<string, DisplayMetricItem>,
   objects: Record<string, MetricObjectColumns>,
+  statusByUuid?: Record<string, ArchitectureNodeStatusItem>,
 ): Record<string, { lines: MetricCardLine[] }> {
   const next: Record<string, { lines: MetricCardLine[] }> = {};
   for (const node of nodeRefs(views)) {
@@ -218,7 +285,7 @@ export function buildNodeMetricCards(
     const item = byUuid[node.instUuid];
     if (!item) continue;
     const columns = objects[item.monitor_object_id]?.columns ?? [];
-    const lines = metricCardLines(columns, item.values, node.choice);
+    const lines = metricCardLines(columns, item.values, node.choice, statusByUuid?.[node.instUuid]?.alerts);
     if (!lines.length) continue;
     next[node.id] = { lines };
   }

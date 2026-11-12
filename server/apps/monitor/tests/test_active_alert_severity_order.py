@@ -1,4 +1,4 @@
-"""未恢复监控告警：严重度排序在截断前完成，默认仍是最新 10 条。"""
+"""未恢复监控告警：缺省按最新排序；显式 order=severity 在截断前完成。"""
 
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
@@ -8,7 +8,7 @@ import pytest
 from apps.monitor.models.monitor_object import MonitorInstance, MonitorObject
 from apps.monitor.models.monitor_policy import MonitorAlert, MonitorPolicy
 from apps.monitor.nats import monitor as monitor_nats
-from apps.monitor.services.active_alert_ranking import format_active_alert_duration, parse_active_alert_order
+from apps.monitor.services.active_alert_ranking import format_active_alert_duration, format_active_alert_local_time, parse_active_alert_order
 
 NOW = datetime(2026, 6, 1, tzinfo=timezone.utc)
 
@@ -17,8 +17,19 @@ def test_parse_active_alert_order_defaults_to_latest_and_rejects_unknown():
     assert parse_active_alert_order(None) == "latest"
     assert parse_active_alert_order("") == "latest"
     assert parse_active_alert_order(" Severity ") == "severity"
+    assert parse_active_alert_order("latest") == "latest"
     with pytest.raises(ValueError, match="order"):
         parse_active_alert_order("value")
+
+
+def test_format_active_alert_local_time_uses_current_timezone():
+    from django.test import override_settings
+
+    dt = datetime(2026, 11, 9, 10, 49, 11, tzinfo=timezone.utc)
+    with override_settings(TIME_ZONE="Asia/Shanghai", USE_TZ=True):
+        assert format_active_alert_local_time(dt) == "2026-11-09 18:49:11"
+        assert format_active_alert_local_time(dt.isoformat()) == "2026-11-09 18:49:11"
+    assert format_active_alert_local_time(None) is None
 
 
 def test_format_active_alert_duration_is_not_raw_seconds():
@@ -150,17 +161,52 @@ def _seed():
 
 
 @pytest.mark.django_db
-def test_default_latest_alerts_stay_newest_ten_and_omit_duration_text(monkeypatch):
+def test_explicit_latest_alerts_stay_newest_ten_and_omit_duration_text(monkeypatch):
     policy, instance, created = _seed()
     _patch_scope(monkeypatch, policy, instance)
 
-    response = monitor_nats.query_latest_active_alerts({}, user_info={"user": "overview-user", "team": 1})
+    response = monitor_nats.query_latest_active_alerts(
+        {"order": "latest"},
+        user_info={"user": "overview-user", "team": 1},
+    )
 
     assert response["result"] is True
     items = response["data"]["items"]
     assert [item["id"] for item in items] == [item.id for item in created["fillers"][:10]]
     assert created["critical_early"].id not in {item["id"] for item in items}
     assert "duration_text" not in items[0]
+    assert response["data"]["count"] == 19
+
+
+@pytest.mark.django_db
+def test_severity_order_formats_local_start_time(monkeypatch):
+    from django.test import override_settings
+
+    policy, instance, created = _seed()
+    _patch_scope(monkeypatch, policy, instance)
+
+    with override_settings(TIME_ZONE="Asia/Shanghai", USE_TZ=True):
+        response = monitor_nats.query_latest_active_alerts(
+            {"order": "severity"},
+            user_info={"user": "overview-user", "team": 1},
+        )
+
+    assert response["result"] is True
+    items = response["data"]["items"]
+    assert [item["id"] for item in items] == [
+        created["critical_early"].id,
+        created["critical_late"].id,
+        created["error"].id,
+        created["warning_early"].id,
+        created["warning_late"].id,
+        created["info"].id,
+        created["fillers"][10].id,
+        created["fillers"][9].id,
+        created["fillers"][8].id,
+        created["fillers"][7].id,
+    ]
+    assert items[0]["duration_text"] == "2天3小时"
+    assert items[0]["start_event_time"] == "2026-05-30 05:00:00"
     assert response["data"]["count"] == 19
 
 

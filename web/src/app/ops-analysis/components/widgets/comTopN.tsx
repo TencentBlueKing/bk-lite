@@ -58,9 +58,8 @@ export const resolveTopNHeaderParts = (
   const title = String(field?.title || '').trim();
 
   if (!title) {
-    return options?.preferTitleOnly
-      ? { full: '', title: '', key: '' }
-      : { full: key, title: '', key };
+    // 大屏主题只显示中文 title；字段不在 schema 里时不能把列头留空。
+    return { full: key, title: '', key };
   }
 
   if (options?.preferTitleOnly) {
@@ -107,10 +106,11 @@ const TopN: React.FC<TopNProps> = ({
   );
   const labelHeader = labelHeaderParts.full;
   const valueHeader = valueHeaderParts.full;
-  // 左右约各占一半：左列名，右进度条+数值；表头固定，仅内容区滚动。
-  const gridTemplateColumns = 'minmax(0, 1fr) minmax(0, 1fr)';
+  // 名称按最长内容占宽，数值只留够显示的位置，剩余给进度条；进度条保留最小宽度，避免被长名称挤没。
   const columnGap = scaleScreenMetric(8, screenRenderContext);
   const cellPadding = scaleScreenMetric(8, screenRenderContext);
+  const minBarWidth = scaleScreenMetric(56, screenRenderContext);
+  const gridTemplateColumns = `minmax(0, max-content) minmax(${minBarWidth}px, 1fr) max-content`;
   const items = buildTopNItems(rawData, labelField, valueField, {
     scalarFields: config?.topNScalarFields,
   });
@@ -164,7 +164,7 @@ const TopN: React.FC<TopNProps> = ({
             }}
           >
             <span
-              className="min-w-0 truncate"
+              className="min-w-0 truncate whitespace-nowrap"
               style={{
                 paddingLeft: cellPadding,
                 paddingRight: cellPadding,
@@ -177,8 +177,9 @@ const TopN: React.FC<TopNProps> = ({
             >
               {labelHeader}
             </span>
+            <span aria-hidden="true" />
             <span
-              className="min-w-0 truncate text-right"
+              className="whitespace-nowrap text-right"
               style={{
                 paddingLeft: cellPadding,
                 paddingRight: cellPadding,
@@ -209,7 +210,7 @@ const TopN: React.FC<TopNProps> = ({
                 <React.Fragment key={`${item.name}-${index}`}>
                   <DataLinkHintTooltip hint={hoverHint && <>{item.name}<br />{hoverHint}</>}>
                   <span
-                    className={`flex h-7 min-w-0 items-center truncate rounded-l-md text-[13px] ${dataLinkActive ? 'cursor-pointer' : ''}`}
+                    className={`flex h-7 min-w-0 items-center truncate whitespace-nowrap rounded-l-md text-[13px] ${dataLinkActive ? 'cursor-pointer' : ''}`}
                     onClick={dataLinkActive ? () => openPoint(points[index]) : undefined}
                     style={{
                       color: usesScreenChartTheme
@@ -228,15 +229,14 @@ const TopN: React.FC<TopNProps> = ({
                   </DataLinkHintTooltip>
                   <DataLinkHintTooltip hint={hoverHint}>
                   <div
-                    className={`flex min-w-0 items-center gap-2 rounded-r-md ${dataLinkActive ? 'cursor-pointer' : ''}`}
+                    className={`flex min-w-0 items-center ${dataLinkActive ? 'cursor-pointer' : ''}`}
                     style={{
                       height: scaleScreenMetric(28, screenRenderContext),
-                      paddingRight: cellPadding,
                     }}
                     onClick={dataLinkActive ? () => openPoint(points[index]) : undefined}
                   >
                     <div
-                      className="h-2.5 min-w-0 flex-1 overflow-hidden rounded-full"
+                      className="h-2.5 min-w-0 w-full overflow-hidden rounded-full"
                       style={{
                         backgroundColor: usesScreenChartTheme
                           ? chartTheme.panelSubtleBg
@@ -259,19 +259,24 @@ const TopN: React.FC<TopNProps> = ({
                         }}
                       />
                     </div>
-                    <span
-                      className="shrink-0 text-right text-[13px] font-semibold tabular-nums"
-                      style={{
-                        color: usesScreenChartTheme
-                          ? chartTheme.pieValueColor
-                          : isDark ? 'rgba(255,255,255,0.88)' : '#1f2d44',
-                        fontSize: 13 * widgetScale,
-                        minWidth: scaleScreenMetric(48, screenRenderContext),
-                      }}
-                    >
-                      {formatVisibleChartValue(item.value, config)}
-                    </span>
                   </div>
+                  </DataLinkHintTooltip>
+                  <DataLinkHintTooltip hint={hoverHint}>
+                  <span
+                    className={`flex items-center justify-end whitespace-nowrap text-right text-[13px] font-semibold tabular-nums ${dataLinkActive ? 'cursor-pointer' : ''}`}
+                    onClick={dataLinkActive ? () => openPoint(points[index]) : undefined}
+                    style={{
+                      color: usesScreenChartTheme
+                        ? chartTheme.pieValueColor
+                        : isDark ? 'rgba(255,255,255,0.88)' : '#1f2d44',
+                      fontSize: 13 * widgetScale,
+                      height: scaleScreenMetric(28, screenRenderContext),
+                      paddingLeft: cellPadding,
+                      paddingRight: cellPadding,
+                    }}
+                  >
+                    {formatVisibleChartValue(item.value, config)}
+                  </span>
                   </DataLinkHintTooltip>
                 </React.Fragment>
               );

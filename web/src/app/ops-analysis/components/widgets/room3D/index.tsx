@@ -8,7 +8,7 @@ import React, {
   useState,
 } from "react";
 import { Alert, Button, Empty, Spin } from "antd";
-import { ReloadOutlined } from "@ant-design/icons";
+import { EnvironmentFilled, ReloadOutlined } from "@ant-design/icons";
 import { useParams } from "next/navigation";
 import { useTranslation } from "@/utils/i18n";
 import { useShareMode } from "@/app/ops-analysis/context/shareMode";
@@ -648,6 +648,9 @@ const Room3D: React.FC<Room3DProps> = ({
       </InteractionMenuScaleProvider>
       <div className={styles.topBar}>
         <div className={styles.roomTitle} title={roomSummaryText}>
+          <span className={styles.roomTitleIcon} aria-hidden="true">
+            <EnvironmentFilled />
+          </span>
           <strong className={styles.roomTitleName}>{roomData.room.name}</strong>
         </div>
         <div className={styles.topBarActions}>
