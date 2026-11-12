@@ -22,6 +22,7 @@ from apps.monitor.services.alert_lifecycle_events import record_lifecycle_events
 from apps.monitor.services.alert_lifecycle_notify import AlertLifecycleNotifier
 from apps.monitor.services.child_instance_discovery import cancel_child_instance_discovery
 from apps.monitor.services.flow_onboarding import FlowOnboardingService
+from apps.monitor.models.remote_config_deletion import PendingRemoteConfigDeletion
 from apps.monitor.services.policy_source_cleanup import cleanup_policy_sources
 from apps.rpc.node_mgmt import NodeMgmt
 
@@ -97,12 +98,13 @@ class MonitorInstanceRemovalService:
                 for config_id, is_child in config_rows:
                     (child_config_ids if is_child else base_config_ids).append(config_id)
 
+                pending_id = None
                 if child_config_ids or base_config_ids:
-                    node_mgmt = NodeMgmt()
-                    if child_config_ids:
-                        node_mgmt.delete_child_configs(child_config_ids)
-                    if base_config_ids:
-                        node_mgmt.delete_configs(base_config_ids)
+                    pending = PendingRemoteConfigDeletion.objects.create(
+                        child_config_ids=list(child_config_ids),
+                        base_config_ids=list(base_config_ids),
+                    )
+                    pending_id = pending.pk
 
                 closed_alert_count = cls.close_alerts_for_instances(
                     removed_ids,
@@ -124,6 +126,9 @@ class MonitorInstanceRemovalService:
                 )
                 MonitorInstance.objects.filter(id__in=removed_ids).delete()
                 FlowOnboardingService._schedule_region_refresh(*refresh_region_ids)
+
+            if pending_id is not None:
+                cls.flush_remote_config_deletions(pending_id=pending_id)
 
             for instance_id in removed_ids:
                 cancel_child_instance_discovery(instance_id)
@@ -153,6 +158,26 @@ class MonitorInstanceRemovalService:
         except Exception as exc:
             logger.error(f"物理删除监控实例失败: {normalized_ids}", exc_info=True)
             raise BaseAppException("删除监控实例失败，请稍后重试") from exc
+
+    @classmethod
+    def flush_remote_config_deletions(cls, pending_id: int | None = None) -> None:
+        """提交本地删除之后再删远端配置。失败留下记录，由周期任务重试。"""
+        queryset = PendingRemoteConfigDeletion.objects.all().order_by("id")
+        if pending_id is not None:
+            queryset = queryset.filter(pk=pending_id)
+        for row in queryset:
+            try:
+                node_mgmt = NodeMgmt()
+                if row.child_config_ids:
+                    node_mgmt.delete_child_configs(list(row.child_config_ids))
+                if row.base_config_ids:
+                    node_mgmt.delete_configs(list(row.base_config_ids))
+            except Exception:
+                logger.exception("[MonitorInstanceRemoval] remote config delete pending id=%s", row.pk)
+                if pending_id is not None:
+                    raise
+                continue
+            row.delete()
 
     @classmethod
     def close_alerts_for_instances(
