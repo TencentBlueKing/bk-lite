@@ -814,6 +814,32 @@ def test_get_source_data_rejects_unknown_params(authenticated_user, monkeypatch)
     assert "存在未声明参数" in payload["message"]
 
 
+@pytest.mark.parametrize("empty_time", [None, "", [], {}])
+def test_resolve_request_params_skips_empty_time_range(empty_time):
+    instance = SimpleNamespace(
+        rest_api="monitor/query_latest_active_alerts",
+        params=[
+            {"name": "time", "type": "timeRange", "value": 10080, "filterType": "filter"},
+        ],
+    )
+    resolved = _resolve_request_params(instance, {"time": empty_time})
+    assert "time" not in resolved
+
+
+def test_resolve_request_params_keeps_fixed_time_range_empty_instead_of_request():
+    instance = SimpleNamespace(
+        rest_api="monitor/query_latest_active_alerts",
+        params=[
+            {"name": "time", "type": "timeRange", "value": "", "filterType": "fixed"},
+        ],
+    )
+    resolved = _resolve_request_params(
+        instance,
+        {"time": ["2026-04-19T09:34:13.712Z", "2026-04-20T09:34:13.712Z"]},
+    )
+    assert "time" not in resolved
+
+
 def test_resolve_request_params_allows_organization_param_runtime_marker():
     instance = SimpleNamespace(
         rest_api="monitor/query_latest_active_alerts",

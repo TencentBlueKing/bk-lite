@@ -517,11 +517,7 @@ def _unspecified_host_top_instance_ids(instance, param_name, default_value):
     源定义里的 [] 只是「未选择」。请求里明确带上的 [] 仍走显式筛选，
     不在这里改掉。其它数据源的空列表默认值继续补齐。
     """
-    return (
-        getattr(instance, "rest_api", None) == "monitor/get_host_resource_top"
-        and param_name == "instance_ids"
-        and default_value == []
-    )
+    return getattr(instance, "rest_api", None) == "monitor/get_host_resource_top" and param_name == "instance_ids" and default_value == []
 
 
 def _resolve_request_params(instance, request_data):
@@ -553,13 +549,13 @@ def _resolve_request_params(instance, request_data):
             raw_value = default_value
         elif param_name in sanitized_request:
             raw_value = sanitized_request[param_name]
-            # timeRange 空值视为"无过滤"跳过,避免 _normalize_time_range("") 抛 ValueError
-            # 导致整个请求 400(空字符串、null、空数组都被视为"未选时段")
-            if param_type == "timeRange" and raw_value in (None, "", [], {}):
-                continue
         elif default_value not in (None, "") and not _unspecified_host_top_instance_ids(instance, param_name, default_value):
             raw_value = default_value
         else:
+            continue
+
+        # 空时段表示不按时间过滤。固定值同样忽略请求里另带的时间。
+        if param_type == "timeRange" and raw_value in (None, "", [], {}):
             continue
 
         resolved[param_name] = _normalize_param_value(param_name, param_type, raw_value)

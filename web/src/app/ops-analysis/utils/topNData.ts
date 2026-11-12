@@ -25,6 +25,19 @@ const isTopNRecord = (value: unknown): value is Record<string, unknown> =>
 const DECIMAL_NUMBER_PATTERN =
   /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/;
 
+export const unwrapNestedListPayload = (data: unknown): unknown => {
+  if (Array.isArray(data) || data == null) {
+    return data;
+  }
+  if (typeof data === 'object') {
+    const record = data as Record<string, unknown>;
+    if (Array.isArray(record.list)) return record.list;
+    if (Array.isArray(record.items)) return record.items;
+    if (Array.isArray(record.data)) return record.data;
+  }
+  return data;
+};
+
 export const unwrapTopNData = (data: unknown): unknown[] => {
   if (Array.isArray(data)) {
     return data;
@@ -222,9 +235,19 @@ export const validateTopNPayload = (
     return buildTopNItems(data, options?.labelField, options?.valueField, { scalarFields }).length > 0;
   }
 
-  if (!Array.isArray(data)) {
+  const isListEnvelope = Boolean(
+    data &&
+    typeof data === 'object' &&
+    !Array.isArray(data) &&
+    (Array.isArray((data as Record<string, unknown>).items) ||
+      Array.isArray((data as Record<string, unknown>).data) ||
+      Array.isArray((data as Record<string, unknown>).list)),
+  );
+  if (!Array.isArray(data) && !isListEnvelope) {
     return false;
   }
-
+  if (unwrapTopNData(data).length === 0) {
+    return true;
+  }
   return buildTopNItems(data, options?.labelField, options?.valueField).length > 0;
 };

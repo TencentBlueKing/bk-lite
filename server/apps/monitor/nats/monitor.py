@@ -55,13 +55,22 @@ from apps.monitor.serializers.monitor_metrics import MetricGroupSerializer, Metr
 from apps.monitor.serializers.monitor_object import MonitorObjectSerializer, MonitorObjectTypeSerializer
 from apps.monitor.serializers.monitor_policy import MonitorPolicySerializer
 from apps.monitor.serializers.plugin import MonitorPluginSerializer
-from apps.monitor.services.active_alert_ranking import format_active_alert_duration, order_severity_queryset, parse_active_alert_order
+from apps.monitor.services.active_alert_ranking import (
+    format_active_alert_duration,
+    format_active_alert_item_times,
+    order_severity_queryset,
+    parse_active_alert_order,
+)
 from apps.monitor.services.alert_access import filter_alerts_by_organizations, orphaned_monitor_policy_q
 from apps.monitor.services.authorized_metric_query import AuthorizedMetricQueryError, AuthorizedMetricQueryService
 from apps.monitor.services.cmdb_relation_alerts import (
     RELATION_ALERT_VIEWS,
     build_relation_alert_view,
+    collect_peer_uuids,
+    compose_path_peers,
+    edges_from_peers,
     empty_relation_alert_payload,
+    normalize_model_asst_ids,
     normalize_relation_alert_limit,
 )
 from apps.monitor.services.display_metric_snapshot import (
@@ -1695,6 +1704,7 @@ def _build_latest_active_alert_items(queryset, authorized_instances, limit):
         item["end_event_time"] = None
         items.append(item)
     _attach_active_alert_metric_names(items)
+    format_active_alert_item_times(items)
     return items
 
 
@@ -1801,6 +1811,7 @@ def _build_severity_active_alert_items(queryset, authorized_instances, limit, no
         item["duration_text"] = format_active_alert_duration(_parse_alert_instant(item.get("start_event_time")), reference_now)
         items.append(item)
     _attach_active_alert_metric_names(items)
+    format_active_alert_item_times(items)
     return items
 
 
@@ -2416,6 +2427,41 @@ def _matching_relation(language: str, model_id: str, model_asst_id: str, peer_mo
     return match, ""
 
 
+def _peer_model_of_association(match: dict, current_model_id: str) -> str:
+    src_model_id = str(match.get("src_model_id") or "")
+    dst_model_id = str(match.get("dst_model_id") or "")
+    if src_model_id == current_model_id:
+        return dst_model_id
+    if dst_model_id == current_model_id:
+        return src_model_id
+    return ""
+
+
+def _resolve_association_path(language: str, source_model_id: str, association_ids: list[str], peer_model_id: str):
+    """校验关联路径，并从关联定义推断中间模型。单跳错误信息与原来一致。"""
+    if len(association_ids) == 1:
+        _match, association_error = _matching_relation(language, source_model_id, association_ids[0], peer_model_id)
+        if association_error:
+            return None, association_error
+        return [(association_ids[0], peer_model_id)], ""
+
+    current_model_id = source_model_id
+    hops: list[tuple[str, str]] = []
+    for index, association_id in enumerate(association_ids):
+        options = list_model_association_options(language, current_model_id)
+        match = next((item for item in options if str(item.get("model_asst_id") or "") == association_id), None)
+        if match is None:
+            return None, f"关联路径第 {index + 1} 跳不存在，或没有连接到上一跳模型"
+        next_model_id = _peer_model_of_association(match, current_model_id)
+        if not next_model_id:
+            return None, f"关联路径第 {index + 1} 跳没有连接到上一跳模型"
+        hops.append((association_id, next_model_id))
+        current_model_id = next_model_id
+    if current_model_id != peer_model_id:
+        return None, "关联路径的最终对端不是指定模型"
+    return hops, ""
+
+
 def _list_relation_source_instances(source_model_id, permission_map):
     """翻完 CMDB 实例页再汇总，避免超过单页上限时静默截断。"""
     collected = []
@@ -2451,19 +2497,22 @@ def get_cmdb_relation_alert_aggregation(
 ):
     """按 CMDB 关联把授权对端上的活跃监控告警汇总到源模型实例。
 
-    view=summary 返回总数 / 有告警 / 无告警；top 返回有告警的前 N 个源实例。
+    view=summary 返回总数 / 有告警 / 无告警 / 去重后的活跃告警条数；top 返回有告警的前 N 个源实例。
+    model_asst_id 可以是一个关联，或按顺序走的多跳关联路径。
+    model_id 是源模型，peer_model_id 是最终告警对象；中间模型从关联定义推断。
     """
     del organization, kwargs
     view_name = str(view or "").strip().lower() or "summary"
     if view_name not in RELATION_ALERT_VIEWS:
         return {"result": False, "data": {}, "message": "view 必须是 summary 或 top"}
     source_model_id = str(model_id or "").strip()
-    association_id = str(model_asst_id or "").strip()
     peer_model = str(peer_model_id or "").strip() or "host"
     if not source_model_id:
         return {"result": False, "data": empty_relation_alert_payload(view_name), "message": "模型不能为空"}
-    if not association_id:
-        return {"result": False, "data": empty_relation_alert_payload(view_name), "message": "模型关联不能为空"}
+    try:
+        association_ids = normalize_model_asst_ids(model_asst_id)
+    except ValueError as exc:
+        return {"result": False, "data": empty_relation_alert_payload(view_name), "message": str(exc)}
     try:
         top_limit = normalize_relation_alert_limit(limit)
     except ValueError as exc:
@@ -2484,11 +2533,12 @@ def get_cmdb_relation_alert_aggregation(
     if scope_error:
         return scope_error
 
+    language = _resolve_nats_cmdb_language(actor_user_info)
     try:
-        _match, association_error = _matching_relation(
-            _resolve_nats_cmdb_language(actor_user_info),
+        hops, association_error = _resolve_association_path(
+            language,
             source_model_id,
-            association_id,
+            association_ids,
             peer_model,
         )
     except Exception as exc:
@@ -2519,7 +2569,19 @@ def get_cmdb_relation_alert_aggregation(
     try:
         instances = _list_relation_source_instances(source_model_id, permission_map)
         source_uuids = [str(item.get("inst_uuid") or "").strip() for item in instances or [] if isinstance(item, dict)]
-        edges = query_association_edges(association_id, [item for item in source_uuids if item])
+        source_ids = [item for item in source_uuids if item]
+        hop_edges = []
+        current_ids = source_ids
+        model_chain = [source_model_id]
+        for association_id, next_model in hops:
+            hop_edges.append(query_association_edges(association_id, current_ids))
+            model_chain.append(next_model)
+            current_ids = collect_peer_uuids(compose_path_peers(hop_edges, source_ids, model_chain))
+        edges = edges_from_peers(
+            compose_path_peers(hop_edges, source_ids, model_chain),
+            source_model_id,
+            peer_model,
+        )
     except Exception as exc:
         return _relation_alert_failure("instances", exc, view_name)
 

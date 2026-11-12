@@ -2606,446 +2606,420 @@ screens:
   other: {}
   view_sets:
     items:
-    - content: 机房运行总览
-      h: 87
-      id: legacy-title-frame
-      kind: titleFrame
-      preset: hero-3
-      textStyle:
-        color: '#E6F3FF'
-        fontSize: 28
-        fontWeight: 700
+    - h: 87
       w: 1479
       x: 231
       y: 1
+      id: legacy-title-frame
+      kind: titleFrame
+      preset: hero-3
       zIndex: 37
-    - format: YYYY-MM-DD HH:mm:ss
-      h: 50
+      content: 机房运行总览
+      textStyle:
+        color: '#E6F3FF'
+        fontSize: 30
+        fontWeight: 700
+    - h: 50
+      w: 295
+      x: 1620
+      y: 4
       id: legacy-clock
       kind: clock
+      format: YYYY-MM-DD HH:mm:ss
+      zIndex: 38
       textStyle:
         color: '#91AFC6'
         fontSize: 23
         fontWeight: 600
-      w: 295
-      x: 1620
-      y: 4
-      zIndex: 38
     - h: 198
+      w: 354
+      x: 16
+      y: 164
       id: bg-room-scale
       kind: shape
       shape: rect
+      zIndex: 1
       shapeStyle:
-        backgroundColor: '#0B2238'
+        shadow: 0
+        gradient: true
+        hideBorder: true
         borderColor: rgba(120, 190, 230, 0)
         borderWidth: 0
-        gradient: true
-        gradientDirection: vertical
         gradientEnd: '#071829'
         gradientStart: '#0B2238'
         hideBackground: false
-        hideBorder: true
-        shadow: 0
+        backgroundColor: '#0B2238'
+        gradientDirection: vertical
+    - h: 206
       w: 354
       x: 16
-      y: 164
-      zIndex: 1
-    - h: 206
+      y: 366
       id: bg-room-u-usage
       kind: shape
       shape: rect
+      zIndex: 1
       shapeStyle:
-        backgroundColor: '#0B2238'
+        shadow: 0
+        gradient: true
+        hideBorder: true
         borderColor: rgba(120, 190, 230, 0)
         borderWidth: 0
-        gradient: true
-        gradientDirection: vertical
         gradientEnd: '#071829'
         gradientStart: '#0B2238'
         hideBackground: false
-        hideBorder: true
-        shadow: 0
+        backgroundColor: '#0B2238'
+        gradientDirection: vertical
+    - h: 269
       w: 354
       x: 16
-      y: 366
-      zIndex: 1
-    - h: 269
+      y: 803
       id: bg-room-u-top
       kind: shape
       shape: rect
+      zIndex: 1
       shapeStyle:
-        backgroundColor: '#0B2238'
+        shadow: 0
+        gradient: true
+        hideBorder: true
         borderColor: rgba(120, 190, 230, 0)
         borderWidth: 0
-        gradient: true
-        gradientDirection: vertical
         gradientEnd: '#071829'
         gradientStart: '#0B2238'
         hideBackground: false
-        hideBorder: true
-        shadow: 0
+        backgroundColor: '#0B2238'
+        gradientDirection: vertical
+    - h: 223
       w: 354
       x: 16
-      y: 803
-      zIndex: 1
-    - h: 223
+      y: 576
       id: bg-room-device-types
       kind: shape
       shape: rect
+      zIndex: 1
       shapeStyle:
-        backgroundColor: '#0B2238'
+        shadow: 0
+        gradient: true
+        hideBorder: true
         borderColor: rgba(120, 190, 230, 0)
         borderWidth: 0
-        gradient: true
-        gradientDirection: vertical
         gradientEnd: '#071829'
         gradientStart: '#0B2238'
         hideBackground: false
-        hideBorder: true
-        shadow: 0
-      w: 354
-      x: 16
-      y: 576
-      zIndex: 1
+        backgroundColor: '#0B2238'
+        gradientDirection: vertical
     - h: 219
+      w: 354
+      x: 1550
+      y: 168
       id: bg-room-coverage
       kind: shape
       shape: rect
+      zIndex: 1
       shapeStyle:
-        backgroundColor: '#0B2238'
+        shadow: 0
+        gradient: true
+        hideBorder: true
         borderColor: rgba(120, 190, 230, 0)
         borderWidth: 0
-        gradient: true
-        gradientDirection: vertical
         gradientEnd: '#071829'
         gradientStart: '#0B2238'
         hideBackground: false
-        hideBorder: true
-        shadow: 0
+        backgroundColor: '#0B2238'
+        gradientDirection: vertical
+    - h: 219
       w: 354
       x: 1550
-      y: 168
-      zIndex: 1
-    - h: 219
+      y: 391
       id: bg-room-alarm-level
       kind: shape
       shape: rect
+      zIndex: 1
       shapeStyle:
-        backgroundColor: '#0B2238'
+        shadow: 0
+        gradient: true
+        hideBorder: true
         borderColor: rgba(120, 190, 230, 0)
         borderWidth: 0
-        gradient: true
-        gradientDirection: vertical
         gradientEnd: '#071829'
         gradientStart: '#0B2238'
         hideBackground: false
-        hideBorder: true
-        shadow: 0
-      w: 354
-      x: 1550
-      y: 391
-      zIndex: 1
+        backgroundColor: '#0B2238'
+        gradientDirection: vertical
     - h: 217
+      w: 352
+      x: 1551
+      y: 614
       id: bg-room-alarm-top
       kind: shape
       shape: rect
+      zIndex: 1
       shapeStyle:
-        backgroundColor: '#0B2238'
+        shadow: 0
+        gradient: true
+        hideBorder: true
         borderColor: rgba(120, 190, 230, 0)
         borderWidth: 0
-        gradient: true
-        gradientDirection: vertical
         gradientEnd: '#071829'
         gradientStart: '#0B2238'
         hideBackground: false
-        hideBorder: true
-        shadow: 0
-      w: 352
-      x: 1551
-      y: 614
-      zIndex: 1
-    - h: 227
-      id: bg-room-alarm-devices
-      kind: shape
-      shape: rect
-      shapeStyle:
         backgroundColor: '#0B2238'
-        borderColor: rgba(120, 190, 230, 0)
-        borderWidth: 0
-        gradient: true
         gradientDirection: vertical
-        gradientEnd: '#071829'
-        gradientStart: '#0B2238'
-        hideBackground: false
-        hideBorder: true
-        shadow: 0
-      w: 1498
-      x: 409
-      y: 850
-      zIndex: 1
-    - decorationType: panelFrame
-      h: 198
-      id: panel-room-scale
-      kind: decoration
-      preset: border-25
+    - h: 198
       w: 354
       x: 16
       y: 164
-      zIndex: 5
-    - decorationType: panelFrame
-      h: 206
-      id: panel-room-u-usage
+      id: panel-room-scale
       kind: decoration
       preset: border-25
+      zIndex: 5
+      decorationType: panelFrame
+    - h: 206
       w: 354
       x: 16
       y: 366
+      id: panel-room-u-usage
+      kind: decoration
+      preset: border-25
       zIndex: 3
-    - decorationType: panelFrame
-      h: 269
+      decorationType: panelFrame
+    - h: 269
+      w: 354
+      x: 17
+      y: 811
       id: panel-room-u-top
       kind: decoration
       preset: border-25
-      w: 354
-      x: 16
-      y: 803
       zIndex: 4
-    - decorationType: panelFrame
-      h: 223
-      id: panel-room-device-types
-      kind: decoration
-      preset: border-25
+      decorationType: panelFrame
+    - h: 223
       w: 354
       x: 16
       y: 576
-      zIndex: 6
-    - decorationType: panelFrame
-      h: 219
-      id: panel-room-coverage
+      id: panel-room-device-types
       kind: decoration
       preset: border-25
+      zIndex: 6
+      decorationType: panelFrame
+    - h: 219
       w: 354
       x: 1550
       y: 168
-      zIndex: 7
-    - decorationType: panelFrame
-      h: 219
-      id: panel-room-alarm-level
+      id: panel-room-coverage
       kind: decoration
       preset: border-25
+      zIndex: 7
+      decorationType: panelFrame
+    - h: 219
       w: 354
       x: 1550
       y: 391
-      zIndex: 9
-    - decorationType: panelFrame
-      h: 217
-      id: panel-room-alarm-top
+      id: panel-room-alarm-level
       kind: decoration
       preset: border-25
+      zIndex: 9
+      decorationType: panelFrame
+    - h: 217
       w: 352
       x: 1551
       y: 614
+      id: panel-room-alarm-top
+      kind: decoration
+      preset: border-25
       zIndex: 8
-    - decorationType: panelFrame
-      h: 237
+      decorationType: panelFrame
+    - h: 248
+      w: 1529
+      x: 377
+      y: 830
       id: panel-room-alarm-devices
       kind: decoration
       preset: border-1
-      w: 1522
-      x: 379
-      y: 835
       zIndex: 10
-    - content: 机房规模
-      h: 29
-      id: title-room-scale
-      kind: titleFrame
-      preset: section-3
-      textStyle:
-        color: '#E6F3FF'
-        fontSize: 18
-        fontWeight: 600
+      decorationType: panelFrame
+    - h: 29
       w: 343
       x: 22
       y: 171
-      zIndex: 24
-    - content: U 使用率
-      h: 29
-      id: title-room-u-usage
+      id: title-room-scale
       kind: titleFrame
       preset: section-3
+      zIndex: 24
+      content: 机房规模
       textStyle:
         color: '#E6F3FF'
         fontSize: 18
         fontWeight: 600
+    - h: 29
       w: 343
       x: 22
       y: 372
+      id: title-room-u-usage
+      kind: titleFrame
+      preset: section-3
       zIndex: 22
-    - content: 机柜 U 占用 TOP5
-      h: 30
+      content: U 使用率
+      textStyle:
+        color: '#E6F3FF'
+        fontSize: 18
+        fontWeight: 600
+    - h: 30
+      w: 343
+      x: 21
+      y: 817
       id: title-room-u-top
       kind: titleFrame
       preset: section-3
-      textStyle:
-        color: '#E6F3FF'
-        fontSize: 18
-        fontWeight: 600
-      w: 343
-      x: 21
-      y: 811
       zIndex: 23
-    - content: 设备类型
-      h: 29
-      id: title-room-device-types
-      kind: titleFrame
-      preset: section-3
+      content: 机柜 U 占用 TOP5
       textStyle:
         color: '#E6F3FF'
         fontSize: 18
         fontWeight: 600
+    - h: 29
       w: 343
       x: 22
       y: 583
-      zIndex: 25
-    - content: 监控状态
-      h: 29
-      id: title-room-coverage
+      id: title-room-device-types
       kind: titleFrame
       preset: section-3
+      zIndex: 25
+      content: 设备类型
       textStyle:
         color: '#E6F3FF'
         fontSize: 18
         fontWeight: 600
+    - h: 29
       w: 343
       x: 1556
       y: 174
-      zIndex: 26
-    - content: 告警等级
-      h: 29
-      id: title-room-alarm-level
+      id: title-room-coverage
       kind: titleFrame
       preset: section-3
+      zIndex: 26
+      content: 监控状态
       textStyle:
         color: '#E6F3FF'
         fontSize: 18
         fontWeight: 600
+    - h: 29
       w: 343
       x: 1556
       y: 397
-      zIndex: 28
-    - content: 机柜告警 TOP5
-      h: 30
-      id: title-room-alarm-top
+      id: title-room-alarm-level
       kind: titleFrame
       preset: section-3
+      zIndex: 28
+      content: 告警等级
       textStyle:
         color: '#E6F3FF'
         fontSize: 18
         fontWeight: 600
+    - h: 30
       w: 341
       x: 1557
       y: 620
-      zIndex: 27
-    - content: 告警设备
-      h: 37
-      id: title-room-alarm-devices
+      id: title-room-alarm-top
       kind: titleFrame
       preset: section-3
+      zIndex: 27
+      content: 机柜告警 TOP5
       textStyle:
         color: '#E6F3FF'
         fontSize: 18
         fontWeight: 600
+    - h: 37
       w: 1508
-      x: 382
-      y: 850
+      x: 389
+      y: 834
+      id: title-room-alarm-devices
+      kind: titleFrame
+      preset: section-3
       zIndex: 29
-    - content: 机柜总数
-      h: 20
-      id: caption-room-racks
-      kind: text
+      content: 告警设备
       textStyle:
-        align: center
-        color: '#91AFC6'
+        color: '#E6F3FF'
         fontSize: 18
-        fontWeight: 500
+        fontWeight: 600
+    - h: 20
       w: 98
       x: 39
       y: 309
-      zIndex: 35
-    - content: 设备总数
-      h: 20
-      id: caption-room-devices
+      id: caption-room-racks
       kind: text
+      zIndex: 35
+      content: 机柜总数
       textStyle:
         align: center
         color: '#91AFC6'
         fontSize: 18
         fontWeight: 500
+    - h: 20
       w: 98
       x: 148
       y: 309
-      zIndex: 36
-    - content: 未落位
-      h: 20
-      id: caption-room-unracked
+      id: caption-room-devices
       kind: text
+      zIndex: 36
+      content: 设备总数
       textStyle:
         align: center
         color: '#91AFC6'
         fontSize: 18
         fontWeight: 500
+    - h: 20
       w: 98
       x: 257
       y: 309
-      zIndex: 33
-    - content: 已用 U
-      h: 16
-      id: caption-room-used-u
+      id: caption-room-unracked
       kind: text
+      zIndex: 33
+      content: 未落位
       textStyle:
         align: center
         color: '#91AFC6'
-        fontSize: 16
+        fontSize: 18
         fontWeight: 500
+    - h: 16
       w: 102
       x: 244
       y: 460
-      zIndex: 32
-    - content: 总 U
-      h: 16
-      id: caption-room-total-u
+      id: caption-room-used-u
       kind: text
+      zIndex: 32
+      content: 已用 U
       textStyle:
         align: center
         color: '#91AFC6'
         fontSize: 16
         fontWeight: 500
+    - h: 16
       w: 102
       x: 244
       y: 528
+      id: caption-room-total-u
+      kind: text
       zIndex: 34
-    - chartType: single
-      h: 113
+      content: 总 U
+      textStyle:
+        align: center
+        color: '#91AFC6'
+        fontSize: 16
+        fontWeight: 500
+    - h: 113
+      w: 98
+      x: 39
+      y: 205
       id: room-kpi-racks
-      title: 机柜总数
       type: widget
+      title: 机柜总数
+      zIndex: 15
+      chartType: single
       valueConfig:
+        chartType: single
         appearance:
           frame: bare
-        chartThemeMode: screen-dark
-        chartType: single
         dataSource: 机房机柜容量::cmdb/get_room_rack_capacity
-        dataSourceParams:
-        - alias_name: 机房
-          filterType: filter
-          name: server_room_id
-          type: string
-          value: ''
-        - alias_name: 视图
-          filterType: fixed
-          name: view
-          type: string
-          value: summary
+        chartThemeMode: screen-dark
         filterBindings:
           server_room_id__string: true
         selectedFields:
@@ -3053,32 +3027,32 @@ screens:
         thresholdColors:
         - color: '#36cfc9'
           value: '0'
-      w: 98
-      x: 39
-      y: 205
-      zIndex: 15
-    - chartType: single
-      h: 113
-      id: room-kpi-devices
-      title: 设备总数
-      type: widget
-      valueConfig:
-        appearance:
-          frame: bare
-        chartThemeMode: screen-dark
-        chartType: single
-        dataSource: 机房机柜容量::cmdb/get_room_rack_capacity
         dataSourceParams:
-        - alias_name: 机房
-          filterType: filter
-          name: server_room_id
+        - name: server_room_id
           type: string
           value: ''
-        - alias_name: 视图
-          filterType: fixed
-          name: view
+          alias_name: 机房
+          filterType: filter
+        - name: view
           type: string
           value: summary
+          alias_name: 视图
+          filterType: fixed
+    - h: 113
+      w: 98
+      x: 148
+      y: 205
+      id: room-kpi-devices
+      type: widget
+      title: 设备总数
+      zIndex: 16
+      chartType: single
+      valueConfig:
+        chartType: single
+        appearance:
+          frame: bare
+        dataSource: 机房机柜容量::cmdb/get_room_rack_capacity
+        chartThemeMode: screen-dark
         filterBindings:
           server_room_id__string: true
         selectedFields:
@@ -3086,32 +3060,32 @@ screens:
         thresholdColors:
         - color: '#366ce4'
           value: '0'
-      w: 98
-      x: 148
-      y: 205
-      zIndex: 16
-    - chartType: single
-      h: 113
-      id: room-kpi-unracked
-      title: 未落位
-      type: widget
-      valueConfig:
-        appearance:
-          frame: bare
-        chartThemeMode: screen-dark
-        chartType: single
-        dataSource: 机房机柜容量::cmdb/get_room_rack_capacity
         dataSourceParams:
-        - alias_name: 机房
-          filterType: filter
-          name: server_room_id
+        - name: server_room_id
           type: string
           value: ''
-        - alias_name: 视图
-          filterType: fixed
-          name: view
+          alias_name: 机房
+          filterType: filter
+        - name: view
           type: string
           value: summary
+          alias_name: 视图
+          filterType: fixed
+    - h: 113
+      w: 98
+      x: 257
+      y: 205
+      id: room-kpi-unracked
+      type: widget
+      title: 未落位
+      zIndex: 14
+      chartType: single
+      valueConfig:
+        chartType: single
+        appearance:
+          frame: bare
+        dataSource: 机房机柜容量::cmdb/get_room_rack_capacity
+        chartThemeMode: screen-dark
         filterBindings:
           server_room_id__string: true
         selectedFields:
@@ -3119,32 +3093,32 @@ screens:
         thresholdColors:
         - color: '#EAB839'
           value: '0'
-      w: 98
-      x: 257
-      y: 205
-      zIndex: 14
-    - chartType: single
-      h: 44
-      id: room-u-used
-      title: 已用 U
-      type: widget
-      valueConfig:
-        appearance:
-          frame: bare
-        chartThemeMode: screen-dark
-        chartType: single
-        dataSource: 机房机柜容量::cmdb/get_room_rack_capacity
         dataSourceParams:
-        - alias_name: 机房
-          filterType: filter
-          name: server_room_id
+        - name: server_room_id
           type: string
           value: ''
-        - alias_name: 视图
-          filterType: fixed
-          name: view
+          alias_name: 机房
+          filterType: filter
+        - name: view
           type: string
           value: summary
+          alias_name: 视图
+          filterType: fixed
+    - h: 44
+      w: 102
+      x: 244
+      y: 415
+      id: room-u-used
+      type: widget
+      title: 已用 U
+      zIndex: 30
+      chartType: single
+      valueConfig:
+        chartType: single
+        appearance:
+          frame: bare
+        dataSource: 机房机柜容量::cmdb/get_room_rack_capacity
+        chartThemeMode: screen-dark
         filterBindings:
           server_room_id__string: true
         selectedFields:
@@ -3152,32 +3126,32 @@ screens:
         thresholdColors:
         - color: '#36cfc9'
           value: '0'
-      w: 102
-      x: 244
-      y: 415
-      zIndex: 30
-    - chartType: single
-      h: 37
-      id: room-u-total
-      title: 总 U
-      type: widget
-      valueConfig:
-        appearance:
-          frame: bare
-        chartThemeMode: screen-dark
-        chartType: single
-        dataSource: 机房机柜容量::cmdb/get_room_rack_capacity
         dataSourceParams:
-        - alias_name: 机房
-          filterType: filter
-          name: server_room_id
+        - name: server_room_id
           type: string
           value: ''
-        - alias_name: 视图
-          filterType: fixed
-          name: view
+          alias_name: 机房
+          filterType: filter
+        - name: view
           type: string
           value: summary
+          alias_name: 视图
+          filterType: fixed
+    - h: 37
+      w: 94
+      x: 248
+      y: 493
+      id: room-u-total
+      type: widget
+      title: 总 U
+      zIndex: 31
+      chartType: single
+      valueConfig:
+        chartType: single
+        appearance:
+          frame: bare
+        dataSource: 机房机柜容量::cmdb/get_room_rack_capacity
+        chartThemeMode: screen-dark
         filterBindings:
           server_room_id__string: true
         selectedFields:
@@ -3185,22 +3159,42 @@ screens:
         thresholdColors:
         - color: '#366ce4'
           value: '0'
-      w: 94
-      x: 248
-      y: 493
-      zIndex: 31
-    - chartType: gauge
-      h: 233
+        dataSourceParams:
+        - name: server_room_id
+          type: string
+          value: ''
+          alias_name: 机房
+          filterType: filter
+        - name: view
+          type: string
+          value: summary
+          alias_name: 视图
+          filterType: fixed
+    - h: 233
+      w: 276
+      x: 17
+      y: 391
       id: room-u-usage
-      title: U 使用率
       type: widget
+      title: U 使用率
+      zIndex: 12
+      chartType: gauge
       valueConfig:
+        name: U 使用率
+        unit: '%'
+        gaugeMax: 100
+        gaugeMin: 0
+        chartType: gauge
         appearance:
           frame: bare
-        chartThemeMode: screen-dark
-        chartType: gauge
+        dataSource: 机房机柜容量::cmdb/get_room_rack_capacity
         gaugeShape: semicircle
-        name: U 使用率
+        decimalPlaces: 0
+        chartThemeMode: screen-dark
+        filterBindings:
+          server_room_id__string: true
+        selectedFields:
+        - u_usage_percent
         thresholdColors:
         - color: '#dc2626'
           value: '70'
@@ -3208,232 +3202,181 @@ screens:
           value: '30'
         - color: '#35e2cb'
           value: '0'
-        dataSource: 机房机柜容量::cmdb/get_room_rack_capacity
         dataSourceParams:
-        - alias_name: 机房
-          filterType: filter
-          name: server_room_id
+        - name: server_room_id
           type: string
           value: ''
-        - alias_name: 视图
-          filterType: fixed
-          name: view
+          alias_name: 机房
+          filterType: filter
+        - name: view
           type: string
           value: summary
-        decimalPlaces: 0
-        filterBindings:
-          server_room_id__string: true
-        gaugeMax: 100
-        gaugeMin: 0
-        selectedFields:
-        - u_usage_percent
-        unit: '%'
-      w: 276
-      x: 17
-      y: 391
-      zIndex: 12
-    - chartType: pie
-      h: 178
-      id: room-device-types
-      title: 设备类型
-      type: widget
-      valueConfig:
-        appearance:
-          frame: bare
-        chartThemeMode: screen-dark
-        chartType: pie
-        dataSource: 机房设备类型分布::cmdb/get_room_device_type_distribution
-        dataSourceParams:
-        - alias_name: 机房
-          filterType: filter
-          name: server_room_id
-          type: string
-          value: ''
-        filterBindings:
-          server_room_id__string: true
+          alias_name: 视图
+          filterType: fixed
+    - h: 178
       w: 336
       x: 23
       y: 617
-      zIndex: 17
-    - chartType: topN
-      h: 227
-      id: room-u-top
-      title: 机柜 U 占用 TOP5
+      id: room-device-types
       type: widget
+      title: 设备类型
+      zIndex: 17
+      chartType: pie
       valueConfig:
+        chartType: pie
         appearance:
           frame: bare
+        dataSource: 机房设备类型分布::cmdb/get_room_device_type_distribution
         chartThemeMode: screen-dark
-        chartType: topN
-        dataSource: 机房机柜容量::cmdb/get_room_rack_capacity
+        filterBindings:
+          server_room_id__string: true
         dataSourceParams:
-        - alias_name: 机房
-          filterType: filter
-          name: server_room_id
+        - name: server_room_id
           type: string
           value: ''
-        - alias_name: 视图
-          filterType: fixed
-          name: view
-          type: string
-          value: rack_top
-        - alias_name: 返回条数
-          filterType: fixed
-          name: limit
-          type: number
-          value: 5
+          alias_name: 机房
+          filterType: filter
+    - h: 236
+      w: 358
+      x: 13
+      y: 836
+      id: room-u-top
+      type: widget
+      title: 机柜 U 占用 TOP5
+      zIndex: 13
+      chartType: topN
+      valueConfig:
+        chartType: topN
+        appearance:
+          frame: bare
+        dataSource: 机房机柜容量::cmdb/get_room_rack_capacity
+        chartThemeMode: screen-dark
         filterBindings:
           server_room_id__string: true
         topNLabelField: name
         topNValueField: value
-      w: 334
-      x: 24
-      y: 838
-      zIndex: 13
-    - chartType: pie
-      h: 173
-      id: room-coverage
-      title: 监控状态
-      type: widget
-      valueConfig:
-        appearance:
-          frame: bare
-        chartThemeMode: screen-dark
-        chartType: pie
-        dataSource: 机房活跃告警::cmdb/get_room_active_alarms
         dataSourceParams:
-        - alias_name: 机房
-          filterType: filter
-          name: server_room_id
+        - name: server_room_id
           type: string
           value: ''
-        - alias_name: 视图
-          filterType: fixed
-          name: view
+          alias_name: 机房
+          filterType: filter
+        - name: view
           type: string
-          value: coverage
-        filterBindings:
-          server_room_id__string: true
+          value: rack_top
+          alias_name: 视图
+          filterType: fixed
+        - name: limit
+          type: number
+          value: 5
+          alias_name: 返回条数
+          filterType: fixed
+    - h: 173
       w: 342
       x: 1558
       y: 209
-      zIndex: 18
-    - chartType: pie
-      h: 173
-      id: room-alarm-level
-      title: 告警等级
+      id: room-coverage
       type: widget
+      title: 监控状态
+      zIndex: 18
+      chartType: pie
       valueConfig:
+        chartType: pie
         appearance:
           frame: bare
-        chartThemeMode: screen-dark
-        chartType: pie
         dataSource: 机房活跃告警::cmdb/get_room_active_alarms
-        dataSourceParams:
-        - alias_name: 机房
-          filterType: filter
-          name: server_room_id
-          type: string
-          value: ''
-        - alias_name: 视图
-          filterType: fixed
-          name: view
-          type: string
-          value: level_distribution
+        chartThemeMode: screen-dark
         filterBindings:
           server_room_id__string: true
+        dataSourceParams:
+        - name: server_room_id
+          type: string
+          value: ''
+          alias_name: 机房
+          filterType: filter
+        - name: view
+          type: string
+          value: coverage
+          alias_name: 视图
+          filterType: fixed
+    - h: 173
       w: 340
       x: 1558
       y: 431
-      zIndex: 20
-    - chartType: topN
-      h: 174
-      id: room-alarm-top
-      title: 机柜告警 TOP5
+      id: room-alarm-level
       type: widget
+      title: 告警等级
+      zIndex: 20
+      chartType: pie
       valueConfig:
+        chartType: pie
         appearance:
           frame: bare
-        chartThemeMode: screen-dark
-        chartType: topN
         dataSource: 机房活跃告警::cmdb/get_room_active_alarms
+        chartThemeMode: screen-dark
+        filterBindings:
+          server_room_id__string: true
         dataSourceParams:
-        - alias_name: 机房
-          filterType: filter
-          name: server_room_id
+        - name: server_room_id
           type: string
           value: ''
-        - alias_name: 视图
-          filterType: fixed
-          name: view
+          alias_name: 机房
+          filterType: filter
+        - name: view
           type: string
-          value: rack_top
-        - alias_name: 返回条数
+          value: level_distribution
+          alias_name: 视图
           filterType: fixed
-          name: limit
-          type: number
-          value: 5
+    - h: 174
+      w: 367
+      x: 1539
+      y: 642
+      id: room-alarm-top
+      type: widget
+      title: 机柜告警 TOP5
+      zIndex: 19
+      chartType: topN
+      valueConfig:
+        chartType: topN
+        appearance:
+          frame: bare
+        dataSource: 机房活跃告警::cmdb/get_room_active_alarms
+        chartThemeMode: screen-dark
         filterBindings:
           server_room_id__string: true
         topNLabelField: name
         topNValueField: value
-      w: 333
-      x: 1559
-      y: 650
-      zIndex: 19
-    - chartType: table
-      h: 181
-      id: room-alarm-devices
-      title: 告警设备
-      type: widget
-      valueConfig:
-        appearance:
-          frame: bare
-        chartThemeMode: screen-dark
-        chartType: table
-        dataSource: 机房活跃告警::cmdb/get_room_active_alarms
         dataSourceParams:
-        - alias_name: 机房
-          filterType: filter
-          inputConfig:
-            control: select
-            optionsSource:
-              labelField: inst_name
-              sourceRef:
-                type: rest_api
-                value: cmdb/get_room_list
-              type: dynamic
-              valueField: inst_uuid
-          name: server_room_id
+        - name: server_room_id
           type: string
           value: ''
-        - alias_name: 视图
-          filterType: params
-          inputConfig:
-            componentSwitch: true
-            control: select
-            optionsSource:
-              staticItems:
-              - label: 监控覆盖
-                value: coverage
-              - label: 告警等级分布
-                value: level_distribution
-              - label: 机柜告警 TOP
-                value: rack_top
-              - label: 告警设备
-                value: device_list
-              type: static
-          name: view
+          alias_name: 机房
+          filterType: filter
+        - name: view
           type: string
-          value: device_list
-        - alias_name: 返回条数
-          filterType: params
-          name: limit
+          value: rack_top
+          alias_name: 视图
+          filterType: fixed
+        - name: limit
           type: number
-          value: 20
-        filterBindings:
-          server_room_id__string: true
+          value: 5
+          alias_name: 返回条数
+          filterType: fixed
+    - h: 203
+      w: 1504
+      x: 388
+      y: 864
+      id: room-alarm-devices
+      type: widget
+      title: 告警设备
+      zIndex: 21
+      chartType: table
+      valueConfig:
         name: 告警设备
+        chartType: table
+        appearance:
+          frame: bare
+        dataSource: 机房活跃告警::cmdb/get_room_active_alarms
         tableConfig:
           columns:
           - key: device_name
@@ -3448,6 +3391,92 @@ screens:
             order: 2
             title: 最高级别
             visible: true
+            valueMappings:
+            - type: value
+              value: critical
+              result:
+                text: 严重
+                color: '#FF4D5E'
+            - type: value
+              value: Critical
+              result:
+                text: 严重
+                color: '#FF4D5E'
+            - type: value
+              value: CRITICAL
+              result:
+                text: 严重
+                color: '#FF4D5E'
+            - type: value
+              value: 严重
+              result:
+                text: 严重
+                color: '#FF4D5E'
+            - type: value
+              value: 致命
+              result:
+                text: 严重
+                color: '#FF4D5E'
+            - type: value
+              value: error
+              result:
+                text: 错误
+                color: '#e8862a'
+            - type: value
+              value: Error
+              result:
+                text: 错误
+                color: '#e8862a'
+            - type: value
+              value: ERROR
+              result:
+                text: 错误
+                color: '#e8862a'
+            - type: value
+              value: 错误
+              result:
+                text: 错误
+                color: '#e8862a'
+            - type: value
+              value: warning
+              result:
+                text: 警告
+                color: '#e8b04a'
+            - type: value
+              value: Warning
+              result:
+                text: 警告
+                color: '#e8b04a'
+            - type: value
+              value: WARNING
+              result:
+                text: 警告
+                color: '#e8b04a'
+            - type: value
+              value: 警告
+              result:
+                text: 警告
+                color: '#e8b04a'
+            - type: value
+              value: info
+              result:
+                text: 提示
+                color: '#5eb0ff'
+            - type: value
+              value: Info
+              result:
+                text: 提示
+                color: '#5eb0ff'
+            - type: value
+              value: INFO
+              result:
+                text: 提示
+                color: '#5eb0ff'
+            - type: value
+              value: 提示
+              result:
+                text: 提示
+                color: '#5eb0ff'
           - key: model_name
             order: 3
             title: 型号
@@ -3460,66 +3489,105 @@ screens:
             order: 5
             title: U位
             visible: true
-      w: 1502
-      x: 388
-      y: 884
-      zIndex: 21
-    - chartType: room3D
-      h: 734
-      id: builtin-room3d-main
-      title: 3D机房
-      type: widget
-      valueConfig:
-        appearance:
-          frame: bare
-        chartType: room3D
+        chartThemeMode: screen-dark
         filterBindings:
           server_room_id__string: true
-        interaction:
-          kind: data
-          name: 查看 CMDB 详情
-          url: /cmdb/assetData/detail/baseInfo?model_id=$__data.fields.object.model_id$&inst_uuid=$__data.fields.object.id$&inst_name=$__data.fields.object.name$
-          openMode: newTab
-        sceneWidgetType: room3D
+        dataSourceParams:
+        - name: server_room_id
+          type: string
+          value: ''
+          alias_name: 机房
+          filterType: filter
+          inputConfig:
+            control: select
+            optionsSource:
+              type: dynamic
+              sourceRef:
+                type: rest_api
+                value: cmdb/get_room_list
+              labelField: inst_name
+              valueField: inst_uuid
+        - name: view
+          type: string
+          value: device_list
+          alias_name: 视图
+          filterType: params
+          inputConfig:
+            control: select
+            optionsSource:
+              type: static
+              staticItems:
+              - label: 监控覆盖
+                value: coverage
+              - label: 告警等级分布
+                value: level_distribution
+              - label: 机柜告警 TOP
+                value: rack_top
+              - label: 告警设备
+                value: device_list
+            componentSwitch: true
+        - name: limit
+          type: number
+          value: 20
+          alias_name: 返回条数
+          filterType: params
+    - h: 739
       w: 1168
       x: 378
-      y: 118
+      y: 113
+      id: builtin-room3d-main
+      type: widget
+      title: 3D机房
       zIndex: 11
+      chartType: room3D
+      valueConfig:
+        chartType: room3D
+        appearance:
+          frame: bare
+        interaction:
+          url: /cmdb/assetData/detail/baseInfo?model_id=$__data.fields.object.model_id$&inst_uuid=$__data.fields.object.id$&inst_name=$__data.fields.object.name$
+          kind: data
+          name: 查看 CMDB 详情
+          openMode: newTab
+        filterBindings:
+          server_room_id__string: true
+        sceneWidgetType: room3D
     viewport:
-      adapter: fill
-      background:
-        color: '#09233C'
-        type: color
-      height: 1080
       theme: screen-dark
       width: 1920
+      height: 1080
+      adapter: fill
+      background:
+        type: color
+        color: '#09233C'
     decorations:
+      title: 机房运行总览
       showClock: false
       showTitle: false
-      title: 机房运行总览
     filters:
-    - defaultValue: null
+    - id: server_room_id__string
+      key: server_room_id
+      name: 机房
+      type: string
+      order: 0
       enabled: true
-      id: server_room_id__string
+      inputMode: select
       inputConfig:
         control: select
         optionsSource:
-          labelField: inst_name
+          type: dynamic
           sourceRef:
             type: rest_api
             value: cmdb/get_room_list
-          type: dynamic
+          labelField: inst_name
           valueField: inst_uuid
-      inputMode: select
-      key: server_room_id
-      name: Room
-      order: 0
-      type: string
+      defaultValue: null
   refs:
     datasource_keys:
     - 机房机柜容量::cmdb/get_room_rack_capacity
     - 机房设备类型分布::cmdb/get_room_device_type_distribution
     - 机房活跃告警::cmdb/get_room_active_alarms
+    - CMDB 机房列表::cmdb/get_room_list
     namespace_keys: []
 - key: screen::3D应用大屏_内置
   name: 3D应用大屏

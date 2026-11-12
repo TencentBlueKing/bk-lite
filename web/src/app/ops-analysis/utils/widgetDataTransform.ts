@@ -661,6 +661,16 @@ export const hasActiveWidgetRuntimeParams = (
   runtimeParams: Record<string, unknown>,
 ): boolean => supportsComponentSwitch(chartType) && Object.keys(runtimeParams).length > 0;
 
+const widgetSourceParams = (
+  config: { dataSourceParams?: ParamItem[] } | null | undefined,
+  dataSource: { params?: ParamItem[] } | null | undefined,
+): ParamItem[] => {
+  const rawParams = Array.isArray(config?.dataSourceParams) && config.dataSourceParams.length > 0
+    ? config.dataSourceParams
+    : dataSource?.params;
+  return Array.isArray(rawParams) ? rawParams : [];
+};
+
 export const buildWidgetRequestParams = ({
   config,
   dataSource,
@@ -680,11 +690,7 @@ export const buildWidgetRequestParams = ({
   resolutionContext?: DateRangeResolutionContext;
   t?: WidgetMessage;
 }) => {
-  const rawParams =
-    Array.isArray(config?.dataSourceParams) && config.dataSourceParams.length > 0
-      ? config.dataSourceParams
-      : dataSource?.params;
-  const sourceParams = Array.isArray(rawParams) ? rawParams : [];
+  const sourceParams = widgetSourceParams(config, dataSource);
 
   const userParams: Record<string, unknown> = {};
   sourceParams.forEach((param: any) => {
@@ -725,11 +731,7 @@ export const buildWidgetRequestSignatureParams = ({
   resolutionContext?: DateRangeResolutionContext;
   t?: WidgetMessage;
 }) => {
-  const rawParams =
-    Array.isArray(config?.dataSourceParams) && config.dataSourceParams.length > 0
-      ? config.dataSourceParams
-      : dataSource?.params;
-  const sourceParams = Array.isArray(rawParams) ? rawParams : [];
+  const sourceParams = widgetSourceParams(config, dataSource);
 
   const userParams: Record<string, unknown> = {};
   sourceParams.forEach((param: any) => {
