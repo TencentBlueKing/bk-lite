@@ -1,3 +1,4 @@
+import { findRegenerationMessage } from '@bk-lite/chat-content/regeneration';
 import {
   extractMessageText,
   type Message,
@@ -7,6 +8,7 @@ import {
 export interface RegenerationPlan {
   preservedMessages: Message[];
   contentToSend: string;
+  messageToSend: Message;
 }
 
 export function getMessageCopyText(content: string | MessageContent[]): string {
@@ -18,24 +20,11 @@ export function planMessageRegeneration(
   messages: Message[],
   messageId: string
 ): RegenerationPlan | null {
-  const messageIndex = messages.findIndex((message) => message.id === messageId);
-  if (messageIndex === -1) return null;
-
-  const currentMessage = messages[messageIndex];
-  let userMessageIndex = messageIndex;
-  if (currentMessage.sender === 'bot') {
-    userMessageIndex -= 1;
-    while (userMessageIndex >= 0 && messages[userMessageIndex].sender !== 'user') {
-      userMessageIndex -= 1;
-    }
-  }
-  if (userMessageIndex < 0) return null;
-
-  const contentToSend = extractMessageText(messages[userMessageIndex].content);
-  if (contentToSend.trim().length === 0) return null;
-
-  return {
-    preservedMessages: messages.slice(0, userMessageIndex),
-    contentToSend,
-  };
+  const original = findRegenerationMessage(messages, messageId);
+  if (!original) return null;
+  const contentToSend = extractMessageText(original.content);
+  const hasImages = Array.isArray(original.content) && original.content.some(part => part.type === 'image_url');
+  const hasAttachments = Array.isArray(original.metadata?.attachments) && original.metadata.attachments.length > 0;
+  if (!contentToSend.trim() && !hasImages && !hasAttachments) return null;
+  return { preservedMessages: [...messages], contentToSend, messageToSend: original };
 }

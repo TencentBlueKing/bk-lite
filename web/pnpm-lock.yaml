@@ -52,6 +52,9 @@ importers:
       '@antv/xflow':
         specifier: 2.2.4
         version: 2.2.4(@types/react@19.2.18)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
+      '@bk-lite/chat-content':
+        specifier: workspace:*
+        version: link:packages/chat-content
       '@dnd-kit/core':
         specifier: ^6.3.1
         version: 6.3.1(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
@@ -374,6 +377,33 @@ importers:
       zustand:
         specifier: 4.4.3
         version: 4.4.3(@types/react@19.2.18)(immer@10.0.3)(react@19.2.3)
+
+  packages/chat-content:
+    dependencies:
+      '@ant-design/icons':
+        specifier: ^5.6.1
+        version: 5.6.1(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
+      '@types/markdown-it':
+        specifier: ^14.1.2
+        version: 14.2.0
+      antd:
+        specifier: ^5.28.0
+        version: 5.29.3(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
+      dompurify:
+        specifier: ^3.3.1
+        version: 3.4.12
+      highlight.js:
+        specifier: ^11.11.1
+        version: 11.12.0
+      markdown-it:
+        specifier: ^14.2.0
+        version: 14.3.0
+      react:
+        specifier: '>=18 <20'
+        version: 19.2.3
+      react-dom:
+        specifier: '>=18 <20'
+        version: 19.2.3(react@19.2.3)
 
   src/app/alarm:
     dependencies:
@@ -6066,6 +6096,7 @@ packages:
   image-size@2.0.2:
     resolution: {integrity: sha512-IRqXKlaXwgSMAMtpNzZa1ZAe8m+Sa1770Dhk8VkSsP9LS+iHD62Zd8FQKs8fbPiagBE7BzoFX23cxFnwshpV6w==}
     engines: {node: '>=16.x'}
+    deprecated: Use latest 2.x please
     hasBin: true
 
   immediate@3.0.6:

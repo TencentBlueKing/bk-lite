@@ -22,7 +22,7 @@ from apps.opspilot.memory.identity import is_system_user_uuid, resolve_owner_ide
 from apps.opspilot.metis.llm.chain.entity import is_ephemeral_agui_custom_event
 from apps.opspilot.metis.llm.chain.token_utils import count_text_tokens
 from apps.opspilot.metis.llm.common.llm_client_factory import DEFAULT_CHAT_TEMPERATURE
-from apps.opspilot.models import ChatAttachment, LLMSkill, SkillChannel, SkillConversation, SkillConversationMessage
+from apps.opspilot.models import ChatAttachment, LLMSkill, MemorySpace, SkillChannel, SkillConversation, SkillConversationMessage
 from apps.opspilot.services.caller_identity import CALLER_IDENTITY_CONFIG_KEY, CallerIdentityError, capture_caller_identity
 from apps.opspilot.services.chat_attachment_service import (
     ChatAttachmentError,
@@ -811,8 +811,8 @@ def inject_page_context(user_message, page_context, mode: str = "inline"):
         return user_message
 
 
-def append_message(conversation: SkillConversation, role: str, content: str) -> SkillConversationMessage:
-    msg = SkillConversationMessage.objects.create(conversation=conversation, role=role, content=content or "")
+def append_message(conversation: SkillConversation, role: str, content: str, *, organization_id: int | None = None) -> SkillConversationMessage:
+    msg = SkillConversationMessage.objects.create(conversation=conversation, role=role, content=content or "", organization_id=organization_id)
     update_fields = ["updated_at"]
     if role == SkillConversationMessage.ROLE_USER and not (conversation.title or "").strip():
         text = (content or "").strip().replace("\n", " ")
@@ -1351,6 +1351,7 @@ def _history_from_conversation(
     *,
     document_budget: int | None = None,
     per_file_cap: int | None = None,
+    organization_id: int | None = None,
 ) -> list[dict]:
     """从落库会话取出上下文，转成 chat_service 使用的 {event, message}。
 
@@ -1358,7 +1359,11 @@ def _history_from_conversation(
     助手 AG-UI 事件数组会先抽成可见正文，避免计划/工具日志进入模型上下文。
     传入 document_budget 时，历史文档附件按剩余预算重新注入，图片不回放。
     """
-    qs = conversation.messages.order_by("-created_at", "-id")[: max(window, 0) * 2]
+    qs = conversation.messages.all()
+    space = resolve_skill_conversation_memory_space(conversation.skill)
+    if space is not None and space.scope == MemorySpace.SCOPE_TEAM:
+        qs = qs.filter(organization_id=organization_id)
+    qs = qs.order_by("-created_at", "-id")[: max(window, 0) * 2]
     items = list(reversed(list(qs)))
     if items and items[-1].role == SkillConversationMessage.ROLE_USER:
         items = items[:-1]
@@ -1490,6 +1495,16 @@ def stream_skill_channel_chat(
     choice_option: str | None = None,
 ) -> StreamingHttpResponse:
     skill = channel.skill
+    user = identity_user or request.user
+    caller = None
+    organization_id = None
+    space = resolve_skill_conversation_memory_space(skill)
+    if space is not None and space.scope == MemorySpace.SCOPE_TEAM:
+        try:
+            caller = capture_caller_identity(request, user)
+        except CallerIdentityError as e:
+            return create_error_stream_response(str(e))
+        organization_id = caller["team_id"]
     persist_text = persistable_user_message_text(user_message)
     try:
         ids = normalize_attachment_ids(attachment_ids)
@@ -1503,21 +1518,20 @@ def stream_skill_channel_chat(
     if not (persist_text or "").strip() and distribute_file_ids:
         persist_text = "请分发刚才上传的文件"
     conversation = get_or_create_conversation(channel, external_user_id, session_id)
-    user_row = append_message(conversation, SkillConversationMessage.ROLE_USER, persist_text)
+    user_row = append_message(conversation, SkillConversationMessage.ROLE_USER, persist_text, organization_id=organization_id)
     if attachments:
         bind_attachments(attachments, conversation=conversation, message=user_row)
         if not (conversation.title or "").strip() and not (persist_text or "").strip():
             conversation.title = attachments[0].original_name[:50]
             conversation.save(update_fields=["title", "updated_at"])
 
-    user = identity_user or request.user
     params = build_skill_chat_params(skill, persist_text, user)
     if parse_auto_command(persist_text)[0]:
         params["unattended"] = True
     page_loader = getattr(request, "opspilot_language_loader", None)
     if page_loader is not None:
         params["locale"] = page_loader.default_lang
-    inject_skill_memory_prompt(params, skill, external_user_id, persist_text)
+    inject_skill_memory_prompt(params, skill, external_user_id, persist_text, organization_id=organization_id)
     llm_model = getattr(skill, "llm_model", None)
     token_budget = attachment_token_budget(llm_model)
     include_images = llm_model is None or getattr(llm_model, "is_multimodal", True)
@@ -1533,6 +1547,7 @@ def stream_skill_channel_chat(
         skill.conversation_window_size or 10,
         document_budget=remaining_budget,
         per_file_cap=token_budget,
+        organization_id=organization_id,
     )
     params["skill_session_id"] = conversation.session_id
     from apps.opspilot.services.python_sandbox.attachments import ATTACHMENT_GRANT_KEY, issue_attachment_grant
@@ -1577,10 +1592,12 @@ def stream_skill_channel_chat(
     else:
         # 无 page_context 是 skill channel 聊天的常见路径，只作 DEBUG 诊断，不记问句。
         logger.debug("page_context absent: session_id=%s", session_id or "-")
-    try:
-        params[CALLER_IDENTITY_CONFIG_KEY] = capture_caller_identity(request, user)
-    except CallerIdentityError as e:
-        return create_error_stream_response(str(e))
+    if caller is None:
+        try:
+            caller = capture_caller_identity(request, user)
+        except CallerIdentityError as e:
+            return create_error_stream_response(str(e))
+    params[CALLER_IDENTITY_CONFIG_KEY] = caller
     # 延迟导入：作业工具会回写会话消息，顶层互引会成环。
     from apps.opspilot.services.job_tool_service import distribute_owner_key, owned_distribute_ids
 
@@ -1605,7 +1622,7 @@ def stream_skill_channel_chat(
     if choice_option:
         params["choice_option"] = str(choice_option)
     base_response = stream_agui_chat(params, skill.name, ingest_kwargs, current_ip, persist_text, skill_id=skill.id)
-    return _wrap_stream_persist_assistant(base_response, conversation.id)
+    return _wrap_stream_persist_assistant(base_response, conversation.id, organization_id=organization_id)
 
 
 async def _aiter_stream(iterable):
@@ -1618,7 +1635,9 @@ async def _aiter_stream(iterable):
         yield item
 
 
-def _wrap_stream_persist_assistant(response: StreamingHttpResponse, conversation_id: int) -> StreamingHttpResponse:
+def _wrap_stream_persist_assistant(
+    response: StreamingHttpResponse, conversation_id: int, *, organization_id: int | None = None
+) -> StreamingHttpResponse:
     """包装 SSE：落库 AG-UI 事件数组（或 OpenAI 正文）。失败不影响流式输出。"""
 
     original = response.streaming_content
@@ -1639,6 +1658,7 @@ def _wrap_stream_persist_assistant(response: StreamingHttpResponse, conversation
                         conversation,
                         SkillConversationMessage.ROLE_ASSISTANT,
                         content,
+                        organization_id=organization_id,
                     )
                     await sync_to_async(maybe_schedule_skill_memory_write)(conversation)
                 except Exception:

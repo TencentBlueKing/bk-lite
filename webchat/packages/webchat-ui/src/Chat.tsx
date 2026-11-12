@@ -1,5 +1,9 @@
 'use client';
 
+import { ChatContentProvider } from '@bk-lite/chat-content/ui';
+import { applyChatContentEvent, isChatContentEvent, type ChatContentState } from '@bk-lite/chat-content/core';
+import { setContentLocale } from '@bk-lite/chat-content/translation';
+import { loadWikiCitation } from '@bk-lite/chat-content/wikiCitation';
 import React, {
   useState,
   useEffect,
@@ -22,14 +26,13 @@ import {
   type LlmContextUsage,
 } from '@webchat/core';
 import { AGUIHandler, AGUIEvent, type CustomProtocolEvent } from './agui';
-import type { WebchatChoiceValue } from './choiceDisplay';
 import type { ChatProps } from './chatProps';
 import { createAGUIEventHandler, shouldShowAnalyzingIndicator, shouldShowTypingPlaceholder } from './aguiEventHandler';
 import { parseLegacyMessage } from './legacyMessage';
 import { useMessageHandlers } from './hooks/useMessageHandlers';
 import { ConfirmDialog } from './components/ConfirmDialog';
 import { DistributeAskDialog } from './components/DistributeAskDialog';
-import { formatDegradedCustomEvent, HitlPanels, isBlockingHitlEvent } from './components/HitlPanels';
+import { formatDegradedCustomEvent, isBlockingHitlEvent } from './customEvents';
 import { ConversationSkeleton } from './components/ConversationSkeleton';
 import { PillComposer } from './components/PillComposer';
 import ContextUsageRing from './components/ContextUsageRing';
@@ -118,6 +121,7 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
     onToolResult,
     onSessionFilesChange,
     platform,
+    locale,
     kickoffMessage,
     onKickoffConsumed,
     streamingTextBatching = true,
@@ -176,7 +180,6 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
   const messagesScrollerRef = useRef<HTMLDivElement>(null);
   const streamingContentRef = useRef<string>('');
   const currentMessageIdRef = useRef<string | null>(null);
-  const choiceMessageIdRef = useRef<string | null>(null);
   const plannedStateRef = useRef(createPlannedExecutionState());
   const streamingTextBatchingRef = useRef(streamingTextBatching);
   streamingTextBatchingRef.current = streamingTextBatching;
@@ -294,6 +297,14 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
     sessionManagerRef.current?.addMessage(message);
     onMessageReceivedRef.current?.(message);
   }, []);
+
+  useEffect(() => {
+    const session = sessionManagerRef.current?.getSession();
+    if (session) {
+      session.messages = [...messages];
+      sessionManagerRef.current?.saveSession();
+    }
+  }, [messages]);
 
   const onToolResultRef = useRef(onToolResult);
   onToolResultRef.current = onToolResult;
@@ -420,17 +431,17 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
       }
       return;
     }
-    if (isBlockingHitlEvent(event)) {
-      if (event.name === 'user_choice_request' && event.value && typeof event.value === 'object') {
-        const messageId = currentMessageIdRef.current;
-        choiceMessageIdRef.current = messageId;
-        setMessages((prev) => prev.map((message) => (
-          message.id === messageId
-            ? { ...message, metadata: { ...message.metadata, userChoice: event.value } }
-            : message
-        )));
+    if (isChatContentEvent(event.name)) {
+      if (isBlockingHitlEvent(event)) setHitlEvent(event);
+      let messageId = currentMessageIdRef.current;
+      if (!messageId) {
+        messageId = generateId();
+        currentMessageIdRef.current = messageId;
+        addMessage({ id: messageId, type: 'text', content: '', sender: 'bot', timestamp: Date.now() });
       }
-      setHitlEvent(event);
+      setMessages(prev => prev.map(message => message.id === messageId
+        ? { ...message, metadata: { ...message.metadata, ...applyChatContentEvent(message.metadata || {}, event.name, event.value, Date.now()) } }
+        : message));
       return;
     }
     // 进度/元数据类事件（规划步骤、步骤进度、引用等）不降级成聊天气泡
@@ -714,23 +725,28 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
   // Send message. 第二个参数要么是待分发文件 id，要么是选择卡点击。
   const handleSendMessage = useCallback(async (
     value: string,
-    extra?: number[] | { choiceId?: string; optionKey?: string },
+    extra?: number[] | { choiceId?: string; optionKey?: string; replayMessage?: Message },
   ) => {
     const distributeFileIds = Array.isArray(extra) ? extra : [];
     const choice = !extra || Array.isArray(extra) ? undefined : extra;
-    const hasDraft = Boolean(value.trim() || uploadedImages.length || documentChips.length || distributeFileIds.length);
+    const replay = choice?.replayMessage;
+    const replayAttachments = (replay?.metadata?.attachments || []) as StoredChatAttachment[];
+    const replayImages = replay && Array.isArray(replay.content) ? replay.content.filter(part => part.type === 'image_url').map(part => part.image_url).filter((url): url is string => typeof url === 'string' && url.startsWith('data:image/')) : [];
+    const activeDocuments = replay ? replayAttachments : documentChips;
+    const activeImages = replay ? [] : uploadedImages;
+    const hasDraft = Boolean(replayImages.length || value.trim() || activeImages.length || activeDocuments.length || distributeFileIds.length);
     if (!hasDraft || isLoading) return;
-    if (!distributeFileIds.length && documentChips.some((item) => item.status !== 'ready')) return;
+    if (!distributeFileIds.length && activeDocuments.some((item) => item.status && item.status !== 'ready')) return;
     plannedStateRef.current = createPlannedExecutionState();
 
     // Build message content
     let messageContent: string | MessageContent[];
     let messageType: MessageType = 'text';
 
-    if (uploadedImages.length > 0) {
+    if (activeImages.length > 0) {
       // Multimodal message with images and text
       messageContent = [
-        ...uploadedImages.map(({ dataUrl }) => ({ type: 'image_url' as const, image_url: dataUrl })),
+        ...activeImages.map(({ dataUrl }) => ({ type: 'image_url' as const, image_url: dataUrl })),
         ...(value.trim() ? [{ type: 'message' as const, message: value.trim() }] : []),
       ];
       messageType = 'multimodal';
@@ -746,10 +762,10 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
       content: messageContent,
       sender: 'user',
       timestamp: Date.now(),
-      ...(uploadedImages.some(({ previewable }) => !previewable)
+      ...(activeImages.some(({ previewable }) => !previewable)
         ? {
             metadata: {
-              unpreviewedImageIndexes: uploadedImages.flatMap(({ previewable }, index) =>
+              unpreviewedImageIndexes: activeImages.flatMap(({ previewable }, index) =>
                 previewable ? [] : [index],
               ),
             },
@@ -759,29 +775,24 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
 
     addMessage(userMsg);
     if (hitlEvent?.name === 'user_choice_request' && hitlEvent.value && typeof hitlEvent.value === 'object') {
-      const choice = hitlEvent.value as WebchatChoiceValue;
-      const answer = value.trim();
-      const matched = choice.options?.find((option) => option.label === answer || option.key === answer);
-      const messageId = choiceMessageIdRef.current;
-      setMessages((prev) => prev.map((message) => (
-        message.id === messageId
-          ? {
-              ...message,
-              metadata: {
-                ...message.metadata,
-                userChoice: { ...choice, answered: true, selected: matched?.key },
-              },
-            }
-          : message
-      )));
+      const choiceId = (hitlEvent.value as { choice_id?: string }).choice_id;
+      setMessages(prev => prev.map(message => {
+        const cards = (message.metadata as ChatContentState | undefined)?.userChoiceRequests;
+        if (!cards?.some(card => card.choice_id === choiceId)) return message;
+        return { ...message, metadata: { ...message.metadata, userChoiceRequests: cards.map(card => {
+          if (card.choice_id !== choiceId || card.status === 'submitted') return card;
+          const matched = card.options.find(option => option.label === value.trim() || option.key === value.trim());
+          return { ...card, status: 'submitted', selected: matched ? [matched.key] : [value.trim()] };
+        }) } };
+      }));
     }
-    setInputValue('');
+    if (!replay) setInputValue('');
     setHitlEvent(null);
-    cancelPendingImageBatches();
-    const draftFiles = selectedFilesRef.current.slice();
-    selectedFilesRef.current = [];
+    if (!replay) cancelPendingImageBatches();
+    const draftFiles = replay ? [] : selectedFilesRef.current.slice();
+    if (!replay) selectedFilesRef.current = [];
     setImageSelectionError(null);
-    updateUploadedImages({ type: 'clear' });
+    if (!replay) updateUploadedImages({ type: 'clear' });
     setIsLoading(true);
 
     try {
@@ -807,15 +818,19 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
 
         const uploadHeaders = chatAuthHeaders(requestHeaders, apiKey);
         const uploadedAttachments: StoredChatAttachment[] = [];
+        for (const [index, url] of replayImages.entries()) {
+          const blob = await (await fetch(url)).blob();
+          draftFiles.push(new File([blob], `image-${index + 1}.${blob.type.split('/')[1] || 'png'}`, { type: blob.type }));
+        }
         for (const file of draftFiles) {
           uploadedAttachments.push(await uploadChatFile(file, sseUrl, uploadHeaders));
         }
-        if (uploadedAttachments.some((item) => item.status !== 'ready') || documentChips.some((item) => item.status !== 'ready')) {
+        if (uploadedAttachments.some((item) => item.status !== 'ready') || activeDocuments.some((item) => item.status && item.status !== 'ready')) {
           reportImageError(new Error(t('file.notReady', '文件解析中，请稍后再发送')));
           setIsLoading(false);
           return;
         }
-        const readyAttachments = [...documentChips, ...uploadedAttachments].filter((item) => item.status === 'ready');
+        const readyAttachments = [...activeDocuments, ...uploadedAttachments].filter((item) => !item.status || item.status === 'ready');
         const requestBody: Record<string, unknown> = {
           message: value.trim(),
           attachment_ids: readyAttachments.map((item) => item.id),
@@ -831,7 +846,8 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
           delete requestBody.choice_id;
           delete requestBody.choice_option;
         }
-        setDocumentChips([]);
+        if (!replay) setDocumentChips([]);
+        setMessages(prev => prev.map(item => item.id === userMsg.id ? { ...item, content: value.trim(), metadata: { ...item.metadata, attachments: attachmentMetadata(readyAttachments) } } : item));
         const stored = sessionManagerRef.current?.getSession()?.messages.find((item) => item.id === userMsg.id);
         if (stored) {
           stored.content = value.trim();
@@ -849,6 +865,7 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
         
         const decoder = new TextDecoder();
         const sseParser = new SSEStreamParser();
+        let streamTerminal = false;
         await runOwnedStream({
           lifecycle: streamLifecycle,
           stream,
@@ -863,14 +880,18 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
           onChunk: (chunk) => {
             const text = decoder.decode(chunk, { stream: true });
             for (const data of sseParser.push(text)) {
+              if (data === '[DONE]') { streamTerminal = true; continue; }
               if (typeof data !== 'object' || data === null) {
                 continue;
               }
 
+              const event = data as Record<string, unknown>;
+              if (event.type === 'RUN_FINISHED' || event.type === 'RUN_ERROR' || event.type === 'ERROR' || (Array.isArray(event.choices) && event.choices.some(choice => choice.finish_reason))) streamTerminal = true;
               // Process through AG-UI handler; fall back to legacy messages
               if (aguiHandlerRef.current) {
                 const result = aguiHandlerRef.current.processSSEData(data);
                 if (result.type === 'legacy-message' && result.message) {
+                  streamTerminal = true;
                   handleLegacyMessage(result.message);
                 } else if (result.type === 'custom-event') {
                   applyCustomEvent(result.event);
@@ -882,10 +903,13 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
           },
           onError: (error) => {
             handleAGUIEvent.flushPendingText();
+            streamTerminal = true;
+            handleAGUIEvent({ type: 'RUN_ERROR', message: t('chat.connectionError', '连接中断，回答可能不完整，请重试') } as AGUIEvent);
             console.error('Error reading stream:', error);
             onError?.(error);
           },
           onComplete: () => {
+            if (!streamTerminal) handleAGUIEvent({ type: 'RUN_ERROR', message: t('chat.connectionError', '连接中断，回答可能不完整，请重试') } as AGUIEvent);
             handleAGUIEvent.flushPendingText();
             setIsLoading(false);
             setIsThinking(false);
@@ -931,6 +955,7 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
     collectContext,
     documentChips,
     reportImageError,
+    hitlEvent,
     t,
   ]);
 
@@ -995,6 +1020,7 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
   }, [cancelPendingImageBatches, handleAGUIEvent, updateUploadedImages]);
 
   // Use message handlers hook
+  useEffect(() => { setContentLocale(locale || 'zh'); }, [locale]);
   const { handleRegenerate, handleCopy, handleDelete } = useMessageHandlers({
     messages,
     setMessages,
@@ -1031,7 +1057,47 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
     scroller.scrollTop = scroller.scrollHeight;
   }, [messages]);
 
+  const handleApprovalDecision = (id: string, status: 'approved' | 'rejected') => {
+    setMessages(prev => prev.map(item => {
+      const cards = (item.metadata as ChatContentState | undefined)?.approvalRequests;
+      if (!cards?.some(request => request.tool_call_id === id)) return item;
+      return { ...item, metadata: { ...item.metadata, approvalRequests: cards.map(request => request.tool_call_id === id ? { ...request, status } : request) } };
+    }));
+    setHitlEvent(null);
+  };
+  const handleChoiceDecision = (id: string, status: 'pending' | 'submitted' | 'timeout', selected: string[]) => {
+    setMessages(prev => prev.map(item => {
+      const cards = (item.metadata as ChatContentState | undefined)?.userChoiceRequests;
+      if (!cards?.some(request => request.choice_id === id)) return item;
+      return { ...item, metadata: { ...item.metadata, userChoiceRequests: cards.map(request => request.choice_id === id ? { ...request, status, selected } : request) } };
+    }));
+  };
+
+  const contentRequest = useCallback(async <T,>(path: string, body?: unknown): Promise<T> => {
+    const endpoints = chatAttachmentEndpoints(sseUrl || '');
+    const prefix = endpoints?.upload.replace(/\/skill_channel\/chat_attachment\/upload\/$/, '');
+    if (!prefix) throw new Error(t('file.uploadUnavailable', '当前对话不能执行此操作'));
+    const response = await fetch(`${prefix}${path.replace(/^\/opspilot/, '')}`, {
+      method: body === undefined ? 'GET' : 'POST', credentials: credentials ?? 'include',
+      headers: { ...chatAuthHeaders(requestHeaders, apiKey), 'Content-Type': 'application/json' },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    });
+    const result = await response.json();
+    if (!response.ok || result.result === false) throw new Error(result.message || `HTTP ${response.status}`);
+    return (result.data ?? result) as T;
+  }, [sseUrl, credentials, requestHeaders, apiKey, t]);
   return (
+    <ChatContentProvider value={{ locale, post: contentRequest,
+      submitApproval: async body => {
+        const url = platform?.approvalUrl;
+        if (!url) throw new Error('Approval endpoint unavailable');
+        const response = await fetch(url, { method: 'POST', credentials: credentials ?? 'include', headers: { ...chatAuthHeaders(requestHeaders, apiKey), 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const result = await response.json();
+        if (result.result === false) throw new Error(result.message || 'Approval failed');
+      },
+      loadCitation: citation => loadWikiCitation(citation, contentRequest),
+    }}>
     <div 
       className={`flex min-h-0 flex-1 flex-col overflow-hidden ${
         showHeader ? 'rounded-lg' : ''
@@ -1133,6 +1199,10 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
                 message={msg}
                 isLastBotMessage={isPartOfLastQA}
                 fillWidth={wideLayout || panelFullscreen}
+                contentReadOnly={!hitlEvent || msg.id !== currentMessageIdRef.current}
+                onApproval={handleApprovalDecision}
+                onChoice={handleChoiceDecision}
+                onSendMessage={handleSendMessage}
                 onRegenerate={handleRegenerate}
                 onCopy={handleCopy}
                 onDelete={handleDelete}
@@ -1180,16 +1250,7 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
           </div>
         )}
 
-        <HitlPanels
-          event={hitlEvent}
-          approvalUrl={platform?.approvalUrl}
-          choiceUrl={platform?.choiceUrl}
-          apiKey={apiKey}
-          credentials={credentials}
-          headers={requestHeaders}
-          onSendMessage={handleSendMessage}
-          onResolved={() => setHitlEvent(null)}
-        />
+
         </div>
       </div>
 
@@ -1408,6 +1469,7 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
         onCancel={() => setShowClearConfirm(false)}
       />
     </div>
+    </ChatContentProvider>
   );
 });
 

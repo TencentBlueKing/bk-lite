@@ -45,7 +45,7 @@ const nextConfig = withBundleAnalyzer({
     implementation: 'sass-embedded',
   },
   staticPageGenerationTimeout: 300,
-  transpilePackages: ['@antv/g6', '@antv/xflow'],
+  transpilePackages: ['@antv/g6', '@antv/xflow', '@bk-lite/chat-content'],
   typescript: {
     tsconfigPath: 'tsconfig.build.json',
   },
