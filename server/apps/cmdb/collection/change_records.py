@@ -4,7 +4,7 @@ from apps.cmdb.constants.constants import INSTANCE, OPERATOR_INSTANCE
 from apps.cmdb.models.change_record import COLLECT_AUTOMATION_CHANGE, CREATE_INST, DELETE_INST, UPDATE_INST
 from apps.cmdb.utils.change_record import batch_create_change_record, verify_content_hash
 
-SYSTEM_COLLECT_FIELDS = {"_id", "model_id", "collect_time", "collect_task", "auto_collect", "_collect_sources", "manual_fields"}
+SYSTEM_COLLECT_FIELDS = {"_id", "model_id", "collect_time", "collect_task", "auto_collect", "_collect_sources", "manual_fields", "_cmdb_operation_id"}
 
 
 def write_collect_instance_change_records(management, result: dict):
