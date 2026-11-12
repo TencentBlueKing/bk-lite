@@ -2,10 +2,10 @@
 
 import React, { useState, useEffect } from 'react';
 import {
+  App,
   Form,
   Input,
   Button,
-  message,
   Select,
   Avatar,
   Divider,
@@ -59,6 +59,7 @@ const UserInformation: React.FC<UserInformationProps> = ({
   updateUserBaseInfoAction,
 }) => {
   const { t } = useTranslation();
+  const { message } = App.useApp();
   const [form] = Form.useForm();
   const [verifyForm] = Form.useForm();
   const [emailForm] = Form.useForm();

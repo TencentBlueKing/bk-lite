@@ -21,15 +21,18 @@ def match_when(when: dict[str, Any] | None, data: dict[str, Any]) -> bool:
     if op == "!=":
         return actual != expected
     if op == ">":
-        return actual is not None and actual > expected
+        return _ordered(actual, expected, lambda left, right: left > right)
     if op == ">=":
-        return actual is not None and actual >= expected
+        return _ordered(actual, expected, lambda left, right: left >= right)
     if op == "<":
-        return actual is not None and actual < expected
+        return _ordered(actual, expected, lambda left, right: left < right)
     if op == "<=":
-        return actual is not None and actual <= expected
+        return _ordered(actual, expected, lambda left, right: left <= right)
     if op == "in":
-        return actual in (expected or [])
+        expected_list = expected or []
+        if isinstance(actual, list):
+            return any(item in expected_list for item in actual)
+        return actual in expected_list
     if op == "not_in":
         return actual not in (expected or [])
     if op == "contains":
@@ -39,6 +42,15 @@ def match_when(when: dict[str, Any] | None, data: dict[str, Any]) -> bool:
     if op == "not_empty":
         return actual not in (None, "", [], {})
     return False
+
+
+def _ordered(actual: Any, expected: Any, compare) -> bool:
+    if actual is None or expected is None:
+        return False
+    try:
+        return bool(compare(actual, expected))
+    except TypeError:
+        return False
 
 
 def _value_at(data: dict[str, Any], field: str) -> Any:

@@ -1,4 +1,19 @@
-__all__ = ["nat_request", "request", "request_sync", "publish", "publish_sync", "js_publish", "js_publish_sync", "request_v2", "subscribe_lines_sync", "publish_raw", "publish_raw_sync", "ensure_stream", "ensure_stream_sync", "iter_jetstream_subject"]
+__all__ = [
+    "nat_request",
+    "request",
+    "request_sync",
+    "publish",
+    "publish_sync",
+    "js_publish",
+    "js_publish_sync",
+    "request_v2",
+    "subscribe_lines_sync",
+    "publish_raw",
+    "publish_raw_sync",
+    "ensure_stream",
+    "ensure_stream_sync",
+    "iter_jetstream_subject",
+]
 
 import asyncio
 import functools
@@ -94,11 +109,7 @@ def _sanitize_connection_error(error, servers, user=None, password=None) -> str:
             detail = detail.replace(server_text, _mask_server_url(server_text))
             try:
                 parsed = urlsplit(server_text)
-                credentials.update(
-                    unquote(value)
-                    for value in (parsed.username, parsed.password)
-                    if value
-                )
+                credentials.update(unquote(value) for value in (parsed.username, parsed.password) if value)
             except Exception:
                 pass
     for credential in sorted(credentials, key=len, reverse=True):
@@ -128,6 +139,8 @@ async def nat_request(
 def get_default_nats_server():
     server = getattr(settings, "NATS_SERVER", None)
     servers = [server] if server else getattr(settings, "NATS_SERVERS", [])
+    if isinstance(servers, str):
+        servers = [item.strip() for item in servers.split(",") if item.strip()]
     return servers
 
 
@@ -243,9 +256,7 @@ async def request_v2(
         )
         # Raise outside the active exception handler so the sanitized exception
         # does not retain the third-party exception and its credential-bearing frames.
-        connection_exception = NatsClientException(
-            f"Cannot connect to NATS server: {_mask_server_url(server)}"
-        )
+        connection_exception = NatsClientException(f"Cannot connect to NATS server: {_mask_server_url(server)}")
     if connection_exception is not None:
         raise connection_exception
 
@@ -355,6 +366,7 @@ def subscribe_lines_sync(subject: str, timeout: Optional[float] = None, stop_eve
 
 
 # --- 流式输出原语（job_mgmt 脚本执行实时日志） ---
+
 
 async def publish_raw(subject: str, payload: dict) -> None:
     """向原始 subject 发布一条扁平 JSON（不走 RPC 的 args/kwargs 包装）。"""

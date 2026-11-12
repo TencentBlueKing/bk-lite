@@ -28,9 +28,15 @@ def _expr(node: dict[str, Any]) -> str:
     if op in _OPS:
         return f"{field} {_OPS[op]} {_literal(value)}"
     if op == "in":
-        return "(" + " || ".join(f"{field} == {_literal(item)}" for item in value or []) + ")"
+        items = value if isinstance(value, list) else []
+        if not items:
+            return "false"
+        return "(" + " || ".join(f"{field} == {_literal(item)}" for item in items) + ")"
     if op == "not_in":
-        return "(" + " && ".join(f"{field} != {_literal(item)}" for item in value or []) + ")"
+        items = value if isinstance(value, list) else []
+        if not items:
+            return "true"
+        return "(" + " && ".join(f"{field} != {_literal(item)}" for item in items) + ")"
     if op == "contains":
         return f"{field}.contains({_literal(value)})"
     if op == "is_empty":

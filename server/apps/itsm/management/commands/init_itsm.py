@@ -20,6 +20,15 @@ TRANSITIONS = (
     ("suspended", "processing", "恢复"),
     ("processing", "finished", "完成"),
     ("new", "cancelled", "撤销"),
+    ("new", "suspended", "挂起"),
+    ("new", "finished", "关闭"),
+    ("new", "terminated", "终止"),
+    ("processing", "new", "退回"),
+    ("processing", "terminated", "终止"),
+    ("processing", "cancelled", "撤销"),
+    ("finished", "processing", "重新打开"),
+    ("terminated", "processing", "重新打开"),
+    ("cancelled", "processing", "重新打开"),
 )
 
 DICTIONARIES = {

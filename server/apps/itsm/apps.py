@@ -8,4 +8,5 @@ class ItsmConfig(AppConfig):
 
     def ready(self):
         import apps.itsm.nats  # noqa: F401
+        import apps.itsm.openapi_api  # noqa: F401
         import apps.itsm.signals  # noqa: F401

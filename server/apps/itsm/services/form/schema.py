@@ -19,9 +19,30 @@ FIELD_TYPES = {
     "attachment",
     "description",
     "divider",
+    "date",
+    "time",
+    "dateRange",
+    "cascade",
+    "multiCascade",
+    "multiUser",
+    "userGroup",
+    "multiUserGroup",
+    "link",
+    "calculate",
+    "organization",
+    "section",
+    "tab",
+    "task",
+    "nestedTable",
+    "subProcessForm",
+    "multiCmdb",
+    "cab",
+    "associateConfig",
+    "singleAssociateConfig",
+    "signature",
 }
 
-LAYOUT_ONLY = {"description", "divider"}
+LAYOUT_ONLY = {"description", "divider", "section", "tab"}
 
 
 class FieldSchema(BaseModel):
@@ -34,6 +55,16 @@ class FieldSchema(BaseModel):
     props: dict[str, Any] = Field(default_factory=dict)
     source: dict[str, Any] | None = None
     columns: list[dict[str, Any]] = Field(default_factory=list)
+    span: int | None = None
+    group: str = ""
+    visibleWhen: dict[str, Any] | None = None
+    state: str = "default"
+    hideValueClearMode: str = "keep"
+    hideLogic: str = "visible"
+    children: list["FieldSchema"] = Field(default_factory=list)
+
+
+FieldSchema.model_rebuild()
 
 
 class RuleSchema(BaseModel):

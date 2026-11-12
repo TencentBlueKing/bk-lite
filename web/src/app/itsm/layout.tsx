@@ -1,7 +1,3 @@
-'use client';
-
-import React from 'react';
-
 export default function ItsmLayout({ children }: { children: React.ReactNode }) {
-  return <div className="p-4">{children}</div>;
+  return <div className="flex h-full min-h-0 flex-col">{children}</div>;
 }

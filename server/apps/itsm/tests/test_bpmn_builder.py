@@ -41,6 +41,6 @@ def test_appendix_b_contains_flowable_mapping():
     assert "nrOfCompletedInstances &gt;= 1" in xml or "nrOfCompletedInstances >= 1" in xml
     assert "out_approve_1_result == 'approve'" in xml
     assert 'topic="itsm.auto"' in xml or "itsm.auto" in xml
-    assert "${initiator}" in xml
+    assert "getVariable('initiator')" in xml
     Path("/tmp/itsm-appendix-b.bpmn").write_text(xml, encoding="utf-8")
     json.dumps(APPENDIX_B)

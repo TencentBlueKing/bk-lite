@@ -31,6 +31,44 @@ class FormVersion(ItsmModel):
         unique_together = (("form", "version_no"),)
 
 
+class FormViewTemplate(ItsmModel):
+    form = models.ForeignKey(FormModel, on_delete=models.CASCADE, related_name="view_templates")
+    name = models.CharField(max_length=128)
+    layout = models.JSONField(default=dict)
+    match_rules = models.JSONField(default=dict)
+    is_enabled = models.BooleanField(default=True)
+
+    class Meta:
+        db_table = "itsm_form_view_template"
+
+
+class DataTable(ItsmModel):
+    name = models.CharField(max_length=128)
+    key = models.CharField(max_length=64)
+
+    class Meta:
+        db_table = "itsm_data_table"
+        unique_together = (("domain", "key"),)
+
+
+class DataTableField(ItsmModel):
+    table = models.ForeignKey(DataTable, on_delete=models.CASCADE, related_name="fields")
+    key = models.CharField(max_length=64)
+    field_type = models.CharField(max_length=32, default="string")
+
+    class Meta:
+        db_table = "itsm_data_table_field"
+        unique_together = (("table", "key"),)
+
+
+class DataTableRow(ItsmModel):
+    table = models.ForeignKey(DataTable, on_delete=models.CASCADE, related_name="rows")
+    data = models.JSONField(default=dict)
+
+    class Meta:
+        db_table = "itsm_data_table_row"
+
+
 class DataDictionary(ItsmModel):
     key = models.CharField(max_length=64)
     name = models.CharField(max_length=128)

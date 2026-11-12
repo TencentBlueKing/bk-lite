@@ -45,6 +45,24 @@ def test_hidden_field_skips_required_and_compute_runs():
     assert validator.cleaned["total"] == 5
 
 
+def test_string_bounds_group_children_and_multi_options():
+    schema = {
+        "version": 1,
+        "fields": [
+            {"key": "amount", "type": "number", "props": {"min": "1", "max": "9"}},
+            {"key": "tags", "type": "checkbox", "source": {"type": "static", "options": [{"label": "甲", "value": "a"}]}},
+            {"key": "group", "type": "section", "children": [{"key": "inner", "type": "input", "required": True}]},
+        ],
+    }
+    errors = FormValidator(schema).validate({"amount": 0, "tags": ["nope"]})
+    assert errors["amount"] == "小于最小值"
+    assert errors["tags"] == "选项不存在"
+    assert errors["inner"] == "必填"
+    cleaned = FormValidator(schema)
+    assert cleaned.validate({"amount": 2, "tags": ["a"], "inner": "组内"}) == {}
+    assert cleaned.cleaned["inner"] == "组内"
+
+
 def test_visible_cmdb_still_required():
     errors = FormValidator(SCHEMA).validate({"title": "服务器", "priority": "P1", "qty": 2, "items": []})
     assert errors["host"] == "必填"

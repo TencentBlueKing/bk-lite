@@ -22,8 +22,7 @@ def test_itsm_menu_matches_design_roles():
     roles = {role["name"]: role for role in payload["roles"]}
     assert roles["admin"]["role_name"] == "itsm--admin"
     assert roles["admin"]["menus"] == permissions
-    assert "setting-View" not in roles["manager"]["menus"]
-    assert "setting-Edit" not in roles["manager"]["menus"]
+    assert "manager" not in roles
     assert set(roles["handler"]["menus"]) == {"ticket-View", "ticket-Operate", "knowledge-View"}
     assert set(roles["user"]["menus"]) == {"portal-View", "ticket-View", "ticket-Add"}
 

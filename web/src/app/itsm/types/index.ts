@@ -6,6 +6,20 @@ export interface FormFieldSchema {
   default?: unknown;
   props?: Record<string, unknown>;
   source?: { type: string; options?: Array<{ label: string; value: string }> };
+  placeholder?: string;
+  hint?: string;
+  span?: number;
+  rowBreak?: boolean;
+  group?: string;
+  visibleWhen?: ConditionGroup | null;
+  state?: 'default' | 'disabled' | 'readonly' | 'hidden';
+  hideValueClearMode?: 'keep' | 'clear';
+  hideLogic?: 'visible' | 'always';
+  cascadeAnyLevel?: boolean;
+  showCascadePath?: boolean;
+  children?: FormFieldSchema[];
+  optionLayout?: 'horizontal' | 'vertical';
+  rows?: number;
 }
 
 export interface FormSchema {
@@ -27,4 +41,106 @@ export interface ConditionGroup {
 export interface FlowNodeData {
   label: string;
   nodeType: string;
+}
+
+export interface PortalService {
+  id: number;
+  name: string;
+  catalog_id: number | null;
+  workflow_id: number;
+  workflow_name?: string;
+  version_id: number | null;
+  description: string;
+  is_hot: boolean;
+  is_enabled: boolean;
+}
+
+export interface PortalCatalog {
+  id: number;
+  name: string;
+  parent_id: number | null;
+}
+
+export interface PortalData {
+  catalogs: PortalCatalog[];
+  services: PortalService[];
+  favorites: PortalService[];
+  recents: PortalService[];
+  hots: PortalService[];
+}
+
+export interface NamedItem {
+  id: number;
+  name: string;
+  key: string;
+}
+
+export interface WorkflowListItem extends NamedItem {
+  form_id: number | null;
+  current_version_id: number | null;
+}
+
+export interface TicketTaskItem {
+  id: number;
+  node_id: string;
+  node_name: string;
+  assignee: string;
+  status: string;
+}
+
+export interface TicketListItem {
+  id: number;
+  sn: string;
+  title: string;
+  status: string;
+  creator: string;
+  tasks: TicketTaskItem[];
+  sla_target?: string;
+  sla_due_at?: string;
+  sla_breached?: boolean;
+}
+
+export interface TicketLogItem {
+  action: string;
+  operator: string;
+  message: string;
+}
+
+export interface TicketProgressNode {
+  id: string;
+  name: string;
+  type: string;
+  state: 'done' | 'current' | 'waiting';
+  assignees?: string[];
+}
+
+export interface TicketProgressEdge {
+  from: string;
+  to: string;
+  default?: boolean;
+}
+
+export interface TicketSLAItem {
+  target: string;
+  due_at: string;
+  finished_at: string;
+  breached: boolean;
+  paused: boolean;
+}
+
+export interface TicketDetail {
+  id: number;
+  sn: string;
+  title: string;
+  status: string;
+  creator: string;
+  form_data: Record<string, unknown>;
+  fields: FormFieldSchema[];
+  stages?: Array<{ key: string; name: string; state: 'done' | 'current' | 'waiting' }>;
+  tasks: TicketTaskItem[];
+  nodes: TicketProgressNode[];
+  edges?: TicketProgressEdge[];
+  logs: TicketLogItem[];
+  sla?: TicketSLAItem[];
+  survey?: { score: number; comment: string } | null;
 }

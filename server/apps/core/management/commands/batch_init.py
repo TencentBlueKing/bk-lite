@@ -49,6 +49,7 @@ class Command(BaseCommand):
                 "mlops",
                 "patch_mgmt",
                 "workflow",
+                "itsm",
             ]
         else:
             apps_list = [app.strip() for app in apps.split(",")]
@@ -86,6 +87,8 @@ class Command(BaseCommand):
                     self._init_patch_mgmt()
                 elif app == "workflow":
                     self._init_workflow()
+                elif app == "itsm":
+                    self._init_itsm()
                 else:
                     self.stdout.write(self.style.WARNING(f"未知模块: {app}"))
             except Exception as e:
@@ -432,6 +435,16 @@ class Command(BaseCommand):
         except Exception as error:  # noqa: BLE001 - 非关键可重建数据不得阻断启动
             logger.warning("内置补丁源初始化失败，可运行 init_patch_sources 重试", exc_info=True)
             self.stdout.write(self.style.WARNING(f"内置补丁源初始化跳过（{type(error).__name__}）: {error}"))
+
+    def _init_itsm(self):
+        """ITSM 内置状态、流转、字典和通知模板。"""
+        self.stdout.write("ITSM 内置数据初始化...")
+        call_command("init_itsm")
+        try:
+            call_command("init_itsm_itil")
+        except Exception as error:  # noqa: BLE001 - Flowable 未就绪时不阻断启动
+            logger.warning("ITSM 事件问题预置初始化失败，可运行 init_itsm_itil 重试", exc_info=True)
+            self.stdout.write(self.style.WARNING(f"ITSM 事件问题预置跳过（{type(error).__name__}）: {error}"))
 
     def _init_workflow(self):
         """编排中心内置巡检流程（按团队幂等，失败不阻断启动）。"""

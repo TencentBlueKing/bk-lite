@@ -1,16 +1,245 @@
 'use client';
 
+import { useCallback } from 'react';
 import useApiClient from '@/utils/request';
 
 export function useItsmApi() {
-  const { get, post, put, del } = useApiClient();
+  const { get, post, put, del, isLoading } = useApiClient();
+
+  const listForms = useCallback(() => get('/itsm/api/forms/'), [get]);
+  const createForm = useCallback(
+    (body: { name: string; key: string }) => post('/itsm/api/forms/', body),
+    [post],
+  );
+  const getForm = useCallback((id: number) => get(`/itsm/api/forms/${id}/`), [get]);
+  const saveForm = useCallback((id: number, schema: unknown) => put(`/itsm/api/forms/${id}/`, { schema }), [put]);
+  const publishForm = useCallback(
+    (id: number, schema: unknown) => post(`/itsm/api/forms/${id}/publish/`, { schema }),
+    [post],
+  );
+  const listWorkflows = useCallback(() => get('/itsm/api/workflows/'), [get]);
+  const createWorkflow = useCallback(
+    (body: { name: string; key: string; form_id?: number }) => post('/itsm/api/workflows/', body),
+    [post],
+  );
+  const getDesign = useCallback((id: number) => get(`/itsm/api/workflows/${id}/design/`), [get]);
+  const saveDesign = useCallback(
+    (id: number, design: unknown) => put(`/itsm/api/workflows/${id}/design/`, design),
+    [put],
+  );
+  const publishWorkflow = useCallback(
+    (id: number) => post(`/itsm/api/workflows/${id}/publish/`),
+    [post],
+  );
+  const listTickets = useCallback((query?: { q?: string; creator?: string; priority?: string; tag?: string }) => {
+    const params = Object.fromEntries(Object.entries(query || {}).filter(([, value]) => value));
+    return get('/itsm/api/tickets/', Object.keys(params).length ? { params } : undefined);
+  }, [get]);
+  const listResources = useCallback((kind: string) => get(`/itsm/api/resources/${kind}/`), [get]);
+  const createResource = useCallback((kind: string, body: Record<string, unknown>) => post(`/itsm/api/resources/${kind}/`, body), [post]);
+  const updateResource = useCallback(
+    (kind: string, id: number, body: Record<string, unknown>) => put(`/itsm/api/resources/${kind}/${id}/`, body),
+    [put],
+  );
+  const deleteResource = useCallback((kind: string, id: number) => del(`/itsm/api/resources/${kind}/${id}/`), [del]);
+  const createTicket = useCallback(
+    (body: { workflow_version_id: number; form_data: Record<string, unknown>; service_id?: number }) => post('/itsm/api/tickets/', body),
+    [post],
+  );
+  const operateTicket = useCallback(
+    (id: number, body: { task_id?: number; action: string; opinion?: string; target?: string; return_mode?: string }) => post(`/itsm/api/tickets/${id}/operate/`, body),
+    [post],
+  );
+  const ticketLogs = useCallback((id: number) => get(`/itsm/api/tickets/${id}/logs/`), [get]);
+  const getTicket = useCallback((id: number) => get(`/itsm/api/tickets/${id}/`), [get]);
+  const submitSurvey = useCallback(
+    (id: number, body: { score: number; comment?: string }) => post(`/itsm/api/tickets/${id}/survey/`, body),
+    [post],
+  );
+  const portal = useCallback(() => get('/itsm/api/services/portal/'), [get]);
+  const loadDrafts = useCallback(() => get('/itsm/api/services/drafts/'), [get]);
+  const saveDraft = useCallback((body: { service_id: number; title: string }) => post('/itsm/api/services/drafts/', body), [post]);
+  const listCatalogs = useCallback(() => get('/itsm/api/catalogs/'), [get]);
+  const createCatalog = useCallback((body: { id?: number; name: string; parent_id?: number | null }) => post('/itsm/api/catalogs/', body), [post]);
+  const deleteCatalog = useCallback((id: number) => del(`/itsm/api/catalogs/?id=${id}`), [del]);
+  const listServices = useCallback(() => get('/itsm/api/services/'), [get]);
+  const createService = useCallback(
+    (body: { id?: number; name?: string; catalog_id?: number | null; workflow_id?: number; description?: string; is_hot?: boolean; is_enabled?: boolean }) => post('/itsm/api/services/', body),
+    [post],
+  );
+  const deleteService = useCallback((id: number) => del(`/itsm/api/services/?id=${id}`), [del]);
+  const toggleFavorite = useCallback((id: number) => post(`/itsm/api/services/${id}/favorite/`), [post]);
+  const useService = useCallback((id: number) => post(`/itsm/api/services/${id}/use/`), [post]);
+  const searchUsers = useCallback(
+    (q: string, page = 1) => get('/itsm/api/users/search/', { params: { q, page, page_size: 10 } }),
+    [get],
+  );
+  const listStatuses = useCallback(() => get('/itsm/api/statuses/'), [get]);
+  const listStatusAdmin = useCallback(() => get('/itsm/api/statuses/admin/'), [get]);
+  const postStatus = useCallback((body: { id?: number; key?: string; name: string; color?: string; description?: string }) => post('/itsm/api/statuses/admin/', body), [post]);
+  const listSla = useCallback(() => get('/itsm/api/sla/'), [get]);
+  const saveSla = useCallback((body: { policy_id?: number; category?: string; is_enabled?: boolean; kind?: string; name?: string; id?: number; work_days?: number[]; work_start?: string; work_end?: string; target?: string; minutes?: number; calendar_id?: number }) => post('/itsm/api/sla/', body), [post]);
+  const listViewTemplates = useCallback((formId?: number) => get('/itsm/api/view_templates/', formId ? { params: { form_id: formId } } : undefined), [get]);
+  const createViewTemplate = useCallback((body: { form_id: number; name: string; layout?: { fields?: string[] }; match_rules?: { status?: string } }) => post('/itsm/api/view_templates/', body), [post]);
+  const exportWorkflow = useCallback((id: number) => get(`/itsm/api/workflows/${id}/export/`), [get]);
+  const importWorkflow = useCallback((id: number, design: unknown) => post(`/itsm/api/workflows/${id}/import/`, { design }), [post]);
+  const testVariable = useCallback((body: { workflow_id: number; key: string; form_data?: Record<string, unknown> }) => post('/itsm/api/workflow_variables/test/', body), [post]);
+  const listVariables = useCallback((workflowId: number) => get('/itsm/api/workflow_variables/', { params: { workflow_id: workflowId } }), [get]);
+  const listDataTables = useCallback(() => get('/itsm/api/data_tables/'), [get]);
+  const createDataTable = useCallback((body: { name: string; key: string; fields?: Array<{ key: string; type?: string }> }) => post('/itsm/api/data_tables/', body), [post]);
+  const exportDataTable = useCallback((id: number) => get(`/itsm/api/data_tables/${id}/export/`), [get]);
+  const importDataTable = useCallback((id: number, contentBase64: string) => post(`/itsm/api/data_tables/${id}/import/`, { content_base64: contentBase64 }), [post]);
+  const deleteDataRows = useCallback((id: number, ids: number[]) => post(`/itsm/api/data_tables/${id}/rows/delete/`, { ids }), [post]);
+  const listDataRows = useCallback((id: number) => get(`/itsm/api/data_tables/${id}/rows/`), [get]);
+  const listWorkflowVersions = useCallback((id: number) => get(`/itsm/api/workflows/${id}/versions/`), [get]);
+  const enableWorkflowVersion = useCallback((workflowId: number, versionId: number) => post(`/itsm/api/workflows/${workflowId}/versions/${versionId}/enable/`, {}), [post]);
+  const listComments = useCallback((id: number) => get(`/itsm/api/tickets/${id}/comments/`), [get]);
+  const addComment = useCallback((id: number, content: string) => post(`/itsm/api/tickets/${id}/comments/`, { content }), [post]);
+  const listAttachments = useCallback((id: number) => get(`/itsm/api/tickets/${id}/attachments/`), [get]);
+  const addAttachment = useCallback(
+    (id: number, body: { object_name: string; name?: string; size?: number }) => post(`/itsm/api/tickets/${id}/attachments/`, body),
+    [post],
+  );
+  const listFollowers = useCallback((id: number) => get(`/itsm/api/tickets/${id}/followers/`), [get]);
+  const toggleFollow = useCallback((id: number) => post(`/itsm/api/tickets/${id}/followers/`, {}), [post]);
+  const listTags = useCallback((id: number) => get(`/itsm/api/tickets/${id}/tags/`), [get]);
+  const addTag = useCallback((id: number, name: string) => post(`/itsm/api/tickets/${id}/tags/`, { name }), [post]);
+  const listRelations = useCallback((id: number) => get(`/itsm/api/tickets/${id}/relations/`), [get]);
+  const addRelation = useCallback(
+    (id: number, relatedId: number) => post(`/itsm/api/tickets/${id}/relations/`, { related_id: relatedId }),
+    [post],
+  );
+  const listDictionaries = useCallback(() => get('/itsm/api/dictionaries/'), [get]);
+  const createDictionary = useCallback((body: { id?: number; key?: string; name: string }) => post('/itsm/api/dictionaries/', body), [post]);
+  const listDictionaryItems = useCallback((id: number) => get(`/itsm/api/dictionaries/${id}/items/`), [get]);
+  const createDictionaryItem = useCallback(
+    (id: number, body: { key: string; label: string }) => post(`/itsm/api/dictionaries/${id}/items/`, body),
+    [post],
+  );
+  const deleteDictionaryItem = useCallback(
+    (id: number, itemId: number) => del(`/itsm/api/dictionaries/${id}/items/?id=${itemId}`),
+    [del],
+  );
+  const exportDictionaries = useCallback(() => get('/itsm/api/dictionaries/export/'), [get]);
+  const importDictionaries = useCallback((rows: unknown[]) => post('/itsm/api/dictionaries/import/', rows), [post]);
+  const listStages = useCallback(() => get('/itsm/api/stages/'), [get]);
+  const createStage = useCallback(
+    (body: { workflow_id: number; key: string; name: string }) => post('/itsm/api/stages/', body),
+    [post],
+  );
+  const deleteStage = useCallback((id: number) => del(`/itsm/api/stages/?id=${id}`), [del]);
+  const deleteStatus = useCallback((id: number) => del(`/itsm/api/statuses/admin/?id=${id}`), [del]);
+  const listTransitions = useCallback(() => get('/itsm/api/statuses/transitions/'), [get]);
+  const createTransition = useCallback(
+    (body: { from_id: number; to_id: number; name?: string }) => post('/itsm/api/statuses/transitions/', body),
+    [post],
+  );
+  const deleteTransition = useCallback((id: number) => del(`/itsm/api/statuses/transitions/?id=${id}`), [del]);
+  const listHandlerGroups = useCallback(() => get('/itsm/api/handler_groups/'), [get]);
+  const createHandlerGroup = useCallback(
+    (body: { id?: number; name: string; members: string[]; leaders: string[] }) => post('/itsm/api/handler_groups/', body),
+    [post],
+  );
+  const deleteHandlerGroup = useCallback((id: number) => del(`/itsm/api/handler_groups/?id=${id}`), [del]);
+  const listNotifyTemplates = useCallback(() => get('/itsm/api/notify_templates/'), [get]);
+  const saveNotifyTemplate = useCallback(
+    (body: { id?: number; event: string; title_tpl: string; content_tpl: string }) => post('/itsm/api/notify_templates/', body),
+    [post],
+  );
+  const deleteNotifyTemplate = useCallback((id: number) => del(`/itsm/api/notify_templates/?id=${id}`), [del]);
+  const getBasicSettings = useCallback(() => get('/itsm/api/settings/basic/'), [get]);
+  const saveBasicSettings = useCallback(
+    (body: { product_name: string; tab_title: string; attachment_types: string; show_process_log: boolean; user_display: string }) => post('/itsm/api/settings/basic/', body),
+    [post],
+  );
+  const presignAttachment = useCallback((filename: string) => post('/itsm/api/attachments/presign/', { filename }), [post]);
+
   return {
-    listForms: () => get('/itsm/api/forms/'),
-    publishForm: (id: number, schema: unknown) => post(`/itsm/api/forms/${id}/publish/`, { schema }),
-    listWorkflows: () => get('/itsm/api/workflows/'),
-    saveDesign: (id: number, design: unknown) => put(`/itsm/api/workflows/${id}/design/`, design),
-    publishWorkflow: (id: number) => post(`/itsm/api/workflows/${id}/publish/`),
-    listTickets: () => get('/itsm/api/tickets/'),
-    remove: (path: string) => del(path),
+    ready: !isLoading,
+    listForms,
+    createForm,
+    getForm,
+    saveForm,
+    publishForm,
+    listWorkflows,
+    createWorkflow,
+    getDesign,
+    saveDesign,
+    publishWorkflow,
+    listTickets,
+    listResources,
+    createResource,
+    updateResource,
+    deleteResource,
+    createTicket,
+    operateTicket,
+    ticketLogs,
+    getTicket,
+    submitSurvey,
+    portal,
+    loadDrafts,
+    saveDraft,
+    listCatalogs,
+    createCatalog,
+    deleteCatalog,
+    listServices,
+    createService,
+    deleteService,
+    toggleFavorite,
+    useService,
+    searchUsers,
+    listStatuses,
+    listStatusAdmin,
+    postStatus,
+    listSla,
+    saveSla,
+    listViewTemplates,
+    createViewTemplate,
+    exportWorkflow,
+    importWorkflow,
+    testVariable,
+    listVariables,
+    listDataTables,
+    createDataTable,
+    exportDataTable,
+    importDataTable,
+    deleteDataRows,
+    listDataRows,
+    listWorkflowVersions,
+    enableWorkflowVersion,
+    listComments,
+    addComment,
+    listAttachments,
+    addAttachment,
+    listFollowers,
+    toggleFollow,
+    listTags,
+    addTag,
+    listRelations,
+    addRelation,
+    listDictionaries,
+    createDictionary,
+    listDictionaryItems,
+    createDictionaryItem,
+    deleteDictionaryItem,
+    exportDictionaries,
+    importDictionaries,
+    listStages,
+    createStage,
+    deleteStage,
+    deleteStatus,
+    listTransitions,
+    createTransition,
+    deleteTransition,
+    listHandlerGroups,
+    createHandlerGroup,
+    deleteHandlerGroup,
+    listNotifyTemplates,
+    saveNotifyTemplate,
+    deleteNotifyTemplate,
+    getBasicSettings,
+    saveBasicSettings,
+    presignAttachment,
+    remove: del,
   };
 }

@@ -1,0 +1,102 @@
+'use client';
+
+import { Button, Checkbox, Input, message } from 'antd';
+import { useCallback, useEffect, useState } from 'react';
+import OperateModal from '@/components/operate-modal';
+import CustomTable from '@/components/custom-table';
+import { useItsmApi } from '../../api/useItsmApi';
+import { FieldRow } from '../../components/field-row';
+import { useTranslation } from '@/utils/i18n';
+
+interface CalendarItem {
+  id: number;
+  name: string;
+  work_days: number[];
+  work_start: string;
+  work_end: string;
+}
+
+const DAY_VALUES = [1, 2, 3, 4, 5, 6, 7];
+
+export default function CalendarsPage() {
+  const { t } = useTranslation();
+  const api = useItsmApi();
+  const daysOptions = DAY_VALUES.map((value) => ({ value, label: t(`itsm.rule.day${value}`) }));
+  const [items, setItems] = useState<CalendarItem[]>([]);
+  const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState<CalendarItem | null>(null);
+  const [name, setName] = useState('');
+  const [days, setDays] = useState<number[]>([1, 2, 3, 4, 5]);
+  const [start, setStart] = useState('09:00');
+  const [end, setEnd] = useState('18:00');
+
+  const load = useCallback(async () => {
+    const data = await api.listSla() as { calendars?: CalendarItem[] };
+    setItems(data.calendars || []);
+  }, [api.listSla]);
+
+  useEffect(() => {
+    if (!api.ready) {
+      return;
+    }
+    void load().catch((error: unknown) => message.error(error instanceof Error ? error.message : t('itsm.ticket.loadFailed')));
+  }, [api.ready, load]);
+
+  const startEdit = (item?: CalendarItem) => {
+    setEditing(item || null);
+    setName(item?.name || '');
+    setDays(item?.work_days?.length ? item.work_days : [1, 2, 3, 4, 5]);
+    setStart(item?.work_start || '09:00');
+    setEnd(item?.work_end || '18:00');
+    setOpen(true);
+  };
+
+  const save = async () => {
+    if (!name.trim()) {
+      message.warning(t('itsm.rule.needCalendar'));
+      return;
+    }
+    await api.saveSla({ kind: 'calendar', id: editing?.id, name: name.trim(), work_days: days, work_start: start, work_end: end });
+    setOpen(false);
+    await load();
+  };
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex items-center justify-between rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-4 py-3">
+        <div className="text-sm font-medium text-[var(--color-text-1)]">{t('itsm.rule.calendar')}</div>
+        <Button type="primary" onClick={() => startEdit()}>{t('itsm.common.create')}</Button>
+      </div>
+      <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] p-4">
+        <CustomTable
+          rowKey="id"
+          dataSource={items}
+          pagination={false}
+          locale={{ emptyText: t('itsm.rule.emptyCalendar') }}
+          columns={[
+            { title: t('itsm.portal.name'), dataIndex: 'name', key: 'name' },
+            { title: t('itsm.rule.workdays'), dataIndex: 'work_days', key: 'work_days', render: (value: number[]) => (value || []).map((day) => daysOptions.find((item) => item.value === day)?.label).filter(Boolean).join('、') },
+            { title: t('itsm.rule.range'), key: 'range', render: (_value: unknown, item: CalendarItem) => `${item.work_start}-${item.work_end}` },
+            { title: t('itsm.ticket.action'), key: 'actions', render: (_value: unknown, item: CalendarItem) => <Button type="link" size="small" onClick={() => startEdit(item)}>{t('itsm.common.edit')}</Button> },
+          ]}
+        />
+      </div>
+      <OperateModal title={editing ? t('itsm.rule.editCalendar') : t('itsm.rule.newCalendar')} open={open} onCancel={() => setOpen(false)} onOk={() => { void save(); }}>
+        <div className="flex flex-col gap-3 text-sm">
+          <FieldRow label={t('itsm.portal.name')}>
+            <Input placeholder={t('itsm.rule.windowName')} value={name} onChange={(event) => setName(event.target.value)} />
+          </FieldRow>
+          <FieldRow label={t('itsm.rule.workdays')} align="start">
+            <Checkbox.Group options={daysOptions} value={days} onChange={(value) => setDays(value as number[])} />
+          </FieldRow>
+          <FieldRow label={t('itsm.rule.range')}>
+            <div className="flex gap-2">
+              <Input placeholder={t('itsm.rule.start')} value={start} onChange={(event) => setStart(event.target.value)} />
+              <Input placeholder={t('itsm.rule.end')} value={end} onChange={(event) => setEnd(event.target.value)} />
+            </div>
+          </FieldRow>
+        </div>
+      </OperateModal>
+    </div>
+  );
+}

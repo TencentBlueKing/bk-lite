@@ -21,6 +21,7 @@ class TicketStatus(ItsmModel):
     key = models.CharField(max_length=32)
     name = models.CharField(max_length=64)
     color = models.CharField(max_length=16, default="#1677ff")
+    description = models.CharField(max_length=100, blank=True, default="")
     kind = models.CharField(max_length=16, choices=Kind.choices, default=Kind.CUSTOM)
     is_terminal = models.BooleanField(default=False)
     order = models.PositiveIntegerField(default=0)

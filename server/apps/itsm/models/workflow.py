@@ -50,6 +50,18 @@ class WorkflowVersion(ItsmModel):
         unique_together = (("workflow", "version_no"),)
 
 
+class WorkflowStage(ItsmModel):
+    workflow = models.ForeignKey(Workflow, on_delete=models.CASCADE, related_name="stages")
+    key = models.CharField(max_length=64)
+    name = models.CharField(max_length=128)
+    order = models.PositiveIntegerField(default=0)
+    node_ids = models.JSONField(default=list)
+
+    class Meta:
+        db_table = "itsm_workflow_stage"
+        unique_together = (("workflow", "key"),)
+
+
 class WorkflowVariable(ItsmModel):
     class Source(models.TextChoices):
         FORM = "form", "表单"

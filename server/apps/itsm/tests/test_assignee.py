@@ -31,3 +31,21 @@ def test_three_fallbacks():
 def test_least_pending():
     chosen = resolver().resolve({"assignee": {"source": "handler_group", "value": 3}, "multi": {"balance": "least_pending"}}, {})
     assert chosen == ["u2"]
+
+
+def test_manual_node_writes_assignee_variable():
+    from apps.itsm.services.ticket.service import TicketService
+
+    version = type(
+        "Version",
+        (),
+        {
+            "design": {
+                "nodes": [
+                    {"id": "sec", "type": "manual", "assignee": {"source": "users", "value": ["bob"]}, "fallback": "admin"},
+                ]
+            }
+        },
+    )()
+    variables = TicketService(None)._assignee_variables(version, "admin", {})
+    assert variables["itsm_assignee_sec"] == "bob"

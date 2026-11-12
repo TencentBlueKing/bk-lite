@@ -1,3 +1,12 @@
+'use client';
+
+import { useRouter } from 'next/navigation';
+import { useEffect } from 'react';
+
 export default function RulePage() {
-  return <div>规则与时效</div>;
+  const router = useRouter();
+  useEffect(() => {
+    router.replace('/itsm/rule/status');
+  }, [router]);
+  return null;
 }

@@ -13,7 +13,11 @@
 - 表单、字典、流程设计/发布、处理组、通知模板接口。
 - 工单创建与 submit/approve/reject/claim。或签在本地 Flowable 上跑通：一人通过后另一人任务结束，处理完成后状态为 finished。
 - 新任务通过 `itsm_event` 调控制台 `create_notification`，接收人写入 `recipient_usernames`。外部消息优先用已就绪的 IM 应用通知（飞书、企微），否则用飞书或钉钉机器人通道，经 `send_msg_with_channel` 发出。
-- 前端门户、表单设计、流程画布、工单列表和设置页入口。
+- 前端门户、表单设计、流程画布、工单列表和详情。门户可建服务并提单；详情含表单、待办动作、流转日志和节点进度。
+- `batch_init` 与 `make server-init` 会执行 `init_itsm`，并尝试 `init_itsm_itil`（请求、事件、问题流程和 SLA）。
+- M2：工单动作含响应、催办、挂起、恢复、转单、退回提单/上一节点、撤回、终止、关闭、重新打开；列表可按创建人、优先级、标签、时间和标题/单号过滤，并带 SLA 截止；评论、附件、关注、标签、关联；流程版本列表、导入导出与启用；变量可测试；SLA 可分类启停；数据表支持 Excel。
+- M3 到 M5 的本地对象在 `/api/resources/<kind>/`。已验证：批量催办、xlsx 导出、决策表命中、触发器打标签、OpenAPI 双组织隔离、NATS `itsm_create_ticket`、打印模板、本机作业、DMN 部署、10 万单列表、本地 eml 收信、知识页同步。
+- 仍依赖外部环境、本机收不了口：已发布的编排流程和 Conductor、FalkorDB、OpsPilot 对话、Django Channels、待办 HTTP 的公网地址（本机回环会被 SSRF 拦住）。
 
 ## 基线核对
 

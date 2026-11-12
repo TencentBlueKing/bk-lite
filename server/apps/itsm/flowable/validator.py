@@ -21,13 +21,13 @@ def validate_design(payload: dict) -> list[str]:
             errors.append(f"节点 {node.id} 的类型 {node.type} 第一期不支持")
         if node.id not in linked and len(document.nodes) > 1:
             errors.append(f"节点 {node.id} 是孤立节点")
-        if node.type in {"approval", "handle", "submit"} and not node.assignee and node.type != "submit" and not node.fallback:
+        if node.type in {"approval", "handle", "manual", "subprocess_handle"} and not node.assignee and not node.fallback:
             errors.append(f"节点 {node.id} 处理人为空且没有兜底")
         for key in node.field_perm:
             if key != "*" and field_keys and key not in field_keys:
                 errors.append(f"节点 {node.id} 引用了不存在的字段 {key}")
     for node in document.nodes:
-        if node.type != "exclusive":
+        if node.type not in {"exclusive", "branch", "branch_condition"}:
             continue
         outgoing = [edge for edge in document.edges if edge.from_ == node.id]
         if not any(edge.default for edge in outgoing):

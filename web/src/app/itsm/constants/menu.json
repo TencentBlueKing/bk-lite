@@ -12,6 +12,11 @@
           "name": "portal"
         },
         {
+          "title": "服务管理",
+          "url": "/itsm/portal/services",
+          "name": "portal"
+        },
+        {
           "title": "提单",
           "url": "/itsm/portal/apply",
           "name": "portal",
@@ -60,11 +65,6 @@
           "url": "/itsm/workflow/variables",
           "name": "workflow",
           "isNotMenuItem": true
-        },
-        {
-          "title": "决策表",
-          "url": "/itsm/workflow/decisions",
-          "name": "rule"
         }
       ]
     },
@@ -129,7 +129,12 @@
           "name": "rule"
         },
         {
-          "title": "状态与阶段",
+          "title": "决策表",
+          "url": "/itsm/rule/decisions",
+          "name": "rule"
+        },
+        {
+          "title": "状态管理",
           "url": "/itsm/rule/status",
           "name": "status_stage"
         }
@@ -163,7 +168,7 @@
         {"title": "VIP", "url": "/itsm/settings/vips", "name": "org"},
         {"title": "通知模板", "url": "/itsm/settings/notify-templates", "name": "notify"},
         {"title": "公告", "url": "/itsm/settings/announcements", "name": "notify"},
-        {"title": "系统设置", "url": "/itsm/settings", "name": "setting"}
+        {"title": "基础配置", "url": "/itsm/settings", "name": "setting"}
       ]
     }
   ],
@@ -175,6 +180,7 @@
       "name": "portal",
       "children": [
         {"title": "Catalog", "url": "/itsm/portal", "name": "portal"},
+        {"title": "Services", "url": "/itsm/portal/services", "name": "portal"},
         {"title": "Apply", "url": "/itsm/portal/apply", "name": "portal", "isNotMenuItem": true}
       ]
     },
@@ -196,8 +202,7 @@
       "children": [
         {"title": "Designer", "url": "/itsm/workflow", "name": "workflow"},
         {"title": "Types", "url": "/itsm/workflow/types", "name": "workflow", "isNotMenuItem": true},
-        {"title": "Variables", "url": "/itsm/workflow/variables", "name": "workflow", "isNotMenuItem": true},
-        {"title": "Decisions", "url": "/itsm/workflow/decisions", "name": "rule"}
+        {"title": "Variables", "url": "/itsm/workflow/variables", "name": "workflow", "isNotMenuItem": true}
       ]
     },
     {
@@ -223,7 +228,8 @@
         {"title": "Calendars", "url": "/itsm/rule/calendars", "name": "rule"},
         {"title": "Triggers", "url": "/itsm/rule/triggers", "name": "rule"},
         {"title": "Schedules", "url": "/itsm/rule/schedules", "name": "rule"},
-        {"title": "Status and stages", "url": "/itsm/rule/status", "name": "status_stage"}
+        {"title": "Decisions", "url": "/itsm/rule/decisions", "name": "rule"},
+        {"title": "Status", "url": "/itsm/rule/status", "name": "status_stage"}
       ]
     },
     {

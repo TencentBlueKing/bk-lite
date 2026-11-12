@@ -8,6 +8,8 @@ from apps.itsm.models import (
     HandlerGroup,
     ItsmSetting,
     NotifyTemplate,
+    Service,
+    ServiceCatalog,
     StatusTransition,
     TicketStatus,
     Workflow,
@@ -28,4 +30,6 @@ admin.site.register(HandlerGroup)
 admin.site.register(TicketStatus)
 admin.site.register(StatusTransition)
 admin.site.register(NotifyTemplate)
+admin.site.register(ServiceCatalog)
+admin.site.register(Service)
 admin.site.register(ItsmSetting)

@@ -1,13 +1,38 @@
 from django.db import models
+from django.db.models import Q
 
 from apps.itsm.models.base import ItsmModel
 from apps.itsm.models.org import TicketStatus
 from apps.itsm.models.workflow import Workflow, WorkflowVersion
 
 
+class TicketQuerySet(models.QuerySet):
+    def visible_to(self, username: str, see_all: bool = False):
+        if see_all or username == "admin":
+            return self
+        from apps.itsm.models.extend import TicketProxy
+
+        principals = list(TicketProxy.objects.filter(agent=username, is_enabled=True).values_list("principal", flat=True))
+        query = Q(creator=username) | Q(tasks__assignee=username)
+        if principals:
+            query = query | Q(creator__in=principals) | Q(tasks__assignee__in=principals)
+        return self.filter(query).distinct()
+
+
+class TicketTag(ItsmModel):
+    name = models.CharField(max_length=64)
+    color = models.CharField(max_length=16, default="#1677ff")
+
+    class Meta:
+        db_table = "itsm_ticket_tag"
+        unique_together = (("domain", "name"),)
+
+
 class Ticket(ItsmModel):
+    objects = TicketQuerySet.as_manager()
     sn = models.CharField(max_length=32, unique=True)
     title = models.CharField(max_length=200)
+    service = models.ForeignKey("itsm.Service", null=True, blank=True, on_delete=models.SET_NULL, related_name="tickets")
     workflow = models.ForeignKey(Workflow, on_delete=models.PROTECT, related_name="tickets")
     workflow_version = models.ForeignKey(WorkflowVersion, null=True, blank=True, on_delete=models.PROTECT, related_name="tickets")
     status = models.ForeignKey(TicketStatus, null=True, blank=True, on_delete=models.PROTECT, related_name="tickets")
@@ -16,6 +41,7 @@ class Ticket(ItsmModel):
     form_data = models.JSONField(default=dict)
     process_instance_id = models.CharField(max_length=64, blank=True, default="")
     is_test = models.BooleanField(default=False)
+    tags = models.ManyToManyField(TicketTag, blank=True, related_name="tickets")
 
     class Meta:
         db_table = "itsm_ticket"
@@ -36,6 +62,55 @@ class TicketTask(ItsmModel):
 
     class Meta:
         db_table = "itsm_ticket_task"
+
+
+class TicketComment(ItsmModel):
+    ticket = models.ForeignKey(Ticket, on_delete=models.CASCADE, related_name="comments")
+    content = models.TextField()
+    parent = models.ForeignKey("self", null=True, blank=True, on_delete=models.CASCADE, related_name="replies")
+    mentions = models.JSONField(default=list)
+
+    class Meta:
+        db_table = "itsm_ticket_comment"
+
+
+class TicketAttachment(ItsmModel):
+    ticket = models.ForeignKey(Ticket, on_delete=models.CASCADE, related_name="attachments")
+    task = models.ForeignKey(TicketTask, null=True, blank=True, on_delete=models.SET_NULL, related_name="attachments")
+    field_key = models.CharField(max_length=64, blank=True, default="")
+    object_name = models.CharField(max_length=255)
+    name = models.CharField(max_length=255)
+    size = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        db_table = "itsm_ticket_attachment"
+
+
+class TicketFollower(ItsmModel):
+    ticket = models.ForeignKey(Ticket, on_delete=models.CASCADE, related_name="followers")
+    username = models.CharField(max_length=64)
+
+    class Meta:
+        db_table = "itsm_ticket_follower"
+        unique_together = (("ticket", "username"),)
+
+
+class TicketRelation(ItsmModel):
+    ticket = models.ForeignKey(Ticket, on_delete=models.CASCADE, related_name="relations")
+    related = models.ForeignKey(Ticket, on_delete=models.CASCADE, related_name="related_from")
+    relation_type = models.CharField(max_length=32, default="related")
+
+    class Meta:
+        db_table = "itsm_ticket_relation"
+
+
+class TicketSurvey(ItsmModel):
+    ticket = models.OneToOneField(Ticket, on_delete=models.CASCADE, related_name="survey")
+    score = models.PositiveSmallIntegerField()
+    comment = models.CharField(max_length=500, blank=True, default="")
+
+    class Meta:
+        db_table = "itsm_ticket_survey"
 
 
 class TicketLog(ItsmModel):

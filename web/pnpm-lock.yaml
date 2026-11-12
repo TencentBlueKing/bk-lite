@@ -82,6 +82,9 @@ importers:
       axios:
         specifier: ^1.7.7
         version: 1.19.0(debug@4.4.3(supports-color@8.1.1))(supports-color@8.1.1)
+      dagre:
+        specifier: 0.8.5
+        version: 0.8.5
       dayjs:
         specifier: ^1.11.13
         version: 1.11.21
@@ -218,6 +221,9 @@ importers:
       '@types/chroma-js':
         specifier: ^2.4.0
         version: 2.4.5
+      '@types/dagre':
+        specifier: ^0.7.54
+        version: 0.7.54
       '@types/dom-to-image':
         specifier: ^2.6.5
         version: 2.6.7
@@ -462,6 +468,24 @@ importers:
       '@types/react-beautiful-dnd':
         specifier: ^13.1.8
         version: 13.1.8
+
+  src/app/itsm:
+    dependencies:
+      '@dnd-kit/core':
+        specifier: ^6.3.1
+        version: 6.3.1(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
+      '@dnd-kit/sortable':
+        specifier: ^10.0.0
+        version: 10.0.0(@dnd-kit/core@6.3.1(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react@19.2.3)
+      '@xyflow/react':
+        specifier: ^12.8.4
+        version: 12.11.2(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(immer@10.0.3)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
+      aieditor:
+        specifier: ^1.4.2
+        version: 1.4.2(@tiptap/extension-code-block@2.27.2(@tiptap/core@2.27.2(@tiptap/pm@2.27.2))(@tiptap/pm@2.27.2))(highlight.js@11.12.0)
+      dagre:
+        specifier: ^0.8.5
+        version: 0.8.5
 
   src/app/job:
     dependencies:
@@ -1584,6 +1608,12 @@ packages:
     resolution: {integrity: sha512-oPZ0JoKtVSK9hVHSBDKG1oCLgnZbpxuH/SMnyDtXkNhn9+SF1+98DlWILFYxIT8faOS/GgfhlNFREmym6oqrEg==}
     peerDependencies:
       '@dnd-kit/core': ^6.2.0
+      react: '>=16.8.0'
+
+  '@dnd-kit/sortable@10.0.0':
+    resolution: {integrity: sha512-+xqhmIIzvAYMGfBYYnbKuNicfSsk4RksY2XdmJhT+HAC01nix6fHCztU68jooFiMUB01Ky3F0FyOvhG/BZrWkg==}
+    peerDependencies:
+      '@dnd-kit/core': ^6.3.0
       react: '>=16.8.0'
 
   '@dnd-kit/sortable@9.0.0':
@@ -7720,8 +7750,8 @@ packages:
   prosemirror-schema-basic@1.2.5:
     resolution: {integrity: sha512-McBWhfgOfThyu3Nltbs8SOUbM4t/h0pxteibaaHd1QR4S+F1t0u7M1ETaCE6/cveFoF+2fowTIBNkJOyeZQjNg==}
 
-  prosemirror-schema-list@1.5.1:
-    resolution: {integrity: sha512-927lFx/uwyQaGwJxLWCZRkjXG0p48KpMj6ueoYiu4JX05GGuGcgzAy62dfiV8eFZftgyBUvLx76RsMe20fJl+Q==}
+  prosemirror-schema-list@1.6.0:
+    resolution: {integrity: sha512-G1srDtan+VqWn+qpmWFj/6j0YsZ5zMU+ZIlGVIW41a5JF2jAI3jzfMRWmSABmEH2Qoq1PmAG/o2mucMMdLOsLg==}
 
   prosemirror-state@1.4.4:
     resolution: {integrity: sha512-6jiYHH2CIGbCfnxdHbXZ12gySFY/fz/ulZE333G6bPqIZ4F+TXo9ifiR86nAHpWnfoNjOb3o5ESi7J8Uz1jXHw==}
@@ -8670,6 +8700,10 @@ packages:
     resolution: {integrity: sha512-BR7VvDCVHO+q2xBEWskxS6DJE1qRnb7DxzUrogb71CWoSficBxYsiAGd+Kl0mmq/MprG9yArRkyrQxTO6XjMzA==}
     hasBin: true
 
+  semver@6.3.2:
+    resolution: {integrity: sha512-GYrCADwpu6yV5OAvchkQ27Z5wwMxWAEMg5NNWjyHh/5DboFFqbdbvYNIvZouQpxXyeMPoTOh0vdPYKlf0ZswdQ==}
+    hasBin: true
+
   semver@7.8.5:
     resolution: {integrity: sha512-Y7/KDsb8LjooZpwaqGyulO6DQlksgCncchHGk+sZIY4SBvUocMBEFH5Ur1fI4dV+Jvl0w6cjvucaIi40puRioA==}
     engines: {node: '>=10'}
@@ -9296,6 +9330,9 @@ packages:
 
   tslib@2.8.1:
     resolution: {integrity: sha512-oJFu94HQb+KVduSUQL7wnpmqnfmLsOA/nAh6b6EH0wCEoK0/mPeXU6c3wKDV83MkOuHPRHtSXKKU99IBazS/2w==}
+
+  tslib@2.9.1:
+    resolution: {integrity: sha512-a4Ux9VKuIMHsOS7ENbEq6hK2ZGYIT27Rtl0E4eD9KqwxhKiQeMZE/9xb3IdYwWaSOyIBQLExhQgXDTYoiCxnWA==}
 
   tsx@4.23.5:
     resolution: {integrity: sha512-rw55FUaqOoI7RvlQwLbhO4nSDApnQ4/CykPuiQ/EPvtrX3WA9Ig55jIt9VvbBJbzJuj12ueRu4PMZ2SxPVbihg==}
@@ -10051,7 +10088,7 @@ snapshots:
   '@antv/algorithm@0.1.26':
     dependencies:
       '@antv/util': 2.0.13
-      tslib: 2.8.1
+      tslib: 2.9.1
 
   '@antv/component@2.1.7':
     dependencies:
@@ -10084,7 +10121,7 @@ snapshots:
       '@antv/util': 3.3.11
       '@babel/runtime': 7.29.7
       gl-matrix: 3.4.4
-      tslib: 2.8.1
+      tslib: 2.9.1
 
   '@antv/g-lite@2.7.0':
     dependencies:
@@ -10094,21 +10131,21 @@ snapshots:
       '@babel/runtime': 7.29.7
       eventemitter3: 5.0.4
       gl-matrix: 3.4.4
-      tslib: 2.8.1
+      tslib: 2.9.1
 
   '@antv/g-math@3.1.0':
     dependencies:
       '@antv/util': 3.3.11
       '@babel/runtime': 7.29.7
       gl-matrix: 3.4.4
-      tslib: 2.8.1
+      tslib: 2.9.1
 
   '@antv/g-plugin-dragndrop@2.1.1':
     dependencies:
       '@antv/g-lite': 2.7.0
       '@antv/util': 3.3.11
       '@babel/runtime': 7.29.7
-      tslib: 2.8.1
+      tslib: 2.9.1
 
   '@antv/g-svg@2.1.1':
     dependencies:
@@ -10116,7 +10153,7 @@ snapshots:
       '@antv/util': 3.3.11
       '@babel/runtime': 7.29.7
       gl-matrix: 3.4.4
-      tslib: 2.8.1
+      tslib: 2.9.1
 
   '@antv/g2-extension-plot@0.2.1':
     dependencies:
@@ -10215,13 +10252,13 @@ snapshots:
 
   '@antv/util@2.0.13':
     dependencies:
-      tslib: 2.8.1
+      tslib: 2.9.1
 
   '@antv/util@3.3.11':
     dependencies:
       fast-deep-equal: 3.1.3
       gl-matrix: 3.4.4
-      tslib: 2.8.1
+      tslib: 2.9.1
 
   '@antv/vendor@1.0.11':
     dependencies:
@@ -10420,7 +10457,7 @@ snapshots:
       debug: 4.4.3(supports-color@8.1.1)
       gensync: 1.0.0-beta.2
       json5: 2.2.3
-      semver: 6.3.1
+      semver: 6.3.2
     transitivePeerDependencies:
       - supports-color
 
@@ -10442,7 +10479,7 @@ snapshots:
       '@babel/helper-validator-option': 7.29.7
       browserslist: 4.28.7
       lru-cache: 5.1.1
-      semver: 6.3.1
+      semver: 6.3.2
 
   '@babel/helper-create-class-features-plugin@7.29.7(@babel/core@7.29.7(supports-color@8.1.1))(supports-color@8.1.1)':
     dependencies:
@@ -11201,7 +11238,7 @@ snapshots:
   '@dnd-kit/accessibility@3.1.1(react@19.2.3)':
     dependencies:
       react: 19.2.3
-      tslib: 2.8.1
+      tslib: 2.9.1
 
   '@dnd-kit/core@6.3.1(react-dom@19.2.3(react@19.2.3))(react@19.2.3)':
     dependencies:
@@ -11217,6 +11254,13 @@ snapshots:
       '@dnd-kit/utilities': 3.2.2(react@19.2.3)
       react: 19.2.3
       tslib: 2.8.1
+
+  '@dnd-kit/sortable@10.0.0(@dnd-kit/core@6.3.1(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react@19.2.3)':
+    dependencies:
+      '@dnd-kit/core': 6.3.1(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
+      '@dnd-kit/utilities': 3.2.2(react@19.2.3)
+      react: 19.2.3
+      tslib: 2.9.1
 
   '@dnd-kit/sortable@9.0.0(@dnd-kit/core@6.3.1(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react@19.2.3)':
     dependencies:
@@ -11609,33 +11653,33 @@ snapshots:
     dependencies:
       '@formatjs/fast-memoize': 2.2.3
       '@formatjs/intl-localematcher': 0.5.8
-      tslib: 2.8.1
+      tslib: 2.9.1
 
   '@formatjs/fast-memoize@2.2.3':
     dependencies:
-      tslib: 2.8.1
+      tslib: 2.9.1
 
   '@formatjs/icu-messageformat-parser@2.9.4':
     dependencies:
       '@formatjs/ecma402-abstract': 2.2.4
       '@formatjs/icu-skeleton-parser': 1.8.8
-      tslib: 2.8.1
+      tslib: 2.9.1
 
   '@formatjs/icu-skeleton-parser@1.8.8':
     dependencies:
       '@formatjs/ecma402-abstract': 2.2.4
-      tslib: 2.8.1
+      tslib: 2.9.1
 
   '@formatjs/intl-localematcher@0.5.8':
     dependencies:
-      tslib: 2.8.1
+      tslib: 2.9.1
 
   '@formatjs/intl@3.0.1(typescript@5.9.2)':
     dependencies:
       '@formatjs/fast-memoize': 2.2.3
       '@formatjs/icu-messageformat-parser': 2.9.4
       intl-messageformat: 10.7.7
-      tslib: 2.8.1
+      tslib: 2.9.1
     optionalDependencies:
       typescript: 5.9.2
 
@@ -12241,7 +12285,7 @@ snapshots:
       open: 8.4.2
       picocolors: 1.1.1
       tiny-glob: 0.2.9
-      tslib: 2.8.1
+      tslib: 2.9.1
 
   '@playwright/test@1.62.1':
     dependencies:
@@ -12631,7 +12675,7 @@ snapshots:
       flat-cache: 3.0.4
       micromatch: 4.0.8
       react-docgen-typescript: 2.4.0(typescript@5.9.2)
-      tslib: 2.8.1
+      tslib: 2.9.1
       typescript: 5.9.2
       webpack: 5.109.2(clean-css@5.3.3)(esbuild@0.28.1)(html-minifier-terser@6.1.0)(lightningcss@1.32.0)(postcss@8.5.25)(uglify-js@2.2.5)(webpack-cli@5.1.4)
     transitivePeerDependencies:
@@ -12664,7 +12708,7 @@ snapshots:
 
   '@swc/helpers@0.5.15':
     dependencies:
-      tslib: 2.8.1
+      tslib: 2.9.1
 
   '@szmarczak/http-timer@4.0.6':
     dependencies:
@@ -12979,7 +13023,7 @@ snapshots:
       prosemirror-menu: 1.3.2
       prosemirror-model: 1.25.11
       prosemirror-schema-basic: 1.2.5
-      prosemirror-schema-list: 1.5.1
+      prosemirror-schema-list: 1.6.0
       prosemirror-state: 1.4.4
       prosemirror-tables: 1.8.5
       prosemirror-trailing-node: 3.0.0(prosemirror-model@1.25.11)(prosemirror-state@1.4.4)(prosemirror-view@1.42.2)
@@ -13881,7 +13925,7 @@ snapshots:
 
   ast-types@0.16.1:
     dependencies:
-      tslib: 2.8.1
+      tslib: 2.9.1
 
   async-function@1.0.0: {}
 
@@ -14152,7 +14196,7 @@ snapshots:
   camel-case@4.1.2:
     dependencies:
       pascal-case: 3.1.2
-      tslib: 2.8.1
+      tslib: 2.9.1
 
   camelcase@4.1.0: {}
 
@@ -14406,7 +14450,7 @@ snapshots:
   cosmiconfig@7.0.0:
     dependencies:
       '@types/parse-json': 4.0.2
-      import-fresh: 3.3.0
+      import-fresh: 3.2.1
       parse-json: 5.2.0
       path-type: 4.0.0
       yaml: 1.10.3
@@ -14871,7 +14915,7 @@ snapshots:
   dot-case@3.0.4:
     dependencies:
       no-case: 3.0.4
-      tslib: 2.8.1
+      tslib: 2.9.1
 
   dot-prop@4.1.0:
     dependencies:
@@ -16691,7 +16735,7 @@ snapshots:
 
   lower-case@2.0.2:
     dependencies:
-      tslib: 2.8.1
+      tslib: 2.9.1
 
   lowercase-keys@1.0.0: {}
 
@@ -17271,7 +17315,7 @@ snapshots:
   no-case@3.0.4:
     dependencies:
       lower-case: 2.0.2
-      tslib: 2.8.1
+      tslib: 2.9.1
 
   node-abort-controller@3.1.1: {}
 
@@ -17567,7 +17611,7 @@ snapshots:
   param-case@3.0.4:
     dependencies:
       dot-case: 3.0.4
-      tslib: 2.8.1
+      tslib: 2.9.1
 
   parchment@3.0.0: {}
 
@@ -17607,7 +17651,7 @@ snapshots:
   pascal-case@3.1.2:
     dependencies:
       no-case: 3.0.4
-      tslib: 2.8.1
+      tslib: 2.9.1
 
   path-browserify@1.0.1: {}
 
@@ -17861,7 +17905,7 @@ snapshots:
     dependencies:
       prosemirror-model: 1.25.11
 
-  prosemirror-schema-list@1.5.1:
+  prosemirror-schema-list@1.6.0:
     dependencies:
       prosemirror-model: 1.25.11
       prosemirror-state: 1.4.4
@@ -18589,7 +18633,7 @@ snapshots:
       esprima: 4.0.1
       source-map: 0.6.1
       tiny-invariant: 1.3.3
-      tslib: 2.8.1
+      tslib: 2.9.1
 
   recharts-scale@0.4.5:
     dependencies:
@@ -18860,11 +18904,11 @@ snapshots:
 
   rxjs@7.8.1:
     dependencies:
-      tslib: 2.8.1
+      tslib: 2.9.1
 
   rxjs@7.8.2:
     dependencies:
-      tslib: 2.8.1
+      tslib: 2.9.1
 
   safe-array-concat@1.1.4:
     dependencies:
@@ -19046,6 +19090,8 @@ snapshots:
   semver@5.1.0: {}
 
   semver@6.3.1: {}
+
+  semver@6.3.2: {}
 
   semver@7.8.5: {}
 
@@ -19498,7 +19544,7 @@ snapshots:
   synckit@0.8.4:
     dependencies:
       '@pkgr/utils': 2.3.1
-      tslib: 2.8.1
+      tslib: 2.9.1
 
   szfe-tools@0.0.0-beta.7:
     dependencies:
@@ -19673,6 +19719,8 @@ snapshots:
   tslib@2.6.2: {}
 
   tslib@2.8.1: {}
+
+  tslib@2.9.1: {}
 
   tsx@4.23.5:
     dependencies:

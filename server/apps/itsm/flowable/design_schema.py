@@ -2,7 +2,32 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-PHASE1_TYPES = {"start", "submit", "approval", "handle", "cc", "exclusive", "parallel", "end", "auto"}
+PHASE1_TYPES = {
+    "start",
+    "submit",
+    "approval",
+    "handle",
+    "manual",
+    "cc",
+    "notice",
+    "exclusive",
+    "branch",
+    "branch_condition",
+    "parallel",
+    "parallel_condition",
+    "converge",
+    "end",
+    "auto",
+    "decision",
+    "call",
+    "subprocess",
+    "subprocess_submit",
+    "subprocess_handle",
+    "manual_trigger",
+    "rule_trigger",
+    "auto_dispatch",
+    "knowledge",
+}
 
 
 class DesignNode(BaseModel):
