@@ -203,6 +203,7 @@ class Command(BaseCommand):
         self._schedule_instance_shape_repair()
         call_command("migrate_field_constraints")
         call_command("reconcile_node_mgmt_sync")
+        self._schedule_ci_context_rebuild()
         # UUID 存量清洗：只注册运行期任务并投递一次；禁止在此同步 --apply（避免挡 supervisord）。
         try:
             from apps.cmdb.tasks.uuid_migration import ensure_uuid_migration_periodic_task, migrate_cmdb_instance_uuid_runtime
@@ -270,6 +271,34 @@ class Command(BaseCommand):
                 exc_info=safe_exception_info(exc),
             )
             self.stdout.write(self.style.WARNING(f"CMDB 实例形态清洗注册跳过: {type(exc).__name__}"))
+
+    def _schedule_ci_context_rebuild(self) -> None:
+        """ci_context 全量重摊是可重建投影，启动期只入队，不扫图。"""
+        try:
+            from apps.cmdb.tasks.ci_context import ensure_ci_context_rebuild_periodic_task, rebuild_ci_context_runtime
+
+            task = ensure_ci_context_rebuild_periodic_task()
+            if task is not None and not getattr(task, "enabled", True):
+                self.stdout.write("CMDB ci_context 全量重摊已完成，跳过")
+                return
+            try:
+                rebuild_ci_context_runtime.delay()
+            except Exception as exc:
+                logger.warning(
+                    "event=ci_context_rebuild_enqueue_failed failed_stage=enqueue error_type=%s",
+                    type(exc).__name__,
+                    exc_info=safe_exception_info(exc),
+                )
+                self.stdout.write(self.style.WARNING(f"CMDB ci_context 全量重摊投递跳过（{type(exc).__name__}），周期任务会重试"))
+            else:
+                self.stdout.write("已注册 CMDB ci_context 全量重摊任务（异步收敛，不阻断启动）")
+        except Exception as exc:
+            logger.warning(
+                "event=ci_context_rebuild_register_failed failed_stage=register error_type=%s",
+                type(exc).__name__,
+                exc_info=safe_exception_info(exc),
+            )
+            self.stdout.write(self.style.WARNING(f"CMDB ci_context 全量重摊注册跳过: {type(exc).__name__}"))
 
     def _init_console_mgmt(self):
         """控制台管理资源初始化"""

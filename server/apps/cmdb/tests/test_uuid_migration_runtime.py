@@ -158,6 +158,8 @@ def test_batch_init_cmdb_registers_runtime_task_without_sync_apply(mocker):
     mocker.patch("apps.cmdb.tasks.display_field_backfill.backfill_cmdb_display_fields.delay")
     mocker.patch("apps.cmdb.tasks.display_field_backfill.ensure_display_field_backfill_periodic_task")
     mocker.patch("apps.cmdb.tasks.instance_shape_repair.repair_cmdb_instance_shape.delay")
+    mocker.patch("apps.cmdb.tasks.ci_context.ensure_ci_context_rebuild_periodic_task", return_value=SimpleNamespace(pk=1, enabled=True))
+    mocker.patch("apps.cmdb.tasks.ci_context.rebuild_ci_context_runtime.delay")
     call_cmd = mocker.patch(
         "apps.core.management.commands.batch_init.call_command",
         return_value=None,
@@ -191,6 +193,8 @@ def test_batch_init_cmdb_continues_when_delay_fails(mocker):
         "apps.core.management.commands.batch_init.call_command",
         return_value=None,
     )
+    mocker.patch("apps.cmdb.tasks.ci_context.ensure_ci_context_rebuild_periodic_task", return_value=SimpleNamespace(pk=1, enabled=True))
+    mocker.patch("apps.cmdb.tasks.ci_context.rebuild_ci_context_runtime.delay")
 
     # 不得因投递失败而抛出并阻断启动
     Command()._init_cmdb()
