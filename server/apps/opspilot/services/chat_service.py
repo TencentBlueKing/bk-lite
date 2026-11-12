@@ -7,6 +7,8 @@ import threading
 import uuid
 from typing import Any, Dict, Tuple
 
+from asgiref.sync import ThreadSensitiveContext
+
 from apps.core.logger import opspilot_logger as logger
 from apps.core.mixinx import EncryptMixin
 from apps.core.utils.loader import LanguageLoader
@@ -315,12 +317,18 @@ class ChatService:
             worker_result: Dict[str, Any] = {}
             worker_done = threading.Event()
 
+            async def _execute_graph():
+                # 外层同步调用可能占着全局/请求线程池等待本轮结束。
+                # 本轮 ORM 桥接使用独立单线程池，退出时由上下文回收。
+                async with ThreadSensitiveContext():
+                    return await graph.execute(request)
+
             def _run_in_new_loop():
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
                 close_old_connections()
                 try:
-                    return loop.run_until_complete(graph.execute(request))
+                    return loop.run_until_complete(_execute_graph())
                 finally:
                     try:
                         if not loop.is_closed() and not timed_out_holder["value"]:
@@ -353,10 +361,12 @@ class ChatService:
 
             # 整轮 agent 执行预算（含多轮 LLM + 工具调用），独立于单次 LLM 调用超时
             _agent_timeout = _resolve_agent_execute_timeout()
-            # 工作线程不继承 ContextVar。拷贝当前轮次语言后再启动；
-            # 调用线程在 finally 里 reset，下一轮不会读到上一轮的 locale。
+            # 只传递本轮语言，不复制调用方的执行器上下文；调用方可能正在
+            # sync_to_async 的单线程中等待本线程返回。
+            worker_context = contextvars.Context()
+            worker_context.run(set_run_locale, chat_kwargs.get("locale") or "en")
             worker = threading.Thread(
-                target=contextvars.copy_context().run,
+                target=worker_context.run,
                 args=(_worker,),
                 name="opspilot-invoke-chat",
                 daemon=True,
