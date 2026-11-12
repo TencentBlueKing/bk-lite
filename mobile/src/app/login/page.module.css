@@ -358,6 +358,13 @@
   color: #111827;
 }
 
+.modeSwitch + .sectionTitle,
+.qrPanel + .sectionTitle,
+.keyHint + .sectionTitle,
+.bindHint + .sectionTitle {
+  margin-top: 16px;
+}
+
 .bindHint,
 .manualHint {
   margin: 0 0 10px;
@@ -418,12 +425,6 @@
   line-height: 1.4;
   font-weight: 700;
   color: #111827;
-}
-
-.rule {
-  height: 1px;
-  margin: 12px 0;
-  background: #eef0f3;
 }
 
 .qrHint {
