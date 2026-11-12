@@ -211,7 +211,8 @@ class CMDBProvider(EnrichmentProvider):
                 return None
             return max(0.05, min(query_timeout, remaining))
 
-        client = CMDB()
+        # 接入进程已有 CMDB handler，本进程查询，避免再绕 NATS 占第二个 worker。
+        client = CMDB(is_local_client=True)
         _fetch_model_groups(client, by_model_uuids, "inst_uuids", "", authorized_team_ids, key_meta, fetched, failed_keys, remaining_timeout)
         _fetch_model_groups(client, by_model_names, "inst_names", "(name)", authorized_team_ids, key_meta, fetched, failed_keys, remaining_timeout)
         if uuid_keys:
@@ -311,8 +312,6 @@ def _overlay_ci_context(client, result, keys, key_meta, config, remaining_timeou
         return
     related_keys = set(uuid_by_key)
     if remaining_timeout(related_keys) is None:
-        for key in related_keys:
-            result[key] = []
         return
     unique_uuids = list(dict.fromkeys(uuid_by_key.values()))
     try:
@@ -320,8 +319,6 @@ def _overlay_ci_context(client, result, keys, key_meta, config, remaining_timeou
     except Exception:
         logger.error("[Enrichment] CMDB 应用归属查询失败", exc_info=True)
         failed_keys.update(related_keys)
-        for key in related_keys:
-            result[key] = []
         return
 
     instances_by_scope = {}
@@ -346,9 +343,8 @@ def _overlay_ci_context(client, result, keys, key_meta, config, remaining_timeou
             failed_keys,
         )
         if fetched is None:
-            for key in related_keys:
-                result[key] = []
-            return
+            instances_by_scope[scope] = {}
+            continue
         instances_by_scope[scope] = fetched
 
     for key, inst_uuid in uuid_by_key.items():
