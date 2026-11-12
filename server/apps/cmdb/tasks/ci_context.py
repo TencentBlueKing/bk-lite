@@ -104,6 +104,10 @@ def _rebuild_under_lock() -> dict[str, Any]:
     result = rebuild_ci_context_bounded(skip=cursor["skip"], limit=REBUILD_BUDGET)
     ok_count = cursor["ok"] + result["ok_count"]
     fail_count = cursor["fail"] + result["fail_count"]
+    if result["done"] and cursor["skip"] == 0 and int(result.get("seen") or 0) == 0:
+        # 第 0 页为空可能是图还没数据，不能当成摊完并关掉周期任务。
+        logger.info("event=ci_context_rebuild_waiting reason=%s", "empty")
+        return {"status": "waiting", "reason": "empty"}
     if result["done"]:
         cache.delete(REBUILD_CURSOR_KEY)
         _disable_rebuild_periodic_task()

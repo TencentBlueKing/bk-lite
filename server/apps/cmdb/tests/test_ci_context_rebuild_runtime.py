@@ -95,6 +95,50 @@ def test_rebuild_continues_from_cursor(monkeypatch, locmem_cache):
     assert calls == [{"skip": 0, "limit": REBUILD_BUDGET}]
 
 
+def test_rebuild_empty_first_page_waits_without_disabling(monkeypatch, locmem_cache, caplog):
+    ensure_ci_context_rebuild_periodic_task()
+    queued = []
+    monkeypatch.setattr(
+        "apps.cmdb.services.ci_context.rebuild_ci_context_bounded",
+        lambda **kwargs: {"ok_count": 0, "fail_count": 0, "seen": 0, "done": True, "next_skip": 0},
+    )
+    monkeypatch.setattr(rebuild_ci_context_runtime, "apply_async", lambda **kwargs: queued.append(kwargs))
+
+    with caplog.at_level(logging.INFO, logger="cmdb"):
+        result = rebuild_ci_context_runtime()
+
+    assert result == {"status": "waiting", "reason": "empty"}
+    assert queued == []
+    assert cache.get(REBUILD_CURSOR_KEY) is None
+    assert PeriodicTask.objects.get(name=REBUILD_PERIODIC_TASK_NAME).enabled is True
+    records = [record for record in caplog.records if record.getMessage().startswith("event=ci_context_rebuild_waiting")]
+    assert len(records) == 1
+    record = records[0]
+    assert record.msg == "event=ci_context_rebuild_waiting reason=%s"
+    assert record.args == ("empty",)
+    assert record.getMessage() == "event=ci_context_rebuild_waiting reason=empty"
+
+
+def test_rebuild_empty_later_page_still_finishes(monkeypatch, locmem_cache):
+    ensure_ci_context_rebuild_periodic_task()
+    cache.set(REBUILD_CURSOR_KEY, {"skip": 50, "ok": 50, "fail": 0})
+    monkeypatch.setattr(
+        "apps.cmdb.services.ci_context.rebuild_ci_context_bounded",
+        lambda **kwargs: {"ok_count": 0, "fail_count": 0, "seen": 0, "done": True, "next_skip": 50},
+    )
+    monkeypatch.setattr(
+        rebuild_ci_context_runtime,
+        "apply_async",
+        lambda **kwargs: (_ for _ in ()).throw(AssertionError("末页为空后不应继续入队")),
+    )
+
+    result = rebuild_ci_context_runtime()
+
+    assert result == {"status": "done", "recomputed": 50, "failed": 0}
+    assert cache.get(REBUILD_CURSOR_KEY) is None
+    assert PeriodicTask.objects.get(name=REBUILD_PERIODIC_TASK_NAME).enabled is False
+
+
 def test_rebuild_done_disables_periodic_and_idles(monkeypatch, locmem_cache):
     ensure_ci_context_rebuild_periodic_task()
     monkeypatch.setattr(
