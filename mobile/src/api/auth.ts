@@ -17,8 +17,19 @@ export const authLogin = (params: {
   username: string;
   password: string;
   domain: string;
+  binding_id?: number;
 }) => {
   return apiPost<any>('/core/api/login/', params);
+};
+
+export const verifyOtpLogin = (params: { challenge_id: string; otp_code: string }) => {
+  return apiPost<any>('/core/api/verify_otp_login/', params);
+};
+
+export const resetPassword = (token: string, password: string) => {
+  return apiPost<any>('/core/api/reset_pwd/', { password }, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
 };
 
 /**

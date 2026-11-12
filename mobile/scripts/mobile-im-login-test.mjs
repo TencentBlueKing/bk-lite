@@ -483,6 +483,80 @@ test('login page reuses the sign-in button style and method switcher', async () 
   assert.equal(page.includes('ExternalLoginButtons'), false);
 });
 
+test('AD uses the same password form and other password-less bindings stay hidden', async () => {
+  const { selectMobileLoginBindings, isPasswordLoginBinding } = await loadTypeScriptModule(
+    'src/auth/im-login/bindings.ts',
+  );
+  const builtin = { id: 1, name: '平台账号密码登录', provider_key: 'bk_lite_builtin', client_login: { evidence_modes: [] } };
+  const ad = { id: 5, name: 'AD', provider_key: 'ad', client_login: { evidence_modes: [] } };
+  const wechat = { id: 2, name: '微信', provider_key: 'wechat', client_login: { evidence_modes: [] } };
+  const feishu = { id: 3, name: '飞书', provider_key: 'feishu', client_login: { evidence_modes: ['oauth'] } };
+
+  assert.equal(isPasswordLoginBinding(ad), true);
+  assert.equal(isPasswordLoginBinding(wechat), false);
+  assert.deepEqual(
+    selectMobileLoginBindings([builtin, ad, wechat, feishu], 'Mozilla/5.0 (iPhone)').map((item) => item.id),
+    [1, 5, 3],
+  );
+});
+
+test('OTP and temporary password follow the desktop order', async () => {
+  const { continuationOfLoginData, savePendingLogin, readPendingLogin, clearPendingLogin } = await loadTypeScriptModule(
+    'src/auth/im-login/pending-login.ts',
+  );
+  const storage = new Map();
+  const memory = {
+    getItem: (key) => storage.get(key) ?? null,
+    setItem: (key, value) => storage.set(key, value),
+    removeItem: (key) => storage.delete(key),
+  };
+  const otpFirst = {
+    username: 'ada',
+    require_otp: true,
+    challenge_id: 'challenge-1',
+    temporary_pwd: true,
+    qr_code: 'abc',
+    need_binding: true,
+    otp_setup_key: 'SECRETKEY',
+    otp_recommended_apps: ['Google Authenticator'],
+  };
+
+  assert.equal(continuationOfLoginData(otpFirst), 'otp');
+  savePendingLogin(memory, otpFirst);
+  assert.equal(readPendingLogin(memory).otp_setup_key, 'SECRETKEY');
+  assert.equal(readPendingLogin(memory).need_binding, true);
+  clearPendingLogin(memory);
+  assert.equal(continuationOfLoginData({ username: 'ada', token: 'token', temporary_pwd: true }), 'reset');
+  assert.equal(continuationOfLoginData({ id: 9, username: 'ada', token: 'token' }), 'session');
+  savePendingLogin(memory, otpFirst);
+  assert.equal(readPendingLogin(memory).challenge_id, 'challenge-1');
+  clearPendingLogin(memory);
+  assert.equal(readPendingLogin(memory), null);
+});
+
+test('logout suppresses silent login until the user starts an external sign-in', async () => {
+  const { suppressSilentLogin, isSilentLoginSuppressed, clearSilentLoginSuppression } = await loadTypeScriptModule(
+    'src/auth/im-login/silent-guard.ts',
+  );
+  const storage = new Map();
+  const memory = {
+    getItem: (key) => storage.get(key) ?? null,
+    setItem: (key, value) => storage.set(key, value),
+    removeItem: (key) => storage.delete(key),
+  };
+  const auth = await readFile(new URL('src/context/auth.tsx', projectRoot), 'utf8');
+  const browser = await readFile(new URL('src/auth/im-login/browser.ts', projectRoot), 'utf8');
+
+  suppressSilentLogin(memory);
+  assert.equal(isSilentLoginSuppressed(memory), true);
+  clearSilentLoginSuppression(memory);
+  assert.equal(isSilentLoginSuppressed(memory), false);
+  assert.match(auth, /isSilentLoginSuppressed\(window\.sessionStorage\)/);
+  assert.match(auth, /suppressSilentLogin\(window\.sessionStorage\)/);
+  assert.match(browser, /clearSilentLoginSuppression\(window\.sessionStorage\)/);
+  assert.ok(browser.indexOf('clearSilentLoginSuppression') < browser.indexOf('window.location.assign'));
+});
+
 test('mobile login methods keep builtin password and oauth-capable bindings', async () => {
   const {
     selectMobileLoginBindings,
