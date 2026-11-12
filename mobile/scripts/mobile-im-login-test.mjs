@@ -524,7 +524,20 @@ test('OTP and temporary password follow the desktop order', async () => {
   assert.equal(continuationOfLoginData(otpFirst), 'otp');
   savePendingLogin(memory, otpFirst);
   assert.equal(readPendingLogin(memory).otp_setup_key, 'SECRETKEY');
+  assert.equal(readPendingLogin(memory).qr_code, 'abc');
   assert.equal(readPendingLogin(memory).need_binding, true);
+  savePendingLogin(memory, {
+    ...otpFirst,
+    require_otp: false,
+    challenge_id: undefined,
+    token: 'token',
+  });
+  const afterVerify = readPendingLogin(memory);
+  assert.equal(afterVerify.otp_setup_key, undefined);
+  assert.equal(afterVerify.qr_code, undefined);
+  assert.equal(afterVerify.token, 'token');
+  assert.equal(afterVerify.temporary_pwd, true);
+  assert.equal(continuationOfLoginData(afterVerify), 'reset');
   clearPendingLogin(memory);
   assert.equal(continuationOfLoginData({ username: 'ada', token: 'token', temporary_pwd: true }), 'reset');
   assert.equal(continuationOfLoginData({ id: 9, username: 'ada', token: 'token' }), 'session');

@@ -31,7 +31,7 @@
 
 .accountCaption {
   margin: 4px 0 0;
-  font-size: 14px;
+  font-size: var(--font-size-compact-title);
   line-height: 1.4;
   font-weight: 500;
   color: #6b7280;
@@ -55,7 +55,7 @@
 .label {
   display: block;
   margin-bottom: 8px;
-  font-size: 14px;
+  font-size: var(--font-size-compact-title);
   font-weight: 500;
   color: #6b7280;
 }
@@ -71,7 +71,7 @@
   transform: translateY(-50%);
   color: #9ca3af;
   z-index: 1;
-  font-size: 16px;
+  font-size: var(--font-size-subtitle);
   pointer-events: none;
 }
 
@@ -111,7 +111,7 @@
 
 .pickerText {
   color: #111827;
-  font-size: 16px;
+  font-size: var(--font-size-subtitle);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -119,14 +119,14 @@
 
 .pickerChevron {
   color: #9ca3af;
-  font-size: 18px;
+  font-size: var(--font-size-title);
   line-height: 1;
 }
 
 .warn {
   margin-top: 8px;
   color: #d97706;
-  font-size: 13px;
+  font-size: var(--font-size-secondary);
   background: #fffbeb;
   border: 1px solid #fde68a;
   border-radius: 8px;
@@ -162,7 +162,7 @@
 }
 
 .oauthTitle {
-  font-size: 16px;
+  font-size: var(--font-size-subtitle);
   font-weight: 600;
   color: #111827;
   line-height: 1.4;
@@ -170,7 +170,7 @@
 
 .oauthDesc {
   margin-top: 4px;
-  font-size: 13px;
+  font-size: var(--font-size-secondary);
   color: #6b7280;
   line-height: 1.5;
 }
@@ -178,7 +178,7 @@
 .helper {
   margin-top: 12px;
   text-align: center;
-  font-size: 12px;
+  font-size: var(--font-size-caption);
   line-height: 1.5;
   color: #9ca3af;
 }
@@ -192,7 +192,7 @@
   align-items: center;
   gap: 12px;
   margin-bottom: 14px;
-  font-size: 12px;
+  font-size: var(--font-size-caption);
   color: #9ca3af;
 }
 
@@ -245,7 +245,7 @@
 
 .methodName {
   width: 100%;
-  font-size: 12px;
+  font-size: var(--font-size-caption);
   line-height: 1.3;
   color: #4b5563;
   text-align: center;
@@ -274,27 +274,27 @@
 }
 
 .stateTitle {
-  font-size: 18px;
+  font-size: var(--font-size-title);
   font-weight: 600;
   color: #111827;
   margin-bottom: 8px;
 }
 
 .stateHint {
-  font-size: 15px;
+  font-size: var(--font-size-body);
   color: #6b7280;
   margin-bottom: 20px;
 }
 
 .stepError {
   margin: 0 0 16px;
-  font-size: 14px;
+  font-size: var(--font-size-compact-title);
   line-height: 1.4;
   color: #dc2626;
 }
 
 .stepInput {
-  --font-size: 15px;
+  --font-size: var(--font-size-body);
   --color: #111827;
   --placeholder-color: #9ca3af;
   height: 40px;
@@ -308,7 +308,7 @@
 .stepInput :global(.adm-input-element) {
   color: #111827;
   -webkit-text-fill-color: #111827;
-  font-size: 15px;
+  font-size: var(--font-size-body);
 }
 
 .stepInput :global(.adm-input-element)::placeholder {
@@ -338,37 +338,36 @@
 
 .stepButton {
   height: 40px;
-  font-size: 15px;
+  font-size: var(--font-size-body);
   border-radius: 8px;
 }
 
 .bindIntro {
   margin: 0 0 20px;
   text-align: center;
-  font-size: 14px;
+  font-size: var(--font-size-compact-title);
   line-height: 1.5;
   color: #6b7280;
 }
 
 .sectionTitle {
   margin: 0 0 6px;
-  font-size: 16px;
+  font-size: var(--font-size-subtitle);
   line-height: 1.3;
   font-weight: 700;
   color: #111827;
 }
 
-.modeSwitch + .sectionTitle,
-.qrPanel + .sectionTitle,
-.keyHint + .sectionTitle,
-.bindHint + .sectionTitle {
-  margin-top: 16px;
+.bindSections {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
 }
 
 .bindHint,
 .manualHint {
   margin: 0 0 10px;
-  font-size: 12px;
+  font-size: var(--font-size-caption);
   line-height: 1.4;
   color: #9ca3af;
 }
@@ -402,7 +401,7 @@
   border-radius: 6px;
   background: transparent;
   color: #6b7280;
-  font-size: 12px;
+  font-size: var(--font-size-caption);
 }
 
 .modeOptionActive {
@@ -414,14 +413,14 @@
 
 .quietLabel {
   margin: 0;
-  font-size: 13px;
+  font-size: var(--font-size-secondary);
   line-height: 1.4;
   color: #9ca3af;
 }
 
 .accountValue {
   margin: 2px 0 0;
-  font-size: 16px;
+  font-size: var(--font-size-subtitle);
   line-height: 1.4;
   font-weight: 700;
   color: #111827;
@@ -429,7 +428,7 @@
 
 .qrHint {
   margin: 0 0 8px;
-  font-size: 14px;
+  font-size: var(--font-size-compact-title);
   line-height: 1.4;
   color: #4b5563;
 }
@@ -462,7 +461,7 @@
   align-items: baseline;
   gap: 8px;
   margin: 0 0 12px;
-  font-size: 14px;
+  font-size: var(--font-size-compact-title);
   line-height: 1.4;
   color: #4b5563;
 }
@@ -491,7 +490,8 @@
 
 .keyHint {
   margin: 8px 0 0;
-  font-size: 12px;
+  font-size: var(--font-size-caption);
+  font-weight: 400;
   line-height: 1.4;
   color: #9ca3af;
 }
@@ -501,7 +501,7 @@
   padding: 0;
   border: 0;
   background: transparent;
-  font-size: 12px;
+  font-size: var(--font-size-caption);
   line-height: 1.4;
 }
 
@@ -518,14 +518,14 @@
 }
 
 .setupKeyValue {
-  font-size: 14px;
+  font-size: var(--font-size-compact-title);
   letter-spacing: 0.04em;
   color: #111827;
   overflow-wrap: anywhere;
 }
 
 .setupKeyMasked {
-  font-size: 13px;
+  font-size: var(--font-size-secondary);
   letter-spacing: 0.16em;
   white-space: nowrap;
   color: #9ca3af;
@@ -544,12 +544,12 @@
   border: 0;
   background: transparent;
   color: #2563eb;
-  font-size: 14px;
+  font-size: var(--font-size-compact-title);
 }
 
 .secretNote {
   margin: 4px 0 0;
-  font-size: 12px;
+  font-size: var(--font-size-caption);
   line-height: 1.4;
   text-align: center;
   color: #9ca3af;

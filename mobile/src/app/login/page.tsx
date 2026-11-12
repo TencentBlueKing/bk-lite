@@ -35,7 +35,7 @@ import { consumeLoginNotice, presentationForLoginNotice } from '@/auth/im-login/
 import {
   clearPendingLogin,
   continuationOfLoginData,
-  pendingFromLoginData,
+  pendingForStorage,
   readPendingLogin,
   savePendingLogin,
 } from '@/auth/im-login/pending-login';
@@ -94,7 +94,7 @@ function formatAppList(apps: string[], orWord: string, locale: string) {
 }
 
 const INPUT_STYLE = {
-  '--font-size': '16px',
+  '--font-size': 'var(--font-size-subtitle)',
   '--color': '#111827',
   '--placeholder-color': '#9ca3af',
   height: '46px',
@@ -293,10 +293,11 @@ export default function LoginPage() {
   };
 
   const finishPending = async (next: ExternalLoginResult) => {
-    const continuation = continuationOfLoginData(next);
+    const stored = pendingForStorage(next);
+    const continuation = continuationOfLoginData(stored);
     if (continuation === 'otp' || continuation === 'reset') {
-      savePendingLogin(window.sessionStorage, next);
-      setPendingLogin(next);
+      savePendingLogin(window.sessionStorage, stored);
+      setPendingLogin(stored);
       setStepError('');
       setAuthStep(continuation === 'otp' ? 'otp-verification' : 'reset-password');
       return;
@@ -329,13 +330,12 @@ export default function LoginPage() {
         setStepError(response?.message || t('login.invalidOtp'));
         return;
       }
-      const next = pendingFromLoginData({
+      await finishPending({
         ...pendingLogin,
         ...response.data,
         require_otp: false,
         challenge_id: undefined,
       });
-      await finishPending(next);
     } catch {
       setStepError(t('login.serviceUnavailable'));
     } finally {
@@ -420,7 +420,7 @@ export default function LoginPage() {
           loading={isLoading}
           disabled={busy}
           className={`w-full rounded-lg shadow-sm ${styles.stepButton}`}
-          style={{ ...loginActionButtonStyle(busy), height: 40, fontSize: 15 }}
+          style={{ ...loginActionButtonStyle(busy), height: 40, fontSize: 'var(--font-size-body)' }}
         >
           {isLoading ? t('login.resettingPassword') : t('login.resetPasswordSubmit')}
         </Button>
@@ -429,7 +429,7 @@ export default function LoginPage() {
           fill="outline"
           onClick={returnToLogin}
           className={`w-full ${styles.stepButton}`}
-          style={{ height: 40, fontSize: 15, borderRadius: 8 }}
+          style={{ height: 40, fontSize: 'var(--font-size-body)', borderRadius: 8 }}
         >
           {t('login.backToLogin')}
         </Button>
@@ -466,7 +466,8 @@ export default function LoginPage() {
     return (
       <form onSubmit={handleOtpSubmit}>
         {isBinding ? (
-          <>
+          <div className={styles.bindSections}>
+            <div>
             <h2 className={styles.sectionTitle}>{t('login.otpStepAdd')}</h2>
             <p className={styles.bindHint}>
               {apps.length > 0
@@ -528,9 +529,12 @@ export default function LoginPage() {
                 <p className={styles.keyHint}>{t('login.otpKeepSecret')}</p>
               </>
             ) : null}
+            </div>
+            <div>
             <h2 className={styles.sectionTitle}>{t('login.otpStepVerify')}</h2>
             {codeField(t('login.otpPlaceholderBind'), true)}
-          </>
+            </div>
+          </div>
         ) : (
           <>
             <p className={styles.stateHint}>{t('login.otpDescription')}</p>
@@ -563,7 +567,7 @@ export default function LoginPage() {
       {loadingDomains ? (
         <div className={styles.picker} style={{ justifyContent: 'center', gap: 8 }}>
           <SpinLoading color="primary" />
-          <span style={{ color: '#6b7280', fontSize: 16 }}>{t('login.loadingDomains')}</span>
+          <span style={{ color: '#6b7280', fontSize: 'var(--font-size-subtitle)' }}>{t('login.loadingDomains')}</span>
         </div>
       ) : (
         <div className={styles.picker} onClick={() => setShowDomainSelector(true)}>
@@ -758,7 +762,7 @@ export default function LoginPage() {
                 </div>
               ))}
             </div>
-            <Button fill="outline" className="w-full h-11" onClick={() => setShowDomainSelector(false)} style={{ fontSize: '16px' }}>
+            <Button fill="outline" className="w-full h-11" onClick={() => setShowDomainSelector(false)} style={{ fontSize: 'var(--font-size-subtitle)' }}>
               {t('common.cancel')}
             </Button>
           </div>

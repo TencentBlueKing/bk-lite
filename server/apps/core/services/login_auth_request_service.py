@@ -34,6 +34,7 @@ LOGIN_RESULT_ALLOWED_KEYS = {
     "challenge_id",
     "qr_code",
     "need_binding",
+    "otp_setup_key",
     "legacy_redirect_url",
 }
 

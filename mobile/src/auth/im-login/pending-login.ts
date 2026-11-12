@@ -46,8 +46,19 @@ export function continuationOfLoginData(data: ExternalLoginResult | null | undef
   return 'invalid';
 }
 
+/** OTP setup material stays only while this login is still on the bind step. */
+export function pendingForStorage(pending: ExternalLoginResult): ExternalLoginResult {
+  const data = pendingFromLoginData(pending);
+  if (continuationOfLoginData(data) === 'otp') return data;
+  return {
+    ...data,
+    qr_code: undefined,
+    otp_setup_key: undefined,
+  };
+}
+
 export function savePendingLogin(storage: KeyValueStorage, pending: ExternalLoginResult) {
-  storage.setItem(PENDING_LOGIN_STORAGE_KEY, JSON.stringify(pendingFromLoginData(pending)));
+  storage.setItem(PENDING_LOGIN_STORAGE_KEY, JSON.stringify(pendingForStorage(pending)));
 }
 
 export function readPendingLogin(storage: KeyValueStorage): ExternalLoginResult | null {

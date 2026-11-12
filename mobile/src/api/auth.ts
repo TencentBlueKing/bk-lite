@@ -1,7 +1,14 @@
 /**
  * 认证相关 API
  */
+import type { ExternalLoginResult } from '@/auth/im-login/types';
 import { apiGet, apiPost } from './request';
+
+interface LoginResultResponse<T> {
+  result?: boolean;
+  message?: string;
+  data?: T;
+}
 
 /**
  * 获取域名列表
@@ -23,11 +30,11 @@ export const authLogin = (params: {
 };
 
 export const verifyOtpLogin = (params: { challenge_id: string; otp_code: string }) => {
-  return apiPost<any>('/core/api/verify_otp_login/', params);
+  return apiPost<LoginResultResponse<ExternalLoginResult>>('/core/api/verify_otp_login/', params);
 };
 
 export const resetPassword = (token: string, password: string) => {
-  return apiPost<any>('/core/api/reset_pwd/', { password }, {
+  return apiPost<LoginResultResponse<{ token?: string }>>('/core/api/reset_pwd/', { password }, {
     headers: { Authorization: `Bearer ${token}` },
   });
 };
