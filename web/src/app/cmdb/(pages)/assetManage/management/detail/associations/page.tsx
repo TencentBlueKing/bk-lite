@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
-import { Alert, Button, Modal, Switch, Tooltip, message } from 'antd';
+import { Alert, Button, Dropdown, Modal, Switch, Tooltip, message } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import SearchActionBar from '@/components/search-action-bar';
 import type { TableRowSelection } from 'antd/es/table/interface';
@@ -32,6 +32,7 @@ const Associations: React.FC = () => {
     getModelAssociations,
     getModelAssociationTypes,
     setModelAssociationRequired,
+    setAssociationContextLink,
     getModelIslandCounts,
   } = useModelApi();
   const { getClassificationList } = useClassificationApi();
@@ -161,22 +162,59 @@ const Associations: React.FC = () => {
     {
       title: t('common.actions'),
       key: 'action',
-      render: (_, record) => (
-        <>
-          <PermissionWrapper
-            requiredPermissions={['Edit Model']}
-            instPermissions={modelPermission}
-          >
-            <Button
-              type="link"
-              danger
-              onClick={() => showDeleteConfirm(record.model_asst_id)}
+      render: (_, record) => {
+        const contextLink = record.context_link === 'include' || record.context_link === 'exclude'
+          ? record.context_link
+          : 'follow';
+        return (
+          <>
+            {modelId === 'application' ? (
+              <PermissionWrapper
+                requiredPermissions={['Edit Model']}
+                instPermissions={modelPermission}
+              >
+                <Dropdown
+                  menu={{
+                    selectable: true,
+                    selectedKeys: [contextLink],
+                    items: [
+                      {
+                        key: 'follow',
+                        label: t('Model.ciContextFollow'),
+                        onClick: () => updateContextLink(record.model_asst_id, 'follow'),
+                      },
+                      {
+                        key: 'include',
+                        label: t('Model.ciContextInclude'),
+                        onClick: () => updateContextLink(record.model_asst_id, 'include'),
+                      },
+                      {
+                        key: 'exclude',
+                        label: t('Model.ciContextExclude'),
+                        onClick: () => updateContextLink(record.model_asst_id, 'exclude'),
+                      },
+                    ],
+                  }}
+                >
+                  <Button type="link">{t('Model.ciContextMore')}</Button>
+                </Dropdown>
+              </PermissionWrapper>
+            ) : null}
+            <PermissionWrapper
+              requiredPermissions={['Edit Model']}
+              instPermissions={modelPermission}
             >
-              {t('common.delete')}
-            </Button>
-          </PermissionWrapper>
-        </>
-      ),
+              <Button
+                type="link"
+                danger
+                onClick={() => showDeleteConfirm(record.model_asst_id)}
+              >
+                {t('common.delete')}
+              </Button>
+            </PermissionWrapper>
+          </>
+        );
+      },
     },
   ];
 
@@ -315,6 +353,19 @@ const Associations: React.FC = () => {
     setIslandCounts(counts || {});
   };
 
+  const updateContextLink = async (
+    modelAsstId: string,
+    contextLink: 'follow' | 'include' | 'exclude',
+  ) => {
+    try {
+      await setAssociationContextLink(modelAsstId, contextLink);
+      message.success(t('successfullyModified'));
+      await fetchData();
+    } catch {
+      // 请求层已提示失败
+    }
+  };
+
   const updateRequired = async (record: { model_asst_id: string }, required: boolean) => {
     const previous = tableData;
     setTableData((rows) => rows.map((row) => (
@@ -383,6 +434,9 @@ const Associations: React.FC = () => {
     <div className="min-w-0 w-full">
       <div>
         <Alert className="mb-4" type="info" showIcon message={t('Governance.relationTip')} />
+        {modelId === 'application' ? (
+          <Alert className="mb-4" type="info" showIcon message={t('Model.ciContextHint')} />
+        ) : null}
         <SearchActionBar
           className="mb-4"
           spacing="flush"

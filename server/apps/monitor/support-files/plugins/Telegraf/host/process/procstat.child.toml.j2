@@ -4,6 +4,8 @@
     pid_finder = "native"
     pid_tag = false
     process_name = "{{ process_name }}"
+    # 不上报完整命令行：命令行含换行时会把一个数据点拆成两行，写入端整批拒绝。
+    fieldexclude = ["cmdline"]
     interval = "{{ interval }}s"
     [inputs.procstat.tags]
         instance_id = "{{ instance_id }}"

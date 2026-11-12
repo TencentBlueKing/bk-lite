@@ -512,6 +512,7 @@
       "followAlertHint": "When enabled, the area border and status label reflect alerts on bound resources in the area",
       "regionIconCount": "{total} icons in this area, {bound} bound to resources",
       "resourceAlertHint": "{n} resources in this area, {m} alerts in total (deduplicated)",
+      "plateUnmonitored": "Unmonitored",
       "hintUnmonitored": "This resource is not monitored",
       "hintUnknown": "Status is currently unavailable. Refresh later.",
       "hintForbidden": "No permission to view this resource",
@@ -764,7 +765,8 @@
         "tech": "Frame 6",
         "border-16": "Frame 7",
         "border-20": "Frame 8",
-        "border-24": "Frame 9"
+        "border-24": "Frame 9",
+        "border-plate": "Corner Plate"
       },
       "divider": {
         "line-1": "Divider 1",

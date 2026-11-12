@@ -7,3 +7,16 @@
         instance_type = "{{ instance_type }}"
         collect_type = "middleware"
         config_type = "nginx"
+{# nginx_vts / nginx_vts_url 只参与本次渲染，不能写进 inputs.nginx，否则 Telegraf 拒载。 #}
+{% set vts_on = nginx_vts | default(false, true) %}
+{% if (vts_on == true or vts_on == "true" or vts_on == "True") and nginx_vts_url %}
+[[inputs.nginx_vts]]
+    startup_error_behavior = "retry"
+    urls = ["{{ nginx_vts_url }}"]
+    interval = "{{ interval }}s"
+    [inputs.nginx_vts.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "middleware"
+        config_type = "nginx"
+{% endif %}

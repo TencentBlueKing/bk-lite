@@ -72,11 +72,13 @@ class ArchitectureNodeStatusService:
             monitor_ids.append(monitor_id)
 
         summaries, failed_monitors = cls._fetch_alert_summaries(monitor_ids, user_info)
+        alerting_ids = [monitor_id for monitor_id, pair in summaries.items() if monitor_id not in failed_monitors and pair[0]]
+        alert_items = cls._fetch_alert_items(alerting_ids, user_info)
         items = []
         for inst_uuid in inst_uuids:
             state = states.get(inst_uuid)
             if state == "mapped":
-                items.append(_status_from_mapping(mappings[inst_uuid], summaries, failed_monitors))
+                items.append(_status_from_mapping(mappings[inst_uuid], summaries, failed_monitors, alert_items))
             elif state in {"forbidden", "invalid", "unknown"}:
                 items.append(_empty_item(inst_uuid, state))
             else:
@@ -130,6 +132,38 @@ class ArchitectureNodeStatusService:
             for monitor_id in chunk:
                 counts[monitor_id] = (active.get(monitor_id), severe.get(monitor_id))
         return counts, failed
+
+    @classmethod
+    def _fetch_alert_items(cls, monitor_ids: list[str], user_info: dict) -> dict[str, list[dict]]:
+        collected: dict[str, list[dict]] = {}
+        if not monitor_ids:
+            return collected
+        for batch_index, chunk in enumerate(chunks(monitor_ids, _CHUNK_SIZE)):
+            data = cls._query_alert_item_page(chunk, user_info, batch_index)
+            if data is None:
+                continue
+            for raw in data.get("items") or []:
+                parsed = _parse_alert_item(raw)
+                if parsed is None:
+                    continue
+                collected.setdefault(parsed.pop("_monitor_id"), []).append(parsed)
+        return collected
+
+    @classmethod
+    def _query_alert_item_page(cls, chunk: list[str], user_info: dict, batch_index: int) -> dict | None:
+        try:
+            result = Monitor().ingest_client.run(
+                "query_latest_active_alerts",
+                query_data={"instance_ids": chunk, "limit": 100},
+                user_info=user_info,
+            )
+        except Exception as exc:
+            cls._log_batch_failure("active_alert_items", batch_index, len(chunk), exc)
+            return None
+        if not isinstance(result, dict) or result.get("result") is not True:
+            cls._log_batch_failure("active_alert_items", batch_index, len(chunk), None)
+            return None
+        return result.get("data") if isinstance(result.get("data"), dict) else {}
 
     @classmethod
     def _query_alert_counts(
@@ -281,10 +315,31 @@ def _status_from_counts(base: dict, active_count: int, severe_count: int) -> dic
     }
 
 
+def _parse_alert_item(raw: Any) -> dict | None:
+    if not isinstance(raw, dict):
+        return None
+    monitor_id = raw.get("monitor_instance_id")
+    if monitor_id in (None, ""):
+        return None
+    content = str(raw.get("content") or "").strip()
+    if not content:
+        return None
+    level = str(raw.get("level") or "").strip().lower() or "warning"
+    item = {"_monitor_id": str(monitor_id), "content": content, "level": level}
+    metric_name = str(raw.get("metric_name") or "").strip()
+    if metric_name:
+        item["metric_name"] = metric_name
+    metric_key = raw.get("metric_key") or raw.get("metric")
+    if isinstance(metric_key, str) and metric_key.strip():
+        item["metric_key"] = metric_key.strip()
+    return item
+
+
 def _status_from_mapping(
     item: dict,
     counts: dict[str, tuple[int | None, int | None]],
     failed_monitors: set[str],
+    alert_items: dict[str, list[dict]] | None = None,
 ) -> dict:
     inst_uuid = str(item.get("inst_uuid"))
     monitor_id = _monitor_id(item)
@@ -307,4 +362,8 @@ def _status_from_mapping(
     active_count, severe_count = pair
     if active_count is None or severe_count is None:
         return {**base, "status": "unknown"}
-    return _status_from_counts(base, active_count, severe_count)
+    resolved = _status_from_counts(base, active_count, severe_count)
+    alerts = list((alert_items or {}).get(monitor_id) or [])
+    if alerts and resolved["status"] in {"warning", "critical"}:
+        resolved["alerts"] = alerts
+    return resolved

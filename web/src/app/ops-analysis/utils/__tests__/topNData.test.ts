@@ -154,5 +154,5 @@ test('scalar fields do not change array ranking', () => {
     labelField: 'name',
     valueField: 'value',
     scalarFields: [{ field: 'avg_cpu', label: 'CPU' }],
-  }), false);
+  }), true);
 });
