@@ -36,6 +36,33 @@ CLOUD_ATTR_BY_MODEL = {
 }
 
 
+def normalize_org_ids(org_ids: Any) -> list[int]:
+    result: list[int] = []
+    for item in org_ids or []:
+        try:
+            result.append(int(item))
+        except (TypeError, ValueError):
+            continue
+    return sorted(set(result))
+
+
+def host_sync_values_equal(field: str, existing_value: Any, desired_value: Any) -> bool:
+    """节点同步只认语义变化。图里常见的 2 vs 2.0、'1' vs 1 不算变更。"""
+    if field == "cloud":
+        existing_parsed = parse_cloud_id(existing_value)
+        desired_parsed = parse_cloud_id(desired_value)
+        if existing_parsed is not None or desired_parsed is not None:
+            return existing_parsed == desired_parsed
+        return existing_value == desired_value
+    if field == "organization":
+        return normalize_org_ids(existing_value) == normalize_org_ids(desired_value)
+    if field == "os_type":
+        return str(existing_value or "") == str(desired_value or "")
+    if field == "ip_addr":
+        return str(existing_value or "").strip() == str(desired_value or "").strip()
+    return existing_value == desired_value
+
+
 def parse_cloud_id(value: Any) -> int | None:
     if isinstance(value, bool):
         return None

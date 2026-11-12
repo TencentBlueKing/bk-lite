@@ -115,10 +115,32 @@ def test_unchanged_host_is_not_written(mocker, existing_host):
     assert result["changed_instance_ids"] == []
 
 
-def test_legacy_string_cloud_is_healed_to_int(mocker, existing_host, desired_host):
+def test_equivalent_graph_types_are_not_rewritten(mocker, existing_host, desired_host):
     existing = {
         **existing_host,
         "cloud": "2",
+        "organization": ["2"],
+        "os_type": 2,
+        "node_id": desired_host["node_id"],
+        "inst_name": desired_host["inst_name"],
+    }
+    update = mocker.patch(f"{SERVICE}.InstanceManage.instance_update")
+
+    result = NodeMgmtSyncService._persist_hosts(
+        [desired_host],
+        existing_hosts={(existing["ip_addr"], 2): existing},
+        operator="system",
+        operation_id=str(GENERATION),
+    )
+
+    update.assert_not_called()
+    assert result["update"] == 0
+
+
+def test_real_cloud_change_still_writes_parsed_int(mocker, existing_host, desired_host):
+    existing = {
+        **existing_host,
+        "cloud": "1",
         "organization": desired_host["organization"],
         "os_type": desired_host["os_type"],
         "node_id": desired_host["node_id"],
@@ -131,7 +153,7 @@ def test_legacy_string_cloud_is_healed_to_int(mocker, existing_host, desired_hos
 
     result = NodeMgmtSyncService._persist_hosts(
         [desired_host],
-        existing_hosts={(existing["ip_addr"], 2): existing},
+        existing_hosts={(existing["ip_addr"], 1): existing},
         operator="system",
         operation_id=str(GENERATION),
     )
