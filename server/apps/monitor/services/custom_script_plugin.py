@@ -249,12 +249,18 @@ DEFAULT_SCRIPT_UI_TEMPLATE = {
             "label_en": "Run As",
             "type": "input",
             "required": False,
-            "description": ("留空则按采集进程用户运行（当前为 root），不下发该字段。" "填写后降权到采集端已有用户，可为 root；平台不创建账号。" "用户不存在或无权时仅该脚本失败。"),
-            "description_en": (
-                "Leave empty to run as the collector process (currently root) and omit this field. "
-                "A value drops privileges to that existing OS user, including root. "
+            "description": "填写采集端已有用户。",
+            "description_en": "Enter an existing user on the collector.",
+            "tooltip": (
+                "留空则跟随采集进程的用户运行，一般为 root。"
+                "填写后按采集端已有用户运行，平台不会创建账号。"
+                "用户不存在或没有权限时，仅这条脚本失败。"
+            ),
+            "tooltip_en": (
+                "Leave empty to run as the collector process user, typically root. "
+                "A specified value runs as that existing user on the collector. "
                 "The platform does not create accounts. "
-                "A missing user or missing permission fails only this script."
+                "If the user does not exist or lacks permission, only this script fails."
             ),
             "widget_props": {
                 "placeholder": "留空按采集进程运行",

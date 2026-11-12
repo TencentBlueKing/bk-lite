@@ -462,7 +462,10 @@ export const useConfigRenderer = () => {
       hasGuideTip ? (
         <span className="inline-flex items-center">
           {label}
-          <FieldGuideTip short={guideTip} title={fieldGuideTitle} />
+          <FieldGuideTip
+            short={guideTip}
+            title={name === 'run_as' ? label : fieldGuideTitle}
+          />
         </span>
       ) : (
         label
