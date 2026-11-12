@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import Link from 'next/link';
 import { Alert, Button, Modal, Switch, Tooltip, message } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import SearchActionBar from '@/components/search-action-bar';
@@ -132,12 +131,7 @@ const Associations: React.FC = () => {
         if (record.required !== true) {
           return <span className="text-[var(--color-text-3)]">{t('Governance.notChecked')}</span>;
         }
-        const count = islandCounts[record.model_asst_id] || 0;
-        return (
-          <Link href={`/cmdb/assetManage/governance?path=island&model_id=${record.src_model_id}&rule_id=${record.model_asst_id}`}>
-            {count}
-          </Link>
-        );
+        return <span>{islandCounts[record.model_asst_id] || 0}</span>;
       },
     },
     {
