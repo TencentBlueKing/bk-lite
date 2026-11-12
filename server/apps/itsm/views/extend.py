@@ -1,19 +1,21 @@
 import base64
 import json
+from functools import wraps
 from io import BytesIO
 
 import requests
 from django.db.models import Exists, OuterRef
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
-from jinja2 import Template
+from jinja2 import TemplateError
+from jinja2.sandbox import SandboxedEnvironment
 from openpyxl import Workbook
 
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.logger import itsm_logger as logger
 from apps.core.utils.ssrf_validator import SSRFError, SSRFValidator
 from apps.core.utils.web_utils import WebUtils
-from apps.itsm.models import DataTable, Ticket, TicketRelation, TicketTask, VipUser
+from apps.itsm.models import DataTable, TicketRelation, TicketTask, VipUser
 from apps.itsm.models.extend import (
     AiSetting,
     Announcement,
@@ -42,6 +44,7 @@ from apps.itsm.models.extend import (
     Trigger,
     UserPreference,
 )
+from apps.itsm.views.access import api_errors, domain_of, get_ticket, has_permission, ticket_scope
 from apps.itsm.views.tickets import _service, _user
 
 KINDS = {
@@ -71,6 +74,53 @@ KINDS = {
 }
 
 
+RESOURCE_MENUS = {
+    "views": "ticket_center_setting",
+    "proxies": "setting",
+    "decisions": "rule",
+    "triggers": "rule",
+    "schedules": "rule",
+    "sources": "data",
+    "announcements": "setting",
+    "changes": "change",
+    "knowledge": "knowledge",
+    "duties": "duty",
+    "surveys": "survey",
+    "prints": "print",
+    "handovers": "handover",
+    "todo_syncs": "setting",
+    "special_rules": "setting",
+    "reports": "ticket_center_setting",
+    "vips": "setting",
+    "ai": "ai",
+    "chats": "chat",
+    "biz_objects": "biz_object",
+    "emails": "setting",
+    "search_fields": "ticket_center_setting",
+    "preferences": "ticket_center_setting",
+}
+PERSONAL_RESOURCES = {"views", "reports", "preferences"}
+
+
+def resource_permission(view):
+    @wraps(view)
+    def wrapped(request, kind, *args, **kwargs):
+        menu = RESOURCE_MENUS.get(kind)
+        action = "View" if request.method == "GET" else "Delete" if request.method == "DELETE" else "Add" if request.method == "POST" else "Edit"
+        if menu in {"setting", "ticket_center_setting"} and action != "View":
+            action = "Edit"
+        if not menu or not has_permission(request, f"{menu}-{action}"):
+            raise PermissionError()
+        return view(request, kind, *args, **kwargs)
+
+    return wrapped
+
+
+def resource_scope(request, kind, model):
+    queryset = model.objects.filter(domain=domain_of(request))
+    return queryset.filter(username=_user(request)) if kind in PERSONAL_RESOURCES else queryset
+
+
 def _body(request):
     if not request.body:
         return {}
@@ -88,22 +138,24 @@ def _public(item, fields):
 
 
 @csrf_exempt
-@HasPermission("ticket-View")
+@api_errors
+@resource_permission
 def resources(request, kind):
     spec = KINDS.get(kind)
     if spec is None:
         return WebUtils.response_error("未知资源")
     model, fields = spec
     if request.method == "GET":
-        items = [_public(item, fields) for item in model.objects.order_by("-id")[:100]]
+        items = [_public(item, fields) for item in resource_scope(request, kind, model).order_by("-id")[:100]]
         return WebUtils.response_success({"items": items})
     payload = _body(request)
     values = {field: payload.get(field) for field in fields if field in payload}
+    values["domain"] = domain_of(request)
     if kind == "reports":
         values["username"] = _user(request)
     if kind == "preferences":
         item, _created = UserPreference.objects.update_or_create(
-            domain="domain.com",
+            domain=domain_of(request),
             username=_user(request),
             defaults={**values, "updated_by": _user(request)},
         )
@@ -111,7 +163,7 @@ def resources(request, kind):
     if kind == "views":
         values["username"] = _user(request)
     if kind == "duties" and payload.get("check_in"):
-        shift = model.objects.filter(name=payload.get("name")).first()
+        shift = resource_scope(request, kind, model).filter(name=payload.get("name")).first()
         if shift is None:
             return WebUtils.response_error("值班记录不存在")
         members = list(shift.members or [])
@@ -129,7 +181,7 @@ def resources(request, kind):
         end = parse_datetime(str(values.get("end_at") or "")) if values.get("end_at") else None
         values["start_at"] = start
         values["end_at"] = end
-        if start and end and ChangeWindow.objects.filter(start_at__lt=end, end_at__gt=start).exists():
+        if start and end and ChangeWindow.objects.filter(domain=domain_of(request)).filter(start_at__lt=end, end_at__gt=start).exists():
             return WebUtils.response_error("变更窗口冲突")
     if kind == "vips" and not str(values.get("username") or "").strip():
         return WebUtils.response_error("请选择用户")
@@ -161,13 +213,14 @@ def resources(request, kind):
 
 
 @csrf_exempt
-@HasPermission("ticket-View")
+@api_errors
+@resource_permission
 def resource_item(request, kind, item_id):
     spec = KINDS.get(kind)
     if spec is None:
         return WebUtils.response_error("未知资源")
     model, fields = spec
-    item = model.objects.filter(id=item_id).first()
+    item = resource_scope(request, kind, model).filter(id=item_id).first()
     if item is None:
         return WebUtils.response_error("记录不存在")
     if request.method == "DELETE":
@@ -177,6 +230,7 @@ def resource_item(request, kind, item_id):
         return WebUtils.response_error("不支持的方法")
     payload = _body(request)
     values = {field: payload.get(field) for field in fields if field in payload}
+    values["domain"] = domain_of(request)
     for field, value in values.items():
         setattr(item, field, value)
     item.updated_by = _user(request)
@@ -190,30 +244,37 @@ def resource_item(request, kind, item_id):
 
 def _apply_handover(item: Handover) -> None:
     ticket_ids = item.ticket_ids or []
-    TicketTask.objects.filter(ticket_id__in=ticket_ids, assignee=item.from_user, status=TicketTask.TaskStatus.PENDING).update(assignee=item.to_user)
+    service = _service()
+    tasks = TicketTask.objects.filter(
+        ticket__domain=item.domain, ticket_id__in=ticket_ids, assignee=item.from_user, status__in=["pending", "claimed"]
+    ).select_related("ticket")
+    for task in tasks:
+        service.operate(task.ticket, task, "transfer", {"target": item.to_user}, item.created_by or item.from_user, privileged=True)
 
 
 @csrf_exempt
+@api_errors
 @HasPermission("ticket-Operate")
 def batch_operate(request):
     payload = _body(request)
     action = payload.get("action") or "urge"
     results = []
-    for ticket in Ticket.objects.filter(id__in=payload.get("ids") or []):
+    for ticket in ticket_scope(request).filter(id__in=payload.get("ids") or []):
         task = ticket.tasks.filter(status=TicketTask.TaskStatus.PENDING).first()
         try:
             _service().operate(ticket, task, action, payload, _user(request))
             results.append({"id": ticket.id, "ok": True})
-        except (ValueError, TicketTask.DoesNotExist) as exc:
+        except (PermissionError, ValueError, TicketTask.DoesNotExist) as exc:
             results.append({"id": ticket.id, "ok": False, "error": str(exc)})
     return WebUtils.response_success({"items": results})
 
 
 @csrf_exempt
-@HasPermission("ticket-View")
+@api_errors
+@HasPermission("ticket-Export")
 def export_tickets(request):
     payload = _body(request)
-    queryset = Ticket.objects.all().order_by("-id")
+    queryset = ticket_scope(request).order_by("-id")
     ids = payload.get("ids") or []
     if ids:
         queryset = queryset.filter(id__in=ids)
@@ -238,9 +299,10 @@ def export_tickets(request):
 
 
 @csrf_exempt
+@api_errors
 @HasPermission("workflow-Edit")
 def execute_decision(request, decision_id):
-    table = DecisionTable.objects.get(id=decision_id)
+    table = DecisionTable.objects.filter(domain=domain_of(request)).get(id=decision_id)
     form_data = _body(request).get("form_data") or {}
     matched = {}
     for rule in table.rules or []:
@@ -252,14 +314,15 @@ def execute_decision(request, decision_id):
 
 
 @csrf_exempt
+@api_errors
 @HasPermission("data-View")
 def test_data_source(request, source_id):
-    source = DataSource.objects.get(id=source_id)
+    source = DataSource.objects.filter(domain=domain_of(request)).get(id=source_id)
     if source.kind == "sql":
         table_key = str((source.config or {}).get("table_key") or "")
         if not table_key or (source.config or {}).get("sql"):
             return WebUtils.response_error("不执行任意 SQL，只允许按数据表标识读取")
-        table = DataTable.objects.filter(key=table_key).first()
+        table = DataTable.objects.filter(domain=domain_of(request)).filter(key=table_key).first()
         if table is None:
             return WebUtils.response_error("数据表不存在")
         rows = [{"id": row.id, "data": row.data} for row in table.rows.all()[:20]]
@@ -269,7 +332,7 @@ def test_data_source(request, source_id):
     url = str((source.config or {}).get("url") or "")
     try:
         SSRFValidator().validate_url(url)
-        response = requests.get(url, timeout=3)
+        response = requests.get(url, timeout=3, allow_redirects=False)
     except (SSRFError, requests.RequestException) as exc:
         logger.warning("数据源测试失败 source_id=%s error_type=%s", source.id, type(exc).__name__)
         return WebUtils.response_error(type(exc).__name__)
@@ -277,9 +340,10 @@ def test_data_source(request, source_id):
 
 
 @csrf_exempt
+@api_errors
 @HasPermission("ticket-Add")
 def create_child(request, ticket_id):
-    parent = Ticket.objects.select_related("workflow_version").get(id=ticket_id)
+    parent = ticket_scope(request).select_related("workflow_version").get(id=ticket_id)
     payload = _body(request)
     child = _service().create(parent.workflow_version, payload.get("form_data") or {"title": parent.title}, _user(request))
     TicketRelation.objects.create(
@@ -293,20 +357,27 @@ def create_child(request, ticket_id):
 
 
 @csrf_exempt
+@api_errors
 @HasPermission("ticket-View")
 def render_print(request, ticket_id):
-    ticket = Ticket.objects.get(id=ticket_id)
-    template = PrintTemplate.objects.order_by("-id").first()
+    ticket = get_ticket(request, ticket_id)
+    template = PrintTemplate.objects.filter(domain=domain_of(request)).order_by("-id").first()
     body = template.body if template else "{{ title }}"
-    rendered = Template(body).render(title=ticket.title, sn=ticket.sn, creator=ticket.creator)
+    try:
+        rendered = SandboxedEnvironment(autoescape=True).from_string(body).render(title=ticket.title, sn=ticket.sn, creator=ticket.creator)
+    except TemplateError as exc:
+        raise ValueError("打印模板不合法") from exc
     return WebUtils.response_success({"html": rendered})
 
 
 @csrf_exempt
+@api_errors
 @HasPermission("ticket-Operate")
 def run_auto(request, ticket_id):
-    ticket = Ticket.objects.get(id=ticket_id)
+    ticket = get_ticket(request, ticket_id)
     payload = _body(request)
+    if not has_permission(request, "workflow-Edit"):
+        raise PermissionError()
     kind = payload.get("kind") or "table"
     config = payload.get("config") or {}
     from apps.itsm.services.auto_runner import run_auto_action
@@ -324,6 +395,7 @@ def run_auto(request, ticket_id):
 
 
 @csrf_exempt
+@api_errors
 @HasPermission("ticket-View")
 def cmdb_search(request):
     payload = _body(request)
@@ -338,9 +410,10 @@ def cmdb_search(request):
 
 
 @csrf_exempt
+@api_errors
 @HasPermission("chat-Add")
 def chat_messages(request, session_id):
-    session = ChatSession.objects.get(id=session_id)
+    session = ChatSession.objects.filter(domain=domain_of(request)).get(id=session_id)
     if request.method == "GET":
         items = [{"id": item.id, "sender": item.sender, "content": item.content} for item in session.messages.order_by("id")]
         return WebUtils.response_success({"items": items})
@@ -356,9 +429,10 @@ def chat_messages(request, session_id):
 
 
 @csrf_exempt
+@api_errors
 @HasPermission("biz_object-Add")
 def biz_records(request, object_id):
-    obj = BizObject.objects.get(id=object_id)
+    obj = BizObject.objects.filter(domain=domain_of(request)).get(id=object_id)
     if request.method == "GET":
         return WebUtils.response_success({"items": [{"id": item.id, "data": item.data} for item in obj.records.all()]})
     item = BizRecord.objects.create(obj=obj, data=_body(request).get("data") or {}, created_by=_user(request), updated_by=_user(request))

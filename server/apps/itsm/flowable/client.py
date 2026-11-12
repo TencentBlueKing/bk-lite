@@ -88,11 +88,18 @@ class FlowableClient:
             return payload
         return list(payload.get("data") or [])
 
-    def complete_external_job(self, job_id: str, worker_id: str = "itsm") -> dict[str, Any]:
+    def complete_external_job(self, job_id: str, worker_id: str = "itsm", variables: dict | None = None) -> dict[str, Any]:
         return self._request(
             "POST",
             f"/flowable-rest/external-job-api/acquire/jobs/{job_id}/complete",
-            json={"workerId": worker_id},
+            json={"workerId": worker_id, "variables": _variables(variables or {})},
+        )
+
+    def set_process_suspended(self, process_instance_id: str, suspended: bool) -> dict[str, Any]:
+        return self._request(
+            "PUT",
+            f"/flowable-rest/service/runtime/process-instances/{process_instance_id}",
+            json={"action": "suspend" if suspended else "activate"},
         )
 
     def delete_process_instance(self, process_instance_id: str) -> dict[str, Any]:
@@ -109,7 +116,8 @@ class FlowableClient:
 
     def _raw(self, method: str, path: str, **kwargs) -> requests.Response:
         last_error = None
-        for _ in range(3):
+        # 写请求超时不代表引擎未执行，禁止无幂等键重放。
+        for _ in range(3 if method.upper() in {"GET", "HEAD"} else 1):
             try:
                 response = self.session.request(method, f"{self.base_url}{path}", timeout=self.timeout, **kwargs)
             except requests.RequestException as exc:

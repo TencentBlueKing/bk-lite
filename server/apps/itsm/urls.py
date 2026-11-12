@@ -57,10 +57,12 @@ from apps.itsm.views.m2 import test_start, ticket_tags, todo_summary, view_templ
 from apps.itsm.views.m2 import workflow_variables as variable_admin
 from apps.itsm.views.m2 import workflow_versions
 from apps.itsm.views.services import CatalogView, ServiceView, service_favorite, service_hot, service_portal, service_use
-from apps.itsm.views.tickets import operate_ticket, ticket_detail, ticket_logs, ticket_survey, tickets
+from apps.itsm.views.tickets import operate_ticket, ticket_detail, ticket_form, ticket_logs, ticket_survey, ticket_workflows, tickets
 from apps.itsm.views.users import PublicStatusView, UserSearchView
 
 urlpatterns = [
+    path("api/tickets/workflows/", ticket_workflows, name="itsm-ticket-workflows"),
+    path("api/tickets/form/<int:version_id>/", ticket_form, name="itsm-ticket-form"),
     path("api/health/", health, name="itsm-health"),
     path("api/resources/<str:kind>/", resources, name="itsm-resources"),
     path("api/resources/<str:kind>/<int:item_id>/", resource_item, name="itsm-resource-item"),

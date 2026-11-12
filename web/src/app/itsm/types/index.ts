@@ -84,6 +84,9 @@ export interface TicketTaskItem {
   id: number;
   node_id: string;
   node_name: string;
+  node_type?: string;
+  can_operate?: boolean;
+  field_perm?: Record<string, 'hidden' | 'read' | 'edit'>;
   assignee: string;
   status: string;
 }
@@ -129,6 +132,8 @@ export interface TicketSLAItem {
 }
 
 export interface TicketDetail {
+  allowed_actions?: string[];
+  can_survey?: boolean;
   id: number;
   sn: string;
   title: string;

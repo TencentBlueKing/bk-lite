@@ -17,11 +17,7 @@ class TicketService:
 
     @transaction.atomic
     def create(self, workflow_version: WorkflowVersion, form_data: dict, creator: str, is_test: bool = False) -> Ticket:
-        schema = (
-            workflow_version.workflow.form.current_version.schema
-            if workflow_version.workflow.form_id and workflow_version.workflow.form.current_version_id
-            else {"fields": []}
-        )
+        schema = workflow_schema(workflow_version)
         submit_node = _find_node(workflow_version.design, node_type="submit")
         if schema.get("fields"):
             form_data, errors = FormValidator(schema, _normalize_perm(submit_node.get("field_perm"))).apply(form_data)
@@ -36,9 +32,10 @@ class TicketService:
             status=status,
             creator=creator,
             form_data=form_data,
-            is_test=is_test,
+            is_test=is_test or bool((workflow_version.design or {}).get("settings", {}).get("is_test")),
             created_by=creator,
             updated_by=creator,
+            domain=workflow_version.domain,
         )
         open_records(ticket)
         TicketLog.objects.create(ticket=ticket, action="create", operator=creator, message="创建工单", created_by=creator, updated_by=creator)
@@ -48,6 +45,11 @@ class TicketService:
             ticket.process_instance_id = str(started.get("id") or "")
             ticket.save(update_fields=["process_instance_id", "updated_at"])
             self.sync_ticket(ticket)
+        from apps.itsm.services.ticket.subforms import materialize_subforms
+        from apps.itsm.services.triggers import fire_triggers
+
+        materialize_subforms(self, ticket, schema, creator)
+        fire_triggers(ticket, "create", creator)
         return ticket
 
     def _assignee_variables(self, workflow_version: WorkflowVersion, creator: str, form_data: dict) -> dict:
@@ -69,13 +71,15 @@ class TicketService:
             variables["itsm_assignee_pre_approve"] = "admin"
         return variables
 
+    @transaction.atomic
     def sync_ticket(self, ticket: Ticket) -> None:
+        ticket = Ticket.objects.select_for_update().get(pk=ticket.pk)
         if not self.client or not ticket.process_instance_id:
             return
         try:
             items = self.client.list_tasks_including_children(ticket.process_instance_id)
         except FlowableError:
-            return
+            raise
         seen = set()
         for item in items:
             task_id = str(item.get("id") or "")
@@ -93,6 +97,9 @@ class TicketService:
                 },
             )
             if created:
+                from apps.itsm.services.triggers import fire_triggers
+
+                fire_triggers(ticket, "task_enter", "system")
                 entered = _find_node(ticket.workflow_version.design if ticket.workflow_version_id else {}, node_id=task.node_id)
                 if entered.get("enter_status"):
                     self._set_status(ticket, entered["enter_status"])
@@ -101,22 +108,42 @@ class TicketService:
                 current = (ticket.form_data or {}).get(rule.get("field"))
                 if rule.get("field") and str(current) == str(rule.get("value")):
                     ticket._auto_returning = True
-                    self.operate(ticket, task, "return", {"return_mode": "submit", "opinion": "自动退回"}, "system")
+                    self.operate(ticket, task, "return", {"return_mode": "submit", "opinion": "自动退回"}, "system", privileged=True)
             if created and task.assignee:
-                itsm_event.send(
-                    sender=ticket,
-                    event="task.created",
-                    receivers=[task.assignee],
-                    variables={"title": ticket.title, "node": task.node_name, "url": f"/itsm/tickets/{ticket.id}"},
-                    event_key=f"itsm-task-{task.flowable_task_id}",
-                )
-                from apps.itsm.services.todo_sync import push_todo
 
-                push_todo(ticket, task)
-        ticket.tasks.filter(status=TicketTask.TaskStatus.PENDING).exclude(flowable_task_id__in=seen).update(status=TicketTask.TaskStatus.DONE)
+                def notify_created(current_ticket=ticket, current_task=task):
+                    itsm_event.send(
+                        sender=current_ticket,
+                        event="task.created",
+                        receivers=[current_task.assignee],
+                        variables={"title": current_ticket.title, "node": current_task.node_name, "url": f"/itsm/tickets/{current_ticket.id}"},
+                        event_key=f"itsm-task-{current_task.flowable_task_id}",
+                    )
+                    if not current_ticket.is_test:
+                        from apps.itsm.services.todo_sync import push_todo
+
+                        push_todo(current_ticket, current_task)
+
+                transaction.on_commit(notify_created, robust=True)
+        ticket.tasks.filter(status__in=[TicketTask.TaskStatus.PENDING, TicketTask.TaskStatus.CLAIMED]).exclude(flowable_task_id__in=seen).update(
+            status=TicketTask.TaskStatus.DONE
+        )
 
     @transaction.atomic
-    def operate(self, ticket: Ticket, task: TicketTask, action: str, data: dict, operator: str) -> Ticket:
+    def operate(self, ticket: Ticket, task: TicketTask, action: str, data: dict, operator: str, privileged: bool = False) -> Ticket:
+        ticket = Ticket.objects.select_for_update().get(pk=ticket.pk)
+        if task is not None:
+            task = ticket.tasks.select_for_update().get(pk=task.pk)
+        self.authorize(ticket, task, action, operator, privileged)
+        state = ticket.status.key if ticket.status_id else ""
+        if state == "suspended" and action not in {"resume", "withdraw", "terminate", "close", "urge"}:
+            raise ValueError("工单已挂起，请先恢复")
+        if state in {"finished", "terminated", "cancelled"} and action != "reopen":
+            raise ValueError("工单已结束，请先重新打开")
+        if action == "resume" and state != "suspended":
+            raise ValueError("只有挂起工单可以恢复")
+        if action == "reopen" and state not in {"finished", "terminated", "cancelled"}:
+            raise ValueError("只有已结束工单可以重新打开")
         if action not in {
             "submit",
             "approve",
@@ -135,6 +162,11 @@ class TicketService:
             "respond",
         }:
             raise ValueError("不支持的动作")
+        node = _find_node(ticket.workflow_version.design if ticket.workflow_version_id else {}, node_id=task.node_id) if task else {}
+        if action == "submit" and node.get("type") == "approval":
+            raise ValueError("审批节点只能通过或驳回")
+        if action in {"approve", "reject"} and node.get("type") != "approval":
+            raise ValueError("当前节点不是审批节点")
         if action in {"suspend", "resume", "withdraw", "return", "transfer", "terminate", "close", "reopen", "urge", "save", "respond"}:
             return self._side_action(ticket, task, action, data, operator)
         if task is None:
@@ -145,17 +177,7 @@ class TicketService:
         if action == "claim" and self.client and task.flowable_task_id:
             self.client.update_task_assignee(task.flowable_task_id, operator)
         node = _find_node(ticket.workflow_version.design if ticket.workflow_version_id else {}, node_id=task.node_id)
-        incoming = data.get("form_data") if isinstance(data.get("form_data"), dict) else {}
-        if incoming and _ticket_schema(ticket).get("fields"):
-            schema = _ticket_schema(ticket)
-            merged = dict(ticket.form_data or {})
-            merged.update(incoming)
-            cleaned, errors = FormValidator(schema, _normalize_perm(node.get("field_perm"))).apply(merged)
-            if errors:
-                raise ValueError(errors)
-            merged.update(cleaned)
-            ticket.form_data = merged
-            ticket.save(update_fields=["form_data", "updated_at"])
+        self._save_form(ticket, node, data)
         TicketLog.objects.create(
             ticket=ticket,
             task=task,
@@ -172,6 +194,8 @@ class TicketService:
         if action in {"submit", "approve", "reject"}:
             finish_sla(ticket, "response")
         if action != "claim" and self.client and task.flowable_task_id:
+            if ticket.status_id and ticket.status.key == "new":
+                self._set_status(ticket, "processing")
             self.client.complete_task(
                 task.flowable_task_id,
                 {"result": action, f"out_{task.node_id}_result": action, **_form_variables(ticket.form_data)},
@@ -180,8 +204,7 @@ class TicketService:
             if not self._process_active(ticket.process_instance_id):
                 finished = TicketStatus.objects.filter(key="finished").first()
                 if finished:
-                    ticket.status = finished
-                    ticket.save(update_fields=["status", "updated_at"])
+                    self._set_status(ticket, "finished")
                     finish_sla(ticket, "resolve")
                     from apps.itsm.models.extend import SurveyTemplate
 
@@ -196,18 +219,65 @@ class TicketService:
                         )
         return ticket
 
+    def authorize(self, ticket, task, action, operator, privileged=False):
+        if not operator:
+            raise PermissionError()
+        if task is not None and task.status not in {"pending", "claimed"}:
+            raise ValueError("任务已完成，请刷新")
+        if privileged:
+            return
+        from apps.itsm.models.extend import TicketProxy
+
+        principals = set(TicketProxy.objects.filter(domain=ticket.domain, agent=operator, is_enabled=True).values_list("principal", flat=True)) | {
+            operator
+        }
+        if task is not None:
+            if task.assignee not in principals:
+                raise PermissionError()
+        elif action in {"withdraw", "urge", "reopen"}:
+            if ticket.creator not in principals:
+                raise PermissionError()
+        elif action == "save":
+            raise PermissionError("保存必须指定当前任务")
+        elif not ticket.tasks.filter(assignee__in=principals, status__in=["pending", "claimed"]).exists():
+            raise PermissionError()
+        if action == "withdraw" and ticket.creator not in principals:
+            raise PermissionError()
+
+    def _save_form(self, ticket, node, data):
+        incoming = data.get("form_data") or {}
+        if not isinstance(incoming, dict):
+            raise ValueError("表单必须是对象")
+        original = dict(ticket.form_data or {})
+        schema = _ticket_schema(ticket)
+        if schema.get("fields"):
+            cleaned, errors = FormValidator(schema, _normalize_perm(node.get("field_perm"))).merge(original, incoming)
+            if errors:
+                raise ValueError(errors)
+            ticket.form_data = {**original, **cleaned}
+        elif incoming:
+            ticket.form_data = {**original, **incoming}
+        from apps.itsm.services.ticket.subforms import materialize_subforms
+
+        materialize_subforms(self, ticket, schema, ticket.updated_by or ticket.creator)
+        ticket.save(update_fields=["form_data", "updated_at"])
+
     def _side_action(self, ticket: Ticket, task: TicketTask | None, action: str, data: dict, operator: str) -> Ticket:
         if action == "suspend":
             self._set_status(ticket, "suspended")
+            if self.client and ticket.process_instance_id:
+                self.client.set_process_suspended(ticket.process_instance_id, True)
             pause(ticket)
         elif action == "resume":
-            resume(ticket)
             self._set_status(ticket, "processing")
+            if self.client and ticket.process_instance_id:
+                self.client.set_process_suspended(ticket.process_instance_id, False)
+            resume(ticket)
         elif action == "withdraw":
+            self._set_status(ticket, "cancelled")
             if self.client and ticket.process_instance_id:
                 self.client.delete_process_instance(ticket.process_instance_id)
-            ticket.tasks.filter(status=TicketTask.TaskStatus.PENDING).update(status=TicketTask.TaskStatus.DONE)
-            self._set_status(ticket, "cancelled")
+            ticket.tasks.filter(status__in=[TicketTask.TaskStatus.PENDING, TicketTask.TaskStatus.CLAIMED]).update(status=TicketTask.TaskStatus.DONE)
             finish_sla(ticket, "response")
             finish_sla(ticket, "resolve")
         elif action == "terminate":
@@ -215,30 +285,7 @@ class TicketService:
         elif action == "close":
             self._stop_process(ticket, "finished")
         elif action == "reopen":
-            self._set_status(ticket, "processing")
-            version = ticket.workflow_version if ticket.workflow_version_id else None
-            active = bool(self.client and ticket.process_instance_id and self._process_active(ticket.process_instance_id))
-            open_status = [TicketTask.TaskStatus.PENDING, TicketTask.TaskStatus.CLAIMED]
-            if self.client and version and version.process_definition_key and not active:
-                variables = {
-                    "initiator": ticket.creator,
-                    **self._assignee_variables(version, ticket.creator, ticket.form_data or {}),
-                    **_form_variables(ticket.form_data or {}),
-                }
-                started = self.client.start_process(version.process_definition_key, ticket.sn, variables)
-                ticket.process_instance_id = str(started.get("id") or "")
-                ticket.save(update_fields=["process_instance_id", "updated_at"])
-                ticket.tasks.filter(status__in=open_status).update(status=TicketTask.TaskStatus.DONE)
-                self.sync_ticket(ticket)
-            elif not ticket.tasks.filter(status__in=open_status).exists():
-                TicketTask.objects.create(
-                    ticket=ticket,
-                    node_id="reopen",
-                    node_name="重新打开",
-                    assignee=operator,
-                    created_by=operator,
-                    updated_by=operator,
-                )
+            self._reopen(ticket, operator)
         elif action == "urge":
             receivers = [
                 name
@@ -256,12 +303,12 @@ class TicketService:
         elif action == "respond":
             self._set_status(ticket, "processing")
         elif action == "save":
-            incoming = data.get("form_data") if isinstance(data.get("form_data"), dict) else {}
-            if incoming:
-                merged = dict(ticket.form_data or {})
-                merged.update(incoming)
-                ticket.form_data = merged
-                ticket.save(update_fields=["form_data", "updated_at"])
+            node = (
+                _find_node(ticket.workflow_version.design, node_id=task.node_id)
+                if task
+                else _find_node(ticket.workflow_version.design, node_type="submit")
+            )
+            self._save_form(ticket, node, data)
         elif action == "transfer":
             if task is None:
                 raise ValueError("需要待办任务")
@@ -284,24 +331,51 @@ class TicketService:
                 target_node = previous.node_id
             elif mode != "submit":
                 raise ValueError("退回模式只支持 submit 或 previous")
+            self._set_status(ticket, "new" if target_node == "submit" else "processing")
             if self.client and ticket.process_instance_id and task.node_id:
                 self.client.change_state(ticket.process_instance_id, [task.node_id], [target_node])
             task.status = TicketTask.TaskStatus.DONE
             task.save(update_fields=["status", "updated_at"])
-            self._set_status(ticket, "new" if target_node == "submit" else "processing")
             if self.client:
                 self.sync_ticket(ticket)
         self._log(ticket, task, action, data, operator)
         return ticket
 
+    def _reopen(self, ticket: Ticket, operator: str) -> None:
+        self._set_status(ticket, "processing")
+        version = ticket.workflow_version if ticket.workflow_version_id else None
+        active = bool(self.client and ticket.process_instance_id and self._process_active(ticket.process_instance_id))
+        open_status = [TicketTask.TaskStatus.PENDING, TicketTask.TaskStatus.CLAIMED]
+        if self.client and version and version.process_definition_key and not active:
+            variables = {
+                "initiator": ticket.creator,
+                **self._assignee_variables(version, ticket.creator, ticket.form_data or {}),
+                **_form_variables(ticket.form_data or {}),
+            }
+            started = self.client.start_process(version.process_definition_key, ticket.sn, variables)
+            ticket.process_instance_id = str(started.get("id") or "")
+            ticket.save(update_fields=["process_instance_id", "updated_at"])
+            ticket.tasks.filter(status__in=open_status).update(status=TicketTask.TaskStatus.DONE)
+            self.sync_ticket(ticket)
+        elif not ticket.tasks.filter(status__in=open_status).exists():
+            TicketTask.objects.create(
+                ticket=ticket,
+                node_id="reopen",
+                node_name="重新打开",
+                assignee=operator,
+                created_by=operator,
+                updated_by=operator,
+            )
+
     def _stop_process(self, ticket: Ticket, status_key: str) -> None:
+        self._set_status(ticket, status_key)
         if self.client and ticket.process_instance_id:
             try:
                 self.client.delete_process_instance(ticket.process_instance_id)
-            except FlowableError:
-                pass
-        ticket.tasks.filter(status=TicketTask.TaskStatus.PENDING).update(status=TicketTask.TaskStatus.DONE)
-        self._set_status(ticket, status_key)
+            except FlowableError as exc:
+                if exc.status != 404:
+                    raise
+        ticket.tasks.filter(status__in=[TicketTask.TaskStatus.PENDING, TicketTask.TaskStatus.CLAIMED]).update(status=TicketTask.TaskStatus.DONE)
         finish_sla(ticket, "response")
         finish_sla(ticket, "resolve")
         if status_key == "finished":
@@ -329,6 +403,10 @@ class TicketService:
             raise ValueError(f"不允许从 {current_key} 转到 {key}")
         ticket.status = status
         ticket.save(update_fields=["status", "updated_at"])
+        if key == "finished":
+            from apps.itsm.services.triggers import fire_triggers
+
+            fire_triggers(ticket, "finish", ticket.updated_by or ticket.creator)
 
     def _log(self, ticket: Ticket, task: TicketTask | None, action: str, data: dict, operator: str) -> None:
         TicketLog.objects.create(
@@ -396,7 +474,19 @@ def _find_node(design, node_id=None, node_type=None) -> dict:
     return {}
 
 
+def workflow_schema(version) -> dict:
+    snapshot = (version.design or {}).get("form_schema")
+    if isinstance(snapshot, dict):
+        return snapshot
+    workflow = version.workflow
+    if workflow.form_id and workflow.form.current_version_id:
+        return workflow.form.current_version.schema or {"fields": []}
+    return {"fields": []}
+
+
 def _ticket_schema(ticket) -> dict:
+    if ticket.workflow_version_id:
+        return workflow_schema(ticket.workflow_version)
     workflow = ticket.workflow
     if workflow.form_id and workflow.form.current_version_id:
         return workflow.form.current_version.schema or {"fields": []}

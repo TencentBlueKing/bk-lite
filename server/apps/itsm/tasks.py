@@ -6,8 +6,8 @@ from pathlib import Path
 from celery import shared_task
 from django.utils import timezone
 
-from apps.itsm.models import EmailRule, Ticket, TicketSLARecord
-from apps.itsm.models.extend import AutoExecution, ScheduledTask
+from apps.itsm.models import EmailRule, TicketSLARecord
+from apps.itsm.models.extend import ScheduledTask
 from apps.itsm.services.notify.service import deliver_with_retry
 
 
@@ -100,17 +100,11 @@ def auto_tick():
         except FlowableError:
             continue
         for job in jobs:
-            job_id = str(job.get("id") or "")
-            AutoExecution.objects.create(
-                kind=kind, status="done", detail={"job_id": job_id, "topic": topic}, created_by="system", updated_by="system"
-            )
-            if job_id:
-                client.complete_external_job(job_id)
-                done += 1
-            process_id = str(job.get("processInstanceId") or "")
-            ticket = Ticket.objects.filter(process_instance_id=process_id).first() if process_id else None
-            if ticket is not None:
-                from apps.itsm.services.ticket.service import TicketService
+            from apps.itsm.services.external_jobs import process_job
 
-                TicketService(client).finish_if_ended(ticket)
-    return {"acquired": done}
+            if process_job(client, job):
+                done += 1
+    from apps.itsm.services.external_jobs import reconcile_tickets
+
+    reconciled = reconcile_tickets(client)
+    return {"acquired": done, "reconciled": reconciled}

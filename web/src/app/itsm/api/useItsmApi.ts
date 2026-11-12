@@ -31,7 +31,7 @@ export function useItsmApi() {
     (id: number) => post(`/itsm/api/workflows/${id}/publish/`),
     [post],
   );
-  const listTickets = useCallback((query?: { q?: string; creator?: string; priority?: string; tag?: string }) => {
+  const listTickets = useCallback((query?: { q?: string; creator?: string; priority?: string; tag?: string; status?: string; page?: number; page_size?: number; tab?: string }) => {
     const params = Object.fromEntries(Object.entries(query || {}).filter(([, value]) => value));
     return get('/itsm/api/tickets/', Object.keys(params).length ? { params } : undefined);
   }, [get]);
@@ -47,10 +47,12 @@ export function useItsmApi() {
     [post],
   );
   const operateTicket = useCallback(
-    (id: number, body: { task_id?: number; action: string; opinion?: string; target?: string; return_mode?: string }) => post(`/itsm/api/tickets/${id}/operate/`, body),
+    (id: number, body: { task_id?: number; action: string; opinion?: string; target?: string; return_mode?: string; form_data?: Record<string, unknown> }) => post(`/itsm/api/tickets/${id}/operate/`, body),
     [post],
   );
   const ticketLogs = useCallback((id: number) => get(`/itsm/api/tickets/${id}/logs/`), [get]);
+  const listTicketWorkflows = useCallback(() => get('/itsm/api/tickets/workflows/'), [get]);
+  const ticketForm = useCallback((versionId: number) => get(`/itsm/api/tickets/form/${versionId}/`), [get]);
   const getTicket = useCallback((id: number) => get(`/itsm/api/tickets/${id}/`), [get]);
   const submitSurvey = useCallback(
     (id: number, body: { score: number; comment?: string }) => post(`/itsm/api/tickets/${id}/survey/`, body),
@@ -58,7 +60,7 @@ export function useItsmApi() {
   );
   const portal = useCallback(() => get('/itsm/api/services/portal/'), [get]);
   const loadDrafts = useCallback(() => get('/itsm/api/services/drafts/'), [get]);
-  const saveDraft = useCallback((body: { service_id: number; title: string }) => post('/itsm/api/services/drafts/', body), [post]);
+  const saveDraft = useCallback((body: { service_id: number; form_data?: Record<string, unknown>; clear?: boolean }) => post('/itsm/api/services/drafts/', body), [post]);
   const listCatalogs = useCallback(() => get('/itsm/api/catalogs/'), [get]);
   const createCatalog = useCallback((body: { id?: number; name: string; parent_id?: number | null }) => post('/itsm/api/catalogs/', body), [post]);
   const deleteCatalog = useCallback((id: number) => del(`/itsm/api/catalogs/?id=${id}`), [del]);
@@ -175,6 +177,8 @@ export function useItsmApi() {
     operateTicket,
     ticketLogs,
     getTicket,
+    ticketForm,
+    listTicketWorkflows,
     submitSurvey,
     portal,
     loadDrafts,

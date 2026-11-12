@@ -45,6 +45,27 @@ class FormValidator:
         self.field_perm = field_perm or {}
         self.dictionary_lookup = dictionary_lookup
 
+    def _fields(self):
+        def walk(fields, inherited="editable"):
+            for field in fields:
+                mode = self.field_perm.get(field.key, self.field_perm.get("*", "editable"))
+                if inherited in {"readonly", "hidden"}:
+                    mode = inherited
+                if field.state in {"readonly", "disabled"}:
+                    mode = "readonly"
+                elif field.state == "hidden":
+                    mode = "hidden"
+                yield field, mode
+                yield from walk(field.children, mode)
+
+        yield from walk(self.schema.fields)
+
+    def merge(self, original, incoming):
+        writable = {field.key for field, mode in self._fields() if mode not in {"readonly", "hidden"} and field.type not in LAYOUT_ONLY}
+        accepted = {key: value for key, value in incoming.items() if key in writable}
+        cleaned, errors = self.apply({**original, **accepted})
+        return {**original, **cleaned}, errors
+
     def validate(self, data: dict[str, Any] | None) -> dict[str, str]:
         cleaned, errors = self.apply(data or {})
         self.cleaned = cleaned
@@ -58,16 +79,15 @@ class FormValidator:
         compute_rules = {rule.field: rule for rule in self.schema.rules if rule.type == "compute" and rule.expr}
         errors: dict[str, str] = {}
         cleaned: dict[str, Any] = {}
-        wildcard = self.field_perm.get("*", "editable")
         required_by_rule = {rule.field for rule in self.schema.rules if rule.type == "required" and match_when(rule.when, values)}
-        for field in _walk(self.schema.fields):
+        for field, inherited_mode in self._fields():
             if field.type in LAYOUT_ONLY:
                 continue
             if field.type not in FIELD_TYPES:
                 errors[field.key] = "未知控件"
                 continue
             visible = _is_visible(self.schema, field.key, values)
-            mode = self.field_perm.get(field.key, wildcard)
+            mode = inherited_mode
             if not visible or mode == "hidden" or field.state == "hidden":
                 continue
             if mode == "readonly" or field.state in {"readonly", "disabled"}:

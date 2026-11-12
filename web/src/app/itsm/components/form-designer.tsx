@@ -7,6 +7,7 @@ import { Button, Checkbox, DatePicker, Empty, Input, InputNumber, Radio, Select,
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { ALL_FIELDS, BASIC_FIELDS, CASCADE_TYPES, CHOICE_TYPES, FULL_ROW_TYPES, SCENE_FIELDS, SENIOR_FIELDS, fieldLabelId, type CatalogField } from '../constants/field-catalog';
 import type { FormFieldSchema } from '../types';
+import { SubProcessBinding } from './subprocess-field';
 import { ConditionBuilder } from './condition-builder';
 import { CanvasTools } from './canvas-tools';
 import { FIELD_GROUP_COLOR, FieldGlyph } from './field-glyph';
@@ -958,9 +959,10 @@ function FieldTypeProps({ field, patch }: { field: FormFieldSchema; patch: (key:
           <Input placeholder="https://" value={String(field.props?.href || '')} onChange={(event) => setProp('href', event.target.value)} />
         </div>
       ) : null}
-      {field.type === 'table' || field.type === 'nestedTable' || field.type === 'task' ? (
+      {field.type === 'subProcessForm' && <SubProcessBinding value={Number(field.props?.workflow_version_id) || undefined} onChange={(value) => setProp('workflow_version_id', value)} />}
+      {field.type === 'table' || field.type === 'nestedTable' || field.type === 'task' || field.type === 'cab' ? (
         <div className="flex flex-col gap-1">
-          <span className="text-xs font-medium text-[var(--color-text-2)]">列（一行一个：名称:标识）</span>
+          <span className="text-xs font-medium text-[var(--color-text-2)]">列（一行一个：名称:标识，可加 :number）</span>
           <Input.TextArea rows={3} value={String(field.props?.columns || '')} onChange={(event) => setProp('columns', event.target.value)} />
         </div>
       ) : null}

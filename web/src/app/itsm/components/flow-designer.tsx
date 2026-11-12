@@ -503,6 +503,23 @@ function FlowDesignerBody({ design, fields = [], invalidNodeIds = [], onChange }
               <span className="text-xs font-medium text-[var(--color-text-2)]">节点名称</span>
               <Input value={selected.data.label} onChange={(event) => patchSelected({ label: event.target.value })} />
             </div>
+            {['auto', 'notice', 'cc', 'decision', 'knowledge', 'subprocess', 'call'].includes(selected.data.nodeType) && (
+              <div className="flex flex-col gap-2 rounded border border-[var(--color-border)] p-3">
+                {selected.data.nodeType === 'auto' && <>
+                  <span className="text-xs">自动动作</span>
+                  <Select value={String(selected.data.auto?.kind || 'table')} options={[{ value: 'table', label: '写入数据表' }, { value: 'http', label: 'HTTP 请求' }]} onChange={(kind) => patchSelected({ auto: { ...selected.data.auto, kind } })} />
+                  <Input aria-label="数据表标识或请求地址" placeholder={selected.data.auto?.kind === 'http' ? '请求地址' : '数据表标识'} value={String(selected.data.auto?.[selected.data.auto?.kind === 'http' ? 'url' : 'table_key'] || '')} onChange={(event) => patchSelected({ auto: { kind: 'table', ...selected.data.auto, [selected.data.auto?.kind === 'http' ? 'url' : 'table_key']: event.target.value } })} />
+                </>}
+                {['notice', 'cc'].includes(selected.data.nodeType) && <>
+                  <span className="text-xs">通知接收人</span>
+                  <UserSelector value={(selected.data.auto?.receivers || []) as string[]} onChange={(receivers) => patchSelected({ auto: { ...selected.data.auto, receivers } })} />
+                  <Input.TextArea placeholder="通知内容" value={String(selected.data.auto?.content || '')} onChange={(event) => patchSelected({ auto: { ...selected.data.auto, content: event.target.value } })} />
+                </>}
+                {selected.data.nodeType === 'decision' && <Input placeholder="决策表编号" value={String(selected.data.auto?.decision_id || '')} onChange={(event) => patchSelected({ auto: { ...selected.data.auto, decision_id: event.target.value } })} />}
+                {selected.data.nodeType === 'knowledge' && <Input placeholder="知识正文字段" value={String(selected.data.auto?.content_field || '')} onChange={(event) => patchSelected({ auto: { ...selected.data.auto, content_field: event.target.value } })} />}
+                {['subprocess', 'call'].includes(selected.data.nodeType) && <Input placeholder="子流程标识" value={String(selected.data.auto?.process_key || '')} onChange={(event) => patchSelected({ auto: { ...selected.data.auto, process_key: event.target.value } })} />}
+              </div>
+            )}
             {['approval', 'handle', 'manual', 'submit', 'subprocess_handle'].includes(selected.data.nodeType) ? (
               <>
                 <div className="flex flex-col gap-1">

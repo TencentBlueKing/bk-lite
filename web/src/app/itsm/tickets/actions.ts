@@ -1,3 +1,3 @@
-export const actionOf = (nodeId: string) => (nodeId === 'approve' ? 'approve' : 'submit');
+export const actionOf = (nodeType: string) => (nodeType === 'approval' ? 'approve' : 'submit');
 
-export const actionLabel = (nodeId: string) => (nodeId === 'approve' ? '通过' : '提交');
+export const actionLabel = (nodeType: string) => (nodeType === 'approval' ? '通过' : '提交');

@@ -48,7 +48,7 @@ export default function WorkflowDesignerPage() {
     setLocked(Boolean(data.locked));
     setFormId(data.form_id ?? null);
     if (data.nodes?.length) {
-      setDesign({ nodes: data.nodes, edges: data.edges || [] });
+      setDesign({ nodes: data.nodes, edges: data.edges || [], settings: data.settings });
     }
     if (data.form_id) {
       const form = await api.getForm(data.form_id) as { schema?: FormSchema };
@@ -62,6 +62,8 @@ export default function WorkflowDesignerPage() {
     }
     void load().catch((error: unknown) => message.error(error instanceof Error ? error.message : t('itsm.ticket.loadFailed')));
   }, [api.ready, load, workflowId]);
+
+  const updateDesign = useCallback((next: FlowDesign) => setDesign((current) => ({ ...current, ...next })), []);
 
   const schema: FormSchema = { version: 1, fields };
 
@@ -208,7 +210,7 @@ export default function WorkflowDesignerPage() {
                       design={design}
                       fields={fields.map((field) => field.key)}
                       invalidNodeIds={invalid}
-                      onChange={setDesign}
+                      onChange={updateDesign}
                     />
                   </div>
                 ),

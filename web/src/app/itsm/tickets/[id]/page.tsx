@@ -1,6 +1,6 @@
 'use client';
 
-import { Button, Dropdown, Empty, Input, Tabs, Tag, Timeline, Upload, message } from 'antd';
+import { Form, Button, Dropdown, Empty, Input, Tabs, Tag, Timeline, Upload, message } from 'antd';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
@@ -27,6 +27,7 @@ export default function TicketDetailPage() {
   const { t } = useTranslation();
   const api = useItsmApi();
   const [ticket, setTicket] = useState<TicketDetail | null>(null);
+  const [form] = Form.useForm();
   const [busy, setBusy] = useState(false);
   const [target, setTarget] = useState<string[]>([]);
   const [score, setScore] = useState(5);
@@ -63,12 +64,22 @@ export default function TicketDetailPage() {
   }, [api.getTicket, ticketId]);
 
   useEffect(() => {
+    if (ticket) form.setFieldsValue(ticket.form_data);
+  }, [ticket, form]);
+
+  useEffect(() => {
     if (!api.ready || !ticketId) {
       return;
     }
     void load().catch((error: unknown) => message.error(error instanceof Error ? error.message : t('itsm.ticket.loadFailed')));
     void loadCollaboration().catch((error: unknown) => message.error(error instanceof Error ? error.message : t('itsm.rule.collabFailed')));
   }, [api.ready, load, loadCollaboration, ticketId]);
+
+  useEffect(() => {
+    if (!ticket || ticket.tasks.length || ['finished', 'cancelled', 'terminated'].includes(ticket.status)) return;
+    const timer = window.setInterval(() => { void load().catch(() => undefined); }, 5000);
+    return () => window.clearInterval(timer);
+  }, [ticket, load]);
 
   const operate = async (action: string, task?: TicketTaskItem, extra?: { return_mode?: string }) => {
     setBusy(true);
@@ -79,11 +90,13 @@ export default function TicketDetailPage() {
         target: target[0] || '',
         opinion: action,
         return_mode: extra?.return_mode,
+        form_data: ['submit', 'approve', 'reject', 'save'].includes(action) ? await form.validateFields() : undefined,
       });
       message.success(t('itsm.ticket.operateOk'));
       setTarget([]);
       await load();
     } catch (error) {
+      if (error && typeof error === 'object' && 'errorFields' in error) return;
       message.error(error instanceof Error ? error.message : t('itsm.ticket.operateFailed'));
     } finally {
       setBusy(false);
@@ -106,7 +119,7 @@ export default function TicketDetailPage() {
     !closed ? { key: 'terminate', label: t('itsm.ticket.terminate'), onClick: () => { void operate('terminate'); } } : null,
     !closed ? { key: 'close', label: t('itsm.ticket.close'), onClick: () => { void operate('close'); } } : null,
     closed ? { key: 'reopen', label: t('itsm.ticket.reopen'), onClick: () => { void operate('reopen'); } } : null,
-  ].filter((item): item is { key: string; label: string; onClick: () => void } => Boolean(item));
+  ].filter((item): item is { key: string; label: string; onClick: () => void } => Boolean(item && ticket.allowed_actions?.includes(item.key)));
 
   return (
     <div className="flex flex-col gap-4">
@@ -126,7 +139,7 @@ export default function TicketDetailPage() {
       <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
         <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] p-4">
           <div className="mb-3 text-sm font-medium text-[var(--color-text-1)]">{t('itsm.ticket.form')}</div>
-          <FormRenderer schema={{ version: 1, fields: ticket.fields }} initialValues={ticket.form_data} readOnly onSubmit={() => undefined} />
+          <FormRenderer form={form} schema={{ version: 1, fields: ticket.fields }} initialValues={ticket.form_data} fieldPerm={ticket.tasks.find((task) => task.can_operate)?.field_perm} readOnly={!ticket.tasks.some((task) => task.can_operate)} hideSubmit onSubmit={() => undefined} />
         </div>
 
         <div className="flex flex-col gap-4">
@@ -142,13 +155,13 @@ export default function TicketDetailPage() {
                 {item.finished_at ? ` · ${item.breached ? t('itsm.ticket.overdue') : t('itsm.ticket.met')}` : ''}
               </div>
             ))}
-            {ticket.tasks.length ? ticket.tasks.map((task) => (
+            {ticket.tasks.length ? ticket.tasks.filter((task) => task.can_operate).map((task) => (
               <div key={task.id} className="mb-3 flex flex-col gap-2 border-t border-[var(--color-border)] pt-3 first:border-0 first:pt-0">
                 <div className="text-xs text-[var(--color-text-2)]">{task.node_name || task.node_id} · {task.assignee || t('itsm.ticket.unassigned')}</div>
                 <div className="flex flex-wrap gap-2">
                   {task.status === 'pending' ? <Button size="small" loading={busy} onClick={() => { void operate('claim', task); }}>{t('itsm.ticket.claim')}</Button> : null}
-                  <Button size="small" type="primary" loading={busy} onClick={() => { void operate(actionOf(task.node_id), task); }}>{actionOf(task.node_id) === 'approve' ? t('itsm.ticket.pass') : t('itsm.ticket.submitAction')}</Button>
-                  {task.node_id.includes('approve') ? <Button size="small" danger loading={busy} onClick={() => { void operate('reject', task); }}>{t('itsm.ticket.reject')}</Button> : null}
+                  <Button size="small" type="primary" loading={busy} onClick={() => { void operate(actionOf(task.node_type || ''), task); }}>{actionOf(task.node_type || '') === 'approve' ? t('itsm.ticket.pass') : t('itsm.ticket.submitAction')}</Button>
+                  {task.node_type === 'approval' ? <Button size="small" danger loading={busy} onClick={() => { void operate('reject', task); }}>{t('itsm.ticket.reject')}</Button> : null}
                 </div>
                 {task.node_id !== 'submit' ? (
                   <div className="flex flex-wrap gap-2">
@@ -157,7 +170,7 @@ export default function TicketDetailPage() {
                   </div>
                 ) : null}
               </div>
-            )) : closed && !ticket.survey ? (
+            )) : ticket.can_survey && !ticket.survey ? (
               <div className="flex flex-col gap-2">
                 <Input className="w-24" value={String(score)} onChange={(event) => setScore(Number(event.target.value) || 1)} />
                 <Input placeholder={t('itsm.ticket.commentPlaceholder')} value={comment} onChange={(event) => setComment(event.target.value)} />
@@ -173,10 +186,10 @@ export default function TicketDetailPage() {
             ) : (
               <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t('itsm.ticket.noTask')} />
             )}
-            {ticket.tasks.length ? (
+            {ticket.tasks.some((task) => task.can_operate) ? (
               <div className="mt-3 flex flex-col gap-2">
                 <UserSelector multiple={false} placeholder={t('itsm.ticket.transferTo')} value={target} onChange={setTarget} />
-                <Button size="small" disabled={!target[0]} loading={busy} onClick={() => { void operate('transfer', ticket.tasks[0]); }}>{t('itsm.ticket.transfer')}</Button>
+                <Button size="small" disabled={!target[0]} loading={busy} onClick={() => { void operate('transfer', ticket.tasks.find((task) => task.can_operate)); }}>{t('itsm.ticket.transfer')}</Button>
               </div>
             ) : null}
           </div>

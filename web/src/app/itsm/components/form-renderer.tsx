@@ -1,6 +1,7 @@
 'use client';
 
 import { Button, Checkbox, DatePicker, Divider, Empty, Form, Input, InputNumber, Radio, Select, Tabs, Upload, message } from 'antd';
+import type { FormInstance } from 'antd';
 import dayjs, { type Dayjs } from 'dayjs';
 import { FULL_ROW_TYPES } from '../constants/field-catalog';
 import type { FormFieldSchema, FormSchema } from '../types';
@@ -8,6 +9,8 @@ import AIEditor from '@/app/opspilot/components/ai-editor';
 import { useItsmApi } from '../api/useItsmApi';
 import GroupTreeSelect from '@/components/group-tree-select';
 import { UserSelector } from './user-selector';
+import { TableField, SignatureField } from './structured-fields';
+import { SubProcessField } from './subprocess-field';
 
 function RichTextField({
   disabled,
@@ -58,6 +61,8 @@ function AttachmentField({ disabled, value, onChange }: { disabled: boolean; val
 
 interface FormRendererProps {
   schema: FormSchema;
+  form?: FormInstance;
+  hideSubmit?: boolean;
   initialValues?: Record<string, unknown>;
   fieldPerm?: Record<string, 'hidden' | 'read' | 'edit'>;
   readOnly?: boolean;
@@ -88,28 +93,6 @@ const matches = (rule: FormFieldSchema['visibleWhen'], values: Record<string, un
     return true;
   });
 };
-
-function columnNames(field: FormFieldSchema) {
-  const names = String(field.props?.columns || '')
-    .split('\n')
-    .map((line) => line.split(':')[0].trim())
-    .filter(Boolean);
-  return names.length ? names : ['列1', '列2'];
-}
-
-function TableField({ field }: { field: FormFieldSchema }) {
-  const heads = columnNames(field);
-  return (
-    <div className="overflow-hidden rounded border border-[var(--color-border)] text-xs">
-      <div className="grid bg-[var(--color-fill-1)]" style={{ gridTemplateColumns: `repeat(${heads.length}, minmax(0,1fr))` }}>
-        {heads.map((name) => (
-          <div key={name} className="truncate px-2 py-1.5 text-[var(--color-text-2)]">{name}</div>
-        ))}
-      </div>
-      <div className="px-2 py-3 text-[var(--color-text-3)]">{field.type === 'task' ? '添加任务' : '暂无数据'}</div>
-    </div>
-  );
-}
 
 const DATE_TYPES = new Set(['date', 'time', 'datetime', 'dateRange']);
 
@@ -207,17 +190,17 @@ const control = (field: FormFieldSchema, disabled: boolean) => {
     return <RichTextField disabled={disabled} placeholder={field.placeholder} />;
   }
   if (field.type === 'table' || field.type === 'nestedTable' || field.type === 'task' || field.type === 'cab') {
-    return <TableField field={field} />;
+    return <TableField field={field} disabled={disabled} />;
   }
   if (field.type === 'link') {
     const href = String(field.props?.href || '');
     return href ? <a className="text-sm text-[var(--color-primary)]" href={href} target="_blank" rel="noreferrer">{field.label || href}</a> : <span className="text-sm text-[var(--color-text-3)]">未设置链接</span>;
   }
   if (field.type === 'subProcessForm') {
-    return <div className="rounded border border-dashed border-[var(--color-border)] px-3 py-4 text-xs text-[var(--color-text-3)]">子流程表单会在提单后带出</div>;
+    return <SubProcessField field={field} disabled={disabled} />;
   }
   if (field.type === 'signature') {
-    return <div className="flex h-24 items-center justify-center rounded border border-dashed border-[var(--color-border)] text-xs text-[var(--color-text-3)]">{disabled ? '已签名区域' : '点击签名'}</div>;
+    return <SignatureField disabled={disabled} />;
   }
   if (field.type === 'tab') {
     return null;
@@ -225,83 +208,34 @@ const control = (field: FormFieldSchema, disabled: boolean) => {
   return <Input disabled={disabled} placeholder={field.placeholder} />;
 };
 
-export function FormRenderer({ schema, initialValues, fieldPerm = {}, readOnly = false, onSubmit }: FormRendererProps) {
-  if (!schema.fields?.length) {
-    return (
-      <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-fill-1)] py-8">
-        <Empty description="当前表单暂无可展示的字段内容" />
-      </div>
-    );
-  }
+const SPANS: Record<number, string> = { 3: 'col-span-3', 4: 'col-span-4', 6: 'col-span-6', 8: 'col-span-8', 9: 'col-span-9', 12: 'col-span-12', 24: 'col-span-12' };
 
-  return (
-    <Form layout="vertical" initialValues={initialValues} onFinish={(values) => onSubmit(values as Record<string, unknown>)}>
-      <div className="grid grid-cols-12 gap-x-4 gap-y-1">
-        {schema.fields.map((field) => (
-          <Form.Item key={field.key} noStyle shouldUpdate>
-            {({ getFieldsValue }) => {
-              const perm = fieldPerm[field.key] || 'edit';
-              if (field.state === 'hidden' || perm === 'hidden' || !matches(field.visibleWhen, getFieldsValue())) {
-                return null;
-              }
-              const locked = readOnly || perm === 'read' || field.state === 'readonly' || field.state === 'disabled';
-              if (field.type === 'tab') {
-                return (
-                  <div className="col-span-12">
-                    <Tabs items={[{ key: field.key, label: field.label || '标签', children: <div className="py-2 text-xs text-[var(--color-text-3)]">标签内容</div> }]} />
-                  </div>
-                );
-              }
-              if (field.type === 'section') {
-                return (
-                  <div className="col-span-12 rounded-lg border border-[var(--color-border)] p-3">
-                    <div className="mb-2 text-sm font-medium text-[var(--color-text-1)]">{field.label}</div>
-                    <div className="grid grid-cols-12 gap-x-4">
-                      {(field.children || []).map((child) => (
-                        <Form.Item
-                          key={child.key}
-                          className={({ 3: 'col-span-3', 4: 'col-span-4', 6: 'col-span-6', 8: 'col-span-8', 9: 'col-span-9', 12: 'col-span-12' } as Record<number, string>)[FULL_ROW_TYPES.has(child.type) ? 12 : (child.span || 6)] || 'col-span-6'}
-                          name={child.key}
-                          label={child.label}
-                          extra={child.hint}
-                          {...dateItemProps(child)}
-                        >
-                          {control(child, locked || child.state === 'readonly' || child.state === 'disabled')}
-                        </Form.Item>
-                      ))}
-                    </div>
-                  </div>
-                );
-              }
-              return (
-                <Form.Item
-                  className={`${({
-                    3: 'col-span-3',
-                    4: 'col-span-4',
-                    6: 'col-span-6',
-                    8: 'col-span-8',
-                    9: 'col-span-9',
-                    12: 'col-span-12',
-                    24: 'col-span-12',
-                  } as Record<number, string>)[FULL_ROW_TYPES.has(field.type) ? 12 : (field.span || 6)] || 'col-span-6'} ${field.rowBreak ? 'col-start-1' : ''}`}
-                  name={field.key}
-                  label={field.type === 'divider' ? undefined : field.label}
-                  extra={field.hint}
-                  rules={field.required && !locked ? [{ required: true }] : []}
-                  {...dateItemProps(field)}
-                >
-                  {control(field, locked)}
-                </Form.Item>
-              );
-            }}
-          </Form.Item>
-        ))}
-      </div>
-      {readOnly ? null : (
-        <div className="mt-2 flex justify-end border-t border-[var(--color-border)] pt-4">
-          <Button type="primary" htmlType="submit">提交</Button>
-        </div>
-      )}
-    </Form>
-  );
+function FieldItems({ fields, fieldPerm, readOnly }: { fields: FormFieldSchema[]; fieldPerm: NonNullable<FormRendererProps['fieldPerm']>; readOnly: boolean }) {
+  return <>{fields.map((field) => <Form.Item key={field.key} noStyle shouldUpdate>
+    {({ getFieldsValue }) => {
+      const perm = fieldPerm[field.key] || fieldPerm['*'] || 'edit';
+      if (field.state === 'hidden' || perm === 'hidden' || !matches(field.visibleWhen, getFieldsValue())) return null;
+      const locked = readOnly || ['read', 'readonly'].includes(perm) || field.state === 'readonly' || field.state === 'disabled';
+      if (field.type === 'tab' || field.type === 'section') {
+        const children = <div className="grid grid-cols-12 gap-x-4 gap-y-1"><FieldItems fields={field.children || []} fieldPerm={fieldPerm} readOnly={locked} /></div>;
+        return <div className="col-span-12 rounded-lg border border-[var(--color-border)] p-3">
+          {field.type === 'tab' ? <Tabs items={[{ key: field.key, label: field.label || '标签', children }]} /> : <><div className="mb-2 text-sm font-medium text-[var(--color-text-1)]">{field.label}</div>{children}</>}
+        </div>;
+      }
+      return <Form.Item
+        className={`${SPANS[FULL_ROW_TYPES.has(field.type) ? 12 : (field.span || 6)] || 'col-span-6'} ${field.rowBreak ? 'col-start-1' : ''}`}
+        name={field.key} label={field.type === 'divider' ? undefined : field.label} extra={field.hint}
+        rules={(field.required || String(perm) === 'required') && !locked ? [{ required: true }] : []}
+        {...dateItemProps(field)}
+      >{control(field, locked)}</Form.Item>;
+    }}
+  </Form.Item>)}</>;
+}
+
+export function FormRenderer({ form, hideSubmit = false, schema, initialValues, fieldPerm = {}, readOnly = false, onSubmit }: FormRendererProps) {
+  return <Form form={form} layout="vertical" initialValues={initialValues} onFinish={(values) => onSubmit(values as Record<string, unknown>)}>
+    {schema.fields?.length ? <div className="grid grid-cols-12 gap-x-4 gap-y-1"><FieldItems fields={schema.fields} fieldPerm={fieldPerm} readOnly={readOnly} /></div>
+    : <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-fill-1)] py-8"><Empty description="当前表单暂无可展示的字段内容" /></div>}
+    {readOnly || hideSubmit || !schema.fields?.length ? null : <div className="mt-2 flex justify-end border-t border-[var(--color-border)] pt-4"><Button type="primary" htmlType="submit">提交</Button></div>}
+  </Form>;
 }

@@ -9,11 +9,12 @@ def run_auto_action(ticket, kind: str, config: dict, operator: str) -> tuple[str
     """执行自动节点。作业和编排只在配置完整时调用；失败只记错误类型。"""
     config = config or {}
     if kind == "table" and config.get("table_key"):
-        table = DataTable.objects.filter(key=config["table_key"]).first()
+        table = DataTable.objects.filter(domain=ticket.domain, key=config["table_key"]).first()
         if table is None:
             return "skipped", {"reason": "数据表不存在"}
         DataTableRow.objects.create(
             table=table,
+            domain=ticket.domain,
             data=config.get("data") or {"ticket": ticket.sn},
             created_by=operator,
             updated_by=operator,
@@ -34,11 +35,11 @@ def _run_http(config: dict) -> tuple[str, dict]:
     url = str(config.get("url") or "")
     try:
         SSRFValidator().validate_url(url)
-        response = requests.request(str(config.get("method") or "GET"), url, timeout=3)
+        response = requests.request(str(config.get("method") or "GET"), url, timeout=3, allow_redirects=False)
     except (SSRFError, requests.RequestException) as exc:
         logger.warning("自动节点 HTTP 失败 error_type=%s", type(exc).__name__)
         return "failed", {"error_type": type(exc).__name__}
-    return "done", {"status_code": response.status_code}
+    return ("done" if 200 <= response.status_code < 300 else "failed"), {"status_code": response.status_code}
 
 
 def _run_job(config: dict, ticket=None) -> tuple[str, dict]:

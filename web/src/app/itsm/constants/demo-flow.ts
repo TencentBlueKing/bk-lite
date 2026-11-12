@@ -9,6 +9,7 @@ export interface DesignNode {
   fallback?: string;
   actions?: string[];
   field_perm?: Record<string, string>;
+  auto?: Record<string, unknown>;
 }
 
 export interface DesignEdge {
@@ -19,6 +20,7 @@ export interface DesignEdge {
 }
 
 export interface FlowDesign {
+  settings?: Record<string, unknown>;
   nodes: DesignNode[];
   edges: DesignEdge[];
 }
@@ -31,6 +33,8 @@ export interface CanvasNodeData extends Record<string, unknown> {
   actions?: string[];
   notify?: boolean;
   fieldPerm?: Record<string, string>;
+  auto?: Record<string, unknown>;
+  original?: DesignNode;
   condition?: ConditionGroup;
 }
 
@@ -90,6 +94,10 @@ export const canvasFromDesign = (design: FlowDesign): { nodes: CanvasNode[]; edg
       nodeType: node.type,
       assignees: node.assignee?.value || [],
       orSign: node.multi?.mode === 'any',
+      fieldPerm: node.field_perm,
+      actions: node.actions,
+      auto: node.auto,
+      original: node,
     },
   })),
   edges: design.edges.map((edge, index) => ({
@@ -104,6 +112,7 @@ export const canvasFromDesign = (design: FlowDesign): { nodes: CanvasNode[]; edg
 export const designFromCanvas = (nodes: CanvasNode[], edges: CanvasEdge[]): FlowDesign => ({
   nodes: nodes.map((node) => {
     const designNode: DesignNode = {
+      ...node.data.original,
       id: node.id,
       type: node.data.nodeType,
       name: node.data.label,
@@ -112,8 +121,11 @@ export const designFromCanvas = (nodes: CanvasNode[], edges: CanvasEdge[]): Flow
       designNode.assignee = { source: 'users', value: node.data.assignees };
       designNode.fallback = 'admin';
     }
+    if (node.data.auto) designNode.auto = node.data.auto;
     if (node.data.orSign) {
       designNode.multi = { mode: 'any' };
+    } else if (designNode.multi?.mode === 'any') {
+      delete designNode.multi;
     }
     if (node.data.actions?.length) {
       designNode.actions = node.data.actions;

@@ -7,12 +7,14 @@ from apps.itsm.models.workflow import Workflow, WorkflowVersion
 
 
 class TicketQuerySet(models.QuerySet):
-    def visible_to(self, username: str, see_all: bool = False):
-        if see_all or username == "admin":
+    def visible_to(self, username: str, see_all: bool = False, domain: str = "domain.com"):
+        if see_all:
             return self
+        if not username:
+            return self.none()
         from apps.itsm.models.extend import TicketProxy
 
-        principals = list(TicketProxy.objects.filter(agent=username, is_enabled=True).values_list("principal", flat=True))
+        principals = list(TicketProxy.objects.filter(agent=username, domain=domain, is_enabled=True).values_list("principal", flat=True))
         query = Q(creator=username) | Q(tasks__assignee=username)
         if principals:
             query = query | Q(creator__in=principals) | Q(tasks__assignee__in=principals)

@@ -1,7 +1,7 @@
 'use client';
 
-import { Button, Input, Select, Tabs, Tag, message } from 'antd';
-import { useSession } from 'next-auth/react';
+import { Form, Button, Input, Select, Tabs, Tag, message } from 'antd';
+
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
 import CustomTable from '@/components/custom-table';
@@ -11,7 +11,8 @@ import Link from 'next/link';
 import { useTranslation } from '@/utils/i18n';
 import { useItsmApi } from '../api/useItsmApi';
 import { FieldRow } from '../components/field-row';
-import type { TicketListItem, WorkflowListItem } from '../types';
+import { FormRenderer } from '../components/form-renderer';
+import type { FormSchema, TicketListItem, WorkflowListItem } from '../types';
 
 const STATUS_OPTIONS = [
   { value: 'new', labelKey: 'itsm.ticket.statusNew', color: 'processing' },
@@ -28,8 +29,11 @@ export default function TicketsPage() {
   const { t } = useTranslation();
   const api = useItsmApi();
   const router = useRouter();
-  const { data: session } = useSession();
-  const username = session?.user?.name || 'admin';
+  const [form] = Form.useForm();
+  const [schema, setSchema] = useState<FormSchema>({ version: 1, fields: [] });
+  const [fieldPerm, setFieldPerm] = useState<Record<string, 'hidden' | 'read' | 'edit'>>({});
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
   const [tickets, setTickets] = useState<TicketListItem[]>([]);
   const [workflows, setWorkflows] = useState<WorkflowListItem[]>([]);
   const [tab, setTab] = useState('all');
@@ -38,19 +42,14 @@ export default function TicketsPage() {
   const [draft, setDraft] = useState({ creator: '', priority: '', tag: '', status: '' });
   const [open, setOpen] = useState(false);
   const [versionId, setVersionId] = useState<number | undefined>();
-  const [title, setTitle] = useState('');
+
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
-    const [ticketData, workflowData] = await Promise.all([
-      api.listTickets({ q: query.q, creator: query.creator, priority: query.priority, tag: query.tag }),
-      api.listWorkflows(),
-    ]);
+    const ticketData = await api.listTickets({ ...query, page, page_size: 20, tab });
+    setTotal((ticketData as { count?: number }).count || 0);
     setTickets((ticketData as { items?: TicketListItem[] }).items || []);
-    const published = ((workflowData as { items?: WorkflowListItem[] }).items || []).filter((item) => item.current_version_id);
-    setWorkflows(published);
-    setVersionId((current) => current || published[0]?.current_version_id || undefined);
-  }, [api.listTickets, api.listWorkflows, query]);
+  }, [api.listTickets, query, page, tab]);
 
   useEffect(() => {
     if (!api.ready) {
@@ -62,29 +61,43 @@ export default function TicketsPage() {
   }, [api.ready, load]);
 
   const createTicket = async () => {
-    if (!versionId || !title.trim()) {
-      message.warning(t('itsm.ticket.needTitle'));
-      return;
-    }
+    if (!versionId || !schema.fields.length) return;
     setBusy(true);
     try {
       const created = await api.createTicket({
         workflow_version_id: versionId,
-        form_data: { title: title.trim() },
+        form_data: await form.validateFields(),
       }) as { id: number };
       setOpen(false);
       router.push(`/itsm/tickets/${created.id}`);
     } catch (error) {
+      if (error && typeof error === 'object' && 'errorFields' in error) return;
       message.error(error instanceof Error ? error.message : t('itsm.ticket.createFailed'));
     } finally {
       setBusy(false);
     }
   };
 
-  const visible = (tab === 'mine'
-    ? tickets.filter((item) => item.tasks.some((task) => task.assignee === username) || item.creator === username)
-    : tickets
-  ).filter((item) => !query.status || item.status === query.status);
+  useEffect(() => { setPage(1); }, [query, tab]);
+  useEffect(() => {
+    if (!open) return;
+    void api.listTicketWorkflows().then((data) => {
+      const items = (data as { items: WorkflowListItem[] }).items;
+      setWorkflows(items);
+      setVersionId((current) => current || items[0]?.current_version_id || undefined);
+    }).catch(() => message.error('加载可申请流程失败'));
+  }, [open, api.listTicketWorkflows]);
+
+  useEffect(() => {
+    if (!open || !versionId) return;
+    setSchema({ version: 1, fields: [] });
+    void api.ticketForm(versionId).then((data) => {
+      const result = data as { schema: FormSchema; field_perm: Record<string, 'hidden' | 'read' | 'edit'> };
+      setSchema(result.schema);
+      setFieldPerm(result.field_perm);
+      form.resetFields();
+    }).catch(() => message.error('加载提单表单失败'));
+  }, [api.ticketForm, versionId, open, form]);
 
   return (
     <div className="flex flex-col">
@@ -132,7 +145,8 @@ export default function TicketsPage() {
         </div>
         <CustomTable
           rowKey="id"
-          dataSource={visible}
+          dataSource={tickets}
+          pagination={{ current: page, pageSize: 20, total, showSizeChanger: false, onChange: setPage }}
           locale={{ emptyText: tab === 'mine' ? t('itsm.ticket.emptyMine') : t('itsm.ticket.emptyAll') }}
           columns={[
             {
@@ -197,9 +211,7 @@ export default function TicketsPage() {
               onChange={setVersionId}
             />
           </FieldRow>
-          <FieldRow label={t('itsm.ticket.title')}>
-            <Input placeholder={t('itsm.ticket.ticketTitle')} value={title} onChange={(event) => setTitle(event.target.value)} />
-          </FieldRow>
+          <FormRenderer form={form} schema={schema} fieldPerm={fieldPerm} hideSubmit onSubmit={() => undefined} />
         </div>
       </OperateModal>
     </div>
