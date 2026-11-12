@@ -18,39 +18,39 @@ from apps.opspilot.services.ppt_master_runtime import (
 
 
 class SkillSandboxMixin:
-    """Configure the task container and publish skill artifacts."""
+    """Configure the local task workspace and publish skill artifacts."""
 
     def _build_skill_backend_and_sources(self, graph_request, packages=None, *, sandbox=None):
-        """Materialize skills in the run container. Never fall back to host execution."""
+        """Materialize skills in the same local workspace used by Python and Shell."""
         from apps.opspilot.services.python_sandbox.runtime import SandboxUnavailable
-        from apps.opspilot.services.python_sandbox.skill_backend import ContainerSkillBackend
+        from apps.opspilot.services.python_sandbox.skill_backend import LocalSkillBackend
 
         if packages is None:
             packages = self._resolve_skill_packages(graph_request)
         if not packages:
             return None, [], None
         if sandbox is None:
-            raise SandboxUnavailable("技能执行需要任务容器")
+            raise SandboxUnavailable("技能执行需要任务工作区")
         params, secrets = self._load_skill_package_runtime_params(graph_request, packages)
         ppt_workspace = begin_ppt_run(graph_request) if packages_include_ppt_master(packages) else None
         try:
-            backend = ContainerSkillBackend(sandbox, params_by_package=params, secret_values=secrets, ppt_workspace=ppt_workspace)
+            backend = LocalSkillBackend(sandbox, params_by_package=params, secret_values=secrets, ppt_workspace=ppt_workspace)
             for package in packages:
-                from apps.opspilot.services.python_sandbox.provisioning import materialize_container_skill
+                from apps.opspilot.services.python_sandbox.provisioning import materialize_local_skill
 
-                materialize_container_skill(package, sandbox)
+                materialize_local_skill(package, sandbox)
                 from apps.opspilot.services.skill_package.materializer import sanitize_skill_name
                 from apps.opspilot.utils.skill_package_params import format_skillenv
 
                 name = sanitize_skill_name(package.get("package_id") or package.get("name"))
                 if params.get(name):
-                    sandbox.write_workspace_file(f"/workspace/skills/{name}/.skillenv", format_skillenv(params[name]).encode())
+                    sandbox.write_workspace_file(f"{sandbox.workspace}/skills/{name}/.skillenv", format_skillenv(params[name]).encode())
             backend.set_packages(packages)
         except BaseException:
             if ppt_workspace is not None:
                 discard_ppt_run(graph_request)
             raise
-        return backend, ["/workspace/skills/"], str(ppt_workspace) if ppt_workspace else None
+        return backend, [sandbox.workspace + "/skills/"], str(ppt_workspace) if ppt_workspace else None
 
     @staticmethod
     async def _publish_ppt_master_export(graph_request, prior_filenames, config=None, sandbox=None) -> None:
@@ -110,7 +110,7 @@ class SkillSandboxMixin:
         """根据**被访问的**技能包,确保 host Python 装了对应的 Python 库。
 
         仅供旧本地后端的独立调用方使用；正式智能体运行路径不再调用本函数。
-        统一容器的依赖安装由 ContainerSkillBackend._install_dependencies 负责。
+        任务工作区的依赖安装由 LocalSkillBackend._install_dependencies 负责。
 
         调用时机:PathRewritingBackend 在 read/execute 碰到 /skills/<name>/ 时
         按需触发;建沙箱阶段不再预装。

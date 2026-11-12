@@ -1,5 +1,4 @@
-"""Shell tool integration with the production task container."""
-import os
+"""Shell tool integration with the local Server task workspace."""
 import shlex
 
 import pytest
@@ -7,9 +6,7 @@ import pytest
 from apps.opspilot.metis.llm.tools.python.executor import python_execute_direct
 from apps.opspilot.metis.llm.tools.shell.shell_tools import shell_execute
 from apps.opspilot.services.python_sandbox.runtime import PythonSandbox
-from apps.opspilot.services.python_sandbox.skill_backend import ContainerSkillBackend
-
-pytestmark = pytest.mark.skipif(not os.getenv("OPSPILOT_TEST_DOCKER"), reason="requires Docker and sandbox image")
+from apps.opspilot.services.python_sandbox.skill_backend import LocalSkillBackend
 
 
 @pytest.fixture
@@ -21,42 +18,41 @@ def runtime():
         sandbox.close()
 
 
-def test_shell_shares_files_with_python_and_skills_but_not_host(runtime, tmp_path, monkeypatch):
+def test_shell_shares_files_with_python_and_skills_with_local_server_access(runtime, tmp_path, monkeypatch):
     host_file = tmp_path / "host-only.txt"
     host_file.write_text("host-file-sentinel")
     monkeypatch.setenv("OPSPILOT_HOST_ONLY_SECRET", "host-env-sentinel")
     config = {"configurable": {"python_sandbox": runtime}}
     commands = [
-        "mkdir -p /workspace/data",
-        "cd /workspace/data",
+        "mkdir -p data",
+        "cd data",
         "value=41",
         "printf '%s' \"$value\" > input.txt",
         "pwd",
         "printf '%s' \"${OPSPILOT_HOST_ONLY_SECRET:-absent}\"",
     ]
     result = shell_execute.invoke({"commands": commands}, config=config)
-    assert result == "/workspace/data\nabsent"
+    assert result == runtime.workspace + "/data\nabsent"
     assert "host-env-sentinel" not in result
-    assert python_execute_direct.invoke({"code": "p='/workspace/data/input.txt'\nopen(p).read()"}, config=config) == "41"
-    backend = ContainerSkillBackend(runtime)
+    assert python_execute_direct.invoke({"code": "p='data/input.txt'\nopen(p).read()"}, config=config) == "41"
+    backend = LocalSkillBackend(runtime)
     assert (
         backend.execute(
-            "python -c 'from pathlib import Path; "
-            'Path("/workspace/output.txt").write_text(str(int(Path("/workspace/data/input.txt").read_text())+1))\''
+            "python -c 'from pathlib import Path; " 'Path("output.txt").write_text(str(int(Path("data/input.txt").read_text())+1))\''
         ).exit_code
         == 0
     )
-    assert shell_execute.invoke({"commands": ["cat /workspace/output.txt"]}, config=config) == "42"
-    # Each call starts at /workspace, while files persist for the entire task.
-    assert shell_execute.invoke({"commands": ["pwd"]}, config=config) == "/workspace"
+    assert shell_execute.invoke({"commands": ["cat output.txt"]}, config=config) == "42"
+    # Each call starts at its task directory, while files persist for the entire task.
+    assert shell_execute.invoke({"commands": ["pwd"]}, config=config) == runtime.workspace
     attempted = shell_execute.invoke({"commands": [f"printf changed > {shlex.quote(str(host_file))}"]}, config=config)
-    assert "Exit code:" in attempted
-    assert host_file.read_text() == "host-file-sentinel"
+    assert "Exit code:" not in attempted
+    assert host_file.read_text() == "changed"
     assert shell_execute.invoke({"commands": ["curl --version"]}, config=config).startswith("curl ")
     assert "中文输出" in shell_execute.invoke({"commands": ["python -c 'print(\"中文输出\")'"]}, config=config)
     other = PythonSandbox()
     try:
-        assert "Exit code:" in shell_execute.invoke({"commands": ["cat /workspace/output.txt"]}, config={"configurable": {"python_sandbox": other}})
+        assert "Exit code:" in shell_execute.invoke({"commands": ["cat output.txt"]}, config={"configurable": {"python_sandbox": other}})
     finally:
         other.close()
 

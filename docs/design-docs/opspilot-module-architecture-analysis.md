@@ -4,6 +4,19 @@
 > 分析范围：`server/apps/opspilot/`，以及其直接依赖的 Django、Celery、Redis、MinIO、LLM Provider、Metis/RAG、MCP、数据库、Kubernetes、Browser 和渠道边界。
 > 分析方式：以“知识构建—会话接入—推理编排—工具副作用—流式回传”的完整闭环为主，分析能力边界、事实所有权、执行生命周期、并发容量和安全隔离，不按单个技术债组织。
 
+## 2026-11-12 执行环境变更
+
+按产品决定，Python、Shell 与技能 execute 统一使用 Server 本地子进程，移除按轮创建 Docker 容器的方案。
+`services/python_sandbox/runtime.py` 保留历史接口名，每次 DeepAgent 节点运行持有一个工作区，按需创建临时目录；
+工具大结果直接写入本地文件，不启动执行进程。`LocalSkillBackend` 共用该工作区，文件操作直接访问本地目录。
+附件仍由当前会话签发读取清单、按需下载，生成结果通过原附件服务入库和保存到对象存储。
+节点退出时终止活动进程组并删除临时目录；已保存附件独立保留。
+
+本方案不提供宿主或租户间的 OS 隔离，代码拥有 Server 运行用户权限；目录和文件接口的路径检查不约束完整 Python/Shell。
+原 Docker CPU/内存/tmpfs 限额不再适用，保留调用超时、输出截断与附件传输上限。
+下文为历史架构评估；其中 ShellGuard/LocalShell 的组合描述不再代表正式执行入口。
+具体部署、验证与回滚见 [本地执行变更说明](../../specs/changes/opspilot-local-execution/spec.md)。
+
 ## 1. 结论摘要
 
 OpsPilot 不是一个普通的“机器人模块”，而是在同一 Django App 内承载了至少八类能力：

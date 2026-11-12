@@ -10,7 +10,15 @@ def get_client(
     instance_name=None,
     instance_id=None,
 ):
-    from apps.opspilot.metis.llm.tools.jenkins.connection import build_jenkins_normalized_from_runnable
+    from apps.opspilot.metis.llm.tools.jenkins.connection import (
+        build_jenkins_normalized_from_runnable,
+        get_jenkins_instances_from_configurable,
+        resolve_jenkins_instance,
+    )
+
+    instances, default_id = get_jenkins_instances_from_configurable((config or {}).get("configurable", {}))
+    if instances and not (instance_name or instance_id):
+        instance_id = resolve_jenkins_instance(instances, default_id)["id"]
 
     normalized = build_jenkins_normalized_from_runnable(
         config,
@@ -27,12 +35,12 @@ def get_client(
 
 
 @tool()
-def list_jenkins_jobs(config: RunnableConfig):
+def list_jenkins_jobs(config: RunnableConfig, instance_name: str = None, instance_id: str = None):
     """
     列出Jenkins构建任务，这个工具用户帮助用户获取Jenkins构建任务列表，当用户构建目标不明确的时候，
     直接使用此工具给用户提出建议
     """
-    client = get_client(config)
+    client = get_client(config, instance_name=instance_name, instance_id=instance_id)
     return client.get_jobs()
 
 
@@ -41,6 +49,8 @@ def trigger_jenkins_build(
     job_name: str,
     parameters: Optional[dict],
     config: RunnableConfig,
+    instance_name: str = None,
+    instance_id: str = None,
 ):
     """
     这个工具用于触发Jenkins构建任务.
@@ -49,6 +59,8 @@ def trigger_jenkins_build(
             2. 不允许构建已禁用的任务
 
     Args:
+        instance_name: Target Jenkins instance name.
+        instance_id: Target Jenkins instance ID (takes precedence over name).
         job_name: Name of the job to build
         parameters: Optional build parameters as a dictionary,
             for example key-value pairs like param1=value1
@@ -61,7 +73,7 @@ def trigger_jenkins_build(
     if parameters is not None and not isinstance(parameters, dict):
         raise ValueError(f"parameters must be a dictionary or None, got {type(parameters)}")
 
-    client = get_client(config)
+    client = get_client(config, instance_name=instance_name, instance_id=instance_id)
 
     try:
         job_info = client.get_job_info(job_name)
@@ -93,9 +105,11 @@ def trigger_jenkins_build(
 def get_jenkins_job_info_batch(
     job_names: List[str],
     config: RunnableConfig = None,
+    instance_name: str = None,
+    instance_id: str = None,
 ) -> dict:
     """批量获取多个 Jenkins Job 的信息，单条失败不中断其他查询。"""
-    client = get_client(config)
+    client = get_client(config, instance_name=instance_name, instance_id=instance_id)
 
     results = []
     succeeded = 0

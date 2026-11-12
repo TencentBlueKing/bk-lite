@@ -1,1 +1,1 @@
-"""Per-run isolated Python execution and workspace."""
+"""Per-run local execution and workspace; not a host isolation boundary."""

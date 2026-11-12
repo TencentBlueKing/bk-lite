@@ -1,4 +1,4 @@
-"""Shell commands execute only in the agent's shared task container."""
+"""Shell commands execute in the Server's local task workspace."""
 
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
@@ -8,9 +8,9 @@ from apps.opspilot.services.python_sandbox.runtime import SandboxUnavailable
 
 @tool(parse_docstring=True)
 def shell_execute(commands: list[str], config: RunnableConfig) -> str:
-    """在当前任务的隔离容器中执行 shell 命令，与 Python、技能 execute 共享 /workspace。
+    """在 Server 内执行 shell 命令，与 Python、技能 execute 共享本轮工作目录。
 
-    支持 curl、管道、重定向和脚本执行。文件和环境变量属于容器，不代表宿主或目标主机。
+    支持 curl、管道、重定向和脚本执行。这是本地执行环境，拥有 Server 运行用户的系统权限，不提供宿主隔离。
     命令列表在同一 shell 中依次执行，保留列表内的 cd 和变量；默认总超时 120 秒。
     非交互执行，合并输出最多 64 KiB。访问目标主机应使用对应的 SSH 或 K8s 工具。
 
@@ -24,10 +24,10 @@ def shell_execute(commands: list[str], config: RunnableConfig) -> str:
         raise ValueError("命令列表不能为空，且不能包含空命令")
     sandbox = (config or {}).get("configurable", {}).get("python_sandbox")
     if sandbox is None:
-        return "Shell 隔离环境不可用：当前任务没有配置沙箱"
+        return "Shell 执行环境不可用：当前任务没有配置工作区"
     try:
         # Preserve the old BashProcess batch semantics: one shell, sequential
         # commands, with cwd/variables shared inside this call.
         return sandbox.execute_command(";".join(commands)).output
     except SandboxUnavailable:
-        return "Shell 隔离环境不可用，请检查 Docker 和沙箱镜像配置"
+        return "Shell 执行环境不可用，请检查 Server 的 Shell 和任务工作目录"

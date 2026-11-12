@@ -2689,7 +2689,7 @@ class ToolsNodes(
                 )
 
             if attachments:
-                final_system_prompt += "\n" + ATTACHMENT_README
+                final_system_prompt += "\n" + ATTACHMENT_README.format(workspace=python_sandbox.workspace)
             # 紧急关闭：回退全量 Schema + 单次 DeepAgent 调用
             if not is_progressive_tools_enabled():
                 backend, skill_sources, sandbox_dir = await asyncio.to_thread(
@@ -2905,9 +2905,11 @@ class ToolsNodes(
                 ppt_authoring=ppt_authoring,
             )
             if python_sandbox is not None:
+                from apps.opspilot.metis.llm.agent.tool_execution_planner import planned_execution_compact_limits_for_request
                 from apps.opspilot.metis.llm.middleware.python_sandbox import PythonSandboxMiddleware
 
-                runtime_middleware.append(PythonSandboxMiddleware(python_sandbox))
+                max_tool_chars, _ = planned_execution_compact_limits_for_request(graph_request)
+                runtime_middleware.append(PythonSandboxMiddleware(python_sandbox, threshold=min(4000, max_tool_chars)))
             final_system_prompt = self._append_planned_execution_step_prompt(final_system_prompt)
             final_system_prompt += auto_instruction
 
@@ -3154,9 +3156,9 @@ class ToolsNodes(
                         )
                     step_guidance += auto_instruction
                     if attachments:
-                        step_guidance += "\n" + ATTACHMENT_README
+                        step_guidance += "\n" + ATTACHMENT_README.format(workspace=python_sandbox.workspace)
                     if python_sandbox is not None and python_sandbox.files():
-                        step_guidance += "\n本任务 Python 沙箱中的工具结果文件：" + ", ".join(python_sandbox.files())
+                        step_guidance += "\n本任务工作区中的工具结果文件：" + ", ".join(python_sandbox.files())
                     finish_rule = "只完成本步骤；取得足够证据后立即结束，不要处理后续步骤。"
                     if ppt_authoring:
                         finish_rule = "本步只有写出 svg_output 里的页面才算完成。禁止只回复大纲或说即将开始。写完就停止，平台会导出 pptx。"

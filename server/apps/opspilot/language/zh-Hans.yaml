@@ -931,7 +931,7 @@ tools:
       - executor: Python代码执行工具
 
       **主要特性：**
-      - 安全执行Python代码
+      - 在 Server 子进程中执行 Python 代码
       - 支持数据处理和计算
       - 返回执行结果
 
@@ -939,22 +939,22 @@ tools:
       - python_execute_direct: 直接执行Python代码
     tools:
       python_execute_direct:
-        description: 在隔离容器中执行 Python，支持常用库、网络访问和工作目录文件读写
+        description: 在 Server 子进程中执行 Python，支持常用库、网络访问和工作目录文件读写
   shell:
     name: Shell执行
     description: |
       Shell工具模块
 
-      在当前任务的隔离容器中执行命令，与 Python 和技能 execute 共享 /workspace。
+      在 Server 内执行命令，与 Python 和技能 execute 共享本轮工作目录。
       支持 curl、管道、重定向和脚本执行。命令列表在同一个 shell 中依次执行。
       默认总超时 120 秒，合并输出最多 64 KiB，不支持交互式输入。
-      本地文件和环境变量属于容器；操作目标主机请使用 SSH、K8s 等对应工具。
+      代码拥有 Server 运行用户的系统权限，不提供宿主隔离；操作目标主机请使用 SSH、K8s 等对应工具。
 
       **工具列表：**
       - shell_execute: 执行shell命令列表，按顺序执行并返回结果
     tools:
       shell_execute:
-        description: 在任务容器中依次执行 shell 命令，共享 /workspace，返回合并输出，失败时附带退出码
+        description: 在 Server 本地任务工作目录中依次执行 shell 命令，返回合并输出，失败时附带退出码
   browser_use:
     name: 浏览器自动化
     description: |

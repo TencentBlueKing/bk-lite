@@ -1,4 +1,4 @@
-"""Server-issued attachment capabilities; no storage credentials enter a sandbox."""
+"""Server-issued attachment capabilities; only scoped object URLs are handed to task processes."""
 from __future__ import annotations
 
 from datetime import timedelta
@@ -85,20 +85,21 @@ def resolve_attachment_grant(token):
     return entries
 
 
-ATTACHMENT_README = """当前会话授权附件清单：/workspace/attachments/index.json（名称、ID、大小、只读下载地址）。
+ATTACHMENT_README = """当前会话授权附件清单：{workspace}/attachments/index.json（名称、ID、大小、只读下载地址）。
 不必把清单中的下载地址输出给用户。按需读取文件：
-python /workspace/attachments/read.py <附件ID>
-命令返回已下载文件路径；用 Python 或技能 execute 读取、修改，另存到 /workspace 下。
+python {workspace}/attachments/read.py <附件ID>
+命令返回已下载文件路径；用 Python 或技能 execute 读取、修改，另存到 {workspace} 下。
 原始对象只授予 GET 权限；不能覆盖存储中的原附件。
 修改后必须调用 generate_attachment_file(filename=新文件名, file_type=类型, sandbox_path=产物路径) 保存新附件。
 """
 
-# Runs inside the container. The manifest is the entire authority available to it.
+# Runs as a local child process; the reader only selects from the issued manifest.
 ATTACHMENT_READER = """import json, pathlib, sys, urllib.request
 try:
-    entries = json.loads(pathlib.Path('/workspace/attachments/index.json').read_text())
+    root = pathlib.Path(__file__).resolve().parent
+    entries = json.loads((root / 'index.json').read_text(encoding='utf-8'))
     entry = next(item for item in entries if item['id'] == sys.argv[1])
-    target = pathlib.Path('/workspace/attachments/downloads') / entry['id'] / pathlib.PurePosixPath(entry['name'].replace('\\\\', '/')).name
+    target = (root / 'downloads') / entry['id'] / pathlib.PurePosixPath(entry['name'].replace('\\\\', '/')).name
     target.parent.mkdir(parents=True, exist_ok=True)
     with urllib.request.urlopen(entry['url'], timeout=60) as source:
         data = source.read(20 * 1024 * 1024 + 1)

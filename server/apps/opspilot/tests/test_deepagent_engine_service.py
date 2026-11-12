@@ -191,32 +191,32 @@ class TestSkillBackendSources:
             backend, sources, sandbox_dir = n._build_skill_backend_and_sources(_request())
         assert backend is None and sources == [] and sandbox_dir is None
 
-    def test_materializes_packages_into_run_container(self):
-        from apps.opspilot.services.python_sandbox.skill_backend import ContainerSkillBackend
+    def test_materializes_packages_into_local_workspace(self):
+        from apps.opspilot.services.python_sandbox.skill_backend import LocalSkillBackend
 
         node = ToolsNodes()
         packages = [{"name": "k8s-triage"}, {"name": "log-analysis"}]
-        sandbox = MagicMock()
+        sandbox = MagicMock(workspace="/tmp/opspilot-test")
         with (
             patch("deepagents.backends.LocalShellBackend") as host_backend,
-            patch("apps.opspilot.services.python_sandbox.provisioning.materialize_container_skill") as materialize,
+            patch("apps.opspilot.services.python_sandbox.provisioning.materialize_local_skill") as materialize,
         ):
             backend, sources, directory = node._build_skill_backend_and_sources(_request(), packages=packages, sandbox=sandbox)
-        assert isinstance(backend, ContainerSkillBackend)
+        assert isinstance(backend, LocalSkillBackend)
         assert backend.sandbox is sandbox
-        assert sources == ["/workspace/skills/"] and directory is None
+        assert sources == [sandbox.workspace + "/skills/"] and directory is None
         assert materialize.call_count == 2
         host_backend.assert_not_called()
         sandbox.execute_command.assert_not_called()
 
-    def test_skill_deps_install_in_container_only_once_per_package(self):
+    def test_skill_deps_install_in_workspace_only_once_per_package(self):
         from deepagents.backends.protocol import ExecuteResponse
 
-        from apps.opspilot.services.python_sandbox.skill_backend import ContainerSkillBackend
+        from apps.opspilot.services.python_sandbox.skill_backend import LocalSkillBackend
 
-        sandbox = MagicMock()
+        sandbox = MagicMock(workspace="/tmp/opspilot-test")
         sandbox.execute_command.side_effect = lambda *args, **kwargs: ExecuteResponse(output="ok", exit_code=0)
-        backend = ContainerSkillBackend(sandbox)
+        backend = LocalSkillBackend(sandbox)
         backend.set_packages([{"name": "demo", "required_python_packages": ["pandas"]}])
         backend.execute("python /skills/demo/script.py")
         backend.execute("python /skills/demo/script.py")
@@ -230,7 +230,7 @@ class TestSkillBackendSources:
         error = RuntimeError("boom")
         with (
             patch("deepagents.backends.LocalShellBackend") as host_backend,
-            patch("apps.opspilot.services.python_sandbox.provisioning.materialize_container_skill", side_effect=error),
+            patch("apps.opspilot.services.python_sandbox.provisioning.materialize_local_skill", side_effect=error),
         ):
             with pytest.raises(RuntimeError) as caught:
                 node._build_skill_backend_and_sources(_request(), packages=[{"name": "a"}], sandbox=MagicMock())

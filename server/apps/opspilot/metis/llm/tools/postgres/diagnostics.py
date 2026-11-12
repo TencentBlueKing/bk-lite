@@ -1,15 +1,14 @@
 """PostgreSQL故障诊断工具"""
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
-from apps.opspilot.metis.llm.tools.postgres.utils import (
-    execute_readonly_query,
-    safe_json_dumps,
-    format_duration,
-)
+
+from apps.opspilot.metis.llm.tools.postgres.utils import execute_readonly_query, format_duration, safe_json_dumps
 
 
 @tool()
-def diagnose_slow_queries(threshold_ms: int = 1000, limit: int = 20, config: RunnableConfig = None):
+def diagnose_slow_queries(
+    threshold_ms: int = 1000, limit: int = 20, config: RunnableConfig = None, instance_name: str = None, instance_id: str = None
+):
     """
     诊断慢查询
 
@@ -42,7 +41,7 @@ def diagnose_slow_queries(threshold_ms: int = 1000, limit: int = 20, config: Run
         - rows: 平均返回行数
     """
     query = """
-    SELECT 
+    SELECT
         substring(query, 1, 200) as query,
         calls,
         total_exec_time as total_time,
@@ -58,8 +57,7 @@ def diagnose_slow_queries(threshold_ms: int = 1000, limit: int = 20, config: Run
     """
 
     try:
-        results = execute_readonly_query(
-            query, params=(threshold_ms, limit), config=config)
+        results = execute_readonly_query(query, params=(threshold_ms, limit), config=config, instance_name=instance_name, instance_id=instance_id)
 
         # 格式化时间
         for row in results:
@@ -67,23 +65,18 @@ def diagnose_slow_queries(threshold_ms: int = 1000, limit: int = 20, config: Run
             row["mean_time_formatted"] = format_duration(row["mean_time"])
             row["max_time_formatted"] = format_duration(row["max_time"])
 
-        return safe_json_dumps({
-            "threshold_ms": threshold_ms,
-            "total_slow_queries": len(results),
-            "slow_queries": results
-        })
+        return safe_json_dumps({"threshold_ms": threshold_ms, "total_slow_queries": len(results), "slow_queries": results})
     except Exception as e:
         error_msg = str(e)
         if "pg_stat_statements" in error_msg:
-            return safe_json_dumps({
-                "error": "pg_stat_statements扩展未安装或未启用",
-                "suggestion": "请在postgresql.conf中添加 shared_preload_libraries = 'pg_stat_statements' 并重启数据库"
-            })
+            return safe_json_dumps(
+                {"error": "pg_stat_statements扩展未安装或未启用", "suggestion": "请在postgresql.conf中添加 shared_preload_libraries = 'pg_stat_statements' 并重启数据库"}
+            )
         return safe_json_dumps({"error": error_msg})
 
 
 @tool()
-def diagnose_lock_conflicts(config: RunnableConfig = None):
+def diagnose_lock_conflicts(config: RunnableConfig = None, instance_name: str = None, instance_id: str = None):
     """
     检测锁冲突和阻塞
 
@@ -105,7 +98,7 @@ def diagnose_lock_conflicts(config: RunnableConfig = None):
         JSON格式,包含锁冲突列表
     """
     query = """
-    SELECT 
+    SELECT
         blocked_locks.pid AS blocked_pid,
         blocked_activity.usename AS blocked_user,
         blocking_locks.pid AS blocking_pid,
@@ -118,7 +111,7 @@ def diagnose_lock_conflicts(config: RunnableConfig = None):
         NOW() - blocked_activity.query_start AS blocked_duration
     FROM pg_catalog.pg_locks blocked_locks
     JOIN pg_catalog.pg_stat_activity blocked_activity ON blocked_activity.pid = blocked_locks.pid
-    JOIN pg_catalog.pg_locks blocking_locks 
+    JOIN pg_catalog.pg_locks blocking_locks
         ON blocking_locks.locktype = blocked_locks.locktype
         AND blocking_locks.database IS NOT DISTINCT FROM blocked_locks.database
         AND blocking_locks.relation IS NOT DISTINCT FROM blocked_locks.relation
@@ -135,23 +128,19 @@ def diagnose_lock_conflicts(config: RunnableConfig = None):
     """
 
     try:
-        results = execute_readonly_query(query, config=config)
+        results = execute_readonly_query(query, config=config, instance_name=instance_name, instance_id=instance_id)
 
         # 格式化持续时间
         for row in results:
             row["blocked_duration"] = str(row["blocked_duration"])
 
-        return safe_json_dumps({
-            "total_blocked_queries": len(results),
-            "lock_conflicts": results,
-            "has_conflicts": len(results) > 0
-        })
+        return safe_json_dumps({"total_blocked_queries": len(results), "lock_conflicts": results, "has_conflicts": len(results) > 0})
     except Exception as e:
         return safe_json_dumps({"error": str(e)})
 
 
 @tool()
-def diagnose_connection_issues(config: RunnableConfig = None):
+def diagnose_connection_issues(config: RunnableConfig = None, instance_name: str = None, instance_id: str = None):
     """
     诊断连接池问题
 
@@ -177,7 +166,7 @@ def diagnose_connection_issues(config: RunnableConfig = None):
 
     # 当前连接统计
     connections_query = """
-    SELECT 
+    SELECT
         datname as database,
         usename as username,
         state,
@@ -193,7 +182,7 @@ def diagnose_connection_issues(config: RunnableConfig = None):
 
     # 长时间运行的查询
     long_running_query = """
-    SELECT 
+    SELECT
         pid,
         usename,
         datname,
@@ -201,7 +190,7 @@ def diagnose_connection_issues(config: RunnableConfig = None):
         query,
         NOW() - query_start AS duration
     FROM pg_stat_activity
-    WHERE state != 'idle' 
+    WHERE state != 'idle'
         AND query_start IS NOT NULL
         AND NOW() - query_start > interval '5 minutes'
     ORDER BY duration DESC
@@ -209,10 +198,9 @@ def diagnose_connection_issues(config: RunnableConfig = None):
     """
 
     try:
-        max_conn = execute_readonly_query(max_conn_query, config=config)
-        connections = execute_readonly_query(connections_query, config=config)
-        long_running = execute_readonly_query(
-            long_running_query, config=config)
+        max_conn = execute_readonly_query(max_conn_query, config=config, instance_name=instance_name, instance_id=instance_id)
+        connections = execute_readonly_query(connections_query, config=config, instance_name=instance_name, instance_id=instance_id)
+        long_running = execute_readonly_query(long_running_query, config=config, instance_name=instance_name, instance_id=instance_id)
 
         # 计算总连接数
         total_connections = sum(row["connection_count"] for row in connections)
@@ -223,20 +211,22 @@ def diagnose_connection_issues(config: RunnableConfig = None):
         for row in long_running:
             row["duration"] = str(row["duration"])
 
-        return safe_json_dumps({
-            "max_connections": max_connections,
-            "current_connections": total_connections,
-            "usage_percent": usage_percent,
-            "is_near_limit": usage_percent > 80,
-            "connections_by_state": connections,
-            "long_running_queries": long_running
-        })
+        return safe_json_dumps(
+            {
+                "max_connections": max_connections,
+                "current_connections": total_connections,
+                "usage_percent": usage_percent,
+                "is_near_limit": usage_percent > 80,
+                "connections_by_state": connections,
+                "long_running_queries": long_running,
+            }
+        )
     except Exception as e:
         return safe_json_dumps({"error": str(e)})
 
 
 @tool()
-def check_database_health(config: RunnableConfig = None):
+def check_database_health(config: RunnableConfig = None, instance_name: str = None, instance_id: str = None):
     """
     整体数据库健康检查
 
@@ -259,7 +249,7 @@ def check_database_health(config: RunnableConfig = None):
     """
     # 基础统计
     stats_query = """
-    SELECT 
+    SELECT
         (SELECT setting::int FROM pg_settings WHERE name = 'max_connections') as max_connections,
         (SELECT count(*) FROM pg_stat_activity) as current_connections,
         (SELECT count(*) FROM pg_stat_activity WHERE state = 'active') as active_queries,
@@ -270,7 +260,7 @@ def check_database_health(config: RunnableConfig = None):
 
     # 死锁统计
     deadlocks_query = """
-    SELECT 
+    SELECT
         datname as database,
         deadlocks
     FROM pg_stat_database
@@ -280,7 +270,7 @@ def check_database_health(config: RunnableConfig = None):
 
     # 事务年龄(检测未提交事务)
     transaction_age_query = """
-    SELECT 
+    SELECT
         pid,
         usename,
         datname,
@@ -295,10 +285,9 @@ def check_database_health(config: RunnableConfig = None):
     """
 
     try:
-        stats = execute_readonly_query(stats_query, config=config)[0]
-        deadlocks = execute_readonly_query(deadlocks_query, config=config)
-        old_transactions = execute_readonly_query(
-            transaction_age_query, config=config)
+        stats = execute_readonly_query(stats_query, config=config, instance_name=instance_name, instance_id=instance_id)[0]
+        deadlocks = execute_readonly_query(deadlocks_query, config=config, instance_name=instance_name, instance_id=instance_id)
+        old_transactions = execute_readonly_query(transaction_age_query, config=config, instance_name=instance_name, instance_id=instance_id)
 
         # 格式化事务年龄
         for row in old_transactions:
@@ -309,8 +298,7 @@ def check_database_health(config: RunnableConfig = None):
         health_score = 100
 
         # 连接数检查
-        conn_usage = (stats["current_connections"] /
-                      stats["max_connections"]) * 100
+        conn_usage = (stats["current_connections"] / stats["max_connections"]) * 100
         if conn_usage > 90:
             issues.append("连接数超过90%")
             health_score -= 20
@@ -341,25 +329,27 @@ def check_database_health(config: RunnableConfig = None):
         else:
             health_status = "critical"
 
-        return safe_json_dumps({
-            "health_status": health_status,
-            "health_score": health_score,
-            "statistics": stats,
-            "issues": issues,
-            "deadlocks": deadlocks,
-            "old_transactions": old_transactions,
-            "recommendations": [
-                "定期监控连接数使用情况" if conn_usage > 70 else None,
-                "排查并关闭空闲事务" if stats["idle_in_transaction"] > 5 else None,
-                "分析长时间运行的查询" if stats["long_running_queries"] > 0 else None,
-            ]
-        })
+        return safe_json_dumps(
+            {
+                "health_status": health_status,
+                "health_score": health_score,
+                "statistics": stats,
+                "issues": issues,
+                "deadlocks": deadlocks,
+                "old_transactions": old_transactions,
+                "recommendations": [
+                    "定期监控连接数使用情况" if conn_usage > 70 else None,
+                    "排查并关闭空闲事务" if stats["idle_in_transaction"] > 5 else None,
+                    "分析长时间运行的查询" if stats["long_running_queries"] > 0 else None,
+                ],
+            }
+        )
     except Exception as e:
         return safe_json_dumps({"error": str(e)})
 
 
 @tool()
-def check_replication_lag(config: RunnableConfig = None):
+def check_replication_lag(config: RunnableConfig = None, instance_name: str = None, instance_id: str = None):
     """
     检查主从复制延迟
 
@@ -381,7 +371,7 @@ def check_replication_lag(config: RunnableConfig = None):
     """
     # 复制状态查询(主库视角)
     replication_query = """
-    SELECT 
+    SELECT
         client_addr,
         client_hostname,
         state,
@@ -397,34 +387,24 @@ def check_replication_lag(config: RunnableConfig = None):
     """
 
     try:
-        results = execute_readonly_query(replication_query, config=config)
+        results = execute_readonly_query(replication_query, config=config, instance_name=instance_name, instance_id=instance_id)
 
         if not results:
-            return safe_json_dumps({
-                "has_replication": False,
-                "message": "未检测到复制配置或当前为从库"
-            })
+            return safe_json_dumps({"has_replication": False, "message": "未检测到复制配置或当前为从库"})
 
         # 格式化延迟时间
         for row in results:
-            row["write_lag"] = str(
-                row["write_lag"]) if row["write_lag"] else "0"
-            row["flush_lag"] = str(
-                row["flush_lag"]) if row["flush_lag"] else "0"
-            row["replay_lag"] = str(
-                row["replay_lag"]) if row["replay_lag"] else "0"
+            row["write_lag"] = str(row["write_lag"]) if row["write_lag"] else "0"
+            row["flush_lag"] = str(row["flush_lag"]) if row["flush_lag"] else "0"
+            row["replay_lag"] = str(row["replay_lag"]) if row["replay_lag"] else "0"
 
-        return safe_json_dumps({
-            "has_replication": True,
-            "replica_count": len(results),
-            "replicas": results
-        })
+        return safe_json_dumps({"has_replication": True, "replica_count": len(results), "replicas": results})
     except Exception as e:
         return safe_json_dumps({"error": str(e)})
 
 
 @tool()
-def diagnose_autovacuum_issues(config: RunnableConfig = None):
+def diagnose_autovacuum_issues(config: RunnableConfig = None, instance_name: str = None, instance_id: str = None):
     """
     诊断AUTOVACUUM问题
 
@@ -446,7 +426,7 @@ def diagnose_autovacuum_issues(config: RunnableConfig = None):
         JSON格式,包含VACUUM诊断信息
     """
     query = """
-    SELECT 
+    SELECT
         schemaname,
         relname as table_name,
         n_live_tup as live_tuples,
@@ -465,36 +445,29 @@ def diagnose_autovacuum_issues(config: RunnableConfig = None):
     """
 
     try:
-        results = execute_readonly_query(query, config=config)
+        results = execute_readonly_query(query, config=config, instance_name=instance_name, instance_id=instance_id)
 
         # 格式化时间
         for row in results:
-            row["last_vacuum"] = str(
-                row["last_vacuum"]) if row["last_vacuum"] else "Never"
-            row["last_autovacuum"] = str(
-                row["last_autovacuum"]) if row["last_autovacuum"] else "Never"
-            row["last_analyze"] = str(
-                row["last_analyze"]) if row["last_analyze"] else "Never"
-            row["last_autoanalyze"] = str(
-                row["last_autoanalyze"]) if row["last_autoanalyze"] else "Never"
-            row["time_since_vacuum"] = str(
-                row["time_since_vacuum"]) if row["time_since_vacuum"] else "Never"
+            row["last_vacuum"] = str(row["last_vacuum"]) if row["last_vacuum"] else "Never"
+            row["last_autovacuum"] = str(row["last_autovacuum"]) if row["last_autovacuum"] else "Never"
+            row["last_analyze"] = str(row["last_analyze"]) if row["last_analyze"] else "Never"
+            row["last_autoanalyze"] = str(row["last_autoanalyze"]) if row["last_autoanalyze"] else "Never"
+            row["time_since_vacuum"] = str(row["time_since_vacuum"]) if row["time_since_vacuum"] else "Never"
 
-        return safe_json_dumps({
-            "tables_need_vacuum": len(results),
-            "tables": results,
-            "recommendations": [
-                "对死元组比例>10%的表手动执行VACUUM",
-                "检查autovacuum配置参数",
-                "确保autovacuum未被长事务阻塞"
-            ]
-        })
+        return safe_json_dumps(
+            {
+                "tables_need_vacuum": len(results),
+                "tables": results,
+                "recommendations": ["对死元组比例>10%的表手动执行VACUUM", "检查autovacuum配置参数", "确保autovacuum未被长事务阻塞"],
+            }
+        )
     except Exception as e:
         return safe_json_dumps({"error": str(e)})
 
 
 @tool()
-def get_failed_transactions(limit: int = 20, config: RunnableConfig = None):
+def get_failed_transactions(limit: int = 20, config: RunnableConfig = None, instance_name: str = None, instance_id: str = None):
     """
     获取失败和回滚的事务信息
 
@@ -511,7 +484,7 @@ def get_failed_transactions(limit: int = 20, config: RunnableConfig = None):
         JSON格式,包含失败事务统计
     """
     query = """
-    SELECT 
+    SELECT
         datname as database,
         xact_commit as committed_transactions,
         xact_rollback as rolled_back_transactions,
@@ -528,11 +501,8 @@ def get_failed_transactions(limit: int = 20, config: RunnableConfig = None):
     """
 
     try:
-        results = execute_readonly_query(query, params=(limit,), config=config)
+        results = execute_readonly_query(query, params=(limit,), config=config, instance_name=instance_name, instance_id=instance_id)
 
-        return safe_json_dumps({
-            "databases": results,
-            "total_databases": len(results)
-        })
+        return safe_json_dumps({"databases": results, "total_databases": len(results)})
     except Exception as e:
         return safe_json_dumps({"error": str(e)})
