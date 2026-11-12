@@ -7,7 +7,7 @@ import {
   isScriptCollectConfig,
   normalizeScriptCollectFormFields,
   omitPersistedScriptTimeout,
-  omitPersistedWindowsRunAs,
+  omitUnspecifiedScriptRunAs,
   ScriptIntervalField
 } from '@/app/monitor/(pages)/integration/list/detail/configure/scriptCollectForm';
 import { hydrateScriptCollectFormValues } from '@/app/monitor/(pages)/integration/list/detail/configure/scriptCollectHydrate';
@@ -927,7 +927,7 @@ export const usePluginFromJson = () => {
                 }
               );
             }
-            omitPersistedWindowsRunAs(result, filledFormData);
+            omitUnspecifiedScriptRunAs(result, filledFormData);
             omitPersistedScriptTimeout(
               result,
               filledFormData,
