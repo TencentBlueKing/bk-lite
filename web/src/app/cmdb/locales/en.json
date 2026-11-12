@@ -114,6 +114,7 @@
     "closeAll": "Retract all",
     "more": "More",
     "batchEdit": "Batch Edit",
+    "selectionBarClear": "Clear selection",
     "searchTitle": "Asset Search",
     "assetSearchTxt": "Please enter the keywords...",
     "AssetSearch": {
