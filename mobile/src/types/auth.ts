@@ -1,4 +1,5 @@
 import { LoginUserInfo } from './user';
+import type { ExternalLoginResult } from '@/auth/im-login/types';
 import type { OrganizationGroup } from '@/utils/organization';
 
 export type AuthStep = 'login' | 'reset-password' | 'otp-verification';
@@ -7,6 +8,7 @@ export interface AuthLoginCredentials {
   username: string;
   password: string;
   domain: string;
+  bindingId?: number;
 }
 
 export type AuthLoginResult =
@@ -33,6 +35,7 @@ export interface AuthContextType {
     includeChildren: boolean;
   }) => boolean;
   login: (credentials: AuthLoginCredentials) => Promise<AuthLoginResult>;
+  completeLogin: (loginResult: ExternalLoginResult) => Promise<AuthLoginResult>;
   logout: () => Promise<void>;
   updateUserInfo: (updates: Partial<LoginUserInfo>) => Promise<void>;
 }

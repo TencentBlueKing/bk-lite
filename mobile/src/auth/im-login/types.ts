@@ -39,6 +39,11 @@ export interface ExternalLoginResult {
   temporary_pwd?: boolean;
   enable_otp?: boolean;
   require_otp?: boolean;
+  challenge_id?: string;
+  qr_code?: string;
+  need_binding?: boolean;
+  otp_setup_key?: string;
+  otp_recommended_apps?: string[];
   qrcode?: boolean;
 }
 

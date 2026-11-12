@@ -2,6 +2,7 @@ import { detectImContainer } from './container';
 import type { PublicLoginBinding } from './types';
 
 const BUILTIN_PROVIDER_KEY = 'bk_lite_builtin';
+const PASSWORD_PROVIDER_KEYS = new Set(['ad']);
 
 /** OAuth that only works inside the matching IM in-app browser (not system Safari/Chrome). */
 const CONTAINER_BOUND_OAUTH_PROVIDERS = new Set(['wecom']);
@@ -12,6 +13,12 @@ function evidenceModes(binding: PublicLoginBinding): string[] {
 
 export function isBuiltinLoginBinding(binding?: PublicLoginBinding | null): boolean {
   return binding?.provider_key === BUILTIN_PROVIDER_KEY;
+}
+
+/** Username and password, same shape as the PC AD form. Not plugin-rendered. */
+export function isPasswordLoginBinding(binding?: PublicLoginBinding | null): boolean {
+  return isBuiltinLoginBinding(binding)
+    || Boolean(binding?.provider_key && PASSWORD_PROVIDER_KEYS.has(binding.provider_key));
 }
 
 export function selectJsapiBinding(
@@ -42,7 +49,7 @@ export function isMobileBindingSupportedOnClient(
   binding: PublicLoginBinding,
   userAgent: string,
 ): boolean {
-  if (isBuiltinLoginBinding(binding)) return true;
+  if (isPasswordLoginBinding(binding)) return true;
   if (!evidenceModes(binding).includes('oauth')) return false;
   if (!CONTAINER_BOUND_OAUTH_PROVIDERS.has(binding.provider_key)) return true;
   const container = detectImContainer(userAgent || '');

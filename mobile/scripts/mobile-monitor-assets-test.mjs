@@ -420,7 +420,10 @@ test('实例列表面板把摘要指标放进表格列并支持横向滚动', as
   assert.match(panel, /data-instance-table-scroll/);
   assert.doesNotMatch(panel, /styles\.instanceMetrics/);
   assert.doesNotMatch(panel, /primaryField/);
-  assert.match(styles, /\.instanceTableScroll\s*\{[^}]*overflow-x:\s*auto/s);
+  assert.match(panel, /instanceScroll/);
+  assert.match(styles, /\.instanceScroll\s*\{[^}]*overflow-x:\s*auto/s);
+  assert.doesNotMatch(styles, /\.instanceTableScroll\s*\{[^}]*overflow-x:\s*auto/s);
+  assert.match(styles, /\.instanceTableHead\s*\{[^}]*position:\s*sticky/s);
   assert.match(styles, /\.colSticky\s*\{[^}]*position:\s*sticky/s);
   assert.match(adapter, /add_metrics:\s*true/);
   assert.match(adapter, /metrics:\s*\(Array\.isArray\(meta\.metrics\)/);
@@ -513,7 +516,7 @@ test('监控与资产根页由限高滚动容器承载下拉刷新内容', async
     readProjectFile('src/features/assets/all-assets-panel.tsx'),
     readProjectFile('src/features/assets/assets.module.css'),
   ]);
-  assert.match(panel, /<div[\s\S]*className=\{styles\.scroll\}[\s\S]*?<MobilePullToRefresh/);
+  assert.match(panel, /<div[\s\S]*styles\.scroll[\s\S]*?<MobilePullToRefresh/);
   assert.doesNotMatch(panel, /<MobilePullToRefresh[^>]*><div className=\{styles\.scroll\}>/);
   assert.match(assets, /<div[\s\S]*className=\{styles\.scroll\}[\s\S]*?<MobilePullToRefresh/);
   assert.match(assetPanel, /<div[\s\S]*className=\{styles\.scroll\}[\s\S]*?<MobilePullToRefresh/);
