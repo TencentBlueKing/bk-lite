@@ -131,7 +131,7 @@ def generate_attachment_file(
                  Defaults to "md". Use "txt" for a text file; do not substitute md.
                  Use "pptx" when the user asks for PPT/PowerPoint. Never downgrade pptx to docx.
     - title:    Optional document title used as a header in PDF/Word output.
-    - sandbox_path: Existing file under /workspace to deliver byte-for-byte. When set,
+    - sandbox_path: Existing file under the current task working directory to deliver byte-for-byte. When set,
       content must be empty; file_type must match the file's actual format.
     """
 

@@ -4,7 +4,7 @@ from apps.opspilot.metis.llm.tools.python.executor import _execute_python_code
 from apps.opspilot.metis.llm.tools.shell import shell_tools
 
 
-def test_shell_execute_uses_task_container_without_host_execution(mocker, capsys, caplog):
+def test_shell_execute_uses_shared_runtime_without_legacy_shell(mocker, capsys, caplog):
     from types import SimpleNamespace
 
     sandbox = mocker.Mock()
@@ -32,7 +32,7 @@ def test_shell_execute_uses_task_container_without_host_execution(mocker, capsys
         "rm -rf /workspace/temporary",
     ],
 )
-def test_shell_commands_are_delegated_to_container_without_host_blacklist(command, mocker):
+def test_shell_commands_are_delegated_to_runtime_without_command_blacklist(command, mocker):
     from types import SimpleNamespace
 
     sandbox = mocker.Mock()
@@ -49,15 +49,15 @@ def test_shell_rejects_empty_commands_before_execution(commands, mocker):
     sandbox.execute_command.assert_not_called()
 
 
-def test_shell_missing_or_unavailable_container_never_falls_back(mocker):
+def test_shell_missing_or_unavailable_workspace_never_falls_back(mocker):
     from apps.opspilot.services.python_sandbox.runtime import SandboxUnavailable
 
     host = mocker.patch("subprocess.run", side_effect=AssertionError("host shell"))
-    assert "没有配置沙箱" in shell_tools.shell_execute.invoke({"commands": ["echo test"]}, config={"configurable": {}})
+    assert "没有配置工作区" in shell_tools.shell_execute.invoke({"commands": ["echo test"]}, config={"configurable": {}})
     sandbox = mocker.Mock()
     sandbox.execute_command.side_effect = SandboxUnavailable("secret-daemon-error")
     result = shell_tools.shell_execute.invoke({"commands": ["echo test"]}, config={"configurable": {"python_sandbox": sandbox}})
-    assert "隔离环境不可用" in result and "secret-daemon-error" not in result
+    assert "执行环境不可用" in result and "secret-daemon-error" not in result
     host.assert_not_called()
 
 

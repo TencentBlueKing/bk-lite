@@ -1,7 +1,7 @@
-"""Real Docker + temporary MinIO + SQLite vertical verification (no LLM/storage mocks).
+"""Local execution + temporary MinIO + SQLite vertical verification (no LLM/storage mocks).
 
-Run from server: PYTHONPATH=. .venv/bin/python apps/opspilot/tests/integration/verify_container_attachments.py
-Requires the production sandbox image, Docker, and the minio binary on PATH.
+Run from server: PYTHONPATH=. .venv/bin/python apps/opspilot/tests/integration/verify_local_attachments.py
+Requires the Server Python environment, curl, and the minio binary on PATH.
 Only an isolated temporary bucket/database are used. Credentials are ephemeral.
 """
 import os
@@ -22,8 +22,8 @@ def main():
         with socket.socket() as listener:
             listener.bind(("0.0.0.0", 0))
             port = listener.getsockname()[1]
-        # An address reachable both by the server and the execution container.
-        host = os.getenv("OPSPILOT_TEST_STORAGE_HOST") or socket.gethostbyname(socket.gethostname())
+        # Both Server and task processes access this temporary local object store.
+        host = os.getenv("OPSPILOT_TEST_STORAGE_HOST") or "127.0.0.1"
         endpoint = f"{host}:{port}"
         access = "test" + secrets.token_hex(8)
         secret = secrets.token_hex(24)
@@ -132,7 +132,7 @@ def verify():
     print("PASS: conversation/owner/team isolation, forged grant rejected, object is GET-only")
 
     runtime = PythonSandbox(attachments=entries)
-    container_id = None
+    workspace = runtime.workspace
     try:
         package = {
             "name": "modify-csv",
@@ -140,7 +140,7 @@ def verify():
                 "modify.py": (
                     "import csv, pathlib, sys\n"
                     "rows=list(csv.DictReader(open(sys.argv[1])))\n"
-                    'pathlib.Path("/workspace/report.html").write_text("<html><meta charset=\\"utf-8\\"><body>合计："'
+                    'pathlib.Path("report.html").write_text("<html><meta charset=\\"utf-8\\"><body>合计："'
                     '+str(sum(int(r["value"]) for r in rows))+"</body></html>")\n'
                 )
             },
@@ -150,11 +150,10 @@ def verify():
             packages=[package],
             sandbox=runtime,
         )
-        container_id = runtime._container.id
-        assert sources == ["/workspace/skills/"]
-        assert runtime.execute("import pathlib; pathlib.Path('/workspace/attachments/downloads').exists()") == "False"
+        assert sources == [workspace + "/skills/"]
+        assert runtime.execute("import pathlib; pathlib.Path('attachments/downloads').exists()") == "False"
         for item in denied:
-            assert backend.execute(f"python /workspace/attachments/read.py upload-{item.pk}").exit_code != 0
+            assert backend.execute(f"python attachments/read.py upload-{item.pk}").exit_code != 0
         import asyncio
         import json
         import shlex
@@ -171,22 +170,22 @@ def verify():
             def bind_tools(self, tools, **kwargs):
                 return self
 
-        path = f"/workspace/attachments/downloads/upload-{allowed.pk}/source.csv"
-        url_code = "import json; print(json.load(open('/workspace/attachments/index.json'))[0]['url'])"
+        path = f"{workspace}/attachments/downloads/upload-{allowed.pk}/source.csv"
+        url_code = "import json; print(json.load(open('attachments/index.json'))[0]['url'])"
         calls = [
             (
                 "shell_execute",
                 {
                     "commands": [
                         "url=$(python -c " + shlex.quote(url_code) + ")",
-                        'curl -fsS "$url" -o /workspace/curl-source.csv',
-                        f"python /workspace/attachments/read.py upload-{allowed.pk}",
+                        'curl -fsS "$url" -o curl-source.csv',
+                        f"python attachments/read.py upload-{allowed.pk}",
                     ]
                 },
             ),
             ("execute", {"command": "python /skills/modify-csv/scripts/modify.py " + shlex.quote(path)}),
-            ("python_execute_direct", {"code": "open('/workspace/report.html').read()"}),
-            ("generate_attachment_file", {"filename": "report.html", "file_type": "html", "sandbox_path": "/workspace/report.html"}),
+            ("python_execute_direct", {"code": "open('report.html').read()"}),
+            ("generate_attachment_file", {"filename": "report.html", "file_type": "html", "sandbox_path": workspace + "/report.html"}),
         ]
         responses = [
             AIMessage(content="", tool_calls=[{"name": name, "args": args, "id": str(index)}]) for index, (name, args) in enumerate(calls)
@@ -204,11 +203,11 @@ def verify():
         )
         outputs = [message for message in state["messages"] if isinstance(message, ToolMessage)]
         assert len(outputs) == 4 and all(message.status != "error" for message in outputs)
-        assert runtime.read_workspace_file("/workspace/curl-source.csv") == source
+        assert runtime.read_workspace_file(workspace + "/curl-source.csv") == source
         assert "合计：7" in outputs[2].content
         result = json.loads(outputs[3].content)
         saved = WorkflowAttachmentAsset.objects.get(pk=result["attachment_asset_id"])
-        expected = runtime.read_workspace_file("/workspace/report.html")
+        expected = runtime.read_workspace_file(workspace + "/report.html")
         with saved.file.open("rb") as stream:
             assert stream.read() == expected
         download_token = result["file_url"].rstrip("/").rsplit("/", 1)[-1]
@@ -229,14 +228,7 @@ def verify():
         print("PASS: shell_execute curl/authorized MinIO read -> skill execute modification -> Python read -> real attachment storage/download")
     finally:
         runtime.close()
-    import docker
-
-    try:
-        docker.from_env().containers.get(container_id)
-    except docker.errors.NotFound:
-        pass
-    else:
-        raise AssertionError("run container leaked")
+    assert not Path(workspace).exists(), "run workspace leaked"
 
     entries = resolve_attachment_grant(issue_attachment_grant(owner_key="alice", team_id="team-a", conversation=conversation))
     generated = next(item for item in entries if item["id"] == f"generated-{saved.pk}")
@@ -244,17 +236,14 @@ def verify():
         "generated-"
     )
     second = PythonSandbox(attachments=entries)
+    second_workspace = second.workspace
     try:
-        fetched = second.execute_command("python /workspace/attachments/read.py " + generated["id"])
+        fetched = second.execute_command("python attachments/read.py " + generated["id"])
         assert fetched.exit_code == 0
-        script = (
-            "from pathlib import Path; p=Path("
-            + repr(fetched.output)
-            + '); Path("/workspace/report.html").write_text(p.read_text().replace("合计", "总计"))'
-        )
+        script = "from pathlib import Path; p=Path(" + repr(fetched.output) + '); Path("report.html").write_text(p.read_text().replace("合计", "总计"))'
         second.execute(script)
         result2 = generate_attachment_file.invoke(
-            {"filename": "report.html", "file_type": "html", "sandbox_path": "/workspace/report.html"},
+            {"filename": "report.html", "file_type": "html", "sandbox_path": second_workspace + "/report.html"},
             config={
                 "configurable": {
                     "execution_id": "sandbox-test-2",
@@ -273,7 +262,8 @@ def verify():
         print("PASS: next conversation turn -> authorized generated attachment -> second modification -> new stored version; originals preserved")
     finally:
         second.close()
-    print("PASS: containers removed after both runs")
+    assert not Path(second_workspace).exists()
+    print("PASS: local workspaces removed after both runs; no Docker required")
 
 
 if __name__ == "__main__":

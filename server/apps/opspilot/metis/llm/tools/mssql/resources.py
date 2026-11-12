@@ -37,7 +37,7 @@ def _format_setting_value(value, unit: str | None) -> str | None:
 
 
 @tool()
-def get_current_database_info(config: RunnableConfig = None):
+def get_current_database_info(config: RunnableConfig = None, instance_name: str = None, instance_id: str = None):
     """
     获取当前连接的数据库信息
 
@@ -69,7 +69,7 @@ def get_current_database_info(config: RunnableConfig = None):
     """
 
     try:
-        result = execute_readonly_query(query, config=config)[0]
+        result = execute_readonly_query(query, config=config, instance_name=instance_name, instance_id=instance_id)[0]
 
         return safe_json_dumps(
             {
@@ -86,7 +86,7 @@ def get_current_database_info(config: RunnableConfig = None):
 
 
 @tool()
-def list_mssql_databases(config: RunnableConfig = None):
+def list_mssql_databases(config: RunnableConfig = None, instance_name: str = None, instance_id: str = None):
     """
     列出所有数据库及其基本信息
 
@@ -133,7 +133,7 @@ def list_mssql_databases(config: RunnableConfig = None):
     """
 
     try:
-        results = execute_readonly_query(query, config=config)
+        results = execute_readonly_query(query, config=config, instance_name=instance_name, instance_id=instance_id)
 
         # 格式化大小
         for row in results:
@@ -145,7 +145,9 @@ def list_mssql_databases(config: RunnableConfig = None):
 
 
 @tool()
-def list_mssql_tables(database: str = None, schema_name: str = "dbo", config: RunnableConfig = None):
+def list_mssql_tables(
+    database: str = None, schema_name: str = "dbo", config: RunnableConfig = None, instance_name: str = None, instance_id: str = None
+):
     """
     列出指定数据库中的表及其基本信息
 
@@ -189,7 +191,9 @@ def list_mssql_tables(database: str = None, schema_name: str = "dbo", config: Ru
     """
 
     try:
-        results = execute_readonly_query(query, params=(schema_name,), config=config, database=database)
+        results = execute_readonly_query(
+            query, params=(schema_name,), config=config, database=database, instance_name=instance_name, instance_id=instance_id
+        )
 
         # 格式化大小
         for row in results:
@@ -202,7 +206,14 @@ def list_mssql_tables(database: str = None, schema_name: str = "dbo", config: Ru
 
 
 @tool()
-def list_mssql_indexes(database: str = None, table: str = None, schema_name: str = "dbo", config: RunnableConfig = None):
+def list_mssql_indexes(
+    database: str = None,
+    table: str = None,
+    schema_name: str = "dbo",
+    config: RunnableConfig = None,
+    instance_name: str = None,
+    instance_id: str = None,
+):
     """
     列出索引信息
 
@@ -279,7 +290,7 @@ def list_mssql_indexes(database: str = None, table: str = None, schema_name: str
         params = (schema_name,)
 
     try:
-        results = execute_readonly_query(query, params=params, config=config, database=database)
+        results = execute_readonly_query(query, params=params, config=config, database=database, instance_name=instance_name, instance_id=instance_id)
 
         # 格式化大小
         for row in results:
@@ -292,7 +303,7 @@ def list_mssql_indexes(database: str = None, table: str = None, schema_name: str
 
 
 @tool()
-def list_mssql_schemas(database: str = None, config: RunnableConfig = None):
+def list_mssql_schemas(database: str = None, config: RunnableConfig = None, instance_name: str = None, instance_id: str = None):
     """
     列出所有Schema
 
@@ -327,7 +338,7 @@ def list_mssql_schemas(database: str = None, config: RunnableConfig = None):
     """
 
     try:
-        results = execute_readonly_query(query, config=config, database=database)
+        results = execute_readonly_query(query, config=config, database=database, instance_name=instance_name, instance_id=instance_id)
 
         return safe_json_dumps({"database": database or "current", "total_schemas": len(results), "schemas": results})
     except Exception as e:
@@ -335,7 +346,7 @@ def list_mssql_schemas(database: str = None, config: RunnableConfig = None):
 
 
 @tool()
-def get_table_structure(table: str, schema_name: str = "dbo", config: RunnableConfig = None):
+def get_table_structure(table: str, schema_name: str = "dbo", config: RunnableConfig = None, instance_name: str = None, instance_id: str = None):
     """
     获取表结构详情
 
@@ -413,8 +424,12 @@ def get_table_structure(table: str, schema_name: str = "dbo", config: RunnableCo
     """
 
     try:
-        columns = execute_readonly_query(columns_query, params=(schema_name, table), config=config)
-        constraints = execute_readonly_query(constraints_query, params=(schema_name, table, schema_name, table), config=config)
+        columns = execute_readonly_query(
+            columns_query, params=(schema_name, table), config=config, instance_name=instance_name, instance_id=instance_id
+        )
+        constraints = execute_readonly_query(
+            constraints_query, params=(schema_name, table, schema_name, table), config=config, instance_name=instance_name, instance_id=instance_id
+        )
 
         return safe_json_dumps({"schema": schema_name, "table": table, "columns": columns, "constraints": constraints})
     except Exception as e:
@@ -422,7 +437,7 @@ def get_table_structure(table: str, schema_name: str = "dbo", config: RunnableCo
 
 
 @tool()
-def list_mssql_logins(config: RunnableConfig = None):
+def list_mssql_logins(config: RunnableConfig = None, instance_name: str = None, instance_id: str = None):
     """
     列出数据库登录账户信息
 
@@ -456,7 +471,7 @@ def list_mssql_logins(config: RunnableConfig = None):
     """
 
     try:
-        results = execute_readonly_query(query, config=config)
+        results = execute_readonly_query(query, config=config, instance_name=instance_name, instance_id=instance_id)
 
         # 格式化日期
         for row in results:
@@ -469,7 +484,7 @@ def list_mssql_logins(config: RunnableConfig = None):
 
 
 @tool()
-def get_database_config(config: RunnableConfig = None):
+def get_database_config(config: RunnableConfig = None, instance_name: str = None, instance_id: str = None):
     """
     获取数据库配置参数
 
@@ -511,7 +526,7 @@ def get_database_config(config: RunnableConfig = None):
     """
 
     try:
-        results = execute_readonly_query(query, config=config)
+        results = execute_readonly_query(query, config=config, instance_name=instance_name, instance_id=instance_id)
 
         for row in results:
             unit = _extract_setting_unit(row["name"])

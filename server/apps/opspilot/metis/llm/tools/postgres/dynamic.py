@@ -26,7 +26,14 @@ def validate_sql_safety(sql: str) -> tuple[bool, str]:
 
 
 @tool()
-def get_table_schema_details(table_name: str, schema_name: str = "public", database: Optional[str] = None, config: RunnableConfig = None):
+def get_table_schema_details(
+    table_name: str,
+    schema_name: str = "public",
+    database: Optional[str] = None,
+    config: RunnableConfig = None,
+    instance_name: str = None,
+    instance_id: str = None,
+):
     """
     获取表的详细结构信息,用于构建动态查询和理解数据关系
 
@@ -144,6 +151,8 @@ def get_table_schema_details(table_name: str, schema_name: str = "public", datab
             params=(schema_name, table_name, schema_name, table_name, schema_name, table_name, schema_name, table_name),
             config=config,
             database=database,
+            instance_name=instance_name,
+            instance_id=instance_id,
         )
 
         if not result:
@@ -156,7 +165,14 @@ def get_table_schema_details(table_name: str, schema_name: str = "public", datab
 
 
 @tool()
-def search_tables_by_keyword(keyword: str, search_in_comments: bool = True, database: Optional[str] = None, config: RunnableConfig = None):
+def search_tables_by_keyword(
+    keyword: str,
+    search_in_comments: bool = True,
+    database: Optional[str] = None,
+    config: RunnableConfig = None,
+    instance_name: str = None,
+    instance_id: str = None,
+):
     """
     根据关键字搜索相关的表和列,帮助发现业务实体及其数据存储位置
 
@@ -297,7 +313,7 @@ def search_tables_by_keyword(keyword: str, search_in_comments: bool = True, data
         )
 
     try:
-        results = execute_readonly_query(query, params=params, config=config, database=database)
+        results = execute_readonly_query(query, params=params, config=config, database=database, instance_name=instance_name, instance_id=instance_id)
 
         return safe_json_dumps({"keyword": keyword, "total_matches": len(results), "tables": results})
 
@@ -306,7 +322,9 @@ def search_tables_by_keyword(keyword: str, search_in_comments: bool = True, data
 
 
 @tool()
-def execute_safe_select(sql: str, limit: int = 100, database: Optional[str] = None, config: RunnableConfig = None):
+def execute_safe_select(
+    sql: str, limit: int = 100, database: Optional[str] = None, config: RunnableConfig = None, instance_name: str = None, instance_id: str = None
+):
     """
     执行安全的SELECT查询,支持聚合统计、多表关联等复杂查询
 
@@ -440,7 +458,7 @@ def execute_safe_select(sql: str, limit: int = 100, database: Optional[str] = No
                 sql = re.sub(r"limit\s+\d+", f"LIMIT {limit}", sql, flags=re.IGNORECASE)
 
     try:
-        results = execute_readonly_query(sql, config=config, database=database)
+        results = execute_readonly_query(sql, config=config, database=database, instance_name=instance_name, instance_id=instance_id)
 
         return safe_json_dumps({"success": True, "row_count": len(results), "limit": limit, "sql": sql, "data": results})
 
@@ -449,7 +467,9 @@ def execute_safe_select(sql: str, limit: int = 100, database: Optional[str] = No
 
 
 @tool()
-def explain_query_plan(sql: str, analyze: bool = False, database: Optional[str] = None, config: RunnableConfig = None):
+def explain_query_plan(
+    sql: str, analyze: bool = False, database: Optional[str] = None, config: RunnableConfig = None, instance_name: str = None, instance_id: str = None
+):
     """
     获取查询的执行计划,用于优化动态生成的查询
 
@@ -489,7 +509,7 @@ def explain_query_plan(sql: str, analyze: bool = False, database: Optional[str] 
         explain_sql = f"EXPLAIN (VERBOSE, FORMAT JSON) {sql}"
 
     try:
-        results = execute_readonly_query(explain_sql, config=config, database=database)
+        results = execute_readonly_query(explain_sql, config=config, database=database, instance_name=instance_name, instance_id=instance_id)
 
         plan = results[0]["QUERY PLAN"][0]
 
@@ -528,6 +548,8 @@ def get_sample_data(
     columns: Optional[str] = None,
     database: Optional[str] = None,
     config: RunnableConfig = None,
+    instance_name: str = None,
+    instance_id: str = None,
 ):
     """
     获取表的示例数据,帮助理解数据格式和内容
@@ -624,7 +646,9 @@ def get_sample_data(
     """
 
     try:
-        results = execute_readonly_query(query, params=(limit,), config=config, database=database)
+        results = execute_readonly_query(
+            query, params=(limit,), config=config, database=database, instance_name=instance_name, instance_id=instance_id
+        )
 
         return safe_json_dumps(
             {"success": True, "table": f"{schema_name}.{table_name}", "row_count": len(results), "limit": limit, "sample_data": results}

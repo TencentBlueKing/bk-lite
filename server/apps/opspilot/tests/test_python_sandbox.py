@@ -34,20 +34,21 @@ def test_unavailable_sandbox_never_claims_result_was_saved():
 @pytest.mark.parametrize("content", ["existing policy", [{"type": "text", "text": "existing policy", "cache_control": {"type": "ephemeral"}}], None])
 @pytest.mark.parametrize("async_call", [False, True])
 @pytest.mark.asyncio
-async def test_execution_guidance_preserves_system_message_without_starting_container(content, async_call):
+async def test_execution_guidance_preserves_system_message_without_starting_workspace(content, async_call):
     from langchain.agents.middleware import ModelRequest
     from langchain_core.messages import AIMessage, SystemMessage
 
     system = SystemMessage(content=content, id="policy") if content is not None else None
     request = ModelRequest(model=SimpleNamespace(), messages=[], system_message=system, tools=[], state={}, runtime=SimpleNamespace())
-    client = MagicMock()
-    middleware = PythonSandboxMiddleware(PythonSandbox(client=client))
+    sandbox = PythonSandbox()
+    middleware = PythonSandboxMiddleware(sandbox)
     answer = AIMessage(content="done")
 
     def handler(prepared):
         assert "ijson" in prepared.system_message.text
-        assert "python -m pip install --user" in prepared.system_message.text
-        assert "/opt/opspilot-sandbox/USAGE.md" in prepared.system_message.text
+        assert "PIP_TARGET" in prepared.system_message.text
+        assert sandbox.workspace in prepared.system_message.text
+        assert "不是容器" in prepared.system_message.text
         if system is not None:
             assert prepared.system_message.id == "policy"
             assert "existing policy" in prepared.system_message.text
@@ -63,7 +64,7 @@ async def test_execution_guidance_preserves_system_message_without_starting_cont
     assert request.system_message is system
     if system is not None:
         assert system.content == content
-    client.containers.run.assert_not_called()
+    sandbox.close()
 
 
 def test_python_tool_uses_run_sandbox_and_fails_closed():
@@ -71,51 +72,11 @@ def test_python_tool_uses_run_sandbox_and_fails_closed():
     sandbox.execute.return_value = "42"
     assert python_execute_direct.invoke({"code": "6 * 7"}, config={"configurable": {"python_sandbox": sandbox}}) == "42"
     sandbox.execute.assert_called_once_with("6 * 7")
-    assert "隔离环境不可用" in python_execute_direct.invoke({"code": "import os"}, config={"configurable": {}})
+    assert "执行环境不可用" in python_execute_direct.invoke({"code": "import os"}, config={"configurable": {}})
 
 
-def test_container_creation_has_no_host_mounts():
-    client = MagicMock()
-    client.containers.run.return_value.exec_run.return_value.exit_code = 0
-    sandbox = PythonSandbox(client=client, image="test-image")
-    sandbox._ensure_container()
-    kwargs = client.containers.run.call_args.kwargs
-    assert "volumes" not in kwargs
-    assert kwargs["cap_drop"] == ["ALL"]
-    assert kwargs["security_opt"] == ["no-new-privileges:true"]
-    assert kwargs["user"] == "65534:65534"
-    assert kwargs["auto_remove"] is True
-    assert "network_mode" not in kwargs
-    assert kwargs["mem_limit"] == "1g"
-    assert kwargs["nano_cpus"] == 1_000_000_000
-    assert kwargs["pids_limit"] == 128
-    assert "size=256m" in kwargs["tmpfs"]["/workspace"]
-    assert "size=128m" in kwargs["tmpfs"]["/tmp"]
-    sandbox.close()
-    client.containers.run.return_value.remove.assert_called_once_with(force=True)
-
-
-@pytest.mark.skipif(not __import__("os").getenv("OPSPILOT_TEST_DOCKER"), reason="requires Docker")
-def test_real_container_reads_large_result_and_isolates_tasks(tmp_path):
-    first = PythonSandbox(image="python:3.12-alpine")
-    second = PythonSandbox(image="python:3.12-alpine")
-    try:
-        path = first.store_result('[{"value": 2}, {"value": 5}]')
-        result = first.execute(f'import json\nwith open({path!r}) as f: data = json.load(f)\nsum(x["value"] for x in data)')
-        assert result == "7"
-        assert "FileNotFoundError" in second.execute(f"open({path!r}).read()")
-        host_file = tmp_path / "host-only.txt"
-        host_file.write_text("host-secret")
-        assert first.execute(f"import os\nos.path.exists({str(host_file)!r})") == "False"
-        assert first.execute('import subprocess\nsubprocess.check_output(["echo", "ok"]).decode().strip()') == "ok"
-    finally:
-        first.close()
-        second.close()
-
-
-@pytest.mark.skipif(not __import__("os").getenv("OPSPILOT_TEST_DOCKER"), reason="requires Docker")
 def test_real_middleware_to_python_tool_chain():
-    sandbox = PythonSandbox(image="python:3.12-alpine")
+    sandbox = PythonSandbox()
     try:
         payload = "[" + ",".join('{"value": 2}' for _ in range(1000)) + "]"
         middleware = PythonSandboxMiddleware(sandbox)
@@ -132,7 +93,6 @@ def test_real_middleware_to_python_tool_chain():
         sandbox.close()
 
 
-@pytest.mark.skipif(not __import__("os").getenv("OPSPILOT_TEST_DOCKER"), reason="requires Docker")
 def test_agent_middlewares_pass_file_path_and_sandbox_to_python():
     import re
 
@@ -157,7 +117,7 @@ def test_agent_middlewares_pass_file_path_and_sandbox_to_python():
             if not tool_messages:
                 msg = AIMessage(content="", tool_calls=[{"name": "alerts_list_alerts", "args": {}, "id": "alerts"}])
             elif len(tool_messages) == 1:
-                match = re.search(r"/workspace/tool-result-[a-f0-9]+\.txt", tool_messages[0].content)
+                match = re.search(r"\S+/tool-result-[a-f0-9]+\.txt", tool_messages[0].content)
                 assert match is not None
                 code = f'import json\nwith open({match.group()!r}) as f: rows=json.load(f)\nsum(r["value"] for r in rows)'
                 msg = AIMessage(content="", tool_calls=[{"name": "python_execute_direct", "args": {"code": code}, "id": "python"}])
@@ -165,7 +125,7 @@ def test_agent_middlewares_pass_file_path_and_sandbox_to_python():
                 msg = AIMessage(content=tool_messages[-1].content)
             return ChatResult(generations=[ChatGeneration(message=msg)])
 
-    sandbox = PythonSandbox(image="python:3.12-alpine")
+    sandbox = PythonSandbox()
     try:
         agent = create_agent(
             model=Model(responses=[]),
@@ -174,57 +134,6 @@ def test_agent_middlewares_pass_file_path_and_sandbox_to_python():
         )
         result = agent.invoke({"messages": [HumanMessage(content="统计告警")]}, config={"configurable": {"python_sandbox": sandbox}})
         assert result["messages"][-1].content == "2000"
-    finally:
-        sandbox.close()
-
-
-@pytest.mark.skipif(not __import__("os").getenv("OPSPILOT_TEST_DOCKER"), reason="requires Docker")
-def test_skill_command_and_python_share_container_workspace(tmp_path):
-    sandbox = PythonSandbox(image="python:3.12-alpine")
-    try:
-        path = sandbox.store_result("42")
-        result = sandbox.execute_command(f"cat {path} > /workspace/skill-output.txt")
-        assert result.exit_code == 0
-        assert sandbox.execute("open('/workspace/skill-output.txt').read()") == "42"
-        assert sandbox.execute_command("printf '%s' \"$SKILL_TEST\"", env={"SKILL_TEST": "value"}).output == "value"
-        assert sandbox.execute_command("exit 3").exit_code == 3
-        host_file = tmp_path / "host-only.txt"
-        host_file.write_text("secret")
-        assert sandbox.execute_command(f"test -e {host_file}").exit_code != 0
-    finally:
-        sandbox.close()
-
-
-def test_skill_command_fails_closed_when_container_is_unavailable():
-    client = MagicMock()
-    client.containers.run.side_effect = RuntimeError("unavailable")
-    sandbox = PythonSandbox(client=client, image="missing")
-    with pytest.raises(SandboxUnavailable):
-        sandbox.execute_command("echo cannot-run-on-host")
-
-
-@pytest.mark.skipif(not __import__("os").getenv("OPSPILOT_TEST_DOCKER"), reason="requires Docker")
-def test_skill_command_timeout_reports_failure():
-    sandbox = PythonSandbox(image="python:3.12-alpine")
-    try:
-        result = sandbox.execute_command("sleep 10", timeout=1)
-        assert result.exit_code != 0
-    finally:
-        sandbox.close()
-
-
-@pytest.mark.skipif(not __import__("os").getenv("OPSPILOT_TEST_DOCKER"), reason="requires Docker")
-def test_binary_file_transfer_is_confined_and_round_trips():
-    sandbox = PythonSandbox(image="python:3.12-alpine")
-    try:
-        data = bytes(range(256)) * 500
-        sandbox.write_workspace_file("/workspace/input/report.xlsx", data)
-        assert sandbox.read_workspace_file("/workspace/input/report.xlsx") == data
-        sandbox.execute_command("ln -s /etc/passwd /workspace/input/escape")
-        with pytest.raises(SandboxUnavailable):
-            sandbox.read_workspace_file("/workspace/input/escape")
-        with pytest.raises(ValueError):
-            sandbox.read_workspace_file("/workspace/../etc/passwd")
     finally:
         sandbox.close()
 
@@ -262,21 +171,20 @@ def test_attachment_tool_rejects_mismatched_sandbox_file(mocker):
     sandbox.read_workspace_file.assert_not_called()
 
 
-@pytest.mark.skipif(not __import__("os").getenv("OPSPILOT_TEST_DOCKER"), reason="requires Docker")
 def test_real_sandbox_to_attachment_preserves_binary(mocker):
     import importlib
 
     module = importlib.import_module("apps.opspilot.metis.llm.tools.attachment.generate_attachment")
-    sandbox = PythonSandbox(image="python:3.12-alpine")
+    sandbox = PythonSandbox()
     try:
         payload = bytes(range(256)) * 500
-        sandbox.write_workspace_file("/workspace/report.pdf", payload)
+        sandbox.write_workspace_file(sandbox.workspace + "/report.pdf", payload)
         asset = SimpleNamespace(attachment_id="a", filename="report.pdf", mime_type="application/pdf", id=5)
         mocker.patch.object(module, "build_workflow_attachment_id", return_value="a")
         create = mocker.patch.object(module, "create_workflow_attachment_asset", return_value=asset)
         mocker.patch.object(module, "build_signed_attachment_download_url", return_value="/download")
         result = module.generate_attachment_file.invoke(
-            {"filename": "report.pdf", "file_type": "pdf", "sandbox_path": "/workspace/report.pdf"},
+            {"filename": "report.pdf", "file_type": "pdf", "sandbox_path": sandbox.workspace + "/report.pdf"},
             config={"configurable": {"execution_id": "run", "python_sandbox": sandbox}},
         )
         assert result["file_url"] == "/download"
@@ -285,33 +193,31 @@ def test_real_sandbox_to_attachment_preserves_binary(mocker):
         sandbox.close()
 
 
-@pytest.mark.skipif(not __import__("os").getenv("OPSPILOT_TEST_DOCKER"), reason="requires Docker")
-def test_deepagents_skill_backend_shares_container_files():
-    from apps.opspilot.services.python_sandbox.skill_backend import ContainerSkillBackend
+def test_deepagents_skill_backend_shares_workspace_files():
+    from apps.opspilot.services.python_sandbox.skill_backend import LocalSkillBackend
 
-    sandbox = PythonSandbox(image="python:3.12-alpine")
-    backend = ContainerSkillBackend(sandbox)
+    sandbox = PythonSandbox()
+    backend = LocalSkillBackend(sandbox)
     try:
         path = sandbox.store_result("41")
         result = backend.execute(f"python -c 'print(int(open(\"{path}\").read())+1)'")
         assert result.exit_code == 0
         assert result.output == "42"
-        written = backend.write("/workspace/skills/demo/SKILL.md", "skill content")
+        written = backend.write(sandbox.workspace + "/skills/demo/SKILL.md", "skill content")
         assert not written.error
-        assert "skill content" in sandbox.execute("open('/workspace/skills/demo/SKILL.md').read()")
-        assert backend.read("/workspace/skills/demo/SKILL.md").file_data["content"] == "skill content"
+        assert "skill content" in sandbox.execute("open('skills/demo/SKILL.md').read()")
+        assert backend.read(sandbox.workspace + "/skills/demo/SKILL.md").file_data["content"] == "skill content"
     finally:
         sandbox.close()
 
 
-@pytest.mark.skipif(not __import__("os").getenv("OPSPILOT_TEST_DOCKER"), reason="requires Docker")
 def test_skill_environment_is_scoped_and_output_is_redacted():
-    from apps.opspilot.services.python_sandbox.skill_backend import ContainerSkillBackend
+    from apps.opspilot.services.python_sandbox.skill_backend import LocalSkillBackend
 
-    sandbox = PythonSandbox(image="python:3.12-alpine")
-    backend = ContainerSkillBackend(sandbox, params_by_package={"demo": {"API_KEY": "secret-sentinel"}}, secret_values=["secret-sentinel"])
+    sandbox = PythonSandbox()
+    backend = LocalSkillBackend(sandbox, params_by_package={"demo": {"API_KEY": "secret-sentinel"}}, secret_values=["secret-sentinel"])
     try:
-        result = backend.execute("echo /workspace/skills/demo/test $API_KEY")
+        result = backend.execute("echo /skills/demo/test $API_KEY")
         assert result.exit_code == 0
         assert "secret-sentinel" not in result.output
         assert "***" in result.output
@@ -321,14 +227,13 @@ def test_skill_environment_is_scoped_and_output_is_redacted():
         sandbox.close()
 
 
-@pytest.mark.skipif(not __import__("os").getenv("OPSPILOT_TEST_DOCKER"), reason="requires Docker")
 def test_skill_command_supports_existing_virtual_skill_paths():
-    from apps.opspilot.services.python_sandbox.skill_backend import ContainerSkillBackend
+    from apps.opspilot.services.python_sandbox.skill_backend import LocalSkillBackend
 
-    sandbox = PythonSandbox(image="python:3.12-alpine")
-    backend = ContainerSkillBackend(sandbox)
+    sandbox = PythonSandbox()
+    backend = LocalSkillBackend(sandbox)
     try:
-        sandbox.write_workspace_file("/workspace/skills/demo/script.py", b'print("skill-ok")')
+        sandbox.write_workspace_file(sandbox.workspace + "/skills/demo/script.py", b'print("skill-ok")')
         result = backend.execute("python /skills/demo/script.py")
         assert result.exit_code == 0
         assert result.output == "skill-ok"
@@ -336,27 +241,26 @@ def test_skill_command_supports_existing_virtual_skill_paths():
         sandbox.close()
 
 
-@pytest.mark.skipif(not __import__("os").getenv("OPSPILOT_TEST_DOCKER"), reason="requires Docker")
-def test_formal_skill_builder_uses_same_container_as_python(mocker, tmp_path):
+def test_formal_skill_builder_uses_same_workspace_as_python(mocker, tmp_path):
     from apps.opspilot.metis.llm.chain.skill_sandbox import SkillSandboxMixin
-    from apps.opspilot.services.python_sandbox.skill_backend import ContainerSkillBackend
+    from apps.opspilot.services.python_sandbox.skill_backend import LocalSkillBackend
 
     node = SkillSandboxMixin()
     mocker.patch.object(node, "_load_skill_package_runtime_params", return_value=({}, []))
     host_shell = mocker.patch("deepagents.backends.LocalShellBackend", side_effect=AssertionError("host execution"))
-    sandbox = PythonSandbox(image="python:3.12-alpine")
+    sandbox = PythonSandbox()
     package = {
         "name": "demo",
-        "scripts": {"change.py": 'from pathlib import Path\np=Path("/workspace/value.txt")\np.write_text(str(int(p.read_text())+1))'},
+        "scripts": {"change.py": 'from pathlib import Path\np=Path("value.txt")\np.write_text(str(int(p.read_text())+1))'},
     }
     try:
         backend, sources, directory = node._build_skill_backend_and_sources(SimpleNamespace(extra_config={}), packages=[package], sandbox=sandbox)
-        assert isinstance(backend, ContainerSkillBackend)
-        assert sources == ["/workspace/skills/"] and directory is None
-        assert sandbox.execute('open("/workspace/value.txt", "w").write("41")') == "2"
+        assert isinstance(backend, LocalSkillBackend)
+        assert sources == [sandbox.workspace + "/skills/"] and directory is None
+        assert sandbox.execute('open("value.txt", "w").write("41")') == "2"
         result = backend.execute("python /skills/demo/scripts/change.py")
         assert result.exit_code == 0
-        assert sandbox.read_workspace_file("/workspace/value.txt") == b"42"
+        assert sandbox.read_workspace_file(sandbox.workspace + "/value.txt") == b"42"
         host_shell.assert_not_called()
     finally:
         sandbox.close()
@@ -409,7 +313,7 @@ def test_skill_and_attachment_plan_exposes_execute():
 
 
 @pytest.mark.asyncio
-async def test_run_container_cleanup_on_setup_failure_preserves_exception(mocker, caplog):
+async def test_run_workspace_cleanup_on_setup_failure_preserves_exception(mocker, caplog):
     import logging
 
     from apps.opspilot.metis.llm.chain.node import ToolsNodes
@@ -439,8 +343,7 @@ async def test_run_container_cleanup_on_setup_failure_preserves_exception(mocker
     assert "secret-cleanup-sentinel" not in logging.Formatter().format(record)
 
 
-@pytest.mark.skipif(not __import__("os").getenv("OPSPILOT_TEST_DOCKER"), reason="requires built production sandbox image")
-def test_ppt_master_materializes_and_exports_inside_production_container(mocker, tmp_path, monkeypatch):
+def test_ppt_master_materializes_and_exports_in_local_workspace(mocker, tmp_path, monkeypatch):
     import io
     import zipfile
     from pathlib import Path
@@ -451,7 +354,7 @@ def test_ppt_master_materializes_and_exports_inside_production_container(mocker,
     monkeypatch.setenv("OPSPILOT_PPT_TMP_ROOT", str(tmp_path))
     package_root = Path(__file__).resolve().parents[1] / "support-files" / "skill_packages" / "ppt-master"
     package = {"package_id": "ppt-master", "name": "ppt-master", "extracted_root": package_root}
-    request = SimpleNamespace(extra_config={}, thread_id="ppt-container-test")
+    request = SimpleNamespace(extra_config={}, thread_id="ppt-workspace-test")
     node = SkillSandboxMixin()
     mocker.patch.object(node, "_load_skill_package_runtime_params", return_value=({}, []))
     sandbox = PythonSandbox()
@@ -461,7 +364,7 @@ def test_ppt_master_materializes_and_exports_inside_production_container(mocker,
             svg = (
                 '<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720">'
                 '<rect width="1280" height="720" fill="#fff"/>'
-                f'<text x="80" y="150" font-size="42" font-family="Microsoft YaHei">容器验证 {number}</text></svg>'
+                f'<text x="80" y="150" font-size="42" font-family="Microsoft YaHei">本地验证 {number}</text></svg>'
             )
             assert not backend.write(f"/ppt-workspace/projects/demo/svg_output/slide_{number:02}.svg", svg).error
         assert inspect_ppt_run(Path(directory), sandbox=sandbox) == (False, 3)

@@ -168,12 +168,12 @@ def test_confirmation_materializes_and_binds_ppt_workspace(tmp_path, monkeypatch
     )
     from unittest.mock import MagicMock
 
-    sandbox = MagicMock()
+    sandbox = MagicMock(workspace="/tmp/opspilot-test")
     materialize = MagicMock()
-    monkeypatch.setattr("apps.opspilot.services.python_sandbox.provisioning.materialize_container_skill", materialize)
+    monkeypatch.setattr("apps.opspilot.services.python_sandbox.provisioning.materialize_local_skill", materialize)
     backend, sources, sandbox_dir = node._build_skill_backend_and_sources(request, sandbox=sandbox)
     try:
-        assert sources == ["/workspace/skills/"]
+        assert sources == [sandbox.workspace + "/skills/"]
         assert backend.sandbox is sandbox
         assert Path(backend._ppt_workspace).is_dir()
         assert not (Path(sandbox_dir) / "ppt-workspace").is_symlink()
@@ -207,7 +207,7 @@ def test_failed_sandbox_build_discards_ppt_run(tmp_path, monkeypatch):
 
     import pytest
 
-    monkeypatch.setattr("apps.opspilot.services.python_sandbox.skill_backend.ContainerSkillBackend", _Boom)
+    monkeypatch.setattr("apps.opspilot.services.python_sandbox.skill_backend.LocalSkillBackend", _Boom)
     with pytest.raises(RuntimeError, match="boom"):
         node._build_skill_backend_and_sources(request, sandbox=MagicMock())
     assert getattr(request, "_ppt_run_dir", None) is None

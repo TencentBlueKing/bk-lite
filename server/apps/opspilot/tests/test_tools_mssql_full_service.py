@@ -34,7 +34,7 @@ def _dispatch(matchers):
     matchers: list[(substr, rows)] —— 命中第一个包含 substr 的 SQL 即返回对应 rows。
     """
 
-    def _impl(query, params=None, config=None, database=None):
+    def _impl(query, params=None, config=None, database=None, instance_name=None, instance_id=None):
         for substr, rows in matchers:
             if substr in query:
                 return rows
@@ -87,13 +87,34 @@ class TestMssqlDiagnostics:
         matchers = [
             ("user connections", [{"max_connections": 100}]),
             # long_running_query 含 dm_exec_requests, 须先于 connections_query 的 GROUP BY 匹配
-            ("WHERE r.total_elapsed_time", [{"session_id": 5, "login_name": "u", "database_name": "appdb",
-                                             "status": "running", "query": "SELECT 1", "duration_ms": 400000,
-                                             "start_time": "2024-06-01"}]),
-            ("GROUP BY database_id", [
-                {"database_name": "appdb", "login_name": "u", "status": "running", "connection_count": 95,
-                 "idle_count": 0, "active_count": 95, "suspended_count": 0},
-            ]),
+            (
+                "WHERE r.total_elapsed_time",
+                [
+                    {
+                        "session_id": 5,
+                        "login_name": "u",
+                        "database_name": "appdb",
+                        "status": "running",
+                        "query": "SELECT 1",
+                        "duration_ms": 400000,
+                        "start_time": "2024-06-01",
+                    }
+                ],
+            ),
+            (
+                "GROUP BY database_id",
+                [
+                    {
+                        "database_name": "appdb",
+                        "login_name": "u",
+                        "status": "running",
+                        "connection_count": 95,
+                        "idle_count": 0,
+                        "active_count": 95,
+                        "suspended_count": 0,
+                    },
+                ],
+            ),
         ]
         with patch.object(diag, "execute_readonly_query", _dispatch(matchers)):
             out = json.loads(diag.diagnose_connection_issues.invoke({"config": CONFIG}))
@@ -104,26 +125,35 @@ class TestMssqlDiagnostics:
         assert out["long_running_queries"][0]["start_time"] == "2024-06-01"
 
     def test_health_check_scoring_with_issues(self):
-        stats = [{
-            "max_connections": 100,
-            "current_connections": 95,  # 95% -> -20
-            "active_queries": 2,
-            "suspended_queries": 1,
-            "blocked_queries": 3,  # -15
-            "long_running_queries": 1,  # -15
-        }]
-        dbs = [{"database_name": "appdb", "state": "ONLINE", "user_access": "MULTI_USER", "recovery_model": "FULL"},
-               {"database_name": "old", "state": "OFFLINE", "user_access": "MULTI_USER", "recovery_model": "SIMPLE"}]
-        disk = [{"database_name": "appdb", "file_type": "ROWS", "logical_name": "d", "physical_name": "/x",
-                 "size_mb": 100, "used_mb": 60, "free_mb": 40}]
-        matchers = [("max server memory", []), ("user connections", stats), ("sys.databases", dbs),
-                    ("master_files", disk)]
+        stats = [
+            {
+                "max_connections": 100,
+                "current_connections": 95,  # 95% -> -20
+                "active_queries": 2,
+                "suspended_queries": 1,
+                "blocked_queries": 3,  # -15
+                "long_running_queries": 1,  # -15
+            }
+        ]
+        dbs = [
+            {"database_name": "appdb", "state": "ONLINE", "user_access": "MULTI_USER", "recovery_model": "FULL"},
+            {"database_name": "old", "state": "OFFLINE", "user_access": "MULTI_USER", "recovery_model": "SIMPLE"},
+        ]
+        disk = [
+            {"database_name": "appdb", "file_type": "ROWS", "logical_name": "d", "physical_name": "/x", "size_mb": 100, "used_mb": 60, "free_mb": 40}
+        ]
         # stats_query 含 'user connections' 子串; db_status_query 含 'sys.databases'; disk 含 master_files
-        with patch.object(diag, "execute_readonly_query", _dispatch([
-            ("FROM sys.databases", dbs),
-            ("master_files", disk),
-            ("user connections", stats),
-        ])):
+        with patch.object(
+            diag,
+            "execute_readonly_query",
+            _dispatch(
+                [
+                    ("FROM sys.databases", dbs),
+                    ("master_files", disk),
+                    ("user connections", stats),
+                ]
+            ),
+        ):
             out = json.loads(diag.check_database_health.invoke({"config": CONFIG}))
         # 95% conn(-20) + blocked(-15) + long_running(-15) + offline db(-20) = 30
         assert out["health_score"] == 30
@@ -142,9 +172,20 @@ class TestMssqlDiagnostics:
     def test_replication_lag_hadr_enabled_with_replicas(self):
         matchers = [
             ("IsHadrEnabled", [{"is_hadr_enabled": 1}]),
-            ("availability_groups", [{"availability_group": "ag1", "role": "PRIMARY",
-                                      "replica_server_name": "node1", "sync_health": "HEALTHY",
-                                      "log_send_queue_kb": 0, "redo_queue_kb": 0, "last_commit_time": "2024"}]),
+            (
+                "availability_groups",
+                [
+                    {
+                        "availability_group": "ag1",
+                        "role": "PRIMARY",
+                        "replica_server_name": "node1",
+                        "sync_health": "HEALTHY",
+                        "log_send_queue_kb": 0,
+                        "redo_queue_kb": 0,
+                        "last_commit_time": "2024",
+                    }
+                ],
+            ),
         ]
         with patch.object(diag, "execute_readonly_query", _dispatch(matchers)):
             out = json.loads(diag.check_replication_lag.invoke({"config": CONFIG}))
@@ -219,7 +260,7 @@ class TestMssqlDynamic:
     def test_execute_safe_select_injects_top(self):
         captured = {}
 
-        def _impl(query, params=None, config=None, database=None):
+        def _impl(query, params=None, config=None, database=None, instance_name=None, instance_id=None):
             captured["sql"] = query
             return [{"id": 1, "name": "a"}]
 
@@ -233,7 +274,7 @@ class TestMssqlDynamic:
     def test_execute_safe_select_caps_existing_top(self):
         captured = {}
 
-        def _impl(query, params=None, config=None, database=None):
+        def _impl(query, params=None, config=None, database=None, instance_name=None, instance_id=None):
             captured["sql"] = query
             return []
 
@@ -255,7 +296,7 @@ class TestMssqlDynamic:
     def test_execute_fallback_success_injects_top(self):
         captured = {}
 
-        def _impl(query, params=None, config=None, database=None):
+        def _impl(query, params=None, config=None, database=None, instance_name=None, instance_id=None):
             captured["sql"] = query
             return [{"id": 1}]
 
@@ -304,10 +345,10 @@ class TestMssqlDynamic:
         fake_cursor.fetchall.return_value = [(1, "a")]
         fake_conn = MagicMock()
         fake_conn.execute.return_value = fake_cursor
-        with patch.object(dyn, "validate_sql_safety", return_value=(True, "")), \
-             patch("apps.opspilot.metis.llm.tools.mssql.connection.get_mssql_connection_from_item", return_value=fake_conn):
-            out = json.loads(dyn.execute_safe_select_batch.invoke(
-                {"queries": ["SELECT id, name FROM dbo.users WHERE id=1"], "config": CONFIG}))
+        with patch.object(dyn, "validate_sql_safety", return_value=(True, "")), patch(
+            "apps.opspilot.metis.llm.tools.mssql.connection.get_mssql_connection_from_item", return_value=fake_conn
+        ):
+            out = json.loads(dyn.execute_safe_select_batch.invoke({"queries": ["SELECT id, name FROM dbo.users WHERE id=1"], "config": CONFIG}))
         assert out["total"] == 1
         assert out["succeeded"] == 1
         assert out["results"][0]["ok"] is True
@@ -323,24 +364,39 @@ class TestMssqlDynamic:
 # ============================ resources ============================
 class TestMssqlResources:
     def test_current_database_info(self):
-        rows = [{"database_name": "appdb", "username": "sa", "sql_version": "v", "server_name": "srv",
-                 "edition": "Std", "product_version": "16.0"}]
+        rows = [{"database_name": "appdb", "username": "sa", "sql_version": "v", "server_name": "srv", "edition": "Std", "product_version": "16.0"}]
         with patch.object(res, "execute_readonly_query", _dispatch([("DB_NAME()", rows)])):
             out = json.loads(res.get_current_database_info.invoke({"config": CONFIG}))
         assert out["current_database"] == "appdb"
         assert out["edition"] == "Std"
 
     def test_list_databases_formats_size(self):
-        rows = [{"name": "appdb", "database_id": 5, "state": "ONLINE", "recovery_model": "FULL",
-                 "collation": "Latin1", "size_bytes": 2 * 1024 * 1024 * 1024}]
+        rows = [
+            {
+                "name": "appdb",
+                "database_id": 5,
+                "state": "ONLINE",
+                "recovery_model": "FULL",
+                "collation": "Latin1",
+                "size_bytes": 2 * 1024 * 1024 * 1024,
+            }
+        ]
         with patch.object(res, "execute_readonly_query", _dispatch([("sys.databases", rows)])):
             out = json.loads(res.list_mssql_databases.invoke({"config": CONFIG}))
         assert out["total_databases"] == 1
         assert out["databases"][0]["size"] == "2.00 GB"
 
     def test_list_tables_formats_sizes(self):
-        rows = [{"table_name": "orders", "schema_name": "dbo", "row_count": 1000,
-                 "total_size_bytes": 1048576, "used_size_bytes": 524288, "index_count": 2}]
+        rows = [
+            {
+                "table_name": "orders",
+                "schema_name": "dbo",
+                "row_count": 1000,
+                "total_size_bytes": 1048576,
+                "used_size_bytes": 524288,
+                "index_count": 2,
+            }
+        ]
         with patch.object(res, "execute_readonly_query", _dispatch([("sys.tables", rows)])):
             out = json.loads(res.list_mssql_tables.invoke({"database": "shop", "config": CONFIG}))
         assert out["database"] == "shop"
@@ -348,9 +404,19 @@ class TestMssqlResources:
         assert out["tables"][0]["used_size"] == "512.00 KB"
 
     def test_list_indexes_with_table_marks_unused(self):
-        rows = [{"index_name": "idx_a", "table_name": "t", "index_type": "NONCLUSTERED",
-                 "is_unique": 0, "is_primary_key": 0, "size_bytes": 1024, "columns": "c1",
-                 "index_usage": 0, "index_updates": 5}]
+        rows = [
+            {
+                "index_name": "idx_a",
+                "table_name": "t",
+                "index_type": "NONCLUSTERED",
+                "is_unique": 0,
+                "is_primary_key": 0,
+                "size_bytes": 1024,
+                "columns": "c1",
+                "index_usage": 0,
+                "index_updates": 5,
+            }
+        ]
         with patch.object(res, "execute_readonly_query", _dispatch([("sys.indexes", rows)])):
             out = json.loads(res.list_mssql_indexes.invoke({"table": "t", "config": CONFIG}))
         assert out["table"] == "t"
@@ -358,8 +424,18 @@ class TestMssqlResources:
         assert out["indexes"][0]["size"] == "1.00 KB"
 
     def test_list_indexes_without_table(self):
-        rows = [{"index_name": "idx_b", "table_name": "t2", "index_type": "CLUSTERED",
-                 "is_unique": 1, "is_primary_key": 1, "size_bytes": 2048, "index_usage": 10, "index_updates": 1}]
+        rows = [
+            {
+                "index_name": "idx_b",
+                "table_name": "t2",
+                "index_type": "CLUSTERED",
+                "is_unique": 1,
+                "is_primary_key": 1,
+                "size_bytes": 2048,
+                "index_usage": 10,
+                "index_updates": 1,
+            }
+        ]
         with patch.object(res, "execute_readonly_query", _dispatch([("sys.indexes", rows)])):
             out = json.loads(res.list_mssql_indexes.invoke({"config": CONFIG}))
         assert out["indexes"][0]["is_unused"] is False
@@ -381,16 +457,34 @@ class TestMssqlResources:
         assert out["constraints"][0]["constraint_type"] == "PRIMARY KEY"
 
     def test_list_logins_formats_dates(self):
-        rows = [{"login_name": "sa", "login_type": "SQL_LOGIN", "is_disabled": 0,
-                 "default_database_name": "master", "create_date": "2020", "modify_date": "2021"}]
+        rows = [
+            {
+                "login_name": "sa",
+                "login_type": "SQL_LOGIN",
+                "is_disabled": 0,
+                "default_database_name": "master",
+                "create_date": "2020",
+                "modify_date": "2021",
+            }
+        ]
         with patch.object(res, "execute_readonly_query", _dispatch([("server_principals", rows)])):
             out = json.loads(res.list_mssql_logins.invoke({"config": CONFIG}))
         assert out["total_logins"] == 1
         assert out["logins"][0]["create_date"] == "2020"
 
     def test_get_database_config_enriches_units(self):
-        rows = [{"name": "max server memory (MB)", "value": 8192, "value_in_use": 8192,
-                 "minimum": 128, "maximum": 100000, "description": "d", "is_dynamic": 1, "is_advanced": 1}]
+        rows = [
+            {
+                "name": "max server memory (MB)",
+                "value": 8192,
+                "value_in_use": 8192,
+                "minimum": 128,
+                "maximum": 100000,
+                "description": "d",
+                "is_dynamic": 1,
+                "is_advanced": 1,
+            }
+        ]
         with patch.object(res, "execute_readonly_query", _dispatch([("sys.configurations", rows)])):
             out = json.loads(res.get_database_config.invoke({"config": CONFIG}))
         s = out["settings"][0]
@@ -482,16 +576,18 @@ class TestMssqlConnection:
             captured["timeout"] = timeout
             return MagicMock()
 
-        with patch.object(conn, "get_available_driver", return_value="ODBC Driver 18 for SQL Server"), \
-             patch.object(conn.pyodbc, "connect", side_effect=fake_connect):
+        with patch.object(conn, "get_available_driver", return_value="ODBC Driver 18 for SQL Server"), patch.object(
+            conn.pyodbc, "connect", side_effect=fake_connect
+        ):
             conn._create_mssql_connection({"host": "h", "port": 1433, "database": "d", "user": "u", "password": "p"})
         assert "SERVER=h,1433" in captured["conn_str"]
         assert "TrustServerCertificate=yes" in captured["conn_str"]
         assert captured["timeout"] == 10
 
     def test_get_connection_legacy_path(self):
-        with patch.object(conn, "get_available_driver", return_value="SQL Server"), \
-             patch.object(conn.pyodbc, "connect", return_value=MagicMock()) as m:
+        with patch.object(conn, "get_available_driver", return_value="SQL Server"), patch.object(
+            conn.pyodbc, "connect", return_value=MagicMock()
+        ) as m:
             conn.get_mssql_connection(config=CONFIG)
         m.assert_called_once()
 
@@ -500,10 +596,12 @@ class TestMssqlConnection:
             conn.get_mssql_connection(config=CONFIG, instance_name="X")
 
     def test_get_connection_multi_instance(self):
-        cfg = {"configurable": {"mssql_instances": json.dumps([
-            {"id": "a", "name": "A", "host": "ha", "user": "u", "password": "p", "database": "d"}])}}
-        with patch.object(conn, "get_available_driver", return_value="SQL Server"), \
-             patch.object(conn.pyodbc, "connect", return_value=MagicMock()) as m:
+        cfg = {
+            "configurable": {"mssql_instances": json.dumps([{"id": "a", "name": "A", "host": "ha", "user": "u", "password": "p", "database": "d"}])}
+        }
+        with patch.object(conn, "get_available_driver", return_value="SQL Server"), patch.object(
+            conn.pyodbc, "connect", return_value=MagicMock()
+        ) as m:
             conn.get_mssql_connection(config=cfg, instance_name="A")
         m.assert_called_once()
 
@@ -516,15 +614,13 @@ class TestMssqlConnection:
         assert adapter.get_display_name({"name": "X"}, 0) == "X"
 
     def test_build_normalized_multi_mode(self):
-        cfg = {"configurable": {"mssql_instances": json.dumps([
-            {"id": "a", "name": "A", "host": "ha"}, {"id": "b", "name": "B", "host": "hb"}])}}
+        cfg = {"configurable": {"mssql_instances": json.dumps([{"id": "a", "name": "A", "host": "ha"}, {"id": "b", "name": "B", "host": "hb"}])}}
         normalized = conn.build_mssql_normalized_from_runnable(cfg)
         assert normalized["mode"] == "multi"
         assert len(normalized["items"]) == 2
 
     def test_build_normalized_single_via_selection(self):
-        cfg = {"configurable": {"mssql_instances": json.dumps([
-            {"id": "a", "name": "A", "host": "ha"}, {"id": "b", "name": "B", "host": "hb"}])}}
+        cfg = {"configurable": {"mssql_instances": json.dumps([{"id": "a", "name": "A", "host": "ha"}, {"id": "b", "name": "B", "host": "hb"}])}}
         normalized = conn.build_mssql_normalized_from_runnable(cfg, instance_id="b")
         assert normalized["mode"] == "single"
         assert normalized["items"][0]["name"] == "B"
@@ -544,9 +640,10 @@ class TestMssqlConnection:
             conn.test_mssql_instance({"host": ""})
 
     def test_instances_prompt(self):
-        cfg = {"mssql_instances": json.dumps([
-            {"id": "a", "name": "A", "host": "ha"}, {"id": "b", "name": "B", "host": "hb"}]),
-            "mssql_default_instance_id": "b"}
+        cfg = {
+            "mssql_instances": json.dumps([{"id": "a", "name": "A", "host": "ha"}, {"id": "b", "name": "B", "host": "hb"}]),
+            "mssql_default_instance_id": "b",
+        }
         prompt = conn.get_mssql_instances_prompt(cfg)
         assert "A, B" in prompt
         assert "「B」" in prompt

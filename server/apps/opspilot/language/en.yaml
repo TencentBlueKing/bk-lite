@@ -944,22 +944,22 @@ tools:
       - python_execute_direct: Directly execute Python code
     tools:
       python_execute_direct:
-        description: Execute Python in an isolated container with libraries, network access, and workspace file access
+        description: Execute Python in a local Server subprocess with libraries, network access, and workspace file access
   shell:
     name: Shell Executor
     description: |
       Shell Tool Module
 
-      Execute commands in the task container, sharing /workspace with Python and skill execute.
+      Execute commands in the local Server task workspace, sharing the task working directory with Python and skill execute.
       Supports curl, pipes, redirects, and scripts. Commands run sequentially in one shell.
       The batch has a 120-second timeout and a 64 KiB combined output limit; interactive input is unsupported.
-      Local files and environment variables belong to the container. Use SSH or K8s tools for target hosts.
+      Code runs with the Server OS identity and has no host isolation. Use SSH or K8s tools for target hosts.
 
       **Tool List:**
       - shell_execute: Execute shell command list, execute in order and return results
     tools:
       shell_execute:
-        description: Execute shell commands sequentially in the task container, sharing /workspace; return combined output with the exit code on failure
+        description: Execute shell commands sequentially in the local Server task workspace, sharing the task working directory; return combined output with the exit code on failure
   browser_use:
     name: Browser Automation
     description: |

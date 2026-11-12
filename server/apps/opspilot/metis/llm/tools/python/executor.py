@@ -146,7 +146,9 @@ def _execute_python_code(code: str) -> str:
 
 @tool(parse_docstring=True)
 def python_execute_direct(code: str, config: RunnableConfig) -> str:
-    """在隔离容器中执行 Python，可使用标准库、已安装的库和 /workspace 下的文件。
+    """在 Server 子进程中执行 Python，可使用标准库、Server 已安装的库和当前工作目录中的文件。
+
+    与 Shell、技能 execute 共享本轮文件；拥有 Server 运行用户的系统权限，不提供宿主隔离。
 
     Args:
         code: 被执行的 Python 代码
@@ -159,8 +161,8 @@ def python_execute_direct(code: str, config: RunnableConfig) -> str:
     configurable = (config or {}).get("configurable", {})
     sandbox = configurable.get("python_sandbox")
     if sandbox is None:
-        return "Python 隔离环境不可用：当前任务没有配置沙箱"
+        return "Python 执行环境不可用：当前任务没有配置工作区"
     try:
         return sandbox.execute(code)
     except SandboxUnavailable:
-        return "Python 隔离环境不可用，请检查 Docker 和沙箱镜像配置"
+        return "Python 执行环境不可用，请检查 Server 的 Python 和任务工作目录"

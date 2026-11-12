@@ -744,7 +744,7 @@ class DeepAgentAssemblyMixin:
             PLANNED_EXECUTION_HIDDEN_DEEPAGENT_TOOLS,
         )
 
-        always_visible: set = set()
+        always_visible: set = {"read_tool_result"}
         hidden_tools = set(PLANNED_EXECUTION_HIDDEN_DEEPAGENT_TOOLS)
         # ppt 要读 SKILL.md、写页面再多次执行脚本，不能沿用「只留 execute、读文件即停」的查询技能模式。
         if skill_sources and (not skills_only_plan or ppt_authoring):
