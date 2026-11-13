@@ -1,7 +1,7 @@
 'use client';
 
 import { Button, Input, Popconfirm, message } from 'antd';
-import CustomTable from '@/components/custom-table';
+import CustomTable from '@/app/itsm/components/itsm-list-table';
 import { useCallback, useEffect, useState } from 'react';
 import { useItsmApi } from '../api/useItsmApi';
 
@@ -135,7 +135,6 @@ export function ResourceBoard({ title, kind, fields, actions = [], createLabel =
           size="middle"
           loading={loading}
           dataSource={items}
-          pagination={false}
           locale={{ emptyText: '暂无数据' }}
           columns={[
             ...fields.map((field) => ({

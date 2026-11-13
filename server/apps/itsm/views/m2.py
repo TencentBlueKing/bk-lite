@@ -1,8 +1,10 @@
 import base64
 import json
+import re
 from io import BytesIO
 
 from django.db import transaction
+from django.db.models import Q
 from django.views.decorators.csrf import csrf_exempt
 from openpyxl import Workbook, load_workbook
 
@@ -17,7 +19,6 @@ from apps.itsm.models import (
     SLAPolicy,
     StatusTransition,
     Ticket,
-    TicketAttachment,
     TicketComment,
     TicketFollower,
     TicketRelation,
@@ -28,7 +29,7 @@ from apps.itsm.models import (
     WorkflowVariable,
     WorkflowVersion,
 )
-from apps.itsm.views.access import api_errors, domain_of, get_ticket, method_permission, ticket_scope
+from apps.itsm.views.access import api_errors, domain_of, get_ticket, has_permission, method_permission, ticket_scope
 
 
 def _body(request):
@@ -194,91 +195,200 @@ def stages(request):
 @csrf_exempt
 @api_errors
 @HasPermission("ticket-View")
+@transaction.atomic
 def comments(request, ticket_id):
     ticket = get_ticket(request, ticket_id)
     if request.method == "GET":
-        items = [{"id": item.id, "content": item.content, "operator": item.created_by} for item in ticket.comments.order_by("id")]
+        items = [
+            {
+                "id": item.id,
+                "content": item.content,
+                "operator": item.created_by,
+                "parent_id": item.parent_id,
+                "created_at": item.created_at.isoformat(),
+                "attachment_ids": [file.id for file in item.attachments.all()],
+            }
+            for item in ticket.comments.prefetch_related("attachments").order_by("id")
+        ]
         return WebUtils.response_success({"items": items})
+    if request.method != "POST":
+        return WebUtils.response_error("不支持的方法", status_code=405)
     payload = _body(request)
-    item = TicketComment.objects.create(
-        ticket=ticket, content=payload["content"], mentions=payload.get("mentions") or [], created_by=_user(request), updated_by=_user(request)
-    )
+    content = str(payload.get("content") or "").strip()
+    ids = payload.get("attachment_ids") or []
+    if not isinstance(ids, list) or len(ids) > 20 or len(content) > 10000 or (not content and not ids):
+        raise ValueError("评论内容或附件无效")
+    parent = ticket.comments.get(id=payload["parent_id"]) if payload.get("parent_id") else None
+    files = list(ticket.attachments.select_for_update().filter(id__in=ids, created_by=_user(request), comment__isnull=True))
+    if len(files) != len(set(ids)):
+        raise PermissionError()
+    item = TicketComment.objects.create(ticket=ticket, parent=parent, content=content, created_by=_user(request), updated_by=_user(request))
+    ticket.attachments.filter(id__in=[file.id for file in files]).update(comment=item)
     return WebUtils.response_success({"id": item.id})
 
 
-@csrf_exempt
-@api_errors
-@HasPermission("ticket-Operate")
-def attachments(request, ticket_id):
-    ticket = get_ticket(request, ticket_id)
-    if request.method == "GET":
-        items = [{"id": item.id, "name": item.name, "object_name": item.object_name} for item in ticket.attachments.order_by("id")]
-        return WebUtils.response_success({"items": items})
-    payload = _body(request)
-    item = TicketAttachment.objects.create(
-        ticket=ticket,
-        object_name=payload["object_name"],
-        name=payload.get("name") or payload["object_name"],
-        size=payload.get("size") or 0,
-        created_by=_user(request),
-        updated_by=_user(request),
-    )
-    return WebUtils.response_success({"id": item.id})
+def attachment_data(item, username):
+    return {
+        "id": item.id,
+        "name": item.name,
+        "size": item.size,
+        "operator": item.created_by,
+        "created_at": item.created_at.isoformat(),
+        "comment_id": item.comment_id,
+        "can_delete": item.created_by == username,
+    }
 
 
 @csrf_exempt
 @api_errors
 @HasPermission("ticket-View")
+def attachments(request, ticket_id):
+    from apps.itsm.services.attachment import register_upload
+
+    ticket = get_ticket(request, ticket_id)
+    if request.method == "GET":
+        return WebUtils.response_success({"items": [attachment_data(item, _user(request)) for item in ticket.attachments.order_by("id")]})
+    if request.method != "POST":
+        return WebUtils.response_error("不支持的方法", status_code=405)
+    item = register_upload(ticket, _user(request), _body(request))
+    return WebUtils.response_success(attachment_data(item, _user(request)))
+
+
+@csrf_exempt
+@api_errors
+@HasPermission("ticket-View")
+def attachment_item(request, ticket_id, attachment_id):
+    from apps.itsm.services.attachment import BUCKET, download_url, storage_client
+
+    ticket = get_ticket(request, ticket_id)
+    item = ticket.attachments.get(id=attachment_id)
+    if request.method == "GET":
+        return WebUtils.response_success({"url": download_url(item)})
+    if request.method != "DELETE":
+        return WebUtils.response_error("不支持的方法", status_code=405)
+    if item.created_by != _user(request):
+        raise PermissionError()
+    storage_client().remove_object(BUCKET, item.object_name)
+    item.delete()
+    return WebUtils.response_success({"deleted": True})
+
+
+@csrf_exempt
+@api_errors
+@HasPermission("ticket-View")
+@transaction.atomic
 def followers(request, ticket_id):
     ticket = get_ticket(request, ticket_id)
     if request.method == "GET":
         names = list(ticket.followers.values_list("username", flat=True))
         return WebUtils.response_success({"items": names, "following": _user(request) in names})
+    if request.method != "POST":
+        return WebUtils.response_error("不支持的方法", status_code=405)
+    following = _body(request).get("following")
+    if not isinstance(following, bool):
+        return WebUtils.response_error("请指定关注状态", status_code=400)
+    Ticket.objects.select_for_update().get(pk=ticket.pk)
     username = _user(request)
-    follower = ticket.followers.filter(username=username).first()
-    if follower:
-        follower.delete()
-        return WebUtils.response_success({"following": False})
-    TicketFollower.objects.create(ticket=ticket, username=username, created_by=username, updated_by=username)
-    return WebUtils.response_success({"following": True})
+    if following:
+        TicketFollower.objects.get_or_create(ticket=ticket, username=username, defaults={"domain": ticket.domain, "created_by": username})
+    else:
+        ticket.followers.filter(username=username).delete()
+    return WebUtils.response_success({"following": following})
 
 
 @csrf_exempt
 @api_errors
-@HasPermission("ticket-Operate")
+@method_permission("ticket-View", "ticket-Operate")
+@transaction.atomic
 def ticket_tags(request, ticket_id):
     ticket = get_ticket(request, ticket_id)
     if request.method == "GET":
-        return WebUtils.response_success({"items": [{"id": item.id, "name": item.name} for item in ticket.tags.all()]})
+        return WebUtils.response_success(
+            {
+                "items": [{"id": item.id, "name": item.name, "color": item.color} for item in ticket.tags.all()],
+                "can_manage": has_permission(request, "ticket-Operate"),
+            }
+        )
     payload = _body(request)
+    if request.method == "DELETE":
+        tag = ticket.tags.get(pk=payload.get("id"))
+        ticket.tags.remove(tag)
+        return WebUtils.response_success({"deleted": True})
+    if request.method != "POST":
+        return WebUtils.response_error("不支持的方法", status_code=405)
+    name = payload.get("name")
+    if not isinstance(name, str) or not name.strip() or len(name.strip()) > 64:
+        return WebUtils.response_error("标签名称需为 1–64 个字符", status_code=400)
+    color = payload.get("color") or "#1677ff"
+    if not isinstance(color, str) or not re.fullmatch(r"#[0-9a-fA-F]{6}", color):
+        raise ValueError("标签颜色须为六位十六进制颜色")
     tag, _created = TicketTag.objects.get_or_create(
         domain=domain_of(request),
-        name=payload["name"],
-        defaults={"color": payload.get("color") or "#1677ff", "created_by": _user(request), "updated_by": _user(request)},
+        name=name.strip(),
+        defaults={"created_by": _user(request), "updated_by": _user(request), "color": color.lower()},
     )
     ticket.tags.add(tag)
-    return WebUtils.response_success({"id": tag.id, "name": tag.name})
+    return WebUtils.response_success({"id": tag.id, "name": tag.name, "color": tag.color})
+
+
+def visible_relations(request, ticket):
+    visible = ticket_scope(request).values("pk")
+    return TicketRelation.objects.filter(Q(ticket=ticket, related_id__in=visible) | Q(related=ticket, ticket_id__in=visible))
 
 
 @csrf_exempt
 @api_errors
-@HasPermission("ticket-Operate")
+@method_permission("ticket-View", "ticket-Operate")
+@transaction.atomic
 def relations(request, ticket_id):
     ticket = get_ticket(request, ticket_id)
     if request.method == "GET":
-        items = [
-            {"id": item.id, "related_id": item.related_id, "related_sn": item.related.sn, "relation_type": item.relation_type}
-            for item in ticket.relations.select_related("related")
-        ]
-        return WebUtils.response_success({"items": items})
+        items = []
+        seen = set()
+        for item in visible_relations(request, ticket).select_related("ticket", "related"):
+            other = item.related if item.ticket_id == ticket.id else item.ticket
+            key = (other.id, item.relation_type)
+            if key in seen:
+                continue
+            seen.add(key)
+            items.append(
+                {
+                    "id": item.id,
+                    "related_id": other.id,
+                    "related_sn": other.sn,
+                    "related_title": other.title,
+                    "relation_type": item.relation_type,
+                    "can_remove": item.relation_type == "related" and has_permission(request, "ticket-Operate"),
+                }
+            )
+        return WebUtils.response_success({"items": items, "can_manage": has_permission(request, "ticket-Operate")})
     payload = _body(request)
-    related = get_ticket(request, payload["related_id"])
+    if request.method == "DELETE":
+        item = visible_relations(request, ticket).get(pk=payload.get("id"))
+        if item.relation_type != "related":
+            return WebUtils.response_error("业务关联需通过对应流程管理，不能在此解除", status_code=400)
+        list(Ticket.objects.filter(pk__in=[item.ticket_id, item.related_id]).order_by("pk").select_for_update())
+        TicketRelation.objects.filter(
+            Q(ticket_id=item.ticket_id, related_id=item.related_id) | Q(ticket_id=item.related_id, related_id=item.ticket_id),
+            relation_type="related",
+        ).delete()
+        return WebUtils.response_success({"deleted": True})
+    if request.method != "POST":
+        return WebUtils.response_error("不支持的方法", status_code=405)
+    related_id = payload.get("related_id")
+    if isinstance(related_id, bool) or not isinstance(related_id, int) or related_id <= 0:
+        return WebUtils.response_error("请选择有效工单", status_code=400)
+    related = get_ticket(request, related_id)
+    if related.pk == ticket.pk:
+        return WebUtils.response_error("不能关联当前工单自身", status_code=400)
+    if payload.get("relation_type", "related") != "related":
+        return WebUtils.response_error("此入口仅支持普通关联", status_code=400)
+    # 固定顺序锁定两端，避免反向并发请求建立重复关系。
+    list(Ticket.objects.filter(pk__in=[ticket.pk, related.pk]).order_by("pk").select_for_update())
+    if TicketRelation.objects.filter(Q(ticket=ticket, related=related) | Q(ticket=related, related=ticket)).exists():
+        return WebUtils.response_error("这两张工单已经关联", status_code=400)
     item = TicketRelation.objects.create(
-        ticket=ticket,
-        related=related,
-        relation_type=payload.get("relation_type") or "related",
-        created_by=_user(request),
-        updated_by=_user(request),
+        ticket=ticket, related=related, relation_type="related", domain=ticket.domain, created_by=_user(request), updated_by=_user(request)
     )
     return WebUtils.response_success({"id": item.id})
 

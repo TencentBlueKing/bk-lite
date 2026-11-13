@@ -70,6 +70,14 @@ export const nodeLabelId = (type: string) => `itsm.node.${type}`;
 export const nodeGroupId = (name: string) => `itsm.nodeGroup.${name}`;
 
 export const NODE_ACTIONS = [
+  { label: '撤回（提单人）', value: 'withdraw' },
+  { label: '催办（提单人）', value: 'urge' },
+  { label: '挂起 / 恢复', value: 'suspend' },
+  { label: '响应', value: 'respond' },
+  { label: '关闭', value: 'close' },
+  { label: '终止', value: 'terminate' },
+  { label: '回退', value: 'return' },
+  { label: '转交', value: 'transfer' },
   { label: '提交', value: 'submit' },
   { label: '保存草稿', value: 'save' },
   { label: '保存模板', value: 'template' },

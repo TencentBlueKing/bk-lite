@@ -3,7 +3,7 @@
 import { Button, Input, Popconfirm, Tag, message } from 'antd';
 import { useCallback, useEffect, useState } from 'react';
 import OperateModal from '@/components/operate-modal';
-import CustomTable from '@/components/custom-table';
+import CustomTable from '@/app/itsm/components/itsm-list-table';
 import { useItsmApi } from '../../api/useItsmApi';
 import { useTranslation } from '@/utils/i18n';
 import { UserSelector } from '../../components/user-selector';
@@ -71,7 +71,6 @@ export default function HandlerGroupsPage() {
         <CustomTable
           rowKey="id"
           dataSource={shown}
-          pagination={false}
           locale={{ emptyText: t('itsm.admin.emptyGroup') }}
           columns={[
             { title: t('itsm.portal.name'), dataIndex: 'name', key: 'name' },

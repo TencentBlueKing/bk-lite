@@ -5,7 +5,7 @@ import Link from 'next/link';
 import OperateModal from '@/components/operate-modal';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
-import CustomTable from '@/components/custom-table';
+import CustomTable from '@/app/itsm/components/itsm-list-table';
 import { useTranslation } from '@/utils/i18n';
 import { useItsmApi } from '../api/useItsmApi';
 import type { WorkflowListItem } from '../types';

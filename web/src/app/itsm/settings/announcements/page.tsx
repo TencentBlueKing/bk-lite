@@ -3,7 +3,7 @@
 import { Button, Input, Popconfirm, message } from 'antd';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import OperateModal from '@/components/operate-modal';
-import CustomTable from '@/components/custom-table';
+import CustomTable from '@/app/itsm/components/itsm-list-table';
 import { useItsmApi } from '../../api/useItsmApi';
 import { FieldRow } from '../../components/field-row';
 import { useTranslation } from '@/utils/i18n';
@@ -71,7 +71,6 @@ export default function Page() {
         <CustomTable
           rowKey="id"
           dataSource={items}
-          pagination={false}
           locale={{ emptyText: t('itsm.admin.emptyNotice') }}
           columns={[
             { title: t('itsm.admin.noticeTitle'), dataIndex: 'title', key: 'title' },

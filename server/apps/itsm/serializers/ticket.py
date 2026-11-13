@@ -9,29 +9,27 @@ class TicketTaskSerializer(serializers.ModelSerializer):
         fields = ["id", "node_id", "node_name", "assignee", "status"]
 
 
-class TicketListSerializer(serializers.Serializer):
-    id = serializers.IntegerField()
-    sn = serializers.CharField()
-    title = serializers.CharField()
-    status = serializers.CharField()
-    creator = serializers.CharField()
-    tasks = TicketTaskSerializer(many=True)
-    sla_target = serializers.CharField()
-    sla_due_at = serializers.CharField()
-    sla_breached = serializers.BooleanField()
+class TicketListSerializer(serializers.BaseSerializer):
+    def to_representation(self, ticket):
+        from apps.itsm.services.ticket.listing import COLUMNS
 
-    @classmethod
-    def from_ticket(cls, ticket):
-        pending = [task for task in ticket.tasks.all() if task.status in {TicketTask.TaskStatus.PENDING, TicketTask.TaskStatus.CLAIMED}]
-        open_sla = next((record for record in ticket.sla_records.all() if not record.finished_at), None)
-        return {
-            "id": ticket.id,
-            "sn": ticket.sn,
-            "title": ticket.title,
-            "status": ticket.status.key if ticket.status_id else "",
-            "creator": ticket.creator,
-            "tasks": pending,
-            "sla_target": open_sla.target if open_sla else "",
-            "sla_due_at": open_sla.due_at.isoformat() if open_sla else "",
-            "sla_breached": bool(open_sla.breached) if open_sla else False,
-        }
+        fields = self.context.get("fields")
+        wanted = fields if fields is not None else set(COLUMNS)
+        result = {"id": ticket.id, "sn": ticket.sn, "title": ticket.title}
+        for key in wanted.intersection({"creator", "created_at", "updated_at"}):
+            value = getattr(ticket, key)
+            result[key] = value.isoformat() if hasattr(value, "isoformat") else value
+        if "status" in wanted:
+            result["status"] = ticket.status.key if ticket.status_id else ""
+        if "priority" in wanted:
+            result["priority"] = str(ticket._priority or "")
+        if "workflow" in wanted:
+            result["workflow"] = ticket.workflow.name
+        if wanted.intersection({"node", "assignees"}):
+            result["tasks"] = TicketTaskSerializer(ticket.tasks.all(), many=True).data
+        if "sla" in wanted:
+            sla = next(iter(ticket.sla_records.all()), None)
+            result.update(
+                sla_target=sla.target if sla else "", sla_due_at=sla.due_at.isoformat() if sla else "", sla_breached=bool(sla and sla.breached)
+            )
+        return result

@@ -11,14 +11,14 @@ PAGE_SIZE = 10
 
 
 class UserSearchView(ItsmAPIView):
-    @HasPermission("portal-View")
+    @HasPermission("portal-View,ticket-View")
     def get(self, request):
         keyword = (request.GET.get("q") or "").strip()
         try:
             page = max(int(request.GET.get("page") or 1), 1)
         except (TypeError, ValueError):
             page = 1
-        queryset = User.objects.filter(domain="domain.com", disabled=False)
+        queryset = User.objects.filter(domain=request.user.domain, disabled=False)
         if keyword:
             queryset = queryset.filter(Q(username__icontains=keyword) | Q(display_name__icontains=keyword))
         queryset = queryset.order_by("username")

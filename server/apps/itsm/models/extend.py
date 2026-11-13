@@ -244,6 +244,7 @@ class SearchField(ItsmModel):
 
 
 class UserPreference(ItsmModel):
+    ticket_columns = models.JSONField(default=list)
     username = models.CharField(max_length=64)
     notify_events = models.JSONField(default=list)
 

@@ -163,10 +163,18 @@ class TicketService:
         }:
             raise ValueError("不支持的动作")
         node = _find_node(ticket.workflow_version.design if ticket.workflow_version_id else {}, node_id=task.node_id) if task else {}
+        from apps.itsm.services.ticket.actions import TASK_ACTIONS, node_actions, side_action_enabled
+
         if action == "submit" and node.get("type") == "approval":
             raise ValueError("审批节点只能通过或驳回")
         if action in {"approve", "reject"} and node.get("type") != "approval":
             raise ValueError("当前节点不是审批节点")
+        if action not in TASK_ACTIONS and not side_action_enabled(
+            ticket.workflow_version.design if ticket.workflow_version_id else {}, list(ticket.tasks.all()), action
+        ):
+            raise PermissionError("当前节点不允许此操作")
+        if task and action in TASK_ACTIONS and action not in node_actions(node, task):
+            raise PermissionError("当前节点不允许此操作")
         if action in {"suspend", "resume", "withdraw", "return", "transfer", "terminate", "close", "reopen", "urge", "save", "respond"}:
             return self._side_action(ticket, task, action, data, operator)
         if task is None:
@@ -285,6 +293,7 @@ class TicketService:
         elif action == "close":
             self._stop_process(ticket, "finished")
         elif action == "reopen":
+            data = {**data, "round_started_at": timezone.now().isoformat()}
             self._reopen(ticket, operator)
         elif action == "urge":
             receivers = [
@@ -360,9 +369,9 @@ class TicketService:
         elif not ticket.tasks.filter(status__in=open_status).exists():
             TicketTask.objects.create(
                 ticket=ticket,
-                node_id="reopen",
-                node_name="重新打开",
-                assignee=operator,
+                node_id=_find_node(version.design if version else {}, node_type="submit").get("id") or "submit",
+                node_name=_find_node(version.design if version else {}, node_type="submit").get("name") or "提单",
+                assignee=ticket.creator,
                 created_by=operator,
                 updated_by=operator,
             )

@@ -2,6 +2,7 @@ from django.core.management.base import BaseCommand
 
 from apps.core.models.maintainer_info import DEFAULT_MAINTAINER_DOMAIN, SYSTEM_MAINTAINER
 from apps.itsm.models import DataDictionary, DataDictionaryItem, NotifyTemplate, StatusTransition, TicketStatus
+from apps.system_mgmt.models import CustomMenuGroup
 
 STATUSES = (
     ("draft", "草稿", "#8c8c8c", False, 1),
@@ -58,6 +59,13 @@ class Command(BaseCommand):
             "domain": DEFAULT_MAINTAINER_DOMAIN,
             "updated_by_domain": DEFAULT_MAINTAINER_DOMAIN,
         }
+        # 单独初始化 ITSM 时也补齐菜单组；不覆盖管理员已有的启用或停用配置。
+        if not CustomMenuGroup.objects.filter(app="itsm").exists():
+            CustomMenuGroup.objects.get_or_create(
+                app="itsm",
+                display_name="默认菜单",
+                defaults={"is_enabled": True, "is_build_in": True, "menus": [], **actor},
+            )
         statuses = {}
         for key, name, color, terminal, order in STATUSES:
             status, _ = TicketStatus.objects.get_or_create(

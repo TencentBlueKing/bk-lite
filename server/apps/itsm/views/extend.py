@@ -254,18 +254,79 @@ def _apply_handover(item: Handover) -> None:
 
 @csrf_exempt
 @api_errors
-@HasPermission("ticket-Operate")
+@HasPermission("ticket-View")
+def batch_options(request):
+    from apps.itsm.services.ticket.batch import selection, validate_ids
+
+    if request.method != "POST":
+        return WebUtils.response_error("不支持的请求方法", status_code=405)
+    options, _ = selection(request, validate_ids(_body(request).get("ids")))
+    return WebUtils.response_success(options)
+
+
+@csrf_exempt
+@api_errors
+@HasPermission("ticket-View")
 def batch_operate(request):
+    from django.http import Http404
+
+    from apps.itsm.flowable.client import FlowableError
+    from apps.itsm.models import TicketFollower
+
+    if request.method != "POST":
+        return WebUtils.response_error("不支持的请求方法", status_code=405)
     payload = _body(request)
-    action = payload.get("action") or "urge"
+    ids = payload.get("ids")
+    action = payload.get("action")
+    if not isinstance(ids, list) or not 1 <= len(ids) <= 50 or any(type(pk) is not int or pk <= 0 for pk in ids):
+        raise ValueError("请选择1至50张工单")
+    if action not in {"submit", "approve", "reject", "claim", "urge", "suspend", "resume", "follow", "unfollow"}:
+        raise ValueError("不支持的批量操作")
+    if action not in {"follow", "unfollow"} and not has_permission(request, "ticket-Operate"):
+        raise PermissionError()
+    opinion = payload.get("opinion", "")
+    if not isinstance(opinion, str) or len(opinion) > 1000:
+        raise ValueError("意见过长")
+    from apps.itsm.services.ticket.batch import selection
+
+    options, _ = selection(request, list(dict.fromkeys(ids)))
+    if action not in {"follow", "unfollow"} and options["mixed_nodes"]:
+        return WebUtils.response_success({"items": [{"id": pk, "ok": False, "error": options["reason"]} for pk in dict.fromkeys(ids)]})
+    username = _user(request)
+    privileged = bool(getattr(request.user, "is_superuser", False))
+    principals = {
+        username,
+        *TicketProxy.objects.filter(domain=domain_of(request), agent=username, is_enabled=True).values_list("principal", flat=True),
+    }
     results = []
-    for ticket in ticket_scope(request).filter(id__in=payload.get("ids") or []):
-        task = ticket.tasks.filter(status=TicketTask.TaskStatus.PENDING).first()
+    for pk in dict.fromkeys(ids):
         try:
-            _service().operate(ticket, task, action, payload, _user(request))
-            results.append({"id": ticket.id, "ok": True})
-        except (PermissionError, ValueError, TicketTask.DoesNotExist) as exc:
-            results.append({"id": ticket.id, "ok": False, "error": str(exc)})
+            ticket = get_ticket(request, pk)
+            if action == "follow":
+                TicketFollower.objects.get_or_create(ticket=ticket, username=username, defaults={"domain": ticket.domain, "created_by": username})
+            elif action == "unfollow":
+                ticket.followers.filter(username=username).delete()
+            else:
+                task = None
+                if action in {"submit", "approve", "reject", "claim"}:
+                    tasks = ticket.tasks.filter(status__in=["pending", "claimed"])
+                    if not privileged:
+                        tasks = tasks.filter(assignee__in=principals)
+                    candidates = list(tasks[:2])
+                    if len(candidates) != 1:
+                        raise ValueError("待办任务不唯一或无处理权限，请进入详情确认")
+                    task = candidates[0]
+                _service().operate(ticket, task, action, {"opinion": opinion}, username, privileged=privileged)
+            results.append({"id": pk, "ok": True})
+        except Http404:
+            results.append({"id": pk, "ok": False, "error": "工单不存在或无查看权限"})
+        except PermissionError:
+            results.append({"id": pk, "ok": False, "error": "无操作权限或当前节点不支持此操作"})
+        except (ValueError, TicketTask.DoesNotExist) as exc:
+            detail = "必填字段未完成，请进入详情补齐" if exc.args and isinstance(exc.args[0], dict) else str(exc)
+            results.append({"id": pk, "ok": False, "error": detail or "任务已变化，请刷新"})
+        except FlowableError:
+            results.append({"id": pk, "ok": False, "error": "流程引擎暂不可用，请刷新核对后再操作"})
     return WebUtils.response_success({"items": results})
 
 

@@ -4,7 +4,7 @@ import { Button, Input, message } from 'antd';
 import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
 import OperateModal from '@/components/operate-modal';
-import CustomTable from '@/components/custom-table';
+import CustomTable from '@/app/itsm/components/itsm-list-table';
 import { useItsmApi } from '../../api/useItsmApi';
 import { FieldRow } from '../../components/field-row';
 import { useTranslation } from '@/utils/i18n';
@@ -155,7 +155,6 @@ export default function DictionariesPage() {
           <CustomTable
             rowKey="id"
             dataSource={entries}
-            pagination={false}
             locale={{ emptyText: t('itsm.admin.emptyItems') }}
             columns={[
               { title: t('itsm.admin.itemLabel'), dataIndex: 'label', key: 'label' },

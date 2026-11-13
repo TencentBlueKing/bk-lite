@@ -6,6 +6,14 @@ import useApiClient from '@/utils/request';
 export function useItsmApi() {
   const { get, post, put, del, isLoading } = useApiClient();
 
+  const searchTicketTags = useCallback((q: string) => get('/itsm/api/tickets/filter_tags/', { params: { q } }), [get]);
+  const centerSettings = useCallback(() => get('/itsm/api/tickets/center_settings/'), [get]);
+  const saveTicketColumns = useCallback((columns: string[] | null) => put('/itsm/api/tickets/center_settings/', { columns }), [put]);
+  const saveTicketGroup = useCallback((name: string, filters: Record<string, string>) => post('/itsm/api/tickets/center_settings/', { name, filters }), [post]);
+  const deleteTicketGroup = useCallback((id: number) => del('/itsm/api/tickets/center_settings/', { data: { id } }), [del]);
+  const batchOptions = useCallback((ids: number[]) => post('/itsm/api/tickets/batch_options/', { ids }), [post]);
+  const batchTickets = useCallback((ids: number[], action: string, opinion: string) => post('/itsm/api/tickets/batch_operate/', { ids, action, opinion }), [post]);
+
   const listForms = useCallback(() => get('/itsm/api/forms/'), [get]);
   const createForm = useCallback(
     (body: { name: string; key: string }) => post('/itsm/api/forms/', body),
@@ -31,7 +39,7 @@ export function useItsmApi() {
     (id: number) => post(`/itsm/api/workflows/${id}/publish/`),
     [post],
   );
-  const listTickets = useCallback((query?: { q?: string; creator?: string; priority?: string; tag?: string; status?: string; page?: number; page_size?: number; tab?: string }) => {
+  const listTickets = useCallback((query?: { q?: string; creator?: string; priority?: string; tag?: string; status?: string; page?: number; page_size?: number; tab?: string; relation_for?: number; fields?: string; ordering?: string; created_after?: string; created_before?: string }) => {
     const params = Object.fromEntries(Object.entries(query || {}).filter(([, value]) => value));
     return get('/itsm/api/tickets/', Object.keys(params).length ? { params } : undefined);
   }, [get]);
@@ -96,16 +104,20 @@ export function useItsmApi() {
   const listWorkflowVersions = useCallback((id: number) => get(`/itsm/api/workflows/${id}/versions/`), [get]);
   const enableWorkflowVersion = useCallback((workflowId: number, versionId: number) => post(`/itsm/api/workflows/${workflowId}/versions/${versionId}/enable/`, {}), [post]);
   const listComments = useCallback((id: number) => get(`/itsm/api/tickets/${id}/comments/`), [get]);
-  const addComment = useCallback((id: number, content: string) => post(`/itsm/api/tickets/${id}/comments/`, { content }), [post]);
+  const addComment = useCallback((id: number, content: string, parent_id?: number, attachment_ids?: number[]) => post(`/itsm/api/tickets/${id}/comments/`, { content, parent_id, attachment_ids }), [post]);
   const listAttachments = useCallback((id: number) => get(`/itsm/api/tickets/${id}/attachments/`), [get]);
   const addAttachment = useCallback(
-    (id: number, body: { object_name: string; name?: string; size?: number }) => post(`/itsm/api/tickets/${id}/attachments/`, body),
+    (id: number, body: { receipt: string }) => post(`/itsm/api/tickets/${id}/attachments/`, body),
     [post],
   );
+  const downloadAttachment = useCallback((id: number, fileId: number) => get(`/itsm/api/tickets/${id}/attachments/${fileId}/`), [get]);
+  const deleteAttachment = useCallback((id: number, fileId: number) => del(`/itsm/api/tickets/${id}/attachments/${fileId}/`), [del]);
   const listFollowers = useCallback((id: number) => get(`/itsm/api/tickets/${id}/followers/`), [get]);
-  const toggleFollow = useCallback((id: number) => post(`/itsm/api/tickets/${id}/followers/`, {}), [post]);
+  const toggleFollow = useCallback((id: number, following: boolean) => post(`/itsm/api/tickets/${id}/followers/`, { following }), [post]);
   const listTags = useCallback((id: number) => get(`/itsm/api/tickets/${id}/tags/`), [get]);
-  const addTag = useCallback((id: number, name: string) => post(`/itsm/api/tickets/${id}/tags/`, { name }), [post]);
+  const addTag = useCallback((id: number, name: string, color?: string) => post(`/itsm/api/tickets/${id}/tags/`, { name, color }), [post]);
+  const removeTag = useCallback((id: number, tagId: number) => del(`/itsm/api/tickets/${id}/tags/`, { data: { id: tagId } }), [del]);
+  const removeRelation = useCallback((id: number, relationId: number) => del(`/itsm/api/tickets/${id}/relations/`, { data: { id: relationId } }), [del]);
   const listRelations = useCallback((id: number) => get(`/itsm/api/tickets/${id}/relations/`), [get]);
   const addRelation = useCallback(
     (id: number, relatedId: number) => post(`/itsm/api/tickets/${id}/relations/`, { related_id: relatedId }),
@@ -154,10 +166,11 @@ export function useItsmApi() {
     (body: { product_name: string; tab_title: string; attachment_types: string; show_process_log: boolean; user_display: string }) => post('/itsm/api/settings/basic/', body),
     [post],
   );
-  const presignAttachment = useCallback((filename: string) => post('/itsm/api/attachments/presign/', { filename }), [post]);
+  const presignAttachment = useCallback((filename: string, ticket_id?: number) => post('/itsm/api/attachments/presign/', { filename, ticket_id }), [post]);
 
   return {
     ready: !isLoading,
+    searchTicketTags, centerSettings, saveTicketColumns, saveTicketGroup, deleteTicketGroup, batchTickets, batchOptions,
     listForms,
     createForm,
     getForm,
@@ -215,10 +228,14 @@ export function useItsmApi() {
     addComment,
     listAttachments,
     addAttachment,
+    downloadAttachment,
+    deleteAttachment,
     listFollowers,
     toggleFollow,
     listTags,
     addTag,
+    removeTag,
+    removeRelation,
     listRelations,
     addRelation,
     listDictionaries,

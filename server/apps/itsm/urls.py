@@ -22,6 +22,7 @@ from apps.itsm.views.api import (
 from apps.itsm.views.attachments import presign_attachment
 from apps.itsm.views.extend import (
     batch_operate,
+    batch_options,
     biz_records,
     chat_messages,
     cmdb_search,
@@ -36,6 +37,7 @@ from apps.itsm.views.extend import (
 )
 from apps.itsm.views.health import health
 from apps.itsm.views.m2 import (
+    attachment_item,
     attachments,
     cleanup_test_tickets,
     comments,
@@ -57,15 +59,19 @@ from apps.itsm.views.m2 import test_start, ticket_tags, todo_summary, view_templ
 from apps.itsm.views.m2 import workflow_variables as variable_admin
 from apps.itsm.views.m2 import workflow_versions
 from apps.itsm.views.services import CatalogView, ServiceView, service_favorite, service_hot, service_portal, service_use
+from apps.itsm.views.ticket_center import center_settings, filter_tags
 from apps.itsm.views.tickets import operate_ticket, ticket_detail, ticket_form, ticket_logs, ticket_survey, ticket_workflows, tickets
 from apps.itsm.views.users import PublicStatusView, UserSearchView
 
 urlpatterns = [
+    path("api/tickets/filter_tags/", filter_tags, name="itsm-ticket-filter-tags"),
+    path("api/tickets/center_settings/", center_settings, name="itsm-ticket-center-settings"),
     path("api/tickets/workflows/", ticket_workflows, name="itsm-ticket-workflows"),
     path("api/tickets/form/<int:version_id>/", ticket_form, name="itsm-ticket-form"),
     path("api/health/", health, name="itsm-health"),
     path("api/resources/<str:kind>/", resources, name="itsm-resources"),
     path("api/resources/<str:kind>/<int:item_id>/", resource_item, name="itsm-resource-item"),
+    path("api/tickets/batch_options/", batch_options, name="itsm-ticket-batch-options"),
     path("api/tickets/batch_operate/", batch_operate, name="itsm-ticket-batch"),
     path("api/tickets/export/", export_tickets, name="itsm-ticket-export"),
     path("api/tickets/<int:ticket_id>/children/", create_child, name="itsm-ticket-child"),
@@ -107,6 +113,7 @@ urlpatterns = [
     path("api/tickets/test/cleanup/", cleanup_test_tickets, name="itsm-test-cleanup"),
     path("api/tickets/", tickets, name="itsm-tickets"),
     path("api/tickets/<int:ticket_id>/comments/", comments, name="itsm-ticket-comments"),
+    path("api/tickets/<int:ticket_id>/attachments/<int:attachment_id>/", attachment_item, name="itsm-ticket-attachment"),
     path("api/tickets/<int:ticket_id>/attachments/", attachments, name="itsm-ticket-attachments"),
     path("api/tickets/<int:ticket_id>/followers/", followers, name="itsm-ticket-followers"),
     path("api/tickets/<int:ticket_id>/tags/", ticket_tags, name="itsm-ticket-tags"),

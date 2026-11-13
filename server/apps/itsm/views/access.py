@@ -5,6 +5,8 @@ from functools import wraps
 from django.core.exceptions import ObjectDoesNotExist
 from django.http import Http404
 from django.shortcuts import get_object_or_404
+from minio.error import S3Error
+from urllib3.exceptions import HTTPError
 
 from apps.core.utils.web_utils import WebUtils
 from apps.itsm.flowable.client import FlowableError
@@ -18,6 +20,8 @@ def api_errors(view):
             return view(*args, **kwargs)
         except (ObjectDoesNotExist, Http404):
             return WebUtils.response_error("记录不存在", status_code=404)
+        except (S3Error, HTTPError):
+            return WebUtils.response_error("附件存储暂不可用，请重试", status_code=502)
         except FlowableError:
             return WebUtils.response_error("流程引擎暂不可用，操作未完成", status_code=502)
         except PermissionError:

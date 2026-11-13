@@ -40,6 +40,7 @@ import { NODE_ACTIONS, NODE_GROUPS, NODE_PALETTE, nodeLabelId } from '../constan
 import { ConditionBuilder } from './condition-builder';
 import { CanvasTools } from './canvas-tools';
 import { UserSelector } from './user-selector';
+import { NodeGlyph } from './node-glyph';
 import { useTranslation } from '@/utils/i18n';
 
 const NODE_WIDTH = 148;
@@ -82,7 +83,7 @@ function ItsmNode({ data, selected }: NodeProps<ItsmFlowNodeType>) {
       {data.nodeType === 'start' ? null : (
         <Handle type="target" position={Position.Left} isConnectableStart={false} className={handleClass} />
       )}
-      <span className="h-8 w-1 shrink-0 rounded-full bg-[var(--color-primary)]" />
+      <NodeGlyph type={data.nodeType} />
       <div className="flex min-w-0 flex-1 flex-col justify-center">
         <span className="truncate text-xs font-semibold text-[var(--color-text-1)]">{data.label}</span>
         <span className="truncate text-[11px] text-[var(--color-text-3)]">{typeLabel}</span>
@@ -425,7 +426,7 @@ function FlowDesignerBody({ design, fields = [], invalidNodeIds = [], onChange }
                       }
                     }}
                   >
-                    <span className="h-3.5 w-1 shrink-0 rounded-full bg-[var(--color-primary)]" />
+                    <NodeGlyph type={item.type} compact />
                     <span className="truncate text-xs font-medium text-[var(--color-text-1)] group-hover:text-[var(--color-primary)]">
                       {t(nodeLabelId(item.type))}
                     </span>

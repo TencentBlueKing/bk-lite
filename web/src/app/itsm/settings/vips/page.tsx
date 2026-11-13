@@ -2,7 +2,7 @@
 
 import { Button, Popconfirm, message } from 'antd';
 import { useCallback, useEffect, useState } from 'react';
-import CustomTable from '@/components/custom-table';
+import CustomTable from '@/app/itsm/components/itsm-list-table';
 import { useItsmApi } from '../../api/useItsmApi';
 import { useTranslation } from '@/utils/i18n';
 import { UserSelector } from '../../components/user-selector';
@@ -53,7 +53,6 @@ export default function Page() {
         <CustomTable
           rowKey="id"
           dataSource={items}
-          pagination={false}
           locale={{ emptyText: t('itsm.admin.emptyVip') }}
           columns={[
             { title: t('itsm.admin.username'), dataIndex: 'username', key: 'username' },

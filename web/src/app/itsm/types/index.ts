@@ -81,6 +81,7 @@ export interface WorkflowListItem extends NamedItem {
 }
 
 export interface TicketTaskItem {
+  allowed_actions?: string[];
   id: number;
   node_id: string;
   node_name: string;
@@ -92,6 +93,10 @@ export interface TicketTaskItem {
 }
 
 export interface TicketListItem {
+  created_at?: string;
+  updated_at?: string;
+  workflow?: string;
+  priority?: string;
   id: number;
   sn: string;
   title: string;
@@ -110,11 +115,14 @@ export interface TicketLogItem {
 }
 
 export interface TicketProgressNode {
+  outcome?: 'waiting' | 'current' | 'passed' | 'accepted' | 'rejected';
   id: string;
   name: string;
   type: string;
   state: 'done' | 'current' | 'waiting';
   assignees?: string[];
+  started_at?: string;
+  finished_at?: string;
 }
 
 export interface TicketProgressEdge {
@@ -131,7 +139,41 @@ export interface TicketSLAItem {
   paused: boolean;
 }
 
+export interface TicketHistoryItem {
+  id: string;
+  node_id: string;
+  name: string;
+  action_label: string;
+  operator: string;
+  state: string;
+  started_at: string;
+  finished_at: string;
+  message: string;
+}
+
+export interface TicketAttachmentItem {
+  id: number;
+  name: string;
+  size: number;
+  operator: string;
+  created_at: string;
+  comment_id?: number;
+  can_delete: boolean;
+}
+
+export interface TicketCommentItem {
+  id: number;
+  operator: string;
+  content: string;
+  parent_id?: number;
+  created_at: string;
+  attachment_ids: number[];
+}
+
 export interface TicketDetail {
+  history?: TicketHistoryItem[];
+  created_at?: string;
+  workflow_name?: string;
   allowed_actions?: string[];
   can_survey?: boolean;
   id: number;

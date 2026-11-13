@@ -1,5 +1,5 @@
 from django.db import models
-from django.db.models import Q
+from django.db.models import Exists, OuterRef, Q
 
 from apps.itsm.models.base import ItsmModel
 from apps.itsm.models.org import TicketStatus
@@ -15,10 +15,10 @@ class TicketQuerySet(models.QuerySet):
         from apps.itsm.models.extend import TicketProxy
 
         principals = list(TicketProxy.objects.filter(agent=username, domain=domain, is_enabled=True).values_list("principal", flat=True))
-        query = Q(creator=username) | Q(tasks__assignee=username)
-        if principals:
-            query = query | Q(creator__in=principals) | Q(tasks__assignee__in=principals)
-        return self.filter(query).distinct()
+        actors = [username, *principals]
+        tasks = TicketTask.objects.filter(ticket_id=OuterRef("pk"), assignee__in=actors)
+        followers = TicketFollower.objects.filter(ticket_id=OuterRef("pk"), username=username)
+        return self.filter(Q(creator__in=actors) | Q(Exists(tasks)) | Q(Exists(followers)))
 
 
 class TicketTag(ItsmModel):
@@ -77,6 +77,7 @@ class TicketComment(ItsmModel):
 
 
 class TicketAttachment(ItsmModel):
+    comment = models.ForeignKey(TicketComment, null=True, blank=True, on_delete=models.SET_NULL, related_name="attachments")
     ticket = models.ForeignKey(Ticket, on_delete=models.CASCADE, related_name="attachments")
     task = models.ForeignKey(TicketTask, null=True, blank=True, on_delete=models.SET_NULL, related_name="attachments")
     field_key = models.CharField(max_length=64, blank=True, default="")

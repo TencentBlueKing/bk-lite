@@ -3,7 +3,7 @@
 import { Button, Input, message } from 'antd';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import OperateModal from '@/components/operate-modal';
-import CustomTable from '@/components/custom-table';
+import CustomTable from '@/app/itsm/components/itsm-list-table';
 import { useItsmApi } from '../../api/useItsmApi';
 import { FieldRow } from '../../components/field-row';
 import { useTranslation } from '@/utils/i18n';
@@ -129,7 +129,6 @@ export default function DataTablesPage() {
         <CustomTable
           rowKey="id"
           dataSource={items}
-          pagination={false}
           locale={{ emptyText: t('itsm.admin.emptyTables') }}
           columns={[
             { title: t('itsm.portal.name'), dataIndex: 'name', key: 'name' },
@@ -168,7 +167,6 @@ export default function DataTablesPage() {
           <CustomTable
             rowKey="id"
             dataSource={rows}
-            pagination={false}
             locale={{ emptyText: t('itsm.admin.emptyRows') }}
             columns={rowColumns}
           />

@@ -3,41 +3,64 @@
 import { Background, Controls, Handle, Position, ReactFlow, ReactFlowProvider, type Node, type NodeProps } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import dagre from 'dagre';
-import { Button } from 'antd';
+import { Button, Modal, Popover, Tag, Tooltip } from 'antd';
+import { AimOutlined, DownOutlined, UpOutlined, UserOutlined, ZoomInOutlined } from '@ant-design/icons';
+import { NodeGlyph } from './node-glyph';
+import { NODE_PALETTE } from '../constants/node-catalog';
+import { formatTicketTime } from './ticket-collaboration';
 import { useMemo, useState } from 'react';
-import { useTranslation } from '@/utils/i18n';
 import type { TicketProgressEdge, TicketProgressNode } from '../types';
 
-const NODE_WIDTH = 168;
-const NODE_HEIGHT = 64;
+const NODE_WIDTH = 220;
+const NODE_HEIGHT = 88;
 const GATEWAY_TYPES = new Set(['parallel', 'parallel_condition', 'branch', 'branch_condition', 'exclusive', 'converge']);
 
 interface FlowNodeData extends Record<string, unknown> {
   label: string;
+  nodeType: string;
   state: TicketProgressNode['state'];
+  outcome?: TicketProgressNode['outcome'];
   assignees: string[];
+  started_at?: string;
+  finished_at?: string;
 }
 
 const STATE_CLASS = {
-  done: 'border-[var(--color-primary)] bg-[var(--color-primary-bg-active)]',
-  current: 'border-[var(--color-primary)] bg-[var(--color-bg)] shadow-xs',
-  waiting: 'border-[var(--color-border)] bg-[var(--color-bg)] opacity-60',
+  passed: '[--node-accent:var(--color-primary)]',
+  accepted: '[--node-accent:var(--color-success)]',
+  rejected: '[--node-accent:var(--color-fail)]',
+  current: '[--node-accent:var(--color-warning)]',
+  waiting: '[--node-accent:var(--color-border)]',
 };
+const FRAME_CLASS = 'bg-[linear-gradient(145deg,color-mix(in_srgb,var(--node-accent)_40%,var(--color-bg))_0%,var(--node-accent)_55%,color-mix(in_srgb,var(--node-accent)_75%,var(--color-border))_100%)]';
 
-function ProgressNode({ data }: NodeProps<Node<FlowNodeData, 'progress'>>) {
-  const { t } = useTranslation();
-  const caption = data.state === 'current'
-    ? t('itsm.ticket.currentHandler', undefined, { names: data.assignees.join('、') || t('itsm.ticket.unassigned') })
-    : data.state === 'done'
-      ? t('itsm.ticket.passed')
-      : t('itsm.ticket.notReached');
+const STATE_LABEL = { passed: '已流转', accepted: '接受', rejected: '拒绝', current: '待处理', waiting: '未到达' };
+
+export function ProgressNode({ data }: NodeProps<Node<FlowNodeData, 'progress'>>) {
+  const outcome = data.state === 'done' ? data.outcome || 'passed' : data.state;
+  const typeLabel = NODE_PALETTE.find((item) => item.type === (data.nodeType === 'handle' ? 'manual' : data.nodeType))?.label || '流程节点';
   return (
-    <div style={{ width: NODE_WIDTH, height: NODE_HEIGHT }} className={`relative flex flex-col justify-center rounded-lg border px-3 ${STATE_CLASS[data.state]}`}>
-      <Handle type="target" position={Position.Left} className="!h-2 !w-2 !border-0 !bg-[var(--color-primary)]" />
-      <span className="truncate text-xs font-semibold text-[var(--color-text-1)]">{data.label}</span>
-      <span className="truncate text-[11px] text-[var(--color-text-3)]">{caption}</span>
-      <Handle type="source" position={Position.Right} className="!h-2 !w-2 !border-0 !bg-[var(--color-primary)]" />
-    </div>
+    <Popover trigger={['hover', 'focus']} title={data.label} content={
+      <div className="flex max-w-xs flex-col gap-2 text-xs">
+        <div className="flex flex-wrap gap-1"><Tag>{typeLabel}</Tag><Tag>{STATE_LABEL[outcome]}</Tag></div>
+        {data.assignees.length ? <div className="flex flex-wrap gap-1">{data.assignees.map((name) => <Tag key={name} icon={<UserOutlined />}>{name}</Tag>)}</div> : null}
+        {data.started_at ? <span>到达时间 {formatTicketTime(data.started_at)}</span> : null}
+        {data.finished_at ? <span>处理时间 {formatTicketTime(data.finished_at)}</span> : null}
+      </div>
+    }>
+      <div tabIndex={0} aria-current={data.state === 'current' ? 'step' : undefined} aria-label={`${data.label}，${STATE_LABEL[outcome]}`} style={{ width: NODE_WIDTH, height: NODE_HEIGHT }} className={`relative rounded-xl p-[2px] shadow-[0_2px_4px_color-mix(in_srgb,var(--color-text-1)_8%,transparent)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-primary)] ${FRAME_CLASS} ${STATE_CLASS[outcome]}`}>
+        {data.state === 'current' ? <span className="absolute -top-7 left-1/2 inline-flex -translate-x-1/2 items-center gap-1 whitespace-nowrap rounded-full border border-[var(--color-warning)] bg-[var(--color-bg)] px-2 py-0.5 text-xs font-medium text-[var(--color-warning)]"><AimOutlined />当前节点</span> : null}
+        <Handle type="target" position={Position.Left} className="!h-2 !w-2 !border-0 !bg-[var(--color-border)]" />
+        <div className="flex h-full flex-col justify-center gap-2 rounded-[10px] bg-[var(--color-bg)] px-3 shadow-[inset_0_1px_2px_color-mix(in_srgb,var(--color-text-1)_4%,transparent)]">
+          <div className="flex min-w-0 items-center gap-2"><NodeGlyph type={data.nodeType} compact /><span className="truncate text-xs font-semibold text-[var(--color-text-1)]">{data.label}</span></div>
+          {data.assignees.length ? <div className="flex min-w-0 items-center gap-1">
+            <Tag icon={<UserOutlined />} className="!m-0 !flex !max-w-[150px] !items-center !gap-1"><span className="truncate">{data.assignees[0]}</span></Tag>
+            {data.assignees.length > 1 ? <Tag className="!m-0">+{data.assignees.length - 1}</Tag> : null}
+          </div> : null}
+        </div>
+        <Handle type="source" position={Position.Right} className="!h-2 !w-2 !border-0 !bg-[var(--color-border)]" />
+      </div>
+    </Popover>
   );
 }
 
@@ -60,7 +83,7 @@ const layout = (nodes: TicketProgressNode[], edges: TicketProgressEdge[]) => {
       id: node.id,
       type: 'progress',
       position: { x: (position?.x || 0) - NODE_WIDTH / 2, y: (position?.y || 0) - NODE_HEIGHT / 2 },
-      data: { label: node.name, state: node.state, assignees: node.assignees || [] },
+      data: { label: node.name, nodeType: node.type, state: node.state, outcome: node.outcome, assignees: node.assignees || [], started_at: node.started_at, finished_at: node.finished_at },
     };
   });
 };
@@ -81,15 +104,14 @@ const withPassedGateways = (nodes: TicketProgressNode[], edges: TicketProgressEd
       }
     });
   }
-  return nodes.map((node) => ({ ...node, state: state.get(node.id) || node.state }));
+  return nodes.map((node) => ({ ...node, state: state.get(node.id) || node.state, outcome: state.get(node.id) !== node.state ? 'passed' : node.outcome }));
 };
 
 export function TicketFlowBoard({ nodes, edges }: { nodes: TicketProgressNode[]; edges: TicketProgressEdge[] }) {
-  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
+  const [fullscreen, setFullscreen] = useState(false);
   const prepared = useMemo(() => withPassedGateways(nodes, edges), [nodes, edges]);
   const current = prepared.filter((node) => node.state === 'current');
-  const passed = prepared.filter((node) => node.state === 'done').length;
   const flowNodes = useMemo(() => layout(prepared, edges), [prepared, edges]);
   const flowEdges = edges.filter((edge) => edge.from && edge.to).map((edge) => {
     const source = prepared.find((node) => node.id === edge.from);
@@ -102,38 +124,26 @@ export function TicketFlowBoard({ nodes, edges }: { nodes: TicketProgressNode[];
       style: { stroke: taken ? 'var(--color-primary)' : 'var(--color-border)' },
     };
   });
-  const summary = current.length
-    ? current.map((node) => `${node.name}（${(node.assignees || []).join('、') || t('itsm.ticket.unassigned')}）`).join('、')
-    : t('itsm.ticket.flowNone');
-
+  const canvas = <ReactFlowProvider><ReactFlow key={current.map((node) => node.id).join(',')}
+    nodes={flowNodes} edges={flowEdges} nodeTypes={NODE_TYPES}
+    minZoom={0.1} fitView fitViewOptions={{ nodes: current.length ? current.map((node) => ({ id: node.id })) : undefined, maxZoom: 1, padding: 0.5 }}
+    nodesDraggable={false} nodesConnectable={false} elementsSelectable={false} proOptions={{ hideAttribution: true }}
+  ><Background /><Controls showInteractive={false} /></ReactFlow></ReactFlowProvider>;
   return (
-    <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)]">
-      <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3">
-        <div className="min-w-0 text-sm text-[var(--color-text-1)]">
-          <span className="font-medium">{t('itsm.ticket.flow')}</span>
-          <span className="ml-2 text-xs text-[var(--color-text-3)]">{t('itsm.ticket.flowCurrent', undefined, { summary })} · {t('itsm.ticket.flowPassed', undefined, { count: passed })}</span>
+    <div className="relative">
+      <Button onClick={() => setOpen(!open)} size="small" aria-label="流程图" aria-expanded={open} className="!absolute !-top-7 !left-1/2 !z-30 !flex !-translate-x-1/2 !items-center !gap-1 !bg-[var(--color-bg)]">
+        流程图 {open ? <DownOutlined /> : <UpOutlined />}
+      </Button>
+      {open ? <section aria-label="工单流程图" className="relative rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] p-3">
+        <div className="absolute left-3 top-3 z-10 flex flex-wrap gap-3 text-xs text-[var(--color-text-3)]" aria-label="节点状态图例">
+          {(['waiting', 'passed', 'accepted', 'rejected', 'current'] as const).map((state) => <span key={state} className="flex items-center gap-1"><span className={`h-3 w-4 rounded-sm p-[1.5px] ${FRAME_CLASS} ${STATE_CLASS[state]}`}><span className="block h-full w-full rounded-[1px] bg-[var(--color-bg)]" /></span>{STATE_LABEL[state]}</span>)}
         </div>
-        <Button size="small" onClick={() => setOpen((value) => !value)}>{open ? t('itsm.ticket.collapseFlow') : t('itsm.ticket.expandFlow')}</Button>
-      </div>
-      {open ? (
-        <div className="h-80 border-t border-[var(--color-border)]">
-          <ReactFlowProvider>
-            <ReactFlow
-              nodes={flowNodes}
-              edges={flowEdges}
-              nodeTypes={NODE_TYPES}
-              fitView
-              nodesDraggable={false}
-              nodesConnectable={false}
-              elementsSelectable={false}
-              proOptions={{ hideAttribution: true }}
-            >
-              <Background />
-              <Controls showInteractive={false} />
-            </ReactFlow>
-          </ReactFlowProvider>
-        </div>
-      ) : null}
+        <div className="absolute right-3 top-3 z-10"><Tooltip title="全屏查看流程"><Button aria-label="全屏查看流程" size="small" icon={<ZoomInOutlined />} onClick={() => setFullscreen(true)} /></Tooltip></div>
+        <div className="h-80 max-h-[35vh]">{!fullscreen ? canvas : null}</div>
+      </section> : null}
+      <Modal title="工单流程" open={fullscreen} onCancel={() => setFullscreen(false)} footer={null} width="100vw" className="!top-0 !max-w-none !pb-0" destroyOnHidden>
+        <div className="h-[calc(100dvh-110px)]">{fullscreen ? canvas : null}</div>
+      </Modal>
     </div>
   );
 }

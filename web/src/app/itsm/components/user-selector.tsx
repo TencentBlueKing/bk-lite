@@ -17,11 +17,13 @@ interface UserSelectorProps {
   multiple?: boolean;
   placeholder?: string;
   disabled?: boolean;
+  ariaLabel?: string;
+  allowClear?: boolean;
 }
 
 const PAGE_SIZE = 10;
 
-export function UserSelector({ value = [], onChange, multiple = true, placeholder, disabled }: UserSelectorProps) {
+export function UserSelector({ value = [], onChange, multiple = true, placeholder, disabled, ariaLabel, allowClear = false }: UserSelectorProps) {
   const { t } = useTranslation();
   const api = useItsmApi();
   const [options, setOptions] = useState<UserOption[]>([]);
@@ -76,6 +78,8 @@ export function UserSelector({ value = [], onChange, multiple = true, placeholde
 
   return (
     <Select
+      aria-label={ariaLabel}
+      allowClear={allowClear}
       mode={multiple ? 'multiple' : undefined}
       showSearch
       className="w-full"
