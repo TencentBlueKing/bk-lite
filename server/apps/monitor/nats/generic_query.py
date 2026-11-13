@@ -20,7 +20,6 @@ from apps.monitor.services.authorized_metric_query import (
     AuthorizedMetricQueryService,
     _instance_lookup_candidates,
     _metric_instance_id_keys,
-    empty_aggregation_needs_choice,
 )
 from apps.monitor.services.generic_query import (
     GenericQueryError,
@@ -78,12 +77,6 @@ def _guard(stage: str):
     return decorate
 
 
-def _reject_unsupported_filters(kwargs: dict) -> None:
-    filters = kwargs.get("filters") if isinstance(kwargs, dict) else None
-    if filters not in (None, "", []):
-        raise GenericQueryError("当前查询不支持 filters")
-
-
 def _metric_condition_filters(filters):
     if filters in (None, "", [], {}):
         return []
@@ -135,50 +128,33 @@ def _authorized_instances(user_info, monitor_object_id: str):
     return _get_authorized_instance_queryset(permission, scope_ids).filter(monitor_object_id=monitor_object_id, is_deleted=False).distinct()
 
 
-def _filters_present(filters) -> bool:
-    if filters in (None, "", {}, []):
-        return False
-    if isinstance(filters, dict) and set(filters) <= {"logic", "items"} and not (filters.get("items") or []):
-        return False
-    return True
-
-
 @nats_client.register
 @_guard("query_monitor_instances")
 def query_monitor_instances(
     monitor_object_id=None,
     analysis_mode=None,
     status=None,
-    filter_field=None,
-    filter_op=None,
-    filter_value=None,
-    filters=None,
     instance_ids=None,
     group_by=None,
-    order=None,
+    order_by=None,
+    order_dir=None,
     page=None,
     page_size=None,
     user_info=None,
     **kwargs,
 ):
-    _reject_unsupported_filters(kwargs)
     del kwargs
     if group_by not in (None, ""):
         raise GenericQueryError("当前查询不支持分组")
-    if filter_field not in (None, "") or filter_op not in (None, "") or filter_value not in (None, "") or _filters_present(filters):
-        raise GenericQueryError("当前查询不支持属性过滤")
     queryset = _authorized_instances(user_info, monitor_object_id)
     data = query_instances(
         queryset,
-        analysis_mode=analysis_mode or "detail",
+        analysis_mode=analysis_mode,
         status=status,
-        filter_field=filter_field,
-        filter_op=filter_op,
-        filter_value=filter_value,
-        filters=filters,
         instance_ids=instance_ids,
         group_by=group_by,
-        order=order,
+        order_by=order_by,
+        order_dir=order_dir,
         page=page,
         page_size=page_size,
         locale=(user_info or {}).get("locale"),
@@ -200,14 +176,15 @@ def query_monitor_metric(
     user_info=None,
     **kwargs,
 ):
-    _reject_unsupported_filters(kwargs)
     del kwargs
-    mode = str(analysis_mode or "series")
+    mode = str(analysis_mode or "").strip()
+    if not mode:
+        raise GenericQueryError("分析方式不能为空")
     if mode not in {"series", "value", "latest"}:
         raise GenericQueryError("分析方式不受支持")
     if metric_id in (None, ""):
         raise GenericQueryError("指标不能为空")
-    if mode == "value" and aggregation in (None, ""):
+    if aggregation in (None, ""):
         raise GenericQueryError("聚合方式不能为空")
     query_filters = _metric_condition_filters(filters)
     checked = validate_metric_request(instance_ids=instance_ids, time_range=time_range, step=step)
@@ -237,13 +214,6 @@ def query_monitor_metric(
             "grouping": GROUPING_INSTANCE,
         }
     )
-    if (
-        mode in {"series", "latest"}
-        and aggregation in (None, "")
-        and prepared.metric is not None
-        and empty_aggregation_needs_choice(prepared.metric, query_filters)
-    ):
-        raise GenericQueryError("这个指标在同一时间点可能有多个数，请选择聚合方式，或用维度过滤指定其中某一个。")
     response = VictoriaMetricsAPI().query_range(
         prepared.query,
         checked["start"].timestamp(),
@@ -252,9 +222,7 @@ def query_monitor_metric(
     )
     metric = prepared.metric
     unit = getattr(metric, "unit", "") or ""
-    reported_aggregation = str(aggregation or "")
-    if reported_aggregation == "":
-        reported_aggregation = "avg"
+    reported_aggregation = str(aggregation)
     labels = metric_instance_labels(prepared.instance_ids)
     for raw_id in checked["instance_ids"]:
         if raw_id in labels:
@@ -288,14 +256,13 @@ def query_monitor_alerts(
     time_field=None,
     time_range=None,
     group_by=None,
-    order=None,
+    order_by=None,
+    order_dir=None,
     page=None,
     page_size=None,
     user_info=None,
     **kwargs,
 ):
-    if _filters_present(kwargs.get("filters")):
-        raise GenericQueryError("当前查询不支持条件过滤")
     if kwargs.get("instance_id") not in (None, "", []):
         raise GenericQueryError("当前查询不支持该实例参数")
     del kwargs
@@ -336,7 +303,7 @@ def query_monitor_alerts(
         alerts = alerts.filter(monitor_instance_id__in=selected_ids)
     data = query_alerts(
         alerts,
-        analysis_mode=analysis_mode or "detail",
+        analysis_mode=analysis_mode,
         level=level,
         status=status,
         alert_type=alert_type,
@@ -344,7 +311,8 @@ def query_monitor_alerts(
         time_field=time_field,
         time_range=time_range,
         group_by=group_by,
-        order=order,
+        order_by=order_by,
+        order_dir=order_dir,
         page=page,
         page_size=page_size,
         locale=(user_info or {}).get("locale"),

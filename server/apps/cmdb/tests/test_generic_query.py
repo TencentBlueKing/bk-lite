@@ -5,7 +5,6 @@ import re
 import pytest
 
 from apps.cmdb.services.generic_query import GenericQueryError, query_instances, query_models, query_one_hop_relations
-from apps.cmdb.services.generic_query_columns import build_instance_column_fields, build_one_hop_column_fields, project_one_hop_rows
 from apps.cmdb.services.generic_query_limits import DETAIL_PAGE_SIZE_MAX, SCAN_INSTANCE_MAX, STAT_GROUP_MAX
 
 
@@ -47,8 +46,8 @@ def test_model_detail_returns_only_definition_columns():
         "model_id": "host",
         "instance_count": 5,
     }
-    assert empty["structure"] == "table"
-    assert empty["status"] == "empty"
+    assert "structure" not in empty
+    assert "status" not in empty
     assert empty["items"] == []
     assert empty["count"] == 0
     for row in payload["items"]:
@@ -68,7 +67,7 @@ def test_model_detail_keeps_zero_instance_models_and_top_sort():
         page_size=2,
     )
 
-    assert rows["status"] == "ok"
+    assert "status" not in rows
     assert rows["count"] == 3
     assert [item["model_id"] for item in rows["items"]] == ["room", "host"]
     assert rows["items"][0]["instance_count"] == 0
@@ -89,16 +88,13 @@ def test_model_count_is_the_number_of_models_in_scope():
     )
 
     assert counted == {
-        "structure": "value",
-        "status": "ok",
         "model_count": 2,
-        "unit": "个",
-        "aggregation": "模型计数",
-        "fields": [{"key": "model_count", "title": "模型数", "value_type": "number", "role": "measure"}],
     }
+    assert "fields" not in counted
+    assert "unit" not in counted
+    assert "aggregation" not in counted
     assert narrowed["model_count"] == 1
     assert "value" not in narrowed
-    assert narrowed["aggregation"] == "模型计数"
 
 
 def test_model_distribution_is_one_item_per_model_and_keeps_zero():
@@ -131,29 +127,24 @@ def test_model_distribution_is_one_item_per_model_and_keeps_zero():
         classification_id="compute",
     )
 
-    assert payload["status"] == "ok"
-    assert payload["page"] == 1
-    assert payload["page_size"] == 3
-    assert payload["count"] == 3
-    assert payload["unit"] == "个"
-    assert payload["aggregation"] == "按模型统计权限内实例数，含零实例模型"
+    assert "status" not in payload
+    assert "page" not in payload
+    assert "count" not in payload
+    assert "page_size" not in payload
+    assert "unit" not in payload
+    assert "aggregation" not in payload
     assert payload["items"] == [
         {"classification_name": "计算", "model_name": "网络", "model_id": "net", "instance_count": 3},
         {"classification_name": "计算", "model_name": "主机", "model_id": "host", "instance_count": 2},
         {"classification_name": "空间", "model_name": "机房", "model_id": "room", "instance_count": 0},
     ]
-    assert [field["key"] for field in payload["fields"]] == [
-        "classification_name",
-        "model_name",
-        "model_id",
-        "instance_count",
-    ]
+    assert "fields" not in payload
     assert [item["model_id"] for item in classified["items"]] == ["net", "host"]
     assert selected["items"] == [
         {"classification_name": "空间", "model_name": "机房", "model_id": "room", "instance_count": 0},
     ]
     assert counted["model_count"] == 2
-    assert counted["aggregation"] == "模型计数"
+    assert "aggregation" not in counted
 
 
 def test_model_distribution_keeps_ties_and_disambiguates_duplicate_names():
@@ -201,17 +192,18 @@ def test_model_distribution_uses_return_limit_and_rejects_page():
         page_size=2,
     )
 
-    assert first["count"] == 12
-    assert first["page"] == 1
-    assert first["page_size"] == 12
+    assert "count" not in first
+    assert "page" not in first
+    assert "page_size" not in first
     assert [item["model_id"] for item in first["items"]] == [f"m{index:02d}" for index in range(12)]
     assert [item["model_id"] for item in limited["items"]] == [f"m{index:02d}" for index in range(10)]
-    assert limited["count"] == 12
-    assert limited["page"] == 1
-    assert limited["page_size"] == 10
+    assert "count" not in limited
+    assert "page" not in limited
+    assert "page_size" not in limited
     assert [(item["model_id"], item["instance_count"]) for item in short["items"]] == [("m00", 2), ("m02", 1), ("m01", 0)]
-    assert first["fields"][2]["role"] == "identity"
-    assert tied["count"] == 3
+    assert "fields" not in first
+    assert "count" not in tied
+    assert "page_size" not in tied
     assert [item["model_id"] for item in tied["items"]] == ["a", "b"]
     with pytest.raises(GenericQueryError, match="不支持分页"):
         query_models(models=models[:1], instance_counts={}, analysis_mode="count", page=1)
@@ -238,14 +230,23 @@ def test_model_statistics_fail_when_scan_exceeds_limit():
         )
 
 
-def test_model_detail_defaults_page_when_unfilled_and_keeps_explicit_size():
+def test_model_detail_returns_all_when_unpaged_and_keeps_explicit_size():
     payload = query_models(
         models=[_model("host", "主机", "compute", "计算")],
         instance_counts={"host": 1},
         analysis_mode="detail",
     )
-    assert payload["page"] == 1
-    assert payload["page_size"] == 10
+    assert payload["items"][0]["model_id"] == "host"
+    assert payload["count"] == 1
+    assert "page" not in payload
+    assert "page_size" not in payload
+    with pytest.raises(GenericQueryError, match="必须同时填写"):
+        query_models(
+            models=[_model("host", "主机", "compute", "计算")],
+            instance_counts={"host": 1},
+            analysis_mode="detail",
+            page=2,
+        )
     explicit = query_models(
         models=[_model("host", "主机", "compute", "计算")],
         instance_counts={"host": 1},
@@ -263,6 +264,7 @@ def test_model_detail_rejects_page_size_above_limit():
             models=[_model("host", "主机", "compute", "计算")],
             instance_counts={"host": 1},
             analysis_mode="detail",
+            page=1,
             page_size=DETAIL_PAGE_SIZE_MAX + 1,
         )
 
@@ -295,9 +297,7 @@ def test_instance_count_distribution_and_missing_model(monkeypatch):
         analysis_mode="count",
         attr_types=attrs,
         permission_map={"1": {}},
-        filter_field="os_type",
-        filter_op="eq",
-        filter_value="Linux",
+        filters={"logic": "AND", "items": [{"field": "os_type", "op": "eq", "value": "Linux"}]},
     )
     grouped = query_instances(
         model_id="host",
@@ -308,14 +308,13 @@ def test_instance_count_distribution_and_missing_model(monkeypatch):
     )
 
     assert counted["instance_count"] == 4
-    assert counted["status"] == "ok"
-    assert counted["fields"][0]["key"] == "instance_count"
+    assert "status" not in counted
+    assert "fields" not in counted
     assert grouped["items"] == [
         {"os_type": "Linux", "instance_count": 3},
         {"os_type": "Windows", "instance_count": 1},
     ]
-    assert grouped["fields"][0]["key"] == "os_type"
-    assert grouped["fields"][1]["role"] == "measure"
+    assert "fields" not in grouped
     with pytest.raises(GenericQueryError, match="模型不能为空"):
         query_instances(model_id="", analysis_mode="detail", attr_types=attrs, permission_map={"1": {}})
 
@@ -351,7 +350,7 @@ def test_instance_statistics_fail_over_scan_and_group_limits(monkeypatch):
 def test_instance_modes_reject_params_they_do_not_use():
     common = {"model_id": "host", "attr_types": {"inst_name": "string", "cpu": "number"}, "permission_map": {"1": {}}}
     with pytest.raises(GenericQueryError, match="不支持分布属性、排序"):
-        query_instances(**common, analysis_mode="count", group_by="status", order="inst_name")
+        query_instances(**common, analysis_mode="count", group_by="status", order_by="inst_name", order_dir="asc")
     with pytest.raises(GenericQueryError, match="不支持聚合属性、聚合方式"):
         query_instances(**common, analysis_mode="detail", aggregate_field="cpu", aggregate_op="sum")
     with pytest.raises(GenericQueryError, match="不支持分布属性"):
@@ -371,9 +370,9 @@ def test_distribution_return_limit_rejects_page(monkeypatch):
     }
     limited = query_instances(**common, analysis_mode="distribution", page_size=2)
     assert [item["os_type"] for item in limited["items"]] == ["Linux", "Other"]
-    assert limited["count"] == 3
-    assert limited["page"] == 1
-    assert limited["page_size"] == 2
+    assert "count" not in limited
+    assert "page" not in limited
+    assert "page_size" not in limited
     with pytest.raises(GenericQueryError, match="不支持页码"):
         query_instances(**common, analysis_mode="distribution", page=2, page_size=1)
     with pytest.raises(GenericQueryError, match="不支持分页"):
@@ -399,8 +398,8 @@ def test_distribution_return_limit_rejects_page(monkeypatch):
         page_size=1,
     )
     assert [item["start_name"] for item in hop["items"]] == ["B"]
-    assert hop["count"] == 2
-    assert hop["page_size"] == 1
+    assert "count" not in hop
+    assert "page_size" not in hop
     with pytest.raises(GenericQueryError, match="不支持页码"):
         query_one_hop_relations(
             analysis_mode="distribution",
@@ -435,12 +434,13 @@ def test_instance_aggregate_distinguishes_zero_from_empty(monkeypatch):
         aggregate_op="sum",
     )
 
-    assert zero["status"] == "ok"
+    assert "status" not in zero
     assert zero["aggregate_value"] == 0
-    assert zero["aggregate_field"] == "cpu"
-    assert empty["status"] == "empty"
+    assert "aggregate_field" not in zero
+    assert "status" not in empty
     assert empty["aggregate_value"] is None
-    assert empty["fields"][0]["key"] == "aggregate_value"
+    assert "aggregate_field" not in empty
+    assert "fields" not in empty
 
 
 def test_one_hop_counts_each_start_without_merging_a_shared_end():
@@ -461,8 +461,8 @@ def test_one_hop_counts_each_start_without_merging_a_shared_end():
     assert [item["start_name"] for item in payload["items"]] == ["应用甲", "应用乙"]
     assert [item["relation_count"] for item in payload["items"]] == [2, 1]
     assert sum(item["relation_count"] for item in payload["items"]) == total["relation_count"] == 3
-    assert payload["fields"][0]["key"] == "start_name"
-    assert "不合并" in total["aggregation"]
+    assert "fields" not in payload
+    assert "aggregation" not in total
 
 
 def test_one_hop_rank_stops_before_the_heavy_query_when_groups_exceed_the_cap():
@@ -624,6 +624,7 @@ def test_one_hop_uses_fixed_order():
                 {"start_uuid": "s1", "start_name": "a", "end_uuid": "e1", "end_name": "host-a"},
             ],
         },
+        page=1,
         page_size=10,
     )
     assert [item["start_name"] for item in ranked["items"]] == ["A", "B"]
@@ -649,7 +650,10 @@ def test_instance_detail_validates_sort_field_before_instance_list(monkeypatch):
             analysis_mode="detail",
             attr_types={"inst_name": "string", "os-type": "string"},
             permission_map={"1": {"inst_names": []}},
-            order="os-type",
+            order_by="os-type",
+            order_dir="asc",
+            page=1,
+            page_size=20,
         )
     assert called == {}
 
@@ -658,10 +662,33 @@ def test_instance_detail_validates_sort_field_before_instance_list(monkeypatch):
         analysis_mode="detail",
         attr_types={"inst_name": "string"},
         permission_map={"1": {"inst_names": []}},
-        order="-inst_name",
+        order_by="inst_name",
+        order_dir="desc",
+        page=1,
+        page_size=20,
     )
     assert called["order"] == "-inst_name"
     assert listed["items"] == [{"inst_name": "a"}]
+
+    query_instances(
+        model_id="host",
+        analysis_mode="detail",
+        attr_types={"inst_name": "string"},
+        permission_map={"1": {"inst_names": []}},
+        page=1,
+        page_size=20,
+    )
+    assert called["order"] == "inst_uuid"
+    with pytest.raises(GenericQueryError, match="排序和排序方式必须同时填写"):
+        query_instances(
+            model_id="host",
+            analysis_mode="detail",
+            attr_types={"inst_name": "string"},
+            permission_map={"1": {"inst_names": []}},
+            order_by="inst_name",
+            page=1,
+            page_size=20,
+        )
 
 
 def test_one_hop_filters_endpoints_in_graph_and_fails_closed(monkeypatch):
@@ -756,16 +783,17 @@ def test_one_hop_filters_endpoints_in_graph_and_fails_closed(monkeypatch):
         )
 
 
-def test_unsupported_filters_fail_instead_of_being_dropped(monkeypatch):
+def test_undeclared_filters_are_dropped_and_a_bad_group_still_fails(monkeypatch):
     from apps.cmdb.nats.generic_query import query_cmdb_instances, query_cmdb_models
 
     monkeypatch.setattr(
         "apps.cmdb.nats.generic_query._visible_models",
         lambda user_info: ([_model("host", "主机", "compute", "计算")], {"1": {"inst_names": []}}, {"compute": "计算"}),
     )
+    monkeypatch.setattr("apps.cmdb.nats.generic_query.count_by_attr", lambda *args, **kwargs: {})
     dropped = query_cmdb_models(analysis_mode="count", user_info={"user": "demo"}, filters={"field": "model_id"})
-    assert dropped["result"] is False
-    assert "filters" in dropped["message"]
+    assert dropped["result"] is True
+    assert dropped["data"]["model_count"] == 1
 
     invalid = query_cmdb_instances(
         model_id="host",
@@ -783,9 +811,6 @@ def test_attribute_operators_and_or_group_compile():
     types = {"inst_name": "string", "cpu": "number", "os_type": "enum"}
     logic, conditions = compile_attribute_conditions(
         types,
-        None,
-        None,
-        None,
         {
             "logic": "OR",
             "items": [
@@ -805,31 +830,20 @@ def test_attribute_operators_and_or_group_compile():
     ]
     eq_logic, eq_conditions = compile_attribute_conditions(
         types,
-        None,
-        None,
-        None,
         {"logic": "AND", "items": [{"field": "os_type", "op": "eq", "value": "1"}]},
     )
     assert (eq_logic, eq_conditions) == ("AND", [{"field": "os_type", "type": "list_any[]", "value": ["1"]}])
     ne_logic, ne_conditions = compile_attribute_conditions(
         types,
-        None,
-        None,
-        None,
         {"logic": "AND", "items": [{"field": "os_type", "op": "ne", "value": "1"}]},
     )
     assert (ne_logic, ne_conditions) == ("AND", [{"field": "os_type", "type": "list_none[]", "value": ["1"]}])
     with pytest.raises(GenericQueryError, match="运算符不受支持"):
-        compile_attribute_conditions(types, "inst_name", "in", "web", None)
-    with pytest.raises(GenericQueryError, match="旧字段和 OR"):
         compile_attribute_conditions(
             types,
-            "inst_name",
-            "eq",
-            "web",
-            {"logic": "OR", "items": [{"field": "cpu", "op": "gt", "value": 1}]},
+            {"logic": "AND", "items": [{"field": "inst_name", "op": "in", "value": "web"}]},
         )
-    empty_logic, empty_items = compile_attribute_conditions(types, None, None, None, {"logic": "OR", "items": []})
+    empty_logic, empty_items = compile_attribute_conditions(types, {"logic": "OR", "items": []})
     assert (empty_logic, empty_items) == ("OR", [])
 
 
@@ -961,7 +975,7 @@ def test_instance_classification_does_not_replace_model_permission(monkeypatch):
     )
     monkeypatch.setattr(
         "apps.cmdb.nats.generic_query.query_instances",
-        lambda **kwargs: {"structure": "value", "status": "ok", "value": 1, "unit": "个", "aggregation": "实例计数"},
+        lambda **kwargs: {"value": 1},
     )
 
     matched = query_cmdb_instances(
@@ -1138,6 +1152,8 @@ def test_instance_detail_hides_password_and_describes_business_columns(monkeypat
                 "status_display": "运行中",
                 "organization": [7],
                 "organization_display": "研发",
+                "region": "1",
+                "region_display": "",
                 "password": "secret-value",
                 "password_display": "secret-display",
                 "owner": "user-1",
@@ -1154,8 +1170,10 @@ def test_instance_detail_hides_password_and_describes_business_columns(monkeypat
             "enabled": "bool",
             "status": "enum",
             "organization": "organization",
+            "region": "enum",
             "password": "pwd",
             "owner": "user",
+            "timezone": "str",
         },
         permission_map={"1": {"inst_names": []}},
         page=1,
@@ -1164,130 +1182,36 @@ def test_instance_detail_hides_password_and_describes_business_columns(monkeypat
     row = payload["items"][0]
     assert row["cpu"] == 0
     assert row["enabled"] is False
-    assert row["status"] == "1"
-    assert row["status_display"] == "运行中"
+    assert row["status"] == "运行中"
+    assert "status_display" not in row
+    assert row["organization"] == "研发"
+    assert "organization_display" not in row
+    assert row["region"] == "1"
+    assert "region_display" not in row
+    assert row["owner"] == "user-1"
+    assert "timezone" not in row
     assert "password" not in row
     assert "password_display" not in row
     assert "_id" not in row
     assert "name" not in row
     assert captured["page_size"] == 20
 
-    fields = build_instance_column_fields(
-        [
-            {"attr_id": "inst_name", "attr_name": "实例名称", "attr_type": "str"},
-            {"attr_id": "cpu", "attr_name": "CPU", "attr_type": "int"},
-            {"attr_id": "status", "attr_name": "运行状态", "attr_type": "enum", "option": [{"id": "1", "name": "运行中"}, {"id": 0, "name": "停止"}]},
-            {"attr_id": "status_display", "attr_name": "运行状态", "attr_type": "str", "is_display_field": True},
-            {"attr_id": "password", "attr_name": "密码", "attr_type": "pwd"},
-            {"attr_id": "password_display", "attr_name": "密码", "attr_type": "str", "is_display_field": True},
-            {"attr_id": "inst_uuid", "attr_name": "实例标识", "attr_type": "str"},
-            {"attr_id": "node_id", "attr_name": "节点", "attr_type": "str", "is_system_link": True},
-        ],
-        model_key="host",
-    )
-    by_key = {field["key"]: field for field in fields["fields"]}
-    assert [field["key"] for field in fields["fields"] if field["default_visible"]][:2] == ["inst_name", "cpu"]
-    assert by_key["inst_name"]["title"] == "实例名称"
-    assert by_key["status"]["title"] == "运行状态"
-    assert by_key["status"]["options"] == [{"value": "1", "label": "运行中"}, {"value": "0", "label": "停止"}]
-    assert by_key["inst_uuid"]["default_visible"] is False
-    assert by_key["node_id"]["default_visible"] is False
-    assert "password" not in by_key
-    assert "status_display" not in by_key
-    assert "name" not in by_key
-    assert "unit" not in by_key
 
-
-def test_instance_detail_empty_page_stays_paged(monkeypatch):
+def test_instance_detail_requires_page_and_page_size(monkeypatch):
     monkeypatch.setattr(
         "apps.cmdb.services.generic_query.InstanceManage.instance_list",
         lambda **kwargs: ([], 0),
     )
-    payload = query_instances(
-        model_id="host",
-        analysis_mode="detail",
-        attr_types={"inst_name": "str", "status": "enum"},
-        permission_map={"1": {"inst_names": []}},
-    )
-    assert payload["items"] == []
-    assert payload["status"] == "empty"
-    assert payload["page_size"] == 20
+    with pytest.raises(GenericQueryError, match="必须同时填写"):
+        query_instances(
+            model_id="host",
+            analysis_mode="detail",
+            attr_types={"inst_name": "str", "status": "enum"},
+            permission_map={"1": {"inst_names": []}},
+        )
 
 
-def test_one_hop_detail_projects_both_sides_and_skips_protocol_columns():
-    rows = project_one_hop_rows(
-        [
-            {
-                "start_uuid": "s1",
-                "start_name": "主机甲",
-                "start_model_id": "host",
-                "end_uuid": "e1",
-                "end_name": "应用甲",
-                "end_model_id": "app",
-            }
-        ],
-        starts=[
-            {
-                "inst_uuid": "s1",
-                "inst_name": "主机甲",
-                "model_id": "host",
-                "cpu": 0,
-                "password": "secret",
-                "password_display": "secret-display",
-                "_id": 1,
-            }
-        ],
-        ends=[
-            {
-                "inst_uuid": "e1",
-                "inst_name": "应用甲",
-                "model_id": "app",
-                "status": "up",
-                "status_display": "在线",
-                "enabled": False,
-            }
-        ],
-        start_attrs=[
-            {"attr_id": "cpu", "attr_type": "int"},
-            {"attr_id": "password", "attr_type": "pwd"},
-        ],
-        end_attrs=[
-            {"attr_id": "status", "attr_type": "enum"},
-            {"attr_id": "enabled", "attr_type": "bool"},
-        ],
-    )
-    row = rows[0]
-    assert row["start:cpu"] == 0
-    assert row["end:enabled"] is False
-    assert row["end:status_display"] == "在线"
-    assert "password" not in row
-    assert "start:password" not in row
-    assert "start:password_display" not in row
-    assert "_id" not in row
-    assert "name" not in row
-    columns = build_one_hop_column_fields(
-        [
-            {"attr_id": "inst_name", "attr_name": "实例名称", "attr_type": "str"},
-            {"attr_id": "cpu", "attr_name": "CPU", "attr_type": "int"},
-            {"attr_id": "password", "attr_name": "密码", "attr_type": "pwd"},
-        ],
-        [
-            {"attr_id": "inst_name", "attr_name": "实例名称", "attr_type": "str"},
-            {"attr_id": "status", "attr_name": "状态", "attr_type": "enum", "option": [{"id": "up", "name": "在线"}]},
-        ],
-        model_key="host|out|host_belong_app|app",
-    )
-    keys = [field["key"] for field in columns["fields"]]
-    assert keys[:3] == ["start_name", "start:cpu", "end_name"]
-    assert "end:status" in keys
-    assert "name" not in keys
-    assert "value" not in keys
-    assert "unit" not in keys
-    assert "aggregation" not in keys
-    assert next(field for field in columns["fields"] if field["key"] == "start_uuid")["default_visible"] is False
-
-
-def test_instance_detail_handler_attaches_model_columns_and_strips_password(monkeypatch):
+def test_instance_detail_handler_fills_unset_attrs_and_strips_password(monkeypatch):
     from apps.cmdb.nats.generic_query import query_cmdb_instances
 
     monkeypatch.setattr("apps.cmdb.nats.generic_query._visible_models", lambda user_info: _visible_cmdb_models())
@@ -1296,6 +1220,9 @@ def test_instance_detail_handler_attaches_model_columns_and_strips_password(monk
         lambda model_id, user_info: [
             {"attr_id": "inst_name", "attr_name": "实例名称", "attr_type": "str"},
             {"attr_id": "status", "attr_name": "运行状态", "attr_type": "enum", "option": [{"id": "1", "name": "运行中"}]},
+            {"attr_id": "status_display", "attr_name": "运行状态", "attr_type": "str", "is_display_field": True},
+            {"attr_id": "developer", "attr_name": "开发人员", "attr_type": "user"},
+            {"attr_id": "enabled", "attr_name": "启用", "attr_type": "bool"},
             {"attr_id": "password", "attr_name": "密码", "attr_type": "pwd"},
         ],
     )
@@ -1311,6 +1238,7 @@ def test_instance_detail_handler_attaches_model_columns_and_strips_password(monk
                     "password": "secret-value",
                     "password_display": "secret-display",
                     "cpu": 0,
+                    "enabled": False,
                 }
             ],
             1,
@@ -1321,18 +1249,21 @@ def test_instance_detail_handler_attaches_model_columns_and_strips_password(monk
         model_id="host",
         classification_id="compute",
         analysis_mode="detail",
+        page=1,
+        page_size=20,
         user_info={"user": "demo"},
     )
     assert loaded["result"] is True
     row = loaded["data"]["items"][0]
     assert row["cpu"] == 0
+    assert row["enabled"] is False
+    assert row["developer"] is None
+    assert row["status"] == "运行中"
+    assert "status_display" not in row
     assert "password" not in row
     assert "password_display" not in row
     assert "_id" not in row
-    fields = {field["key"]: field for field in loaded["data"]["column_fields"]["fields"]}
-    assert loaded["data"]["column_fields"]["model_key"] == "host"
-    assert fields["status"]["title"] == "运行状态"
-    assert "password" not in fields
+    assert "column_fields" not in loaded["data"]
     assert loaded["data"]["page_size"] == 20
 
 
@@ -1384,57 +1315,27 @@ def test_one_hop_detail_handler_projects_business_columns(monkeypatch):
         },
     )
 
-    def instances_for(uuids):
-        rows = []
-        for uuid in uuids:
-            if uuid == "s1":
-                rows.append(
-                    {
-                        "inst_uuid": "s1",
-                        "inst_name": "主机甲",
-                        "model_id": "host",
-                        "cpu": 0,
-                        "password": "secret",
-                        "password_display": "secret-display",
-                        "_id": 1,
-                    }
-                )
-            if uuid == "e1":
-                rows.append(
-                    {
-                        "inst_uuid": "e1",
-                        "inst_name": "应用甲",
-                        "model_id": "app",
-                        "status": "up",
-                        "status_display": "在线",
-                        "enabled": False,
-                    }
-                )
-        return rows
-
-    monkeypatch.setattr("apps.cmdb.nats.generic_query.load_instances_by_uuids", instances_for)
-
     loaded = query_cmdb_one_hop(
         start_model_id="host",
         classification_id="compute",
         model_asst_id="host_belong_app",
         direction="out",
         analysis_mode="detail",
+        page=1,
+        page_size=20,
         user_info={"user": "demo"},
     )
     assert loaded["result"] is True
     row = loaded["data"]["items"][0]
-    assert row["start:cpu"] == 0
-    assert row["end:enabled"] is False
-    assert row["end:status"] == "up"
-    assert "start:password" not in row
-    assert "start:password_display" not in row
-    assert loaded["data"]["column_fields"]["model_key"] == "host|out|host_belong_app|app"
-    keys = [field["key"] for field in loaded["data"]["column_fields"]["fields"]]
-    assert "start:cpu" in keys
-    assert "end:status" in keys
-    assert "name" not in keys
-    assert "unit" not in keys
+    assert row == {
+        "start_uuid": "s1",
+        "start_name": "主机甲",
+        "end_uuid": "e1",
+        "end_name": "应用甲",
+        "asst_name": "属于",
+        "model_asst_id": "host_belong_app",
+    }
+    assert "column_fields" not in loaded["data"]
 
 
 def _scope_models():
@@ -1512,14 +1413,14 @@ def test_handler_model_count_uses_full_permission_counts(monkeypatch):
     total = query_cmdb_models(analysis_mode="count", user_info={"user": "demo"})
     assert total["result"] is True
     assert total["data"]["model_count"] == 3
-    assert total["data"]["aggregation"] == "模型计数"
-    assert total["data"]["status"] == "ok"
+    assert "aggregation" not in total["data"]
+    assert "status" not in total["data"]
     ensure_payload_limit(total["data"])
     assert calls == [("model_id", [], {"7": {"inst_names": ["visible-host"]}})]
 
     selected = query_cmdb_models(analysis_mode="count", model_id="host", user_info={"user": "demo"})
     assert selected["data"]["model_count"] == 1
-    assert selected["data"]["aggregation"] == "模型计数"
+    assert "aggregation" not in selected["data"]
 
     classified = query_cmdb_models(
         analysis_mode="count",
@@ -1580,7 +1481,7 @@ def test_handler_model_count_uses_full_permission_counts(monkeypatch):
     )
     assert distribution["result"] is True
     assert [item["model_id"] for item in distribution["data"]["items"]] == ["host", "vm", "router"]
-    assert distribution["data"]["aggregation"] == "按模型统计权限内实例数，含零实例模型"
+    assert "aggregation" not in distribution["data"]
 
 
 def test_http_resolution_reaches_handler_without_hidden_paging_or_cross_chart_params(monkeypatch):
@@ -1614,26 +1515,22 @@ def test_http_resolution_reaches_handler_without_hidden_paging_or_cross_chart_pa
     assert "page" not in distribution
     assert "page_size" not in distribution
     assert distribution_result["result"] is True
-    assert distribution_result["data"]["page"] == 1
-    assert distribution_result["data"]["page_size"] == 3
+    assert "page" not in distribution_result["data"]
+    assert "count" not in distribution_result["data"]
+    assert "page_size" not in distribution_result["data"]
     assert [item["model_id"] for item in distribution_result["data"]["items"]] == ["host", "vm", "router"]
-    assert distribution_result["data"]["aggregation"] == "按模型统计权限内实例数，含零实例模型"
+    assert "aggregation" not in distribution_result["data"]
 
     counted, counted_result = run({"analysis_mode": "count"})
     assert "page" not in counted
     assert "page_size" not in counted
     assert counted_result["data"] == {
-        "structure": "value",
-        "status": "ok",
         "model_count": 3,
-        "unit": "个",
-        "aggregation": "模型计数",
-        "fields": [{"key": "model_count", "title": "模型数", "value_type": "number", "role": "measure"}],
     }
 
     cleared, cleared_result = run({"analysis_mode": "count", "page": None, "page_size": ""})
-    assert "page" not in cleared
-    assert "page_size" not in cleared
+    assert cleared["page"] is None
+    assert cleared["page_size"] == ""
     assert cleared_result["data"]["model_count"] == 3
 
     blocked, blocked_result = run({"analysis_mode": "count", "page": 1, "page_size": 10})
@@ -1650,14 +1547,15 @@ def test_http_resolution_reaches_handler_without_hidden_paging_or_cross_chart_pa
     assert "page" not in limited
     assert limited_result["result"] is True
     assert [item["model_id"] for item in limited_result["data"]["items"]] == ["host", "vm", "router"]
-    assert limited_result["data"]["page_size"] == 10
+    assert "page_size" not in limited_result["data"]
+    assert "count" not in limited_result["data"]
 
     detail, detail_result = run({"analysis_mode": "detail"})
     assert "page" not in detail
     assert "page_size" not in detail
     assert detail_result["result"] is True
-    assert detail_result["data"]["page"] == 1
-    assert detail_result["data"]["page_size"] == 10
+    assert "page" not in detail_result["data"]
+    assert "page_size" not in detail_result["data"]
     assert detail_result["data"]["count"] == 3
 
     with pytest.raises(ValueError, match="未声明参数"):
@@ -1672,7 +1570,7 @@ def test_instance_distribution_keeps_false_zero_and_null_buckets(monkeypatch):
 
     monkeypatch.setattr("apps.cmdb.services.generic_query.count_by_attr", grouped_counts)
 
-    def grouped(values, value_type):
+    def grouped(values):
         buckets.clear()
         buckets.update(values)
         return query_instances(
@@ -1681,24 +1579,17 @@ def test_instance_distribution_keeps_false_zero_and_null_buckets(monkeypatch):
             attr_types={"enabled": "bool", "inst_name": "string"},
             permission_map={"1": {}},
             group_by="enabled",
-            group_title="是否启用",
-            group_value_type=value_type,
         )
 
-    boolean = grouped({False: 2, None: 3, "": 4}, "boolean")
-    assert boolean["fields"][0] == {
-        "key": "enabled",
-        "title": "是否启用",
-        "value_type": "boolean",
-        "role": "dimension",
-    }
+    boolean = grouped({False: 2, None: 3, "": 4})
+    assert "fields" not in boolean
     boolean_values = [item["enabled"] for item in boolean["items"]]
     assert any(value is False for value in boolean_values)
     assert None in boolean_values
     assert "" in boolean_values
     assert {item["instance_count"] for item in boolean["items"]} == {2, 3, 4}
 
-    numeric = grouped({0: 1}, "number")
+    numeric = grouped({0: 1})
     assert numeric["items"] == [{"enabled": 0, "instance_count": 1}]
     assert numeric["items"][0]["enabled"] is not False
 
@@ -1709,7 +1600,8 @@ def test_instance_distribution_keeps_false_zero_and_null_buckets(monkeypatch):
             attr_types={"enabled": "bool", "inst_name": "string"},
             permission_map={"1": {}},
             group_by="enabled",
-            order="name",
+            order_by="name",
+            order_dir="asc",
         )
 
 
@@ -1725,7 +1617,6 @@ def test_instance_distribution_names_enum_buckets(monkeypatch):
         attr_types={"status": "enum", "inst_name": "string"},
         permission_map={"1": {}},
         group_by="status",
-        group_title="运行状态",
         group_labels={"1": "已上线", "2": "测试中", "3": "停运"},
     )
 
@@ -1761,21 +1652,7 @@ def test_instance_distribution_handler_returns_enum_names(monkeypatch):
 
     assert loaded["result"] is True
     assert loaded["data"]["items"] == [{"status": "已上线", "instance_count": 8}]
-    assert loaded["data"]["fields"][0]["title"] == "运行状态"
-
-
-def test_group_declaration_keeps_attribute_title_and_type():
-    from apps.cmdb.nats.generic_query import _group_declaration
-
-    assert _group_declaration(
-        [{"attr_id": "os_type", "attr_name": "操作系统", "attr_type": "enum"}],
-        "os_type",
-    ) == ("操作系统", "string")
-    assert _group_declaration(
-        [{"attr_id": "enabled", "attr_name": "是否启用", "attr_type": "bool"}],
-        "enabled",
-    ) == ("是否启用", "boolean")
-    assert _group_declaration([], "inst_name") == ("实例名称", "string")
+    assert "fields" not in loaded["data"]
 
 
 def test_one_hop_distribution_keeps_blank_start_name():
@@ -1786,8 +1663,7 @@ def test_one_hop_distribution_keeps_blank_start_name():
         },
     )
     assert payload["items"] == [{"start_name": "", "start_uuid": "start-1", "relation_count": 2}]
-    assert payload["fields"][1]["role"] == "identity"
-    assert payload["fields"][2]["key"] == "relation_count"
+    assert "fields" not in payload
 
 
 def test_attr_options_can_follow_the_other_end_of_an_association(monkeypatch):

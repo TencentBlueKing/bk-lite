@@ -25,7 +25,6 @@ import {
   hasActiveWidgetRuntimeParams,
   shouldShowInitialWidgetLoading,
 } from "@/app/ops-analysis/utils/widgetDataTransform";
-import { genericStructureMismatch } from "@/app/ops-analysis/utils/genericStructure";
 import {
   beginOwnerRequest,
   finishOwnerRequest,
@@ -311,13 +310,9 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     return dataSource.params.map((param) => {
       const override = overrides.find((item) => item.name === param.name);
       if (!override) return param;
-      if (param.name === 'analysis_mode') {
-        return { ...param, value: override.value ?? param.value };
-      }
       return {
         ...param,
         ...override,
-        visible_modes: param.visible_modes,
       };
     });
   }, [config?.dataSourceParams, dataSource?.params]);
@@ -774,21 +769,6 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
         return localizeStructureMessage(validateCardListPayload(data, {
           titleField: config?.cardList?.titleField || "",
         }));
-      }
-
-      const mismatch = genericStructureMismatch(data, type);
-      if (mismatch) {
-        return {
-          isValid: false,
-          message: t(
-            "dashboard.structureMismatch",
-            "当前结果结构是 {current}，这个图表需要 {required}。请修改分析方式或更换图表。",
-            {
-              current: t(`dashboard.structureName.${mismatch.current}`, mismatch.current),
-              required: t(`dashboard.structureName.${mismatch.required}`, mismatch.required),
-            },
-          ),
-        };
       }
 
       const isDataEmpty = () =>

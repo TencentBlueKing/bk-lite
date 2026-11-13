@@ -3,7 +3,6 @@ import type { ValueConfig, FilterBindings, UnifiedFilterDefinition, FilterValue 
 import type { DatasourceItem, ParamItem } from '@/app/ops-analysis/types/dataSource';
 import { buildWidgetRequestParams } from '@/app/ops-analysis/utils/widgetDataTransform';
 import { getValueByPath } from '@/app/ops-analysis/utils/objectPath';
-import { measureKeyFromFields } from '@/app/ops-analysis/utils/chartFieldContract';
 import { coerceTopNNumericValue } from '@/app/ops-analysis/utils/topNData';
 import type { DateRangeResolutionContext } from '@/app/ops-analysis/utils/dateRange';
 import type { SourceDataResult } from '@/app/ops-analysis/utils/sourceDataResponse';
@@ -212,15 +211,6 @@ export const extractComparableValue = (
 
   if (typeof data === 'number' || typeof data === 'string' || typeof data === 'boolean') {
     return data;
-  }
-
-  const measureKey = measureKeyFromFields(data);
-  if (measureKey && data && typeof data === 'object' && !Array.isArray(data)) {
-    const present = presentScalar((data as Record<string, unknown>)[measureKey]);
-    if (present !== undefined) {
-      return present;
-    }
-    return null;
   }
 
   if (Array.isArray(data) && data.length > 0) {

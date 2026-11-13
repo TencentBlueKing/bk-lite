@@ -72,12 +72,6 @@ def _scoped_team_ids(user_info: dict) -> list[int]:
     return team_ids
 
 
-def _reject_unsupported_filters(kwargs: dict) -> None:
-    filters = kwargs.get("filters") if isinstance(kwargs, dict) else None
-    if filters not in (None, "", []):
-        raise GenericQueryError("当前查询不支持 filters")
-
-
 def _event_queryset(user_info: dict):
     """对齐事件列表：Integration-View 或 Alarms-View，再加上 PERMISSION_EVENT 的实例和团队规则。"""
     user_info = user_info or {}
@@ -124,13 +118,13 @@ def query_alert_center(
     time_field=None,
     time_range=None,
     group_by=None,
-    order=None,
+    order_by=None,
+    order_dir=None,
     page=None,
     page_size=None,
     user_info=None,
     **kwargs,
 ):
-    _reject_unsupported_filters(kwargs)
     del kwargs
     target = str(query_object or "").strip()
     if target == "alert":
@@ -150,14 +144,15 @@ def query_alert_center(
     data = run_alert_center_query(
         queryset,
         query_object=target,
-        analysis_mode=analysis_mode or "detail",
+        analysis_mode=analysis_mode,
         source=source,
         level=level,
         status=status,
         time_field=time_field,
         time_range=time_range,
         group_by=group_by,
-        order=order,
+        order_by=order_by,
+        order_dir=order_dir,
         page=page,
         page_size=page_size,
     )

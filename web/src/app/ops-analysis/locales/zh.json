@@ -418,23 +418,6 @@
     "fieldTitle": "显示名称",
     "fieldValueType": "数据类型",
     "fieldDescription": "描述",
-    "fieldRole": "图表角色",
-    "fieldRolePlaceholder": "不指定",
-    "fieldModes": "分析方式",
-    "fieldModesPlaceholder": "全部方式",
-    "fieldRoles": {
-      "dimension": "维度",
-      "measure": "度量",
-      "identity": "身份"
-    },
-    "analysisModes": {
-      "detail": "明细",
-      "count": "计数",
-      "distribution": "分布",
-      "aggregate": "聚合",
-      "series": "序列",
-      "value": "单值"
-    },
     "duplicateFieldKeys": "字段名重复：",
     "valueTypes": {
       "string": "字符串",
@@ -1223,17 +1206,8 @@
     "selectInstance": "请选择实例",
     "dataFormatMismatch": "数据格式不匹配",
     "chartFieldMissing": "字段 {field} 不在当前结果中",
-    "structureMismatch": "当前结果结构是 {current}，这个图表需要 {required}。请修改分析方式或更换图表。",
-    "structureName": {
-      "table": "表格",
-      "value": "单值",
-      "category": "分类",
-      "series": "序列"
-    },
-    "piePageShare": "当前页占比，不是全部结果（第 {page} 页，每页 {pageSize}，共 {count} 项）",
     "optionPageLimitExceeded": "选项超过分页上限，无法继续加载",
     "selectClassificationFirst": "请先选择分类",
-    "selectModelRelationFirst": "请先选择起点模型和关系",
     "conditionFilter": {
       "add": "添加条件",
       "delete": "删除条件",
@@ -1256,12 +1230,6 @@
       "lt": "小于",
       "lte": "小于等于",
       "in": "属于"
-    },
-    "order": {
-      "field": "排序字段",
-      "direction": "升降序",
-      "asc": "升序",
-      "desc": "降序"
     },
     "optionPageEndedEarly": "选项分页在总数到达前结束",
     "invalidSourceDataResponse": "统一取数响应格式无效",

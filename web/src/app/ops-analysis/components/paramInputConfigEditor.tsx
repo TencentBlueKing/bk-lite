@@ -43,7 +43,6 @@ import type {
 import {
   conditionFieldFromDraft,
   draftFromConditionField,
-  legacyDynamicConditionSource,
   type ConditionFieldDraft,
 } from '@/app/ops-analysis/utils/conditionFieldSource';
 import { useDataSourceApi } from '@/app/ops-analysis/api/dataSource';
@@ -112,7 +111,6 @@ const conditionRowFromField = (field: ConditionFieldOption): ConditionFieldRow =
     value: draft.value,
     label: draft.label,
     valueMode: draft.valueMode,
-    query_objects: draft.query_objects,
     options: draft.options.map((option) => ({ ...option, uid: newId() })),
   };
 };
@@ -440,12 +438,11 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
     );
     if (value.control === 'conditionFilter') {
       const fields = value.fields;
-      const legacy = legacyDynamicConditionSource(fields);
       const dynamic = fields.kind === 'dynamic' && fields.valueField && fields.labelField ? fields : null;
-      const sourceRef = dynamic?.sourceRef || legacy?.sourceRef;
-      const valueField = dynamic?.valueField || legacy?.valueField;
-      const labelField = dynamic?.labelField || legacy?.labelField;
-      const queryParams = dynamic?.queryParams || legacy?.queryParams;
+      const sourceRef = dynamic?.sourceRef;
+      const valueField = dynamic?.valueField;
+      const labelField = dynamic?.labelField;
+      const queryParams = dynamic?.queryParams;
       if (sourceRef && valueField && labelField) {
         setSourceType('dynamic');
         setExternalSourceRef(sourceRef);
@@ -496,7 +493,6 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
     if (
       value.control === 'input'
       || value.control === 'organization'
-      || value.control === 'order'
     ) {
       setSourceType('static');
       setStaticRows([createRow()]);
@@ -649,7 +645,6 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
       value.control === 'input' ||
       value.control === 'organization' ||
       value.control === 'conditionFilter' ||
-      value.control === 'order' ||
       value.optionsSource.type !== 'dynamic' ||
       !value.optionsSource.sourceRef ||
       dataSourceList.length === 0
@@ -910,7 +905,6 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
           value: row.value,
           label: row.label,
           valueMode: row.valueMode,
-          query_objects: row.query_objects,
           options: row.options.map((option) => ({ label: option.label, value: option.value })),
         });
         return field ? [field] : [];

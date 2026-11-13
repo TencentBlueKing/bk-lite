@@ -37,11 +37,6 @@ import {
   applyTableRowFilters,
   buildTableQueryList,
 } from '@/app/ops-analysis/utils/tableQueryList';
-import {
-  modelCellDisplayText,
-  modelTableEmptyText,
-  readModelColumnPayload,
-} from '@/app/ops-analysis/utils/modelTableColumns';
 const { RangePicker } = DatePicker;
 const DEFAULT_CELL_MAX_WIDTH = 260;
 
@@ -135,10 +130,7 @@ const OpsAnalysisTable: React.FC<OpsAnalysisTableProps> = ({
   const columnConfigs = useMemo((): TableColumnConfigItem[] => {
     const visible = resolveTableLikeColumns({
       configuredColumns: config?.tableConfig?.columns,
-      columnModelKey: config?.tableConfig?.columnModelKey,
-      modelColumns: readModelColumnPayload(rawData),
       schemaFields: dataSource?.field_schema,
-      queryObject: rawData?.query_object,
       rows: tableData,
     }).filter((col) => col.visible);
     return withInteractionActionColumn(visible, dataLink, surface, {
@@ -148,7 +140,7 @@ const OpsAnalysisTable: React.FC<OpsAnalysisTableProps> = ({
       visible: true,
       order: visible.length,
     });
-  }, [config?.tableConfig?.columnModelKey, config?.tableConfig?.columns, dataLink, dataSource?.field_schema, rawData, surface, t, tableData]);
+  }, [config?.tableConfig?.columns, dataLink, dataSource?.field_schema, rawData, surface, t, tableData]);
 
   const antColumns = useMemo((): ColumnsType<TableDataItem> => {
     const colGaugeMax: Record<string, number> = {};
@@ -183,12 +175,7 @@ const OpsAnalysisTable: React.FC<OpsAnalysisTableProps> = ({
           }
 
           const mapping = applyValueMapping(text, col.valueMappings);
-          const modelText = modelCellDisplayText(text, col, record);
-          const cellText = modelText !== null
-            ? modelText
-            : text === null || text === undefined
-              ? ''
-              : String(text);
+          const cellText = text === null || text === undefined ? '' : String(text);
           const baseText = cellText.trim() ? cellText : '--';
           const displayText = mapping?.text !== undefined ? mapping.text : baseText;
 
@@ -460,12 +447,6 @@ const OpsAnalysisTable: React.FC<OpsAnalysisTableProps> = ({
     );
   };
 
-  const modelEmptyText = modelTableEmptyText(
-    dataSource?.rest_api,
-    config?.params as Record<string, unknown> | undefined,
-    t,
-  );
-
   return (
     <div className="flex h-full min-h-0 flex-col pt-2">
       {renderFilters()}
@@ -477,7 +458,6 @@ const OpsAnalysisTable: React.FC<OpsAnalysisTableProps> = ({
           loading={loading}
           rowKey={(record, index) => record.id || record.key || index?.toString() || '0'}
           size="small"
-          locale={modelEmptyText ? { emptyText: modelEmptyText } : undefined}
           pagination={
             isPaginated
               ? {

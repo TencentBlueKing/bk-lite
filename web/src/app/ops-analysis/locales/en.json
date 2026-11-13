@@ -418,23 +418,6 @@
     "fieldTitle": "Display Name",
     "fieldValueType": "Data Type",
     "fieldDescription": "Description",
-    "fieldRole": "Chart role",
-    "fieldRolePlaceholder": "Unspecified",
-    "fieldModes": "Analysis modes",
-    "fieldModesPlaceholder": "All modes",
-    "fieldRoles": {
-      "dimension": "Dimension",
-      "measure": "Measure",
-      "identity": "Identity"
-    },
-    "analysisModes": {
-      "detail": "Detail",
-      "count": "Count",
-      "distribution": "Distribution",
-      "aggregate": "Aggregate",
-      "series": "Series",
-      "value": "Value"
-    },
     "duplicateFieldKeys": "Duplicate field names: ",
     "valueTypes": {
       "string": "String",
@@ -1223,17 +1206,8 @@
     "selectInstance": "Please select instance",
     "dataFormatMismatch": "Data format mismatch",
     "chartFieldMissing": "Field {field} is not in the current result",
-    "structureMismatch": "Current result structure is {current}; this chart needs {required}. Change the analysis mode or the chart.",
-    "structureName": {
-      "table": "table",
-      "value": "single value",
-      "category": "category",
-      "series": "series"
-    },
-    "piePageShare": "Share of the current page, not the full result (page {page}, {pageSize} per page, {count} items)",
     "optionPageLimitExceeded": "Option page limit exceeded",
     "selectClassificationFirst": "Select a classification first",
-    "selectModelRelationFirst": "Select the start model and relation first",
     "conditionFilter": {
       "add": "Add condition",
       "delete": "Delete condition",
@@ -1256,12 +1230,6 @@
       "lt": "Less than",
       "lte": "Less than or equal",
       "in": "In"
-    },
-    "order": {
-      "field": "Sort field",
-      "direction": "Direction",
-      "asc": "Ascending",
-      "desc": "Descending"
     },
     "optionPageEndedEarly": "Option pages ended before the total count",
     "invalidSourceDataResponse": "The unified data response format is invalid",

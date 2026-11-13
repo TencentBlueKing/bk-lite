@@ -28,12 +28,7 @@ import {
   stableStringify,
   type ResolvedOptionsQuery,
 } from '@/app/ops-analysis/utils/optionsQueryParamRefs';
-import {
-  resolveAnalysisModeValue,
-} from '@/app/ops-analysis/utils/analysisMode';
 import ConditionFilterControl from '@/app/ops-analysis/components/conditionFilterControl';
-import OrderControl from '@/app/ops-analysis/components/orderControl';
-import { narrowInputConfigForQueryObject } from '@/app/ops-analysis/utils/queryObjectOptions';
 import DateRangeSelector from './dateRangeSelector';
 import {
   getTimeSelectorDefaultValue,
@@ -208,10 +203,6 @@ const DataSourceParamsConfig: React.FC<DataSourceParamsConfigProps> = ({
   );
   // 表单控件仍读 form 的即时值。选项查询只吃防抖后的文本/数字。
   const optionsQueryFormParams = useDebouncedOptionsQueryValues(formParams ?? {}, typedParamNames);
-  const analysisMode = resolveAnalysisModeValue({
-    params: sourceParams,
-    selected: formParams?.analysis_mode,
-  });
   const configParams = sourceParams.filter(
     (param: ParamItem) =>
       !param.hidden
@@ -227,9 +218,7 @@ const DataSourceParamsConfig: React.FC<DataSourceParamsConfigProps> = ({
   const renderParamInput = (param: ParamItem) => {
     const { type = 'string', filterType, options } = param;
     const isDisabled = readonly || filterType === 'fixed';
-    const queryObject = formParams?.query_object
-      ?? sourceParams.find((item) => item.name === 'query_object')?.value;
-    const inputConfig = narrowInputConfigForQueryObject(normalizeInputConfig(param), queryObject);
+    const inputConfig = normalizeInputConfig(param);
 
     const fallbackInput = (() => {
       if (options && options.length > 0) {
@@ -315,27 +304,20 @@ const DataSourceParamsConfig: React.FC<DataSourceParamsConfigProps> = ({
           formParams={formParams}
           resolvedFieldQuery={fieldQuery?.resolution}
           fieldQuerySignature={fieldQuery?.signature}
-          queryObject={queryObject === undefined || queryObject === null ? '' : String(queryObject)}
-          disabled={isDisabled}
-        />
-      );
-    }
-
-    if (inputConfig?.control === 'order') {
-      return (
-        <OrderControl
-          fields={inputConfig.fields}
-          modelParam={inputConfig.modelParam}
-          includeModelAttrsInModes={inputConfig.includeModelAttrsInModes}
-          formParams={formParams}
-          analysisMode={analysisMode}
-          queryObject={queryObject === undefined || queryObject === null ? '' : String(queryObject)}
           disabled={isDisabled}
         />
       );
     }
 
     if (!inputConfig) {
+      return fallbackInput;
+    }
+    if (
+      inputConfig.control !== 'select'
+      && inputConfig.control !== 'radio'
+      && inputConfig.control !== 'input'
+      && inputConfig.control !== 'organization'
+    ) {
       return fallbackInput;
     }
 

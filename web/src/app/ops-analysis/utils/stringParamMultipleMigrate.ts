@@ -77,8 +77,7 @@ export const areNormalizedInputConfigsCompatible = (
   if (left.control !== right.control) return false;
   if (left.control === 'input' || right.control === 'input'
     || left.control === 'organization' || right.control === 'organization'
-    || left.control === 'conditionFilter' || right.control === 'conditionFilter'
-    || left.control === 'order' || right.control === 'order') {
+    || left.control === 'conditionFilter' || right.control === 'conditionFilter') {
     return left.control === right.control;
   }
   const leftPicker = left.picker ?? 'dropdown';
@@ -103,7 +102,7 @@ export const normalizeStringListInputConfig = (
   if (normalized.control === 'organization') {
     return { inputConfig: { control: 'organization' }, warnings };
   }
-  if (normalized.control === 'conditionFilter' || normalized.control === 'order') {
+  if (normalized.control === 'conditionFilter') {
     return { inputConfig: normalized, warnings };
   }
 

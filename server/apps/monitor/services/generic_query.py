@@ -30,7 +30,6 @@ from apps.monitor.utils.dimension import parse_instance_id
 
 INSTANCE_MODES = ("detail",)
 _INSTANCE_STATUS_LABEL = {True: "启用", False: "停用"}
-_INSTANCE_AGGREGATION = "未删除的监控实例，一台算一个。停用的仍计入，除非按状态滤掉"
 _AGGREGATION_LABELS = {
     "avg": "平均",
     "sum": "求和",
@@ -42,15 +41,25 @@ ALERT_MODES = ("detail", "count", "distribution")
 ALERT_LEVELS = {"warning", "error", "critical", "no_data"}
 ALERT_STATUSES = {"new", "closed", "recovered"}
 ALERT_TYPES = {"alert", "no_data"}
+_ALERT_CHOICE_LABELS = {
+    "level": {
+        "warning": "警告",
+        "error": "错误",
+        "critical": "严重",
+        "no_data": "无数据",
+    },
+    "status": {
+        "new": "未恢复",
+        "recovered": "已恢复",
+        "closed": "已关闭",
+    },
+    "alert_type": {
+        "alert": "阈值告警",
+        "no_data": "无数据告警",
+    },
+}
 ALERT_TIME_FIELDS = {"start_event_time", "end_event_time", "created_at"}
 ALERT_GROUP_FIELDS = {"level", "status", "alert_type", "monitor_instance_id", "monitor_object_id"}
-_ALERT_GROUP_TITLES = {
-    "level": "级别",
-    "status": "状态",
-    "alert_type": "告警类型",
-    "monitor_instance_id": "实例",
-    "monitor_object_id": "监控对象",
-}
 _SEVERITY_RANK = {"critical": 4, "error": 3, "warning": 2, "no_data": 1}
 _ORPHAN_OBJECT_LABEL = "策略已删除"
 ALERT_SORT_FIELDS = {
@@ -70,20 +79,6 @@ class GenericQueryError(Exception):
         self.status = status
 
 
-def _result_field(key: str, title: str, value_type: str, role: str | None = None, *, table: bool | None = None) -> dict:
-    field = {"key": key, "title": title, "value_type": value_type}
-    if role:
-        field["role"] = role
-    if table is False:
-        field["table"] = False
-    return field
-
-
-def _with_fields(payload: dict, fields: list[dict]) -> dict:
-    payload["fields"] = fields
-    return payload
-
-
 def ensure_payload_limit(data: Any) -> None:
     encoded = json.dumps(data, ensure_ascii=False, default=str).encode("utf-8")
     if len(encoded) > NATS_MESSAGE_MAX_BYTES:
@@ -95,13 +90,10 @@ def query_instances(
     *,
     analysis_mode: str,
     status: str | None = None,
-    filter_field: str | None = None,
-    filter_op: str | None = None,
-    filter_value=None,
-    filters=None,
     instance_ids=None,
     group_by: str | None = None,
-    order: str | None = None,
+    order_by: str | None = None,
+    order_dir: str | None = None,
     page=None,
     page_size=None,
     locale: str | None = None,
@@ -109,20 +101,14 @@ def query_instances(
     _mode(analysis_mode, INSTANCE_MODES)
     if _filled(group_by):
         raise GenericQueryError("当前查询不支持分组")
-    if _instance_filters_filled(filter_field, filter_op, filter_value, filters):
-        raise GenericQueryError("当前查询不支持属性过滤")
     queryset = _filter_instances(queryset, status, instance_ids)
     page_no, size = _parse_page(page, page_size)
-    order_field = _order(order, {"name", "ip", "id"}, default="name")
-    queryset = _order_instances(queryset, order_field)
+    queryset = _order_instances(queryset, _instance_order(order_by, order_dir))
     total = queryset.count()
     page_rows = list(queryset[(page_no - 1) * size : page_no * size])
     object_label = _monitor_object_label(queryset, locale)
     rows = [_instance_row(item, _cloud_region_names(page_rows), object_label) for item in page_rows]
-    payload = _table(rows, total, page_no, size)
-    payload["unit"] = "个"
-    payload["aggregation"] = _INSTANCE_AGGREGATION
-    return _with_fields(payload, _instance_fields())
+    return _table(rows, total, page_no, size)
 
 
 def validate_metric_request(*, instance_ids, time_range, step) -> dict:
@@ -208,12 +194,10 @@ def _instance_label(instance_id: str, names: dict[str, str]) -> str:
 
 
 def _table_row(instance_id: str, value, moment: str, unit: str, aggregation: str) -> dict:
-    missing = value is None
     return {
         "instance_id": instance_id,
-        "value": None if missing else value,
-        "status": "missing" if missing else "ok",
-        "time": moment,
+        "value": value,
+        **({"time": moment} if moment else {}),
         "unit": unit,
         "aggregation": _aggregation_label(aggregation),
     }
@@ -282,22 +266,6 @@ def _per_instance_rows(
     return rows
 
 
-def _table_fields(mode: str) -> list[dict]:
-    fields = [
-        _result_field("instance_id", "实例标识", "string", "identity"),
-        _result_field("value", "值", "number", "measure"),
-    ]
-    if mode == "latest":
-        fields.append(_result_field("time", "时间", "datetime", "dimension"))
-    fields.extend(
-        [
-            _result_field("unit", "单位", "string"),
-            _result_field("aggregation", "聚合口径", "string"),
-        ]
-    )
-    return fields
-
-
 def build_metric_result(
     *,
     mode: str,
@@ -343,16 +311,10 @@ def build_metric_result(
                     "instance_id": instance_id,
                     "unit": unit,
                     "aggregation": aggregation,
-                    "status": "missing" if numeric is None else "ok",
                 }
             )
         series_payload[name] = points
         parsed.append({"instance_id": instance_id, "candidates": candidates, "points": points})
-    missing = [item for item in requested_ids if not any(requested_candidates[item] & series["candidates"] for series in parsed)]
-    metric_fields = [
-        _result_field("time", "时间", "datetime", "dimension"),
-        _result_field("value", "值", "number", "measure"),
-    ]
     if mode in {"value", "latest"}:
         rows = _per_instance_rows(
             parsed,
@@ -363,30 +325,14 @@ def build_metric_result(
             requested_candidates=requested_candidates,
             instance_names=instance_names or {},
         )
-        present = any(isinstance(row["value"], (int, float)) and not isinstance(row["value"], bool) for row in rows)
-        return _with_fields(
-            {
-                "structure": "table",
-                "status": "ok" if present else "missing",
-                "items": rows,
-                "count": len(rows),
-                "unit": unit,
-                "aggregation": _aggregation_label(aggregation),
-            },
-            _table_fields(mode),
-        )
+        return {
+            "items": rows,
+            "count": len(rows),
+        }
     has_value = any(point.get("value") is not None for points in series_payload.values() for point in points)
-    return _with_fields(
-        {
-            "structure": "series",
-            "status": "ok" if has_value else "missing",
-            "unit": unit,
-            "aggregation": aggregation,
-            "series": series_payload,
-            "unbound_instance_ids": missing,
-        },
-        metric_fields,
-    )
+    if not has_value:
+        return {}
+    return {name: [[point["time"], point["value"]] for point in points] for name, points in series_payload.items()}
 
 
 def query_alerts(
@@ -399,21 +345,19 @@ def query_alerts(
     instance_ids=None,
     time_field: str | None = None,
     time_range=None,
-    filters=None,
     group_by: str | None = None,
-    order: str | None = None,
+    order_by: str | None = None,
+    order_dir: str | None = None,
     page=None,
     page_size=None,
     locale: str | None = None,
 ) -> dict:
-    if _condition_filters_present(filters):
-        raise GenericQueryError("当前查询不支持条件过滤")
     mode = _mode(analysis_mode, ALERT_MODES)
     _reject_unused(
         mode,
         [
             (group_by, "分组", ("distribution",)),
-            (order, "排序", ("detail", "distribution")),
+            (order_by if str(order_by or "").strip() else order_dir, "排序", ("detail", "distribution")),
         ],
     )
     if mode == "count":
@@ -429,11 +373,11 @@ def query_alerts(
         distribution_limit = _distribution_return_limit(page_size)
     queryset = _filter_alerts(queryset, level, status, alert_type, instance_ids, time_field, time_range)
     if mode == "count":
-        return _value(queryset.count(), field="alert_count", title="告警数", unit="条", aggregation="监控告警计数")
+        return _value(queryset.count(), field="alert_count")
     if mode == "distribution":
-        return _alert_distribution(queryset, group_by, order, distribution_limit, locale)
+        return _alert_distribution(queryset, group_by, order_by, order_dir, distribution_limit, locale)
     page_no, size = _parse_page(page, page_size)
-    order_field = _order(order, ALERT_SORT_FIELDS, default="-start_event_time")
+    order_field = _alert_detail_order(order_by, order_dir)
     total = queryset.count()
     page_rows = list(_order_alerts(queryset, order_field)[(page_no - 1) * size : page_no * size])
     annotated = list(_annotate_monitor_object(queryset.filter(pk__in=[item.pk for item in page_rows])))
@@ -441,25 +385,7 @@ def query_alerts(
     ordered = [by_id[item.pk] for item in page_rows if item.pk in by_id]
     labels = _object_labels([getattr(item, "_monitor_object_id", None) for item in ordered], locale)
     rows = [_alert_row(item, labels) for item in ordered]
-    return _with_fields(_table(rows, total, page_no, size), _ALERT_DETAIL_FIELDS)
-
-
-def _condition_filters_present(filters) -> bool:
-    if filters in (None, "", {}, []):
-        return False
-    if isinstance(filters, dict) and set(filters) <= {"logic", "items"} and not (filters.get("items") or []):
-        return False
-    return True
-
-
-def _instance_filters_filled(field, op, value, filters) -> bool:
-    if _filled(field) or _filled(op) or _filled(value):
-        return True
-    if filters in (None, "", {}, []):
-        return False
-    if isinstance(filters, dict) and set(filters) <= {"logic", "items"} and not (filters.get("items") or []):
-        return False
-    return True
+    return _table(rows, total, page_no, size)
 
 
 def _filter_instances(queryset, status, instance_ids):
@@ -496,18 +422,6 @@ def _cloud_region_names(instances) -> dict:
     from apps.node_mgmt.models.cloud_region import CloudRegion
 
     return {row.id: row.name for row in CloudRegion.objects.filter(id__in=ids)}
-
-
-def _instance_fields() -> list[dict]:
-    return [
-        _result_field("instance_id", "实例标识", "string", "identity"),
-        _result_field("name", "名称", "string"),
-        _result_field("ip", "IP", "string"),
-        _result_field("cloud_region", "云区域", "string"),
-        _result_field("cmdb_id", "CMDB 标识", "string"),
-        _result_field("monitor_object_id", "监控对象", "string"),
-        _result_field("status", "状态", "string"),
-    ]
 
 
 def _choice_list(value, allowed: set[str], label: str) -> list[str]:
@@ -608,7 +522,7 @@ def _present_object(object_id, labels: dict[str, str]) -> tuple[str, str]:
     return identity, labels.get(identity) or identity
 
 
-def _alert_distribution(queryset, group_by: str, order, limit: int | None, locale: str | None) -> dict:
+def _alert_distribution(queryset, group_by: str, order_by, order_dir, limit: int | None, locale: str | None) -> dict:
     if group_by == "monitor_object_id":
         grouped = _annotate_monitor_object(queryset).values("_monitor_object_id").annotate(alert_count=Count("id"))
     elif group_by == "monitor_instance_id":
@@ -624,25 +538,13 @@ def _alert_distribution(queryset, group_by: str, order, limit: int | None, local
     if group_by == "monitor_object_id":
         labels = _object_labels([row["_monitor_object_id"] for row in rows], locale)
     items = [_distribution_item(group_by, row, labels) for row in rows]
-    order_text = _order(order, {group_by, "alert_count"}, default="-alert_count")
-    descending = order_text.startswith("-")
-    sort_key = order_text[1:] if descending else order_text
+    sort_key, descending = _alert_distribution_order(order_by, order_dir, group_by)
     items.sort(key=lambda item: _distribution_sort_key(item, sort_key), reverse=descending)
-    total = len(items)
     shown = items if limit is None else items[:limit]
-    return _with_fields(
-        {
-            "structure": "category",
-            "status": "empty" if total == 0 else "ok",
-            "items": shown,
-            "count": total,
-            "page": 1,
-            "page_size": total if limit is None else limit,
-            "unit": "条",
-            "aggregation": f"按 {_ALERT_GROUP_TITLES[group_by]} 计数",
-        },
-        _distribution_fields(group_by),
-    )
+    _label_alert_groups(shown, group_by)
+    return {
+        "items": shown,
+    }
 
 
 def _distribution_item(group_by: str, row: dict, labels: dict[str, str]) -> dict:
@@ -667,43 +569,6 @@ def _distribution_sort_key(item: dict, field: str):
     if field == "monitor_object_id":
         return (str(item.get("monitor_object_name") or ""), str(item.get("monitor_object_id") or ""))
     return (item.get(field) is None, item.get(field))
-
-
-def _distribution_fields(group_by: str) -> list[dict]:
-    measure = _result_field("alert_count", "告警数", "number", "measure")
-    if group_by == "monitor_object_id":
-        return [
-            _result_field("monitor_object_name", "监控对象", "string", "dimension"),
-            _result_field("monitor_object_id", "监控对象标识", "string", "identity", table=False),
-            measure,
-        ]
-    if group_by == "monitor_instance_id":
-        return [
-            _result_field("monitor_instance_name", "实例名称", "string", "dimension"),
-            _result_field("monitor_instance_id", "实例标识", "string", "identity"),
-            measure,
-        ]
-    return [
-        _result_field(group_by, _ALERT_GROUP_TITLES[group_by], "string", "dimension"),
-        measure,
-    ]
-
-
-_ALERT_DETAIL_FIELDS = [
-    _result_field("content", "告警名称", "string"),
-    _result_field("monitor_instance_name", "实例名称", "string"),
-    _result_field("monitor_object_name", "监控对象", "string"),
-    _result_field("monitor_instance_id", "实例标识", "string", "identity"),
-    _result_field("id", "告警标识", "string", "identity", table=False),
-    _result_field("monitor_object_id", "监控对象标识", "string", "identity", table=False),
-    _result_field("level", "级别", "string", "dimension"),
-    _result_field("status", "状态", "string"),
-    _result_field("alert_type", "告警类型", "string"),
-    _result_field("value", "告警值", "number"),
-    _result_field("start_event_time", "开始时间", "datetime"),
-    _result_field("end_event_time", "结束时间", "datetime"),
-    _result_field("created_at", "创建时间", "datetime"),
-]
 
 
 def _monitor_object_label(queryset, locale: str | None) -> str:
@@ -748,9 +613,9 @@ def _alert_row(alert, object_labels: dict[str, str]) -> dict:
         "monitor_instance_id": alert.monitor_instance_id,
         "id": alert.id,
         "monitor_object_id": identity,
-        "level": alert.level,
-        "status": alert.status,
-        "alert_type": alert.alert_type,
+        "level": _label_alert_choice("level", alert.level),
+        "status": _label_alert_choice("status", alert.status),
+        "alert_type": _label_alert_choice("alert_type", alert.alert_type),
         "value": alert.value,
         "start_event_time": _iso(alert.start_event_time),
         "end_event_time": _iso(alert.end_event_time),
@@ -758,17 +623,24 @@ def _alert_row(alert, object_labels: dict[str, str]) -> dict:
     }
 
 
-def _value(value, *, field: str, title: str, unit: str, aggregation: str) -> dict:
-    return _with_fields(
-        {"structure": "value", "status": "ok", field: value, "unit": unit, "aggregation": aggregation},
-        [_result_field(field, title, "number", "measure")],
-    )
+def _label_alert_choice(field: str, value) -> str:
+    text = "" if value is None else str(value)
+    return _ALERT_CHOICE_LABELS.get(field, {}).get(text, text)
+
+
+def _label_alert_groups(items: list[dict], group_by: str) -> None:
+    if group_by not in _ALERT_CHOICE_LABELS:
+        return
+    for item in items:
+        item[group_by] = _label_alert_choice(group_by, item.get(group_by))
+
+
+def _value(value, *, field: str) -> dict:
+    return {field: value}
 
 
 def _table(rows, total, page, page_size) -> dict:
     return {
-        "structure": "table",
-        "status": "empty" if total == 0 else "ok",
         "items": rows,
         "count": total,
         "page": page,
@@ -793,6 +665,8 @@ def _reduce(numbers: list[float], aggregation: str):
 
 def _mode(value, allowed) -> str:
     mode = str(value or "").strip()
+    if not mode:
+        raise GenericQueryError("分析方式不能为空")
     if mode not in allowed:
         raise GenericQueryError("分析方式不受支持")
     return mode
@@ -833,8 +707,10 @@ def _reject_paging(page, page_size) -> None:
 
 
 def _parse_page(page, page_size) -> tuple[int, int]:
-    page_no = 1 if page in (None, "") else _as_int(page, "page")
-    size = 20 if page_size in (None, "") else _as_int(page_size, "page_size")
+    if page in (None, "") or page_size in (None, ""):
+        raise GenericQueryError("页码和每页条数必须同时填写")
+    page_no = _as_int(page, "page")
+    size = _as_int(page_size, "page_size")
     if page_no < 1:
         raise GenericQueryError("page 必须大于 0")
     if size < 1 or size > DETAIL_PAGE_SIZE_MAX:
@@ -842,12 +718,50 @@ def _parse_page(page, page_size) -> tuple[int, int]:
     return page_no, size
 
 
-def _order(order, allowed: set[str], *, default: str) -> str:
-    text = str(order or "").strip() or default
-    field = text[1:] if text.startswith("-") else text
+def _sort_request(order_by, order_dir) -> tuple[str, bool] | None:
+    """两个都空表示没指定排序。只填一个直接报错，不补另一个。"""
+    field = "" if order_by in (None, "") else str(order_by).strip()
+    direction = "" if order_dir in (None, "") else str(order_dir).strip()
+    if not field and not direction:
+        return None
+    if not field or not direction:
+        raise GenericQueryError("排序和排序方式必须同时填写")
+    if direction not in {"asc", "desc"}:
+        raise GenericQueryError("排序方式不受支持")
+    return field, direction == "desc"
+
+
+def _checked_sort(order_by, order_dir, allowed: set[str]) -> tuple[str, bool] | None:
+    requested = _sort_request(order_by, order_dir)
+    if requested is None:
+        return None
+    field, descending = requested
     if field not in allowed:
         raise GenericQueryError(f"不支持的排序字段: {field}")
-    return text
+    return field, descending
+
+
+def _instance_order(order_by, order_dir) -> str:
+    requested = _checked_sort(order_by, order_dir, {"name", "ip", "id"})
+    if requested is None:
+        return "id"
+    field, descending = requested
+    return f"-{field}" if descending else field
+
+
+def _alert_detail_order(order_by, order_dir) -> str:
+    requested = _checked_sort(order_by, order_dir, ALERT_SORT_FIELDS)
+    if requested is None:
+        return "id"
+    field, descending = requested
+    return f"-{field}" if descending else field
+
+
+def _alert_distribution_order(order_by, order_dir, group_by: str) -> tuple[str, bool]:
+    requested = _checked_sort(order_by, order_dir, {group_by, "alert_count"})
+    if requested is None:
+        return "alert_count", True
+    return requested
 
 
 def _id_list(value) -> list[str]:
