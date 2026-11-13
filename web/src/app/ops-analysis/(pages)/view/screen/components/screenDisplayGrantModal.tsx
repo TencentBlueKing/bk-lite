@@ -194,7 +194,7 @@ const ScreenDisplayGrantModal = ({
         </div>
       ) : (
         <div>
-          <div className="pb-5 pt-6">
+          <div className="pb-5 pt-4">
             <div className="text-sm font-semibold leading-5 text-[var(--color-text-1)]">
               {t('opsAnalysis.screen.displayDuration')}
             </div>
@@ -232,11 +232,6 @@ const ScreenDisplayGrantModal = ({
                 </Button>
               )}
             </div>
-            {configured ? (
-              <p className="m-0 mt-2 text-xs leading-5 text-[var(--color-text-3)]">
-                {t('opsAnalysis.screen.displayDurationHint')}
-              </p>
-            ) : null}
           </div>
           <div className="pb-1 pt-1">
             {configured ? (

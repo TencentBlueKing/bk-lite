@@ -46,7 +46,7 @@ describe('screen display grant modal', () => {
     expect(await screen.findByRole('button', { name: 'opsAnalysis.screen.displayCopy' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'opsAnalysis.screen.displayPause' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'opsAnalysis.screen.displayRegenerate' })).toBeTruthy();
-    expect(screen.getByText('opsAnalysis.screen.displayDurationHint')).toBeTruthy();
+    expect(screen.queryByText('opsAnalysis.screen.displayDurationHint')).toBeNull();
     expect(screen.getByText(/opsAnalysis\.screen\.displayExpiresAt/)).toBeTruthy();
     expect(screen.queryByRole('button', { name: /登录|sign in/i })).toBeNull();
     await waitFor(() => {
