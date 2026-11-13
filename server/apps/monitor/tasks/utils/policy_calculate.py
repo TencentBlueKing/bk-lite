@@ -68,8 +68,8 @@ def _resolve_data_bytes_source_unit(source_unit: str, display_unit: str) -> str:
     return _DATA_BYTES_DISPLAY_TO_UNIT.get(display_unit or "", "")
 
 
-def _should_auto_adapt_data_bytes(source_unit: str, scan_unit_converted: bool, enum_value_map: dict | None) -> bool:
-    if scan_unit_converted or enum_value_map:
+def _should_auto_adapt_data_bytes(source_unit: str, enum_value_map: dict | None) -> bool:
+    if enum_value_map:
         return False
     return bool(source_unit)
 
@@ -79,16 +79,17 @@ def _format_content_numbers(
     display_unit: str,
     *,
     source_unit: str = "",
-    scan_unit_converted: bool = False,
     enum_value_map: dict | None = None,
 ) -> list[str]:
     """把同一组 content 数值格式化到同一展示单位。
 
-    data_bytes 且扫描侧未换算时，复用 UnitConverter.auto_convert 升到可读档；
+    source_unit / display_unit 是数值当前所属单位，不是采集原单位。
+    data_bytes 复用 UnitConverter.auto_convert 升到 KiB/MiB/GiB；
+    扫描已换算到 bytes 时也要升档，否则磁盘容量会停在 B。
     事件/判定用的原值由调用方保留，这里只产展示串。
     """
     resolved_unit = _resolve_data_bytes_source_unit(source_unit, display_unit)
-    if _should_auto_adapt_data_bytes(resolved_unit, scan_unit_converted, enum_value_map):
+    if _should_auto_adapt_data_bytes(resolved_unit, enum_value_map):
         finite_values = [value for value in values if value is not None]
         if finite_values:
             converted_values, target_unit = UnitConverter.auto_convert(finite_values, resolved_unit)
@@ -129,7 +130,6 @@ def calculate_alerts(alert_name, df, thresholds, template_context=None, n=1, rec
     source_display_unit = template_context.get("source_display_unit", display_unit)
     source_unit = template_context.get("source_unit") or ""
     overlay_source_unit = template_context.get("overlay_source_unit") or source_unit
-    scan_unit_converted = bool(template_context.get("scan_unit_converted", False))
     enum_value_map = template_context.get("enum_value_map", {})
     dimension_name_map = template_context.get("dimension_name_map", {})
     monitor_instance_id_key = template_context.get("monitor_instance_id_key")
@@ -191,14 +191,12 @@ def calculate_alerts(alert_name, df, thresholds, template_context=None, n=1, rec
                     [alert_value, threshold_info["value"]],
                     display_unit,
                     source_unit=source_unit,
-                    scan_unit_converted=scan_unit_converted,
                     enum_value_map=enum_value_map,
                 )
                 formatted_current, formatted_baseline = _format_content_numbers(
                     [current_raw, baseline_raw],
                     source_display_unit,
                     source_unit=overlay_source_unit,
-                    scan_unit_converted=scan_unit_converted,
                     enum_value_map=enum_value_map,
                 )
                 context = {

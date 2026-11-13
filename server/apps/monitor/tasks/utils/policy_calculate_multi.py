@@ -6,7 +6,7 @@ from apps.monitor.constants.alert_policy import AlertConstants
 from apps.monitor.tasks.utils.policy_calculate import (
     _all_meet_threshold,
     _extract_monitor_instance_id_by_key,
-    _format_value_with_unit,
+    _format_content_numbers,
     _parse_finite_float,
 )
 from apps.monitor.utils.dimension import (
@@ -169,7 +169,7 @@ def calculate_multi_alerts(alert_name, series_by_ref, conditions, template_conte
         primary_value = condition_values[primary.get("ref")]
         primary_unit = display_units.get(primary.get("ref"), "")
         primary_enum = enum_maps.get(primary.get("ref")) or {}
-        formatted_primary = _format_value_with_unit(primary_value, primary_unit, primary_enum)
+        formatted_primary = _format_content_numbers([primary_value], primary_unit, enum_value_map=primary_enum or None)[0]
 
         matched_level = _matched_level(level_conditions, gate_conditions, window, levels)
         base_event = {
@@ -204,11 +204,11 @@ def calculate_multi_alerts(alert_name, series_by_ref, conditions, template_conte
         }
         context.update(build_metric_template_vars(dimensions))
         for ref, number in condition_values.items():
-            context[f"{ref}_value"] = _format_value_with_unit(
-                number,
+            context[f"{ref}_value"] = _format_content_numbers(
+                [number],
                 display_units.get(ref, ""),
-                enum_maps.get(ref) or {},
-            )
+                enum_value_map=enum_maps.get(ref) or None,
+            )[0]
             context[f"{ref}_metric_name"] = metric_names.get(ref, ref)
         content = Template(alert_name or "").safe_substitute(context)
         alert_events.append(
