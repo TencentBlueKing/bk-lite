@@ -50,10 +50,11 @@ def _load_plugin_json(path: Path) -> dict:
         return {}
 
 
-def _plugin_names_collector(plugin_dir: Path, metrics: dict, collector: str) -> bool:
-    """采集器白名单覆盖该采集器目录下的全部内置插件，而不只是 metrics 里写了同名的第一份。"""
-    if str(metrics.get("plugin") or "") == collector or str(metrics.get("collector") or "") == collector:
-        return True
+def _metrics_names_collector(metrics: dict, collector: str) -> bool:
+    return str(metrics.get("plugin") or "") == collector or str(metrics.get("collector") or "") == collector
+
+
+def _plugin_under_collector_dir(plugin_dir: Path, collector: str) -> bool:
     for root in _plugin_roots():
         try:
             relative = plugin_dir.relative_to(root)
@@ -74,7 +75,7 @@ def load_builtin_plugin_files(collector: str) -> dict:
         metrics = _load_plugin_json(plugin_dir / "metrics.json")
         if not metrics:
             continue
-        if str(metrics.get("plugin") or "") != collector and str(metrics.get("collector") or "") != collector:
+        if not _metrics_names_collector(metrics, collector):
             continue
         return {"dir": plugin_dir, "metrics": metrics, "ui": _load_plugin_json(plugin_dir / "UI.json")}
     return {}
@@ -125,12 +126,21 @@ def builtin_allowlist(collector: str) -> dict:
         env_vars.update(extract_env_vars(params))
         key = (item.get("node_operating_system"), item.get("cpu_architecture") or "x86_64")
         params_by_slot[key] = params
+    # 只有 Telegraf 包合并同目录全部内置插件。Host 等插件的 metrics.plugin 不是 Telegraf，
+    # 但 UI 随 Telegraf 包导入。其他采集器仍只认第一份同名 UI。
+    uis = []
+    if collector == "Telegraf":
+        for plugin_dir in _iter_plugin_dirs():
+            metrics = _load_plugin_json(plugin_dir / "metrics.json")
+            if not metrics:
+                continue
+            if not (_metrics_names_collector(metrics, collector) or _plugin_under_collector_dir(plugin_dir, collector)):
+                continue
+            uis.append(_load_plugin_json(plugin_dir / "UI.json"))
+    else:
+        uis.append(ui)
     field_names = set()
-    for plugin_dir in _iter_plugin_dirs():
-        metrics = _load_plugin_json(plugin_dir / "metrics.json")
-        if not metrics or not _plugin_names_collector(plugin_dir, metrics, collector):
-            continue
-        plugin_ui = _load_plugin_json(plugin_dir / "UI.json")
+    for plugin_ui in uis:
         field_names.update(_form_field_names(plugin_ui))
         flags.update(extract_flags(" ".join(_ui_transform_values(plugin_ui))))
     return {
