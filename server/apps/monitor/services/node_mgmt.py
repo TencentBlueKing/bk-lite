@@ -1097,11 +1097,14 @@ class InstanceConfigService:
             binding.get("resolver") in {"selected_node", "selected_nodes"} for binding in (plugin.instance_fact_bindings or [])
         )
         prepared_fact_instances = []
+        # 表单级输入（configs 各项只差 type）：供 input 解析器读取不在实例行里的已声明字段。
+        configs = data.get("configs") or []
+        form_input = configs[0] if configs and isinstance(configs[0], dict) else {}
         for instance in sanitized_instances:
             trusted_nodes = instance.get("_trusted_nodes", [])
             if requires_nodes and not trusted_nodes:
                 trusted_nodes = NodeMgmt().get_nodes_by_ids(instance.get("node_ids", []))
-            summary_facts = InstanceFactResolver.resolve(plugin, instance, {"nodes": trusted_nodes}) if plugin else {}
+            summary_facts = InstanceFactResolver.resolve(plugin, instance, {"nodes": trusted_nodes, "form": form_input}) if plugin else {}
             clean_instance = {key: value for key, value in instance.items() if key != "_trusted_nodes"}
             clean_instance["summary_facts"] = summary_facts
             clean_instance["_summary_fact_source"] = (plugin.template_id or plugin.name) if plugin else ""

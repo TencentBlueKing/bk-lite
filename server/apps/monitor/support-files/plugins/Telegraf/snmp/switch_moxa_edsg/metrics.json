@@ -5,6 +5,8 @@
   "plugin_desc": "SNMP monitoring template for Moxa EDS-G508E / EDS-G512E industrial Ethernet switches (PEN 8691). Reports CPU, memory usage plus IF-MIB/uptime.",
   "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_moxa_edsg'}) by (instance_id)",
+  "instance_fact_bindings": [{"fact":"asset.ip","value_type":"ip","resolver":"input","options":{"field":"ip"}}],
+  "instance_summary_columns": [{"fact":"asset.ip","title":"monitor.views.assetIp","order":10}],
   "name": "Switch",
   "icon": "mm-switch_交换机",
   "type": "Network Device",

@@ -5,6 +5,8 @@
   "plugin_desc": "SNMP monitoring template for Wiesemann Theis Web-Thermo-Hygrometer environmental monitors (PEN 5040, wtWebGraphThermoHygro 5040.1.2.42). It reports channel 1 as temperature in Celsius and channel 2 as relative humidity, both scaled from BinaryTempValue tenths, plus uptime and interface traffic. Invalid sentinel 327670 rows are dropped. ASCII temperature strings and other Webio product trees are not collected in this pass.",
   "support_collect_detect": true,
   "status_query": "any({instance_type='network_service', collect_type='snmp_wut'}) by (instance_id)",
+  "instance_fact_bindings": [{"fact":"asset.ip","value_type":"ip","resolver":"input","options":{"field":"ip"}}],
+  "instance_summary_columns": [{"fact":"asset.ip","title":"monitor.views.assetIp","order":10}],
   "name": "NetworkService",
   "icon": "mm-network_service_网络服务",
   "type": "Network Device",

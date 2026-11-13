@@ -17,6 +17,7 @@ from apps.monitor.constants.plugin import PluginConstants
 from apps.monitor.models import CollectConfig, Metric, MonitorInstance, MonitorInstanceOrganization, MonitorObject, MonitorPlugin
 from apps.monitor.services.host_container_asset_ip import fill_missing_host_container_asset_ips
 from apps.monitor.services.monitor_object import MonitorObjectService
+from apps.monitor.utils.alert_name_variables import summary_facts_with_model_ip
 from apps.monitor.utils.dimension import parse_instance_id
 from apps.monitor.utils.instance import list_reporting_status
 from apps.monitor.utils.last_sample import LAST_SAMPLE_LOOKBACK, last_sample_timestamp_query, last_sample_unix_seconds
@@ -338,7 +339,7 @@ class InstanceSearch:
                 instance_name=obj.name or obj.id,
                 interval=obj.interval,
                 ip=obj.ip,
-                summary_facts=obj.summary_facts,
+                summary_facts=summary_facts_with_model_ip(obj.summary_facts, obj.ip),
                 time=last_sample or "",
                 value=metric["value"][1],
             )
@@ -1125,7 +1126,7 @@ class InstanceSearch:
                 "interval": obj.interval,
                 "cloud_region_id": obj.cloud_region_id,
                 "ip": obj.ip,
-                "summary_facts": obj.summary_facts,
+                "summary_facts": summary_facts_with_model_ip(obj.summary_facts, obj.ip),
                 "fallback_sampling_rate": obj.fallback_sampling_rate,
                 "node_id": obj.node_id or "",
                 "cmdb_id": obj.cmdb_id or "",

@@ -5,6 +5,8 @@
   "plugin_desc": "SNMP monitoring template for Radwin wireless device (WinLink 1000 / RADWIN-MIB-WINLINK1000, enterprise PEN 4458). It reports uptime, ODU board temperature, and interface traffic. The private MIB has no CPU, memory, fan or power supply objects.",
   "support_collect_detect": true,
   "status_query": "any({instance_type='wireless', collect_type='snmp_radwin'}) by (instance_id)",
+  "instance_fact_bindings": [{"fact":"asset.ip","value_type":"ip","resolver":"input","options":{"field":"ip"}}],
+  "instance_summary_columns": [{"fact":"asset.ip","title":"monitor.views.assetIp","order":10}],
   "name": "Wireless",
   "icon": "mm-radwin_radwin",
   "type": "Network Device",

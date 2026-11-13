@@ -5,6 +5,8 @@
   "plugin_desc": "SNMP monitoring template for Cisco ACE Application Control Engine appliances and modules. Besides standard IF-MIB 64-bit interface traffic, it collects host CPU utilization (CISCO-PROCESS-MIB), memory pools (CISCO-MEMORY-POOL-MIB), network-processor CPU and buffer utilization (CISCO-L4L7MODULE-RESOURCE-LIMIT-MIB) and current SLB connections (CISCO-SLB-EXT-MIB).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='loadbalance', collect_type='snmp_cisco_ace'}) by (instance_id)",
+  "instance_fact_bindings": [{"fact":"asset.ip","value_type":"ip","resolver":"input","options":{"field":"ip"}}],
+  "instance_summary_columns": [{"fact":"asset.ip","title":"monitor.views.assetIp","order":10}],
   "name": "Loadbalance",
   "icon": "mm-loadbalance_负载均衡",
   "type": "Network Device",

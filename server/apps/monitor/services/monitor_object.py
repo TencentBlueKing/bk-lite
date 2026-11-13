@@ -17,6 +17,7 @@ from apps.monitor.models.monitor_object import MonitorInstance, MonitorInstanceO
 from apps.monitor.models.plugin import MonitorPlugin
 from apps.monitor.services.host_container_asset_ip import fill_missing_host_container_asset_ips
 from apps.monitor.tasks.grouping_rule import sync_instance_and_group
+from apps.monitor.utils.alert_name_variables import summary_facts_with_model_ip
 from apps.monitor.utils.dimension import parse_instance_id
 from apps.monitor.utils.display_fields_metrics import display_field_key, extract_field_bindings, extract_metric_bindings
 from apps.monitor.utils.instance import list_reporting_status
@@ -729,7 +730,7 @@ class MonitorObjectService:
             "time": instance_map.get(obj.id, {}).get("time", ""),
             "cloud_region_id": obj.cloud_region_id,
             "ip": obj.ip,
-            "summary_facts": obj.summary_facts,
+            "summary_facts": summary_facts_with_model_ip(obj.summary_facts, obj.ip),
             "fallback_sampling_rate": obj.fallback_sampling_rate,
             "node_id": obj.node_id or "",
             "cmdb_id": obj.cmdb_id or "",

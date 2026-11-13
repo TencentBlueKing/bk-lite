@@ -5,6 +5,8 @@
   "plugin_desc": "SNMP monitoring template for Linksys Business / Smart switches (PEN 3955, tree 1.3.6.1.4.1.3955.1000.201). Besides standard IF-MIB 64-bit interface traffic, it collects 5-minute CPU utilization (rlCpuUtilDuringLast5Minutes, 0-100%, 101 dropped), fan state (rlEnvMonFanState), power-supply state (rlEnvMonSupplyState; normal=1, warning/critical/shutdown/notFunctioning=2, notPresent dropped), chassis temperature (rlEnvFanDataTemp, Celsius) and fan speed (rlEnvFanDataSpeed, RPM). The private MIB exposes no memory gauge, so memory is not collected.",
   "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_linksys'}) by (instance_id)",
+  "instance_fact_bindings": [{"fact":"asset.ip","value_type":"ip","resolver":"input","options":{"field":"ip"}}],
+  "instance_summary_columns": [{"fact":"asset.ip","title":"monitor.views.assetIp","order":10}],
   "name": "Switch",
   "icon": "mm-switch_交换机",
   "type": "Network Device",

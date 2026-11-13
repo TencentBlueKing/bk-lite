@@ -55,6 +55,20 @@ def resolve_resource_ip(summary_facts, ip) -> str:
     return ""
 
 
+def summary_facts_with_model_ip(summary_facts, ip):
+    """实例列表展示用：摘要事实缺 asset.ip 时回落模型 ip，与筛选、搜索、告警变量同源。
+
+    只生成响应用的副本，不落库、不改入参；Flow 资产与声明事实绑定之前接入的存量实例靠它显示 IP。
+    """
+    if isinstance(summary_facts, dict) and summary_facts.get(ASSET_IP_FACT) not in (None, ""):
+        return summary_facts
+    if ip in (None, ""):
+        return summary_facts
+    merged = dict(summary_facts) if isinstance(summary_facts, dict) else {}
+    merged[ASSET_IP_FACT] = str(ip).strip()
+    return merged
+
+
 _NOTIFICATION_FACT_PART = re.compile(r"^[A-Za-z][A-Za-z0-9_]*$")
 _NOTIFICATION_SENSITIVE_PARTS = ("password", "token", "secret", "private_key", "credential")
 _NOTIFICATION_FACT_MAX_LENGTH = 1000
