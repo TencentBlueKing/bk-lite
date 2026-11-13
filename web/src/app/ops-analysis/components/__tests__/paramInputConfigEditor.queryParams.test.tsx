@@ -971,4 +971,98 @@ describe('param input query params', () => {
     });
     expect(getSourceDataByApiId).toHaveBeenCalledTimes(2);
   });
+
+  it('edits a condition filter field source like a string select', async () => {
+    const user = userEvent.setup();
+    const onConfirm = vi.fn();
+    getDataSourceList.mockResolvedValue([
+      {
+        id: 3,
+        name: '属性',
+        rest_api: 'cmdb/list_cmdb_attr_options',
+        params: [
+          { name: 'model_id', type: 'string', alias_name: '模型', value: '' },
+        ],
+        field_schema: [
+          { key: 'attr_id', title: '属性标识' },
+          { key: 'attr_name', title: '属性名称' },
+        ],
+      },
+    ]);
+    render(
+      <ParamInputConfigEditor
+        open
+        variant="conditionFields"
+        editingParamName="filters"
+        onCancel={vi.fn()}
+        onConfirm={onConfirm}
+        optionsQueryContext={{
+          scope: 'component',
+          self: { key: 'filters' },
+          componentParams: [{ name: 'model_id', label: '模型', type: 'string' }],
+          globalFilters: [],
+        }}
+        value={{
+          control: 'conditionFilter',
+          fields: { kind: 'modelAttrs', modelParam: 'model_id' },
+        }}
+      />,
+    );
+
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).queryByText('paramInput.controlType')).toBeNull();
+    await waitFor(() => expect(within(dialog).getByText('值字段')).toBeTruthy());
+    await user.click(within(dialog).getByRole('button', { name: /确\s*认/ }));
+    await waitFor(() => expect(onConfirm).toHaveBeenCalledWith({
+      control: 'conditionFilter',
+      fields: {
+        kind: 'dynamic',
+        sourceRef: { type: 'rest_api', value: 'cmdb/list_cmdb_attr_options' },
+        valueField: 'attr_id',
+        labelField: 'attr_name',
+        queryParams: { model_id: { ref: 'model_id' } },
+      },
+    }));
+  });
+
+  it('groups handwritten condition options inside the field card', async () => {
+    const user = userEvent.setup();
+    render(
+      <ParamInputConfigEditor
+        open
+        variant="conditionFields"
+        onCancel={vi.fn()}
+        onConfirm={vi.fn()}
+        value={{
+          control: 'conditionFilter',
+          fields: {
+            kind: 'static',
+            items: [
+              { value: 'name', label: '名称', valueType: 'string' },
+              {
+                value: 'status',
+                label: '状态',
+                valueType: 'enum',
+                options: [{ value: '1', label: '已上线' }],
+              },
+            ],
+          },
+        }}
+      />,
+    );
+
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByText('paramInput.conditionFields.source')).toBeTruthy();
+    expect(within(dialog).getByRole('button', { name: /addField/ })).toBeTruthy();
+    expect(within(dialog).getAllByRole('button', { name: 'paramInput.conditionFields.deleteField' })).toHaveLength(2);
+    const statusCard = within(dialog).getByDisplayValue('状态').closest('div.rounded-md');
+    expect(statusCard).toBeTruthy();
+    expect(within(statusCard as HTMLElement).getByText('paramInput.conditionFields.optionSection')).toBeTruthy();
+    expect(within(statusCard as HTMLElement).getByDisplayValue('已上线')).toBeTruthy();
+    expect(within(statusCard as HTMLElement).queryByDisplayValue('名称')).toBeNull();
+    await user.click(within(statusCard as HTMLElement).getByRole('button', { name: /addOption/ }));
+    expect(within(statusCard as HTMLElement).getAllByRole('button', {
+      name: 'paramInput.conditionFields.deleteOption',
+    })).toHaveLength(2);
+  });
 });

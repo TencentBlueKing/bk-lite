@@ -167,6 +167,21 @@ assert.deepEqual(
   ],
 );
 
+assert.deepEqual(
+  mapDynamicItems(
+    [
+      { id: 507, display_name: '磁盘使用率', monitor_plugin_name: 'Host' },
+      { id: 2666, display_name: '磁盘使用率', monitor_plugin_name: 'Host Remote', option_label: '磁盘使用率（Host Remote）' },
+    ],
+    'id',
+    'option_label',
+  ),
+  [
+    { value: 507, label: '磁盘使用率（Host）' },
+    { value: 2666, label: '磁盘使用率（Host Remote）' },
+  ],
+);
+
 assert.equal(toSingleOrganizationValue(12), 12);
 assert.equal(toSingleOrganizationValue('12'), 12);
 assert.equal(toSingleOrganizationValue(''), 0);

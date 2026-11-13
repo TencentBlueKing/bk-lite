@@ -220,6 +220,7 @@ export const useGraphNodeOperations = ({
           unifiedFilterValues,
           filterBindings: effectiveFilterBindings,
           filterDefinitions,
+          chartType: valueConfig.chartType || 'single',
         });
         if (!isCurrent()) return;
 

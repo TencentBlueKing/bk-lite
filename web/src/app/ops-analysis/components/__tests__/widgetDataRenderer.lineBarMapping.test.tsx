@@ -267,4 +267,25 @@ describe('line and bar mapping revalidates the rows already fetched', () => {
     expect(screen.queryByText('dashboard.dataFormatMismatch')).toBeNull();
     expect(testState.fetchCount).toBe(fetchesAfterMapped);
   });
+
+  it('shows the current and required structure instead of drawing a table as a pie', async () => {
+    testState.payload = {
+      structure: 'table',
+      items: [{ classification_name: '计算', model_name: '主机' }],
+      count: 1,
+    };
+    render(
+      <WidgetWrapper
+        dashboardId="preview"
+        widgetId="pie-structure"
+        chartType="pie"
+        config={{ dataSource: datasource.id, chartType: 'pie' }}
+        dataSource={datasource}
+      />,
+    );
+    await waitFor(() => {
+      expect(screen.getByText('dashboard.structureMismatch')).toBeTruthy();
+    });
+    expect(screen.queryByTestId('mapped-line-bar')).toBeNull();
+  });
 });

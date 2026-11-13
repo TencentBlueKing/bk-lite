@@ -6,6 +6,7 @@ class CmdbConfig(AppConfig):
     name = "apps.cmdb"
 
     def ready(self):
+        import apps.cmdb.nats.generic_query  # noqa
         import apps.cmdb.nats.nats  # noqa
         import apps.cmdb.openapi_api  # noqa
         from apps.cmdb.services.pc_discovery import install_pc_vm_metric_reconcile
