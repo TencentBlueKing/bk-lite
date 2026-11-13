@@ -1312,7 +1312,6 @@ def send_subscription_notifications(
 def daily_data_cleanup_task() -> dict:
     from apps.cmdb.services.data_cleanup_service import DataCleanupService
 
-    logger.info("[DataCleanup] 启动每日过期数据清理任务")
     return DataCleanupService.run_daily_cleanup()
 
 

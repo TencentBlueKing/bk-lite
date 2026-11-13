@@ -494,6 +494,20 @@ class TestDataCleanupPure:
         assert timedelta(days=6, hours=23) < delta < timedelta(days=7, hours=1)
 
 
+class _EmptyGraph:
+    def __init__(self, *args, **kwargs):
+        pass
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        return False
+
+    def query_entity(self, label, params, **kwargs):
+        return [], 0
+
+
 @pytest.mark.django_db
 class TestDataCleanupWithGraph:
     def _make_task(self, **kw):
@@ -515,16 +529,26 @@ class TestDataCleanupWithGraph:
         out = DataCleanupService.cleanup_expired_instances(task)
         assert out == {"task_id": task.id, "deleted_count": 0, "skipped": True}
 
-    def test_legacy_cleanup_is_noop_even_for_expiring_tasks(self):
+    def test_expiring_task_is_eligible_without_a_snapshot(self, monkeypatch):
+        monkeypatch.setattr("apps.cmdb.services.data_cleanup_service.GraphClient", _EmptyGraph)
         task = self._make_task(expire_days=10, data_cleanup_strategy="after_expiration")
-        assert DataCleanupService.cleanup_expired_instances(task) == {"task_id": task.id, "deleted_count": 0, "skipped": True}
+        out = DataCleanupService.cleanup_expired_instances(task)
+        assert out["skipped"] is False
+        assert out["deleted_count"] == 0
+        assert out["failed_count"] == 0
 
-    def test_daily_cleanup_does_not_scan_or_delete_without_snapshot(self, mocker):
-        cleanup = mocker.patch.object(DataCleanupService, "cleanup_expired_instances", side_effect=AssertionError("unbounded cleanup"))
-        self._make_task(expire_days=10, data_cleanup_strategy="after_expiration")
+    def test_daily_cleanup_processes_only_after_expiration_tasks(self, monkeypatch):
+        monkeypatch.setattr("apps.cmdb.services.data_cleanup_service.GraphClient", _EmptyGraph)
+        self._make_task(name="expire-task", expire_days=10, data_cleanup_strategy="after_expiration")
+        self._make_task(name="keep-task", expire_days=10, data_cleanup_strategy="no_cleanup")
+        self._make_task(name="immediate-task", expire_days=10, data_cleanup_strategy="immediately")
+        self._make_task(name="zero-day-task", expire_days=0, data_cleanup_strategy="after_expiration")
+        self._make_task(name="too-long-task", expire_days=366, data_cleanup_strategy="after_expiration")
         summary = DataCleanupService.run_daily_cleanup()
-        assert summary == {"tasks_processed": 0, "total_deleted": 0, "total_failed": 0, "results": [], "delete_ids": []}
-        cleanup.assert_not_called()
+        assert summary["tasks_processed"] == 1
+        assert summary["total_deleted"] == 0
+        assert summary["total_failed"] == 0
+        assert summary["delete_ids"] == []
 
 
 # ===========================================================================
