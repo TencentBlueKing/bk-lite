@@ -54,14 +54,19 @@ def _metrics_names_collector(metrics: dict, collector: str) -> bool:
     return str(metrics.get("plugin") or "") == collector or str(metrics.get("collector") or "") == collector
 
 
-def _plugin_under_collector_dir(plugin_dir: Path, collector: str) -> bool:
+def _iter_collector_plugin_dirs(collector: str):
+    """内置插件按采集器目录放置。白名单取该目录下全部 UI，而不是全库扫描后的第一份。"""
+    seen = set()
     for root in _plugin_roots():
-        try:
-            relative = plugin_dir.relative_to(root)
-        except ValueError:
+        collector_root = root / collector
+        if not collector_root.is_dir():
             continue
-        return bool(relative.parts) and relative.parts[0] == collector
-    return False
+        for metrics in collector_root.rglob("metrics.json"):
+            plugin_dir = metrics.parent
+            if plugin_dir in seen:
+                continue
+            seen.add(plugin_dir)
+            yield plugin_dir
 
 
 def _form_field_names(ui: dict) -> set[str]:
@@ -126,23 +131,12 @@ def builtin_allowlist(collector: str) -> dict:
         env_vars.update(extract_env_vars(params))
         key = (item.get("node_operating_system"), item.get("cpu_architecture") or "x86_64")
         params_by_slot[key] = params
-    # 只有 Telegraf 包合并同目录全部内置插件。Host 等插件的 metrics.plugin 不是 Telegraf，
-    # 但 UI 随 Telegraf 包导入。其他采集器仍只认第一份同名 UI。
-    uis = []
-    if collector == "Telegraf":
-        for plugin_dir in _iter_plugin_dirs():
-            metrics = _load_plugin_json(plugin_dir / "metrics.json")
-            if not metrics:
-                continue
-            if not (_metrics_names_collector(metrics, collector) or _plugin_under_collector_dir(plugin_dir, collector)):
-                continue
-            uis.append(_load_plugin_json(plugin_dir / "UI.json"))
-    else:
-        uis.append(ui)
+    flags.update(extract_flags(" ".join(_ui_transform_values(ui))))
     field_names = set()
-    for plugin_ui in uis:
-        field_names.update(_form_field_names(plugin_ui))
-        flags.update(extract_flags(" ".join(_ui_transform_values(plugin_ui))))
+    for plugin_dir in _iter_collector_plugin_dirs(collector):
+        field_names.update(_form_field_names(_load_plugin_json(plugin_dir / "UI.json")))
+    if not field_names:
+        field_names = _form_field_names(ui)
     return {
         "flags": flags,
         "env_vars": env_vars,
