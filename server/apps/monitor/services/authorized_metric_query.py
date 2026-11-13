@@ -16,13 +16,15 @@ from apps.monitor.utils.dimension import normalize_instance_identity, parse_inst
 ALLOWED_AGGREGATIONS = {
     # AVG 按实例 + 已声明维度聚合，丢掉 collection_task_id / 采集器 host 等未声明标签。
     # 否则 Host Remote 每轮采集都是短命序列：折线合成一条，断点却按序列并集把整窗涂红。
+    # 通用查询要按实例收成一个数时，调用方显式传 grouping="instance"，不改这里的默认。
     "AVG": "avg",
     "SUM": "sum",
     "MAX": "max",
     "MIN": "min",
     "COUNT": "count",
 }
-ALLOWED_FILTER_OPERATORS = {"=", "!=", "=~", "!~"}
+
+GROUPING_INSTANCE = "instance"
 
 
 @dataclass(frozen=True)
@@ -38,11 +40,24 @@ class AuthorizedMetricQuery:
     card_budget: bool
 
 
-def _storage_instance_id(value) -> str:
+def _instance_lookup_candidates(value) -> tuple[str, ...]:
+    """同一台实例的主键可能是纯字符串，也可能是单维元组串。两种都拿去对库。"""
+    raw = str(value).strip()
+    if not raw:
+        return ()
+    ordered = [raw]
     try:
-        return normalize_instance_identity(value)["storage_instance_key"]
+        normalized = normalize_instance_identity(value)
     except ValueError:
-        return str(value)
+        return tuple(ordered)
+    storage_key = str(normalized.get("storage_instance_key") or "").strip()
+    if storage_key and storage_key not in ordered:
+        ordered.append(storage_key)
+    if len(parse_instance_id(value)) == 1:
+        logical = str(normalized.get("logical_instance_value") or "").strip()
+        if logical and logical not in ordered:
+            ordered.append(logical)
+    return tuple(ordered)
 
 
 def _metric_instance_id_keys(metric: Metric) -> list[str]:
@@ -82,31 +97,128 @@ def _aggregation_grouping_labels(metric: Metric, aggregation_name: str) -> list[
     return grouping
 
 
-def _filter_matchers(metric: Metric, filters) -> list[str]:
-    if filters in (None, ""):
-        return []
-    if not isinstance(filters, list):
-        raise AuthorizedMetricQueryError("filters 必须是列表", code="filters_invalid")
+def _grouping_labels(metric: Metric, aggregation_name: str, grouping) -> list[str]:
+    """默认沿用全局聚合。通用查询传入 instance 时只按实例标识分组。"""
+    if grouping in (None, ""):
+        return _aggregation_grouping_labels(metric, aggregation_name)
+    if grouping == GROUPING_INSTANCE:
+        return list(_metric_instance_id_keys(metric))
+    raise AuthorizedMetricQueryError("分组方式不受支持", code="grouping_invalid")
 
-    allowed = _allowed_dimensions(metric)
-    matchers = []
-    for item in filters:
+
+def _select_authorized_instance(raw: str, authorized_ids: set[str], existing_ids: set[str]) -> str | None:
+    """同一实例的原始串和存储键可以互换。另一个已存在的实例不能借写法混进来。"""
+    text = str(raw).strip()
+    if not text:
+        return None
+    if text in authorized_ids:
+        return text
+    if text in existing_ids:
+        return None
+    alternates = [item for item in _instance_lookup_candidates(text) if item != text]
+    existing_alternates = [item for item in alternates if item in existing_ids]
+    if len(existing_alternates) == 1 and existing_alternates[0] in authorized_ids:
+        return existing_alternates[0]
+    return None
+
+
+def _open_dimension_names(metric: Metric) -> list[str]:
+    """实例标识本身不是「一台机器上的多个数」。"""
+    identity = set(_metric_instance_id_keys(metric))
+    return [name for name in _metric_dimension_names(metric) if name not in identity]
+
+
+def empty_aggregation_needs_choice(metric: Metric, filters) -> bool:
+    """有维度却没被等于定死时，空的聚合方式不能偷偷按平均。"""
+    names = _open_dimension_names(metric)
+    if not names:
+        return False
+    logic, items = _condition_clauses(filters)
+    if logic != "AND":
+        return True
+    pinned: dict[str, str] = {}
+    for item in items:
         if not isinstance(item, dict):
-            raise AuthorizedMetricQueryError("filters 元素必须是对象", code="filters_invalid")
-        label = str(item.get("label") or "").strip()
-        operator = str(item.get("operator") or "").strip()
+            return True
+        label = str(item.get("field") if item.get("field") not in (None, "") else item.get("label") or "").strip()
+        operator = str(item.get("op") if item.get("op") not in (None, "") else item.get("operator") or "").strip()
         value = item.get("value")
-        if not label or label not in allowed:
-            raise AuthorizedMetricQueryError("筛选维度未在指标中声明", code="filter_label_invalid")
-        if operator not in ALLOWED_FILTER_OPERATORS:
-            raise AuthorizedMetricQueryError("筛选操作符不受支持", code="filter_operator_invalid")
-        if value in (None, ""):
-            raise AuthorizedMetricQueryError("筛选值不能为空", code="filter_value_invalid")
-        matchers.append(f'{label}{operator}"{escape_metric_label_value(value)}"')
-    return matchers
+        if label == "" and operator == "" and value in (None, ""):
+            continue
+        if operator not in {"eq", "="} or value in (None, "") or label not in names:
+            return True
+        text = str(value)
+        previous = pinned.get(label)
+        if previous is not None and previous != text:
+            return True
+        pinned[label] = text
+    return any(name not in pinned for name in names)
 
 
-def _render_metric_query(metric: Metric, matcher_groups: list[list[str]], aggregation) -> str:
+_METRIC_CONDITION_OPERATORS = {
+    "eq": "=",
+    "=": "=",
+    "ne": "!=",
+    "!=": "!=",
+    "regex": "=~",
+    "=~": "=~",
+    "notRegex": "!~",
+    "!~": "!~",
+}
+
+
+def _condition_clauses(filters) -> tuple[str, list]:
+    if filters in (None, "", [], {}):
+        return "AND", []
+    if isinstance(filters, list):
+        return "AND", filters
+    if isinstance(filters, dict) and set(filters) <= {"logic", "items"}:
+        logic = str(filters.get("logic") or "AND").strip().upper()
+        if logic not in {"AND", "OR"}:
+            raise AuthorizedMetricQueryError("条件关系不受支持", code="filter_logic_invalid")
+        items = filters.get("items") or []
+        if not isinstance(items, list):
+            raise AuthorizedMetricQueryError("filters 必须是条件", code="filters_invalid")
+        return logic, items
+    raise AuthorizedMetricQueryError("filters 必须是条件", code="filters_invalid")
+
+
+def _matcher_for_condition(metric: Metric, item) -> str | None:
+    if not isinstance(item, dict):
+        raise AuthorizedMetricQueryError("filters 元素必须是对象", code="filters_invalid")
+    label = str(item.get("field") if item.get("field") not in (None, "") else item.get("label") or "").strip()
+    operator = str(item.get("op") if item.get("op") not in (None, "") else item.get("operator") or "").strip()
+    value = item.get("value")
+    if label == "" and operator == "" and value in (None, ""):
+        return None
+    if label == "":
+        raise AuthorizedMetricQueryError("维度名不能为空", code="filter_label_invalid")
+    mapped = _METRIC_CONDITION_OPERATORS.get(operator)
+    if mapped is None:
+        raise AuthorizedMetricQueryError("当前查询不支持该运算符", code="filter_operator_invalid")
+    if value in (None, ""):
+        raise AuthorizedMetricQueryError("筛选值不能为空", code="filter_value_invalid")
+    if label not in _allowed_dimensions(metric):
+        raise AuthorizedMetricQueryError("筛选维度未在指标中声明", code="filter_label_invalid")
+    return f'{label}{mapped}"{escape_metric_label_value(value)}"'
+
+
+def _dimension_matcher_groups(metric: Metric, filters) -> list[list[str]]:
+    """并且放进同一组；或者每条单独成组，调用方再用 or 接上。"""
+    logic, items = _condition_clauses(filters)
+    matchers = []
+    for item in items:
+        matcher = _matcher_for_condition(metric, item)
+        if matcher:
+            matchers.append(matcher)
+    if not matchers:
+        return []
+    if logic == "OR":
+        return [[matcher] for matcher in matchers]
+    return [matchers]
+
+
+def _render_metric_query(metric: Metric, matcher_groups: list[list[str]], aggregation, grouping=None) -> str:
     template = metric.query or ""
     if "__$labels__" not in template:
         raise AuthorizedMetricQueryError(
@@ -121,16 +233,20 @@ def _render_metric_query(metric: Metric, matcher_groups: list[list[str]], aggreg
         raise AuthorizedMetricQueryError("汇聚方式不受支持", code="aggregation_invalid")
     aggregation_func = ALLOWED_AGGREGATIONS[aggregation_name]
     if aggregation_func:
-        grouping = _aggregation_grouping_labels(metric, aggregation_name)
-        query = f'{aggregation_func}({query}) by ({", ".join(grouping)})'
+        labels = _grouping_labels(metric, aggregation_name, grouping)
+        query = f'{aggregation_func}({query}) by ({", ".join(labels)})'
     return query
 
 
-def _build_query(metric: Metric, instance_ids: tuple[str, ...], filters, aggregation) -> str:
+def _build_query(metric: Metric, instance_ids: tuple[str, ...], filters, aggregation, grouping=None) -> str:
     instance_keys = _metric_instance_id_keys(metric)
-    extra_matchers = _filter_matchers(metric, filters)
-    matcher_groups = [list(group) + extra_matchers for group in build_instance_matcher_groups(instance_ids, instance_keys)]
-    return _render_metric_query(metric, matcher_groups, aggregation)
+    base_groups = build_instance_matcher_groups(instance_ids, instance_keys)
+    dimension_groups = _dimension_matcher_groups(metric, filters)
+    if not dimension_groups:
+        matcher_groups = base_groups
+    else:
+        matcher_groups = [list(base) + extra for base in base_groups for extra in dimension_groups]
+    return _render_metric_query(metric, matcher_groups, aggregation, grouping)
 
 
 def _normalize_bool(value, *, field: str) -> bool:
@@ -144,10 +260,12 @@ def _normalize_bool(value, *, field: str) -> bool:
 
 
 class AuthorizedMetricQueryService:
-    def __init__(self, *, user, current_team, include_children: bool):
+    def __init__(self, *, user, current_team, include_children: bool, organization_scope=None):
         self.user = user
         self.current_team = current_team
         self.include_children = include_children
+        # None 保持旧 HTTP 入口：超管可见全部实例。通用查询传入当前组织范围。
+        self.organization_scope = organization_scope
 
     def _authorize_instances(self, monitor_object_id, raw_instance_ids) -> tuple[MonitorObject, tuple[str, ...]]:
         if monitor_object_id in (None, ""):
@@ -158,8 +276,19 @@ class AuthorizedMetricQueryService:
                 code="instance_ids_required",
             )
 
-        instance_ids = tuple(dict.fromkeys(_storage_instance_id(value) for value in raw_instance_ids if value not in (None, "")))
-        if not instance_ids:
+        lookups = []
+        candidate_ids = []
+        for value in raw_instance_ids:
+            if value in (None, ""):
+                continue
+            candidates = _instance_lookup_candidates(value)
+            if not candidates:
+                continue
+            lookups.append(candidates)
+            for item in candidates:
+                if item not in candidate_ids:
+                    candidate_ids.append(item)
+        if not lookups:
             raise AuthorizedMetricQueryError(
                 "instance_ids 不能为空",
                 code="instance_ids_required",
@@ -174,6 +303,8 @@ class AuthorizedMetricQueryService:
 
         if getattr(self.user, "is_superuser", False):
             authorized_qs = MonitorInstance.objects.all()
+            if self.organization_scope is not None:
+                authorized_qs = authorized_qs.filter(monitorinstanceorganization__organization__in=list(self.organization_scope))
         else:
             permission = get_permission_rules(
                 self.user,
@@ -189,19 +320,26 @@ class AuthorizedMetricQueryService:
                 id_key="id__in",
             )
 
-        authorized_ids = set(
-            authorized_qs.filter(
-                id__in=instance_ids,
-                monitor_object_id=monitor_object_id,
-                is_deleted=False,
-            ).values_list("id", flat=True)
+        identity = dict(
+            id__in=candidate_ids,
+            monitor_object_id=monitor_object_id,
+            is_deleted=False,
         )
-        if authorized_ids != set(instance_ids):
-            raise AuthorizedMetricQueryError(
-                "无权访问所选监控实例",
-                code="monitor_instance_forbidden",
-            )
-        return monitor_object, instance_ids
+        existing_ids = set(MonitorInstance.objects.filter(**identity).values_list("id", flat=True))
+        authorized_ids = set(authorized_qs.filter(**identity).values_list("id", flat=True))
+        resolved = []
+        seen = set()
+        for candidates in lookups:
+            match = _select_authorized_instance(candidates[0], authorized_ids, existing_ids)
+            if match is None:
+                raise AuthorizedMetricQueryError(
+                    "无权访问所选监控实例",
+                    code="monitor_instance_forbidden",
+                )
+            if match not in seen:
+                seen.add(match)
+                resolved.append(match)
+        return monitor_object, tuple(resolved)
 
     def _authorize_host_process_scope(self, monitor_object_id, scope) -> tuple[MonitorObject, tuple[str, ...], list[str]]:
         if not isinstance(scope, dict) or scope.get("type") != "host_process":
@@ -340,13 +478,14 @@ class AuthorizedMetricQueryService:
             if scope_matchers is not None:
                 if payload.get("filters") not in (None, [], ""):
                     raise AuthorizedMetricQueryError("进程查询不接受额外筛选", code="query_scope_invalid")
-                query = _render_metric_query(metric, [scope_matchers], payload.get("aggregation"))
+                query = _render_metric_query(metric, [scope_matchers], payload.get("aggregation"), payload.get("grouping"))
             else:
                 query = _build_query(
                     metric,
                     instance_ids,
                     payload.get("filters"),
                     payload.get("aggregation"),
+                    payload.get("grouping"),
                 )
 
         return AuthorizedMetricQuery(

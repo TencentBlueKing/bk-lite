@@ -12,10 +12,21 @@ import {
   planLineBarMapping,
   seriesLabelForField,
 } from '@/app/ops-analysis/utils/lineBarFieldMapping';
-import { coerceTopNNumericValue, unwrapTopNData } from '@/app/ops-analysis/utils/topNData';
+import {
+  UNFILLED_CATEGORY_LABEL,
+  coerceTopNNumericValue,
+  isUnfilledCategoryValue,
+  unwrapTopNData,
+} from '@/app/ops-analysis/utils/topNData';
+import {
+  chartFieldMissingMessage,
+  resolveChartBinding,
+} from '@/app/ops-analysis/utils/chartFieldContract';
 
 export interface ChartDataItem {
   name: string;
+  /** 展示文案。饼图 name 在有身份字段时用身份，避免同名扇区被合并。 */
+  label?: string;
   value: number;
   __link?: ChartLinkPoint;
 }
@@ -167,7 +178,43 @@ export class ChartDataTransformer {
       : this.formatCategoryValue(value);
   }
 
+  private static genericStructure(rawData: any): 'category' | 'value' | 'series' | 'table' | null {
+    if (!rawData || typeof rawData !== 'object' || Array.isArray(rawData)) return null;
+    const structure = rawData.structure;
+    if (structure === 'category' || structure === 'value' || structure === 'series' || structure === 'table') {
+      return structure;
+    }
+    return null;
+  }
+
+  private static readNullableNumber(value: unknown): number | null {
+    if (value === null || value === undefined || value === '') return null;
+    const numeric = typeof value === 'number' ? value : parseFloat(String(value));
+    return Number.isFinite(numeric) ? numeric : null;
+  }
+
+  /** 只认通用查询的 structure 包络。没有 structure 的旧数据源仍走原来的空判断。 */
+  private static genericQueryIsEmpty(rawData: any): boolean {
+    const structure = this.genericStructure(rawData);
+    if (!structure) return false;
+    if (structure === 'category' || structure === 'table') {
+      return !Array.isArray(rawData.items) || rawData.items.length === 0;
+    }
+    if (structure === 'value') {
+      if (rawData.status === 'empty' || rawData.status === 'missing') return true;
+      if (rawData.status === 'ok') return false;
+      return this.readNullableNumber(rawData.value) === null;
+    }
+    const series = rawData.series;
+    if (!series || typeof series !== 'object' || Array.isArray(series)) return true;
+    return !Object.values(series).some((points) => (
+      Array.isArray(points)
+      && points.some((point) => point && typeof point === 'object' && this.readNullableNumber(point.value) !== null)
+    ));
+  }
+
   static isStructurallyEmpty(rawData: any): boolean {
+    if (this.genericQueryIsEmpty(rawData)) return true;
     if (!rawData) return true;
     if (Array.isArray(rawData)) return rawData.length === 0;
     if (typeof rawData === 'object') {
@@ -345,10 +392,159 @@ export class ChartDataTransformer {
     return String(value);
   }
 
+  /** 序列点优先读 time。旧点仍用 name，避免把业务字段改成图表轴。 */
+  private static seriesPointAxis(item: unknown): { raw: unknown; key: string } | null {
+    if (!item || typeof item !== 'object') return null;
+    if ('time' in item) return { raw: (item as { time: unknown }).time, key: 'time' };
+    if ('name' in item) return { raw: (item as { name: unknown }).name, key: 'name' };
+    return null;
+  }
+
+  private static pieFromBinding(
+    rows: unknown[],
+    binding: { dimensionField?: string; measureField?: string; identityField?: string },
+  ): PieChartData {
+    const dimensionField = binding.dimensionField || '';
+    const measureField = binding.measureField || '';
+    const identityField = binding.identityField || '';
+    const slices: PieChartData = [];
+    let unfilledAt = -1;
+    rows.forEach((item) => {
+      if (!isPlainRecord(item)) return;
+      const value = coerceTopNNumericValue(item[measureField]);
+      if (value === null) return;
+      const identityRaw = identityField ? item[identityField] : undefined;
+      const identity = isUnfilledCategoryValue(identityRaw) ? '' : String(identityRaw);
+      const dimensionText = this.formatCategoryValue(item[dimensionField]);
+      const unfilled = !dimensionText && !identity;
+      const label = dimensionText || identity || UNFILLED_CATEGORY_LABEL;
+      const name = identity || dimensionText || UNFILLED_CATEGORY_LABEL;
+      if (unfilled && unfilledAt >= 0) {
+        const existing = slices[unfilledAt];
+        existing.value += value;
+        if (existing.__link && typeof existing.__link.numeric === 'number') {
+          existing.__link.numeric += value;
+        }
+        return;
+      }
+      if (unfilled) unfilledAt = slices.length;
+      slices.push({
+        name,
+        label: label || name,
+        value,
+        __link: this.linkPoint({
+          seriesName: label || name,
+          dimension: item[dimensionField],
+          dimensionKey: dimensionField || undefined,
+          numeric: value,
+          raw: item[measureField],
+          row: item,
+        }),
+      });
+    });
+    return slices;
+  }
+
+  private static transformGenericSeries(seriesMap: unknown): LineBarChartData {
+    if (!seriesMap || typeof seriesMap !== 'object' || Array.isArray(seriesMap)) {
+      return { categories: [], values: [] };
+    }
+    const entries = Object.entries(seriesMap as Record<string, unknown>)
+      .filter((entry): entry is [string, any[]] => Array.isArray(entry[1]));
+    if (entries.length === 0) return { categories: [], values: [] };
+
+    const rawNames: unknown[] = [];
+    entries.forEach(([, points]) => {
+      points.forEach((item) => {
+        const axis = this.seriesPointAxis(item);
+        if (axis) rawNames.push(axis.raw);
+      });
+    });
+    const shouldFormatAsTime = this.shouldFormatAsTimeDimension(rawNames);
+    const categories: string[] = [];
+    const seen = new Set<string>();
+    const categoryValue = new Map<string, unknown>();
+    const remember = (raw: unknown) => {
+      const key = this.formatDimensionValue(raw, shouldFormatAsTime);
+      if (seen.has(key)) return;
+      seen.add(key);
+      categories.push(key);
+      categoryValue.set(key, raw);
+    };
+    entries.forEach(([, points]) => {
+      points.forEach((item) => {
+        const axis = this.seriesPointAxis(item);
+        if (axis) remember(axis.raw);
+      });
+    });
+    categories.sort();
+
+    let anyNumber = false;
+    const series = entries.map(([name, points]) => {
+      const valueMap = new Map<string, number | null>();
+      const pointMap = new Map<string, ChartLinkPoint>();
+      points.forEach((item) => {
+        const axis = this.seriesPointAxis(item);
+        if (!axis || !item || typeof item !== 'object') return;
+        const key = this.formatDimensionValue(axis.raw, shouldFormatAsTime);
+        const numeric = this.readNullableNumber(item.value);
+        if (numeric !== null) anyNumber = true;
+        valueMap.set(key, numeric);
+        pointMap.set(key, this.linkPoint({
+          seriesName: name,
+          dimension: axis.raw,
+          dimensionKey: axis.key,
+          isTime: shouldFormatAsTime,
+          numeric,
+          raw: item.value,
+          row: item,
+        }));
+      });
+      return {
+        name,
+        data: categories.map((category) => (valueMap.has(category) ? valueMap.get(category)! : null)),
+        points: categories.map((category) => pointMap.get(category) ?? this.linkPoint({
+          seriesName: name,
+          dimension: categoryValue.get(category),
+          dimensionKey: 'name',
+          isTime: shouldFormatAsTime,
+          numeric: null,
+          row: shouldFormatAsTime ? undefined : { name: categoryValue.get(category) },
+        })),
+      };
+    });
+    if (!anyNumber) return { categories: [], values: [] };
+    return { categories, series };
+  }
+
   static transformToLineBarData(
     rawData: any,
     mapping?: ChartFieldMapping,
   ): LineBarChartData {
+    if (this.genericStructure(rawData) === 'series') {
+      return this.transformGenericSeries(rawData.series);
+    }
+    if (this.genericStructure(rawData) === 'category' || this.genericStructure(rawData) === 'table') {
+      const binding = resolveChartBinding(rawData, mapping);
+      const rows = Array.isArray(rawData.items) ? rawData.items : [];
+      const pivoted = Boolean(mapping?.seriesField?.trim())
+        || (mapping?.valueFields || []).filter((field) => field?.trim()).length > 1;
+      if (
+        !pivoted
+        && (binding.source === 'explicit' || binding.source === 'role')
+        && binding.dimensionField
+        && binding.measureField
+        && !binding.missingField
+      ) {
+        return this.transformMappedSingleSeries(
+          rows.filter(isPlainRecord),
+          binding.dimensionField,
+          binding.measureField,
+          binding.identityField,
+        );
+      }
+      return this.transformToLineBarData(rows, mapping);
+    }
     if (hasExplicitLineBarMapping(mapping)) {
       return this.transformMappedLineBar(rawData, mapping);
     }
@@ -474,24 +670,61 @@ export class ChartDataTransformer {
     rows: Array<Record<string, unknown>>,
     dimensionField: string,
     valueField: string,
+    identityField?: string,
   ): LineBarChartData {
     const dimensionValues = rows.map((row) => row[dimensionField]);
     const shouldFormatAsTime = this.shouldFormatAsTimeDimension(dimensionValues);
+    if (shouldFormatAsTime) {
+      return {
+        categories: dimensionValues.map((value) =>
+          this.formatDimensionValue(value, true),
+        ),
+        values: rows.map((row) => coerceTopNNumericValue(row[valueField])),
+        points: rows.map((row) => this.linkPoint({
+          dimension: row[dimensionField],
+          dimensionKey: dimensionField || undefined,
+          isTime: true,
+          numeric: coerceTopNNumericValue(row[valueField]),
+          raw: row[valueField],
+          row,
+        })),
+      };
+    }
 
-    return {
-      categories: dimensionValues.map((value) =>
-        this.formatDimensionValue(value, shouldFormatAsTime),
-      ),
-      values: rows.map((row) => coerceTopNNumericValue(row[valueField])),
-      points: rows.map((row) => this.linkPoint({
-        dimension: row[dimensionField],
+    const categories: string[] = [];
+    const values: Array<number | null> = [];
+    const points: ChartLinkPoint[] = [];
+    let unfilledAt = -1;
+    rows.forEach((row) => {
+      const raw = row[dimensionField];
+      const identityRaw = identityField ? row[identityField] : undefined;
+      const identity = isUnfilledCategoryValue(identityRaw) ? '' : String(identityRaw);
+      const text = this.formatCategoryValue(raw);
+      const unfilled = !text && !identity;
+      const label = text || identity || UNFILLED_CATEGORY_LABEL;
+      const numeric = coerceTopNNumericValue(row[valueField]);
+      if (unfilled && unfilledAt >= 0) {
+        const current = values[unfilledAt];
+        values[unfilledAt] = current === null ? numeric : numeric === null ? current : current + numeric;
+        if (points[unfilledAt] && typeof values[unfilledAt] === 'number') {
+          points[unfilledAt].numeric = values[unfilledAt];
+        }
+        return;
+      }
+      if (unfilled) unfilledAt = categories.length;
+      categories.push(label);
+      values.push(numeric);
+      points.push(this.linkPoint({
+        seriesName: label,
+        dimension: raw,
         dimensionKey: dimensionField || undefined,
-        isTime: shouldFormatAsTime,
-        numeric: coerceTopNNumericValue(row[valueField]),
+        numeric,
         raw: row[valueField],
         row,
-      })),
-    };
+      }));
+    });
+
+    return { categories, values, points };
   }
 
   /**
@@ -686,6 +919,22 @@ export class ChartDataTransformer {
     rawData: any,
     mapping?: ChartFieldMapping,
   ): PieChartData {
+    if (this.genericStructure(rawData) === 'category' || this.genericStructure(rawData) === 'table') {
+      const rows = Array.isArray(rawData.items) ? rawData.items : [];
+      if (scalarPieFields(mapping).length >= 2) {
+        return this.transformToPieData(rows, mapping);
+      }
+      const binding = resolveChartBinding(rawData, mapping);
+      if (
+        (binding.source === 'explicit' || binding.source === 'role')
+        && binding.dimensionField
+        && binding.measureField
+        && !binding.missingField
+      ) {
+        return this.pieFromBinding(rows, binding);
+      }
+      return this.transformToPieData(rows, mapping);
+    }
     const scalarFields = scalarPieFields(mapping);
     if (
       scalarFields.length >= 2
@@ -789,17 +1038,20 @@ export class ChartDataTransformer {
     errorMessage?: string,
     mapping?: ChartFieldMapping,
   ): { isValid: boolean; message?: string } {
+    const plan = planLineBarMapping(mapping);
+    if (plan.kind === 'conflict') {
+      return { isValid: false, message: 'dashboard.lineBarSeriesFieldConflict' };
+    }
+    const binding = resolveChartBinding(rawData, mapping);
+    if (binding.source === 'explicit' && binding.missingField) {
+      return { isValid: false, message: chartFieldMissingMessage(binding.missingField) };
+    }
     if (this.isStructurallyEmpty(rawData)) {
       return { isValid: true };
     }
 
     try {
       const transformedData = this.transformToLineBarData(rawData, mapping);
-
-      const plan = planLineBarMapping(mapping);
-      if (plan.kind === 'conflict') {
-        return { isValid: false, message: 'dashboard.lineBarSeriesFieldConflict' };
-      }
 
       if (!transformedData.categories || transformedData.categories.length === 0) {
         return { isValid: false, message: errorMessage || 'dashboard.dataFormatMismatch' };
@@ -841,6 +1093,10 @@ export class ChartDataTransformer {
     errorMessage?: string,
     mapping?: ChartFieldMapping,
   ): { isValid: boolean; message?: string } {
+    const binding = resolveChartBinding(rawData, mapping);
+    if (binding.source === 'explicit' && binding.missingField) {
+      return { isValid: false, message: chartFieldMissingMessage(binding.missingField) };
+    }
     if (this.isStructurallyEmpty(rawData)) {
       return { isValid: true };
     }

@@ -33,6 +33,14 @@ export interface ResponseFieldDefinition {
   title: string;
   value_type: 'string' | 'number' | 'boolean' | 'datetime';
   description?: string;
+  /** false 时不作为明细表默认列。旧数据源缺省仍显示。 */
+  table?: boolean;
+  /** 该字段属于哪些分析方式。缺省表示全部方式，避免把当前方式没有的字段并进候选。 */
+  modes?: string[];
+  /** 图表未手选字段时的默认角色。同一键不因图表改成 name/value。 */
+  role?: 'dimension' | 'measure' | 'identity';
+  /** 该字段属于哪些查询对象。缺省表示当前数据源的全部对象。 */
+  query_objects?: string[];
 }
 
 /** 接口字段定义配置（数据源级别） */
@@ -126,9 +134,63 @@ export type DataSourceParamFilterType =
   | 'filter'
   | 'fixed'
   | 'params';
+export interface AnalysisModeResult {
+  structure: 'table' | 'value' | 'category' | 'series';
+}
+
+export type ConditionLogic = 'AND' | 'OR';
+
+export interface ConditionFilterItem {
+  field?: string;
+  op?: string;
+  value?: unknown;
+}
+
+export interface ConditionFilterValue {
+  logic?: ConditionLogic;
+  items?: ConditionFilterItem[];
+}
+
+export type ConditionFieldValueType = 'string' | 'number' | 'enum';
+
+export interface ConditionFieldOption {
+  value: string;
+  label: string;
+  valueType?: ConditionFieldValueType;
+  options?: Array<{ label: string; value: string | number; query_objects?: string[] }>;
+  query_objects?: string[];
+}
+
+export interface ConditionFieldSource {
+  kind: 'static' | 'dynamic' | 'modelAttrs' | 'endModelAttrs';
+  items?: ConditionFieldOption[];
+  sourceId?: number;
+  sourceRef?: SourceRef;
+  valueField?: string;
+  labelField?: string;
+  queryParams?: Record<string, OptionsQueryParamValue>;
+  /** 旧配置。新的字段来源用 dynamic，和字符串下拉同一套数据源配置。 */
+  modelParam?: string;
+  startModelParam?: string;
+  associationParam?: string;
+}
+
+export interface OrderFieldOption {
+  value: string;
+  label: string;
+  modes?: string[];
+  query_objects?: string[];
+}
+
 export interface InputOption {
   label: string;
   value: string | number;
+  /** 分析方式选项适配的图表。只出现在内置数据源的 analysis_mode 上。 */
+  charts?: string[];
+  /** 分析方式选项的返回结构。 */
+  result?: AnalysisModeResult;
+  /** 告警中心等按查询对象收窄的选项。缺省表示所有对象都可见。 */
+  query_objects?: string[];
 }
 
 export interface RestApiSourceRef {
@@ -159,6 +221,8 @@ export interface DynamicOptionsSource {
   labelField: string;
   /** 选项查询请求参数。值为字面量或 { ref }；YAML 整值 $name$ / $name:type$ 读入时归一成 { ref }。 */
   queryParams?: Record<string, OptionsQueryParamValue>;
+  /** 上游为空时的提示文案 key。 */
+  emptyUpstreamHintKey?: string;
 }
 
 export type InputControlConfig =
@@ -176,12 +240,24 @@ export type InputControlConfig =
     maxCount?: number;
     /** select 专用：dropdown 为默认下拉；table 点击后弹表格批量勾选 */
     picker?: 'dropdown' | 'table';
+  }
+  | {
+    control: 'conditionFilter';
+    fields: ConditionFieldSource;
+  }
+  | {
+    control: 'order';
+    fields: OrderFieldOption[];
+    modelParam?: string;
+    includeModelAttrsInModes?: string[];
   };
 
 export interface ParamItem {
   id?: string;
   name: string;
-  value: string | number | boolean | Array<string | number> | [number, number] | DateRangeValue | null | undefined;
+  value: string | number | boolean | Array<string | number> | [number, number] | DateRangeValue | ConditionFilterValue | null | undefined;
+  /** 种子里保留、界面不展示。旧组件仍可提交。 */
+  hidden?: boolean;
   alias_name: string;
   type?: string;
   filterType?: DataSourceParamFilterType;
@@ -200,4 +276,13 @@ export interface ParamItem {
    * 兼容只读：旧组织筛旁路字段。读取时归一为 inputConfig.control=organization。
    */
   inputMode?: string;
+  /**
+   * 历史字段。参数展示和请求组装不再读取，避免按分析方式或图表隐藏参数。
+   */
+  visible_modes?: string[];
+  visible_charts?: string[];
+  /** 正整数。配合 maximum 给出范围提示。 */
+  integer?: boolean;
+  /** 与后端统计分组上限一致的最大值。 */
+  maximum?: number;
 }

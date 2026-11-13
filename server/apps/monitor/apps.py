@@ -6,6 +6,7 @@ class MonitorConfig(AppConfig):
     name = "apps.monitor"
 
     def ready(self):
-        import apps.monitor.nats.permission  # noqa
+        import apps.monitor.nats.generic_query  # noqa
         import apps.monitor.nats.monitor  # noqa
+        import apps.monitor.nats.permission  # noqa
         import apps.monitor.openapi_api  # noqa

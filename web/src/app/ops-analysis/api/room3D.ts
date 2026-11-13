@@ -1,7 +1,9 @@
 import { useCallback } from 'react';
+import { usePathname } from 'next/navigation';
 import useApiClient from '@/utils/request';
 import type { Room3DRoomsData } from '@/app/ops-analysis/types/sceneWidget';
 import type { Room3DResponse } from '@/app/ops-analysis/components/widgets/room3D/room3DData';
+import { delegatedSceneBase } from './displayDelegate';
 
 export interface Room3DTransport {
   getRooms: (signal?: AbortSignal) => Promise<Room3DRoomsData>;
@@ -10,9 +12,13 @@ export interface Room3DTransport {
 
 export const useRoom3DApi = (shareSessionId?: string): Room3DTransport => {
   const { post } = useApiClient();
-  const basePath = shareSessionId
-    ? `/operation_analysis/api/dashboard_share/session/${shareSessionId}/room3d`
-    : '/operation_analysis/api/scene_widgets/room3d';
+  const pathname = usePathname();
+  const basePath = delegatedSceneBase(
+    pathname,
+    shareSessionId,
+    'room3d',
+    '/operation_analysis/api/scene_widgets/room3d',
+  );
   const requestOptions = { suppressErrorNotification: true } as const;
 
   const getRooms = useCallback(

@@ -13,6 +13,7 @@ import { renderEChartsTooltipCard } from '@/components/echarts-tooltip-card';
 import type { ValueConfig } from '@/app/ops-analysis/components/ops-analysis-widgets';
 import { useEchartsFinishedReady } from '@/app/ops-analysis/hooks/useEchartsFinishedReady';
 import { formatVisibleChartValue } from '@/app/ops-analysis/utils/chartValueFormat';
+import { piePageShare } from '@/app/ops-analysis/utils/genericStructure';
 import { useTranslation } from '@/utils/i18n';
 
 export interface OpsAnalysisPieProps {
@@ -30,6 +31,7 @@ const OpsAnalysisPie: React.FC<OpsAnalysisPieProps> = ({
 }) => {
   const { t } = useTranslation();
   const pieTotalLabel = t('dashboard.pieTotal');
+  const pageShare = piePageShare(rawData);
   const chartRef = useRef<any>(null);
   const themeName = resolveOpsChartThemeName();
   const chartTheme = useMemo(() => getOpsChartTheme(themeName), [themeName]);
@@ -153,6 +155,17 @@ const OpsAnalysisPie: React.FC<OpsAnalysisPieProps> = ({
   }), [chartColors, chartData, chartTheme, config, legendSelected, pieTotalLabel]);
 
   return (
+    <div className="flex h-full min-h-0 flex-col">
+      {pageShare ? (
+        <div className="px-2 text-xs text-[var(--color-text-3)]" data-testid="pie-page-share">
+          {t(
+            'dashboard.piePageShare',
+            '当前页占比，不是全部结果（第 {page} 页，每页 {pageSize}，共 {count} 项）',
+            pageShare,
+          )}
+        </div>
+      ) : null}
+      <div className="min-h-0 flex-1">
     <ChartWithSidebarLegend
       chart={
         <ReactEcharts
@@ -184,6 +197,8 @@ const OpsAnalysisPie: React.FC<OpsAnalysisPieProps> = ({
         emptyClassName: 'flex h-full w-full items-center justify-center',
       }}
     />
+      </div>
+    </div>
   );
 };
 

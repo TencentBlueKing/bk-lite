@@ -47,6 +47,8 @@ messages:
   indexed_must_be_object: "[{index}] must be an object"
   indexed_key_empty: "[{index}].key cannot be empty"
   indexed_key_duplicate: "[{index}].key '{key}' is duplicated"
+  indexed_role: "[{index}].role is not supported"
+  indexed_modes: "[{index}].modes must be a non-empty list of strings"
   params_array: "params must be an array"
   params_filter_type: "[{index}].type supports filter linkage only for string, timeRange, dateRange, and number"
   transform_config_object: "transform_config must be an object"

@@ -224,13 +224,15 @@ const ComSingle: React.FC<ComSingleProps> = ({
     config?.thresholdColors ?? DEFAULT_THRESHOLD_COLORS;
   const color = getColorByThreshold(numericValue, thresholds, chartTheme.singleValueColor);
   const isDataReady = rawValue !== null;
-  const displayValue = formatDisplayValue(
-    numericValue,
-    undefined,
-    config?.decimalPlaces,
-    config?.conversionFactor,
-    config?.unitId,
-  );
+  const displayValue = typeof rawValue === 'boolean'
+    ? String(rawValue)
+    : formatDisplayValue(
+      numericValue,
+      undefined,
+      config?.decimalPlaces,
+      config?.conversionFactor,
+      config?.unitId,
+    );
   const unitText = config?.unit?.trim() || '';
   const fallbackSparklineSeed = useMemo(
     () =>

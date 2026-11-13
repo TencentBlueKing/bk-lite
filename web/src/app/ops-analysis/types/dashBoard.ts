@@ -110,12 +110,21 @@ export interface TableColumnConfigItem {
   valueMappings?: ValueMapping[];
   /** 列级数值阈值配色 */
   cellThresholdColors?: ThresholdColorConfig[];
+  /** 运行时由模型属性列附上，不写入已保存配置。 */
+  modelFormat?: {
+    attrType?: string;
+    displayKey?: string;
+    displayFormat?: string;
+    options?: Array<{ value: string; label: string }>;
+  };
 }
 
 /** 表格组件配置 */
 export interface TableConfig {
   filterFields?: TableFilterFieldConfig[];
   columns?: TableColumnConfigItem[];
+  /** 这些列所属的模型。换模型后与响应不一致时改用新模型的默认列。 */
+  columnModelKey?: string;
 }
 
 export interface ValueConfig {

@@ -28,6 +28,7 @@ import {
   buildTopNItems,
   resolveConfiguredTopNBarPercent,
 } from '@/app/ops-analysis/utils/topNData';
+import { readDeclaredFields, resolveChartBinding } from '@/app/ops-analysis/utils/chartFieldContract';
 
 interface TopNProps {
   rawData: any;
@@ -69,6 +70,29 @@ export const resolveTopNHeaderParts = (
   return { full: `${title}（${key}）`, title, key };
 };
 
+const mergeResultFieldTitles = (
+  schema: ResponseFieldDefinition[] | undefined,
+  rawData: unknown,
+): ResponseFieldDefinition[] => {
+  const merged = new Map<string, ResponseFieldDefinition>();
+  (schema || []).forEach((field) => {
+    if (field.key) merged.set(field.key, field);
+  });
+  (readDeclaredFields(rawData) || []).forEach((field) => {
+    const existing = merged.get(field.key);
+    merged.set(field.key, {
+      key: field.key,
+      title: field.title || existing?.title || field.key,
+      value_type: (field.value_type as ResponseFieldDefinition['value_type']) || existing?.value_type || 'string',
+      description: existing?.description,
+      table: existing?.table,
+      modes: existing?.modes,
+      role: field.role || existing?.role,
+    });
+  });
+  return Array.from(merged.values());
+};
+
 export const resolveTopNHeaderLabel = (
   fieldKey?: string,
   fieldSchema?: ResponseFieldDefinition[],
@@ -91,17 +115,22 @@ const TopN: React.FC<TopNProps> = ({
   const chartTheme = getOpsChartThemeByMode(config?.chartThemeMode);
   const barColors = getOpsChartColorsByMode(config?.chartThemeMode, themeName);
   const widgetScale = getScreenWidgetScale(screenRenderContext);
-  const labelField = config?.topNLabelField;
-  const valueField = config?.topNValueField;
+  const binding = resolveChartBinding(rawData, {
+    dimensionField: config?.topNLabelField,
+    valueField: config?.topNValueField,
+  });
+  const labelField = config?.topNLabelField?.trim() || binding.dimensionField;
+  const valueField = config?.topNValueField?.trim() || binding.measureField;
+  const headerFields = mergeResultFieldTitles(dataSource?.field_schema, rawData);
   // 表头：中文 title 在前、字段 id 在括号；整段同色同重，不再分两套样式。
   const labelHeaderParts = resolveTopNHeaderParts(
     labelField,
-    dataSource?.field_schema,
+    headerFields,
     { preferTitleOnly: usesScreenChartTheme },
   );
   const valueHeaderParts = resolveTopNHeaderParts(
     valueField,
-    dataSource?.field_schema,
+    headerFields,
     { preferTitleOnly: usesScreenChartTheme },
   );
   const labelHeader = labelHeaderParts.full;

@@ -43,6 +43,15 @@ const FieldSchemaTable = React.forwardRef<
     { label: t("dataSource.valueTypes.boolean"), value: "boolean" },
     { label: t("dataSource.valueTypes.datetime"), value: "datetime" },
   ];
+  const roleOptions = [
+    { label: t("dataSource.fieldRoles.dimension"), value: "dimension" },
+    { label: t("dataSource.fieldRoles.measure"), value: "measure" },
+    { label: t("dataSource.fieldRoles.identity"), value: "identity" },
+  ];
+  const modeOptions = ["detail", "count", "distribution", "aggregate", "series", "value"].map((mode) => ({
+    label: t(`dataSource.analysisModes.${mode}`),
+    value: mode,
+  }));
 
   const clearValidation = () => {
     setDuplicateFieldKeys([]);
@@ -64,7 +73,7 @@ const FieldSchemaTable = React.forwardRef<
   const handleSchemaFieldChange = (
     id: string,
     fieldName: keyof ResponseFieldDefinition,
-    value: string,
+    value: string | string[] | undefined,
   ) => {
     const newFields = schemaFields.map((field) =>
       field.id === id ? { ...field, [fieldName]: value } : field,
@@ -155,6 +164,47 @@ const FieldSchemaTable = React.forwardRef<
               "value_type",
               val as ResponseFieldDefinition["value_type"],
             )
+          }
+        />
+      ),
+    },
+    {
+      title: t("dataSource.fieldRole"),
+      dataIndex: "role",
+      key: "role",
+      width: 120,
+      render: (_: unknown, record: SchemaField) => (
+        <Select
+          size="small"
+          allowClear
+          disabled={readOnly}
+          value={record.role}
+          options={roleOptions}
+          placeholder={t("dataSource.fieldRolePlaceholder")}
+          style={{ width: "100%" }}
+          onChange={(val) =>
+            handleSchemaFieldChange(record.id, "role", val)
+          }
+        />
+      ),
+    },
+    {
+      title: t("dataSource.fieldModes"),
+      dataIndex: "modes",
+      key: "modes",
+      width: 180,
+      render: (_: unknown, record: SchemaField) => (
+        <Select
+          size="small"
+          mode="multiple"
+          allowClear
+          disabled={readOnly}
+          value={record.modes}
+          options={modeOptions}
+          placeholder={t("dataSource.fieldModesPlaceholder")}
+          style={{ width: "100%" }}
+          onChange={(val) =>
+            handleSchemaFieldChange(record.id, "modes", val)
           }
         />
       ),
