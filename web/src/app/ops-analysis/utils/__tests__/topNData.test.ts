@@ -156,3 +156,28 @@ test('scalar fields do not change array ranking', () => {
     scalarFields: [{ field: 'avg_cpu', label: 'CPU' }],
   }), true);
 });
+
+test('category envelope ranks by name and value without a field mapping', () => {
+  const payload = {
+    structure: 'category',
+    status: 'ok',
+    items: [
+      { name: '计算', value: 5 },
+      { name: '空间', value: 1 },
+    ],
+  };
+  assert.equal(validateTopNPayload(payload), true);
+  assert.deepEqual(buildTopNItems(payload).map((item) => item.name), ['计算', '空间']);
+  assert.equal(validateTopNPayload({ structure: 'category', status: 'empty', items: [] }), true);
+  assert.deepEqual(buildTopNItems({ structure: 'category', status: 'empty', items: [] }), []);
+});
+
+test('table envelope uses mapped name and value fields', () => {
+  const payload = {
+    structure: 'table',
+    items: [{ model_name: '主机', instance_count: 4 }],
+  };
+  assert.equal(validateTopNPayload(payload), false);
+  assert.equal(validateTopNPayload(payload, { labelField: 'model_name', valueField: 'instance_count' }), true);
+  assert.equal(buildTopNItems(payload, 'model_name', 'instance_count')[0].value, 4);
+});

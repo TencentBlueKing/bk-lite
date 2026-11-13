@@ -4,6 +4,7 @@ import type {
   UnifiedFilterDefinition,
 } from '@/app/ops-analysis/types/dashBoard';
 import type {
+  ConditionFilterValue,
   InputControlConfig,
   ParamItem,
 } from '@/app/ops-analysis/types/dataSource';
@@ -208,7 +209,7 @@ export interface ScannableFilterDataSource {
     name: string;
     type?: string;
     alias_name?: string;
-    value?: FilterValue | string | number | boolean | Array<string | number> | [number, number] | null;
+    value?: FilterValue | string | number | boolean | Array<string | number> | [number, number] | ConditionFilterValue | null;
     filterType?: string;
     inputMode?: string;
     inputConfig?: InputControlConfig | {

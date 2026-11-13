@@ -5,6 +5,10 @@ import type {
 } from '@/app/ops-analysis/types/dashBoard';
 import type { InputOption, ParamItem } from '@/app/ops-analysis/types/dataSource';
 import { supportsComponentSwitch } from '@/app/ops-analysis/utils/componentParamSwitch';
+import {
+  findAnalysisModeParam,
+  resolveAnalysisModeValue,
+} from '@/app/ops-analysis/utils/analysisMode';
 import { formatOpsRequestTime } from '@/app/ops-analysis/utils/dateTime';
 import { buildTableQueryParams } from '@/app/ops-analysis/utils/tablePagination';
 import {
@@ -495,6 +499,7 @@ export const fetchWidgetData = async ({
   filterBindings,
   filterDefinitions,
   throwError = false,
+  chartType,
   t,
 }: {
   config: any;
@@ -505,6 +510,7 @@ export const fetchWidgetData = async ({
   filterBindings?: FilterBindings;
   filterDefinitions?: UnifiedFilterDefinition[];
   throwError?: boolean;
+  chartType?: string;
   t?: WidgetMessage;
 }) => {
   if (!config?.dataSource) {
@@ -519,6 +525,7 @@ export const fetchWidgetData = async ({
       unifiedFilterValues,
       filterBindings,
       filterDefinitions,
+      chartType: chartType || config?.chartType,
       t,
     });
 
@@ -679,6 +686,7 @@ export const buildWidgetRequestParams = ({
   filterBindings,
   filterDefinitions,
   resolutionContext = createDateRangeResolutionContext(),
+  chartType,
   t,
 }: {
   config: any;
@@ -688,6 +696,7 @@ export const buildWidgetRequestParams = ({
   filterBindings?: FilterBindings;
   filterDefinitions?: UnifiedFilterDefinition[];
   resolutionContext?: DateRangeResolutionContext;
+  chartType?: string;
   t?: WidgetMessage;
 }) => {
   const sourceParams = widgetSourceParams(config, dataSource);
@@ -706,6 +715,7 @@ export const buildWidgetRequestParams = ({
     filterBindings,
     filterDefinitions,
     resolutionContext,
+    chartType: chartType || config?.chartType,
     t,
   });
 
@@ -720,6 +730,7 @@ export const buildWidgetRequestSignatureParams = ({
   filterBindings,
   filterDefinitions,
   resolutionContext = createDateRangeResolutionContext(),
+  chartType,
   t,
 }: {
   config: any;
@@ -729,6 +740,7 @@ export const buildWidgetRequestSignatureParams = ({
   filterBindings?: FilterBindings;
   filterDefinitions?: UnifiedFilterDefinition[];
   resolutionContext?: DateRangeResolutionContext;
+  chartType?: string;
   t?: WidgetMessage;
 }) => {
   const sourceParams = widgetSourceParams(config, dataSource);
@@ -748,6 +760,7 @@ export const buildWidgetRequestSignatureParams = ({
     filterDefinitions,
     resolutionContext,
     timeRangeFormatter: formatTimeRangeForSignature,
+    chartType: chartType || config?.chartType,
     t,
   });
 
@@ -773,6 +786,7 @@ export const processDataSourceParams = ({
   filterDefinitions?: UnifiedFilterDefinition[];
   resolutionContext?: DateRangeResolutionContext;
   timeRangeFormatter?: (timeParams: any) => unknown;
+  chartType?: string;
   t?: WidgetMessage;
 }) => {
   const t: WidgetMessage =
@@ -1013,6 +1027,34 @@ export const processDataSourceParams = ({
   }
   if (organizationNames.length === 1) {
     processedParams[ORGANIZATION_PARAM_RUNTIME_KEY] = organizationNames[0];
+  }
+
+  const catalogParams = definitionByName.size
+    ? Array.from(definitionByName.values())
+    : migratedSourceParams;
+  if (findAnalysisModeParam(catalogParams)) {
+    const sourceNames = new Set(
+      migratedSourceParams.map((param: { name?: string }) => param?.name),
+    );
+    catalogParams.forEach((param) => {
+      if (!param?.name || sourceNames.has(param.name)) return;
+      if (Object.prototype.hasOwnProperty.call(userParams, param.name)) return;
+      const filterType = param.filterType || 'fixed';
+      if (filterType !== 'params' && filterType !== 'fixed') return;
+      setShapedParam(
+        param.name,
+        param.type || 'string',
+        param.value,
+        resolveConsumerMultiple(param),
+      );
+    });
+    const mode = resolveAnalysisModeValue({
+      params: catalogParams,
+      selected: processedParams[findAnalysisModeParam(catalogParams)?.name || ''],
+    });
+    if (mode) {
+      processedParams.analysis_mode = mode;
+    }
   }
 
   return Object.fromEntries(

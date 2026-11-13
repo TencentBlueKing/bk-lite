@@ -327,10 +327,13 @@ const UnifiedFilterBar: React.FC<UnifiedFilterBarProps> = ({
             },
           };
         }
-        if (normalized.control === inputMode) {
-          return normalized;
+        if (normalized.control === 'select' || normalized.control === 'radio') {
+          if (normalized.control === inputMode) {
+            return normalized;
+          }
+          return { ...normalized, control: inputMode };
         }
-        return { ...normalized, control: inputMode };
+        return normalized;
       }
       return normalized;
     }

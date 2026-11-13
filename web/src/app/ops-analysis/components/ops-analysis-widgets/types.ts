@@ -156,11 +156,19 @@ export interface TableColumnConfigItem {
   cellType?: 'text' | 'colorBackground' | 'gauge';
   cellThresholdColors?: ThresholdColorConfig[];
   cellMax?: number;
+  /** 运行时由模型属性列附上，不写入已保存配置。 */
+  modelFormat?: {
+    attrType?: string;
+    displayKey?: string;
+    displayFormat?: string;
+    options?: Array<{ value: string; label: string }>;
+  };
 }
 
 export interface TableConfig {
   filterFields?: TableFilterFieldConfig[];
   columns?: TableColumnConfigItem[];
+  columnModelKey?: string;
 }
 
 /** 旧操作列参数映射。只在读取时转成 interaction。 */

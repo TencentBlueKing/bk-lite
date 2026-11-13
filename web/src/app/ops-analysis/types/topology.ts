@@ -3,6 +3,7 @@ import { DirItem } from './index';
 import type { ParamItem } from './dataSource';
 import type {
   ValueConfig,
+  FilterValue,
   UnifiedFilterDefinition,
   TableConfig,
   FilterBindings,
@@ -218,6 +219,7 @@ export interface NodeConfPanelProps {
   title?: string;
   builtinNamespaceId?: number;
   filterDefinitions?: UnifiedFilterDefinition[];
+  globalFilterValues?: Record<string, FilterValue>;
   onClose?: () => void;
   onConfirm?: (values: NodeConfigFormValues) => void;
   onCancel?: () => void;

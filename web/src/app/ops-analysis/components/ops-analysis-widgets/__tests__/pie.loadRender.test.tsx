@@ -1,5 +1,5 @@
 import React from 'react';
-import { act, cleanup, render } from '@testing-library/react';
+import { act, cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const chartSpy = vi.hoisted(() => ({
@@ -138,5 +138,21 @@ describe('pie load-time option delivery', () => {
 
     expect(onReady).toHaveBeenCalledTimes(1);
     expect(onReady).toHaveBeenCalledWith(true);
+  });
+
+  it('labels a paged category pie as the current page share', async () => {
+    render(
+      <ComPie
+        rawData={{
+          structure: 'category',
+          items: [{ name: '主机', value: 8 }, { name: '网络', value: 2 }],
+          count: 12,
+          page: 1,
+          page_size: 10,
+        }}
+        loading={false}
+      />,
+    );
+    expect(screen.getByTestId('pie-page-share').textContent).toContain('dashboard.piePageShare');
   });
 });
