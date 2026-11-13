@@ -15,8 +15,8 @@
 from typing import List
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage
-from apps.core.logger import opspilot_logger as logger
 
+from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.metis.llm.chain.entity import MessageTrimConfig
 from apps.opspilot.metis.llm.chain.token_utils import get_encoding as _get_encoding
 
@@ -140,10 +140,7 @@ def trim_messages(
                 new_content = _truncate_text(content, max_tokens, encoding, config.trim_tool_message_prefix)
                 # 创建同类型新消息保留其他属性
                 if isinstance(msg, ToolMessage):
-                    result[i] = ToolMessage(
-                        content=new_content,
-                        tool_call_id=getattr(msg, "tool_call_id", ""),
-                    )
+                    result[i] = msg.model_copy(update={"content": new_content})
                 elif isinstance(msg, AIMessage):
                     result[i] = AIMessage(
                         content=new_content,
