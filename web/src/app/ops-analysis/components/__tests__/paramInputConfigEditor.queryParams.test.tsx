@@ -1004,7 +1004,13 @@ describe('param input query params', () => {
         }}
         value={{
           control: 'conditionFilter',
-          fields: { kind: 'modelAttrs', modelParam: 'model_id' },
+          fields: {
+            kind: 'dynamic',
+            sourceRef: { type: 'rest_api', value: 'cmdb/list_cmdb_attr_options' },
+            valueField: 'attr_id',
+            labelField: 'attr_name',
+            queryParams: { model_id: { ref: 'model_id' } },
+          },
         }}
       />,
     );

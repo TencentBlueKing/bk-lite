@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback } from 'react';
 import { message } from 'antd';
 import type { FormInstance } from 'antd';
 import type {
@@ -21,14 +21,6 @@ import {
   mergeDetectedFieldsWithSchema,
   createDefaultDisplayColumn as createDefaultColumn,
 } from '../utils/columnProbing';
-import {
-  columnsFromModelFields,
-  isModelAttrTableSource,
-  modelTableBindingKey,
-  readModelColumnPayload,
-} from '@/app/ops-analysis/utils/modelTableColumns';
-import { readDeclaredFields } from '@/app/ops-analysis/utils/chartFieldContract';
-import type { ResponseFieldDefinition } from '@/app/ops-analysis/types/dataSource';
 export type FilterFieldRow = TableFilterFieldConfig & { id: string };
 
 interface UseTableConfigProps {
@@ -79,8 +71,6 @@ export function useTableConfig({
   const [isProbingColumns, setIsProbingColumns] = useState(false);
   const [paramsChangedAfterProbe, setParamsChangedAfterProbe] = useState(false);
   const [displayColumnsError, setDisplayColumnsError] = useState('');
-  const [columnModelKey, setColumnModelKey] = useState('');
-  const probedModelKeyRef = useRef('');
 
   const createDefaultFilterField = useCallback(
     (): FilterFieldRow => ({
@@ -332,56 +322,15 @@ export function useTableConfig({
       formParams: Record<string, any>,
       chartTypeOverride?: string,
     ): Promise<DisplayColumnRow[]> => {
-      if (isModelAttrTableSource(targetDataSource.rest_api)) {
-        const minimal = buildDisplayColumnsFromSchema(targetDataSource.field_schema || []);
-        if (!modelTableBindingKey(targetDataSource.rest_api, formParams)) {
-          probedModelKeyRef.current = '';
-          return minimal;
-        }
-        try {
-          const payload = buildProbeParams(targetDataSource, formParams, chartTypeOverride);
-          const { data: sourceData } = await getSourceDataByApiId(targetDataSource.id, payload);
-          const modelColumns = readModelColumnPayload(sourceData);
-          if (!modelColumns) {
-            probedModelKeyRef.current = '';
-            const declared = readDeclaredFields(sourceData) || [];
-            const firstRecord = extractFirstRecordFromSourceData(sourceData);
-            const detectedKeys = firstRecord
-              ? Object.keys(firstRecord)
-              : declared.map((field) => field.key);
-            if (detectedKeys.length === 0) {
-              return minimal;
-            }
-            const titles: ResponseFieldDefinition[] = [
-              ...(targetDataSource.field_schema || []),
-              ...declared.map((field) => ({
-                key: field.key,
-                title: field.title || field.key,
-                value_type: (field.value_type as ResponseFieldDefinition['value_type']) || 'string',
-              })),
-            ];
-            return mergeDetectedFieldsWithSchema(detectedKeys, titles);
-          }
-          probedModelKeyRef.current = modelColumns.model_key;
-          return columnsFromModelFields(modelColumns.fields).map((column, index) => ({
-            ...column,
-            id: `column_model_${index}_${column.key}`,
-            isDefault: true,
-          }));
-        } catch (error) {
-          console.error('Failed to probe model attribute columns:', error);
-          probedModelKeyRef.current = '';
-          return minimal;
-        }
-      }
       try {
         const payload = buildProbeParams(targetDataSource, formParams, chartTypeOverride);
         const { data: sourceData } = await getSourceDataByApiId(targetDataSource.id, payload);
         const firstRecord = extractFirstRecordFromSourceData(sourceData);
-        if (!firstRecord) return [];
+        if (!firstRecord || Object.keys(firstRecord).length === 0) {
+          return [];
+        }
 
         const detectedKeys = Object.keys(firstRecord);
-        if (detectedKeys.length === 0) return [];
 
         return mergeDetectedFieldsWithSchema(
           detectedKeys,
@@ -406,19 +355,6 @@ export function useTableConfig({
         currentParams,
         chartType,
       );
-
-      if (isModelAttrTableSource(selectedDataSource.rest_api)) {
-        setColumnModelKey(probedModelKeyRef.current);
-        setDetectedDisplayColumns(probedColumns);
-        setDisplayColumns(probedColumns.map((column, index) => ({ ...column, order: index })));
-        setParamsChangedAfterProbe(false);
-        if (probedColumns.length > 0) {
-          message.success(t('dashboard.reProbeSuccess'));
-        } else {
-          message.warning(t('dashboard.reProbeNoFields'));
-        }
-        return;
-      }
 
       if (probedColumns.length > 0) {
         setDetectedDisplayColumns(probedColumns);
@@ -455,25 +391,7 @@ export function useTableConfig({
         selectedDataSource
       ) {
         const currentParams = (form.getFieldValue('params') || {}) as Record<string, any>;
-        if (isModelAttrTableSource(selectedDataSource.rest_api)) {
-          const probedColumns = await probeDefaultDisplayColumns(
-            selectedDataSource,
-            currentParams,
-            newChartType,
-          );
-          const modelKey = probedModelKeyRef.current;
-          if (modelTableBindingKey(selectedDataSource.rest_api, currentParams) && !modelKey) {
-            return;
-          }
-          setColumnModelKey(modelKey);
-          setDetectedDisplayColumns(probedColumns);
-          setDisplayColumns(probedColumns);
-          return;
-        }
-        const schemaColumns = buildDisplayColumnsFromSchema(
-          availableFields,
-          currentParams?.query_object,
-        );
+        const schemaColumns = buildDisplayColumnsFromSchema(availableFields);
 
         if (schemaColumns.length > 0) {
           setDetectedDisplayColumns(schemaColumns);
@@ -498,8 +416,6 @@ export function useTableConfig({
     setIsProbingColumns(false);
     setParamsChangedAfterProbe(false);
     setDisplayColumnsError('');
-    setColumnModelKey('');
-    probedModelKeyRef.current = '';
   }, []);
 
   return {
@@ -529,8 +445,5 @@ export function useTableConfig({
     handleChartTypeChange,
     probeDefaultDisplayColumns,
     resetTableConfig,
-    columnModelKey,
-    setColumnModelKey,
-    probedModelKeyRef,
   };
 }

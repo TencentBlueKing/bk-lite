@@ -1,7 +1,7 @@
 import type { DatasourceItem, ResponseFieldDefinition } from '@/app/ops-analysis/types/dataSource';
 import type { TableColumnConfigItem, ValueConfig } from '@/app/ops-analysis/types/dashBoard';
 import { ChartDataTransformer } from '@/app/ops-analysis/utils/chartDataTransform';
-import { readDeclaredFields, resolveChartBinding } from '@/app/ops-analysis/utils/chartFieldContract';
+import { resolveChartBinding } from '@/app/ops-analysis/utils/chartFieldContract';
 import {
   hasExplicitLineBarMapping,
   toLineBarFieldMapping,
@@ -17,14 +17,16 @@ import { buildCsvDocument, buildCsvFilename } from '@/app/ops-analysis/utils/csv
 import { validateMultiValueData } from '@/app/ops-analysis/utils/multiValueData';
 import { resolveRadarSeriesData } from '@/app/ops-analysis/utils/radarData';
 import { resolveTableCellPresentation } from '@/app/ops-analysis/utils/tableCellStyle';
-import { parseTableLikeData, resolveTableLikeColumns } from '@/app/ops-analysis/utils/tableLikeData';
-import { modelCellDisplayText, readModelColumnPayload } from '@/app/ops-analysis/utils/modelTableColumns';
+import {
+  readExplicitPageNumber,
+  supportsServerPagination,
+} from '@/app/ops-analysis/utils/tablePagination';
 import {
   applyTableQueryList,
   type TableQueryCondition,
 } from '@/app/ops-analysis/utils/tableQueryList';
 import { resolveTopNHeaderLabel } from '@/app/ops-analysis/components/widgets/comTopN';
-import { supportsServerPagination } from '@/app/ops-analysis/utils/tablePagination';
+import { parseTableLikeData, resolveTableLikeColumns, isSelfPagedTablePayload } from '@/app/ops-analysis/utils/tableLikeData';
 import { buildTopNItems, unwrapTopNData } from '@/app/ops-analysis/utils/topNData';
 
 /**
@@ -254,24 +256,7 @@ export const buildLineBarCsvTable = (
 
 const schemaWithResultTitles = (
   schema: ResponseFieldDefinition[] | undefined,
-  rawData: unknown,
-): ResponseFieldDefinition[] => {
-  const merged = [...(schema || [])];
-  (readDeclaredFields(rawData) || []).forEach((field) => {
-    const index = merged.findIndex((item) => item.key === field.key);
-    const next = {
-      key: field.key,
-      title: field.title || field.key,
-      value_type: (field.value_type as ResponseFieldDefinition['value_type']) || 'string',
-    };
-    if (index >= 0) {
-      merged[index] = { ...merged[index], title: field.title || merged[index].title };
-      return;
-    }
-    merged.push(next);
-  });
-  return merged;
-};
+): ResponseFieldDefinition[] => schema || [];
 
 export const buildPieCsvTable = (
   rawData: unknown,
@@ -288,7 +273,7 @@ export const buildPieCsvTable = (
     valueField: config?.valueField,
     pieScalarFields: config?.pieScalarFields,
   });
-  const titles = schemaWithResultTitles(schema, rawData);
+  const titles = schemaWithResultTitles(schema);
   const dimensionKey = config?.dimensionField || binding.dimensionField;
   const valueKey = config?.valueField || binding.measureField;
   return {
@@ -369,7 +354,6 @@ const exportColumns = (
   config: ValueConfig | undefined,
   dataSource: DatasourceItem | undefined,
   rows: Record<string, unknown>[],
-  rawData?: unknown,
 ): TableColumnConfigItem[] => {
   if (chartType === 'eventTable') {
     return (config?.tableConfig?.columns || [])
@@ -379,10 +363,7 @@ const exportColumns = (
 
   return resolveTableLikeColumns({
     configuredColumns: config?.tableConfig?.columns,
-    columnModelKey: config?.tableConfig?.columnModelKey,
-    modelColumns: readModelColumnPayload(rawData),
     schemaFields: dataSource?.field_schema,
-    queryObject: rawData && typeof rawData === 'object' ? (rawData as { query_object?: unknown }).query_object : undefined,
     rows,
   }).filter((column) => column.visible && column.columnType !== 'actions');
 };
@@ -392,15 +373,11 @@ const formatTableExportCell = (
   raw: unknown,
   column: TableColumnConfigItem,
   config?: ValueConfig,
-  row?: Record<string, unknown>,
 ): string => {
   if (chartType === 'eventTable') {
     if (raw == null) return '-';
     return String(raw);
   }
-
-  const modelText = modelCellDisplayText(raw, column, row);
-  if (modelText !== null) return modelText;
 
   const presentation = resolveTableCellPresentation(raw, column);
   if (
@@ -423,14 +400,13 @@ export const buildTableCsvTable = (
   rows: Record<string, unknown>[],
   config: ValueConfig | undefined,
   dataSource: DatasourceItem | undefined,
-  rawData?: unknown,
 ): CsvTable & { unconfigured: boolean } => {
-  const columns = exportColumns(chartType, config, dataSource, rows, rawData);
+  const columns = exportColumns(chartType, config, dataSource, rows);
   return {
     unconfigured: chartType === 'eventTable' && columns.length === 0,
     headers: columns.map((column) => column.title || column.key),
     rows: rows.map((row) => columns.map((column) => (
-      formatTableExportCell(chartType, row[column.key], column, config, row)
+      formatTableExportCell(chartType, row[column.key], column, config)
     ))),
   };
 };
@@ -666,12 +642,17 @@ export const createWidgetCsvExport = async (
         runtime.config,
         runtime.dataSource,
         [],
-        runtime.rawData,
       );
       if (runtime.chartType === 'eventTable' && previewColumns.length === 0) {
         return { kind: 'unconfigured' };
       }
-      const supportsPagination = supportsServerPagination(runtime.dataSource?.params);
+      const declaredPagination = supportsServerPagination(runtime.dataSource?.params);
+      const sentPage = readExplicitPageNumber(runtime.requestParams?.page);
+      const sentPageSize = readExplicitPageNumber(runtime.requestParams?.page_size);
+      const supportsPagination = declaredPagination && (
+        (sentPage !== undefined && sentPageSize !== undefined)
+        || isSelfPagedTablePayload(runtime.rawData)
+      );
       const loaded = await loadTableExportRows({
         rawData: runtime.rawData,
         supportsPagination,
@@ -697,7 +678,6 @@ export const createWidgetCsvExport = async (
         loaded.rows,
         runtime.config,
         runtime.dataSource,
-        runtime.rawData,
       );
       if (built.unconfigured) return { kind: 'unconfigured' };
       table = built;

@@ -25,7 +25,6 @@ import {
   hasActiveWidgetRuntimeParams,
   shouldShowInitialWidgetLoading,
 } from "@/app/ops-analysis/utils/widgetDataTransform";
-import { genericStructureMismatch } from "@/app/ops-analysis/utils/genericStructure";
 import {
   beginOwnerRequest,
   finishOwnerRequest,
@@ -71,6 +70,7 @@ import ScreenWidgetThemeProvider from "@/app/ops-analysis/components/screenWidge
 import { getDateRangeTimezone } from "@/app/ops-analysis/utils/dateRange";
 import {
   areTableQueryParamsEquivalent,
+  readExplicitPagePair,
   serializeTableQueryKey,
 } from "@/app/ops-analysis/utils/tablePagination";
 import { validateMultiValueData } from "@/app/ops-analysis/utils/multiValueData";
@@ -270,8 +270,28 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     errorCode?: string;
   } | null>(null);
   const [tableQueryParams, setTableQueryParams] = useState<Record<string, any>>(
-    {},
+    () => readExplicitPagePair(config?.dataSourceParams),
   );
+  const savedPagePair = useMemo(
+    () => readExplicitPagePair(config?.dataSourceParams),
+    [config?.dataSourceParams],
+  );
+  const savedPageKey = `${savedPagePair.page ?? ""}:${savedPagePair.page_size ?? ""}`;
+  const savedPagePairRef = useRef(savedPagePair);
+  savedPagePairRef.current = savedPagePair;
+  const sourceParamsRef = useRef(dataSource?.params);
+  sourceParamsRef.current = dataSource?.params;
+  useEffect(() => {
+    const pair = savedPagePairRef.current;
+    const sourceParams = sourceParamsRef.current;
+    setTableQueryParams((prev) => {
+      const next = { ...prev };
+      delete next.page;
+      delete next.page_size;
+      Object.assign(next, pair);
+      return areTableQueryParamsEquivalent(prev, next, sourceParams) ? prev : next;
+    });
+  }, [savedPageKey]);
   const { canvasDataSourceLookupStatus, dataSources } = useOpsAnalysis();
   const dashboardViewAuth = useDashboardViewAuth();
   const scenePermissionDenied = Boolean(
@@ -311,13 +331,9 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     return dataSource.params.map((param) => {
       const override = overrides.find((item) => item.name === param.name);
       if (!override) return param;
-      if (param.name === 'analysis_mode') {
-        return { ...param, value: override.value ?? param.value };
-      }
       return {
         ...param,
         ...override,
-        visible_modes: param.visible_modes,
       };
     });
   }, [config?.dataSourceParams, dataSource?.params]);
@@ -774,21 +790,6 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
         return localizeStructureMessage(validateCardListPayload(data, {
           titleField: config?.cardList?.titleField || "",
         }));
-      }
-
-      const mismatch = genericStructureMismatch(data, type);
-      if (mismatch) {
-        return {
-          isValid: false,
-          message: t(
-            "dashboard.structureMismatch",
-            "当前结果结构是 {current}，这个图表需要 {required}。请修改分析方式或更换图表。",
-            {
-              current: t(`dashboard.structureName.${mismatch.current}`, mismatch.current),
-              required: t(`dashboard.structureName.${mismatch.required}`, mismatch.required),
-            },
-          ),
-        };
       }
 
       const isDataEmpty = () =>

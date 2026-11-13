@@ -37,26 +37,6 @@ class GenericQueryError(Exception):
         self.status = status
 
 
-def _result_field(key: str, title: str, value_type: str, role: str | None = None) -> dict:
-    field = {"key": key, "title": title, "value_type": value_type}
-    if role:
-        field["role"] = role
-    return field
-
-
-def _with_fields(payload: dict, fields: list[dict]) -> dict:
-    payload["fields"] = fields
-    return payload
-
-
-_CENTER_GROUP_TITLES = {
-    "level": "级别",
-    "status": "状态",
-    "source_name": "来源名称",
-    "source_id": "来源标识",
-}
-
-
 def ensure_payload_limit(data: Any) -> None:
     encoded = json.dumps(data, ensure_ascii=False, default=str).encode("utf-8")
     if len(encoded) > NATS_MESSAGE_MAX_BYTES:
@@ -74,7 +54,8 @@ def query_alert_center(
     time_field: str | None = None,
     time_range=None,
     group_by: str | None = None,
-    order: str | None = None,
+    order_by: str | None = None,
+    order_dir: str | None = None,
     page=None,
     page_size=None,
 ) -> dict:
@@ -82,13 +63,15 @@ def query_alert_center(
     if target not in QUERY_OBJECTS:
         raise GenericQueryError("查询对象必须是告警或事件")
     mode = str(analysis_mode or "").strip()
+    if not mode:
+        raise GenericQueryError("分析方式不能为空")
     if mode not in MODES:
         raise GenericQueryError("分析方式不受支持")
     _reject_unused(
         mode,
         [
             (group_by, "分组", ("distribution",)),
-            (order, "排序", ("detail", "distribution")),
+            (order_by if str(order_by or "").strip() else order_dir, "排序", ("detail", "distribution")),
         ],
     )
     distribution_limit = _distribution_window(page, page_size) if mode == "distribution" else None
@@ -119,9 +102,8 @@ def query_alert_center(
             # 子查询收窄告警，避免事件连接把分组 Count 放大。
             matched = queryset.filter(events__source__source_id=str(source)).values("pk")
             queryset = queryset.filter(pk__in=Subquery(matched))
-    count_title = f"{_label(target)}数"
     if mode == "count":
-        return _value(queryset.count(), title=count_title, unit="条", aggregation=f"{_label(target)}计数", query_object=target)
+        return _value(queryset.count())
     if mode == "distribution":
         group_fields = ALERT_GROUP_FIELDS if target == "alert" else EVENT_GROUP_FIELDS
         field = group_by or "level"
@@ -131,47 +113,25 @@ def query_alert_center(
         if grouped.count() > STAT_GROUP_MAX:
             raise GenericQueryError(f"统计分组超过 {STAT_GROUP_MAX} 组")
         items = [{field: _choice_label(row[value_key], target, field), "record_count": row["record_count"]} for row in grouped]
-        declared = [
-            _result_field(field, _CENTER_GROUP_TITLES[field], "string", "dimension"),
-            _result_field("record_count", count_title, "number", "measure"),
-        ]
-        if order not in (None, "") or distribution_limit is not None:
-            order_text = _order(order, {field, "record_count"}, default="record_count")
-            descending = order_text.startswith("-") or (order in (None, "") and order_text == "record_count")
-            sort_key = order_text[1:] if order_text.startswith("-") else order_text
-            items.sort(key=lambda item: (item.get(sort_key) is None, item.get(sort_key)), reverse=descending)
-        shown, window = _slice_distribution(items, distribution_limit)
-        return _with_fields(
-            {
-                "structure": "category",
-                "status": "empty" if not shown else "ok",
-                "items": shown,
-                "unit": "条",
-                "aggregation": f"按 {field} 计数",
-                "query_object": target,
-                **window,
-            },
-            declared,
-        )
+        sort_key, descending = _distribution_order(order_by, order_dir, field)
+        items.sort(key=lambda item: (item.get(sort_key) is None, item.get(sort_key)), reverse=descending)
+        shown = _slice_distribution(items, distribution_limit)
+        return {
+            "items": shown,
+        }
     page_no, size = _parse_page(page, page_size)
     sort_fields = ALERT_SORT_FIELDS if target == "alert" else EVENT_SORT_FIELDS
-    order_text = _order(order, sort_fields, default=f"-{time_field}")
+    order_text = _detail_order(order_by, order_dir, sort_fields)
     total = queryset.count()
     page_rows = list(queryset.order_by(order_text)[(page_no - 1) * size : page_no * size])
     source_names = _alert_display_source_names(page_rows) if target == "alert" else {}
     rows = [_row(item, target, source_names) for item in page_rows]
-    return _with_fields(
-        {
-            "structure": "table",
-            "status": "empty" if total == 0 else "ok",
-            "query_object": target,
-            "items": rows,
-            "count": total,
-            "page": page_no,
-            "page_size": size,
-        },
-        _detail_fields(target),
-    )
+    return {
+        "items": rows,
+        "count": total,
+        "page": page_no,
+        "page_size": size,
+    }
 
 
 def _choice_label(value, target: str, field: str) -> str:
@@ -213,38 +173,6 @@ def _alert_display_source_names(alerts) -> dict:
     return names
 
 
-def _detail_fields(target: str) -> list[dict]:
-    shared = [
-        _result_field("title", "标题", "string"),
-        _result_field("level", "级别", "string", "dimension"),
-        _result_field("status", "状态", "string"),
-        _result_field("source_name", "来源名称", "string"),
-        _result_field("resource_id", "资源标识", "string"),
-        _result_field("resource_name", "资源名称", "string"),
-    ]
-    if target == "event":
-        return [
-            _result_field("event_id", "事件标识", "string", "identity"),
-            *shared,
-            _result_field("source_id", "来源标识", "string"),
-            _result_field("monitor_id", "监控标识", "string"),
-            _result_field("cmdb_id", "CMDB 标识", "string"),
-            _result_field("received_at", "接收时间", "datetime"),
-            _result_field("start_time", "开始时间", "datetime"),
-            _result_field("end_time", "结束时间", "datetime"),
-        ]
-    return [
-        _result_field("alert_id", "告警标识", "string", "identity"),
-        *shared,
-        _result_field("resource_type", "资源类型", "string"),
-        _result_field("created_at", "创建时间", "datetime"),
-        _result_field("updated_at", "更新时间", "datetime"),
-        _result_field("first_event_time", "首次事件时间", "datetime"),
-        _result_field("last_event_time", "末次事件时间", "datetime"),
-        _result_field("closed_at", "关闭时间", "datetime"),
-    ]
-
-
 def _row(item, target: str, source_names: dict | None = None) -> dict:
     if target == "event":
         source = getattr(item, "source", None)
@@ -281,22 +209,10 @@ def _row(item, target: str, source_names: dict | None = None) -> dict:
     }
 
 
-def _value(value, *, title: str, unit: str, aggregation: str, query_object: str) -> dict:
-    return _with_fields(
-        {
-            "structure": "value",
-            "status": "ok",
-            "record_count": value,
-            "unit": unit,
-            "aggregation": aggregation,
-            "query_object": query_object,
-        },
-        [_result_field("record_count", title, "number", "measure")],
-    )
-
-
-def _label(target: str) -> str:
-    return "告警" if target == "alert" else "事件"
+def _value(value) -> dict:
+    return {
+        "record_count": value,
+    }
 
 
 def _filled(value) -> bool:
@@ -324,10 +240,8 @@ def _distribution_window(page, page_size) -> int | None:
     return size
 
 
-def _slice_distribution(items: list, limit: int | None) -> tuple[list, dict]:
-    total = len(items)
-    shown = items if limit is None else items[:limit]
-    return shown, {"count": total, "page": 1, "page_size": total if limit is None else limit}
+def _slice_distribution(items: list, limit: int | None) -> list:
+    return items if limit is None else items[:limit]
 
 
 def _reject_paging(page, page_size) -> None:
@@ -336,8 +250,10 @@ def _reject_paging(page, page_size) -> None:
 
 
 def _parse_page(page, page_size) -> tuple[int, int]:
-    page_no = 1 if page in (None, "") else _as_int(page, "page")
-    size = 20 if page_size in (None, "") else _as_int(page_size, "page_size")
+    if page in (None, "") or page_size in (None, ""):
+        raise GenericQueryError("页码和每页条数必须同时填写")
+    page_no = _as_int(page, "page")
+    size = _as_int(page_size, "page_size")
     if page_no < 1:
         raise GenericQueryError("page 必须大于 0")
     if size < 1 or size > DETAIL_PAGE_SIZE_MAX:
@@ -345,12 +261,37 @@ def _parse_page(page, page_size) -> tuple[int, int]:
     return page_no, size
 
 
-def _order(order, allowed: set[str], *, default: str) -> str:
-    text = str(order or "").strip() or default
-    field = text[1:] if text.startswith("-") else text
+def _sort_request(order_by, order_dir) -> tuple[str, bool] | None:
+    """两个都空表示没指定排序。只填一个直接报错，不补另一个。"""
+    field = "" if order_by in (None, "") else str(order_by).strip()
+    direction = "" if order_dir in (None, "") else str(order_dir).strip()
+    if not field and not direction:
+        return None
+    if not field or not direction:
+        raise GenericQueryError("排序和排序方式必须同时填写")
+    if direction not in {"asc", "desc"}:
+        raise GenericQueryError("排序方式不受支持")
+    return field, direction == "desc"
+
+
+def _distribution_order(order_by, order_dir, group_field: str) -> tuple[str, bool]:
+    requested = _sort_request(order_by, order_dir)
+    if requested is None:
+        return "record_count", True
+    field, descending = requested
+    if field not in {group_field, "record_count"}:
+        raise GenericQueryError(f"不支持的排序字段: {field}")
+    return field, descending
+
+
+def _detail_order(order_by, order_dir, allowed: set[str]) -> str:
+    requested = _sort_request(order_by, order_dir)
+    if requested is None:
+        return "id"
+    field, descending = requested
     if field not in allowed:
         raise GenericQueryError(f"不支持的排序字段: {field}")
-    return text
+    return f"-{field}" if descending else field
 
 
 def _parse_range(value) -> tuple[datetime, datetime]:

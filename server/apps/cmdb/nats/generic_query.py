@@ -8,13 +8,11 @@ from apps.cmdb.services.generic_query import (
     GenericQueryError,
     compile_attribute_conditions,
     ensure_payload_limit,
-    load_instances_by_uuids,
     one_hop_query_plan,
     query_instances,
     query_models,
     query_one_hop_relations,
 )
-from apps.cmdb.services.generic_query_columns import build_instance_column_fields, build_one_hop_column_fields, project_one_hop_rows
 from apps.cmdb.services.generic_query_graph import GenericQueryGraphError, count_by_attr, query_one_hop
 from apps.cmdb.services.model import ModelManage
 from apps.core.logger import cmdb_logger as logger
@@ -50,12 +48,6 @@ def _guard(stage: str):
         return wrapped
 
     return decorate
-
-
-def _reject_unsupported_filters(kwargs: dict) -> None:
-    filters = kwargs.get("filters") if isinstance(kwargs, dict) else None
-    if filters not in (None, "", []):
-        raise GenericQueryError("当前查询不支持 filters")
 
 
 def _require_model_classification(models, model_id, classification_id) -> None:
@@ -138,32 +130,6 @@ def _load_model_attrs(model_id: str, user_info) -> list:
         raise GenericQueryError("指定模型不存在或无权访问", status="forbidden") from exc
 
 
-def _group_declaration(attrs: list, group_by) -> tuple[str | None, str | None]:
-    """分布分组的标题和类型来自模型属性，不把属性名改写成 name。"""
-    key = str(group_by or "").strip()
-    if not key:
-        return None, None
-    attr = next((item for item in attrs or [] if str(item.get("attr_id") or "") == key), None)
-    if key == "inst_name":
-        title = "实例名称"
-        raw_type = "string"
-    elif key == "inst_uuid":
-        title = "实例标识"
-        raw_type = "string"
-    elif isinstance(attr, dict):
-        title = str(attr.get("attr_name") or key)
-        raw_type = str(attr.get("attr_type") or "string").lower()
-    else:
-        return key, None
-    if raw_type in {"int", "integer", "float", "number", "long", "double"}:
-        value_type = "number"
-    elif raw_type in {"bool", "boolean"}:
-        value_type = "boolean"
-    else:
-        value_type = "string"
-    return title, value_type
-
-
 def _enum_group_labels(attrs: list, group_by) -> dict[str, str] | None:
     """枚举分布用选项名称做分类。没有这份对照时，图里的分组键是选项 id。"""
     key = str(group_by or "").strip()
@@ -211,7 +177,6 @@ def query_cmdb_models(
     **kwargs,
 ):
     """CMDB 模型查询。kwargs 接收运营分析透传的未知参数，不因此报错。"""
-    _reject_unsupported_filters(kwargs)
     del kwargs
     models, instance_permissions, names = _visible_models(user_info)
     if classification_id and str(classification_id) not in names:
@@ -223,7 +188,7 @@ def query_cmdb_models(
     data = query_models(
         models=models,
         instance_counts=counts,
-        analysis_mode=analysis_mode or "detail",
+        analysis_mode=analysis_mode,
         classification_id=str(classification_id or ""),
         model_ids=selected,
         page=page,
@@ -232,26 +197,46 @@ def query_cmdb_models(
     return _ok(data)
 
 
+def _fill_unset_model_attrs(items, attrs: list) -> None:
+    """明细行补上模型里有、这条实例没写过的属性。已有值保持不变，空值用 null。"""
+    if not isinstance(items, list):
+        return
+    keys: list[str] = []
+    seen: set[str] = set()
+    for attr in attrs or []:
+        if not isinstance(attr, dict) or attr.get("is_display_field"):
+            continue
+        attr_id = str(attr.get("attr_id") or "").strip()
+        if not attr_id or attr_id.startswith("_") or attr_id in seen:
+            continue
+        if str(attr.get("attr_type") or "").lower() == "pwd":
+            continue
+        seen.add(attr_id)
+        keys.append(attr_id)
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        for key in keys:
+            item.setdefault(key, None)
+
+
 @nats_client.register
 @_guard("query_cmdb_instances")
 def query_cmdb_instances(
     model_id=None,
     classification_id=None,
     analysis_mode=None,
-    filter_field=None,
-    filter_op=None,
-    filter_value=None,
     filters=None,
     group_by=None,
     aggregate_field=None,
     aggregate_op=None,
-    order=None,
+    order_by=None,
+    order_dir=None,
     page=None,
     page_size=None,
     user_info=None,
     **kwargs,
 ):
-    _reject_unsupported_filters(kwargs)
     del kwargs
     parsed_filters = _require_condition_group(filters)
     _models, instance_permissions, _names = _visible_models(user_info)
@@ -260,28 +245,24 @@ def query_cmdb_instances(
         raise GenericQueryError("指定模型不存在或无权访问", status="forbidden")
     _require_model_classification(_models, model_id, classification_id)
     attrs = _load_model_attrs(str(model_id), user_info)
-    group_title, group_value_type = _group_declaration(attrs, group_by)
+    mode = str(analysis_mode or "").strip()
     data = query_instances(
         model_id=str(model_id),
-        analysis_mode=analysis_mode or "detail",
+        analysis_mode=mode,
         attr_types=_attr_types_from(attrs),
         permission_map=instance_permissions,
-        filter_field=filter_field,
-        filter_op=filter_op,
-        filter_value=filter_value,
         filters=parsed_filters,
         group_by=group_by,
         aggregate_field=aggregate_field,
         aggregate_op=aggregate_op,
-        order=order,
+        order_by=order_by,
+        order_dir=order_dir,
         page=page,
         page_size=page_size,
-        group_title=group_title,
-        group_value_type=group_value_type,
         group_labels=_enum_group_labels(attrs, group_by),
     )
-    if data.get("structure") == "table":
-        data["column_fields"] = build_instance_column_fields(attrs, model_key=str(model_id))
+    if mode == "detail":
+        _fill_unset_model_attrs(data.get("items"), attrs)
     return _ok(data)
 
 
@@ -304,12 +285,6 @@ def query_cmdb_one_hop(
     start_model_id=None,
     classification_id=None,
     model_asst_id=None,
-    filter_field=None,
-    filter_op=None,
-    filter_value=None,
-    end_filter_field=None,
-    end_filter_op=None,
-    end_filter_value=None,
     filters=None,
     end_filters=None,
     analysis_mode=None,
@@ -318,7 +293,6 @@ def query_cmdb_one_hop(
     user_info=None,
     **kwargs,
 ):
-    _reject_unsupported_filters(kwargs)
     del kwargs
     if not start_model_id or not model_asst_id:
         raise GenericQueryError("起点模型和关系不能为空")
@@ -338,20 +312,14 @@ def query_cmdb_one_hop(
     attr_types = _attr_types(str(start_model_id), user_info)
     start_logic, start_conditions = compile_attribute_conditions(
         attr_types,
-        filter_field,
-        filter_op,
-        filter_value,
         _require_condition_group(filters),
     )
-    end_types = _attr_types(str(end_model_id), user_info) if end_filter_field or end_filters else {"inst_name": "string"}
+    end_types = _attr_types(str(end_model_id), user_info) if end_filters else {"inst_name": "string"}
     end_logic, end_conditions = compile_attribute_conditions(
         end_types,
-        end_filter_field,
-        end_filter_op if end_filter_field else None,
-        end_filter_value if end_filter_field else None,
         _require_condition_group(end_filters),
     )
-    plan = one_hop_query_plan(analysis_mode or "detail", page, page_size)
+    plan = one_hop_query_plan(analysis_mode, page, page_size)
     graph_result = query_one_hop(
         start_model_id=str(start_model_id),
         model_asst_id=str(model_asst_id),
@@ -367,39 +335,13 @@ def query_cmdb_one_hop(
         limit=plan.get("limit"),
     )
     data = query_one_hop_relations(
-        analysis_mode=analysis_mode or "detail",
+        analysis_mode=analysis_mode,
         graph_result=graph_result,
         page=page,
         page_size=page_size,
+        association_name=str(association.get("asst_name") or association.get("label") or ""),
+        association_id=str(association.get("model_asst_id") or model_asst_id),
     )
-    if data.get("structure") == "table":
-        start_attrs = _load_model_attrs(str(start_model_id), user_info)
-        end_attrs = _load_model_attrs(str(end_model_id), user_info)
-        start_uuids = []
-        end_uuids = []
-        seen_start = set()
-        seen_end = set()
-        for row in data.get("items") or []:
-            start_uuid = str((row or {}).get("start_uuid") or "").strip()
-            end_uuid = str((row or {}).get("end_uuid") or "").strip()
-            if start_uuid and start_uuid not in seen_start:
-                seen_start.add(start_uuid)
-                start_uuids.append(start_uuid)
-            if end_uuid and end_uuid not in seen_end:
-                seen_end.add(end_uuid)
-                end_uuids.append(end_uuid)
-        data["items"] = project_one_hop_rows(
-            data.get("items") or [],
-            starts=load_instances_by_uuids(start_uuids),
-            ends=load_instances_by_uuids(end_uuids),
-            start_attrs=start_attrs,
-            end_attrs=end_attrs,
-        )
-        data["column_fields"] = build_one_hop_column_fields(
-            start_attrs,
-            end_attrs,
-            model_key=f"{start_model_id}|{direction}|{model_asst_id}|{end_model_id}",
-        )
     return _ok(data)
 
 

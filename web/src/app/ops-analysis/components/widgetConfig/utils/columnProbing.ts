@@ -1,6 +1,4 @@
 import type { ResponseFieldDefinition } from '@/app/ops-analysis/types/dataSource';
-import { schemaFieldsForTable } from '@/app/ops-analysis/utils/modelTableColumns';
-import { fieldAppliesToQueryObject } from '@/app/ops-analysis/utils/tableLikeData';
 import type { TableColumnConfigItem } from '@/app/ops-analysis/types/dashBoard';
 
 export type DisplayColumnRow = TableColumnConfigItem & {
@@ -25,11 +23,8 @@ export const isDisplayableDefaultField = (key: string): boolean => {
  */
 export const buildDisplayColumnsFromSchema = (
   fields: ResponseFieldDefinition[],
-  queryObject?: unknown,
 ): DisplayColumnRow[] => {
-  return schemaFieldsForTable(fields || []).filter((field) =>
-    fieldAppliesToQueryObject(field, queryObject),
-  )
+  return (fields || [])
     .filter((field) => isDisplayableDefaultField(field.key))
     .map((field, idx) => ({
       id: `column_schema_${Date.now()}_${idx}`,
@@ -81,12 +76,9 @@ export const mergeDetectedFieldsWithSchema = (
   const schemaTitleMap = new Map(
     (schemaFields || []).map((field) => [field.key, field.title || field.key]),
   );
-  const hiddenKeys = new Set(
-    (schemaFields || []).filter((field) => field.table === false).map((field) => field.key),
-  );
 
   return detectedFieldKeys
-    .filter((key) => isDisplayableDefaultField(key) && !hiddenKeys.has(key))
+    .filter((key) => isDisplayableDefaultField(key))
     .map((key, idx) => ({
       id: `column_detected_${Date.now()}_${idx}`,
       key,

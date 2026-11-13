@@ -19,7 +19,6 @@ interface ConditionFilterInputProps {
   value?: unknown;
   onChange?: (value: ConditionGroup) => void;
   fields: ConditionFieldOption[];
-  queryObject?: string;
   disabled?: boolean;
 }
 
@@ -64,7 +63,6 @@ const ConditionFilterInput: React.FC<ConditionFilterInputProps> = ({
   value,
   onChange,
   fields,
-  queryObject = '',
   disabled = false,
 }) => {
   const { t } = useTranslation();
@@ -159,9 +157,7 @@ const ConditionFilterInput: React.FC<ConditionFilterInputProps> = ({
                   disabled={disabled}
                   mode={multiple ? 'multiple' : undefined}
                   value={multiple ? (Array.isArray(item.value) ? item.value : []) : item.value}
-                  options={(field?.options || []).filter((option) => (
-                    !queryObject || !option.query_objects?.length || option.query_objects.includes(queryObject)
-                  )).map((option) => ({
+                  options={(field?.options || []).map((option) => ({
                     label: option.label,
                     value: option.value,
                   }))}

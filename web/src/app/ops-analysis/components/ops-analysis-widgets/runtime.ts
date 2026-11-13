@@ -7,8 +7,8 @@ import {
   type ChartFieldMapping,
 } from '@/app/ops-analysis/utils/chartDataTransform';
 import { hasExplicitLineBarMapping } from '@/app/ops-analysis/utils/lineBarFieldMapping';
-import { delegatesGenericChart } from '@/app/ops-analysis/utils/chartFieldContract';
 import { extractComparableValue as sharedExtractComparableValue } from '@/app/ops-analysis/utils/compareQuery';
+
 export interface ChartDataItem {
   name: string;
   value: number;
@@ -358,7 +358,7 @@ export class ChartDataTransformer {
     rawData: any,
     mapping?: ChartFieldMapping,
   ): LineBarChartData {
-    if (delegatesGenericChart(rawData) || hasExplicitLineBarMapping(mapping)) {
+    if (hasExplicitLineBarMapping(mapping)) {
       return SharedChartDataTransformer.transformToLineBarData(rawData, mapping);
     }
 
@@ -471,8 +471,7 @@ export class ChartDataTransformer {
       (item) => item?.field?.trim(),
     ).length;
     if (
-      delegatesGenericChart(rawData)
-      || mapping?.dimensionField?.trim()
+      mapping?.dimensionField?.trim()
       || mapping?.valueField?.trim()
       || scalarFieldCount >= 2
     ) {
@@ -535,9 +534,6 @@ export class ChartDataTransformer {
   }
 
   static validateLineBarData(rawData: any, errorMessage?: string) {
-    if (delegatesGenericChart(rawData)) {
-      return SharedChartDataTransformer.validateLineBarData(rawData, errorMessage);
-    }
     if (this.isStructurallyEmpty(rawData)) {
       return { isValid: true };
     }
@@ -573,9 +569,6 @@ export class ChartDataTransformer {
   }
 
   static validatePieData(rawData: any, errorMessage?: string) {
-    if (delegatesGenericChart(rawData)) {
-      return SharedChartDataTransformer.validatePieData(rawData, errorMessage);
-    }
     if (this.isStructurallyEmpty(rawData)) {
       return { isValid: true };
     }

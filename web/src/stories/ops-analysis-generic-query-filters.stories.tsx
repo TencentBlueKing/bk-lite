@@ -37,8 +37,8 @@ const params: ParamItem[] = [
       optionsSource: {
         type: 'static',
         staticItems: [
-          { label: '明细', value: 'detail', charts: ['table'], result: { structure: 'table' } },
-          { label: '计数', value: 'count', charts: ['single'], result: { structure: 'value' } },
+          { label: '明细', value: 'detail' },
+          { label: '计数', value: 'count' },
         ],
       },
     },
@@ -56,7 +56,6 @@ const params: ParamItem[] = [
         items: [{ value: 'instance_count', label: '实例数', valueType: 'number', options: [] }],
       },
     },
-    visible_modes: ['detail', 'count', 'distribution'],
   },
   {
     name: 'filters',
@@ -81,27 +80,11 @@ const params: ParamItem[] = [
     },
   },
   {
-    name: 'order',
-    alias_name: '排序',
-    type: 'order',
-    filterType: 'params',
-    value: '-instance_count',
-    visible_modes: ['detail', 'distribution'],
-    inputConfig: {
-      control: 'order',
-      fields: [
-        { value: 'instance_count', label: '实例数', modes: ['detail'] },
-        { value: 'model_name', label: '模型名称', modes: ['detail'] },
-      ],
-    },
-  },
-  {
     name: 'page',
     alias_name: '页码',
     type: 'number',
     filterType: 'params',
     value: 1,
-    visible_modes: ['detail'],
   },
   {
     name: 'page_size',
@@ -109,7 +92,6 @@ const params: ParamItem[] = [
     type: 'number',
     filterType: 'params',
     value: 20,
-    visible_modes: ['detail'],
   },
 ];
 
@@ -152,5 +134,5 @@ export default meta;
 
 type Story = StoryObj<typeof NarrowDrawerView>;
 
-/** 320px 宽的组件配置区，用来核对条件行和排序没有被挤掉。 */
+/** 320px 宽的组件配置区，用来核对条件行没有被挤掉。 */
 export const NarrowDrawer: Story = {};

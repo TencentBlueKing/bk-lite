@@ -63,6 +63,8 @@ def test_alert_and_event_queries_do_not_share_rows():
         analysis_mode="detail",
         time_field="created_at",
         time_range=day,
+        page=1,
+        page_size=20,
     )
     events = query_alert_center(
         Event.objects.all(),
@@ -77,8 +79,8 @@ def test_alert_and_event_queries_do_not_share_rows():
     assert alerts["page_size"] == 20
     assert "event_id" not in alerts["items"][0]
     assert events["record_count"] == 1
-    assert events["query_object"] == "event"
-    assert events["aggregation"].startswith("事件")
+    assert "query_object" not in events
+    assert "aggregation" not in events
 
 
 def test_alert_center_requires_time_and_rejects_ranges_over_90_days():
@@ -105,7 +107,14 @@ def test_alert_center_requires_time_and_rejects_ranges_over_90_days():
 
 def test_alert_center_rejects_group_and_order_the_mode_does_not_use():
     with pytest.raises(GenericQueryError, match="不支持分组、排序"):
-        query_alert_center(None, query_object="alert", analysis_mode="count", group_by="level", order="-created_at")
+        query_alert_center(
+            None,
+            query_object="alert",
+            analysis_mode="count",
+            group_by="level",
+            order_by="created_at",
+            order_dir="desc",
+        )
 
 
 def test_alert_center_distribution_uses_return_limit_and_rejects_page():
@@ -123,8 +132,8 @@ def test_alert_center_distribution_uses_return_limit_and_rejects_page():
         page_size=1,
     )
     assert limited["items"] == [{"level": "预警", "record_count": 2}]
-    assert limited["count"] == 2
-    assert limited["page_size"] == 1
+    assert "count" not in limited
+    assert "page_size" not in limited
     with pytest.raises(GenericQueryError, match="不支持页码"):
         query_alert_center(
             Alert.objects.all(),
@@ -145,6 +154,7 @@ def test_alert_center_page_group_and_empty_results():
             analysis_mode="detail",
             time_field="created_at",
             time_range=_range(3600),
+            page=1,
             page_size=DETAIL_PAGE_SIZE_MAX + 1,
         )
     with pytest.raises(GenericQueryError, match="不支持分页"):
@@ -162,6 +172,8 @@ def test_alert_center_page_group_and_empty_results():
         analysis_mode="detail",
         time_field="created_at",
         time_range=_range(3600),
+        page=1,
+        page_size=20,
     )
     zero = query_alert_center(
         Alert.objects.all(),
@@ -170,11 +182,11 @@ def test_alert_center_page_group_and_empty_results():
         time_field="created_at",
         time_range=_range(3600),
     )
-    assert empty["status"] == "empty"
+    assert "status" not in empty
     assert empty["items"] == []
-    assert zero["status"] == "ok"
+    assert "status" not in zero
     assert zero["record_count"] == 0
-    assert zero["fields"][0]["title"] == "告警数"
+    assert "fields" not in zero
 
     for index in range(STAT_GROUP_MAX + 1):
         _alert(f"ALERT-{index}", level=f"L{index}", created_at=START + timedelta(minutes=1))
@@ -220,7 +232,7 @@ def test_alert_source_filter_does_not_multiply_distribution_count():
 
     assert counted["record_count"] == 1
     assert grouped["items"] == [{"level": "预警", "record_count": 1}]
-    assert grouped["fields"][0]["role"] == "dimension"
+    assert "fields" not in grouped
 
 
 def test_status_options_follow_query_object():
@@ -294,6 +306,8 @@ def test_event_queryset_follows_event_rules_and_is_empty_without_rules(monkeypat
         analysis_mode="detail",
         time_field="start_time",
         time_range=day,
+        page=1,
+        page_size=20,
         user_info=user_info,
     )
     assert [item["event_id"] for item in scoped["data"]["items"]] == ["EVENT-OWN"]
@@ -363,6 +377,8 @@ def test_named_filters_are_and_and_source_name_follows_the_alert_source():
         analysis_mode="detail",
         time_field="created_at",
         time_range=day,
+        page=1,
+        page_size=20,
     )
     assert counted["record_count"] == 0
     assert grouped["items"] == [{"source_name": "other", "record_count": 1}]
@@ -372,6 +388,8 @@ def test_named_filters_are_and_and_source_name_follows_the_alert_source():
         analysis_mode="detail",
         time_field="start_time",
         time_range=day,
+        page=1,
+        page_size=20,
     )
     event_grouped = query_alert_center(
         Event.objects.all(),
@@ -385,7 +403,7 @@ def test_named_filters_are_and_and_source_name_follows_the_alert_source():
     assert detail["items"][0]["level"] == "预警"
     assert detail["items"][0]["status"] == "未分派"
     assert "event_id" not in detail["items"][0]
-    assert [field["key"] for field in detail["fields"]][0] == "alert_id"
+    assert "fields" not in detail
     assert event_detail["items"][0]["source_id"] == "src-1"
     assert event_detail["items"][0]["source_name"] == "webhook"
     assert event_detail["items"][0]["level"] == "预警"
@@ -394,12 +412,12 @@ def test_named_filters_are_and_and_source_name_follows_the_alert_source():
     assert fatal.alert_id == "ALERT-2"
 
 
-def test_handler_rejects_unsupported_filters():
+def test_handler_ignores_undeclared_filters():
     from apps.alerts.nats.generic_query import query_alert_center as handler
 
-    result = handler(query_object="alert", analysis_mode="count", user_info={}, filters=[{"field": "level"}])
+    result = handler(query_object="both", analysis_mode="detail", user_info={}, filters=[{"field": "level"}])
     assert result["result"] is False
-    assert "filters" in result["message"]
+    assert "告警或事件" in result["message"]
 
 
 def test_handler_rejects_unknown_query_object_and_keeps_extra_kwargs():
@@ -441,6 +459,7 @@ def test_handler_intersects_instance_grants_with_the_current_org(monkeypatch):
         analysis_mode="detail",
         time_field="created_at",
         time_range=[(datetime.now(timezone.utc) - timedelta(hours=1)).isoformat(), (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()],
+        page=1,
         page_size=20,
         user_info={"team": 1, "include_children": False, "is_superuser": False, "group_tree": []},
     )

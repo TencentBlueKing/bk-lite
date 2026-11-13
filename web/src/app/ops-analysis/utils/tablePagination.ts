@@ -1,5 +1,6 @@
 interface DataSourceParamDeclaration {
   name?: string;
+  value?: unknown;
 }
 
 interface BuildTableQueryParamsInput {
@@ -7,8 +8,30 @@ interface BuildTableQueryParamsInput {
   queryParams?: Record<string, unknown>;
 }
 
-export const DEFAULT_TABLE_PAGE = 1;
-export const DEFAULT_TABLE_PAGE_SIZE = 20;
+export const readExplicitPageNumber = (value: unknown): number | undefined => {
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return undefined;
+    value = Number(trimmed);
+  }
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < 1) {
+    return undefined;
+  }
+  return value;
+};
+
+export const readExplicitPagePair = (
+  params?: DataSourceParamDeclaration[],
+): Record<string, number> => {
+  const page = readExplicitPageNumber(
+    params?.find((param) => param?.name === 'page')?.value,
+  );
+  const pageSize = readExplicitPageNumber(
+    params?.find((param) => param?.name === 'page_size')?.value,
+  );
+  if (page === undefined || pageSize === undefined) return {};
+  return { page, page_size: pageSize };
+};
 
 export const supportsServerPagination = (
   params?: DataSourceParamDeclaration[],
@@ -36,10 +59,12 @@ export const buildTableQueryParams = ({
     return nonPaginationParams;
   }
 
+  const explicitPage = readExplicitPageNumber(page);
+  const explicitPageSize = readExplicitPageNumber(pageSize);
   return {
     ...nonPaginationParams,
-    page: page ?? DEFAULT_TABLE_PAGE,
-    page_size: pageSize ?? DEFAULT_TABLE_PAGE_SIZE,
+    ...(explicitPage !== undefined ? { page: explicitPage } : {}),
+    ...(explicitPageSize !== undefined ? { page_size: explicitPageSize } : {}),
   };
 };
 
