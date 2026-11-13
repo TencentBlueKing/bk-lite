@@ -1,7 +1,8 @@
 'use client';
 import React, { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { Button, Form, message, Spin } from 'antd';
+import { ReloadOutlined } from '@ant-design/icons';
+import { Button, Form, message, Select, Spin } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import DynamicForm from '@/components/dynamic-form';
 import OperateModal from '@/components/operate-modal'
@@ -19,6 +20,57 @@ interface ChannelModalProps {
 }
 
 const WEBHOOK_SUB_TYPES: ChannelType[] = ['enterprise_wechat_bot', 'feishu_bot', 'dingtalk_bot', 'custom_webhook'];
+
+const GROUP_BOT_PROVIDER: Partial<Record<ChannelType, string>> = {
+  enterprise_wechat_bot: 'wecom',
+  feishu_bot: 'feishu',
+  dingtalk_bot: 'dingtalk',
+};
+
+interface AccountAssociationOption {
+  id: number;
+  name: string;
+  integration_instance_id: number;
+  integration_instance_name: string;
+}
+
+function AccountAssociationField({
+  value,
+  onChange,
+  options,
+  refreshing,
+  onRefresh,
+  onManage,
+  placeholder,
+  manageLabel,
+}: {
+  value?: number | null;
+  onChange?: (value: number | null) => void;
+  options: AccountAssociationOption[];
+  refreshing: boolean;
+  onRefresh: () => void;
+  onManage: () => void;
+  placeholder: string;
+  manageLabel: string;
+}) {
+  return (
+    <div className="flex items-start gap-2">
+      <Select
+        className="min-w-0 flex-1"
+        allowClear
+        placeholder={placeholder}
+        value={value ?? undefined}
+        options={options.map((item) => ({
+          value: item.id,
+          label: `${item.name}（${item.integration_instance_name}）`,
+        }))}
+        onChange={(next) => onChange?.(next ?? null)}
+      />
+      <Button icon={<ReloadOutlined />} loading={refreshing} onClick={onRefresh} />
+      <Button onClick={onManage}>{manageLabel}</Button>
+    </div>
+  );
+}
 
 const isWebhookSubType = (ct: string): boolean => WEBHOOK_SUB_TYPES.includes(ct as ChannelType);
 
@@ -70,7 +122,14 @@ const ChannelModal: React.FC<ChannelModalProps> = ({
   const [form] = Form.useForm();
   const searchParams = useSearchParams();
   const channelType = (searchParams?.get('id') || 'email') as ChannelType;
-  const { addChannel, updateChannel, getChannelDetail, testChannel, getNotificationTagCatalog } = useChannelApi();
+  const {
+    addChannel,
+    updateChannel,
+    getChannelDetail,
+    testChannel,
+    getNotificationTagCatalog,
+    getGroupAccountAssociationOptions,
+  } = useChannelApi();
   const natsExtension = useNatsChannelExtension();
   const [loading, setLoading] = useState<boolean>(false);
   const [confirmLoading, setConfirmLoading] = useState<boolean>(false);
@@ -82,6 +141,8 @@ const ChannelModal: React.FC<ChannelModalProps> = ({
   const [subType, setSubType] = useState<ChannelType>('enterprise_wechat_bot');
   const [pendingFormFill, setPendingFormFill] = useState<Record<string, unknown> | null>(null);
   const [tagOptions, setTagOptions] = useState<NotificationTagOption[]>([]);
+  const [associationOptions, setAssociationOptions] = useState<AccountAssociationOption[]>([]);
+  const [refreshingAssociations, setRefreshingAssociations] = useState(false);
   const isFillingForm = useRef<boolean>(false);
 
   const isWebhookChannel = channelType === 'enterprise_wechat_bot';
@@ -101,7 +162,7 @@ const ChannelModal: React.FC<ChannelModalProps> = ({
         config: newConfig,
       }));
       const basicValues = form.getFieldsValue(['name', 'description', 'team']);
-      form.setFieldsValue({ ...basicValues, sub_type: newSt, ...newConfig });
+      form.setFieldsValue({ ...basicValues, sub_type: newSt, account_association: null, ...newConfig });
     }
   }, [watchedSubType]);
 
@@ -133,6 +194,7 @@ const ChannelModal: React.FC<ChannelModalProps> = ({
         description: data.description,
         team: data.team,
         tag: Array.isArray(data.tag) ? data.tag : [],
+        account_association: data.account_association ?? null,
         ...mergedConfig,
       };
       if (isWebhookChannel) {
@@ -194,6 +256,61 @@ const ChannelModal: React.FC<ChannelModalProps> = ({
     }
   }, [type, channelId, visible]);
 
+  useEffect(() => {
+    if (!visible || !isWebhookChannel || !GROUP_BOT_PROVIDER[subType]) {
+      setAssociationOptions([]);
+      return;
+    }
+    let cancelled = false;
+    getGroupAccountAssociationOptions(subType)
+      .then((rows) => {
+        if (!cancelled) {
+          setAssociationOptions(Array.isArray(rows) ? rows : []);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setAssociationOptions([]);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [visible, isWebhookChannel, subType]);
+
+  const refreshAssociationOptions = async () => {
+    if (!GROUP_BOT_PROVIDER[subType]) {
+      return;
+    }
+    setRefreshingAssociations(true);
+    try {
+      const rows = await getGroupAccountAssociationOptions(subType);
+      const nextOptions = Array.isArray(rows) ? rows : [];
+      setAssociationOptions(nextOptions);
+      const current = form.getFieldValue('account_association');
+      if (current && !nextOptions.some((item) => item.id === current)) {
+        form.setFieldValue('account_association', null);
+      }
+    } finally {
+      setRefreshingAssociations(false);
+    }
+  };
+
+  const openAssociationManager = () => {
+    const params = new URLSearchParams({ tab: 'account_association' });
+    const selected = form.getFieldValue('account_association');
+    const selectedOption = associationOptions.find((item) => item.id === selected);
+    if (selectedOption?.integration_instance_id) {
+      params.set('instanceId', String(selectedOption.integration_instance_id));
+    } else {
+      const provider = GROUP_BOT_PROVIDER[subType];
+      if (provider) {
+        params.set('provider', provider);
+      }
+    }
+    window.open(`/system-manager/user/user-sync?${params.toString()}`, '_blank', 'noopener,noreferrer');
+  };
+
   const handleOk = async () => {
     try {
       setConfirmLoading(true);
@@ -222,7 +339,7 @@ const ChannelModal: React.FC<ChannelModalProps> = ({
 
   const buildChannelPayload = (values: Record<string, any>, options?: { preserveEncryptedFields?: boolean }) => {
     const {
-      name, description, team, tag,
+      name, description, team, tag, account_association: accountAssociation,
       smtp_pwd, webhook_url, sign_secret,
       request_method, headers, body_template,
       ...config
@@ -254,12 +371,16 @@ const ChannelModal: React.FC<ChannelModalProps> = ({
       finalConfig.body_template = body_template;
     }
 
+    const webhookType = (values.sub_type || subType) as ChannelType;
     return {
-      channel_type: isWebhookChannel ? subType : channelType,
+      channel_type: isWebhookChannel ? webhookType : channelType,
       name,
       description,
       team,
       tag: Array.isArray(tag) ? tag : [],
+      account_association: GROUP_BOT_PROVIDER[isWebhookChannel ? webhookType : channelType]
+        ? (accountAssociation ?? null)
+        : null,
       config: finalConfig,
     };
   };
@@ -363,6 +484,24 @@ const ChannelModal: React.FC<ChannelModalProps> = ({
       });
     }
 
+    if (isWebhookChannel && GROUP_BOT_PROVIDER[subType]) {
+      basicFields.push({
+        name: 'account_association',
+        type: 'accountAssociation',
+        label: t('system.channel.settings.accountAssociation', '账号关联'),
+        component: (
+          <AccountAssociationField
+            options={associationOptions}
+            refreshing={refreshingAssociations}
+            onRefresh={refreshAssociationOptions}
+            onManage={openAssociationManager}
+            placeholder={t('system.channel.settings.accountAssociationPlaceholder', '选择账号关联')}
+            manageLabel={t('system.channel.settings.manageAccountAssociation', '管理账号关联')}
+          />
+        ),
+      });
+    }
+
     const smtpAuthEnabled = watchedSmtpAuthEnabled !== false;
     const configSource = channelType === 'email'
       ? ensureEmailConfig(channelData.config)
@@ -414,7 +553,19 @@ const ChannelModal: React.FC<ChannelModalProps> = ({
       });
 
     return [...basicFields, ...configFields];
-  }, [channelData.config, t, isWebhookChannel, watchedSmtpAuthEnabled, channelType, watchedNatsMode, natsExtension, tagOptions]);
+  }, [
+    channelData.config,
+    t,
+    isWebhookChannel,
+    watchedSmtpAuthEnabled,
+    channelType,
+    watchedNatsMode,
+    natsExtension,
+    tagOptions,
+    subType,
+    associationOptions,
+    refreshingAssociations,
+  ]);
 
   return (
     <OperateModal

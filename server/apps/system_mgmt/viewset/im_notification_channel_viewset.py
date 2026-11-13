@@ -1,5 +1,4 @@
 from django.db import transaction
-from django.db.models import OuterRef, Prefetch, Subquery
 from django.db.models.deletion import ProtectedError
 from django.http import JsonResponse
 from rest_framework.decorators import action
@@ -7,33 +6,22 @@ from rest_framework.response import Response
 
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.viewset_utils import MaintainerViewSet
-from apps.system_mgmt.models import IMNotificationChannel, IMNotificationSyncRun
-from apps.system_mgmt.serializers.im_notification_channel_serializer import (
-    IMNotificationChannelSerializer,
-    IMNotificationSyncRunSerializer,
-    IMNotificationUserMappingSerializer,
-)
+from apps.system_mgmt.models import IMAccountAssociation, IMNotificationChannel
+from apps.system_mgmt.serializers.im_notification_channel_serializer import IMNotificationChannelSerializer
 from apps.system_mgmt.services.im_channel_access import can_access_im_channel, filter_accessible_im_channels, get_user_group_ids
-from apps.system_mgmt.services.im_notification_service import create_im_notification_sync_run, send_im_notification, send_im_notification_to_users
-from apps.system_mgmt.tasks import execute_im_notification_sync_run_task
+from apps.system_mgmt.services.im_notification_service import send_im_notification, send_im_notification_to_users
 from apps.system_mgmt.utils.operation_log_utils import log_operation
+from apps.system_mgmt.viewset.im_account_association_viewset import optional_instance_id
 from config.drf.pagination import CustomPageNumberPagination
 
 _IM_CHANNEL_IN_USE_FALLBACK = "This IM notification channel is still used by other business configs and cannot be deleted"
+ACCOUNT_ASSOCIATION_OPTION_LIMIT = 500
 
 
 class IMNotificationChannelViewSet(MaintainerViewSet):
-    latest_sync_run_id = IMNotificationSyncRun.objects.filter(channel_id=OuterRef("channel_id")).order_by("-started_at", "-id").values("id")[:1]
     queryset = (
-        IMNotificationChannel.objects.select_related("integration_instance")
-        .prefetch_related(
-            "tags",
-            Prefetch(
-                "sync_runs",
-                queryset=IMNotificationSyncRun.objects.filter(id=Subquery(latest_sync_run_id)),
-                to_attr="_prefetched_latest_run",
-            ),
-        )
+        IMNotificationChannel.objects.select_related("integration_instance", "account_association")
+        .prefetch_related("tags")
         .all()
         .order_by("name", "id")
     )
@@ -156,7 +144,6 @@ class IMNotificationChannelViewSet(MaintainerViewSet):
         channel_name = obj.name
         try:
             with transaction.atomic():
-                obj.delete_sync_periodic_task()
                 response = super().destroy(request, *args, **kwargs)
         except ProtectedError:
             loader = self.loader
@@ -174,49 +161,27 @@ class IMNotificationChannelViewSet(MaintainerViewSet):
             log_operation(request, "delete", "channel", f"删除IM应用通知: {channel_name}")
         return response
 
-    @action(methods=["POST"], detail=True)
-    @HasPermission("channel_list-Edit")
-    def sync_mappings(self, request, *args, **kwargs):
-        channel = self.get_object()
-        is_valid, error_response = self._validate_channel_permission(request, channel)
-        if not is_valid:
-            return error_response
-        result = create_im_notification_sync_run(channel.id)
-        if not result.get("result"):
-            return JsonResponse(result, status=400)
-        run_id = result["data"]["run_id"]
-        execute_im_notification_sync_run_task.delay(run_id)
-        return JsonResponse(result, status=200)
-
-    @action(methods=["GET"], detail=True)
+    @action(methods=["GET"], detail=False, url_path="account_association_options")
     @HasPermission("channel_list-View")
-    def mappings(self, request, *args, **kwargs):
-        channel = self.get_object()
-        is_valid, error_response = self._validate_channel_permission(request, channel)
-        if not is_valid:
-            return error_response
-        queryset = channel.user_mappings.all()
-        page = self.paginate_queryset(queryset)
-        if page is not None:
-            serializer = IMNotificationUserMappingSerializer(page, many=True)
-            return self.get_paginated_response(serializer.data)
-        serializer = IMNotificationUserMappingSerializer(queryset, many=True)
-        return Response(serializer.data)
-
-    @action(methods=["GET"], detail=True)
-    @HasPermission("channel_list-View")
-    def records(self, request, *args, **kwargs):
-        channel = self.get_object()
-        is_valid, error_response = self._validate_channel_permission(request, channel)
-        if not is_valid:
-            return error_response
-        queryset = IMNotificationSyncRun.objects.filter(channel=channel).order_by("-started_at", "-id")
-        page = self.paginate_queryset(queryset)
-        if page is not None:
-            serializer = IMNotificationSyncRunSerializer(page, many=True)
-            return self.get_paginated_response(serializer.data)
-        serializer = IMNotificationSyncRunSerializer(queryset, many=True)
-        return Response(serializer.data)
+    def account_association_options(self, request, *args, **kwargs):
+        queryset = IMAccountAssociation.objects.select_related("integration_instance").order_by("name", "id")
+        try:
+            instance_id = optional_instance_id(request.query_params.get("integration_instance_id"))
+        except ValueError:
+            return JsonResponse({"result": False, "message": "Integration instance must be an integer"}, status=400)
+        if instance_id is not None:
+            queryset = queryset.filter(integration_instance_id=instance_id)
+        data = [
+            {
+                "id": item.id,
+                "name": item.name,
+                "integration_instance_id": item.integration_instance_id,
+                "integration_instance_name": item.integration_instance.name,
+                "status": item.status,
+            }
+            for item in queryset[:ACCOUNT_ASSOCIATION_OPTION_LIMIT]
+        ]
+        return JsonResponse({"result": True, "data": data})
 
     @action(methods=["POST"], detail=True)
     @HasPermission("channel_list-Edit")

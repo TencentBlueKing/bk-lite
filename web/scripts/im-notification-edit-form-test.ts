@@ -23,6 +23,48 @@ assert.deepEqual(
   {}
 );
 
+const wecomTemplate = {
+  matchable_fields: ['userid'],
+  receivable_fields: ['userid'],
+  default_external_match_field: 'userid',
+  default_external_receive_field: 'userid',
+};
+
+assert.deepEqual(
+  resolveImNotificationFieldPatches({
+    editing: false,
+    currentMatch: 'email',
+    currentReceive: 'user_id',
+    template: wecomTemplate,
+  }),
+  { external_match_field: 'userid', external_receive_field: 'userid' }
+);
+
+assert.deepEqual(
+  resolveImNotificationFieldPatches({
+    editing: true,
+    currentMatch: 'email',
+    currentReceive: 'user_id',
+    template: wecomTemplate,
+  }),
+  { external_match_field: undefined, external_receive_field: undefined }
+);
+
+assert.deepEqual(
+  resolveImNotificationFieldPatches({
+    editing: false,
+    currentMatch: 'email',
+    currentReceive: 'user_id',
+    template: {
+      matchable_fields: ['email', 'user_id'],
+      receivable_fields: ['user_id'],
+      default_external_match_field: 'email',
+      default_external_receive_field: 'user_id',
+    },
+  }),
+  {}
+);
+
 assert.deepEqual(
   getImNotificationUnavailableEditingInstance(
     [{ id: 9, name: 'WeCom', provider_key: 'wecom', provider_name: 'WeCom' }],
@@ -61,7 +103,13 @@ const imPage = readFileSync(
   new URL('../src/app/system-manager/(pages)/channel/im-notification/page.tsx', import.meta.url),
   'utf8',
 );
-assert.match(imPage, /resolveExternalFieldOptionLabel/);
+const associationPanel = readFileSync(
+  new URL('../src/app/system-manager/components/user/user-sync/AccountAssociationPanel.tsx', import.meta.url),
+  'utf8',
+);
+assert.match(associationPanel, /resolveExternalFieldOptionLabel/);
+assert.match(associationPanel, /resolveImNotificationFieldPatches/);
+assert.doesNotMatch(associationPanel, /external_receive_field: 'user_id'/);
 assert.doesNotMatch(imPage, /externalFieldOption\.\$\{field\}/);
 assert.match(imPage, /coerceImNotificationTeamIds/);
 assert.match(imPage, /<Space wrap className="max-w-full">/);
