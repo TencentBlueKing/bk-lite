@@ -263,6 +263,9 @@ def _merge_object_specs(plans):
                     existing.get("display_fields"),
                     incoming.get("display_fields"),
                 )
+            # 同一对象的后续插件未声明摘要列（如 Flow 模板）时沿用已声明的，否则整批导入会把它抹成 None。
+            if incoming.get("instance_summary_columns") is None:
+                incoming["instance_summary_columns"] = existing.get("instance_summary_columns")
             merged[name] = incoming
     return merged
 

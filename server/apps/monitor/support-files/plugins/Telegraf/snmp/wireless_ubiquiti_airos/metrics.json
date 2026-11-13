@@ -5,6 +5,8 @@
   "plugin_desc": "SNMP monitoring template for Ubiquiti airOS wireless device (airMAX and airOS-based airFiber, FROGFOOT-RESOURCES-MIB, enterprise PEN 10002). It reports uptime, CPU load, memory usage, and interface traffic. Not for EdgeSwitch / UniFi switches.",
   "support_collect_detect": true,
   "status_query": "any({instance_type='wireless', collect_type='snmp_ubiquiti_airos'}) by (instance_id)",
+  "instance_fact_bindings": [{"fact":"asset.ip","value_type":"ip","resolver":"input","options":{"field":"ip"}}],
+  "instance_summary_columns": [{"fact":"asset.ip","title":"monitor.views.assetIp","order":10}],
   "name": "Wireless",
   "icon": "mm-ubiquiti_ubiquiti",
   "type": "Network Device",

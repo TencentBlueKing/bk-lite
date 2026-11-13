@@ -5,6 +5,8 @@
   "plugin_desc": "SNMP monitoring template for Tait TN9300 network nodes of DMR / P25 trunked radio systems (TAIT-TN9300-MIB, enterprise PEN 3570). It reports uptime, CPU utilization, memory utilization, and interface traffic.",
   "support_collect_detect": true,
   "status_query": "any({instance_type='wireless', collect_type='snmp_tait'}) by (instance_id)",
+  "instance_fact_bindings": [{"fact":"asset.ip","value_type":"ip","resolver":"input","options":{"field":"ip"}}],
+  "instance_summary_columns": [{"fact":"asset.ip","title":"monitor.views.assetIp","order":10}],
   "name": "Wireless",
   "icon": "mm-wireless_无线设备",
   "type": "Network Device",

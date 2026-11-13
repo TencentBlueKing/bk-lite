@@ -5,6 +5,8 @@
   "plugin_desc": "SNMP monitoring template for FiberRoad managed media-converter chassis. It reports chassis temperature in Celsius, fan state, dual PSU on/off state and dual PSU voltage state per shelf, plus uptime and interface traffic, for 2U MC shelves (enterprise PEN 6688).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='transmission', collect_type='snmp_fiberroad'}) by (instance_id)",
+  "instance_fact_bindings": [{"fact":"asset.ip","value_type":"ip","resolver":"input","options":{"field":"ip"}}],
+  "instance_summary_columns": [{"fact":"asset.ip","title":"monitor.views.assetIp","order":10}],
   "name": "Transmission",
   "icon": "mm-transmission_传输设备",
   "type": "Network Device",

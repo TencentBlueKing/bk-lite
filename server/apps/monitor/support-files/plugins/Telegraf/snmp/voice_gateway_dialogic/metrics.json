@@ -5,6 +5,8 @@
   "plugin_desc": "Dialogic IMG 2020 media-gateway SNMP collection under enterprise PEN 3028. Beyond the shared VoiceGateway SNMP floor for MIB-II uptime and IF-MIB interface traffic, it collects CPU busy percentage, free memory in bytes, and temperature in degrees Celsius. Memory-pool size and call-statistics tables are not promoted in this child template. Supported brands/models — Dialogic IMG 2020 media gateway.",
   "support_collect_detect": true,
   "status_query": "any({instance_type='voice_gateway', collect_type='snmp_dialogic'}) by (instance_id)",
+  "instance_fact_bindings": [{"fact":"asset.ip","value_type":"ip","resolver":"input","options":{"field":"ip"}}],
+  "instance_summary_columns": [{"fact":"asset.ip","title":"monitor.views.assetIp","order":10}],
   "name": "VoiceGateway",
   "icon": "mm-voice_gateway_语音网关",
   "type": "Network Device",

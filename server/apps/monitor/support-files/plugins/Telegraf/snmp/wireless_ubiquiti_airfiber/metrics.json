@@ -5,6 +5,8 @@
   "plugin_desc": "SNMP monitoring template for Ubiquiti airFiber point-to-point radios (enterprise PEN 41112): CPU and memory usage of airFiber LTU (UBNT-AFLTU-MIB) and radio chain temperatures of classic airFiber (UBNT-AirFIBER-MIB), plus uptime and interface traffic. Each model answers only its own tree. Not for airOS / airMAX, EdgeMAX or EdgeSwitch devices.",
   "support_collect_detect": true,
   "status_query": "any({instance_type='wireless', collect_type='snmp_ubiquiti_airfiber'}) by (instance_id)",
+  "instance_fact_bindings": [{"fact":"asset.ip","value_type":"ip","resolver":"input","options":{"field":"ip"}}],
+  "instance_summary_columns": [{"fact":"asset.ip","title":"monitor.views.assetIp","order":10}],
   "name": "Wireless",
   "icon": "mm-wireless_无线设备",
   "type": "Network Device",

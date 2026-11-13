@@ -5,6 +5,8 @@
   "plugin_desc": "SNMP monitoring template for Fortinet FortiMail email security gateways (PEN 12356, tree 1.3.6.1.4.1.12356.105). Besides standard IF-MIB 64-bit interface traffic, it collects CPU and memory utilization and log / mail disk usage (all %).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='firewall', collect_type='snmp_fortimail'}) by (instance_id)",
+  "instance_fact_bindings": [{"fact":"asset.ip","value_type":"ip","resolver":"input","options":{"field":"ip"}}],
+  "instance_summary_columns": [{"fact":"asset.ip","title":"monitor.views.assetIp","order":10}],
   "name": "Firewall",
   "icon": "mm-firewall_防火墙",
   "type": "Network Device",

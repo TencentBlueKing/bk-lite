@@ -5,6 +5,8 @@
   "plugin_desc": "SNMP monitoring template for Brocade switch. It reports uptime, CPU utilization, memory utilization/total/free/used, temperature, fan, power supply status, and interface traffic, for ICX/FCX/NetIron, Ruckus ICX, and Foundry/IronWare (enterprise PEN 1991). When FastIron CPU/memory scalars are absent, Fabric OS swCpuUsage/swMemUsage (enterprise PEN 1588) are used as a fallback.",
   "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_brocade'}) by (instance_id)",
+  "instance_fact_bindings": [{"fact":"asset.ip","value_type":"ip","resolver":"input","options":{"field":"ip"}}],
+  "instance_summary_columns": [{"fact":"asset.ip","title":"monitor.views.assetIp","order":10}],
   "name": "Switch",
   "icon": "mm-switch_交换机",
   "type": "Network Device",

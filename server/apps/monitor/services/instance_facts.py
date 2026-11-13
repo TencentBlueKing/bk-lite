@@ -1,4 +1,5 @@
 import ipaddress
+import re
 from urllib.parse import urlsplit
 
 from apps.core.exceptions.base_app_exception import BaseAppException
@@ -12,6 +13,9 @@ class InstanceFactResolver:
     SUPPORTED_VALUE_TYPES = {"text", "ip", "endpoint", "node_ref", "node_ref_list"}
     SENSITIVE_FIELD_PARTS = ("password", "token", "secret", "private_key", "credential")
     MAX_TEXT_LENGTH = 1000
+    JMX_SERVICE_URL_PREFIX = "service:jmx:"
+    # IBM MQ CONNNAME：host(port)
+    CONNNAME_PATTERN = re.compile(r"(?P<host>[^()\s]+)\(\d+\)")
 
     @classmethod
     def validate_bindings(cls, bindings):
@@ -99,7 +103,12 @@ class InstanceFactResolver:
         options = binding["options"]
         skip_required = False
         if resolver == "input":
-            raw_value = instance_input.get(options.get("field"))
+            field = options.get("field")
+            raw_value = instance_input.get(field)
+            # 接入页把输入拆成「实例行」和「表单」两处；行里没有时读本次接入表单的同名字段。
+            form = context.get("form")
+            if raw_value in (None, "") and isinstance(form, dict):
+                raw_value = form.get(field)
         elif resolver == "constant":
             raw_value = options.get("value")
         elif resolver == "selected_node":
@@ -168,17 +177,31 @@ class InstanceFactResolver:
             raise BaseAppException("实例事实值超过最大长度")
         if value_type == "ip":
             for candidate in value.split(","):
-                candidate = candidate.strip()
-                try:
-                    return str(ipaddress.ip_address(candidate.strip("[]")))
-                except ValueError:
-                    try:
-                        parsed = urlsplit(candidate if "://" in candidate else f"//{candidate}")
-                        return str(ipaddress.ip_address((parsed.hostname or "").strip("[]")))
-                    except ValueError:
-                        continue
+                resolved = cls._candidate_ip(candidate.strip())
+                if resolved:
+                    return resolved
             return None
         return value
+
+    @classmethod
+    def _candidate_ip(cls, candidate):
+        """从单个地址里取 IP：裸 IP、host:port、URL、JMX Service URL、MQ CONNNAME；域名返回 None。"""
+        host = candidate
+        connname = cls.CONNNAME_PATTERN.fullmatch(candidate)
+        if connname:
+            host = connname.group("host")
+        elif candidate.lower().startswith(cls.JMX_SERVICE_URL_PREFIX) and "://" in candidate:
+            # service:jmx:rmi:///jndi/rmi://host:port/jmxrmi 的目标在最后一段 authority。
+            host = candidate.rsplit("://", 1)[1]
+        try:
+            return str(ipaddress.ip_address(host.strip("[]")))
+        except ValueError:
+            pass
+        try:
+            parsed = urlsplit(host if "://" in host else f"//{host}")
+            return str(ipaddress.ip_address((parsed.hostname or "").strip("[]")))
+        except ValueError:
+            return None
 
     @staticmethod
     def _node_ref(node):

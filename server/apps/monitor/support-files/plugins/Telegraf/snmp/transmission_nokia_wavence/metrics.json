@@ -5,6 +5,8 @@
   "plugin_desc": "SNMP monitoring template for Nokia (Alcatel-Lucent) Wavence microwave radios (enterprise PEN 637, OPTICSIM-RADIO-TRS-COMMON-MIB). Besides standard IF-MIB interface traffic and uptime, it reports local and remote transmit power and main-receiver input level per radio interface.",
   "support_collect_detect": true,
   "status_query": "any({instance_type='transmission', collect_type='snmp_nokia_wavence'}) by (instance_id)",
+  "instance_fact_bindings": [{"fact":"asset.ip","value_type":"ip","resolver":"input","options":{"field":"ip"}}],
+  "instance_summary_columns": [{"fact":"asset.ip","title":"monitor.views.assetIp","order":10}],
   "name": "Transmission",
   "icon": "mm-nokia_nokia",
   "type": "Network Device",

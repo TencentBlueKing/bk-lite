@@ -5,6 +5,8 @@
   "plugin_desc": "Server Technology Sentry3 PDU and environmental SNMP child template for network-service devices under Server Technology PEN 1718.3. Interface traffic is supplied by the shared NetworkService SNMP IF-MIB floor rather than a plugin-side ifHC expansion. Proven private increments are systemTotalPower as pdu_active_power_watts (negative values are unavailable), infeedLoadValue plus infeedName as pdu_infeed_current_amps scaled by /100, optional infeedVoltage scaled by /10 and infeedPower in Watts, outletLoadValue plus outletName as pdu_outlet_current_amps scaled by /100, tempHumidSensorTempValue as env_temperature_celsius (tenths of a degree, converted from Fahrenheit when tempHumidSensorTempScale is Fahrenheit), tempHumidSensorHumidValue as env_humidity_percent, and towerStatus as pdu_tower_state normalized to 1=healthy / 2=fault. CPU and memory scalars are not invented. The Sentry4 tree is not collected. Supported brands/models - Server Technology Sentry3 PDUs that expose Sentry3-MIB under PEN 1718.3 and standard IF-MIB.",
   "support_collect_detect": true,
   "status_query": "any({instance_type='network_service', collect_type='snmp_servertech'}) by (instance_id)",
+  "instance_fact_bindings": [{"fact":"asset.ip","value_type":"ip","resolver":"input","options":{"field":"ip"}}],
+  "instance_summary_columns": [{"fact":"asset.ip","title":"monitor.views.assetIp","order":10}],
   "name": "NetworkService",
   "icon": "mm-network_service_网络服务",
   "type": "Network Device",

@@ -3,6 +3,8 @@
   "plugin_desc": "SNMP monitoring template for general load balancers. It reports uptime and interface traffic (based on standard MIBs).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='loadbalance', collect_type='snmp'}) by (instance_id)",
+  "instance_fact_bindings": [{"fact":"asset.ip","value_type":"ip","resolver":"input","options":{"field":"ip"}}],
+  "instance_summary_columns": [{"fact":"asset.ip","title":"monitor.views.assetIp","order":10}],
   "name": "Loadbalance",
   "icon": "mm-loadbalance_负载均衡",
   "type": "Network Device",
