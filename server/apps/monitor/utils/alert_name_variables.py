@@ -1,3 +1,4 @@
+import ipaddress
 import re
 
 from apps.core.exceptions.base_app_exception import BaseAppException
@@ -60,13 +61,15 @@ def summary_facts_with_model_ip(summary_facts, ip):
 
     只生成响应用的副本，不落库、不改入参；Flow 资产与声明事实绑定之前接入的存量实例靠它显示 IP。
     """
-    if isinstance(summary_facts, dict) and summary_facts.get(ASSET_IP_FACT) not in (None, ""):
+    facts = summary_facts if isinstance(summary_facts, dict) else {}
+    if facts.get(ASSET_IP_FACT) not in (None, ""):
         return summary_facts
-    if ip in (None, ""):
+    try:
+        # 非 PostgreSQL 引擎的 ip 列不校验格式；不是 IP 的值不展示，也不挡住后续的容器节点映射回填。
+        model_ip = str(ipaddress.ip_address(str(ip or "").strip()))
+    except ValueError:
         return summary_facts
-    merged = dict(summary_facts) if isinstance(summary_facts, dict) else {}
-    merged[ASSET_IP_FACT] = str(ip).strip()
-    return merged
+    return {**facts, ASSET_IP_FACT: model_ip}
 
 
 _NOTIFICATION_FACT_PART = re.compile(r"^[A-Za-z][A-Za-z0-9_]*$")
