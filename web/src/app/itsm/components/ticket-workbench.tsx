@@ -4,9 +4,9 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Key } from 'react';
 import Link from 'next/link';
 import dayjs from 'dayjs';
-import { Alert, App, Button, Checkbox, DatePicker, Input, Modal, Popconfirm, Select, Spin, Table, Tabs, Tag } from 'antd';
+import { Alert, App, Button, Checkbox, DatePicker, Input, Modal, Popconfirm, Popover, Tooltip, Select, Spin, Table, Tabs, Tag } from 'antd';
 import type { TableColumnsType } from 'antd';
-import { CloseOutlined, ReloadOutlined, SettingOutlined } from '@ant-design/icons';
+import { CloseOutlined, FilterOutlined, PlusOutlined, ReloadOutlined, SettingOutlined } from '@ant-design/icons';
 import CustomTable from '@/components/custom-table';
 import { UserSelector } from './user-selector';
 import { TicketTagSelector } from './ticket-tag-selector';
@@ -52,6 +52,7 @@ export function TicketWorkbench() {
   const [refresh, setRefresh] = useState(0);
   const [selected, setSelected] = useState<Key[]>([]);
   const [columnOpen, setColumnOpen] = useState(false);
+  const [filterOpen, setFilterOpen] = useState(false);
   const [groupOpen, setGroupOpen] = useState(false);
   const [groupName, setGroupName] = useState('');
   const [saving, setSaving] = useState(false);
@@ -150,32 +151,38 @@ export function TicketWorkbench() {
 
   if (settingsError) return <Alert type="error" message={settingsError} action={<Button onClick={() => void loadSettings()}>重试</Button>} />;
   if (!settingsReady) return <Spin />;
-  return <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] p-4">
-    <Tabs activeKey={tab} onChange={switchTab} items={[
+  return <div className="min-w-0">
+    <Tabs type="line" className="[&_.ant-tabs-nav]:!bg-transparent [&_.ant-tabs-tab]:!bg-transparent" tabBarExtraContent={<Tooltip title="保存当前筛选为分组"><Button type="text" aria-label="保存为分组" icon={<PlusOutlined />} onClick={() => { setGroupName(''); setGroupOpen(true); }} /></Tooltip>} activeKey={tab} onChange={switchTab} items={[
       ...GROUPS,
       ...views.map(view => ({ key: `view:${view.id}`, label: <span className="inline-flex items-center gap-2">{view.name}<Popconfirm title={`删除分组“${view.name}”？`} description="不删除其中的工单。" onConfirm={event => { event?.stopPropagation(); return deleteGroup(view.id); }} onCancel={event => event?.stopPropagation()}><Button type="text" size="small" aria-label={`删除分组 ${view.name}`} icon={<CloseOutlined />} onClick={event => event.stopPropagation()} /></Popconfirm></span> })),
     ]} />
-    <div className="mb-4 flex flex-wrap items-end gap-3">
-      <label className="flex flex-col gap-1 text-xs text-[var(--color-text-2)]">关键词<Input aria-label="工单关键词" placeholder="输入部分单号或标题" className="w-56" allowClear value={draft.q} onChange={event => setDraft({ ...draft, q: event.target.value })} onPressEnter={() => apply({ ...draft, q: draft.q.trim() })} /></label>
-      <label className="flex flex-col gap-1 text-xs text-[var(--color-text-2)]">状态<Select aria-label="筛选状态" mode="multiple" maxTagCount="responsive" className="w-52" allowClear placeholder="全部状态" options={STATUS} value={draft.status ? draft.status.split(',') : []} onChange={value => setDraft({ ...draft, status: value.join(',') })} /></label>
-      <label className="flex flex-col gap-1 text-xs text-[var(--color-text-2)]">提单人<div className="w-48"><UserSelector ariaLabel="筛选提单人" multiple={false} allowClear placeholder="搜索并选择提单人" value={draft.creator ? [draft.creator] : []} onChange={value => setDraft({ ...draft, creator: value[0] || '' })} /></div></label>
-      <label className="flex flex-col gap-1 text-xs text-[var(--color-text-2)]">优先级<Input aria-label="筛选优先级" className="w-28" allowClear placeholder="优先级" value={draft.priority} onChange={event => setDraft({ ...draft, priority: event.target.value })} /></label>
-      <label className="flex flex-col gap-1 text-xs text-[var(--color-text-2)]">标签<TicketTagSelector value={draft.tag} onChange={tag => setDraft({ ...draft, tag })} /></label>
-      <label className="flex flex-col gap-1 text-xs text-[var(--color-text-2)]">创建时间<DatePicker.RangePicker value={draft.created_after && draft.created_before ? [dayjs(draft.created_after), dayjs(draft.created_before)] : null} onChange={value => setDraft({ ...draft, created_after: value?.[0]?.format('YYYY-MM-DD') || '', created_before: value?.[1]?.format('YYYY-MM-DD') || '' })} /></label>
-      <div className="flex gap-2"><Button type="primary" onClick={() => apply({ ...draft, q: draft.q.trim(), creator: draft.creator.trim(), tag: draft.tag.trim(), priority: draft.priority.trim() })}>查询</Button>
-      <Button onClick={() => apply({ ...EMPTY, tab: query.tab })}>重置</Button></div>
-    </div>
-    <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-      <span className="text-sm text-[var(--color-text-3)]">共 {total} 张工单{tab === 'history' ? ' · 我已处理过的工单' : ''}</span>
-      <div className="flex items-center gap-2"><Button type="primary" disabled={loading || selected.length === 0 || optionsLoading || !batchOptions.includes(action)} onClick={() => { setOpinion(''); setResults(null); setBatchNames(Object.fromEntries(items.map(item => [item.id, `${item.sn} · ${item.title}`]))); setBatchOpen(true); }}>批量处理</Button><Button onClick={() => { setGroupName(''); setGroupOpen(true); }}>保存为分组</Button><Button icon={<SettingOutlined />} onClick={() => { setColumnDraft(columns); setColumnOpen(true); }}>展示字段</Button><Button aria-label="刷新列表" icon={<ReloadOutlined />} onClick={() => { setSelected([]); setRefresh(value => value + 1); }} /></div>
+    <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+      <Button type="primary" disabled={loading || selected.length === 0 || optionsLoading || !batchOptions.includes(action)} onClick={() => { setOpinion(''); setResults(null); setBatchNames(Object.fromEntries(items.map(item => [item.id, `${item.sn} · ${item.title}`]))); setBatchOpen(true); }}>批量处理</Button>
+      <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
+        <Input aria-label="工单关键词" placeholder="输入部分单号或标题" className="!w-56" allowClear value={draft.q} onChange={event => setDraft({ ...draft, q: event.target.value })} onPressEnter={() => apply({ ...draft, q: draft.q.trim() })} />
+        <Select aria-label="筛选状态" mode="multiple" maxTagCount="responsive" className="w-40" allowClear placeholder="全部状态" options={STATUS} value={draft.status ? draft.status.split(',') : []} onChange={value => setDraft({ ...draft, status: value.join(',') })} />
+        <Popover trigger="click" placement="bottomRight" open={filterOpen} onOpenChange={setFilterOpen} title="更多筛选" content={<div className="grid w-96 grid-cols-2 gap-3">
+          <label className="flex flex-col gap-1 text-xs text-[var(--color-text-2)]">提单人<UserSelector ariaLabel="筛选提单人" multiple={false} allowClear placeholder="搜索并选择提单人" value={draft.creator ? [draft.creator] : []} onChange={value => setDraft({ ...draft, creator: value[0] || '' })} /></label>
+          <label className="flex flex-col gap-1 text-xs text-[var(--color-text-2)]">标签<TicketTagSelector value={draft.tag} onChange={tag => setDraft({ ...draft, tag })} /></label>
+          <label className="flex flex-col gap-1 text-xs text-[var(--color-text-2)]">优先级<Input aria-label="筛选优先级" allowClear placeholder="优先级" value={draft.priority} onChange={event => setDraft({ ...draft, priority: event.target.value })} /></label>
+          <label className="col-span-2 flex flex-col gap-1 text-xs text-[var(--color-text-2)]">创建时间<DatePicker.RangePicker value={draft.created_after && draft.created_before ? [dayjs(draft.created_after), dayjs(draft.created_before)] : null} onChange={value => setDraft({ ...draft, created_after: value?.[0]?.format('YYYY-MM-DD') || '', created_before: value?.[1]?.format('YYYY-MM-DD') || '' })} /></label>
+          <Button className="col-span-2" type="primary" onClick={() => { apply({ ...draft }); setFilterOpen(false); }}>应用筛选</Button>
+        </div>}><Button aria-label="更多筛选" icon={<FilterOutlined />} type={draft.creator || draft.tag || draft.priority || draft.created_after || draft.created_before ? 'primary' : 'default'}>筛选</Button></Popover>
+        <Button type="primary" onClick={() => { apply({ ...draft, q: draft.q.trim(), creator: draft.creator.trim(), tag: draft.tag.trim(), priority: draft.priority.trim() }); setFilterOpen(false); }}>查询</Button>
+        <Button onClick={() => { apply({ ...EMPTY, tab: query.tab }); setFilterOpen(false); }}>重置</Button>
+        <Tooltip title="刷新"><Button aria-label="刷新列表" icon={<ReloadOutlined />} onClick={() => { setSelected([]); setRefresh(value => value + 1); }} /></Tooltip>
+      </div>
     </div>
     {selected.length > 0 ? <div className="mb-3 flex flex-wrap items-center gap-3 rounded-lg border border-[var(--color-primary)] bg-[var(--color-bg)] p-3"><span>已选 {selected.length} 项</span><Select aria-label="批量操作类型" className="w-36" value={action} loading={optionsLoading} disabled={optionsLoading} options={ACTIONS.filter(item => batchOptions.includes(item.value))} onChange={setAction} /><Button type="text" onClick={() => setSelected([])}>取消选择</Button><span className="text-xs text-[var(--color-text-3)]">仅选择当前页，每次最多 50 项</span></div> : null}
     {loadError ? <Alert className="mb-3" type="error" message={loadError} action={<Button onClick={() => setRefresh(value => value + 1)}>重试</Button>} /> : null}
-    <CustomTable<TicketListItem> scroll={{ y: 'calc(100vh - 440px)' }} rowKey="id" loading={loading} dataSource={items} columns={tableColumns}
+    <div className="relative rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)]">
+    <Tooltip title="展示字段"><Button className="!absolute right-1 top-3 z-10" type="text" aria-label="展示字段" icon={<SettingOutlined />} onClick={() => { setColumnDraft(columns); setColumnOpen(true); }} /></Tooltip>
+    <CustomTable<TicketListItem> scroll={{ y: 'calc(100vh - 320px)' }} rowKey="id" loading={loading} dataSource={items} columns={[...tableColumns, { key: 'field-settings', title: '', width: 48, fixed: 'right', render: () => null }]}
       rowSelection={{ selectedRowKeys: selected, onChange: keys => setSelected(keys.slice(0, 50)), preserveSelectedRowKeys: false, getCheckboxProps: () => ({ disabled: loading }) }}
       pagination={{ current: page, pageSize, total, showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100], onChange: (next, size) => { setPage(size === pageSize ? next : 1); setPageSize(size); setSelected([]); } }}
       onChange={(_pagination, _filters, sort, extra) => { if (extra.action === 'sort') { const value = Array.isArray(sort) ? sort[0] : sort; apply({ ...query, ordering: value.order ? `${value.order === 'descend' ? '-' : ''}${String(value.columnKey)}` : '-created_at' }); } }}
       locale={{ emptyText: '暂无符合条件的工单' }} />
+    </div>
     <Modal title="个性化展示字段" open={columnOpen} onCancel={() => !saving && setColumnOpen(false)} footer={<div className="flex justify-between"><Button disabled={saving} onClick={() => void saveColumns(null)}>恢复默认</Button><Button type="primary" loading={saving} onClick={() => void saveColumns(columnDraft)}>保存配置</Button></div>}>
       <p className="mb-4 text-sm text-[var(--color-text-3)]">仅对当前账号生效；单号和标题始终显示。</p>
       <Checkbox.Group className="grid grid-cols-2 gap-3" value={columnDraft} options={Object.entries(FIELD_LABELS).map(([value, label]) => ({ value, label, disabled: ['sn', 'title'].includes(value) }))} onChange={value => setColumnDraft(value as string[])} />

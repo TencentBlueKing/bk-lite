@@ -85,6 +85,7 @@ it('删除其他分组不会切换当前选中分组', async () => {
 it('通过用户组件和标签下拉选择筛选条件', async () => {
   render(<TicketWorkbench />);
   await screen.findByRole('button', { name: '测试工单' });
+  fireEvent.click(screen.getByRole('button', { name: '更多筛选' }));
   fireEvent.mouseDown(screen.getByRole('combobox', { name: '筛选提单人' }));
   fireEvent.click(await screen.findByText('测试提单人 (owner)'));
   fireEvent.mouseDown(screen.getByRole('combobox', { name: '筛选标签' }));
@@ -121,4 +122,12 @@ it('支持四档分页，切换条数回到首页并清空勾选', async () => {
   act(() => tableProps.current.pagination.onChange(2, 100));
   await waitFor(() => expect(api.listTickets).toHaveBeenLastCalledWith(expect.objectContaining({ page: 1, page_size: 100 })));
   expect(screen.queryByText('已选 1 项')).toBeNull();
+});
+
+it('分组使用加号入口，操作搜索栏不展示重复统计', async () => {
+  render(<TicketWorkbench />);
+  await screen.findByRole('button', { name: '测试工单' });
+  expect(screen.queryByText(/共.*张工单/)).toBeNull();
+  expect(screen.getByRole('button', { name: '保存为分组' }).textContent).toBe('');
+  expect(screen.getByRole('button', { name: '更多筛选' })).toBeTruthy();
 });
