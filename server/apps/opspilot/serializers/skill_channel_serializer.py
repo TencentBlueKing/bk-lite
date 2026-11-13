@@ -3,8 +3,10 @@ from rest_framework import serializers
 
 from apps.opspilot.enum import SkillChannelChoices
 from apps.opspilot.models import SkillChannel
+from apps.opspilot.services.skill_channel_account_association import ASSOCIATION_CHANNEL_TYPES, association_matches_channel
 from apps.opspilot.services.skill_channel_feishu import normalize_feishu_channel_config
 from apps.opspilot.services.skill_channel_service import copy_usage_team_for_channel
+from apps.system_mgmt.models import IMAccountAssociation
 
 
 def _credential_ready(submitted, stored) -> bool:
@@ -91,10 +93,28 @@ def _mask_config(config: dict) -> dict:
     return masked
 
 
+def _effective_channel_config(serializer) -> dict:
+    existing = dict(getattr(serializer.instance, "channel_config", None) or {})
+    raw = serializer.initial_data.get("channel_config") if isinstance(getattr(serializer, "initial_data", None), dict) else None
+    if not isinstance(raw, dict):
+        return existing
+    merged = dict(existing)
+    for key, value in raw.items():
+        if value == "******":
+            continue
+        merged[key] = value
+    return merged
+
+
 class SkillChannelSerializer(serializers.ModelSerializer):
     callback_path = serializers.SerializerMethodField()
     channel_config = serializers.SerializerMethodField()
     public_id = serializers.UUIDField(required=False, allow_null=True)
+    account_association = serializers.PrimaryKeyRelatedField(
+        queryset=IMAccountAssociation.objects.select_related("integration_instance"),
+        allow_null=True,
+        required=False,
+    )
 
     class Meta:
         model = SkillChannel
@@ -104,6 +124,7 @@ class SkillChannelSerializer(serializers.ModelSerializer):
             "skill",
             "name",
             "channel_type",
+            "account_association",
             "channel_config",
             "enabled",
             "usage_team",
@@ -145,6 +166,17 @@ class SkillChannelSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError({"name": "同一智能体下，同渠道类型不能使用重复名称"})
         _validate_aibot_channel_config(self, channel_type)
         _validate_feishu_channel_config(self, channel_type)
+        if channel_type not in ASSOCIATION_CHANNEL_TYPES:
+            attrs["account_association"] = None
+        else:
+            if "account_association" in attrs:
+                association = attrs.get("account_association")
+            elif self.instance is not None:
+                association = self.instance.account_association
+            else:
+                association = None
+            if association is not None and not association_matches_channel(channel_type, _effective_channel_config(self), association):
+                raise serializers.ValidationError({"account_association": "账号关联与当前渠道的平台或应用身份不一致"})
         return attrs
 
     def create(self, validated_data):

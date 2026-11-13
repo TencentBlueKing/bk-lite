@@ -1446,12 +1446,24 @@ def execute_skill_channel_im_sync(
 ) -> str:
     """IM 异步任务内同步执行单 Agent，落库后返回纯文本回复。"""
     from apps.opspilot.services.chat_service import chat_service
+    from apps.opspilot.services.skill_channel_account_association import (
+        SkillChannelSenderDenied,
+        log_sender_denied,
+        resolve_skill_channel_actor,
+        sender_denied_text,
+    )
+
+    try:
+        actor = resolve_skill_channel_actor(channel, external_user_id)
+    except SkillChannelSenderDenied as exc:
+        log_sender_denied(channel, exc)
+        return sender_denied_text(exc.reason)
 
     skill = channel.skill
     conversation = get_or_create_conversation(channel, external_user_id, session_id)
     append_message(conversation, SkillConversationMessage.ROLE_USER, user_message)
 
-    request_user = type("IMUser", (), {"username": external_user_id or "", "id": None, "locale": "en"})()
+    request_user = actor or type("IMUser", (), {"username": external_user_id or "", "id": None, "locale": "en"})()
     params = build_skill_chat_params(skill, user_message, request_user, wiki_sender_id=external_user_id or "")
     execution_id = ""
     if getattr(channel, "channel_type", "") == "enterprise_wechat_aibot":

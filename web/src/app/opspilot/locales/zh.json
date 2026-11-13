@@ -1790,6 +1790,9 @@
       "groupSaasDesc": "平台弹窗 / Web 对话 / 嵌入式",
       "groupIm": "即时通讯",
       "groupImDesc": "企微 / 钉钉 / 飞书 / 公众号（回调不校组织）",
+      "accountAssociation": "账号关联",
+      "accountAssociationPlaceholder": "选择账号关联",
+      "manageAccountAssociation": "管理账号关联",
       "fields": {
         "token": "Token",
         "secret": "Secret",

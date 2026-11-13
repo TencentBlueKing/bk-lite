@@ -13,7 +13,7 @@ import { useIntegrationCenterApi } from '@/app/system-manager/api/integration-ce
 import SystemManagerEntityGrid from '@/app/system-manager/components/system-manager-entity-grid';
 import SystemManagerUnifiedCard from '@/app/system-manager/components/system-manager-unified-card';
 import type { BusinessTemplate, ProviderManifest } from '@/app/system-manager/types/integration-center';
-import { resolveExternalFieldOptionLabel } from '@/app/system-manager/utils/imNotificationUtils';
+import { resolveExternalFieldOptionLabel, resolveImNotificationFieldPatches } from '@/app/system-manager/utils/imNotificationUtils';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import useApiClient from '@/utils/request';
 import { useTranslation } from '@/utils/i18n';
@@ -162,6 +162,20 @@ const AccountAssociationPanel: React.FC<AccountAssociationPanelProps> = ({
     label: resolveExternalFieldOptionLabel(field, fieldTemplate?.external_field_labels),
   }));
 
+  useEffect(() => {
+    if (!editorOpen) return;
+    const nextValues = resolveImNotificationFieldPatches({
+      editing: Boolean(editing),
+      currentMatch: form.getFieldValue('external_match_field'),
+      currentReceive: form.getFieldValue('external_receive_field'),
+      template: fieldTemplate,
+    });
+    const names = Object.keys(nextValues) as Array<keyof typeof nextValues>;
+    if (names.length > 0) {
+      form.setFields(names.map((name) => ({ name, value: nextValues[name] })));
+    }
+  }, [editing, editorOpen, fieldTemplate, form]);
+
   const openEditor = (record: AccountAssociation | null, instanceId?: number) => {
     setEditing(record);
     const scheduleEnabled = Boolean(record?.schedule_config?.enabled);
@@ -177,8 +191,6 @@ const AccountAssociationPanel: React.FC<AccountAssociationPanelProps> = ({
     } : {
       integration_instance: instanceId,
       platform_match_field: 'email',
-      external_match_field: 'email',
-      external_receive_field: 'user_id',
       schedule_mode: 'manual',
       sync_time: '02:00',
     });
@@ -473,7 +485,11 @@ const AccountAssociationPanel: React.FC<AccountAssociationPanelProps> = ({
             </div>
           </div>
           <Form.Item name="external_receive_field" label={t('system.user.accountAssociation.receiveField', '消息接收标识')} rules={[{ required: true }]}>
-            {externalReceiveOptions.length > 0 ? <Select options={externalReceiveOptions} /> : <Input />}
+            <Select
+              options={externalReceiveOptions}
+              disabled={!watchedInstance || externalReceiveOptions.length === 0}
+              placeholder={t('system.user.accountAssociation.receiveFieldPlaceholder', '请选择消息接收标识')}
+            />
           </Form.Item>
           <Form.Item name="schedule_mode" label={t('system.user.accountAssociation.schedule', '定时')}>
             <Select
