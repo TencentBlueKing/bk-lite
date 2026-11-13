@@ -1338,6 +1338,7 @@
     "room3DLoadFailed": "3D机房加载失败",
     "room3DDefaultUnavailable": "机房不可用",
     "room3DEmpty": "暂无可见机房",
+    "room3DSelectRoom": "请在头部选择机房",
     "networkTopoModel": "模型",
     "networkTopoInstance": "实例",
     "networkTopoModelHelp": "仅展示已具备网络拓扑关系的模型",

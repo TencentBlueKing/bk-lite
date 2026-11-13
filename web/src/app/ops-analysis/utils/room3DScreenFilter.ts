@@ -3,7 +3,6 @@ import type {
   FilterValue,
   UnifiedFilterDefinition,
 } from '@/app/ops-analysis/types/dashBoard';
-import type { InputOption } from '@/app/ops-analysis/types/dataSource';
 import type { InputControlConfig } from '@/app/ops-analysis/types/dataSource';
 import type { ScreenItem, ScreenWidgetItem } from '@/app/ops-analysis/types/screen';
 import { isScreenWidgetItem } from '@/app/ops-analysis/(pages)/view/screen/utils/screenItems';
@@ -184,44 +183,6 @@ const normalizeFilterRoomId = (value: unknown): string => {
   return value.trim();
 };
 
-/** 非内置 3D 机房筛交给通用校正，不在这里选第一项。 */
-export const ROOM_FILTER_PASSTHROUGH = Symbol('room-filter-passthrough');
-
-/** 只有内置 id 才走「选第一项并搜索」。同名拆行的摘要 id 不算。 */
-export const isBuiltinRoom3DFilter = (
-  definition: Pick<UnifiedFilterDefinition, 'id'>,
-): boolean => definition.id === ROOM3D_FILTER_ID;
-
-const roomOptionValues = (options: Array<Pick<InputOption, 'value'>>) =>
-  options
-    .map((option) => option.value)
-    .filter((value): value is string | number => typeof value === 'string' || typeof value === 'number');
-
-/**
- * 只处理机房筛选。当前值非空时一律保留，不可见也不改成第一项或默认值。
- * 当前值为空时：有默认机房就用默认值（即使不可见），否则用列表第一项。
- * 返回 undefined 表示当前值不用改。
- */
-export const resolveRoomFilterAppliedValue = (
-  definition: Pick<UnifiedFilterDefinition, 'id' | 'key' | 'type' | 'defaultValue' | 'enabled'>,
-  current: FilterValue | null | undefined,
-  options: Array<Pick<InputOption, 'value'>>,
-): FilterValue | undefined | typeof ROOM_FILTER_PASSTHROUGH => {
-  if (!isBuiltinRoom3DFilter(definition) || definition.enabled === false) {
-    return ROOM_FILTER_PASSTHROUGH;
-  }
-  const defaultId = normalizeFilterRoomId(definition.defaultValue);
-  const currentId = normalizeFilterRoomId(current);
-  if (currentId) return undefined;
-  if (defaultId) {
-    return (current ?? null) === defaultId ? undefined : defaultId;
-  }
-  if (!options.length) return undefined;
-  const first = roomOptionValues(options)[0];
-  if (first === undefined || (current ?? null) === first) return undefined;
-  return first;
-};
-
 /** room3D 读画布筛选：默认值走定义，已应用值走运行时。历史绑定 false 也视为开启。 */
 export const resolveRoom3DCanvasSelection = ({
   filterDefinitions,
@@ -234,7 +195,7 @@ export const resolveRoom3DCanvasSelection = ({
   const definition = filterDefinitions?.find(
     (item) => item.id === ROOM3D_FILTER_ID,
   );
-  // 与普通组件一致：全局筛选关闭时不传该参数，交给可见列表第一个机房。
+  // 筛选关闭时不传机房 id。场景和统计接口都不替用户选第一项。
   if (definition?.enabled === false) {
     return { savedRoomId: '', runtimeRoomId: '' };
   }

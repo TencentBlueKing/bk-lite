@@ -1338,6 +1338,7 @@
     "room3DLoadFailed": "Failed to load the 3D room",
     "room3DDefaultUnavailable": "Room is unavailable",
     "room3DEmpty": "No visible rooms",
+    "room3DSelectRoom": "Select a room in the header",
     "networkTopoModel": "Model",
     "networkTopoInstance": "Instance",
     "networkTopoModelHelp": "Only models with network topology relationships are shown",
