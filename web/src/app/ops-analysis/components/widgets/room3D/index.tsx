@@ -9,6 +9,7 @@ import React, {
 } from "react";
 import { Alert, Button, Empty, Spin } from "antd";
 import { EnvironmentFilled, ReloadOutlined } from "@ant-design/icons";
+import CompactEmptyState from "@/components/compact-empty-state";
 import { useParams } from "next/navigation";
 import { useTranslation } from "@/utils/i18n";
 import { useShareMode } from "@/app/ops-analysis/context/shareMode";
@@ -144,6 +145,7 @@ const Room3D: React.FC<Room3DProps> = ({
     filterDefinitions,
     unifiedFilterValues,
   });
+  const requestedRoomId = runtimeRoomId || savedRoomId;
   const rackTopLines = useMemo(
     () => readRoom3DRackTopLines(config?.room3D),
     [config?.room3D?.rackTopLine1, config?.room3D?.rackTopLine2],
@@ -157,6 +159,7 @@ const Room3D: React.FC<Room3DProps> = ({
   const [fetchedLayout, setFetchedLayout] = useState<unknown>(null);
   const [fetchLoading, setFetchLoading] = useState(!injected);
   const [fetchError, setFetchError] = useState("");
+  const [awaitingRoomSelection, setAwaitingRoomSelection] = useState(false);
   const effectiveRawData = injected ? rawData : fetchedLayout;
   const loading = injected ? injectedLoading : fetchLoading;
   const errorMessage = injected ? injectedErrorMessage : fetchError;
@@ -201,23 +204,34 @@ const Room3D: React.FC<Room3DProps> = ({
 
   const onErrorRef = useRef(onError);
   const onRawDataRef = useRef(onRawData);
+  const roomRequestRef = useRef({ savedRoomId, runtimeRoomId });
   onErrorRef.current = onError;
   onRawDataRef.current = onRawData;
+  roomRequestRef.current = { savedRoomId, runtimeRoomId };
   useEffect(() => {
     if (injected || !runtimeActive || !allowedOnSurface) {
       return undefined;
     }
     const abort = new AbortController();
+    const { savedRoomId: saved, runtimeRoomId: runtime } = roomRequestRef.current;
     setFetchLoading(true);
     setFetchError("");
     loadRoom3DScene({
       api,
-      savedRoomId,
-      runtimeRoomId,
+      savedRoomId: saved,
+      runtimeRoomId: runtime,
       signal: abort.signal,
     })
       .then((result) => {
         if (abort.signal.aborted) return;
+        if (result.status === "unselected") {
+          setFetchedLayout(null);
+          setFetchError("");
+          setAwaitingRoomSelection(true);
+          onRawDataRef.current?.(null);
+          return;
+        }
+        setAwaitingRoomSelection(false);
         if (result.status === "empty") {
           setFetchedLayout(null);
           setFetchError(t("dashboard.room3DEmpty"));
@@ -239,6 +253,7 @@ const Room3D: React.FC<Room3DProps> = ({
       .catch(() => {
         if (abort.signal.aborted) return;
         const message = t("dashboard.room3DLoadFailed");
+        setAwaitingRoomSelection(false);
         setFetchedLayout(null);
         setFetchError(message);
         onErrorRef.current?.(message);
@@ -253,9 +268,8 @@ const Room3D: React.FC<Room3DProps> = ({
     api,
     injected,
     refreshKey,
+    requestedRoomId,
     runtimeActive,
-    runtimeRoomId,
-    savedRoomId,
     t,
   ]);
 
@@ -319,6 +333,10 @@ const Room3D: React.FC<Room3DProps> = ({
     if (loading) {
       return;
     }
+    if (awaitingRoomSelection) {
+      onReady?.(false);
+      return;
+    }
     const hasScene = Boolean(roomData?.racks.length);
     if (errorMessage) {
       onReady?.(Boolean(hasScene || notice));
@@ -332,7 +350,15 @@ const Room3D: React.FC<Room3DProps> = ({
       return;
     }
     onReady?.(Boolean(hasScene || notice));
-  }, [errorMessage, loading, notice, onReady, roomData, sceneRenderVersion]);
+  }, [
+    awaitingRoomSelection,
+    errorMessage,
+    loading,
+    notice,
+    onReady,
+    roomData,
+    sceneRenderVersion,
+  ]);
 
   useLayoutEffect(() => {
     resizeSceneRef.current();
@@ -570,6 +596,14 @@ const Room3D: React.FC<Room3DProps> = ({
     return (
       <div className={styles.stateBox}>
         <Spin />
+      </div>
+    );
+  }
+
+  if (awaitingRoomSelection) {
+    return (
+      <div className={styles.stateBox}>
+        <CompactEmptyState description={t("dashboard.room3DSelectRoom")} />
       </div>
     );
   }

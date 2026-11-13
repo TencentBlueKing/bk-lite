@@ -17,6 +17,13 @@ class ChannelChoices(models.TextChoices):
 class Channel(MaintainerInfo, EncryptMixin):
     name = models.CharField(max_length=100)
     channel_type = models.CharField(max_length=30, choices=ChannelChoices.choices)
+    account_association = models.ForeignKey(
+        "system_mgmt.IMAccountAssociation",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="group_channels",
+    )
     config = models.JSONField(default=dict)
     description = models.TextField()
     team = models.JSONField(default=list)

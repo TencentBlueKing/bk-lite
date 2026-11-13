@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Modal, Menu, List, Input, Spin, Empty, Tag } from 'antd';
 import { ApartmentOutlined, DatabaseOutlined, LockOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
@@ -44,6 +44,8 @@ const ComponentSelector: React.FC<ComponentSelectorProps> = ({
   const [selectedSceneCategory, setSelectedSceneCategory] = useState<string>(
     SCENE_WIDGETS[0]?.category || '',
   );
+  // 当前列表对应的目录和已生效关键字。关闭弹窗只清输入，不会自动重取。
+  const loadedListQueryRef = useRef<{ tagId: number; searchKey: string } | null>(null);
 
   const { getDataSourceBriefList } = useDataSourceApi();
   const { getTagList } = useNamespaceApi();
@@ -109,40 +111,60 @@ const ComponentSelector: React.FC<ComponentSelectorProps> = ({
       if (tagList.length === 0) {
         void fetchTags();
       }
-    } else {
-      setHoveredDatasourceId(null);
-      setSearchValue('');
-      setSearchKey('');
+      return;
     }
+
+    setHoveredDatasourceId(null);
+    setSearchValue('');
+    setSearchKey('');
+    if (loadedListQueryRef.current?.searchKey) {
+      loadedListQueryRef.current = null;
+      setCurrentDataSources([]);
+      setDataSourcesLoading(true);
+      return;
+    }
+    // 搜索还没回来时，列表仍是未搜索结果。丢掉这次请求后要把加载态收回。
+    setDataSourcesLoading(false);
   }, [getTagList, visible]);
 
   useEffect(() => {
-    const fetchBriefList = async () => {
-      if (!selectedTagId) {
-        setCurrentDataSources([]);
-        return;
-      }
+    if (!visible || !selectedTagId) {
+      return;
+    }
 
+    const search = searchKey.trim();
+    const loaded = loadedListQueryRef.current;
+    if (loaded?.tagId === selectedTagId && loaded.searchKey === search) {
+      return;
+    }
+
+    let ignore = false;
+    const fetchBriefList = async () => {
       try {
         setDataSourcesLoading(true);
         const response = await getDataSourceBriefList({
           tags: selectedTagId,
-          search: searchKey.trim() || undefined,
+          search: search || undefined,
           page_size: -1,
         });
+        if (ignore) return;
         setCurrentDataSources(Array.isArray(response) ? response : []);
+        loadedListQueryRef.current = { tagId: selectedTagId, searchKey: search };
       } catch (error) {
+        if (ignore) return;
         console.error('获取数据源候选列表失败:', error);
         setCurrentDataSources([]);
+        loadedListQueryRef.current = null;
       } finally {
-        setDataSourcesLoading(false);
+        if (!ignore) setDataSourcesLoading(false);
       }
     };
 
-    if (visible && selectedTagId) {
-      void fetchBriefList();
-    }
-  }, [getDataSourceBriefList, searchKey, selectedTagId]);
+    void fetchBriefList();
+    return () => {
+      ignore = true;
+    };
+  }, [getDataSourceBriefList, searchKey, selectedTagId, visible]);
 
   useEffect(() => {
     if (visible && tagList.length > 0 && !selectedTagId) {

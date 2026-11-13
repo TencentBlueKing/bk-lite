@@ -149,6 +149,7 @@ def test_channel_test_send_wecom_bot(super_client):
     assert resp.status_code == 200
     assert resp.json()["result"] is True
     m_send.assert_called_once()
+    assert m_send.call_args.args[2] == ["Admin"]
 
 
 def test_channel_test_send_wecom_bot_failure(super_client):

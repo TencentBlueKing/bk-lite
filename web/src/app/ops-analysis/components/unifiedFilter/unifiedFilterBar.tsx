@@ -35,8 +35,6 @@ import {
   valueOfFoundOptionsQueryUpstream,
 } from '@/app/ops-analysis/utils/optionsQueryParamRefs';
 import { isFreeTextOptionsFilter } from '@/app/ops-analysis/utils/optionsQueryTextDebounce';
-import { ROOM_FILTER_PASSTHROUGH } from '@/app/ops-analysis/utils/room3DScreenFilter';
-import { resolveBuiltinCanvasFilterAppliedValue } from '@/app/ops-analysis/utils/applicationTopologyCanvasFilter';
 import type { DateRangeValue } from '@/app/ops-analysis/types/dateRange';
 import { useTranslation } from '@/utils/i18n';
 import { useShareMode } from '@/app/ops-analysis/context/shareMode';
@@ -78,12 +76,6 @@ const toNumberFilterValue = (value: number | string | null): FilterValue => {
   return Number.isFinite(numeric) ? numeric : null;
 };
 
-/** 机房自动搜索回写后，已提交字段都在，多出来的键（例如补上的组织）也算同一次回声。 */
-const coversPublishedValues = (
-  published: Record<string, FilterValue>,
-  incoming: Record<string, FilterValue>,
-) => Object.keys(published).every((key) => areFilterValuesEqual(published[key], incoming[key]));
-
 const UnifiedFilterBar: React.FC<UnifiedFilterBarProps> = ({
   definitions,
   values,
@@ -112,9 +104,6 @@ const UnifiedFilterBar: React.FC<UnifiedFilterBarProps> = ({
   const definitionsRef = useRef(definitions);
   const valuesRef = useRef(values);
   const onApplyInitialRef = useRef(onApplyInitial);
-  const onSearchRef = useRef(onSearch);
-  const onChangeRef = useRef(onChange);
-  const roomPublishEchoRef = useRef<Record<string, FilterValue> | null>(null);
   const optionsByFilterRef = useRef<Map<string, InputOption[]>>(new Map());
   const initialReconciledRef = useRef(new Set<string>());
   const initialAppliedRef = useRef<Record<string, FilterValue> | null>(null);
@@ -122,8 +111,6 @@ const UnifiedFilterBar: React.FC<UnifiedFilterBarProps> = ({
   definitionsRef.current = definitions;
   valuesRef.current = values;
   onApplyInitialRef.current = onApplyInitial;
-  onSearchRef.current = onSearch;
-  onChangeRef.current = onChange;
   const organizationTreeData = useMemo(
     () => (shareMode
       ? convertGroupTreeToTreeSelectData(shareOrganization?.groupTree ?? [])
@@ -155,23 +142,6 @@ const UnifiedFilterBar: React.FC<UnifiedFilterBarProps> = ({
   }
 
   useEffect(() => {
-    const published = roomPublishEchoRef.current;
-    if (published && coversPublishedValues(published, values)) {
-      roomPublishEchoRef.current = null;
-      setLocalValues((prev) => {
-        let changed = false;
-        const next = { ...prev };
-        Object.entries(values).forEach(([key, value]) => {
-          if (Object.prototype.hasOwnProperty.call(published, key)) return;
-          if (areFilterValuesEqual(next[key], value)) return;
-          next[key] = value;
-          changed = true;
-        });
-        return changed ? next : prev;
-      });
-      return;
-    }
-    roomPublishEchoRef.current = null;
     setLocalValues(values);
   }, [values]);
 
@@ -245,24 +215,6 @@ const UnifiedFilterBar: React.FC<UnifiedFilterBarProps> = ({
     const definition = definitionsRef.current.find((item) => item.id === filterId);
     if (!definition) return;
     const current = localValuesRef.current[filterId];
-    const roomValue = resolveBuiltinCanvasFilterAppliedValue(definition, current, options);
-    if (roomValue !== ROOM_FILTER_PASSTHROUGH) {
-      if (roomValue === undefined) return;
-      writeDraftValues({
-        ...localValuesRef.current,
-        [filterId]: roomValue,
-      });
-      const committed = {
-        ...valuesRef.current,
-        [filterId]: roomValue,
-      };
-      if (areFilterValuesEqual(valuesRef.current[filterId], roomValue)) return;
-      const notify = onSearchRef.current || onChangeRef.current;
-      if (!notify) return;
-      roomPublishEchoRef.current = committed;
-      notify(committed);
-      return;
-    }
     const nextValue = reconcileOptionBackedFilterValue(definition, current, options);
     const firstResolve = !initialReconciledRef.current.has(filterId);
     if (firstResolve) initialReconciledRef.current.add(filterId);
@@ -295,11 +247,6 @@ const UnifiedFilterBar: React.FC<UnifiedFilterBarProps> = ({
         if (isDynamicOptionFilter(definition)) {
           resetValues[definition.id] = null;
         }
-        return;
-      }
-      const roomValue = resolveBuiltinCanvasFilterAppliedValue(definition, null, options);
-      if (roomValue !== ROOM_FILTER_PASSTHROUGH) {
-        resetValues[definition.id] = roomValue === undefined ? null : roomValue;
         return;
       }
       const retained = reconcileOptionBackedFilterValue(definition, null, options);

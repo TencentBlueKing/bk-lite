@@ -22,11 +22,7 @@ from apps.node_mgmt.serializers.installer import (
 )
 from apps.node_mgmt.services.install_token import InstallTokenService
 from apps.node_mgmt.services.installer import InstallerService
-from apps.node_mgmt.services.windows_remote_bootstrap import (
-    AnsibleExecutorResolver,
-    WindowsBootstrapTarget,
-    WindowsRemoteBootstrapService,
-)
+from apps.node_mgmt.services.windows_remote_bootstrap import AnsibleExecutorResolver, WindowsBootstrapTarget, WindowsRemoteBootstrapService
 from apps.node_mgmt.tasks import installer as installer_tasks
 from apps.node_mgmt.utils.task_result_schema import normalize_task_result_for_read
 
@@ -524,11 +520,7 @@ def test_windows_remote_bootstrap_stages_and_runs_native_worker():
     assert execution["extra_vars"]["ansible_winrm_connection_timeout"] == 60
     cleanup_playbook = yaml.safe_load(cleanup["playbook_content"])
     cleanup_tasks = cleanup_playbook[0]["tasks"]
-    cleanup_paths = {
-        task["ansible.windows.win_file"]["path"]
-        for task in cleanup_tasks
-        if "ansible.windows.win_file" in task
-    }
+    cleanup_paths = {task["ansible.windows.win_file"]["path"] for task in cleanup_tasks if "ansible.windows.win_file" in task}
     assert cleanup_paths == {
         "C:/Windows/Temp/bklite-controller-bootstrap-31-2.exe",
         "C:/Windows/Temp/bklite-controller-session-0123456789abcdef0123456789abcdef",
@@ -597,6 +589,31 @@ def test_windows_uninstall_playbook_is_idempotent_and_bounded():
     assert "C:\\fusion-collectors.bklite-install.fence" in command
     assert "C:\\fusion-collectors.bklite-install.lock" in command
     assert "Remove-Item -Path {}" not in command
+
+    owned_paths = [
+        r"C:\fusion-collectors",
+        r"C:\fusion-collectors.bklite-staging",
+        r"C:\fusion-collectors.bklite-backup",
+        r"C:\fusion-collectors.bklite-install.fence",
+        r"C:\fusion-collectors.bklite-install.lock",
+    ]
+    owned_section = command.split("$ownedPaths = @(", 1)[1].split(")", 1)[0]
+    for path in owned_paths:
+        assert f"'{path}'" in owned_section
+    assert owned_section.count("C:\\") == len(owned_paths)
+    assert "fusion-collectors.bklite-backup-retained-*" in command
+    assert "Refusing to remove unexpected path" in command
+
+    program_keys = [
+        r"HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\CollectorSidecar",
+        r"HKLM:\SOFTWARE\WOW6432Node\FusionCollectors\Sidecar",
+    ]
+    program_section = command.split("$programKeys = @(", 1)[1].split(")", 1)[0]
+    for key in program_keys:
+        assert f"'{key}'" in program_section
+    assert program_section.count("HKLM:\\") == len(program_keys)
+    assert "Remove-Item -LiteralPath $programKey -Recurse -Force" in command
+    assert command.index("Remove-Item -LiteralPath $ownedPath") < command.index("$programKeys")
 
 
 def test_windows_remote_uninstall_submits_secure_winrm_playbook():
@@ -817,13 +834,7 @@ def test_windows_remote_bootstrap_replays_terminal_failure_events_before_raising
         {
             "status": "failed",
             "error": "bootstrap failed",
-            "result": {
-                "result": [
-                    {
-                        "stdout": 'BKINSTALL_EVENT {"step":"download_package","status":"failed","error":"object missing"}'
-                    }
-                ]
-            },
+            "result": {"result": [{"stdout": 'BKINSTALL_EVENT {"step":"download_package","status":"failed","error":"object missing"}'}]},
         },
         {"status": "success", "result": {"result": []}},
     ]
@@ -852,13 +863,7 @@ def test_windows_remote_bootstrap_progress_callback_cannot_mask_primary_failure(
         {
             "status": "failed",
             "error": "bootstrap failed",
-            "result": {
-                "result": [
-                    {
-                        "stdout": 'BKINSTALL_EVENT {"step":"download_package","status":"failed","error":"object missing"}'
-                    }
-                ]
-            },
+            "result": {"result": [{"stdout": 'BKINSTALL_EVENT {"step":"download_package","status":"failed","error":"object missing"}'}]},
         },
         {"status": "success", "result": {"result": []}},
     ]
@@ -1011,7 +1016,7 @@ def test_windows_remote_bootstrap_describes_busy_winrm_session():
                     "host": "10.10.40.117",
                     "status": "failed",
                     "raw_status": "FAILED",
-                    "error_message": 'winrm send_input failed; stdout: stderr',
+                    "error_message": "winrm send_input failed; stdout: stderr",
                 }
             ],
             "result_summary": {
@@ -1136,6 +1141,7 @@ def test_install_task_routes_windows_through_winrm_bootstrap(monkeypatch):
         return Queue(), lambda: None
 
     monkeypatch.setattr(installer_tasks, "subscribe_lines_sync", fake_subscribe)
+
     def fake_install_command(*args, **kwargs):
         command_calls.append(kwargs)
         return "https://server.example/session/secret"
@@ -1413,17 +1419,11 @@ def test_installer_progress_rejects_stale_execution_events():
     current_event = 'BKINSTALL_EVENT {"action":"download","status":"running","message":"current"}'
     stale_event = 'BKINSTALL_EVENT {"action":"download","status":"running","message":"stale"}'
 
-    assert not installer_tasks._apply_installer_events_for_execution(
-        task_node.id, stale_event, "old-execution", 1
-    )
-    assert installer_tasks._apply_installer_events_for_execution(
-        task_node.id, current_event, "current-execution", 2
-    )
+    assert not installer_tasks._apply_installer_events_for_execution(task_node.id, stale_event, "old-execution", 1)
+    assert installer_tasks._apply_installer_events_for_execution(task_node.id, current_event, "current-execution", 2)
     closed_result = installer_tasks._close_installer_execution(task_node.id, "current-execution", 2)
     assert "installer_execution_id" not in closed_result
-    assert not installer_tasks._apply_installer_events_for_execution(
-        task_node.id, stale_event, "current-execution", 2
-    )
+    assert not installer_tasks._apply_installer_events_for_execution(task_node.id, stale_event, "current-execution", 2)
 
     task_node.refresh_from_db()
     messages = [step.get("message") for step in task_node.result.get("steps", [])]
@@ -1452,12 +1452,15 @@ def test_installer_execution_claim_rejects_duplicate_delivery_and_fences_termina
     finished = installer_tasks._finish_installer_execution(task_node.id, terminal_event, "first-execution", 3)
     assert finished is not None
     assert "installer_execution_id" not in finished
-    assert installer_tasks._finish_installer_execution(
-        task_node.id,
-        'BKINSTALL_EVENT {"action":"install","status":"error","message":"stale"}',
-        "first-execution",
-        3,
-    ) is None
+    assert (
+        installer_tasks._finish_installer_execution(
+            task_node.id,
+            'BKINSTALL_EVENT {"action":"install","status":"error","message":"stale"}',
+            "first-execution",
+            3,
+        )
+        is None
+    )
 
     task_node.refresh_from_db()
     messages = [step.get("message") for step in task_node.result.get("steps", [])]
@@ -1512,13 +1515,16 @@ def test_controller_timeout_fences_stuck_windows_bootstrap(monkeypatch):
     task_node.save(update_fields=["status", "result"])
 
     installer_tasks.timeout_controller_install_task(task.id, expected_attempt=1)
-    assert installer_tasks._fail_installer_execution(
-        task_node.id,
-        "stuck-execution",
-        1,
-        "late failure",
-        RuntimeError("late failure"),
-    ) is None
+    assert (
+        installer_tasks._fail_installer_execution(
+            task_node.id,
+            "stuck-execution",
+            1,
+            "late failure",
+            RuntimeError("late failure"),
+        )
+        is None
+    )
 
     task_node.refresh_from_db()
     assert task_node.status == "running"

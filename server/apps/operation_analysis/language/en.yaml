@@ -884,7 +884,7 @@ datasources:
       organization: Organization
   "机房设备类型分布::cmdb/get_room_device_type_distribution":
     name: Room Device Type Distribution
-    desc: Count visible devices mounted through racks in a room, grouped by model display name. An empty server_room_id uses the first visible room.
+    desc: Count visible devices mounted through racks in a room, grouped by model display name. An empty server_room_id does not select a room and asks the user to choose one in the header.
     fields:
       name:
         title: Device Type
@@ -896,7 +896,7 @@ datasources:
       server_room_id: Room
   "机房机柜容量::cmdb/get_room_rack_capacity":
     name: Room Rack Capacity
-    desc: U capacity of visible racks in a room. summary returns a flat object; rack_top is ordered by usage. An empty server_room_id uses the first visible room.
+    desc: U capacity of visible racks in a room. summary returns a flat object; rack_top is ordered by usage. An empty server_room_id does not select a room and asks the user to choose one in the header.
     fields:
       rack_count:
         title: Rack Count
@@ -938,7 +938,7 @@ datasources:
       limit: Limit
   "机房活跃告警::cmdb/get_room_active_alarms":
     name: Room Active Alarms
-    desc: Monitoring coverage, active alarm severity, rack alarms, and alarming devices for visible devices mounted through racks in a room. If monitor fails entirely, coverage counts bound devices as unavailable and other views fail. An empty server_room_id uses the first visible room.
+    desc: Monitoring coverage, active alarm severity, rack alarms, and alarming devices for visible devices mounted through racks in a room. If monitor fails entirely, coverage counts bound devices as unavailable and other views fail. An empty server_room_id does not select a room and asks the user to choose one in the header.
     fields:
       name:
         title: Name

@@ -1,6 +1,6 @@
-import React from 'react';
-import dayjs from 'dayjs';
-import { Alert, Form, Input, Select, TimePicker } from 'antd';
+import React, { useState } from 'react';
+import { Button, Form, Input, Select } from 'antd';
+import { ReloadOutlined } from '@ant-design/icons';
 import type { FormInstance } from 'antd';
 
 import GroupTreeSelect from '@/components/group-tree-select';
@@ -14,9 +14,13 @@ import { formatIntegrationInstanceDisplayName } from '@/app/system-manager/utils
 import { getImNotificationUnavailableEditingInstance } from '@/app/system-manager/utils/imNotificationUtils';
 import NotificationTagSelect, { NotificationTagOption } from '@/app/system-manager/components/channel/NotificationTagSelect';
 
-export interface IMNotificationChannelFormValues extends IMNotificationChannelPayload {
-  schedule_enabled?: boolean;
-  sync_time?: string;
+export type IMNotificationChannelFormValues = IMNotificationChannelPayload;
+
+interface AccountAssociationOption {
+  id: number;
+  name: string;
+  integration_instance_id: number;
+  integration_instance_name: string;
 }
 
 interface IMNotificationConfigModalProps {
@@ -25,14 +29,10 @@ interface IMNotificationConfigModalProps {
   loading: boolean;
   form: FormInstance<IMNotificationChannelFormValues>;
   availableInstances: AvailableInstance[];
-  platformMatchOptions: Array<{ value: string; label: string }>;
-  externalMatchOptions: Array<{ value: string; label: string }>;
-  externalReceiveOptions: Array<{ value: string; label: string }>;
-  manifestHintVisible: boolean;
-  showMatchFieldHint: boolean;
-  showReceiveFieldHint: boolean;
+  associationOptions: AccountAssociationOption[];
   tagOptions: NotificationTagOption[];
   t: (key: string, defaultMessage?: string, values?: Record<string, string | number>) => string;
+  onRefreshOptions: () => Promise<AccountAssociationOption[]>;
   onOk: () => void;
   onCancel: () => void;
 }
@@ -43,17 +43,14 @@ const IMNotificationConfigModal: React.FC<IMNotificationConfigModalProps> = ({
   loading,
   form,
   availableInstances,
-  platformMatchOptions,
-  externalMatchOptions,
-  externalReceiveOptions,
-  manifestHintVisible,
-  showMatchFieldHint,
-  showReceiveFieldHint,
+  associationOptions,
   tagOptions,
   t,
+  onRefreshOptions,
   onOk,
   onCancel,
 }) => {
+  const [refreshingOptions, setRefreshingOptions] = useState(false);
   const unavailableEditingInstance = getImNotificationUnavailableEditingInstance(availableInstances, editing);
   const integrationInstanceOptions = [
     ...(unavailableEditingInstance ? [{
@@ -95,6 +92,7 @@ const IMNotificationConfigModal: React.FC<IMNotificationConfigModalProps> = ({
           <Select
             placeholder={t('system.channel.imNotificationPage.integrationInstancePlaceholder')}
             options={integrationInstanceOptions}
+            onChange={() => form.setFieldValue('account_association', null)}
           />
         </Form.Item>
         <Form.Item
@@ -119,103 +117,68 @@ const IMNotificationConfigModal: React.FC<IMNotificationConfigModalProps> = ({
         </Form.Item>
       </div>
 
-      <div className="border-t border-[var(--color-border-1)] pt-6">
-        <div className="mb-2 text-[16px] font-semibold text-[var(--color-text-1)]">
-          {t('system.channel.imNotificationPage.fieldMappingTitle')}
-        </div>
-        <div className="mb-5 text-[13px] text-[var(--color-text-3)]">
-          {t('system.channel.imNotificationPage.fieldMappingDesc')}
-        </div>
-        {manifestHintVisible ? (
-          <Alert
-            className="mb-4"
-            type="warning"
-            showIcon
-            message={t('system.channel.imNotificationPage.manifestNotFound')}
-          />
-        ) : null}
-        <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-bg)] px-4 py-4">
-          <div className="grid grid-cols-[minmax(0,1fr)_24px_minmax(0,1fr)] gap-x-4 gap-y-3 text-[13px] text-[var(--color-text-3)]">
-            <div>{t('system.channel.imNotificationPage.platformMatchField')}</div>
-            <div />
-            <div>{t('system.channel.imNotificationPage.externalMatchField')}</div>
-          </div>
-          <div className="mt-3 grid grid-cols-[minmax(0,1fr)_24px_minmax(0,1fr)] gap-x-4 gap-y-3">
-            <Form.Item name="platform_match_field" rules={[{ required: true, message: t('common.selectMsg') }]} className="mb-0">
-              <Select options={platformMatchOptions} />
-            </Form.Item>
-            <div className="flex h-10 items-center justify-center text-lg text-[var(--color-primary)]">=</div>
-            <Form.Item name="external_match_field" rules={[{ required: true, message: t('common.selectMsg') }]} className="mb-0">
-              <Select
-                options={externalMatchOptions}
-                disabled={externalMatchOptions.length === 0}
-                placeholder={t('system.channel.imNotificationPage.externalMatchFieldPlaceholder')}
-              />
-            </Form.Item>
-          </div>
-          {showMatchFieldHint ? (
-            <div className="mt-3 text-[12px] text-[var(--color-text-3)]">
-              {t('system.channel.imNotificationPage.matchFieldUnavailableHint')}
-            </div>
-          ) : null}
-          <div className="mt-5">
-            <Form.Item
-              name="external_receive_field"
-              label={t('system.channel.imNotificationPage.receiveField')}
-              rules={[{ required: true, message: t('common.selectMsg') }]}
-              className="mb-0"
-            >
-              <Select
-                options={externalReceiveOptions}
-                disabled={externalReceiveOptions.length === 0}
-                placeholder={t('system.channel.imNotificationPage.externalReceiveFieldPlaceholder')}
-              />
-            </Form.Item>
-            <div className="mt-3 text-[12px] text-[var(--color-text-3)]">
-              {t('system.channel.imNotificationPage.receiveFieldHint')}
-            </div>
-            {showReceiveFieldHint ? (
-              <div className="mt-3 text-[12px] text-[var(--color-text-3)]">
-                {t('system.channel.imNotificationPage.receiveFieldUnavailableHint')}
+      <Form.Item noStyle shouldUpdate={(prev, cur) => prev.integration_instance !== cur.integration_instance || prev.account_association !== cur.account_association}>
+        {({ getFieldValue }) => {
+          const instanceId = getFieldValue('integration_instance');
+          const options = associationOptions
+            .filter((item) => item.integration_instance_id === instanceId)
+            .map((item) => ({
+              value: item.id,
+              label: `${item.name}（${item.integration_instance_name}）`,
+            }));
+          const refreshOptions = async () => {
+            setRefreshingOptions(true);
+            try {
+              const nextOptions = await onRefreshOptions();
+              const current = getFieldValue('account_association');
+              const stillListed = (nextOptions || []).some((item) => item.id === current && item.integration_instance_id === instanceId);
+              if (current && !stillListed) {
+                form.setFieldValue('account_association', null);
+              }
+            } finally {
+              setRefreshingOptions(false);
+            }
+          };
+          const openManage = () => {
+            const params = new URLSearchParams({ tab: 'account_association' });
+            const selected = getFieldValue('account_association');
+            if (selected) {
+              const selectedOption = associationOptions.find((item) => item.id === selected);
+              if (selectedOption?.integration_instance_id) {
+                params.set('instanceId', String(selectedOption.integration_instance_id));
+              }
+            } else if (instanceId) {
+              params.set('instanceId', String(instanceId));
+              params.set('create', '1');
+            } else {
+              const providerKeys = Array.from(new Set(availableInstances.map((item) => item.provider_key).filter(Boolean)));
+              const onlyProvider = providerKeys.length === 1 ? providerKeys[0] : '';
+              if (onlyProvider) {
+                params.set('provider', onlyProvider);
+              }
+            }
+            window.open(`/system-manager/user/user-sync?${params.toString()}`, '_blank', 'noopener,noreferrer');
+          };
+          return (
+            <Form.Item name="account_association" label={t('system.channel.imNotificationPage.accountAssociation', '账号关联')}>
+              <div className="flex items-start gap-2">
+                <Select
+                  className="min-w-0 flex-1"
+                  allowClear
+                  options={options}
+                  placeholder={t('system.channel.imNotificationPage.accountAssociationPlaceholder', '选择账号关联')}
+                  value={getFieldValue('account_association')}
+                  onChange={(value) => form.setFieldValue('account_association', value ?? null)}
+                />
+                <Button icon={<ReloadOutlined />} loading={refreshingOptions} onClick={refreshOptions} />
+                <Button onClick={openManage}>
+                  {t('system.channel.imNotificationPage.manageAccountAssociation', '管理账号关联')}
+                </Button>
               </div>
-            ) : null}
-          </div>
-        </div>
-      </div>
-
-      <div className="border-t border-[var(--color-border-1)] pt-6">
-        <div className="mb-2 text-[16px] font-semibold text-[var(--color-text-1)]">
-          {t('system.channel.imNotificationPage.syncOptionsTitle')}
-        </div>
-        <div className="mb-5 text-[13px] text-[var(--color-text-3)]">
-          {t('system.channel.imNotificationPage.syncOptionsDesc')}
-        </div>
-        <Form.Item name="schedule_enabled" label={t('system.channel.imNotificationPage.syncMode')} className="mb-0">
-          <Select
-            options={[
-              { label: t('system.channel.imNotificationPage.syncModeManual'), value: false },
-              { label: t('system.channel.imNotificationPage.syncModeAutomatic'), value: true },
-            ]}
-          />
-        </Form.Item>
-        <Form.Item noStyle shouldUpdate={(prev, cur) => prev.schedule_enabled !== cur.schedule_enabled}>
-          {({ getFieldValue }) =>
-            getFieldValue('schedule_enabled') ? (
-              <Form.Item
-                name="sync_time"
-                label={t('system.channel.imNotificationPage.syncTime')}
-                required
-                rules={[{ required: true }]}
-                className="mb-0 mt-5"
-                normalize={(value) => (value ? (dayjs.isDayjs(value) ? value.format('HH:mm') : value) : '')}
-                getValueProps={(value) => ({ value: value ? dayjs(value, 'HH:mm') : null })}
-              >
-                <TimePicker format="HH:mm" className="w-full md:w-[220px]" />
-              </Form.Item>
-            ) : null
-          }
-        </Form.Item>
-      </div>
+            </Form.Item>
+          );
+        }}
+      </Form.Item>
     </Form>
     </OperateModal>
   );

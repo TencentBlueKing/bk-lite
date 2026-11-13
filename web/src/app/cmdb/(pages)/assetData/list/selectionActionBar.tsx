@@ -12,7 +12,7 @@ import {
 import PermissionWrapper from '@/components/permission';
 import { useTranslation } from '@/utils/i18n';
 
-export type SelectionActionBarProps = {
+export interface SelectionActionBarProps {
   count: number;
   canBatchEdit: boolean;
   showMonitorLink: boolean;
@@ -22,7 +22,7 @@ export type SelectionActionBarProps = {
   onMonitorLink: () => void;
   onDelete: () => void;
   onClear: () => void;
-};
+}
 
 const actionButtonClassName =
   'flex shrink-0 flex-col items-center gap-1 rounded-md px-3 py-1 hover:bg-[color-mix(in_srgb,var(--color-bg)_14%,transparent)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-primary)] disabled:cursor-not-allowed disabled:opacity-40';

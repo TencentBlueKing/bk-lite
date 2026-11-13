@@ -11,6 +11,7 @@ from apps.core.utils.internal_event_auth import (
     verify_internal_event,
 )
 from apps.system_mgmt.models.im_notification_channel import IMNotificationChannel
+from apps.system_mgmt.services.group_channel_mention import mentions_for_group_channel
 from apps.system_mgmt.services.im_notification_service import send_im_notification
 from apps.system_mgmt.utils.group_utils import GroupUtils
 from apps.system_mgmt.utils.i18n import OPSPILOT_NATS_DESCRIPTION_MARKER, localized_channel_description, system_mgmt_message
@@ -602,6 +603,12 @@ def dispatch_notification(
     return result
 
 
+def _with_group_mention(content, mention_text, separator):
+    if not mention_text or not isinstance(content, str):
+        return content
+    return f"{content}{separator}{mention_text}"
+
+
 @nats_client.register
 def send_msg_with_channel(channel_id, title, content, receivers, attachments=None, internal_auth=None, append_receivers=True, channel_type=None):
     """
@@ -617,7 +624,7 @@ def send_msg_with_channel(channel_id, title, content, receivers, attachments=Non
     """
     if channel_type == IMNotificationChannel.CHANNEL_TYPE:
         return send_im_notification(channel_id, title, content, receivers)
-    channel_obj = Channel.objects.filter(id=channel_id).first()
+    channel_obj = Channel.objects.select_related("account_association", "account_association__integration_instance").filter(id=channel_id).first()
     if not channel_obj:
         return {"result": False, "message": "Channel not found"}
     if channel_type and channel_obj.channel_type != channel_type:
@@ -650,23 +657,21 @@ def send_msg_with_channel(channel_id, title, content, receivers, attachments=Non
             return {"result": False, "message": "No valid recipients found"}
         return send_wechat(channel_obj, content, user_list)
     elif channel_obj.channel_type == ChannelChoices.ENTERPRISE_WECHAT_BOT:
-        if user_list is not None:
-            display_names = list(user_list.values_list("display_name", flat=True))
-        else:
-            display_names = receivers if isinstance(receivers, list) else [receivers]
-        return send_by_wecom_bot(channel_obj, content, display_names if append_receivers else [])
+        mention_text, _at_user_ids, _at_mobiles = mentions_for_group_channel(channel_obj, receivers if append_receivers else None)
+        return send_by_wecom_bot(channel_obj, _with_group_mention(content, mention_text, "\n"), [])
     elif channel_obj.channel_type == ChannelChoices.FEISHU_BOT:
-        if user_list is not None:
-            display_names = list(user_list.values_list("display_name", flat=True))
-        else:
-            display_names = receivers if isinstance(receivers, list) else [receivers]
-        return send_by_feishu_bot(channel_obj, title, content, display_names if append_receivers else [])
+        mention_text, _at_user_ids, _at_mobiles = mentions_for_group_channel(channel_obj, receivers if append_receivers else None)
+        return send_by_feishu_bot(channel_obj, title, _with_group_mention(content, mention_text, "\n"), [])
     elif channel_obj.channel_type == ChannelChoices.DINGTALK_BOT:
-        if user_list is not None:
-            display_names = list(user_list.values_list("display_name", flat=True))
-        else:
-            display_names = receivers if isinstance(receivers, list) else [receivers]
-        return send_by_dingtalk_bot(channel_obj, title, content, display_names if append_receivers else [])
+        mention_text, at_user_ids, at_mobiles = mentions_for_group_channel(channel_obj, receivers if append_receivers else None)
+        return send_by_dingtalk_bot(
+            channel_obj,
+            title,
+            _with_group_mention(content, mention_text, "<br>"),
+            [],
+            at_user_ids=at_user_ids,
+            at_mobiles=at_mobiles,
+        )
     elif channel_obj.channel_type == ChannelChoices.CUSTOM_WEBHOOK:
         return send_by_custom_webhook(channel_obj, content, receivers if append_receivers else [])
     elif channel_obj.channel_type == ChannelChoices.NATS:
