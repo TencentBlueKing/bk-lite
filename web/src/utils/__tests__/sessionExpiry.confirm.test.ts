@@ -111,4 +111,20 @@ describe('session expiry login requests', () => {
       'test',
     )).toBe(true);
   });
+
+  it('does not treat a television display page as an expired platform login', () => {
+    window.history.pushState({}, '', '/ops-analysis/display/view');
+
+    expect(shouldHandleSessionExpiry(
+      '/api/proxy/operation_analysis/api/screen_display/current/',
+    )).toBe(false);
+    expect(shouldTriggerSessionExpiry(
+      '/api/proxy/operation_analysis/api/screen_display/current/',
+      'test',
+    )).toBe(false);
+    expect(shouldTriggerSessionExpiry(
+      '/api/proxy/core/api/get_user_menus/',
+      'test',
+    )).toBe(false);
+  });
 });
