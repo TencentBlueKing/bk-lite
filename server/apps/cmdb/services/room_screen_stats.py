@@ -11,7 +11,7 @@ from collections import defaultdict
 from apps.cmdb.services.instance import InstanceManage
 from apps.cmdb.services.instance_identity import optional_inst_uuid
 from apps.cmdb.services.instance_scope import resolve_room_rack_devices
-from apps.cmdb.services.rack_room import _safe_int, list_server_rooms, rack_u_occupancy
+from apps.cmdb.services.rack_room import _safe_int, rack_u_occupancy
 from apps.cmdb.services.room3d_device_alarms import (
     COVERAGE_ALARM_UNAVAILABLE,
     COVERAGE_MONITORED_ALARMING,
@@ -83,15 +83,12 @@ def _room_error_from_locator(server_room_id, parse_locator):
 
 
 def resolve_target_room(*, server_room_id, permission_map, user, user_info, parse_locator):
-    """显式机房不可见时失败；空 id 取可见机房列表的第一条，排序与 get_room_list 一致。"""
+    """显式机房不可见时失败。空 id 不替用户选机房。"""
     if permission_map is None:
         return _error("无权限查看当前机房", code=403), None
     text = "" if server_room_id in (None, "") else str(server_room_id).strip()
     if not text:
-        rooms = [item for item in list_server_rooms(permission_map=permission_map, user_info=user_info) if item.get("inst_uuid")]
-        if not rooms:
-            return _error("没有可见机房", code=404), None
-        return None, rooms[0]
+        return _error("请在头部选择机房"), None
     error, locator = _room_error_from_locator(text, parse_locator)
     if error:
         return error, None
