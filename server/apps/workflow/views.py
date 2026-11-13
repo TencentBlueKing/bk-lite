@@ -777,6 +777,8 @@ class WorkflowViewSet(AuthViewSet):
         except ConductorConflict as error:
             logger.warning("Conductor publish conflict workflow_id=%s", workflow.pk)
             return Response({"detail": render_workflow_error(request, error), "code": "ENGINE_DEFINITION_CONFLICT"}, status=status.HTTP_409_CONFLICT)
+        except ConductorRejected as error:
+            return Response({"detail": render_workflow_error(request, error)}, status=status.HTTP_400_BAD_REQUEST)
         except ConductorUnavailable as error:
             logger.warning("Conductor publish unavailable workflow_id=%s", workflow.pk)
             return Response({"detail": render_workflow_error(request, error)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)

@@ -1,3 +1,4 @@
+import { applyChatContentEvent } from '@bk-lite/chat-content/core';
 /**
  * AG-UI 协议消息处理器
  * 负责处理不同类型的 AG-UI 消息
@@ -11,9 +12,6 @@ import {
   BrowserStepProgressValue,
   BrowserTaskReceivedValue,
   ConfigAnalysisReportValue,
-  ConfigAnalysisReportItemValue,
-  ConfigAnalysisRecommendationValue,
-  ConfigAnalysisSeveritySectionValue,
   StructuredConfigAnalysisReportValue,
   ConfigDiffReportValue,
   RepairCommandsValue,
@@ -28,7 +26,6 @@ import {
   BrowserStepProgressData,
   BrowserStepsHistory,
   ConfigAnalysisReport,
-  ConfigAnalysisRecommendation,
   ConfigDiffReport,
   CustomChatMessage,
   PlannedExecutionStepView,
@@ -83,61 +80,6 @@ type ContentBlock =
   | { type: 'fileDownload'; downloadId: string }
   | { type: 'repairCommands'; commandsId: string }
   | { type: 'userChoice'; choiceId: string };
-
-const normalizeConfigAnalysisIssues = (
-  section: ConfigAnalysisSeveritySectionValue
-): ConfigAnalysisReportItemValue[] => {
-  if (Array.isArray(section.issues)) {
-    return section.issues;
-  }
-
-  if (Array.isArray(section.items)) {
-    return section.items;
-  }
-
-  return [];
-};
-
-const normalizeConfigAnalysisSection = (
-  section: ConfigAnalysisSeveritySectionValue
-): ConfigAnalysisSeveritySectionValue => ({
-  ...section,
-  issues: normalizeConfigAnalysisIssues(section),
-});
-
-const normalizeConfigAnalysisRecommendations = (
-  recommendations: ConfigAnalysisRecommendationValue[] | undefined
-): ConfigAnalysisRecommendation[] => {
-  if (!Array.isArray(recommendations)) {
-    return [];
-  }
-
-  return recommendations
-    .map((recommendation): ConfigAnalysisRecommendation | null => {
-      if (!recommendation || typeof recommendation !== 'object') {
-        return null;
-      }
-
-      const priority = typeof recommendation.priority === 'string' && ['P0', 'P1', 'P2', 'P3'].includes(recommendation.priority)
-        ? recommendation.priority as ConfigAnalysisRecommendation['priority']
-        : null;
-      const action = typeof recommendation.action === 'string' ? recommendation.action.trim() : '';
-      const target = typeof recommendation.target === 'string' ? recommendation.target.trim() : '';
-      const benefit = typeof recommendation.benefit === 'string' ? recommendation.benefit.trim() : '';
-
-      if (!priority || !action || !target || !benefit) {
-        return null;
-      }
-
-      return {
-        priority,
-        action,
-        target,
-        benefit,
-      };
-    })
-    .filter((recommendation): recommendation is ConfigAnalysisRecommendation => Boolean(recommendation));
-};
 
 const isStructuredConfigAnalysisReport = (
   value: ConfigAnalysisReportValue
@@ -750,8 +692,7 @@ export class AGUIMessageHandler {
   }
 
   handleSkillView(value: SkillViewValue) {
-    const items = Array.isArray(value.items) ? value.items : [];
-    this.skillViews = items.filter((item): item is SkillViewItem => Boolean(item && item.name));
+    this.skillViews = applyChatContentEvent({ skillViews: this.skillViews }, 'skill_view', value, Date.now()).skillViews || [];
     this.updateMessageContent(this.getFullContent(), undefined, undefined, this.thinkingContent, this.isThinking);
   }
 
@@ -759,8 +700,7 @@ export class AGUIMessageHandler {
    * 处理 Wiki 知识库引用事件:存下答案 [n] 对应的来源,供消息下方渲染可点「来源」列表
    */
   handleWikiCitations(value: { citations?: WikiCitation[] }) {
-    const items = Array.isArray(value.citations) ? value.citations : [];
-    this.wikiCitations = items.filter((c): c is WikiCitation => Boolean(c && typeof c.n === 'number' && c.id));
+    this.wikiCitations = applyChatContentEvent({ wikiCitations: this.wikiCitations }, 'wiki_citations', value, Date.now()).wikiCitations || [];
     this.updateMessageContent(this.getFullContent(), undefined, undefined, this.thinkingContent, this.isThinking);
   }
 
@@ -768,12 +708,7 @@ export class AGUIMessageHandler {
    * 处理审批请求事件
    */
   handleApprovalRequest(value: ApprovalRequestValue) {
-    const request: ApprovalRequest = {
-      ...value,
-      received_at: Date.now(),
-      status: 'pending',
-    };
-    this.approvalRequests.push(request);
+    this.approvalRequests = applyChatContentEvent({ approvalRequests: this.approvalRequests }, 'approval_request', value, Date.now()).approvalRequests || [];
     this.updateMessageContent(this.getFullContent(), undefined, undefined, this.thinkingContent, this.isThinking);
   }
 
@@ -792,15 +727,9 @@ export class AGUIMessageHandler {
    * 处理用户选择请求事件
    */
   handleUserChoiceRequest(value: UserChoiceRequestValue) {
-    const request: UserChoiceRequest = {
-      ...value,
-      received_at: Date.now(),
-      status: 'pending',
-    };
-    this.userChoiceRequests.push(request);
-    // Insert a placeholder block so the card renders in-order
+    this.userChoiceRequests = applyChatContentEvent({ userChoiceRequests: this.userChoiceRequests }, 'user_choice_request', value, Date.now()).userChoiceRequests || [];
     this.flushCurrentTextBlock();
-    this.contentBlocks.push({ type: 'userChoice', choiceId: request.choice_id });
+    if (!this.contentBlocks.some(block => block.type === 'userChoice' && block.choiceId === value.choice_id)) this.contentBlocks.push({ type: 'userChoice', choiceId: value.choice_id });
     this.updateMessageContent(this.getFullContent(), undefined, undefined, this.thinkingContent, this.isThinking);
   }
 
@@ -830,23 +759,9 @@ export class AGUIMessageHandler {
    * 处理配置 diff 报告事件
    */
   handleConfigDiffReport(value: ConfigDiffReportValue) {
-    const report: ConfigDiffReport = {
-      ...value,
-      received_at: Date.now(),
-    };
-    const existingIndex = this.configDiffReports.findIndex(item => item.report_id === report.report_id);
-    if (existingIndex >= 0) {
-      this.configDiffReports[existingIndex] = report;
-    } else {
-      this.configDiffReports.push(report);
-    }
+    this.configDiffReports = applyChatContentEvent({ configDiffReports: this.configDiffReports }, 'repair_diff_report', value, Date.now()).configDiffReports || [];
     this.flushCurrentTextBlock();
-    const hasMarker = this.contentBlocks.some(
-      block => block.type === 'configDiff' && block.reportId === report.report_id
-    );
-    if (!hasMarker) {
-      this.contentBlocks.push({ type: 'configDiff', reportId: report.report_id });
-    }
+    if (!this.contentBlocks.some(block => block.type === 'configDiff' && block.reportId === value.report_id)) this.contentBlocks.push({ type: 'configDiff', reportId: value.report_id });
     this.updateMessageContent(this.getFullContent(), undefined, undefined, this.thinkingContent, this.isThinking);
   }
 
@@ -854,25 +769,7 @@ export class AGUIMessageHandler {
     this.flushCurrentTextBlock();
 
     if (isStructuredConfigAnalysisReport(value)) {
-      const existingIndex = this.configAnalysisReports.findIndex(
-        report => report.report_id === value.report_id
-      );
-      const severity_sections = value.severity_sections.map(normalizeConfigAnalysisSection);
-      const report: ConfigAnalysisReport = {
-        ...value,
-        summary: value.summary || {},
-        severity_sections,
-        recommendations: normalizeConfigAnalysisRecommendations(value.recommendations),
-        markdown: value.markdown,
-        fallback_markdown: value.fallback_markdown || value.markdown,
-        received_at: Date.now(),
-      };
-
-      if (existingIndex >= 0) {
-        this.configAnalysisReports[existingIndex] = report;
-      } else {
-        this.configAnalysisReports.push(report);
-      }
+      this.configAnalysisReports = applyChatContentEvent({ configAnalysisReports: this.configAnalysisReports }, 'config_analysis_report', value, Date.now()).configAnalysisReports || [];
 
       const hasMarker = this.contentBlocks.some(
         block => block.type === 'configAnalysis' && block.reportId === value.report_id
@@ -894,13 +791,9 @@ export class AGUIMessageHandler {
    * 处理报告文件下载事件
    */
   handleReportFileDownload(value: ReportFileDownloadValue) {
-    const download: ReportFileDownload = {
-      ...value,
-      received_at: Date.now(),
-    };
-    this.reportFileDownloads.push(download);
+    this.reportFileDownloads = applyChatContentEvent({ reportFileDownloads: this.reportFileDownloads }, 'report_file_download', value, Date.now()).reportFileDownloads || [];
     this.flushCurrentTextBlock();
-    this.contentBlocks.push({ type: 'fileDownload', downloadId: download.download_id });
+    this.contentBlocks.push({ type: 'fileDownload', downloadId: value.download_id });
     this.updateMessageContent(this.getFullContent(), undefined, undefined, this.thinkingContent, this.isThinking);
   }
 
@@ -908,13 +801,9 @@ export class AGUIMessageHandler {
    * 处理修复命令事件
    */
   handleRepairCommands(value: RepairCommandsValue) {
-    const commands: RepairCommands = {
-      ...value,
-      received_at: Date.now(),
-    };
-    this.repairCommandsList.push(commands);
+    this.repairCommandsList = applyChatContentEvent({ repairCommands: this.repairCommandsList }, 'repair_commands', value, Date.now()).repairCommands || [];
     this.flushCurrentTextBlock();
-    this.contentBlocks.push({ type: 'repairCommands', commandsId: commands.commands_id });
+    this.contentBlocks.push({ type: 'repairCommands', commandsId: value.commands_id });
     this.updateMessageContent(this.getFullContent(), undefined, undefined, this.thinkingContent, this.isThinking);
   }
 
@@ -1076,6 +965,7 @@ export class AGUIMessageHandler {
         this.handleRunStarted();
         return false;
 
+      case 'THINKING_TEXT_MESSAGE_CONTENT':
       case 'THINKING':
         if (aguiData.delta) {
           this.handleThinking(aguiData.delta);
@@ -1087,6 +977,7 @@ export class AGUIMessageHandler {
         this.flushCurrentTextBlock();
         return false;
 
+      case 'TEXT_MESSAGE_CHUNK':
       case 'TEXT_MESSAGE_CONTENT':
         if (aguiData.delta) {
           this.handleTextContent(aguiData.delta);

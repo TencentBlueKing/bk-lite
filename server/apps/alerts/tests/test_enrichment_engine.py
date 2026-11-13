@@ -448,6 +448,37 @@ def test_provider_failed_key_is_not_negative_cached(settings):
     assert second[0]["enrichment"]["cmdb"] == {"owner": "alice"}
 
 
+def test_provider_failed_key_still_writes_host_records(settings):
+    from django.core.cache import cache
+
+    from apps.alerts.enrichment.providers.base import FetchBatchResult
+
+    settings.CACHES = {"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}}
+    cache.close()
+
+    class _PartialProvider(EnrichmentProvider):
+        provider_type = "partial_overlay_test"
+
+        def fetch_batch(self, keys, config):
+            return FetchBatchResult(
+                records={key: [{"owner": "alice", "ip_addr": "10.11.27.147"}] for key in keys},
+                failed_keys=set(keys),
+            )
+
+    register_provider(_PartialProvider)
+    events = [{"resource_type": "host", "resource_id": "1", "enrichment": {}, "team": [1]}]
+    rule = _rule(
+        provider_type="partial_overlay_test",
+        output_projection=[{"source": "owner"}, {"source": "ip_addr"}, {"source": "application.inst_name"}],
+    )
+    EnrichmentEngine(rules=[rule]).enrich_batch(events)
+
+    assert events[0]["enrichment"]["cmdb"] == {"owner": "alice", "ip_addr": "10.11.27.147"}
+    binding_key = build_binding_key({"model_id": "host", "_id": "1"})
+    provider_config = {"_authorized_team_ids": [1]}
+    assert cache.get(EnrichmentEngine._cache_key("partial_overlay_test", provider_config, binding_key)) is None
+
+
 def test_provider_circuit_breaker_skips_repeated_failure(settings):
     from django.core.cache import cache
 

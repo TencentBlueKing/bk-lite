@@ -1,3 +1,4 @@
+import { replayChatContent } from '@bk-lite/chat-content/core';
 /**
  * 历史消息内容处理器
  * 用于将历史会话中的 AG-UI 协议消息解析并渲染为 HTML
@@ -679,16 +680,18 @@ const buildFromEvents = (events: any[], finalize = true) => {
       }))
       : undefined;
 
+  const sharedContent = replayChatContent(events.map(event => ({ ...event, value: unwrapCustomValue(event.value) })));
   return {
+    ...sharedContent,
     content: contentText,
     thinking,
     isThinking: finalize ? false : isThinking,
     browserStepProgress: lastStep,
     browserStepsHistory,
     agentStepProgress: agentSteps.length > 0 ? agentSteps : undefined,
-    skillViews: skillViews.length > 0 ? skillViews : undefined,
-    reportFileDownloads: reportFileDownloads.length > 0 ? reportFileDownloads : undefined,
-    wikiCitations: wikiCitations.length > 0 ? wikiCitations : undefined,
+    skillViews: sharedContent.skillViews || (skillViews.length > 0 ? skillViews : undefined),
+    reportFileDownloads: sharedContent.reportFileDownloads || (reportFileDownloads.length > 0 ? reportFileDownloads : undefined),
+    wikiCitations: sharedContent.wikiCitations || (wikiCitations.length > 0 ? wikiCitations : undefined),
     plannedExecutionSteps,
     isStreamingTools: finalize ? false : Boolean(plannedExecutionSteps?.some((s) => s.status === 'running')),
     toolCalls: toolCalls.size > 0 ? Array.from(toolCalls.entries()).map(([id, info]) => ({

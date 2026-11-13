@@ -223,4 +223,56 @@ describe('paramInputOptionsLoader runtime errors', () => {
       },
     );
   });
+
+  it('pages instance options when the response carries page, page_size and a larger count', async () => {
+    const getSourceDataByApiId = vi.fn<GetSourceDataByApiId>(async (_id, params) => {
+      const page = Number((params as { page?: number })?.page ?? 1);
+      const items = page === 1
+        ? [{ inst_uuid: 'a', inst_name: 'A' }]
+        : [{ inst_uuid: 'b', inst_name: 'B' }];
+      return asSourceData({ items, count: 2, page, page_size: 1 });
+    });
+    const loader = createParamInputOptionsLoader({
+      getDataSourceList: async () => [],
+      getSourceDataByApiId,
+    });
+
+    assert.deepEqual(
+      await loader.load({
+        control: 'select',
+        optionsSource: {
+          type: 'dynamic',
+          sourceId: 9,
+          valueField: 'inst_uuid',
+          labelField: 'inst_name',
+        },
+      }, { resolvedParams: { analysis_mode: 'detail', model_id: 'room', page: 1, page_size: 1 } }).promise,
+      {
+        status: 'success',
+        options: [
+          { value: 'a', label: 'A' },
+          { value: 'b', label: 'B' },
+        ],
+      },
+    );
+    assert.equal(getSourceDataByApiId.mock.calls.length, 2);
+    assert.deepEqual(getSourceDataByApiId.mock.calls[1]?.[1], {
+      analysis_mode: 'detail',
+      model_id: 'room',
+      page: 2,
+      page_size: 1,
+    });
+  });
+
+  it('does not request another page for an array option source', async () => {
+    const getSourceDataByApiId = vi.fn<GetSourceDataByApiId>(
+      async () => asSourceData([{ id: 1, name: 'only' }]),
+    );
+    const loader = createParamInputOptionsLoader({
+      getDataSourceList: async () => [],
+      getSourceDataByApiId,
+    });
+    await loader.load(dynamicConfig).promise;
+    assert.equal(getSourceDataByApiId.mock.calls.length, 1);
+  });
 });

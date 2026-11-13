@@ -137,15 +137,20 @@ class Management:
         return old_map, new_map
 
     @classmethod
-    def has_business_changes(cls, old_info, new_info):
+    def changed_business_fields(cls, old_info, new_info):
+        fields = set()
         if new_info.get("assos"):
-            return True
+            fields.add("assos")
         for field, new_value in new_info.items():
             if field in cls.RUNTIME_FIELDS or field.startswith("_"):
                 continue
             if old_info.get(field) != new_value:
-                return True
-        return False
+                fields.add(field)
+        return fields
+
+    @classmethod
+    def has_business_changes(cls, old_info, new_info):
+        return bool(cls.changed_business_fields(old_info, new_info))
 
     def contrast(self, old_map, new_map):
         if self.reconcile:
@@ -160,6 +165,7 @@ class Management:
                 if self.reconcile_task_assets and "inst_uuid" in old_map[key]:
                     info["inst_uuid"] = old_map[key]["inst_uuid"]
                 if self.has_business_changes(old_map[key], info):
+                    info["_changed_fields"] = sorted(self.changed_business_fields(old_map[key], info))
                     update_list.append(info)
                 else:
                     heartbeat_list.append(info)
@@ -239,6 +245,7 @@ class Management:
             payload.update(plan["properties"])
             payload["_incoming"] = {key: value for key, value in info.items() if key not in {"_task_organizations"} and not str(key).startswith("_")}
             if plan["properties"]:
+                payload["_changed_fields"] = sorted(plan["properties"])
                 update_list.append(payload)
             else:
                 heartbeat_list.append(payload)
@@ -334,7 +341,10 @@ class Management:
 
         from apps.cmdb.services.auto_relation_reconcile import schedule_instance_auto_relation_reconcile
 
-        schedule_instance_auto_relation_reconcile([item["inst_info"]["_id"] for item in result["success"]])
+        schedule_instance_auto_relation_reconcile(
+            [item["inst_info"]["_id"] for item in result["success"]],
+            model_id=self.model_id,
+        )
 
         return result
 
@@ -346,8 +356,10 @@ class Management:
 
         with GraphClient() as ag:
             exist_items = self._query_existing_unique_candidates(ag, inst_list)
+            changed_by_id = {}
             for instance_info in inst_list:
                 instance_info = self.coerce_collected_tag(instance_info)
+                raw_changed = instance_info.pop("_changed_fields", None)
                 try:
                     if self.reconcile:
                         instance_info.update(
@@ -374,12 +386,17 @@ class Management:
                     assos_result = self.setting_assos(dict(model_id=self.model_id, _id=entity[0]["_id"], inst_name=entity[0]["inst_name"]), assos)
                     exist_items.append(entity[0])
                     result["success"].append(dict(inst_info=entity[0], assos_result=assos_result, suppress_change_record=suppress))
+                    changed_by_id[entity[0]["_id"]] = None if raw_changed is None else list(raw_changed)
                 except Exception as e:
                     result["failed"].append({"instance_info": instance_info, "error": getattr(e, "message", e)})
 
         from apps.cmdb.services.auto_relation_reconcile import schedule_instance_auto_relation_reconcile
 
-        schedule_instance_auto_relation_reconcile([item["inst_info"]["_id"] for item in result["success"]])
+        schedule_instance_auto_relation_reconcile(
+            list(changed_by_id),
+            model_id=self.model_id,
+            changed_fields_by_instance=changed_by_id,
+        )
         return result
 
     def _set_collected_properties(self, ag, instance_info, exist_items):

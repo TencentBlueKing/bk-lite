@@ -25,8 +25,8 @@ def test_backfill_tag_property_converts_csv_and_leaves_existing_lists():
     assert parse_collected_tag_wire('["owner:acme,inc","env:prod"]') == ["owner:acme,inc", "env:prod"]
     assert backfill_tag_property(123) == ([], 1, 0)
 
-    many = ",".join(f"k{i}:v{i}" for i in range(21))
+    many = ",".join(f"k{i}:v{i}" for i in range(51))
     values, skipped, truncated = backfill_tag_property(many)
-    assert values == [f"k{i}:v{i}" for i in range(20)]
+    assert values == [f"k{i}:v{i}" for i in range(50)]
     assert skipped == 0
     assert truncated == 1

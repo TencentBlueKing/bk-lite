@@ -8,6 +8,7 @@ import time
 from functools import cached_property
 from typing import Dict, List
 
+from plugins.base_utils import COLLECTED_TAG_MAX_PAIRS, encode_collected_tag
 from plugins.constants import (
     cfs_status_map,
     cfs_storage_type_map,
@@ -90,7 +91,6 @@ def _network_type(instance):
 
 
 _TAG_NESTED_KEYS = ("Tags", "TagSet", "Tag", "TagList", "InstanceTags", "TagSpecification")
-_TAG_MAX_PAIRS = 20
 
 
 def _tag_pairs(tags):
@@ -125,7 +125,7 @@ def _tag_pairs(tags):
             continue
         if key in (None, ""):
             continue
-        pairs.append(f"{key}:{'' if value is None else value}")
+        pairs.append((str(key).strip(), "" if value is None else str(value).strip()))
     return pairs
 
 
@@ -151,24 +151,19 @@ def _serialize_qcloud_tags(tags):
     legal = []
     seen = set()
     skipped = 0
-    for raw in _tag_pairs(tags):
-        text = str(raw).strip()
-        if text.count(":") != 1:
+    for key, value in _tag_pairs(tags):
+        item = encode_collected_tag(key, value)
+        if not item:
             skipped += 1
             continue
-        key, value = [part.strip() for part in text.split(":", 1)]
-        if not key or not value or any(ch in value for ch in (":", "\n", "\r")):
-            skipped += 1
-            continue
-        item = f"{key}:{value}"
         if item in seen:
             continue
         seen.add(item)
         legal.append(item)
     truncated = 0
-    if len(legal) > _TAG_MAX_PAIRS:
-        truncated = len(legal) - _TAG_MAX_PAIRS
-        legal = legal[:_TAG_MAX_PAIRS]
+    if len(legal) > COLLECTED_TAG_MAX_PAIRS:
+        truncated = len(legal) - COLLECTED_TAG_MAX_PAIRS
+        legal = legal[:COLLECTED_TAG_MAX_PAIRS]
     if skipped or truncated:
         logger.warning(
             "event=qcloud_tag_normalized skipped=%s truncated=%s",
@@ -779,19 +774,21 @@ class TencentCloudManager:
         ):
             resource_id = instance.get("InstanceId") or ""
             nodes.append(
-                {
-                    "resource_name": resource_id or instance.get("LanIP") or "",
-                    "resource_id": resource_id,
-                    "region": region,
-                    "cluster_id": cluster_id,
-                    "cluster_name": cluster_name,
-                    "ip_addr": instance.get("LanIP"),
-                    "instance_role": instance.get("InstanceRole"),
-                    "status": instance.get("InstanceState"),
-                    "node_pool_id": instance.get("NodePoolId") or "",
-                    "create_time": instance.get("CreatedTime"),
-                    "tag": "",
-                }
+                _put_tag(
+                    {
+                        "resource_name": resource_id or instance.get("LanIP") or "",
+                        "resource_id": resource_id,
+                        "region": region,
+                        "cluster_id": cluster_id,
+                        "cluster_name": cluster_name,
+                        "ip_addr": instance.get("LanIP"),
+                        "instance_role": instance.get("InstanceRole"),
+                        "status": instance.get("InstanceState"),
+                        "node_pool_id": instance.get("NodePoolId") or "",
+                        "create_time": instance.get("CreatedTime"),
+                    },
+                    _tag_payload(instance),
+                )
             )
         return nodes
 

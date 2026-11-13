@@ -1,3 +1,4 @@
+import { encodeCollectedTag } from '@/utils/collectedTag';
 import type {
   CmdbAttrField,
   CmdbEnumOption,
@@ -41,7 +42,7 @@ export const getTagOptions = (field?: CmdbAttrField): GroupedSelectOption[] => {
     const key = String(item?.key || '').trim();
     const value = String(item?.value || '').trim();
 
-    if (!key || !value) {
+    if (!key) {
       return acc;
     }
 
@@ -50,8 +51,8 @@ export const getTagOptions = (field?: CmdbAttrField): GroupedSelectOption[] => {
     }
 
     acc[key].push({
-      label: `${key}:${value}`,
-      value: `${key}:${value}`,
+      label: value ? `${key}:${value}` : `${key}:`,
+      value: encodeCollectedTag(key, value),
     });
 
     return acc;

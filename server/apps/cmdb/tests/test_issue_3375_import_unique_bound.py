@@ -71,7 +71,7 @@ def _patch_import_deps(monkeypatch, attrs, unique_rules=None):
     monkeypatch.setattr(f"{MODULE}.batch_create_change_record", lambda *a, **k: None)
     monkeypatch.setattr(
         "apps.cmdb.services.auto_relation_reconcile.schedule_instance_auto_relation_reconcile",
-        lambda ids: None,
+        lambda *args, **kwargs: None,
     )
 
 
@@ -227,9 +227,7 @@ def test_query_import_exist_items_uses_chunked_in_and_joint_rule(fake_graph):
     assert not any(_is_model_id_only(params) for params in query_params)
     assert any(item.get("field") == "serial" and item.get("type") == "str[]" for params in query_params for item in params)
     assert any(item.get("field") == "port" and item.get("type") == "int[]" for params in query_params for item in params)
-    assert any(
-        {item.get("field") for item in params} >= {"model_id", "ip_addr", "cloud"} for params in query_params
-    )
+    assert any({item.get("field") for item in params} >= {"model_id", "ip_addr", "cloud"} for params in query_params)
     assert any(call[0] == "query_entity_by_inst_names" for call in fake.calls)
     assert any(item.get("_id") == 7 for item in rows)
 

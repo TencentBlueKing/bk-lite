@@ -307,6 +307,7 @@ export const useGraphData = (
         unifiedFilterValues,
         filterBindings: effectiveFilterBindings,
         filterDefinitions,
+        chartType: valueConfig.chartType,
         t,
       });
       
@@ -317,6 +318,7 @@ export const useGraphData = (
         filterBindings: effectiveFilterBindings,
         filterDefinitions,
         extraParams: requestExtraParams,
+        chartType: valueConfig.chartType,
         throwError: true,
       });
 

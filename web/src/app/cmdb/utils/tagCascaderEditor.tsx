@@ -3,6 +3,7 @@ import { Cascader, Input, Modal, message } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import { TagAttrOption } from '@/app/cmdb/types/assetManage';
+import { decodeCollectedTag, encodeCollectedTag } from '@/utils/collectedTag';
 
 const { SHOW_CHILD } = Cascader;
 
@@ -33,12 +34,9 @@ const TagCascaderEditor: React.FC<TagCascaderEditorProps> = ({
   const selectedPairs = useMemo(() => {
     const raw = Array.isArray(value) ? value : [];
     return raw
-      .filter((item) => typeof item === 'string' && item.includes(':'))
-      .map((item) => {
-        const [key, ...rest] = item.split(':');
-        return { key: (key || '').trim(), value: rest.join(':').trim() };
-      })
-      .filter((item) => item.key && item.value);
+      .filter((item) => typeof item === 'string')
+      .map((item) => decodeCollectedTag(item))
+      .filter((item): item is { key: string; value: string } => Boolean(item?.key));
   }, [value]);
 
   const knownOptionsRef = React.useRef<Record<string, Set<string>>>({});
@@ -48,7 +46,7 @@ const TagCascaderEditor: React.FC<TagCascaderEditorProps> = ({
     configured.forEach((item) => {
       const key = (item?.key || '').trim();
       const val = (item?.value || '').trim();
-      if (!key || !val) return;
+      if (!key) return;
       if (!map[key]) map[key] = new Set<string>();
       map[key].add(val);
     });
@@ -78,8 +76,8 @@ const TagCascaderEditor: React.FC<TagCascaderEditorProps> = ({
     pairs.forEach((item) => {
       const key = (item.key || '').trim();
       const val = (item.value || '').trim();
-      if (!key || !val) return;
-      unique.add(`${key}:${val}`);
+      if (!key) return;
+      unique.add(encodeCollectedTag(key, val));
     });
     onChange?.(Array.from(unique));
   };
@@ -94,11 +92,11 @@ const TagCascaderEditor: React.FC<TagCascaderEditorProps> = ({
   const handleAddCustom = () => {
     const key = customKey.trim();
     const val = customValue.trim();
-    if (!key || !val) {
+    if (!key) {
       message.warning(t('required'));
       return;
     }
-    if (/[:\n\r]/.test(key) || /[:\n\r]/.test(val)) {
+    if (/[\n\r]/.test(key) || /[\n\r]/.test(val)) {
       message.warning(t('Model.tagBatchFormatError'));
       return;
     }

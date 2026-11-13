@@ -1029,6 +1029,8 @@ class InstanceManage(object):
         case_sensitive: bool = True,
         advanced_filter: dict = None,
         permission_lookup=None,
+        condition_params: list = None,
+        condition_logic: str = "AND",
     ):
         """实例列表"""
 
@@ -1067,6 +1069,8 @@ class InstanceManage(object):
                 order_type=order_type,
                 format_permission_dict=format_permission_dict,
                 case_sensitive=case_sensitive,
+                condition_params=list(condition_params or []),
+                condition_logic=condition_logic,
             )
             inst_list, count = ag.query_entity(**query)
         return inst_list, count
@@ -1145,7 +1149,7 @@ class InstanceManage(object):
             try:
                 from apps.cmdb.services.auto_relation_reconcile import schedule_instance_auto_relation_reconcile
 
-                schedule_instance_auto_relation_reconcile([result["_id"]])
+                schedule_instance_auto_relation_reconcile([result["_id"]], model_id=model_id)
             except Exception:
                 logger.exception(
                     "[InstanceManage] post-create auto_relation hook failed cmdb_id=%s",
@@ -1357,7 +1361,7 @@ class InstanceManage(object):
             change_records,
             operator=operator,
         )
-        schedule_instance_auto_relation_reconcile([item["_id"] for item in created])
+        schedule_instance_auto_relation_reconcile([item["_id"] for item in created], model_id=model_id)
         if model_id in CMDB_MONITOR_SYNC_MODEL_IDS:
             notified = []
             for item in created:
@@ -1508,7 +1512,11 @@ class InstanceManage(object):
             if schedule_post_actions:
                 from apps.cmdb.services.auto_relation_reconcile import schedule_instance_auto_relation_reconcile
 
-                schedule_instance_auto_relation_reconcile([result[0]["_id"]])
+                schedule_instance_auto_relation_reconcile(
+                    [result[0]["_id"]],
+                    model_id=inst_info["model_id"],
+                    changed_fields=list(update_attr),
+                )
 
             return result[0]
 
@@ -1682,7 +1690,11 @@ class InstanceManage(object):
         ]
         batch_create_change_record(INSTANCE, UPDATE_INST, change_records, operator=operator)
 
-        schedule_instance_auto_relation_reconcile([item["_id"] for item in result])
+        schedule_instance_auto_relation_reconcile(
+            [item["_id"] for item in result],
+            model_id=model_info["model_id"],
+            changed_fields=list(update_attr),
+        )
 
         return result
 
@@ -2635,7 +2647,10 @@ class InstanceManage(object):
 
         from apps.cmdb.services.auto_relation_reconcile import schedule_instance_auto_relation_reconcile
 
-        schedule_instance_auto_relation_reconcile([item["data"]["_id"] for item in results if item.get("success")])
+        schedule_instance_auto_relation_reconcile(
+            [item["data"]["_id"] for item in results if item.get("success")],
+            model_id=model_id,
+        )
 
         return results
 
@@ -2691,10 +2706,24 @@ class InstanceManage(object):
 
         from apps.cmdb.services.auto_relation_reconcile import schedule_instance_auto_relation_reconcile
 
-        schedule_instance_auto_relation_reconcile(
-            [item["data"]["_id"] for item in add_results if item.get("success")]
-            + [item["data"]["_id"] for item in update_results if item.get("success")]
-        )
+        added_ids = [item["data"]["_id"] for item in add_results if item.get("success")]
+        update_fields_by_instance = {}
+        for item in update_results:
+            if not item.get("success"):
+                continue
+            inst_id = item["data"]["_id"]
+            before = exist_items__id_map.get(inst_id) or {}
+            update_fields_by_instance[inst_id] = [
+                key for key, value in item["data"].items() if not str(key).startswith("_") and before.get(key) != value
+            ]
+        if added_ids:
+            schedule_instance_auto_relation_reconcile(added_ids, model_id=model_id)
+        if update_fields_by_instance:
+            schedule_instance_auto_relation_reconcile(
+                list(update_fields_by_instance),
+                model_id=model_id,
+                changed_fields_by_instance=update_fields_by_instance,
+            )
 
         # 检查是否存在验证错误
         if _import.validation_errors:
@@ -3269,7 +3298,15 @@ class InstanceManage(object):
         return f"n.inst_name IN {inst_names}"
 
     @classmethod
-    def group_inst_count(cls, group_by_attr: str, permissions_map: dict, params: list = None, creator: str = ""):
+    def group_inst_count(
+        cls,
+        group_by_attr: str,
+        permissions_map: dict,
+        params: list = None,
+        creator: str = "",
+        condition_params: list = None,
+        condition_logic: str = "AND",
+    ):
         format_permission_dict = cls._build_format_permission_dict(permissions_map, creator)
 
         with GraphClient() as ag:
@@ -3278,6 +3315,8 @@ class InstanceManage(object):
                 group_by_attr=group_by_attr,
                 params=params or [],
                 format_permission_dict=format_permission_dict,
+                condition_params=list(condition_params or []),
+                condition_logic=condition_logic,
             )
         return data
 

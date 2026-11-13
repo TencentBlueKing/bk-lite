@@ -126,6 +126,24 @@ def test_validate_field_schema_valid():
     assert _validate_field_schema(value) == value
 
 
+def test_validate_field_schema_accepts_role_and_modes():
+    value = [
+        {
+            "key": "instance_count",
+            "role": "measure",
+            "modes": ["count", "distribution"],
+        }
+    ]
+    assert _validate_field_schema(value) == value
+
+
+def test_validate_field_schema_rejects_unknown_role_and_blank_modes():
+    with pytest.raises(serializers.ValidationError):
+        _validate_field_schema([{"key": "a", "role": "label"}])
+    with pytest.raises(serializers.ValidationError):
+        _validate_field_schema([{"key": "a", "modes": [""]}])
+
+
 def _validate_params(value):
     from apps.operation_analysis.serializers.datasource_serializers import DataSourceAPIModelSerializer
 

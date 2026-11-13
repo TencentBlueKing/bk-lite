@@ -22,6 +22,7 @@ import {
 } from './shared/screenMetrics';
 import { useEchartsFinishedReady } from '@/app/ops-analysis/hooks/useEchartsFinishedReady';
 import { formatVisibleChartValue } from '@/app/ops-analysis/utils/chartValueFormat';
+import { piePageShare } from '@/app/ops-analysis/utils/genericStructure';
 import { useTranslation } from '@/utils/i18n';
 import { useWidgetDataLink } from '@/app/ops-analysis/components/interactionTitleIcon';
 import { pieSectorSelectedMode } from '@/app/ops-analysis/utils/interactionBehavior';
@@ -47,6 +48,7 @@ const OsPie: React.FC<OsPieProps> = ({
 }) => {
   const { t } = useTranslation();
   const pieTotalLabel = t('dashboard.pieTotal');
+  const pageShare = piePageShare(rawData);
   const chartRef = useRef<any>(null);
   const themeName = resolveOpsChartThemeName();
   const usesScreenChartTheme = isScreenChartThemeMode(config?.chartThemeMode);
@@ -79,7 +81,7 @@ const OsPie: React.FC<OsPieProps> = ({
     [config?.dimensionField, config?.pieScalarFields, config?.valueField, rawData],
   );
   const isDataReady = chartData.some(
-    (item) => Number.isFinite(item.value) && item.value > 0,
+    (item) => Number.isFinite(item.value) && item.value >= 0,
   );
   const showLegend = isDataReady;
   const { onEvents: finishedEvents } = useEchartsFinishedReady({
@@ -90,9 +92,15 @@ const OsPie: React.FC<OsPieProps> = ({
   const { link, surface, onChartClick, chartTooltipHint } = useWidgetDataLink(config);
   const linkTooltipTheme = resolveDataLinkTooltipTheme(config?.chartThemeMode, themeName);
   const sectorSelectedMode = pieSectorSelectedMode(surface, link?.kind);
+  // 数据链接回调每次渲染都是新函数。固定事件对象，避免相同数据下重新绑定饼图。
+  const onChartClickRef = useRef(onChartClick);
+  onChartClickRef.current = onChartClick;
+  const stableChartClick = useCallback((...args: Parameters<typeof onChartClick>) => {
+    onChartClickRef.current(...args);
+  }, []);
   const onEvents = useMemo(
-    () => ({ ...finishedEvents, click: onChartClick }),
-    [finishedEvents, onChartClick],
+    () => ({ ...finishedEvents, click: stableChartClick }),
+    [finishedEvents, stableChartClick],
   );
   const option = useMemo(() => ({
     color: chartColors,
@@ -123,7 +131,7 @@ const OsPie: React.FC<OsPieProps> = ({
             <div style="margin-bottom: ${tooltipGap}px; font-weight: bold;">${params.seriesName}</div>
             <div style="display: flex; align-items: center;">
               <span style="display: inline-block; width: ${markerSize}px; height: ${markerSize}px; background-color: ${params.color}; border-radius: 50%; margin-right: ${markerGap}px;"></span>
-              <span>${params.name}: ${formatVisibleChartValue(params.value, config)} (${percent.toFixed(1)}%)</span>
+              <span>${params.data?.label || params.name}: ${formatVisibleChartValue(params.value, config)} (${percent.toFixed(1)}%)</span>
             </div>
           </div>
         `;
@@ -223,7 +231,17 @@ const OsPie: React.FC<OsPieProps> = ({
   }
 
   return (
-    <div className="h-full flex">
+    <div className="flex h-full min-h-0 flex-col">
+      {pageShare ? (
+        <div className="px-2 text-xs text-[var(--color-text-3)]" data-testid="pie-page-share">
+          {t(
+            'dashboard.piePageShare',
+            '当前页占比，不是全部结果（第 {page} 页，每页 {pageSize}，共 {count} 项）',
+            pageShare,
+          )}
+        </div>
+      ) : null}
+      <div className="flex min-h-0 flex-1">
       {/* 图表区域 */}
       <div className="flex-1 min-w-0">
         <ReactEcharts
@@ -238,7 +256,11 @@ const OsPie: React.FC<OsPieProps> = ({
       {/* 图例区域 - 带百分比 */}
       {showLegend && (
         <ChartLegend
-          data={chartData.map((item: any) => ({ name: item.name, value: item.value }))}
+          data={chartData.map((item: any) => ({
+            name: item.name,
+            label: item.label,
+            value: item.value,
+          }))}
           colors={chartColors}
           layout="vertical"
           showPercent={true}
@@ -247,6 +269,7 @@ const OsPie: React.FC<OsPieProps> = ({
           onSelectionChange={handleLegendChange}
         />
       )}
+      </div>
     </div>
   );
 };

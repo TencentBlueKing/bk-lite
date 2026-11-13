@@ -47,6 +47,8 @@ def test_five_minute_task_is_a_singleton_with_lock_expiry():
     assert entry["schedule"] == crontab(minute="*/5")
     assert reconcile_auto_relation_pending_task.lock_expiry == 5 * 60
     assert reconcile_auto_relation_pending_task.raise_on_duplicate is False
+    assert reconcile_auto_relation_pending_task.soft_time_limit == 240
+    assert reconcile_auto_relation_pending_task.time_limit == 270
 
 
 def test_drain_builds_associations_then_pending_rows_are_gone(monkeypatch):
@@ -69,7 +71,7 @@ def test_drain_builds_associations_then_pending_rows_are_gone(monkeypatch):
         classmethod(lambda cls, model_asst_id: synced.append((model_asst_id, len(graph.edges))) or {"success": True}),
     )
 
-    schedule_instance_auto_relation_reconcile([1, 2])
+    schedule_instance_auto_relation_reconcile([1, 2], model_id="source")
     assert AutoRelationPending.objects.filter(instance_id__isnull=False).count() == 2
 
     result = drain_auto_relation_pending()
@@ -141,3 +143,57 @@ def test_legacy_tasks_only_record_pending_rows():
         11,
     ]
     assert list(AutoRelationPending.objects.filter(model_asst_id__isnull=False).values_list("model_asst_id", flat=True)) == ["vm_run_host"]
+
+
+def test_drain_stops_before_the_next_batch_when_the_round_budget_is_spent(monkeypatch):
+    monkeypatch.setattr(mod, "AUTO_RELATION_BATCH_SIZE", 1)
+    monkeypatch.setattr(mod, "AUTO_RELATION_ROUND_SECONDS", 0)
+    monkeypatch.setattr(
+        mod.AutoRelationRuleReconcileService,
+        "reconcile_for_instances",
+        classmethod(lambda cls, ids, schedule_incoming=True: {"success": True, "failed": []}),
+    )
+
+    schedule_instance_auto_relation_reconcile([1, 2, 3])
+    result = drain_auto_relation_pending()
+
+    assert result["instances"] == 1
+    assert result["paused"] is True
+    assert sorted(AutoRelationPending.objects.values_list("instance_id", flat=True)) == [2, 3]
+
+
+def test_drain_does_not_expand_succeeded_instances_into_rule_sync(monkeypatch):
+    synced = []
+    monkeypatch.setattr(
+        mod.AutoRelationRuleReconcileService,
+        "reconcile_for_instances",
+        classmethod(lambda cls, ids, schedule_incoming=True: {"success": True, "failed": []}),
+    )
+    monkeypatch.setattr(
+        mod.AutoRelationRuleReconcileService,
+        "full_sync_rule",
+        classmethod(lambda cls, model_asst_id: synced.append(model_asst_id) or {"done": True}),
+    )
+
+    schedule_instance_auto_relation_reconcile([1])
+    drain_auto_relation_pending()
+
+    assert synced == []
+
+
+def test_unrelated_update_fields_do_not_enqueue(monkeypatch):
+    monkeypatch.setattr(mod, "model_association_search", lambda model: [association("r1")])
+
+    schedule_instance_auto_relation_reconcile([1], model_id="source", changed_fields=["os_type"])
+
+    assert AutoRelationPending.objects.count() == 0
+
+
+def test_destination_match_field_enqueues_that_rule_only(monkeypatch):
+    incoming = dict(association("incoming"), src_model_id="elsewhere", dst_model_id="source")
+    monkeypatch.setattr(mod, "model_association_search", lambda model: [association("r1"), incoming])
+
+    schedule_instance_auto_relation_reconcile([1], model_id="source", changed_fields=["key"])
+
+    assert list(AutoRelationPending.objects.filter(instance_id__isnull=False).values_list("instance_id", flat=True)) == [1]
+    assert list(AutoRelationPending.objects.filter(model_asst_id__isnull=False).values_list("model_asst_id", flat=True)) == ["incoming"]

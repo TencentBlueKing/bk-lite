@@ -32,6 +32,21 @@ interface ParamInputControlProps {
   optionsQuerySignature?: string;
 }
 
+const emptyUpstreamHint = (
+  inputConfig: InputControlConfig,
+  translate: (key: string) => string,
+) => {
+  const classificationHint = translate('dashboard.selectClassificationFirst');
+  if (
+    inputConfig.control === 'select'
+    && inputConfig.optionsSource.type === 'dynamic'
+    && inputConfig.optionsSource.emptyUpstreamHintKey === 'dashboard.selectClassificationFirst'
+  ) {
+    return classificationHint;
+  }
+  return translate('paramInput.dynamic.upstreamRequired');
+};
+
 export const ParamInputControl: React.FC<ParamInputControlProps> = ({
   inputConfig,
   fallback,
@@ -141,7 +156,7 @@ export const ParamInputControl: React.FC<ParamInputControlProps> = ({
         value={undefined}
         placeholder={optionsBlockReason === 'invalid'
           ? t('paramInput.dynamic.invalidUpstream')
-          : t('paramInput.dynamic.upstreamRequired')}
+          : emptyUpstreamHint(inputConfig, t)}
         style={{ width: '100%', ...style }}
       />
     );

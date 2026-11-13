@@ -25,6 +25,7 @@ import {
   hasActiveWidgetRuntimeParams,
   shouldShowInitialWidgetLoading,
 } from "@/app/ops-analysis/utils/widgetDataTransform";
+import { genericStructureMismatch } from "@/app/ops-analysis/utils/genericStructure";
 import {
   beginOwnerRequest,
   finishOwnerRequest,
@@ -74,6 +75,11 @@ import {
 } from "@/app/ops-analysis/utils/tablePagination";
 import { validateMultiValueData } from "@/app/ops-analysis/utils/multiValueData";
 import { validateTopNPayload } from "@/app/ops-analysis/utils/topNData";
+import {
+  chartFieldMissingMessage,
+  missingConfiguredField,
+  readChartFieldMissing,
+} from "@/app/ops-analysis/utils/chartFieldContract";
 import { validateEventTimelinePayload } from "@/app/ops-analysis/utils/eventTimeline";
 import { validateCardListPayload } from "@/app/ops-analysis/utils/cardList";
 import { resolveRadarSeriesData } from "@/app/ops-analysis/utils/radarData";
@@ -90,12 +96,20 @@ import {
   resolveOptionsQueryParams,
 } from "@/app/ops-analysis/utils/optionsQueryParamRefs";
 import { readComponentOptionsQueryUpstream } from "@/app/ops-analysis/utils/optionsQueryCandidates";
+import { localizeOptionLoadError } from "@/app/ops-analysis/utils/paramInputOptionsLoader";
 
 const validateTopNData = (
   data: unknown,
   config?: ValueConfig,
   errorMessage?: string,
 ): { isValid: boolean; message?: string } => {
+  const missing = missingConfiguredField(data, [
+    config?.topNLabelField,
+    config?.topNValueField,
+  ]);
+  if (missing) {
+    return { isValid: false, message: chartFieldMissingMessage(missing) };
+  }
   const valid = validateTopNPayload(data, {
     labelField: config?.topNLabelField,
     valueField: config?.topNValueField,
@@ -296,7 +310,15 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     if (!dataSource?.params?.length) return overrides;
     return dataSource.params.map((param) => {
       const override = overrides.find((item) => item.name === param.name);
-      return override ? { ...param, ...override } : param;
+      if (!override) return param;
+      if (param.name === 'analysis_mode') {
+        return { ...param, value: override.value ?? param.value };
+      }
+      return {
+        ...param,
+        ...override,
+        visible_modes: param.visible_modes,
+      };
     });
   }, [config?.dataSourceParams, dataSource?.params]);
   const componentSwitchParam = useMemo(
@@ -617,6 +639,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
       filterBindings: config?.filterBindings,
       filterDefinitions,
       resolutionContext: dateRangeResolutionContext,
+      chartType,
       t,
     });
   }, [
@@ -627,6 +650,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     unifiedFilterValues,
     filterDefinitions,
     dateRangeResolutionContext,
+    chartType,
     t,
   ]);
 
@@ -643,6 +667,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
       filterBindings: config?.filterBindings,
       filterDefinitions,
       resolutionContext: dateRangeResolutionContext,
+      chartType,
       t,
     });
   }, [
@@ -653,6 +678,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     unifiedFilterValues,
     filterDefinitions,
     dateRangeResolutionContext,
+    chartType,
     t,
   ]);
 
@@ -724,6 +750,17 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
       const localizeStructureMessage = (
         result: { isValid: boolean; message?: string },
       ) => {
+        const missingField = readChartFieldMissing(result.message);
+        if (!result.isValid && missingField) {
+          return {
+            ...result,
+            message: t(
+              "dashboard.chartFieldMissing",
+              "字段 {field} 不在当前结果中",
+              { field: missingField },
+            ),
+          };
+        }
         if (!result.isValid && result.message?.startsWith("dashboard.")) {
           return { ...result, message: t(result.message) };
         }
@@ -739,6 +776,21 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
         }));
       }
 
+      const mismatch = genericStructureMismatch(data, type);
+      if (mismatch) {
+        return {
+          isValid: false,
+          message: t(
+            "dashboard.structureMismatch",
+            "当前结果结构是 {current}，这个图表需要 {required}。请修改分析方式或更换图表。",
+            {
+              current: t(`dashboard.structureName.${mismatch.current}`, mismatch.current),
+              required: t(`dashboard.structureName.${mismatch.required}`, mismatch.required),
+            },
+          ),
+        };
+      }
+
       const isDataEmpty = () =>
         !data || (Array.isArray(data) && data.length === 0);
 
@@ -748,11 +800,11 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
 
       switch (type) {
         case "pie":
-          return ChartDataTransformer.validatePieData(data, errorMessage, {
+          return localizeStructureMessage(ChartDataTransformer.validatePieData(data, errorMessage, {
             dimensionField: config?.dimensionField,
             valueField: config?.valueField,
             pieScalarFields: config?.pieScalarFields,
-          });
+          }));
         case "line":
         case "bar":
           return localizeStructureMessage(
@@ -763,9 +815,22 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
             ),
           );
         case "topN":
-          return validateTopNData(data, config, errorMessage);
-        case "gauge":
-          return localizeStructureMessage(validateGaugeData(data, config));
+          return localizeStructureMessage(validateTopNData(data, config, errorMessage));
+        case "single":
+        case "gauge": {
+          const selected = config?.selectedFields?.[0];
+          const missing = missingConfiguredField(data, [selected]);
+          if (missing) {
+            return localizeStructureMessage({
+              isValid: false,
+              message: chartFieldMissingMessage(missing),
+            });
+          }
+          if (type === "gauge") {
+            return localizeStructureMessage(validateGaugeData(data, config));
+          }
+          return { isValid: true };
+        }
         case "eventTable":
           return localizeStructureMessage(validateEventTableData(data));
         case "eventTimeline":
@@ -880,6 +945,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
         filterBindings: config?.filterBindings,
         filterDefinitions,
         resolutionContext: dateRangeResolutionContext,
+        chartType,
       });
 
       // Discard stale response if a newer fetch has started
@@ -1031,8 +1097,10 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
       setTableLoading(false);
       hasSettledRequestRef.current = true;
       setHasSettledRequest(true);
-      const optionsLoadErrorMessage =
-        optionState.status === "error" ? optionState.errorMessage : undefined;
+      const optionsLoadErrorMessage = localizeOptionLoadError(
+        optionState.status === "error" ? optionState.errorMessage : undefined,
+        t,
+      );
       if (optionsLoadErrorMessage) {
         setDataValidation((previous) => {
           if (

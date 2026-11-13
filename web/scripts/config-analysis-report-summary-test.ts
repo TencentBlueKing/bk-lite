@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
+import { getOpspilotTranslate } from '../packages/chat-content/src/translation';
+const getConfigAnalysisSummaryText = (input: Parameters<typeof evaluate>[0]) => evaluate(input, getOpspilotTranslate());
 
-import { getConfigAnalysisSummaryText } from '../src/app/opspilot/components/custom-chat-sse/configAnalysisReportSummary';
+import { getConfigAnalysisSummaryText as evaluate } from '../src/app/opspilot/components/custom-chat-sse/configAnalysisReportSummary';
 
 assert.equal(
   getConfigAnalysisSummaryText({

@@ -1,5 +1,6 @@
 import React from 'react';
 import { Tag, Tooltip } from 'antd';
+import { displayCollectedTag } from '@/utils/collectedTag';
 import styles from './index.module.scss';
 
 export interface TagCapsuleGroupProps {
@@ -50,7 +51,7 @@ const parseJsonArray = (value: string): unknown[] | null => {
 
 const normalizeTagValues = (value: unknown): string[] => {
   if (Array.isArray(value)) {
-    return value.map((item) => normalizeTagText(item)).filter(Boolean);
+    return value.map((item) => displayCollectedTag(normalizeTagText(item))).filter(Boolean);
   }
 
   if (typeof value === 'string') {
@@ -64,7 +65,7 @@ const normalizeTagValues = (value: unknown): string[] => {
       }
     }
 
-    return [trimmed];
+    return [displayCollectedTag(trimmed)];
   }
 
   const normalized = normalizeTagText(value);

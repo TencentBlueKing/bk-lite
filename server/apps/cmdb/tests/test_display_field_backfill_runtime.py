@@ -1,11 +1,14 @@
 """显示字段回填离开启动门禁：启动只入队，运行期分页且跳过未变化的值。"""
 
+import json
 import logging
 
 import pytest
 from celery.exceptions import SoftTimeLimitExceeded
 from django.core.cache import cache
 
+from apps.cmdb.models.repair_state import CmdbRepairState
+from apps.cmdb.services.instance_shape_repair import STAGE_DISPLAY_BACKFILL
 from apps.cmdb.services.unique_write_lock import UniqueWriteLockService
 from apps.cmdb.tasks.display_field_backfill import (
     DISPLAY_BACKFILL_COMPLETED_KEY,
@@ -85,8 +88,9 @@ def test_backfill_continues_from_cursor(monkeypatch, locmem_cache):
     assert result["status"] == "continue"
     assert result["instances_updated"] == 3
     assert queued == [{"countdown": 1}]
-    assert cache.get(DISPLAY_BACKFILL_CURSOR_KEY) == {"model_id": "host", "last_id": 9}
-    assert cache.get(DISPLAY_BACKFILL_COMPLETED_KEY) is None
+    row = CmdbRepairState.objects.get(stage=STAGE_DISPLAY_BACKFILL)
+    assert json.loads(row.cursor) == {"model_id": "host", "last_id": 9}
+    assert row.completed is False
 
 
 def test_backfill_done_idles_until_forced(monkeypatch, locmem_cache):
@@ -118,8 +122,9 @@ def test_backfill_done_idles_until_forced(monkeypatch, locmem_cache):
     assert done["instances_updated"] == 0
     assert idle == {"status": "idle"}
     assert calls == [None]
-    assert cache.get(DISPLAY_BACKFILL_CURSOR_KEY) is None
-    assert cache.get(DISPLAY_BACKFILL_COMPLETED_KEY)
+    row = CmdbRepairState.objects.get(stage=STAGE_DISPLAY_BACKFILL)
+    assert row.cursor == ""
+    assert row.completed is True
 
 
 def test_query_failure_keeps_cursor_without_chaining(monkeypatch, locmem_cache):
@@ -146,7 +151,9 @@ def test_query_failure_keeps_cursor_without_chaining(monkeypatch, locmem_cache):
 
     assert result["status"] == "retry"
     assert result["reason"] == "query_failed"
-    assert cache.get(DISPLAY_BACKFILL_CURSOR_KEY) == {"model_id": "host", "last_id": 4}
+    row = CmdbRepairState.objects.get(stage=STAGE_DISPLAY_BACKFILL)
+    assert json.loads(row.cursor) == {"model_id": "host", "last_id": 4}
+    assert row.completed is False
 
 
 def test_locked_backfill_does_not_scan(monkeypatch):
@@ -192,6 +199,7 @@ def test_init_cmdb_enqueues_backfill_and_survives_broker_outage(monkeypatch, cap
     calls = []
     cache.set(DISPLAY_BACKFILL_COMPLETED_KEY, "done")
     cache.set(DISPLAY_BACKFILL_CURSOR_KEY, {"model_id": "host", "last_id": 1})
+    seen = {}
 
     def _call(name, *args, **kwargs):
         calls.append((name, kwargs))
@@ -200,8 +208,12 @@ def test_init_cmdb_enqueues_backfill_and_survives_broker_outage(monkeypatch, cap
     monkeypatch.setattr("apps.cmdb.tasks.display_field_backfill.ensure_display_field_backfill_periodic_task", lambda: None)
     monkeypatch.setattr("apps.cmdb.tasks.uuid_migration.ensure_uuid_migration_periodic_task", lambda: None)
     monkeypatch.setattr("apps.cmdb.tasks.uuid_migration.migrate_cmdb_instance_uuid_runtime.delay", lambda: None)
+    monkeypatch.setattr("apps.cmdb.tasks.instance_shape_repair.repair_cmdb_instance_shape.delay", lambda: None)
+    monkeypatch.setattr("apps.cmdb.tasks.ci_context.ensure_ci_context_rebuild_periodic_task", lambda: None)
+    monkeypatch.setattr("apps.cmdb.tasks.ci_context.rebuild_ci_context_runtime.delay", lambda: None)
 
     def _delay(**kwargs):
+        seen.update(kwargs)
         secret = BROKER_SECRET
         raise ConnectionError(f"redis://:{secret}@broker/0")
 
@@ -214,10 +226,11 @@ def test_init_cmdb_enqueues_backfill_and_survives_broker_outage(monkeypatch, cap
 
     assert ("init_display_fields", {"models_only": True}) in calls
     assert all(kwargs.get("models_only") for name, kwargs in calls if name == "init_display_fields")
+    assert seen == {"force": False}
     records = [record for record in caplog.records if record.getMessage().startswith("event=display_backfill_enqueue_failed")]
     assert len(records) == 1
-    assert cache.get(DISPLAY_BACKFILL_COMPLETED_KEY) is None
-    assert cache.get(DISPLAY_BACKFILL_CURSOR_KEY) is None
+    assert cache.get(DISPLAY_BACKFILL_COMPLETED_KEY) == "done"
+    assert cache.get(DISPLAY_BACKFILL_CURSOR_KEY) == {"model_id": "host", "last_id": 1}
     assert records[0].getMessage() == "event=display_backfill_enqueue_failed failed_stage=enqueue error_type=ConnectionError"
     assert BROKER_SECRET not in records[0].getMessage()
     formatted = logging.Formatter().format(records[0])

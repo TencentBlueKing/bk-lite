@@ -108,6 +108,7 @@ class SkillConversationMessage(models.Model):
     )
     role = models.CharField(max_length=32, choices=ROLE_CHOICES, verbose_name="角色")
     content = models.TextField(verbose_name="内容")
+    organization_id = models.IntegerField(null=True, blank=True, verbose_name="对话时的组织ID")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间", db_index=True)
 
     class Meta:
