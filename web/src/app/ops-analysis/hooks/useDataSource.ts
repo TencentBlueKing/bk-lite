@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import dayjs from 'dayjs';
 import { useOpsAnalysis } from '@/app/ops-analysis/context/common';
 import { useDataSourceApi } from '@/app/ops-analysis/api/dataSource';
 import { DatasourceItem, ParamItem } from '@/app/ops-analysis/types/dataSource';
@@ -7,6 +6,7 @@ import { normalizeDatasourceRecordId } from '@/app/ops-analysis/utils/datasource
 import {
   type DataSourceFormParams as FormParams,
   getDataSourceFormParamInitialValue,
+  mergeRestoredParamValue,
   processDataSourceFormParamsForSubmit,
 } from '@/app/ops-analysis/utils/dataSourceFormParams';
 
@@ -62,15 +62,7 @@ export const useDataSourceManager = () => {
 
   const restoreUserParamValues = (dataSourceParams: ParamItem[], formParams: FormParams): void => {
     dataSourceParams.forEach((param) => {
-      if (param.value !== undefined) {
-        if (param.type === 'date' && param.value) {
-          if (typeof param.value === 'string' || typeof param.value === 'number') {
-            formParams[param.name] = dayjs(param.value);
-          }
-        } else {
-          formParams[param.name] = param.value;
-        }
-      }
+      formParams[param.name] = mergeRestoredParamValue(formParams[param.name], param);
     });
   };
 

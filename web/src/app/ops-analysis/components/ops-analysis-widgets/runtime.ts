@@ -1,13 +1,14 @@
 import dayjs from 'dayjs';
 import { getAppliedThemeMode } from '@/theme';
 import { formatOpsDisplayTime } from '@/app/ops-analysis/components/ops-analysis-widgets/date-time';
-import { getValueByPath } from '@/app/ops-analysis/components/ops-analysis-config-sections';
 import { coerceTopNNumericValue } from '@/app/ops-analysis/utils/topNData';
 import {
   ChartDataTransformer as SharedChartDataTransformer,
   type ChartFieldMapping,
 } from '@/app/ops-analysis/utils/chartDataTransform';
 import { hasExplicitLineBarMapping } from '@/app/ops-analysis/utils/lineBarFieldMapping';
+import { delegatesGenericChart } from '@/app/ops-analysis/utils/chartFieldContract';
+import { extractComparableValue as sharedExtractComparableValue } from '@/app/ops-analysis/utils/compareQuery';
 export interface ChartDataItem {
   name: string;
   value: number;
@@ -357,7 +358,7 @@ export class ChartDataTransformer {
     rawData: any,
     mapping?: ChartFieldMapping,
   ): LineBarChartData {
-    if (hasExplicitLineBarMapping(mapping)) {
+    if (delegatesGenericChart(rawData) || hasExplicitLineBarMapping(mapping)) {
       return SharedChartDataTransformer.transformToLineBarData(rawData, mapping);
     }
 
@@ -470,7 +471,8 @@ export class ChartDataTransformer {
       (item) => item?.field?.trim(),
     ).length;
     if (
-      mapping?.dimensionField?.trim()
+      delegatesGenericChart(rawData)
+      || mapping?.dimensionField?.trim()
       || mapping?.valueField?.trim()
       || scalarFieldCount >= 2
     ) {
@@ -533,6 +535,9 @@ export class ChartDataTransformer {
   }
 
   static validateLineBarData(rawData: any, errorMessage?: string) {
+    if (delegatesGenericChart(rawData)) {
+      return SharedChartDataTransformer.validateLineBarData(rawData, errorMessage);
+    }
     if (this.isStructurallyEmpty(rawData)) {
       return { isValid: true };
     }
@@ -568,6 +573,9 @@ export class ChartDataTransformer {
   }
 
   static validatePieData(rawData: any, errorMessage?: string) {
+    if (delegatesGenericChart(rawData)) {
+      return SharedChartDataTransformer.validatePieData(rawData, errorMessage);
+    }
     if (this.isStructurallyEmpty(rawData)) {
       return { isValid: true };
     }
@@ -598,56 +606,10 @@ export class ChartDataTransformer {
   }
 }
 
-export const extractComparableValue = (
-  data: unknown,
-  selectedField?: string,
-): number | string | null => {
-  if (data === null || data === undefined) {
-    return null;
-  }
-
-  if (selectedField) {
-    const extracted = getValueByPath(data, selectedField);
-    if (typeof extracted === 'number' || typeof extracted === 'string') {
-      return extracted;
-    }
-    return null;
-  }
-
-  if (typeof data === 'number' || typeof data === 'string') {
-    return data;
-  }
-
-  if (Array.isArray(data) && data.length > 0) {
-    const firstItem = data[0];
-    if (firstItem && typeof firstItem === 'object') {
-      const values = Object.values(firstItem as Record<string, unknown>);
-      for (const value of values) {
-        if (typeof value === 'number') return value;
-      }
-      for (const value of values) {
-        if (
-          typeof value === 'string' &&
-          !Number.isNaN(parseFloat(value))
-        ) {
-          return value;
-        }
-      }
-    }
-  }
-
-  if (typeof data === 'object') {
-    const values = Object.values(data as Record<string, unknown>);
-    for (const value of values) {
-      if (typeof value === 'number') return value;
-    }
-  }
-
-  return null;
-};
+export const extractComparableValue = sharedExtractComparableValue;
 
 export const toComparableNumber = (
-  value: number | string | null,
+  value: number | string | boolean | null,
 ): number | null => coerceTopNNumericValue(value);
 
 export const getChangePercent = (

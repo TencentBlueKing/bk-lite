@@ -3,6 +3,7 @@
 import React from 'react';
 import { Button, Tooltip } from 'antd';
 import {
+  DesktopOutlined,
   EditOutlined,
   FullscreenOutlined,
   MailOutlined,
@@ -24,6 +25,7 @@ interface ScreenToolbarProps {
   shareMode?: boolean;
   shareLoading?: boolean;
   onOpenShare?: () => void;
+  onOpenDisplay?: () => void;
   onOpenSubscription?: () => void;
   onOpenSettings: () => void;
   onOpenFilterConfig: () => void;
@@ -48,6 +50,7 @@ const ScreenToolbar: React.FC<ScreenToolbarProps> = ({
   shareMode = false,
   shareLoading = false,
   onOpenShare,
+  onOpenDisplay,
   onOpenSubscription,
   onOpenSettings,
   onOpenFilterConfig,
@@ -178,6 +181,17 @@ const ScreenToolbar: React.FC<ScreenToolbarProps> = ({
             aria-label={t('dashboard.share')}
             className={iconButtonClassName}
             onClick={onOpenShare}
+          />
+        </Tooltip>
+      )}
+      {!shareMode && onOpenDisplay && (
+        <Tooltip title={t('opsAnalysis.screen.displayTitle')}>
+          <Button
+            type="text"
+            icon={<DesktopOutlined className={iconClassName} />}
+            aria-label={t('opsAnalysis.screen.displayTitle')}
+            className={iconButtonClassName}
+            onClick={onOpenDisplay}
           />
         </Tooltip>
       )}

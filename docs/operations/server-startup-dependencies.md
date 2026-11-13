@@ -174,6 +174,15 @@ startup.sh
 
 禁止把实例全量重写放回 `batch_init`。端口要等 `batch_init` 结束才开，实例扫描留在启动期会把健康检查挡在监听之前。
 
+## CMDB ci_context 全量重摊（运行期收敛，非启动硬依赖）
+
+`cmdb_ci_context` 是图关系的 PostgreSQL 投影。图写入后的增量重算走 pending + `*/5` drain；表刚创建或环境尚未摊过时需要一次全量。
+
+- 启动期：`batch_init` 只 `ensure_ci_context_rebuild_periodic_task()` 并 `rebuild_ci_context_runtime.delay()`。Broker 不可达只记告警，不让 `startup.sh` 退出。
+- 禁止在 `batch_init` / `startup.sh` 同步执行 `rebuild_ci_context`。
+- 运行期：Worker 按页重算应用，未完成则 1 秒后续跑，查询失败停在游标上，由 `*/5` 周期任务重试。完成后禁用周期任务，后续启动不再入队。
+- 手动补偿：`python manage.py rebuild_ci_context`。
+
 ## CMDB 实例 UUID 清洗（运行期收敛，非启动硬依赖）
 
 CMDB 实例 UUID 结构迁移为 Django `0045_instance_uuid_transition`（仅 schema）。

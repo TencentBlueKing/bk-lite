@@ -1,5 +1,7 @@
 import { useCallback } from 'react';
+import { usePathname } from 'next/navigation';
 import useApiClient from '@/utils/request';
+import { delegatedSceneBase } from './displayDelegate';
 import type {
   Application3DAlarmDetailData,
   Application3DArchitectureData,
@@ -39,9 +41,13 @@ export const useApplication3DApi = (
   shareSessionId?: string,
 ): Application3DTransport => {
   const { post } = useApiClient();
-  const basePath = shareSessionId
-    ? `/operation_analysis/api/dashboard_share/session/${shareSessionId}/application3d`
-    : '/operation_analysis/api/scene_widgets/application3d';
+  const pathname = usePathname();
+  const basePath = delegatedSceneBase(
+    pathname,
+    shareSessionId,
+    'application3d',
+    '/operation_analysis/api/scene_widgets/application3d',
+  );
   const requestOptions = { suppressErrorNotification: true } as const;
 
   const getWall = useCallback(

@@ -90,9 +90,7 @@ def test_capacity_summary_counts_unracked_and_distinct_u():
     ]
     scope = SimpleNamespace(racks=[rack], devices_by_rack_uuid={RACK_A: devices})
     room = {"inst_uuid": ROOM, "model_id": "server_room", "inst_name": "一号"}
-    later = {"inst_uuid": OTHER, "model_id": "server_room", "inst_name": "二号"}
     with (
-        patch("apps.cmdb.services.room_screen_stats.list_server_rooms", return_value=[room, later]),
         patch("apps.cmdb.services.room_screen_stats.InstanceManage.query_entity_by_uuid", return_value=room),
         patch("apps.cmdb.services.room_screen_stats.InstanceManage._has_topology_view_permission", return_value=True),
         patch("apps.cmdb.services.room_screen_stats.resolve_room_rack_devices", return_value=scope) as resolve,
@@ -123,8 +121,27 @@ def test_capacity_summary_counts_unracked_and_distinct_u():
         "free_u": 7,
         "u_usage_percent": 30,
     }
-    assert top["data"] == [{"name": "A01", "value": 30, "used_u": 3, "u_count": 10}]
+    assert top["result"] is False
+    assert top["message"] == "请在头部选择机房"
+    assert top["code"] == 400
+    assert resolve.call_count == 1
     assert resolve.call_args_list[-1].args[0] == ROOM
+
+
+@pytest.mark.unit
+def test_blank_room_id_does_not_select_another_room():
+    calls = (
+        (room_device_type_distribution, {"server_room_id": None}),
+        (room_rack_capacity, {"server_room_id": "  ", "view": "summary"}),
+        (room_active_alarms, {"server_room_id": "", "view": "coverage"}),
+    )
+    with patch("apps.cmdb.services.room_screen_stats.resolve_room_rack_devices") as resolve:
+        for fn, kwargs in calls:
+            result = fn(permission_map={"10": {}}, user=None, parse_locator=_parse_locator, **kwargs)
+            assert result["result"] is False
+            assert result["message"] == "请在头部选择机房"
+            assert result["code"] == 400
+    assert resolve.call_count == 0
 
 
 @pytest.mark.unit

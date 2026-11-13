@@ -278,7 +278,7 @@ def test_send_msg_email_requires_recipients_and_delegates():
     send.assert_called_once()
 
 
-def test_send_msg_wecom_bot_uses_display_names():
+def test_send_msg_wecom_bot_without_association_does_not_mention_display_name():
     channel = Channel.objects.create(
         name="bot",
         channel_type=ChannelChoices.ENTERPRISE_WECHAT_BOT,
@@ -290,7 +290,8 @@ def test_send_msg_wecom_bot_uses_display_names():
     with patch("apps.system_mgmt.nats.channels.send_by_wecom_bot", return_value={"result": True}) as send:
         ok = nats_api.send_msg_with_channel(channel.id, "", "hi", [user.id])
     assert ok == {"result": True}
-    assert "小明" in send.call_args.args[2]
+    assert send.call_args.args[1] == "hi"
+    assert send.call_args.args[2] == []
 
 
 def test_delete_rules_removes_instance_and_skips_missing_module():

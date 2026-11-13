@@ -200,14 +200,15 @@ const LayoutWithProviders = ({ children }: { children: React.ReactNode }) => {
   const isDashboardRoute = isProfessionalDashboardRoute(pathname);
   const isResponsiveAppRoute = pathname?.startsWith('/apm') || isDashboardRoute;
   const isDashboardShareRoute = pathname?.startsWith('/ops-analysis/share/');
+  const isScreenDisplayRoute = pathname?.startsWith('/ops-analysis/display/');
   const isDashboardRenderRoute = pathname?.startsWith(
     '/ops-analysis/render/execution/',
   );
   const isStandaloneDashboardRoute = (
-    isDashboardShareRoute || isDashboardRenderRoute
+    isDashboardShareRoute || isDashboardRenderRoute || isScreenDisplayRoute
   );
   // 仪表盘登录首页也锁定全幅视口：去掉 main 的 p-4 灰边，画布贴边铺满（与裸工作台一致）。
-  const lockConsoleViewport = hidePathChrome || isDashboardShareRoute || isDashboardHomepage;
+  const lockConsoleViewport = hidePathChrome || isDashboardShareRoute || isScreenDisplayRoute || isDashboardHomepage;
   const isLoading = isAuthLoading || (
     isAuthenticated
     && (

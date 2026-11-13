@@ -80,6 +80,7 @@ import {
 } from '@/app/cmdb/types/assetManage';
 import { ExportModalRef } from '@/app/cmdb/types/assetData';
 import SearchFilter from './list/searchFilter';
+import SelectionActionBar from './list/selectionActionBar';
 import FilterBar from './list/filterBar';
 import AdvancedFilterDrawer, { AdvancedFilterChips } from './list/advancedFilterDrawer';
 import ImportInst from './list/importInst';
@@ -1635,6 +1636,7 @@ const AssetDataContent = () => {
               modelId={modelId}
               onChange={handleFilterBarChange}
               onFilterChange={handleFilterBarChange}
+              onSubscribe={() => openSubscription('list_filter')}
             />
           </div>
 
@@ -1671,6 +1673,19 @@ const AssetDataContent = () => {
               />
             )}
           </div>
+          <SelectionActionBar
+            count={selectedRowKeys.length}
+            canBatchEdit={propertyListGroups.length > 0}
+            showMonitorLink={showBatchSyncMonitor}
+            onBatchEdit={() => showAttrModal('batchEdit')}
+            onExport={() => {
+              void handleExport('selected');
+            }}
+            onSubscribe={() => openSubscription('list_selection')}
+            onMonitorLink={batchSyncMonitorConfirm}
+            onDelete={batchDeleteConfirm}
+            onClear={() => setSelectedRowKeys([])}
+          />
           <FieldModal
             ref={fieldRef}
             userList={userList}

@@ -62,6 +62,52 @@ const Chat = React.lazy(async () => {
   return { default: mod.Chat };
 });
 
+interface MountedChatSession {
+  id: string;
+  appId: string;
+  messages: Message[];
+  usage: LlmContextUsage | null;
+}
+
+// 每个对话保留自己的流、消息和回调归属，隐藏对话仍可完成执行。
+function PlatformSessionChat({
+  session,
+  onSessionStateChange,
+  onSessionMessageReceived,
+  onSessionFilesChange,
+  ...props
+}: Omit<ChatProps, 'onSessionFilesChange'> & {
+  session: MountedChatSession;
+  onSessionStateChange: (id: string, from: ChatState, to: ChatState) => void;
+  onSessionMessageReceived: (id: string, message: Message) => void;
+  onSessionFilesChange: (id: string, files: SessionAttachmentFile[]) => void;
+}) {
+  const stateRef = useRef<ChatState>('idle');
+  const onStateChange = useCallback((state: ChatState) => {
+    const from = stateRef.current;
+    stateRef.current = state;
+    onSessionStateChange(session.id, from, state);
+  }, [onSessionStateChange, session.id]);
+  const onMessageReceived = useCallback((message: Message) => {
+    onSessionMessageReceived(session.id, message);
+  }, [onSessionMessageReceived, session.id]);
+  const onFilesChange = useCallback((files: SessionAttachmentFile[]) => {
+    onSessionFilesChange(session.id, files);
+  }, [onSessionFilesChange, session.id]);
+  const customData = useMemo(() => ({ session_id: session.id }), [session.id]);
+  return (
+    <Chat
+      {...props}
+      customData={customData}
+      initialMessages={session.messages}
+      initialContextUsage={session.usage}
+      onStateChange={onStateChange}
+      onMessageReceived={onMessageReceived}
+      onSessionFilesChange={onFilesChange}
+    />
+  );
+}
+
 const HISTORY_RAIL_FULL = 320;
 
 export interface PlatformChatProps extends ChatProps {
@@ -491,27 +537,26 @@ const PlatformChatInner = React.memo(React.forwardRef<HTMLDivElement, PlatformCh
   const [sessions, setSessions] = useState<PlatformSession[]>([]);
   const [currentApp, setCurrentApp] = useState<PlatformApplication | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [sessionUsage, setSessionUsage] = useState<LlmContextUsage | null>(null);
+  const [mountedChats, setMountedChats] = useState<MountedChatSession[]>([]);
   const [messagesLoading, setMessagesLoading] = useState(true);
   const [loading, setLoading] = useState(true);
   const [forbidden, setForbidden] = useState(false);
   const [appMenuOpen, setAppMenuOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [filePanelOpen, setFilePanelOpen] = useState(false);
-  const [sessionFiles, setSessionFiles] = useState<SessionAttachmentFile[]>([]);
-  const handleSessionFilesChange = useCallback((files: SessionAttachmentFile[]) => {
-    setSessionFiles(files);
+  const [filesBySession, setFilesBySession] = useState<Record<string, SessionAttachmentFile[]>>({});
+  const sessionFiles = filesBySession[sessionId || ''] || [];
+  const handleSessionFilesChange = useCallback((id: string, files: SessionAttachmentFile[]) => {
+    setFilesBySession(current => ({ ...current, [id]: files }));
   }, []);
   const [collapsed, setCollapsed] = useState(true);
   const [hasOpened, setHasOpened] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
-  const [draftTitle, setDraftTitle] = useState<string>('');
+  const [draftTitles, setDraftTitles] = useState<Record<string, string>>({});
   const [chatWidth, setChatWidth] = useState(PLATFORM_DOCK_CHAT_WIDTH);
   const [resizing, setResizing] = useState(false);
-  const chatStateRef = useRef<ChatState>('idle');
   const chatWidthRef = useRef(chatWidth);
   chatWidthRef.current = chatWidth;
   const sideOpen = historyOpen || filePanelOpen;
@@ -597,6 +642,13 @@ const PlatformChatInner = React.memo(React.forwardRef<HTMLDivElement, PlatformCh
 
   const currentAppId = currentApp?.id;
   const currentChannelId = currentApp?.channelId;
+  const mountedChat = mountedChats.find(chat => chat.appId === currentAppId && chat.id === sessionId);
+
+  useEffect(() => {
+    setMountedChats([]);
+    setFilesBySession({});
+    setDraftTitles({});
+  }, [currentAppId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -604,8 +656,6 @@ const PlatformChatInner = React.memo(React.forwardRef<HTMLDivElement, PlatformCh
       if (!currentAppId || !currentChannelId) {
         setSessions([]);
         setSessionId(null);
-        setMessages([]);
-        setSessionUsage(null);
         return;
       }
       try {
@@ -638,27 +688,30 @@ const PlatformChatInner = React.memo(React.forwardRef<HTMLDivElement, PlatformCh
     };
   }, [currentAppId, currentChannelId, persistSelection, platform, requestInit, storage, storageKey]);
 
-  const isDraftSession =
-    !!sessionId &&
-    sessionId.startsWith('session_') &&
-    !sessions.some((item) => item.id === sessionId);
-
   useEffect(() => {
     let cancelled = false;
     async function loadMessages() {
-      if (!sessionId) {
+      if (!sessionId || !currentAppId) {
         loadedSessionIdRef.current = null;
-        setMessages([]);
-        setSessionUsage(null);
         if (!currentAppId) {
           setMessagesLoading(false);
         }
         return;
       }
+      if (mountedChat) {
+        loadedSessionIdRef.current = sessionId;
+        setMessagesLoading(false);
+        return;
+      }
+      const mountChat = (messages: Message[], usage: LlmContextUsage | null) => {
+        setMountedChats(current => current.some(chat => chat.appId === currentAppId && chat.id === sessionId)
+          ? current
+          : [...current, { id: sessionId, appId: currentAppId, messages, usage }]);
+      };
       if (isPlatformDraftSession(sessionId, sessions)) {
         loadedSessionIdRef.current = sessionId;
         setMessagesLoading(false);
-        setSessionUsage(null);
+        mountChat([], null);
         return;
       }
       if (
@@ -670,6 +723,7 @@ const PlatformChatInner = React.memo(React.forwardRef<HTMLDivElement, PlatformCh
       ) {
         loadedSessionIdRef.current = sessionId;
         setMessagesLoading(false);
+        mountChat([], null);
         return;
       }
       setMessagesLoading(true);
@@ -677,14 +731,12 @@ const PlatformChatInner = React.memo(React.forwardRef<HTMLDivElement, PlatformCh
         const next = await fetchPlatformMessages(platform, sessionId, requestInit);
         if (!cancelled) {
           loadedSessionIdRef.current = sessionId;
-          setMessages(next.messages);
-          setSessionUsage(next.usage);
+          mountChat(next.messages, next.usage);
         }
       } catch {
         if (!cancelled) {
           loadedSessionIdRef.current = sessionId;
-          setMessages([]);
-          setSessionUsage(null);
+          mountChat([], null);
         }
       } finally {
         if (!cancelled) {
@@ -696,7 +748,7 @@ const PlatformChatInner = React.memo(React.forwardRef<HTMLDivElement, PlatformCh
     return () => {
       cancelled = true;
     };
-  }, [currentAppId, platform, requestInit, sessionId, sessions]);
+  }, [currentAppId, mountedChat, platform, requestInit, sessionId, sessions]);
 
   useEffect(() => {
     const onPointerDown = (event: MouseEvent) => {
@@ -718,10 +770,7 @@ const PlatformChatInner = React.memo(React.forwardRef<HTMLDivElement, PlatformCh
     if (!currentAppId) return;
     const nextSessionId = createPlatformSessionId();
     loadedSessionIdRef.current = nextSessionId;
-    setDraftTitle('');
     setSessionId(nextSessionId);
-    setMessages([]);
-    setSessionUsage(null);
     setMessagesLoading(false);
     persistSelection(currentAppId, nextSessionId);
   }, [currentAppId, persistSelection]);
@@ -732,10 +781,7 @@ const PlatformChatInner = React.memo(React.forwardRef<HTMLDivElement, PlatformCh
     setCurrentApp(app);
     setSessions([]);
     loadedSessionIdRef.current = null;
-    setDraftTitle('');
     setSessionId(null);
-    setMessages([]);
-    setSessionUsage(null);
     setMessagesLoading(true);
   }, [currentAppId]);
 
@@ -743,10 +789,7 @@ const PlatformChatInner = React.memo(React.forwardRef<HTMLDivElement, PlatformCh
     setConfirmingDeleteId(null);
     if (id === sessionId) return;
     loadedSessionIdRef.current = null;
-    setDraftTitle('');
     setSessionId(id);
-    setMessages([]);
-    setSessionUsage(null);
     setMessagesLoading(
       shouldFetchPlatformMessages({
         sessionId: id,
@@ -775,16 +818,24 @@ const PlatformChatInner = React.memo(React.forwardRef<HTMLDivElement, PlatformCh
       }
       const next = removePlatformSession(sessions, id, sessionId);
       setSessions(next.sessions);
+      setMountedChats(current => current.filter(chat => chat.id !== id));
+      setDraftTitles(current => {
+        const nextTitles = { ...current };
+        delete nextTitles[id];
+        return nextTitles;
+      });
+      setFilesBySession(current => {
+        const nextFiles = { ...current };
+        delete nextFiles[id];
+        return nextFiles;
+      });
       setConfirmingDeleteId(null);
       if (next.currentId !== null || !currentAppId) {
         return;
       }
       const nextSessionId = createPlatformSessionId();
       loadedSessionIdRef.current = nextSessionId;
-      setDraftTitle('');
       setSessionId(nextSessionId);
-      setMessages([]);
-      setSessionUsage(null);
       setMessagesLoading(false);
       persistSelection(currentAppId, nextSessionId);
     },
@@ -806,29 +857,26 @@ const PlatformChatInner = React.memo(React.forwardRef<HTMLDivElement, PlatformCh
   }, [currentChannelId, platform, requestInit]);
 
   const handleChatStateChange = useCallback(
-    (state: ChatState) => {
-      const from = chatStateRef.current;
-      chatStateRef.current = state;
+    (id: string, from: ChatState, state: ChatState) => {
       if (shouldRefreshPlatformSessions(from, state)) {
         refreshSessions();
       }
-      onStateChange?.(state);
+      if (id === sessionId) onStateChange?.(state);
     },
-    [onStateChange, refreshSessions]
+    [onStateChange, refreshSessions, sessionId]
   );
 
   const handleMessageReceived = useCallback(
-    (message: Message) => {
+    (id: string, message: Message) => {
       if (
         message.sender === 'user' &&
-        sessionId &&
-        !isPersistedPlatformSession(sessionId, sessions)
+        !isPersistedPlatformSession(id, sessions)
       ) {
-        setDraftTitle(sessionTitleFromUserContent(message.content));
+        setDraftTitles(current => ({ ...current, [id]: sessionTitleFromUserContent(message.content) }));
       }
       chatProps.onMessageReceived?.(message);
     },
-    [chatProps, sessionId, sessions]
+    [chatProps, sessions]
   );
 
   const handleToggleSessions = useCallback(() => {
@@ -870,11 +918,6 @@ const PlatformChatInner = React.memo(React.forwardRef<HTMLDivElement, PlatformCh
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
   }, [collapsed, isFullscreen]);
-
-  const sessionCustomData = useMemo(
-    () => (sessionId ? { session_id: sessionId } : undefined),
-    [sessionId]
-  );
 
   const showLauncher = shouldShowPlatformLauncher({
     appCount: apps.length,
@@ -965,10 +1008,16 @@ const PlatformChatInner = React.memo(React.forwardRef<HTMLDivElement, PlatformCh
   const headerTitle = emptyApps
     ? t('chat.headerTitle', '会话')
     : currentApp?.name || t('chat.defaultAssistantName', '平台助手');
-  const listItems: PlatformSession[] =
-    isDraftSession && sessionId
-      ? [{ id: sessionId, title: draftTitle || t('session.new', '新会话') }, ...sessions]
-      : sessions;
+  const localDraftIds = new Set([
+    ...Object.keys(draftTitles),
+    ...(sessionId ? [sessionId] : []),
+  ]);
+  const listItems: PlatformSession[] = [
+    ...Array.from(localDraftIds)
+      .filter(id => isPlatformDraftSession(id, sessions))
+      .map(id => ({ id, title: draftTitles[id] || t('session.new', '新会话') })),
+    ...sessions,
+  ];
 
   return (
     <>
@@ -1188,31 +1237,34 @@ const PlatformChatInner = React.memo(React.forwardRef<HTMLDivElement, PlatformCh
                   </div>
                 }
               >
-                <Chat
-                  key={currentApp.id}
-                  {...chatProps}
-                  locale={props.locale}
-                  sseUrl={chatUrl}
-                  showHeader={false}
-                  conversationHistoryEnabled={currentApp.enableConversationHistory !== false}
-                  jobMgmtEnabled={currentApp.jobMgmtEnabled === true}
-                  initialContextUsage={sessionUsage}
-                  enableStorage={false}
-                  apiKey={apiKey}
-                  credentials={requestInit.credentials}
-                  requestHeaders={requestInit.headers}
-                  platform={platform}
-                  historyLoading={messagesLoading}
-                  initialMessages={messages}
-                  onSessionFilesChange={handleSessionFilesChange}
-                  wideLayout={isFullscreen}
-                  customData={sessionCustomData}
-                  onStateChange={handleChatStateChange}
-                  onMessageReceived={handleMessageReceived}
-                  onClose={handleClose}
-                  onStreamingStop={handleStreamingStop}
-                  placeholder={t('chat.inputPlaceholder', '请输入消息...')}
-                />
+                {mountedChats.filter(chat => chat.appId === currentApp.id).map(chat => (
+                  <div key={`${chat.appId}:${chat.id}`} className={chat.id === sessionId ? 'flex min-h-0 flex-1 flex-col' : 'hidden'}>
+                    <PlatformSessionChat
+                      {...chatProps}
+                      session={chat}
+                      kickoffMessage={chat.id === sessionId ? chatProps.kickoffMessage : undefined}
+                      locale={props.locale}
+                      sseUrl={chatUrl}
+                      showHeader={false}
+                      conversationHistoryEnabled={currentApp.enableConversationHistory !== false}
+                      jobMgmtEnabled={currentApp.jobMgmtEnabled === true}
+                      enableStorage={false}
+                      apiKey={apiKey}
+                      credentials={requestInit.credentials}
+                      requestHeaders={requestInit.headers}
+                      platform={platform}
+                      historyLoading={false}
+                      onSessionFilesChange={handleSessionFilesChange}
+                      wideLayout={isFullscreen}
+                      onSessionStateChange={handleChatStateChange}
+                      onSessionMessageReceived={handleMessageReceived}
+                      onClose={handleClose}
+                      onStreamingStop={handleStreamingStop}
+                      placeholder={t('chat.inputPlaceholder', '请输入消息...')}
+                    />
+                  </div>
+                ))}
+                {messagesLoading && !mountedChat ? <div className="flex-1 p-4"><ConversationSkeleton /></div> : null}
               </React.Suspense>
             ) : (
               <div className="flex-1 p-4">

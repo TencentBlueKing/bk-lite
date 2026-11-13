@@ -8,7 +8,7 @@ from apps.core.utils.current_team_scope import _normalize_organization_ids
 from apps.system_mgmt.models import Group, Role
 from apps.system_mgmt.models import User as SystemUser
 from apps.system_mgmt.models.channel import Channel, ChannelChoices
-from apps.system_mgmt.models.im_notification_channel import IMNotificationChannel, IMNotificationChannelStatusChoices
+from apps.system_mgmt.models.im_notification_channel import IMNotificationChannel
 from apps.system_mgmt.nats import channels as notification_channels
 from apps.system_mgmt.nats.channels import _channel_has_organization, _notification_channel_capabilities
 from apps.system_mgmt.openapi_serializers import (
@@ -476,7 +476,8 @@ def _openapi_notification_channel(channel):
 
 
 def _im_notification_is_available(channel):
-    if not channel.enabled or channel.status != IMNotificationChannelStatusChoices.READY:
+    association = getattr(channel, "account_association", None)
+    if not channel.enabled or association is None or association.status != "ready":
         return False
     availability = get_integration_capability_availability(channel.integration_instance, "im_notification")
     return bool(availability.get("available"))
@@ -537,7 +538,10 @@ def _channels_for_catalog_keys(keys):
     im_ids = [row["id"] for row in keys if row["catalog_type"] == IMNotificationChannel.CHANNEL_TYPE]
     channels = {item.id: item for item in Channel.objects.filter(id__in=channel_ids).prefetch_related("tags")}
     im_channels = {
-        item.id: item for item in IMNotificationChannel.objects.filter(id__in=im_ids).select_related("integration_instance").prefetch_related("tags")
+        item.id: item
+        for item in IMNotificationChannel.objects.filter(id__in=im_ids)
+        .select_related("integration_instance", "account_association")
+        .prefetch_related("tags")
     }
     loaded = []
     for row in keys:
@@ -562,7 +566,7 @@ def _notification_channel_page(query_ids, tag_pairs, page, page_size):
         None,
     )
     im_channels = _catalog_keys(
-        _channels_matching_tags(IMNotificationChannel.objects.all(), tag_pairs).filter(team_q),
+        _channels_matching_tags(IMNotificationChannel.objects.select_related("account_association").all(), tag_pairs).filter(team_q),
         IMNotificationChannel.CHANNEL_TYPE,
     )
     merged = channels.union(im_channels).order_by("id", "catalog_type")

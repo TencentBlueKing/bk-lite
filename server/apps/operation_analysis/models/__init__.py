@@ -8,7 +8,7 @@ from apps.operation_analysis.models.carousel import CanvasCarousel, CanvasCarous
 from apps.operation_analysis.models.datasource_models import DataConnection, DataSourceAPIModel, DataSourceTag, NameSpace
 from apps.operation_analysis.models.excel_materialization_models import ExcelMaterializationSlot
 from apps.operation_analysis.models.homepage import HomepagePreference
-from apps.operation_analysis.models.share_models import DashboardShareLink, DashboardShareSession
+from apps.operation_analysis.models.share_models import DashboardShareLink, DashboardShareSession, ScreenDisplayGrant, ScreenDisplaySession
 from apps.operation_analysis.models.subscription_models import (
     DashboardReportExecution,
     DashboardReportExecutionSnapshot,
@@ -35,5 +35,7 @@ __all__ = [
     "DashboardReportSubscription",
     "DashboardShareLink",
     "DashboardShareSession",
+    "ScreenDisplayGrant",
+    "ScreenDisplaySession",
     "HomepagePreference",
 ]

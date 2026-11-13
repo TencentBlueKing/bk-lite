@@ -56,6 +56,7 @@ TASK_ROUTES = {
     "apps.cmdb.tasks.celery_tasks.sync_public_enum_library_snapshots_task": "background",
     "apps.cmdb.tasks.celery_tasks.trigger_first_collection": "background",
     "apps.cmdb.tasks.celery_tasks.trigger_scan_execution": "background",
+    "apps.cmdb.tasks.ci_context.rebuild_ci_context_runtime": "background",
     "apps.cmdb.tasks.ci_context.reconcile_ci_context_pending_task": "background",
     "apps.cmdb.tasks.display_field_backfill.backfill_cmdb_display_fields": "background",
     "apps.cmdb.tasks.node_mgmt_sync.recover_node_mgmt_sync": "state",

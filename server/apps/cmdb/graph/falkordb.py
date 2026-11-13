@@ -745,6 +745,8 @@ class FalkorDBClient:
         case_sensitive: bool = True,
         include_count: bool = True,
         fields: list[str] | None = None,
+        condition_params: list = None,
+        condition_logic: str = "AND",
     ):
         """
         查询实体（参数化版本）
@@ -764,6 +766,13 @@ class FalkorDBClient:
         base_params_str, _ = self.format_search_params(
             params,
             param_type=param_type,
+            param_collector=param_collector,
+            case_sensitive=case_sensitive,
+        )
+        condition_logic_name = "OR" if str(condition_logic or "AND").upper() == "OR" else "AND"
+        condition_str, _ = self.format_search_params(
+            list(condition_params or []),
+            param_type=condition_logic_name,
             param_collector=param_collector,
             case_sensitive=case_sensitive,
         )
@@ -829,6 +838,8 @@ class FalkorDBClient:
                 final_conditions.append(f"({permission_str})")
         if base_params_str:
             final_conditions.append(base_params_str)
+        if condition_str:
+            final_conditions.append(condition_str)
 
         final_params_str = " AND ".join(final_conditions) if final_conditions else ""
         params_str = f"WHERE {final_params_str}" if final_params_str else ""
@@ -1992,7 +2003,15 @@ class FalkorDBClient:
                 return entity
         return None
 
-    def entity_count(self, label: str, group_by_attr: str, params: list = None, format_permission_dict: dict = None):
+    def entity_count(
+        self,
+        label: str,
+        group_by_attr: str,
+        params: list = None,
+        format_permission_dict: dict = None,
+        condition_params: list = None,
+        condition_logic: str = "AND",
+    ):
         """
         按指定字段分组统计实体数量（参数化版本）
 
@@ -2021,6 +2040,12 @@ class FalkorDBClient:
         base_params_str, _ = self.format_search_params(
             params,
             param_type="AND",
+            param_collector=param_collector,
+        )
+        condition_logic_name = "OR" if str(condition_logic or "AND").upper() == "OR" else "AND"
+        condition_str, _ = self.format_search_params(
+            list(condition_params or []),
+            param_type=condition_logic_name,
             param_collector=param_collector,
         )
 
@@ -2052,6 +2077,8 @@ class FalkorDBClient:
         final_conditions = []
         if base_params_str:
             final_conditions.append(base_params_str)
+        if condition_str:
+            final_conditions.append(condition_str)
         if permission_filters:
             # 多个组织的权限条件用 OR 连接
             if len(permission_filters) == 1:

@@ -1,4 +1,5 @@
 import type { ResponseFieldDefinition } from '@/app/ops-analysis/types/dataSource';
+import { candidateFields } from '@/app/ops-analysis/utils/chartFieldContract';
 
 export interface WidgetFieldSelectOption {
   label: string;
@@ -60,30 +61,11 @@ export const collectSampleFieldKeys = (sample: unknown): string[] => {
 export const buildRoleFieldOptions = (
   schemaFields: ResponseFieldDefinition[] = [],
   previewRawData?: unknown,
-): WidgetFieldSelectOption[] => {
-  const optionMap = new Map<string, WidgetFieldSelectOption>();
-
-  const appendOption = (key: string, title?: string) => {
-    const normalizedKey = key.trim();
-    if (!normalizedKey || optionMap.has(normalizedKey)) {
-      return;
-    }
-    optionMap.set(normalizedKey, {
-      label: formatFieldOptionLabel(normalizedKey, title),
-      value: normalizedKey,
-    });
-  };
-
-  schemaFields.forEach((field) => {
-    appendOption(field.key, field.title);
-  });
-
-  collectSampleFieldKeys(previewRawData).forEach((key) => {
-    appendOption(key);
-  });
-
-  return Array.from(optionMap.values());
-};
+  mode?: string,
+): WidgetFieldSelectOption[] => candidateFields(schemaFields, previewRawData, mode).map((field) => ({
+  label: formatFieldOptionLabel(field.key, field.title),
+  value: field.key,
+}));
 
 export const dropRoleValueMissingFrom = (
   value: string | undefined,

@@ -76,6 +76,7 @@ import {
 } from "./components/screenItemMenu";
 import { resolveScreenItemMenuMode } from "@/app/ops-analysis/utils/widgetCsvMenu";
 import ScreenToolbar from "./components/screenToolbar";
+import ScreenDisplayGrantModal from "./components/screenDisplayGrantModal";
 import { ScreenInspectorPane } from "./components/screenInspectorPane";
 import {
   ScreenCanvasSettings,
@@ -276,6 +277,7 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({
   const [historyNavEpoch, setHistoryNavEpoch] = useState(0);
   const [subscriptionModalVisible, setSubscriptionModalVisible] =
     useState(false);
+  const [displayModalVisible, setDisplayModalVisible] = useState(false);
   const [filterConfigOpen, setFilterConfigOpen] = useState(false);
   const [widgetSelectorOpen, setWidgetSelectorOpen] = useState(false);
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
@@ -1448,7 +1450,59 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({
 
   const showFilterBar = queryState.definitions.length > 0;
   const editorOpen = editMode && !isFullscreen && !shareMode;
-  const filterBarElement = showFilterBar ? (
+  const screenToolbar = playbackMode ? null : (
+    <ScreenToolbar
+      selectedScreen={selectedScreen}
+      editMode={editMode}
+      shareMode={shareMode}
+      shareLoading={shareLoading}
+      onOpenShare={
+        !shareMode && selectedScreen?.data_id
+          ? () => {
+            void openShare(selectedScreen.data_id);
+          }
+          : undefined
+      }
+      onOpenSubscription={
+        !shareMode && selectedScreen?.data_id
+          ? () => setSubscriptionModalVisible(true)
+          : undefined
+      }
+      onOpenDisplay={
+        !shareMode && selectedScreen?.data_id
+          ? () => setDisplayModalVisible(true)
+          : undefined
+      }
+      saving={saving}
+      onRefresh={handleRefresh}
+      frequenceValue={effectiveRefreshInterval}
+      onFrequencyChange={handleFrequencyChange}
+      onOpenSettings={() =>
+        handleSelectCanvasItem(null)
+      }
+      onOpenFilterConfig={() => setFilterConfigOpen(true)}
+      onPreview={enterFullscreen}
+      onEdit={handleStartEdit}
+      onCancel={() => runAfterDataGuard(handleCancelEdit)}
+      onSave={() => runAfterDataGuard(() => { void handleSave(); })}
+      canUndo={canUndo}
+      canRedo={canRedo}
+      onUndo={() => runScreenHistory("undo")}
+      onRedo={() => runScreenHistory("redo")}
+      editExtra={bindCanvasDraftControls({
+        ...screenDraft,
+        restoreFrame: (checkpointId) => new Promise<void>((resolve, reject) => {
+          runAfterDataGuard(
+            () => {
+              void screenDraft.restoreFrame(checkpointId).then(resolve, reject);
+            },
+            () => reject(new Error("screen-history-confirm-cancelled")),
+          );
+        }),
+      })}
+    />
+  );
+  const unifiedFilterBar = showFilterBar ? (
     <UnifiedFilterBar
       definitions={queryState.definitions}
       values={queryState.filterValues}
@@ -1559,54 +1613,8 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({
           filterBarVisible={!isFullscreen && !playbackMode}
           flushContent
           contentClassName={isFullscreen || playbackFullscreen ? "bg-slate-950" : undefined}
-          toolbar={playbackMode ? undefined : (
-            <ScreenToolbar
-              selectedScreen={selectedScreen}
-              editMode={editMode}
-              shareMode={shareMode}
-              shareLoading={shareLoading}
-              onOpenShare={
-                !shareMode && selectedScreen?.data_id
-                  ? () => {
-                    void openShare(selectedScreen.data_id);
-                  }
-                  : undefined
-              }
-              onOpenSubscription={
-                !shareMode && selectedScreen?.data_id
-                  ? () => setSubscriptionModalVisible(true)
-                  : undefined
-              }
-              saving={saving}
-              onRefresh={handleRefresh}
-              frequenceValue={effectiveRefreshInterval}
-              onFrequencyChange={handleFrequencyChange}
-              onOpenSettings={() =>
-                handleSelectCanvasItem(null)
-              }
-              onOpenFilterConfig={() => setFilterConfigOpen(true)}
-              onPreview={enterFullscreen}
-              onEdit={handleStartEdit}
-              onCancel={() => runAfterDataGuard(handleCancelEdit)}
-              onSave={() => runAfterDataGuard(() => { void handleSave(); })}
-              canUndo={canUndo}
-              canRedo={canRedo}
-              onUndo={() => runScreenHistory("undo")}
-              onRedo={() => runScreenHistory("redo")}
-              editExtra={bindCanvasDraftControls({
-                ...screenDraft,
-                restoreFrame: (checkpointId) => new Promise<void>((resolve, reject) => {
-                  runAfterDataGuard(
-                    () => {
-                      void screenDraft.restoreFrame(checkpointId).then(resolve, reject);
-                    },
-                    () => reject(new Error("screen-history-confirm-cancelled")),
-                  );
-                }),
-              })}
-            />
-          )}
-          filterBar={filterBarElement}
+          toolbar={screenToolbar ?? undefined}
+          filterBar={unifiedFilterBar}
         >
           {editorOpen ? (
             <div className="relative flex h-full min-h-0 overflow-hidden" data-screen-editor>
@@ -1784,6 +1792,13 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({
           resourceId={Number(selectedScreen.data_id)}
           appliedFilterValues={queryState.appliedFilterValues}
           onClose={() => setSubscriptionModalVisible(false)}
+        />
+      )}
+      {selectedScreen?.data_id != null && (
+        <ScreenDisplayGrantModal
+          open={displayModalVisible}
+          screenId={selectedScreen.data_id}
+          onClose={() => setDisplayModalVisible(false)}
         />
       )}
     </>

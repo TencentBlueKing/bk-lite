@@ -28,17 +28,13 @@ const createApi = (
 });
 
 describe('loadRoom3DScene', () => {
-  it('loads the first visible room when no default is saved', async () => {
+  it('does not load a room when nothing is selected', async () => {
     const api = createApi();
     const result = await loadRoom3DScene({ api, savedRoomId: '' });
 
-    expect(result).toEqual({
-      status: 'ready',
-      roomId: ROOM_A,
-      rooms,
-      layout: { ...layoutA, room: { id: ROOM_A, name: ROOM_A } },
-    });
-    expect(api.getLayout).toHaveBeenCalledWith(ROOM_A, undefined);
+    expect(result).toEqual({ status: 'unselected', rooms: [] });
+    expect(api.getRooms).not.toHaveBeenCalled();
+    expect(api.getLayout).not.toHaveBeenCalled();
   });
 
   it('does not fetch layout when the pinned default is unavailable', async () => {
@@ -98,13 +94,14 @@ describe('loadRoom3DScene', () => {
     expect(api.getLayout).toHaveBeenCalledWith(ROOM_A, undefined);
   });
 
-  it('returns empty without fetching layout when nothing is selected', async () => {
+  it('does not fetch rooms or layout when nothing is selected', async () => {
     const api = createApi({
       getRooms: vi.fn(async () => ({ items: [] })),
     });
     const result = await loadRoom3DScene({ api, savedRoomId: '' });
 
-    expect(result).toEqual({ status: 'empty', rooms: [] });
+    expect(result).toEqual({ status: 'unselected', rooms: [] });
+    expect(api.getRooms).not.toHaveBeenCalled();
     expect(api.getLayout).not.toHaveBeenCalled();
   });
 });

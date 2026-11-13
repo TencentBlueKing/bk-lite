@@ -26,38 +26,20 @@ import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import TopSection from '@/components/top-section';
 import PageLayout from '@/components/page-layout';
 import SearchActionBar from '@/components/search-action-bar';
-import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import type { NotificationTagOption } from '@/app/system-manager/components/channel/NotificationTagSelect';
 import IMNotificationConfigModal, {
   type IMNotificationChannelFormValues,
 } from '@/app/system-manager/components/channel/im-notification/IMNotificationConfigModal';
-import IMNotificationRecordsDrawer from '@/app/system-manager/components/channel/im-notification/IMNotificationRecordsDrawer';
 import IMNotificationSendModal from '@/app/system-manager/components/channel/im-notification/IMNotificationSendModal';
 import { useChannelApi } from '@/app/system-manager/api/channel';
 import { useImNotificationApi } from '@/app/system-manager/api/im-notification';
-import { useIntegrationCenterApi } from '@/app/system-manager/api/integration-center';
-import type {
-  BusinessTemplate,
-  ProviderManifest,
-} from '@/app/system-manager/types/integration-center';
 import type {
   AvailableInstance,
   IMNotificationChannel,
   IMNotificationChannelPayload,
-  IMNotificationSyncRun,
   IMNotificationUserMapping,
-  PlatformMatchField,
 } from '@/app/system-manager/types/im-notification';
-import {
-  buildSchedulePayload,
-  coerceImNotificationTeamIds,
-  getLatestSyncSummary,
-  getSyncRunStatusText,
-  isChannelSyncRunning,
-  parseScheduleConfig,
-  resolveImNotificationFieldPatches,
-  resolveExternalFieldOptionLabel,
-} from '@/app/system-manager/utils/imNotificationUtils';
+import { coerceImNotificationTeamIds } from '@/app/system-manager/utils/imNotificationUtils';
 import { useTranslation } from '@/utils/i18n';
 
 interface PaginationState {
@@ -66,60 +48,8 @@ interface PaginationState {
   pageSize: number;
 }
 
-const PLATFORM_MATCH_FIELD_OPTIONS: PlatformMatchField[] = ['username', 'email', 'phone'];
-
-function getResolvedImTemplate(
-  instanceId: number | undefined,
-  availableInstances: AvailableInstance[],
-  providers: ProviderManifest[],
-): BusinessTemplate | null {
-  if (!instanceId) return null;
-  const instance = availableInstances.find((item) => item.id === instanceId);
-  if (!instance) return null;
-  const provider = providers.find((item) => item.key === instance.provider_key);
-  if (!provider) return null;
-  const capability = provider.capabilities.find((item) => item.key === 'im_notification');
-  if (!capability?.business_template) return null;
-  return provider.business_templates?.[capability.business_template] ?? null;
-}
-
-function renderSyncPeriod(
-  record: IMNotificationChannel,
-  t: (key: string, defaultMessage?: string, values?: Record<string, string | number>) => string,
-) {
-  const scheduleEnabled = record.schedule_config?.enabled;
-  const syncTime = record.schedule_config?.sync_time;
-
-  if (!scheduleEnabled) {
-    return (
-      <div className="min-w-0">
-        <div className="truncate text-sm tabular-nums text-[var(--color-text-1)]">
-          {t('system.channel.imNotificationPage.syncPeriodManualTitle')}
-        </div>
-        <div className="truncate text-xs text-[var(--color-text-3)]">
-          {t('system.channel.imNotificationPage.syncPeriodManualDesc')}
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="min-w-0">
-      <div className="truncate text-sm tabular-nums text-[var(--color-text-1)]">
-        {syncTime
-          ? `${t('system.channel.imNotificationPage.syncPeriodDailyTitle')} ${syncTime}`
-          : t('system.channel.imNotificationPage.syncPeriodDailyTitle')}
-      </div>
-      <div className="truncate text-xs text-[var(--color-text-3)]">
-        {t('system.channel.imNotificationPage.syncPeriodDailyDesc')}
-      </div>
-    </div>
-  );
-}
-
 const ImNotificationPage: React.FC = () => {
   const { t } = useTranslation();
-  const { convertToLocalizedTime } = useLocalizedTime();
   const router = useRouter();
   const {
     getChannels,
@@ -127,27 +57,30 @@ const ImNotificationPage: React.FC = () => {
     updateChannel,
     deleteChannel,
     getAvailableInstances,
-    syncMappings,
-    getMappings,
-    getRecords,
+    getAccountAssociationOptions,
+    getAssociationMappings,
     sendNotification,
   } = useImNotificationApi();
   const { getNotificationTagCatalog } = useChannelApi();
-  const { getProviders } = useIntegrationCenterApi();
 
   const [channels, setChannels] = useState<IMNotificationChannel[]>([]);
+  const [associationOptions, setAssociationOptions] = useState<Array<{
+    id: number;
+    name: string;
+    integration_instance_id: number;
+    integration_instance_name: string;
+    status: string;
+  }>>([]);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [searchText, setSearchText] = useState('');
 
   const [form] = Form.useForm<IMNotificationChannelFormValues>();
-  const watchedIntegrationInstance = Form.useWatch('integration_instance', form);
   const [modalOpen, setModalOpen] = useState(false);
   const [modalLoading, setModalLoading] = useState(false);
   const [editing, setEditing] = useState<IMNotificationChannel | null>(null);
   const [availableInstances, setAvailableInstances] = useState<AvailableInstance[]>([]);
   const [tagOptions, setTagOptions] = useState<NotificationTagOption[]>([]);
-  const [providers, setProviders] = useState<ProviderManifest[]>([]);
 
   const [sendForm] = Form.useForm();
   const [sendOpen, setSendOpen] = useState(false);
@@ -156,53 +89,11 @@ const ImNotificationPage: React.FC = () => {
   const [sendMappings, setSendMappings] = useState<IMNotificationUserMapping[]>([]);
   const [sendMappingsLoading, setSendMappingsLoading] = useState(false);
 
-  const [recordsOpen, setRecordsOpen] = useState(false);
-  const [recordsChannel, setRecordsChannel] = useState<IMNotificationChannel | null>(null);
-  const [records, setRecords] = useState<IMNotificationSyncRun[]>([]);
-  const [recordsLoading, setRecordsLoading] = useState(false);
-
   const [pagination, setPagination] = useState<PaginationState>({
     current: 1,
     total: 0,
     pageSize: 10,
   });
-  const [recordsPagination, setRecordsPagination] = useState<PaginationState>({
-    current: 1,
-    total: 0,
-    pageSize: 10,
-  });
-
-  const resolvedTemplate = useMemo(
-    () => getResolvedImTemplate(watchedIntegrationInstance, availableInstances, providers),
-    [availableInstances, providers, watchedIntegrationInstance],
-  );
-
-  const externalMatchOptions = useMemo(
-    () =>
-      (resolvedTemplate?.matchable_fields || []).map((field) => ({
-        value: field,
-        label: resolveExternalFieldOptionLabel(field, resolvedTemplate?.external_field_labels),
-      })),
-    [resolvedTemplate],
-  );
-
-  const externalReceiveOptions = useMemo(
-    () =>
-      (resolvedTemplate?.receivable_fields || []).map((field) => ({
-        value: field,
-        label: resolveExternalFieldOptionLabel(field, resolvedTemplate?.external_field_labels),
-      })),
-    [resolvedTemplate],
-  );
-
-  const platformMatchOptions = useMemo(
-    () =>
-      PLATFORM_MATCH_FIELD_OPTIONS.map((field) => ({
-        value: field,
-        label: t(`system.channel.imNotificationPage.platformFieldOption.${field}`),
-      })),
-    [t],
-  );
 
   const fetchChannels = async (current = pagination.current, pageSize = pagination.pageSize) => {
     setLoading(true);
@@ -236,39 +127,23 @@ const ImNotificationPage: React.FC = () => {
 
   const fetchMeta = async () => {
     try {
-      const [instancesData, providersData] = await Promise.all([
-        getAvailableInstances(),
-        getProviders(),
-      ]);
-      setAvailableInstances(instancesData ?? []);
-      setProviders(providersData ?? []);
+      setAvailableInstances(await getAvailableInstances() ?? []);
     } catch {
       setAvailableInstances([]);
-      setProviders([]);
     }
+  };
+
+  const refreshAssociationOptions = async () => {
+    const options = await getAccountAssociationOptions();
+    const nextOptions = Array.isArray(options) ? options : [];
+    setAssociationOptions(nextOptions);
+    return nextOptions;
   };
 
   useEffect(() => {
     fetchChannels(1, pagination.pageSize);
     fetchMeta();
   }, []);
-
-  useEffect(() => {
-    if (!modalOpen) return;
-
-    const currentMatch = form.getFieldValue('external_match_field');
-    const currentReceive = form.getFieldValue('external_receive_field');
-    const nextValues = resolveImNotificationFieldPatches({
-      editing: Boolean(editing),
-      currentMatch,
-      currentReceive,
-      template: resolvedTemplate,
-    });
-
-    if (Object.keys(nextValues).length > 0) {
-      form.setFieldsValue(nextValues);
-    }
-  }, [editing, form, modalOpen, resolvedTemplate]);
 
   const filteredChannels = channels.filter((channel) =>
     channel.name.toLowerCase().includes(searchText.toLowerCase())
@@ -283,11 +158,7 @@ const ImNotificationPage: React.FC = () => {
         description: record.description,
         enabled: record.enabled,
         status: record.status,
-        platform_match_field: record.platform_match_field,
-        external_match_field: record.external_match_field,
-        external_receive_field: record.external_receive_field,
-        schedule_enabled: parseScheduleConfig(record.schedule_config).scheduleEnabled,
-        sync_time: parseScheduleConfig(record.schedule_config).syncTime,
+        account_association: record.account_association,
         team: coerceImNotificationTeamIds(record.team),
         tag: record.tag || [],
       });
@@ -295,11 +166,8 @@ const ImNotificationPage: React.FC = () => {
       form.resetFields();
       form.setFieldsValue({
         enabled: true,
-        schedule_enabled: false,
-        sync_time: '',
         team: [],
         tag: [],
-        platform_match_field: 'email',
       });
     }
     try {
@@ -309,6 +177,12 @@ const ImNotificationPage: React.FC = () => {
       setTagOptions([]);
     }
     await fetchMeta();
+    try {
+      const options = await getAccountAssociationOptions();
+      setAssociationOptions(Array.isArray(options) ? options : []);
+    } catch {
+      setAssociationOptions([]);
+    }
     setModalOpen(true);
   };
 
@@ -352,11 +226,7 @@ const ImNotificationPage: React.FC = () => {
         integration_instance: values.integration_instance,
         description: values.description || '',
         enabled: values.enabled ?? true,
-        status: values.status,
-        platform_match_field: values.platform_match_field,
-        external_match_field: values.external_match_field,
-        external_receive_field: values.external_receive_field,
-        schedule_config: buildSchedulePayload(values.schedule_enabled ?? false, values.sync_time),
+        account_association: values.account_association ?? null,
         team: coerceImNotificationTeamIds(values.team),
         tag: values.tag || [],
       };
@@ -377,45 +247,6 @@ const ImNotificationPage: React.FC = () => {
     }
   };
 
-  const handleSyncMappings = async (record: IMNotificationChannel) => {
-    try {
-      await syncMappings(record.id);
-      message.success(t('system.channel.imNotificationPage.syncMappingsStarted'));
-      await fetchChannels(pagination.current, pagination.pageSize);
-    } catch (error) {
-      message.error(error instanceof Error ? error.message : t('system.channel.imNotificationPage.syncMappingsFailed'));
-    }
-  };
-
-  const fetchRecords = async (channelId: number, current = 1, pageSize = recordsPagination.pageSize) => {
-    setRecordsLoading(true);
-    try {
-      const { count, items } = await getRecords(channelId, {
-        page: current,
-        page_size: pageSize,
-      });
-      setRecords(items ?? []);
-      setRecordsPagination((prev) => ({
-        ...prev,
-        current,
-        pageSize,
-        total: count,
-      }));
-    } catch {
-      message.error(t('common.fetchFailed'));
-      setRecords([]);
-    } finally {
-      setRecordsLoading(false);
-    }
-  };
-
-  const handleViewRecords = async (record: IMNotificationChannel) => {
-    setRecordsChannel(record);
-    setRecordsOpen(true);
-    setRecords([]);
-    await fetchRecords(record.id, 1, recordsPagination.pageSize);
-  };
-
   const handleSendOpen = () => {
     sendForm.resetFields();
     setSendChannelId(undefined);
@@ -429,9 +260,12 @@ const ImNotificationPage: React.FC = () => {
     setSendMappings([]);
     if (!channelId) return;
 
+    const channel = channels.find((item) => item.id === channelId);
+    if (!channel?.account_association) return;
+
     setSendMappingsLoading(true);
     try {
-      const { items } = await getMappings(channelId, { page: 1, page_size: 1000 });
+      const { items } = await getAssociationMappings(channel.account_association, { page: 1, page_size: 1000 });
       setSendMappings(items ?? []);
     } catch {
       message.error(t('common.fetchFailed'));
@@ -465,15 +299,10 @@ const ImNotificationPage: React.FC = () => {
     router.push('/system-manager/channel');
   };
 
-  const renderTime = (value: string | null | undefined) => {
-    if (!value) return '--';
-    return convertToLocalizedTime(value, 'YYYY-MM-DD HH:mm:ss');
-  };
-
   const sendChannelOptions = useMemo(
     () =>
       channels
-        .filter((channel) => channel.status === 'ready' && channel.dependency_status?.available !== false)
+        .filter((channel) => channel.enabled && channel.account_association && channel.dependency_status?.available !== false)
         .map((channel) => ({
           value: channel.id,
           label: `${channel.name}`,
@@ -541,46 +370,10 @@ const ImNotificationPage: React.FC = () => {
       },
     },
     {
-      key: 'latest_sync',
-      title: t('system.channel.imNotificationPage.latestSync'),
-      dataIndex: 'display_sync_status',
-      render: (_, record: IMNotificationChannel) => {
-        const status = record.display_sync_status;
-        if (status === 'never_synced' || !status) {
-          return (
-            <div className="min-w-0">
-              <span className="text-sm text-[var(--color-text-3)]">
-                {t('system.channel.imNotificationPage.latestSyncEmpty')}
-              </span>
-            </div>
-          );
-        }
-
-        const latestSyncTime = record.latest_sync_finished_at || record.latest_sync_started_at;
-        const summary = getLatestSyncSummary(record, t);
-
-        return (
-          <div className="min-w-0">
-            <div className="truncate text-sm tabular-nums text-[var(--color-text-1)]">
-              {latestSyncTime ? renderTime(latestSyncTime) : '--'}
-            </div>
-            <div className="flex min-w-0 items-center gap-2 text-xs text-[var(--color-text-3)]">
-              <span className="shrink-0">{getSyncRunStatusText(status, t)}</span>
-              {summary ? (
-                <EllipsisWithTooltip text={summary} className="min-w-0 truncate" />
-              ) : null}
-            </div>
-          </div>
-        );
-      },
-      width: 260,
-    },
-    {
-      key: 'sync_period',
-      title: t('system.channel.imNotificationPage.syncPeriod'),
-      dataIndex: 'schedule_config',
-      render: (_, record: IMNotificationChannel) => renderSyncPeriod(record, t),
-      width: 220,
+      key: 'account_association_name',
+      title: t('system.channel.imNotificationPage.accountAssociation', '账号关联'),
+      dataIndex: 'account_association_name',
+      render: (value: string) => value || '--',
     },
     {
       key: 'enabled',
@@ -602,20 +395,6 @@ const ImNotificationPage: React.FC = () => {
       fixed: 'right',
       width: 320,
       render: (_, record: IMNotificationChannel) => {
-        const dependencyUnavailable = record.dependency_status?.available === false;
-        const syncDisabled = dependencyUnavailable || isChannelSyncRunning(record.latest_sync_status);
-        const actionLinkClass = 'p-0';
-        const syncButton = (
-          <Button
-            type="link"
-            size="small"
-            className={actionLinkClass}
-            onClick={() => handleSyncMappings(record)}
-            disabled={syncDisabled}
-          >
-            {t('system.channel.imNotificationPage.syncMappings')}
-          </Button>
-        );
         return (
           <Space wrap className="max-w-full">
             <PermissionWrapper requiredPermissions={['Edit']}>
@@ -627,20 +406,6 @@ const ImNotificationPage: React.FC = () => {
                 {t('common.edit')}
               </Button>
             </PermissionWrapper>
-            <PermissionWrapper requiredPermissions={['Edit']}>
-              {dependencyUnavailable ? (
-                <Tooltip title={t(`system.channel.imNotificationPage.dependencyReason.${record.dependency_status.reason}`)}>
-                  <span>{syncButton}</span>
-                </Tooltip>
-              ) : syncButton}
-            </PermissionWrapper>
-            <Button
-              type="link"
-              size="small"
-              onClick={() => handleViewRecords(record)}
-            >
-              {t('system.channel.imNotificationPage.viewRecords')}
-            </Button>
             <PermissionWrapper requiredPermissions={['Delete']}>
               <Popconfirm
                 title={t('system.channel.imNotificationPage.deleteConfirm')}
@@ -656,10 +421,6 @@ const ImNotificationPage: React.FC = () => {
       },
     },
   ];
-
-  const manifestHintVisible = modalOpen && !!watchedIntegrationInstance && !resolvedTemplate;
-  const showMatchFieldHint = modalOpen && !!watchedIntegrationInstance && externalMatchOptions.length === 0;
-  const showReceiveFieldHint = modalOpen && !!watchedIntegrationInstance && externalReceiveOptions.length === 0;
 
   return (
     <PageLayout
@@ -741,32 +502,12 @@ const ImNotificationPage: React.FC = () => {
             loading={modalLoading}
             form={form}
             availableInstances={availableInstances}
-            platformMatchOptions={platformMatchOptions}
-            externalMatchOptions={externalMatchOptions}
-            externalReceiveOptions={externalReceiveOptions}
-            manifestHintVisible={manifestHintVisible}
-            showMatchFieldHint={showMatchFieldHint}
-            showReceiveFieldHint={showReceiveFieldHint}
+            associationOptions={associationOptions}
             tagOptions={tagOptions}
             t={t}
+            onRefreshOptions={refreshAssociationOptions}
             onOk={handleModalOk}
             onCancel={() => !modalLoading && setModalOpen(false)}
-          />
-
-          <IMNotificationRecordsDrawer
-            open={recordsOpen}
-            channel={recordsChannel}
-            records={records}
-            loading={recordsLoading}
-            pagination={recordsPagination}
-            t={t}
-            renderTime={renderTime}
-            onClose={() => setRecordsOpen(false)}
-            onPageChange={(current, pageSize) => {
-              if (!recordsChannel) return;
-              const nextPage = pageSize !== recordsPagination.pageSize ? 1 : current;
-              fetchRecords(recordsChannel.id, nextPage, pageSize);
-            }}
           />
 
           <IMNotificationSendModal

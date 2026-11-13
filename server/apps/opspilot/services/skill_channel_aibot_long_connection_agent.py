@@ -106,6 +106,13 @@ async def _aclose_stream(stream) -> None:
 
 
 def _run(request: AnswerRequest) -> None:
+    from apps.opspilot.models import SkillChannel
+    from apps.opspilot.services.skill_channel_account_association import (
+        SkillChannelSenderDenied,
+        log_sender_denied,
+        resolve_skill_channel_actor,
+        sender_denied_text,
+    )
     from apps.opspilot.services.skill_channel_chat_service import (
         _history_from_conversation,
         build_skill_chat_params,
@@ -116,12 +123,20 @@ def _run(request: AnswerRequest) -> None:
     from apps.opspilot.utils.agui_chat import _generate_agui_stream
 
     channel = request.channel
-    skill = channel.skill
-    conversation = get_or_create_conversation(channel, request.external_user_id, request.session_id or None)
-    request_user = type("IMUser", (), {"username": request.external_user_id or "", "id": None, "locale": "en"})()
+    if isinstance(channel, SkillChannel) and channel.pk:
+        channel = SkillChannel.objects.select_related("skill", "account_association", "account_association__integration_instance").get(pk=channel.pk)
     sender_id = getattr(request, "wiki_sender_id", None)
     if sender_id is None:
         sender_id = request.external_user_id or ""
+    try:
+        actor = resolve_skill_channel_actor(channel, str(sender_id or ""))
+    except SkillChannelSenderDenied as exc:
+        log_sender_denied(channel, exc)
+        request.fail(sender_denied_text(exc.reason))
+        return
+    skill = channel.skill
+    conversation = get_or_create_conversation(channel, request.external_user_id, request.session_id or None)
+    request_user = actor or type("IMUser", (), {"username": request.external_user_id or "", "id": None, "locale": "en"})()
     params = build_skill_chat_params(skill, request.user_message, request_user, wiki_sender_id=str(sender_id or ""))
     inject_skill_memory_prompt(params, skill, request.external_user_id, request.user_message)
     params["reply_language"] = "match_user"

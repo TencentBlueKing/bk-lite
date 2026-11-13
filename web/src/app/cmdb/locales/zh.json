@@ -116,6 +116,7 @@
     "closeAll": "全部收起",
     "more": "更多",
     "batchEdit": "批量编辑",
+    "selectionBarClear": "取消选择",
     "searchTitle": "资产搜索",
     "assetSearchTxt": "请输入关键词",
     "AssetSearch": {

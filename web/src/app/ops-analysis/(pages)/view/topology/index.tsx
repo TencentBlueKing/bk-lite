@@ -733,6 +733,7 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
           builtinNamespaceId={namespaceDraftId}
           editingNodeData={addNodeVisible ? null : state.editingNodeData}
           filterDefinitions={definitions}
+          globalFilterValues={filterValues}
           onClose={handleNodeEditClose}
           onConfirm={handleNodeConfirm}
           onCancel={handleNodeEditClose}

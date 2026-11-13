@@ -14,7 +14,7 @@ import {
   Table,
   Tooltip,
 } from 'antd';
-import { HolderOutlined, MinusOutlined, PlusOutlined, ReloadOutlined } from '@ant-design/icons';
+import { DeleteOutlined, HolderOutlined, MinusOutlined, PlusOutlined, ReloadOutlined } from '@ant-design/icons';
 import {
   DndContext,
   PointerSensor,
@@ -33,11 +33,19 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import type {
+  ConditionFieldOption,
   DatasourceItem,
   DynamicOptionsSource,
   InputControlConfig,
   InputOption,
+  SourceRef,
 } from '@/app/ops-analysis/types/dataSource';
+import {
+  conditionFieldFromDraft,
+  draftFromConditionField,
+  legacyDynamicConditionSource,
+  type ConditionFieldDraft,
+} from '@/app/ops-analysis/utils/conditionFieldSource';
 import { useDataSourceApi } from '@/app/ops-analysis/api/dataSource';
 import {
   extractDataSourceItems,
@@ -78,8 +86,41 @@ interface QueryParamRow {
   refName: string;
 }
 
+interface ConditionOptionDraft {
+  uid: string;
+  label: string;
+  value: string;
+}
+
+interface ConditionFieldRow extends ConditionFieldDraft {
+  uid: string;
+  options: ConditionOptionDraft[];
+}
+
+const emptyConditionRow = (): ConditionFieldRow => ({
+  uid: newId(),
+  value: '',
+  label: '',
+  valueMode: 'input',
+  options: [],
+});
+
+const conditionRowFromField = (field: ConditionFieldOption): ConditionFieldRow => {
+  const draft = draftFromConditionField(field);
+  return {
+    uid: newId(),
+    value: draft.value,
+    label: draft.label,
+    valueMode: draft.valueMode,
+    query_objects: draft.query_objects,
+    options: draft.options.map((option) => ({ ...option, uid: newId() })),
+  };
+};
+
 interface ParamInputConfigEditorProps {
   open: boolean;
+  /** 条件过滤的字段来源。和字符串下拉共用数据源、取值列、显示列、查询参数。 */
+  variant?: 'param' | 'conditionFields';
   value?: InputControlConfig;
   onConfirm: (value: InputControlConfig, resolvedOptions?: InputOption[]) => void;
   onCancel: () => void;
@@ -325,6 +366,7 @@ const SortableStaticRow: React.FC<SortableStaticRowProps> = ({
 
 export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
   open,
+  variant = 'param',
   value,
   onConfirm,
   onCancel,
@@ -343,7 +385,10 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
   const [componentSwitch, setComponentSwitch] = useState(false);
   const [multiple, setMultiple] = useState(false);
   const isOptionsControl = control === 'select' || control === 'radio';
+  const editingConditionFields = variant === 'conditionFields' || value?.control === 'conditionFilter';
   const [sourceType, setSourceType] = useState<'static' | 'dynamic'>('static');
+  const [conditionRows, setConditionRows] = useState<ConditionFieldRow[]>([emptyConditionRow()]);
+  const [externalSourceRef, setExternalSourceRef] = useState<SourceRef | undefined>();
   const [staticRows, setStaticRows] = useState<StaticRow[]>([createRow()]);
   const [dataSourceList, setDataSourceList] = useState<DatasourceItem[]>([]);
   const [dsLoading, setDsLoading] = useState(false);
@@ -377,6 +422,8 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
       setDynamicPreview([]);
       setPreviewFieldKeys([]);
       setQueryParamRows([]);
+      setConditionRows([emptyConditionRow()]);
+      setExternalSourceRef(undefined);
       form.resetFields(['dynamicSourceId', 'dynamicValueField', 'dynamicLabelField']);
       return;
     }
@@ -391,9 +438,70 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
     setMultiple(
       value.control === 'select' ? Boolean(value.multiple) : false,
     );
-    if (value.control === 'input' || value.control === 'organization') {
+    if (value.control === 'conditionFilter') {
+      const fields = value.fields;
+      const legacy = legacyDynamicConditionSource(fields);
+      const dynamic = fields.kind === 'dynamic' && fields.valueField && fields.labelField ? fields : null;
+      const sourceRef = dynamic?.sourceRef || legacy?.sourceRef;
+      const valueField = dynamic?.valueField || legacy?.valueField;
+      const labelField = dynamic?.labelField || legacy?.labelField;
+      const queryParams = dynamic?.queryParams || legacy?.queryParams;
+      if (sourceRef && valueField && labelField) {
+        setSourceType('dynamic');
+        setExternalSourceRef(sourceRef);
+        setDynamicSourceId(undefined);
+        setDynamicValueField(valueField);
+        setDynamicLabelField(labelField);
+        setQueryParamRows(Object.entries(queryParams ?? {}).map(([name, raw]) => queryRowFromStored(name, raw)));
+        setDynamicPreview([]);
+        setPreviewFieldKeys([]);
+        setConditionRows([emptyConditionRow()]);
+        form.setFieldsValue({
+          dynamicSourceId: undefined,
+          dynamicValueField: valueField,
+          dynamicLabelField: labelField,
+        });
+        return;
+      }
+      if (dynamic?.sourceId && valueField && labelField) {
+        setSourceType('dynamic');
+        setExternalSourceRef(undefined);
+        setDynamicSourceId(dynamic.sourceId);
+        setDynamicValueField(valueField);
+        setDynamicLabelField(labelField);
+        setQueryParamRows(Object.entries(queryParams ?? {}).map(([name, raw]) => queryRowFromStored(name, raw)));
+        setDynamicPreview([]);
+        setPreviewFieldKeys([]);
+        setConditionRows([emptyConditionRow()]);
+        form.setFieldsValue({
+          dynamicSourceId: dynamic.sourceId,
+          dynamicValueField: valueField,
+          dynamicLabelField: labelField,
+        });
+        return;
+      }
+      const items = fields.kind === 'static' ? fields.items || [] : [];
+      setSourceType('static');
+      setConditionRows(items.length > 0 ? items.map(conditionRowFromField) : [emptyConditionRow()]);
+      setExternalSourceRef(undefined);
+      setDynamicSourceId(undefined);
+      setDynamicValueField(undefined);
+      setDynamicLabelField(undefined);
+      setDynamicPreview([]);
+      setPreviewFieldKeys([]);
+      setQueryParamRows([]);
+      form.resetFields(['dynamicSourceId', 'dynamicValueField', 'dynamicLabelField']);
+      return;
+    }
+    if (
+      value.control === 'input'
+      || value.control === 'organization'
+      || value.control === 'order'
+    ) {
       setSourceType('static');
       setStaticRows([createRow()]);
+      setConditionRows([emptyConditionRow()]);
+      setExternalSourceRef(undefined);
       setDynamicSourceId(undefined);
       setDynamicValueField(undefined);
       setDynamicLabelField(undefined);
@@ -517,7 +625,7 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
   );
 
   useEffect(() => {
-    if (!open || sourceType !== 'dynamic' || !isOptionsControl) return;
+    if (!open || sourceType !== 'dynamic' || (!isOptionsControl && !editingConditionFields)) return;
     setDsLoading(true);
     getDataSourceList({ page_size: -1 })
       .then((response) => {
@@ -528,7 +636,7 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
         message.error(error.message || t('paramInput.dynamic.loadDataSourceFailed'));
       })
       .finally(() => setDsLoading(false));
-  }, [control, getDataSourceList, open, sourceType, t]);
+  }, [control, editingConditionFields, getDataSourceList, open, sourceType, t]);
 
   useEffect(() => {
     if (
@@ -540,6 +648,8 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
       !value ||
       value.control === 'input' ||
       value.control === 'organization' ||
+      value.control === 'conditionFilter' ||
+      value.control === 'order' ||
       value.optionsSource.type !== 'dynamic' ||
       !value.optionsSource.sourceRef ||
       dataSourceList.length === 0
@@ -556,6 +666,34 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
       form.setFieldValue('dynamicSourceId', resolvedSourceId);
     }
   }, [control, dataSourceList, dynamicSourceId, form, open, sourceType, value]);
+
+  useEffect(() => {
+    if (!open || sourceType !== 'dynamic' || dynamicSourceId || !externalSourceRef || dataSourceList.length === 0) {
+      return;
+    }
+    const resolvedSourceId = resolveDynamicSourceId(
+      {
+        type: 'dynamic',
+        sourceRef: externalSourceRef,
+        valueField: dynamicValueField || 'value',
+        labelField: dynamicLabelField || 'label',
+      },
+      dataSourceList,
+    );
+    if (resolvedSourceId) {
+      setDynamicSourceId(resolvedSourceId);
+      form.setFieldValue('dynamicSourceId', resolvedSourceId);
+    }
+  }, [
+    dataSourceList,
+    dynamicLabelField,
+    dynamicSourceId,
+    dynamicValueField,
+    externalSourceRef,
+    form,
+    open,
+    sourceType,
+  ]);
 
   const fetchDynamicPreview = useCallback((sourceId: number, params: Record<string, unknown> = {}) => {
     const requestId = ++previewRequestIdRef.current;
@@ -734,16 +872,66 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
   const queryRefDisablesSwitch = queryParamRows.some((row) => row.mode === 'ref' && row.refName.trim());
 
   const handleConfirm = async () => {
-    if (control === 'input') {
+    if (editingConditionFields && sourceType === 'static') {
+      const blank = (row: ConditionFieldRow) => (
+        !row.value.trim()
+        && !row.label.trim()
+        && row.options.every((option) => !option.value.trim() && !option.label.trim())
+      );
+      const touched = conditionRows.filter((row) => !blank(row));
+      if (touched.length === 0) {
+        message.warning(t('paramInput.conditionFields.emptyError'));
+        return;
+      }
+      for (const row of touched) {
+        if (!row.value.trim() || !row.label.trim()) {
+          message.warning(t('paramInput.conditionFields.emptyError'));
+          return;
+        }
+        if (row.valueMode === 'options') {
+          const options = row.options.filter((option) => option.value.trim() && option.label.trim());
+          if (options.length === 0) {
+            message.warning(t('paramInput.conditionFields.optionEmpty'));
+            return;
+          }
+          if (new Set(options.map((option) => option.value.trim())).size !== options.length) {
+            message.warning(t('paramInput.static.duplicateValueError'));
+            return;
+          }
+        }
+      }
+      const fieldValues = touched.map((row) => row.value.trim());
+      if (new Set(fieldValues).size !== fieldValues.length) {
+        message.warning(t('paramInput.static.duplicateValueError'));
+        return;
+      }
+      const items = touched.flatMap((row) => {
+        const field = conditionFieldFromDraft({
+          value: row.value,
+          label: row.label,
+          valueMode: row.valueMode,
+          query_objects: row.query_objects,
+          options: row.options.map((option) => ({ label: option.label, value: option.value })),
+        });
+        return field ? [field] : [];
+      });
+      onConfirm({ control: 'conditionFilter', fields: { kind: 'static', items } });
+      return;
+    }
+    if (!editingConditionFields && control === 'input') {
       onConfirm({ control: 'input' });
       return;
     }
-    if (control === 'organization') {
+    if (!editingConditionFields && control === 'organization') {
       onConfirm({ control: 'organization' });
       return;
     }
+    if (!editingConditionFields && control !== 'select' && control !== 'radio') {
+      onConfirm({ control: 'input' });
+      return;
+    }
 
-    if (sourceType === 'static') {
+    if (!editingConditionFields && sourceType === 'static') {
       const staticItems = staticRows
         .filter((row) => String(row.value).trim() !== '' && row.label.trim() !== '')
         .map(({ label, value }) => ({ label: label.trim(), value }));
@@ -756,6 +944,9 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
       const values = new Set(staticItems.map((item) => String(item.value)));
       if (values.size !== staticItems.length) {
         message.warning(t('paramInput.static.duplicateValueError'));
+        return;
+      }
+      if (control !== 'select' && control !== 'radio') {
         return;
       }
 
@@ -885,6 +1076,26 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
       ...(storedParams.queryParams ? { queryParams: storedParams.queryParams } : {}),
     };
 
+    if (editingConditionFields) {
+      onConfirm({
+        control: 'conditionFilter',
+        fields: {
+          kind: 'dynamic',
+          ...(optionsSource.sourceRef
+            ? { sourceRef: optionsSource.sourceRef }
+            : { sourceId: optionsSource.sourceId }),
+          valueField: optionsSource.valueField,
+          labelField: optionsSource.labelField,
+          ...(optionsSource.queryParams ? { queryParams: optionsSource.queryParams } : {}),
+        },
+      });
+      return;
+    }
+
+    if (control !== 'select' && control !== 'radio') {
+      return;
+    }
+
     onConfirm({
       control,
       componentSwitch: queryRefDisablesSwitch ? undefined : (componentSwitch ? true : undefined),
@@ -903,7 +1114,7 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
       onOk={handleConfirm}
       okText={t('common.confirm')}
       cancelText={t('common.cancel')}
-      width={640}
+      width={editingConditionFields ? 760 : 640}
       centered
       destroyOnHidden
       styles={{
@@ -911,6 +1122,7 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
       }}
     >
       <Form form={form} layout="vertical" colon={false}>
+        {!editingConditionFields && (
         <Form.Item label={t('paramInput.controlType')} className="mb-3">
           <Radio.Group
             value={control}
@@ -938,8 +1150,9 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
             ]}
           />
         </Form.Item>
+        )}
 
-        {control === 'select' && (
+        {control === 'select' && !editingConditionFields && (
           <Form.Item label={t('paramInput.picker')} className="mb-3">
             <Radio.Group
               value={picker}
@@ -952,7 +1165,7 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
           </Form.Item>
         )}
 
-        {control === 'select' && (
+        {control === 'select' && !editingConditionFields && (
           <Form.Item label={t('paramInput.multiple')} className="mb-3">
             <Tooltip
               title={
@@ -976,9 +1189,9 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
           </Form.Item>
         )}
 
-        {isOptionsControl && (
+        {(isOptionsControl || editingConditionFields) && (
           <>
-            {componentSwitchEnabled && (
+            {componentSwitchEnabled && !editingConditionFields && (
               <Form.Item
                 label={t('dashboard.componentSwitch')}
                 className="mb-3"
@@ -1016,7 +1229,10 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
                 </Tooltip>
               </Form.Item>
             )}
-            <Form.Item label={t('paramInput.sourceType')} className="mb-3">
+            <Form.Item
+              label={editingConditionFields ? t('paramInput.conditionFields.source') : t('paramInput.sourceType')}
+              className="mb-3"
+            >
               <Radio.Group
                 value={sourceType}
                 onChange={(event) => {
@@ -1028,14 +1244,192 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
                   setPreviewFieldKeys([]);
                   form.resetFields(['dynamicSourceId', 'dynamicValueField', 'dynamicLabelField']);
                 }}
-                options={[
-                  { label: t('paramInput.source.static'), value: 'static' },
-                  { label: t('paramInput.source.dynamic'), value: 'dynamic' },
-                ]}
+                options={editingConditionFields
+                  ? [
+                    { label: t('paramInput.conditionFields.static'), value: 'static' },
+                    { label: t('paramInput.conditionFields.dynamic'), value: 'dynamic' },
+                  ]
+                  : [
+                    { label: t('paramInput.source.static'), value: 'static' },
+                    { label: t('paramInput.source.dynamic'), value: 'dynamic' },
+                  ]}
               />
             </Form.Item>
 
-            {sourceType === 'static' ? (
+            {sourceType === 'static' && editingConditionFields ? (
+              <Form.Item label={t('paramInput.conditionFields.fields')} className="mb-2">
+                <div className="flex flex-col gap-3">
+                  {conditionRows.map((row) => (
+                    <div
+                      key={row.uid}
+                      className="rounded-md border border-(--color-border-1) p-3"
+                    >
+                      <div className="flex items-end gap-2">
+                        <div className="min-w-0 flex-1">
+                          <div className="mb-1 text-xs text-(--color-text-3)">
+                            {t('paramInput.conditionFields.value')}
+                          </div>
+                          <Input
+                            value={row.value}
+                            onChange={(event) => {
+                              const nextValue = event.target.value;
+                              setConditionRows((prev) => prev.map((item) => (
+                                item.uid === row.uid ? { ...item, value: nextValue } : item
+                              )));
+                            }}
+                          />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="mb-1 text-xs text-(--color-text-3)">
+                            {t('paramInput.conditionFields.label')}
+                          </div>
+                          <Input
+                            value={row.label}
+                            onChange={(event) => {
+                              const nextLabel = event.target.value;
+                              setConditionRows((prev) => prev.map((item) => (
+                                item.uid === row.uid ? { ...item, label: nextLabel } : item
+                              )));
+                            }}
+                          />
+                        </div>
+                        <div className="w-[120px] shrink-0">
+                          <div className="mb-1 text-xs text-(--color-text-3)">
+                            {t('paramInput.conditionFields.valueMode')}
+                          </div>
+                          <Select
+                            className="w-full"
+                            style={{ width: '100%' }}
+                            value={row.valueMode}
+                            options={[
+                              { value: 'input', label: t('paramInput.conditionFields.input') },
+                              { value: 'number', label: t('paramInput.conditionFields.number') },
+                              { value: 'options', label: t('paramInput.conditionFields.options') },
+                            ]}
+                            onChange={(valueMode: ConditionFieldRow['valueMode']) => {
+                              setConditionRows((prev) => prev.map((item) => (
+                                item.uid === row.uid ? { ...item, valueMode } : item
+                              )));
+                            }}
+                          />
+                        </div>
+                        <Button
+                          type="text"
+                          size="small"
+                          className="shrink-0"
+                          aria-label={t('paramInput.conditionFields.deleteField')}
+                          icon={<DeleteOutlined />}
+                          onClick={() => {
+                            setConditionRows((prev) => prev.filter((item) => item.uid !== row.uid));
+                          }}
+                        />
+                      </div>
+                      {row.valueMode === 'options' ? (
+                        <div className="mt-3 border-t border-(--color-border-1) pt-3">
+                          <div className="mb-2 text-xs text-(--color-text-2)">
+                            {t('paramInput.conditionFields.optionSection')}
+                          </div>
+                          {row.options.length > 0 ? (
+                            <div className="mb-1 flex gap-2">
+                              <span className="min-w-0 flex-1 text-xs text-(--color-text-3)">
+                                {t('paramInput.static.value')}
+                              </span>
+                              <span className="min-w-0 flex-1 text-xs text-(--color-text-3)">
+                                {t('paramInput.static.label')}
+                              </span>
+                              <span className="w-8 shrink-0" />
+                            </div>
+                          ) : null}
+                          <div className="flex flex-col gap-2">
+                            {row.options.map((option) => (
+                              <div
+                                key={option.uid}
+                                className="flex items-center gap-2"
+                              >
+                                <Input
+                                  className="min-w-0 flex-1"
+                                  value={option.value}
+                                  onChange={(event) => {
+                                    const nextValue = event.target.value;
+                                    setConditionRows((prev) => prev.map((item) => (
+                                      item.uid === row.uid
+                                        ? {
+                                          ...item,
+                                          options: item.options.map((entry) => (
+                                            entry.uid === option.uid ? { ...entry, value: nextValue } : entry
+                                          )),
+                                        }
+                                        : item
+                                    )));
+                                  }}
+                                />
+                                <Input
+                                  className="min-w-0 flex-1"
+                                  value={option.label}
+                                  onChange={(event) => {
+                                    const nextLabel = event.target.value;
+                                    setConditionRows((prev) => prev.map((item) => (
+                                      item.uid === row.uid
+                                        ? {
+                                          ...item,
+                                          options: item.options.map((entry) => (
+                                            entry.uid === option.uid ? { ...entry, label: nextLabel } : entry
+                                          )),
+                                        }
+                                        : item
+                                    )));
+                                  }}
+                                />
+                                <Button
+                                  type="text"
+                                  size="small"
+                                  aria-label={t('paramInput.conditionFields.deleteOption')}
+                                  icon={<DeleteOutlined />}
+                                  onClick={() => {
+                                    setConditionRows((prev) => prev.map((item) => (
+                                      item.uid === row.uid
+                                        ? { ...item, options: item.options.filter((entry) => entry.uid !== option.uid) }
+                                        : item
+                                    )));
+                                  }}
+                                />
+                              </div>
+                            ))}
+                          </div>
+                          <Button
+                            type="dashed"
+                            className="mt-2"
+                            icon={<PlusOutlined />}
+                            onClick={() => {
+                              setConditionRows((prev) => prev.map((item) => (
+                                item.uid === row.uid
+                                  ? {
+                                    ...item,
+                                    options: [...item.options, { uid: newId(), label: '', value: '' }],
+                                  }
+                                  : item
+                              )));
+                            }}
+                          >
+                            {t('paramInput.conditionFields.addOption')}
+                          </Button>
+                        </div>
+                      ) : null}
+                    </div>
+                  ))}
+                  <Button
+                    type="dashed"
+                    className="self-start"
+                    icon={<PlusOutlined />}
+                    onClick={() => {
+                      setConditionRows((prev) => [...prev, emptyConditionRow()]);
+                    }}
+                  >
+                    {t('paramInput.conditionFields.addField')}
+                  </Button>
+                </div>
+              </Form.Item>
+            ) : sourceType === 'static' ? (
               <Form.Item label={t('paramInput.static.options')} className="mb-2">
                 <DndContext
                   sensors={staticSensors}
