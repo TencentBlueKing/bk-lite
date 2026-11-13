@@ -51,9 +51,16 @@ export const useDataSourceApi = () => {
   }, []);
 
   const getDataSourceList = useCallback(async (params?: any) => {
+    const onDisplayPage = typeof window !== 'undefined'
+      && window.location.pathname.startsWith('/ops-analysis/display/');
+    // 投屏页没有登录目录。机房下拉要在当前大屏已声明的数据源里用 rest_api 对上。
+    if (sharedAccess && onDisplayPage) {
+      const response = await sharedAccess.getDataSourceDetails([]);
+      return normalizeDataSourceResponse(response);
+    }
     const response = await get('/operation_analysis/api/data_source/', { params });
     return normalizeDataSourceResponse(response);
-  }, [get, normalizeDataSourceResponse]);
+  }, [get, normalizeDataSourceResponse, sharedAccess]);
 
   const getDataSourceBriefList = useCallback(async (params?: any) => {
     const response = await get('/operation_analysis/api/data_source/', {
