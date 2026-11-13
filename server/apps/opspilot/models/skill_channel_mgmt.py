@@ -31,6 +31,14 @@ class SkillChannel(TimeInfo):
         verbose_name=_("channel type"),
         db_index=True,
     )
+    account_association = models.ForeignKey(
+        "system_mgmt.IMAccountAssociation",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="skill_channels",
+        verbose_name="账号关联",
+    )
     channel_config = models.JSONField(default=dict, blank=True, verbose_name=_("channel config"))
     enabled = models.BooleanField(default=False, verbose_name=_("enabled"), db_index=True)
     usage_team = models.JSONField(default=list, verbose_name="使用组织")

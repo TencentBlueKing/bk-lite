@@ -4,6 +4,7 @@ from rest_framework import serializers
 from apps.core.utils.loader import LanguageLoader
 from apps.core.utils.serializers import UsernameSerializer
 from apps.system_mgmt.models import Channel, ChannelChoices
+from apps.system_mgmt.services.group_channel_mention import provider_for_group_channel
 from apps.system_mgmt.services.notification_tag import assign_channel_tags, channel_tag_tokens, parse_tag_tokens
 from apps.system_mgmt.utils.i18n import localized_channel_description
 
@@ -32,6 +33,7 @@ class ChannelSerializer(UsernameSerializer):
             "id",
             "name",
             "channel_type",
+            "account_association",
             "config",
             "description",
             "team",
@@ -101,6 +103,15 @@ class ChannelSerializer(UsernameSerializer):
             config = attrs.get("config", getattr(self.instance, "config", {}) or {})
             self.validate_nats_config(config)
             self.validate_nats_subject_key_unique(config, exclude_channel_id=getattr(self.instance, "pk", None))
+        if "account_association" in attrs:
+            association = attrs.get("account_association")
+        else:
+            association = getattr(self.instance, "account_association", None) if self.instance else None
+        provider = provider_for_group_channel(channel_type)
+        if provider is None:
+            attrs["account_association"] = None
+        elif association is not None and association.integration_instance.provider_key != provider:
+            raise serializers.ValidationError({"account_association": self._loader().get("error.account_association_provider_mismatch")})
         return attrs
 
     def create(self, validated_data):

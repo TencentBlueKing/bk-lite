@@ -5,6 +5,7 @@ from .custom_menu_group_viewset import CustomMenuGroupViewSet  # noqa
 from .error_log_viewset import ErrorLogViewSet  # noqa
 from .group_data_rule_viewset import GroupDataRuleViewSet  # noqa
 from .group_viewset import GroupViewSet  # noqa
+from .im_account_association_viewset import IMAccountAssociationViewSet  # noqa
 from .im_notification_channel_viewset import IMNotificationChannelViewSet  # noqa
 from .integration_instance_viewset import IntegrationInstanceViewSet  # noqa
 from .login_auth_binding_viewset import LoginAuthBindingViewSet  # noqa

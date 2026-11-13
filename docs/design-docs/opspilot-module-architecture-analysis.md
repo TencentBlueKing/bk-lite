@@ -12,6 +12,12 @@
 附件仍由当前会话签发读取清单、按需下载，生成结果通过原附件服务入库和保存到对象存储。
 节点退出时终止活动进程组并删除临时目录；已保存附件独立保留。
 
+2026-11-13：大结果交付改为原生 `FilesystemMiddleware`，由 `RunResultBackend` 与
+`CompositeBackend` 将 `/large_tool_results/` 路由到同一任务工作区；普通查询无需技能或代码执行权限即可读取、搜索结果。
+分步执行通过公开 `create_agent` 组装原生文件/技能中间件，继续由 OpsPilot 管理计划、审批与上下文工作窗口，
+不重复安装原生计划/子代理/摘要中间件。非分步路径保留 `create_deep_agent`。
+详情见 [原生结果文件接入](../../specs/changes/opspilot-native-result-files/spec.md)。
+
 本方案不提供宿主或租户间的 OS 隔离，代码拥有 Server 运行用户权限；目录和文件接口的路径检查不约束完整 Python/Shell。
 原 Docker CPU/内存/tmpfs 限额不再适用，保留调用超时、输出截断与附件传输上限。
 下文为历史架构评估；其中 ShellGuard/LocalShell 的组合描述不再代表正式执行入口。

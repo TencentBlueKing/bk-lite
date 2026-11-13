@@ -99,6 +99,10 @@ error:
   synced_groups_local_users_forbidden: Synced groups cannot have locally managed users
   synced_group_membership_immutable: Synced group membership cannot be changed locally
   channel_team_required: Please select the channel organization
+  account_association_provider_mismatch: The account association does not belong to this group channel's platform
+  account_association_not_found: Account association was not found
+  account_association_not_ready: This account association cannot be used until a complete update finishes
+  account_association_test_receiver_unavailable: The current user has no usable receive identifier in this account association
   custom_menu_group_display_name_exists: A menu group with the same display name already exists under app {app}
   custom_menu_group_enabled_exists: App {app} already has an enabled menu group. Only one menu group can be enabled per app.
   custom_menu_group_name_exists: A menu group named {display_name} already exists under app {app}

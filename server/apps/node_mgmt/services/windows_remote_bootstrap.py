@@ -17,7 +17,6 @@ from apps.node_mgmt.utils.winrm import winrm_profile_error
 from apps.rpc.ansible import AnsibleExecutor
 from config.components.nats import NATS_NAMESPACE
 
-
 ANSIBLE_EXECUTOR_COLLECTOR_ID = "ansibleexecutor_linux"
 ANSIBLE_COLLECTOR_NORMAL_STATUS = 0
 ANSIBLE_TASK_POLL_INTERVAL_SECONDS = 1
@@ -392,9 +391,7 @@ class WindowsRemoteBootstrapService:
                             },
                             {
                                 "name": "Run BK-Lite controller bootstrap",
-                                "ansible.windows.win_command": {
-                                    "argv": bootstrap_argv
-                                },
+                                "ansible.windows.win_command": {"argv": bootstrap_argv},
                                 "register": "bklite_bootstrap_result",
                             },
                             {
@@ -419,10 +416,7 @@ class WindowsRemoteBootstrapService:
                             {
                                 "name": "Verify BK-Lite temporary files were removed",
                                 "ansible.builtin.fail": {"msg": "BK-Lite temporary file cleanup failed"},
-                                "when": (
-                                    "bklite_session_cleanup is failed or "
-                                    "bklite_bootstrap_cleanup is failed"
-                                ),
+                                "when": ("bklite_session_cleanup is failed or " "bklite_bootstrap_cleanup is failed"),
                             },
                         ],
                     }
@@ -510,6 +504,17 @@ Get-ChildItem -LiteralPath 'C:\' -Filter 'fusion-collectors.bklite-backup-retain
     Remove-Item -LiteralPath $_.FullName -Recurse -Force
     $changed = $true
   }
+
+$programKeys = @(
+  'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\CollectorSidecar',
+  'HKLM:\SOFTWARE\WOW6432Node\FusionCollectors\Sidecar'
+)
+foreach ($programKey in $programKeys) {
+  if (Test-Path -LiteralPath $programKey) {
+    Remove-Item -LiteralPath $programKey -Recurse -Force
+    $changed = $true
+  }
+}
 
 Write-Output ('BKUNINSTALL_CHANGED=' + $changed.ToString().ToLowerInvariant())
 """.strip()
@@ -644,6 +649,7 @@ Write-Output ('BKUNINSTALL_CHANGED=' + $changed.ToString().ToLowerInvariant())
                 task_id=run_task_id,
                 timeout=timeout,
             )
+
             def replay_terminal_events(terminal_result):
                 if event_callback is None:
                     return

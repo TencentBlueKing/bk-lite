@@ -213,6 +213,7 @@ def test_planned_step_logs_step_and_run_timing(monkeypatch, caplog):
     with (
         patch.object(ToolsNodes, "_build_knowledge_retrieve_tool", return_value=None),
         patch.object(ToolsNodes, "_collect_deepagent_tools", return_value=node.all_tools),
+        patch("apps.opspilot.metis.llm.chain.node.create_planned_agent", return_value=fake_agent),
         patch("apps.opspilot.metis.llm.chain.node.create_deep_agent", return_value=fake_agent),
         patch.object(ToolsNodes, "get_llm_client", return_value=_FakeLLM()),
     ):

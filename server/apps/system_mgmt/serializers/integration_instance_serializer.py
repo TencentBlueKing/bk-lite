@@ -1,12 +1,14 @@
 from copy import deepcopy
 
+from django.db import transaction
 from rest_framework import serializers
 
 from apps.core.services.login_auth_request_service import get_login_auth_callback_uri
 from apps.core.utils.serializers import UsernameSerializer
 from apps.system_mgmt.models import IntegrationInstance, IntegrationInstanceStatusChoices
 from apps.system_mgmt.providers import get_provider_registry
-from apps.system_mgmt.providers.pack_i18n import resolve_provider_copy, request_locale
+from apps.system_mgmt.providers.pack_i18n import request_locale, resolve_provider_copy
+from apps.system_mgmt.services import im_notification_service
 from apps.system_mgmt.services.capability_contract_service import validate_integration_capability_state
 
 
@@ -113,9 +115,7 @@ class IntegrationInstanceSerializer(UsernameSerializer):
 
         config = self._encode_config(manifest, validated_data.get("config") or {}, {})
         validated_data["config"] = config
-        validated_data["capability_enabled"] = {
-            capability.key: True for capability in manifest.capabilities
-        }
+        validated_data["capability_enabled"] = {capability.key: True for capability in manifest.capabilities}
         validated_data["capability_status"] = {
             capability.key: IntegrationInstanceStatusChoices.PENDING_VERIFICATION for capability in manifest.capabilities
         }
@@ -167,7 +167,12 @@ class IntegrationInstanceSerializer(UsernameSerializer):
                 capability_status[capability_key] = IntegrationInstanceStatusChoices.PENDING_VERIFICATION
             validated_data["capability_status"] = capability_status
             validated_data["status"] = IntegrationInstanceStatusChoices.PENDING_VERIFICATION
-        return super().update(instance, validated_data)
+        with transaction.atomic():
+            updated = super().update(instance, validated_data)
+            identity_fields = im_notification_service.IDENTITY_FIELDS_BY_PROVIDER.get(updated.provider_key, ())
+            if any(old_runtime_config.get(field_name) != updated.get_runtime_config().get(field_name) for field_name in identity_fields):
+                im_notification_service.invalidate_account_associations_for_identity_change(updated)
+        return updated
 
     def to_representation(self, instance):
         data = super().to_representation(instance)

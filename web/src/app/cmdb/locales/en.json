@@ -762,7 +762,7 @@
         "afterExpiration": "Expire and Delete",
         "afterExpirationPrefix": "Delete after",
         "afterExpirationSuffix": "days without updates",
-        "afterExpirationTip": "After a complete successful collection, delete missing instances owned by this task whose last collection update exceeds the configured number of days. Failed or incomplete collections do not trigger cleanup.",
+        "afterExpirationTip": "Every day at 02:00, delete this task's instances whose last collection time is older than the configured number of days. Continuous collection failures still delete them. A complete successful collection deletes already-missing expired instances immediately. Preselected collection targets are kept.",
         "doNotClean": "No Cleanup",
         "doNotCleanDesc": "The system only syncs new and updated instances, completely ignoring deletions or missing data from the source.",
         "doNotCleanTip": "Scenario: Suitable for archived assets or core assets that require manual approval before decommissioning",

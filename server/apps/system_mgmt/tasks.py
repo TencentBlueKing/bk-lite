@@ -14,8 +14,8 @@ from apps.rpc.base import RpcClient
 from apps.system_mgmt.models import Channel, ErrorLog, Group, LoginModule, SystemSettings, User
 from apps.system_mgmt.models.channel import ChannelChoices
 from apps.system_mgmt.utils.channel_utils import send_email_to_user
-from apps.system_mgmt.utils.i18n import system_mgmt_message
 from apps.system_mgmt.utils.group_utils import GroupUtils
+from apps.system_mgmt.utils.i18n import system_mgmt_message
 
 
 @shared_task(bind=True, max_retries=3, default_retry_delay=60)
@@ -346,13 +346,33 @@ def execute_user_sync_source(source_id, trigger_mode="manual"):
     return execute_user_sync(int(source_id), trigger_mode)
 
 
+_CHANNEL_SCHEDULE_SKIPPED = "event=im_notification_channel_schedule_skipped channel_id=%s failed_stage=%s error_type=%s"
+_ASSOCIATION_SCHEDULE_SKIPPED = "event=im_account_association_schedule_skipped association_id=%s failed_stage=%s error_type=%s"
+_SCHEDULE_SKIP_ERROR_TYPES = {
+    "IM account association not found": "association_not_found",
+    "IM notification capability is not ready": "capability_not_ready",
+    "IM account association update is already running": "already_running",
+}
+
+
 @shared_task
 def schedule_im_notification_sync(channel_id):
-    from apps.system_mgmt.services.im_notification_service import create_im_notification_sync_run
+    logger.warning(_CHANNEL_SCHEDULE_SKIPPED, channel_id, "schedule", "moved")
+    return {"result": False, "message": "IM notification channel schedule has moved to account association"}
 
-    result = create_im_notification_sync_run(int(channel_id), trigger_mode="schedule")
+
+@shared_task
+def schedule_im_account_association_sync(association_id):
+    from apps.system_mgmt.services.im_notification_service import create_account_association_sync_run
+
+    result = create_account_association_sync_run(int(association_id), trigger_mode="schedule")
     if not result.get("result"):
-        logger.info(f"Skip scheduled IM notification sync for channel {channel_id}: {result.get('message', '')}")
+        logger.warning(
+            _ASSOCIATION_SCHEDULE_SKIPPED,
+            association_id,
+            "schedule",
+            _SCHEDULE_SKIP_ERROR_TYPES.get(result.get("message"), "skipped"),
+        )
         return result
 
     run_id = result["data"]["run_id"]

@@ -4,6 +4,7 @@ from .credential import *  # noqa
 from .custom_menu_group import *  # noqa
 from .error_log import *  # noqa
 from .group_data_rule import *  # noqa
+from .im_account_association import *  # noqa
 from .im_notification_channel import *  # noqa
 from .integration_instance import *  # noqa
 from .login_auth_binding import *  # noqa

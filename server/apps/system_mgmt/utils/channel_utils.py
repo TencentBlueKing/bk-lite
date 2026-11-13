@@ -268,9 +268,8 @@ def send_by_feishu_bot(channel_obj: Channel, title, content, receivers):
         return {"result": False, "message": "failed to send feishu bot message"}
 
 
-def send_by_dingtalk_bot(channel_obj: Channel, title, content, receivers):
+def send_by_dingtalk_bot(channel_obj: Channel, title, content, receivers, at_user_ids=None, at_mobiles=None):
     """发送钉钉机器人消息（markdown 格式，可选 HMAC-SHA256 签名）"""
-    # at_mobiles = []
     if receivers:
         to_user_mentions = " ".join(f"@{name} " for name in receivers)
         content = f"{content}<br>To: {to_user_mentions}"
@@ -298,8 +297,13 @@ def send_by_dingtalk_bot(channel_obj: Channel, title, content, receivers):
     payload = {
         "msgtype": "markdown",
         "markdown": {"title": title or "\u901a\u77e5", "text": content},
-        # "at": {"atMobiles": at_mobiles},
     }
+    if at_user_ids or at_mobiles:
+        payload["at"] = {
+            "atUserIds": list(at_user_ids or []),
+            "atMobiles": list(at_mobiles or []),
+            "isAtAll": False,
+        }
 
     try:
         res = requests.post(webhook_url, json=payload, timeout=5, allow_redirects=False)

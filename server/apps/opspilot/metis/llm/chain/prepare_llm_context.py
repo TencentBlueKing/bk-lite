@@ -13,7 +13,7 @@ from apps.opspilot.metis.llm.chain.message_trim import trim_messages
 from apps.opspilot.metis.llm.chain.token_utils import count_llm_request_tokens, count_tool_schema_tokens
 
 LLM_CONTEXT_WINDOW_EXCEEDED = "llm_context_window_exceeded"
-CLEARED_TOOL_RESULT_PLACEHOLDER = "[工具结果已清除，需要时请重新调用]"
+CLEARED_TOOL_RESULT_PLACEHOLDER = "[工具结果已移出上下文；如有结果文件请读取文件，不要因此重复执行有副作用的操作]"
 KEEP_RECENT_TOOL_RESULTS = 4
 CONTEXT_REFIT_LOG = "event=llm_context_refit keep_recent=%s packet_tokens=%s input_working_tokens=%s"
 CONTEXT_COLLAPSED_TO_CORE_LOG = "event=llm_context_collapsed_to_core packet_tokens=%s core_tokens=%s input_working_tokens=%s"
@@ -104,14 +104,16 @@ def drop_old_tool_results(
         if index not in drop:
             prepared.append(message)
             continue
-        prepared.append(
-            ToolMessage(
-                content=CLEARED_TOOL_RESULT_PLACEHOLDER,
-                tool_call_id=getattr(message, "tool_call_id", "") or "",
-                name=getattr(message, "name", None),
-                status=getattr(message, "status", None),
-            )
-        )
+        content = getattr(message, "content", "")
+        # 原生落盘消息首段包含工具调用 ID 与文件路径；清理预览但不丢恢复入口。
+        reference = None
+        blocks = [{"type": "text", "text": content}] if isinstance(content, str) else content
+        for block in blocks or []:
+            text = block.get("text", "") if isinstance(block, dict) else ""
+            if text.startswith("Tool result too large,") and "/large_tool_results/" in text:
+                reference = text.split("\n\n", 1)[0]
+                break
+        prepared.append(message.model_copy(update={"content": reference or CLEARED_TOOL_RESULT_PLACEHOLDER}))
     return prepared
 
 

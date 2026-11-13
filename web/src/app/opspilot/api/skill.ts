@@ -161,6 +161,24 @@ export const useSkillApi = () => {
     return (res?.data ?? res) as any[];
   };
 
+  const fetchSkillChannelAccountAssociationOptions = async (params: {
+    channel_type: string;
+    corp_id?: string;
+    agent_id?: string;
+    app_id?: string;
+    client_id?: string;
+  }) => {
+    const res = await get('/opspilot/model_provider_mgmt/skill_channel/account_association_options/', {
+      params,
+    });
+    return (res?.data ?? res) as Array<{
+      id: number;
+      name: string;
+      integration_instance_id: number;
+      integration_instance_name: string;
+    }>;
+  };
+
   const createSkillChannel = async (payload: Record<string, any>) => {
     const res = await post('/opspilot/model_provider_mgmt/skill_channel/', payload);
     return res?.data ?? res;
@@ -268,6 +286,7 @@ export const useSkillApi = () => {
     updateSkillPackage,
     deleteSkillPackage,
     fetchSkillChannels,
+    fetchSkillChannelAccountAssociationOptions,
     createSkillChannel,
     updateSkillChannel,
     setSkillChannelEnabled,
