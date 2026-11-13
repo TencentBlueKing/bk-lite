@@ -27,36 +27,56 @@ def load_builtin_collectors(name: str) -> list[dict]:
     return [item for item in records if item.get("name") == name]
 
 
-def _iter_plugin_dirs():
+def _plugin_roots() -> list[Path]:
     roots = [
         _repo_path(PluginConstants.DIRECTORY),
         _repo_path(PluginConstants.ENTERPRISE_DIRECTORY),
     ]
-    for root in roots:
-        if not root.exists():
-            continue
+    return [root for root in roots if root.exists()]
+
+
+def _iter_plugin_dirs():
+    for root in _plugin_roots():
         for metrics in root.rglob("metrics.json"):
             yield metrics.parent
 
 
+def _load_plugin_json(path: Path) -> dict:
+    if not path.exists():
+        return {}
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def _plugin_names_collector(plugin_dir: Path, metrics: dict, collector: str) -> bool:
+    """采集器白名单覆盖该采集器目录下的全部内置插件，而不只是 metrics 里写了同名的第一份。"""
+    if str(metrics.get("plugin") or "") == collector or str(metrics.get("collector") or "") == collector:
+        return True
+    for root in _plugin_roots():
+        try:
+            relative = plugin_dir.relative_to(root)
+        except ValueError:
+            continue
+        return bool(relative.parts) and relative.parts[0] == collector
+    return False
+
+
+def _form_field_names(ui: dict) -> set[str]:
+    return {str(field.get("name") or "") for field in ui.get("form_fields") or [] if field.get("name")}
+
+
 @lru_cache(maxsize=64)
 def load_builtin_plugin_files(collector: str) -> dict:
+    """导出仍取第一份 metrics.plugin/collector 同名的插件，避免发行包改绑到别的 UI。"""
     for plugin_dir in _iter_plugin_dirs():
-        metrics_path = plugin_dir / "metrics.json"
-        try:
-            metrics = json.loads(metrics_path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
+        metrics = _load_plugin_json(plugin_dir / "metrics.json")
+        if not metrics:
             continue
         if str(metrics.get("plugin") or "") != collector and str(metrics.get("collector") or "") != collector:
             continue
-        ui_path = plugin_dir / "UI.json"
-        ui = {}
-        if ui_path.exists():
-            try:
-                ui = json.loads(ui_path.read_text(encoding="utf-8"))
-            except (OSError, json.JSONDecodeError):
-                ui = {}
-        return {"dir": plugin_dir, "metrics": metrics, "ui": ui}
+        return {"dir": plugin_dir, "metrics": metrics, "ui": _load_plugin_json(plugin_dir / "UI.json")}
     return {}
 
 
@@ -105,8 +125,14 @@ def builtin_allowlist(collector: str) -> dict:
         env_vars.update(extract_env_vars(params))
         key = (item.get("node_operating_system"), item.get("cpu_architecture") or "x86_64")
         params_by_slot[key] = params
-    flags.update(extract_flags(" ".join(_ui_transform_values(ui))))
-    field_names = {str(field.get("name") or "") for field in ui.get("form_fields") or [] if field.get("name")}
+    field_names = set()
+    for plugin_dir in _iter_plugin_dirs():
+        metrics = _load_plugin_json(plugin_dir / "metrics.json")
+        if not metrics or not _plugin_names_collector(plugin_dir, metrics, collector):
+            continue
+        plugin_ui = _load_plugin_json(plugin_dir / "UI.json")
+        field_names.update(_form_field_names(plugin_ui))
+        flags.update(extract_flags(" ".join(_ui_transform_values(plugin_ui))))
     return {
         "flags": flags,
         "env_vars": env_vars,
