@@ -96,6 +96,7 @@ def calculate_multi_alerts(alert_name, series_by_ref, conditions, template_conte
 
     indexed = {item.get("ref"): _index_series(series_by_ref.get(item.get("ref")) or [], item.get("group_by") or []) for item in conditions}
     display_units = template_context.get("condition_display_units") or {}
+    source_units = template_context.get("condition_source_units") or {}
     metric_names = template_context.get("condition_metric_names") or {}
     enum_maps = template_context.get("condition_enum_maps") or {}
     instances_map = template_context.get("instances_map") or {}
@@ -169,7 +170,12 @@ def calculate_multi_alerts(alert_name, series_by_ref, conditions, template_conte
         primary_value = condition_values[primary.get("ref")]
         primary_unit = display_units.get(primary.get("ref"), "")
         primary_enum = enum_maps.get(primary.get("ref")) or {}
-        formatted_primary = _format_content_numbers([primary_value], primary_unit, enum_value_map=primary_enum or None)[0]
+        formatted_primary = _format_content_numbers(
+            [primary_value],
+            primary_unit,
+            source_unit=source_units.get(primary.get("ref"), ""),
+            enum_value_map=primary_enum or None,
+        )[0]
 
         matched_level = _matched_level(level_conditions, gate_conditions, window, levels)
         base_event = {
@@ -207,6 +213,7 @@ def calculate_multi_alerts(alert_name, series_by_ref, conditions, template_conte
             context[f"{ref}_value"] = _format_content_numbers(
                 [number],
                 display_units.get(ref, ""),
+                source_unit=source_units.get(ref, ""),
                 enum_value_map=enum_maps.get(ref) or None,
             )[0]
             context[f"{ref}_metric_name"] = metric_names.get(ref, ref)

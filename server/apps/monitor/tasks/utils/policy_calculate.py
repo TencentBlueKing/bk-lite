@@ -16,9 +16,37 @@ from apps.monitor.utils.dimension import (
 )
 from apps.monitor.utils.unit_converter import UnitConverter
 
-_DATA_BYTES_SYSTEM = UnitConverterConstants.UNIT_SYSTEMS["data_bytes"]
-_DATA_BYTES_UNITS = frozenset(_DATA_BYTES_SYSTEM["units"])
-_DATA_BYTES_DISPLAY_TO_UNIT = dict(zip(_DATA_BYTES_SYSTEM["display_units"], _DATA_BYTES_SYSTEM["units"]))
+
+def _convertible_unit_ids():
+    unit_ids = set()
+    for system in UnitConverterConstants.UNIT_SYSTEMS.values():
+        unit_ids.update(system["units"])
+    return frozenset(unit_ids)
+
+
+def _display_symbol_to_unit():
+    """展示符反查单位 ID。空符不反查；同一符号对应多个单位时不猜测。"""
+    mapping = {}
+    ambiguous = set()
+    for system in UnitConverterConstants.UNIT_SYSTEMS.values():
+        symbols = system.get("display_units") or []
+        for unit_id, symbol in zip(system["units"], symbols):
+            if not symbol:
+                continue
+            previous = mapping.get(symbol)
+            if previous is None:
+                mapping[symbol] = unit_id
+            elif previous != unit_id:
+                ambiguous.add(symbol)
+    for symbol in ambiguous:
+        mapping.pop(symbol, None)
+    # percent 与 percentunit 的展示符都是 %。只有展示符时按 0–100 的 percent，避免把 80 改成 0.8。
+    mapping["%"] = "percent"
+    return mapping
+
+
+_CONVERTIBLE_UNIT_IDS = _convertible_unit_ids()
+_DISPLAY_SYMBOL_TO_UNIT = _display_symbol_to_unit()
 
 
 def vm_to_dataframe(vm_data, instance_id_keys=None):
@@ -60,18 +88,12 @@ def _normalize_known_unit(unit: str) -> str:
     return UnitConverterConstants.UNIT_ID_TO_NAME.get(unit.strip().lower(), "")
 
 
-def _resolve_data_bytes_source_unit(source_unit: str, display_unit: str) -> str:
-    """解析 content 数值所属的 data_bytes 单位 ID；非该体系返回空。"""
+def _resolve_content_unit(source_unit: str, display_unit: str) -> str:
+    """解析数值当前所属的可换算单位 ID。解析不到时返回空，调用方保留原展示符。"""
     normalized = _normalize_known_unit(source_unit)
-    if normalized in _DATA_BYTES_UNITS:
+    if normalized in _CONVERTIBLE_UNIT_IDS:
         return normalized
-    return _DATA_BYTES_DISPLAY_TO_UNIT.get(display_unit or "", "")
-
-
-def _should_auto_adapt_data_bytes(source_unit: str, enum_value_map: dict | None) -> bool:
-    if enum_value_map:
-        return False
-    return bool(source_unit)
+    return _DISPLAY_SYMBOL_TO_UNIT.get(display_unit or "", "")
 
 
 def _format_content_numbers(
@@ -83,13 +105,12 @@ def _format_content_numbers(
 ) -> list[str]:
     """把同一组 content 数值格式化到同一展示单位。
 
-    source_unit / display_unit 是数值当前所属单位，不是采集原单位。
-    data_bytes 复用 UnitConverter.auto_convert 升到 KiB/MiB/GiB；
-    扫描已换算到 bytes 时也要升档，否则磁盘容量会停在 B。
+    source_unit / display_unit 是数值当前所属单位。可换算体系复用
+    UnitConverter.auto_convert，按数量级选可读档。枚举和独立单位不进位。
     事件/判定用的原值由调用方保留，这里只产展示串。
     """
-    resolved_unit = _resolve_data_bytes_source_unit(source_unit, display_unit)
-    if _should_auto_adapt_data_bytes(resolved_unit, enum_value_map):
+    resolved_unit = "" if enum_value_map else _resolve_content_unit(source_unit, display_unit)
+    if resolved_unit:
         finite_values = [value for value in values if value is not None]
         if finite_values:
             converted_values, target_unit = UnitConverter.auto_convert(finite_values, resolved_unit)

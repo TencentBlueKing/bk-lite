@@ -117,6 +117,7 @@ class AlertDetector:
         conditions = []
         series_by_ref = {}
         display_units = {}
+        source_units = {}
         metric_names = {}
         enum_maps = {}
         for condition in service.multi_conditions():
@@ -125,6 +126,7 @@ class AlertDetector:
             series_by_ref[ref] = (converted.get("data") or {}).get("result") or []
             conditions.append(service.condition_with_converted_thresholds(condition))
             display_units[ref] = service.condition_display_unit(condition)
+            source_units[ref] = service.condition_result_unit(condition)
             metric_names[ref] = service.condition_metric_name(condition)
             enum_maps[ref] = service.condition_enum_map(condition)
 
@@ -138,6 +140,7 @@ class AlertDetector:
             "dimension_name_map": self._build_dimension_name_map(),
             "resource_context_resolver": self._build_metric_resource_context,
             "condition_display_units": display_units,
+            "condition_source_units": source_units,
             "condition_metric_names": metric_names,
             "condition_enum_maps": enum_maps,
         }
@@ -155,7 +158,7 @@ class AlertDetector:
         return alert_events, info_events, hold_events
 
     def _content_unit_context(self) -> dict:
-        """告警文案用的当前单位。content 再按该单位把 data_bytes 升到可读档。"""
+        """告警文案用的当前单位。content 再按该单位在同一体系内选可读档。"""
         get_calc = getattr(self.metric_query_service, "get_effective_calculation_unit", None)
         if callable(get_calc):
             source_unit = get_calc() or ""
