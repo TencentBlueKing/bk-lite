@@ -11,6 +11,10 @@ CELERY_BEAT_SCHEDULE = {
         "task": "apps.cmdb.tasks.change_record_retention.cleanup_change_record_retention",
         "schedule": crontab(hour=3, minute=20),
     },
+    "daily_data_cleanup": {
+        "task": "apps.cmdb.tasks.celery_tasks.daily_data_cleanup_task",
+        "schedule": crontab(hour=2, minute=0),
+    },
     "recover_first_collection_runs": {
         "task": "apps.cmdb.tasks.celery_tasks.recover_first_collection_runs",
         "schedule": crontab(minute="*"),

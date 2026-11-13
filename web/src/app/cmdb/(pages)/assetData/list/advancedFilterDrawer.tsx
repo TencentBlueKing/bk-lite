@@ -9,6 +9,7 @@ import { useSavedFiltersApi, type AdvancedFilterValue, type SavedFiltersConfigVa
 import { useAssetDataStore } from '@/app/cmdb/store';
 import type { AssoTypeItem, AttrFieldType, ModelItem, UserItem } from '@/app/cmdb/types/assetManage';
 import { useTranslation } from '@/utils/i18n';
+import { getTagOptions } from '@/app/cmdb/utils/fieldUtils';
 import { isSearchableFilterAttr } from '../searchFilterAttrs';
 import {
   buildPathChoices,
@@ -46,6 +47,13 @@ function newKey() {
 
 function toDrafts(filter: AdvancedFilterValue | null): DraftCondition[] {
   return (filter?.conditions || []).map((item) => ({ ...item, key: newKey() }));
+}
+
+function missingConditionValue(condition: DraftCondition) {
+  if (!operatorNeedsValue(condition.type)) return false;
+  if (condition.type === 'time') return !condition.start || !condition.end;
+  if (Array.isArray(condition.value)) return condition.value.length === 0;
+  return condition.value === '' || condition.value == null;
 }
 
 function optionItems(option: AttrFieldType['option']) {
@@ -206,8 +214,7 @@ export default function AdvancedFilterDrawer({
 
   const apply = () => {
     for (const [index, condition] of drafts.entries()) {
-      const missingValue = operatorNeedsValue(condition.type)
-        && (condition.type === 'time' ? !condition.start || !condition.end : condition.value === '' || condition.value == null);
+      const missingValue = missingConditionValue(condition);
       if (!condition.field || !condition.type || missingValue) {
         message.warning(t('AdvancedFilter.conditionIncomplete').replace('{n}', String(index + 1)));
         return;
@@ -497,7 +504,22 @@ function ValueEditor({
       />
     );
   }
-  if (attr?.attr_type === 'enum' || attr?.attr_type === 'tag' || condition.type.startsWith('list')) {
+  if (attr?.attr_type === 'tag') {
+    return (
+      <Select
+        mode="multiple"
+        allowClear
+        showSearch
+        className="w-full"
+        optionFilterProp="label"
+        placeholder={t('FilterBar.pleaseSelect')}
+        options={getTagOptions(attr)}
+        value={Array.isArray(condition.value) ? condition.value : []}
+        onChange={(value) => onChange({ value })}
+      />
+    );
+  }
+  if (attr?.attr_type === 'enum' || condition.type.startsWith('list')) {
     return (
       <Select
         mode="multiple"
