@@ -466,7 +466,42 @@ def _normalize_param_value(param_name, param_type, raw_value):
     if param_type == "timeRange":
         return _normalize_time_range(raw_value)
 
+    if param_type == "conditionFilter":
+        return _normalize_condition_filter(param_name, raw_value)
+
+    if param_type == "order":
+        if raw_value in (None, ""):
+            return raw_value
+        if not isinstance(raw_value, str):
+            raise ValueError(oa_message("messages.param_must_be_string", "参数 {param_name} 必须是字符串", param_name=param_name))
+        return raw_value
+
     return raw_value
+
+
+def _normalize_condition_filter(param_name, raw_value):
+    if raw_value in (None, "", []):
+        return {"logic": "AND", "items": []}
+    if isinstance(raw_value, list):
+        items = raw_value
+        logic = "AND"
+    elif isinstance(raw_value, dict):
+        logic = str(raw_value.get("logic") or "AND").strip().upper()
+        items = raw_value.get("items", [])
+    else:
+        raise ValueError(oa_message("messages.condition_filter_format", "参数 {param_name} 条件过滤格式错误", param_name=param_name))
+    if logic not in {"AND", "OR"}:
+        raise ValueError(oa_message("messages.condition_filter_logic", "参数 {param_name} 条件关系只支持 AND 或 OR", param_name=param_name))
+    if items in (None, []):
+        return {"logic": logic, "items": []}
+    if not isinstance(items, list):
+        raise ValueError(oa_message("messages.condition_filter_format", "参数 {param_name} 条件过滤格式错误", param_name=param_name))
+    normalized = []
+    for item in items:
+        if not isinstance(item, dict) or item.get("field") in (None, "") or item.get("op") in (None, ""):
+            raise ValueError(oa_message("messages.condition_filter_format", "参数 {param_name} 条件过滤格式错误", param_name=param_name))
+        normalized.append({"field": item.get("field"), "op": item.get("op"), "value": item.get("value")})
+    return {"logic": logic, "items": normalized}
 
 
 def _normalize_runtime_params(request_data):
@@ -475,7 +510,7 @@ def _normalize_runtime_params(request_data):
     if "namespace_id" in request_data:
         runtime_params["namespace_id"] = request_data["namespace_id"]
 
-    if "page" in request_data:
+    if "page" in request_data and request_data["page"] not in (None, ""):
         try:
             page = int(request_data["page"])
         except (TypeError, ValueError):
@@ -484,7 +519,7 @@ def _normalize_runtime_params(request_data):
             raise ValueError(oa_message("messages.page_must_be_positive", "参数 page 必须大于 0"))
         runtime_params["page"] = page
 
-    if "page_size" in request_data:
+    if "page_size" in request_data and request_data["page_size"] not in (None, ""):
         try:
             page_size = int(request_data["page_size"])
         except (TypeError, ValueError):
@@ -520,6 +555,19 @@ def _unspecified_host_top_instance_ids(instance, param_name, default_value):
     return getattr(instance, "rest_api", None) == "monitor/get_host_resource_top" and param_name == "instance_ids" and default_value == []
 
 
+_GENERIC_QUERY_REST_APIS = frozenset(
+    {
+        "cmdb/query_cmdb_models",
+        "cmdb/query_cmdb_instances",
+        "cmdb/query_cmdb_one_hop",
+        "monitor/query_monitor_instances",
+        "monitor/query_monitor_metric",
+        "monitor/query_monitor_alerts",
+        "alert/query_alert_center",
+    }
+)
+
+
 def _resolve_request_params(instance, request_data):
     configured_params = instance.params if isinstance(instance.params, list) else []
     allowed_specs = {
@@ -533,6 +581,10 @@ def _resolve_request_params(instance, request_data):
     if getattr(instance, "rest_api", None) in TREND_GROUP_BY_AUTO_REST_APIS:
         sanitized_request.pop("group_by", None)
         allowed_specs.pop("group_by", None)
+    # 一跳关联不再声明排序和方向。顺序固定，走向由起点在关系的哪一侧决定。
+    if getattr(instance, "rest_api", None) == "cmdb/query_cmdb_one_hop":
+        sanitized_request.pop("order", None)
+        sanitized_request.pop("direction", None)
 
     allowed_request_keys = set(allowed_specs.keys()) | RUNTIME_ALLOWED_KEYS
     unknown_keys = sorted(str(key) for key in sanitized_request.keys() if key not in allowed_request_keys)
@@ -549,6 +601,10 @@ def _resolve_request_params(instance, request_data):
             raw_value = default_value
         elif param_name in sanitized_request:
             raw_value = sanitized_request[param_name]
+            # 通用查询清空的分页不回填种子默认值，否则计数会一直带着页码失败。
+            # 其它数据源仍把请求里的空值原样交给归一化，缺省时才用种子默认值。
+            if getattr(instance, "rest_api", None) in _GENERIC_QUERY_REST_APIS and raw_value in (None, ""):
+                continue
         elif default_value not in (None, "") and not _unspecified_host_top_instance_ids(instance, param_name, default_value):
             raw_value = default_value
         else:

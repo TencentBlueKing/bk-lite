@@ -11,6 +11,18 @@ UUID_V1 = "123e4567-e89b-12d3-a456-426614174000"
 
 
 @patch("apps.alerts.enrichment.providers.cmdb.CMDB")
+def test_fetch_batch_uses_in_process_cmdb_client(mock_cmdb_cls):
+    inst = MagicMock()
+    mock_cmdb_cls.return_value = inst
+    inst.search_instances_batch.return_value = {U1: {"owner": "alice"}}
+    key = build_binding_key({"model_id": "host", "inst_uuid": U1})
+
+    CMDBProvider().fetch_batch([key], {"_authorized_team_ids": [7]})
+
+    mock_cmdb_cls.assert_called_once_with(is_local_client=True)
+
+
+@patch("apps.alerts.enrichment.providers.cmdb.CMDB")
 def test_fetch_batch_groups_by_model_and_batches_uuids(mock_cmdb_cls):
     inst = MagicMock()
     mock_cmdb_cls.return_value = inst
@@ -347,3 +359,103 @@ def test_fetch_batch_overlays_application_and_system_fields(mock_cmdb_cls, mock_
     assert row["system.inst_name"] == "交易系统"
     assert row["system.operator"] == 4
     assert inst.search_instances_batch.call_count == 3
+
+
+@patch("apps.alerts.enrichment.providers.cmdb.lookup_ci_context")
+@patch("apps.alerts.enrichment.providers.cmdb.CMDB")
+def test_fetch_batch_keeps_host_when_overlay_rpc_fails(mock_cmdb_cls, mock_lookup):
+    inst = MagicMock()
+    mock_cmdb_cls.return_value = inst
+    host = {"owner": "alice", "inst_uuid": U1, "ip_addr": "10.11.27.147"}
+    inst.search_instances_batch.side_effect = [
+        {U1: host},
+        TimeoutError("rpc timeout"),
+    ]
+    mock_lookup.return_value = {U1: [{"root_uuid": APP, "system_uuid": SYS, "ci_uuid": U1}]}
+    key = build_binding_key({"model_id": "host", "inst_uuid": U1})
+
+    result = CMDBProvider().fetch_batch(
+        [key],
+        {"_authorized_team_ids": [7], "_ci_context_scopes": ["application"]},
+    )
+
+    assert result.failed_keys == {key}
+    assert result.records[key] == [host]
+    assert "application.inst_name" not in result.records[key][0]
+
+
+@patch("apps.alerts.enrichment.providers.cmdb.lookup_ci_context")
+@patch("apps.alerts.enrichment.providers.cmdb.CMDB")
+def test_fetch_batch_keeps_host_when_ci_context_lookup_fails(mock_cmdb_cls, mock_lookup):
+    inst = MagicMock()
+    mock_cmdb_cls.return_value = inst
+    host = {"owner": "alice", "inst_uuid": U1}
+    inst.search_instances_batch.return_value = {U1: host}
+    mock_lookup.side_effect = RuntimeError("pg down")
+    key = build_binding_key({"model_id": "host", "inst_uuid": U1})
+
+    result = CMDBProvider().fetch_batch(
+        [key],
+        {"_authorized_team_ids": [7], "_ci_context_scopes": ["application"]},
+    )
+
+    assert result.failed_keys == {key}
+    assert result.records[key] == [host]
+    assert inst.search_instances_batch.call_count == 1
+
+
+@patch("apps.alerts.enrichment.providers.cmdb.monotonic")
+@patch("apps.alerts.enrichment.providers.cmdb.lookup_ci_context")
+@patch("apps.alerts.enrichment.providers.cmdb.CMDB")
+def test_fetch_batch_keeps_host_when_overlay_deadline_exhausted(mock_cmdb_cls, mock_lookup, mock_clock):
+    inst = MagicMock()
+    mock_cmdb_cls.return_value = inst
+    host = {"owner": "alice", "inst_uuid": U1}
+    clock = {"t": 10.0}
+
+    def now():
+        return clock["t"]
+
+    def search(*, params, _timeout):
+        clock["t"] = 20.0
+        return {U1: host}
+
+    mock_clock.side_effect = now
+    inst.search_instances_batch.side_effect = search
+    mock_lookup.return_value = {U1: [{"root_uuid": APP, "system_uuid": SYS, "ci_uuid": U1}]}
+    key = build_binding_key({"model_id": "host", "inst_uuid": U1})
+
+    result = CMDBProvider().fetch_batch(
+        [key],
+        {"_authorized_team_ids": [7], "_ci_context_scopes": ["application"], "_deadline_at": 15.0},
+    )
+
+    assert result.failed_keys == {key}
+    assert result.budget_exhausted_keys == {key}
+    assert result.records[key] == [host]
+    mock_lookup.assert_not_called()
+
+
+@patch("apps.alerts.enrichment.providers.cmdb.lookup_ci_context")
+@patch("apps.alerts.enrichment.providers.cmdb.CMDB")
+def test_fetch_batch_keeps_host_and_application_when_system_overlay_fails(mock_cmdb_cls, mock_lookup):
+    inst = MagicMock()
+    mock_cmdb_cls.return_value = inst
+    inst.search_instances_batch.side_effect = [
+        {U1: {"owner": "alice", "inst_uuid": U1}},
+        {APP: {"inst_name": "支付"}},
+        TimeoutError("rpc timeout"),
+    ]
+    mock_lookup.return_value = {U1: [{"root_uuid": APP, "system_uuid": SYS, "ci_uuid": U1}]}
+    key = build_binding_key({"model_id": "host", "inst_uuid": U1})
+
+    result = CMDBProvider().fetch_batch(
+        [key],
+        {"_authorized_team_ids": [7], "_ci_context_scopes": ["application", "system"]},
+    )
+
+    assert result.failed_keys == {key}
+    row = result.records[key][0]
+    assert row["owner"] == "alice"
+    assert row["application.inst_name"] == "支付"
+    assert "system.inst_name" not in row

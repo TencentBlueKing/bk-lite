@@ -93,7 +93,7 @@ def _patch_common(monkeypatch, fake, attrs=None):
     # 关闭自动关联调度
     import apps.cmdb.services.auto_relation_reconcile as ar
 
-    monkeypatch.setattr(ar, "schedule_instance_auto_relation_reconcile", lambda ids: None)
+    monkeypatch.setattr(ar, "schedule_instance_auto_relation_reconcile", lambda *args, **kwargs: None)
     monkeypatch.setattr(ar, "schedule_incoming_rule_full_sync_by_model_ids", lambda ids: None)
 
 
@@ -153,6 +153,9 @@ def test_coerce_collected_tag_parses_csv_and_list_without_clearing_blank():
     encoded = "%5B%22owner%3Aacme%2Cinc%22%2C%22env%3Aprod%22%5D"
     assert Management.coerce_collected_tag({"tag": encoded})["tag"] == ["owner:acme,inc", "env:prod"]
     assert Management.coerce_collected_tag({"tag": ["owner:foo bar"]})["tag"] == ["owner:foo bar"]
+    assert Management.coerce_collected_tag({"tag": "%5B%5D"})["tag"] == []
+    assert Management.coerce_collected_tag({"tag": ["blank:", "acs%3Arm%3ArgId:rg-1"]})["tag"] == ["blank:", "acs%3Arm%3ArgId:rg-1"]
+    assert Management.has_business_changes({"tag": ["env:prod"]}, {"tag": []})
 
 
 def test_coerce_collected_tag_skips_illegal_and_truncates_without_leaking_values(caplog):
@@ -166,19 +169,19 @@ def test_coerce_collected_tag_skips_illegal_and_truncates_without_leaking_values
             "tag": ["env:prod", f"owner:{sentinel}:leaked", "bad", "team:net"],
         }
     )
-    overflow = [f"k{i}:v{i}" for i in range(21)]
+    overflow = [f"k{i}:v{i}" for i in range(51)]
     truncated = Management.coerce_collected_tag({"resource_id": "ins-10", "tag": overflow})
     weird = Management.coerce_collected_tag({"resource_id": "ins-11", "tag": 123})
 
-    assert mixed["tag"] == ["env:prod", "team:net"]
-    assert truncated["tag"] == overflow[:20]
+    assert mixed["tag"] == ["env:prod", f"owner:{sentinel}%3Aleaked", "team:net"]
+    assert truncated["tag"] == overflow[:50]
     assert "tag" not in weird
     normalized = [
         record
         for record in caplog.records
         if record.name == "cmdb" and record.msg == "event=collect_tag_normalized resource_id=%s skipped=%s truncated=%s"
     ]
-    assert [(record.args[0], record.args[1], record.args[2]) for record in normalized] == [("ins-9", 2, 0), ("ins-10", 0, 1)]
+    assert [(record.args[0], record.args[1], record.args[2]) for record in normalized] == [("ins-9", 1, 0), ("ins-10", 0, 1)]
     skipped = [record for record in caplog.records if record.msg == "event=collect_tag_skipped resource_id=%s failed_stage=%s error_type=%s"]
     assert skipped[-1].args == ("ins-11", "coerce_collected_tag", "int")
     rendered = "\n".join(record.getMessage() for record in caplog.records)
@@ -398,7 +401,7 @@ def test_add_inst_success_and_schedule(monkeypatch):
     scheduled = []
     import apps.cmdb.services.auto_relation_reconcile as ar
 
-    monkeypatch.setattr(ar, "schedule_instance_auto_relation_reconcile", lambda ids: scheduled.append(list(ids)))
+    monkeypatch.setattr(ar, "schedule_instance_auto_relation_reconcile", lambda ids, **kwargs: scheduled.append(list(ids)))
     result = m.add_inst([{"inst_name": "new", "assos": []}])
     assert len(result["success"]) == 1
     assert result["success"][0]["inst_info"]["_id"] == 55
@@ -459,7 +462,7 @@ def test_refresh_heartbeat_updates_only_runtime_metadata_without_querying_instan
     scheduled = []
     import apps.cmdb.services.auto_relation_reconcile as ar
 
-    monkeypatch.setattr(ar, "schedule_instance_auto_relation_reconcile", lambda ids: scheduled.append(ids))
+    monkeypatch.setattr(ar, "schedule_instance_auto_relation_reconcile", lambda ids, **kwargs: scheduled.append(ids))
     result = m.refresh_heartbeat([{"_id": 7, "inst_name": "a"}])
     assert len(result["success"]) == 1
     assert fake.set_props == [

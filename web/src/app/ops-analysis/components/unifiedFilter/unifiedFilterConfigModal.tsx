@@ -222,10 +222,13 @@ const UnifiedFilterConfigModal: React.FC<UnifiedFilterConfigModalProps> = ({
             },
           };
         }
-        if (normalized.control === inputMode) {
-          return normalized;
+        if (normalized.control === 'select' || normalized.control === 'radio') {
+          if (normalized.control === inputMode) {
+            return normalized;
+          }
+          return { ...normalized, control: inputMode };
         }
-        return { ...normalized, control: inputMode };
+        return normalized;
       }
       return normalized;
     }
@@ -264,9 +267,9 @@ const UnifiedFilterConfigModal: React.FC<UnifiedFilterConfigModalProps> = ({
         enabled: true,
         inputConfig: param.sampleInputConfig,
         inputMode:
-          param.sampleInputConfig?.control === 'organization'
-            ? undefined
-            : param.sampleInputConfig?.control,
+          param.sampleInputConfig?.control === 'select' || param.sampleInputConfig?.control === 'radio'
+            ? param.sampleInputConfig.control
+            : undefined,
       };
     });
 
@@ -434,9 +437,9 @@ const UnifiedFilterConfigModal: React.FC<UnifiedFilterConfigModalProps> = ({
             ...definition,
             inputConfig,
             inputMode:
-              inputConfig.control === 'organization'
-                ? undefined
-                : inputConfig.control,
+              inputConfig.control === 'select' || inputConfig.control === 'radio'
+                ? inputConfig.control
+                : undefined,
             options: undefined,
             defaultValue: coerceDefaultValueForInputConfig(
               definition.defaultValue,

@@ -1,5 +1,10 @@
 import type { ResponseFieldDefinition } from '@/app/ops-analysis/types/dataSource';
 import type { TableColumnConfigItem } from '@/app/ops-analysis/types/dashBoard';
+import {
+  resolveModelAttrColumns,
+  schemaFieldsForTable,
+  type ModelColumnPayload,
+} from '@/app/ops-analysis/utils/modelTableColumns';
 
 export interface TableLikePaginationState {
   current: number;
@@ -114,12 +119,30 @@ interface TableLikeColumnConfigItem {
   order: number;
 }
 
+export const fieldAppliesToQueryObject = (
+  field: Pick<ResponseFieldDefinition, 'query_objects'>,
+  queryObject?: unknown,
+): boolean => {
+  const objects = field.query_objects?.filter(Boolean);
+  if (!objects?.length) {
+    return true;
+  }
+  const selected = String(queryObject ?? '').trim();
+  if (!selected) {
+    return true;
+  }
+  return objects.includes(selected);
+};
+
 interface ResolveTableLikeColumnsInput<
   RecordType extends Record<string, any>,
   ColumnType extends TableLikeColumnConfigItem,
 > {
   configuredColumns?: ColumnType[];
+  columnModelKey?: string;
+  modelColumns?: ModelColumnPayload | null;
   schemaFields?: ResponseFieldDefinition[];
+  queryObject?: unknown;
   rows: RecordType[];
 }
 
@@ -128,15 +151,36 @@ export function resolveTableLikeColumns<
   ColumnType extends TableLikeColumnConfigItem = TableColumnConfigItem,
 >({
   configuredColumns = [],
+  columnModelKey,
+  modelColumns,
   schemaFields = [],
+  queryObject,
   rows,
 }: ResolveTableLikeColumnsInput<RecordType, ColumnType>): ColumnType[] {
-  if (configuredColumns.length > 0) {
-    return [...configuredColumns].sort((a, b) => a.order - b.order);
+  if (modelColumns?.fields.length) {
+    return resolveModelAttrColumns({
+      configuredColumns: configuredColumns as TableColumnConfigItem[],
+      columnModelKey,
+      modelColumns,
+    }) as ColumnType[];
   }
 
-  if (schemaFields.length > 0) {
-    return schemaFields.map(
+  if (configuredColumns.length > 0) {
+    const hiddenKeys = new Set(
+      schemaFields
+        .filter((field) => !fieldAppliesToQueryObject(field, queryObject))
+        .map((field) => field.key),
+    );
+    return [...configuredColumns]
+      .filter((column) => !hiddenKeys.has(column.key))
+      .sort((a, b) => a.order - b.order);
+  }
+
+  const tableSchema = schemaFieldsForTable(schemaFields).filter((field) =>
+    fieldAppliesToQueryObject(field, queryObject),
+  );
+  if (tableSchema.length > 0) {
+    return tableSchema.map(
       (field, index) =>
         ({
           key: field.key,

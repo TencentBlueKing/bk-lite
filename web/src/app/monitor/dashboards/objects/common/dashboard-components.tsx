@@ -724,7 +724,8 @@ export interface DashboardShellProps {
    */
   unifiedChrome?: boolean;
   /**
-   * 打开过的布局保持挂载，只隐藏。来回切换时不拆掉另一套页面。
+   * 打开过的传统盘和专业盘保持挂载，只隐藏。来回切换时不拆掉这两套页面。
+   * 全量指标不保活，切走即卸载。
    */
   preserveLayouts?: boolean;
   /** 可选品牌标签（如 'Cisco'）：共享对象仪表盘按实例品牌在头部高亮显示，便于辨认当前盘属于哪个品牌。 */
@@ -769,12 +770,14 @@ export const DashboardShell = ({
     showLinkedHost && !dashboard.instanceLoading
   );
   const showsDashboardChrome = viewSwitcher ? activeMode !== 'metrics' : dashboard.isDashboardMode;
-  const [visitedModes, setVisitedModes] = useState<string[]>(() => [activeMode]);
+  const [visitedModes, setVisitedModes] = useState<string[]>(() => (
+    preserveLayouts && activeMode !== 'metrics' ? [activeMode] : []
+  ));
   useEffect(() => {
-    if (!preserveLayouts) return;
+    if (!preserveLayouts || activeMode === 'metrics') return;
     setVisitedModes((prev) => (prev.includes(activeMode) ? prev : [...prev, activeMode]));
   }, [activeMode, preserveLayouts]);
-  const mountedModes = preserveLayouts && !visitedModes.includes(activeMode)
+  const mountedModes = preserveLayouts && activeMode !== 'metrics' && !visitedModes.includes(activeMode)
     ? [...visitedModes, activeMode]
     : visitedModes;
   const onDisplayModeChange = (mode: 'dashboard' | 'metrics') => {
@@ -790,7 +793,7 @@ export const DashboardShell = ({
     const bodyClass = unifiedChrome
       ? (mode === 'category' ? styles.unifiedCategoryBody : styles.unifiedBody)
       : undefined;
-    if (!preserveLayouts) {
+    if (!preserveLayouts || mode === 'metrics') {
       if (activeMode !== mode) return null;
       if (!unifiedChrome) return node;
       return <div className={bodyClass}>{node}</div>;

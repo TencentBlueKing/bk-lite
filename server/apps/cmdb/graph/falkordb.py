@@ -745,6 +745,8 @@ class FalkorDBClient:
         case_sensitive: bool = True,
         include_count: bool = True,
         fields: list[str] | None = None,
+        condition_params: list = None,
+        condition_logic: str = "AND",
     ):
         """
         查询实体（参数化版本）
@@ -764,6 +766,13 @@ class FalkorDBClient:
         base_params_str, _ = self.format_search_params(
             params,
             param_type=param_type,
+            param_collector=param_collector,
+            case_sensitive=case_sensitive,
+        )
+        condition_logic_name = "OR" if str(condition_logic or "AND").upper() == "OR" else "AND"
+        condition_str, _ = self.format_search_params(
+            list(condition_params or []),
+            param_type=condition_logic_name,
             param_collector=param_collector,
             case_sensitive=case_sensitive,
         )
@@ -829,6 +838,8 @@ class FalkorDBClient:
                 final_conditions.append(f"({permission_str})")
         if base_params_str:
             final_conditions.append(base_params_str)
+        if condition_str:
+            final_conditions.append(condition_str)
 
         final_params_str = " AND ".join(final_conditions) if final_conditions else ""
         params_str = f"WHERE {final_params_str}" if final_params_str else ""
@@ -864,6 +875,21 @@ class FalkorDBClient:
         if fields is not None:
             return [coerce_cloud_id_properties(row) for row in FormatDBResult(objs).to_list_of_lists()], count
         return self.entity_to_list(objs), count
+
+    def query_scalar_rows(self, query: str, params: dict | None = None) -> list[dict]:
+        """执行返回标量列的查询，按表头拼成字典。"""
+        result = self._execute_query(query, params=params)
+        header = getattr(result, "header", None) or []
+        names = []
+        for item in header:
+            if isinstance(item, (list, tuple)) and len(item) > 1:
+                names.append(item[1])
+            else:
+                names.append(str(item))
+        rows = []
+        for record in getattr(result, "result_set", None) or []:
+            rows.append({names[index]: record[index] for index in range(min(len(names), len(record)))})
+        return rows
 
     def query_compiled_entities(
         self,
@@ -1977,7 +2003,15 @@ class FalkorDBClient:
                 return entity
         return None
 
-    def entity_count(self, label: str, group_by_attr: str, params: list = None, format_permission_dict: dict = None):
+    def entity_count(
+        self,
+        label: str,
+        group_by_attr: str,
+        params: list = None,
+        format_permission_dict: dict = None,
+        condition_params: list = None,
+        condition_logic: str = "AND",
+    ):
         """
         按指定字段分组统计实体数量（参数化版本）
 
@@ -2006,6 +2040,12 @@ class FalkorDBClient:
         base_params_str, _ = self.format_search_params(
             params,
             param_type="AND",
+            param_collector=param_collector,
+        )
+        condition_logic_name = "OR" if str(condition_logic or "AND").upper() == "OR" else "AND"
+        condition_str, _ = self.format_search_params(
+            list(condition_params or []),
+            param_type=condition_logic_name,
             param_collector=param_collector,
         )
 
@@ -2037,6 +2077,8 @@ class FalkorDBClient:
         final_conditions = []
         if base_params_str:
             final_conditions.append(base_params_str)
+        if condition_str:
+            final_conditions.append(condition_str)
         if permission_filters:
             # 多个组织的权限条件用 OR 连接
             if len(permission_filters) == 1:

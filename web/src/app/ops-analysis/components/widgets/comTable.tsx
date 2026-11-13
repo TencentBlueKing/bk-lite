@@ -40,6 +40,11 @@ import {
 } from '@/app/ops-analysis/utils/interactionLink';
 import { resolveTableCellPresentation } from '@/app/ops-analysis/utils/tableCellStyle';
 import {
+  modelCellDisplayText,
+  modelTableEmptyText,
+  readModelColumnPayload,
+} from '@/app/ops-analysis/utils/modelTableColumns';
+import {
   formatVisibleChartValue,
   hasValueFormatConfigured,
 } from '@/app/ops-analysis/utils/chartValueFormat';
@@ -189,7 +194,10 @@ const ComTable: React.FC<ComTableProps> = ({
   const columnConfigs = useMemo((): TableColumnConfigItem[] => {
     const visible = resolveTableLikeColumns({
       configuredColumns: config?.tableConfig?.columns,
+      columnModelKey: config?.tableConfig?.columnModelKey,
+      modelColumns: readModelColumnPayload(rawData),
       schemaFields: dataSource?.field_schema,
+      queryObject: rawData?.query_object,
       rows: tableData,
     }).filter((col) => col.visible);
     return withInteractionActionColumn(visible, dataLink, surface, {
@@ -199,7 +207,7 @@ const ComTable: React.FC<ComTableProps> = ({
       visible: true,
       order: visible.length,
     });
-  }, [config?.tableConfig?.columns, dataLink, dataSource?.field_schema, surface, t, tableData]);
+  }, [config?.tableConfig?.columnModelKey, config?.tableConfig?.columns, dataLink, dataSource?.field_schema, rawData, surface, t, tableData]);
 
   const antColumns = useMemo((): ColumnsType<TableDataItem> => {
     return columnConfigs.map((col, columnIndex) => {
@@ -224,15 +232,22 @@ const ComTable: React.FC<ComTableProps> = ({
           }
 
           const presentation = resolveTableCellPresentation(text, col);
-          const formattedPresentation =
+          const valueFormatted =
             presentation.mode === 'text' &&
             col.key === 'value' &&
+            !col.modelFormat &&
             hasValueFormatConfigured(config)
               ? {
                 ...presentation,
                 displayText: formatVisibleChartValue(text, config),
               }
               : presentation;
+          const modelText = modelCellDisplayText(text, col, record);
+          const formattedPresentation = modelText === null
+            ? valueFormatted
+            : valueFormatted.mode === 'colorBackground'
+              ? { ...valueFormatted, tooltipText: modelText }
+              : { ...valueFormatted, displayText: modelText };
           if (formattedPresentation.mode === 'colorBackground') {
             return (
               <Tooltip
@@ -480,6 +495,12 @@ const ComTable: React.FC<ComTableProps> = ({
     );
   };
 
+  const modelEmptyText = modelTableEmptyText(
+    dataSource?.rest_api,
+    config?.params as Record<string, unknown> | undefined,
+    t,
+  );
+
   return (
     <div
       // 标题和表格的间距必须在 h-full 内部。margin-top 会把同高的表格顶出卡片的 overflow:hidden，分页器底部被裁掉。
@@ -512,6 +533,7 @@ const ComTable: React.FC<ComTableProps> = ({
             }
           }}
           size="small"
+          locale={modelEmptyText ? { emptyText: modelEmptyText } : undefined}
           pagination={
             isPaginated
               ? {

@@ -159,7 +159,7 @@ describe('playback filter bar', () => {
     expect(screen.getByText('canvas')).toBeTruthy();
   });
 
-  it('stays invisible while the builtin room writes its first option', async () => {
+  it('stays invisible when builtin room options arrive without searching', async () => {
     const onSearch = vi.fn();
     getDataSourceList.mockResolvedValue({
       items: [
@@ -185,8 +185,10 @@ describe('playback filter bar', () => {
     ));
 
     await waitFor(() => {
-      expect(onSearch).toHaveBeenCalledWith({ [ROOM3D_FILTER_ID]: 'room-b' });
+      expect(getSourceDataByApiId).toHaveBeenCalled();
     });
+    expect(await screen.findByText('机房:')).toBeTruthy();
+    expect(onSearch).not.toHaveBeenCalled();
     hiddenShell('机房:');
   });
 

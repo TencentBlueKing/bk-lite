@@ -30,6 +30,7 @@ MODULE = "apps.cmdb.services.instance"
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def ctx():
     return {"result": None, "error": None, "ar_calls": [], "ar_reverse_calls": []}
@@ -42,7 +43,7 @@ def _patch_side_effects(monkeypatch, ctx):
     monkeypatch.setattr(f"{MODULE}.batch_create_change_record", lambda *a, **k: None)
     monkeypatch.setattr(
         "apps.cmdb.services.auto_relation_reconcile.schedule_instance_auto_relation_reconcile",
-        lambda ids: ctx["ar_calls"].append(ids),
+        lambda ids, **kwargs: ctx["ar_calls"].append(ids),
     )
     monkeypatch.setattr(
         "apps.cmdb.services.auto_relation_reconcile.schedule_incoming_rule_full_sync_by_model_ids",
@@ -66,9 +67,7 @@ def _patch_side_effects(monkeypatch, ctx):
         "apps.cmdb.services.model.ModelManage.search_model_info",
         lambda model_id: {"model_id": model_id, "model_name": "主机", "attrs": "[]", "_id": 1},
     )
-    monkeypatch.setattr(
-        f"{MODULE}.InstanceManage.check_instances_permission", lambda *a, **k: None
-    )
+    monkeypatch.setattr(f"{MODULE}.InstanceManage.check_instances_permission", lambda *a, **k: None)
     # 企业版扩展（附件/图片）是外部副作用：纯编排 BDD 用默认空契约，避免文件台账 DB 写入。
     # （文件落账/回收的真实行为由 overlay 的 instance_ops 服务测试覆盖。）
     _noop_instance_ext = InstanceEnterpriseExtension()
@@ -84,15 +83,13 @@ def _bg_ok():
 # 假设：seed fake_graph
 # ---------------------------------------------------------------------------
 
+
 @given(parsers.parse('模型 "{model_id}" 存在，属性中 "{attr_id}" 必填'))
 def _seed_model_attr(fake_graph, model_id, attr_id):
     fake_graph(MODULE, query_entity=([], 0), create_entity={"_id": 9, "model_id": model_id, "inst_name": "web-01"})
 
 
-@given(parsers.re(
-    r'实例 _id=(?P<iid>\d+) model_id="(?P<model_id>[^"]+)" inst_name="(?P<inst_name>[^"]+)" '
-    r'organization=\[(?P<orgs>[^\]]*)\] 存在'
-))
+@given(parsers.re(r'实例 _id=(?P<iid>\d+) model_id="(?P<model_id>[^"]+)" inst_name="(?P<inst_name>[^"]+)" ' r"organization=\[(?P<orgs>[^\]]*)\] 存在"))
 def _seed_single_instance(fake_graph, iid, model_id, inst_name, orgs):
     org_list = [int(x.strip()) for x in orgs.split(",") if x.strip()]
     inst = {"_id": int(iid), "model_id": model_id, "inst_name": inst_name, "organization": org_list}
@@ -132,8 +129,7 @@ def _seed_assoc(monkeypatch, fake_graph, ctx):
     monkeypatch.setattr(f"{MODULE}.InstanceManage.check_asso_mapping", lambda data: None)
     monkeypatch.setattr(
         f"{MODULE}.InstanceManage.instance_association_by_asso_id",
-        lambda aid: {"src": {"_id": 1, "model_id": "host", "inst_name": "h"},
-                     "dst": {"_id": 2, "model_id": "sw", "inst_name": "s"}},
+        lambda aid: {"src": {"_id": 1, "model_id": "host", "inst_name": "h"}, "dst": {"_id": 2, "model_id": "sw", "inst_name": "s"}},
     )
     endpoints = {
         1: {"_id": 1, "model_id": "host", "inst_uuid": "00000000-0000-4000-8000-000000000001"},
@@ -150,42 +146,37 @@ def _seed_assoc(monkeypatch, fake_graph, ctx):
 # 当
 # ---------------------------------------------------------------------------
 
-@when(parsers.re(
-    r'用户 "(?P<operator>[^"]+)" 创建实例 model_id="(?P<model_id>[^"]+)" payload=(?P<payload>\{.*\}) '
-    r'allowed_org_ids=(?P<allowed>\[[^\]]*\])$'
-))
+
+@when(
+    parsers.re(
+        r'用户 "(?P<operator>[^"]+)" 创建实例 model_id="(?P<model_id>[^"]+)" payload=(?P<payload>\{.*\}) ' r"allowed_org_ids=(?P<allowed>\[[^\]]*\])$"
+    )
+)
 def _when_create(ctx, operator, model_id, payload, allowed):
     try:
-        ctx["result"] = InstanceManage.instance_create(
-            model_id, json.loads(payload), operator, allowed_org_ids=json.loads(allowed)
-        )
+        ctx["result"] = InstanceManage.instance_create(model_id, json.loads(payload), operator, allowed_org_ids=json.loads(allowed))
     except BaseAppException as exc:
         ctx["error"] = exc
 
 
-@when(parsers.re(
-    r'用户 "(?P<operator>[^"]+)" 尝试创建实例 model_id="(?P<model_id>[^"]+)" payload=(?P<payload>\{.*\}) '
-    r'allowed_org_ids=(?P<allowed>\[[^\]]*\])$'
-))
+@when(
+    parsers.re(
+        r'用户 "(?P<operator>[^"]+)" 尝试创建实例 model_id="(?P<model_id>[^"]+)" payload=(?P<payload>\{.*\}) ' r"allowed_org_ids=(?P<allowed>\[[^\]]*\])$"
+    )
+)
 def _when_create_corner(ctx, operator, model_id, payload, allowed):
     _when_create(ctx, operator, model_id, payload, allowed)
 
 
-@when(parsers.re(
-    r'用户 "(?P<operator>[^"]+)" 更新实例 _id=(?P<iid>\d+) payload=(?P<payload>\{.*\})'
-))
+@when(parsers.re(r'用户 "(?P<operator>[^"]+)" 更新实例 _id=(?P<iid>\d+) payload=(?P<payload>\{.*\})'))
 def _when_update(ctx, operator, iid, payload):
     try:
-        ctx["result"] = InstanceManage.instance_update(
-            [{"id": 1}], [operator], int(iid), json.loads(payload), operator
-        )
+        ctx["result"] = InstanceManage.instance_update([{"id": 1}], [operator], int(iid), json.loads(payload), operator)
     except BaseAppException as exc:
         ctx["error"] = exc
 
 
-@when(parsers.re(
-    r'用户 "(?P<operator>[^"]+)" 尝试更新实例 _id=(?P<iid>\d+) payload=(?P<payload>\{.*\})'
-))
+@when(parsers.re(r'用户 "(?P<operator>[^"]+)" 尝试更新实例 _id=(?P<iid>\d+) payload=(?P<payload>\{.*\})'))
 def _when_update_corner(ctx, operator, iid, payload):
     _when_update(ctx, operator, iid, payload)
 
@@ -204,32 +195,30 @@ def _when_batch_delete_corner(ctx, operator, ids):
     _when_batch_delete(ctx, operator, ids)
 
 
-@when(parsers.re(
-    r'用户 "(?P<operator>[^"]+)" 批量更新实例 ids=(?P<ids>\[[^\]]*\]) payload=(?P<payload>\{.*\})'
-))
+@when(parsers.re(r'用户 "(?P<operator>[^"]+)" 批量更新实例 ids=(?P<ids>\[[^\]]*\]) payload=(?P<payload>\{.*\})'))
 def _when_batch_update(ctx, operator, ids, payload):
     try:
-        ctx["result"] = InstanceManage.batch_instance_update(
-            [{"id": 1}], [operator], json.loads(ids), json.loads(payload), operator
-        )
+        ctx["result"] = InstanceManage.batch_instance_update([{"id": 1}], [operator], json.loads(ids), json.loads(payload), operator)
     except BaseAppException as exc:
         ctx["error"] = exc
 
 
-@when(parsers.re(
-    r'用户 "(?P<operator>[^"]+)" 尝试批量更新实例 ids=(?P<ids>\[[^\]]*\]) payload=(?P<payload>\{.*\})'
-))
+@when(parsers.re(r'用户 "(?P<operator>[^"]+)" 尝试批量更新实例 ids=(?P<ids>\[[^\]]*\]) payload=(?P<payload>\{.*\})'))
 def _when_batch_update_corner(ctx, operator, ids, payload):
     _when_batch_update(ctx, operator, ids, payload)
 
 
-@when(parsers.re(
-    r'用户 "(?P<operator>[^"]+)" 创建关联 src=(?P<src>\d+) dst=(?P<dst>\d+) model_asst_id="(?P<masst>[^"]+)"'
-))
+@when(parsers.re(r'用户 "(?P<operator>[^"]+)" 创建关联 src=(?P<src>\d+) dst=(?P<dst>\d+) model_asst_id="(?P<masst>[^"]+)"'))
 def _when_assoc(ctx, operator, src, dst, masst):
     ctx["result"] = InstanceManage.instance_association_create(
-        {"src_inst_id": int(src), "dst_inst_id": int(dst), "asst_id": "conn",
-         "src_model_id": "host", "dst_model_id": "switch", "model_asst_id": masst},
+        {
+            "src_inst_id": int(src),
+            "dst_inst_id": int(dst),
+            "asst_id": "conn",
+            "src_model_id": "host",
+            "dst_model_id": "switch",
+            "model_asst_id": masst,
+        },
         operator,
     )
 
@@ -237,6 +226,7 @@ def _when_assoc(ctx, operator, src, dst, masst):
 # ---------------------------------------------------------------------------
 # 那么
 # ---------------------------------------------------------------------------
+
 
 @then("实例创建应当成功")
 @then("实例更新应当成功")

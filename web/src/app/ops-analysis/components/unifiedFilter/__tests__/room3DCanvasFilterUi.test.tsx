@@ -143,34 +143,36 @@ describe('room3D canvas filter UI', () => {
     );
 
     expect(screen.getByText('机房:')).not.toBeNull();
+    await openRoomSelect();
     expect(await screen.findByText('二号机房')).not.toBeNull();
     await waitFor(() => {
-      expect(onSearch).toHaveBeenCalledWith({ [ROOM3D_FILTER_ID]: ROOM_B });
       expect(getDataSourceList).toHaveBeenCalledWith({ page_size: -1 });
       expect(getSourceDataByApiId).toHaveBeenCalledWith(17, {}, undefined);
     });
-    expect(screen.queryByText('暂无数据')).toBeNull();
+    expect(onSearch).not.toHaveBeenCalled();
     expect(screen.queryByText('旧字段')).toBeNull();
   });
 
-  it('keeps an invisible room default instead of selecting the first option', async () => {
+  it('does not search when room options arrive', async () => {
     const missing = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
     const onSearch = vi.fn();
+    const onApplyInitial = vi.fn();
     render(
       <UnifiedFilterBar
         definitions={[roomFilter({ defaultValue: missing })]}
         values={{}}
         onSearch={onSearch}
+        onApplyInitial={onApplyInitial}
       />,
     );
 
-    await waitFor(() => {
-      expect(onSearch).toHaveBeenCalledWith({ [ROOM3D_FILTER_ID]: missing });
-    });
-    expect(onSearch.mock.calls.some((call) => call[0]?.[ROOM3D_FILTER_ID] === ROOM_B)).toBe(false);
+    await openRoomSelect();
+    expect(await screen.findByText('二号机房')).not.toBeNull();
+    expect(onSearch).not.toHaveBeenCalled();
+    expect(onApplyInitial).not.toHaveBeenCalled();
   });
 
-  it('auto-searches only the builtin room and keeps other drafts', async () => {
+  it('keeps other drafts when room options arrive', async () => {
     let resolveRooms: (value: unknown) => void = () => undefined;
     getSourceDataByApiId.mockReturnValue(new Promise((resolve) => {
       resolveRooms = resolve;
@@ -187,7 +189,7 @@ describe('room3D canvas filter UI', () => {
       enabled: true,
       inputConfig: { control: 'input' },
     };
-    const { rerender } = render(
+    render(
       <UnifiedFilterBar
         definitions={[roomFilter(), site]}
         values={{ [site.id]: 'applied-site' }}
@@ -204,21 +206,9 @@ describe('room3D canvas filter UI', () => {
       },
       warnings: [],
     });
-    await waitFor(() => {
-      expect(onSearch).toHaveBeenCalled();
-    });
-    const payload = onSearch.mock.calls.at(-1)?.[0];
-    expect(payload).toEqual({
-      [site.id]: 'applied-site',
-      [ROOM3D_FILTER_ID]: ROOM_B,
-    });
-    rerender(
-      <UnifiedFilterBar
-        definitions={[roomFilter(), site]}
-        values={payload}
-        onSearch={onSearch}
-      />,
-    );
+    await openRoomSelect();
+    expect(await screen.findByText('二号机房')).not.toBeNull();
+    expect(onSearch).not.toHaveBeenCalled();
     expect(screen.getByDisplayValue('draft-site')).not.toBeNull();
   });
 

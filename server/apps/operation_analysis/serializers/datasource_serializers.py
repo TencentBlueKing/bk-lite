@@ -211,6 +211,13 @@ class DataSourceAPIModelSerializer(BaseFormatTimeSerializer, AuthSerializer):
             if key in keys:
                 raise serializers.ValidationError(oa_message("messages.indexed_key_duplicate", "[{index}].key '{key}' 重复", index=idx, key=key))
             keys.append(key)
+            role = field.get("role")
+            if role not in (None, "") and role not in {"dimension", "measure", "identity"}:
+                raise serializers.ValidationError(oa_message("messages.indexed_role", "[{index}].role 不受支持", index=idx))
+            modes = field.get("modes")
+            if modes not in (None, ""):
+                if not isinstance(modes, list) or not modes or any(not isinstance(item, str) or not item.strip() for item in modes):
+                    raise serializers.ValidationError(oa_message("messages.indexed_modes", "[{index}].modes 必须是非空字符串数组", index=idx))
 
         return value
 

@@ -23,7 +23,7 @@ def patch_side_effects(monkeypatch):
     monkeypatch.setattr(f"{MODULE}.batch_create_change_record", lambda *a, **k: None)
     monkeypatch.setattr(
         "apps.cmdb.services.auto_relation_reconcile.schedule_instance_auto_relation_reconcile",
-        lambda ids: None,
+        lambda *args, **kwargs: None,
     )
     monkeypatch.setattr(
         "apps.cmdb.services.auto_relation_reconcile.schedule_incoming_rule_full_sync_by_model_ids",
@@ -131,7 +131,7 @@ def test_instance_create_can_defer_audit_and_auto_relation(fake_graph, patch_sid
     monkeypatch.setattr(f"{MODULE}.create_change_record", lambda *a, **k: pytest.fail("审计不得同步执行"))
     monkeypatch.setattr(
         "apps.cmdb.services.auto_relation_reconcile.schedule_instance_auto_relation_reconcile",
-        lambda ids: pytest.fail("自动关联不得同步执行"),
+        lambda *args, **kwargs: pytest.fail("自动关联不得同步执行"),
     )
 
     out = InstanceManage.instance_create(
@@ -375,7 +375,7 @@ def test_instance_update_can_defer_audit_and_auto_relation(fake_graph, patch_sid
     monkeypatch.setattr(f"{MODULE}.create_change_record", lambda *a, **k: pytest.fail("审计不得同步执行"))
     monkeypatch.setattr(
         "apps.cmdb.services.auto_relation_reconcile.schedule_instance_auto_relation_reconcile",
-        lambda ids: pytest.fail("自动关联不得同步执行"),
+        lambda *args, **kwargs: pytest.fail("自动关联不得同步执行"),
     )
 
     out = InstanceManage.instance_update(

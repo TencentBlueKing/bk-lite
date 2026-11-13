@@ -280,6 +280,10 @@ var (
 )
 
 func main() {
+	// uninstall.exe 只进入卸载。必须在 flag.Parse 之前判断，/S 不是 Go flag。
+	if len(os.Args) > 0 && isUninstallExecutable(os.Args[0]) {
+		os.Exit(runWindowsUninstallMode(os.Args))
+	}
 	flag.Parse()
 	reporter, err := NewInstallerEventReporter(os.Stdout, *progressSubject, *executionID)
 	if err != nil {
@@ -472,9 +476,13 @@ func run(client *http.Client) {
 			if installErr != nil {
 				fatalStepWithOptions(windowsInstallErrorStep(installErr), "Transactional Windows installation failed: %v", installErr, eventOptionsForExecError(installErr, &EventOptions{InstallDir: cfg.InstallDir, CPUArchitecture: cfg.Package.CPUArchitecture}))
 			}
+			// 登记在安装事务提交之后：失败只警告，不回滚已经运行的服务，也不改退出码。
+			completeMessage := windowsRemoteInstallCompleteMessage(cfg, nil, func(warning string) {
+				log("WARN: %s", warning)
+			})
 			log("")
 			log("Installation complete!")
-			emitEvent("complete", "success", "Installation complete", intPtr(100), 0, 0, "")
+			emitEvent("complete", "success", completeMessage, intPtr(100), 0, 0, "")
 			return
 		}
 
@@ -1466,6 +1474,7 @@ var windowsRuntimeDirectories = []string{"cache", "logs", "generated"}
 // 文件。GUI 安装时 NSIS 会在 worker 结束后重新写入，但服务端远程安装直接执行
 // bootstrap worker，不经过 NSIS；事务式激活把旧目录整体改名后，若不迁回这两个文件，
 // 卸载注册表项 UninstallString / DisplayIcon 指向的文件就不复存在，控制面板卸载入口失效。
+// 远程安装成功后会再用当前程序覆盖 uninstall.exe；覆盖失败时仍留下迁回的 NSIS 卸载器。
 var windowsPreservedInstallerFiles = []string{"uninstall.exe", "installer.ico"}
 
 const (

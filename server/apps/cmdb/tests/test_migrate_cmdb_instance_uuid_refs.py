@@ -72,6 +72,7 @@ def _stats():
     }
 
 
+@pytest.mark.django_db
 def test_clean_graph_adds_uuid_sets_endpoints_and_removes_digit_ids(monkeypatch):
     existing_uuid = "63e4a531-b6bb-43cc-9eae-8eb8a09f795e"
     entities = [
@@ -121,6 +122,7 @@ def test_clean_graph_adds_uuid_sets_endpoints_and_removes_digit_ids(monkeypatch)
     assert stats["graph_relation_digit_removed"] == 1
 
 
+@pytest.mark.django_db
 def test_clean_graph_resolves_same_model_endpoints_from_digit_ids(monkeypatch):
     entities = [
         {"_id": 1, "model_id": "host", "inst_uuid": "63e4a531-b6bb-43cc-9eae-8eb8a09f795e"},
@@ -162,6 +164,7 @@ def test_clean_graph_resolves_same_model_endpoints_from_digit_ids(monkeypatch):
     assert graph.edge_removals == [([188], ["src_inst_id", "dst_inst_id"])]
 
 
+@pytest.mark.django_db
 def test_clean_graph_dry_run_builds_uuid_map_without_writes(monkeypatch):
     entities = [{"_id": 1}, {"_id": 2}]
     graph = _Graph(
@@ -189,6 +192,7 @@ def test_clean_graph_dry_run_builds_uuid_map_without_writes(monkeypatch):
     assert len(command._graph_uuid_by_id) == 2
 
 
+@pytest.mark.django_db
 def test_clean_graph_rejects_duplicate_uuid(monkeypatch):
     duplicate_uuid = "63e4a531-b6bb-43cc-9eae-8eb8a09f795e"
     graph = _Graph(
@@ -458,26 +462,41 @@ def test_clean_collect_result_snapshots_adds_uuid_to_format_data():
 
 
 @pytest.mark.django_db
-def test_clean_collect_result_snapshots_rescans_after_stage_completed():
+def test_clean_collect_result_snapshots_after_completion_only_touches_newer_rows():
+    from datetime import timedelta
+
+    from django.utils import timezone
+
     from apps.cmdb.constants.constants import CollectPluginTypes
     from apps.cmdb.models.collect_model import CollectModels
     from apps.cmdb.models.uuid_migration_state import CmdbUuidMigrationState
 
     inst_uuid = "63e4a531-b6bb-43cc-9eae-8eb8a09f795e"
-    task = CollectModels.objects.create(
-        name="collect-result-uuid-reentry",
+    dirty = {"add": [{"_id": 7, "inst_name": "host-a"}]}
+    now = timezone.now()
+    older = CollectModels.objects.create(
+        name="collect-result-uuid-old",
         task_type=CollectPluginTypes.HOST,
         model_id="host",
         cycle_value_type="cycle",
         team=[1],
-        format_data={"add": [{"_id": 7, "inst_name": "host-a", "inst_uuid": inst_uuid}]},
+        format_data=dirty,
+    )
+    newer = CollectModels.objects.create(
+        name="collect-result-uuid-new",
+        task_type=CollectPluginTypes.HOST,
+        model_id="host",
+        cycle_value_type="cycle",
+        team=[1],
+        format_data=dirty,
     )
     CmdbUuidMigrationState.objects.update_or_create(
         stage="collect_result_snapshots",
-        defaults={"cursor": str(task.id), "completed": True},
+        defaults={"cursor": "0", "completed": True},
     )
-    task.format_data = {"add": [{"_id": 7, "inst_name": "host-a"}]}
-    task.save(update_fields=["format_data"])
+    CmdbUuidMigrationState.objects.filter(stage="collect_result_snapshots").update(updated_at=now - timedelta(hours=1))
+    CollectModels.objects.filter(pk=older.pk).update(updated_at=now - timedelta(hours=2))
+    CollectModels.objects.filter(pk=newer.pk).update(updated_at=now)
 
     command = Command()
     command._graph_uuid_by_id = {7: inst_uuid}
@@ -486,10 +505,12 @@ def test_clean_collect_result_snapshots_rescans_after_stage_completed():
 
     command._clean_collect_result_snapshots(batch_size=50, dry_run=False, stats=stats)
 
-    task.refresh_from_db()
-    assert task.format_data["add"][0]["inst_uuid"] == inst_uuid
+    older.refresh_from_db()
+    newer.refresh_from_db()
+    assert "inst_uuid" not in older.format_data["add"][0]
+    assert newer.format_data["add"][0]["inst_uuid"] == inst_uuid
     assert stats["collect_result_snapshot_updated"] == 1
-    assert command._leftover_snapshot_ids == [task.id]
+    assert command._leftover_snapshot_ids == [newer.id]
 
 
 @pytest.mark.django_db
@@ -634,3 +655,91 @@ def test_clean_monitor_and_node_cmdb_ids_rewrites_digits():
     assert node.cmdb_id == inst_uuid
     assert stats["monitor_cmdb_id_updated"] == 1
     assert stats["node_cmdb_id_updated"] == 1
+
+
+@pytest.mark.django_db
+def test_completed_graph_stages_do_not_query_instances_or_edges(monkeypatch):
+    from apps.cmdb.models.uuid_migration_state import CmdbUuidMigrationState
+
+    CmdbUuidMigrationState.objects.create(stage="graph_instances", completed=True, cursor="0")
+    CmdbUuidMigrationState.objects.create(stage="graph_edges", completed=True, cursor="0")
+    monkeypatch.setattr(
+        "apps.cmdb.management.commands.migrate_cmdb_instance_uuid_refs.GraphClient",
+        lambda: (_ for _ in ()).throw(AssertionError("已完成的图阶段不应再打开图")),
+    )
+    command = Command()
+    command._graph_uuid_by_id = {}
+    command._dry_run = True
+    stats = _stats()
+
+    command._clean_graph(batch_size=10, dry_run=True, stats=stats)
+
+    assert stats["graph_instance_scanned"] == 0
+    assert stats["graph_relation_scanned"] == 0
+
+
+@pytest.mark.django_db
+def test_edge_pass_runs_without_instance_scan_when_only_instances_are_complete(monkeypatch):
+    from apps.cmdb.models.uuid_migration_state import CmdbUuidMigrationState
+
+    inst_uuid = "63e4a531-b6bb-43cc-9eae-8eb8a09f795e"
+    other_uuid = "73e4a531-b6bb-43cc-9eae-8eb8a09f795e"
+    CmdbUuidMigrationState.objects.create(stage="graph_instances", completed=True, cursor="2")
+    edges = [
+        {
+            "edge": {"_id": 9, "model_asst_id": "host_run_host", "src_inst_id": 1, "dst_inst_id": 2},
+            "src": {},
+            "dst": {},
+        }
+    ]
+    graph = _Graph([], edges)
+    graph.query_entity = lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("边收尾不应再分页读实例"))
+    monkeypatch.setattr(
+        "apps.cmdb.management.commands.migrate_cmdb_instance_uuid_refs.GraphClient",
+        lambda: graph,
+    )
+    command = Command()
+    command._graph_uuid_by_id = {1: inst_uuid, 2: other_uuid}
+
+    command._clean_graph(batch_size=10, dry_run=False, stats=_stats())
+
+    assert graph.edge_sets == [(9, {"src_inst_uuid": inst_uuid, "dst_inst_uuid": other_uuid})]
+    assert CmdbUuidMigrationState.objects.filter(stage="graph_edges", completed=True).exists()
+
+
+@pytest.mark.django_db
+def test_apply_does_not_page_instances_when_only_edges_remain(monkeypatch):
+    from apps.cmdb.models.uuid_migration_state import CmdbUuidMigrationState
+    from apps.cmdb.services.uuid_migration_runtime import REQUIRED_CMDB_UUID_STAGES
+
+    for stage in REQUIRED_CMDB_UUID_STAGES:
+        CmdbUuidMigrationState.objects.update_or_create(
+            stage=stage,
+            defaults={"cursor": "0", "completed": True},
+        )
+    CmdbUuidMigrationState.objects.filter(stage="graph_edges").delete()
+    calls = []
+
+    class _TrackingGraph:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def query_entity(self, *_args, **_kwargs):
+            calls.append("query_entity")
+            return [], None
+
+        def query_edge(self, *_args, **_kwargs):
+            calls.append("query_edge")
+            return []
+
+    monkeypatch.setattr(
+        "apps.cmdb.management.commands.migrate_cmdb_instance_uuid_refs.GraphClient",
+        lambda: _TrackingGraph(),
+    )
+    command = Command()
+    command.handle(batch_size=10, apply=True, dry_run=False, verify=False)
+
+    assert calls == ["query_edge"]

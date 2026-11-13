@@ -28,6 +28,12 @@ import {
   stableStringify,
   type ResolvedOptionsQuery,
 } from '@/app/ops-analysis/utils/optionsQueryParamRefs';
+import {
+  resolveAnalysisModeValue,
+} from '@/app/ops-analysis/utils/analysisMode';
+import ConditionFilterControl from '@/app/ops-analysis/components/conditionFilterControl';
+import OrderControl from '@/app/ops-analysis/components/orderControl';
+import { narrowInputConfigForQueryObject } from '@/app/ops-analysis/utils/queryObjectOptions';
 import DateRangeSelector from './dateRangeSelector';
 import {
   getTimeSelectorDefaultValue,
@@ -202,8 +208,14 @@ const DataSourceParamsConfig: React.FC<DataSourceParamsConfigProps> = ({
   );
   // 表单控件仍读 form 的即时值。选项查询只吃防抖后的文本/数字。
   const optionsQueryFormParams = useDebouncedOptionsQueryValues(formParams ?? {}, typedParamNames);
+  const analysisMode = resolveAnalysisModeValue({
+    params: sourceParams,
+    selected: formParams?.analysis_mode,
+  });
   const configParams = sourceParams.filter(
-    (param: ParamItem) => includeFilterTypes.includes(param.filterType || 'fixed'),
+    (param: ParamItem) =>
+      !param.hidden
+      && includeFilterTypes.includes(param.filterType || 'fixed'),
   );
 
   if (configParams.length === 0) {
@@ -215,7 +227,9 @@ const DataSourceParamsConfig: React.FC<DataSourceParamsConfigProps> = ({
   const renderParamInput = (param: ParamItem) => {
     const { type = 'string', filterType, options } = param;
     const isDisabled = readonly || filterType === 'fixed';
-    const inputConfig = normalizeInputConfig(param);
+    const queryObject = formParams?.query_object
+      ?? sourceParams.find((item) => item.name === 'query_object')?.value;
+    const inputConfig = narrowInputConfigForQueryObject(normalizeInputConfig(param), queryObject);
 
     const fallbackInput = (() => {
       if (options && options.length > 0) {
@@ -283,6 +297,44 @@ const DataSourceParamsConfig: React.FC<DataSourceParamsConfigProps> = ({
       }
     })();
 
+    if (inputConfig?.control === 'conditionFilter') {
+      const fieldQuery = inputConfig.fields.kind === 'dynamic'
+        ? resolveParamOptionsQuery({
+          inputConfig,
+          enabled: resolveOptionsQuery,
+          formParams: optionsQueryFormParams,
+          sourceParams,
+          globalFilters,
+          filterBindings,
+          globalFilterValues,
+        })
+        : undefined;
+      return (
+        <ConditionFilterControl
+          source={inputConfig.fields}
+          formParams={formParams}
+          resolvedFieldQuery={fieldQuery?.resolution}
+          fieldQuerySignature={fieldQuery?.signature}
+          queryObject={queryObject === undefined || queryObject === null ? '' : String(queryObject)}
+          disabled={isDisabled}
+        />
+      );
+    }
+
+    if (inputConfig?.control === 'order') {
+      return (
+        <OrderControl
+          fields={inputConfig.fields}
+          modelParam={inputConfig.modelParam}
+          includeModelAttrsInModes={inputConfig.includeModelAttrsInModes}
+          formParams={formParams}
+          analysisMode={analysisMode}
+          queryObject={queryObject === undefined || queryObject === null ? '' : String(queryObject)}
+          disabled={isDisabled}
+        />
+      );
+    }
+
     if (!inputConfig) {
       return fallbackInput;
     }
@@ -322,9 +374,11 @@ const DataSourceParamsConfig: React.FC<DataSourceParamsConfigProps> = ({
         const labelText = param.alias_name || param.name;
         const isLongText = labelText.length > 18;
         const isVeryLongText = labelText.length > 30;
+        const isConditionFilter = param.type === 'conditionFilter'
+          || param.inputConfig?.control === 'conditionFilter';
         const showInputConfigButton =
           onEditInputConfig &&
-          (param.type || 'string') === 'string' &&
+          ((param.type || 'string') === 'string' || isConditionFilter) &&
           param.filterType !== 'fixed' &&
           !readonly;
 
@@ -384,12 +438,36 @@ const DataSourceParamsConfig: React.FC<DataSourceParamsConfigProps> = ({
               </div>
             }
             name={fieldName}
+            preserve
             initialValue={!preserveValues && mounted ? initialValue : undefined}
             tooltip={param.desc || undefined}
             style={{ marginBottom: isVeryLongText ? 20 : 16 }}
-            rules={[
-              { required: param.required, message: t('dataSource.paramRequired', '请配置{label}', { label: labelText }) },
-            ]}
+            required={Boolean(param.required || param.integer)}
+            rules={param.integer
+              ? [
+                {
+                  validator: async (_rule, value) => {
+                    const max = typeof param.maximum === 'number' ? param.maximum : undefined;
+                    const withinMax = max === undefined || (typeof value === 'number' && value <= max);
+                    if (
+                      typeof value === 'number'
+                      && Number.isInteger(value)
+                      && value >= 1
+                      && withinMax
+                    ) {
+                      return;
+                    }
+                    throw new Error(t(
+                      'dataSource.positiveIntegerRange',
+                      '{label}必须是 1 到 {max} 的正整数',
+                      { label: labelText, max: max ?? '' },
+                    ));
+                  },
+                },
+              ]
+              : [
+                { required: param.required, message: t('dataSource.paramRequired', '请配置{label}', { label: labelText }) },
+              ]}
           >
             {renderParamInput(param)}
           </Form.Item>

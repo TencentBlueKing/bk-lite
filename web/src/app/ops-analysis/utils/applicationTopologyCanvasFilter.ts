@@ -1,17 +1,12 @@
 import type {
   FilterBindings,
-  FilterValue,
   UnifiedFilterDefinition,
 } from '@/app/ops-analysis/types/dashBoard';
-import type { InputOption, InputControlConfig } from '@/app/ops-analysis/types/dataSource';
+import type { InputControlConfig } from '@/app/ops-analysis/types/dataSource';
 import {
   APPLICATION_TOPOLOGY_DEFAULT_DEPTH,
   APPLICATION_TOPOLOGY_MAX_DEPTH,
 } from '@/app/ops-analysis/types/sceneWidget';
-import {
-  ROOM_FILTER_PASSTHROUGH,
-  resolveRoomFilterAppliedValue,
-} from '@/app/ops-analysis/utils/room3DScreenFilter';
 
 export const APPLICATION_TOPOLOGY_FILTER_KEY = 'application_system_id';
 export const APPLICATION_TOPOLOGY_FILTER_ID = 'application_system_id__string';
@@ -228,15 +223,6 @@ const normalizeFilterSystemId = (value: unknown): string => {
   if (typeof value !== 'string') return '';
   return value.trim();
 };
-
-/** 只有内置 3D 机房筛在选项到达时补默认机房。应用系统和拆行摘要 id 交给通用校正。 */
-export const resolveBuiltinCanvasFilterAppliedValue = (
-  definition: Pick<UnifiedFilterDefinition, 'id' | 'key' | 'type' | 'defaultValue' | 'enabled'>,
-  current: FilterValue | null | undefined,
-  options: Array<Pick<InputOption, 'value'>>,
-): FilterValue | undefined | typeof ROOM_FILTER_PASSTHROUGH => (
-  resolveRoomFilterAppliedValue(definition, current, options)
-);
 
 /** 应用拓扑读画布筛选。运行时已选值优先，否则用筛选项默认值。 */
 export const resolveApplicationTopologyCanvasSelection = ({

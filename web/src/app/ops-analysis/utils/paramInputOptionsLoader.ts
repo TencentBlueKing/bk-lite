@@ -102,6 +102,48 @@ export const buildOptionsLoadSignature = (
 const resolved = (options: InputOption[]): ParamInputOptionsState =>
   options.length ? { status: 'success', options } : { status: 'error', options: [] };
 
+const OPTION_PAGE_CAP = 200;
+
+const asRecord = (value: unknown): Record<string, unknown> | undefined => (
+  value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : undefined
+);
+
+const finiteNumber = (value: unknown): number | undefined => (
+  typeof value === 'number' && Number.isFinite(value) ? value : undefined
+);
+
+/**
+ * 只有响应同时带 page、page_size、count，且 count 大于本页条数时才继续翻页。
+ * 旧的数组选项源没有这些字段，仍只取第一次结果。
+ */
+const readOptionPage = (data: unknown): {
+  items: Record<string, unknown>[];
+  page?: number;
+  pageSize?: number;
+  count?: number;
+} => {
+  const items = extractDataSourceItems(data);
+  const record = asRecord(data);
+  if (!record) return { items };
+  return {
+    items,
+    page: finiteNumber(record.page),
+    pageSize: finiteNumber(record.page_size),
+    count: finiteNumber(record.count),
+  };
+};
+
+export const localizeOptionLoadError = (
+  message: string | undefined,
+  t: (key: string) => string,
+): string | undefined => {
+  if (message === 'option page limit exceeded') return t('dashboard.optionPageLimitExceeded');
+  if (message === 'option page ended before count') return t('dashboard.optionPageEndedEarly');
+  return message;
+};
+
 export const createParamInputOptionsLoader = (
   api: OptionsApi,
   getLoaderOptions?: () => ParamInputOptionsLoaderOptions | undefined,
@@ -173,8 +215,36 @@ export const createParamInputOptionsLoader = (
           return { status: 'error', options: [] };
         }
         const { data } = await api.getSourceDataByApiId(sourceId, resolvedParams, requestOptions);
+        const firstPage = readOptionPage(data);
+        const items = [...firstPage.items];
+        const shouldPage = firstPage.page !== undefined
+          && firstPage.pageSize !== undefined
+          && firstPage.count !== undefined
+          && firstPage.count > items.length;
+        if (shouldPage) {
+          let nextPage = firstPage.page! + 1;
+          let pages = 1;
+          while (items.length < firstPage.count!) {
+            if (pages >= OPTION_PAGE_CAP) {
+              throw new Error('option page limit exceeded');
+            }
+            const next = await api.getSourceDataByApiId(
+              sourceId,
+              { ...resolvedParams, page: nextPage, page_size: firstPage.pageSize },
+              requestOptions,
+            );
+            if (requestGeneration !== generation) return null;
+            const nextItems = readOptionPage(next.data).items;
+            if (!nextItems.length) {
+              throw new Error('option page ended before count');
+            }
+            items.push(...nextItems);
+            nextPage += 1;
+            pages += 1;
+          }
+        }
         const options = mapDynamicItems(
-          extractDataSourceItems(data), source.valueField, source.labelField,
+          items, source.valueField, source.labelField,
         );
         if (requestGeneration !== generation) return null;
         settled = true;
