@@ -56,7 +56,7 @@ vi.mock('@/app/ops-analysis/components/widgetRegistry', () => ({
       onQueryChange?: (params: Record<string, unknown>) => void;
     }) {
       useEffect(() => {
-        onQueryChange?.({ page: 1, page_size: 20 });
+        onQueryChange?.({});
       }, [onQueryChange]);
       useEffect(() => {
         if (!loading) {

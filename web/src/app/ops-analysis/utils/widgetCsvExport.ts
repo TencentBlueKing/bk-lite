@@ -17,13 +17,16 @@ import { buildCsvDocument, buildCsvFilename } from '@/app/ops-analysis/utils/csv
 import { validateMultiValueData } from '@/app/ops-analysis/utils/multiValueData';
 import { resolveRadarSeriesData } from '@/app/ops-analysis/utils/radarData';
 import { resolveTableCellPresentation } from '@/app/ops-analysis/utils/tableCellStyle';
-import { parseTableLikeData, resolveTableLikeColumns } from '@/app/ops-analysis/utils/tableLikeData';
+import {
+  readExplicitPageNumber,
+  supportsServerPagination,
+} from '@/app/ops-analysis/utils/tablePagination';
 import {
   applyTableQueryList,
   type TableQueryCondition,
 } from '@/app/ops-analysis/utils/tableQueryList';
 import { resolveTopNHeaderLabel } from '@/app/ops-analysis/components/widgets/comTopN';
-import { supportsServerPagination } from '@/app/ops-analysis/utils/tablePagination';
+import { parseTableLikeData, resolveTableLikeColumns, isSelfPagedTablePayload } from '@/app/ops-analysis/utils/tableLikeData';
 import { buildTopNItems, unwrapTopNData } from '@/app/ops-analysis/utils/topNData';
 
 /**
@@ -643,7 +646,13 @@ export const createWidgetCsvExport = async (
       if (runtime.chartType === 'eventTable' && previewColumns.length === 0) {
         return { kind: 'unconfigured' };
       }
-      const supportsPagination = supportsServerPagination(runtime.dataSource?.params);
+      const declaredPagination = supportsServerPagination(runtime.dataSource?.params);
+      const sentPage = readExplicitPageNumber(runtime.requestParams?.page);
+      const sentPageSize = readExplicitPageNumber(runtime.requestParams?.page_size);
+      const supportsPagination = declaredPagination && (
+        (sentPage !== undefined && sentPageSize !== undefined)
+        || isSelfPagedTablePayload(runtime.rawData)
+      );
       const loaded = await loadTableExportRows({
         rawData: runtime.rawData,
         supportsPagination,

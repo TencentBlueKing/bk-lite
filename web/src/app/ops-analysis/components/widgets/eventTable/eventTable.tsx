@@ -1,5 +1,4 @@
 import React, {
-  useCallback,
   useEffect,
   useMemo,
   useState,
@@ -20,15 +19,11 @@ import {
   isScreenChartThemeMode,
 } from '@/app/ops-analysis/utils/chartTheme';
 import { EventTableDetail } from './eventTableDetail';
-import {
-  parseTableLikeData,
-  type TableLikePaginationState,
-} from '../shared/tableLikeData';
+import { useTableServerQuery } from '@/app/ops-analysis/utils/useTableServerQuery';
 import { useTableBodyScrollY } from '../shared/useTableBodyScrollY';
 import { getScreenWidgetScale } from '../shared/screenMetrics';
 import styles from '../comTable.module.scss';
 import WidgetState from '@/app/ops-analysis/components/widget-state';
-import { supportsServerPagination } from '@/app/ops-analysis/utils/tablePagination';
 import { useInteractionSurface } from '@/app/ops-analysis/context/interactionSurface';
 import { InteractionActionCell, useWidgetDataLink } from '@/app/ops-analysis/components/interactionTitleIcon';
 import {
@@ -70,11 +65,17 @@ const EventTable: React.FC<EventTableProps> = ({
   const dataLink = readWidgetInteraction(config);
   const dataLinkName = dataLink?.kind === 'data' ? dataLink.name : '';
   const [expandedRowKeys, setExpandedRowKeys] = useState<React.Key[]>([]);
-  const [queryPagination, setQueryPagination] =
-    useState<TableLikePaginationState>({
-      current: 1,
-      pageSize: 20,
-    });
+  const {
+    rows,
+    pagination,
+    isPaginated,
+    handleTableChange,
+  } = useTableServerQuery<EventTableRow>({
+    rawData,
+    sourceParams: dataSource?.params,
+    savedParams: config?.dataSourceParams,
+    onQueryChange,
+  });
   const usesScreenTheme = isScreenChartThemeMode(config?.chartThemeMode);
   const screenTableTheme = getOpsChartThemeByMode(config?.chartThemeMode);
   const widgetScale = getScreenWidgetScale(screenRenderContext);
@@ -106,19 +107,6 @@ const EventTable: React.FC<EventTableProps> = ({
     } as React.CSSProperties;
   }, [screenTableTheme, usesScreenTheme, widgetScale]);
 
-  const supportsPaginationParams = useMemo(
-    () => supportsServerPagination(dataSource?.params),
-    [dataSource?.params],
-  );
-
-  const { rows, pagination, isPaginated } = useMemo(
-    () => parseTableLikeData<EventTableRow>(
-      rawData,
-      queryPagination,
-      supportsPaginationParams,
-    ),
-    [rawData, queryPagination, supportsPaginationParams],
-  );
   const { slotRef: tableSlotRef, tableScrollY } = useTableBodyScrollY({
     hasPagination: isPaginated,
   });
@@ -137,19 +125,6 @@ const EventTable: React.FC<EventTableProps> = ({
       onReady?.(rows.length > 0);
     }
   }, [loading, onReady, rows.length]);
-
-  useEffect(() => {
-    if (!onQueryChange) return;
-
-    const queryParams: Record<string, any> = {};
-
-    if (supportsPaginationParams) {
-      queryParams.page = queryPagination.current;
-      queryParams.page_size = queryPagination.pageSize;
-    }
-
-    onQueryChange(queryParams);
-  }, [onQueryChange, queryPagination, supportsPaginationParams]);
 
   const columnConfigs = useMemo(() => {
     return withInteractionActionColumn(configuredColumns, dataLink, surface, {
@@ -204,13 +179,6 @@ const EventTable: React.FC<EventTableProps> = ({
       return column;
     });
   }, [columnConfigs, dataLink, dataLinkName, openPoint, surface, t]);
-
-  const handleTableChange = useCallback((pageConfig: any) => {
-    setQueryPagination({
-      current: pageConfig?.current || 1,
-      pageSize: pageConfig?.pageSize || 20,
-    });
-  }, []);
 
   if (!configuredColumns.length) {
     return (

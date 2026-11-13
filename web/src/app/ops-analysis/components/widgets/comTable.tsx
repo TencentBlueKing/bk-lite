@@ -15,9 +15,7 @@ import {
   isScreenChartThemeMode,
 } from '@/app/ops-analysis/utils/chartTheme';
 import {
-  parseTableLikeData,
   resolveTableLikeColumns,
-  type TableLikePaginationState,
 } from './shared/tableLikeData';
 import { useTableBodyScrollY } from './shared/useTableBodyScrollY';
 import styles from './comTable.module.scss';
@@ -44,7 +42,7 @@ import {
   hasValueFormatConfigured,
 } from '@/app/ops-analysis/utils/chartValueFormat';
 import { getScreenWidgetScale } from './shared/screenMetrics';
-import { supportsServerPagination } from '@/app/ops-analysis/utils/tablePagination';
+import { useTableServerQuery } from '@/app/ops-analysis/utils/useTableServerQuery';
 import {
   applyTableRowFilters,
   buildTableQueryList,
@@ -95,11 +93,23 @@ const ComTable: React.FC<ComTableProps> = ({
   );
   const [activeKeywordFieldKey, setActiveKeywordFieldKey] =
     useState<string>('');
-  const [queryPagination, setQueryPagination] =
-    useState<TableLikePaginationState>({
-      current: 1,
-      pageSize: 20,
-    });
+  const additionalQuery = useMemo(() => {
+    const queryList = buildTableQueryList(filters);
+    return queryList.length > 0 ? { query_list: queryList } : undefined;
+  }, [filters]);
+  const {
+    rows: tableData,
+    pagination,
+    isPaginated,
+    handleTableChange,
+    resetToFirstPage,
+  } = useTableServerQuery<TableDataItem>({
+    rawData,
+    sourceParams: dataSource?.params,
+    savedParams: config?.dataSourceParams,
+    onQueryChange,
+    additionalQuery,
+  });
   const usesScreenTheme = isScreenChartThemeMode(config?.chartThemeMode);
   const screenTableTheme = getOpsChartThemeByMode(config?.chartThemeMode);
   const widgetScale = getScreenWidgetScale(screenRenderContext);
@@ -131,24 +141,6 @@ const ComTable: React.FC<ComTableProps> = ({
     } as React.CSSProperties;
   }, [screenTableTheme, usesScreenTheme, widgetScale]);
   
-  const supportsPaginationParams = useMemo(
-    () => supportsServerPagination(dataSource?.params),
-    [dataSource?.params],
-  );
-
-  const { tableData, pagination, isPaginated } = useMemo(() => {
-    const parsed = parseTableLikeData<TableDataItem>(
-      rawData,
-      queryPagination,
-      supportsPaginationParams,
-    );
-
-    return {
-      tableData: parsed.rows,
-      pagination: parsed.pagination,
-      isPaginated: parsed.isPaginated,
-    };
-  }, [rawData, queryPagination.current, queryPagination.pageSize, supportsPaginationParams]);
   // 槽位挂上之后才测量。数字 y 用表头和分页的真实高度，不再乘 widgetUiScale。
   const { slotRef: tableSlotRef, tableScrollY } = useTableBodyScrollY({
     hasPagination: isPaginated,
@@ -275,27 +267,6 @@ const ComTable: React.FC<ComTableProps> = ({
   }, [columnConfigs, config, dataLink, dataLinkName, openPoint, surface, t]);
 
   useEffect(() => {
-    if (!onQueryChange) return;
-
-    const queryParams: Record<string, any> = {};
-    if (supportsPaginationParams) {
-      queryParams.page = queryPagination.current;
-      queryParams.page_size = queryPagination.pageSize;
-    }
-    const queryList = buildTableQueryList(filters);
-    if (queryList.length > 0) {
-      queryParams.query_list = queryList;
-    }
-
-    onQueryChange(queryParams);
-  }, [
-    onQueryChange,
-    queryPagination,
-    filters,
-    supportsPaginationParams,
-  ]);
-
-  useEffect(() => {
     if (!loading) {
       const hasData = tableData && tableData.length > 0;
       onReady?.(hasData);
@@ -323,11 +294,11 @@ const ComTable: React.FC<ComTableProps> = ({
           return prev;
         }
 
-        setQueryPagination((pagePrev) => ({ ...pagePrev, current: 1 }));
+        resetToFirstPage();
         return nextFilters;
       });
     },
-    [searchableFilterFields],
+    [resetToFirstPage, searchableFilterFields],
   );
 
   const handleKeywordFieldSwitch = useCallback(
@@ -345,11 +316,11 @@ const ComTable: React.FC<ComTableProps> = ({
           return prev;
         }
 
-        setQueryPagination((pagePrev) => ({ ...pagePrev, current: 1 }));
+        resetToFirstPage();
         return nextFilters;
       });
     },
-    [searchableFilterFields],
+    [resetToFirstPage, searchableFilterFields],
   );
 
   const activeSearchField = useMemo(() => {
@@ -357,13 +328,6 @@ const ComTable: React.FC<ComTableProps> = ({
       (field) => field.key === activeKeywordFieldKey,
     );
   }, [searchableFilterFields, activeKeywordFieldKey]);
-
-  const handleTableChange = useCallback((pageConfig: any) => {
-    setQueryPagination({
-      current: pageConfig?.current || 1,
-      pageSize: pageConfig?.pageSize || 20,
-    });
-  }, []);
 
   const renderFilters = () => {
     if (!filterFields || filterFields.length === 0) {
@@ -403,7 +367,7 @@ const ComTable: React.FC<ComTableProps> = ({
                       ...prev,
                       [activeKeywordFieldKey]: dates,
                     }));
-                    setQueryPagination((prev) => ({ ...prev, current: 1 }));
+                    resetToFirstPage();
                   }}
                   showTime
                 />

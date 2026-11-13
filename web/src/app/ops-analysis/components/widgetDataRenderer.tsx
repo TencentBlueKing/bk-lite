@@ -70,6 +70,7 @@ import ScreenWidgetThemeProvider from "@/app/ops-analysis/components/screenWidge
 import { getDateRangeTimezone } from "@/app/ops-analysis/utils/dateRange";
 import {
   areTableQueryParamsEquivalent,
+  readExplicitPagePair,
   serializeTableQueryKey,
 } from "@/app/ops-analysis/utils/tablePagination";
 import { validateMultiValueData } from "@/app/ops-analysis/utils/multiValueData";
@@ -269,8 +270,28 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     errorCode?: string;
   } | null>(null);
   const [tableQueryParams, setTableQueryParams] = useState<Record<string, any>>(
-    {},
+    () => readExplicitPagePair(config?.dataSourceParams),
   );
+  const savedPagePair = useMemo(
+    () => readExplicitPagePair(config?.dataSourceParams),
+    [config?.dataSourceParams],
+  );
+  const savedPageKey = `${savedPagePair.page ?? ""}:${savedPagePair.page_size ?? ""}`;
+  const savedPagePairRef = useRef(savedPagePair);
+  savedPagePairRef.current = savedPagePair;
+  const sourceParamsRef = useRef(dataSource?.params);
+  sourceParamsRef.current = dataSource?.params;
+  useEffect(() => {
+    const pair = savedPagePairRef.current;
+    const sourceParams = sourceParamsRef.current;
+    setTableQueryParams((prev) => {
+      const next = { ...prev };
+      delete next.page;
+      delete next.page_size;
+      Object.assign(next, pair);
+      return areTableQueryParamsEquivalent(prev, next, sourceParams) ? prev : next;
+    });
+  }, [savedPageKey]);
   const { canvasDataSourceLookupStatus, dataSources } = useOpsAnalysis();
   const dashboardViewAuth = useDashboardViewAuth();
   const scenePermissionDenied = Boolean(
