@@ -774,11 +774,15 @@ def compact_planned_execution_messages(
     *,
     max_tool_chars: int = _DEFAULT_PLANNED_TOOL_RESULT_CHARS,
     max_ai_chars: int = _DEFAULT_PLANNED_AI_TEXT_CHARS,
+    preserve_tool_results: bool = False,
 ) -> list[Any]:
     """截断分步执行历史中的过长工具结果与 AI 文本，保留 tool_call 结构。"""
     compacted: list[Any] = []
     for message in messages or []:
         if isinstance(message, ToolMessage):
+            if preserve_tool_results:
+                compacted.append(message)
+                continue
             content = message.content
             tool_name = getattr(message, "name", None) or ""
             if isinstance(content, str):

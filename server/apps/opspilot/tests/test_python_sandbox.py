@@ -2,33 +2,13 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
+from deepagents.middleware.filesystem import FilesystemMiddleware
 from langchain_core.messages import ToolMessage
 
 from apps.opspilot.metis.llm.middleware.python_sandbox import PythonSandboxMiddleware
 from apps.opspilot.metis.llm.tools.python.executor import python_execute_direct
-from apps.opspilot.services.python_sandbox.runtime import PythonSandbox, SandboxUnavailable
-
-
-def test_large_result_saved_and_tool_metadata_preserved():
-    sandbox = MagicMock()
-    sandbox.store_result.return_value = "/workspace/result.txt"
-    middleware = PythonSandboxMiddleware(sandbox, threshold=5)
-    request = SimpleNamespace(tool_call={"name": "alerts_list_alerts"})
-    message = ToolMessage(content="abcdefgh", tool_call_id="call-1", name="alerts_list_alerts")
-    result = middleware.wrap_tool_call(request, lambda _: message)
-    sandbox.store_result.assert_called_once_with("abcdefgh")
-    assert result.tool_call_id == "call-1"
-    assert "/workspace/result.txt" in result.content
-    assert "abcdefgh" in result.content
-
-
-def test_unavailable_sandbox_never_claims_result_was_saved():
-    sandbox = MagicMock()
-    sandbox.store_result.side_effect = SandboxUnavailable()
-    middleware = PythonSandboxMiddleware(sandbox, threshold=5)
-    message = ToolMessage(content="abcdefgh", tool_call_id="call-1")
-    result = middleware.wrap_tool_call(SimpleNamespace(tool_call={"name": "alerts"}), lambda _: message)
-    assert result is message
+from apps.opspilot.services.python_sandbox.result_backend import build_result_backend
+from apps.opspilot.services.python_sandbox.runtime import PythonSandbox
 
 
 @pytest.mark.parametrize("content", ["existing policy", [{"type": "text", "text": "existing policy", "cache_control": {"type": "ephemeral"}}], None])
@@ -79,12 +59,12 @@ def test_real_middleware_to_python_tool_chain():
     sandbox = PythonSandbox()
     try:
         payload = "[" + ",".join('{"value": 2}' for _ in range(1000)) + "]"
-        middleware = PythonSandboxMiddleware(sandbox)
-        request = SimpleNamespace(tool_call={"name": "alerts_list_alerts"})
+        middleware = FilesystemMiddleware(backend=build_result_backend(sandbox), tool_token_limit_before_evict=1000)
+        request = SimpleNamespace(tool_call={"name": "alerts_list_alerts"}, runtime=None)
         tool_message = ToolMessage(content=payload, tool_call_id="call-chain")
         output = middleware.wrap_tool_call(request, lambda _: tool_message)
         path = sandbox.files()[0]
-        assert path in output.content
+        assert "/large_tool_results/call-chain" in output.content
         assert len(output.content) < len(payload)
         code = f'import json\nwith open({path!r}) as f: rows = json.load(f)\nsum(row["value"] for row in rows)'
         result = python_execute_direct.invoke({"code": code}, config={"configurable": {"python_sandbox": sandbox}})
@@ -117,9 +97,9 @@ def test_agent_middlewares_pass_file_path_and_sandbox_to_python():
             if not tool_messages:
                 msg = AIMessage(content="", tool_calls=[{"name": "alerts_list_alerts", "args": {}, "id": "alerts"}])
             elif len(tool_messages) == 1:
-                match = re.search(r"\S+/tool-result-[a-f0-9]+\.txt", tool_messages[0].content)
+                match = re.search(r"/large_tool_results/alerts", tool_messages[0].content)
                 assert match is not None
-                code = f'import json\nwith open({match.group()!r}) as f: rows=json.load(f)\nsum(r["value"] for r in rows)'
+                code = f'import json\nwith open({(sandbox.workspace + match.group())!r}) as f: rows=json.load(f)\nsum(r["value"] for r in rows)'
                 msg = AIMessage(content="", tool_calls=[{"name": "python_execute_direct", "args": {"code": code}, "id": "python"}])
             else:
                 msg = AIMessage(content=tool_messages[-1].content)
@@ -130,7 +110,10 @@ def test_agent_middlewares_pass_file_path_and_sandbox_to_python():
         agent = create_agent(
             model=Model(responses=[]),
             tools=[alerts_list_alerts, python_execute_direct],
-            middleware=[FilesystemMiddleware(), PythonSandboxMiddleware(sandbox)],
+            middleware=[
+                FilesystemMiddleware(backend=build_result_backend(sandbox), tool_token_limit_before_evict=1000),
+                PythonSandboxMiddleware(sandbox),
+            ],
         )
         result = agent.invoke({"messages": [HumanMessage(content="统计告警")]}, config={"configurable": {"python_sandbox": sandbox}})
         assert result["messages"][-1].content == "2000"
@@ -199,7 +182,8 @@ def test_deepagents_skill_backend_shares_workspace_files():
     sandbox = PythonSandbox()
     backend = LocalSkillBackend(sandbox)
     try:
-        path = sandbox.store_result("41")
+        assert build_result_backend(sandbox).write("/large_tool_results/number", "41").error is None
+        path = sandbox.files()[0]
         result = backend.execute(f"python -c 'print(int(open(\"{path}\").read())+1)'")
         assert result.exit_code == 0
         assert result.output == "42"
