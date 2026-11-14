@@ -117,6 +117,7 @@ class AlertDetector:
         conditions = []
         series_by_ref = {}
         display_units = {}
+        source_units = {}
         metric_names = {}
         enum_maps = {}
         for condition in service.multi_conditions():
@@ -125,6 +126,7 @@ class AlertDetector:
             series_by_ref[ref] = (converted.get("data") or {}).get("result") or []
             conditions.append(service.condition_with_converted_thresholds(condition))
             display_units[ref] = service.condition_display_unit(condition)
+            source_units[ref] = service.condition_result_unit(condition)
             metric_names[ref] = service.condition_metric_name(condition)
             enum_maps[ref] = service.condition_enum_map(condition)
 
@@ -138,6 +140,7 @@ class AlertDetector:
             "dimension_name_map": self._build_dimension_name_map(),
             "resource_context_resolver": self._build_metric_resource_context,
             "condition_display_units": display_units,
+            "condition_source_units": source_units,
             "condition_metric_names": metric_names,
             "condition_enum_maps": enum_maps,
         }
@@ -155,24 +158,16 @@ class AlertDetector:
         return alert_events, info_events, hold_events
 
     def _content_unit_context(self) -> dict:
-        """告警文案用的源单位：扫描已换算则 content 不再二次自适应。"""
+        """告警文案用的当前单位。content 再按该单位在同一体系内选可读档。"""
         get_calc = getattr(self.metric_query_service, "get_effective_calculation_unit", None)
         if callable(get_calc):
             source_unit = get_calc() or ""
         else:
             source_unit = getattr(self.policy, "calculation_unit", None) or getattr(self.policy, "metric_unit", None) or ""
         overlay_source_unit = getattr(self.policy, "calculation_unit", None) or getattr(self.policy, "metric_unit", None) or ""
-        is_converted = getattr(self.metric_query_service, "is_metric_unit_converted", None)
-        if callable(is_converted):
-            scan_unit_converted = bool(is_converted())
-        else:
-            metric_unit = getattr(self.policy, "metric_unit", None) or ""
-            calculation_unit = getattr(self.policy, "calculation_unit", None) or ""
-            scan_unit_converted = bool(metric_unit and calculation_unit and metric_unit != calculation_unit)
         return {
             "source_unit": source_unit,
             "overlay_source_unit": overlay_source_unit,
-            "scan_unit_converted": scan_unit_converted,
         }
 
     def _converted_recovery_threshold(self):
