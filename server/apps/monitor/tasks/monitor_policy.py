@@ -243,3 +243,10 @@ def deliver_alert_center_lifecycle_delivery(delivery_id):
     from apps.monitor.services.alert_center_delivery import deliver_alert_center_delivery
 
     return deliver_alert_center_delivery(delivery_id)
+
+
+@shared_task
+def retry_pending_remote_config_deletions():
+    from apps.monitor.services.monitor_instance_removal import MonitorInstanceRemovalService
+
+    MonitorInstanceRemovalService.flush_remote_config_deletions()

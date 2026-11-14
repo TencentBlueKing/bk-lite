@@ -7,3 +7,4 @@ from apps.monitor.models.collect_detect import *
 from apps.monitor.models.monitor_condition import *
 from apps.monitor.models.user_habit import *
 from apps.monitor.models.snmp_ifmib_reconcile import *
+from apps.monitor.models.remote_config_deletion import *
