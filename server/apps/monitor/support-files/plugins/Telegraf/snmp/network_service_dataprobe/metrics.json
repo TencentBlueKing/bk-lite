@@ -5,6 +5,8 @@
   "plugin_desc": "Dataprobe iBoot-PDU SNMP child template for devices under Dataprobe PEN 1418. Interface traffic is supplied by the shared NetworkService SNMP IF-MIB floor rather than a plugin-side ifHC expansion. Proven private increments under 1.3.6.1.4.1.1418.6 are voltageLC1/currentLC1 (and optional LC2) scaled by /100 as snmp_pdu_line*_voltage_volts and snmp_pdu_line*_current_amps, plus temperature1/temperature2 as Celsius after dropping the 999 no-probe sentinel. Fahrenheit unit readings are converted to Celsius. Single-line-cord models omit line 2 when voltageLC2 is 0 or absent. CPU, memory, fan and PSU scalars are not invented. Outlet switch tables are not collected in this pass. Supported brands/models - Dataprobe iBoot-PDU devices that expose the iBoot-PDU-Agent sensor scalars and standard IF-MIB.",
   "support_collect_detect": true,
   "status_query": "any({instance_type='network_service', collect_type='snmp_dataprobe'}) by (instance_id)",
+  "instance_fact_bindings": [{"fact":"asset.ip","value_type":"ip","resolver":"input","options":{"field":"ip"}}],
+  "instance_summary_columns": [{"fact":"asset.ip","title":"monitor.views.assetIp","order":10}],
   "name": "NetworkService",
   "icon": "mm-network_service_网络服务",
   "type": "Network Device",

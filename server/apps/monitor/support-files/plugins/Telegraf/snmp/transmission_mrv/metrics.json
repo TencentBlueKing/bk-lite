@@ -5,6 +5,8 @@
   "plugin_desc": "MRV OptiDriver optical transmission SNMP child template for devices under MRV PEN 629 (NBS-CMMC). Interface traffic is supplied by the shared Transmission SNMP IF-MIB floor. Private health comes from nbsCmmcChassisTable: chassis temperature in degrees Celsius (nbsCmmcChassisTemperature, Integer32 with no scaling; unsupported sentinel -2147483648 is skipped), power supply 1-4 status, fan 1-8 status and chassis power sufficiency. CPU and memory are not published as stable shared objects, so they are not collected. Supported brands/models — MRV OptiDriver and NBS optical transmission chassis.",
   "support_collect_detect": true,
   "status_query": "any({instance_type='transmission', collect_type='snmp_mrv'}) by (instance_id)",
+  "instance_fact_bindings": [{"fact":"asset.ip","value_type":"ip","resolver":"input","options":{"field":"ip"}}],
+  "instance_summary_columns": [{"fact":"asset.ip","title":"monitor.views.assetIp","order":10}],
   "name": "Transmission",
   "icon": "mm-mrv_mrv",
   "type": "Network Device",

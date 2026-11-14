@@ -5,6 +5,8 @@
   "plugin_desc": "SNMP monitoring template for AKCP sensorProbe / securityProbe environment monitors (SPAGENT-MIB, enterprise PEN 3854). It reports uptime, temperature and relative humidity sensor readings, sensor status, and interface traffic.",
   "support_collect_detect": true,
   "status_query": "any({instance_type='network_service', collect_type='snmp_akcp'}) by (instance_id)",
+  "instance_fact_bindings": [{"fact":"asset.ip","value_type":"ip","resolver":"input","options":{"field":"ip"}}],
+  "instance_summary_columns": [{"fact":"asset.ip","title":"monitor.views.assetIp","order":10}],
   "name": "NetworkService",
   "icon": "mm-network_service_网络服务",
   "type": "Network Device",

@@ -5,6 +5,8 @@
   "plugin_desc": "SNMP monitoring template for Sangoma Switchvox IP-PBX (enterprise PEN 22736). It reports uptime, CPU utilization and load, memory and swap usage, current calls, and interface traffic.",
   "support_collect_detect": true,
   "status_query": "any({instance_type='voice_gateway', collect_type='snmp_switchvox'}) by (instance_id)",
+  "instance_fact_bindings": [{"fact":"asset.ip","value_type":"ip","resolver":"input","options":{"field":"ip"}}],
+  "instance_summary_columns": [{"fact":"asset.ip","title":"monitor.views.assetIp","order":10}],
   "name": "VoiceGateway",
   "icon": "mm-voice_gateway_语音网关",
   "type": "Network Device",

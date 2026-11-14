@@ -5,6 +5,8 @@
   "plugin_desc": "Liebert and Vertiv PDU and environmental SNMP child template for network-service devices under Liebert Global Products PEN 476.1.42. Interface traffic is supplied by the shared NetworkService SNMP IF-MIB floor rather than a plugin-side ifHC expansion. Proven private increments are lgpEnvTemperatureMeasurementDegC as env_temperature_celsius from the Celsius table (not Fahrenheit), lgpEnvHumidityMeasurementRel as env_humidity_percent, and PDU phase line current as pdu_line_current_amps from lgpPduPsLineEntryEcHundredths scaled by /100 or lgpPduPsLineEntryEc scaled by /10. CPU and memory scalars are not invented. The UPS power tree is not collected in this pass. Supported brands/models - Liebert and Vertiv PDU and environmental monitors that expose LIEBERT-GP-ENVIRONMENTAL and LIEBERT-GP-PDU under PEN 476.1.42 and standard IF-MIB.",
   "support_collect_detect": true,
   "status_query": "any({instance_type='network_service', collect_type='snmp_liebert'}) by (instance_id)",
+  "instance_fact_bindings": [{"fact":"asset.ip","value_type":"ip","resolver":"input","options":{"field":"ip"}}],
+  "instance_summary_columns": [{"fact":"asset.ip","title":"monitor.views.assetIp","order":10}],
   "name": "NetworkService",
   "icon": "mm-network_service_网络服务",
   "type": "Network Device",

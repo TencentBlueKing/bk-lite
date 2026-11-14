@@ -5,6 +5,8 @@
   "plugin_desc": "SNMP monitoring template for Benu Networks vBNG / CGNAT platforms (enterprise PEN 39406, BENU-CHASSIS-MIB). Besides standard IF-MIB interface traffic and uptime, it reports chassis temperature sensors, fan and power-supply state, and per fan-card speed and number of failed fans.",
   "support_collect_detect": true,
   "status_query": "any({instance_type='router', collect_type='snmp_benu'}) by (instance_id)",
+  "instance_fact_bindings": [{"fact":"asset.ip","value_type":"ip","resolver":"input","options":{"field":"ip"}}],
+  "instance_summary_columns": [{"fact":"asset.ip","title":"monitor.views.assetIp","order":10}],
   "name": "Router",
   "icon": "mm-benu_benu",
   "type": "Network Device",

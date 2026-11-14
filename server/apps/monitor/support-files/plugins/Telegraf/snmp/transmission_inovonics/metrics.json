@@ -5,6 +5,8 @@
   "plugin_desc": "SNMP monitoring template for Inovonics FM / RDS monitor receivers Model 640 and 650 (enterprise PEN 42111, INOVONICS-MODEL640/650-MIB). Besides standard IF-MIB interface traffic and uptime, it reports RF signal strength, multipath, ultrasonic noise, left / right audio levels and the audio-loss, low-signal, RDS-error and pilot-loss alarm states.",
   "support_collect_detect": true,
   "status_query": "any({instance_type='transmission', collect_type='snmp_inovonics'}) by (instance_id)",
+  "instance_fact_bindings": [{"fact":"asset.ip","value_type":"ip","resolver":"input","options":{"field":"ip"}}],
+  "instance_summary_columns": [{"fact":"asset.ip","title":"monitor.views.assetIp","order":10}],
   "name": "Transmission",
   "icon": "mm-transmission_传输设备",
   "type": "Network Device",

@@ -5,6 +5,8 @@
   "plugin_desc": "SNMP monitoring template for Spectracom network service device. It reports uptime and interface traffic (enterprise PEN 18837).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='network_service', collect_type='snmp_spectracom'}) by (instance_id)",
+  "instance_fact_bindings": [{"fact":"asset.ip","value_type":"ip","resolver":"input","options":{"field":"ip"}}],
+  "instance_summary_columns": [{"fact":"asset.ip","title":"monitor.views.assetIp","order":10}],
   "name": "NetworkService",
   "icon": "mm-network_service_网络服务",
   "type": "Network Device",

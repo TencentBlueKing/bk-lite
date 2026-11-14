@@ -5,6 +5,8 @@
   "plugin_desc": "SNMP monitoring template for FireEye / Trellix NX/EX/CMS security appliances (enterprise PEN 25597). In addition to standard IF-MIB interface metrics, it collects HOST-RESOURCES processor load and FireEye system health TruthValues for temperature, power supply and fan. Temperature is reported as a health state only; no numeric Celsius reading is exposed.",
   "support_collect_detect": true,
   "status_query": "any({instance_type='firewall', collect_type='snmp_fireeye'}) by (instance_id)",
+  "instance_fact_bindings": [{"fact":"asset.ip","value_type":"ip","resolver":"input","options":{"field":"ip"}}],
+  "instance_summary_columns": [{"fact":"asset.ip","title":"monitor.views.assetIp","order":10}],
   "name": "Firewall",
   "icon": "mm-firewall_防火墙",
   "type": "Network Device",

@@ -5,6 +5,8 @@
   "plugin_desc": "SAF Tehnika microwave transmission SNMP child template (IANA PEN 7571). Select the Integra-B, Integra-W or MPMUX product branch when deploying so only that branch's system objects are polled; the three OID trees must not be mixed. Integra-B / Integra-W report CPU usage (100 minus idle tenths of percent), memory usage (100 minus free tenths of percent), CPU temperature in degrees Celsius after dividing tenths by 10, power supply voltage, current and power converted from mV / mA / mW to V / A / W, and board temperature in degrees Celsius after dividing tenths by 10. MPMUX reports CPU usage directly as a percentage plus IDU / ODU1 / ODU2 temperatures in degrees Celsius; it has no memory object. Interface traffic comes from the shared IF-MIB floor. Fan state is not collected. Supported brands/models - SAF Tehnika Integra-B, Integra-W and MPMUX-based (CFIP / CFM) microwave transmission devices.",
   "support_collect_detect": true,
   "status_query": "any({instance_type='transmission', collect_type='snmp_saftehnika'}) by (instance_id)",
+  "instance_fact_bindings": [{"fact":"asset.ip","value_type":"ip","resolver":"input","options":{"field":"ip"}}],
+  "instance_summary_columns": [{"fact":"asset.ip","title":"monitor.views.assetIp","order":10}],
   "name": "Transmission",
   "icon": "mm-saftehnika_saftehnika",
   "type": "Network Device",

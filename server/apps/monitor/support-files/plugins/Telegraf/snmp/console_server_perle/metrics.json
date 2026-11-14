@@ -5,6 +5,8 @@
   "plugin_desc": "Perle IOLAN console-server SNMP child template for devices under PEN 1966. Interface traffic is supplied by the shared ConsoleServer SNMP IF-MIB floor. Proven private health is chassis internal temperature in degrees Celsius (adminTemperature DisplayString; the leading numeric value is parsed and empty or unparseable samples are skipped). CPU, memory, fan and chassis power-supply health are not published as stable shared objects, so they are not collected. adminPowerStatus is a per-plug power-management string and is not treated as chassis PSU health.",
   "support_collect_detect": true,
   "status_query": "any({instance_type='console_server', collect_type='snmp_perle'}) by (instance_id)",
+  "instance_fact_bindings": [{"fact":"asset.ip","value_type":"ip","resolver":"input","options":{"field":"ip"}}],
+  "instance_summary_columns": [{"fact":"asset.ip","title":"monitor.views.assetIp","order":10}],
   "name": "ConsoleServer",
   "icon": "mm-console_server_控制台服务器",
   "type": "Network Device",

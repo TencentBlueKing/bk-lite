@@ -1,4 +1,5 @@
 import ipaddress
+import re
 from urllib.parse import urlsplit
 
 from apps.core.exceptions.base_app_exception import BaseAppException
@@ -12,6 +13,10 @@ class InstanceFactResolver:
     SUPPORTED_VALUE_TYPES = {"text", "ip", "endpoint", "node_ref", "node_ref_list"}
     SENSITIVE_FIELD_PARTS = ("password", "token", "secret", "private_key", "credential")
     MAX_TEXT_LENGTH = 1000
+    LOCAL_HOSTNAMES = frozenset({"localhost"})
+    JMX_SERVICE_URL_PREFIX = "service:jmx:"
+    # IBM MQ CONNNAME：host(port)
+    CONNNAME_PATTERN = re.compile(r"(?P<host>[^()\s]+)\(\d+\)")
 
     @classmethod
     def validate_bindings(cls, bindings):
@@ -122,6 +127,9 @@ class InstanceFactResolver:
         else:  # pragma: no cover - validate_bindings 已拦截
             raise BaseAppException(f"不支持的实例事实解析器: {resolver}")
         normalized = cls._normalize(raw_value, binding["value_type"])
+        if resolver == "input" and binding["value_type"] == "ip" and cls._targets_collector_node(raw_value, normalized):
+            # 目标填的是回环地址：被监控目标就在采集节点上，取该节点的 IP；节点未知或不唯一时保持原结果。
+            normalized = cls._single_collector_node_ip(context) or normalized
         if skip_required:
             return normalized
         if raw_value in (None, "") and options.get("required") is True:
@@ -168,17 +176,57 @@ class InstanceFactResolver:
             raise BaseAppException("实例事实值超过最大长度")
         if value_type == "ip":
             for candidate in value.split(","):
-                candidate = candidate.strip()
-                try:
-                    return str(ipaddress.ip_address(candidate.strip("[]")))
-                except ValueError:
-                    try:
-                        parsed = urlsplit(candidate if "://" in candidate else f"//{candidate}")
-                        return str(ipaddress.ip_address((parsed.hostname or "").strip("[]")))
-                    except ValueError:
-                        continue
+                resolved = cls._candidate_ip(candidate.strip())
+                if resolved:
+                    return resolved
             return None
         return value
+
+    @classmethod
+    def _candidate_ip(cls, candidate):
+        """从单个地址里取 IP；域名返回 None。"""
+        try:
+            return str(ipaddress.ip_address(cls._candidate_host(candidate)))
+        except ValueError:
+            return None
+
+    @classmethod
+    def _candidate_host(cls, candidate):
+        """从单个地址里取主机部分：裸 IP、host:port、URL、JMX Service URL、MQ CONNNAME。"""
+        host = candidate
+        connname = cls.CONNNAME_PATTERN.fullmatch(candidate)
+        if connname:
+            host = connname.group("host")
+        elif candidate.lower().startswith(cls.JMX_SERVICE_URL_PREFIX) and "://" in candidate:
+            # service:jmx:rmi:///jndi/rmi://host:port/jmxrmi 的目标在最后一段 authority。
+            host = candidate.rsplit("://", 1)[1]
+        bare = host.strip("[]")
+        try:
+            ipaddress.ip_address(bare)
+            return bare
+        except ValueError:
+            pass
+        try:
+            return (urlsplit(host if "://" in host else f"//{host}").hostname or "").strip("[]")
+        except ValueError:
+            return ""
+
+    @classmethod
+    def _targets_collector_node(cls, raw_value, normalized):
+        """接入填的目标是否指向采集节点自身：回环 / 未指定地址，或写成 localhost。"""
+        if normalized:
+            address = ipaddress.ip_address(normalized)
+            return address.is_loopback or address.is_unspecified
+        candidates = str(raw_value or "").split(",")
+        return any(cls._candidate_host(candidate.strip()).lower() in cls.LOCAL_HOSTNAMES for candidate in candidates)
+
+    @classmethod
+    def _single_collector_node_ip(cls, context):
+        nodes = context.get("nodes") or []
+        if len(nodes) != 1:
+            return None
+        node_ip, _ = cls._map_container_node_ip(nodes[0], "ip", nodes[0].get("ip"))
+        return cls._normalize(node_ip, "ip")
 
     @staticmethod
     def _node_ref(node):

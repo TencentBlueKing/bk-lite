@@ -5,6 +5,8 @@
   "plugin_desc": "SNMP monitoring template for Ericsson IPOS routers (Router 6000 / SSR 8000, enterprise PEN 193.218). It reports uptime, CPU utilization, per-module memory, entity temperature, fan and power supply state, and interface traffic. MINI-LINK microwave devices (PEN 193.223) are covered by the transmission Ericsson template instead.",
   "support_collect_detect": true,
   "status_query": "any({instance_type='router', collect_type='snmp_ericsson_router'}) by (instance_id)",
+  "instance_fact_bindings": [{"fact":"asset.ip","value_type":"ip","resolver":"input","options":{"field":"ip"}}],
+  "instance_summary_columns": [{"fact":"asset.ip","title":"monitor.views.assetIp","order":10}],
   "name": "Router",
   "icon": "mm-ericsson_ericsson",
   "type": "Network Device",

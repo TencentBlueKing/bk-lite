@@ -5,6 +5,8 @@
   "plugin_desc": "SNMP monitoring template for BKTel HFC862 cable/HFC network elements with NECE modules (enterprise PEN 7501). It reports uptime, left/right power supply and fan status per slot, and interface traffic.",
   "support_collect_detect": true,
   "status_query": "any({instance_type='transmission', collect_type='snmp_bktel_hfc'}) by (instance_id)",
+  "instance_fact_bindings": [{"fact":"asset.ip","value_type":"ip","resolver":"input","options":{"field":"ip"}}],
+  "instance_summary_columns": [{"fact":"asset.ip","title":"monitor.views.assetIp","order":10}],
   "name": "Transmission",
   "icon": "mm-transmission_传输设备",
   "type": "Network Device",

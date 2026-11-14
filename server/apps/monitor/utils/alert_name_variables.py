@@ -1,3 +1,4 @@
+import ipaddress
 import re
 
 from apps.core.exceptions.base_app_exception import BaseAppException
@@ -53,6 +54,22 @@ def resolve_resource_ip(summary_facts, ip) -> str:
     if ip not in (None, ""):
         return str(ip).strip()
     return ""
+
+
+def summary_facts_with_model_ip(summary_facts, ip):
+    """实例列表展示用：摘要事实缺 asset.ip 时回落模型 ip，与筛选、搜索、告警变量同源。
+
+    只生成响应用的副本，不落库、不改入参；Flow 资产与声明事实绑定之前接入的存量实例靠它显示 IP。
+    """
+    facts = summary_facts if isinstance(summary_facts, dict) else {}
+    if facts.get(ASSET_IP_FACT) not in (None, ""):
+        return summary_facts
+    try:
+        # 非 PostgreSQL 引擎的 ip 列不校验格式；不是 IP 的值不展示，也不挡住后续的容器节点映射回填。
+        model_ip = str(ipaddress.ip_address(str(ip or "").strip()))
+    except ValueError:
+        return summary_facts
+    return {**facts, ASSET_IP_FACT: model_ip}
 
 
 _NOTIFICATION_FACT_PART = re.compile(r"^[A-Za-z][A-Za-z0-9_]*$")

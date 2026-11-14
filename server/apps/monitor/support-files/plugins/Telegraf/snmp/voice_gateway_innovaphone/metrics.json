@@ -5,6 +5,8 @@
   "plugin_desc": "Innovaphone voice gateway and SBC SNMP child template for devices under PEN 6666. Interface traffic is supplied by the shared VoiceGateway SNMP IF-MIB floor. Proven private telemetry is ISDN l3Table B-channel occupancy (active B-channel gauge, plus configured B channels and calls since boot). CPU, memory, temperature, fan and power-supply health are not published as stable shared objects, so they are not collected. ISDN L2 link state is signalling state and is not treated as host health.",
   "support_collect_detect": true,
   "status_query": "any({instance_type='voice_gateway', collect_type='snmp_innovaphone'}) by (instance_id)",
+  "instance_fact_bindings": [{"fact":"asset.ip","value_type":"ip","resolver":"input","options":{"field":"ip"}}],
+  "instance_summary_columns": [{"fact":"asset.ip","title":"monitor.views.assetIp","order":10}],
   "name": "VoiceGateway",
   "icon": "mm-innovaphone_innovaphone",
   "type": "Network Device",
