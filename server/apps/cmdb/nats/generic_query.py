@@ -10,6 +10,7 @@ from apps.cmdb.services.generic_query import (
     ensure_payload_limit,
     one_hop_query_plan,
     query_instances,
+    query_model_counts,
     query_models,
     query_one_hop_relations,
 )
@@ -18,7 +19,7 @@ from apps.cmdb.services.model import ModelManage
 from apps.core.logger import cmdb_logger as logger
 
 
-def _ok(data: dict) -> dict:
+def _ok(data) -> dict:
     ensure_payload_limit(data)
     return {"result": True, "data": data, "message": ""}
 
@@ -164,10 +165,25 @@ def _attr_types(model_id: str, user_info) -> dict[str, str]:
     return _attr_types_from(_load_model_attrs(model_id, user_info))
 
 
+def _reject_retired_model_args(kwargs) -> None:
+    if kwargs.get("analysis_mode") not in (None, ""):
+        raise GenericQueryError("模型查询已拆成列表和数量两个接口")
+
+
+def _model_query_scope(user_info, classification_id, model_id, model_ids):
+    models, instance_permissions, names = _visible_models(user_info)
+    if classification_id and str(classification_id) not in names:
+        raise GenericQueryError("指定分类不存在或无权访问", status="forbidden")
+    selected = _text_list(model_ids)
+    if model_id not in (None, ""):
+        selected.append(str(model_id))
+    counts = count_by_attr("model_id", [], instance_permissions)
+    return models, counts, str(classification_id or ""), selected
+
+
 @nats_client.register
 @_guard("query_cmdb_models")
 def query_cmdb_models(
-    analysis_mode=None,
     classification_id=None,
     model_id=None,
     model_ids=None,
@@ -176,25 +192,44 @@ def query_cmdb_models(
     user_info=None,
     **kwargs,
 ):
-    """CMDB 模型查询。kwargs 接收运营分析透传的未知参数，不因此报错。"""
+    """CMDB 模型列表。kwargs 接收运营分析透传的未知参数，不因此报错。"""
+    _reject_retired_model_args(kwargs)
     del kwargs
-    models, instance_permissions, names = _visible_models(user_info)
-    if classification_id and str(classification_id) not in names:
-        raise GenericQueryError("指定分类不存在或无权访问", status="forbidden")
-    selected = _text_list(model_ids)
-    if model_id not in (None, ""):
-        selected.append(str(model_id))
-    counts = count_by_attr("model_id", [], instance_permissions)
+    models, counts, classification, selected = _model_query_scope(user_info, classification_id, model_id, model_ids)
     data = query_models(
         models=models,
         instance_counts=counts,
-        analysis_mode=analysis_mode,
-        classification_id=str(classification_id or ""),
+        classification_id=classification,
         model_ids=selected,
         page=page,
         page_size=page_size,
     )
     return _ok(data)
+
+
+@nats_client.register
+@_guard("query_cmdb_model_counts")
+def query_cmdb_model_counts(
+    classification_id=None,
+    model_id=None,
+    model_ids=None,
+    user_info=None,
+    **kwargs,
+):
+    """CMDB 模型数量。固定返回一行，不接受分页。"""
+    _reject_retired_model_args(kwargs)
+    if kwargs.get("page") not in (None, "") or kwargs.get("page_size") not in (None, ""):
+        raise GenericQueryError("计数不支持分页")
+    del kwargs
+    models, counts, classification, selected = _model_query_scope(user_info, classification_id, model_id, model_ids)
+    return _ok(
+        query_model_counts(
+            models=models,
+            instance_counts=counts,
+            classification_id=classification,
+            model_ids=selected,
+        )
+    )
 
 
 def _fill_unset_model_attrs(items, attrs: list) -> None:

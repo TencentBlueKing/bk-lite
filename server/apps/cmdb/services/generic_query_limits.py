@@ -6,6 +6,9 @@
 # 明细每页最多 100 条。
 DETAIL_PAGE_SIZE_MAX = 100
 
+# 不分页的模型列表最多 500 条，超出直接失败。
+MODEL_LIST_MAX = 500
+
 # 分布、聚合等统计分组最多 500 组。
 STAT_GROUP_MAX = 500
 

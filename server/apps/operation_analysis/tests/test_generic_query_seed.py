@@ -21,11 +21,14 @@ def _sources():
         and item["rest_api"]
         in {
             "cmdb/query_cmdb_models",
+            "cmdb/query_cmdb_model_counts",
             "cmdb/query_cmdb_instances",
             "cmdb/query_cmdb_one_hop",
             "monitor/query_monitor_instances",
             "monitor/query_monitor_metric",
             "monitor/query_monitor_alerts",
+            "monitor/query_monitor_alert_counts",
+            "monitor/query_monitor_alert_distribution",
             "alert/query_alert_center",
         }
     }
@@ -43,23 +46,43 @@ def test_generic_query_seed_declares_analysis_modes_and_paging_defaults():
     sources = _sources()
     assert set(sources) == {
         "cmdb/query_cmdb_models",
+        "cmdb/query_cmdb_model_counts",
         "cmdb/query_cmdb_instances",
         "cmdb/query_cmdb_one_hop",
         "monitor/query_monitor_instances",
         "monitor/query_monitor_metric",
         "monitor/query_monitor_alerts",
+        "monitor/query_monitor_alert_counts",
+        "monitor/query_monitor_alert_distribution",
         "alert/query_alert_center",
+    }
+    row_queries = {
+        "cmdb/query_cmdb_models",
+        "cmdb/query_cmdb_model_counts",
+        "monitor/query_monitor_instances",
+        "monitor/query_monitor_metric",
+        "monitor/query_monitor_alerts",
+        "monitor/query_monitor_alert_counts",
+        "monitor/query_monitor_alert_distribution",
     }
     for source in sources.values():
         visible = [param["name"] for param in source["params"] if not param.get("hidden") and param.get("filterType") != "filter"]
-        assert visible[0] == "analysis_mode"
-        mode = _param(source, "analysis_mode")
-        assert mode["value"] == ""
-        assert "componentSwitch" not in mode.get("inputConfig", {})
-        options = mode["inputConfig"]["optionsSource"]["staticItems"]
-        assert [item["value"] for item in options]
+        if source["rest_api"] in row_queries:
+            assert "analysis_mode" not in visible
+        else:
+            assert visible[0] == "analysis_mode"
+            mode = _param(source, "analysis_mode")
+            assert mode["value"] == ""
+            assert "componentSwitch" not in mode.get("inputConfig", {})
+            options = mode["inputConfig"]["optionsSource"]["staticItems"]
+            assert [item["value"] for item in options]
         has_page = any(param["name"] == "page" for param in source["params"])
-        if source["rest_api"] == "monitor/query_monitor_metric":
+        if source["rest_api"] in {
+            "monitor/query_monitor_metric",
+            "monitor/query_monitor_alert_counts",
+            "monitor/query_monitor_alert_distribution",
+            "cmdb/query_cmdb_model_counts",
+        }:
             assert has_page is False
         else:
             assert has_page is True
@@ -109,28 +132,25 @@ def test_generic_query_seed_uses_chart_driven_filters_and_order():
     model = _param(models, "model_id")
     assert model["inputConfig"]["optionsSource"]["queryParams"]["classification_id"] == {"ref": "classification_id"}
     assert model["inputConfig"]["optionsSource"]["emptyUpstreamHintKey"] == "dashboard.selectClassificationFirst"
+    instances = sources["monitor/query_monitor_instances"]
+    instance_names = {param["name"] for param in instances["params"]}
+    assert "analysis_mode" not in instance_names
+    assert instances["chart_type"] == ["table"]
+    assert "group_by" not in instance_names
+    assert "filters" not in instance_names
+    assert "order" not in instance_names
+    assert _param(instances, "order_by")["type"] == "string"
+    assert _param(instances, "order_dir")["value"] == ""
     for rest_api in (
-        "cmdb/query_cmdb_models",
         "cmdb/query_cmdb_instances",
         "cmdb/query_cmdb_one_hop",
-        "monitor/query_monitor_instances",
-        "monitor/query_monitor_alerts",
         "alert/query_alert_center",
     ):
         source = sources[rest_api]
         modes = [item["value"] for item in _param(source, "analysis_mode")["inputConfig"]["optionsSource"]["staticItems"]]
-        if rest_api == "monitor/query_monitor_instances":
-            assert modes == ["detail"]
-            assert source["chart_type"] == ["table"]
-            names = {param["name"] for param in source["params"]}
-            assert "group_by" not in names
-            assert "filters" not in names
-            assert "order" not in names
-            assert _param(source, "order_by")["type"] == "string"
-            assert _param(source, "order_dir")["value"] == ""
-            continue
+        assert modes
         names = [param["name"] for param in source["params"]]
-        if rest_api in {"cmdb/query_cmdb_models", "cmdb/query_cmdb_one_hop"}:
+        if rest_api == "cmdb/query_cmdb_one_hop":
             assert "order" not in names
             assert "order_by" not in names
         else:
@@ -142,17 +162,29 @@ def test_generic_query_seed_uses_chart_driven_filters_and_order():
             assert _param(source, "order_by").get("required") is not True
             assert _param(source, "order_dir").get("required") is not True
     model_names = [param["name"] for param in models["params"]]
+    assert "analysis_mode" not in model_names
     assert "result_filter" not in model_names
     assert "result_op" not in model_names
     assert "count_metric" not in model_names
     assert "top_n" not in model_names
     group_by = _param(sources["cmdb/query_cmdb_instances"], "group_by")
     assert group_by["alias_name"] == "分布属性"
-    for rest_api in (
-        "monitor/query_monitor_alerts",
-        "alert/query_alert_center",
-    ):
-        assert _param(sources[rest_api], "group_by")["value"] == ""
+    assert _param(sources["alert/query_alert_center"], "group_by")["value"] == ""
+    alerts = sources["monitor/query_monitor_alerts"]
+    counts = sources["monitor/query_monitor_alert_counts"]
+    for source in (alerts, counts):
+        names = {param["name"] for param in source["params"]}
+        assert "analysis_mode" not in names
+        assert "group_by" not in names
+    assert _param(alerts, "time_range")["filterType"] == "params"
+    assert _param(counts, "time_range")["filterType"] == "params"
+    assert _param(alerts, "time_field")["filterType"] == "params"
+    assert _param(alerts, "order_by")["type"] == "string"
+    assert _param(alerts, "order_by")["value"] == ""
+    assert _param(alerts, "order_dir")["value"] == ""
+    count_names = {param["name"] for param in counts["params"]}
+    assert "order_by" not in count_names
+    assert "page" not in count_names
     assert "每种取值" in group_by["desc"]
     instance_fields = _param(sources["cmdb/query_cmdb_instances"], "filters")["inputConfig"]["fields"]
     assert instance_fields["kind"] == "dynamic"
@@ -178,12 +210,18 @@ def test_generic_query_seed_uses_chart_driven_filters_and_order():
     assert metric_filters["inputConfig"]["fields"]["queryParams"]["metric_id"] == {"ref": "metric_id"}
     assert metric_filters["inputConfig"]["fields"]["sourceRef"]["value"] == "monitor/list_metric_dimensions"
     assert "dimension_label" not in {param["name"] for param in metric["params"]}
-    assert metric["chart_type"] == ["line", "table"]
-    series_values = [item["value"] for item in _param(metric, "analysis_mode")["inputConfig"]["optionsSource"]["staticItems"]]
-    assert "series" in series_values
+    assert "analysis_mode" not in {param["name"] for param in metric["params"]}
+    assert metric["chart_type"] == ["line", "bar", "table"]
     aggregation = _param(metric, "aggregation")
+    assert aggregation["alias_name"] == "实例合并"
     assert aggregation["required"] is False
     assert aggregation["value"] == ""
+    assert _option_values(aggregation) == {"avg", "sum", "max", "min"}
+    step = _param(metric, "step")
+    assert step["required"] is False
+    assert step["value"] == ""
+    instance_picker = _param(metric, "instance_ids")["inputConfig"]["optionsSource"]["queryParams"]
+    assert "analysis_mode" not in instance_picker
     assert _param(metric, "metric_id")["inputConfig"]["optionsSource"]["labelField"] == "option_label"
     assert _param(metric, "metric_id")["inputConfig"]["optionsSource"]["queryParams"] == {"monitor_obj_id": {"ref": "monitor_object_id"}}
     visible = [item["name"] for item in metric["params"] if not item.get("hidden")]
@@ -191,8 +229,20 @@ def test_generic_query_seed_uses_chart_driven_filters_and_order():
     metric_fields = {field["key"]: field for field in metric["field_schema"]}
     assert "status" not in metric_fields
     assert "dimension" not in metric_fields
-    assert "time" in metric_fields
-    assert "instance_id" in metric_fields
+    assert "aggregation" not in metric_fields
+    assert metric_fields["time"]["value_type"] == "datetime"
+    assert metric_fields["value"]["value_type"] == "number"
+    assert "chart_role" not in metric_fields["time"]
+    assert "chart_role" not in metric_fields["value"]
+    assert "chart_role" not in metric_fields["series"]
+    assert [field["key"] for field in metric["field_schema"]] == [
+        "series",
+        "instance_id",
+        "instance_name",
+        "time",
+        "value",
+        "unit",
+    ]
 
 
 def test_instance_and_one_hop_classification_is_single_select_and_declared():
@@ -264,31 +314,37 @@ def test_model_query_schema_matches_detail_rows_without_touching_other_status():
         "model_name",
         "model_id",
         "instance_count",
-        "model_count",
     ]
-    assert "table" not in models["field_schema"][4]
-    assert "各模型权限内实例数" in models["desc"]
-    assert "页码不参与" in models["desc"]
+    assert "chart_role" not in models["field_schema"][1]
+    assert "chart_role" not in models["field_schema"][3]
+    assert "chart_role" not in sources["cmdb/query_cmdb_model_counts"]["field_schema"][0]
+    assert "不填页码" in models["desc"]
+    assert "零实例" in models["desc"]
     assert "每页 10" not in models["desc"]
-    assert _param(models, "page_size")["alias_name"] == "每页条数/返回条数"
+    assert _param(models, "page_size")["alias_name"] == "每页条数"
     for rest_api in (
         "cmdb/query_cmdb_instances",
         "cmdb/query_cmdb_one_hop",
-        "monitor/query_monitor_instances",
-        "monitor/query_monitor_alerts",
         "alert/query_alert_center",
     ):
         assert _param(sources[rest_api], "page_size")["alias_name"] == "每页条数/返回条数"
+    assert _param(sources["monitor/query_monitor_alerts"], "page_size")["alias_name"] == "每页条数"
+    assert _param(sources["monitor/query_monitor_instances"], "page_size")["alias_name"] == "每页条数"
+    assert "不填页码" in sources["monitor/query_monitor_instances"]["desc"]
     assert "分类汇总" not in models["desc"]
-    assert "模型数量" in models["desc"]
     assert "实例总数" not in models["desc"]
     assert "空模型" not in models["desc"]
     assert "非空" not in models["desc"]
     assert "TOP5" not in models["desc"]
-    assert _param(models, "analysis_mode")["value"] == ""
     assert _param(models, "page")["value"] is None
     assert _param(models, "page_size")["value"] is None
-    assert models["chart_type"] == ["table", "topN", "single", "bar", "pie"]
+    assert models["chart_type"] == ["table", "bar", "pie", "topN"]
+    model_counts = sources["cmdb/query_cmdb_model_counts"]
+    assert model_counts["chart_type"] == ["single"]
+    assert [field["key"] for field in model_counts["field_schema"]] == ["model_count"]
+    assert "不支持分页" in model_counts["desc"]
+    assert "page" not in {param["name"] for param in model_counts["params"]}
+    assert "analysis_mode" not in {param["name"] for param in model_counts["params"]}
     assert models["rest_api"] == "cmdb/query_cmdb_models"
     for rest_api, source in sources.items():
         names = [param["name"] for param in source["params"]]
@@ -318,8 +374,7 @@ def test_model_query_schema_matches_detail_rows_without_touching_other_status():
     assert _param(alerts, "level")["inputConfig"]["multiple"] is True
     assert _param(alerts, "instance_ids")["inputConfig"]["optionsSource"]["queryParams"]["monitor_object_id"] == {"ref": "monitor_object_id"}
     assert "updated_at" not in _option_values(_param(alerts, "time_field"))
-    assert "monitor_object_id" in _option_values(_param(alerts, "group_by"))
-    assert "不选分组会失败" in _param(alerts, "group_by")["desc"]
+    assert "group_by" not in alert_names
     value_field = next(field for field in alerts["field_schema"] if field["key"] == "value")
     assert value_field["title"] == "告警值"
     content = next(field for field in alerts["field_schema"] if field["key"] == "content")
@@ -382,14 +437,28 @@ def test_model_query_schema_matches_detail_rows_without_touching_other_status():
         "monitor/query_monitor_instances",
         "monitor/query_monitor_metric",
         "monitor/query_monitor_alerts",
+        "monitor/query_monitor_alert_counts",
+        "monitor/query_monitor_alert_distribution",
     ):
         options = _param(sources[rest_api], "monitor_object_id")["inputConfig"]["optionsSource"]
         assert options["valueField"] == "id"
         assert options["labelField"] == "display_name"
     assert "value" in field_keys(alerts)
     assert "id" in field_keys(alerts)
-    assert "alert_count" in field_keys(alerts)
+    assert "alert_count" not in field_keys(alerts)
     assert "name" not in field_keys(alerts)
+    counts = sources["monitor/query_monitor_alert_counts"]
+    assert field_keys(counts) == ["alert_count"]
+    assert counts["chart_type"] == ["single"]
+    assert alerts["chart_type"] == ["table"]
+    distribution = sources["monitor/query_monitor_alert_distribution"]
+    assert distribution["chart_type"] == ["pie", "bar"]
+    assert field_keys(distribution) == ["group_value", "alert_count"]
+    assert _param(distribution, "group_by")["required"] is True
+    assert _option_values(_param(distribution, "group_by")) == {"level", "monitor_object_id", "alert_type"}
+    assert "status" not in _option_values(_param(distribution, "group_by"))
+    assert "analysis_mode" not in {param["name"] for param in distribution["params"]}
+    assert "page" not in {param["name"] for param in distribution["params"]}
     assert "status" in field_keys(center)
     assert "record_count" in field_keys(center)
     assert "unit" not in field_keys(center)
@@ -399,9 +468,8 @@ def test_model_query_schema_matches_detail_rows_without_touching_other_status():
         "model_name",
         "model_id",
         "instance_count",
-        "model_count",
     ]
-    assert "table" not in models["field_schema"][4]
+    assert "model_count" not in {field["key"] for field in models["field_schema"]}
 
 
 def test_model_query_resolver_keeps_explicit_values_and_skips_hidden_defaults():
@@ -409,17 +477,17 @@ def test_model_query_resolver_keeps_explicit_values_and_skips_hidden_defaults():
 
     models = _sources()["cmdb/query_cmdb_models"]
     instance = SimpleNamespace(rest_api="cmdb/query_cmdb_models", params=models["params"])
-    distribution = _resolve_request_params(
+    narrowed = _resolve_request_params(
         instance,
-        {"analysis_mode": "distribution", "classification_id": "compute"},
+        {"classification_id": "compute"},
     )
     explicit = _resolve_request_params(
         instance,
-        {"analysis_mode": "distribution", "page": 2, "page_size": 20},
+        {"page": 2, "page_size": 20},
     )
     cleared = _resolve_request_params(
         instance,
-        {"analysis_mode": "count", "page": None, "page_size": ""},
+        {"page": None, "page_size": ""},
     )
     refilled = SimpleNamespace(
         rest_api="cmdb/query_cmdb_models",
@@ -430,7 +498,8 @@ def test_model_query_resolver_keeps_explicit_values_and_skips_hidden_defaults():
         ],
     )
     omitted = _resolve_request_params(refilled, {"analysis_mode": "count", "page": None, "page_size": ""})
-    detail = _resolve_request_params(instance, {"analysis_mode": "detail"})
+    with pytest.raises(ValueError, match="未声明参数"):
+        _resolve_request_params(instance, {"analysis_mode": "detail"})
     legacy = SimpleNamespace(
         rest_api="legacy/query",
         params=[
@@ -440,15 +509,14 @@ def test_model_query_resolver_keeps_explicit_values_and_skips_hidden_defaults():
     )
     kept = _resolve_request_params(legacy, {})
 
-    assert "page" not in distribution
-    assert "page_size" not in distribution
+    assert narrowed["classification_id"] == "compute"
+    assert "page" not in narrowed
+    assert "page_size" not in narrowed
     assert explicit["page"] == 2
     assert explicit["page_size"] == 20
     assert cleared["page"] is None
     assert cleared["page_size"] == ""
     assert omitted == {"analysis_mode": "count", "page": None, "page_size": ""}
-    assert "page" not in detail
-    assert "page_size" not in detail
     assert kept == {"page": 2, "page_size": 15}
     passed = _resolve_request_params(legacy, {"page": None, "page_size": ""})
     assert passed["page"] is None

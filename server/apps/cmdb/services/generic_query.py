@@ -9,12 +9,11 @@ from apps.cmdb.display_field.constants import DISPLAY_FIELD_TYPES, DISPLAY_SUFFI
 from apps.cmdb.graph.validators import CQLValidator
 from apps.cmdb.services.generic_query_columns import public_instance, sensitive_hidden_keys
 from apps.cmdb.services.generic_query_graph import GenericQueryGraphError, aggregate_numeric, count_by_attr
-from apps.cmdb.services.generic_query_limits import DETAIL_PAGE_SIZE_MAX, NATS_MESSAGE_MAX_BYTES, SCAN_INSTANCE_MAX, STAT_GROUP_MAX
+from apps.cmdb.services.generic_query_limits import DETAIL_PAGE_SIZE_MAX, MODEL_LIST_MAX, NATS_MESSAGE_MAX_BYTES, SCAN_INSTANCE_MAX, STAT_GROUP_MAX
 from apps.cmdb.services.instance import InstanceManage
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.utils.condition_group import ConditionGroupError, parse_condition_group
 
-MODEL_MODES = ("detail", "count", "distribution")
 INSTANCE_MODES = ("detail", "count", "distribution", "aggregate")
 ONE_HOP_MODES = ("detail", "count", "distribution")
 _FILTER_TYPES = {
@@ -64,61 +63,22 @@ def query_models(
     *,
     models: list[dict],
     instance_counts: dict,
-    analysis_mode: str,
     classification_id: str | None = None,
     model_ids: list[str] | None = None,
     page=None,
     page_size=None,
-) -> dict:
-    """模型查询。分类和模型只缩小范围，零实例模型保留。
+):
+    """模型列表。分类和模型只缩小范围，零实例模型保留。
 
-    单值固定为范围内模型数量。分布先统计全部可见模型的实例数，
-    按实例数从高到低、模型标识升序稳定排序。分布不接受页码。
-    未传每页条数时返回全部；传入时只取排序后的前若干条。计数不接受非空分页。
-    明细两个都空时返回全部模型，结果不带页码。只填页码或每页条数之一则失败。
+    按分类、名称、标识排序。页码和每页条数都空时返回数组；两个都填则分页。
+    只填一边失败。不分页超过上限直接失败。
     """
-    mode = _mode(analysis_mode, MODEL_MODES)
-    if mode == "distribution" and page not in (None, ""):
-        raise GenericQueryError("当前分析方式不支持页码")
-    if mode == "count" and (page not in (None, "") or page_size not in (None, "")):
-        raise GenericQueryError("当前分析方式不支持分页")
-    rows = [_model_row(item, instance_counts) for item in models]
-    if classification_id:
-        rows = [row for row in rows if row["classification_id"] == classification_id]
-    if model_ids:
-        selected = set(model_ids)
-        found = {row["model_id"] for row in rows}
-        missing = [item for item in model_ids if item not in found]
-        if missing:
-            raise GenericQueryError("指定模型不存在或无权访问", status="forbidden")
-        rows = [row for row in rows if row["model_id"] in selected]
-    scanned = sum(int(row["instance_count"]) for row in rows)
-    if mode != "detail":
-        _ensure_scan(scanned)
-    if mode == "count":
-        return _value_payload(len(rows), field="model_count")
-    if mode == "distribution":
-        # 分类和模型只缩小范围。每个可见模型一项，不再按分类把实例数加总。
-        # 先完成全部统计和排序，再截取当前页。重名保留原始模型名称，身份看 model_id。
-        items = _model_distribution_items(rows)
-        _ensure_groups(len(items))
-        items.sort(key=lambda item: (-int(item.get("instance_count") or 0), str(item.get("model_id") or "")))
-        limit = _distribution_return_limit(page_size)
-        page_items = items if limit is None else items[:limit]
-        return {
-            "items": page_items,
-        }
-    rows.sort(
-        key=lambda item: (
-            str(item.get("classification_name") or ""),
-            str(item.get("model_name") or ""),
-            str(item.get("model_id") or ""),
-        )
-    )
-    public = [_public_model_detail(row) for row in rows]
+    public = _public_model_rows(models, instance_counts, classification_id, model_ids)
     window = _model_page(page, page_size)
     if window is None:
-        return {"items": public, "count": len(public)}
+        if len(public) > MODEL_LIST_MAX:
+            raise GenericQueryError(f"模型超过 {MODEL_LIST_MAX} 条，请缩小范围或填写分页")
+        return public
     page_no, size = window
     start = (page_no - 1) * size
     return {
@@ -127,6 +87,19 @@ def query_models(
         "page": page_no,
         "page_size": size,
     }
+
+
+def query_model_counts(
+    *,
+    models: list[dict],
+    instance_counts: dict,
+    classification_id: str | None = None,
+    model_ids: list[str] | None = None,
+) -> list[dict]:
+    """范围内的模型数量，含零实例模型。固定一行。"""
+    rows = _select_model_rows(models, instance_counts, classification_id, model_ids)
+    _ensure_scan(sum(int(row["instance_count"]) for row in rows))
+    return [{"model_count": len(rows)}]
 
 
 def query_instances(
@@ -380,7 +353,7 @@ def _model_row(model: dict, counts: dict) -> dict:
 
 
 def _public_model_detail(row: dict) -> dict:
-    """明细只返回模型定义上的四列。分布使用同一组业务键，不另造 name/value。"""
+    """一行一个模型，列固定为分类、名称、标识和实例数。"""
     return {
         "classification_name": row.get("classification_name") or "",
         "model_name": row.get("model_name") or "",
@@ -389,8 +362,29 @@ def _public_model_detail(row: dict) -> dict:
     }
 
 
-def _model_distribution_items(rows: list[dict]) -> list[dict]:
-    return [_public_model_detail(row) for row in rows]
+def _select_model_rows(models, instance_counts, classification_id, model_ids) -> list[dict]:
+    rows = [_model_row(item, instance_counts) for item in models]
+    if classification_id:
+        rows = [row for row in rows if row["classification_id"] == classification_id]
+    if model_ids:
+        selected = set(model_ids)
+        found = {row["model_id"] for row in rows}
+        missing = [item for item in model_ids if item not in found]
+        if missing:
+            raise GenericQueryError("指定模型不存在或无权访问", status="forbidden")
+        rows = [row for row in rows if row["model_id"] in selected]
+    rows.sort(
+        key=lambda item: (
+            str(item.get("classification_name") or ""),
+            str(item.get("model_name") or ""),
+            str(item.get("model_id") or ""),
+        )
+    )
+    return rows
+
+
+def _public_model_rows(models, instance_counts, classification_id, model_ids) -> list[dict]:
+    return [_public_model_detail(row) for row in _select_model_rows(models, instance_counts, classification_id, model_ids)]
 
 
 def _bucket_value(key):

@@ -3,6 +3,12 @@
 # 明细每页最多 100 条。
 DETAIL_PAGE_SIZE_MAX = 100
 
+# 不分页的告警明细最多 500 条，超出直接失败。
+ALERT_DETAIL_MAX = 500
+
+# 不分页的监控实例列表最多 500 条，超出直接失败。
+INSTANCE_LIST_MAX = 500
+
 # 统计分组最多 500 组。
 STAT_GROUP_MAX = 500
 

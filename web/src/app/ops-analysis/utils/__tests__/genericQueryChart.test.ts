@@ -96,6 +96,20 @@ test('model count and instance total zeros stay visible instead of an empty stat
   assert.equal(ChartDataTransformer.isStructurallyEmpty(missing), false);
 });
 
+test('single value reads the first row inside an items envelope', () => {
+  assert.equal(extractComparableValue({
+    items: [
+      { series: 'ping', time: '2026-01-01T00:00:00Z', value: 2, unit: '%' },
+      { series: 'ping', time: '2026-01-01T00:01:00Z', value: 4, unit: '%' },
+    ],
+    count: 2,
+  }, 'value'), 2);
+  assert.equal(extractComparableValue({
+    items: [{ time: '2026-01-01T00:00:00Z', value: null }],
+    count: 1,
+  }, 'value'), null);
+});
+
 test('single value reads the value envelope and keeps zero distinct from empty', () => {
   assert.equal(extractComparableValue({
     structure: 'value',

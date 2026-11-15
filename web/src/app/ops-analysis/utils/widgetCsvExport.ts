@@ -223,11 +223,14 @@ export const buildLineBarCsvTable = (
   labels: WidgetCsvLabels,
   schema?: ResponseFieldDefinition[],
 ): CsvTable => {
-  const chart = ChartDataTransformer.transformToLineBarData(
+  const mapping = toLineBarFieldMapping(config, schema);
+  const chart = ChartDataTransformer.transformToLineBarData(rawData, mapping);
+  const dimensionLabel = lineDimensionHeader(
     rawData,
-    toLineBarFieldMapping(config, schema),
+    { ...config, dimensionField: mapping.dimensionField },
+    labels,
+    schema,
   );
-  const dimensionLabel = lineDimensionHeader(rawData, config, labels, schema);
   if (chart.series?.length) {
     return {
       headers: [

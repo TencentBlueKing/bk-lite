@@ -4,8 +4,8 @@ import re
 
 import pytest
 
-from apps.cmdb.services.generic_query import GenericQueryError, query_instances, query_models, query_one_hop_relations
-from apps.cmdb.services.generic_query_limits import DETAIL_PAGE_SIZE_MAX, SCAN_INSTANCE_MAX, STAT_GROUP_MAX
+from apps.cmdb.services.generic_query import GenericQueryError, query_instances, query_model_counts, query_models, query_one_hop_relations
+from apps.cmdb.services.generic_query_limits import DETAIL_PAGE_SIZE_MAX, MODEL_LIST_MAX, SCAN_INSTANCE_MAX, STAT_GROUP_MAX
 
 
 def _model(model_id, name, classification_id, classification_name):
@@ -20,14 +20,13 @@ def _model(model_id, name, classification_id, classification_name):
 DETAIL_COLUMNS = ("classification_name", "model_name", "model_id", "instance_count")
 
 
-def test_model_detail_returns_only_definition_columns():
+def test_model_list_returns_only_definition_columns():
     payload = query_models(
         models=[
             _model("host", "主机", "compute", "计算"),
             _model("room", "机房", "space", "空间"),
         ],
         instance_counts={"host": 5},
-        analysis_mode="detail",
         model_ids=["host"],
         page=1,
         page_size=20,
@@ -35,7 +34,6 @@ def test_model_detail_returns_only_definition_columns():
     empty = query_models(
         models=[_model("host", "主机", "compute", "计算")],
         instance_counts={"host": 1},
-        analysis_mode="detail",
         classification_id="space",
     )
 
@@ -46,15 +44,12 @@ def test_model_detail_returns_only_definition_columns():
         "model_id": "host",
         "instance_count": 5,
     }
-    assert "structure" not in empty
-    assert "status" not in empty
-    assert empty["items"] == []
-    assert empty["count"] == 0
+    assert empty == []
     for row in payload["items"]:
         assert set(row) == set(DETAIL_COLUMNS)
 
 
-def test_model_detail_keeps_zero_instance_models_and_top_sort():
+def test_model_list_keeps_zero_instance_models():
     rows = query_models(
         models=[
             _model("host", "主机", "compute", "计算"),
@@ -62,12 +57,10 @@ def test_model_detail_keeps_zero_instance_models_and_top_sort():
             _model("room", "机房", "space", "空间"),
         ],
         instance_counts={"host": 5, "room": 0},
-        analysis_mode="detail",
         page=1,
         page_size=2,
     )
 
-    assert "status" not in rows
     assert rows["count"] == 3
     assert [item["model_id"] for item in rows["items"]] == ["room", "host"]
     assert rows["items"][0]["instance_count"] == 0
@@ -79,204 +72,41 @@ def test_model_count_is_the_number_of_models_in_scope():
         _model("net", "网络", "compute", "计算"),
     ]
     counts = {"host": 2, "net": 0}
-    counted = query_models(models=models, instance_counts=counts, analysis_mode="count")
-    narrowed = query_models(
-        models=models,
-        instance_counts=counts,
-        analysis_mode="count",
-        model_ids=["net"],
-    )
+    counted = query_model_counts(models=models, instance_counts=counts)
+    narrowed = query_model_counts(models=models, instance_counts=counts, model_ids=["net"])
+    classified = query_model_counts(models=models, instance_counts=counts, classification_id="compute")
 
-    assert counted == {
-        "model_count": 2,
-    }
-    assert "fields" not in counted
-    assert "unit" not in counted
-    assert "aggregation" not in counted
-    assert narrowed["model_count"] == 1
-    assert "value" not in narrowed
+    assert counted == [{"model_count": 2}]
+    assert narrowed == [{"model_count": 1}]
+    assert classified == [{"model_count": 2}]
 
 
-def test_model_distribution_is_one_item_per_model_and_keeps_zero():
+def test_model_list_is_a_list_until_page_is_filled(monkeypatch):
     models = [
         _model("host", "主机", "compute", "计算"),
-        _model("net", "网络", "compute", "计算"),
         _model("room", "机房", "space", "空间"),
     ]
-    payload = query_models(
-        models=models,
-        instance_counts={"host": 2, "net": 3},
-        analysis_mode="distribution",
-    )
-    classified = query_models(
-        models=models,
-        instance_counts={"host": 2, "net": 3},
-        analysis_mode="distribution",
-        classification_id="compute",
-    )
-    selected = query_models(
-        models=models,
-        instance_counts={"host": 2, "net": 3},
-        analysis_mode="distribution",
-        model_ids=["room"],
-    )
-    counted = query_models(
-        models=models,
-        instance_counts={"host": 2, "net": 3},
-        analysis_mode="count",
-        classification_id="compute",
-    )
-
-    assert "status" not in payload
-    assert "page" not in payload
-    assert "count" not in payload
-    assert "page_size" not in payload
-    assert "unit" not in payload
-    assert "aggregation" not in payload
-    assert payload["items"] == [
-        {"classification_name": "计算", "model_name": "网络", "model_id": "net", "instance_count": 3},
-        {"classification_name": "计算", "model_name": "主机", "model_id": "host", "instance_count": 2},
-        {"classification_name": "空间", "model_name": "机房", "model_id": "room", "instance_count": 0},
-    ]
-    assert "fields" not in payload
-    assert [item["model_id"] for item in classified["items"]] == ["net", "host"]
-    assert selected["items"] == [
-        {"classification_name": "空间", "model_name": "机房", "model_id": "room", "instance_count": 0},
-    ]
-    assert counted["model_count"] == 2
-    assert "aggregation" not in counted
+    rows = query_models(models=models, instance_counts={"host": 5})
+    assert [item["model_id"] for item in rows] == ["room", "host"]
+    assert "items" not in rows[0]
+    with pytest.raises(GenericQueryError, match="必须同时填写"):
+        query_models(models=models, instance_counts={"host": 5}, page=1)
+    paged = query_models(models=models, instance_counts={"host": 5}, page=1, page_size=1)
+    assert paged["count"] == 2
+    assert [item["model_id"] for item in paged["items"]] == ["room"]
+    with pytest.raises(GenericQueryError, match=str(DETAIL_PAGE_SIZE_MAX)):
+        query_models(models=models, instance_counts={"host": 5}, page=1, page_size=DETAIL_PAGE_SIZE_MAX + 1)
+    monkeypatch.setattr("apps.cmdb.services.generic_query.MODEL_LIST_MAX", 1)
+    with pytest.raises(GenericQueryError, match="缩小范围或填写分页"):
+        query_models(models=models, instance_counts={"host": 5})
+    assert MODEL_LIST_MAX == 500
 
 
-def test_model_distribution_keeps_ties_and_disambiguates_duplicate_names():
-    payload = query_models(
-        models=[
-            _model("host", "主机", "compute", "计算"),
-            _model("host_shadow", "主机", "ops", "运维"),
-            _model("literal", "主机 (host)", "ops", "运维"),
-            _model("room", "机房", "space", "空间"),
-        ],
-        instance_counts={"host": 4, "host_shadow": 4, "literal": 1, "room": 4},
-        analysis_mode="distribution",
-    )
-
-    assert [(item["model_id"], item["model_name"], item["classification_name"], item["instance_count"]) for item in payload["items"]] == [
-        ("host", "主机", "计算", 4),
-        ("host_shadow", "主机", "运维", 4),
-        ("room", "机房", "空间", 4),
-        ("literal", "主机 (host)", "运维", 1),
-    ]
-    assert "name" not in payload["items"][0]
-    assert "value" not in payload["items"][0]
-
-
-def test_model_distribution_uses_return_limit_and_rejects_page():
-    models = [_model(f"m{index:02d}", f"模型{index:02d}", "compute", "计算") for index in range(12)]
-    counts = {model["model_id"]: 100 - index for index, model in enumerate(models)}
-    first = query_models(models=models, instance_counts=counts, analysis_mode="distribution")
-    limited = query_models(models=models, instance_counts=counts, analysis_mode="distribution", page_size=10)
-    with pytest.raises(GenericQueryError, match="不支持页码"):
-        query_models(models=models, instance_counts=counts, analysis_mode="distribution", page=3)
-    short = query_models(
-        models=models[:3],
-        instance_counts={"m00": 2, "m01": 0, "m02": 1},
-        analysis_mode="distribution",
-    )
-    tied = query_models(
-        models=[
-            _model("b", "乙", "compute", "计算"),
-            _model("a", "甲", "compute", "计算"),
-            _model("c", "丙", "compute", "计算"),
-        ],
-        instance_counts={"b": 4, "a": 4, "c": 1},
-        analysis_mode="distribution",
-        page_size=2,
-    )
-
-    assert "count" not in first
-    assert "page" not in first
-    assert "page_size" not in first
-    assert [item["model_id"] for item in first["items"]] == [f"m{index:02d}" for index in range(12)]
-    assert [item["model_id"] for item in limited["items"]] == [f"m{index:02d}" for index in range(10)]
-    assert "count" not in limited
-    assert "page" not in limited
-    assert "page_size" not in limited
-    assert [(item["model_id"], item["instance_count"]) for item in short["items"]] == [("m00", 2), ("m02", 1), ("m01", 0)]
-    assert "fields" not in first
-    assert "count" not in tied
-    assert "page_size" not in tied
-    assert [item["model_id"] for item in tied["items"]] == ["a", "b"]
-    with pytest.raises(GenericQueryError, match="不支持分页"):
-        query_models(models=models[:1], instance_counts={}, analysis_mode="count", page=1)
-    with pytest.raises(GenericQueryError, match="不支持分页"):
-        query_models(models=models[:1], instance_counts={}, analysis_mode="count", page_size=10)
-    with pytest.raises(GenericQueryError, match="每页最多"):
-        query_models(
-            models=models[:1],
-            instance_counts={},
-            analysis_mode="distribution",
-            page_size=DETAIL_PAGE_SIZE_MAX + 1,
-        )
-    too_many = [_model(f"g{index}", f"组{index}", "compute", "计算") for index in range(STAT_GROUP_MAX + 1)]
-    with pytest.raises(GenericQueryError, match="统计分组超过"):
-        query_models(models=too_many, instance_counts={}, analysis_mode="distribution", page_size=10)
-
-
-def test_model_statistics_fail_when_scan_exceeds_limit():
+def test_model_count_fails_when_scan_exceeds_limit():
     with pytest.raises(GenericQueryError, match=str(SCAN_INSTANCE_MAX)):
-        query_models(
+        query_model_counts(
             models=[_model("host", "主机", "compute", "计算")],
             instance_counts={"host": SCAN_INSTANCE_MAX + 1},
-            analysis_mode="count",
-        )
-
-
-def test_model_detail_returns_all_when_unpaged_and_keeps_explicit_size():
-    payload = query_models(
-        models=[_model("host", "主机", "compute", "计算")],
-        instance_counts={"host": 1},
-        analysis_mode="detail",
-    )
-    assert payload["items"][0]["model_id"] == "host"
-    assert payload["count"] == 1
-    assert "page" not in payload
-    assert "page_size" not in payload
-    with pytest.raises(GenericQueryError, match="必须同时填写"):
-        query_models(
-            models=[_model("host", "主机", "compute", "计算")],
-            instance_counts={"host": 1},
-            analysis_mode="detail",
-            page=2,
-        )
-    explicit = query_models(
-        models=[_model("host", "主机", "compute", "计算")],
-        instance_counts={"host": 1},
-        analysis_mode="detail",
-        page=2,
-        page_size=5,
-    )
-    assert explicit["page"] == 2
-    assert explicit["page_size"] == 5
-
-
-def test_model_detail_rejects_page_size_above_limit():
-    with pytest.raises(GenericQueryError, match=str(DETAIL_PAGE_SIZE_MAX)):
-        query_models(
-            models=[_model("host", "主机", "compute", "计算")],
-            instance_counts={"host": 1},
-            analysis_mode="detail",
-            page=1,
-            page_size=DETAIL_PAGE_SIZE_MAX + 1,
-        )
-
-
-def test_model_count_rejects_paging():
-    with pytest.raises(GenericQueryError, match="不支持分页"):
-        query_models(
-            models=[_model("host", "主机", "compute", "计算")],
-            instance_counts={"host": 1},
-            analysis_mode="count",
-            page=1,
-            page_size=20,
         )
 
 
@@ -558,7 +388,6 @@ def test_specified_model_without_visibility_is_forbidden():
         query_models(
             models=[_model("host", "主机", "compute", "计算")],
             instance_counts={"host": 1},
-            analysis_mode="detail",
             model_ids=["missing"],
         )
     assert exc.value.status == "forbidden"
@@ -578,31 +407,24 @@ def test_generic_query_handlers_accept_unknown_kwargs(monkeypatch):
     monkeypatch.setattr("apps.cmdb.nats.generic_query.count_by_attr", lambda *args, **kwargs: {"host": 0})
 
     result = query_cmdb_models(
-        analysis_mode="count",
         user_info={"user": "demo"},
         unexpected="kept-out-of-the-query",
     )
 
     assert result["result"] is True
-    assert result["data"]["model_count"] == 1
+    assert result["data"] == [
+        {
+            "classification_name": "计算",
+            "model_name": "主机",
+            "model_id": "host",
+            "instance_count": 0,
+        }
+    ]
     assert "unexpected" not in result["data"]
 
-    monkeypatch.setattr(
-        "apps.cmdb.nats.generic_query._visible_models",
-        lambda user_info: (
-            [
-                _model("low", "低", "compute", "计算"),
-                _model("high", "高", "compute", "计算"),
-            ],
-            {"1": {}},
-            {"compute": "计算"},
-        ),
-    )
-    monkeypatch.setattr("apps.cmdb.nats.generic_query.count_by_attr", lambda *args, **kwargs: {"low": 1, "high": 4})
-    ranked = query_cmdb_models(analysis_mode="distribution", page_size=1, user_info={"user": "demo"})
-    untouched = query_cmdb_models(analysis_mode="distribution", user_info={"user": "demo"})
-    assert [item["model_id"] for item in ranked["data"]["items"]] == ["high"]
-    assert [item["model_id"] for item in untouched["data"]["items"]] == ["high", "low"]
+    retired = query_cmdb_models(analysis_mode="distribution", user_info={"user": "demo"})
+    assert retired["result"] is False
+    assert "列表和数量" in retired["message"]
 
 
 def test_one_hop_uses_fixed_order():
@@ -791,9 +613,9 @@ def test_undeclared_filters_are_dropped_and_a_bad_group_still_fails(monkeypatch)
         lambda user_info: ([_model("host", "主机", "compute", "计算")], {"1": {"inst_names": []}}, {"compute": "计算"}),
     )
     monkeypatch.setattr("apps.cmdb.nats.generic_query.count_by_attr", lambda *args, **kwargs: {})
-    dropped = query_cmdb_models(analysis_mode="count", user_info={"user": "demo"}, filters={"field": "model_id"})
+    dropped = query_cmdb_models(user_info={"user": "demo"}, filters={"field": "model_id"})
     assert dropped["result"] is True
-    assert dropped["data"]["model_count"] == 1
+    assert dropped["data"][0]["model_id"] == "host"
 
     invalid = query_cmdb_instances(
         model_id="host",
@@ -1366,7 +1188,6 @@ def test_model_count_permission_failure_is_not_reported_as_zero(monkeypatch):
     )
 
     denied = query_cmdb_models(
-        analysis_mode="count",
         user_info={"user": "demo", "team": 7},
     )
     assert denied["result"] is False
@@ -1380,7 +1201,6 @@ def test_model_count_permission_failure_is_not_reported_as_zero(monkeypatch):
     )
     monkeypatch.setattr("apps.cmdb.nats.generic_query._build_nats_permission_map", lambda user_info: None)
     denied_instances = query_cmdb_models(
-        analysis_mode="count",
         model_id="host",
         user_info={"user": "demo", "team": 7},
     )
@@ -1391,7 +1211,7 @@ def test_model_count_permission_failure_is_not_reported_as_zero(monkeypatch):
 
 
 def test_handler_model_count_uses_full_permission_counts(monkeypatch):
-    from apps.cmdb.nats.generic_query import query_cmdb_models
+    from apps.cmdb.nats.generic_query import query_cmdb_model_counts, query_cmdb_models
     from apps.cmdb.services.generic_query import ensure_payload_limit
 
     calls = []
@@ -1410,78 +1230,43 @@ def test_handler_model_count_uses_full_permission_counts(monkeypatch):
 
     monkeypatch.setattr("apps.cmdb.nats.generic_query.count_by_attr", fake_count)
 
-    total = query_cmdb_models(analysis_mode="count", user_info={"user": "demo"})
+    total = query_cmdb_model_counts(user_info={"user": "demo"})
     assert total["result"] is True
-    assert total["data"]["model_count"] == 3
-    assert "aggregation" not in total["data"]
-    assert "status" not in total["data"]
+    assert total["data"] == [{"model_count": 3}]
     ensure_payload_limit(total["data"])
     assert calls == [("model_id", [], {"7": {"inst_names": ["visible-host"]}})]
 
-    selected = query_cmdb_models(analysis_mode="count", model_id="host", user_info={"user": "demo"})
-    assert selected["data"]["model_count"] == 1
-    assert "aggregation" not in selected["data"]
+    selected = query_cmdb_model_counts(model_id="host", user_info={"user": "demo"})
+    assert selected["data"] == [{"model_count": 1}]
 
-    classified = query_cmdb_models(
-        analysis_mode="count",
-        classification_id="compute",
-        user_info={"user": "demo"},
-    )
-    assert classified["data"]["model_count"] == 2
+    classified = query_cmdb_model_counts(classification_id="compute", user_info={"user": "demo"})
+    assert classified["data"] == [{"model_count": 2}]
 
-    paged = query_cmdb_models(
-        analysis_mode="count",
-        page=1,
-        page_size=1,
-        user_info={"user": "demo"},
-    )
+    paged = query_cmdb_model_counts(page=1, page_size=1, user_info={"user": "demo"})
     assert paged["result"] is False
     assert "分页" in paged["message"]
 
-    cleared = query_cmdb_models(
-        analysis_mode="count",
-        page="",
-        page_size=None,
-        user_info={"user": "demo"},
-    )
+    cleared = query_cmdb_model_counts(page="", page_size=None, user_info={"user": "demo"})
     assert cleared["result"] is True
-    assert cleared["data"]["model_count"] == 3
+    assert cleared["data"] == [{"model_count": 3}]
 
-    detail = query_cmdb_models(
-        analysis_mode="detail",
-        page=1,
-        page_size=1,
-        user_info={"user": "demo"},
-    )
+    detail = query_cmdb_models(page=1, page_size=1, user_info={"user": "demo"})
     assert detail["result"] is True
     assert detail["data"]["count"] == 3
     assert detail["data"]["items"][0]["model_id"] == "router"
     assert list(detail["data"]["items"][0]) == list(DETAIL_COLUMNS)
 
-    missing = query_cmdb_models(
-        analysis_mode="count",
-        model_id="secret",
-        user_info={"user": "demo"},
-    )
+    missing = query_cmdb_model_counts(model_id="secret", user_info={"user": "demo"})
     assert missing["result"] is False
     assert missing["data"] == {"status": "forbidden"}
 
-    unknown_class = query_cmdb_models(
-        analysis_mode="count",
-        classification_id="secret",
-        user_info={"user": "demo"},
-    )
+    unknown_class = query_cmdb_model_counts(classification_id="secret", user_info={"user": "demo"})
     assert unknown_class["result"] is False
     assert unknown_class["data"] == {"status": "forbidden"}
-    assert "value" not in unknown_class["data"]
 
-    distribution = query_cmdb_models(
-        analysis_mode="distribution",
-        user_info={"user": "demo"},
-    )
-    assert distribution["result"] is True
-    assert [item["model_id"] for item in distribution["data"]["items"]] == ["host", "vm", "router"]
-    assert "aggregation" not in distribution["data"]
+    listed = query_cmdb_models(user_info={"user": "demo"})
+    assert listed["result"] is True
+    assert [item["model_id"] for item in listed["data"]] == ["router", "host", "vm"]
 
 
 def test_http_resolution_reaches_handler_without_hidden_paging_or_cross_chart_params(monkeypatch):
@@ -1490,13 +1275,15 @@ def test_http_resolution_reaches_handler_without_hidden_paging_or_cross_chart_pa
     from pathlib import Path
     from types import SimpleNamespace
 
-    from apps.cmdb.nats.generic_query import query_cmdb_models
+    from apps.cmdb.nats.generic_query import query_cmdb_model_counts, query_cmdb_models
     from apps.operation_analysis.views.datasource_view import _resolve_request_params
 
     seed_path = Path(__file__).resolve().parents[2] / "operation_analysis" / "support-files" / "source_api.json"
     sources = json.loads(seed_path.read_text(encoding="utf-8"))
     models = next(item for item in sources if item.get("rest_api") == "cmdb/query_cmdb_models")
+    counts = next(item for item in sources if item.get("rest_api") == "cmdb/query_cmdb_model_counts")
     instance = SimpleNamespace(rest_api="cmdb/query_cmdb_models", params=models["params"])
+    count_source = SimpleNamespace(rest_api="cmdb/query_cmdb_model_counts", params=counts["params"])
     monkeypatch.setattr(
         "apps.cmdb.nats.generic_query._visible_models",
         lambda user_info: (
@@ -1507,59 +1294,36 @@ def test_http_resolution_reaches_handler_without_hidden_paging_or_cross_chart_pa
     )
     monkeypatch.setattr("apps.cmdb.nats.generic_query.count_by_attr", lambda *args, **kwargs: dict(_SCOPE_COUNTS))
 
-    def run(request):
-        resolved = _resolve_request_params(instance, request)
-        return resolved, query_cmdb_models(user_info={"user": "demo"}, **resolved)
+    def run(source, handler, request):
+        resolved = _resolve_request_params(source, request)
+        return resolved, handler(user_info={"user": "demo"}, **resolved)
 
-    distribution, distribution_result = run({"analysis_mode": "distribution"})
-    assert "page" not in distribution
-    assert "page_size" not in distribution
-    assert distribution_result["result"] is True
-    assert "page" not in distribution_result["data"]
-    assert "count" not in distribution_result["data"]
-    assert "page_size" not in distribution_result["data"]
-    assert [item["model_id"] for item in distribution_result["data"]["items"]] == ["host", "vm", "router"]
-    assert "aggregation" not in distribution_result["data"]
+    listed, listed_result = run(instance, query_cmdb_models, {})
+    assert "page" not in listed
+    assert "page_size" not in listed
+    assert listed_result["result"] is True
+    assert [item["model_id"] for item in listed_result["data"]] == ["router", "host", "vm"]
 
-    counted, counted_result = run({"analysis_mode": "count"})
+    counted, counted_result = run(count_source, query_cmdb_model_counts, {})
     assert "page" not in counted
-    assert "page_size" not in counted
-    assert counted_result["data"] == {
-        "model_count": 3,
-    }
+    assert counted_result["data"] == [{"model_count": 3}]
 
-    cleared, cleared_result = run({"analysis_mode": "count", "page": None, "page_size": ""})
+    cleared, cleared_result = run(instance, query_cmdb_models, {"page": None, "page_size": ""})
     assert cleared["page"] is None
     assert cleared["page_size"] == ""
-    assert cleared_result["data"]["model_count"] == 3
+    assert [item["model_id"] for item in cleared_result["data"]] == ["router", "host", "vm"]
 
-    blocked, blocked_result = run({"analysis_mode": "count", "page": 1, "page_size": 10})
-    assert blocked["page"] == 1
-    assert blocked["page_size"] == 10
+    paged, paged_result = run(instance, query_cmdb_models, {"page": 1, "page_size": 1})
+    assert paged_result["result"] is True
+    assert paged_result["data"]["count"] == 3
+    assert paged_result["data"]["items"][0]["model_id"] == "router"
+
+    paged_count = _resolve_request_params(count_source, {"page": 1, "page_size": 10})
+    blocked_result = query_cmdb_model_counts(user_info={"user": "demo"}, **paged_count)
     assert blocked_result["result"] is False
     assert "分页" in blocked_result["message"]
-
-    second, second_result = run({"analysis_mode": "distribution", "page": 2, "page_size": 10})
-    assert second["page"] == 2
-    assert second_result["result"] is False
-    assert "页码" in second_result["message"]
-    limited, limited_result = run({"analysis_mode": "distribution", "page_size": 10})
-    assert "page" not in limited
-    assert limited_result["result"] is True
-    assert [item["model_id"] for item in limited_result["data"]["items"]] == ["host", "vm", "router"]
-    assert "page_size" not in limited_result["data"]
-    assert "count" not in limited_result["data"]
-
-    detail, detail_result = run({"analysis_mode": "detail"})
-    assert "page" not in detail
-    assert "page_size" not in detail
-    assert detail_result["result"] is True
-    assert "page" not in detail_result["data"]
-    assert "page_size" not in detail_result["data"]
-    assert detail_result["data"]["count"] == 3
-
     with pytest.raises(ValueError, match="未声明参数"):
-        run({"analysis_mode": "count", "count_metric": "instance_total", "top_n": 10})
+        run(instance, query_cmdb_models, {"analysis_mode": "detail", "count_metric": "instance_total", "top_n": 10})
 
 
 def test_instance_distribution_keeps_false_zero_and_null_buckets(monkeypatch):

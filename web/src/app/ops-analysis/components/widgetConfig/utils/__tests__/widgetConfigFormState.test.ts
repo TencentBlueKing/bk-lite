@@ -88,6 +88,25 @@ describe('selector reset values stay on two paths', () => {
     assert.ok(!('name' in values));
   });
 
+  it('fills the only number field when a single or gauge source has no chart role', () => {
+    const schema = [{ key: 'alert_count', value_type: 'number', title: '告警数' }];
+    const single = buildDatasourceSwitchResetValues({
+      dataSourceId: 9,
+      chartType: 'single',
+      params: {},
+      fieldSchema: schema,
+    });
+    assert.deepEqual(single.selectedFields, ['alert_count']);
+
+    const line = buildDatasourceSwitchResetValues({
+      dataSourceId: 9,
+      chartType: 'line',
+      params: {},
+      fieldSchema: schema,
+    });
+    assert.deepEqual(line.selectedFields, []);
+  });
+
   it('datasource reset does not touch tableConfig or actions', () => {
     const values = buildDatasourceSwitchResetValues({
       dataSourceId: 9,
@@ -183,6 +202,55 @@ describe('opened widget hydrate', () => {
       layout: 'list',
     });
     assert.equal(formValues.compareMode, 'percent');
+  });
+
+  it('writes the only number field back into an empty single-value display field', () => {
+    const formValues = buildOpenedWidgetFormValues({
+      i: 'count',
+      x: 0,
+      y: 0,
+      w: 4,
+      h: 4,
+      name: '告警数',
+      valueConfig: {
+        chartType: 'single',
+        dataSource: 8,
+        dataSourceParams: [],
+      },
+    }, { showChartThemeMode: false });
+    applyOpenedValueConfigToFormValues(formValues, formValues as unknown as ValueConfig, {
+      field_schema: [{ key: 'alert_count', value_type: 'number', title: '告警数' }],
+    } as DatasourceItem);
+    assert.deepEqual(formValues.selectedFields, ['alert_count']);
+  });
+
+  it('leaves the display field empty when several number fields could be shown', () => {
+    const formValues = buildOpenedWidgetFormValues({
+      i: 'count',
+      x: 0,
+      y: 0,
+      w: 4,
+      h: 4,
+      name: '告警数',
+      valueConfig: {
+        chartType: 'single',
+        dataSource: 8,
+        dataSourceParams: [],
+        selectedFields: [],
+      },
+    }, { showChartThemeMode: false });
+    applyOpenedValueConfigToFormValues(formValues, {
+      chartType: 'single',
+      dataSource: 8,
+      dataSourceParams: [],
+      selectedFields: [],
+    }, {
+      field_schema: [
+        { key: 'open', value_type: 'number' },
+        { key: 'closed', value_type: 'number' },
+      ],
+    } as DatasourceItem);
+    assert.deepEqual(formValues.selectedFields, []);
   });
 
   it('keeps compare false when the data source cannot compare', () => {

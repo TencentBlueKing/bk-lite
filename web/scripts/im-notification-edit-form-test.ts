@@ -96,6 +96,8 @@ const imModal = readFileSync(
   new URL('../src/app/system-manager/components/channel/im-notification/IMNotificationConfigModal.tsx', import.meta.url),
   'utf8',
 );
+assert.match(imModal, /dropdownRender/);
+assert.match(imModal, /accountAssociationTooltip/);
 assert.match(imModal, /GroupTreeSelect/);
 assert.match(imModal, /name="team"/);
 assert.match(imModal, /common\.organization/);
