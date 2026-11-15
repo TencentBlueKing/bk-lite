@@ -27,7 +27,10 @@ import {
   getFilterDefinitionId,
 } from '@/app/ops-analysis/utils/widgetDataTransform';
 import { readWidgetInteraction } from '@/app/ops-analysis/utils/interactionLink';
-import { normalizeLineBarFieldList } from '@/app/ops-analysis/utils/lineBarFieldMapping';
+import {
+  defaultDisplayFields,
+  normalizeLineBarFieldList,
+} from '@/app/ops-analysis/utils/lineBarFieldMapping';
 import { readSingleValueStyle } from '@/app/ops-analysis/utils/singleValueStyle';
 import type { WidgetConfigFormValues } from './submitConfig';
 
@@ -280,9 +283,14 @@ export function buildDatasourceSwitchResetValues(options: {
   chartType: string;
   params: Record<string, any>;
   surface?: OpsAnalysisWidgetSurface;
+  fieldSchema?: Array<{ key?: string; value_type?: string }>;
 }) {
+  const displayFields = options.chartType === 'single' || options.chartType === 'gauge'
+    ? defaultDisplayFields(options.fieldSchema)
+    : [];
   return {
     ...buildClearedChartDependentFormFields(),
+    ...(displayFields.length > 0 ? { selectedFields: displayFields } : {}),
     dataSource: options.dataSourceId,
     chartType: options.chartType,
     appearance:
@@ -455,6 +463,15 @@ export function applyOpenedValueConfigToFormValues(
     });
   }
   formValues.compareMode = valueConfig?.compareMode || 'percent';
+  if (
+    normalizeLineBarFieldList(formValues.selectedFields).length === 0
+    && (formValues.chartType === 'single' || formValues.chartType === 'gauge')
+  ) {
+    const displayFields = defaultDisplayFields(targetDataSource?.field_schema);
+    if (displayFields.length > 0) {
+      formValues.selectedFields = displayFields;
+    }
+  }
   const singleStyle = readSingleValueStyle(valueConfig?.singleStyle);
   formValues.singleStyle = {
     showIcon: singleStyle.showIcon,

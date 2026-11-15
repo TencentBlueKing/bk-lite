@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import json
+import math
 from datetime import datetime, timezone
 from typing import Any
 
-from django.db.models import Case, CharField, Count, IntegerField, Max, OuterRef, Subquery, Value, When
+from django.db.models import Case, CharField, Count, IntegerField, OuterRef, Subquery, Value, When
 from django.db.models.fields.json import KeyTextTransform
 from django.db.models.functions import Cast, Coalesce, NullIf
 
@@ -15,8 +16,10 @@ from apps.monitor.constants.language import LanguageConstants
 from apps.monitor.models.monitor_object import MonitorInstance
 from apps.monitor.services.authorized_metric_query import _instance_lookup_candidates
 from apps.monitor.services.generic_query_limits import (
+    ALERT_DETAIL_MAX,
     ALERT_RANGE_MAX_SECONDS,
     DETAIL_PAGE_SIZE_MAX,
+    INSTANCE_LIST_MAX,
     METRIC_INSTANCE_MAX,
     METRIC_POINTS_MAX,
     METRIC_SERIES_MAX,
@@ -30,17 +33,11 @@ from apps.monitor.utils.dimension import parse_instance_id
 
 INSTANCE_MODES = ("detail",)
 _INSTANCE_STATUS_LABEL = {True: "启用", False: "停用"}
-_AGGREGATION_LABELS = {
-    "avg": "平均",
-    "sum": "求和",
-    "max": "最大",
-    "min": "最小",
-    "count": "计数",
-}
-ALERT_MODES = ("detail", "count", "distribution")
+_HISTORY_ALERT_STATUSES = {"recovered", "closed"}
 ALERT_LEVELS = {"warning", "error", "critical", "no_data"}
 ALERT_STATUSES = {"new", "closed", "recovered"}
 ALERT_TYPES = {"alert", "no_data"}
+ALERT_DISTRIBUTION_FIELDS = {"level", "monitor_object_id", "alert_type"}
 _ALERT_CHOICE_LABELS = {
     "level": {
         "warning": "警告",
@@ -59,7 +56,6 @@ _ALERT_CHOICE_LABELS = {
     },
 }
 ALERT_TIME_FIELDS = {"start_event_time", "end_event_time", "created_at"}
-ALERT_GROUP_FIELDS = {"level", "status", "alert_type", "monitor_instance_id", "monitor_object_id"}
 _SEVERITY_RANK = {"critical": 4, "error": 3, "warning": 2, "no_data": 1}
 _ORPHAN_OBJECT_LABEL = "策略已删除"
 ALERT_SORT_FIELDS = {
@@ -97,35 +93,95 @@ def query_instances(
     page=None,
     page_size=None,
     locale: str | None = None,
-) -> dict:
+):
+    if analysis_mode in (None, ""):
+        analysis_mode = "detail"
     _mode(analysis_mode, INSTANCE_MODES)
     if _filled(group_by):
         raise GenericQueryError("当前查询不支持分组")
     queryset = _filter_instances(queryset, status, instance_ids)
-    page_no, size = _parse_page(page, page_size)
     queryset = _order_instances(queryset, _instance_order(order_by, order_dir))
     total = queryset.count()
-    page_rows = list(queryset[(page_no - 1) * size : page_no * size])
+    paging = _optional_page(page, page_size)
+    if paging is None:
+        if total > INSTANCE_LIST_MAX:
+            raise GenericQueryError(f"实例超过 {INSTANCE_LIST_MAX} 条，请缩小范围或填写分页")
+        page_rows = list(queryset[:total])
+    else:
+        page_no, size = paging
+        page_rows = list(queryset[(page_no - 1) * size : page_no * size])
     object_label = _monitor_object_label(queryset, locale)
     rows = [_instance_row(item, _cloud_region_names(page_rows), object_label) for item in page_rows]
+    if paging is None:
+        return rows
     return _table(rows, total, page_no, size)
 
 
-def validate_metric_request(*, instance_ids, time_range, step) -> dict:
+def view_step_label(duration_seconds: float, collection_interval_seconds: int = 0) -> str:
+    """与实例监控视图相同：窗口大约 100 个点，且不小于采集间隔。"""
+    duration = duration_seconds if duration_seconds > 0 else 0
+    target = math.ceil(duration / 100) if duration else 1
+    floor = collection_interval_seconds if collection_interval_seconds and collection_interval_seconds > 0 else 0
+    return f"{max(int(target), int(floor), 1)}s"
+
+
+def collection_interval_floor(instance_ids, organization_ids) -> int:
+    """所选实例里最慢的采集间隔。只读调用方组织内的实例，解析不到时不抬高步长。"""
+    organizations = []
+    seen_orgs = set()
+    for raw in organization_ids or []:
+        try:
+            org = int(raw)
+        except (TypeError, ValueError):
+            continue
+        if org in seen_orgs:
+            continue
+        seen_orgs.add(org)
+        organizations.append(org)
+    candidates = []
+    seen = set()
+    for raw in instance_ids or []:
+        for item in _instance_lookup_candidates(str(raw)):
+            if item in seen:
+                continue
+            seen.add(item)
+            candidates.append(item)
+    if not organizations or not candidates:
+        return 0
+    positive = []
+    intervals = MonitorInstance.objects.filter(
+        id__in=candidates,
+        is_deleted=False,
+        monitorinstanceorganization__organization__in=organizations,
+    ).values_list("interval", flat=True)
+    for value in intervals:
+        try:
+            number = int(value)
+        except (TypeError, ValueError):
+            continue
+        if number > 0:
+            positive.append(number)
+    return max(positive) if positive else 0
+
+
+def validate_metric_request(*, instance_ids, time_range, step, organization_ids=None) -> dict:
     ids = _id_list(instance_ids)
     if not ids:
         raise GenericQueryError("实例范围不能为空")
     if len(ids) > METRIC_INSTANCE_MAX:
         raise GenericQueryError(f"指标查询实例超过 {METRIC_INSTANCE_MAX} 个")
+    start, end = _parse_range(time_range)
     if step in (None, ""):
-        raise GenericQueryError("步长不能为空")
+        step = view_step_label(
+            (end - start).total_seconds(),
+            collection_interval_floor(ids, organization_ids),
+        )
     try:
         step_seconds = Metrics.parse_step_to_seconds(step)
     except ValueError as exc:
         raise GenericQueryError("步长格式错误") from exc
     if step_seconds < 1:
         raise GenericQueryError("步长最短 1 秒")
-    start, end = _parse_range(time_range)
     points = query_range_point_count((end - start).total_seconds(), int(step_seconds))
     if points > METRIC_POINTS_MAX:
         raise GenericQueryError(f"单条序列超过 {METRIC_POINTS_MAX} 个点（点数包含起止两端），请缩短时间范围或加大步长")
@@ -145,25 +201,6 @@ def _metric_number(raw):
         return float(raw)
     except (TypeError, ValueError):
         return None
-
-
-def _dimension_text(labels: dict) -> str:
-    skipped = {"instance_id", "bk_inst_id", "__name__"}
-    parts = []
-    for key, value in labels.items():
-        if key in skipped or value in (None, ""):
-            continue
-        parts.append(f"{key}={value}")
-    return ", ".join(parts)
-
-
-def _aggregation_label(aggregation: str) -> str:
-    key = str(aggregation or "").strip().lower()
-    if key in _AGGREGATION_LABELS:
-        return _AGGREGATION_LABELS[key]
-    if not key:
-        return "平均"
-    return str(aggregation)
 
 
 def metric_instance_labels(storage_ids) -> dict[str, str]:
@@ -193,16 +230,6 @@ def _instance_label(instance_id: str, names: dict[str, str]) -> str:
     return names.get(instance_id) or instance_id
 
 
-def _table_row(instance_id: str, value, moment: str, unit: str, aggregation: str) -> dict:
-    return {
-        "instance_id": instance_id,
-        "value": value,
-        **({"time": moment} if moment else {}),
-        "unit": unit,
-        "aggregation": _aggregation_label(aggregation),
-    }
-
-
 def _identity_candidates(value: str) -> set[str]:
     return set(_instance_lookup_candidates(value))
 
@@ -229,53 +256,35 @@ def _series_identity_candidates(labels: dict, identity_keys: list[str]) -> set[s
     return _identity_candidates(instance_id)
 
 
-def _matched_requested_ids(series_candidates: set[str], requested_ids: list[str], requested_candidates: dict[str, set[str]]) -> list[str]:
-    return [requested for requested in requested_ids if series_candidates & requested_candidates[requested]]
-
-
-def _per_instance_rows(
-    parsed,
-    *,
-    mode: str,
-    unit: str,
-    aggregation: str,
-    requested_ids: list[str],
-    requested_candidates: dict[str, set[str]],
-    instance_names: dict[str, str],
-) -> list[dict]:
-    rows = []
-    seen = set()
-    for series in parsed:
-        matched = _matched_requested_ids(series["candidates"], requested_ids, requested_candidates)
-        seen.update(matched)
-        label_id = matched[0] if matched else series["instance_id"]
-        points = series["points"]
-        numbers = [point["value"] for point in points if point["value"] is not None]
-        if mode == "latest":
-            last = next((point for point in reversed(points) if point["value"] is not None), None)
-            value = None if last is None else last["value"]
-            moment = "" if last is None else last["time"]
-        else:
-            value = None if not numbers else _reduce(numbers, aggregation)
-            moment = ""
-        rows.append(_table_row(_instance_label(label_id, instance_names), value, moment, unit, aggregation))
-    for instance_id in requested_ids:
-        if instance_id in seen:
+def _open_dimension_items(labels: dict, identity_keys: list[str]) -> list[tuple[str, str]]:
+    skipped = {str(key).strip() for key in identity_keys or [] if str(key).strip()}
+    skipped.update({"instance_id", "bk_inst_id", "__name__"})
+    items = []
+    for key, value in labels.items():
+        if key in skipped or value in (None, ""):
             continue
-        rows.append(_table_row(_instance_label(instance_id, instance_names), None, "", unit, aggregation))
-    return rows
+        items.append((str(key), str(value)))
+    return items
+
+
+def _series_instance_name(instance_id: str, candidates: set[str], instance_names: dict[str, str]) -> str:
+    for candidate in candidates:
+        label = instance_names.get(candidate)
+        if label:
+            return label
+    return _instance_label(instance_id, instance_names)
 
 
 def build_metric_result(
     *,
-    mode: str,
     response: dict,
     unit: str,
-    aggregation: str,
     requested_ids: list[str],
     instance_names: dict[str, str] | None = None,
     identity_keys: list[str] | None = None,
-) -> dict:
+) -> list:
+    """没有分页。直接返回采样点，不套 items、count。"""
+    del requested_ids
     if not isinstance(response, dict) or response.get("status") != "success":
         message = ""
         if isinstance(response, dict):
@@ -284,9 +293,8 @@ def build_metric_result(
     result = ((response.get("data") or {}).get("result")) or []
     if len(result) > METRIC_SERIES_MAX:
         raise GenericQueryError(f"返回序列超过 {METRIC_SERIES_MAX} 条")
-    series_payload = {}
-    parsed = []
-    requested_candidates = {item: _identity_candidates(str(item)) for item in requested_ids}
+    names = instance_names or {}
+    rows = []
     for index, series in enumerate(result):
         values = series.get("values") or []
         if len(values) > METRIC_POINTS_MAX:
@@ -294,98 +302,130 @@ def build_metric_result(
         labels = series.get("metric") or {}
         instance_id = str(labels.get("instance_id") or labels.get("bk_inst_id") or "")
         candidates = _series_identity_candidates(labels, identity_keys or [])
-        dimension = _dimension_text(labels)
-        if instance_id and dimension:
-            name = f"{instance_id} {dimension}"
+        instance_name = _series_instance_name(instance_id, candidates, names)
+        dimensions = _open_dimension_items(labels, identity_keys or [])
+        dimension_text = ", ".join(f"{key}={value}" for key, value in dimensions)
+        if instance_name and dimension_text:
+            series_name = f"{instance_name} {dimension_text}"
         else:
-            name = instance_id or f"series-{index + 1}"
-        points = []
+            series_name = instance_name or instance_id or f"series-{index + 1}"
         for sample in values:
             if not isinstance(sample, (list, tuple)) or len(sample) < 2:
                 continue
-            numeric = _metric_number(sample[1])
-            points.append(
-                {
-                    "time": _epoch_name(sample[0]),
-                    "value": numeric,
-                    "instance_id": instance_id,
-                    "unit": unit,
-                    "aggregation": aggregation,
-                }
-            )
-        series_payload[name] = points
-        parsed.append({"instance_id": instance_id, "candidates": candidates, "points": points})
-    if mode in {"value", "latest"}:
-        rows = _per_instance_rows(
-            parsed,
-            mode=mode,
-            unit=unit,
-            aggregation=aggregation,
-            requested_ids=requested_ids,
-            requested_candidates=requested_candidates,
-            instance_names=instance_names or {},
-        )
-        return {
-            "items": rows,
-            "count": len(rows),
-        }
-    has_value = any(point.get("value") is not None for points in series_payload.values() for point in points)
-    if not has_value:
-        return {}
-    return {name: [[point["time"], point["value"]] for point in points] for name, points in series_payload.items()}
+            row = {
+                "series": series_name,
+                "instance_id": instance_id,
+                "instance_name": instance_name or instance_id,
+                "time": _epoch_name(sample[0]),
+                "value": _metric_number(sample[1]),
+                "unit": unit,
+            }
+            for key, value in dimensions:
+                row[key] = value
+            rows.append(row)
+    return rows
 
 
-def query_alerts(
+def query_alert_details(
     queryset,
     *,
-    analysis_mode: str,
     level=None,
     status=None,
     alert_type=None,
     instance_ids=None,
     time_field: str | None = None,
     time_range=None,
-    group_by: str | None = None,
     order_by: str | None = None,
     order_dir: str | None = None,
     page=None,
     page_size=None,
     locale: str | None = None,
-) -> dict:
-    mode = _mode(analysis_mode, ALERT_MODES)
-    _reject_unused(
-        mode,
-        [
-            (group_by, "分组", ("distribution",)),
-            (order_by if str(order_by or "").strip() else order_dir, "排序", ("detail", "distribution")),
-        ],
-    )
-    if mode == "count":
-        _reject_paging(page, page_size)
-    distribution_limit = None
-    if mode == "distribution":
-        if not _filled(group_by):
-            raise GenericQueryError("分布必须选择分组")
-        if group_by not in ALERT_GROUP_FIELDS:
-            raise GenericQueryError("分组字段不受支持")
-        if page not in (None, ""):
-            raise GenericQueryError("当前分析方式不支持页码")
-        distribution_limit = _distribution_return_limit(page_size)
-    queryset = _filter_alerts(queryset, level, status, alert_type, instance_ids, time_field, time_range)
-    if mode == "count":
-        return _value(queryset.count(), field="alert_count")
-    if mode == "distribution":
-        return _alert_distribution(queryset, group_by, order_by, order_dir, distribution_limit, locale)
-    page_no, size = _parse_page(page, page_size)
+):
+    queryset = _prepare_alerts(queryset, level, status, alert_type, instance_ids, time_field, time_range)
     order_field = _alert_detail_order(order_by, order_dir)
     total = queryset.count()
-    page_rows = list(_order_alerts(queryset, order_field)[(page_no - 1) * size : page_no * size])
+    paging = _optional_page(page, page_size)
+    if paging is None:
+        if total > ALERT_DETAIL_MAX:
+            raise GenericQueryError(f"告警明细超过 {ALERT_DETAIL_MAX} 条，请缩小范围或填写分页")
+        return _load_alert_rows(queryset, order_field, locale, offset=0, limit=total)
+    page_no, size = paging
+    rows = _load_alert_rows(queryset, order_field, locale, offset=(page_no - 1) * size, limit=size)
+    return _table(rows, total, page_no, size)
+
+
+def query_alert_counts(
+    queryset,
+    *,
+    level=None,
+    status=None,
+    alert_type=None,
+    instance_ids=None,
+    time_field: str | None = None,
+    time_range=None,
+) -> list[dict]:
+    queryset = _prepare_alerts(queryset, level, status, alert_type, instance_ids, time_field, time_range)
+    return [{"alert_count": queryset.count()}]
+
+
+def query_alert_distribution(
+    queryset,
+    *,
+    group_by=None,
+    level=None,
+    status=None,
+    alert_type=None,
+    instance_ids=None,
+    time_field: str | None = None,
+    time_range=None,
+    locale: str | None = None,
+) -> list[dict]:
+    if not _filled(group_by):
+        raise GenericQueryError("请选择按什么分布")
+    if group_by not in ALERT_DISTRIBUTION_FIELDS:
+        raise GenericQueryError("分布字段不受支持")
+    queryset = _prepare_alerts(queryset, level, status, alert_type, instance_ids, time_field, time_range)
+    if group_by == "monitor_object_id":
+        grouped = _annotate_monitor_object(queryset).values("_monitor_object_id").annotate(alert_count=Count("id"))
+    else:
+        grouped = queryset.values(group_by).annotate(alert_count=Count("id"))
+    group_count = grouped.count()
+    if group_count > STAT_GROUP_MAX:
+        raise GenericQueryError(f"分布分组超过 {STAT_GROUP_MAX} 组")
+    rows = list(grouped)
+    if group_by == "monitor_object_id":
+        labels = _object_labels([row.get("_monitor_object_id") for row in rows], locale)
+        items = [{"group_value": _present_object(row.get("_monitor_object_id"), labels)[1], "alert_count": row["alert_count"]} for row in rows]
+    else:
+        items = [{"group_value": _label_alert_choice(group_by, row.get(group_by)), "alert_count": row["alert_count"]} for row in rows]
+    items.sort(key=lambda item: (-(item["alert_count"] or 0), str(item["group_value"])))
+    return items
+
+
+def _prepare_alerts(queryset, level, status, alert_type, instance_ids, time_field, time_range):
+    statuses = _choice_list(status, ALERT_STATUSES, "状态") or ["new"]
+    if set(statuses) & _HISTORY_ALERT_STATUSES and (time_range in (None, "", [], {}) or time_field in (None, "")):
+        raise GenericQueryError("查询已恢复或已关闭告警时必须填写时间")
+    return _filter_alerts(queryset, level, statuses, alert_type, instance_ids, time_field, time_range)
+
+
+def _optional_page(page, page_size) -> tuple[int, int] | None:
+    if page in (None, "") and page_size in (None, ""):
+        return None
+    return _parse_page(page, page_size)
+
+
+def _load_alert_rows(queryset, order_field: str, locale: str | None, *, offset: int, limit: int) -> list[dict]:
+    if limit <= 0:
+        return []
+    page_rows = list(_order_alerts(queryset, order_field)[offset : offset + limit])
+    if not page_rows:
+        return []
     annotated = list(_annotate_monitor_object(queryset.filter(pk__in=[item.pk for item in page_rows])))
     by_id = {item.pk: item for item in annotated}
     ordered = [by_id[item.pk] for item in page_rows if item.pk in by_id]
     labels = _object_labels([getattr(item, "_monitor_object_id", None) for item in ordered], locale)
-    rows = [_alert_row(item, labels) for item in ordered]
-    return _table(rows, total, page_no, size)
+    return [_alert_row(item, labels) for item in ordered]
 
 
 def _filter_instances(queryset, status, instance_ids):
@@ -522,55 +562,6 @@ def _present_object(object_id, labels: dict[str, str]) -> tuple[str, str]:
     return identity, labels.get(identity) or identity
 
 
-def _alert_distribution(queryset, group_by: str, order_by, order_dir, limit: int | None, locale: str | None) -> dict:
-    if group_by == "monitor_object_id":
-        grouped = _annotate_monitor_object(queryset).values("_monitor_object_id").annotate(alert_count=Count("id"))
-    elif group_by == "monitor_instance_id":
-        grouped = queryset.values("monitor_instance_id").annotate(
-            alert_count=Count("id"),
-            monitor_instance_name=Max("monitor_instance_name"),
-        )
-    else:
-        grouped = queryset.values(group_by).annotate(alert_count=Count("id"))
-    _ensure_groups(grouped.count())
-    rows = list(grouped)
-    labels = {}
-    if group_by == "monitor_object_id":
-        labels = _object_labels([row["_monitor_object_id"] for row in rows], locale)
-    items = [_distribution_item(group_by, row, labels) for row in rows]
-    sort_key, descending = _alert_distribution_order(order_by, order_dir, group_by)
-    items.sort(key=lambda item: _distribution_sort_key(item, sort_key), reverse=descending)
-    shown = items if limit is None else items[:limit]
-    _label_alert_groups(shown, group_by)
-    return {
-        "items": shown,
-    }
-
-
-def _distribution_item(group_by: str, row: dict, labels: dict[str, str]) -> dict:
-    count = row["alert_count"]
-    if group_by == "monitor_object_id":
-        identity, name = _present_object(row.get("_monitor_object_id"), labels)
-        return {"monitor_object_id": identity, "monitor_object_name": name, "alert_count": count}
-    if group_by == "monitor_instance_id":
-        identity = str(row.get("monitor_instance_id") or "")
-        name = str(row.get("monitor_instance_name") or "").strip() or identity
-        return {"monitor_instance_id": identity, "monitor_instance_name": name, "alert_count": count}
-    return {group_by: row.get(group_by), "alert_count": count}
-
-
-def _distribution_sort_key(item: dict, field: str):
-    if field == "alert_count":
-        return (item.get("alert_count") is None, item.get("alert_count") or 0)
-    if field == "level":
-        return (_severity_rank(item.get("level")), str(item.get("level") or ""))
-    if field == "monitor_instance_id":
-        return (str(item.get("monitor_instance_name") or ""), str(item.get("monitor_instance_id") or ""))
-    if field == "monitor_object_id":
-        return (str(item.get("monitor_object_name") or ""), str(item.get("monitor_object_id") or ""))
-    return (item.get(field) is None, item.get(field))
-
-
 def _monitor_object_label(queryset, locale: str | None) -> str:
     """与监控对象列表相同：语言包，否则库里的展示名，否则英文名。"""
     object_id = queryset.order_by().values_list("monitor_object_id", flat=True).first()
@@ -628,17 +619,6 @@ def _label_alert_choice(field: str, value) -> str:
     return _ALERT_CHOICE_LABELS.get(field, {}).get(text, text)
 
 
-def _label_alert_groups(items: list[dict], group_by: str) -> None:
-    if group_by not in _ALERT_CHOICE_LABELS:
-        return
-    for item in items:
-        item[group_by] = _label_alert_choice(group_by, item.get(group_by))
-
-
-def _value(value, *, field: str) -> dict:
-    return {field: value}
-
-
 def _table(rows, total, page, page_size) -> dict:
     return {
         "items": rows,
@@ -646,21 +626,6 @@ def _table(rows, total, page, page_size) -> dict:
         "page": page,
         "page_size": page_size,
     }
-
-
-def _reduce(numbers: list[float], aggregation: str):
-    op = str(aggregation or "avg").lower()
-    if op == "sum":
-        return sum(numbers)
-    if op == "min":
-        return min(numbers)
-    if op == "max":
-        return max(numbers)
-    if op in {"avg", "average"}:
-        return sum(numbers) / len(numbers)
-    if op == "count":
-        return float(len(numbers))
-    raise GenericQueryError("聚合方式不受支持")
 
 
 def _mode(value, allowed) -> str:
@@ -672,38 +637,12 @@ def _mode(value, allowed) -> str:
     return mode
 
 
-def _ensure_groups(count: int) -> None:
-    if count > STAT_GROUP_MAX:
-        raise GenericQueryError(f"统计分组超过 {STAT_GROUP_MAX} 组")
-
-
 def _filled(value) -> bool:
     if value is None or value == "":
         return False
     if isinstance(value, (list, dict)) and not value:
         return False
     return True
-
-
-def _reject_unused(mode: str, checks: list[tuple[Any, str, tuple[str, ...]]]) -> None:
-    blocked = [label for value, label, allowed in checks if mode not in allowed and _filled(value)]
-    if blocked:
-        raise GenericQueryError("当前分析方式不支持" + "、".join(blocked))
-
-
-def _distribution_return_limit(page_size) -> int | None:
-    """分布只看返回条数。页码不读。空条数表示全部，显式条数仍受每页上限约束。"""
-    if page_size in (None, ""):
-        return None
-    size = _as_int(page_size, "page_size")
-    if size < 1 or size > DETAIL_PAGE_SIZE_MAX:
-        raise GenericQueryError(f"每页最多 {DETAIL_PAGE_SIZE_MAX} 条")
-    return size
-
-
-def _reject_paging(page, page_size) -> None:
-    if page not in (None, "") or page_size not in (None, ""):
-        raise GenericQueryError("当前分析方式不支持分页")
 
 
 def _parse_page(page, page_size) -> tuple[int, int]:
@@ -755,13 +694,6 @@ def _alert_detail_order(order_by, order_dir) -> str:
         return "id"
     field, descending = requested
     return f"-{field}" if descending else field
-
-
-def _alert_distribution_order(order_by, order_dir, group_by: str) -> tuple[str, bool]:
-    requested = _checked_sort(order_by, order_dir, {group_by, "alert_count"})
-    if requested is None:
-        return "alert_count", True
-    return requested
 
 
 def _id_list(value) -> list[str]:

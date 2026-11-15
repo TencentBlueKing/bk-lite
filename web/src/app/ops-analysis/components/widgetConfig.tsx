@@ -35,7 +35,7 @@ import {
 import { SingleValueSettingsSection } from '@/app/ops-analysis/components/singleValueSettingsSection';
 import { ParamInputConfigEditor } from '@/app/ops-analysis/components/paramInputConfigEditor';
 import { useDataSourceApi } from '@/app/ops-analysis/api/dataSource';
-import { buildLineBarValueFieldOptions } from '@/app/ops-analysis/utils/lineBarFieldMapping';
+import { buildLineBarValueFieldOptions, defaultDisplayFields, normalizeLineBarFieldList } from '@/app/ops-analysis/utils/lineBarFieldMapping';
 import {
   getBindableFilterParams,
   buildDefaultFilterBindings,
@@ -527,14 +527,15 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
         setDefaultParamValues(fullItem.params, params);
       }
 
-      form.setFieldsValue(
-        buildDatasourceSwitchResetValues({
-          dataSourceId: fullItem.id,
-          chartType: defaultChartType,
-          params,
-          surface,
-        }),
-      );
+      const resetValues = buildDatasourceSwitchResetValues({
+        dataSourceId: fullItem.id,
+        chartType: defaultChartType,
+        params,
+        surface,
+        fieldSchema: fullItem.field_schema,
+      });
+      form.setFieldsValue(resetValues);
+      singleValueConfig.setSelectedFields(resetValues.selectedFields || []);
       settleInteractionSample(requestId, readWidgetId(widgetItem));
 
       // 重建 filter bindings
@@ -791,6 +792,13 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
       singleValueConfig.setThresholdColors((prev) =>
         prev.length > 0 ? prev : initThresholdColors(undefined),
       );
+      if (normalizeLineBarFieldList(form.getFieldValue('selectedFields')).length === 0) {
+        const displayFields = defaultDisplayFields(selectedDataSource?.field_schema);
+        if (displayFields.length > 0) {
+          form.setFieldValue('selectedFields', displayFields);
+          singleValueConfig.setSelectedFields(displayFields);
+        }
+      }
     }
     if (newChartType === 'nodeGraph' && !form.getFieldValue('nodeGraphIdentityMode')) {
       form.setFieldValue('nodeGraphIdentityMode', 'ip');
@@ -1022,12 +1030,8 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
       tableConfig.setDetectedDisplayColumns([]);
     }
 
-    if (valueConfig?.selectedFields) {
-      singleValueConfig.setSelectedFields(valueConfig.selectedFields);
-    } else {
-      singleValueConfig.setSelectedFields([]);
-    }
     applyOpenedValueConfigToFormValues(formValues, valueConfig, targetDataSource);
+    singleValueConfig.setSelectedFields(formValues.selectedFields || []);
 
     singleValueConfig.setThresholdColors(
       formValues.chartType === 'multiValue'
