@@ -4,7 +4,6 @@ import { cleanup, fireEvent, render, screen, within } from '@testing-library/rea
 import { Form } from 'antd';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import ConditionFilterInput from '@/app/ops-analysis/components/conditionFilterInput';
-import OrderInput from '@/app/ops-analysis/components/orderInput';
 import type { ConditionFieldOption } from '@/app/ops-analysis/types/dataSource';
 import {
   parseConditionGroup,
@@ -13,7 +12,6 @@ import {
 } from '@/app/ops-analysis/utils/conditionFilter';
 import { processDataSourceFormParamsForSubmit } from '@/app/ops-analysis/utils/dataSourceFormParams';
 import { processDataSourceParams } from '@/app/ops-analysis/utils/widgetDataTransform';
-import { parseOrderValue, serializeOrderValue } from '@/app/ops-analysis/utils/orderValue';
 
 beforeAll(() => {
   Object.defineProperty(window, 'matchMedia', {
@@ -115,15 +113,6 @@ describe('condition filter rows can be deleted', () => {
   });
 });
 
-describe('order value', () => {
-  it('serializes the field and direction and echoes an old plain value', () => {
-    expect(serializeOrderValue('created_at', true)).toBe('-created_at');
-    expect(serializeOrderValue('name', false)).toBe('name');
-    expect(parseOrderValue('-inst_name')).toEqual({ field: 'inst_name', descending: true });
-    expect(parseOrderValue('legacy_field')).toEqual({ field: 'legacy_field', descending: false });
-  });
-});
-
 const instanceCountFields: ConditionFieldOption[] = [
   { value: 'instance_count', label: '实例数', valueType: 'number' },
 ];
@@ -195,32 +184,3 @@ describe('condition rows keep field, operator and value inside a form', () => {
   });
 });
 
-describe('order control', () => {
-  it('shows the field and direction and echoes an old descending string', () => {
-    render(
-      <Form>
-        <Form.Item name="order" initialValue="-instance_count">
-          <OrderInput
-            fields={[
-              { value: 'instance_count', label: '实例数' },
-              { value: 'model_name', label: '模型名称' },
-            ]}
-          />
-        </Form.Item>
-        <FormValue name="order" />
-      </Form>,
-    );
-    const field = screen.getByTestId('order-field');
-    const direction = screen.getByTestId('order-direction');
-    expect(field.closest('[data-slot="order-field"]')).toBeTruthy();
-    expect(hasClass(direction.closest('[data-slot="order-direction"]'), 'shrink-0')).toBe(true);
-    expect(hasClass(field, 'ant-select-in-form-item')).toBe(true);
-    expect(hasClass(direction, 'ant-select-disabled')).toBe(false);
-    expect(screen.getByText('实例数')).toBeTruthy();
-    expect(screen.getByText('dashboard.order.desc')).toBeTruthy();
-
-    openSelect(direction);
-    fireEvent.click(screen.getByText('dashboard.order.asc'));
-    expect(screen.getByTestId('form-value').textContent).toBe('"instance_count"');
-  });
-});

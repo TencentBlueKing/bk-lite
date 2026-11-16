@@ -369,25 +369,8 @@ describe('ViewConfig analysis mode reopen', () => {
       model_asst_id: 'run',
     }],
   ] as const)(
-    'keeps the saved mode when %s table probing is still in flight',
+    'keeps the saved mode when reopening a %s table',
     async (_label, source, values) => {
-      let releaseProbe = () => undefined;
-      const gate = new Promise<void>((resolve) => {
-        releaseProbe = resolve;
-      });
-      getSourceDataByApiId.mockImplementation(async () => {
-        await gate;
-        return {
-          data: {
-            column_fields: {
-              source: 'model_attrs',
-              model_key: 'host',
-              fields: [{ key: 'bk_inst_name', title: '名称' }],
-            },
-            items: [],
-          },
-        };
-      });
       const expected = values.analysis_mode === 'count' ? '计数' : '分布';
       render(
         <AnalysisDrawer
@@ -397,12 +380,9 @@ describe('ViewConfig analysis mode reopen', () => {
       );
 
       await waitFor(() => {
-        expect(getSourceDataByApiId).toHaveBeenCalled();
-      });
-      releaseProbe();
-      await waitFor(() => {
         expect(selectedMode()).toBe(expected);
       });
+      expect(getSourceDataByApiId).not.toHaveBeenCalled();
     },
   );
 });

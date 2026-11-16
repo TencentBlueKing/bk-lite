@@ -418,23 +418,6 @@
     "fieldTitle": "Display Name",
     "fieldValueType": "Data Type",
     "fieldDescription": "Description",
-    "fieldRole": "Chart role",
-    "fieldRolePlaceholder": "Unspecified",
-    "fieldModes": "Analysis modes",
-    "fieldModesPlaceholder": "All modes",
-    "fieldRoles": {
-      "dimension": "Dimension",
-      "measure": "Measure",
-      "identity": "Identity"
-    },
-    "analysisModes": {
-      "detail": "Detail",
-      "count": "Count",
-      "distribution": "Distribution",
-      "aggregate": "Aggregate",
-      "series": "Series",
-      "value": "Value"
-    },
     "duplicateFieldKeys": "Duplicate field names: ",
     "valueTypes": {
       "string": "String",
@@ -609,9 +592,8 @@
       "displayHint": "Generate a sign-in-free link to show this screen in a TV or browser.",
       "displayModalTitle": "Screen display",
       "displayLinkNotice": "Anyone with this link can view this screen. Do not share it publicly.",
-      "displayAccessLink": "Current display link",
-      "displayDurationHint": "Regenerating replaces the current link.",
-      "displayEmpty": "No display link yet",
+      "displayAccessLink": "Cast link",
+      "displayEmpty": "No cast link yet",
       "displayStatusTitle": {
         "active": "Link enabled",
         "paused": "Link paused",
@@ -637,8 +619,8 @@
       "displayResume": "Resume",
       "displayResumed": "Casting resumed",
       "displayResumeExpired": "This grant has expired. Generate a new link.",
-      "displayRegenerate": "Regenerate link",
-      "displayRegenerateConfirmTitle": "Regenerate the display link",
+      "displayRegenerate": "Regenerate",
+      "displayRegenerateConfirmTitle": "Regenerate link",
       "displayRegenerateConfirm": "The current link will stop working immediately, and TVs using it will stop showing the screen. Regenerate anyway?",
       "displayRegenerated": "New link created. The previous link no longer works.",
       "displayLoadFailed": "Failed to load the cast grant",
@@ -1223,17 +1205,8 @@
     "selectInstance": "Please select instance",
     "dataFormatMismatch": "Data format mismatch",
     "chartFieldMissing": "Field {field} is not in the current result",
-    "structureMismatch": "Current result structure is {current}; this chart needs {required}. Change the analysis mode or the chart.",
-    "structureName": {
-      "table": "table",
-      "value": "single value",
-      "category": "category",
-      "series": "series"
-    },
-    "piePageShare": "Share of the current page, not the full result (page {page}, {pageSize} per page, {count} items)",
     "optionPageLimitExceeded": "Option page limit exceeded",
     "selectClassificationFirst": "Select a classification first",
-    "selectModelRelationFirst": "Select the start model and relation first",
     "conditionFilter": {
       "add": "Add condition",
       "delete": "Delete condition",
@@ -1256,12 +1229,6 @@
       "lt": "Less than",
       "lte": "Less than or equal",
       "in": "In"
-    },
-    "order": {
-      "field": "Sort field",
-      "direction": "Direction",
-      "asc": "Ascending",
-      "desc": "Descending"
     },
     "optionPageEndedEarly": "Option pages ended before the total count",
     "invalidSourceDataResponse": "The unified data response format is invalid",

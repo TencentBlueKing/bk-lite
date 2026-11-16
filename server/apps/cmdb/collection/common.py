@@ -506,6 +506,8 @@ class Management:
                 try:
                     if ag.delete_entity_if_unchanged(INSTANCE, instance_info):
                         result["success"].append(instance_info)
+                    else:
+                        result["failed"].append({"instance_info": instance_info, "error": "instance changed before delete"})
                 except Exception as e:
                     result["failed"].append({"instance_info": instance_info, "error": getattr(e, "message", e)})
 

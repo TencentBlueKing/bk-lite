@@ -494,6 +494,7 @@ class TestBuildDeepagentNodes:
                 )
 
         with (
+            patch("apps.opspilot.metis.llm.chain.node.create_planned_agent", side_effect=_create),
             patch("apps.opspilot.metis.llm.chain.node.create_deep_agent", side_effect=_create),
             patch.object(ToolsNodes, "get_llm_client", return_value=_FakeLLM()),
         ):
@@ -671,12 +672,12 @@ class TestBuildDeepagentNodes:
 
         build_skills.assert_called_once()
         kwargs = captured["create_kwargs"]
-        assert kwargs["backend"] is fake_backend
+        assert kwargs["backend"].default is fake_backend
         assert kwargs["skills"] == ["/skills/"]
         visibility = next(m for m in kwargs["middleware"] if isinstance(m, ToolVisibilityMiddleware))
         # 纯技能步不再常驻整套 FS（避免每轮 ~7k schema），但必须把 execute
         # 放进 always_visible（仅 discard hidden 不够，allow_unregistered=False）。
-        assert "read_file" not in visibility._always_visible_tools
+        assert {"read_file", "grep"} <= visibility._always_visible_tools
         assert "execute" not in visibility._hidden_tools
         assert "execute" in visibility._always_visible_tools
         skill_guard = next(m for m in kwargs["middleware"] if isinstance(m, SkillExecutionGuardMiddleware))
@@ -777,6 +778,7 @@ class TestBuildDeepagentNodes:
             emitted.append((name, payload))
 
         with (
+            patch("apps.opspilot.metis.llm.chain.node.create_planned_agent", return_value=fake_agent),
             patch("apps.opspilot.metis.llm.chain.node.create_deep_agent", return_value=fake_agent),
             patch.object(ToolsNodes, "get_llm_client", return_value=_OverflowLLM()),
             patch.object(ToolsNodes, "_build_knowledge_retrieve_tool", return_value=None),
@@ -861,6 +863,7 @@ class TestBuildDeepagentNodes:
         opspilot_logger.addHandler(handler)
         try:
             with (
+                patch("apps.opspilot.metis.llm.chain.node.create_planned_agent", return_value=fake_agent),
                 patch("apps.opspilot.metis.llm.chain.node.create_deep_agent", return_value=fake_agent),
                 patch.object(ToolsNodes, "get_llm_client", return_value=_PlannerLLM()),
                 patch.object(ToolsNodes, "_build_knowledge_retrieve_tool", return_value=None),
@@ -964,6 +967,7 @@ class TestBuildDeepagentNodes:
         fake_agent.ainvoke = _ainvoke
 
         with (
+            patch("apps.opspilot.metis.llm.chain.node.create_planned_agent", return_value=fake_agent),
             patch("apps.opspilot.metis.llm.chain.node.create_deep_agent", return_value=fake_agent),
             patch.object(ToolsNodes, "get_llm_client", return_value=_PlanLLM()),
             patch.object(ToolsNodes, "_build_knowledge_retrieve_tool", return_value=None),
@@ -1076,8 +1080,8 @@ class TestBuildDeepagentNodes:
         assert kwargs["model"].__class__.__name__ == "_FakeLLM"
         _assert_registered_tool_names(kwargs["tools"], ["shell"])
         assert "system_prompt" in kwargs
-        # 无技能/审批时不传 backend/skills/interrupt_on
-        assert "backend" not in kwargs
+        # 无技能也保留结果 Backend；不传技能源或审批配置。
+        assert "backend" in kwargs
         assert "skills" not in kwargs
         assert "interrupt_on" not in kwargs
         # 执行步正文不对外；只返回总结轮一份答案
@@ -1165,8 +1169,8 @@ class TestBuildDeepagentNodes:
         assert visibility._hidden_tools == PLANNED_EXECUTION_HIDDEN_DEEPAGENT_TOOLS
         assert "write_todos" in visibility._hidden_tools
         assert "task" in visibility._hidden_tools
-        # 无技能包时不常驻 FS 工具，避免 8K 模型被 read_file/ls schema 撑爆。
-        assert "read_file" not in visibility._always_visible_tools
+        # 无技能包也必须能检索已落盘结果；不开放写入或执行工具。
+        assert {"read_file", "grep"} <= visibility._always_visible_tools
         _assert_visible_tool_steps(
             captured["visible_tool_calls"],
             [
@@ -2073,7 +2077,7 @@ class TestBuildDeepagentNodes:
                 },
             )
         kwargs = captured["create_kwargs"]
-        assert kwargs["backend"] is fake_backend
+        assert kwargs["backend"].default is fake_backend
         assert kwargs["skills"] == ["/skills/"]
         assert kwargs["interrupt_on"] == {"shell": True}
 
@@ -2123,7 +2127,7 @@ class TestBuildDeepagentNodes:
         )
         # 同时确认 kwargs 透传正确(防御 setup 块改坏后端到端数据流)
         kwargs = captured["create_kwargs"]
-        assert kwargs["backend"] is fake_backend
+        assert kwargs["backend"].default is fake_backend
         assert kwargs["skills"] == ["/skills/"]
 
     def test_planned_execution_keeps_hitl_tools_always_on_until_summary(self):

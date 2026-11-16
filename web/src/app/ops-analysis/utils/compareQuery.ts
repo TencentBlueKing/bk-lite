@@ -3,8 +3,7 @@ import type { ValueConfig, FilterBindings, UnifiedFilterDefinition, FilterValue 
 import type { DatasourceItem, ParamItem } from '@/app/ops-analysis/types/dataSource';
 import { buildWidgetRequestParams } from '@/app/ops-analysis/utils/widgetDataTransform';
 import { getValueByPath } from '@/app/ops-analysis/utils/objectPath';
-import { measureKeyFromFields } from '@/app/ops-analysis/utils/chartFieldContract';
-import { coerceTopNNumericValue } from '@/app/ops-analysis/utils/topNData';
+import { coerceTopNNumericValue, unwrapTopNData } from '@/app/ops-analysis/utils/topNData';
 import type { DateRangeResolutionContext } from '@/app/ops-analysis/utils/dateRange';
 import type { SourceDataResult } from '@/app/ops-analysis/utils/sourceDataResponse';
 
@@ -206,21 +205,19 @@ export const extractComparableValue = (
     if (present !== undefined) {
       return present;
     }
+    const rows = unwrapTopNData(data);
+    if (rows !== data) {
+      const fromRow = presentScalar(getValueByPath(rows, selectedField));
+      if (fromRow !== undefined) {
+        return fromRow;
+      }
+    }
     // 明确指定了字段但当前结果没有可用值时返回 null，不改读其它字段。
     return null;
   }
 
   if (typeof data === 'number' || typeof data === 'string' || typeof data === 'boolean') {
     return data;
-  }
-
-  const measureKey = measureKeyFromFields(data);
-  if (measureKey && data && typeof data === 'object' && !Array.isArray(data)) {
-    const present = presentScalar((data as Record<string, unknown>)[measureKey]);
-    if (present !== undefined) {
-      return present;
-    }
-    return null;
   }
 
   if (Array.isArray(data) && data.length > 0) {

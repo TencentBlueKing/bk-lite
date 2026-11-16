@@ -9,6 +9,7 @@ import type { Graph as X6Graph, Node, Edge } from '@antv/x6';
 import { message } from 'antd';
 import { deliverWidgetCsvExport } from '@/app/ops-analysis/context/widgetCsvExportRegistry';
 import { isTablePageOnlyChange } from '@/app/ops-analysis/utils/widgetCsvExport';
+import { readExplicitPagePair } from '@/app/ops-analysis/utils/tablePagination';
 import { buildWidgetRequestParams, fetchWidgetData, resolveEffectiveFilterBindings } from '@/app/ops-analysis/utils/widgetDataTransform';
 import { getRequestErrorMessage } from '@/app/ops-analysis/utils/requestError';
 import { normalizeCanvasRefreshInterval } from '@/app/ops-analysis/utils/canvasRefreshInterval';
@@ -34,11 +35,6 @@ import type { DatasourceItem } from '@/app/ops-analysis/types/dataSource';
 import { DirItem } from '@/app/ops-analysis/types';
 import { getEdgeStyleWithLabel } from '../utils/topologyUtils';
 import { createNodeByType } from '../utils/registerNode';
-
-const DEFAULT_TABLE_QUERY_PARAMS = {
-  page: 1,
-  page_size: 20,
-};
 
 type TableQueryParams = Record<string, unknown>;
 
@@ -119,7 +115,7 @@ export const useGraphData = (
       return queryParams;
     }
 
-    return queryParams || DEFAULT_TABLE_QUERY_PARAMS;
+    return queryParams ?? readExplicitPagePair(valueConfig.dataSourceParams);
   }, []);
 
   const serializeTopologyData = useCallback((): { nodes: TopologyNodeData[]; edges: SerializedEdge[] } => {

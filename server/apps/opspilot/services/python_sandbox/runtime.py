@@ -44,7 +44,6 @@ class PythonSandbox:
         self._execution_lock = threading.Lock()
         self._root = None
         self._process = None
-        self._files = []
         self._closed = False
         self._attachments = list(attachments or [])
 
@@ -81,40 +80,6 @@ class PythonSandbox:
             raise ValueError("文件路径不能通过链接离开当前任务工作目录")
         return target
 
-    def store_result(self, text: str) -> str:
-        with self._lock:
-            path = Path(self.workspace) / f"tool-result-{uuid.uuid4().hex}.txt"
-            try:
-                path.write_text(text, encoding="utf-8")
-            except OSError as exc:
-                raise SandboxUnavailable("工具结果写入任务工作区失败") from exc
-            self._files.append(str(path))
-            return str(path)
-
-    def read_tool_result(self, path: str, offset: int = 0) -> str:
-        """只读本轮落盘的工具结果，每页 1000 字符，保持在模型压缩预算内。"""
-        if not isinstance(offset, int) or offset < 0:
-            raise ValueError("offset 必须是非负字符偏移")
-        with self._lock:
-            if path not in self._files:
-                raise ValueError("只能读取本轮工具返回的结果文件路径")
-            target = self._file_path(path)
-            try:
-                flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
-                with os.fdopen(os.open(target, flags), encoding="utf-8") as stream:
-                    if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
-                        raise ValueError("工具结果必须是普通文件")
-                    remaining = offset
-                    while remaining:
-                        chunk = stream.read(min(remaining, 64 * 1024))
-                        if not chunk:
-                            break
-                        remaining -= len(chunk)
-                    text = stream.read(1001)
-            except (OSError, UnicodeError) as exc:
-                raise SandboxUnavailable("无法读取工具结果文件，请重新查询原工具") from exc
-            return f"offset={offset}, next_offset={offset + len(text[:1000])}, eof={len(text) <= 1000}\n{text[:1000]}"
-
     def write_workspace_file(self, path: str, data: bytes) -> None:
         if not isinstance(data, bytes) or len(data) > _MAX_FILE_BYTES:
             raise ValueError("文件超过工作区传输限制")
@@ -146,7 +111,7 @@ class PythonSandbox:
 
     def files(self) -> list[str]:
         with self._lock:
-            return list(self._files)
+            return [str(path) for path in (Path(self.workspace) / "large_tool_results").glob("*") if path.is_file()]
 
     def _environment(self, extra):
         root = self.workspace

@@ -3,7 +3,6 @@ import {
   conditionFieldFromDraft,
   conditionFieldFromSourceRow,
   draftFromConditionField,
-  legacyDynamicConditionSource,
   presentConditionField,
 } from '@/app/ops-analysis/utils/conditionFieldSource';
 
@@ -37,13 +36,12 @@ describe('condition field source', () => {
     }, 'attr_id', 'attr_name')?.valueType).toBe('number');
   });
 
-  it('round-trips a handwritten field and keeps query object limits', () => {
+  it('round-trips a handwritten enum field', () => {
     const field = presentConditionField({
       value: 'status',
       label: '状态',
       valueType: 'enum',
-      query_objects: ['alert'],
-      options: [{ label: '待响应', value: 'pending', query_objects: ['alert'] }],
+      options: [{ label: '待响应', value: 'pending' }],
     });
     const draft = draftFromConditionField(field);
     expect(draft.valueMode).toBe('options');
@@ -54,25 +52,5 @@ describe('condition field source', () => {
       valueMode: 'input',
       options: [],
     })).toEqual({ value: 'name', label: '名称', valueType: 'string' });
-  });
-
-  it('shows an old follow-model source as a normal datasource config', () => {
-    expect(legacyDynamicConditionSource({
-      kind: 'modelAttrs',
-      modelParam: 'model_id',
-    })).toEqual({
-      sourceRef: { type: 'rest_api', value: 'cmdb/list_cmdb_attr_options' },
-      valueField: 'attr_id',
-      labelField: 'attr_name',
-      queryParams: { model_id: { ref: 'model_id' } },
-    });
-    expect(legacyDynamicConditionSource({
-      kind: 'endModelAttrs',
-      startModelParam: 'start_model_id',
-      associationParam: 'model_asst_id',
-    })?.queryParams).toEqual({
-      start_model_id: { ref: 'start_model_id' },
-      model_asst_id: { ref: 'model_asst_id' },
-    });
   });
 });

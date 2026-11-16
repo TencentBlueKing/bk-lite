@@ -794,6 +794,67 @@ describe('csv export entry', () => {
     expect(outcome.kind).toBe('stale');
   });
 
+  it('exports the loaded rows when the request did not page and the payload is complete', async () => {
+    const seen: number[] = [];
+    const outcome = await createWidgetCsvExport(
+      {
+        chartType: 'table',
+        rawData: { items: [{ host: '全部' }], count: 1 },
+        loading: false,
+        dataSourceId: 7,
+        dataSource: {
+          params: [
+            { name: 'page', type: 'number' },
+            { name: 'page_size', type: 'number' },
+          ],
+        } as never,
+        requestParams: { model_id: 'host' },
+        fetchSourceData: async (params) => {
+          seen.push(Number(params.page));
+          return { items: [{ host: '不该再请求' }], count: 1 };
+        },
+      },
+      { title: '模型', now: new Date('2026-03-01T00:30:00Z') },
+      labels,
+    );
+    expect(seen).toEqual([]);
+    expect(outcome.kind).toBe('downloaded');
+    if (outcome.kind !== 'downloaded') return;
+    expect(outcome.csv).toContain('全部');
+  });
+
+  it('keeps walking when the interface paged a request that omitted page params', async () => {
+    const seen: number[] = [];
+    const outcome = await createWidgetCsvExport(
+      {
+        chartType: 'table',
+        rawData: { items: [{ host: '第1页' }], count: 2, page: 1, page_size: 1 },
+        loading: false,
+        dataSourceId: 7,
+        dataSource: {
+          params: [
+            { name: 'page', type: 'number' },
+            { name: 'page_size', type: 'number' },
+          ],
+        } as never,
+        requestParams: { department: 'ops' },
+        fetchSourceData: async (params) => {
+          seen.push(Number(params.page));
+          return {
+            items: [{ host: `补${params.page}` }],
+            count: 2,
+            page: params.page,
+            page_size: params.page_size,
+          };
+        },
+      },
+      { title: '账单', now: new Date('2026-03-01T00:30:00Z') },
+      labels,
+    );
+    expect(seen.length).toBeGreaterThan(0);
+    expect(outcome.kind).toBe('downloaded');
+  });
+
   it('refuses a multi-series radar export', async () => {
     const outcome = await createWidgetCsvExport(
       {

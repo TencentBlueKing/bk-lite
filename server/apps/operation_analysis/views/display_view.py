@@ -12,7 +12,7 @@ from apps.operation_analysis.services.display_service import activate_display, s
 from apps.operation_analysis.services.share_audit import log_share_access
 from apps.operation_analysis.services.share_service import ShareLinkInvalid, ShareRateLimited
 from apps.operation_analysis.services.user_messages import oa_message
-from apps.operation_analysis.views.share_view import DashboardShareAccessViewSet
+from apps.operation_analysis.views.share_view import DashboardShareAccessViewSet, activate_request_language
 
 _ACTIVATE_RATE_LIMIT = 30
 _ACTIVATE_RATE_WINDOW = 60
@@ -51,6 +51,7 @@ class ScreenDisplayAccessViewSet(viewsets.ViewSet):
 
     def _forward(self, request, method_name, **kwargs):
         request._screen_display = True
+        activate_request_language(request)
         host = DashboardShareAccessViewSet()
         host.request = request
         host.kwargs = kwargs

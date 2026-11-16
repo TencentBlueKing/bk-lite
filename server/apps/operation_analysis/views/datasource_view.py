@@ -469,13 +469,6 @@ def _normalize_param_value(param_name, param_type, raw_value):
     if param_type == "conditionFilter":
         return _normalize_condition_filter(param_name, raw_value)
 
-    if param_type == "order":
-        if raw_value in (None, ""):
-            return raw_value
-        if not isinstance(raw_value, str):
-            raise ValueError(oa_message("messages.param_must_be_string", "参数 {param_name} 必须是字符串", param_name=param_name))
-        return raw_value
-
     return raw_value
 
 
@@ -555,19 +548,6 @@ def _unspecified_host_top_instance_ids(instance, param_name, default_value):
     return getattr(instance, "rest_api", None) == "monitor/get_host_resource_top" and param_name == "instance_ids" and default_value == []
 
 
-_GENERIC_QUERY_REST_APIS = frozenset(
-    {
-        "cmdb/query_cmdb_models",
-        "cmdb/query_cmdb_instances",
-        "cmdb/query_cmdb_one_hop",
-        "monitor/query_monitor_instances",
-        "monitor/query_monitor_metric",
-        "monitor/query_monitor_alerts",
-        "alert/query_alert_center",
-    }
-)
-
-
 def _resolve_request_params(instance, request_data):
     configured_params = instance.params if isinstance(instance.params, list) else []
     allowed_specs = {
@@ -581,10 +561,6 @@ def _resolve_request_params(instance, request_data):
     if getattr(instance, "rest_api", None) in TREND_GROUP_BY_AUTO_REST_APIS:
         sanitized_request.pop("group_by", None)
         allowed_specs.pop("group_by", None)
-    # 一跳关联不再声明排序和方向。顺序固定，走向由起点在关系的哪一侧决定。
-    if getattr(instance, "rest_api", None) == "cmdb/query_cmdb_one_hop":
-        sanitized_request.pop("order", None)
-        sanitized_request.pop("direction", None)
 
     allowed_request_keys = set(allowed_specs.keys()) | RUNTIME_ALLOWED_KEYS
     unknown_keys = sorted(str(key) for key in sanitized_request.keys() if key not in allowed_request_keys)
@@ -601,10 +577,6 @@ def _resolve_request_params(instance, request_data):
             raw_value = default_value
         elif param_name in sanitized_request:
             raw_value = sanitized_request[param_name]
-            # 通用查询清空的分页不回填种子默认值，否则计数会一直带着页码失败。
-            # 其它数据源仍把请求里的空值原样交给归一化，缺省时才用种子默认值。
-            if getattr(instance, "rest_api", None) in _GENERIC_QUERY_REST_APIS and raw_value in (None, ""):
-                continue
         elif default_value not in (None, "") and not _unspecified_host_top_instance_ids(instance, param_name, default_value):
             raw_value = default_value
         else:

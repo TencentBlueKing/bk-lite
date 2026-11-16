@@ -90,6 +90,17 @@ const modelSelect = (name: string, alias: string): ParamItem => ({
   },
 });
 
+const dynamicCondition = (queryParams: Record<string, { ref: string }>) => ({
+  control: 'conditionFilter' as const,
+  fields: {
+    kind: 'dynamic' as const,
+    sourceRef: { type: 'rest_api' as const, value: 'cmdb/list_cmdb_attr_options' },
+    valueField: 'attr_id',
+    labelField: 'attr_name',
+    queryParams,
+  },
+});
+
 const analysisMode = (): ParamItem => ({
   name: 'analysis_mode',
   alias_name: '分析方式',
@@ -102,7 +113,7 @@ const analysisMode = (): ParamItem => ({
     optionsSource: {
       type: 'static',
       staticItems: [
-        { label: '明细', value: 'detail', charts: ['table'], result: { structure: 'table' } },
+        { label: '明细', value: 'detail' },
       ],
     },
   },
@@ -209,21 +220,7 @@ describe('cmdb classification cascade', () => {
               value: { logic: 'AND', items: [] },
               inputConfig: {
                 control: 'conditionFilter',
-                fields: { kind: 'modelAttrs', modelParam: 'model_id' },
-              },
-            },
-            {
-              name: 'order',
-              alias_name: '排序',
-              type: 'order',
-              filterType: 'params',
-              value: '',
-              visible_modes: ['detail'],
-              inputConfig: {
-                control: 'order',
-                modelParam: 'model_id',
-                includeModelAttrsInModes: ['detail'],
-                fields: [{ value: 'inst_name', label: '实例名', modes: ['detail'] }],
+                fields: dynamicCondition({ model_id: { ref: 'model_id' } }).fields,
               },
             },
           ],
@@ -233,7 +230,6 @@ describe('cmdb classification cascade', () => {
           model_id: 'host',
           analysis_mode: 'detail',
           filters: { logic: 'AND', items: [{ field: 'cpu', op: 'gt', value: 2 }] },
-          order: '-cpu',
         }}
       />,
     );
@@ -241,7 +237,6 @@ describe('cmdb classification cascade', () => {
     await waitFor(() => {
       expect(api.getSourceDataByApiId).toHaveBeenCalledWith(2, { classification_id: 'compute' }, undefined);
       expect(readParams().model_id).toBe('host');
-      expect(readParams().order).toBe('-cpu');
       expect((readParams().filters as { items: unknown[] }).items).toHaveLength(1);
     });
 
@@ -251,14 +246,13 @@ describe('cmdb classification cascade', () => {
       const next = readParams();
       expect(next.classification_id).toBe('space');
       expect(next.model_id).toBeNull();
-      expect(next.order).toBe('');
       expect((next.filters as { items: unknown[] }).items).toEqual([]);
     });
     expect(api.getSourceDataByApiId).toHaveBeenCalledWith(2, { classification_id: 'space' }, undefined);
   });
 
   it('loads associations from the start model and clears them with the classification', async () => {
-    api.getSourceDataByApiId.mockImplementation(async (id: number, params?: { classification_id?: string; model_id?: string }) => {
+    api.getSourceDataByApiId.mockImplementation(async (id: number, params?: { classification_id?: string; model_id?: string; start_model_id?: string }) => {
       if (id === 1) {
         return {
           data: [
@@ -286,6 +280,9 @@ describe('cmdb classification cascade', () => {
           }],
           warnings: [],
         };
+      }
+      if (params?.start_model_id === 'host') {
+        return { data: [{ attr_id: 'port', attr_name: '端口', value_type: 'string', options: [] }], warnings: [] };
       }
       if (params?.model_id === 'app') {
         return { data: [{ attr_id: 'port', attr_name: '端口', value_type: 'string', options: [] }], warnings: [] };
@@ -330,7 +327,7 @@ describe('cmdb classification cascade', () => {
               value: { logic: 'AND', items: [] },
               inputConfig: {
                 control: 'conditionFilter',
-                fields: { kind: 'modelAttrs', modelParam: 'start_model_id' },
+                fields: dynamicCondition({ model_id: { ref: 'start_model_id' } }).fields,
               },
             },
             {
@@ -341,11 +338,10 @@ describe('cmdb classification cascade', () => {
               value: { logic: 'AND', items: [] },
               inputConfig: {
                 control: 'conditionFilter',
-                fields: {
-                  kind: 'endModelAttrs',
-                  startModelParam: 'start_model_id',
-                  associationParam: 'model_asst_id',
-                },
+                fields: dynamicCondition({
+                  start_model_id: { ref: 'start_model_id' },
+                  model_asst_id: { ref: 'model_asst_id' },
+                }).fields,
               },
             },
           ],
@@ -394,7 +390,7 @@ describe('cmdb classification cascade', () => {
     expect(attrCallsFor(modelId)).toBe(settled);
   };
 
-  it('loads model attributes once for the condition filter and the sort control', async () => {
+  it('loads model attributes once for the condition filter', async () => {
     api.getSourceDataByApiId.mockResolvedValue({
       data: [{ attr_id: 'cpu', attr_name: 'CPU', value_type: 'number', options: [] }],
       warnings: [],
@@ -406,6 +402,7 @@ describe('cmdb classification cascade', () => {
           name: 'CMDB 实例通用查询',
           params: [
             analysisMode(),
+            { name: 'model_id', alias_name: '模型', type: 'string', filterType: 'params', value: '' },
             {
               name: 'filters',
               alias_name: '条件过滤',
@@ -414,20 +411,7 @@ describe('cmdb classification cascade', () => {
               value: { logic: 'AND', items: [] },
               inputConfig: {
                 control: 'conditionFilter',
-                fields: { kind: 'modelAttrs', modelParam: 'model_id' },
-              },
-            },
-            {
-              name: 'order',
-              alias_name: '排序',
-              type: 'order',
-              filterType: 'params',
-              value: '',
-              inputConfig: {
-                control: 'order',
-                modelParam: 'model_id',
-                includeModelAttrsInModes: ['detail'],
-                fields: [{ value: 'inst_name', label: '实例名', modes: ['detail'] }],
+                fields: dynamicCondition({ model_id: { ref: 'model_id' } }).fields,
               },
             },
           ],
@@ -436,12 +420,11 @@ describe('cmdb classification cascade', () => {
           model_id: 'host',
           analysis_mode: 'detail',
           filters: { logic: 'AND', items: [] },
-          order: '',
         }}
       />,
     );
 
-    await expectAttrLoadsToSettle('host', 2);
+    await expectAttrLoadsToSettle('host', 1);
   });
 
   it('loads start-model attributes once for the one-hop condition filter', async () => {
@@ -455,6 +438,7 @@ describe('cmdb classification cascade', () => {
           id: 25,
           name: 'CMDB 一跳关联通用查询',
           params: [
+            { name: 'start_model_id', alias_name: '起点模型', type: 'string', filterType: 'params', value: '' },
             {
               name: 'filters',
               alias_name: '起点条件',
@@ -463,7 +447,7 @@ describe('cmdb classification cascade', () => {
               value: { logic: 'AND', items: [] },
               inputConfig: {
                 control: 'conditionFilter',
-                fields: { kind: 'modelAttrs', modelParam: 'start_model_id' },
+                fields: dynamicCondition({ model_id: { ref: 'start_model_id' } }).fields,
               },
             },
           ],
@@ -496,6 +480,19 @@ describe('cmdb classification cascade', () => {
               id: 26,
               name: 'CMDB 实例通用查询',
               params: [{
+                name: 'model_id',
+                alias_name: '模型',
+                type: 'string',
+                filterType: 'params',
+                value: '',
+                inputConfig: {
+                  control: 'select',
+                  optionsSource: {
+                    type: 'static',
+                    staticItems: [{ label: '系统', value: 'system' }],
+                  },
+                },
+              }, {
                 name: 'filters',
                 alias_name: '条件过滤',
                 type: 'conditionFilter',
@@ -503,7 +500,7 @@ describe('cmdb classification cascade', () => {
                 value: { logic: 'AND', items: [] },
                 inputConfig: {
                   control: 'conditionFilter',
-                  fields: { kind: 'modelAttrs', modelParam: 'model_id' },
+                  fields: dynamicCondition({ model_id: { ref: 'model_id' } }).fields,
                 },
               }],
             } as DatasourceItem}
