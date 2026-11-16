@@ -48,6 +48,27 @@ def _option_values(param):
     return {item["value"] for item in param["inputConfig"]["optionsSource"]["staticItems"]}
 
 
+def test_monitor_instance_count_source_is_one_object_and_one_number():
+    data = json.loads(SEED.read_text(encoding="utf-8"))
+    matches = [item for item in data if item.get("rest_api") == "monitor/query_monitor_instance_counts"]
+    assert len(matches) == 1
+    source = matches[0]
+    assert source["key"] == "监控实例数量统计::monitor/query_monitor_instance_counts"
+    assert source["name"] == "监控实例数量统计"
+    assert source["chart_type"] == ["single", "gauge"]
+    names = [param["name"] for param in source["params"]]
+    assert names == ["monitor_object_id", "status", "organization"]
+    monitor_object = _param(source, "monitor_object_id")
+    assert monitor_object["required"] is True
+    assert monitor_object["inputConfig"].get("multiple") is not True
+    assert monitor_object["inputConfig"]["optionsSource"]["valueField"] == "id"
+    assert monitor_object["inputConfig"]["optionsSource"]["labelField"] == "display_name"
+    assert _param(source, "status")["value"] == "all"
+    assert [field["key"] for field in source["field_schema"]] == ["instance_count"]
+    for dropped in ("page", "page_size", "order_by", "order_dir", "instance_ids", "analysis_mode"):
+        assert dropped not in names
+
+
 def test_generic_query_seed_declares_analysis_modes_and_paging_defaults():
     sources = _sources()
     assert set(sources) == {
@@ -157,8 +178,8 @@ def test_generic_query_seed_uses_chart_driven_filters_and_order():
     assert "group_by" not in instance_names
     assert "filters" not in instance_names
     assert "order" not in instance_names
-    assert _param(instances, "order_by")["type"] == "string"
-    assert _param(instances, "order_dir")["value"] == ""
+    assert "order_by" not in instance_names
+    assert "order_dir" not in instance_names
     for rest_api in (
         "cmdb/query_cmdb_instances",
         "cmdb/query_cmdb_instance_distribution",
@@ -508,8 +529,8 @@ def test_model_query_schema_matches_detail_rows_without_touching_other_status():
     object_field = next(field for field in instances["field_schema"] if field["key"] == "monitor_object_id")
     assert object_field["title"] == "监控对象"
     assert "展示名" in object_field["description"]
-    assert [item["value"] for item in _param(instances, "order_by")["inputConfig"]["optionsSource"]["staticItems"]] == ["name", "ip"]
-    assert [item["value"] for item in _param(instances, "order_dir")["inputConfig"]["optionsSource"]["staticItems"]] == ["asc", "desc"]
+    assert "order_by" not in {param["name"] for param in instances["params"]}
+    assert "order_dir" not in {param["name"] for param in instances["params"]}
     for rest_api in (
         "monitor/query_monitor_instances",
         "monitor/query_monitor_metric",

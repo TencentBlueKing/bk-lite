@@ -30,6 +30,7 @@ from apps.monitor.services.generic_query import (
     query_alert_counts,
     query_alert_details,
     query_alert_distribution,
+    query_instance_counts,
     query_instances,
     validate_metric_request,
 )
@@ -138,13 +139,13 @@ def query_monitor_instances(
     status=None,
     instance_ids=None,
     group_by=None,
-    order_by=None,
-    order_dir=None,
     page=None,
     page_size=None,
     user_info=None,
     **kwargs,
 ):
+    if kwargs.get("order_by") not in (None, "") or kwargs.get("order_dir") not in (None, ""):
+        raise GenericQueryError("不支持排序")
     del kwargs
     if group_by not in (None, ""):
         raise GenericQueryError("当前查询不支持分组")
@@ -155,13 +156,30 @@ def query_monitor_instances(
         status=status,
         instance_ids=instance_ids,
         group_by=group_by,
-        order_by=order_by,
-        order_dir=order_dir,
         page=page,
         page_size=page_size,
         locale=(user_info or {}).get("locale"),
     )
     return _ok(data)
+
+
+@nats_client.register
+@_guard("query_monitor_instance_counts")
+def query_monitor_instance_counts(
+    monitor_object_id=None,
+    status=None,
+    user_info=None,
+    **kwargs,
+):
+    if kwargs.get("page") not in (None, "") or kwargs.get("page_size") not in (None, ""):
+        raise GenericQueryError("计数不支持分页")
+    if kwargs.get("order_by") not in (None, "") or kwargs.get("order_dir") not in (None, ""):
+        raise GenericQueryError("计数不支持排序")
+    if kwargs.get("instance_ids") not in (None, "", []):
+        raise GenericQueryError("计数不支持实例范围")
+    del kwargs
+    queryset = _authorized_instances(user_info, monitor_object_id)
+    return _ok(query_instance_counts(queryset, status=status))
 
 
 @nats_client.register
