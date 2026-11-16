@@ -28,6 +28,11 @@ export const presentConditionField = (field: ConditionFieldOption): ConditionFie
     return next;
   }
   const options = readOptionList(field.options);
+  if (field.valueType === 'tag') {
+    next.valueType = 'tag';
+    if (options.length > 0) next.options = options;
+    return next;
+  }
   if (field.valueType === 'enum' && options.length > 0) {
     next.valueType = 'enum';
     next.options = options;
@@ -44,7 +49,7 @@ export const conditionFieldFromSourceRow = (
 ): ConditionFieldOption | null => {
   const rawValue = item[valueField];
   if (rawValue === undefined || rawValue === null || rawValue === '') return null;
-  const valueType: ConditionFieldValueType = item.value_type === 'number' || item.value_type === 'enum'
+  const valueType: ConditionFieldValueType = item.value_type === 'number' || item.value_type === 'enum' || item.value_type === 'tag'
     ? item.value_type
     : 'string';
   return presentConditionField({
