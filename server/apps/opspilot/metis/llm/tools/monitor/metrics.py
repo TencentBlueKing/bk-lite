@@ -156,7 +156,7 @@ def _metric_query_hint(items: list, keyword: Optional[str], catalog: Optional[li
 @tool(
     description=(
         "列出该对象指标定义。keyword 用用户原文里的指标名或指标说法，筛选 name/display_name。"
-        "keyword 必须原样出现在用户原话里。状态、时间和查询口头语不要当 keyword。服务端不会从整句另拆关键字。"
+        "keyword 必须原样出现在用户原话里。状态、时间和查询口头语不要当 keyword，中英文都一样。服务端不会从整句另拆关键字。"
         "用户原文已经写出指标名时传该指标名，不要改成类别词。"
         "只命中一个 name 时直接用它查时序。"
         "没命中或命中多个时调用 request_user_choice，options 用返回的 choices，让用户选指标。"

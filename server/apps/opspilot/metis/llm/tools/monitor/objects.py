@@ -179,7 +179,7 @@ def monitor_list_objects(
         "按 monitor_obj_id 列出实例（含主机名和 IP）。"
         "monitor_obj_id 只能来自 list_objects 返回的对象 id，且须用户已明确类型或已选择；每个 obj_id 只调一次。"
         "keyword 用完整主机名/IP 或用户原词，且必须原样出现在用户原话里。禁止截断后按台循环，禁止猜测/递增 ID。"
-        "状态、时间和查询口头语不要当 keyword。服务端不会从整句另拆关键字。"
+        "状态、时间和查询口头语不要当 keyword，中英文都一样。服务端不会从整句另拆关键字。"
         "空列表且用户未声明类型时须 request_user_choice 问对象类型；已声明类型则不要再问。"
         "后续 instance_ids 必须原样复制本列表每条记录的 instance_id 字段，禁止用 name、IP、id、cmdb_id，"
         "禁止用 CMDB 的 inst_id、inst_uuid、_id，禁止传负数，列表里没有的值不要编造。"

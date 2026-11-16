@@ -16,7 +16,7 @@ from apps.opspilot.metis.llm.tools.search_terms import SEARCH_NOTE, resolve_sear
         "不传 status 则包含已关闭。具体状态用 pending、processing、unassigned、closed、resolved、auto_close、auto_recovery。"
         "「当前」「有哪些」这类口头语不会当关键字。问有哪些告警时不要传 keyword。"
         "关键字只取正文内容，并做或匹配，覆盖标题、正文、资源名和告警 ID。"
-        "中文正文必须用 keyword 传入，并且这个词要原样出现在用户原话里。状态、时间和查询口头语不要传。"
+        "中文正文必须用 keyword 传入，并且这个词要原样出现在用户原话里。状态、时间和查询口头语不要传，中英文都一样。"
         "服务端不会从整句里再拆中文关键字。不要因为空结果换词重搜。可按 status/level 过滤，只读。"
     )
 )
