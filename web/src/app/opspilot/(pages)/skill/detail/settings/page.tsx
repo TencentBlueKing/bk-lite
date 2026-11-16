@@ -33,7 +33,7 @@ import { useWikiApi } from '@/app/opspilot/api/wiki';
 import { WikiKnowledgeBase } from '@/app/opspilot/types/wiki';
 import { useSkill } from '@/app/opspilot/context/skillContext';
 import { notifyWebchatAppsChanged } from '@/app/(core)/components/global-webchat/apps-changed';
-import { filterModelOption, getModelOptionText, renderModelOptionLabel } from '@/app/opspilot/utils/modelOption';
+import { filterModelOption, getModelOptionText, renderModelOptionLabel, withBoundUnavailableModels } from '@/app/opspilot/utils/modelOption';
 import {
   buildSkillSaveTools,
   buildStudioRuntimeTools,
@@ -70,6 +70,7 @@ const SkillSettingsPage: React.FC = () => {
   // 管理组织（group 字段）当前值：自动并入使用组织、且在使用组织里锁定不可删
   const manageGroup: number[] = Form.useWatch('group', form) || [];
   const selectedModelId = Form.useWatch('llmModel', form);
+  const [boundLlmModel, setBoundLlmModel] = useState<{ id: number; name: string } | null>(null);
   const wikiKbIds = Form.useWatch('wiki_knowledge_bases', form);
   const hasWikiKb = Array.isArray(wikiKbIds) && wikiKbIds.length > 0;
 
@@ -169,6 +170,12 @@ const SkillSettingsPage: React.FC = () => {
           memory_write_rounds: data.memory_write_rounds ?? 10,
           skill_params: data.skill_params || [],
         });
+        if (typeof data.llm_model === 'number') {
+          setBoundLlmModel({
+            id: data.llm_model,
+            name: data.llm_model_name || String(data.llm_model),
+          });
+        }
         setGuideValue(guide);
         setChatHistoryEnabled(data.enable_conversation_history ?? true);
         setQuantity(data.conversation_window_size ?? 10);
@@ -837,11 +844,14 @@ const SkillSettingsPage: React.FC = () => {
                       optionFilterProp="title"
                       filterOption={filterModelOption}
                     >
-                      {llmModels.map(model => (
-                        <Option key={model.id} value={model.id} title={getModelOptionText(model)}>
-                          {renderModelOptionLabel(model)}
-                        </Option>
-                      ))}
+                      {withBoundUnavailableModels(llmModels, selectedModelId, boundLlmModel ? [boundLlmModel] : []).map(({ model, disabled }) => {
+                        const unavailableMark = disabled ? t('modelOption.unavailable', '已停用') : undefined;
+                        return (
+                          <Option key={model.id} value={model.id} disabled={disabled} title={getModelOptionText(model, unavailableMark)}>
+                            {renderModelOptionLabel(model, unavailableMark)}
+                          </Option>
+                        );
+                      })}
                     </Select>
                   </Form.Item>
                 </section>
