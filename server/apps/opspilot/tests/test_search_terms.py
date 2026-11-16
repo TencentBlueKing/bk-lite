@@ -8,30 +8,39 @@ from apps.opspilot.metis.llm.middleware.tool_runtime import repeated_or_search_d
 from apps.opspilot.metis.llm.tools.search_terms import build_search_terms, resolve_search_terms, user_message_from_config, user_question_for_search
 
 
-def test_mall_question_splits_shop_and_gateway_refusal():
-    terms = build_search_terms("商城页面最近特别慢，告警中心和日志两边对一下前端报错还是网关在拒绝")
-    assert "商城" in terms
-    assert "前端" in terms
+def test_mall_question_keeps_phenomena_and_accepts_verbatim_nouns():
+    text = "商城页面最近特别慢，告警中心和日志两边对一下前端报错还是网关在拒绝"
+    terms = build_search_terms(text)
+    assert "商城" not in terms
+    assert "前端" not in terms
     assert "网关" in terms
     assert "报错" in terms
     assert "connection refused" in terms
     assert "502" in terms
     assert "upstream" in terms
-    assert "商城 502" not in terms
+    accepted = resolve_search_terms(text, "商城 前端")
+    assert "商城" in accepted
+    assert "前端" in accepted
+    assert "商城 502" not in accepted
 
 
-def test_order_timeout_keeps_interface_name_and_timeout_synonyms():
-    terms = build_search_terms("下单接口超时了，告警和对应日志两边有没有 timeout")
-    assert "下单接口" in terms
+def test_order_timeout_keeps_timeout_synonyms_and_verbatim_interface_name():
+    text = "下单接口超时了，告警和对应日志两边有没有 timeout"
+    terms = build_search_terms(text)
+    assert "下单接口" not in terms
+    assert "超时" in terms
     assert "timeout" in terms
     assert "timed out" in terms
-    assert "下单超时" not in terms
+    accepted = resolve_search_terms(text, "下单接口")
+    assert "下单接口" in accepted
+    assert "timeout" in accepted
 
 
 def test_resolve_ignores_glued_model_keyword_when_user_text_exists():
     terms = resolve_search_terms("下单接口超时了，有没有 timeout", "下单超时")
-    assert "下单接口" in terms
+    assert "下单接口" not in terms
     assert "下单超时" not in terms
+    assert "timeout" in terms
 
 
 def test_resolve_splits_model_keyword_when_user_text_missing():
@@ -40,10 +49,38 @@ def test_resolve_splits_model_keyword_when_user_text_missing():
 
 def test_inventory_question_does_not_become_search_terms():
     assert build_search_terms("当前告警有哪些") == []
-    terms = build_search_terms("有哪些磁盘告警")
-    assert "磁盘" in terms
-    assert "有哪些" not in terms
-    assert "哪些" not in terms
+    assert build_search_terms("有哪些磁盘告警") == []
+    terms = resolve_search_terms("有哪些磁盘告警", "磁盘")
+    assert terms == ["磁盘"]
+
+
+def test_active_alert_count_question_sends_no_content_keywords():
+    assert build_search_terms("我现在有多少条活动告警") == []
+    assert resolve_search_terms("我现在有多少条活动告警", "活动") == []
+    assert resolve_search_terms("我要查询我现在有多少条活动告警", "条活动") == []
+    assert resolve_search_terms("当前有多少条活动告警", "活动告警") == []
+    assert build_search_terms("有多少条磁盘告警") == []
+    assert resolve_search_terms("有多少条磁盘告警", "磁盘") == ["磁盘"]
+
+
+def test_status_and_time_are_not_content_keywords():
+    assert build_search_terms("查询活动告警") == []
+    assert build_search_terms("查询下我有多少条活跃告警") == []
+    assert resolve_search_terms("查询下我有多少条活跃告警", "下我") == []
+    assert "下单接口" not in build_search_terms("查询下单接口超时了")
+    assert "超时" in build_search_terms("查询下单接口超时了")
+    assert resolve_search_terms("查询下单接口超时了", "下单接口") == ["超时", "timeout", "timed out", "下单接口"]
+    assert resolve_search_terms("查询活动告警", "磁盘") == []
+    assert build_search_terms("查询下磁盘告警") == []
+    assert resolve_search_terms("查询下磁盘告警", "磁盘") == ["磁盘"]
+    assert resolve_search_terms("查询活动告警", "活动") == []
+    assert resolve_search_terms("我查询活动告警", "查询活动") == []
+    assert resolve_search_terms("查一下活动告警", "活动") == []
+    assert build_search_terms("查询最近一小时的活动告警") == []
+    log_terms = build_search_terms("查询最近24小时的error日志")
+    assert log_terms == ["error"]
+    assert build_search_terms("查询最近一小时的磁盘告警") == []
+    assert resolve_search_terms("查询最近一小时的磁盘告警", "磁盘") == ["磁盘"]
 
 
 def test_error_log_question_keeps_ascii_keyword():

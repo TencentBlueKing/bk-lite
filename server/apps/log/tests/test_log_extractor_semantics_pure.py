@@ -1,12 +1,8 @@
+import re
+
 import pytest
 
-from apps.log.services.log_extractor.semantics import (
-    RuleValidationError,
-    execute_rules,
-    format_path,
-    normalize_rule,
-    parse_path,
-)
+from apps.log.services.log_extractor.semantics import RuleValidationError, execute_rules, format_path, normalize_rule, parse_path
 
 
 @pytest.mark.unit
@@ -423,3 +419,63 @@ def test_regex_replace_rejects_missing_numbered_group():
                 "delete_source": False,
             }
         )
+
+
+def _grok(pattern, **overrides):
+    draft = {
+        "extractor_type": "grok",
+        "source_field": "message",
+        "condition": {},
+        "config": {"pattern": pattern},
+        "delete_source": False,
+    }
+    draft.update(overrides)
+    return draft
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("pattern", "message"),
+    [
+        ("%{NOPE:client}", "引用 1 的模式 NOPE 不存在"),
+        ("%{WORD:client} %{NOPE:host}", "引用 2 的模式 NOPE 不存在"),
+        ("%{NUMBER:bytes:int}", "引用 1（NUMBER）Grok 只写出字符串，如需数值比较请在查询中转换"),
+        ("%{COMBINEDAPACHELOG:client}", "引用 1 不能给复合模式 COMBINEDAPACHELOG 命名"),
+        ("%{WORD:http} %{WORD:http.method}", "写出路径重叠: http 与 http.method"),
+        ("%{WORD:client} %{NOTSPACE:client}", "写出路径重复: client"),
+        ("%{WORD:timestamp}", "不能覆盖系统保护字段 timestamp"),
+        ("%{WORD:message}", "不能写出 message"),
+        ("(?P<name>[A-Z]+)%{WORD:value}", "Grok 字面量不能包含命名捕获组"),
+        ("(?=end)%{WORD:value}", "Vector 0.48"),
+        ("[%{WORD:value}", "pattern 不是有效正则"),
+        ("", "pattern 长度必须为 1 到 2000"),
+        ("a" * 2001, "pattern 长度必须为 1 到 2000"),
+        ("%{WORD}", "Grok 模式没有写出字段"),
+        ("%{WORD:client", "引用 1 语法无效"),
+        ("%{WORD:http-status}", "属性路径无效"),
+    ],
+)
+def test_grok_rule_rejections_name_the_reference(pattern, message):
+    with pytest.raises(RuleValidationError, match=re.escape(message)):
+        normalize_rule(_grok(pattern))
+
+
+@pytest.mark.unit
+def test_grok_rejects_more_than_64_references_and_oversized_expansion():
+    too_many = " ".join(f"%{{WORD:f{index}}}" for index in range(65))
+    with pytest.raises(RuleValidationError, match="引用数上限 64"):
+        normalize_rule(_grok(too_many))
+
+    too_long = " ".join(f"%{{IPV6:f{index:02d}}}" for index in range(40))
+    with pytest.raises(RuleValidationError, match="16384"):
+        normalize_rule(_grok(too_long))
+
+
+@pytest.mark.unit
+def test_grok_rejects_target_field_unknown_config_and_source_overlap():
+    with pytest.raises(RuleValidationError, match="不接受单一目标属性"):
+        normalize_rule(_grok("%{WORD:event.action}", target_field="event.action"))
+    with pytest.raises(RuleValidationError, match="未声明字段"):
+        normalize_rule(_grok("%{WORD:event.action}", config={"pattern": "%{WORD:event.action}", "group_mapping": {}}))
+    with pytest.raises(RuleValidationError, match="输出路径与源路径重叠"):
+        normalize_rule(_grok("%{WORD:http}", source_field="http.method", delete_source=True))

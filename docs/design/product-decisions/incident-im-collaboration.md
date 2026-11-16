@@ -1,6 +1,6 @@
 # Incident IM 协作产品决策记忆
 
-- 最近更新：2026-07-21
+- 最近更新：2026-11-13
 - 当前规格：`docs/superpowers/specs/2026-07-21-incident-feishu-im-group-design.md`
 
 ## 产品定位
@@ -21,8 +21,8 @@ Incident IM 协作服务于事故处置阶段的快速协同。首期是可在�
 - 至少一名负责人已映射即可建群。未映射成员不阻塞，开启持续同步后映射补齐会自动补拉。
 - Incident 关闭暂停同步，重新打开时按关闭前配置恢复；手工暂停不自动恢复。
 - 一个 Incident 同时最多一个待创建或有效绑定；解绑不删除外部群，切换渠道需解绑重建。
-- 复用系统管理的飞书集成实例、通知渠道和用户映射；新增独立 `im_group` Provider 能力，Alerts 不保存平台凭据。
-- Incident 成员不外键依赖 `IMNotificationUserMapping` 行，按用户名解析并保存外部 ID 快照，因为渠道同步会删除并重建映射行。
+- 复用系统管理的飞书集成实例、通知渠道和该渠道所选的账号关联；新增独立 `im_group` Provider 能力，Alerts 不保存平台凭据。关联规则见 `specs/capabilities/im-account-association.md`。
+- Incident 成员不外键依赖映射行，按用户名解析并保存外部 ID 快照，因为账号关联的完整更新会删除并重建这些行。
 - 建群、消息和增员通过 Alerts Outbox 异步、幂等执行；获得外部 `chat_id` 后先落库，后续失败不得重复建群。
 - 渠道团队只决定渠道可见/可用范围，不决定 Incident 群成员或建立额外组织绑定。
 - 前端采用方案 A：在现有协作页 220px 右侧栏中，把紧凑群状态卡放在协作者列表上方；创建使用 Modal，成员和异常详情使用 Drawer，不新增页面或二级标签。

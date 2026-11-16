@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 import React from 'react';
 import { IntlProvider } from 'react-intl';
@@ -101,5 +101,29 @@ describe('ComTopN bar scale', () => {
     expect(name.className).toContain('whitespace-nowrap');
     expect(name.className).toContain('truncate');
     expect(name.getAttribute('title')).toBe('BJ-IDC-A01-RACK-01');
+  });
+
+  it('keeps the row clickable without a hover hint when a data link is set', () => {
+    renderTopN(
+      <ComTopN
+        rawData={[{ name: '主机', value: 10 }]}
+        config={{
+          chartType: 'topN',
+          topNLabelField: 'name',
+          topNValueField: 'value',
+          interaction: {
+            kind: 'data',
+            name: '查看模型资产',
+            url: 'https://example.com/models',
+            openMode: 'newTab',
+          },
+        }}
+      />,
+    );
+    const name = screen.getByText('主机');
+    expect(name.className).toContain('cursor-pointer');
+    expect(name.getAttribute('title')).toBe('主机');
+    fireEvent.mouseEnter(name);
+    expect(screen.queryByText('点击打开：查看模型资产')).toBeNull();
   });
 });

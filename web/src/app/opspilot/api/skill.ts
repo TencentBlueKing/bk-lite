@@ -26,6 +26,7 @@ import type { ElasticsearchInstanceFormValue } from '@/app/opspilot/components/s
 import type { JenkinsInstanceFormValue } from '@/app/opspilot/components/skill/jenkinsToolEditor';
 import type { KubernetesInstanceFormValue } from '@/app/opspilot/components/skill/kubernetesToolEditor';
 import type { ActiveDirectoryInstanceFormValue } from '@/app/opspilot/components/skill/activeDirectoryToolEditor';
+import { selectableLlmModels } from '@/app/opspilot/utils/modelOption';
 
 export const useSkillApi = () => {
   const { get, post, patch, del, put } = useApiClient();
@@ -59,7 +60,11 @@ export const useSkillApi = () => {
   };
 
   const fetchLlmModels = async (): Promise<LlmModel[]> => {
-    return get('/opspilot/model_provider_mgmt/llm_model/', { params: { enabled: 1 } });
+    const rows = await get('/opspilot/model_provider_mgmt/llm_model/', { params: { enabled: 1 } });
+    if (!Array.isArray(rows)) {
+      return rows;
+    }
+    return selectableLlmModels(rows);
   };
 
   const saveSkillDetail = async (id: string | null, payload: SkillDetailPayload): Promise<void> => {

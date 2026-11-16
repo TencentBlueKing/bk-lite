@@ -95,7 +95,10 @@ const ServingPage = () => {
       key: 'container_info',
       width: 80,
       render: (_, record) => {
-        const { status, state, detail } = record.container_info;
+        if (record.is_builtin) {
+          return <span>--</span>;
+        }
+        const { status, state, detail } = record.container_info || {};
         const isSuccess = status === 'success';
         const _status = isSuccess ? state : status;
         const text = isSuccess ? state : 'error';
@@ -170,15 +173,21 @@ const ServingPage = () => {
       title: t(`common.actions`),
       dataIndex: 'action',
       key: 'action',
-      width: 180,
+      width: 240,
       fixed: 'right',
       render: (_, record: TableData) => {
-        const { state } = record.container_info;
+        const { state } = record.container_info || {};
         return (
           <>
             <PermissionWrapper requiredPermissions={['View']}>
               <Button type="link" className="mr-2" onClick={() => handleOpenGuide(record)}>{t(`serving-guide.usageExample`)}</Button>
             </PermissionWrapper>
+            {record.is_builtin ? (
+              <PermissionWrapper requiredPermissions={['Edit']}>
+                <Button type="link" className="mr-2" onClick={() => handleEdit(record)}>{t(`model-release.configuration`)}</Button>
+              </PermissionWrapper>
+            ) : (
+            <>
             <PermissionWrapper requiredPermissions={['Edit']}>
               <Button type="link" className="mr-2" onClick={() => handleEdit(record)}>{t(`model-release.configuration`)}</Button>
             </PermissionWrapper>
@@ -201,6 +210,8 @@ const ServingPage = () => {
                 <Button type="link" danger disabled={state === 'running'}>{t(`common.delete`)}</Button>
               </Popconfirm>
             </PermissionWrapper>
+            </>
+            )}
           </>
         )
       }

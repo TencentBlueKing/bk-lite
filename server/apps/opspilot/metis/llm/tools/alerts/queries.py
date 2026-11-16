@@ -15,8 +15,9 @@ from apps.opspilot.metis.llm.tools.search_terms import SEARCH_NOTE, resolve_sear
         "status=active 表示未关闭的活动告警（pending、processing、unassigned），与告警中心活动页一致；"
         "不传 status 则包含已关闭。具体状态用 pending、processing、unassigned、closed、resolved、auto_close、auto_recovery。"
         "「当前」「有哪些」这类口头语不会当关键字。问有哪些告警时不要传 keyword。"
-        "服务端按用户原问生成词表（原词加固定同义词）并做或匹配，覆盖标题、正文、资源名和告警 ID。"
-        "不要自己拼接关键字，也不要因为空结果换词重搜。可按 status/level 过滤，只读。"
+        "关键字只取正文内容，并做或匹配，覆盖标题、正文、资源名和告警 ID。"
+        "中文正文必须用 keyword 传入，并且这个词要原样出现在用户原话里。状态、时间和查询口头语不要传。"
+        "服务端不会从整句里再拆中文关键字。不要因为空结果换词重搜。可按 status/level 过滤，只读。"
     )
 )
 def alerts_list_alerts(

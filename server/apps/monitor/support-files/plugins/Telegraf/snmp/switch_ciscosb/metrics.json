@@ -5,6 +5,8 @@
   "plugin_desc": "SNMP monitoring template for Cisco Small Business switch. It reports uptime, CPU utilization, temperature, fan, power supply status, and interface traffic, for Cisco Business CBS, SG300/SG500 and Catalyst 1200/1300 series (enterprise PEN 9, CISCOSB subtree). Memory is not reported.",
   "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_ciscosb'}) by (instance_id)",
+  "instance_fact_bindings": [{"fact":"asset.ip","value_type":"ip","resolver":"input","options":{"field":"ip"}}],
+  "instance_summary_columns": [{"fact":"asset.ip","title":"monitor.views.assetIp","order":10}],
   "name": "Switch",
   "icon": "mm-switch_交换机",
   "type": "Network Device",

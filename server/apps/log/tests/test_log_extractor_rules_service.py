@@ -1,11 +1,22 @@
+from datetime import timedelta
 from types import SimpleNamespace
 
 import pytest
 from django.db import transaction
 from rest_framework.exceptions import ValidationError
 
+from apps.core.utils.time_util import parse_rfc3339_utc
 from apps.log.models import CollectInstance, CollectInstanceOrganization, CollectType, LogExtractor, SystemVectorConfigState
-from apps.log.services.log_extractor.rules import create_rule, create_type_rule, delete_rule, load_samples, load_type_samples, reorder_rules, reorder_type_rules, update_rule
+from apps.log.services.log_extractor.rules import (
+    create_rule,
+    create_type_rule,
+    delete_rule,
+    load_samples,
+    load_type_samples,
+    reorder_rules,
+    reorder_type_rules,
+    update_rule,
+)
 from apps.log.views.collect_config import CollectInstanceViewSet
 
 
@@ -31,7 +42,7 @@ def _draft(name):
 
 @pytest.mark.unit
 def test_samples_restore_victoria_logs_dotted_fields_to_runtime_shape(mocker):
-    mocker.patch(
+    search_logs = mocker.patch(
         "apps.log.services.log_extractor.rules.SearchService.search_logs",
         return_value=[
             {
@@ -51,6 +62,16 @@ def test_samples_restore_victoria_logs_dotted_fields_to_runtime_shape(mocker):
             "event": {"dataset": "flow"},
         }
     ]
+    query, start, end, limit = search_logs.call_args.args[:4]
+    assert query == 'instance_id:"packetbeat-instance"'
+    assert limit == 10
+    assert parse_rfc3339_utc(end) - parse_rfc3339_utc(start) == timedelta(hours=24)
+
+    load_type_samples(SimpleNamespace(name="syslog"), 10)
+    type_query, type_start, type_end, type_limit = search_logs.call_args.args[:4]
+    assert type_query == 'collect_type:"syslog"'
+    assert type_limit == 10
+    assert parse_rfc3339_utc(type_end) - parse_rfc3339_utc(type_start) == timedelta(hours=24)
 
 
 @pytest.mark.integration
@@ -167,10 +188,7 @@ def test_type_rule_mutations_increment_one_generation_and_stay_instance_free(sys
 @pytest.mark.django_db(transaction=True)
 def test_type_rule_limit_is_enforced_without_dirty_generation(syslog_type):
     LogExtractor.objects.bulk_create(
-        [
-            LogExtractor(collect_type=syslog_type, collect_instance=None, sort_order=index, **_draft(f"rule{index}"))
-            for index in range(20)
-        ]
+        [LogExtractor(collect_type=syslog_type, collect_instance=None, sort_order=index, **_draft(f"rule{index}")) for index in range(20)]
     )
 
     with pytest.raises(ValidationError, match="最多 20 条"):

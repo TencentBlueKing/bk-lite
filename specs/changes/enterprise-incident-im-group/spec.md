@@ -8,8 +8,9 @@ Status: in-progress
 为当前 Incident 创建唯一且不可切换的外部协作群，并可选择是否持续把后续新增的
 Incident 当前期望成员补充进群。
 
-本期真实验证平台为飞书和企业微信；其他 IM 在各自 Provider 和用户映射能力完成后
-接入相同的 Alerts 企业版状态机。
+本期真实验证平台为飞书和企业微信；其他 IM 在各自 Provider 和账号关联完成后
+接入相同的 Alerts 企业版状态机。入群身份读取通道所选账号关联，见
+`specs/capabilities/im-account-association.md`。
 
 ## Locked decisions
 

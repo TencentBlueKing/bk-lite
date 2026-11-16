@@ -150,3 +150,67 @@ def test_cleanup_only_touches_tasks_own_pcs(graph):
 
     assert "SW-MINE" not in graph.store
     assert "SW-THEIRS" in graph.store
+
+
+@pytest.mark.django_db
+def test_daily_cleanup_deletes_expired_software_and_keeps_the_pc(graph, monkeypatch):
+    from apps.cmdb.services.data_cleanup_service import DataCleanupService
+
+    monkeypatch.setattr("apps.cmdb.services.model.ModelManage.search_model_attr", lambda model_id: [])
+
+    task = _task(strategy=DataCleanupStrategy.AFTER_EXPIRATION, expire_days=7)
+    pc = graph.create_entity(
+        "instance",
+        {"model_id": "pc", "inst_name": "WIN-ABC", "collect_task": task.id, "collect_time": OLD},
+        {},
+        [],
+    )
+    string_pc = graph.create_entity(
+        "instance",
+        {"model_id": "pc", "inst_name": "WIN-STR", "collect_task": str(task.id), "collect_time": OLD},
+        {},
+        [],
+    )
+    old_software = graph.create_entity(
+        "instance",
+        {"model_id": "pc_software", "inst_name": "old-sw", "collect_time": OLD, "_collect_sources": '{"seen":{"pc":"old"}}'},
+        {},
+        [],
+    )
+    fresh_software = graph.create_entity(
+        "instance",
+        {"model_id": "pc_software", "inst_name": "fresh-sw", "collect_time": FRESH},
+        {},
+        [],
+    )
+    naive_software = graph.create_entity(
+        "instance",
+        {"model_id": "pc_software", "inst_name": "naive-sw", "collect_time": "2026-08-24 12:00:01"},
+        {},
+        [],
+    )
+    string_software = graph.create_entity(
+        "instance",
+        {"model_id": "pc_software", "inst_name": "string-sw", "collect_time": OLD},
+        {},
+        [],
+    )
+    for software, owner in ((old_software, pc), (fresh_software, pc), (naive_software, pc), (string_software, string_pc)):
+        graph.edges.append(
+            dict(
+                model_asst_id="pc_software_install_on_pc",
+                asst_id="install_on",
+                src_inst_id=software["_id"],
+                dst_inst_id=owner["_id"],
+            )
+        )
+
+    result = DataCleanupService.cleanup_expired_instances(task)
+
+    assert "WIN-ABC" in graph.store and "WIN-STR" in graph.store
+    assert "old-sw" not in graph.store and "string-sw" not in graph.store
+    assert "fresh-sw" in graph.store and "naive-sw" in graph.store
+    assert result["deleted_count"] == 2
+    assert set(result["delete_ids"]) == {old_software["_id"], string_software["_id"]}
+    assert ChangeRecord.objects.filter(type=DELETE_INST, inst_id=old_software["_id"]).count() == 1
+    assert ChangeRecord.objects.filter(type=DELETE_INST, inst_id=pc["_id"]).count() == 0

@@ -1,6 +1,9 @@
 """三种清理策略跨插件的行为回归：真实对账，仅替换外部存储。"""
-from datetime import datetime
+import copy
+import logging
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
+from uuid import uuid4
 
 import pytest
 
@@ -13,7 +16,9 @@ from apps.cmdb.tests.test_vmware_collection_ownership_service import graph as vm
 
 @pytest.fixture
 def graph(monkeypatch):
-    return vmware_graph.__wrapped__(monkeypatch)
+    graph = vmware_graph.__wrapped__(monkeypatch)
+    monkeypatch.setattr("apps.cmdb.services.collect_reconcile.load_write_context", lambda task_id: None)
+    return graph
 
 
 NOW = "2026-08-29T04:00:00+00:00"
@@ -91,15 +96,193 @@ def test_legacy_invalid_timestamp_does_not_block_other_candidates(graph):
     assert graph.rows[invalid["_id"]] == invalid
 
 
-def test_legacy_daily_cleanup_cannot_bypass_snapshot_rules(graph, monkeypatch):
-    from apps.cmdb.services import data_cleanup_service
+class _ProjectingGraph:
+    """按查询字段投影，并执行 FalkorDB 的 _collect_sources 条件删除。"""
 
-    monkeypatch.setattr(data_cleanup_service, "GraphClient", lambda: graph, raising=False)
-    root = graph.insert("root", "vmware_vc", owner=42, collect_time=OLD)
-    task = SimpleNamespace(id=42, model_id="vmware_vc", expire_days=3)
-    result = data_cleanup_service.DataCleanupService.cleanup_expired_instances(task)
-    assert result["skipped"] is True
-    assert graph.rows[root["_id"]] == root
+    def __init__(self):
+        self.rows = {}
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        return False
+
+    def insert(self, name, model="host", owner="", **extra):
+        row = {
+            "_id": len(self.rows) + 1,
+            "inst_uuid": str(uuid4()),
+            "model_id": model,
+            "inst_name": name,
+            "collect_task": owner,
+            "organization": [1],
+        }
+        row.update(extra)
+        self.rows[row["_id"]] = row
+        return copy.deepcopy(row)
+
+    def query_entity(self, label, params, page=None, fields=None, **kwargs):
+        rows = list(self.rows.values())
+        for param in params:
+            field, value, kind = param["field"], param["value"], param["type"]
+            if kind == "id>":
+                rows = [row for row in rows if row.get("_id", 0) > value]
+            else:
+                rows = [row for row in rows if row.get(field) == value]
+        rows.sort(key=lambda row: row["_id"])
+        if page:
+            rows = rows[: page["limit"]]
+        if fields is not None:
+            projected = []
+            for row in rows:
+                item = {"_id": row["_id"]}
+                for field in fields:
+                    if field != "_id" and field in row:
+                        item[field] = row[field]
+                projected.append(item)
+            rows = projected
+        return copy.deepcopy(rows), len(rows)
+
+    def delete_entity_if_unchanged(self, label, instance):
+        current = self.rows.get(instance.get("_id"))
+        if current is None:
+            return False
+        for field in ("model_id", "inst_uuid", "collect_task", "collect_time"):
+            if current.get(field) != instance.get(field):
+                return False
+        actual = current.get("_collect_sources")
+        expected = instance.get("_collect_sources")
+        if expected in (None, "") and actual not in (None, ""):
+            return False
+        if expected not in (None, "") and actual != expected:
+            return False
+        del self.rows[instance["_id"]]
+        return True
+
+
+def test_complete_snapshot_deletes_instance_with_collect_sources(monkeypatch):
+    """有调和来源的实例必须能被完整快照删掉；投影漏掉 _collect_sources 时条件删除会失败。"""
+    from apps.cmdb.collection import common, metrics_cannula
+
+    graph = _ProjectingGraph()
+    old = graph.insert(
+        "gone",
+        "aliyun_ecs",
+        owner="42",
+        collect_time=OLD,
+        _collect_sources='{"seen":{"42":"2026-08-24T04:00:00+00:00"}}',
+    )
+    monkeypatch.setattr(common, "GraphClient", lambda **kwargs: graph)
+    monkeypatch.setattr(metrics_cannula, "GraphClient", lambda **kwargs: graph)
+    monkeypatch.setattr("apps.cmdb.services.collect_reconcile.load_write_context", lambda task_id: None)
+    monkeypatch.setattr(common, "write_collect_instance_change_records", lambda *args, **kwargs: None)
+    monkeypatch.setattr(common.ModelManage, "search_model_attr", lambda model: [])
+    monkeypatch.setattr("apps.cmdb.services.auto_relation_reconcile.schedule_incoming_rule_full_sync_by_model_ids", lambda *args, **kwargs: None)
+    reconcile(graph, FAMILIES[0], "immediately")
+    assert old["_id"] not in graph.rows
+
+
+def test_daily_cleanup_is_scheduled_at_02_00():
+    from apps.cmdb.config import CELERY_BEAT_SCHEDULE
+    from apps.core.celery_runtime.manifest import TASK_ROUTES
+
+    entry = CELERY_BEAT_SCHEDULE["daily_data_cleanup"]
+    assert entry["task"] == "apps.cmdb.tasks.celery_tasks.daily_data_cleanup_task"
+    assert set(entry["schedule"].hour) == {2}
+    assert set(entry["schedule"].minute) == {0}
+    assert TASK_ROUTES[entry["task"]] == "background"
+
+
+def _host_task(name, **fields):
+    from apps.cmdb.models.collect_model import CollectModels
+
+    values = dict(
+        name=name,
+        task_type="host",
+        driver_type="protocol",
+        model_id="host",
+        cycle_value_type="hour",
+        expire_days=3,
+        data_cleanup_strategy="after_expiration",
+        instances=[],
+    )
+    values.update(fields)
+    return CollectModels.objects.create(**values)
+
+
+@pytest.mark.django_db
+def test_daily_cleanup_deletes_aged_owned_instances_without_waiting_for_collection(monkeypatch):
+    from apps.cmdb.models.change_record import DELETE_INST, ChangeRecord
+    from apps.cmdb.services.data_cleanup_service import DataCleanupService
+
+    fixed_now = datetime(2026, 8, 29, 4, 0, tzinfo=timezone.utc)
+    monkeypatch.setattr("apps.cmdb.services.data_cleanup_service.timezone.now", lambda: fixed_now)
+    task = _host_task("daily-expire")
+    untouched = _host_task("daily-keep", data_cleanup_strategy="no_cleanup")
+    graph = _ProjectingGraph()
+    monkeypatch.setattr("apps.cmdb.services.data_cleanup_service.GraphClient", lambda **kwargs: graph)
+    monkeypatch.setattr("apps.cmdb.services.model.ModelManage.search_model_attr", lambda model_id: [])
+    aged_int = graph.insert("aged-int", owner=task.id, collect_time=OLD, _collect_sources='{"seen":{"1":"2026-08-24T04:00:00+00:00"}}')
+    aged_str = graph.insert("aged-str", owner=str(task.id), collect_time=OLD)
+    boundary = graph.insert("boundary", owner=task.id, collect_time=BOUNDARY)
+    recent = graph.insert("recent", owner=str(task.id), collect_time=NOW)
+    naive = graph.insert("naive", owner=task.id, collect_time="2026-08-24 12:00:01")
+    foreign = graph.insert("foreign", owner=untouched.id, collect_time=OLD)
+    target = graph.insert("target", owner=task.id, collect_time=OLD)
+    task.instances = [{"inst_uuid": target["inst_uuid"], "model_id": "host", "inst_name": "target"}]
+    task.save(update_fields=["instances"])
+
+    summary = DataCleanupService.run_daily_cleanup()
+
+    assert aged_int["_id"] not in graph.rows
+    assert aged_str["_id"] not in graph.rows
+    for kept in (boundary, recent, naive, foreign, target):
+        assert graph.rows[kept["_id"]]["inst_name"] == kept["inst_name"]
+    assert set(summary["delete_ids"]) >= {aged_int["_id"], aged_str["_id"]}
+    deleted_ids = set(ChangeRecord.objects.filter(type=DELETE_INST).values_list("inst_id", flat=True))
+    assert {aged_int["_id"], aged_str["_id"]} <= deleted_ids
+    assert target["_id"] not in deleted_ids
+
+
+@pytest.mark.django_db
+def test_daily_cleanup_continues_after_one_task_fails_without_logging_payload(monkeypatch, caplog):
+    from apps.cmdb.services.data_cleanup_service import DataCleanupService
+
+    secret = "SENTINEL-cleanup-" + "payload"
+    good = _host_task("daily-good")
+    bad = _host_task("daily-bad")
+
+    class _RaisingGraph(_ProjectingGraph):
+        def query_entity(self, label, params, **kwargs):
+            for param in params:
+                if param["field"] == "collect_task" and str(param["value"]) == str(bad.id):
+                    raise RuntimeError("token=" + secret)
+            return super().query_entity(label, params, **kwargs)
+
+    graph = _RaisingGraph()
+    aged = graph.insert("aged", owner=good.id, collect_time=OLD)
+    monkeypatch.setattr("apps.cmdb.services.data_cleanup_service.timezone.now", lambda: datetime(2026, 8, 29, 4, 0, tzinfo=timezone.utc))
+    monkeypatch.setattr("apps.cmdb.services.data_cleanup_service.GraphClient", lambda **kwargs: graph)
+    monkeypatch.setattr("apps.cmdb.services.data_cleanup_service._write_expiration_audit", lambda *args, **kwargs: None)
+    monkeypatch.setattr("apps.cmdb.services.data_cleanup_service._schedule_deleted_models", lambda *args, **kwargs: None)
+    caplog.set_level(logging.INFO, logger="cmdb")
+
+    summary = DataCleanupService.run_daily_cleanup()
+
+    assert aged["_id"] not in graph.rows
+    by_id = {item["task_id"]: item for item in summary["results"]}
+    assert by_id[good.id]["deleted_count"] == 1
+    assert by_id[bad.id]["failed_count"] == 1
+    assert by_id[bad.id]["deleted_count"] == 0
+    errors = [record for record in caplog.records if record.levelname == "ERROR"]
+    assert len(errors) == 1
+    assert errors[0].msg == "[DataCleanup] task cleanup failed task_id=%s failed_stage=cleanup_expired_instances error_type=%s"
+    assert errors[0].args == (bad.id, "RuntimeError")
+    assert errors[0].exc_info[2] is not None
+    finished = [record for record in caplog.records if record.msg.startswith("[DataCleanup] daily cleanup finished")]
+    assert len(finished) == 1
+    assert secret not in caplog.text
+    assert secret not in str(summary)
 
 
 @pytest.mark.parametrize(
@@ -125,8 +308,6 @@ def test_real_plugin_errors_disable_deletion(family, monkeypatch):
 
 @pytest.mark.django_db
 def test_pc_expiration_runs_only_on_complete_software_snapshot(monkeypatch):
-    from datetime import timedelta
-
     from apps.cmdb.models.change_record import DELETE_INST, ChangeRecord
     from apps.cmdb.services.pc_discovery import PCSnapshotReconciler
     from apps.cmdb.tests.test_pc_reconcile_service import InMemoryGraph, _snapshot, _task
@@ -160,7 +341,8 @@ def test_concurrent_refresh_between_query_and_delete_preserves_instance(graph, m
     monkeypatch.setattr(graph, "query_entity", refresh_after_query)
     result = reconcile(graph, FAMILIES[0], "after_expiration")
     assert old["_id"] in graph.rows
-    assert result["delete"] == []
+    assert result["delete"][0]["_status"] == "failed"
+    assert result["delete"][0]["_id"] == old["_id"]
 
 
 def test_upsert_failure_prevents_deleting_other_instances_of_that_model(graph, monkeypatch):

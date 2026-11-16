@@ -59,7 +59,6 @@ export const buildDisplayColumnFieldOptions = ({
   };
 
   availableFields.forEach((field) => {
-    if (field.table === false) return;
     appendOption(field.key, field.title);
   });
 

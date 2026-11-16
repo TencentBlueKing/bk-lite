@@ -5,6 +5,8 @@
   "plugin_desc": "SNMP monitoring template for PBI digital headend chassis (enterprise PEN 1070, PBI-MGSYSTEM-MIB). Besides standard IF-MIB interface traffic and uptime, it reports the chassis (chest) temperature.",
   "support_collect_detect": true,
   "status_query": "any({instance_type='transmission', collect_type='snmp_pbi'}) by (instance_id)",
+  "instance_fact_bindings": [{"fact":"asset.ip","value_type":"ip","resolver":"input","options":{"field":"ip"}}],
+  "instance_summary_columns": [{"fact":"asset.ip","title":"monitor.views.assetIp","order":10}],
   "name": "Transmission",
   "icon": "mm-transmission_传输设备",
   "type": "Network Device",

@@ -5,6 +5,8 @@
   "plugin_desc": "SNMP monitoring template for IP Infusion OcNOS switches (enterprise PEN 36673, CMM-CHASSIS-MIB). Besides interface traffic and uptime, it reports per-unit CPU and memory utilization, chassis temperature sensors, fan speed and state, and power-supply state and temperature.",
   "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_ipinfusion'}) by (instance_id)",
+  "instance_fact_bindings": [{"fact":"asset.ip","value_type":"ip","resolver":"input","options":{"field":"ip"}}],
+  "instance_summary_columns": [{"fact":"asset.ip","title":"monitor.views.assetIp","order":10}],
   "name": "Switch",
   "icon": "mm-ipinfusion_ipinfusion",
   "type": "Network Device",

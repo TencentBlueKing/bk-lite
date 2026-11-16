@@ -76,7 +76,7 @@ export const NotificationNodeConfig: React.FC<NotificationNodeConfigProps> = ({
             >
               <Option value={0}>{t('chatflow.none')}</Option>
               {llmModels.map((model) => (
-                <Option key={model.id} value={model.id} disabled={!model.enabled} title={getModelOptionText(model)}>
+                <Option key={model.id} value={model.id} title={getModelOptionText(model)}>
                   {renderModelOptionLabel(model)}
                 </Option>
               ))}

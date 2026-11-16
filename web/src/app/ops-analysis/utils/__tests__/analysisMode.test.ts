@@ -1,10 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'vitest';
 import type { ParamItem } from '@/app/ops-analysis/types/dataSource';
-import {
-  filterChartTypesForAnalysisMode,
-  resolveAnalysisModeValue,
-} from '@/app/ops-analysis/utils/analysisMode';
 import { mergeDetectedFieldsWithSchema } from '@/app/ops-analysis/components/widgetConfig/utils/columnProbing';
 import { resolveTableLikeColumns } from '@/app/ops-analysis/utils/tableLikeData';
 import { buildCompareRequestParams } from '@/app/ops-analysis/utils/compareQuery';
@@ -17,8 +13,6 @@ import {
 const modeParam = (items: Array<{
   label: string;
   value: string;
-  charts: string[];
-  result: { structure: 'table' | 'value' | 'category' | 'series' };
 }>): ParamItem => ({
   name: 'analysis_mode',
   alias_name: '分析方式',
@@ -33,14 +27,14 @@ const modeParam = (items: Array<{
 
 const catalog = (): ParamItem[] => [
   modeParam([
-    { label: '明细', value: 'detail', charts: ['table', 'topN'], result: { structure: 'table' } },
-    { label: '计数', value: 'count', charts: ['single'], result: { structure: 'value' } },
-    { label: '分布', value: 'distribution', charts: ['bar', 'pie'], result: { structure: 'category' } },
+    { label: '明细', value: 'detail' },
+    { label: '计数', value: 'count' },
+    { label: '分布', value: 'distribution' },
   ]),
   { name: 'model_id', alias_name: '模型', type: 'string', filterType: 'params', value: 'host' },
-  { name: 'group_by', alias_name: '分组', type: 'string', filterType: 'params', value: 'os_type', visible_modes: ['distribution'] },
-  { name: 'page', alias_name: '页码', type: 'number', filterType: 'params', value: null, visible_modes: ['detail'] },
-  { name: 'page_size', alias_name: '每页', type: 'number', filterType: 'params', value: null, visible_modes: ['detail'] },
+  { name: 'group_by', alias_name: '分组', type: 'string', filterType: 'params', value: 'os_type' },
+  { name: 'page', alias_name: '页码', type: 'number', filterType: 'params', value: null },
+  { name: 'page_size', alias_name: '每页', type: 'number', filterType: 'params', value: null },
   {
     name: 'organization',
     alias_name: '组织',
@@ -74,40 +68,9 @@ describe('analysis mode visibility and request', () => {
     }
   });
 
-  it('filters charts from the latest catalog options, not a stale widget copy', () => {
-    const latest = catalog();
-    const stale = catalog();
-    const staleMode = stale[0];
-    if (staleMode.inputConfig && staleMode.inputConfig.control === 'select') {
-      staleMode.inputConfig = {
-        control: 'select',
-        optionsSource: {
-          type: 'static',
-          staticItems: [{ label: '旧明细', value: 'detail' }],
-        },
-      };
-    }
-    stale[2] = { ...stale[2], visible_modes: ['detail'] };
-    const charts = filterChartTypesForAnalysisMode(
-      [{ value: 'table' }, { value: 'single' }, { value: 'bar' }, { value: 'pie' }],
-      latest,
-      'distribution',
-    );
-    assert.deepEqual(charts.map((item) => item.value), ['table', 'single', 'bar', 'pie']);
-    assert.deepEqual(
-      filterChartTypesForAnalysisMode(
-        [{ value: 'table' }, { value: 'line' }],
-        stale,
-        'detail',
-      ).map((item) => item.value),
-      ['table', 'line'],
-    );
-  });
-
   it('keeps the selected mode and configured params when the widget copy is stale', () => {
     const latest = catalog();
     const stale = catalog();
-    stale[2] = { ...stale[2], visible_modes: undefined };
     const request = processDataSourceParams({
       sourceParams: stale,
       definitionParams: latest,
@@ -127,27 +90,8 @@ describe('analysis mode visibility and request', () => {
     assert.equal(request.page_size, 20);
   });
 
-  it('keeps the selected mode when the chart changes', () => {
+  it('omits an empty analysis mode instead of inventing one', () => {
     const params = catalog();
-    assert.equal(resolveAnalysisModeValue({
-      params,
-      selected: 'detail',
-      chartType: 'pie',
-    }), 'detail');
-    assert.equal(resolveAnalysisModeValue({
-      params,
-      selected: 'count',
-      chartType: 'single',
-    }), 'count');
-  });
-
-  it('uses the configured default when the widget has no selection', () => {
-    const params = catalog();
-    assert.equal(resolveAnalysisModeValue({
-      params,
-      selected: '',
-      chartType: 'pie',
-    }), 'detail');
     const request = processDataSourceParams({
       sourceParams: params.map((param) => (
         param.name === 'analysis_mode' ? { ...param, value: '' } : param
@@ -155,7 +99,7 @@ describe('analysis mode visibility and request', () => {
       definitionParams: params,
       chartType: 'pie',
     });
-    assert.equal(request.analysis_mode, 'detail');
+    assert.equal(request.analysis_mode, undefined);
     assert.equal(request.group_by, 'os_type');
     assert.equal(request.page, undefined);
   });
@@ -197,7 +141,6 @@ describe('analysis mode visibility and request', () => {
       { name: 'query', alias_name: '查询', type: 'string', filterType: 'params', value: 'up' },
       { name: 'step', alias_name: '步长', type: 'string', filterType: 'params', value: '5m' },
     ];
-    assert.equal(resolveAnalysisModeValue({ params, selected: undefined, chartType: 'line' }), undefined);
     assert.deepEqual(processDataSourceParams({ sourceParams: params, chartType: 'bar' }), {
       query: 'up',
       step: '5m',
@@ -212,22 +155,18 @@ describe('analysis mode visibility and request', () => {
     });
     assert.equal(legacyPaging.page, 2);
     assert.equal(legacyPaging.page_size, 15);
-    assert.deepEqual(
-      filterChartTypesForAnalysisMode([{ value: 'line' }, { value: 'bar' }], params, undefined),
-      [{ value: 'line' }, { value: 'bar' }],
-    );
   });
 });
 
 const modelCatalog = (): ParamItem[] => [
   modeParam([
-    { label: '明细', value: 'detail', charts: ['table'], result: { structure: 'table' } },
-    { label: '计数', value: 'count', charts: ['single'], result: { structure: 'value' } },
-    { label: '分布', value: 'distribution', charts: ['bar', 'pie', 'topN'], result: { structure: 'category' } },
+    { label: '明细', value: 'detail' },
+    { label: '计数', value: 'count' },
+    { label: '分布', value: 'distribution' },
   ]),
   { name: 'model_id', alias_name: '模型', type: 'string', filterType: 'params', value: 'host' },
-  { name: 'page', alias_name: '页码', type: 'number', filterType: 'params', value: 1, visible_modes: ['detail'] },
-  { name: 'page_size', alias_name: '每页', type: 'number', filterType: 'params', value: 20, visible_modes: ['detail'] },
+  { name: 'page', alias_name: '页码', type: 'number', filterType: 'params', value: 1 },
+  { name: 'page_size', alias_name: '每页', type: 'number', filterType: 'params', value: 20 },
 ];
 
 const withPaging = (page: number, pageSize: number): ParamItem[] =>
@@ -302,18 +241,23 @@ describe('chart requests keep the saved analysis mode and paging', () => {
     assert.equal(probed.some((column) => column.key === 'name' || column.key === 'value'), false);
   });
 
-  it('keeps raw alert and object identifiers out of the default table', () => {
+  it('keeps raw alert and object identifiers in the default table', () => {
     const schema = [
       { key: 'content', title: '告警名称', value_type: 'string' as const },
       { key: 'monitor_object_name', title: '监控对象', value_type: 'string' as const },
-      { key: 'id', title: '告警标识', value_type: 'string' as const, table: false },
-      { key: 'monitor_object_id', title: '监控对象标识', value_type: 'string' as const, table: false },
+      { key: 'id', title: '告警标识', value_type: 'string' as const },
+      { key: 'monitor_object_id', title: '监控对象标识', value_type: 'string' as const },
     ];
     const probed = mergeDetectedFieldsWithSchema(
       ['content', 'monitor_object_name', 'id', 'monitor_object_id'],
       schema,
     );
-    assert.deepEqual(probed.map((column) => column.key), ['content', 'monitor_object_name']);
+    assert.deepEqual(probed.map((column) => column.key), [
+      'content',
+      'monitor_object_name',
+      'id',
+      'monitor_object_id',
+    ]);
   });
 });
 

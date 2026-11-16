@@ -533,7 +533,8 @@
           "emailFailed": "Initial password emails failed: {failed}. Please check user email addresses and the email channel."
         },
         "basicConfigDesc": "Select a system and enter the root organization",
-        "pageDesc": "User synchronization defines how the platform integrates with primary identity data. It supports multiple user sources simultaneously, enabling collaboration across different organizational directories, supplementary directories, or active import directories.",
+        "pageDesc": "User and organization sync brings users and organizations in from external directories, and multiple user sources can coexist. IM account association matches platform users to IM accounts for messaging.",
+        "userOrgTab": "User and Organization Sync",
         "rootGroupNameImmutable": "Root group name cannot be changed after creation",
         "previewSuccessWithGroups": "Test successful: Expected to sync {userCount} users and {groupCount} organizations",
         "previewSuccess": "Test successful: Expecting to sync {userCount} users",
@@ -1302,9 +1303,13 @@
       "imNotificationDesc": "The IM Notification channel supports sending message notifications to enterprise IM applications.",
       "imNotificationPage": {
         "pageDesc": "Manage IM application notification channels. Choose an integration instance and an account association to send messages to the linked IM accounts.",
+        "accountAssociationTooltip": "When sending, use this account association's matching rules and the platform account field to determine each recipient's IM account.",
         "name": "Name",
         "integrationInstance": "Integrated System",
         "integrationInstancePlaceholder": "Please select an integrated system",
+        "accountAssociation": "Account Association",
+        "accountAssociationPlaceholder": "Select account association",
+        "manageAccountAssociation": "Manage Account Association",
         "currentInstanceUnavailable": "Currently bound instance is unavailable",
         "dependencyStatus": "Dependency Status",
         "dependencyAvailable": "Available",

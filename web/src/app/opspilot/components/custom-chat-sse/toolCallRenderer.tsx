@@ -45,6 +45,27 @@ export interface ToolCallInfo {
   browserTaskReceived?: BrowserTaskReceivedData;
 }
 
+function jsonObject(text: string): Record<string, unknown> | null {
+  try {
+    const parsed = JSON.parse(text);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+    return parsed as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+/** 模型参数不含服务端补上的检索词。结果里的 searched_keywords 要显示在参数区。 */
+export function argsWithResolvedKeywords(args: string, result?: string): string {
+  const payload = result ? jsonObject(result) : null;
+  const nested = payload && typeof payload.content === 'string' ? jsonObject(payload.content) : null;
+  const keywords = payload?.searched_keywords ?? nested?.searched_keywords;
+  if (!Array.isArray(keywords)) return args;
+  const parsed = jsonObject(args || '{}');
+  if (!parsed) return args;
+  return JSON.stringify({ ...parsed, keywords });
+}
+
 /**
  * 全局事件委托初始化标记
  */
@@ -391,7 +412,7 @@ const renderToolItem = (id: string, info: ToolCallInfo, t: Translate = fallbackT
   };
 
   // 详情内容：参数和结果
-  const argsFormatted = formatJson(info.args);
+  const argsFormatted = formatJson(argsWithResolvedKeywords(info.args, info.result));
   const resultFormatted = info.result ? extractResultContent(info.result) : '';
   
   let detailContent = '';

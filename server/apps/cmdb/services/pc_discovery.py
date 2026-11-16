@@ -753,19 +753,24 @@ def cleanup_expired_pc_software(task, threshold_dt, threshold_iso):
 
     严禁删除 PC 实体本身；删除仍写 DELETE_INST 审计。
     """
-    from apps.cmdb.services.data_cleanup_service import DataCleanupService
+    from apps.cmdb.collection.cleanup import parse_collect_time
 
     deleted = []
     failed = 0
     with GraphClient() as ag:
-        pcs, _ = ag.query_entity(
-            INSTANCE,
-            [
-                {"field": "collect_task", "type": "int=", "value": task.id},
-                {"field": "model_id", "type": "str=", "value": "pc"},
-            ],
-        )
-        for pc in pcs:
+        pcs = {}
+        for field_type, task_value in (("int=", task.id), ("str=", str(task.id))):
+            rows, _ = ag.query_entity(
+                INSTANCE,
+                [
+                    {"field": "collect_task", "type": field_type, "value": task_value},
+                    {"field": "model_id", "type": "str=", "value": "pc"},
+                ],
+            )
+            for row in rows or []:
+                if isinstance(row, dict) and row.get("_id") is not None:
+                    pcs[row["_id"]] = row
+        for pc in pcs.values():
             edges = ag.query_edge(
                 INSTANCE_ASSOCIATION,
                 [
@@ -786,11 +791,13 @@ def cleanup_expired_pc_software(task, threshold_dt, threshold_iso):
                 if not items:
                     continue
                 entity = items[0]
-                collect_time = DataCleanupService.parse_collect_time(entity.get("collect_time"))
+                collect_time = parse_collect_time(entity.get("collect_time"))
                 if not collect_time or collect_time >= threshold_dt:
                     continue
                 try:
-                    ag.detach_delete_entity(INSTANCE, src_id)
+                    if not ag.delete_entity_if_unchanged(INSTANCE, entity):
+                        failed += 1
+                        continue
                     deleted.append(entity)
                 except Exception as exc:  # noqa: BLE001 - 单条失败保留，下轮重试
                     logger.warning(

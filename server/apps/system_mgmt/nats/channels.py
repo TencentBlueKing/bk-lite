@@ -201,12 +201,18 @@ SYSTEM_USER_CHANNEL_TYPES = {
     ChannelChoices.EMAIL,
     ChannelChoices.ENTERPRISE_WECHAT,
 }
+# 这些渠道由 webhook 决定投递目标。接收人只用于在正文后追加 @，可以留空。
+OPTIONAL_RECIPIENT_CHANNEL_TYPES = {
+    ChannelChoices.ENTERPRISE_WECHAT_BOT,
+    ChannelChoices.FEISHU_BOT,
+    ChannelChoices.DINGTALK_BOT,
+    ChannelChoices.CUSTOM_WEBHOOK,
+}
 RICH_TEXT_CHANNEL_TYPES = {
     ChannelChoices.ENTERPRISE_WECHAT_BOT,
     ChannelChoices.FEISHU_BOT,
     ChannelChoices.DINGTALK_BOT,
 }
-OPTIONAL_RECIPIENT_CHANNEL_TYPES = RICH_TEXT_CHANNEL_TYPES | {ChannelChoices.CUSTOM_WEBHOOK}
 MAX_NOTIFICATION_RECIPIENTS = 100
 MAX_NOTIFICATION_RECIPIENT_LENGTH = 150
 MAX_NOTIFICATION_TITLE_LENGTH = 512
@@ -420,8 +426,8 @@ def _validate_notification_recipients(recipient_mode, recipients, *, allow_empty
         normalized.append(value)
     if recipient_mode == "none":
         return [] if not normalized else None
-    if not normalized and not allow_empty:
-        return None
+    if not normalized:
+        return [] if allow_empty else None
     if recipient_mode == "system_user" and not all(value.isdigit() for value in normalized):
         return None
     return normalized

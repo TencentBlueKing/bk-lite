@@ -108,7 +108,14 @@ class InMemoryGraph:
 
     def delete_entity_if_unchanged(self, label, instance):
         current = self.store.get(instance["inst_name"])
-        if current is None or any(current.get(k) != instance.get(k) for k in ("_id", "model_id", "collect_task", "collect_time", "inst_uuid")):
+        identity = ("_id", "model_id", "collect_task", "collect_time", "inst_uuid")
+        if current is None or any(current.get(key) != instance.get(key) for key in identity):
+            return False
+        actual_sources = current.get("_collect_sources")
+        expected_sources = instance.get("_collect_sources")
+        if expected_sources in (None, "") and actual_sources not in (None, ""):
+            return False
+        if expected_sources not in (None, "") and actual_sources != expected_sources:
             return False
         self.detach_delete_entity(label, instance["_id"])
         return True

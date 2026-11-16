@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState, useCallback, Suspense } from 'react';
+import React, { useEffect, useState, useCallback, useRef, Suspense } from 'react';
 import {
   Button,
   Form,
@@ -21,12 +21,14 @@ import { ArrowLeftOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import useApiClient from '@/utils/request';
 import useJobApi from '@/app/job/api';
-import { JobType, ScheduleType, ScheduledTaskFormData, Script, Playbook } from '@/app/job/types';
+import { JobType, ScheduleType, ScheduledTaskFormData, Script, Playbook, ScriptParam } from '@/app/job/types';
 import { useRouter, useSearchParams } from 'next/navigation';
 import dayjs from 'dayjs';
 import HostSelectionModal, { HostItem, TargetSourceType } from '@/app/job/components/jobHostSelectionModalRuntime';
 import { AddTargetHostButton, TargetSourceSelector } from '@/app/job/components/target-selection-controls';
-import { buildScheduledTaskTemplatePayload, resolveScheduledTaskConcurrencyPolicy, restoreScheduledTaskTemplateUi } from '@/app/job/utils/scheduledTaskPayload';
+import { buildScheduledTaskTemplatePayload, buildTemplateParamsPayload, resolveScheduledTaskConcurrencyPolicy, restoreScheduledTaskTemplateUi } from '@/app/job/utils/scheduledTaskPayload';
+import { replayTemplateParamFields } from '@/app/job/utils/execution-record';
+import { TemplateParamFields } from '@/app/job/components/template-param-fields';
 import { useUserInfoContext } from '@/context/userInfo';
 import Permission from '@/components/permission';
 
@@ -43,6 +45,8 @@ const EditCronTaskContent = () => {
     updateScheduledTask,
     getScriptList,
     getPlaybookList,
+    getScriptDetail,
+    getPlaybookDetail,
     getCrontabPreview,
   } = useJobApi();
   const { selectedGroup } = useUserInfoContext();
@@ -57,6 +61,15 @@ const EditCronTaskContent = () => {
 
   const [scripts, setScripts] = useState<Script[]>([]);
   const [playbooks, setPlaybooks] = useState<Playbook[]>([]);
+  const [templateParams, setTemplateParams] = useState<ScriptParam[]>([]);
+  const [editedTemplateParams, setEditedTemplateParams] = useState<Record<string, boolean>>({});
+  const savedParamsRef = useRef<{ templateType: 'script' | 'playbook'; templateId?: number; params?: ScheduledTaskFormData['params'] } | null>(null);
+  const selectedScriptId = Form.useWatch('script', form);
+  const selectedPlaybookId = Form.useWatch('playbook', form);
+  const getScriptDetailRef = useRef(getScriptDetail);
+  const getPlaybookDetailRef = useRef(getPlaybookDetail);
+  getScriptDetailRef.current = getScriptDetail;
+  getPlaybookDetailRef.current = getPlaybookDetail;
 
   // Host selection state
   const [hostModalOpen, setHostModalOpen] = useState(false);
@@ -133,6 +146,11 @@ const EditCronTaskContent = () => {
       setTemplateType(restoredTemplate.templateType);
 
       form.setFieldsValue?.({}) // ensure form is ready
+      savedParamsRef.current = {
+        templateType: restoredTemplate.templateType,
+        templateId: restoredTemplate.templateType === 'playbook' ? (task as any).playbook : (task as any).script,
+        params: (task as any).params,
+      };
       form.setFieldsValue({
         name: task.name,
         description: task.description,
@@ -197,6 +215,39 @@ const EditCronTaskContent = () => {
       fetchTaskDetail();
     }
   }, [isApiReady]);
+
+  useEffect(() => {
+    const templateId = templateType === 'script' ? selectedScriptId : selectedPlaybookId;
+    if (jobType !== 'script' || !templateId) {
+      setTemplateParams([]);
+      setEditedTemplateParams({});
+      return;
+    }
+    let cancelled = false;
+    const loadDetail = templateType === 'script'
+      ? getScriptDetailRef.current(templateId)
+      : getPlaybookDetailRef.current(templateId);
+    loadDetail
+      .then((detail) => {
+        if (cancelled) return;
+        const nextParams = (detail?.params || []) as ScriptParam[];
+        setTemplateParams(nextParams);
+        setEditedTemplateParams({});
+        const defaults = Object.fromEntries(nextParams.map((param) => [`param_${param.name}`, param.default || undefined]));
+        const saved = savedParamsRef.current;
+        const savedValues = saved && saved.templateType === templateType && saved.templateId === templateId && saved.params
+          ? replayTemplateParamFields(saved.params)
+          : {};
+        if (saved && saved.templateId === templateId) savedParamsRef.current = null;
+        form.setFieldsValue({ ...defaults, ...savedValues });
+      })
+      .catch(() => {
+        if (!cancelled) setTemplateParams([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [form, jobType, selectedPlaybookId, selectedScriptId, templateType]);
 
   const getCronExpression = (): string => {
     return `${cronMinute} ${cronHour} ${cronDay} ${cronMonth} ${cronWeek}`;
@@ -336,6 +387,7 @@ const EditCronTaskContent = () => {
         target_source: targetSource === 'node_manager' ? 'node_mgmt' : 'manual',
         target_list: targetList,
         timeout: values.timeout || 60,
+        params: buildTemplateParamsPayload(templateParams, values, editedTemplateParams),
         is_enabled: enableAfterSave,
         concurrency_policy: resolveScheduledTaskConcurrencyPolicy(values.concurrency_policy),
         team: selectedGroup ? [Number(selectedGroup.id)] : [],
@@ -372,6 +424,9 @@ const EditCronTaskContent = () => {
       return;
     }
     setTemplateType(value as 'script' | 'playbook');
+    setTemplateParams([]);
+    setEditedTemplateParams({});
+    savedParamsRef.current = null;
     if (value === 'script') {
       form.setFieldValue('playbook', undefined);
     } else {
@@ -531,6 +586,13 @@ const EditCronTaskContent = () => {
                 </Form.Item>
               )}
             </Form.Item>
+          )}
+
+          {jobType === 'script' && (
+            <TemplateParamFields
+              params={templateParams}
+              onEncryptedReset={(name) => setEditedTemplateParams((prev) => ({ ...prev, [name]: true }))}
+            />
           )}
 
           <Form.Item label={t('job.scheduleStrategy')} required>

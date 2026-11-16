@@ -7,7 +7,7 @@ from apps.cmdb.graph.drivers.graph_client import GraphClient
 from apps.cmdb.graph.falkordb_format import FormatDBResult
 from apps.cmdb.graph.format_type import ParameterCollector
 from apps.cmdb.graph.validators import CQLValidator
-from apps.cmdb.services.generic_query_limits import DETAIL_PAGE_SIZE_MAX, QUERY_TIMEOUT_MS, STAT_GROUP_MAX
+from apps.cmdb.services.generic_query_limits import DETAIL_PAGE_SIZE_MAX, ONE_HOP_LIST_MAX, QUERY_TIMEOUT_MS, STAT_GROUP_MAX
 from apps.cmdb.services.instance import InstanceManage
 
 _AGGREGATIONS = {
@@ -72,56 +72,35 @@ def aggregate_numeric(
     return {"value": row.get("value"), "scanned": int(row.get("scanned") or 0)}
 
 
-_DETAIL_ORDER = "ORDER BY start_name ASC, end_name ASC, start_uuid ASC, end_uuid ASC"
+_DETAIL_ORDER = "ORDER BY start_name ASC, end_name ASC, start_uuid ASC, end_uuid ASC, model_asst_id ASC"
 _RANK_ORDER = "ORDER BY relation_count DESC, start_uuid ASC"
 
 
 def query_one_hop(
     *,
     start_model_id: str,
-    model_asst_id: str,
-    direction: str,
-    end_model_id: str,
+    model_asst_ids: list[str],
     permission_map: dict,
-    start_conditions: list | None = None,
-    start_logic: str = "AND",
-    end_conditions: list | None = None,
-    end_logic: str = "AND",
     part: str = "detail",
     skip: int = 0,
     limit: int | None = None,
 ) -> dict:
-    """一跳关联在图里完成。起点和终点的权限、条件都写进同一条 MATCH。"""
-    if direction not in {"out", "in"}:
-        raise GenericQueryGraphError("关系方向不受支持")
+    """一跳关联在图里完成。无方向匹配同时覆盖向外和向内，起点和终点的权限写进同一条 MATCH。"""
+    relation_ids = list(dict.fromkeys(str(item).strip() for item in model_asst_ids or [] if str(item).strip()))
     if part not in {"count", "distribution", "detail"}:
         raise GenericQueryGraphError("分析方式不受支持")
-    if not start_model_id or not model_asst_id or not end_model_id:
-        raise GenericQueryGraphError("起点模型、关系和终点模型不能为空")
-    pattern = f"(s)-[e:{INSTANCE_ASSOCIATION}]->(t)" if direction == "out" else f"(s)<-[e:{INSTANCE_ASSOCIATION}]-(t)"
-    where = [
-        "s.model_id = $start_model_id",
-        "e.model_asst_id = $model_asst_id",
-        "t.model_id = $end_model_id",
-    ]
-    params = {
-        "start_model_id": str(start_model_id),
-        "model_asst_id": str(model_asst_id),
-        "end_model_id": str(end_model_id),
-    }
+    if not start_model_id or not relation_ids:
+        raise GenericQueryGraphError("起点模型和关系不能为空")
+    pattern = f"(s)-[e:{INSTANCE_ASSOCIATION}]-(t)"
+    where = ["s.model_id = $start_model_id"]
+    params = {"start_model_id": str(start_model_id)}
     with GraphClient() as client:
         collector = ParameterCollector()
+        relation_param = collector.add_param(relation_ids, prefix="asst_ids")
         start_permission, collector = _permission_clause(client, permission_map, alias="s", collector=collector)
         end_permission, collector = _permission_clause(client, permission_map, alias="t", collector=collector)
-        start_sql, collector = _condition_sql(client, start_conditions, start_logic, alias="s", collector=collector)
-        end_sql, collector = _condition_sql(client, end_conditions, end_logic, alias="t", collector=collector)
         params.update(collector.get_params())
-        clauses = [*where, start_permission, end_permission]
-        if start_sql:
-            clauses.append(start_sql)
-        if end_sql:
-            clauses.append(end_sql)
-        where_sql = " AND ".join(clauses)
+        where_sql = " AND ".join([*where, f"e.model_asst_id IN {relation_param}", start_permission, end_permission])
         if part == "count":
             return {"pair_count": _pair_count(client, pattern, where_sql, params)}
         if part == "distribution":
@@ -130,7 +109,11 @@ def query_one_hop(
 
 
 def _pair_count(client, pattern: str, where_sql: str, params: dict) -> int:
-    query = f"MATCH {pattern} WHERE {where_sql} " "WITH DISTINCT s.inst_uuid AS start_uuid, t.inst_uuid AS end_uuid " "RETURN count(*) AS pair_count"
+    query = (
+        f"MATCH {pattern} WHERE {where_sql} "
+        "WITH DISTINCT s.inst_uuid AS start_uuid, t.inst_uuid AS end_uuid, e.model_asst_id AS model_asst_id "
+        "RETURN count(*) AS pair_count"
+    )
     rows = _run(client, query, params)
     return int((rows[0].get("pair_count") if rows else 0) or 0)
 
@@ -140,12 +123,13 @@ def _rank_starts(client, pattern: str, where_sql: str, params: dict, limit: int 
     count_rows = _run(client, count_query, params)
     group_count = int((count_rows[0].get("group_count") if count_rows else 0) or 0)
     bounded = _return_limit(limit)
-    if group_count == 0 or group_count > STAT_GROUP_MAX:
+    if group_count == 0 or (bounded is None and group_count > STAT_GROUP_MAX):
         return {"group_count": group_count, "groups": []}
     query = (
         f"MATCH {pattern} WHERE {where_sql} "
-        "WITH DISTINCT s.inst_uuid AS start_uuid, s.inst_name AS start_name, t.inst_uuid AS end_uuid "
-        "WITH start_uuid, start_name, count(end_uuid) AS relation_count "
+        "WITH DISTINCT s.inst_uuid AS start_uuid, s.inst_name AS start_name, "
+        "t.inst_uuid AS end_uuid, e.model_asst_id AS model_asst_id "
+        "WITH start_uuid, start_name, count(*) AS relation_count "
         "RETURN start_uuid, start_name, relation_count " + _RANK_ORDER
     )
     if bounded is not None:
@@ -154,23 +138,31 @@ def _rank_starts(client, pattern: str, where_sql: str, params: dict, limit: int 
 
 
 def _page_pairs(client, pattern: str, where_sql: str, params: dict, skip: int, limit: int | None) -> dict:
-    # 总数和当前页仍各查一次。把全部对应关系收进内存再切片能少一次扫描，
-    # 但一跳没有条数上限，收全量会把内存顶满，所以计数保持单独查询。
+    # 总数和当前页仍各查一次。超过不分页上限就不再把对应关系拉回来。
     pair_count = _pair_count(client, pattern, where_sql, params)
-    bounded = _return_limit(limit)
-    if bounded is None:
-        raise GenericQueryGraphError("明细必须分页")
     offset = _non_negative(skip)
-    if pair_count == 0:
-        return {"pair_count": 0, "pairs": [], "paged": True}
+    if limit is None:
+        if pair_count > ONE_HOP_LIST_MAX:
+            raise GenericQueryGraphError(f"对应关系超过 {ONE_HOP_LIST_MAX} 条，请缩小范围或填写分页")
+        if pair_count == 0:
+            return {"pair_count": 0, "pairs": [], "paged": False}
+        bounded = pair_count
+        paged = False
+    else:
+        bounded = _return_limit(limit)
+        paged = True
+        if pair_count == 0:
+            return {"pair_count": 0, "pairs": [], "paged": True}
     query = (
         f"MATCH {pattern} WHERE {where_sql} "
         "WITH DISTINCT s.inst_uuid AS start_uuid, s.inst_name AS start_name, "
         "s.model_id AS start_model_id, t.inst_uuid AS end_uuid, "
-        "t.inst_name AS end_name, t.model_id AS end_model_id "
-        "RETURN start_uuid, start_name, start_model_id, end_uuid, end_name, end_model_id " + _DETAIL_ORDER + f" SKIP {offset} LIMIT {bounded}"
+        "t.inst_name AS end_name, t.model_id AS end_model_id, e.model_asst_id AS model_asst_id "
+        "RETURN start_uuid, start_name, start_model_id, end_uuid, end_name, end_model_id, model_asst_id "
+        + _DETAIL_ORDER
+        + f" SKIP {offset} LIMIT {bounded}"
     )
-    return {"pair_count": pair_count, "pairs": _run(client, query, params), "paged": True}
+    return {"pair_count": pair_count, "pairs": _run(client, query, params), "paged": paged}
 
 
 def _return_limit(limit: int | None) -> int | None:
@@ -223,21 +215,6 @@ def _permission_clause(client, permission_map: dict, alias: str, collector: Para
         raise GenericQueryGraphError("缺少权限范围，已拒绝查询")
     joined = permission_parts[0] if len(permission_parts) == 1 else "(" + " OR ".join(permission_parts) + ")"
     return joined, collector
-
-
-def _condition_sql(client, conditions: list | None, logic: str, alias: str, collector: ParameterCollector | None = None):
-    """条件组单独参数化。OR 由 format_search_params 加括号，再和权限 AND。"""
-    collector = collector or ParameterCollector()
-    if not conditions:
-        return "", collector
-    logic_name = "OR" if str(logic or "AND").upper() == "OR" else "AND"
-    sql, _ignored = client.format_search_params(
-        list(conditions),
-        param_type=logic_name,
-        param_collector=collector,
-        alias=alias,
-    )
-    return sql, collector
 
 
 def _where_clause(

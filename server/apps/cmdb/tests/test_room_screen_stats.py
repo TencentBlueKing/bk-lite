@@ -122,7 +122,7 @@ def test_capacity_summary_counts_unracked_and_distinct_u():
         "u_usage_percent": 30,
     }
     assert top["result"] is False
-    assert top["message"] == "请在头部选择机房"
+    assert top["message"] == "请选择机房"
     assert top["code"] == 400
     assert resolve.call_count == 1
     assert resolve.call_args_list[-1].args[0] == ROOM
@@ -139,7 +139,7 @@ def test_blank_room_id_does_not_select_another_room():
         for fn, kwargs in calls:
             result = fn(permission_map={"10": {}}, user=None, parse_locator=_parse_locator, **kwargs)
             assert result["result"] is False
-            assert result["message"] == "请在头部选择机房"
+            assert result["message"] == "请选择机房"
             assert result["code"] == 400
     assert resolve.call_count == 0
 

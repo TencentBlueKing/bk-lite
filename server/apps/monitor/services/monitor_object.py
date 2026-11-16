@@ -16,7 +16,9 @@ from apps.monitor.models.monitor_metrics import Metric
 from apps.monitor.models.monitor_object import MonitorInstance, MonitorInstanceOrganization, MonitorObject, MonitorObjectType
 from apps.monitor.models.plugin import MonitorPlugin
 from apps.monitor.services.host_container_asset_ip import fill_missing_host_container_asset_ips
+from apps.monitor.services.list_asset_ip import present_list_asset_ips
 from apps.monitor.tasks.grouping_rule import sync_instance_and_group
+from apps.monitor.utils.alert_name_variables import summary_facts_with_model_ip
 from apps.monitor.utils.dimension import parse_instance_id
 from apps.monitor.utils.display_fields_metrics import display_field_key, extract_field_bindings, extract_metric_bindings
 from apps.monitor.utils.instance import list_reporting_status
@@ -309,6 +311,7 @@ class MonitorObjectService:
             # 排序阶段先用空 org_map 序列化，分页后再补组织。
             candidates = [MonitorObjectService._serialize_instance_list_item(obj, instance_map, {}) for obj in all_objs]
             fill_missing_host_container_asset_ips(candidates, monitor_obj.name)
+            present_list_asset_ips(candidates, monitor_obj.name)
             filled_out_key = apply_ordering_to_instances(
                 monitor_object_id,
                 obj_metric_map,
@@ -354,6 +357,7 @@ class MonitorObjectService:
             for obj in objs:
                 result.append(MonitorObjectService._serialize_instance_list_item(obj, instance_map, org_map))
             fill_missing_host_container_asset_ips(result, monitor_obj.name)
+            present_list_asset_ips(result, monitor_obj.name)
 
         if add_metrics and page_size != -1:
             MonitorObjectService._safe_fill_display_metrics(
@@ -729,7 +733,7 @@ class MonitorObjectService:
             "time": instance_map.get(obj.id, {}).get("time", ""),
             "cloud_region_id": obj.cloud_region_id,
             "ip": obj.ip,
-            "summary_facts": obj.summary_facts,
+            "summary_facts": summary_facts_with_model_ip(obj.summary_facts, obj.ip),
             "fallback_sampling_rate": obj.fallback_sampling_rate,
             "node_id": obj.node_id or "",
             "cmdb_id": obj.cmdb_id or "",

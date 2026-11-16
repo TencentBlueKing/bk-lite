@@ -14,6 +14,7 @@ class LogExtractor(TimeInfo, MaintainerInfo):
         REGEX = "regex", "Regex"
         REGEX_REPLACE = "regex_replace", "Regex Replace"
         JSON = "json", "JSON"
+        GROK = "grok", "Grok"
 
     name = models.CharField(max_length=200)
     collect_instance = models.ForeignKey("log.CollectInstance", null=True, blank=True, on_delete=models.CASCADE, related_name="log_extractors")

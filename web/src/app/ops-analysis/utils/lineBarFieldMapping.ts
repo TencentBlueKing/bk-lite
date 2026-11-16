@@ -52,6 +52,20 @@ export const hasExplicitLineBarMapping = (mapping?: LineBarFieldMappingInput) =>
     || trimLineBarField(mapping?.seriesField),
   );
 
+/**
+ * 单值、仪表盘没选展示字段时的回填。
+ * 只有一个数值字段才回填。多个数值字段留给用户选。
+ */
+export const defaultDisplayFields = (
+  schema?: Array<{ key?: string; value_type?: string }>,
+): string[] => {
+  const numbers = (schema || []).flatMap((field) => {
+    const key = trimLineBarField(field.key);
+    return field.value_type === 'number' && key ? [key] : [];
+  });
+  return numbers.length === 1 ? numbers : [];
+};
+
 export type LineBarMappingPlan =
   | { kind: 'none' }
   | { kind: 'legacy'; dimensionField: string; valueField: string }
