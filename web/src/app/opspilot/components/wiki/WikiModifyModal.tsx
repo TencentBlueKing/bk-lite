@@ -133,7 +133,6 @@ const WikiModifyModal: React.FC<WikiModifyModalProps> = ({
               value: m.id,
               label: renderModelOptionLabel(m),
               title: getModelOptionText(m),
-              disabled: !m.enabled,
             }))}
           />
         </Form.Item>
@@ -167,7 +166,6 @@ const WikiModifyModal: React.FC<WikiModifyModalProps> = ({
               value: m.id,
               label: renderModelOptionLabel(m),
               title: getModelOptionText(m),
-              disabled: !m.enabled,
             }))}
           />
         </Form.Item>

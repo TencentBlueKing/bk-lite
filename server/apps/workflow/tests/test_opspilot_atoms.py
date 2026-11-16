@@ -12,6 +12,7 @@ pytestmark = pytest.mark.skipif(
 if django_apps.is_installed("apps.opspilot"):
     from apps.opspilot.memory.engines.base import MemoryReadResult, MemoryWriteResult
     from apps.opspilot.models import LLMModel, LLMSkill, MemorySpace
+    from apps.opspilot.models.model_provider_mgmt import ModelVendor
 
 
 def _context(*, organization_id=7):
@@ -73,7 +74,8 @@ def test_workflow_agent_history_separates_distinct_nodes(mocker):
 
 @pytest.mark.django_db
 def test_agent_and_intent_atoms_reuse_opspilot_nodes_with_clean_contract(mocker):
-    model = LLMModel.objects.create(name="classification-model", enabled=True, team=[7])
+    vendor = ModelVendor.objects.create(name="on", vendor_type="openai", team=[7], enabled=True)
+    model = LLMModel.objects.create(name="classification-model", enabled=True, team=[7], vendor=vendor)
     skill = LLMSkill.objects.create(name="inspection-agent", llm_model=model, team=[7], usage_team=[7])
     agent_execute = mocker.patch(
         "apps.opspilot.utils.chat_flow_utils.nodes.agent.agent.AgentNode.execute",
@@ -161,9 +163,12 @@ def test_memory_atoms_bind_actor_or_organization_and_return_bounded_results(mock
 
 @pytest.mark.django_db
 def test_designer_catalog_materializes_current_organization_opspilot_options():
-    own_model = LLMModel.objects.create(name="own-model", enabled=True, team=[7])
-    LLMModel.objects.create(name="disabled-model", enabled=False, team=[7])
-    other_model = LLMModel.objects.create(name="other-model", enabled=True, team=[8])
+    vendor = ModelVendor.objects.create(name="on", vendor_type="openai", team=[7], enabled=True)
+    disabled_vendor = ModelVendor.objects.create(name="off", vendor_type="openai", team=[7], enabled=False)
+    own_model = LLMModel.objects.create(name="own-model", enabled=True, team=[7], vendor=vendor)
+    LLMModel.objects.create(name="disabled-model", enabled=False, team=[7], vendor=vendor)
+    LLMModel.objects.create(name="vendor-off", enabled=True, team=[7], vendor=disabled_vendor)
+    other_model = LLMModel.objects.create(name="other-model", enabled=True, team=[8], vendor=vendor)
     own_skill = LLMSkill.objects.create(name="own-agent", llm_model=own_model, team=[7], usage_team=[7])
     LLMSkill.objects.create(name="other-agent", llm_model=other_model, team=[8], usage_team=[8])
     own_space = MemorySpace.objects.create(name="own-memory", team=[7], default_model=str(own_model.id))
