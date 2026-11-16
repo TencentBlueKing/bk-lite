@@ -1,6 +1,6 @@
 'use client';
 
-import { formatMssqlUptime, mssqlFormFromName, mssqlIdentityText } from './series';
+import { mssqlFormFromName, mssqlIdentityText } from './series';
 
 const chipClass = (
   'inline-flex h-5 shrink-0 items-center rounded-full border border-[color-mix(in_srgb,var(--color-primary)_32%,var(--color-border))] bg-[color-mix(in_srgb,var(--color-primary)_10%,var(--color-bg))] px-2 text-[12px] font-medium leading-none text-[var(--color-text-1)]'
@@ -19,23 +19,19 @@ export function MssqlIdentityExtra({
   instanceName,
   instanceId,
   idValues,
-  uptimeMinutes,
   version,
   port
 }: {
   instanceName: string;
   instanceId: string;
   idValues: readonly string[];
-  uptimeMinutes: number | null;
   version: string;
   port: string;
 }) {
   const form = mssqlFormFromName(mssqlIdentityText(instanceName, instanceId, ...idValues));
-  const uptime = formatMssqlUptime(uptimeMinutes);
   const facts = [
     version,
-    port ? `端口 ${port}` : '',
-    uptime ? `运行 ${uptime}` : ''
+    port ? `端口 ${port}` : ''
   ].filter(Boolean);
   if (!form && facts.length === 0) return null;
   return (

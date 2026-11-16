@@ -28,8 +28,7 @@ import { MSSQL_TOP_DB_QUERIES } from './queries';
 import { topDbBars } from './parse';
 import MssqlCategoryLayout from './layered/category-layout';
 import { MssqlIdentityExtra } from './layered/identity';
-import { MSSQL_PRO_METRIC_NAMES, MSSQL_PRO_METRICS, MSSQL_PRO_NAMES } from './layered/queries';
-import { mssqlLatest } from './layered/series';
+import { MSSQL_PRO_METRIC_NAMES, MSSQL_PRO_METRICS } from './layered/queries';
 import styles from './index.module.scss';
 
 // 数据库类对象首行统一带「运行时长」(放首位);采集状态 + 5 张 KPI = 6 列一行。
@@ -124,7 +123,6 @@ export default function MssqlDashboardPage() {
           instanceName={dashboard.resolvedInstanceName}
           instanceId={String(dashboard.instanceId || '')}
           idValues={dashboard.idValues}
-          uptimeMinutes={mssqlLatest(dashboard.metricSeries, MSSQL_PRO_NAMES.uptime)}
           version={dashboard.instanceVersion}
           port={dashboard.instancePort}
         />

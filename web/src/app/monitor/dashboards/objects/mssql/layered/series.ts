@@ -107,9 +107,14 @@ export const formatCount = (value: number, unit: '个' | '次') => (
 /** 源端已是 0–100 的百分数。不再乘 100。 */
 export const formatPercentPoint = (value: number) => `${value.toFixed(1)}%`;
 
+/** 读数最多两位小数。整数不补 `.00`。 */
+const tightenReading = (text: string) => text
+  .replace(/(\.\d*?[1-9])0+(?=\D|$)/g, '$1')
+  .replace(/\.0+(?=\D|$)/g, '');
+
 export const joinMetric = (value: number, unit: MetricUnit) => {
   const formatted = formatMetricValue(value, unit);
-  return `${formatted.value}${formatted.unit || ''}`;
+  return `${tightenReading(formatted.value)}${formatted.unit || ''}`;
 };
 
 const finiteOrNull = (value: number | null | undefined) => (

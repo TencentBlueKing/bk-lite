@@ -22,6 +22,46 @@ export interface MssqlSeriesSpec {
   dashed?: boolean;
 }
 
+export function MssqlSeriesReadout({
+  items
+}: {
+  items: ReadonlyArray<{ label: string; color: string; reading?: string; dashed?: boolean }>;
+}) {
+  if (!items.length) return null;
+  return (
+    <ul className="m-0 mt-2 flex list-none flex-wrap gap-x-4 gap-y-1 p-0" data-mssql-series-readout="">
+      {items.map((item) => (
+        <li
+          key={item.label}
+          className="inline-flex min-w-0 items-baseline gap-1.5 text-[12px] leading-5 text-[var(--color-text-3)]"
+        >
+          <span
+            aria-hidden
+            className="inline-block shrink-0 self-center"
+            style={item.dashed
+              ? {
+                width: 14,
+                height: 0,
+                borderTop: `1.5px dashed ${item.color}`,
+                background: 'transparent'
+              }
+              : {
+                width: 8,
+                height: 8,
+                borderRadius: 999,
+                background: item.color
+              }}
+          />
+          <span className="min-w-0 truncate">{item.label}</span>
+          <span className="shrink-0 font-semibold tabular-nums" style={{ color: item.color }}>
+            {item.reading || '—'}
+          </span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 export function MssqlTrend({
   anchor,
   title,
@@ -53,6 +93,16 @@ export function MssqlTrend({
   const awaiting = series.some((item) => pending.has(item.name)) && plotted.length === 0;
   const samples = seriesSampleValues(plotted);
   const countBounds = counts ? mssqlCountAxisBounds(samples) : null;
+  const legends = series.map((item) => {
+    const latest = mssqlLatest(metricMap, item.name);
+    return {
+      label: item.label,
+      color: item.color,
+      dashed: item.dashed,
+      unit: mixedUnits ? item.unit : undefined,
+      reading: latest == null ? undefined : joinMetric(latest, item.unit)
+    };
+  });
   return (
     <div id={`mssql-${anchor}`} className="min-w-0 scroll-mt-3" data-mssql-chart={anchor}>
       <ThinTimeSeries
@@ -64,22 +114,15 @@ export function MssqlTrend({
         pinAxisZero={!percent}
         independentAxes={mixedUnits}
         keepLegend={multi}
+        hideLegend={multi}
         markZeroCount={Boolean(counts && countBounds)}
         keepSeriesColor={Boolean(counts && countBounds)}
         loading={awaiting}
         emptyText="本窗口暂无数据"
         data={plotted}
-        legends={series.map((item) => {
-          const latest = mssqlLatest(metricMap, item.name);
-          return {
-            label: item.label,
-            color: item.color,
-            dashed: item.dashed,
-            unit: mixedUnits ? item.unit : undefined,
-            reading: multi && latest != null ? joinMetric(latest, item.unit) : undefined
-          };
-        })}
+        legends={legends}
       />
+      {multi && plotted.length > 0 ? <MssqlSeriesReadout items={legends} /> : null}
     </div>
   );
 }

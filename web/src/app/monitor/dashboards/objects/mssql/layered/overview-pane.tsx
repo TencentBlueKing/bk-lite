@@ -2,6 +2,7 @@
 
 import React, { useMemo } from 'react';
 import type { MetricUnit } from '../../../shared/types';
+import { alertEventInsideWindow } from '../../../shared/utils/pro-chart-window';
 import {
   EVENT_RAIL_HINT_LINES,
   KpiTileRow,
@@ -17,11 +18,13 @@ import EventsRail, { type HostAlertRailEvent } from '../../host/layered/events-r
 import FocusShortcutTitle from '../../host/layered/focus-shortcut-title';
 import { describeFocusAxis, formatFocusHeadline, seriesSampleValues } from '../../host/layered/focus-axis';
 import host from '../../host/layered/layered.module.scss';
+import { useProTimeWindow } from '../../host/layered/pro-time-window';
 import { MssqlHint } from './hint';
 import { mssqlFocusJump, mssqlKpiJump } from './ia';
 import { MSSQL_PRO_NAMES, MSSQL_PRO_PALETTE } from './queries';
 import {
   formatCount,
+  formatMssqlUptime,
   formatPercentPoint,
   joinMetric,
   mssqlCountAxisBounds,
@@ -46,7 +49,6 @@ interface OverviewPaneProps {
   alertCount: number | null;
   alertsOpen: boolean;
   alertEvents: HostAlertRailEvent[];
-  eventsLoading: boolean;
   onOpenAlerts: () => void;
   onOpenFocus: (anchor: string) => void;
   onFocusAlert: (alertId: string) => void;
@@ -73,22 +75,29 @@ export default function OverviewPane({
   alertCount,
   alertsOpen,
   alertEvents,
-  eventsLoading,
   onOpenAlerts,
   onOpenFocus,
   onFocusAlert
 }: OverviewPaneProps) {
+  const proTime = useProTimeWindow();
+  const chartWindow = proTime?.window ?? null;
+  const railEvents = useMemo(
+    () => alertEvents.filter((event) => alertEventInsideWindow(event.at, chartWindow)),
+    [alertEvents, chartWindow]
+  );
   const healthPending = [
     MSSQL_PRO_NAMES.connections,
     MSSQL_PRO_NAMES.batch,
     MSSQL_PRO_NAMES.hit,
-    MSSQL_PRO_NAMES.processCpu
+    MSSQL_PRO_NAMES.processCpu,
+    MSSQL_PRO_NAMES.uptime
   ];
   const healthLoading = booting || healthPending.some((name) => pendingMetricNames.has(name));
   const hit = mssqlLatest(metricMap, MSSQL_PRO_NAMES.hit);
   const connections = mssqlLatest(metricMap, MSSQL_PRO_NAMES.connections);
   const batch = mssqlLatest(metricMap, MSSQL_PRO_NAMES.batch);
   const cpu = mssqlLatest(metricMap, MSSQL_PRO_NAMES.processCpu);
+  const uptime = formatMssqlUptime(mssqlLatest(metricMap, MSSQL_PRO_NAMES.uptime));
 
   const cards = useMemo<KpiTileModel[]>(() => {
     const jump = (key: string) => {
@@ -131,6 +140,13 @@ export default function OverviewPane({
         ...jump('cpu')
       },
       {
+        key: 'uptime',
+        label: '运行时间',
+        value: uptime ?? EMPTY,
+        tone: uptime == null ? undefined : MSSQL_PRO_PALETTE.indigo,
+        info: <MssqlHint kind="mssql-kpi-uptime" title="运行时间" body="实例自上次启动以来已持续运行的时间。" />
+      },
+      {
         key: 'alert-count',
         label: '告警数量',
         value: alertValue(alertCount),
@@ -141,21 +157,27 @@ export default function OverviewPane({
       }
     ];
     return metricCards;
-  }, [alertCount, alertsOpen, batch, connections, cpu, hit, onOpenAlerts, onOpenFocus]);
+  }, [alertCount, alertsOpen, batch, connections, cpu, hit, onOpenAlerts, onOpenFocus, uptime]);
 
   const loadingTiles: KpiTileModel[] = [
     { key: 'connections', label: '用户连接数', value: '' },
     { key: 'batch', label: '批处理请求速率', value: '' },
     { key: 'hit', label: '缓冲池命中率', value: '' },
     { key: 'cpu', label: '进程 CPU', value: '' },
+    { key: 'uptime', label: '运行时间', value: '' },
     { key: 'alert-count', label: '告警数量', value: '' }
   ];
 
   return (
     <div data-mssql-pane="overview" className="contents">
       <ProSection title="健康概览">
-        <KpiTileRow items={healthLoading ? loadingTiles : cards} loading={healthLoading} columns={5} />
+        <KpiTileRow items={healthLoading ? loadingTiles : cards} loading={healthLoading} columns={6} />
       </ProSection>
+      {railEvents.length > 0 ? (
+        <ProSection title="事件" hint={<ProInfoHint kind="events" lines={EVENT_RAIL_HINT_LINES} />}>
+          <EventsRail events={railEvents} onFocusAlert={onFocusAlert} />
+        </ProSection>
+      ) : null}
       <ProSection title="重点关注">
         <div className={proChromeClass.shortcutGrid} data-mssql-focus="grid">
           <FocusCard
@@ -263,9 +285,6 @@ export default function OverviewPane({
             pending={pendingMetricNames}
           />
         </div>
-      </ProSection>
-      <ProSection title="事件" hint={<ProInfoHint kind="events" lines={EVENT_RAIL_HINT_LINES} />}>
-        <EventsRail events={alertEvents} loading={eventsLoading} onFocusAlert={onFocusAlert} />
       </ProSection>
     </div>
   );

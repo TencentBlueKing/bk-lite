@@ -59,7 +59,6 @@ export default function MssqlCategoryLayout({
   const [tab, setTab] = useState<MssqlTab>(tabFromUrl);
   const [alertCount, setAlertCount] = useState<number | null>(null);
   const [alertEvents, setAlertEvents] = useState<HostAlertRailEvent[]>([]);
-  const [eventsPhase, setEventsPhase] = useState<'loading' | 'ready'>('loading');
   const eventsScopeRef = useRef<string | null>(null);
   const [alertDrawerOpen, setAlertDrawerOpen] = useState(false);
   const alertDrawerOpenRef = useRef(false);
@@ -125,7 +124,6 @@ export default function MssqlCategoryLayout({
     eventsScopeRef.current = eventsScope;
     if (first) return;
     setAlertEvents([]);
-    setEventsPhase('loading');
   }, [eventsScope]);
 
   useEffect(() => {
@@ -133,7 +131,6 @@ export default function MssqlCategoryLayout({
     if (!instanceKey) {
       setAlertCount(null);
       setAlertEvents([]);
-      setEventsPhase('ready');
       return undefined;
     }
     let active = true;
@@ -141,13 +138,11 @@ export default function MssqlCategoryLayout({
       .then((data) => {
         if (!active) return;
         setAlertEvents(hostAlertRailEvents(data?.results));
-        setEventsPhase('ready');
         if (!alertDrawerOpenRef.current) setAlertCount(readAlertCount(data, 0));
       })
       .catch(() => {
         if (!active) return;
         setAlertEvents([]);
-        setEventsPhase('ready');
         if (!alertDrawerOpenRef.current) setAlertCount(null);
       });
     return () => {
@@ -193,7 +188,6 @@ export default function MssqlCategoryLayout({
               alertCount={alertCount}
               alertsOpen={alertDrawerOpen}
               alertEvents={alertEvents}
-              eventsLoading={eventsPhase === 'loading'}
               onOpenAlerts={openAlerts}
               onOpenFocus={openTarget}
               onFocusAlert={(alertId) => {

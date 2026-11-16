@@ -87,6 +87,11 @@ interface ThinTimeSeriesProps {
    * 单维卡不要开，避免主机盘把本该隐藏的图例重新打开。
    */
   keepLegend?: boolean;
+  /**
+   * 多维折线把图例和当前值放到图外。图内只留折线。
+   * 颜色和 tooltip 仍用 legends。
+   */
+  hideLegend?: boolean;
   /** 本图达档。不传或 none 时不打点、不加框。 */
   alertLevel?: TabAlertLevel;
   onRetry?: () => void;
@@ -446,6 +451,7 @@ export default function ThinTimeSeries({
   resolveValueBounds,
   independentAxes = false,
   keepLegend = false,
+  hideLegend = false,
   alertLevel,
   onRetry,
   hideFlatAxisLabels = false,
@@ -739,7 +745,7 @@ export default function ThinTimeSeries({
     const value = point[key];
     return typeof value === 'number' && Number.isFinite(value);
   })).length;
-  const showLegend = keepLegend ? legends.length > 0 : drawnSeriesCount >= 2;
+  const showLegend = hideLegend ? false : (keepLegend ? legends.length > 0 : drawnSeriesCount >= 2);
   const chart = (
     <>
       {title || reading || showLegend ? (

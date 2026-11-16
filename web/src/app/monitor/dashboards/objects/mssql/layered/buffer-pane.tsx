@@ -5,7 +5,7 @@ import host from '../../host/layered/layered.module.scss';
 import { MssqlHint } from './hint';
 import { MSSQL_PRO_NAMES, MSSQL_PRO_PALETTE } from './queries';
 import { clerkChart, type MssqlMetricMap } from './series';
-import { MssqlTrend } from './trend';
+import { MssqlSeriesReadout, MssqlTrend } from './trend';
 
 const HIT_BODY = '缓冲池满足的数据页读取占比。偏低说明热点数据未充分驻留内存、读盘偏多。\n命中 ÷（命中 + 未命中）× 100%\n分母为 0 时显示 —，不用 0% 顶替。';
 
@@ -158,11 +158,13 @@ export default function BufferPane({
             unit="kibibytes"
             pinAxisZero
             keepLegend
+            hideLegend
             loading={clerkPending}
             emptyText="本窗口暂无数据"
             data={clerks.data}
             legends={clerks.legends}
           />
+          {clerks.data.length > 0 ? <MssqlSeriesReadout items={clerks.legends} /> : null}
         </div>
       </ProSection>
     </div>

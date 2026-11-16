@@ -77,10 +77,12 @@ export function KpiStrip({
   /** 可选列数。不传时保持主机六卡栅格，默认关闭任何额外占位。 */
   columns?: number;
 }) {
+  const responsiveSix = columns === 6;
   return (
     <div
       className={styles.kpiGrid}
-      style={columns ? { gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` } : undefined}
+      data-kpi-columns={responsiveSix ? 6 : undefined}
+      style={columns && !responsiveSix ? { gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` } : undefined}
       aria-busy={loading || undefined}
     >
       {items.map((item) => {
