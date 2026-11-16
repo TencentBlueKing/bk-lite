@@ -38,7 +38,10 @@ export function ReplicationPane() {
           />
         )}
       >
-        <GrayTabEmptyState title="副本状态采集未开启。" />
+        <GrayTabEmptyState
+          title="副本状态采集未开启。"
+          hint="本盘暂不展示估算值。"
+        />
       </ProSection>
     </div>
   );
