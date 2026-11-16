@@ -2,7 +2,13 @@ import pytest
 from django.apps import apps as django_apps
 
 from apps.workflow.services.atom_registry import available_atom_catalog
-from apps.workflow.services.opspilot_atoms import execute_agent, execute_intent_classification, execute_memory_read, execute_memory_write
+from apps.workflow.services.opspilot_atoms import (
+    _scoped_skill,
+    execute_agent,
+    execute_intent_classification,
+    execute_memory_read,
+    execute_memory_write,
+)
 
 pytestmark = pytest.mark.skipif(
     not django_apps.is_installed("apps.opspilot"),
@@ -34,7 +40,8 @@ def _context(*, organization_id=7):
 def test_workflow_agent_runs_with_trigger_appropriate_auto_mode(mocker, trigger_type, message, expected):
     from apps.opspilot.services.chat_service import ChatService
 
-    model = LLMModel.objects.create(name="auto-model", enabled=True, team=[7])
+    vendor = ModelVendor.objects.create(name="on", vendor_type="openai", team=[7], enabled=True)
+    model = LLMModel.objects.create(name="auto-model", enabled=True, team=[7], vendor=vendor)
     skill = LLMSkill.objects.create(name="auto-agent", llm_model=model, team=[7], usage_team=[7])
     mocker.patch("apps.workflow.services.opspilot_atoms.resolve_uploaded_agent_knowledge", return_value=[])
     mocker.patch("apps.opspilot.services.chat_service.consume_pending_question", return_value=None)
@@ -58,7 +65,8 @@ def test_workflow_agent_history_separates_distinct_nodes(mocker):
     from apps.opspilot.services.chat_service import ChatService
     from apps.opspilot.services.skill_channel_chat_service import list_skill_conversations_for_admin
 
-    model = LLMModel.objects.create(name="history-model", enabled=True, team=[7])
+    vendor = ModelVendor.objects.create(name="on", vendor_type="openai", team=[7], enabled=True)
+    model = LLMModel.objects.create(name="history-model", enabled=True, team=[7], vendor=vendor)
     skill = LLMSkill.objects.create(name="history-agent", llm_model=model, team=[7], usage_team=[7])
     mocker.patch("apps.workflow.services.opspilot_atoms.resolve_uploaded_agent_knowledge", return_value=[])
     mocker.patch.object(ChatService, "invoke_chat", return_value=({"success": True, "message": "完成"}, None, None))
@@ -128,7 +136,8 @@ def test_agent_and_intent_atoms_reuse_opspilot_nodes_with_clean_contract(mocker)
 
 @pytest.mark.django_db
 def test_opspilot_atoms_reject_cross_organization_resources(mocker):
-    model = LLMModel.objects.create(name="other-model", enabled=True, team=[8])
+    vendor = ModelVendor.objects.create(name="on", vendor_type="openai", team=[8], enabled=True)
+    model = LLMModel.objects.create(name="other-model", enabled=True, team=[8], vendor=vendor)
     skill = LLMSkill.objects.create(name="other-agent", llm_model=model, team=[8], usage_team=[8])
     space = MemorySpace.objects.create(name="other-memory", team=[8], scope=MemorySpace.SCOPE_TEAM)
 
@@ -167,9 +176,10 @@ def test_designer_catalog_materializes_current_organization_opspilot_options():
     disabled_vendor = ModelVendor.objects.create(name="off", vendor_type="openai", team=[7], enabled=False)
     own_model = LLMModel.objects.create(name="own-model", enabled=True, team=[7], vendor=vendor)
     LLMModel.objects.create(name="disabled-model", enabled=False, team=[7], vendor=vendor)
-    LLMModel.objects.create(name="vendor-off", enabled=True, team=[7], vendor=disabled_vendor)
+    vendor_off_model = LLMModel.objects.create(name="vendor-off", enabled=True, team=[7], vendor=disabled_vendor)
     other_model = LLMModel.objects.create(name="other-model", enabled=True, team=[8], vendor=vendor)
     own_skill = LLMSkill.objects.create(name="own-agent", llm_model=own_model, team=[7], usage_team=[7])
+    LLMSkill.objects.create(name="vendor-off-agent", llm_model=vendor_off_model, team=[7], usage_team=[7])
     LLMSkill.objects.create(name="other-agent", llm_model=other_model, team=[8], usage_team=[8])
     own_space = MemorySpace.objects.create(name="own-memory", team=[7], default_model=str(own_model.id))
     MemorySpace.objects.create(name="other-memory", team=[8])
@@ -207,3 +217,29 @@ def test_designer_catalog_materializes_current_organization_opspilot_options():
     assert recipients["enum"] == [str(member.id)]
     assert recipients["x-enum-labels"][str(member.id)] == "Alice (alice)"
     assert recipients["x-enum-usernames"][str(member.id)] == "alice"
+    assert "vendor-off-agent" not in agent_field["x-enum-labels"].values()
+
+
+@pytest.mark.django_db
+def test_agent_bound_to_disabled_vendor_is_rejected_before_execution(mocker):
+    enabled_vendor = ModelVendor.objects.create(name="on", vendor_type="openai", team=[7], enabled=True)
+    disabled_vendor = ModelVendor.objects.create(name="off", vendor_type="openai", team=[7], enabled=False)
+    enabled_model = LLMModel.objects.create(name="keep-model", enabled=True, team=[7], vendor=enabled_vendor)
+    disabled_vendor_model = LLMModel.objects.create(name="vendor-off", enabled=True, team=[7], vendor=disabled_vendor)
+    available_skill = LLMSkill.objects.create(name="own-agent", llm_model=enabled_model, team=[7], usage_team=[7])
+    blocked_skill = LLMSkill.objects.create(name="vendor-off-agent", llm_model=disabled_vendor_model, team=[7], usage_team=[7])
+    agent_execute = mocker.patch(
+        "apps.opspilot.utils.chat_flow_utils.nodes.agent.agent.AgentNode.execute",
+        return_value={"message": "should not run"},
+    )
+
+    with pytest.raises(ValueError, match="指定智能体在当前组织不可用"):
+        _scoped_skill(blocked_skill.id, 7)
+    with pytest.raises(ValueError, match="指定智能体在当前组织不可用"):
+        execute_agent({"agent_id": blocked_skill.id, "message": "inspect", "__bklite_context": _context()})
+    agent_execute.assert_not_called()
+
+    assert _scoped_skill(available_skill.id, 7).id == available_skill.id
+    catalog = available_atom_catalog(7)
+    agent_ids = catalog["bklite_agent"]["input_schema"]["properties"]["agent_id"]["enum"]
+    assert agent_ids == [available_skill.id]

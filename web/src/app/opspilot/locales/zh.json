@@ -2641,5 +2641,8 @@
   },
   "vendorGrid": {
     "modelCount": "{count} 个模型"
+  },
+  "modelOption": {
+    "unavailable": "已停用"
   }
 }
