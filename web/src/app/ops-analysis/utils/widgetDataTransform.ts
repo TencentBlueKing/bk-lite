@@ -37,6 +37,14 @@ import {
   matchFilterDefinitionForParam,
   type FilterParamScanInput,
 } from '@/app/ops-analysis/utils/scanUnifiedFilterParams';
+import {
+  collectVariableIds,
+  isDataVariableRef,
+  resolveParamRecord,
+  type ColumnBlockReason,
+  type ColumnResult,
+  type DataVariable,
+} from '@/app/ops-analysis/utils/dataVariable';
 
 export type BindableParamType = BindableDataSourceParamType;
 export type UnifiedFilterInputMode = 'input' | 'select' | 'radio' | 'organization';
@@ -524,6 +532,7 @@ export const fetchWidgetData = async ({
       chartType: chartType || config?.chartType,
       t,
     });
+    if (!finalRequestParams) return null;
 
     const result = await getSourceDataByApiId(config.dataSource, finalRequestParams);
     return result.data;
@@ -674,6 +683,46 @@ const widgetSourceParams = (
   return Array.isArray(rawParams) ? rawParams : [];
 };
 
+const applyDataVariableParams = (
+  userParams: Record<string, unknown>,
+  columns: Record<string, ColumnResult> | undefined,
+): { params: Record<string, unknown>; preserveArrayNames: Set<string> } | null => {
+  if (!columns) {
+    // 取值列还没到就发出去，请求体里会留下 { dataVariableId }。
+    if (collectVariableIds(userParams).length > 0) return null;
+    return { params: userParams, preserveArrayNames: new Set() };
+  }
+  const preserveArrayNames = new Set(
+    Object.entries(userParams)
+      .filter(([, value]) => isDataVariableRef(value))
+      .map(([name]) => name),
+  );
+  const resolved = resolveParamRecord(userParams, columns);
+  if (resolved.blocked) return null;
+  return { params: (resolved as { blocked: false; params: Record<string, unknown> }).params, preserveArrayNames };
+};
+
+export const widgetDataVariableBlockReason = ({
+  config,
+  dataSource,
+  extraParams,
+  dataVariableColumns,
+}: {
+  config: { dataSourceParams?: ParamItem[] } | null | undefined;
+  dataSource?: { params?: ParamItem[] } | null;
+  extraParams?: Record<string, unknown>;
+  dataVariableColumns?: Record<string, ColumnResult>;
+}): ColumnBlockReason | null => {
+  if (!dataVariableColumns) return null;
+  const userParams: Record<string, unknown> = {};
+  widgetSourceParams(config, dataSource).forEach((param) => {
+    userParams[param.name] = param.value;
+  });
+  Object.assign(userParams, extraParams ?? {});
+  const resolved = resolveParamRecord(userParams, dataVariableColumns);
+  return resolved.blocked ? resolved.reason : null;
+};
+
 export const buildWidgetRequestParams = ({
   config,
   dataSource,
@@ -683,6 +732,7 @@ export const buildWidgetRequestParams = ({
   filterDefinitions,
   resolutionContext = createDateRangeResolutionContext(),
   chartType,
+  dataVariableColumns,
   t,
 }: {
   config: any;
@@ -693,6 +743,7 @@ export const buildWidgetRequestParams = ({
   filterDefinitions?: UnifiedFilterDefinition[];
   resolutionContext?: DateRangeResolutionContext;
   chartType?: string;
+  dataVariableColumns?: Record<string, ColumnResult>;
   t?: WidgetMessage;
 }) => {
   const sourceParams = widgetSourceParams(config, dataSource);
@@ -702,16 +753,19 @@ export const buildWidgetRequestParams = ({
     userParams[param.name] = param.value;
   });
   Object.assign(userParams, extraParams || {});
+  const applied = applyDataVariableParams(userParams, dataVariableColumns);
+  if (!applied) return null;
 
   const requestParams = processDataSourceParams({
     sourceParams,
     definitionParams: Array.isArray(dataSource?.params) ? dataSource.params : undefined,
-    userParams,
+    userParams: applied.params,
     unifiedFilterValues,
     filterBindings,
     filterDefinitions,
     resolutionContext,
     chartType: chartType || config?.chartType,
+    preserveArrayNames: applied.preserveArrayNames,
     t,
   });
 
@@ -727,6 +781,7 @@ export const buildWidgetRequestSignatureParams = ({
   filterDefinitions,
   resolutionContext = createDateRangeResolutionContext(),
   chartType,
+  dataVariableColumns,
   t,
 }: {
   config: any;
@@ -737,6 +792,7 @@ export const buildWidgetRequestSignatureParams = ({
   filterDefinitions?: UnifiedFilterDefinition[];
   resolutionContext?: DateRangeResolutionContext;
   chartType?: string;
+  dataVariableColumns?: Record<string, ColumnResult>;
   t?: WidgetMessage;
 }) => {
   const sourceParams = widgetSourceParams(config, dataSource);
@@ -746,22 +802,81 @@ export const buildWidgetRequestSignatureParams = ({
     userParams[param.name] = param.value;
   });
   Object.assign(userParams, extraParams || {});
+  const applied = applyDataVariableParams(userParams, dataVariableColumns);
+  if (!applied) return null;
 
   const requestParams = processDataSourceParams({
     sourceParams,
     definitionParams: Array.isArray(dataSource?.params) ? dataSource.params : undefined,
-    userParams,
+    userParams: applied.params,
     unifiedFilterValues,
     filterBindings,
     filterDefinitions,
     resolutionContext,
     timeRangeFormatter: formatTimeRangeForSignature,
     chartType: chartType || config?.chartType,
+    preserveArrayNames: applied.preserveArrayNames,
     t,
   });
 
   return requestParams;
 };
+
+/** 数据变量请求走和组件同一条参数整形：筛选联动覆盖对应参数，取值列保持数组。 */
+export const buildDataVariableRequestParams = ({
+  variable,
+  resolvedParams,
+  dataSource,
+  filterValues,
+  filterDefinitions,
+}: {
+  variable: DataVariable;
+  resolvedParams: Record<string, unknown>;
+  dataSource?: { params?: ParamItem[] } | null;
+  filterValues?: Record<string, FilterValue>;
+  filterDefinitions?: UnifiedFilterDefinition[];
+}): Record<string, unknown> => {
+  const catalog = Array.isArray(dataSource?.params) ? dataSource.params : [];
+  if (catalog.length === 0) return resolvedParams;
+  const sourceParams = catalog.map((param) => ({
+    ...param,
+    value: Object.prototype.hasOwnProperty.call(variable.params, param.name)
+      ? variable.params[param.name]
+      : param.value,
+    ...(variable.paramInputs?.[param.name]
+      ? { inputConfig: variable.paramInputs[param.name] }
+      : {}),
+  }));
+  const preserveArrayNames = new Set(
+    Object.entries(variable.params)
+      .filter(([, value]) => isDataVariableRef(value))
+      .map(([name]) => name),
+  );
+  return processDataSourceParams({
+    sourceParams,
+    definitionParams: catalog,
+    userParams: resolvedParams,
+    unifiedFilterValues: filterValues,
+    filterBindings: variable.filterBindings,
+    filterDefinitions,
+    preserveArrayNames,
+  });
+};
+
+export const dataVariableFilterSources = (
+  variables: DataVariable[],
+  dataSources: Array<{ id: number; name?: string; rest_api?: string; params?: ParamItem[] }>,
+) => variables.flatMap((variable) => {
+  const dataSource = dataSources.find((source) => source.id === variable.dataSourceId);
+  if (!dataSource) return [];
+  return [{
+    params: dataSource.params,
+    filterBindings: variable.filterBindings,
+    sourceLabel: dataSource.name || dataSource.rest_api,
+    dataSourceId: variable.dataSourceId,
+    catalogParams: dataSource.params,
+  }];
+});
 
 export const processDataSourceParams = ({
   sourceParams,
@@ -772,6 +887,7 @@ export const processDataSourceParams = ({
   filterDefinitions,
   resolutionContext = createDateRangeResolutionContext(),
   timeRangeFormatter = formatTimeRange,
+  preserveArrayNames,
   t: translate,
 }: {
   sourceParams: any;
@@ -783,6 +899,7 @@ export const processDataSourceParams = ({
   resolutionContext?: DateRangeResolutionContext;
   timeRangeFormatter?: (timeParams: any) => unknown;
   chartType?: string;
+  preserveArrayNames?: Set<string>;
   t?: WidgetMessage;
 }) => {
   const t: WidgetMessage =
@@ -888,7 +1005,7 @@ export const processDataSourceParams = ({
     multiple: boolean,
   ) => {
     // 仅字符串侧按 multiple 规范形状；timeRange/dateRange 等保持原协议
-    if (type === 'string') {
+    if (type === 'string' && !(preserveArrayNames?.has(name) && Array.isArray(value))) {
       const shaped = coerceRequestValueForMultiple(value, multiple);
       if (shaped === null) {
         delete processedParams[name];
@@ -1003,8 +1120,21 @@ export const processDataSourceParams = ({
         break;
 
       default:
-        // 默认：使用配置的默认值
+        // 没标 filterType。普通参数仍用配置值；数据变量用已经解析好的取值列。
         noteOrganizationParam(name, hitsOrganizationSemantic(param));
+        if (isDataVariableRef(defaultValue)) {
+          if (Object.prototype.hasOwnProperty.call(processedParams, name)) {
+            setShapedParam(
+              name,
+              type,
+              processedParams[name],
+              resolveConsumerMultiple(param),
+            );
+          } else {
+            delete processedParams[name];
+          }
+          break;
+        }
         if (defaultValue !== undefined) {
           setShapedParam(
             name,

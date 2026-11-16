@@ -1,6 +1,7 @@
 import dayjs from 'dayjs';
 import type { ValueConfig, FilterBindings, UnifiedFilterDefinition, FilterValue } from '@/app/ops-analysis/types/dashBoard';
 import type { DatasourceItem, ParamItem } from '@/app/ops-analysis/types/dataSource';
+import type { ColumnResult } from '@/app/ops-analysis/utils/dataVariable';
 import { buildWidgetRequestParams } from '@/app/ops-analysis/utils/widgetDataTransform';
 import { getValueByPath } from '@/app/ops-analysis/utils/objectPath';
 import { coerceTopNNumericValue, unwrapTopNData } from '@/app/ops-analysis/utils/topNData';
@@ -27,6 +28,7 @@ interface BuildRequestParamsInput {
   filterDefinitions?: UnifiedFilterDefinition[];
   resolutionContext?: DateRangeResolutionContext;
   chartType?: string;
+  dataVariableColumns?: Record<string, ColumnResult>;
   t?: (id: string, defaultMessage?: string) => string;
 }
 
@@ -114,8 +116,9 @@ export const buildCompareRequestParams = ({
   filterDefinitions,
   resolutionContext,
   chartType,
+  dataVariableColumns,
   t,
-}: BuildRequestParamsInput): { currentParams: RequestParams; baselineParams: RequestParams | null } => {
+}: BuildRequestParamsInput): { currentParams: RequestParams | null; baselineParams: RequestParams | null } => {
   const currentParams = buildWidgetRequestParams({
     config,
     dataSource,
@@ -125,10 +128,11 @@ export const buildCompareRequestParams = ({
     filterDefinitions,
     resolutionContext,
     chartType: chartType || config?.chartType,
+    dataVariableColumns,
     t,
   });
 
-  if (!config?.compare) {
+  if (!currentParams || !config?.compare) {
     return { currentParams, baselineParams: null };
   }
 
@@ -163,6 +167,9 @@ export const fetchCompareData = async ({
   ...rest
 }: FetchCompareDataInput): Promise<CompareQueryResult> => {
   const { currentParams, baselineParams } = buildCompareRequestParams(rest);
+  if (!currentParams) {
+    return { currentData: null, baselineData: null };
+  }
   const currentResult = await getSourceDataByApiId(dataSourceId, currentParams);
 
   if (!baselineParams) {

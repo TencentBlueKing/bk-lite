@@ -14,6 +14,7 @@ import { validateDateRangeValue } from '@/app/ops-analysis/utils/dateRange';
 import {
   bindDiscoveredQueryRefs,
   buildDefaultFilterBindings,
+  dataVariableFilterSources,
   discoverFollowedFilterParams,
   preserveUnfollowedFilterBindings,
 } from '@/app/ops-analysis/utils/widgetDataTransform';
@@ -31,6 +32,7 @@ import {
 import {
   isDashboardWidgetItem,
 } from '@/app/ops-analysis/utils/dashboardGroups';
+import type { DataVariable } from '@/app/ops-analysis/utils/dataVariable';
 import {
   ensureApplicationTopologyCanvasFilter,
   relabelApplicationTopologyFilters,
@@ -61,38 +63,43 @@ interface UseDashboardLayoutSyncOptions {
   ) => void;
   setDefinitions: (definitions: UnifiedFilterDefinition[]) => void;
   setFilterValues: (values: Record<string, FilterValue>) => void;
+  dataVariables?: DataVariable[];
 }
 
 export const buildFiltersFromDashboardLayout = ({
   layout,
   previousDefinitions,
   dataSources,
+  dataVariables = [],
 }: {
   layout: DashboardLayoutItem[];
   previousDefinitions: UnifiedFilterDefinition[];
   dataSources: DatasourceItem[];
+  dataVariables?: DataVariable[];
 }): UnifiedFilterDefinition[] => {
   const discoveredParams = discoverFollowedFilterParams(
-    layout.filter(isDashboardWidgetItem).map((item) => {
-      const dataSourceId = item.valueConfig?.dataSource;
-      const normalizedId =
-        typeof dataSourceId === 'string'
+    [
+      ...layout.filter(isDashboardWidgetItem).map((item) => {
+        const dataSourceId = item.valueConfig?.dataSource;
+        const normalizedId = typeof dataSourceId === 'string'
           ? parseInt(dataSourceId, 10)
           : dataSourceId;
-      const dataSource = dataSources.find(
-        (source) => source.id === normalizedId,
-      );
-      const resolvedSourceId = typeof normalizedId === 'number' && Number.isFinite(normalizedId)
-        ? normalizedId
-        : undefined;
-      return {
-        params: resolveWidgetBindableParams(item.valueConfig, dataSource),
-        filterBindings: item.valueConfig?.filterBindings,
-        sourceLabel: dataSource?.name || dataSource?.rest_api,
-        dataSourceId: resolvedSourceId,
-        catalogParams: dataSource?.params,
-      };
-    }),
+        const dataSource = dataSources.find(
+          (source) => source.id === normalizedId,
+        );
+        const resolvedSourceId = typeof normalizedId === 'number' && Number.isFinite(normalizedId)
+          ? normalizedId
+          : undefined;
+        return {
+          params: resolveWidgetBindableParams(item.valueConfig, dataSource),
+          filterBindings: item.valueConfig?.filterBindings,
+          sourceLabel: dataSource?.name || dataSource?.rest_api,
+          dataSourceId: resolvedSourceId,
+          catalogParams: dataSource?.params,
+        };
+      }),
+      ...dataVariableFilterSources(dataVariables, dataSources),
+    ],
     previousDefinitions,
   );
 
@@ -270,6 +277,7 @@ export const useDashboardLayoutSync = ({
   applyQueryState,
   setDefinitions,
   setFilterValues,
+  dataVariables = [],
 }: UseDashboardLayoutSyncOptions) => {
   const { t } = useTranslation();
   const buildFiltersFromLayout = useCallback(
@@ -282,12 +290,13 @@ export const useDashboardLayoutSync = ({
           layout: nextLayout,
           previousDefinitions,
           dataSources,
+          dataVariables,
         }),
       }, {
         system: t('dashboard.applicationTopologyFilterName'),
         depth: t('dashboard.applicationTopologyDepth'),
       }).filters ?? [],
-    [dataSources, t],
+    [dataSources, dataVariables, t],
   );
 
   const syncLayoutFilterBindings = useCallback(

@@ -23,6 +23,7 @@ import type {
 } from './sceneWidget';
 import type { Application3DWallConfig } from '@/app/ops-analysis/utils/application3DWallConfig';
 import type { OpsAnalysisWidgetSurface } from '@/app/ops-analysis/utils/chartTypeSurface';
+import type { DataVariable } from '@/app/ops-analysis/utils/dataVariable';
 import type { DateRangeValue } from './dateRange';
 import type { SingleValueStyleConfig } from '@/app/ops-analysis/utils/singleValueStyle';
 
@@ -47,6 +48,15 @@ export interface TimeConfig {
 
 export interface OtherConfig {
   timeSelector?: TimeConfig;
+  /** 画布级数据变量。引用处只存 id，名称只用于回显。 */
+  dataVariables?: Array<{
+    id: string;
+    name: string;
+    dataSourceId: number;
+    valueField: string;
+    params: Record<string, unknown>;
+    filterBindings?: Record<string, boolean>;
+  }>;
   /**
    * 仪表盘横向格数。缺省或 12 表示按旧 12 列保存的 x/w；
    * 当前运行时为 24，打开旧盘时换算一次后写入 24。
@@ -332,6 +342,8 @@ export interface ViewConfigProps {
   previewSingleStyle?: SingleValueStyleConfig;
   /** 面板模式把预览传送到这个节点。抽屉模式忽略。 */
   previewHost?: HTMLElement | null;
+  /** 把当前查询拷成画布上的一条数据变量。不传则不显示入口。 */
+  onCreateDataVariable?: (variable: DataVariable) => void;
 }
 
 export interface ComponentSelectorConfigItem extends DatasourceItem {
@@ -346,7 +358,11 @@ export interface ComponentSelectorProps {
   visible: boolean;
   onCancel: () => void;
   onOpenConfig?: (item: ComponentSelectorConfigItem) => void;
+  /** 只把选中的数据源交回去，不进入组件配置。没有图表类型的数据源也可以选。 */
+  onPickSource?: (item: DatasourceItem) => void;
   surface?: OpsAnalysisWidgetSurface;
+  /** 只选数据源，不提供场景组件。 */
+  hideSceneWidgets?: boolean;
 }
 
 export interface BaseWidgetProps {

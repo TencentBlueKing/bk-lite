@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Modal, Menu, List, Input, Spin, Empty, Tag } from 'antd';
+import { Modal, Menu, List, Input, Spin, Empty, Tag, message } from 'antd';
 import { ApartmentOutlined, DatabaseOutlined, LockOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import {
@@ -25,7 +25,9 @@ const ComponentSelector: React.FC<ComponentSelectorProps> = ({
   visible,
   onCancel,
   onOpenConfig,
+  onPickSource,
   surface = 'dashboard',
+  hideSceneWidgets = false,
 }) => {
   const { t } = useTranslation();
   const [searchValue, setSearchValue] = useState('');
@@ -189,6 +191,14 @@ const ComponentSelector: React.FC<ComponentSelectorProps> = ({
   };
 
   const handleConfig = (item: DatasourceItem) => {
+    if (onPickSource) {
+      onPickSource(item);
+      return;
+    }
+    if (!hasSupportedChartTypeForSurface(item.chart_type || [], surface)) {
+      message.warning(t('dashboard.sourceHasNoChart'));
+      return;
+    }
     onOpenConfig?.({
       ...item,
       dataSource: item.id,
@@ -227,14 +237,6 @@ const ComponentSelector: React.FC<ComponentSelectorProps> = ({
     [selectedSceneCategory, surface],
   );
 
-  const visibleDataSources = useMemo(
-    () =>
-      currentDataSources.filter((item) =>
-        hasSupportedChartTypeForSurface(item.chart_type || [], surface),
-      ),
-    [currentDataSources, surface],
-  );
-
   const menuItems = selectorMode === 'sceneWidget'
     ? sceneCategories
     : tagList.map((tag) => ({
@@ -253,7 +255,7 @@ const ComponentSelector: React.FC<ComponentSelectorProps> = ({
       styles={{ body: { height: '56vh', overflow: 'hidden' } }}
     >
       <div className={styles.selector}>
-        {surface !== 'report' && (
+        {surface !== 'report' && !hideSceneWidgets && (
           <div className={styles.modeBar}>
             <button
               type="button"
@@ -368,7 +370,7 @@ const ComponentSelector: React.FC<ComponentSelectorProps> = ({
               <div className={styles.cardList}>
                 <List
                   size="small"
-                  dataSource={visibleDataSources}
+                  dataSource={currentDataSources}
                   locale={{
                     emptyText: (
                       <Empty

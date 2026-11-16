@@ -4,6 +4,7 @@ import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { Form } from 'antd';
 
 import DataSourceParamsConfig from '@/app/ops-analysis/components/paramsConfig';
+import { DataVariableRuntimeProvider } from '@/app/ops-analysis/context/dataVariableRuntime';
 import type { UnifiedFilterDefinition } from '@/app/ops-analysis/types/dashBoard';
 import type { DatasourceItem, ParamItem } from '@/app/ops-analysis/types/dataSource';
 import { reconcileComponentParamValue } from '@/app/ops-analysis/utils/componentParamSwitch';
@@ -497,5 +498,90 @@ describe('DataSourceParamsConfig options query', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it('sends the data variable value column into a dependent options query', async () => {
+    getSourceDataByApiId.mockImplementation(async (id: number) => {
+      if (id === 3) {
+        return {
+          data: [{ monitor_object_id: '17' }, { monitor_object_id: '18' }],
+          warnings: [],
+        };
+      }
+      return { data: [{ id: 'inst-1', name: '实例1' }], warnings: [] };
+    });
+    const source = {
+      id: 7,
+      name: 'alerts',
+      params: [
+        {
+          name: 'monitor_object_id',
+          alias_name: '监控对象',
+          type: 'string',
+          filterType: 'params',
+          value: null,
+        },
+        {
+          name: 'instance_ids',
+          alias_name: '实例',
+          type: 'string',
+          filterType: 'params',
+          value: null,
+          inputConfig: {
+            control: 'select',
+            multiple: true,
+            optionsSource: {
+              type: 'dynamic',
+              sourceId: 9,
+              valueField: 'id',
+              labelField: 'name',
+              queryParams: {
+                page: 1,
+                page_size: 100,
+                monitor_object_id: { ref: 'monitor_object_id' },
+              },
+            },
+          },
+        },
+      ],
+    } as DatasourceItem;
+
+    render(
+      <DataVariableRuntimeProvider
+        variables={[{
+          id: 'dv_map',
+          name: '映射',
+          dataSourceId: 3,
+          valueField: 'monitor_object_id',
+          params: {},
+        }]}
+        referencedValues={{ monitor_object_id: { dataVariableId: 'dv_map' } }}
+        filterValues={{}}
+      >
+        <QueryForm
+          source={source}
+          initialParams={{
+            monitor_object_id: { dataVariableId: 'dv_map' },
+            instance_ids: null,
+          }}
+          globalFilters={[]}
+        />
+      </DataVariableRuntimeProvider>,
+    );
+
+    await waitFor(() => {
+      expect(getSourceDataByApiId).toHaveBeenCalledWith(9, {
+        page: 1,
+        page_size: 100,
+        monitor_object_id: ['17', '18'],
+      }, undefined);
+    });
+    expect(getSourceDataByApiId).not.toHaveBeenCalledWith(
+      9,
+      expect.objectContaining({
+        monitor_object_id: { dataVariableId: 'dv_map' },
+      }),
+      undefined,
+    );
   });
 });

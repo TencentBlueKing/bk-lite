@@ -1193,6 +1193,7 @@
     "lineColor": "Line Color",
     "pageSize": "Page Size",
     "selectDataSource": "Please select data source",
+    "sourceHasNoChart": "This data source has no chart type, so it cannot be used as a component",
     "dataSourceNotFound": "The data source does not exist.",
     "dataSourceLoadFailed": "Failed to load the data source",
     "dataFetchFailed": "Data query failed",
@@ -2077,7 +2078,8 @@
       "input": "Input",
       "select": "Select",
       "radio": "Radio",
-      "organization": "Organization"
+      "organization": "Organization",
+      "dataVariable": "Data variable"
     },
     "picker": "Picker",
     "pickerDropdown": "Dropdown",
@@ -2232,5 +2234,34 @@
     "duplicateHint": "This list has duplicate canvases. Remove the extras before saving",
     "alreadyContains": "Already included",
     "spaceToResume": "Space to continue"
+  },
+  "dataVariable": {
+    "title": "Data variables",
+    "add": "Add data variable",
+    "added": "Added",
+    "valueField": "Value column",
+    "valueFieldTip": "Collects this column from the query result. A string is kept as one value. Each item in a string array is kept in order. Empty cells are skipped.",
+    "preview": "Preview",
+    "savedConfig": "Saved configuration",
+    "queryResult": "Query result",
+    "emptyList": "No data variables yet",
+    "name": "Name",
+    "deleteBlocked": "Another data variable or widget still references it",
+    "missingName": "Enter a name",
+    "duplicateName": "Names must be unique",
+    "missingValueField": "Choose a value column",
+    "missingDatasource": "Choose a data source",
+    "cycle": "Data variables cannot reference each other in a cycle",
+    "tooDeep": "Data variables can reference at most 3 levels",
+    "unknownVariable": "This references a data variable that does not exist",
+    "reasonEmpty": "This column has no values to pass on",
+    "reasonShape": "The query result is not a list",
+    "reasonCell": "The value column has an array that cannot be read as strings",
+    "reasonMissingField": "The result has no such column",
+    "reasonTooMany": "The result has more than 10,000 rows",
+    "reasonUpstream": "The upstream data variable has no values to pass on",
+    "reasonRequest": "The query failed",
+    "referenceLabel": "Data variable · {name}",
+    "selectVariable": "Choose a data variable"
   }
 }

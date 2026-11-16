@@ -189,6 +189,14 @@ export interface ScreenViewSets {
   items: ScreenItem[];
   decorations: ScreenDecorationsConfig;
   filters?: UnifiedFilterDefinition[];
+  dataVariables?: Array<{
+    id: string;
+    name: string;
+    dataSourceId: number;
+    valueField: string;
+    params: Record<string, unknown>;
+    filterBindings?: Record<string, boolean>;
+  }>;
 }
 
 export interface ScreenProps {

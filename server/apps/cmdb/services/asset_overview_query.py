@@ -131,20 +131,21 @@ def assemble_resource_rows(
 
     rows: list[dict[str, Any]] = []
     for model_id in ordered_peer_models:
-        rows.append(_count_row(model_id, len(counted[model_id]), model_names))
+        rows.append(_count_row(model_id, sorted(counted[model_id]), model_names))
     for model_id in sorted(tag_only, key=lambda item: (model_names.get(item) or item, item)):
-        rows.append(_count_row(model_id, len(tag_only[model_id]), model_names))
-    rows.append(_count_row(host_model_id, len(hosts), model_names))
+        rows.append(_count_row(model_id, sorted(tag_only[model_id]), model_names))
+    rows.append(_count_row(host_model_id, hosts, model_names))
     return rows
 
 
-def _count_row(model_id: str, count: int, model_names: dict[str, str]) -> dict[str, Any]:
+def _count_row(model_id: str, inst_uuids: list[str], model_names: dict[str, str]) -> dict[str, Any]:
     model_name = model_names.get(model_id) or model_id
     return {
         "model_id": model_id,
         "model_name": model_name,
         "label": model_name,
-        "value": count,
+        "value": len(inst_uuids),
+        "inst_uuids": inst_uuids,
     }
 
 

@@ -8,6 +8,7 @@ import type {
   ScreenViewportConfig,
   ScreenViewSets,
 } from '@/app/ops-analysis/types/screen';
+import { readDataVariables } from '@/app/ops-analysis/utils/dataVariable';
 import { normalizeStoredFilterDefinitions } from '@/app/ops-analysis/utils/unifiedFilterState';
 import {
   applyRoom3DFilterBindings,
@@ -414,6 +415,9 @@ export const normalizeScreenViewSets = (value: unknown): ScreenViewSets => {
     decorations,
     filters,
   };
+  if (Array.isArray(source.dataVariables)) {
+    normalized.dataVariables = readDataVariables(source.dataVariables);
+  }
 
   return migrateLegacyChrome(normalized);
 };

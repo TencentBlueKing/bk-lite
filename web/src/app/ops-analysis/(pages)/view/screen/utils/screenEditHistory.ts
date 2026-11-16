@@ -255,6 +255,36 @@ const moveHistory = (
 export const undoScreenEdit = (session: ScreenEditSession) =>
   moveHistory(session, 'undo');
 
+/** 把同一份数据变量写进当前稿和每一步撤销记录。 */
+export const stampScreenDataVariables = (
+  session: ScreenEditSession,
+  dataVariables: ScreenViewSets['dataVariables'],
+): ScreenEditSession => {
+  const store = readStore(session);
+  const stamp = (document: ScreenEditDocument): ScreenEditDocument => {
+    const next = cloneDocument(document);
+    next.viewSets.dataVariables = JSON.parse(JSON.stringify(dataVariables ?? [])) as ScreenViewSets['dataVariables'];
+    return next;
+  };
+  return present(
+    {
+      past: store.past.map((entry) => ({
+        ...entry,
+        before: stamp(entry.before),
+        after: stamp(entry.after),
+      })),
+      future: store.future.map((entry) => ({
+        ...entry,
+        before: stamp(entry.before),
+        after: stamp(entry.after),
+      })),
+      openField: store.openField,
+    },
+    stamp(session.document),
+    session.inspector,
+  );
+};
+
 export const redoScreenEdit = (session: ScreenEditSession) =>
   moveHistory(session, 'redo');
 

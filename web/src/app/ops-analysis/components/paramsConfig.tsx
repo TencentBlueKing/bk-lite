@@ -21,6 +21,13 @@ import CompactEmptyState from '@/components/compact-empty-state';
 import { ParamInputControl } from '@/app/ops-analysis/components/paramInputControl';
 import { normalizeInputConfig } from '@/app/ops-analysis/utils/paramInputConfigUtils';
 import { getDataSourceFormParamInitialValue } from '@/app/ops-analysis/utils/dataSourceFormParams';
+import { useDataVariableRuntime } from '@/app/ops-analysis/context/dataVariableRuntime';
+import {
+  isDataVariableRef,
+  substituteDataVariableUpstream,
+  type ColumnResult,
+  type DataVariable,
+} from '@/app/ops-analysis/utils/dataVariable';
 import { readComponentOptionsQueryUpstream } from '@/app/ops-analysis/utils/optionsQueryCandidates';
 import {
   dynamicQueryParamsOf,
@@ -107,7 +114,24 @@ interface DataSourceParamsConfigProps {
   globalFilterValues?: Record<string, FilterValue>;
   onEditInputConfig?: (param: ParamItem) => void;
   onParamOptionsResolved?: (param: ParamItem, options: InputOption[]) => void;
+  /** 用来回显「数据变量 · 名称」。引用本身在参数输入设置里选。 */
+  dataVariables?: DataVariable[];
 }
+
+const DataVariableEcho: React.FC<{
+  value?: unknown;
+  variables?: DataVariable[];
+}> = ({ value, variables }) => {
+  const { t } = useTranslation();
+  const id = isDataVariableRef(value) ? value.dataVariableId : '';
+  const name = variables?.find((item) => item.id === id)?.name || id;
+  return (
+    <Input
+      disabled
+      value={t('dataVariable.referenceLabel', '数据变量 · {name}', { name })}
+    />
+  );
+};
 
 const formParamValue = (
   formParams: Record<string, unknown> | undefined,
@@ -127,6 +151,7 @@ const resolveParamOptionsQuery = ({
   globalFilters,
   filterBindings,
   globalFilterValues,
+  dataVariableColumns,
 }: {
   inputConfig?: InputControlConfig;
   enabled: boolean;
@@ -135,11 +160,12 @@ const resolveParamOptionsQuery = ({
   globalFilters?: UnifiedFilterDefinition[];
   filterBindings?: FilterBindings | null;
   globalFilterValues?: Record<string, FilterValue>;
+  dataVariableColumns?: Record<string, ColumnResult>;
 }): { resolution: ResolvedOptionsQuery; signature: string } | undefined => {
   if (!enabled) return undefined;
   const resolution = resolveOptionsQueryParams(
     dynamicQueryParamsOf(inputConfig),
-    (ref) => readComponentOptionsQueryUpstream({
+    (ref) => substituteDataVariableUpstream(readComponentOptionsQueryUpstream({
       ref,
       componentParams: sourceParams.map((param) => ({
         name: param.name,
@@ -156,7 +182,7 @@ const resolveParamOptionsQuery = ({
           ? globalFilterValues[id]
           : undefined
       ),
-    }),
+    }), dataVariableColumns),
   );
   return {
     resolution,
@@ -179,9 +205,11 @@ const DataSourceParamsConfig: React.FC<DataSourceParamsConfigProps> = ({
   globalFilterValues,
   onEditInputConfig,
   onParamOptionsResolved,
+  dataVariables,
 }) => {
   const { t } = useTranslation();
   const [mounted, setMounted] = useState(false);
+  const dataVariableColumns = useDataVariableRuntime()?.columns;
   const form = Form.useFormInstance();
   // useWatch 负责在未注册字段变化时重渲染；当次渲染读 store，避免订阅值晚一拍。
   const watchedParams = Form.useWatch(fieldPrefix, { form, preserve: true }) as Record<string, unknown> | undefined;
@@ -296,6 +324,7 @@ const DataSourceParamsConfig: React.FC<DataSourceParamsConfigProps> = ({
           globalFilters,
           filterBindings,
           globalFilterValues,
+          dataVariableColumns,
         })
         : undefined;
       return (
@@ -329,6 +358,7 @@ const DataSourceParamsConfig: React.FC<DataSourceParamsConfigProps> = ({
       globalFilters,
       filterBindings,
       globalFilterValues,
+      dataVariableColumns,
     });
 
     return (
@@ -363,6 +393,7 @@ const DataSourceParamsConfig: React.FC<DataSourceParamsConfigProps> = ({
           ((param.type || 'string') === 'string' || isConditionFilter) &&
           param.filterType !== 'fixed' &&
           !readonly;
+        const variableValue = isDataVariableRef(formParams?.[param.name]);
 
         const getLabelStyle = (): React.CSSProperties => {
           const baseStyle = {
@@ -425,33 +456,37 @@ const DataSourceParamsConfig: React.FC<DataSourceParamsConfigProps> = ({
             tooltip={param.desc || undefined}
             style={{ marginBottom: isVeryLongText ? 20 : 16 }}
             required={Boolean(param.required || param.integer)}
-            rules={param.integer
-              ? [
-                {
-                  validator: async (_rule, value) => {
-                    const max = typeof param.maximum === 'number' ? param.maximum : undefined;
-                    const withinMax = max === undefined || (typeof value === 'number' && value <= max);
-                    if (
-                      typeof value === 'number'
-                      && Number.isInteger(value)
-                      && value >= 1
-                      && withinMax
-                    ) {
-                      return;
-                    }
-                    throw new Error(t(
-                      'dataSource.positiveIntegerRange',
-                      '{label}必须是 1 到 {max} 的正整数',
-                      { label: labelText, max: max ?? '' },
-                    ));
+            rules={variableValue
+              ? []
+              : param.integer
+                ? [
+                  {
+                    validator: async (_rule, value) => {
+                      const max = typeof param.maximum === 'number' ? param.maximum : undefined;
+                      const withinMax = max === undefined || (typeof value === 'number' && value <= max);
+                      if (
+                        typeof value === 'number'
+                        && Number.isInteger(value)
+                        && value >= 1
+                        && withinMax
+                      ) {
+                        return;
+                      }
+                      throw new Error(t(
+                        'dataSource.positiveIntegerRange',
+                        '{label}必须是 1 到 {max} 的正整数',
+                        { label: labelText, max: max ?? '' },
+                      ));
+                    },
                   },
-                },
-              ]
-              : [
-                { required: param.required, message: t('dataSource.paramRequired', '请配置{label}', { label: labelText }) },
-              ]}
+                ]
+                : [
+                  { required: param.required, message: t('dataSource.paramRequired', '请配置{label}', { label: labelText }) },
+                ]}
           >
-            {renderParamInput(param)}
+            {variableValue ? (
+              <DataVariableEcho variables={dataVariables} />
+            ) : renderParamInput(param)}
           </Form.Item>
         );
       })}

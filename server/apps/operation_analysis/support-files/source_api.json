@@ -3096,7 +3096,7 @@
   {
     "key": "云区域资源分布::cmdb/get_cloud_region_resource_counts",
     "name": "云区域资源分布",
-    "desc": "统计所选云区域中的主机、沿模型关联找到的实例，以及带标签且没有主机关联的实例。按实例去重后按模型计数",
+    "desc": "统计所选云区域中的主机、沿模型关联找到的实例，以及带标签且没有主机关联的实例。按实例去重后按模型计数。每行的 inst_uuids 是计入该模型的实例，数量为 0 时为空列表",
     "rest_api": "cmdb/get_cloud_region_resource_counts",
     "tag": [
       "cmdb"
@@ -3187,6 +3187,12 @@
         "title": "实例数量",
         "value_type": "number",
         "description": "去重后的实例数量，配置过的模型为 0 也返回"
+      },
+      {
+        "key": "inst_uuids",
+        "title": "实例标识",
+        "value_type": "string",
+        "description": "计入该模型的实例 UUID。数量为 0 时为空列表"
       }
     ]
   },

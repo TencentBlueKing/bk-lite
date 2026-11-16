@@ -21,12 +21,14 @@ import { buildRelativeTimeRangeFilterValue } from "@/app/ops-analysis/utils/filt
 import {
   bindDiscoveredQueryRefs,
   buildDefaultFilterBindings,
+  dataVariableFilterSources,
   discoverFollowedFilterParams,
   getBindableFilterParams,
   preserveUnfollowedFilterBindings,
 } from "@/app/ops-analysis/utils/widgetDataTransform";
 import { findReusableFilterDefinition } from "@/app/ops-analysis/utils/scanUnifiedFilterParams";
 import { rewriteParamQueryRefs } from "@/app/ops-analysis/utils/optionsQueryParamRefs";
+import { readDataVariables } from "@/app/ops-analysis/utils/dataVariable";
 import { validateDateRangeValue } from "@/app/ops-analysis/utils/dateRange";
 import { getScreenWidgetDefinition } from "../constants/widgets";
 import { omitForeignChartTypeFields } from "@/app/ops-analysis/components/widgetConfig/utils/submitConfig";
@@ -120,22 +122,25 @@ export const buildFiltersFromScreenItems = ({
   dataSources: DatasourceItem[];
 }): UnifiedFilterDefinition[] => {
   const discoveredParams = discoverFollowedFilterParams(
-    viewSets.items.flatMap((item) => {
-      if (!isScreenWidgetItem(item)) return [];
-      const dataSource = resolveScreenItemDataSource(item, dataSources);
-      const rawId = item.valueConfig?.dataSource;
-      const normalizedId = typeof rawId === "string" ? parseInt(rawId, 10) : rawId;
-      const dataSourceId = typeof normalizedId === "number" && Number.isFinite(normalizedId)
-        ? normalizedId
-        : dataSource?.id;
-      return [{
-        params: resolveScreenWidgetParams(item, dataSource),
-        filterBindings: item.valueConfig?.filterBindings,
-        sourceLabel: dataSource?.name || dataSource?.rest_api,
-        dataSourceId,
-        catalogParams: dataSource?.params,
-      }];
-    }),
+    [
+      ...viewSets.items.flatMap((item) => {
+        if (!isScreenWidgetItem(item)) return [];
+        const dataSource = resolveScreenItemDataSource(item, dataSources);
+        const rawId = item.valueConfig?.dataSource;
+        const normalizedId = typeof rawId === "string" ? parseInt(rawId, 10) : rawId;
+        const dataSourceId = typeof normalizedId === "number" && Number.isFinite(normalizedId)
+          ? normalizedId
+          : dataSource?.id;
+        return [{
+          params: resolveScreenWidgetParams(item, dataSource),
+          filterBindings: item.valueConfig?.filterBindings,
+          sourceLabel: dataSource?.name || dataSource?.rest_api,
+          dataSourceId,
+          catalogParams: dataSource?.params,
+        }];
+      }),
+      ...dataVariableFilterSources(readDataVariables(viewSets.dataVariables), dataSources),
+    ],
     previousDefinitions,
   );
 

@@ -17,6 +17,7 @@ import {
 } from '@/app/ops-analysis/(pages)/view/topology/utils/dataTreeUtils';
 import { canEnableCompare } from '@/app/ops-analysis/utils/compareQuery';
 import { getDateRangeTimezone } from '@/app/ops-analysis/utils/dateRange';
+import { collectVariableIds } from '@/app/ops-analysis/utils/dataVariable';
 
 interface UseSingleValueConfigProps {
   form: FormInstance;
@@ -194,6 +195,8 @@ export function useSingleValueConfig({
     try {
       const formValues = form.getFieldsValue();
       const userParams = formValues?.params || {};
+      // 拓扑单值面板没有数据变量运行时，不能把 { dataVariableId } 原样发出去。
+      if (collectVariableIds(userParams).length > 0) return;
       const requestParams = processDataSourceParams({
         sourceParams: selectedDataSource.params,
         definitionParams: selectedDataSource.params,

@@ -3,6 +3,7 @@
 import React from 'react';
 import { Button, Tooltip } from 'antd';
 import {
+  DatabaseOutlined,
   DesktopOutlined,
   EditOutlined,
   FullscreenOutlined,
@@ -29,6 +30,7 @@ interface ScreenToolbarProps {
   onOpenSubscription?: () => void;
   onOpenSettings: () => void;
   onOpenFilterConfig: () => void;
+  onOpenDataVariables?: () => void;
   onPreview: () => void;
   onRefresh: () => void;
   frequenceValue?: number;
@@ -54,6 +56,7 @@ const ScreenToolbar: React.FC<ScreenToolbarProps> = ({
   onOpenSubscription,
   onOpenSettings,
   onOpenFilterConfig,
+  onOpenDataVariables,
   onPreview,
   onRefresh,
   frequenceValue = 0,
@@ -137,6 +140,17 @@ const ScreenToolbar: React.FC<ScreenToolbarProps> = ({
               className={iconButtonClassName}
             />
           </Tooltip>
+          {onOpenDataVariables ? (
+            <Tooltip title={t('dataVariable.title')}>
+              <Button
+                type="text"
+                icon={<DatabaseOutlined className={iconClassName} />}
+                aria-label={t('dataVariable.title')}
+                onClick={onOpenDataVariables}
+                className={iconButtonClassName}
+              />
+            </Tooltip>
+          ) : null}
         </div>
 
         <PermissionWrapper requiredPermissions={['EditChart']}>

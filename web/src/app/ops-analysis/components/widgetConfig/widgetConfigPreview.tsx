@@ -45,6 +45,7 @@ interface WidgetConfigPreviewProps {
   liveName?: string;
   liveDescription?: string;
   onRefresh?: () => void;
+  onCreateDataVariable?: () => void;
 }
 
 const formatRawJson = (data: unknown): string => {
@@ -78,6 +79,7 @@ const WidgetConfigPreview: React.FC<WidgetConfigPreviewProps> = ({
   liveName,
   liveDescription,
   onRefresh,
+  onCreateDataVariable,
 }) => {
   const { t } = useTranslation();
   const [tab, setTab] = useState<WidgetConfigPreviewTab>('chart');
@@ -199,14 +201,27 @@ const WidgetConfigPreview: React.FC<WidgetConfigPreviewProps> = ({
         </div>
       ) : (
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg bg-(--color-fill-1)/40">
-          <div className="shrink-0 px-4 py-3">
-            <h4 className="truncate text-sm font-medium leading-5 text-(--color-text-1)">
-              {title}
-            </h4>
-            {description?.trim() ? (
-              <p className="mt-1 line-clamp-2 text-xs leading-normal text-(--color-text-3)">
-                {description}
-              </p>
+          <div className="flex shrink-0 items-center justify-between gap-3 px-4 py-3">
+            <div className="min-w-0">
+              <h4 className="truncate text-sm font-medium leading-5 text-(--color-text-1)">
+                {title}
+              </h4>
+              {description?.trim() ? (
+                <p className="mt-1 line-clamp-2 text-xs leading-normal text-(--color-text-3)">
+                  {description}
+                </p>
+              ) : null}
+            </div>
+            {onCreateDataVariable && tab === 'json' ? (
+              <Button
+                type="link"
+                size="small"
+                htmlType="button"
+                className="shrink-0 !h-auto !px-0"
+                onClick={onCreateDataVariable}
+              >
+                {t('dataVariable.add')}
+              </Button>
             ) : null}
           </div>
 

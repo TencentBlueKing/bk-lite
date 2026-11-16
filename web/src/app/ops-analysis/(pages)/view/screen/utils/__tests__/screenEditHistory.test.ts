@@ -10,6 +10,7 @@ import {
   createScreenEditSession,
   redoScreenEdit,
   requestScreenHistory,
+  stampScreenDataVariables,
   screenHistoryShortcut,
   screenInspectorAfterReplace,
   screenItemFieldKey,
@@ -543,5 +544,26 @@ describe('screen edit history', () => {
     expect(undoScreenEdit(typed).document.viewSets.items[0]?.w).toBe(100);
     expect(undoScreenEdit(typed).document.viewSets.items[0]?.x).toBe(10);
     expect(undoScreenEdit(typed).canUndo).toBe(false);
+  });
+
+  it('keeps saved data variables when a move is undone', () => {
+    const session = createScreenEditSession(documentWith('标题', 10));
+    const moved = commitScreenEdit(session, {
+      document: documentWith('标题', 80),
+    });
+    const variables = [{
+      id: 'dv_1',
+      name: '区域',
+      dataSourceId: 1,
+      valueField: 'value',
+      params: {},
+    }];
+    const stamped = stampScreenDataVariables(moved, variables);
+
+    expect(stamped.document.viewSets.items[0]).toMatchObject({ x: 80 });
+    expect(stamped.document.viewSets.dataVariables).toEqual(variables);
+    const undone = undoScreenEdit(stamped);
+    expect(undone.document.viewSets.items[0]).toMatchObject({ x: 10 });
+    expect(undone.document.viewSets.dataVariables).toEqual(variables);
   });
 });

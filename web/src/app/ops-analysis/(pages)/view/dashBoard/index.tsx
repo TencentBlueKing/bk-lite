@@ -11,6 +11,10 @@ import {
 import { v4 as uuidv4 } from 'uuid';
 import ViewSelector from '@/app/ops-analysis/components/widgetSelector';
 import ViewConfig from '@/app/ops-analysis/components/widgetConfig';
+import DataVariableModal from '@/app/ops-analysis/components/dataVariableModal';
+import { DataVariableRuntimeProvider, withDatasourceNamespace } from '@/app/ops-analysis/context/dataVariableRuntime';
+import { buildDataVariableRequestParams } from '@/app/ops-analysis/utils/widgetDataTransform';
+import { readDataVariables, type DataVariable } from '@/app/ops-analysis/utils/dataVariable';
 import { mergeSanitizedWidgetValueConfig, omitForeignChartTypeFields } from '@/app/ops-analysis/components/widgetConfig/utils/submitConfig';
 import DashboardCanvas from './components/dashboardCanvas';
 import ModuleLicenseCanvasEmpty from './components/moduleLicenseCanvasEmpty';
@@ -283,6 +287,8 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
     const [originalOtherConfig, setOriginalOtherConfig] = useState<OtherConfig>(
       {},
     );
+    const [dataVariableOpen, setDataVariableOpen] = useState(false);
+    const [dataVariableDraft, setDataVariableDraft] = useState<DataVariable | null>(null);
     const [filterConfigModalVisible, setFilterConfigModalVisible] =
       useState(false);
     const [subscriptionModalVisible, setSubscriptionModalVisible] =
@@ -356,13 +362,31 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
           source: nextWidgetLayout,
           getDataSourceIds: (layout) => Array.from(new Set([
             ...collectDashboardDataSourceIds(layout),
+            ...readDataVariables(otherConfig.dataVariables).map((variable) => variable.dataSourceId).filter((id) => id > 0),
             ...(renderDataSourceIds || []),
           ])),
-          getNamespaceIds: collectDashboardNamespaceIds,
+          getNamespaceIds: (layout, sources) => {
+            const ids = collectDashboardNamespaceIds(layout, sources);
+            readDataVariables(otherConfig.dataVariables).forEach((variable) => {
+              sources.find((source) => source.id === variable.dataSourceId)
+                ?.namespaces
+                ?.forEach((id) => ids.add(id));
+            });
+            return ids;
+          },
         });
       },
-      [renderDataSourceIds, syncCanvasResources],
+      [otherConfig.dataVariables, renderDataSourceIds, syncCanvasResources],
     );
+
+    const dataVariables = useMemo(
+      () => readDataVariables(otherConfig.dataVariables),
+      [otherConfig.dataVariables],
+    );
+    const handleCreateDataVariable = useCallback((variable: DataVariable) => {
+      setDataVariableDraft(variable);
+      setDataVariableOpen(true);
+    }, []);
 
     const {
       buildFiltersFromLayout,
@@ -377,6 +401,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
       applyQueryState,
       setDefinitions,
       setFilterValues,
+      dataVariables,
     });
 
     const dashboardDraftResourceId = toCanvasDraftResourceId(
@@ -603,12 +628,25 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
     }, [selectedDashboard?.data_id, session?.user]);
 
     const namespaceOptions = useMemo(() => {
-      return collectNamespaceOptions(
+      const options = collectNamespaceOptions(
         widgetLayoutItems,
         dataSourceManager.dataSources,
         namespaceList,
       );
-    }, [widgetLayoutItems, dataSourceManager.dataSources, namespaceList]);
+      const seen = new Set(options.map((item) => item.value));
+      readDataVariables(otherConfig.dataVariables).forEach((variable) => {
+        dataSourceManager.dataSources.find((source) => source.id === variable.dataSourceId)
+          ?.namespaces
+          ?.forEach((id) => {
+            if (seen.has(id)) return;
+            const namespace = namespaceList.find((item) => item.id === id);
+            if (!namespace) return;
+            seen.add(id);
+            options.push({ label: namespace.name || String(id), value: id });
+          });
+      });
+      return options;
+    }, [widgetLayoutItems, dataSourceManager.dataSources, namespaceList, otherConfig.dataVariables]);
 
     useEffect(() => {
       if (namespaceOptions.length > 0) {
@@ -1535,6 +1573,13 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
       }
     };
 
+    const handleConfirmDataVariables = (next: DataVariable[]) => {
+      setOtherConfig((current) => ({ ...current, dataVariables: next }));
+      message.success(t('dataVariable.added'));
+      setDataVariableOpen(false);
+      setDataVariableDraft(null);
+    };
+
     const toggleEditMode = () => {
       if (homepageMode) {
         return;
@@ -2136,6 +2181,10 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
         onToggleFullscreen={handleFullscreenToggle}
         onExportPdf={handleExportPdf}
         onOpenFilterConfig={() => setFilterConfigModalVisible(true)}
+        onOpenDataVariables={() => {
+          setDataVariableDraft(null);
+          setDataVariableOpen(true);
+        }}
         onOpenAddView={() => openAddModal()}
         onOpenAddGroup={handleAddGroup}
         onToggleEditMode={toggleEditMode}
@@ -2180,6 +2229,24 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
     );
 
     const dashboardCanvas = (
+      <DataVariableRuntimeProvider
+        variables={dataVariables}
+        referencedValues={widgetLayoutItems}
+        filterValues={appliedFilterValues}
+        reloadKey={dashboardReloadVersion}
+        scopeKey={appliedNamespaceId}
+        prepareParams={(variable, params) => {
+          const source = dataSourceManager.dataSources.find((item) => item.id === variable.dataSourceId);
+          const shaped = buildDataVariableRequestParams({
+            variable,
+            resolvedParams: params,
+            dataSource: source,
+            filterValues: appliedFilterValues,
+            filterDefinitions: definitions,
+          });
+          return withDatasourceNamespace(shaped, source?.namespaces, appliedNamespaceId);
+        }}
+      >
       <div
         ref={canvasScrollRef}
         className={
@@ -2246,6 +2313,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
         </DashboardViewAuthProvider>
         )}
       </div>
+      </DataVariableRuntimeProvider>
     );
 
     return (
@@ -2324,6 +2392,8 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
           dataSourceManager={dataSourceManager}
           filterDefinitions={definitions}
           unifiedFilterValues={filterValues}
+          dataVariables={dataVariables}
+          onCreateDataVariable={handleCreateDataVariable}
         />
         <UnifiedFilterConfigModal
           open={filterConfigModalVisible}
@@ -2332,6 +2402,21 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
           definitions={definitions}
           layoutItems={widgetLayoutItems}
           dataSources={dataSourceManager.dataSources}
+        />
+        <DataVariableModal
+          open={dataVariableOpen}
+          variables={dataVariableDraft ? [...dataVariables, dataVariableDraft] : dataVariables}
+          focusId={dataVariableDraft?.id}
+          dataSources={dataSourceManager.dataSources}
+          filters={definitions}
+          filterValues={filterValues}
+          namespaceId={namespaceDraftId}
+          widgetConfigs={widgetLayoutItems}
+          onCancel={() => {
+            setDataVariableOpen(false);
+            setDataVariableDraft(null);
+          }}
+          onConfirm={handleConfirmDataVariables}
         />
         {selectedDashboard?.data_id && (
           <DashboardSubscriptionModal

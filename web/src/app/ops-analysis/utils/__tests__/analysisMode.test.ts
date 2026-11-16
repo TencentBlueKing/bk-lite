@@ -198,6 +198,7 @@ describe('chart requests keep the saved analysis mode and paging', () => {
       config: { chartType: 'table', dataSourceParams: params },
       dataSource: { params: modelCatalog() },
     });
+    if (!request.currentParams) throw new Error('expected request params');
     assert.equal(request.currentParams.analysis_mode, 'detail');
     assert.equal(request.currentParams.page, 4);
     assert.equal(request.currentParams.page_size, 50);
@@ -209,6 +210,7 @@ describe('chart requests keep the saved analysis mode and paging', () => {
       config: { chartType: 'topN', dataSourceParams: params, dataSource: 8 },
       dataSource: { params: modelCatalog() },
     });
+    if (!compared.currentParams) throw new Error('expected request params');
     assert.equal(compared.currentParams.page, 1);
     assert.equal(compared.currentParams.page_size, 20);
     assert.equal(compared.currentParams.analysis_mode, 'detail');
