@@ -268,7 +268,7 @@
     "importScriptsHint": "Upload a script-library ZIP (one folder per script with meta.json and script body)",
     "importScriptsLimitHint": "ZIP only, archive max 20MB, expanded total max 50MB",
     "importScriptsSuccess": "Script import finished",
-    "importScriptsResult": "Created {{created}}, skipped {{skipped}}, failed {{failed}}",
+    "importScriptsResult": "Created {created}, skipped {skipped}, failed {failed}",
     "confirmImport": "Confirm Import",
     "paramDefinition": "Parameter Definition",
     "addParam": "Add Parameter",
