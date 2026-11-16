@@ -11,10 +11,13 @@ export interface ConditionGroup {
   items: ConditionFilterItem[];
 }
 
+const STRING_OPERATORS = ['eq', 'ne', 'regex', 'notRegex', 'contains', 'empty'];
+
 const OPERATOR_BY_TYPE: Record<ConditionFieldValueType, string[]> = {
-  string: ['eq', 'ne', 'regex', 'notRegex', 'contains', 'empty'],
+  string: STRING_OPERATORS,
   number: ['gt', 'gte', 'eq', 'lte', 'lt'],
   enum: ['eq', 'ne', 'in'],
+  tag: STRING_OPERATORS,
 };
 
 export const operatorsForFieldType = (valueType: ConditionFieldValueType | undefined): string[] =>

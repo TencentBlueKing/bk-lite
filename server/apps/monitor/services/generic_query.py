@@ -78,7 +78,7 @@ class GenericQueryError(Exception):
 def ensure_payload_limit(data: Any) -> None:
     encoded = json.dumps(data, ensure_ascii=False, default=str).encode("utf-8")
     if len(encoded) > NATS_MESSAGE_MAX_BYTES:
-        raise GenericQueryError("结果超过 NATS 消息上限 1MB")
+        raise GenericQueryError("结果过大，请缩小范围或减小每页条数")
 
 
 def query_instances(

@@ -139,7 +139,7 @@ export interface ConditionFilterValue {
   items?: ConditionFilterItem[];
 }
 
-export type ConditionFieldValueType = 'string' | 'number' | 'enum';
+export type ConditionFieldValueType = 'string' | 'number' | 'enum' | 'tag';
 
 export interface ConditionFieldOption {
   value: string;

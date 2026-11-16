@@ -7,7 +7,7 @@ from apps.cmdb.graph.drivers.graph_client import GraphClient
 from apps.cmdb.graph.falkordb_format import FormatDBResult
 from apps.cmdb.graph.format_type import ParameterCollector
 from apps.cmdb.graph.validators import CQLValidator
-from apps.cmdb.services.generic_query_limits import DETAIL_PAGE_SIZE_MAX, QUERY_TIMEOUT_MS, STAT_GROUP_MAX
+from apps.cmdb.services.generic_query_limits import DETAIL_PAGE_SIZE_MAX, ONE_HOP_LIST_MAX, QUERY_TIMEOUT_MS, STAT_GROUP_MAX
 from apps.cmdb.services.instance import InstanceManage
 
 _AGGREGATIONS = {
@@ -140,7 +140,7 @@ def _rank_starts(client, pattern: str, where_sql: str, params: dict, limit: int 
     count_rows = _run(client, count_query, params)
     group_count = int((count_rows[0].get("group_count") if count_rows else 0) or 0)
     bounded = _return_limit(limit)
-    if group_count == 0 or group_count > STAT_GROUP_MAX:
+    if group_count == 0 or (bounded is None and group_count > STAT_GROUP_MAX):
         return {"group_count": group_count, "groups": []}
     query = (
         f"MATCH {pattern} WHERE {where_sql} "
@@ -154,15 +154,21 @@ def _rank_starts(client, pattern: str, where_sql: str, params: dict, limit: int 
 
 
 def _page_pairs(client, pattern: str, where_sql: str, params: dict, skip: int, limit: int | None) -> dict:
-    # 总数和当前页仍各查一次。把全部对应关系收进内存再切片能少一次扫描，
-    # 但一跳没有条数上限，收全量会把内存顶满，所以计数保持单独查询。
+    # 总数和当前页仍各查一次。超过不分页上限就不再把对应关系拉回来。
     pair_count = _pair_count(client, pattern, where_sql, params)
-    bounded = _return_limit(limit)
-    if bounded is None:
-        raise GenericQueryGraphError("明细必须分页")
     offset = _non_negative(skip)
-    if pair_count == 0:
-        return {"pair_count": 0, "pairs": [], "paged": True}
+    if limit is None:
+        if pair_count > ONE_HOP_LIST_MAX:
+            raise GenericQueryGraphError(f"对应关系超过 {ONE_HOP_LIST_MAX} 条，请缩小范围或填写分页")
+        if pair_count == 0:
+            return {"pair_count": 0, "pairs": [], "paged": False}
+        bounded = pair_count
+        paged = False
+    else:
+        bounded = _return_limit(limit)
+        paged = True
+        if pair_count == 0:
+            return {"pair_count": 0, "pairs": [], "paged": True}
     query = (
         f"MATCH {pattern} WHERE {where_sql} "
         "WITH DISTINCT s.inst_uuid AS start_uuid, s.inst_name AS start_name, "
@@ -170,7 +176,7 @@ def _page_pairs(client, pattern: str, where_sql: str, params: dict, skip: int, l
         "t.inst_name AS end_name, t.model_id AS end_model_id "
         "RETURN start_uuid, start_name, start_model_id, end_uuid, end_name, end_model_id " + _DETAIL_ORDER + f" SKIP {offset} LIMIT {bounded}"
     )
-    return {"pair_count": pair_count, "pairs": _run(client, query, params), "paged": True}
+    return {"pair_count": pair_count, "pairs": _run(client, query, params), "paged": paged}
 
 
 def _return_limit(limit: int | None) -> int | None:
