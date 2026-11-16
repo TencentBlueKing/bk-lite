@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import {
   Button,
   Form,
@@ -19,13 +19,14 @@ import { InfoCircleOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import useApiClient from '@/utils/request';
 import useJobApi from '@/app/job/api';
-import { JobType, ScheduleType, ScheduledTaskFormData, Script, Playbook } from '@/app/job/types';
+import { JobType, ScheduleType, ScheduledTaskFormData, Script, Playbook, ScriptParam } from '@/app/job/types';
 import { useRouter } from 'next/navigation';
 import dayjs from 'dayjs';
 import HostSelectionModal, { HostItem, TargetSourceType } from '@/app/job/components/jobHostSelectionModalRuntime';
 import { AddTargetHostButton, TargetSourceSelector } from '@/app/job/components/target-selection-controls';
 import { createDefaultExecutionName } from '@/app/job/utils/execution-name';
-import { buildScheduledTaskTemplatePayload, resolveScheduledTaskConcurrencyPolicy } from '@/app/job/utils/scheduledTaskPayload';
+import { buildScheduledTaskTemplatePayload, buildTemplateParamsPayload, resolveScheduledTaskConcurrencyPolicy } from '@/app/job/utils/scheduledTaskPayload';
+import { TemplateParamFields } from '@/app/job/components/template-param-fields';
 import { useUserInfoContext } from '@/context/userInfo';
 import Permission from '@/components/permission';
 
@@ -39,6 +40,8 @@ const CreateCronTaskPage = () => {
     createScheduledTask,
     getScriptList,
     getPlaybookList,
+    getScriptDetail,
+    getPlaybookDetail,
     getCrontabPreview,
   } = useJobApi();
   const { selectedGroup } = useUserInfoContext();
@@ -53,6 +56,14 @@ const CreateCronTaskPage = () => {
 
   const [scripts, setScripts] = useState<Script[]>([]);
   const [playbooks, setPlaybooks] = useState<Playbook[]>([]);
+  const [templateParams, setTemplateParams] = useState<ScriptParam[]>([]);
+  const [editedTemplateParams, setEditedTemplateParams] = useState<Record<string, boolean>>({});
+  const selectedScriptId = Form.useWatch('script', form);
+  const selectedPlaybookId = Form.useWatch('playbook', form);
+  const getScriptDetailRef = useRef(getScriptDetail);
+  const getPlaybookDetailRef = useRef(getPlaybookDetail);
+  getScriptDetailRef.current = getScriptDetail;
+  getPlaybookDetailRef.current = getPlaybookDetail;
 
   // Host selection state (matching HostSelectionModal interface)
   const [hostModalOpen, setHostModalOpen] = useState(false);
@@ -95,6 +106,35 @@ const CreateCronTaskPage = () => {
       fetchPlaybooks();
     }
   }, [isApiReady]);
+
+  useEffect(() => {
+    const templateId = templateType === 'script' ? selectedScriptId : selectedPlaybookId;
+    if (jobType !== 'script' || !templateId) {
+      setTemplateParams([]);
+      setEditedTemplateParams({});
+      return;
+    }
+    let cancelled = false;
+    const loadDetail = templateType === 'script'
+      ? getScriptDetailRef.current(templateId)
+      : getPlaybookDetailRef.current(templateId);
+    loadDetail
+      .then((detail) => {
+        if (cancelled) return;
+        const nextParams = (detail?.params || []) as ScriptParam[];
+        setTemplateParams(nextParams);
+        setEditedTemplateParams({});
+        form.setFieldsValue(
+          Object.fromEntries(nextParams.map((param) => [`param_${param.name}`, param.default || undefined])),
+        );
+      })
+      .catch(() => {
+        if (!cancelled) setTemplateParams([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [form, jobType, selectedPlaybookId, selectedScriptId, templateType]);
 
   const getCronExpression = (): string => {
     return `${cronMinute} ${cronHour} ${cronDay} ${cronMonth} ${cronWeek}`;
@@ -234,6 +274,7 @@ const CreateCronTaskPage = () => {
         target_source: targetSource === 'node_manager' ? 'node_mgmt' : 'manual',
         target_list: targetList,
         timeout: values.timeout || 60,
+        params: buildTemplateParamsPayload(templateParams, values, editedTemplateParams),
         is_enabled: enableAfterSave,
         concurrency_policy: resolveScheduledTaskConcurrencyPolicy(values.concurrency_policy),
         team: selectedGroup ? [Number(selectedGroup.id)] : [],
@@ -270,6 +311,8 @@ const CreateCronTaskPage = () => {
       return;
     }
     setTemplateType(value as 'script' | 'playbook');
+    setTemplateParams([]);
+    setEditedTemplateParams({});
     if (value === 'script') {
       form.setFieldValue('playbook', undefined);
     } else {
@@ -410,6 +453,13 @@ const CreateCronTaskPage = () => {
                 </Form.Item>
               )}
             </Form.Item>
+          )}
+
+          {jobType === 'script' && (
+            <TemplateParamFields
+              params={templateParams}
+              onEncryptedReset={(name) => setEditedTemplateParams((prev) => ({ ...prev, [name]: true }))}
+            />
           )}
 
           <Form.Item label={t('job.scheduleStrategy')} required>
