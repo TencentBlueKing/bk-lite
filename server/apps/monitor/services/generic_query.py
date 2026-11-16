@@ -7,9 +7,7 @@ import math
 from datetime import datetime, timezone
 from typing import Any
 
-from django.db.models import Case, CharField, Count, IntegerField, OuterRef, Subquery, Value, When
-from django.db.models.fields.json import KeyTextTransform
-from django.db.models.functions import Cast, Coalesce, NullIf
+from django.db.models import Case, Count, IntegerField, OuterRef, Subquery, Value, When
 
 from apps.core.utils.loader import LanguageLoader
 from apps.monitor.constants.language import LanguageConstants
@@ -28,7 +26,7 @@ from apps.monitor.services.generic_query_limits import (
 )
 from apps.monitor.services.metrics import Metrics
 from apps.monitor.services.range_step import query_range_point_count
-from apps.monitor.utils.alert_name_variables import ASSET_IP_FACT, resolve_resource_ip
+from apps.monitor.utils.alert_name_variables import resolve_resource_ip
 from apps.monitor.utils.dimension import parse_instance_id
 
 INSTANCE_MODES = ("detail",)
@@ -88,8 +86,6 @@ def query_instances(
     status: str | None = None,
     instance_ids=None,
     group_by: str | None = None,
-    order_by: str | None = None,
-    order_dir: str | None = None,
     page=None,
     page_size=None,
     locale: str | None = None,
@@ -99,8 +95,7 @@ def query_instances(
     _mode(analysis_mode, INSTANCE_MODES)
     if _filled(group_by):
         raise GenericQueryError("当前查询不支持分组")
-    queryset = _filter_instances(queryset, status, instance_ids)
-    queryset = _order_instances(queryset, _instance_order(order_by, order_dir))
+    queryset = _filter_instances(queryset, status, instance_ids).order_by("id")
     total = queryset.count()
     paging = _optional_page(page, page_size)
     if paging is None:
@@ -354,6 +349,12 @@ def query_alert_details(
     return _table(rows, total, page_no, size)
 
 
+def query_instance_counts(queryset, *, status=None) -> list[dict]:
+    """所选实例范围内的数量。固定一行，不拉明细，也不套用列表的 500 条上限。"""
+    queryset = _filter_instances(queryset, status, None)
+    return [{"instance_count": queryset.count()}]
+
+
 def query_alert_counts(
     queryset,
     *,
@@ -441,18 +442,6 @@ def _filter_instances(queryset, status, instance_ids):
     elif status not in (None, "", "all"):
         raise GenericQueryError("实例状态不受支持")
     return queryset
-
-
-def _order_instances(queryset, order_field: str):
-    if order_field.lstrip("-") != "ip":
-        if order_field.lstrip("-") == "id":
-            return queryset.order_by(order_field)
-        return queryset.order_by(order_field, "id")
-    asset_ip = KeyTextTransform(ASSET_IP_FACT, "summary_facts")
-    access_ip = Cast("ip", output_field=CharField())
-    display_ip = Coalesce(NullIf(asset_ip, Value("")), access_ip, Value(""), output_field=CharField())
-    descending = order_field.startswith("-")
-    return queryset.annotate(display_ip=display_ip).order_by("-display_ip" if descending else "display_ip", "id")
 
 
 def _cloud_region_names(instances) -> dict:
@@ -678,14 +667,6 @@ def _checked_sort(order_by, order_dir, allowed: set[str]) -> tuple[str, bool] | 
     if field not in allowed:
         raise GenericQueryError(f"不支持的排序字段: {field}")
     return field, descending
-
-
-def _instance_order(order_by, order_dir) -> str:
-    requested = _checked_sort(order_by, order_dir, {"name", "ip", "id"})
-    if requested is None:
-        return "id"
-    field, descending = requested
-    return f"-{field}" if descending else field
 
 
 def _alert_detail_order(order_by, order_dir) -> str:

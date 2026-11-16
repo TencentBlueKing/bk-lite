@@ -4448,52 +4448,6 @@
         }
       },
       {
-        "name": "order_by",
-        "type": "string",
-        "value": "",
-        "alias_name": "排序",
-        "filterType": "params",
-        "inputConfig": {
-          "control": "select",
-          "optionsSource": {
-            "type": "static",
-            "staticItems": [
-              {
-                "label": "名称",
-                "value": "name"
-              },
-              {
-                "label": "IP",
-                "value": "ip"
-              }
-            ]
-          }
-        }
-      },
-      {
-        "name": "order_dir",
-        "type": "string",
-        "value": "",
-        "alias_name": "排序方式",
-        "filterType": "params",
-        "inputConfig": {
-          "control": "select",
-          "optionsSource": {
-            "type": "static",
-            "staticItems": [
-              {
-                "label": "升序",
-                "value": "asc"
-              },
-              {
-                "label": "降序",
-                "value": "desc"
-              }
-            ]
-          }
-        }
-      },
-      {
         "name": "page",
         "type": "number",
         "value": null,
@@ -4559,6 +4513,86 @@
         "title": "状态",
         "value_type": "string",
         "description": "启用或停用"
+      }
+    ]
+  },
+  {
+    "key": "监控实例数量统计::monitor/query_monitor_instance_counts",
+    "name": "监控实例数量统计",
+    "desc": "统计当前组织权限内、所选监控对象下的实例数量，固定返回一行 instance_count。监控对象只能选一个。状态是启用、停用或全部。不返回实例明细，没有分页和排序。",
+    "rest_api": "monitor/query_monitor_instance_counts",
+    "tag": [
+      "monitor"
+    ],
+    "chart_type": [
+      "single",
+      "gauge"
+    ],
+    "params": [
+      {
+        "name": "monitor_object_id",
+        "type": "string",
+        "value": "",
+        "required": true,
+        "alias_name": "监控对象",
+        "filterType": "params",
+        "inputConfig": {
+          "control": "select",
+          "optionsSource": {
+            "type": "dynamic",
+            "sourceRef": {
+              "type": "rest_api",
+              "value": "monitor/list_monitor_object_options"
+            },
+            "labelField": "display_name",
+            "valueField": "id"
+          }
+        }
+      },
+      {
+        "name": "status",
+        "type": "string",
+        "value": "all",
+        "alias_name": "状态",
+        "filterType": "params",
+        "inputConfig": {
+          "control": "select",
+          "optionsSource": {
+            "type": "static",
+            "staticItems": [
+              {
+                "label": "全部",
+                "value": "all"
+              },
+              {
+                "label": "启用",
+                "value": "active"
+              },
+              {
+                "label": "停用",
+                "value": "inactive"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "name": "organization",
+        "type": "string",
+        "value": "",
+        "alias_name": "组织",
+        "filterType": "filter",
+        "inputConfig": {
+          "control": "organization"
+        }
+      }
+    ],
+    "field_schema": [
+      {
+        "key": "instance_count",
+        "title": "实例数量",
+        "value_type": "number",
+        "description": "所选监控对象下、当前状态范围内的实例数量"
       }
     ]
   },
