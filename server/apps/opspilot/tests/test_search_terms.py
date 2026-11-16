@@ -103,11 +103,17 @@ def test_compound_content_is_kept_when_the_model_passes_it_verbatim():
     assert accepted_model_keyword("活动目录", "同步活动目录") == "活动目录"
 
 
-def test_filler_only_phrases_stay_out_and_loose_fragments_stay_in():
+def test_filler_only_phrases_and_scraps_are_not_content_keywords():
     assert resolve_search_terms("我查询活动告警", "查询活动") == []
     assert resolve_search_terms("当前有多少条活动告警", "活动告警") == []
-    assert resolve_search_terms("查询下我有多少条活跃告警", "下我") == ["下我"]
-    assert resolve_search_terms("我要查询我现在有多少条活动告警", "条活动") == ["条活动"]
+    assert resolve_search_terms("查询下我有多少条活跃告警", "下我") == []
+    assert resolve_search_terms("我要查询我现在有多少条活动告警", "条活动") == []
+    assert resolve_search_terms("查询下磁盘告警", "查询下") == []
+    assert resolve_search_terms("查询下我有多少条活跃告警", "活跃告") == []
+    assert resolve_search_terms("我现在有多少条活动告警", "现在有") == []
+    assert resolve_search_terms("我现在有多少条活动告警", "有多少条活") == []
+    assert resolve_search_terms("查询本周报告警", "本周报") == []
+    assert resolve_search_terms("查询下单接口超时了", "下单接口") == ["超时", "timeout", "timed out", "下单接口"]
 
 
 def test_english_status_time_and_query_words_are_not_content_keywords():
@@ -131,9 +137,17 @@ def test_english_status_time_and_query_words_are_not_content_keywords():
     assert "10.10.41.149" in host
     assert "on" not in host
     assert "and" not in host
-    assert "openssl" in build_search_terms("openssl error on web-01")
-    assert "open" not in build_search_terms("openssl error on web-01")
+    assert build_search_terms("openssl error on web-01") == ["error", "web-01"]
     assert build_search_terms("error 24") == ["error", "24"]
+    assert build_search_terms("查询一个月来的告警信息，整理成一个word文档给我") == []
+    assert resolve_search_terms("查询一个月来的告警信息，整理成一个word文档给我", "word") == []
+    assert build_search_terms("how many new alerts") == []
+    assert build_search_terms("how many recovered alerts") == []
+    assert resolve_search_terms("how many new alerts", "new") == []
+    assert resolve_search_terms("how many recovered alerts", "recovered") == []
+    assert accepted_model_keyword("CPU", "") == "CPU"
+    assert accepted_model_keyword("memory", "") == "memory"
+    assert accepted_model_keyword("web", "") == "web"
     shown = build_search_terms("show me the error logs from web-01 for the last 24 hours")
     assert "error" in shown
     assert "web-01" in shown

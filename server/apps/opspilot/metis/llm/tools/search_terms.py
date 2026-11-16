@@ -171,8 +171,20 @@ _ENGLISH_STOPS = frozenset(
         "by",
         "or",
         "not",
+        "new",
+        "recovered",
+        "word",
+        "docx",
+        "pdf",
+        "excel",
+        "ppt",
+        "pptx",
     }
 )
+_GLUE_CHARS = frozenset("下条")
+_SINGLE_CHAR_STOPS = frozenset(word for word in _CHINESE_STOPS if len(word) == 1)
+_FIXED_ASCII_CONTENT = frozenset({"error", "errors", "timeout", "upstream"})
+_IDENTIFIER_MARK = re.compile(r"[0-9._:\-]")
 _TIME_UNIT_WORD = r"hours?|minutes?|seconds?|days?|weeks?|months?|hrs?|mins?|secs?|小时|分钟|秒钟|天|周"
 _TIME_QUANTITY = re.compile(
     rf"(?<![A-Za-z0-9._:-])(\d+)\s*(?:{_TIME_UNIT_WORD})(?![A-Za-z0-9._:-])",
@@ -257,6 +269,7 @@ def _tiled_by_stop_words(token: str) -> bool:
         return False
     index = 0
     length = len(token)
+    consumed_multi = False
     while index < length:
         if token[index].isdigit():
             index += 1
@@ -264,9 +277,16 @@ def _tiled_by_stop_words(token: str) -> bool:
                 index += 1
             continue
         hit = _longest_segment_stop(token, index)
-        if hit == 0:
-            return False
-        index += hit
+        if hit:
+            consumed_multi = True
+            index += hit
+            continue
+        if token[index] in _GLUE_CHARS or token[index] in _SINGLE_CHAR_STOPS:
+            index += 1
+            continue
+        if consumed_multi and length - index == 1:
+            return True
+        return False
     return True
 
 
@@ -278,11 +298,17 @@ def _is_non_content_token(token: str) -> bool:
     return _tiled_by_stop_words(token)
 
 
+def _is_observed_ascii_content(token: str) -> bool:
+    if token.casefold() in _FIXED_ASCII_CONTENT:
+        return True
+    return _IDENTIFIER_MARK.search(token) is not None
+
+
 def _ascii_content_terms(text: str) -> list[str]:
     time_numbers = _time_numbers(text)
     kept = []
     for token in _ASCII_TOKEN.findall(text):
-        if token in time_numbers or _is_non_content_token(token):
+        if token in time_numbers or _is_non_content_token(token) or not _is_observed_ascii_content(token):
             continue
         kept.append(token)
     return kept
@@ -292,7 +318,7 @@ def _keyword_is_content(keyword: str) -> bool:
     token = str(keyword or "").strip()
     if not token or _is_non_content_token(token):
         return False
-    if _ascii_content_terms(token):
+    if _ASCII_TOKEN.fullmatch(token):
         return True
     return len("".join(_CJK_RUN.findall(token))) >= 2
 
