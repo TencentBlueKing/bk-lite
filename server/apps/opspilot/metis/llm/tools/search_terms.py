@@ -1,6 +1,6 @@
-"""从用户原问抽出检索词，并按固定现象表展开同义词。
+"""从用户原问收检索词。
 
-不把两个概念粘成一个新短语。告警和日志共用这份词表，各自做一次或查询。
+英文、数字和固定现象词直接取自原问。其它中文不从整句残片猜测，只接受模型传入且原样出现在原问里的正文词。告警、日志和监控共用这份规则。
 """
 
 from __future__ import annotations
@@ -66,8 +66,6 @@ _FILLERS = (
     "在",
 )
 
-_PEEL_KEEP = ("超时", "报错")
-_PEEL_DROP = ("拒绝", "太慢")
 _NOT_CONTENT = (
     "自动关闭",
     "自动恢复",
@@ -93,6 +91,7 @@ _NOT_CONTENT = (
 )
 _TIME_QUANTITY = re.compile(r"(\d+)\s*(?:小时|分钟|秒钟|天|周)")
 _TIME_UNIT_TOKEN = re.compile(r"\d+(?:h|hr|min|m|d|s)\Z", re.IGNORECASE)
+_NON_CONTENT_WORDS = tuple(dict.fromkeys((*_FILLERS, *_NOT_CONTENT, "我")))
 
 _ASCII_TOKEN = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{1,}")
 _CJK_RUN = re.compile(r"[\u4e00-\u9fff]+")
@@ -146,34 +145,6 @@ def _dedupe(terms: Iterable[str]) -> list[str]:
     return ordered
 
 
-def _chinese_terms(text: str) -> list[str]:
-    cleaned = re.sub(r"[，。！？、,.!?;；:：\s]+", " ", text)
-    for filler in _FILLERS:
-        cleaned = cleaned.replace(filler, " ")
-    found: list[str] = []
-    for chunk in cleaned.split():
-        pieces = _CJK_RUN.findall(chunk)
-        if not pieces:
-            continue
-        rest = "".join(pieces)
-        for word in (*_PEEL_KEEP, *_PEEL_DROP):
-            if word not in rest:
-                continue
-            if word in _PEEL_KEEP:
-                found.append(word)
-            rest = rest.replace(word, " ")
-        for piece in rest.split():
-            found.extend(_content_pieces(piece))
-    return found
-
-
-def _content_pieces(piece: str) -> list[str]:
-    rest = piece
-    for word in _NOT_CONTENT:
-        rest = rest.replace(word, " ")
-    return [part for part in rest.split() if len(part) >= 2]
-
-
 def _ascii_content_terms(text: str) -> list[str]:
     time_numbers = {match.group(1) for match in _TIME_QUANTITY.finditer(text)}
     kept = []
@@ -184,17 +155,54 @@ def _ascii_content_terms(text: str) -> list[str]:
     return kept
 
 
-def _question_terms(text: str) -> list[str]:
-    return _dedupe([*_chinese_terms(text), *_ascii_content_terms(text), *_synonyms(text)])
+def _contains_non_content_word(token: str) -> bool:
+    if _TIME_QUANTITY.search(token) or _TIME_UNIT_TOKEN.search(token):
+        return True
+    return any(word and word in token for word in _NON_CONTENT_WORDS)
 
 
-def _synonyms(text: str) -> list[str]:
+def _keyword_is_content(keyword: str) -> bool:
+    token = str(keyword or "").strip()
+    if not token or _contains_non_content_word(token):
+        return False
+    if _ascii_content_terms(token):
+        return True
+    return len("".join(_CJK_RUN.findall(token))) >= 2
+
+
+def _phenomenon_terms(text: str) -> list[str]:
     extra: list[str] = []
+    if "超时" in text:
+        extra.append("超时")
     if _timeout_mentioned(text):
         extra.extend(("timeout", "timed out"))
+    if "报错" in text:
+        extra.append("报错")
     if _gateway_refusal(text):
+        if "网关" in text:
+            extra.append("网关")
         extra.extend(("connection refused", "502", "upstream"))
     return extra
+
+
+def _observed_terms(text: str) -> list[str]:
+    if not text:
+        return []
+    return [*_ascii_content_terms(text), *_phenomenon_terms(text)]
+
+
+def _accepted_keyword_parts(model_keyword: str | None, text: str) -> list[str]:
+    raw = str(model_keyword or "").strip()
+    if not raw:
+        return []
+    kept = []
+    for part in re.split(r"\s+", raw):
+        if not _keyword_is_content(part):
+            continue
+        if text and part.casefold() not in text.casefold():
+            continue
+        kept.append(part)
+    return kept
 
 
 def user_question_for_search(text: str) -> str:
@@ -220,27 +228,24 @@ def user_question_for_search(text: str) -> str:
 
 
 def build_search_terms(user_message: str) -> list[str]:
-    """问句原词 + 固定同义词。没有可用原词时返回空列表。"""
-    text = user_question_for_search(user_message)
-    if not text:
-        return []
-    return _question_terms(text)
+    """原话里的英文、数字和固定现象词。不从整句残片猜中文关键字。"""
+    return _dedupe(_observed_terms(user_question_for_search(user_message)))
 
 
 def keyword_has_content(keyword: str | None) -> bool:
-    raw = str(keyword or "").strip()
-    return bool(raw) and bool(_question_terms(raw))
+    return _keyword_is_content(str(keyword or "").strip())
+
+
+def accepted_model_keyword(keyword: str | None, user_message: str = "") -> str:
+    """模型关键字必须本身是正文。有用户原问时，还要原样出现在原问里。"""
+    parts = _accepted_keyword_parts(keyword, user_question_for_search(user_message))
+    return " ".join(parts)
 
 
 def resolve_search_terms(user_message: str, model_keyword: str | None = None) -> list[str]:
-    """有用户原问就用词表，忽略模型粘出来的短语。否则只按空白拆开模型关键字。"""
+    """英文、数字和现象词来自原问。其它中文只收模型传入、且原样出现在原问里的正文词。"""
     text = user_question_for_search(user_message)
-    if text:
-        return _question_terms(text)
-    raw = str(model_keyword or "").strip()
-    if not raw:
-        return []
-    return _dedupe(part for part in re.split(r"\s+", raw) if keyword_has_content(part))
+    return _dedupe([*_observed_terms(text), *_accepted_keyword_parts(model_keyword, text)])
 
 
 SEARCH_NOTE = "已按或条件检索上述词。空结果表示这些词都未命中，不要换关键字再搜。"

@@ -97,7 +97,7 @@ def test_alerts_list_uses_question_terms_instead_of_glued_keyword():
         rpc_cls.return_value.list_alerts.return_value = {"result": True, "data": {"count": 0, "items": []}}
         out = alerts_list_alerts.invoke({"keyword": "下单超时"}, config=config)
     keywords = rpc_cls.return_value.list_alerts.call_args.kwargs["query_data"]["keywords"]
-    assert "下单接口" in keywords
+    assert "下单接口" not in keywords
     assert "timeout" in keywords
     assert "下单超时" not in keywords
     assert out["searched_keywords"] == keywords
