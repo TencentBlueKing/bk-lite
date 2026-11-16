@@ -361,6 +361,7 @@ class Command(BaseCommand):
         """MLOPS资源初始化"""
         self.stdout.write("MLOPS资源初始化...")
         call_command("init_algorithm_config")
+        call_command("init_builtin_timeseries")
 
     def _init_patch_mgmt(self):
         """补丁管理本地内置数据初始化。"""
