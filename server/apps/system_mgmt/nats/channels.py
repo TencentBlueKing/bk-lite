@@ -201,6 +201,13 @@ SYSTEM_USER_CHANNEL_TYPES = {
     ChannelChoices.EMAIL,
     ChannelChoices.ENTERPRISE_WECHAT,
 }
+# 这些渠道由 webhook 决定投递目标。接收人只用于在正文后追加 @，可以留空。
+OPTIONAL_RECIPIENT_CHANNEL_TYPES = {
+    ChannelChoices.ENTERPRISE_WECHAT_BOT,
+    ChannelChoices.FEISHU_BOT,
+    ChannelChoices.DINGTALK_BOT,
+    ChannelChoices.CUSTOM_WEBHOOK,
+}
 RICH_TEXT_CHANNEL_TYPES = {
     ChannelChoices.ENTERPRISE_WECHAT_BOT,
     ChannelChoices.FEISHU_BOT,
@@ -408,7 +415,7 @@ def probe_notification_channel(channel_id, capability_only=False):
     )
 
 
-def _validate_notification_recipients(recipient_mode, recipients):
+def _validate_notification_recipients(recipient_mode, recipients, *, allow_empty=False):
     if not isinstance(recipients, list) or len(recipients) > MAX_NOTIFICATION_RECIPIENTS:
         return None
     normalized = []
@@ -420,7 +427,7 @@ def _validate_notification_recipients(recipient_mode, recipients):
     if recipient_mode == "none":
         return [] if not normalized else None
     if not normalized:
-        return None
+        return [] if allow_empty else None
     if recipient_mode == "system_user" and not all(value.isdigit() for value in normalized):
         return None
     return normalized
@@ -472,7 +479,11 @@ def dispatch_notification(
             "retryable": False,
             "message": "channel delivery mode does not match",
         }
-    normalized_recipients = _validate_notification_recipients(capability["recipient_mode"], recipients)
+    normalized_recipients = _validate_notification_recipients(
+        capability["recipient_mode"],
+        recipients,
+        allow_empty=channel.channel_type in OPTIONAL_RECIPIENT_CHANNEL_TYPES,
+    )
     if normalized_recipients is None:
         return _notification_failure("invalid_recipients", "通知接收人不符合渠道能力。")
     if capability["recipient_mode"] == "system_user":
