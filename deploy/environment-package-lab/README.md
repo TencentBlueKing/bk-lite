@@ -67,9 +67,9 @@ python3 server/apps/node_mgmt/tests/test_ansible_executor_default_namespace.py
 
 ## 数据和恢复范围
 
-证据位于隔离主机 `evidence/business-20261115`。私有 env、broker 备份只留在该主机，不应放入 Git 或交付文档。日志/Trace 保留 3 天；测试 JetStream 最大 64 MiB、保留 1 天。证据 JSON 保留查询结果，超过期限后应重新注入再验收。
+证据位于隔离主机 `evidence/business-20261115`。既有私有凭据源只留在该主机，不应放入 Git 或交付文档；环境变量传递和旧文件处理见文末。日志/Trace 保留 3 天；测试 JetStream 最大 64 MiB、保留 1 天。证据 JSON 保留查询结果，超过期限后应重新注入再验收。
 
-可停止 `env-business-20261115` compose 项目的四个新服务回收计算资源，保留命名卷；不要执行 `down -v`。Broker 原配置备份为 `config/nats.pre-business-20261115.json`，不能在有后续变更时直接整文件覆盖，需比较后仅撤销本账号的新增权限。原 API 容器保留为 `env-install-api-pre-business-20261115`；模板回退也须限定云区域 2，不能批量覆盖用户配置。
+可停止 `env-business-20261115` compose 项目的四个新服务回收计算资源，保留命名卷；不要执行 `down -v`。Broker 权限备份为 `config/nats.permissions-pre-business-20261115.json`，仅保留目标账号及原权限，回退时需比较后仅撤销本账号的新增权限。原 API 容器保留为 `env-install-api-pre-business-20261115`；模板回退也须限定云区域 2，不能批量覆盖用户配置。
 
 ## C/D 查询页面与告警链路
 
@@ -120,3 +120,13 @@ ssh wx-test 'docker exec env-install-ca-api-20261113 python /test/runtime/busine
 恢复页面验收按本轮告警主键定位历史行并核查已通知状态；日志在列表和详情验证关闭状态，APM 在该行打开的详情抽屉验证“已恢复”（APM 列表无恢复状态列）。不能用页面上其他告警的恢复文本替代本轮详情。
 
 日志查询页面验收使用本轮注入时间前 60 秒、后 120 秒的绝对窗口，等待两个当前标记实际渲染（最多 60 秒）；不以固定休眠代替加载完成，也不受重跑时最近 15 分钟窗口影响。
+
+## 凭据传递与旧文件处理
+
+既有 config/ui-server.env、config/query-minio.json 和 config/nats.conf 保持为私有凭据源。部署不再生成 query-minio.env、query-server.env 或 pipeline.env，Docker 覆盖项与 Compose 变量仅经子进程环境传递，命令行只含变量名。Docker 仍保存容器所需环境配置，Docker 管理权限须按凭据访问权限控制。
+
+reconcile.py --apply 现在在同一进程准备配置、执行区域对账并启动 Compose，apply.sh 仍持有部署锁。不要绕过入口单独执行 docker compose up，否则缺少凭据环境。MinIO 继续复用既有私有 JSON，重复执行不轮换密码。
+
+Broker 新备份为 config/nats.permissions-pre-business-20261115.json，仅含目标账号名和原权限，不复制密码。回退时对比后只撤销该账号新增权限，不整文件覆盖 nats.conf。
+
+旧版本的派生 env 文件和全量 Broker 备份不由新代码自动删除。维护者确认旧入口及挂载停用后可单独安排清理；本次源码修复不执行现场清理、部署、重启或凭据轮换。

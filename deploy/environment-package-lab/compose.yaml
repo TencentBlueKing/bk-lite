@@ -20,7 +20,13 @@ services:
     image: timberio/vector:0.48.0-debian
     container_name: env-business-20261115-vector
     command: [--config, /test/business-20261115/vector.yaml]
-    env_file: [/opt/bklite-environment-test-20261113/business-20261115/pipeline.env]
+    environment:
+      - VECTOR_NATS_SERVERS
+      - NATS_ADMIN_USERNAME
+      - NATS_ADMIN_PASSWORD
+      - VECTOR_NATS_TLS_ENABLED
+      - VECTOR_NATS_TLS_CA_FILE
+      - VECTOR_VICTORIA_LOGS_URL
     volumes:
       - /opt/bklite-environment-test-20261113/business-20261115:/test/business-20261115:ro
       - /opt/bklite-environment-test-20261113/business-20261115/ca.crt:/test/certs/ca.crt:ro
@@ -31,7 +37,19 @@ services:
     image: bk-lite.tencentcloudcr.com/bklite/weopsx/apm-collector:latest
     container_name: env-business-20261115-apm
     command: [--config=/test/business-20261115/system.yaml]
-    env_file: [/opt/bklite-environment-test-20261113/business-20261115/pipeline.env]
+    environment:
+      - APM_NATS_URL
+      - APM_NATS_STREAM
+      - APM_NATS_CONSUMER
+      - APM_NATS_CREDENTIALS_FILE
+      - APM_NATS_CA_FILE
+      - APM_NATS_CERT_FILE
+      - APM_NATS_KEY_FILE
+      - APM_NATS_TLS_SERVER_NAME
+      - APM_NATS_MAX_ACK_PENDING
+      - APM_COLLECTOR_MEMORY_LIMIT_MIB
+      - APM_COLLECTOR_MEMORY_SPIKE_MIB
+      - APM_VICTORIATRACES_OTLP_ENDPOINT
     volumes:
       - /opt/bklite-environment-test-20261113/business-20261115:/test/business-20261115:ro
       - /opt/bklite-environment-test-20261113/business-20261115/ca.crt:/test/certs/ca.crt:ro

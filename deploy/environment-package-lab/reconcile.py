@@ -4,6 +4,7 @@ No VM files are edited. Broker permissions, cloud-region env and downstream
 services are reconciled as deployment dependencies. Never use on production.
 """
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -57,11 +58,12 @@ def main():
     assert len(nodes) == 2
     cfg = ROOT/'config/nats.conf'; before=cfg.read_text(); data=json.loads(before)
     account = next(u for u in data['authorization']['users'] if u['user']=='test-auto-region-executor')
+    previous_permissions = {'account': account['user'], 'permissions': account['permissions']}
     account['permissions'] = executor_permissions(account['permissions'], nodes)
     if '--apply' not in sys.argv:
         print(json.dumps({'region':2,'nodes':nodes,'broker_permissions_changed':json.loads(before)!=data,'services':['logs','traces','vector','apm'],'mode':'plan'}));return
-    backup=ROOT/'config/nats.pre-business-20261115.json'
-    if not backup.exists():write_private(backup,before)
+    backup=ROOT/'config/nats.permissions-pre-business-20261115.json'
+    if not backup.exists():write_private(backup,json.dumps(previous_permissions))
     if json.loads(before) != data:
         write_private(cfg,json.dumps(data));run('docker','kill','--signal=HUP','env-install-nats-20261113')
     # Use existing private broker administrative identity only within new isolated
@@ -79,8 +81,9 @@ def main():
         'APM_NATS_MAX_ACK_PENDING':'32','APM_COLLECTOR_MEMORY_LIMIT_MIB':'192','APM_COLLECTOR_MEMORY_SPIKE_MIB':'48',
         'APM_VICTORIATRACES_OTLP_ENDPOINT':'http://'+PREFIX+'-traces:10428/insert/opentelemetry/v1/traces',
     }
-    write_private(private/'pipeline.env','\n'.join(k+'='+v for k,v in env.items())+'\n')
+    (private/'system.yaml').write_bytes((Path(__file__).parent/'system.yaml').read_bytes())
     run('docker','exec',API,'python','/test/runtime/business/region.py')
+    run('docker','compose','-f',str(Path(__file__).parent/'compose.yaml'),'up','-d','--pull','never',env={**os.environ,**env})
     print('__BUSINESS_DEPENDENCIES_RECONCILED__')
 
 if __name__ == '__main__':
