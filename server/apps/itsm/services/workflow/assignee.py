@@ -52,7 +52,7 @@ class AssigneeResolver:
             return list(ticket_ctx.get("initiator_leader") or [])
         if name.startswith("form."):
             raw = (ticket_ctx.get("form") or {}).get(name.split(".", 1)[1])
-            return list(raw or [])
+            return [raw] if isinstance(raw, str) and raw else list(raw or [])
         if name.startswith("node."):
             return list((ticket_ctx.get("node_assignees") or {}).get(name.split(".", 1)[1]) or [])
         return []

@@ -25,7 +25,7 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import dagre from 'dagre';
-import { Button, Checkbox, Input, Select, Switch, Tag } from 'antd';
+import { Button, Input, Select, Tag } from 'antd';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   DEMO_FLOW,
@@ -36,7 +36,9 @@ import {
   type CanvasNodeData,
   type FlowDesign,
 } from '../constants/demo-flow';
-import { NODE_ACTIONS, NODE_GROUPS, NODE_PALETTE, nodeLabelId } from '../constants/node-catalog';
+import { NODE_GROUPS, NODE_PALETTE, nodeLabelId } from '../constants/node-catalog';
+import { NodeSettings } from './node-settings';
+import type { FormFieldSchema } from '../types';
 import { ConditionBuilder } from './condition-builder';
 import { CanvasTools } from './canvas-tools';
 import { UserSelector } from './user-selector';
@@ -119,6 +121,7 @@ const INITIAL = canvasFromDesign(DEMO_FLOW);
 interface FlowDesignerProps {
   design?: FlowDesign;
   fields?: string[];
+  formFields?: FormFieldSchema[];
   invalidNodeIds?: string[];
   onChange?: (design: FlowDesign) => void;
 }
@@ -150,7 +153,7 @@ export function FlowDesigner(props: FlowDesignerProps) {
   );
 }
 
-function FlowDesignerBody({ design, fields = [], invalidNodeIds = [], onChange }: FlowDesignerProps) {
+function FlowDesignerBody({ design, fields = [], formFields = [], invalidNodeIds = [], onChange }: FlowDesignerProps) {
   const { t } = useTranslation();
   const seeded = design?.nodes?.length ? canvasFromDesign(design) : INITIAL;
   const [nodes, setNodes, onNodesChange] = useNodesState<CanvasNode>(
@@ -522,44 +525,7 @@ function FlowDesignerBody({ design, fields = [], invalidNodeIds = [], onChange }
               </div>
             )}
             {['approval', 'handle', 'manual', 'submit', 'subprocess_handle'].includes(selected.data.nodeType) ? (
-              <>
-                <div className="flex flex-col gap-1">
-                  <span className="text-xs font-medium text-[var(--color-text-2)]">处理人</span>
-                  <UserSelector value={selected.data.assignees} onChange={(assignees) => patchSelected({ assignees })} />
-                </div>
-                <div className="flex items-center justify-between rounded-lg border border-[var(--color-border)] bg-[var(--color-fill-1)] px-3 py-2">
-                  <span className="text-xs font-medium text-[var(--color-text-1)]">多人或签</span>
-                  <Switch checked={selected.data.orSign} onChange={(orSign) => patchSelected({ orSign })} />
-                </div>
-                <div className="flex flex-col gap-1.5 rounded-lg border border-[var(--color-border)] p-3">
-                  <span className="text-xs font-medium text-[var(--color-text-2)]">可执行操作</span>
-                  <Checkbox.Group
-                    value={selected.data.actions}
-                    options={NODE_ACTIONS}
-                    onChange={(actions) => patchSelected({ actions: actions.map(String) })}
-                  />
-                </div>
-                <div className="flex items-center justify-between rounded-lg border border-[var(--color-border)] bg-[var(--color-fill-1)] px-3 py-2">
-                  <span className="text-xs font-medium text-[var(--color-text-1)]">节点流转通知</span>
-                  <Switch checked={Boolean(selected.data.notify)} onChange={(notify) => patchSelected({ notify })} />
-                </div>
-                {fields.length ? (
-                  <div className="flex flex-col gap-2 border-t border-[var(--color-border)] pt-3">
-                    <span className="text-xs font-semibold text-[var(--color-text-2)]">字段权限</span>
-                    <div className="flex flex-col gap-1.5 rounded-lg border border-[var(--color-border)] bg-[var(--color-fill-1)] p-2.5">
-                      {fields.map((field) => (
-                        <div key={field} className="flex items-center justify-between gap-2">
-                          <span className="text-xs text-[var(--color-text-1)]">{field}</span>
-                          <SelectPerm
-                            value={selected.data.fieldPerm?.[field] || 'edit'}
-                            onChange={(perm) => patchSelected({ fieldPerm: { ...selected.data.fieldPerm, [field]: perm } })}
-                          />
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ) : null}
-              </>
+              <NodeSettings key={selected.id} data={selected.data} fields={formFields} onChange={patchSelected} />
             ) : null}
             <div className="flex flex-col gap-2 border-t border-[var(--color-border)] pt-3">
               <span className="text-xs font-semibold text-[var(--color-text-2)]">流转条件</span>
@@ -592,21 +558,5 @@ function FlowDesignerBody({ design, fields = [], invalidNodeIds = [], onChange }
         </> : null}
       </div>
     </div>
-  );
-}
-
-function SelectPerm({ value, onChange }: { value: string; onChange: (value: string) => void }) {
-  return (
-    <Select
-      size="small"
-      className="w-28"
-      value={value}
-      options={[
-        { value: 'edit', label: '可编辑' },
-        { value: 'read', label: '只读' },
-        { value: 'hidden', label: '隐藏' },
-      ]}
-      onChange={onChange}
-    />
   );
 }

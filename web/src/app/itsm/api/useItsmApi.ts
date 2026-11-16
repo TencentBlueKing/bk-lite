@@ -14,7 +14,16 @@ export function useItsmApi() {
   const batchOptions = useCallback((ids: number[]) => post('/itsm/api/tickets/batch_options/', { ids }), [post]);
   const batchTickets = useCallback((ids: number[], action: string, opinion: string) => post('/itsm/api/tickets/batch_operate/', { ids, action, opinion }), [post]);
 
-  const listForms = useCallback(() => get('/itsm/api/forms/'), [get]);
+  const listForms = useCallback(async () => {
+    const items: { id: number; name: string; key: string }[] = [];
+    let count = 0;
+    for (let page = 1; ; page++) {
+      const result = await get('/itsm/api/forms/', { params: { page, page_size: 100 } }) as { count: number; items: typeof items };
+      items.push(...result.items); count = result.count;
+      if (!result.items.length || items.length >= count) break;
+    }
+    return { items, count };
+  }, [get]);
   const createForm = useCallback(
     (body: { name: string; key: string }) => post('/itsm/api/forms/', body),
     [post],

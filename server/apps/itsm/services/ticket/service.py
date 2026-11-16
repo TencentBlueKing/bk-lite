@@ -53,7 +53,19 @@ class TicketService:
         return ticket
 
     def _assignee_variables(self, workflow_version: WorkflowVersion, creator: str, form_data: dict) -> dict:
-        resolver = AssigneeResolver()
+        from apps.itsm.models import HandlerGroup
+
+        group_ids = [
+            node.get("assignee", {}).get("value")
+            for node in (workflow_version.design or {}).get("nodes", [])
+            if (node.get("assignee") or {}).get("source") == "handler_group"
+        ]
+        groups = (
+            {row["id"]: row for row in HandlerGroup.objects.filter(domain=workflow_version.domain, id__in=group_ids).values("id", "members")}
+            if group_ids
+            else {}
+        )
+        resolver = AssigneeResolver(groups=groups)
         context = {"initiator": creator, "form": form_data}
         variables = {}
         for node in (workflow_version.design or {}).get("nodes") or []:
@@ -206,7 +218,12 @@ class TicketService:
                 self._set_status(ticket, "processing")
             self.client.complete_task(
                 task.flowable_task_id,
-                {"result": action, f"out_{task.node_id}_result": action, **_form_variables(ticket.form_data)},
+                {
+                    "result": action,
+                    f"out_{task.node_id}_result": action,
+                    **_form_variables(ticket.form_data),
+                    **self._assignee_variables(ticket.workflow_version, ticket.creator, ticket.form_data),
+                },
             )
             self.sync_ticket(ticket)
             if not self._process_active(ticket.process_instance_id):

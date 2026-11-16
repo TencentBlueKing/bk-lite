@@ -64,7 +64,7 @@ interface FormRendererProps {
   form?: FormInstance;
   hideSubmit?: boolean;
   initialValues?: Record<string, unknown>;
-  fieldPerm?: Record<string, 'hidden' | 'read' | 'edit'>;
+  fieldPerm?: Record<string, 'hidden' | 'read' | 'edit' | 'readonly' | 'editable' | 'required'>;
   readOnly?: boolean;
   onSubmit: (values: Record<string, unknown>) => void;
 }

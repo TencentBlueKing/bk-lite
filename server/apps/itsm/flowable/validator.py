@@ -23,7 +23,9 @@ def validate_design(payload: dict) -> list[str]:
             errors.append(f"节点 {node.id} 是孤立节点")
         if node.type in {"approval", "handle", "manual", "subprocess_handle"} and not node.assignee and not node.fallback:
             errors.append(f"节点 {node.id} 处理人为空且没有兜底")
-        for key in node.field_perm:
+        for key, mode in node.field_perm.items():
+            if mode not in {"edit", "editable", "read", "readonly", "hidden", "required"}:
+                errors.append(f"节点 {node.id} 字段 {key} 的权限无效")
             if key != "*" and field_keys and key not in field_keys:
                 errors.append(f"节点 {node.id} 引用了不存在的字段 {key}")
     for node in document.nodes:

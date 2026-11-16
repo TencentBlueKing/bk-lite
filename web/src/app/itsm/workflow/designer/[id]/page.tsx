@@ -1,12 +1,15 @@
 'use client';
 
-import { Alert, Button, Tabs, message } from 'antd';
+import { Alert, Button, Select, Tabs, message } from 'antd';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useItsmApi } from '../../../api/useItsmApi';
 import { useTranslation } from '@/utils/i18n';
+import OperateModal from '@/components/operate-modal';
+import { flattenNodeFields } from '../../../components/node-settings';
 import { FlowDesigner } from '../../../components/flow-designer';
+import { publishDesignedWorkflow } from '../../../components/publish-designed-workflow';
 import { FormDesigner } from '../../../components/form-designer';
 import { FormRenderer } from '../../../components/form-renderer';
 import { DEMO_FLOW, type FlowDesign } from '../../../constants/demo-flow';
@@ -40,6 +43,26 @@ export default function WorkflowDesignerPage() {
   const [tab, setTab] = useState('form');
   const [preview, setPreview] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [templateOpen, setTemplateOpen] = useState(false);
+  const [templates, setTemplates] = useState<{id:number;name:string}[]>([]);
+  const [templateId, setTemplateId] = useState<number>();
+  const [templateSchema, setTemplateSchema] = useState<FormSchema>();
+  const [formBase, setFormBase] = useState<Partial<FormSchema>>({});
+  const [templateLoading, setTemplateLoading] = useState(false);
+  const templateRequest = useRef(0);
+  const openTemplates = async () => {
+    templateRequest.current++; setTemplateOpen(true); setTemplateSchema(undefined); setTemplateId(undefined); setTemplateLoading(true);
+    try { const result = await api.listForms() as {items:{id:number;name:string}[]}; setTemplates(result.items || []); }
+    catch (error) { message.error(error instanceof Error ? error.message : '表单模板加载失败'); }
+    finally { setTemplateLoading(false); }
+  };
+  const selectTemplate = async (id:number) => {
+    const request = ++templateRequest.current;
+    setTemplateId(id); setTemplateSchema(undefined); setTemplateLoading(true);
+    try { const result = await api.getForm(id) as {schema:FormSchema}; if (request === templateRequest.current) setTemplateSchema(result.schema); }
+    catch (error) { if (request === templateRequest.current) message.error(error instanceof Error ? error.message : '模板读取失败'); }
+    finally { if (request === templateRequest.current) setTemplateLoading(false); }
+  };
 
   const load = useCallback(async () => {
     const data = await api.getDesign(workflowId) as DesignPayload;
@@ -53,6 +76,7 @@ export default function WorkflowDesignerPage() {
     if (data.form_id) {
       const form = await api.getForm(data.form_id) as { schema?: FormSchema };
       setFields(form.schema?.fields || []);
+      setFormBase(form.schema || {});
     }
   }, [api.getDesign, api.getForm, workflowId]);
 
@@ -65,14 +89,7 @@ export default function WorkflowDesignerPage() {
 
   const updateDesign = useCallback((next: FlowDesign) => setDesign((current) => ({ ...current, ...next })), []);
 
-  const schema: FormSchema = { version: 1, fields };
-
-  const saveForm = async () => {
-    if (!formId) {
-      return;
-    }
-    await api.saveForm(formId, schema);
-  };
+  const schema: FormSchema = { ...formBase, version: 1, fields };
 
   const ensureForm = async () => {
     if (formId) {
@@ -126,11 +143,8 @@ export default function WorkflowDesignerPage() {
     }
     setBusy(true);
     try {
-      await saveForm();
-      if (!locked) {
-        await api.saveDesign(workflowId, design);
-      }
-      await api.publishWorkflow(workflowId);
+      const id = await ensureForm();
+      await publishDesignedWorkflow(api, workflowId, id, schema, design);
       message.success(t('itsm.design.published'));
       await load();
     } catch (error) {
@@ -165,6 +179,7 @@ export default function WorkflowDesignerPage() {
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <Button disabled={locked} onClick={()=>void openTemplates()}>选择表单模板</Button>
           <Button onClick={() => setPreview((current) => !current)}>{preview ? t('itsm.design.backDesign') : t('itsm.design.preview')}</Button>
           <div className="mx-1 h-4 w-px bg-[var(--color-border)]" />
           <Button loading={busy} onClick={() => { void save(); }}>{t('itsm.common.save')}</Button>
@@ -172,6 +187,16 @@ export default function WorkflowDesignerPage() {
           <Button type="primary" loading={busy} disabled={locked} onClick={() => { void publish(); }}>{t('itsm.design.publish')}</Button>
         </div>
       </div>
+      <OperateModal title="从表单模板创建" open={templateOpen} width={900} onCancel={()=>{ templateRequest.current++; setTemplateOpen(false); }} confirmLoading={templateLoading} okButtonProps={{disabled:!templateSchema || templateLoading}} onOk={()=>{
+        if (!templateSchema) return;
+        setFormId(null); setFormBase(structuredClone(templateSchema)); setFields(structuredClone(templateSchema.fields));
+        setDesign(current=>({...current,nodes:current.nodes.map(node=>({...node,field_perm:{}})),settings:{...current.settings,template_source_id:templateId}}));
+        setTemplateOpen(false); message.success('已复制模板，请保存流程');
+      }}>
+        <Select className="w-full mb-4" aria-label="选择表单模板" showSearch optionFilterProp="label" loading={templateLoading} value={templateId} options={templates.map(item=>({value:item.id,label:item.name}))} onChange={id=>void selectTemplate(id)} />
+        <Alert className="mb-4" type="info" showIcon message="复制后独立维护，不影响原模板。应用将替换当前表单并清空节点字段权限，请重新检查节点配置。" />
+        {templateSchema && <FormRenderer key={templateId} schema={templateSchema} readOnly hideSubmit onSubmit={()=>undefined} />}
+      </OperateModal>
       {locked ? (
         <Alert
           type="warning"
@@ -208,7 +233,8 @@ export default function WorkflowDesignerPage() {
                   <div className={`h-full ${locked ? 'pointer-events-none opacity-60' : ''}`}>
                     <FlowDesigner
                       design={design}
-                      fields={fields.map((field) => field.key)}
+                      fields={flattenNodeFields(fields).map((field) => field.key)}
+                      formFields={fields}
                       invalidNodeIds={invalid}
                       onChange={updateDesign}
                     />

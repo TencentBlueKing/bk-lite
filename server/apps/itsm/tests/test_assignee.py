@@ -49,3 +49,23 @@ def test_manual_node_writes_assignee_variable():
     )()
     variables = TicketService(None)._assignee_variables(version, "admin", {})
     assert variables["itsm_assignee_sec"] == "bob"
+
+
+def test_single_person_field_is_not_split_into_characters():
+    assert AssigneeResolver().resolve({"assignee": {"source": "variable", "value": "form.owner"}}, {"form": {"owner": "alice"}}) == ["alice"]
+
+
+@pytest.mark.django_db
+def test_handler_group_resolution_is_domain_scoped():
+    from types import SimpleNamespace
+
+    from apps.itsm.models import HandlerGroup
+    from apps.itsm.services.ticket.service import TicketService
+
+    group = HandlerGroup.objects.create(domain="domain.com", name="测试组", members=["alice"])
+    node = {"id": "handle", "type": "handle", "assignee": {"source": "handler_group", "value": group.id}, "fallback": "block"}
+    version = SimpleNamespace(domain="domain.com", design={"nodes": [node]})
+    assert TicketService()._assignee_variables(version, "admin", {}) == {"itsm_assignee_handle": "alice"}
+    version.domain = "other"
+    with pytest.raises(ValueError, match="没有处理人"):
+        TicketService()._assignee_variables(version, "admin", {})

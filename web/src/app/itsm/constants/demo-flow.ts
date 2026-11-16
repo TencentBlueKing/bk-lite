@@ -4,7 +4,7 @@ export interface DesignNode {
   id: string;
   type: string;
   name: string;
-  assignee?: { source: string; value: string[] };
+  assignee?: { source: string; value: string[] | string | number };
   multi?: { mode: string };
   fallback?: string;
   actions?: string[];
@@ -29,7 +29,10 @@ export interface CanvasNodeData extends Record<string, unknown> {
   label: string;
   nodeType: string;
   assignees: string[];
+  assigneeSource?: string;
+  assigneeValue?: string | number;
   orSign: boolean;
+  multiMode?: string;
   actions?: string[];
   notify?: boolean;
   fieldPerm?: Record<string, string>;
@@ -92,8 +95,11 @@ export const canvasFromDesign = (design: FlowDesign): { nodes: CanvasNode[]; edg
     data: {
       label: node.name || node.id,
       nodeType: node.type,
-      assignees: node.assignee?.value || [],
+      assignees: Array.isArray(node.assignee?.value) ? node.assignee.value : [],
+      assigneeSource: node.assignee?.source || 'users',
+      assigneeValue: Array.isArray(node.assignee?.value) ? undefined : node.assignee?.value,
       orSign: node.multi?.mode === 'any',
+      multiMode: node.multi?.mode,
       fieldPerm: node.field_perm,
       actions: node.actions,
       auto: node.auto,
@@ -117,17 +123,18 @@ export const designFromCanvas = (nodes: CanvasNode[], edges: CanvasEdge[]): Flow
       type: node.data.nodeType,
       name: node.data.label,
     };
-    if (node.data.assignees.length > 0) {
-      designNode.assignee = { source: 'users', value: node.data.assignees };
-      designNode.fallback = 'admin';
+    if (['approval', 'handle', 'manual', 'submit', 'subprocess_handle'].includes(node.data.nodeType) && (node.data.original?.assignee || node.data.assignees.length || node.data.assigneeValue)) {
+      designNode.assignee = { source: node.data.assigneeSource || 'users', value: node.data.assigneeSource && node.data.assigneeSource !== 'users' ? node.data.assigneeValue ?? '' : node.data.assignees };
+      designNode.fallback = node.data.original?.fallback || 'block';
     }
     if (node.data.auto) designNode.auto = node.data.auto;
-    if (node.data.orSign) {
+    if (node.data.multiMode) {
+      if (node.data.multiMode === 'single') delete designNode.multi;
+      else designNode.multi = { ...designNode.multi, mode: node.data.multiMode };
+    } else if (node.data.orSign) {
       designNode.multi = { mode: 'any' };
-    } else if (designNode.multi?.mode === 'any') {
-      delete designNode.multi;
     }
-    if (node.data.actions?.length) {
+    if (node.data.actions !== undefined) {
       designNode.actions = node.data.actions;
     }
     if (node.data.fieldPerm) {

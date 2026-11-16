@@ -313,6 +313,17 @@ def publish_workflow(request, workflow_id):
     version = workflow.versions.order_by("-version_no").first()
     if version is None:
         return WebUtils.response_error("没有设计稿")
+    if workflow.form_id and workflow.form.current_version_id:
+        schema = workflow.form.current_version.schema
+
+        def field_keys(fields):
+            return [key for field in fields for key in [field["key"], *field_keys(field.get("children") or [])]]
+
+        version.design = {
+            **version.design,
+            "form_schema": schema,
+            "settings": {**version.design.get("settings", {}), "fields": field_keys(schema.get("fields", []))},
+        }
     try:
         xml = build_bpmn(version.design, workflow.key)
     except BpmnBuildError as exc:
