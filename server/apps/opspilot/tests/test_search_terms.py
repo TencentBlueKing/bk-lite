@@ -5,7 +5,14 @@ import json
 from langchain_core.messages import ToolMessage
 
 from apps.opspilot.metis.llm.middleware.tool_runtime import repeated_or_search_denial, terminal_success_denial
-from apps.opspilot.metis.llm.tools.search_terms import build_search_terms, resolve_search_terms, user_message_from_config, user_question_for_search
+from apps.core.utils.loader import LanguageLoader
+from apps.opspilot.metis.llm.tools.search_terms import (
+    accepted_model_keyword,
+    build_search_terms,
+    resolve_search_terms,
+    user_message_from_config,
+    user_question_for_search,
+)
 
 
 def test_mall_question_keeps_phenomena_and_accepts_verbatim_nouns():
@@ -57,7 +64,6 @@ def test_inventory_question_does_not_become_search_terms():
 def test_active_alert_count_question_sends_no_content_keywords():
     assert build_search_terms("我现在有多少条活动告警") == []
     assert resolve_search_terms("我现在有多少条活动告警", "活动") == []
-    assert resolve_search_terms("我要查询我现在有多少条活动告警", "条活动") == []
     assert resolve_search_terms("当前有多少条活动告警", "活动告警") == []
     assert build_search_terms("有多少条磁盘告警") == []
     assert resolve_search_terms("有多少条磁盘告警", "磁盘") == ["磁盘"]
@@ -66,7 +72,6 @@ def test_active_alert_count_question_sends_no_content_keywords():
 def test_status_and_time_are_not_content_keywords():
     assert build_search_terms("查询活动告警") == []
     assert build_search_terms("查询下我有多少条活跃告警") == []
-    assert resolve_search_terms("查询下我有多少条活跃告警", "下我") == []
     assert "下单接口" not in build_search_terms("查询下单接口超时了")
     assert "超时" in build_search_terms("查询下单接口超时了")
     assert resolve_search_terms("查询下单接口超时了", "下单接口") == ["超时", "timeout", "timed out", "下单接口"]
@@ -81,6 +86,92 @@ def test_status_and_time_are_not_content_keywords():
     assert log_terms == ["error"]
     assert build_search_terms("查询最近一小时的磁盘告警") == []
     assert resolve_search_terms("查询最近一小时的磁盘告警", "磁盘") == ["磁盘"]
+
+
+def test_compound_content_is_kept_when_the_model_passes_it_verbatim():
+    assert build_search_terms("主机在线") == []
+    assert resolve_search_terms("主机在线", "在线") == ["在线"]
+    assert resolve_search_terms("数据库有慢查询", "慢查询") == ["慢查询"]
+    assert resolve_search_terms("活动目录同步失败", "活动目录") == ["活动目录"]
+    assert resolve_search_terms("我们的服务挂了", "我们") == ["我们"]
+    assert resolve_search_terms("服务存在异常", "存在") == ["存在"]
+    assert resolve_search_terms("任务正在运行", "正在") == ["正在"]
+    reported = resolve_search_terms("接口报错了", "报错了")
+    assert "报错" in reported
+    assert "报错了" in reported
+    assert accepted_model_keyword("在线", "主机在线") == "在线"
+    assert accepted_model_keyword("活动目录", "同步活动目录") == "活动目录"
+
+
+def test_filler_only_phrases_stay_out_and_loose_fragments_stay_in():
+    assert resolve_search_terms("我查询活动告警", "查询活动") == []
+    assert resolve_search_terms("当前有多少条活动告警", "活动告警") == []
+    assert resolve_search_terms("查询下我有多少条活跃告警", "下我") == ["下我"]
+    assert resolve_search_terms("我要查询我现在有多少条活动告警", "条活动") == ["条活动"]
+
+
+def test_english_status_time_and_query_words_are_not_content_keywords():
+    assert build_search_terms("how many active alerts do I have") == []
+    assert build_search_terms("search logs for the last 24 hours") == []
+    assert build_search_terms("Last 24 Hours") == []
+    assert build_search_terms("how many open alerts") == []
+    assert resolve_search_terms("how many active alerts do I have", "active") == []
+    assert resolve_search_terms("search logs for the last 24 hours", "hours 24") == []
+    assert build_search_terms("search logs for the last 24 hours for error") == ["error"]
+    assert build_search_terms("search logs for the last 24hrs") == []
+    mixed = resolve_search_terms("查询 web-01 最近 24 hours 的慢查询", "慢查询 hours")
+    assert "web-01" in mixed
+    assert "慢查询" in mixed
+    assert "hours" not in mixed
+    assert "24" not in mixed
+    host = build_search_terms("timeout on web-01 and 10.10.41.149")
+    assert "timeout" in host
+    assert "timed out" in host
+    assert "web-01" in host
+    assert "10.10.41.149" in host
+    assert "on" not in host
+    assert "and" not in host
+    assert "openssl" in build_search_terms("openssl error on web-01")
+    assert "open" not in build_search_terms("openssl error on web-01")
+    assert build_search_terms("error 24") == ["error", "24"]
+    shown = build_search_terms("show me the error logs from web-01 for the last 24 hours")
+    assert "error" in shown
+    assert "web-01" in shown
+    assert "show" not in shown
+    assert "hours" not in shown
+    assert "24" not in shown
+
+
+def test_metric_name_with_time_suffix_stays_a_content_keyword():
+    assert accepted_model_keyword("cpu_usage_5m", "看一下 cpu_usage_5m") == "cpu_usage_5m"
+    assert accepted_model_keyword("cpu_usage_5min", "看 cpu_usage_5min") == "cpu_usage_5min"
+    assert accepted_model_keyword("5m", "最近 5m") == ""
+    assert accepted_model_keyword("24h", "最近 24h") == ""
+    assert "5m" not in build_search_terms("最近 5m 的 cpu_usage_5m")
+    assert "cpu_usage_5m" in build_search_terms("最近 5m 的 cpu_usage_5m")
+    assert "24h" not in build_search_terms("last 24h cpu_usage_5m")
+    assert "cpu_usage_5m" in build_search_terms("last 24h cpu_usage_5m")
+    assert "24" not in build_search_terms("last 24h cpu_usage_5m")
+
+
+def test_english_tool_descriptions_name_status_time_and_query_phrasing():
+    en_loader = LanguageLoader(app="opspilot", default_lang="en")
+    zh_loader = LanguageLoader(app="opspilot", default_lang="zh-Hans")
+    keys = (
+        "tools.alerts.tools.alerts_list_alerts.description",
+        "tools.log.tools.log_search_structured.description",
+    )
+    for key in keys:
+        english = en_loader.get(key)
+        assert "verbatim" in english
+        assert "query phrasing" in english
+        assert "current" in english
+        assert "which" in english
+        assert "Chinese content keywords" not in english
+        chinese = zh_loader.get(key)
+        assert "原样" in chinese
+        assert "状态" in chinese
+        assert "时间" in chinese
 
 
 def test_error_log_question_keeps_ascii_keyword():
