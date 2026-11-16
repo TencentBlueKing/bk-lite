@@ -1,16 +1,15 @@
 import time
 
+from django.db import transaction
+
 from apps.core.exceptions.base_app_exception import BaseAppException, ValidationAppException
 from apps.core.logger import node_logger as logger
 from apps.core.utils.crypto.aes_crypto import AESCryptor
 from apps.node_mgmt.constants.installer import InstallerConstants
 from apps.node_mgmt.constants.node import NodeConstants
 from apps.node_mgmt.models import SidecarEnv
-from apps.node_mgmt.services.installer_credentials import (
-    INVALID_INSTALLER_CREDENTIALS_MODE_MESSAGE,
-    normalize_installer_credentials_mode,
-)
 from apps.node_mgmt.services.install_token import InstallTokenService
+from apps.node_mgmt.services.installer_credentials import INVALID_INSTALLER_CREDENTIALS_MODE_MESSAGE, normalize_installer_credentials_mode
 from apps.node_mgmt.services.package import PackageService
 from apps.node_mgmt.utils.architecture import normalize_cpu_architecture
 from apps.node_mgmt.utils.token_auth import generate_node_token
@@ -69,7 +68,12 @@ class InstallerSessionService:
     def build_session_config(token: str, cpu_architecture: str = "", token_data: dict | None = None):
         token_data = token_data or InstallTokenService.validate_and_get_token_data(token)
 
+        from apps.node_mgmt.services.environment_install import EnvironmentInstallService
+
+        environment_install = EnvironmentInstallService.validate_session(token_data)
         resolved_arch = normalize_cpu_architecture(cpu_architecture or token_data.get("cpu_architecture", ""))
+        if environment_install and resolved_arch != "x86_64":
+            raise ValidationAppException("environment installation architecture is fixed")
 
         package_obj = PackageService.resolve_package_by_architecture(
             token_data["package_id"],
@@ -77,6 +81,8 @@ class InstallerSessionService:
         )
         if not package_obj:
             raise BaseAppException("Package not found")
+        if environment_install and package_obj.pk != token_data["package_id"]:
+            raise ValidationAppException("environment installation package is fixed")
 
         envs = InstallerSessionService._get_cloud_region_env(token_data["cloud_region_id"])
         server_url = envs.get(NodeConstants.SERVER_URL_KEY)
@@ -98,20 +104,12 @@ class InstallerSessionService:
             )
         except ValueError:
             raise BaseAppException(INVALID_INSTALLER_CREDENTIALS_MODE_MESSAGE)
-        is_windows_remote = (
-            token_data["os"] == NodeConstants.WINDOWS_OS
-            and token_data.get("install_mode") == "auto"
-        )
+        is_windows_remote = token_data["os"] == NodeConstants.WINDOWS_OS and token_data.get("install_mode") == "auto"
 
         if not has_installer_username or not has_installer_password:
-            if (
-                is_windows_remote
-                or installer_credentials_mode == NodeConstants.NATS_INSTALLER_CREDENTIALS_MODE_STRICT
-            ):
+            if is_windows_remote or environment_install or installer_credentials_mode == NodeConstants.NATS_INSTALLER_CREDENTIALS_MODE_STRICT:
                 install_context = "Windows remote installation" if is_windows_remote else "Installer session in strict mode"
-                raise ValidationAppException(
-                    f"{install_context} requires dedicated NATS_INSTALLER_USERNAME/PASSWORD credentials"
-                )
+                raise ValidationAppException(f"{install_context} requires dedicated NATS_INSTALLER_USERNAME/PASSWORD credentials")
             # Fallback to admin credentials (legacy deployments)
             logger.warning(
                 "NATS_INSTALLER_USERNAME/PASSWORD not configured for cloud region %s, "
@@ -126,17 +124,16 @@ class InstallerSessionService:
         if not nats_servers or not nats_username or not nats_password:
             raise BaseAppException("Missing NATS direct download configuration")
 
-        sidecar_token = generate_node_token(token_data["node_id"], token_data["ip"], token_data["user"])
         groups = ",".join([str(org_id) for org_id in token_data.get("organizations", [])])
 
         nats_tls_ca = envs.get("NATS_TLS_CA") or ""
         nats_protocol = (envs.get("NATS_PROTOCOL") or "nats").strip().lower()
-        if is_windows_remote:
+        if is_windows_remote or environment_install:
             if nats_protocol != "tls":
-                raise BaseAppException("Windows remote installation requires NATS_PROTOCOL=tls")
+                raise BaseAppException("Secure installation requires NATS_PROTOCOL=tls")
             configured_servers = [item.strip() for item in nats_servers.split(",") if item.strip()]
             if any("://" in item and not item.lower().startswith("tls://") for item in configured_servers):
-                raise BaseAppException("Windows remote installation requires TLS NATS server URLs")
+                raise BaseAppException("Secure installation requires TLS NATS server URLs")
 
         install_dir = (
             InstallerConstants.WINDOWS_INSTALL_DEFAULT_DIR
@@ -144,6 +141,14 @@ class InstallerSessionService:
             else InstallerConstants.LINUX_INSTALL_DEFAULT_DIR
         )
         package_file_key = PackageService.resolve_existing_file_path(package_obj)
+        if environment_install:
+            # Storage I/O stays outside this transaction. Issuance and grant revocation
+            # use the same row locks, so authorization is checked at issuance time.
+            with transaction.atomic():
+                EnvironmentInstallService.validate_session(token_data)
+                sidecar_token = generate_node_token(token_data["node_id"], token_data["ip"], token_data["user"])
+        else:
+            sidecar_token = generate_node_token(token_data["node_id"], token_data["ip"], token_data["user"])
 
         config = {
             "api_token": sidecar_token,
@@ -167,6 +172,10 @@ class InstallerSessionService:
             },
             "zone_id": str(token_data["cloud_region_id"]),
         }
+        if environment_install:
+            from apps.node_mgmt.models import EnvironmentInstallAttempt
+
+            config["environment_install_id"] = str(EnvironmentInstallAttempt.objects.get(node_id=token_data["node_id"]).id)
         config["package"] = {
             "id": package_obj.id,
             "os": package_obj.os,
@@ -175,6 +184,7 @@ class InstallerSessionService:
             "version": package_obj.version,
             "name": package_obj.name,
             "file_key": package_file_key,
+            "sha256": getattr(package_obj, "sha256", ""),
         }
         config["installer"] = InstallerSessionService.installer_artifact(
             token_data["os"],
