@@ -13,6 +13,7 @@ import { buildSearchParams, runWithConcurrency } from '../../../shared/utils';
 import { MSSQL_TOP_DB_QUERIES } from '../queries';
 import { topDbBars } from '../parse';
 import styles from '../index.module.scss';
+import { mssqlCardFace } from './card-face';
 import { MssqlHint } from './hint';
 import { MSSQL_PRO_NAMES, MSSQL_PRO_PALETTE } from './queries';
 import {
@@ -65,6 +66,7 @@ export default function IoPane({
     pendingMetricNames.has(MSSQL_PRO_NAMES.volumeUsed)
     || pendingMetricNames.has(MSSQL_PRO_NAMES.volumeTotal)
   ) && usage.state === 'empty';
+  const volumeFace = mssqlCardFace(volumePending, usage.state !== 'empty');
   const identity = `${idValues.join('\u0001')}|${instanceIdKeys.join('\u0001')}|${reloadKey}`;
 
   useEffect(() => {
@@ -110,6 +112,7 @@ export default function IoPane({
 
   const selected = MSSQL_TOP_DB_QUERIES.find((item) => item.key === rankKey) || MSSQL_TOP_DB_QUERIES[0];
   const rankItems = bars[selected.key] || [];
+  const rankFace = mssqlCardFace(rankPhase === 'loading', rankItems.length > 0);
   const usedText = usage.used == null ? '' : joinMetric(usage.used, 'bytes');
   const totalText = usage.total == null ? '' : joinMetric(usage.total, 'bytes');
   const note = usedText && totalText ? `已用 ${usedText} / 总量 ${totalText}` : '';
@@ -207,7 +210,7 @@ export default function IoPane({
             id="mssql-volume"
             className={`${classic.panel} ${host.chartPanel} flex h-full min-w-0 flex-col`}
             data-mssql-chart="volume"
-            data-mssql-volume={volumePending ? 'loading' : usage.state}
+            data-mssql-volume={volumeFace === 'loading' ? 'loading' : usage.state}
           >
             <div className={host.chartHead}>
               <div className={host.chartTitle}>
@@ -217,11 +220,11 @@ export default function IoPane({
                 </span>
               </div>
             </div>
-            {volumePending ? (
+            {volumeFace === 'loading' ? (
               <div className="flex flex-1 items-center justify-center">
                 <ProDashLoading />
               </div>
-            ) : usage.state === 'empty' ? (
+            ) : volumeFace === 'empty' ? (
               <div className={`${host.chartEmpty} ${host.emptyShell}`}>
                 <div className="text-[13px] font-semibold text-[var(--color-text-2)]">本窗口暂无数据</div>
               </div>
@@ -255,6 +258,7 @@ export default function IoPane({
             }]}
             metricMap={metricMap}
             pending={pendingMetricNames}
+            loading={volumeFace === 'loading'}
           />
         </div>
       </ProSection>
@@ -284,9 +288,10 @@ export default function IoPane({
                 }))}
               />
             )}
-            items={rankPhase === 'loading' ? [] : rankItems}
-            isEmpty={rankPhase === 'loading' || rankItems.length === 0}
-            emptyDescription={rankPhase === 'loading' ? <ProDashLoading /> : '本窗口暂无数据'}
+            items={rankFace === 'ready' ? rankItems : []}
+            placeholder={rankFace === 'loading' ? <ProDashLoading /> : rankFace === 'empty' ? (
+              <span className="text-[13px] font-semibold text-[var(--color-text-2)]">本窗口暂无数据</span>
+            ) : undefined}
           />
         </div>
       </ProSection>

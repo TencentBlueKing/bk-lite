@@ -29,11 +29,11 @@ export function MssqlSeriesReadout({
 }) {
   if (!items.length) return null;
   return (
-    <ul className="m-0 mt-2 flex list-none flex-wrap gap-x-4 gap-y-1 p-0" data-mssql-series-readout="">
+    <ul className="m-0 mt-2 flex w-full list-none flex-col gap-1 p-0" data-mssql-series-readout="rows">
       {items.map((item) => (
         <li
           key={item.label}
-          className="inline-flex min-w-0 items-baseline gap-1.5 text-[12px] leading-5 text-[var(--color-text-3)]"
+          className="flex w-full min-w-0 items-baseline gap-2 text-[12px] leading-5 text-[var(--color-text-3)]"
         >
           <span
             aria-hidden
@@ -72,7 +72,8 @@ export function MssqlTrend({
   percent = false,
   counts = false,
   dualAxis = false,
-  data
+  data,
+  loading = false
 }: {
   anchor: string;
   title: string;
@@ -85,12 +86,14 @@ export function MssqlTrend({
   /** 单位相同但量级差得大时也分轴，避免一条线把另一条压扁。 */
   dualAxis?: boolean;
   data?: ChartData[];
+  /** 本卡相关查询仍在进行，且还没有点时只显示加载中。 */
+  loading?: boolean;
 }) {
   const items = series.map((item) => ({ name: item.name, label: item.label }));
   const plotted = data ?? (counts ? mssqlCountMerged(metricMap, items) : mssqlMerged(metricMap, items));
   const mixedUnits = new Set(series.map((item) => item.unit)).size > 1 || dualAxis;
   const multi = series.length > 1;
-  const awaiting = series.some((item) => pending.has(item.name)) && plotted.length === 0;
+  const awaiting = (loading || series.some((item) => pending.has(item.name))) && plotted.length === 0;
   const samples = seriesSampleValues(plotted);
   const countBounds = counts ? mssqlCountAxisBounds(samples) : null;
   const legends = series.map((item) => {

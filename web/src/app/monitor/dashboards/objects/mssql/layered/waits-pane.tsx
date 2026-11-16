@@ -9,6 +9,7 @@ import { HorizontalBarPanel } from '../../../shared/widgets';
 import type { BarItem } from '../../../shared/widgets';
 import { buildSearchParams, topLabelBars } from '../../../shared/utils';
 import styles from '../index.module.scss';
+import { mssqlCardFace } from './card-face';
 import { MssqlHint } from './hint';
 import { MSSQL_PRO_NAMES, MSSQL_PRO_PALETTE, MSSQL_PRO_WAIT_CATEGORY_QUERY } from './queries';
 import type { MssqlMetricMap } from './series';
@@ -40,6 +41,7 @@ export default function WaitsPane({
   const { getInstanceQuery } = useViewApi();
   const [categories, setCategories] = useState<BarItem[]>([]);
   const [phase, setPhase] = useState<'loading' | 'ready'>('loading');
+  const categoryFace = mssqlCardFace(phase === 'loading', categories.length > 0);
   const identity = `${idValues.join('\u0001')}|${instanceIdKeys.join('\u0001')}|${reloadKey}`;
 
   useEffect(() => {
@@ -128,9 +130,10 @@ export default function WaitsPane({
                   />
                 </span>
               )}
-              items={phase === 'loading' ? [] : categories}
-              isEmpty={phase === 'loading' || categories.length === 0}
-              emptyDescription={phase === 'loading' ? <ProDashLoading /> : '本窗口暂无数据'}
+              items={categoryFace === 'ready' ? categories : []}
+              placeholder={categoryFace === 'loading' ? <ProDashLoading /> : categoryFace === 'empty' ? (
+                <span className="text-[13px] font-semibold text-[var(--color-text-2)]">本窗口暂无数据</span>
+              ) : undefined}
             />
           </div>
         </div>
