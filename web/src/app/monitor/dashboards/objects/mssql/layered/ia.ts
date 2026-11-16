@@ -1,12 +1,12 @@
 export type MssqlTab = 'overview' | 'buffer_memory' | 'io_storage' | 'waits' | 'top_sql' | 'replication';
 
-export const MSSQL_TABS: ReadonlyArray<{ key: MssqlTab; label: string; dimmed: boolean }> = [
+export const MSSQL_TABS: ReadonlyArray<{ key: MssqlTab; label: string; dimmed: boolean; badge?: string }> = [
   { key: 'overview', label: '概览', dimmed: false },
   { key: 'buffer_memory', label: '缓冲与内存', dimmed: false },
   { key: 'io_storage', label: 'I/O 与存储', dimmed: false },
   { key: 'waits', label: '等待', dimmed: false },
-  { key: 'top_sql', label: 'Top SQL', dimmed: true },
-  { key: 'replication', label: '复制', dimmed: true }
+  { key: 'top_sql', label: 'Top SQL', dimmed: true, badge: '暂无排行' },
+  { key: 'replication', label: '复制', dimmed: true, badge: '采集未开启' }
 ];
 
 const TAB_KEYS = new Set<string>(MSSQL_TABS.map((tab) => tab.key));

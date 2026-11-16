@@ -100,7 +100,7 @@ export function MssqlTrend({
       color: item.color,
       dashed: item.dashed,
       unit: mixedUnits ? item.unit : undefined,
-      reading: latest == null ? undefined : joinMetric(latest, item.unit)
+      reading: multi && latest != null ? joinMetric(latest, item.unit) : undefined
     };
   });
   return (
@@ -114,7 +114,6 @@ export function MssqlTrend({
         pinAxisZero={!percent}
         independentAxes={mixedUnits}
         keepLegend={multi}
-        hideLegend={multi}
         markZeroCount={Boolean(counts && countBounds)}
         keepSeriesColor={Boolean(counts && countBounds)}
         loading={awaiting}
@@ -122,7 +121,6 @@ export function MssqlTrend({
         data={plotted}
         legends={legends}
       />
-      {multi && plotted.length > 0 ? <MssqlSeriesReadout items={legends} /> : null}
     </div>
   );
 }

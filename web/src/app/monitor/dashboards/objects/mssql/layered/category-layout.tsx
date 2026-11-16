@@ -173,7 +173,9 @@ export default function MssqlCategoryLayout({
                   data-mssql-tab-mode={item.dimmed ? 'empty' : 'ready'}
                 >
                   {item.label}
-                  {item.dimmed ? <span className={tabBadgeClass}>未采集</span> : null}
+                  {item.badge ? (
+                    <span className={tabBadgeClass} data-mssql-badge={item.key}>{item.badge}</span>
+                  ) : null}
                 </span>
               )
             }))}

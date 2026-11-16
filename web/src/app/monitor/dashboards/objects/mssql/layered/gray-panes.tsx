@@ -12,13 +12,13 @@ export function TopSqlPane() {
           <MssqlHint
             kind="mssql-top-sql"
             title="Top SQL"
-            body="就绪后可在此查看耗时靠前的语句。"
+            body="按语句查看一段时间内耗时靠前的查询。当前还没有这类历史排行，不是这台实例缺少数据。"
           />
         )}
       >
         <GrayTabEmptyState
-          title="语句明细采集未就绪"
-          hint="就绪后可在此查看耗时靠前的语句。本盘暂不展示估算或示例语句。"
+          title="当前还没有按语句耗时的历史排行，不是这台实例缺少数据。"
+          hint="本签暂不展示估算或示例语句。"
         />
       </ProSection>
     </div>
@@ -34,14 +34,11 @@ export function ReplicationPane() {
           <MssqlHint
             kind="mssql-replication"
             title="复制"
-            body="开启后可在此查看副本延迟与队列。"
+            body="实例启用 Always On 并开启采集后，可在此查看副本延迟与队列。未启用 Always On 的实例，开启采集也不会有副本数据。"
           />
         )}
       >
-        <GrayTabEmptyState
-          title="副本状态采集未开启"
-          hint="开启后可在此查看副本延迟与队列。本盘暂不展示估算值。"
-        />
+        <GrayTabEmptyState title="副本状态采集未开启。" />
       </ProSection>
     </div>
   );
