@@ -57,6 +57,17 @@ def test_active_alert_count_question_sends_no_content_keywords():
     assert "活动" not in disk_terms
 
 
+def test_status_and_time_are_not_content_keywords():
+    assert build_search_terms("查询活动告警") == []
+    assert resolve_search_terms("查询活动告警", "活动") == []
+    assert resolve_search_terms("我查询活动告警", "查询活动") == []
+    assert resolve_search_terms("查一下活动告警", "活动") == []
+    assert build_search_terms("查询最近一小时的活动告警") == []
+    log_terms = build_search_terms("查询最近24小时的error日志")
+    assert log_terms == ["error"]
+    assert "磁盘" in build_search_terms("查询最近一小时的磁盘告警")
+
+
 def test_error_log_question_keeps_ascii_keyword():
     terms = build_search_terms("查询最近24小时的error日志")
     assert "error" in terms

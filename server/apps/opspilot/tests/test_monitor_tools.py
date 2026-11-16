@@ -1018,6 +1018,44 @@ def test_monitor_list_object_metrics_single_hit_queries_directly(mocker):
     assert "不要 request_user_choice" in result["_next_step_hint"]
 
 
+def test_monitor_list_object_metrics_ignores_status_and_time_keyword(mocker):
+    from apps.opspilot.metis.llm.tools.monitor import utils
+    from apps.opspilot.metis.llm.tools.monitor.metrics import monitor_list_object_metrics
+
+    rpc = mocker.Mock()
+    rpc.monitor_metrics.return_value = {
+        "result": True,
+        "data": [
+            {"name": "cpu_usage_total", "display_name": "CPU Usage", "unit": "percent"},
+            {"name": "mem_used_percent", "display_name": "Memory Usage", "unit": "percent"},
+        ],
+    }
+    mocker.patch.object(utils, "MonitorOperationAnaRpc", return_value=rpc)
+
+    result = monitor_list_object_metrics.invoke(
+        {"monitor_obj_id": "12", "keyword": "最近一小时"},
+        config=_runtime_config(user_message="查询最近一小时的活动告警"),
+    )
+
+    assert [item["name"] for item in result["data"]] == ["cpu_usage_total", "mem_used_percent"]
+
+
+def test_monitor_list_object_instances_ignores_status_keyword(mocker):
+    from apps.opspilot.metis.llm.tools.monitor import utils
+    from apps.opspilot.metis.llm.tools.monitor.objects import monitor_list_object_instances
+
+    rpc = mocker.Mock()
+    rpc.monitor_object_instances.return_value = {"result": True, "data": _instance_rpc_rows()}
+    mocker.patch.object(utils, "MonitorOperationAnaRpc", return_value=rpc)
+
+    result = monitor_list_object_instances.invoke(
+        {"monitor_obj_id": "host", "keyword": "活动"},
+        config=_runtime_config(user_message="查询活动告警"),
+    )
+
+    assert [item["name"] for item in result["data"]] == ["web-01", "local", "db-01"]
+
+
 def test_monitor_list_object_metrics_empty_keyword_keeps_catalog_hint(mocker):
     from apps.opspilot.metis.llm.tools.monitor import utils
     from apps.opspilot.metis.llm.tools.monitor.metrics import monitor_list_object_metrics
