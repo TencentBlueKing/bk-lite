@@ -60,7 +60,8 @@ class TimeSeriesPredictTrainJobSerializer(AuthSerializer):
             "config_url": {
                 "write_only": True,  # 前端不需要看到 MinIO 路径
                 "required": False,
-            }
+            },
+            "is_builtin": {"read_only": True},
         }
 
     def validate(self, attrs):
@@ -218,6 +219,7 @@ class TimeSeriesPredictServingSerializer(ServingPortValidationMixin, AuthSeriali
         extra_kwargs = {
             # 运行时状态和内部 generation 只能由持有运行时锁的服务端流程写入。
             "container_info": {"read_only": True},
+            "is_builtin": {"read_only": True},
         }
 
     def validate_train_job(self, value):
@@ -227,6 +229,8 @@ class TimeSeriesPredictServingSerializer(ServingPortValidationMixin, AuthSeriali
 
     def validate(self, attrs):
         attrs = super().validate(attrs)
+        if getattr(self.instance, "is_builtin", False):
+            return attrs
 
         train_job = attrs.get("train_job", getattr(self.instance, "train_job", None))
         team = attrs.get("team", getattr(self.instance, "team", None))

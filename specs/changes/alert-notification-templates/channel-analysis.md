@@ -67,7 +67,7 @@
 channel_template 路由，当前 Channel 模型也没有对应的业务模板模型；不能凭残留名称判断
 “系统管理已有一套可以直接复用的通知模板管理”。企业扩展如以后引入同名路由需另行核对。
 
-IM 通知是另一套 `IMNotificationChannel`、账号映射和 provider Adapter 能力。
+IM 通知是另一套 `IMNotificationChannel`、账号关联和 provider Adapter 能力。账号关联的规则见 `specs/capabilities/im-account-association.md`。
 当前上述告警中心 `Notify` 链路不经它，不能把它与 Channel 的企业微信机器人混在一起接入。
 
 ## 4. 各 Adapter 对内容的处理
