@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo } from 'react';
 import { useWidgetDataLink } from '@/app/ops-analysis/components/interactionTitleIcon';
-import DataLinkHintTooltip from '@/app/ops-analysis/components/dataLinkHintTooltip';
 import { topNLinkPoints } from '@/app/ops-analysis/utils/interactionPoints';
 import { Spin } from 'antd';
 import WidgetState from '@/app/ops-analysis/components/widget-state';
@@ -124,7 +123,7 @@ const TopN: React.FC<TopNProps> = ({
   const items = buildTopNItems(rawData, labelField, valueField, {
     scalarFields: config?.topNScalarFields,
   });
-  const { active: dataLinkActive, openPoint, hoverHint } = useWidgetDataLink(config);
+  const { active: dataLinkActive, openPoint } = useWidgetDataLink(config);
   const points = useMemo(
     () => topNLinkPoints(items, valueField),
     [items, valueField],
@@ -218,7 +217,6 @@ const TopN: React.FC<TopNProps> = ({
 
               return (
                 <React.Fragment key={`${item.name}-${index}`}>
-                  <DataLinkHintTooltip hint={hoverHint && <>{item.name}<br />{hoverHint}</>}>
                   <span
                     className={`flex h-7 min-w-0 items-center truncate whitespace-nowrap rounded-l-md text-[13px] ${dataLinkActive ? 'cursor-pointer' : ''}`}
                     onClick={dataLinkActive ? () => openPoint(points[index]) : undefined}
@@ -232,12 +230,10 @@ const TopN: React.FC<TopNProps> = ({
                       paddingLeft: cellPadding,
                       paddingRight: cellPadding,
                     }}
-                    title={hoverHint ? undefined : item.name}
+                    title={item.name}
                   >
                     {item.name}
                   </span>
-                  </DataLinkHintTooltip>
-                  <DataLinkHintTooltip hint={hoverHint}>
                   <div
                     className={`flex min-w-0 items-center ${dataLinkActive ? 'cursor-pointer' : ''}`}
                     style={{
@@ -270,8 +266,6 @@ const TopN: React.FC<TopNProps> = ({
                       />
                     </div>
                   </div>
-                  </DataLinkHintTooltip>
-                  <DataLinkHintTooltip hint={hoverHint}>
                   <span
                     className={`flex items-center justify-end whitespace-nowrap text-right text-[13px] font-semibold tabular-nums ${dataLinkActive ? 'cursor-pointer' : ''}`}
                     onClick={dataLinkActive ? () => openPoint(points[index]) : undefined}
@@ -287,7 +281,6 @@ const TopN: React.FC<TopNProps> = ({
                   >
                     {formatVisibleChartValue(item.value, config)}
                   </span>
-                  </DataLinkHintTooltip>
                 </React.Fragment>
               );
             })}
