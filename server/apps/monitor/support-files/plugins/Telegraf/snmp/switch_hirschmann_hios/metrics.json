@@ -5,6 +5,8 @@
   "plugin_desc": "SNMP monitoring template for Hirschmann HiOS switch (HM2-DIAGNOSTIC-MIB / HM2-DEVMGMT-MIB / HM2-PWRMGMT-MIB, enterprise PEN 248). It reports uptime, CPU utilization, RAM used/free/total and utilization, device temperature, power supply state, and interface traffic. Applies to HiOS devices whose sysObjectID starts with 1.3.6.1.4.1.248.11; Classic 1.3.6.1.4.1.248.14 devices use switch_hirschmann. CPU and memory are empty if hm2DiagEnableMeasurement is disabled on the device.",
   "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_hirschmann_hios'}) by (instance_id)",
+  "instance_fact_bindings": [{"fact":"asset.ip","value_type":"ip","resolver":"input","options":{"field":"ip"}}],
+  "instance_summary_columns": [{"fact":"asset.ip","title":"monitor.views.assetIp","order":10}],
   "name": "Switch",
   "icon": "mm-switch_交换机",
   "type": "Network Device",

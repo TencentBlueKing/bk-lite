@@ -5,6 +5,8 @@
   "plugin_desc": "SNMP monitoring template for Extreme Networks VDX / SLX data-center switches (ex-Brocade, enterprise PEN 1588, BROCADE-MODULE-CPU-UTIL-MIB / BROCADE-MODULE-MEM-UTIL-MIB). Besides standard IF-MIB interface traffic and uptime, it reports per-module (slot) CPU utilization (5-minute average) and memory utilization, total and available memory.",
   "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_extreme_vdx'}) by (instance_id)",
+  "instance_fact_bindings": [{"fact":"asset.ip","value_type":"ip","resolver":"input","options":{"field":"ip"}}],
+  "instance_summary_columns": [{"fact":"asset.ip","title":"monitor.views.assetIp","order":10}],
   "name": "Switch",
   "icon": "mm-switch_交换机",
   "type": "Network Device",

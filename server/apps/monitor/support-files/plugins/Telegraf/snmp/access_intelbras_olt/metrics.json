@@ -5,6 +5,8 @@
   "plugin_desc": "Intelbras G16/G08 OLT SNMP collection under enterprise PEN 13464 (G16/G08 chassis tree 1.14). Beyond the shared Access SNMP floor for MIB-II uptime and IF-MIB 64-bit HC interface traffic, it collects chassis-health scalars for CPU utilization, memory utilization, Switch chipset temperature and GPON chipset temperature. ONU, SFP and other large private tables are not collected in this child template.",
   "support_collect_detect": true,
   "status_query": "any({instance_type='access', collect_type='snmp_intelbras_olt'}) by (instance_id)",
+  "instance_fact_bindings": [{"fact":"asset.ip","value_type":"ip","resolver":"input","options":{"field":"ip"}}],
+  "instance_summary_columns": [{"fact":"asset.ip","title":"monitor.views.assetIp","order":10}],
   "name": "Access",
   "icon": "mm-access_接入设备",
   "type": "Network Device",

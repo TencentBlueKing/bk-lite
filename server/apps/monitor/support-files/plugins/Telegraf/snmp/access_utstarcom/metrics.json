@@ -5,6 +5,8 @@
   "plugin_desc": "UTStarcom BBS4000/EPON4000 access-device SNMP collection under enterprise PEN 1949. Beyond the shared Access SNMP floor for MIB-II uptime and IF-MIB 64-bit HC interface traffic, it walks the private board performance table for per-board CPU utilization, memory utilization and board temperature. CPU and memory are Integer32 values 0-1000 and are converted to percent on the query side by dividing by 10. Board type is collected as a dimension. PON, ONU, optical transceiver, fan and power-supply tables are not promoted to shared device-health metrics. Supported brands/models - UTStarcom BBS4000 and EPON4000 access devices that expose the private board performance table and standard IF-MIB.",
   "support_collect_detect": true,
   "status_query": "any({instance_type='access', collect_type='snmp_utstarcom'}) by (instance_id)",
+  "instance_fact_bindings": [{"fact":"asset.ip","value_type":"ip","resolver":"input","options":{"field":"ip"}}],
+  "instance_summary_columns": [{"fact":"asset.ip","title":"monitor.views.assetIp","order":10}],
   "name": "Access",
   "icon": "mm-access_接入设备",
   "type": "Network Device",

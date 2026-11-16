@@ -5,6 +5,8 @@
   "plugin_desc": "SNMP monitoring template for Cyan / Ciena Z-Series BOSS optical transport modules. It reports intake, exhaust and PSU temperatures in Celsius, module current, dual power-feed state and feed voltage, plus uptime and interface traffic (enterprise PEN 28533). Temperature, current and voltage are scaled from milli-units in the collector.",
   "support_collect_detect": true,
   "status_query": "any({instance_type='transmission', collect_type='snmp_cyan'}) by (instance_id)",
+  "instance_fact_bindings": [{"fact":"asset.ip","value_type":"ip","resolver":"input","options":{"field":"ip"}}],
+  "instance_summary_columns": [{"fact":"asset.ip","title":"monitor.views.assetIp","order":10}],
   "name": "Transmission",
   "icon": "mm-transmission_传输设备",
   "type": "Network Device",
