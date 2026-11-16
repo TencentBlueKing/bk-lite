@@ -5,12 +5,10 @@ from dataclasses import dataclass
 from typing import Any
 
 from apps.log.services.log_extractor.grok import GrokPatternError, expand_grok
-from apps.log.services.log_extractor.preview_runtime import (
-    RuleExecutionBusyError,
-    RuleExecutionLimitError,
-    RuleExecutionTimeoutError,
-    execute_regex_preview,
-)
+from apps.log.services.log_extractor.preview_runtime import RuleExecutionBusyError  # noqa: F401  视图从本模块再导出
+from apps.log.services.log_extractor.preview_runtime import RuleExecutionLimitError  # noqa: F401
+from apps.log.services.log_extractor.preview_runtime import RuleExecutionTimeoutError  # noqa: F401
+from apps.log.services.log_extractor.preview_runtime import execute_regex_preview
 
 PROTECTED_FIELDS = {
     "instance_id",
@@ -203,7 +201,7 @@ def _validate_grok_pattern(pattern: Any) -> None:
     _ensure_vector_regex_compatible(expanded)
 
 
-def normalize_rule(data: dict[str, Any]) -> NormalizedRule:
+def normalize_rule(data: dict[str, Any]) -> NormalizedRule:  # noqa: C901
     if not isinstance(data, dict):
         raise RuleValidationError("规则必须是对象")
     extractor_type = data.get("extractor_type")
@@ -451,7 +449,7 @@ def _execute_action(event: dict[str, Any], rule: NormalizedRule, source: Any) ->
     elif kind == "grok":
         expanded, mapping = expand_grok(config["pattern"])
         match = re.search(expanded, source)
-        if not match:
+        if not match or match.start() == match.end():
             raise ValueError("regex_no_match")
         groups = match.groupdict()
         outputs = {key: groups[key] for key in mapping if groups.get(key) is not None}

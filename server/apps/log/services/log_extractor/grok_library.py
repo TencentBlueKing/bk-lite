@@ -7,21 +7,21 @@ from apps.log.utils.locale_text import log_text
 _MONTH = "January|February|March|April|May|June|July|August|September|October|November|December|" "Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Oct|Nov|Dec"
 _DAY = "Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday|Mon|Tue|Wed|Thu|Fri|Sat|Sun"
 _LOGLEVEL = (
-    "EMERGENCY|ALERT|CRITICAL|WARNING|ERROR|NOTICE|INFO|DEBUG|TRACE|FATAL|SEVERE|WARN|CRIT|ERR|"
-    "Emergency|Alert|Critical|Warning|Error|Notice|Info|Debug|Trace|Fatal|Severe|Warn|Crit|Err|"
-    "emergency|alert|critical|warning|error|notice|info|debug|trace|fatal|severe|warn|crit|err"
+    r"\b(?:EMERGENCY|ALERT|CRITICAL|WARNING|ERROR|NOTICE|INFO|INF|DEBUG|DBG|TRACE|TRC|FATAL|SEVERE|WARN|WRN|CRIT|ERR|"
+    r"Emergency|Alert|Critical|Warning|Error|Notice|Info|Inf|Debug|Dbg|Trace|Trc|Fatal|Severe|Warn|Wrn|Crit|Err|"
+    r"emergency|alert|critical|warning|error|notice|info|inf|debug|dbg|trace|trc|fatal|severe|warn|wrn|crit|err)\b"
 )
 _IPV4 = r"\b(?:(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.){3}" r"(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\b"
 _IPV6 = (
     r"(?:(?:[0-9A-Fa-f]{1,4}:){7}[0-9A-Fa-f]{1,4}"
-    r"|(?:[0-9A-Fa-f]{1,4}:){1,7}:"
-    r"|(?:[0-9A-Fa-f]{1,4}:){1,6}:[0-9A-Fa-f]{1,4}"
-    r"|(?:[0-9A-Fa-f]{1,4}:){1,5}(?::[0-9A-Fa-f]{1,4}){1,2}"
-    r"|(?:[0-9A-Fa-f]{1,4}:){1,4}(?::[0-9A-Fa-f]{1,4}){1,3}"
-    r"|(?:[0-9A-Fa-f]{1,4}:){1,3}(?::[0-9A-Fa-f]{1,4}){1,4}"
     r"|(?:[0-9A-Fa-f]{1,4}:){1,2}(?::[0-9A-Fa-f]{1,4}){1,5}"
+    r"|(?:[0-9A-Fa-f]{1,4}:){1,3}(?::[0-9A-Fa-f]{1,4}){1,4}"
+    r"|(?:[0-9A-Fa-f]{1,4}:){1,4}(?::[0-9A-Fa-f]{1,4}){1,3}"
+    r"|(?:[0-9A-Fa-f]{1,4}:){1,5}(?::[0-9A-Fa-f]{1,4}){1,2}"
+    r"|(?:[0-9A-Fa-f]{1,4}:){1,6}:[0-9A-Fa-f]{1,4}"
     r"|[0-9A-Fa-f]{1,4}:(?:(?::[0-9A-Fa-f]{1,4}){1,6})"
-    r"|:(?:(?::[0-9A-Fa-f]{1,4}){1,7}|:))"
+    r"|:(?:(?::[0-9A-Fa-f]{1,4}){1,7}|:)"
+    r"|(?:[0-9A-Fa-f]{1,4}:){1,7}:)"
 )
 _HOSTNAME = r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*"
 _COMMON_EXAMPLE = '127.0.0.1 - frank [10/Oct/2000:13:55:36 -0700] "GET /apache_pb.gif HTTP/1.0" 200 2326'
@@ -115,8 +115,8 @@ GROK_PATTERNS: tuple[GrokPattern, ...] = (
     GrokPattern(
         "TIMESTAMP_ISO8601",
         "datetime",
-        r"%{YEAR}-%{MONTHNUM}-%{MONTHDAY}[T ]%{HOUR}:%{MINUTE}(?::%{SECOND})?(?:Z|[+-]%{HOUR}:?%{MINUTE})?",
-        "2026-11-16T15:04:05+08:00",
+        r"%{YEAR}-%{MONTHNUM}-%{MONTHDAY}[T ]%{HOUR}:%{MINUTE}(?::%{SECOND}(?:\.[0-9]{1,9})?)?(?:Z|[+-]%{HOUR}:?%{MINUTE})?",
+        "2026-11-16T15:04:05.123+08:00",
     ),
     GrokPattern("HTTPDATE", "datetime", r"%{MONTHDAY}/%{MONTH}/%{YEAR}:%{TIME} %{INT}", "10/Oct/2000:13:55:36 -0700"),
     GrokPattern("SYSLOGTIMESTAMP", "datetime", r"%{MONTH} +%{MONTHDAY} %{TIME}", "Nov 16 15:04:05"),

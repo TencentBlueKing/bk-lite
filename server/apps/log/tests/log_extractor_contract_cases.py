@@ -293,4 +293,162 @@ CONTRACT_CASES = [
         "expected": {"message": "login", "event": {"action": "login", "copied": "login"}},
         "statuses": ["success", "success"],
     },
+    {
+        "name": "grok_unanchored_compressed_ipv6",
+        "draft": {
+            "extractor_type": "grok",
+            "source_field": "message",
+            "condition": {},
+            "config": {"pattern": "%{IPV6:client.ip}"},
+            "delete_source": False,
+        },
+        "event": {"message": "connect 2001:db8::1 port"},
+        "expected": {"message": "connect 2001:db8::1 port", "client": {"ip": "2001:db8::1"}},
+        "status": "success",
+    },
+    {
+        "name": "grok_nats_ipv4_endpoint_unchanged",
+        "draft": {
+            "extractor_type": "grok",
+            "source_field": "message",
+            "condition": {},
+            "config": {
+                "pattern": (
+                    r"\[%{NOTSPACE:container.name}\] \[%{INT:process.pid}\] "
+                    r"\[%{WORD:log.level}\] %{IP:client.ip}:%{INT:client.port} "
+                    r"- cid:%{INT:nats.cid} - %{GREEDYDATA:detail}"
+                )
+            },
+            "delete_source": False,
+        },
+        "event": {"message": "[compose-nats-1] [1] [ERR] 10.10.90.117:33290 - cid:6376277 - TLS handshake error: EOF"},
+        "expected": {
+            "message": "[compose-nats-1] [1] [ERR] 10.10.90.117:33290 - cid:6376277 - TLS handshake error: EOF",
+            "container": {"name": "compose-nats-1"},
+            "process": {"pid": "1"},
+            "log": {"level": "ERR"},
+            "client": {"ip": "10.10.90.117", "port": "33290"},
+            "nats": {"cid": "6376277"},
+            "detail": "TLS handshake error: EOF",
+        },
+        "status": "success",
+    },
+    {
+        "name": "grok_iso8601_fractional_seconds",
+        "draft": {
+            "extractor_type": "grok",
+            "source_field": "message",
+            "condition": {},
+            "config": {"pattern": "%{TIMESTAMP_ISO8601:event.created}"},
+            "delete_source": False,
+        },
+        "event": {"message": "at 2026-11-16T15:04:05.123+08:00 done"},
+        "expected": {
+            "message": "at 2026-11-16T15:04:05.123+08:00 done",
+            "event": {"created": "2026-11-16T15:04:05.123+08:00"},
+        },
+        "status": "success",
+    },
+    {
+        "name": "grok_iso8601_without_fraction_stays_complete",
+        "draft": {
+            "extractor_type": "grok",
+            "source_field": "message",
+            "condition": {},
+            "config": {"pattern": "%{TIMESTAMP_ISO8601:event.created}"},
+            "delete_source": False,
+        },
+        "event": {"message": "at 2026-11-16T15:04:05Z done"},
+        "expected": {"message": "at 2026-11-16T15:04:05Z done", "event": {"created": "2026-11-16T15:04:05Z"}},
+        "status": "success",
+    },
+    {
+        "name": "grok_loglevel_does_not_match_inside_a_word",
+        "draft": {
+            "extractor_type": "grok",
+            "source_field": "message",
+            "condition": {},
+            "config": {"pattern": "%{LOGLEVEL:log.level}"},
+            "delete_source": False,
+        },
+        "event": {"message": "informational"},
+        "expected": {"message": "informational"},
+        "status": "failed",
+    },
+    {
+        "name": "grok_loglevel_matches_nats_abbreviation",
+        "draft": {
+            "extractor_type": "grok",
+            "source_field": "message",
+            "condition": {},
+            "config": {"pattern": r"\[%{LOGLEVEL:log.level}\]"},
+            "delete_source": False,
+        },
+        "event": {"message": "ready [INF] now"},
+        "expected": {"message": "ready [INF] now", "log": {"level": "INF"}},
+        "status": "success",
+    },
+    {
+        "name": "grok_data_alone_is_no_match",
+        "draft": {
+            "extractor_type": "grok",
+            "source_field": "message",
+            "condition": {},
+            "config": {"pattern": "%{DATA:text}"},
+            "delete_source": False,
+        },
+        "event": {"message": "sample text"},
+        "expected": {"message": "sample text"},
+        "status": "failed",
+    },
+    {
+        "name": "grok_quoted_empty_data_writes_empty_string",
+        "draft": {
+            "extractor_type": "grok",
+            "source_field": "message",
+            "condition": {},
+            "config": {"pattern": '"%{DATA:text}"'},
+            "delete_source": False,
+        },
+        "event": {"message": 'say "" now'},
+        "expected": {"message": 'say "" now', "text": ""},
+        "status": "success",
+    },
+    {
+        "name": "grok_nginx_dash_body_bytes_are_omitted",
+        "draft": {
+            "extractor_type": "grok",
+            "source_field": "message",
+            "condition": {},
+            "config": {"pattern": "%{COMBINEDAPACHELOG}"},
+            "delete_source": False,
+        },
+        "event": {
+            "message": (
+                "127.0.0.1 - frank [10/Oct/2000:13:55:36 -0700] "
+                '"GET /apache_pb.gif HTTP/1.0" 200 - '
+                '"http://www.example.com/start.html" '
+                '"Mozilla/4.08 [en] (Win98; I ;Nav)"'
+            )
+        },
+        "expected": {
+            "message": (
+                "127.0.0.1 - frank [10/Oct/2000:13:55:36 -0700] "
+                '"GET /apache_pb.gif HTTP/1.0" 200 - '
+                '"http://www.example.com/start.html" '
+                '"Mozilla/4.08 [en] (Win98; I ;Nav)"'
+            ),
+            "source": {"address": "127.0.0.1"},
+            "user": {"name": "frank"},
+            "log_time": "10/Oct/2000:13:55:36 -0700",
+            "http": {
+                "request": {"method": "GET", "referrer": "http://www.example.com/start.html"},
+                "version": "1.0",
+                "response": {"status_code": "200"},
+            },
+            "url": {"original": "/apache_pb.gif"},
+            "user_agent": {"original": "Mozilla/4.08 [en] (Win98; I ;Nav)"},
+        },
+        "status": "success",
+    },
 ]

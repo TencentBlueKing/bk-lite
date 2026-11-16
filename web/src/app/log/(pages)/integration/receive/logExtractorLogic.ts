@@ -411,6 +411,39 @@ export const serializeGrokExtractorFields = (
   target_field: null
 });
 
+const GROK_LIST_PATTERN_LIMIT = 80;
+
+export const extractorRuleTargetSummary = (
+  rule: {
+    extractor_type: ExtractorType;
+    target_field?: string | null;
+    config?: Record<string, unknown> | null;
+  },
+  rootOrSourceLabel: string
+): string => {
+  if (rule.extractor_type === 'grok') {
+    const pattern =
+      typeof rule.config?.pattern === 'string' ? rule.config.pattern.trim() : '';
+    if (!pattern) return rootOrSourceLabel;
+    return pattern.length > GROK_LIST_PATTERN_LIMIT
+      ? `${pattern.slice(0, GROK_LIST_PATTERN_LIMIT)}…`
+      : pattern;
+  }
+  const mapping =
+    rule.extractor_type === 'kv'
+      ? rule.config?.field_mapping
+      : rule.extractor_type === 'regex'
+        ? rule.config?.group_mapping
+        : null;
+  if (mapping && typeof mapping === 'object' && !Array.isArray(mapping)) {
+    const targets = Object.values(mapping).filter(
+      (value): value is string => typeof value === 'string'
+    );
+    if (targets.length) return targets.join(', ');
+  }
+  return rule.target_field || rootOrSourceLabel;
+};
+
 export const normalizeGrokPatternCatalog = (
   payload: unknown
 ): GrokPatternCatalogItem[] | null => {

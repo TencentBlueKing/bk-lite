@@ -29,6 +29,7 @@ import {
   resolveExtractorCreateTarget,
   restoreExtractorEventShape,
   serializeExtractorCreateHandoff,
+  extractorRuleTargetSummary,
   serializeGrokExtractorFields,
   shouldShowExtractorHeaderAdd,
   shouldShowExtractorPublicationAlert
@@ -687,6 +688,45 @@ assert.deepEqual(Object.keys(serializedGrok.config), ['pattern']);
 assert.equal(Object.hasOwn(serializedGrok.config, 'group_mapping'), false);
 assert.equal(serializedGrok.target_field, null);
 
+const grokPattern =
+  '%{IP:client.ip} %{WORD:http.request.method} %{URIPATHPARAM:url.path} extra-token-to-force-truncation-0123456789';
+assert.equal(
+  extractorRuleTargetSummary(
+    {
+      extractor_type: 'grok',
+      target_field: null,
+      config: { pattern: `  ${grokPattern}  ` }
+    },
+    '根字段或源字段'
+  ),
+  `${grokPattern.slice(0, 80)}…`
+);
+assert.equal(
+  extractorRuleTargetSummary(
+    { extractor_type: 'grok', target_field: 'parsed.message', config: { pattern: '   ' } },
+    '根字段或源字段'
+  ),
+  '根字段或源字段'
+);
+assert.equal(
+  extractorRuleTargetSummary(
+    {
+      extractor_type: 'regex',
+      target_field: null,
+      config: { group_mapping: { command: 'event.action' } }
+    },
+    '根字段或源字段'
+  ),
+  'event.action'
+);
+assert.equal(
+  extractorRuleTargetSummary(
+    { extractor_type: 'copy', target_field: 'parsed.message', config: {} },
+    '根字段或源字段'
+  ),
+  'parsed.message'
+);
+
 assert.match(
   drawerSource,
   /pattern: typeof config\.pattern === 'string' \? config\.pattern : ''/,
@@ -723,6 +763,18 @@ assert.match(drawerSource, /log\.extractor\.insertGrokPattern/);
 assert.match(drawerSource, /log\.extractor\.grokCategory\.\$\{group\.category\}/);
 assert.match(drawerSource, /getGrokPatterns\(/);
 assert.match(drawerSource, /normalizeGrokPatternCatalog\(/);
+assert.match(drawerSource, /extractorRuleTargetSummary\(/);
+assert.match(drawerSource, /log\.extractor\.samplesEmpty/);
+assert.match(
+  drawerSource,
+  /setSampleIndex\(index\);\s*setPreview\(null\);/,
+  '切换样本必须清掉上一条预览'
+);
+assert.match(
+  drawerSource,
+  /setSampleIndex\(merged\.length \? 0 : null\);\s*setPreview\(null\);/,
+  '重新加载样本必须清掉上一条预览'
+);
 
 const integrationApiSource = readFileSync(
   new URL('../src/app/log/api/integration.ts', import.meta.url),

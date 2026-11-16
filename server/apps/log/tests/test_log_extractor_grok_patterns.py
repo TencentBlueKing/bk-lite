@@ -4,7 +4,13 @@ import pytest
 
 from apps.log.services.log_extractor.grok import expand_grok
 from apps.log.services.log_extractor.grok_library import GROK_CATEGORIES, GROK_PATTERNS, grok_catalog
-from apps.log.services.log_extractor.semantics import PROTECTED_FIELDS, _ensure_vector_regex_compatible, execute_rules, normalize_rule
+from apps.log.services.log_extractor.semantics import (
+    PROTECTED_FIELDS,
+    _ensure_vector_regex_compatible,
+    _execute_rules_inline,
+    execute_rules,
+    normalize_rule,
+)
 
 
 def _draft(pattern):
@@ -81,9 +87,54 @@ def test_grok_pattern_example_matches_itself_and_definition_is_vector_compatible
 
     assert result.results[0].status == "success"
     assert result.event == expected
+    if not pattern.composite:
+        unanchored = f"%{{{pattern.name}:value}}"
+        unanchored_result = _execute_rules_inline({"message": pattern.example}, [normalize_rule(_draft(unanchored))])
+        if pattern.name == "DATA":
+            assert unanchored_result.results[0].status == "failed"
+            assert unanchored_result.results[0].error == "regex_no_match"
+            assert unanchored_result.event == {"message": pattern.example}
+        else:
+            assert unanchored_result.results[0].status == "success"
+            assert unanchored_result.event["value"] == pattern.example
     assert list(mapping.values()) == (list(pattern.outputs) if pattern.composite else ["value"])
     for output in mapping.values():
         root = output.split(".", 1)[0]
         assert root not in PROTECTED_FIELDS
         assert root != "message"
         assert output != "message"
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "address",
+    [
+        "2001:db8::1",
+        "2001:db8::1:2",
+        "fe80::1",
+        "2001:db8:85a3::8a2e:370:7334",
+        "::1",
+        "2001:db8::",
+        "1:2:3:4:5:6:7:8",
+    ],
+)
+def test_unanchored_ipv6_keeps_the_longer_address(address):
+    result = _execute_rules_inline(
+        {"message": f"src {address} done"},
+        [normalize_rule(_draft("%{IPV6:client.ip}"))],
+    )
+
+    assert result.results[0].status == "success"
+    assert result.event["client"]["ip"] == address
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("level", ["INF", "WRN", "DBG", "TRC", "ERR", "ERROR"])
+def test_loglevel_matches_bracketed_abbreviations_and_words(level):
+    result = _execute_rules_inline(
+        {"message": f"ready [{level}] now"},
+        [normalize_rule(_draft(r"\[%{LOGLEVEL:log.level}\]"))],
+    )
+
+    assert result.results[0].status == "success"
+    assert result.event["log"]["level"] == level

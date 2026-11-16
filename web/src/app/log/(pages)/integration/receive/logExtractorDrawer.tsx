@@ -60,6 +60,7 @@ import {
   normalizeExtractorSamples,
   normalizeGrokPatternCatalog,
   reorderExtractorItem,
+  extractorRuleTargetSummary,
   serializeGrokExtractorFields,
   shouldShowExtractorHeaderAdd,
   shouldShowExtractorPublicationAlert,
@@ -415,6 +416,7 @@ const LogExtractorDrawer = ({
     if (!scopeQuery) return;
     setSamplesLoading(true);
     setSamplesError(false);
+    setPreview(null);
     try {
       const data = normalizeExtractorSamples(
         await apiRef.current.getLogExtractorSamples(scopeQuery)
@@ -422,11 +424,13 @@ const LogExtractorDrawer = ({
       const merged = initialSample ? [initialSample, ...data] : data;
       setSamples(merged);
       setSampleIndex(merged.length ? 0 : null);
+      setPreview(null);
     } catch (error) {
       if (initialSample) {
         setSamples([initialSample]);
         setSampleIndex(0);
       }
+      setPreview(null);
       setSamplesError(true);
       throw error;
     } finally {
@@ -489,21 +493,8 @@ const LogExtractorDrawer = ({
     [samples]
   );
 
-  const targetSummary = (rule: LogExtractorRule) => {
-    const mapping =
-      rule.extractor_type === 'kv'
-        ? rule.config.field_mapping
-        : rule.extractor_type === 'regex'
-          ? rule.config.group_mapping
-          : null;
-    if (mapping && typeof mapping === 'object' && !Array.isArray(mapping)) {
-      const targets = Object.values(mapping).filter(
-        (value): value is string => typeof value === 'string'
-      );
-      if (targets.length) return targets.join(', ');
-    }
-    return rule.target_field || t('log.extractor.rootOrSource');
-  };
+  const targetSummary = (rule: LogExtractorRule) =>
+    extractorRuleTargetSummary(rule, t('log.extractor.rootOrSource'));
 
   const openEditor = (rule?: LogExtractorRule) => {
     setEditing(rule || null);
@@ -1274,7 +1265,10 @@ const LogExtractorDrawer = ({
                 value: index,
                 label: JSON.stringify(sample).slice(0, 160)
               }))}
-              onChange={setSampleIndex}
+              onChange={(index) => {
+                setSampleIndex(index);
+                setPreview(null);
+              }}
               disabled={false}
             />
             <Button
@@ -1294,6 +1288,11 @@ const LogExtractorDrawer = ({
               {t('log.extractor.runPreview')}
             </Button>
           </div>
+          {!samplesLoading && !samplesError && samples.length === 0 && (
+            <Typography.Text type="secondary" className="mt-[8px] block">
+              {t('log.extractor.samplesEmpty')}
+            </Typography.Text>
+          )}
           {preview && (
             <ExtractorPreviewResult
               sample={sampleIndex === null ? null : samples[sampleIndex]}

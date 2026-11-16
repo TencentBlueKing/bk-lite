@@ -165,9 +165,9 @@ grok_pattern:
   NOTSPACE:
     description: 不含空白的连续文本
   SPACE:
-    description: 空白
+    description: 空白，整段匹配为空时视为未命中
   DATA:
-    description: 非贪婪匹配任意文本
+    description: 非贪婪匹配任意文本，整段匹配为空时视为未命中
   GREEDYDATA:
     description: 贪婪匹配任意文本
   QUOTEDSTRING:
@@ -243,13 +243,13 @@ grok_pattern:
   DATESTAMP:
     description: 日期和时间
   TIMESTAMP_ISO8601:
-    description: ISO 8601 时间
+    description: 带可选小数秒的 ISO 8601 时间
   HTTPDATE:
     description: HTTP 日期
   SYSLOGTIMESTAMP:
     description: syslog 时间戳
   LOGLEVEL:
-    description: 日志级别
+    description: 按词匹配的日志级别，包含 INF、WRN、DBG、TRC
   PROG:
     description: 程序名
   SYSLOGHOST:

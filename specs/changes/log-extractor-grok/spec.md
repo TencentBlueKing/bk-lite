@@ -72,7 +72,8 @@ Filebeat nginx / apache 模块的字段解析原本依赖 Elasticsearch ingest p
 - 展开器把每个写出引用转为带内部组名的命名捕获组（组名由展开器按出现顺序生成，用户不可见），同时产出「内部组名 → 属性路径」的输出表；未命名引用转为非捕获组。复合模式的内部输出以相同方式进入输出表。
 - 预览执行与 Vector 编译都消费「展开后正则 + 输出表」，行为等同于一条带捕获组映射的正则提取规则：
   - 源字段缺失 → `skipped`；源值不是字符串 → `skipped`。
-  - 没有匹配 → `failed`；匹配但所有输出组都没有参与匹配 → `failed`。
+  - 没有匹配，或整段匹配长度为 0 → `failed`，事件保持原样。单独的 `%{DATA}`、`%{SPACE}` 属于后者。引号内的空捕获仍写出空字符串，因为整段匹配包含引号。长度判断只作用于 grok，不改变 regex 类型。
+  - 匹配但所有输出组都没有参与匹配 → `failed`。
   - 可选分组未参与匹配的字段不写出；其余字段按输出表写入，后写覆盖前写。
   - `delete_source` 只在至少一个字段写出后执行。
 - 预览把 `grok` 纳入现有正则隔离执行路径，复用子进程、超时、并发与事件大小限制。
@@ -117,7 +118,7 @@ Filebeat nginx / apache 模块的字段解析原本依赖 Elasticsearch ingest p
   - 多行 Grok 模式输入框（等宽字体）。
   - 「插入模式」：按分类分组、可搜索的下拉；每项显示模式名、说明与示例；原子模式插入 `%{NAME:}` 并把光标停在冒号后，复合模式插入 `%{NAME}`。
   - 一行示例提示，例如 `%{IP:client} %{WORD:method} %{URIPATHPARAM:url.path}`。
-- 历史样本预览、字段变化对比、四种结果状态与现有提取器完全一致；服务端校验错误沿用现有请求错误提示，编辑弹窗保持打开。
+- 规则列表里 Grok 的「目标属性」显示模式原文，超过 80 个字符截断。历史样本只查该作用域最近 24 小时，不沿用全局搜索的 15 分钟窗口；没有样本、且不在加载、也没有读取错误时，提示最近 24 小时没有可预览的日志。切换样本或重新加载样本时清空上一次预览。字段变化对比与四种结果状态与现有提取器一致；服务端校验错误沿用现有请求错误提示，编辑弹窗保持打开。
 - 模式目录只在首次选择 Grok 时请求一次；失败时禁用「插入模式」并在控件下提示，不阻塞手写与保存。
 - 搜索页「创建提取器」入口不变，仍以当前这条日志为预览样本，不预选类型、不反推模式。
 - 遵守 Web UI 硬约束：复用 Ant Design 的 Input.TextArea / Select；布局用 Tailwind className；颜色使用语义 token。
@@ -159,7 +160,7 @@ Filebeat nginx / apache 模块的字段解析原本依赖 Elasticsearch ingest p
 | Datadog | `%{MATCHER:EXTRACT:FILTER}`、辅助规则、样本匹配状态、Tap to Parse | 样本结果状态；辅助规则与自动生成后置 |
 | Grafana Loki | `pattern` 解析器 `<field>` / `<_>` 占位符，比正则更易写、更快 | 记录为后续可选的更低门槛语法 |
 
-- 实现说明：模式库 50 条全部收录；IPv4 用 `\b` 边界，IPv6 不含 IPv4-mapped 与 zone 形式。新增模式不递增中心 Vector 配置契约版本（仍为 1）。目录说明按 `request.user.locale` 返回，缺省 `zh-Hans`。
+- 实现说明：模式库 50 条全部收录。IPv4 用 `\b` 边界。IPv6 把「以冒号结尾」的压缩形式放在最后，使 `2001:db8::1` 这类地址取到更长的匹配；仍不含方括号地址、IPv4-mapped 与 zone 形式。`TIMESTAMP_ISO8601` 在秒和时区之间接受 1–9 位小数秒。`LOGLEVEL` 按词匹配，并收录 `INF`、`WRN`、`DBG`、`TRC`。这些已发布定义的修正把中心 Vector 配置契约版本升到 2；新增模式本身不需要再递增。升级后运行 `republish_system_vector_config` 生成新快照。目录说明按 `request.user.locale` 返回，缺省 `zh-Hans`。
 - 完成证据（2026-11-16，本机需在 `INSTALL_APPS` 中补 `cmdb`，否则 `monitor` 导入 cmdb 模型导致 Django 启动失败，与本变更无关）：
   - `uv run pytest apps/log/tests/test_log_extractor_semantics_pure.py apps/log/tests/test_log_extractor_compiler_pure.py apps/log/tests/test_log_extractor_grok_patterns.py apps/log/tests/test_log_extractor_views.py apps/log/tests/test_log_extractor_rules_service.py apps/log/tests/test_log_extractor_vector_contract.py -m "not integration" --no-cov`：131 passed。
   - `test_vector_048_validates_and_runs_grok_pattern_library`（Docker，`timberio/vector:0.48.0-debian`）：passed，50 条模式 `vector validate` 与 `vector vrl` 结果和 Python 预览一致。
@@ -168,5 +169,10 @@ Filebeat nginx / apache 模块的字段解析原本依赖 Elasticsearch ingest p
   - `pnpm test:log-extractor-interaction`：passed。本次改动的前端文件 eslint 0 error；全量 `pnpm lint` / `pnpm type-check` 的失败均在未改动文件（`cmdb` selectionActionBar、`opspilot`、日志策略与搜索页的既有测试文件）。
   - 本机验证（Docker 底座 + 本机后端 / 前端 / Celery）：执行 `0032` 迁移；在日志接收页的 Kafka 订阅实例上新建 Grok 提取器，模式目录分组加载，插入原子模式得到 `%{NAME:}`；历史样本预览对匹配日志显示「提取成功」及 7 个新增字段，对不匹配日志显示 `regex_no_match`；写 `message` 时服务端拒绝且弹窗保持打开；保存后经 Celery 发布，从真实配置接口拉到的全局 YAML 只含 `parse_regex`、不含 `parse_grok`；把该 YAML 的输入输出换成 stdin / console 后，用 Vector 0.48 运行，匹配行拆出 ECS 字段，不匹配行和其他实例的日志保持原样。
   - 未覆盖：中心 Vector 常驻消费 NATS 后，再写入 VictoriaLogs 的提取结果。本机 Colima 空闲内存约 200MB，常驻 Vector 回放 Kafka 积压日志时 Docker 无响应，已停掉。
-  - 发现既有问题（与本变更无关）：历史样本预览切换样本时不清空上一次的预览结果，「字段变化」会用旧结果对比新样本。
+  - 发现既有问题（与本变更无关）：历史样本预览切换样本时不清空上一次的预览结果，「字段变化」会用旧结果对比新样本。该问题已在后续修正中处理。
+- 模式修正与契约版本 2（2026-11-16）：
+  - 同一组单测 153 passed（含新增 IPv6、日志级别、样本窗口断言；integration 仍排除）。
+  - `test_vector_048_validates_and_runs_grok_pattern_library` passed。16 条 Grok 契约样例在 Vector 0.48 `validate` 与 `vrl` 上和 Python 预览一致。
+  - 本机重新发布快照为 generation 20、契约版本 2；`bklite-dev-vector` 保持停止。发布内容通过 Vector 0.48 `validate`，不含 `parse_grok`。已保存的 NATS 规则对 `10.10.90.117:33290` 的字段不变，`2001:db8::1:443` 取出完整地址和端口 443，Celery 行不提取。
+  - 页面：`kafka-subscribe-149-ui` 的目标属性显示截断后的模式；24 小时样本可预览。不匹配样本为 `regex_no_match`，匹配样本写出 `client.ip=10.10.90.117` 等字段。切换样本和重新读取样本都会清掉上一次预览。未保存规则。模式目录说明已显示小数秒、词边界和空匹配语义。
 

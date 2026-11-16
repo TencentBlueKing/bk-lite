@@ -130,6 +130,7 @@
       "runPreview": "Run preview",
       "previewResult": "Preview result",
       "samplesError": "Historical samples could not be loaded. Retry without blocking rule editing or saving.",
+      "samplesEmpty": "No logs to preview from the last 24 hours",
       "retry": "Retry publication",
       "retrySubmitted": "Publication retry submitted",
       "globalStatus": "Global configuration publication",

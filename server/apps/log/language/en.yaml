@@ -176,9 +176,9 @@ grok_pattern:
   NOTSPACE:
     description: A run of non-whitespace characters
   SPACE:
-    description: Whitespace
+    description: Whitespace; an empty full match counts as no match
   DATA:
-    description: Any text, non-greedy
+    description: Any text, non-greedy; an empty full match counts as no match
   GREEDYDATA:
     description: Any text, greedy
   QUOTEDSTRING:
@@ -254,13 +254,13 @@ grok_pattern:
   DATESTAMP:
     description: A date and time
   TIMESTAMP_ISO8601:
-    description: An ISO 8601 timestamp
+    description: An ISO 8601 timestamp with optional fractional seconds
   HTTPDATE:
     description: An HTTP date
   SYSLOGTIMESTAMP:
     description: A syslog timestamp
   LOGLEVEL:
-    description: A log level
+    description: A whole-word log level, including INF, WRN, DBG, and TRC
   PROG:
     description: A program name
   SYSLOGHOST:
