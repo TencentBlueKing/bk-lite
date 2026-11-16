@@ -16,7 +16,7 @@ from apps.monitor.constants.monitor_object import MonitorObjConstants
 from apps.monitor.constants.plugin import PluginConstants
 from apps.monitor.models import CollectConfig, Metric, MonitorInstance, MonitorInstanceOrganization, MonitorObject, MonitorPlugin
 from apps.monitor.services.host_container_asset_ip import fill_missing_host_container_asset_ips
-from apps.monitor.services.list_asset_ip import present_list_asset_ips
+from apps.monitor.services.list_asset_ip import backfill_resolved_asset_ips, present_list_asset_ips
 from apps.monitor.services.monitor_object import MonitorObjectService
 from apps.monitor.utils.alert_name_variables import summary_facts_with_model_ip
 from apps.monitor.utils.dimension import parse_instance_id
@@ -141,6 +141,9 @@ class InstanceSearch:
         """收集监控对象实例的去重 asset.ip（摘要事实优先，其次模型 ip 字段）。"""
         if not monitor_obj_name:
             return []
+        monitor_obj = MonitorObject.objects.filter(name=monitor_obj_name).only("id", "name").first()
+        if monitor_obj is not None:
+            backfill_resolved_asset_ips(monitor_obj.id, monitor_obj.name)
         ips = set()
         for ip, facts in MonitorInstance.objects.filter(
             monitor_object__name=monitor_obj_name,
@@ -1075,6 +1078,7 @@ class InstanceSearch:
             is_deleted=False,
             is_active=True,
         )
+        backfill_resolved_asset_ips(self.monitor_obj.id, self.monitor_obj.name)
         qs = InstanceSearch.apply_keyword_search(qs, self.monitor_obj, self.query_data.get("name"))
         qs = self._apply_process_filters(qs)
 
@@ -1090,6 +1094,7 @@ class InstanceSearch:
             is_deleted=False,
             is_active=True,
         )
+        backfill_resolved_asset_ips(self.monitor_obj.id, self.monitor_obj.name)
         qs = InstanceSearch.apply_keyword_search(qs, self.monitor_obj, self.query_data.get("name"))
         qs = self._apply_process_filters(qs)
         from apps.monitor.services.collect_config_update import CollectConfigUpdateService

@@ -16,7 +16,7 @@ from apps.monitor.models.monitor_metrics import Metric
 from apps.monitor.models.monitor_object import MonitorInstance, MonitorInstanceOrganization, MonitorObject, MonitorObjectType
 from apps.monitor.models.plugin import MonitorPlugin
 from apps.monitor.services.host_container_asset_ip import fill_missing_host_container_asset_ips
-from apps.monitor.services.list_asset_ip import present_list_asset_ips
+from apps.monitor.services.list_asset_ip import backfill_resolved_asset_ips, present_list_asset_ips
 from apps.monitor.tasks.grouping_rule import sync_instance_and_group
 from apps.monitor.utils.alert_name_variables import summary_facts_with_model_ip
 from apps.monitor.utils.dimension import parse_instance_id
@@ -255,6 +255,7 @@ class MonitorObjectService:
             qs = qs.filter(id=instance_id)
         from apps.monitor.services.monitor_instance import InstanceSearch
 
+        backfill_resolved_asset_ips(monitor_obj.id, monitor_obj.name)
         qs = InstanceSearch.apply_keyword_search(qs, monitor_obj, name)
         monitor_objs = MonitorObject.objects.all().values(*MonitorObjConstants.OBJ_KEYS)
         obj_metric_map = {i["name"]: i for i in monitor_objs}

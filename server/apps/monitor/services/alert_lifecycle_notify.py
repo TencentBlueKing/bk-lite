@@ -697,7 +697,10 @@ class AlertLifecycleNotifier:
             return {}
 
         from apps.monitor.models.monitor_object import MonitorInstance
+        from apps.monitor.services.list_asset_ip import backfill_resolved_asset_ips_for_instances
 
+        instances = list(MonitorInstance.objects.select_related("monitor_object").filter(id__in=instance_ids))
+        backfill_resolved_asset_ips_for_instances(instances)
         instances = list(MonitorInstance.objects.select_related("monitor_object").filter(id__in=instance_ids))
         display_labels = _display_field_labels(instances)
         return {
