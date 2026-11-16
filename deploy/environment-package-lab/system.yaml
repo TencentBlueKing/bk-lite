@@ -1,0 +1,56 @@
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+
+receivers:
+  nats_jetstream:
+    urls: ["${env:APM_NATS_URL}"]
+    stream: ${env:APM_NATS_STREAM}
+    consumer: ${env:APM_NATS_CONSUMER}
+    filter_subject: apm.traces.>
+    credentials_file: ${env:APM_NATS_CREDENTIALS_FILE}
+    connect_timeout: 5s
+    downstream_timeout: 45s
+    nak_delay: 5s
+    pull_max_messages: ${env:APM_NATS_MAX_ACK_PENDING}
+    tls:
+      ca_file: ${env:APM_NATS_CA_FILE}
+      cert_file: ${env:APM_NATS_CERT_FILE}
+      key_file: ${env:APM_NATS_KEY_FILE}
+      server_name: ${env:APM_NATS_TLS_SERVER_NAME}
+      insecure_skip_verify: false
+
+processors:
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: ${env:APM_COLLECTOR_MEMORY_LIMIT_MIB}
+    spike_limit_mib: ${env:APM_COLLECTOR_MEMORY_SPIKE_MIB}
+
+exporters:
+  otlphttp/victoria_traces:
+    traces_endpoint: ${env:APM_VICTORIATRACES_OTLP_ENDPOINT}
+    timeout: 10s
+    sending_queue:
+      enabled: false
+    retry_on_failure:
+      enabled: true
+      initial_interval: 1s
+      max_interval: 10s
+      max_elapsed_time: 30s
+
+service:
+  extensions: [health_check]
+  telemetry:
+    metrics:
+      level: normal
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
+  pipelines:
+    traces:
+      receivers: [nats_jetstream]
+      processors: [memory_limiter]
+      exporters: [otlphttp/victoria_traces]

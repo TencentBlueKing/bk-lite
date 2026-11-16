@@ -1,0 +1,47 @@
+name: env-business-20261115
+services:
+  logs:
+    image: bk-lite.tencentcloudcr.com/bklite/weopsx/victoriametrics/victoria-logs:v1.49.0
+    container_name: env-business-20261115-logs
+    command: [-storageDataPath=/data, -retentionPeriod=3d]
+    volumes: [logs:/data]
+    mem_limit: 512m
+    cpus: 1
+    networks: [lab]
+  traces:
+    image: bk-lite.tencentcloudcr.com/bklite/weopsx/victoriametrics/victoria-traces:v0.10.0
+    container_name: env-business-20261115-traces
+    command: [-storageDataPath=/data, -retentionPeriod=3d]
+    volumes: [traces:/data]
+    mem_limit: 512m
+    cpus: 1
+    networks: [lab]
+  vector:
+    image: timberio/vector:0.48.0-debian
+    container_name: env-business-20261115-vector
+    command: [--config, /test/business-20261115/vector.yaml]
+    env_file: [/opt/bklite-environment-test-20261113/business-20261115/pipeline.env]
+    volumes:
+      - /opt/bklite-environment-test-20261113/business-20261115:/test/business-20261115:ro
+      - /opt/bklite-environment-test-20261113/business-20261115/ca.crt:/test/certs/ca.crt:ro
+    mem_limit: 384m
+    cpus: 1
+    networks: [lab]
+  apm:
+    image: bk-lite.tencentcloudcr.com/bklite/weopsx/apm-collector:latest
+    container_name: env-business-20261115-apm
+    command: [--config=/test/business-20261115/system.yaml]
+    env_file: [/opt/bklite-environment-test-20261113/business-20261115/pipeline.env]
+    volumes:
+      - /opt/bklite-environment-test-20261113/business-20261115:/test/business-20261115:ro
+      - /opt/bklite-environment-test-20261113/business-20261115/ca.crt:/test/certs/ca.crt:ro
+    mem_limit: 384m
+    cpus: 1
+    networks: [lab]
+networks:
+  lab:
+    external: true
+    name: env-install-net-20261113
+volumes:
+  logs:
+  traces:

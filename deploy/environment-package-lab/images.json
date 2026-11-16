@@ -1,0 +1,6 @@
+{
+  "timberio/vector:0.48.0-debian": "sha256:b32448676520dd4cb83463da7f7ed9dbf91f7e86557e7c5086c821df7f4b69c3",
+  "bk-lite.tencentcloudcr.com/bklite/weopsx/apm-collector:latest": "sha256:2699940c03b3cc4e1bf8ff52a3e6ec066cf9ebf82d002bcb6d6686ab0be56118",
+  "bk-lite.tencentcloudcr.com/bklite/weopsx/victoriametrics/victoria-logs:v1.49.0": "sha256:e938e05993ea1cfbc02c68be364ba902f699079b910e6feb922621dcd6e8c21b",
+  "bk-lite.tencentcloudcr.com/bklite/weopsx/victoriametrics/victoria-traces:v0.10.0": "sha256:4147aa1bb05d395842b82af2cc2c0c8d1fd06c47f16487dd6ce3934da0d7a017"
+}
