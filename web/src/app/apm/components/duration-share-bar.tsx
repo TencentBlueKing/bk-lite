@@ -1,6 +1,7 @@
 'use client';
 
 import { theme } from 'antd';
+import { useTranslation } from '@/utils/i18n';
 import { InfoCircleOutlined } from '@ant-design/icons';
 
 export interface DurationShareSegment {
@@ -18,6 +19,7 @@ export default function DurationShareBar({
   caption?: string;
 }) {
   const { token } = theme.useToken();
+  const { t } = useTranslation();
   const colors = [token.colorSuccess, token.colorWarning, token.colorPrimary, token.colorInfo, token.colorError];
   const total = segments.reduce((sum, segment) => sum + Math.max(0, segment.durationMs), 0);
   if (total <= 0) return null;
@@ -27,7 +29,7 @@ export default function DurationShareBar({
       <div
         className="flex h-5 items-stretch gap-0.5 overflow-hidden rounded-md border border-[var(--color-border)]/40 bg-[var(--color-fill-1)] p-0.5 shadow-2xs"
         role="img"
-        aria-label="耗时构成占比条"
+        aria-label={t('apm.explore.durationShare', '耗时构成占比条')}
       >
         {segments.map((segment, index) => {
           const pct = Math.round((Math.max(0, segment.durationMs) / total) * 100);

@@ -128,7 +128,7 @@ function TraceFlameChart({
                 data-span-id={span.span_id}
                 aria-pressed={selected}
                 aria-label={`${span.service_name} · ${span.name}`}
-                title={`${span.service_name} · ${span.name} · ${formatLatency(span.duration_ms, false, t)}${isError ? ' (错误)' : ''}`}
+                title={`${span.service_name} · ${span.name} · ${formatLatency(span.duration_ms, false, t)}${isError ? ` ${t('apm.explore.errorSuffix', '（错误）')}` : ''}`}
                 onClick={() => onSelect(span.span_id)}
                 className={`group absolute flex items-center overflow-hidden rounded-[4px] border border-white/20 px-1.5 text-left font-mono text-[11px] leading-[22px] text-white shadow-2xs transition-all duration-150 select-none hover:z-20 hover:brightness-110 hover:shadow-sm ${
                   selected
