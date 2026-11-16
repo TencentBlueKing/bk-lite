@@ -36,6 +36,13 @@ _FILLERS = (
     "有什么",
     "哪些",
     "什么",
+    "我要查询",
+    "有多少条",
+    "有多少个",
+    "多少条",
+    "多少个",
+    "几条",
+    "几个",
     "多少",
     "怎么",
     "为什么",
@@ -49,6 +56,8 @@ _FILLERS = (
 # 从中文片段里剥下来单独保留的现象词。拒绝本身太宽，只走同义词表。
 _PEEL_KEEP = ("超时", "报错")
 _PEEL_DROP = ("拒绝", "太慢")
+_COUNT_CUES = ("多少", "几条", "几个", "有哪些", "有什么")
+_STATUS_ONLY = frozenset({"活动", "活跃", "未关闭", "未分派"})
 
 _ASCII_TOKEN = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{1,}")
 _CJK_RUN = re.compile(r"[\u4e00-\u9fff]+")
@@ -124,6 +133,17 @@ def _chinese_terms(text: str) -> list[str]:
     return found
 
 
+def _has_count_cue(text: str) -> bool:
+    return any(cue in text for cue in _COUNT_CUES)
+
+
+def _question_terms(text: str) -> list[str]:
+    chinese = _chinese_terms(text)
+    if _has_count_cue(text):
+        chinese = [term for term in chinese if term not in _STATUS_ONLY]
+    return _dedupe([*chinese, *_ASCII_TOKEN.findall(text), *_synonyms(text)])
+
+
 def _synonyms(text: str) -> list[str]:
     extra: list[str] = []
     if _timeout_mentioned(text):
@@ -160,12 +180,14 @@ def build_search_terms(user_message: str) -> list[str]:
     text = user_question_for_search(user_message)
     if not text:
         return []
-    ascii_terms = _ASCII_TOKEN.findall(text)
-    return _dedupe([*_chinese_terms(text), *ascii_terms, *_synonyms(text)])
+    return _question_terms(text)
 
 
 def resolve_search_terms(user_message: str, model_keyword: str | None = None) -> list[str]:
     """有用户原问就用词表，忽略模型粘出来的短语。否则只按空白拆开模型关键字。"""
+    text = user_question_for_search(user_message)
+    if text and _has_count_cue(text) and not _question_terms(text):
+        return []
     terms = build_search_terms(user_message)
     if terms:
         return terms
