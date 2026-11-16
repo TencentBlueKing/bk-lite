@@ -2,6 +2,7 @@ import json
 
 from django.conf import settings
 from django.core.paginator import Paginator
+from django.db import transaction
 from django.http import HttpResponse
 from django.views.decorators.csrf import csrf_exempt
 from rest_framework.response import Response
@@ -24,7 +25,7 @@ from apps.itsm.models import (
 )
 from apps.itsm.serializers import HandlerGroupSerializer, NotifyTemplateSerializer
 from apps.itsm.services.form.validator import FormValidator
-from apps.itsm.views.access import api_errors, domain_of, method_permission
+from apps.itsm.views.access import api_errors, domain_of, has_permission, method_permission
 from apps.itsm.views.base import ItsmAPIView
 
 
@@ -156,7 +157,12 @@ def dictionaries(request):
     if request.method == "GET":
         current = _page(request, DataDictionary.objects.filter(domain=domain_of(request)).all())
         return WebUtils.response_success(
-            {"count": current.paginator.count, "items": [{"id": item.id, "key": item.key, "name": item.name} for item in current]}
+            {
+                "count": current.paginator.count,
+                "items": [{"id": item.id, "key": item.key, "name": item.name} for item in current],
+                "can_edit": has_permission(request, "data-Edit"),
+                "can_add": has_permission(request, "data-Add"),
+            }
         )
     payload = _body(request)
     if payload.get("id"):
@@ -173,29 +179,54 @@ def dictionaries(request):
 
 @csrf_exempt
 @api_errors
-@HasPermission("data-Edit")
+@method_permission("data-View", "data-Edit")
+@transaction.atomic
 def dictionary_items(request, dictionary_id):
-    DataDictionary.objects.get(id=dictionary_id, domain=domain_of(request))
-    if request.method == "DELETE":
-        deleted, _rows = (
-            DataDictionaryItem.objects.filter(domain=domain_of(request)).filter(dictionary_id=dictionary_id, id=request.GET.get("id")).delete()
-        )
-        if not deleted:
-            return WebUtils.response_error("字典项不存在")
-        return WebUtils.response_success({"id": request.GET.get("id")})
+    dictionary = DataDictionary.objects.select_for_update().get(id=dictionary_id, domain=domain_of(request))
+    items = DataDictionaryItem.objects.filter(domain=domain_of(request), dictionary=dictionary)
     if request.method == "GET":
-        items = DataDictionaryItem.objects.filter(domain=domain_of(request)).filter(dictionary_id=dictionary_id).order_by("order")
-        return WebUtils.response_success({"items": [{"id": item.id, "key": item.key, "label": item.label} for item in items]})
+        return WebUtils.response_success(
+            {
+                "items": [
+                    {
+                        "id": item.id,
+                        "key": item.key,
+                        "label": item.label,
+                        "order": item.order,
+                        "is_enabled": item.is_enabled,
+                        "parent_id": item.parent_id,
+                    }
+                    for item in items.order_by("order", "id")
+                ],
+                "can_edit": has_permission(request, "data-Edit"),
+            }
+        )
+    if request.method == "DELETE":
+        item = items.get(id=request.GET.get("id"))
+        if item.children.exists():
+            return WebUtils.response_error("请先删除子字典项", status_code=400)
+        item.delete()
+        return WebUtils.response_success({"id": request.GET.get("id")})
+    if request.method != "POST":
+        return WebUtils.response_error("不支持的方法", status_code=405)
     payload = _body(request)
-    item = DataDictionaryItem.objects.create(
-        domain=domain_of(request),
-        dictionary_id=dictionary_id,
-        key=payload["key"],
-        label=payload["label"],
-        order=payload.get("order") or 0,
-        created_by=_user(request),
-        updated_by=_user(request),
-    )
+    item = items.get(id=payload["id"]) if payload.get("id") else None
+    label = payload.get("label")
+    key = item.key if item else payload.get("key")
+    order = payload.get("order", item.order if item else 0)
+    enabled = payload.get("is_enabled", item.is_enabled if item else True)
+    if not isinstance(label, str) or not label.strip() or len(label.strip()) > 128:
+        return WebUtils.response_error("请输入不超过 128 字的名称", status_code=400)
+    if not isinstance(key, str) or not key.strip() or len(key.strip()) > 64:
+        return WebUtils.response_error("请输入不超过 64 字的标识", status_code=400)
+    if type(order) is not int or not 0 <= order <= 2147483647 or type(enabled) is not bool:
+        return WebUtils.response_error("排序须为非负整数，启用状态须为布尔值", status_code=400)
+    if not item and items.filter(key=key.strip()).exists():
+        return WebUtils.response_error("字典项标识已存在", status_code=400)
+    if item is None:
+        item = DataDictionaryItem(dictionary=dictionary, domain=domain_of(request), key=key.strip(), created_by=_user(request))
+    item.label, item.order, item.is_enabled, item.updated_by = label.strip(), order, enabled, _user(request)
+    item.save()
     return WebUtils.response_success({"id": item.id})
 
 
@@ -203,8 +234,22 @@ def dictionary_items(request, dictionary_id):
 @HasPermission("data-View")
 def export_dictionaries(request):
     rows = [
-        {"key": item.key, "name": item.name, "items": [{"key": child.key, "label": child.label} for child in item.items.all()]}
-        for item in DataDictionary.objects.filter(domain=domain_of(request)).all()
+        {
+            "key": item.key,
+            "name": item.name,
+            "items": [
+                {
+                    "key": child.key,
+                    "label": child.label,
+                    "parent_key": child.parent.key if child.parent_id else None,
+                    "order": child.order,
+                    "is_enabled": child.is_enabled,
+                }
+                for child in item.items.all()
+                if child.domain == domain_of(request)
+            ],
+        }
+        for item in DataDictionary.objects.filter(domain=domain_of(request)).prefetch_related("items__parent")
     ]
     return HttpResponse(json.dumps(rows, ensure_ascii=False), content_type="application/json")
 
@@ -213,19 +258,11 @@ def export_dictionaries(request):
 @api_errors
 @HasPermission("data-Add")
 def import_dictionaries(request):
-    created = 0
-    for row in _body(request):
-        dictionary, was_created = DataDictionary.objects.get_or_create(
-            domain=domain_of(request), key=row["key"], defaults={"name": row["name"], "created_by": _user(request), "updated_by": _user(request)}
-        )
-        created += int(was_created)
-        for child in row.get("items") or []:
-            DataDictionaryItem.objects.get_or_create(
-                dictionary=dictionary,
-                key=child["key"],
-                defaults={"label": child["label"], "created_by": _user(request), "updated_by": _user(request)},
-            )
-    return WebUtils.response_success({"created": created})
+    from apps.itsm.services.import_copy import copy_dictionaries
+
+    if request.method != "POST":
+        return WebUtils.response_error("不支持的方法", status_code=405)
+    return WebUtils.response_success(copy_dictionaries(request, _body(request)))
 
 
 @csrf_exempt
@@ -302,7 +339,12 @@ def workflow_design(request, workflow_id):
         return WebUtils.response_success({"id": draft.id, "version_no": draft.version_no, "locked": False})
     version_no = (workflow.versions.order_by("-version_no").values_list("version_no", flat=True).first() or 0) + 1
     version = WorkflowVersion.objects.create(
-        domain=domain_of(request), workflow=workflow, version_no=version_no, design=payload, created_by=_user(request), updated_by=_user(request)
+        domain=domain_of(request),
+        workflow=workflow,
+        version_no=version_no,
+        design=payload,
+        created_by=_user(request),
+        updated_by=_user(request),
     )
     return WebUtils.response_success({"id": version.id, "version_no": version_no, "locked": False})
 

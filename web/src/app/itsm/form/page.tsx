@@ -2,6 +2,8 @@
 
 import { Button, Input, message } from 'antd';
 import Link from 'next/link';
+import OperateModal from '@/components/operate-modal';
+import { FieldRow } from '../components/field-row';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
 import CustomTable from '@/app/itsm/components/itsm-list-table';
@@ -16,6 +18,7 @@ export default function FormListPage() {
   const [items, setItems] = useState<NamedItem[]>([]);
   const [name, setName] = useState('');
   const [keyword, setKeyword] = useState('');
+  const [createOpen, setCreateOpen] = useState(false);
 
   const load = useCallback(async () => {
     const data = await api.listForms() as { items?: NamedItem[] };
@@ -40,25 +43,14 @@ export default function FormListPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-center justify-between gap-4 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] p-4">
-        <div className="flex flex-col gap-1">
-          <div className="text-base font-semibold leading-tight text-[var(--color-text-1)]">{t('itsm.admin.form')}</div>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Input
-            className="w-48"
-            placeholder={t('itsm.admin.formName')}
-            value={name}
-            onChange={(event) => setName(event.target.value)}
-          />
-          <Input className="w-48" placeholder={t('itsm.admin.searchName')} value={keyword} onChange={(event) => setKeyword(event.target.value)} allowClear />
-          <Button type="primary" onClick={() => { void create(); }}>{t('itsm.admin.newForm')}</Button>
-        </div>
-      </div>
       <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] p-4">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <Button type="primary" onClick={() => setCreateOpen(true)}>{t('itsm.admin.newForm')}</Button>
+          <Input aria-label="搜索表单" className="!w-64" placeholder={t('itsm.admin.searchName')} value={keyword} onChange={event => setKeyword(event.target.value)} allowClear />
+        </div>
         <CustomTable
           rowKey="id"
-          dataSource={items.filter((item) => !keyword.trim() || `${item.name} ${item.key}`.includes(keyword.trim()))}
+          dataSource={items.filter((item) => !keyword.trim() || `${item.name} ${item.key}`.toLowerCase().includes(keyword.trim().toLowerCase()))}
           locale={{ emptyText: t('itsm.admin.emptyForm') }}
           columns={[
             { title: t('itsm.portal.name'), dataIndex: 'name', key: 'name' },
@@ -75,6 +67,9 @@ export default function FormListPage() {
           ]}
         />
       </div>
+      <OperateModal title={t('itsm.admin.newForm')} open={createOpen} onCancel={() => setCreateOpen(false)} onOk={() => { void create(); }}>
+        <FieldRow label={t('itsm.admin.formName')}><Input aria-label="表单名称" value={name} onChange={event => setName(event.target.value)} placeholder={t('itsm.admin.formName')} /></FieldRow>
+      </OperateModal>
     </div>
   );
 }

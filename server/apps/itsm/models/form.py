@@ -52,6 +52,7 @@ class DataTable(ItsmModel):
 
 
 class DataTableField(ItsmModel):
+    label = models.CharField(max_length=128, blank=True, default="")
     table = models.ForeignKey(DataTable, on_delete=models.CASCADE, related_name="fields")
     key = models.CharField(max_length=64)
     field_type = models.CharField(max_length=32, default="string")

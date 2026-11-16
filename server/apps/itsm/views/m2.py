@@ -1,12 +1,11 @@
-import base64
 import json
 import re
-from io import BytesIO
+from functools import wraps
 
 from django.db import transaction
 from django.db.models import Q
 from django.views.decorators.csrf import csrf_exempt
-from openpyxl import Workbook, load_workbook
+from django.views.decorators.http import require_http_methods
 
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.web_utils import WebUtils
@@ -587,32 +586,122 @@ def view_templates(request):
     return WebUtils.response_success({"id": item.id})
 
 
+def data_table_errors(view):
+    @wraps(view)
+    def wrapped(*args, **kwargs):
+        try:
+            return view(*args, **kwargs)
+        except ValueError as exc:
+            return WebUtils.response_error(error_message=str(exc))
+
+    return wrapped
+
+
 @csrf_exempt
+@require_http_methods(["GET", "POST"])
 @api_errors
+@data_table_errors
 @method_permission("data-View", "data-Add")
+@transaction.atomic
 def data_tables(request):
+    from apps.itsm.services.data_tables import validate_fields
+
     if request.method == "GET":
-        items = [{"id": item.id, "name": item.name, "key": item.key} for item in DataTable.objects.filter(domain=domain_of(request)).all()]
-        return WebUtils.response_success({"items": items})
-    payload = _body(request)
-    item = DataTable.objects.create(
-        domain=domain_of(request), name=payload["name"], key=payload["key"], created_by=_user(request), updated_by=_user(request)
-    )
-    for field in payload.get("fields") or []:
-        DataTableField.objects.create(
-            table=item, key=field["key"], field_type=field.get("type") or "string", created_by=_user(request), updated_by=_user(request)
+        items = list(DataTable.objects.filter(domain=domain_of(request)).values("id", "name", "key"))
+        return WebUtils.response_success(
+            {"items": items, "can_add": has_permission(request, "data-Add"), "can_edit": has_permission(request, "data-Edit")}
         )
-    return WebUtils.response_success({"id": item.id})
+    payload = _body(request)
+    name, key = str(payload.get("name", "")).strip(), str(payload.get("key", "")).strip()
+    if not name or len(name) > 128 or not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{0,63}", key):
+        raise ValueError("名称不能为空，标识须以字母开头且只含字母、数字、下划线")
+    fields = validate_fields(payload.get("fields"))
+    if DataTable.objects.filter(domain=domain_of(request), key=key).exists():
+        raise ValueError("数据表标识已存在")
+    item = DataTable.objects.create(domain=domain_of(request), name=name, key=key, created_by=_user(request), updated_by=_user(request))
+    for field in fields:
+        DataTableField.objects.create(
+            table=item,
+            key=field["key"],
+            label=field["label"],
+            field_type=field["type"],
+            domain=item.domain,
+            created_by=_user(request),
+            updated_by=_user(request),
+        )
+    return WebUtils.response_success({"id": item.id, "name": item.name, "key": item.key})
 
 
 @csrf_exempt
+@require_http_methods(["GET", "PUT"])
 @api_errors
-@HasPermission("data-Edit")
+@data_table_errors
+@method_permission("data-View", "data-Edit")
+@transaction.atomic
+def data_table_detail(request, table_id):
+    from apps.itsm.services.data_tables import field_definitions, validate_fields, validate_row
+
+    table = DataTable.objects.select_for_update().get(id=table_id, domain=domain_of(request))
+    if request.method == "PUT":
+        body = _body(request)
+        name = str(body.get("name", table.name)).strip()
+        if not name or len(name) > 128:
+            raise ValueError("名称不能为空且不超过128字")
+        fields = validate_fields(body.get("fields"))
+        previous = set(table.fields.values_list("key", flat=True))
+        if previous - {f["key"] for f in fields}:
+            raise ValueError("已有字段标识不能修改或删除；可修改显示名称、类型或新增字段")
+        for data in table.rows.values_list("data", flat=True).iterator(chunk_size=500):
+            validate_row(data, fields)
+        for field in fields:
+            DataTableField.objects.update_or_create(
+                table=table,
+                key=field["key"],
+                defaults={"label": field["label"], "field_type": field["type"], "domain": table.domain, "updated_by": _user(request)},
+            )
+        table.name, table.updated_by = name, _user(request)
+        table.save(update_fields=["name", "updated_by", "updated_at"])
+    return WebUtils.response_success({"id": table.id, "name": table.name, "key": table.key, "fields": field_definitions(table)})
+
+
+@csrf_exempt
+@require_http_methods(["GET", "POST"])
+@api_errors
+@data_table_errors
+@method_permission("data-View", "data-Edit")
+@transaction.atomic
 def data_table_rows(request, table_id):
-    table = DataTable.objects.filter(domain=domain_of(request)).get(id=table_id)
+    from apps.itsm.services.data_tables import field_definitions, validate_row
+
+    table = DataTable.objects.select_for_update().get(domain=domain_of(request), id=table_id)
+    fields = field_definitions(table)
     if request.method == "GET":
-        return WebUtils.response_success({"items": [{"id": row.id, "data": row.data} for row in table.rows.all()]})
-    row = DataTableRow.objects.create(table=table, data=_body(request).get("data") or {}, created_by=_user(request), updated_by=_user(request))
+        return WebUtils.response_success(
+            {
+                "items": [{"id": row.id, "data": row.data} for row in table.rows.order_by("id")],
+                "fields": fields,
+                "can_edit": has_permission(request, "data-Edit"),
+            }
+        )
+    data = validate_row(_body(request).get("data"), fields)
+    row = DataTableRow.objects.create(table=table, data=data, domain=table.domain, created_by=_user(request), updated_by=_user(request))
+    return WebUtils.response_success({"id": row.id})
+
+
+@csrf_exempt
+@require_http_methods(["PUT"])
+@api_errors
+@data_table_errors
+@HasPermission("data-Edit")
+@transaction.atomic
+def data_table_row_detail(request, table_id, row_id):
+    from apps.itsm.services.data_tables import field_definitions, validate_row
+
+    table = DataTable.objects.select_for_update().get(id=table_id, domain=domain_of(request))
+    row = table.rows.get(id=row_id)
+    row.data = validate_row(_body(request).get("data"), field_definitions(table))
+    row.updated_by = _user(request)
+    row.save(update_fields=["data", "updated_by", "updated_at"])
     return WebUtils.response_success({"id": row.id})
 
 
@@ -624,45 +713,21 @@ def _table_keys(table):
 @HasPermission("data-View")
 def data_table_export(request, table_id):
     table = DataTable.objects.filter(domain=domain_of(request)).prefetch_related("fields", "rows").get(id=table_id)
-    keys = _table_keys(table)
-    book = Workbook()
-    sheet = book.active
-    sheet.title = "data"
-    sheet.append(keys)
-    for row in table.rows.all():
-        sheet.append([row.data.get(key, "") for key in keys])
-    buffer = BytesIO()
-    book.save(buffer)
-    encoded = base64.b64encode(buffer.getvalue()).decode("ascii")
-    return WebUtils.response_success({"filename": f"{table.key}.xlsx", "content_base64": encoded})
+    from apps.itsm.services.import_copy import export_table
+
+    return WebUtils.response_success(export_table(table))
 
 
 @csrf_exempt
 @api_errors
-@HasPermission("data-Edit")
-def data_table_import(request, table_id):
-    table = DataTable.objects.filter(domain=domain_of(request)).prefetch_related("fields").get(id=table_id)
-    payload = _body(request)
-    raw = base64.b64decode(payload.get("content_base64") or "")
-    book = load_workbook(BytesIO(raw), read_only=True, data_only=True)
-    sheet = book.active
-    rows = list(sheet.iter_rows(values_only=True))
-    if not rows:
-        return WebUtils.response_success({"created": 0})
-    header = [str(cell) for cell in rows[0] if cell]
-    keys = _table_keys(table) or header
-    created = []
-    for values in rows[1:]:
-        data = {}
-        for index, key in enumerate(keys):
-            value = values[index] if index < len(values) else None
-            if value is not None:
-                data[key] = value
-        if not data:
-            continue
-        row = DataTableRow.objects.create(table=table, data=data, created_by=_user(request), updated_by=_user(request))
-        created.append(row.id)
-    return WebUtils.response_success({"created": len(created), "ids": created})
+@data_table_errors
+@HasPermission("data-Add")
+def data_table_import(request):
+    if request.method != "POST":
+        return WebUtils.response_error("不支持的方法", status_code=405)
+    from apps.itsm.services.import_copy import copy_table
+
+    return WebUtils.response_success(copy_table(request, _body(request)))
 
 
 @csrf_exempt
@@ -680,9 +745,16 @@ def data_table_row_delete(request, table_id):
 def workflow_export(request, workflow_id):
     workflow = Workflow.objects.filter(domain=domain_of(request)).get(id=workflow_id)
     version = workflow.current_version or workflow.versions.order_by("-version_no").first()
+    form = None
+    if workflow.form_id:
+        fv = workflow.form.current_version or workflow.form.versions.order_by("-version_no").first()
+        form = {"key": workflow.form.key, "name": workflow.form.name, "schema": fv.schema if fv else {"fields": []}}
     return WebUtils.response_success(
         {
             "key": workflow.key,
+            "description": workflow.description,
+            "form": form,
+            "variables": list(workflow.variables.values("key", "name", "value_type", "source", "default")),
             "name": workflow.name,
             "version_no": version.version_no if version else 0,
             "design": version.design if version else {},
@@ -692,19 +764,14 @@ def workflow_export(request, workflow_id):
 
 @csrf_exempt
 @api_errors
-@HasPermission("workflow-Edit")
+@HasPermission("workflow-Add")
 def workflow_import(request, workflow_id):
+    if request.method != "POST":
+        return WebUtils.response_error("不支持的方法", status_code=405)
     workflow = Workflow.objects.filter(domain=domain_of(request)).get(id=workflow_id)
-    design = _body(request).get("design") or {}
-    version_no = (workflow.versions.order_by("-version_no").values_list("version_no", flat=True).first() or 0) + 1
-    version = WorkflowVersion.objects.create(
-        workflow=workflow,
-        version_no=version_no,
-        design=design,
-        created_by=_user(request),
-        updated_by=_user(request),
-    )
-    return WebUtils.response_success({"id": version.id, "version_no": version.version_no})
+    from apps.itsm.services.import_copy import copy_workflow
+
+    return WebUtils.response_success(copy_workflow(request, workflow, _body(request)))
 
 
 @csrf_exempt

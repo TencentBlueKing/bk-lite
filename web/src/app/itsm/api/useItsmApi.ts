@@ -1,7 +1,7 @@
 'use client';
 
-import type { PortalLayout } from '../portal/workbench-types';
 import { useCallback } from 'react';
+import type { PortalLayout } from '../portal/workbench-types';
 import useApiClient from '@/utils/request';
 
 export function useItsmApi() {
@@ -116,13 +116,16 @@ export function useItsmApi() {
   const listViewTemplates = useCallback((formId?: number) => get('/itsm/api/view_templates/', formId ? { params: { form_id: formId } } : undefined), [get]);
   const createViewTemplate = useCallback((body: { form_id: number; name: string; layout?: { fields?: string[] }; match_rules?: { status?: string } }) => post('/itsm/api/view_templates/', body), [post]);
   const exportWorkflow = useCallback((id: number) => get(`/itsm/api/workflows/${id}/export/`), [get]);
-  const importWorkflow = useCallback((id: number, design: unknown) => post(`/itsm/api/workflows/${id}/import/`, { design }), [post]);
+  const importWorkflow = useCallback((id: number, bundle: Record<string, unknown>) => post(`/itsm/api/workflows/${id}/import/`, bundle), [post]);
   const testVariable = useCallback((body: { workflow_id: number; key: string; form_data?: Record<string, unknown> }) => post('/itsm/api/workflow_variables/test/', body), [post]);
   const listVariables = useCallback((workflowId: number) => get('/itsm/api/workflow_variables/', { params: { workflow_id: workflowId } }), [get]);
   const listDataTables = useCallback(() => get('/itsm/api/data_tables/'), [get]);
   const createDataTable = useCallback((body: { name: string; key: string; fields?: Array<{ key: string; type?: string }> }) => post('/itsm/api/data_tables/', body), [post]);
   const exportDataTable = useCallback((id: number) => get(`/itsm/api/data_tables/${id}/export/`), [get]);
-  const importDataTable = useCallback((id: number, contentBase64: string) => post(`/itsm/api/data_tables/${id}/import/`, { content_base64: contentBase64 }), [post]);
+  const importDataTable = useCallback((contentBase64: string, filename: string) => post('/itsm/api/data_tables/import/', { content_base64: contentBase64, filename }), [post]);
+  const getDataTable = useCallback((id: number) => get(`/itsm/api/data_tables/${id}/`), [get]);
+  const saveDataTable = useCallback((id: number, body: Record<string, unknown>) => put(`/itsm/api/data_tables/${id}/`, body), [put]);
+  const saveDataRow = useCallback((id: number, data: Record<string, unknown>, rowId?: number) => rowId ? put(`/itsm/api/data_tables/${id}/rows/${rowId}/`, { data }) : post(`/itsm/api/data_tables/${id}/rows/`, { data }), [post, put]);
   const deleteDataRows = useCallback((id: number, ids: number[]) => post(`/itsm/api/data_tables/${id}/rows/delete/`, { ids }), [post]);
   const listDataRows = useCallback((id: number) => get(`/itsm/api/data_tables/${id}/rows/`), [get]);
   const listWorkflowVersions = useCallback((id: number) => get(`/itsm/api/workflows/${id}/versions/`), [get]);
@@ -151,7 +154,7 @@ export function useItsmApi() {
   const createDictionary = useCallback((body: { id?: number; key?: string; name: string }) => post('/itsm/api/dictionaries/', body), [post]);
   const listDictionaryItems = useCallback((id: number) => get(`/itsm/api/dictionaries/${id}/items/`), [get]);
   const createDictionaryItem = useCallback(
-    (id: number, body: { key: string; label: string }) => post(`/itsm/api/dictionaries/${id}/items/`, body),
+    (id: number, body: { id?: number; key: string; label: string; order?: number; is_enabled?: boolean }) => post(`/itsm/api/dictionaries/${id}/items/`, body),
     [post],
   );
   const deleteDictionaryItem = useCallback(
@@ -249,7 +252,7 @@ export function useItsmApi() {
     exportDataTable,
     importDataTable,
     deleteDataRows,
-    listDataRows,
+    listDataRows, getDataTable, saveDataTable, saveDataRow,
     listWorkflowVersions,
     enableWorkflowVersion,
     listComments,

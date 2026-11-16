@@ -88,7 +88,7 @@ export default function WorkflowListPage() {
                     {t('itsm.admin.export')}
                   </button>
                   <label className="cursor-pointer text-[var(--color-primary)]">
-                    {t('itsm.admin.import')}
+                    导入为新流程
                     <input
                       className="hidden"
                       type="file"
@@ -99,9 +99,9 @@ export default function WorkflowListPage() {
                           return;
                         }
                         void file.text().then((text) => {
-                          const parsed = JSON.parse(text) as { design?: unknown };
-                          return api.importWorkflow(record.id, parsed.design || parsed);
-                        }).then(() => message.success(t('itsm.admin.imported'))).catch((error: unknown) => {
+                          const parsed = JSON.parse(text) as Record<string, unknown>;
+                          return api.importWorkflow(record.id, parsed.design ? parsed : { design: parsed });
+                        }).then(async (result) => { const created = result as { key: string }; await load(); message.success(`已新增流程：${created.key}`); }).catch((error: unknown) => {
                           message.error(error instanceof Error ? error.message : t('itsm.admin.importFailed'));
                         });
                         event.target.value = '';
