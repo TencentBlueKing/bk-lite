@@ -185,9 +185,9 @@ _GLUE_CHARS = frozenset("下条")
 _SINGLE_CHAR_STOPS = frozenset(word for word in _CHINESE_STOPS if len(word) == 1)
 _FIXED_ASCII_CONTENT = frozenset({"error", "errors", "timeout", "upstream"})
 _IDENTIFIER_MARK = re.compile(r"[0-9._:\-]")
-_TIME_UNIT_WORD = r"hours?|minutes?|seconds?|days?|weeks?|months?|hrs?|mins?|secs?|小时|分钟|秒钟|天|周"
+_TIME_UNIT_WORD = r"hours?|minutes?|seconds?|days?|weeks?|months?|hrs?|mins?|secs?|小时|分钟|秒钟|天|周|h|m|d|s"
 _TIME_QUANTITY = re.compile(
-    rf"(?<![A-Za-z0-9._:-])(\d+)\s*(?:{_TIME_UNIT_WORD})(?![A-Za-z0-9._:-])",
+    rf"(?<![A-Za-z0-9._:-])(\d+)\s*(?:{_TIME_UNIT_WORD})(?![A-Za-z0-9_:-])",
     re.IGNORECASE,
 )
 _TIME_UNIT_TOKEN = re.compile(r"\d+(?:hrs|hr|mins|min|secs|sec|h|m|d|s)\Z", re.IGNORECASE)
@@ -245,9 +245,22 @@ def _dedupe(terms: Iterable[str]) -> list[str]:
     return ordered
 
 
+def _without_sentence_period(token: str) -> str:
+    return str(token or "").strip().rstrip(".")
+
+
+def _ascii_tokens(text: str) -> list[str]:
+    tokens = []
+    for token in _ASCII_TOKEN.findall(text or ""):
+        cleaned = token.rstrip(".")
+        if cleaned:
+            tokens.append(cleaned)
+    return tokens
+
+
 def _time_numbers(text: str) -> set[str]:
     found = {match.group(1) for match in _TIME_QUANTITY.finditer(text or "")}
-    for token in _ASCII_TOKEN.findall(text or ""):
+    for token in _ascii_tokens(text):
         if not _TIME_UNIT_TOKEN.fullmatch(token):
             continue
         digits = _LEADING_DIGITS.match(token)
@@ -291,6 +304,9 @@ def _tiled_by_stop_words(token: str) -> bool:
 
 
 def _is_non_content_token(token: str) -> bool:
+    token = _without_sentence_period(token)
+    if not token:
+        return True
     if _TIME_UNIT_TOKEN.fullmatch(token) or _TIME_QUANTITY.search(token):
         return True
     if token in _CHINESE_STOPS or token.casefold() in _ENGLISH_STOPS:
@@ -307,7 +323,7 @@ def _is_observed_ascii_content(token: str) -> bool:
 def _ascii_content_terms(text: str) -> list[str]:
     time_numbers = _time_numbers(text)
     kept = []
-    for token in _ASCII_TOKEN.findall(text):
+    for token in _ascii_tokens(text):
         if token in time_numbers or _is_non_content_token(token) or not _is_observed_ascii_content(token):
             continue
         kept.append(token)
@@ -315,7 +331,7 @@ def _ascii_content_terms(text: str) -> list[str]:
 
 
 def _keyword_is_content(keyword: str) -> bool:
-    token = str(keyword or "").strip()
+    token = _without_sentence_period(keyword)
     if not token or _is_non_content_token(token):
         return False
     if _ASCII_TOKEN.fullmatch(token):
@@ -351,7 +367,8 @@ def _accepted_keyword_parts(model_keyword: str | None, text: str) -> list[str]:
     time_numbers = _time_numbers(text)
     kept = []
     for part in re.split(r"\s+", raw):
-        if part in time_numbers or not _keyword_is_content(part):
+        part = _without_sentence_period(part)
+        if not part or part in time_numbers or not _keyword_is_content(part):
             continue
         if text and part.casefold() not in text.casefold():
             continue

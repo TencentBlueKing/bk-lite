@@ -154,6 +154,15 @@ def test_english_status_time_and_query_words_are_not_content_keywords():
     assert "show" not in shown
     assert "hours" not in shown
     assert "24" not in shown
+    assert build_search_terms("how many active alerts.") == []
+    assert build_search_terms("how many active alerts?") == []
+    assert build_search_terms("Last 24 Hours.") == []
+    assert build_search_terms("last 24 h") == []
+    assert build_search_terms("最近 5m.") == []
+    assert build_search_terms("最近 24h.") == []
+    assert build_search_terms("error.") == ["error"]
+    assert build_search_terms("看一下 cpu_usage_5m.") == ["cpu_usage_5m"]
+    assert build_search_terms("host 10.10.41.149.") == ["10.10.41.149"]
 
 
 def test_metric_name_with_time_suffix_stays_a_content_keyword():
@@ -166,6 +175,10 @@ def test_metric_name_with_time_suffix_stays_a_content_keyword():
     assert "24h" not in build_search_terms("last 24h cpu_usage_5m")
     assert "cpu_usage_5m" in build_search_terms("last 24h cpu_usage_5m")
     assert "24" not in build_search_terms("last 24h cpu_usage_5m")
+    assert "24" not in build_search_terms("last 24 h cpu_usage_5m")
+    assert "cpu_usage_5m" in build_search_terms("last 24 h cpu_usage_5m")
+    assert accepted_model_keyword("cpu_usage_5m.", "看一下 cpu_usage_5m.") == "cpu_usage_5m"
+    assert accepted_model_keyword("5m.", "最近 5m.") == ""
 
 
 def test_english_tool_descriptions_name_status_time_and_query_phrasing():
