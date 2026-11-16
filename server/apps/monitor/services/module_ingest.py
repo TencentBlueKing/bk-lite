@@ -16,7 +16,6 @@ from django.db import transaction
 from apps.cmdb.constants.monitor_link import CMDB_MODEL_TO_MONITOR_OBJECT
 from apps.core.logger import monitor_logger as logger
 from apps.monitor.models import CollectConfig, MonitorInstance, MonitorInstanceOrganization, MonitorObject
-from apps.monitor.services.asset_ip_sync import align_summary_asset_ip
 from apps.monitor.utils.dimension import normalize_instance_identity
 from apps.node_mgmt.services.module_push_contract import EVENT_LIFECYCLE, EVENT_UPSERT, LINK_CONFLICT, IngestResult
 from apps.rpc.node_mgmt import NodeMgmt
@@ -696,8 +695,6 @@ class MonitorModuleIngestService:
         if ip and instance.ip != ip:
             instance.ip = ip
             update_fields.append("ip")
-            if align_summary_asset_ip(instance, instance.ip):
-                update_fields.append("summary_facts")
         if cloud is not None and instance.cloud_region_id != cloud:
             instance.cloud_region_id = cloud
             update_fields.append("cloud_region_id")
@@ -936,8 +933,6 @@ class MonitorModuleIngestService:
         if ip and instance.ip != ip:
             instance.ip = ip
             update_fields.append("ip")
-            if align_summary_asset_ip(instance, instance.ip):
-                update_fields.append("summary_facts")
         if cloud is not None and instance.cloud_region_id != cloud:
             instance.cloud_region_id = cloud
             update_fields.append("cloud_region_id")
@@ -1506,8 +1501,6 @@ class MonitorModuleIngestService:
         if ip and instance.ip != ip:
             instance.ip = ip
             update_fields.append("ip")
-            if align_summary_asset_ip(instance, instance.ip):
-                update_fields.append("summary_facts")
 
         cloud = cls._extract_cloud_region_id(raw)
         if cloud is not None and instance.cloud_region_id != cloud:
