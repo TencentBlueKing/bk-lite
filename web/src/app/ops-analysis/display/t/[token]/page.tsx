@@ -4,7 +4,9 @@ import { useEffect, useState } from 'react';
 import { Spin } from 'antd';
 import { useParams, useRouter } from 'next/navigation';
 import { activateScreenDisplay } from '@/app/ops-analysis/api/screenDisplay';
+import { useLocaleFromSearch } from '@/context/locale';
 import { useTranslation } from '@/utils/i18n';
+import { normalizeLocale } from '@/utils/userPreferences';
 
 const reasonMessage = (reason: string, t: (id: string) => string) => {
   if (reason === 'paused') return t('opsAnalysis.screen.displayPausedPage');
@@ -17,6 +19,7 @@ export default function ScreenDisplayActivatePage() {
   const router = useRouter();
   const { t } = useTranslation();
   const [reason, setReason] = useState<string | null>(null);
+  useLocaleFromSearch();
 
   useEffect(() => {
     const token = params.token;
@@ -27,7 +30,13 @@ export default function ScreenDisplayActivatePage() {
     let cancelled = false;
     activateScreenDisplay(decodeURIComponent(token))
       .then(() => {
-        if (!cancelled) router.replace('/ops-analysis/display/view');
+        if (!cancelled) {
+          const locale = new URLSearchParams(window.location.search).get('locale');
+          const next = locale
+            ? `/ops-analysis/display/view?locale=${encodeURIComponent(normalizeLocale(locale))}`
+            : '/ops-analysis/display/view';
+          router.replace(next);
+        }
       })
       .catch((error: { reason?: string }) => {
         if (!cancelled) setReason(error.reason || 'invalid');
