@@ -40,7 +40,21 @@ class ReconcileCredentialsTest(unittest.TestCase):
                     ]
                 }
             }
-            (root / "config/nats.conf").write_text(json.dumps(config))
+            (root / "config/nats.conf").touch()
+            config_text = json.dumps(config)
+            read_text, write_text = Path.read_text, Path.write_text
+
+            def read_fixture(path, *args, **kwargs):
+                if path == root / "config/nats.conf":
+                    return config_text
+                return read_text(path, *args, **kwargs)
+
+            def update_fixture(path, content, *args, **kwargs):
+                nonlocal config_text
+                if path == root / "config/nats.conf":
+                    config_text = content
+                    return len(content)
+                return write_text(path, content, *args, **kwargs)
             original_files = {p for p in root.rglob("*") if p.is_file()}
             images = json.loads(Path(reconcile.__file__).with_name("images.json").read_text())
 
@@ -59,7 +73,7 @@ class ReconcileCredentialsTest(unittest.TestCase):
                     raise subprocess.CalledProcessError(1, args, output=self.secret, stderr=self.secret)
                 return subprocess.CompletedProcess(args, 0, stdout=output, stderr="")
 
-            with patch.object(reconcile, "ROOT", root), patch.object(sys, "argv", ["reconcile.py", mode]), patch("subprocess.run", side_effect=execute), contextlib.redirect_stdout(self.output), contextlib.redirect_stderr(self.output):
+            with patch.object(Path, "read_text", read_fixture), patch.object(Path, "write_text", update_fixture), patch.object(reconcile, "ROOT", root), patch.object(sys, "argv", ["reconcile.py", mode]), patch("subprocess.run", side_effect=execute), contextlib.redirect_stdout(self.output), contextlib.redirect_stderr(self.output):
                 try:
                     reconcile.main()
                 except subprocess.CalledProcessError as error:
@@ -70,7 +84,7 @@ class ReconcileCredentialsTest(unittest.TestCase):
                 for p in root.rglob("*")
                 if p.is_file() and p not in original_files
             }
-            self.current_config = json.loads((root / "config/nats.conf").read_text())
+            self.current_config = json.loads(config_text)
             self.original_permissions = permissions
 
     def test_apply_has_no_credential_copy_and_compose_receives_environment(self):

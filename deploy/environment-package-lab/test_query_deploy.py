@@ -26,7 +26,13 @@ class DeployTest(unittest.TestCase):
             (root / "config").mkdir()
             (root / "evidence").mkdir()
             (root / "config/ui-server.env").write_text("EXAMPLE=isolated\n")
-            (root / "config/query-minio.json").write_text(json.dumps({"user": "isolatedqueryminio", "password": SECRET}))
+            (root / "config/query-minio.json").touch()
+            read_text = Path.read_text
+
+            def read_fixture(path, *args, **kwargs):
+                if path == root / "config/query-minio.json":
+                    return json.dumps({"user": "isolatedqueryminio", "password": SECRET})
+                return read_text(path, *args, **kwargs)
 
             def execute(args, **kwargs):
                 args = list(args)
@@ -54,7 +60,7 @@ class DeployTest(unittest.TestCase):
                 return root if str(value) == "/opt/bklite-environment-test-20261113" else Path(value)
 
             try:
-                with patch("pathlib.Path", side_effect=remap), patch("subprocess.run", side_effect=execute), patch.dict("os.environ", {"ENV_QUERY_SERVER_IMAGE": "bklite/server:test-rebuilt"}), contextlib.redirect_stdout(self.output):
+                with patch.object(Path, "read_text", read_fixture), patch("pathlib.Path", side_effect=remap), patch("subprocess.run", side_effect=execute), patch.dict("os.environ", {"ENV_QUERY_SERVER_IMAGE": "bklite/server:test-rebuilt"}), contextlib.redirect_stdout(self.output):
                     for requested_image in requested_images:
                         runpy.run_path(str(Path(__file__).with_name("deploy-query.py")))
             finally:
