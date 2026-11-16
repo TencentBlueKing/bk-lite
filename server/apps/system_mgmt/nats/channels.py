@@ -479,7 +479,6 @@ def dispatch_notification(
             "retryable": False,
             "message": "channel delivery mode does not match",
         }
-    # 群机器人和 Webhook 的投递目标已由渠道配置确定，接收人仅用于可选提及。
     normalized_recipients = _validate_notification_recipients(
         capability["recipient_mode"],
         recipients,
