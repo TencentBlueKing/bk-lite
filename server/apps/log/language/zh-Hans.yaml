@@ -159,6 +159,7 @@ error:
   scope_exclusive: 必须且只能提供采集实例或采集类型之一
   generation_published: 当前 generation 已发布
   channel_query_failed: 通知通道查询失败
+  collect_config_child_or_base: 需要提供 child 或 base 配置
 grok_pattern:
   WORD:
     description: 由字母、数字或下划线组成的词
