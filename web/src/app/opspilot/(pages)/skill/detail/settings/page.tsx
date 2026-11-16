@@ -838,7 +838,7 @@ const SkillSettingsPage: React.FC = () => {
                       filterOption={filterModelOption}
                     >
                       {llmModels.map(model => (
-                        <Option key={model.id} value={model.id} disabled={!model.enabled} title={getModelOptionText(model)}>
+                        <Option key={model.id} value={model.id} title={getModelOptionText(model)}>
                           {renderModelOptionLabel(model)}
                         </Option>
                       ))}

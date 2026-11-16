@@ -45,7 +45,7 @@ def _opspilot_models():
 
 def _scoped_model(model_id: Any, organization_id: int):
     LLMModel, _, _ = _opspilot_models()
-    queryset = LLMModel.objects.filter(enabled=True)
+    queryset = LLMModel.objects.filter(enabled=True, vendor__enabled=True)
     model = queryset.filter(
         build_json_membership_query(queryset, "team", [organization_id]),
         pk=model_id,
@@ -285,7 +285,7 @@ def materialize_opspilot_options(catalog: dict[str, dict[str, Any]], organizatio
     if not django_apps.is_installed("apps.opspilot"):
         return
     LLMModel, LLMSkill, MemorySpace = _opspilot_models()
-    models = LLMModel.objects.filter(enabled=True)
+    models = LLMModel.objects.filter(enabled=True, vendor__enabled=True)
     models = models.filter(build_json_membership_query(models, "team", [organization_id])).order_by("name", "id")
     skills = LLMSkill.objects.filter(is_template=False, llm_model__isnull=False, llm_model__enabled=True)
     skills = skills.filter(build_json_membership_query(skills, "usage_team", [organization_id])).order_by("name", "id")
