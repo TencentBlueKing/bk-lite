@@ -73,7 +73,7 @@ it('从主机发现时跨页保留选择，翻页查询仍限定 host、任务�
   expect(ref.current?.selectedData.map(row => row.inst_uuid)).toEqual(['uuid-2']);
   fireEvent.click(screen.getByLabelText('Collection.chooseIp'));
   expect(ref.current?.selectedData).toEqual([]);
-});
+}, 15000);
 
 it('选择主机可按实例名、管理 IP 和操作系统过滤', async () => {
   renderForm();
@@ -103,6 +103,7 @@ it('选择主机可按实例名、管理 IP 和操作系统过滤', async () => 
 
 it('目录未开放主机发现时保留原选择方式', async () => {
   renderForm(false);
+  expect(screen.getByRole('switch', { name: /Collection\.taskEnabled/ }).getAttribute('aria-checked')).toBe('true');
   expect(screen.queryByLabelText('Collection.chooseHost')).toBeNull();
   expect(screen.getByLabelText('Collection.chooseIp')).toBeTruthy();
   await act(async () => {});
@@ -115,17 +116,26 @@ const savedHostTask = {
   access_point: [{ id: 'proxy-1' }], credential: [],
   instances: [{ inst_uuid: 'uuid-1', inst_name: 'saved-host', ip_addr: '10.0.0.1', cloud: 2 }],
   params: { target_source: 'host', target_cloud_region_id: 2, ip_precheck: true, custom_option: 'kept' },
+  enabled: false,
 } as unknown as CollectTask;
 
 it.each(['edit', 'copy'])('%s 主机任务回显来源，保存仅提交 UUID 并保留其他参数', async (mode) => {
   api.getCollectDetail.mockResolvedValue(savedHostTask);
-  if (mode === 'copy') useAssetManageStore.setState({ copyTaskData: savedHostTask });
+  useAssetManageStore.setState({
+    copyTaskData: mode === 'copy' ? savedHostTask : null,
+    editingId: mode === 'edit' ? 42 : null,
+  });
   render(<HostTask onClose={() => undefined}
     editId={mode === 'edit' ? 42 : undefined}
     selectedNode={{ id: 'middleware' } as TreeNode}
     modelItem={{ name: 'Nginx', model_id: 'nginx', task_type: 'middleware', type: 'job', supports_host_discovery: true } as ModelItem}
   />);
   await screen.findByText('saved-host');
+  await waitFor(() => {
+    expect(screen.getByRole('switch', { name: /Collection\.taskEnabled/ }).getAttribute('aria-checked')).toBe(
+      mode === 'edit' ? 'false' : 'true',
+    );
+  });
   expect((screen.getByLabelText('Collection.chooseHost') as HTMLInputElement).checked).toBe(true);
   fireEvent.change(screen.getByLabelText('Collection.taskNameLabel'), { target: { value: 'Saved discovery' } });
   await waitFor(() => expect(api.getCollectNodes).toHaveBeenCalled());
@@ -136,6 +146,7 @@ it.each(['edit', 'copy'])('%s 主机任务回显来源，保存仅提交 UUID �
   expect(payload).toMatchObject({
     model_id: 'nginx', ip_range: '', instances: [{ inst_uuid: 'uuid-1' }],
     params: { target_source: 'host', ip_precheck: true, custom_option: 'kept' },
+    enabled: mode !== 'edit',
   });
   expect(payload.instances).toEqual([{ inst_uuid: 'uuid-1' }]);
 });

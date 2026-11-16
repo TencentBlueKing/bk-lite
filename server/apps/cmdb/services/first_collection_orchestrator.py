@@ -34,6 +34,8 @@ class FirstCollectionOrchestrator:
 
     @classmethod
     def schedule(cls, task, *, old_task=None, reason="create"):
+        if task is not None and not bool(getattr(task, "enabled", True)):
+            return None
         with transaction.atomic():
             if not cmdb_constants.CMDB_FIRST_COLLECTION_ENABLED or not FirstCollectionPolicy.is_eligible(task):
                 return None
@@ -358,6 +360,8 @@ class FirstCollectionOrchestrator:
     def _skip_reason(task, run: FirstCollectionRun) -> str:
         if task is None:
             return "missing"
+        if not bool(getattr(task, "enabled", True)):
+            return "task_disabled"
         if not cmdb_constants.CMDB_FIRST_COLLECTION_ENABLED:
             return "disabled"
         if not FirstCollectionPolicy.is_eligible(task):
