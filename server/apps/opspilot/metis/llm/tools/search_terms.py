@@ -1,8 +1,3 @@
-"""从用户原问收检索词。
-
-英文正文、数字和固定现象词直接取自原问。状态、时间和查询口头语不是正文。其它中文不从整句残片猜测，只接受模型传入且原样出现在原问里的正文词。告警、日志和监控共用这份规则。
-"""
-
 from __future__ import annotations
 
 import re
@@ -361,7 +356,6 @@ def user_question_for_search(text: str) -> str:
 
 
 def build_search_terms(user_message: str) -> list[str]:
-    """原话里的英文正文、数字和固定现象词。状态、时间和查询口头语不算。不从整句残片猜中文关键字。"""
     return _dedupe(_observed_terms(user_question_for_search(user_message)))
 
 
@@ -376,7 +370,6 @@ def accepted_model_keyword(keyword: str | None, user_message: str = "") -> str:
 
 
 def resolve_search_terms(user_message: str, model_keyword: str | None = None) -> list[str]:
-    """英文正文、数字和现象词来自原问。状态、时间和查询口头语不算。其它中文只收模型传入、且原样出现在原问里的正文词。"""
     text = user_question_for_search(user_message)
     return _dedupe([*_observed_terms(text), *_accepted_keyword_parts(model_keyword, text)])
 
