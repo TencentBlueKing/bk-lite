@@ -8,7 +8,7 @@ from apps.alerts.constants.constants import AlertsSourceTypes
 from apps.alerts.models.alert_source import AlertSource
 from apps.alerts.models.models import Alert, Event
 from apps.alerts.services.generic_query import GenericQueryError, query_alert_center
-from apps.alerts.services.generic_query_limits import DETAIL_PAGE_SIZE_MAX, RANGE_MAX_SECONDS, STAT_GROUP_MAX
+from apps.alerts.services.generic_query_limits import ALERT_CENTER_LIST_MAX, DETAIL_PAGE_SIZE_MAX, RANGE_MAX_SECONDS, STAT_GROUP_MAX
 
 pytestmark = pytest.mark.django_db
 
@@ -146,6 +146,38 @@ def test_alert_center_distribution_uses_return_limit_and_rejects_page():
         )
 
 
+def test_alert_center_detail_returns_all_rows_until_the_cap(monkeypatch):
+    _alert("ALERT-1", created_at=START + timedelta(minutes=1))
+    day = _range(3600)
+    listed = query_alert_center(
+        Alert.objects.all(),
+        query_object="alert",
+        analysis_mode="detail",
+        time_field="created_at",
+        time_range=day,
+    )
+    assert [item["alert_id"] for item in listed] == ["ALERT-1"]
+    with pytest.raises(GenericQueryError, match="必须同时填写"):
+        query_alert_center(
+            Alert.objects.all(),
+            query_object="alert",
+            analysis_mode="detail",
+            time_field="created_at",
+            time_range=day,
+            page=1,
+        )
+    monkeypatch.setattr("apps.alerts.services.generic_query.ALERT_CENTER_LIST_MAX", 0)
+    with pytest.raises(GenericQueryError, match="告警超过 0 条"):
+        query_alert_center(
+            Alert.objects.all(),
+            query_object="alert",
+            analysis_mode="detail",
+            time_field="created_at",
+            time_range=day,
+        )
+    assert ALERT_CENTER_LIST_MAX == 500
+
+
 def test_alert_center_page_group_and_empty_results():
     with pytest.raises(GenericQueryError, match=str(DETAIL_PAGE_SIZE_MAX)):
         query_alert_center(
@@ -199,6 +231,16 @@ def test_alert_center_page_group_and_empty_results():
             time_range=_range(24 * 60 * 60),
             group_by="level",
         )
+    limited = query_alert_center(
+        Alert.objects.all(),
+        query_object="alert",
+        analysis_mode="distribution",
+        time_field="created_at",
+        time_range=_range(24 * 60 * 60),
+        group_by="level",
+        page_size=10,
+    )
+    assert len(limited["items"]) == 10
 
 
 def test_alert_source_filter_does_not_multiply_distribution_count():
@@ -260,6 +302,7 @@ def test_status_options_follow_query_object():
 
 def test_event_queryset_follows_event_rules_and_is_empty_without_rules(monkeypatch):
     from apps.alerts.nats.generic_query import query_alert_center as handler
+    from apps.alerts.nats.generic_query import query_alert_center_counts as count_handler
 
     source = _source()
     own = _event("EVENT-OWN", source)
@@ -290,20 +333,18 @@ def test_event_queryset_follows_event_rules_and_is_empty_without_rules(monkeypat
     }
     day = _range(24 * 60 * 60)
 
-    empty = handler(
+    empty = count_handler(
         query_object="event",
-        analysis_mode="count",
         time_field="start_time",
         time_range=day,
         user_info=user_info,
     )
     assert empty["result"] is True
-    assert empty["data"]["record_count"] == 0
+    assert empty["data"] == [{"record_count": 0}]
 
     rules = {"team": [1], "instance": []}
     scoped = handler(
         query_object="event",
-        analysis_mode="detail",
         time_field="start_time",
         time_range=day,
         page=1,
@@ -313,18 +354,16 @@ def test_event_queryset_follows_event_rules_and_is_empty_without_rules(monkeypat
     assert [item["event_id"] for item in scoped["data"]["items"]] == ["EVENT-OWN"]
 
     rules = {"team": [], "instance": [{"id": own.id}]}
-    by_instance = handler(
+    by_instance = count_handler(
         query_object="event",
-        analysis_mode="count",
         time_field="start_time",
         time_range=day,
         user_info=user_info,
     )
-    assert by_instance["data"]["record_count"] == 1
+    assert by_instance["data"] == [{"record_count": 1}]
 
-    denied = handler(
+    denied = count_handler(
         query_object="event",
-        analysis_mode="count",
         time_field="start_time",
         time_range=day,
         user_info={**user_info, "permission": {"alarm": ["Alarms-Edit"]}},
@@ -332,15 +371,14 @@ def test_event_queryset_follows_event_rules_and_is_empty_without_rules(monkeypat
     assert denied["result"] is False
     assert denied["message"] == "权限不足"
 
-    allowed = handler(
+    allowed = count_handler(
         query_object="event",
-        analysis_mode="count",
         time_field="start_time",
         time_range=day,
         user_info={**user_info, "permission": {"alarm": ["Alarms-View"]}},
     )
     assert allowed["result"] is True
-    assert allowed["data"]["record_count"] == 1
+    assert allowed["data"] == [{"record_count": 1}]
 
 
 def test_named_filters_are_and_and_source_name_follows_the_alert_source():
@@ -456,7 +494,6 @@ def test_handler_intersects_instance_grants_with_the_current_org(monkeypatch):
     monkeypatch.setattr(handler_module, "_get_authorized_alert_queryset", lambda user_info: (Alert.objects.all(), None))
     result = handler_module.query_alert_center(
         query_object="alert",
-        analysis_mode="detail",
         time_field="created_at",
         time_range=[(datetime.now(timezone.utc) - timedelta(hours=1)).isoformat(), (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()],
         page=1,
@@ -497,3 +534,21 @@ def test_handler_translates_the_shared_permission_message():
         handler_module._get_authorized_alert_queryset = _get_authorized_alert_queryset
     assert result["result"] is False
     assert result["message"] == "权限不足"
+
+
+def test_alert_center_handlers_split_detail_count_and_distribution(monkeypatch):
+    from apps.alerts.nats import generic_query as handler_module
+
+    monkeypatch.setattr(handler_module, "_get_authorized_alert_queryset", lambda user_info: (Alert.objects.none(), None))
+    user = {"is_superuser": True}
+    retired = handler_module.query_alert_center(query_object="alert", analysis_mode="detail", user_info=user)
+    assert retired["result"] is False
+    assert "明细、数量和分布" in retired["message"]
+
+    missing_group = handler_module.query_alert_center_distribution(query_object="alert", user_info=user)
+    assert missing_group["result"] is False
+    assert missing_group["message"] == "请选择分组"
+
+    paged = handler_module.query_alert_center_counts(query_object="alert", page=1, page_size=20, user_info=user)
+    assert paged["result"] is False
+    assert paged["message"] == "计数不支持分页"

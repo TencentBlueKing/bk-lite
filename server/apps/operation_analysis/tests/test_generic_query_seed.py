@@ -23,13 +23,19 @@ def _sources():
             "cmdb/query_cmdb_models",
             "cmdb/query_cmdb_model_counts",
             "cmdb/query_cmdb_instances",
+            "cmdb/query_cmdb_instance_value",
+            "cmdb/query_cmdb_instance_distribution",
             "cmdb/query_cmdb_one_hop",
+            "cmdb/query_cmdb_one_hop_counts",
+            "cmdb/query_cmdb_one_hop_distribution",
             "monitor/query_monitor_instances",
             "monitor/query_monitor_metric",
             "monitor/query_monitor_alerts",
             "monitor/query_monitor_alert_counts",
             "monitor/query_monitor_alert_distribution",
             "alert/query_alert_center",
+            "alert/query_alert_center_counts",
+            "alert/query_alert_center_distribution",
         }
     }
 
@@ -48,44 +54,48 @@ def test_generic_query_seed_declares_analysis_modes_and_paging_defaults():
         "cmdb/query_cmdb_models",
         "cmdb/query_cmdb_model_counts",
         "cmdb/query_cmdb_instances",
+        "cmdb/query_cmdb_instance_value",
+        "cmdb/query_cmdb_instance_distribution",
         "cmdb/query_cmdb_one_hop",
+        "cmdb/query_cmdb_one_hop_counts",
+        "cmdb/query_cmdb_one_hop_distribution",
         "monitor/query_monitor_instances",
         "monitor/query_monitor_metric",
         "monitor/query_monitor_alerts",
         "monitor/query_monitor_alert_counts",
         "monitor/query_monitor_alert_distribution",
         "alert/query_alert_center",
+        "alert/query_alert_center_counts",
+        "alert/query_alert_center_distribution",
     }
-    row_queries = {
-        "cmdb/query_cmdb_models",
-        "cmdb/query_cmdb_model_counts",
-        "monitor/query_monitor_instances",
+    no_page = {
         "monitor/query_monitor_metric",
-        "monitor/query_monitor_alerts",
         "monitor/query_monitor_alert_counts",
         "monitor/query_monitor_alert_distribution",
+        "cmdb/query_cmdb_model_counts",
+        "cmdb/query_cmdb_instance_value",
+        "cmdb/query_cmdb_one_hop_counts",
+        "alert/query_alert_center_counts",
+    }
+    limit_only = {
+        "cmdb/query_cmdb_instance_distribution",
+        "cmdb/query_cmdb_one_hop_distribution",
+        "alert/query_alert_center_distribution",
     }
     for source in sources.values():
-        visible = [param["name"] for param in source["params"] if not param.get("hidden") and param.get("filterType") != "filter"]
-        if source["rest_api"] in row_queries:
-            assert "analysis_mode" not in visible
+        names = [param["name"] for param in source["params"]]
+        assert "analysis_mode" not in names
+        if source["rest_api"] in no_page:
+            assert "page" not in names
+            assert "page_size" not in names
+        elif source["rest_api"] in limit_only:
+            assert "page" not in names
+            assert _param(source, "page_size")["value"] is None
+            assert _param(source, "page_size")["alias_name"] == "返回条数"
+            assert "超过 500" in source["desc"]
+            assert "填写后只返回排序后的前 N 条" in source["desc"]
+            assert "填写后只返回排序后的前 N 条" in _param(source, "page_size")["desc"]
         else:
-            assert visible[0] == "analysis_mode"
-            mode = _param(source, "analysis_mode")
-            assert mode["value"] == ""
-            assert "componentSwitch" not in mode.get("inputConfig", {})
-            options = mode["inputConfig"]["optionsSource"]["staticItems"]
-            assert [item["value"] for item in options]
-        has_page = any(param["name"] == "page" for param in source["params"])
-        if source["rest_api"] in {
-            "monitor/query_monitor_metric",
-            "monitor/query_monitor_alert_counts",
-            "monitor/query_monitor_alert_distribution",
-            "cmdb/query_cmdb_model_counts",
-        }:
-            assert has_page is False
-        else:
-            assert has_page is True
             assert _param(source, "page")["value"] is None
             assert _param(source, "page_size")["value"] is None
             assert "visible_modes" not in _param(source, "page")
@@ -117,13 +127,21 @@ def test_generic_query_seed_enums_match_module_constants():
     assert alert_statuses <= allowed_status
 
     center = sources["alert/query_alert_center"]
-    assert "received" in _option_values(_param(center, "status"))
-    assert "unassigned" in _option_values(_param(center, "status"))
-    assert "pending" in _option_values(_param(center, "status"))
-    assert "created_at" in _option_values(_param(center, "time_field"))
-    assert "received_at" in _option_values(_param(center, "time_field"))
-    assert "source_name" in _option_values(_param(center, "group_by"))
-    assert "level" in _option_values(_param(center, "group_by"))
+    for rest_api in (
+        "alert/query_alert_center",
+        "alert/query_alert_center_counts",
+        "alert/query_alert_center_distribution",
+    ):
+        shared = sources[rest_api]
+        assert "received" in _option_values(_param(shared, "status"))
+        assert "unassigned" in _option_values(_param(shared, "status"))
+        assert "pending" in _option_values(_param(shared, "status"))
+        assert "created_at" in _option_values(_param(shared, "time_field"))
+        assert "received_at" in _option_values(_param(shared, "time_field"))
+    distribution = sources["alert/query_alert_center_distribution"]
+    assert "source_name" in _option_values(_param(distribution, "group_by"))
+    assert "level" in _option_values(_param(distribution, "group_by"))
+    assert "group_by" not in {param["name"] for param in center["params"]}
 
 
 def test_generic_query_seed_uses_chart_driven_filters_and_order():
@@ -143,13 +161,15 @@ def test_generic_query_seed_uses_chart_driven_filters_and_order():
     assert _param(instances, "order_dir")["value"] == ""
     for rest_api in (
         "cmdb/query_cmdb_instances",
+        "cmdb/query_cmdb_instance_distribution",
         "cmdb/query_cmdb_one_hop",
         "alert/query_alert_center",
+        "alert/query_alert_center_distribution",
     ):
         source = sources[rest_api]
-        modes = [item["value"] for item in _param(source, "analysis_mode")["inputConfig"]["optionsSource"]["staticItems"]]
-        assert modes
         names = [param["name"] for param in source["params"]]
+        assert "analysis_mode" not in names
+        assert "group_by" not in names or rest_api.endswith("distribution")
         if rest_api == "cmdb/query_cmdb_one_hop":
             assert "order" not in names
             assert "order_by" not in names
@@ -167,9 +187,12 @@ def test_generic_query_seed_uses_chart_driven_filters_and_order():
     assert "result_op" not in model_names
     assert "count_metric" not in model_names
     assert "top_n" not in model_names
-    group_by = _param(sources["cmdb/query_cmdb_instances"], "group_by")
+    group_by = _param(sources["cmdb/query_cmdb_instance_distribution"], "group_by")
     assert group_by["alias_name"] == "分布属性"
-    assert _param(sources["alert/query_alert_center"], "group_by")["value"] == ""
+    assert group_by["required"] is True
+    assert _param(sources["alert/query_alert_center_distribution"], "group_by")["value"] == ""
+    assert _param(sources["alert/query_alert_center_distribution"], "group_by")["required"] is True
+    assert "group_by" not in {param["name"] for param in sources["cmdb/query_cmdb_instances"]["params"]}
     alerts = sources["monitor/query_monitor_alerts"]
     counts = sources["monitor/query_monitor_alert_counts"]
     for source in (alerts, counts):
@@ -251,7 +274,11 @@ def test_instance_and_one_hop_classification_is_single_select_and_declared():
     sources = _sources()
     specs = (
         ("cmdb/query_cmdb_instances", "model_id"),
+        ("cmdb/query_cmdb_instance_value", "model_id"),
+        ("cmdb/query_cmdb_instance_distribution", "model_id"),
         ("cmdb/query_cmdb_one_hop", "start_model_id"),
+        ("cmdb/query_cmdb_one_hop_counts", "start_model_id"),
+        ("cmdb/query_cmdb_one_hop_distribution", "start_model_id"),
     )
     for rest_api, model_name in specs:
         source = sources[rest_api]
@@ -271,7 +298,7 @@ def test_instance_and_one_hop_classification_is_single_select_and_declared():
         instance = SimpleNamespace(rest_api=rest_api, params=source["params"])
         resolved = _resolve_request_params(
             instance,
-            {"classification_id": "compute", model_name: "host", "analysis_mode": "detail"},
+            {"classification_id": "compute", model_name: "host"},
         )
         assert resolved["classification_id"] == "compute"
         assert resolved[model_name] == "host"
@@ -327,7 +354,13 @@ def test_model_query_schema_matches_detail_rows_without_touching_other_status():
         "cmdb/query_cmdb_one_hop",
         "alert/query_alert_center",
     ):
-        assert _param(sources[rest_api], "page_size")["alias_name"] == "每页条数/返回条数"
+        assert _param(sources[rest_api], "page_size")["alias_name"] == "每页条数"
+        assert _param(sources[rest_api], "page").get("required") is not True
+        assert _param(sources[rest_api], "page_size").get("required") is not True
+        assert "不填页码" in sources[rest_api]["desc"]
+    assert "500" in sources["cmdb/query_cmdb_instances"]["desc"]
+    assert "1000" in sources["cmdb/query_cmdb_one_hop"]["desc"]
+    assert "500" in sources["alert/query_alert_center"]["desc"]
     assert _param(sources["monitor/query_monitor_alerts"], "page_size")["alias_name"] == "每页条数"
     assert _param(sources["monitor/query_monitor_instances"], "page_size")["alias_name"] == "每页条数"
     assert "不填页码" in sources["monitor/query_monitor_instances"]["desc"]
@@ -401,7 +434,19 @@ def test_model_query_schema_matches_detail_rows_without_touching_other_status():
     def field_keys(source):
         return [field["key"] for field in source["field_schema"]]
 
-    assert field_keys(instance_query) == ["inst_uuid", "inst_name", "instance_count", "aggregate_value"]
+    assert field_keys(instance_query) == ["inst_uuid", "inst_name"]
+    assert instance_query["chart_type"] == ["table"]
+    instance_value = sources["cmdb/query_cmdb_instance_value"]
+    assert instance_value["chart_type"] == ["single"]
+    assert field_keys(instance_value) == ["value"]
+    assert "page" not in {param["name"] for param in instance_value["params"]}
+    assert "group_by" not in {param["name"] for param in instance_value["params"]}
+    assert _param(instance_value, "aggregate_field")["desc"]
+    assert _param(instance_value, "aggregate_op")["desc"]
+    instance_distribution = sources["cmdb/query_cmdb_instance_distribution"]
+    assert instance_distribution["chart_type"] == ["bar", "pie", "topN"]
+    assert field_keys(instance_distribution) == ["instance_count"]
+    assert "page" not in {param["name"] for param in instance_distribution["params"]}
     assert field_keys(one_hop) == [
         "start_uuid",
         "start_name",
@@ -409,14 +454,20 @@ def test_model_query_schema_matches_detail_rows_without_touching_other_status():
         "end_name",
         "asst_name",
         "model_asst_id",
-        "relation_count",
     ]
-    assert one_hop["chart_type"] == ["table", "single", "topN"]
-    one_hop_modes = [item["value"] for item in _param(one_hop, "analysis_mode")["inputConfig"]["optionsSource"]["staticItems"]]
-    assert "distribution" in one_hop_modes
+    assert one_hop["chart_type"] == ["table"]
+    one_hop_counts = sources["cmdb/query_cmdb_one_hop_counts"]
+    assert one_hop_counts["chart_type"] == ["single"]
+    assert field_keys(one_hop_counts) == ["relation_count"]
+    assert "page" not in {param["name"] for param in one_hop_counts["params"]}
+    one_hop_rank = sources["cmdb/query_cmdb_one_hop_distribution"]
+    assert one_hop_rank["chart_type"] == ["topN"]
+    assert field_keys(one_hop_rank) == ["start_name", "start_uuid", "relation_count"]
+    assert "page" not in {param["name"] for param in one_hop_rank["params"]}
+    assert "analysis_mode" not in {param["name"] for param in one_hop["params"]}
     assert "order" not in {param["name"] for param in one_hop["params"]}
     assert "direction" not in {param["name"] for param in one_hop["params"]}
-    assert "relation_count" in {field["key"] for field in one_hop["field_schema"]}
+    assert "relation_count" not in {field["key"] for field in one_hop["field_schema"]}
     assert "start_count" not in {field["key"] for field in one_hop["field_schema"]}
     assert "status" not in field_keys(instance_query)
     assert field_keys(instances) == [
@@ -460,7 +511,23 @@ def test_model_query_schema_matches_detail_rows_without_touching_other_status():
     assert "analysis_mode" not in {param["name"] for param in distribution["params"]}
     assert "page" not in {param["name"] for param in distribution["params"]}
     assert "status" in field_keys(center)
-    assert "record_count" in field_keys(center)
+    assert "record_count" not in field_keys(center)
+    assert "record_count" not in _option_values(_param(center, "order_by"))
+    assert _option_values(_param(sources["alert/query_alert_center_distribution"], "order_by")) == {
+        "level",
+        "status",
+        "source_name",
+        "record_count",
+    }
+    center_counts = sources["alert/query_alert_center_counts"]
+    assert center_counts["chart_type"] == ["single"]
+    assert field_keys(center_counts) == ["record_count"]
+    assert "page" not in {param["name"] for param in center_counts["params"]}
+    assert "group_by" not in {param["name"] for param in center_counts["params"]}
+    center_distribution = sources["alert/query_alert_center_distribution"]
+    assert center_distribution["chart_type"] == ["bar", "pie", "topN"]
+    assert field_keys(center_distribution) == ["level", "status", "source_name", "record_count"]
+    assert "page" not in {param["name"] for param in center_distribution["params"]}
     assert "unit" not in field_keys(center)
     assert "table" not in {key for field in metric["field_schema"] for key in field}
     assert [field["key"] for field in models["field_schema"]] == [

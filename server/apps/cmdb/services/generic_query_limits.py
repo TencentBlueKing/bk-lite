@@ -9,6 +9,12 @@ DETAIL_PAGE_SIZE_MAX = 100
 # 不分页的模型列表最多 500 条，超出直接失败。
 MODEL_LIST_MAX = 500
 
+# 不分页的实例明细最多 500 条。行是整份属性，更宽的结果由 1MB 回退拦住。
+INSTANCE_DETAIL_MAX = 500
+
+# 不分页的一跳明细最多 1000 条。一行只有六个短字段，再高容易顶满 1MB。
+ONE_HOP_LIST_MAX = 1000
+
 # 分布、聚合等统计分组最多 500 组。
 STAT_GROUP_MAX = 500
 

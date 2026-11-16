@@ -11,7 +11,13 @@ from django.db.models.functions import Coalesce
 
 from apps.alerts.constants.constants import AlertStatus, EventLevel, EventStatus
 from apps.alerts.models.models import Event
-from apps.alerts.services.generic_query_limits import DETAIL_PAGE_SIZE_MAX, NATS_MESSAGE_MAX_BYTES, RANGE_MAX_SECONDS, STAT_GROUP_MAX
+from apps.alerts.services.generic_query_limits import (
+    ALERT_CENTER_LIST_MAX,
+    DETAIL_PAGE_SIZE_MAX,
+    NATS_MESSAGE_MAX_BYTES,
+    RANGE_MAX_SECONDS,
+    STAT_GROUP_MAX,
+)
 
 LEVEL_LABELS = dict(EventLevel.CHOICES)
 ALERT_LEVELS = set(LEVEL_LABELS)
@@ -40,7 +46,7 @@ class GenericQueryError(Exception):
 def ensure_payload_limit(data: Any) -> None:
     encoded = json.dumps(data, ensure_ascii=False, default=str).encode("utf-8")
     if len(encoded) > NATS_MESSAGE_MAX_BYTES:
-        raise GenericQueryError("结果超过 NATS 消息上限 1MB")
+        raise GenericQueryError("结果过大，请缩小范围或减小每页条数")
 
 
 def query_alert_center(
@@ -110,7 +116,7 @@ def query_alert_center(
         if field not in group_fields:
             raise GenericQueryError("分组字段不受支持")
         grouped, value_key = _grouped_counts(queryset, target, field)
-        if grouped.count() > STAT_GROUP_MAX:
+        if distribution_limit is None and grouped.count() > STAT_GROUP_MAX:
             raise GenericQueryError(f"统计分组超过 {STAT_GROUP_MAX} 组")
         items = [{field: _choice_label(row[value_key], target, field), "record_count": row["record_count"]} for row in grouped]
         sort_key, descending = _distribution_order(order_by, order_dir, field)
@@ -119,10 +125,20 @@ def query_alert_center(
         return {
             "items": shown,
         }
-    page_no, size = _parse_page(page, page_size)
     sort_fields = ALERT_SORT_FIELDS if target == "alert" else EVENT_SORT_FIELDS
     order_text = _detail_order(order_by, order_dir, sort_fields)
     total = queryset.count()
+    paging = _optional_detail_page(page, page_size)
+    if paging is None:
+        if total > ALERT_CENTER_LIST_MAX:
+            label = "告警" if target == "alert" else "事件"
+            raise GenericQueryError(f"{label}超过 {ALERT_CENTER_LIST_MAX} 条，请缩小范围或填写分页")
+        if total == 0:
+            return []
+        page_rows = list(queryset.order_by(order_text)[:total])
+        source_names = _alert_display_source_names(page_rows) if target == "alert" else {}
+        return [_row(item, target, source_names) for item in page_rows]
+    page_no, size = paging
     page_rows = list(queryset.order_by(order_text)[(page_no - 1) * size : page_no * size])
     source_names = _alert_display_source_names(page_rows) if target == "alert" else {}
     rows = [_row(item, target, source_names) for item in page_rows]
@@ -247,6 +263,12 @@ def _slice_distribution(items: list, limit: int | None) -> list:
 def _reject_paging(page, page_size) -> None:
     if page not in (None, "") or page_size not in (None, ""):
         raise GenericQueryError("当前分析方式不支持分页")
+
+
+def _optional_detail_page(page, page_size) -> tuple[int, int] | None:
+    if page in (None, "") and page_size in (None, ""):
+        return None
+    return _parse_page(page, page_size)
 
 
 def _parse_page(page, page_size) -> tuple[int, int]:
