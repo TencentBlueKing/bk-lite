@@ -9,10 +9,12 @@ describe('notification template channel formats', () => {
     const keys = NOTIFICATION_TEMPLATE_CHANNELS.map((item) => item.key);
 
     expect(new Set(keys).size).toBe(keys.length);
+    expect(keys).not.toContain('enterprise_wechat');
     expect(getNotificationTemplateChannel('email')).toMatchObject({ editorMode: 'html', hasSubject: true });
     expect(getNotificationTemplateChannel('enterprise_wechat')).toMatchObject({
       editorMode: 'text',
       hasSubject: false,
+      labelKey: 'settings.notificationTemplate.wecomApp',
     });
     expect(getNotificationTemplateChannel('enterprise_wechat_bot')).toMatchObject({
       editorMode: 'markdown',
