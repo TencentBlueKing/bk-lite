@@ -54,6 +54,13 @@ from config.drf.pagination import CustomPageNumberPagination
 from config.drf.viewsets import ModelViewSet
 
 RUNTIME_ALLOWED_KEYS = {"namespace_id", "page", "page_size", "query_list", "organization_param"}
+_ONE_HOP_RETIRED_CONDITION_APIS = frozenset(
+    {
+        "cmdb/query_cmdb_one_hop",
+        "cmdb/query_cmdb_one_hop_counts",
+        "cmdb/query_cmdb_one_hop_distribution",
+    }
+)
 
 
 def _normalize_downstream_result(result):
@@ -556,11 +563,18 @@ def _resolve_request_params(instance, request_data):
         if isinstance(item, dict) and isinstance(item.get("name"), str) and item.get("name").strip()
     }
 
-    # 趋势数据源不再声明 group_by；剥离残留键，避免「未声明参数」400。
+    # 趋势数据源不再声明 group_by；一跳查询不再声明起点条件和终点条件。
+    # 剥离残留键，避免「未声明参数」400。
     sanitized_request = dict(request_data)
-    if getattr(instance, "rest_api", None) in TREND_GROUP_BY_AUTO_REST_APIS:
+    rest_api = getattr(instance, "rest_api", None)
+    if rest_api in TREND_GROUP_BY_AUTO_REST_APIS:
         sanitized_request.pop("group_by", None)
         allowed_specs.pop("group_by", None)
+    if rest_api in _ONE_HOP_RETIRED_CONDITION_APIS:
+        sanitized_request.pop("filters", None)
+        sanitized_request.pop("end_filters", None)
+        allowed_specs.pop("filters", None)
+        allowed_specs.pop("end_filters", None)
 
     allowed_request_keys = set(allowed_specs.keys()) | RUNTIME_ALLOWED_KEYS
     unknown_keys = sorted(str(key) for key in sanitized_request.keys() if key not in allowed_request_keys)
