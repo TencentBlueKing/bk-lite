@@ -7,7 +7,7 @@ from langchain_core.tools import tool
 from apps.core.utils.time_util import format_rfc3339_utc
 from apps.opspilot.metis.llm.tools.mlops.monitor_store import record_monitor_metric_query
 from apps.opspilot.metis.llm.tools.monitor.utils import call_monitor_rpc, resolve_metric_window, wrap_error, wrap_success
-from apps.opspilot.metis.llm.tools.search_terms import user_message_from_config
+from apps.opspilot.metis.llm.tools.search_terms import keyword_has_content, user_message_from_config
 from apps.opspilot.metis.llm.tools.user_clock import parse_user_wall_time, timezone_name_from_config
 
 _METRIC_SUMMARY_KEYS = ("name", "display_name", "unit", "data_type", "metric_group")
@@ -156,6 +156,7 @@ def _metric_query_hint(items: list, keyword: Optional[str], catalog: Optional[li
 @tool(
     description=(
         "列出该对象指标定义。keyword 用用户原文里的指标名或指标说法，筛选 name/display_name。"
+        "状态和时间不要当 keyword。"
         "用户原文已经写出指标名时传该指标名，不要改成类别词。"
         "只命中一个 name 时直接用它查时序。"
         "没命中或命中多个时调用 request_user_choice，options 用返回的 choices，让用户选指标。"
@@ -179,13 +180,15 @@ def monitor_list_object_metrics(
         return result
     summarized = _summarize_monitor_metrics(result.get("data"))
     named = _metrics_named_in_text(summarized, user_message_from_config(config))
-    filtered = named or _filter_metrics_by_keyword(summarized, keyword)
-    payload = wrap_success(filtered)
     needle = str(keyword or "").strip()
+    if not keyword_has_content(needle):
+        needle = ""
+    filtered = named or _filter_metrics_by_keyword(summarized, needle or None)
+    payload = wrap_success(filtered)
     ask_user = bool(needle or named) and (not filtered or len(_metric_choice_options(filtered)) > 1)
     if ask_user:
         payload["choices"] = _metric_choice_options(summarized if not filtered else filtered)
-    hint_keyword = keyword
+    hint_keyword = needle
     if not needle and named:
         hint_keyword = " ".join(str(item.get("name") or "") for item in named)
     payload["_next_step_hint"] = _metric_query_hint(filtered, hint_keyword, summarized)

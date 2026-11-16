@@ -26,6 +26,7 @@ _FILLERS = (
     "告警",
     "日志",
     "页面",
+    "查一下",
     "一下",
     "请问",
     "帮我",
@@ -37,6 +38,18 @@ _FILLERS = (
     "哪些",
     "什么",
     "我要查询",
+    "一小时",
+    "半小时",
+    "查询",
+    "小时",
+    "分钟",
+    "秒钟",
+    "今天",
+    "昨天",
+    "前天",
+    "本周",
+    "上周",
+    "本月",
     "有多少条",
     "有多少个",
     "多少条",
@@ -55,8 +68,31 @@ _FILLERS = (
 
 _PEEL_KEEP = ("超时", "报错")
 _PEEL_DROP = ("拒绝", "太慢")
-_COUNT_CUES = ("多少", "几条", "几个", "有哪些", "有什么")
-_STATUS_ONLY = frozenset({"活动", "活跃", "未关闭", "未分派"})
+_NOT_CONTENT = (
+    "自动关闭",
+    "自动恢复",
+    "未关闭",
+    "未分派",
+    "待响应",
+    "处理中",
+    "已关闭",
+    "已恢复",
+    "一小时",
+    "半小时",
+    "小时",
+    "分钟",
+    "秒钟",
+    "今天",
+    "昨天",
+    "前天",
+    "本周",
+    "上周",
+    "本月",
+    "活动",
+    "活跃",
+)
+_TIME_QUANTITY = re.compile(r"(\d+)\s*(?:小时|分钟|秒钟|天|周)")
+_TIME_UNIT_TOKEN = re.compile(r"\d+(?:h|hr|min|m|d|s)\Z", re.IGNORECASE)
 
 _ASCII_TOKEN = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{1,}")
 _CJK_RUN = re.compile(r"[\u4e00-\u9fff]+")
@@ -127,20 +163,29 @@ def _chinese_terms(text: str) -> list[str]:
                 found.append(word)
             rest = rest.replace(word, " ")
         for piece in rest.split():
-            if len(piece) >= 2:
-                found.append(piece)
+            found.extend(_content_pieces(piece))
     return found
 
 
-def _has_count_cue(text: str) -> bool:
-    return any(cue in text for cue in _COUNT_CUES)
+def _content_pieces(piece: str) -> list[str]:
+    rest = piece
+    for word in _NOT_CONTENT:
+        rest = rest.replace(word, " ")
+    return [part for part in rest.split() if len(part) >= 2]
+
+
+def _ascii_content_terms(text: str) -> list[str]:
+    time_numbers = {match.group(1) for match in _TIME_QUANTITY.finditer(text)}
+    kept = []
+    for token in _ASCII_TOKEN.findall(text):
+        if token in time_numbers or _TIME_UNIT_TOKEN.fullmatch(token):
+            continue
+        kept.append(token)
+    return kept
 
 
 def _question_terms(text: str) -> list[str]:
-    chinese = _chinese_terms(text)
-    if _has_count_cue(text):
-        chinese = [term for term in chinese if term not in _STATUS_ONLY]
-    return _dedupe([*chinese, *_ASCII_TOKEN.findall(text), *_synonyms(text)])
+    return _dedupe([*_chinese_terms(text), *_ascii_content_terms(text), *_synonyms(text)])
 
 
 def _synonyms(text: str) -> list[str]:
@@ -182,18 +227,20 @@ def build_search_terms(user_message: str) -> list[str]:
     return _question_terms(text)
 
 
+def keyword_has_content(keyword: str | None) -> bool:
+    raw = str(keyword or "").strip()
+    return bool(raw) and bool(_question_terms(raw))
+
+
 def resolve_search_terms(user_message: str, model_keyword: str | None = None) -> list[str]:
     """有用户原问就用词表，忽略模型粘出来的短语。否则只按空白拆开模型关键字。"""
     text = user_question_for_search(user_message)
-    if text and _has_count_cue(text) and not _question_terms(text):
-        return []
-    terms = build_search_terms(user_message)
-    if terms:
-        return terms
+    if text:
+        return _question_terms(text)
     raw = str(model_keyword or "").strip()
     if not raw:
         return []
-    return _dedupe(part for part in re.split(r"\s+", raw) if part)
+    return _dedupe(part for part in re.split(r"\s+", raw) if keyword_has_content(part))
 
 
 SEARCH_NOTE = "已按或条件检索上述词。空结果表示这些词都未命中，不要换关键字再搜。"

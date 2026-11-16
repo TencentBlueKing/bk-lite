@@ -4,6 +4,7 @@ from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 
 from apps.opspilot.metis.llm.tools.monitor.utils import call_monitor_rpc, wrap_error, wrap_success
+from apps.opspilot.metis.llm.tools.search_terms import keyword_has_content
 
 _MONITOR_OBJECT_SUMMARY_KEYS = ("id", "name", "type", "type_info", "level", "parent", "display_name")
 _INSTANCE_KEYWORD_KEYS = ("name", "id", "ip", "instance_id", "instance_name", "cmdb_id")
@@ -178,6 +179,7 @@ def monitor_list_objects(
         "按 monitor_obj_id 列出实例（含主机名和 IP）。"
         "monitor_obj_id 只能来自 list_objects 返回的对象 id，且须用户已明确类型或已选择；每个 obj_id 只调一次。"
         "keyword 用完整主机名/IP 或用户原词，禁止截断后按台循环，禁止猜测/递增 ID。"
+        "状态和时间不要当 keyword。"
         "空列表且用户未声明类型时须 request_user_choice 问对象类型；已声明类型则不要再问。"
         "后续 instance_ids 必须原样复制本列表每条记录的 instance_id 字段，禁止用 name、IP、id、cmdb_id，"
         "禁止用 CMDB 的 inst_id、inst_uuid、_id，禁止传负数，列表里没有的值不要编造。"
@@ -198,7 +200,8 @@ def monitor_list_object_instances(
     if not result.get("success"):
         return result
     items = _instance_rows(result.get("data"))
-    needle = str(keyword or "").strip().lower()
+    raw_keyword = str(keyword or "").strip()
+    needle = raw_keyword.lower() if keyword_has_content(raw_keyword) else ""
     matched = [item for item in items if _instance_matches_keyword(item, needle)] if needle else items
     payload = wrap_success(_summarize_monitor_instances(matched))
     if not isinstance(payload.get("data"), list):
