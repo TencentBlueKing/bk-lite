@@ -143,6 +143,15 @@ def test_english_status_time_and_query_words_are_not_content_keywords():
     assert resolve_search_terms("查询一个月来的告警信息，整理成一个word文档给我", "word") == []
     assert build_search_terms("how many new alerts") == []
     assert build_search_terms("how many recovered alerts") == []
+    assert build_search_terms("show auto_close alerts") == []
+    assert build_search_terms("list auto_recovery alerts") == []
+    assert build_search_terms("auto-recovery alerts") == []
+    assert build_search_terms("auto-close alerts") == []
+    assert build_search_terms("查询自动关闭的告警") == []
+    assert resolve_search_terms("show auto_close alerts", "auto_close") == []
+    assert "cpu_usage_5m" in build_search_terms("show cpu_usage_5m alerts")
+    assert "web-01" in build_search_terms("auto_close on web-01")
+    assert "disk_used_percent" in build_search_terms("show disk_used_percent")
     assert resolve_search_terms("how many new alerts", "new") == []
     assert resolve_search_terms("how many recovered alerts", "recovered") == []
     assert accepted_model_keyword("CPU", "") == "CPU"
