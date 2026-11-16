@@ -206,6 +206,7 @@ RICH_TEXT_CHANNEL_TYPES = {
     ChannelChoices.FEISHU_BOT,
     ChannelChoices.DINGTALK_BOT,
 }
+OPTIONAL_RECIPIENT_CHANNEL_TYPES = RICH_TEXT_CHANNEL_TYPES | {ChannelChoices.CUSTOM_WEBHOOK}
 MAX_NOTIFICATION_RECIPIENTS = 100
 MAX_NOTIFICATION_RECIPIENT_LENGTH = 150
 MAX_NOTIFICATION_TITLE_LENGTH = 512
@@ -408,7 +409,7 @@ def probe_notification_channel(channel_id, capability_only=False):
     )
 
 
-def _validate_notification_recipients(recipient_mode, recipients):
+def _validate_notification_recipients(recipient_mode, recipients, *, allow_empty=False):
     if not isinstance(recipients, list) or len(recipients) > MAX_NOTIFICATION_RECIPIENTS:
         return None
     normalized = []
@@ -419,7 +420,7 @@ def _validate_notification_recipients(recipient_mode, recipients):
         normalized.append(value)
     if recipient_mode == "none":
         return [] if not normalized else None
-    if not normalized:
+    if not normalized and not allow_empty:
         return None
     if recipient_mode == "system_user" and not all(value.isdigit() for value in normalized):
         return None
@@ -472,7 +473,12 @@ def dispatch_notification(
             "retryable": False,
             "message": "channel delivery mode does not match",
         }
-    normalized_recipients = _validate_notification_recipients(capability["recipient_mode"], recipients)
+    # 群机器人和 Webhook 的投递目标已由渠道配置确定，接收人仅用于可选提及。
+    normalized_recipients = _validate_notification_recipients(
+        capability["recipient_mode"],
+        recipients,
+        allow_empty=channel.channel_type in OPTIONAL_RECIPIENT_CHANNEL_TYPES,
+    )
     if normalized_recipients is None:
         return _notification_failure("invalid_recipients", "通知接收人不符合渠道能力。")
     if capability["recipient_mode"] == "system_user":
