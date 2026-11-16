@@ -6,7 +6,6 @@ from apps.cmdb.services.asset_overview_query import list_model_association_optio
 from apps.cmdb.services.classification import ClassificationManage
 from apps.cmdb.services.generic_query import (
     GenericQueryError,
-    compile_attribute_conditions,
     ensure_payload_limit,
     one_hop_query_plan,
     query_instance_value,
@@ -179,10 +178,6 @@ def _attr_types_from(attrs: list) -> dict[str, str]:
         if attr_id:
             types[attr_id] = str(attr.get("attr_type") or "string")
     return types
-
-
-def _attr_types(model_id: str, user_info) -> dict[str, str]:
-    return _attr_types_from(_load_model_attrs(model_id, user_info))
 
 
 def _reject_retired_model_args(kwargs) -> None:
@@ -423,19 +418,38 @@ def _one_hop_direction(start_model_id: str, association: dict) -> tuple[str, str
     raise GenericQueryError("关系方向与起点模型不一致")
 
 
+def _selected_one_hop_associations(start_model_id, model_asst_id, associations, visible_ids) -> list[dict]:
+    """每条关系单独校验。走向和终点模型可以不同，两端相同的关系仍然拒绝。"""
+    selected = []
+    for asst_id in _text_list(model_asst_id):
+        if asst_id not in selected:
+            selected.append(asst_id)
+    if not selected:
+        raise GenericQueryError("起点模型和关系不能为空")
+    by_id = {str(item.get("model_asst_id") or ""): item for item in associations}
+    chosen = []
+    for asst_id in selected:
+        association = by_id.get(asst_id)
+        if association is None:
+            raise GenericQueryError("关系不存在或无权访问", status="forbidden")
+        _direction, end_model_id = _one_hop_direction(str(start_model_id), association)
+        if str(end_model_id) not in visible_ids:
+            raise GenericQueryError("终点模型不存在或无权访问", status="forbidden")
+        chosen.append(association)
+    return chosen
+
+
 def _execute_one_hop(
     *,
     start_model_id,
     classification_id,
     model_asst_id,
-    filters,
-    end_filters,
     analysis_mode,
     page,
     page_size,
     user_info,
 ):
-    if not start_model_id or not model_asst_id:
+    if not start_model_id or model_asst_id in (None, "", []):
         raise GenericQueryError("起点模型和关系不能为空")
     models, instance_permissions, _names = _visible_models(user_info)
     visible_ids = {str(item.get("model_id")) for item in models}
@@ -444,33 +458,14 @@ def _execute_one_hop(
     _require_model_classification(models, start_model_id, classification_id)
     language = _resolve_nats_cmdb_language(user_info)
     associations = list_model_association_options(language, start_model_id)
-    association = next((item for item in associations if item.get("model_asst_id") == model_asst_id), None)
-    if association is None:
-        raise GenericQueryError("关系不存在或无权访问", status="forbidden")
-    direction, end_model_id = _one_hop_direction(str(start_model_id), association)
-    if str(end_model_id) not in visible_ids:
-        raise GenericQueryError("终点模型不存在或无权访问", status="forbidden")
-    attr_types = _attr_types(str(start_model_id), user_info)
-    start_logic, start_conditions = compile_attribute_conditions(
-        attr_types,
-        _require_condition_group(filters),
-    )
-    end_types = _attr_types(str(end_model_id), user_info) if end_filters else {"inst_name": "string"}
-    end_logic, end_conditions = compile_attribute_conditions(
-        end_types,
-        _require_condition_group(end_filters),
-    )
+    chosen = _selected_one_hop_associations(start_model_id, model_asst_id, associations, visible_ids)
+    relation_ids = [str(item.get("model_asst_id") or "") for item in chosen]
+    association_names = {relation_id: str(item.get("asst_name") or item.get("label") or "") for relation_id, item in zip(relation_ids, chosen)}
     plan = one_hop_query_plan(analysis_mode, page, page_size)
     graph_result = query_one_hop(
         start_model_id=str(start_model_id),
-        model_asst_id=str(model_asst_id),
-        direction=direction,
-        end_model_id=str(end_model_id),
+        model_asst_ids=relation_ids,
         permission_map=instance_permissions,
-        start_conditions=start_conditions,
-        start_logic=start_logic,
-        end_conditions=end_conditions,
-        end_logic=end_logic,
         part=plan["part"],
         skip=int(plan.get("skip") or 0),
         limit=plan.get("limit"),
@@ -480,8 +475,7 @@ def _execute_one_hop(
         graph_result=graph_result,
         page=page,
         page_size=page_size,
-        association_name=str(association.get("asst_name") or association.get("label") or ""),
-        association_id=str(association.get("model_asst_id") or model_asst_id),
+        association_names=association_names,
     )
     return _ok(data)
 
@@ -492,22 +486,19 @@ def query_cmdb_one_hop(
     start_model_id=None,
     classification_id=None,
     model_asst_id=None,
-    filters=None,
-    end_filters=None,
     analysis_mode=None,
     page=None,
     page_size=None,
     user_info=None,
     **kwargs,
 ):
+    """kwargs 吃掉已取消的起点条件和终点条件，避免旧组件请求失败。"""
     del kwargs
     _reject_split_mode(analysis_mode, _ONE_HOP_SPLIT)
     return _execute_one_hop(
         start_model_id=start_model_id,
         classification_id=classification_id,
         model_asst_id=model_asst_id,
-        filters=filters,
-        end_filters=end_filters,
         analysis_mode="detail",
         page=page,
         page_size=page_size,
@@ -521,14 +512,13 @@ def query_cmdb_one_hop_counts(
     start_model_id=None,
     classification_id=None,
     model_asst_id=None,
-    filters=None,
-    end_filters=None,
     analysis_mode=None,
     page=None,
     page_size=None,
     user_info=None,
     **kwargs,
 ):
+    """kwargs 吃掉已取消的起点条件和终点条件，避免旧组件请求失败。"""
     del kwargs
     _reject_split_mode(analysis_mode, _ONE_HOP_SPLIT)
     if page not in (None, "") or page_size not in (None, ""):
@@ -537,8 +527,6 @@ def query_cmdb_one_hop_counts(
         start_model_id=start_model_id,
         classification_id=classification_id,
         model_asst_id=model_asst_id,
-        filters=filters,
-        end_filters=end_filters,
         analysis_mode="count",
         page=None,
         page_size=None,
@@ -553,14 +541,13 @@ def query_cmdb_one_hop_distribution(
     start_model_id=None,
     classification_id=None,
     model_asst_id=None,
-    filters=None,
-    end_filters=None,
     analysis_mode=None,
     page=None,
     page_size=None,
     user_info=None,
     **kwargs,
 ):
+    """kwargs 吃掉已取消的起点条件和终点条件，避免旧组件请求失败。"""
     del kwargs
     _reject_split_mode(analysis_mode, _ONE_HOP_SPLIT)
     if page not in (None, ""):
@@ -569,8 +556,6 @@ def query_cmdb_one_hop_distribution(
         start_model_id=start_model_id,
         classification_id=classification_id,
         model_asst_id=model_asst_id,
-        filters=filters,
-        end_filters=end_filters,
         analysis_mode="distribution",
         page=None,
         page_size=page_size,

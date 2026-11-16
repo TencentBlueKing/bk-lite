@@ -301,8 +301,7 @@ def query_one_hop_relations(
     graph_result: dict,
     page=None,
     page_size=None,
-    association_name: str = "",
-    association_id: str = "",
+    association_names: dict | None = None,
 ) -> dict:
     """一跳关联：计数是对应关系条数，分布是每个起点的关联数量。"""
     mode = _mode(analysis_mode, ONE_HOP_MODES)
@@ -328,19 +327,8 @@ def query_one_hop_relations(
         items.sort(key=lambda item: (-(item.get("relation_count") or 0), item.get("start_uuid") or ""))
         shown = items if "group_count" in graph_result else _slice_distribution(items, distribution_limit)
         return _category_payload(shown)
-    relation_name = str(association_name or "")
-    relation_id = str(association_id or "")
-    rows = [
-        {
-            "start_uuid": item.get("start_uuid") or "",
-            "start_name": item.get("start_name") or "",
-            "end_uuid": item.get("end_uuid") or "",
-            "end_name": item.get("end_name") or "",
-            "asst_name": relation_name,
-            "model_asst_id": relation_id,
-        }
-        for item in graph_result.get("pairs") or []
-    ]
+    labels = {str(key): str(value or "") for key, value in (association_names or {}).items()}
+    rows = [_one_hop_detail_row(item, labels) for item in graph_result.get("pairs") or []]
     if mode == "detail" and page in (None, "") and page_size in (None, ""):
         return rows
     if graph_result.get("paged"):
@@ -351,9 +339,22 @@ def query_one_hop_relations(
             item.get("end_name") or "",
             item.get("start_uuid") or "",
             item.get("end_uuid") or "",
+            item.get("model_asst_id") or "",
         )
     )
     return _page_payload(rows, page, page_size)
+
+
+def _one_hop_detail_row(item: dict, association_names: dict[str, str]) -> dict:
+    relation_id = str(item.get("model_asst_id") or "")
+    return {
+        "start_uuid": item.get("start_uuid") or "",
+        "start_name": item.get("start_name") or "",
+        "end_uuid": item.get("end_uuid") or "",
+        "end_name": item.get("end_name") or "",
+        "asst_name": association_names.get(relation_id, ""),
+        "model_asst_id": relation_id,
+    }
 
 
 def _tag_membership_values(value) -> list[str]:

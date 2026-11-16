@@ -218,10 +218,14 @@ def test_generic_query_seed_uses_chart_driven_filters_and_order():
     order_by = _param(sources["cmdb/query_cmdb_instances"], "order_by")
     assert order_by["inputConfig"]["control"] == "select"
     assert order_by["inputConfig"]["optionsSource"] == group_by["inputConfig"]["optionsSource"]
-    end_fields = _param(sources["cmdb/query_cmdb_one_hop"], "end_filters")["inputConfig"]["fields"]
-    assert end_fields["kind"] == "dynamic"
-    assert end_fields["queryParams"]["start_model_id"] == {"ref": "start_model_id"}
-    assert end_fields["queryParams"]["model_asst_id"] == {"ref": "model_asst_id"}
+    for rest_api in (
+        "cmdb/query_cmdb_one_hop",
+        "cmdb/query_cmdb_one_hop_counts",
+        "cmdb/query_cmdb_one_hop_distribution",
+    ):
+        names = {param["name"] for param in sources[rest_api]["params"]}
+        assert "filters" not in names
+        assert "end_filters" not in names
     center = sources["alert/query_alert_center"]
     assert "filters" not in {param["name"] for param in center["params"]}
     for name in ("source", "level", "status"):
@@ -315,12 +319,17 @@ def test_instance_and_one_hop_classification_is_single_select_and_declared():
     assert "filter_field" not in instance_names
     assert "filter_op" not in instance_names
     assert "filter_value" not in instance_names
-    association = _param(one_hop, "model_asst_id")["inputConfig"]["optionsSource"]
-    assert association["queryParams"]["model_id"] == {"ref": "start_model_id"}
-    start_fields = _param(one_hop, "filters")["inputConfig"]["fields"]
-    assert start_fields["kind"] == "dynamic"
-    assert start_fields["queryParams"]["model_id"] == {"ref": "start_model_id"}
-    assert _param(one_hop, "end_filters")["inputConfig"]["fields"]["kind"] == "dynamic"
+    association = _param(one_hop, "model_asst_id")
+    assert association["inputConfig"]["multiple"] is True
+    assert association["value"] == []
+    assert association["inputConfig"]["optionsSource"]["queryParams"]["model_id"] == {"ref": "start_model_id"}
+    for rest_api in (
+        "cmdb/query_cmdb_one_hop_counts",
+        "cmdb/query_cmdb_one_hop_distribution",
+    ):
+        relation = _param(sources[rest_api], "model_asst_id")
+        assert relation["inputConfig"]["multiple"] is True
+        assert relation["value"] == []
     kept = _resolve_request_params(
         SimpleNamespace(rest_api="cmdb/query_cmdb_one_hop", params=one_hop["params"]),
         {"start_model_id": "host"},
@@ -331,6 +340,23 @@ def test_instance_and_one_hop_classification_is_single_select_and_declared():
             SimpleNamespace(rest_api="cmdb/query_cmdb_one_hop", params=one_hop["params"]),
             {"start_model_id": "host", "order": "start_name", "direction": "out"},
         )
+    for rest_api in (
+        "cmdb/query_cmdb_one_hop",
+        "cmdb/query_cmdb_one_hop_counts",
+        "cmdb/query_cmdb_one_hop_distribution",
+    ):
+        source = sources[rest_api]
+        dropped = _resolve_request_params(
+            SimpleNamespace(rest_api=rest_api, params=source["params"]),
+            {
+                "start_model_id": "host",
+                "filters": {"logic": "AND", "items": [{"field": "cpu", "op": "gt", "value": 1}]},
+                "end_filters": {"logic": "AND", "items": [{"field": "port", "op": "eq", "value": "80"}]},
+            },
+        )
+        assert dropped["start_model_id"] == "host"
+        assert "filters" not in dropped
+        assert "end_filters" not in dropped
 
 
 def test_model_query_schema_matches_detail_rows_without_touching_other_status():

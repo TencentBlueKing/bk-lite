@@ -4351,7 +4351,7 @@
   {
     "key": "CMDB 一跳关联通用查询::cmdb/query_cmdb_one_hop",
     "name": "CMDB 一跳关联查询",
-    "desc": "按具名关系只跨一层，返回起点和终点的对应关系。不填页码和每页条数时返回全部对应关系，超过 1000 条会失败；两个都填则分页。",
+    "desc": "按具名关系只跨一层，返回起点和终点的对应关系。关系可多选。不填页码和每页条数时返回全部对应关系，超过 1000 条会失败；两个都填则分页。",
     "rest_api": "cmdb/query_cmdb_one_hop",
     "tag": [
       "cmdb"
@@ -4408,11 +4408,13 @@
       {
         "name": "model_asst_id",
         "type": "string",
-        "value": "",
+        "value": [],
         "alias_name": "关系",
         "filterType": "params",
+        "desc": "可多选。不同走向、不同终点模型可以一起选。同一对实例上的不同关系分别计数。",
         "inputConfig": {
           "control": "select",
+          "multiple": true,
           "optionsSource": {
             "type": "dynamic",
             "sourceRef": {
@@ -4429,63 +4431,6 @@
           }
         },
         "required": true
-      },
-      {
-        "name": "filters",
-        "type": "conditionFilter",
-        "value": {
-          "logic": "AND",
-          "items": []
-        },
-        "alias_name": "起点条件",
-        "filterType": "params",
-        "inputConfig": {
-          "control": "conditionFilter",
-          "fields": {
-            "kind": "dynamic",
-            "sourceRef": {
-              "type": "rest_api",
-              "value": "cmdb/list_cmdb_attr_options"
-            },
-            "valueField": "attr_id",
-            "labelField": "attr_name",
-            "queryParams": {
-              "model_id": {
-                "ref": "start_model_id"
-              }
-            }
-          }
-        }
-      },
-      {
-        "name": "end_filters",
-        "type": "conditionFilter",
-        "value": {
-          "logic": "AND",
-          "items": []
-        },
-        "alias_name": "终点条件",
-        "filterType": "params",
-        "inputConfig": {
-          "control": "conditionFilter",
-          "fields": {
-            "kind": "dynamic",
-            "sourceRef": {
-              "type": "rest_api",
-              "value": "cmdb/list_cmdb_attr_options"
-            },
-            "valueField": "attr_id",
-            "labelField": "attr_name",
-            "queryParams": {
-              "start_model_id": {
-                "ref": "start_model_id"
-              },
-              "model_asst_id": {
-                "ref": "model_asst_id"
-              }
-            }
-          }
-        }
       },
       {
         "name": "page",
@@ -4548,7 +4493,7 @@
   {
     "key": "CMDB 一跳关联数量::cmdb/query_cmdb_one_hop_counts",
     "name": "CMDB 一跳关联数量",
-    "desc": "固定返回一行，是对应关系条数。同一起点连多个终点各计 1，同一个终点被多个起点连上时不合并。不支持分页。",
+    "desc": "固定返回一行，是对应关系条数。关系可多选，同一对实例上的不同关系分别计数。同一起点连多个终点各计 1，同一个终点被多个起点连上时不合并。不支持分页。",
     "rest_api": "cmdb/query_cmdb_one_hop_counts",
     "tag": [
       "cmdb"
@@ -4605,11 +4550,13 @@
       {
         "name": "model_asst_id",
         "type": "string",
-        "value": "",
+        "value": [],
         "alias_name": "关系",
         "filterType": "params",
+        "desc": "可多选。不同走向、不同终点模型可以一起选。同一对实例上的不同关系分别计数。",
         "inputConfig": {
           "control": "select",
+          "multiple": true,
           "optionsSource": {
             "type": "dynamic",
             "sourceRef": {
@@ -4628,63 +4575,6 @@
         "required": true
       },
       {
-        "name": "filters",
-        "type": "conditionFilter",
-        "value": {
-          "logic": "AND",
-          "items": []
-        },
-        "alias_name": "起点条件",
-        "filterType": "params",
-        "inputConfig": {
-          "control": "conditionFilter",
-          "fields": {
-            "kind": "dynamic",
-            "sourceRef": {
-              "type": "rest_api",
-              "value": "cmdb/list_cmdb_attr_options"
-            },
-            "valueField": "attr_id",
-            "labelField": "attr_name",
-            "queryParams": {
-              "model_id": {
-                "ref": "start_model_id"
-              }
-            }
-          }
-        }
-      },
-      {
-        "name": "end_filters",
-        "type": "conditionFilter",
-        "value": {
-          "logic": "AND",
-          "items": []
-        },
-        "alias_name": "终点条件",
-        "filterType": "params",
-        "inputConfig": {
-          "control": "conditionFilter",
-          "fields": {
-            "kind": "dynamic",
-            "sourceRef": {
-              "type": "rest_api",
-              "value": "cmdb/list_cmdb_attr_options"
-            },
-            "valueField": "attr_id",
-            "labelField": "attr_name",
-            "queryParams": {
-              "start_model_id": {
-                "ref": "start_model_id"
-              },
-              "model_asst_id": {
-                "ref": "model_asst_id"
-              }
-            }
-          }
-        }
-      },
-      {
         "name": "organization",
         "type": "string",
         "value": "",
@@ -4700,14 +4590,14 @@
         "key": "relation_count",
         "title": "关联数",
         "value_type": "number",
-        "description": "起点内去重后的对应关系条数。同一起点关联多个终点时分别计数，同一个终点被多个起点关联时不合并。"
+        "description": "按起点、终点和关系去重。同一对实例上的不同关系分别计数，同一起点关联多个终点时分别计数，同一个终点被多个起点关联时不合并。"
       }
     ]
   },
   {
     "key": "CMDB 一跳关联排行::cmdb/query_cmdb_one_hop_distribution",
     "name": "CMDB 一跳关联排行",
-    "desc": "按起点统计关联数量。不填返回条数则返回全部起点，超过 500 组失败。填写后只返回排序后的前 N 条。不支持页码。",
+    "desc": "按起点统计关联数量，几种关系加在同一个起点上。关系可多选。不填返回条数则返回全部起点，超过 500 组失败。填写后只返回排序后的前 N 条。不支持页码。",
     "rest_api": "cmdb/query_cmdb_one_hop_distribution",
     "tag": [
       "cmdb"
@@ -4764,11 +4654,13 @@
       {
         "name": "model_asst_id",
         "type": "string",
-        "value": "",
+        "value": [],
         "alias_name": "关系",
         "filterType": "params",
+        "desc": "可多选。不同走向、不同终点模型可以一起选。同一对实例上的不同关系分别计数。",
         "inputConfig": {
           "control": "select",
+          "multiple": true,
           "optionsSource": {
             "type": "dynamic",
             "sourceRef": {
@@ -4785,63 +4677,6 @@
           }
         },
         "required": true
-      },
-      {
-        "name": "filters",
-        "type": "conditionFilter",
-        "value": {
-          "logic": "AND",
-          "items": []
-        },
-        "alias_name": "起点条件",
-        "filterType": "params",
-        "inputConfig": {
-          "control": "conditionFilter",
-          "fields": {
-            "kind": "dynamic",
-            "sourceRef": {
-              "type": "rest_api",
-              "value": "cmdb/list_cmdb_attr_options"
-            },
-            "valueField": "attr_id",
-            "labelField": "attr_name",
-            "queryParams": {
-              "model_id": {
-                "ref": "start_model_id"
-              }
-            }
-          }
-        }
-      },
-      {
-        "name": "end_filters",
-        "type": "conditionFilter",
-        "value": {
-          "logic": "AND",
-          "items": []
-        },
-        "alias_name": "终点条件",
-        "filterType": "params",
-        "inputConfig": {
-          "control": "conditionFilter",
-          "fields": {
-            "kind": "dynamic",
-            "sourceRef": {
-              "type": "rest_api",
-              "value": "cmdb/list_cmdb_attr_options"
-            },
-            "valueField": "attr_id",
-            "labelField": "attr_name",
-            "queryParams": {
-              "start_model_id": {
-                "ref": "start_model_id"
-              },
-              "model_asst_id": {
-                "ref": "model_asst_id"
-              }
-            }
-          }
-        }
       },
       {
         "name": "page_size",
@@ -4877,7 +4712,7 @@
         "key": "relation_count",
         "title": "关联数",
         "value_type": "number",
-        "description": "起点内去重后的对应关系条数。同一起点关联多个终点时分别计数，同一个终点被多个起点关联时不合并。"
+        "description": "按起点、终点和关系去重。同一对实例上的不同关系分别计数，同一起点关联多个终点时分别计数，同一个终点被多个起点关联时不合并。"
       }
     ]
   },
