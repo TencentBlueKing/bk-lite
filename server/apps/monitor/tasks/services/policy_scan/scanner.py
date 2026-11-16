@@ -3,7 +3,6 @@
 from apps.core.logger import celery_logger as logger
 from apps.monitor.constants.alert_policy import AlertConstants
 from apps.monitor.models import MonitorAlert, MonitorInstance, MonitorInstanceOrganization, PolicyInstanceBaseline
-from apps.monitor.services.list_asset_ip import backfill_resolved_asset_ips
 from apps.monitor.services.policy_baseline import PolicyBaselineService
 from apps.monitor.tasks.services.policy_scan.alert_detector import AlertDetector
 from apps.monitor.tasks.services.policy_scan.event_alert_manager import EventAlertManager
@@ -61,8 +60,6 @@ class MonitorPolicyScan:
 
         instance_list = self._get_instance_list_by_source(source_type, source_values)
 
-        monitor_object = self.policy.monitor_object
-        backfill_resolved_asset_ips(monitor_object.id, monitor_object.name, instance_list)
         instances = MonitorInstance.objects.filter(
             monitor_object_id=self.policy.monitor_object_id,
             id__in=instance_list,
