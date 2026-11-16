@@ -68,3 +68,8 @@ html[style*="--bk-webchat-dock-width:"]:not([style*="--bk-webchat-dock-width: 0p
   width: calc(100vw - var(--bk-webchat-dock-width)) !important;
 }
 
+/* 宽弹窗须以避让后的容器限宽；否则 centered 的 inline-block 会被挤到居中伪元素的下一行。 */
+html[style*="--bk-webchat-dock-width:"]:not([style*="--bk-webchat-dock-width: 0px"]) .ant-modal {
+  max-width: calc(100% - 32px);
+}
+

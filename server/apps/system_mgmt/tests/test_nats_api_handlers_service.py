@@ -768,6 +768,44 @@ def test_public_notification_recipient_search_is_scoped_and_bounded():
     }
 
 
+@pytest.mark.parametrize(
+    ("channel_type", "recipients", "organizations", "expected_code"),
+    [
+        (ChannelChoices.ENTERPRISE_WECHAT_BOT, [], [7], "delivered"),
+        (ChannelChoices.ENTERPRISE_WECHAT_BOT, ["on-call"], [7], "delivered"),
+        (ChannelChoices.ENTERPRISE_WECHAT_BOT, [], [8], "channel_forbidden"),
+        (ChannelChoices.ENTERPRISE_WECHAT_BOT, [" "], [7], "invalid_recipients"),
+        (ChannelChoices.ENTERPRISE_WECHAT_BOT, "on-call", [7], "invalid_recipients"),
+        (ChannelChoices.ENTERPRISE_WECHAT_BOT, ["x" * 151], [7], "invalid_recipients"),
+        (ChannelChoices.ENTERPRISE_WECHAT_BOT, ["x"] * 101, [7], "invalid_recipients"),
+        (ChannelChoices.EMAIL, [], [7], "invalid_recipients"),
+        (ChannelChoices.ENTERPRISE_WECHAT, [], [7], "invalid_recipients"),
+        (ChannelChoices.NATS, [], [7], "invalid_recipients"),
+    ],
+)
+def test_notification_dispatch_optional_recipients_preserves_validation(monkeypatch, channel_type, recipients, organizations, expected_code):
+    channel = Channel.objects.create(name="通知渠道", channel_type=channel_type, config={}, description="", team=[7])
+    send = Mock(return_value={"result": True})
+    monkeypatch.setattr("apps.system_mgmt.nats.channels.send_msg_with_channel", send)
+
+    result = nats_api.dispatch_notification(
+        delivery_key="workflow:notification:recipients",
+        channel_id=channel.id,
+        organization_ids=organizations,
+        recipients=recipients,
+        title="通知",
+        body="统计完成",
+        event_payload={},
+    )
+
+    assert result["code"] == expected_code
+    assert result["result"] is (expected_code == "delivered")
+    if expected_code == "delivered":
+        send.assert_called_once_with(channel.id, "通知", "统计完成", recipients)
+    else:
+        send.assert_not_called()
+
+
 def test_public_notification_dispatch_normalizes_success_and_terminal_failure(monkeypatch):
     channel = Channel.objects.create(
         name="Webhook",
