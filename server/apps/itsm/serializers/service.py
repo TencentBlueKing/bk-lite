@@ -14,6 +14,13 @@ class ServiceCatalogSerializer(serializers.ModelSerializer):
     def validate_parent_id(self, value):
         if value and not ServiceCatalog.objects.filter(id=value, domain=self.context.get("domain", "")).exists():
             raise serializers.ValidationError("父目录不存在")
+        seen = {self.instance.id} if self.instance else set()
+        parent = value
+        while parent:
+            if parent in seen:
+                raise serializers.ValidationError("目录不能循环嵌套")
+            seen.add(parent)
+            parent = ServiceCatalog.objects.filter(id=parent, domain=self.context.get("domain", "")).values_list("parent_id", flat=True).first()
         return value
 
 
@@ -35,10 +42,29 @@ class ServiceSerializer(serializers.ModelSerializer):
             "description",
             "is_hot",
             "is_enabled",
+            "visibility",
+            "visible_users",
+            "visible_groups",
         ]
         read_only_fields = ["id", "workflow_name", "version_id"]
 
     def validate(self, attrs):
+        from apps.itsm.models import HandlerGroup
+        from apps.system_mgmt.models import User
+
+        domain = self.context.get("domain", "")
+        for field, model, lookup in [("visible_users", User, "username"), ("visible_groups", HandlerGroup, "id")]:
+            if field in attrs:
+                values = attrs[field]
+                if not isinstance(values, list) or len(values) > 500 or any(isinstance(v, (dict, list, bool)) for v in values):
+                    raise serializers.ValidationError({field: "请选择有效的用户或组"})
+                try:
+                    found = model.objects.filter(domain=domain, **{lookup + "__in": values}).count()
+                    valid = len(set(values)) == found
+                except (ValueError, TypeError):
+                    valid = False
+                if not valid:
+                    raise serializers.ValidationError({field: "用户或组不存在于当前域"})
         creating = self.instance is None
         if creating and not attrs.get("name"):
             raise serializers.ValidationError("请填写服务名称并选择流程")

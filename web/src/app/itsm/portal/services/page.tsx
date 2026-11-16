@@ -1,7 +1,8 @@
 'use client';
 
-import { Button, Input, Popconfirm, Select, Switch, message } from 'antd';
+import { Alert, Button, Input, Popconfirm, Select, Switch, message } from 'antd';
 import { useCallback, useEffect, useState } from 'react';
+import { UserSelector } from '../../components/user-selector';
 import OperateModal from '@/components/operate-modal';
 import CustomTable from '@/app/itsm/components/itsm-list-table';
 import { useItsmApi } from '../../api/useItsmApi';
@@ -24,6 +25,9 @@ interface ServiceItem {
   description: string;
   is_hot: boolean;
   is_enabled: boolean;
+  visibility: string;
+  visible_users: string[];
+  visible_groups: number[];
 }
 
 export default function ServiceManagePage() {
@@ -45,17 +49,27 @@ export default function ServiceManagePage() {
   const [workflowId, setWorkflowId] = useState<number | undefined>();
   const [description, setDescription] = useState('');
   const [isHot, setIsHot] = useState(false);
+  const [canManage, setCanManage] = useState<boolean>();
+  const [visibility, setVisibility] = useState('all');
+  const [visibleUsers, setVisibleUsers] = useState<string[]>([]);
+  const [visibleGroups, setVisibleGroups] = useState<number[]>([]);
+  const [groups, setGroups] = useState<{ id: number; name: string }[]>([]);
 
   const load = useCallback(async () => {
-    const [catalogData, serviceData, workflowData] = await Promise.all([
+    const access = await api.portal() as { can_manage?: boolean };
+    setCanManage(Boolean(access.can_manage));
+    if (!access.can_manage) return;
+    const [catalogData, serviceData, workflowData, groupData] = await Promise.all([
       api.listCatalogs() as Promise<{ items?: CatalogItem[] }>,
       api.listServices() as Promise<{ items?: ServiceItem[] }>,
       api.listWorkflows() as Promise<{ items?: WorkflowListItem[] }>,
+      api.listHandlerGroups() as Promise<{ items?: { id: number; name: string }[] }>,
     ]);
+    setGroups(groupData.items || []);
     setCatalogs(catalogData.items || []);
     setServices(serviceData.items || []);
     setWorkflows((workflowData.items || []).filter((item) => item.current_version_id));
-  }, [api.listCatalogs, api.listServices, api.listWorkflows]);
+  }, [api.listCatalogs, api.listServices, api.listWorkflows, api.listHandlerGroups, api.portal]);
 
   useEffect(() => {
     if (!api.ready) {
@@ -88,6 +102,9 @@ export default function ServiceManagePage() {
     setWorkflowId(item?.workflow_id);
     setDescription(item?.description || '');
     setIsHot(Boolean(item?.is_hot));
+    setVisibility(item?.visibility || "all");
+    setVisibleUsers(item?.visible_users || []);
+    setVisibleGroups(item?.visible_groups || []);
     setServiceOpen(true);
   };
 
@@ -102,6 +119,9 @@ export default function ServiceManagePage() {
       catalog_id: serviceCatalogId || null,
       workflow_id: workflowId,
       description,
+      visibility,
+      visible_users: visibleUsers,
+      visible_groups: visibleGroups,
       is_hot: isHot,
       is_enabled: editingService ? editingService.is_enabled : true,
     });
@@ -116,6 +136,9 @@ export default function ServiceManagePage() {
     }
     return !keyword.trim() || item.name.includes(keyword.trim());
   });
+
+  if (canManage === false) return <Alert type="warning" message="你没有服务目录管理权限" />;
+  if (canManage === undefined) return null;
 
   return (
     <div className="flex min-h-0 gap-4">
@@ -236,6 +259,14 @@ export default function ServiceManagePage() {
           <FieldRow label={t('itsm.portal.description')} align="start">
             <Input.TextArea rows={3} placeholder={t('itsm.portal.description')} value={description} onChange={(event) => setDescription(event.target.value)} />
           </FieldRow>
+          <FieldRow label="可见范围">
+            <Select className="w-full" aria-label="服务可见范围" value={visibility} onChange={setVisibility} options={[{ value: 'all', label: '全部用户' }, { value: 'restricted', label: '指定用户或组' }]} />
+          </FieldRow>
+          {visibility === 'restricted' && <>
+            <FieldRow label="用户"><UserSelector ariaLabel="可见用户" value={visibleUsers} onChange={setVisibleUsers} allowClear /></FieldRow>
+            <FieldRow label="用户组"><Select className="w-full" aria-label="可见用户组" mode="multiple" showSearch optionFilterProp="label" value={visibleGroups} onChange={setVisibleGroups} options={groups.map(item => ({ value: item.id, label: item.name }))} /></FieldRow>
+            <p className="text-xs text-[var(--color-text-3)]">用户或组内成员、负责人满足任意一项即可访问。均未选择时，仅超管可见。</p>
+          </>}
           <FieldRow label={t('itsm.portal.hot')}>
             <Switch checked={isHot} onChange={setIsHot} />
           </FieldRow>

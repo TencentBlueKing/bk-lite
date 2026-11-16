@@ -58,12 +58,15 @@ from apps.itsm.views.m2 import statuses as status_admin
 from apps.itsm.views.m2 import test_start, ticket_tags, todo_summary, view_templates, workflow_export, workflow_import, workflow_variable_test
 from apps.itsm.views.m2 import workflow_variables as variable_admin
 from apps.itsm.views.m2 import workflow_versions
+from apps.itsm.views.portal_workbench import portal_dashboard, portal_layout
 from apps.itsm.views.services import CatalogView, ServiceView, service_favorite, service_hot, service_portal, service_use
 from apps.itsm.views.ticket_center import center_settings, filter_tags
 from apps.itsm.views.tickets import operate_ticket, ticket_detail, ticket_form, ticket_logs, ticket_survey, ticket_workflows, tickets
 from apps.itsm.views.users import PublicStatusView, UserSearchView
 
 urlpatterns = [
+    path("api/services/layout/", portal_layout, name="itsm-portal-layout"),
+    path("api/services/dashboard/", portal_dashboard, name="itsm-portal-dashboard"),
     path("api/tickets/filter_tags/", filter_tags, name="itsm-ticket-filter-tags"),
     path("api/tickets/center_settings/", center_settings, name="itsm-ticket-center-settings"),
     path("api/tickets/workflows/", ticket_workflows, name="itsm-ticket-workflows"),

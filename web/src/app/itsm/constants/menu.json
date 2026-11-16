@@ -14,7 +14,8 @@
         {
           "title": "服务管理",
           "url": "/itsm/portal/services",
-          "name": "portal"
+          "name": "portal",
+          "isNotMenuItem": true
         },
         {
           "title": "提单",
@@ -180,7 +181,7 @@
       "name": "portal",
       "children": [
         {"title": "Catalog", "url": "/itsm/portal", "name": "portal"},
-        {"title": "Services", "url": "/itsm/portal/services", "name": "portal"},
+        {"title": "Services", "url": "/itsm/portal/services", "name": "portal", "isNotMenuItem": true},
         {"title": "Apply", "url": "/itsm/portal/apply", "name": "portal", "isNotMenuItem": true}
       ]
     },

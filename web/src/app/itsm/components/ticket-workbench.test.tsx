@@ -2,12 +2,12 @@ import React from 'react';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { TicketWorkbench } from './ticket-workbench';
-const tableProps = vi.hoisted(() => ({ current: {} as { pagination: { pageSizeOptions: number[]; onChange: (page: number, size: number) => void } } }));
+const tableProps = vi.hoisted(() => ({ current: {} as { columns: { key: string }[]; pagination: { pageSizeOptions: number[]; onChange: (page: number, size: number) => void } } }));
 const api = vi.hoisted(() => ({ ready: true, searchUsers: vi.fn(), searchTicketTags: vi.fn(), listTickets: vi.fn(), centerSettings: vi.fn(), saveTicketColumns: vi.fn(), saveTicketGroup: vi.fn(), deleteTicketGroup: vi.fn(), batchOptions: vi.fn(), batchTickets: vi.fn() }));
 vi.mock('../api/useItsmApi', () => ({ useItsmApi: () => api }));
 vi.mock('@/utils/i18n', () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
 vi.mock('next/link', () => ({ default: ({ children }: { children: React.ReactNode }) => <span>{children}</span> }));
-vi.mock('@/components/custom-table', () => ({ default: (props: { pagination: { pageSizeOptions: number[]; onChange: (page: number, size: number) => void }; rowSelection: { onChange: (keys: number[]) => void }; dataSource: { id: number; title: string }[] }) => { tableProps.current = props; const { rowSelection, dataSource } = props; return <div>{dataSource.map(item => <button key={item.id} onClick={() => rowSelection.onChange([item.id])}>{item.title}</button>)}</div>; } }));
+vi.mock('@/components/custom-table', () => ({ default: (props: { columns: { key: string }[]; pagination: { pageSizeOptions: number[]; onChange: (page: number, size: number) => void }; rowSelection: { onChange: (keys: number[]) => void }; dataSource: { id: number; title: string }[] }) => { tableProps.current = props; const { rowSelection, dataSource } = props; return <div>{dataSource.map(item => <button key={item.id} onClick={() => rowSelection.onChange([item.id])}>{item.title}</button>)}</div>; } }));
 Object.defineProperty(window, 'matchMedia', { writable: true, value: vi.fn().mockImplementation(() => ({ matches: false, addListener: vi.fn(), removeListener: vi.fn() })) });
 afterEach(cleanup);
 beforeEach(() => {
@@ -130,4 +130,28 @@ it('分组使用加号入口，操作搜索栏不展示重复统计', async () =
   expect(screen.queryByText(/共.*张工单/)).toBeNull();
   expect(screen.getByRole('button', { name: '保存为分组' }).textContent).toBe('');
   expect(screen.getByRole('button', { name: '更多筛选' })).toBeTruthy();
+});
+
+it('字段设置不占独立空白列', async () => {
+  render(<TicketWorkbench />);
+  await screen.findByRole('button', { name: '测试工单' });
+  expect(tableProps.current.columns.map(column => column.key)).toEqual(['sn', 'title']);
+  fireEvent.click(screen.getByRole('button', { name: '展示字段' }));
+  await screen.findByText('个性化展示字段');
+});
+
+it('新增分组带入未查询条件，保存后立即按弹窗条件刷新', async () => {
+  api.saveTicketGroup.mockImplementation(async (name, filters) => ({ id: 8, name, filters }));
+  render(<TicketWorkbench />);
+  await screen.findByRole('button', { name: '测试工单' });
+  fireEvent.change(screen.getByRole('textbox', { name: '工单关键词' }), { target: { value: '未应用条件' } });
+  fireEvent.click(screen.getByRole('button', { name: '保存为分组' }));
+  expect((await screen.findByRole('textbox', { name: '分组关键词' }) as HTMLInputElement).value).toBe('未应用条件');
+  fireEvent.change(screen.getByRole('textbox', { name: '分组关键词' }), { target: { value: '数据库' } });
+  fireEvent.change(screen.getByRole('textbox', { name: '分组名称' }), { target: { value: '数据库分组' } });
+  fireEvent.click(screen.getByRole('button', { name: '保存分组' }));
+  await waitFor(() => expect(api.listTickets).toHaveBeenLastCalledWith(expect.objectContaining({ q: '数据库', page: 1 })));
+  expect(api.saveTicketGroup).toHaveBeenCalledWith('数据库分组', expect.objectContaining({ q: '数据库' }));
+  fireEvent.click(screen.getByRole('button', { name: /重\s*置/ }));
+  await waitFor(() => expect(api.listTickets).toHaveBeenLastCalledWith(expect.objectContaining({ q: '数据库' })));
 });

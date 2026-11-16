@@ -62,6 +62,8 @@ export interface PortalCatalog {
 }
 
 export interface PortalData {
+  can_manage?: boolean;
+  can_apply?: boolean;
   catalogs: PortalCatalog[];
   services: PortalService[];
   favorites: PortalService[];

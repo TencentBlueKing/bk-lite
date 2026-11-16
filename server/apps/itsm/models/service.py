@@ -24,6 +24,8 @@ class Service(ItsmModel):
     is_enabled = models.BooleanField(default=True)
     is_hot = models.BooleanField(default=False)
     order = models.PositiveIntegerField(default=0)
+    visibility = models.CharField(max_length=16, choices=[("all", "全部用户"), ("restricted", "指定用户和组")], default="all")
+    visible_users = models.JSONField(default=list)
     visible_groups = models.JSONField(default=list)
 
     class Meta:

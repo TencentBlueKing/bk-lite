@@ -428,7 +428,8 @@ class TicketService:
         if allowed and key not in allowed:
             raise ValueError(f"不允许从 {current_key} 转到 {key}")
         ticket.status = status
-        ticket.save(update_fields=["status", "updated_at"])
+        ticket.finished_at = timezone.now() if key == "finished" else None
+        ticket.save(update_fields=["status", "finished_at", "updated_at"])
         if key == "finished":
             from apps.itsm.services.triggers import fire_triggers
 

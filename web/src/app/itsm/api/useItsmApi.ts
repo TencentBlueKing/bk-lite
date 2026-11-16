@@ -1,5 +1,6 @@
 'use client';
 
+import type { PortalLayout } from '../portal/workbench-types';
 import { useCallback } from 'react';
 import useApiClient from '@/utils/request';
 
@@ -69,13 +70,16 @@ export function useItsmApi() {
   );
   const ticketLogs = useCallback((id: number) => get(`/itsm/api/tickets/${id}/logs/`), [get]);
   const listTicketWorkflows = useCallback(() => get('/itsm/api/tickets/workflows/'), [get]);
-  const ticketForm = useCallback((versionId: number) => get(`/itsm/api/tickets/form/${versionId}/`), [get]);
+  const ticketForm = useCallback((versionId: number, serviceId?: number) => get(`/itsm/api/tickets/form/${versionId}/`, { params: serviceId ? { service_id: serviceId } : {} }), [get]);
   const getTicket = useCallback((id: number) => get(`/itsm/api/tickets/${id}/`), [get]);
   const submitSurvey = useCallback(
     (id: number, body: { score: number; comment?: string }) => post(`/itsm/api/tickets/${id}/survey/`, body),
     [post],
   );
   const portal = useCallback(() => get('/itsm/api/services/portal/'), [get]);
+  const portalLayout = useCallback(() => get('/itsm/api/services/layout/'), [get]);
+  const savePortalLayout = useCallback((value: PortalLayout) => put('/itsm/api/services/layout/', value), [put]);
+  const portalDashboard = useCallback(() => get('/itsm/api/services/dashboard/'), [get]);
   const loadDrafts = useCallback(() => get('/itsm/api/services/drafts/'), [get]);
   const saveDraft = useCallback((body: { service_id: number; form_data?: Record<string, unknown>; clear?: boolean }) => post('/itsm/api/services/drafts/', body), [post]);
   const listCatalogs = useCallback(() => get('/itsm/api/catalogs/'), [get]);
@@ -83,7 +87,7 @@ export function useItsmApi() {
   const deleteCatalog = useCallback((id: number) => del(`/itsm/api/catalogs/?id=${id}`), [del]);
   const listServices = useCallback(() => get('/itsm/api/services/'), [get]);
   const createService = useCallback(
-    (body: { id?: number; name?: string; catalog_id?: number | null; workflow_id?: number; description?: string; is_hot?: boolean; is_enabled?: boolean }) => post('/itsm/api/services/', body),
+    (body: { id?: number; name?: string; catalog_id?: number | null; workflow_id?: number; description?: string; is_hot?: boolean; is_enabled?: boolean; visibility?: string; visible_users?: string[]; visible_groups?: number[] }) => post('/itsm/api/services/', body),
     [post],
   );
   const deleteService = useCallback((id: number) => del(`/itsm/api/services/?id=${id}`), [del]);
@@ -203,6 +207,9 @@ export function useItsmApi() {
     listTicketWorkflows,
     submitSurvey,
     portal,
+    portalLayout,
+    savePortalLayout,
+    portalDashboard,
     loadDrafts,
     saveDraft,
     listCatalogs,

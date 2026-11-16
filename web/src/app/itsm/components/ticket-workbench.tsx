@@ -29,7 +29,7 @@ interface Settings { columns: string[]; views: SavedView[] }
 interface BatchResult { id: number; ok: boolean; error?: string }
 const errorText = (error: unknown) => error instanceof Error ? error.message : '操作失败，请重试';
 
-export function TicketWorkbench() {
+export function TicketWorkbench({ initialTab = 'all' }: { initialTab?: string }) {
   const api = useItsmApi();
   const { message } = App.useApp();
   const [columns, setColumns] = useState(DEFAULT_COLUMNS);
@@ -37,9 +37,9 @@ export function TicketWorkbench() {
   const [views, setViews] = useState<SavedView[]>([]);
   const [settingsReady, setSettingsReady] = useState(false);
   const [settingsError, setSettingsError] = useState('');
-  const [tab, setTab] = useState('all');
-  const [query, setQuery] = useState<Filters>(EMPTY);
-  const [draft, setDraft] = useState<Filters>(EMPTY);
+  const [tab, setTab] = useState(initialTab);
+  const [query, setQuery] = useState<Filters>({ ...EMPTY, tab: initialTab });
+  const [draft, setDraft] = useState<Filters>({ ...EMPTY, tab: initialTab });
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const [total, setTotal] = useState(0);
@@ -55,6 +55,7 @@ export function TicketWorkbench() {
   const [filterOpen, setFilterOpen] = useState(false);
   const [groupOpen, setGroupOpen] = useState(false);
   const [groupName, setGroupName] = useState('');
+  const [groupFilters, setGroupFilters] = useState<Filters>({ ...EMPTY, tab: initialTab });
   const [saving, setSaving] = useState(false);
   const [action, setAction] = useState('follow');
   const [batchOpen, setBatchOpen] = useState(false);
@@ -113,8 +114,8 @@ export function TicketWorkbench() {
   const saveGroup = async () => {
     setSaving(true);
     try {
-      const saved = await api.saveTicketGroup(groupName.trim(), { ...query }) as SavedView;
-      setViews(current => [...current, saved]); setTab(`view:${saved.id}`); setGroupOpen(false); setGroupName('');
+      const saved = await api.saveTicketGroup(groupName.trim(), { ...groupFilters }) as SavedView;
+      setViews(current => [...current, saved]); setTab(`view:${saved.id}`); apply({ ...EMPTY, ...saved.filters }); setGroupOpen(false); setGroupName('');
     } catch (error) { message.error(errorText(error)); } finally { setSaving(false); }
   };
   const deleteGroup = async (id: number) => {
@@ -152,7 +153,7 @@ export function TicketWorkbench() {
   if (settingsError) return <Alert type="error" message={settingsError} action={<Button onClick={() => void loadSettings()}>重试</Button>} />;
   if (!settingsReady) return <Spin />;
   return <div className="min-w-0">
-    <Tabs type="line" className="[&_.ant-tabs-nav]:!bg-transparent [&_.ant-tabs-tab]:!bg-transparent" tabBarExtraContent={<Tooltip title="保存当前筛选为分组"><Button type="text" aria-label="保存为分组" icon={<PlusOutlined />} onClick={() => { setGroupName(''); setGroupOpen(true); }} /></Tooltip>} activeKey={tab} onChange={switchTab} items={[
+    <Tabs type="line" className="[&_.ant-tabs-nav]:!bg-transparent [&_.ant-tabs-tab]:!bg-transparent" tabBarExtraContent={<Tooltip title="保存当前筛选为分组"><Button type="text" aria-label="保存为分组" icon={<PlusOutlined />} onClick={() => { setGroupName(''); setGroupFilters({ ...draft }); setGroupOpen(true); }} /></Tooltip>} activeKey={tab} onChange={switchTab} items={[
       ...GROUPS,
       ...views.map(view => ({ key: `view:${view.id}`, label: <span className="inline-flex items-center gap-2">{view.name}<Popconfirm title={`删除分组“${view.name}”？`} description="不删除其中的工单。" onConfirm={event => { event?.stopPropagation(); return deleteGroup(view.id); }} onCancel={event => event?.stopPropagation()}><Button type="text" size="small" aria-label={`删除分组 ${view.name}`} icon={<CloseOutlined />} onClick={event => event.stopPropagation()} /></Popconfirm></span> })),
     ]} />
@@ -169,15 +170,15 @@ export function TicketWorkbench() {
           <Button className="col-span-2" type="primary" onClick={() => { apply({ ...draft }); setFilterOpen(false); }}>应用筛选</Button>
         </div>}><Button aria-label="更多筛选" icon={<FilterOutlined />} type={draft.creator || draft.tag || draft.priority || draft.created_after || draft.created_before ? 'primary' : 'default'}>筛选</Button></Popover>
         <Button type="primary" onClick={() => { apply({ ...draft, q: draft.q.trim(), creator: draft.creator.trim(), tag: draft.tag.trim(), priority: draft.priority.trim() }); setFilterOpen(false); }}>查询</Button>
-        <Button onClick={() => { apply({ ...EMPTY, tab: query.tab }); setFilterOpen(false); }}>重置</Button>
+        <Button onClick={() => { apply({ ...EMPTY, ...(views.find(view => `view:${view.id}` === tab)?.filters || { tab: query.tab }) }); setFilterOpen(false); }}>重置</Button>
         <Tooltip title="刷新"><Button aria-label="刷新列表" icon={<ReloadOutlined />} onClick={() => { setSelected([]); setRefresh(value => value + 1); }} /></Tooltip>
       </div>
     </div>
     {selected.length > 0 ? <div className="mb-3 flex flex-wrap items-center gap-3 rounded-lg border border-[var(--color-primary)] bg-[var(--color-bg)] p-3"><span>已选 {selected.length} 项</span><Select aria-label="批量操作类型" className="w-36" value={action} loading={optionsLoading} disabled={optionsLoading} options={ACTIONS.filter(item => batchOptions.includes(item.value))} onChange={setAction} /><Button type="text" onClick={() => setSelected([])}>取消选择</Button><span className="text-xs text-[var(--color-text-3)]">仅选择当前页，每次最多 50 项</span></div> : null}
     {loadError ? <Alert className="mb-3" type="error" message={loadError} action={<Button onClick={() => setRefresh(value => value + 1)}>重试</Button>} /> : null}
-    <div className="relative rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)]">
+    <div className="relative rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] [&_thead_th:last-child]:!pr-12">
     <Tooltip title="展示字段"><Button className="!absolute right-1 top-3 z-10" type="text" aria-label="展示字段" icon={<SettingOutlined />} onClick={() => { setColumnDraft(columns); setColumnOpen(true); }} /></Tooltip>
-    <CustomTable<TicketListItem> scroll={{ y: 'calc(100vh - 320px)' }} rowKey="id" loading={loading} dataSource={items} columns={[...tableColumns, { key: 'field-settings', title: '', width: 48, fixed: 'right', render: () => null }]}
+    <CustomTable<TicketListItem> scroll={{ y: 'calc(100vh - 320px)' }} rowKey="id" loading={loading} dataSource={items} columns={tableColumns}
       rowSelection={{ selectedRowKeys: selected, onChange: keys => setSelected(keys.slice(0, 50)), preserveSelectedRowKeys: false, getCheckboxProps: () => ({ disabled: loading }) }}
       pagination={{ current: page, pageSize, total, showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100], onChange: (next, size) => { setPage(size === pageSize ? next : 1); setPageSize(size); setSelected([]); } }}
       onChange={(_pagination, _filters, sort, extra) => { if (extra.action === 'sort') { const value = Array.isArray(sort) ? sort[0] : sort; apply({ ...query, ordering: value.order ? `${value.order === 'descend' ? '-' : ''}${String(value.columnKey)}` : '-created_at' }); } }}
@@ -187,8 +188,18 @@ export function TicketWorkbench() {
       <p className="mb-4 text-sm text-[var(--color-text-3)]">仅对当前账号生效；单号和标题始终显示。</p>
       <Checkbox.Group className="grid grid-cols-2 gap-3" value={columnDraft} options={Object.entries(FIELD_LABELS).map(([value, label]) => ({ value, label, disabled: ['sn', 'title'].includes(value) }))} onChange={value => setColumnDraft(value as string[])} />
     </Modal>
-    <Modal title="保存筛选分组" open={groupOpen} onCancel={() => !saving && setGroupOpen(false)} onOk={() => void saveGroup()} confirmLoading={saving} okText="保存分组" okButtonProps={{ disabled: !groupName.trim() }}>
-      <p className="mb-3 text-sm text-[var(--color-text-3)]">保存当前已应用的筛选及排序条件，分组内工单将随数据自动更新。</p><Input aria-label="分组名称" placeholder="例如：我关注的处理中工单" value={groupName} maxLength={40} onChange={event => setGroupName(event.target.value)} />
+    <Modal title="新增筛选分组" width={600} open={groupOpen} onCancel={() => !saving && setGroupOpen(false)} onOk={() => void saveGroup()} confirmLoading={saving} okText="保存分组" okButtonProps={{ disabled: !groupName.trim() }}>
+      <p className="mb-3 text-sm text-[var(--color-text-3)]">工单需同时满足以下条件；同一状态字段内可匹配任一选项。保存后自动更新分组结果。</p>
+      <div className="grid grid-cols-2 gap-4">
+        <label className="col-span-2 flex flex-col gap-1">分组名称<Input aria-label="分组名称" placeholder="例如：我关注的处理中工单" value={groupName} maxLength={40} onChange={event => setGroupName(event.target.value)} /></label>
+        <label className="flex flex-col gap-1">工单范围<Select aria-label="分组范围" value={groupFilters.tab} options={GROUPS.map(group => ({ value: group.key, label: group.label }))} onChange={value => setGroupFilters({ ...groupFilters, tab: value })} /></label>
+        <label className="flex flex-col gap-1">状态<Select aria-label="分组状态" mode="multiple" allowClear placeholder="全部状态" options={STATUS} value={groupFilters.status ? groupFilters.status.split(',') : []} onChange={value => setGroupFilters({ ...groupFilters, status: value.join(',') })} /></label>
+        <label className="col-span-2 flex flex-col gap-1">关键词<Input aria-label="分组关键词" allowClear placeholder="部分单号或标题" value={groupFilters.q} onChange={event => setGroupFilters({ ...groupFilters, q: event.target.value })} /></label>
+        <label className="flex flex-col gap-1">提单人<UserSelector ariaLabel="分组提单人" multiple={false} allowClear value={groupFilters.creator ? [groupFilters.creator] : []} onChange={value => setGroupFilters({ ...groupFilters, creator: value[0] || '' })} /></label>
+        <label className="flex flex-col gap-1">标签<TicketTagSelector value={groupFilters.tag} onChange={value => setGroupFilters({ ...groupFilters, tag: value })} /></label>
+        <label className="flex flex-col gap-1">优先级<Input aria-label="分组优先级" allowClear value={groupFilters.priority} onChange={event => setGroupFilters({ ...groupFilters, priority: event.target.value })} /></label>
+        <label className="col-span-2 flex flex-col gap-1">创建时间<DatePicker.RangePicker value={groupFilters.created_after && groupFilters.created_before ? [dayjs(groupFilters.created_after), dayjs(groupFilters.created_before)] : null} onChange={value => setGroupFilters({ ...groupFilters, created_after: value?.[0]?.format('YYYY-MM-DD') || '', created_before: value?.[1]?.format('YYYY-MM-DD') || '' })} /></label>
+      </div>
     </Modal>
     {selected.length > 0 && batchReason ? <Alert className="mb-3" type="warning" message={batchReason} /> : null}
     <Modal title={results ? '批量操作结果' : `批量${ACTIONS.find(item => item.value === action)?.label}`} open={batchOpen} closable={!batchBusy} maskClosable={!batchBusy} onCancel={() => !batchBusy && setBatchOpen(false)} footer={results ? <Button onClick={() => setBatchOpen(false)}>关闭</Button> : <Button type="primary" danger={action === 'reject'} loading={batchBusy} disabled={optionsLoading || !batchOptions.includes(action)} onClick={() => void runBatch()}>确认执行</Button>}>

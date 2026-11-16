@@ -8,7 +8,8 @@ from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.web_utils import WebUtils
 from apps.itsm.models import Service, ServiceCatalog, ServiceFavorite, ServiceRecent
 from apps.itsm.serializers import ServiceCatalogSerializer, ServiceSerializer
-from apps.itsm.views.access import api_errors, domain_of
+from apps.itsm.services.service_access import visible_services
+from apps.itsm.views.access import api_errors, domain_of, has_permission
 from apps.itsm.views.base import ItsmAPIView
 
 
@@ -23,7 +24,7 @@ def _user(request):
 
 
 def _service_item(service):
-    return ServiceSerializer(service).data
+    return {key: value for key, value in ServiceSerializer(service).data.items() if key not in {"visibility", "visible_users", "visible_groups"}}
 
 
 class CatalogView(ItsmAPIView):
@@ -107,17 +108,19 @@ class ServiceView(ItsmAPIView):
 @HasPermission("portal-View")
 def service_portal(request):
     username = _user(request)
-    enabled = Service.objects.filter(domain=domain_of(request)).select_related("workflow").filter(is_enabled=True).order_by("order", "id")
+    enabled = visible_services(request).select_related("workflow").order_by("order", "id")
     catalogs_qs = ServiceCatalog.objects.filter(domain=domain_of(request)).order_by("order", "id")
     favorite_ids = list(ServiceFavorite.objects.filter(domain=domain_of(request)).filter(username=username).values_list("service_id", flat=True))
     recent = (
         ServiceRecent.objects.filter(domain=domain_of(request))
-        .filter(username=username)
+        .filter(username=username, service_id__in=enabled.values("id"))
         .select_related("service__workflow")
         .order_by("-last_used_at")[:8]
     )
     return WebUtils.response_success(
         {
+            "can_manage": has_permission(request, "workflow-Edit"),
+            "can_apply": has_permission(request, "ticket-Add"),
             "catalogs": [{"id": item.id, "name": item.name, "parent_id": item.parent_id} for item in catalogs_qs],
             "services": [_service_item(item) for item in enabled],
             "favorites": [_service_item(item) for item in enabled if item.id in favorite_ids],
@@ -130,7 +133,7 @@ def service_portal(request):
 @api_errors
 @HasPermission("portal-View")
 def service_hot(request):
-    items = Service.objects.filter(domain=domain_of(request)).select_related("workflow").filter(is_enabled=True, is_hot=True).order_by("order", "id")
+    items = visible_services(request).select_related("workflow").filter(is_hot=True).order_by("order", "id")
     return WebUtils.response_success({"items": [_service_item(item) for item in items]})
 
 
@@ -138,8 +141,10 @@ def service_hot(request):
 @api_errors
 @HasPermission("portal-View")
 def service_favorite(request, service_id):
+    if request.method != "POST":
+        return WebUtils.response_error("不支持的请求方法", status_code=405)
     username = _user(request)
-    service = Service.objects.filter(domain=domain_of(request)).get(id=service_id)
+    service = visible_services(request).get(id=service_id)
     favorite = ServiceFavorite.objects.filter(domain=domain_of(request)).filter(username=username, service=service).first()
     if favorite:
         favorite.delete()
@@ -152,8 +157,10 @@ def service_favorite(request, service_id):
 @api_errors
 @HasPermission("portal-View")
 def service_use(request, service_id):
+    if request.method != "POST":
+        return WebUtils.response_error("不支持的请求方法", status_code=405)
     username = _user(request)
-    service = Service.objects.filter(domain=domain_of(request)).get(id=service_id)
+    service = visible_services(request).get(id=service_id)
     recent, _ = ServiceRecent.objects.get_or_create(
         domain=domain_of(request),
         username=username,

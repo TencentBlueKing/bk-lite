@@ -42,6 +42,7 @@ class Ticket(ItsmModel):
     current_assignees = models.JSONField(default=list)
     form_data = models.JSONField(default=dict)
     process_instance_id = models.CharField(max_length=64, blank=True, default="")
+    finished_at = models.DateTimeField(null=True, blank=True, db_index=True)
     is_test = models.BooleanField(default=False)
     tags = models.ManyToManyField(TicketTag, blank=True, related_name="tickets")
 

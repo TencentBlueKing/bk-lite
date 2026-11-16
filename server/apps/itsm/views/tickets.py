@@ -10,7 +10,7 @@ from django.views.decorators.csrf import csrf_exempt
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.web_utils import WebUtils
 from apps.itsm.flowable.client import FlowableClient
-from apps.itsm.models import Service, TicketSLARecord, TicketSurvey, TicketTask, WorkflowVersion
+from apps.itsm.models import TicketSLARecord, TicketSurvey, TicketTask, WorkflowVersion
 from apps.itsm.models.extend import VipUser
 from apps.itsm.serializers.ticket import TicketListSerializer
 from apps.itsm.services.ticket.actions import node_actions, side_action_enabled
@@ -123,8 +123,9 @@ def tickets(request):
         id=payload["workflow_version_id"], workflow__domain=domain_of(request), is_published=True
     )
     service_id = payload.get("service_id")
-    if service_id:
-        Service.objects.get(id=service_id, domain=domain_of(request), workflow_id=version.workflow_id, is_enabled=True)
+    from apps.itsm.services.service_access import check_service_request
+
+    check_service_request(request, version, service_id)
     ticket = _service().create(version, payload.get("form_data") or {}, _user(request), bool(payload.get("is_test")))
     if service_id:
         ticket.service_id = service_id
@@ -374,18 +375,45 @@ def ticket_form(request, version_id):
     version = WorkflowVersion.objects.select_related("workflow__form__current_version").get(
         id=version_id, is_published=True, workflow__domain=domain_of(request)
     )
+    from apps.itsm.services.service_access import check_service_request
+
+    check_service_request(request, version, request.GET.get("service_id"))
     schema = workflow_schema(version)
     if not schema.get("fields"):
         schema = {"version": 1, "fields": [{"key": "title", "type": "input", "label": "标题", "required": True}]}
-    return WebUtils.response_success({"schema": schema, "field_perm": _find_node(version.design, node_type="submit").get("field_perm", {})})
+    return WebUtils.response_success(
+        {
+            "schema": schema,
+            "field_perm": _find_node(version.design, node_type="submit").get("field_perm", {}),
+            "workflow_name": version.workflow.name,
+            "creator": _user(request),
+            "nodes": [
+                {
+                    "id": node["id"],
+                    "name": node.get("name") or node["id"],
+                    "type": node.get("type", ""),
+                    "state": "current" if node.get("type") == "submit" else "waiting",
+                }
+                for node in (version.design or {}).get("nodes", [])
+            ],
+            "edges": [{"from": edge["from"], "to": edge["to"]} for edge in (version.design or {}).get("edges", [])],
+        }
+    )
 
 
 @api_errors
 @HasPermission("ticket-Add")
 def ticket_workflows(request):
     from apps.itsm.models import Workflow
+    from apps.itsm.services.service_access import visible_services
 
-    queryset = Workflow.objects.filter(domain=domain_of(request), is_enabled=True, current_version__is_published=True).order_by("-id")[:200]
+    allowed = visible_services(request).values("workflow_id")
+    queryset = (
+        Workflow.objects.filter(domain=domain_of(request), is_enabled=True, current_version__is_published=True)
+        .filter(Q(services__isnull=True) | Q(id__in=allowed))
+        .distinct()
+        .order_by("-id")[:200]
+    )
     return WebUtils.response_success(
         {
             "items": [
