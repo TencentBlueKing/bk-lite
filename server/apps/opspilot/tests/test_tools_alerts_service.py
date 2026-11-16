@@ -53,6 +53,19 @@ def test_alerts_events_maps_to_rpc():
     assert out["data"]["items"][0]["event_id"] == "e1"
 
 
+def test_alerts_list_active_count_matches_activity_page_filter():
+    config = cfg()
+    config["configurable"]["user_message"] = "我现在有多少条活动告警"
+    with patch("apps.opspilot.metis.llm.tools.alerts.utils.AlertOperationAnaRpc") as rpc_cls:
+        rpc_cls.return_value.list_alerts.return_value = {"result": True, "data": {"count": 3, "items": []}}
+        out = alerts_list_alerts.invoke({"status": "active", "keyword": "活动", "page_size": 20}, config=config)
+    query_data = rpc_cls.return_value.list_alerts.call_args.kwargs["query_data"]
+    assert query_data["keywords"] == []
+    assert query_data["status"] == "active"
+    assert out["data"]["count"] == 3
+    assert "searched_keywords" not in out
+
+
 def test_alerts_list_inventory_question_does_not_send_keywords():
     config = cfg()
     config["configurable"]["user_message"] = "当前告警有哪些"

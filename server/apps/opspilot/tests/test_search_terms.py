@@ -46,6 +46,18 @@ def test_inventory_question_does_not_become_search_terms():
     assert "哪些" not in terms
 
 
+def test_active_alert_count_question_sends_no_content_keywords():
+    """活动告警条数问句对齐活动页：不把「活动」「条」拆成正文关键字。"""
+    assert build_search_terms("我现在有多少条活动告警") == []
+    assert resolve_search_terms("我现在有多少条活动告警", "活动") == []
+    assert resolve_search_terms("我要查询我现在有多少条活动告警", "条活动") == []
+    assert resolve_search_terms("当前有多少条活动告警", "活动告警") == []
+    disk_terms = build_search_terms("有多少条磁盘告警")
+    assert "磁盘" in disk_terms
+    assert "条磁盘" not in disk_terms
+    assert "活动" not in disk_terms
+
+
 def test_error_log_question_keeps_ascii_keyword():
     terms = build_search_terms("查询最近24小时的error日志")
     assert "error" in terms
