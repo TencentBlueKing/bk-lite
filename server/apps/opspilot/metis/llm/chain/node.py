@@ -3,6 +3,7 @@ import hashlib
 import json
 import uuid
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 from urllib.parse import parse_qs, urlparse
 
@@ -97,6 +98,7 @@ from apps.opspilot.metis.llm.chain.nested_stream import (
     publish_node_finished,
     remember_planned_tool_steps,
 )
+from apps.opspilot.metis.llm.chain.planned_agent import create_planned_agent, result_token_limit_for_request
 from apps.opspilot.metis.llm.chain.prepare_llm_context import prepare_messages_for_llm
 from apps.opspilot.metis.llm.chain.skill_sandbox import (  # noqa: E402,F401
     SkillSandboxMixin,
@@ -133,6 +135,7 @@ from apps.opspilot.metis.llm.tools.conversation_skill_package_tool import build_
 from apps.opspilot.metis.llm.tools.tools_loader import ToolsLoader
 from apps.opspilot.services.conversation_skill_package import ALLOWED_ENTRIES, AUTHORING_EXTRA_KEY, PREPARE_CONVERSATION_SKILL_PACKAGE_TOOL
 from apps.opspilot.services.job_output_text import model_visible_text
+from apps.opspilot.services.python_sandbox.result_backend import build_result_backend
 from apps.opspilot.utils.pending_question import (
     KIND_K8S_REPAIR_MODE,
     KIND_LIMIT_CONTINUE,
@@ -2700,6 +2703,7 @@ class ToolsNodes(
                     from apps.opspilot.metis.llm.middleware.python_sandbox import PythonSandboxMiddleware
 
                     legacy_middleware.append(PythonSandboxMiddleware(python_sandbox))
+                backend = build_result_backend(python_sandbox, backend)
                 agent_kwargs = self._build_deep_agent_kwargs(
                     llm=llm,
                     registered_tools=registered_tools,
@@ -2878,6 +2882,7 @@ class ToolsNodes(
                     self._build_skill_backend_and_sources, graph_request, packages=skill_packages, sandbox=python_sandbox
                 )
 
+            backend = build_result_backend(python_sandbox, backend)
             skills_only_plan = bool(skill_sources) and self._plan_is_skills_only(plan) and not attachments
             active_tools = []
             always_visible, hidden_tools = self._build_planned_execution_tool_visibility(
@@ -2905,16 +2910,15 @@ class ToolsNodes(
                 ppt_authoring=ppt_authoring,
             )
             if python_sandbox is not None:
-                from apps.opspilot.metis.llm.agent.tool_execution_planner import planned_execution_compact_limits_for_request
                 from apps.opspilot.metis.llm.middleware.python_sandbox import PythonSandboxMiddleware
 
-                max_tool_chars, _ = planned_execution_compact_limits_for_request(graph_request)
-                runtime_middleware.append(PythonSandboxMiddleware(python_sandbox, threshold=min(4000, max_tool_chars)))
+                runtime_middleware.append(PythonSandboxMiddleware(python_sandbox))
             final_system_prompt = self._append_planned_execution_step_prompt(final_system_prompt)
             final_system_prompt += auto_instruction
 
             def _build_deep_agent():
-                return create_deep_agent(
+                return create_planned_agent(
+                    result_token_limit=result_token_limit_for_request(graph_request),
                     **self._build_deep_agent_kwargs(
                         llm=llm,
                         registered_tools=registered_tools,
@@ -2923,7 +2927,7 @@ class ToolsNodes(
                         backend=backend,
                         skill_sources=skill_sources,
                         interrupt_on=interrupt_on,
-                    )
+                    ),
                 )
 
             deep_agent = _build_deep_agent()
@@ -2938,6 +2942,7 @@ class ToolsNodes(
                 backend, skill_sources, sandbox_dir = await asyncio.to_thread(
                     self._build_skill_backend_and_sources, graph_request, packages=skill_packages, sandbox=python_sandbox
                 )
+                backend = build_result_backend(python_sandbox, backend)
                 if skill_sources:
                     skills_only = self._plan_is_skills_only(candidate_plan) and not ppt_authoring and not attachments
                     skill_guard.enabled = skills_only
@@ -2949,6 +2954,7 @@ class ToolsNodes(
                         )
                     elif skills_only:
                         always_visible -= set(PLANNED_EXECUTION_ALWAYS_VISIBLE_FS_TOOLS)
+                        always_visible |= {"read_file", "grep"}
                         always_visible.add("execute")
                         visibility_middleware._hidden_tools = frozenset(
                             name for name in PLANNED_EXECUTION_HIDDEN_DEEPAGENT_TOOLS if name != "execute"
@@ -3158,7 +3164,7 @@ class ToolsNodes(
                     if attachments:
                         step_guidance += "\n" + ATTACHMENT_README.format(workspace=python_sandbox.workspace)
                     if python_sandbox is not None and python_sandbox.files():
-                        step_guidance += "\n本任务工作区中的工具结果文件：" + ", ".join(python_sandbox.files())
+                        step_guidance += "\n本任务工作区中的工具结果文件：" + ", ".join("/large_tool_results/" + Path(path).name for path in python_sandbox.files())
                     finish_rule = "只完成本步骤；取得足够证据后立即结束，不要处理后续步骤。"
                     if ppt_authoring:
                         finish_rule = "本步只有写出 svg_output 里的页面才算完成。禁止只回复大纲或说即将开始。写完就停止，平台会导出 pptx。"

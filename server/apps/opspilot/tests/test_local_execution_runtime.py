@@ -5,9 +5,10 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from deepagents.middleware.filesystem import FilesystemMiddleware
 from langchain_core.messages import ToolMessage
 
-from apps.opspilot.metis.llm.middleware.python_sandbox import PythonSandboxMiddleware
+from apps.opspilot.services.python_sandbox.result_backend import build_result_backend
 from apps.opspilot.services.python_sandbox.runtime import PythonSandbox, SandboxUnavailable
 
 
@@ -22,10 +23,12 @@ def test_large_result_is_local_file_without_starting_process(runtime, mocker):
     launch = mocker.patch("subprocess.Popen", side_effect=AssertionError("storage must not execute code"))
     payload = '[{"value":2},' + '{"value":3},' * 1000 + '{"value":4}]'
     message = ToolMessage(content=payload, tool_call_id="alerts", name="alerts")
-    result = PythonSandboxMiddleware(runtime).wrap_tool_call(SimpleNamespace(tool_call={"name": "alerts"}), lambda _: message)
+    result = FilesystemMiddleware(backend=build_result_backend(runtime), tool_token_limit_before_evict=1000).wrap_tool_call(
+        SimpleNamespace(tool_call={"name": "alerts"}, runtime=None), lambda _: message
+    )
     path = runtime.files()[0]
     assert Path(path).read_text() == payload
-    assert path in result.content and len(result.content) < len(payload)
+    assert "/large_tool_results/alerts" in result.content and len(result.content) < len(payload)
     assert result.tool_call_id == "alerts"
     launch.assert_not_called()
 
@@ -34,7 +37,8 @@ def test_python_and_shell_use_server_interpreter_and_shared_cwd(runtime, tmp_pat
     monkeypatch.setenv("DB_PASSWORD", "server-secret-sentinel")
     host_file = tmp_path / "host.txt"
     host_file.write_text("host-visible")
-    path = runtime.store_result('[{"value":3},{"value":4}]')
+    path = runtime.workspace + "/large_tool_results/query"
+    assert build_result_backend(runtime).write("/large_tool_results/query", '[{"value":3},{"value":4}]').error is None
     assert runtime.execute(f"import json\nsum(r['value'] for r in json.load(open({path!r})))") == "7"
     assert runtime.execute_command('python -c \'import pathlib; pathlib.Path("answer.txt").write_text("中文")\'').exit_code == 0
     assert runtime.execute("open('answer.txt').read()") == "中文"
@@ -47,8 +51,10 @@ def test_python_and_shell_use_server_interpreter_and_shared_cwd(runtime, tmp_pat
 def test_close_removes_only_this_run_and_disallows_reuse(runtime):
     other = PythonSandbox()
     try:
-        first = Path(runtime.store_result("first"))
-        second = Path(other.store_result("second"))
+        assert build_result_backend(runtime).write("/large_tool_results/first", "first").error is None
+        assert build_result_backend(other).write("/large_tool_results/second", "second").error is None
+        first = Path(runtime.files()[0])
+        second = Path(other.files()[0])
         runtime.close()
         runtime.close()
         assert not first.parent.exists()

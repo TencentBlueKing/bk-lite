@@ -17,11 +17,44 @@
 | Server 启动顺序与依赖边界 | `docs/operations/server-startup-dependencies.md` |
 | Server 模块架构、数据流与使用指引 | `docs/design-docs/agent-architecture-evidence.md` |
 | 长期架构决定 | `docs/adr/` |
+| Agent 工作流与技能清单 | `docs/agents/` |
 | 发布记录 | `docs/changelog/` |
 
 按任务读取相关入口，并以当前代码、配置和测试为最终证据。修改 `server/` 或
 `agents/` 前，按影响范围阅读后端工程、安全、可靠性和质量 capability；只读取
 本次任务相关章节。
+
+## 工作风格：pstack / poteto mode
+
+仓库已 vendored pstack 到 `.agents/skills/`（清单见 `docs/agents/skills.md`）。
+默认按本节执行；需要完整风格或 playbook 细节时显式 `/poteto-mode`。只认这一个入口，
+不再另立流程。
+
+- **任务路由**：先按 `poteto-mode` 的 playbook 归类（Investigation / Bug fix /
+  Perf issue / Feature / Refactoring / Prototype / Babysit / Shipping /
+  Multi-phase），把该 playbook 的步骤作为最初 todo；不做的步骤留一行
+  `skip: <原因>`。
+- **回复**：短句、结论先行；每条判断同句带证据，或标注「实测 / 推断 / 猜测」；
+  不编造链接、文件、提交或未跑过的验证。
+- **先定形状再写代码**：先写清数据形状和承载它的结构（状态机、表、注册表、
+  reducer、边界），再动实现。
+- **最小改动**：先删后加，不为假想未来预留抽象、兼容层或重复防线。
+- **验证到真实产物**：不以「能编译」当验收；多步工作拆成可独立验证的单元，
+  逐个验证后再进入下一个。
+- **子代理**：默认后台运行，给文件路径而不是粘贴全文；子代理结论由主线程复核后
+  再对外表述。
+- **自主性**：可逆工作直接推进；force-push 共享分支、部署、删数据、对外发消息
+  先确认。
+
+## 变更与规格
+
+- 跨会话、跨模块或难回滚的变更，一份主 spec 放 `specs/changes/<feature>/spec.md`；
+  长期能力契约更新到 `specs/capabilities/`。
+- 完成后只更新实际变化的 capability、必要 ADR 和 change 状态，不做
+  sync/archive 仪式（见 `docs/adr/0001`）。
+- `openspec/` 只是历史 change 的存放位置，整体只读。仍在维护的条目
+  （如 `isolate-celery-workload-runtime`）继续以其中 `design.md`、`tasks.md` 为
+  真相源，并保持 `openspec validate` 通过。新变更不再新建 `openspec/changes/`。
 
 ## Web UI 硬约束
 

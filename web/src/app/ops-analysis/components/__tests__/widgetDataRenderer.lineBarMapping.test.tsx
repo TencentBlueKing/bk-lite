@@ -268,7 +268,7 @@ describe('line and bar mapping revalidates the rows already fetched', () => {
     expect(testState.fetchCount).toBe(fetchesAfterMapped);
   });
 
-  it('shows the current and required structure instead of drawing a table as a pie', async () => {
+  it('rejects a table result on a pie as a format mismatch', async () => {
     testState.payload = {
       structure: 'table',
       items: [{ classification_name: '计算', model_name: '主机' }],
@@ -284,7 +284,7 @@ describe('line and bar mapping revalidates the rows already fetched', () => {
       />,
     );
     await waitFor(() => {
-      expect(screen.getByText('dashboard.structureMismatch')).toBeTruthy();
+      expect(screen.getByText('dashboard.dataFormatMismatch')).toBeTruthy();
     });
     expect(screen.queryByTestId('mapped-line-bar')).toBeNull();
   });

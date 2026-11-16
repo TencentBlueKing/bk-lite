@@ -154,7 +154,6 @@ export interface BuildWidgetSubmitConfigInput {
   filterBindings: FilterBindings;
   displayColumns: SubmitDisplayColumn[];
   filterFields: SubmitFilterField[];
-  columnModelKey?: string;
   /** 旧操作列。提交忽略它，保存时由 applyInteractionLink 删掉 valueConfig.actions。 */
   actions?: DashboardActionConfig[];
   /** 预览组装：映射与提交相同，但不因未填必填项拦截。 */
@@ -684,7 +683,6 @@ export const buildWidgetSubmitConfig = ({
   filterBindings,
   displayColumns,
   filterFields,
-  columnModelKey,
   forPreview = false,
   includeSingleStyle = true,
 }: BuildWidgetSubmitConfigInput): BuildWidgetSubmitConfigResult => {
@@ -721,9 +719,6 @@ export const buildWidgetSubmitConfig = ({
       return { error: tableResult.error };
     }
     if (tableResult.tableConfig) {
-      if (columnModelKey) {
-        tableResult.tableConfig.columnModelKey = columnModelKey;
-      }
       result.tableConfig = tableResult.tableConfig;
     }
   }

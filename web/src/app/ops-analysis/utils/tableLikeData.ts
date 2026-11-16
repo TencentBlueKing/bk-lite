@@ -1,17 +1,15 @@
 import type { ResponseFieldDefinition } from '@/app/ops-analysis/types/dataSource';
 import type { TableColumnConfigItem } from '@/app/ops-analysis/types/dashBoard';
-import {
-  resolveModelAttrColumns,
-  schemaFieldsForTable,
-  type ModelColumnPayload,
-} from '@/app/ops-analysis/utils/modelTableColumns';
+import { readExplicitPageNumber } from '@/app/ops-analysis/utils/tablePagination';
 
 export interface TableLikePaginationState {
-  current: number;
-  pageSize: number;
+  current?: number;
+  pageSize?: number;
 }
 
-export interface TableLikePagination extends TableLikePaginationState {
+export interface TableLikePagination {
+  current: number;
+  pageSize: number;
   total: number;
 }
 
@@ -19,6 +17,7 @@ export interface TableLikeParseResult<RecordType extends Record<string, any>> {
   rows: RecordType[];
   pagination: TableLikePagination;
   isPaginated: boolean;
+  selfPaged: boolean;
 }
 
 const isRecordArray = (value: unknown): value is Record<string, any>[] =>
@@ -29,9 +28,11 @@ export const parseTableLikeData = <RecordType extends Record<string, any>>(
   queryPagination: TableLikePaginationState,
   supportsPagination = false,
 ): TableLikeParseResult<RecordType> => {
+  const requestPage = readExplicitPageNumber(queryPagination.current);
+  const requestPageSize = readExplicitPageNumber(queryPagination.pageSize);
   const emptyPagination = {
-    current: queryPagination.current,
-    pageSize: queryPagination.pageSize,
+    current: requestPage ?? 1,
+    pageSize: requestPageSize ?? 1,
     total: 0,
   };
 
@@ -40,6 +41,7 @@ export const parseTableLikeData = <RecordType extends Record<string, any>>(
       rows: [],
       pagination: emptyPagination,
       isPaginated: false,
+      selfPaged: false,
     };
   }
 
@@ -60,14 +62,24 @@ export const parseTableLikeData = <RecordType extends Record<string, any>>(
       rawTotal !== '' &&
       Number.isFinite(total) &&
       total >= 0;
+    const echoPage = readExplicitPageNumber(response.page);
+    const echoPageSize = readExplicitPageNumber(response.page_size);
+    const requestPaged = requestPage !== undefined && requestPageSize !== undefined;
+    const selfPaged = supportsPagination
+      && !requestPaged
+      && echoPage !== undefined
+      && echoPageSize !== undefined
+      && hasValidTotal
+      && total > items.length;
     return {
       rows: items,
       pagination: {
-        current: queryPagination.current,
-        pageSize: queryPagination.pageSize,
+        current: (selfPaged ? echoPage : requestPage) ?? 1,
+        pageSize: (selfPaged ? echoPageSize : requestPageSize) ?? Math.max(items.length, 1),
         total: hasValidTotal ? total : items.length,
       },
-      isPaginated: supportsPagination && hasValidTotal,
+      isPaginated: supportsPagination && hasValidTotal && (requestPaged || selfPaged),
+      selfPaged,
     };
   }
 
@@ -75,11 +87,12 @@ export const parseTableLikeData = <RecordType extends Record<string, any>>(
     return {
       rows: rawData as RecordType[],
       pagination: {
-        current: queryPagination.current,
-        pageSize: queryPagination.pageSize,
+        current: requestPage ?? 1,
+        pageSize: requestPageSize ?? Math.max(rawData.length, 1),
         total: rawData.length,
       },
       isPaginated: false,
+      selfPaged: false,
     };
   }
 
@@ -87,8 +100,12 @@ export const parseTableLikeData = <RecordType extends Record<string, any>>(
     rows: [],
     pagination: emptyPagination,
     isPaginated: false,
+    selfPaged: false,
   };
 };
+
+export const isSelfPagedTablePayload = (rawData: unknown): boolean =>
+  parseTableLikeData(rawData, {}, true).selfPaged;
 
 export const toDisplayFieldValue = (value: unknown): string => {
   if (value === null || value === undefined) {
@@ -119,30 +136,12 @@ interface TableLikeColumnConfigItem {
   order: number;
 }
 
-export const fieldAppliesToQueryObject = (
-  field: Pick<ResponseFieldDefinition, 'query_objects'>,
-  queryObject?: unknown,
-): boolean => {
-  const objects = field.query_objects?.filter(Boolean);
-  if (!objects?.length) {
-    return true;
-  }
-  const selected = String(queryObject ?? '').trim();
-  if (!selected) {
-    return true;
-  }
-  return objects.includes(selected);
-};
-
 interface ResolveTableLikeColumnsInput<
   RecordType extends Record<string, any>,
   ColumnType extends TableLikeColumnConfigItem,
 > {
   configuredColumns?: ColumnType[];
-  columnModelKey?: string;
-  modelColumns?: ModelColumnPayload | null;
   schemaFields?: ResponseFieldDefinition[];
-  queryObject?: unknown;
   rows: RecordType[];
 }
 
@@ -151,34 +150,14 @@ export function resolveTableLikeColumns<
   ColumnType extends TableLikeColumnConfigItem = TableColumnConfigItem,
 >({
   configuredColumns = [],
-  columnModelKey,
-  modelColumns,
   schemaFields = [],
-  queryObject,
   rows,
 }: ResolveTableLikeColumnsInput<RecordType, ColumnType>): ColumnType[] {
-  if (modelColumns?.fields.length) {
-    return resolveModelAttrColumns({
-      configuredColumns: configuredColumns as TableColumnConfigItem[],
-      columnModelKey,
-      modelColumns,
-    }) as ColumnType[];
-  }
-
   if (configuredColumns.length > 0) {
-    const hiddenKeys = new Set(
-      schemaFields
-        .filter((field) => !fieldAppliesToQueryObject(field, queryObject))
-        .map((field) => field.key),
-    );
-    return [...configuredColumns]
-      .filter((column) => !hiddenKeys.has(column.key))
-      .sort((a, b) => a.order - b.order);
+    return [...configuredColumns].sort((a, b) => a.order - b.order);
   }
 
-  const tableSchema = schemaFieldsForTable(schemaFields).filter((field) =>
-    fieldAppliesToQueryObject(field, queryObject),
-  );
+  const tableSchema = schemaFields;
   if (tableSchema.length > 0) {
     return tableSchema.map(
       (field, index) =>

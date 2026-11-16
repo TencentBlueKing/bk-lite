@@ -9,6 +9,7 @@ import { ShareDataSourceProvider } from '@/app/ops-analysis/context/shareDataSou
 import { ShareModeProvider } from '@/app/ops-analysis/context/shareMode';
 import { ShareOrganizationProvider } from '@/app/ops-analysis/context/shareOrganization';
 import { DashboardRenderOpsAnalysisProvider } from '@/app/ops-analysis/context/common';
+import { useLocaleFromSearch } from '@/context/locale';
 import { useTranslation } from '@/utils/i18n';
 import type { DirItem } from '@/app/ops-analysis/types';
 import type { SharedCanvasDto } from '@/app/ops-analysis/types/dashboardShare';
@@ -16,6 +17,7 @@ import type { SharedCanvasDto } from '@/app/ops-analysis/types/dashboardShare';
 export default function ScreenDisplayViewPage() {
   const { t } = useTranslation();
   const api = useScreenDisplayApi();
+  useLocaleFromSearch();
   const [canvas, setCanvas] = useState<SharedCanvasDto | null>(null);
   const [invalid, setInvalid] = useState(false);
 

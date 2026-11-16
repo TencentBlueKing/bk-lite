@@ -134,9 +134,9 @@ const modelParams = (): ParamItem[] => [
       optionsSource: {
         type: 'static',
         staticItems: [
-          { label: '明细', value: 'detail', charts: ['table'], result: { structure: 'table' } },
-          { label: '计数', value: 'count', charts: ['single'], result: { structure: 'value' } },
-          { label: '分布', value: 'distribution', charts: ['bar', 'pie', 'topN'], result: { structure: 'category' } },
+          { label: '明细', value: 'detail' },
+          { label: '计数', value: 'count' },
+          { label: '分布', value: 'distribution' },
         ],
       },
     },

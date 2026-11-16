@@ -88,7 +88,8 @@ class MetricsCannula:
         """当前任务资产参与清理；本轮命中的同组织无任务资产只参与接管。"""
         base_params = [{"field": "model_id", "type": "str=", "value": model_id}]
         old_by_id = {}
-        asset_fields = ["_id", "inst_uuid", "inst_name", "collect_task", "collect_time", "organization", "ip_addr"]
+        # 条件删除会核对 _collect_sources。投影漏掉它时，有来源的实例会被当成空来源而删不掉。
+        asset_fields = ["_id", "inst_uuid", "inst_name", "collect_task", "collect_time", "organization", "ip_addr", "_collect_sources"]
         # 历史数据同时存在整数和字符串任务 ID。
         for field_type, task_id in (("str=", self.task_id), ("int=", int(self.task_id))):
             cursor = None

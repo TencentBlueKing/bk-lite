@@ -51,8 +51,17 @@ assert.deepEqual(
     dataSourceParams: pagedParams,
     queryParams: {},
   }),
-  { page: 1, page_size: 20 },
-  '分页数据源的首次请求应使用表格默认值',
+  {},
+  '用户没填页码时，分页数据源也不补 1 和 20',
+);
+
+assert.deepEqual(
+  buildTableQueryParams({
+    dataSourceParams: pagedParams,
+    queryParams: { page: 3 },
+  }),
+  { page: 3 },
+  '只填了页码时不补每页条数',
 );
 
 assert.deepEqual(
@@ -104,6 +113,30 @@ const missingCount = parseTableLikeData(
 );
 assert.equal(missingCount.isPaginated, false);
 
+const unrequestedFullPage = parseTableLikeData(
+  { items: fullRows.slice(0, 20), count: 20, page: 1, page_size: 20 },
+  {},
+  true,
+);
+assert.equal(unrequestedFullPage.isPaginated, false, '本页已经是全部时不显示分页器');
+assert.equal(unrequestedFullPage.selfPaged, false);
+
+const selfPaged = parseTableLikeData(
+  { items: fullRows.slice(0, 20), count: 238, page: 1, page_size: 20 },
+  {},
+  true,
+);
+assert.equal(selfPaged.isPaginated, true);
+assert.equal(selfPaged.selfPaged, true);
+assert.deepEqual(selfPaged.pagination, { current: 1, pageSize: 20, total: 238 });
+
+const truncatedWithoutEcho = parseTableLikeData(
+  { items: fullRows.slice(0, 20), count: 238 },
+  {},
+  true,
+);
+assert.equal(truncatedWithoutEcho.isPaginated, false, '响应没有页码字段时不把截断结果当成可翻页');
+
 assert.deepEqual(
   buildWidgetExtraParams({
     isTableLikeChart: true,
@@ -122,18 +155,18 @@ assert.deepEqual(
     runtimeParams: {},
     dataSourceParams: pagedParams,
   }),
-  { page: 1, page_size: 20 },
-  '表格请求组装入口应为分页数据源补齐默认分页参数',
+  {},
+  '表格请求组装入口不补默认分页参数',
 );
 
-assert.equal(
+assert.notEqual(
   serializeTableQueryKey({}, pagedParams),
   serializeTableQueryKey({ page: 1, page_size: 20 }, pagedParams),
-  '空查询与默认分页必须视为同一次请求，避免挂载后再打一遍',
+  '没填分页和显式的 1、20 是两次不同请求',
 );
 assert.equal(
   areTableQueryParamsEquivalent({}, { page: 1, page_size: 20 }, pagedParams),
-  true,
+  false,
 );
 assert.equal(
   areTableQueryParamsEquivalent(

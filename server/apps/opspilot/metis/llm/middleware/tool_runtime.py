@@ -26,6 +26,7 @@ from apps.opspilot.metis.llm.middleware.planned_execution_limits import (  # noq
     get_planned_execution_max_tokens_budget,
     get_planned_execution_run_model_call_limit,
 )
+from apps.opspilot.services.python_sandbox.result_backend import RESULT_READ_TOOLS, is_result_read
 
 # 规划/执行分步模式下禁止暴露给模型的 DeepAgent 内置能力。
 # FS 工具允许在执行步常驻（便于大结果落盘）；write_todos / task / execute 会绕过
@@ -247,7 +248,7 @@ def repeated_successful_tool_denial(request: Any) -> ToolMessage | None:
     """同名同参已经成功过，就不再真正执行第二次。"""
     call = getattr(request, "tool_call", None) or {}
     name = str(call.get("name") or "")
-    if not name:
+    if not name or name in RESULT_READ_TOOLS:
         return None
     args_key = _canonical_tool_args(call.get("args"))
     args_by_id: dict[str, tuple[str, str]] = {}
@@ -399,7 +400,7 @@ _SKILL_STOP_MARKER = "[OPSPILOT_SKILL_STOP]"
 _SKILL_SCRIPT_RE = re.compile(r"/skills/[^/\s]+/scripts/[^/\s]+\.py")
 _SKILL_SUCCESS_HINTS = ("已成功返回数据", "已成功结束且无匹配数据")
 _SKILL_FAIL_HINTS = ("脚本失败", "被沙箱拒绝")
-_SKILL_STOP_HINT = f"{_SKILL_STOP_MARKER} 不要再调用工具。把上一轮脚本的结果或错误原样告诉用户并结束。"
+_SKILL_STOP_HINT = f"{_SKILL_STOP_MARKER} 不要再次执行脚本；可用 read_file/grep 查阅 /large_tool_results/ 中的已有结果，取得证据后结束。"
 
 SkillHistoryKind = Literal["ok", "fail", "fs_probe", "other"]
 
@@ -409,6 +410,12 @@ def inspect_skill_execution_history(messages: Sequence[Any] | None) -> tuple[int
     script_ok = 0
     script_fail = 0
     last_kind: SkillHistoryKind | None = None
+    script_calls = {
+        call.get("id")
+        for message in messages or []
+        for call in getattr(message, "tool_calls", None) or []
+        if call.get("name") == "execute" and _SKILL_SCRIPT_RE.search(str((call.get("args") or {}).get("command") or ""))
+    }
     for message in messages or []:
         if not isinstance(message, ToolMessage):
             continue
@@ -420,6 +427,15 @@ def inspect_skill_execution_history(messages: Sequence[Any] | None) -> tuple[int
         if name != "execute":
             last_kind = "other"
             continue
+        if message.tool_call_id in script_calls:
+            if "[Command succeeded with exit code 0]" in content:
+                script_ok += 1
+                last_kind = "ok"
+                continue
+            if "[Command failed with exit code " in content:
+                script_fail += 1
+                last_kind = "fail"
+                continue
         if _SKILL_RESULT_MARKER in content:
             if any(hint in content for hint in _SKILL_SUCCESS_HINTS):
                 script_ok += 1
@@ -495,7 +511,7 @@ class SkillExecutionGuardMiddleware(AgentMiddleware):
             return request
         if not any(_SKILL_STOP_MARKER in str(getattr(message, "content", "") or "") for message in messages):
             messages = messages + [HumanMessage(content=_SKILL_STOP_HINT)]
-        return request.override(messages=messages, tools=[])
+        return request.override(messages=messages, tools=[tool for tool in request.tools if _tool_name(tool) in RESULT_READ_TOOLS])
 
     def _deny_tool(self, request: Any) -> ToolMessage | None:
         if not self.enabled:
@@ -506,6 +522,9 @@ class SkillExecutionGuardMiddleware(AgentMiddleware):
         messages = _request_messages(request)
         script_ok, script_fail, last_kind = inspect_skill_execution_history(messages)
         terminal = self._terminal(script_ok, script_fail, last_kind, messages)
+
+        if is_result_read(call):
+            return None
 
         if name in PLANNED_EXECUTION_ALWAYS_VISIBLE_FS_TOOLS:
             return ToolMessage(
@@ -709,10 +728,12 @@ class ToolResultCompactionMiddleware(AgentMiddleware):
         *,
         max_tool_chars: int = _DEFAULT_PLANNED_TOOL_RESULT_CHARS,
         max_ai_chars: int = _DEFAULT_PLANNED_AI_TEXT_CHARS,
+        preserve_tool_results: bool = False,
     ) -> None:
         super().__init__()
         self._max_tool_chars = max_tool_chars
         self._max_ai_chars = max_ai_chars
+        self._preserve_tool_results = preserve_tool_results
 
     def _compact_request(self, request: ModelRequest) -> ModelRequest:
         messages = list(getattr(request, "messages", None) or [])
@@ -720,6 +741,7 @@ class ToolResultCompactionMiddleware(AgentMiddleware):
             messages,
             max_tool_chars=self._max_tool_chars,
             max_ai_chars=self._max_ai_chars,
+            preserve_tool_results=self._preserve_tool_results,
         )
         return request.override(messages=compacted)
 

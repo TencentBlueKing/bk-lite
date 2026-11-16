@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useState, ReactNode, useEffect, useMemo } from 'react';
+import { createContext, useContext, useState, ReactNode, useEffect, useMemo, useRef } from 'react';
 import { IntlProvider } from 'react-intl';
 import { ConfigProvider } from 'antd';
 import dayjs from 'dayjs';
@@ -101,4 +101,17 @@ export const useLocale = () => {
     throw new Error(t('common.useLocaleError'));
   }
   return context;
+};
+
+export const useLocaleFromSearch = () => {
+  const { setLocale } = useLocale();
+  const setLocaleRef = useRef(setLocale);
+  setLocaleRef.current = setLocale;
+
+  useEffect(() => {
+    const locale = new URLSearchParams(window.location.search).get('locale');
+    if (locale) {
+      setLocaleRef.current(locale);
+    }
+  }, []);
 };

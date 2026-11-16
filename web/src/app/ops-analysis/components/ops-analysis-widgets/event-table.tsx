@@ -1,5 +1,4 @@
 import React, {
-  useCallback,
   useEffect,
   useMemo,
   useState,
@@ -15,12 +14,8 @@ import type {
 import CustomTable from '@/components/custom-table';
 import { fullscreenPopupContainer } from '@/utils/fullscreenPopupContainer';
 import { EventTableDetail } from '@/app/ops-analysis/components/ops-analysis-widgets/event-table-detail';
-import {
-  parseTableLikeData,
-  type TableLikePaginationState,
-} from '@/app/ops-analysis/components/ops-analysis-widgets/table-like-data';
 import { useTranslation } from '@/utils/i18n';
-import { supportsServerPagination } from '@/app/ops-analysis/utils/tablePagination';
+import { useTableServerQuery } from '@/app/ops-analysis/utils/useTableServerQuery';
 import { useTableBodyScrollY } from '@/app/ops-analysis/components/widgets/shared/useTableBodyScrollY';
 import styles from '@/app/ops-analysis/components/widgets/comTable.module.scss';
 import { useInteractionSurface } from '@/app/ops-analysis/context/interactionSurface';
@@ -63,25 +58,17 @@ const OpsAnalysisEventTable: React.FC<OpsAnalysisEventTableProps> = ({
   const dataLink = readWidgetInteraction(config);
   const dataLinkName = dataLink?.kind === 'data' ? dataLink.name : '';
   const [expandedRowKeys, setExpandedRowKeys] = useState<React.Key[]>([]);
-  const [queryPagination, setQueryPagination] =
-    useState<TableLikePaginationState>({
-      current: 1,
-      pageSize: 20,
-    });
-
-  const supportsPaginationParams = useMemo(
-    () => supportsServerPagination(dataSource?.params),
-    [dataSource?.params],
-  );
-
-  const { rows, pagination, isPaginated } = useMemo(
-    () => parseTableLikeData<EventTableRow>(
-      rawData,
-      queryPagination,
-      supportsPaginationParams,
-    ),
-    [rawData, queryPagination, supportsPaginationParams],
-  );
+  const {
+    rows,
+    pagination,
+    isPaginated,
+    handleTableChange,
+  } = useTableServerQuery<EventTableRow>({
+    rawData,
+    sourceParams: dataSource?.params,
+    savedParams: config?.dataSourceParams,
+    onQueryChange,
+  });
   const { slotRef: tableSlotRef, tableScrollY } = useTableBodyScrollY({
     hasPagination: isPaginated,
   });
@@ -100,19 +87,6 @@ const OpsAnalysisEventTable: React.FC<OpsAnalysisEventTableProps> = ({
       onReady?.(rows.length > 0);
     }
   }, [loading, onReady, rows.length]);
-
-  useEffect(() => {
-    if (!onQueryChange) return;
-
-    const queryParams: Record<string, any> = {};
-
-    if (supportsPaginationParams) {
-      queryParams.page = queryPagination.current;
-      queryParams.page_size = queryPagination.pageSize;
-    }
-
-    onQueryChange(queryParams);
-  }, [onQueryChange, queryPagination, supportsPaginationParams]);
 
   const columnConfigs = useMemo(() => {
     return withInteractionActionColumn(configuredColumns, dataLink, surface, {
@@ -167,13 +141,6 @@ const OpsAnalysisEventTable: React.FC<OpsAnalysisEventTableProps> = ({
       return column;
     });
   }, [columnConfigs, dataLink, dataLinkName, openPoint, surface, t]);
-
-  const handleTableChange = useCallback((pageConfig: any) => {
-    setQueryPagination({
-      current: pageConfig?.current || 1,
-      pageSize: pageConfig?.pageSize || 20,
-    });
-  }, []);
 
   if (!configuredColumns.length) {
     return (

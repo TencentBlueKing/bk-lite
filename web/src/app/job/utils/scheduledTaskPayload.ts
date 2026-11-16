@@ -40,6 +40,33 @@ export function buildScheduledTaskTemplatePayload(
   };
 }
 
+export interface TemplateParamDefinition {
+  name: string;
+  default?: string;
+}
+
+export interface TemplateParamPayloadItem {
+  name: string;
+  value: string;
+  is_modified: boolean;
+}
+
+export function buildTemplateParamsPayload(
+  params: TemplateParamDefinition[],
+  values: Record<string, unknown>,
+  edited: Record<string, boolean> = {},
+): TemplateParamPayloadItem[] {
+  return params.map((param) => {
+    const currentValue = String(values[`param_${param.name}`] ?? '');
+    const defaultValue = param.default ?? '';
+    return {
+      name: param.name,
+      value: currentValue,
+      is_modified: currentValue !== defaultValue || !!edited[param.name],
+    };
+  });
+}
+
 export function restoreScheduledTaskTemplateUi(task: {
   job_type?: JobType | string | null;
 }): { jobType: JobType; templateType: CronTemplateType } {

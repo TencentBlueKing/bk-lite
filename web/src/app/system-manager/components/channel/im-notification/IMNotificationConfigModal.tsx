@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { Button, Form, Input, Select } from 'antd';
-import { ReloadOutlined } from '@ant-design/icons';
+import { Button, Divider, Form, Input, Select } from 'antd';
+import { ExportOutlined, ReloadOutlined } from '@ant-design/icons';
 import type { FormInstance } from 'antd';
 
 import GroupTreeSelect from '@/components/group-tree-select';
@@ -160,7 +160,14 @@ const IMNotificationConfigModal: React.FC<IMNotificationConfigModalProps> = ({
             window.open(`/system-manager/user/user-sync?${params.toString()}`, '_blank', 'noopener,noreferrer');
           };
           return (
-            <Form.Item name="account_association" label={t('system.channel.imNotificationPage.accountAssociation', '账号关联')}>
+            <Form.Item
+              name="account_association"
+              label={t('system.channel.imNotificationPage.accountAssociation', '账号关联')}
+              tooltip={t(
+                'system.channel.imNotificationPage.accountAssociationTooltip',
+                '发送时按该账号关联的匹配规则，以平台账号字段确定接收人的 IM 账号。',
+              )}
+            >
               <div className="flex items-start gap-2">
                 <Select
                   className="min-w-0 flex-1"
@@ -169,11 +176,25 @@ const IMNotificationConfigModal: React.FC<IMNotificationConfigModalProps> = ({
                   placeholder={t('system.channel.imNotificationPage.accountAssociationPlaceholder', '选择账号关联')}
                   value={getFieldValue('account_association')}
                   onChange={(value) => form.setFieldValue('account_association', value ?? null)}
+                  dropdownRender={(menu) => (
+                    <>
+                      {menu}
+                      <Divider style={{ margin: '8px 0' }} />
+                      <div className="px-2 pb-1">
+                        <Button
+                          type="link"
+                          size="small"
+                          icon={<ExportOutlined />}
+                          onMouseDown={(event) => event.preventDefault()}
+                          onClick={openManage}
+                        >
+                          {t('system.channel.imNotificationPage.manageAccountAssociation', '管理账号关联')}
+                        </Button>
+                      </div>
+                    </>
+                  )}
                 />
                 <Button icon={<ReloadOutlined />} loading={refreshingOptions} onClick={refreshOptions} />
-                <Button onClick={openManage}>
-                  {t('system.channel.imNotificationPage.manageAccountAssociation', '管理账号关联')}
-                </Button>
               </div>
             </Form.Item>
           );
