@@ -96,7 +96,7 @@ error:
   training_task_already_running: "训练任务已在运行中"
   builtin_record_operation_rejected: "内置记录不支持此操作"
   preset_base_url_missing: "预置时序服务地址未配置"
-  preset_algorithm_invalid: "预置时序算法名称无效"
+  preset_algorithm_invalid: "预置时序算法名不能放入预测地址"
   training_task_not_running: "训练任务未在运行中"
   dataset_file_not_found: "数据集文件不存在"
   training_config_file_not_found: "训练配置文件不存在"

@@ -292,6 +292,48 @@ class TestErrorHandlingPolicy:
         assert secret not in formatted
         assert secret not in caplog.text
 
+    def test_builtin_timeseries_init_failure_warns_and_does_not_block_startup(self, monkeypatch, caplog):
+        import logging
+
+        calls = []
+        cause = "默认组织 Default 不存在，无法写入预置时序发布记录"
+        raised = {}
+
+        def fake_call_command(name, *args, **kwargs):
+            calls.append(name)
+            if name == "init_builtin_timeseries":
+                error = CommandError(cause)
+                raised["error"] = error
+                raise error
+
+        monkeypatch.setattr(bi, "call_command", fake_call_command)
+        monkeypatch.setattr(
+            bi,
+            "preload_language_cache",
+            lambda *args, **kwargs: {"loaded": [], "skipped": [], "failed": []},
+        )
+        caplog.set_level(logging.WARNING, logger="app")
+        cmd = _make_command()
+
+        cmd.handle(apps="mlops", continue_on_error=False)
+
+        assert calls == ["init_algorithm_config", "init_builtin_timeseries"]
+        assert any("WARN:预置时序发布初始化跳过（CommandError），可运行 init_builtin_timeseries 重试" in message for message in cmd.stdout.messages)
+        assert all(cause not in message for message in cmd.stdout.messages)
+        records = [record for record in caplog.records if record.name == "app" and getattr(record, "exc_info", None)]
+        assert len(records) == 1
+        record = records[0]
+        assert record.msg == ("event=builtin_timeseries_init_failed failed_stage=init_builtin_timeseries error_type=%s error=%s")
+        assert record.args == ("CommandError", cause)
+        assert record.exc_info[0] is SafeLogException
+        assert record.exc_info[2] is raised["error"].__traceback__
+        rendered = record.getMessage()
+        formatted = logging.Formatter().format(record)
+        assert rendered == ("event=builtin_timeseries_init_failed failed_stage=init_builtin_timeseries " f"error_type=CommandError error={cause}")
+        assert formatted.count("Traceback (most recent call last)") == 1
+        assert formatted.count(cause) == 1
+        assert "SafeLogException: CommandError" in formatted
+
     def test_patch_source_init_failure_warns_and_does_not_block_startup(self, monkeypatch):
         calls = []
 

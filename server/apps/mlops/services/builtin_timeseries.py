@@ -5,13 +5,11 @@
 """
 
 import os
-import re
 
 from django.db.models import Q
 
 PRESET_BASE_URL_ENV = "MLOPS_PRESET_BASE_URL"
 BUILTIN_TIMESERIES_ALGORITHMS = ("GradientBoosting",)
-_ALGORITHM_NAME = re.compile(r"^[A-Za-z][A-Za-z0-9_-]{0,63}$")
 
 
 def preset_base_url() -> str:
@@ -39,7 +37,7 @@ def builtin_predict_url(algorithm: str) -> str:
     base_url = preset_base_url()
     if not base_url:
         raise ValueError("error.preset_base_url_missing")
-    if not isinstance(algorithm, str) or _ALGORITHM_NAME.fullmatch(algorithm) is None:
+    if not algorithm or any(marker in algorithm for marker in ("/", "\\", "..", "?", "#")):
         raise ValueError("error.preset_algorithm_invalid")
     return f"{base_url}/{algorithm}/predict"
 
@@ -58,9 +56,6 @@ def ensure_builtin_timeseries_records() -> dict[str, int | bool]:
 
     group = Group.objects.filter(name="Default", parent_id=0).order_by("id").first()
     if group is None:
-        logger.error(
-            "event=builtin_timeseries_init_failed failed_stage=resolve_default_group error_type=MissingDefaultGroup",
-        )
         raise CommandError("默认组织 Default 不存在，无法写入预置时序发布记录")
 
     created_train_jobs = 0

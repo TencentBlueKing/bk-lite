@@ -59,7 +59,7 @@ DEFAULT_MAX_RECURSIVE_FEATURE_ENGINEERING_WORK = 2_000_000
 
 
 def reject_builtin_mutation(request, instance):
-    """内置训练任务和发布记录不走 webhookd 的启停、编辑、删除。"""
+    """内置记录不启停、不编辑、不删除，也不拿去查询 MLflow。"""
     if getattr(instance, "is_builtin", False):
         return Response(
             {"error": mlops_message(request, "error.builtin_record_operation_rejected")},
@@ -357,6 +357,9 @@ class TimeSeriesPredictTrainJobViewSet(BaseTrainJobViewSet):
             page, page_size, use_pagination = pagination
 
             train_job = self.get_object()
+            denied = reject_builtin_mutation(request, train_job)
+            if denied is not None:
+                return denied
 
             # 构造实验名称
             experiment_name = mlflow_service.build_experiment_name(
@@ -472,6 +475,9 @@ class TimeSeriesPredictTrainJobViewSet(BaseTrainJobViewSet):
     @action(detail=True, methods=["delete"], url_path="runs/(?P<run_id>[^/]+)")
     @HasPermission("timeseries_predict-Delete")
     def delete_run(self, request, pk=None, run_id=None):
+        denied = reject_builtin_mutation(request, self.get_object())
+        if denied is not None:
+            return denied
         return super().delete_run(request, pk=pk, run_id=run_id)
 
     @action(detail=True, methods=["get"], url_path="runs/(?P<run_id>[^/]+)/metrics_list")
@@ -484,6 +490,9 @@ class TimeSeriesPredictTrainJobViewSet(BaseTrainJobViewSet):
             train_job = self.get_authorized_object_or_none()
             if train_job is None:
                 return self.run_not_found_response(run_id)
+            denied = reject_builtin_mutation(request, train_job)
+            if denied is not None:
+                return denied
             if not self.train_job_has_run(train_job, run_id):
                 return self.run_not_found_response(run_id)
 
@@ -506,11 +515,17 @@ class TimeSeriesPredictTrainJobViewSet(BaseTrainJobViewSet):
     )
     @HasPermission("timeseries_predict-View")
     def get_metric_data(self, request, pk=None, run_id: str = "", metric_name: str = ""):
+        denied = reject_builtin_mutation(request, self.get_object())
+        if denied is not None:
+            return denied
         return super().get_metric_data(request, pk=pk, run_id=run_id, metric_name=metric_name)
 
     @action(detail=True, methods=["get"], url_path="runs/(?P<run_id>[^/]+)/run_params")
     @HasPermission("timeseries_predict-View")
     def get_run_params(self, request, pk=None, run_id: str = ""):
+        denied = reject_builtin_mutation(request, self.get_object())
+        if denied is not None:
+            return denied
         return super().get_run_params(request, pk=pk, run_id=run_id)
 
     @action(detail=True, methods=["get"], url_path="model_versions")
@@ -521,6 +536,9 @@ class TimeSeriesPredictTrainJobViewSet(BaseTrainJobViewSet):
         """
         try:
             train_job = self.get_object()
+            denied = reject_builtin_mutation(request, train_job)
+            if denied is not None:
+                return denied
 
             # 构造模型名称
             model_name = mlflow_service.build_model_name(
@@ -562,6 +580,9 @@ class TimeSeriesPredictTrainJobViewSet(BaseTrainJobViewSet):
             train_job = self.get_authorized_object_or_none()
             if train_job is None:
                 return self.run_not_found_response(run_id)
+            denied = reject_builtin_mutation(request, train_job)
+            if denied is not None:
+                return denied
             if not self.train_job_has_run(train_job, run_id):
                 return self.run_not_found_response(run_id)
 
@@ -743,6 +764,7 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
 
     def get_queryset(self):
         return exclude_hidden_builtin(super().get_queryset())
+
     RUNTIME_QUERY_TOKEN_KEY = "_runtime_query_token"
 
     @staticmethod
@@ -1303,9 +1325,10 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
         # 同一 serving 的数据库写入和外部运行时切换必须串行；普通并发 UPDATE
         # 也会在 PostgreSQL 行锁上等待，避免另一个请求接管同一 runtime ID。
         instance = self._get_runtime_locked_object()
-        denied = reject_builtin_mutation(request, instance)
-        if denied is not None:
-            return denied
+        if not (instance.is_builtin and set(request.data.keys()) == {"team"}):
+            denied = reject_builtin_mutation(request, instance)
+            if denied is not None:
+                return denied
 
         # 本方法在父类更新前会解析 MLflow、镜像和运行时配置，因此先复用父类的
         # 完整实例授权门禁；父类收到标记后不再重复执行同一校验。
@@ -1807,6 +1830,9 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
         serving_id = None
         try:
             serving = self._get_runtime_locked_object()
+            denied = reject_builtin_mutation(request, serving)
+            if denied is not None:
+                return denied
 
             # 构建 serving ID
             serving_id = f"TimeseriesPredict_Serving_{serving.id}"

@@ -229,6 +229,8 @@ class TimeSeriesPredictServingSerializer(ServingPortValidationMixin, AuthSeriali
 
     def validate(self, attrs):
         attrs = super().validate(attrs)
+        if getattr(self.instance, "is_builtin", False):
+            return attrs
 
         train_job = attrs.get("train_job", getattr(self.instance, "train_job", None))
         team = attrs.get("team", getattr(self.instance, "team", None))
