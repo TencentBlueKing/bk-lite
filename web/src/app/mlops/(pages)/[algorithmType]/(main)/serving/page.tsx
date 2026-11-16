@@ -95,7 +95,10 @@ const ServingPage = () => {
       key: 'container_info',
       width: 80,
       render: (_, record) => {
-        const { status, state, detail } = record.container_info;
+        if (record.is_builtin) {
+          return <span>--</span>;
+        }
+        const { status, state, detail } = record.container_info || {};
         const isSuccess = status === 'success';
         const _status = isSuccess ? state : status;
         const text = isSuccess ? state : 'error';
@@ -173,7 +176,10 @@ const ServingPage = () => {
       width: 180,
       fixed: 'right',
       render: (_, record: TableData) => {
-        const { state } = record.container_info;
+        if (record.is_builtin) {
+          return null;
+        }
+        const { state } = record.container_info || {};
         return (
           <>
             <PermissionWrapper requiredPermissions={['View']}>

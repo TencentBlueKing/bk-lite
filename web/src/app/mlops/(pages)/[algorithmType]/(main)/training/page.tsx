@@ -131,6 +131,19 @@ const TrainingPage = () => {
       fixed: 'right',
       align: 'center',
       render: (_: unknown, record: TrainJob) => {
+        if (record.is_builtin) {
+          return (
+            <PermissionWrapper requiredPermissions={['View']}>
+              <Button
+                type="link"
+                className="mr-2.5"
+                onClick={() => openDrawer(record)}
+              >
+                {t('common.detail')}
+              </Button>
+            </PermissionWrapper>
+          );
+        }
         return (
           <>
             {record.status === 'running' ? (
@@ -225,7 +238,8 @@ const TrainingPage = () => {
         status: item?.status,
         max_evals: item.max_evals,
         algorithm: item.algorithm,
-        hyperopt_config: item.hyperopt_config
+        hyperopt_config: item.hyperopt_config,
+        is_builtin: Boolean(item.is_builtin),
       }
       if (algorithmType === DatasetType.CLASSIFICATION) {
         return Object.assign(job, { labels: item.labels || [] });

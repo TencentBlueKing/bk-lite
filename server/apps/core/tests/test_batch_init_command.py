@@ -137,7 +137,7 @@ class TestHandleDispatch:
     def test_multiple_apps_dispatched_in_order(self, calls):
         cmd = _make_command()
         cmd.handle(apps="log,mlops", continue_on_error=False)
-        assert [c[0] for c in calls] == ["log_init", "init_algorithm_config"]
+        assert [c[0] for c in calls] == ["log_init", "init_algorithm_config", "init_builtin_timeseries"]
 
     def test_console_mgmt_dispatches_to_noop_init(self, calls):
         cmd = _make_command()

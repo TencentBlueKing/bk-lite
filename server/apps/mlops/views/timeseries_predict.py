@@ -42,6 +42,7 @@ from apps.mlops.serializers.timeseries_predict import (
     TimeSeriesPredictTrainJobSerializer,
 )
 from apps.mlops.services import ConfigurationError, get_image_by_prefix, get_mlflow_tracking_uri, get_mlflow_train_config
+from apps.mlops.services.builtin_timeseries import builtin_predict_url, exclude_hidden_builtin
 from apps.mlops.utils import mlflow_service
 from apps.mlops.utils.group_scope import filter_queryset_by_parent_team
 from apps.mlops.utils.i18n import mlops_exception_message, mlops_message
@@ -55,6 +56,16 @@ from config.drf.viewsets import ModelViewSet
 TIMESERIES_PREDICT_PROXY_TIMEOUT_MARGIN_SECONDS = 5
 MAX_TIMESERIES_PREDICT_TIMEOUT_SECONDS = 290
 DEFAULT_MAX_RECURSIVE_FEATURE_ENGINEERING_WORK = 2_000_000
+
+
+def reject_builtin_mutation(request, instance):
+    """内置训练任务和发布记录不走 webhookd 的启停、编辑、删除。"""
+    if getattr(instance, "is_builtin", False):
+        return Response(
+            {"error": mlops_message(request, "error.builtin_record_operation_rejected")},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    return None
 
 
 def get_timeseries_predict_budget_seconds() -> int:
@@ -125,6 +136,9 @@ class TimeSeriesPredictTrainJobViewSet(BaseTrainJobViewSet):
 
     MLFLOW_PREFIX = "TimeseriesPredict"  # MLflow 命名前缀
 
+    def get_queryset(self):
+        return exclude_hidden_builtin(super().get_queryset())
+
     @HasPermission("timeseries_predict-View")
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
@@ -135,6 +149,9 @@ class TimeSeriesPredictTrainJobViewSet(BaseTrainJobViewSet):
 
     @HasPermission("timeseries_predict-Delete")
     def destroy(self, request, *args, **kwargs):
+        denied = reject_builtin_mutation(request, self.get_object())
+        if denied is not None:
+            return denied
         return self.destroy_train_job_with_runtime_cleanup(request, *args, **kwargs)
 
     @HasPermission("timeseries_predict-Add")
@@ -143,6 +160,9 @@ class TimeSeriesPredictTrainJobViewSet(BaseTrainJobViewSet):
 
     @HasPermission("timeseries_predict-Edit")
     def update(self, request, *args, **kwargs):
+        denied = reject_builtin_mutation(request, self.get_object())
+        if denied is not None:
+            return denied
         return super().update(request, *args, **kwargs)
 
     @action(detail=True, methods=["post"], url_path="train")
@@ -155,6 +175,9 @@ class TimeSeriesPredictTrainJobViewSet(BaseTrainJobViewSet):
         previous_status = None
         try:
             train_job = self.get_object()
+            denied = reject_builtin_mutation(request, train_job)
+            if denied is not None:
+                return denied
 
             # 检查任务状态
             if train_job.status == TrainJobStatus.RUNNING:
@@ -276,6 +299,9 @@ class TimeSeriesPredictTrainJobViewSet(BaseTrainJobViewSet):
         """
         try:
             train_job = self.get_object()
+            denied = reject_builtin_mutation(request, train_job)
+            if denied is not None:
+                return denied
 
             # 检查任务状态
             if train_job.status != TrainJobStatus.RUNNING:
@@ -618,10 +644,13 @@ def execute_timeseries_predict(serving, data, steps, message):
             )
 
         try:
-            predict_url = build_predict_url(
-                serving_id=f"TimeseriesPredict_Serving_{serving.id}",
-                container_info=serving.container_info,
-            )
+            if serving.is_builtin:
+                predict_url = builtin_predict_url(serving.train_job.algorithm)
+            else:
+                predict_url = build_predict_url(
+                    serving_id=f"TimeseriesPredict_Serving_{serving.id}",
+                    container_info=serving.container_info,
+                )
         except ValueError as exc:
             return {"error": message(str(exc))}, status.HTTP_400_BAD_REQUEST
 
@@ -711,6 +740,9 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
 
     MLFLOW_PREFIX = "TimeseriesPredict"  # MLflow 命名前缀
     RUNTIME_GENERATION_KEY = "_runtime_generation"
+
+    def get_queryset(self):
+        return exclude_hidden_builtin(super().get_queryset())
     RUNTIME_QUERY_TOKEN_KEY = "_runtime_query_token"
 
     @staticmethod
@@ -984,6 +1016,10 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
         if not servings:
             return response
 
+        servings = [serving_data for serving_data in servings if not serving_data.get("is_builtin")]
+        if not servings:
+            return response
+
         serving_ids = [f"TimeseriesPredict_Serving_{s['id']}" for s in servings]
         claims_by_id = self._reserve_runtime_status_sync([(serving_data["id"], serving_data.get("container_info")) for serving_data in servings])
 
@@ -1035,6 +1071,8 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
     def retrieve(self, request, *args, **kwargs):
         """详情查询，实时同步容器状态"""
         response = super().retrieve(request, *args, **kwargs)
+        if response.data.get("is_builtin"):
+            return response
 
         serving_id = f"TimeseriesPredict_Serving_{response.data['id']}"
         claims_by_id = self._reserve_runtime_status_sync([(response.data["id"], response.data.get("container_info"))])
@@ -1079,6 +1117,9 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
     @transaction.atomic
     def destroy(self, request, *args, **kwargs):
         serving = self._get_runtime_locked_object()
+        denied = reject_builtin_mutation(request, serving)
+        if denied is not None:
+            return denied
         access_error = self._validate_destroy_access(request, serving)
         if access_error is not None:
             return access_error
@@ -1262,6 +1303,9 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
         # 同一 serving 的数据库写入和外部运行时切换必须串行；普通并发 UPDATE
         # 也会在 PostgreSQL 行锁上等待，避免另一个请求接管同一 runtime ID。
         instance = self._get_runtime_locked_object()
+        denied = reject_builtin_mutation(request, instance)
+        if denied is not None:
+            return denied
 
         # 本方法在父类更新前会解析 MLflow、镜像和运行时配置，因此先复用父类的
         # 完整实例授权门禁；父类收到标记后不再重复执行同一校验。
@@ -1573,6 +1617,9 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
         serving_id = None
         try:
             serving = self._get_runtime_locked_object()
+            denied = reject_builtin_mutation(request, serving)
+            if denied is not None:
+                return denied
 
             # 获取 MLflow tracking URI
             mlflow_tracking_uri = get_mlflow_tracking_uri()
@@ -1697,6 +1744,9 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
         serving_id = None
         try:
             serving = self._get_runtime_locked_object()
+            denied = reject_builtin_mutation(request, serving)
+            if denied is not None:
+                return denied
 
             # 构建 serving ID
             serving_id = f"TimeseriesPredict_Serving_{serving.id}"
