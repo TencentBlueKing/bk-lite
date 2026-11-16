@@ -47,7 +47,6 @@ def test_inventory_question_does_not_become_search_terms():
 
 
 def test_active_alert_count_question_sends_no_content_keywords():
-    """活动告警条数问句对齐活动页：不把「活动」「条」拆成正文关键字。"""
     assert build_search_terms("我现在有多少条活动告警") == []
     assert resolve_search_terms("我现在有多少条活动告警", "活动") == []
     assert resolve_search_terms("我要查询我现在有多少条活动告警", "条活动") == []
