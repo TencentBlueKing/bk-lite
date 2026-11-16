@@ -144,7 +144,9 @@
       "recent": "Recent sessions",
       "recentEmpty": "No sessions in this window",
       "viewAll": "View all",
-      "noData": "No data in this window"
+      "noData": "No data in this window",
+      "allItems": "All",
+      "moreItems": "{n} more"
     },
     "create": {
       "title": "New RUM application",
@@ -252,6 +254,7 @@
       "searchPlaceholder": "Search session ID",
       "onlyErrors": "Errors only",
       "onlyReplay": "Replay only",
+      "filterRoute": "Route",
       "sortImpact": "Impact",
       "sortStart": "Start time",
       "sortErrors": "Errors",
@@ -555,6 +558,13 @@
       "enableNotification": "Enable notifications",
       "notificationEnabled": "On",
       "notificationDisabled": "Off",
+      "basic": "Basics",
+      "conditionStep": "Alert condition",
+      "whenMetric": "When {metric}",
+      "noticeStep": "Notification",
+      "breadcrumb": "Page path",
+      "backAria": "Back to alert policies",
+      "notFound": "This policy was not found",
       "channelRequiredWhenEnabled": "Select at least one channel when notifications are on",
       "recipientsRequiredForChannel": "The selected channel needs recipients",
       "organizationsPlaceholder": "Select organizations",
