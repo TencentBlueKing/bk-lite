@@ -8,8 +8,8 @@ from apps.core.utils.permission_utils import get_instance_permissions, get_permi
 from apps.log.constants.permission import PermissionConstants
 from apps.log.models import CollectInstance, CollectType, LogExtractor
 from apps.log.serializers.extractor import LogExtractorSerializer
-from apps.log.utils.locale_text import log_text
 from apps.log.services.access_scope import LogAccessScopeService
+from apps.log.services.log_extractor.grok_library import grok_catalog
 from apps.log.services.log_extractor.publication import get_publication_status, retry_publication
 from apps.log.services.log_extractor.rules import (
     create_rule,
@@ -25,6 +25,7 @@ from apps.log.services.log_extractor.rules import (
     update_rule,
 )
 from apps.log.services.log_extractor.semantics import RuleExecutionBusyError, RuleExecutionLimitError, RuleExecutionTimeoutError
+from apps.log.utils.locale_text import log_text
 from apps.system_mgmt.utils.operation_log_utils import log_operation
 
 TYPE_SCOPE_VIEW_PERMISSIONS = frozenset({"integration_configure-View", "integration_list-View"})
@@ -108,11 +109,7 @@ class LogExtractorViewSet(ViewSet):
         return None, self._authorize_type_scope(request, collect_type_name, required)
 
     def _get_rule(self, request, pk, required: str) -> LogExtractor:
-        rule = (
-            LogExtractor.objects.filter(pk=pk)
-            .select_related("collect_instance__collect_type", "collect_type")
-            .first()
-        )
+        rule = LogExtractor.objects.filter(pk=pk).select_related("collect_instance__collect_type", "collect_type").first()
         if not rule or (not rule.collect_instance_id and not rule.collect_type_id):
             raise NotFound()
         if rule.collect_instance_id:
@@ -139,7 +136,11 @@ class LogExtractorViewSet(ViewSet):
         if instance is not None:
             rules = LogExtractor.objects.filter(collect_instance=instance).select_related("collect_type").order_by("sort_order", "id")
         else:
-            rules = LogExtractor.objects.filter(collect_type=collect_type, collect_instance__isnull=True).select_related("collect_type").order_by("sort_order", "id")
+            rules = (
+                LogExtractor.objects.filter(collect_type=collect_type, collect_instance__isnull=True)
+                .select_related("collect_type")
+                .order_by("sort_order", "id")
+            )
         can_operate = False
         try:
             self._authorize_scope(request, request.query_params, "Operate")
@@ -256,9 +257,13 @@ class LogExtractorViewSet(ViewSet):
         instance, collect_type = self._authorize_scope(request, request.data, "View")
         try:
             if instance is not None:
-                result = preview_rule(instance, request.data.get("event"), request.data.get("draft"), request.data.get("rule_id"), locale=_request_locale(request))
+                result = preview_rule(
+                    instance, request.data.get("event"), request.data.get("draft"), request.data.get("rule_id"), locale=_request_locale(request)
+                )
             else:
-                result = preview_type_rule(collect_type, request.data.get("event"), request.data.get("draft"), request.data.get("rule_id"), locale=_request_locale(request))
+                result = preview_type_rule(
+                    collect_type, request.data.get("event"), request.data.get("draft"), request.data.get("rule_id"), locale=_request_locale(request)
+                )
         except (RuleExecutionBusyError, RuleExecutionTimeoutError, RuleExecutionLimitError) as exc:
             return self._preview_errors(exc)
         except ValueError as exc:
@@ -293,3 +298,47 @@ class LogExtractorViewSet(ViewSet):
     def publication_status(self, request):
         self._authorize_scope(request, request.query_params, "View")
         return Response(get_publication_status())
+
+    @action(methods=("get",), detail=False, url_path="grok_patterns")
+    def grok_patterns(self, request):
+        self._authorize_pattern_catalog(request)
+        return Response({"items": grok_catalog(_request_locale(request))})
+
+    def _authorize_pattern_catalog(self, request):
+        try:
+            scope = LogAccessScopeService.get_data_scope(request)
+        except ValueError as exc:
+            raise PermissionDenied(str(exc)) from exc
+        if scope.is_superuser or self._user_log_permissions(request).intersection(TYPE_SCOPE_VIEW_PERMISSIONS):
+            return
+        permission_result = get_permissions_rules(
+            request.user,
+            scope.current_team,
+            "log",
+            PermissionConstants.INSTANCE_MODULE,
+            include_children=scope.include_children,
+        )
+        if _permission_allows_extractor_view(permission_result):
+            return
+        raise PermissionDenied()
+
+
+def _permission_allows_extractor_view(permission_result) -> bool:
+    if not isinstance(permission_result, dict):
+        return False
+    data = permission_result.get("data", permission_result)
+    return _contains_extractor_view(data)
+
+
+def _contains_extractor_view(node) -> bool:
+    if isinstance(node, dict):
+        permission = node.get("permission")
+        if isinstance(permission, (list, tuple, set)) and "View" in permission:
+            return True
+        team = node.get("team")
+        if isinstance(team, (list, tuple, set)) and len(team) > 0:
+            return True
+        return any(_contains_extractor_view(value) for value in node.values())
+    if isinstance(node, (list, tuple, set)):
+        return any(_contains_extractor_view(item) for item in node)
+    return False

@@ -4,6 +4,7 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
+from apps.log.services.log_extractor.grok import GrokPatternError, expand_grok
 from apps.log.services.log_extractor.preview_runtime import (
     RuleExecutionBusyError,
     RuleExecutionLimitError,
@@ -21,11 +22,11 @@ PROTECTED_FIELDS = {
     "raw_message",
     "trap_message",
 }
-EXTRACTOR_TYPES = {"copy", "split", "kv", "regex", "regex_replace", "json"}
+EXTRACTOR_TYPES = {"copy", "split", "kv", "regex", "regex_replace", "json", "grok"}
 CONDITION_OPERATORS = {"==", "!=", "contains", "!contains", "startswith", "endswith", "exists", "!exists"}
 _SIMPLE_SEGMENT = re.compile(r"^[@A-Za-z_][@A-Za-z0-9_-]*$")
 _MISSING = object()
-_REGEX_EXTRACTOR_TYPES = {"regex", "regex_replace"}
+_REGEX_EXTRACTOR_TYPES = {"regex", "regex_replace", "grok"}
 
 
 class RuleValidationError(ValueError):
@@ -182,7 +183,24 @@ def _known_output_paths(
         return [parse_path(path) for path in mapping.values()] if mapping else None
     if extractor_type == "json":
         return [target] if target else None
+    if extractor_type == "grok":
+        _expanded, mapping = expand_grok(config["pattern"])
+        return [parse_path(path) for path in mapping.values()]
     return []
+
+
+def _validate_grok_pattern(pattern: Any) -> None:
+    if not isinstance(pattern, str) or not 1 <= len(pattern) <= 2000:
+        raise RuleValidationError("pattern 长度必须为 1 到 2000")
+    try:
+        expanded, _mapping = expand_grok(pattern)
+    except GrokPatternError as exc:
+        raise RuleValidationError(str(exc)) from exc
+    try:
+        re.compile(expanded)
+    except re.error as exc:
+        raise RuleValidationError("pattern 不是有效正则") from exc
+    _ensure_vector_regex_compatible(expanded)
 
 
 def normalize_rule(data: dict[str, Any]) -> NormalizedRule:
@@ -198,7 +216,7 @@ def normalize_rule(data: dict[str, Any]) -> NormalizedRule:
         _ensure_writable(target)
     if extractor_type in {"copy", "split"} and target is None:
         raise RuleValidationError("该提取类型必须指定目标属性")
-    if extractor_type in {"kv", "regex"} and target is not None:
+    if extractor_type in {"kv", "regex", "grok"} and target is not None:
         raise RuleValidationError("该提取类型不接受单一目标属性")
     config = data.get("config") or {}
     if not isinstance(config, dict):
@@ -211,6 +229,7 @@ def normalize_rule(data: dict[str, Any]) -> NormalizedRule:
         "regex": {"pattern", "group_mapping"},
         "regex_replace": {"pattern", "replacement"},
         "json": set(),
+        "grok": {"pattern"},
     }
     if set(config) - allowed[extractor_type]:
         raise RuleValidationError("config 包含未声明字段")
@@ -244,6 +263,8 @@ def normalize_rule(data: dict[str, Any]) -> NormalizedRule:
             if not isinstance(replacement, str):
                 raise RuleValidationError("replacement 必须是字符串")
             _validate_replacement(replacement, compiled_pattern)
+    if extractor_type == "grok":
+        _validate_grok_pattern(config.get("pattern"))
     delete_source = data.get("delete_source", False)
     if not isinstance(delete_source, bool):
         raise RuleValidationError("delete_source 必须是布尔值")
@@ -427,6 +448,18 @@ def _execute_action(event: dict[str, Any], rule: NormalizedRule, source: Any) ->
             raise ValueError("regex_no_output")
         for key, value in outputs.items():
             _set(event, parse_path(mapping[key]) if mapping else (key,), value)
+    elif kind == "grok":
+        expanded, mapping = expand_grok(config["pattern"])
+        match = re.search(expanded, source)
+        if not match:
+            raise ValueError("regex_no_match")
+        groups = match.groupdict()
+        outputs = {key: groups[key] for key in mapping if groups.get(key) is not None}
+        outputs = {key: value for key, value in outputs.items() if value is not None and parse_path(mapping[key])[0] not in PROTECTED_FIELDS}
+        if not outputs:
+            raise ValueError("regex_no_output")
+        for key, value in outputs.items():
+            _set(event, parse_path(mapping[key]), value)
     elif kind == "regex_replace":
         pattern = re.compile(config["pattern"])
         if not pattern.search(source):

@@ -5,6 +5,7 @@ from typing import Any, Iterable
 import yaml
 
 from apps.log.services.log_event_contract import NORMALIZE_EVENT_VRL, PREPARE_VICTORIA_LOGS_VRL
+from apps.log.services.log_extractor.grok import expand_grok
 from apps.log.services.log_extractor.semantics import PROTECTED_FIELDS, NormalizedRule, normalize_rule, parse_path
 
 SYSTEM_VECTOR_CONFIG_CONTRACT_VERSION = 1
@@ -162,22 +163,23 @@ def _compile_assignments(rule: NormalizedRule) -> list[str]:
                 ]
             )
         lines.extend(["  }", "}"])
-    elif rule.extractor_type == "regex":
+    elif rule.extractor_type in {"regex", "grok"}:
+        if rule.extractor_type == "grok":
+            # 展开结果与带映射的正则提取同一形态，不生成 parse_grok。
+            pattern, mapping = expand_grok(config["pattern"])
+        else:
+            pattern = config["pattern"]
+            mapping = dict(config["group_mapping"])
+            if not mapping:
+                # 捕获组名在保存时已经确定。逐个赋值与复制规则相同，避免把 `.` 当成 any 去做 merge。
+                mapping = {name: name for name in re.compile(pattern).groupindex if name not in PROTECTED_FIELDS}
         lines.extend(
             [
                 f"if is_string({source}) {{",
-                f"  _parsed, _err = parse_regex(string!({source}), {_vrl_regex(config['pattern'])})",
+                f"  _parsed, _err = parse_regex(string!({source}), {_vrl_regex(pattern)})",
                 "  if _err == null {",
             ]
         )
-        mapping = dict(config["group_mapping"])
-        if not mapping:
-            # 捕获组名在保存时已经确定。逐个赋值与复制规则相同，避免把 `.` 当成 any 去做 merge。
-            mapping = {
-                name: name
-                for name in re.compile(config["pattern"]).groupindex
-                if name not in PROTECTED_FIELDS
-            }
         for key, output in sorted(mapping.items()):
             lines.extend(
                 [

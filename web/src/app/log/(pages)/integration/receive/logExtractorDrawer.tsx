@@ -34,6 +34,7 @@ import {
   ExtractorConditionItem,
   ExtractorPublicationStatus,
   ExtractorType,
+  GrokPatternCatalogItem,
   LogExtractorDraft,
   LogExtractorPreviewResult,
   LogExtractorRule,
@@ -52,10 +53,14 @@ import {
   extractorUsesSingleTargetField,
   flattenExtractorPaths,
   getExtractorConditionSummary,
+  groupGrokPatternsByCategory,
+  insertGrokPatternAtCursor,
   moveExtractorItem,
   normalizeExtractorCondition,
   normalizeExtractorSamples,
+  normalizeGrokPatternCatalog,
   reorderExtractorItem,
+  serializeGrokExtractorFields,
   shouldShowExtractorHeaderAdd,
   shouldShowExtractorPublicationAlert,
   diffExtractorPreviewFields,
@@ -101,8 +106,83 @@ const EXTRACTOR_TYPES: ExtractorType[] = [
   'kv',
   'regex',
   'regex_replace',
-  'json'
+  'json',
+  'grok'
 ];
+
+const GROK_PATTERN_SELECT_POPUP_CLASS =
+  'min-w-[320px] max-w-[480px] [&_.ant-select-item-option-content]:overflow-visible [&_.ant-select-item-option-content]:whitespace-normal';
+
+interface GrokPatternTextAreaProps
+  extends Omit<React.ComponentProps<typeof Input.TextArea>, 'ref'> {
+  caretRef: React.MutableRefObject<HTMLTextAreaElement | null>;
+  selectionRef: React.MutableRefObject<{ start: number; end: number }>;
+}
+
+const GrokPatternTextArea = React.forwardRef<
+  React.ComponentRef<typeof Input.TextArea>,
+  GrokPatternTextAreaProps
+>(function GrokPatternTextArea(
+  { caretRef, selectionRef, onBlur, onChange, onKeyUp, onMouseUp, onSelect, ...rest },
+  ref
+) {
+  const remember = () => {
+    const element = caretRef.current;
+    if (!element) return;
+    selectionRef.current = {
+      start: element.selectionStart ?? 0,
+      end: element.selectionEnd ?? element.selectionStart ?? 0
+    };
+  };
+  return (
+    <Input.TextArea
+      {...rest}
+      ref={(node) => {
+        caretRef.current = node?.resizableTextArea?.textArea ?? null;
+        if (typeof ref === 'function') ref(node);
+        else if (ref) ref.current = node;
+      }}
+      onBlur={(event) => {
+        remember();
+        onBlur?.(event);
+      }}
+      onChange={(event) => {
+        onChange?.(event);
+        remember();
+      }}
+      onKeyUp={(event) => {
+        remember();
+        onKeyUp?.(event);
+      }}
+      onMouseUp={(event) => {
+        remember();
+        onMouseUp?.(event);
+      }}
+      onSelect={(event) => {
+        remember();
+        onSelect?.(event);
+      }}
+    />
+  );
+});
+
+const renderGrokPatternOption = (item: GrokPatternCatalogItem) => (
+  <span className="flex min-w-0 flex-col gap-[2px] py-[2px]">
+    <span className="font-mono text-[13px] leading-[20px] text-[var(--color-text-1)]">
+      {item.name}
+    </span>
+    {item.description ? (
+      <span className="whitespace-normal text-[12px] leading-[18px] text-[var(--color-text-3)]">
+        {item.description}
+      </span>
+    ) : null}
+    {item.example ? (
+      <span className="break-all whitespace-normal font-mono text-[12px] leading-[18px] text-[var(--color-text-2)]">
+        {item.example}
+      </span>
+    ) : null}
+  </span>
+);
 
 const publicationColor: Record<ExtractorPublicationStatus['status'], string> = {
   pending: 'processing',
@@ -283,6 +363,13 @@ const LogExtractorDrawer = ({
   const [sampleIndex, setSampleIndex] = useState<number | null>(null);
   const [preview, setPreview] = useState<LogExtractorPreviewResult | null>(null);
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
+  const [grokPatterns, setGrokPatterns] = useState<GrokPatternCatalogItem[]>([]);
+  const [grokPatternsLoading, setGrokPatternsLoading] = useState(false);
+  const [grokPatternsError, setGrokPatternsError] = useState(false);
+  const [grokInsertNonce, setGrokInsertNonce] = useState(0);
+  const grokCatalogRequested = useRef(false);
+  const grokPatternRef = useRef<HTMLTextAreaElement | null>(null);
+  const grokSelectionRef = useRef({ start: 0, end: 0 });
   const autoCreateConsumed = useRef(false);
   const [serverCanOperate, setServerCanOperate] = useState<boolean | null>(null);
   const collectTypeName = collectType?.name;
@@ -364,6 +451,33 @@ const LogExtractorDrawer = ({
     return () => window.clearInterval(timer);
   }, [open, scopeQuery]);
 
+  useEffect(() => {
+    if (!editorOpen || extractorType !== 'grok' || grokCatalogRequested.current) {
+      return;
+    }
+    grokCatalogRequested.current = true;
+    setGrokPatternsLoading(true);
+    setGrokPatternsError(false);
+    void apiRef.current
+      .getGrokPatterns()
+      .then((data) => {
+        const items = normalizeGrokPatternCatalog(data);
+        if (!items) {
+          setGrokPatterns([]);
+          setGrokPatternsError(true);
+          return;
+        }
+        setGrokPatterns(items);
+      })
+      .catch(() => {
+        setGrokPatterns([]);
+        setGrokPatternsError(true);
+      })
+      .finally(() => {
+        setGrokPatternsLoading(false);
+      });
+  }, [editorOpen, extractorType]);
+
   const fieldOptions = useMemo(
     () =>
       Array.from(
@@ -398,12 +512,48 @@ const LogExtractorDrawer = ({
     if (!rule && initialSourceField) {
       values.source_field = initialSourceField;
     }
+    grokSelectionRef.current = {
+      start: values.pattern?.length || 0,
+      end: values.pattern?.length || 0
+    };
     form.setFieldsValue(values);
     setEditorOpen(true);
   };
 
+  const grokPatternGroups = useMemo(
+    () => groupGrokPatternsByCategory(grokPatterns),
+    [grokPatterns]
+  );
+
+  const insertSelectedGrokPattern = (name: string) => {
+    const pattern = grokPatterns.find((item) => item.name === name);
+    if (!pattern) return;
+    const current = String(form.getFieldValue('pattern') ?? '');
+    const { start, end } = grokSelectionRef.current;
+    const next = insertGrokPatternAtCursor(current, start, end, {
+      name: pattern.name,
+      composite: pattern.composite
+    });
+    form.setFieldValue('pattern', next.value);
+    grokSelectionRef.current = {
+      start: next.selectionStart,
+      end: next.selectionEnd
+    };
+    setGrokInsertNonce((nonce) => nonce + 1);
+    window.setTimeout(() => {
+      const element = grokPatternRef.current;
+      if (!element) return;
+      element.focus();
+      element.setSelectionRange(next.selectionStart, next.selectionEnd);
+    }, 0);
+  };
+
   const buildDraft = (values: FormValue): LogExtractorDraft => {
     let config: Record<string, unknown> = {};
+    const grokFields =
+      values.extractor_type === 'grok'
+        ? serializeGrokExtractorFields(values.pattern || '')
+        : null;
     if (values.extractor_type === 'split') {
       config = { delimiter: values.delimiter, index: Number(values.index) };
     } else if (values.extractor_type === 'kv') {
@@ -425,6 +575,8 @@ const LogExtractorDrawer = ({
       };
     } else if (values.extractor_type === 'regex_replace') {
       config = { pattern: values.pattern, replacement: values.replacement };
+    } else if (values.extractor_type === 'grok' && grokFields) {
+      config = grokFields.config;
     }
     return {
       name: values.name,
@@ -435,9 +587,11 @@ const LogExtractorDrawer = ({
       }),
       extractor_type: values.extractor_type,
       source_field: values.source_field,
-      target_field: extractorUsesSingleTargetField(values.extractor_type)
-        ? values.target_field || null
-        : null,
+      target_field: grokFields
+        ? grokFields.target_field
+        : extractorUsesSingleTargetField(values.extractor_type)
+          ? values.target_field || null
+          : null,
       delete_source: Boolean(values.delete_source),
       config
     };
@@ -1023,6 +1177,75 @@ const LogExtractorDrawer = ({
             >
               <Input />
             </Form.Item>
+          )}
+          {extractorType === 'grok' && (
+            <>
+              <Form.Item
+                name="pattern"
+                label={t('log.extractor.grokPattern')}
+                extra={
+                  <span className="block font-mono">
+                    {t('log.extractor.grokPatternExample')}
+                  </span>
+                }
+                rules={[{ required: true }]}
+              >
+                <GrokPatternTextArea
+                  rows={4}
+                  className="font-mono"
+                  caretRef={grokPatternRef}
+                  selectionRef={grokSelectionRef}
+                />
+              </Form.Item>
+              <Form.Item
+                label={t('log.extractor.insertGrokPattern')}
+                extra={
+                  grokPatternsError
+                    ? t('log.extractor.grokPatternsError')
+                    : undefined
+                }
+              >
+                <Select
+                  key={grokInsertNonce}
+                  className="w-full"
+                  showSearch
+                  optionFilterProp="label"
+                  virtual={false}
+                  listHeight={360}
+                  popupMatchSelectWidth={false}
+                  placeholder={t('log.extractor.insertGrokPattern')}
+                  aria-label={t('log.extractor.insertGrokPattern')}
+                  disabled={
+                    grokPatternsError ||
+                    grokPatternsLoading ||
+                    grokPatterns.length === 0
+                  }
+                  loading={grokPatternsLoading}
+                  classNames={{ popup: { root: GROK_PATTERN_SELECT_POPUP_CLASS } }}
+                  onChange={(value) => {
+                    if (typeof value !== 'string' || !value) return;
+                    insertSelectedGrokPattern(value);
+                  }}
+                >
+                  {grokPatternGroups.map((group) => (
+                    <Select.OptGroup
+                      key={group.category}
+                      label={t(`log.extractor.grokCategory.${group.category}`)}
+                    >
+                      {group.items.map((item) => (
+                        <Select.Option
+                          key={item.name}
+                          value={item.name}
+                          label={`${item.name} ${item.description} ${item.example}`}
+                        >
+                          {renderGrokPatternOption(item)}
+                        </Select.Option>
+                      ))}
+                    </Select.OptGroup>
+                  ))}
+                </Select>
+              </Form.Item>
+            </>
           )}
           <Typography.Title level={5}>{t('log.extractor.preview')}</Typography.Title>
           {samplesError && (

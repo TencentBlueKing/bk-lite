@@ -159,3 +159,104 @@ error:
   scope_exclusive: 必须且只能提供采集实例或采集类型之一
   generation_published: 当前 generation 已发布
   channel_query_failed: 通知通道查询失败
+grok_pattern:
+  WORD:
+    description: 由字母、数字或下划线组成的词
+  NOTSPACE:
+    description: 不含空白的连续文本
+  SPACE:
+    description: 空白
+  DATA:
+    description: 非贪婪匹配任意文本
+  GREEDYDATA:
+    description: 贪婪匹配任意文本
+  QUOTEDSTRING:
+    description: 单引号或双引号包裹的字符串
+  UUID:
+    description: UUID
+  USERNAME:
+    description: 用户名
+  EMAILADDRESS:
+    description: 电子邮件地址
+  INT:
+    description: 可带正负号的整数
+  POSINT:
+    description: 正整数
+  NONNEGINT:
+    description: 非负整数
+  NUMBER:
+    description: 整数或小数
+  BASE16NUM:
+    description: 十六进制数
+  IPV4:
+    description: IPv4 地址
+  IPV6:
+    description: IPv6 地址
+  IP:
+    description: IPv4 或 IPv6 地址
+  HOSTNAME:
+    description: 主机名
+  IPORHOST:
+    description: IP 地址或主机名
+  HOSTPORT:
+    description: 主机和端口
+  MAC:
+    description: MAC 地址
+  UNIXPATH:
+    description: Unix 路径
+  WINPATH:
+    description: Windows 路径
+  PATH:
+    description: Unix 或 Windows 路径
+  URIPROTO:
+    description: URI 协议
+  URIHOST:
+    description: 可带端口的 URI 主机
+  URIPATH:
+    description: URI 路径
+  URIPARAM:
+    description: URI 查询参数
+  URIPATHPARAM:
+    description: URI 路径，可带查询参数
+  URI:
+    description: URI
+  YEAR:
+    description: 四位年份
+  MONTH:
+    description: 英文月份
+  MONTHNUM:
+    description: 月份数字
+  MONTHDAY:
+    description: 日
+  DAY:
+    description: 英文星期
+  HOUR:
+    description: 小时
+  MINUTE:
+    description: 分钟
+  SECOND:
+    description: 秒
+  TIME:
+    description: 时间
+  DATE:
+    description: 日期
+  DATESTAMP:
+    description: 日期和时间
+  TIMESTAMP_ISO8601:
+    description: ISO 8601 时间
+  HTTPDATE:
+    description: HTTP 日期
+  SYSLOGTIMESTAMP:
+    description: syslog 时间戳
+  LOGLEVEL:
+    description: 日志级别
+  PROG:
+    description: 程序名
+  SYSLOGHOST:
+    description: syslog 主机
+  COMMONAPACHELOG:
+    description: Apache common 访问日志
+  COMBINEDAPACHELOG:
+    description: Apache combined 访问日志，同样适用于 Nginx 默认 combined 格式
+  SYSLOGBASE:
+    description: syslog 行头，包含时间、主机、程序名和可选进程号
