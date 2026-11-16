@@ -54,6 +54,7 @@ class FieldSchema(BaseModel):
     placeholder: str = ""
     props: dict[str, Any] = Field(default_factory=dict)
     source: dict[str, Any] | None = None
+    fetch: dict[str, Any] | None = None
     columns: list[dict[str, Any]] = Field(default_factory=list)
     span: int | None = None
     group: str = ""

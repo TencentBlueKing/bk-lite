@@ -17,6 +17,9 @@ def validate_design(payload: dict) -> list[str]:
     if not any(node.type == "end" for node in document.nodes):
         errors.append("缺少结束节点")
     for node in document.nodes:
+        if node.type == "auto" and (node.auto or {}).get("kind") == "integration":
+            if not (node.auto or {}).get("integration_id") or not isinstance((node.auto or {}).get("inputs", {}), dict):
+                errors.append(f"节点 {node.id} 需要选择集成并配置有效 JSON 参数")
         if node.type not in PHASE1_TYPES:
             errors.append(f"节点 {node.id} 的类型 {node.type} 第一期不支持")
         if node.id not in linked and len(document.nodes) > 1:

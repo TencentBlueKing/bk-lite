@@ -8,6 +8,10 @@ from apps.itsm.models import DataTable, DataTableRow
 def run_auto_action(ticket, kind: str, config: dict, operator: str) -> tuple[str, dict]:
     """执行自动节点。作业和编排只在配置完整时调用；失败只记错误类型。"""
     config = config or {}
+    if kind == "integration":
+        from apps.itsm.services.integrations import run_for_ticket
+
+        return run_for_ticket(ticket, config, operator)
     if kind == "table" and config.get("table_key"):
         table = DataTable.objects.filter(domain=ticket.domain, key=config["table_key"]).first()
         if table is None:

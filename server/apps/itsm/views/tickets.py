@@ -26,10 +26,13 @@ def _body(request):
     return json.loads(request.body.decode("utf-8"))
 
 
-def _service():
+def _service(request=None):
+    from apps.itsm.services.integrations import request_identity
+
+    identity = request_identity(request) if request is not None else None
     if not settings.FLOWABLE_PASSWORD:
-        return TicketService(None)
-    return TicketService(FlowableClient(settings.FLOWABLE_URL, settings.FLOWABLE_USER, settings.FLOWABLE_PASSWORD))
+        return TicketService(None, identity=identity)
+    return TicketService(FlowableClient(settings.FLOWABLE_URL, settings.FLOWABLE_USER, settings.FLOWABLE_PASSWORD), identity=identity)
 
 
 def _user(request):
@@ -126,7 +129,7 @@ def tickets(request):
     from apps.itsm.services.service_access import check_service_request
 
     check_service_request(request, version, service_id)
-    ticket = _service().create(version, payload.get("form_data") or {}, _user(request), bool(payload.get("is_test")))
+    ticket = _service(request).create(version, payload.get("form_data") or {}, _user(request), bool(payload.get("is_test")))
     if service_id:
         ticket.service_id = service_id
         ticket.save(update_fields=["service", "updated_at"])
@@ -140,7 +143,7 @@ def operate_ticket(request, ticket_id):
     payload = _body(request)
     ticket = get_ticket(request, ticket_id)
     task = TicketTask.objects.get(id=payload["task_id"], ticket=ticket) if payload.get("task_id") else None
-    updated = _service().operate(
+    updated = _service(request).operate(
         ticket, task, payload["action"], payload, _user(request), privileged=bool(getattr(request.user, "is_superuser", False))
     )
     return WebUtils.response_success({"id": updated.id, "status": updated.status.key if updated.status_id else ""})
@@ -199,6 +202,9 @@ def _ticket_detail(ticket, username="", privileged=False, can_operate=True):
     design = ticket.workflow_version.design if ticket.workflow_version_id else {}
     form = ticket.workflow.form if ticket.workflow_id and ticket.workflow.form_id else None
     schema = workflow_schema(ticket.workflow_version) if ticket.workflow_version_id else {}
+    from apps.itsm.services.form.fetch import public_schema
+
+    schema = public_schema(schema, (ticket.form_data or {}).get("_field_labels"))
     fields = schema.get("fields") if isinstance(schema, dict) else None
     if not fields:
         fields = [{"key": key, "label": key, "type": "input"} for key in (ticket.form_data or {})]
@@ -378,7 +384,9 @@ def ticket_form(request, version_id):
     from apps.itsm.services.service_access import check_service_request
 
     check_service_request(request, version, request.GET.get("service_id"))
-    schema = workflow_schema(version)
+    from apps.itsm.services.form.fetch import public_schema
+
+    schema = public_schema(workflow_schema(version))
     if not schema.get("fields"):
         schema = {"version": 1, "fields": [{"key": "title", "type": "input", "label": "标题", "required": True}]}
     return WebUtils.response_success(

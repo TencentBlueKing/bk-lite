@@ -3,26 +3,32 @@ from django.utils import timezone
 
 from apps.itsm.flowable.client import FlowableClient, FlowableError
 from apps.itsm.models import StatusTransition, Ticket, TicketLog, TicketStatus, TicketTask, WorkflowVersion
-from apps.itsm.services.form.validator import FormValidator
+from apps.itsm.services.form.fetch import validate_submission
 from apps.itsm.services.notify.service import dispatch_notification
 from apps.itsm.services.sla import finish as finish_sla
 from apps.itsm.services.sla import open_records, pause, resume
+from apps.itsm.services.todo_sync import schedule_sync
 from apps.itsm.services.workflow.assignee import AssigneeBlocked, AssigneeResolver
 from apps.itsm.signals import itsm_event
 
 
 class TicketService:
-    def __init__(self, client: FlowableClient | None = None):
+    def __init__(self, client: FlowableClient | None = None, identity=None):
         self.client = client
+        self.identity = identity
 
     @transaction.atomic
     def create(self, workflow_version: WorkflowVersion, form_data: dict, creator: str, is_test: bool = False) -> Ticket:
         schema = workflow_schema(workflow_version)
         submit_node = _find_node(workflow_version.design, node_type="submit")
         if schema.get("fields"):
-            form_data, errors = FormValidator(schema, _normalize_perm(submit_node.get("field_perm"))).apply(form_data)
-            if errors:
-                raise ValueError(errors)
+            form_data = validate_submission(
+                schema,
+                form_data,
+                self.identity,
+                f"version:{workflow_version.id}",
+                field_perm=_normalize_perm(submit_node.get("field_perm")),
+            )
         status = TicketStatus.objects.filter(key="new").first()
         ticket = Ticket.objects.create(
             sn=f"REQ{timezone.now().strftime('%Y%m%d%H%M%S%f')}",
@@ -40,7 +46,11 @@ class TicketService:
         open_records(ticket)
         TicketLog.objects.create(ticket=ticket, action="create", operator=creator, message="创建工单", created_by=creator, updated_by=creator)
         if self.client and workflow_version.process_definition_key:
-            variables = {"initiator": creator, **self._assignee_variables(workflow_version, creator, form_data), **_form_variables(form_data)}
+            variables = {
+                "initiator": creator,
+                **self._assignee_variables(workflow_version, creator, form_data),
+                **_form_variables(form_data),
+            }
             started = self.client.start_process(workflow_version.process_definition_key, ticket.sn, variables)
             ticket.process_instance_id = str(started.get("id") or "")
             ticket.save(update_fields=["process_instance_id", "updated_at"])
@@ -50,6 +60,7 @@ class TicketService:
 
         materialize_subforms(self, ticket, schema, creator)
         fire_triggers(ticket, "create", creator)
+        schedule_sync(ticket)
         return ticket
 
     def _assignee_variables(self, workflow_version: WorkflowVersion, creator: str, form_data: dict) -> dict:
@@ -128,7 +139,11 @@ class TicketService:
                         sender=current_ticket,
                         event="task.created",
                         receivers=[current_task.assignee],
-                        variables={"title": current_ticket.title, "node": current_task.node_name, "url": f"/itsm/tickets/{current_ticket.id}"},
+                        variables={
+                            "title": current_ticket.title,
+                            "node": current_task.node_name,
+                            "url": f"/itsm/tickets/{current_ticket.id}",
+                        },
                         event_key=f"itsm-task-{current_task.flowable_task_id}",
                     )
                     if not current_ticket.is_test:
@@ -140,6 +155,8 @@ class TicketService:
         ticket.tasks.filter(status__in=[TicketTask.TaskStatus.PENDING, TicketTask.TaskStatus.CLAIMED]).exclude(flowable_task_id__in=seen).update(
             status=TicketTask.TaskStatus.DONE
         )
+
+        schedule_sync(ticket)
 
     @transaction.atomic
     def operate(self, ticket: Ticket, task: TicketTask, action: str, data: dict, operator: str, privileged: bool = False) -> Ticket:
@@ -242,6 +259,7 @@ class TicketService:
                             created_by=operator,
                             updated_by=operator,
                         )
+        schedule_sync(ticket)
         return ticket
 
     def authorize(self, ticket, task, action, operator, privileged=False):
@@ -276,9 +294,14 @@ class TicketService:
         original = dict(ticket.form_data or {})
         schema = _ticket_schema(ticket)
         if schema.get("fields"):
-            cleaned, errors = FormValidator(schema, _normalize_perm(node.get("field_perm"))).merge(original, incoming)
-            if errors:
-                raise ValueError(errors)
+            cleaned = validate_submission(
+                schema,
+                incoming,
+                self.identity,
+                f"ticket:{ticket.id}",
+                original=original,
+                field_perm=_normalize_perm(node.get("field_perm")),
+            )
             ticket.form_data = {**original, **cleaned}
         elif incoming:
             ticket.form_data = {**original, **incoming}
@@ -365,6 +388,7 @@ class TicketService:
             if self.client:
                 self.sync_ticket(ticket)
         self._log(ticket, task, action, data, operator)
+        schedule_sync(ticket)
         return ticket
 
     def _reopen(self, ticket: Ticket, operator: str) -> None:

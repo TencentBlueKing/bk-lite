@@ -164,7 +164,11 @@ def _check_type(field: dict[str, Any], value: Any, dictionary_lookup) -> str:
     kind = field["type"]
     if kind in NUMBER_TYPES and (isinstance(value, bool) or not isinstance(value, (int, float))):
         return "必须是数字"
-    if kind in STRING_TYPES and not isinstance(value, str):
+    if (
+        kind in STRING_TYPES
+        and not isinstance(value, str)
+        and not (field.get("fetch") and kind in {"select", "radio", "cascade"} and isinstance(value, (int, float)) and not isinstance(value, bool))
+    ):
         return "必须是字符串"
     if kind in LIST_TYPES and not isinstance(value, list):
         return "必须是列表"

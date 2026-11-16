@@ -7,6 +7,17 @@ import useApiClient from '@/utils/request';
 export function useItsmApi() {
   const { get, post, put, del, isLoading } = useApiClient();
 
+  const fetchField = useCallback((body: Record<string, unknown>) => post('/itsm/api/fields/fetch/', body), [post]);
+  const bindFieldGateway = useCallback((body: Record<string, unknown>) => post('/itsm/api/fields/gateway/', body), [post]);
+  const fieldCatalog = useCallback(() => get('/itsm/api/fields/catalog/'), [get]);
+
+  const listIntegrations = useCallback((summary = false) => get('/itsm/api/integrations/', { params: summary ? { summary: '1' } : {} }), [get]);
+  const integrationCatalog = useCallback(() => get('/itsm/api/integrations/catalog/'), [get]);
+  const getIntegration = useCallback((id: number) => get(`/itsm/api/integrations/${id}/`), [get]);
+  const saveIntegration = useCallback((body: Record<string, unknown>, id?: number) => id ? put(`/itsm/api/integrations/${id}/`, body) : post('/itsm/api/integrations/', body), [post, put]);
+  const testIntegration = useCallback((id: number, inputs: Record<string, unknown>) => post(`/itsm/api/integrations/${id}/test/`, { inputs }), [post]);
+  const retryDelivery = useCallback((id: number, delivery: number) => post(`/itsm/api/integrations/${id}/deliveries/${delivery}/retry/`), [post]);
+
   const searchTicketTags = useCallback((q: string) => get('/itsm/api/tickets/filter_tags/', { params: { q } }), [get]);
   const centerSettings = useCallback(() => get('/itsm/api/tickets/center_settings/'), [get]);
   const saveTicketColumns = useCallback((columns: string[] | null) => put('/itsm/api/tickets/center_settings/', { columns }), [put]);
@@ -183,6 +194,7 @@ export function useItsmApi() {
 
   return {
     ready: !isLoading,
+    fetchField, fieldCatalog, bindFieldGateway, listIntegrations, integrationCatalog, getIntegration, saveIntegration, testIntegration, retryDelivery,
     searchTicketTags, centerSettings, saveTicketColumns, saveTicketGroup, deleteTicketGroup, batchTickets, batchOptions,
     listForms,
     createForm,

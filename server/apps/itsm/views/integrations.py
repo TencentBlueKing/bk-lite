@@ -1,0 +1,140 @@
+import json
+
+from django.shortcuts import get_object_or_404
+from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.http import require_http_methods
+
+from apps.core.mixinx import EncryptMixin
+from apps.core.openapi.catalog import build_docs_catalog
+from apps.core.utils.web_utils import WebUtils
+from apps.itsm.models.integration import Integration
+from apps.itsm.services.integrations import execute, request_identity, validate_config
+from apps.itsm.views.access import api_errors, domain_of, has_permission
+
+
+def require(request, permission):
+    if not has_permission(request, permission):
+        raise PermissionError()
+
+
+def serialize(item, summary=False):
+    result = {"id": item.id, "name": item.name, "kind": item.kind, "is_enabled": item.is_enabled, "updated_by": item.updated_by}
+    if not summary:
+        result["config"] = {**item.config}
+        if item.kind == "todo" or item.config.get("transport") == "external":
+            result["config"]["token"] = ""
+            result["has_token"] = bool(item.config.get("token"))
+    return result
+
+
+def payload(request):
+    data = json.loads(request.body or b"{}")
+    if not isinstance(data, dict):
+        raise ValueError("参数须为对象")
+    return data
+
+
+@csrf_exempt
+@require_http_methods(["GET", "POST"])
+@api_errors
+def integrations(request):
+    if request.method == "GET":
+        summary = request.GET.get("summary") == "1"
+        if not has_permission(request, "data-View") and not (summary and has_permission(request, "workflow-View")):
+            raise PermissionError()
+        items = Integration.objects.filter(domain=domain_of(request)).order_by("-id")
+        return WebUtils.response_success(
+            {
+                "items": [serialize(item, summary) for item in items],
+                "can_edit": has_permission(request, "data-Edit"),
+                "can_add": has_permission(request, "data-Add"),
+                "can_delete": has_permission(request, "data-Delete"),
+            }
+        )
+    require(request, "data-Add")
+    data = payload(request)
+    name = str(data.get("name") or "").strip()
+    if not name or len(name) > 128:
+        raise ValueError("名称不能为空且不超过128字")
+    config = validate_config(data.get("kind"), data.get("config"))
+    if (data["kind"] == "todo" or config.get("transport") == "external") and config.get("token"):
+        config["token"] = EncryptMixin.get_cipher_suite().encrypt(config["token"].encode()).decode()
+    item = Integration.objects.create(
+        name=name,
+        kind=data["kind"],
+        config=config,
+        domain=domain_of(request),
+        created_by=request.user.username,
+        updated_by=request.user.username,
+    )
+    return WebUtils.response_success(serialize(item))
+
+
+@csrf_exempt
+@require_http_methods(["GET", "PUT", "DELETE"])
+@api_errors
+def integration_detail(request, item_id):
+    require(request, {"GET": "data-View", "PUT": "data-Edit", "DELETE": "data-Delete"}[request.method])
+    item = get_object_or_404(Integration, pk=item_id, domain=domain_of(request))
+    if request.method == "DELETE":
+        # 保留发布流程的引用，使用停用代替物理删除。
+        item.is_enabled = False
+        item.save(update_fields=["is_enabled", "updated_at"])
+        return WebUtils.response_success()
+    if request.method == "PUT":
+        data = payload(request)
+        name = str(data.get("name", item.name)).strip()
+        if not name or len(name) > 128 or ("is_enabled" in data and not isinstance(data["is_enabled"], bool)):
+            raise ValueError("名称或启用状态无效")
+        item.name = name
+        if "config" in data:
+            config = validate_config(item.kind, data["config"])
+            if item.kind == "todo" or config.get("transport") == "external":
+                config["token"] = (
+                    EncryptMixin.get_cipher_suite().encrypt(config["token"].encode()).decode()
+                    if config.get("token")
+                    else (item.config.get("token", "") if item.kind == "todo" or config.get("url") == item.config.get("url") else "")
+                )
+            item.config = config
+        item.is_enabled = data.get("is_enabled", item.is_enabled)
+        item.updated_by = request.user.username
+        item.save()
+    return WebUtils.response_success(
+        {
+            **serialize(item),
+            "runs": list(item.runs.order_by("-id").values("id", "status", "code", "duration_ms", "created_by", "created_at")[:20]),
+            "deliveries": list(item.deliveries.order_by("-id").values("id", "status", "code", "attempts", "created_at", "task_id")[:30]),
+        }
+    )
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+@api_errors
+def integration_test(request, item_id):
+    require(request, "data-Edit")
+    item = get_object_or_404(Integration, pk=item_id, domain=domain_of(request))
+    return WebUtils.response_success(execute(item, payload(request).get("inputs", {}), request_identity(request)))
+
+
+@require_http_methods(["GET"])
+@api_errors
+def integration_catalog(request):
+    require(request, "data-View")
+    return WebUtils.response_success(build_docs_catalog())
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+@api_errors
+def retry_delivery(request, item_id, delivery_id):
+    from apps.itsm.services.todo_sync import deliver
+
+    require(request, "data-Edit")
+    item = get_object_or_404(Integration, pk=item_id, domain=domain_of(request), kind="todo", is_enabled=True)
+    row = get_object_or_404(item.deliveries, pk=delivery_id)
+    if row.status != "failed":
+        raise ValueError("只能重试失败的投递")
+    deliver(row.id)
+    row.refresh_from_db()
+    return WebUtils.response_success({"status": row.status, "code": row.code})

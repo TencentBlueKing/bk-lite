@@ -1,3 +1,22 @@
+export interface FieldFetchBinding {
+  source: 'integration' | 'dictionary' | 'table';
+  mode: 'options' | 'value' | 'table';
+  integration_id?: number;
+  integration_kind?: 'api' | 'python';
+  resource_key?: string;
+  inputs?: Record<string, unknown>;
+  dependencies?: string[];
+  list_path?: string;
+  label_path?: string;
+  value_path?: string;
+  columns?: Record<string, string>;
+  fill?: Record<string, string>;
+  transform_id?: number;
+  transform_params?: Record<string, unknown>;
+  trigger?: 'change' | 'manual';
+  enforce?: boolean;
+}
+
 export interface FormFieldSchema {
   key: string;
   type: string;
@@ -5,6 +24,7 @@ export interface FormFieldSchema {
   required?: boolean;
   default?: unknown;
   props?: Record<string, unknown>;
+  fetch?: FieldFetchBinding;
   source?: { type: string; options?: Array<{ label: string; value: string }> };
   placeholder?: string;
   hint?: string;

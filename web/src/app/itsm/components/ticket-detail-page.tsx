@@ -121,7 +121,7 @@ export default function TicketDetailPage({ serviceId }: { serviceId?: number }) 
         <div role="region" aria-label="工单表单" tabIndex={0} className="h-full min-h-0 min-w-0 overflow-y-auto overscroll-contain p-5">
           <div className="mb-3 text-sm font-medium text-[var(--color-text-1)]">{t('itsm.ticket.form')}</div>
           <div className="mb-3 flex flex-wrap gap-3 text-xs text-[var(--color-text-3)]">{ticket.sla?.map((item) => <span key={item.target}>{item.target === 'response' ? '响应期限' : '解决期限'}：{formatTicketTime(item.due_at)}{item.paused ? ' · 已暂停' : ''}{item.finished_at ? item.breached ? ' · 已超时' : ' · 已达标' : ''}</span>)}</div>
-          <FormRenderer form={form} schema={{ version: 1, fields: ticket.fields }} initialValues={ticket.form_data} fieldPerm={serviceId ? draft.fieldPerm : ticket.tasks.find((task) => task.can_operate)?.field_perm} readOnly={!serviceId && !ticket.tasks.some((task) => task.can_operate)} hideSubmit onSubmit={() => undefined} />
+          <FormRenderer fetchContext={serviceId ? { service_id: serviceId } : { ticket_id: ticketId }} form={form} schema={{ version: 1, fields: ticket.fields }} initialValues={ticket.form_data} fieldPerm={serviceId ? draft.fieldPerm : ticket.tasks.find((task) => task.can_operate)?.field_perm} readOnly={!serviceId && !ticket.tasks.some((task) => task.can_operate)} hideSubmit onSubmit={() => undefined} />
         </div>
 
         <aside aria-label="工单协作" className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden border-l border-[var(--color-border)]">

@@ -43,6 +43,7 @@ import { ConditionBuilder } from './condition-builder';
 import { CanvasTools } from './canvas-tools';
 import { UserSelector } from './user-selector';
 import { NodeGlyph } from './node-glyph';
+import { IntegrationNodeSettings } from './integration-node-settings';
 import { useTranslation } from '@/utils/i18n';
 
 const NODE_WIDTH = 148;
@@ -511,8 +512,8 @@ function FlowDesignerBody({ design, fields = [], formFields = [], invalidNodeIds
               <div className="flex flex-col gap-2 rounded border border-[var(--color-border)] p-3">
                 {selected.data.nodeType === 'auto' && <>
                   <span className="text-xs">自动动作</span>
-                  <Select value={String(selected.data.auto?.kind || 'table')} options={[{ value: 'table', label: '写入数据表' }, { value: 'http', label: 'HTTP 请求' }]} onChange={(kind) => patchSelected({ auto: { ...selected.data.auto, kind } })} />
-                  <Input aria-label="数据表标识或请求地址" placeholder={selected.data.auto?.kind === 'http' ? '请求地址' : '数据表标识'} value={String(selected.data.auto?.[selected.data.auto?.kind === 'http' ? 'url' : 'table_key'] || '')} onChange={(event) => patchSelected({ auto: { kind: 'table', ...selected.data.auto, [selected.data.auto?.kind === 'http' ? 'url' : 'table_key']: event.target.value } })} />
+                  <Select value={String(selected.data.auto?.kind || 'table')} options={[{ value: 'table', label: '写入数据表' }, { value: 'http', label: 'HTTP 请求' }, { value: 'integration', label: '集成 · API / Python' }]} onChange={(kind) => patchSelected({ auto: { ...selected.data.auto, kind } })} />
+                  {selected.data.auto?.kind === 'integration' ? <IntegrationNodeSettings key={selected.id} config={selected.data.auto} onChange={auto => patchSelected({ auto })} /> : <Input aria-label="数据表标识或请求地址" placeholder={selected.data.auto?.kind === 'http' ? '请求地址' : '数据表标识'} value={String(selected.data.auto?.[selected.data.auto?.kind === 'http' ? 'url' : 'table_key'] || '')} onChange={(event) => patchSelected({ auto: { kind: 'table', ...selected.data.auto, [selected.data.auto?.kind === 'http' ? 'url' : 'table_key']: event.target.value } })} />}
                 </>}
                 {['notice', 'cc'].includes(selected.data.nodeType) && <>
                   <span className="text-xs">通知接收人</span>

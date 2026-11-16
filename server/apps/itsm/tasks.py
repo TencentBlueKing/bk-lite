@@ -89,7 +89,9 @@ def auto_tick():
     from django.conf import settings
 
     from apps.itsm.flowable.client import FlowableClient, FlowableError
+    from apps.itsm.services.todo_sync import drain_deliveries
 
+    drain_deliveries()
     if not settings.FLOWABLE_PASSWORD:
         return {"acquired": 0}
     client = FlowableClient(settings.FLOWABLE_URL, settings.FLOWABLE_USER, settings.FLOWABLE_PASSWORD)

@@ -56,6 +56,9 @@ from apps.itsm.models.ticket import (
 from apps.itsm.models.workflow import Workflow, WorkflowStage, WorkflowType, WorkflowVariable, WorkflowVersion
 
 __all__ = [
+    "Integration",
+    "IntegrationRun",
+    "TodoDelivery",
     "DataDictionary",
     "DataDictionaryItem",
     "DataTable",
@@ -91,3 +94,4 @@ __all__ = [
     "WorkflowVariable",
     "WorkflowVersion",
 ]
+from apps.itsm.models.integration import Integration, IntegrationRun, TodoDelivery

@@ -71,7 +71,9 @@ def forms(request):
 def publish_form(request, form_id):
     form = FormModel.objects.filter(domain=domain_of(request)).get(id=form_id)
     payload = _body(request)
-    schema = payload.get("schema") or {}
+    from apps.itsm.services.form.fetch import freeze_schema
+
+    schema = freeze_schema(payload.get("schema") or {}, domain_of(request))
     FormValidator(schema).validate(payload.get("sample") or {})
     version_no = (form.versions.order_by("-version_no").values_list("version_no", flat=True).first() or 0) + 1
     version = FormVersion.objects.create(
@@ -328,6 +330,10 @@ def publish_workflow(request, workflow_id):
         xml = build_bpmn(version.design, workflow.key)
     except BpmnBuildError as exc:
         return WebUtils.response_error(str(exc))
+    if not workflow.form_id and version.design.get("form_schema"):
+        from apps.itsm.services.form.fetch import freeze_schema
+
+        version.design = {**version.design, "form_schema": freeze_schema(version.design["form_schema"], domain_of(request))}
     client = FlowableClient(settings.FLOWABLE_URL, settings.FLOWABLE_USER, settings.FLOWABLE_PASSWORD)
     try:
         deployed = client.deploy_bpmn(workflow.key, xml)

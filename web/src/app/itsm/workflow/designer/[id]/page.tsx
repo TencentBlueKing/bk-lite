@@ -207,7 +207,7 @@ export default function WorkflowDesignerPage() {
       {preview ? (
         <div className="min-h-0 flex-1 overflow-y-auto rounded-lg border border-[var(--color-border-1)] bg-[var(--color-fill-1)] p-4">
           <div className="mx-auto max-w-4xl rounded-lg border border-[var(--color-border-1)] bg-[var(--color-bg)] p-4 shadow-[0_1px_3px_rgba(0,0,0,0.03)]">
-            <FormRenderer schema={schema} onSubmit={() => undefined} />
+            <FormRenderer schema={schema} fetchContext={{ preview: true, schema }} onSubmit={() => undefined} />
           </div>
         </div>
       ) : (

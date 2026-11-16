@@ -33,9 +33,10 @@ from apps.itsm.views.extend import (
     resource_item,
     resources,
     run_auto,
-    test_data_source,
 )
+from apps.itsm.views.field_fetch import field_catalog, field_fetch, field_gateway
 from apps.itsm.views.health import health
+from apps.itsm.views.integrations import integration_catalog, integration_detail, integration_test, integrations, retry_delivery
 from apps.itsm.views.m2 import (
     attachment_item,
     attachments,
@@ -65,6 +66,14 @@ from apps.itsm.views.tickets import operate_ticket, ticket_detail, ticket_form, 
 from apps.itsm.views.users import PublicStatusView, UserSearchView
 
 urlpatterns = [
+    path("api/fields/gateway/", field_gateway, name="itsm-field-gateway"),
+    path("api/fields/catalog/", field_catalog),
+    path("api/fields/fetch/", field_fetch),
+    path("api/integrations/", integrations),
+    path("api/integrations/catalog/", integration_catalog),
+    path("api/integrations/<int:item_id>/", integration_detail),
+    path("api/integrations/<int:item_id>/test/", integration_test),
+    path("api/integrations/<int:item_id>/deliveries/<int:delivery_id>/retry/", retry_delivery),
     path("api/services/layout/", portal_layout, name="itsm-portal-layout"),
     path("api/services/dashboard/", portal_dashboard, name="itsm-portal-dashboard"),
     path("api/tickets/filter_tags/", filter_tags, name="itsm-ticket-filter-tags"),
@@ -81,7 +90,6 @@ urlpatterns = [
     path("api/tickets/<int:ticket_id>/print/", render_print, name="itsm-ticket-print"),
     path("api/tickets/<int:ticket_id>/auto/", run_auto, name="itsm-ticket-auto"),
     path("api/decisions/<int:decision_id>/execute/", execute_decision, name="itsm-decision-execute"),
-    path("api/data_sources/<int:source_id>/test/", test_data_source, name="itsm-data-source-test"),
     path("api/cmdb/search/", cmdb_search, name="itsm-cmdb-search"),
     path("api/chats/<int:session_id>/messages/", chat_messages, name="itsm-chat-messages"),
     path("api/biz_objects/<int:object_id>/records/", biz_records, name="itsm-biz-records"),

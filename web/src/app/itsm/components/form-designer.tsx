@@ -8,6 +8,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { ALL_FIELDS, BASIC_FIELDS, CASCADE_TYPES, CHOICE_TYPES, FULL_ROW_TYPES, SCENE_FIELDS, SENIOR_FIELDS, fieldLabelId, type CatalogField } from '../constants/field-catalog';
 import type { FormFieldSchema } from '../types';
 import { SubProcessBinding } from './subprocess-field';
+import { FieldFetchEditor } from './field-fetch-editor';
 import { ConditionBuilder } from './condition-builder';
 import { CanvasTools } from './canvas-tools';
 import { FIELD_GROUP_COLOR, FieldGlyph } from './field-glyph';
@@ -795,6 +796,7 @@ export function FormDesigner({ fields, onChange }: FormDesignerProps) {
                 </div>
               </>
             ) : null}
+            <FieldFetchEditor key={selected.key} field={selected} fields={fields} patch={patch} />
             <FieldTypeProps field={selected} patch={patch} />
             {CASCADE_TYPES.has(selected.type) ? (
               <div className="flex flex-col gap-2 rounded-lg border border-[var(--color-border)] p-3">
@@ -866,46 +868,10 @@ export function FormDesigner({ fields, onChange }: FormDesignerProps) {
   );
 }
 
-function OptionEditor({ field, patch }: { field: FormFieldSchema; patch: (key: string, next: Partial<FormFieldSchema>) => void }) {
-  return (
-    <div className="flex flex-col gap-1">
-      <span className="text-xs font-medium text-[var(--color-text-2)]">选项</span>
-      <Select
-        value={field.source?.type || 'static'}
-        options={[{ value: 'static', label: '自定义' }, { value: 'dictionary', label: '数据字典' }]}
-        onChange={(type) => patch(field.key, { source: { type, options: field.source?.options?.length ? field.source.options : [{ label: '选项1', value: '1' }, { label: '选项2', value: '2' }] } })}
-      />
-      {(field.source?.type || 'static') === 'static' ? (
-        <Input.TextArea
-          rows={4}
-          placeholder={'选项1:1\n选项2:2'}
-          value={(field.source?.options || []).map((item) => `${item.label}:${item.value}`).join('\n')}
-          onChange={(event) => patch(field.key, {
-            source: {
-              type: 'static',
-              options: event.target.value.split('\n').filter(Boolean).map((line) => {
-                const [label, optionValue] = line.split(':');
-                return { label: label || '', value: optionValue || label || '' };
-              }),
-            },
-          })}
-        />
-      ) : (
-        <Input
-          placeholder="字典编码"
-          value={String(field.props?.dictionary || '')}
-          onChange={(event) => patch(field.key, { source: { type: 'dictionary', options: [] }, props: { ...field.props, dictionary: event.target.value } })}
-        />
-      )}
-    </div>
-  );
-}
-
 function FieldTypeProps({ field, patch }: { field: FormFieldSchema; patch: (key: string, next: Partial<FormFieldSchema>) => void }) {
   const setProp = (key: string, value: unknown) => patch(field.key, { props: { ...field.props, [key]: value } });
   return (
     <>
-      {CHOICE_TYPES.has(field.type) ? <OptionEditor field={field} patch={patch} /> : null}
       {field.type === 'radio' || field.type === 'checkbox' ? (
         <div className="flex flex-col gap-1">
           <span className="text-xs font-medium text-[var(--color-text-2)]">排列</span>

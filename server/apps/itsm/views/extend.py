@@ -3,7 +3,6 @@ import json
 from functools import wraps
 from io import BytesIO
 
-import requests
 from django.db.models import Exists, OuterRef
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
@@ -13,9 +12,8 @@ from openpyxl import Workbook
 
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.logger import itsm_logger as logger
-from apps.core.utils.ssrf_validator import SSRFError, SSRFValidator
 from apps.core.utils.web_utils import WebUtils
-from apps.itsm.models import DataTable, TicketRelation, TicketTask, VipUser
+from apps.itsm.models import TicketRelation, TicketTask, VipUser
 from apps.itsm.models.extend import (
     AiSetting,
     Announcement,
@@ -25,7 +23,6 @@ from apps.itsm.models.extend import (
     ChangeWindow,
     ChatMessage,
     ChatSession,
-    DataSource,
     DecisionTable,
     DutyShift,
     EmailRule,
@@ -40,7 +37,6 @@ from apps.itsm.models.extend import (
     TicketExportTask,
     TicketProxy,
     TicketSavedView,
-    TodoSync,
     Trigger,
     UserPreference,
 )
@@ -53,7 +49,6 @@ KINDS = {
     "decisions": (DecisionTable, ["name", "workflow_id", "rules"]),
     "triggers": (Trigger, ["name", "event", "action", "config", "is_enabled"]),
     "schedules": (ScheduledTask, ["name", "cron", "action", "is_enabled"]),
-    "sources": (DataSource, ["name", "kind", "config"]),
     "announcements": (Announcement, ["title", "content", "is_enabled"]),
     "changes": (ChangeWindow, ["name", "start_at", "end_at"]),
     "knowledge": (KnowledgeArticle, ["title", "content", "status"]),
@@ -61,7 +56,6 @@ KINDS = {
     "surveys": (SurveyTemplate, ["name", "questions"]),
     "prints": (PrintTemplate, ["name", "body"]),
     "handovers": (Handover, ["from_user", "to_user", "ticket_ids"]),
-    "todo_syncs": (TodoSync, ["name", "url"]),
     "special_rules": (SpecialOperationRule, ["action", "users"]),
     "reports": (ReportCard, ["kind"]),
     "vips": (VipUser, ["username", "is_enabled"]),
@@ -80,7 +74,6 @@ RESOURCE_MENUS = {
     "decisions": "rule",
     "triggers": "rule",
     "schedules": "rule",
-    "sources": "data",
     "announcements": "setting",
     "changes": "change",
     "knowledge": "knowledge",
@@ -88,7 +81,6 @@ RESOURCE_MENUS = {
     "surveys": "survey",
     "prints": "print",
     "handovers": "handover",
-    "todo_syncs": "setting",
     "special_rules": "setting",
     "reports": "ticket_center_setting",
     "vips": "setting",
@@ -372,32 +364,6 @@ def execute_decision(request, decision_id):
             matched = rule.get("then") or {}
             break
     return WebUtils.response_success({"matched": matched})
-
-
-@csrf_exempt
-@api_errors
-@HasPermission("data-View")
-def test_data_source(request, source_id):
-    source = DataSource.objects.filter(domain=domain_of(request)).get(id=source_id)
-    if source.kind == "sql":
-        table_key = str((source.config or {}).get("table_key") or "")
-        if not table_key or (source.config or {}).get("sql"):
-            return WebUtils.response_error("不执行任意 SQL，只允许按数据表标识读取")
-        table = DataTable.objects.filter(domain=domain_of(request)).filter(key=table_key).first()
-        if table is None:
-            return WebUtils.response_error("数据表不存在")
-        rows = [{"id": row.id, "data": row.data} for row in table.rows.all()[:20]]
-        return WebUtils.response_success({"items": rows})
-    if source.kind != "http":
-        return WebUtils.response_error("只允许测试 http 或受控数据表")
-    url = str((source.config or {}).get("url") or "")
-    try:
-        SSRFValidator().validate_url(url)
-        response = requests.get(url, timeout=3, allow_redirects=False)
-    except (SSRFError, requests.RequestException) as exc:
-        logger.warning("数据源测试失败 source_id=%s error_type=%s", source.id, type(exc).__name__)
-        return WebUtils.response_error(type(exc).__name__)
-    return WebUtils.response_success({"status_code": response.status_code})
 
 
 @csrf_exempt

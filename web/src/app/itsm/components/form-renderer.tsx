@@ -1,6 +1,6 @@
 'use client';
 
-import { Button, Checkbox, DatePicker, Divider, Empty, Form, Input, InputNumber, Radio, Select, Tabs, Upload, message } from 'antd';
+import { Button, Checkbox, DatePicker, Divider, Empty, Form, Input, InputNumber, Radio, Select, TreeSelect, Tabs, Upload, message } from 'antd';
 import type { FormInstance } from 'antd';
 import dayjs, { type Dayjs } from 'dayjs';
 import { FULL_ROW_TYPES } from '../constants/field-catalog';
@@ -10,6 +10,7 @@ import { useItsmApi } from '../api/useItsmApi';
 import GroupTreeSelect from '@/components/group-tree-select';
 import { UserSelector } from './user-selector';
 import { TableField, SignatureField } from './structured-fields';
+import { FieldFetchControl, type FetchContext } from './field-fetch-control';
 import { SubProcessField } from './subprocess-field';
 
 function RichTextField({
@@ -61,6 +62,7 @@ function AttachmentField({ disabled, value, onChange }: { disabled: boolean; val
 
 interface FormRendererProps {
   schema: FormSchema;
+  fetchContext?: FetchContext;
   form?: FormInstance;
   hideSubmit?: boolean;
   initialValues?: Record<string, unknown>;
@@ -173,8 +175,11 @@ const control = (field: FormFieldSchema, disabled: boolean) => {
   if (field.type === 'user' || field.type === 'multiUser') {
     return <UserSelector multiple={field.type === 'multiUser'} disabled={disabled} placeholder={field.placeholder || '搜索用户'} />;
   }
-  if (field.type === 'cascade' || field.type === 'multiCascade' || field.type === 'select' || field.type === 'multiselect' || field.type === 'cmdb' || field.type === 'multiCmdb' || field.type === 'singleAssociateConfig' || field.type === 'associateConfig') {
-    const multiple = field.type === 'multiselect' || field.type === 'multiCascade' || field.type === 'multiCmdb' || field.type === 'associateConfig';
+  if (field.type === 'cascade' || field.type === 'multiCascade') {
+    return <TreeSelect treeData={field.source?.options || []} fieldNames={{ label: 'label', value: 'value', children: 'children' }} multiple={field.type === 'multiCascade'} showSearch treeNodeFilterProp="label" disabled={disabled} placeholder={field.placeholder || '请选择'} />;
+  }
+  if (field.type === 'select' || field.type === 'multiselect' || field.type === 'cmdb' || field.type === 'multiCmdb' || field.type === 'singleAssociateConfig' || field.type === 'associateConfig') {
+    const multiple = field.type === 'multiselect' || field.type === 'multiCmdb' || field.type === 'associateConfig';
     return <Select mode={multiple ? 'multiple' : undefined} disabled={disabled} options={field.source?.options || []} placeholder={field.placeholder || '请选择'} />;
   }
   if (field.type === 'description') {
@@ -210,14 +215,14 @@ const control = (field: FormFieldSchema, disabled: boolean) => {
 
 const SPANS: Record<number, string> = { 3: 'col-span-3', 4: 'col-span-4', 6: 'col-span-6', 8: 'col-span-8', 9: 'col-span-9', 12: 'col-span-12', 24: 'col-span-12' };
 
-function FieldItems({ fields, fieldPerm, readOnly }: { fields: FormFieldSchema[]; fieldPerm: NonNullable<FormRendererProps['fieldPerm']>; readOnly: boolean }) {
+function FieldItems({ fields, fieldPerm, readOnly, fetchContext }: { fetchContext?: FetchContext; fields: FormFieldSchema[]; fieldPerm: NonNullable<FormRendererProps['fieldPerm']>; readOnly: boolean }) {
   return <>{fields.map((field) => <Form.Item key={field.key} noStyle shouldUpdate>
     {({ getFieldsValue }) => {
       const perm = fieldPerm[field.key] || fieldPerm['*'] || 'edit';
       if (field.state === 'hidden' || perm === 'hidden' || !matches(field.visibleWhen, getFieldsValue())) return null;
       const locked = readOnly || ['read', 'readonly'].includes(perm) || field.state === 'readonly' || field.state === 'disabled';
       if (field.type === 'tab' || field.type === 'section') {
-        const children = <div className="grid grid-cols-12 gap-x-4 gap-y-1"><FieldItems fields={field.children || []} fieldPerm={fieldPerm} readOnly={locked} /></div>;
+        const children = <div className="grid grid-cols-12 gap-x-4 gap-y-1"><FieldItems fields={field.children || []} fieldPerm={fieldPerm} readOnly={locked} fetchContext={fetchContext} /></div>;
         return <div className="col-span-12 rounded-lg border border-[var(--color-border)] p-3">
           {field.type === 'tab' ? <Tabs items={[{ key: field.key, label: field.label || '标签', children }]} /> : <><div className="mb-2 text-sm font-medium text-[var(--color-text-1)]">{field.label}</div>{children}</>}
         </div>;
@@ -227,14 +232,15 @@ function FieldItems({ fields, fieldPerm, readOnly }: { fields: FormFieldSchema[]
         name={field.key} label={field.type === 'divider' ? undefined : field.label} extra={field.hint}
         rules={(field.required || String(perm) === 'required') && !locked ? [{ required: true }] : []}
         {...dateItemProps(field)}
-      >{control(field, locked)}</Form.Item>;
+      >{field.fetch && fetchContext && !locked ? <FieldFetchControl field={field} context={fetchContext}>{control(field, locked)!}</FieldFetchControl> : control(field, locked)}</Form.Item>;
     }}
   </Form.Item>)}</>;
 }
 
-export function FormRenderer({ form, hideSubmit = false, schema, initialValues, fieldPerm = {}, readOnly = false, onSubmit }: FormRendererProps) {
+export function FormRenderer({ fetchContext, form, hideSubmit = false, schema, initialValues, fieldPerm = {}, readOnly = false, onSubmit }: FormRendererProps) {
   return <Form form={form} layout="vertical" initialValues={initialValues} onFinish={(values) => onSubmit(values as Record<string, unknown>)}>
-    {schema.fields?.length ? <div className="grid grid-cols-12 gap-x-4 gap-y-1"><FieldItems fields={schema.fields} fieldPerm={fieldPerm} readOnly={readOnly} /></div>
+    <Form.Item name="_field_receipts" hidden><Input /></Form.Item>
+    {schema.fields?.length ? <div className="grid grid-cols-12 gap-x-4 gap-y-1"><FieldItems fields={schema.fields} fieldPerm={fieldPerm} readOnly={readOnly} fetchContext={fetchContext} /></div>
     : <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-fill-1)] py-8"><Empty description="当前表单暂无可展示的字段内容" /></div>}
     {readOnly || hideSubmit || !schema.fields?.length ? null : <div className="mt-2 flex justify-end border-t border-[var(--color-border)] pt-4"><Button type="primary" htmlType="submit">提交</Button></div>}
   </Form>;

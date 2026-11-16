@@ -97,8 +97,8 @@
           "name": "data"
         },
         {
-          "title": "数据源",
-          "url": "/itsm/form/sources",
+          "title": "集成",
+          "url": "/itsm/form/integrations",
           "name": "data"
         }
       ]
@@ -216,7 +216,7 @@
         {"title": "View templates", "url": "/itsm/form/view-templates", "name": "form", "isNotMenuItem": true},
         {"title": "Dictionaries", "url": "/itsm/form/dictionaries", "name": "data"},
         {"title": "Tables", "url": "/itsm/form/tables", "name": "data"},
-        {"title": "Sources", "url": "/itsm/form/sources", "name": "data"}
+        {"title": "Integrations", "url": "/itsm/form/integrations", "name": "data"}
       ]
     },
     {
