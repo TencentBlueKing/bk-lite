@@ -16,6 +16,7 @@ from apps.monitor.constants.monitor_object import MonitorObjConstants
 from apps.monitor.constants.plugin import PluginConstants
 from apps.monitor.models import CollectConfig, Metric, MonitorInstance, MonitorInstanceOrganization, MonitorObject, MonitorPlugin
 from apps.monitor.services.host_container_asset_ip import fill_missing_host_container_asset_ips
+from apps.monitor.services.list_asset_ip import present_list_asset_ips
 from apps.monitor.services.monitor_object import MonitorObjectService
 from apps.monitor.utils.alert_name_variables import summary_facts_with_model_ip
 from apps.monitor.utils.dimension import parse_instance_id
@@ -344,6 +345,7 @@ class InstanceSearch:
                 value=metric["value"][1],
             )
             items.append(item)
+        present_list_asset_ips(items, getattr(self.monitor_obj, "name", None))
 
         vm_params = self.query_data.get("vm_params") or {}
         if isinstance(vm_params, dict):
@@ -1135,6 +1137,7 @@ class InstanceSearch:
             for obj in results
         ]
         fill_missing_host_container_asset_ips(serialized, getattr(self.monitor_obj, "name", None))
+        present_list_asset_ips(serialized, getattr(self.monitor_obj, "name", None))
         return dict(count=count, results=serialized)
 
     def _batch_plugin_status_maps(self, instance_id_keys, queries):

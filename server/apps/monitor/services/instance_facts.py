@@ -15,6 +15,7 @@ class InstanceFactResolver:
     MAX_TEXT_LENGTH = 1000
     LOCAL_HOSTNAMES = frozenset({"localhost"})
     JMX_SERVICE_URL_PREFIX = "service:jmx:"
+    ASSET_IP_FACT = "asset.ip"
     # IBM MQ CONNNAME：host(port)
     CONNNAME_PATTERN = re.compile(r"(?P<host>[^()\s]+)\(\d+\)")
 
@@ -86,13 +87,21 @@ class InstanceFactResolver:
                 if not contributions and previous not in (None, "", []):
                     contributions["legacy"] = previous
                 contributions[str(source)] = value
+                cls._replace_placeholder_asset_ip(contributions, fact, previous, value)
                 distinct_values = {repr(item) for item in contributions.values() if item not in (None, "", [])}
                 if len(distinct_values) > 1:
                     raise BaseAppException(f"实例事实冲突: {fact}")
                 merged[fact] = value
             else:
-                if previous not in (None, "", []) and previous != value:
+                if previous not in (None, "", []) and previous != value and not cls._placeholder_asset_ip_replaced(fact, previous, value):
                     raise BaseAppException(f"实例事实冲突: {fact}")
+                if cls._placeholder_asset_ip_replaced(fact, previous, value):
+                    contributions = source_map.setdefault(fact, {})
+                    cls._replace_placeholder_asset_ip(contributions, fact, previous, value)
+                    contributions.setdefault("replaced", value)
+                    distinct_values = {repr(item) for item in contributions.values() if item not in (None, "", [])}
+                    if len(distinct_values) > 1:
+                        raise BaseAppException(f"实例事实冲突: {fact}")
                 merged[fact] = value
         if source_map:
             merged["_sources"] = source_map
@@ -210,6 +219,28 @@ class InstanceFactResolver:
             return (urlsplit(host if "://" in host else f"//{host}").hostname or "").strip("[]")
         except ValueError:
             return ""
+
+    @classmethod
+    def is_placeholder_ip(cls, value):
+        """回环或未指定地址：用户填的是本机占位，不是要展示的地址。"""
+        try:
+            address = ipaddress.ip_address(str(value or "").strip())
+        except ValueError:
+            return False
+        return bool(address.is_loopback or address.is_unspecified)
+
+    @classmethod
+    def _placeholder_asset_ip_replaced(cls, fact, previous, value):
+        return fact == cls.ASSET_IP_FACT and cls.is_placeholder_ip(previous) and value not in (None, "", []) and not cls.is_placeholder_ip(value)
+
+    @classmethod
+    def _replace_placeholder_asset_ip(cls, contributions, fact, previous, value):
+        """旧 asset.ip 是占位地址、新值是普通 IP 时丢掉占位贡献，避免再次接入被判冲突。"""
+        if not cls._placeholder_asset_ip_replaced(fact, previous, value):
+            return
+        for key, item in list(contributions.items()):
+            if cls.is_placeholder_ip(item):
+                contributions.pop(key, None)
 
     @classmethod
     def _targets_collector_node(cls, raw_value, normalized):

@@ -5,6 +5,7 @@ from apps.core.exceptions.base_app_exception import BaseAppException, Validation
 from apps.core.logger import monitor_logger as logger
 from apps.core.models.maintainer_info import maintainer_kwargs
 from apps.monitor.models import CollectConfig, MonitorInstance, MonitorInstanceOrganization, MonitorObject, MonitorObjectOrganizationRule
+from apps.monitor.services.asset_ip_sync import align_summary_asset_ip
 from apps.monitor.services.flow_sampling import FlowSamplingService
 from apps.monitor.services.manual_collect import ManualCollectService
 from apps.monitor.services.monitor_object import MonitorObjectService
@@ -92,6 +93,8 @@ class FlowOnboardingService:
                 "is_deleted",
                 "name",
             ]
+            if align_summary_asset_ip(instance, instance.ip):
+                update_fields.append("summary_facts")
             for key, value in maintainer_kwargs(actor_context, include_created=False).items():
                 setattr(instance, key, value)
                 update_fields.append(key)
