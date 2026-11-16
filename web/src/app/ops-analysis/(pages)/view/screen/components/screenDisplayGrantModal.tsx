@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useLocale } from '@/context/locale';
 import { Button, Modal, Select, Spin, Tag, message } from 'antd';
 import {
   CopyOutlined,
@@ -21,6 +22,12 @@ interface ScreenDisplayGrantModalProps {
   onClose: () => void;
 }
 
+const displayUrl = (path: string, locale: string) => {
+  const url = new URL(path, window.location.origin);
+  url.searchParams.set('locale', locale);
+  return url.toString();
+};
+
 const formatExpiry = (value: string) => {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '';
@@ -34,6 +41,7 @@ const ScreenDisplayGrantModal = ({
   onClose,
 }: ScreenDisplayGrantModalProps) => {
   const { t } = useTranslation();
+  const { locale } = useLocale();
   const api = useScreenDisplayApi();
   const [grant, setGrant] = useState<ScreenDisplayGrantDto | null>(null);
   const [durationDays, setDurationDays] = useState<number>(30);
@@ -66,7 +74,7 @@ const ScreenDisplayGrantModal = ({
     };
   }, [api.getGrant, open, screenId, reloadKey]);
 
-  const absoluteUrl = grant?.url ? `${window.location.origin}${grant.url}` : '';
+  const absoluteUrl = grant?.url ? displayUrl(grant.url, locale) : '';
   const expiresTime = grant?.expires_at ? formatExpiry(grant.expires_at) : '';
   const expiresLabel = expiresTime
     ? t('opsAnalysis.screen.displayExpiresAt', undefined, { time: expiresTime })

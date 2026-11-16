@@ -29,9 +29,27 @@ export const normalizeTimezone = (timezone?: string | null): string => {
   return timezone.trim() || DEFAULT_TIMEZONE;
 };
 
+const localeFromLocation = (): 'en' | 'zh-Hans' | null => {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+  const value = new URLSearchParams(window.location.search).get('locale');
+  if (!value) {
+    return null;
+  }
+  const normalized = normalizeLocale(value);
+  window.localStorage.setItem('locale', normalized);
+  return normalized;
+};
+
 export const getStoredLocale = (): 'en' | 'zh-Hans' => {
   if (typeof window === 'undefined') {
     return DEFAULT_LOCALE;
+  }
+
+  const fromLink = localeFromLocation();
+  if (fromLink) {
+    return fromLink;
   }
 
   const stored = window.localStorage.getItem('locale');

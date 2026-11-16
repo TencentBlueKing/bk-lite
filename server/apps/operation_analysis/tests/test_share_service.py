@@ -592,6 +592,79 @@ def test_share_query_case2_visitor_cannot_change_widget_fixed_params(settings, d
     assert filtered_omitted == {"region": "east"}
 
 
+def _room_alarm_widgets(datasource_id):
+    def widget(view, filter_type, limit=None):
+        params = [
+            {"name": "server_room_id", "filterType": "filter", "value": ""},
+            {"name": "view", "filterType": filter_type, "value": view},
+        ]
+        if limit is not None:
+            params.append({"name": "limit", "filterType": filter_type, "value": limit})
+        return {"valueConfig": {"dataSource": datasource_id, "dataSourceParams": params}}
+
+    return [
+        widget("coverage", "fixed"),
+        widget("level_distribution", "fixed"),
+        widget("rack_top", "fixed", 5),
+        widget("device_list", "params", 20),
+    ]
+
+
+@pytest.mark.django_db
+def test_share_query_keeps_declared_param_values_beside_conflicting_fixed_values(settings, dashboard):
+    """同一数据源上 fixed 取值不一致时，组件写明的 params 值仍可提交，filter 不受限制。"""
+    from apps.operation_analysis.models.datasource_models import DataSourceAPIModel
+    from apps.operation_analysis.services.share_service import ShareQueryParamsDenied, filter_share_query_params
+
+    datasource = DataSourceAPIModel.objects.create(
+        name=f"share-room-alarm-{uuid.uuid4()}",
+        rest_api="cmdb/get_room_active_alarms",
+        groups=[1],
+        params=[
+            {"name": "server_room_id", "filterType": "filter", "value": ""},
+            {"name": "view", "filterType": "params", "value": "coverage"},
+            {"name": "limit", "filterType": "params", "value": 5},
+        ],
+        created_by="alice",
+        updated_by="alice",
+    )
+    dashboard.view_sets = _room_alarm_widgets(datasource.id)
+    dashboard.save(update_fields=["view_sets"])
+
+    table_query = filter_share_query_params(
+        dashboard=dashboard,
+        data_source_id=datasource.id,
+        request_data={"server_room_id": "room-a", "view": "device_list", "limit": 20},
+    )
+    assert table_query == {"server_room_id": "room-a", "view": "device_list", "limit": 20}
+
+    pie_query = filter_share_query_params(
+        dashboard=dashboard,
+        data_source_id=datasource.id,
+        request_data={"server_room_id": "room-b", "view": "coverage"},
+    )
+    assert pie_query == {"server_room_id": "room-b", "view": "coverage"}
+
+    with pytest.raises(ShareQueryParamsDenied, match="参数 view 为固定值"):
+        filter_share_query_params(
+            dashboard=dashboard,
+            data_source_id=datasource.id,
+            request_data={"view": "secret", "limit": 20},
+        )
+    with pytest.raises(ShareQueryParamsDenied, match="参数 limit 为固定值"):
+        filter_share_query_params(
+            dashboard=dashboard,
+            data_source_id=datasource.id,
+            request_data={"view": "device_list", "limit": 999},
+        )
+    with pytest.raises(ShareQueryParamsDenied, match="参数 view 为固定值"):
+        filter_share_query_params(
+            dashboard=dashboard,
+            data_source_id=datasource.id,
+            request_data={"server_room_id": "room-a", "limit": 20},
+        )
+
+
 @pytest.mark.django_db
 def test_share_query_case3_widget_empty_rejects_schema_only_params(settings, dashboard):
     """case3: widget 未声明交互参数时，禁止提交 schema 非 fixed 键；fixed 仍强制注入。"""
