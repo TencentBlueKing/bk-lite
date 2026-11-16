@@ -16,7 +16,7 @@ USERS_URL = "/openapi/v1/system-mgmt/users"
 GROUPS_URL = "/openapi/v1/system-mgmt/groups"
 SCOPE = {"mode": "all"}
 
-_SENSITIVE_USER_FIELDS = {"password", "otp_secret", "phone", "temporary_pwd", "user_id"}
+_SENSITIVE_USER_FIELDS = {"password", "otp_secret", "temporary_pwd", "user_id"}
 _SENSITIVE_GROUP_FIELDS = {"description", "external_id", "roles", "is_delete"}
 
 
@@ -138,12 +138,51 @@ def test_system_tenant_can_read_own_org_users(tenants):
         "domain": "domain.com",
         "display_name": "Alice",
         "email": "alice@example.com",
+        "phone": "13800000000",
         "disabled": False,
         "locale": "en",
+        "timezone": "Asia/Shanghai",
         "group_list": [str(tenants.a.team.id)],
+        "role_list": [],
+        "job_title": "",
+        "employee_no": "",
+        "manager_id": None,
+        "employment_status": "unspecified",
         "is_superuser": False,
     }
     assert _SENSITIVE_USER_FIELDS.isdisjoint(own)
+
+
+def test_user_directory_returns_profile_fields_without_password(tenants):
+    manager = _create_directory_user(
+        username=f"manager-a-{uuid.uuid4().hex[:8]}",
+        group_ids=[tenants.a.team.id],
+        display_name="Manager",
+    )
+    role = Role.objects.create(name=f"directory-role-{uuid.uuid4().hex[:8]}", app="system-manager")
+    member = tenants.a.member
+    member.manager = manager
+    member.role_list = [role.id, "bad"]
+    member.job_title = "工程师"
+    member.employee_no = "E100"
+    member.employment_status = "employed"
+    member.timezone = "UTC"
+    member.password = "hashed-secret"
+    member.save()
+
+    response = APIClient().get(USERS_URL, {"user_id": member.id}, **_acting(tenants.a))
+
+    assert response.status_code == 200, response.json()
+    item = response.json()["data"]["results"][0]
+    assert item["phone"] == "13800000000"
+    assert item["timezone"] == "UTC"
+    assert item["role_list"] == [str(role.id)]
+    assert item["job_title"] == "工程师"
+    assert item["employee_no"] == "E100"
+    assert item["manager_id"] == str(manager.id)
+    assert item["employment_status"] == "employed"
+    assert "password" not in item
+    assert "hashed-secret" not in response.content.decode()
 
 
 def test_system_tenant_cannot_read_other_org_users(tenants):
