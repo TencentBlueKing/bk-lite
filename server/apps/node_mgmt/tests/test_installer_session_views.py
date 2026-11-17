@@ -13,7 +13,6 @@ from apps.node_mgmt.services.install_token import InstallTokenService
 from apps.node_mgmt.services.installer import InstallerService
 from apps.node_mgmt.views.sidecar import OpenSidecarViewSet
 
-
 pytestmark = [pytest.mark.django_db, pytest.mark.integration]
 
 
@@ -97,10 +96,7 @@ def test_strict_credentials_failure_does_not_consume_install_token(
     assert env_values[NodeConstants.NATS_ADMIN_PASSWORD_KEY] not in failed_body
     assert token not in captured_logs.out
     assert token not in captured_logs.err
-    usage_key = (
-        f"{InstallerConstants.INSTALL_TOKEN_CACHE_PREFIX}:{token}:"
-        f"{InstallTokenService.USAGE_COUNT_CACHE_SUFFIX}"
-    )
+    usage_key = f"{InstallerConstants.INSTALL_TOKEN_CACHE_PREFIX}:{token}:" f"{InstallTokenService.USAGE_COUNT_CACHE_SUFFIX}"
     assert cache.get(usage_key) in (None, 0)
 
     SidecarEnv.objects.filter(
@@ -112,9 +108,7 @@ def test_strict_credentials_failure_does_not_consume_install_token(
 
     assert recovered_response.status_code == 200
     if exposes_remaining_usage:
-        assert recovered_response["X-Token-Remaining-Usage"] == str(
-            InstallerConstants.INSTALL_TOKEN_MAX_USAGE - 1
-        )
+        assert recovered_response["X-Token-Remaining-Usage"] == str(InstallerConstants.INSTALL_TOKEN_MAX_USAGE - 1)
     assert cache.get(usage_key) == 1
 
 
@@ -217,10 +211,7 @@ def test_linux_command_issuance_does_not_consume_install_token(monkeypatch, inst
         install_mode=install_mode,
     )
     token = re.search(r"linux_bootstrap\?token=([0-9a-f-]+)", command).group(1)
-    usage_key = (
-        f"{InstallerConstants.INSTALL_TOKEN_CACHE_PREFIX}:{token}:"
-        f"{InstallTokenService.USAGE_COUNT_CACHE_SUFFIX}"
-    )
+    usage_key = f"{InstallerConstants.INSTALL_TOKEN_CACHE_PREFIX}:{token}:" f"{InstallTokenService.USAGE_COUNT_CACHE_SUFFIX}"
 
     assert cache.get(usage_key) in (None, 0)
 
@@ -229,3 +220,25 @@ def test_linux_command_issuance_does_not_consume_install_token(monkeypatch, inst
 
     assert response.status_code == 200
     assert cache.get(usage_key) == 1
+
+
+def test_session_accepts_private_token_header_without_query_string(monkeypatch):
+    token = InstallTokenService.generate_install_token(
+        node_id="header-node",
+        ip="192.0.2.9",
+        user="tester",
+        os="linux",
+        package_id=1,
+        cloud_region_id=1,
+        organizations=[1],
+        node_name="host",
+        cpu_architecture="x86_64",
+    )
+    monkeypatch.setattr(
+        "apps.node_mgmt.services.installer_session.InstallerSessionService.build_session_config", lambda *args, **kwargs: {"node_id": "header-node"}
+    )
+    request = APIRequestFactory().get("/api/v1/node_mgmt/open_api/installer/session", HTTP_X_INSTALLATION_TOKEN=token)
+    response = OpenSidecarViewSet.as_view({"get": "installer_session"})(request)
+    assert response.status_code == 200
+    assert json.loads(response.content)["node_id"] == "header-node"
+    assert token not in request.get_full_path()

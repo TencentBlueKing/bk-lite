@@ -52,6 +52,8 @@ dependencies = [
     "mysql-connector-python==9.1.0",
     "python-dotenv>=1.0.0",
     "redis==5.0.1",
+    # Kombu 5.7 requires redis>=6.1, incompatible with FalkorDB 1.2 (redis<6).
+    "kombu==5.6.2",
     "requests>=2.32.4",
     "sqlalchemy==2.0.31",
     "toml==0.10.2",
