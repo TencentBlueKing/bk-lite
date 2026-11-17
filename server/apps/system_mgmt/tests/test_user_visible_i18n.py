@@ -68,6 +68,129 @@ from apps.system_mgmt.utils.i18n import system_mgmt_message
         ),
         ("channel.opspilot_nats_trigger_description", {}, "OpsPilot 工作流自动创建的 NATS 触发通道", "NATS trigger channel created by an OpsPilot workflow"),
         (
+            "channel.send_parameter.channel_id",
+            {"channel_id": 7, "channel_name": "邮箱A"},
+            "固定填写 7，对应渠道「邮箱A」。",
+            'Always set this to 7, for the "邮箱A" channel.',
+        ),
+        (
+            "channel.send_parameter.channel_type",
+            {"channel_type": "email"},
+            "固定填写 email。",
+            "Always set this to email.",
+        ),
+        (
+            "channel.send_parameter.channel_type_im",
+            {},
+            "固定填写 im_notification，用来和同号的普通渠道区分。",
+            "Always set this to im_notification, to distinguish it from a regular channel with the same ID.",
+        ),
+        ("channel.send_parameter.title_email", {}, "邮件主题。可以留空。", "Email subject. Can be left empty."),
+        (
+            "channel.send_parameter.title_enterprise_wechat",
+            {},
+            "企微应用消息不使用标题，传空字符串即可。",
+            "Enterprise WeChat app messages do not use a title; pass an empty string.",
+        ),
+        (
+            "channel.send_parameter.title_enterprise_wechat_bot",
+            {},
+            "企微机器人只发送正文，标题不会出现在消息里，传空字符串即可。",
+            "Enterprise WeChat bots send only the body; the title does not appear in the message. Pass an empty string.",
+        ),
+        (
+            "channel.send_parameter.title_feishu_bot",
+            {},
+            "飞书卡片标题。留空时渠道侧显示为「通知」。",
+            'Feishu card title. If left empty, the channel displays "通知".',
+        ),
+        (
+            "channel.send_parameter.title_dingtalk_bot",
+            {},
+            "钉钉 markdown 标题。留空时渠道侧显示为「通知」。",
+            'DingTalk markdown title. If left empty, the channel displays "通知".',
+        ),
+        (
+            "channel.send_parameter.title_custom_webhook",
+            {},
+            "自定义 Webhook 不使用标题，传空字符串即可。",
+            "Custom webhooks do not use a title; pass an empty string.",
+        ),
+        (
+            "channel.send_parameter.title_im_notification",
+            {},
+            "IM 应用通知标题。可以留空。最长 512 个字符。",
+            "IM app notification title. Can be left empty. Maximum 512 characters.",
+        ),
+        (
+            "channel.send_parameter.title_default",
+            {},
+            "标题。可以留空。最长 512 个字符。",
+            "Title. Can be left empty. Maximum 512 characters.",
+        ),
+        (
+            "channel.send_parameter.content_email",
+            {},
+            "邮件正文。按 HTML 发送，不会转义标签，换行也不会改成换行标签。",
+            "Email body, sent as HTML. Tags are not escaped, and line breaks are not converted to line-break tags.",
+        ),
+        ("channel.send_parameter.content_enterprise_wechat", {}, "企微应用文本消息正文。", "Enterprise WeChat app text message body."),
+        (
+            "channel.send_parameter.content_enterprise_wechat_bot",
+            {},
+            "企微机器人 markdown 正文。接收人名会追加在正文后面。",
+            "Enterprise WeChat bot markdown body. Recipient names are appended to the body.",
+        ),
+        (
+            "channel.send_parameter.content_feishu_bot",
+            {},
+            "飞书卡片 markdown 正文。接收人名会追加在正文后面。",
+            "Feishu card markdown body. Recipient names are appended to the body.",
+        ),
+        (
+            "channel.send_parameter.content_dingtalk_bot",
+            {},
+            "钉钉 markdown 正文。接收人名会追加在正文后面。",
+            "DingTalk markdown body. Recipient names are appended to the body.",
+        ),
+        (
+            "channel.send_parameter.content_custom_webhook",
+            {},
+            "通知正文，会替换该渠道模板中的 {{content}}。接收人名会追加在正文后面。",
+            "Notification body; it replaces {{content}} in the channel template. Recipient names are appended to the body.",
+        ),
+        (
+            "channel.send_parameter.content_im_notification",
+            {},
+            "IM 应用通知正文，不能为空。最长 20000 个字符。",
+            "IM app notification body. Required. Maximum 20,000 characters.",
+        ),
+        (
+            "channel.send_parameter.content_default",
+            {},
+            "通知正文，不能为空。最长 20000 个字符。",
+            "Notification body. Required. Maximum 20,000 characters.",
+        ),
+        (
+            "channel.send_parameter.receivers_system_user",
+            {},
+            "平台用户 ID 字符串，取自 GET /openapi/v1/system-mgmt/users 返回的 id，且必须属于当前组织。不要传用户名。1 到 100 个，不能重复。",
+            (
+                "Platform user ID strings from the id field returned by GET /openapi/v1/system-mgmt/users. "
+                "They must belong to the current organization. Do not pass usernames. 1 to 100 items, no duplicates."
+            ),
+        ),
+        (
+            "channel.send_parameter.receivers_free_text",
+            {},
+            "渠道侧接收人名，原样附在消息里，不是平台用户 ID。1 到 100 个，每个最长 150 个字符，不能重复。",
+            (
+                "Channel-side recipient names, attached to the message as-is; not platform user IDs. "
+                "1 to 100 items, each at most 150 characters, no duplicates."
+            ),
+        ),
+        ("channel.send_parameter.receivers_default", {}, "接收人列表。", "Recipient list."),
+        (
             "export.too_many_rows",
             {"limit": 10000, "count": 10001},
             "导出行数超过上限 10000（当前 10001 行）。请缩小筛选条件，或使用 selected_ids 导出已选记录。",
