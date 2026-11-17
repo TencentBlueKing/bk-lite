@@ -95,16 +95,6 @@ export const processDataSourceFormParamsForSubmit = (
     );
     const value = formParams[param.name];
     if (
-      param.hidden
-      && (value === undefined || value === null || value === '')
-      && param.value !== undefined
-      && param.value !== null
-      && param.value !== ''
-    ) {
-      processedParams[param.name] = param.value as SubmittedParamValue;
-      return;
-    }
-    if (
       hasFormValue
       && param.filterType !== 'fixed'
       && (value === null || value === undefined || value === '')

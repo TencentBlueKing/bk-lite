@@ -232,9 +232,7 @@ const DataSourceParamsConfig: React.FC<DataSourceParamsConfigProps> = ({
   // 表单控件仍读 form 的即时值。选项查询只吃防抖后的文本/数字。
   const optionsQueryFormParams = useDebouncedOptionsQueryValues(formParams ?? {}, typedParamNames);
   const configParams = sourceParams.filter(
-    (param: ParamItem) =>
-      !param.hidden
-      && includeFilterTypes.includes(param.filterType || 'fixed'),
+    (param: ParamItem) => includeFilterTypes.includes(param.filterType || 'fixed'),
   );
 
   if (configParams.length === 0) {
@@ -455,34 +453,12 @@ const DataSourceParamsConfig: React.FC<DataSourceParamsConfigProps> = ({
             initialValue={!preserveValues && mounted ? initialValue : undefined}
             tooltip={param.desc || undefined}
             style={{ marginBottom: isVeryLongText ? 20 : 16 }}
-            required={Boolean(param.required || param.integer)}
+            required={Boolean(param.required)}
             rules={variableValue
               ? []
-              : param.integer
-                ? [
-                  {
-                    validator: async (_rule, value) => {
-                      const max = typeof param.maximum === 'number' ? param.maximum : undefined;
-                      const withinMax = max === undefined || (typeof value === 'number' && value <= max);
-                      if (
-                        typeof value === 'number'
-                        && Number.isInteger(value)
-                        && value >= 1
-                        && withinMax
-                      ) {
-                        return;
-                      }
-                      throw new Error(t(
-                        'dataSource.positiveIntegerRange',
-                        '{label}必须是 1 到 {max} 的正整数',
-                        { label: labelText, max: max ?? '' },
-                      ));
-                    },
-                  },
-                ]
-                : [
-                  { required: param.required, message: t('dataSource.paramRequired', '请配置{label}', { label: labelText }) },
-                ]}
+              : [
+                { required: param.required, message: t('dataSource.paramRequired', '请配置{label}', { label: labelText }) },
+              ]}
           >
             {variableValue ? (
               <DataVariableEcho variables={dataVariables} />

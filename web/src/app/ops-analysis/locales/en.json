@@ -237,7 +237,6 @@
   },
   "dataSource": {
     "paramRequired": "Configure {label}",
-    "positiveIntegerRange": "{label} must be a positive integer from 1 to {max}",
     "duplicateParamNames": "Duplicate parameter names: ",
     "invalidFilterParamType": "Only string, time range, and date range parameters can be configured as filters.",
     "addParam": "Add Parameter",

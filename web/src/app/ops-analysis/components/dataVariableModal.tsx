@@ -534,7 +534,7 @@ const DataVariableModal: React.FC<DataVariableModalProps> = ({
                   />
                 </Form.Item>
                 {(selectedSource?.params ?? []).some((param) => (
-                  !param.hidden && ['params', 'fixed'].includes(param.filterType || 'fixed')
+                  ['params', 'fixed'].includes(param.filterType || 'fixed')
                 )) ? (
                   <>
                 <ConfigSectionTitle>{t('dashboard.queryParams')}</ConfigSectionTitle>

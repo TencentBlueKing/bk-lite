@@ -162,7 +162,6 @@ def test_builtin_application_topology_screen_filter_uses_canvas_contract():
                     "labelField": "inst_name",
                 },
             },
-            "inputMode": "select",
         },
         {
             "id": "application_topology_depth__string",
@@ -185,7 +184,6 @@ def test_builtin_application_topology_screen_filter_uses_canvas_contract():
                     ],
                 },
             },
-            "inputMode": "select",
         },
     ]
     assert "应用系统::cmdb/list_application_systems" in screen["refs"]["datasource_keys"]
@@ -284,7 +282,6 @@ def test_builtin_room3d_screen_yaml_is_self_fetch_scene():
                     "labelField": "inst_name",
                 },
             },
-            "inputMode": "select",
         }
     ]
     title = next(item for item in items if item["id"] == "legacy-title-frame")
