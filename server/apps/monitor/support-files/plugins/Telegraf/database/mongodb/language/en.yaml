@@ -125,9 +125,29 @@ monitor_object_metric:
       name: Network Output Frequency
       desc: Frequency of network data transmission, indicating database output traffic
         load
+    mongodb_repl_lag:
+      name: Replication Lag
+      desc: How far this instance trails the primary. The primary itself is usually
+        0 seconds. Missing samples stay empty.
+    mongodb_repl_oplog_window_sec:
+      name: Oplog Window
+      desc: How long the operation log can still cover. A short window makes it
+        harder for a disconnected member to catch up.
+    mongodb_repl_state:
+      name: Replica State
+      desc: This instance's state in the replica set, such as primary or secondary.
+    mongodb_repl_member_health:
+      name: Member Health
+      desc: Whether this instance is healthy in the replica set. 1 is healthy and
+        0 is not.
+    mongodb_member_status:
+      name: Member Role Mark
+      desc: Role sample reported for this replica-set member. Shown only when a
+        sample exists.
 monitor_object_metric_group:
   MongoDB:
     Base: Base
     Performance: Performance
     Operations: Operations
     Resources: Resources
+    Replication: Replication

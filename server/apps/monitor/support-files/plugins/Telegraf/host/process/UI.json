@@ -88,7 +88,7 @@
         "separator": "-",
         "target_field": "instance_name"
       },
-      "enable_row_filter": true,
+      "enable_row_filter": false,
       "label_en": "Node"
     },
     {

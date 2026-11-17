@@ -95,6 +95,40 @@ def test_host_metric_range_drops_unauthorized_and_folds(monkeypatch):
     assert out["data"] == {"web-1 (10.0.0.1)": [[1.0, 90.0]]}
 
 
+def test_host_metric_range_step_follows_window_unless_explicit(monkeypatch):
+    allowed = SimpleNamespace(id="host-1", name="web-1", ip="10.0.0.1", interval=300)
+    _patch_scope(monkeypatch, {"host-1": allowed})
+    captured = []
+
+    class FakeVM:
+        def query_range(self, query, start, end, step):
+            captured.append(step)
+            return {"status": "success", "data": {"result": []}}
+
+    monkeypatch.setattr(nm, "VictoriaMetricsAPI", FakeVM)
+    short = nm.get_host_metric_range(
+        metric_type="cpu",
+        instance_ids=["host-1"],
+        time=["2026-08-20T00:00:00.000Z", "2026-08-20T01:00:00.000Z"],
+        user_info={"user": "u", "team": 1},
+    )
+    week = nm.get_host_metric_range(
+        metric_type="cpu",
+        instance_ids=["host-1"],
+        time=["2026-08-13T00:00:00.000Z", "2026-08-20T00:00:00.000Z"],
+        user_info={"user": "u", "team": 1},
+    )
+    explicit = nm.get_host_metric_range(
+        metric_type="cpu",
+        instance_ids=["host-1"],
+        time=["2026-08-13T00:00:00.000Z", "2026-08-20T00:00:00.000Z"],
+        step="1m",
+        user_info={"user": "u", "team": 1},
+    )
+    assert short["result"] is True and week["result"] is True and explicit["result"] is True
+    assert captured == ["5m", "15m", "1m"]
+
+
 def test_host_resource_snapshot_empty_selection_skips_query(monkeypatch):
     class FailVM:
         def __init__(self):

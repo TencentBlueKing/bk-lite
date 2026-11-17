@@ -1,6 +1,8 @@
 import { useCallback } from 'react';
+import { usePathname } from 'next/navigation';
 import useApiClient from '@/utils/request';
 import type { NetworkStatusTopologyResponse } from '@/app/ops-analysis/types/sceneWidget';
+import { networkStatusTopologyApiPath } from './displayDelegate';
 
 export interface NetworkStatusTopologyRequest {
   inst_uuids: string[];
@@ -25,15 +27,17 @@ export function buildNetworkStatusTopologyQuery(input: {
 
 export const useNetworkStatusTopologyApi = () => {
   const { post } = useApiClient();
+  const pathname = usePathname();
+  const path = networkStatusTopologyApiPath(pathname);
 
   const getNetworkStatusTopology = useCallback(
     (params: NetworkStatusTopologyRequest) =>
       post<NetworkStatusTopologyResponse>(
-        '/operation_analysis/api/scene_widgets/network_status_topology/',
+        path,
         params,
         { suppressErrorNotification: true },
       ),
-    [post],
+    [path, post],
   );
 
   return {

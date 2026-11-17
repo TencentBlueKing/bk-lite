@@ -54,7 +54,7 @@ monitor_object_metric:
       desc: Free physical capacity of the cluster in bytes (freePhyicalBytes, 1.3.6.1.4.1.35047.2.12.1.6.3).
     sangfor_eds_cluster_physical_usage_percent:
       name: Physical Capacity Usage
-      desc: Physical capacity usage of the cluster as a percentage, derived from usedPhysicalBytes / totalPhysicalBytes.
+      desc: Physical capacity usage of the cluster as a percentage.
     sangfor_eds_cluster_block_pool_num:
       name: Block Storage Pool Count
       desc: Number of block storage pools (blockStoragePoolNum, 1.3.6.1.4.1.35047.2.12.1.7.1).

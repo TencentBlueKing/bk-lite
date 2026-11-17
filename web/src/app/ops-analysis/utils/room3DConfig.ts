@@ -10,6 +10,7 @@ import { isValidCmdbInstanceUuid } from '@/app/ops-analysis/utils/cmdbInstanceUu
 export type Room3DSelection =
   | { status: 'empty'; rooms: Room3DRoomOption[] }
   | { status: 'unavailable'; rooms: Room3DRoomOption[] }
+  | { status: 'unselected'; rooms: Room3DRoomOption[] }
   | { status: 'ready'; roomId: string; rooms: Room3DRoomOption[] };
 
 export const DEFAULT_ROOM3D_RACK_TOP_LINE1: Room3DRackTopField = 'location';
@@ -138,9 +139,5 @@ export const resolveRoom3DSelection = ({
   if (savedId) {
     return { status: 'unavailable', rooms: visible };
   }
-  if (!visible.length) {
-    return { status: 'empty', rooms: [] };
-  }
-
-  return { status: 'ready', roomId: visible[0].id, rooms: visible };
+  return { status: 'unselected', rooms: visible };
 };

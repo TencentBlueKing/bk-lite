@@ -22,7 +22,6 @@ const SkillMemorySettingsFields: React.FC<SkillMemorySettingsFieldsProps> = ({
 }) => {
   const { t } = useTranslation();
   const selectedSpaceId = Form.useWatch('memory_space');
-  const personalSpaces = spaces.filter((space) => space.scope === 'personal');
 
   return (
     <Form.Item label={t('skill.memory.space')} className="!mb-3.5">
@@ -36,7 +35,7 @@ const SkillMemorySettingsFields: React.FC<SkillMemorySettingsFieldsProps> = ({
               placeholder={t('skill.memory.spacePlaceholder')}
               optionFilterProp="label"
               className="min-w-0 flex-1"
-              options={personalSpaces.map((space) => ({
+              options={spaces.map((space) => ({
                 value: space.id,
                 label: space.name,
               }))}

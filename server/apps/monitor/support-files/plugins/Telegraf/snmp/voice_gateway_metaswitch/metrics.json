@@ -5,6 +5,8 @@
   "plugin_desc": "SNMP monitoring template for Metaswitch MetaView EMS / softswitch nodes (METASWITCH-MIB, arc 1.2.826.0.1.1578918.6). Besides standard IF-MIB interface traffic and uptime, it reports per-node total CPU usage and its high-water mark and physical memory total, used and usage percent for the current 5-minute period.",
   "support_collect_detect": true,
   "status_query": "any({instance_type='voice_gateway', collect_type='snmp_metaswitch'}) by (instance_id)",
+  "instance_fact_bindings": [{"fact":"asset.ip","value_type":"ip","resolver":"input","options":{"field":"ip"}}],
+  "instance_summary_columns": [{"fact":"asset.ip","title":"monitor.views.assetIp","order":10}],
   "name": "VoiceGateway",
   "icon": "mm-voice_gateway_语音网关",
   "type": "Network Device",
@@ -41,7 +43,7 @@
       "metric_group": "CPU",
       "name": "metaswitch_ems_cpu_usage_hwm",
       "query": "metaswitch_ems_cpu_usage_hwm{instance_type='voice_gateway', collect_type='snmp_metaswitch', __$labels__}",
-      "display_name": "EMS CPU Usage High-Water Mark",
+      "display_name": "EMS CPU Usage Peak",
       "data_type": "Number",
       "unit": "percent",
       "dimensions": [
@@ -53,7 +55,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "High-water mark of total CPU usage of a MetaView EMS node (METASWITCH-MIB emsStatsTotCPUUsageHighWaterMark, Unsigned32 0-100)."
+      "description": "Peak total CPU usage of a MetaView EMS node (METASWITCH-MIB emsStatsTotCPUUsageHighWaterMark, Unsigned32 0-100)."
     },
     {
       "metric_group": "Memory",

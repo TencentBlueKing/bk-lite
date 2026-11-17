@@ -29,13 +29,13 @@ monitor_object_metric:
       desc: airOS 设备 5 分钟 CPU 负载均值，取负载表 5 分钟平均行。数值为负载均值 ×100（如 150 表示负载 1.5），不是使用率百分比，多核设备或有进程排队时可能超过 100。持续升高可能表示无线业务压力大、关联终端过多或管理面异常负载。
     device_memory_usage:
       name: 内存使用率
-      desc: airOS 设备内存使用率，采集侧按（总量 - 空闲）/ 总量 × 100 计算。内存压力过高可能导致终端掉线或服务重启。
+      desc: airOS 设备内存使用率。内存压力过高可能导致终端掉线或服务重启。
     device_memory_total:
       name: 内存总量
       desc: airOS 设备可用物理内存总量，单位字节（采集侧由 KB 换算）。
     device_memory_used:
       name: 已用内存
-      desc: airOS 设备已用物理内存，单位字节，采集侧按总量 - 空闲计算。
+      desc: airOS 设备已用物理内存，单位字节。
     device_memory_free:
       name: 空闲内存
       desc: airOS 设备空闲物理内存，单位字节（采集侧由 KB 换算）。

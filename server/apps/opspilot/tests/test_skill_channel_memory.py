@@ -1,4 +1,4 @@
-"""智能体渠道对话记忆：用户自选个人记忆体、读取注入、水位线写入与删除保留。"""
+"""智能体渠道对话记忆：用户自选个人或组织记忆体、读取注入、水位线写入与删除保留。"""
 
 import json
 import logging
@@ -87,10 +87,10 @@ def _conversation(skill, channel, external_user_id="alice@domain.com"):
     )
 
 
-def _turns(conversation, n):
+def _turns(conversation, n, organization_id=None):
     for i in range(n):
-        SkillConversationMessage.objects.create(conversation=conversation, role="user", content=f"u{i}")
-        SkillConversationMessage.objects.create(conversation=conversation, role="assistant", content=f"a{i}")
+        SkillConversationMessage.objects.create(conversation=conversation, role="user", content=f"u{i}", organization_id=organization_id)
+        SkillConversationMessage.objects.create(conversation=conversation, role="assistant", content=f"a{i}", organization_id=organization_id)
 
 
 def _memory_skill(**kwargs):
@@ -123,7 +123,7 @@ class TestSkillMemoryConfig:
         assert skill.memory_space_id == other.id
         assert skill.memory_write_rounds == 3
 
-    def test_update_rejects_team_space(self):
+    def test_update_accepts_team_space(self):
         skill = _skill()
         team_space = MemorySpace.objects.create(name="团队知识", scope=MemorySpace.SCOPE_TEAM, team=[1])
         factory = APIRequestFactory()
@@ -136,9 +136,9 @@ class TestSkillMemoryConfig:
         force_authenticate(request, user=user)
         request.COOKIES["current_team"] = "1"
         resp = LLMViewSet.as_view({"put": "update"})(request, pk=skill.id)
-        assert json.loads(resp.content.decode("utf-8"))["result"] is False
+        assert json.loads(resp.content.decode("utf-8"))["result"] is True
         skill.refresh_from_db()
-        assert skill.memory_space_id is None
+        assert skill.memory_space_id == team_space.id
 
     def test_update_can_clear_memory_space(self):
         skill, _ = _memory_skill()
@@ -156,11 +156,9 @@ class TestSkillMemoryConfig:
         skill.refresh_from_db()
         assert skill.memory_space_id is None
 
-    def test_binding_rejects_team_and_foreign_org(self):
-        team_space = MemorySpace.objects.create(name="团队知识", scope=MemorySpace.SCOPE_TEAM, team=[1])
-        with pytest.raises(SkillMemoryConfigError):
-            validate_skill_memory_binding(team_space.id)
-        space = _personal_space(team=[99])
+    @pytest.mark.parametrize("scope", ["personal", "team"])
+    def test_binding_rejects_foreign_org(self, scope):
+        space = _personal_space(scope=scope, team=[99])
         user = SimpleNamespace(is_superuser=False, group_list=[{"id": 1}])
         with pytest.raises(SkillMemoryConfigError):
             validate_skill_memory_binding(space.id, user)
@@ -499,3 +497,145 @@ class TestSkillMemoryDeleteAndList:
         with patch("apps.opspilot.tasks.memory.write_skill_conversation_memory.delay") as delay:
             delete_skill_session(session_id=conv.session_id, external_user_id="alice@domain.com", keep_memory=True)
         delay.assert_not_called()
+
+
+class TestSkillOrganizationMemory:
+    def test_reads_only_current_organization(self):
+        from apps.opspilot.models import Memory
+
+        skill, space = _memory_skill(memory_space=_personal_space(scope="team", team=[1, 2]))
+        Memory.objects.create(memory_space=space, organization_id=1, owner_username="组织一", content="ORG_ONE_ONLY")
+        Memory.objects.create(memory_space=space, organization_id=2, owner_username="组织二", content="ORG_TWO_ONLY")
+        for organization_id, expected, excluded in [(1, "ORG_ONE_ONLY", "ORG_TWO_ONLY"), (2, "ORG_TWO_ONLY", "ORG_ONE_ONLY")]:
+            params = {"skill_prompt": "你是助手"}
+            inject_skill_memory_prompt(params, skill, "same-user", "巡检", organization_id=organization_id)
+            assert expected in params["skill_prompt"]
+            assert excluded not in params["skill_prompt"]
+            assert "组织记忆" in params["skill_prompt"]
+            assert "个人长期记忆" not in params["skill_prompt"]
+        params = {"skill_prompt": "你是助手"}
+        inject_skill_memory_prompt(params, skill, "same-user", "巡检")
+        assert params == {"skill_prompt": "你是助手"}
+
+    @pytest.mark.parametrize("from_snapshot", [False, True])
+    def test_writes_and_deletion_snapshot_keep_each_turn_organization(self, from_snapshot):
+        from apps.opspilot.models import Memory
+
+        skill, space = _memory_skill(memory_space=_personal_space(scope="team", team=[1, 2]))
+        conv = _conversation(skill, _channel(skill))
+        for org, text in [(1, "ORG_ONE_ONLY"), (2, "ORG_TWO_ONLY"), (None, "UNKNOWN_ORG")]:
+            for role in ("user", "assistant"):
+                SkillConversationMessage.objects.create(conversation=conv, role=role, content=text, organization_id=org)
+        with patch("apps.opspilot.tasks.memory.close_old_connections"), patch(
+            "apps.opspilot.tasks.memory._summarize_skill_conversation_content", side_effect=lambda space, transcript, **kwargs: transcript
+        ), patch("apps.opspilot.tasks.memory._build_memory_write_client", return_value=None):
+            if from_snapshot:
+                with patch("apps.opspilot.tasks.memory.write_skill_conversation_memory.delay") as delay:
+                    delete_skill_session(session_id=conv.session_id, external_user_id=conv.external_user_id, keep_memory=True)
+                write_skill_conversation_memory.run(*delay.call_args.args, **delay.call_args.kwargs)
+            else:
+                write_skill_conversation_memory.run(conv.id)
+                write_skill_conversation_memory.run(conv.id)
+                conv.refresh_from_db()
+                assert conv.memory_written_message_id == conv.messages.order_by("id").last().id
+        rows = list(Memory.objects.filter(memory_space=space).order_by("organization_id"))
+        assert [row.organization_id for row in rows] == [1, 2]
+        assert "ORG_ONE_ONLY" in rows[0].content and "ORG_TWO_ONLY" not in rows[0].content
+        assert "ORG_TWO_ONLY" in rows[1].content and "ORG_ONE_ONLY" not in rows[1].content
+        assert all("UNKNOWN_ORG" not in row.content and row.owner_user_id is None for row in rows)
+
+    @pytest.mark.django_db(transaction=True)
+    def test_stream_captures_current_org_for_both_messages_after_switch(self):
+        from asgiref.sync import async_to_sync
+        from django.http import StreamingHttpResponse
+
+        from apps.opspilot.services.skill_channel_chat_service import stream_skill_channel_chat
+
+        skill, _ = _memory_skill(memory_space=_personal_space(scope="team", team=[1, 2]))
+        channel = _channel(skill)
+        user = _superuser("org-chat")
+
+        async def consume(response):
+            async for _ in response.streaming_content:
+                pass
+
+        for organization_id in (1, 2):
+            request = APIRequestFactory().post("/", {}, format="json")
+            request.user = user
+            request.COOKIES["current_team"] = str(organization_id)
+            response = StreamingHttpResponse([b'data: {"choices":[{"delta":{"content":"answer"}}]}\n\n'], content_type="text/event-stream")
+            with patch("apps.opspilot.services.skill_channel_chat_service.build_skill_chat_params", return_value={}), patch(
+                "apps.opspilot.services.skill_channel_chat_service.stream_agui_chat", return_value=response
+            ) as stream:
+                result = stream_skill_channel_chat(
+                    channel=channel,
+                    user_message=f"ORG_{organization_id}",
+                    request=request,
+                    external_user_id="same-user",
+                    session_id="org-switch",
+                )
+                assert stream.call_args.args[0]["chat_history"] == []
+                # 流式响应完成前切换 cookie，助手消息仍归属发起请求时的组织。
+                request.COOKIES["current_team"] = "99"
+                async_to_sync(consume)(result)
+        rows = list(SkillConversationMessage.objects.order_by("id").values_list("role", "organization_id"))
+        assert rows == [("user", 1), ("assistant", 1), ("user", 2), ("assistant", 2)]
+
+    def test_stream_rejects_forged_org_before_persisting(self):
+        from apps.opspilot.services.skill_channel_chat_service import stream_skill_channel_chat
+
+        skill, _ = _memory_skill(memory_space=_personal_space(scope="team"))
+        request = APIRequestFactory().post("/", {}, format="json")
+        request.user = _superuser("forged-org")
+        request.COOKIES["current_team"] = "99"
+        with patch("apps.opspilot.services.skill_channel_chat_service.stream_agui_chat") as stream:
+            stream_skill_channel_chat(channel=_channel(skill), user_message="secret", request=request, external_user_id="same-user")
+        stream.assert_not_called()
+        assert not SkillConversationMessage.objects.exists()
+
+    def test_pending_and_idle_skip_unknown_org_but_include_team_turns(self):
+        skill, _ = _memory_skill(memory_space=_personal_space(scope="team"), memory_write_rounds=2)
+        conv = _conversation(skill, _channel(skill))
+        _turns(conv, 3)
+        SkillConversationMessage.objects.filter(conversation=conv).update(created_at=timezone.now() - timedelta(hours=2))
+        with patch("apps.opspilot.tasks.memory.write_skill_conversation_memory.delay") as delay:
+            assert maybe_schedule_skill_memory_write(conv) is False
+            delay.assert_not_called()
+        assert conv.id not in iter_idle_skill_conversation_ids()
+        rows = list_skill_conversations_for_user(skill_id=skill.id, external_user_id=conv.external_user_id)
+        assert rows[0]["pending_memory_rounds"] == 0
+        _turns(conv, 2, organization_id=2)
+        SkillConversationMessage.objects.filter(conversation=conv).update(created_at=timezone.now() - timedelta(hours=2))
+        with patch("apps.opspilot.tasks.memory.write_skill_conversation_memory.delay") as delay:
+            assert maybe_schedule_skill_memory_write(conv) is True
+            delay.assert_called_once_with(conv.id)
+        assert conv.id in iter_idle_skill_conversation_ids()
+        rows = list_skill_conversations_for_user(skill_id=skill.id, external_user_id=conv.external_user_id)
+        assert rows[0]["pending_memory_rounds"] == 2
+
+    def test_embedded_memory_uses_authenticated_secret_org_not_cookie(self):
+        from django.http import StreamingHttpResponse
+
+        from apps.opspilot.services.caller_identity import mark_api_secret_identity
+        from apps.opspilot.services.skill_channel_chat_service import stream_skill_channel_chat
+
+        skill, _ = _memory_skill(memory_space=_personal_space(scope="team"))
+        identity = mark_api_secret_identity(SimpleNamespace(username="api", domain="d", team=2))
+        request = APIRequestFactory().post("/", {}, format="json")
+        request.user = identity
+        request.COOKIES["current_team"] = "99"
+        engine = MagicMock()
+        engine.read.return_value = SimpleNamespace(context="组织二记忆")
+        with patch("apps.opspilot.services.skill_channel_chat_service.build_skill_chat_params", return_value={}), patch(
+            "apps.opspilot.services.skill_channel_chat_service.stream_agui_chat",
+            return_value=StreamingHttpResponse([], content_type="text/event-stream"),
+        ), patch("apps.opspilot.memory.engines.registry.MemoryEngineRegistry.get_engine", return_value=engine):
+            stream_skill_channel_chat(
+                channel=_channel(skill, channel_type=SkillChannelChoices.EMBEDDED_CHAT),
+                user_message="巡检",
+                request=request,
+                identity_user=identity,
+                external_user_id="api-user",
+            )
+        assert engine.read.call_args.kwargs["entity"].organization_id == 2
+        assert SkillConversationMessage.objects.get(role="user").organization_id == 2

@@ -1,7 +1,14 @@
 """同线程先后使用不同页面语言时，后一轮不能读到上一轮的 locale。"""
 
 import asyncio
+import json
+import threading
+from contextlib import nullcontext
 from types import SimpleNamespace
+from unittest.mock import MagicMock
+
+import pytest
+from asgiref.sync import ThreadSensitiveContext, sync_to_async
 
 from apps.opspilot.services.chat_service import ChatService
 from apps.opspilot.utils.run_locale import get_run_locale, reset_run_locale, set_run_locale
@@ -108,6 +115,66 @@ def test_invoke_chat_resets_locale_when_agent_setup_fails(monkeypatch):
     assert followed["success"] is True
     assert seen == ["en"]
     assert get_run_locale() == "en"
+
+
+@pytest.mark.parametrize("request_context", [False, True])
+@pytest.mark.parametrize("fail_first", [False, True])
+def test_invoke_chat_from_sync_bridge_can_run_async_middleware(monkeypatch, request_context, fail_first):
+    """NATS 等异步入口的同步调用不得把执行器占用状态带入 Agent 线程。"""
+    from apps.opspilot.metis.llm.middleware.conversation_skill_package import ConversationSkillPackageMiddleware
+    from apps.opspilot.metis.llm.tools.kubernetes import cluster
+    from apps.opspilot.services import chat_service as chat_service_module
+    from nats_client.utils import database_sync_to_async
+
+    seen = []
+    executor_threads = []
+    monkeypatch.setenv("AGENT_EXECUTE_TIMEOUT", "1")
+    core = MagicMock()
+    core.api_client.call_api.return_value = ({"gitVersion": "v1.28.0", "platform": "linux/amd64"},)
+    monkeypatch.setattr(cluster, "prepare_context", lambda config: None)
+    monkeypatch.setattr(cluster.client, "CoreV1Api", lambda: core)
+
+    class _Graph:
+        async def execute(self, _request):
+            seen.append(get_run_locale())
+            executor_thread = await sync_to_async(threading.current_thread, thread_sensitive=True)()
+            executor_threads.append(executor_thread)
+            result = await ConversationSkillPackageMiddleware().aafter_model({"messages": []}, SimpleNamespace())
+            assert result is None
+            tool_result = await cluster.verify_kubernetes_connection.ainvoke({})
+            assert await sync_to_async(threading.current_thread, thread_sensitive=True)() is executor_thread
+            if fail_first and get_run_locale() == "zh-Hans":
+                raise RuntimeError("graph failed after tool")
+            return _chat_result(tool_result)
+
+    monkeypatch.setattr(chat_service_module.LLMModel.objects, "get", lambda *args, **kwargs: SimpleNamespace(id=1))
+    monkeypatch.setattr(
+        ChatService,
+        "format_chat_server_kwargs",
+        staticmethod(lambda kwargs, _model: ({"locale": kwargs.get("locale") or "en"}, {}, {})),
+    )
+    monkeypatch.setattr(chat_service_module, "create_agent_instance", lambda *_args: (_Graph(), SimpleNamespace()))
+
+    async def run():
+        async with ThreadSensitiveContext() if request_context else nullcontext():
+            for locale in ("zh-Hans", "en"):
+                result, _, _ = await database_sync_to_async(ChatService.invoke_chat, thread_sensitive=True)(
+                    {"llm_model": 1, "skill_type": "test", "locale": locale}
+                )
+                if fail_first and locale == "zh-Hans":
+                    assert result["success"] is False
+                    assert result["error_type"] == "RuntimeError"
+                    assert result["error"] == "graph failed after tool"
+                else:
+                    assert result["success"] is True, result
+                    assert json.loads(result["message"])["connection_status"] == "成功"
+                assert get_run_locale() == "en"
+
+    asyncio.run(run())
+    assert seen == ["zh-Hans", "en"]
+    assert core.list_namespace.call_count == 2
+    assert len(executor_threads) == 2
+    assert all(not thread.is_alive() for thread in executor_threads)
 
 
 def test_agui_and_sse_streams_do_not_leak_locale(monkeypatch):

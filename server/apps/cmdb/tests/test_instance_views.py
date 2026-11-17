@@ -717,6 +717,84 @@ def test_download_file_returns_presigned_url_after_permission(superuser, monkeyp
 
 
 @pytest.mark.django_db
+def test_download_file_read_check_accepts_legacy_graph_id(superuser, monkeypatch):
+    """历史账本 inst_id 仍是图 _id；鉴权不得按 UUID 解析，否则图片展示 500。"""
+    from apps.cmdb.services.instance_identity import normalize_inst_uuid
+
+    inst = {
+        "_id": 3071,
+        "inst_uuid": U(1),
+        "model_id": "test",
+        "organization": [1],
+        "inst_name": "222",
+    }
+    seen = {}
+
+    def query_uuid(value):
+        seen["uuid"] = value
+        normalize_inst_uuid(value)
+        return inst
+
+    def query_id(value):
+        seen["id"] = int(value)
+        return inst if int(value) == 3071 else {}
+
+    monkeypatch.setattr(f"{VIEWS}.InstanceManage.query_entity_by_uuid", query_uuid)
+    monkeypatch.setattr(f"{VIEWS}.InstanceManage.query_entity_by_id", query_id)
+
+    def handle_download(*, request, file_id, check_read_permission=None, as_attachment=False):
+        seen["allowed"] = check_read_permission(3071)
+        return "https://minio/ok"
+
+    monkeypatch.setattr(
+        f"{VIEWS}.get_instance_enterprise_extension",
+        lambda: types.SimpleNamespace(handle_download=handle_download),
+    )
+    response = _call({"get": "download_file"}, _req("get", superuser), file_id="fid-1")
+    assert _body(response)["result"] is True
+    assert seen["allowed"] is True
+    assert seen.get("id") == 3071
+    assert "uuid" not in seen
+
+
+@pytest.mark.django_db
+def test_download_file_read_check_accepts_inst_uuid(superuser, monkeypatch):
+    inst = {
+        "_id": 3071,
+        "inst_uuid": U(1),
+        "model_id": "test",
+        "organization": [1],
+        "inst_name": "222",
+    }
+    seen = {}
+
+    def query_uuid(value):
+        seen["uuid"] = str(value)
+        return inst if str(value) == U(1) else {}
+
+    def query_id(value):
+        seen["id"] = int(value)
+        return inst
+
+    monkeypatch.setattr(f"{VIEWS}.InstanceManage.query_entity_by_uuid", query_uuid)
+    monkeypatch.setattr(f"{VIEWS}.InstanceManage.query_entity_by_id", query_id)
+
+    def handle_download(*, request, file_id, check_read_permission=None, as_attachment=False):
+        seen["allowed"] = check_read_permission(U(1))
+        return "https://minio/ok"
+
+    monkeypatch.setattr(
+        f"{VIEWS}.get_instance_enterprise_extension",
+        lambda: types.SimpleNamespace(handle_download=handle_download),
+    )
+    response = _call({"get": "download_file"}, _req("get", superuser), file_id="fid-1")
+    assert _body(response)["result"] is True
+    assert seen["allowed"] is True
+    assert seen.get("uuid") == U(1)
+    assert "id" not in seen
+
+
+@pytest.mark.django_db
 def test_download_file_attachment_disposition_when_download_flag(superuser, monkeypatch):
     """download=1 时透传 as_attachment=True，使企业实现生成附件 disposition 的预签名 URL。"""
     captured = {}
@@ -765,6 +843,47 @@ def test_upload_file_delegates_to_extension(superuser, monkeypatch):
     assert body["result"] is True
     assert body["data"]["file_id"] == "x"
     assert body["data"]["file_name"] == "a.pdf"
+
+
+def test_file_content_as_view_is_api_exempt():
+    """<img src> 不带 Token；AuthMiddleware 只认 view.api_exempt，必须打在 as_view 结果上。"""
+    view = InstanceViewSet.as_view({"get": "file_content"})
+    assert getattr(view, "api_exempt", False) is True
+    download = InstanceViewSet.as_view({"get": "download_file"})
+    assert getattr(download, "api_exempt", False) is False
+
+
+def test_file_content_skips_auth_middleware_without_token():
+    from apps.core.middlewares.auth_middleware import AuthMiddleware
+
+    mw = AuthMiddleware(get_response=lambda r: None)
+    factory = APIRequestFactory()
+    request = factory.get("/api/v1/cmdb/api/instance/file_content/fid-img/")
+    view = InstanceViewSet.as_view({"get": "file_content"})
+    assert mw.process_view(request, view, [], {"file_id": "fid-img"}) is None
+
+
+@pytest.mark.django_db
+def test_file_content_allows_anonymous_ticket_and_streams(monkeypatch):
+    """<img src> 不会带 Bearer；同源代理靠短时 ticket 拉流，不能要求登录。"""
+    from django.http import HttpResponse
+
+    captured = {}
+
+    def handle_file_content(*, file_id, ticket, as_attachment=False):
+        captured.update(file_id=file_id, ticket=ticket, as_attachment=as_attachment)
+        return HttpResponse(b"\x89PNG", content_type="image/png")
+
+    monkeypatch.setattr(
+        f"{VIEWS}.get_instance_enterprise_extension",
+        lambda: types.SimpleNamespace(handle_file_content=handle_file_content),
+    )
+    factory = APIRequestFactory()
+    request = factory.get("/x/", data={"ticket": "tok-1", "download": "1"})
+    response = _call({"get": "file_content"}, request, file_id="fid-img")
+    assert response.status_code == 200
+    assert response.content == b"\x89PNG"
+    assert captured == {"file_id": "fid-img", "ticket": "tok-1", "as_attachment": True}
 
 
 @pytest.mark.django_db

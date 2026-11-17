@@ -31,9 +31,7 @@ monitor_object_metric:
         Sustained high CPU usage can indicate control-plane overload.
     device_memory_usage:
       name: Memory Utilization
-      desc: Memory utilization of the GCOM Ethernet switch as a 0-100 percentage, computed
-        as (memorySize - memoryIdle) / memorySize x 100 when size is positive and idle
-        is in range. High usage may indicate memory pressure on the device.
+      desc: Memory utilization of the GCOM Ethernet switch as a 0-100 percentage. High usage may indicate memory pressure on the device.
     device_memory_used:
       name: Memory Used
       desc: Used memory of the GCOM Ethernet switch in bytes, derived as gbnPlatformOAMSystem

@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
+import { getOpspilotTranslate } from '../packages/chat-content/src/translation';
+const getDiffReportItemPresentation = (input: Parameters<typeof evaluate>[0]) => evaluate(input, getOpspilotTranslate());
 
-import { getDiffReportItemPresentation } from '../src/app/opspilot/components/custom-chat-sse/diffReportItemPresentation';
+import { getDiffReportItemPresentation as evaluate } from '../src/app/opspilot/components/custom-chat-sse/diffReportItemPresentation';
 
 const allMode = getDiffReportItemPresentation({
   workload_name: '全部（59 个目标）',

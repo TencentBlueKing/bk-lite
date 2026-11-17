@@ -114,8 +114,9 @@ class DisplayFieldInitializer:
             # 1. 查询所有模型(用于预加载枚举映射)
             models = self._get_all_models()
 
-            # 2. 预加载映射数据(organization/user/enum)
-            self._preload_mappings(models)
+            # 2. 预加载映射数据。只补模型定义时用不到用户和组织。
+            if instances:
+                self._preload_mappings(models)
 
             # 3. 逐个处理模型
             for model in models:
@@ -330,8 +331,10 @@ class DisplayFieldInitializer:
                 ag.set_entity_properties(MODEL, [model_internal_id], {"attrs": new_attrs_json}, {}, [], False)
 
             from apps.cmdb.display_field.cache import ExcludeFieldsCache
+            from apps.cmdb.models.repair_state import mark_display_backfill_dirty
 
             ExcludeFieldsCache.invalidate_model_attrs(model_id)
+            mark_display_backfill_dirty()
 
             logger.info(
                 f"[DisplayFieldInitializer] 模型 {model_id} 添加 _display 字段完成, "

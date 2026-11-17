@@ -11,9 +11,7 @@ monitor_object_metric:
   Wireless:
     snmp_uptime:
       name: System Uptime
-      desc: This metric indicates the uptime of the WiNG device since the last restart,
-        derived from sysUpTime. Monitoring uptime helps administrators understand
-        device stability and identify unexpected reboots.
+      desc: This metric indicates the uptime of the WiNG device since the last restart, derived from sysUpTime. Monitoring uptime helps administrators understand device stability and identify unexpected reboots.
     interface_ifHCInOctets:
       name: Interface Incoming Traffic Rate
       desc: This metric indicates the average rate of bytes received over the past

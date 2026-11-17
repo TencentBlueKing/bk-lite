@@ -4,6 +4,7 @@ import type {
   UnifiedFilterDefinition,
 } from '@/app/ops-analysis/types/dashBoard';
 import type {
+  ConditionFilterValue,
   InputControlConfig,
   ParamItem,
 } from '@/app/ops-analysis/types/dataSource';
@@ -193,7 +194,14 @@ const toScanInput = (
   name: param.name,
   type: param.type,
   alias: param.alias_name || param.name,
-  defaultValue: (param.value as FilterValue) ?? null,
+  defaultValue: (
+    param.value
+    && typeof param.value === 'object'
+    && !Array.isArray(param.value)
+    && 'dataVariableId' in param.value
+  )
+    ? null
+    : (param.value as FilterValue) ?? null,
   inputConfig: param.inputConfig,
   inputMode: param.inputMode,
   dataSourceLabel,
@@ -208,7 +216,7 @@ export interface ScannableFilterDataSource {
     name: string;
     type?: string;
     alias_name?: string;
-    value?: FilterValue | string | number | boolean | Array<string | number> | [number, number] | null;
+    value?: FilterValue | string | number | boolean | Array<string | number> | [number, number] | ConditionFilterValue | { dataVariableId: string } | null;
     filterType?: string;
     inputMode?: string;
     inputConfig?: InputControlConfig | {

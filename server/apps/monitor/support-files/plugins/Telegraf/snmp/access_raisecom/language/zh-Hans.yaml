@@ -35,7 +35,7 @@ monitor_object_metric:
       desc: Raisecom 接入设备当前可用物理内存（raisecomMemoryAvailable），单位为字节。空闲内存持续降低可能表示控制服务或业务表项造成内存压力。
     device_memory_usage:
       name: 内存使用率
-      desc: Raisecom 接入设备系统内存使用率，按 (总量-可用)/总量*100 计算。持续偏高可能表示转发表、ONU 管理表或控制服务存在内存压力。
+      desc: Raisecom 接入设备系统内存使用率。持续偏高可能表示转发表、ONU 管理表或控制服务存在内存压力。
     device_temperature_celsius:
       name: 机箱温度
       desc: Raisecom 接入设备机箱温度（raisecomTemperatureValue），单位摄氏度。温度持续升高可能表示散热异常、环境温度过高或设备负载过高。

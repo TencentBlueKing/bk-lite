@@ -33,5 +33,6 @@ from apps.cmdb.tasks.ci_context import (  # noqa: F401
     reconcile_ci_context_pending_task,
 )
 from apps.cmdb.tasks.display_field_backfill import backfill_cmdb_display_fields, ensure_display_field_backfill_periodic_task  # noqa: F401
+from apps.cmdb.tasks.instance_shape_repair import repair_cmdb_instance_shape  # noqa: F401
 from apps.cmdb.tasks.transfer import cleanup_transfers, execute_transfer, maintain_transfers  # noqa: F401
 from apps.cmdb.tasks.uuid_migration import ensure_uuid_migration_periodic_task, migrate_cmdb_instance_uuid_runtime  # noqa: F401

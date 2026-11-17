@@ -91,6 +91,7 @@ import {
   regionAlertBadge,
   regionAlertBadgeParts,
   collectBoundUuids,
+  formatHoverAlert,
   decideDiagramClick,
   iconBindingStats,
   rectangleIconCounts,
@@ -959,11 +960,15 @@ const Architecture = forwardRef<ArchitectureRef, ArchitectureProps>(
             level: alertLevelLabel(overlay.badgeLevel || overlay.level),
           });
           entry.plateMark = String(overlay.count);
-          entry.hoverAlert = t('opsAnalysis.architecture.hoverAlert', undefined, {
+          const reasons = formatHoverAlert(overlay.alerts);
+          entry.hoverAlert = reasons || t('opsAnalysis.architecture.hoverAlert', undefined, {
             count: overlay.count,
             level: alertLevelLabel(overlay.badgeLevel || overlay.level),
           });
+          if (reasons) entry.badgeHint = `${entry.badgeHint}\n${reasons}`;
           entry.hoverStatusLabel = t('opsAnalysis.architecture.alertLabel');
+        } else if (overlay.level === 'unmonitored') {
+          entry.plateMark = t('opsAnalysis.architecture.plateUnmonitored');
         } else if (overlay.level === 'forbidden') {
           entry.plateMark = t('opsAnalysis.architecture.bindingForbidden');
         } else if (overlay.level === 'invalid') {
@@ -1052,13 +1057,13 @@ const Architecture = forwardRef<ArchitectureRef, ArchitectureProps>(
 
     const nodeMetrics = useMemo(() => {
       if (shareMode || isEditMode) return undefined;
-      const cards = buildNodeMetricCards(diagramViews, viewMetrics.byUuid, viewMetrics.objects);
-      const next: Record<string, { lines: { name: string; text: string }[]; pinned: boolean }> = {};
+      const cards = buildNodeMetricCards(diagramViews, viewMetrics.byUuid, viewMetrics.objects, statusByUuid);
+      const next: Record<string, { lines: { name: string; text: string; tone?: 'warning' | 'critical' }[]; pinned: boolean }> = {};
       for (const [id, card] of Object.entries(cards)) {
         next[id] = { lines: card.lines, pinned: showMetrics };
       }
       return Object.keys(next).length ? next : undefined;
-    }, [diagramViews, isEditMode, shareMode, showMetrics, viewMetrics.byUuid, viewMetrics.objects]);
+    }, [diagramViews, isEditMode, shareMode, showMetrics, statusByUuid, viewMetrics.byUuid, viewMetrics.objects]);
 
     const bindingStats = useMemo(() => iconBindingStats(diagramViews), [diagramViews]);
 

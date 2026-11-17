@@ -396,7 +396,7 @@ export interface ScheduledTaskFormData {
   playbook?: number | null;
   target_source: ExecutionTargetSource;
   target_list: TargetListItem[];
-  params?: Record<string, unknown>;
+  params?: Array<{ name: string; value: string; is_modified: boolean }>;
   script_type?: ScriptType;
   script_content?: string;
   files?: ScheduledTaskFile[];

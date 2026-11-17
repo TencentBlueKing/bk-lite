@@ -2,7 +2,7 @@ export const APP_TOPO_EXPAND_DEPTH_OPTIONS = [1, 2, 3, 4, 5] as const;
 
 export type AppTopoExpandDepth = (typeof APP_TOPO_EXPAND_DEPTH_OPTIONS)[number];
 
-export const APP_TOPO_DEFAULT_EXPAND_DEPTH: AppTopoExpandDepth = 3;
+export const APP_TOPO_DEFAULT_EXPAND_DEPTH: AppTopoExpandDepth = 1;
 
 export const APP_TOPO_EXPAND_DEPTH_STORAGE_KEY =
   'bk-lite:cmdb:app-topo-expand-depth';

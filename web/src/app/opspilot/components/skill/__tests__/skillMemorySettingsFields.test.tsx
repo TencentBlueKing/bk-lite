@@ -53,7 +53,7 @@ describe('SkillMemorySettingsFields', () => {
     { id: 2, name: '团队知识', scope: 'team' as const, default_model: '' },
   ];
 
-  it('lists personal spaces and hides write rounds until a space is selected', () => {
+  it('lists personal and team spaces and hides write rounds until a space is selected', () => {
     render(
       <Form>
         <SkillMemorySettingsFields spaces={spaces} />
@@ -64,7 +64,7 @@ describe('SkillMemorySettingsFields', () => {
     expect(screen.getByText('chatflow.nodeConfig.addMemorySpace')).toBeTruthy();
     fireEvent.mouseDown(screen.getByRole('combobox'));
     expect(screen.getByText('个人巡检')).toBeTruthy();
-    expect(screen.queryByText('团队知识')).toBeNull();
+    expect(screen.getByText('团队知识')).toBeTruthy();
   });
 
   it('shows write rounds after a memory space is selected', () => {

@@ -1,16 +1,14 @@
 """PostgreSQL高级查询分析工具"""
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
-from apps.opspilot.metis.llm.tools.postgres.utils import (
-    execute_readonly_query,
-    safe_json_dumps,
-    format_size,
-    calculate_percentage,
-)
+
+from apps.opspilot.metis.llm.tools.postgres.utils import calculate_percentage, execute_readonly_query, format_size, safe_json_dumps
 
 
 @tool()
-def query_table_stats(schema_name: str = "public", table_filter: str = None, config: RunnableConfig = None):
+def query_table_stats(
+    schema_name: str = "public", table_filter: str = None, config: RunnableConfig = None, instance_name: str = None, instance_id: str = None
+):
     """
     查询表统计信息
 
@@ -34,7 +32,7 @@ def query_table_stats(schema_name: str = "public", table_filter: str = None, con
     """
     if table_filter:
         query = """
-        SELECT 
+        SELECT
             schemaname,
             relname as table_name,
             seq_scan as sequential_scans,
@@ -54,7 +52,7 @@ def query_table_stats(schema_name: str = "public", table_filter: str = None, con
         params = (schema_name, table_filter)
     else:
         query = """
-        SELECT 
+        SELECT
             schemaname,
             relname as table_name,
             seq_scan as sequential_scans,
@@ -74,30 +72,27 @@ def query_table_stats(schema_name: str = "public", table_filter: str = None, con
         params = (schema_name,)
 
     try:
-        results = execute_readonly_query(query, params=params, config=config)
+        results = execute_readonly_query(query, params=params, config=config, instance_name=instance_name, instance_id=instance_id)
 
         # 计算额外指标
         for row in results:
             total_scans = row["sequential_scans"] + (row["index_scans"] or 0)
             if total_scans > 0:
-                row["index_scan_ratio"] = calculate_percentage(
-                    row["index_scans"] or 0, total_scans)
+                row["index_scan_ratio"] = calculate_percentage(row["index_scans"] or 0, total_scans)
             else:
                 row["index_scan_ratio"] = 0
 
             row["is_hot_table"] = total_scans > 10000
 
-        return safe_json_dumps({
-            "schema": schema_name,
-            "total_tables": len(results),
-            "tables": results
-        })
+        return safe_json_dumps({"schema": schema_name, "total_tables": len(results), "tables": results})
     except Exception as e:
         return safe_json_dumps({"error": str(e)})
 
 
 @tool()
-def query_index_usage(schema_name: str = "public", table: str = None, config: RunnableConfig = None):
+def query_index_usage(
+    schema_name: str = "public", table: str = None, config: RunnableConfig = None, instance_name: str = None, instance_id: str = None
+):
     """
     查询索引使用统计
 
@@ -121,7 +116,7 @@ def query_index_usage(schema_name: str = "public", table: str = None, config: Ru
     """
     if table:
         query = """
-        SELECT 
+        SELECT
             schemaname,
             tablename as table_name,
             indexname as index_name,
@@ -136,7 +131,7 @@ def query_index_usage(schema_name: str = "public", table: str = None, config: Ru
         params = (schema_name, table)
     else:
         query = """
-        SELECT 
+        SELECT
             schemaname,
             tablename as table_name,
             indexname as index_name,
@@ -151,32 +146,25 @@ def query_index_usage(schema_name: str = "public", table: str = None, config: Ru
         params = (schema_name,)
 
     try:
-        results = execute_readonly_query(query, params=params, config=config)
+        results = execute_readonly_query(query, params=params, config=config, instance_name=instance_name, instance_id=instance_id)
 
         # 格式化并添加分析
         for row in results:
             row["index_size"] = format_size(row["index_size_bytes"])
             row["is_unused"] = row["index_scans"] == 0
-            row["efficiency"] = calculate_percentage(
-                row["tuples_fetched"] or 0,
-                row["tuples_read"] or 1
-            )
+            row["efficiency"] = calculate_percentage(row["tuples_fetched"] or 0, row["tuples_read"] or 1)
 
         unused_count = sum(1 for row in results if row["is_unused"])
 
-        return safe_json_dumps({
-            "schema": schema_name,
-            "table": table,
-            "total_indexes": len(results),
-            "unused_indexes": unused_count,
-            "indexes": results
-        })
+        return safe_json_dumps(
+            {"schema": schema_name, "table": table, "total_indexes": len(results), "unused_indexes": unused_count, "indexes": results}
+        )
     except Exception as e:
         return safe_json_dumps({"error": str(e)})
 
 
 @tool()
-def query_bloat_analysis(schema_name: str = "public", config: RunnableConfig = None):
+def query_bloat_analysis(schema_name: str = "public", config: RunnableConfig = None, instance_name: str = None, instance_id: str = None):
     """
     分析表和索引膨胀
 
@@ -198,7 +186,7 @@ def query_bloat_analysis(schema_name: str = "public", config: RunnableConfig = N
         JSON格式,包含膨胀分析结果
     """
     query = """
-    SELECT 
+    SELECT
         schemaname,
         tablename as table_name,
         pg_size_pretty(pg_total_relation_size(schemaname||'.'||tablename)) as total_size,
@@ -215,8 +203,7 @@ def query_bloat_analysis(schema_name: str = "public", config: RunnableConfig = N
     """
 
     try:
-        results = execute_readonly_query(
-            query, params=(schema_name,), config=config)
+        results = execute_readonly_query(query, params=(schema_name,), config=config, instance_name=instance_name, instance_id=instance_id)
 
         # 分类膨胀程度
         for row in results:
@@ -228,31 +215,28 @@ def query_bloat_analysis(schema_name: str = "public", config: RunnableConfig = N
             else:
                 row["bloat_level"] = "normal"
 
-            row["last_vacuum"] = str(
-                row["last_vacuum"]) if row["last_vacuum"] else "Never"
-            row["last_autovacuum"] = str(
-                row["last_autovacuum"]) if row["last_autovacuum"] else "Never"
+            row["last_vacuum"] = str(row["last_vacuum"]) if row["last_vacuum"] else "Never"
+            row["last_autovacuum"] = str(row["last_autovacuum"]) if row["last_autovacuum"] else "Never"
 
-        critical_count = sum(
-            1 for row in results if row["bloat_level"] == "critical")
+        critical_count = sum(1 for row in results if row["bloat_level"] == "critical")
 
-        return safe_json_dumps({
-            "schema": schema_name,
-            "total_tables_analyzed": len(results),
-            "critical_bloat_count": critical_count,
-            "tables": results,
-            "recommendations": [
-                f"对{critical_count}个严重膨胀的表执行VACUUM FULL" if critical_count > 0 else None,
-                "定期执行VACUUM维护",
-                "检查autovacuum配置"
-            ]
-        })
+        return safe_json_dumps(
+            {
+                "schema": schema_name,
+                "total_tables_analyzed": len(results),
+                "critical_bloat_count": critical_count,
+                "tables": results,
+                "recommendations": [f"对{critical_count}个严重膨胀的表执行VACUUM FULL" if critical_count > 0 else None, "定期执行VACUUM维护", "检查autovacuum配置"],
+            }
+        )
     except Exception as e:
         return safe_json_dumps({"error": str(e)})
 
 
 @tool()
-def query_table_io_stats(schema_name: str = "public", limit: int = 20, config: RunnableConfig = None):
+def query_table_io_stats(
+    schema_name: str = "public", limit: int = 20, config: RunnableConfig = None, instance_name: str = None, instance_id: str = None
+):
     """
     查询表I/O统计
 
@@ -275,7 +259,7 @@ def query_table_io_stats(schema_name: str = "public", limit: int = 20, config: R
         JSON格式,包含I/O统计信息
     """
     query = """
-    SELECT 
+    SELECT
         schemaname,
         relname as table_name,
         heap_blks_read as heap_blocks_read,
@@ -293,8 +277,7 @@ def query_table_io_stats(schema_name: str = "public", limit: int = 20, config: R
     """
 
     try:
-        results = execute_readonly_query(
-            query, params=(schema_name, limit), config=config)
+        results = execute_readonly_query(query, params=(schema_name, limit), config=config, instance_name=instance_name, instance_id=instance_id)
 
         # 分析I/O模式
         for row in results:
@@ -306,17 +289,20 @@ def query_table_io_stats(schema_name: str = "public", limit: int = 20, config: R
             cache_ratio = row["cache_hit_ratio"] or 0
             row["has_low_cache_hit"] = cache_ratio < 90
 
-        return safe_json_dumps({
-            "schema": schema_name,
-            "total_tables": len(results),
-            "tables": results
-        })
+        return safe_json_dumps({"schema": schema_name, "total_tables": len(results), "tables": results})
     except Exception as e:
         return safe_json_dumps({"error": str(e)})
 
 
 @tool()
-def search_objects(database: str = None, object_type: str = "table", pattern: str = None, config: RunnableConfig = None):
+def search_objects(
+    database: str = None,
+    object_type: str = "table",
+    pattern: str = None,
+    config: RunnableConfig = None,
+    instance_name: str = None,
+    instance_id: str = None,
+):
     """
     搜索数据库对象
 
@@ -342,7 +328,7 @@ def search_objects(database: str = None, object_type: str = "table", pattern: st
     if object_type == "table":
         if pattern:
             query = """
-            SELECT 
+            SELECT
                 schemaname,
                 tablename as object_name,
                 'table' as object_type,
@@ -355,7 +341,7 @@ def search_objects(database: str = None, object_type: str = "table", pattern: st
             params = (pattern,)
         else:
             query = """
-            SELECT 
+            SELECT
                 schemaname,
                 tablename as object_name,
                 'table' as object_type,
@@ -369,7 +355,7 @@ def search_objects(database: str = None, object_type: str = "table", pattern: st
     elif object_type == "view":
         if pattern:
             query = """
-            SELECT 
+            SELECT
                 schemaname,
                 viewname as object_name,
                 'view' as object_type
@@ -381,7 +367,7 @@ def search_objects(database: str = None, object_type: str = "table", pattern: st
             params = (pattern,)
         else:
             query = """
-            SELECT 
+            SELECT
                 schemaname,
                 viewname as object_name,
                 'view' as object_type
@@ -395,13 +381,8 @@ def search_objects(database: str = None, object_type: str = "table", pattern: st
         return safe_json_dumps({"error": f"不支持的对象类型: {object_type}"})
 
     try:
-        results = execute_readonly_query(query, params=params, config=config)
+        results = execute_readonly_query(query, params=params, config=config, instance_name=instance_name, instance_id=instance_id)
 
-        return safe_json_dumps({
-            "object_type": object_type,
-            "pattern": pattern,
-            "total_objects": len(results),
-            "objects": results
-        })
+        return safe_json_dumps({"object_type": object_type, "pattern": pattern, "total_objects": len(results), "objects": results})
     except Exception as e:
         return safe_json_dumps({"error": str(e)})

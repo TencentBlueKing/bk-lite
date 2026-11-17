@@ -182,9 +182,9 @@ const UnifiedFilterConfigModal: React.FC<UnifiedFilterConfigModalProps> = ({
         enabled: true,
         inputConfig: param.sampleInputConfig as UnifiedFilterDefinition['inputConfig'],
         inputMode:
-          param.sampleInputConfig?.control === 'organization'
-            ? undefined
-            : param.sampleInputConfig?.control,
+          param.sampleInputConfig?.control === 'select' || param.sampleInputConfig?.control === 'radio'
+            ? param.sampleInputConfig.control
+            : undefined,
       };
     });
 

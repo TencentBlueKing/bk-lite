@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { getOpspilotTranslate } from '../packages/chat-content/src/translation';
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -14,7 +15,9 @@ assert.ok(
 );
 
 async function main() {
-  const { buildLiveYamlRequest } = await import(pathToFileURL(helperPath).href);
+  const { buildLiveYamlRequest: evaluate } = await import(pathToFileURL(helperPath).href);
+
+  const buildLiveYamlRequest = (report: Parameters<typeof evaluate>[0], item: Parameters<typeof evaluate>[1]) => evaluate(report, item, getOpspilotTranslate());
 
   const report = {
     report_id: 'report-1',
@@ -84,7 +87,7 @@ async function main() {
   const componentSource = readFileSync(
     path.join(
       process.cwd(),
-      'src/app/opspilot/components/custom-chat-sse/DiffReportCard.tsx'
+      'packages/chat-content/src/DiffReportCard.tsx'
     ),
     'utf8'
   );
@@ -96,7 +99,7 @@ async function main() {
   assert.match(componentSource, /let cancelled = false/, 'stale responses should not overwrite a newly selected report item');
 
   for (const typePath of [
-    'src/app/opspilot/types/global.ts',
+    'packages/chat-content/src/types.ts',
     'src/app/opspilot/types/chat.ts',
   ]) {
     const typeSource = readFileSync(path.join(process.cwd(), typePath), 'utf8');

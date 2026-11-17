@@ -31,7 +31,7 @@ monitor_object_metric:
       desc: 该指标报告 F5 BIG-IP 当前已使用的内存字节数（F5-BIGIP-SYSTEM-MIB sysStatMemoryUsed）。
     device_memory_usage:
       name: 内存使用率
-      desc: 该指标报告 F5 BIG-IP 整体内存使用率，按 已用/总量 计算（100*used/total）。持续偏高可能由连接表过大或内存泄漏导致。
+      desc: F5 BIG-IP 整体内存使用率。持续偏高可能由连接表过大或内存泄漏导致。
     lb_current_connections:
       name: 当前连接数
       desc: 该指标报告 F5 BIG-IP 当前的客户端活动连接数（F5-BIGIP-SYSTEM-MIB sysStatClientCurConns）。连接数快速攀升可能意味着流量洪泛或连接表压力。

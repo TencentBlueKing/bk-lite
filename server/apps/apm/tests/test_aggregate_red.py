@@ -1,10 +1,12 @@
 import inspect
+import math
+import re
 from datetime import UTC, datetime, timedelta
 
 import pytest
 from django.utils import timezone
 
-from apps.apm.adapters.aggregate_red import AggregateApmRedStore, ApmAggregateRedRouter
+from apps.apm.adapters.aggregate_red import AggregateApmRedStore, ApmAggregateRedRouter, histogram_quantile
 from apps.apm.adapters.errors import TelemetryQueryTooLarge, TelemetryStoreUnavailable
 from apps.apm.services import DjangoTelemetryCatalogService
 from apps.apm.services.contracts import CatalogDiscovery, ServiceMetricQuery, ServiceRed
@@ -445,13 +447,17 @@ def test_service_red_batch_skips_services_outside_the_tenant(apm_api_client, mon
     assert response.status_code == 200
     assert response.data["items"][0]["ok"] is True
     assert response.data["items"][0]["data_state"] == "no_data"
+    assert response.data["items"][0]["entry_truncated"] is False
     assert response.data["items"][1]["ok"] is False
     assert response.data["items"][1]["code"] == "not_found"
-    assert len(client.instant) == 1
-    expression = client.instant[0][0]
-    assert 'service_name="checkout"' in expression
-    assert "secret" not in expression
-    assert "billing" not in expression
+    assert "entry_truncated" not in response.data["items"][1]
+    assert len(client.instant) == 7
+    assert client.ranges == []
+    expressions = "\n".join(expression for expression, _moment in client.instant)
+    assert "shop/checkout" in expressions
+    assert 'service_name!=""' in expressions
+    assert "secret" not in expressions
+    assert "billing" not in expressions
 
 
 def test_service_red_api_degrades_when_the_aggregate_store_fails(apm_api_client, monkeypatch):
@@ -507,3 +513,557 @@ def test_openapi_service_metrics_reader_uses_the_aggregate_router(monkeypatch):
 
     assert type(reader.metric_store) is type(apm_entry_red_store())
     assert reader.metric_store.aggregate.available is False
+
+
+def _promql_string(expression: str, marker: str) -> str:
+    start = expression.index(marker) + len(marker)
+    chars: list[str] = []
+    index = start
+    while index < len(expression):
+        char = expression[index]
+        if char == "\\":
+            escaped = expression[index + 1]
+            chars.append({"n": "\n", "\\": "\\", '"': '"'}.get(escaped, escaped))
+            index += 2
+            continue
+        if char == '"':
+            break
+        chars.append(char)
+        index += 1
+    return "".join(chars)
+
+
+def _regex_alternatives(pattern: str) -> list[re.Pattern[str]]:
+    parts: list[str] = []
+    current: list[str] = []
+    index = 0
+    while index < len(pattern):
+        if pattern[index] == "\\" and index + 1 < len(pattern):
+            current.append(pattern[index : index + 2])
+            index += 2
+            continue
+        if pattern[index] == "|":
+            parts.append("".join(current))
+            current = []
+            index += 1
+            continue
+        current.append(pattern[index])
+        index += 1
+    parts.append("".join(current))
+    return [re.compile(part) for part in parts]
+
+
+def _jobs_in(expression: str) -> list[re.Pattern[str]]:
+    return _regex_alternatives(_promql_string(expression, 'job=~"'))
+
+
+def test_histogram_quantile_interpolates_inside_a_bucket():
+    # 950 落在 100→200：下界 100，桶内 50 个里的第 45 个。
+    assert histogram_quantile(0.95, [(100, 50), (200, 100), (math.inf, 100)]) == pytest.approx(190)
+
+
+def test_histogram_quantile_returns_the_highest_finite_bound_when_the_rank_is_in_infinity():
+    assert histogram_quantile(0.95, [(100, 0), (math.inf, 10)]) == pytest.approx(100)
+
+
+def test_histogram_quantile_returns_none_for_an_empty_or_zero_histogram():
+    assert histogram_quantile(0.95, []) is None
+    assert histogram_quantile(0.95, [(math.inf, 0)]) is None
+    assert histogram_quantile(0.95, [(10, 5)]) is None
+
+
+def test_histogram_quantile_uses_zero_as_the_first_bucket_lower_bound():
+    # 第 5 个观测落在 0→10，不是把 10 当成点估计。
+    assert histogram_quantile(0.5, [(10, 10), (math.inf, 10)]) == pytest.approx(5)
+
+
+def test_histogram_quantile_repairs_a_decreasing_cumulative_count():
+    # 前缀最大值把 4 抬回 10，10.8 落在 20→30 的 2 个观测里的第 0.8 个。
+    assert histogram_quantile(0.9, [(10, 10), (20, 4), (30, 12), (math.inf, 12)]) == pytest.approx(24)
+
+
+def _checkout_grouped(expression: str):
+    metric = {"service_namespace": "shop", "service_name": "checkout", "deployment_environment": "prod"}
+    if "[450s]" in expression:
+        if "status_code" in expression:
+            return [{"metric": {}, "values": [[1, "0"], [2, "450"]]}]
+        if "sum by (le)" in expression:
+            return [
+                {"metric": {"le": "100"}, "values": [[1, "450"], [2, "900"]]},
+                {"metric": {"le": "+Inf"}, "values": [[1, "450"], [2, "900"]]},
+            ]
+        return [{"metric": {}, "values": [[1, "450"], [2, "900"]]}]
+    if "otel_metric_overflow" in expression or "apm_aggregate_late_spans_total" in expression:
+        return _vector("4") if "late_spans" in expression else []
+    if expression.startswith("histogram_quantile(0.95"):
+        return [{"metric": metric, "value": [1, "250"]}]
+    if expression.startswith("histogram_quantile(0.99"):
+        return [{"metric": metric, "value": [1, "800"]}]
+    if "sum by (le)" in expression:
+        return [
+            {"metric": {"le": "200"}, "value": [1, "500"]},
+            {"metric": {"le": "400"}, "value": [1, "1000"]},
+            {"metric": {"le": "+Inf"}, "value": [1, "1000"]},
+        ]
+    if "apm_duration_milliseconds_sum" in expression:
+        return [{"metric": metric, "value": [1, "90000"]}]
+    if "apm_duration_milliseconds_count" in expression:
+        return [{"metric": metric, "value": [1, "900"]}]
+    if "status_code" in expression:
+        return [{"metric": metric, "value": [1, "90"]}]
+    if "apm_calls_total" in expression:
+        return [{"metric": metric, "value": [1, "900"]}]
+    raise AssertionError(expression)
+
+
+def test_grouped_read_uses_a_fixed_query_count_for_one_chunk():
+    overview_client = _Client(_checkout_grouped)
+    plain_client = _Client(_checkout_grouped)
+    services = [("shop", "checkout"), ("shop", "cart")]
+
+    overview = _store(overview_client).grouped_red(services, START, END, include_overview=True, overview_points=2)
+    plain = _store(plain_client).grouped_red([("shop", "checkout")], START, END, include_overview=False)
+
+    assert len(overview_client.instant) == 9
+    assert len(overview_client.ranges) == 3
+    assert len(plain_client.instant) == 7
+    assert plain_client.ranges == []
+    assert plain.overview is None
+    assert overview_client.instant[0][1] == ALIGNED
+    assert "shop/checkout" in overview_client.instant[0][0]
+    assert "shop/cart" in overview_client.instant[0][0]
+    assert overview_client.ranges[0][1:] == (START + timedelta(seconds=450), ALIGNED, 450)
+    for expression, _at in overview_client.instant:
+        if "apm_aggregate_late_spans_total" in expression or "otel_metric_overflow" in expression:
+            assert 'service_name!=""' not in expression
+        else:
+            assert 'service_name!=""' in expression
+    assert "status_code" in overview_client.instant[1][0]
+    assert overview_client.instant[4][0].startswith("histogram_quantile(0.95")
+    red = overview.by_target[("shop", "checkout", "prod")]
+    assert red.request_rate == pytest.approx(1)
+    assert red.error_rate == pytest.approx(0.1)
+    assert red.p95_ms == 250
+    assert red.p99_ms == 800
+    assert red.request_count == 900
+    assert red.error_count == 90
+    assert red.avg_ms == pytest.approx(100)
+    assert red.max_ms is None
+    assert red.timeseries == ()
+    assert red.top_endpoints == ()
+    assert ("shop", "cart", "prod") not in overview.by_target
+    assert overview.overview is not None
+    # 900 请求 / 900 秒，90 错误；950 落在 200→400 的后半段。
+    assert overview.overview.request_rate == pytest.approx(1)
+    assert overview.overview.error_request_rate == pytest.approx(0.1)
+    assert overview.overview.p95_ms == pytest.approx(380)
+    assert overview.overview.late_spans == 4
+    assert overview.overview.request_trend == pytest.approx((1, 2))
+    assert overview.overview.error_trend == pytest.approx((0, 1))
+    assert overview.overview.p95_trend == pytest.approx((95, 95))
+
+
+def test_grouped_job_regex_matches_only_the_original_service_and_blank_namespace():
+    name = 'a.b+c"d\\e f中文'
+    client = _Client(lambda expression: [])
+
+    _store(client).grouped_red([("", name)], START, END, include_overview=False)
+
+    pattern = _jobs_in(client.instant[0][0])[0]
+    job = f"unknown/{name}"
+    assert pattern.fullmatch(job)
+    assert pattern.fullmatch(job.replace(".", "x", 1)) is None
+    assert pattern.fullmatch(job.replace("+", "", 1)) is None
+    assert "\\ " not in _promql_string(client.instant[0][0], 'job=~"')
+    assert "中文" in client.instant[0][0]
+    assert client.instant[0][0].count('job=~"') == 1
+
+
+def test_grouped_read_drops_unmapped_series_from_targets_and_overview():
+    def respond(expression):
+        if "otel_metric_overflow" in expression or "apm_aggregate_late" in expression or "[60s]" in expression:
+            return []
+        if "sum by (le)" in expression and not expression.startswith("histogram_quantile"):
+            return [
+                {"metric": {"le": "100", "service_namespace": "shop", "service_name": "checkout"}, "value": [1, "10"]},
+                {"metric": {"le": "+Inf", "service_namespace": "shop", "service_name": "checkout"}, "value": [1, "10"]},
+                {"metric": {"le": "+Inf", "service_namespace": "other", "service_name": "checkout"}, "value": [1, "1000"]},
+            ]
+        if "status_code" in expression or "duration" in expression or expression.startswith("histogram_quantile"):
+            return []
+        return [
+            {
+                "metric": {"service_namespace": "shop", "service_name": "checkout", "deployment_environment": "prod"},
+                "value": [1, "10"],
+            },
+            {
+                "metric": {"service_namespace": "other", "service_name": "checkout", "deployment_environment": "prod"},
+                "value": [1, "1000"],
+            },
+            {
+                "metric": {"service_namespace": "shop", "service_name": "hidden", "deployment_environment": "prod"},
+                "value": [1, "1000"],
+            },
+            {"metric": {"otel_metric_overflow": "true", "job": "shop/checkout"}, "value": [1, "7"]},
+        ]
+
+    grouped = _store(_Client(respond)).grouped_red(
+        [("shop", "checkout")],
+        START,
+        END,
+        include_overview=True,
+        overview_points=2,
+    )
+
+    assert list(grouped.by_target) == [("shop", "checkout", "prod")]
+    assert grouped.by_target[("shop", "checkout", "prod")].request_count == 10
+    assert grouped.overview is not None
+    assert grouped.overview.request_rate == pytest.approx(10 / 900)
+    assert grouped.overview.p95_ms == pytest.approx(95)
+
+
+def test_grouped_overview_counts_a_shared_unknown_namespace_series_once():
+    def respond(expression):
+        if "apm_calls_total" in expression and "status_code" not in expression and "overflow" not in expression and "[60s]" not in expression:
+            return [
+                {
+                    "metric": {"service_namespace": "unknown", "service_name": "checkout", "deployment_environment": "prod"},
+                    "value": [1, "10"],
+                }
+            ]
+        return []
+
+    grouped = _store(_Client(respond)).grouped_red(
+        [("", "checkout"), ("unknown", "checkout")],
+        START,
+        END,
+        include_overview=True,
+        overview_points=2,
+    )
+
+    assert grouped.by_target[("", "checkout", "prod")].request_count == 10
+    assert grouped.by_target[("unknown", "checkout", "prod")].request_count == 10
+    assert grouped.overview is not None
+    assert grouped.overview.request_rate == pytest.approx(10 / 900)
+
+
+def test_grouped_read_marks_only_authorized_services_with_overflow_series():
+    def respond(expression):
+        if "otel_metric_overflow" in expression:
+            return [
+                {"metric": {"job": "shop/checkout"}, "value": [1, "3"]},
+                {"metric": {"job": "other/hidden"}, "value": [1, "9"]},
+            ]
+        if "apm_calls_total" in expression and "status_code" not in expression:
+            return [
+                {
+                    "metric": {"service_namespace": "shop", "service_name": "checkout", "deployment_environment": "prod"},
+                    "value": [1, "4"],
+                }
+            ]
+        return []
+
+    grouped = _store(_Client(respond)).grouped_red([("shop", "checkout")], START, END)
+
+    assert grouped.truncated_services == frozenset({("shop", "checkout")})
+    assert grouped.by_target[("shop", "checkout", "prod")].request_count == 4
+    assert all(red.request_count != 9 for red in grouped.by_target.values())
+
+
+def test_grouped_read_keeps_the_raw_unknown_environment_label():
+    def respond(expression):
+        if "apm_calls_total" in expression and "status_code" not in expression and "overflow" not in expression:
+            return [
+                {
+                    "metric": {"service_namespace": "shop", "service_name": "checkout", "deployment_environment": "unknown"},
+                    "value": [1, "8"],
+                },
+                {
+                    "metric": {"service_namespace": "shop", "service_name": "billing", "deployment_environment": "unknown"},
+                    "value": [1, "3"],
+                },
+            ]
+        return []
+
+    grouped = _store(_Client(respond)).grouped_red([("shop", "checkout"), ("shop", "billing")], START, END)
+
+    assert grouped.by_target[("shop", "checkout", "unknown")].request_count == 8
+    assert grouped.by_target[("shop", "billing", "unknown")].request_count == 3
+
+
+def test_grouped_read_chunks_long_service_names_without_changing_the_total():
+    names = [f"svc-{index:04d}-{'n' * 48}" for index in range(2000)]
+    services = [("shop", name) for name in names]
+
+    def respond(expression):
+        jobs = [pattern.pattern for pattern in _jobs_in(expression)]
+        if "otel_metric_overflow" in expression or "apm_aggregate_late" in expression:
+            return []
+        if "[900s]" not in expression:
+            return []
+        if "sum by (le)" in expression and not expression.startswith("histogram_quantile"):
+            rows = []
+            for job in jobs:
+                namespace, name = job.split("/", 1)
+                rows.append({"metric": {"le": "10", "service_namespace": namespace, "service_name": name}, "value": [1, "2"]})
+                rows.append({"metric": {"le": "+Inf", "service_namespace": namespace, "service_name": name}, "value": [1, "2"]})
+            return rows
+        if "status_code" in expression:
+            value = "1"
+        elif "apm_calls_total" in expression:
+            value = "2"
+        elif "apm_duration_milliseconds_sum" in expression:
+            value = "20"
+        elif "apm_duration_milliseconds_count" in expression:
+            value = "2"
+        else:
+            value = "9"
+        return [
+            {
+                "metric": {
+                    "service_namespace": job.split("/", 1)[0],
+                    "service_name": job.split("/", 1)[1],
+                    "deployment_environment": "prod",
+                },
+                "value": [1, value],
+            }
+            for job in jobs
+        ]
+
+    client = _Client(respond)
+    grouped = _store(client).grouped_red(services, START, END, include_overview=True, overview_points=2)
+
+    expressions = [expression for expression, _at in client.instant] + [expression for expression, *_rest in client.ranges]
+    assert len(client.instant) > 9
+    assert len(client.instant) % 9 == 0
+    assert all(len(expression.encode("utf-8")) <= 12 * 1024 for expression in expressions)
+    assert all(len(expression.encode("utf-8")) < 16384 for expression in expressions)
+    assert len(grouped.by_target) == 2000
+    assert grouped.overview is not None
+    assert grouped.overview.request_rate == pytest.approx(4000 / 900)
+    assert grouped.overview.error_request_rate == pytest.approx(2000 / 900)
+    assert grouped.overview.p95_ms == pytest.approx(9.5)
+
+
+@pytest.mark.parametrize(
+    ("origin", "available"),
+    [
+        (None, True),
+        (datetime(2026, 11, 10, 0, 1, tzinfo=UTC), True),
+        (START, False),
+    ],
+)
+def test_grouped_router_returns_none_when_the_window_is_not_covered(origin, available):
+    traces = _Traces()
+    client = _Client(available=available)
+    router = ApmAggregateRedRouter(traces=traces, aggregate=_store(client), origin_at=lambda: origin)
+
+    assert router.grouped_red([("shop", "checkout")], START, END, include_overview=True, overview_points=2) is None
+    assert client.instant == []
+    assert traces.queries == []
+
+
+def test_grouped_read_failure_raises_the_same_store_errors():
+    traces = _Traces()
+    failed = ApmAggregateRedRouter(
+        traces=traces,
+        aggregate=_store(_Client(error=AggregateMetricsUnavailable("http"))),
+        origin_at=lambda: START,
+    )
+    with pytest.raises(TelemetryStoreUnavailable, match="^聚合库查询不可用$") as caught:
+        failed.grouped_red([("shop", "checkout")], START, END)
+    assert not isinstance(caught.value, TelemetryQueryTooLarge)
+    assert "http" not in str(caught.value)
+    assert traces.queries == []
+
+    too_large = ApmAggregateRedRouter(
+        traces=traces,
+        aggregate=_store(_Client(error=AggregateMetricsTooLarge())),
+        origin_at=lambda: START,
+    )
+    with pytest.raises(TelemetryQueryTooLarge, match="^聚合库响应超过大小上限$"):
+        too_large.grouped_red([("shop", "checkout")], START, END)
+    assert traces.queries == []
+
+
+def test_service_red_batch_marks_entry_truncation_for_the_authorized_service(apm_api_client, monkeypatch):
+    own = _discover("shop", "shop", "checkout", "pod-a", 10)
+    hidden = _discover("billing", "billing", "secret", "pod-b", 20)
+    AggregateMetricOrigin.objects.create(product="apm", started_at=datetime(2026, 1, 1, tzinfo=UTC))
+
+    def respond(expression):
+        if "otel_metric_overflow" in expression:
+            return [{"metric": {"job": "shop/checkout"}, "value": [1, "2"]}]
+        if "apm_calls_total" in expression and "status_code" not in expression:
+            return [
+                {
+                    "metric": {
+                        "service_namespace": "shop",
+                        "service_name": "checkout",
+                        "deployment_environment": "production",
+                    },
+                    "value": [1, "8"],
+                }
+            ]
+        return []
+
+    client = _Client(respond)
+    _install_reader(monkeypatch, client)
+    _install_inline_batch(monkeypatch)
+
+    response = apm_api_client.post(
+        "/api/v1/apm/services/metrics/batch/",
+        {
+            **_window_params(),
+            "include_breakdown": False,
+            "targets": [
+                {"service_id": str(own.id), "environment": "production"},
+                {"service_id": str(hidden.id), "environment": "production"},
+            ],
+        },
+        format="json",
+    )
+
+    expressions = "\n".join(expression for expression, _moment in client.instant)
+    assert response.status_code == 200
+    assert response.data["items"][0]["ok"] is True
+    assert response.data["items"][0]["entry_truncated"] is True
+    assert response.data["items"][0]["request_count"] == 8
+    assert response.data["items"][1]["code"] == "not_found"
+    assert "entry_truncated" not in response.data["items"][1]
+    assert "shop/checkout" in expressions
+    assert "secret" not in expressions
+    assert "billing" not in expressions
+
+
+def test_service_red_batch_reports_the_same_telemetry_error_for_each_visible_service(apm_api_client, monkeypatch):
+    own = _discover("shop", "shop", "checkout", "pod-a", 10)
+    other = _discover("pay-app", "shop", "payment", "pod-c", 10)
+    hidden = _discover("billing", "billing", "secret", "pod-b", 20)
+    AggregateMetricOrigin.objects.create(product="apm", started_at=datetime(2026, 1, 1, tzinfo=UTC))
+    client = _Client(error=AggregateMetricsUnavailable("http"))
+    _install_reader(monkeypatch, client)
+
+    response = apm_api_client.post(
+        "/api/v1/apm/services/metrics/batch/",
+        {
+            **_window_params(),
+            "include_breakdown": False,
+            "targets": [
+                {"service_id": str(own.id), "environment": "production"},
+                {"service_id": str(other.id), "environment": "production"},
+                {"service_id": str(hidden.id), "environment": "production"},
+            ],
+        },
+        format="json",
+    )
+
+    assert response.status_code == 200
+    for item in response.data["items"][:2]:
+        assert item["ok"] is False
+        assert item["code"] == "telemetry_unavailable"
+        assert item["detail"] == "聚合库查询不可用"
+        assert "entry_truncated" not in item
+    assert response.data["items"][2]["code"] == "not_found"
+    assert client.instant
+
+
+def test_service_red_batch_keeps_per_target_queries_when_breakdown_is_requested(apm_api_client, monkeypatch):
+    own = _discover("shop", "shop", "checkout", "pod-a", 10)
+    AggregateMetricOrigin.objects.create(product="apm", started_at=datetime(2026, 1, 1, tzinfo=UTC))
+    client = _Client(lambda expression: [])
+    _install_reader(monkeypatch, client)
+    _install_inline_batch(monkeypatch)
+
+    response = apm_api_client.post(
+        "/api/v1/apm/services/metrics/batch/",
+        {
+            **_window_params(),
+            "include_breakdown": True,
+            "targets": [{"service_id": str(own.id), "environment": "production"}],
+        },
+        format="json",
+    )
+
+    expressions = [expression for expression, _moment in client.instant]
+    assert response.status_code == 200
+    assert response.data["items"][0]["ok"] is True
+    assert response.data["items"][0]["entry_truncated"] is False
+    assert any('service_name="checkout"' in expression for expression in expressions)
+    assert all("job=~" not in expression for expression in expressions)
+
+
+def test_service_red_batch_rejects_a_blank_service_name_before_grouped_read(apm_api_client, monkeypatch):
+    own = _discover("shop", "shop", "checkout", "pod-a", 10)
+    own.__class__.objects.filter(pk=own.pk).update(name=" ")
+    AggregateMetricOrigin.objects.create(product="apm", started_at=datetime(2026, 1, 1, tzinfo=UTC))
+    client = _Client(lambda expression: [])
+    _install_reader(monkeypatch, client)
+
+    response = apm_api_client.post(
+        "/api/v1/apm/services/metrics/batch/",
+        {
+            **_window_params(),
+            "include_breakdown": False,
+            "targets": [{"service_id": str(own.id), "environment": "production"}],
+        },
+        format="json",
+    )
+
+    assert response.status_code == 200
+    assert response.data["items"][0]["ok"] is False
+    assert response.data["items"][0]["code"] == "invalid_query"
+    assert response.data["items"][0]["detail"] == "service.name 不能为空"
+    assert client.instant == []
+
+
+def test_service_red_batch_resolves_blank_and_unknown_environments_to_the_same_label(apm_api_client, monkeypatch):
+    own = _discover("shop", "shop", "checkout", "pod-a", 10)
+    AggregateMetricOrigin.objects.create(product="apm", started_at=datetime(2026, 1, 1, tzinfo=UTC))
+
+    def respond(expression):
+        if "apm_calls_total" in expression and "status_code" not in expression and "otel_metric_overflow" not in expression:
+            return [
+                {
+                    "metric": {
+                        "service_namespace": "shop",
+                        "service_name": "checkout",
+                        "deployment_environment": "unknown",
+                    },
+                    "value": [1, "12"],
+                }
+            ]
+        return []
+
+    client = _Client(respond)
+    _install_reader(monkeypatch, client)
+
+    response = apm_api_client.post(
+        "/api/v1/apm/services/metrics/batch/",
+        {
+            **_window_params(),
+            "include_breakdown": False,
+            "targets": [
+                {"service_id": str(own.id), "environment": ""},
+                {"service_id": str(own.id), "environment": "unknown"},
+            ],
+        },
+        format="json",
+    )
+
+    assert response.status_code == 200
+    assert [item["request_count"] for item in response.data["items"]] == [12, 12]
+    assert [item["environment"] for item in response.data["items"]] == ["", "unknown"]
+    assert [item["entry_truncated"] for item in response.data["items"]] == [False, False]
+
+
+def test_grouped_read_does_not_return_a_partial_result_when_a_later_query_fails():
+    class _FailSecond(_Client):
+        def query_instant(self, expression, *, at):
+            self.instant.append((expression, at))
+            if len(self.instant) > 1:
+                raise AggregateMetricsUnavailable("timeout")
+            return _vector("10")
+
+    with pytest.raises(TelemetryStoreUnavailable, match="^聚合库查询不可用$"):
+        _store(_FailSecond()).grouped_red([("shop", "checkout")], START, END)

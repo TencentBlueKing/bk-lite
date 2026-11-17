@@ -32,6 +32,7 @@ class AliyunAccountCollectionPlugin(AutoRegisterCollectionPluginMixin, AliyunCol
             "cross_region_replication": "cross_region_replication",
             "block_public_access": "block_public_access",
             "creation_date": (AliyunCollectMetrics.convert_datetime_format, "creation_date"),
+            "tag": "tag",
             "assos": AliyunCollectMetrics.set_asso_instances,
         },
         "aliyun_clb": {
@@ -47,6 +48,7 @@ class AliyunAccountCollectionPlugin(AutoRegisterCollectionPluginMixin, AliyunCol
             "class": "class",
             "charge_type": "charge_type",
             "create_time": (AliyunCollectMetrics.convert_datetime_format, "create_time"),
+            "tag": "tag",
             "assos": AliyunCollectMetrics.set_asso_instances,
         },
         "aliyun_ecs": {
@@ -66,6 +68,7 @@ class AliyunAccountCollectionPlugin(AutoRegisterCollectionPluginMixin, AliyunCol
             "charge_type": "charge_type",
             "create_time": (AliyunCollectMetrics.convert_datetime_format, "create_time"),
             "expired_time": (AliyunCollectMetrics.convert_datetime_format, "expired_time"),
+            "tag": "tag",
             "assos": AliyunCollectMetrics.set_asso_instances,
         },
         "aliyun_kafka_inst": {
@@ -85,6 +88,7 @@ class AliyunAccountCollectionPlugin(AutoRegisterCollectionPluginMixin, AliyunCol
             "io_max_write": (int, "io_max_write"),
             "charge_type": "charge_type",
             "create_time": (AliyunCollectMetrics.convert_datetime_format, "create_time"),
+            "tag": "tag",
             "assos": AliyunCollectMetrics.set_asso_instances,
         },
         "aliyun_mongodb": {
@@ -104,6 +108,7 @@ class AliyunAccountCollectionPlugin(AutoRegisterCollectionPluginMixin, AliyunCol
             "lock_mode": "lock_mode",
             "charge_type": "charge_type",
             "expire_time": (AliyunCollectMetrics.convert_datetime_format, "expire_time"),
+            "tag": "tag",
             "assos": AliyunCollectMetrics.set_asso_instances,
         },
         "aliyun_mysql": {
@@ -127,6 +132,7 @@ class AliyunAccountCollectionPlugin(AutoRegisterCollectionPluginMixin, AliyunCol
             "memory_mb": (int, "memory_mb"),
             "charge_type": "charge_type",
             "expire_time": (AliyunCollectMetrics.convert_datetime_format, "expire_time"),
+            "tag": "tag",
             "assos": AliyunCollectMetrics.set_asso_instances,
         },
         "aliyun_pgsql": {
@@ -150,6 +156,7 @@ class AliyunAccountCollectionPlugin(AutoRegisterCollectionPluginMixin, AliyunCol
             "memory_mb": (int, "memory_mb"),
             "charge_type": "charge_type",
             "expire_time": (AliyunCollectMetrics.convert_datetime_format, "expire_time"),
+            "tag": "tag",
             "assos": AliyunCollectMetrics.set_asso_instances,
         },
         "aliyun_redis": {
@@ -172,6 +179,7 @@ class AliyunAccountCollectionPlugin(AutoRegisterCollectionPluginMixin, AliyunCol
             "charge_type": "charge_type",
             "end_time": (AliyunCollectMetrics.convert_datetime_format, "end_time"),
             "create_time": (AliyunCollectMetrics.convert_datetime_format, "create_time"),
+            "tag": "tag",
             "assos": AliyunCollectMetrics.set_asso_instances,
         },
     }
@@ -182,7 +190,4 @@ class AliyunAccountCollectionPlugin(AutoRegisterCollectionPluginMixin, AliyunCol
 
     @property
     def model_field_mapping(self):
-        return {
-            model_id: bind_collection_mapping(self, mapping)
-            for model_id, mapping in self.field_mappings.items()
-        }
+        return {model_id: bind_collection_mapping(self, mapping) for model_id, mapping in self.field_mappings.items()}

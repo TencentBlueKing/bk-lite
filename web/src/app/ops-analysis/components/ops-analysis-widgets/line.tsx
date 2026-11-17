@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useMemo, useState } from 'react';
 import ReactEcharts from 'echarts-for-react';
 import {
   ChartDataTransformer,
@@ -37,6 +37,9 @@ export interface OpsAnalysisLineProps {
   config?: ValueConfig;
   dataSource?: DatasourceItem;
 }
+
+// 全部显示时 selected 是 {}。不整段替换 legend，合并会留下之前的 false。
+const LINE_BAR_REPLACE_MERGE = ['series', 'xAxis', 'yAxis', 'legend'];
 
 const LINE_SMOOTHNESS = 0.36;
 
@@ -102,8 +105,8 @@ const OpsAnalysisLine: React.FC<OpsAnalysisLineProps> = ({
   const chartRef = useRef<any>(null);
   const chartPaneRef = useChartTooltipWheelScrollRef();
   const themeName = resolveOpsChartThemeName();
-  const chartTheme = getOpsChartTheme(themeName);
-  const chartColors = randomColorForLegend(themeName);
+  const chartTheme = useMemo(() => getOpsChartTheme(themeName), [themeName]);
+  const chartColors = useMemo(() => randomColorForLegend(themeName), [themeName]);
   const yAxisName = getLineBarYAxisName(config);
   const [legendSelected, setLegendSelected] = useState<Record<string, boolean>>({});
   const [zoomRange, setZoomRange] = useState<{ start: number; end: number }>({
@@ -117,9 +120,13 @@ const OpsAnalysisLine: React.FC<OpsAnalysisLineProps> = ({
     setLegendSelected(selected);
   }, []);
 
-  const chartData = ChartDataTransformer.transformToLineBarData(
-    rawData,
-    toLineBarFieldMapping(config, dataSource?.field_schema),
+  const fieldMapping = useMemo(
+    () => toLineBarFieldMapping(config, dataSource?.field_schema),
+    [config, dataSource?.field_schema],
+  );
+  const chartData = useMemo(
+    () => ChartDataTransformer.transformToLineBarData(rawData, fieldMapping),
+    [fieldMapping, rawData],
   );
   const isDataReady = chartData.categories.length > 0;
 
@@ -187,250 +194,221 @@ const OpsAnalysisLine: React.FC<OpsAnalysisLineProps> = ({
     scheduleActivateDataZoomSelect();
   }, [isDataReady, scheduleActivateDataZoomSelect]);
 
-  const option: any = {
-    color: chartColors,
-    animation: false,
-    calculable: true,
-    title: { show: false },
-    legend: {
-      show: false,
-      selected: legendSelected,
-    },
-    toolbox: {
-      show: true,
-      feature: {
-        dataZoom: {
-          show: true,
-          yAxisIndex: 'none',
-          title: { zoom: '', back: '' },
-          icon: { zoom: 'none', back: 'none' },
-          brushStyle: {
-            borderWidth: 2,
-            color: chartTheme.zoomBrushColor,
-            borderColor: chartTheme.zoomBrushBorderColor,
+  const option = useMemo(() => {
+    const built: any = {
+      color: chartColors,
+      animation: false,
+      calculable: true,
+      title: { show: false },
+      legend: {
+        show: false,
+        selected: legendSelected,
+      },
+      toolbox: {
+        show: true,
+        feature: {
+          dataZoom: {
+            show: true,
+            yAxisIndex: 'none',
+            title: { zoom: '', back: '' },
+            icon: { zoom: 'none', back: 'none' },
+            brushStyle: {
+              borderWidth: 2,
+              color: chartTheme.zoomBrushColor,
+              borderColor: chartTheme.zoomBrushBorderColor,
+            },
+          },
+        },
+        itemSize: 0,
+        top: -9999,
+      },
+      dataZoom: [
+        {
+          type: 'inside',
+          xAxisIndex: 0,
+          start: zoomRange.start,
+          end: zoomRange.end,
+          zoomOnMouseWheel: false,
+          moveOnMouseMove: false,
+          moveOnMouseWheel: false,
+        },
+      ],
+      tooltip: {
+        trigger: 'axis',
+        axisPointer: {
+          type: 'line',
+          lineStyle: {
+            color: chartTheme.axisPointerColor,
+            type: 'dashed',
+            width: 1,
+          },
+        },
+        enterable: true,
+        confine: true,
+        hideDelay: 300,
+        position: function (point: number[], _params: any, el: HTMLElement, _rect: any, size: any) {
+          return placeEChartsAxisTooltip(point, size, el);
+        },
+        backgroundColor: 'transparent',
+        borderWidth: 0,
+        borderColor: 'transparent',
+        extraCssText: 'box-shadow:none;padding:0;background:transparent;',
+        textStyle: {
+          fontSize: 12,
+          color: chartTheme.tooltipTextColor,
+        },
+        formatter: function (params: any) {
+          if (!params || params.length === 0) return '';
+          return renderEChartsTooltipCard({
+            title: params[0].axisValueLabel,
+            rows: params.map((param: any, index: number) => ({
+              key: `${param.seriesName || 'series'}-${index}`,
+              color: param.color,
+              markerShape: 'circle',
+              label: param.seriesName || '--',
+              value: formatVisibleChartValue(param.value, config),
+            })),
+          });
+        },
+      },
+      grid: {
+        top: yAxisName ? 28 : 18,
+        left: 16,
+        right: 16,
+        bottom: 8,
+        containLabel: true,
+      },
+      xAxis: {
+        type: 'category',
+        data: chartData?.categories || [],
+        nameRotate: -90,
+        axisLabel: {
+          margin: 15,
+          textStyle: {
+            color: chartTheme.axisLabelColor,
+            fontSize: 11,
+          },
+          rotate: 0,
+          interval: 'auto',
+          formatter: function (value: string) {
+            return value;
+          },
+        },
+        axisLine: {
+          lineStyle: {
+            color: chartTheme.axisLineColor,
+          },
+        },
+        axisTick: {
+          show: false,
+        },
+        splitLine: {
+          show: false,
+          lineStyle: {
+            color: chartTheme.splitLineColor,
           },
         },
       },
-      itemSize: 0,
-      top: -9999,
-    },
-    dataZoom: [
-      {
-        type: 'inside',
-        xAxisIndex: 0,
-        start: zoomRange.start,
-        end: zoomRange.end,
-        zoomOnMouseWheel: false,
-        moveOnMouseMove: false,
-        moveOnMouseWheel: false,
-      },
-    ],
-    tooltip: {
-      trigger: 'axis',
-      axisPointer: {
-        type: 'line',
-        lineStyle: {
-          color: chartTheme.axisPointerColor,
-          type: 'dashed',
-          width: 1,
-        },
-      },
-      enterable: true,
-      confine: true,
-      hideDelay: 300,
-      position: function (point: number[], _params: any, el: HTMLElement, _rect: any, size: any) {
-        return placeEChartsAxisTooltip(point, size, el);
-      },
-      backgroundColor: 'transparent',
-      borderWidth: 0,
-      borderColor: 'transparent',
-      extraCssText: 'box-shadow:none;padding:0;background:transparent;',
-      textStyle: {
-        fontSize: 12,
-        color: chartTheme.tooltipTextColor,
-      },
-      formatter: function (params: any) {
-        if (!params || params.length === 0) return '';
-        return renderEChartsTooltipCard({
-          title: params[0].axisValueLabel,
-          rows: params.map((param: any, index: number) => ({
-            key: `${param.seriesName || 'series'}-${index}`,
-            color: param.color,
-            markerShape: 'circle',
-            label: param.seriesName || '--',
-            value: formatVisibleChartValue(param.value, config),
-          })),
-        });
-      },
-    },
-    grid: {
-      top: yAxisName ? 28 : 18,
-      left: 16,
-      right: 16,
-      bottom: 8,
-      containLabel: true,
-    },
-    xAxis: {
-      type: 'category',
-      data: chartData?.categories || [],
-      nameRotate: -90,
-      axisLabel: {
-        margin: 15,
-        textStyle: {
+      yAxis: {
+        type: 'value',
+        name: yAxisName,
+        nameGap: 6,
+        nameTextStyle: {
           color: chartTheme.axisLabelColor,
           fontSize: 11,
         },
-        rotate: 0,
-        interval: 'auto',
-        formatter: function (value: string) {
-          return value;
-        },
-      },
-      axisLine: {
-        lineStyle: {
-          color: chartTheme.axisLineColor,
-        },
-      },
-      axisTick: {
-        show: false,
-      },
-      splitLine: {
-        show: false,
-        lineStyle: {
-          color: chartTheme.splitLineColor,
-        },
-      },
-    },
-    yAxis: {
-      type: 'value',
-      name: yAxisName,
-      nameGap: 6,
-      nameTextStyle: {
-        color: chartTheme.axisLabelColor,
-        fontSize: 11,
-      },
-      minInterval: 1,
-      axisTick: {
-        show: false,
-      },
-      axisLine: {
-        show: false,
-      },
-      axisLabel: {
-        formatter: (value: number) => formatLineBarAxisTick(value, config),
-        textStyle: {
-          color: chartTheme.axisLabelColor,
-        },
-      },
-      splitLine: {
-        show: true,
-        lineStyle: {
-          color: chartTheme.splitLineColor,
-          type: 'dashed',
-        },
-      },
-    },
-  };
-
-  const DUAL_AXIS_THRESHOLD = 5;
-  let useDualAxis = false;
-  let largeSeriesIndices: number[] = [];
-
-  if (chartData && chartData.series && chartData.series.length >= 2) {
-    const seriesMaxValues = chartData.series.map((item: any) => {
-      const numericValues = (item.data || []).filter(
-        (value: any) => typeof value === 'number' && value > 0,
-      );
-      return numericValues.length > 0 ? Math.max(...numericValues) : 0;
-    });
-    const maxVal = Math.max(...seriesMaxValues);
-    const minVal = Math.min(...seriesMaxValues.filter((value: number) => value > 0));
-    if (minVal > 0 && maxVal / minVal >= DUAL_AXIS_THRESHOLD) {
-      useDualAxis = true;
-      const threshold = maxVal / DUAL_AXIS_THRESHOLD;
-      largeSeriesIndices = seriesMaxValues
-        .map((value: number, index: number) => (value >= threshold ? index : -1))
-        .filter((index: number) => index >= 0);
-    }
-  }
-
-  if (useDualAxis) {
-    option.yAxis = [
-      {
-        type: 'value',
         minInterval: 1,
-        axisTick: { show: false },
-        axisLine: { show: false },
-        name: yAxisName,
-        nameGap: 6,
-        nameTextStyle: { color: chartTheme.axisLabelColor, fontSize: 11 },
+        axisTick: {
+          show: false,
+        },
+        axisLine: {
+          show: false,
+        },
         axisLabel: {
           formatter: (value: number) => formatLineBarAxisTick(value, config),
-          textStyle: { color: chartTheme.axisLabelColor },
+          textStyle: {
+            color: chartTheme.axisLabelColor,
+          },
         },
         splitLine: {
           show: true,
-          lineStyle: { color: chartTheme.splitLineColor, type: 'dashed' },
+          lineStyle: {
+            color: chartTheme.splitLineColor,
+            type: 'dashed',
+          },
         },
       },
-      {
-        type: 'value',
-        name: yAxisName,
-        nameGap: 6,
-        nameTextStyle: { color: chartTheme.axisLabelColor, fontSize: 11 },
-        minInterval: 1,
-        axisTick: { show: false },
-        axisLine: { show: false },
-        axisLabel: {
-          formatter: (value: number) => formatLineBarAxisTick(value, config),
-          textStyle: { color: chartTheme.axisLabelColor },
-        },
-        splitLine: { show: false },
-      },
-    ];
-    option.grid.right = 40;
-  }
+    };
 
-  if (chartData && chartData.series) {
-    option.series = chartData.series.map((item: any, index: number) => ({
-      name: item.name,
-      type: 'line',
-      data: item.data,
-      smooth: LINE_SMOOTHNESS,
-      smoothMonotone: 'x',
-      ...linePointMark(item.data),
-      ...(config?.stack ? { stack: 'total' } : {}),
-      yAxisIndex: useDualAxis ? (largeSeriesIndices.includes(index) ? 0 : 1) : 0,
-      lineStyle: {
-        width: chartTheme.lineWidth,
-        opacity: chartTheme.lineOpacity,
-      },
-      itemStyle: {
-        borderColor: chartTheme.panelBg,
-        borderWidth: 1,
-      },
-      areaStyle: {
-        color: getSeriesAreaColor(
-          chartColors[index % chartColors.length],
-          config?.fillOpacity,
-        ),
-      },
-      emphasis: {
-        focus: 'series',
-        lineStyle: {
-          width: chartTheme.lineWidth + 0.8,
+    const DUAL_AXIS_THRESHOLD = 5;
+    let useDualAxis = false;
+    let largeSeriesIndices: number[] = [];
+
+    if (chartData && chartData.series && chartData.series.length >= 2) {
+      const seriesMaxValues = chartData.series.map((item: any) => {
+        const numericValues = (item.data || []).filter(
+          (value: any) => typeof value === 'number' && value > 0,
+        );
+        return numericValues.length > 0 ? Math.max(...numericValues) : 0;
+      });
+      const maxVal = Math.max(...seriesMaxValues);
+      const minVal = Math.min(...seriesMaxValues.filter((value: number) => value > 0));
+      if (minVal > 0 && maxVal / minVal >= DUAL_AXIS_THRESHOLD) {
+        useDualAxis = true;
+        const threshold = maxVal / DUAL_AXIS_THRESHOLD;
+        largeSeriesIndices = seriesMaxValues
+          .map((value: number, index: number) => (value >= threshold ? index : -1))
+          .filter((index: number) => index >= 0);
+      }
+    }
+
+    if (useDualAxis) {
+      built.yAxis = [
+        {
+          type: 'value',
+          minInterval: 1,
+          axisTick: { show: false },
+          axisLine: { show: false },
+          name: yAxisName,
+          nameGap: 6,
+          nameTextStyle: { color: chartTheme.axisLabelColor, fontSize: 11 },
+          axisLabel: {
+            formatter: (value: number) => formatLineBarAxisTick(value, config),
+            textStyle: { color: chartTheme.axisLabelColor },
+          },
+          splitLine: {
+            show: true,
+            lineStyle: { color: chartTheme.splitLineColor, type: 'dashed' },
+          },
         },
-      },
-    }));
-  } else {
-    option.series = [
-      {
-        name: t('topology.treeValueTitle'),
+        {
+          type: 'value',
+          name: yAxisName,
+          nameGap: 6,
+          nameTextStyle: { color: chartTheme.axisLabelColor, fontSize: 11 },
+          minInterval: 1,
+          axisTick: { show: false },
+          axisLine: { show: false },
+          axisLabel: {
+            formatter: (value: number) => formatLineBarAxisTick(value, config),
+            textStyle: { color: chartTheme.axisLabelColor },
+          },
+          splitLine: { show: false },
+        },
+      ];
+      built.grid.right = 40;
+    }
+
+    if (chartData && chartData.series) {
+      built.series = chartData.series.map((item: any, index: number) => ({
+        name: item.name,
         type: 'line',
-        data: chartData && chartData.values ? chartData.values : [],
+        data: item.data,
         smooth: LINE_SMOOTHNESS,
         smoothMonotone: 'x',
-        ...linePointMark(chartData?.values),
+        ...linePointMark(item.data),
+        ...(config?.stack ? { stack: 'total' } : {}),
+        yAxisIndex: useDualAxis ? (largeSeriesIndices.includes(index) ? 0 : 1) : 0,
         lineStyle: {
           width: chartTheme.lineWidth,
           opacity: chartTheme.lineOpacity,
@@ -440,7 +418,10 @@ const OpsAnalysisLine: React.FC<OpsAnalysisLineProps> = ({
           borderWidth: 1,
         },
         areaStyle: {
-          color: getSeriesAreaColor(chartColors[0], config?.fillOpacity),
+          color: getSeriesAreaColor(
+            chartColors[index % chartColors.length],
+            config?.fillOpacity,
+          ),
         },
         emphasis: {
           focus: 'series',
@@ -448,30 +429,69 @@ const OpsAnalysisLine: React.FC<OpsAnalysisLineProps> = ({
             width: chartTheme.lineWidth + 0.8,
           },
         },
-      },
-    ];
-  }
-
-  const thresholdLines = (config?.thresholdColors || [])
-    .map((threshold) => ({ value: Number(threshold.value), color: threshold.color }))
-    .filter((threshold) => !Number.isNaN(threshold.value) && threshold.value !== 0);
-  if (thresholdLines.length > 0 && option.series.length > 0) {
-    option.series[0].markLine = {
-      symbol: 'none',
-      silent: true,
-      data: thresholdLines.map((threshold) => ({
-        yAxis: threshold.value,
-        lineStyle: { color: threshold.color, type: 'dashed', width: 1.5 },
-        label: {
-          show: true,
-          position: 'insideEndTop',
-          formatter: String(threshold.value),
-          color: threshold.color,
-          fontSize: 10,
+      }));
+    } else {
+      built.series = [
+        {
+          name: t('topology.treeValueTitle'),
+          type: 'line',
+          data: chartData && chartData.values ? chartData.values : [],
+          smooth: LINE_SMOOTHNESS,
+          smoothMonotone: 'x',
+          ...linePointMark(chartData?.values),
+          lineStyle: {
+            width: chartTheme.lineWidth,
+            opacity: chartTheme.lineOpacity,
+          },
+          itemStyle: {
+            borderColor: chartTheme.panelBg,
+            borderWidth: 1,
+          },
+          areaStyle: {
+            color: getSeriesAreaColor(chartColors[0], config?.fillOpacity),
+          },
+          emphasis: {
+            focus: 'series',
+            lineStyle: {
+              width: chartTheme.lineWidth + 0.8,
+            },
+          },
         },
-      })),
-    };
-  }
+      ];
+    }
+
+    const thresholdLines = (config?.thresholdColors || [])
+      .map((threshold) => ({ value: Number(threshold.value), color: threshold.color }))
+      .filter((threshold) => !Number.isNaN(threshold.value) && threshold.value !== 0);
+    if (thresholdLines.length > 0 && built.series.length > 0) {
+      built.series[0].markLine = {
+        symbol: 'none',
+        silent: true,
+        data: thresholdLines.map((threshold) => ({
+          yAxis: threshold.value,
+          lineStyle: { color: threshold.color, type: 'dashed', width: 1.5 },
+          label: {
+            show: true,
+            position: 'insideEndTop',
+            formatter: String(threshold.value),
+            color: threshold.color,
+            fontSize: 10,
+          },
+        })),
+      };
+    }
+
+    return built;
+  }, [
+    chartColors,
+    chartData,
+    chartTheme,
+    config,
+    legendSelected,
+    t,
+    yAxisName,
+    zoomRange,
+  ]);
 
   const legendData = option.series.map((item: { name?: string }) => ({
     name: item.name || t('topology.treeValueTitle'),
@@ -507,7 +527,8 @@ const OpsAnalysisLine: React.FC<OpsAnalysisLineProps> = ({
           <ReactEcharts
             ref={chartRef}
             option={option}
-            notMerge={true}
+            notMerge={false}
+            replaceMerge={LINE_BAR_REPLACE_MERGE}
             style={{ height: '100%', width: '100%' }}
             onChartReady={handleChartReady}
             onEvents={{ datazoom: handleDataZoom, dblclick: handleDblClick }}

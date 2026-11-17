@@ -7,7 +7,9 @@ from apps.opspilot.metis.llm.tools.mssql.utils import execute_readonly_query, fo
 
 
 @tool()
-def diagnose_slow_queries(threshold_ms: int = 1000, limit: int = 20, config: RunnableConfig = None):
+def diagnose_slow_queries(
+    threshold_ms: int = 1000, limit: int = 20, config: RunnableConfig = None, instance_name: str = None, instance_id: str = None
+):
     """
     诊断慢查询
 
@@ -60,7 +62,7 @@ def diagnose_slow_queries(threshold_ms: int = 1000, limit: int = 20, config: Run
     try:
         # threshold_ms需要转换为微秒(MSSQL使用微秒)
         threshold_us = threshold_ms * 1000
-        results = execute_readonly_query(query, params=(threshold_us,), config=config)
+        results = execute_readonly_query(query, params=(threshold_us,), config=config, instance_name=instance_name, instance_id=instance_id)
 
         # 格式化时间字段
         for row in results:
@@ -73,7 +75,7 @@ def diagnose_slow_queries(threshold_ms: int = 1000, limit: int = 20, config: Run
 
 
 @tool()
-def diagnose_lock_conflicts(config: RunnableConfig = None):
+def diagnose_lock_conflicts(config: RunnableConfig = None, instance_name: str = None, instance_id: str = None):
     """
     检测锁冲突和阻塞
 
@@ -122,7 +124,7 @@ def diagnose_lock_conflicts(config: RunnableConfig = None):
     """
 
     try:
-        results = execute_readonly_query(query, config=config)
+        results = execute_readonly_query(query, config=config, instance_name=instance_name, instance_id=instance_id)
 
         return safe_json_dumps({"total_blocked_queries": len(results), "lock_conflicts": results, "has_conflicts": len(results) > 0})
     except Exception as e:
@@ -130,7 +132,7 @@ def diagnose_lock_conflicts(config: RunnableConfig = None):
 
 
 @tool()
-def diagnose_connection_issues(config: RunnableConfig = None):
+def diagnose_connection_issues(config: RunnableConfig = None, instance_name: str = None, instance_id: str = None):
     """
     诊断连接池问题
 
@@ -192,9 +194,9 @@ def diagnose_connection_issues(config: RunnableConfig = None):
     """  # noqa
 
     try:
-        max_conn = execute_readonly_query(max_conn_query, config=config)
-        connections = execute_readonly_query(connections_query, config=config)
-        long_running = execute_readonly_query(long_running_query, config=config)
+        max_conn = execute_readonly_query(max_conn_query, config=config, instance_name=instance_name, instance_id=instance_id)
+        connections = execute_readonly_query(connections_query, config=config, instance_name=instance_name, instance_id=instance_id)
+        long_running = execute_readonly_query(long_running_query, config=config, instance_name=instance_name, instance_id=instance_id)
 
         # 计算总连接数
         total_connections = sum(row["connection_count"] for row in connections)
@@ -220,7 +222,7 @@ def diagnose_connection_issues(config: RunnableConfig = None):
 
 
 @tool()
-def check_database_health(config: RunnableConfig = None):
+def check_database_health(config: RunnableConfig = None, instance_name: str = None, instance_id: str = None):
     """
     整体数据库健康检查
 
@@ -279,9 +281,9 @@ def check_database_health(config: RunnableConfig = None):
     """
 
     try:
-        stats = execute_readonly_query(stats_query, config=config)[0]
-        db_statuses = execute_readonly_query(db_status_query, config=config)
-        disk_space = execute_readonly_query(disk_space_query, config=config)
+        stats = execute_readonly_query(stats_query, config=config, instance_name=instance_name, instance_id=instance_id)[0]
+        db_statuses = execute_readonly_query(db_status_query, config=config, instance_name=instance_name, instance_id=instance_id)
+        disk_space = execute_readonly_query(disk_space_query, config=config, instance_name=instance_name, instance_id=instance_id)
 
         # 计算健康评分
         issues = []
@@ -351,7 +353,7 @@ def check_database_health(config: RunnableConfig = None):
 
 
 @tool()
-def check_replication_lag(config: RunnableConfig = None):
+def check_replication_lag(config: RunnableConfig = None, instance_name: str = None, instance_id: str = None):
     """
     检查数据库镜像/AlwaysOn复制延迟
 
@@ -377,7 +379,7 @@ def check_replication_lag(config: RunnableConfig = None):
     """
 
     try:
-        hadr_result = execute_readonly_query(hadr_check, config=config)
+        hadr_result = execute_readonly_query(hadr_check, config=config, instance_name=instance_name, instance_id=instance_id)
         is_hadr_enabled = hadr_result[0]["is_hadr_enabled"] == 1 if hadr_result and hadr_result[0]["is_hadr_enabled"] is not None else False
 
         if not is_hadr_enabled:
@@ -408,7 +410,7 @@ def check_replication_lag(config: RunnableConfig = None):
     """
 
     try:
-        results = execute_readonly_query(ag_query, config=config)
+        results = execute_readonly_query(ag_query, config=config, instance_name=instance_name, instance_id=instance_id)
 
         if not results:
             return safe_json_dumps({"has_replication": False, "message": "未检测到AlwaysOn可用性组配置"})
@@ -427,7 +429,7 @@ def check_replication_lag(config: RunnableConfig = None):
 
 
 @tool()
-def diagnose_deadlocks(limit: int = 10, config: RunnableConfig = None):
+def diagnose_deadlocks(limit: int = 10, config: RunnableConfig = None, instance_name: str = None, instance_id: str = None):
     """
     诊断死锁问题
 
@@ -464,7 +466,7 @@ def diagnose_deadlocks(limit: int = 10, config: RunnableConfig = None):
     """
 
     try:
-        results = execute_readonly_query(query, config=config)
+        results = execute_readonly_query(query, config=config, instance_name=instance_name, instance_id=instance_id)
 
         if not results:
             return safe_json_dumps({"deadlock_count": 0, "message": "未发现最近的死锁记录"})
@@ -486,7 +488,7 @@ def diagnose_deadlocks(limit: int = 10, config: RunnableConfig = None):
 
 
 @tool()
-def get_failed_queries(limit: int = 20, config: RunnableConfig = None):
+def get_failed_queries(limit: int = 20, config: RunnableConfig = None, instance_name: str = None, instance_id: str = None):
     """
     获取失败和错误的查询信息
 
@@ -525,8 +527,8 @@ def get_failed_queries(limit: int = 20, config: RunnableConfig = None):
     """
 
     try:
-        errors = execute_readonly_query(error_query, config=config)
-        db_stats = execute_readonly_query(db_stats_query, config=config)
+        errors = execute_readonly_query(error_query, config=config, instance_name=instance_name, instance_id=instance_id)
+        db_stats = execute_readonly_query(db_stats_query, config=config, instance_name=instance_name, instance_id=instance_id)
 
         # 格式化时间
         for row in errors:

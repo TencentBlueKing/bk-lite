@@ -217,60 +217,31 @@ const applyValueFormatFields = (
   }
 };
 
-const trimOptionalField = (value?: string) => {
-  const trimmed = value?.trim();
-  return trimmed ? trimmed : undefined;
-};
-
 type TopNSaveValues = Pick<
   ViewConfigFormValues,
-  'topNLabelField' | 'topNValueField' | 'topNScalarFields' | 'barMode' | 'barMax'
+  'topNLabelField' | 'topNValueField'
 >;
 
 /**
- * 与仪表盘 submitConfig 对齐：有标量行时去掉排名字段；相对模式不保留 barMode/barMax。
- * 在已有 valueConfig 上删除旧键，避免 `??` 把上一份绝对条宽写回去。
+ * 与仪表盘 submitConfig 对齐：只保留标签和数值字段。
+ * 在已有 valueConfig 上删掉标量条目和条形比例，避免旧配置在再次保存时写回去。
  */
 export const applyTopNValueConfig = (
   valueConfig: Record<string, unknown>,
   values: TopNSaveValues,
 ): Record<string, unknown> => {
-  const scalarFields: Array<{ field: string; label?: string }> = [];
-  (values.topNScalarFields || []).forEach((item) => {
-    const field = trimOptionalField(item?.field);
-    if (!field) {
-      return;
-    }
-    const label = trimOptionalField(item?.label);
-    scalarFields.push(label ? { field, label } : { field });
-  });
-  if (scalarFields.length > 0) {
-    valueConfig.topNScalarFields = scalarFields;
+  delete valueConfig.topNScalarFields;
+  delete valueConfig.barMode;
+  delete valueConfig.barMax;
+  if (values.topNLabelField !== undefined) {
+    valueConfig.topNLabelField = values.topNLabelField;
+  } else {
     delete valueConfig.topNLabelField;
-    delete valueConfig.topNValueField;
-  } else {
-    delete valueConfig.topNScalarFields;
-    if (values.topNLabelField !== undefined) {
-      valueConfig.topNLabelField = values.topNLabelField;
-    } else {
-      delete valueConfig.topNLabelField;
-    }
-    if (values.topNValueField !== undefined) {
-      valueConfig.topNValueField = values.topNValueField;
-    } else {
-      delete valueConfig.topNValueField;
-    }
   }
-  if (values.barMode === 'absolute') {
-    valueConfig.barMode = 'absolute';
-    if (isFiniteNumber(values.barMax) && values.barMax > 0) {
-      valueConfig.barMax = values.barMax;
-    } else {
-      delete valueConfig.barMax;
-    }
+  if (values.topNValueField !== undefined) {
+    valueConfig.topNValueField = values.topNValueField;
   } else {
-    delete valueConfig.barMode;
-    delete valueConfig.barMax;
+    delete valueConfig.topNValueField;
   }
   return valueConfig;
 };

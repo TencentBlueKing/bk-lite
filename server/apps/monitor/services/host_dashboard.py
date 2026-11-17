@@ -40,6 +40,7 @@ from apps.monitor.services.host_resource_top import (
     resolve_window_step,
     validate_window_aggregation,
 )
+from apps.monitor.services.range_step import auto_range_step
 from apps.monitor.utils.alert_name_variables import resolve_resource_ip
 from apps.monitor.utils.dimension import parse_instance_id
 
@@ -474,19 +475,21 @@ class HostMetricRangeService:
         metric_type: str,
         time_range: list | tuple,
         instances: list[Any],
-        step: str = DEFAULT_RANGE_STEP,
+        step: str | None = None,
     ) -> dict[str, list[list[float]]]:
         if not instances:
             return {}
         normalized_type = validate_range_metric_type(metric_type)
         spec = RANGE_METRIC_SPECS[normalized_type]
         start, end = parse_rfc3339_range_utc(time_range)
+        # 未传 step 时按窗长变粗。快照均值调用方会显式传入 5m，不走这条自动档。
+        resolved_step = step if step not in (None, "") else auto_range_step((end - start).total_seconds())
         host_meta = build_host_meta(instances)
         response = self.vm_api.query_range(
             spec["query"],
             rfc3339_to_timestamp(start),
             rfc3339_to_timestamp(end),
-            step or DEFAULT_RANGE_STEP,
+            resolved_step,
         )
         if not isinstance(response, dict) or response.get("status") != "success":
             message = response.get("error") if isinstance(response, dict) else None

@@ -126,6 +126,38 @@ export type DataSourceParamFilterType =
   | 'filter'
   | 'fixed'
   | 'params';
+export type ConditionLogic = 'AND' | 'OR';
+
+export interface ConditionFilterItem {
+  field?: string;
+  op?: string;
+  value?: unknown;
+}
+
+export interface ConditionFilterValue {
+  logic?: ConditionLogic;
+  items?: ConditionFilterItem[];
+}
+
+export type ConditionFieldValueType = 'string' | 'number' | 'enum' | 'tag';
+
+export interface ConditionFieldOption {
+  value: string;
+  label: string;
+  valueType?: ConditionFieldValueType;
+  options?: Array<{ label: string; value: string | number }>;
+}
+
+export interface ConditionFieldSource {
+  kind: 'static' | 'dynamic';
+  items?: ConditionFieldOption[];
+  sourceId?: number;
+  sourceRef?: SourceRef;
+  valueField?: string;
+  labelField?: string;
+  queryParams?: Record<string, OptionsQueryParamValue>;
+}
+
 export interface InputOption {
   label: string;
   value: string | number;
@@ -159,6 +191,8 @@ export interface DynamicOptionsSource {
   labelField: string;
   /** 选项查询请求参数。值为字面量或 { ref }；YAML 整值 $name$ / $name:type$ 读入时归一成 { ref }。 */
   queryParams?: Record<string, OptionsQueryParamValue>;
+  /** 上游为空时的提示文案 key。 */
+  emptyUpstreamHintKey?: string;
 }
 
 export type InputControlConfig =
@@ -176,12 +210,21 @@ export type InputControlConfig =
     maxCount?: number;
     /** select 专用：dropdown 为默认下拉；table 点击后弹表格批量勾选 */
     picker?: 'dropdown' | 'table';
+  }
+  | {
+    control: 'conditionFilter';
+    fields: ConditionFieldSource;
+  }
+  | {
+    /** 这个参数的提交值是某个数据变量的取值列，不再渲染输入控件。 */
+    control: 'dataVariable';
+    dataVariableId: string;
   };
 
 export interface ParamItem {
   id?: string;
   name: string;
-  value: string | number | boolean | Array<string | number> | [number, number] | DateRangeValue | null | undefined;
+  value: string | number | boolean | Array<string | number> | [number, number] | DateRangeValue | ConditionFilterValue | { dataVariableId: string } | null | undefined;
   alias_name: string;
   type?: string;
   filterType?: DataSourceParamFilterType;

@@ -10,9 +10,7 @@ monitor_object_metric:
   Transmission:
     snmp_uptime:
       name: System Uptime
-      desc: This metric indicates the uptime of the device since the last restart, derived from sysUpTime.
-        Monitoring uptime helps administrators understand device stability and identify unexpected reboots
-        or failures.
+      desc: This metric indicates the uptime of the device since the last restart, derived from sysUpTime. Monitoring uptime helps administrators understand device stability and identify unexpected reboots or failures.
     device_psu_state:
       name: Power Supply Status
       desc: Operational state of each transmission device power supply. A non-normal state indicates offline

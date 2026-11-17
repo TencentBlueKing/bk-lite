@@ -9,6 +9,7 @@ from apps.core.logger import opspilot_logger as logger
 from apps.core.utils.viewset_utils import AuthViewSet, LanguageViewSet
 from apps.opspilot.models import LLMSkill, SkillChannel
 from apps.opspilot.serializers.skill_channel_serializer import SkillChannelSerializer
+from apps.opspilot.services.skill_channel_account_association import list_account_association_options
 from apps.opspilot.services.skill_channel_chat_service import (
     SkillChannelChatError,
     get_skill_conversation_for_admin,
@@ -23,11 +24,11 @@ class SkillChannelViewSet(LanguageViewSet):
     """智能体渠道发布绑定 CRUD / 启停。权限：有 Skill 管理组即可（skill_setting-Edit）。"""
 
     serializer_class = SkillChannelSerializer
-    queryset = SkillChannel.objects.all().select_related("skill")
+    queryset = SkillChannel.objects.all().select_related("skill", "account_association")
     http_method_names = ["get", "post", "put", "patch", "delete", "head", "options"]
 
     def get_queryset(self):
-        qs = SkillChannel.objects.all().select_related("skill")
+        qs = SkillChannel.objects.all().select_related("skill", "account_association")
         skill_id = self.request.query_params.get("skill_id") or self.request.data.get("skill")
         if skill_id:
             qs = qs.filter(skill_id=skill_id)
@@ -120,6 +121,20 @@ class SkillChannelViewSet(LanguageViewSet):
             return int(raw)
         except (TypeError, ValueError) as exc:
             raise SkillChannelChatError(f"{field_name}无效", status=400) from exc
+
+    @HasPermission("skill_setting-View")
+    @action(methods=["GET"], detail=False, url_path="account_association_options")
+    def account_association_options(self, request):
+        data = list_account_association_options(
+            request.query_params.get("channel_type") or "",
+            {
+                "corp_id": request.query_params.get("corp_id") or "",
+                "agent_id": request.query_params.get("agent_id") or "",
+                "app_id": request.query_params.get("app_id") or "",
+                "client_id": request.query_params.get("client_id") or "",
+            },
+        )
+        return Response({"result": True, "data": data})
 
     @HasPermission("skill_setting-View")
     @action(methods=["GET"], detail=False, url_path="admin_conversations")

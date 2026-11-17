@@ -30,7 +30,7 @@ monitor_object_metric:
       desc: 该指标表示 DASAN 以太网交换机当前空闲内存（dsFreeMem），为厂商 INTEGER 原值。
     device_memory_usage:
       name: 内存使用率
-      desc: 该指标表示 DASAN 以太网交换机整体内存使用率，按 已用/总量*100 计算。持续偏高可能由内存泄漏、MAC/ARP 表过大或容量不足导致。
+      desc: DASAN 以太网交换机整体内存使用率。持续偏高可能由内存泄漏、MAC/ARP 表过大或容量不足导致。
     device_fan_state:
       name: 风扇状态
       desc: 该指标表示 DASAN 以太网交换机各风扇的运行状态（dsFanstatus），归一为 1=正常、2=异常。异常表示散热故障，可能迅速导致过热，应立即排查。

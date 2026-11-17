@@ -972,23 +972,33 @@ def _write_skill_memory_from_snapshot(snapshot, memory_space_id, owner_username,
     memory_space = MemorySpace.objects.filter(id=memory_space_id).first()
     if memory_space is None:
         return None
-    transcript = format_conversation_transcript(snapshot)
-    if not transcript:
-        return None
-    summarized = _summarize_skill_conversation_content(memory_space, transcript, model_id=model_id)
-    if not summarized:
-        return None
-    _commit_memory_write_with_retry(
-        memory_space_id=memory_space.id,
-        title=SKILL_MEMORY_TITLE,
-        content=summarized,
-        owner_username=owner_username or "",
-        owner_domain=owner_domain or "",
-        organization_id=None,
-        model_id=model_id,
-        skip_write_rule=False,
-        owner_user_id=owner_user_id,
-    )
+    groups = {}
+    if memory_space.scope == MemorySpace.SCOPE_TEAM:
+        for item in snapshot:
+            organization_id = item.organization_id if hasattr(item, "organization_id") else item.get("organization_id")
+            if organization_id is not None:
+                groups.setdefault(organization_id, []).append(item)
+    else:
+        groups[None] = snapshot
+    for organization_id, messages in groups.items():
+        transcript = format_conversation_transcript(messages)
+        if not transcript:
+            continue
+        summarized = _summarize_skill_conversation_content(memory_space, transcript, model_id=model_id)
+        if not summarized:
+            continue
+        is_team = organization_id is not None
+        _commit_memory_write_with_retry(
+            memory_space_id=memory_space.id,
+            title=SKILL_MEMORY_TITLE,
+            content=summarized,
+            owner_username=_resolve_org_display_name(organization_id) if is_team else (owner_username or ""),
+            owner_domain="" if is_team else (owner_domain or ""),
+            organization_id=organization_id,
+            model_id=model_id,
+            skip_write_rule=False,
+            owner_user_id=None if is_team else owner_user_id,
+        )
     return None
 
 
@@ -1005,7 +1015,6 @@ def _write_skill_memory_from_conversation(conversation_id: int):
             return None
         watermark = conv.memory_written_message_id or 0
         last_id = messages[-1].id
-        transcript = format_conversation_transcript(messages)
         owner = resolve_owner_identity(external_user_id=conv.external_user_id, assign_if_missing=True)
 
     space = resolve_skill_conversation_memory_space(skill)
@@ -1013,19 +1022,7 @@ def _write_skill_memory_from_conversation(conversation_id: int):
         return None
     model_id = resolve_skill_memory_model_id(skill, space)
     space_id = space.id
-    summarized = _summarize_skill_conversation_content(space, transcript, model_id=model_id)
-    if summarized:
-        _commit_memory_write_with_retry(
-            memory_space_id=space_id,
-            title=SKILL_MEMORY_TITLE,
-            content=summarized,
-            owner_username=owner.username,
-            owner_domain=owner.domain,
-            organization_id=None,
-            model_id=model_id,
-            skip_write_rule=False,
-            owner_user_id=owner.user_id,
-        )
+    _write_skill_memory_from_snapshot(messages, space_id, owner.username, owner.domain, model_id, owner_user_id=owner.user_id)
     with transaction.atomic():
         try:
             conv = SkillConversation.objects.select_for_update().get(id=conversation_id)

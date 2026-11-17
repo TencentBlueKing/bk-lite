@@ -1,3 +1,5 @@
+import { displayCollectedTag } from '@/utils/collectedTag';
+
 const TAG_COLOR_PRESETS = [
   'magenta',
   'red',
@@ -61,7 +63,7 @@ export const normalizeTagValues = (value: unknown): string[] => {
 };
 
 export const getTagDisplayText = (value: unknown): string => {
-  const values = normalizeTagValues(value);
+  const values = normalizeTagValues(value).map((item) => displayCollectedTag(item));
   return values.length ? values.join('，') : '--';
 };
 

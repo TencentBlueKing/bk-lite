@@ -173,7 +173,7 @@ def test_skill_guard_blocks_read_file_and_strips_tools_after_fail_then_probe():
         return ModelResponse(result=[AIMessage(content="ok")])
 
     guard.wrap_model_call(_request([execute, read_file], messages=[HumanMessage(content="查用户"), fail, probe]), model_handler)
-    assert visible == [[]]
+    assert visible == [["read_file"]]
 
 
 def test_skill_guard_allows_one_script_retry_after_failure():

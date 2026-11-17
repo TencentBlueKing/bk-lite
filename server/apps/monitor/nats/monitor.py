@@ -8,7 +8,7 @@ from time import perf_counter
 from types import SimpleNamespace
 from typing import Optional
 
-from django.db import transaction
+from django.db import close_old_connections, transaction
 from django.db.models import Count, F, Q
 from django.db.models.fields.json import KeyTextTransform
 from django.utils import timezone
@@ -55,13 +55,22 @@ from apps.monitor.serializers.monitor_metrics import MetricGroupSerializer, Metr
 from apps.monitor.serializers.monitor_object import MonitorObjectSerializer, MonitorObjectTypeSerializer
 from apps.monitor.serializers.monitor_policy import MonitorPolicySerializer
 from apps.monitor.serializers.plugin import MonitorPluginSerializer
-from apps.monitor.services.active_alert_ranking import format_active_alert_duration, order_severity_queryset, parse_active_alert_order
+from apps.monitor.services.active_alert_ranking import (
+    format_active_alert_duration,
+    format_active_alert_item_times,
+    order_severity_queryset,
+    parse_active_alert_order,
+)
 from apps.monitor.services.alert_access import filter_alerts_by_organizations, orphaned_monitor_policy_q
 from apps.monitor.services.authorized_metric_query import AuthorizedMetricQueryError, AuthorizedMetricQueryService
 from apps.monitor.services.cmdb_relation_alerts import (
     RELATION_ALERT_VIEWS,
     build_relation_alert_view,
+    collect_peer_uuids,
+    compose_path_peers,
+    edges_from_peers,
     empty_relation_alert_payload,
+    normalize_model_asst_ids,
     normalize_relation_alert_limit,
 )
 from apps.monitor.services.display_metric_snapshot import (
@@ -122,6 +131,8 @@ from apps.monitor.services.nats_query_contract import normalize_time_value as _n
 from apps.monitor.services.nats_query_contract import paginate_items as _paginate_items
 from apps.monitor.services.network_device_resource_top import NetworkDeviceResourceTopService
 from apps.monitor.services.network_device_resource_top import validate_metric_type as validate_network_metric_type
+from apps.monitor.services.range_step import explicit_range_step as _explicit_range_step
+from apps.monitor.services.range_step import resolve_range_step as _resolve_range_step
 from apps.monitor.services.zombie_host_query import ZombieHostQueryError, count_successful_logins, load_hosts_for_systems, load_selected_hosts
 from apps.monitor.services.zombie_host_report import (
     FOLD_MAX,
@@ -817,14 +828,32 @@ def delete_monitor_policy(*args, **kwargs):
         return {"result": False, "data": [], "message": str(exc)}
 
 
+def _apply_monitor_object_display_names(results, user_info):
+    """与监控对象列表相同：语言包，否则库里的展示名，否则英文名。"""
+    locale = (user_info or {}).get("locale") or "en"
+    lan = LanguageLoader(app=LanguageConstants.APP, default_lang=locale)
+    for result in results:
+        key = f"{LanguageConstants.MONITOR_OBJECT}.{result['name']}"
+        result["display_name"] = lan.get(key) or result.get("display_name") or result["name"]
+
+
 @nats_client.register
 def monitor_objects(*args, **kwargs):
-    """查询监控对象列表"""
+    """查询监控对象列表。展示名保持库内原值，语言包只走通用查询选项接口。"""
     logger.info("=== monitor_objects called , args={}, kwargs={}===".format(args, kwargs))
     queryset = MonitorObject.objects.all().order_by("id")
     serializer = MonitorObjectSerializer(queryset, many=True)
-    result = {"result": True, "data": serializer.data, "message": ""}
-    return result
+    return {"result": True, "data": serializer.data, "message": ""}
+
+
+@nats_client.register
+def list_monitor_object_options(*args, **kwargs):
+    """通用查询下拉。语言包优先，否则库里的展示名，否则英文名。"""
+    queryset = MonitorObject.objects.all().order_by("id")
+    serializer = MonitorObjectSerializer(queryset, many=True)
+    results = serializer.data
+    _apply_monitor_object_display_names(results, kwargs.get("user_info"))
+    return {"result": True, "data": results, "message": ""}
 
 
 @nats_client.register
@@ -899,6 +928,54 @@ def _license_monitor_instance_labels(data, kwargs):
         return {}
 
 
+def _metric_visible_to_caller(metric, user_info) -> str | None:
+    """调用者要对这个指标所属的监控对象有可见权限。目录本身不按组织拆。"""
+    _user, _team, _children, _scope_ids, is_superuser, scope_error = _get_nats_actor_scope(user_info or {})
+    if scope_error:
+        return scope_error.get("message") or "无权限"
+    if is_superuser:
+        return None
+    permission, error = _get_monitor_instance_permission(str(metric.monitor_object_id), user_info or {})
+    if error:
+        return error.get("message") or "无权限"
+    has_instance = bool((permission or {}).get("instance") or (permission or {}).get("team"))
+    policies, policy_error = _get_nats_accessible_policy_queryset(user_info or {})
+    if policy_error:
+        return policy_error.get("message") or "无权限"
+    if has_instance or policies.filter(monitor_object_id=metric.monitor_object_id).exists():
+        return None
+    return "指标不存在或无权访问"
+
+
+@nats_client.register
+def list_metric_dimensions(metric_id=None, user_info=None, **kwargs):
+    """所选指标上声明的维度，供条件过滤选字段。值由用户填写。"""
+    del kwargs
+    if metric_id in (None, ""):
+        _user, _team, _children, _scope_ids, _superuser, scope_error = _get_nats_actor_scope(user_info or {})
+        if scope_error:
+            return {"result": False, "data": [], "message": scope_error.get("message") or "无权限"}
+        return {"result": True, "data": [], "message": ""}
+    metric = Metric.objects.filter(id=metric_id).first()
+    if metric is None:
+        return {"result": False, "data": [], "message": "指标不存在"}
+    denied = _metric_visible_to_caller(metric, user_info)
+    if denied:
+        return {"result": False, "data": [], "message": denied}
+    rows = []
+    for item in metric.dimensions or []:
+        if isinstance(item, dict):
+            name = str(item.get("name") or "").strip()
+            label = str(item.get("description") or "").strip() or name
+        else:
+            name = str(item or "").strip()
+            label = name
+        if not name:
+            continue
+        rows.append({"name": name, "label": label, "value_type": "string"})
+    return {"result": True, "data": rows, "message": ""}
+
+
 @nats_client.register
 def monitor_metrics(monitor_obj_id: str, *args, **kwargs):
     """查询指标信息"""
@@ -919,6 +996,8 @@ def monitor_metrics(monitor_obj_id: str, *args, **kwargs):
     for result in results:
         lan_key = f"{LanguageConstants.MONITOR_OBJECT_METRIC}.{monitor_obj.name}.{result['name']}"
         result["display_name"] = lan.get(f"{lan_key}.name") or result.get("display_name") or result["name"]
+        plugin_name = str(result.get("monitor_plugin_name") or "").strip()
+        result["option_label"] = f"{result['display_name']}（{plugin_name}）" if plugin_name else result["display_name"]
         result["display_description"] = lan.get(f"{lan_key}.desc") or result.get("description")
         if (result.get("data_type") or "").lower() == "enum":
             result["unit"] = localize_metric_enum_unit(
@@ -1693,6 +1772,7 @@ def _build_latest_active_alert_items(queryset, authorized_instances, limit):
         item["end_event_time"] = None
         items.append(item)
     _attach_active_alert_metric_names(items)
+    format_active_alert_item_times(items)
     return items
 
 
@@ -1799,6 +1879,7 @@ def _build_severity_active_alert_items(queryset, authorized_instances, limit, no
         item["duration_text"] = format_active_alert_duration(_parse_alert_instant(item.get("start_event_time")), reference_now)
         items.append(item)
     _attach_active_alert_metric_names(items)
+    format_active_alert_item_times(items)
     return items
 
 
@@ -2239,11 +2320,12 @@ def get_host_metric_range(*args, **kwargs):
         return {"result": True, "data": {}, "message": ""}
 
     try:
+        step = _explicit_range_step(kwargs.get("step"))
         data = HostMetricRangeService(vm_api=VictoriaMetricsAPI()).run(
             metric_type=metric_type,
             time_range=kwargs.get("time"),
             instances=selected_instances,
-            step=kwargs.get("step") or "5m",
+            step=step,
         )
     except ValueError as exc:
         return {"result": False, "data": {}, "message": str(exc)}
@@ -2413,6 +2495,41 @@ def _matching_relation(language: str, model_id: str, model_asst_id: str, peer_mo
     return match, ""
 
 
+def _peer_model_of_association(match: dict, current_model_id: str) -> str:
+    src_model_id = str(match.get("src_model_id") or "")
+    dst_model_id = str(match.get("dst_model_id") or "")
+    if src_model_id == current_model_id:
+        return dst_model_id
+    if dst_model_id == current_model_id:
+        return src_model_id
+    return ""
+
+
+def _resolve_association_path(language: str, source_model_id: str, association_ids: list[str], peer_model_id: str):
+    """校验关联路径，并从关联定义推断中间模型。单跳错误信息与原来一致。"""
+    if len(association_ids) == 1:
+        _match, association_error = _matching_relation(language, source_model_id, association_ids[0], peer_model_id)
+        if association_error:
+            return None, association_error
+        return [(association_ids[0], peer_model_id)], ""
+
+    current_model_id = source_model_id
+    hops: list[tuple[str, str]] = []
+    for index, association_id in enumerate(association_ids):
+        options = list_model_association_options(language, current_model_id)
+        match = next((item for item in options if str(item.get("model_asst_id") or "") == association_id), None)
+        if match is None:
+            return None, f"关联路径第 {index + 1} 跳不存在，或没有连接到上一跳模型"
+        next_model_id = _peer_model_of_association(match, current_model_id)
+        if not next_model_id:
+            return None, f"关联路径第 {index + 1} 跳没有连接到上一跳模型"
+        hops.append((association_id, next_model_id))
+        current_model_id = next_model_id
+    if current_model_id != peer_model_id:
+        return None, "关联路径的最终对端不是指定模型"
+    return hops, ""
+
+
 def _list_relation_source_instances(source_model_id, permission_map):
     """翻完 CMDB 实例页再汇总，避免超过单页上限时静默截断。"""
     collected = []
@@ -2448,19 +2565,22 @@ def get_cmdb_relation_alert_aggregation(
 ):
     """按 CMDB 关联把授权对端上的活跃监控告警汇总到源模型实例。
 
-    view=summary 返回总数 / 有告警 / 无告警；top 返回有告警的前 N 个源实例。
+    view=summary 返回总数 / 有告警 / 无告警 / 去重后的活跃告警条数；top 返回有告警的前 N 个源实例。
+    model_asst_id 可以是一个关联，或按顺序走的多跳关联路径。
+    model_id 是源模型，peer_model_id 是最终告警对象；中间模型从关联定义推断。
     """
     del organization, kwargs
     view_name = str(view or "").strip().lower() or "summary"
     if view_name not in RELATION_ALERT_VIEWS:
         return {"result": False, "data": {}, "message": "view 必须是 summary 或 top"}
     source_model_id = str(model_id or "").strip()
-    association_id = str(model_asst_id or "").strip()
     peer_model = str(peer_model_id or "").strip() or "host"
     if not source_model_id:
         return {"result": False, "data": empty_relation_alert_payload(view_name), "message": "模型不能为空"}
-    if not association_id:
-        return {"result": False, "data": empty_relation_alert_payload(view_name), "message": "模型关联不能为空"}
+    try:
+        association_ids = normalize_model_asst_ids(model_asst_id)
+    except ValueError as exc:
+        return {"result": False, "data": empty_relation_alert_payload(view_name), "message": str(exc)}
     try:
         top_limit = normalize_relation_alert_limit(limit)
     except ValueError as exc:
@@ -2481,11 +2601,12 @@ def get_cmdb_relation_alert_aggregation(
     if scope_error:
         return scope_error
 
+    language = _resolve_nats_cmdb_language(actor_user_info)
     try:
-        _match, association_error = _matching_relation(
-            _resolve_nats_cmdb_language(actor_user_info),
+        hops, association_error = _resolve_association_path(
+            language,
             source_model_id,
-            association_id,
+            association_ids,
             peer_model,
         )
     except Exception as exc:
@@ -2516,7 +2637,19 @@ def get_cmdb_relation_alert_aggregation(
     try:
         instances = _list_relation_source_instances(source_model_id, permission_map)
         source_uuids = [str(item.get("inst_uuid") or "").strip() for item in instances or [] if isinstance(item, dict)]
-        edges = query_association_edges(association_id, [item for item in source_uuids if item])
+        source_ids = [item for item in source_uuids if item]
+        hop_edges = []
+        current_ids = source_ids
+        model_chain = [source_model_id]
+        for association_id, next_model in hops:
+            hop_edges.append(query_association_edges(association_id, current_ids))
+            model_chain.append(next_model)
+            current_ids = collect_peer_uuids(compose_path_peers(hop_edges, source_ids, model_chain))
+        edges = edges_from_peers(
+            compose_path_peers(hop_edges, source_ids, model_chain),
+            source_model_id,
+            peer_model,
+        )
     except Exception as exc:
         return _relation_alert_failure("instances", exc, view_name)
 
@@ -2768,10 +2901,15 @@ def _query_zombie_vm_metrics(matcher, window, end_ts, authorized_id_set):
 
 
 def _query_zombie_logins(hosts, rfc_range, user_info):
-    login_result = count_successful_logins(hosts, rfc_range, user_info)
-    if isinstance(login_result, dict) and isinstance(login_result.get("result"), bool) and not login_result["result"]:
-        raise ZombieHostQueryError(str(login_result.get("message") or "成功登录计数失败"))
-    return login_result
+    # 本地日志接口在旁路线程访问 ORM，外层 NATS 清理无法覆盖该线程。
+    close_old_connections()
+    try:
+        login_result = count_successful_logins(hosts, rfc_range, user_info)
+        if isinstance(login_result, dict) and isinstance(login_result.get("result"), bool) and not login_result["result"]:
+            raise ZombieHostQueryError(str(login_result.get("message") or "成功登录计数失败"))
+        return login_result
+    finally:
+        close_old_connections()
 
 
 @nats_client.register
@@ -3052,7 +3190,13 @@ def query_metric_series(*args, **kwargs):
 
     try:
         start, end = parse_rfc3339_range_utc(kwargs.get("time"))
-        step = _normalize_step(kwargs.get("step") or DEFAULT_RANGE_STEP)
+        duration = (end - start).total_seconds()
+        if mode == "range":
+            step = _resolve_range_step(duration, kwargs.get("step"))
+        else:
+            # instant 的 avg_over_time 用 step 做子查询分辨率。自动变粗会改变窗口平均，
+            # 所以缺省仍是 5m；调用方显式传入的 step 继续生效。
+            step = _normalize_step(kwargs.get("step") or DEFAULT_RANGE_STEP)
     except ValueError as exc:
         return {"result": False, "data": empty, "message": str(exc)}
 

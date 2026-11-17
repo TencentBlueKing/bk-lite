@@ -59,6 +59,7 @@ const SingleValueNodePanel: React.FC<NodeConfPanelProps> = ({
   title,
   builtinNamespaceId,
   filterDefinitions = [],
+  globalFilterValues,
   onClose,
   onConfirm,
   onCancel,
@@ -89,6 +90,7 @@ const SingleValueNodePanel: React.FC<NodeConfPanelProps> = ({
     dataSourceId: currentDataSource,
     getSourceDataByApiId,
     open: visible,
+    chartType: 'single',
   });
 
   const previewFilterDefinitions = useMemo(
@@ -437,6 +439,9 @@ const SingleValueNodePanel: React.FC<NodeConfPanelProps> = ({
                 readonly={readonly || dataSourcesLoading}
                 includeFilterTypes={['params', 'fixed']}
                 fieldPrefix="params"
+                globalFilters={filterDefinitions}
+                filterBindings={filterBindings}
+                globalFilterValues={globalFilterValues}
               />
             </Spin>
           </div>

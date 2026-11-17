@@ -34,7 +34,7 @@ monitor_object_metric:
       desc: Exinda / GFI ExOS WAN 优化设备当前空闲的物理内存（EXINDA-MIB freeRam，已从 kbytes 换算为字节）。
     device_memory_usage:
       name: 内存使用率
-      desc: Exinda / GFI ExOS WAN 优化设备整体内存使用率，按 已用/总量*100 计算（EXINDA-MIB usedRam/totalRam）。持续偏高可能影响加速会话或整形性能。
+      desc: Exinda / GFI ExOS WAN 优化设备整体内存使用率（EXINDA-MIB usedRam/totalRam）。持续偏高可能影响加速会话或整形性能。
     device_temperature_celsius:
       name: 温度
       desc: Exinda / GFI ExOS WAN 优化设备的当前 CPU 温度（EXINDA-MIB cpuTemperature）。温度异常升高可能意味着散热故障或环境过热。

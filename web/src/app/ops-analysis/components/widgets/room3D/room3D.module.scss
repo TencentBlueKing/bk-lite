@@ -189,6 +189,23 @@
   pointer-events: none;
 }
 
+.roomTitleIcon {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: calc(18px * var(--room3d-readable-scale));
+  height: calc(18px * var(--room3d-readable-scale));
+  margin-right: calc(6px * var(--room3d-readable-scale));
+  color: #f3f9ff;
+  background: radial-gradient(circle at 50% 40%, #4ea3e8 0%, #1d6bb8 72%);
+  border: 1px solid rgba(125, 200, 255, 0.45);
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px rgba(8, 28, 56, 0.28);
+  font-size: calc(10px * var(--room3d-readable-scale));
+  line-height: 1;
+}
+
 .roomTitleName {
   min-width: 0;
   overflow: hidden;

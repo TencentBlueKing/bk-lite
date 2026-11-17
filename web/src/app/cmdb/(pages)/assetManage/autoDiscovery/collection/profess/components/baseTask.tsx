@@ -772,7 +772,8 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
         const data = await instanceApi.searchInstances({
           model_id: instanceModelId,
           page: 1,
-          page_size: 10000,
+          page_size: 20,
+          query_list: [],
         });
         const currentInstUuid = form.getFieldValue('instUuid');
         setOptions(
@@ -795,7 +796,7 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
         setAccessPointLoading(true);
         const res = await collectApi.getCollectNodes({
           page: 1,
-          page_size: 10000,
+          page_size: 20,
           name: '',
         });
         setAccessPoints(

@@ -64,7 +64,7 @@ const FieldSchemaTable = React.forwardRef<
   const handleSchemaFieldChange = (
     id: string,
     fieldName: keyof ResponseFieldDefinition,
-    value: string,
+    value: string | string[] | undefined,
   ) => {
     const newFields = schemaFields.map((field) =>
       field.id === id ? { ...field, [fieldName]: value } : field,

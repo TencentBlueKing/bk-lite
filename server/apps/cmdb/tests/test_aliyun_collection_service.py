@@ -193,3 +193,26 @@ def test_complete_snapshot_still_allows_cleanup(monkeypatch):
     assert management.contrast({("existing",): {"_id": 9, "collect_task": "42"}}, {})[3] == [
         {"_id": 9, "collect_task": "42", "model_id": "aliyun_mysql"}
     ]
+
+
+def test_aliyun_models_map_tag_and_keep_collected_values():
+    import json
+    from urllib.parse import quote
+
+    from apps.cmdb.collection.common import Management
+
+    assert all("tag" in mapping for mapping in AliyunAccountCollectionPlugin.field_mappings.values())
+    encoded = quote(json.dumps(["env:prod", "team:net"], separators=(",", ":")), safe="")
+    runner = _runner()
+    runner.format_data(_vector("aliyun_ecs", {"vcpus": "2", "memory": "4096", "tag": encoded}))
+    runner.format_metrics()
+    assert Management.coerce_collected_tag(runner.result["aliyun_ecs"][0])["tag"] == ["env:prod", "team:net"]
+    cleared = _runner()
+    cleared.format_data(_vector("aliyun_ecs", {"vcpus": "2", "memory": "4096", "tag": quote("[]", safe="")}))
+    cleared.format_metrics()
+    assert Management.coerce_collected_tag(cleared.result["aliyun_ecs"][0])["tag"] == []
+
+    runner = _runner()
+    runner.format_data(_vector("aliyun_mysql", {"cpu": "2", "memory_mb": "4096"}))
+    runner.format_metrics()
+    assert "tag" not in Management.coerce_collected_tag(runner.result["aliyun_mysql"][0])

@@ -1,5 +1,5 @@
-/** Pinned lines stay in the name card from 70% zoom up. Hover still shows them below that. */
-export const METRIC_CARD_MIN_ZOOM = 0.7;
+/** Pinned lines stay in the name card from 40% zoom up. Hover still shows them below that. */
+export const METRIC_CARD_MIN_ZOOM = 0.4;
 
 export function visibleMetricLines(input: {
   editorMode: string;

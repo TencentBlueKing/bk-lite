@@ -64,7 +64,7 @@ def _patch(monkeypatch, graph):
     monkeypatch.setattr("apps.cmdb.collection.common.get_collect_enterprise_extension", lambda: _Ext())
     import apps.cmdb.services.auto_relation_reconcile as auto
 
-    monkeypatch.setattr(auto, "schedule_instance_auto_relation_reconcile", lambda ids: None)
+    monkeypatch.setattr(auto, "schedule_instance_auto_relation_reconcile", lambda *args, **kwargs: None)
     monkeypatch.setattr(auto, "schedule_incoming_rule_full_sync_by_model_ids", lambda ids: None)
 
 

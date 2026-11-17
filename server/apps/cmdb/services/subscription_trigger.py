@@ -138,9 +138,65 @@ class SubscriptionTriggerService:
             ]
         return []
 
+    def _process_change_window(self, checkpoint: datetime) -> list[TriggerEvent]:
+        """属性、新增、删除只查变更窗口，不把模型实例整表读进进程。"""
+        selected = INSTANCE_LIFECYCLE_TRIGGER_TYPES.intersection(self.rule.trigger_types or [])
+        record_types: list[str] = []
+        if TriggerType.INSTANCE_ADDED.value in selected:
+            record_types.append(CREATE_INST)
+        if TriggerType.ATTRIBUTE_CHANGE.value in selected:
+            record_types.append(UPDATE_INST)
+        if TriggerType.INSTANCE_DELETED.value in selected:
+            record_types.append(DELETE_INST)
+        last_check = self.rule.last_check_time or self.rule.created_at
+        records = []
+        if record_types:
+            records = list(
+                ChangeRecord.objects.filter(
+                    model_id=self.rule.model_id,
+                    type__in=record_types,
+                    created_at__gt=last_check,
+                    created_at__lte=checkpoint,
+                ).order_by("created_at")
+            )
+        snapshot = self.rule.snapshot_data or {}
+        previous_ids = [item for item in (_optional_int(value) for value in snapshot.get("instances") or []) if item is not None]
+        instances = [{"_id": item} for item in previous_ids]
+        known = set(previous_ids)
+        for record in records:
+            inst_id = _optional_int(record.inst_id)
+            if inst_id is None or inst_id in known or record.type != CREATE_INST:
+                continue
+            payload = record.after_data or {}
+            instances.append({"_id": inst_id, "inst_name": payload.get("inst_name"), "inst_uuid": str(record.inst_uuid or "")})
+            known.add(inst_id)
+        if selected:
+            self.events.extend(self._check_attribute_change(instances, checkpoint))
+        deleted = {event.inst_id for event in self.events if event.trigger_type == TriggerType.INSTANCE_DELETED.value}
+        added = {event.inst_id for event in self.events if event.trigger_type == TriggerType.INSTANCE_ADDED.value}
+        remaining = [item for item in previous_ids if item not in deleted]
+        for inst_id in added:
+            if inst_id not in remaining:
+                remaining.append(inst_id)
+        self._update_snapshot(
+            {
+                "instances": remaining,
+                "instance_uuids": list(snapshot.get("instance_uuids") or []),
+                "relations": snapshot.get("relations") or {},
+                "relations_by_uuid": snapshot.get("relations_by_uuid") or {},
+                "expiration_notified": snapshot.get("expiration_notified") or {},
+            },
+            checkpoint,
+        )
+        return self.events
+
     def process(self) -> list[TriggerEvent]:
         # 固定检查上界，确保查询窗口稳定在 (last_check_time, checkpoint]。
         checkpoint = timezone.now()
+        triggers = set(self.rule.trigger_types or [])
+        heavy = {TriggerType.RELATION_CHANGE.value, TriggerType.EXPIRATION.value, TriggerType.CONFIG_FILE.value}
+        if triggers.intersection(INSTANCE_LIFECYCLE_TRIGGER_TYPES) and not triggers.intersection(heavy):
+            return self._process_change_window(checkpoint)
         logger.info(
             "[Subscription] 触发检测开始 "
             f"rule_id={self.rule.id}, model_id={self.rule.model_id}, "
@@ -270,60 +326,12 @@ class SubscriptionTriggerService:
             return relation_map, set()
         except Exception as exc:
             logger.error(
-                "[Subscription] batch query relation failed, fallback to per-instance query "
-                f"rule_id={self.rule.id}, related_model={related_model}, error={exc}",
-                exc_info=True,
+                "[Subscription] batch query relation failed, rule_id=%s, related_model=%s, error_type=%s",
+                self.rule.id,
+                related_model,
+                type(exc).__name__,
             )
-
-        relation_map: dict[int, list[int]] = {}
-        failed_instance_ids: set[int] = set()
-        for inst_id in instance_ids:
-            try:
-                rels = InstanceManage.instance_association(self.rule.model_id, inst_id)
-            except Exception as exc:
-                logger.error(
-                    f"[Subscription] query relation failed inst_id={inst_id}, error={exc}",
-                    exc_info=True,
-                )
-                failed_instance_ids.add(inst_id)
-                continue
-            related_ids: list[int] = []
-            related_uuids: list[str] = []
-            for rel in rels:
-                if rel.get("src_model_id") == related_model:
-                    related_uuid = _optional_uuid(rel.get("src_inst_uuid"))
-                    related_graph_id = _optional_int(rel.get("src_inst_id"))
-                elif rel.get("dst_model_id") == related_model:
-                    related_uuid = _optional_uuid(rel.get("dst_inst_uuid"))
-                    related_graph_id = _optional_int(rel.get("dst_inst_id"))
-                else:
-                    continue
-                if related_uuid:
-                    related_uuids.append(related_uuid)
-                elif related_graph_id is not None:
-                    related_ids.append(related_graph_id)
-            # query_entity_by_uuids 拒绝重复 UUID，先去重。
-            related_uuids = list(dict.fromkeys(related_uuids))
-            if related_uuids:
-                try:
-                    for entity in InstanceManage.query_entity_by_uuids(related_uuids) or []:
-                        related_graph_id = _optional_int(entity.get("_id"))
-                        if related_graph_id is not None:
-                            related_ids.append(related_graph_id)
-                except Exception as resolve_exc:
-                    logger.error(
-                        f"[Subscription] query related uuid failed inst_id={inst_id}, error={resolve_exc}",
-                        exc_info=True,
-                    )
-                    failed_instance_ids.add(inst_id)
-                    continue
-            relation_map[inst_id] = sorted(list(set(related_ids)))
-        logger.info(
-            "[Subscription] 关联实例查询完成 "
-            f"rule_id={self.rule.id}, relation_map_size={len(relation_map)}, "
-            f"failed_instance_count={len(failed_instance_ids)}"
-        )
-        return relation_map, failed_instance_ids
+            raise
 
     def _build_current_snapshot(
         self,

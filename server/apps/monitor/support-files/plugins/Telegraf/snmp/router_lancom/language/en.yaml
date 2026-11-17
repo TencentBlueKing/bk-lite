@@ -42,9 +42,7 @@ monitor_object_metric:
         usage indicates control-plane overload, VPN/session churn, or abnormal traffic.
     device_memory_usage:
       name: Memory Usage
-      desc: This metric reports memory utilization of the LANCOM LCOS router, derived
-        as (total-free)/total*100 from TotalMemoryKbytes and FreeMemoryKbytes. Sustained
-        high usage may indicate memory pressure or leaks.
+      desc: This metric reports memory utilization of the LANCOM LCOS router, from TotalMemoryKbytes and FreeMemoryKbytes. Sustained high usage may indicate memory pressure or leaks.
     interface_ifHCInOctets:
       name: Interface Incoming Traffic Rate (HC)
       desc: This metric indicates the average rate of bytes received over the past

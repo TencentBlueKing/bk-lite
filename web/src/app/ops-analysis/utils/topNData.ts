@@ -25,6 +25,19 @@ const isTopNRecord = (value: unknown): value is Record<string, unknown> =>
 const DECIMAL_NUMBER_PATTERN =
   /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/;
 
+export const unwrapNestedListPayload = (data: unknown): unknown => {
+  if (Array.isArray(data) || data == null) {
+    return data;
+  }
+  if (typeof data === 'object') {
+    const record = data as Record<string, unknown>;
+    if (Array.isArray(record.list)) return record.list;
+    if (Array.isArray(record.items)) return record.items;
+    if (Array.isArray(record.data)) return record.data;
+  }
+  return data;
+};
+
 export const unwrapTopNData = (data: unknown): unknown[] => {
   if (Array.isArray(data)) {
     return data;
@@ -65,8 +78,13 @@ export const coerceTopNNumericValue = (raw: unknown): number | null => {
   return Number.isFinite(numericValue) ? numericValue : null;
 };
 
+export const UNFILLED_CATEGORY_LABEL = '--';
+
+export const isUnfilledCategoryValue = (value: unknown): boolean =>
+  value === null || value === undefined || value === '';
+
 const toTopNName = (raw: unknown): string => {
-  if (raw === undefined || raw === null) {
+  if (isUnfilledCategoryValue(raw)) {
     return '';
   }
   return String(raw).trim();
@@ -115,7 +133,9 @@ export const buildTopNItems = (
   data: unknown,
   labelField?: string,
   valueField?: string,
-  options?: { scalarFields?: Array<{ field?: string; label?: string } | null> | null },
+  options?: {
+    scalarFields?: Array<{ field?: string; label?: string } | null> | null;
+  },
 ): TopNItem[] => {
   const scalarFields = normalizeTopNScalarFields(options?.scalarFields);
   if (scalarFields.length > 0 && isScalarTopNObject(data)) {
@@ -127,23 +147,23 @@ export const buildTopNItems = (
     return [];
   }
 
-  const items = rows
-    .map((row, index) => {
-      const name = toTopNName(getValueByPath(row, labelField));
-      if (!name) {
-        return null;
-      }
+  const items: Array<{ index: number; item: TopNItem }> = [];
+  rows.forEach((row, index) => {
+    const name = toTopNName(getValueByPath(row, labelField));
+    if (!name) {
+      return;
+    }
+    const value = coerceTopNNumericValue(getValueByPath(row, valueField));
 
-      return {
-        index,
-        item: {
-          name,
-          value: coerceTopNNumericValue(getValueByPath(row, valueField)),
-          ...(isTopNRecord(row) ? { source: row } : {}),
-        },
-      };
-    })
-    .filter((entry): entry is { index: number; item: TopNItem } => entry !== null);
+    items.push({
+      index,
+      item: {
+        name,
+        value,
+        ...(isTopNRecord(row) ? { source: row } : {}),
+      },
+    });
+  });
 
   // 排名图按数值从大到小。空值靠后，相同数值保持原顺序。
   items.sort((left, right) => {
@@ -222,9 +242,19 @@ export const validateTopNPayload = (
     return buildTopNItems(data, options?.labelField, options?.valueField, { scalarFields }).length > 0;
   }
 
-  if (!Array.isArray(data)) {
+  const hasListEnvelope = Boolean(
+    data &&
+    typeof data === 'object' &&
+    !Array.isArray(data) &&
+    (Array.isArray((data as Record<string, unknown>).items) ||
+      Array.isArray((data as Record<string, unknown>).data) ||
+      Array.isArray((data as Record<string, unknown>).list)),
+  );
+  if (!Array.isArray(data) && !hasListEnvelope) {
     return false;
   }
-
+  if (unwrapTopNData(data).length === 0) {
+    return true;
+  }
   return buildTopNItems(data, options?.labelField, options?.valueField).length > 0;
 };

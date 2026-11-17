@@ -9,6 +9,7 @@ import { cloneDeep } from 'lodash';
 import { AxiosRequestConfig } from 'axios';
 import {
   ExtractorPublicationStatus,
+  GrokPatternCatalogResponse,
   LogExtractorDraft,
   LogExtractorListResponse,
   LogExtractorPreviewResult,
@@ -271,6 +272,13 @@ const useIntegrationApi = () => {
     });
   };
 
+  const getGrokPatterns = async () => {
+    return await get<GrokPatternCatalogResponse>(
+      '/log/log_extractors/grok_patterns/',
+      { suppressErrorNotification: true }
+    );
+  };
+
   const createLogExtractor = async (data: LogExtractorDraft) => {
     return await post<{
       resource: LogExtractorRule;
@@ -374,6 +382,7 @@ const useIntegrationApi = () => {
     getFields,
     getFieldValues,
     getLogExtractors,
+    getGrokPatterns,
     createLogExtractor,
     updateLogExtractor,
     deleteLogExtractor,

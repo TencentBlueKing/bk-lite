@@ -2,6 +2,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { useTranslation } from '@/utils/i18n';
+import { argsWithResolvedKeywords } from './toolCallRenderer';
 
 interface ToolCallData {
   id: string;
@@ -81,7 +82,7 @@ const ToolItem: React.FC<{ tool: ToolCallData }> = ({ tool }) => {
   );
 
   const hasDetail = !!(tool.args && tool.args !== '{}') || !!tool.result;
-  const argsFormatted = formatJson(tool.args);
+  const argsFormatted = formatJson(argsWithResolvedKeywords(tool.args, tool.result));
   const isCalling = tool.status === 'calling';
   const isError = tool.status === 'error';
 

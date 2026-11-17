@@ -31,8 +31,11 @@
   display: flex;
   flex: 1 0 auto;
   flex-direction: column;
-  transform: translateY(var(--desktop-pull-offset));
   transition: transform 180ms ease-out;
+}
+
+.root[data-pull-shifted='true'] .pullSurface {
+  transform: translateY(var(--desktop-pull-offset));
 }
 
 .pullSurface > :global(.adm-pull-to-refresh) {

@@ -15,6 +15,7 @@ import {
   formatAuthHeaderPlainText,
   injectDescriptionKey,
   OPENAPI_GATEWAY_PREFIX,
+  resolveOpenApiServiceLabel,
   type OpenAPIDocRow,
 } from '@/app/system-manager/utils/openapiDocs';
 import { exportOpenApiDocsToPdf } from '@/app/system-manager/utils/exportOpenApiDocsPdf';
@@ -80,11 +81,16 @@ const OpenApiDocsPage: React.FC = () => {
     void loadData();
   }, []);
 
+  const serviceLabel = (service: string) => resolveOpenApiServiceLabel(service, t);
+
   const serviceOptions = useMemo(() => {
-    const services = Array.from(new Set(rows.map((row) => row.service))).sort();
+    const services = Array.from(new Set(rows.map((row) => row.service)));
+    const options = services
+      .map((srv) => ({ label: serviceLabel(srv), value: srv }))
+      .sort((left, right) => left.label.localeCompare(right.label));
     return [
       { label: t('system.settings.openapiDocs.allServices'), value: 'all' },
-      ...services.map((srv) => ({ label: srv, value: srv })),
+      ...options,
     ];
   }, [rows, t]);
 
@@ -114,8 +120,9 @@ const OpenApiDocsPage: React.FC = () => {
         service: serviceFilter,
         method: methodFilter,
         kind: kindFilter,
+        serviceLabel,
       }),
-    [rows, query, serviceFilter, methodFilter, kindFilter]
+    [rows, query, serviceFilter, methodFilter, kindFilter, t]
   );
 
   useEffect(() => {
@@ -161,53 +168,55 @@ const OpenApiDocsPage: React.FC = () => {
       });
     });
     try {
-      await exportOpenApiDocsToPdf(filteredRows, {
-        title: t('system.settings.openapiDocs.title'),
-        catalog: t('system.settings.openapiDocs.catalog'),
-        generatedAt: new Date().toLocaleString(),
-        totalCount: t('system.settings.openapiDocs.totalCount', undefined, {
-          count: filteredRows.length,
-        }),
-        kind: t('system.settings.openapiDocs.kind'),
-        authHeader: t('system.settings.openapiDocs.authHeader'),
-        authHeaderDesc: formatAuthHeaderPlainText(
-          t('system.settings.openapiDocs.authHeaderDesc'),
-          t('system.settings.openapiDocs.authHeaderKeyHint'),
-          t('system.settings.openapiDocs.authHeaderKeyPath'),
-        ),
-        internal: t('system.settings.openapiDocs.internal'),
-        external: t('system.settings.openapiDocs.external'),
-        service: t('system.settings.openapiDocs.service'),
-        method: t('system.settings.openapiDocs.method'),
-        path: t('system.settings.openapiDocs.path'),
-        summary: t('system.settings.openapiDocs.summary'),
-        fieldName: t('system.settings.openapiDocs.fieldName'),
-        fieldType: t('system.settings.openapiDocs.fieldType'),
-        required: t('system.settings.openapiDocs.required'),
-        range: t('system.settings.openapiDocs.range'),
-        default: t('system.settings.openapiDocs.default'),
-        choices: t('system.settings.openapiDocs.choices'),
-        yes: t('system.settings.openapiDocs.yes'),
-        no: t('system.settings.openapiDocs.no'),
-        noParams: t('system.settings.openapiDocs.noParams'),
-        requestSchema: t('system.settings.openapiDocs.requestSchema'),
-        responseSchema: t('system.settings.openapiDocs.responseSchema'),
-        responseExample: t('system.settings.openapiDocs.responseExample'),
-        noResponseSchema: t('system.settings.openapiDocs.noResponseSchema'),
-        noResponseFields: t('system.settings.openapiDocs.noResponseFields'),
-        entryPrefix: t('system.settings.openapiDocs.entryPrefix'),
-        docUrl: t('system.settings.openapiDocs.docUrl'),
-        noDocUrl: t('system.settings.openapiDocs.noDocUrl'),
-        externalDocHint: t('system.settings.openapiDocs.externalDocHint'),
-        permissionControl: t('system.settings.openapiDocs.permissionControl'),
-        unrestricted: t('system.settings.openapiDocs.unrestricted'),
-        orgScope: t('system.settings.openapiDocs.orgScope'),
-        tabExample: t('system.settings.openapiDocs.tabExample'),
-        examplePersonal: t('system.settings.openapiDocs.examplePersonal'),
-        exampleSystem: t('system.settings.openapiDocs.exampleSystem'),
-        origin: window.location.origin,
-        inject: (value) => t(injectDescriptionKey(value)),
-      });
+      await exportOpenApiDocsToPdf(
+        filteredRows.map((row) => ({ ...row, service: serviceLabel(row.service) })),
+        {
+          title: t('system.settings.openapiDocs.title'),
+          catalog: t('system.settings.openapiDocs.catalog'),
+          generatedAt: new Date().toLocaleString(),
+          totalCount: t('system.settings.openapiDocs.totalCount', undefined, {
+            count: filteredRows.length,
+          }),
+          kind: t('system.settings.openapiDocs.kind'),
+          authHeader: t('system.settings.openapiDocs.authHeader'),
+          authHeaderDesc: formatAuthHeaderPlainText(
+            t('system.settings.openapiDocs.authHeaderDesc'),
+            t('system.settings.openapiDocs.authHeaderKeyHint'),
+            t('system.settings.openapiDocs.authHeaderKeyPath'),
+          ),
+          internal: t('system.settings.openapiDocs.internal'),
+          external: t('system.settings.openapiDocs.external'),
+          service: t('system.settings.openapiDocs.service'),
+          method: t('system.settings.openapiDocs.method'),
+          path: t('system.settings.openapiDocs.path'),
+          summary: t('system.settings.openapiDocs.summary'),
+          fieldName: t('system.settings.openapiDocs.fieldName'),
+          fieldType: t('system.settings.openapiDocs.fieldType'),
+          required: t('system.settings.openapiDocs.required'),
+          range: t('system.settings.openapiDocs.range'),
+          default: t('system.settings.openapiDocs.default'),
+          choices: t('system.settings.openapiDocs.choices'),
+          yes: t('system.settings.openapiDocs.yes'),
+          no: t('system.settings.openapiDocs.no'),
+          noParams: t('system.settings.openapiDocs.noParams'),
+          requestSchema: t('system.settings.openapiDocs.requestSchema'),
+          responseSchema: t('system.settings.openapiDocs.responseSchema'),
+          responseExample: t('system.settings.openapiDocs.responseExample'),
+          noResponseSchema: t('system.settings.openapiDocs.noResponseSchema'),
+          noResponseFields: t('system.settings.openapiDocs.noResponseFields'),
+          entryPrefix: t('system.settings.openapiDocs.entryPrefix'),
+          docUrl: t('system.settings.openapiDocs.docUrl'),
+          noDocUrl: t('system.settings.openapiDocs.noDocUrl'),
+          externalDocHint: t('system.settings.openapiDocs.externalDocHint'),
+          permissionControl: t('system.settings.openapiDocs.permissionControl'),
+          unrestricted: t('system.settings.openapiDocs.unrestricted'),
+          orgScope: t('system.settings.openapiDocs.orgScope'),
+          tabExample: t('system.settings.openapiDocs.tabExample'),
+          examplePersonal: t('system.settings.openapiDocs.examplePersonal'),
+          exampleSystem: t('system.settings.openapiDocs.exampleSystem'),
+          origin: window.location.origin,
+          inject: (value) => t(injectDescriptionKey(value)),
+        });
       message.success(t('common.exportSuccess'));
     } catch {
       message.error(t('common.exportFailed'));
@@ -238,7 +247,7 @@ const OpenApiDocsPage: React.FC = () => {
       title: t('system.settings.openapiDocs.path'),
       dataIndex: 'path',
       key: 'path',
-      width: 280,
+      width: 220,
       ellipsis: { showTitle: false },
       render: (path: string) => {
         const prefix = OPENAPI_GATEWAY_PREFIX;
@@ -265,18 +274,21 @@ const OpenApiDocsPage: React.FC = () => {
       title: t('system.settings.openapiDocs.service'),
       dataIndex: 'service',
       key: 'service',
-      width: 110,
-      ellipsis: true,
+      width: 112,
+      ellipsis: { showTitle: false },
       render: (service: string) => (
-        <Tag className="m-0 font-mono text-xs">
-          {service}
-        </Tag>
+        <EllipsisWithTooltip
+          text={serviceLabel(service)}
+          className="w-full truncate whitespace-nowrap text-xs text-[var(--color-text-1)]"
+          getPopupContainer={() => document.body}
+        />
       ),
     },
     {
       title: t('system.settings.openapiDocs.summary'),
       dataIndex: 'summary',
       key: 'summary',
+      width: 400,
       ellipsis: { showTitle: false },
       render: (summary: string, row) => {
         const { title, note, full } = formatSummary(

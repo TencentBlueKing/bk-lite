@@ -22,6 +22,7 @@ import {
   connectorEndpointNames,
   connectorResourceLines,
   decideDiagramClick,
+  formatHoverAlert,
   iconBindingStats,
   mergeStatusResponse,
   rectangleIconCounts,
@@ -214,6 +215,20 @@ describe('architecture view status', () => {
       db: { level: 'normal' },
       cache: { level: 'unmonitored', hint: 'unmonitored' },
     });
+  });
+
+  it('copies alert reasons onto an alerting icon and formats hover text', () => {
+    const alerts = [
+      { content: '主机 CPU 使用率过高', level: 'warning', metric_name: 'CPU Usage' },
+      { content: '主机 CPU 使用率过高', level: 'warning' },
+      { content: '  ', level: 'warning' },
+    ];
+    const overlay = buildNodeStatus(views, {
+      'uuid-web': status('uuid-web', 'warning', { alert_count: 1, max_level: 'warning', alerts }),
+    }).web;
+    expect(overlay.alerts).toEqual(alerts);
+    expect(formatHoverAlert(overlay.alerts)).toBe('主机 CPU 使用率过高');
+    expect(formatHoverAlert(undefined)).toBe('');
   });
 
   it('aggregates rectangle borders without using the rectangle binding', () => {

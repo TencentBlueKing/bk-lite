@@ -13,9 +13,12 @@
       "require": "./dist/index.cjs"
     }
   },
-  "files": ["src", "dist"],
+  "files": [
+    "src",
+    "dist"
+  ],
   "scripts": {
-    "build": "npm run clean && tsc --emitDeclarationOnly && esbuild src/index.ts --bundle --platform=browser --format=esm --target=es2020 --sourcemap --outfile=dist/index.js && esbuild src/index.ts --bundle --platform=browser --format=cjs --target=es2020 --sourcemap --outfile=dist/index.cjs",
+    "build": "npm run clean && tsc --emitDeclarationOnly && esbuild src/index.ts --bundle --platform=browser --format=esm --target=es2020 --sourcemap --outfile=dist/index.js && esbuild src/index.ts --bundle --platform=browser --format=cjs --target=es2020 --sourcemap --outfile=dist/index.cjs && node ../../scripts/bundle-content-types.mjs",
     "dev": "tsc --watch",
     "clean": "rm -rf dist",
     "prepublish": "npm run build"
@@ -32,7 +35,8 @@
   "devDependencies": {
     "@types/node": "^20.0.0",
     "esbuild": "^0.21.5",
-    "typescript": "^5.0.0"
+    "typescript": "^5.0.0",
+    "@bk-lite/chat-content": "file:../../../web/packages/chat-content"
   },
   "engines": {
     "node": ">=18.18.0"

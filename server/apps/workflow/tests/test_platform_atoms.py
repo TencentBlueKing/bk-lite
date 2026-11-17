@@ -5,6 +5,41 @@ from apps.workflow.services.atoms import execute_atom, http_atom, notification_a
 
 
 @pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("notification_type", "channel_type"),
+    [
+        ("WECOM_BOT", "enterprise_wechat_bot"),
+        ("FEISHU_BOT", "feishu_bot"),
+        ("DINGTALK_BOT", "dingtalk_bot"),
+        ("CUSTOM_WEBHOOK", "custom_webhook"),
+    ],
+)
+def test_notification_atom_delivers_webhook_without_recipients(mocker, notification_type, channel_type):
+    from apps.system_mgmt.models import Channel
+
+    channel = Channel.objects.create(
+        name="企业微信通知测试",
+        channel_type=channel_type,
+        config={},
+        description="",
+        team=[7],
+    )
+    send = mocker.patch("apps.system_mgmt.nats.channels.send_msg_with_channel", return_value={"result": True})
+
+    result = notification_atom(
+        {
+            "notification_type": notification_type,
+            "channel_id": channel.id,
+            "body": "告警统计分析完成",
+            "__bklite_context": {"execution_id": "exec-wecom", "organization_id": 7},
+        }
+    )
+
+    assert result["delivery"]["code"] == "delivered"
+    send.assert_called_once_with(channel.id, "", "告警统计分析完成", [])
+
+
+@pytest.mark.django_db
 def test_http_atom_uses_worker_trusted_context_without_ui_team_binding(mocker):
     response = mocker.Mock()
     response.status_code = 200

@@ -11,7 +11,7 @@ import { getTilePosition } from 'src/utils';
 import { useIcon } from 'src/hooks/useIcon';
 import { ViewItem } from 'src/types';
 import { useModelItem } from 'src/hooks/useModelItem';
-import { ALERT_BADGE_TONE, NODE_STATUS_COLOR } from 'src/diagramOverlay/colors';
+import { ALERT_BADGE_TONE, CRITICAL_RED, NODE_STATUS_COLOR, WARNING_AMBER } from 'src/diagramOverlay/colors';
 import { CORNER_BADGE_SX } from 'src/diagramOverlay/cornerBadge';
 import { useDiagramVisual } from 'src/diagramOverlay/context';
 import { visibleMetricLines } from 'src/diagramOverlay/metricCard';
@@ -57,6 +57,11 @@ export const NodeLabelLayerContext = createContext<HTMLElement | null>(null);
 /** Icon under the pointer. Geometry hit, so the icon itself stays pointer-events none. */
 export const HoveredIconContext = createContext<string | null>(null);
 
+const METRIC_VALUE_TONE = {
+  warning: WARNING_AMBER,
+  critical: CRITICAL_RED
+} as const;
+
 const MetricLines = ({ lines, pinned }: { lines: NodeMetricLine[]; pinned: boolean }) => (
   <Box
     data-testid="architecture-metric-card"
@@ -98,7 +103,7 @@ const MetricLines = ({ lines, pinned }: { lines: NodeMetricLine[]; pinned: boole
           component="span"
           sx={{
             flexShrink: 0,
-            color: 'var(--color-text-1)',
+            color: (line.tone && METRIC_VALUE_TONE[line.tone]) || 'var(--color-text-1)',
             fontSize: 11,
             fontWeight: 600,
             lineHeight: 1.45,
@@ -179,6 +184,8 @@ export const Node = ({ node, order }: Props) => {
     lineCount: metricSource.length
   });
   const metricLines = showMetrics ? metricSource : [];
+  const hoverAlert = status?.hoverAlert?.trim() || '';
+  const hoverStatusLabel = status?.hoverStatusLabel?.trim() || '';
   const resourceName = status?.hoverName?.trim() || '';
   const modelName = status?.hoverModel?.trim() || '';
   const unnamedReason =
@@ -211,7 +218,7 @@ export const Node = ({ node, order }: Props) => {
     title || description || showSubtitle || inlineMark || healthyDot || cornerMark ? (
       <Box
         data-plate-subtitle={showSubtitle ? subtitle : ''}
-        data-plate-expanded={quietReason ? 'true' : 'false'}
+        data-plate-expanded={quietReason || (revealed && hoverAlert) ? 'true' : 'false'}
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
         sx={{ position: 'absolute', pointerEvents: 'auto', zIndex: labelRaised ? 3 : 0 }}
@@ -226,7 +233,7 @@ export const Node = ({ node, order }: Props) => {
             expandDirection="BOTTOM"
             labelHeight={labelHeight}
             hideConnector={Boolean(labelLayer)}
-            uncapped={metricLines.length > 0 || Boolean(quietReason)}
+            uncapped={metricLines.length > 0 || Boolean(quietReason) || Boolean(hoverAlert)}
             sx={{ py: '3px', px: '5px', borderRadius: '4px' }}
             cardProps={plateHit}
             cornerBadge={
@@ -337,6 +344,19 @@ export const Node = ({ node, order }: Props) => {
               ) : showSubtitle ? (
                 <Typography sx={{ color: 'var(--color-text-3)', fontSize: 11, lineHeight: 1.3 }}>
                   {subtitle}
+                </Typography>
+              ) : null}
+              {revealed && hoverAlert ? (
+                <Typography
+                  data-testid="architecture-hover-alert"
+                  sx={{ color: 'var(--color-text-3)', fontSize: 11, lineHeight: 1.35 }}
+                >
+                  {hoverStatusLabel ? (
+                    <Box component="span" sx={{ color: 'var(--color-text-4)' }}>
+                      {hoverStatusLabel}
+                    </Box>
+                  ) : null}
+                  {hoverAlert}
                 </Typography>
               ) : null}
               {revealed && !metricsPinned && metricLines.length > 0 ? (

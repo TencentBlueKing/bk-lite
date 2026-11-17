@@ -10,7 +10,7 @@ import { UserInfoProvider } from '@/context/userInfo';
 import { ClientProvider } from '@/context/client';
 import { MenusProvider } from '@/context/menus';
 import { PermissionsProvider } from '@/context/permissions';
-import { isDashboardExecutionRenderRoute } from '@/app/routeScope';
+import { isDashboardExecutionRenderRoute, isScreenDisplayPath } from '@/app/routeScope';
 import { EffectiveHomepageProvider } from '@/app/ops-analysis/context/effectiveHomepage';
 import { HomepagePreferenceProvider } from '@/app/ops-analysis/context/homepagePreference';
 
@@ -53,6 +53,18 @@ export const RouteScopedLayout = ({
       <DashboardExecutionRenderLayout>
         {children}
       </DashboardExecutionRenderLayout>
+    );
+  }
+
+  if (isScreenDisplayPath(pathname)) {
+    return (
+      <AntdRegistry>
+        <div className="flex h-screen min-w-[1280px] flex-col overflow-hidden">
+          <main className="main-content flex min-h-0 flex-1 overflow-hidden p-0 text-sm">
+            {children}
+          </main>
+        </div>
+      </AntdRegistry>
     );
   }
 

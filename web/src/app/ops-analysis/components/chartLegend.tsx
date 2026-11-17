@@ -8,6 +8,7 @@ const VERTICAL_LEGEND_WIDTH_PX = 120;
 
 interface LegendItem {
   name: string;
+  label?: string;
   value?: number;
 }
 
@@ -41,8 +42,10 @@ const ChartLegend: React.FC<ChartLegendProps> = ({
   const previousLegendKeyRef = useRef<string | null>(null);
   onSelectionChangeRef.current = onSelectionChange;
 
+  const legendText = (item: LegendItem) => item.label || item.name;
+
   const legendData = useMemo(
-    () => data.filter((item) => item.name != null && item.name !== ''),
+    () => data.filter((item) => (item.label || item.name) != null && (item.label || item.name) !== ''),
     [data]
   );
 
@@ -120,7 +123,7 @@ const ChartLegend: React.FC<ChartLegendProps> = ({
             >
               <EllipsisWithTooltip
                 className="overflow-hidden text-ellipsis whitespace-nowrap text-[var(--color-text-2)]"
-                text={item.name}
+                text={legendText(item)}
               />
             </span>
           </div>
@@ -147,7 +150,7 @@ const ChartLegend: React.FC<ChartLegendProps> = ({
           const percent = showPercent && total > 0
             ? ((item.value || 0) / total * 100).toFixed(1)
             : null;
-          const label = percent != null ? `${item.name} (${percent}%)` : item.name;
+          const label = percent != null ? `${legendText(item)} (${percent}%)` : legendText(item);
 
           return (
             <div

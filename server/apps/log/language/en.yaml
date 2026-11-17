@@ -170,3 +170,105 @@ error:
   scope_exclusive: Provide either a collect instance or a collect type, but not both
   generation_published: The current generation is already published
   channel_query_failed: Failed to query notification channels
+  collect_config_child_or_base: Provide a child or base configuration
+grok_pattern:
+  WORD:
+    description: A word of letters, digits, or underscores
+  NOTSPACE:
+    description: A run of non-whitespace characters
+  SPACE:
+    description: Whitespace; an empty full match counts as no match
+  DATA:
+    description: Any text, non-greedy; an empty full match counts as no match
+  GREEDYDATA:
+    description: Any text, greedy
+  QUOTEDSTRING:
+    description: A single- or double-quoted string
+  UUID:
+    description: A UUID
+  USERNAME:
+    description: A username
+  EMAILADDRESS:
+    description: An email address
+  INT:
+    description: An integer with an optional sign
+  POSINT:
+    description: A positive integer
+  NONNEGINT:
+    description: A non-negative integer
+  NUMBER:
+    description: An integer or decimal number
+  BASE16NUM:
+    description: A hexadecimal number
+  IPV4:
+    description: An IPv4 address
+  IPV6:
+    description: An IPv6 address
+  IP:
+    description: An IPv4 or IPv6 address
+  HOSTNAME:
+    description: A hostname
+  IPORHOST:
+    description: An IP address or hostname
+  HOSTPORT:
+    description: A host and port
+  MAC:
+    description: A MAC address
+  UNIXPATH:
+    description: A Unix path
+  WINPATH:
+    description: A Windows path
+  PATH:
+    description: A Unix or Windows path
+  URIPROTO:
+    description: A URI scheme
+  URIHOST:
+    description: A URI host with an optional port
+  URIPATH:
+    description: A URI path
+  URIPARAM:
+    description: A URI query string
+  URIPATHPARAM:
+    description: A URI path with an optional query string
+  URI:
+    description: A URI
+  YEAR:
+    description: A four-digit year
+  MONTH:
+    description: An English month name
+  MONTHNUM:
+    description: A month number
+  MONTHDAY:
+    description: A day of the month
+  DAY:
+    description: An English weekday name
+  HOUR:
+    description: An hour
+  MINUTE:
+    description: A minute
+  SECOND:
+    description: A second
+  TIME:
+    description: A time of day
+  DATE:
+    description: A calendar date
+  DATESTAMP:
+    description: A date and time
+  TIMESTAMP_ISO8601:
+    description: An ISO 8601 timestamp with optional fractional seconds
+  HTTPDATE:
+    description: An HTTP date
+  SYSLOGTIMESTAMP:
+    description: A syslog timestamp
+  LOGLEVEL:
+    description: A whole-word log level, including INF, WRN, DBG, and TRC
+  PROG:
+    description: A program name
+  SYSLOGHOST:
+    description: A syslog host
+  COMMONAPACHELOG:
+    description: An Apache common access log line
+  COMBINEDAPACHELOG:
+    description: An Apache combined access log line, including the Nginx default combined format
+  SYSLOGBASE:
+    description: A syslog line header with time, host, program, and an optional process id

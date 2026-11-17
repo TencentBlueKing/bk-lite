@@ -1,0 +1,536 @@
+"""监控通用查询 NATS handler。统计在监控模块内完成，不把全量样本交回运营分析。"""
+
+from types import SimpleNamespace
+
+import nats_client
+from apps.core.logger import monitor_logger as logger
+from apps.monitor.models.monitor_object import MonitorInstance, MonitorObject
+from apps.monitor.models.monitor_policy import MonitorAlert, MonitorPolicy
+from apps.monitor.nats.monitor import (
+    _filter_nats_visible_alerts,
+    _get_authorized_instance_queryset,
+    _get_monitor_instance_permission,
+    _get_nats_accessible_instance_queryset,
+    _get_nats_accessible_policy_queryset,
+    _get_nats_actor_scope,
+)
+from apps.monitor.services.authorized_metric_query import (
+    GROUPING_INSTANCE,
+    AuthorizedMetricQueryError,
+    AuthorizedMetricQueryService,
+    _instance_lookup_candidates,
+    _metric_instance_id_keys,
+)
+from apps.monitor.services.generic_query import (
+    ALERT_DISTRIBUTION_FIELDS,
+    GenericQueryError,
+    _filled,
+    _id_list,
+    build_metric_result,
+    ensure_payload_limit,
+    metric_instance_labels,
+    query_alert_counts,
+    query_alert_details,
+    query_alert_distribution,
+    query_instance_counts,
+    query_instances,
+    validate_metric_request,
+)
+from apps.monitor.utils.victoriametrics_api import VictoriaMetricsAPI
+
+
+def _existing_monitor_object_id(monitor_object_id):
+    text = str(monitor_object_id).strip()
+    if not text.isdigit():
+        return None
+    object_id = int(text)
+    if not MonitorObject.objects.filter(id=object_id).exists():
+        return None
+    return object_id
+
+
+def _ok(data) -> dict:
+    ensure_payload_limit(data)
+    return {"result": True, "data": data, "message": ""}
+
+
+def _fail(message: str, status: str = "failed") -> dict:
+    return {"result": False, "data": {"status": status}, "message": message}
+
+
+def _guard(stage: str):
+    def decorate(func):
+        def wrapped(*args, **kwargs):
+            try:
+                return func(*args, **kwargs)
+            except GenericQueryError as exc:
+                return _fail(exc.message, exc.status)
+            except AuthorizedMetricQueryError as exc:
+                status = "forbidden" if str(exc.code).endswith("forbidden") else "failed"
+                return _fail(str(exc), status)
+            except Exception as exc:
+                logger.exception(
+                    "event=monitor_generic_query_failed failed_stage=%s error_type=%s",
+                    stage,
+                    type(exc).__name__,
+                )
+                return _fail("查询失败", "failed")
+
+        wrapped.__name__ = func.__name__
+        return wrapped
+
+    return decorate
+
+
+def _metric_condition_filters(filters):
+    if filters in (None, "", [], {}):
+        return []
+    if isinstance(filters, list):
+        return filters
+    if isinstance(filters, dict) and set(filters) <= {"logic", "items"}:
+        items = filters.get("items") or []
+        if not isinstance(items, list):
+            raise GenericQueryError("filters 必须是条件")
+        for item in items:
+            if not isinstance(item, dict):
+                raise GenericQueryError("filters 必须是条件")
+            label = str(item.get("field") or item.get("label") or "").strip()
+            value = item.get("value")
+            if label == "" and value not in (None, ""):
+                raise GenericQueryError("填写了维度值时必须填写维度名")
+        return filters
+    raise GenericQueryError("filters 必须是条件")
+
+
+def _require_filter_list(filters) -> list:
+    if filters in (None, "", []):
+        return []
+    if not isinstance(filters, list):
+        raise GenericQueryError("filters 必须是列表")
+    return list(filters)
+
+
+def _selected_monitor_object_ids(monitor_object_id):
+    if monitor_object_id in (None, "", []):
+        return []
+    raw = monitor_object_id if isinstance(monitor_object_id, (list, tuple)) else [monitor_object_id]
+    object_ids = []
+    for item in raw:
+        if item in (None, ""):
+            continue
+        object_id = _existing_monitor_object_id(item)
+        if object_id is None:
+            raise GenericQueryError("监控对象不存在或无权访问", status="forbidden")
+        if object_id not in object_ids:
+            object_ids.append(object_id)
+    if not object_ids:
+        raise GenericQueryError("监控对象不存在或无权访问", status="forbidden")
+    return object_ids
+
+
+def _ensure_monitor_object_accessible(object_id, user_info, policies, is_superuser):
+    if is_superuser:
+        return
+    has_policy = policies.filter(monitor_object_id=object_id).exists()
+    permission, error = _get_monitor_instance_permission(str(object_id), user_info or {})
+    if error:
+        raise GenericQueryError(error.get("message") or "无权限", status="forbidden")
+    has_instance = bool((permission or {}).get("instance") or (permission or {}).get("team"))
+    if not has_policy and not has_instance:
+        raise GenericQueryError("监控对象不存在或无权访问", status="forbidden")
+
+
+def _authorized_instances(user_info, monitor_object_id):
+    object_ids = _selected_monitor_object_ids(monitor_object_id)
+    if not object_ids:
+        raise GenericQueryError("监控对象不能为空")
+    _user, _team, _children, scope_ids, is_superuser, scope_error = _get_nats_actor_scope(user_info or {})
+    if scope_error:
+        raise GenericQueryError(scope_error.get("message") or "无权限", status="forbidden")
+    if is_superuser:
+        return MonitorInstance.objects.filter(
+            monitor_object_id__in=object_ids,
+            is_deleted=False,
+            monitorinstanceorganization__organization__in=list(scope_ids),
+        ).distinct()
+    allowed_ids = []
+    for object_id in object_ids:
+        permission, error = _get_monitor_instance_permission(str(object_id), user_info or {})
+        if error:
+            raise GenericQueryError(error.get("message") or "无权限", status="forbidden")
+        if not (permission or {}).get("instance") and not (permission or {}).get("team"):
+            raise GenericQueryError("无权限", status="forbidden")
+        allowed_ids.extend(
+            _get_authorized_instance_queryset(permission, scope_ids)
+            .filter(monitor_object_id=object_id, is_deleted=False)
+            .values_list("id", flat=True)
+        )
+    return MonitorInstance.objects.filter(id__in=allowed_ids, is_deleted=False).distinct()
+
+
+@nats_client.register
+@_guard("query_monitor_instances")
+def query_monitor_instances(
+    monitor_object_id=None,
+    analysis_mode=None,
+    status=None,
+    instance_ids=None,
+    group_by=None,
+    page=None,
+    page_size=None,
+    user_info=None,
+    **kwargs,
+):
+    if kwargs.get("order_by") not in (None, "") or kwargs.get("order_dir") not in (None, ""):
+        raise GenericQueryError("不支持排序")
+    del kwargs
+    if group_by not in (None, ""):
+        raise GenericQueryError("当前查询不支持分组")
+    queryset = _authorized_instances(user_info, monitor_object_id)
+    data = query_instances(
+        queryset,
+        analysis_mode=analysis_mode,
+        status=status,
+        instance_ids=instance_ids,
+        group_by=group_by,
+        page=page,
+        page_size=page_size,
+        locale=(user_info or {}).get("locale"),
+    )
+    return _ok(data)
+
+
+@nats_client.register
+@_guard("query_monitor_instance_counts")
+def query_monitor_instance_counts(
+    monitor_object_id=None,
+    status=None,
+    user_info=None,
+    **kwargs,
+):
+    if kwargs.get("page") not in (None, "") or kwargs.get("page_size") not in (None, ""):
+        raise GenericQueryError("计数不支持分页")
+    if kwargs.get("order_by") not in (None, "") or kwargs.get("order_dir") not in (None, ""):
+        raise GenericQueryError("计数不支持排序")
+    if kwargs.get("instance_ids") not in (None, "", []):
+        raise GenericQueryError("计数不支持实例范围")
+    del kwargs
+    queryset = _authorized_instances(user_info, monitor_object_id)
+    return _ok(query_instance_counts(queryset, status=status))
+
+
+@nats_client.register
+@_guard("query_monitor_metric")
+def query_monitor_metric(
+    monitor_object_id=None,
+    metric_id=None,
+    instance_ids=None,
+    time_range=None,
+    step=None,
+    aggregation=None,
+    filters=None,
+    user_info=None,
+    **kwargs,
+):
+    del kwargs
+    if metric_id in (None, ""):
+        raise GenericQueryError("指标不能为空")
+    query_filters = _metric_condition_filters(filters)
+    merge_instances = aggregation not in (None, "")
+    query_aggregation = str(aggregation).upper() if merge_instances else "AVG"
+    query_grouping = GROUPING_INSTANCE if merge_instances else None
+    actor, current_team, include_children, scope_ids, is_superuser, scope_error = _get_nats_actor_scope(user_info or {})
+    if scope_error:
+        raise GenericQueryError(scope_error.get("message") or "无权限", status="forbidden")
+    checked = validate_metric_request(
+        instance_ids=instance_ids,
+        time_range=time_range,
+        step=step,
+        organization_ids=scope_ids,
+    )
+    actor = SimpleNamespace(
+        username=getattr(actor, "username", ""),
+        domain=getattr(actor, "domain", ""),
+        is_superuser=bool(is_superuser),
+    )
+    prepared = AuthorizedMetricQueryService(
+        user=actor,
+        current_team=current_team,
+        include_children=include_children,
+        organization_scope=scope_ids,
+    ).prepare(
+        {
+            "monitor_object_id": monitor_object_id,
+            "metric_id": metric_id,
+            "instance_ids": checked["instance_ids"],
+            "start": int(checked["start"].timestamp() * 1000),
+            "end": int(checked["end"].timestamp() * 1000),
+            "step": checked["step"],
+            "aggregation": query_aggregation,
+            "filters": query_filters,
+            "grouping": query_grouping,
+        }
+    )
+    response = VictoriaMetricsAPI().query_range(
+        prepared.query,
+        checked["start"].timestamp(),
+        checked["end"].timestamp(),
+        checked["step"],
+    )
+    metric = prepared.metric
+    unit = getattr(metric, "unit", "") or ""
+    labels = metric_instance_labels(prepared.instance_ids)
+    for raw_id in checked["instance_ids"]:
+        if raw_id in labels:
+            continue
+        for candidate in _instance_lookup_candidates(raw_id):
+            if candidate in labels:
+                labels[str(raw_id)] = labels[candidate]
+                break
+    identity_keys = _metric_instance_id_keys(metric) if metric is not None else []
+    data = build_metric_result(
+        response=response,
+        unit=unit,
+        requested_ids=checked["instance_ids"],
+        instance_names=labels,
+        identity_keys=identity_keys,
+    )
+    return _ok(data)
+
+
+def _reject_retired_alert_args(kwargs) -> None:
+    if kwargs.get("instance_id") not in (None, "", []):
+        raise GenericQueryError("当前查询不支持该实例参数")
+    if str(kwargs.get("analysis_mode") or "").strip():
+        raise GenericQueryError("当前查询不支持该参数")
+    if kwargs.get("group_by") not in (None, ""):
+        raise GenericQueryError("当前查询不支持分组")
+
+
+def _scoped_monitor_alerts(user_info, monitor_object_id, instance_ids, *, skip_unknown_instances=False):
+    _user, _team, _children, scope_ids, is_superuser, scope_error = _get_nats_actor_scope(user_info or {})
+    if scope_error:
+        raise GenericQueryError(scope_error.get("message") or "无权限", status="forbidden")
+    policies, policy_error = _get_nats_accessible_policy_queryset(user_info or {})
+    if policy_error:
+        raise GenericQueryError(policy_error.get("message") or "无权限", status="forbidden")
+    alerts = _filter_nats_visible_alerts(MonitorAlert.objects.all(), scope_ids, policies)
+    object_ids = []
+    if monitor_object_id not in (None, "", []):
+        object_ids = _selected_monitor_object_ids(monitor_object_id)
+        for object_id in object_ids:
+            _ensure_monitor_object_accessible(object_id, user_info, policies, is_superuser)
+        alerts = alerts.filter(policy_id__in=MonitorPolicy.objects.filter(monitor_object_id__in=object_ids).values("id"))
+    requested_ids = _id_list(instance_ids)
+    if requested_ids:
+        selected_ids = _resolve_requested_alert_instances(
+            user_info,
+            requested_ids,
+            object_ids,
+            skip_unknown_instances=skip_unknown_instances,
+        )
+        if selected_ids:
+            alerts = alerts.filter(monitor_instance_id__in=selected_ids)
+        else:
+            alerts = alerts.none()
+        return alerts, selected_ids
+    return alerts, requested_ids
+
+
+def _resolve_requested_alert_instances(user_info, requested_ids, object_ids, *, skip_unknown_instances):
+    candidates = []
+    seen = set()
+    for item in requested_ids:
+        for candidate in _instance_lookup_candidates(item):
+            if candidate not in seen:
+                seen.add(candidate)
+                candidates.append(candidate)
+    authorized, error = _get_nats_accessible_instance_queryset(user_info or {}, instance_ids=candidates)
+    if error:
+        raise GenericQueryError(error.get("message") or "无权限", status="forbidden")
+    scoped = authorized.filter(monitor_object_id__in=object_ids) if object_ids else authorized
+    found = {str(item) for item in scoped.values_list("id", flat=True)}
+    resolved = []
+    for item in requested_ids:
+        match = next((candidate for candidate in _instance_lookup_candidates(item) if candidate in found), None)
+        if match and match not in resolved:
+            resolved.append(match)
+    if skip_unknown_instances:
+        return resolved
+    missing = []
+    foreign = []
+    authorized_ids = {str(item) for item in authorized.values_list("id", flat=True)}
+    for item in requested_ids:
+        match = next((candidate for candidate in _instance_lookup_candidates(item) if candidate in authorized_ids), None)
+        if match is None:
+            missing.append(item)
+        elif object_ids and match not in found:
+            foreign.append(item)
+    if missing:
+        raise GenericQueryError("实例不存在、已删除或无权访问: " + ", ".join(missing), status="forbidden")
+    if foreign:
+        raise GenericQueryError("实例不属于所选监控对象: " + ", ".join(foreign))
+    return resolved
+
+
+@nats_client.register
+@_guard("query_monitor_alerts")
+def query_monitor_alerts(
+    monitor_object_id=None,
+    instance_ids=None,
+    level=None,
+    status=None,
+    alert_type=None,
+    time_field=None,
+    time_range=None,
+    order_by=None,
+    order_dir=None,
+    page=None,
+    page_size=None,
+    user_info=None,
+    **kwargs,
+):
+    _reject_retired_alert_args(kwargs)
+    del kwargs
+    alerts, selected_ids = _scoped_monitor_alerts(user_info, monitor_object_id, instance_ids)
+    data = query_alert_details(
+        alerts,
+        level=level,
+        status=status,
+        alert_type=alert_type,
+        instance_ids=selected_ids,
+        time_field=time_field,
+        time_range=time_range,
+        order_by=order_by,
+        order_dir=order_dir,
+        page=page,
+        page_size=page_size,
+        locale=(user_info or {}).get("locale"),
+    )
+    return _ok(data)
+
+
+@nats_client.register
+@_guard("query_monitor_alert_counts")
+def query_monitor_alert_counts(
+    monitor_object_id=None,
+    instance_ids=None,
+    level=None,
+    status=None,
+    alert_type=None,
+    time_field=None,
+    time_range=None,
+    user_info=None,
+    **kwargs,
+):
+    _reject_retired_alert_args(kwargs)
+    if kwargs.get("page") not in (None, "") or kwargs.get("page_size") not in (None, ""):
+        raise GenericQueryError("计数不支持分页")
+    if kwargs.get("order_by") not in (None, "") or kwargs.get("order_dir") not in (None, ""):
+        raise GenericQueryError("计数不支持排序")
+    del kwargs
+    alerts, selected_ids = _scoped_monitor_alerts(user_info, monitor_object_id, instance_ids)
+    data = query_alert_counts(
+        alerts,
+        level=level,
+        status=status,
+        alert_type=alert_type,
+        instance_ids=selected_ids,
+        time_field=time_field,
+        time_range=time_range,
+    )
+    return _ok(data)
+
+
+@nats_client.register
+@_guard("query_monitor_alert_distribution")
+def query_monitor_alert_distribution(
+    group_by=None,
+    monitor_object_id=None,
+    instance_ids=None,
+    level=None,
+    status=None,
+    alert_type=None,
+    time_field=None,
+    time_range=None,
+    user_info=None,
+    **kwargs,
+):
+    _reject_retired_alert_args(kwargs)
+    if kwargs.get("page") not in (None, "") or kwargs.get("page_size") not in (None, ""):
+        raise GenericQueryError("分布不支持分页")
+    if kwargs.get("order_by") not in (None, "") or kwargs.get("order_dir") not in (None, ""):
+        raise GenericQueryError("分布不支持排序")
+    del kwargs
+    alerts, selected_ids = _scoped_monitor_alerts(
+        user_info,
+        monitor_object_id,
+        instance_ids,
+        skip_unknown_instances=True,
+    )
+    data = query_alert_distribution(
+        alerts,
+        group_by=group_by,
+        level=level,
+        status=status,
+        alert_type=alert_type,
+        instance_ids=selected_ids,
+        time_field=time_field,
+        time_range=time_range,
+        locale=(user_info or {}).get("locale"),
+    )
+    return _ok(data)
+
+
+@nats_client.register
+@_guard("query_cmdb_alert_distribution")
+def query_cmdb_alert_distribution(
+    uuids=None,
+    group_by=None,
+    level=None,
+    status=None,
+    alert_type=None,
+    time_field=None,
+    time_range=None,
+    user_info=None,
+    **kwargs,
+):
+    from apps.monitor.services.cmdb_alert_distribution import fetch_cmdb_monitor_mappings, normalize_cmdb_uuids, select_mapped_monitor_ids
+
+    _reject_retired_alert_args(kwargs)
+    if kwargs.get("page") not in (None, "") or kwargs.get("page_size") not in (None, ""):
+        raise GenericQueryError("分布不支持分页")
+    if kwargs.get("order_by") not in (None, "") or kwargs.get("order_dir") not in (None, ""):
+        raise GenericQueryError("分布不支持排序")
+    if kwargs.get("monitor_object_id") not in (None, "", []):
+        raise GenericQueryError("当前查询不接收监控对象，请只传实例标识")
+    if kwargs.get("instance_ids") not in (None, "", []):
+        raise GenericQueryError("请传实例标识，不要传监控实例")
+    del kwargs
+    uuid_list = normalize_cmdb_uuids(uuids)
+    if not _filled(group_by):
+        raise GenericQueryError("请选择按什么分布")
+    if group_by not in ALERT_DISTRIBUTION_FIELDS:
+        raise GenericQueryError("分布字段不受支持")
+    mapped_ids = select_mapped_monitor_ids(uuid_list, fetch_cmdb_monitor_mappings(uuid_list, user_info))
+    if not mapped_ids:
+        return _ok([])
+    alerts, selected_ids = _scoped_monitor_alerts(
+        user_info,
+        None,
+        mapped_ids,
+        skip_unknown_instances=True,
+    )
+    data = query_alert_distribution(
+        alerts,
+        group_by=group_by,
+        level=level,
+        status=status,
+        alert_type=alert_type,
+        instance_ids=selected_ids,
+        time_field=time_field,
+        time_range=time_range,
+        locale=(user_info or {}).get("locale"),
+        include_object_identity=True,
+    )
+    return _ok(data)

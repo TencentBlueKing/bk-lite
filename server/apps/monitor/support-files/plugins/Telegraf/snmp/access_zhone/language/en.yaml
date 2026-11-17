@@ -9,9 +9,7 @@ monitor_object_metric:
   Access:
     snmp_uptime:
       name: System Uptime
-      desc: This metric indicates the uptime of the device since the last restart,
-        derived from sysUpTime. Monitoring uptime helps administrators understand
-        device stability and identify unexpected reboots or failures.
+      desc: This metric indicates the uptime of the device since the last restart, derived from sysUpTime. Monitoring uptime helps administrators understand device stability and identify unexpected reboots or failures.
     interface_ifHCInOctets:
       name: Interface Incoming Traffic Rate
       desc: This metric indicates the average rate of bytes received over the past
@@ -53,9 +51,7 @@ monitor_object_metric:
         or service tables.
     device_memory_usage:
       name: Memory Usage
-      desc: Memory utilization of each card of the Zhone/DZS access device, computed
-        as (cardTotalMem - cardAvailMem) / cardTotalMem * 100. Sustained high memory
-        can indicate forwarding table, subscriber table, or control-service pressure.
+      desc: Memory utilization of each card of the Zhone/DZS access device. Sustained high memory can indicate forwarding table, subscriber table, or control-service pressure.
     device_temperature_celsius:
       name: System Temperature
       desc: System temperature of the access device in degrees Celsius. Persistently

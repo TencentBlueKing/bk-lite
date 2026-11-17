@@ -221,6 +221,7 @@ def test_severe_and_warning_come_from_two_summary_queries(monkeypatch):
     )
     assert captured[0] == {"instance_ids": ["mon-7"], "limit": 1}
     assert captured[1] == {"instance_ids": ["mon-7"], "limit": 1, "level": ["critical", "error"]}
+    assert captured[2] == {"instance_ids": ["mon-7"], "limit": 100}
     assert "include_alert_refs" not in captured[0]
     row = items[0]
     assert row["status"] == "critical"
@@ -314,14 +315,70 @@ def test_shared_monitor_id_is_queried_once(monkeypatch):
         }
 
     items = _query(monkeypatch, [first, second], cmdb, monitor)
-    assert [query["instance_ids"] for query in captured] == [["mon-shared"], ["mon-shared"]]
+    assert [query["instance_ids"] for query in captured] == [["mon-shared"], ["mon-shared"], ["mon-shared"]]
     assert "level" not in captured[0]
     assert captured[1]["level"] == ["critical", "error"]
+    assert captured[2]["limit"] == 100
     by_uuid = _by_uuid(items)
     for inst_uuid in (first, second):
         assert by_uuid[inst_uuid]["status"] == "critical"
         assert by_uuid[inst_uuid]["alert_count"] == 2
         assert by_uuid[inst_uuid]["level_counts"] == {"critical": 1, "error": 0, "warning": 1}
+
+
+def test_alert_items_carry_reason_and_metric(monkeypatch):
+    inst_uuid = _uuid(81)
+
+    def monitor(**kwargs):
+        query_data = kwargs["query_data"]
+        if query_data.get("level"):
+            return {
+                "result": True,
+                "data": {"instance_summaries": [{"instance_id": "mon-81", "count": 0, "max_level": None}]},
+            }
+        if query_data.get("limit") == 100:
+            return {
+                "result": True,
+                "data": {
+                    "items": [
+                        {
+                            "monitor_instance_id": "mon-81",
+                            "content": "主机 web-01 CPU 使用率过高",
+                            "level": "warning",
+                            "metric_name": "CPU Usage",
+                            "metric_key": "cpu_usage_total",
+                        },
+                        {
+                            "monitor_instance_id": "mon-81",
+                            "content": "   ",
+                            "level": "warning",
+                            "metric_name": "ignored",
+                        },
+                    ]
+                },
+            }
+        return {
+            "result": True,
+            "data": {"instance_summaries": [{"instance_id": "mon-81", "count": 1, "max_level": "warning"}]},
+        }
+
+    items = _query(
+        monkeypatch,
+        [inst_uuid],
+        lambda **kwargs: _mapping(inst_uuid, monitor_id="mon-81", inst_name="web-01"),
+        monitor,
+    )
+    row = items[0]
+    assert row["status"] == "warning"
+    assert row["alert_count"] == 1
+    assert row["alerts"] == [
+        {
+            "content": "主机 web-01 CPU 使用率过高",
+            "level": "warning",
+            "metric_name": "CPU Usage",
+            "metric_key": "cpu_usage_total",
+        }
+    ]
 
 
 def test_severe_query_failure_marks_batch_unknown(monkeypatch, caplog):

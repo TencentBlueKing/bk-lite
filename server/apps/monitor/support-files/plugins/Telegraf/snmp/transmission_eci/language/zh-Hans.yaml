@@ -27,7 +27,7 @@ monitor_object_metric:
       desc: 该指标表示设备自上次启动以来的运行时间（来自 sysUpTime）。通过监测设备运行时间，网络管理员可以了解设备的稳定性与可靠性，识别潜在的重启或故障问题。
     device_cpu_usage:
       name: CPU 使用率
-      desc: ECI Apollo 各 CPU 过去 5 分钟的使用率，按 ECI-OPERATING-MIB 的 user + system 计算（两位小数定点值），取最忙的 CPU。持续偏高可能表示控制平面过载。
+      desc: ECI Apollo 各 CPU 过去 5 分钟的使用率（两位小数定点值），取最忙的 CPU。持续偏高可能表示控制平面过载。
     device_memory_total:
       name: 内存总量
       desc: ECI Apollo 物理内存总量，单位字节（ECI-OPERATING-MIB totalMemory）。
@@ -36,7 +36,7 @@ monitor_object_metric:
       desc: ECI Apollo 已分配内存，单位字节（ECI-OPERATING-MIB allocMemory）。
     device_memory_usage:
       name: 内存使用率
-      desc: ECI Apollo 内存使用率，按 allocMemory / totalMemory * 100 计算。持续偏高可能表示内存泄漏或容量不足。
+      desc: ECI Apollo 内存使用率。持续偏高可能表示内存泄漏或容量不足。
     device_fan_state:
       name: 风扇状态
       desc: ECI Apollo 风扇运行状态：1 表示运行（正常），2 表示停转（异常）。

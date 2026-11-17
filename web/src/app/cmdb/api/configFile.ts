@@ -14,7 +14,7 @@ export const useConfigFileApi = () => {
   const getConfigFileVersions = useCallback(
     (instance_uuid: string, file_path: string) =>
       get('/cmdb/api/config_file_versions/', {
-        params: { instance_uuid, file_path, page_size: -1 },
+        params: { instance_uuid, file_path, page: 1, page_size: 20 },
       }),
     [get]
   );

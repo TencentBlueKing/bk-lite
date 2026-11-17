@@ -1,5 +1,6 @@
 import dayjs from 'dayjs';
 import { formatOpsDisplayTime } from '@/app/ops-analysis/utils/dateTime';
+import { getStoredTimezone, normalizeTimezone } from '@/utils/userPreferences';
 import {
   chartLinkFields,
   chartLinkTime,
@@ -11,10 +12,21 @@ import {
   planLineBarMapping,
   seriesLabelForField,
 } from '@/app/ops-analysis/utils/lineBarFieldMapping';
-import { coerceTopNNumericValue, unwrapTopNData } from '@/app/ops-analysis/utils/topNData';
+import {
+  UNFILLED_CATEGORY_LABEL,
+  coerceTopNNumericValue,
+  isUnfilledCategoryValue,
+  unwrapTopNData,
+} from '@/app/ops-analysis/utils/topNData';
+import {
+  chartFieldMissingMessage,
+  resolveChartBinding,
+} from '@/app/ops-analysis/utils/chartFieldContract';
 
 export interface ChartDataItem {
   name: string;
+  /** 展示文案。饼图 name 在有身份字段时用身份，避免同名扇区被合并。 */
+  label?: string;
   value: number;
   __link?: ChartLinkPoint;
 }
@@ -97,6 +109,9 @@ const scalarPieFields = (mapping?: ChartFieldMapping): PieScalarField[] => {
     .filter((item) => item.field);
   return fields.length >= 2 ? fields : [];
 };
+
+const TIME_LABEL_CACHE_LIMIT = 8192;
+const timeLabelCache = new Map<string, string>();
 
 export class ChartDataTransformer {
   static formatCategoryValue(value: any): string {
@@ -285,6 +300,33 @@ export class ChartDataTransformer {
   }
 
   static formatTimeValue(value: any): string {
+    const cacheKey = this.timeLabelCacheKey(value);
+    if (cacheKey) {
+      const cached = timeLabelCache.get(cacheKey);
+      if (cached !== undefined) return cached;
+    }
+    const label = this.formatTimeValueUncached(value);
+    if (cacheKey) {
+      if (timeLabelCache.size >= TIME_LABEL_CACHE_LIMIT) {
+        timeLabelCache.clear();
+      }
+      timeLabelCache.set(cacheKey, label);
+    }
+    return label;
+  }
+
+  private static timeLabelCacheKey(value: unknown): string | null {
+    if (typeof value === 'number') {
+      if (!Number.isFinite(value)) return null;
+      return `${normalizeTimezone(getStoredTimezone())}\0n:${value}`;
+    }
+    if (typeof value === 'string') {
+      return `${normalizeTimezone(getStoredTimezone())}\0s:${value}`;
+    }
+    return null;
+  }
+
+  private static formatTimeValueUncached(value: any): string {
     let dateValue: any = null;
 
     if (typeof value === 'number') {
@@ -446,21 +488,55 @@ export class ChartDataTransformer {
   ): LineBarChartData {
     const dimensionValues = rows.map((row) => row[dimensionField]);
     const shouldFormatAsTime = this.shouldFormatAsTimeDimension(dimensionValues);
+    if (shouldFormatAsTime) {
+      return {
+        categories: dimensionValues.map((value) =>
+          this.formatDimensionValue(value, true),
+        ),
+        values: rows.map((row) => coerceTopNNumericValue(row[valueField])),
+        points: rows.map((row) => this.linkPoint({
+          dimension: row[dimensionField],
+          dimensionKey: dimensionField || undefined,
+          isTime: true,
+          numeric: coerceTopNNumericValue(row[valueField]),
+          raw: row[valueField],
+          row,
+        })),
+      };
+    }
 
-    return {
-      categories: dimensionValues.map((value) =>
-        this.formatDimensionValue(value, shouldFormatAsTime),
-      ),
-      values: rows.map((row) => coerceTopNNumericValue(row[valueField])),
-      points: rows.map((row) => this.linkPoint({
-        dimension: row[dimensionField],
+    const categories: string[] = [];
+    const values: Array<number | null> = [];
+    const points: ChartLinkPoint[] = [];
+    let unfilledAt = -1;
+    rows.forEach((row) => {
+      const raw = row[dimensionField];
+      const text = this.formatCategoryValue(raw);
+      const unfilled = !text;
+      const label = text || UNFILLED_CATEGORY_LABEL;
+      const numeric = coerceTopNNumericValue(row[valueField]);
+      if (unfilled && unfilledAt >= 0) {
+        const current = values[unfilledAt];
+        values[unfilledAt] = current === null ? numeric : numeric === null ? current : current + numeric;
+        if (points[unfilledAt] && typeof values[unfilledAt] === 'number') {
+          points[unfilledAt].numeric = values[unfilledAt];
+        }
+        return;
+      }
+      if (unfilled) unfilledAt = categories.length;
+      categories.push(label);
+      values.push(numeric);
+      points.push(this.linkPoint({
+        seriesName: label,
+        dimension: raw,
         dimensionKey: dimensionField || undefined,
-        isTime: shouldFormatAsTime,
-        numeric: coerceTopNNumericValue(row[valueField]),
+        numeric,
         raw: row[valueField],
         row,
-      })),
-    };
+      }));
+    });
+
+    return { categories, values, points };
   }
 
   /**
@@ -758,17 +834,20 @@ export class ChartDataTransformer {
     errorMessage?: string,
     mapping?: ChartFieldMapping,
   ): { isValid: boolean; message?: string } {
+    const plan = planLineBarMapping(mapping);
+    if (plan.kind === 'conflict') {
+      return { isValid: false, message: 'dashboard.lineBarSeriesFieldConflict' };
+    }
+    const binding = resolveChartBinding(rawData, mapping);
+    if (binding.source === 'explicit' && binding.missingField) {
+      return { isValid: false, message: chartFieldMissingMessage(binding.missingField) };
+    }
     if (this.isStructurallyEmpty(rawData)) {
       return { isValid: true };
     }
 
     try {
       const transformedData = this.transformToLineBarData(rawData, mapping);
-
-      const plan = planLineBarMapping(mapping);
-      if (plan.kind === 'conflict') {
-        return { isValid: false, message: 'dashboard.lineBarSeriesFieldConflict' };
-      }
 
       if (!transformedData.categories || transformedData.categories.length === 0) {
         return { isValid: false, message: errorMessage || 'dashboard.dataFormatMismatch' };
@@ -810,6 +889,10 @@ export class ChartDataTransformer {
     errorMessage?: string,
     mapping?: ChartFieldMapping,
   ): { isValid: boolean; message?: string } {
+    const binding = resolveChartBinding(rawData, mapping);
+    if (binding.source === 'explicit' && binding.missingField) {
+      return { isValid: false, message: chartFieldMissingMessage(binding.missingField) };
+    }
     if (this.isStructurallyEmpty(rawData)) {
       return { isValid: true };
     }

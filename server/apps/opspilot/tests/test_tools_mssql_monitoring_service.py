@@ -27,7 +27,7 @@ CONFIG = {"configurable": {"host": "127.0.0.1", "port": 1433, "user": "sa", "pas
 def _dispatch(matchers):
     """execute_readonly_query side_effect: 按 SQL 子串命中第一个匹配返回对应 rows。"""
 
-    def _impl(query, params=None, config=None, database=None):
+    def _impl(query, params=None, config=None, database=None, instance_name=None, instance_id=None):
         for substr, rows in matchers:
             if substr in query:
                 return rows
@@ -40,16 +40,29 @@ def _dispatch(matchers):
 class TestDatabaseMetrics:
     def test_merges_cache_stats_and_formats_create_date(self):
         db_rows = [
-            {"database_name": "appdb", "state": "ONLINE", "recovery_model": "FULL",
-             "compatibility_level": 150, "create_date": "2024-01-01 10:00:00",
-             "active_connections": 5, "data_size_mb": 100, "log_size_mb": 20},
-            {"database_name": "other", "state": "ONLINE", "recovery_model": "SIMPLE",
-             "compatibility_level": 150, "create_date": None,
-             "active_connections": 0, "data_size_mb": 10, "log_size_mb": 2},
+            {
+                "database_name": "appdb",
+                "state": "ONLINE",
+                "recovery_model": "FULL",
+                "compatibility_level": 150,
+                "create_date": "2024-01-01 10:00:00",
+                "active_connections": 5,
+                "data_size_mb": 100,
+                "log_size_mb": 20,
+            },
+            {
+                "database_name": "other",
+                "state": "ONLINE",
+                "recovery_model": "SIMPLE",
+                "compatibility_level": 150,
+                "create_date": None,
+                "active_connections": 0,
+                "data_size_mb": 10,
+                "log_size_mb": 2,
+            },
         ]
         cache_rows = [
-            {"database_name": "appdb", "buffer_pool_reads": 999, "index_seeks": 800,
-             "index_scans": 100, "index_lookups": 99, "index_updates": 50},
+            {"database_name": "appdb", "buffer_pool_reads": 999, "index_seeks": 800, "index_scans": 100, "index_lookups": 99, "index_updates": 50},
         ]
         matchers = [
             ("sys.dm_db_index_usage_stats", cache_rows),
@@ -81,17 +94,26 @@ class TestDatabaseMetrics:
 # ============================ get_table_metrics ============================
 class TestTableMetrics:
     def test_single_table_formats_size_and_times(self):
-        rows = [{
-            "schema_name": "dbo", "table_name": "orders", "row_count": 1000,
-            "total_space_kb": 2048, "used_space_kb": 1024, "unused_space_kb": 1024,
-            "user_seeks": 10, "user_scans": 2, "user_lookups": 1, "user_updates": 3,
-            "last_user_seek": "2024-06-01 00:00:00", "last_user_scan": None,
-            "last_user_update": "2024-06-02 00:00:00",
-        }]
+        rows = [
+            {
+                "schema_name": "dbo",
+                "table_name": "orders",
+                "row_count": 1000,
+                "total_space_kb": 2048,
+                "used_space_kb": 1024,
+                "unused_space_kb": 1024,
+                "user_seeks": 10,
+                "user_scans": 2,
+                "user_lookups": 1,
+                "user_updates": 3,
+                "last_user_seek": "2024-06-01 00:00:00",
+                "last_user_scan": None,
+                "last_user_update": "2024-06-02 00:00:00",
+            }
+        ]
         # 单表查询走 WHERE s.name = ? AND t.name = ?
         with patch.object(mon, "execute_readonly_query", _dispatch([("AND t.name = ?", rows)])):
-            out = json.loads(mon.get_table_metrics.invoke(
-                {"schema_name": "dbo", "table": "orders", "config": CONFIG}))
+            out = json.loads(mon.get_table_metrics.invoke({"schema_name": "dbo", "table": "orders", "config": CONFIG}))
 
         assert out["schema"] == "dbo"
         assert out["table"] == "orders"
@@ -104,11 +126,19 @@ class TestTableMetrics:
         assert t["last_user_scan"] is None
 
     def test_all_tables_uses_top_query(self):
-        rows = [{
-            "schema_name": "dbo", "table_name": "t1", "row_count": 5,
-            "total_space_kb": 16, "used_space_kb": None,
-            "user_seeks": 0, "user_scans": 0, "user_lookups": 0, "user_updates": 0,
-        }]
+        rows = [
+            {
+                "schema_name": "dbo",
+                "table_name": "t1",
+                "row_count": 5,
+                "total_space_kb": 16,
+                "used_space_kb": None,
+                "user_seeks": 0,
+                "user_scans": 0,
+                "user_lookups": 0,
+                "user_updates": 0,
+            }
+        ]
         # 全表查询走 TOP 50 分支(无 AND t.name)
         with patch.object(mon, "execute_readonly_query", _dispatch([("TOP 50", rows)])):
             out = json.loads(mon.get_table_metrics.invoke({"schema_name": "dbo", "config": CONFIG}))
@@ -126,14 +156,38 @@ class TestTableMetrics:
 class TestWaitStats:
     def test_categorizes_waits(self):
         rows = [
-            {"wait_type": "PAGEIOLATCH_SH", "waiting_tasks_count": 10, "wait_time_s": 5,
-             "max_wait_time_ms": 100, "signal_wait_time_s": 1, "signal_wait_percent": 20},
-            {"wait_type": "LCK_M_X", "waiting_tasks_count": 3, "wait_time_s": 2,
-             "max_wait_time_ms": 50, "signal_wait_time_s": 0, "signal_wait_percent": 0},
-            {"wait_type": "RESOURCE_SEMAPHORE", "waiting_tasks_count": 1, "wait_time_s": 1,
-             "max_wait_time_ms": 10, "signal_wait_time_s": 0, "signal_wait_percent": 0},
-            {"wait_type": "CXPACKET", "waiting_tasks_count": 2, "wait_time_s": 1,
-             "max_wait_time_ms": 5, "signal_wait_time_s": 0, "signal_wait_percent": 0},
+            {
+                "wait_type": "PAGEIOLATCH_SH",
+                "waiting_tasks_count": 10,
+                "wait_time_s": 5,
+                "max_wait_time_ms": 100,
+                "signal_wait_time_s": 1,
+                "signal_wait_percent": 20,
+            },
+            {
+                "wait_type": "LCK_M_X",
+                "waiting_tasks_count": 3,
+                "wait_time_s": 2,
+                "max_wait_time_ms": 50,
+                "signal_wait_time_s": 0,
+                "signal_wait_percent": 0,
+            },
+            {
+                "wait_type": "RESOURCE_SEMAPHORE",
+                "waiting_tasks_count": 1,
+                "wait_time_s": 1,
+                "max_wait_time_ms": 10,
+                "signal_wait_time_s": 0,
+                "signal_wait_percent": 0,
+            },
+            {
+                "wait_type": "CXPACKET",
+                "waiting_tasks_count": 2,
+                "wait_time_s": 1,
+                "max_wait_time_ms": 5,
+                "signal_wait_time_s": 0,
+                "signal_wait_percent": 0,
+            },
         ]
         with patch.object(mon, "execute_readonly_query", _dispatch([("dm_os_wait_stats", rows)])):
             out = json.loads(mon.get_wait_stats.invoke({"config": CONFIG}))
@@ -157,16 +211,25 @@ class TestWaitStats:
 class TestInstanceMetrics:
     def _matchers(self, cpu_rows=None, cpu_error=False):
         perf = [
-            {"object_name": "SQLServer:Buffer Manager ", "counter_name": "Page life expectancy ",
-             "instance_name": "  ", "cntr_value": 3000, "cntr_type": 65792},
-            {"object_name": "SQLServer:Buffer Manager ", "counter_name": "Buffer cache hit ratio ",
-             "instance_name": None, "cntr_value": 95, "cntr_type": 537003264},
+            {
+                "object_name": "SQLServer:Buffer Manager ",
+                "counter_name": "Page life expectancy ",
+                "instance_name": "  ",
+                "cntr_value": 3000,
+                "cntr_type": 65792,
+            },
+            {
+                "object_name": "SQLServer:Buffer Manager ",
+                "counter_name": "Buffer cache hit ratio ",
+                "instance_name": None,
+                "cntr_value": 95,
+                "cntr_type": 537003264,
+            },
         ]
         memory = [{"memory_used_mb": 2048, "memory_utilization_percentage": 80}]
-        server = [{"server_name": "SQL01", "product_version": "15.0.2000",
-                   "edition": "Enterprise", "full_version": "Microsoft SQL Server 2019"}]
+        server = [{"server_name": "SQL01", "product_version": "15.0.2000", "edition": "Enterprise", "full_version": "Microsoft SQL Server 2019"}]
 
-        def _impl(query, params=None, config=None, database=None):
+        def _impl(query, params=None, config=None, database=None, instance_name=None, instance_id=None):
             if "dm_os_performance_counters" in query:
                 return perf
             if "dm_os_process_memory" in query:
@@ -182,8 +245,7 @@ class TestInstanceMetrics:
         return _impl
 
     def test_groups_perf_counters_and_strips_whitespace(self):
-        cpu = [{"record_id": 1, "sql_cpu_percent": 30, "system_idle_percent": 60,
-                "other_process_cpu_percent": 10}]
+        cpu = [{"record_id": 1, "sql_cpu_percent": 30, "system_idle_percent": 60, "other_process_cpu_percent": 10}]
         with patch.object(mon, "execute_readonly_query", self._matchers(cpu_rows=cpu)):
             out = json.loads(mon.get_instance_metrics.invoke({"config": CONFIG}))
 
@@ -215,16 +277,38 @@ class TestInstanceMetrics:
 class TestIoStats:
     def test_identifies_high_latency_files(self):
         rows = [
-            {"database_name": "appdb", "logical_name": "appdb_data", "file_type": "ROWS",
-             "physical_name": "/d/appdb.mdf", "num_of_reads": 100, "mb_read": 500,
-             "io_stall_read_ms": 5000, "avg_read_latency_ms": 50,
-             "num_of_writes": 10, "mb_written": 50, "io_stall_write_ms": 100,
-             "avg_write_latency_ms": 5, "total_io_stall_ms": 5100, "size_on_disk_mb": 1000},
-            {"database_name": "appdb", "logical_name": "appdb_log", "file_type": "LOG",
-             "physical_name": "/d/appdb.ldf", "num_of_reads": 1, "mb_read": 1,
-             "io_stall_read_ms": 1, "avg_read_latency_ms": 1,
-             "num_of_writes": 1, "mb_written": 1, "io_stall_write_ms": 1,
-             "avg_write_latency_ms": 1, "total_io_stall_ms": 2, "size_on_disk_mb": 10},
+            {
+                "database_name": "appdb",
+                "logical_name": "appdb_data",
+                "file_type": "ROWS",
+                "physical_name": "/d/appdb.mdf",
+                "num_of_reads": 100,
+                "mb_read": 500,
+                "io_stall_read_ms": 5000,
+                "avg_read_latency_ms": 50,
+                "num_of_writes": 10,
+                "mb_written": 50,
+                "io_stall_write_ms": 100,
+                "avg_write_latency_ms": 5,
+                "total_io_stall_ms": 5100,
+                "size_on_disk_mb": 1000,
+            },
+            {
+                "database_name": "appdb",
+                "logical_name": "appdb_log",
+                "file_type": "LOG",
+                "physical_name": "/d/appdb.ldf",
+                "num_of_reads": 1,
+                "mb_read": 1,
+                "io_stall_read_ms": 1,
+                "avg_read_latency_ms": 1,
+                "num_of_writes": 1,
+                "mb_written": 1,
+                "io_stall_write_ms": 1,
+                "avg_write_latency_ms": 1,
+                "total_io_stall_ms": 2,
+                "size_on_disk_mb": 10,
+            },
         ]
         with patch.object(mon, "execute_readonly_query", _dispatch([("dm_io_virtual_file_stats", rows)])):
             out = json.loads(mon.get_io_stats.invoke({"config": CONFIG}))
@@ -237,13 +321,24 @@ class TestIoStats:
         assert any("磁盘性能" in r for r in recs)
 
     def test_no_high_latency_no_recommendations(self):
-        rows = [{
-            "database_name": "appdb", "logical_name": "d", "file_type": "ROWS",
-            "physical_name": "/d.mdf", "num_of_reads": 1, "mb_read": 1,
-            "io_stall_read_ms": 1, "avg_read_latency_ms": 1,
-            "num_of_writes": 1, "mb_written": 1, "io_stall_write_ms": 1,
-            "avg_write_latency_ms": 1, "total_io_stall_ms": 2, "size_on_disk_mb": 1,
-        }]
+        rows = [
+            {
+                "database_name": "appdb",
+                "logical_name": "d",
+                "file_type": "ROWS",
+                "physical_name": "/d.mdf",
+                "num_of_reads": 1,
+                "mb_read": 1,
+                "io_stall_read_ms": 1,
+                "avg_read_latency_ms": 1,
+                "num_of_writes": 1,
+                "mb_written": 1,
+                "io_stall_write_ms": 1,
+                "avg_write_latency_ms": 1,
+                "total_io_stall_ms": 2,
+                "size_on_disk_mb": 1,
+            }
+        ]
         with patch.object(mon, "execute_readonly_query", _dispatch([("dm_io_virtual_file_stats", rows)])):
             out = json.loads(mon.get_io_stats.invoke({"config": CONFIG}))
         assert out["high_latency_files"] == 0
@@ -259,15 +354,14 @@ class TestIoStats:
 # ============================ check_backup_status ============================
 class TestBackupStatus:
     def test_no_backupset_table_early_return(self):
-        with patch.object(mon, "execute_readonly_query",
-                          _dispatch([("has_backupset_table", [{"has_backupset_table": 0}])])):
+        with patch.object(mon, "execute_readonly_query", _dispatch([("has_backupset_table", [{"has_backupset_table": 0}])])):
             out = json.loads(mon.check_backup_status.invoke({"config": CONFIG}))
         assert out["has_backup"] is False
         assert "backupset" in out["message"]
 
     def test_backupset_check_exception(self):
         # 第一个查询(表检查)就抛异常
-        def _impl(query, params=None, config=None, database=None):
+        def _impl(query, params=None, config=None, database=None, instance_name=None, instance_id=None):
             raise RuntimeError("perm denied")
 
         with patch.object(mon, "execute_readonly_query", _impl):
@@ -276,30 +370,61 @@ class TestBackupStatus:
         assert "perm denied" in out["message"]
 
     def test_detects_never_backed_up_and_stale_issues(self):
-        history = [{
-            "database_name": "appdb", "backup_start_date": "2024-06-01 00:00:00",
-            "backup_finish_date": "2024-06-01 00:10:00", "duration_seconds": 600,
-            "backup_type": "D", "backup_type_desc": "完整备份",
-            "backup_size_mb": 100, "compressed_size_mb": 50,
-            "backup_path": "/bk/appdb.bak", "recovery_model": "FULL",
-        }]
+        history = [
+            {
+                "database_name": "appdb",
+                "backup_start_date": "2024-06-01 00:00:00",
+                "backup_finish_date": "2024-06-01 00:10:00",
+                "duration_seconds": 600,
+                "backup_type": "D",
+                "backup_type_desc": "完整备份",
+                "backup_size_mb": 100,
+                "compressed_size_mb": 50,
+                "backup_path": "/bk/appdb.bak",
+                "recovery_model": "FULL",
+            }
+        ]
         last = [
             # 从未完整备份 -> critical
-            {"database_name": "neverdb", "recovery_model": "SIMPLE",
-             "last_full_backup": None, "last_diff_backup": None, "last_log_backup": None,
-             "hours_since_full_backup": None, "hours_since_log_backup": None},
+            {
+                "database_name": "neverdb",
+                "recovery_model": "SIMPLE",
+                "last_full_backup": None,
+                "last_diff_backup": None,
+                "last_log_backup": None,
+                "hours_since_full_backup": None,
+                "hours_since_log_backup": None,
+            },
             # 完整备份超 7 天(168h) -> warning
-            {"database_name": "staledb", "recovery_model": "SIMPLE",
-             "last_full_backup": "2024-01-01", "last_diff_backup": None, "last_log_backup": None,
-             "hours_since_full_backup": 200, "hours_since_log_backup": None},
+            {
+                "database_name": "staledb",
+                "recovery_model": "SIMPLE",
+                "last_full_backup": "2024-01-01",
+                "last_diff_backup": None,
+                "last_log_backup": None,
+                "hours_since_full_backup": 200,
+                "hours_since_log_backup": None,
+            },
             # FULL 模式日志备份超 24h -> warning
-            {"database_name": "logdb", "recovery_model": "FULL",
-             "last_full_backup": "2024-06-01", "last_diff_backup": None, "last_log_backup": "2024-05-01",
-             "hours_since_full_backup": 10, "hours_since_log_backup": 48},
+            {
+                "database_name": "logdb",
+                "recovery_model": "FULL",
+                "last_full_backup": "2024-06-01",
+                "last_diff_backup": None,
+                "last_log_backup": "2024-05-01",
+                "hours_since_full_backup": 10,
+                "hours_since_log_backup": 48,
+            },
             # 正常 -> ok
-            {"database_name": "okdb", "recovery_model": "SIMPLE",
-             "last_full_backup": "2024-06-20", "last_diff_backup": None, "last_log_backup": None,
-             "hours_since_full_backup": 5, "hours_since_log_backup": None},
+            {
+                "database_name": "okdb",
+                "recovery_model": "SIMPLE",
+                "last_full_backup": "2024-06-20",
+                "last_diff_backup": None,
+                "last_log_backup": None,
+                "hours_since_full_backup": 5,
+                "hours_since_log_backup": None,
+            },
         ]
         matchers = [
             ("has_backupset_table", [{"has_backupset_table": 1}]),
@@ -327,7 +452,7 @@ class TestBackupStatus:
         assert len(out["issues"]) == 3
 
     def test_final_query_error_sanitized(self):
-        def _impl(query, params=None, config=None, database=None):
+        def _impl(query, params=None, config=None, database=None, instance_name=None, instance_id=None):
             if "has_backupset_table" in query:
                 return [{"has_backupset_table": 1}]
             raise RuntimeError("query failed")
@@ -340,37 +465,70 @@ class TestBackupStatus:
 # ============================ check_agent_jobs ============================
 class TestAgentJobs:
     def test_no_sysjobs_table_early_return(self):
-        with patch.object(mon, "execute_readonly_query",
-                          _dispatch([("has_sysjobs_table", [{"has_sysjobs_table": 0}])])):
+        with patch.object(mon, "execute_readonly_query", _dispatch([("has_sysjobs_table", [{"has_sysjobs_table": 0}])])):
             out = json.loads(mon.check_agent_jobs.invoke({"config": CONFIG}))
         assert out["has_agent"] is False
         assert "Agent" in out["message"]
 
     def test_jobs_with_failures_and_running(self):
         jobs = [
-            {"job_id": b"\x01\x02", "job_name": "nightly", "description": "x", "enabled": 1,
-             "enabled_desc": "已启用", "category_name": "Maint",
-             "date_created": "2024-01-01", "date_modified": "2024-02-01",
-             "last_run_requested": "2024-06-01", "last_start_time": "2024-06-01 01:00:00",
-             "last_stop_time": None, "current_status": "运行中"},
-            {"job_id": "guid-str", "job_name": "weekly", "description": None, "enabled": 0,
-             "enabled_desc": "已禁用", "category_name": None,
-             "date_created": None, "date_modified": None,
-             "last_run_requested": None, "last_start_time": None,
-             "last_stop_time": "2024-06-01 02:00:00", "current_status": "空闲"},
+            {
+                "job_id": b"\x01\x02",
+                "job_name": "nightly",
+                "description": "x",
+                "enabled": 1,
+                "enabled_desc": "已启用",
+                "category_name": "Maint",
+                "date_created": "2024-01-01",
+                "date_modified": "2024-02-01",
+                "last_run_requested": "2024-06-01",
+                "last_start_time": "2024-06-01 01:00:00",
+                "last_stop_time": None,
+                "current_status": "运行中",
+            },
+            {
+                "job_id": "guid-str",
+                "job_name": "weekly",
+                "description": None,
+                "enabled": 0,
+                "enabled_desc": "已禁用",
+                "category_name": None,
+                "date_created": None,
+                "date_modified": None,
+                "last_run_requested": None,
+                "last_start_time": None,
+                "last_stop_time": "2024-06-01 02:00:00",
+                "current_status": "空闲",
+            },
         ]
         failed = [{"job_name": "weekly", "failure_count": 3, "last_failure_time": "2024-06-01 02:00:00"}]
         history = [
-            {"job_name": "weekly", "step_id": 0, "step_name": "(Job outcome)", "run_status": 0,
-             "run_status_desc": "失败", "run_datetime": "2024-06-01 02:00:00",
-             "run_duration": 100, "duration_seconds": 60, "message": "Error: " + "x" * 600},
-            {"job_name": "nightly", "step_id": 0, "step_name": "(Job outcome)", "run_status": 1,
-             "run_status_desc": "成功", "run_datetime": "2024-06-01 01:10:00",
-             "run_duration": 100, "duration_seconds": 60, "message": "OK"},
+            {
+                "job_name": "weekly",
+                "step_id": 0,
+                "step_name": "(Job outcome)",
+                "run_status": 0,
+                "run_status_desc": "失败",
+                "run_datetime": "2024-06-01 02:00:00",
+                "run_duration": 100,
+                "duration_seconds": 60,
+                "message": "Error: " + "x" * 600,
+            },
+            {
+                "job_name": "nightly",
+                "step_id": 0,
+                "step_name": "(Job outcome)",
+                "run_status": 1,
+                "run_status_desc": "成功",
+                "run_datetime": "2024-06-01 01:10:00",
+                "run_duration": 100,
+                "duration_seconds": 60,
+                "message": "OK",
+            },
         ]
         matchers = [
             ("has_sysjobs_table", [{"has_sysjobs_table": 1}]),
-            ("h.run_status = 0", failed),       # failed_jobs_query 含此谓词
+            ("h.run_status = 0", failed),  # failed_jobs_query 含此谓词
             ("FROM msdb.dbo.sysjobhistory h", history),
             ("FROM msdb.dbo.sysjobs j", jobs),  # jobs_query 兜底
         ]
@@ -391,11 +549,22 @@ class TestAgentJobs:
         assert len(failmsg) == 503
 
     def test_include_history_false_skips_history(self):
-        jobs = [{"job_id": "g", "job_name": "j", "description": None, "enabled": 1,
-                 "enabled_desc": "已启用", "category_name": None,
-                 "date_created": None, "date_modified": None,
-                 "last_run_requested": None, "last_start_time": None,
-                 "last_stop_time": None, "current_status": "空闲"}]
+        jobs = [
+            {
+                "job_id": "g",
+                "job_name": "j",
+                "description": None,
+                "enabled": 1,
+                "enabled_desc": "已启用",
+                "category_name": None,
+                "date_created": None,
+                "date_modified": None,
+                "last_run_requested": None,
+                "last_start_time": None,
+                "last_stop_time": None,
+                "current_status": "空闲",
+            }
+        ]
         matchers = [
             ("has_sysjobs_table", [{"has_sysjobs_table": 1}]),
             ("h.run_status = 0", []),
@@ -410,8 +579,7 @@ class TestAgentJobs:
 # ============================ check_replication_status ============================
 class TestReplicationStatus:
     def test_no_publications_table_early_return(self):
-        with patch.object(mon, "execute_readonly_query",
-                          _dispatch([("has_publications_table", [{"has_publications_table": 0}])])):
+        with patch.object(mon, "execute_readonly_query", _dispatch([("has_publications_table", [{"has_publications_table": 0}])])):
             out = json.loads(mon.check_replication_status.invoke({"config": CONFIG}))
         assert out["has_replication"] is False
         assert "sys.publications" in out["message"]
@@ -427,19 +595,56 @@ class TestReplicationStatus:
         assert out["has_replication"] is False
 
     def test_distributor_with_failed_agent_and_high_latency(self):
-        publications = [{"publication_name": "pub1", "description": "d",
-                         "publication_type_desc": "事务复制", "status": 1, "status_desc": "活动",
-                         "immediate_sync": 1, "allow_pull": 1, "allow_push": 1, "database_name": "appdb"}]
-        subscriptions = [{"publication_name": "pub1", "article_name": "a1", "subscriber_db": "sub",
-                          "status": 2, "status_desc": "活动", "sync_type": 1, "sync_type_desc": "自动"}]
-        agents = [{"agent_name": "agent_x", "publisher_db": "appdb", "publication": "pub1",
-                   "subscriber_db": "sub", "status_desc": "失败", "start_time": "2024-06-01",
-                   "time": "2024-06-01", "duration": 10, "last_message": "z" * 400}]
-        pending = [{"agent_name": "agent_x", "publisher_db": "appdb", "publication": "pub1",
-                    "subscriber_db": "sub", "pending_commands": 500,
-                    "oldest_command_time": "2024-06-01", "max_latency_seconds": 600}]
+        publications = [
+            {
+                "publication_name": "pub1",
+                "description": "d",
+                "publication_type_desc": "事务复制",
+                "status": 1,
+                "status_desc": "活动",
+                "immediate_sync": 1,
+                "allow_pull": 1,
+                "allow_push": 1,
+                "database_name": "appdb",
+            }
+        ]
+        subscriptions = [
+            {
+                "publication_name": "pub1",
+                "article_name": "a1",
+                "subscriber_db": "sub",
+                "status": 2,
+                "status_desc": "活动",
+                "sync_type": 1,
+                "sync_type_desc": "自动",
+            }
+        ]
+        agents = [
+            {
+                "agent_name": "agent_x",
+                "publisher_db": "appdb",
+                "publication": "pub1",
+                "subscriber_db": "sub",
+                "status_desc": "失败",
+                "start_time": "2024-06-01",
+                "time": "2024-06-01",
+                "duration": 10,
+                "last_message": "z" * 400,
+            }
+        ]
+        pending = [
+            {
+                "agent_name": "agent_x",
+                "publisher_db": "appdb",
+                "publication": "pub1",
+                "subscriber_db": "sub",
+                "pending_commands": 500,
+                "oldest_command_time": "2024-06-01",
+                "max_latency_seconds": 600,
+            }
+        ]
 
-        def _impl(query, params=None, config=None, database=None):
+        def _impl(query, params=None, config=None, database=None, instance_name=None, instance_id=None):
             if "has_publications_table" in query:
                 return [{"has_publications_table": 1}]
             if "has_distributor" in query:
@@ -476,33 +681,39 @@ class TestReplicationStatus:
 # ============================ check_database_size_growth ============================
 class TestDatabaseSizeGrowth:
     def test_no_backupset_early_return(self):
-        with patch.object(mon, "execute_readonly_query",
-                          _dispatch([("has_backupset_table", [{"has_backupset_table": 0}])])):
+        with patch.object(mon, "execute_readonly_query", _dispatch([("has_backupset_table", [{"has_backupset_table": 0}])])):
             out = json.loads(mon.check_database_size_growth.invoke({"config": CONFIG}))
         assert out["has_growth_data"] is False
 
     def test_computes_growth_trend_and_flags_fast_growing(self):
         # appdb: 两次完整备份, 从 100MB 增至 200MB (10 天) -> 100% 增长 -> fast growing
         history = [
-            {"database_name": "appdb", "backup_date": "2024-06-01",
-             "backup_size_mb": 100, "compressed_size_mb": 50, "backup_type": "D"},
-            {"database_name": "appdb", "backup_date": "2024-06-11",
-             "backup_size_mb": 200, "compressed_size_mb": 100, "backup_type": "D"},
+            {"database_name": "appdb", "backup_date": "2024-06-01", "backup_size_mb": 100, "compressed_size_mb": 50, "backup_type": "D"},
+            {"database_name": "appdb", "backup_date": "2024-06-11", "backup_size_mb": 200, "compressed_size_mb": 100, "backup_type": "D"},
             # single-record db
-            {"database_name": "soledb", "backup_date": "2024-06-05",
-             "backup_size_mb": 30, "compressed_size_mb": 15, "backup_type": "D"},
+            {"database_name": "soledb", "backup_date": "2024-06-05", "backup_size_mb": 30, "compressed_size_mb": 15, "backup_type": "D"},
         ]
         current = [
             {"database_name": "appdb", "data_size_mb": 180, "log_size_mb": 20, "total_size_mb": 200},
             # nobackup 在当前库但无备份记录
             {"database_name": "nobackupdb", "data_size_mb": 5, "log_size_mb": 1, "total_size_mb": 6},
         ]
-        files = [{"database_name": "appdb", "file_id": 1, "file_name": "appdb",
-                  "file_type": "ROWS", "current_size_mb": 180, "max_size": -1,
-                  "growth_setting": "64 MB", "is_percent_growth": 0, "growth": 8192}]
+        files = [
+            {
+                "database_name": "appdb",
+                "file_id": 1,
+                "file_name": "appdb",
+                "file_type": "ROWS",
+                "current_size_mb": 180,
+                "max_size": -1,
+                "growth_setting": "64 MB",
+                "is_percent_growth": 0,
+                "growth": 8192,
+            }
+        ]
         matchers = [
             ("has_backupset_table", [{"has_backupset_table": 1}]),
-            ("type = 'D'", history),                    # growth_query
+            ("type = 'D'", history),  # growth_query
             ("FROM sys.databases d\n    INNER JOIN sys.master_files mf", current),
             ("FROM sys.master_files\n    WHERE database_id > 4", files),
         ]
@@ -530,7 +741,7 @@ class TestDatabaseSizeGrowth:
         assert out["summary"]["fast_growing_count"] == 1
 
     def test_error_sanitized(self):
-        def _impl(query, params=None, config=None, database=None):
+        def _impl(query, params=None, config=None, database=None, instance_name=None, instance_id=None):
             if "has_backupset_table" in query:
                 return [{"has_backupset_table": 1}]
             raise RuntimeError("growth boom")

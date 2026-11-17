@@ -124,7 +124,7 @@ def test_reconcile_repairs_deleted_or_wrong_schedule():
     collect_task.refresh_from_db()
     assert sync_task.task == NodeMgmtSyncService.SYNC_TASK
     assert sync_task.crontab_id is None
-    assert sync_task.interval.every == 5 * 60
+    assert sync_task.interval.every == 15 * 60
     assert sync_task.interval.period == IntervalSchedule.SECONDS
     assert collect_task.task == NodeMgmtSyncService.COLLECT_TASK
     assert collect_task.crontab_id is None
@@ -155,7 +155,7 @@ def test_reconcile_migrates_legacy_crontab_to_real_interval():
 
     sync_task.refresh_from_db()
     assert sync_task.crontab_id is None
-    assert sync_task.interval.every == 5 * 60
+    assert sync_task.interval.every == 15 * 60
     assert sync_task.interval.period == IntervalSchedule.SECONDS
 
 
@@ -184,7 +184,7 @@ def test_reconcile_deterministically_repairs_duplicate_interval_and_all_schedule
     NodeMgmtSyncService.update_task({"auto_sync_enabled": True, "auto_collect_enabled": True})
     NodeMgmtSyncService.get_task_payload(reconcile=True)
     periodic_task = PeriodicTask.objects.get(name=NodeMgmtSyncService.SYNC_PERIODIC_TASK_NAME)
-    duplicate = IntervalSchedule.objects.create(every=5 * 60, period=IntervalSchedule.SECONDS)
+    duplicate = IntervalSchedule.objects.create(every=15 * 60, period=IntervalSchedule.SECONDS)
     winner_id = min(periodic_task.interval_id, duplicate.pk)
     crontab = CrontabSchedule.objects.create(
         minute="*/5",

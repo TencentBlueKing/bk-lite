@@ -1,15 +1,12 @@
 """PostgreSQL配置分析工具"""
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
-from apps.opspilot.metis.llm.tools.postgres.utils import (
-    execute_readonly_query,
-    safe_json_dumps,
-    calculate_percentage,
-)
+
+from apps.opspilot.metis.llm.tools.postgres.utils import calculate_percentage, execute_readonly_query, safe_json_dumps
 
 
 @tool()
-def analyze_cache_hit_ratio(config: RunnableConfig = None):
+def analyze_cache_hit_ratio(config: RunnableConfig = None, instance_name: str = None, instance_id: str = None):
     """
     分析缓存命中率
 
@@ -30,7 +27,7 @@ def analyze_cache_hit_ratio(config: RunnableConfig = None):
         JSON格式,包含缓存命中率分析
     """
     query = """
-    SELECT 
+    SELECT
         datname as database,
         blks_hit as blocks_hit,
         blks_read as blocks_read,
@@ -42,7 +39,7 @@ def analyze_cache_hit_ratio(config: RunnableConfig = None):
     """
 
     try:
-        results = execute_readonly_query(query, config=config)
+        results = execute_readonly_query(query, config=config, instance_name=instance_name, instance_id=instance_id)
 
         # 计算总体命中率
         total_hit = sum(row["blocks_hit"] for row in results)
@@ -63,18 +60,15 @@ def analyze_cache_hit_ratio(config: RunnableConfig = None):
             performance = "poor"
             recommendation = "缓存命中率偏低,强烈建议增加shared_buffers并检查查询模式"
 
-        return safe_json_dumps({
-            "overall_cache_hit_ratio": overall_ratio,
-            "performance": performance,
-            "recommendation": recommendation,
-            "by_database": results
-        })
+        return safe_json_dumps(
+            {"overall_cache_hit_ratio": overall_ratio, "performance": performance, "recommendation": recommendation, "by_database": results}
+        )
     except Exception as e:
         return safe_json_dumps({"error": str(e)})
 
 
 @tool()
-def analyze_connection_pool_usage(config: RunnableConfig = None):
+def analyze_connection_pool_usage(config: RunnableConfig = None, instance_name: str = None, instance_id: str = None):
     """
     分析连接池使用情况
 
@@ -96,7 +90,7 @@ def analyze_connection_pool_usage(config: RunnableConfig = None):
     """
     # 连接状态统计
     state_query = """
-    SELECT 
+    SELECT
         state,
         COUNT(*) as connection_count,
         ROUND(AVG(EXTRACT(EPOCH FROM (NOW() - state_change)))::numeric, 2) as avg_duration_seconds
@@ -108,7 +102,7 @@ def analyze_connection_pool_usage(config: RunnableConfig = None):
 
     # 按应用统计
     app_query = """
-    SELECT 
+    SELECT
         application_name,
         usename as username,
         COUNT(*) as connection_count,
@@ -123,7 +117,7 @@ def analyze_connection_pool_usage(config: RunnableConfig = None):
 
     # 长时间空闲连接
     idle_query = """
-    SELECT 
+    SELECT
         pid,
         usename,
         application_name,
@@ -139,38 +133,38 @@ def analyze_connection_pool_usage(config: RunnableConfig = None):
     """
 
     try:
-        by_state = execute_readonly_query(state_query, config=config)
-        by_app = execute_readonly_query(app_query, config=config)
-        long_idle = execute_readonly_query(idle_query, config=config)
+        by_state = execute_readonly_query(state_query, config=config, instance_name=instance_name, instance_id=instance_id)
+        by_app = execute_readonly_query(app_query, config=config, instance_name=instance_name, instance_id=instance_id)
+        long_idle = execute_readonly_query(idle_query, config=config, instance_name=instance_name, instance_id=instance_id)
 
         # 格式化空闲时长
         for row in long_idle:
             row["idle_duration"] = str(row["idle_duration"])
 
         total_connections = sum(row["connection_count"] for row in by_state)
-        idle_connections = sum(row["connection_count"]
-                               for row in by_state if row["state"] == "idle")
-        idle_percent = calculate_percentage(
-            idle_connections, total_connections)
+        idle_connections = sum(row["connection_count"] for row in by_state if row["state"] == "idle")
+        idle_percent = calculate_percentage(idle_connections, total_connections)
 
-        return safe_json_dumps({
-            "total_connections": total_connections,
-            "idle_connections": idle_connections,
-            "idle_percent": idle_percent,
-            "by_state": by_state,
-            "by_application": by_app,
-            "long_idle_connections": long_idle,
-            "recommendations": [
-                "考虑减小连接池大小" if idle_percent > 50 else None,
-                f"发现{len(long_idle)}个长时间空闲连接,检查应用连接管理" if long_idle else None,
-            ]
-        })
+        return safe_json_dumps(
+            {
+                "total_connections": total_connections,
+                "idle_connections": idle_connections,
+                "idle_percent": idle_percent,
+                "by_state": by_state,
+                "by_application": by_app,
+                "long_idle_connections": long_idle,
+                "recommendations": [
+                    "考虑减小连接池大小" if idle_percent > 50 else None,
+                    f"发现{len(long_idle)}个长时间空闲连接,检查应用连接管理" if long_idle else None,
+                ],
+            }
+        )
     except Exception as e:
         return safe_json_dumps({"error": str(e)})
 
 
 @tool()
-def analyze_table_statistics(schema_name: str = "public", config: RunnableConfig = None):
+def analyze_table_statistics(schema_name: str = "public", config: RunnableConfig = None, instance_name: str = None, instance_id: str = None):
     """
     分析表统计信息新鲜度
 
@@ -192,7 +186,7 @@ def analyze_table_statistics(schema_name: str = "public", config: RunnableConfig
         JSON格式,包含统计信息分析
     """
     query = """
-    SELECT 
+    SELECT
         schemaname,
         relname as table_name,
         last_analyze,
@@ -201,7 +195,7 @@ def analyze_table_statistics(schema_name: str = "public", config: RunnableConfig
         NOW() - COALESCE(last_analyze, last_autoanalyze) as time_since_analyze,
         n_mod_since_analyze as modifications_since_analyze,
         n_live_tup as live_tuples,
-        CASE 
+        CASE
             WHEN n_live_tup > 0 THEN ROUND(100.0 * n_mod_since_analyze / n_live_tup, 2)
             ELSE 0
         END as modification_percent
@@ -211,17 +205,13 @@ def analyze_table_statistics(schema_name: str = "public", config: RunnableConfig
     """
 
     try:
-        results = execute_readonly_query(
-            query, params=(schema_name,), config=config)
+        results = execute_readonly_query(query, params=(schema_name,), config=config, instance_name=instance_name, instance_id=instance_id)
 
         stale_stats = []
         for row in results:
-            row["last_analyze"] = str(
-                row["last_analyze"]) if row["last_analyze"] else "Never"
-            row["last_autoanalyze"] = str(
-                row["last_autoanalyze"]) if row["last_autoanalyze"] else "Never"
-            row["time_since_analyze"] = str(
-                row["time_since_analyze"]) if row["time_since_analyze"] else "Never"
+            row["last_analyze"] = str(row["last_analyze"]) if row["last_analyze"] else "Never"
+            row["last_autoanalyze"] = str(row["last_autoanalyze"]) if row["last_autoanalyze"] else "Never"
+            row["time_since_analyze"] = str(row["time_since_analyze"]) if row["time_since_analyze"] else "Never"
 
             # 判断统计信息是否过时
             mod_percent = row["modification_percent"] or 0
@@ -231,22 +221,24 @@ def analyze_table_statistics(schema_name: str = "public", config: RunnableConfig
             else:
                 row["is_stale"] = False
 
-        return safe_json_dumps({
-            "schema": schema_name,
-            "total_tables": len(results),
-            "stale_statistics_count": len(stale_stats),
-            "tables": results,
-            "recommendations": [
-                f"对{len(stale_stats)}个表执行ANALYZE更新统计信息" if stale_stats else None,
-                "启用autovacuum自动更新统计信息",
-            ]
-        })
+        return safe_json_dumps(
+            {
+                "schema": schema_name,
+                "total_tables": len(results),
+                "stale_statistics_count": len(stale_stats),
+                "tables": results,
+                "recommendations": [
+                    f"对{len(stale_stats)}个表执行ANALYZE更新统计信息" if stale_stats else None,
+                    "启用autovacuum自动更新统计信息",
+                ],
+            }
+        )
     except Exception as e:
         return safe_json_dumps({"error": str(e)})
 
 
 @tool()
-def analyze_checkpoint_activity(config: RunnableConfig = None):
+def analyze_checkpoint_activity(config: RunnableConfig = None, instance_name: str = None, instance_id: str = None):
     """
     分析检查点活动
 
@@ -267,7 +259,7 @@ def analyze_checkpoint_activity(config: RunnableConfig = None):
         JSON格式,包含检查点统计
     """
     query = """
-    SELECT 
+    SELECT
         checkpoints_timed,
         checkpoints_req as checkpoints_requested,
         checkpoint_write_time,
@@ -281,12 +273,10 @@ def analyze_checkpoint_activity(config: RunnableConfig = None):
     """
 
     try:
-        result = execute_readonly_query(query, config=config)[0]
+        result = execute_readonly_query(query, config=config, instance_name=instance_name, instance_id=instance_id)[0]
 
-        total_checkpoints = result["checkpoints_timed"] + \
-            result["checkpoints_requested"]
-        timed_percent = calculate_percentage(
-            result["checkpoints_timed"], total_checkpoints)
+        total_checkpoints = result["checkpoints_timed"] + result["checkpoints_requested"]
+        timed_percent = calculate_percentage(result["checkpoints_timed"], total_checkpoints)
 
         # 评估检查点配置
         if timed_percent >= 90:
@@ -310,7 +300,7 @@ def analyze_checkpoint_activity(config: RunnableConfig = None):
 
 
 @tool()
-def analyze_transaction_patterns(limit: int = 20, config: RunnableConfig = None):
+def analyze_transaction_patterns(limit: int = 20, config: RunnableConfig = None, instance_name: str = None, instance_id: str = None):
     """
     分析事务模式
 
@@ -332,7 +322,7 @@ def analyze_transaction_patterns(limit: int = 20, config: RunnableConfig = None)
         JSON格式,包含事务模式分析
     """
     query = """
-    SELECT 
+    SELECT
         datname as database,
         xact_commit as commits,
         xact_rollback as rollbacks,
@@ -347,7 +337,7 @@ def analyze_transaction_patterns(limit: int = 20, config: RunnableConfig = None)
     """
 
     try:
-        results = execute_readonly_query(query, params=(limit,), config=config)
+        results = execute_readonly_query(query, params=(limit,), config=config, instance_name=instance_name, instance_id=instance_id)
 
         # 标记异常
         for row in results:
@@ -359,9 +349,6 @@ def analyze_transaction_patterns(limit: int = 20, config: RunnableConfig = None)
             else:
                 row["status"] = "normal"
 
-        return safe_json_dumps({
-            "total_databases": len(results),
-            "databases": results
-        })
+        return safe_json_dumps({"total_databases": len(results), "databases": results})
     except Exception as e:
         return safe_json_dumps({"error": str(e)})

@@ -1,13 +1,14 @@
 import dayjs from 'dayjs';
 import { getAppliedThemeMode } from '@/theme';
 import { formatOpsDisplayTime } from '@/app/ops-analysis/components/ops-analysis-widgets/date-time';
-import { getValueByPath } from '@/app/ops-analysis/components/ops-analysis-config-sections';
 import { coerceTopNNumericValue } from '@/app/ops-analysis/utils/topNData';
 import {
   ChartDataTransformer as SharedChartDataTransformer,
   type ChartFieldMapping,
 } from '@/app/ops-analysis/utils/chartDataTransform';
 import { hasExplicitLineBarMapping } from '@/app/ops-analysis/utils/lineBarFieldMapping';
+import { extractComparableValue as sharedExtractComparableValue } from '@/app/ops-analysis/utils/compareQuery';
+
 export interface ChartDataItem {
   name: string;
   value: number;
@@ -186,11 +187,17 @@ const hslToRgb = (
   ];
 };
 
+const legendColorCache = new Map<OpsChartThemeName, string[]>();
+
 export const randomColorForLegend = (themeName?: OpsChartThemeName) => {
   const maxColorsTotal = 1000;
   const maxColorsCount = 80;
   const customColorsRow = 4;
   const resolvedThemeName = themeName ?? resolveOpsChartThemeName();
+  const cached = legendColorCache.get(resolvedThemeName);
+  if (cached) {
+    return cached;
+  }
   let colors: string[] = [];
   const opacity =
     resolvedThemeName === 'dark'
@@ -209,6 +216,7 @@ export const randomColorForLegend = (themeName?: OpsChartThemeName) => {
     }
   }
 
+  legendColorCache.set(resolvedThemeName, colors);
   return colors;
 };
 
@@ -591,56 +599,10 @@ export class ChartDataTransformer {
   }
 }
 
-export const extractComparableValue = (
-  data: unknown,
-  selectedField?: string,
-): number | string | null => {
-  if (data === null || data === undefined) {
-    return null;
-  }
-
-  if (selectedField) {
-    const extracted = getValueByPath(data, selectedField);
-    if (typeof extracted === 'number' || typeof extracted === 'string') {
-      return extracted;
-    }
-    return null;
-  }
-
-  if (typeof data === 'number' || typeof data === 'string') {
-    return data;
-  }
-
-  if (Array.isArray(data) && data.length > 0) {
-    const firstItem = data[0];
-    if (firstItem && typeof firstItem === 'object') {
-      const values = Object.values(firstItem as Record<string, unknown>);
-      for (const value of values) {
-        if (typeof value === 'number') return value;
-      }
-      for (const value of values) {
-        if (
-          typeof value === 'string' &&
-          !Number.isNaN(parseFloat(value))
-        ) {
-          return value;
-        }
-      }
-    }
-  }
-
-  if (typeof data === 'object') {
-    const values = Object.values(data as Record<string, unknown>);
-    for (const value of values) {
-      if (typeof value === 'number') return value;
-    }
-  }
-
-  return null;
-};
+export const extractComparableValue = sharedExtractComparableValue;
 
 export const toComparableNumber = (
-  value: number | string | null,
+  value: number | string | boolean | null,
 ): number | null => coerceTopNNumericValue(value);
 
 export const getChangePercent = (

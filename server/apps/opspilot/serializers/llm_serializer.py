@@ -14,6 +14,7 @@ from apps.opspilot.utils.user_message import user_message
 
 class LLMModelSerializer(AuthSerializer, CustomProviderSerializer):
     permission_key = "provider.llm_model"
+    vendor_enabled = serializers.SerializerMethodField()
 
     def validate(self, attrs):
         attrs = super().validate(attrs)
@@ -48,6 +49,7 @@ class LLMModelSerializer(AuthSerializer, CustomProviderSerializer):
             "team_name",
             "vendor_name",
             "vendor_type",
+            "vendor_enabled",
         ]
 
 

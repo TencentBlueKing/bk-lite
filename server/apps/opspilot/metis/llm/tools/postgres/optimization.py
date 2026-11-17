@@ -1,15 +1,14 @@
 """PostgreSQL性能优化建议工具"""
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
-from apps.opspilot.metis.llm.tools.postgres.utils import (
-    execute_readonly_query,
-    safe_json_dumps,
-    format_size,
-)
+
+from apps.opspilot.metis.llm.tools.postgres.utils import execute_readonly_query, format_size, safe_json_dumps
 
 
 @tool()
-def check_unused_indexes(schema_name: str = "public", size_threshold_mb: int = 10, config: RunnableConfig = None):
+def check_unused_indexes(
+    schema_name: str = "public", size_threshold_mb: int = 10, config: RunnableConfig = None, instance_name: str = None, instance_id: str = None
+):
     """
     检查未使用的索引
 
@@ -32,7 +31,7 @@ def check_unused_indexes(schema_name: str = "public", size_threshold_mb: int = 1
         JSON格式,包含未使用索引列表
     """
     query = """
-    SELECT 
+    SELECT
         schemaname,
         tablename as table_name,
         indexname as index_name,
@@ -49,28 +48,29 @@ def check_unused_indexes(schema_name: str = "public", size_threshold_mb: int = 1
 
     try:
         size_bytes = size_threshold_mb * 1024 * 1024
-        results = execute_readonly_query(
-            query, params=(schema_name, size_bytes), config=config)
+        results = execute_readonly_query(query, params=(schema_name, size_bytes), config=config, instance_name=instance_name, instance_id=instance_id)
 
         total_wasted_bytes = sum(row["index_size_bytes"] for row in results)
 
-        return safe_json_dumps({
-            "schema": schema_name,
-            "unused_index_count": len(results),
-            "total_wasted_space": format_size(total_wasted_bytes),
-            "total_wasted_bytes": total_wasted_bytes,
-            "unused_indexes": results,
-            "recommendations": [
-                f"考虑删除{len(results)}个未使用的索引,可节省{format_size(total_wasted_bytes)}" if results else "未发现大型未使用索引",
-                "删除前确认索引不再需要,或先禁用索引观察影响"
-            ]
-        })
+        return safe_json_dumps(
+            {
+                "schema": schema_name,
+                "unused_index_count": len(results),
+                "total_wasted_space": format_size(total_wasted_bytes),
+                "total_wasted_bytes": total_wasted_bytes,
+                "unused_indexes": results,
+                "recommendations": [
+                    f"考虑删除{len(results)}个未使用的索引,可节省{format_size(total_wasted_bytes)}" if results else "未发现大型未使用索引",
+                    "删除前确认索引不再需要,或先禁用索引观察影响",
+                ],
+            }
+        )
     except Exception as e:
         return safe_json_dumps({"error": str(e)})
 
 
 @tool()
-def recommend_vacuum_strategy(schema_name: str = "public", config: RunnableConfig = None):
+def recommend_vacuum_strategy(schema_name: str = "public", config: RunnableConfig = None, instance_name: str = None, instance_id: str = None):
     """
     推荐VACUUM策略
 
@@ -92,7 +92,7 @@ def recommend_vacuum_strategy(schema_name: str = "public", config: RunnableConfi
         JSON格式,包含VACUUM建议
     """
     query = """
-    SELECT 
+    SELECT
         schemaname,
         relname as table_name,
         n_live_tup as live_tuples,
@@ -109,8 +109,7 @@ def recommend_vacuum_strategy(schema_name: str = "public", config: RunnableConfi
     """
 
     try:
-        results = execute_readonly_query(
-            query, params=(schema_name,), config=config)
+        results = execute_readonly_query(query, params=(schema_name,), config=config, instance_name=instance_name, instance_id=instance_id)
 
         recommendations = []
         for row in results:
@@ -118,12 +117,9 @@ def recommend_vacuum_strategy(schema_name: str = "public", config: RunnableConfi
             dead_tuples = row["dead_tuples"] or 0
 
             # 格式化时间
-            row["last_vacuum"] = str(
-                row["last_vacuum"]) if row["last_vacuum"] else "Never"
-            row["last_autovacuum"] = str(
-                row["last_autovacuum"]) if row["last_autovacuum"] else "Never"
-            row["time_since_vacuum"] = str(
-                row["time_since_vacuum"]) if row["time_since_vacuum"] else "Never"
+            row["last_vacuum"] = str(row["last_vacuum"]) if row["last_vacuum"] else "Never"
+            row["last_autovacuum"] = str(row["last_autovacuum"]) if row["last_autovacuum"] else "Never"
+            row["time_since_vacuum"] = str(row["time_since_vacuum"]) if row["time_since_vacuum"] else "Never"
 
             # 确定优先级和建议
             if dead_percent > 30 or dead_tuples > 1000000:
@@ -142,29 +138,32 @@ def recommend_vacuum_strategy(schema_name: str = "public", config: RunnableConfi
                 row["priority"] = "low"
                 row["recommendation"] = "正常,autovacuum会处理"
 
-        critical_count = sum(
-            1 for r in recommendations if r["priority"] == "critical")
+        critical_count = sum(1 for r in recommendations if r["priority"] == "critical")
         high_count = sum(1 for r in recommendations if r["priority"] == "high")
 
-        return safe_json_dumps({
-            "schema": schema_name,
-            "total_tables": len(results),
-            "critical_priority": critical_count,
-            "high_priority": high_count,
-            "recommendations": recommendations[:20],  # 只返回前20个
-            "general_advice": [
-                f"{critical_count}个表需要立即执行VACUUM FULL" if critical_count > 0 else None,
-                f"{high_count}个表需要尽快执行VACUUM" if high_count > 0 else None,
-                "考虑调整autovacuum_vacuum_scale_factor参数",
-                "在低峰时段执行VACUUM FULL操作"
-            ]
-        })
+        return safe_json_dumps(
+            {
+                "schema": schema_name,
+                "total_tables": len(results),
+                "critical_priority": critical_count,
+                "high_priority": high_count,
+                "recommendations": recommendations[:20],  # 只返回前20个
+                "general_advice": [
+                    f"{critical_count}个表需要立即执行VACUUM FULL" if critical_count > 0 else None,
+                    f"{high_count}个表需要尽快执行VACUUM" if high_count > 0 else None,
+                    "考虑调整autovacuum_vacuum_scale_factor参数",
+                    "在低峰时段执行VACUUM FULL操作",
+                ],
+            }
+        )
     except Exception as e:
         return safe_json_dumps({"error": str(e)})
 
 
 @tool()
-def recommend_index_optimization(schema_name: str = "public", table: str = None, config: RunnableConfig = None):
+def recommend_index_optimization(
+    schema_name: str = "public", table: str = None, config: RunnableConfig = None, instance_name: str = None, instance_id: str = None
+):
     """
     推荐索引优化
 
@@ -189,7 +188,7 @@ def recommend_index_optimization(schema_name: str = "public", table: str = None,
     # 查找顺序扫描过多的表
     if table:
         query = """
-        SELECT 
+        SELECT
             schemaname,
             relname as table_name,
             seq_scan as sequential_scans,
@@ -197,7 +196,7 @@ def recommend_index_optimization(schema_name: str = "public", table: str = None,
             idx_scan as index_scans,
             idx_tup_fetch as index_tuples_fetched,
             n_live_tup as live_tuples,
-            CASE 
+            CASE
                 WHEN seq_scan > 0 THEN ROUND(seq_tup_read::numeric / seq_scan, 2)
                 ELSE 0
             END as avg_tuples_per_seq_scan
@@ -207,7 +206,7 @@ def recommend_index_optimization(schema_name: str = "public", table: str = None,
         params = (schema_name, table)
     else:
         query = """
-        SELECT 
+        SELECT
             schemaname,
             relname as table_name,
             seq_scan as sequential_scans,
@@ -215,7 +214,7 @@ def recommend_index_optimization(schema_name: str = "public", table: str = None,
             idx_scan as index_scans,
             idx_tup_fetch as index_tuples_fetched,
             n_live_tup as live_tuples,
-            CASE 
+            CASE
                 WHEN seq_scan > 0 THEN ROUND(seq_tup_read::numeric / seq_scan, 2)
                 ELSE 0
             END as avg_tuples_per_seq_scan
@@ -229,7 +228,7 @@ def recommend_index_optimization(schema_name: str = "public", table: str = None,
         params = (schema_name,)
 
     try:
-        results = execute_readonly_query(query, params=params, config=config)
+        results = execute_readonly_query(query, params=params, config=config, instance_name=instance_name, instance_id=instance_id)
 
         recommendations = []
         for row in results:
@@ -254,25 +253,22 @@ def recommend_index_optimization(schema_name: str = "public", table: str = None,
                 row["recommendation"] = "索引使用良好"
                 row["priority"] = "low"
 
-        return safe_json_dumps({
-            "schema": schema_name,
-            "table": table,
-            "total_tables_analyzed": len(results),
-            "needs_optimization": len(recommendations),
-            "tables": results,
-            "general_advice": [
-                "使用EXPLAIN ANALYZE分析慢查询",
-                "考虑为频繁查询的WHERE条件列创建索引",
-                "避免在低基数列上创建索引",
-                "定期重建或REINDEX膨胀的索引"
-            ]
-        })
+        return safe_json_dumps(
+            {
+                "schema": schema_name,
+                "table": table,
+                "total_tables_analyzed": len(results),
+                "needs_optimization": len(recommendations),
+                "tables": results,
+                "general_advice": ["使用EXPLAIN ANALYZE分析慢查询", "考虑为频繁查询的WHERE条件列创建索引", "避免在低基数列上创建索引", "定期重建或REINDEX膨胀的索引"],
+            }
+        )
     except Exception as e:
         return safe_json_dumps({"error": str(e)})
 
 
 @tool()
-def check_configuration_tuning(config: RunnableConfig = None):
+def check_configuration_tuning(config: RunnableConfig = None, instance_name: str = None, instance_id: str = None):
     """
     检查配置参数并提供调优建议
 
@@ -293,7 +289,7 @@ def check_configuration_tuning(config: RunnableConfig = None):
         JSON格式,包含配置检查和建议
     """
     query = """
-    SELECT 
+    SELECT
         name,
         setting,
         unit,
@@ -319,7 +315,7 @@ def check_configuration_tuning(config: RunnableConfig = None):
     """
 
     try:
-        results = execute_readonly_query(query, config=config)
+        results = execute_readonly_query(query, config=config, instance_name=instance_name, instance_id=instance_id)
 
         recommendations = []
 
@@ -340,16 +336,13 @@ def check_configuration_tuning(config: RunnableConfig = None):
                 row["advice"] = config_advice[row["name"]]
                 recommendations.append(row)
 
-        return safe_json_dumps({
-            "total_parameters": len(results),
-            "parameters": results,
-            "recommendations": recommendations,
-            "general_advice": [
-                "配置调整后需要重启数据库才能生效(部分参数除外)",
-                "建议在测试环境验证配置变更",
-                "使用pgtune等工具生成推荐配置",
-                "监控配置变更后的性能指标"
-            ]
-        })
+        return safe_json_dumps(
+            {
+                "total_parameters": len(results),
+                "parameters": results,
+                "recommendations": recommendations,
+                "general_advice": ["配置调整后需要重启数据库才能生效(部分参数除外)", "建议在测试环境验证配置变更", "使用pgtune等工具生成推荐配置", "监控配置变更后的性能指标"],
+            }
+        )
     except Exception as e:
         return safe_json_dumps({"error": str(e)})

@@ -120,6 +120,61 @@ def test_oa_uuid_migration_excludes_weops_network_topology():
     assert "NetworkTopology" not in Command.OA_UUID_MODEL_FIELDS
 
 
+@pytest.mark.django_db
+def test_oa_skips_graph_preload_when_every_existing_model_stage_is_complete(monkeypatch):
+    from apps.cmdb.models.uuid_migration_state import CmdbUuidMigrationState
+
+    class _Model:
+        class _meta:
+            db_table = "oa_fake"
+
+    def get_model(_app_label, model_name):
+        if model_name == "Dashboard":
+            return _Model
+        raise LookupError
+
+    monkeypatch.setattr(
+        "apps.cmdb.management.commands.migrate_oa_cmdb_instance_uuid_refs.django_apps.get_model",
+        get_model,
+    )
+    command = Command()
+    monkeypatch.setattr(command, "_model_table_exists", lambda _model: True)
+    monkeypatch.setattr(command, "_clean_operation_analysis_refs", lambda *_args, **_kwargs: None)
+    preloaded = []
+    monkeypatch.setattr(command, "_preload_graph_uuids", lambda batch_size: preloaded.append(batch_size))
+    CmdbUuidMigrationState.objects.create(stage="oa_uuid:Dashboard", completed=True, cursor="0")
+
+    command.handle(batch_size=20, apply=True, dry_run=False, verify=False)
+
+    assert preloaded == []
+
+
+@pytest.mark.django_db
+def test_oa_preloads_graph_when_an_existing_model_stage_is_open(monkeypatch):
+    class _Model:
+        class _meta:
+            db_table = "oa_fake"
+
+    def get_model(_app_label, model_name):
+        if model_name == "Dashboard":
+            return _Model
+        raise LookupError
+
+    monkeypatch.setattr(
+        "apps.cmdb.management.commands.migrate_oa_cmdb_instance_uuid_refs.django_apps.get_model",
+        get_model,
+    )
+    command = Command()
+    monkeypatch.setattr(command, "_model_table_exists", lambda _model: True)
+    monkeypatch.setattr(command, "_clean_operation_analysis_refs", lambda *_args, **_kwargs: None)
+    preloaded = []
+    monkeypatch.setattr(command, "_preload_graph_uuids", lambda batch_size: preloaded.append(batch_size))
+
+    command.handle(batch_size=20, apply=True, dry_run=False, verify=False)
+
+    assert preloaded == [20]
+
+
 def test_rewrite_renames_bk_inst_id_and_inst_id_aliases():
     inst_uuid = "63e4a531-b6bb-43cc-9eae-8eb8a09f795e"
     stats = {"operation_analysis_orphan_removed": 0}

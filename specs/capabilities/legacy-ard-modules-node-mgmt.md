@@ -50,7 +50,7 @@ NATS handlers（`@nats_client.register`，`nats/node.py`）：
 
 > 证据来源：server/apps/node_mgmt/services/module_ingest.py:32-65，server/apps/node_mgmt/services/module_ingest.py:85-153，server/apps/node_mgmt/services/module_link.py:21-47，server/apps/node_mgmt/services/module_link.py:123-159，server/apps/cmdb/services/instance_identity.py:24-32，server/apps/cmdb/services/instance_identity.py:87-106　|　同步基线：b98b782a7　|　【已实现】
 - SSH：`utils/installer.py` 远程安装控制器。
-- WinRM：Windows 控制器远程安装由云区域内健康的 Ansible Executor 连接目标主机，固定使用 HTTPS/5986、NTLM 和服务端证书校验；Executor 将原生 `bklite-controller-bootstrap.exe` 分发到目标主机并执行，不新增独立 WinRM 服务。
+- WinRM：Windows 控制器远程安装由云区域内健康的 Ansible Executor 连接目标主机，固定使用 HTTPS/5986、NTLM 和服务端证书校验；Executor 将原生 `bklite-controller-bootstrap.exe` 分发到目标主机并执行，不新增独立 WinRM 服务。远程安装成功后尽力登记到 Windows「程序和功能」，失败不阻断安装。本机卸载不回写节点管理。页面远程卸载会清理该程序记录。
 - Celery：
   - 控制器：`install/uninstall_controller`。
   - 采集器：`install_collector`（实际执行安装）；`uninstall_collector` 当前为占位任务，函数体仅 `pass`、未实现卸载逻辑（`tasks/installer.py:1148-1150`）。

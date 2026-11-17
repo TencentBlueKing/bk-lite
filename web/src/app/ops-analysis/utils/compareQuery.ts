@@ -1,9 +1,10 @@
 import dayjs from 'dayjs';
 import type { ValueConfig, FilterBindings, UnifiedFilterDefinition, FilterValue } from '@/app/ops-analysis/types/dashBoard';
 import type { DatasourceItem, ParamItem } from '@/app/ops-analysis/types/dataSource';
+import type { ColumnResult } from '@/app/ops-analysis/utils/dataVariable';
 import { buildWidgetRequestParams } from '@/app/ops-analysis/utils/widgetDataTransform';
 import { getValueByPath } from '@/app/ops-analysis/utils/objectPath';
-import { coerceTopNNumericValue } from '@/app/ops-analysis/utils/topNData';
+import { coerceTopNNumericValue, unwrapTopNData } from '@/app/ops-analysis/utils/topNData';
 import type { DateRangeResolutionContext } from '@/app/ops-analysis/utils/dateRange';
 import type { SourceDataResult } from '@/app/ops-analysis/utils/sourceDataResponse';
 
@@ -26,6 +27,8 @@ interface BuildRequestParamsInput {
   filterBindings?: FilterBindings;
   filterDefinitions?: UnifiedFilterDefinition[];
   resolutionContext?: DateRangeResolutionContext;
+  chartType?: string;
+  dataVariableColumns?: Record<string, ColumnResult>;
   t?: (id: string, defaultMessage?: string) => string;
 }
 
@@ -112,8 +115,10 @@ export const buildCompareRequestParams = ({
   filterBindings,
   filterDefinitions,
   resolutionContext,
+  chartType,
+  dataVariableColumns,
   t,
-}: BuildRequestParamsInput): { currentParams: RequestParams; baselineParams: RequestParams | null } => {
+}: BuildRequestParamsInput): { currentParams: RequestParams | null; baselineParams: RequestParams | null } => {
   const currentParams = buildWidgetRequestParams({
     config,
     dataSource,
@@ -122,10 +127,12 @@ export const buildCompareRequestParams = ({
     filterBindings,
     filterDefinitions,
     resolutionContext,
+    chartType: chartType || config?.chartType,
+    dataVariableColumns,
     t,
   });
 
-  if (!config?.compare) {
+  if (!currentParams || !config?.compare) {
     return { currentParams, baselineParams: null };
   }
 
@@ -160,6 +167,9 @@ export const fetchCompareData = async ({
   ...rest
 }: FetchCompareDataInput): Promise<CompareQueryResult> => {
   const { currentParams, baselineParams } = buildCompareRequestParams(rest);
+  if (!currentParams) {
+    return { currentData: null, baselineData: null };
+  }
   const currentResult = await getSourceDataByApiId(dataSourceId, currentParams);
 
   if (!baselineParams) {
@@ -178,25 +188,42 @@ export const fetchCompareData = async ({
   };
 };
 
+const presentScalar = (value: unknown): number | string | boolean | null | undefined => {
+  if (typeof value === 'number' || typeof value === 'string' || typeof value === 'boolean') {
+    return value;
+  }
+  if (value === null) {
+    return null;
+  }
+  return undefined;
+};
+
 export const extractComparableValue = (
   data: unknown,
   selectedField?: string,
-): number | string | null => {
+): number | string | boolean | null => {
   if (data === null || data === undefined) {
     return null;
   }
 
   if (selectedField) {
     const extracted = getValueByPath(data, selectedField);
-    if (typeof extracted === 'number' || typeof extracted === 'string') {
-      return extracted;
+    const present = presentScalar(extracted);
+    if (present !== undefined) {
+      return present;
     }
-    // 明确指定了字段但其值非数字/字符串（如 null）→ 返回 null，
-    // 不回退到对象里的其它字段（否则会错误地显示别的字段值，且 null 值映射失效）
+    const rows = unwrapTopNData(data);
+    if (rows !== data) {
+      const fromRow = presentScalar(getValueByPath(rows, selectedField));
+      if (fromRow !== undefined) {
+        return fromRow;
+      }
+    }
+    // 明确指定了字段但当前结果没有可用值时返回 null，不改读其它字段。
     return null;
   }
 
-  if (typeof data === 'number' || typeof data === 'string') {
+  if (typeof data === 'number' || typeof data === 'string' || typeof data === 'boolean') {
     return data;
   }
 
@@ -223,7 +250,7 @@ export const extractComparableValue = (
   return null;
 };
 
-export const toComparableNumber = (value: number | string | null): number | null =>
+export const toComparableNumber = (value: number | string | boolean | null): number | null =>
   coerceTopNNumericValue(value);
 
 export const validateGaugeData = (

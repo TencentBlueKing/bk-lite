@@ -54,6 +54,13 @@ from config.drf.pagination import CustomPageNumberPagination
 from config.drf.viewsets import ModelViewSet
 
 RUNTIME_ALLOWED_KEYS = {"namespace_id", "page", "page_size", "query_list", "organization_param"}
+_ONE_HOP_RETIRED_CONDITION_APIS = frozenset(
+    {
+        "cmdb/query_cmdb_one_hop",
+        "cmdb/query_cmdb_one_hop_counts",
+        "cmdb/query_cmdb_one_hop_distribution",
+    }
+)
 
 
 def _normalize_downstream_result(result):
@@ -466,7 +473,35 @@ def _normalize_param_value(param_name, param_type, raw_value):
     if param_type == "timeRange":
         return _normalize_time_range(raw_value)
 
+    if param_type == "conditionFilter":
+        return _normalize_condition_filter(param_name, raw_value)
+
     return raw_value
+
+
+def _normalize_condition_filter(param_name, raw_value):
+    if raw_value in (None, "", []):
+        return {"logic": "AND", "items": []}
+    if isinstance(raw_value, list):
+        items = raw_value
+        logic = "AND"
+    elif isinstance(raw_value, dict):
+        logic = str(raw_value.get("logic") or "AND").strip().upper()
+        items = raw_value.get("items", [])
+    else:
+        raise ValueError(oa_message("messages.condition_filter_format", "参数 {param_name} 条件过滤格式错误", param_name=param_name))
+    if logic not in {"AND", "OR"}:
+        raise ValueError(oa_message("messages.condition_filter_logic", "参数 {param_name} 条件关系只支持 AND 或 OR", param_name=param_name))
+    if items in (None, []):
+        return {"logic": logic, "items": []}
+    if not isinstance(items, list):
+        raise ValueError(oa_message("messages.condition_filter_format", "参数 {param_name} 条件过滤格式错误", param_name=param_name))
+    normalized = []
+    for item in items:
+        if not isinstance(item, dict) or item.get("field") in (None, "") or item.get("op") in (None, ""):
+            raise ValueError(oa_message("messages.condition_filter_format", "参数 {param_name} 条件过滤格式错误", param_name=param_name))
+        normalized.append({"field": item.get("field"), "op": item.get("op"), "value": item.get("value")})
+    return {"logic": logic, "items": normalized}
 
 
 def _normalize_runtime_params(request_data):
@@ -475,7 +510,7 @@ def _normalize_runtime_params(request_data):
     if "namespace_id" in request_data:
         runtime_params["namespace_id"] = request_data["namespace_id"]
 
-    if "page" in request_data:
+    if "page" in request_data and request_data["page"] not in (None, ""):
         try:
             page = int(request_data["page"])
         except (TypeError, ValueError):
@@ -484,7 +519,7 @@ def _normalize_runtime_params(request_data):
             raise ValueError(oa_message("messages.page_must_be_positive", "参数 page 必须大于 0"))
         runtime_params["page"] = page
 
-    if "page_size" in request_data:
+    if "page_size" in request_data and request_data["page_size"] not in (None, ""):
         try:
             page_size = int(request_data["page_size"])
         except (TypeError, ValueError):
@@ -517,11 +552,7 @@ def _unspecified_host_top_instance_ids(instance, param_name, default_value):
     源定义里的 [] 只是「未选择」。请求里明确带上的 [] 仍走显式筛选，
     不在这里改掉。其它数据源的空列表默认值继续补齐。
     """
-    return (
-        getattr(instance, "rest_api", None) == "monitor/get_host_resource_top"
-        and param_name == "instance_ids"
-        and default_value == []
-    )
+    return getattr(instance, "rest_api", None) == "monitor/get_host_resource_top" and param_name == "instance_ids" and default_value == []
 
 
 def _resolve_request_params(instance, request_data):
@@ -532,11 +563,18 @@ def _resolve_request_params(instance, request_data):
         if isinstance(item, dict) and isinstance(item.get("name"), str) and item.get("name").strip()
     }
 
-    # 趋势数据源不再声明 group_by；剥离残留键，避免「未声明参数」400。
+    # 趋势数据源不再声明 group_by；一跳查询不再声明起点条件和终点条件。
+    # 剥离残留键，避免「未声明参数」400。
     sanitized_request = dict(request_data)
-    if getattr(instance, "rest_api", None) in TREND_GROUP_BY_AUTO_REST_APIS:
+    rest_api = getattr(instance, "rest_api", None)
+    if rest_api in TREND_GROUP_BY_AUTO_REST_APIS:
         sanitized_request.pop("group_by", None)
         allowed_specs.pop("group_by", None)
+    if rest_api in _ONE_HOP_RETIRED_CONDITION_APIS:
+        sanitized_request.pop("filters", None)
+        sanitized_request.pop("end_filters", None)
+        allowed_specs.pop("filters", None)
+        allowed_specs.pop("end_filters", None)
 
     allowed_request_keys = set(allowed_specs.keys()) | RUNTIME_ALLOWED_KEYS
     unknown_keys = sorted(str(key) for key in sanitized_request.keys() if key not in allowed_request_keys)
@@ -553,13 +591,13 @@ def _resolve_request_params(instance, request_data):
             raw_value = default_value
         elif param_name in sanitized_request:
             raw_value = sanitized_request[param_name]
-            # timeRange 空值视为"无过滤"跳过,避免 _normalize_time_range("") 抛 ValueError
-            # 导致整个请求 400(空字符串、null、空数组都被视为"未选时段")
-            if param_type == "timeRange" and raw_value in (None, "", [], {}):
-                continue
         elif default_value not in (None, "") and not _unspecified_host_top_instance_ids(instance, param_name, default_value):
             raw_value = default_value
         else:
+            continue
+
+        # 空时段表示不按时间过滤。固定值同样忽略请求里另带的时间。
+        if param_type == "timeRange" and raw_value in (None, "", [], {}):
             continue
 
         resolved[param_name] = _normalize_param_value(param_name, param_type, raw_value)

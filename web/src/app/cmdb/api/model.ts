@@ -91,6 +91,7 @@ export const useModelApi = () => {
   const setAssociationQuickFilter = (modelAsstId: string, quickFilter: boolean) =>
     put(`/cmdb/api/model/association/${modelAsstId}/quick_filter/`, { quick_filter: quickFilter });
 
+
   const getModelIslandCounts = (modelId: string) =>
     get(`/cmdb/api/model/${modelId}/island_counts/`);
 

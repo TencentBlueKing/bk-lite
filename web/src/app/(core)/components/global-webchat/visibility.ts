@@ -8,6 +8,7 @@ export const GLOBAL_WEBCHAT_EXCLUDED_PATHS = [
 
 export const GLOBAL_WEBCHAT_EXCLUDED_PATH_PREFIXES = [
   '/ops-analysis/share/',
+  '/ops-analysis/display/',
 ];
 
 export function hasOpsPilotClientAccess(

@@ -617,11 +617,19 @@ export const resolveOptionsQueryParams = (
 };
 
 export const dynamicQueryParamsOf = (
-  inputConfig: { control?: string; optionsSource?: { type?: string; queryParams?: Record<string, unknown> } } | undefined,
+  inputConfig: {
+    control?: string;
+    optionsSource?: { type?: string; queryParams?: Record<string, unknown> };
+    fields?: { kind?: string; queryParams?: Record<string, unknown> } | unknown[];
+  } | undefined,
 ): Record<string, unknown> | undefined => {
-  if (!inputConfig || (inputConfig.control !== 'select' && inputConfig.control !== 'radio')) {
-    return undefined;
+  if (!inputConfig) return undefined;
+  if (inputConfig.control === 'conditionFilter') {
+    const fields = inputConfig.fields;
+    if (!fields || Array.isArray(fields) || fields.kind !== 'dynamic') return undefined;
+    return fields.queryParams;
   }
+  if (inputConfig.control !== 'select' && inputConfig.control !== 'radio') return undefined;
   const source = inputConfig.optionsSource;
   if (!source || source.type !== 'dynamic') return undefined;
   return source.queryParams;

@@ -111,6 +111,8 @@ describe('console chrome layout resolve', () => {
     expect(shouldHideConsoleTopNav('/ops-analysis/share/abc')).toBe(true);
     expect(shouldHideConsoleTopNav('/ops-analysis/share/continue')).toBe(true);
     expect(shouldHideConsoleTopNav('/ops-analysis/share/session/xyz')).toBe(true);
+    expect(shouldHideConsoleTopNav('/ops-analysis/display/t/token')).toBe(true);
+    expect(shouldHideConsoleTopNav('/ops-analysis/display/view')).toBe(true);
     expect(shouldHideConsoleTopNav('/ops-analysis/view')).toBe(false);
     expect(shouldHideConsoleTopNav('/ops-analysis/view/play/12')).toBe(false);
     expect(shouldHideConsoleTopNav('/ops-analysis/render/execution/7')).toBe(false);

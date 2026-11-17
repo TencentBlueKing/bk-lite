@@ -1,3 +1,4 @@
+import { setContentLocale } from '@bk-lite/chat-content/translation';
 /**
  * React 树外的文案翻译。
  *
@@ -48,6 +49,7 @@ const interpolate = (template: string, values?: OpspilotTranslateValues): string
 
 export const setOpspilotModuleLocale = (next: 'zh' | 'en') => {
   locale = next;
+  setContentLocale(next);
   catalog = CATALOGS[next] ?? CATALOGS.zh;
 };
 

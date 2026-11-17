@@ -11,6 +11,22 @@ from urllib.parse import quote
 import pytz
 from core.collection.host_proc_influx import cleaned_host_proc_labels
 
+# 与 CMDB TAG_MAX_PAIRS 一致。云厂商自定义标签上限高于 20，系统标签另计。
+COLLECTED_TAG_MAX_PAIRS = 50
+
+
+def encode_collected_tag(key, value):
+    """收成单个 key:value。key/value 里的冒号和百分号先编码，避免和分隔符混在一起。"""
+    key_text = "" if key is None else str(key).strip()
+    value_text = "" if value is None else str(value).strip()
+    if not key_text or any(char in key_text or char in value_text for char in ("\n", "\r")):
+        return None
+
+    def encode_token(text):
+        return text.replace("%", "%25").replace(":", "%3A")
+
+    return f"{encode_token(key_text)}:{encode_token(value_text)}"
+
 
 def convert_to_prometheus_format(data):
     """
@@ -41,9 +57,8 @@ def convert_to_prometheus_format(data):
         # 先压成紧凑 JSON，再 percent-encode：Influx/VictoriaMetrics 的 tag
         # 不能原样携带引号、空格、逗号，否则整段 tag 会被丢掉。
         if key == "tag" and isinstance(value, list) and all(isinstance(item, str) for item in value):
+            # 空列表是云侧确认没有标签，必须传下去，CMDB 才会在下次采集清空。
             items = [item.strip() for item in value if item.strip()]
-            if not items:
-                return None
             payload = json.dumps(items, ensure_ascii=False, separators=(",", ":"))
             return escape_value(quote(payload, safe=""))
         if value is None or value == "" or isinstance(value, (list, dict)):

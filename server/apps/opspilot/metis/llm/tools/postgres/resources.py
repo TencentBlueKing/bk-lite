@@ -1,15 +1,12 @@
 """PostgreSQL基础资源查询工具"""
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
-from apps.opspilot.metis.llm.tools.postgres.utils import (
-    execute_readonly_query,
-    safe_json_dumps,
-    format_size,
-)
+
+from apps.opspilot.metis.llm.tools.postgres.utils import execute_readonly_query, format_size, safe_json_dumps
 
 
 @tool()
-def get_current_database_info(config: RunnableConfig = None):
+def get_current_database_info(config: RunnableConfig = None, instance_name: str = None, instance_id: str = None):
     """
     获取当前连接的数据库信息
 
@@ -31,7 +28,7 @@ def get_current_database_info(config: RunnableConfig = None):
         JSON格式,包含当前数据库信息
     """
     query = """
-    SELECT 
+    SELECT
         current_database() as database_name,
         current_user as username,
         version() as pg_version,
@@ -40,21 +37,23 @@ def get_current_database_info(config: RunnableConfig = None):
     """
 
     try:
-        result = execute_readonly_query(query, config=config)[0]
+        result = execute_readonly_query(query, config=config, instance_name=instance_name, instance_id=instance_id)[0]
 
-        return safe_json_dumps({
-            "current_database": result["database_name"],
-            "current_user": result["username"],
-            "postgres_version": result["pg_version"],
-            "current_schema": result["current_schema"],
-            "search_path": result["search_path"]
-        })
+        return safe_json_dumps(
+            {
+                "current_database": result["database_name"],
+                "current_user": result["username"],
+                "postgres_version": result["pg_version"],
+                "current_schema": result["current_schema"],
+                "search_path": result["search_path"],
+            }
+        )
     except Exception as e:
         return safe_json_dumps({"error": str(e)})
 
 
 @tool()
-def list_postgres_databases(config: RunnableConfig = None):
+def list_postgres_databases(config: RunnableConfig = None, instance_name: str = None, instance_id: str = None):
     """
     列出所有数据库及其基本信息
 
@@ -87,7 +86,7 @@ def list_postgres_databases(config: RunnableConfig = None):
         - collate: 排序规则
     """
     query = """
-    SELECT 
+    SELECT
         d.datname as name,
         pg_database_size(d.datname) as size_bytes,
         (SELECT count(*) FROM pg_stat_activity WHERE datname = d.datname) as connections,
@@ -100,22 +99,21 @@ def list_postgres_databases(config: RunnableConfig = None):
     """
 
     try:
-        results = execute_readonly_query(query, config=config)
+        results = execute_readonly_query(query, config=config, instance_name=instance_name, instance_id=instance_id)
 
         # 格式化大小
         for row in results:
             row["size"] = format_size(row["size_bytes"])
 
-        return safe_json_dumps({
-            "total_databases": len(results),
-            "databases": results
-        })
+        return safe_json_dumps({"total_databases": len(results), "databases": results})
     except Exception as e:
         return safe_json_dumps({"error": str(e)})
 
 
 @tool()
-def list_postgres_tables(database: str = None, schema_name: str = "public", config: RunnableConfig = None):
+def list_postgres_tables(
+    database: str = None, schema_name: str = "public", config: RunnableConfig = None, instance_name: str = None, instance_id: str = None
+):
     """
     列出指定数据库中的表及其基本信息
 
@@ -145,7 +143,7 @@ def list_postgres_tables(database: str = None, schema_name: str = "public", conf
         - last_analyze: 最后分析时间
     """
     query = """
-    SELECT 
+    SELECT
         t.tablename as table_name,
         pg_total_relation_size(quote_ident(t.schemaname)||'.'||quote_ident(t.tablename)) as total_size_bytes,
         pg_relation_size(quote_ident(t.schemaname)||'.'||quote_ident(t.tablename)) as table_size_bytes,
@@ -161,28 +159,30 @@ def list_postgres_tables(database: str = None, schema_name: str = "public", conf
 
     try:
         results = execute_readonly_query(
-            query, params=(schema_name,), config=config, database=database)
+            query, params=(schema_name,), config=config, database=database, instance_name=instance_name, instance_id=instance_id
+        )
 
         # 格式化大小
         for row in results:
             row["total_size"] = format_size(row["total_size_bytes"])
             row["table_size"] = format_size(row["table_size_bytes"])
             row["indexes_size"] = format_size(row["indexes_size_bytes"])
-            row["last_analyze"] = str(
-                row["last_analyze"]) if row["last_analyze"] else "Never"
+            row["last_analyze"] = str(row["last_analyze"]) if row["last_analyze"] else "Never"
 
-        return safe_json_dumps({
-            "schema": schema_name,
-            "database": database or "current",
-            "total_tables": len(results),
-            "tables": results
-        })
+        return safe_json_dumps({"schema": schema_name, "database": database or "current", "total_tables": len(results), "tables": results})
     except Exception as e:
         return safe_json_dumps({"error": str(e)})
 
 
 @tool()
-def list_postgres_indexes(database: str = None, table: str = None, schema_name: str = "public", config: RunnableConfig = None):
+def list_postgres_indexes(
+    database: str = None,
+    table: str = None,
+    schema_name: str = "public",
+    config: RunnableConfig = None,
+    instance_name: str = None,
+    instance_id: str = None,
+):
     """
     列出索引信息
 
@@ -207,7 +207,7 @@ def list_postgres_indexes(database: str = None, table: str = None, schema_name: 
     """
     if table:
         query = """
-        SELECT 
+        SELECT
             i.indexname as index_name,
             i.tablename as table_name,
             pg_relation_size(quote_ident(i.schemaname)||'.'||quote_ident(i.indexname)) as size_bytes,
@@ -216,8 +216,8 @@ def list_postgres_indexes(database: str = None, table: str = None, schema_name: 
             s.idx_tup_read as tuples_read,
             s.idx_tup_fetch as tuples_fetched
         FROM pg_catalog.pg_indexes i
-        LEFT JOIN pg_stat_user_indexes s ON i.schemaname = s.schemaname 
-            AND i.tablename = s.relname 
+        LEFT JOIN pg_stat_user_indexes s ON i.schemaname = s.schemaname
+            AND i.tablename = s.relname
             AND i.indexname = s.indexrelname
         WHERE i.schemaname = %s AND i.tablename = %s
         ORDER BY pg_relation_size(quote_ident(i.schemaname)||'.'||quote_ident(i.indexname)) DESC;
@@ -225,7 +225,7 @@ def list_postgres_indexes(database: str = None, table: str = None, schema_name: 
         params = (schema_name, table)
     else:
         query = """
-        SELECT 
+        SELECT
             i.indexname as index_name,
             i.tablename as table_name,
             pg_relation_size(quote_ident(i.schemaname)||'.'||quote_ident(i.indexname)) as size_bytes,
@@ -234,8 +234,8 @@ def list_postgres_indexes(database: str = None, table: str = None, schema_name: 
             s.idx_tup_read as tuples_read,
             s.idx_tup_fetch as tuples_fetched
         FROM pg_catalog.pg_indexes i
-        LEFT JOIN pg_stat_user_indexes s ON i.schemaname = s.schemaname 
-            AND i.tablename = s.relname 
+        LEFT JOIN pg_stat_user_indexes s ON i.schemaname = s.schemaname
+            AND i.tablename = s.relname
             AND i.indexname = s.indexrelname
         WHERE i.schemaname = %s
         ORDER BY pg_relation_size(quote_ident(i.schemaname)||'.'||quote_ident(i.indexname)) DESC;
@@ -243,25 +243,20 @@ def list_postgres_indexes(database: str = None, table: str = None, schema_name: 
         params = (schema_name,)
 
     try:
-        results = execute_readonly_query(query, params=params, config=config)
+        results = execute_readonly_query(query, params=params, config=config, instance_name=instance_name, instance_id=instance_id)
 
         # 格式化大小
         for row in results:
             row["size"] = format_size(row["size_bytes"])
             row["is_unused"] = (row["index_scans"] or 0) == 0
 
-        return safe_json_dumps({
-            "schema": schema_name,
-            "table": table,
-            "total_indexes": len(results),
-            "indexes": results
-        })
+        return safe_json_dumps({"schema": schema_name, "table": table, "total_indexes": len(results), "indexes": results})
     except Exception as e:
         return safe_json_dumps({"error": str(e)})
 
 
 @tool()
-def list_postgres_schemas(database: str = None, config: RunnableConfig = None):
+def list_postgres_schemas(database: str = None, config: RunnableConfig = None, instance_name: str = None, instance_id: str = None):
     """
     列出所有Schema
 
@@ -283,7 +278,7 @@ def list_postgres_schemas(database: str = None, config: RunnableConfig = None):
         JSON格式,包含Schema列表
     """
     query = """
-    SELECT 
+    SELECT
         nspname as schema_name,
         pg_catalog.pg_get_userbyid(nspowner) as owner,
         (SELECT count(*) FROM pg_tables WHERE schemaname = nspname) as table_count
@@ -293,20 +288,15 @@ def list_postgres_schemas(database: str = None, config: RunnableConfig = None):
     """
 
     try:
-        results = execute_readonly_query(
-            query, config=config, database=database)
+        results = execute_readonly_query(query, config=config, database=database, instance_name=instance_name, instance_id=instance_id)
 
-        return safe_json_dumps({
-            "database": database or "current",
-            "total_schemas": len(results),
-            "schemas": results
-        })
+        return safe_json_dumps({"database": database or "current", "total_schemas": len(results), "schemas": results})
     except Exception as e:
         return safe_json_dumps({"error": str(e)})
 
 
 @tool()
-def get_table_structure(table: str, schema_name: str = "public", config: RunnableConfig = None):
+def get_table_structure(table: str, schema_name: str = "public", config: RunnableConfig = None, instance_name: str = None, instance_id: str = None):
     """
     获取表结构详情
 
@@ -330,7 +320,7 @@ def get_table_structure(table: str, schema_name: str = "public", config: Runnabl
     """
     # 查询列信息
     columns_query = """
-    SELECT 
+    SELECT
         column_name,
         data_type,
         character_maximum_length,
@@ -343,7 +333,7 @@ def get_table_structure(table: str, schema_name: str = "public", config: Runnabl
 
     # 查询约束信息
     constraints_query = """
-    SELECT 
+    SELECT
         tc.constraint_name,
         tc.constraint_type,
         kcu.column_name,
@@ -361,22 +351,19 @@ def get_table_structure(table: str, schema_name: str = "public", config: Runnabl
 
     try:
         columns = execute_readonly_query(
-            columns_query, params=(schema_name, table), config=config)
+            columns_query, params=(schema_name, table), config=config, instance_name=instance_name, instance_id=instance_id
+        )
         constraints = execute_readonly_query(
-            constraints_query, params=(schema_name, table), config=config)
+            constraints_query, params=(schema_name, table), config=config, instance_name=instance_name, instance_id=instance_id
+        )
 
-        return safe_json_dumps({
-            "schema": schema_name,
-            "table": table,
-            "columns": columns,
-            "constraints": constraints
-        })
+        return safe_json_dumps({"schema": schema_name, "table": table, "columns": columns, "constraints": constraints})
     except Exception as e:
         return safe_json_dumps({"error": str(e)})
 
 
 @tool()
-def list_postgres_extensions(config: RunnableConfig = None):
+def list_postgres_extensions(config: RunnableConfig = None, instance_name: str = None, instance_id: str = None):
     """
     列出已安装的PostgreSQL扩展
 
@@ -391,7 +378,7 @@ def list_postgres_extensions(config: RunnableConfig = None):
         JSON格式,包含扩展列表
     """
     query = """
-    SELECT 
+    SELECT
         extname as extension_name,
         extversion as version,
         n.nspname as schema,
@@ -403,18 +390,15 @@ def list_postgres_extensions(config: RunnableConfig = None):
     """
 
     try:
-        results = execute_readonly_query(query, config=config)
+        results = execute_readonly_query(query, config=config, instance_name=instance_name, instance_id=instance_id)
 
-        return safe_json_dumps({
-            "total_extensions": len(results),
-            "extensions": results
-        })
+        return safe_json_dumps({"total_extensions": len(results), "extensions": results})
     except Exception as e:
         return safe_json_dumps({"error": str(e)})
 
 
 @tool()
-def list_postgres_roles(config: RunnableConfig = None):
+def list_postgres_roles(config: RunnableConfig = None, instance_name: str = None, instance_id: str = None):
     """
     列出数据库角色(用户)信息
 
@@ -435,7 +419,7 @@ def list_postgres_roles(config: RunnableConfig = None):
         JSON格式,包含角色列表
     """
     query = """
-    SELECT 
+    SELECT
         rolname as role_name,
         rolsuper as is_superuser,
         rolcreatedb as can_create_db,
@@ -448,23 +432,19 @@ def list_postgres_roles(config: RunnableConfig = None):
     """
 
     try:
-        results = execute_readonly_query(query, config=config)
+        results = execute_readonly_query(query, config=config, instance_name=instance_name, instance_id=instance_id)
 
         # 格式化日期
         for row in results:
-            row["valid_until"] = str(
-                row["valid_until"]) if row["valid_until"] else "No expiration"
+            row["valid_until"] = str(row["valid_until"]) if row["valid_until"] else "No expiration"
 
-        return safe_json_dumps({
-            "total_roles": len(results),
-            "roles": results
-        })
+        return safe_json_dumps({"total_roles": len(results), "roles": results})
     except Exception as e:
         return safe_json_dumps({"error": str(e)})
 
 
 @tool()
-def get_database_config(config: RunnableConfig = None):
+def get_database_config(config: RunnableConfig = None, instance_name: str = None, instance_id: str = None):
     """
     获取数据库配置参数
 
@@ -485,7 +465,7 @@ def get_database_config(config: RunnableConfig = None):
         JSON格式,包含配置参数列表
     """
     query = """
-    SELECT 
+    SELECT
         name,
         setting,
         unit,
@@ -496,7 +476,7 @@ def get_database_config(config: RunnableConfig = None):
         max_val
     FROM pg_catalog.pg_settings
     WHERE name IN (
-        'shared_buffers', 'effective_cache_size', 'maintenance_work_mem', 
+        'shared_buffers', 'effective_cache_size', 'maintenance_work_mem',
         'work_mem', 'max_connections', 'max_wal_size', 'checkpoint_timeout',
         'random_page_cost', 'effective_io_concurrency', 'max_worker_processes',
         'max_parallel_workers_per_gather', 'max_parallel_workers'
@@ -505,11 +485,8 @@ def get_database_config(config: RunnableConfig = None):
     """
 
     try:
-        results = execute_readonly_query(query, config=config)
+        results = execute_readonly_query(query, config=config, instance_name=instance_name, instance_id=instance_id)
 
-        return safe_json_dumps({
-            "total_settings": len(results),
-            "settings": results
-        })
+        return safe_json_dumps({"total_settings": len(results), "settings": results})
     except Exception as e:
         return safe_json_dumps({"error": str(e)})

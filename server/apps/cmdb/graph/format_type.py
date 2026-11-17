@@ -179,10 +179,22 @@ def format_int_gt(param):
     return f"n.{field} > {value}"
 
 
+def format_int_gte(param):
+    field = param["field"]
+    value = param["value"]
+    return f"n.{field} >= {value}"
+
+
 def format_int_lt(param):
     field = param["field"]
     value = param["value"]
     return f"n.{field} < {value}"
+
+
+def format_int_lte(param):
+    field = param["field"]
+    value = param["value"]
+    return f"n.{field} <= {value}"
 
 
 def format_int_neq(param):
@@ -295,7 +307,9 @@ FORMAT_TYPE = {
     "user[]": format_user_in,
     "int=": format_int_eq,
     "int>": format_int_gt,
+    "int>=": format_int_gte,
     "int<": format_int_lt,
+    "int<=": format_int_lte,
     "int<>": format_int_neq,
     "int[]": format_int_in,
     "id=": format_id_eq,  # 修改为使用ID()函数
@@ -481,6 +495,16 @@ def format_int_gt_params(param, collector):
     return f"n.{field} > {param_name}"
 
 
+def format_int_gte_params(param, collector):
+    """参数化版本：int>="""
+    from apps.cmdb.graph.validators import CQLValidator
+
+    field = CQLValidator.validate_field(param["field"])
+    value = param["value"]
+    param_name = collector.add_param(value, prefix="int")
+    return f"n.{field} >= {param_name}"
+
+
 def format_int_lt_params(param, collector):
     """参数化版本：int<"""
     from apps.cmdb.graph.validators import CQLValidator
@@ -489,6 +513,16 @@ def format_int_lt_params(param, collector):
     value = param["value"]
     param_name = collector.add_param(value, prefix="int")
     return f"n.{field} < {param_name}"
+
+
+def format_int_lte_params(param, collector):
+    """参数化版本：int<="""
+    from apps.cmdb.graph.validators import CQLValidator
+
+    field = CQLValidator.validate_field(param["field"])
+    value = param["value"]
+    param_name = collector.add_param(value, prefix="int")
+    return f"n.{field} <= {param_name}"
 
 
 def format_int_neq_params(param, collector):
@@ -604,7 +638,9 @@ FORMAT_TYPE_PARAMS = {
     "user[]": format_user_in_params,
     "int=": format_int_eq_params,
     "int>": format_int_gt_params,
+    "int>=": format_int_gte_params,
     "int<": format_int_lt_params,
+    "int<=": format_int_lte_params,
     "int<>": format_int_neq_params,
     "int[]": format_int_in_params,
     "id=": format_id_eq_params,

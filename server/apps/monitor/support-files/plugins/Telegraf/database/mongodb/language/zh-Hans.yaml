@@ -97,9 +97,25 @@ monitor_object_metric:
     mongodb_net_out_bytes_count_rate:
       name: 网络输出频率
       desc: 网络数据发送的频率，反映数据库输出流量负载
+    mongodb_repl_lag:
+      name: 复制延迟
+      desc: 本实例落后主库的时间。主库自身通常是 0 秒；没有读数时不显示成 0
+    mongodb_repl_oplog_window_sec:
+      name: oplog 窗口
+      desc: 操作日志还能覆盖的时长。窗口过短时，断开较久的成员更难自动接上
+    mongodb_repl_state:
+      name: 副本状态
+      desc: 本实例在副本集中的状态，例如主库或从库
+    mongodb_repl_member_health:
+      name: 成员健康
+      desc: 本实例在副本集中是否正常。1 为正常，0 为异常
+    mongodb_member_status:
+      name: 成员角色标记
+      desc: 本实例上报的副本角色。有读数才表示角色已上报
 monitor_object_metric_group:
   MongoDB:
     Base: 基础信息
     Performance: 性能
     Operations: 操作
     Resources: 资源
+    Replication: 复制

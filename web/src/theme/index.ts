@@ -3,6 +3,7 @@ export {
   ThemeProvider,
   useThemeMode,
   useThemeTokens,
+  useOptionalThemeMode,
   useOptionalThemeTokens,
 } from './provider';
 export { getAppliedThemeMode } from './css-adapter';

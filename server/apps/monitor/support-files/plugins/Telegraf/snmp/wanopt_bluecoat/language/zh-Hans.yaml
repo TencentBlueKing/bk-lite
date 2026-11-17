@@ -24,8 +24,7 @@ monitor_object_metric:
       desc: ProxySG 代理可用内存总量（BLUECOAT-SG-PROXY-MIB sgProxyMemAvailable，单位字节）。
     device_memory_used:
       name: 内存已用量
-      desc: ProxySG 当前已使用的代理内存，按系统进程用量加对象缓存用量计算（BLUECOAT-SG-PROXY-MIB
-        sgProxyMemSysUsage + sgProxyMemCacheUsage）。
+      desc: ProxySG 当前已使用的代理内存（BLUECOAT-SG-PROXY-MIB sgProxyMemSysUsage + sgProxyMemCacheUsage）。
     device_memory_sys_usage:
       name: 系统进程内存
       desc: ProxySG 系统与支撑进程占用的内存（BLUECOAT-SG-PROXY-MIB sgProxyMemSysUsage，单位字节）。

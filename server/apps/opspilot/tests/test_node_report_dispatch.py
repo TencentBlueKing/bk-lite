@@ -638,6 +638,7 @@ async def test_deep_wrapper_checks_pending_repair_against_full_message_history()
 
     with (
         patch("apps.opspilot.metis.llm.chain.node.TemplateLoader.render_template", return_value="system"),
+        patch("apps.opspilot.metis.llm.chain.node.create_planned_agent", return_value=deep_agent),
         patch("apps.opspilot.metis.llm.chain.node.create_deep_agent", return_value=deep_agent),
         patch("apps.opspilot.metis.llm.chain.node.is_progressive_tools_enabled", return_value=False),
     ):
@@ -711,6 +712,7 @@ async def test_deep_wrapper_repair_workflow_uses_collected_messages_after_step_c
 
     with (
         patch("apps.opspilot.metis.llm.chain.node.TemplateLoader.render_template", return_value="system"),
+        patch("apps.opspilot.metis.llm.chain.node.create_planned_agent", return_value=deep_agent),
         patch("apps.opspilot.metis.llm.chain.node.create_deep_agent", return_value=deep_agent),
         patch("apps.opspilot.metis.llm.chain.node.is_progressive_tools_enabled", return_value=True),
         patch(
@@ -789,6 +791,7 @@ async def test_deep_wrapper_emits_config_choice_and_repair_events_in_order():
 
     with (
         patch("apps.opspilot.metis.llm.chain.node.TemplateLoader.render_template", return_value="system"),
+        patch("apps.opspilot.metis.llm.chain.node.create_planned_agent", return_value=deep_agent),
         patch("apps.opspilot.metis.llm.chain.node.create_deep_agent", return_value=deep_agent),
         patch("apps.opspilot.metis.llm.chain.node.is_progressive_tools_enabled", return_value=False),
     ):
@@ -1102,6 +1105,7 @@ async def test_deep_wrapper_emits_planned_execution_status_around_planning():
 
     with (
         patch("apps.opspilot.metis.llm.chain.node.TemplateLoader.render_template", return_value="system"),
+        patch("apps.opspilot.metis.llm.chain.node.create_planned_agent", return_value=deep_agent),
         patch("apps.opspilot.metis.llm.chain.node.create_deep_agent", return_value=deep_agent),
         patch("apps.opspilot.metis.llm.chain.node.is_progressive_tools_enabled", return_value=True),
         patch("apps.opspilot.metis.llm.chain.node.adispatch_custom_event", new=AsyncMock(side_effect=_capture_event)),

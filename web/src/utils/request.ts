@@ -26,6 +26,7 @@ import {
   getProxyTimeoutHeaderValue,
   PROXY_TIMEOUT_HEADER,
 } from '@/utils/proxyTimeout';
+import { isScreenDisplayRequest } from '@/app/routeScope';
 import { resolveAuthToken } from '@/utils/authRecovery';
 import { discardGmAxiosKey, openGmAxiosResponse, prepareGmAxiosRequest, retryGmAxiosRequest } from '@/utils/gmTransport';
 import {
@@ -115,6 +116,21 @@ const handleResponse = (response: AxiosResponse) => {
 // Register interceptors once at module level
 apiClient.interceptors.request.use(
   async (config: InternalAxiosRequestConfig) => {
+    if (isScreenDisplayRequest(config.url)) {
+      config.withCredentials = true;
+      config.headers.delete('Authorization');
+      if (typeof window !== 'undefined') {
+        config.headers.set('X-BK-Locale', getStoredLocale());
+      }
+      const proxyTimeoutHeaderValue = getProxyTimeoutHeaderValue(config.timeout);
+      if (proxyTimeoutHeaderValue) {
+        config.headers.set(PROXY_TIMEOUT_HEADER, proxyTimeoutHeaderValue);
+      } else {
+        config.headers.delete(PROXY_TIMEOUT_HEADER);
+      }
+      return prepareGmAxiosRequest(config);
+    }
+
     if (isSessionExpiredState()) {
       return Promise.reject(createSessionExpiredRequestError());
     }
@@ -207,11 +223,13 @@ apiClient.interceptors.response.use(
         void forceLogoutAndRedirect();
         return Promise.reject(error);
       } else if (status === 401) {
-        emitSessionExpired({
-          reason: passwordChangedErrorCode(payload) ? "password-changed" : "api-session-expired",
-          status,
-          errorCode: passwordChangedErrorCode(payload),
-        });
+        if (!isScreenDisplayRequest(error.config?.url)) {
+          emitSessionExpired({
+            reason: passwordChangedErrorCode(payload) ? "password-changed" : "api-session-expired",
+            status,
+            errorCode: passwordChangedErrorCode(payload),
+          });
+        }
         return Promise.reject(error);
       } else if ([400, 403].includes(status)) {
         if (!suppressErrorNotification && presentation) {

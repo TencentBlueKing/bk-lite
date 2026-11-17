@@ -125,6 +125,10 @@
   justify-self: end;
 }
 
+.actions .actionButton:last-child {
+  margin-right: -10px;
+}
+
 .headerContentTabRoot .actions {
   grid-column: 2;
 }

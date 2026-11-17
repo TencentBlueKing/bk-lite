@@ -343,6 +343,61 @@
       "dimensions": [],
       "description": "Frequency of network data transmission, indicating database output traffic load",
       "query": "rate(mongodb_net_out_bytes_count{__$labels__}[5m])"
+    },
+    {
+      "metric_group": "Replication",
+      "name": "mongodb_repl_lag",
+      "display_name": "Replication Lag",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "description": "How far this instance trails the primary. The primary itself is usually 0 seconds. No sample stays empty.",
+      "query": "mongodb_repl_lag{__$labels__}"
+    },
+    {
+      "metric_group": "Replication",
+      "name": "mongodb_repl_oplog_window_sec",
+      "display_name": "Oplog Window",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "description": "How long the operation log can still cover. A short window makes it harder for a disconnected member to catch up.",
+      "query": "mongodb_repl_oplog_window_sec{__$labels__}"
+    },
+    {
+      "metric_group": "Replication",
+      "name": "mongodb_repl_state",
+      "display_name": "Replica State",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "none",
+      "dimensions": [],
+      "description": "This instance's state in the replica set, such as primary or secondary.",
+      "query": "mongodb_repl_state{__$labels__}"
+    },
+    {
+      "metric_group": "Replication",
+      "name": "mongodb_repl_member_health",
+      "display_name": "Member Health",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "none",
+      "dimensions": [],
+      "description": "Whether this instance is healthy in the replica set. 1 is healthy and 0 is not.",
+      "query": "mongodb_repl_member_health{__$labels__}"
+    },
+    {
+      "metric_group": "Replication",
+      "name": "mongodb_member_status",
+      "display_name": "Member Role Mark",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "none",
+      "dimensions": [],
+      "description": "Role sample reported for this replica-set member. Shown only when a sample exists.",
+      "query": "mongodb_member_status{__$labels__}"
     }
   ]
 }

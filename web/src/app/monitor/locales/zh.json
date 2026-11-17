@@ -934,8 +934,6 @@
       "scriptDemoHint": "可插入编辑区的示例，插入后可按需修改。",
       "scriptDemoOverwriteTitle": "覆盖当前脚本？",
       "scriptDemoOverwriteContent": "插入该示例将覆盖编辑区已有内容。",
-      "runAsRequiredLinux": "Linux 节点执行用户不能为空",
-      "runAsNonRoot": "不允许以 root 运行",
       "runAsWindowsHelper": "Windows 以服务账号运行，执行用户不可修改",
       "intervalMin60": "采集间隔不能小于 60 秒",
       "scriptTimeoutFollowsInterval": "脚本超时 = 采集间隔 − 1 秒",

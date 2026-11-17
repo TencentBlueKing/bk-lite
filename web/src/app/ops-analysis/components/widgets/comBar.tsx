@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useCallback, useState } from 'react';
+import React, { useEffect, useRef, useCallback, useMemo, useState } from 'react';
 import ReactEcharts from 'echarts-for-react';
 import { Spin } from 'antd';
 import { randomColorForLegend } from '@/app/ops-analysis/utils/randomColorForChart';
@@ -52,6 +52,9 @@ interface BarChartProps {
   screenRenderContext?: ScreenRenderContext;
 }
 
+// 全部显示时 selected 是 {}。不整段替换 legend，合并会留下之前的 false。
+const LINE_BAR_REPLACE_MERGE = ['series', 'xAxis', 'yAxis', 'legend'];
+
 const BarChart: React.FC<BarChartProps> = ({
   rawData,
   loading = false,
@@ -65,10 +68,18 @@ const BarChart: React.FC<BarChartProps> = ({
   const chartPaneRef = useChartTooltipWheelScrollRef();
   const themeName = resolveOpsChartThemeName();
   const usesScreenChartTheme = isScreenChartThemeMode(config?.chartThemeMode);
-  const chartTheme = getOpsChartThemeByMode(config?.chartThemeMode);
-  const chartColors = usesScreenChartTheme
-    ? getOpsChartColorsByMode(config?.chartThemeMode, themeName)
-    : randomColorForLegend(themeName);
+  const chartTheme = useMemo(
+    () => getOpsChartThemeByMode(config?.chartThemeMode),
+    [config?.chartThemeMode, themeName],
+  );
+  const chartColors = useMemo(
+    () => (
+      usesScreenChartTheme
+        ? getOpsChartColorsByMode(config?.chartThemeMode, themeName)
+        : randomColorForLegend(themeName)
+    ),
+    [config?.chartThemeMode, themeName, usesScreenChartTheme],
+  );
   const widgetScale = getScreenWidgetScale(screenRenderContext);
   const yAxisName = getLineBarYAxisName(config);
   const [legendSelected, setLegendSelected] = useState<Record<string, boolean>>({});
@@ -79,14 +90,14 @@ const BarChart: React.FC<BarChartProps> = ({
     setLegendSelected(selected);
   }, []);
 
-  const transformData = (rawData: any) => {
-    return ChartDataTransformer.transformToLineBarData(
-      rawData,
-      toLineBarFieldMapping(config, dataSource?.field_schema),
-    );
-  };
-
-  const chartData = transformData(rawData);
+  const fieldMapping = useMemo(
+    () => toLineBarFieldMapping(config, dataSource?.field_schema),
+    [config, dataSource?.field_schema],
+  );
+  const chartData = useMemo(
+    () => ChartDataTransformer.transformToLineBarData(rawData, fieldMapping),
+    [fieldMapping, rawData],
+  );
   const isDataReady = chartData.categories.length > 0;
   const openTrendRef = useRef<(offsetX: number, offsetY: number) => void>(() => {});
   const unbindTrendClickRef = useRef<(() => void) | null>(null);
@@ -129,173 +140,144 @@ const BarChart: React.FC<BarChartProps> = ({
     }
   }, [isDataReady, loading, onReady]);
 
-  const option: any = {
-    color: chartColors,
-    animation: false,
-    calculable: true,
-    title: { show: false },
-    legend: { show: false, selected: legendSelected },
-    toolbox: { show: false },
-    tooltip: {
-      trigger: 'axis',
-      axisPointer: {
-        type: 'shadow',
-      },
-      enterable: true,
-      confine: true,
-      hideDelay: 300,
-      position: function (point: number[], _params: any, el: HTMLElement, _rect: any, size: any) {
-        return placeEChartsAxisTooltip(point, size, el, {
-          x: scaleScreenMetric(40, screenRenderContext),
-          y: scaleScreenMetric(10, screenRenderContext),
-        });
-      },
-      backgroundColor: chartTheme.tooltipBackgroundColor,
-      borderWidth: 1,
-      borderColor: chartTheme.tooltipBorderColor,
-      extraCssText: `box-shadow: ${chartTheme.tooltipShadow};`,
-      textStyle: {
-        fontSize: scaleScreenMetric(12, screenRenderContext),
-        color: chartTheme.tooltipTextColor,
-      },
-      formatter: wrapDataLinkTooltipFormatter(function (params: any) {
-        if (!params || params.length === 0) return '';
-        const tooltipPaddingY = scaleScreenMetric(4, screenRenderContext);
-        const tooltipPaddingX = scaleScreenMetric(8, screenRenderContext);
-        const tooltipGap = scaleScreenMetric(4, screenRenderContext);
-        const markerSize = scaleScreenMetric(10, screenRenderContext);
-        const markerGap = scaleScreenMetric(6, screenRenderContext);
-        let content = `<div style="padding: ${tooltipPaddingY}px ${tooltipPaddingX}px;">
-          <div style="position: sticky; top: 0; z-index: 1; margin-bottom: ${tooltipGap}px; font-weight: bold; background: ${chartTheme.tooltipBackgroundColor};">${params[0].axisValueLabel}</div>`;
-
-        params.forEach((param: any) => {
-          content += `
-            <div style="display: flex; align-items: center; margin-bottom: ${scaleScreenMetric(2, screenRenderContext)}px;">
-              <span style="display: inline-block; width: ${markerSize}px; height: ${markerSize}px; background-color: ${param.color}; border-radius: ${scaleScreenMetric(2, screenRenderContext)}px; margin-right: ${markerGap}px;"></span>
-              <span>${param.seriesName}: ${formatVisibleChartValue(param.value, config)}</span>
-            </div>`;
-        });
-
-        content += '</div>';
-        return content;
-      }, {
-        surface,
-        link,
-        footerText: chartTooltipHint,
-        theme: linkTooltipTheme,
-        includeFooter: (params: unknown) => trendColumnCanOpen(
-          link?.url,
-          [config?.dimensionField],
-          trendPointsFromTooltip(params),
-        ),
-      }),
-    },
-    grid: {
-      top: scaleScreenMetric(yAxisName ? 24 : 8, screenRenderContext),
-      left: scaleScreenMetric(16, screenRenderContext),
-      right: scaleScreenMetric(16, screenRenderContext),
-      bottom: scaleScreenMetric(8, screenRenderContext),
-      containLabel: true,
-    },
-    xAxis: {
-      type: 'category',
-      data: chartData?.categories || [],
-      nameRotate: -90,
-      axisLabel: {
-        margin: scaleScreenMetric(15, screenRenderContext),
+  const option = useMemo(() => {
+    const built: any = {
+      color: chartColors,
+      animation: false,
+      calculable: true,
+      title: { show: false },
+      legend: { show: false, selected: legendSelected },
+      toolbox: { show: false },
+      tooltip: {
+        trigger: 'axis',
+        axisPointer: {
+          type: 'shadow',
+        },
+        enterable: true,
+        confine: true,
+        hideDelay: 300,
+        position: function (point: number[], _params: any, el: HTMLElement, _rect: any, size: any) {
+          return placeEChartsAxisTooltip(point, size, el, {
+            x: scaleScreenMetric(40, screenRenderContext),
+            y: scaleScreenMetric(10, screenRenderContext),
+          });
+        },
+        backgroundColor: chartTheme.tooltipBackgroundColor,
+        borderWidth: 1,
+        borderColor: chartTheme.tooltipBorderColor,
+        extraCssText: `box-shadow: ${chartTheme.tooltipShadow};`,
         textStyle: {
+          fontSize: scaleScreenMetric(12, screenRenderContext),
+          color: chartTheme.tooltipTextColor,
+        },
+        formatter: wrapDataLinkTooltipFormatter(function (params: any) {
+          if (!params || params.length === 0) return '';
+          const tooltipPaddingY = scaleScreenMetric(4, screenRenderContext);
+          const tooltipPaddingX = scaleScreenMetric(8, screenRenderContext);
+          const tooltipGap = scaleScreenMetric(4, screenRenderContext);
+          const markerSize = scaleScreenMetric(10, screenRenderContext);
+          const markerGap = scaleScreenMetric(6, screenRenderContext);
+          let content = `<div style="padding: ${tooltipPaddingY}px ${tooltipPaddingX}px;">
+            <div style="position: sticky; top: 0; z-index: 1; margin-bottom: ${tooltipGap}px; font-weight: bold; background: ${chartTheme.tooltipBackgroundColor};">${params[0].axisValueLabel}</div>`;
+
+          params.forEach((param: any) => {
+            content += `
+              <div style="display: flex; align-items: center; margin-bottom: ${scaleScreenMetric(2, screenRenderContext)}px;">
+                <span style="display: inline-block; width: ${markerSize}px; height: ${markerSize}px; background-color: ${param.color}; border-radius: ${scaleScreenMetric(2, screenRenderContext)}px; margin-right: ${markerGap}px;"></span>
+                <span>${param.seriesName}: ${formatVisibleChartValue(param.value, config)}</span>
+              </div>`;
+          });
+
+          content += '</div>';
+          return content;
+        }, {
+          surface,
+          link,
+          footerText: chartTooltipHint,
+          theme: linkTooltipTheme,
+          includeFooter: (params: unknown) => trendColumnCanOpen(
+            link?.url,
+            [config?.dimensionField],
+            trendPointsFromTooltip(params),
+          ),
+        }),
+      },
+      grid: {
+        top: scaleScreenMetric(yAxisName ? 24 : 8, screenRenderContext),
+        left: scaleScreenMetric(16, screenRenderContext),
+        right: scaleScreenMetric(16, screenRenderContext),
+        bottom: scaleScreenMetric(8, screenRenderContext),
+        containLabel: true,
+      },
+      xAxis: {
+        type: 'category',
+        data: chartData?.categories || [],
+        nameRotate: -90,
+        axisLabel: {
+          margin: scaleScreenMetric(15, screenRenderContext),
+          textStyle: {
+            color: chartTheme.axisLabelColor,
+            fontSize: scaleScreenMetric(11, screenRenderContext),
+          },
+          rotate: 0,
+          interval: 'auto',
+          formatter: function (value: string) {
+            return value;
+          },
+        },
+        axisLine: {
+          lineStyle: {
+            color: chartTheme.axisLineColor,
+          },
+        },
+        axisTick: {
+          show: false,
+        },
+        splitLine: {
+          show: false,
+          lineStyle: {
+            color: chartTheme.splitLineColor,
+          },
+        },
+      },
+      yAxis: {
+        type: 'value',
+        name: yAxisName,
+        nameGap: 6,
+        nameTextStyle: {
           color: chartTheme.axisLabelColor,
           fontSize: scaleScreenMetric(11, screenRenderContext),
         },
-        rotate: 0,
-        interval: 'auto',
-        formatter: function (value: string) {
-          return value;
+        minInterval: 1,
+        axisTick: {
+          show: false,
+        },
+        axisLine: {
+          show: false,
+        },
+        axisLabel: {
+          formatter: (value: number) => formatLineBarAxisTick(value, config),
+          textStyle: {
+            color: chartTheme.axisLabelColor,
+            fontSize: scaleScreenMetric(11, screenRenderContext),
+          },
+        },
+        splitLine: {
+          show: true,
+          lineStyle: {
+            color: chartTheme.splitLineColor,
+            type: 'solid',
+          },
         },
       },
-      axisLine: {
-        lineStyle: {
-          color: chartTheme.axisLineColor,
-        },
-      },
-      axisTick: {
-        show: false,
-      },
-      splitLine: {
-        show: false,
-        lineStyle: {
-          color: chartTheme.splitLineColor,
-        },
-      },
-    },
-    yAxis: {
-      type: 'value',
-      name: yAxisName,
-      nameGap: 6,
-      nameTextStyle: {
-        color: chartTheme.axisLabelColor,
-        fontSize: scaleScreenMetric(11, screenRenderContext),
-      },
-      minInterval: 1,
-      axisTick: {
-        show: false,
-      },
-      axisLine: {
-        show: false,
-      },
-      axisLabel: {
-        formatter: (value: number) => formatLineBarAxisTick(value, config),
-        textStyle: {
-          color: chartTheme.axisLabelColor,
-          fontSize: scaleScreenMetric(11, screenRenderContext),
-        },
-      },
-      splitLine: {
-        show: true,
-        lineStyle: {
-          color: chartTheme.splitLineColor,
-          type: 'solid',
-        },
-      },
-    },
-  };
+    };
 
-  // 根据数据类型设置 series
-  if (chartData && chartData.series) {
-    option.series = chartData.series.map((item: any) => ({
-      name: item.name,
-      type: 'bar',
-      data: withChartLinkPoints(item.data, item.points),
-      barMaxWidth: scaleScreenMetric(40, screenRenderContext),
-      itemStyle: {
-        borderRadius: usesScreenChartTheme
-          ? [
-            scaleScreenMetric(4, screenRenderContext),
-            scaleScreenMetric(4, screenRenderContext),
-            0,
-            0,
-          ]
-          : [2, 2, 0, 0],
-        shadowBlur: usesScreenChartTheme
-          ? scaleScreenMetric(chartTheme.barShadowBlur, screenRenderContext)
-          : 0,
-        shadowColor: usesScreenChartTheme
-          ? chartTheme.barShadowColor
-          : 'transparent',
-      },
-      emphasis: {
-        focus: 'series',
-      },
-    }));
-  } else {
-    option.series = [
-      {
-        name: t('topology.treeValueTitle'),
+    // 根据数据类型设置 series
+    if (chartData && chartData.series) {
+      built.series = chartData.series.map((item: any) => ({
+        name: item.name,
         type: 'bar',
-        data: withChartLinkPoints(
-          chartData && chartData.values ? chartData.values : [],
-          chartData?.points,
-        ),
+        data: withChartLinkPoints(item.data, item.points),
         barMaxWidth: scaleScreenMetric(40, screenRenderContext),
         itemStyle: {
           borderRadius: usesScreenChartTheme
@@ -316,36 +298,86 @@ const BarChart: React.FC<BarChartProps> = ({
         emphasis: {
           focus: 'series',
         },
-      },
-    ];
-  }
+      }));
+    } else {
+      built.series = [
+        {
+          name: t('topology.treeValueTitle'),
+          type: 'bar',
+          data: withChartLinkPoints(
+            chartData && chartData.values ? chartData.values : [],
+            chartData?.points,
+          ),
+          barMaxWidth: scaleScreenMetric(40, screenRenderContext),
+          itemStyle: {
+            borderRadius: usesScreenChartTheme
+              ? [
+                scaleScreenMetric(4, screenRenderContext),
+                scaleScreenMetric(4, screenRenderContext),
+                0,
+                0,
+              ]
+              : [2, 2, 0, 0],
+            shadowBlur: usesScreenChartTheme
+              ? scaleScreenMetric(chartTheme.barShadowBlur, screenRenderContext)
+              : 0,
+            shadowColor: usesScreenChartTheme
+              ? chartTheme.barShadowColor
+              : 'transparent',
+          },
+          emphasis: {
+            focus: 'series',
+          },
+        },
+      ];
+    }
 
-  // 阈值线（对齐 Grafana）：按 config.thresholdColors 在 Y 轴画水平虚线，
-  // 跳过基线 0，只挂在第一条系列上。
-  const thresholdLines = (config?.thresholdColors || [])
-    .map((th) => ({ value: Number(th.value), color: th.color }))
-    .filter((th) => !Number.isNaN(th.value) && th.value !== 0);
-  if (thresholdLines.length > 0 && option.series.length > 0) {
-    option.series[0].markLine = {
-      symbol: 'none',
-      silent: true,
-      data: thresholdLines.map((th) => ({
-        yAxis: th.value,
-        lineStyle: {
-          color: th.color,
-          type: 'dashed',
-          width: scaleScreenMetricFloat(1.5, screenRenderContext),
-        },
-        label: {
-          show: true,
-          position: 'insideEndTop',
-          formatter: String(th.value),
-          color: th.color,
-          fontSize: scaleScreenMetric(10, screenRenderContext),
-        },
-      })),
-    };
-  }
+    // 阈值线（对齐 Grafana）：按 config.thresholdColors 在 Y 轴画水平虚线，
+    // 跳过基线 0，只挂在第一条系列上。
+    const thresholdLines = (config?.thresholdColors || [])
+      .map((th) => ({ value: Number(th.value), color: th.color }))
+      .filter((th) => !Number.isNaN(th.value) && th.value !== 0);
+    if (thresholdLines.length > 0 && built.series.length > 0) {
+      built.series[0].markLine = {
+        symbol: 'none',
+        silent: true,
+        data: thresholdLines.map((th) => ({
+          yAxis: th.value,
+          lineStyle: {
+            color: th.color,
+            type: 'dashed',
+            width: scaleScreenMetricFloat(1.5, screenRenderContext),
+          },
+          label: {
+            show: true,
+            position: 'insideEndTop',
+            formatter: String(th.value),
+            color: th.color,
+            fontSize: scaleScreenMetric(10, screenRenderContext),
+          },
+        })),
+      };
+    }
+
+    return built;
+  }, [
+    chartColors,
+    chartData,
+    chartTheme,
+    chartTooltipHint,
+    config,
+    legendSelected,
+    link?.kind,
+    link?.name,
+    link?.openMode,
+    link?.url,
+    linkTooltipTheme,
+    screenRenderContext,
+    surface,
+    t,
+    usesScreenChartTheme,
+    yAxisName,
+  ]);
 
   const legendData = option.series.map((item: { name?: string }) => ({
     name: item.name || t('topology.treeValueTitle'),
@@ -370,7 +402,8 @@ const BarChart: React.FC<BarChartProps> = ({
         <ReactEcharts
           ref={chartRef}
           option={option}
-          notMerge={true}
+          notMerge={false}
+          replaceMerge={LINE_BAR_REPLACE_MERGE}
           onChartReady={handleChartReady}
           style={{ height: '100%', width: '100%' }}
         />

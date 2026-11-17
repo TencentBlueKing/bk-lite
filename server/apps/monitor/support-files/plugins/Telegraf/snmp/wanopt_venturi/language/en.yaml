@@ -5,6 +5,4 @@ monitor_object_metric:
   Wanopt:
     venturi_vbuf_usage_percent:
       name: Venturi Buffer (VBuf) Usage
-      desc: Venturi buffer pool usage as a 0-100 percentage, derived from
-        VENTURI-SERVER-STATS-MIB vServerStatsSystemUsedVenturiBuffers divided
-        by vServerSystemTotalVenturiBuffers.
+      desc: Venturi buffer pool usage as a 0-100 percentage.

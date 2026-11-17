@@ -133,9 +133,7 @@ monitor_object_metric:
         bottleneck.
     device_memory_usage:
       name: Memory Usage
-      desc: This metric reports the real memory utilization of the Stormshield firewall,
-        derived as (memTotalReal - memAvailReal) / memTotalReal. High memory pressure
-        can degrade connection handling performance.
+      desc: This metric reports the real memory utilization of the Stormshield firewall. High memory pressure can degrade connection handling performance.
     device_memory_total:
       name: Total Memory
       desc: This metric reports the total physical memory capacity of the Stormshield

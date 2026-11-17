@@ -15,14 +15,14 @@ const webRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const read = (rel: string) => fs.readFileSync(path.join(webRoot, rel), 'utf8');
 
 assert.deepEqual([...APP_TOPO_EXPAND_DEPTH_OPTIONS], [1, 2, 3, 4, 5]);
-assert.equal(APP_TOPO_DEFAULT_EXPAND_DEPTH, 3);
+assert.equal(APP_TOPO_DEFAULT_EXPAND_DEPTH, 1);
 assert.equal(parseAppTopoExpandDepth(1), 1);
 assert.equal(parseAppTopoExpandDepth('5'), 5);
 assert.equal(parseAppTopoExpandDepth(3), 3);
-assert.equal(parseAppTopoExpandDepth(0), 3);
-assert.equal(parseAppTopoExpandDepth(6), 3);
-assert.equal(parseAppTopoExpandDepth('nope'), 3);
-assert.equal(parseAppTopoExpandDepth(null), 3);
+assert.equal(parseAppTopoExpandDepth(0), 1);
+assert.equal(parseAppTopoExpandDepth(6), 1);
+assert.equal(parseAppTopoExpandDepth('nope'), 1);
+assert.equal(parseAppTopoExpandDepth(null), 1);
 
 const store: Record<string, string> = {};
 const storage = {
@@ -32,13 +32,13 @@ const storage = {
   },
 };
 
-assert.equal(readAppTopoExpandDepth(storage), 3);
+assert.equal(readAppTopoExpandDepth(storage), 1);
 assert.equal(writeAppTopoExpandDepth(storage, 5), true);
 assert.equal(store[APP_TOPO_EXPAND_DEPTH_STORAGE_KEY], '5');
 assert.equal(readAppTopoExpandDepth(storage), 5);
 store[APP_TOPO_EXPAND_DEPTH_STORAGE_KEY] = '9';
-assert.equal(readAppTopoExpandDepth(storage), 3);
-assert.equal(readAppTopoExpandDepth(null), 3);
+assert.equal(readAppTopoExpandDepth(storage), 1);
+assert.equal(readAppTopoExpandDepth(null), 1);
 
 const overviewSrc = read(
   'src/app/cmdb/(pages)/assetData/detail/relationships/applicationResourceOverview/index.tsx'

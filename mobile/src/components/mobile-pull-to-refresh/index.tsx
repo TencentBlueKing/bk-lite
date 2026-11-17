@@ -237,6 +237,7 @@ export default function MobilePullToRefresh({
       ref={rootRef}
       className={styles.root}
       data-mouse-dragging={desktopPull.status === 'pulling' || desktopPull.status === 'canRelease'}
+      data-pull-shifted={desktopPull.headOffset > 0}
       style={rootStyle}
       onClickCapture={(event) => {
         if (!suppressClickRef.current) return;

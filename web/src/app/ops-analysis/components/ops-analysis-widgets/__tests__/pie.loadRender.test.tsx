@@ -1,5 +1,5 @@
 import React from 'react';
-import { act, cleanup, render } from '@testing-library/react';
+import { act, cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const chartSpy = vi.hoisted(() => ({
@@ -138,5 +138,20 @@ describe('pie load-time option delivery', () => {
 
     expect(onReady).toHaveBeenCalledTimes(1);
     expect(onReady).toHaveBeenCalledWith(true);
+  });
+
+  it('draws a truncated category pie without a page-share notice', async () => {
+    render(
+      <ComPie
+        rawData={[
+          { name: '主机', value: 8 },
+          { name: '网络', value: 2 },
+        ]}
+        loading={false}
+      />,
+    );
+    await flush();
+    expect(screen.queryByText(/piePageShare|当前页占比/)).toBeNull();
+    expect(screen.getByTestId('echarts')).toBeTruthy();
   });
 });

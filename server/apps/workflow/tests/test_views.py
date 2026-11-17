@@ -1,5 +1,6 @@
 from datetime import timedelta
 
+import httpx
 import pytest
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -11,6 +12,7 @@ from apps.system_mgmt.models.operation_log import OperationLog
 from apps.workflow.models import AtomDefinition, ExecutionArtifact, Workflow, WorkflowExecution, WorkflowInteraction, WorkflowTrigger, WorkflowVersion
 from apps.workflow.services.atom_registry import ensure_platform_atom
 from apps.workflow.services.atoms import ATOM_CATALOG
+from apps.workflow.services.conductor import ConductorClient
 from apps.workflow.services.definitions import build_health_inspection_canvas_metadata, build_health_inspection_definition, compile_disabled_nodes
 from apps.workflow.views import ExecutionArtifactViewSet, WorkflowExecutionViewSet, WorkflowInteractionViewSet, WorkflowViewSet
 
@@ -1374,6 +1376,60 @@ def test_historical_version_restores_only_draft_without_changing_live_version(su
 
 
 @pytest.mark.django_db
+@pytest.mark.parametrize("connected_case", ["true", "false"])
+def test_publish_keeps_single_exit_notification_in_its_condition_case(superuser, mocker, connected_case):
+    _enable_notification()
+    workflow = Workflow.objects.create(
+        name="单出口条件通知",
+        team=[7],
+        definition={
+            "tasks": [
+                {
+                    "name": "condition",
+                    "taskReferenceName": "condition",
+                    "type": "SWITCH",
+                    "inputParameters": {"left_0": "${workflow.input.matches}", "right_0": True},
+                    "evaluatorType": "javascript",
+                    "expression": "($.left_0 == $.right_0) ? 'true' : 'false'",
+                    "decisionCases": {"true": [], "false": []},
+                    "defaultCase": [],
+                },
+                _notification_task("notify"),
+            ]
+        },
+        canvas_metadata={
+            "control_flow_mode": "EDGES",
+            "trigger_nodes": [
+                {
+                    "id": "trigger_form",
+                    "name": "开始",
+                    "trigger_type": "FORM",
+                    "input_schema": {"type": "object", "properties": {"matches": {"type": "boolean"}}},
+                    "config": {},
+                }
+            ],
+            "edges": [
+                {"source": "trigger_form", "target": "condition"},
+                {"source": "condition", "sourceHandle": connected_case, "target": "notify"},
+            ],
+        },
+    )
+    client = mocker.patch("apps.workflow.views.ConductorClient").return_value
+    publish = WorkflowViewSet.as_view({"post": "publish"})
+
+    response = publish(_request(APIRequestFactory(), "post", f"/workflows/{workflow.id}/publish/", superuser), pk=workflow.id)
+
+    assert response.status_code == 200, response.data
+    registered = client.register_workflow.call_args.args[0]
+    version = WorkflowVersion.objects.get(workflow=workflow)
+    assert version.definition == registered
+    assert [task["taskReferenceName"] for task in registered["tasks"]] == ["condition"]
+    cases = registered["tasks"][0]["decisionCases"]
+    assert [task["taskReferenceName"] for task in cases[connected_case]] == ["notify"]
+    assert cases["false" if connected_case == "true" else "true"] == []
+
+
+@pytest.mark.django_db
 def test_publish_records_atom_keys(superuser, mocker):
     _enable_notification()
     definition = {"tasks": [_notification_task("notify")]}
@@ -1397,6 +1453,42 @@ def test_publish_records_atom_keys(superuser, mocker):
     assert "node_test_data" not in version.canvas_metadata
     workflow.refresh_from_db()
     assert "node_test_data" not in workflow.canvas_metadata
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("rejected_path", ["/api/metadata/taskdefs", "/api/metadata/workflow"])
+def test_publish_returns_engine_rejection_without_publishing(superuser, mocker, rejected_path):
+    _enable_notification()
+    definition = {"tasks": [_notification_task("notify")]}
+    workflow = Workflow.objects.create(name="引擎拒绝发布", team=[7], definition=definition)
+    requests = []
+
+    def handler(request):
+        requests.append(request.url.path)
+        if request.url.path == rejected_path:
+            return httpx.Response(400, json={"message": "sensitive-engine-response-sentinel"})
+        return httpx.Response(204)
+
+    client = ConductorClient("http://conductor:8080/api", transport=httpx.MockTransport(handler))
+    mocker.patch("apps.workflow.views.ConductorClient", return_value=client)
+    publish = WorkflowViewSet.as_view({"post": "publish"})
+
+    response = publish(
+        _request(APIRequestFactory(), "post", f"/workflows/{workflow.id}/publish/", superuser),
+        pk=workflow.id,
+    )
+
+    assert response.status_code == 400
+    assert response.data["detail"] == "Conductor 明确拒绝了请求"
+    assert "sensitive-engine-response-sentinel" not in str(response.data)
+    assert requests[-1] == rejected_path
+    workflow.refresh_from_db()
+    assert workflow.current_version == 0
+    assert workflow.status == Workflow.Status.DRAFT
+    assert workflow.has_draft is True
+    assert workflow.definition == definition
+    assert not WorkflowVersion.objects.filter(workflow=workflow).exists()
+    assert not WorkflowTrigger.objects.filter(workflow=workflow).exists()
 
 
 @pytest.mark.django_db

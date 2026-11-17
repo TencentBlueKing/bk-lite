@@ -50,7 +50,16 @@ class CloudRegionEndpoints:
 OTLP_HTTP_PORT = 4318
 MAX_INSTANCE_ID_LENGTH = 512
 
-_GO_SDK_GUIDE = """# Go 无通用零代码探针；下面生成完整初始化示例，不会覆盖应用源码。
+# 示例只导入这四个模块。必须放在同一条 go get 里；只取 otelhttp 会解析到离线包没有的 otel 版本。
+_GO_EXAMPLE_GET = (
+    "go get go.opentelemetry.io/otel@v1.46.0 "
+    "go.opentelemetry.io/otel/sdk@v1.46.0 "
+    "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp@v1.46.0 "
+    "go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp@v0.70.0"
+)
+
+_GO_SDK_GUIDE = (
+    """# Go 无通用零代码探针；下面生成完整初始化示例，不会覆盖应用源码。
 mkdir -p telemetry
 if [ -e telemetry/otel.go.example ]; then
   printf "%s\\n" "telemetry/otel.go.example already exists; refusing to overwrite" >&2
@@ -98,7 +107,23 @@ net/http 入口要包一层 otelhttp，否则没有入口 Span：
 import "go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 
 handler := otelhttp.NewHandler(mux, "server")
+
+在应用目录执行下面这一条命令，把示例用到的四个模块按锁定版本写进 go.mod。
+go mod download 只填充本地缓存，不会写入 go.mod。四个版本必须在同一条命令里。
+不要省略版本，也不要只取 otelhttp。离线包清单里还有没有 zip 的更高版本，拆开取或取最新版本会失败。
+gRPC、Gin 或 Echo 把对应的 v0.70.0 模块加进同一条命令，不要另起一条：
+go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc@v0.70.0
+go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin@v0.70.0
+go.opentelemetry.io/contrib/instrumentation/github.com/labstack/echo/otelecho@v0.70.0
+
+export GOPROXY="file://$(pwd)/.otel-go-sdk"
+export GOSUMDB=off
+export GOTOOLCHAIN=local
+"""
+    + _GO_EXAMPLE_GET
+    + """
 GO"""
+)
 
 _RUBY_SDK_GUIDE = """# Ruby 无通用零代码探针；下面生成 Rack 初始化示例，不会覆盖应用源码。
 # opentelemetry-sdk 1.13.1
@@ -1032,6 +1057,21 @@ def _host_install_commands(language: str, probe_download_url: str, probe_sha256:
     return "# Install the selected OpenTelemetry SDK."
 
 
+def _docker_start_note(language: str) -> str:
+    if language != "go":
+        return "# 3. 启动应用（上面的 docker run 已使用自动探针启动应用）"
+    return "\n".join(
+        (
+            "# 3. 启动应用",
+            "# Go 无通用零代码探针。编译前在含有 go.mod 的目录执行：",
+            "# GOPROXY=file:///opt/otel-go-sdk GOSUMDB=off GOTOOLCHAIN=local " + _GO_EXAMPLE_GET,
+            "# 四个版本必须在同一条命令里。不要省略版本，也不要只取 otelhttp。",
+            "# gRPC、Gin 或 Echo 把对应的 v0.70.0 模块加进同一条命令。",
+            "# 在 main 中创建 TracerProvider 并交给 otel.SetTracerProvider，net/http 入口使用 otelhttp.NewHandler。",
+        )
+    )
+
+
 def _docker_install_commands(language: str, probe_download_url: str, probe_sha256: str) -> str:
     quoted_url = shlex.quote(probe_download_url)
     if language == "python":
@@ -1401,7 +1441,7 @@ class DjangoIntegrationConfigurationService:
                     "  your-image:latest sh -c \\",
                     "  " + shlex.quote(docker_start_script),
                     "",
-                    "# 3. 启动应用（上面的 docker run 已使用自动探针启动应用）",
+                    _docker_start_note(request.language),
                 )
             )
         else:

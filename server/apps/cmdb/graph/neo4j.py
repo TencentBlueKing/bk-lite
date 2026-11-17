@@ -442,6 +442,11 @@ class Neo4jClient:
             return [coerce_cloud_id_properties(dict(record[0])) for record in objs], count
         return self.entity_to_list(objs), count
 
+    def query_scalar_rows(self, query: str, params: dict | None = None) -> list[dict]:
+        """执行返回标量列的查询。调用方需要已打开的 session。"""
+        records = self.session.run(query, params or {})
+        return [record.data() for record in records]
+
     def query_compiled_entities(
         self,
         match,

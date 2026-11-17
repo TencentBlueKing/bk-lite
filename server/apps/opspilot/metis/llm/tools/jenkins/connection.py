@@ -198,6 +198,8 @@ def build_jenkins_normalized_from_runnable(
             items=items,
         )
 
+    if instance_name or instance_id:
+        raise ValueError("Jenkins instance selection is unavailable for legacy single-instance configuration")
     return normalize_credentials(configurable, _jenkins_adapter)
 
 

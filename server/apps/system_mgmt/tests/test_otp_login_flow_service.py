@@ -178,6 +178,7 @@ class TestLoginFlowWithOTP:
         challenge = verify_challenge(result["data"]["challenge_id"])
         assert challenge is not None
         assert challenge.get("pending_otp_secret")
+        assert result["data"]["otp_setup_key"] == challenge["pending_otp_secret"]
 
     @pytest.mark.django_db
     def test_unbound_relogin_issues_new_qr_without_persisting_secret(self, clear_cache, test_user, enable_otp_setting):
@@ -240,6 +241,7 @@ class TestLoginFlowWithOTP:
         bound_login = get_user_login_token(user=test_user, username=test_user.username, skip_token_for_otp=True)
         assert bound_login["data"]["require_otp"] is True
         assert "qr_code" not in bound_login["data"]
+        assert "otp_setup_key" not in bound_login["data"]
         assert bound_login["data"].get("need_binding") is not True
 
     @pytest.mark.django_db

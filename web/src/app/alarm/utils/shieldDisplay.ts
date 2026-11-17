@@ -9,6 +9,55 @@ export interface SuppressionTimeValue {
   week_month?: ReadonlyArray<number | string>;
 }
 
+export type SuppressionLabelTranslate = (key: string, fallback?: string) => string;
+
+const PERIOD_LABEL_KEYS: Record<string, string> = {
+  one: 'settings.effectiveOnce',
+  day: 'settings.effectiveDaily',
+  week: 'settings.effectiveWeekly',
+  month: 'settings.effectiveMonthly',
+};
+
+const WEEKDAY_LABEL_KEYS = [
+  '',
+  'settings.weekdayMon',
+  'settings.weekdayTue',
+  'settings.weekdayWed',
+  'settings.weekdayThu',
+  'settings.weekdayFri',
+  'settings.weekdaySat',
+  'settings.weekdaySun',
+];
+
+export function localizedSuppressionText(
+  translate: SuppressionLabelTranslate | undefined,
+  key: string | undefined,
+  fallback: string,
+): string {
+  if (!translate || !key) return fallback;
+  const translated = translate(key, fallback);
+  if (typeof translated !== 'string' || translated.length === 0 || translated === key) {
+    return fallback;
+  }
+  return translated;
+}
+
+export function suppressionPeriodLabel(type: string, translate?: SuppressionLabelTranslate): string {
+  return localizedSuppressionText(translate, PERIOD_LABEL_KEYS[type], typeLabel[type] || '');
+}
+
+export function suppressionWeekdayLabel(
+  day: number,
+  translate?: SuppressionLabelTranslate,
+  missingFallback = String(day),
+): string {
+  return localizedSuppressionText(
+    translate,
+    WEEKDAY_LABEL_KEYS[day],
+    weekMap[day] || missingFallback,
+  );
+}
+
 const RUNTIME_LABEL_KEYS: Record<string, string> = {
   disabled: 'settings.shieldDisplay.runtimeDisabled',
   shielding: 'settings.shieldDisplay.runtimeShielding',
@@ -30,10 +79,13 @@ function sortedDays(weekMonth: ReadonlyArray<number | string> | undefined): numb
     .sort((left, right) => left - right);
 }
 
-export function formatSuppressionTime(value: SuppressionTimeValue | null | undefined): string {
+export function formatSuppressionTime(
+  value: SuppressionTimeValue | null | undefined,
+  translate?: SuppressionLabelTranslate,
+): string {
   if (!value || typeof value !== 'object') return '--';
   const type = value.type || '';
-  const label = typeLabel[type] || '';
+  const label = suppressionPeriodLabel(type, translate);
   const start = value.start_time || '';
   const end = value.end_time || '';
 
@@ -45,7 +97,7 @@ export function formatSuppressionTime(value: SuppressionTimeValue | null | undef
   let prefix = label;
   const days = sortedDays(value.week_month);
   if (type === 'week') {
-    prefix += ` ${days.map((day) => weekMap[day] || String(day)).join(',')}`;
+    prefix += ` ${days.map((day) => suppressionWeekdayLabel(day, translate)).join(',')}`;
   } else if (type === 'month') {
     prefix += ` ${days.map((day) => `${day}日`).join(',')}`;
   }

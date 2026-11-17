@@ -556,6 +556,10 @@ const NetworkTopo: React.FC<NetworkTopoProps> = ({
       setLoading(true);
       try {
         const uuids = (closedSetDevicesRef.current ?? []).map((item) => item.instUuid);
+        if (uuids.length > NODE_LIMIT) {
+          message.warning(t('Model.networkTopoNodeLimit'));
+          return;
+        }
         const data: NetworkTopoData = await getNetworkTopoAmongRef.current(uuids);
         if (cancelled || !mountedRef.current) return;
         mergedRef.current = { nodes: new Map(), links: new Map() };

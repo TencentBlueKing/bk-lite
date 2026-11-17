@@ -9,6 +9,7 @@ from apps.operation_analysis.views.canvas_draft_view import CanvasDraftViewSet
 from apps.operation_analysis.views.carousel_view import CanvasCarouselViewSet
 from apps.operation_analysis.views.data_connection_view import DataConnectionViewSet
 from apps.operation_analysis.views.datasource_view import DataSourceAPIModelViewSet, DataSourceTagModelViewSet, NameSpaceModelViewSet
+from apps.operation_analysis.views.display_view import ScreenDisplayAccessViewSet
 from apps.operation_analysis.views.execution_view import DashboardReportExecutionViewSet
 from apps.operation_analysis.views.homepage_view import HomepageViewSet
 from apps.operation_analysis.views.import_export_view import ImportExportViewSet
@@ -31,6 +32,7 @@ router.register(r"api/data_source", DataSourceAPIModelViewSet, basename="data_so
 router.register(r"api/data_connection", DataConnectionViewSet, basename="data_connection")
 router.register(r"api/dashboard", DashboardModelViewSet, basename="dashboard")
 router.register(r"api/dashboard_share", DashboardShareAccessViewSet, basename="dashboard_share")
+router.register(r"api/screen_display", ScreenDisplayAccessViewSet, basename="screen_display")
 router.register(
     r"api/dashboard_subscription",
     DashboardReportSubscriptionViewSet,

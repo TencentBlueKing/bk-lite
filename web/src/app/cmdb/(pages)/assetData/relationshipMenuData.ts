@@ -5,6 +5,8 @@ const getAssociationId = (item: unknown): unknown => {
 
 const getAssociationInstanceCount = (item: unknown): number => {
   if (!item || typeof item !== 'object') return 0;
+  const counted = (item as { inst_count?: unknown }).inst_count;
+  if (typeof counted === 'number') return counted;
   const instances = (item as { inst_list?: unknown }).inst_list;
   return Array.isArray(instances) ? instances.length : 0;
 };
@@ -114,13 +116,19 @@ export function uniqueRelationshipTargetModelIds(
 }
 
 export const getDefaultExpandedRelationshipKeys = (
-  associations: readonly unknown[]
-): string[] => associations.flatMap((item) => {
-  const associationId = getAssociationId(item);
-  return typeof associationId === 'string' && getAssociationInstanceCount(item) > 0
-    ? [associationId]
-    : [];
-});
+  associations: readonly unknown[],
+  selectedId?: string,
+): string[] => {
+  if (selectedId && associations.some((item) => getAssociationId(item) === selectedId && getAssociationInstanceCount(item) > 0)) {
+    return [selectedId];
+  }
+  const first = associations.find((item) => {
+    const associationId = getAssociationId(item);
+    return typeof associationId === 'string' && getAssociationInstanceCount(item) > 0;
+  });
+  const associationId = first ? getAssociationId(first) : undefined;
+  return typeof associationId === 'string' ? [associationId] : [];
+};
 
 export const areAllRelationshipsExpanded = (
   activeKeys: readonly string[],

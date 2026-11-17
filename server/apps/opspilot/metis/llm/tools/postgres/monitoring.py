@@ -1,16 +1,12 @@
 """PostgreSQL监控指标采集工具"""
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
-from apps.opspilot.metis.llm.tools.postgres.utils import (
-    execute_readonly_query,
-    safe_json_dumps,
-    format_size,
-    calculate_percentage,
-)
+
+from apps.opspilot.metis.llm.tools.postgres.utils import calculate_percentage, execute_readonly_query, format_size, safe_json_dumps
 
 
 @tool()
-def get_database_metrics(config: RunnableConfig = None):
+def get_database_metrics(config: RunnableConfig = None, instance_name: str = None, instance_id: str = None):
     """
     获取数据库级别监控指标
 
@@ -31,7 +27,7 @@ def get_database_metrics(config: RunnableConfig = None):
         JSON格式,包含数据库指标
     """
     query = """
-    SELECT 
+    SELECT
         datname as database,
         numbackends as active_connections,
         xact_commit as transactions_committed,
@@ -57,30 +53,26 @@ def get_database_metrics(config: RunnableConfig = None):
     """
 
     try:
-        results = execute_readonly_query(query, config=config)
+        results = execute_readonly_query(query, config=config, instance_name=instance_name, instance_id=instance_id)
 
         # 格式化和增强数据
         for row in results:
             row["temporary_size"] = format_size(row["temporary_bytes"])
-            row["stats_reset"] = str(
-                row["stats_reset"]) if row["stats_reset"] else "Never"
+            row["stats_reset"] = str(row["stats_reset"]) if row["stats_reset"] else "Never"
 
             # 计算事务回滚率
-            total_xact = row["transactions_committed"] + \
-                row["transactions_rolled_back"]
-            row["rollback_ratio"] = calculate_percentage(
-                row["transactions_rolled_back"], total_xact)
+            total_xact = row["transactions_committed"] + row["transactions_rolled_back"]
+            row["rollback_ratio"] = calculate_percentage(row["transactions_rolled_back"], total_xact)
 
-        return safe_json_dumps({
-            "total_databases": len(results),
-            "databases": results
-        })
+        return safe_json_dumps({"total_databases": len(results), "databases": results})
     except Exception as e:
         return safe_json_dumps({"error": str(e)})
 
 
 @tool()
-def get_table_metrics(schema_name: str = "public", table: str = None, config: RunnableConfig = None):
+def get_table_metrics(
+    schema_name: str = "public", table: str = None, config: RunnableConfig = None, instance_name: str = None, instance_id: str = None
+):
     """
     获取表级别监控指标
 
@@ -104,7 +96,7 @@ def get_table_metrics(schema_name: str = "public", table: str = None, config: Ru
     """
     if table:
         query = """
-        SELECT 
+        SELECT
             schemaname,
             relname as table_name,
             seq_scan,
@@ -131,7 +123,7 @@ def get_table_metrics(schema_name: str = "public", table: str = None, config: Ru
         params = (schema_name, table)
     else:
         query = """
-        SELECT 
+        SELECT
             schemaname,
             relname as table_name,
             seq_scan,
@@ -156,36 +148,26 @@ def get_table_metrics(schema_name: str = "public", table: str = None, config: Ru
         params = (schema_name,)
 
     try:
-        results = execute_readonly_query(query, params=params, config=config)
+        results = execute_readonly_query(query, params=params, config=config, instance_name=instance_name, instance_id=instance_id)
 
         # 格式化时间
         for row in results:
-            row["last_vacuum"] = str(
-                row["last_vacuum"]) if row["last_vacuum"] else "Never"
-            row["last_autovacuum"] = str(
-                row["last_autovacuum"]) if row["last_autovacuum"] else "Never"
-            row["last_analyze"] = str(
-                row["last_analyze"]) if row["last_analyze"] else "Never"
-            row["last_autoanalyze"] = str(
-                row["last_autoanalyze"]) if row["last_autoanalyze"] else "Never"
+            row["last_vacuum"] = str(row["last_vacuum"]) if row["last_vacuum"] else "Never"
+            row["last_autovacuum"] = str(row["last_autovacuum"]) if row["last_autovacuum"] else "Never"
+            row["last_analyze"] = str(row["last_analyze"]) if row["last_analyze"] else "Never"
+            row["last_autoanalyze"] = str(row["last_autoanalyze"]) if row["last_autoanalyze"] else "Never"
 
             # 计算死元组比例
             total_tuples = row["live_tuples"] + row["dead_tuples"]
-            row["dead_tuple_ratio"] = calculate_percentage(
-                row["dead_tuples"], total_tuples)
+            row["dead_tuple_ratio"] = calculate_percentage(row["dead_tuples"], total_tuples)
 
-        return safe_json_dumps({
-            "schema": schema_name,
-            "table": table,
-            "total_tables": len(results),
-            "tables": results
-        })
+        return safe_json_dumps({"schema": schema_name, "table": table, "total_tables": len(results), "tables": results})
     except Exception as e:
         return safe_json_dumps({"error": str(e)})
 
 
 @tool()
-def get_replication_metrics(config: RunnableConfig = None):
+def get_replication_metrics(config: RunnableConfig = None, instance_name: str = None, instance_id: str = None):
     """
     获取复制相关监控指标
 
@@ -206,7 +188,7 @@ def get_replication_metrics(config: RunnableConfig = None):
         JSON格式,包含复制指标
     """
     query = """
-    SELECT 
+    SELECT
         client_addr,
         client_hostname,
         client_port,
@@ -226,45 +208,30 @@ def get_replication_metrics(config: RunnableConfig = None):
     """
 
     try:
-        results = execute_readonly_query(query, config=config)
+        results = execute_readonly_query(query, config=config, instance_name=instance_name, instance_id=instance_id)
 
         if not results:
-            return safe_json_dumps({
-                "has_replication": False,
-                "message": "未配置复制或当前为从库"
-            })
+            return safe_json_dumps({"has_replication": False, "message": "未配置复制或当前为从库"})
 
         # 格式化数据
         for row in results:
-            row["write_lag"] = str(
-                row["write_lag"]) if row["write_lag"] else "0"
-            row["flush_lag"] = str(
-                row["flush_lag"]) if row["flush_lag"] else "0"
-            row["replay_lag"] = str(
-                row["replay_lag"]) if row["replay_lag"] else "0"
-            row["sent_lag_size"] = format_size(
-                row["sent_lag_bytes"]) if row["sent_lag_bytes"] else "0 B"
-            row["write_lag_size"] = format_size(
-                row["write_lag_bytes"]) if row["write_lag_bytes"] else "0 B"
-            row["flush_lag_size"] = format_size(
-                row["flush_lag_bytes"]) if row["flush_lag_bytes"] else "0 B"
-            row["replay_lag_size"] = format_size(
-                row["replay_lag_bytes"]) if row["replay_lag_bytes"] else "0 B"
+            row["write_lag"] = str(row["write_lag"]) if row["write_lag"] else "0"
+            row["flush_lag"] = str(row["flush_lag"]) if row["flush_lag"] else "0"
+            row["replay_lag"] = str(row["replay_lag"]) if row["replay_lag"] else "0"
+            row["sent_lag_size"] = format_size(row["sent_lag_bytes"]) if row["sent_lag_bytes"] else "0 B"
+            row["write_lag_size"] = format_size(row["write_lag_bytes"]) if row["write_lag_bytes"] else "0 B"
+            row["flush_lag_size"] = format_size(row["flush_lag_bytes"]) if row["flush_lag_bytes"] else "0 B"
+            row["replay_lag_size"] = format_size(row["replay_lag_bytes"]) if row["replay_lag_bytes"] else "0 B"
             row["backend_start"] = str(row["backend_start"])
-            row["reply_time"] = str(
-                row["reply_time"]) if row["reply_time"] else None
+            row["reply_time"] = str(row["reply_time"]) if row["reply_time"] else None
 
-        return safe_json_dumps({
-            "has_replication": True,
-            "replica_count": len(results),
-            "replicas": results
-        })
+        return safe_json_dumps({"has_replication": True, "replica_count": len(results), "replicas": results})
     except Exception as e:
         return safe_json_dumps({"error": str(e)})
 
 
 @tool()
-def get_bgwriter_stats(config: RunnableConfig = None):
+def get_bgwriter_stats(config: RunnableConfig = None, instance_name: str = None, instance_id: str = None):
     """
     获取后台写入进程统计
 
@@ -285,7 +252,7 @@ def get_bgwriter_stats(config: RunnableConfig = None):
         JSON格式,包含bgwriter统计
     """
     query = """
-    SELECT 
+    SELECT
         checkpoints_timed,
         checkpoints_req,
         checkpoint_write_time,
@@ -301,26 +268,17 @@ def get_bgwriter_stats(config: RunnableConfig = None):
     """
 
     try:
-        result = execute_readonly_query(query, config=config)[0]
+        result = execute_readonly_query(query, config=config, instance_name=instance_name, instance_id=instance_id)[0]
 
         # 计算百分比和比率
-        total_checkpoints = result["checkpoints_timed"] + \
-            result["checkpoints_req"]
+        total_checkpoints = result["checkpoints_timed"] + result["checkpoints_req"]
         result["total_checkpoints"] = total_checkpoints
-        result["timed_checkpoint_ratio"] = calculate_percentage(
-            result["checkpoints_timed"],
-            total_checkpoints
-        )
+        result["timed_checkpoint_ratio"] = calculate_percentage(result["checkpoints_timed"], total_checkpoints)
 
-        total_buffers = result["buffers_checkpoint"] + \
-            result["buffers_clean"] + result["buffers_backend"]
-        result["checkpoint_buffer_ratio"] = calculate_percentage(
-            result["buffers_checkpoint"],
-            total_buffers
-        ) if total_buffers > 0 else 0
+        total_buffers = result["buffers_checkpoint"] + result["buffers_clean"] + result["buffers_backend"]
+        result["checkpoint_buffer_ratio"] = calculate_percentage(result["buffers_checkpoint"], total_buffers) if total_buffers > 0 else 0
 
-        result["stats_reset"] = str(
-            result["stats_reset"]) if result["stats_reset"] else "Never"
+        result["stats_reset"] = str(result["stats_reset"]) if result["stats_reset"] else "Never"
 
         return safe_json_dumps(result)
     except Exception as e:
@@ -328,7 +286,7 @@ def get_bgwriter_stats(config: RunnableConfig = None):
 
 
 @tool()
-def get_wal_metrics(config: RunnableConfig = None):
+def get_wal_metrics(config: RunnableConfig = None, instance_name: str = None, instance_id: str = None):
     """
     获取WAL相关监控指标
 
@@ -350,7 +308,7 @@ def get_wal_metrics(config: RunnableConfig = None):
     """
     # 获取WAL统计
     wal_query = """
-    SELECT 
+    SELECT
         pg_current_wal_lsn() as current_wal_lsn,
         pg_walfile_name(pg_current_wal_lsn()) as current_wal_file,
         (SELECT setting FROM pg_settings WHERE name = 'wal_level') as wal_level,
@@ -360,7 +318,7 @@ def get_wal_metrics(config: RunnableConfig = None):
 
     # WAL统计信息
     stat_query = """
-    SELECT 
+    SELECT
         wal_records,
         wal_fpi as wal_full_page_images,
         wal_bytes,
@@ -374,20 +332,16 @@ def get_wal_metrics(config: RunnableConfig = None):
     """
 
     try:
-        wal_info = execute_readonly_query(wal_query, config=config)[0]
+        wal_info = execute_readonly_query(wal_query, config=config, instance_name=instance_name, instance_id=instance_id)[0]
 
         # pg_stat_wal在PG14+才有
         try:
-            wal_stats = execute_readonly_query(stat_query, config=config)[0]
+            wal_stats = execute_readonly_query(stat_query, config=config, instance_name=instance_name, instance_id=instance_id)[0]
             wal_stats["wal_size"] = format_size(wal_stats["wal_bytes"])
-            wal_stats["stats_reset"] = str(
-                wal_stats["stats_reset"]) if wal_stats["stats_reset"] else "Never"
+            wal_stats["stats_reset"] = str(wal_stats["stats_reset"]) if wal_stats["stats_reset"] else "Never"
         except Exception:
             wal_stats = {"note": "pg_stat_wal需要PostgreSQL 14+"}
 
-        return safe_json_dumps({
-            "wal_info": wal_info,
-            "wal_stats": wal_stats
-        })
+        return safe_json_dumps({"wal_info": wal_info, "wal_stats": wal_stats})
     except Exception as e:
         return safe_json_dumps({"error": str(e)})

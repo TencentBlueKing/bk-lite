@@ -88,13 +88,37 @@ class TagValidationResult:
     errors: list[str]
 
 
+def encode_collected_tag(key: str, value: str) -> str | None:
+    """和采集端同一编码：key/value 内的冒号、百分号转义后，只用一个冒号分隔。"""
+    key_text = key.strip()
+    value_text = value.strip()
+    if not key_text or any(char in key_text or char in value_text for char in ("\n", "\r")):
+        return None
+
+    def encode_token(text: str) -> str:
+        return text.replace("%", "%25").replace(":", "%3A")
+
+    return f"{encode_token(key_text)}:{encode_token(value_text)}"
+
+
+def split_collected_tag(text: str) -> tuple[str, str] | None:
+    """还原采集标签。值可以为空；key/value 里的冒号按百分号编码存放。"""
+    raw = str(text).strip()
+    if ":" not in raw:
+        return None
+    key_raw, value_raw = raw.split(":", 1)
+    key = unquote(key_raw).strip()
+    value = unquote(value_raw).strip()
+    if not key or any(char in key or char in value for char in ("\n", "\r")):
+        return None
+    return key, value
+
+
 def _validate_tag_key_value(key: str, value: str) -> str | None:
     if not key:
         return "标签 key 不能为空"
-    if not value:
-        return "标签 value 不能为空"
-    if any(ch in value for ch in (":", "\n", "\r")):
-        return "标签 value 不能包含冒号或换行符"
+    if any(ch in key or ch in value for ch in ("\n", "\r")):
+        return "标签不能包含换行符"
     return None
 
 
@@ -138,21 +162,29 @@ def validate_tag_values(values: list[str], config: TagFieldConfig) -> TagValidat
 
     normalized_values: list[TagValueItem] = []
     seen: set[str] = set()
-    candidate_set = {f"{item.key}:{item.value}" for item in config.options}
+    candidate_set = set()
+    for item in config.options:
+        encoded = encode_collected_tag(item.key, item.value)
+        if encoded:
+            candidate_set.add(encoded)
 
     for idx, raw_item in enumerate(values):
         value_str = str(raw_item).strip()
         if not value_str:
             continue
-        if value_str.count(":") != 1:
+        parsed = split_collected_tag(value_str)
+        if parsed is None:
             errors.append(f"第{idx + 1}个标签格式错误，必须为 key:value")
             continue
-        key, value = [part.strip() for part in value_str.split(":", 1)]
+        key, value = parsed
         error = _validate_tag_key_value(key, value)
         if error:
             errors.append(f"第{idx + 1}个标签不合法: {error}")
             continue
-        normalized_raw = f"{key}:{value}"
+        normalized_raw = encode_collected_tag(key, value)
+        if normalized_raw is None:
+            errors.append(f"第{idx + 1}个标签格式错误，必须为 key:value")
+            continue
         if config.mode == TAG_MODE_STRICT and normalized_raw not in candidate_set:
             errors.append(f"第{idx + 1}个标签不在候选范围内: {normalized_raw}")
             continue
@@ -208,16 +240,16 @@ def sanitize_collected_tag_values(values: list[str]) -> tuple[list[str], int, in
     seen: set[str] = set()
     skipped = 0
     for raw_item in values:
-        text = str(raw_item).strip()
-        if text.count(":") != 1:
+        parsed = split_collected_tag(str(raw_item))
+        if parsed is None:
             skipped += 1
             continue
-        key, value = [part.strip() for part in text.split(":", 1)]
+        key, value = parsed
         if _validate_tag_key_value(key, value):
             skipped += 1
             continue
-        normalized = f"{key}:{value}"
-        if normalized in seen:
+        normalized = encode_collected_tag(key, value)
+        if not normalized or normalized in seen:
             continue
         seen.add(normalized)
         legal.append(normalized)

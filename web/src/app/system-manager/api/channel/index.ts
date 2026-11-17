@@ -50,6 +50,12 @@ export const useChannelApi = () => {
     return await post('/system_mgmt/channel/test_send/', params);
   }
 
+  async function getGroupAccountAssociationOptions(channelType: string) {
+    return await get('/system_mgmt/channel/account_association_options/', {
+      params: { channel_type: channelType },
+    });
+  }
+
   return {
     getChannelData,
     getNotificationTagCatalog,
@@ -59,5 +65,6 @@ export const useChannelApi = () => {
     deleteChannel,
     getChannelTemp,
     testChannel,
+    getGroupAccountAssociationOptions,
   }
 }

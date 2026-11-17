@@ -87,13 +87,13 @@ APM 接入已经按 OpenTelemetry 官方探针交付：一种语言钉一个版�
 
 - Node.js 0.79.0 的能力列表和卡片文案去掉 Fastify。Express、NestJS、Koa、HTTP 保留。
 - Go SDK 推断下游去掉 MySQL、PostgreSQL、Redis、Kafka。入口仍保留 net/http、gRPC、Gin、Echo，并继续标明需要手动加入 contrib。
-- 现有 Go 片段下载钉死版本：`go.opentelemetry.io/otel`、`sdk`、`otlptracehttp` 为 v1.46.0，四个 contrib 模块为 v0.70.0。命令仍是一条 `go mod download`，不使用 `go get`。Go 低于 1.26 时退出，并设置 `GOTOOLCHAIN=local`，避免去公网下载工具链。四个 contrib 模块是：
+- 现有 Go 片段下载钉死版本：`go.opentelemetry.io/otel`、`sdk`、`otlptracehttp` 为 v1.46.0，四个 contrib 模块为 v0.70.0。安装命令仍是一条 `go mod download`，脚本不执行 `go get`，也不改写 `go.mod`。Go 低于 1.26 时退出，并设置 `GOTOOLCHAIN=local`，避免去公网下载工具链。host 片段第 3 步打印一条给操作者复制的命令，把示例用到的 `otel`、`sdk`、`otlptracehttp` v1.46.0 和 `otelhttp` v0.70.0 放在同一条 `go get` 里，并重复 file proxy、`GOSUMDB=off`、`GOTOOLCHAIN=local`。不要省略版本，不要只取其中一个模块。gRPC、Gin、Echo 的 v0.70.0 加进同一条命令。docker 的 Dockerfile 命令不执行 `go get`，第 3 步用注释给出指向 `/opt/otel-go-sdk` 的同一条命令。kubernetes 片段不包含 `go get`。四个 contrib 模块是：
   - `go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp`
   - `go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc`
   - `go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin`
   - `go.opentelemetry.io/contrib/instrumentation/github.com/labstack/echo/otelecho`
 - 已有三个核心模块的下载保留。Go 制品名和下载地址不变。
-- 这四个模块路径含有 `github.com` 字样，但不是下载地址。片段仍禁止 `https://github.com`、`go get` 和其他公网源。现有「host 片段不含子串 github.com」的断言对 Go 过宽，改为拒绝下载 URL，并允许上述模块路径。
+- 这四个模块路径含有 `github.com` 字样，但不是下载地址。片段仍禁止 `https://github.com`、`proxy.golang.org` 和其他公网源。安装段禁止 `go get`。host 说明和 docker 注释里的那一条钉死版本命令除外。现有「host 片段不含子串 github.com」的断言对 Go 过宽，改为拒绝下载 URL，并允许上述模块路径。
 
 ### 第二批手动 SDK
 
@@ -120,7 +120,7 @@ APM 接入已经按 OpenTelemetry 官方探针交付：一种语言钉一个版�
 先验是接入片段测试、制品白名单测试、接入配置权限测试，以及接入页能力矩阵和接入页测试。SHA-256 在片段测试里继续打桩，不连接对象存储。
 
 - 制品：白名单包含三份新制品和原有五份。`php` 默认映射到 PHP 归档，`dotnet` 默认仍是 Linux glibc 制品，显式 Windows 才映射到 Windows 制品，`obi` 映射到 amd64 归档。非白名单名字被拒绝。初始化命令接受新制品名。
-- 已有 Java、Python、Node.js、Go、.NET Linux 的下载地址断言保持通过。Go 片段在原有三个模块之外包含上面四个 contrib 模块，制品名不变。
+- 已有 Java、Python、Node.js、Go、.NET Linux 的下载地址断言保持通过。Go 片段在原有三个模块之外包含上面四个 contrib 模块，制品名不变。host 与 docker 的安装段不含 `go get`；host 第 3 步执行后只打印那一条钉死版本的 `go get`，不生成 `go.mod`。kubernetes 片段不含 `go get`。
 - PHP：host 与 docker 含系统内下载地址、SHA-256 校验和离线 Composer 包名。kubernetes 与现有语言一样，是可解析的环境 patch，注释中带下载地址，环境变量关闭指标和日志，不在 patch 里重复校验和。四种运行方式都含 NTS 与 8.1–8.5 的说明。host 与 docker 在缺少 `composer.json` 时创建它，并关闭 Packagist。片段不含 `pecl`、`packagist.org`、`https://github.com`、ARM 或 Windows 安装步骤。host 与 docker 通过 `sh -n`。传入 `probe_platform=windows` 被拒绝。Java、Python、Node.js、Go 同样关闭指标和日志导出。Python 片段要求 CPython 3.12。
 - .NET：缺省平台的片段仍含 `linux-x64` 原生库路径和现有 Linux 制品名，不含 Windows 制品名。Windows host 片段含 Windows 制品名、SHA-256 校验、ASP.NET Framework 说明，不含 `linux-x64` 的 `.so` 路径，不含 `Register-OpenTelemetryForWindowsService`、`Restart-Service` 和注册表写入。Windows 片段不纳入 `sh -n`。Windows 加 docker 或 kubernetes 被拒绝。
 - eBPF：host 片段含 amd64 制品、SHA-256、Config v2、关闭指标、以及校验后的绝对路径发现规则。片段不含 arm64 制品名，不含端口发现。空路径、相对路径、带空格或元字符的路径被拒绝。非 host 运行方式被拒绝。

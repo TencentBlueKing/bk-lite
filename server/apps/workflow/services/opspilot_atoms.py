@@ -45,7 +45,7 @@ def _opspilot_models():
 
 def _scoped_model(model_id: Any, organization_id: int):
     LLMModel, _, _ = _opspilot_models()
-    queryset = LLMModel.objects.filter(enabled=True)
+    queryset = LLMModel.objects.filter(enabled=True, vendor__enabled=True)
     model = queryset.filter(
         build_json_membership_query(queryset, "team", [organization_id]),
         pk=model_id,
@@ -57,7 +57,12 @@ def _scoped_model(model_id: Any, organization_id: int):
 
 def _scoped_skill(skill_id: Any, organization_id: int):
     _, LLMSkill, _ = _opspilot_models()
-    queryset = LLMSkill.objects.filter(is_template=False, llm_model__isnull=False, llm_model__enabled=True)
+    queryset = LLMSkill.objects.filter(
+        is_template=False,
+        llm_model__isnull=False,
+        llm_model__enabled=True,
+        llm_model__vendor__enabled=True,
+    )
     skill = queryset.filter(
         build_json_membership_query(queryset, "usage_team", [organization_id]),
         pk=skill_id,
@@ -89,6 +94,7 @@ def _variable_manager(context: dict[str, Any], inputs: dict[str, Any]):
         "execution_id": str(context.get("execution_id") or ""),
         "entry_type": "workflow",
         "trigger_type": str(context.get("trigger_type") or ""),
+        "unattended": context.get("trigger_type") in {"SCHEDULE", "NATS", "WEBHOOK"},
     }
     manager.set_variable("flow_input", flow_input)
     manager.set_variable("flow_id", str(context.get("workflow_id") or ""))
@@ -122,7 +128,7 @@ def execute_agent(inputs: dict[str, Any]) -> dict[str, Any]:
     )
     manager = _variable_manager(context, inputs)
     result = AgentNode(manager).execute(
-        "workflow_agent",
+        str(context.get("task_reference") or "workflow_agent"),
         {
             "data": {
                 "config": {
@@ -284,9 +290,14 @@ def materialize_opspilot_options(catalog: dict[str, dict[str, Any]], organizatio
     if not django_apps.is_installed("apps.opspilot"):
         return
     LLMModel, LLMSkill, MemorySpace = _opspilot_models()
-    models = LLMModel.objects.filter(enabled=True)
+    models = LLMModel.objects.filter(enabled=True, vendor__enabled=True)
     models = models.filter(build_json_membership_query(models, "team", [organization_id])).order_by("name", "id")
-    skills = LLMSkill.objects.filter(is_template=False, llm_model__isnull=False, llm_model__enabled=True)
+    skills = LLMSkill.objects.filter(
+        is_template=False,
+        llm_model__isnull=False,
+        llm_model__enabled=True,
+        llm_model__vendor__enabled=True,
+    )
     skills = skills.filter(build_json_membership_query(skills, "usage_team", [organization_id])).order_by("name", "id")
     spaces = MemorySpace.objects.all()
     spaces = spaces.filter(build_json_membership_query(spaces, "team", [organization_id])).order_by("name", "id")

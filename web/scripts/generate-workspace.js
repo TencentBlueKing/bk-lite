@@ -52,6 +52,7 @@ function updateWorkspacePackages(content, activeApps) {
   const packageLines = activeApps.map(app =>
     app === '*' ? "  - 'src/app/*'" : `  - 'src/app/${app}'`
   );
+  packageLines.push("  - 'packages/chat-content'");
   const suffix = lines.slice(packagesEnd);
 
   while (suffix[0] === '') {

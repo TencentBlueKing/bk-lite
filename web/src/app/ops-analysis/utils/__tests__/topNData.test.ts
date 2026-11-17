@@ -154,5 +154,53 @@ test('scalar fields do not change array ranking', () => {
     labelField: 'name',
     valueField: 'value',
     scalarFields: [{ field: 'avg_cpu', label: 'CPU' }],
-  }), false);
+  }), true);
+});
+
+test('blank ranking names are dropped', () => {
+  const items = buildTopNItems(
+    [
+      { name: '', value: 2 },
+      { name: '主机', value: 9 },
+      { name: null, value: 3 },
+      { name: '  ', value: 1 },
+      { name: '数据库', value: 4 },
+    ],
+    'name',
+    'value',
+  );
+
+  assert.deepEqual(items.map((item) => [item.name, item.value]), [
+    ['主机', 9],
+    ['数据库', 4],
+  ]);
+});
+
+test('list rows rank by the selected name and value fields', () => {
+  const payload = {
+    items: [
+      { name: '计算', value: 5 },
+      { name: '空间', value: 1 },
+    ],
+  };
+  assert.equal(validateTopNPayload(payload, { labelField: 'name', valueField: 'value' }), true);
+  assert.deepEqual(buildTopNItems(payload, 'name', 'value').map((item) => item.name), ['计算', '空间']);
+  assert.equal(validateTopNPayload({ items: [] }, { labelField: 'name', valueField: 'value' }), true);
+  assert.deepEqual(buildTopNItems({ items: [] }, 'name', 'value'), []);
+});
+
+test('table rows rank by the selected fields and drop a blank name', () => {
+  const payload = {
+    items: [{ model_name: '主机', instance_count: 4 }],
+  };
+  assert.equal(validateTopNPayload(payload, { labelField: 'model_name', valueField: 'instance_count' }), true);
+  assert.equal(buildTopNItems(payload, 'model_name', 'instance_count')[0].value, 4);
+  assert.deepEqual(
+    buildTopNItems(
+      { items: [{ model_name: '', instance_count: 4 }] },
+      'model_name',
+      'instance_count',
+    ),
+    [],
+  );
 });

@@ -57,8 +57,21 @@ test('mixed records skip non-records and missing primary then render remaining',
 test('non-empty payload with zero valid records is invalid', () => {
   assert.equal(validateCardListPayload([1, 2], titleOnly).isValid, false);
   assert.equal(validateCardListPayload([{}, {}], titleOnly).isValid, false);
-  assert.equal(parseCardListItems([1, 2], titleOnly).status, 'invalid');
-  assert.equal(parseCardListItems([{}, {}], titleOnly).status, 'invalid');
+  assert.equal(parseCardListItems([1, 2], titleOnly).message, 'dashboard.cardListStructureMismatch');
+  assert.equal(parseCardListItems([{}, {}], titleOnly).message, 'dashboard.dataFormatMismatch');
+  assert.equal(
+    parseCardListItems([{ group_value: '主机' }], titleOnly).message,
+    'dashboard.chartFieldMissing:title',
+  );
+});
+
+test('an object list without a title asks for the required field', () => {
+  const parsed = parseCardListItems(
+    [{ group_value: '主机', alert_count: 0 }],
+    { titleField: '' },
+  );
+  assert.equal(parsed.status, 'invalid');
+  assert.equal(parsed.message, 'dashboard.chartRoleFieldsRequired');
 });
 
 test('object scalar and graph payloads are invalid', () => {

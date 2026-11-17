@@ -196,7 +196,7 @@ def test_ready_document_is_injected_and_bound(local_storage, monkeypatch):
     monkeypatch.setattr("apps.opspilot.services.skill_channel_chat_service.stream_agui_chat", fake_stream)
     monkeypatch.setattr(
         "apps.opspilot.services.skill_channel_chat_service.capture_caller_identity",
-        lambda request, user: {"username": "chat-att-user"},
+        lambda request, user: {"username": "chat-att-user", "domain": "domain.com", "team_id": "1"},
     )
     request = APIRequestFactory().post("/chat")
     request.user = _user()
@@ -215,6 +215,14 @@ def test_ready_document_is_injected_and_bound(local_storage, monkeypatch):
     assert attachment.message_id is not None
     assert attachment.conversation_id is not None
     assert attachment.message.content == "看一下"
+    from apps.opspilot.services.python_sandbox.attachments import ATTACHMENT_GRANT_KEY, resolve_attachment_grant
+
+    monkeypatch.setattr("apps.opspilot.services.python_sandbox.attachments.attachment_descriptor", lambda asset, **kwargs: {"id": asset.pk})
+    assert resolve_attachment_grant(captured["params"][ATTACHMENT_GRANT_KEY]) == [{"id": attachment.pk}]
+    # An already issued grant cannot keep reading an upload moved out of the session.
+    attachment.conversation = _conversation(skill, channel)
+    attachment.save(update_fields=["conversation"])
+    assert resolve_attachment_grant(captured["params"][ATTACHMENT_GRANT_KEY]) == []
 
 
 def test_history_keeps_recent_document_and_drops_images(local_storage):

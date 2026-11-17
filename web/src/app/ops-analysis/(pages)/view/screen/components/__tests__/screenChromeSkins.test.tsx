@@ -94,4 +94,27 @@ describe('screen chrome skins', () => {
     expect(shrunk.sliceLR).toBe(150);
     expect(shrunk.borderWidth).toBe('50px 75px');
   });
+
+  it('keeps the corner-plate frame at 16px on short KPI bars and wide tables', () => {
+    const shortWide = resolveVisionBorderFrame('fixed-16', 1888, 114, 1, 1, 1);
+    expect(shortWide.sliceTB).toBe(16);
+    expect(shortWide.sliceLR).toBe(16);
+    expect(shortWide.borderWidth).toBe('16px 16px');
+
+    const table = resolveVisionBorderFrame('fixed-16', 1888, 268, 1, 1, 1);
+    expect(table.sliceTB).toBe(16);
+    expect(table.sliceLR).toBe(16);
+    expect(table.borderWidth).toBe('16px 16px');
+
+    const dense = resolveVisionBorderFrame('fixed-16', 1888, 114, 2, 2, 2);
+    expect(dense.sliceTB).toBe(16);
+    expect(dense.borderWidth).toBe('32px 32px');
+  });
+
+  it('renders the registered corner-plate skin without falling back', () => {
+    const { container } = render(
+      <DecorationSkin item={{ decorationType: 'panelFrame', preset: 'border-plate' }} />,
+    );
+    expect(container.querySelector('[data-decoration="border-plate"]')).toBeTruthy();
+  });
 });

@@ -3,6 +3,7 @@ from uuid import UUID, uuid4
 from django.apps import apps as django_apps
 from django.core.management.base import BaseCommand, CommandError
 from django.db import connection, transaction
+from django.utils import timezone
 
 from apps.cmdb.constants.constants import INSTANCE, INSTANCE_ASSOCIATION
 from apps.cmdb.graph.drivers.graph_client import GraphClient
@@ -90,6 +91,13 @@ class Command(BaseCommand):
             defaults={"cursor": str(cursor or 0), "completed": completed},
         )
 
+    def _persisted_stage(self, stage):
+        """读库里的完成标记。校验模式的 _stage_cursor 会假装未完成，不能用来决定跳过。"""
+        state = CmdbUuidMigrationState.objects.filter(stage=stage).only("cursor", "completed", "updated_at").first()
+        if state is None:
+            return "0", False, None
+        return state.cursor or "0", bool(state.completed), state.updated_at
+
     def _model_table_exists(self, model):
         if not hasattr(self, "_existing_tables"):
             self._existing_tables = set(connection.introspection.table_names())
@@ -158,9 +166,12 @@ class Command(BaseCommand):
             "node_cmdb_id_unmapped": 0,
         }
         self._graph_uuid_by_id = {}
-        graph_cursor, graph_completed = self._stage_cursor("graph_instances")
-        if graph_cursor or graph_completed:
-            self._load_graph_uuid_map(batch_size)
+        _, instances_done, _ = self._persisted_stage("graph_instances")
+        _, edges_done, _ = self._persisted_stage("graph_edges")
+        if not instances_done and not edges_done and not dry_run:
+            inst_cursor, _, _ = self._persisted_stage("graph_instances")
+            if str(inst_cursor or "0") not in {"", "0"}:
+                self._load_graph_uuid_map(batch_size)
         self._clean_graph(batch_size, dry_run, stats)
         self._clean_config_versions(batch_size, dry_run, stats)
         self._clean_change_records(batch_size, dry_run, stats)
@@ -212,100 +223,124 @@ class Command(BaseCommand):
     def _clean_graph(self, batch_size, dry_run, stats):
         """先建立完整、唯一的 UUID 身份，再写边端点 UUID 并移除数字端点属性。"""
         self._dry_run = dry_run
+        _, instances_done, _ = self._persisted_stage("graph_instances")
+        _, edges_done, _ = self._persisted_stage("graph_edges")
+        if instances_done and edges_done:
+            return
         uuid_owners = {inst_uuid: graph_id for graph_id, inst_uuid in self._graph_uuid_by_id.items()}
-        cursor, completed = self._stage_cursor("graph_instances")
-        cursor = None if completed and not cursor else (cursor or None)
         with GraphClient() as graph:
-            while True:
-                params = []
-                if cursor is not None:
-                    params.append({"field": "id", "type": "id>", "value": cursor})
-                entities, _ = graph.query_entity(
-                    INSTANCE,
-                    params,
-                    page={"skip": 0, "limit": batch_size},
-                    include_count=False,
-                )
-                if not entities:
-                    break
-                next_cursor = int(entities[-1]["_id"])
-                if cursor is not None and next_cursor <= cursor:
-                    raise CommandError(f"图实例迁移游标未推进: {cursor}")
-                updates = []
-                for entity in entities:
-                    graph_id = int(entity["_id"])
-                    inst_uuid = _canonical_uuid(entity.get("inst_uuid"))
-                    if entity.get("inst_uuid") and not inst_uuid:
-                        raise CommandError(f"图实例 {graph_id} 的 inst_uuid 非法")
-                    if inst_uuid and uuid_owners.get(inst_uuid) not in {None, graph_id}:
-                        raise CommandError(f"图实例 inst_uuid 重复: {inst_uuid}")
-                    if not inst_uuid:
+            if not instances_done:
+                cursor, _completed = self._stage_cursor("graph_instances")
+                cursor = cursor or None
+                self._scan_graph_instances(graph, cursor, batch_size, dry_run, stats, uuid_owners)
+            if edges_done:
+                return
+            self._scan_graph_edges(graph, batch_size, dry_run, stats)
+
+    def _scan_graph_instances(self, graph, cursor, batch_size, dry_run, stats, uuid_owners):
+        while True:
+            params = []
+            if cursor is not None:
+                params.append({"field": "id", "type": "id>", "value": cursor})
+            entities, _ = graph.query_entity(
+                INSTANCE,
+                params,
+                page={"skip": 0, "limit": batch_size},
+                include_count=False,
+            )
+            if not entities:
+                break
+            next_cursor = int(entities[-1]["_id"])
+            if cursor is not None and next_cursor <= cursor:
+                raise CommandError(f"图实例迁移游标未推进: {cursor}")
+            updates = []
+            for entity in entities:
+                graph_id = int(entity["_id"])
+                inst_uuid = _canonical_uuid(entity.get("inst_uuid"))
+                if entity.get("inst_uuid") and not inst_uuid:
+                    raise CommandError(f"图实例 {graph_id} 的 inst_uuid 非法")
+                if inst_uuid and uuid_owners.get(inst_uuid) not in {None, graph_id}:
+                    raise CommandError(f"图实例 inst_uuid 重复: {inst_uuid}")
+                if not inst_uuid:
+                    inst_uuid = str(uuid4())
+                    while inst_uuid in uuid_owners:
                         inst_uuid = str(uuid4())
-                        while inst_uuid in uuid_owners:
-                            inst_uuid = str(uuid4())
-                        updates.append({"id": graph_id, "value": inst_uuid})
-                    elif str(entity.get("inst_uuid")) != inst_uuid:
-                        updates.append({"id": graph_id, "value": inst_uuid})
-                    uuid_owners[inst_uuid] = graph_id
-                    self._graph_uuid_by_id[graph_id] = inst_uuid
-                stats["graph_instance_scanned"] += len(entities)
-                stats["graph_uuid_added"] += len(updates)
-                if updates and not dry_run:
-                    graph.batch_update_node_property_values(INSTANCE, "inst_uuid", updates)
-                cursor = next_cursor
-                self._save_stage("graph_instances", cursor)
+                    updates.append({"id": graph_id, "value": inst_uuid})
+                elif str(entity.get("inst_uuid")) != inst_uuid:
+                    updates.append({"id": graph_id, "value": inst_uuid})
+                uuid_owners[inst_uuid] = graph_id
+                self._graph_uuid_by_id[graph_id] = inst_uuid
+            stats["graph_instance_scanned"] += len(entities)
+            stats["graph_uuid_added"] += len(updates)
+            if updates and not dry_run:
+                graph.batch_update_node_property_values(INSTANCE, "inst_uuid", updates)
+            cursor = next_cursor
+            self._save_stage("graph_instances", cursor)
 
-            self._save_stage("graph_instances", cursor or 0, completed=True)
+        self._save_stage("graph_instances", cursor or 0, completed=True)
 
-            if not dry_run:
-                graph.ensure_node_property_index(INSTANCE, "inst_uuid")
-                stats["graph_index_ensured"] = 1
+        if not dry_run:
+            graph.ensure_node_property_index(INSTANCE, "inst_uuid")
+            stats["graph_index_ensured"] = 1
 
-            edges = graph.query_edge(INSTANCE_ASSOCIATION, [], return_entity=True)
-            stats["graph_relation_scanned"] = len(edges)
-            business_keys = set()
-            uuid_edge_ids = []
-            digit_edge_ids = []
-            for item in edges:
-                edge = item.get("edge") or item
-                src = item.get("src") or {}
-                dst = item.get("dst") or {}
-                src_uuid = (
-                    _canonical_uuid(edge.get("src_inst_uuid"))
-                    or _canonical_uuid(src.get("inst_uuid"))
-                    or self._graph_uuid_by_id.get(_graph_id(src.get("_id")))
-                    or self._graph_uuid_by_id.get(_graph_id(edge.get("src_inst_id")))
+    def _scan_graph_edges(self, graph, batch_size, dry_run, stats):
+        edges = graph.query_edge(INSTANCE_ASSOCIATION, [], return_entity=True)
+        needed_ids = []
+        for item in edges:
+            edge = item.get("edge") or item
+            src = item.get("src") or {}
+            dst = item.get("dst") or {}
+            for value in (src.get("_id"), edge.get("src_inst_id"), dst.get("_id"), edge.get("dst_inst_id")):
+                graph_id = _graph_id(value)
+                if graph_id is not None:
+                    needed_ids.append(graph_id)
+        if needed_ids:
+            self._graph_uuid_map(needed_ids)
+        stats["graph_relation_scanned"] = len(edges)
+        business_keys = set()
+        uuid_edge_ids = []
+        digit_edge_ids = []
+        for item in edges:
+            edge = item.get("edge") or item
+            src = item.get("src") or {}
+            dst = item.get("dst") or {}
+            src_uuid = (
+                _canonical_uuid(edge.get("src_inst_uuid"))
+                or _canonical_uuid(src.get("inst_uuid"))
+                or self._graph_uuid_by_id.get(_graph_id(src.get("_id")))
+                or self._graph_uuid_by_id.get(_graph_id(edge.get("src_inst_id")))
+            )
+            dst_uuid = (
+                _canonical_uuid(edge.get("dst_inst_uuid"))
+                or _canonical_uuid(dst.get("inst_uuid"))
+                or self._graph_uuid_by_id.get(_graph_id(dst.get("_id")))
+                or self._graph_uuid_by_id.get(_graph_id(edge.get("dst_inst_id")))
+            )
+            if not src_uuid or not dst_uuid:
+                raise CommandError(f"关系 {edge.get('_id')} 的端点缺少有效 inst_uuid")
+            business_key = (edge.get("model_asst_id"), src_uuid, dst_uuid)
+            if business_key in business_keys:
+                raise CommandError(f"实例关系业务键重复: {business_key}")
+            business_keys.add(business_key)
+            edge_id = int(edge["_id"])
+            if _canonical_uuid(edge.get("src_inst_uuid")) != src_uuid or _canonical_uuid(edge.get("dst_inst_uuid")) != dst_uuid:
+                uuid_edge_ids.append((edge_id, src_uuid, dst_uuid))
+            if "src_inst_id" in edge or "dst_inst_id" in edge:
+                digit_edge_ids.append(edge_id)
+        stats["graph_relation_uuid_set"] = len(uuid_edge_ids)
+        stats["graph_relation_digit_removed"] = len(digit_edge_ids)
+        if not dry_run:
+            for edge_id, src_uuid, dst_uuid in uuid_edge_ids:
+                graph.set_edge_properties(
+                    edge_id,
+                    {"src_inst_uuid": src_uuid, "dst_inst_uuid": dst_uuid},
                 )
-                dst_uuid = (
-                    _canonical_uuid(edge.get("dst_inst_uuid"))
-                    or _canonical_uuid(dst.get("inst_uuid"))
-                    or self._graph_uuid_by_id.get(_graph_id(dst.get("_id")))
-                    or self._graph_uuid_by_id.get(_graph_id(edge.get("dst_inst_id")))
+            for offset in range(0, len(digit_edge_ids), batch_size):
+                graph.remove_edge_properties(
+                    digit_edge_ids[offset : offset + batch_size],
+                    ["src_inst_id", "dst_inst_id"],
                 )
-                if not src_uuid or not dst_uuid:
-                    raise CommandError(f"关系 {edge.get('_id')} 的端点缺少有效 inst_uuid")
-                business_key = (edge.get("model_asst_id"), src_uuid, dst_uuid)
-                if business_key in business_keys:
-                    raise CommandError(f"实例关系业务键重复: {business_key}")
-                business_keys.add(business_key)
-                edge_id = int(edge["_id"])
-                if _canonical_uuid(edge.get("src_inst_uuid")) != src_uuid or _canonical_uuid(edge.get("dst_inst_uuid")) != dst_uuid:
-                    uuid_edge_ids.append((edge_id, src_uuid, dst_uuid))
-                if "src_inst_id" in edge or "dst_inst_id" in edge:
-                    digit_edge_ids.append(edge_id)
-            stats["graph_relation_uuid_set"] = len(uuid_edge_ids)
-            stats["graph_relation_digit_removed"] = len(digit_edge_ids)
-            if not dry_run:
-                for edge_id, src_uuid, dst_uuid in uuid_edge_ids:
-                    graph.set_edge_properties(
-                        edge_id,
-                        {"src_inst_uuid": src_uuid, "dst_inst_uuid": dst_uuid},
-                    )
-                for offset in range(0, len(digit_edge_ids), batch_size):
-                    graph.remove_edge_properties(
-                        digit_edge_ids[offset : offset + batch_size],
-                        ["src_inst_id", "dst_inst_id"],
-                    )
+            self._save_stage("graph_edges", 0, completed=True)
 
     def _clean_config_versions(self, batch_size, dry_run, stats):
         cursor, completed = self._stage_cursor("config_versions")
@@ -924,11 +959,14 @@ class Command(BaseCommand):
             self._save_stage("collect_instances", cursor)
 
     def _clean_collect_result_snapshots(self, batch_size, dry_run, stats):
-        """采集结果快照递归补 inst_uuid；可变 JSON 每次全表重扫，不因 completed 跳过。"""
+        """采集结果快照补 inst_uuid。完成后只处理更新时间更晚的采集任务。"""
+        state = CmdbUuidMigrationState.objects.filter(stage="collect_result_snapshots").first()
+        if state is not None and state.completed:
+            self._clean_collect_result_snapshots_since(state.updated_at, batch_size, dry_run, stats)
+            return
         cursor, _completed = self._stage_cursor("collect_result_snapshots")
         cursor = 0
         leftover_ids = []
-        fields = ("format_data", "collect_data", "collect_digest", "topology_snapshot")
         while True:
             tasks = list(CollectModels.objects.filter(id__gt=cursor).order_by("id")[:batch_size])
             if not tasks:
@@ -936,26 +974,47 @@ class Command(BaseCommand):
                 self._leftover_snapshot_ids = leftover_ids[:20]
                 return
             cursor = tasks[-1].id
-            numeric_ids = []
-            for task in tasks:
-                for field in fields:
-                    self._collect_graph_ids(getattr(task, field), numeric_ids)
-            uuid_map = self._graph_uuid_map(numeric_ids)
-            changed = []
-            for task in tasks:
-                row_changed = False
-                for field in fields:
-                    rewritten, field_changed = self._rewrite_json_uuids(getattr(task, field), uuid_map)
-                    if field_changed:
-                        setattr(task, field, rewritten)
-                        row_changed = True
-                if row_changed:
-                    changed.append(task)
-                    leftover_ids.append(task.id)
-            stats["collect_result_snapshot_updated"] += len(changed)
-            if changed and not dry_run:
-                CollectModels.objects.bulk_update(changed, list(fields))
+            self._rewrite_collect_snapshot_page(tasks, dry_run, stats, leftover_ids)
             self._save_stage("collect_result_snapshots", cursor)
+
+    def _clean_collect_result_snapshots_since(self, watermark, batch_size, dry_run, stats):
+        started = timezone.now()
+        cursor = 0
+        leftover_ids = []
+        saw_row = False
+        while True:
+            tasks = list(CollectModels.objects.filter(updated_at__gt=watermark, id__gt=cursor).order_by("id")[:batch_size])
+            if not tasks:
+                self._leftover_snapshot_ids = leftover_ids[:20]
+                if saw_row and not dry_run:
+                    self._save_stage("collect_result_snapshots", 0, completed=True)
+                    CmdbUuidMigrationState.objects.filter(stage="collect_result_snapshots").update(updated_at=started)
+                return
+            saw_row = True
+            cursor = tasks[-1].id
+            self._rewrite_collect_snapshot_page(tasks, dry_run, stats, leftover_ids)
+
+    def _rewrite_collect_snapshot_page(self, tasks, dry_run, stats, leftover_ids):
+        fields = ("format_data", "collect_data", "collect_digest", "topology_snapshot")
+        numeric_ids = []
+        for task in tasks:
+            for field in fields:
+                self._collect_graph_ids(getattr(task, field), numeric_ids)
+        uuid_map = self._graph_uuid_map(numeric_ids)
+        changed = []
+        for task in tasks:
+            row_changed = False
+            for field in fields:
+                rewritten, field_changed = self._rewrite_json_uuids(getattr(task, field), uuid_map)
+                if field_changed:
+                    setattr(task, field, rewritten)
+                    row_changed = True
+            if row_changed:
+                changed.append(task)
+                leftover_ids.append(task.id)
+        stats["collect_result_snapshot_updated"] += len(changed)
+        if changed and not dry_run:
+            CollectModels.objects.bulk_update(changed, list(fields))
 
     def _clean_operation_snapshots(self, batch_size, dry_run, stats):
         stage = "operation_snapshots"

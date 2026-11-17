@@ -160,6 +160,7 @@ export const SCREEN_PANEL_FRAME_PRESETS: ScreenPanelFramePresetId[] = [
   'border-16',
   'border-20',
   'border-24',
+  'border-plate',
 ];
 
 export const SCREEN_DIVIDER_PRESETS: ScreenDividerPresetId[] = [

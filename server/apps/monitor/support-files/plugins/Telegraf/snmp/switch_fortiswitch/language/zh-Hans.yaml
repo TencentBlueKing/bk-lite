@@ -71,8 +71,7 @@ monitor_object_metric:
       desc: FortiSwitch 控制平面 CPU 使用率（fsSysCpuUsage，标量直接百分比，0-100）。CPU 持续偏高可能意味着控制平面过载、路由震荡或异常流量，会导致管理响应变慢或转发延迟。
     device_memory_usage:
       name: 内存使用率
-      desc: FortiSwitch 整体内存使用率，按 已用/总量*100 计算。内存偏高可能由内存泄漏、路由/MAC/ARP
-        表项过大或容量不足导致，可能引发不稳定或分配失败。
+      desc: FortiSwitch 整体内存使用率。内存偏高可能由内存泄漏、路由/MAC/ARP 表项过大或容量不足导致，可能引发不稳定或分配失败。
     device_memory_used:
       name: 内存已用量
       desc: FortiSwitch 当前已使用内存（fsSysMemUsage，原始值单位为 KB，查询侧换算为字节）。

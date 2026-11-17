@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useEffect, useRef, useState } from 'react';
-import Link from 'next/link';
 import { Alert, Button, Modal, Space, message } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
@@ -80,9 +79,7 @@ const DuplicateRulesPage: React.FC = () => {
       dataIndex: 'problem_group_count',
       width: 120,
       render: (_, record) => (
-        <Link href={`/cmdb/assetManage/governance?path=duplicate&model_id=${modelId}&rule_id=${record.rule_id}`}>
-          {t('Governance.problemGroups', undefined, { count: record.problem_group_count || 0 })}
-        </Link>
+        <span>{t('Governance.problemGroups', undefined, { count: record.problem_group_count || 0 })}</span>
       ),
     },
     {

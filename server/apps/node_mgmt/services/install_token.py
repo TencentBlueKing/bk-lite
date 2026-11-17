@@ -60,6 +60,7 @@ class InstallTokenService:
         execution_id: str = "",
         execution_attempt: int | None = None,
         execution_deadline_unix: int | None = None,
+        environment_grant_id: str = "",
     ) -> str:
         """
         生成安装令牌（30分钟有效，最多使用5次）
@@ -95,6 +96,7 @@ class InstallTokenService:
                 "execution_id": execution_id,
                 "execution_attempt": execution_attempt,
                 "execution_deadline_unix": execution_deadline_unix,
+                **({"environment_grant_id": environment_grant_id} if environment_grant_id else {}),
                 "usage_count": 0,
                 "max_usage": InstallerConstants.INSTALL_TOKEN_MAX_USAGE,
             },
@@ -118,10 +120,8 @@ class InstallTokenService:
                 not task_node
                 or result.get(InstallerConstants.INSTALLER_EXECUTION_ID_KEY) != data.get("execution_id")
                 or result.get(InstallerConstants.EXECUTION_ATTEMPT_KEY) != data.get("execution_attempt")
-                or result.get(InstallerConstants.EXECUTION_PHASE_KEY)
-                != InstallerConstants.EXECUTION_PHASE_BOOTSTRAP_RUNNING
-                or result.get(InstallerConstants.EXECUTION_DEADLINE_UNIX_KEY)
-                != data.get("execution_deadline_unix")
+                or result.get(InstallerConstants.EXECUTION_PHASE_KEY) != InstallerConstants.EXECUTION_PHASE_BOOTSTRAP_RUNNING
+                or result.get(InstallerConstants.EXECUTION_DEADLINE_UNIX_KEY) != data.get("execution_deadline_unix")
                 or not isinstance(data.get("execution_deadline_unix"), int)
                 or int(time.time()) >= data["execution_deadline_unix"]
             ):
@@ -148,6 +148,7 @@ class InstallTokenService:
             "execution_attempt": data.get("execution_attempt"),
             "execution_deadline_unix": data.get("execution_deadline_unix"),
             "remaining_usage": remaining_usage,
+            **({"environment_grant_id": data["environment_grant_id"]} if data.get("environment_grant_id") else {}),
         }
 
     @staticmethod

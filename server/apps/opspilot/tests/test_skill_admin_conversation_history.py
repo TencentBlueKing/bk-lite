@@ -5,9 +5,10 @@ from __future__ import annotations
 import json
 import logging
 from datetime import timedelta
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
+from asgiref.sync import async_to_sync
 from django.utils import timezone
 from rest_framework.test import APIRequestFactory, force_authenticate
 
@@ -15,7 +16,13 @@ from apps.base.models import User
 from apps.opspilot import views as opspilot_views
 from apps.opspilot.enum import SkillChannelChoices
 from apps.opspilot.models import LLMSkill, SkillChannel, SkillConversation, SkillConversationMessage
-from apps.opspilot.services.skill_channel_chat_service import append_message, delete_skill_session, saas_external_user_id
+from apps.opspilot.services.skill_channel_chat_service import (
+    append_message,
+    delete_skill_session,
+    list_skill_conversations_for_user,
+    saas_external_user_id,
+)
+from apps.opspilot.utils.chat_flow_utils.nodes.agent.agent import AgentNode
 from apps.opspilot.viewsets.skill_channel_view import SkillChannelViewSet
 from apps.system_mgmt.models import User as SystemUser
 
@@ -117,6 +124,86 @@ def _messages(request_user, session_id, current_team="1"):
 
 
 class TestSkillAdminConversationHistory:
+    def test_workflow_agent_call_is_visible_in_agent_history(self):
+        skill = _skill()
+        admin = _superuser()
+        node = AgentNode.__new__(AgentNode)
+        node.variable_manager = MagicMock()
+        flow_input = {"entry_type": "nats", "bot_id": 6, "execution_id": "exec-1", "user_id": "alice"}
+        node.variable_manager.get_variable.side_effect = lambda name, default=None: {
+            "flow_input": flow_input,
+            "execution_id": "exec-1",
+        }.get(name, default)
+        params = {"user_message": "检查告警", "execution_id": "exec-1"}
+        with (
+            patch.object(node, "set_llm_params", return_value=(params, skill.name, False)),
+            patch(
+                "apps.opspilot.utils.chat_flow_utils.nodes.agent.agent.ChatService.invoke_chat",
+                return_value=({"success": True, "message": "正常"}, None, None),
+            ),
+        ):
+            result = node.execute("agent-1", {"data": {"config": {"agent": skill.id}}}, {})
+        assert result["last_message"] == "正常"
+        response = _list(admin, skill_id=skill.id)
+        data = _body(response)["data"]
+        assert data["count"] == 1
+        item = data["items"][0]
+        assert item["channel_type"] == "workbench"
+        assert item["external_user_id"] == "alice"
+        assert list_skill_conversations_for_user(skill_id=skill.id, external_user_id="alice") == []
+        messages = _body(_messages(admin, item["session_id"]))["data"]["messages"]
+        assert [item["conversation_content"] for item in messages] == ["检查告警", "正常"]
+        node._record_workbench_conversation(node_id="agent-1", skill_id=skill.id, params={"user_message": "再检查"}, content="仍正常")
+        messages = _body(_messages(admin, item["session_id"]))["data"]["messages"]
+        assert [item["conversation_content"] for item in messages] == ["检查告警", "正常", "再检查", "仍正常"]
+        node._record_workbench_conversation(node_id="agent-2", skill_id=skill.id, params={"user_message": "其他节点"}, content="完成")
+        assert _body(_list(admin, skill_id=skill.id))["data"]["count"] == 2
+
+    def test_history_write_failure_does_not_break_workflow_or_log_message(self, caplog):
+        node = AgentNode.__new__(AgentNode)
+        node.variable_manager = MagicMock()
+        node.variable_manager.get_variable.return_value = {"execution_id": "run-1"}
+        with patch.object(SkillConversation.objects, "get_or_create", side_effect=ValueError("secret-sentinel")):
+            assert (
+                node._record_workbench_conversation(node_id="n1", skill_id=1, params={"user_message": "private-sentinel"}, content="reply-sentinel")
+                is None
+            )
+        record = next(record for record in caplog.records if record.msg.startswith("event=workbench_agent_history_failed"))
+        assert record.args == (1, "n1", "persist", "ValueError")
+        assert record.getMessage() == "event=workbench_agent_history_failed skill_id=1 node_id=n1 failed_stage=persist error_type=ValueError"
+        assert record.exc_info is not None
+        assert "secret-sentinel" not in caplog.text
+        assert "private-sentinel" not in caplog.text
+        assert "reply-sentinel" not in caplog.text
+
+    @pytest.mark.django_db(transaction=True)
+    @pytest.mark.parametrize("agui", [False, True])
+    def test_workflow_stream_persists_reply_without_changing_chunks(self, agui):
+        skill = _skill()
+        node = AgentNode.__new__(AgentNode)
+        node.variable_manager = MagicMock()
+        node.variable_manager.get_variable.return_value = {"bot_id": 1, "execution_id": "exec-stream", "user_id": "alice"}
+        if agui:
+            chunks = ['data: {"type":"TEXT_MESSAGE_CONTENT","delta":"正常"}\n\n']
+        else:
+            chunks = ['data: {"choices":[{"delta":{"content":"正常"}}]}\n\n']
+
+        async def source():
+            for chunk in chunks:
+                yield chunk
+
+        async def consume():
+            return [
+                chunk async for chunk in node._persist_workbench_stream(source(), node_id="node-1", skill_id=skill.id, params={"user_message": "检查"})
+            ]
+
+        assert async_to_sync(consume)() == chunks
+        conversation = SkillConversation.objects.get(skill=skill, channel__isnull=True)
+        messages = list(conversation.messages.values_list("role", "content"))
+        assert messages[0] == ("user", "检查")
+        assert messages[1][0] == "assistant"
+        assert "正常" in messages[1][1]
+
     def test_manager_lists_all_channels_and_people(self):
         skill = _skill(usage_team=[1, 2])
         web = _channel(skill, name="网页入口")

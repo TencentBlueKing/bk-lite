@@ -91,8 +91,12 @@ export function resolveImNotificationFieldPatches(input: {
   }
 
   if (!editing) {
-    const nextMatch = nextValues.external_match_field ?? currentMatch;
-    const nextReceive = nextValues.external_receive_field ?? currentReceive;
+    const nextMatch = Object.prototype.hasOwnProperty.call(nextValues, 'external_match_field')
+      ? nextValues.external_match_field
+      : currentMatch;
+    const nextReceive = Object.prototype.hasOwnProperty.call(nextValues, 'external_receive_field')
+      ? nextValues.external_receive_field
+      : currentReceive;
 
     if (!nextMatch && template.default_external_match_field) {
       nextValues.external_match_field = template.default_external_match_field;

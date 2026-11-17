@@ -104,6 +104,47 @@ class DashboardShareLink(models.Model):
         )
 
 
+class ScreenDisplayGrant(models.Model):
+    """一张大屏一条投屏授权。到期日是绝对时间，停用和重新生成立即废止旧会话。"""
+
+    class Status(models.TextChoices):
+        ACTIVE = "active", "有效"
+        PAUSED = "paused", "已停用"
+
+    screen = models.OneToOneField(
+        "operation_analysis.Screen",
+        on_delete=models.CASCADE,
+        related_name="display_grant",
+    )
+    public_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    status = models.CharField(max_length=16, choices=Status.choices, default=Status.ACTIVE)
+    duration_days = models.PositiveSmallIntegerField()
+    expires_at = models.DateTimeField()
+    tenant_domain = models.CharField(max_length=100)
+    space_id = models.PositiveBigIntegerField()
+    sharer_username = models.CharField(max_length=100)
+    sharer_domain = models.CharField(max_length=100)
+    last_access_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "operation_analysis_screen_display_grant"
+
+    def is_expired(self, now=None):
+        return self.expires_at <= (now or timezone.now())
+
+
+class ScreenDisplaySession(models.Model):
+    session_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    grant = models.ForeignKey(ScreenDisplayGrant, on_delete=models.CASCADE, related_name="sessions")
+    expires_at = models.DateTimeField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "operation_analysis_screen_display_session"
+
+
 class DashboardShareSession(models.Model):
     session_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     share_link = models.ForeignKey(DashboardShareLink, on_delete=models.CASCADE, related_name="sessions")

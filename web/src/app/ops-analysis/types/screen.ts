@@ -1,4 +1,5 @@
 import type { DirItem } from './index';
+import type { DataVariable } from '@/app/ops-analysis/utils/dataVariable';
 import type { UnifiedFilterDefinition, ValueConfig, WidgetInteractionLink } from './dashBoard';
 
 export type ScreenWidgetChartType =
@@ -92,7 +93,8 @@ export type ScreenPanelFramePresetId =
   | 'tech'
   | 'border-16'
   | 'border-20'
-  | 'border-24';
+  | 'border-24'
+  | 'border-plate';
 
 /** 分隔线。`a`/`b` 只用于读旧数据。 */
 export type ScreenDividerPresetId =
@@ -188,6 +190,7 @@ export interface ScreenViewSets {
   items: ScreenItem[];
   decorations: ScreenDecorationsConfig;
   filters?: UnifiedFilterDefinition[];
+  dataVariables?: DataVariable[];
 }
 
 export interface ScreenProps {

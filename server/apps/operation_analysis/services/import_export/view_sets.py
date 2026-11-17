@@ -44,6 +44,35 @@ def _rewrite_datasource_refs(value: Any, key_map: dict[Any, Any]) -> Any:
     return cloned
 
 
+def data_variable_datasource_ids(raw: Any) -> set[int]:
+    if not isinstance(raw, list):
+        return set()
+    ids: set[int] = set()
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        source_id = item.get("dataSourceId")
+        if isinstance(source_id, int) and not isinstance(source_id, bool):
+            ids.add(source_id)
+    return ids
+
+
+def rewrite_data_variables(raw: Any, key_map: dict[Any, Any]) -> list:
+    if not isinstance(raw, list):
+        return []
+    rewritten = []
+    for item in raw:
+        if not isinstance(item, dict):
+            rewritten.append(item)
+            continue
+        cloned = dict(item)
+        source_id = cloned.get("dataSourceId")
+        if source_id in key_map:
+            cloned["dataSourceId"] = key_map[source_id]
+        rewritten.append(cloned)
+    return rewritten
+
+
 def _require_positive_int(value: Any, path: str) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
         raise ValueError(f"{path} must be a positive integer")
@@ -85,6 +114,8 @@ def _normalize_screen_view_sets(view_sets: Any) -> dict:
     if "filters" in view_sets:
         filters = view_sets.get("filters")
         normalized["filters"] = filters if isinstance(filters, list) else []
+    if isinstance(view_sets.get("dataVariables"), list):
+        normalized["dataVariables"] = list(view_sets.get("dataVariables"))
 
     return normalized
 
@@ -215,6 +246,8 @@ def rewrite_canvas_view_sets_refs_for_yaml(view_sets: list | dict, object_type: 
         }
         if isinstance(view_sets.get("filters"), list):
             result["filters"] = view_sets.get("filters", [])
+        if isinstance(view_sets.get("dataVariables"), list):
+            result["dataVariables"] = rewrite_data_variables(view_sets.get("dataVariables"), ds_key_map)
         return result
 
     if object_type == ObjectType.REPORT:
@@ -264,6 +297,11 @@ def rewrite_canvas_view_sets_refs_for_storage(view_sets: list | dict, object_typ
         }
         if isinstance(normalized.get("filters"), list):
             result["filters"] = normalized.get("filters", [])
+        if isinstance(normalized.get("dataVariables"), list):
+            result["dataVariables"] = rewrite_data_variables(
+                normalized.get("dataVariables"),
+                datasource_key_to_id,
+            )
         return result
 
     return _rewrite_datasource_refs(normalized, datasource_key_to_id)

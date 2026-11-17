@@ -21,6 +21,13 @@ import CompactEmptyState from '@/components/compact-empty-state';
 import { ParamInputControl } from '@/app/ops-analysis/components/paramInputControl';
 import { normalizeInputConfig } from '@/app/ops-analysis/utils/paramInputConfigUtils';
 import { getDataSourceFormParamInitialValue } from '@/app/ops-analysis/utils/dataSourceFormParams';
+import { useDataVariableRuntime } from '@/app/ops-analysis/context/dataVariableRuntime';
+import {
+  isDataVariableRef,
+  substituteDataVariableUpstream,
+  type ColumnResult,
+  type DataVariable,
+} from '@/app/ops-analysis/utils/dataVariable';
 import { readComponentOptionsQueryUpstream } from '@/app/ops-analysis/utils/optionsQueryCandidates';
 import {
   dynamicQueryParamsOf,
@@ -28,6 +35,7 @@ import {
   stableStringify,
   type ResolvedOptionsQuery,
 } from '@/app/ops-analysis/utils/optionsQueryParamRefs';
+import ConditionFilterControl from '@/app/ops-analysis/components/conditionFilterControl';
 import DateRangeSelector from './dateRangeSelector';
 import {
   getTimeSelectorDefaultValue,
@@ -106,7 +114,24 @@ interface DataSourceParamsConfigProps {
   globalFilterValues?: Record<string, FilterValue>;
   onEditInputConfig?: (param: ParamItem) => void;
   onParamOptionsResolved?: (param: ParamItem, options: InputOption[]) => void;
+  /** 用来回显「数据变量 · 名称」。引用本身在参数输入设置里选。 */
+  dataVariables?: DataVariable[];
 }
+
+const DataVariableEcho: React.FC<{
+  value?: unknown;
+  variables?: DataVariable[];
+}> = ({ value, variables }) => {
+  const { t } = useTranslation();
+  const id = isDataVariableRef(value) ? value.dataVariableId : '';
+  const name = variables?.find((item) => item.id === id)?.name || id;
+  return (
+    <Input
+      disabled
+      value={t('dataVariable.referenceLabel', '数据变量 · {name}', { name })}
+    />
+  );
+};
 
 const formParamValue = (
   formParams: Record<string, unknown> | undefined,
@@ -126,6 +151,7 @@ const resolveParamOptionsQuery = ({
   globalFilters,
   filterBindings,
   globalFilterValues,
+  dataVariableColumns,
 }: {
   inputConfig?: InputControlConfig;
   enabled: boolean;
@@ -134,11 +160,12 @@ const resolveParamOptionsQuery = ({
   globalFilters?: UnifiedFilterDefinition[];
   filterBindings?: FilterBindings | null;
   globalFilterValues?: Record<string, FilterValue>;
+  dataVariableColumns?: Record<string, ColumnResult>;
 }): { resolution: ResolvedOptionsQuery; signature: string } | undefined => {
   if (!enabled) return undefined;
   const resolution = resolveOptionsQueryParams(
     dynamicQueryParamsOf(inputConfig),
-    (ref) => readComponentOptionsQueryUpstream({
+    (ref) => substituteDataVariableUpstream(readComponentOptionsQueryUpstream({
       ref,
       componentParams: sourceParams.map((param) => ({
         name: param.name,
@@ -155,7 +182,7 @@ const resolveParamOptionsQuery = ({
           ? globalFilterValues[id]
           : undefined
       ),
-    }),
+    }), dataVariableColumns),
   );
   return {
     resolution,
@@ -178,9 +205,11 @@ const DataSourceParamsConfig: React.FC<DataSourceParamsConfigProps> = ({
   globalFilterValues,
   onEditInputConfig,
   onParamOptionsResolved,
+  dataVariables,
 }) => {
   const { t } = useTranslation();
   const [mounted, setMounted] = useState(false);
+  const dataVariableColumns = useDataVariableRuntime()?.columns;
   const form = Form.useFormInstance();
   // useWatch 负责在未注册字段变化时重渲染；当次渲染读 store，避免订阅值晚一拍。
   const watchedParams = Form.useWatch(fieldPrefix, { form, preserve: true }) as Record<string, unknown> | undefined;
@@ -283,7 +312,39 @@ const DataSourceParamsConfig: React.FC<DataSourceParamsConfigProps> = ({
       }
     })();
 
+    if (inputConfig?.control === 'conditionFilter') {
+      const fieldQuery = inputConfig.fields.kind === 'dynamic'
+        ? resolveParamOptionsQuery({
+          inputConfig,
+          enabled: resolveOptionsQuery,
+          formParams: optionsQueryFormParams,
+          sourceParams,
+          globalFilters,
+          filterBindings,
+          globalFilterValues,
+          dataVariableColumns,
+        })
+        : undefined;
+      return (
+        <ConditionFilterControl
+          source={inputConfig.fields}
+          formParams={formParams}
+          resolvedFieldQuery={fieldQuery?.resolution}
+          fieldQuerySignature={fieldQuery?.signature}
+          disabled={isDisabled}
+        />
+      );
+    }
+
     if (!inputConfig) {
+      return fallbackInput;
+    }
+    if (
+      inputConfig.control !== 'select'
+      && inputConfig.control !== 'radio'
+      && inputConfig.control !== 'input'
+      && inputConfig.control !== 'organization'
+    ) {
       return fallbackInput;
     }
 
@@ -295,6 +356,7 @@ const DataSourceParamsConfig: React.FC<DataSourceParamsConfigProps> = ({
       globalFilters,
       filterBindings,
       globalFilterValues,
+      dataVariableColumns,
     });
 
     return (
@@ -322,11 +384,14 @@ const DataSourceParamsConfig: React.FC<DataSourceParamsConfigProps> = ({
         const labelText = param.alias_name || param.name;
         const isLongText = labelText.length > 18;
         const isVeryLongText = labelText.length > 30;
+        const isConditionFilter = param.type === 'conditionFilter'
+          || param.inputConfig?.control === 'conditionFilter';
         const showInputConfigButton =
           onEditInputConfig &&
-          (param.type || 'string') === 'string' &&
+          ((param.type || 'string') === 'string' || isConditionFilter) &&
           param.filterType !== 'fixed' &&
           !readonly;
+        const variableValue = isDataVariableRef(formParams?.[param.name]);
 
         const getLabelStyle = (): React.CSSProperties => {
           const baseStyle = {
@@ -384,14 +449,20 @@ const DataSourceParamsConfig: React.FC<DataSourceParamsConfigProps> = ({
               </div>
             }
             name={fieldName}
+            preserve
             initialValue={!preserveValues && mounted ? initialValue : undefined}
             tooltip={param.desc || undefined}
             style={{ marginBottom: isVeryLongText ? 20 : 16 }}
-            rules={[
-              { required: param.required, message: t('dataSource.paramRequired', '请配置{label}', { label: labelText }) },
-            ]}
+            required={Boolean(param.required)}
+            rules={variableValue
+              ? []
+              : [
+                { required: param.required, message: t('dataSource.paramRequired', '请配置{label}', { label: labelText }) },
+              ]}
           >
-            {renderParamInput(param)}
+            {variableValue ? (
+              <DataVariableEcho variables={dataVariables} />
+            ) : renderParamInput(param)}
           </Form.Item>
         );
       })}

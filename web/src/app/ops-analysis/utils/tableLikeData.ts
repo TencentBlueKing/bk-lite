@@ -1,12 +1,15 @@
 import type { ResponseFieldDefinition } from '@/app/ops-analysis/types/dataSource';
 import type { TableColumnConfigItem } from '@/app/ops-analysis/types/dashBoard';
+import { readExplicitPageNumber } from '@/app/ops-analysis/utils/tablePagination';
 
 export interface TableLikePaginationState {
-  current: number;
-  pageSize: number;
+  current?: number;
+  pageSize?: number;
 }
 
-export interface TableLikePagination extends TableLikePaginationState {
+export interface TableLikePagination {
+  current: number;
+  pageSize: number;
   total: number;
 }
 
@@ -14,6 +17,7 @@ export interface TableLikeParseResult<RecordType extends Record<string, any>> {
   rows: RecordType[];
   pagination: TableLikePagination;
   isPaginated: boolean;
+  selfPaged: boolean;
 }
 
 const isRecordArray = (value: unknown): value is Record<string, any>[] =>
@@ -24,9 +28,11 @@ export const parseTableLikeData = <RecordType extends Record<string, any>>(
   queryPagination: TableLikePaginationState,
   supportsPagination = false,
 ): TableLikeParseResult<RecordType> => {
+  const requestPage = readExplicitPageNumber(queryPagination.current);
+  const requestPageSize = readExplicitPageNumber(queryPagination.pageSize);
   const emptyPagination = {
-    current: queryPagination.current,
-    pageSize: queryPagination.pageSize,
+    current: requestPage ?? 1,
+    pageSize: requestPageSize ?? 1,
     total: 0,
   };
 
@@ -35,6 +41,7 @@ export const parseTableLikeData = <RecordType extends Record<string, any>>(
       rows: [],
       pagination: emptyPagination,
       isPaginated: false,
+      selfPaged: false,
     };
   }
 
@@ -55,14 +62,24 @@ export const parseTableLikeData = <RecordType extends Record<string, any>>(
       rawTotal !== '' &&
       Number.isFinite(total) &&
       total >= 0;
+    const echoPage = readExplicitPageNumber(response.page);
+    const echoPageSize = readExplicitPageNumber(response.page_size);
+    const requestPaged = requestPage !== undefined && requestPageSize !== undefined;
+    const selfPaged = supportsPagination
+      && !requestPaged
+      && echoPage !== undefined
+      && echoPageSize !== undefined
+      && hasValidTotal
+      && total > items.length;
     return {
       rows: items,
       pagination: {
-        current: queryPagination.current,
-        pageSize: queryPagination.pageSize,
+        current: (selfPaged ? echoPage : requestPage) ?? 1,
+        pageSize: (selfPaged ? echoPageSize : requestPageSize) ?? Math.max(items.length, 1),
         total: hasValidTotal ? total : items.length,
       },
-      isPaginated: supportsPagination && hasValidTotal,
+      isPaginated: supportsPagination && hasValidTotal && (requestPaged || selfPaged),
+      selfPaged,
     };
   }
 
@@ -70,11 +87,12 @@ export const parseTableLikeData = <RecordType extends Record<string, any>>(
     return {
       rows: rawData as RecordType[],
       pagination: {
-        current: queryPagination.current,
-        pageSize: queryPagination.pageSize,
+        current: requestPage ?? 1,
+        pageSize: requestPageSize ?? Math.max(rawData.length, 1),
         total: rawData.length,
       },
       isPaginated: false,
+      selfPaged: false,
     };
   }
 
@@ -82,8 +100,12 @@ export const parseTableLikeData = <RecordType extends Record<string, any>>(
     rows: [],
     pagination: emptyPagination,
     isPaginated: false,
+    selfPaged: false,
   };
 };
+
+export const isSelfPagedTablePayload = (rawData: unknown): boolean =>
+  parseTableLikeData(rawData, {}, true).selfPaged;
 
 export const toDisplayFieldValue = (value: unknown): string => {
   if (value === null || value === undefined) {
@@ -135,8 +157,9 @@ export function resolveTableLikeColumns<
     return [...configuredColumns].sort((a, b) => a.order - b.order);
   }
 
-  if (schemaFields.length > 0) {
-    return schemaFields.map(
+  const tableSchema = schemaFields;
+  if (tableSchema.length > 0) {
+    return tableSchema.map(
       (field, index) =>
         ({
           key: field.key,

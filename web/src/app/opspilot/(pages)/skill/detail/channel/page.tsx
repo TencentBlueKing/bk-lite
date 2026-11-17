@@ -39,12 +39,13 @@ import Icon from '@/components/icon';
 import OpsPilotChannelPageSkeleton from '@/app/opspilot/components/opspilot-channel-page-skeleton';
 import { rememberWebChatEntry } from '@/app/opspilot/(pages)/skill/chat/entry';
 
-interface SkillChannelItem {
+  interface SkillChannelItem {
   id: number;
   public_id?: string;
   name: string;
   channel_type: string;
   enabled: boolean;
+  account_association?: number | null;
   channel_config?: Record<string, any>;
   callback_path?: string;
   usage_team?: number[];
@@ -69,6 +70,58 @@ const IM_CALLBACK_TYPES = new Set([
   'feishu',
   'wechat_official',
 ]);
+
+const ASSOCIATION_PROVIDER: Record<string, string> = {
+  enterprise_wechat: 'wecom',
+  enterprise_wechat_aibot: 'wecom',
+  dingtalk: 'dingtalk',
+  feishu: 'feishu',
+};
+
+interface AccountAssociationOption {
+  id: number;
+  name: string;
+  integration_instance_id: number;
+  integration_instance_name: string;
+}
+
+function AccountAssociationField({
+  value,
+  onChange,
+  options,
+  refreshing,
+  onRefresh,
+  onManage,
+  placeholder,
+  manageLabel,
+}: {
+  value?: number | null;
+  onChange?: (value: number | null) => void;
+  options: AccountAssociationOption[];
+  refreshing: boolean;
+  onRefresh: () => void;
+  onManage: () => void;
+  placeholder: string;
+  manageLabel: string;
+}) {
+  return (
+    <div className="flex items-start gap-2">
+      <Select
+        className="min-w-0 flex-1"
+        allowClear
+        placeholder={placeholder}
+        value={value ?? undefined}
+        options={options.map((item) => ({
+          value: item.id,
+          label: `${item.name}（${item.integration_instance_name}）`,
+        }))}
+        onChange={(next) => onChange?.(next ?? null)}
+      />
+      <Button icon={<ReloadOutlined />} loading={refreshing} onClick={onRefresh} />
+      <Button onClick={onManage}>{manageLabel}</Button>
+    </div>
+  );
+}
 
 const needsPublicLink = (channelType?: string) =>
   !!channelType && (IM_CALLBACK_TYPES.has(channelType) || channelType === 'embedded_chat');
@@ -204,6 +257,7 @@ const SkillChannelPage: React.FC = () => {
   const skillId = searchParams?.get('id');
   const {
     fetchSkillChannels,
+    fetchSkillChannelAccountAssociationOptions,
     createSkillChannel,
     updateSkillChannel,
     setSkillChannelEnabled,
@@ -221,8 +275,15 @@ const SkillChannelPage: React.FC = () => {
   const [typeFilter, setTypeFilter] = useState<string>();
   const [switchLoading, setSwitchLoading] = useState<Record<number, boolean>>({});
   const [form] = Form.useForm();
+  const [associationOptions, setAssociationOptions] = useState<AccountAssociationOption[]>([]);
+  const [refreshingAssociations, setRefreshingAssociations] = useState(false);
+  const associationRequest = useRef(0);
   const watchedType = Form.useWatch('channel_type', form);
   const watchedConnectionMode = Form.useWatch('connectionMode', form);
+  const watchedCorpId = Form.useWatch('corp_id', form);
+  const watchedAgentId = Form.useWatch('agent_id', form);
+  const watchedAppId = Form.useWatch('app_id', form);
+  const watchedClientId = Form.useWatch('client_id', form);
   const activeType = editing?.channel_type || watchedType;
   const selectedConnectionMode = watchedConnectionMode === 'websocket' ? 'websocket' : 'webhook';
   const aibotLongConnection = activeType === 'enterprise_wechat_aibot' && selectedConnectionMode === 'websocket';
@@ -243,6 +304,7 @@ const SkillChannelPage: React.FC = () => {
 
   const apiRef = useRef({
     fetchSkillChannels,
+    fetchSkillChannelAccountAssociationOptions,
     createSkillChannel,
     updateSkillChannel,
     setSkillChannelEnabled,
@@ -251,6 +313,7 @@ const SkillChannelPage: React.FC = () => {
   });
   apiRef.current = {
     fetchSkillChannels,
+    fetchSkillChannelAccountAssociationOptions,
     createSkillChannel,
     updateSkillChannel,
     setSkillChannelEnabled,
@@ -282,6 +345,62 @@ const SkillChannelPage: React.FC = () => {
   useEffect(() => {
     void load(true);
   }, [load]);
+
+  const loadAssociations = useCallback(async () => {
+    const channelType = activeType || '';
+    if (!modalOpen || !ASSOCIATION_PROVIDER[channelType]) {
+      setAssociationOptions([]);
+      return;
+    }
+    const requestId = associationRequest.current + 1;
+    associationRequest.current = requestId;
+    setRefreshingAssociations(true);
+    try {
+      const rows = await apiRef.current.fetchSkillChannelAccountAssociationOptions({
+        channel_type: channelType,
+        corp_id: String(watchedCorpId || '').trim(),
+        agent_id: String(watchedAgentId || '').trim(),
+        app_id: String(watchedAppId || '').trim(),
+        client_id: String(watchedClientId || '').trim(),
+      });
+      if (requestId !== associationRequest.current) return;
+      const next = Array.isArray(rows) ? rows : [];
+      setAssociationOptions(next);
+      const identityReady = activeType === 'enterprise_wechat_aibot'
+        || (activeType === 'enterprise_wechat' && String(watchedCorpId || '').trim() && String(watchedAgentId || '').trim())
+        || (activeType === 'feishu' && String(watchedAppId || '').trim())
+        || (activeType === 'dingtalk' && String(watchedClientId || '').trim());
+      const current = form.getFieldValue('account_association');
+      if (identityReady && current && !next.some((item) => item.id === current)) {
+        form.setFieldValue('account_association', null);
+      }
+    } catch {
+      // 刷新失败时保留已有选项和当前选择
+    } finally {
+      if (requestId === associationRequest.current) {
+        setRefreshingAssociations(false);
+      }
+    }
+  }, [modalOpen, activeType, watchedCorpId, watchedAgentId, watchedAppId, watchedClientId, form]);
+
+  useEffect(() => {
+    void loadAssociations();
+  }, [loadAssociations]);
+
+  const openAssociationManager = () => {
+    const params = new URLSearchParams({ tab: 'account_association' });
+    const selected = form.getFieldValue('account_association');
+    const selectedOption = associationOptions.find((item) => item.id === selected);
+    if (selectedOption?.integration_instance_id) {
+      params.set('instanceId', String(selectedOption.integration_instance_id));
+    } else {
+      const provider = ASSOCIATION_PROVIDER[activeType || ''];
+      if (provider) {
+        params.set('provider', provider);
+      }
+    }
+    window.open(`/system-manager/user/user-sync?${params.toString()}`, '_blank', 'noopener,noreferrer');
+  };
 
   const configFields = useMemo(() => {
     const fields = CONFIG_FIELDS[activeType] || [];
@@ -328,6 +447,7 @@ const SkillChannelPage: React.FC = () => {
       ...Object.fromEntries((CONFIG_FIELDS[item.channel_type] || []).map((k) => [k, flat[k]])),
       token: flat.token,
       encodingAESKey: flat.encodingAESKey,
+      account_association: item.account_association ?? null,
     });
     setModalOpen(true);
   };
@@ -343,6 +463,7 @@ const SkillChannelPage: React.FC = () => {
       return;
     }
     setDraftPublicId(needsPublicLink(value) ? generatePublicId() : '');
+    form.setFieldValue('account_association', null);
     if (value === 'feishu' || value === 'enterprise_wechat_aibot') {
       form.setFieldsValue({ connectionMode: 'webhook' });
     }
@@ -386,10 +507,14 @@ const SkillChannelPage: React.FC = () => {
           channel_config.encrypt_key = (values.encrypt_key || '').trim();
         }
       }
+      const accountAssociation = ASSOCIATION_PROVIDER[values.channel_type]
+        ? (values.account_association ?? null)
+        : null;
       if (editing) {
         await updateSkillChannel(editing.id, {
           name: values.name || editing.name,
           channel_config,
+          account_association: accountAssociation,
         });
         if (typeof values.enabled === 'boolean' && values.enabled !== editing.enabled) {
           await setSkillChannelEnabled(editing.id, values.enabled);
@@ -401,6 +526,7 @@ const SkillChannelPage: React.FC = () => {
             channel_type: values.channel_type,
             name: values.name || values.channel_type,
             channel_config,
+            account_association: accountAssociation,
             enabled: !!values.enabled,
             ...(draftPublicId ? { public_id: draftPublicId } : {}),
           }),
@@ -933,6 +1059,21 @@ const SkillChannelPage: React.FC = () => {
               </Form.Item>
             </React.Fragment>
           ))}
+          {ASSOCIATION_PROVIDER[activeType || ''] ? (
+            <Form.Item
+              name="account_association"
+              label={t('skill.channel.accountAssociation', '账号关联')}
+            >
+              <AccountAssociationField
+                options={associationOptions}
+                refreshing={refreshingAssociations}
+                onRefresh={() => void loadAssociations()}
+                onManage={openAssociationManager}
+                placeholder={t('skill.channel.accountAssociationPlaceholder', '选择账号关联')}
+                manageLabel={t('skill.channel.manageAccountAssociation', '管理账号关联')}
+              />
+            </Form.Item>
+          ) : null}
         </Form>
       </OperateModal>
     </div>

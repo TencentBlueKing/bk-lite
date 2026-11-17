@@ -31,6 +31,7 @@ describe('screen auxiliary catalog', () => {
       'border-16',
       'border-20',
       'border-24',
+      'border-plate',
     ]);
     expect(SCREEN_DIVIDER_PRESETS).toEqual([
       'line-1',

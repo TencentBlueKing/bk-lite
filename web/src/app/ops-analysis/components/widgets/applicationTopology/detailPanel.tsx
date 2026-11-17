@@ -1,32 +1,111 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
+import type { CSSProperties } from 'react';
 import { Button, ConfigProvider, Spin, Tabs } from 'antd';
+import type { ThemeConfig } from 'antd/es/config-provider/context';
 import CompactEmptyState from '@/components/compact-empty-state';
 import OperateDrawer from '@/components/operate-drawer';
+import {
+  APP_VIEW_FULLSCREEN_EVENT,
+  isAppViewFullscreenActive,
+} from '@/components/app-view-fullscreen';
 import {
   buildScreenContentTokenStyle,
   createScreenAntdTheme,
 } from '@/app/ops-analysis/utils/screenWidgetTokens';
-import type { OpsChartThemeMode } from '@/app/ops-analysis/utils/chartTheme';
+import {
+  isScreenChartThemeMode,
+  type OpsChartThemeMode,
+} from '@/app/ops-analysis/utils/chartTheme';
 import { useAppWidget, useLazyAppWidget } from '@/context/appCapabilities';
-import { useOptionalThemeTokens } from '@/theme';
+import { createAntdTheme } from '@/theme/antd-adapter';
+import {
+  useOptionalThemeMode,
+  useOptionalThemeTokens,
+  type SemanticColorTokens,
+  type ThemeMode,
+} from '@/theme';
 import { useTranslation } from '@/utils/i18n';
 import { fullscreenPopupContainer } from '@/utils/fullscreenPopupContainer';
 import type { ApplicationTopologyBandNode } from './bandModel';
 import styles from './detailPanel.module.scss';
 
-/** 未全屏时抽屉门户到 body，用实色，避免半透明表面透出系统页。 */
+/** 大屏单独呈现时抽屉会离开画布，用实色，避免半透明表面透出底下的画面。 */
 const SCREEN_DRAWER_SURFACE = {
   'screen-dark': '#14243a',
   'screen-light': '#ffffff',
 } as const;
 
+const SYSTEM_DRAWER_SURFACE = 'var(--color-modal-header-color)';
+
 const applicationTopologyDrawerSurface = (mode?: OpsChartThemeMode) => (
   mode === 'screen-dark' || mode === 'screen-light'
     ? SCREEN_DRAWER_SURFACE[mode]
-    : 'var(--color-modal-header-color)'
+    : SYSTEM_DRAWER_SURFACE
 );
+
+/**
+ * 页面上只剩大屏、没有系统外壳时，详情才跟随大屏主题。
+ * 分享页用已有 shareMode；全屏预览用 data-app-view-fullscreen；
+ * 浏览器全屏（轮播播放）与 fullscreenPopupContainer 同一条件。
+ */
+export function screenDetailFollowsScreenTheme(input: {
+  shareMode: boolean;
+  appViewFullscreen: boolean;
+  browserFullscreen: boolean;
+}): boolean {
+  return input.shareMode || input.appViewFullscreen || input.browserFullscreen;
+}
+
+export function readScreenDetailPresentation(shareMode: boolean): boolean {
+  if (shareMode) return true;
+  if (typeof document === 'undefined') return false;
+  return screenDetailFollowsScreenTheme({
+    shareMode: false,
+    appViewFullscreen: isAppViewFullscreenActive(),
+    browserFullscreen: document.fullscreenElement instanceof HTMLElement,
+  });
+}
+
+export function resolveApplicationTopologyDetailChrome(input: {
+  chartThemeMode?: OpsChartThemeMode;
+  presentedAlone: boolean;
+  systemMode: ThemeMode;
+  systemTokens: SemanticColorTokens;
+}): {
+  theme?: ThemeConfig;
+  /** 只有大屏单独呈现时才铺实色。内嵌预览留空，交给 OperateDrawer 默认表面。 */
+  surface?: string;
+  contentStyle?: CSSProperties;
+} {
+  const followScreen = isScreenChartThemeMode(input.chartThemeMode) && input.presentedAlone;
+  if (followScreen) {
+    const theme = createScreenAntdTheme(input.chartThemeMode, input.systemTokens);
+    return {
+      theme: theme ? { ...theme, inherit: false } : undefined,
+      surface: applicationTopologyDrawerSurface(input.chartThemeMode),
+      contentStyle: buildScreenContentTokenStyle(input.chartThemeMode),
+    };
+  }
+  // 大屏组件外层 ConfigProvider 会穿过门户。内嵌预览用系统主题盖住它，
+  // 表面色不再改写，标题/正文/底栏走 OperateDrawer 默认样式。
+  if (isScreenChartThemeMode(input.chartThemeMode)) {
+    return {
+      theme: {
+        ...createAntdTheme(input.systemMode, input.systemTokens),
+        inherit: false,
+      },
+      surface: undefined,
+      contentStyle: undefined,
+    };
+  }
+  return {
+    theme: undefined,
+    surface: undefined,
+    contentStyle: undefined,
+  };
+}
 
 export type ApplicationTopologyDetailTabKey = 'cmdb' | 'monitor' | 'alerts';
 
@@ -67,13 +146,29 @@ const ApplicationTopologyDetailPanel = ({
 }: ApplicationTopologyDetailPanelProps) => {
   const { t } = useTranslation();
   const systemTokens = useOptionalThemeTokens();
-  const screenTheme = useMemo(() => {
-    const theme = createScreenAntdTheme(chartThemeMode, systemTokens);
-    if (!theme) return undefined;
-    return { ...theme, inherit: false as const };
-  }, [chartThemeMode, systemTokens]);
-  const contentTokenStyle = buildScreenContentTokenStyle(chartThemeMode);
-  const drawerSurface = applicationTopologyDrawerSurface(chartThemeMode);
+  const systemMode = useOptionalThemeMode();
+  const [presentedAlone, setPresentedAlone] = useState(() => (
+    readScreenDetailPresentation(shareMode)
+  ));
+  useEffect(() => {
+    const sync = () => setPresentedAlone(readScreenDetailPresentation(shareMode));
+    sync();
+    window.addEventListener(APP_VIEW_FULLSCREEN_EVENT, sync);
+    document.addEventListener('fullscreenchange', sync);
+    return () => {
+      window.removeEventListener(APP_VIEW_FULLSCREEN_EVENT, sync);
+      document.removeEventListener('fullscreenchange', sync);
+    };
+  }, [shareMode]);
+  const chrome = useMemo(
+    () => resolveApplicationTopologyDetailChrome({
+      chartThemeMode,
+      presentedAlone,
+      systemMode,
+      systemTokens,
+    }),
+    [chartThemeMode, presentedAlone, systemMode, systemTokens],
+  );
   const [tab, setTab] = useState<ApplicationTopologyDetailTabKey>('cmdb');
   const [headerAction, setHeaderAction] = useState<React.ReactNode>(null);
   const baseInfo = useAppWidget('cmdb.baseInfo');
@@ -115,6 +210,12 @@ const ApplicationTopologyDetailPanel = ({
   const MonitorView = monitorWidget.Widget as React.ComponentType<{ monitorId: string }> | null;
   const AlertList = alertWidget.Widget as React.ComponentType<{ monitorId: string }> | null;
 
+  const screenSurface = chrome.surface
+    ? {
+      '--ops-topology-drawer-surface': chrome.surface,
+      ...chrome.contentStyle,
+    } as React.CSSProperties
+    : undefined;
   const drawer = (
     <OperateDrawer
       open
@@ -124,12 +225,16 @@ const ApplicationTopologyDetailPanel = ({
       subTitle={`${node.modelId} · ${statusLabel}`}
       destroyOnHidden
       onClose={onClose}
-      rootClassName={styles.shell}
-      style={{ '--ops-topology-drawer-surface': drawerSurface } as React.CSSProperties}
+      rootClassName={screenSurface ? styles.shell : undefined}
+      style={screenSurface}
       classNames={{ body: 'flex min-h-0 flex-col overflow-hidden' }}
       styles={{
-        header: { boxShadow: 'none' },
-        body: { overflow: 'hidden', padding: 0, background: 'transparent' },
+        header: screenSurface ? { boxShadow: 'none' } : undefined,
+        body: {
+          overflow: 'hidden',
+          padding: 0,
+          ...(screenSurface ? { background: 'transparent' } : {}),
+        },
       }}
       footer={(
         <div>
@@ -137,7 +242,7 @@ const ApplicationTopologyDetailPanel = ({
         </div>
       )}
     >
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden" style={contentTokenStyle}>
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden" style={chrome.contentStyle}>
       {shareMode ? (
         <div className="flex min-h-[280px] flex-1 items-center justify-center">
           <CompactEmptyState description={t('dashboard.applicationTopologyShareDetail')} />
@@ -211,8 +316,8 @@ const ApplicationTopologyDetailPanel = ({
     </OperateDrawer>
   );
 
-  if (!screenTheme) return drawer;
-  return <ConfigProvider theme={screenTheme}>{drawer}</ConfigProvider>;
+  if (!chrome.theme) return drawer;
+  return <ConfigProvider theme={chrome.theme}>{drawer}</ConfigProvider>;
 };
 
 const WidgetSlot = ({

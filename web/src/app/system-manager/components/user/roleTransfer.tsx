@@ -98,9 +98,9 @@ const RoleTransfer: React.FC<TreeTransferProps> = ({
     if (!leftSearchValue) return treeData;
 
     return treeData
-      .map(node => filterTreeNode(node, leftSearchValue))
+      .map(node => filterTreeNode(node, leftSearchValue, t))
       .filter(Boolean) as TreeDataNode[];
-  }, [treeData, leftSearchValue]);
+  }, [treeData, leftSearchValue, t]);
 
   useEffect(() => {
     const resolved = resolveLeftExpandedKeys({
@@ -111,6 +111,7 @@ const RoleTransfer: React.FC<TreeTransferProps> = ({
       prevExpandedKeys: leftExpandedKeysRef.current,
       keysBeforeSearch: keysBeforeSearchRef.current,
       userHasExpanded: userHasExpandedRef.current,
+      t,
     });
     keysBeforeSearchRef.current = resolved.keysBeforeSearch;
     setLeftExpandedKeys((prevKeys) => (
@@ -119,7 +120,7 @@ const RoleTransfer: React.FC<TreeTransferProps> = ({
     // selectedKeys 不进 deps：勾选 / 「全部子组织」不得按祖先重开已收起的长列表。
     // 编辑态由 loading 卸挂保证首次挂载已带真实选中项；此处读 selectedKeysRef。
     // eslint-disable-next-line react-hooks/exhaustive-deps -- 见上
-  }, [leftSearchValue, treeData, mode]);
+  }, [leftSearchValue, treeData, mode, t]);
 
   const filteredRightData = useMemo(() => {
     const allRightKeys = [...new Map([...selectedKeys, ...inheritedRoleIds].map((key) => [String(key), key])).values()]
@@ -128,20 +129,20 @@ const RoleTransfer: React.FC<TreeTransferProps> = ({
 
     if (rightSearchValue) {
       filtered = filtered
-        .map(node => filterTreeNode(node, rightSearchValue))
+        .map(node => filterTreeNode(node, rightSearchValue, t))
         .filter(Boolean) as TreeDataNode[];
     }
 
     return filtered;
-  }, [treeData, selectedKeys, inheritedRoleIds, rightSearchValue]);
+  }, [treeData, selectedKeys, inheritedRoleIds, rightSearchValue, t]);
 
   useEffect(() => {
     const nextExpandedKeys = rightSearchValue
-      ? getSearchExpandedKeys(filteredRightData, rightSearchValue)
+      ? getSearchExpandedKeys(filteredRightData, rightSearchValue, t)
       : getAllKeys(filteredRightData);
 
     setRightExpandedKeys((prevKeys) => (areKeysEqual(prevKeys, nextExpandedKeys) ? prevKeys : nextExpandedKeys));
-  }, [rightSearchValue, filteredRightData]);
+  }, [rightSearchValue, filteredRightData, t]);
 
   const flattenedRoleData = useMemo(() => flattenRoleData(leftTreeData), [leftTreeData]);
 

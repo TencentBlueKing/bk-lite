@@ -16,6 +16,7 @@ export const shouldHideConsoleTopNav = (pathname: string | null | undefined): bo
     pathname.startsWith('/opspilot/studio/chat')
     || pathname.startsWith('/opspilot/skill/chat')
     || pathname.startsWith('/ops-analysis/share/')
+    || pathname.startsWith('/ops-analysis/display/')
     || pathname.startsWith('/opspilot/memory/document')
   );
 };

@@ -10,7 +10,7 @@ from django.utils import timezone
 
 from apps.apm.adapters.errors import TelemetryStoreUnavailable
 from apps.apm.models import ApmAlert, ApmDeploymentEvent, ApmService, ApmServiceInstance, ApmSlo
-from apps.apm.services.contracts import ServiceMetricQuery, ServiceRed
+from apps.apm.services.contracts import GroupedRed, ServiceMetricQuery, ServiceRed
 from apps.apm.services.reliability import DjangoApmReliabilityService
 from apps.apm.services.status import catalog_status
 from apps.apm.services.trace_retention import TRACE_RETENTION_INVALID, TRACE_RETENTION_TOO_SHORT
@@ -50,6 +50,13 @@ class _ServiceTarget:
     environment: str
     status: str
     last_seen_at: datetime
+
+
+@dataclass
+class _GroupedDashboard:
+    rows: list[tuple]
+    result: GroupedRed | None
+    error: str
 
 
 def _section_ok(data: Any) -> dict[str, Any]:
@@ -167,21 +174,47 @@ class ApmDashboardService:
                 "top_error_rate": _section_empty(),
                 "top_p95": _section_empty(),
                 "releases": _section_empty({"items": []}),
+                "aggregate_notice": None,
             }
 
-        targets = self._metric_targets(visible_services, ended_at)
-        red_by_key, store_error = self._load_service_red(targets, started_at, ended_at)
+        grouped = self._read_grouped(visible_services, started_at, ended_at, window)
+        overview = None
+        use_grouped = grouped is not None and grouped.result is not None and not grouped.error
+        if grouped is not None and grouped.error:
+            targets = self._shell_targets(grouped.rows, ended_at)
+            red_by_key = {}
+            store_error = grouped.error
+            aggregate_notice = None
+        elif use_grouped:
+            targets, red_by_key = self._targets_from_grouped(grouped.rows, grouped.result, ended_at)
+            store_error = ""
+            overview = grouped.result.overview
+            aggregate_notice = {
+                "late_spans": None if overview is None else overview.late_spans,
+                "truncated_service_count": len(grouped.result.truncated_services),
+            }
+        else:
+            targets = self._metric_targets(visible_services, ended_at)
+            red_by_key, store_error = self._load_service_red(targets, started_at, ended_at)
+            aggregate_notice = None
 
         return {
             "empty": False,
             "window": window,
-            "kpis": self._safe_section(lambda: self._build_kpis(ids, started_at, ended_at, window, targets, red_by_key)),
+            "kpis": self._safe_section(
+                lambda: (
+                    self._build_grouped_kpis(ids, started_at, ended_at, window, overview)
+                    if use_grouped
+                    else self._build_kpis(ids, started_at, ended_at, window, targets, red_by_key)
+                )
+            ),
             "health": self._safe_section(lambda: self._build_health(targets, red_by_key, store_error)),
             "slos": self._safe_section(lambda: self._build_slos(ids)),
             "alerts": self._safe_section(lambda: self._build_alerts(ids)),
             "top_error_rate": self._safe_section(lambda: self._build_top_error_rate(targets, red_by_key, store_error)),
             "top_p95": self._safe_section(lambda: self._build_top_p95(targets, red_by_key, store_error)),
             "releases": self._safe_section(lambda: self._build_releases(ids)),
+            "aggregate_notice": aggregate_notice,
         }
 
     @staticmethod
@@ -262,6 +295,97 @@ class ApmDashboardService:
                 break
         targets.sort(key=lambda item: (0 if item.status == "active" else 1, -item.last_seen_at.timestamp(), item.name))
         return targets
+
+    def _read_grouped(
+        self,
+        visible_services: QuerySet[ApmService],
+        started_at: datetime,
+        ended_at: datetime,
+        window: str,
+    ) -> _GroupedDashboard | None:
+        """覆盖时才取出全部可见服务。空列表探测只判断覆盖，不产生指标查询。"""
+        reader = getattr(self.red_store, "grouped_red", None)
+        if not callable(reader):
+            return None
+        points = SPARKLINE_POINTS[window]
+        try:
+            covered = reader((), started_at, ended_at, include_overview=True, overview_points=points)
+        except TelemetryStoreUnavailable as exc:
+            return _GroupedDashboard(self._grouped_service_rows(visible_services), None, str(exc) or exc.__class__.__name__)
+        if covered is None:
+            return None
+        rows = self._grouped_service_rows(visible_services)
+        try:
+            grouped = reader(
+                [(namespace, name) for _service_id, namespace, name, _last_seen_at, _archived_at in rows],
+                started_at,
+                ended_at,
+                include_overview=True,
+                overview_points=points,
+            )
+        except TelemetryStoreUnavailable as exc:
+            return _GroupedDashboard(rows, None, str(exc) or exc.__class__.__name__)
+        if grouped is None:
+            return None
+        return _GroupedDashboard(rows, grouped, "")
+
+    @staticmethod
+    def _grouped_service_rows(visible_services: QuerySet[ApmService]) -> list[tuple]:
+        return list(visible_services.values_list("id", "namespace", "name", "last_seen_at", "archived_at"))
+
+    def _shell_targets(self, rows: list[tuple], observed_at: datetime) -> list[_ServiceTarget]:
+        return [
+            _ServiceTarget(
+                service_id=str(service_id),
+                namespace=namespace,
+                name=name,
+                environment="",
+                status=catalog_status(last_seen_at=last_seen_at, archived_at=archived_at, observed_at=observed_at),
+                last_seen_at=last_seen_at,
+            )
+            for service_id, namespace, name, last_seen_at, archived_at in rows
+        ]
+
+    def _targets_from_grouped(
+        self,
+        rows: list[tuple],
+        grouped: GroupedRed,
+        observed_at: datetime,
+    ) -> tuple[list[_ServiceTarget], dict[str, ServiceRed | None]]:
+        by_service: dict[tuple[str, str], list[tuple[str, ServiceRed]]] = {}
+        for (namespace, name, environment), red in grouped.by_target.items():
+            by_service.setdefault((namespace, name), []).append((environment, red))
+        targets: list[_ServiceTarget] = []
+        red_by_key: dict[str, ServiceRed | None] = {}
+        for service_id, namespace, name, last_seen_at, archived_at in rows:
+            status = catalog_status(last_seen_at=last_seen_at, archived_at=archived_at, observed_at=observed_at)
+            matches = by_service.get((namespace, name))
+            if not matches:
+                targets.append(
+                    _ServiceTarget(
+                        service_id=str(service_id),
+                        namespace=namespace,
+                        name=name,
+                        environment="",
+                        status=status,
+                        last_seen_at=last_seen_at,
+                    )
+                )
+                continue
+            for environment, red in matches:
+                display_environment = "" if environment == "unknown" else environment
+                targets.append(
+                    _ServiceTarget(
+                        service_id=str(service_id),
+                        namespace=namespace,
+                        name=name,
+                        environment=display_environment,
+                        status=status,
+                        last_seen_at=last_seen_at,
+                    )
+                )
+                red_by_key[f"{service_id}:{display_environment}"] = red
+        return targets, red_by_key
 
     def _load_service_red(
         self,
@@ -374,6 +498,37 @@ class ApmDashboardService:
                 "request_rate": self._sum_series(request_series, points) if has_request else _flat_sparkline(None, points),
                 "error_request_rate": self._sum_series(error_series, points) if has_error else _flat_sparkline(None, points),
                 "p95_ms": self._avg_series(p95_series, points) if has_p95 else _flat_sparkline(None, points),
+            },
+        }
+
+    def _build_grouped_kpis(
+        self,
+        organization_ids: Sequence[int],
+        started_at: datetime,
+        ended_at: datetime,
+        window: str,
+        overview,
+    ) -> dict[str, Any]:
+        points = SPARKLINE_POINTS[window]
+        in_window = self._visible_services(organization_ids).filter(last_seen_at__gte=started_at).order_by()
+        app_count = in_window.values("namespace").distinct().count()
+        service_count = in_window.values("name").distinct().count()
+        alert_count = self._active_alert_queryset(organization_ids).count()
+
+        return {
+            "application_count": app_count,
+            "service_count": service_count,
+            "active_alert_count": alert_count,
+            "request_rate": None if overview is None else overview.request_rate,
+            "error_request_rate": None if overview is None else overview.error_request_rate,
+            "p95_ms": None if overview is None else overview.p95_ms,
+            "sparklines": {
+                "application_count": _flat_sparkline(app_count, points),
+                "service_count": _flat_sparkline(service_count, points),
+                "active_alert_count": self._alert_sparkline(organization_ids, ended_at),
+                "request_rate": _flat_sparkline(None, points) if overview is None else _resample(list(overview.request_trend), points),
+                "error_request_rate": _flat_sparkline(None, points) if overview is None else _resample(list(overview.error_trend), points),
+                "p95_ms": _flat_sparkline(None, points) if overview is None else _resample(list(overview.p95_trend), points),
             },
         }
 

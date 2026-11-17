@@ -9,6 +9,7 @@ from apps.system_mgmt.viewset import (
     ErrorLogViewSet,
     GroupDataRuleViewSet,
     GroupViewSet,
+    IMAccountAssociationViewSet,
     IMNotificationChannelViewSet,
     IntegrationInstanceViewSet,
     LoginAuthBindingViewSet,
@@ -30,6 +31,7 @@ router.register(r"group", GroupViewSet, basename="group_mgmt")
 router.register(r"user", UserViewSet, basename="user_mgmt")
 router.register(r"role", RoleViewSet, basename="role_mgmt")
 router.register(r"integration_instance", IntegrationInstanceViewSet)
+router.register(r"im_account_association", IMAccountAssociationViewSet)
 router.register(r"im_notification_channel", IMNotificationChannelViewSet)
 router.register(r"login_auth_binding", LoginAuthBindingViewSet)
 router.register(r"credential_type", CredentialTypeViewSet)

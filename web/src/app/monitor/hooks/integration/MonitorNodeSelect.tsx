@@ -115,10 +115,14 @@ export default function MonitorNodeSelect({
   };
 
   useEffect(() => {
+    keywordRef.current = '';
     const cached = cacheRef.current.read('');
     if (cached) {
       showEntry('', cached);
     } else {
+      pageRef.current = 0;
+      totalRef.current = 0;
+      setOptions([]);
       void loadPage(1, '', false);
     }
     return () => {

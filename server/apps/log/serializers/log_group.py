@@ -45,18 +45,36 @@ class LogGroupSerializer(serializers.ModelSerializer):
         fields = ["id", "name", "description", "rule", "created_by", "created_at", "organizations"]
         read_only_fields = ["created_by", "created_at"]
 
+    def _visible_organization_ids(self):
+        request = self.context.get("request") if hasattr(self, "context") else None
+        if request is None:
+            return None
+        try:
+            return LogAccessScopeService.get_visible_organization_ids(request)
+        except ValueError:
+            return frozenset()
+
+    def organization_ids_by_group(self, instances):
+        """一次读出本页分组的可见组织，避免列表序列化逐条查询。"""
+        group_ids = [instance.pk for instance in instances]
+        if not group_ids:
+            return {}
+        queryset = LogGroupOrganization.objects.filter(log_group_id__in=group_ids)
+        visible_organizations = self._visible_organization_ids()
+        if visible_organizations is not None:
+            queryset = queryset.filter(organization__in=list(visible_organizations))
+        mapping = {}
+        for group_id, organization in queryset.values_list("log_group_id", "organization"):
+            mapping.setdefault(group_id, []).append(organization)
+        return mapping
+
     def to_representation(self, instance):
         """自定义输出格式，在输出时获取组织信息"""
         data = super().to_representation(instance)
-        organization_queryset = LogGroupOrganization.objects.filter(log_group=instance)
-        request = self.context.get("request") if hasattr(self, "context") else None
-        if request is not None:
-            try:
-                visible_organizations = LogAccessScopeService.get_visible_organization_ids(request)
-            except ValueError:
-                visible_organizations = frozenset()
-            organization_queryset = organization_queryset.filter(organization__in=list(visible_organizations))
-        data["organizations"] = list(organization_queryset.values_list("organization", flat=True))
+        mapping = self.context.get("log_group_organizations")
+        if mapping is None:
+            mapping = self.organization_ids_by_group([instance])
+        data["organizations"] = list(mapping.get(instance.pk, []))
         return data
 
     def create(self, validated_data):

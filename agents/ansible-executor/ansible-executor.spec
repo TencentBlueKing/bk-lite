@@ -1,6 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
 
 import importlib.util
+import sys
 from pathlib import Path
 
 from PyInstaller.utils.hooks import collect_all, copy_metadata
@@ -8,6 +9,9 @@ from PyInstaller.utils.hooks import collect_all, copy_metadata
 
 SPEC_PATH = Path(globals().get("SPEC", "ansible-executor.spec")).resolve()
 SPEC_DIR = SPEC_PATH.parent
+# pyinstaller 命令不会把 spec 目录放进 sys.path。build_support 要按模块名导入 version_info。
+if str(SPEC_DIR) not in sys.path:
+    sys.path.insert(0, str(SPEC_DIR))
 DIST_PATH = Path(globals().get("DISTPATH", SPEC_DIR / "dist")).resolve()
 
 BUILD_SUPPORT_SPEC = importlib.util.spec_from_file_location(

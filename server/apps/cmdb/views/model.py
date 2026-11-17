@@ -920,7 +920,9 @@ class ModelViewSet(CmdbPermissionMixin, viewsets.ViewSet):
         if not BusinessModelVisibility.is_visible(model_info):
             return False, missing_message, "not_found"
 
-        permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(request=request, model_id=model_id, permission_type=PERMISSION_MODEL)
+        permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(
+            request=request, model_id=model_id, permission_type=PERMISSION_MODEL
+        )
         organizations = self.organizations(request, model_info)
         if not organizations:
             return False, denied_message, "permission_denied"

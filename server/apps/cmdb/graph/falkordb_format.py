@@ -8,6 +8,13 @@ from typing import Any, Dict, List
 from apps.cmdb.graph.format_type import coerce_cloud_id_properties
 
 
+def _column_name(header):
+    """FalkorDB 列头是 (类型, 名称)，当前客户端把它收成列表。两种都取名称。"""
+    if isinstance(header, (tuple, list)) and len(header) > 1:
+        return header[1]
+    return header
+
+
 class FormatDBResult:
     """
     处理 FalkorDB 查询结果格式的工具类
@@ -25,7 +32,7 @@ class FormatDBResult:
         self.records = []
 
         if hasattr(result_set, "header") and result_set.header:
-            self.headers = [header[1] if isinstance(header, tuple) and len(header) > 1 else header for header in result_set.header]
+            self.headers = [_column_name(header) for header in result_set.header]
 
         if hasattr(result_set, "result_set"):
             self.records = result_set.result_set

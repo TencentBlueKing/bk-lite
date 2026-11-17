@@ -29,6 +29,7 @@ import {
   generateSchemaExample,
   injectDescriptionKey,
   OPENAPI_SECRET_KEY_HREF,
+  resolveOpenApiServiceLabel,
   schemaHasDefault,
   splitLinkPlaceholder,
   type OpenAPIDocRow,
@@ -74,10 +75,13 @@ const OpenApiDocsDetail: React.FC<OpenApiDocsDetailProps> = ({
         title: t('system.settings.openapiDocs.fieldName'),
         dataIndex: 'name',
         key: 'name',
-        width: 130,
+        width: 176,
         render: (name: string, record) => (
           <div className="flex min-w-0 items-center gap-1.5">
-            <span className="break-all font-mono text-xs font-semibold text-[var(--color-text-1)]">{name}</span>
+            <EllipsisWithTooltip
+              text={name}
+              className="min-w-0 flex-1 truncate whitespace-nowrap font-mono text-xs font-semibold text-[var(--color-text-1)]"
+            />
             {record.required && (
               <span className="text-[10px] font-bold leading-none text-[var(--color-fail)]">*</span>
             )}
@@ -87,18 +91,24 @@ const OpenApiDocsDetail: React.FC<OpenApiDocsDetailProps> = ({
       {
         title: t('system.settings.openapiDocs.fieldType'),
         key: 'type',
-        width: 90,
-        render: (_, record) => (
-          <Tag className="m-0 border-0 bg-[var(--color-fill-2)] font-mono text-[11px] text-[var(--color-text-2)]">
-            {formatSchemaType(record.schema)}
-          </Tag>
-        ),
+        width: 120,
+        render: (_, record) => {
+          const typeLabel = formatSchemaType(record.schema);
+          return (
+            <Tag
+              title={typeLabel}
+              className="m-0 max-w-full truncate border-0 bg-[var(--color-fill-2)] font-mono text-[11px] text-[var(--color-text-2)]"
+            >
+              {typeLabel}
+            </Tag>
+          );
+        },
       },
       {
         title: t('system.settings.openapiDocs.required'),
         dataIndex: 'required',
         key: 'required',
-        width: 65,
+        width: 52,
         render: (required: boolean) =>
           required ? (
             <span className="text-xs font-medium text-[var(--color-fail)]">
@@ -114,9 +124,9 @@ const OpenApiDocsDetail: React.FC<OpenApiDocsDetailProps> = ({
       columns.push({
         title: t('system.settings.openapiDocs.range'),
         key: 'range',
-        width: 110,
+        width: 64,
         render: (_, record) => (
-          <span className="font-mono text-xs text-[var(--color-text-3)]">
+          <span className="whitespace-nowrap font-mono text-xs text-[var(--color-text-3)]">
             {formatFieldRange(record.schema) || '--'}
           </span>
         ),
@@ -127,7 +137,7 @@ const OpenApiDocsDetail: React.FC<OpenApiDocsDetailProps> = ({
       {
         title: t('system.settings.openapiDocs.default'),
         key: 'default',
-        width: 80,
+        width: 88,
         ellipsis: true,
         render: (_, record) => (
           <EllipsisWithTooltip
@@ -139,6 +149,7 @@ const OpenApiDocsDetail: React.FC<OpenApiDocsDetailProps> = ({
       {
         title: t('system.settings.openapiDocs.choices'),
         key: 'choices',
+        width: 52,
         ellipsis: true,
         render: (_, record) => (
           <EllipsisWithTooltip
@@ -206,8 +217,8 @@ const OpenApiDocsDetail: React.FC<OpenApiDocsDetailProps> = ({
         <div className="flex h-full flex-col overflow-hidden">
           <div className="shrink-0 border-b border-[var(--color-border-1)] bg-[var(--color-fill-1)] px-4 py-3">
             <div className="flex flex-wrap items-center gap-2">
-              <Tag className="m-0 font-mono text-xs">
-                {selectedRow.service}
+              <Tag className="m-0 text-xs">
+                {resolveOpenApiServiceLabel(selectedRow.service, t)}
               </Tag>
               <SourceOriginBadge
                 kind={selectedRow.kind === 'internal' ? 'builtin' : 'external'}

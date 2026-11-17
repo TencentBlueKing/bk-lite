@@ -201,6 +201,18 @@ def test_query_entity_returns_formatted_nodes():
     assert "MATCH (n:instance)" in c._graph.last_query
 
 
+def test_format_db_result_reads_list_and_tuple_column_headers():
+    from apps.cmdb.graph.falkordb_format import FormatDBResult
+    from apps.cmdb.services.generic_query_graph import _rows_from_falkor
+
+    listed = FakeResultSet([[1, "value"], [1, "scanned"]], [[32, 4]])
+    assert FormatDBResult(listed).headers == ["value", "scanned"]
+    assert _rows_from_falkor(listed) == [{"value": 32, "scanned": 4}]
+    tuples = FakeResultSet([(1, "value"), (1, "scanned")], [[None, 0]])
+    assert FormatDBResult(tuples).headers == ["value", "scanned"]
+    assert _rows_from_falkor(tuples) == [{"value": None, "scanned": 0}]
+
+
 def test_format_db_result_coerces_legacy_string_cloud():
     from apps.cmdb.graph.falkordb_format import FormatDBResult
 

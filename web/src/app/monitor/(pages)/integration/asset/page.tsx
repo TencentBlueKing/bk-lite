@@ -156,6 +156,10 @@ const Asset = () => {
   const [frequence, setFrequence] = useState<number>(0);
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
   const [ipFilterOptions, setIpFilterOptions] = useState<string[]>([]);
+  // 归属对象（如进程所属主机）的 ID → 名称对照，供「主机名称」列显示名称而非监控 ID。
+  const [baseInstanceOptions, setBaseInstanceOptions] = useState<
+    TableDataItem[]
+  >([]);
   const [selectedAssetIps, setSelectedAssetIps] = useState<string[]>([]);
   const selectedAssetIpsRef = useRef<string[]>([]);
   const [needUpdateOnly, setNeedUpdateOnly] = useState(
@@ -702,6 +706,7 @@ const Asset = () => {
         objects,
         row: row as ObjectItem,
         t,
+        queryData: baseInstanceOptions,
         ipFilterOptions: mergedIpOptions
       }),
       ...columnItems
@@ -715,6 +720,10 @@ const Asset = () => {
         else if (column.key === 'organization') width = 140;
         else if (column.key === 'instance_name') width = 180;
         withWidth = { ...column, width };
+      }
+      // 资产页未接归属对象的后端过滤，这里只借对照表显示名称，不展示列头筛选。
+      if (withWidth.key === 'base_instance_name') {
+        return { ...withWidth, filters: undefined };
       }
       if (String(withWidth.key) !== ASSET_IP_COLUMN_KEY) return withWidth;
       return {
@@ -732,6 +741,7 @@ const Asset = () => {
     t,
     convertToLocalizedTime,
     ipFilterOptions,
+    baseInstanceOptions,
     selectedAssetIps,
     tableData,
     organizationList,
@@ -804,6 +814,7 @@ const Asset = () => {
   useEffect(() => {
     if (!objectId || !needsAssetIpFilter) {
       setIpFilterOptions([]);
+      setBaseInstanceOptions([]);
       return;
     }
     const objName = findByMonitorId(objects, objectId)?.name;
@@ -819,9 +830,14 @@ const Asset = () => {
             left.localeCompare(right, undefined, { numeric: true })
           )
         );
+        setBaseInstanceOptions(
+          Array.isArray(data?.cluster) ? data.cluster : []
+        );
       })
       .catch(() => {
-        if (!cancelled) setIpFilterOptions([]);
+        if (cancelled) return;
+        setIpFilterOptions([]);
+        setBaseInstanceOptions([]);
       });
     return () => {
       cancelled = true;
@@ -876,6 +892,7 @@ const Asset = () => {
     setSelectedAssetIps([]);
     selectedAssetIpsRef.current = [];
     setIpFilterOptions([]);
+    setBaseInstanceOptions([]);
     setStalePluginId('');
     setObjectId(id);
     syncObjectId(id);

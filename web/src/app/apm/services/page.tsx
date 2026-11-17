@@ -65,6 +65,7 @@ import type {
   ApmEvent,
   ApmService,
   ApmServiceRed,
+  ApmServiceRedBatchItem,
   ApmSlo,
   CatalogStatus,
 } from '@/app/apm/types';
@@ -79,7 +80,7 @@ interface ApplicationSummary {
   id: string;
   label: string;
   status: ActiveAlertStatus;
-  services: { name: string; silent: boolean; language?: string }[];
+  services: { name: string; silent: boolean; language?: string; entryTruncated?: boolean }[];
   environmentCount: number;
   requestRate: number | null;
   errorRate: number | null;
@@ -132,7 +133,7 @@ export default function ApmServicesPage() {
     const value = searchParams.get('window');
     return isTimeWindow(value) ? value : '1h';
   });
-  const [redMetrics, setRedMetrics] = useState<Record<string, ApmServiceRed>>({});
+  const [redMetrics, setRedMetrics] = useState<Record<string, ApmServiceRedBatchItem>>({});
   const [metricFailureKeys, setMetricFailureKeys] = useState<string[]>([]);
   const [metricsLoading, setMetricsLoading] = useState(false);
   const [metricRefreshKey, setMetricRefreshKey] = useState(0);
@@ -314,7 +315,7 @@ export default function ApmServicesPage() {
     })))
       .then((results) => {
         if (!active) return;
-        const metrics: Record<string, ApmServiceRed> = {};
+        const metrics: Record<string, ApmServiceRedBatchItem> = {};
         const failureKeys: string[] = [];
         results.forEach((result, index) => {
           if (result.status === 'rejected') {
@@ -391,7 +392,7 @@ export default function ApmServicesPage() {
 
   const applicationSummaries = useMemo<ApplicationSummary[]>(() => {
     const summaries = new Map<string, {
-      serviceInfos: Map<string, { silent: boolean; language: string }>;
+      serviceInfos: Map<string, { silent: boolean; language: string; entryTruncated: boolean }>;
       environments: Set<string>;
       statuses: CatalogStatus[];
       metrics: ApmServiceRed[];
@@ -421,7 +422,7 @@ export default function ApmServicesPage() {
     });
     filteredRows.forEach((row) => {
       const current = summaries.get(row.namespace) ?? {
-        serviceInfos: new Map<string, { silent: boolean; language: string }>(),
+        serviceInfos: new Map<string, { silent: boolean; language: string; entryTruncated: boolean }>(),
         environments: new Set<string>(),
         statuses: [],
         metrics: [],
@@ -431,16 +432,17 @@ export default function ApmServicesPage() {
         lastSeenAt: null,
       };
       const previous = current.serviceInfos.get(row.serviceName);
+      const metric = redMetrics[metricKey(row.serviceId, row.environment)];
       current.serviceInfos.set(row.serviceName, {
         silent: row.status === 'silent' || Boolean(previous?.silent),
         language: row.language || previous?.language || '',
+        entryTruncated: Boolean(previous?.entryTruncated) || metric?.entry_truncated === true,
       });
       current.environments.add(row.environment || t('apm.common.unset', '未设置'));
       current.statuses.push(row.status);
       current.lastSeenAt = current.lastSeenAt && dayjs(current.lastSeenAt).isAfter(row.last_seen_at)
         ? current.lastSeenAt
         : row.last_seen_at;
-      const metric = redMetrics[metricKey(row.serviceId, row.environment)];
       if (metric) current.metrics.push(metric);
       if (metricFailureKeys.includes(metricKey(row.serviceId, row.environment))) current.metricUnavailable = true;
       const activeAlert = lookupActiveAlert(alertCounts, row.serviceId, row.serviceName, row.environment);
@@ -466,7 +468,12 @@ export default function ApmServicesPage() {
         label: application?.name ?? key,
         status: alertStatusFromLevel(summary.alertLevel),
         services: Array.from(summary.serviceInfos.entries())
-          .map(([name, info]) => ({ name, silent: info.silent, language: info.language }))
+          .map(([name, info]) => ({
+            name,
+            silent: info.silent,
+            language: info.language,
+            entryTruncated: info.entryTruncated,
+          }))
           .sort((left, right) => left.name.localeCompare(right.name)),
         environmentCount: summary.environments.size,
         requestRate,

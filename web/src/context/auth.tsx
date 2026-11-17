@@ -27,7 +27,7 @@ import {
   shouldTriggerSessionExpiry,
 } from '@/utils/sessionExpiry';
 import { forceLogoutAndRedirect } from '@/utils/forceLogout';
-import { isDashboardExecutionRenderRoute } from '@/app/routeScope';
+import { isDashboardExecutionRenderRoute, isScreenDisplayPath } from '@/app/routeScope';
 import {
   publishAuthRecovery,
   subscribeAuthRecovery,
@@ -103,6 +103,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const authPaths = ['/auth/signin', '/auth/signout', '/auth/callback', '/auth/signin/login-auth-result'];
   const isCurrentAuthPath = isAuthPath(pathname);
   const isDashboardRenderRoute = isDashboardExecutionRenderRoute(pathname);
+  const isScreenDisplayRoute = isScreenDisplayPath(pathname);
+  const skipsInteractiveLogin = isDashboardRenderRoute || isScreenDisplayRoute;
   const isSessionValid = hasValidSession(extendedSession);
   const authenticatedSessionIdentityRef = useRef<string | null>(null);
   const pageUserIdentityRef = useRef<string | null>(null);
@@ -319,8 +321,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     const performInitialAuthCheck = async () => {
       // Only check once and skip for auth pages
-      if (hasCheckedExistingAuth || isCurrentAuthPath || isDashboardRenderRoute) {
-        if (isDashboardRenderRoute) {
+      if (hasCheckedExistingAuth || isCurrentAuthPath || skipsInteractiveLogin) {
+        if (skipsInteractiveLogin) {
           setHasCheckedExistingAuth(true);
         }
         setIsCheckingAuth(false);
@@ -343,7 +345,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
 
     performInitialAuthCheck();
-  }, [hasCheckedExistingAuth, isCurrentAuthPath, isDashboardRenderRoute, pathname]);
+  }, [hasCheckedExistingAuth, isCurrentAuthPath, skipsInteractiveLogin, pathname]);
 
   const recoverAuthenticatedSession = useCallback((
     event?: AuthRecoveryEvent,
@@ -440,7 +442,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
 
     const handleSessionExpired = () => {
-      if (isCurrentAuthPath || isDashboardRenderRoute) {
+      if (isCurrentAuthPath || skipsInteractiveLogin) {
         releaseSessionExpiryConfirmation();
         return;
       }
@@ -462,6 +464,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (
           isAuthPath(window.location.pathname)
           || isDashboardExecutionRenderRoute(window.location.pathname)
+          || isScreenDisplayPath(window.location.pathname)
         ) {
           releaseSessionExpiryConfirmation();
           return;
@@ -475,7 +478,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => {
       window.removeEventListener(SESSION_EXPIRED_EVENT, handleSessionExpired as EventListener);
     };
-  }, [isCurrentAuthPath, isDashboardRenderRoute, recoverAuthenticatedSession]);
+  }, [isCurrentAuthPath, skipsInteractiveLogin, recoverAuthenticatedSession]);
 
   useEffect(() => subscribeAuthRecovery((event) => {
     void recoverAuthenticatedSession(event);
@@ -565,8 +568,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setIsAuthenticated(false);
       setIsCheckingAuth(false);
 
-      // Render Session 路由由 Chromium 先换票再建会话，禁止踢去普通登录页
-      if (isDashboardRenderRoute) {
+      // 报表渲染和电视投屏都不进入平台登录页。
+      if (skipsInteractiveLogin) {
         return;
       }
 
@@ -632,15 +635,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       localStorage.setItem('locale', userLocale);
       localStorage.setItem('timezone', userTimezone);
     }
-  }, [status, session, pathname, setLocale, router, isAutoSigningIn, hasCheckedExistingAuth, isCheckingExistingAuth, isCurrentAuthPath, isDashboardRenderRoute, sessionExpiredOpen, token, recoverAuthenticatedSession]);
+  }, [status, session, pathname, setLocale, router, isAutoSigningIn, hasCheckedExistingAuth, isCheckingExistingAuth, isCurrentAuthPath, isDashboardRenderRoute, skipsInteractiveLogin, sessionExpiredOpen, token, recoverAuthenticatedSession]);
 
   // Show loading state until authentication state is determined
   const shouldHoldProtectedContent = (
     !isCurrentAuthPath
-    && !isDashboardRenderRoute
+    && !skipsInteractiveLogin
     && !isProtectedContentReady
   );
-  if ((
+  if (!skipsInteractiveLogin && (
     (status === 'loading' && !isAuthenticated)
     || isCheckingAuth
     || isAutoSigningIn
@@ -664,7 +667,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   return (
     <AuthContext.Provider value={{ token, isAuthenticated, isCheckingAuth }}>
       {!shouldHoldProtectedContent && children}
-      {sessionExpiredOpen && !isCurrentAuthPath && !isDashboardRenderRoute && (
+      {sessionExpiredOpen && !isCurrentAuthPath && !skipsInteractiveLogin && (
         <div
           className="fixed inset-0 z-1200 flex items-center justify-center bg-[rgba(15,23,42,0.52)] px-4 py-8"
           style={{ backdropFilter: 'blur(4px)' }}

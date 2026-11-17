@@ -332,6 +332,10 @@ def _install_unique_rule_lock_harness(monkeypatch, harness):
         f"{MODULE}._query_model_instances",
         lambda model_id: list(harness.instances.get(model_id, [])),
     )
+    monkeypatch.setattr(
+        f"{MODULE}._iter_model_instances",
+        lambda model_id, fields=None: iter(harness.instances.get(model_id, [])),
+    )
     monkeypatch.setattr(UniqueWriteLockService, "hold", harness.hold)
 
 

@@ -36,6 +36,21 @@ export interface NormalizeInputConfigResult {
 const normalizeStoredQueryParams = (
   config: InputControlConfig,
 ): NormalizeInputConfigResult => {
+  if (config.control === 'conditionFilter') {
+    if (config.fields.kind !== 'dynamic' || !config.fields.queryParams) return { config };
+    const normalized = normalizeQueryParamsForStorage(config.fields.queryParams);
+    if (isRejectedQueryParams(normalized)) {
+      const fields = { ...config.fields };
+      delete fields.queryParams;
+      return { config: { ...config, fields }, queryParamIssue: normalized.issue };
+    }
+    const queryParams = normalized.queryParams;
+    if (JSON.stringify(queryParams ?? null) === JSON.stringify(config.fields.queryParams)) return { config };
+    const fields = { ...config.fields };
+    if (queryParams) fields.queryParams = queryParams;
+    else delete fields.queryParams;
+    return { config: { ...config, fields } };
+  }
   if (config.control !== 'select' && config.control !== 'radio') return { config };
   if (config.optionsSource.type !== 'dynamic' || !config.optionsSource.queryParams) return { config };
   const normalized = normalizeQueryParamsForStorage(config.optionsSource.queryParams);
@@ -114,6 +129,14 @@ export const extractDataSourceItems = (
   return [];
 };
 
+const optionLabel = (item: Record<string, unknown>, labelField: string): string => {
+  const label = String(item[labelField] ?? '');
+  if (labelField !== 'option_label' || label !== '') return label;
+  const name = String(item.display_name ?? '');
+  const plugin = String(item.monitor_plugin_name ?? '').trim();
+  return plugin ? `${name}（${plugin}）` : name;
+};
+
 export const mapDynamicItems = (
   items: Record<string, unknown>[],
   valueField: string,
@@ -129,7 +152,7 @@ export const mapDynamicItems = (
       if (typeof value !== 'string' && typeof value !== 'number') return null;
       return {
         value,
-        label: String(item[labelField] ?? ''),
+        label: optionLabel(item, labelField),
       };
     })
     .filter((item): item is InputOption => item !== null);

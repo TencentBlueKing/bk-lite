@@ -21,7 +21,7 @@ def patch_side_effects(monkeypatch):
     monkeypatch.setattr(f"{MODULE}.batch_create_change_record", lambda *a, **k: None)
     monkeypatch.setattr(
         "apps.cmdb.services.auto_relation_reconcile.schedule_instance_auto_relation_reconcile",
-        lambda ids: None,
+        lambda *args, **kwargs: None,
     )
 
 
@@ -263,7 +263,7 @@ def test_partial_import_still_records_successful_changes(monkeypatch, fake_graph
     result = InstanceManage().inst_import_support_edit("host", io.BytesIO(), "admin")
     assert not result["success"]
     assert audit.call_args_list[0].args[2][0]["inst_id"] == 9
-    reconcile.assert_called_once_with([9])
+    reconcile.assert_called_once_with([9], model_id="host")
 
 
 def test_async_relation_creation_never_falls_back_to_model_wide_edge_query(monkeypatch, fake_graph):

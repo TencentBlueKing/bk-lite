@@ -76,7 +76,7 @@ def test_mongodb_capabilities_bind_canonical_plugin_object_name():
     mongodb_caps = [item for item in capabilities.values() if "MongoDB" in item.object_names]
     drifted = [item.id for item in capabilities.values() if "Mongodb" in item.object_names]
 
-    assert len(mongodb_caps) == 27
+    assert len(mongodb_caps) == 38
     assert drifted == []
 
     query = build_dashboard_query(

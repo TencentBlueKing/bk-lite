@@ -1745,6 +1745,8 @@
       "status": "On/Off",
       "types": {
         "platform": "Platform",
+        "workbench": "Workbench",
+        "workflow": "Workflow",
         "web_chat": "Web Chat",
         "embedded_chat": "Embedded Chat",
         "enterprise_wechat": "Enterprise WeChat",
@@ -1791,6 +1793,9 @@
       "groupSaasDesc": "Platform / Web chat / Embedded",
       "groupIm": "Messaging",
       "groupImDesc": "WeCom / DingTalk / Feishu / Official Account (org check skipped)",
+      "accountAssociation": "Account association",
+      "accountAssociationPlaceholder": "Select an account association",
+      "manageAccountAssociation": "Manage account associations",
       "fields": {
         "token": "Token",
         "secret": "Secret",
@@ -2646,5 +2651,8 @@
   },
   "vendorGrid": {
     "modelCount": "{count} models"
+  },
+  "modelOption": {
+    "unavailable": "Disabled"
   }
 }

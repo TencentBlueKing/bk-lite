@@ -9,13 +9,13 @@ import { useSavedFiltersApi, type AdvancedFilterValue, type SavedFiltersConfigVa
 import { useAssetDataStore } from '@/app/cmdb/store';
 import type { AssoTypeItem, AttrFieldType, ModelItem, UserItem } from '@/app/cmdb/types/assetManage';
 import { useTranslation } from '@/utils/i18n';
+import { getTagOptions } from '@/app/cmdb/utils/fieldUtils';
 import { isSearchableFilterAttr } from '../searchFilterAttrs';
 import {
   buildPathChoices,
   conditionValueText,
   operatorNeedsValue,
   operatorsFor,
-  otherModelId,
   summarizeCondition,
   type AdvancedCondition,
   type AdvancedLogic,
@@ -47,6 +47,13 @@ function newKey() {
 
 function toDrafts(filter: AdvancedFilterValue | null): DraftCondition[] {
   return (filter?.conditions || []).map((item) => ({ ...item, key: newKey() }));
+}
+
+function missingConditionValue(condition: DraftCondition) {
+  if (!operatorNeedsValue(condition.type)) return false;
+  if (condition.type === 'time') return !condition.start || !condition.end;
+  if (Array.isArray(condition.value)) return condition.value.length === 0;
+  return condition.value === '' || condition.value == null;
 }
 
 function optionItems(option: AttrFieldType['option']) {
@@ -152,9 +159,9 @@ export default function AdvancedFilterDrawer({
   const userConfigs = useAssetDataStore((state) => state.user_configs);
   const updateUserConfig = useAssetDataStore((state) => state.updateUserConfig);
   const queryList = useAssetDataStore((state) => state.query_list);
-  const edges = useModelEdges(modelId, open);
   const [logic, setLogic] = useState<AdvancedLogic>('AND');
   const [drafts, setDrafts] = useState<DraftCondition[]>([]);
+  const edges = useModelEdges(modelId, open && drafts.length > 0);
   const [attrsByModel, setAttrsByModel] = useState<Record<string, AttrFieldType[]>>({});
   const [saveOpen, setSaveOpen] = useState(false);
   const [saveName, setSaveName] = useState('');
@@ -207,8 +214,7 @@ export default function AdvancedFilterDrawer({
 
   const apply = () => {
     for (const [index, condition] of drafts.entries()) {
-      const missingValue = operatorNeedsValue(condition.type)
-        && (condition.type === 'time' ? !condition.start || !condition.end : condition.value === '' || condition.value == null);
+      const missingValue = missingConditionValue(condition);
       if (!condition.field || !condition.type || missingValue) {
         message.warning(t('AdvancedFilter.conditionIncomplete').replace('{n}', String(index + 1)));
         return;
@@ -498,7 +504,22 @@ function ValueEditor({
       />
     );
   }
-  if (attr?.attr_type === 'enum' || attr?.attr_type === 'tag' || condition.type.startsWith('list')) {
+  if (attr?.attr_type === 'tag') {
+    return (
+      <Select
+        mode="multiple"
+        allowClear
+        showSearch
+        className="w-full"
+        optionFilterProp="label"
+        placeholder={t('FilterBar.pleaseSelect')}
+        options={getTagOptions(attr)}
+        value={Array.isArray(condition.value) ? condition.value : []}
+        onChange={(value) => onChange({ value })}
+      />
+    );
+  }
+  if (attr?.attr_type === 'enum' || condition.type.startsWith('list')) {
     return (
       <Select
         mode="multiple"
@@ -538,6 +559,27 @@ function ValueEditor({
   );
 }
 
+const modelEdgeRequests = new Map<string, Promise<AssocEdge[]>>();
+
+function loadModelEdges(
+  getModelAssociations: (modelId: string) => Promise<unknown>,
+  modelId: string,
+) {
+  const pending = modelEdgeRequests.get(modelId);
+  if (pending) return pending;
+  const request = Promise.resolve(getModelAssociations(modelId)).then((rows) => (rows || []) as AssocEdge[]);
+  modelEdgeRequests.set(modelId, request);
+  return request;
+}
+
+export function invalidateModelEdgeCache(modelId?: string) {
+  if (!modelId) {
+    modelEdgeRequests.clear();
+    return;
+  }
+  modelEdgeRequests.delete(modelId);
+}
+
 function useModelEdges(modelId: string, active: boolean) {
   const { getModelAssociations } = useModelApi();
   const [edges, setEdges] = useState<Record<string, AssocEdge[]>>({});
@@ -545,13 +587,8 @@ function useModelEdges(modelId: string, active: boolean) {
     if (!active || !modelId) return undefined;
     let cancelled = false;
     (async () => {
-      const first = ((await getModelAssociations(modelId)) || []) as AssocEdge[];
-      const map: Record<string, AssocEdge[]> = { [modelId]: first };
-      const nextIds = [...new Set(first.map((edge) => otherModelId(edge, modelId)).filter(Boolean))] as string[];
-      await Promise.all(nextIds.map(async (id) => {
-        map[id] = ((await getModelAssociations(id)) || []) as AssocEdge[];
-      }));
-      if (!cancelled) setEdges(map);
+      const first = ((await loadModelEdges(getModelAssociations, modelId)) || []) as AssocEdge[];
+      if (!cancelled) setEdges((current) => ({ ...current, [modelId]: first }));
     })().catch(() => {
       if (!cancelled) setEdges({});
     });

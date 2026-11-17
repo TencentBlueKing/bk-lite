@@ -271,7 +271,7 @@ test('login UI and AuthContext block submissions until session initialization fi
     readFile(new URL('src/context/auth.tsx', projectRoot), 'utf8'),
   ]);
 
-  assert.match(pageSource, /const \{ login, isInitializing \} = useAuth\(\)/);
+  assert.match(pageSource, /const \{ login, completeLogin, isInitializing \} = useAuth\(\)/);
   assert.match(pageSource, /if \(isInitializing\) return/);
   assert.match(pageSource, /const busy = isLoading \|\| isInitializing \|\| startingExternal/);
   assert.match(pageSource, /disabled=\{busy/);

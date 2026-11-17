@@ -3,6 +3,7 @@ import {
   buildNodeMetricCards,
   collectMetricUuids,
   combineMetricBatches,
+  formatMetricText,
   metricCardLines,
   visibleColumns,
   type MetricColumn,
@@ -33,7 +34,21 @@ describe('architecture display metrics', () => {
       },
       { mode: 'custom', keys: ['os::cpu_usage_total', 'os::mem_used_percent'] },
     );
-    expect(lines.map((line) => line.text)).toEqual(['—', '40 %']);
+    expect(lines.map((line) => line.text)).toEqual(['—', '40.00 %']);
+  });
+
+  it('colors a pinned value when an active alert matches that metric', () => {
+    const lines = metricCardLines(
+      columns,
+      {
+        'os::cpu_usage_total': { value: '86.5', unit: '%' },
+        'os::mem_used_percent': { value: '52', unit: '%' },
+      },
+      { mode: 'custom', keys: ['os::cpu_usage_total', 'os::mem_used_percent'] },
+      [{ content: '主机 CPU 使用率过高', level: 'warning', metric_name: 'CPU Usage', metric_key: 'cpu_usage_total' }],
+    );
+    expect(lines[0]).toEqual({ name: 'CPU使用率', text: '86.50 %', tone: 'warning' });
+    expect(lines[1]).toEqual({ name: '内存使用率', text: '52.00 %' });
   });
 
   it('does not request nodes that have no selection', () => {
@@ -65,7 +80,7 @@ describe('architecture display metrics', () => {
       { '12': { columns } },
     );
     expect(Object.keys(cards)).toEqual(['picked']);
-    expect(cards.picked.lines[0]).toEqual({ name: 'CPU使用率', text: '1 %' });
+    expect(cards.picked.lines[0]).toEqual({ name: 'CPU使用率', text: '1.00 %' });
   });
 
   it('drops a node that the latest batch no longer returns', () => {
@@ -81,5 +96,16 @@ describe('architecture display metrics', () => {
       previous,
     );
     expect(combined.byUuid).toEqual({});
+  });
+
+  it('formats values the same way as the monitor module', () => {
+    expect(formatMetricText({ value: 29.147999999999996, unit: '%' })).toBe('29.15 %');
+    expect(formatMetricText({ value: '67.664', unit: '%' })).toBe('67.66 %');
+    expect(formatMetricText({ value: '148.0', unit: '' })).toBe('148');
+    expect(formatMetricText({ value: 148, unit: 'counts' })).toBe('148');
+    expect(formatMetricText({ value: 91.9428277346197, unit: '' })).toBe('91.94');
+    expect(formatMetricText({ value: 45.071191386730986, unit: 'cps' })).toBe('45.07 cps');
+    expect(formatMetricText({ value: 107.9332638623795, unit: 'cps' })).toBe('107.93 cps');
+    expect(formatMetricText({ value: 98.304, unit: '%' })).toBe('98.30 %');
   });
 });

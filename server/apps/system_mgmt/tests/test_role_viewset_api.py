@@ -20,7 +20,10 @@ def super_client(db):
     from apps.base.models import User as BaseUser
 
     admin = BaseUser.objects.create_user(
-        username="rvadmin", password="pw", domain="domain.com", locale="en",
+        username="rvadmin",
+        password="pw",
+        domain="domain.com",
+        locale="en",
     )
     admin.is_superuser = True
     admin.save()
@@ -31,9 +34,7 @@ def super_client(db):
 
 @pytest.fixture(autouse=True)
 def _silence_logs():
-    with patch("apps.system_mgmt.viewset.role_viewset.log_operation"), patch(
-        "apps.system_mgmt.viewset.role_viewset.clear_users_permission_cache"
-    ):
+    with patch("apps.system_mgmt.viewset.role_viewset.log_operation"), patch("apps.system_mgmt.viewset.role_viewset.clear_users_permission_cache"):
         yield
 
 
@@ -48,7 +49,7 @@ def test_search_role_list(super_client):
 
 
 def test_get_role_tree(super_client):
-    Role.objects.create(name="ra", app="cmdb")
+    role = Role.objects.create(name="ra", app="cmdb")
     resp = super_client.post(
         f"{BASE}/get_role_tree/",
         {"client_list": [{"id": 2, "name": "cmdb", "is_build_in": False, "display_name": "CMDB"}]},
@@ -56,7 +57,8 @@ def test_get_role_tree(super_client):
     )
     assert resp.status_code == 200
     tree = resp.json()["data"]
-    assert tree[0]["id"] == 2 * 886
+    assert tree[0]["id"] == 2
+    assert tree[0]["children"][0]["id"] == role.id
     assert any(c["name"] == "ra" for c in tree[0]["children"])
     # 应用层 display_name 透传
     assert tree[0]["display_name"] == "CMDB"
@@ -79,9 +81,7 @@ def test_get_role_tree_display_name_missing(super_client):
 
 
 def test_create_role(super_client):
-    resp = super_client.post(
-        f"{BASE}/create_role/", {"client_id": "cmdb", "name": "新角色"}, format="json"
-    )
+    resp = super_client.post(f"{BASE}/create_role/", {"client_id": "cmdb", "name": "新角色"}, format="json")
     assert resp.status_code == 200
     assert resp.json()["result"] is True
     assert Role.objects.filter(name="新角色", app="cmdb").exists()
@@ -89,26 +89,20 @@ def test_create_role(super_client):
 
 def test_update_role(super_client):
     role = Role.objects.create(name="old", app="cmdb")
-    resp = super_client.post(
-        f"{BASE}/update_role/", {"role_id": role.id, "role_name": "new"}, format="json"
-    )
+    resp = super_client.post(f"{BASE}/update_role/", {"role_id": role.id, "role_name": "new"}, format="json")
     assert resp.status_code == 200
     role.refresh_from_db()
     assert role.name == "new"
 
 
 def test_delete_role_protected(super_client):
-    resp = super_client.post(
-        f"{BASE}/delete_role/", {"role_id": 1, "role_name": "admin"}, format="json"
-    )
+    resp = super_client.post(f"{BASE}/delete_role/", {"role_id": 1, "role_name": "admin"}, format="json")
     assert resp.json()["result"] is False
 
 
 def test_delete_role_success(super_client):
     role = Role.objects.create(name="todelete", app="cmdb")
-    resp = super_client.post(
-        f"{BASE}/delete_role/", {"role_id": role.id, "role_name": "todelete"}, format="json"
-    )
+    resp = super_client.post(f"{BASE}/delete_role/", {"role_id": role.id, "role_name": "todelete"}, format="json")
     assert resp.json()["result"] is True
     assert not Role.objects.filter(id=role.id).exists()
 
@@ -130,19 +124,13 @@ def test_get_all_menus_action(super_client):
 
 def test_add_user_and_delete_user(super_client):
     role = Role.objects.create(name="assignable", app="cmdb")
-    user = User.objects.create(
-        username="rvu", password="x", display_name="U", email="u@x.com", role_list=[]
-    )
-    add = super_client.post(
-        f"{BASE}/add_user/", {"role_id": role.id, "user_ids": [user.id]}, format="json"
-    )
+    user = User.objects.create(username="rvu", password="x", display_name="U", email="u@x.com", role_list=[])
+    add = super_client.post(f"{BASE}/add_user/", {"role_id": role.id, "user_ids": [user.id]}, format="json")
     assert add.json()["result"] is True
     user.refresh_from_db()
     assert role.id in user.role_list
 
-    rm = super_client.post(
-        f"{BASE}/delete_user/", {"role_id": role.id, "user_ids": [user.id]}, format="json"
-    )
+    rm = super_client.post(f"{BASE}/delete_user/", {"role_id": role.id, "user_ids": [user.id]}, format="json")
     assert rm.json()["result"] is True
     user.refresh_from_db()
     assert role.id not in user.role_list
@@ -152,9 +140,7 @@ def test_set_role_menus(super_client):
     m1 = Menu.objects.create(name="set-a", display_name="A-x", order=1, app="cmdb", menu_type="t")
     Menu.objects.create(name="set-b", display_name="B-x", order=2, app="cmdb", menu_type="t")
     role = Role.objects.create(name="setmenus", app="cmdb", menu_list=[])
-    resp = super_client.post(
-        f"{BASE}/set_role_menus/", {"role_id": role.id, "menus": ["set-a"]}, format="json"
-    )
+    resp = super_client.post(f"{BASE}/set_role_menus/", {"role_id": role.id, "menus": ["set-a"]}, format="json")
     assert resp.json()["result"] is True
     role.refresh_from_db()
     assert role.menu_list == [m1.id]
@@ -305,9 +291,7 @@ def test_get_groups_roles_empty(super_client):
 
 def test_search_role_users(super_client):
     role = Role.objects.create(name="sru", app="cmdb")
-    User.objects.create(
-        username="finduser", password="x", display_name="Find", email="f@x.com", role_list=[role.id]
-    )
+    User.objects.create(username="finduser", password="x", display_name="Find", email="f@x.com", role_list=[role.id])
     resp = super_client.get(f"{BASE}/search_role_users/?role_id={role.id}&search=find")
     assert resp.status_code == 200
     items = resp.json()["data"]["items"]

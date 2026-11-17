@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Iterable
 
-from apps.job_mgmt.services.distribution_file_service import WORKFLOW_FILE_RENEW_DAYS, renew_distribution_files
+from django.apps import apps as django_apps
 
 
 def _walk_definition_tasks(tasks: Iterable[Any]):
@@ -57,4 +57,9 @@ def renew_workflow_file_distribute_assets(*, definition: dict[str, Any] | None, 
         team_ids = []
     else:
         team_ids = [team]
-    return renew_distribution_files(file_keys=file_keys, team_ids=team_ids, days=WORKFLOW_FILE_RENEW_DAYS)
+    if not django_apps.is_installed("apps.job_mgmt"):
+        return 0
+    # 作业模块未安装时不能在导入期加载模型，否则工作流 URL 会让 OpsPilot 起不来。
+    from apps.job_mgmt.services.distribution_file_service import renew_distribution_files
+
+    return renew_distribution_files(file_keys=file_keys, team_ids=team_ids)

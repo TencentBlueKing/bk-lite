@@ -175,21 +175,10 @@ const ScanHitsDrawer: React.FC<ScanHitsDrawerProps> = ({ open, execution, onClos
           target_count: executionDetail.target_count,
           received_count: executionDetail.received_count,
         });
-        const collected: ScanHitItem[] = [];
-        let page = 1;
-        let total = 0;
-        while (true) {
-          const hitPageData = await getScanHits(executionId, { page, page_size: HIT_FETCH_SIZE });
-          const items = hitPageData.items || [];
-          total = hitPageData.count || 0;
-          collected.push(...items);
-          if (collected.length >= total || items.length === 0) {
-            break;
-          }
-          page += 1;
-        }
-        setHits(collected);
-        setHitTotal(total);
+        const hitPageData = await getScanHits(executionId, { page: 1, page_size: 20 });
+        const items = hitPageData.items || [];
+        setHits(items);
+        setHitTotal(hitPageData.count || 0);
       } finally {
         if (!silent) {
           setHitsLoading(false);
@@ -220,10 +209,24 @@ const ScanHitsDrawer: React.FC<ScanHitsDrawerProps> = ({ open, execution, onClos
       return;
     }
     const timer = window.setInterval(() => {
-      fetchAllHits(activeExecution.id, { silent: true }).catch((error) => console.error(error));
+      getScanExecution(activeExecution.id)
+        .then((detail) => {
+          const changed = detail.received_count !== activeExecution.received_count || detail.status !== activeExecution.status;
+          setActiveExecution({
+            id: detail.id,
+            status: detail.status,
+            target_count: detail.target_count,
+            received_count: detail.received_count,
+          });
+          if (changed) {
+            return fetchAllHits(activeExecution.id, { silent: true });
+          }
+          return undefined;
+        })
+        .catch((error) => console.error(error));
     }, 5000);
     return () => window.clearInterval(timer);
-  }, [activeExecution, fetchAllHits, open]);
+  }, [activeExecution, fetchAllHits, getScanExecution, open]);
 
   const canSplitUnmatched = Boolean(activeExecution && TERMINAL_STATUSES.has(activeExecution.status));
 

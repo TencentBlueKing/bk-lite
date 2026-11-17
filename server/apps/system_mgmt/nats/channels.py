@@ -11,6 +11,7 @@ from apps.core.utils.internal_event_auth import (
     verify_internal_event,
 )
 from apps.system_mgmt.models.im_notification_channel import IMNotificationChannel
+from apps.system_mgmt.services.group_channel_mention import mentions_for_group_channel
 from apps.system_mgmt.services.im_notification_service import send_im_notification
 from apps.system_mgmt.utils.group_utils import GroupUtils
 from apps.system_mgmt.utils.i18n import OPSPILOT_NATS_DESCRIPTION_MARKER, localized_channel_description, system_mgmt_message
@@ -199,6 +200,13 @@ ALERT_EVENT_COPY_METHOD = "receive_alert_events"
 SYSTEM_USER_CHANNEL_TYPES = {
     ChannelChoices.EMAIL,
     ChannelChoices.ENTERPRISE_WECHAT,
+}
+# 这些渠道由 webhook 决定投递目标。接收人只用于在正文后追加 @，可以留空。
+OPTIONAL_RECIPIENT_CHANNEL_TYPES = {
+    ChannelChoices.ENTERPRISE_WECHAT_BOT,
+    ChannelChoices.FEISHU_BOT,
+    ChannelChoices.DINGTALK_BOT,
+    ChannelChoices.CUSTOM_WEBHOOK,
 }
 RICH_TEXT_CHANNEL_TYPES = {
     ChannelChoices.ENTERPRISE_WECHAT_BOT,
@@ -407,7 +415,7 @@ def probe_notification_channel(channel_id, capability_only=False):
     )
 
 
-def _validate_notification_recipients(recipient_mode, recipients):
+def _validate_notification_recipients(recipient_mode, recipients, *, allow_empty=False):
     if not isinstance(recipients, list) or len(recipients) > MAX_NOTIFICATION_RECIPIENTS:
         return None
     normalized = []
@@ -419,7 +427,7 @@ def _validate_notification_recipients(recipient_mode, recipients):
     if recipient_mode == "none":
         return [] if not normalized else None
     if not normalized:
-        return None
+        return [] if allow_empty else None
     if recipient_mode == "system_user" and not all(value.isdigit() for value in normalized):
         return None
     return normalized
@@ -471,7 +479,11 @@ def dispatch_notification(
             "retryable": False,
             "message": "channel delivery mode does not match",
         }
-    normalized_recipients = _validate_notification_recipients(capability["recipient_mode"], recipients)
+    normalized_recipients = _validate_notification_recipients(
+        capability["recipient_mode"],
+        recipients,
+        allow_empty=channel.channel_type in OPTIONAL_RECIPIENT_CHANNEL_TYPES,
+    )
     if normalized_recipients is None:
         return _notification_failure("invalid_recipients", "通知接收人不符合渠道能力。")
     if capability["recipient_mode"] == "system_user":
@@ -602,6 +614,12 @@ def dispatch_notification(
     return result
 
 
+def _with_group_mention(content, mention_text, separator):
+    if not mention_text or not isinstance(content, str):
+        return content
+    return f"{content}{separator}{mention_text}"
+
+
 @nats_client.register
 def send_msg_with_channel(channel_id, title, content, receivers, attachments=None, internal_auth=None, append_receivers=True, channel_type=None):
     """
@@ -617,7 +635,7 @@ def send_msg_with_channel(channel_id, title, content, receivers, attachments=Non
     """
     if channel_type == IMNotificationChannel.CHANNEL_TYPE:
         return send_im_notification(channel_id, title, content, receivers)
-    channel_obj = Channel.objects.filter(id=channel_id).first()
+    channel_obj = Channel.objects.select_related("account_association", "account_association__integration_instance").filter(id=channel_id).first()
     if not channel_obj:
         return {"result": False, "message": "Channel not found"}
     if channel_type and channel_obj.channel_type != channel_type:
@@ -650,23 +668,21 @@ def send_msg_with_channel(channel_id, title, content, receivers, attachments=Non
             return {"result": False, "message": "No valid recipients found"}
         return send_wechat(channel_obj, content, user_list)
     elif channel_obj.channel_type == ChannelChoices.ENTERPRISE_WECHAT_BOT:
-        if user_list is not None:
-            display_names = list(user_list.values_list("display_name", flat=True))
-        else:
-            display_names = receivers if isinstance(receivers, list) else [receivers]
-        return send_by_wecom_bot(channel_obj, content, display_names if append_receivers else [])
+        mention_text, _at_user_ids, _at_mobiles = mentions_for_group_channel(channel_obj, receivers if append_receivers else None)
+        return send_by_wecom_bot(channel_obj, _with_group_mention(content, mention_text, "\n"), [])
     elif channel_obj.channel_type == ChannelChoices.FEISHU_BOT:
-        if user_list is not None:
-            display_names = list(user_list.values_list("display_name", flat=True))
-        else:
-            display_names = receivers if isinstance(receivers, list) else [receivers]
-        return send_by_feishu_bot(channel_obj, title, content, display_names if append_receivers else [])
+        mention_text, _at_user_ids, _at_mobiles = mentions_for_group_channel(channel_obj, receivers if append_receivers else None)
+        return send_by_feishu_bot(channel_obj, title, _with_group_mention(content, mention_text, "\n"), [])
     elif channel_obj.channel_type == ChannelChoices.DINGTALK_BOT:
-        if user_list is not None:
-            display_names = list(user_list.values_list("display_name", flat=True))
-        else:
-            display_names = receivers if isinstance(receivers, list) else [receivers]
-        return send_by_dingtalk_bot(channel_obj, title, content, display_names if append_receivers else [])
+        mention_text, at_user_ids, at_mobiles = mentions_for_group_channel(channel_obj, receivers if append_receivers else None)
+        return send_by_dingtalk_bot(
+            channel_obj,
+            title,
+            _with_group_mention(content, mention_text, "<br>"),
+            [],
+            at_user_ids=at_user_ids,
+            at_mobiles=at_mobiles,
+        )
     elif channel_obj.channel_type == ChannelChoices.CUSTOM_WEBHOOK:
         return send_by_custom_webhook(channel_obj, content, receivers if append_receivers else [])
     elif channel_obj.channel_type == ChannelChoices.NATS:

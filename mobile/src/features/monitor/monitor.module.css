@@ -1,6 +1,10 @@
 .page { display: flex; height: 100%; min-height: 0; flex-direction: column; color: var(--color-text-1); background: var(--color-background-body); }
 .instancesPanel { display: flex; flex: 1; min-height: 0; flex-direction: column; }
 .scroll { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior-y: contain; -webkit-overflow-scrolling: touch; }
+.instanceScroll {
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+}
 .refreshContent { min-height: 100%; }
 .section { margin-top: 12px; background: var(--color-bg); border-top: 1px solid var(--color-border-1); border-bottom: 1px solid var(--color-border-1); }
 .sectionHead { display: flex; min-height: 48px; padding: 0 16px; align-items: center; justify-content: space-between; }
@@ -112,9 +116,6 @@
 .instanceSearch { padding: 8px 12px; }
 .pickerSearch { padding: 8px 12px; border-bottom: 1px solid var(--color-border-1); }
 .instanceTableScroll {
-  overflow-x: auto;
-  overscroll-behavior-x: contain;
-  -webkit-overflow-scrolling: touch;
   background: var(--color-bg);
 }
 .instanceTable {
@@ -135,6 +136,9 @@
   background: var(--color-bg);
 }
 .instanceTableHead {
+  position: sticky;
+  top: 0;
+  z-index: 3;
   min-height: 34px;
   font-size: var(--font-size-secondary);
   font-weight: 650;
@@ -302,7 +306,7 @@
 }
 .instanceTableHead .colSticky {
   background: var(--color-fill-1);
-  z-index: 2;
+  z-index: 4;
 }
 .instanceTableEmpty {
   min-width: 100%;

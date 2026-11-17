@@ -24,7 +24,7 @@ monitor_object_metric:
       desc: 该指标表示 Cisco WAAS / WAVE 设备当前空闲内存。设备按千字节上报，展示时换算为字节。
     device_memory_usage:
       name: 内存使用率
-      desc: 该指标表示 Cisco WAAS / WAVE 设备内存使用率，按已用/(已用+空闲) 计算。持续偏高可能影响加速和缓存处理。
+      desc: Cisco WAAS / WAVE 设备内存使用率。持续偏高可能影响加速和缓存处理。
     tfo_load_ok:
       name: TFO 负载健康
       desc: 该指标表示 Cisco WAAS / WAVE 设备 TFO 负载健康。绿色映射为 1（健康）；未知、黄色和红色映射为 2（不健康）。

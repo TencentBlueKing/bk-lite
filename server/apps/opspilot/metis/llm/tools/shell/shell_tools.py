@@ -1,59 +1,33 @@
-import re
+"""Shell commands execute in the Server's local task workspace."""
 
-from langchain_community.tools import ShellTool
+from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 
-# 兼容 tools_loader 自动发现，导出一个 @tool 装饰的 shell_execute
-shell_tool = ShellTool()
-
-FORBIDDEN_SHELL_PATTERNS = (
-    (re.compile(r"\brm\s+-rf\b", re.IGNORECASE), "rm -rf"),
-    (re.compile(r"\bdd\b", re.IGNORECASE), "dd"),
-    (re.compile(r"\bmkfs(?:\.\w+)?\b", re.IGNORECASE), "mkfs"),
-    (re.compile(r"\bcurl\b", re.IGNORECASE), "curl"),
-    (re.compile(r"\bwget\b", re.IGNORECASE), "wget"),
-    (re.compile(r"\b(?:env|printenv)\b", re.IGNORECASE), "environment variable access"),
-    (re.compile(r"\bcat\s+/(?:etc/(?:passwd|shadow)|root/\.ssh/authorized_keys)\b", re.IGNORECASE), "sensitive file access"),
-    (re.compile(r"\bpython(?:3)?\s+-c\b", re.IGNORECASE), "python -c"),
-    (re.compile(r"\bsh\s+-c\b", re.IGNORECASE), "sh -c"),
-    (re.compile(r"\bsh\s+-lc\b", re.IGNORECASE), "sh -lc"),
-    (re.compile(r"\bbash\s+-c\b", re.IGNORECASE), "bash -c"),
-    (re.compile(r"\bbash\s+-lc\b", re.IGNORECASE), "bash -lc"),
-    (re.compile(r"\bcmd(?:\.exe)?\s+/c\b", re.IGNORECASE), "cmd /c"),
-    (re.compile(r"\bpowershell(?:\.exe)?\b", re.IGNORECASE), "powershell"),
-    (re.compile(r"\b(?:sudo|su|passwd)\b", re.IGNORECASE), "privileged command"),
-)
-
-
-def _validate_shell_commands(commands: list[str]) -> None:
-    for command in commands:
-        normalized = (command or "").strip()
-        if not normalized:
-            raise ValueError("命令不能为空")
-        for pattern, keyword in FORBIDDEN_SHELL_PATTERNS:
-            if pattern.search(normalized):
-                raise ValueError(f"检测到禁止执行的高危命令: {keyword}")
-
-
-def _run_shell_commands(commands: list[str]) -> str:
-    _validate_shell_commands(commands)
-    return shell_tool.run({"commands": commands})
+from apps.opspilot.services.python_sandbox.runtime import SandboxUnavailable
 
 
 @tool(parse_docstring=True)
-def shell_execute(commands: list[str]) -> str:
-    """
-    在系统 shell 中执行一组命令,用于自动化运维、构建、部署、信息获取等场景。
-        要求:
-            1. 不允许执行高危命令(如 rm -rf /, dd, mkfs 等)
-            2. 不允许执行需要交互式输入的命令
-            3. 不允许执行可能泄露敏感信息的命令
-            4. 执行前应明确命令用途与风险
+def shell_execute(commands: list[str], config: RunnableConfig) -> str:
+    """在 Server 内执行 shell 命令，与 Python、技能 execute 共享本轮工作目录。
+
+    支持 curl、管道、重定向和脚本执行。这是本地执行环境，拥有 Server 运行用户的系统权限，不提供宿主隔离。
+    命令列表在同一 shell 中依次执行，保留列表内的 cd 和变量；默认总超时 120 秒。
+    非交互执行，合并输出最多 64 KiB。访问目标主机应使用对应的 SSH 或 K8s 工具。
 
     Args:
-        commands: 要执行的 shell 命令列表,按顺序执行
+        commands: shell 命令列表，按顺序执行；遇到非零退出码是否继续由 shell 语义决定
 
     Returns:
-        所有命令的执行结果(stdout 和 stderr 合并输出)
+        合并的标准输出和标准错误，执行失败时附带退出码
     """
-    return _run_shell_commands(commands)
+    if not commands or any(not command.strip() for command in commands):
+        raise ValueError("命令列表不能为空，且不能包含空命令")
+    sandbox = (config or {}).get("configurable", {}).get("python_sandbox")
+    if sandbox is None:
+        return "Shell 执行环境不可用：当前任务没有配置工作区"
+    try:
+        # Preserve the old BashProcess batch semantics: one shell, sequential
+        # commands, with cwd/variables shared inside this call.
+        return sandbox.execute_command(";".join(commands)).output
+    except SandboxUnavailable:
+        return "Shell 执行环境不可用，请检查 Server 的 Shell 和任务工作目录"

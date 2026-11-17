@@ -46,6 +46,7 @@ interface TableSettingsSectionProps {
   isProbingColumns: boolean;
   paramsChangedAfterProbe: boolean;
   displayColumnsError: string;
+  columnHint?: string | null;
   onAddFilterField: (index: number) => void;
   onDeleteFilterField: (id: string) => void;
   onFilterFieldChange: (
@@ -87,6 +88,7 @@ export const TableSettingsSection: React.FC<TableSettingsSectionProps> = ({
   isProbingColumns,
   paramsChangedAfterProbe,
   displayColumnsError,
+  columnHint,
   onAddFilterField,
   onDeleteFilterField,
   onFilterFieldChange,
@@ -336,6 +338,9 @@ export const TableSettingsSection: React.FC<TableSettingsSectionProps> = ({
         >
           {t('dashboard.displayColumns')}
         </ConfigSectionTitle>
+        {columnHint ? (
+          <div className="pb-1 text-xs text-[var(--color-text-3)]">{columnHint}</div>
+        ) : null}
         {displayColumns.length > 0 ? (
           <div className="pt-1">
             <CustomTable

@@ -3,6 +3,13 @@ export interface ArchitectureBinding {
   model_id: string;
 }
 
+export interface ArchitectureNodeAlert {
+  content: string;
+  level: string;
+  metric_name?: string;
+  metric_key?: string;
+}
+
 export interface ArchitectureNodeStatusItem {
   inst_uuid: string;
   status:
@@ -23,6 +30,7 @@ export interface ArchitectureNodeStatusItem {
    * warning includes warning, info, and any other non-severe level.
    */
   level_counts?: { critical: number; error: number; warning: number };
+  alerts?: ArchitectureNodeAlert[];
 }
 
 export interface BindingSearchHit {

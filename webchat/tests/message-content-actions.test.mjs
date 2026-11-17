@@ -42,7 +42,7 @@ test('copy returns multimodal captions and text variants in source order', () =>
   );
 });
 
-test('caption regeneration truncates only after a non-empty replay plan exists', () => {
+test('caption regeneration preserves history and the original multimodal input', () => {
   const history = message('history', 'bot', 'older');
   const user = message('user', 'user', [
     { type: 'image_url', image_url: 'data:image/png;base64,abc' },
@@ -53,7 +53,8 @@ test('caption regeneration truncates only after a non-empty replay plan exists',
   const plan = planMessageRegeneration([history, user, bot], 'bot');
 
   assert.deepEqual(plan, {
-    preservedMessages: [history],
+    preservedMessages: [history, user, bot],
+    messageToSend: user,
     contentToSend: 'caption',
   });
 });
@@ -65,7 +66,7 @@ test('image-only regeneration keeps the original conversation intact', () => {
   const bot = message('bot', 'bot', 'answer');
   const messages = [user, bot];
 
-  assert.equal(planMessageRegeneration(messages, 'bot'), null);
+  assert.equal(planMessageRegeneration(messages, 'bot').messageToSend, user);
   assert.deepEqual(messages, [user, bot]);
 });
 
@@ -87,4 +88,13 @@ test('whitespace-only captions do not create destructive plans', () => {
 
   assert.equal(planMessageRegeneration(messages, 'bot'), null);
   assert.deepEqual(messages, [user, bot]);
+});
+
+test('attachment-only regeneration keeps original IDs and later turns', () => {
+  const user = { ...message('user', 'user', ''), metadata: { attachments: [{ id: 42, name: 'report.pdf', status: 'ready' }] } };
+  const bot = message('bot', 'bot', 'answer');
+  const later = message('later', 'user', 'next question');
+  const plan = planMessageRegeneration([user, bot, later], 'bot');
+  assert.deepEqual(plan.preservedMessages, [user, bot, later]);
+  assert.deepEqual(plan.messageToSend.metadata.attachments, user.metadata.attachments);
 });

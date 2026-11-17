@@ -15,13 +15,13 @@ Status: implemented
 
 ## Solution
 
-管理员在集成中心创建一个内置 Teams 实例，只启用 IM 通知能力。基础连接填写 Entra 应用凭证以及可选出站代理；IM 通知能力填写专用委托工作账号（可 ROPC、通常需排除 MFA）。连接测试分两步：基础连接验证应用令牌，能力测试再验证委托用户令牌。管理员再在 IM 通知渠道里选该实例、同步映射、向已映射用户发文本。发送时由委托账号与每个收件人各建一条 1:1 私聊并逐条投递，与现有通知渠道的部分成功语义一致。平台只出站访问 Entra 和 Graph，不要求 Bot、应用包或公网入站。
+管理员在集成中心创建一个内置 Teams 实例，只启用 IM 通知能力。基础连接填写 Entra 应用凭证以及可选出站代理；IM 通知能力填写专用委托工作账号（可 ROPC、通常需排除 MFA）。连接测试分两步：基础连接验证应用令牌，能力测试再验证委托用户令牌。管理员再为该实例建立账号关联并更新结果，然后在 IM 通知渠道里选用这条关联、向已对应的用户发文本。当前规则见 `specs/capabilities/im-account-association.md`。发送时由委托账号与每个收件人各建一条 1:1 私聊并逐条投递，与现有通知渠道的部分成功语义一致。平台只出站访问 Entra 和 Graph，不要求 Bot、应用包或公网入站。
 
 ## User Stories
 
 1. As a 系统管理员, I want 在集成中心创建仅含通知能力的 Teams 实例，基础连接保存 Entra 应用、IM 通知保存委托账号, so that 不必上架 Teams 应用或暴露公网 Bot 入口也能对接企业租户。
 2. As a 系统管理员, I want 基础连接测试失败时能区分缺配置、网络/代理、应用认证失败和委托账号 MFA/ROPC 被拒, so that 知道是改应用权限还是给委托账号开例外，而不是看到一句「Teams 失败」。
-3. As a 系统管理员, I want 在 IM 通知渠道选择已就绪的 Teams 实例并同步外部用户, so that 能按邮箱或 Graph 用户 id 把平台用户映射到本租户工作账号。
+3. As a 系统管理员, I want 为已就绪的 Teams 实例建立账号关联并更新外部用户, so that 能按邮箱或 Graph 用户 id 把平台用户对应到本租户工作账号。通知渠道只选用这条关联。
 4. As a 系统管理员, I want 向一个或多个已映射用户发送标题加正文的文本通知, so that 每人在 Teams 里收到来自委托账号的一条私聊，而不是一个群。
 5. As a 操作人员, I want 部分收件人失败时仍看到成功数和失败明细, so that 未映射或 Graph 拒绝的用户不会被邮箱/手机号兜底发出去。
 6. As a 安全与合规相关的实现约束受众, I want 日志和接口回显不出现客户端密钥、用户密码、access token 或带凭据的 URL, so that 生产日志可开给运维看。
@@ -33,7 +33,7 @@ Status: implemented
 - 基础连接字段：`tenant_id`、`client_id`、`client_secret`（密钥，加密存储、回显脱敏）、可选 `proxy_url`（仅 HTTP/HTTPS，禁止 SOCKS）。IM 通知能力连接字段：委托 `username`（UPN）、`password`（密钥）。变更这些字段时将 `im_notification` 重置为待验证。能力级另保留可覆盖的 Graph/token URL，默认官方地址见下表；未填则用常量，不得把 WeOps 插件里的几十个 URL 做成必填项。
 - 令牌：应用令牌使用 `client_credentials`，scope 为 Graph `.default`。委托令牌使用 `grant_type=password`（ROPC），同一 client 与 secret。应用令牌可按不可逆缓存键做进程内短缓存，临近过期或认证失败刷新。用户令牌缓存不得以明文密码入键。缓存与日志不得含 token、secret、密码。
 - `list_external_users`：应用令牌分页拉取 Graph 用户。第一页传 `$top=999`（Graph 上限）和 `$filter=userType eq 'Member'`，之后跟随 `@odata.nextLink`（后页不再重拼查询）。页数上限 100（约 10 万 Member），超限失败而不是截断当成功。客户端仍排除 Guest / `#EXT#`。对外字段至少包含 `id`、`name`（displayName）、`mail`、`userPrincipalName`、`mobile`。无邮箱的用户仍可出现在列表中，匹配是否成功交给渠道配置。
-- 通知业务模板：`identity_fields` 与 `receivable_fields` 仅为 `id`；`matchable_fields` 为 `id`、`mail`、`userPrincipalName`；默认外部匹配字段 `mail`，默认接收字段 `id`。映射、同步 run、定时任务、先同步再发送，全部走现有 IM 通知服务，不新建 Teams 专用表。
+- 通知业务模板：`identity_fields` 与 `receivable_fields` 仅为 `id`；`matchable_fields` 为 `id`、`mail`、`userPrincipalName`；默认外部匹配字段 `mail`，默认接收字段 `id`。对应关系、更新记录、定时和先更新再发送，走账号关联，不新建 Teams 专用表，也不再把匹配字段放在通知渠道上。
 - `send_message`：对每个 `receive_ids` 项（Graph 用户 id）独立处理。用委托用户令牌调 `/me` 取得发送方 Graph id（与 WeOps `USER_INFO_URL` 一致），再用应用令牌创建或取得该发送方与收件人的 `oneOnOne` chat，最后用委托用户令牌向该 chat 发一条消息。`chat_id` 按 Graph 返回值原样拼进消息 URL（含 `:`），不 percent-encode。Graph `body.contentType` 为 `html`：标题包在 `<b>` 中，正文换行转为 `<br>`，标题与正文 HTML **原样透传**（与 WeOps 一致，不做 `html.escape`）。不做 Adaptive Card、Tab 深链或附件卡片。多人即多次 1:1。单人失败记入 `failures` 并继续；有成功有失败则 `partial_success`。未映射用户由通知服务拦截，adapter 不按邮箱/手机号改投。
 - 连接测试：基础连接必须成功取得应用令牌。能力测试必须再成功取得委托用户令牌；只测应用令牌算未就绪。ROPC 因 MFA、无密码、联邦或 `invalid_grant` 失败时使用稳定 `provider.auth_failed`（或已有认证失败码），摘要可行动且不含 Microsoft 原始 error_description 全文、不含密码。
 - 外呼 URL 只接受 HTTP/HTTPS。代理仅作用于 BK-Lite 发出的 token 与 Graph 请求。日志用稳定模板和惰性参数；一个失败只在 adapter/runtime 约定的一层打 traceback；不得记录 Authorization 头、密码、token、完整用户列表或响应正文。ROPC 失败时 `error_type` 只记录 `AADSTS` 数字码（无 `error_description`）；发送成功时记录有界 `chat_id`、`message_id` 和 `has_policy_violation`，仍不记正文。

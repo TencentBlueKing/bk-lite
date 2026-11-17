@@ -123,7 +123,7 @@ const ScanTaskDrawer: React.FC<ScanTaskDrawerProps> = ({
         const [nodesRes, detail] = await Promise.all([
           getCollectNodes({
             page: 1,
-            page_size: 10000,
+            page_size: 20,
             name: '',
           }),
           editId ? getScanDetail(editId) : Promise.resolve(null),

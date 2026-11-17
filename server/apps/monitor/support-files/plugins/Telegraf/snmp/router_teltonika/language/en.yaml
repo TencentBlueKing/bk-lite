@@ -42,10 +42,7 @@ monitor_object_metric:
         indicates control-plane overload or abnormal traffic.
     device_memory_usage:
       name: Memory Usage
-      desc: This metric reports memory utilization of the Teltonika cellular router,
-        derived as 100*(total-free)/total from the UCD-SNMP memTotalReal and memAvailReal
-        scalars.
-        Sustained high usage may indicate memory pressure or leaks.
+      desc: This metric reports memory utilization of the Teltonika cellular router, from the UCD-SNMP memTotalReal and memAvailReal scalars. Sustained high usage may indicate memory pressure or leaks.
     interface_ifHCInOctets:
       name: Interface Incoming Traffic Rate (HC)
       desc: This metric indicates the average rate of bytes received over the past

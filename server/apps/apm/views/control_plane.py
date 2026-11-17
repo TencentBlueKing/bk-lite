@@ -82,7 +82,7 @@ from apps.apm.services.access import (
     visible_organization_ids,
 )
 from apps.apm.services.alerts import AlertHandlerConflict, AlertHandlerForbidden, AlertHandlerInvalid
-from apps.apm.services.contracts import IngestSnippetRequest, MetricDataState, ServiceErrorBreakdownQuery, ServiceMetricQuery
+from apps.apm.services.contracts import IngestSnippetRequest, MetricDataState, ServiceErrorBreakdownQuery, ServiceMetricQuery, ServiceRed
 from apps.apm.services.integration_configuration import CloudRegionConfigurationError
 from apps.apm.services.probe_artifacts import ProbeArtifactNotFound, ProbeSelectionError, resolve_probe_artifact_name
 from apps.apm.services.status import ACTIVE_WINDOW, ARCHIVE_WINDOW
@@ -134,6 +134,70 @@ def _service_red_payload(service_id: str, environment: str, started_at, ended_at
             for endpoint in red.top_endpoints
         ],
     }
+
+
+def _grouped_metric_batch(request, data, targets, services) -> list[dict] | None:
+    """明细关闭且聚合覆盖时，整批只做一次分组读取。未覆盖返回 None，调用方保持逐目标路径。"""
+    if bool(data.get("include_breakdown", True)):
+        return None
+    reader = getattr(apm_entry_red_store(), "grouped_red", None)
+    if not callable(reader):
+        return None
+    items: list[dict | None] = [None] * len(targets)
+    visible = []
+    for index, target in enumerate(targets):
+        service = services.get(str(target["service_id"]))
+        if service is None:
+            items[index] = {
+                "service_id": str(target["service_id"]),
+                "environment": target["environment"],
+                "ok": False,
+                "code": "not_found",
+                "detail": request_text(request, "error.service_invisible"),
+            }
+            continue
+        if not str(service.name).strip():
+            items[index] = {
+                "service_id": str(service.id),
+                "environment": target["environment"],
+                "ok": False,
+                "code": "invalid_query",
+                "detail": "service.name 不能为空",
+            }
+            continue
+        visible.append((index, service, target))
+    if not visible:
+        return items
+    try:
+        grouped = reader(
+            [(service.namespace, service.name) for _index, service, _target in visible],
+            data["started_at"],
+            data["ended_at"],
+            include_overview=False,
+            overview_points=0,
+        )
+    except TelemetryStoreUnavailable as exc:
+        payload = telemetry_error_payload(exc)
+        for index, service, target in visible:
+            items[index] = {
+                "service_id": str(service.id),
+                "environment": target["environment"],
+                "ok": False,
+                **payload,
+            }
+        return items
+    if grouped is None:
+        return None
+    for index, service, target in visible:
+        environment = target["environment"] or "unknown"
+        red = grouped.by_target.get((service.namespace, service.name, environment))
+        if red is None:
+            red = ServiceRed(None, None, None, None)
+        payload = _service_red_payload(service.id, target["environment"], data["started_at"], data["ended_at"], red)
+        payload["ok"] = True
+        payload["entry_truncated"] = (service.namespace, service.name) in grouped.truncated_services
+        items[index] = payload
+    return items
 
 
 def _catalog_list_params(view) -> dict:
@@ -508,6 +572,9 @@ class ApmServiceViewSet(viewsets.ReadOnlyModelViewSet):
         targets = data["targets"][:MAX_METRIC_BATCH_TARGETS]
         service_ids = [target["service_id"] for target in targets]
         services = {str(service.id): service for service in self.get_queryset().filter(id__in=service_ids)}
+        grouped_items = _grouped_metric_batch(request, data, targets, services)
+        if grouped_items is not None:
+            return Response({"items": grouped_items})
 
         def query_one(target: dict):
             service = services.get(str(target["service_id"]))
@@ -546,6 +613,7 @@ class ApmServiceViewSet(viewsets.ReadOnlyModelViewSet):
                 }
             payload = _service_red_payload(service.id, target["environment"], data["started_at"], data["ended_at"], red)
             payload["ok"] = True
+            payload["entry_truncated"] = False
             return payload
 
         items: list[dict | None] = [None] * len(targets)

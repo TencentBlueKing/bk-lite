@@ -342,42 +342,6 @@ export const useConfigRenderer = () => {
           }
         ]
         : []),
-      ...(name === 'run_as'
-        ? [
-          ({ getFieldValue }: { getFieldValue: (name: string) => unknown }) => ({
-            validator: async (_: unknown, value: unknown) => {
-              const scriptOs = getFieldValue('script_os');
-              const windows = scriptOs === 'windows' || (scriptOs == null && isWindows);
-              if (windows) return;
-              // 依赖字段触发的校验会抓住切换前的值；以 store 里的当前值为准。
-              const live = getFieldValue('run_as');
-              const str = String((live === undefined ? value : live) ?? '')
-                .trim()
-                .toLowerCase();
-              if (!str) {
-                throw new Error(
-                  t(
-                    'monitor.integrations.runAsRequiredLinux',
-                    'Linux 节点下执行用户不能为空'
-                  )
-                );
-              }
-              if (
-                str === 'root' ||
-                /^0+$/.test(str) ||
-                /^uid\s*[:=]\s*0+$/i.test(str)
-              ) {
-                throw new Error(
-                  t(
-                    'monitor.integrations.runAsNonRoot',
-                    '不允许以 root 运行'
-                  )
-                );
-              }
-            }
-          })
-        ]
-        : []),
       ...(name === 'interval'
         ? [
           {
@@ -498,7 +462,10 @@ export const useConfigRenderer = () => {
       hasGuideTip ? (
         <span className="inline-flex items-center">
           {label}
-          <FieldGuideTip short={guideTip} title={fieldGuideTitle} />
+          <FieldGuideTip
+            short={guideTip}
+            title={name === 'run_as' ? label : fieldGuideTitle}
+          />
         </span>
       ) : (
         label
@@ -794,8 +761,7 @@ export const useConfigRenderer = () => {
         rules={formRules}
         dependencies={[
           ...mutexPeerFields,
-          ...ltPeerFields,
-          ...(name === 'run_as' ? ['script_os'] : [])
+          ...ltPeerFields
         ]}
         initialValue={default_value}
         valuePropName={type === 'switch' ? 'checked' : 'value'}

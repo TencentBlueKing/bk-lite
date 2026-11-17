@@ -1,13 +1,87 @@
 from types import SimpleNamespace
 
+import pytest
 from django.core.files.base import ContentFile
 
 from apps.opspilot.services.chat_attachment_service import compose_user_message
 from apps.opspilot.services.chat_service import ChatService
+from apps.opspilot.utils.auto_mode import parse_auto_command
+
+
+@pytest.mark.parametrize(
+    "message,matched,cleaned",
+    [
+        ("/auto 查询", True, "查询"),
+        (" /AUTO\n查询", True, "查询"),
+        ("/autonomy 查询", False, "/autonomy 查询"),
+        ("解释 /auto 的含义", False, "解释 /auto 的含义"),
+    ],
+)
+def test_parse_auto_command_requires_prefix(message, matched, cleaned):
+    assert parse_auto_command(message) == (matched, cleaned)
+
+
+def test_parse_auto_command_with_image_message():
+    message = [{"type": "image_url", "image_url": "data:image/png"}, {"type": "message", "message": "/auto 分析图片"}]
+    assert parse_auto_command(message) == (True, message)
+
+
+def test_auto_command_sets_run_mode_and_removes_command(mocker):
+    model = mocker.Mock()
+    model.vendor_id = None
+    model.model_name = "gpt-4o"
+    model.context_window_tokens = None
+    kwargs = {
+        "user_message": "/auto 检查告警",
+        "chat_history": [{"event": "user", "message": "/auto 检查告警"}],
+        "skill_prompt": "",
+        "skill_type": 1,
+        "tools": [],
+        "user_id": "alice",
+    }
+    mocker.patch("apps.opspilot.services.chat_service.resolve_skill_params", return_value="")
+    chat, _, _ = ChatService.format_chat_server_kwargs(kwargs, model)
+    assert chat["user_message"] == "检查告警"
+    assert chat["chat_history"][-1]["message"] == "检查告警"
+    assert chat["extra_config"]["unattended"] is True
+
+
+@pytest.mark.parametrize("entry_type,expected", [("celery", True), ("nats", True), ("restful", True), ("agui", False), ("web_chat", False)])
+def test_trigger_sets_unattended_only_for_background_calls(mocker, entry_type, expected):
+    model = mocker.Mock(vendor_id=None, model_name="gpt-4o", context_window_tokens=None)
+    mocker.patch("apps.opspilot.services.chat_service.resolve_skill_params", return_value="")
+    kwargs = {
+        "user_message": "查询",
+        "chat_history": [],
+        "skill_prompt": "",
+        "skill_type": 1,
+        "tools": [],
+        "user_id": "alice",
+        "entry_type": entry_type,
+    }
+    chat, _, _ = ChatService.format_chat_server_kwargs(kwargs, model)
+    assert chat["extra_config"].get("unattended", False) is expected
+
+
+def test_old_auto_command_does_not_affect_next_turn(mocker):
+    model = mocker.Mock(vendor_id=None, model_name="gpt-4o", context_window_tokens=None)
+    mocker.patch("apps.opspilot.services.chat_service.resolve_skill_params", return_value="")
+    kwargs = {
+        "user_message": "继续",
+        "chat_history": [{"event": "user", "message": "/auto 上一轮"}],
+        "skill_prompt": "",
+        "skill_type": 1,
+        "tools": [],
+        "user_id": "alice",
+    }
+    chat, _, _ = ChatService.format_chat_server_kwargs(kwargs, model)
+    assert chat["user_message"] == "继续"
+    assert chat["extra_config"].get("unattended", False) is False
 
 
 def test_single_k8s_instance_sets_default_instance_name(mocker):
     llm_model = mocker.Mock()
+    llm_model.context_window_tokens = None
     llm_model.openai_api_base = "https://example.com/v1"
     llm_model.openai_api_key = "key"
     llm_model.model_name = "gpt-4o"
@@ -61,6 +135,7 @@ def test_single_k8s_instance_sets_default_instance_name(mocker):
 
 def test_multiple_k8s_instances_requires_real_instance_choice_without_all_option(mocker):
     llm_model = mocker.Mock()
+    llm_model.context_window_tokens = None
     llm_model.openai_api_base = "https://example.com/v1"
     llm_model.openai_api_key = "key"
     llm_model.model_name = "gpt-4o"

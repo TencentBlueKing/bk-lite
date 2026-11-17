@@ -36,7 +36,7 @@ monitor_object_metric:
       desc: Nokia ISAM 所有板卡已使用的内存，单位为字节（ASAM-SYSTEM-MIB memAbsoluteUsage，按槽位以 Mbyte 上报）。
     device_memory_usage:
       name: 内存使用率
-      desc: Nokia ISAM 板卡内存使用率，按槽位以 已用/总量*100 计算，取最高的板卡。持续偏高可能表示内存泄漏或业务表项过大。
+      desc: Nokia ISAM 板卡内存使用率，取最高的板卡。持续偏高可能表示内存泄漏或业务表项过大。
     device_temperature_celsius:
       name: 板卡温度
       desc: Nokia ISAM 板卡温度传感器的最高读数，单位摄氏度（ASAM-EQUIP-MIB）。温度持续升高可能表示散热异常或环境温度过高。

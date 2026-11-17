@@ -54,6 +54,9 @@ class MemoryGraph:
                 rows = [row for row in rows if row["_id"] in value]
             elif op == "id>":
                 rows = [row for row in rows if row["_id"] > value]
+            elif op == "str[]":
+                wanted = set(value)
+                rows = [row for row in rows if row.get(field) in wanted]
             else:
                 rows = [row for row in rows if row.get(field) == value]
         rows = sorted(rows, key=lambda row: row["_id"])
@@ -362,7 +365,9 @@ def test_full_sync_failed_snapshot_never_deletes_existing_edges(monkeypatch, fai
 
     def fail(label, conditions, **kwargs):
         model_id = next(condition["value"] for condition in conditions if condition["field"] == "model_id")
-        if model_id == failed_model and any(condition.get("type") == "id>" for condition in conditions):
+        paged = any(condition.get("type") == "id>" for condition in conditions)
+        exact_page = any(condition.get("type") == "str[]" for condition in conditions)
+        if model_id == failed_model and (paged or exact_page):
             raise RuntimeError(f"{failed_model} snapshot unavailable")
         return original(label, conditions, **kwargs)
 

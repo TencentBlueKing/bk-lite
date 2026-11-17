@@ -2357,3 +2357,85 @@ def test_agui_stream_emits_interrupted_when_watch_already_set(monkeypatch):
     assert errors
     assert errors[0].get("code") == "INTERRUPTED"
     assert not any(p.get("type") == "TEXT_MESSAGE_CONTENT" for p in payloads)
+
+
+@pytest.mark.parametrize("late_stop", [False, True])
+def test_skill_test_stop_does_not_interrupt_next_turn_in_same_thread(mocker, late_stop):
+    from django.core.cache.backends.locmem import LocMemCache
+
+    from apps.opspilot.models.model_provider_mgmt import LLMModel, ModelVendor
+    from apps.opspilot.utils.agui_chat import stream_agui_chat
+    from apps.opspilot.utils.execution_interrupt import get_interrupt_request, request_interrupt
+
+    cache = LocMemCache(f"stop-next-turn-{late_stop}", {})
+    cache.clear()
+    mocker.patch("apps.opspilot.utils.execution_interrupt.cache", cache)
+    mocker.patch("apps.opspilot.utils.pending_question.cache", cache)
+    model = LLMModel(
+        model="gpt-4o", vendor=ModelVendor(vendor_type="openai", protocol_type="openai", api_base="https://model.invalid", api_key="test")
+    )
+    mocker.patch("apps.opspilot.utils.agui_chat.LLMModel.objects.get", return_value=model)
+    mocker.patch("apps.opspilot.utils.agui_chat.try_commit_conversation_skill_package", return_value=None)
+    mocker.patch("apps.opspilot.utils.agui_chat._log_and_update_tokens_agui")
+    # Real cache and watch; only the database fallback and model provider are external substitutes.
+    mocker.patch("apps.opspilot.utils.execution_interrupt._check_interrupt_in_database_async", return_value=False)
+    requests = []
+
+    def create_graph(_skill_type, kwargs):
+        request = BasicLLMRequest(**kwargs)
+        requests.append(request)
+        events = [{"event": "on_chat_model_end", "data": {"output": AIMessage(content="今天是星期三")}}]
+        return _FakeBasicGraph(events), request
+
+    mocker.patch("apps.opspilot.utils.agui_chat.create_agent_instance", side_effect=create_graph)
+
+    def start_turn(**extra):
+        params = {
+            "thread_id": "same-debug-conversation",
+            "user_id": "alice",
+            "user_message": "今天星期几",
+            "chat_history": [],
+            "skill_prompt": "",
+            "skill_type": 1,
+            "tools": [],
+            "llm_model": 1,
+            **extra,
+        }
+        return stream_agui_chat(params, "测试智能体", {}, "127.0.0.1", params["user_message"])
+
+    async def collect(response):
+        return _parse_sse_payloads([frame.decode() async for frame in response.streaming_content if frame.startswith(b"data: {")])
+
+    first = start_turn()
+    second = start_turn() if late_stop else None
+    request_interrupt(first["X-Execution-ID"])
+    first_events = asyncio.run(collect(first))
+    assert any(event.get("code") == "INTERRUPTED" for event in first_events)
+    second = second if second is not None else start_turn()
+    second_events = asyncio.run(collect(second))
+    assert not [event for event in second_events if event.get("type") == "RUN_ERROR"], second_events
+    assert any(event.get("type") == "RUN_FINISHED" for event in second_events)
+    assert "今天是星期三" in "".join(event.get("delta", "") for event in second_events)
+    assert first["X-Execution-ID"] != second["X-Execution-ID"]
+    assert requests[0].thread_id == requests[1].thread_id == "same-debug-conversation"
+    assert requests[1].extra_config["execution_id"] == second["X-Execution-ID"]
+    # Keep the first run's stop marker, so a delayed tool still observes its cancellation.
+    assert get_interrupt_request(first["X-Execution-ID"]) is not None
+
+
+def test_agui_stop_header_preserves_explicit_execution_identity():
+    from apps.opspilot.utils.agui_chat import stream_agui_chat
+
+    params = {"thread_id": "conversation", "execution_id": "caller-owned-run"}
+    response = stream_agui_chat(params, "test", {}, "127.0.0.1", "test")
+    assert response["X-Execution-ID"] == "caller-owned-run"
+    assert params["thread_id"] == "conversation"
+
+
+def test_agui_allocates_distinct_runs_without_a_thread_even_in_same_millisecond(mocker):
+    from apps.opspilot.utils.agui_chat import stream_agui_chat
+
+    mocker.patch("apps.opspilot.utils.agui_chat.time.time", return_value=1_700_000_000)
+    first = stream_agui_chat({}, "test", {}, "127.0.0.1", "test")
+    second = stream_agui_chat({}, "test", {}, "127.0.0.1", "test")
+    assert first["X-Execution-ID"] != second["X-Execution-ID"]

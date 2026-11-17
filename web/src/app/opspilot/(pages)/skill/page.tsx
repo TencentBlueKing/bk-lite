@@ -5,7 +5,8 @@ import EntityList from '@/app/opspilot/components/entity-list';
 import GenericModifyModal from '@/app/opspilot/components/generic-modify-modal';
 import SkillCard from '@/app/opspilot/components/skill/skillCard';
 import OperateModal from '@/components/operate-modal';
-import { Skill } from '@/app/opspilot/types/skill';
+import { Skill, SkillTemplate } from '@/app/opspilot/types/skill';
+import { bindTemplateTools, collectSkillNames, nextTemplateSkillName } from '@/app/opspilot/utils/templateSkill';
 import { useTranslation } from '@/utils/i18n';
 import { Button, Spin,  message } from 'antd';
 import CompactEmptyState from '@/components/compact-empty-state';
@@ -26,12 +27,12 @@ const SkillModifyModal: React.FC<SkillModifyModalProps> = (props) => (
 
 const SkillPage: React.FC = () => {
   const [isTemplateModalVisible, setIsTemplateModalVisible] = useState(false);
-  const [templates, setTemplates] = useState<any[]>([]);
+  const [templates, setTemplates] = useState<SkillTemplate[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
   const [submitting, setSubmitting] = useState<boolean>(false);
   const [refreshKey, setRefreshKey] = useState<number>(0);
   const { t } = useTranslation();
-  const { fetchSkillTemplates, createSkill, togglePin } = useSkillApi();
+  const { fetchSkillTemplates, fetchSkill, fetchSkillTools, createSkill, togglePin } = useSkillApi();
 
   const iconTypeMapping: [string, string] = ['jiqirenjiaohukapian', 'jiqiren'];
 
@@ -63,16 +64,20 @@ const SkillPage: React.FC = () => {
     message.success(isPinned ? t('common.unpinSuccess') : t('common.pinSuccess'));
   };
 
-  const handleUseTemplate = async (template: any) => {
+  const handleUseTemplate = async (template: SkillTemplate) => {
     setSubmitting(true);
     try {
-      const payload = {
-        name: template.name,
+      const [takenNames, catalog] = await Promise.all([
+        collectSkillNames((page, pageSize) => fetchSkill({ page, page_size: pageSize, is_template: 0 })),
+        fetchSkillTools(),
+      ]);
+      await createSkill({
+        name: nextTemplateSkillName(template.name, takenNames),
         introduction: template.introduction,
-        team: template.team,
         skill_type: template.skill_type,
-      };
-      await createSkill(payload);
+        skill_prompt: template.skill_prompt,
+        tools: bindTemplateTools(template.tools, catalog),
+      });
       setIsTemplateModalVisible(false);
       setRefreshKey((prev) => prev + 1);
     } finally {

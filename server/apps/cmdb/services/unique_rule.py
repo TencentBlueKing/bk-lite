@@ -449,6 +449,24 @@ def reorder_unique_rules(rules: list[ModelUniqueRule]) -> list[ModelUniqueRule]:
     return [ModelUniqueRule(rule_id=rule.rule_id, order=index, field_ids=list(rule.field_ids)) for index, rule in enumerate(rules, start=1)]
 
 
+def _context_from_model_info(model_info: dict[str, Any]) -> UniqueRuleCheckContext:
+    model_id = str(model_info.get("model_id") or "")
+    attrs = parse_attrs(model_info.get("attrs", "[]"))
+    attrs_by_id = {attr.get("attr_id"): attr for attr in attrs if isinstance(attr, dict) and attr.get("attr_id") and not attr.get("is_display_field")}
+    legacy_unique_fields = {attr_id for attr_id, attr in attrs_by_id.items() if attr.get("is_only") and attr_id != "inst_name"}
+
+    from apps.cmdb.model_ops.extensions import get_model_enterprise_extension
+
+    return UniqueRuleCheckContext(
+        model_id=model_id,
+        attrs_by_id=attrs_by_id,
+        unique_rules=parse_unique_rules(model_info.get("unique_rules", "[]")),
+        builtin_unique_fields={"inst_name"},
+        legacy_unique_fields=legacy_unique_fields,
+        duplicate_field_ids=set(get_model_enterprise_extension().duplicate_detection_field_ids_from_model(model_info)),
+    )
+
+
 def build_unique_rule_context(model_id: str) -> UniqueRuleCheckContext:
     """
     加载模型字段、inst_name、历史 is_only、extra unique_rules，构建统一检查上下文。
@@ -466,21 +484,7 @@ def build_unique_rule_context(model_id: str) -> UniqueRuleCheckContext:
     model_info = search_model_info(model_id)
     if not model_info:
         raise BaseAppException("模型不存在")
-
-    attrs = parse_attrs(model_info.get("attrs", "[]"))
-    attrs_by_id = {attr.get("attr_id"): attr for attr in attrs if isinstance(attr, dict) and attr.get("attr_id") and not attr.get("is_display_field")}
-    legacy_unique_fields = {attr_id for attr_id, attr in attrs_by_id.items() if attr.get("is_only") and attr_id != "inst_name"}
-
-    from apps.cmdb.model_ops.extensions import get_model_enterprise_extension
-
-    return UniqueRuleCheckContext(
-        model_id=model_id,
-        attrs_by_id=attrs_by_id,
-        unique_rules=parse_unique_rules(model_info.get("unique_rules", "[]")),
-        builtin_unique_fields={"inst_name"},
-        legacy_unique_fields=legacy_unique_fields,
-        duplicate_field_ids=set(get_model_enterprise_extension().duplicate_detection_field_ids_from_model(model_info)),
-    )
+    return _context_from_model_info(model_info)
 
 
 def list_unique_rules(model_id: str) -> list[dict[str, Any]]:
@@ -713,8 +717,38 @@ def _log_invalid_unique_rule_payload(model_id: str, operator: str, field_ids: li
     )
 
 
+def _iter_model_instances(model_id: str, fields: list[str]):
+    from apps.cmdb.constants.constants import INSTANCE
+    from apps.cmdb.graph.drivers.graph_client import GraphClient
+
+    cursor = None
+    while True:
+        params = [{"field": "model_id", "type": "str=", "value": model_id}]
+        if cursor is not None:
+            params.append({"field": "id", "type": "id>", "value": cursor})
+        with GraphClient() as ag:
+            page, _ = ag.query_entity(
+                INSTANCE,
+                params,
+                page={"skip": 0, "limit": 500},
+                fields=fields,
+                include_count=False,
+            )
+        if not page:
+            break
+        yield from page
+        if len(page) < 500:
+            break
+        next_cursor = page[-1]["_id"]
+        if cursor is not None and next_cursor <= cursor:
+            break
+        cursor = next_cursor
+
+
 def _raise_conflict_if_rules_invalid(model_id: str, operator: str, action: str, rules: list[ModelUniqueRule]) -> None:
-    conflicts = validate_unique_rules_against_existing_instances(model_id, rules, _query_model_instances(model_id))
+    ctx = build_unique_rule_context(model_id)
+    fields = sorted({"_id", "inst_uuid"} | {field_id for rule in rules for field_id in rule.field_ids})
+    conflicts = _collect_existing_instance_conflicts(rules, _iter_model_instances(model_id, fields), ctx.attrs_by_id)
     if not conflicts:
         return
 
@@ -1050,7 +1084,12 @@ def apply_unique_rules_to_attr_export_rows(
     ]
 
 
-def build_unique_rules_from_attr_rows(model_id: str, rows: list[dict[str, Any]]) -> list[ModelUniqueRule]:
+def build_unique_rules_from_attr_rows(
+    model_id: str,
+    rows: list[dict[str, Any]],
+    model_info: dict[str, Any] | None = None,
+    preserve_existing_ids: bool = False,
+) -> list[ModelUniqueRule]:
     """
     从 attr-{model_id} sheet 的 unique_rule_order 列重建规则列表。
 
@@ -1084,7 +1123,14 @@ def build_unique_rules_from_attr_rows(model_id: str, rows: list[dict[str, Any]])
     if len(grouped_field_ids) > UNIQUE_RULE_MAX_COUNT:
         raise BaseAppException(f"每个模型最多只能配置 {UNIQUE_RULE_MAX_COUNT} 条额外唯一规则")
 
-    ctx = build_unique_rule_context(model_id)
+    if model_info is None:
+        ctx = build_unique_rule_context(model_id)
+    else:
+        ctx = _context_from_model_info(model_info)
+    existing_ids = {}
+    if preserve_existing_ids:
+        for rule in ctx.unique_rules:
+            existing_ids.setdefault(tuple(rule.field_ids), rule.rule_id)
     generated_rules: list[ModelUniqueRule] = []
     temp_ctx = UniqueRuleCheckContext(
         model_id=model_id,
@@ -1097,7 +1143,8 @@ def build_unique_rules_from_attr_rows(model_id: str, rows: list[dict[str, Any]])
         field_ids = _deduplicate_field_ids(grouped_field_ids[order])
         payload = UniqueRulePayload(field_ids=field_ids)
         validate_unique_rule_payload(temp_ctx, payload)
-        generated_rules.append(ModelUniqueRule(rule_id=uuid.uuid4().hex, order=len(generated_rules) + 1, field_ids=field_ids))
+        rule_id = existing_ids.get(tuple(field_ids)) or uuid.uuid4().hex
+        generated_rules.append(ModelUniqueRule(rule_id=rule_id, order=len(generated_rules) + 1, field_ids=field_ids))
         temp_ctx.unique_rules = list(generated_rules)
 
     return reorder_unique_rules(generated_rules)

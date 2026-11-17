@@ -63,4 +63,47 @@ describe('高级筛选抽屉', () => {
       await Promise.resolve();
     });
   });
+
+  it('标签条件列出 key:value，选中后按这个值应用', async () => {
+    const onApply = vi.fn();
+    render(
+      <AdvancedFilterDrawer
+        open
+        modelId="host"
+        applied={{
+          logic: 'AND',
+          conditions: [{ path: [], field: 'tag', type: 'list_any[]', value: [] }],
+        }}
+        attrList={[{
+          attr_id: 'tag',
+          attr_name: '标签',
+          attr_type: 'tag',
+          is_required: false,
+          editable: true,
+          option: {
+            mode: 'free',
+            options: [
+              { key: 'env', value: 'prod' },
+              { key: 'env', value: 'test' },
+            ],
+          },
+        }]}
+        userList={[]}
+        assoTypes={[]}
+        models={[]}
+        onClose={vi.fn()}
+        onApply={onApply}
+      />,
+    );
+
+    await screen.findByText('标签 属于');
+    fireEvent.mouseDown(screen.getAllByRole('combobox').at(-1)!);
+    fireEvent.click(await screen.findByText('env:prod', { selector: '.ant-select-item-option-content' }));
+    fireEvent.click(screen.getByText('AdvancedFilter.apply'));
+
+    expect(onApply).toHaveBeenCalledWith({
+      logic: 'AND',
+      conditions: [{ path: [], field: 'tag', type: 'list_any[]', value: ['env:prod'] }],
+    });
+  });
 });

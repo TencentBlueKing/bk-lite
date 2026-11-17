@@ -509,6 +509,12 @@ const installAttachmentFetch = () => {
         data: { id, name, mime: 'image/png', size: 8, status: 'ready' },
       }), { status: 200, headers: { 'content-type': 'application/json' } });
     }
+    if (/\/chat_attachment\/\d+\/download\/$/.test(url)) {
+      return new Response(new Uint8Array(pngHeader(1, 1)), {
+        status: 200, headers: { 'content-type': 'image/png' },
+      });
+    }
+    assert.equal(url, SSE_URL, 'only the chat endpoint should receive message bodies');
     chatBodies.push(JSON.parse(String(init?.body || '{}')));
     return new Response(new ReadableStream({
       start(controller) {

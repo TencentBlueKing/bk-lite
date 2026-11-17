@@ -629,9 +629,8 @@ class TestGetRelationInstances:
             "apps.cmdb.services.subscription_trigger.InstanceManage.query_entity_by_uuids",
             return_value=[{"_id": 10, "inst_uuid": "73e4a531-b6bb-43cc-9eae-8eb8a09f795e"}],
         )
-        relation_map, failed = svc._get_relation_instances([1], "switch")
-        assert failed == set()
-        assert relation_map[1] == [10]
+        with pytest.raises(RuntimeError, match="batch failed"):
+            svc._get_relation_instances([1], "switch")
 
     def test_回退路径UUID去重(self, mocker, patch_model_info):
         rule = make_rule(name="rel_fallback_dedupe")
@@ -660,10 +659,9 @@ class TestGetRelationInstances:
             "apps.cmdb.services.subscription_trigger.InstanceManage.query_entity_by_uuids",
             return_value=[{"_id": 10, "inst_uuid": switch_uuid}],
         )
-        relation_map, failed = svc._get_relation_instances([1], "switch")
-        assert failed == set()
-        assert relation_map[1] == [10]
-        query.assert_called_once_with([switch_uuid])
+        with pytest.raises(RuntimeError, match="batch failed"):
+            svc._get_relation_instances([1], "switch")
+        query.assert_not_called()
 
 
 class TestCheckConfigFile:

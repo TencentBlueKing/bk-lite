@@ -1,4 +1,4 @@
-"""作业工具：模型只看终态，暂存文件和定时检查都不重新提交。"""
+"""作业工具：模型可读取执行输出，暂存文件和定时检查都不重新提交。"""
 
 import json
 from datetime import timedelta
@@ -243,7 +243,7 @@ def _shift_watch(conversation, task_id, *, next_run_at, deadline_at=None):
     message.save(update_fields=["content"])
 
 
-def test_library_result_hides_script_and_output_and_retry_keeps_one_job():
+def test_pending_library_result_hides_script_and_retry_keeps_one_job():
     _conversation("sess-job")
     script = _script()
     target = _target()
@@ -363,6 +363,8 @@ def test_historical_script_name_does_not_confirm_library_script():
 
 
 def test_terminal_statuses_for_the_model_and_display(monkeypatch):
+    from apps.opspilot.metis.llm.tools.job_mgmt.tools import job_mgmt_run_library
+
     def finish(task_func, execution):
         execution.status = ExecutionStatus.FAILED
         execution.success_count = 1
@@ -375,17 +377,17 @@ def test_terminal_statuses_for_the_model_and_display(monkeypatch):
     conversation = _conversation("sess-display")
     script = _script()
     target = _target()
-    raw = run_library_script(
-        _config("执行库脚本", session="sess-display"),
-        script_id=script.id,
-        target_source="manual",
-        target_ids=[target.id],
+    raw = job_mgmt_run_library.invoke(
+        {"script_id": script.id, "target_source": "manual", "target_ids": str(target.id)},
+        config=_config("执行库脚本", session="sess-display"),
     )
     shown = json.loads(raw)
     assert shown["status"] == "部分失败"
     assert shown["output_shown"] is True
     assert "result_url" not in shown
-    assert "STDOUT_SECRET" not in raw
+    assert shown["targets"][0]["stdout"] == "STDOUT_SECRET"
+    assert shown["targets"][0]["stderr"] == "STDERR_SECRET"
+    assert shown["targets"][0]["exit_code"] == 1
     message = conversation.messages.get(role=SkillConversationMessage.ROLE_ASSISTANT)
     assert "STDOUT_SECRET" in message.content
     assert model_visible_text(message.content) == f"作业 {json.loads(raw)['task_id']}：部分失败"
@@ -393,6 +395,8 @@ def test_terminal_statuses_for_the_model_and_display(monkeypatch):
 
 
 def test_script_output_reaches_the_chat_without_a_saved_conversation(monkeypatch):
+    from apps.opspilot.metis.llm.tools.job_mgmt.tools import job_mgmt_run_custom
+
     def finish(task_func, execution):
         execution.status = ExecutionStatus.SUCCESS
         execution.success_count = 1
@@ -405,13 +409,13 @@ def test_script_output_reaches_the_chat_without_a_saved_conversation(monkeypatch
     from apps.opspilot.services.job_tool_service import latest_display_payload
 
     target = _target()
-    args = dict(script_type="python", script_content="print('opspilot-ok')", target_source="manual", target_ids=[target.id])
-    run_custom_script(_config("用 python 执行 print('opspilot-ok')", session="thread:debug-job"), **args)
-    raw = run_custom_script(_config("确认执行", session="thread:debug-job"), **args)
+    args = dict(script_type="python", script_content="print('opspilot-ok')", target_source="manual", target_ids=str(target.id))
+    job_mgmt_run_custom.invoke(args, config=_config("用 python 执行 print('opspilot-ok')", session="thread:debug-job"))
+    raw = job_mgmt_run_custom.invoke(args, config=_config("确认执行", session="thread:debug-job"))
     payload = json.loads(raw)
     assert payload["output_shown"] is True
     assert "result_url" not in payload
-    assert "STDOUT_SECRET" not in raw
+    assert payload["targets"][0]["stdout"] == "STDOUT_SECRET"
     assert SkillConversation.objects.filter(session_id="thread:debug-job").count() == 0
     display = latest_display_payload(payload["task_id"])
     assert display["targets"][0]["stdout"] == "STDOUT_SECRET"
@@ -431,9 +435,62 @@ def test_query_existing_job_in_debug_session_without_saved_conversation():
         execution_results=[{"name": "web-1", "ip": "10.0.0.8", "stdout": "PRIVATE_OUTPUT", "stderr": "", "exit_code": 0}],
     )
     result = query_job(_config(f"查询作业 {task_id}", session=session), task_id)
-    assert json.loads(result) == {"task_id": task_id, "status": "成功", "output_shown": True}
-    assert "PRIVATE_OUTPUT" not in result
+    payload = json.loads(result)
+    assert payload["task_id"] == task_id
+    assert payload["status"] == "成功"
+    assert payload["output_shown"] is True
+    assert payload["targets"][0]["stdout"] == "PRIVATE_OUTPUT"
     assert latest_display_payload(task_id)["targets"][0]["stdout"] == "PRIVATE_OUTPUT"
+
+
+@pytest.mark.parametrize(
+    ("status", "label", "timed_out"),
+    [
+        (ExecutionStatus.SUCCESS, "成功", False),
+        (ExecutionStatus.FAILED, "部分失败", False),
+        (ExecutionStatus.RUNNING, "仍在执行", False),
+        (ExecutionStatus.TIMEOUT, "失败", True),
+    ],
+)
+def test_query_tool_returns_each_host_output_from_latest_conversation_job(status, label, timed_out):
+    from apps.opspilot.metis.llm.tools.job_mgmt.tools import job_mgmt_query
+
+    session = "query-output"
+    _conversation(session)
+    created = run_library_script(_config("执行库脚本", session=session), script_id=_script().id, target_source="manual", target_ids=[_target().id])
+    task_id = json.loads(created)["task_id"]
+    results = [
+        {"name": "web-1", "ip": "10.0.0.8", "stdout": "CPU 使用率 25%\n内存正常\n", "stderr": "", "exit_code": 0},
+        {"name": "web-2", "ip": "10.0.0.9", "stdout": "", "stderr": "connection refused\n", "exit_code": 1},
+    ]
+    JobExecution.objects.filter(id=task_id).update(status=status, success_count=1, failed_count=1, execution_results=results)
+
+    payload = json.loads(job_mgmt_query.invoke({}, config=_config("分析作业输出", session=session)))
+
+    assert payload["task_id"] == task_id
+    assert payload["status"] == label
+    assert payload["targets"] == [dict(item, timed_out=timed_out) for item in results]
+    assert JobExecution.objects.count() == 1
+    assert "echo from-library" not in json.dumps(payload)
+
+
+def test_query_finished_script_without_output_preserves_status_and_exit_code():
+    from apps.opspilot.metis.llm.tools.job_mgmt.tools import job_mgmt_query
+
+    execution = JobExecution.objects.create(
+        name="静默脚本",
+        team=[1],
+        job_type="script",
+        status=ExecutionStatus.SUCCESS,
+        execution_results=[{"name": "web-1", "ip": "10.0.0.8", "stdout": "", "stderr": "", "exit_code": 0}],
+    )
+    payload = json.loads(job_mgmt_query.invoke({"task_id": execution.id}, config=_config()))
+    assert payload["status"] == "成功"
+    assert payload["output_shown"] is False
+    assert payload["targets"][0]["exit_code"] == 0
+    assert payload["targets"][0]["stdout"] == ""
+    assert payload["targets"][0]["stderr"] == ""
+    assert payload["result_url"] == f"/job/execution/job-record?id={execution.id}"
 
 
 def test_explicit_job_query_does_not_fall_back_or_cross_organizations():

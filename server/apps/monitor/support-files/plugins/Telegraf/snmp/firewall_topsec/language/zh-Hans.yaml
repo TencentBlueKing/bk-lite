@@ -24,7 +24,7 @@ monitor_object_metric:
       desc: 天融信 TOS 防火墙当前空闲物理内存（TOS-SYSSTATE memoryFree，单位字节）。
     device_memory_used:
       name: 已用内存
-      desc: 天融信 TOS 防火墙当前已使用的物理内存，按 总量减去空闲 计算（单位字节）。
+      desc: 天融信 TOS 防火墙当前已使用的物理内存（单位字节）。
     firewall_active_sessions:
       name: 活动会话数
       desc: 该指标报告天融信 TOS 防火墙当前连接数（TOS-SYSSTATE currentConnections）。数量快速上升可能意味着连接洪泛或会话表压力。

@@ -9,6 +9,7 @@ NETWORK_STATUS_TOPOLOGY_OVERLAY_REST_APIS = (
     "monitor/query_latest_interface_metrics",
 )
 NETWORK_STATUS_TOPOLOGY_OVERLAY_QUERY_KEYS = frozenset({"inst_uuids", "instance_ids", "instance_id", "limit"})
+NETWORK_STATUS_TOPOLOGY_DEFAULT_NODE_LIMIT = 100
 
 
 def collect_network_status_topology_overlay_datasource_ids() -> set[int]:
@@ -28,6 +29,43 @@ def view_sets_has_network_status_topology(value) -> bool:
     if value_config.get("sceneWidgetType") == NETWORK_STATUS_TOPOLOGY_CHART_TYPE:
         return True
     return any(view_sets_has_network_status_topology(child) for child in value.values())
+
+
+def declared_network_status_topology_queries(view_sets) -> list[dict]:
+    """画布上每个网络状态拓扑组件保存的设备、节点上限和是否一跳。"""
+    found: list[dict] = []
+    seen: set[int] = set()
+
+    def visit(node) -> None:
+        if isinstance(node, list):
+            for item in node:
+                visit(item)
+            return
+        if not isinstance(node, dict):
+            return
+        config = node.get("networkStatusTopology")
+        is_widget = node.get("chartType") == NETWORK_STATUS_TOPOLOGY_CHART_TYPE or node.get("sceneWidgetType") == NETWORK_STATUS_TOPOLOGY_CHART_TYPE
+        if is_widget and isinstance(config, dict) and id(config) not in seen:
+            seen.add(id(config))
+            raw_ids = config.get("instUuids") if isinstance(config.get("instUuids"), list) else []
+            inst_uuids = {str(item).strip() for item in raw_ids if str(item).strip()}
+            raw_limit = config.get("nodeLimit", NETWORK_STATUS_TOPOLOGY_DEFAULT_NODE_LIMIT)
+            try:
+                node_limit = int(raw_limit)
+            except (TypeError, ValueError):
+                node_limit = NETWORK_STATUS_TOPOLOGY_DEFAULT_NODE_LIMIT
+            found.append(
+                {
+                    "inst_uuids": inst_uuids,
+                    "node_limit": node_limit,
+                    "one_hop": config.get("oneHop") is True and len(inst_uuids) == 1,
+                }
+            )
+        for child in node.values():
+            visit(child)
+
+    visit(view_sets)
+    return found
 
 
 def overlay_datasource_ids_for_view_sets(view_sets) -> set[int]:

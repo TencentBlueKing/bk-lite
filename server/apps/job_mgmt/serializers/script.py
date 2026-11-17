@@ -9,10 +9,10 @@ from apps.job_mgmt.services.param_crypto import ParamCrypto
 from apps.job_mgmt.services.script_normalize import normalize_script_line_endings
 from apps.job_mgmt.services.script_param_definitions import normalize_script_param_definitions
 from apps.job_mgmt.services.template_revision import TemplateRevisionService, display_revision_label, request_operator, script_payload
-from apps.job_mgmt.utils.i18n import serializer_message
+from apps.job_mgmt.utils.i18n import job_message, serializer_message
 
 
-def validate_script_name_unique_in_organizations(name, team, exclude_script_id=None):
+def validate_script_name_unique_in_organizations(name, team, exclude_script_id=None, request=None):
     """校验同名脚本的组织集合互不重叠。"""
     requested_teams = {str(team_id) for team_id in team}
     same_name_scripts = Script.objects.filter(name=name)
@@ -22,7 +22,7 @@ def validate_script_name_unique_in_organizations(name, team, exclude_script_id=N
     existing_teams = same_name_scripts.values_list("team", flat=True).iterator()
     has_conflict = any(requested_teams.intersection(str(team_id) for team_id in (script_teams or [])) for script_teams in existing_teams)
     if has_conflict:
-        raise serializers.ValidationError({"name": "同一组织内已存在同名脚本"})
+        raise serializers.ValidationError({"name": job_message(request, "error.script_name_conflict", "同一组织内已存在同名脚本")})
 
 
 class ScriptListSerializer(TeamSerializer):

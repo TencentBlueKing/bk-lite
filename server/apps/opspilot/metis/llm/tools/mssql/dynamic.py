@@ -38,7 +38,14 @@ def validate_sql_safety(sql: str) -> tuple[bool, str]:
 
 
 @tool()
-def get_table_schema_details(table_name: str, schema_name: str = "dbo", database: Optional[str] = None, config: RunnableConfig = None):
+def get_table_schema_details(
+    table_name: str,
+    schema_name: str = "dbo",
+    database: Optional[str] = None,
+    config: RunnableConfig = None,
+    instance_name: str = None,
+    instance_id: str = None,
+):
     """
     获取表的详细结构信息,用于构建动态查询和理解数据关系
 
@@ -143,16 +150,29 @@ def get_table_schema_details(table_name: str, schema_name: str = "dbo", database
     """
 
     try:
-        table_info = execute_readonly_query(table_info_query, params=(schema_name, table_name), config=config, database=database)
+        table_info = execute_readonly_query(
+            table_info_query, params=(schema_name, table_name), config=config, database=database, instance_name=instance_name, instance_id=instance_id
+        )
 
         if not table_info:
             return safe_json_dumps({"error": f"表 {schema_name}.{table_name} 不存在"})
 
-        columns = execute_readonly_query(columns_query, params=(schema_name, table_name), config=config, database=database)
+        columns = execute_readonly_query(
+            columns_query, params=(schema_name, table_name), config=config, database=database, instance_name=instance_name, instance_id=instance_id
+        )
 
-        indexes = execute_readonly_query(indexes_query, params=(schema_name, table_name), config=config, database=database)
+        indexes = execute_readonly_query(
+            indexes_query, params=(schema_name, table_name), config=config, database=database, instance_name=instance_name, instance_id=instance_id
+        )
 
-        foreign_keys = execute_readonly_query(foreign_keys_query, params=(schema_name, table_name), config=config, database=database)
+        foreign_keys = execute_readonly_query(
+            foreign_keys_query,
+            params=(schema_name, table_name),
+            config=config,
+            database=database,
+            instance_name=instance_name,
+            instance_id=instance_id,
+        )
 
         table_info[0]["total_size"] = format_size(table_info[0]["total_size_bytes"])
 
@@ -163,7 +183,9 @@ def get_table_schema_details(table_name: str, schema_name: str = "dbo", database
 
 
 @tool()
-def search_tables_by_keyword(keyword: str, database: Optional[str] = None, config: RunnableConfig = None):
+def search_tables_by_keyword(
+    keyword: str, database: Optional[str] = None, config: RunnableConfig = None, instance_name: str = None, instance_id: str = None
+):
     """
     根据关键字搜索相关的表和列,帮助发现业务实体及其数据存储位置
 
@@ -207,7 +229,14 @@ def search_tables_by_keyword(keyword: str, database: Optional[str] = None, confi
     search_pattern = f"%{keyword}%"
 
     try:
-        results = execute_readonly_query(query, params=(search_pattern, search_pattern, search_pattern), config=config, database=database)
+        results = execute_readonly_query(
+            query,
+            params=(search_pattern, search_pattern, search_pattern),
+            config=config,
+            database=database,
+            instance_name=instance_name,
+            instance_id=instance_id,
+        )
 
         return safe_json_dumps({"keyword": keyword, "total_matches": len(results), "tables": results})
 
@@ -216,7 +245,9 @@ def search_tables_by_keyword(keyword: str, database: Optional[str] = None, confi
 
 
 @tool()
-def execute_safe_select(sql: str, limit: int = 100, database: Optional[str] = None, config: RunnableConfig = None):
+def execute_safe_select(
+    sql: str, limit: int = 100, database: Optional[str] = None, config: RunnableConfig = None, instance_name: str = None, instance_id: str = None
+):
     """
     执行安全的SELECT查询,支持聚合统计、多表关联等复杂查询
 
@@ -314,7 +345,7 @@ def execute_safe_select(sql: str, limit: int = 100, database: Optional[str] = No
                 sql = re.sub(r"top\s+\d+", f"TOP {limit}", sql, count=1, flags=re.IGNORECASE)
 
     try:
-        results = execute_readonly_query(sql, config=config, database=database)
+        results = execute_readonly_query(sql, config=config, database=database, instance_name=instance_name, instance_id=instance_id)
 
         return safe_json_dumps({"success": True, "row_count": len(results), "limit": limit, "sql": sql, "data": results})
 
@@ -323,7 +354,9 @@ def execute_safe_select(sql: str, limit: int = 100, database: Optional[str] = No
 
 
 @tool()
-def execute_fallback_readonly_sql(sql: str, limit: int = 100, database: Optional[str] = None, config: RunnableConfig = None):
+def execute_fallback_readonly_sql(
+    sql: str, limit: int = 100, database: Optional[str] = None, config: RunnableConfig = None, instance_name: str = None, instance_id: str = None
+):
     """
     执行更宽松的只读SQL兜底查询,用于结构化工具无法覆盖的场景。
 
@@ -391,14 +424,14 @@ def execute_fallback_readonly_sql(sql: str, limit: int = 100, database: Optional
                 sql = re.sub(r"top\s+\(\d+\)|top\s+\d+", f"TOP {limit}", sql, count=1, flags=re.IGNORECASE)
 
     try:
-        results = execute_readonly_query(sql, config=config, database=database)
+        results = execute_readonly_query(sql, config=config, database=database, instance_name=instance_name, instance_id=instance_id)
         return safe_json_dumps({"success": True, "row_count": len(results), "limit": limit, "sql": sql, "data": results, "mode": "fallback_readonly"})
     except Exception as e:
         return safe_json_dumps({"error": sanitize_db_error(e, "查询执行"), "sql": sql, "mode": "fallback_readonly"})
 
 
 @tool()
-def explain_query_plan(sql: str, database: Optional[str] = None, config: RunnableConfig = None):
+def explain_query_plan(sql: str, database: Optional[str] = None, config: RunnableConfig = None, instance_name: str = None, instance_id: str = None):
     """
     获取查询的执行计划,用于优化动态生成的查询
 
@@ -456,7 +489,9 @@ def explain_query_plan(sql: str, database: Optional[str] = None, config: Runnabl
 
         # 搜索类似查询的执行统计
         search_pattern = f"%{sql[:50].replace('[', '[[]').replace('%', '[%]')}%"
-        results = execute_readonly_query(estimate_query, params=(search_pattern,), config=config, database=database)
+        results = execute_readonly_query(
+            estimate_query, params=(search_pattern,), config=config, database=database, instance_name=instance_name, instance_id=instance_id
+        )
 
         if results:
             return safe_json_dumps({"success": True, "sql": sql, "cached_plan_stats": results[0], "note": "显示的是缓存中类似查询的执行统计"})
@@ -475,6 +510,8 @@ def get_sample_data(
     columns: Optional[str] = None,
     database: Optional[str] = None,
     config: RunnableConfig = None,
+    instance_name: str = None,
+    instance_id: str = None,
 ):
     """
     获取表的示例数据,帮助理解数据格式和内容
@@ -550,7 +587,7 @@ def get_sample_data(
     query = f"SELECT TOP {limit} {column_expr} FROM {schema_name}.{table_name}"
 
     try:
-        results = execute_readonly_query(query, config=config, database=database)
+        results = execute_readonly_query(query, config=config, database=database, instance_name=instance_name, instance_id=instance_id)
 
         return safe_json_dumps(
             {"success": True, "table": f"{schema_name}.{table_name}", "row_count": len(results), "limit": limit, "sample_data": results}

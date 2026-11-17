@@ -27,7 +27,10 @@ import {
   getFilterDefinitionId,
 } from '@/app/ops-analysis/utils/widgetDataTransform';
 import { readWidgetInteraction } from '@/app/ops-analysis/utils/interactionLink';
-import { normalizeLineBarFieldList } from '@/app/ops-analysis/utils/lineBarFieldMapping';
+import {
+  defaultDisplayFields,
+  normalizeLineBarFieldList,
+} from '@/app/ops-analysis/utils/lineBarFieldMapping';
 import { readSingleValueStyle } from '@/app/ops-analysis/utils/singleValueStyle';
 import type { WidgetConfigFormValues } from './submitConfig';
 
@@ -196,9 +199,6 @@ function buildClearedChartDependentFormFields() {
     selectedFields: [] as string[],
     topNLabelField: undefined,
     topNValueField: undefined,
-    topNScalarFields: [] as Array<{ field?: string; label?: string }>,
-    barMode: undefined,
-    barMax: undefined,
     dimensionField: undefined,
     valueField: undefined,
     valueFields: [] as string[],
@@ -280,9 +280,14 @@ export function buildDatasourceSwitchResetValues(options: {
   chartType: string;
   params: Record<string, any>;
   surface?: OpsAnalysisWidgetSurface;
+  fieldSchema?: Array<{ key?: string; value_type?: string }>;
 }) {
+  const displayFields = options.chartType === 'single' || options.chartType === 'gauge'
+    ? defaultDisplayFields(options.fieldSchema)
+    : [];
   return {
     ...buildClearedChartDependentFormFields(),
+    ...(displayFields.length > 0 ? { selectedFields: displayFields } : {}),
     dataSource: options.dataSourceId,
     chartType: options.chartType,
     appearance:
@@ -358,13 +363,6 @@ export function applyOpenedValueConfigToFormValues(
   }
   if (valueConfig?.topNValueField !== undefined) {
     formValues.topNValueField = valueConfig.topNValueField;
-  }
-  formValues.topNScalarFields = valueConfig?.topNScalarFields?.length
-    ? valueConfig.topNScalarFields
-    : [];
-  formValues.barMode = valueConfig?.barMode === 'absolute' ? 'absolute' : undefined;
-  if (valueConfig?.barMax !== undefined) {
-    formValues.barMax = valueConfig.barMax;
   }
   if (valueConfig?.dimensionField !== undefined) {
     formValues.dimensionField = valueConfig.dimensionField;
@@ -455,6 +453,15 @@ export function applyOpenedValueConfigToFormValues(
     });
   }
   formValues.compareMode = valueConfig?.compareMode || 'percent';
+  if (
+    normalizeLineBarFieldList(formValues.selectedFields).length === 0
+    && (formValues.chartType === 'single' || formValues.chartType === 'gauge')
+  ) {
+    const displayFields = defaultDisplayFields(targetDataSource?.field_schema);
+    if (displayFields.length > 0) {
+      formValues.selectedFields = displayFields;
+    }
+  }
   const singleStyle = readSingleValueStyle(valueConfig?.singleStyle);
   formValues.singleStyle = {
     showIcon: singleStyle.showIcon,

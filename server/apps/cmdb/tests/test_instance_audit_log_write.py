@@ -27,11 +27,11 @@ HOST_UUID = "63e4a531-b6bb-43cc-9eae-8eb8a09f795e"
 def quiet_instance_writes(monkeypatch):
     monkeypatch.setattr(
         "apps.cmdb.services.auto_relation_reconcile.schedule_instance_auto_relation_reconcile",
-        lambda ids: None,
+        lambda *args, **kwargs: None,
     )
     monkeypatch.setattr(
         f"{MODULE}.schedule_instance_auto_relation_reconcile",
-        lambda ids: None,
+        lambda *args, **kwargs: None,
     )
     monkeypatch.setattr(
         "apps.cmdb.services.auto_relation_reconcile.schedule_incoming_rule_full_sync_by_model_ids",

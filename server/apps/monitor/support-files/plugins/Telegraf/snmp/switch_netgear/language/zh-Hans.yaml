@@ -72,8 +72,7 @@ monitor_object_metric:
         Secs 文本），采集侧解析 60 秒（或 5 秒）窗口内的百分比；解析失败则跳过该点，不当 0%。CPU 持续偏高可能意味着控制平面过载、路由震荡或异常流量。
     device_memory_usage:
       name: 内存使用率
-      desc: 该指标表示 Netgear (FASTPATH) 设备整体内存使用率，按 (总量-空闲)/总量*100 由 KByte 标量计算，单位为百分比。内存偏高可能由内存泄漏、路由/MAC/ARP
-        表项过大或容量不足导致，可能引发不稳定或分配失败。
+      desc: Netgear (FASTPATH) 设备整体内存使用率，单位为百分比。内存偏高可能由内存泄漏、路由/MAC/ARP 表项过大或容量不足导致，可能引发不稳定或分配失败。
     device_memory_used:
       name: 内存已用量
       desc: 该指标表示设备各内存池当前已使用的字节数。它帮助管理员了解每个内存池（如 Processor、I/O 池）的绝对内存消耗，并定位承压的内存池。
@@ -83,8 +82,7 @@ monitor_object_metric:
         上报后换算为字节）。它与总量一起决定整体内存使用率；空闲量持续偏低说明存在内存压力。
     device_memory_total:
       name: 内存总量
-      desc: 该指标表示 Netgear (FASTPATH) 系统内存总容量（agentSwitchCpuProcessMemAvailable，设备以
-        KBytes 上报后换算为字节）。它是按 (总量-空闲)/总量 计算内存使用率的分母。
+      desc: Netgear (FASTPATH) 系统内存总容量（agentSwitchCpuProcessMemAvailable，设备以 KBytes 上报后换算为字节）。它是内存使用率的分母。
     device_temperature_celsius:
       name: 温度
       desc: 该指标表示设备各硬件温度传感器的读数，单位为摄氏度。温度异常升高可能意味着风扇故障、散热受阻或环境过热，若不处理可能触发热保护或损坏硬件。

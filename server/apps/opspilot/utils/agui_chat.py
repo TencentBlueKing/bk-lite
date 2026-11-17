@@ -681,7 +681,9 @@ def stream_agui_chat(params, skill_name, kwargs, current_ip, user_message, skill
     show_think = params.get("show_think", False)  # 使用 get 而不是 pop，保留值给 format_chat_server_kwargs
     skill_type = params.get("skill_type")
     params.pop("group", 0)
-    params["execution_id"] = params.get("execution_id") or params.get("thread_id") or str(int(time.time() * 1000))
+    # thread_id belongs to the conversation; a stop signal must target only this run.
+    # Preserve caller-owned execution IDs (e.g. workflow runs), otherwise allocate a fresh one.
+    params["execution_id"] = params.get("execution_id") or str(uuid.uuid4())
     # 技能测试入口无 workflow node_id；显式标记便于 HITL submit_choice 归属放行
     params["node_id"] = params.get("node_id") or "skill_test"
 

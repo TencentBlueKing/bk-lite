@@ -59,6 +59,8 @@ describe('TopNSettingsSection field refresh', () => {
     expect(screen.getAllByText('topology.nodeConfig.clickRefreshToGetFields').length).toBeGreaterThan(0);
     expect(screen.getByText('topology.nodeConfig.displayField')).toBeTruthy();
     expect(screen.getByText('topology.nodeConfig.valueField')).toBeTruthy();
+    expect(screen.queryByText('dashboard.topNScalarFields')).toBeNull();
+    expect(screen.queryByText('dashboard.topNBarMode')).toBeNull();
     expect(document.querySelectorAll('.cursor-help').length).toBeGreaterThan(0);
   });
 

@@ -3125,6 +3125,7 @@ ATTR:
   fusioncompute:
     inst_name: Name
     organization: Organization
+    endpoint: Endpoint
     tag: Tag
   fusioncompute_host:
     inst_name: Name
@@ -3249,6 +3250,7 @@ ATTR:
   inspurincloudrail:
     inst_name: Name
     organization: Organization
+    endpoint: Endpoint
     tag: Tag
   inspurincloudrail_vm:
     inst_name: Name
@@ -3311,6 +3313,7 @@ ATTR:
   nutanixhci:
     inst_name: Name
     organization: Organization
+    endpoint: Endpoint
     tag: Tag
   nutanixhci_host:
     inst_name: Name

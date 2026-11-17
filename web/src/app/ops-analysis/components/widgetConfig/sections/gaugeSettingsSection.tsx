@@ -126,6 +126,14 @@ export const GaugeSettingsSection: React.FC<GaugeSettingsSectionProps> = ({
           </span>
         }
         name="selectedFields"
+        getValueProps={(stored) => ({
+          value: Array.isArray(stored) ? stored[0] : stored || undefined,
+        })}
+        normalize={(next) => {
+          if (Array.isArray(next)) return next;
+          if (next === undefined || next === null || next === '') return [];
+          return [String(next)];
+        }}
         rules={[
           {
             required: true,

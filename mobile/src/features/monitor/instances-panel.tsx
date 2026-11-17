@@ -418,7 +418,7 @@ export default function MonitorInstancesPanel({ objectId = 0 }: MonitorInstances
         </div>
       )}
       <div
-        className={styles.scroll}
+        className={`${styles.scroll} ${styles.instanceScroll}`}
         ref={scrollRef}
         onScroll={(event) => saveSnapshot(event.currentTarget.scrollTop)}
       >

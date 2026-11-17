@@ -95,6 +95,98 @@ export const UserSyncPaused: Story = {
   },
 };
 
+export const AccountAssociationCardReady: Story = {
+  args: {
+    name: '飞书',
+    description: '用户名 → 用户ID',
+    icon: 'feishu',
+    caption: '飞书',
+    menuItems: [
+      { key: 'edit', label: '编辑' },
+      { key: 'delete', label: '删除', danger: true },
+    ],
+    body: (
+      <div className="flex flex-col gap-2">
+        <div className="grid grid-cols-2 gap-1">
+          <div className="rounded-md bg-[var(--color-fill-1)] px-3 py-2.5">
+            <div className="truncate text-sm font-medium leading-none text-[var(--color-text-1)]">
+              用户ID
+            </div>
+            <div className="mt-1.5 truncate text-xs text-[var(--color-text-3)]">
+              消息接收标识
+            </div>
+          </div>
+          <div className="rounded-md bg-[var(--color-fill-1)] px-3 py-2.5">
+            <div className="truncate text-sm font-medium leading-none text-[var(--color-text-1)]">
+              手动
+            </div>
+            <div className="mt-1.5 truncate text-xs text-[var(--color-text-3)]">
+              更新周期
+            </div>
+          </div>
+        </div>
+        <div className="flex min-w-0 items-center justify-between gap-2">
+          <div className="min-w-0 truncate text-xs leading-5 text-[var(--color-text-3)]">
+            <span>最近同步：</span>
+            <span className="tabular-nums">2026-11-12 10:20</span>
+            <span className="mx-1">·</span>
+            <span className="text-[var(--color-success)]">可用</span>
+          </div>
+          <Button type="primary" size="small" className="shrink-0 font-mini">
+            更新关联
+          </Button>
+        </div>
+      </div>
+    ),
+  },
+};
+
+export const AccountAssociationCardNeedsResync: Story = {
+  args: {
+    name: '飞书1',
+    description: '邮箱 → 邮箱',
+    icon: 'feishu',
+    caption: '飞书',
+    menuItems: [
+      { key: 'edit', label: '编辑' },
+      { key: 'delete', label: '删除', danger: true },
+    ],
+    body: (
+      <div className="flex flex-col gap-2">
+        <div className="grid grid-cols-2 gap-1">
+          <div className="rounded-md bg-[var(--color-fill-1)] px-3 py-2.5">
+            <div className="truncate text-sm font-medium leading-none text-[var(--color-text-1)]">
+              用户ID
+            </div>
+            <div className="mt-1.5 truncate text-xs text-[var(--color-text-3)]">
+              消息接收标识
+            </div>
+          </div>
+          <div className="rounded-md bg-[var(--color-fill-1)] px-3 py-2.5">
+            <div className="truncate text-sm font-medium leading-none text-[var(--color-text-1)]">
+              手动
+            </div>
+            <div className="mt-1.5 truncate text-xs text-[var(--color-text-3)]">
+              更新周期
+            </div>
+          </div>
+        </div>
+        <div className="flex min-w-0 items-center justify-between gap-2">
+          <div className="min-w-0 truncate text-xs leading-5 text-[var(--color-text-3)]">
+            <span>最近同步：</span>
+            <span className="tabular-nums">2026-11-11 18:11</span>
+            <span className="mx-1">·</span>
+            <span className="text-[var(--color-warning)]">需重新同步</span>
+          </div>
+          <Button type="primary" size="small" className="shrink-0 font-mini">
+            更新关联
+          </Button>
+        </div>
+      </div>
+    ),
+  },
+};
+
 export const HeaderAndSkeleton: Story = {
   render: () => (
     <div className="space-y-4">

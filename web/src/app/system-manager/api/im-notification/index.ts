@@ -3,7 +3,6 @@ import type {
   AvailableInstance,
   IMNotificationChannel,
   IMNotificationChannelPayload,
-  IMNotificationSyncRun,
   IMNotificationUserMapping,
 } from '@/app/system-manager/types/im-notification';
 
@@ -34,22 +33,24 @@ export const useImNotificationApi = () => {
     return await del(`/system_mgmt/im_notification_channel/${id}/`);
   }
 
+  async function getAccountAssociationOptions(): Promise<Array<{
+    id: number;
+    name: string;
+    integration_instance_id: number;
+    integration_instance_name: string;
+    status: string;
+  }>> {
+    return await get('/system_mgmt/im_notification_channel/account_association_options/');
+  }
+
   async function getAvailableInstances(): Promise<AvailableInstance[]> {
     return await get('/system_mgmt/integration_instance/available_instances/', {
       params: { capability: 'im_notification' },
     });
   }
 
-  async function syncMappings(id: number): Promise<{ run_id?: number }> {
-    return await post(`/system_mgmt/im_notification_channel/${id}/sync_mappings/`);
-  }
-
-  async function getMappings(id: number, params: Record<string, unknown>): Promise<PaginatedResponse<IMNotificationUserMapping>> {
-    return await get(`/system_mgmt/im_notification_channel/${id}/mappings/`, { params });
-  }
-
-  async function getRecords(id: number, params: Record<string, unknown>): Promise<PaginatedResponse<IMNotificationSyncRun>> {
-    return await get(`/system_mgmt/im_notification_channel/${id}/records/`, { params });
+  async function getAssociationMappings(id: number, params: Record<string, unknown>): Promise<PaginatedResponse<IMNotificationUserMapping>> {
+    return await get(`/system_mgmt/im_account_association/${id}/mappings/`, { params });
   }
 
   async function testSend(
@@ -74,9 +75,8 @@ export const useImNotificationApi = () => {
     updateChannel,
     deleteChannel,
     getAvailableInstances,
-    syncMappings,
-    getMappings,
-    getRecords,
+    getAccountAssociationOptions,
+    getAssociationMappings,
     testSend,
     sendNotification,
   };

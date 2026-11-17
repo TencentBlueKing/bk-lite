@@ -1,5 +1,6 @@
 import {
   readBinding,
+  type ArchitectureNodeAlert,
   type ArchitectureNodeStatusItem,
 } from './model';
 
@@ -92,6 +93,11 @@ export function regionAlertBadge(
   return { level: criticalCount > 0 ? 'critical' : 'warning', count };
 }
 
+export function formatHoverAlert(alerts: ArchitectureNodeAlert[] | undefined): string {
+  const reasons = (alerts ?? []).map((alert) => alert.content.trim()).filter(Boolean);
+  return Array.from(new Set(reasons)).join('；');
+}
+
 export const RESOURCE_NAME_PLATE_LIMIT = 16;
 export const DEFAULT_ICON_TITLE = 'Untitled';
 
@@ -115,6 +121,7 @@ export interface IconOverlay {
   hint?: 'unmonitored' | 'unknown' | 'forbidden' | 'invalid';
   badgeName?: string;
   badgeLevel?: string;
+  alerts?: ArchitectureNodeAlert[];
 }
 
 export interface IconBindingStats {
@@ -261,7 +268,31 @@ const coerceStatusItem = (raw: unknown): ArchitectureNodeStatusItem | null => {
   };
   const levelCounts = coerceLevelCounts(raw.level_counts);
   if (levelCounts) item.level_counts = levelCounts;
+  const alerts = coerceAlerts(raw.alerts);
+  if (alerts.length) item.alerts = alerts;
   return item;
+};
+
+const coerceAlerts = (raw: unknown): ArchitectureNodeAlert[] => {
+  if (!Array.isArray(raw)) return [];
+  const alerts: ArchitectureNodeAlert[] = [];
+  for (const entry of raw) {
+    if (!isRecord(entry)) continue;
+    const content = typeof entry.content === 'string' ? entry.content.trim() : '';
+    if (!content) continue;
+    const alert: ArchitectureNodeAlert = {
+      content,
+      level: typeof entry.level === 'string' ? entry.level : '',
+    };
+    if (typeof entry.metric_name === 'string' && entry.metric_name.trim()) {
+      alert.metric_name = entry.metric_name.trim();
+    }
+    if (typeof entry.metric_key === 'string' && entry.metric_key.trim()) {
+      alert.metric_key = entry.metric_key.trim();
+    }
+    alerts.push(alert);
+  }
+  return alerts;
 };
 
 export function chunkBoundUuids(
@@ -518,6 +549,7 @@ export function buildNodeStatus(
         if (Number.isFinite(status.alert_count)) overlay.count = status.alert_count;
         overlay.badgeName = status.inst_name || status.inst_uuid;
         overlay.badgeLevel = status.max_level || status.status;
+        if (status.alerts?.length) overlay.alerts = status.alerts;
       } else if (
         status.status === 'unmonitored'
         || status.status === 'unknown'

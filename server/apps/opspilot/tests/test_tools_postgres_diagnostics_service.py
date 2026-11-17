@@ -35,7 +35,7 @@ def test_diagnose_lock_conflicts_flags_blocked():
 
 
 def test_diagnose_connection_issues_near_limit():
-    def fake_query(sql, params=None, config=None, database=None):
+    def fake_query(sql, params=None, config=None, database=None, instance_name=None, instance_id=None):
         if "max_connections" in sql:
             return [{"max_connections": 10}]
         if "pg_stat_activity" in sql and "query_start" in sql:

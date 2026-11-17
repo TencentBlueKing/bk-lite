@@ -17,6 +17,7 @@ class AlertsConfig(AppConfig):
         # 检查是否正在运行迁移命令
         is_running_migrations = "makemigrations" in sys.argv or "migrate" in sys.argv
         if not is_running_migrations:
+            import apps.alerts.nats.generic_query  # noqa
             import apps.alerts.nats.nats  # noqa
             import apps.alerts.openapi_api  # noqa
 

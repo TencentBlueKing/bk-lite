@@ -223,18 +223,22 @@ def test_es_instance(instance: Dict[str, Any]) -> bool:
 # ── Legacy compatibility ──────────────────────────────────────────────────────
 
 
-def build_es_config_from_runnable(config: Optional[RunnableConfig]) -> Dict[str, Any]:
-    """Legacy helper kept for backward compatibility. Uses the first instance or flat fields."""
+def build_es_config_from_runnable(
+    config: Optional[RunnableConfig], instance_name: Optional[str] = None, instance_id: Optional[str] = None
+) -> Dict[str, Any]:
+    """Use the selected/default instance, or legacy flat fields when no instance is selected."""
     configurable = config.get("configurable", {}) if config else {}
     instances, default_instance_id = get_es_instances_from_configurable(configurable)
     if instances:
-        instance = resolve_es_instance(instances, default_instance_id)
+        instance = resolve_es_instance(instances, default_instance_id, instance_name=instance_name, instance_id=instance_id)
         cfg = _es_adapter.build_from_credential_item(instance)
     else:
+        if instance_name or instance_id:
+            raise ValueError("Elasticsearch instance selection is unavailable for legacy single-instance configuration")
         cfg = _build_legacy_es_config(configurable)
     return _build_es_client_kwargs(cfg)
 
 
-def get_es_client(config: Optional[RunnableConfig] = None) -> Elasticsearch:
-    """Legacy helper: returns an Elasticsearch client for the default/only instance."""
-    return Elasticsearch(**build_es_config_from_runnable(config))
+def get_es_client(config: Optional[RunnableConfig] = None, instance_name: Optional[str] = None, instance_id: Optional[str] = None) -> Elasticsearch:
+    """Return a client for exactly one selected/default instance."""
+    return Elasticsearch(**build_es_config_from_runnable(config, instance_name=instance_name, instance_id=instance_id))

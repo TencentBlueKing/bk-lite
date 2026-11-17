@@ -21,8 +21,8 @@ Incident 负责人可以在处置协作区一键创建飞书群，并把当前�
 | Incident 协作人 | `Incident.collaborators` 中的用户；可入群、可查看，但不能管理 |
 | 当前期望成员 | `operator + collaborators` 去重后的当前集合 |
 | 群绑定 | BK-Lite Incident 与一个外部飞书群的本地管理关系 |
-| IM 通道 | `IMNotificationChannel`；同时确定飞书应用、用户映射策略和团队可见范围 |
-| 用户映射 | 通道内 BK-Lite `User` 到飞书身份的对应关系；建群使用冻结后的外部 ID 快照 |
+| IM 通道 | `IMNotificationChannel`；确定飞书应用、所选账号关联和团队可见范围 |
+| 用户映射 | 通道所选账号关联里，BK-Lite `User` 到飞书身份的对应关系；建群使用冻结后的外部 ID 快照。规则见 `specs/capabilities/im-account-association.md` |
 | 持续同步 | 新增当前期望成员时自动补拉；不是外部群成员的强制一致性 |
 | 只增不减 | 人员从 Incident 移除后不自动踢出飞书群 |
 | 解绑 | BK-Lite 停止管理该群；不会删除、解散外部飞书群 |
@@ -97,6 +97,8 @@ flowchart LR
 
 ### 用户映射
 
+下图记录的是映射还挂在通知渠道上时的结构。当前对应关系在账号关联上，通道只保存所选关联；规则见 `specs/capabilities/im-account-association.md`。
+
 ```mermaid
 flowchart LR
     Incident["Incident<br/>operator + collaborators"]
@@ -113,7 +115,7 @@ flowchart LR
     Snapshot --> FeishuID
 ```
 
-映射行在通讯录重同步时可能重建，因此 `IncidentIMMember` 不外键依赖映射行。群创建后固定 `member_id_type`；对账只接受同类型身份，避免通道配置变化后向旧群传入错误类型的 ID。
+映射行在账号关联完整更新时可能重建，因此 `IncidentIMMember` 不外键依赖映射行。群创建后固定 `member_id_type`；对账只接受同类型身份，避免通道配置变化后向旧群传入错误类型的 ID。
 
 ## 5. 深模块与文件导航
 
@@ -122,7 +124,7 @@ flowchart LR
 | 飞书集成与凭据 | `app_id/app_secret`、tenant token、能力配置 | [`feishu.py`](../../../server/apps/system_mgmt/providers/manifests/feishu.py) |
 | 飞书 `im_group` Adapter | readiness、建群、查群、加人、摘要消息、平台错误归一 | [`feishu.py`](../../../server/apps/system_mgmt/providers/adapters/feishu.py) |
 | IM 群运行时 Interface | 可用通道过滤、团队访问、统一执行入口 | [`im_group_service.py`](../../../server/apps/system_mgmt/services/im_group_service.py) |
-| 通道与用户映射 | 渠道同步状态、匹配策略、外部身份 | [`im_notification_channel.py`](../../../server/apps/system_mgmt/models/im_notification_channel.py) |
+| 通道与账号关联 | 通道所选关联、关联结果与外部身份 | [`im_account_association.py`](../../../server/apps/system_mgmt/models/im_account_association.py) |
 | 群绑定与成员模型 | 群/阶段/暂停/成员同步事实、跨库唯一槽位、delivery lease | [`incident_im.py`](../../../server/apps/alerts/models/incident_im.py) |
 | 群管理 Interface | 创建、设置、暂停/恢复、重试准备、解绑、审计 | [`groups.py`](../../../server/apps/alerts/service/incident_im/groups.py) |
 | 成员解析模块 | 当前期望成员、映射解析、ID 类型冻结、只增不减快照 | [`members.py`](../../../server/apps/alerts/service/incident_im/members.py) |

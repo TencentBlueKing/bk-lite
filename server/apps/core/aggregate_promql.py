@@ -147,6 +147,16 @@ def align_query_end(ended_at: datetime, *, now: datetime, flush_seconds: int) ->
     return complete_minute - timedelta(seconds=flush_seconds)
 
 
+_RE2_METACHARACTERS = frozenset("\\.+*?()|[]{}^$")
+
+
+def escape_re2(value: object) -> str:
+    """只转义 RE2 元字符。空格等其余字符保持原样，RE2 不接受对它们的转义。"""
+
+    text = str(value)
+    return "".join(f"\\{char}" if char in _RE2_METACHARACTERS else char for char in text)
+
+
 def escape_promql_label_value(value: object) -> str:
     """转义 PromQL 标签字符串，避免标签值闭合选择器。"""
 
@@ -231,9 +241,9 @@ class AggregatePromqlClient:
         owns_session = self._session is None
         response = None
         try:
-            response = session.get(
+            response = session.post(
                 f"{self.base_url}{path}",
-                params=params,
+                data=params,
                 timeout=self.timeout,
                 auth=self._auth,
                 headers={"Accept": "application/json"},

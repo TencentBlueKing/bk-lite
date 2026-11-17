@@ -4,6 +4,7 @@
 @import "../app/ops-analysis/components/widgets/application3D/application3DChrome.css";
 
 /* Docs mention token patterns; exclude so Tailwind does not emit invalid utilities. */
+@source "../../packages/chat-content/src";
 @source not "../**/*.md";
 @source not "../**/*.mdc";
 

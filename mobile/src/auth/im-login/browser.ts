@@ -12,7 +12,9 @@ import {
 } from './oauth';
 import { getImAuthCodeProvider } from './providers';
 import { loadFeishuH5Sdk, type FeishuHost } from './providers/feishu';
+import { savePendingLogin } from './pending-login';
 import { establishH5SessionFromLoginResult } from './session';
+import { clearSilentLoginSuppression } from './silent-guard';
 import { runSilentImLogin } from './shell';
 import type { AuthCodeProof, ExternalLoginResult, PublicLoginBinding } from './types';
 
@@ -112,8 +114,18 @@ export async function startBrowserExternalLogin(binding: PublicLoginBinding): Pr
     pollToken: data.poll_token,
     bindingName: binding.name,
   });
+  clearSilentLoginSuppression(window.sessionStorage);
   window.location.assign(data.login_url);
   return true;
+}
+
+function establishBrowserSession(loginResult: ExternalLoginResult, dependencies: SessionDependencies) {
+  return establishH5SessionFromLoginResult(loginResult, dependencies).then((session) => {
+    if (session.status === 'otp-required' || session.status === 'password-reset-required') {
+      savePendingLogin(window.sessionStorage, loginResult);
+    }
+    return session;
+  });
 }
 
 export function runBrowserSilentLogin(dependencies: SessionDependencies) {
@@ -123,7 +135,7 @@ export function runBrowserSilentLogin(dependencies: SessionDependencies) {
     getAuthCode: acquireAuthCode,
     exchange: exchangeAuthCode,
     startOauth: startBrowserExternalLogin,
-    establishSession: (loginResult) => establishH5SessionFromLoginResult(loginResult, dependencies),
+    establishSession: (loginResult) => establishBrowserSession(loginResult, dependencies),
   });
 }
 
@@ -141,6 +153,6 @@ export function completeBrowserExternalLogin(dependencies: SessionDependencies) 
       if (!response?.result || !response.data) return null;
       return response.data;
     },
-    establishSession: (loginResult) => establishH5SessionFromLoginResult(loginResult, dependencies),
+    establishSession: (loginResult) => establishBrowserSession(loginResult, dependencies),
   });
 }

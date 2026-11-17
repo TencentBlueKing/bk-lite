@@ -77,7 +77,6 @@ export const buildRoleFieldOptions = (
   schemaFields.forEach((field) => {
     appendOption(field.key, field.title);
   });
-
   collectSampleFieldKeys(previewRawData).forEach((key) => {
     appendOption(key);
   });

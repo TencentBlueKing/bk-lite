@@ -84,7 +84,7 @@ monitor_object_metric:
         CPU 可能意味着流量检测负载过重、攻击活动或控制平面瓶颈。
     device_memory_usage:
       name: 内存使用率
-      desc: 该指标报告 Palo Alto 防火墙 RAM 使用率（由 panhrStorageTable 内存行 used/total 计算）。内存压力过高时可能影响会话处理性能。
+      desc: Palo Alto 防火墙 RAM 使用率。内存压力过高时可能影响会话处理性能。
     device_memory_total:
       name: 内存总容量
       desc: 该指标报告 Palo Alto 防火墙的 RAM 总容量（PAN-COMMON-MIB panhrStorageSize × panhrStorageAllocationUnits，仅

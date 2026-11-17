@@ -5,9 +5,8 @@
 社区只 get 不 import。
 """
 
-from apps.core.exceptions.base_app_exception import BaseAppException
-
 from apps.cmdb.extensions import registry
+from apps.core.exceptions.base_app_exception import BaseAppException
 
 ENTERPRISE_DISABLED_MESSAGE = "附件/图片功能未启用（企业版）"
 
@@ -47,6 +46,9 @@ class InstanceEnterpriseExtension:
         raise BaseAppException(ENTERPRISE_DISABLED_MESSAGE)
 
     def handle_download(self, *, request, file_id: str, check_read_permission=None, as_attachment=False):
+        raise BaseAppException(ENTERPRISE_DISABLED_MESSAGE)
+
+    def handle_file_content(self, *, file_id: str, ticket=None, as_attachment=False):
         raise BaseAppException(ENTERPRISE_DISABLED_MESSAGE)
 
     def handle_delete_temp(self, *, request, file_id: str):

@@ -120,6 +120,30 @@ class TestBuildInterruptOn:
 
 
 class TestCollectTools:
+    def test_unattended_does_not_expose_choice_tool(self):
+        n = ToolsNodes()
+        n.all_tools = [_tool("monitor_list_objects")]
+        with patch.object(ToolsNodes, "_build_knowledge_retrieve_tool", return_value=None):
+            tools = n._collect_deepagent_tools(_request(extra_config={"unattended": True}))
+        assert [tool.name for tool in tools] == ["monitor_list_objects"]
+
+    def test_unattended_k8s_report_uses_default_without_question(self):
+        node = ToolsNodes()
+        node._enable_config_analysis_report = lambda: True
+        node._enable_repair_diff_report = lambda: True
+        node._emit_k8s_repair_report = AsyncMock()
+        config = {"configurable": {"graph_request": _request(extra_config={"unattended": True})}}
+        with patch(
+            "apps.opspilot.metis.llm.chain.node.find_pending_k8s_analysis_choice",
+            return_value={
+                "_deployments_full": [{"name": "api"}],
+                "problematic": 1,
+            },
+        ), patch("apps.opspilot.metis.llm.chain.node.finalize_user_choice") as choice:
+            assert asyncio.run(node._run_pending_k8s_repair_workflow([], config)) is True
+        assert node._emit_k8s_repair_report.await_args.args[1] == "all"
+        choice.assert_not_called()
+
     def test_uses_all_tools_and_appends_kb_tool(self):
         n = ToolsNodes()
         n.all_tools = [_tool("shell"), _tool("k8s")]
@@ -167,75 +191,51 @@ class TestSkillBackendSources:
             backend, sources, sandbox_dir = n._build_skill_backend_and_sources(_request())
         assert backend is None and sources == [] and sandbox_dir is None
 
-    def test_materializes_packages_into_ephemeral_sandbox(self):
-        import os
+    def test_materializes_packages_into_local_workspace(self):
+        from apps.opspilot.services.python_sandbox.skill_backend import LocalSkillBackend
 
-        n = ToolsNodes()
-        pkgs = [{"name": "k8s-triage"}, {"name": "log-analysis"}]
+        node = ToolsNodes()
+        packages = [{"name": "k8s-triage"}, {"name": "log-analysis"}]
+        sandbox = MagicMock(workspace="/tmp/opspilot-test")
         with (
-            patch.object(ToolsNodes, "_resolve_skill_packages", return_value=pkgs),
-            patch("deepagents.backends.LocalShellBackend", return_value=MagicMock()) as backend_cls,
-            patch("apps.opspilot.services.skill_package.materializer.materialize_skill_package") as mat,
-            patch.object(ToolsNodes, "_ensure_skill_deps") as ensure_deps,
+            patch("deepagents.backends.LocalShellBackend") as host_backend,
+            patch("apps.opspilot.services.python_sandbox.provisioning.materialize_local_skill") as materialize,
         ):
-            backend, sources, sandbox_dir = n._build_skill_backend_and_sources(_request())
-        assert backend is not None
-        assert sources == ["/skills/"]
-        assert mat.call_count == 2
-        # 建沙箱只物化目录,不预装依赖(寒暄不应 pip install)
-        ensure_deps.assert_not_called()
-        # 一次性沙箱目录被创建（用完即弃，由调用方清理）
-        assert sandbox_dir and os.path.isdir(sandbox_dir)
-        # 用的是 LocalShellBackend：虚拟根 + 不继承宿主环境
-        _, kwargs = backend_cls.call_args
-        assert kwargs["virtual_mode"] is True
-        assert kwargs["inherit_env"] is False
-        n._cleanup_sandbox(sandbox_dir)
+            backend, sources, directory = node._build_skill_backend_and_sources(_request(), packages=packages, sandbox=sandbox)
+        assert isinstance(backend, LocalSkillBackend)
+        assert backend.sandbox is sandbox
+        assert sources == [sandbox.workspace + "/skills/"] and directory is None
+        assert materialize.call_count == 2
+        host_backend.assert_not_called()
+        sandbox.execute_command.assert_not_called()
 
-    def test_skill_deps_install_only_when_skill_path_accessed(self):
-        """读 /skills/<name>/SKILL.md 才装该包依赖;未访问不装。"""
-        n = ToolsNodes()
-        pkgs = [
-            {"name": "kubernetes-specialist", "package_id": "kubernetes-specialist"},
-            {"name": "pdf", "package_id": "pdf"},
-        ]
-        with (
-            patch.object(ToolsNodes, "_resolve_skill_packages", return_value=pkgs),
-            patch("deepagents.backends.LocalShellBackend", return_value=MagicMock()),
-            patch("apps.opspilot.services.skill_package.materializer.materialize_skill_package"),
-            patch.object(ToolsNodes, "_ensure_skill_deps") as ensure_deps,
-        ):
-            backend, _, sandbox_dir = n._build_skill_backend_and_sources(_request())
-            ensure_deps.assert_not_called()
-            backend.read("/skills/kubernetes-specialist/SKILL.md")
-            ensure_deps.assert_called_once()
-            ensured = ensure_deps.call_args[0][0]
-            assert len(ensured) == 1
-            assert ensured[0]["name"] == "kubernetes-specialist"
-            # 同一技能再次访问不重复装
-            backend.read("/skills/kubernetes-specialist/scripts/foo.py")
-            assert ensure_deps.call_count == 1
-            # 另一个技能按需再装
-            backend.execute("python3 /skills/pdf/create_pdf.py", timeout=5)
-            assert ensure_deps.call_count == 2
-            assert ensure_deps.call_args[0][0][0]["name"] == "pdf"
-        n._cleanup_sandbox(sandbox_dir)
+    def test_skill_deps_install_in_workspace_only_once_per_package(self):
+        from deepagents.backends.protocol import ExecuteResponse
 
-    def test_single_package_materialize_failure_is_isolated(self):
-        n = ToolsNodes()
-        pkgs = [{"name": "a"}, {"name": "b"}]
+        from apps.opspilot.services.python_sandbox.skill_backend import LocalSkillBackend
+
+        sandbox = MagicMock(workspace="/tmp/opspilot-test")
+        sandbox.execute_command.side_effect = lambda *args, **kwargs: ExecuteResponse(output="ok", exit_code=0)
+        backend = LocalSkillBackend(sandbox)
+        backend.set_packages([{"name": "demo", "required_python_packages": ["pandas"]}])
+        backend.execute("python /skills/demo/script.py")
+        backend.execute("python /skills/demo/script.py")
+        commands = [call.args[0] for call in sandbox.execute_command.call_args_list]
+        assert len([command for command in commands if "pip install" in command]) == 1
+        assert "npm install" in commands[0]
+        assert "pandas" in commands[0]
+
+    def test_materialize_failure_is_explicit_without_host_fallback(self):
+        node = ToolsNodes()
+        error = RuntimeError("boom")
         with (
-            patch.object(ToolsNodes, "_resolve_skill_packages", return_value=pkgs),
-            patch("deepagents.backends.LocalShellBackend", return_value=MagicMock()),
-            patch(
-                "apps.opspilot.services.skill_package.materializer.materialize_skill_package",
-                side_effect=[RuntimeError("boom"), None],
-            ),
+            patch("deepagents.backends.LocalShellBackend") as host_backend,
+            patch("apps.opspilot.services.python_sandbox.provisioning.materialize_local_skill", side_effect=error),
         ):
-            backend, sources, sandbox_dir = n._build_skill_backend_and_sources(_request())
-        # 单包失败不影响整体返回
-        assert backend is not None and sources == ["/skills/"]
-        n._cleanup_sandbox(sandbox_dir)
+            with pytest.raises(RuntimeError) as caught:
+                node._build_skill_backend_and_sources(_request(), packages=[{"name": "a"}], sandbox=MagicMock())
+        assert caught.value is error
+        host_backend.assert_not_called()
 
     def test_sandbox_env_excludes_host_secrets(self):
         n = ToolsNodes()
@@ -339,6 +339,10 @@ def test_build_lightweight_system_prompt_is_short():
 
     prompt = ToolsNodes._build_lightweight_system_prompt("你是运维助手")
     assert "你是运维助手" in prompt
+    assert "直接用中文简洁回答用户" not in prompt
+    english = ToolsNodes._build_lightweight_system_prompt("Reply in English")
+    assert "Reply in English" in english
+    assert "直接用中文简洁回答用户" not in english
     assert "DeepAgent" not in prompt
     assert "write_todos" not in prompt
     assert "read_file" not in prompt
@@ -494,6 +498,7 @@ class TestBuildDeepagentNodes:
                 )
 
         with (
+            patch("apps.opspilot.metis.llm.chain.node.create_planned_agent", side_effect=_create),
             patch("apps.opspilot.metis.llm.chain.node.create_deep_agent", side_effect=_create),
             patch.object(ToolsNodes, "get_llm_client", return_value=_FakeLLM()),
         ):
@@ -502,6 +507,53 @@ class TestBuildDeepagentNodes:
             # 用 `asyncio.run()` 自管理 loop 创建/关闭。
             result = asyncio.run(wrapper({"messages": input_messages}, config))
         return result
+
+    def test_unattended_planned_execution_exposes_no_choice_and_instructs_agent(self):
+        node = ToolsNodes()
+        node.all_tools = [_tool("alerts_list_alerts")]
+        req = _request(user_message="查询告警", extra_config={"unattended": True})
+        captured = {}
+        with patch.object(ToolsNodes, "_build_knowledge_retrieve_tool", return_value=None):
+            self._run_wrapper(
+                node,
+                req,
+                captured,
+                plan_payload={
+                    "goal": "查询告警",
+                    "steps": [{"objective": "查询告警", "tools": ["alerts_list_alerts"]}],
+                },
+            )
+        assert "request_user_choice" not in [tool.name for tool in captured["create_kwargs"]["tools"]]
+        assert "【无人值守】" in captured["create_kwargs"]["system_prompt"]
+        assert any("【无人值守】" in str(message.content) for message in captured["planner_calls"][0])
+
+    @pytest.mark.parametrize("strategy,allowed", [("skip", False), ("deny", False), ("allow", True)])
+    def test_unattended_respects_configured_approval_strategy(self, strategy, allowed):
+        node = ToolsNodes()
+        node.all_tools = [_tool("read_data"), _tool("danger_tool")]
+        req = _request(
+            user_message="查询",
+            extra_config={"unattended": True},
+            approval_config=SimpleNamespace(
+                enabled=True,
+                tools=["danger_tool"],
+                unattended_strategy=strategy,
+            ),
+        )
+        captured = {}
+        with patch.object(ToolsNodes, "_build_knowledge_retrieve_tool", return_value=None):
+            self._run_wrapper(
+                node,
+                req,
+                captured,
+                plan_payload={
+                    "goal": "查询",
+                    "steps": [{"objective": "读取", "tools": ["read_data"]}],
+                },
+            )
+        names = {tool.name for tool in captured["create_kwargs"]["tools"]}
+        assert ("danger_tool" in names) is allowed
+        assert "interrupt_on" not in captured["create_kwargs"]
 
     def test_lightweight_direct_reply_skips_planner_and_deepagent(self):
         node = ToolsNodes()
@@ -624,12 +676,12 @@ class TestBuildDeepagentNodes:
 
         build_skills.assert_called_once()
         kwargs = captured["create_kwargs"]
-        assert kwargs["backend"] is fake_backend
+        assert kwargs["backend"].default is fake_backend
         assert kwargs["skills"] == ["/skills/"]
         visibility = next(m for m in kwargs["middleware"] if isinstance(m, ToolVisibilityMiddleware))
         # 纯技能步不再常驻整套 FS（避免每轮 ~7k schema），但必须把 execute
         # 放进 always_visible（仅 discard hidden 不够，allow_unregistered=False）。
-        assert "read_file" not in visibility._always_visible_tools
+        assert {"read_file", "grep"} <= visibility._always_visible_tools
         assert "execute" not in visibility._hidden_tools
         assert "execute" in visibility._always_visible_tools
         skill_guard = next(m for m in kwargs["middleware"] if isinstance(m, SkillExecutionGuardMiddleware))
@@ -730,6 +782,7 @@ class TestBuildDeepagentNodes:
             emitted.append((name, payload))
 
         with (
+            patch("apps.opspilot.metis.llm.chain.node.create_planned_agent", return_value=fake_agent),
             patch("apps.opspilot.metis.llm.chain.node.create_deep_agent", return_value=fake_agent),
             patch.object(ToolsNodes, "get_llm_client", return_value=_OverflowLLM()),
             patch.object(ToolsNodes, "_build_knowledge_retrieve_tool", return_value=None),
@@ -814,6 +867,7 @@ class TestBuildDeepagentNodes:
         opspilot_logger.addHandler(handler)
         try:
             with (
+                patch("apps.opspilot.metis.llm.chain.node.create_planned_agent", return_value=fake_agent),
                 patch("apps.opspilot.metis.llm.chain.node.create_deep_agent", return_value=fake_agent),
                 patch.object(ToolsNodes, "get_llm_client", return_value=_PlannerLLM()),
                 patch.object(ToolsNodes, "_build_knowledge_retrieve_tool", return_value=None),
@@ -917,6 +971,7 @@ class TestBuildDeepagentNodes:
         fake_agent.ainvoke = _ainvoke
 
         with (
+            patch("apps.opspilot.metis.llm.chain.node.create_planned_agent", return_value=fake_agent),
             patch("apps.opspilot.metis.llm.chain.node.create_deep_agent", return_value=fake_agent),
             patch.object(ToolsNodes, "get_llm_client", return_value=_PlanLLM()),
             patch.object(ToolsNodes, "_build_knowledge_retrieve_tool", return_value=None),
@@ -1029,8 +1084,8 @@ class TestBuildDeepagentNodes:
         assert kwargs["model"].__class__.__name__ == "_FakeLLM"
         _assert_registered_tool_names(kwargs["tools"], ["shell"])
         assert "system_prompt" in kwargs
-        # 无技能/审批时不传 backend/skills/interrupt_on
-        assert "backend" not in kwargs
+        # 无技能也保留结果 Backend；不传技能源或审批配置。
+        assert "backend" in kwargs
         assert "skills" not in kwargs
         assert "interrupt_on" not in kwargs
         # 执行步正文不对外；只返回总结轮一份答案
@@ -1118,8 +1173,8 @@ class TestBuildDeepagentNodes:
         assert visibility._hidden_tools == PLANNED_EXECUTION_HIDDEN_DEEPAGENT_TOOLS
         assert "write_todos" in visibility._hidden_tools
         assert "task" in visibility._hidden_tools
-        # 无技能包时不常驻 FS 工具，避免 8K 模型被 read_file/ls schema 撑爆。
-        assert "read_file" not in visibility._always_visible_tools
+        # 无技能包也必须能检索已落盘结果；不开放写入或执行工具。
+        assert {"read_file", "grep"} <= visibility._always_visible_tools
         _assert_visible_tool_steps(
             captured["visible_tool_calls"],
             [
@@ -1399,6 +1454,26 @@ class TestBuildDeepagentNodes:
         assert len(captured["planner_calls"]) == 2
         replan_prompt = "\n".join(str(message.content) for message in captured["planner_calls"][1])
         assert "不存在" in replan_prompt
+
+    def test_unattended_missing_params_retries_without_asking(self):
+        node = ToolsNodes()
+        node.all_tools = [_tool("monitor_query_metric_data"), _tool("request_user_choice")]
+        req = _request(user_message="查询指标", extra_config={"unattended": True})
+        captured = {}
+        with patch.object(ToolsNodes, "_build_knowledge_retrieve_tool", return_value=None):
+            self._run_wrapper(
+                node,
+                req,
+                captured,
+                plan_payload={"goal": "查询指标", "steps": [{"objective": "查询指标", "tools": ["monitor_query_metric_data"]}]},
+                failing_agent_calls={
+                    1: {"content": '{"success": false, "error": "metric is required"}', "status": "success", "name": "monitor_query_metric_data"}
+                },
+            )
+        retry = "\n".join(str(message.content) for message in captured["ainvoke_messages"][1])
+        assert "【无人值守】" in retry
+        assert "必须立即调用 request_user_choice" not in retry
+        assert all("request_user_choice" not in names for names in captured["visible_tool_calls"])
 
     def test_missing_params_nudges_user_choice_without_replan(self, caplog):
         node = ToolsNodes()
@@ -2006,7 +2081,7 @@ class TestBuildDeepagentNodes:
                 },
             )
         kwargs = captured["create_kwargs"]
-        assert kwargs["backend"] is fake_backend
+        assert kwargs["backend"].default is fake_backend
         assert kwargs["skills"] == ["/skills/"]
         assert kwargs["interrupt_on"] == {"shell": True}
 
@@ -2056,7 +2131,7 @@ class TestBuildDeepagentNodes:
         )
         # 同时确认 kwargs 透传正确(防御 setup 块改坏后端到端数据流)
         kwargs = captured["create_kwargs"]
-        assert kwargs["backend"] is fake_backend
+        assert kwargs["backend"].default is fake_backend
         assert kwargs["skills"] == ["/skills/"]
 
     def test_planned_execution_keeps_hitl_tools_always_on_until_summary(self):
@@ -2626,7 +2701,7 @@ def test_plan_is_skills_only_and_step_guidance():
 def test_planned_tool_step_guidance_is_policy_not_skill_scan():
     guidance = ToolsNodes._planned_tool_step_guidance()
     assert "【工具执行】" in guidance
-    assert "未计划工具" in guidance
+    assert "当前不可见的工具" in guidance
     assert "空列表" in guidance
     assert "monitor_list_object_instances" in guidance
     assert "禁止猜测" in guidance
@@ -2688,6 +2763,8 @@ def test_planned_tool_step_guidance_alert_rca_keeps_report_template():
         agent_system_prompt="你是 Kubernetes 集群 RCA 助手。\n## 告警怎么读\n## 输出格式\n# RCA 报告\n",
     )
     assert "必须以「# RCA 报告」" in last
+    assert "写完整 Markdown" in last
+    assert "写完整中文 Markdown" not in last
     assert "事件概述" in last
     assert "对象在当前集群不可见" in last
     assert "异常对象清单" in last

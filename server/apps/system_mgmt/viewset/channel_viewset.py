@@ -9,8 +9,10 @@ from rest_framework.response import Response
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.loader import LanguageLoader
 from apps.core.utils.viewset_utils import GenericViewSetFun
-from apps.system_mgmt.models import Channel, ChannelChoices, NotificationTag, User
+from apps.system_mgmt.models import Channel, ChannelChoices, IMAccountAssociation, NotificationTag, User
+from apps.system_mgmt.models.im_account_association import IMAccountAssociationStatusChoices
 from apps.system_mgmt.serializers import ChannelSerializer
+from apps.system_mgmt.services.group_channel_mention import mentions_for_group_channel, provider_for_group_channel
 from apps.system_mgmt.utils.channel_utils import send_by_custom_webhook, send_by_dingtalk_bot, send_by_feishu_bot, send_by_wecom_bot, send_email
 from apps.system_mgmt.utils.network_whitelist_error import NETWORK_WHITELIST_REQUIRED, build_network_whitelist_error_payload
 from apps.system_mgmt.utils.operation_log_utils import log_operation
@@ -32,7 +34,7 @@ class ChannelViewSet(viewsets.ModelViewSet, GenericViewSetFun):
     - list/retrieve/update/destroy/update_settings 需要校验用户对 Channel.team 的访问权限
     """
 
-    queryset = Channel.objects.prefetch_related("tags").order_by("id")
+    queryset = Channel.objects.select_related("account_association").prefetch_related("tags").order_by("id")
     serializer_class = ChannelSerializer
     filterset_class = ChannelFilter
     # 仅允许 GET (list, retrieve), POST (create, actions), PUT (update), DELETE (destroy)
@@ -313,6 +315,66 @@ class ChannelViewSet(viewsets.ModelViewSet, GenericViewSetFun):
 
         return JsonResponse({"result": True})
 
+    @action(methods=["GET"], detail=False)
+    @HasPermission("channel_list-View")
+    def account_association_options(self, request, *args, **kwargs):
+        provider = provider_for_group_channel(request.query_params.get("channel_type") or "")
+        if not provider:
+            return JsonResponse({"result": True, "data": []})
+        rows = (
+            IMAccountAssociation.objects.select_related("integration_instance")
+            .filter(integration_instance__provider_key=provider)
+            .order_by("name", "id")
+        )
+        data = [
+            {
+                "id": item.id,
+                "name": item.name,
+                "integration_instance_id": item.integration_instance_id,
+                "integration_instance_name": item.integration_instance.name,
+            }
+            for item in rows
+        ]
+        return JsonResponse({"result": True, "data": data})
+
+    def _prepare_group_test_mention(self, request, test_channel, content):
+        """选了账号关联时，用当前登录用户的接收标识生成真正的 @。
+
+        未选择时保持原来的显示名文本，方便只验证 Webhook。
+        """
+        association_id = request.data.get("account_association")
+        receiver_name = getattr(request.user, "display_name", None) or request.user.username
+        if not association_id:
+            return content, [receiver_name], {}
+
+        loader = self._get_loader(request)
+        association = IMAccountAssociation.objects.select_related("integration_instance").filter(id=association_id).first()
+        if association is None:
+            return Response({"result": False, "message": loader.get("error.account_association_not_found")}, status=400)
+        provider = provider_for_group_channel(test_channel.channel_type)
+        if association.integration_instance.provider_key != provider:
+            return Response({"result": False, "message": loader.get("error.account_association_provider_mismatch")}, status=400)
+        if association.status != IMAccountAssociationStatusChoices.READY:
+            return Response({"result": False, "message": loader.get("error.account_association_not_ready")}, status=400)
+
+        domain = getattr(request.user, "domain", None) or "domain.com"
+        user = User.objects.filter(username=request.user.username, domain=domain).first()
+        if user is None:
+            return Response({"result": False, "message": "Current user not found"}, status=400)
+
+        test_channel.account_association = association
+        mention_text, at_user_ids, at_mobiles = mentions_for_group_channel(test_channel, [user.id])
+        if not mention_text and not at_user_ids and not at_mobiles:
+            return Response({"result": False, "message": loader.get("error.account_association_test_receiver_unavailable")}, status=400)
+
+        separator = "<br>" if test_channel.channel_type == ChannelChoices.DINGTALK_BOT else "\n"
+        if mention_text:
+            content = f"{content}{separator}{mention_text}"
+        at_kwargs = {}
+        if test_channel.channel_type == ChannelChoices.DINGTALK_BOT:
+            at_kwargs = {"at_user_ids": at_user_ids, "at_mobiles": at_mobiles}
+        return content, [], at_kwargs
+
     @action(methods=["POST"], detail=False)
     @HasPermission("channel_list-Edit")
     def test_send(self, request, *args, **kwargs):
@@ -332,8 +394,15 @@ class ChannelViewSet(viewsets.ModelViewSet, GenericViewSetFun):
 
         test_channel = Channel(name=channel_name, channel_type=channel_type, config=config, description="", team=[])
         title = f"[{channel_name}] Test Message"
-        receiver_name = request.user.display_name or request.user.username
+        receiver_name = getattr(request.user, "display_name", None) or request.user.username
         content = f"This is a test message from channel '{channel_name}'.<br/>Receiver: {receiver_name}"
+        receivers = [receiver_name]
+        at_kwargs = {}
+        if provider_for_group_channel(channel_type):
+            prepared = self._prepare_group_test_mention(request, test_channel, content)
+            if isinstance(prepared, Response):
+                return prepared
+            content, receivers, at_kwargs = prepared
 
         if channel_type == ChannelChoices.EMAIL:
             # request.user 是 base.User；发信收件人必须定位到同 username/domain 的 system_mgmt.User，
@@ -346,13 +415,13 @@ class ChannelViewSet(viewsets.ModelViewSet, GenericViewSetFun):
                 return Response({"result": False, "message": "Current user email is empty"}, status=400)
             result = send_email(test_channel, title, content, user_list)
         elif channel_type == ChannelChoices.ENTERPRISE_WECHAT_BOT:
-            result = send_by_wecom_bot(test_channel, content, [receiver_name])
+            result = send_by_wecom_bot(test_channel, content, receivers)
         elif channel_type == ChannelChoices.FEISHU_BOT:
-            result = send_by_feishu_bot(test_channel, title, content, [receiver_name])
+            result = send_by_feishu_bot(test_channel, title, content, receivers)
         elif channel_type == ChannelChoices.CUSTOM_WEBHOOK:
-            result = send_by_custom_webhook(test_channel, content, [receiver_name])
+            result = send_by_custom_webhook(test_channel, content, receivers)
         else:
-            result = send_by_dingtalk_bot(test_channel, title, content, [receiver_name])
+            result = send_by_dingtalk_bot(test_channel, title, content, receivers, **at_kwargs)
 
         if result.get("result") is False:
             if result.get("code") == NETWORK_WHITELIST_REQUIRED or result.get("message") == "webhook domain or IP not in whitelist":

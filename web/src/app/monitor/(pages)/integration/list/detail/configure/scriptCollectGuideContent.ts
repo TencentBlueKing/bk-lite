@@ -35,7 +35,7 @@ export const SCRIPT_COLLECT_GUIDE_ZH = [
   '',
   '## 执行用户',
   '',
-  'Linux 默认执行用户是 `telegraf`。该用户必须存在于**采集端**（采集节点 / sidecar 容器），不是平台 Web 所在机器。若采集端没有 `telegraf`，请把「执行用户」改成采集端已有的非 root 用户，或在采集端创建该用户。不能以 root 运行。',
+  'Linux 下「执行用户」留空时，按采集进程自身的用户运行（当前采集进程为 root），并且不会下发 `run_as`。只有填写了用户名，才会降权到该用户。该用户必须已经存在于**采集端**（采集节点 / sidecar 容器），不是平台 Web 所在机器。平台不会创建账号，也不会自动准备 `bklite` 账号。可以为 root 或 UID 0。若该用户不存在或没有权限，只有这一条脚本失败，不会退出整台采集进程。',
   '',
   'Windows 以服务账号运行，执行用户不可修改。',
   ''
@@ -77,7 +77,7 @@ export const SCRIPT_COLLECT_GUIDE_EN = [
   '',
   '## Run-as user',
   '',
-  'The Linux default run-as user is `telegraf`. That user must exist on the **collector** (the node / sidecar container), not on the platform web host. If the collector has no `telegraf` user, change **Run As** to an existing non-root user on the collector, or create that user there. Scripts cannot run as root.',
+  'On Linux, leave **Run As** empty to run as the collector process itself (currently root) and omit `run_as`. A value drops privileges to that user. The user must already exist on the **collector** (the node / sidecar container), not on the platform web host. The platform does not create accounts and does not provision a `bklite` account. Root and UID 0 are allowed. If the user does not exist or lacks permission, only that script fails; the collector process keeps running.',
   '',
   'Windows runs as the service account; Run As cannot be changed.',
   ''

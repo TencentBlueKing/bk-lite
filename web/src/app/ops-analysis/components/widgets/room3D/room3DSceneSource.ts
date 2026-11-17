@@ -7,7 +7,7 @@ import {
 } from '@/app/ops-analysis/utils/room3DConfig';
 
 export type Room3DSceneSource =
-  | Extract<Room3DSelection, { status: 'empty' | 'unavailable' }>
+  | Extract<Room3DSelection, { status: 'empty' | 'unavailable' | 'unselected' }>
   | {
       status: 'ready';
       roomId: string;
@@ -26,6 +26,12 @@ export const loadRoom3DScene = async ({
   runtimeRoomId?: string;
   signal?: AbortSignal;
 }): Promise<Room3DSceneSource> => {
+  const hasExplicitRoom = [runtimeRoomId, savedRoomId].some(
+    (value) => typeof value === 'string' && value.trim(),
+  );
+  if (!hasExplicitRoom) {
+    return { status: 'unselected', rooms: [] };
+  }
   let rooms: Room3DRoomOption[] = [];
   try {
     const payload: unknown = await api.getRooms(signal);

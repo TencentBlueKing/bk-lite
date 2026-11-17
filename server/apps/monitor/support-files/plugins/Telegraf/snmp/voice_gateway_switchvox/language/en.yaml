@@ -10,9 +10,7 @@ monitor_object_metric:
   VoiceGateway:
     snmp_uptime:
       name: System Uptime
-      desc: This metric indicates the uptime of the device since the last restart, derived from sysUpTime.
-        Monitoring uptime helps administrators understand device stability and identify unexpected reboots
-        or failures.
+      desc: This metric indicates the uptime of the device since the last restart, derived from sysUpTime. Monitoring uptime helps administrators understand device stability and identify unexpected reboots or failures.
     device_cpu_usage:
       name: CPU Utilization
       desc: CPU utilization of the PBX as a percentage (100 minus CPU idle). Sustained high values indicate

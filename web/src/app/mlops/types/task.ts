@@ -18,6 +18,7 @@ interface TrainJob {
   max_evals?: number;
   hyperopt_config?: HyperoptConfig;
   team?: number[];
+  is_builtin?: boolean;
 }
 
 // 超参数配置类型

@@ -121,6 +121,7 @@ const ParamTable = React.forwardRef<ParamTableRef, ParamTableProps>(
 
     const paramTypeOptions = [
       { label: t("dataSource.paramTypes.string"), value: "string" },
+      { label: t("dataSource.paramTypes.conditionFilter"), value: "conditionFilter" },
       { label: t("dataSource.paramTypes.number"), value: "number" },
       { label: t("dataSource.paramTypes.boolean"), value: "boolean" },
       { label: t("dataSource.paramTypes.date"), value: "date" },
@@ -207,7 +208,9 @@ const ParamTable = React.forwardRef<ParamTableRef, ParamTableProps>(
               ? "params"
               : item.filterType;
 
-          if (val === "boolean") {
+          if (val === "conditionFilter") {
+            newValue = { logic: "AND", items: [] };
+          } else if (val === "boolean") {
             newValue = false;
           } else if (val === "number") {
             newValue = null;
@@ -221,12 +224,21 @@ const ParamTable = React.forwardRef<ParamTableRef, ParamTableProps>(
             newValue = "";
           }
 
-          return {
+          const next: ParamItem = {
             ...item,
             type: val,
             value: newValue,
             filterType: newFilterType,
           };
+          if (val === "conditionFilter") {
+            next.inputConfig = {
+              control: "conditionFilter",
+              fields: { kind: "static", items: [] },
+            };
+          } else if (item.inputConfig?.control === "conditionFilter") {
+            delete next.inputConfig;
+          }
+          return next;
         }),
       );
     };
@@ -431,6 +443,16 @@ const ParamTable = React.forwardRef<ParamTableRef, ParamTableProps>(
                 onChange={(val: boolean) =>
                   handleDefaultChange(val, record.id!, "boolean")
                 }
+              />
+            );
+          }
+          if (type === "conditionFilter") {
+            return (
+              <Input
+                size="small"
+                disabled
+                value=""
+                placeholder={t("dataSource.conditionFilterValue")}
               />
             );
           }

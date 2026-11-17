@@ -232,7 +232,8 @@
     "remark-gfm": "^4.0.0",
     "remark-html": "^16.0.1",
     "sm-crypto": "0.3.13",
-    "uuid": "^11.0.3"
+    "uuid": "^11.0.3",
+    "@bk-lite/chat-content": "workspace:*"
   },
   "devDependencies": {
     "@ant-design/v5-patch-for-react-19": "^1.0.3",

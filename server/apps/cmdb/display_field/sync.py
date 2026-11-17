@@ -21,6 +21,7 @@
 """
 
 import os
+import time
 from collections import defaultdict
 from typing import Any, Dict, List
 
@@ -32,6 +33,7 @@ from apps.core.logger import cmdb_logger as logger
 from apps.system_mgmt.models import Group, User
 
 DEFAULT_SYNC_BATCH_SIZE = 500
+DISPLAY_SYNC_BUDGET_SECONDS = 180
 
 
 def _get_sync_batch_size() -> int:
@@ -258,8 +260,14 @@ class DisplayFieldSynchronizer:
                 return {"organizations": 0, "users": 0}
 
             batch_size = _get_sync_batch_size()
+            from apps.cmdb.services.scale_cursor import clear_scale_cursor, load_scale_cursor, save_scale_cursor
+
+            stored = load_scale_cursor("cmdb-display-field-sync")
+            cursor = stored.get("cursor")
+            org_updated_count = int(stored.get("organizations") or 0)
+            user_updated_count = int(stored.get("users") or 0)
+            deadline = time.monotonic() + DISPLAY_SYNC_BUDGET_SECONDS
             with GraphClient() as ag:
-                cursor = None
                 while True:
                     query_params = [{"field": "model_id", "type": "str[]", "value": candidate_model_ids}]
                     if cursor is not None:
@@ -282,7 +290,14 @@ class DisplayFieldSynchronizer:
                     if cursor is not None and next_cursor <= cursor:
                         raise RuntimeError("图实例分页游标未向前推进")
                     cursor = next_cursor
+                    save_scale_cursor(
+                        "cmdb-display-field-sync",
+                        {"cursor": cursor, "organizations": org_updated_count, "users": user_updated_count},
+                    )
+                    if time.monotonic() >= deadline:
+                        return {"organizations": org_updated_count, "users": user_updated_count, "done": False}
 
+                clear_scale_cursor("cmdb-display-field-sync")
                 result = {"organizations": org_updated_count, "users": user_updated_count}
 
                 if org_updated_count > 0 or user_updated_count > 0:

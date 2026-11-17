@@ -39,14 +39,36 @@ class SubscriptionTaskService:
     RETRY_BACKOFF_SECONDS = (60, 300, 900)
     SENDING_LEASE_TIMEOUT_SECONDS = 900
 
+    RULE_CHECK_BUDGET = 20
+    RULE_CHECK_SECONDS = 60
+
     @classmethod
     def check_rules(cls) -> None:
+        from apps.cmdb.services.unique_write_lock import UniqueWriteLockService
+
+        try:
+            with UniqueWriteLockService.serialize("cmdb-subscription-check", lease_seconds=cls.RULE_CHECK_SECONDS + 10):
+                cls._check_rules_body()
+        except TimeoutError:
+            logger.info("[Subscription] 上一轮检查仍在进行，跳过")
+
+    @classmethod
+    def _check_rules_body(cls) -> None:
         # 定时入口：逐条规则执行触发检测，并将事件直接派发给异步发送任务。
         logger.info("[Subscription] 开始检查订阅规则")
-        rule_ids = list(SubscriptionRule.objects.filter(is_enabled=True).values_list("id", flat=True))
+        rule_ids = list(SubscriptionRule.objects.filter(is_enabled=True).order_by("id").values_list("id", flat=True))
         count = len(rule_ids)
         queued_delivery_ids = cls._get_ready_delivery_ids()
         logger.info(f"[Subscription] 共 {count} 条启用规则")
+        from apps.cmdb.services.scale_cursor import clear_scale_cursor, load_scale_cursor, save_scale_cursor
+
+        cursor_after = int(load_scale_cursor("subscription-check").get("after_id") or 0)
+        pending_ids = [rule_id for rule_id in rule_ids if rule_id > cursor_after]
+        if cursor_after and not pending_ids:
+            clear_scale_cursor("subscription-check")
+        rule_ids = pending_ids
+        started = timezone.now()
+        processed = 0
         if not count:
             if queued_delivery_ids:
                 cls._dispatch_send_notifications_async(
@@ -57,6 +79,11 @@ class SubscriptionTaskService:
                 logger.info("[Subscription] 没有启用的订阅规则和待投递记录，跳过检查")
             return
         for rule_id in rule_ids:
+            if processed >= cls.RULE_CHECK_BUDGET or (timezone.now() - started).total_seconds() >= cls.RULE_CHECK_SECONDS:
+                save_scale_cursor("subscription-check", {"after_id": rule_id - 1})
+                logger.info("[Subscription] 本轮达到规则预算，下次从规则 %s 继续", rule_id)
+                return
+            processed += 1
             try:
                 with transaction.atomic():
                     rule = SubscriptionRule.objects.select_for_update().get(
@@ -79,6 +106,7 @@ class SubscriptionTaskService:
                     f"[Subscription] 处理规则失败 rule_id={rule_id}, error={exc}",
                     exc_info=True,
                 )
+        clear_scale_cursor("subscription-check")
         if queued_delivery_ids:
             queued_delivery_ids = list(dict.fromkeys(queued_delivery_ids))
             cls._dispatch_send_notifications_async(source="check_rules", delivery_ids=queued_delivery_ids)

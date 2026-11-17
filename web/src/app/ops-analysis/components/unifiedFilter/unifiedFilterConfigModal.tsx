@@ -222,10 +222,13 @@ const UnifiedFilterConfigModal: React.FC<UnifiedFilterConfigModalProps> = ({
             },
           };
         }
-        if (normalized.control === inputMode) {
-          return normalized;
+        if (normalized.control === 'select' || normalized.control === 'radio') {
+          if (normalized.control === inputMode) {
+            return normalized;
+          }
+          return { ...normalized, control: inputMode };
         }
-        return { ...normalized, control: inputMode };
+        return normalized;
       }
       return normalized;
     }
@@ -264,9 +267,9 @@ const UnifiedFilterConfigModal: React.FC<UnifiedFilterConfigModalProps> = ({
         enabled: true,
         inputConfig: param.sampleInputConfig,
         inputMode:
-          param.sampleInputConfig?.control === 'organization'
-            ? undefined
-            : param.sampleInputConfig?.control,
+          param.sampleInputConfig?.control === 'select' || param.sampleInputConfig?.control === 'radio'
+            ? param.sampleInputConfig.control
+            : undefined,
       };
     });
 
@@ -434,9 +437,9 @@ const UnifiedFilterConfigModal: React.FC<UnifiedFilterConfigModalProps> = ({
             ...definition,
             inputConfig,
             inputMode:
-              inputConfig.control === 'organization'
-                ? undefined
-                : inputConfig.control,
+              inputConfig.control === 'select' || inputConfig.control === 'radio'
+                ? inputConfig.control
+                : undefined,
             options: undefined,
             defaultValue: coerceDefaultValueForInputConfig(
               definition.defaultValue,
@@ -558,7 +561,7 @@ const UnifiedFilterConfigModal: React.FC<UnifiedFilterConfigModalProps> = ({
     {
       title: t('dashboard.defaultValue'),
       dataIndex: 'defaultValue',
-      width: 350,
+      width: 220,
       render: (value: FilterValue, record: UnifiedFilterDefinition) => {
         if (record.type === 'timeRange') {
           return (
@@ -734,16 +737,26 @@ const UnifiedFilterConfigModal: React.FC<UnifiedFilterConfigModalProps> = ({
 
   return (
     <Modal
-      title={t('dashboard.unifiedFilterConfig')}
+      title={(
+        <div className="pr-6">
+          <span className="block text-base font-semibold leading-6 text-[var(--color-text-1)]">
+            {t('dashboard.unifiedFilterConfig')}
+          </span>
+          <span className="mt-2 block text-xs font-normal leading-5 text-[var(--color-text-3)]">
+            {t('dashboard.unifiedFilterIntro')}
+          </span>
+        </div>
+      )}
       open={open}
       onCancel={handleCancel}
       onOk={handleConfirm}
       okText={t('common.confirm')}
       cancelText={t('common.cancel')}
-      width={1000}
+      width={840}
       maskClosable={false}
       centered
       destroyOnHidden
+      styles={{ body: { paddingTop: 20, minHeight: 168 } }}
     >
       <DndContext
         sensors={sensors}

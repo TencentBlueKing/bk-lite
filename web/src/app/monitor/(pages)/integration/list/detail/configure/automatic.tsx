@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
+import Cookies from 'js-cookie';
 import { Form, Button, Input, message, Spin, Dropdown, Modal, Radio, Tag, Select, Switch, Tooltip } from 'antd';
 import type { MenuProps } from 'antd';
 import {
@@ -62,7 +63,10 @@ import {
   getSnmpFilterMutexConflicts,
   trackSnmpFilterMutexLastChanged
 } from '@/app/monitor/hooks/integration/snmpFilterMutex';
-import { MONITOR_NODE_PAGE_SIZE } from '@/app/monitor/hooks/integration/fetchMonitorNodePages';
+import {
+  buildMonitorNodeCacheScope,
+  MONITOR_NODE_PAGE_SIZE
+} from '@/app/monitor/hooks/integration/fetchMonitorNodePages';
 import { toMonitorNodeOption } from '@/app/monitor/hooks/integration/nodeOptions';
 import BatchEditModal from './batchEditModal';
 import ExcelImportModal from './excelImportModal';
@@ -246,6 +250,11 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
   const currentGroup = useRef(userContext?.selectedGroup);
   const groupId = [currentGroup?.current?.id || ''];
   const pluginId = searchParams.get('plugin_id') || '';
+  const monitorNodeCacheScope = buildMonitorNodeCacheScope(
+    pluginId,
+    userContext?.selectedGroup?.id,
+    Cookies.get('include_children') === '1'
+  );
   const pluginName = searchParams.get('plugin_name') || '';
   const objectId = searchParams.get('id') || '';
   const objectName = searchParams.get('name') || '';
@@ -1334,7 +1343,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
               return changed ? Array.from(merged.values()) : current;
             });
           },
-          monitorNodeCacheScope: String(pluginId || 'default'),
+          monitorNodeCacheScope,
           loadMonitorNodes: async ({ page, pageSize, keyword }) => {
             const data = await getMonitorNodeList({
               monitor_plugin_id: Number(pluginId),
@@ -1448,6 +1457,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     dataSource,
     nodeList,
     pluginId,
+    monitorNodeCacheScope,
     renderTableColumn,
     t,
     collectType,
@@ -1484,7 +1494,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
   useEffect(() => {
     if (isLoading) return;
     getNodeList();
-  }, [isLoading]);
+  }, [isLoading, monitorNodeCacheScope]);
 
   useEffect(() => {
     hasInitializedFormRef.current = false;

@@ -1,5 +1,6 @@
 from typing import Any, Callable, Optional
 
+from django.utils import translation
 from django.views.decorators.csrf import csrf_exempt
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
@@ -7,6 +8,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.test import APIRequestFactory, force_authenticate
 
+from apps.cmdb.constants.constants import NETWORK_STATUS_TOPOLOGY_DEFAULT_NODES
 from apps.core.utils.open_base import login_exempt
 from apps.core.utils.user_group import normalize_user_group_ids
 from apps.operation_analysis.common.get_nats_source_data import is_organization_param_spec
@@ -24,6 +26,7 @@ from apps.operation_analysis.services.named_option_datasources import (
 )
 from apps.operation_analysis.services.network_status_topology_overlay import (
     collect_network_status_topology_overlay_datasource_ids,
+    declared_network_status_topology_queries,
     view_sets_has_network_status_topology,
 )
 from apps.operation_analysis.services.network_topology.runtime import NetworkTopologyRuntimeService
@@ -211,6 +214,25 @@ def _share_identity_app_names(principal) -> list[str]:
     )
 
 
+def request_oa_language(request) -> str | None:
+    """投屏和分享页的界面语言在 X-BK-Locale。匿名投屏没有账号 locale。"""
+    from apps.operation_analysis.services.builtin_i18n import normalize_oa_language
+
+    header = request.headers.get("X-BK-Locale") if hasattr(request, "headers") else None
+    if isinstance(header, str) and header.strip():
+        return normalize_oa_language(header)
+    user_locale = getattr(getattr(request, "user", None), "locale", None)
+    if isinstance(user_locale, str) and user_locale.strip():
+        return normalize_oa_language(user_locale)
+    return None
+
+
+def activate_request_language(request) -> None:
+    language = request_oa_language(request)
+    if language:
+        translation.activate(language)
+
+
 def _serialize_shared_resource(principal, language=None):
     resource = principal.resource
     from apps.operation_analysis.services.builtin_i18n import overlay_canvas_payload
@@ -282,6 +304,10 @@ class DashboardShareAccessViewSet(viewsets.ViewSet):
         method = request.method.lower()
         self.action = self.action_map.get(method)
         return super().initialize_request(request, *args, **kwargs)
+
+    def initial(self, request, *args, **kwargs):
+        super().initial(request, *args, **kwargs)
+        activate_request_language(request)
 
     def get_throttles(self):
         action = getattr(self, "action", None)
@@ -368,10 +394,18 @@ class DashboardShareAccessViewSet(viewsets.ViewSet):
         response.delete_cookie(SHARE_PREPARE_COOKIE, path="/")
         return response
 
+    def _load_principal(self, request, session_id):
+        activate_request_language(request)
+        if getattr(request, "_screen_display", False):
+            from apps.operation_analysis.services.display_service import resolve_display_request
+
+            return resolve_display_request(request)
+        return resolve_session(session_id=session_id, visitor=request.user)
+
     @action(detail=False, methods=["get"], url_path=r"session/(?P<session_id>[^/.]+)")
     def session_detail(self, request, session_id=None):
         try:
-            principal = resolve_session(session_id=session_id, visitor=request.user)
+            principal = self._load_principal(request, session_id)
         except ShareRateLimited:
             log_share_access(request, action="open", result="reject", reason="rate_limited")
             return Response({"detail": oa_message("messages.rate_limited", "请求过于频繁")}, status=status.HTTP_429_TOO_MANY_REQUESTS)
@@ -380,7 +414,7 @@ class DashboardShareAccessViewSet(viewsets.ViewSet):
             return Response(invalid_share_response(), status=status.HTTP_404_NOT_FOUND)
 
         log_share_access(request, action="open", principal=principal, visitor=request.user, result="ok")
-        return Response(_serialize_shared_resource(principal, language=getattr(request.user, "locale", None)))
+        return Response(_serialize_shared_resource(principal, language=request_oa_language(request)))
 
     @action(
         detail=False,
@@ -389,7 +423,7 @@ class DashboardShareAccessViewSet(viewsets.ViewSet):
     )
     def query(self, request, session_id=None, data_source_id=None):
         try:
-            principal = resolve_session(session_id=session_id, visitor=request.user)
+            principal = self._load_principal(request, session_id)
         except ShareRateLimited:
             log_share_access(request, action="query", result="reject", reason="rate_limited")
             return Response({"detail": oa_message("messages.rate_limited", "请求过于频繁")}, status=status.HTTP_429_TOO_MANY_REQUESTS)
@@ -461,7 +495,7 @@ class DashboardShareAccessViewSet(viewsets.ViewSet):
     )
     def data_sources(self, request, session_id=None):
         try:
-            principal = resolve_session(session_id=session_id, visitor=request.user)
+            principal = self._load_principal(request, session_id)
         except ShareRateLimited:
             return Response({"detail": oa_message("messages.rate_limited", "请求过于频繁")}, status=status.HTTP_429_TOO_MANY_REQUESTS)
         except ShareLinkInvalid:
@@ -477,7 +511,7 @@ class DashboardShareAccessViewSet(viewsets.ViewSet):
         instances = list(DataSourceAPIModel.objects.filter(id__in=allowed_ids).prefetch_related("namespaces", "tag"))
 
         def serialize_allowed(item):
-            return {
+            payload = {
                 "id": item.id,
                 "name": item.name,
                 "desc": item.desc or "",
@@ -490,6 +524,10 @@ class DashboardShareAccessViewSet(viewsets.ViewSet):
                 "groups": [principal.space_id],
                 "required_app": item.required_app or None,
             }
+            # 投屏页要靠 rest_api 把「机房」这类选项对上数据源。同事分享仍不返回这个字段。
+            if getattr(request, "_screen_display", False):
+                payload["rest_api"] = item.rest_api or ""
+            return payload
 
         payloads = build_canvas_datasource_payloads(
             ordered_ids=allowed_ids,
@@ -520,7 +558,7 @@ class DashboardShareAccessViewSet(viewsets.ViewSet):
         extra_reject: Callable | None = None,
     ):
         try:
-            principal = resolve_session(session_id=session_id, visitor=request.user)
+            principal = self._load_principal(request, session_id)
         except ShareRateLimited:
             log_share_access(request, action=action_name, result="reject", reason="rate_limited")
             return Response({"detail": oa_message("messages.rate_limited", "请求过于频繁")}, status=status.HTTP_429_TOO_MANY_REQUESTS)
@@ -564,6 +602,83 @@ class DashboardShareAccessViewSet(viewsets.ViewSet):
             result="ok" if getattr(response, "status_code", 500) < 400 else "reject",
         )
         return response
+
+    def display_network_status_topology(self, request, session_id=None):
+        """投屏专用。同事分享仍走登录接口，这里不注册分享 URL。"""
+        return self._delegated_scene_widget_operation(
+            request,
+            session_id,
+            action_name="network_status_topology",
+            view_action="network_status_topology",
+            widget_type="networkStatusTopology",
+            allowed_resource_types=frozenset({"screen"}),
+            undeclared_reason="network_status_topology_not_declared",
+            undeclared_detail=oa_message("messages.share_nst_undeclared", "投屏大屏未声明网络状态拓扑组件"),
+            extra_reject=self._reject_undeclared_network_status_topology,
+        )
+
+    def _reject_undeclared_network_status_topology(self, request, principal):
+        data = request.data if isinstance(request.data, dict) else {}
+        raw_ids = data.get("inst_uuids")
+        if not isinstance(raw_ids, list):
+            return Response(
+                {"detail": oa_message("messages.share_nst_devices_undeclared", "请求的设备不在投屏大屏配置中")},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        requested = {str(item).strip() for item in raw_ids if str(item).strip()}
+        declarations = declared_network_status_topology_queries(getattr(principal.resource, "view_sets", None))
+        matches = [item for item in declarations if requested and requested <= item["inst_uuids"]]
+        if not matches:
+            log_share_access(
+                request,
+                action="network_status_topology",
+                principal=principal,
+                visitor=request.user,
+                result="reject",
+                reason="network_status_topology_device_not_declared",
+            )
+            return Response(
+                {"detail": oa_message("messages.share_nst_devices_undeclared", "请求的设备不在投屏大屏配置中")},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        raw_limit = data.get("node_limit", NETWORK_STATUS_TOPOLOGY_DEFAULT_NODES)
+        try:
+            node_limit = int(raw_limit)
+        except (TypeError, ValueError):
+            return Response(
+                {"detail": oa_message("messages.nst_node_limit", "node_limit 无效")},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        matches = [item for item in matches if node_limit <= item["node_limit"]]
+        if not matches:
+            log_share_access(
+                request,
+                action="network_status_topology",
+                principal=principal,
+                visitor=request.user,
+                result="reject",
+                reason="network_status_topology_node_limit",
+            )
+            return Response(
+                {"detail": oa_message("messages.share_nst_node_limit", "节点上限超过投屏大屏配置")},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        if data.get("depth") is not None:
+            matches = [item for item in matches if item["one_hop"] and len(requested) == 1]
+            if not matches:
+                log_share_access(
+                    request,
+                    action="network_status_topology",
+                    principal=principal,
+                    visitor=request.user,
+                    result="reject",
+                    reason="network_status_topology_one_hop",
+                )
+                return Response(
+                    {"detail": oa_message("messages.share_nst_one_hop", "当前组件未允许一跳展开")},
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+        return None
 
     def _application3d_operation(self, request, session_id, *, action_name: str, view_action: str):
         return self._delegated_scene_widget_operation(
@@ -668,7 +783,7 @@ class DashboardShareAccessViewSet(viewsets.ViewSet):
     )
     def dashboard_scene_permissions(self, request, session_id=None):
         try:
-            principal = resolve_session(session_id=session_id, visitor=request.user)
+            principal = self._load_principal(request, session_id)
         except ShareRateLimited:
             return Response({"detail": oa_message("messages.rate_limited", "请求过于频繁")}, status=status.HTTP_429_TOO_MANY_REQUESTS)
         except ShareLinkInvalid:
@@ -789,7 +904,7 @@ class DashboardShareAccessViewSet(viewsets.ViewSet):
 
     def _resolve_network_topology_principal(self, request, session_id, *, action_name: str):
         try:
-            principal = resolve_session(session_id=session_id, visitor=request.user)
+            principal = self._load_principal(request, session_id)
         except ShareRateLimited:
             log_share_access(request, action=action_name, result="reject", reason="rate_limited")
             return None, Response({"detail": oa_message("messages.rate_limited", "请求过于频繁")}, status=status.HTTP_429_TOO_MANY_REQUESTS)

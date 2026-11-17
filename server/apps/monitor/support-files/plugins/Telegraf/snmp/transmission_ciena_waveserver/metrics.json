@@ -5,6 +5,8 @@
   "plugin_desc": "SNMP monitoring template for Ciena Waveserver / Waveserver Ai DWDM platforms (PEN 1271, CIENA-WS-CHASSIS-MIB). Besides standard IF-MIB 64-bit interface traffic, it collects the operational state of power supply units and cooling fan units.",
   "support_collect_detect": true,
   "status_query": "any({instance_type='transmission', collect_type='snmp_ciena_waveserver'}) by (instance_id)",
+  "instance_fact_bindings": [{"fact":"asset.ip","value_type":"ip","resolver":"input","options":{"field":"ip"}}],
+  "instance_summary_columns": [{"fact":"asset.ip","title":"monitor.views.assetIp","order":10}],
   "name": "Transmission",
   "icon": "mm-ciena_ciena",
   "type": "Network Device",

@@ -50,11 +50,15 @@ function hslToRgb(hue: number, saturation: number, lightness: number) {
   ]
 }
 
+const legendColorCache = new Map<OpsChartThemeName, string[]>()
+
 export const randomColorForLegend = (themeName?: OpsChartThemeName) => {
   const MAX_COLORS_TOTAL = 1000
   const MAX_COLORS_COUNT = 80
   const CUSTOM_COLORS_ROW = 4
   const resolvedThemeName = themeName ?? resolveOpsChartThemeName()
+  const cached = legendColorCache.get(resolvedThemeName)
+  if (cached) return cached
   let colors: string[] = []
   const opacity = resolvedThemeName === 'dark'
     ? [1, 0.92, 0.84, 0.76]
@@ -67,5 +71,6 @@ export const randomColorForLegend = (themeName?: OpsChartThemeName) => {
       colors.push(getRandomColor())
     }
   }
+  legendColorCache.set(resolvedThemeName, colors)
   return colors
 }

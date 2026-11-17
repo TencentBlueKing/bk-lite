@@ -1,3 +1,5 @@
+import { applyPlannedExecutionStep, attachToolCallToCurrentStep, createPlannedExecutionState, finalizePlannedExecutionSteps, plannedStepIndexFromToolEvent, type PlannedExecutionStepData } from '@bk-lite/chat-content/plannedExecution';
+import { replayChatContent, isChatContentEvent, type ChatContentState } from '@bk-lite/chat-content/core';
 const AGUI_TEXT_EVENT_TYPES = new Set([
   'TEXT_MESSAGE_CONTENT',
   'TEXT_MESSAGE_CHUNK',
@@ -24,7 +26,7 @@ const SKIP_CUSTOM_EVENTS = new Set([
  * 实时流与历史回放共用同一份清单，避免规划 JSON 被降级成正文。
  */
 export function isSilentCustomEvent(name: string): boolean {
-  return SKIP_CUSTOM_EVENTS.has(name);
+  return SKIP_CUSTOM_EVENTS.has(name) || isChatContentEvent(name);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -420,7 +422,7 @@ function assembleContentChunksFromEvents(events: Record<string, unknown>[]): His
   return chunks;
 }
 
-function eventsFromUnknown(content: unknown): Record<string, unknown>[] | null {
+export function eventsFromUnknown(content: unknown): Record<string, unknown>[] | null {
   if (typeof content === 'string') {
     if (!looksLikeAguiPayload(content)) {
       return null;
@@ -443,12 +445,19 @@ function eventsFromUnknown(content: unknown): Record<string, unknown>[] | null {
 /** Collapse stored AG-UI event dumps into readable assistant text, thinking, and tool chunks. */
 export function assembleAguiHistoryParts(
   content: unknown
-): { text: string; thinking: string; contentChunks: HistoryContentChunk[] } | null {
+): { text: string; thinking: string; contentChunks: HistoryContentChunk[]; structured: ChatContentState; plannedSteps: PlannedExecutionStepData[] } | null {
   const events = eventsFromUnknown(content);
   if (!events || events.length === 0) {
     return null;
   }
+  let plan = createPlannedExecutionState();
+  for (const event of events) {
+    if (event.type === 'CUSTOM' && event.name === 'planned_execution_step') plan = applyPlannedExecutionStep(plan, event.value as Record<string, unknown>);
+    if (event.type === 'TOOL_CALL_START') plan = attachToolCallToCurrentStep(plan, String(event.toolCallId || ''), plannedStepIndexFromToolEvent(event));
+  }
   return {
+    plannedSteps: finalizePlannedExecutionSteps(plan).steps,
+    structured: replayChatContent(events),
     text: assembleTextFromEvents(events),
     thinking: assembleThinkingFromEvents(events),
     contentChunks: assembleContentChunksFromEvents(events),

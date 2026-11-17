@@ -206,7 +206,7 @@ cd "$GOMODCACHE/cache/download"
 zip -r /tmp/opentelemetry-go-sdk.zip .
 ```
 
-这里的 `go get` 只在构建机执行。接入片段里仍然只有一条带版本的 `go mod download`，没有 `go get`。
+这里的 `go get` 只在构建机执行，用来填充 zip。接入脚本仍然只执行一条带版本的 `go mod download`，不执行 `go get`，也不改写应用的 `go.mod`。host 片段第 3 步打印一条给操作者复制的命令，把示例用到的 `otel`、`sdk`、`otlptracehttp` v1.46.0 和 `otelhttp` v0.70.0 放在同一条 `go get` 里。不要省略版本，不要只取其中一个模块。docker 注释给出指向 `/opt/otel-go-sdk` 的同一条命令。
 
 抽查 zip 里必须有：
 
@@ -319,7 +319,7 @@ go.opentelemetry.io/contrib/instrumentation/github.com/labstack/echo/otelecho
 ```
 
 及其传递依赖。接入脚本会 `export GOSUMDB=off`、`export GOTOOLCHAIN=local`，并从该目录执行一条带版本的 `go mod download`，
-不再执行 `go get`。Go 低于 1.26 时片段退出。归档文件名必须是 `opentelemetry-go-sdk.zip`。核心模块钉
+不执行 `go get`。host 说明和 docker 注释另给出一条钉死版本的 `go get`，供操作者写入 `go.mod`。Go 低于 1.26 时片段退出。归档文件名必须是 `opentelemetry-go-sdk.zip`。核心模块钉
 `go.opentelemetry.io/otel@v1.46.0`、`sdk@v1.46.0`、`otlptracehttp@v1.46.0`。同期 contrib 钉 **v0.70.0**：
 `otelhttp`、`otelgrpc`、`otelgin`、`otelecho`。已发布的 zip 里已有前两个 contrib；`otelgin` 和 `otelecho`
 的 v0.70.0 必须补进同一份 zip，否则离线 `go mod download` 会因 file proxy 缺模块失败。禁止不钉版本的 `go get`。
@@ -611,7 +611,7 @@ done
 
 摘要必须与发布记录一致。再在 APM 接入页分别选择 Java / Python / Node.js / Go / PHP / .NET Linux / Ruby / C++ / Erlang / Swift
 的 host 或 docker，以及 .NET Windows 和 eBPF 的主机片段，确认下载地址是上述系统内 URL，
-且不含 `https://github.com`、`pypi.org`、`npmjs`、`nuget.org`、`packagist.org`、`rubygems.org`、`hex.pm`、`go get`。
+且不含 `https://github.com`、`pypi.org`、`npmjs`、`nuget.org`、`packagist.org`、`rubygems.org`、`hex.pm`、`proxy.golang.org`。安装命令不含 `go get`。Go 的 host 说明和 docker 注释可以有一条钉死版本的 `go get`。
 发布验收还包括：PHP 8.2 NTS 的 Slim 入口 Span；PHP 8.1 不安装 Laravel；ZTS 或 8.0 安装脚本退出；Windows 上
 ASP.NET Core 入口 Span，且不重启无关服务；内核不低于 6.6 的 Linux amd64 主机上未插桩 Go net/http
 的入口 Span，已插桩进程不再产生第二份 Trace，指标不进入监控 VM 或 APM 聚合存储。内核低于 6.6 时 eBPF 片段退出。
@@ -631,6 +631,7 @@ C++ 进程要把 `prefix/lib` 放进 `LD_LIBRARY_PATH`。Swift 只在 Linux 上�
 | Python `pip install --no-index` 失败 | wheelhouse 是否含 distro[otlp] 及 bootstrap 列出的 instrumentation |
 | Node `npm install --offline` 失败 | tgz 是否带齐依赖，而不是只有主包 |
 | Go `go mod download` 失败 | zip 是否为 GOPROXY file 目录树；是否含 v1.46.0 与 contrib v0.70.0，包括 otelgin 和 otelecho；目标 Go 是否不低于 1.26 |
+| Go `go build` 报没有模块提供包 | `go mod download` 不会写入 `go.mod`。按片段第 3 步把 `otel`、`sdk`、`otlptracehttp` v1.46.0 和 `otelhttp` v0.70.0 放在同一条 `go get` 里 |
 | .NET 启动找不到 Profiler | Linux 归档是否为官方 glibc x64 zip，目标是否为 glibc x86_64；Windows 是否用了 Windows zip 且自行重启了应用 |
 | PHP 扩展装不上 | 目标是否为 NTS 8.1–8.5；8.1 不安装 Laravel、PDO、MySQLi；`dist/` 是否同时含 8.1、8.2、8.4 三套依赖 |
 | OBI 没有 Span | 内核是否不低于 6.6，BTF 和权限是否满足；`exe_path_glob` 是否就是目标 Go 二进制的绝对路径 |

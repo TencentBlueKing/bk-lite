@@ -35,6 +35,7 @@ var (
 const windowsServiceTransitionAttempts = 30
 
 type Config struct {
+	EnvironmentInstallID     string                 `json:"environment_install_id,omitempty"`
 	ServerURL                string                 `json:"server_url"`
 	APIToken                 string                 `json:"api_token"`
 	NodeID                   string                 `json:"node_id"`
@@ -89,6 +90,7 @@ type ClockSkewResult struct {
 }
 
 type PackageConfig struct {
+	SHA256          string `json:"sha256,omitempty"`
 	ID              int    `json:"id"`
 	OS              string `json:"os"`
 	CPUArchitecture string `json:"cpu_architecture"`
@@ -266,20 +268,25 @@ func (reporter *InstallerEventReporter) publish(line string) {
 var installerEventReporter, _ = NewInstallerEventReporter(os.Stdout, "", "")
 
 var (
-	configURL         = flag.String("url", "", "Configuration URL")
-	configURLFile     = flag.String("url-file", "", "Read the configuration URL from a file")
-	installDir        = flag.String("install-dir", "", "Installation directory")
-	skipTLS           = flag.Bool("skip-tls", false, "Skip TLS certificate verification")
-	requireHTTPS      = flag.Bool("require-https", false, "Require HTTPS for configuration and server URLs")
-	fetchOnly         = flag.Bool("fetch-only", false, "Only fetch and display config")
-	progressSubject   = flag.String("progress-subject", "", "NATS subject for live installation events")
-	executionID       = flag.String("execution-id", "", "Installation execution ID")
-	taskNodeID        = flag.Int64("task-node-id", 0, "Controller task node ID used for remote execution fencing")
-	executionAttempt  = flag.Int("attempt", 0, "Controller task attempt used for remote execution fencing")
-	executionDeadline = flag.Int64("deadline-unix", 0, "Non-extendable remote execution deadline")
+	configURL           = flag.String("url", "", "Configuration URL")
+	privateSessionToken = flag.Bool("private-session-token", false, "Send installer session credential in a header")
+	configURLFile       = flag.String("url-file", "", "Read the configuration URL from a file")
+	installDir          = flag.String("install-dir", "", "Installation directory")
+	skipTLS             = flag.Bool("skip-tls", false, "Skip TLS certificate verification")
+	requireHTTPS        = flag.Bool("require-https", false, "Require HTTPS for configuration and server URLs")
+	fetchOnly           = flag.Bool("fetch-only", false, "Only fetch and display config")
+	progressSubject     = flag.String("progress-subject", "", "NATS subject for live installation events")
+	executionID         = flag.String("execution-id", "", "Installation execution ID")
+	taskNodeID          = flag.Int64("task-node-id", 0, "Controller task node ID used for remote execution fencing")
+	executionAttempt    = flag.Int("attempt", 0, "Controller task attempt used for remote execution fencing")
+	executionDeadline   = flag.Int64("deadline-unix", 0, "Non-extendable remote execution deadline")
 )
 
 func main() {
+	// uninstall.exe 只进入卸载。必须在 flag.Parse 之前判断，/S 不是 Go flag。
+	if len(os.Args) > 0 && isUninstallExecutable(os.Args[0]) {
+		os.Exit(runWindowsUninstallMode(os.Args))
+	}
 	flag.Parse()
 	reporter, err := NewInstallerEventReporter(os.Stdout, *progressSubject, *executionID)
 	if err != nil {
@@ -447,6 +454,12 @@ func run(client *http.Client) {
 			}
 			fatalStepWithOptions("download_package", "Download failed: %v", err, downloadOptions)
 		}
+		if cfg.Package.SHA256 != "" || cfg.EnvironmentInstallID != "" {
+			if err := verifyPackageDigest(zipPath, cfg.Package.SHA256); err != nil {
+				_ = os.Remove(zipPath)
+				fatalStep("download_package", "Package integrity check failed: %v", err)
+			}
+		}
 		emitEventWithOptions("download_package", "success", "Controller package downloaded", intPtr(100), 0, 0, "", downloadEventOptions(cfg))
 		if !isLinux(cfg.OS) {
 			log("[4/6] Staging and validating files...")
@@ -472,15 +485,19 @@ func run(client *http.Client) {
 			if installErr != nil {
 				fatalStepWithOptions(windowsInstallErrorStep(installErr), "Transactional Windows installation failed: %v", installErr, eventOptionsForExecError(installErr, &EventOptions{InstallDir: cfg.InstallDir, CPUArchitecture: cfg.Package.CPUArchitecture}))
 			}
+			// 登记在安装事务提交之后：失败只警告，不回滚已经运行的服务，也不改退出码。
+			completeMessage := windowsRemoteInstallCompleteMessage(cfg, nil, func(warning string) {
+				log("WARN: %s", warning)
+			})
 			log("")
 			log("Installation complete!")
-			emitEvent("complete", "success", "Installation complete", intPtr(100), 0, 0, "")
+			emitEvent("complete", "success", completeMessage, intPtr(100), 0, 0, "")
 			return
 		}
 
-		n, prepareErr := prepareLinuxPackageWithProgress(
+		n, prepareErr := prepareLinuxPackageForConfig(
 			zipPath,
-			cfg.InstallDir,
+			cfg,
 			stopLinuxControllerService,
 			extract,
 			func(step, status, message string) {
@@ -529,7 +546,13 @@ func run(client *http.Client) {
 	log("[5/6] Writing configuration...")
 	emitEvent("configure_runtime", "running", "Configuring installer runtime", nil, 0, 0, "")
 	if isLinux(cfg.OS) {
-		log("      Linux package mode, skipping generated sidecar.yml")
+		if cfg.EnvironmentInstallID != "" {
+			if err := writeEnvironmentLinuxConfig(cfg); err != nil {
+				fatalStep("configure_runtime", "Environment config write failed: %v", err)
+			}
+		} else {
+			log("      Linux package mode, skipping generated sidecar.yml")
+		}
 	} else {
 		if err := writeConfig(cfg); err != nil {
 			fatalStep("configure_runtime", "Config write failed: %v", err)
@@ -799,7 +822,19 @@ func newHTTPClient(skipTLS bool) *http.Client {
 
 func fetchConfig(client *http.Client, url string) (*Config, error) {
 	requestStartedAt := time.Now()
-	resp, err := client.Get(url)
+	var resp *http.Response
+	var err error
+	if *privateSessionToken {
+		request, requestErr := privateSessionRequest(url)
+		if requestErr != nil {
+			return nil, requestErr
+		}
+		privateClient := *client
+		privateClient.CheckRedirect = func(*http.Request, []*http.Request) error { return fmt.Errorf("private session redirect forbidden") }
+		resp, err = privateClient.Do(request)
+	} else {
+		resp, err = client.Get(url)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -849,6 +884,12 @@ func runLinuxInstaller(cfg *Config) error {
 	if _, err := os.Stat(installScript); err != nil {
 		return fmt.Errorf("install.sh not found at %s", installScript)
 	}
+	if cfg.EnvironmentInstallID != "" {
+		script, err := os.ReadFile(installScript)
+		if err != nil || !bytes.Contains(script, []byte("BK_LITE_CONFIG_PREPARED")) {
+			return fmt.Errorf("controller package does not support environment installation")
+		}
+	}
 	if err := os.Chmod(installScript, 0755); err != nil {
 		return err
 	}
@@ -871,6 +912,12 @@ func runLinuxInstaller(cfg *Config) error {
 	)
 	if apiTokenEnv != "" {
 		cmd.Env = append(os.Environ(), apiTokenEnv)
+	}
+	if cfg.EnvironmentInstallID != "" {
+		if cmd.Env == nil {
+			cmd.Env = os.Environ()
+		}
+		cmd.Env = append(cmd.Env, "BK_LITE_CONFIG_PREPARED=1")
 	}
 	cmd.Dir = cfg.InstallDir
 	// Keep console streaming for operators, and capture the same bytes so failed
@@ -1080,6 +1127,9 @@ func normalizeNATSURL(protocol, servers string) string {
 
 func prepareInstallDirectories(cfg *Config) error {
 	if isLinux(cfg.OS) {
+		if cfg.EnvironmentInstallID != "" {
+			return nil
+		}
 		return prepareDirs(cfg.InstallDir)
 	}
 	installDir := filepath.Clean(cfg.InstallDir)
@@ -1466,6 +1516,7 @@ var windowsRuntimeDirectories = []string{"cache", "logs", "generated"}
 // 文件。GUI 安装时 NSIS 会在 worker 结束后重新写入，但服务端远程安装直接执行
 // bootstrap worker，不经过 NSIS；事务式激活把旧目录整体改名后，若不迁回这两个文件，
 // 卸载注册表项 UninstallString / DisplayIcon 指向的文件就不复存在，控制面板卸载入口失效。
+// 远程安装成功后会再用当前程序覆盖 uninstall.exe；覆盖失败时仍留下迁回的 NSIS 卸载器。
 var windowsPreservedInstallerFiles = []string{"uninstall.exe", "installer.ico"}
 
 const (

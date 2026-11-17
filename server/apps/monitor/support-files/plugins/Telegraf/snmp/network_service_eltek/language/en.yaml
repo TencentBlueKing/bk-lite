@@ -11,9 +11,7 @@ monitor_object_metric:
   NetworkService:
     snmp_uptime:
       name: System Uptime
-      desc: This metric indicates the uptime of the device since the last restart, derived from sysUpTime.
-        Monitoring uptime helps administrators understand device stability and identify unexpected reboots
-        or failures.
+      desc: This metric indicates the uptime of the device since the last restart, derived from sysUpTime. Monitoring uptime helps administrators understand device stability and identify unexpected reboots or failures.
     battery_voltage_volts:
       name: Battery Voltage
       desc: Measured battery voltage in volts. A sustained drop may indicate battery discharge after a

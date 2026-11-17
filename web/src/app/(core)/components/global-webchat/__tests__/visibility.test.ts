@@ -21,6 +21,8 @@ describe('global webchat visibility', () => {
     expect(isGlobalWebchatExcludedPath('/ops-analysis/share/abc')).toBe(true);
     expect(isGlobalWebchatExcludedPath('/ops-analysis/share/continue')).toBe(true);
     expect(isGlobalWebchatExcludedPath('/ops-analysis/share/session/xyz')).toBe(true);
+    expect(isGlobalWebchatExcludedPath('/ops-analysis/display/view')).toBe(true);
+    expect(isGlobalWebchatExcludedPath('/ops-analysis/display/t/token')).toBe(true);
     expect(isGlobalWebchatExcludedPath('/ops-analysis/view')).toBe(false);
     expect(isGlobalWebchatExcludedPath('/ops-analysis/render/execution/7')).toBe(false);
     expect(isGlobalWebchatExcludedPath('/monitor/dashboard')).toBe(false);

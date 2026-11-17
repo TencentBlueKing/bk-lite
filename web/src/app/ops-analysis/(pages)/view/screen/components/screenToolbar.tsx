@@ -3,6 +3,7 @@
 import React from 'react';
 import { Button, Tooltip } from 'antd';
 import {
+  DesktopOutlined,
   EditOutlined,
   FullscreenOutlined,
   MailOutlined,
@@ -24,9 +25,11 @@ interface ScreenToolbarProps {
   shareMode?: boolean;
   shareLoading?: boolean;
   onOpenShare?: () => void;
+  onOpenDisplay?: () => void;
   onOpenSubscription?: () => void;
   onOpenSettings: () => void;
   onOpenFilterConfig: () => void;
+  onOpenDataVariables?: () => void;
   onPreview: () => void;
   onRefresh: () => void;
   frequenceValue?: number;
@@ -48,9 +51,11 @@ const ScreenToolbar: React.FC<ScreenToolbarProps> = ({
   shareMode = false,
   shareLoading = false,
   onOpenShare,
+  onOpenDisplay,
   onOpenSubscription,
   onOpenSettings,
   onOpenFilterConfig,
+  onOpenDataVariables,
   onPreview,
   onRefresh,
   frequenceValue = 0,
@@ -134,6 +139,17 @@ const ScreenToolbar: React.FC<ScreenToolbarProps> = ({
               className={iconButtonClassName}
             />
           </Tooltip>
+          {onOpenDataVariables ? (
+            <Tooltip title={t('dataVariable.title')}>
+              <Button
+                type="text"
+                icon={<Icon type="bianliang" style={{ fontSize: 20 }} />}
+                aria-label={t('dataVariable.title')}
+                onClick={onOpenDataVariables}
+                className={iconButtonClassName}
+              />
+            </Tooltip>
+          ) : null}
         </div>
 
         <PermissionWrapper requiredPermissions={['EditChart']}>
@@ -178,6 +194,17 @@ const ScreenToolbar: React.FC<ScreenToolbarProps> = ({
             aria-label={t('dashboard.share')}
             className={iconButtonClassName}
             onClick={onOpenShare}
+          />
+        </Tooltip>
+      )}
+      {!shareMode && onOpenDisplay && (
+        <Tooltip title={t('opsAnalysis.screen.displayTitle')}>
+          <Button
+            type="text"
+            icon={<DesktopOutlined className={iconClassName} />}
+            aria-label={t('opsAnalysis.screen.displayTitle')}
+            className={iconButtonClassName}
+            onClick={onOpenDisplay}
           />
         </Tooltip>
       )}

@@ -52,6 +52,8 @@ dependencies = [
     "mysql-connector-python==9.1.0",
     "python-dotenv>=1.0.0",
     "redis==5.0.1",
+    # Kombu 5.7 requires redis>=6.1, incompatible with FalkorDB 1.2 (redis<6).
+    "kombu==5.6.2",
     "requests>=2.32.4",
     "sqlalchemy==2.0.31",
     "toml==0.10.2",
@@ -162,6 +164,8 @@ opspilot = [
     # 可选记忆引擎依赖
     "mem0ai>=0.1.0",
     "zep-cloud>=2.0.0",
+    # 原任务镜像中的流式 JSON 解析能力，随本地执行迁入 Server。
+    "ijson>=3.3,<4",
 ]
 
 [dependency-groups]

@@ -25,8 +25,7 @@ monitor_object_metric:
       desc: 该指标报告各 Cisco 内存池当前空闲字节数（ciscoMemoryPoolFree），不含 MEMPOOL_GLOBAL_SHARED。与已用量一起计算使用率。
     device_memory_usage:
       name: 内存使用率
-      desc: 该指标按内存池计算使用率，公式为 已用/(已用+空闲)*100，已排除 MEMPOOL_GLOBAL_SHARED。Processor/System
-        池持续偏高可能影响会话处理。
+      desc: 各内存池使用率，已排除 MEMPOOL_GLOBAL_SHARED。Processor/System 池持续偏高可能影响会话处理。
     firewall_active_sessions:
       name: 活动会话数
       desc: 该指标报告 Cisco 防火墙当前占用的连接数（CISCO-FIREWALL-MIB cfwConnectionStatValue，索引为

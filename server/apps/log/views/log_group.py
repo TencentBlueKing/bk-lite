@@ -35,6 +35,12 @@ class LogGroupViewSet(ModelViewSet):
 
         return items
 
+    def _serialize_groups(self, instances, permission):
+        records = list(instances)
+        serializer = self.get_serializer(records, many=True)
+        serializer.context["log_group_organizations"] = serializer.child.organization_ids_by_group(records)
+        return self._attach_item_permissions(serializer.data, permission)
+
     def _authorize_write(self, request, instance=None):
         try:
             _, permission = LogAccessScopeService.get_accessible_group_queryset(request)
@@ -80,21 +86,16 @@ class LogGroupViewSet(ModelViewSet):
         # 检查是否为全量查询（page_size为-1时不分页）
         page_size = request.query_params.get("page_size")
         if page_size == "-1":
-            # 全量查询，直接返回所有数据
-            serializer = self.get_serializer(queryset, many=True)
-            results = self._attach_item_permissions(serializer.data, permission)
-            return WebUtils.response_success(results)
+            # 全量查询，直接返回所有数据。组织关系仍按本页一次读取。
+            return WebUtils.response_success(self._serialize_groups(queryset, permission))
 
         # 分页
         page = self.paginate_queryset(queryset)
         if page is not None:
-            serializer = self.get_serializer(page, many=True)
-            results = self._attach_item_permissions(serializer.data, permission)
+            results = self._serialize_groups(page, permission)
             return self.get_paginated_response(results)
 
-        serializer = self.get_serializer(queryset, many=True)
-        results = self._attach_item_permissions(serializer.data, permission)
-        return WebUtils.response_success(results)
+        return WebUtils.response_success(self._serialize_groups(queryset, permission))
 
     def update(self, request, *args, **kwargs):
         partial = kwargs.pop("partial", False)

@@ -884,7 +884,7 @@ datasources:
       organization: 组织
   "机房设备类型分布::cmdb/get_room_device_type_distribution":
     name: 机房设备类型分布
-    desc: 统计机房内经机柜挂载的可见设备，按模型显示名分组计数。server_room_id 为空时取第一个可见机房
+    desc: 统计机房内经机柜挂载的可见设备，按模型显示名分组计数。server_room_id 为空时不取数，提示在头部选择机房
     fields:
       name:
         title: 设备类型
@@ -896,7 +896,7 @@ datasources:
       server_room_id: 机房
   "机房机柜容量::cmdb/get_room_rack_capacity":
     name: 机房机柜容量
-    desc: 统计机房内可见机柜的 U 位容量。summary 返回扁平对象，rack_top 按使用率降序。server_room_id 为空时取第一个可见机房
+    desc: 统计机房内可见机柜的 U 位容量。summary 返回扁平对象，rack_top 按使用率降序。server_room_id 为空时不取数，提示在头部选择机房
     fields:
       rack_count:
         title: 机柜数
@@ -938,7 +938,7 @@ datasources:
       limit: 返回条数
   "机房活跃告警::cmdb/get_room_active_alarms":
     name: 机房活跃告警
-    desc: 统计机房内经机柜挂载的可见设备的监控覆盖、活跃告警等级、机柜告警和告警设备。监控整体失败时覆盖视图记为暂不可用，其他视图返回失败。server_room_id 为空时取第一个可见机房
+    desc: 统计机房内经机柜挂载的可见设备的监控覆盖、活跃告警等级、机柜告警和告警设备。监控整体失败时覆盖视图记为暂不可用，其他视图返回失败。server_room_id 为空时不取数，提示在头部选择机房
     fields:
       name:
         title: 名称

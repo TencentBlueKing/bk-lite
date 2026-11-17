@@ -185,6 +185,40 @@ def test_normalize_screen_keeps_custom_image_background_through_yaml_rewrite():
     assert imported["viewport"]["background"] == {"type": "image", "src": src}
 
 
+def test_screen_data_variables_survive_export_and_remap_datasource():
+    payload = {
+        "viewport": {"width": 1920, "height": 1080},
+        "items": [],
+        "decorations": {},
+        "dataVariables": [
+            {
+                "id": "dv_hosts",
+                "name": "云区域主机",
+                "dataSourceId": 9,
+                "valueField": "inst_uuid",
+                "params": {"model_id": "host"},
+            }
+        ],
+    }
+    stored = vs.normalize_canvas_view_sets_for_storage(payload, ObjectType.SCREEN)
+    assert stored["dataVariables"][0]["dataSourceId"] == 9
+    assert stored["dataVariables"][0]["params"] == {"model_id": "host"}
+
+    exported = vs.rewrite_canvas_view_sets_refs_for_yaml(stored, ObjectType.SCREEN, {9: "ds::host"})
+    assert exported["dataVariables"][0]["dataSourceId"] == "ds::host"
+
+    imported = vs.rewrite_canvas_view_sets_refs_for_storage(
+        exported,
+        ObjectType.SCREEN,
+        {"ds::host": 42},
+    )
+    assert imported["dataVariables"][0]["dataSourceId"] == 42
+    assert imported["dataVariables"][0]["valueField"] == "inst_uuid"
+
+    datasource_ids, _namespace_ids = ExportService.extract_canvas_dependencies(payload, ObjectType.SCREEN)
+    assert 9 in datasource_ids
+
+
 def test_normalize_screen_keeps_text_title_link():
     from apps.operation_analysis.services.canvas_draft.validation import validate_projectable
 

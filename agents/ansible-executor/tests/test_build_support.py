@@ -35,6 +35,14 @@ def test_spec_bakes_version_before_archive_and_restores_after():
     assert '("CHANGELOG.md", ".")' in spec
 
 
+def test_spec_adds_its_directory_to_sys_path_before_loading_build_support():
+    spec = Path(__file__).resolve().parent.parent.joinpath("ansible-executor.spec").read_text(encoding="utf-8")
+    inserted = spec.index("sys.path.insert")
+    execute = spec.index("loader.exec_module")
+    assert inserted < execute
+    assert "SPEC_DIR" in spec[inserted:execute]
+
+
 def test_packaged_collection_verification_accepts_win_copy(tmp_path: Path):
     packaged_root = tmp_path / "ansible-executor"
     module_file = packaged_root / "_internal" / "collections" / "ansible_collections" / "ansible" / "windows" / "plugins" / "modules" / "win_copy.ps1"

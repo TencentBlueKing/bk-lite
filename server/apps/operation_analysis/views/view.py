@@ -33,7 +33,17 @@ from apps.operation_analysis.services.architecture_node_status import Architectu
 from apps.operation_analysis.services.architecture_resource_search import ArchitectureResourceSearchService
 from apps.operation_analysis.services.canvas.copy_service import copy_canvas
 from apps.operation_analysis.services.directory_service import DictDirectoryService
-from apps.operation_analysis.services.share_service import SharePermissionDenied, create_or_get_share
+from apps.operation_analysis.services.display_service import (
+    DisplayDurationInvalid,
+    DisplayGrantExists,
+    create_grant,
+    empty_grant,
+    pause_grant,
+    regenerate_grant,
+    resume_grant,
+    serialize_grant,
+)
+from apps.operation_analysis.services.share_service import ShareLinkInvalid, SharePermissionDenied, create_or_get_share
 from apps.operation_analysis.services.user_messages import oa_message
 from config.drf.pagination import CustomPageNumberPagination
 
@@ -743,6 +753,100 @@ class ScreenModelViewSet(CanvasModelViewSet):
             resource_type=RESOURCE_TYPE_SCREEN,
             log_action="删除大屏: {name}",
         )
+
+    def _display_screen(self, request):
+        screen = self.get_object()
+        space_id = self._parse_current_team_cookie(request)
+        return screen, space_id
+
+    @HasPermission("view-View")
+    @action(detail=True, methods=["get", "post"], url_path="display_grant")
+    def display_grant(self, request, *args, **kwargs):
+        from apps.operation_analysis.models.share_models import ScreenDisplayGrant
+        from apps.operation_analysis.services.share_audit import log_share_access
+
+        screen, space_id = self._display_screen(request)
+        if request.method == "GET":
+            try:
+                return Response(serialize_grant(screen.display_grant))
+            except ScreenDisplayGrant.DoesNotExist:
+                return Response(empty_grant())
+        try:
+            grant = create_grant(
+                screen=screen,
+                sharer=request.user,
+                space_id=space_id,
+                duration_days=request.data.get("duration_days"),
+            )
+        except DisplayDurationInvalid:
+            return Response({"detail": "有效期只能是 1、7、30 或 90 天"}, status=400)
+        except DisplayGrantExists:
+            return Response(
+                {"detail": "该大屏已有投屏授权", "reason": "exists", "data": {"reason": "exists"}},
+                status=409,
+            )
+        except SharePermissionDenied:
+            log_share_access(request, action="display_create", dashboard=screen, visitor=request.user, result="reject", reason="permission_denied")
+            return Response({"detail": oa_message("messages.share_denied_screen", "无权分享该大屏")}, status=403)
+        log_share_access(request, action="display_create", dashboard=screen, visitor=request.user, result="ok")
+        return Response(serialize_grant(grant))
+
+    @HasPermission("view-View")
+    @action(detail=True, methods=["post"], url_path="display_grant/pause")
+    def display_grant_pause(self, request, *args, **kwargs):
+        from apps.operation_analysis.services.share_audit import log_share_access
+
+        screen, _space_id = self._display_screen(request)
+        try:
+            grant = pause_grant(screen=screen)
+        except ShareLinkInvalid:
+            return Response({"detail": "尚未配置投屏"}, status=404)
+        log_share_access(request, action="display_pause", dashboard=screen, visitor=request.user, result="ok")
+        return Response(serialize_grant(grant))
+
+    @HasPermission("view-View")
+    @action(detail=True, methods=["post"], url_path="display_grant/resume")
+    def display_grant_resume(self, request, *args, **kwargs):
+        from apps.operation_analysis.services.share_audit import log_share_access
+
+        screen, _space_id = self._display_screen(request)
+        try:
+            grant = resume_grant(screen=screen)
+        except ShareLinkInvalid as exc:
+            reason = exc.args[0] if exc.args else "invalid"
+            if reason == "expired":
+                return Response(
+                    {"detail": "展示已过期，请重新生成", "reason": "expired", "data": {"reason": "expired"}},
+                    status=409,
+                )
+            return Response({"detail": "尚未配置投屏"}, status=404)
+        log_share_access(request, action="display_resume", dashboard=screen, visitor=request.user, result="ok")
+        return Response(serialize_grant(grant))
+
+    @HasPermission("view-View")
+    @action(detail=True, methods=["post"], url_path="display_grant/regenerate")
+    def display_grant_regenerate(self, request, *args, **kwargs):
+        from apps.operation_analysis.services.share_audit import log_share_access
+
+        screen, space_id = self._display_screen(request)
+        try:
+            grant = regenerate_grant(
+                screen=screen,
+                sharer=request.user,
+                space_id=space_id,
+                duration_days=request.data.get("duration_days"),
+            )
+        except DisplayDurationInvalid:
+            return Response({"detail": "有效期只能是 1、7、30 或 90 天"}, status=400)
+        except SharePermissionDenied:
+            log_share_access(
+                request, action="display_regenerate", dashboard=screen, visitor=request.user, result="reject", reason="permission_denied"
+            )
+            return Response({"detail": oa_message("messages.share_denied_screen", "无权分享该大屏")}, status=403)
+        except ShareLinkInvalid:
+            return Response({"detail": "尚未配置投屏"}, status=404)
+        log_share_access(request, action="display_regenerate", dashboard=screen, visitor=request.user, result="ok")
+        return Response(serialize_grant(grant))
 
 
 class ReportModelViewSet(CanvasModelViewSet):

@@ -11,10 +11,10 @@ from typing import Any
 
 from celery import shared_task
 from celery.exceptions import SoftTimeLimitExceeded
-from django.core.cache import cache
 from django.utils import timezone
 
 from apps.cmdb.display_field.initializer import DisplayFieldInitializer
+from apps.cmdb.models.repair_state import DISPLAY_BACKFILL_STAGE, CmdbRepairState
 from apps.cmdb.services.unique_write_lock import UniqueWriteLockService
 from apps.core.logger import cmdb_logger as logger
 from apps.core.logger import safe_exception_info
@@ -75,18 +75,43 @@ def ensure_display_field_backfill_periodic_task():
     )
 
 
-def _idle() -> bool:
-    return bool(cache.get(DISPLAY_BACKFILL_COMPLETED_KEY)) and cache.get(DISPLAY_BACKFILL_CURSOR_KEY) is None
+def _display_state() -> CmdbRepairState:
+    row, _created = CmdbRepairState.objects.get_or_create(
+        stage=DISPLAY_BACKFILL_STAGE,
+        defaults={"completed": False, "cursor": ""},
+    )
+    return row
+
+
+def _load_cursor(row: CmdbRepairState):
+    if not row.cursor:
+        return None
+    try:
+        return json.loads(row.cursor)
+    except json.JSONDecodeError:
+        return None
+
+
+def _store_cursor(row: CmdbRepairState, cursor) -> None:
+    row.cursor = "" if not cursor else json.dumps(cursor, ensure_ascii=False)
+    row.completed = False
+    row.save(update_fields=["cursor", "completed", "updated_at"])
+
+
+def _idle(row: CmdbRepairState) -> bool:
+    return bool(row.completed) and not row.cursor
 
 
 @shared_task(name=DISPLAY_BACKFILL_TASK, soft_time_limit=240, time_limit=300)
 def backfill_cmdb_display_fields(force: bool = False) -> dict[str, Any]:
     """分页回填实例 _display。与组织/用户同步共用写锁，避免两路同时改同一字段。"""
     ensure_display_field_backfill_periodic_task()
+    row = _display_state()
     if force:
-        cache.delete(DISPLAY_BACKFILL_CURSOR_KEY)
-        cache.delete(DISPLAY_BACKFILL_COMPLETED_KEY)
-    elif _idle():
+        row.completed = False
+        row.cursor = ""
+        row.save(update_fields=["completed", "cursor", "updated_at"])
+    elif _idle(row):
         return {"status": "idle"}
 
     try:
@@ -112,21 +137,23 @@ def backfill_cmdb_display_fields(force: bool = False) -> dict[str, Any]:
 
 
 def _backfill_under_lock() -> dict[str, Any]:
-    cursor = cache.get(DISPLAY_BACKFILL_CURSOR_KEY)
+    row = _display_state()
+    cursor = _load_cursor(row)
     initializer = DisplayFieldInitializer()
     if cursor is None:
         initializer.initialize_all(instances=False)
     result = initializer.backfill_bounded(max_instances=DISPLAY_BACKFILL_BUDGET, cursor=cursor)
     if result["query_failed"]:
-        cache.set(DISPLAY_BACKFILL_CURSOR_KEY, result["next_cursor"], timeout=DISPLAY_BACKFILL_CURSOR_TTL)
+        _store_cursor(row, result["next_cursor"])
         logger.warning(
             "event=display_backfill_query_paused model_id=%s",
             (result.get("next_cursor") or {}).get("model_id"),
         )
         return {"status": "retry", "reason": "query_failed", "instances_updated": result["instances_updated"]}
     if result["done"]:
-        cache.delete(DISPLAY_BACKFILL_CURSOR_KEY)
-        cache.set(DISPLAY_BACKFILL_COMPLETED_KEY, timezone.now().isoformat(), timeout=DISPLAY_BACKFILL_COOLDOWN)
+        row.completed = True
+        row.cursor = ""
+        row.save(update_fields=["completed", "cursor", "updated_at"])
         logger.info(
             "event=display_backfill_finished instances_seen=%s instances_updated=%s error_count=%s",
             result["instances_seen"],
@@ -139,7 +166,7 @@ def _backfill_under_lock() -> dict[str, Any]:
             "instances_updated": result["instances_updated"],
         }
 
-    cache.set(DISPLAY_BACKFILL_CURSOR_KEY, result["next_cursor"], timeout=DISPLAY_BACKFILL_CURSOR_TTL)
+    _store_cursor(row, result["next_cursor"])
     backfill_cmdb_display_fields.apply_async(countdown=1)
     logger.info(
         "event=display_backfill_continue instances_seen=%s instances_updated=%s",

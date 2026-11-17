@@ -7,11 +7,7 @@ from apps.system_mgmt.models import IMNotificationChannel, IMNotificationSyncRun
 from apps.system_mgmt.providers import RuntimeApplicationService
 from apps.system_mgmt.providers.pack_i18n import resolve_bound_instance_provider_name
 from apps.system_mgmt.services import im_notification_service
-from apps.system_mgmt.services.capability_contract_service import (
-    CapabilityContractError,
-    get_integration_capability_availability,
-    validate_im_notification_contract,
-)
+from apps.system_mgmt.services.capability_contract_service import get_integration_capability_availability
 from apps.system_mgmt.services.notification_tag import assign_channel_tags, channel_tag_tokens, parse_tag_tokens
 
 
@@ -19,6 +15,55 @@ class IMNotificationSyncRunSerializer(serializers.ModelSerializer):
     class Meta:
         model = IMNotificationSyncRun
         fields = "__all__"
+
+
+class AccountAssociationSyncRunListSerializer(serializers.ModelSerializer):
+    account_association_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = IMNotificationSyncRun
+        fields = (
+            "id",
+            "account_association",
+            "account_association_name",
+            "trigger_mode",
+            "status",
+            "matched_count",
+            "unmatched_count",
+            "conflict_count",
+            "started_at",
+            "summary",
+        )
+
+    def get_account_association_name(self, obj):
+        association = getattr(obj, "account_association", None)
+        return association.name if association is not None else ""
+
+
+class AccountAssociationUserMappingSerializer(serializers.ModelSerializer):
+    username = serializers.SerializerMethodField()
+    display_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = IMNotificationUserMapping
+        fields = (
+            "id",
+            "account_association",
+            "user",
+            "username",
+            "display_name",
+            "external_identity_key",
+            "external_identity_value",
+            "external_receive_key",
+            "external_display_name",
+            "synced_at",
+        )
+
+    def get_username(self, obj):
+        return obj.user.username if obj.user_id else ""
+
+    def get_display_name(self, obj):
+        return obj.user.display_name if obj.user_id else ""
 
 
 class IMNotificationUserMappingSerializer(serializers.ModelSerializer):
@@ -43,16 +88,7 @@ class IMNotificationChannelSerializer(UsernameSerializer):
     provider_name = serializers.SerializerMethodField()
     dependency_status = serializers.SerializerMethodField()
     display_status = serializers.SerializerMethodField()
-    display_sync_status = serializers.SerializerMethodField()
-    display_sync_summary = serializers.SerializerMethodField()
-    latest_sync_status = serializers.SerializerMethodField()
-    latest_sync_started_at = serializers.SerializerMethodField()
-    latest_sync_finished_at = serializers.SerializerMethodField()
-    latest_sync_summary = serializers.SerializerMethodField()
-    latest_sync_total_external_user_count = serializers.SerializerMethodField()
-    latest_sync_matched_count = serializers.SerializerMethodField()
-    latest_sync_unmatched_count = serializers.SerializerMethodField()
-    latest_sync_conflict_count = serializers.SerializerMethodField()
+    account_association_name = serializers.SerializerMethodField()
 
     class Meta:
         model = IMNotificationChannel
@@ -68,21 +104,9 @@ class IMNotificationChannelSerializer(UsernameSerializer):
             "description",
             "status",
             "display_status",
-            "platform_match_field",
-            "external_match_field",
-            "external_receive_field",
-            "schedule_config",
+            "account_association",
+            "account_association_name",
             "team",
-            "display_sync_status",
-            "display_sync_summary",
-            "latest_sync_status",
-            "latest_sync_started_at",
-            "latest_sync_finished_at",
-            "latest_sync_summary",
-            "latest_sync_total_external_user_count",
-            "latest_sync_matched_count",
-            "latest_sync_unmatched_count",
-            "latest_sync_conflict_count",
             "created_by",
             "updated_by",
             "domain",
@@ -134,54 +158,10 @@ class IMNotificationChannelSerializer(UsernameSerializer):
         return get_integration_capability_availability(obj.integration_instance, "im_notification")
 
     def get_display_status(self, obj):
-        latest_run = self._get_latest_run(obj)
-        if latest_run and latest_run.status == im_notification_service.SYNC_RUN_STATUS_RUNNING:
-            return "syncing"
         return obj.status
 
-    def get_display_sync_status(self, obj):
-        latest_run = self._get_latest_run(obj)
-        if latest_run and latest_run.status == im_notification_service.SYNC_RUN_STATUS_RUNNING:
-            return "running"
-        if latest_run:
-            return latest_run.status
-        return "never_synced"
-
-    def get_display_sync_summary(self, obj):
-        latest_run = self._get_latest_run(obj)
-        return latest_run.summary if latest_run else ""
-
-    def get_latest_sync_status(self, obj):
-        latest_run = self._get_latest_run(obj)
-        return latest_run.status if latest_run else ""
-
-    def get_latest_sync_started_at(self, obj):
-        latest_run = self._get_latest_run(obj)
-        return latest_run.started_at if latest_run else None
-
-    def get_latest_sync_finished_at(self, obj):
-        latest_run = self._get_latest_run(obj)
-        return latest_run.finished_at if latest_run else None
-
-    def get_latest_sync_summary(self, obj):
-        latest_run = self._get_latest_run(obj)
-        return latest_run.summary if latest_run else ""
-
-    def get_latest_sync_total_external_user_count(self, obj):
-        latest_run = self._get_latest_run(obj)
-        return latest_run.total_external_user_count if latest_run else None
-
-    def get_latest_sync_matched_count(self, obj):
-        latest_run = self._get_latest_run(obj)
-        return latest_run.matched_count if latest_run else None
-
-    def get_latest_sync_unmatched_count(self, obj):
-        latest_run = self._get_latest_run(obj)
-        return latest_run.unmatched_count if latest_run else None
-
-    def get_latest_sync_conflict_count(self, obj):
-        latest_run = self._get_latest_run(obj)
-        return latest_run.conflict_count if latest_run else None
+    def get_account_association_name(self, obj):
+        return obj.account_association.name if obj.account_association_id else ""
 
     def validate(self, attrs):
         integration_instance = attrs.get("integration_instance") or getattr(self.instance, "integration_instance", None)
@@ -197,23 +177,24 @@ class IMNotificationChannelSerializer(UsernameSerializer):
 
         runtime_service = RuntimeApplicationService()
         manifest = runtime_service.get_provider_manifest(integration_instance.provider_key)
-        external_match_field = attrs.get("external_match_field") or getattr(self.instance, "external_match_field", "")
-        external_receive_field = attrs.get("external_receive_field") or getattr(self.instance, "external_receive_field", "")
-        schedule_config = attrs.get("schedule_config")
-        try:
-            validate_im_notification_contract(
-                manifest,
-                external_match_field=external_match_field,
-                external_receive_field=external_receive_field,
-                schedule_config=schedule_config,
-            )
-        except CapabilityContractError as exc:
-            raise serializers.ValidationError({exc.field: exc.message}) from exc
+        if manifest is None:
+            raise serializers.ValidationError({"integration_instance": "Integration provider is not available"})
 
-        if self.instance and im_notification_service.critical_config_changed(self.instance, attrs):
+        association = attrs.get("account_association", getattr(self.instance, "account_association", None))
+        if association is not None and association.integration_instance_id != integration_instance.id:
+            if self.instance and "integration_instance" in attrs and "account_association" not in attrs:
+                attrs["account_association"] = None
+                association = None
+            else:
+                raise serializers.ValidationError({"account_association": "Account association does not belong to the integration instance"})
+
+        enabled = attrs.get("enabled", getattr(self.instance, "enabled", True))
+        if not enabled:
+            attrs["status"] = im_notification_service.CHANNEL_STATUS_DISABLED
+        elif association is None or association.status != im_notification_service.ASSOCIATION_STATUS_READY:
             attrs["status"] = im_notification_service.CHANNEL_STATUS_NEEDS_RESYNC
-        elif self.instance is None and "status" not in attrs:
-            attrs["status"] = im_notification_service.CHANNEL_STATUS_PENDING_SYNC
+        else:
+            attrs["status"] = im_notification_service.CHANNEL_STATUS_READY
 
         return attrs
 
@@ -222,7 +203,6 @@ class IMNotificationChannelSerializer(UsernameSerializer):
         with transaction.atomic():
             instance = super().create(validated_data)
             assign_channel_tags(instance, pairs, actor=self._actor())
-        self._sync_periodic_task(instance)
         return instance
 
     def update(self, instance, validated_data):
@@ -232,26 +212,10 @@ class IMNotificationChannelSerializer(UsernameSerializer):
             instance = super().update(instance, validated_data)
             if tag_provided:
                 assign_channel_tags(instance, pairs, actor=self._actor())
-        self._sync_periodic_task(instance)
         return instance
 
     def _actor(self):
         return getattr(self.context.get("request"), "user", None)
-
-    def _get_latest_run(self, obj):
-        latest_run = getattr(obj, "_prefetched_latest_run", None)
-        if isinstance(latest_run, list):
-            latest_run = latest_run[0] if latest_run else None
-        if latest_run is None:
-            latest_run = obj.sync_runs.order_by("-started_at", "-id").first()
-        return latest_run
-
-    def _sync_periodic_task(self, instance: IMNotificationChannel):
-        schedule_config = instance.schedule_config or {}
-        if instance.enabled and schedule_config.get("enabled") and schedule_config.get("sync_time"):
-            instance.create_sync_periodic_task()
-        else:
-            instance.delete_sync_periodic_task()
 
     def _team_required_message(self):
         return self._loader().get("error.channel_team_required", "请选择渠道所属组织")

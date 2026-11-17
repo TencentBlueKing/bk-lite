@@ -372,10 +372,7 @@ def test_batch_create_reads_existing_subnets_once_per_request():
         return real_parse_subnet(address, mask)
 
     def batch_create(_label, prepared, *_args, **_kwargs):
-        return [
-            {"success": True, "data": {"_id": index, "model_id": "subnet"}}
-            for index, _item in enumerate(prepared, start=1)
-        ]
+        return [{"success": True, "data": {"_id": index, "model_id": "subnet"}} for index, _item in enumerate(prepared, start=1)]
 
     with (
         patch("apps.cmdb.services.instance.ModelManage.search_model_attr", return_value=[]),
@@ -650,5 +647,5 @@ def test_batch_create_writes_side_effects_after_all_graph_rows_succeed(
 
     assert [item["_id"] for item in result] == [1, 2]
     mock_audit.assert_called_once()
-    mock_schedule.assert_called_once_with([1, 2])
+    mock_schedule.assert_called_once_with([1, 2], model_id="host")
     assert mock_notify.call_count == 2

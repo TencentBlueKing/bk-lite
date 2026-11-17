@@ -531,7 +531,11 @@ def _ppt_exporter_script() -> Path:
     return Path(__file__).resolve().parents[1] / "support-files" / "skill_packages" / "ppt-master" / "scripts" / "svg_to_pptx.py"
 
 
-def _run_svg_to_pptx(workspace: Path, project: Path) -> Path | None:
+def _run_svg_to_pptx(workspace: Path, project: Path, sandbox=None) -> Path | None:
+    if sandbox is not None:
+        from apps.opspilot.services.python_sandbox.ppt import export_ppt
+
+        return newest_export_pptx(workspace) if export_ppt(sandbox, workspace, project) else None
     script = _ppt_exporter_script()
     if not script.is_file():
         logger.warning("ppt compile skipped failed_stage=svg_to_pptx error_type=MissingScript")
@@ -564,8 +568,12 @@ def _run_svg_to_pptx(workspace: Path, project: Path) -> Path | None:
     return newest_export_pptx(workspace)
 
 
-def inspect_ppt_run(workspace: Path) -> tuple[bool, int]:
+def inspect_ppt_run(workspace: Path, sandbox=None) -> tuple[bool, int]:
     """返回是否已有 pptx，以及当前可解析前的 SVG 页数。"""
+    if sandbox is not None:
+        from apps.opspilot.services.python_sandbox.ppt import sync_ppt_workspace
+
+        sync_ppt_workspace(sandbox, workspace)
     if not isinstance(workspace, Path) or not workspace.is_dir():
         return False, 0
     if newest_export_pptx(workspace) is not None:
@@ -576,7 +584,7 @@ def inspect_ppt_run(workspace: Path) -> tuple[bool, int]:
     return False, count
 
 
-def settle_ppt_export(workspace: Path) -> str:
+def settle_ppt_export(workspace: Path, sandbox=None) -> str:
     """页面已经写好时直接导出。返回 exported、pages_missing 或 compile_failed。"""
     if not isinstance(workspace, Path) or not workspace.is_dir():
         return "pages_missing"
@@ -591,7 +599,7 @@ def settle_ppt_export(workspace: Path) -> str:
         return "compile_failed"
     repair_workspace_svgs(workspace)
     release_svg_quality_gate(workspace)
-    if _run_svg_to_pptx(workspace, project) is None:
+    if (_run_svg_to_pptx(workspace, project, sandbox=sandbox) if sandbox is not None else _run_svg_to_pptx(workspace, project)) is None:
         return "compile_failed"
     return "exported"
 

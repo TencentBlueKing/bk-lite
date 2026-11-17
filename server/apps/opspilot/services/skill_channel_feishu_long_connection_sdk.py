@@ -121,12 +121,54 @@ def _start_ping(client: lark.ws.Client) -> None:
         _PING_TASKS[id(client)] = task
 
 
-def _cancel_ping(client: lark.ws.Client, loop: asyncio.AbstractEventLoop | None) -> None:
+_CLOSE_TIMEOUT_SECONDS = 5
+
+
+class _OwnedLarkClient(lark.ws.Client):
+    """官方协议不变。每个应用自己持有接收、心跳和缓存任务，关闭时一起取消。"""
+
+    def __init__(self, *args, **kwargs):
+        self._owned_tasks: set[asyncio.Task] = set()
+        super().__init__(*args, **kwargs)
+
+    def _remember_current_task(self) -> None:
+        task = asyncio.current_task()
+        if task is not None:
+            self._owned_tasks.add(task)
+
+    async def _receive_message_loop(self):
+        self._remember_current_task()
+        return await super()._receive_message_loop()
+
+    async def _handle_message(self, message):
+        self._remember_current_task()
+        return await super()._handle_message(message)
+
+
+async def _release_client(client: lark.ws.Client) -> None:
+    client._auto_reconnect = False
+    tasks: list[asyncio.Task] = []
     with _PING_GUARD:
-        task = _PING_TASKS.pop(id(client), None)
-    if task is None or task.done() or loop is None:
-        return
-    loop.call_soon_threadsafe(task.cancel)
+        ping = _PING_TASKS.pop(id(client), None)
+    if ping is not None:
+        tasks.append(ping)
+    cron = getattr(getattr(client, "_cache", None), "_cron", None)
+    if isinstance(cron, asyncio.Task):
+        tasks.append(cron)
+    tasks.extend(getattr(client, "_owned_tasks", ()))
+    running = asyncio.get_running_loop()
+    waiting: list[asyncio.Task] = []
+    seen: set[asyncio.Task] = set()
+    for task in tasks:
+        if task in seen or task.done():
+            continue
+        seen.add(task)
+        task.cancel()
+        if task.get_loop() is running:
+            waiting.append(task)
+    if waiting:
+        await asyncio.wait(waiting, timeout=_CLOSE_TIMEOUT_SECONDS)
+    await _disconnect_client(client)
 
 
 def _boot(client: lark.ws.Client) -> None:
@@ -143,14 +185,34 @@ def _boot(client: lark.ws.Client) -> None:
         raise
 
 
+def _open_owned_client(app_id: str, app_secret: str, handler) -> _OwnedLarkClient:
+    """在长连接循环上创建客户端，缓存定时任务才能和接收任务一起取消。"""
+    loop = _ensure_loop()
+
+    async def build() -> _OwnedLarkClient:
+        return _OwnedLarkClient(
+            app_id,
+            app_secret,
+            event_handler=handler,
+            log_level=lark.LogLevel.WARNING,
+            domain=lark.FEISHU_DOMAIN,
+            auto_reconnect=False,
+        )
+
+    client = asyncio.run_coroutine_threadsafe(build(), loop).result(timeout=_CONNECT_TIMEOUT_SECONDS)
+    _boot(client)
+    return client
+
+
 def _shutdown(client: lark.ws.Client) -> None:
     loop = _LOOP
-    _cancel_ping(client, loop)
     if loop is None:
         return
+    future = asyncio.run_coroutine_threadsafe(_release_client(client), loop)
     try:
-        asyncio.run_coroutine_threadsafe(_disconnect_client(client), loop).result(timeout=5)
+        future.result(timeout=_CLOSE_TIMEOUT_SECONDS + 1)
     except Exception as exc:
+        future.cancel()
         logger.warning("event=feishu_long_connection_sdk_disconnect_failed failed_stage=disconnect error_type=%s", type(exc).__name__)
 
 
@@ -174,17 +236,9 @@ class LarkFeishuTransport:
     def __init__(self, app_id: str, app_secret: str):
         self._events: queue.Queue[FeishuInbound] = queue.Queue()
         handler = build_event_handler(self._on_message)
-        self._ws = lark.ws.Client(
-            app_id,
-            app_secret,
-            event_handler=handler,
-            log_level=lark.LogLevel.WARNING,
-            domain=lark.FEISHU_DOMAIN,
-            auto_reconnect=False,
-        )
         self._api = lark.Client.builder().app_id(app_id).app_secret(app_secret).domain(lark.FEISHU_DOMAIN).build()
         self._bot_open_id = ""
-        _boot(self._ws)
+        self._ws = _open_owned_client(app_id, app_secret, handler)
 
     def poll(self, timeout: float) -> FeishuInbound | None:
         try:

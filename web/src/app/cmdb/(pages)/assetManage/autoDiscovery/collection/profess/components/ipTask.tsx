@@ -131,7 +131,7 @@ const IpTask: React.FC<IpTaskFormProps> = ({
       const res = await instanceApiRef.current.searchInstances({
         model_id: SUBNET_MODEL_ID,
         page: 1,
-        page_size: 10000,
+        page_size: 20,
       });
       if (!isActive()) return;
       setSubnetOptions(toIpTaskSubnetOptions(res.insts || []));

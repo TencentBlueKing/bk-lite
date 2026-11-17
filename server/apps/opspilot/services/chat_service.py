@@ -7,6 +7,8 @@ import threading
 import uuid
 from typing import Any, Dict, Tuple
 
+from asgiref.sync import ThreadSensitiveContext
+
 from apps.core.logger import opspilot_logger as logger
 from apps.core.mixinx import EncryptMixin
 from apps.core.utils.loader import LanguageLoader
@@ -55,9 +57,10 @@ from apps.opspilot.services.wiki.chat_material_service import (
 from apps.opspilot.services.wiki.wiki_budget_service import WikiBudgetExceeded, load_wiki_budget_config
 from apps.opspilot.services.wiki.wiki_context_service import augment_prompt_with_trace, should_skip_wiki_retrieval
 from apps.opspilot.utils.agent_factory import create_agent_instance
+from apps.opspilot.utils.auto_mode import normalize_auto_request, set_unattended_flag
 from apps.opspilot.utils.pending_question import consume_pending_question, resolve_conversation_key
 from apps.opspilot.utils.prompt_utils import resolve_skill_params
-from apps.opspilot.utils.run_locale import reset_run_locale, set_run_locale
+from apps.opspilot.utils.run_locale import get_run_locale, reset_run_locale, set_run_locale
 
 _REPLY_LANGUAGE_EN = (
     "\n\n[Reply language] The user interface language is English. "
@@ -204,6 +207,14 @@ def _attach_wiki_answer_budget(chat_kwargs, extra_config, wiki_budget_trace, der
     extra_config["wiki_budget"]["remaining_answer_calls"] = remaining_calls
 
 
+def _invoke_error_locale(kwargs: Dict[str, Any]) -> str:
+    """本次调用的页面语言。没有 locale 时用已设置的 run locale，再默认英文。"""
+    requested = kwargs.get("locale") if isinstance(kwargs, dict) else None
+    if isinstance(requested, str) and requested.strip():
+        return requested.strip()
+    return get_run_locale() or "en"
+
+
 def _resolve_agent_execute_timeout() -> int:
     """整轮 agent 执行预算（秒）：覆盖一次 invoke_chat 内的全部多轮 LLM + 工具调用。
 
@@ -314,12 +325,18 @@ class ChatService:
             worker_result: Dict[str, Any] = {}
             worker_done = threading.Event()
 
+            async def _execute_graph():
+                # 外层同步调用可能占着全局/请求线程池等待本轮结束。
+                # 本轮 ORM 桥接使用独立单线程池，退出时由上下文回收。
+                async with ThreadSensitiveContext():
+                    return await graph.execute(request)
+
             def _run_in_new_loop():
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
                 close_old_connections()
                 try:
-                    return loop.run_until_complete(graph.execute(request))
+                    return loop.run_until_complete(_execute_graph())
                 finally:
                     try:
                         if not loop.is_closed() and not timed_out_holder["value"]:
@@ -352,10 +369,12 @@ class ChatService:
 
             # 整轮 agent 执行预算（含多轮 LLM + 工具调用），独立于单次 LLM 调用超时
             _agent_timeout = _resolve_agent_execute_timeout()
-            # 工作线程不继承 ContextVar。拷贝当前轮次语言后再启动；
-            # 调用线程在 finally 里 reset，下一轮不会读到上一轮的 locale。
+            # 只传递本轮语言，不复制调用方的执行器上下文；调用方可能正在
+            # sync_to_async 的单线程中等待本线程返回。
+            worker_context = contextvars.Context()
+            worker_context.run(set_run_locale, chat_kwargs.get("locale") or "en")
             worker = threading.Thread(
-                target=contextvars.copy_context().run,
+                target=worker_context.run,
                 args=(_worker,),
                 name="opspilot-invoke-chat",
                 daemon=True,
@@ -412,8 +431,12 @@ class ChatService:
             # 整轮 agent 执行超时，调用方已放弃等待
             _agent_timeout = _resolve_agent_execute_timeout()
             logger.error(f"invoke_chat agent 执行超时（>{_agent_timeout}s）: skill_type={skill_type}")
-            loader = LanguageLoader(app="opspilot", default_lang="en")
-            message = loader.get("error.llm_timeout") or f"智能体执行超时（>{_agent_timeout}s），请稍后重试"
+            loader = LanguageLoader(app="opspilot", default_lang=_invoke_error_locale(kwargs))
+            template = loader.get("error.llm_timeout") or "Agent execution timed out (>{seconds}s). Please try again later."
+            try:
+                message = str(template).format(seconds=_agent_timeout)
+            except (KeyError, ValueError):
+                message = str(template)
             return (
                 {
                     "message": message,
@@ -433,7 +456,7 @@ class ChatService:
             # 记录详细的异常信息以便排查问题
             logger.exception(f"invoke_chat 执行失败: skill_type={skill_type}, error={str(e)}")
 
-            loader = LanguageLoader(app="opspilot", default_lang="en")
+            loader = LanguageLoader(app="opspilot", default_lang=_invoke_error_locale(kwargs))
             message = loader.get("error.agent_execution_failed") or f"Agent execution failed: {str(e)}"
             return (
                 {
@@ -561,16 +584,23 @@ class ChatService:
                 if instance_names:
                     options_json = ", ".join(f'"{name}"' for name in instance_names)
                     count = len(instance_names)
+                    cluster_guidance = (
+                        "无人值守：先依据事件或查询结果确定集群；只读查询可按任务范围逐个检查。" "目标仍不明确时说明原因，不得选择第一个集群执行变更。\n"
+                        if extra_config.get("unattended")
+                        else (
+                            "- 用户提到了某个具体工作负载名称（如 'payment-gateway'）→ 用 search_workload_across_namespaces 搜索它在哪些集群中存在。"
+                            "如果只在一个集群找到则直接操作；如果多个集群都有则必须调用 request_user_choice 让用户选择目标集群后再执行。\n"
+                            "- 用户要执行 K8s 操作但没有指定集群名 → 必须先调用 request_user_choice，让用户从真实集群名中选择一个目标集群后再执行\n"
+                            "- 用户说 '所有工作负载/全部工作负载' 只是工作负载范围，不是全部集群范围；多集群时仍然必须先选择目标集群\n"
+                        )
+                    )
                     k8s_prompt = (
                         f"\n[多集群环境] 当前有 {count} 个可用集群: [{options_json}]。\n"
                         "【重要】如果用户只是打招呼（hello/你好/hi等）或闲聊，直接用纯文本回复问候，"
                         "不要调用任何工具，不要调用 request_user_choice，不要提及集群。\n\n"
                         "以下集群选择规则仅在用户明确要求执行 Kubernetes 操作时生效：\n"
-                        "- 用户提到了某个具体工作负载名称（如 'payment-gateway'）→ 用 search_workload_across_namespaces 搜索它在哪些集群中存在。"
-                        "如果只在一个集群找到则直接操作；如果多个集群都有则必须调用 request_user_choice 让用户选择目标集群后再执行。\n"
-                        "- 用户要执行 K8s 操作但没有指定集群名 → 必须先调用 request_user_choice，让用户从真实集群名中选择一个目标集群后再执行\n"
+                        f"{cluster_guidance}"
                         "- 用户明确说了集群名 → 直接操作该集群\n"
-                        "- 用户说 '所有工作负载/全部工作负载' 只是工作负载范围，不是全部集群范围；多集群时仍然必须先选择目标集群\n"
                         "【禁止】用户说'所有工作负载'时，不要调用 search_workload_across_namespaces，那是用于搜索特定名称的。\n"
                         "【禁止】用户说全部/所有工作负载做配置检查时，调用 analyze_deployment_configurations 不得传 name，"
                         "也不得擅自传用户未提及的 namespace（例如 kube-system）；应分析约定范围内全部 Deployment，"
@@ -638,6 +668,10 @@ class ChatService:
 
         # 处理聊天历史（当前轮图片不进 history，避免空文本+附图被当成上一轮）
         chat_history = history_service.process_chat_history(kwargs["chat_history"], kwargs.get("conversation_window_size", 10), [])
+        user_message, unattended = normalize_auto_request(
+            user_message, chat_history, entry_type=kwargs.get("entry_type"), explicit=kwargs.get("unattended")
+        )
+        set_unattended_flag(extra_config, unattended)
 
         # 处理 skill_params: 解密并替换 prompt 中的 {{key}} 占位符
         resolved_prompt = resolve_skill_params(kwargs["skill_prompt"], kwargs.get("skill_params", []))
@@ -674,11 +708,12 @@ class ChatService:
         memory_block = kwargs.get("skill_memory_block") or ""
         if memory_block:
             resolved_prompt = append_skill_memory_block(resolved_prompt, memory_block)
-        resolved_prompt = append_reply_language(
-            resolved_prompt,
-            kwargs.get("locale"),
-            match_user_message=kwargs.get("reply_language") == "match_user",
-        )
+        if not kwargs.get("omit_reply_language"):
+            resolved_prompt = append_reply_language(
+                resolved_prompt,
+                kwargs.get("locale"),
+                match_user_message=kwargs.get("reply_language") == "match_user",
+            )
         authoring = kwargs.get(AUTHORING_EXTRA_KEY)
         if isinstance(authoring, dict) and authoring.get("enabled"):
             resolved_prompt = f"{resolved_prompt}{AUTHORING_PROMPT_SUFFIX}"
@@ -814,6 +849,14 @@ class ChatService:
             if server_caller_identity is not None:
                 runtime_extra_config[CALLER_IDENTITY_CONFIG_KEY] = server_caller_identity
 
+        runtime_extra = chat_kwargs.setdefault("extra_config", {})
+        from apps.opspilot.services.python_sandbox.attachments import ATTACHMENT_GRANT_KEY
+
+        runtime_extra.pop(ATTACHMENT_GRANT_KEY, None)
+        if kwargs.get(ATTACHMENT_GRANT_KEY):
+            runtime_extra[ATTACHMENT_GRANT_KEY] = kwargs[ATTACHMENT_GRANT_KEY]
+
+        set_unattended_flag(runtime_extra, unattended)
         _attach_pending_question(chat_kwargs, kwargs)
         _attach_wiki_material_write(chat_kwargs, kwargs)
         return chat_kwargs, doc_map, title_map
@@ -842,6 +885,8 @@ def _attach_pending_question(chat_kwargs: dict, kwargs: dict) -> None:
     distribute_file_ids = kwargs.get("distribute_file_ids")
     if distribute_file_ids:
         runtime_extra_config["distribute_file_ids"] = distribute_file_ids
+    if runtime_extra_config.get("unattended"):
+        return
     pending_question = kwargs.get("pending_question")
     if isinstance(pending_question, dict):
         runtime_extra_config["pending_question"] = pending_question

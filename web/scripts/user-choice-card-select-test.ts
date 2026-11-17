@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { applyAnsweredUserChoices, choiceRequestFromVisibleText, isUserChoiceRequestClosed, normalizeUserChoiceOptions, stripChoicePromptFromContent } from '../src/app/opspilot/components/custom-chat-sse/userChoiceOptions';
 
 const source = readFileSync(
-  new URL('../src/app/opspilot/components/custom-chat-sse/UserChoiceCard.tsx', import.meta.url),
+  new URL('../packages/chat-content/src/UserChoiceCard.tsx', import.meta.url),
   'utf8',
 );
 

@@ -1,6 +1,7 @@
 import type { DatasourceItem, ResponseFieldDefinition } from '@/app/ops-analysis/types/dataSource';
 import type { TableColumnConfigItem, ValueConfig } from '@/app/ops-analysis/types/dashBoard';
 import { ChartDataTransformer } from '@/app/ops-analysis/utils/chartDataTransform';
+import { resolveChartBinding } from '@/app/ops-analysis/utils/chartFieldContract';
 import {
   hasExplicitLineBarMapping,
   toLineBarFieldMapping,
@@ -16,13 +17,16 @@ import { buildCsvDocument, buildCsvFilename } from '@/app/ops-analysis/utils/csv
 import { validateMultiValueData } from '@/app/ops-analysis/utils/multiValueData';
 import { resolveRadarSeriesData } from '@/app/ops-analysis/utils/radarData';
 import { resolveTableCellPresentation } from '@/app/ops-analysis/utils/tableCellStyle';
-import { parseTableLikeData, resolveTableLikeColumns } from '@/app/ops-analysis/utils/tableLikeData';
+import {
+  readExplicitPageNumber,
+  supportsServerPagination,
+} from '@/app/ops-analysis/utils/tablePagination';
 import {
   applyTableQueryList,
   type TableQueryCondition,
 } from '@/app/ops-analysis/utils/tableQueryList';
 import { resolveTopNHeaderLabel } from '@/app/ops-analysis/components/widgets/comTopN';
-import { supportsServerPagination } from '@/app/ops-analysis/utils/tablePagination';
+import { parseTableLikeData, resolveTableLikeColumns, isSelfPagedTablePayload } from '@/app/ops-analysis/utils/tableLikeData';
 import { buildTopNItems, unwrapTopNData } from '@/app/ops-analysis/utils/topNData';
 
 /**
@@ -219,11 +223,14 @@ export const buildLineBarCsvTable = (
   labels: WidgetCsvLabels,
   schema?: ResponseFieldDefinition[],
 ): CsvTable => {
-  const chart = ChartDataTransformer.transformToLineBarData(
+  const mapping = toLineBarFieldMapping(config, schema);
+  const chart = ChartDataTransformer.transformToLineBarData(rawData, mapping);
+  const dimensionLabel = lineDimensionHeader(
     rawData,
-    toLineBarFieldMapping(config, schema),
+    { ...config, dimensionField: mapping.dimensionField },
+    labels,
+    schema,
   );
-  const dimensionLabel = lineDimensionHeader(rawData, config, labels, schema);
   if (chart.series?.length) {
     return {
       headers: [
@@ -250,23 +257,34 @@ export const buildLineBarCsvTable = (
   };
 };
 
+const schemaWithResultTitles = (
+  schema: ResponseFieldDefinition[] | undefined,
+): ResponseFieldDefinition[] => schema || [];
+
 export const buildPieCsvTable = (
   rawData: unknown,
   config: ValueConfig | undefined,
   labels: WidgetCsvLabels,
   schema?: ResponseFieldDefinition[],
 ): CsvTable => {
+  const binding = resolveChartBinding(rawData, {
+    dimensionField: config?.dimensionField,
+    valueField: config?.valueField,
+  });
   const slices = ChartDataTransformer.transformToPieData(rawData, {
     dimensionField: config?.dimensionField,
     valueField: config?.valueField,
     pieScalarFields: config?.pieScalarFields,
   });
+  const titles = schemaWithResultTitles(schema);
+  const dimensionKey = config?.dimensionField || binding.dimensionField;
+  const valueKey = config?.valueField || binding.measureField;
   return {
     headers: [
-      fieldDisplayName(schema, config?.dimensionField) || labels.dimension,
-      appendUnit(fieldDisplayName(schema, config?.valueField) || labels.value, config),
+      fieldDisplayName(titles, dimensionKey) || labels.dimension,
+      appendUnit(fieldDisplayName(titles, valueKey) || labels.value, config),
     ],
-    rows: slices.map((slice) => [slice.name, formatChartCell(slice.value, config)]),
+    rows: slices.map((slice) => [slice.label || slice.name, formatChartCell(slice.value, config)]),
   };
 };
 
@@ -280,7 +298,8 @@ export const buildTopNCsvTable = (
   const labelHeader = resolveTopNHeaderLabel(config?.topNLabelField, schema, { preferTitleOnly })
     || labels.name;
   const valueHeader = appendUnit(
-    resolveTopNHeaderLabel(config?.topNValueField, schema, { preferTitleOnly }) || labels.value,
+    resolveTopNHeaderLabel(config?.topNValueField, schema, { preferTitleOnly })
+      || labels.value,
     config,
   );
   const items = buildTopNItems(rawData, config?.topNLabelField, config?.topNValueField, {
@@ -621,11 +640,22 @@ export const createWidgetCsvExport = async (
     let table: CsvTable;
     let truncated = false;
     if (runtime.chartType === 'table' || runtime.chartType === 'eventTable') {
-      const previewColumns = exportColumns(runtime.chartType, runtime.config, runtime.dataSource, []);
+      const previewColumns = exportColumns(
+        runtime.chartType,
+        runtime.config,
+        runtime.dataSource,
+        [],
+      );
       if (runtime.chartType === 'eventTable' && previewColumns.length === 0) {
         return { kind: 'unconfigured' };
       }
-      const supportsPagination = supportsServerPagination(runtime.dataSource?.params);
+      const declaredPagination = supportsServerPagination(runtime.dataSource?.params);
+      const sentPage = readExplicitPageNumber(runtime.requestParams?.page);
+      const sentPageSize = readExplicitPageNumber(runtime.requestParams?.page_size);
+      const supportsPagination = declaredPagination && (
+        (sentPage !== undefined && sentPageSize !== undefined)
+        || isSelfPagedTablePayload(runtime.rawData)
+      );
       const loaded = await loadTableExportRows({
         rawData: runtime.rawData,
         supportsPagination,

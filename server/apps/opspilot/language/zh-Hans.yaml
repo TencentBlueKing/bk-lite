@@ -111,6 +111,11 @@ error:
   network_whitelist_required: 目标 IP 不在白名单内，请前往系统管理的白名单管理中添加。
   go_to_network_whitelist: 前往白名单管理
   connection_target_forbidden: 该目标地址不允许访问。
+  message_required: 请提供消息内容
+  execution_id_required: execution_id 为必填项
+  execution_not_found: 未找到执行记录
+  llm_timeout: 智能体执行超时（>{seconds}s），请稍后重试
+  agent_execution_failed: 智能体执行失败
   no_group_id: 无组 ID
   no_view_permission: 你没有权限查看此实例
   model_in_use: 无法删除，仍被 {count} 个知识图谱引用。
@@ -354,7 +359,7 @@ tools:
       用当前用户身份查询统一告警中心的告警列表、详情与关联事件。只读，不支持认领或关闭。
     tools:
       alerts_list_alerts:
-        description: 查询告警中心工单列表。status=active 表示未关闭的活动告警；「当前」「有哪些」不会当关键字。可按状态、级别筛选。
+        description: 查询告警中心工单列表。status=active 表示未关闭的活动告警。中文正文关键字只使用调用时传入、且原样出现在用户原话里的词。状态、时间和查询口头语不会变成关键字，中英文都一样。问句里的普通英文单词和输出格式也不会变成关键字。可按状态、级别筛选。
       alerts_get_alert_detail:
         description: 按告警 ID 查询告警详情。
       alerts_list_alert_events:
@@ -367,7 +372,7 @@ tools:
       log_list_groups:
         description: 列出可访问的日志分组。
       log_search_structured:
-        description: 按关键词查询日志。没写时区的时间按当前用户时区理解，例如 2026-10-22 14:28:00；写了 Z 或 ±HH:MM 则按该偏移。不传则查近 24 小时。
+        description: 按正文关键词查询日志。中文正文关键字只使用调用时传入、且原样出现在用户原话里的词。状态、时间和查询口头语不会变成关键字，中英文都一样。问句里的普通英文单词和输出格式也不会变成关键字。没写时区的时间按当前用户时区理解，例如 2026-10-22 14:28:00；写了 Z 或 ±HH:MM 则按该偏移。不传则查近 24 小时。
       log_search_raw:
         description: 使用原生 LogsQL 查询日志。没写时区的时间按当前用户时区理解，例如 2026-10-22 14:28:00；写了 Z 或 ±HH:MM 则按该偏移。不传则查近 24 小时。
   ops_analysis_dashboard:
@@ -931,7 +936,7 @@ tools:
       - executor: Python代码执行工具
 
       **主要特性：**
-      - 安全执行Python代码
+      - 在 Server 子进程中执行 Python 代码
       - 支持数据处理和计算
       - 返回执行结果
 
@@ -939,25 +944,22 @@ tools:
       - python_execute_direct: 直接执行Python代码
     tools:
       python_execute_direct:
-        description: 直接执行Python代码的工具，不允许执行高危的、恶意的代码，支持数据处理和计算并返回执行结果
+        description: 在 Server 子进程中执行 Python，支持常用库、网络访问和工作目录文件读写
   shell:
     name: Shell执行
     description: |
       Shell工具模块
 
-      在系统shell中执行命令，用于自动化运维、构建、部署、信息获取等场景。
-
-      **安全要求：**
-      1. 不允许执行高危命令（如 rm -rf /, dd, mkfs 等）
-      2. 不允许执行需要交互式输入的命令
-      3. 不允许执行可能泄露敏感信息的命令
-      4. 执行前应明确命令用途与风险
+      在 Server 内执行命令，与 Python 和技能 execute 共享本轮工作目录。
+      支持 curl、管道、重定向和脚本执行。命令列表在同一个 shell 中依次执行。
+      默认总超时 120 秒，合并输出最多 64 KiB，不支持交互式输入。
+      代码拥有 Server 运行用户的系统权限，不提供宿主隔离；操作目标主机请使用 SSH、K8s 等对应工具。
 
       **工具列表：**
       - shell_execute: 执行shell命令列表，按顺序执行并返回结果
     tools:
       shell_execute:
-        description: 在系统shell中执行命令列表，按顺序执行并返回每个命令的执行结果，包括标准输出、标准错误和退出码
+        description: 在 Server 本地任务工作目录中依次执行 shell 命令，返回合并输出，失败时附带退出码
   browser_use:
     name: 浏览器自动化
     description: |

@@ -117,6 +117,7 @@ RACK_ROOM_MODELS = {"rack", "server_room", "datacenter"}
 
 
 class ApplicationResourceOverviewService:
+    APP_TOPOLOGY_NODE_LIMIT = 100
     RESOURCE_GROUP_ORDER = [
         "application",
         "host",
@@ -245,8 +246,10 @@ class ApplicationResourceOverviewService:
         links = {}
         visited = {(model_id, int(inst_id))}
         queue = deque([(model_id, int(inst_id), 0)])
+        truncated = False
+        node_limit = ApplicationResourceOverviewService.APP_TOPOLOGY_NODE_LIMIT
 
-        while queue:
+        while queue and not truncated:
             current_model_id, current_inst_id, hop = queue.popleft()
             if hop >= int(depth):
                 continue
@@ -270,6 +273,9 @@ class ApplicationResourceOverviewService:
                         continue
                     other_model_id = instance.get("model_id", "")
                     node_key = other_node["id"]
+                    if node_key not in nodes and len(nodes) >= node_limit:
+                        truncated = True
+                        break
                     graph_id_to_uuid[other_inst_id] = node_key
                     if node_key not in nodes:
                         nodes[node_key] = other_node
@@ -290,12 +296,15 @@ class ApplicationResourceOverviewService:
                     if visit_key not in visited:
                         visited.add(visit_key)
                         queue.append((other_model_id, other_inst_id, hop + 1))
+                if truncated:
+                    break
 
+        kept_links = [link for link in links.values() if link["source"] in nodes and link["target"] in nodes]
         return {
             "center": center_node,
             "nodes": list(nodes.values()),
-            "links": list(links.values()),
-            "truncated": False,
+            "links": kept_links,
+            "truncated": truncated,
         }
 
     @staticmethod

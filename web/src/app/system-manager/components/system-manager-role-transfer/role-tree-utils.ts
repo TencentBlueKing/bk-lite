@@ -122,6 +122,17 @@ export function isNodeDisabled(node: TreeDataNode): boolean {
   return node.disabled === true;
 }
 
+type SearchableTreeNode = TreeDataNode & { display_name?: string };
+
+function nodeMatchesSearch(node: TreeDataNode, searchValue: string): boolean {
+  const needle = searchValue.toLowerCase();
+  const displayName = (node as SearchableTreeNode).display_name;
+  if (typeof displayName === 'string' && displayName.toLowerCase().includes(needle)) {
+    return true;
+  }
+  return extractTextFromTitle(node.title).toLowerCase().includes(needle);
+}
+
 export function extractTextFromTitle(
   title: React.ReactNode | ((data: TreeDataNode) => React.ReactNode)
 ): string {
@@ -166,20 +177,21 @@ export function filterTreeNode(
   node: TreeDataNode,
   searchValue: string
 ): TreeDataNode | null {
-  const nodeTitle = extractTextFromTitle(node.title);
-  const match = nodeTitle.toLowerCase().includes(searchValue.toLowerCase());
+  if (nodeMatchesSearch(node, searchValue)) {
+    return { ...node };
+  }
 
   if (node.children && node.children.length > 0) {
     const filteredChildren = node.children
       .map((child) => filterTreeNode(child, searchValue))
       .filter(Boolean) as TreeDataNode[];
 
-    if (match || filteredChildren.length > 0) {
+    if (filteredChildren.length > 0) {
       return { ...node, children: filteredChildren };
     }
   }
 
-  return match ? node : null;
+  return null;
 }
 
 export function getSearchExpandedKeys(
@@ -190,16 +202,9 @@ export function getSearchExpandedKeys(
 
   const traverse = (node: TreeDataNode) => {
     if (node.children && node.children.length > 0) {
-      const nodeTitle = extractTextFromTitle(node.title);
-      const hasMatchInChildren = node.children.some((child) => {
-        const childTitle = extractTextFromTitle(child.title);
-        return childTitle.toLowerCase().includes(searchValue.toLowerCase());
-      });
+      const hasMatchInChildren = node.children.some((child) => nodeMatchesSearch(child, searchValue));
 
-      if (
-        hasMatchInChildren ||
-        nodeTitle.toLowerCase().includes(searchValue.toLowerCase())
-      ) {
+      if (hasMatchInChildren || nodeMatchesSearch(node, searchValue)) {
         keys.push(node.key);
       }
 

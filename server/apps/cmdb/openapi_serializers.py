@@ -1,9 +1,30 @@
 """cmdb 对外暴露专用 serializer（schema 即契约，字段只增不删不改名）。"""
 
+from uuid import UUID
+
 from rest_framework import serializers
 
 from apps.cmdb.constants.constants import PERMISSION_INSTANCES
 from apps.core.openapi.serializers import OpenAPIRequestSerializer, PaginatedRequestSerializer
+
+
+class InstUuidField(serializers.CharField):
+    """实例 UUID。
+
+    网关 JSON Schema 只暴露普通 string，避免 ITSM 把 format:uuid 当成变量逻辑类型
+    把引用变量筛空。运行时仍校验 UUID 形态。
+    """
+
+    def __init__(self, **kwargs):
+        kwargs.setdefault("min_length", 1)
+        super().__init__(**kwargs)
+
+    def to_internal_value(self, data):
+        value = super().to_internal_value(data)
+        try:
+            return str(UUID(str(value)))
+        except (ValueError, AttributeError, TypeError) as exc:
+            raise serializers.ValidationError("Must be a valid UUID.") from exc
 
 
 class CmdbInstanceListSerializer(PaginatedRequestSerializer):
@@ -40,7 +61,7 @@ class CmdbModelIdSerializer(OpenAPIRequestSerializer):
 
 class CmdbInstanceKeySerializer(OpenAPIRequestSerializer):
     model_id = serializers.CharField()
-    inst_uuid = serializers.UUIDField()
+    inst_uuid = InstUuidField()
 
 
 class CmdbInstanceCreateSerializer(OpenAPIRequestSerializer):
@@ -50,7 +71,7 @@ class CmdbInstanceCreateSerializer(OpenAPIRequestSerializer):
 
 class CmdbInstanceUpdateSerializer(OpenAPIRequestSerializer):
     model_id = serializers.CharField()
-    inst_uuid = serializers.UUIDField()
+    inst_uuid = InstUuidField()
     attrs = serializers.DictField()
 
 
@@ -61,25 +82,25 @@ class CmdbInstanceBatchCreateSerializer(OpenAPIRequestSerializer):
 
 class CmdbInstanceBatchUpdateSerializer(OpenAPIRequestSerializer):
     model_id = serializers.CharField()
-    inst_uuids = serializers.ListField(child=serializers.UUIDField(), min_length=1, max_length=100)
+    inst_uuids = serializers.ListField(child=InstUuidField(), min_length=1, max_length=100)
     update_data = serializers.DictField()
 
 
 class CmdbInstanceBatchDeleteSerializer(OpenAPIRequestSerializer):
     model_id = serializers.CharField()
-    inst_uuids = serializers.ListField(child=serializers.UUIDField(), min_length=1, max_length=100)
+    inst_uuids = serializers.ListField(child=InstUuidField(), min_length=1, max_length=100)
 
 
 class CmdbInstanceAssociationCreateSerializer(OpenAPIRequestSerializer):
     model_id = serializers.CharField()
-    inst_uuid = serializers.UUIDField()
+    inst_uuid = InstUuidField()
     model_asst_id = serializers.CharField(max_length=255)
     target_model_id = serializers.CharField()
-    target_inst_uuid = serializers.UUIDField()
+    target_inst_uuid = InstUuidField()
 
 
 class CmdbInstanceAssociationDeleteSerializer(OpenAPIRequestSerializer):
     model_id = serializers.CharField()
-    inst_uuid = serializers.UUIDField()
-    dst_inst_uuid = serializers.UUIDField()
+    inst_uuid = InstUuidField()
+    dst_inst_uuid = InstUuidField()
     model_asst_id = serializers.CharField(max_length=255)

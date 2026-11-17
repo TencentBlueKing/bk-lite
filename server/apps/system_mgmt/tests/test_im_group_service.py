@@ -13,7 +13,12 @@ pytestmark = [pytest.mark.integration, pytest.mark.django_db]
 
 @pytest.fixture
 def user(db):
-    return User.objects.create(username="im-group-user", display_name="IM Group User", email="im-group-user@example.com", domain="domain.com",)
+    return User.objects.create(
+        username="im-group-user",
+        display_name="IM Group User",
+        email="im-group-user@example.com",
+        domain="domain.com",
+    )
 
 
 @pytest.fixture
@@ -35,9 +40,6 @@ def channel(ready_instance):
         integration_instance=ready_instance,
         enabled=True,
         status="ready",
-        platform_match_field="email",
-        external_match_field="email",
-        external_receive_field="user_id",
         team=[1],
     )
 

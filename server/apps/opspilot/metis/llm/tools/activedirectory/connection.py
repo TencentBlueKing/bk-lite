@@ -168,9 +168,13 @@ def build_ad_normalized_from_runnable(
     if instances:
         selected = instances
         if instance_id:
-            selected = [i for i in instances if i.get("id") == instance_id] or instances
+            selected = [i for i in instances if i.get("id") == instance_id]
+            if not selected:
+                raise ValueError(f"Active Directory instance not found: {instance_id}")
         elif instance_name:
-            selected = [i for i in instances if i.get("name") == instance_name] or instances
+            selected = [i for i in instances if i.get("name") == instance_name]
+            if not selected:
+                raise ValueError(f"Active Directory instance not found: {instance_name}")
         elif default_id:
             matched = [i for i in instances if i.get("id") == default_id]
             if matched:

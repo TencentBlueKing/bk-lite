@@ -274,7 +274,7 @@ class OperationService:
         if event.event_type == "auto_relation":
             from apps.cmdb.services.auto_relation_reconcile import schedule_instance_auto_relation_reconcile
 
-            schedule_instance_auto_relation_reconcile([result["_id"]])
+            schedule_instance_auto_relation_reconcile([result["_id"]], model_id=result.get("model_id"))
             return
         raise ValueError(f"未知 CMDB operation outbox 事件: {event.event_type}")
 

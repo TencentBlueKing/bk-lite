@@ -149,10 +149,9 @@ describe('readPersistedServerRoomId', () => {
 });
 
 describe('resolveRoom3DSelection', () => {
-  it('uses the first visible room when no default is saved', () => {
+  it('does not pick the first visible room when nothing is selected', () => {
     expect(resolveRoom3DSelection({ rooms, savedRoomId: '' })).toEqual({
-      status: 'ready',
-      roomId: ROOM_A,
+      status: 'unselected',
       rooms,
     });
   });
@@ -218,9 +217,9 @@ describe('resolveRoom3DSelection', () => {
     });
   });
 
-  it('returns empty when nothing is selected and no room is visible', () => {
+  it('stays unselected when nothing is selected and no room is visible', () => {
     expect(resolveRoom3DSelection({ rooms: [], savedRoomId: '' })).toEqual({
-      status: 'empty',
+      status: 'unselected',
       rooms: [],
     });
   });

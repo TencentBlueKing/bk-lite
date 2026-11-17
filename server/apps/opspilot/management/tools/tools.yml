@@ -1197,7 +1197,7 @@ toolkits:
   description: Python工具集合
   tools:
   - name: python_execute_direct
-    description: 直接执行Python代码的工具,不允许执行高危的、恶意的代码，不允许执行系统命令,不允许查看涉密信息。
+    description: 在隔离容器中执行 Python 代码，支持常用库、网络和 /workspace 文件读写。
     parameters:
       code:
         type: string

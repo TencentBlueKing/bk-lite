@@ -424,6 +424,30 @@ class ServiceRed:
     tolerating_count: int | None = None
 
 
+@dataclass(frozen=True)
+class GroupedRedOverview:
+    request_rate: float | None
+    error_request_rate: float | None
+    p95_ms: float | None
+    request_trend: tuple[float | None, ...]
+    error_trend: tuple[float | None, ...]
+    p95_trend: tuple[float | None, ...]
+    late_spans: int | None
+
+
+@dataclass(frozen=True)
+class GroupedRed:
+    """已授权服务在一个窗口内的分组 RED。
+
+    ``by_target`` 的键是数据库原值命名空间、服务名，以及序列上的原始环境标签。
+    没有请求的目标不出现。``truncated_services`` 是窗口内出现溢出序列的服务。
+    """
+
+    by_target: dict[tuple[str, str, str], ServiceRed]
+    truncated_services: frozenset[tuple[str, str]]
+    overview: GroupedRedOverview | None = None
+
+
 TOP_ENDPOINTS_LIMIT = 10
 
 

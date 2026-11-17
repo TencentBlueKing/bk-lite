@@ -25,7 +25,8 @@ import {
   type TimeWindow,
 } from '@/app/apm/components/service-catalog-model';
 import ServiceLanguage from '@/app/apm/components/service-language';
-import type { ApmServiceRed, ApmSlo } from '@/app/apm/types';
+import { EntryLimitTag } from '@/app/apm/components/service-tag-overflow';
+import type { ApmServiceRedBatchItem, ApmSlo } from '@/app/apm/types';
 import MoreActionsDropdown from '@/components/more-actions-dropdown';
 import Permission from '@/components/permission';
 import { useTranslation } from '@/utils/i18n';
@@ -45,7 +46,7 @@ export default function ServiceCatalogTable({
   rowSelection,
 }: {
   rows: ServiceEnvironmentRow[];
-  redMetrics: Record<string, ApmServiceRed>;
+  redMetrics: Record<string, ApmServiceRedBatchItem>;
   metricFailureKeys: string[];
   alertCounts: Map<string, { count: number; level: number }>;
   sloByServiceEnv: Map<string, ApmSlo>;
@@ -76,6 +77,7 @@ export default function ServiceCatalogTable({
       ellipsis: true,
       render: (_, item) => {
         const silent = item.status === 'silent';
+        const entryTruncated = redMetrics[metricKey(item.serviceId, item.environment)]?.entry_truncated === true;
         const href = item.environment
           ? `/apm/services/${item.serviceId}?environment=${encodeURIComponent(item.environment)}&window=${timeWindow}`
           : undefined;
@@ -94,6 +96,7 @@ export default function ServiceCatalogTable({
             <ServiceLanguage language={item.language} />
             {name}
             {silent ? <Tag bordered={false} className="!m-0 !shrink-0 !text-xs text-[var(--color-text-3)]">{t('apm.status.silent', '静默')}</Tag> : null}
+            {entryTruncated ? <EntryLimitTag /> : null}
           </Space>
         );
       },

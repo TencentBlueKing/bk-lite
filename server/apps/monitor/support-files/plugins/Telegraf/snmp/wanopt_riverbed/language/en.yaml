@@ -87,9 +87,7 @@ monitor_object_metric:
         optimized connections to see remaining headroom.
     opt_service_ok:
       name: Optimization Service
-      desc: Optimization service health derived from STEELHEAD-MIB
-        optServiceStatus. 1 means running. 2 means any other state, including
-        none, unmanaged, pending, stopping, and stopped.
+      desc: Optimization service health. 1 means running. 2 means any other state, including none, unmanaged, pending, stopping, and stopped.
     opt_service_status:
       name: Optimization Service Status
       desc: Raw optimization service status on the Riverbed SteelHead

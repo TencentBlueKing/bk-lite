@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 
 from django.db.models import Case, DateTimeField, IntegerField, Value, When
 from django.db.models.functions import Coalesce
+from django.utils import timezone as django_timezone
 
 ACTIVE_ALERT_ORDERS = ("latest", "severity")
 
@@ -76,3 +77,29 @@ def format_active_alert_duration(start, now) -> str:
     if hours:
         return f"{hours}小时"
     return f"{minutes}分钟"
+
+
+def format_active_alert_local_time(value) -> str | None:
+    """把告警开始时间转成当前时区的 `2026-11-09 18:49:11`，供表格直接展示。"""
+    if value in (None, ""):
+        return None
+    if isinstance(value, datetime):
+        dt = value
+    elif isinstance(value, str):
+        try:
+            dt = datetime.fromisoformat(value)
+        except ValueError:
+            return value
+    else:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return django_timezone.localtime(dt).strftime("%Y-%m-%d %H:%M:%S")
+
+
+def format_active_alert_item_times(items) -> None:
+    """只改明细里的 start_event_time，留给持续时长计算之后调用。"""
+    for item in items or []:
+        formatted = format_active_alert_local_time(item.get("start_event_time"))
+        if formatted is not None:
+            item["start_event_time"] = formatted

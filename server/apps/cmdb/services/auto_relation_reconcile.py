@@ -1,3 +1,5 @@
+import time
+
 from apps.cmdb.constants.constants import INSTANCE, INSTANCE_ASSOCIATION
 from apps.cmdb.graph.drivers.graph_client import GraphClient
 from apps.cmdb.models.auto_relation_pending import AutoRelationPending
@@ -23,16 +25,84 @@ INSTANCE_BATCH_RECONCILE_TASK = "apps.cmdb.tasks.celery_tasks.reconcile_instance
 RULE_FULL_SYNC_TASK = "apps.cmdb.tasks.celery_tasks.full_sync_auto_association_rule_task"
 INCOMING_FULL_SYNC_TASK = "apps.cmdb.tasks.celery_tasks.sync_incoming_auto_association_task"
 AUTO_RELATION_BATCH_SIZE = 500
+AUTO_RELATION_SOURCE_BUDGET = 2000
+AUTO_RELATION_ROUND_SECONDS = 60
 
 
-def schedule_instance_auto_relation_reconcile(instance_ids: list[int] | tuple[int, ...] | set[int] | None) -> None:
+def schedule_instance_auto_relation_reconcile(
+    instance_ids: list[int] | tuple[int, ...] | set[int] | None,
+    *,
+    model_id: str | None = None,
+    changed_fields: list[str] | tuple[str, ...] | set[str] | None = None,
+    changed_fields_by_instance: dict | None = None,
+) -> None:
+    """登记待重算实例。
+
+    未提供 model_id 时保持原行为，只插实例行。提供 model_id 后，没有启用的出向规则，
+    或变更字段与匹配字段不相交时，不再插入。changed_fields 为空表示字段未知（创建、
+    旧调用），目标侧规则全部登记；给出字段时只登记被命中的目标侧规则。
+    """
     normalized_ids = AutoRelationRuleReconcileService._normalize_instance_ids(instance_ids)
     if not normalized_ids:
         return
-    AutoRelationPending.objects.bulk_create(
-        [AutoRelationPending(instance_id=instance_id) for instance_id in normalized_ids],
-        ignore_conflicts=True,
-    )
+    if not model_id:
+        AutoRelationPending.objects.bulk_create(
+            [AutoRelationPending(instance_id=instance_id) for instance_id in normalized_ids],
+            ignore_conflicts=True,
+        )
+        return
+
+    normalized_model_id = str(model_id).strip()
+    if not normalized_model_id:
+        return
+    fields_by_instance = _changed_fields_for_instances(normalized_ids, changed_fields, changed_fields_by_instance)
+    try:
+        has_source_rules, source_fields = AutoRelationRuleReconcileService.source_match_fields(normalized_model_id)
+        destination_rules = AutoRelationRuleReconcileService.destination_rules(normalized_model_id)
+    except Exception:
+        logger.exception(
+            "[AutoRelationRule] rule lookup failed, record instances only, model_id=%s",
+            normalized_model_id,
+        )
+        AutoRelationPending.objects.bulk_create(
+            [AutoRelationPending(instance_id=instance_id) for instance_id in normalized_ids],
+            ignore_conflicts=True,
+        )
+        return
+
+    pending_instances = []
+    pending_rules = []
+    for instance_id in normalized_ids:
+        fields = fields_by_instance[instance_id]
+        if has_source_rules and (fields is None or source_fields.intersection(fields)):
+            pending_instances.append(instance_id)
+        for rule_id, destination_fields in destination_rules:
+            if fields is None or destination_fields.intersection(fields):
+                pending_rules.append(rule_id)
+    if pending_instances:
+        AutoRelationPending.objects.bulk_create(
+            [AutoRelationPending(instance_id=instance_id) for instance_id in pending_instances],
+            ignore_conflicts=True,
+        )
+    schedule_rule_auto_relation_full_sync(pending_rules)
+
+
+def _changed_fields_for_instances(instance_ids, changed_fields, changed_fields_by_instance) -> dict[int, set[str] | None]:
+    shared = None if changed_fields is None else {str(field) for field in changed_fields if str(field or "").strip()}
+    supplied = {}
+    for key, value in (changed_fields_by_instance or {}).items():
+        try:
+            supplied[int(key)] = value
+        except (TypeError, ValueError):
+            continue
+    fields_by_instance: dict[int, set[str] | None] = {}
+    for instance_id in instance_ids:
+        if instance_id in supplied:
+            raw_fields = supplied[instance_id]
+            fields_by_instance[instance_id] = None if raw_fields is None else {str(field) for field in raw_fields if str(field or "").strip()}
+        else:
+            fields_by_instance[instance_id] = shared
+    return fields_by_instance
 
 
 def schedule_rule_auto_relation_full_sync(model_asst_ids: list[str] | tuple[str, ...] | set[str] | None) -> None:
@@ -99,9 +169,8 @@ def _restore_pending_rules(model_asst_ids: list[str]) -> None:
     )
 
 
-def _drain_instance_rows() -> tuple[int, list[str]]:
+def _drain_instance_rows(deadline: float) -> int:
     done = 0
-    incoming: list[str] = []
     deferred: list[int] = []
     claimed: list[int] = []
     try:
@@ -117,42 +186,41 @@ def _drain_instance_rows() -> tuple[int, list[str]]:
                 if instance_id in instance_ids and instance_id not in failed_ids:
                     failed_ids.append(instance_id)
             succeeded = [instance_id for instance_id in instance_ids if instance_id not in failed_ids]
-            for model_asst_id in AutoRelationRuleReconcileService.incoming_rule_ids(succeeded):
-                if model_asst_id not in incoming:
-                    incoming.append(model_asst_id)
             deferred.extend(failed_ids)
             done += len(succeeded)
+            if time.monotonic() >= deadline:
+                break
     except Exception:
         _restore_pending_instances(list(dict.fromkeys(claimed)))
         raise
     _restore_pending_instances(deferred)
-    return done, incoming
+    return done
 
 
-def _drain_rule_rows(extra_rule_ids: list[str]) -> int:
-    claimed = _claim_pending("model_asst_id")
-    rule_ids = []
-    for model_asst_id in [*extra_rule_ids, *claimed]:
-        if model_asst_id and model_asst_id not in rule_ids:
-            rule_ids.append(model_asst_id)
+def _drain_rule_rows(deadline: float) -> int:
+    rule_ids = list(AutoRelationPending.objects.filter(model_asst_id__isnull=False).order_by("id").values_list("model_asst_id", flat=True))
     done: list[str] = []
     try:
         for model_asst_id in rule_ids:
-            AutoRelationRuleReconcileService.full_sync_rule(model_asst_id)
-            done.append(model_asst_id)
+            if time.monotonic() >= deadline:
+                break
+            summary = AutoRelationRuleReconcileService.full_sync_rule(model_asst_id)
+            if summary.get("done", True):
+                AutoRelationPending.objects.filter(model_asst_id=model_asst_id).delete()
+                done.append(model_asst_id)
     except Exception:
-        _restore_pending_rules([model_asst_id for model_asst_id in rule_ids if model_asst_id not in done])
         raise
     return len(done)
 
 
 def drain_auto_relation_pending() -> dict:
-    """排空待重算名单。实例按批重算，规则在同一轮里全量同步。"""
+    """排空待重算名单。实例按批重算已登记的出向规则，规则行只同步入队时点名的规则。"""
+    deadline = time.monotonic() + AUTO_RELATION_ROUND_SECONDS
     stage = "reconcile_instances"
     try:
-        instances_done, incoming_rules = _drain_instance_rows()
+        instances_done = _drain_instance_rows(deadline)
         stage = "full_sync_rules"
-        rules_done = _drain_rule_rows(incoming_rules)
+        rules_done = _drain_rule_rows(deadline)
     except Exception as exc:
         logger.exception(
             "[AutoRelationRule] pending drain failed, failed_stage=%s, error_type=%s",
@@ -160,13 +228,15 @@ def drain_auto_relation_pending() -> dict:
             type(exc).__name__,
         )
         raise
-    if instances_done or rules_done:
+    paused = time.monotonic() >= deadline and AutoRelationPending.objects.exists()
+    if instances_done or rules_done or paused:
         logger.info(
-            "[AutoRelationRule] pending drain finished, instances=%s, rules=%s",
+            "[AutoRelationRule] pending drain finished, instances=%s, rules=%s, paused=%s",
             instances_done,
             rules_done,
+            paused,
         )
-    return {"instances": instances_done, "rules": rules_done, "success": True}
+    return {"instances": instances_done, "rules": rules_done, "paused": paused, "success": True}
 
 
 class AutoRelationRuleReconcileService:
@@ -262,6 +332,29 @@ class AutoRelationRuleReconcileService:
                 fields_by_model.setdefault(association["dst_model_id"], set()).update(cls._matching_fields(rules, "dst"))
         # 完整读取成功后才能据此删除失效边；分页避免图数据库结果集上限截断。
         return {model: TargetSnapshot(cls._query_instances_by_model(model, fields=sorted(fields))) for model, fields in fields_by_model.items()}
+
+    @classmethod
+    def source_match_fields(cls, model_id: str) -> tuple[bool, set[str]]:
+        rules = cls._list_enabled_rules_by_src_model(model_id)
+        fields = {pair.src_field_id for _association, rule_list in rules for rule in rule_list for pair in rule.match_pairs if pair.src_field_id}
+        return bool(rules), fields
+
+    @classmethod
+    def destination_rules(cls, model_id: str) -> list[tuple[str, set[str]]]:
+        result = []
+        for association in model_association_search(model_id):
+            if association.get("dst_model_id") != model_id:
+                continue
+            rule_set = parse_auto_relation_rule_set(association.get(AUTO_RELATION_RULE_FIELD))
+            enabled_rules = [rule for rule in (rule_set.rules if rule_set else []) if rule.enabled]
+            if not enabled_rules:
+                continue
+            model_asst_id = str(association.get("model_asst_id") or "").strip()
+            if not model_asst_id:
+                continue
+            fields = {pair.dst_field_id for rule in enabled_rules for pair in rule.match_pairs if pair.dst_field_id}
+            result.append((model_asst_id, fields))
+        return result
 
     @classmethod
     def _list_enabled_rules_by_src_model(cls, model_id: str) -> list[tuple[dict, list[AutoRelationRule]]]:
@@ -616,6 +709,53 @@ class AutoRelationRuleReconcileService:
 
         return summary
 
+    @staticmethod
+    def _pending_rule_row(model_asst_id: str):
+        try:
+            return AutoRelationPending.objects.filter(model_asst_id=model_asst_id).first()
+        except Exception:
+            return None
+
+    @staticmethod
+    def _query_instance_page(model_id: str, fields: list[str], cursor: int) -> list[dict]:
+        conditions = [{"field": "model_id", "type": "str=", "value": model_id}]
+        if cursor:
+            conditions.append({"field": "id", "type": "id>", "value": cursor})
+        with GraphClient() as ag:
+            page, _ = ag.query_entity(
+                INSTANCE,
+                conditions,
+                page={"skip": 0, "limit": AUTO_RELATION_BATCH_SIZE},
+                fields=fields,
+                include_count=False,
+            )
+        return page
+
+    @classmethod
+    def _targets_for_page(cls, association, rules, page, dst_fields, exact_only):
+        if exact_only and rules and rules[0].match_pairs:
+            pair = rules[0].match_pairs[0]
+            values = []
+            for source in page:
+                value = source.get(pair.src_field_id)
+                if value not in (None, "") and value not in values:
+                    values.append(value)
+            if not values:
+                return TargetSnapshot([])
+            with GraphClient() as ag:
+                rows, _ = ag.query_entity(
+                    INSTANCE,
+                    [
+                        {"field": "model_id", "type": "str=", "value": association["dst_model_id"]},
+                        {"field": pair.dst_field_id, "type": "str[]", "value": values},
+                    ],
+                    page={"skip": 0, "limit": AUTO_RELATION_BATCH_SIZE},
+                    fields=dst_fields,
+                    include_count=False,
+                )
+            return TargetSnapshot(rows)
+        return TargetSnapshot(cls._query_instances_by_model(association["dst_model_id"], fields=dst_fields))
+
     @classmethod
     def full_sync_rule(cls, model_asst_id: str) -> dict:
         association = model_association_info_search(model_asst_id)
@@ -636,38 +776,66 @@ class AutoRelationRuleReconcileService:
             summary["deleted"] = cls.cleanup_auto_edges_by_rule(model_asst_id)
             return summary
 
-        target_instances = TargetSnapshot(
-            cls._query_instances_by_model(association["dst_model_id"], fields=cls._matching_fields(enabled_rules, "dst"))
-        )
-        source_instances = cls._query_instances_by_model(association["src_model_id"], fields=cls._matching_fields(enabled_rules, "src"))
         summary["mode"] = "full_sync"
-        summary["source_instances"] = len(source_instances)
-        # 快照已完整返回。先跨源删掉本规则下不再匹配的自动边，再创建。
-        # 若按源边删边建，1:n/1:1 换源时新边会撞上还没删的旧自动边，本轮被记成冲突后不再补建。
-        for source_instance in source_instances:
-            item_summary = cls.reconcile_source_instance(
-                source_instance,
-                association,
-                enabled_rules,
-                target_instances=target_instances,
-                phase="delete",
-            )
-            summary["deleted"] += item_summary["deleted"]
-
+        exact_only = all(pair.matching_rule == AUTO_RELATION_MATCHING_RULE_EXACT for rule in enabled_rules for pair in rule.match_pairs)
+        row = cls._pending_rule_row(model_asst_id)
+        phase = row.phase if row is not None else "delete"
+        cursor = int(row.cursor_id or 0) if row is not None else 0
+        started = time.monotonic()
+        processed = 0
+        src_fields = cls._matching_fields(enabled_rules, "src")
+        dst_fields = cls._matching_fields(enabled_rules, "dst")
         target_claims: dict[int, int] | None = {} if cls._get_mapping(association) in {"1:n", "1:1"} else None
-        for source_instance in source_instances:
-            item_summary = cls.reconcile_source_instance(
-                source_instance,
-                association,
-                enabled_rules,
-                target_instances=target_instances,
-                target_claims=target_claims,
-                phase="create",
-            )
-            summary["created"] += item_summary["created"]
-            summary["skipped"] += item_summary["skipped"]
-            summary["conflicts"] += item_summary["conflicts"]
-
+        done = False
+        while processed < AUTO_RELATION_SOURCE_BUDGET and time.monotonic() - started < AUTO_RELATION_ROUND_SECONDS:
+            page = cls._query_instance_page(association["src_model_id"], src_fields, cursor)
+            if not page:
+                if phase == "delete":
+                    phase = "create"
+                    cursor = 0
+                    if row is not None:
+                        row.phase = phase
+                        row.cursor_id = 0
+                        row.save(update_fields=["phase", "cursor_id"])
+                    continue
+                done = True
+                break
+            targets = cls._targets_for_page(association, enabled_rules, page, dst_fields, exact_only)
+            for source_instance in page:
+                item_summary = cls.reconcile_source_instance(
+                    source_instance,
+                    association,
+                    enabled_rules,
+                    target_instances=targets,
+                    target_claims=None if phase == "delete" else target_claims,
+                    phase=phase,
+                )
+                summary["deleted"] += item_summary["deleted"]
+                summary["created"] += item_summary["created"]
+                summary["skipped"] += item_summary["skipped"]
+                summary["conflicts"] += item_summary["conflicts"]
+            processed += len(page)
+            summary["source_instances"] += len(page)
+            cursor = int(page[-1]["_id"])
+            if row is not None:
+                row.cursor_id = cursor
+                row.phase = phase
+                row.save(update_fields=["phase", "cursor_id"])
+            if len(page) < AUTO_RELATION_BATCH_SIZE:
+                if phase == "delete":
+                    phase = "create"
+                    cursor = 0
+                    if row is not None:
+                        row.phase = phase
+                        row.cursor_id = 0
+                        row.save(update_fields=["phase", "cursor_id"])
+                    continue
+                done = True
+                break
+        summary["done"] = done
+        summary["phase"] = phase
+        if done and row is not None:
+            row.delete()
         return summary
 
     @classmethod

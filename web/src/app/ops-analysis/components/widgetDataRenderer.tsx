@@ -20,6 +20,7 @@ import {
   buildWidgetExtraParams,
   buildWidgetRequestParams,
   buildWidgetRequestSignatureParams,
+  widgetDataVariableBlockReason,
   createWidgetRequestHistory,
   decideWidgetRequest,
   hasActiveWidgetRuntimeParams,
@@ -68,12 +69,20 @@ import { useRegisterWidgetCsvExport, useWidgetCsvExportRegistry } from "@/app/op
 import ComponentParamSwitchControl from "@/app/ops-analysis/components/componentParamSwitchControl";
 import ScreenWidgetThemeProvider from "@/app/ops-analysis/components/screenWidgetThemeProvider";
 import { getDateRangeTimezone } from "@/app/ops-analysis/utils/dateRange";
+import { useDataVariableRuntime } from "@/app/ops-analysis/context/dataVariableRuntime";
+import { collectVariableIds, columnBlockReasonKey, substituteDataVariableUpstream } from "@/app/ops-analysis/utils/dataVariable";
 import {
   areTableQueryParamsEquivalent,
+  readExplicitPagePair,
   serializeTableQueryKey,
 } from "@/app/ops-analysis/utils/tablePagination";
 import { validateMultiValueData } from "@/app/ops-analysis/utils/multiValueData";
 import { validateTopNPayload } from "@/app/ops-analysis/utils/topNData";
+import {
+  chartFieldMissingMessage,
+  missingConfiguredField,
+  readChartFieldMissing,
+} from "@/app/ops-analysis/utils/chartFieldContract";
 import { validateEventTimelinePayload } from "@/app/ops-analysis/utils/eventTimeline";
 import { validateCardListPayload } from "@/app/ops-analysis/utils/cardList";
 import { resolveRadarSeriesData } from "@/app/ops-analysis/utils/radarData";
@@ -90,12 +99,20 @@ import {
   resolveOptionsQueryParams,
 } from "@/app/ops-analysis/utils/optionsQueryParamRefs";
 import { readComponentOptionsQueryUpstream } from "@/app/ops-analysis/utils/optionsQueryCandidates";
+import { localizeOptionLoadError } from "@/app/ops-analysis/utils/paramInputOptionsLoader";
 
 const validateTopNData = (
   data: unknown,
   config?: ValueConfig,
   errorMessage?: string,
 ): { isValid: boolean; message?: string } => {
+  const missing = missingConfiguredField(data, [
+    config?.topNLabelField,
+    config?.topNValueField,
+  ]);
+  if (missing) {
+    return { isValid: false, message: chartFieldMissingMessage(missing) };
+  }
   const valid = validateTopNPayload(data, {
     labelField: config?.topNLabelField,
     valueField: config?.topNValueField,
@@ -256,8 +273,28 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     errorCode?: string;
   } | null>(null);
   const [tableQueryParams, setTableQueryParams] = useState<Record<string, any>>(
-    {},
+    () => readExplicitPagePair(config?.dataSourceParams),
   );
+  const savedPagePair = useMemo(
+    () => readExplicitPagePair(config?.dataSourceParams),
+    [config?.dataSourceParams],
+  );
+  const savedPageKey = `${savedPagePair.page ?? ""}:${savedPagePair.page_size ?? ""}`;
+  const savedPagePairRef = useRef(savedPagePair);
+  savedPagePairRef.current = savedPagePair;
+  const sourceParamsRef = useRef(dataSource?.params);
+  sourceParamsRef.current = dataSource?.params;
+  useEffect(() => {
+    const pair = savedPagePairRef.current;
+    const sourceParams = sourceParamsRef.current;
+    setTableQueryParams((prev) => {
+      const next = { ...prev };
+      delete next.page;
+      delete next.page_size;
+      Object.assign(next, pair);
+      return areTableQueryParamsEquivalent(prev, next, sourceParams) ? prev : next;
+    });
+  }, [savedPageKey]);
   const { canvasDataSourceLookupStatus, dataSources } = useOpsAnalysis();
   const dashboardViewAuth = useDashboardViewAuth();
   const scenePermissionDenied = Boolean(
@@ -296,7 +333,11 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     if (!dataSource?.params?.length) return overrides;
     return dataSource.params.map((param) => {
       const override = overrides.find((item) => item.name === param.name);
-      return override ? { ...param, ...override } : param;
+      if (!override) return param;
+      return {
+        ...param,
+        ...override,
+      };
     });
   }, [config?.dataSourceParams, dataSource?.params]);
   const componentSwitchParam = useMemo(
@@ -340,9 +381,10 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
       scheduleOptionsPhysical,
     ],
   );
+  const variableRuntime = useDataVariableRuntime();
   const componentSwitchQuery = useMemo(() => {
     return resolveOptionsQueryParams(dynamicQueryParamsOf(componentSwitchParam?.inputConfig), (ref) => (
-      readComponentOptionsQueryUpstream({
+      substituteDataVariableUpstream(readComponentOptionsQueryUpstream({
         ref,
         componentParams: effectiveComponentParams,
         definitions: filterDefinitions || [],
@@ -352,7 +394,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
             ? unifiedFilterValues[id]
             : undefined
         ),
-      })
+      }), variableRuntime?.columns)
     ));
   }, [
     componentSwitchParam,
@@ -360,6 +402,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     effectiveComponentParams,
     filterDefinitions,
     unifiedFilterValues,
+    variableRuntime?.columns,
   ]);
   const optionState = useParamInputOptions(
     componentSwitchParam?.inputConfig,
@@ -604,8 +647,43 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     ],
   );
 
+  const usesDataVariables = useMemo(() => collectVariableIds(config).length > 0, [config]);
+  const variableColumns = usesDataVariables && variableRuntime?.ready
+    ? variableRuntime.columns
+    : undefined;
+  const variableBlockReason = useMemo(
+    () => widgetDataVariableBlockReason({
+      config,
+      dataSource,
+      extraParams: requestExtraParams,
+      dataVariableColumns: variableColumns,
+      unifiedFilterValues,
+      filterBindings: config?.filterBindings,
+      filterDefinitions,
+      resolutionContext: dateRangeResolutionContext,
+      chartType,
+      t,
+    }),
+    [
+      config,
+      dataSource,
+      requestExtraParams,
+      variableColumns,
+      unifiedFilterValues,
+      filterDefinitions,
+      dateRangeResolutionContext,
+      chartType,
+      t,
+    ],
+  );
+  const variableBlockMessage = variableBlockReason
+    ? t(columnBlockReasonKey(variableBlockReason))
+    : t("dashboard.noData");
   const requestParams = useMemo(() => {
     if (!requestEnabled) {
+      return null;
+    }
+    if (usesDataVariables && !variableRuntime?.ready) {
       return null;
     }
 
@@ -617,6 +695,8 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
       filterBindings: config?.filterBindings,
       filterDefinitions,
       resolutionContext: dateRangeResolutionContext,
+      chartType,
+      dataVariableColumns: usesDataVariables ? variableColumns : undefined,
       t,
     });
   }, [
@@ -627,11 +707,19 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     unifiedFilterValues,
     filterDefinitions,
     dateRangeResolutionContext,
+    chartType,
     t,
+    usesDataVariables,
+    variableRuntime,
+    variableColumns,
   ]);
 
   const requestSignatureParams = useMemo(() => {
     if (!requestEnabled) {
+      return null;
+    }
+
+    if (usesDataVariables && !variableRuntime?.ready) {
       return null;
     }
 
@@ -643,6 +731,8 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
       filterBindings: config?.filterBindings,
       filterDefinitions,
       resolutionContext: dateRangeResolutionContext,
+      chartType,
+      dataVariableColumns: usesDataVariables ? variableColumns : undefined,
       t,
     });
   }, [
@@ -653,7 +743,11 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     unifiedFilterValues,
     filterDefinitions,
     dateRangeResolutionContext,
+    chartType,
     t,
+    usesDataVariables,
+    variableRuntime,
+    variableColumns,
   ]);
 
   const requestSignature = useMemo(() => {
@@ -724,6 +818,17 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
       const localizeStructureMessage = (
         result: { isValid: boolean; message?: string },
       ) => {
+        const missingField = readChartFieldMissing(result.message);
+        if (!result.isValid && missingField) {
+          return {
+            ...result,
+            message: t(
+              "dashboard.chartFieldMissing",
+              "字段 {field} 不在当前结果中",
+              { field: missingField },
+            ),
+          };
+        }
         if (!result.isValid && result.message?.startsWith("dashboard.")) {
           return { ...result, message: t(result.message) };
         }
@@ -748,11 +853,11 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
 
       switch (type) {
         case "pie":
-          return ChartDataTransformer.validatePieData(data, errorMessage, {
+          return localizeStructureMessage(ChartDataTransformer.validatePieData(data, errorMessage, {
             dimensionField: config?.dimensionField,
             valueField: config?.valueField,
             pieScalarFields: config?.pieScalarFields,
-          });
+          }));
         case "line":
         case "bar":
           return localizeStructureMessage(
@@ -763,9 +868,22 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
             ),
           );
         case "topN":
-          return validateTopNData(data, config, errorMessage);
-        case "gauge":
-          return localizeStructureMessage(validateGaugeData(data, config));
+          return localizeStructureMessage(validateTopNData(data, config, errorMessage));
+        case "single":
+        case "gauge": {
+          const selected = config?.selectedFields?.[0];
+          const missing = missingConfiguredField(data, [selected]);
+          if (missing) {
+            return localizeStructureMessage({
+              isValid: false,
+              message: chartFieldMissingMessage(missing),
+            });
+          }
+          if (type === "gauge") {
+            return localizeStructureMessage(validateGaugeData(data, config));
+          }
+          return { isValid: true };
+        }
         case "eventTable":
           return localizeStructureMessage(validateEventTableData(data));
         case "eventTimeline":
@@ -880,6 +998,8 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
         filterBindings: config?.filterBindings,
         filterDefinitions,
         resolutionContext: dateRangeResolutionContext,
+        chartType,
+        dataVariableColumns: usesDataVariables ? variableColumns : undefined,
       });
 
       // Discard stale response if a newer fetch has started
@@ -1031,8 +1151,10 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
       setTableLoading(false);
       hasSettledRequestRef.current = true;
       setHasSettledRequest(true);
-      const optionsLoadErrorMessage =
-        optionState.status === "error" ? optionState.errorMessage : undefined;
+      const optionsLoadErrorMessage = localizeOptionLoadError(
+        optionState.status === "error" ? optionState.errorMessage : undefined,
+        t,
+      );
       if (optionsLoadErrorMessage) {
         setDataValidation((previous) => {
           if (
@@ -1186,7 +1308,14 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
   const hasRawPayload = rawData !== null && rawData !== undefined;
   const hasActiveRuntimeControl =
     hasActiveWidgetRuntimeParams(chartType, runtimeParams);
-  const isWaitingForInitialData = shouldWaitForInitialWidgetData({
+  const variablePending = usesDataVariables && Boolean(variableRuntime) && !variableRuntime?.ready;
+  const variableBlocked = usesDataVariables && requestEnabled && !variablePending && requestParams === null;
+  useEffect(() => {
+    if (variablePending || !variableBlocked) return;
+    setLoading(false);
+    setTableLoading(false);
+  }, [variableBlocked, variablePending]);
+  const isWaitingForInitialData = variablePending || (!variableBlocked && shouldWaitForInitialWidgetData({
     isSceneWidget,
     isTableLikeChart,
     hasDataSourceId: Boolean(normalizedDataSourceId),
@@ -1196,7 +1325,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     hasDataValidation: Boolean(dataValidation),
     requestEnabled,
     hasRequested: previousRequestRef.current.hasRequested,
-  });
+  }));
   const isWaitingForSwitchOptions = componentSwitchRequestGate === "pending";
   const isInitialNonTableLoading =
     shouldShowInitialWidgetLoading({
@@ -1207,6 +1336,12 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     });
 
   useEffect(() => {
+    if (variableBlocked) {
+      onRenderStatus?.(variableBlockReason === "request"
+        ? { widgetId, status: "failed", error: variableBlockMessage }
+        : { widgetId, status: "empty", error: variableBlockMessage });
+      return;
+    }
     if (
       isInitialNonTableLoading
       || isWaitingForInitialData
@@ -1241,6 +1376,9 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     isTableLikeChart,
     isWaitingForInitialData,
     isWaitingForSwitchOptions,
+    variableBlocked,
+    variableBlockMessage,
+    variableBlockReason,
     onRenderStatus,
     t,
     tableLoading,
@@ -1311,6 +1449,13 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
           )}
         />
       </div>
+    );
+  } else if (variableBlocked) {
+    body = (
+      <WidgetState
+        kind={variableBlockReason === "request" ? "error" : "empty"}
+        description={variableBlockMessage}
+      />
     );
   } else if (isInitialNonTableLoading || isWaitingForInitialData || isWaitingForSwitchOptions) {
     body = (

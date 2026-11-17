@@ -1,9 +1,11 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import {
   Button,
   Modal,
+  Tabs,
   message,
 } from 'antd';
 import { PlusOutlined, ReloadOutlined } from '@ant-design/icons';
@@ -14,6 +16,7 @@ import TopSection from '@/components/top-section';
 import SystemManagerWorkbenchShell, {
   SystemManagerWorkbenchPanel,
 } from '@/app/system-manager/components/system-manager-workbench-shell';
+import AccountAssociationPanel from '@/app/system-manager/components/user/user-sync/AccountAssociationPanel';
 import UserSyncSourceList, {
   type UserSyncSourceCardItem,
   type UserSyncStatusTone,
@@ -66,6 +69,13 @@ const STATUS_TONE_MAP: Record<keyof typeof RUN_STATUS_TEXT_STYLE, UserSyncStatus
 
 const UserSyncPage: React.FC = () => {
   const { t } = useTranslation();
+  const searchParams = useSearchParams();
+  const requestedTab = searchParams.get('tab') === 'account_association' ? 'account_association' : 'user_org';
+  const [activeTab, setActiveTab] = useState(requestedTab);
+  useEffect(() => {
+    setActiveTab(requestedTab);
+  }, [requestedTab]);
+  const filterInstanceId = Number(searchParams.get('instanceId')) || null;
   const { convertToLocalizedTime } = useLocalizedTime();
   const {
     getSyncSources,
@@ -518,15 +528,38 @@ const UserSyncPage: React.FC = () => {
         )}
         right={(
           <SystemManagerWorkbenchPanel bodyClassName="flex min-h-0 flex-col p-4">
-            <UserSyncSourceList
-              data={entityListItems}
-              loading={loading}
-              operateSection={operateSection}
-              onEdit={(item) => openBasic(item.raw)}
-              onConfig={(item) => openConfig(item.raw)}
-              onStrategy={(item) => openStrategy(item.raw)}
-              onDelete={(item) => handleDelete(item.raw)}
-              onSyncNow={(item) => handleSyncNow(item.raw)}
+            <Tabs
+              activeKey={activeTab}
+              onChange={setActiveTab}
+              items={[
+                {
+                  key: 'user_org',
+                  label: t('system.user.userSyncPage.userOrgTab', '用户与组织同步'),
+                  children: (
+                    <UserSyncSourceList
+                      data={entityListItems}
+                      loading={loading}
+                      operateSection={operateSection}
+                      onEdit={(item) => openBasic(item.raw)}
+                      onConfig={(item) => openConfig(item.raw)}
+                      onStrategy={(item) => openStrategy(item.raw)}
+                      onDelete={(item) => handleDelete(item.raw)}
+                      onSyncNow={(item) => handleSyncNow(item.raw)}
+                    />
+                  ),
+                },
+                {
+                  key: 'account_association',
+                  label: t('system.user.accountAssociation.tab', 'IM 账号关联'),
+                  children: (
+                    <AccountAssociationPanel
+                      filterInstanceId={filterInstanceId}
+                      filterProvider={searchParams.get('provider') || ''}
+                      openCreate={searchParams.get('create') === '1'}
+                    />
+                  ),
+                },
+              ]}
             />
           </SystemManagerWorkbenchPanel>
         )}

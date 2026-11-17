@@ -30,6 +30,7 @@ from apps.opspilot.services.wechat_official_chat_flow_utils import WechatOfficia
 from apps.opspilot.services.wiki.chat_material_service import WIKI_MATERIAL_ACTOR_KEY, actor_for_platform_user
 from apps.opspilot.services.workflow_attachment_service import resolve_signed_attachment_token
 from apps.opspilot.tasks import chat_flow_test_execute_task
+from apps.opspilot.utils.auto_mode import parse_auto_command
 from apps.opspilot.utils.bot_utils import insert_skill_log
 from apps.opspilot.utils.chat_flow_utils.engine.factory import create_chat_flow_engine
 from apps.opspilot.utils.enterprise_wechat_aibot_chat_flow_utils import EnterpriseWechatAibotChatFlowUtils
@@ -477,8 +478,6 @@ async def execute_chat_flow(request, bot_id, node_id):  # pragma: no cover
         # 续接上一轮终止式提问：读后即删，并把提问节点与证据交给本轮执行。
         conversation_key = resolve_conversation_key(bot_id=bot_id, session_id=session_id)
         pending_question = None
-        if conversation_key:
-            pending_question = await sync_to_async(consume_pending_question, thread_sensitive=False)(conversation_key)
         if session_id and not is_test:
             web_session = await sync_to_async(
                 BotWebChatSession.objects.filter(session_id=session_id).first,
@@ -494,6 +493,8 @@ async def execute_chat_flow(request, bot_id, node_id):  # pragma: no cover
         node_obj = engine._get_node_by_id(node_id)
         node_type = node_obj.get("type") if node_obj else None
         engine.entry_type = node_type  # 设置入口类型
+        if conversation_key and node_type not in {"celery", "nats", "restful"} and not parse_auto_command(message)[0]:
+            pending_question = await sync_to_async(consume_pending_question, thread_sensitive=False)(conversation_key)
 
         # 准备输入数据
         input_data = {
@@ -504,6 +505,7 @@ async def execute_chat_flow(request, bot_id, node_id):  # pragma: no cover
             "session_id": session_id,
             "conversation_key": conversation_key,
             "execution_id": engine.execution_id,
+            "entry_type": node_type,
             "locale": loader.default_lang,
             "user_timezone": getattr(user, "timezone", "") or "",
             CALLER_IDENTITY_CONFIG_KEY: caller_snapshot,

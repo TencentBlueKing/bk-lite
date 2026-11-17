@@ -4,6 +4,8 @@
 断言真实 HTTP 状态、响应体与数据库副作用。
 """
 import pytest
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
 from rest_framework import status
 
 from apps.log.models.log_group import LogGroup, LogGroupOrganization
@@ -76,6 +78,41 @@ def test_list_paginated_default(api_client, authenticated_user, mocker):
     body = response.json()
     # 分页响应包含 count / items 结构
     assert "data" in body
+
+
+def _organization_selects(captured):
+    return [
+        query
+        for query in captured.captured_queries
+        if "log_loggrouporganization" in query["sql"].lower() and query["sql"].lstrip().upper().startswith("SELECT")
+    ]
+
+
+@pytest.mark.django_db
+def test_issue_6555_list_organization_reads_do_not_grow_with_group_count(api_client, authenticated_user, mocker):
+    def seed(count, prefix):
+        for index in range(count):
+            group_id = f"{prefix}-{index}"
+            LogGroup.objects.create(id=group_id, name=group_id, rule={})
+            LogGroupOrganization.objects.create(log_group_id=group_id, organization=1)
+            LogGroupOrganization.objects.create(log_group_id=group_id, organization=99)
+
+    _mock_permission(mocker, teams=[1])
+    api_client.cookies["current_team"] = "1"
+    seed(2, "small")
+    with CaptureQueriesContext(connection) as small:
+        small_response = api_client.get("/api/v1/log/log_group/?page_size=-1")
+    seed(8, "large")
+    with CaptureQueriesContext(connection) as large:
+        large_response = api_client.get("/api/v1/log/log_group/?page_size=-1")
+
+    assert small_response.status_code == status.HTTP_200_OK
+    assert large_response.status_code == status.HTTP_200_OK
+    small_reads = _organization_selects(small)
+    large_reads = _organization_selects(large)
+    assert small_reads and len(small_reads) == len(large_reads)
+    large_items = {item["id"]: item["organizations"] for item in large_response.json()["data"]}
+    assert large_items["large-0"] == [1]
 
 
 @pytest.mark.django_db

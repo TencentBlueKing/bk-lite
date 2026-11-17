@@ -91,3 +91,12 @@ export const useOptionalThemeTokens = (): SemanticColorTokens => {
   }
   return defaultTheme[getAppliedThemeMode()];
 };
+
+/** 与 useOptionalThemeTokens 同一回退：有壳用壳的模式，否则读文档上已应用的模式。 */
+export const useOptionalThemeMode = (): ThemeMode => {
+  const context = useContext(ThemeContext);
+  if (context) {
+    return context.mode;
+  }
+  return getAppliedThemeMode();
+};

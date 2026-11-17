@@ -346,13 +346,28 @@ test('mounted Chat network-error and completion callbacks flush pending text', a
     console.error = originalConsoleError;
   }
   assert.deepEqual(errors, ['network']);
-  assert.equal(globalThis.__chatTest.sessionManager.saved.messages[1].content, 'partial');
+  assert.match(globalThis.__chatTest.sessionManager.saved.messages[1].content, /^partial/);
+  assert.match(globalThis.__chatTest.sessionManager.saved.messages[1].content, /连接中断/);
 
   await emit({ type: 'TEXT_MESSAGE_CONTENT', delta: '-complete' });
   await act(async () => globalThis.__chatTest.streamRun.onComplete());
-  assert.equal(
-    globalThis.__chatTest.sessionManager.saved.messages[1].content,
-    'partial-complete'
-  );
+  const completed = globalThis.__chatTest.sessionManager.saved.messages[1].content;
+  assert.match(completed, /^partial/);
+  assert.match(completed, /-complete$/);
+  assert.equal(completed.split('连接中断').length - 1, 1);
   await act(async () => root.unmount());
+});
+
+test('transport EOF without a terminal event keeps partial text and marks interruption', async () => {
+  const { container, root } = await mountChat({ sseUrl: 'https://example.test/chat' });
+  try {
+    const submit = find(container, node => node.attributes?.['data-test'] === 'submit');
+    await act(async () => Simulate.click(submit));
+    await emit({ type: 'TEXT_MESSAGE_START', role: 'assistant' });
+    await emit({ type: 'TEXT_MESSAGE_CONTENT', delta: 'incomplete answer' });
+    await act(async () => globalThis.__chatTest.streamRun.onComplete());
+    const text = globalThis.__chatTest.sessionManager.saved.messages[1].content;
+    assert.match(text, /^incomplete answer/);
+    assert.match(text, /连接中断/);
+  } finally { await act(async () => root.unmount()); }
 });
