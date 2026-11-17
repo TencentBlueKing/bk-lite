@@ -21,7 +21,7 @@ monitor_object_metric:
       desc: 等待请求的空闲连接数，反映连接池使用情况
     nginx_requests_rate:
       name: 请求速率
-      desc: Nginx处理的请求速率，反映实时负载
+      desc: 近 5 分钟平均每秒处理的请求数，用于观察实时负载。
     nginx_accepts_rate:
       name: 连接接受速率
       desc: Nginx接受新连接的速率，反映连接建立频率

@@ -431,7 +431,25 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "APP_POOL_WAS total application pool recycles."
+      "description": "APP_POOL_WAS cumulative application pool recycles."
+    },
+    {
+      "metric_group": "Application Pool",
+      "name": "iis_app_pool_recycles_rate",
+      "query": "rate(win_iis_app_pool_was_Total_Application_Pool_Recycles{instance_type=\"iis\", __$labels__}[5m])",
+      "display_name": "Application Pool Recycle Rate",
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [
+        {
+          "name": "instance",
+          "description": "instance"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Average application pool recycles per second over the last 5 minutes."
     },
     {
       "metric_group": "Application Pool",

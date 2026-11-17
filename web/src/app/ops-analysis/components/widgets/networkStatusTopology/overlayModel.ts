@@ -19,6 +19,9 @@ export interface OverlayDataSource {
   id: number;
   rest_api?: string;
   is_build_in?: boolean;
+  name?: string;
+  build_in_key?: string;
+  params?: Array<{ name?: string } | null> | null;
 }
 
 export interface OverlayNodeVisual {
@@ -53,6 +56,21 @@ const UNKNOWN_VISUAL: OverlayNodeVisual = {
   color: 'gray',
 };
 
+const hasInstanceIdsParam = (source: OverlayDataSource): boolean =>
+  Array.isArray(source.params)
+  && source.params.some((param) => param?.name === 'instance_ids');
+
+const OVERLAY_PREFERRED_ALERTS_KEYS = new Set([
+  '监控活跃告警::monitor/query_latest_active_alerts',
+  '监控活跃告警',
+]);
+
+const isPreferredAlertsSource = (source: OverlayDataSource): boolean => {
+  const key = String(source.build_in_key || '').trim();
+  const name = String(source.name || '').trim();
+  return OVERLAY_PREFERRED_ALERTS_KEYS.has(key) || OVERLAY_PREFERRED_ALERTS_KEYS.has(name);
+};
+
 const pickUniqueRestApiId = (
   sources: OverlayDataSource[],
   restApi: string,
@@ -64,6 +82,17 @@ const pickUniqueRestApiId = (
   const builtins = matches.filter((source) => source.is_build_in);
   if (builtins.length === 1) {
     return builtins[0].id;
+  }
+  const pool = builtins.length ? builtins : [];
+  if (restApi === MONITOR_OVERLAY_REST_API) {
+    const preferred = pool.filter(isPreferredAlertsSource);
+    if (preferred.length === 1) {
+      return preferred[0].id;
+    }
+  }
+  const withInstanceIds = pool.filter(hasInstanceIdsParam);
+  if (withInstanceIds.length === 1) {
+    return withInstanceIds[0].id;
   }
   return undefined;
 };

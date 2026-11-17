@@ -4321,9 +4321,14 @@ datasources:
 - key: 活跃告警 TOP N::get_active_alert_top
   name: 活跃告警持续时长 TOP N
   rest_api: get_active_alert_top
-  desc: 当前持续时间最长的活跃告警，不受时间范围影响
+  desc: 当前持续时间最长的活跃告警，不受时间范围影响；order=severity 时可先按等级再按积压久优先
   is_active: true
   params:
+  - name: order
+    type: string
+    value: created_at
+    alias_name: 排序
+    filterType: params
   - name: limit
     type: number
     value: 10

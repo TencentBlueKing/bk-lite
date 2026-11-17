@@ -50,7 +50,7 @@ function approvalBranchLabel(id: string): string {
   return id;
 }
 
-/** MVP 条件节点是布尔 SWITCH：多条规则合成 true/false，不是多路 case。 */
+/** 条件节点是布尔 SWITCH：多条规则合成 true/false，不是多路 case。 */
 function conditionBranchLabel(id: string): string {
   if (id === 'true') return '满足';
   if (id === 'false') return '不满足';

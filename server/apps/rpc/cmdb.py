@@ -177,6 +177,9 @@ class CMDB(object):
     def network_topology_among_uuids(self, **kwargs):
         return self.client.run("network_topology_among_uuids", **kwargs)
 
+    def incident_impact_topology(self, **kwargs):
+        return self.client.run("incident_impact_topology", **kwargs)
+
     def network_topology_by_uuid(self, **kwargs):
         return self.client.run("network_topology_by_uuid", **kwargs)
 

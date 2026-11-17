@@ -77,7 +77,7 @@ const TRIGGER_TYPE_LABELS: Record<string, { id: string; defaultMessage: string }
 
 const SYSTEM_STARTED_BY: Record<string, { id: string; defaultMessage: string }> = {
   'workflow-scheduler': { id: 'workflowOrchestration.execution.startedBySystem.scheduler', defaultMessage: '定时调度' },
-  'mvp-verifier': { id: 'workflowOrchestration.execution.startedBySystem.mvpVerifier', defaultMessage: 'MVP 验收' },
+  'mvp-verifier': { id: 'workflowOrchestration.execution.startedBySystem.mvpVerifier', defaultMessage: '验收账号' },
   openapi: { id: 'workflowOrchestration.execution.startedBySystem.openapi', defaultMessage: 'OpenAPI' },
 };
 

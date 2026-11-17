@@ -55,8 +55,8 @@ monitor_object_metric:
       desc: Indicates the amount of data read from disk per unit time, used to evaluate disk read throughput.
     diskio_read_bytes_total:
       name: Disk Read Bytes
-      desc: Disk read bytes for this device. Rate uses the 1s interval sample; 7.1 idle-interval fallback
-        may use the earlier non-idle report.
+      desc: Cumulative bytes read for this device. On 7.1, an idle-interval fallback may repeat an earlier
+        non-idle report.
     disk_tm_act:
       name: Disk tm_act
       desc: AIX iostat % tm_act, the share of time the disk was active. This is AIX disk busy, not Linux

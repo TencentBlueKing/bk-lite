@@ -46,7 +46,7 @@ monitor_object_metric:
       desc: 表示磁盘单位时间内读取的数据量，用于评估磁盘读取吞吐能力。
     diskio_read_bytes_total:
       name: 磁盘读取字节数
-      desc: 该设备的磁盘读取字节数。速率用 1 秒间隔采样；累计来自 iostat -I。
+      desc: 该设备累计读取的字节数。
     disk_tm_act:
       name: 磁盘忙碌
       desc: 表示 iostat 的 %b，即磁盘处于活动状态的时间占比。

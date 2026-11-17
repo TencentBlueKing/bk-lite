@@ -338,6 +338,7 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
         case_sensitive = request.data.get("case_sensitive", True)
         permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(request, model_id)
         advanced_filter = request.data.get("advanced_filter") or None
+        relation_filters = request.data.get("relation_filters") or None
         try:
             instance_list, count = InstanceManage.instance_list(
                 model_id=model_id,
@@ -350,6 +351,7 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
                 case_sensitive=case_sensitive,
                 advanced_filter=advanced_filter,
                 permission_lookup=lambda mid: CmdbRulesFormatUtil.format_user_groups_permissions(request, mid),
+                relation_filters=relation_filters,
             )
         except Exception as exc:
             from apps.cmdb.graph.advanced_filter import AdvancedFilterError, AdvancedFilterTimeout
@@ -1262,6 +1264,7 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
                 advanced_filter=request.data.get("advanced_filter") or None,
                 permission_lookup=lambda mid: CmdbRulesFormatUtil.format_user_groups_permissions(request, mid),
                 creator=request.user.username,
+                relation_filters=request.data.get("relation_filters") or None,
                 file_backed=True,
             )
         except Exception as exc:

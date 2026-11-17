@@ -22,11 +22,15 @@ export interface ActiveDirectoryInstanceFormValue {
   bind_dn: string;
   bind_password: string;
   base_dn: string;
+  fetch_limit: number | null;
   testStatus: ActiveDirectoryTestStatus;
 }
 
 const INSTANCES_KEY = 'ad_instances';
 const DEFAULT_INSTANCE_ID_KEY = 'ad_default_instance_id';
+const LEGACY_FETCH_LIMIT_KEY = 'ad_fetch_limit';
+const AD_FETCH_LIMIT_DEFAULT = 10000;
+const AD_FETCH_LIMIT_CEILING = 100000;
 const AUTO_NAME_PREFIX = 'AD - ';
 
 const createId = () => `ad-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -42,6 +46,7 @@ const getDefaultInstance = (name: string): ActiveDirectoryInstanceFormValue => (
   bind_dn: '',
   bind_password: '',
   base_dn: '',
+  fetch_limit: null,
   testStatus: 'untested',
 });
 
@@ -82,7 +87,18 @@ const parseInstancesValue = (value: unknown): Record<string, unknown>[] => {
   return [];
 };
 
-const mapRawInstance = (item: Record<string, unknown>, index: number): ActiveDirectoryInstanceFormValue => {
+const parseFetchLimit = (value: unknown): number | null => {
+  if (value === undefined || value === null || String(value).trim() === '') return null;
+  const parsed = Number.parseInt(String(value), 10);
+  if (!Number.isFinite(parsed) || parsed < 1) return null;
+  return Math.min(parsed, AD_FETCH_LIMIT_CEILING);
+};
+
+const mapRawInstance = (
+  item: Record<string, unknown>,
+  index: number,
+  legacyFetchLimit: number | null = null,
+): ActiveDirectoryInstanceFormValue => {
   const useSsl = parseBoolean(item.use_ssl, true);
   const defaultPort = useSsl ? 636 : 389;
   return {
@@ -96,15 +112,17 @@ const mapRawInstance = (item: Record<string, unknown>, index: number): ActiveDir
     bind_dn: String(item.bind_dn || item.ad_bind_dn || ''),
     bind_password: String(item.bind_password || item.ad_bind_password || ''),
     base_dn: String(item.base_dn || item.ad_base_dn || ''),
+    fetch_limit: parseFetchLimit(item.fetch_limit) ?? legacyFetchLimit,
     testStatus: 'untested',
   };
 };
 
 export const parseActiveDirectoryToolConfig = (kwargs: ToolVariable[] = []): ActiveDirectoryInstanceFormValue[] => {
   const map = new Map(kwargs.filter((k) => k.key).map((k) => [k.key, k.value]));
+  const legacyFetchLimit = parseFetchLimit(map.get(LEGACY_FETCH_LIMIT_KEY));
   const parsed = parseInstancesValue(map.get(INSTANCES_KEY));
   if (parsed.length > 0) {
-    return parsed.map((item, i) => mapRawInstance(item, i));
+    return parsed.map((item, i) => mapRawInstance(item, i, legacyFetchLimit));
   }
   const hasLegacy = ['host', 'bind_dn', 'bind_password', 'base_dn', 'ad_host', 'ad_bind_dn', 'ad_bind_password', 'ad_base_dn'].some(
     (key) => map.has(key)
@@ -135,6 +153,11 @@ const serializeActiveDirectoryToolConfig = (instances: ActiveDirectoryInstanceFo
   const normalized = instances.map((inst) => {
     const copy = { ...inst } as Partial<ActiveDirectoryInstanceFormValue>;
     delete copy.testStatus;
+    if (copy.fetch_limit == null) {
+      delete copy.fetch_limit;
+    } else {
+      copy.fetch_limit = Math.min(Math.trunc(copy.fetch_limit), AD_FETCH_LIMIT_CEILING);
+    }
     return copy;
   });
   return [
@@ -240,7 +263,11 @@ const ActiveDirectoryToolEditor = forwardRef<ActiveDirectoryToolEditorHandle, Ac
       setInstances((prev) =>
         prev.map((inst) => {
           if (inst.id !== id) return inst;
-          const next = { ...inst, [field]: value, testStatus: 'untested' as const };
+          const next = {
+            ...inst,
+            [field]: value,
+            testStatus: field === 'fetch_limit' ? inst.testStatus : 'untested' as const,
+          };
           if (field === 'use_ssl') {
             const sslOn = Boolean(value);
             if (sslOn && (inst.port === 389 || !inst.port)) next.port = 636;
@@ -340,6 +367,21 @@ const ActiveDirectoryToolEditor = forwardRef<ActiveDirectoryToolEditorHandle, Ac
                   placeholder={t('tool.activedirectory.instanceNamePlaceholder')}
                 />
               </div>
+              <div>
+                <div className="mb-1 text-sm text-[var(--color-text-2)]">{t('tool.activedirectory.fetchLimit')}</div>
+                <div className="w-40">
+                  <InputNumber
+                    className="w-full"
+                    style={{ width: '100%' }}
+                    min={1}
+                    max={AD_FETCH_LIMIT_CEILING}
+                    value={selectedInstance.fetch_limit}
+                    placeholder={String(AD_FETCH_LIMIT_DEFAULT)}
+                    onChange={(value) => handleChange(selectedInstance.id, 'fetch_limit', typeof value === 'number' ? value : null)}
+                  />
+                </div>
+                <div className="mt-1 text-xs text-[var(--color-text-4)]">{t('tool.activedirectory.fetchLimitHint')}</div>
+              </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <div className="mb-1 text-sm text-[var(--color-text-2)]">{t('tool.activedirectory.host')}</div>
@@ -363,6 +405,7 @@ const ActiveDirectoryToolEditor = forwardRef<ActiveDirectoryToolEditorHandle, Ac
               </div>
               <div className="flex items-center gap-2">
                 <Switch
+                  size="small"
                   checked={selectedInstance.use_ssl}
                   onChange={(checked) => handleChange(selectedInstance.id, 'use_ssl', checked)}
                 />
@@ -373,6 +416,7 @@ const ActiveDirectoryToolEditor = forwardRef<ActiveDirectoryToolEditorHandle, Ac
                   <div>
                     <div className="flex items-center gap-2">
                       <Switch
+                        size="small"
                         checked={selectedInstance.verify_cert}
                         onChange={(checked) => handleChange(selectedInstance.id, 'verify_cert', checked)}
                       />

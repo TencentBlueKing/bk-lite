@@ -61,6 +61,8 @@ assert.doesNotMatch(
 
 assert.doesNotMatch(source, /postUserChoice/);
 assert.match(source, /onSendMessage\?\.\(labels\.join/);
+assert.match(source, /choiceId:\s*request\.choice_id/);
+assert.match(source, /optionKey:\s*keys\[0\]/);
 assert.doesNotMatch(source, /if \(isCompleted\) \{\s*return null/);
 
 {

@@ -1419,13 +1419,43 @@ def _filter_active_alerts_by_source(queryset, kwargs):
     return queryset
 
 
+def _parse_active_alert_top_order(value) -> str:
+    """默认按创建时间（持续最久优先）；severity=先等级后积压久。"""
+    if value in (None, ""):
+        return "created_at"
+    normalized = str(value).strip().lower()
+    if normalized in {"created_at", "duration", "latest"}:
+        return "created_at"
+    if normalized == "severity":
+        return "severity"
+    raise ValueError("order 仅支持 created_at 或 severity")
+
+
+def _order_active_alert_top_queryset(queryset, order: str):
+    """截断前排序。severity：level_id 越小越严重，同级 created_at 升序。"""
+    if order != "severity":
+        return queryset.order_by("created_at", "id")
+
+    from django.db.models import Case, IntegerField, Value, When
+
+    # 数字档位兜底，避免测试/空 Level 表时全部落到 default。
+    rank_map = {str(level_id): level_id for level_id in range(10)}
+    for level_id in Level.objects.filter(level_type=LevelType.ALERT).values_list("level_id", flat=True):
+        rank_map[str(level_id)] = int(level_id)
+    whens = [When(level=key, then=Value(rank)) for key, rank in sorted(rank_map.items(), key=lambda item: item[1])]
+    return queryset.annotate(severity_rank=Case(*whens, default=Value(999), output_field=IntegerField())).order_by(
+        "severity_rank", "created_at", "id"
+    )
+
+
 @nats_client.register
 def get_active_alert_top(limit=10, **kwargs):
     """
-    获取活跃告警持续时间 TOP N
+    获取活跃告警 TOP N
 
     Args:
         limit: int - 返回数量，默认 10
+        order: str - 可选，created_at（默认，持续最久优先）或 severity（先等级后积压久）
         source_id: str - 可选，按告警源 ID 收窄（如 k8s）
         source_name: str - 可选，按告警源显示名收窄；source_id 优先
 
@@ -1452,6 +1482,11 @@ def get_active_alert_top(limit=10, **kwargs):
     if limit > 100:
         limit = 100
 
+    try:
+        order = _parse_active_alert_top_order(kwargs.get("order"))
+    except ValueError as exc:
+        return {"result": False, "data": [], "message": str(exc)}
+
     user_info = kwargs.get("user_info", {})
     target_tz = _resolve_target_timezone((user_info or {}).get("timezone") or kwargs.get("timezone"))
     queryset, error = _get_authorized_alert_queryset(user_info)
@@ -1460,7 +1495,7 @@ def get_active_alert_top(limit=10, **kwargs):
 
     queryset = queryset.filter(status__in=AlertStatus.ACTIVATE_STATUS)
     queryset = _filter_active_alerts_by_source(queryset, kwargs)
-    active_alerts = queryset.order_by("created_at")[:limit]
+    active_alerts = _order_active_alert_top_queryset(queryset, order)[:limit]
 
     level_map = _get_alert_level_display_map()
     status_map = dict(AlertStatus.CHOICES)

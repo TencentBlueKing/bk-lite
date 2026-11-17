@@ -403,6 +403,57 @@ class PolicyGroupService:
             return group
 
     @staticmethod
+    def add_templates(group, templates, operator="system"):
+        """往已有组追加模板规则，覆盖判定复用 sync_coverage。"""
+        if not templates:
+            raise BaseAppException("至少选择一条策略模板")
+        existing_rules = list(group.rules.select_related("policy", "plugin"))
+        already = {rule.source_template_id for rule in existing_rules if rule.source_template_id}
+        incoming = []
+        seen = set()
+        for template in templates:
+            if template.monitor_object_id != group.monitor_object_id:
+                raise BaseAppException("模板不属于该监控对象")
+            if template.id in already or template.id in seen:
+                continue
+            seen.add(template.id)
+            incoming.append(template)
+        skipped = len(templates) - len(incoming)
+        if not incoming:
+            return {"added": 0, "skipped": skipped, "rule_ids": []}
+        detection = group_detection_state(existing_rules)
+        sibling = existing_rules[0].policy if existing_rules else None
+        with transaction.atomic():
+            created = [PolicyGroupService._create_rule(group, template, operator) for template in incoming]
+            if sibling is not None:
+                PolicyGroupService._stamp_new_rules_from_group(created, sibling, operator)
+                if detection.get("schedule_uniform") and detection.get("schedule"):
+                    PolicyGroupService._apply_group_schedule(created, detection["schedule"], operator)
+                if detection.get("no_data_uniform"):
+                    PolicyGroupService._apply_group_no_data(existing_rules + created, detection["no_data"], operator)
+            PolicyGroupService.sync_coverage(group)
+        return {"added": len(created), "skipped": skipped, "rule_ids": [rule.id for rule in created]}
+
+    @staticmethod
+    def _stamp_new_rules_from_group(rules, sibling, operator):
+        ids = [rule.policy_id for rule in rules]
+        if not ids:
+            return
+        MonitorPolicy.objects.filter(id__in=ids).update(
+            enable=bool(sibling.enable),
+            notice=bool(sibling.notice),
+            notice_type=sibling.notice_type or "",
+            notice_type_ids=list(sibling.notice_type_ids or []),
+            notice_users=list(sibling.notice_users or []),
+            handlers=list(sibling.handlers or []),
+            updated_by=operator,
+            updated_at=timezone.now(),
+        )
+        policies = {policy.id: policy for policy in MonitorPolicy.objects.filter(id__in=ids)}
+        for rule in rules:
+            rule.policy = policies[rule.policy_id]
+
+    @staticmethod
     def join(*, instance, group, operator="system"):
         if instance.monitor_object_id != group.monitor_object_id:
             raise BaseAppException("实例与策略组的监控对象不一致")
@@ -1233,13 +1284,28 @@ class PolicyGroupService:
         return ids[0] if ids else None
 
     @staticmethod
-    def metric_names_for_policies(policies):
+    def metric_catalog_for_policies(policies):
         ids = []
         for policy in policies:
             ids.extend(PolicyGroupService.metric_ids_for_policy(policy))
         if not ids:
-            return {}
-        return {row["id"]: row["name"] for row in Metric.objects.filter(id__in=ids).values("id", "name")}
+            return {}, {}
+        names = {}
+        units = {}
+        for row in Metric.objects.filter(id__in=ids).values("id", "name", "unit"):
+            names[row["id"]] = row["name"]
+            units[row["id"]] = row["unit"] or ""
+        return names, units
+
+    @staticmethod
+    def metric_names_for_policies(policies):
+        names, _units = PolicyGroupService.metric_catalog_for_policies(policies)
+        return names
+
+    @staticmethod
+    def metric_units_for_policies(policies):
+        _names, units = PolicyGroupService.metric_catalog_for_policies(policies)
+        return units
 
     @staticmethod
     def filter_rules_for_access(rules, *, plugin_id=None, collect_type=None):

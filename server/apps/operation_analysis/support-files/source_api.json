@@ -185,7 +185,7 @@
       {
         "name": "instance_ids",
         "type": "string",
-        "value": [],
+        "value": null,
         "alias_name": "主机",
         "filterType": "filter",
         "inputConfig": {
@@ -197,6 +197,16 @@
             "valueField": "instance_id",
             "labelField": "display_name"
           }
+        }
+      },
+      {
+        "name": "organization",
+        "type": "string",
+        "value": "",
+        "alias_name": "组织",
+        "filterType": "filter",
+        "inputConfig": {
+          "control": "organization"
         }
       }
     ],
@@ -674,6 +684,26 @@
             "alias_name": "实例ID列表",
             "filterType": "params"
         }
+    ]
+},
+{
+    "key": "监控异常严重度TOP5::monitor/query_latest_active_alerts",
+    "name": "监控异常严重度 TOP5",
+    "desc": "在当前组织授权范围内，对全部未恢复监控告警按等级从高到低、同级按开始时间更早优先排序，固定返回前 5 条。告警记录值是触发或升级时保存的值，不是实时采样。未知等级排在已知等级之后。",
+    "rest_api": "monitor/query_latest_active_alerts",
+    "tag": ["monitor"],
+    "chart_type": ["table"],
+    "params": [
+        {"name": "order", "type": "string", "value": "severity", "alias_name": "排序", "filterType": "fixed"},
+        {"name": "limit", "type": "number", "value": 5, "alias_name": "返回条数", "filterType": "fixed"},
+        {"name": "organization", "type": "string", "value": "", "alias_name": "组织", "filterType": "filter", "inputConfig": {"control": "organization"}}
+    ],
+    "field_schema": [
+        {"key": "monitor_instance_name", "title": "监控对象", "value_type": "string", "description": "监控对象实例名称"},
+        {"key": "metric_name", "title": "监控项", "value_type": "string", "description": "策略指标展示名；没有展示名时用指标名，不翻译英文展示名"},
+        {"key": "value", "title": "告警记录值", "value_type": "number", "description": "触发或升级时保存的告警值，不是实时采样"},
+        {"key": "duration_text", "title": "持续时长", "value_type": "string", "description": "从未恢复告警开始到当前的时长"},
+        {"key": "level", "title": "告警等级", "value_type": "string", "description": "critical、error、warning、info、no_data；未知级别不按高严重度处理"}
     ]
 },
 {

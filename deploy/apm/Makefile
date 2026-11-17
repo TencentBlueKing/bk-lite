@@ -26,7 +26,9 @@ test:
 	$(MAKE) -C collector test
 
 contract:
-	cd $(SERVER_DIR) && RUN_APM_CONTAINER_CONTRACT=1 uv run pytest -q ../deploy/apm/tests/test_data_plane_contract.py -s
+	# 容器契约不使用 Django 测试库。数据面用例中途会 django.setup()，
+	# 之后 pytest-django 的 mailbox fixture 会让后续用例在 setup 失败。
+	cd $(SERVER_DIR) && RUN_APM_CONTAINER_CONTRACT=1 uv run pytest -q -p no:django --noconftest -o addopts= ../deploy/apm/tests/test_data_plane_contract.py ../deploy/apm/tests/test_aggregate_contract.py -s
 
 demo-up: up
 	cd $(SERVER_DIR) && uv run python manage.py shell < ../deploy/apm/demo/ensure_application.py

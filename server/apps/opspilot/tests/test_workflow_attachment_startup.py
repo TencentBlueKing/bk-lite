@@ -190,21 +190,14 @@ def _pdf_plain_text(payload: bytes) -> str | None:
 
 
 def test_build_attachment_bytes_pdf_renders_chinese_markdown_table():
-    from apps.opspilot.services.workflow_attachment_service import _resolve_pdf_font
-
     content = "| 项目 | 内容 |\n| --- | --- |\n| 城市 | 广州 |\n| 备注 | A & B <C> |\n"
-    font_name = _resolve_pdf_font()
     first = build_attachment_bytes(content, "pdf", title="广州报告")
     second = build_attachment_bytes(content, "pdf", title="广州报告")
     for payload in (first, second):
         assert payload.startswith(b"%PDF")
         assert len(payload) > 200
-        # Helvetica 没有中文轮廓，fitz 会抽出占位符；有中文字体时必须能读回单元格。
-        if font_name == "Helvetica":
-            continue
         extracted = _pdf_plain_text(payload)
-        if not extracted:
-            continue
+        assert extracted is not None
         assert "广州" in extracted
         assert "城市" in extracted
         assert "项目" in extracted
@@ -220,3 +213,29 @@ def test_build_attachment_bytes_xlsx_keeps_header_row():
     sheet = load_workbook(BytesIO(payload)).active
     assert [cell.value for cell in next(sheet.iter_rows(max_row=1))] == ["name", "count"]
     assert [cell.value for cell in next(sheet.iter_rows(min_row=2, max_row=2))] == ["web", "2"]
+
+
+def test_pdf_renders_chinese_without_system_font_files(monkeypatch, caplog):
+    from reportlab.pdfbase import pdfmetrics, ttfonts
+
+    from apps.opspilot.services.workflow_attachment_service import build_attachment_bytes
+
+    def missing_font(*args, **kwargs):
+        raise OSError("font file unavailable")
+
+    monkeypatch.setattr(ttfonts, "TTFont", missing_font)
+    monkeypatch.setattr(pdfmetrics, "getRegisteredFontNames", lambda: [])
+    sentinel = "PDF_PRIVATE_SENTINEL"
+    payload = build_attachment_bytes(f"# 集群健康报告\n| 指标 | 状态 |\n| --- | --- |\n| 节点 | 正常 {sentinel} |", "pdf", title="集群健康报告")
+    text = _pdf_plain_text(payload)
+    assert text is not None
+    assert "集群健康报告" in text
+    assert "节点" in text
+    assert "正常" in text
+    assert sentinel in text
+    record = next(record for record in caplog.records if "STSong-Light" in record.getMessage())
+    assert record.msg == "工作流附件 PDF 未找到可嵌入中文字体，使用标准中文字体 STSong-Light"
+    assert record.args == ()
+    assert "集群健康报告" not in record.getMessage()
+    assert sentinel not in record.getMessage()
+    assert record.exc_info is None

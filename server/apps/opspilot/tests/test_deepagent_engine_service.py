@@ -1200,6 +1200,43 @@ class TestBuildDeepagentNodes:
             assert "monitor_list_object_instances" in tool_names
             assert any(instance_id in str(getattr(message, "content", "") or "") for message in evidence)
 
+    def test_pdf_report_continues_after_successful_alert_with_auth_words(self):
+        node = ToolsNodes()
+        node.all_tools = [_tool("alerts_list_alerts"), _tool("generate_attachment_file")]
+        req = _request(user_message="收集活跃告警情况，按分类汇总，生成pdf报告")
+        captured = {}
+        alert_result = json.dumps(
+            {
+                "success": True,
+                "data": {
+                    "items": [
+                        {"title": "Nginx HTTP 403 请求过多", "status": "unassigned"},
+                        {"title": "Kubernetes API server 响应超时", "status": "processing"},
+                    ],
+                    "count": 2,
+                },
+            },
+            ensure_ascii=False,
+        )
+        with patch.object(ToolsNodes, "_build_knowledge_retrieve_tool", return_value=None):
+            self._run_wrapper(
+                node,
+                req,
+                captured,
+                plan_payload={
+                    "goal": "生成告警 PDF",
+                    "steps": [
+                        {"objective": "查询活动告警", "tools": ["alerts_list_alerts"]},
+                    ],
+                },
+                agent_step_tool_results={
+                    1: ("alerts_list_alerts", alert_result),
+                    2: ("generate_attachment_file", '{"filename":"report.pdf","file_url":"/report.pdf"}'),
+                },
+            )
+        _assert_visible_tool_steps(captured["visible_tool_calls"], [["alerts_list_alerts"], ["generate_attachment_file"], []])
+        assert len(captured["planner_calls"]) == 1
+
     def test_tool_failure_replans_only_unfinished_steps(self):
         # 不用 namespace 反查类工具，避免规划硬校验改写步骤顺序。
         node = ToolsNodes()

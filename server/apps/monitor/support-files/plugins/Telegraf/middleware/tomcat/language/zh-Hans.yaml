@@ -9,16 +9,16 @@ monitor_object_metric:
   Tomcat:
     tomcat_connector_request_count:
       name: 请求处理总数
-      desc: 连接器处理的HTTP请求累计总数，反映连接器的总工作负载
+      desc: 连接器自启动以来累计处理的 HTTP 请求数，反映连接器的总工作负载。
     tomcat_connector_error_count:
       name: 错误请求总数
-      desc: 连接器处理过程中发生的错误请求累计总数，反映服务可靠性问题
+      desc: 连接器自启动以来累计发生的错误请求数，反映服务可靠性问题。
     tomcat_connector_bytes_received:
       name: 接收字节总数
       desc: 连接器从客户端接收的字节数据累计总量，反映网络输入流量
     tomcat_connector_bytes_sent:
       name: 发送字节总数
-      desc: 连接器向客户端发送的字节数据累计总量，反映网络输出流量
+      desc: 连接器自启动以来累计向客户端发送的字节数，反映网络输出流量。
     tomcat_connector_processing_time:
       name: 总处理时间
       desc: 连接器处理所有请求花费的时间累计总量，反映处理性能
@@ -57,13 +57,13 @@ monitor_object_metric:
       desc: JVM特定内存池初始分配的内存大小，反映启动时内存配置
     tomcat_connector_request_count_rate:
       name: 请求处理速率
-      desc: 基于5分钟时间窗口计算的每秒请求处理速率，反映实时吞吐量
+      desc: 近 5 分钟平均每秒处理的 HTTP 请求数，反映连接器吞吐。
     tomcat_connector_error_count_rate:
       name: 错误请求速率
-      desc: 基于5分钟时间窗口计算的每秒错误请求速率，反映服务稳定性趋势
+      desc: 近 5 分钟平均每秒发生的错误请求数，用于观察服务是否持续报错。
     tomcat_connector_bytes_sent_rate:
-      name: 数据发送速率
-      desc: 基于5分钟时间窗口计算的每秒数据发送速率，反映网络输出流量趋势
+      name: 发送吞吐
+      desc: 近 5 分钟平均每秒向客户端发送的字节数。
     tomcat_connector_current_thread_utilization:
       name: 线程池利用率
       desc: 当前忙碌线程数占最大线程数的百分比，反映线程资源使用效率

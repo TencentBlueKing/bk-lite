@@ -85,7 +85,10 @@ export default function SigninClient({
   const error = searchParams?.error || "";
   const third_login = searchParams?.third_login;
   const thirdLogin = searchParams?.thirdLogin;
-  const thirdLoginCode = getLegacyThirdLoginCode(callbackUrl);
+  const thirdLoginCode = getLegacyThirdLoginCode(
+    callbackUrl,
+    typeof window !== 'undefined' ? window.location.origin : undefined,
+  );
   const popup = searchParams?.popup;
   const thirdLoginFlag = resolveThirdLoginFlag(thirdLogin, third_login);
   const isPopupWindowMode = popup === 'true' || popup === '1';

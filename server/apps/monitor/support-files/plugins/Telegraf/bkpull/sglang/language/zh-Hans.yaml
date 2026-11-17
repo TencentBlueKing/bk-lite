@@ -15,7 +15,7 @@ monitor_object_metric:
       desc: 当前等待队列中的请求数量。
     sglang:token_usage_gauge:
       name: Token 用量比例
-      desc: KV/token 用量比例（0–1）。
+      desc: 当前 Token / KV 相关用量相对容量上限的占用比例。值域为 0–1（1 表示 100% 占满），配置告警阈值时请按 0–1 而非 0–100 填写。
     sglang:cache_hit_rate_gauge:
       name: 缓存命中率
       desc: Prefix cache 命中率（0–1）。

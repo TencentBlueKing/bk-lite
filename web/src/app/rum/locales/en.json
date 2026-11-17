@@ -389,7 +389,8 @@
       "routeDetail": "Route details",
       "sortByMetric": "Sort by {metric}",
       "rowCount": "{n} items",
-      "searchPlaceholder": "Search routes"
+      "searchPlaceholder": "Search routes",
+      "otherRoute": "Other (over the route limit)"
     },
     "errors": {
       "title": "Error tracking",

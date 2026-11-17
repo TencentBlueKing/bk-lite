@@ -31,6 +31,7 @@ from apps.cmdb.constants.field_constraints import (
 from apps.cmdb.display_field import ExcludeFieldsCache
 from apps.cmdb.graph.drivers.graph_client import GraphClient
 from apps.cmdb.language.service import is_truthy_flag
+from apps.cmdb.model_migrate.quick_filter import QUICK_FILTER_FIELD, quick_filter_from_row, stored_quick_filter
 from apps.cmdb.model_ops.extensions import get_model_enterprise_extension
 from apps.cmdb.models.field_group import FieldGroup
 from apps.cmdb.models.public_enum_library import PublicEnumLibrary
@@ -672,7 +673,10 @@ class ModelMigrate:
 
                     existing_attr = existing_attr_map.get(attr_id)
                     if existing_attr:
-                        # 命中同 attr_id：做配置更新而非重复追加。
+                        # 内置初始化不改环境里已经存在的字段，避免覆盖客户改过的类型和约束。
+                        # 模型配置导入仍按种子表合并同 attr_id。
+                        if self.is_pre:
+                            continue
                         if self._merge_existing_attr_config(existing_attr, attr):
                             model_updated_attr_count += 1
                         continue
@@ -1029,7 +1033,11 @@ class ModelMigrate:
                 )
 
     def migrate_associations(self):
-        """初始模型关联"""
+        """初始模型关联。
+
+        quick_filter 以 Excel 为准：列存在时，新建和已有关联都写成该值。
+        列不存在时新建为关，已有关联保持原样，避免旧表导入把已打开的开关关掉。
+        """
         allowed_fields = {
             "src_model_id",
             "dst_model_id",
@@ -1038,6 +1046,7 @@ class ModelMigrate:
             "mapping",
             "on_delete",
             "is_pre",
+            QUICK_FILTER_FIELD,
         }
         associations = []
         for model in self.model_config.get("models", []):
@@ -1051,18 +1060,46 @@ class ModelMigrate:
         with GraphClient() as ag:
             models, _ = ag.query_entity(MODEL, [])
             model_map = {i["model_id"]: i["_id"] for i in models}
-            asso_list = [
-                dict(
-                    dst_id=model_map.get(i["dst_model_id"]),
-                    src_id=model_map.get(i["src_model_id"]),
-                    model_asst_id=f"{i['src_model_id']}_{i['asst_id']}_{i['dst_model_id']}",
-                    **{key: value for key, value in i.items() if key in allowed_fields},
+            asso_list = []
+            quick_filters = {}
+            for row in associations:
+                src_id = model_map.get(row["src_model_id"])
+                dst_id = model_map.get(row["dst_model_id"])
+                if not src_id or not dst_id:
+                    continue
+                model_asst_id = f"{row['src_model_id']}_{row['asst_id']}_{row['dst_model_id']}"
+                props = {key: value for key, value in row.items() if key in allowed_fields}
+                flag = quick_filter_from_row(row)
+                props[QUICK_FILTER_FIELD] = False if flag is None else flag
+                if flag is not None:
+                    quick_filters[model_asst_id] = flag
+                asso_list.append(
+                    dict(
+                        dst_id=dst_id,
+                        src_id=src_id,
+                        model_asst_id=model_asst_id,
+                        **props,
+                    )
                 )
-                for i in associations
-                if model_map.get(i["src_model_id"]) and model_map.get(i["dst_model_id"])
-            ]
             result = ag.batch_create_edge(MODEL_ASSOCIATION, MODEL, MODEL, asso_list, "model_asst_id")
+            self._apply_quick_filters(ag, quick_filters)
         return result
+
+    @staticmethod
+    def _apply_quick_filters(ag, quick_filters: dict):
+        if not quick_filters:
+            return
+        edges = ag.query_edge(MODEL_ASSOCIATION, [])
+        if isinstance(edges, tuple):
+            edges = edges[0]
+        for edge in edges or []:
+            if not isinstance(edge, dict):
+                continue
+            model_asst_id = edge.get("model_asst_id")
+            target = quick_filters.get(model_asst_id)
+            if target is None or stored_quick_filter(edge.get(QUICK_FILTER_FIELD)) is target:
+                continue
+            ag.set_edge_properties(edge["_id"], {QUICK_FILTER_FIELD: target})
 
     def main(self):
         # 创建模型分类

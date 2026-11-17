@@ -205,7 +205,7 @@ def check_scaling_capacity(namespace, replicas: int, resource_requirements=None,
 
 
 @tool()
-def check_pod_distribution(deployment_name, namespace, config: RunnableConfig = None):
+def check_pod_distribution(deployment_name, namespace, config: RunnableConfig = None, instance_name=None):
     """
     检查Pod分布情况，评估高可用性和单点故障风险
 
@@ -257,6 +257,10 @@ def check_pod_distribution(deployment_name, namespace, config: RunnableConfig = 
     - 单副本应用无需关注分布问题
     - StatefulSet的Pod分布受Volume Zone影响
     """
+    config, instance_error = prepare_point_instance(config, instance_name)
+    if instance_error:
+        return instance_error
+
     prepare_context(config)
 
     try:

@@ -1,5 +1,5 @@
 import React from 'react';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import MatchRule from '../../(pages)/settings/components/matchRule';
 import { invalidMatchRules, ruleFields, isMultiOperator } from '../../utils/multivalueRules';
@@ -33,9 +33,10 @@ describe('字段类型决定编辑控件及可用操作符', () => {
       'alarmCommon.multiOperators.any_ofList','alarmCommon.multiOperators.all_of','alarmCommon.multiOperators.none_ofList']);
     fireEvent.click(screen.getByText('alarmCommon.multiOperators.any_ofList'));
     expect(onChange).toHaveBeenLastCalledWith([[{key:'push_source_ids',operator:'any_of',value:['a','b']}]]);
-    const input=screen.getByRole('combobox',{name:'alarmCommon.pushSourceInput'});
+    const input=screen.getByRole('combobox',{name:'alarmCommon.pushSourceSelect'});
     fireEvent.change(input,{target:{value:'001'}});fireEvent.keyDown(input,{key:'Enter',keyCode:13});
     expect(onChange).toHaveBeenLastCalledWith([[{key:'push_source_ids',operator:'any_of',value:['a','b','001']}]]);
+    await act(async () => { await Promise.resolve(); });
   });
   it.each(['source_pk','level_id','source_id'])('Alert 不补入无效字段 %s', async key => {
     render(<MatchRule scope="assignment" value={[[{key,operator:'eq',value:'1'}]]} />);

@@ -29,6 +29,7 @@ from apps.cmdb.display_field.constants import DISPLAY_FIELD_TYPES, DISPLAY_SUFFI
 from apps.cmdb.graph.drivers.graph_client import GraphClient
 from apps.cmdb.graph.validators import MAX_BATCH_UPDATE_PROPERTY_VALUES
 from apps.cmdb.language.service import catalog_display_name, mark_catalog_name_customized
+from apps.cmdb.model_migrate.quick_filter import parse_quick_filter_cell
 from apps.cmdb.model_ops.extensions import get_model_enterprise_extension, is_file_attr_type
 from apps.cmdb.models import CREATE_INST, DELETE_INST, UPDATE_INST, FieldGroup
 from apps.cmdb.models.change_record import MODEL_MANAGEMENT_CHANGE
@@ -677,6 +678,7 @@ class ModelManage(object):
                             mapping=assoc.get("mapping", "1:n"),
                             on_delete=assoc.get("on_delete", "none"),
                             is_pre=assoc.get("is_pre", False),
+                            quick_filter=parse_quick_filter_cell(assoc.get("quick_filter")),
                             model_asst_id=new_model_asst_id,
                         )
                     except BaseAppException:
@@ -1542,6 +1544,37 @@ class ModelManage(object):
         return query_association_info(model_asst_id)
 
     @staticmethod
+    def set_association_context_link(model_asst_id, context_link):
+        """把模型关系的 context_link 写成 follow/include/exclude，并排队重算应用上下文。"""
+        asso = ModelManage.model_association_info_search(model_asst_id)
+        if not asso:
+            raise BaseAppException("association not found!")
+        from apps.cmdb.services.ci_context_policy import normalize_context_link
+
+        link = normalize_context_link(context_link)
+        with GraphClient() as ag:
+            updated = ag.set_edge_properties(asso["_id"], {"context_link": link})
+        from apps.cmdb.services.ci_context import schedule_ci_context_pending
+
+        schedule_ci_context_pending(model_asst_ids=[model_asst_id])
+        if isinstance(updated, dict) and updated:
+            return updated
+        return {"model_asst_id": model_asst_id, "context_link": link}
+
+    @staticmethod
+    def set_association_quick_filter(model_asst_id, enabled):
+        """资产列表顶部是否按这条关联的对端实例筛选。"""
+        from apps.cmdb.model_migrate.quick_filter import parse_quick_filter_cell
+
+        asso = ModelManage.model_association_info_search(model_asst_id)
+        if not asso:
+            raise BaseAppException("association not found!")
+        flag = enabled if isinstance(enabled, bool) else parse_quick_filter_cell(enabled)
+        with GraphClient() as ag:
+            ag.set_edge_properties(asso["_id"], {"quick_filter": flag})
+        return {"model_asst_id": model_asst_id, "quick_filter": flag}
+
+    @staticmethod
     def model_association_search(
         model_id: str,
         *,
@@ -2001,8 +2034,8 @@ class ModelManage(object):
         ATTR_HEADERS_CN.extend(extra_attr_headers_cn)
         ATTR_HEADERS_EN.extend(extra_attr_headers_en)
 
-        ASSO_HEADERS_CN = ["源模型", "目标模型", "关联关系", "源-目标约束", "自动关联规则"]
-        ASSO_HEADERS_EN = ["src_model_id", "dst_model_id", "asst_id", "mapping", "auto_relation_rule"]
+        ASSO_HEADERS_CN = ["源模型", "目标模型", "关联关系", "源-目标约束", "自动关联规则", "快捷筛选"]
+        ASSO_HEADERS_EN = ["src_model_id", "dst_model_id", "asst_id", "mapping", "auto_relation_rule", "quick_filter"]
         PUBLIC_ENUM_LIBRARY_HEADERS_CN = [
             "公共选项库ID",
             "公共选项库名称",
@@ -2157,6 +2190,7 @@ class ModelManage(object):
                                 asso.get("asst_id", ""),
                                 asso.get("mapping", ""),
                                 rule_set_value,
+                                parse_quick_filter_cell(asso.get("quick_filter")),
                             ]
                         )
 

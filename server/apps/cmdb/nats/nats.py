@@ -2055,6 +2055,30 @@ def network_topology_among_uuids(inst_uuids=None, user_info=None, **kwargs):
 
 
 @nats_client.register
+def incident_impact_topology(inst_uuids=None, user_info=None, **kwargs):
+    """事故影响拓扑。只查种子上的 run / connect，失败时不把图库异常正文带回调用方。"""
+    from apps.cmdb.services.incident_impact_topology import query_incident_impact_topology
+    from apps.core.logger import safe_exception_info
+
+    raw = inst_uuids if inst_uuids is not None else kwargs.get("inst_uuids")
+    if raw in (None, ""):
+        raw = []
+    if not isinstance(raw, list):
+        return {"result": False, "message": "", "data": {"nodes": [], "links": [], "truncated": False}}
+    try:
+        data = query_incident_impact_topology(raw, user_info=user_info)
+    except Exception as exc:
+        logger.error(
+            "event=incident_impact_topology_failed failed_stage=query error_type=%s seed_count=%s",
+            type(exc).__name__,
+            len(raw) if isinstance(raw, list) else 0,
+            exc_info=safe_exception_info(exc),
+        )
+        return {"result": False, "message": "", "data": {"nodes": [], "links": [], "truncated": False}}
+    return {"result": True, "message": "", "data": data}
+
+
+@nats_client.register
 def network_topology_by_uuid(inst_uuid=None, depth=1, node_limit=None, user_info=None, **kwargs):
     """单中心按跳数展开接口直连；嵌入固定 depth=1，调用方不传模型 ID。"""
     from apps.cmdb.constants.constants import NETWORK_STATUS_TOPOLOGY_DEFAULT_NODES, NETWORK_STATUS_TOPOLOGY_MAX_NODES

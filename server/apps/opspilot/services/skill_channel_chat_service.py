@@ -24,6 +24,7 @@ from apps.opspilot.metis.llm.chain.token_utils import count_text_tokens
 from apps.opspilot.metis.llm.common.llm_client_factory import DEFAULT_CHAT_TEMPERATURE
 from apps.opspilot.models import ChatAttachment, LLMSkill, SkillChannel, SkillConversation, SkillConversationMessage
 from apps.opspilot.services.caller_identity import CALLER_IDENTITY_CONFIG_KEY, CallerIdentityError, capture_caller_identity
+from apps.opspilot.services.conversation_skill_package import AUTHORING_EXTRA_KEY, authoring_context
 from apps.opspilot.services.chat_attachment_service import (
     ChatAttachmentError,
     attachment_token_budget,
@@ -1474,6 +1475,8 @@ def stream_skill_channel_chat(
     page_context=None,
     attachment_ids=None,
     distribute_file_ids=None,
+    choice_id: str | None = None,
+    choice_option: str | None = None,
 ) -> StreamingHttpResponse:
     skill = channel.skill
     persist_text = persistable_user_message_text(user_message)
@@ -1574,6 +1577,12 @@ def stream_skill_channel_chat(
     else:
         current_ip = request.META.get("REMOTE_ADDR", "")
 
+    if channel.channel_type in PLATFORM_OR_WEB:
+        params[AUTHORING_EXTRA_KEY] = authoring_context(user, channel.channel_type)
+    if choice_id:
+        params["choice_id"] = str(choice_id)
+    if choice_option:
+        params["choice_option"] = str(choice_option)
     base_response = stream_agui_chat(params, skill.name, ingest_kwargs, current_ip, persist_text, skill_id=skill.id)
     return _wrap_stream_persist_assistant(base_response, conversation.id)
 

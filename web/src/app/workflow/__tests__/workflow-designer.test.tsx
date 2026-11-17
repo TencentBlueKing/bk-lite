@@ -224,6 +224,11 @@ describe('编排中心正式设计器', { timeout: 30000 }, () => {
     expect(await screen.findByRole('dialog', { name: /选择触发器/ })).not.toBeNull();
     expect(screen.getByText(/每个流程先从一个触发器开始/)).not.toBeNull();
     expect(screen.getByRole('button', { name: /表单触发器/ })).not.toBeNull();
+    expect(screen.getByText('由人工填写表单后启动流程')).not.toBeNull();
+    expect(screen.getByText('按计划时间自动启动流程')).not.toBeNull();
+    expect(screen.getByText('由外部 HTTP 回调启动流程')).not.toBeNull();
+    expect(screen.getByText('由 NATS 事件消息启动流程')).not.toBeNull();
+    expect(screen.queryByText('创建一个流程入口')).toBeNull();
     expect(screen.queryByRole('button', { name: /系统通知/ })).toBeNull();
     expect(screen.queryByRole('button', { name: /条件分支/ })).toBeNull();
   });

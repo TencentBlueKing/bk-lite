@@ -45,6 +45,40 @@ def _clear():
     cache.clear()
 
 
+@register_provider
+class _ScopeSpyProvider(EnrichmentProvider):
+    provider_type = "scope_spy_test"
+    configs = []
+
+    def fetch_batch(self, keys, config):
+        type(self).configs.append(config.get("_ci_context_scopes"))
+        return {k: [{"application.inst_name": "支付"}] for k in keys}
+
+
+def test_engine_passes_ci_context_scopes_from_projection():
+    from django.core.cache import cache
+
+    cache.clear()
+    _ScopeSpyProvider.configs = []
+    events = [
+        {
+            "resource_type": "host",
+            "resource_id": "63e4a531-b6bb-43cc-9eae-8eb8a09f795e",
+            "cmdb_id": "63e4a531-b6bb-43cc-9eae-8eb8a09f795e",
+            "enrichment": {},
+            "team": [1],
+        }
+    ]
+    rule = _rule(
+        provider_type="scope_spy_test",
+        input_binding={"model_id": "resource_type", "inst_uuid": "cmdb_id"},
+        output_projection=[{"source": "application.inst_name"}],
+    )
+    EnrichmentEngine(rules=[rule]).enrich_batch(events)
+    assert _ScopeSpyProvider.configs == [["application"]]
+    assert events[0]["enrichment"]["cmdb"] == {"application.inst_name": "支付"}
+
+
 def test_enrich_writes_namespaced_field():
     events = [{"resource_type": "host", "resource_id": "1", "enrichment": {}, "team": [1]}]
     EnrichmentEngine(rules=[_rule()]).enrich_batch(events)
@@ -268,6 +302,23 @@ def test_no_reported_and_no_enrichment_marks_owner_source_none():
     assert events[0]["enrichment_meta"]["owner_source"] == {"kind": "none"}
 
 
+def test_owner_fields_follow_projection_alias(monkeypatch):
+    _RecordProvider.records = [{"inst_name": "host-a", "application.operator": [1], "operator": [9]}]
+    _stub_usernames(monkeypatch, {1: "alice", 9: "host-ops"})
+    events = [{"resource_type": "host", "resource_id": "1", "enrichment": {}, "team": [1], "assignee": ["zoe"]}]
+    EnrichmentEngine(
+        rules=[
+            _owner_rule(
+                id=7,
+                provider_config={"owner_fields": ["app_operator"]},
+                output_projection=[{"source": "application.operator", "as": "app_operator"}],
+            )
+        ]
+    ).enrich_batch(events)
+    assert events[0]["assignee"] == ["alice"]
+    assert events[0]["enrichment_meta"]["owner_source"] == {"kind": "enrichment", "rule_ids": [7]}
+
+
 def test_owner_fields_configuration_rejects_duplicates_and_extras():
     from rest_framework.exceptions import ValidationError
 
@@ -278,8 +329,18 @@ def test_owner_fields_configuration_rejects_duplicates_and_extras():
         "operator",
         "bak_operator",
     ]
+    assert serializer.validate_provider_config({"owner_fields": ["application.operator", "app_operator"]})["owner_fields"] == [
+        "application.operator",
+        "app_operator",
+    ]
     assert serializer.validate_provider_config({}) == {}
-    for invalid in (["operator", "operator"], ["bad field"], ["a", "b", "c", "d", "e", "f"], "operator"):
+    for invalid in (
+        ["operator", "operator"],
+        ["bad field"],
+        ["application."],
+        ["a", "b", "c", "d", "e", "f"],
+        "operator",
+    ):
         with pytest.raises(ValidationError):
             serializer.validate_provider_config({"owner_fields": invalid})
 
@@ -385,6 +446,37 @@ def test_provider_failed_key_is_not_negative_cached(settings):
 
     assert _FlakyProvider.calls == 2
     assert second[0]["enrichment"]["cmdb"] == {"owner": "alice"}
+
+
+def test_provider_failed_key_still_writes_host_records(settings):
+    from django.core.cache import cache
+
+    from apps.alerts.enrichment.providers.base import FetchBatchResult
+
+    settings.CACHES = {"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}}
+    cache.close()
+
+    class _PartialProvider(EnrichmentProvider):
+        provider_type = "partial_overlay_test"
+
+        def fetch_batch(self, keys, config):
+            return FetchBatchResult(
+                records={key: [{"owner": "alice", "ip_addr": "10.11.27.147"}] for key in keys},
+                failed_keys=set(keys),
+            )
+
+    register_provider(_PartialProvider)
+    events = [{"resource_type": "host", "resource_id": "1", "enrichment": {}, "team": [1]}]
+    rule = _rule(
+        provider_type="partial_overlay_test",
+        output_projection=[{"source": "owner"}, {"source": "ip_addr"}, {"source": "application.inst_name"}],
+    )
+    EnrichmentEngine(rules=[rule]).enrich_batch(events)
+
+    assert events[0]["enrichment"]["cmdb"] == {"owner": "alice", "ip_addr": "10.11.27.147"}
+    binding_key = build_binding_key({"model_id": "host", "_id": "1"})
+    provider_config = {"_authorized_team_ids": [1]}
+    assert cache.get(EnrichmentEngine._cache_key("partial_overlay_test", provider_config, binding_key)) is None
 
 
 def test_provider_circuit_breaker_skips_repeated_failure(settings):

@@ -3,6 +3,7 @@ from rest_framework import routers
 
 from apps.cmdb.open_api import views as open_views
 from apps.cmdb.views.change_record import ChangeRecordViewSet
+from apps.cmdb.views.change_record_retention import ChangeRecordRetentionView
 from apps.cmdb.views.classification import ClassificationViewSet
 from apps.cmdb.views.collect import CollectModelViewSet, OidModelViewSet
 from apps.cmdb.views.collect_reconcile import CollectReconcileViewSet
@@ -11,6 +12,7 @@ from apps.cmdb.views.config_file import ConfigFileVersionViewSet
 from apps.cmdb.views.custom_collect_plugin import CustomCollectPluginViewSet
 from apps.cmdb.views.custom_reporting import CustomReportingIngestViewSet, CustomReportingTaskViewSet
 from apps.cmdb.views.field_group import FieldGroupViewSet
+from apps.cmdb.views.governance import GovernanceViewSet
 from apps.cmdb.views.instance import InstanceViewSet
 from apps.cmdb.views.k8s_setup import K8sSetupOpenViewSet, K8sSetupViewSet
 from apps.cmdb.views.model import ModelViewSet
@@ -29,6 +31,7 @@ router = routers.DefaultRouter()
 router.register(r"api/transfer_tasks", TransferTaskViewSet, basename="transfer_tasks")
 router.register(r"api/classification", ClassificationViewSet, basename="classification")
 router.register(r"api/model", ModelViewSet, basename="model")
+router.register(r"api/governance", GovernanceViewSet, basename="governance")
 router.register(r"api/instance", InstanceViewSet, basename="instance")
 router.register(r"api/change_record", ChangeRecordViewSet, basename="change_record")
 router.register(r"api/collect", CollectModelViewSet, basename="collect")
@@ -98,4 +101,10 @@ open_api_patterns = [
     ),
 ]
 
-urlpatterns = open_api_patterns + router.urls
+urlpatterns = (
+    [
+        path("api/change_record_retention/", ChangeRecordRetentionView.as_view()),
+    ]
+    + open_api_patterns
+    + router.urls
+)

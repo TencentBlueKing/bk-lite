@@ -30,11 +30,11 @@ export const samePluginId = (
   return String(left) === String(right);
 };
 
-export type PolicyGroupAccessRule = {
+export interface PolicyGroupAccessRule {
   plugin_id?: string | number;
   collect_type?: string;
   [key: string]: unknown;
-};
+}
 
 export const isPolicyGroupRuleApplicable = (
   rule: PolicyGroupAccessRule,

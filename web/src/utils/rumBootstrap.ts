@@ -1,9 +1,9 @@
-export type RumBootstrapConfig = {
+export interface RumBootstrapConfig {
   app: string;
   endpoint: string;
   apiKey: string;
   environment: string;
-};
+}
 
 const browserEnv = (): Record<string, string | undefined> => ({
   // Next only inlines a direct `process.env.NEXT_PUBLIC_*` access.

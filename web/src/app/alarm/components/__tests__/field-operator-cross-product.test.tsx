@@ -66,11 +66,10 @@ describe('独立业务矩阵：五入口 × 每个字段 × 每种条件', () =>
       fireEvent.click(await screen.findByText(`${key}:B,生产 (ID: 8)`));
       expectedValue = [`${key}:A`, `${key}:B,生产`];
     } else if (key === 'push_source_id' || key === 'push_source_ids') {
-      const input = screen.getByRole('combobox', { name: 'alarmCommon.pushSourceInput' });
+      const input = screen.getByRole('combobox', { name: 'alarmCommon.pushSourceSelect' });
       fireEvent.change(input, { target: { value: `${key}:B,生产` } });
       fireEvent.keyDown(input, { key: 'Enter', keyCode: 13 });
       expectedValue = [`${key}:A`, `${key}:B,生产`];
-      expect(input.getAttribute('aria-expanded')).toBe('false');
     } else if (multi) {
       expect(document.querySelectorAll('.ant-select-multiple')).toHaveLength(1);
       const input = screen.getByRole('combobox', { name: 'alarmCommon.multiValueInput' });

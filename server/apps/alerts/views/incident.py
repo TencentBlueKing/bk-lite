@@ -13,6 +13,7 @@ from apps.alerts.constants.constants import LogAction, LogTargetType
 from apps.alerts.filters import IncidentModelFilter
 from apps.alerts.models.models import Alert, Incident
 from apps.alerts.serializers import AlertModelSerializer, IncidentModelSerializer
+from apps.alerts.service.incident_impact_topology import build_incident_impact_topology
 from apps.alerts.service.incident_operator import IncidentOperator
 from apps.alerts.utils.i18n import alerts_message
 from apps.alerts.utils.operator_log import record_operator_log
@@ -464,3 +465,32 @@ class IncidentModelViewSet(AuthViewSet):
             },
         )
         return Response(serializer.data)
+
+    @HasPermission("Incidents-View")
+    @action(methods=["post"], detail=True, url_path="impact_topology")
+    def impact_topology(self, request, *args, **kwargs):
+        incident, error_response = self._get_authorized_incident(
+            request,
+            check_view_permission=True,
+            denied_message="您没有权限查看此事故",
+        )
+        if error_response is not None:
+            return error_response
+        payload = request.data if isinstance(request.data, dict) else {}
+        if "inst_uuids" in payload and not isinstance(payload.get("inst_uuids"), list):
+            return WebUtils.response_error(error_message=alerts_message(request, "error.impact_topology_inst_uuids_invalid"))
+        requested = payload.get("inst_uuids") if "inst_uuids" in payload else None
+        return WebUtils.response_success(
+            build_incident_impact_topology(
+                request,
+                incident.incident_id,
+                self._impact_topology_alerts(request, incident),
+                requested,
+            )
+        )
+
+    def _impact_topology_alerts(self, request, incident):
+        queryset = incident.alert.all().order_by("id")
+        if not getattr(request.user, "is_superuser", False):
+            queryset = queryset.filter(id__in=self._get_allowed_alert_ids())
+        return list(queryset)

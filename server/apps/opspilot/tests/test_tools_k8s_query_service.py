@@ -20,9 +20,9 @@ from apps.opspilot.metis.llm.tools.kubernetes import query as q
 @pytest.fixture
 def apis():
     core, apps = MagicMock(), MagicMock()
-    with patch.object(q, "prepare_context", return_value=None), \
-         patch.object(q.client, "CoreV1Api", return_value=core), \
-         patch.object(q.client, "AppsV1Api", return_value=apps):
+    with patch.object(q, "prepare_context", return_value=None), patch.object(q.client, "CoreV1Api", return_value=core), patch.object(
+        q.client, "AppsV1Api", return_value=apps
+    ):
         yield core, apps
 
 
@@ -37,16 +37,14 @@ def _pod(name, phase="Running", statuses=None, ip="1.2.3.4", node="n1", ts=None)
 # ---------------- pure helpers ----------------
 class TestPureHelpers:
     def test_ready_status(self):
-        pod = _pod("p", statuses=[SimpleNamespace(ready=True, restart_count=0),
-                                  SimpleNamespace(ready=False, restart_count=0)])
+        pod = _pod("p", statuses=[SimpleNamespace(ready=True, restart_count=0), SimpleNamespace(ready=False, restart_count=0)])
         assert q._get_pod_ready_status(pod) == "1/2"
 
     def test_ready_status_no_containers(self):
         assert q._get_pod_ready_status(_pod("p", statuses=None)) == "0/0"
 
     def test_restart_count_sum(self):
-        pod = _pod("p", statuses=[SimpleNamespace(ready=True, restart_count=2),
-                                  SimpleNamespace(ready=True, restart_count=3)])
+        pod = _pod("p", statuses=[SimpleNamespace(ready=True, restart_count=2), SimpleNamespace(ready=True, restart_count=3)])
         assert q._get_pod_restart_count(pod) == 5
 
     def test_restart_count_none(self):
@@ -60,8 +58,7 @@ class TestPureHelpers:
         assert q._calculate_age(None) == "unknown"
 
     def test_external_ip_nodeport(self):
-        svc = SimpleNamespace(spec=SimpleNamespace(type="NodePort", external_i_ps=None),
-                              status=SimpleNamespace(load_balancer=None))
+        svc = SimpleNamespace(spec=SimpleNamespace(type="NodePort", external_i_ps=None), status=SimpleNamespace(load_balancer=None))
         assert q._get_external_ip(svc) == "<nodes>"
 
     def test_external_ip_loadbalancer(self):
@@ -73,8 +70,7 @@ class TestPureHelpers:
         assert q._get_external_ip(svc) == "9.9.9.9"
 
     def test_node_internal_ip(self):
-        node = SimpleNamespace(status=SimpleNamespace(
-            addresses=[SimpleNamespace(type="InternalIP", address="10.0.0.5")]))
+        node = SimpleNamespace(status=SimpleNamespace(addresses=[SimpleNamespace(type="InternalIP", address="10.0.0.5")]))
         assert q._get_node_internal_ip(node) == "10.0.0.5"
         assert q._get_node_external_ip(node) == "<none>"
 
@@ -85,15 +81,16 @@ class TestGetPods:
         core, _ = apis
         cstat = [SimpleNamespace(ready=True, restart_count=1)]
         core.list_namespaced_pod.return_value = SimpleNamespace(items=[_pod("p1", statuses=cstat)])
-        out = json.loads(q.kubectl_get_resources.invoke({
-            "resource_type": "po", "namespace": "default",
-            "label_selector": "app=nginx", "field_selector": "status.phase=Running", "config": {}}))
+        out = json.loads(
+            q.kubectl_get_resources.invoke(
+                {"resource_type": "po", "namespace": "default", "label_selector": "app=nginx", "field_selector": "status.phase=Running", "config": {}}
+            )
+        )
         assert out["total"] == 1
         assert out["items"][0]["ready"] == "1/1"
         assert out["items"][0]["restarts"] == 1
         assert out["items"][0]["status"] == "Running"
-        core.list_namespaced_pod.assert_called_once_with(
-            namespace="default", label_selector="app=nginx", field_selector="status.phase=Running")
+        core.list_namespaced_pod.assert_called_once_with(namespace="default", label_selector="app=nginx", field_selector="status.phase=Running")
 
     def test_all_namespaces(self, apis):
         core, _ = apis
@@ -163,3 +160,73 @@ class TestDispatcherEdges:
         out = json.loads(q.kubectl_get_resources.invoke({"resource_type": "pods", "config": {}}))
         assert "查询资源失败" in out["error"]
         assert out["resource_type"] == "pods"
+
+
+def test_kubectl_get_resources_routes_explicit_second_cluster(mocker):
+    from apps.opspilot.metis.llm.tools.kubernetes.query import kubectl_get_resources
+
+    loaded = []
+    mocker.patch(
+        "apps.opspilot.metis.llm.tools.kubernetes.utils.config.load_kube_config",
+        side_effect=lambda config_file: loaded.append(config_file.read()),
+    )
+    mocker.patch("apps.opspilot.metis.llm.tools.kubernetes.utils.validate_kubeconfig_api_servers")
+    mocker.patch("apps.opspilot.metis.llm.tools.kubernetes.utils._preprocess_kubeconfig", side_effect=lambda value: value)
+    mocker.patch("apps.opspilot.metis.llm.tools.kubernetes.query._get_pods", side_effect=lambda *args: loaded[-1])
+    config = {
+        "configurable": {
+            "kubernetes_instances": [
+                {"id": "one", "name": "first", "kubeconfig_data": "cluster-first"},
+                {"id": "two", "name": "second", "kubeconfig_data": "cluster-second"},
+            ]
+        }
+    }
+
+    result = kubectl_get_resources.invoke({"resource_type": "pods", "instance_name": "second"}, config=config)
+
+    assert result == "cluster-second"
+    assert loaded == ["cluster-second"]
+
+
+def test_kubectl_get_resources_refuses_ambiguous_cluster(mocker):
+    from apps.opspilot.metis.llm.tools.kubernetes.query import kubectl_get_resources
+
+    prepare = mocker.patch("apps.opspilot.metis.llm.tools.kubernetes.query.prepare_context")
+    config = {
+        "configurable": {
+            "kubernetes_instances": [
+                {"id": "one", "name": "first", "kubeconfig_data": "cluster-first"},
+                {"id": "two", "name": "second", "kubeconfig_data": "cluster-second"},
+            ]
+        }
+    }
+    result = json.loads(kubectl_get_resources.invoke({"resource_type": "pods"}, config=config))
+    assert result["instance_names"] == ["first", "second"]
+    prepare.assert_not_called()
+
+
+def test_explicit_analysis_cluster_overrides_previously_bound_id(mocker):
+    from apps.opspilot.metis.llm.tools.kubernetes.analysis import check_kubernetes_daemonsets
+
+    loaded = []
+    mocker.patch(
+        "apps.opspilot.metis.llm.tools.kubernetes.utils.config.load_kube_config", side_effect=lambda config_file: loaded.append(config_file.read())
+    )
+    mocker.patch("apps.opspilot.metis.llm.tools.kubernetes.utils.validate_kubeconfig_api_servers")
+    mocker.patch("apps.opspilot.metis.llm.tools.kubernetes.utils._preprocess_kubeconfig", side_effect=lambda value: value)
+    api = mocker.patch("apps.opspilot.metis.llm.tools.kubernetes.analysis.client.AppsV1Api").return_value
+    api.list_daemon_set_for_all_namespaces.return_value.items = []
+    config = {
+        "configurable": {
+            "instance_id": "one",
+            "instance_name": "first",
+            "kubernetes_instances": [
+                {"id": "one", "name": "first", "kubeconfig_data": "cluster-first"},
+                {"id": "two", "name": "second", "kubeconfig_data": "cluster-second"},
+            ],
+        }
+    }
+    result = json.loads(check_kubernetes_daemonsets.invoke({"instance_name": "second"}, config=config))
+    assert result["cluster_name"] == "second"
+    assert loaded == ["cluster-second"]
+    assert config["configurable"]["instance_id"] == "one"

@@ -97,3 +97,29 @@ def test_host_resource_top_handler_empty_instance_ids_does_not_fallback(monkeypa
     monkeypatch.setattr(nm, "VictoriaMetricsAPI", FailVM)
     out = nm.get_host_resource_top("cpu", instance_ids=[], user_info={"user": "u", "team": 1})
     assert out == {"result": True, "data": [], "message": ""}
+
+
+def test_host_resource_top_organization_kwarg_does_not_widen_actor_scope(monkeypatch):
+    seen = {}
+
+    def scope(user_info):
+        seen["team"] = user_info.get("team")
+        seen["scope_source"] = user_info.get("team")
+        return None, user_info.get("team"), False, frozenset({user_info.get("team")}), False, None
+
+    def instances(user_info, scope_ids):
+        seen["scope_ids"] = set(scope_ids)
+        return {}, None
+
+    monkeypatch.setattr(nm, "_get_nats_actor_scope", scope)
+    monkeypatch.setattr(nm, "_get_authorized_monitor_instances", instances)
+
+    out = nm.get_host_resource_top(
+        "cpu",
+        organization=99,
+        user_info={"user": "u", "team": 1},
+    )
+
+    assert out == {"result": True, "data": [], "message": ""}
+    assert seen["team"] == 1
+    assert seen["scope_ids"] == {1}

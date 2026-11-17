@@ -7,6 +7,12 @@ def test_project_selects_and_renames():
     assert project(records, proj, "first") == {"owner": "alice", "biz": "pay"}
 
 
+def test_project_keeps_dotted_alias():
+    records = [{"application.inst_name": "ops-portal"}]
+    proj = [{"source": "application.inst_name", "as": "application.inst_name"}]
+    assert project(records, proj, "first") == {"application.inst_name": "ops-portal"}
+
+
 def test_empty_projection_does_not_expose_provider_fields():
     records = [{"a": 1, "b": 2}]
     assert project(records, [], "first") == {}

@@ -109,7 +109,7 @@
       "artifactDownload": "Download {filename}",
       "startedBySystem": {
         "scheduler": "Scheduled trigger",
-        "mvpVerifier": "MVP verifier",
+        "mvpVerifier": "Acceptance account",
         "openapi": "OpenAPI"
       },
       "refresh": "Refresh execution records",
@@ -619,6 +619,10 @@
       "loadingWorkflow": "Loading workflow",
       "triggerGroupHint": "Define when the workflow starts and what input it receives.",
       "createEntry": "Create a workflow entry",
+      "formTriggerHint": "Start the workflow after someone submits a form",
+      "scheduleTriggerHint": "Start the workflow on a schedule",
+      "webhookTriggerHint": "Start the workflow from an external HTTP callback",
+      "natsTriggerHint": "Start the workflow from a NATS event message",
       "actionGroupHint": "Invoke Job Platform and other registered operations capabilities.",
       "controlGroupHint": "Branch, join, or pause the workflow for a human decision.",
       "conditionBranch": "Conditional Branch",
@@ -644,7 +648,7 @@
       "publishEngineConflictHint": "The remote definition conflicts with this content. Refresh to check whether a previous publish registered but did not finish locally; do not force overwrite.",
       "publishUnavailableHint": "Publish service is temporarily unavailable. Retry later; do not assume the local version was published.",
       "pathExists": "This path already exists",
-      "unsupportedConnection": "The MVP supports connections between triggers, top-level nodes, and response nodes. Configure nested paths in control nodes.",
+      "unsupportedConnection": "Only triggers, top-level nodes, and response nodes can be connected. Configure nested paths inside control nodes.",
       "debugWorkflow": "Debug Workflow",
       "debugDetails": "Debug Details",
       "debugAgain": "Debug Again",

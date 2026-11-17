@@ -341,6 +341,41 @@ describe('APM 服务目录应用视角', () => {
 });
 
 describe('APM 服务目录服务视角与归档', () => {
+  it('保留期不足时 SLO 列显示原因而不是未达标', async () => {
+    const user = userEvent.setup();
+    api.getSlos.mockResolvedValue([
+      {
+        id: 'slo-retention',
+        name: '可用性',
+        service_id: 'service-bklite',
+        environment: 'production',
+        endpoint: '',
+        sli_type: 'availability',
+        objective: '99',
+        evaluation_window: 'rolling30d',
+        is_enabled: true,
+        service_namespace: 'bklite',
+        service_name: 'bklite-server',
+        current_rate: null,
+        budget_remaining: null,
+        data_state: 'no_data',
+        reason: '明细保留期不足',
+        started_at: null,
+        ended_at: '2026-07-31T06:25:01Z',
+        created_at: '2026-07-01T00:00:00Z',
+        updated_at: '2026-07-31T06:25:01Z',
+        created_by: 'admin',
+        updated_by: 'admin',
+      },
+    ]);
+    renderWithApmIntl(<ApmServicesPage />);
+
+    await user.click((await screen.findByRole('radio', { name: '服务' })).closest('label')!);
+
+    expect(await screen.findByText('明细保留期不足')).not.toBeNull();
+    expect(screen.queryByText(/未达标/)).toBeNull();
+  });
+
   it('切换到服务视角后展示 RED、SLO、语言与最高活跃告警', async () => {
     const user = userEvent.setup();
     renderWithApmIntl(<ApmServicesPage />);

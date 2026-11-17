@@ -45,8 +45,8 @@ monitor_object_metric:
         baseline
     mysql_max_used_connections:
       name: Max Used Connections
-      desc: Peak number of used connections since startup, used to assess connection
-        headroom
+      desc: Peak connections observed since MySQL startup, used to assess connection
+        pool headroom
     mysql_aborted_connects:
       name: Aborted Connections
       desc: Number of failed connection attempts, possibly due to permissions, network,
@@ -262,8 +262,7 @@ monitor_object_metric:
       desc: Total number of temporary tables (memory + disk) created
     mysql_created_tmp_memory_tables_rate:
       name: Memory Temporary Tables Create Rate
-      desc: Estimated rate of temporary tables created in memory, derived from total
-        temporary tables minus disk temporary tables
+      desc: Estimated rate of temporary tables created in memory.
     mysql_tmp_disk_table_ratio:
       name: Disk Temp Table Ratio
       desc: Ratio of temporary tables created on disk; high values usually indicate

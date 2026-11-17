@@ -5,8 +5,8 @@ from kubernetes import client
 from kubernetes.client import ApiException
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
-from apps.core.logger import opspilot_logger as logger
 
+from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.metis.llm.tools.kubernetes.instance_scope import prepare_point_instance, run_scan_tool
 from apps.opspilot.metis.llm.tools.kubernetes.utils import coerce_int, parse_resource_quantity, prepare_context
 
@@ -273,7 +273,9 @@ def diagnose_pending_pod_issues(pod_name, namespace, instance_name=None, config:
 
 
 @tool()
-def check_network_policies_blocking(source_namespace, source_pod=None, target_namespace=None, target_service=None, config: RunnableConfig = None):
+def check_network_policies_blocking(
+    source_namespace, source_pod=None, target_namespace=None, target_service=None, config: RunnableConfig = None, instance_name=None
+):
     """
     检查NetworkPolicy是否阻断流量
 
@@ -317,6 +319,10 @@ def check_network_policies_blocking(source_namespace, source_pod=None, target_na
     - NetworkPolicy默认是白名单模式（存在策略后默认deny）
     - 跨命名空间通信需要Egress和Ingress双向放行
     """
+    config, instance_error = prepare_point_instance(config, instance_name)
+    if instance_error:
+        return instance_error
+
     prepare_context(config)
 
     try:

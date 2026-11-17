@@ -12,7 +12,7 @@ from typing import Any
 
 import requests
 
-from apps.apm.adapters.errors import TelemetryQueryTooLarge, TelemetryStoreUnavailable
+from apps.apm.adapters.errors import TelemetryGroupedReadFallback, TelemetryQueryTooLarge, TelemetryStoreUnavailable, TelemetryUniqueSpanLimitExceeded
 from apps.apm.adapters.span_aliases import (
     DB_NAME_KEYS,
     DB_SYSTEM_KEYS,
@@ -26,10 +26,17 @@ from apps.apm.adapters.span_aliases import (
     classify_client_db_rollup,
     classify_client_http_rollup,
     client_db_statement,
+    dependency_identity,
+    grouped_dependency_conflicts,
 )
 from apps.apm.services.contracts import (
+    GROUPED_RED_INSTANCE,
+    GROUPED_RED_NAME,
+    GROUPED_RED_VERSION,
     DependencyMetricQuery,
     DeploymentReleaseQuery,
+    GroupedDependencyRedQuery,
+    GroupedServiceRedQuery,
     InferredDeploymentRelease,
     InstanceActivity,
     InstanceActivityQuery,
@@ -97,6 +104,10 @@ SAMPLE_SLICE_DAY = timedelta(days=1)
 SAMPLE_TRACE_ID_PROBE_SPANS = 5000
 RED_EXACT_DEDUP_WINDOW = timedelta(days=1)
 MAX_RED_POINTS = 120
+
+
+def _trend_step(window_seconds: int) -> int:
+    return max(15, math.ceil(window_seconds / (MAX_RED_POINTS - 1)))
 
 
 def _duration_threshold_ns(milliseconds: int | None) -> int | None:
@@ -214,6 +225,48 @@ _HTTP_METHOD_FIELD = "`span_attr:http.method`"
 _HTTP_REQUEST_METHOD_FIELD = "`span_attr:http.request.method`"
 _HTTP_ROUTE_FIELD = "`span_attr:http.route`"
 _PEER_SERVICE_FIELD = "`span_attr:peer.service`"
+# 去重后用 max() 把分组维度带到下一跳 stats。VictoriaLogs 没有 stats any()。
+_ENTRY_GROUP_SPECS = {
+    GROUPED_RED_NAME: ("name", "name", "name"),
+    GROUPED_RED_VERSION: (_VERSION_FIELD, "version", "resource_attr:service.version"),
+    GROUPED_RED_INSTANCE: (_INSTANCE_FIELD, "instance", "resource_attr:service.instance.id"),
+}
+# (LogsQL 字段, 去重别名, 分类函数识别的属性名)。HTTP 依赖不是互斥分组，不放进这张表。
+_DEPENDENCY_GROUP_FIELDS = (
+    (_DB_SYSTEM_NAME_FIELD, "db_system_name", "span_attr:db.system.name"),
+    (_DB_SYSTEM_FIELD, "db_system", "span_attr:db.system"),
+    (_DB_STATEMENT_FIELD, "db_statement", "span_attr:db.statement"),
+    (_DB_QUERY_TEXT_FIELD, "db_query_text", "span_attr:db.query.text"),
+    ("name", "name", "name"),
+)
+
+
+def _dependency_identities(
+    reds: dict[tuple[str, ...], ServiceRed],
+    label_names: tuple[str, ...],
+    targets: tuple[tuple[str, str, str], ...] = (),
+) -> dict[tuple[str, str, str], tuple[str, ...]]:
+    alias_to_attr = {alias: attr for _source, alias, attr in _DEPENDENCY_GROUP_FIELDS}
+    found: dict[tuple[str, str, str], tuple[str, ...]] = {}
+    for key in reds:
+        labels = dict(zip(label_names, key, strict=True))
+        attributes: dict[str, str] = {}
+        name = ""
+        for label, value in labels.items():
+            if not value:
+                continue
+            if label == "name":
+                name = value
+            attributes[alias_to_attr.get(label, label)] = value
+        if grouped_dependency_conflicts(attributes, name, targets):
+            raise TelemetryGroupedReadFallback("分组依赖与逐目标过滤重叠，退回逐目标")
+        identity = dependency_identity(attributes, name)
+        if identity is None:
+            continue
+        if identity in found:
+            raise TelemetryGroupedReadFallback("分组依赖键重叠，退回逐目标")
+        found[identity] = key
+    return found
 
 
 def _timestamp_us(value: datetime) -> int:
@@ -855,7 +908,7 @@ class VictoriaTracesTelemetryStore:
         timeseries: tuple[ServiceRedPoint, ...] = ()
         endpoints: tuple[ServiceEndpointRed, ...] = ()
         if query.include_breakdown:
-            step = max(15, math.ceil(window_seconds / (MAX_RED_POINTS - 1)))
+            step = _trend_step(window_seconds)
             range_aggregate = f"{deduped if exact_dedup else entry_filters} | {final_stats}"
             ranged = self._range_values(self._stats_range(range_aggregate, query.started_at, query.ended_at, step=step))
             timeseries = tuple(
@@ -990,7 +1043,7 @@ class VictoriaTracesTelemetryStore:
         errors_count = values.get("errors", 0.0) or 0.0
         timeseries: tuple[ServiceRedPoint, ...] = ()
         if query.include_breakdown:
-            step = max(15, math.ceil(window_seconds / (MAX_RED_POINTS - 1)))
+            step = _trend_step(window_seconds)
             ranged = self._range_values(
                 self._stats_range(f"{deduped if exact_dedup else filters} | {final_stats}", query.started_at, query.ended_at, step=step)
             )
@@ -1051,6 +1104,258 @@ class VictoriaTracesTelemetryStore:
         aggregate = f"{scoped} | stats by (_time:{minutes}m) {final_stats}"
         grouped = self._values_by_day(self._stats(aggregate, query.started_at, query.ended_at))
         return self._reds_by_bucket(grouped, minutes)
+
+    def service_red_grouped(self, query: GroupedServiceRedQuery) -> dict[tuple[str, ...], ServiceRed]:
+        summary, trend, deduped, labels, exact_dedup = self._entry_grouped_queries(query)
+        window_seconds = _validate_window(query.started_at, query.ended_at)
+        return self._fetch_grouped_reds(
+            summary=summary,
+            trend=trend,
+            deduped=deduped,
+            label_names=labels,
+            started_at=query.started_at,
+            ended_at=query.ended_at,
+            window_seconds=window_seconds,
+            exact_dedup=exact_dedup,
+        )
+
+    def dependency_red_grouped(self, query: GroupedDependencyRedQuery) -> dict[tuple[str, str, str], ServiceRed]:
+        summary, trend, deduped, labels, exact_dedup = self._dependency_grouped_queries(query)
+        window_seconds = _validate_window(query.started_at, query.ended_at)
+        reds = self._fetch_grouped_reds(
+            summary=summary,
+            trend=trend,
+            deduped=deduped,
+            label_names=labels,
+            started_at=query.started_at,
+            ended_at=query.ended_at,
+            window_seconds=window_seconds,
+            exact_dedup=exact_dedup,
+        )
+        identities = _dependency_identities(reds, labels, query.targets)
+        return {identity: reds[label_key] for identity, label_key in identities.items() if label_key in reds}
+
+    def service_red_grouped_by_day(
+        self,
+        query: GroupedServiceRedQuery,
+        windows: Sequence[tuple[datetime, datetime]],
+    ) -> dict[tuple[str, ...], tuple[ServiceRed, ...]]:
+        """近 N 天同窗一次取回，并按入口目标维度拆开。口径与逐目标 ``service_red_by_day`` 相同。"""
+
+        if not windows:
+            return {}
+        if not query.group_by:
+            raise ValueError("分组维度不能为空")
+        unknown = [item for item in query.group_by if item not in _ENTRY_GROUP_SPECS]
+        if unknown:
+            raise ValueError("不支持的分组维度")
+        specs = [_ENTRY_GROUP_SPECS[dimension] for dimension in query.group_by]
+        filters = self._entry_span_filters(query.service_namespace, query.service_name, query.environment)
+        return self._grouped_reds_by_day(query, windows, filters, specs, as_dependency=False)
+
+    def dependency_red_grouped_by_day(
+        self,
+        query: GroupedDependencyRedQuery,
+        windows: Sequence[tuple[datetime, datetime]],
+    ) -> dict[tuple[str, str, str], tuple[ServiceRed, ...]]:
+        if not windows:
+            return {}
+        filters = (
+            f"{self._service_span_filters(query.service_namespace, query.service_name, query.environment)} "
+            f'kind:="3" ({_DB_SYSTEM_NAME_FIELD}:* OR {_DB_SYSTEM_FIELD}:*)'
+        )
+        return self._grouped_reds_by_day(
+            query,
+            windows,
+            filters,
+            _DEPENDENCY_GROUP_FIELDS,
+            as_dependency=True,
+            targets=query.targets,
+        )
+
+    def _grouped_reds_by_day(self, query, windows, filters: str, specs, *, as_dependency: bool, targets=()):
+        total = sum((ended_at - started_at for started_at, ended_at in windows), timedelta(0))
+        exact_dedup = total <= RED_EXACT_DEDUP_WINDOW
+        spans = " or ".join(f"_time:[{_logsql_time(started_at)}, {_logsql_time(ended_at)})" for started_at, ended_at in windows)
+        scoped = f"({spans}) {filters}"
+        final = _red_final_stats(query).removeprefix("stats ")
+        if exact_dedup:
+            keeps = ", ".join(f"max({source}) as {alias}" for source, alias, _raw in specs)
+            deduped = (
+                f"{scoped} | stats by (trace_id, span_id) "
+                f"max(duration) as duration, max(status_code) as status_code, min(_time) as _time, {keeps}"
+            )
+            by_names = ", ".join(alias for _source, alias, _raw in specs)
+            aggregate = f"{self._bounded_spans(deduped)} | stats by (_time:1d, {by_names}) {final}"
+            labels = tuple(alias for _source, alias, _raw in specs)
+        else:
+            deduped = None
+            by_raw = ", ".join(source for source, _alias, _raw in specs)
+            aggregate = f"{scoped} | stats by (_time:1d, {by_raw}) {final}"
+            labels = tuple(raw for _source, _alias, raw in specs)
+        started_at = min(item[0] for item in windows)
+        ended_at = max(item[1] for item in windows)
+        values = self._values_by_day_and_labels(self._stats(aggregate, started_at, ended_at), labels)
+        if exact_dedup and deduped is not None:
+            observed = sum(item.get("requests", 0.0) for item in values.values())
+            self._reject_truncated_unique_spans(
+                deduped,
+                observed,
+                started_at,
+                ended_at,
+                exc_type=TelemetryUniqueSpanLimitExceeded,
+            )
+        reds = self._reds_by_day(values, windows)
+        if not as_dependency:
+            return reds
+        present = {key: series[0] for key, series in reds.items() if series}
+        identities = _dependency_identities(present, labels, targets)
+        return {identity: reds[label_key] for identity, label_key in identities.items() if label_key in reds}
+
+    def _entry_grouped_queries(self, query: GroupedServiceRedQuery) -> tuple[str, str | None, str | None, tuple[str, ...], bool]:
+        if not query.group_by:
+            raise ValueError("分组维度不能为空")
+        unknown = [item for item in query.group_by if item not in _ENTRY_GROUP_SPECS]
+        if unknown:
+            raise ValueError("不支持的分组维度")
+        exact_dedup = query.ended_at - query.started_at <= RED_EXACT_DEDUP_WINDOW
+        specs = [_ENTRY_GROUP_SPECS[dimension] for dimension in query.group_by]
+        filters = self._entry_span_filters(query.service_namespace, query.service_name, query.environment)
+        final = _red_final_stats(query).removeprefix("stats ")
+        if exact_dedup:
+            keeps = ", ".join(f"max({source}) as {alias}" for source, alias, _raw in specs)
+            deduped = f"{filters} | stats by (trace_id, span_id) " f"max(duration) as duration, max(status_code) as status_code, {keeps}"
+            by_names = ", ".join(alias for _source, alias, _raw in specs)
+            summary = f"{self._bounded_spans(deduped)} | stats by ({by_names}) {final}"
+            trend = f"{deduped} | stats by ({by_names}) {final}" if query.include_breakdown else None
+            labels = tuple(alias for _source, alias, _raw in specs)
+            return summary, trend, deduped, labels, True
+        by_raw = ", ".join(source for source, _alias, _raw in specs)
+        summary = f"{filters} | stats by ({by_raw}) {final}"
+        trend = summary if query.include_breakdown else None
+        labels = tuple(raw for _source, _alias, raw in specs)
+        return summary, trend, None, labels, False
+
+    def _dependency_grouped_queries(self, query: GroupedDependencyRedQuery) -> tuple[str, str | None, str | None, tuple[str, ...], bool]:
+        exact_dedup = query.ended_at - query.started_at <= RED_EXACT_DEDUP_WINDOW
+        filters = (
+            f"{self._service_span_filters(query.service_namespace, query.service_name, query.environment)} "
+            f'kind:="3" ({_DB_SYSTEM_NAME_FIELD}:* OR {_DB_SYSTEM_FIELD}:*)'
+        )
+        final = _red_final_stats(query).removeprefix("stats ")
+        aliases = tuple(alias for _source, alias, _attr in _DEPENDENCY_GROUP_FIELDS)
+        if exact_dedup:
+            keeps = ", ".join(f"max({source}) as {alias}" for source, alias, _attr in _DEPENDENCY_GROUP_FIELDS)
+            deduped = f"{filters} | stats by (trace_id, span_id) " f"max(duration) as duration, max(status_code) as status_code, {keeps}"
+            by_names = ", ".join(aliases)
+            summary = f"{self._bounded_spans(deduped)} | stats by ({by_names}) {final}"
+            trend = f"{deduped} | stats by ({by_names}) {final}" if query.include_breakdown else None
+            return summary, trend, deduped, aliases, True
+        by_raw = ", ".join(source for source, _alias, _attr in _DEPENDENCY_GROUP_FIELDS)
+        summary = f"{filters} | stats by ({by_raw}) {final}"
+        trend = summary if query.include_breakdown else None
+        labels = tuple(attr for _source, _alias, attr in _DEPENDENCY_GROUP_FIELDS)
+        return summary, trend, None, labels, False
+
+    def _fetch_grouped_reds(
+        self,
+        *,
+        summary: str,
+        trend: str | None,
+        deduped: str | None,
+        label_names: tuple[str, ...],
+        started_at: datetime,
+        ended_at: datetime,
+        window_seconds: int,
+        exact_dedup: bool,
+    ) -> dict[tuple[str, ...], ServiceRed]:
+        values = self._label_values(self._stats(summary, started_at, ended_at), label_names)
+        observed = sum(item.get("requests", 0.0) for item in values.values())
+        if exact_dedup and deduped is not None:
+            self._reject_truncated_unique_spans(
+                deduped,
+                observed,
+                started_at,
+                ended_at,
+                exc_type=TelemetryUniqueSpanLimitExceeded,
+            )
+        reds = self._reds_from_grouped_values(values, window_seconds)
+        if trend is None:
+            return reds
+        step = _trend_step(window_seconds)
+        ranged = self._label_ranges(self._stats_range(trend, started_at, ended_at, step=step), label_names)
+        return self._attach_timeseries(reds, ranged, step)
+
+    def _label_values(self, result: list[dict[str, Any]], label_names: tuple[str, ...]) -> dict[tuple[str, ...], dict[str, float]]:
+        grouped: dict[tuple[str, ...], dict[str, float]] = {}
+        for series in result:
+            metric = series.get("metric", {})
+            raw_value = series.get("value", [])
+            if not isinstance(metric, dict) or not isinstance(raw_value, list) or len(raw_value) != 2:
+                continue
+            name = str(metric.get("__name__", ""))
+            parsed = _number(raw_value[1])
+            if not name or parsed is None:
+                continue
+            key = tuple(str(metric.get(label) or "") for label in label_names)
+            grouped.setdefault(key, {})[name] = parsed
+        return grouped
+
+    def _label_ranges(
+        self,
+        result: list[dict[str, Any]],
+        label_names: tuple[str, ...],
+    ) -> dict[tuple[str, ...], dict[str, dict[float, float]]]:
+        grouped: dict[tuple[str, ...], dict[str, dict[float, float]]] = {}
+        for series in result:
+            metric = series.get("metric", {})
+            values = series.get("values", [])
+            if not isinstance(metric, dict) or not isinstance(values, list):
+                continue
+            name = str(metric.get("__name__", ""))
+            if not name:
+                continue
+            key = tuple(str(metric.get(label) or "") for label in label_names)
+            points = grouped.setdefault(key, {}).setdefault(name, {})
+            for item in values:
+                if not isinstance(item, list) or len(item) != 2:
+                    continue
+                timestamp = _number(item[0])
+                value = _number(item[1])
+                if timestamp is not None and value is not None:
+                    points[timestamp] = value
+        for metrics in grouped.values():
+            for name, points in list(metrics.items()):
+                metrics[name] = dict(sorted(points.items())[-MAX_RED_POINTS:])
+        return grouped
+
+    def _reds_from_grouped_values(self, values: dict[tuple[str, ...], dict[str, float]], window_seconds: int) -> dict[tuple[str, ...], ServiceRed]:
+        reds = {}
+        for key, item in values.items():
+            red = self._red_from_values(item, window_seconds)
+            if red.request_count is not None:
+                reds[key] = red
+        return reds
+
+    def _attach_timeseries(
+        self,
+        reds: dict[tuple[str, ...], ServiceRed],
+        ranged: dict[tuple[str, ...], dict[str, dict[float, float]]],
+        step: int,
+    ) -> dict[tuple[str, ...], ServiceRed]:
+        attached = {}
+        for key, red in reds.items():
+            series = ranged.get(key)
+            requests = {} if series is None else series.get("requests", {})
+            if not requests:
+                attached[key] = red
+                continue
+            points = tuple(
+                self._red_point(timestamp=timestamp, count=count, step=step, ranged=series)
+                for timestamp, count in list(requests.items())[-MAX_RED_POINTS:]
+            )
+            attached[key] = replace(red, timeseries=points)
+        return attached
 
     def _dependency_span_filters(self, query: DependencyMetricQuery) -> str:
         filters = [
@@ -1809,13 +2114,15 @@ class VictoriaTracesTelemetryStore:
         observed_count: float,
         started_at: datetime,
         ended_at: datetime,
+        *,
+        exc_type: type[TelemetryStoreUnavailable] = TelemetryStoreUnavailable,
     ) -> None:
         if observed_count < MAX_UNIQUE_SPANS:
             return
         count_query = f"{deduped_query} | limit {MAX_UNIQUE_SPANS + 1} | stats count() as unique_spans"
         values = self._ungrouped_values(self._stats(count_query, started_at, ended_at))
         if values.get("unique_spans", 0) > MAX_UNIQUE_SPANS:
-            raise TelemetryStoreUnavailable("APM 查询唯一 Span 数超过单次聚合上限")
+            raise exc_type("APM 查询唯一 Span 数超过单次聚合上限")
 
     def _stats(self, query: str, started_at: datetime, ended_at: datetime) -> list[dict[str, Any]]:
         payload = self._request_json(
@@ -1877,6 +2184,41 @@ class VictoriaTracesTelemetryStore:
         except (UnicodeDecodeError, ValueError) as exc:
             raise TelemetryStoreUnavailable("VictoriaTraces 返回了无效的 LogsQL 行结果") from exc
         return rows
+
+    @staticmethod
+    def _values_by_day_and_labels(
+        result: list[dict[str, Any]],
+        label_names: tuple[str, ...],
+    ) -> dict[tuple[str, tuple[str, ...]], dict[str, float]]:
+        grouped: dict[tuple[str, tuple[str, ...]], dict[str, float]] = {}
+        for series in result:
+            metric = series.get("metric", {})
+            raw_value = series.get("value", [])
+            if not isinstance(metric, dict) or not isinstance(raw_value, list) or len(raw_value) != 2:
+                continue
+            day = str(metric.get("_time", ""))
+            name = str(metric.get("__name__", ""))
+            parsed = _number(raw_value[1])
+            if not day or not name or parsed is None:
+                continue
+            key = (day, tuple(str(metric.get(label) or "") for label in label_names))
+            grouped.setdefault(key, {})[name] = parsed
+        return grouped
+
+    def _reds_by_day(
+        self,
+        values: dict[tuple[str, tuple[str, ...]], dict[str, float]],
+        windows: Sequence[tuple[datetime, datetime]],
+    ) -> dict[tuple[str, ...], tuple[ServiceRed, ...]]:
+        label_keys = {label_key for _day, label_key in values}
+        reds = {}
+        for label_key in label_keys:
+            points = []
+            for window_start, window_end in windows:
+                window_seconds = max(int((window_end - window_start).total_seconds()), 1)
+                points.append(self._red_from_values(values.get((_utc_day(window_start), label_key), {}), window_seconds))
+            reds[label_key] = tuple(points)
+        return reds
 
     @staticmethod
     def _values_by_day(result: list[dict[str, Any]]) -> dict[str, dict[str, float]]:

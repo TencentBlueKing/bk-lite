@@ -12,7 +12,7 @@ interface UserChoiceCardProps {
   request: UserChoiceRequest;
   token: string;
   onSubmit: (choiceId: string, status: 'pending' | 'submitted' | 'timeout', selected: string[]) => void;
-  onSendMessage?: (text: string) => void;
+  onSendMessage?: (text: string, choice?: { choiceId: string; optionKey: string }) => void;
   readOnly?: boolean;
 }
 
@@ -66,7 +66,10 @@ const UserChoiceCard: React.FC<UserChoiceCardProps> = ({ request, onSubmit, onSe
     setSubmitting(true);
     const labels = keys.map((key) => choiceOptions.find((option) => option.key === key)?.label || key);
     onSubmit(request.choice_id, 'submitted', keys);
-    onSendMessage?.(labels.join(', '));
+    onSendMessage?.(labels.join(', '), {
+      choiceId: request.choice_id,
+      optionKey: keys[0] || '',
+    });
     submittingRef.current = false;
     setSubmitting(false);
   }, [choiceOptions, request, onSubmit, onSendMessage, t, readOnly]);

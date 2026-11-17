@@ -19,7 +19,8 @@ export function homeGlance(apps: RumApplicationHealthItem[]) {
   for (const app of apps) {
     counts[glanceKind(app)] += 1;
     if (app.sessions > 0 && (!topError || app.errorRate > topError.errorRate)) topError = app;
-    if (app.lcpP75 > 0 && (!worstLcp || app.lcpP75 > worstLcp.lcpP75)) worstLcp = app;
+    const lcp = app.lcpP75;
+    if (lcp != null && lcp > 0 && (worstLcp?.lcpP75 == null || lcp > worstLcp.lcpP75)) worstLcp = app;
   }
   return { total: apps.length, counts, topError, worstLcp };
 }

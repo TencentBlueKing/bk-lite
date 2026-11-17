@@ -510,6 +510,69 @@ def test_preview_uses_server_renderer_without_sending(template_client):
 
 
 @pytest.mark.django_db
+def test_preview_sample_covers_catalog_alert_and_event_fields(template_client):
+    from types import SimpleNamespace
+
+    from apps.alerts.notification_templates.events import EVENT_SCALAR_FIELDS
+    from apps.alerts.notification_templates.renderer import ALERT_FIELDS, NOTIFICATION_FIELDS, SUMMARY_FIELDS
+    from apps.alerts.views.notification_template import NotificationTemplateViewSet
+
+    catalog = NotificationTemplateViewSet().catalog(SimpleNamespace(user=SimpleNamespace(locale="zh-Hans", is_superuser=True)))
+    paths = [item["path"] for item in catalog.data["variables"]]
+    paths.extend(f"alert.{field}" for field in sorted(ALERT_FIELDS))
+    paths.extend(f"notification.{field}" for field in sorted(NOTIFICATION_FIELDS))
+    paths.extend(f"events.{which}.{field}" for which in ("latest", "first") for field in EVENT_SCALAR_FIELDS)
+    paths.extend(
+        [
+            "events.latest.labels.env",
+            "events.latest.enrichment.cmdb.owner",
+            "events.first.tags.alert",
+            "events.first.labels.env",
+            "events.first.enrichment.cmdb.owner",
+        ]
+    )
+    body = "\n".join(f"{{{{ {path} }}}}" for path in dict.fromkeys(paths))
+    body += (
+        "\n{{@ events limit=2 order=-start_time columns="
+        "samples as 日志样本, search_url as 检索链接, description as 事件描述, external_id as 外部事件 ID, "
+        "action as 事件动作, event_type as 事件类型, service as 所属服务, location as 发生位置, "
+        "end_time as 结束时间, resource_id as 资源 ID @}}"
+        "\n{{@ events limit=2 order=-start_time columns=push_source_id as 推送来源, rule_id as 规则 ID @}}"
+    )
+
+    response = template_client.post(
+        "/api/v1/alerts/api/notification_templates/preview/",
+        {"scope": "alert_operation", "channel_type": "nats", "subject_template": "", "body_template": body},
+        format="json",
+    )
+
+    assert response.status_code == 200, response.content
+    assert response.data["missing_fields"] == []
+    rendered = response.data["body"]
+    assert "—" not in rendered
+    assert "CPU 使用率 95%，持续 5 分钟" in rendered
+    assert "CPU 使用率 81%，持续 5 分钟" in rendered
+    assert "https://log.example.com/search?q=cpu_usage&event=latest" in rendered
+    assert "https://log.example.com/search?q=cpu_usage&event=first" in rendered
+    assert "https://10.0.0.8/health" in rendered
+    assert "北京节点" in rendered
+    assert "CpuHigh" in rendered
+
+    summary = template_client.post(
+        "/api/v1/alerts/api/notification_templates/preview/",
+        {
+            "scope": "unassigned_summary",
+            "channel_type": "nats",
+            "subject_template": "",
+            "body_template": " ".join(f"{{{{ summary.{field} }}}}" for field in sorted(SUMMARY_FIELDS)),
+        },
+        format="json",
+    )
+    assert summary.status_code == 200, summary.content
+    assert summary.data["missing_fields"] == []
+
+
+@pytest.mark.django_db
 def test_preview_uses_level_display_name_and_keeps_raw_level_id(template_client):
     payload = {
         "scope": "single_alert",

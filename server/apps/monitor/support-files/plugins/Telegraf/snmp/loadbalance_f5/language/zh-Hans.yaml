@@ -1,6 +1,6 @@
 Loadbalance F5 SNMP:
   name: F5（Telegraf）
-  desc: 面向 F5 负载均衡设备的 SNMP 监控模板，可采集运行时长、CPU 使用率、内存使用率、温度、风扇、电源状态、会话/连接数、接口流量，适用于 BIG-IP（企业号 PEN 3375）。
+  desc: 面向 F5 负载均衡设备的 SNMP 监控模板，可采集运行时长、CPU 使用率、内存使用率、温度、风扇、电源状态、会话/连接数、接口流量、故障切换角色和配置同步状态，适用于 BIG-IP（企业号 PEN 3375）。
 monitor_object:
   Loadbalance: 负载均衡
 monitor_object_type:
@@ -35,6 +35,41 @@ monitor_object_metric:
     lb_current_connections:
       name: 当前连接数
       desc: 该指标报告 F5 BIG-IP 当前的客户端活动连接数（F5-BIGIP-SYSTEM-MIB sysStatClientCurConns）。连接数快速攀升可能意味着流量洪泛或连接表压力。
+    failover_ok:
+      name: 故障切换健康
+      desc: 表示这台 BIG-IP 的故障切换角色是否正常。1 为主用或备用。2 为离线、强制离线或角色未知，高可用可能已经失效。
+      enum:
+        "1": 正常
+        "2": 异常
+    failover_status:
+      name: 故障切换角色
+      desc: 显示这台 BIG-IP 当前是主用、备用、离线、强制离线，还是角色未知。主用和备用都是正常角色。离线、强制离线或未知表示设备没有处在正常的高可用角色上。
+      enum:
+        "0": 未知
+        "1": 离线
+        "2": 强制离线
+        "3": 备用
+        "4": 主用
+    sync_ok:
+      name: 配置同步健康
+      desc: 表示设备组配置同步是否正常。1 为已同步、正在同步，或按单机运行。2 为需要手工同步、同步失败、对端失联、版本不兼容、只有部分对端完成同步、首次同步尚未完成，或状态未知。单机不算故障。
+      enum:
+        "1": 正常
+        "2": 异常
+    sync_status:
+      name: 配置同步状态
+      desc: 显示这台 BIG-IP 与设备组配置的关系：已同步、正在同步、单机、需要手工同步、等待首次同步、部分同步、同步失败、与对端失联、版本不兼容或状态未知。单机是没有设备组的正常部署，不算故障。
+      enum:
+        "0": 未知
+        "1": 同步中
+        "2": 需手工同步
+        "3": 已同步
+        "4": 同步失败
+        "5": 对端失联
+        "6": 单机
+        "7": 等待首次同步
+        "8": 版本不兼容
+        "9": 部分同步
     interface_ifHCInOctets:
       name: 接口接收流量速率(HC)
       desc: 该指标表示过去 5 分钟内接收字节数的平均速率，单位为字节每秒，基于 64 位 ifHCInOctets 计数器，在高速接口上不会回绕。
@@ -161,6 +196,7 @@ monitor_object_metric_group:
     Hardware Status: 硬件状态
     Packet Error: 数据包错误
     Loadbalance: 负载均衡
+    High Availability: 高可用
     Traffic Overview: 流量总览
     Sampling: 采样率
     Interface Traffic: 接口流量

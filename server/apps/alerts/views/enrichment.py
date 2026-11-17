@@ -14,8 +14,15 @@ from apps.alerts.utils.i18n import alerts_message
 from apps.alerts.utils.operator_log import record_operator_log
 from apps.alerts.utils.permission_scope import apply_team_scope_for_request, get_current_team_from_request
 from apps.core.decorators.api_permission import HasPermission
+from apps.core.logger import alert_logger as logger
+from apps.rpc.cmdb import CMDB
 from config.drf.pagination import CustomPageNumberPagination
 from config.drf.viewsets import ModelViewSet
+
+_CMDB_CONTEXT_MODELS = (
+    ("application", "应用"),
+    ("system", "应用系统"),
+)
 
 
 class EnrichmentRuleModelViewSet(ModelViewSet):
@@ -136,3 +143,43 @@ class EnrichmentRuleModelViewSet(ModelViewSet):
                 "runtime": read_runtime_metrics(),
             }
         )
+
+    @action(detail=False, methods=["get"])
+    @HasPermission("alert_enrichment-View")
+    def cmdb_context_fields(self, request, *args, **kwargs):
+        try:
+            return Response({"groups": self._load_cmdb_context_field_groups()})
+        except Exception:
+            logger.warning("[Enrichment] CMDB 不可用，跳过应用上下文字段目录")
+            return Response({"groups": []})
+
+    @staticmethod
+    def _load_cmdb_context_field_groups():
+        client = CMDB()
+        groups = []
+        for model_id, model_name in _CMDB_CONTEXT_MODELS:
+            try:
+                attrs = client.search_model_attrs(params={"model_id": model_id}, _timeout=3) or []
+            except Exception:
+                logger.warning("[Enrichment] 读取 CMDB 模型字段失败 model_id=%s", model_id, exc_info=True)
+                break
+            if not isinstance(attrs, list):
+                continue
+            fields = []
+            for attr in attrs:
+                if not isinstance(attr, dict):
+                    continue
+                attr_id = str(attr.get("attr_id") or "").strip()
+                if not attr_id:
+                    continue
+                fields.append(
+                    {
+                        "source": f"{model_id}.{attr_id}",
+                        "attr_id": attr_id,
+                        "attr_name": attr.get("attr_name") or attr_id,
+                        "attr_type": attr.get("attr_type") or "",
+                    }
+                )
+            if fields:
+                groups.append({"model_id": model_id, "model_name": model_name, "fields": fields})
+        return groups

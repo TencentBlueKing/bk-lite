@@ -77,6 +77,24 @@ def test_ordinary_attribute_change_is_NOT_mirrored():
 
 
 @pytest.mark.django_db
+def test_change_record_strips_internal_operation_id():
+    cr.create_change_record(
+        inst_id=3,
+        model_id="host",
+        label="主机",
+        _type=UPDATE_INST,
+        operator="system",
+        scenario=ORDINARY_ATTRIBUTE_CHANGE,
+        before_data={"ip_addr": "10.0.0.1", "_cmdb_operation_id": "old-op"},
+        after_data={"ip_addr": "10.0.0.1", "_cmdb_operation_id": "new-op"},
+    )
+    row = ChangeRecord.objects.get(inst_id=3)
+    assert "_cmdb_operation_id" not in row.before_data
+    assert "_cmdb_operation_id" not in row.after_data
+    assert row.before_data["ip_addr"] == "10.0.0.1"
+
+
+@pytest.mark.django_db
 @patch("apps.cmdb.services.change_record_mirror.dispatch_change_record_mirror")
 @patch("apps.cmdb.services.change_record_mirror.SystemMgmt")
 def test_mirror_failure_does_not_break_change_record(mock_sm, _mock_dispatch):

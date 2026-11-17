@@ -42,6 +42,7 @@ from apps.cmdb.models.change_record import (
 from apps.cmdb.models.show_field import ShowField
 from apps.cmdb.permissions.instance_permission import PermissionManage
 from apps.cmdb.services.auto_relation_reconcile import schedule_instance_auto_relation_reconcile
+from apps.cmdb.services.ci_context import record_association_ci_context, record_instance_field_ci_context, record_instances_deleted_ci_context
 from apps.cmdb.services.host_sync_identity import apply_model_cloud_id, heal_legacy_cloud_id
 from apps.cmdb.services.instance_identity import (
     ensure_instance_identity_immutable,
@@ -1027,6 +1028,7 @@ class InstanceManage(object):
         case_sensitive: bool = True,
         advanced_filter: dict = None,
         permission_lookup=None,
+        relation_filters=None,
     ):
         """实例列表"""
 
@@ -1040,7 +1042,7 @@ class InstanceManage(object):
             order = order[1:]
             order_type = "DESC"
 
-        if advanced_filter:
+        if advanced_filter or relation_filters:
             from apps.cmdb.services.advanced_instance_query import run_advanced_instance_query
 
             return run_advanced_instance_query(
@@ -1054,6 +1056,7 @@ class InstanceManage(object):
                 order=order,
                 order_type=order_type,
                 case_sensitive=case_sensitive,
+                relation_filters=relation_filters,
             )
 
         with GraphClient() as ag:
@@ -1478,6 +1481,9 @@ class InstanceManage(object):
             result[0] = dict(result[0])
             result[0].pop("_cmdb_operation_id", None)
 
+            if any(field in update_attr and update_attr[field] != inst_info.get(field) for field in ("ip_addr", "organization")):
+                record_instance_field_ci_context(result[0] or inst_info)
+
             # 企业版：实例更新后落账（引用文件 committed、移除文件 orphaned）
             get_instance_enterprise_extension().commit_instance_files(inst_info["model_id"], result[0]["_id"], result[0], attrs, operator=operator)
 
@@ -1647,6 +1653,12 @@ class InstanceManage(object):
                 inst_id=mismatch_id,
             )
 
+        before_by_id = {int(item["_id"]): item for item in inst_list}
+        for updated in result:
+            before = before_by_id.get(int(updated["_id"])) if updated.get("_id") is not None else None
+            if before and any(field in update_attr and update_attr[field] != before.get(field) for field in ("ip_addr", "organization")):
+                record_instance_field_ci_context(updated or before)
+
         # 企业版：实例更新后对每个实例提交文件落账（pending→committed、移除文件标 orphaned）
         ext = get_instance_enterprise_extension()
         for updated in result:
@@ -1738,6 +1750,8 @@ class InstanceManage(object):
 
         with GraphClient() as ag:
             ag.batch_delete_entity(INSTANCE, inst_ids)
+
+        record_instances_deleted_ci_context(inst_list)
 
         # 企业版：实例删除后把其附件/图片文件标记为待回收（批量单次处理）
         get_instance_enterprise_extension().on_instances_delete([item["_id"] for item in inst_list])
@@ -2247,6 +2261,7 @@ class InstanceManage(object):
                 e,
             )
 
+        record_association_ci_context(src, dst)
         return edge
 
     @staticmethod
@@ -2359,6 +2374,7 @@ class InstanceManage(object):
                 edge.get("_id"),
                 type(exc).__name__,
             )
+        record_association_ci_context(src, dst)
         return {
             "model_asst_id": model_asst_id,
             "src_inst_uuid": src["inst_uuid"],
@@ -2410,6 +2426,8 @@ class InstanceManage(object):
 
         with GraphClient() as ag:
             ag.delete_edge(asso_id)
+
+        record_association_ci_context(asso_info.get("src"), asso_info.get("dst"))
 
         # 同 create：端点实体可能未完全解析，全部 .get 兜底避免 KeyError
         src_info = asso_info.get("src") or {}
@@ -2734,6 +2752,7 @@ class InstanceManage(object):
         advanced_filter: dict = None,
         permission_lookup=None,
         *,
+        relation_filters=None,
         file_backed: bool = False,
         row_limit=None,
         progress=None,
@@ -2748,6 +2767,7 @@ class InstanceManage(object):
         metadata_finished = perf_counter()
         if ids:
             advanced_filter = None
+            relation_filters = None
             query_list = [
                 {"field": "id", "type": "id[]", "value": ids},
                 {"field": "model_id", "type": "str=", "value": model_id},
@@ -2779,7 +2799,7 @@ class InstanceManage(object):
                 params = list(query_list)
                 if cursor is not None:
                     params.append({"field": "inst_uuid", "type": "str>", "value": cursor})
-                if advanced_filter:
+                if advanced_filter or relation_filters:
                     from apps.cmdb.services.advanced_instance_query import run_advanced_instance_query
 
                     batch, _ = run_advanced_instance_query(
@@ -2794,6 +2814,7 @@ class InstanceManage(object):
                         order_type="ASC",
                         fields=fields,
                         include_count=False,
+                        relation_filters=relation_filters,
                     )
                 else:
                     with GraphClient() as ag:

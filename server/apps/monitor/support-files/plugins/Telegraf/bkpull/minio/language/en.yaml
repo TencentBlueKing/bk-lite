@@ -37,8 +37,8 @@ monitor_object_metric:
       name: Node CPU Idle Rate
       desc: Percentage of CPU idle time, indicating CPU utilization, low idle rate may indicate CPU bottleneck Available from MinIO RELEASE.2023-10-07T15-07-38Z onward (Metrics v2).
     minio_node_mem_used_perc_gauge:
-      name: Node Memory Usage Rate
-      desc: Percentage of memory used, indicating memory pressure, high usage may cause performance degradation Available from MinIO RELEASE.2023-12-07T04-16-00Z onward (Metrics v2).
+      name: Node Memory Utilization
+      desc: Share of memory currently in use on the MinIO node (about 0–100%), sampled at collection time. High usage can slow the node. Watch node memory together with object load. Collection requires MinIO 2023-12-07 or later (Metrics v2).
     minio_node_drive_perc_util_gauge:
       name: Drive Utilization Rate
       desc: Utilization percentage of single drive, reflecting storage space usage, important for capacity planning Available from MinIO RELEASE.2023-10-07T15-07-38Z onward (Metrics v2).

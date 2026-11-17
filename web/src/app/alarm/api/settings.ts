@@ -116,6 +116,9 @@ export const useSettingApi = () => {
   const getEnrichmentMetrics = () =>
     get('/alerts/api/enrichment/metrics/');
 
+  const getCmdbContextFields = () =>
+    get('/alerts/api/enrichment/cmdb_context_fields/', { suppressErrorNotification: true });
+
   const getNotificationTemplateList = (params?: NotificationTemplateListParams) =>
     get('/alerts/api/notification_templates/', { params, suppressErrorNotification: true });
 
@@ -199,6 +202,7 @@ export const useSettingApi = () => {
     deleteEnrichment,
     patchEnrichment,
     getEnrichmentMetrics,
+    getCmdbContextFields,
     getNotificationTemplateList,
     getNotificationTemplate,
     createNotificationTemplate,

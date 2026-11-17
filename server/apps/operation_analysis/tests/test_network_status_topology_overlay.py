@@ -38,6 +38,29 @@ def test_collect_overlay_ids_prefers_unique_builtin():
     assert collect_network_status_topology_overlay_datasource_ids() == {cmdb.id, monitor.id}
 
 
+def test_collect_overlay_ids_prefers_instance_scoped_alerts_when_two_builtins_share_api():
+    cmdb = _ds(CMDB_API, ds_id=18, name="CMDB 实例监控ID映射")
+    alerts = DataSourceAPIModel.objects.create(
+        name="监控活跃告警",
+        rest_api=MONITOR_API,
+        is_build_in=True,
+        build_in_key="监控活跃告警::monitor/query_latest_active_alerts",
+        params=[{"name": "instance_ids", "type": "string", "value": ""}],
+        created_by="s",
+        updated_by="s",
+    )
+    DataSourceAPIModel.objects.create(
+        name="监控异常严重度 TOP5",
+        rest_api=MONITOR_API,
+        is_build_in=True,
+        build_in_key="监控异常严重度TOP5::monitor/query_latest_active_alerts",
+        params=[{"name": "order", "type": "string", "value": "severity"}, {"name": "limit", "type": "number", "value": 5}],
+        created_by="s",
+        updated_by="s",
+    )
+    assert collect_network_status_topology_overlay_datasource_ids() == {cmdb.id, alerts.id}
+
+
 def test_collect_overlay_ids_skips_ambiguous_unless_unique_builtin():
     _ds(CMDB_API, builtin=False, ds_id=31, name="cmdb-a")
     cmdb_b = _ds(CMDB_API, builtin=False, ds_id=41, name="cmdb-b")

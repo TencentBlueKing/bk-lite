@@ -55,6 +55,7 @@ export interface ApmServiceRed {
   p99_ms: number | null;
   request_count: number | null;
   error_count: number | null;
+  max_ms?: number | null;
   timeseries: ApmServiceRedPoint[];
   top_endpoints: ApmServiceEndpointRed[];
 }
@@ -71,6 +72,7 @@ export interface ApmServiceRedPoint {
   error_rate: number | null;
   p95_ms: number | null;
   p99_ms: number | null;
+  max_ms?: number | null;
 }
 
 export interface ApmClientRollupRow {
@@ -228,8 +230,9 @@ export interface ApmDashboardSloRow {
   service_name: string;
   environment: string;
   objective: number;
-  current_rate: number;
-  met: boolean;
+  current_rate: number | null;
+  met: boolean | null;
+  reason?: string;
 }
 
 export interface ApmDashboardTopRow {

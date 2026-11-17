@@ -22,6 +22,7 @@ from apps.cmdb.models.change_record import (
 # 需要镜像进平台操作日志的"管理类"变更场景
 _MIRROR_SCENARIOS = {MODEL_MANAGEMENT_CHANGE, COLLECT_AUTOMATION_CHANGE, CUSTOM_REPORTING_CHANGE, RELATION_CHANGE}
 VERIFY_MESSAGE_PREFIX = "自动采集核实实例，无字段变化"
+_INTERNAL_INSTANCE_FIELDS = {"_cmdb_operation_id"}
 _TYPE_ACTION_MAP = {
     CREATE_INST: "create",
     UPDATE_INST: "update",
@@ -47,6 +48,14 @@ def format_instance_audit_message(action: str, model: str, inst_name: str, *, so
     source_text = str(source or "").strip()
     source_part = f"来源:{source_text} " if source_text else ""
     return f"{action}. {source_part}模型:{model} 实例:{inst_name}"
+
+
+def _strip_internal_instance_fields(data):
+    if not isinstance(data, dict):
+        return data
+    if not _INTERNAL_INSTANCE_FIELDS.intersection(data):
+        return data
+    return {key: value for key, value in data.items() if key not in _INTERNAL_INSTANCE_FIELDS}
 
 
 def _resolve_inst_uuid(inst_uuid=None, before_data=None, after_data=None):
@@ -130,8 +139,8 @@ def create_change_record(
     resolved_uuid = _resolve_inst_uuid(inst_uuid, before_data, after_data)
     from apps.cmdb.collection.field_reconcile import hide_collect_sources
 
-    before_data = hide_collect_sources(before_data)
-    after_data = hide_collect_sources(after_data)
+    before_data = _strip_internal_instance_fields(hide_collect_sources(before_data))
+    after_data = _strip_internal_instance_fields(hide_collect_sources(after_data))
     change_data = {"operator": operator, "scenario": scenario, "inst_uuid": resolved_uuid}
     if before_data:
         change_data["before_data"] = before_data
@@ -235,9 +244,9 @@ def batch_create_change_record(label, _type, change_records, operator="", scenar
         from apps.cmdb.collection.field_reconcile import hide_collect_sources
 
         if record.get("before_data"):
-            record["before_data"] = hide_collect_sources(record["before_data"])
+            record["before_data"] = _strip_internal_instance_fields(hide_collect_sources(record["before_data"]))
         if record.get("after_data"):
-            record["after_data"] = hide_collect_sources(record["after_data"])
+            record["after_data"] = _strip_internal_instance_fields(hide_collect_sources(record["after_data"]))
         record.setdefault(
             "inst_uuid",
             _resolve_inst_uuid(

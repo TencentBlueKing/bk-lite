@@ -200,6 +200,8 @@ def test_init_cmdb_enqueues_backfill_and_survives_broker_outage(monkeypatch, cap
     monkeypatch.setattr("apps.cmdb.tasks.display_field_backfill.ensure_display_field_backfill_periodic_task", lambda: None)
     monkeypatch.setattr("apps.cmdb.tasks.uuid_migration.ensure_uuid_migration_periodic_task", lambda: None)
     monkeypatch.setattr("apps.cmdb.tasks.uuid_migration.migrate_cmdb_instance_uuid_runtime.delay", lambda: None)
+    monkeypatch.setattr("apps.cmdb.tasks.ci_context.ensure_ci_context_rebuild_periodic_task", lambda: None)
+    monkeypatch.setattr("apps.cmdb.tasks.ci_context.rebuild_ci_context_runtime.delay", lambda: None)
 
     def _delay(**kwargs):
         secret = BROKER_SECRET

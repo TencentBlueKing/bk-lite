@@ -65,8 +65,8 @@ monitor_object_metric:
       name: SGA可用大小
       desc: 表示Oracle数据库SGA当前可用的内存大小，反映SGA中未被使用的空闲资源量
     oracledb_sga_used_percent_gauge:
-      name: SGA使用率
-      desc: 表示Oracle数据库SGA的内存使用率，用于评估SGA资源的利用效率
+      name: SGA 使用率
+      desc: 当前 SGA 已用内存相对 SGA 配置容量的占比（约 0–100%）；为采集时刻瞬时值，用于评估 SGA 资源压力与配置是否合理。
     oracledb_pga_total_gauge:
       name: PGA总大小
       desc: PGA是Oracle数据库实例中每个用户进程或服务器进程独立分配的内存区域
@@ -87,7 +87,7 @@ monitor_object_metric:
       desc: 指定表空间中剩余的磁盘空间的大小
     oracledb_tablespace_used_percent_gauge:
       name: 表空间使用率
-      desc: 指定表空间已使用容量的百分比
+      desc: 指定表空间当前已用容量占比（约 0–100%）；为采集时刻瞬时值，用于表空间容量预警。
     oracledb_rac_node_gauge:
       name: RAC节点数量
       desc: 当前Oracle数据库集群节点数量

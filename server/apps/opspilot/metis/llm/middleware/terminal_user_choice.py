@@ -97,6 +97,10 @@ def finalize_user_choice(
     description: str = "",
     k8s_analysis: dict[str, Any] | None = None,
     extra_evidence: list[Any] | None = None,
+    skill_package_draft: dict[str, Any] | None = None,
+    visible_text: str = "",
+    tool_name: str = "",
+    tool_result: str = "",
 ) -> tuple[str, AIMessage]:
     configurable = {}
     if isinstance(config, dict):
@@ -113,27 +117,31 @@ def finalize_user_choice(
         node_id=node_id,
         description=description,
     )
-    question_text = format_choice_text(question, question_type, request_payload["options"])
+    question_text = str(visible_text or "").strip() or format_choice_text(question, question_type, request_payload["options"])
     emit_choice_request(config, request_payload)
     evidence = collect_evidence_messages(messages)
     if extra_evidence:
         evidence = list(evidence) + list(extra_evidence)
-    tool_message = ToolMessage(content=_TERMINAL_TOOL_RESULT, tool_call_id=tool_call_id or request_payload["choice_id"], name=_CHOICE_TOOL)
+    tool_message = ToolMessage(
+        content=tool_result or _TERMINAL_TOOL_RESULT,
+        tool_call_id=tool_call_id or request_payload["choice_id"],
+        name=tool_name or _CHOICE_TOOL,
+    )
     evidence.append(tool_message)
     conversation_key = resolve_conversation_key_from_mapping(configurable)
-    save_pending_question(
-        conversation_key,
-        {
-            "kind": kind,
-            "execution_id": execution_id,
-            "node_id": node_id,
-            "question": question,
-            "options": request_payload["options"],
-            "question_text": question_text,
-            "evidence_messages": serialize_evidence(evidence),
-            "k8s_analysis": k8s_analysis,
-        },
-    )
+    pending_payload = {
+        "kind": kind,
+        "execution_id": execution_id,
+        "node_id": node_id,
+        "question": question,
+        "options": request_payload["options"],
+        "question_text": question_text,
+        "evidence_messages": serialize_evidence(evidence),
+        "k8s_analysis": k8s_analysis,
+    }
+    if isinstance(skill_package_draft, dict):
+        pending_payload["skill_package_draft"] = {**skill_package_draft, "choice_id": request_payload["choice_id"]}
+    save_pending_question(conversation_key, pending_payload)
     return question_text, tool_message
 
 

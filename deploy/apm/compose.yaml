@@ -52,6 +52,16 @@ services:
             --wait "${APM_NATS_ACK_WAIT:-60s}" \
             --max-deliver "${APM_NATS_MAX_DELIVER:-8}" \
             --max-pending "${APM_NATS_MAX_ACK_PENDING:-256}" --replay instant --defaults
+        # 聚合消费者与明细分开 ACK。--deliver new：首次创建不回放积压，避免历史 Span 被记成晚到或重复计数。
+        # 已存在的同名消费者不会被这条命令改写。ACK 等待默认 30s，短于系统侧 60s，因为聚合入口在内存里完成，
+        # 不必盖住 VictoriaTraces 的导出重试。重投上限默认 3：正常路径不 NAK，只给崩溃时尚未 ACK 的在途消息再试两次，
+        # 然后终止。不取 1，否则每次重启都会丢掉已拉取未处理的消息。
+        nats --server "$${SERVER}" consumer info APM_TRACES BKLITE_APM_AGGREGATE >/dev/null 2>&1 || \
+          nats --server "$${SERVER}" consumer add APM_TRACES BKLITE_APM_AGGREGATE \
+            --filter "apm.traces.>" --pull --deliver new --ack explicit \
+            --wait "${APM_AGG_NATS_ACK_WAIT:-30s}" \
+            --max-deliver "${APM_AGG_NATS_MAX_DELIVER:-3}" \
+            --max-pending "${APM_NATS_MAX_ACK_PENDING:-256}" --replay instant --defaults
     read_only: true
     cap_drop: [ALL]
     security_opt:
@@ -77,7 +87,7 @@ services:
       - no-new-privileges:true
 
   apm-regional-collector:
-    image: ${APM_COLLECTOR_IMAGE:-bklite/apm-otel-collector:0.153.0-bklite.1}
+    image: ${APM_COLLECTOR_IMAGE:-bklite/apm-otel-collector:0.153.0-bklite.3}
     build:
       context: ./collector
     restart: unless-stopped
@@ -123,7 +133,7 @@ services:
       - no-new-privileges:true
 
   apm-system-collector:
-    image: ${APM_COLLECTOR_IMAGE:-bklite/apm-otel-collector:0.153.0-bklite.1}
+    image: ${APM_COLLECTOR_IMAGE:-bklite/apm-otel-collector:0.153.0-bklite.3}
     build:
       context: ./collector
     restart: unless-stopped
@@ -164,6 +174,52 @@ services:
     security_opt:
       - no-new-privileges:true
 
+  apm-aggregate-collector:
+    image: ${APM_COLLECTOR_IMAGE:-bklite/apm-otel-collector:0.153.0-bklite.3}
+    build:
+      context: ./collector
+    restart: unless-stopped
+    user: "${APM_COLLECTOR_UID:-65532}:${APM_COLLECTOR_GID:-65532}"
+    command: [--config=/etc/bklite-apm/aggregate.yaml]
+    depends_on:
+      apm-nats-init:
+        condition: service_completed_successfully
+      apm-aggregate-metrics:
+        condition: service_started
+    environment:
+      APM_NATS_URL: ${APM_SYSTEM_NATS_URL:-nats://apm_system:system-contract-password@apm-nats:4222}
+      APM_NATS_STREAM: ${APM_NATS_STREAM:-APM_TRACES}
+      APM_NATS_CONSUMER: ${APM_AGG_NATS_CONSUMER:-BKLITE_APM_AGGREGATE}
+      APM_NATS_CREDENTIALS_FILE: ${APM_SYSTEM_NATS_CREDENTIALS_FILE:-}
+      APM_NATS_CA_FILE: ${APM_NATS_CA_FILE:-}
+      APM_NATS_CERT_FILE: ${APM_NATS_CERT_FILE:-}
+      APM_NATS_KEY_FILE: ${APM_NATS_KEY_FILE:-}
+      APM_NATS_TLS_SERVER_NAME: ${APM_NATS_TLS_SERVER_NAME:-}
+      APM_NATS_MAX_ACK_PENDING: ${APM_NATS_MAX_ACK_PENDING:-256}
+      APM_COLLECTOR_MEMORY_LIMIT_MIB: ${APM_AGG_COLLECTOR_MEMORY_LIMIT_MIB:-512}
+      APM_COLLECTOR_MEMORY_SPIKE_MIB: ${APM_AGG_COLLECTOR_MEMORY_SPIKE_MIB:-128}
+      AGG_VICTORIAMETRICS_WRITE_URL: ${AGG_VICTORIAMETRICS_WRITE_URL:-http://apm-aggregate-metrics:8428/api/v1/write}
+      APM_AGG_SHARD: ${APM_AGG_SHARD:-local-aggregate}
+      APM_AGG_FLUSH_INTERVAL: ${APM_AGG_FLUSH_INTERVAL:-60s}
+      APM_AGG_CARDINALITY_LIMIT: ${APM_AGG_CARDINALITY_LIMIT:-500}
+      APM_AGG_SERIES_EXPIRATION: ${APM_AGG_SERIES_EXPIRATION:-1h}
+    expose: [13133, 8888]
+    ports:
+      - "${APM_AGG_COLLECTOR_HEALTH_BIND:-127.0.0.1}:${APM_AGG_COLLECTOR_HEALTH_PORT:-33133}:13133"
+      - "${APM_AGG_COLLECTOR_METRICS_BIND:-127.0.0.1}:${APM_AGG_COLLECTOR_METRICS_PORT:-18890}:8888"
+    volumes:
+      - ./otel/aggregate.yaml:/etc/bklite-apm/aggregate.yaml:ro
+    healthcheck:
+      test: [CMD, /bklite-otelcol, validate, --config=/etc/bklite-apm/aggregate.yaml]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    mem_limit: ${APM_AGG_COLLECTOR_CONTAINER_MEMORY_LIMIT:-640m}
+    cpus: ${APM_AGG_COLLECTOR_CPU_LIMIT:-1.00}
+    security_opt:
+      - no-new-privileges:true
+
   apm-victoria-traces:
     image: ${APM_VICTORIATRACES_IMAGE:-victoriametrics/victoria-traces:v0.9.4}
     restart: unless-stopped
@@ -188,7 +244,32 @@ services:
     security_opt:
       - no-new-privileges:true
 
+  # 本地契约夹具里的聚合库。容器内监听 8428，宿主端口默认 18428，不占用宿主 8428。
+  apm-aggregate-metrics:
+    image: ${APM_AGG_VICTORIAMETRICS_IMAGE:-victoriametrics/victoria-metrics:v1.106.1}
+    restart: unless-stopped
+    command:
+      - -storageDataPath=/victoria-metrics-data
+      - -retentionPeriod=35d
+      - -httpListenAddr=:8428
+      - -search.latencyOffset=0s
+    ports:
+      - "${APM_AGG_METRICS_BIND:-127.0.0.1}:${APM_AGG_METRICS_PORT:-18428}:8428"
+    volumes:
+      - apm_aggregate_metrics_data:/victoria-metrics-data
+    healthcheck:
+      test: [CMD, /victoria-metrics-prod, -version]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    mem_limit: ${APM_AGG_MEMORY_LIMIT:-256m}
+    cpus: ${APM_AGG_CPU_LIMIT:-0.50}
+    security_opt:
+      - no-new-privileges:true
+
 volumes:
   apm_nats_data:
   apm_regional_queue:
   apm_victoria_traces_data:
+  apm_aggregate_metrics_data:

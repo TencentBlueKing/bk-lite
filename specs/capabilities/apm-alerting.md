@@ -13,6 +13,7 @@ APM 独立拥有策略、Alert 生命周期、Event、告警指标快照、事�
 - `slo_burn_rate` 绑定一个 SLO 和一组长短窗。燃烧率是 `(1 − 合规率) / (1 − 目标)`，两窗都越过阈值才命中，级别取较轻的一档。长窗无样本记 `no_data`，短窗无样本记 `insufficient_samples`。删除 SLO 时停用引用它的策略并结束活动告警。
 - 比较基准是 `absolute / previous_window / offset_hours / offset_days / baseline_days`（旧值 `offset_1h / offset_24h` 仍可读）。`previous_window / offset_hours / offset_days` 允许变化量 Δ 与变化率 %。`baseline_days` 的 N 为 2..7，对照是近 N 天同窗的算术均值；可用天数不足 `⌈N/2⌉` 记 `missing_baseline`（reason `baseline_days_insufficient`）。`compare_value_kind=sigma` 只对 `baseline_days` 且 N ≥ 3 开放，比较值是 `(当前 − 均值) / 样本标准差`，阈值 k 为 0.5..5，可用天数不足 3 同样记 `missing_baseline`。相对计算用等长 RED 窗，不用 MetricsQL。`percent` 在对照值为 0 或对照窗样本不足时记 `missing_baseline` 并保持活动告警；错误率、慢请求占比、Apdex 和时延族可设最低请求数，不足记 `insufficient_samples`，同样保持态。试算是只读内部端点，不写告警、事件、快照或目标状态。`replay_hours` 只允许 0 或 24；为 24 时每个目标追加按汇聚周期分桶的只读回放，返回窗口数、命中数和命中时刻，不读前轮状态，也不写任何记录。
 - 基线按天查询失败并回退到逐日查询时，该轮评估的目标上限从 100 收到 20。
+- 当前窗在一个「策略 × 服务」子任务里按目标维度分组取 RED：入口目标一次分组汇总加一次分组趋势；数据库和缓存依赖同样一次分组取回。结果进入评估窗缓存，触发、恢复、证据曲线和目标状态与逐目标查询一致。端点模式为整个服务时仍是单次查询。窗口不超过 1 天时 Top 操作不按实例切开：分组键里已有操作名就从这次结果取前 10，否则再发一次不随目标数增长的分组查询。唯一 Span 超上限，或一条 Span 会同时命中多个依赖目标时，本轮退回逐目标，不记查询失败。分组查询失败则该服务本轮全部目标记 `last_failed_at` 并整轮重试。HTTP 依赖的现有过滤会互相重叠，仍逐目标查。偏移类历史窗（上一窗、1 小时前、24 小时前、偏移小时/天）各自再发一次分组读取并写入评估窗缓存。入口这次读取带趋势，基线证据曲线才与逐目标的 timeseries 一致；依赖历史窗不带趋势，曲线同样与逐目标一致。`baseline_days` 的按天读取带上目标维度，一次取回全部目标的各天。分组按天读取只有在唯一 Span 超上限或别名重叠时整轮退回逐目标；退回之后，逐目标按天查询失败仍回退逐日查询，并把该轮目标上限收到 20。分组读取的其他失败则该服务本轮全部目标记 `last_failed_at` 并整轮重试。sigma 判断与逐目标一致。`replay_hours` 回放仍按目标读分桶序列，结果不变。试算、预览和 `test_query` 走同一条取数路径。
 - 策略创建必填所属组织，列表 / 详情按策略组织 fail-closed；存量策略从当时服务组织回填，之后改服务组织不改写策略组织。
 - Alert / Event 的 `organizations` 在首次生成时从当时策略组织快照，之后不随服务或策略组织变更改写。已有告警组织不变。
 - Alert 状态统一为 `active / recovered / closed`；Event 动作统一为 `triggered / escalated / claimed / assigned / reassigned / recovered / closed`。Alert 聚合完整生命周期，Event 只记录不可变状态变化。
@@ -30,6 +31,8 @@ APM 独立拥有策略、Alert 生命周期、Event、告警指标快照、事�
 ## 事实入口
 
 - 变更设计：`specs/changes/apm-policy-condition-flow/spec.md`（implemented）；`specs/changes/apm-policy-scenario-fit/spec.md`（implemented）；`specs/changes/apm-policy-conditions-and-scope/spec.md`（implemented）；先前 `specs/changes/apm-policy-alert-snapshot/spec.md`
+- 当前窗分组取数：`specs/changes/apm-policy-merged-queries/tickets/01-current-window-grouped-red.md`
+- 历史窗分组取数：`specs/changes/apm-policy-merged-queries/tickets/02-baseline-windows-grouped.md`
 - 相对计算与试算：`specs/changes/apm-alert-calc-enrichment/spec.md`
 - 事件原始证据存储：`docs/adr/0009-apm-event-snapshots-split-semantic-index-and-series-payload.md`
 - 生产实现：`server/apps/apm/services/{policies,alerts,metric_snapshots,snapshots}.py`

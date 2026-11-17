@@ -10,19 +10,20 @@ monitor_object_metric:
   Tomcat:
     tomcat_connector_request_count:
       name: Total Requests Processed
-      desc: Total number of HTTP requests processed by connector, reflecting overall
-        workload
+      desc: Cumulative HTTP requests processed by the connector since startup, reflecting
+        overall workload.
     tomcat_connector_error_count:
       name: Total Error Requests
-      desc: Total number of error requests during processing, indicating service reliability
-        issues
+      desc: Cumulative error requests on the connector since startup, indicating service
+        reliability.
     tomcat_connector_bytes_received:
       name: Total Bytes Received
       desc: Total bytes received from clients by connector, reflecting network input
         traffic
     tomcat_connector_bytes_sent:
       name: Total Bytes Sent
-      desc: Total bytes sent to clients by connector, reflecting network output traffic
+      desc: Cumulative bytes sent to clients by the connector since startup, reflecting
+        outbound traffic.
     tomcat_connector_processing_time:
       name: Total Processing Time
       desc: Total time spent processing all requests by connector, reflecting processing
@@ -71,16 +72,14 @@ monitor_object_metric:
         startup configuration
     tomcat_connector_request_count_rate:
       name: Request Processing Rate
-      desc: Request processing rate per second calculated over 5-minute window, indicating
-        real-time throughput
+      desc: Average HTTP requests processed per second over the last 5 minutes.
     tomcat_connector_error_count_rate:
       name: Error Request Rate
-      desc: Error request rate per second calculated over 5-minute window, indicating
-        service stability trend
+      desc: Average error requests per second over the last 5 minutes, used to see
+        whether errors keep rising.
     tomcat_connector_bytes_sent_rate:
-      name: Data Sending Rate
-      desc: Data sending rate per second calculated over 5-minute window, indicating
-        network output traffic trend
+      name: Send Throughput
+      desc: Average bytes sent to clients per second over the last 5 minutes.
     tomcat_connector_current_thread_utilization:
       name: Thread Pool Utilization
       desc: Percentage of busy threads relative to maximum threads, indicating thread

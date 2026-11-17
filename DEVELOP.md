@@ -174,7 +174,7 @@ cd algorithms/<svc> && make install && make serving  # BentoML :3000；uv run py
 - test `make test && make validate`；全链路契约 `make contract`（需 Docker）
 - release 运维按 [deploy/apm/ACCEPTANCE.md](deploy/apm/ACCEPTANCE.md) 验收；容量下界见 `CAPACITY.md`；Server 运行期变量模板见 `server/support-files/env/.env.apm.example`
 - 常见失败:镜像 tag 不存在;NATS ACL/Stream 漂移;4318 对非受信网络开放;把本地 Compose 参数直接当生产容量
-- 回滚:只回退本次上线的区域/系统 Collector、Stream/Consumer 与 VT；不恢复 Edge/APM VM/spanmetrics；编排回退由运维流水线执行
+- 回滚:只回退本次上线的区域/系统 Collector、聚合 Collector、Stream/Consumer 与 VT；聚合写入可单独回退（停掉聚合 Collector，系统 Collector 仍用 `system.yaml` 写 VictoriaTraces）；不恢复 Edge；编排回退由运维流水线执行
 
 ### K8s 采集器（`deploy/dist/bk-lite-kubernetes-collector/`）
 - release:`kubectl apply -f bk-lite-metric-collector.yaml` / `bk-lite-log-collector.yaml`
@@ -225,4 +225,4 @@ Celery Beat 静态任务对账使用 `CELERY_BEAT_SCHEDULE_RECONCILE_MODE`，代
 
 ### Celery 工作负载隔离
 
-默认任务按 critical、notification、state、background 四池独立运行，critical/notification/state 默认 MIN=1、MAX=2，background 默认 MIN=MAX=1；保留 OpsPilot、报表渲染和补丁维护专用消费者及上游 prefork 超时/回收行为。旧 CELERY_CONCURRENCY 仅提示废弃并忽略；各池范围可通过环境变量覆盖。CELERY_TOTAL_CONCURRENCY_LIMIT 默认12，四池MAX和既有专用并发（含所有副本/升级重叠）仍须满足该预算。作业执行、定时任务、回调和完成副作用仍进入 `job` 队列，由 `make job-celery` 或容器内 `job_celery` 消费，不进入上述四池。配置、只读巡检与回滚见[运行手册](docs/celery-runtime-runbook.md)，当前准确任务名见[182项清单](docs/celery-current-task-inventory.md)。
+默认任务按 critical、notification、state、background 四池独立运行，critical/notification/state 默认 MIN=1、MAX=2，background 默认 MIN=1、MAX=4；保留 OpsPilot、报表渲染和补丁维护专用消费者及上游 prefork 超时/回收行为。旧 CELERY_CONCURRENCY 仅提示废弃并忽略；各池范围可通过环境变量覆盖。CELERY_TOTAL_CONCURRENCY_LIMIT 默认15，四池MAX和既有专用并发（含所有副本/升级重叠）仍须满足该预算。作业执行、定时任务、回调和完成副作用仍进入 `job` 队列，由 `make job-celery` 或容器内 `job_celery` 消费，不进入上述四池。配置、只读巡检与回滚见[运行手册](docs/celery-runtime-runbook.md)，当前准确任务名见[182项清单](docs/celery-current-task-inventory.md)。

@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
-from apps.rum.services import logsql_stats
-from apps.rum.services.victoria_client import VictoriaClient, funnel_reached, parse_event, sparkline_layout
+from apps.rum.services import logsql_stats, session_records
+from apps.rum.services.victoria_client import VictoriaClient, clamp_unit, funnel_reached, parse_event, sparkline_layout
 
 # Align with web/src/app/rum/lib/cwv.ts good / needs-improvement upper bounds.
 _CWV_BOUNDS = {
@@ -35,15 +35,15 @@ def _ua_is_mobile(ua: str) -> bool:
 class VictoriaAnalytics:
     """Analytics over VictoriaLogs LogsQL."""
 
-    def __init__(self, client: VictoriaClient):
+    def __init__(self, client: VictoriaClient, aggregate=None):
         self.client = client
+        self.aggregate = aggregate
 
     @classmethod
     def open(
         cls,
         *,
         logs_endpoint: str,
-        traces_endpoint: str,
         account_id: int = 0,
         project_id: int = 0,
         timeout_seconds: float = 15.0,
@@ -51,7 +51,6 @@ class VictoriaAnalytics:
     ) -> VictoriaAnalytics:
         client = VictoriaClient(
             logs_endpoint=logs_endpoint,
-            traces_endpoint=traces_endpoint,
             account_id=account_id,
             project_id=project_id,
             timeout_seconds=timeout_seconds,
@@ -66,7 +65,9 @@ class VictoriaAnalytics:
     def _tenant(self, tenant_id: str) -> str:
         return (tenant_id or "").strip() or "core"
 
-    def applications_page(self, tenant_id: str, start: datetime, end: datetime, enabled_apps: list[str]) -> tuple[list[dict], dict[str, list[float]]]:
+    def applications_page(
+        self, tenant_id: str, start: datetime, end: datetime, enabled_apps: list[str]
+    ) -> tuple[list[dict], dict[str, list[float | None]]]:
         if not enabled_apps:
             return [], {}
         interval, buckets = sparkline_layout(start, end)
@@ -84,7 +85,27 @@ class VictoriaAnalytics:
             opts,
             limit=max(len(enabled_apps) * max(buckets, 1), 1),
         )
-        return logsql_stats.map_catalog_health(rows, spark_rows, enabled_apps, start, end, buckets)
+        mapped, sparks = logsql_stats.map_catalog_health(rows, spark_rows, enabled_apps, start, end, buckets)
+        counts = session_records.read_session_counts(
+            self.client.query_logs,
+            tenant,
+            {"from": start, "to": end, "applications": list(enabled_apps), "traffic": "all"},
+        )
+        if counts is not None:
+            for row in mapped:
+                total, errored = counts.get(row["application"], (0, 0))
+                row["sessions"] = total
+                row["errorRate"] = clamp_unit(errored / total) if total else 0.0
+        if self.aggregate is not None:
+            self.aggregate.overlay_catalog(
+                rows=mapped,
+                sparks=sparks,
+                tenant_id=tenant,
+                apps=list(enabled_apps),
+                start=start,
+                end=end,
+            )
+        return mapped, sparks
 
     def application_overview(self, tenant_id: str, application: str, start: datetime, end: datetime) -> dict:
         rows, sparks = self.applications_page(tenant_id, start, end, [application])
@@ -135,6 +156,9 @@ class VictoriaAnalytics:
                 "summary": {"total": 0, "errored": 0, "replayed": 0, "medianDurationMs": 0},
                 "truncated": False,
             }
+        merged = session_records.read_session_page(self.client.query_logs, self._tenant(tenant_id), opts)
+        if merged is not None:
+            return merged
         page_limit = int(opts.get("limit") or 0) or 200
         page = self._stats(
             tenant_id,
@@ -159,6 +183,9 @@ class VictoriaAnalytics:
         apps = list(opts.get("applications") or [])
         if not apps:
             return {"points": []}
+        merged = session_records.read_session_trend(self.client.query_logs, self._tenant(tenant_id), opts)
+        if merged is not None:
+            return merged
         interval, buckets = sparkline_layout(opts["from"], opts["to"])
         rows = self._stats(
             tenant_id,
@@ -268,13 +295,16 @@ class VictoriaAnalytics:
             values = [row[name] for row in mapped if row[name]]
             return sum(values) / len(values) if values else 0.0
 
-        return {
+        page = {
             "mode": mode,
             "summary": {"lcpP75": _avg("lcpP75"), "inpP75": _avg("inpP75"), "clsP75": _avg("clsP75")},
             "releases": releases,
             "rows": mapped,
             "truncated": bool(getattr(rows, "truncated", False)),
         }
+        if self.aggregate is not None:
+            return self.aggregate.overlay_views(page, tenant_id=self._tenant(tenant_id), opts=opts)
+        return page
 
     def list_error_issues(self, tenant_id: str, opts: dict) -> dict:
         apps = list(opts.get("applications") or [])
@@ -372,6 +402,10 @@ class VictoriaAnalytics:
         apps = list(opts.get("applications") or [])
         if not apps and not (opts.get("application") or "").strip():
             return None
+        if self.aggregate is not None:
+            from_aggregate, value = self.aggregate.monitor_vital(self._tenant(tenant_id), opts)
+            if from_aggregate:
+                return value
         metric = (opts.get("metric") or "").strip()
         rows = self._stats(tenant_id, logsql_stats.monitor_metric_query(self._tenant(tenant_id), opts), opts, limit=1)
         if not rows:
@@ -401,6 +435,10 @@ class VictoriaAnalytics:
         apps = list(opts.get("applications") or [])
         if not apps and not (opts.get("application") or "").strip():
             return points
+        if self.aggregate is not None:
+            from_aggregate, series = self.aggregate.vital_series(self._tenant(tenant_id), opts)
+            if from_aggregate:
+                return series
         metric = (opts.get("metric") or "").strip()
         rows = self._stats(
             tenant_id,

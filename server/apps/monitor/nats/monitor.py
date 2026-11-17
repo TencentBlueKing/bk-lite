@@ -55,6 +55,7 @@ from apps.monitor.serializers.monitor_metrics import MetricGroupSerializer, Metr
 from apps.monitor.serializers.monitor_object import MonitorObjectSerializer, MonitorObjectTypeSerializer
 from apps.monitor.serializers.monitor_policy import MonitorPolicySerializer
 from apps.monitor.serializers.plugin import MonitorPluginSerializer
+from apps.monitor.services.active_alert_ranking import format_active_alert_duration, order_severity_queryset, parse_active_alert_order
 from apps.monitor.services.alert_access import filter_alerts_by_organizations, orphaned_monitor_policy_q
 from apps.monitor.services.authorized_metric_query import AuthorizedMetricQueryError, AuthorizedMetricQueryService
 from apps.monitor.services.cmdb_relation_alerts import (
@@ -1561,7 +1562,19 @@ def _parse_latest_active_alerts_query(query_data):
         instance_ids,
         _normalize_filter_values(query_data.get("level"), "level"),
         _normalize_filter_values(query_data.get("alert_type"), "alert_type"),
+        parse_active_alert_order(query_data.get("order")),
     )
+
+
+def _parse_alert_instant(value):
+    if isinstance(value, datetime):
+        return value
+    if not isinstance(value, str) or not value.strip():
+        return None
+    try:
+        return datetime.fromisoformat(value)
+    except ValueError:
+        return None
 
 
 def _resolve_latest_active_alert_instances(monitor_obj_id, user_info, scope_ids, requested_ids=None):
@@ -1713,7 +1726,7 @@ def query_latest_active_alerts(query_data: Optional[dict] = None, *args, **kwarg
     user_info = kwargs.get("user_info", {})
 
     try:
-        limit, instance_ids, level_values, alert_type_values = _parse_latest_active_alerts_query(query_data)
+        limit, instance_ids, level_values, alert_type_values, order = _parse_latest_active_alerts_query(query_data)
     except ValueError as exc:
         return {"result": False, "data": [], "message": str(exc)}
 
@@ -1755,16 +1768,38 @@ def query_latest_active_alerts(query_data: Optional[dict] = None, *args, **kwarg
         queryset = queryset.filter(alert_type__in=alert_type_values)
 
     total_count = queryset.count()
+    if order == "severity":
+        items = _build_severity_active_alert_items(queryset, authorized_instances, limit)
+    else:
+        items = _build_latest_active_alert_items(queryset, authorized_instances, limit)
     return {
         "result": True,
         "data": {
             "count": total_count,
             "max_level": _max_monitor_alert_level(queryset.values_list("level", flat=True)) if total_count else None,
-            "items": _build_latest_active_alert_items(queryset, authorized_instances, limit),
+            "items": items,
             "instance_summaries": _build_active_alert_instance_summaries(queryset, filtered_instance_ids),
         },
         "message": "",
     }
+
+
+def _build_severity_active_alert_items(queryset, authorized_instances, limit, now=None):
+    """授权范围内全部 status=new 告警先按严重度排序，再取前 limit 条。"""
+    reference_now = now or timezone.now()
+    items = []
+    for alert in order_severity_queryset(queryset)[:limit]:
+        item = _build_monitor_alert_segment(alert)
+        instance = authorized_instances.get(str(alert.monitor_instance_id))
+        item["monitor_obj_id"] = str(instance.monitor_object_id) if instance else None
+        item["monitor_object_name"] = (
+            (instance.monitor_object.display_name or instance.monitor_object.name) if instance and instance.monitor_object else None
+        )
+        item["end_event_time"] = None
+        item["duration_text"] = format_active_alert_duration(_parse_alert_instant(item.get("start_event_time")), reference_now)
+        items.append(item)
+    _attach_active_alert_metric_names(items)
+    return items
 
 
 @nats_client.register
@@ -2009,7 +2044,11 @@ def query_metric_range_scoped(
 
 @nats_client.register
 def get_host_resource_top(metric_type: str, *args, **kwargs):
-    """Return the latest authorized host CPU, memory, or disk Top10."""
+    """Return the latest authorized host CPU, memory, or disk Top10.
+
+    画布组织筛选由运营分析把 user_info.team 收窄到所选且有权的组织后再进入本函数。
+    这里不另读 organization，避免和 include_children 的现有范围打架，也不把范围放大。
+    """
     try:
         metric_type = validate_metric_type(metric_type)
     except ValueError as exc:

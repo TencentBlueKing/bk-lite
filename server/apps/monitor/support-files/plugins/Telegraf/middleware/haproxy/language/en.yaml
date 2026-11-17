@@ -23,8 +23,10 @@ monitor_object_metric:
         risk of new connections being rejected
     haproxy_stot:
       name: Total Sessions
-      desc: Cumulative number of sessions handled since startup, a monotonically increasing
-        counter measuring overall workload
+      desc: Cumulative number of sessions handled since startup, measuring overall workload.
+    haproxy_stot_rate:
+      name: Average Session Rate
+      desc: Average new sessions per second over the last 5 minutes.
     haproxy_rate:
       name: Session Rate
       desc: Number of new sessions established per second over the last second, reflecting
@@ -43,12 +45,18 @@ monitor_object_metric:
         backend pressure
     haproxy_bin:
       name: Bytes In
-      desc: Cumulative number of bytes received from clients since startup, measuring
-        inbound traffic volume
+      desc: Cumulative bytes received from clients since startup, measuring inbound
+        traffic volume.
+    haproxy_bin_rate:
+      name: Inbound Throughput
+      desc: Average bytes received from clients per second over the last 5 minutes.
     haproxy_bout:
       name: Bytes Out
-      desc: Cumulative number of bytes sent to clients since startup, measuring outbound
-        traffic volume
+      desc: Cumulative bytes sent to clients since startup, measuring outbound traffic
+        volume.
+    haproxy_bout_rate:
+      name: Outbound Throughput
+      desc: Average bytes sent to clients per second over the last 5 minutes.
     haproxy_req_rate:
       name: HTTP Request Rate
       desc: Number of HTTP requests received per second over the last second, reflecting
@@ -59,8 +67,8 @@ monitor_object_metric:
         peak request pressure
     haproxy_req_tot:
       name: Total HTTP Requests
-      desc: Cumulative number of HTTP requests received since startup, a counter measuring
-        overall request workload
+      desc: Cumulative number of HTTP requests received since startup, measuring overall
+        request workload.
     haproxy_hrsp_2xx:
       name: 2xx Responses
       desc: Cumulative number of HTTP 2xx (success) responses returned, reflecting
@@ -74,16 +82,26 @@ monitor_object_metric:
         growth may indicate client or auth issues
     haproxy_hrsp_5xx:
       name: 5xx Responses
-      desc: Cumulative number of HTTP 5xx (server error) responses returned; growth
-        usually indicates backend service faults
+      desc: Cumulative HTTP 5xx (server error) responses returned since startup; growth
+        usually indicates backend service faults.
+    haproxy_hrsp_5xx_rate:
+      name: 5xx Response Rate
+      desc: Average HTTP 5xx responses returned per second over the last 5 minutes,
+        useful for spotting rising server errors.
     haproxy_ereq:
       name: Request Errors
-      desc: Cumulative number of request errors (e.g. invalid requests, client timeouts
-        before request) since startup
+      desc: Cumulative request errors since startup, such as invalid requests or client
+        timeouts before the request.
+    haproxy_ereq_rate:
+      name: Request Error Rate
+      desc: Average request errors per second over the last 5 minutes.
     haproxy_econ:
       name: Connection Errors
       desc: Cumulative number of errors connecting to backend servers since startup;
-        growth indicates backend connectivity problems
+        growth indicates backend connectivity problems.
+    haproxy_econ_rate:
+      name: Connection Error Rate
+      desc: Average backend connection errors per second over the last 5 minutes.
     haproxy_eresp:
       name: Response Errors
       desc: Cumulative number of response errors from backend servers since startup,
@@ -101,7 +119,11 @@ monitor_object_metric:
     haproxy_wredis:
       name: Request Redispatches
       desc: Cumulative number of times a request was redispatched to another backend
-        server since startup
+        server since startup.
+    haproxy_wredis_rate:
+      name: Request Redispatch Rate
+      desc: Average requests redispatched to another backend per second over the last
+        5 minutes.
     haproxy_act:
       name: Active Servers
       desc: Number of active (non-backup) servers currently up in this backend, reflecting

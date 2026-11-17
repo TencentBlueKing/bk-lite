@@ -384,6 +384,49 @@
       ],
       "description": "The maximum memory usage ever reached by the memory pool during the operation of the Java Virtual Machine, which can detect memory pool pressure.",
       "query": "max(jvm_memorypool_usage_max_value{__$labels__}) by (instance_id,type)"
+    },
+    {
+      "metric_group": "OS",
+      "name": "jvm_os_processcputime_seconds_increase",
+      "display_name": "CPU Time in Last 5 Minutes",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "description": "CPU time consumed by the process during the last 5 minutes, in seconds. This is not a CPU usage percentage.",
+      "query": "increase(jvm_os_processcputime_seconds_value{__$labels__}[5m])"
+    },
+    {
+      "metric_group": "GC",
+      "name": "jvm_gc_collectioncount_rate",
+      "display_name": "GC Frequency",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [
+        {
+          "name": "type",
+          "description": "Type of JMX data collection"
+        }
+      ],
+      "description": "Average garbage collections per second over the last 5 minutes, split by collector type.",
+      "query": "sum(rate(jvm_gc_collectioncount_value{__$labels__}[5m])) by (instance_id,type)"
+    },
+    {
+      "metric_group": "GC",
+      "name": "jvm_gc_collectiontime_seconds_increase",
+      "display_name": "GC Time in Last 5 Minutes",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [
+        {
+          "name": "type",
+          "description": "Type of JMX data collection"
+        }
+      ],
+      "description": "Garbage collection time consumed during the last 5 minutes, in seconds, split by collector type.",
+      "query": "sum(increase(jvm_gc_collectiontime_seconds_value{__$labels__}[5m])) by (instance_id,type)"
     }
   ]
 }

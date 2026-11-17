@@ -20,6 +20,31 @@ from apps.rum.services.validation import ValidationError, canonical_origins, new
 MAX_ACTIVE_KEYS = 2
 
 
+def _reported(health: dict, key: str, *, as_float: bool = False):
+    """Keep an explicit null. A missing key still means the logs path's zero."""
+
+    if key not in health:
+        return 0
+    value = health[key]
+    if value is None:
+        return None
+    return float(value) if as_float else int(value)
+
+
+def _known_total(items: list[dict], key: str):
+    known = [item[key] for item in items if item.get(key) is not None]
+    if not known:
+        return None if items else 0
+    return sum(int(value) for value in known)
+
+
+def _known_max(items: list[dict], key: str):
+    known = [float(item[key]) for item in items if item.get(key) is not None]
+    if not known:
+        return None if items else 0
+    return max(known)
+
+
 def key_digest(value: str) -> str:
     return hashlib.sha256(value.strip().encode("utf-8")).hexdigest()
 
@@ -415,10 +440,10 @@ class ApplicationsService:
             item.update(
                 {
                     "sessions": health.get("sessions") or 0,
-                    "views": health.get("views") or 0,
-                    "errors": health.get("errors") or 0,
-                    "lcpP75": health.get("lcpP75") or 0,
-                    "inpP75": health.get("inpP75") or 0,
+                    "views": _reported(health, "views"),
+                    "errors": _reported(health, "errors"),
+                    "lcpP75": _reported(health, "lcpP75", as_float=True),
+                    "inpP75": _reported(health, "inpP75", as_float=True),
                     "errorRate": health.get("errorRate") or 0,
                     "environment": health.get("environment") or "",
                     "release": health.get("release") or "",
@@ -429,15 +454,13 @@ class ApplicationsService:
         page["sparklines"] = sparks
         if not control_down:
             page["configured"] = True
+        enabled = [item for item in page["applications"] if item.get("enabled")]
         kpi = page["kpi"]
-        for item in page["applications"]:
-            if not item.get("enabled"):
-                continue
-            kpi["sessions"] += int(item.get("sessions") or 0)
-            kpi["views"] += int(item.get("views") or 0)
-            kpi["errors"] += int(item.get("errors") or 0)
-            kpi["worstLcp"] = max(kpi["worstLcp"], float(item.get("lcpP75") or 0))
-            kpi["worstInp"] = max(kpi["worstInp"], float(item.get("inpP75") or 0))
+        kpi["sessions"] = sum(int(item.get("sessions") or 0) for item in enabled)
+        kpi["views"] = _known_total(enabled, "views")
+        kpi["errors"] = _known_total(enabled, "errors")
+        kpi["worstLcp"] = _known_max(enabled, "lcpP75")
+        kpi["worstInp"] = _known_max(enabled, "inpP75")
         return page
 
     def meta(self) -> dict:
@@ -462,6 +485,7 @@ class ApplicationsService:
             analytics=self.analytics,
             settings=self.settings,
             actor=actor,
+            probe_traces=True,
         ).as_dict()
 
     def snippets(self, body: dict) -> dict:

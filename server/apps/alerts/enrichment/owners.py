@@ -30,6 +30,32 @@ def owner_fields_of(rule) -> list[str]:
     return fields
 
 
+def projection_source_by_alias(projection) -> dict[str, str]:
+    mapping = {}
+    for item in projection or []:
+        if not isinstance(item, dict):
+            continue
+        src = str(item.get("source") or "").strip()
+        if not src:
+            continue
+        alias = str(item.get("as") or src).strip()
+        if alias and alias not in mapping:
+            mapping[alias] = src
+    return mapping
+
+
+def owner_record_fields(rule) -> list[str]:
+    """出参重命名映射回 CMDB 记录字段；未出现在投影里的仍按原名取值。"""
+    aliases = owner_fields_of(rule)
+    sources = projection_source_by_alias(getattr(rule, "output_projection", None))
+    fields = []
+    for alias in aliases:
+        field = sources.get(alias, alias)
+        if field not in fields:
+            fields.append(field)
+    return fields
+
+
 def user_ids_from_records(records, owner_fields, on_multiple) -> list[int]:
     if not records or not owner_fields:
         return []
@@ -53,7 +79,7 @@ def user_ids_from_records(records, owner_fields, on_multiple) -> list[int]:
 
 
 def remember_owner_ids(sink, rule, records, status, events) -> None:
-    fields = owner_fields_of(rule)
+    fields = owner_record_fields(rule)
     if not fields or status in _FAILURE_STATUSES:
         return
     user_ids = user_ids_from_records(records, fields, getattr(rule, "on_multiple", "first"))

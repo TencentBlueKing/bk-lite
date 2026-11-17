@@ -75,7 +75,7 @@
           "unit": "percent",
           "dimensions": [],
           "instance_id_keys": ["instance_id", "resource_id"],
-          "description": "It represents the CPU utilization rate of the system or application program, which is a key indicator for measuring CPU load and performance"
+          "description": "Average CPU usage of the ESXi host over the collection interval (about 0–100%)."
         },
         {
           "metric_group": "Memory",
@@ -86,7 +86,7 @@
           "unit": "percent",
           "dimensions": [],
           "instance_id_keys": ["instance_id", "resource_id"],
-          "description": "The memory utilization rate indicates the usage situation of the memory and is used to evaluate the memory load of the system or application program"
+          "description": "Average memory usage of the ESXi host over the collection interval (about 0–100%)."
         },
         {
           "metric_group": "Memory",
@@ -125,7 +125,7 @@
           "metric_group": "Disk",
           "name": "disk_numberRead_summation_gauge_rate",
           "query": "rate(disk_numberRead_summation_gauge{resource_type=\"vmware_esxi\", __$labels__}[5m])",
-          "display_name": "Disk read I/O Rate",
+          "display_name": "Disk Read Operation Rate",
           "data_type": "Number",
           "unit": "cps",
           "dimensions": [],
@@ -136,7 +136,7 @@
           "metric_group": "Disk",
           "name": "disk_numberWrite_summation_gauge_rate",
           "query": "rate(disk_numberWrite_summation_gauge{resource_type=\"vmware_esxi\", __$labels__}[5m])",
-          "display_name": "Disk write I/O Rate",
+          "display_name": "Disk Write Operation Rate",
           "data_type": "Number",
           "unit": "cps",
           "dimensions": [],
@@ -266,7 +266,7 @@
       "default_metric": "any({resource_type='vmware_vm'}) by (instance_id, resource_id)",
       "instance_id_keys": ["instance_id", "resource_id"],
       "supplementary_indicators": ["cpu_usage_average_gauge", "mem_usage_average_gauge", "disk_io_usage_gauge"],
-      "display_fields": [{"name": "IP 地址", "type": "field", "role": "resource_ip", "variable_id": "vm_ip", "sort_order": 0, "metrics": [{"plugin": "VMWare", "metric": "cpu_usage_average_gauge", "field": "ip"}]}, {"name": "CPU utilization rate", "sort_order": 1, "metrics": [{"plugin": "VMWare", "metric": "cpu_usage_average_gauge"}]}, {"name": "Memory utilization rate", "sort_order": 2, "metrics": [{"plugin": "VMWare", "metric": "mem_usage_average_gauge"}]}, {"name": "Disk I/O Usage", "sort_order": 3, "metrics": [{"plugin": "VMWare", "metric": "disk_io_usage_gauge"}]}],
+      "display_fields": [{"name": "IP 地址", "type": "field", "role": "resource_ip", "variable_id": "vm_ip", "sort_order": 0, "metrics": [{"plugin": "VMWare", "metric": "cpu_usage_average_gauge", "field": "ip"}]}, {"name": "CPU utilization rate", "sort_order": 1, "metrics": [{"plugin": "VMWare", "metric": "cpu_usage_average_gauge"}]}, {"name": "Memory utilization rate", "sort_order": 2, "metrics": [{"plugin": "VMWare", "metric": "mem_usage_average_gauge"}]}, {"name": "Aggregate Disk I/O Throughput", "sort_order": 3, "metrics": [{"plugin": "VMWare", "metric": "disk_io_usage_gauge"}]}],
       "metrics": [
         {
           "metric_group": "CPU",
@@ -277,7 +277,7 @@
           "unit": "percent",
           "dimensions": [],
           "instance_id_keys": ["instance_id", "resource_id"],
-          "description": "It represents the CPU utilization rate of the system within a specific time period, usually expressed as a percentage. This indicator helps to understand the CPU load situation, so as to carry out performance optimization and capacity planning"
+          "description": "Average CPU usage of the virtual machine relative to its configured CPU over the collection interval (about 0–100%)."
         },
         {
           "metric_group": "Memory",
@@ -288,7 +288,7 @@
           "unit": "percent",
           "dimensions": [],
           "instance_id_keys": ["instance_id", "resource_id"],
-          "description": "It represents the memory utilization rate of the system within a specific time period, usually expressed as a percentage. This indicator helps to understand the memory load situation, which is helpful for optimizing memory usage and conducting capacity planning"
+          "description": "Average memory usage of the virtual machine over the collection interval (about 0–100%)."
         },
         {
           "metric_group": "Memory",
@@ -305,12 +305,12 @@
           "metric_group": "Disk",
           "name": "disk_io_usage_gauge",
           "query": "disk_io_usage_gauge{resource_type=\"vmware_vm\", __$labels__}",
-          "display_name": "Disk I/O Usage",
+          "display_name": "Aggregate Disk I/O Throughput",
           "data_type": "Number",
-          "unit": "percent",
+          "unit": "kibyteps",
           "dimensions": [],
           "instance_id_keys": ["instance_id", "resource_id"],
-          "description": "Indicates the I/O usage of the VM's disk, i.e., the busyness of the disk over a period of time. Higher values indicate higher disk load"
+          "description": "Aggregate disk I/O throughput of the virtual machine over the collection interval, in KB/s (from disk.usage.average). This is throughput, not a utilization percentage."
         },
         {
           "metric_group": "Disk",
@@ -338,7 +338,7 @@
           "metric_group": "Disk",
           "name": "disk_numberRead_summation_gauge_rate",
           "query": "rate(disk_numberRead_summation_gauge{resource_type=\"vmware_vm\", __$labels__}[5m])",
-          "display_name": "Disk read I/O Rate",
+          "display_name": "Disk Read Operation Rate",
           "data_type": "Number",
           "unit": "cps",
           "dimensions": [],
@@ -349,7 +349,7 @@
           "metric_group": "Disk",
           "name": "disk_numberWrite_summation_gauge_rate",
           "query": "rate(disk_numberWrite_summation_gauge{resource_type=\"vmware_vm\", __$labels__}[5m])",
-          "display_name": "Disk write I/O Rate",
+          "display_name": "Disk Write Operation Rate",
           "data_type": "Number",
           "unit": "cps",
           "dimensions": [],

@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { Tag, Button, Popover, Form, Input, InputNumber, Select, DatePicker, Checkbox, Space, Modal, message } from 'antd';
-import { FunnelPlotFilled, CloseOutlined, StarOutlined } from '@ant-design/icons';
+import { FunnelPlotFilled, CloseOutlined, StarOutlined, BellOutlined } from '@ant-design/icons';
 import type { AttrFieldType, EnumList } from '@/app/cmdb/types/assetManage';
 import dayjs from 'dayjs';
 import customParseFormat from 'dayjs/plugin/customParseFormat';
@@ -32,6 +32,7 @@ export interface FilterBarProps {
   modelId?: string;
   onChange?: (filters: FilterItem[]) => void;
   onFilterChange?: (filters: FilterItem[]) => void;
+  onSubscribe?: () => void;
 }
 
 const FilterBar: React.FC<FilterBarProps> = ({
@@ -41,6 +42,7 @@ const FilterBar: React.FC<FilterBarProps> = ({
   modelId = '',
   onChange,
   onFilterChange,
+  onSubscribe,
 }) => {
   const { t } = useTranslation();
   const queryList = useAssetDataStore((state) => state.query_list);
@@ -615,6 +617,12 @@ const FilterBar: React.FC<FilterBarProps> = ({
               <StarOutlined />
               {t('FilterBar.saveFilters')}
             </Button>
+            {onSubscribe ? (
+              <Button type="link" onClick={onSubscribe} className={styles.saveButton}>
+                <BellOutlined aria-hidden="true" />
+                {t('subscription.subscribe')}
+              </Button>
+            ) : null}
           </div>
         )}
       </div>

@@ -452,7 +452,7 @@
       "disk_used_average_gauge": "Disk utilization rate",
       "disk_free_average_gauge": "Disk remaining capacity",
       "store_accessible_gauge": "Storage connection status",
-      "disk_io_usage_gauge": "Disk I/O Usage",
+      "disk_io_usage_gauge": "Aggregate Disk I/O Throughput",
       "cluster_pod_count": "Pod Count",
       "cluster_node_count": "Node Count",
       "cluster_memory_utilization": "Memory Utilization",

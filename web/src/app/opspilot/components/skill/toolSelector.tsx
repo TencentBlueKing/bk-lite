@@ -189,7 +189,9 @@ const ToolSelector: React.FC<ToolSelectorProps> = ({ defaultTools, onChange }) =
   const handleModalConfirm = (selectedIds: number[]) => {
     const pickingMcp = pickerKind === 'mcp';
     const kept = selectedTools.filter((tool) => isMcpTool(tool) !== pickingMcp);
-    const picked = tools.filter((tool) => selectedIds.includes(tool.id) && isMcpTool(tool) === pickingMcp);
+    const picked = tools
+      .filter((tool) => selectedIds.includes(tool.id) && isMcpTool(tool) === pickingMcp)
+      .map((tool) => selectedTools.find((selected) => selected.id === tool.id) ?? tool);
     commitSelectedTools([...kept, ...picked]);
     setModalVisible(false);
   };

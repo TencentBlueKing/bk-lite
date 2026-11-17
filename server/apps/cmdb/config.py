@@ -7,6 +7,10 @@ from celery.schedules import crontab
 CELERY_BEAT_SCHEDULE = {
     "maintain_cmdb_transfers": {"task": "apps.cmdb.tasks.transfer.maintain_transfers", "schedule": crontab(minute="*")},
     "cleanup_cmdb_transfers": {"task": "apps.cmdb.tasks.transfer.cleanup_transfers", "schedule": crontab(hour="3", minute="0")},
+    "cleanup_change_record_retention": {
+        "task": "apps.cmdb.tasks.change_record_retention.cleanup_change_record_retention",
+        "schedule": crontab(hour=3, minute=20),
+    },
     "recover_first_collection_runs": {
         "task": "apps.cmdb.tasks.celery_tasks.recover_first_collection_runs",
         "schedule": crontab(minute="*"),
@@ -35,6 +39,10 @@ CELERY_BEAT_SCHEDULE = {
     },
     "reconcile_auto_relation_pending_task": {
         "task": "apps.cmdb.tasks.celery_tasks.reconcile_auto_relation_pending_task",
+        "schedule": crontab(minute="*/5"),
+    },
+    "reconcile_ci_context_pending_task": {
+        "task": "apps.cmdb.tasks.ci_context.reconcile_ci_context_pending_task",
         "schedule": crontab(minute="*/5"),
     },
 }

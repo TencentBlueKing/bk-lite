@@ -1488,6 +1488,11 @@ def test_classify_tool_failure_kind_separates_auth_from_retryable():
     assert classify_tool_failure_kind("connection refused", status="error") == TOOL_FAILURE_OTHER
     assert classify_tool_failure_kind("namespace is required", status="error") == TOOL_FAILURE_OTHER
     assert classify_tool_failure_kind('{"phase": "Running"}') == TOOL_FAILURE_OTHER
+    successful_alerts = {"success": True, "data": {"items": [{"title": "HTTP 403"}, {"title": "API server 超时"}]}}
+    assert classify_tool_failure_kind(successful_alerts) == TOOL_FAILURE_OTHER
+    assert classify_tool_failure_kind(json.dumps(successful_alerts, ensure_ascii=False), status="success") == TOOL_FAILURE_OTHER
+    assert classify_tool_failure_kind(json.dumps(successful_alerts), status="error") == TOOL_FAILURE_AUTHZ
+    assert classify_tool_failure_kind({"success": True, "error": "403 Forbidden"}) == TOOL_FAILURE_AUTHZ
     assert is_non_replanable_tool_failure('{"error": "401 Unauthorized"}')
     assert is_non_replanable_tool_failure('{"error": "403 Forbidden"}')
     assert is_non_replanable_tool_failure('{"error": "connection_failed"}')

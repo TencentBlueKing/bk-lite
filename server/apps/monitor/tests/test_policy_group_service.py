@@ -358,6 +358,53 @@ def test_join_covers_only_the_matching_plugin_and_one_group():
     assert MonitorPolicy.objects.filter(group_rule__group=group).count() == 2
 
 
+def test_add_templates_covers_matching_plugin_and_skips_existing():
+    monitor_object = _object()
+    wmi = _plugin(monitor_object, "WMI")
+    ssh = _plugin(monitor_object, "SSH")
+    cpu = _template(monitor_object, wmi, "WMI CPU")
+    group = PolicyGroupService.create_from_templates(
+        organization=1,
+        monitor_object=monitor_object,
+        name="主机默认告警",
+        templates=[cpu],
+    )
+    sibling = group.rules.get().policy
+    sibling.notice = True
+    sibling.notice_type = "email"
+    sibling.notice_type_ids = [3]
+    sibling.notice_users = ["alice"]
+    sibling.handlers = [8]
+    sibling.schedule = {"type": "min", "value": 7}
+    sibling.enable = True
+    sibling.save()
+    host = _instance(monitor_object, "web-01", 1)
+    _collect(host, wmi)
+    PolicyGroupService.join(instance=host, group=group)
+    ssh_template = _template(monitor_object, ssh, "SSH CPU")
+    disk = _template(monitor_object, wmi, "WMI 磁盘")
+
+    first = PolicyGroupService.add_templates(group, [ssh_template, disk, cpu])
+    second = PolicyGroupService.add_templates(group, [ssh_template])
+
+    assert first["added"] == 2
+    assert first["skipped"] == 1
+    assert second["added"] == 0
+    assert group.rules.count() == 3
+    cpu_policy = group.rules.select_related("policy").get(name="WMI CPU").policy
+    disk_policy = group.rules.select_related("policy").get(name="WMI 磁盘").policy
+    ssh_policy = group.rules.select_related("policy").get(plugin=ssh).policy
+    assert cpu_policy.source["values"] == [host.id]
+    assert disk_policy.source["values"] == [host.id]
+    assert ssh_policy.source["values"] == []
+    assert ssh_policy.notice_users == ["alice"]
+    assert ssh_policy.handlers == [8]
+    assert ssh_policy.schedule == {"type": "min", "value": 7}
+    assert PeriodicTask.objects.get(name=f"scan_policy_task_{cpu_policy.id}").enabled is True
+    assert PeriodicTask.objects.get(name=f"scan_policy_task_{disk_policy.id}").enabled is True
+    assert PeriodicTask.objects.get(name=f"scan_policy_task_{ssh_policy.id}").enabled is False
+
+
 def test_leave_closes_open_alerts_and_blocks_auto_rejoin_state():
     monitor_object = _object()
     wmi = _plugin(monitor_object, "WMI")
@@ -677,6 +724,38 @@ def test_group_rule_and_standalone_rule_get_a_scan_task():
     assert standalone.enable_alerts == ["threshold"]
     assert PeriodicTask.objects.filter(name=f"scan_policy_task_{standalone.id}", enabled=True).exists()
     assert list(standalone.policyorganization_set.values_list("organization", flat=True)) == [1]
+
+
+def test_serialize_rule_reads_metric_catalog_unit_when_policy_units_empty():
+    monitor_object = _object()
+    plugin = _plugin(monitor_object, "Host")
+    group = PolicyGroupService.create_from_templates(
+        organization=1,
+        monitor_object=monitor_object,
+        name="主机默认告警",
+        templates=[_template(monitor_object, plugin, "CPU")],
+    )
+    rule = group.rules.select_related("policy", "plugin").get()
+    policy = rule.policy
+    metric = Metric.objects.get(id=PolicyGroupService.metric_id_for_policy(policy))
+    metric.unit = "percent"
+    metric.save(update_fields=["unit"])
+    policy.metric_unit = ""
+    policy.calculation_unit = ""
+    policy.threshold_unit = ""
+    policy.save(update_fields=["metric_unit", "calculation_unit", "threshold_unit"])
+
+    names, units = PolicyGroupService.metric_catalog_for_policies([policy])
+    payload = _serialize_rule(rule, metric_names=names, metric_units=units)
+    assert names[metric.id] == "cpu_usage_total"
+    assert units[metric.id] == "percent"
+    assert payload["unit"] == "percent"
+    assert "threshold_unit" not in payload
+
+    policy.threshold_unit = "kibibytes"
+    policy.save(update_fields=["threshold_unit"])
+    payload = _serialize_rule(rule, metric_units=units)
+    assert payload["unit"] == "kibibytes"
 
 
 def test_copy_keeps_the_current_rule_after_the_template_is_gone():

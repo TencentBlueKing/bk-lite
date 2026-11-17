@@ -65,6 +65,7 @@ const SelectInstance = forwardRef<RelationInstanceRef, SelectInstanceProps>(
       total: 0,
       pageSize: 20,
     });
+    const [searchResetKey, setSearchResetKey] = useState(0);
 
     useEffect(() => {
       if (modelId && assoModelId && pagination?.current) {
@@ -128,6 +129,7 @@ const SelectInstance = forwardRef<RelationInstanceRef, SelectInstanceProps>(
       showModal: async ({ title, model_id, list, instUuid }) => {
         // 开启弹窗的交互
         setGroupVisible(true);
+        setSearchResetKey((key) => key + 1);
         setTitle(title);
         setModelId(model_id);
         setInstUuid(instUuid);
@@ -399,6 +401,8 @@ const SelectInstance = forwardRef<RelationInstanceRef, SelectInstanceProps>(
               }))}
             />
             <SearchFilter
+              key={`${searchResetKey}:${intancePropertyList.map((item) => item.attr_id).join(',')}`}
+              syncSearchAttr={false}
               userList={userList}
               attrList={intancePropertyList}
               proxyOptions={proxyOptions}
