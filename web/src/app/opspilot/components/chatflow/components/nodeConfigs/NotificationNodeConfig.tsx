@@ -3,7 +3,7 @@ import { Form, Input, Select, Radio, Typography } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import Link from 'next/link';
 import type { NotificationNodeConfigProps } from './types';
-import { filterModelOption, getModelOptionText, renderModelOptionLabel } from '@/app/opspilot/utils/modelOption';
+import { filterModelOption, getModelOptionText, renderModelOptionLabel, withBoundUnavailableModels } from '@/app/opspilot/utils/modelOption';
 
 const { Option } = Select;
 const { TextArea } = Input;
@@ -21,6 +21,8 @@ export const NotificationNodeConfig: React.FC<NotificationNodeConfigProps> = ({
   loadingUsers,
   form,
 }) => {
+  const llmOptimizeModel = Form.useWatch('llmOptimizeModel', form);
+  const modelChoices = withBoundUnavailableModels(llmModels, llmOptimizeModel);
   return (
     <>
       <Form.Item name="notificationType" label={t('chatflow.notificationCategory')} initialValue="email" rules={[{ required: true }]}>
@@ -75,11 +77,14 @@ export const NotificationNodeConfig: React.FC<NotificationNodeConfigProps> = ({
               filterOption={filterModelOption}
             >
               <Option value={0}>{t('chatflow.none')}</Option>
-              {llmModels.map((model) => (
-                <Option key={model.id} value={model.id} title={getModelOptionText(model)}>
-                  {renderModelOptionLabel(model)}
-                </Option>
-              ))}
+              {modelChoices.map(({ model, disabled }) => {
+                const unavailableMark = disabled ? t('modelOption.unavailable', '已停用') : undefined;
+                return (
+                  <Option key={model.id} value={model.id} disabled={disabled} title={getModelOptionText(model, unavailableMark)}>
+                    {renderModelOptionLabel(model, unavailableMark)}
+                  </Option>
+                );
+              })}
             </Select>
           </Form.Item>
           <Form.Item name="notificationTitle" label={t('chatflow.notificationTitle')} rules={[{ required: true }]}>
