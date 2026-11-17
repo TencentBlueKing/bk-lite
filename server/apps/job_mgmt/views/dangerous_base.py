@@ -14,6 +14,7 @@ from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 
 from apps.core.utils.viewset_utils import AuthViewSet
+from apps.job_mgmt.utils.i18n import job_message
 from apps.system_mgmt.utils.operation_log_utils import log_operation
 
 
@@ -74,7 +75,7 @@ class BaseDangerousItemViewSet(AuthViewSet):
     def update_with_log(self, request, *args, **kwargs):
         instance = self.get_object()
         if instance.is_builtin and not getattr(request.user, "is_superuser", False):
-            raise PermissionDenied("只有平台超级管理员可操作内置规则")
+            raise PermissionDenied(job_message(request, "error.builtin_rule_superuser_only", "只有平台超级管理员可操作内置规则"))
 
         response = super().update(request, *args, **kwargs)
         if response.status_code == status.HTTP_200_OK:
@@ -85,7 +86,7 @@ class BaseDangerousItemViewSet(AuthViewSet):
     def destroy_with_log(self, request, *args, **kwargs):
         instance = self.get_object()
         if instance.is_builtin and not getattr(request.user, "is_superuser", False):
-            raise PermissionDenied("只有平台超级管理员可操作内置规则")
+            raise PermissionDenied(job_message(request, "error.builtin_rule_superuser_only", "只有平台超级管理员可操作内置规则"))
         response = super().destroy(request, *args, **kwargs)
         if response.status_code in (status.HTTP_200_OK, status.HTTP_204_NO_CONTENT):
             name = getattr(instance, self.dangerous_name_field, "")

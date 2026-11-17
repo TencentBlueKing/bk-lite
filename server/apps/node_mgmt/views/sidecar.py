@@ -1,27 +1,27 @@
 import shlex
 
-from rest_framework.decorators import action
-from django.http import HttpResponse, JsonResponse, StreamingHttpResponse
 import requests
+from django.http import HttpResponse, JsonResponse, StreamingHttpResponse
+from rest_framework.decorators import action
 
+from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.core.logger import node_logger as logger
 from apps.core.utils.open_base import OpenAPIViewSet
 from apps.core.utils.web_utils import WebUtils
 from apps.core.utils.webhook_tls import get_webhook_tls_verify
-from apps.core.exceptions.base_app_exception import BaseAppException
-from apps.node_mgmt.models import PackageVersion, SidecarEnv
-from apps.node_mgmt.services.install_token import InstallTokenService
-from apps.node_mgmt.services.installer_session import InstallerSessionService
-from apps.node_mgmt.services.installer import InstallerService
-from apps.node_mgmt.services.package import PackageService
-from apps.node_mgmt.serializers.installer import InstallerArtifactQuerySerializer
-from apps.node_mgmt.services.sidecar import Sidecar
-from apps.node_mgmt.utils.token_auth import check_token_auth, generate_node_token
-from apps.node_mgmt.constants.node import NodeConstants
-from apps.node_mgmt.constants.controller import ControllerConstants
 from apps.node_mgmt.constants.cloudregion_service import CloudRegionServiceConstants
+from apps.node_mgmt.constants.controller import ControllerConstants
 from apps.node_mgmt.constants.installer import InstallerConstants
+from apps.node_mgmt.constants.node import NodeConstants
+from apps.node_mgmt.models import PackageVersion, SidecarEnv
+from apps.node_mgmt.serializers.installer import InstallerArtifactQuerySerializer
+from apps.node_mgmt.services.install_token import InstallTokenService
+from apps.node_mgmt.services.installer import InstallerService
+from apps.node_mgmt.services.installer_session import InstallerSessionService
+from apps.node_mgmt.services.package import PackageService
+from apps.node_mgmt.services.sidecar import Sidecar
 from apps.node_mgmt.utils.architecture import normalize_cpu_architecture
-from apps.core.logger import node_logger as logger
+from apps.node_mgmt.utils.token_auth import check_token_auth, generate_node_token
 
 
 class OpenSidecarViewSet(OpenAPIViewSet):
@@ -547,7 +547,7 @@ class OpenSidecarViewSet(OpenAPIViewSet):
                 "zone_id": "1"
             }
         """
-        token = request.query_params.get("token")
+        token = request.headers.get("X-Installation-Token") or request.query_params.get("token")
         if not token:
             raise BaseAppException("Missing token parameter")
 
@@ -572,6 +572,7 @@ class OpenSidecarViewSet(OpenAPIViewSet):
         config["remaining_usage"] = consumed_token_data["remaining_usage"]
 
         response = JsonResponse(config)
+        response["Cache-Control"] = "no-store"
         response["X-Token-Remaining-Usage"] = str(config["remaining_usage"])
         return response
 

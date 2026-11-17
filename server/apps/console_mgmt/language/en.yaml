@@ -12,6 +12,19 @@ error:
   invalid_json_format: Invalid JSON format
   email_change_verification_required: Email change requires verification
   authentication_required: Authentication required
+  verification_code_expired: Verification code has expired or does not exist
+  email_code_rate_limit: Please wait before requesting another verification code
+  please_provide_token: Please provide Token
+  use_current_user_apps: Use the current_user_apps API to read user app settings
+  use_configure_user_apps: Use the configure_user_apps API to update user app settings
+  delete_user_apps_unsupported: Deleting user app settings is not supported
+  use_rpc_create_notification: Use the RPC API to create notifications
+  full_update_unsupported: Full updates are not supported
+  use_mark_as_read: Use the mark_as_read API to mark a notification as read
+  notification_deleted: Deleted
+  notification_marked_read: Marked as read
+  notification_marked_count: Marked {count} notifications as read
+  notification_id_list_invalid: The notification ID list is invalid
 email:
   verification_code_validity: The verification code is valid for 10 minutes, please
     use it in time.

@@ -5,7 +5,7 @@ from rest_framework import serializers
 from apps.job_mgmt.models import JobExecution, Playbook, Script
 from apps.job_mgmt.services.script_normalize import normalize_script_line_endings
 from apps.job_mgmt.services.script_params_service import ScriptParamsService
-from apps.job_mgmt.utils.i18n import choice_message, localize_execution_name
+from apps.job_mgmt.utils.i18n import choice_message, localize_execution_name, serializer_message
 
 
 class JobExecutionListSerializer(serializers.ModelSerializer):
@@ -185,24 +185,24 @@ class QuickExecuteSerializer(serializers.Serializer):
         mode_count = sum(modes)
 
         if mode_count == 0:
-            raise serializers.ValidationError({"script_id": "必须提供 script_id、playbook_id 或 script_content 其中之一"})
+            raise serializers.ValidationError({"script_id": serializer_message(self, "error.execution_source_required", "必须提供 script_id、playbook_id 或 script_content 其中之一")})
 
         if mode_count > 1:
-            raise serializers.ValidationError({"script_id": "script_id、playbook_id、script_content 只能提供其中之一"})
+            raise serializers.ValidationError({"script_id": serializer_message(self, "error.execution_source_exclusive", "script_id、playbook_id、script_content 只能提供其中之一")})
 
         # 验证临时输入模式必须指定脚本类型
         if script_content and not attrs.get("script_type"):
-            raise serializers.ValidationError({"script_type": "临时输入模式必须指定脚本类型"})
+            raise serializers.ValidationError({"script_type": serializer_message(self, "error.temporary_script_type_required", "临时输入模式必须指定脚本类型")})
 
         # 验证脚本存在
         if script_id:
             if not Script.objects.filter(id=script_id).exists():
-                raise serializers.ValidationError({"script_id": "脚本不存在"})
+                raise serializers.ValidationError({"script_id": serializer_message(self, "error.script_missing", "脚本不存在")})
 
         # 验证 Playbook 存在
         if playbook_id:
             if not Playbook.objects.filter(id=playbook_id).exists():
-                raise serializers.ValidationError({"playbook_id": "Playbook不存在"})
+                raise serializers.ValidationError({"playbook_id": serializer_message(self, "error.playbook_missing", "Playbook不存在")})
 
         # 验证 params 格式
         params = attrs.get("params", [])

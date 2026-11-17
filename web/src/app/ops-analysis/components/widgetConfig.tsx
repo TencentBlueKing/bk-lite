@@ -240,7 +240,38 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
   const canvasRawDataRegistry = useWidgetCsvExportRegistry();
   const guardClose = useUnsavedConfirm();
   const [form] = Form.useForm();
-  const handleClose = () => guardClose(form.isFieldsTouched(), onClose);
+  // 筛选联动、表格列、参数输入配置等不在 Form 里，isFieldsTouched 看不见。
+  const unappliedConfigRef = useRef(false);
+  const noteUnappliedConfigChange = useCallback(() => {
+    unappliedConfigRef.current = true;
+    onDirtyChange?.(true);
+  }, [onDirtyChange]);
+  const clearUnappliedConfigChange = useCallback(() => {
+    unappliedConfigRef.current = false;
+    onDirtyChange?.(false);
+  }, [onDirtyChange]);
+  const configHasUnappliedChanges = () =>
+    form.isFieldsTouched() || unappliedConfigRef.current;
+  const handleClose = () => {
+    const finish = () => onClose?.();
+    if (variant === 'panel' && surface === 'screen') {
+      guardClose(configHasUnappliedChanges, finish, {
+        title: t('common.unsavedTitle'),
+        content: t('opsAnalysis.screen.discardConfigContent'),
+        okText: t('opsAnalysis.screen.discardAndExit'),
+      });
+      return;
+    }
+    guardClose(configHasUnappliedChanges, finish);
+  };
+  const markConfigEdit = <Args extends unknown[]>(
+    handler: (...args: Args) => void,
+  ) => {
+    return (...args: Args) => {
+      noteUnappliedConfigChange();
+      handler(...args);
+    };
+  };
   const [chartType, setChartType] = useState<string>('');
   const [drawerSection, setDrawerSection] = useState<ConfigSection>('data');
   const activeSection = variant === 'panel' ? (configSection ?? 'data') : drawerSection;
@@ -824,6 +855,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
   ]);
 
   const handleChartTypeChange = async (e: any) => {
+    noteUnappliedConfigChange();
     const newChartType = e.target.value;
     setChartType(newChartType);
     form.setFieldValue('chartType', newChartType);
@@ -925,7 +957,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
       markFormPristine(form);
       setFieldSectionErrors(emptySectionErrorFlags());
       setManualDataError(false);
-      onDirtyChange?.(false);
+      clearUnappliedConfigChange();
       settleInteractionSample(requestId, widgetId);
       return;
     }
@@ -1107,7 +1139,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
     markFormPristine(form);
     setFieldSectionErrors(emptySectionErrorFlags());
     setManualDataError(false);
-    onDirtyChange?.(false);
+    clearUnappliedConfigChange();
     settleInteractionSample(requestId, widgetId);
   };
 
@@ -1196,6 +1228,12 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
       resolvedParamOptionsRef.current.delete(editingParamName);
     }
     setEditingInputConfigParam(null);
+    noteUnappliedConfigChange();
+  };
+
+  const handleFilterBindingsChange = (bindings: FilterBindings) => {
+    setFilterBindings(bindings);
+    noteUnappliedConfigChange();
   };
 
   // 把组件级 inputConfig 覆盖合并到 selectedDataSource，供参数表渲染。
@@ -1231,7 +1269,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
   }, [effectiveDataSource]);
 
   const handleFormValuesChange = (changedValues: Record<string, any>) => {
-    onDirtyChange?.(true);
+    noteUnappliedConfigChange();
     setManualDataError(false);
     if (!isTableLikeChartType) {
       return;
@@ -1580,7 +1618,9 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
 
       if (submitResult.config) {
         setManualDataError(false);
-        onConfirm?.(submitResult.config);
+        if (onConfirm?.(submitResult.config) === false) return;
+        markFormPristine(form);
+        clearUnappliedConfigChange();
       }
     } catch (error) {
       const plan = planValidationFailure({
@@ -1842,7 +1882,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
             globalFilters={filterDefinitions}
             globalFilterValues={unifiedFilterValues}
             dataVariables={dataVariables}
-            onFilterBindingsChange={setFilterBindings}
+            onFilterBindingsChange={handleFilterBindingsChange}
             onEditInputConfig={handleEditInputConfig}
             onParamOptionsResolved={(param, options) =>
               reconcileParamWithOptions(param.name, options)
@@ -1861,30 +1901,30 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
                 isProbingColumns={tableConfig.isProbingColumns}
                 paramsChangedAfterProbe={tableConfig.paramsChangedAfterProbe}
                 displayColumnsError={tableConfig.displayColumnsError}
-                onAddFilterField={tableConfig.handleAddFilterField}
-                onDeleteFilterField={tableConfig.handleDeleteFilterField}
-                onFilterFieldChange={tableConfig.handleFilterFieldChange}
-                onAddDisplayColumn={tableConfig.handleAddDisplayColumn}
-                onDeleteDisplayColumn={tableConfig.handleDeleteDisplayColumn}
-                onDisplayColumnChange={tableConfig.handleDisplayColumnChange}
-                onDisplayColumnStyleChange={
-                  tableConfig.handleDisplayColumnStyleChange
-                }
-                onDisplayColumnKeyBlur={tableConfig.handleDisplayColumnKeyBlur}
-                onDisplayColumnDragEnd={tableConfig.handleDisplayColumnDragEnd}
-                onReProbeColumns={tableConfig.handleReProbeColumns}
-                onAddNewFilterField={() =>
+                onAddFilterField={markConfigEdit(tableConfig.handleAddFilterField)}
+                onDeleteFilterField={markConfigEdit(tableConfig.handleDeleteFilterField)}
+                onFilterFieldChange={markConfigEdit(tableConfig.handleFilterFieldChange)}
+                onAddDisplayColumn={markConfigEdit(tableConfig.handleAddDisplayColumn)}
+                onDeleteDisplayColumn={markConfigEdit(tableConfig.handleDeleteDisplayColumn)}
+                onDisplayColumnChange={markConfigEdit(tableConfig.handleDisplayColumnChange)}
+                onDisplayColumnStyleChange={markConfigEdit(
+                  tableConfig.handleDisplayColumnStyleChange,
+                )}
+                onDisplayColumnKeyBlur={markConfigEdit(tableConfig.handleDisplayColumnKeyBlur)}
+                onDisplayColumnDragEnd={markConfigEdit(tableConfig.handleDisplayColumnDragEnd)}
+                onReProbeColumns={markConfigEdit(tableConfig.handleReProbeColumns)}
+                onAddNewFilterField={markConfigEdit(() =>
                   tableConfig.setFilterFields([
                     ...tableConfig.filterFields,
                     tableConfig.createDefaultFilterField(),
                   ])
-                }
-                onAddNewDisplayColumn={() =>
+                )}
+                onAddNewDisplayColumn={markConfigEdit(() =>
                   tableConfig.setDisplayColumns([
                     ...tableConfig.displayColumns,
                     tableConfig.createDefaultDisplayColumn(),
                   ])
-                }
+                )}
               />
             )}
 
@@ -1898,13 +1938,13 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
                 loadingSingleValueData={loadingRoleFields}
                 thresholdColors={singleValueConfig.thresholdColors}
                 onFetchSingleValueDataFields={fetchRoleFields}
-                onSingleValueFieldChange={
-                  singleValueConfig.handleSingleValueFieldChange
-                }
-                onThresholdChange={singleValueConfig.handleThresholdChange}
-                onThresholdBlur={singleValueConfig.handleThresholdBlur}
-                onAddThreshold={singleValueConfig.addThreshold}
-                onRemoveThreshold={singleValueConfig.removeThreshold}
+                onSingleValueFieldChange={markConfigEdit(
+                  singleValueConfig.handleSingleValueFieldChange,
+                )}
+                onThresholdChange={markConfigEdit(singleValueConfig.handleThresholdChange)}
+                onThresholdBlur={markConfigEdit(singleValueConfig.handleThresholdBlur)}
+                onAddThreshold={markConfigEdit(singleValueConfig.addThreshold)}
+                onRemoveThreshold={markConfigEdit(singleValueConfig.removeThreshold)}
                 compareAvailable={singleValueConfig.compareAvailable}
                 showDescriptionField
               />
@@ -1920,13 +1960,13 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
                 loadingSingleValueData={loadingRoleFields}
                 thresholdColors={singleValueConfig.thresholdColors}
                 onFetchSingleValueDataFields={fetchRoleFields}
-                onSingleValueFieldChange={
-                  singleValueConfig.handleSingleValueFieldChange
-                }
-                onThresholdChange={singleValueConfig.handleThresholdChange}
-                onThresholdBlur={singleValueConfig.handleThresholdBlur}
-                onAddThreshold={singleValueConfig.addThreshold}
-                onRemoveThreshold={singleValueConfig.removeThreshold}
+                onSingleValueFieldChange={markConfigEdit(
+                  singleValueConfig.handleSingleValueFieldChange,
+                )}
+                onThresholdChange={markConfigEdit(singleValueConfig.handleThresholdChange)}
+                onThresholdBlur={markConfigEdit(singleValueConfig.handleThresholdBlur)}
+                onAddThreshold={markConfigEdit(singleValueConfig.addThreshold)}
+                onRemoveThreshold={markConfigEdit(singleValueConfig.removeThreshold)}
                 compareAvailable={singleValueConfig.compareAvailable}
               />
             )}
@@ -1974,10 +2014,10 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
                     <ThresholdColorConfigSection
                       t={t}
                       thresholdColors={singleValueConfig.thresholdColors}
-                      onThresholdChange={singleValueConfig.handleThresholdChange}
-                      onThresholdBlur={singleValueConfig.handleThresholdBlur}
-                      onAddThreshold={singleValueConfig.addThreshold}
-                      onRemoveThreshold={singleValueConfig.removeThreshold}
+                      onThresholdChange={markConfigEdit(singleValueConfig.handleThresholdChange)}
+                      onThresholdBlur={markConfigEdit(singleValueConfig.handleThresholdBlur)}
+                      onAddThreshold={markConfigEdit(singleValueConfig.addThreshold)}
+                      onRemoveThreshold={markConfigEdit(singleValueConfig.removeThreshold)}
                       allowEmpty
                     />
                     <Form.Item
@@ -2118,6 +2158,10 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
     </DataVariableRuntimeProvider>
   );
 
+  const confirmLabel = variant === 'panel' && surface === 'screen'
+    ? t('opsAnalysis.screen.applyConfig')
+    : t('common.confirm');
+
   if (variant === 'panel') {
     return withDataVariables(
       <>
@@ -2132,9 +2176,11 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
           <div className="flex shrink-0 items-center justify-between gap-2 border-t border-(--color-border-1) px-4 py-3">
             <div>{previewToggleButton}</div>
             <div className="flex items-center gap-2">
-              <Button onClick={handleClose}>{t('common.cancel')}</Button>
-              <Button type="primary" onClick={handleConfirm}>
-                {t('common.confirm')}
+              <Button data-testid="widget-config-cancel" onClick={handleClose}>
+                {t('common.cancel')}
+              </Button>
+              <Button type="primary" data-testid="widget-config-apply" onClick={handleConfirm}>
+                {confirmLabel}
               </Button>
             </div>
           </div>
@@ -2167,11 +2213,11 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
         <div className="flex items-center justify-between">
           <div>{previewToggleButton}</div>
           <div className="flex items-center gap-2">
-            <Button onClick={handleClose}>
+            <Button data-testid="widget-config-cancel" onClick={handleClose}>
               {t('common.cancel')}
             </Button>
-            <Button type="primary" onClick={handleConfirm}>
-              {t('common.confirm')}
+            <Button type="primary" data-testid="widget-config-apply" onClick={handleConfirm}>
+              {confirmLabel}
             </Button>
           </div>
         </div>

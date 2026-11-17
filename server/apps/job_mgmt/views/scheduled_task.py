@@ -66,7 +66,7 @@ class ScheduledTaskViewSet(AuthViewSet):
             instance.team,
             normalize_authorized_team_ids(getattr(request.user, "group_list", [])),
         ):
-            raise PermissionDenied("无权操作其他团队的定时任务")
+            raise PermissionDenied(job_message(request, "error.schedule_other_team_forbidden", "无权操作其他团队的定时任务"))
 
     def get_serializer_class(self):
         if self.action == "retrieve":
@@ -124,7 +124,7 @@ class ScheduledTaskViewSet(AuthViewSet):
                     instance.team,
                     normalize_authorized_team_ids(getattr(request.user, "group_list", [])),
                 ):
-                    raise PermissionDenied("无权禁用其他团队的定时任务")
+                    raise PermissionDenied(job_message(request, "error.schedule_disable_other_team_forbidden", "无权禁用其他团队的定时任务"))
                 instance.is_enabled = False
                 instance.updated_by = request.user.username if request.user else ""
                 instance.save(update_fields=["is_enabled", "updated_by", "updated_at"])
