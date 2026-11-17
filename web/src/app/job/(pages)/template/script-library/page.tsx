@@ -373,10 +373,11 @@ const ScriptLibraryPage = () => {
       const result = await importScripts(importFile, values.team || []);
       setImportModalOpen(false);
       setSelectedRowKeys([]);
-      const summary = t('job.importScriptsResult')
-        .replace('{{created}}', String(result.created.length))
-        .replace('{{skipped}}', String(result.skipped.length))
-        .replace('{{failed}}', String(result.failed.length));
+      const summary = t('job.importScriptsResult', undefined, {
+        created: result.created.length,
+        skipped: result.skipped.length,
+        failed: result.failed.length,
+      });
       const detailLines = [
         ...result.skipped.map((item) => `${item.name}: ${item.reason}`),
         ...result.failed.map((item) => `${item.name}: ${item.reason}`),
